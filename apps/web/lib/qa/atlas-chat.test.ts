@@ -446,9 +446,9 @@ describe('atlas chat · the route contract it speaks', () => {
     expect(ROUTE).toContain("encoder.encode(`data: ${JSON.stringify({ event, ...( typeof data === 'object' ? data : { data }) })}\\n\\n`)")
   })
 
-  it('emits exactly the eight events this surface handles', () => {
+  it('emits exactly the events this surface handles', () => {
     const events = [...new Set([...ROUTE.matchAll(/\bsend\('([a-z_]+)'/g)].map((m) => m[1]))].sort()
-    expect(events).toEqual(['done', 'error', 'links', 'navigate', 'text', 'timing', 'tool_call', 'tool_result'])
+    expect(events).toEqual(['conversation', 'done', 'error', 'links', 'navigate', 'text', 'timing', 'tool_call', 'tool_result'])
   })
 
   it('does not observe a client abort — which is why there is no stop control', () => {

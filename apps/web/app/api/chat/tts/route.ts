@@ -29,10 +29,10 @@
  * text arriving here is still raw, and that is expected.
  */
 
-import { requireUserSession } from '@/lib/auth/session'
+import { requireUserClaims } from '@/lib/auth/session'
 import { getAtlasServiceErrorMessage } from '@/lib/atlas/provider-errors'
 import { openAISpeech } from '@/lib/ai/openai-client'
-import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
+import { PLATFORM_COMPAT_PROJECT, warmGovernanceReadCaches } from '@/lib/cost/governed-spend'
 import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
 
 export const dynamic     = 'force-dynamic'
@@ -50,7 +50,7 @@ export async function POST(request: Request) {
   // oautentiserad request får aldrig hinna kosta något. Routen är inte
   // projektbunden och har därför medvetet ingen project credential — den
   // saknar projektdimension att scopa mot.
-  const auth = await requireUserSession()
+  const auth = await requireUserClaims()
   if (!auth.ok) return auth.response
 
   const apiKey = process.env.OPENAI_API_KEY?.trim()
@@ -75,6 +75,11 @@ export async function POST(request: Request) {
     return Response.json({ error: 'text krävs' }, { status: 400 })
   }
 
+  // Rate and billing-project reads are independent and non-authorising. Warm
+  // them together only after request validation; the governed OpenAI boundary
+  // still reserves, checks stop authority and settles exactly as before.
+  const governanceWarmup = warmGovernanceReadCaches(PLATFORM_COMPAT_PROJECT)
+
   const trimmed = text.trim().slice(0, 600)
 
   // Exactly the benchmark's winning payload — these four fields and no others.
@@ -95,6 +100,7 @@ export async function POST(request: Request) {
   // governed and logged; the payload, timeout and error envelope are unchanged.
   let res: Response
   try {
+    await governanceWarmup
     res = await openAISpeech(
       { project: PLATFORM_COMPAT_PROJECT,
     execution: {
@@ -125,14 +131,17 @@ export async function POST(request: Request) {
     )
   }
 
-  const audio = await res.arrayBuffer()
-  const ttsMs = Date.now() - tTts
-  return new Response(audio, {
+  // Do not buffer the provider body in this route. openAISpeech already wraps
+  // it in a governance-watched pass-through whose lifetime ends only when the
+  // body finishes or is cancelled, so forwarding it preserves both controls
+  // and lets the browser receive the first MP3 bytes immediately.
+  const upstreamMs = Date.now() - tTts
+  return new Response(res.body, {
     headers: {
       'Content-Type':   'audio/mpeg',
-      'Content-Length': audio.byteLength.toString(),
       'Cache-Control':  'no-store',
-      'x-tts-ms':       String(ttsMs),   // latens-mätning per mening
+      'x-tts-upstream-ms': String(upstreamMs),
+      'x-tts-transport': 'stream',
     },
   })
 }

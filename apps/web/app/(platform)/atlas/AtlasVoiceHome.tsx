@@ -107,6 +107,7 @@ export function AtlasVoiceHome({ operatorName }: Props) {
           {atlas.voicePhase === 'speaking' && (
             <div className="flex items-center gap-2">
               <p className="text-sm text-indigo-300/80 animate-fade-in">
+                {atlas.perfRaw ? <span className="sr-only" data-atlas-latency-raw data-atlas-progressive-playback={atlas.progressivePlayback}>{atlas.perfRaw}</span> : null}
                 {atlas.perf && (
                   <span className="text-[10px] font-mono text-zinc-600 mr-2">
                     {atlas.perf}
@@ -129,7 +130,10 @@ export function AtlasVoiceHome({ operatorName }: Props) {
             <div className="w-5 h-5 rounded-full bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center shrink-0 mt-0.5">
               <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
             </div>
-            <p className="text-sm text-zinc-200 leading-relaxed">{atlas.response}</p>
+            <p
+              ref={node => { if (node) atlas.reportTextVisible() }}
+              className="text-sm text-zinc-200 leading-relaxed"
+            >{atlas.response}</p>
           </div>
 
           {/* Öppna fullständig chatt */}

@@ -55,6 +55,7 @@
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getRates } from './rates'
 import { recordAdvisoryOverride } from './advisory-override'
 import { reserveSpend, settleSpend, releaseSpend, type SpendVerdict } from './budget-gate'
 // Value import, but no runtime cycle: `execution-signal` imports only
@@ -186,6 +187,18 @@ export async function resolveGovernedProjectId(
   } catch {
     return { ok: false, reason: 'project_lookup_failed' }
   }
+}
+
+/**
+ * Warm only the two read caches used before every governed provider dispatch.
+ *
+ * This does not reserve budget, evaluate a stop decision, or call a provider.
+ * Those fail-closed operations stay in `withGovernedSpend` in their existing
+ * order. Running the independent rate and project reads together removes a
+ * cold-start waterfall and lets a caller overlap them with local context work.
+ */
+export async function warmGovernanceReadCaches(ref: ProjectRef): Promise<void> {
+  await Promise.all([getRates(), resolveGovernedProjectId(ref)])
 }
 
 export interface GovernedSpendInput {

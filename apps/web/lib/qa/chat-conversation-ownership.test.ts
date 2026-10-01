@@ -68,7 +68,10 @@ vi.mock('@/lib/cost/governed-spend', async (importOriginal) => {
 const ME = 'user-me'
 let sessionUser: { id: string; email?: string } | null = null
 vi.mock('@/lib/supabase/server', () => ({
-  createClient: async () => ({ auth: { getUser: async () => ({ data: { user: sessionUser } }) } }),
+  createClient: async () => ({ auth: {
+    getUser: async () => ({ data: { user: sessionUser } }),
+    getClaims: async () => ({ data: sessionUser ? { claims: { sub: sessionUser.id, email: sessionUser.email } } : null, error: null }),
+  } }),
 }))
 
 // ── A recording database that APPLIES ownership filters ──────────────────────
@@ -350,7 +353,7 @@ describe('9E · writes — a foreign conversation receives nothing', () => {
 describe('9E · the client-supplied id is untrusted', () => {
   it('the owner comes only from the authenticated session, never from the body', () => {
     // `userId` is captured from supabase auth at the top of POST.
-    expect(ROUTE).toMatch(/const userId = user\.id/)
+    expect(ROUTE).toMatch(/const userId = auth\.userId/)
     // Nothing reads a user id out of the parsed request body.
     const parse = between(ROUTE, 'await request.json()', 'const db = createAdminClient()')
     expect(parse).not.toMatch(/user_id|userId/)

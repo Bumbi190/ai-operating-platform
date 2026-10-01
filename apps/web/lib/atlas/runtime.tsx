@@ -21,15 +21,22 @@ import {
   useSyncExternalStore,
 } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { createClient }           from '@/lib/supabase/client'
 import { buildChatRequestBody }   from '@/lib/atlas/view-client'
 import { AtlasAudioAnalyser, AtlasAudioLevelStore } from './audio-analysis'
-import { playTtsUrl, type PlaybackHandle, type PlaybackResult } from './playback'
+import { playTtsUrl, type PlaybackEvent, type PlaybackHandle, type PlaybackResult } from './playback'
+import {
+  playProgressiveTtsResponse,
+  progressiveMp3Capability,
+  type ProgressiveCapability,
+  type TtsBodyEvent,
+} from './progressive-playback'
 import {
   createLatencyMarks,
   formatLatency,
+  formatRawLatency,
   markOnce,
   mergeServerTiming,
+  type AtlasLatencyMark,
   type AtlasLatencyMarks,
   type AtlasServerTiming,
   type LatencyOrigin,
@@ -42,6 +49,9 @@ import {
   type AtlasOrbRuntimeSignal,
 } from './orb-state'
 import { resolveWorkspace, resolveActiveProject } from './workspace-registry'
+import { IncrementalSpeechSegmenter, toSpeechText } from './speech-segmenter'
+import { BoundedTaskQueue } from './tts-queue'
+import { consumeAtlasSse, type AtlasSseEvent } from './sse'
 
 // ── Typer ────────────────────────────────────────────────────────────────────
 
@@ -87,6 +97,8 @@ export interface AtlasValue {
   transcript:  string            // löpande STT-text under listening
   response:    string            // ackumulerat Atlas-svar (streaming)
   perf:        string | null     // latens-readout, t.ex. "⚡ 1.4s"
+  perfRaw:     string | null     // request-local raw timeline, never persisted
+  progressivePlayback: ProgressiveCapability
 
   // ── Exekutivt läge ────────────────────────────────────────────────────
   executiveState: ExecutiveState
@@ -112,6 +124,7 @@ export interface AtlasValue {
   activate():                       void
   deactivate():                     void
   stopAudio():                      void
+  reportTextVisible():              void
   sendMessage(text: string): Promise<void>
 }
 
@@ -178,6 +191,9 @@ export function AtlasRuntimeProvider({
   const [transcript, setTranscript] = useState('')
   const [response, setResponse]     = useState('')
   const [perf, setPerf]             = useState<string | null>(null)
+  const [perfRaw, setPerfRaw]       = useState<string | null>(null)
+  const [progressivePlayback, setProgressivePlayback] = useState<ProgressiveCapability>('unsupported')
+  useEffect(() => { setProgressivePlayback(progressiveMp3Capability()) }, [])
 
   // ── Session ──────────────────────────────────────────────────────────────
   const [isSessionActive, setIsSessionActive] = useState(false)
@@ -226,13 +242,33 @@ export function AtlasRuntimeProvider({
   // apart from the marks so a typed message can never adopt a stale speech-end.
   const pendingSpeechEndRef = useRef<number | null>(null)
   const ttsMsRef     = useRef(0)
+  const serverTimingRef = useRef<AtlasServerTiming | undefined>(undefined)
+  const visibleGenerationRef = useRef<number | null>(null)
+  const chatAbortRef = useRef<AbortController | null>(null)
+  const ttsQueueRef = useRef<BoundedTaskQueue<{
+    url: string | null
+    errorCode?: unknown
+    responseAt?: number
+  }> | null>(null)
 
   if (!audioLevelStoreRef.current) audioLevelStoreRef.current = new AtlasAudioLevelStore()
 
   useEffect(() => () => {
+    chatAbortRef.current?.abort()
+    ttsQueueRef.current?.cancel()
     playbackRef.current?.stop()
     void audioAnalyserRef.current?.dispose()
   }, [])
+
+  function reportTextVisible() {
+    const generation = visibleGenerationRef.current
+    if (generation === null) return
+    const at = performance.now()
+    markOnce(marksRef.current, generation, 'firstDomVisible', at)
+    if (markOnce(marksRef.current, generation, 'firstVisible', at)) {
+      logLatency(serverTimingRef.current)
+    }
+  }
 
   function getAudioAnalyser(): AtlasAudioAnalyser {
     audioAnalyserRef.current ??= new AtlasAudioAnalyser({ store: audioLevelStoreRef.current! })
@@ -325,25 +361,6 @@ export function AtlasRuntimeProvider({
     return () => window.removeEventListener('keydown', handler)
   }, [mounted])
 
-  // ── Konversations-skapare ─────────────────────────────────────────────────
-  async function ensureConversation(firstText: string): Promise<string | null> {
-    if (convRef.current) return convRef.current
-    try {
-      const sb = createClient()
-      const { data: { user } } = await sb.auth.getUser()
-      if (!user) return null
-      const { data } = await sb
-        .from('conversations')
-        .insert({ user_id: user.id, title: '🎙 ' + firstText.slice(0, 56) })
-        .select('id')
-        .single()
-      const id = (data as any)?.id ?? null
-      convRef.current = id
-      if (id) setConversationId(id)
-    } catch { /* osparat samtal är ok */ }
-    return convRef.current
-  }
-
   // ── STT ──────────────────────────────────────────────────────────────────
   function startListening() {
     if (closedRef.current)    return
@@ -418,22 +435,56 @@ export function AtlasRuntimeProvider({
   }
 
   // ── TTS ──────────────────────────────────────────────────────────────────
-  async function fetchTTSUrl(sentence: string): Promise<{ url: string | null; errorCode?: unknown }> {
+  async function fetchTTSUrl(
+    sentence: string,
+    signal: AbortSignal,
+    generation: number,
+    progressive: boolean,
+  ): Promise<{ url: string | null; response?: Response; errorCode?: unknown; responseAt?: number }> {
     try {
       const res = await fetch('/api/chat/tts', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ text: sentence, voice: 'onyx' }),
+        signal,
       })
+      const responseAt = performance.now()
+      markOnce(marksRef.current, generation, 'ttsHeadersReceived', responseAt)
+      markOnce(marksRef.current, generation, 'ttsResponse', responseAt)
+      logLatency(serverTimingRef.current)
       if (!res.ok) {
         const payload = await res.json().catch(() => null) as { code?: unknown } | null
-        return { url: null, errorCode: payload?.code }
+        return { url: null, errorCode: payload?.code, responseAt }
       }
-      const ms = Number(res.headers.get('x-tts-ms') || 0)
+      const ms = Number(res.headers.get('x-tts-upstream-ms') || 0)
       if (ms) ttsMsRef.current += ms
-      const blob = await res.blob()
-      return { url: URL.createObjectURL(blob) }
-    } catch {
+      if (progressive && res.body) return { url: null, response: res, responseAt }
+      const chunks: ArrayBuffer[] = []
+      const reader = res.body?.getReader()
+      if (reader) {
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          if (value?.byteLength) {
+            markOnce(marksRef.current, generation, 'ttsFirstBodyByte', performance.now())
+            chunks.push(Uint8Array.from(value).buffer)
+          }
+        }
+      } else {
+        const bytes = new Uint8Array(await res.arrayBuffer())
+        if (bytes.byteLength) {
+          markOnce(marksRef.current, generation, 'ttsFirstBodyByte', performance.now())
+          chunks.push(Uint8Array.from(bytes).buffer)
+        }
+      }
+      const completeAt = performance.now()
+      markOnce(marksRef.current, generation, 'ttsBodyComplete', completeAt)
+      markOnce(marksRef.current, generation, 'ttsBlobReady', completeAt)
+      logLatency(serverTimingRef.current)
+      const blob = new Blob(chunks, { type: res.headers.get('content-type') || 'audio/mpeg' })
+      return { url: URL.createObjectURL(blob), responseAt }
+    } catch (error) {
+      if (signal.aborted) return { url: null }
       return { url: null, errorCode: 'ATLAS_TTS_REQUEST_FAILED' }
     }
   }
@@ -446,6 +497,34 @@ export function AtlasRuntimeProvider({
    * raised when the blob arrives and NOT when `play()` is called; either would
    * be the orb claiming to speak into silence, which is the defect this fixes.
    */
+  function playbackCallbacks(generation: number, serverTiming?: AtlasServerTiming) {
+    const eventMarks: Partial<Record<PlaybackEvent, AtlasLatencyMark>> = {
+      'play-called': 'playCalled',
+      'play-promise-resolved': 'playPromiseResolved',
+      'play-promise-rejected': 'playPromiseRejected',
+      loadedmetadata: 'loadedMetadata',
+      canplay: 'canPlay',
+      waiting: 'waiting',
+      stalled: 'stalled',
+      error: 'playbackError',
+    }
+    return {
+      onEvent: (event: PlaybackEvent) => {
+        const mark = eventMarks[event]
+        if (mark && markOnce(marksRef.current, generation, mark, performance.now())) {
+          logLatency(serverTiming)
+        }
+      },
+      onStart: () => {
+        if (requestGenRef.current !== generation || cancelRef.current) return
+        setVoicePhase('speaking')
+        if (markOnce(marksRef.current, generation, 'firstAudio', performance.now())) {
+          logLatency(serverTiming)
+        }
+      },
+    }
+  }
+
   async function playUrl(
     url: string,
     generation: number,
@@ -456,11 +535,36 @@ export function AtlasRuntimeProvider({
     markOnce(marksRef.current, generation, 'playbackHandoff', performance.now())
     const handle = playTtsUrl(url, {
       analyser: getAudioAnalyser(),
-      onStart: () => {
-        setVoicePhase('speaking')
-        // Unchanged contract: `firstAudio` means the browser's `playing` event
-        // and nothing earlier.
-        if (markOnce(marksRef.current, generation, 'firstAudio', performance.now())) {
+      ...playbackCallbacks(generation, serverTiming),
+    })
+    playbackRef.current = handle
+    try {
+      return await handle.result
+    } finally {
+      if (playbackRef.current === handle) playbackRef.current = null
+    }
+  }
+
+  async function playResponse(
+    response: Response,
+    generation: number,
+    serverTiming?: AtlasServerTiming,
+  ): Promise<PlaybackResult> {
+    markOnce(marksRef.current, generation, 'playbackHandoff', performance.now())
+    const bodyMarks: Partial<Record<TtsBodyEvent, AtlasLatencyMark>> = {
+      'first-byte': 'ttsFirstBodyByte',
+      'body-complete': 'ttsBodyComplete',
+    }
+    const handle = playProgressiveTtsResponse(response, {
+      analyser: getAudioAnalyser(),
+      capability: () => progressivePlayback,
+      ...playbackCallbacks(generation, serverTiming),
+      onBodyEvent: (event) => {
+        const mark = bodyMarks[event]
+        if (mark && markOnce(marksRef.current, generation, mark, performance.now())) {
+          if (event === 'body-complete') {
+            markOnce(marksRef.current, generation, 'ttsBlobReady', performance.now())
+          }
           logLatency(serverTiming)
         }
       },
@@ -475,6 +579,7 @@ export function AtlasRuntimeProvider({
 
   function logLatency(serverTiming?: AtlasServerTiming) {
     setPerf(formatLatency(marksRef.current, serverTiming))
+    setPerfRaw(formatRawLatency(marksRef.current, serverTiming))
   }
 
   // ── Publika kontroller ────────────────────────────────────────────────────
@@ -510,6 +615,11 @@ export function AtlasRuntimeProvider({
 
   function stopAudio() {
     cancelRef.current = true
+    requestGenRef.current += 1
+    chatAbortRef.current?.abort()
+    chatAbortRef.current = null
+    ttsQueueRef.current?.cancel()
+    ttsQueueRef.current = null
     playbackRef.current?.stop()
     getAudioAnalyser().disconnect()
     setVoicePhase('idle')
@@ -528,9 +638,22 @@ export function AtlasRuntimeProvider({
 
   // ── Streaming + TTS-pipeline ──────────────────────────────────────────────
   async function sendMessage(text: string) {
+    chatAbortRef.current?.abort()
+    ttsQueueRef.current?.cancel()
+    playbackRef.current?.stop()
     // A new request retires the previous timeline. Anything still in flight for
     // the old one now fails its generation check instead of contaminating this.
     const generation = ++requestGenRef.current
+    const chatAbort = new AbortController()
+    chatAbortRef.current = chatAbort
+    const ttsQueue = new BoundedTaskQueue<{
+      url: string | null
+      response?: Response
+      errorCode?: unknown
+      responseAt?: number
+    }>(2)
+    ttsQueueRef.current = ttsQueue
+    const isCurrent = () => requestGenRef.current === generation && !cancelRef.current
     const speechEnd = pendingSpeechEndRef.current
     pendingSpeechEndRef.current = null
     const origin: LatencyOrigin = speechEnd !== null ? 'voice' : 'typed'
@@ -542,8 +665,11 @@ export function AtlasRuntimeProvider({
     setTranscript(text)
     setResponse('')
     setPerf(null)
+    setPerfRaw(null)
     cancelRef.current = false
     ttsMsRef.current  = 0
+    serverTimingRef.current = undefined
+    visibleGenerationRef.current = null
     executionRef.current = null
     setExecution(null)
     setAwaitingApproval(null)
@@ -558,17 +684,17 @@ export function AtlasRuntimeProvider({
     historyRef.current = [...historyRef.current, { role: 'user', content: text }]
     setHistory(h => [...h, { role: 'user', content: text }])
 
-    const urlQueue: Promise<{ url: string | null; errorCode?: unknown }>[] = []
+    const urlQueue: Promise<{ url: string | null; response?: Response; errorCode?: unknown; responseAt?: number }>[] = []
     let reply         = ''
-    let processedLen  = 0
     let streamDone    = false
     let playerStarted = false
     let ttsFailureReported = false
     let serverTiming: AtlasServerTiming | undefined
+    const segmenter = new IncrementalSpeechSegmenter()
 
     const player = async () => {
       let idx = 0
-      while (!cancelRef.current) {
+      while (isCurrent()) {
         if (idx >= urlQueue.length) {
           if (streamDone) break
           await new Promise(r => setTimeout(r, 50))
@@ -576,77 +702,80 @@ export function AtlasRuntimeProvider({
         }
         const tts = await urlQueue[idx]; idx++
         const url = tts.url
+        if (!isCurrent()) {
+          if (url) try { URL.revokeObjectURL(url) } catch { /* ignore */ }
+          if (tts.response?.body) void tts.response.body.cancel().catch(() => undefined)
+          break
+        }
         if (tts.errorCode && !ttsFailureReported) {
           ttsFailureReported = true
           setWarning(resolveAtlasServiceWarning(tts.errorCode))
         }
-        if (cancelRef.current) {
-          if (url) try { URL.revokeObjectURL(url) } catch { /* ignore */ }
-          break
-        }
-        if (url) {
+        if (tts.response) {
+          const outcome = await playResponse(tts.response, generation, serverTiming)
+          if (isCurrent() && outcome.code && !ttsFailureReported) {
+            ttsFailureReported = true
+            setWarning(resolveAtlasServiceWarning(outcome.code))
+          }
+        } else if (url) {
           // The phase is raised inside playUrl, on real playback start. Here we
           // only care what came back: a blocked or failed segment must reach the
           // operator rather than pass for speech nobody heard.
           const outcome = await playUrl(url, generation, serverTiming)
-          if (outcome.code && !ttsFailureReported) {
+          if (isCurrent() && outcome.code && !ttsFailureReported) {
             ttsFailureReported = true
             setWarning(resolveAtlasServiceWarning(outcome.code))
           }
         }
       }
-      if (cancelRef.current && idx < urlQueue.length) {
+      if (!isCurrent() && idx < urlQueue.length) {
         void Promise.all(urlQueue.slice(idx)).then((results) => {
-          results.forEach(({ url: queuedUrl }) => {
+          results.forEach(({ url: queuedUrl, response: queuedResponse }) => {
             if (queuedUrl) try { URL.revokeObjectURL(queuedUrl) } catch { /* ignore */ }
+            if (queuedResponse?.body) void queuedResponse.body.cancel().catch(() => undefined)
           })
         })
       }
-      if (!cancelRef.current) {
+      if (isCurrent()) {
         setVoicePhase('idle')
-        setTimeout(() => { if (!cancelRef.current) startListeningRef.current() }, 350)
+        setTimeout(() => { if (isCurrent()) startListeningRef.current() }, 350)
       }
     }
 
-    const enqueue = (sentence: string) => {
-      const s = sentence.trim()
+    const enqueue = (source: string, boundary: 'sentence' | 'soft' | 'final') => {
+      const s = toSpeechText(source)
       if (!s) return
       // enqueue is only ever reached with a COMPLETE speakable segment, so this
       // is exactly T4, and the TTS round trip for it starts on the next line.
       const isFirstSegment = urlQueue.length === 0
-      markOnce(marksRef.current, generation, 'firstSentence', performance.now())
-      markOnce(marksRef.current, generation, 'ttsStart', performance.now())
-      const pending = fetchTTSUrl(s)
+      markOnce(marksRef.current, generation, 'firstSpeakable', performance.now())
+      if (boundary === 'sentence') {
+        markOnce(marksRef.current, generation, 'firstSentence', performance.now())
+      }
+      const ttsRequestAt = performance.now()
+      markOnce(marksRef.current, generation, 'ttsRequestStart', ttsRequestAt)
+      markOnce(marksRef.current, generation, 'ttsStart', ttsRequestAt)
+      const pending = ttsQueue.enqueue(signal => fetchTTSUrl(s, signal, generation, isFirstSegment)).then(result => {
+        if (result.status === 'fulfilled') return result.value!
+        if (result.status === 'failed') {
+          return { url: null, errorCode: 'ATLAS_TTS_REQUEST_FAILED' as const }
+        }
+        return { url: null }
+      })
       urlQueue.push(isFirstSegment
         // Only the FIRST segment's blob answers "how long does one TTS call
         // take". The cumulative ttsMsRef cannot distinguish that.
         ? pending.then(result => {
-            markOnce(marksRef.current, generation, 'ttsBlobReady', performance.now())
+            if (!isCurrent()) return result
             return result
           })
         : pending)
       if (!playerStarted) { playerStarted = true; player() }
     }
 
-    const flush = (final: boolean) => {
-      const re = /[.!?…]+\s/g
-      re.lastIndex = processedLen
-      let m: RegExpExecArray | null
-      let boundary = processedLen
-      while ((m = re.exec(reply)) !== null) {
-        const end = m.index + m[0].length
-        enqueue(reply.slice(boundary, end))
-        boundary = end
-      }
-      processedLen = boundary
-      if (final && processedLen < reply.length) {
-        enqueue(reply.slice(processedLen))
-        processedLen = reply.length
-      }
-    }
-
-    const convId = await ensureConversation(text)
-    markOnce(marksRef.current, generation, 'sent', performance.now())
+    const chatRequestAt = performance.now()
+    markOnce(marksRef.current, generation, 'chatRequestStart', chatRequestAt)
+    markOnce(marksRef.current, generation, 'sent', chatRequestAt)
 
     try {
       const res = await fetch('/api/chat', {
@@ -656,11 +785,17 @@ export function AtlasRuntimeProvider({
           buildChatRequestBody({
             messages:        historyRef.current,
             voice:           true,
-            conversation_id: convId,
+            conversation_id: convRef.current ?? undefined,
+            create_conversation: !convRef.current,
           })
         ),
+        signal: chatAbort.signal,
       })
 
+      markOnce(marksRef.current, generation, 'chatHeadersReceived', performance.now())
+      logLatency(serverTiming)
+
+      if (!isCurrent()) return
       if (!res.ok) {
         const payload = await res.json().catch(() => null) as { code?: unknown } | null
         setWarning(resolveAtlasServiceWarning(payload?.code))
@@ -670,89 +805,88 @@ export function AtlasRuntimeProvider({
       }
 
       if (res.body) {
-        const reader  = res.body.getReader()
-        const decoder = new TextDecoder()
-        let   buf     = ''
+        const onEvent = (d: AtlasSseEvent) => {
+          if (!isCurrent()) return
 
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          if (cancelRef.current) { try { reader.cancel() } catch { /* ignore */ }; break }
+          if (d.event === 'text' && typeof d.text === 'string' && d.text) {
+            const at = performance.now()
+            markOnce(marksRef.current, generation, 'firstSseTextReceived', at)
+            markOnce(marksRef.current, generation, 'firstByte', at)
+            reply += d.text
+            visibleGenerationRef.current = generation
+            setResponse(reply)
+            for (const segment of segmenter.push(d.text)) {
+              enqueue(segment.text, segment.boundary)
+            }
 
-          buf += decoder.decode(value, { stream: true })
-          const lines = buf.split('\n')
-          buf = lines.pop() ?? ''
+          } else if (d.event === 'timing') {
+            serverTiming = mergeServerTiming(serverTiming, {
+              authReadyMs:   typeof d.authReadyMs === 'number' ? d.authReadyMs : undefined,
+              requestParsedMs: typeof d.requestParsedMs === 'number' ? d.requestParsedMs : undefined,
+              contextMs:     typeof d.contextMs === 'number' ? d.contextMs : undefined,
+              modelStartMs:  typeof d.modelStartMs === 'number' ? d.modelStartMs : undefined,
+              streamReadyMs: typeof d.streamReadyMs === 'number' ? d.streamReadyMs : undefined,
+              firstTokenMs:  typeof d.firstTokenMs === 'number' ? d.firstTokenMs : undefined,
+              serverTotalMs: typeof d.serverTotalMs === 'number' ? d.serverTotalMs : undefined,
+            })
+            serverTimingRef.current = serverTiming
+            logLatency(serverTiming)
 
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue
-            try {
-              const d = JSON.parse(line.slice(6))
+          } else if (d.event === 'conversation' && typeof d.id === 'string') {
+            convRef.current = d.id
+            setConversationId(d.id)
 
-              if (d.event === 'text' && d.text) {
-                markOnce(marksRef.current, generation, 'firstByte', performance.now())
-                reply += d.text
-                setResponse(reply)
-                flush(false)
+          } else if (d.event === 'navigate' && typeof d.href === 'string') {
+            setExecutiveState('delegating')
+            if (d.href.split('?')[0] !== pathnameRef.current) openWorkspace(d.href)
 
-              } else if (d.event === 'timing') {
-                // Two frames arrive: an early one at first token, a final one at
-                // completion. Merging keeps what the early frame already proved.
-                serverTiming = mergeServerTiming(serverTiming, {
-                  contextMs:     d.contextMs,
-                  firstTokenMs:  d.firstTokenMs,
-                  serverTotalMs: d.serverTotalMs,
-                })
+          } else if (d.event === 'tool_call' && typeof d.tool === 'string' && ATLAS_ACTION_TOOL_NAMES.has(d.tool)) {
+            beginExecution(d.tool)
 
-              } else if (d.event === 'navigate' && d.href) {
-                // Atlas delegerar till ett workspace
-                setExecutiveState('delegating')
-                const href = d.href as string
-                if (href.split('?')[0] !== pathnameRef.current) {
-                  openWorkspace(href)
-                }
+          } else if (d.event === 'tool_result' && typeof d.tool === 'string' && ATLAS_ACTION_TOOL_NAMES.has(d.tool)) {
+            const result = d.result && typeof d.result === 'object'
+              ? d.result as Record<string, unknown>
+              : null
+            finishExecution(d.tool, result)
 
-              } else if (d.event === 'tool_call' && typeof d.tool === 'string' && ATLAS_ACTION_TOOL_NAMES.has(d.tool)) {
-                beginExecution(d.tool)
+          } else if (d.event === 'error') {
+            executionRef.current = null
+            setExecution(null)
+            setWarning(resolveAtlasServiceWarning(d.code))
 
-              } else if (d.event === 'tool_result' && typeof d.tool === 'string' && ATLAS_ACTION_TOOL_NAMES.has(d.tool)) {
-                const result = d.result && typeof d.result === 'object'
-                  ? d.result as Record<string, unknown>
-                  : null
-                finishExecution(d.tool, result)
-
-              } else if (d.event === 'error') {
-                executionRef.current = null
-                setExecution(null)
-                setWarning(resolveAtlasServiceWarning(d.code))
-
-              } else if (d.event === 'done' && executionRef.current) {
-                // Defensive cleanup for a truncated stream. A completion pulse
-                // is never fabricated without the corresponding tool_result.
-                executionRef.current = null
-                setExecution(null)
-              }
-            } catch { /* ignorera felaktiga SSE-frames */ }
+          } else if (d.event === 'done' && executionRef.current) {
+            executionRef.current = null
+            setExecution(null)
           }
         }
+
+        await consumeAtlasSse(res.body, onEvent, chatAbort.signal)
       }
 
       streamDone = true
-      flush(true)
+      for (const segment of segmenter.push('', true)) {
+        enqueue(segment.text, segment.boundary)
+      }
 
-      historyRef.current = [...historyRef.current, { role: 'assistant', content: reply }]
-      setHistory(h => [...h, { role: 'assistant', content: reply }])
+      if (isCurrent()) {
+        historyRef.current = [...historyRef.current, { role: 'assistant', content: reply }]
+        setHistory(h => [...h, { role: 'assistant', content: reply }])
+      }
 
-      if (!playerStarted) {
+      if (!playerStarted && isCurrent()) {
         setVoicePhase('idle')
-        setTimeout(() => { if (!cancelRef.current) startListeningRef.current() }, 350)
+        setTimeout(() => { if (isCurrent()) startListeningRef.current() }, 350)
       }
     } catch {
       streamDone = true
+      if (!isCurrent() || chatAbort.signal.aborted) return
       executionRef.current = null
       setExecution(null)
       setWarning({ active: true, detail: 'Anslutningen till Atlas avbröts.' })
       setVoicePhase('idle')
-      setTimeout(() => { if (!cancelRef.current) startListeningRef.current() }, 350)
+      setTimeout(() => { if (isCurrent()) startListeningRef.current() }, 350)
+    } finally {
+      if (chatAbortRef.current === chatAbort) chatAbortRef.current = null
     }
   }
 
@@ -768,6 +902,8 @@ export function AtlasRuntimeProvider({
     transcript,
     response,
     perf,
+    perfRaw,
+    progressivePlayback,
     executiveState,
     execution,
     awaitingApproval,
@@ -783,6 +919,7 @@ export function AtlasRuntimeProvider({
     activate,
     deactivate,
     stopAudio,
+    reportTextVisible,
     sendMessage,
   }
 

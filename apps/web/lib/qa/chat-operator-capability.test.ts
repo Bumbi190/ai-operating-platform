@@ -51,7 +51,10 @@ vi.mock('@/lib/cost/governed-spend', async (importOriginal) => {
 })
 vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
-    auth: { getUser: async () => ({ data: { user: CURRENT_USER } }) },
+    auth: {
+      getUser: async () => ({ data: { user: CURRENT_USER } }),
+      getClaims: async () => ({ data: CURRENT_USER ? { claims: { sub: CURRENT_USER.id, email: CURRENT_USER.email } } : null, error: null }),
+    },
     from: (t: string) => builder(t),
   }),
 }))

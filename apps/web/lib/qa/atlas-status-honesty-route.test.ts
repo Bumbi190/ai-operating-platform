@@ -29,7 +29,10 @@ vi.mock('server-only', () => ({}))
 
 let sessionUser: { id: string; email?: string } | null = null
 vi.mock('@/lib/supabase/server', () => ({
-  createClient: async () => ({ auth: { getUser: async () => ({ data: { user: sessionUser } }) } }),
+  createClient: async () => ({ auth: {
+    getUser: async () => ({ data: { user: sessionUser } }),
+    getClaims: async () => ({ data: sessionUser ? { claims: { sub: sessionUser.id, email: sessionUser.email } } : null, error: null }),
+  } }),
 }))
 
 let touchedTables: string[] = []

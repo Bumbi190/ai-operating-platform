@@ -15,6 +15,13 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 
+import { ACTION_REGISTRY } from '@/lib/workflows/action-registry'
+import { ACTION_CLASS_POLICY, policyClassForActionClass } from '@/lib/workflows/action-target'
+import {
+  AUTONOMY_RUNTIME_POLICY, LICENCE_EXEMPT_OBSERVATION_KINDS,
+} from '@/lib/atlas/autonomy-runtime/policy'
+import { BIND_RPC_PARAMS } from './bind-rpc-fake'
+
 const APP = process.cwd()
 const rel = (abs: string) => abs.slice(APP.length + 1).replace(/\\/g, '/')
 const read = (p: string) => readFileSync(join(APP, p), 'utf8')
@@ -195,10 +202,58 @@ describe('the atomic bind migration', () => {
     expect(bindSqlCode).not.toMatch(/grant (insert|update|delete|select|all) on/i)
   })
 
-  it('accepts ONLY the admitted licence-exempt representation — licensed binds are refused structurally', () => {
-    expect(bindSqlCode).toMatch(/if not \(p_policy_mode is not distinct from 'license_exempt_observation'\s+and p_reason is not distinct from 'exempt_observation'\) then\s+raise exception/)
+  it('accepts NO caller classification: identity parameters only', () => {
+    const params = [...bindSqlCode.slice(
+      bindSqlCode.indexOf('bind_workflow_action_run('), bindSqlCode.indexOf('returns table'))
+      .matchAll(/\b(p_[a-z_]+)\s+(uuid|text|integer|bigint|timestamptz)/g)].map(m => m[1])
+    expect(params).toEqual([...BIND_RPC_PARAMS])
+    expect(params.filter(p => /class|attempt|authorization|policy|reason|level|mode/.test(p)
+      && p !== 'p_attempt_group')).toEqual([])
+    // Licensed binds have no representation at all.
     expect(bindSqlCode).not.toMatch(/'licensed'|'allowed'/)
-    expect(bindSqlCode).toMatch(/p_action_class is distinct from 'READ_ONLY'/)
+  })
+
+  it('writes FIXED READ_ONLY run values equal to ACTION_CLASS_POLICY.READ_ONLY', () => {
+    const p = ACTION_CLASS_POLICY.READ_ONLY
+    expect(p.requiresAuthorization).toBe(false)
+    const values = bindSqlCode.slice(bindSqlCode.indexOf('insert into public.runs'),
+      bindSqlCode.indexOf('returning id into v_run_id'))
+    expect(values).toMatch(new RegExp(`'\\{\\}', '\\{\\}',\\s+${p.maxAttempts}, '${policyClassForActionClass('READ_ONLY')}',`))
+    expect(values).toMatch(/p_action_kind, 'READ_ONLY', p_target_version_hash, null,/)
+    // Subject columns come from the INSTANCE row, never the caller.
+    expect(values).toMatch(/v_inst\.id, v_inst\.def_hash, v_inst\.current_state,/)
+  })
+
+  it('writes FIXED exempt provenance — never a caller value', () => {
+    expect(bindSqlCode).toMatch(/v_run_id, 'bind', null, 'license_exempt_observation', 'canonical_read_only_observation',\s+'exempt_observation', 'L0'/)
+  })
+
+  it('the SQL exempt placement snapshot is SET-EQUAL to LICENCE_EXEMPT_OBSERVATION_KINDS × ACTION_REGISTRY placements', () => {
+    const block = bindSql.slice(bindSql.indexOf('-- bind-exempt-placements:begin'),
+      bindSql.indexOf('-- bind-exempt-placements:end'))
+    const sqlSet = [...block.matchAll(/\('([a-z_]+)',\s*'([a-z0-9.-]+)',\s*'([a-z_]+)'\)/g)]
+      .map(m => `${m[1]}|${m[2]}|${m[3]}`)
+    const tsSet = LICENCE_EXEMPT_OBSERVATION_KINDS.flatMap(k =>
+      ACTION_REGISTRY[k].placements.map(p => `${k}|${p.def_key}|${p.state}`))
+    expect(new Set(sqlSet).size, 'no duplicate rows').toBe(sqlSet.length)
+    expect([...sqlSet].sort(), 'SQL may not be wider OR narrower than the reviewed TS set').toEqual([...tsSet].sort())
+    // Every kind in it is canonically READ_ONLY and exempt — the snapshot never
+    // admits a kind merely because of its class.
+    for (const k of new Set(sqlSet.map(r => r.split('|')[0]))) {
+      expect(ACTION_REGISTRY[k as keyof typeof ACTION_REGISTRY]?.action_class, k).toBe('READ_ONLY')
+      expect(AUTONOMY_RUNTIME_POLICY[k as keyof typeof AUTONOMY_RUNTIME_POLICY]?.mode, k).toBe('license_exempt_observation')
+    }
+  })
+
+  it('a future READ_ONLY kind does NOT become bindable by being READ_ONLY', () => {
+    // There is no class predicate anywhere in the function: membership is the
+    // literal snapshot, checked against the instance's own definition/state.
+    expect(bindSqlCode).not.toMatch(/action_class\s*(=|is not distinct from|in)\s*\(?'READ_ONLY'/)
+    expect(bindSqlCode).toMatch(/\(p_action_kind, v_inst\.def_key, v_inst\.current_state\) not in \(/)
+    const readOnlyNotExempt = Object.entries(ACTION_REGISTRY)
+      .filter(([k, m]) => m.action_class === 'READ_ONLY'
+        && !(LICENCE_EXEMPT_OBSERVATION_KINDS as readonly string[]).includes(k)).map(([k]) => k)
+    for (const k of readOnlyNotExempt) expect(bindSql, k).not.toContain(`'${k}'`)
   })
 
   it('writes the run and its bind provenance in ONE function body, run first', () => {
@@ -214,6 +269,7 @@ describe('the atomic bind migration', () => {
   it('proves subject identity before writing', () => {
     expect(bindSqlCode).toMatch(/v_inst\.project_id is distinct from p_project_id/)
     expect(bindSqlCode).toMatch(/v_inst\.def_hash is distinct from p_workflow_def_hash/)
+    expect(bindSqlCode).toMatch(/v_inst\.current_state is distinct from p_workflow_from_state/)
   })
 
   it('takes NO licence, Survival or level-composition input — nothing mutable can narrow before commit', () => {

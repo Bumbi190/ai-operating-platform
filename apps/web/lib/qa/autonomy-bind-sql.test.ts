@@ -32,6 +32,9 @@ import { execFileSync, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 
+import { ACTION_REGISTRY } from '@/lib/workflows/action-registry'
+import { LICENCE_EXEMPT_OBSERVATION_KINDS } from '@/lib/atlas/autonomy-runtime/policy'
+
 function findPsql(): string | null {
   const candidates = [
     process.env.ATLAS_SQL_TEST_PSQL, 'psql',
@@ -125,7 +128,9 @@ const DECISION = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
 const RECORD = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
 const LIC_A = '77777777-7777-4777-8777-777777777777'
 const ACTOR = 'user:00000000-0000-4000-8000-000000000001'
-const AUTH = 'abababab-abab-4bab-8bab-abababababab'
+/** omnira.execution-proof @ effect — the canonical placement of the licensed kind. */
+const INST_EFFECT = '44444444-4444-4444-8444-444444444444'
+const TRACE_FAULT_HASH = 'f'.repeat(64)
 
 const FIXTURE = `
 create extension if not exists pgcrypto;
@@ -165,7 +170,8 @@ create table public.runs (
 insert into public.projects (id, slug, name) values ('${P_A}','alpha','Alpha'), ('${P_B}','beta','Beta');
 insert into public.workflow_instances (id, project_id, def_key, def_hash, current_state) values
   ('${INST_A}','${P_A}','${DEF_KEY}','${DEF_HASH_A}','probe'),
-  ('${INST_B}','${P_B}','${DEF_KEY}','${DEF_HASH_B}','probe');
+  ('${INST_B}','${P_B}','${DEF_KEY}','${DEF_HASH_B}','probe'),
+  ('${INST_EFFECT}','${P_A}','omnira.execution-proof','${DEF_HASH_A}','effect');
 insert into public.atlas_decision_ledger values
   ('${RECORD}','${DECISION}',1,'${P_A}','["autonomy"]'::jsonb,'approved');
 `
@@ -190,27 +196,94 @@ const lit = (v: string | number | null) =>
 
 type Args = Record<string, string | number | null>
 
+/** The ONLY parameters the RPC has: identity. Nothing a caller could classify with. */
 function exemptArgs(over: Args = {}): Args {
   seq += 1
   return {
     p_project_id: P_A, p_workflow_instance_id: INST_A, p_workflow_def_hash: DEF_HASH_A,
     p_workflow_from_state: 'probe', p_action_kind: 'probe_anonymous_protected_access',
-    p_action_class: 'READ_ONLY', p_policy_class: 'non_destructive', p_max_attempts: 3,
-    p_target_version_hash: hex64(`t${seq}`), p_authorization_id: null,
+    p_target_version_hash: hex64(`t${seq}`),
     p_idempotency_key: hex64(`k${seq}-${DB_NAME}`), p_attempt_group: '$sql:gen_random_uuid()',
-    p_policy_mode: 'license_exempt_observation', p_policy_reason: 'canonical_read_only_observation',
-    p_reason: 'exempt_observation', p_required_level: 'L0',
     ...over,
   }
 }
 
-/** What a licensed bind WOULD send: refused structurally in Phase 3B1B. */
+/** A licensed kind at its OWN canonical placement: refused structurally in Phase 3B1B. */
 const licensedArgs = (over: Args = {}) => exemptArgs({
-  p_action_kind: 'proof_governed_effect', p_action_class: 'FINANCIAL',
-  p_policy_class: 'approval_required', p_max_attempts: 1, p_authorization_id: AUTH,
-  p_policy_mode: 'licensed', p_policy_reason: null, p_reason: 'allowed', p_required_level: 'L3',
-  ...over,
+  p_workflow_instance_id: INST_EFFECT, p_workflow_from_state: 'effect',
+  p_action_kind: 'proof_governed_effect', ...over,
 })
+
+/** The instance fixture seeded at a (def_key, state) placement. */
+const instanceAt = (defKey: string, state: string) =>
+  one(dsn, `select id from public.workflow_instances where def_key = '${defKey}' and current_state = '${state}' limit 1`)
+
+type Placement = { readonly def_key: string; readonly state: string }
+const placementsOf = (kind: string): readonly Placement[] =>
+  (ACTION_REGISTRY as Record<string, { placements: readonly Placement[] }>)[kind]?.placements ?? []
+
+/** Every reviewed exempt placement, from the CANONICAL TypeScript sources. */
+const EXEMPT_PLACEMENTS = LICENCE_EXEMPT_OBSERVATION_KINDS.flatMap(kind =>
+  placementsOf(kind).map(p => ({ kind: kind as string, defKey: p.def_key, state: p.state })))
+/** Every (def_key, state) any registered action is placed at. */
+const ALL_PLACEMENTS: Placement[] = [...new Map(Object.keys(ACTION_REGISTRY).flatMap(placementsOf)
+  .map(p => [`${p.def_key}|${p.state}`, p] as const)).values()]
+
+/**
+ * Try EVERY (kind × placement) through the real RPC as service_role in ONE
+ * transaction, each attempt in its own subtransaction, and ROLL BACK at the end.
+ * Returns `kind|def_key|state` → '' (bound) or the SQLSTATE, plus how many runs
+ * and bind rows each attempt left behind INSIDE its own subtransaction.
+ */
+function bindMatrix(kinds: readonly string[]): Map<string, { sqlstate: string; runs: number; binds: number }> {
+  const kindArr = `array[${kinds.map(k => `'${k}'`).join(',')}]::text[]`
+  const plArr = `array[${ALL_PLACEMENTS.map(p => `'${p.def_key}|${p.state}'`).join(',')}]::text[]`
+  const out = execFileSync(PSQL!, psqlArgs(dsn, ['-t', '-A', '-F', '|', '-f', '/dev/stdin']), {
+    input: `begin;
+create temp table zz_matrix (k text, d text, s text, st text, runs int, binds int) on commit drop;
+grant all on zz_matrix to service_role;
+set local role service_role;
+do $m$
+declare k text; pl text; v_inst uuid; v_before_r int; v_before_b int; v_r int; v_b int; i int := 0;
+begin
+  foreach k in array ${kindArr} loop
+    foreach pl in array ${plArr} loop
+      i := i + 1;
+      select id into v_inst from public.workflow_instances
+        where def_key = split_part(pl, '|', 1) and current_state = split_part(pl, '|', 2) limit 1;
+      begin
+        select count(*) into v_before_r from public.runs;
+        select count(*) into v_before_b from public.run_autonomy_decisions where boundary = 'bind';
+        perform * from public.bind_workflow_action_run(
+          p_project_id := '${P_A}', p_workflow_instance_id := v_inst, p_workflow_def_hash := '${DEF_HASH_A}',
+          p_workflow_from_state := split_part(pl, '|', 2), p_action_kind := k,
+          p_target_version_hash := encode(sha256(convert_to('mt' || i, 'UTF8')), 'hex'),
+          p_idempotency_key := encode(sha256(convert_to('mk' || i || '${DB_NAME}', 'UTF8')), 'hex'),
+          p_attempt_group := gen_random_uuid());
+        select count(*) - v_before_r into v_r from public.runs;
+        select count(*) - v_before_b into v_b from public.run_autonomy_decisions where boundary = 'bind';
+        insert into zz_matrix values (k, split_part(pl, '|', 1), split_part(pl, '|', 2), '', v_r, v_b);
+      exception when others then
+        -- the subtransaction rolled back: re-measure to PROVE nothing survived it
+        insert into zz_matrix values (k, split_part(pl, '|', 1), split_part(pl, '|', 2), sqlstate,
+          (select count(*) from public.runs) - v_before_r,
+          (select count(*) from public.run_autonomy_decisions where boundary = 'bind') - v_before_b);
+      end;
+    end loop;
+  end loop;
+end $m$;
+select k, d, s, st, runs, binds from zz_matrix;
+rollback;`,
+    encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 120_000,
+  })
+  const m = new Map<string, { sqlstate: string; runs: number; binds: number }>()
+  for (const line of out.split('\n').map(l => l.trim()).filter(l => l.split('|').length === 6)) {
+    const [k, d, s, st, r, b] = line.split('|')
+    m.set(`${k}|${d}|${s}`, { sqlstate: st, runs: Number(r), binds: Number(b) })
+  }
+  expect(m.size, 'every kind × placement must have been attempted').toBe(kinds.length * ALL_PLACEMENTS.length)
+  return m
+}
 
 const callSql = (a: Args) =>
   `select * from public.bind_workflow_action_run(${Object.entries(a).map(([k, v]) => `${k} := ${lit(v)}`).join(', ')});`
@@ -253,6 +326,24 @@ beforeAll(() => {
   // An EFFECTIVE licence for instance A exists, through the real writer — so
   // every licensed refusal below is a refusal DESPITE available authority.
   query(dsn, licenceAct(LIC_A, 'LICENSE_ISSUED', 0))
+  // One instance at EVERY canonical registry placement, so each exempt kind can
+  // be tried at its own placement and at every placement that is not its own.
+  for (const p of ALL_PLACEMENTS) {
+    query(dsn, `insert into public.workflow_instances (id, project_id, def_key, def_hash, current_state)
+      select gen_random_uuid(), '${P_A}', '${p.def_key}', '${DEF_HASH_A}', '${p.state}'
+      where not exists (select 1 from public.workflow_instances where def_key = '${p.def_key}' and current_state = '${p.state}')`)
+  }
+  // TEST-ONLY fault injection: make the bind-row INSERT fail for one sentinel
+  // target hash, AFTER the run INSERT inside the RPC has already succeeded.
+  query(dsn, `create function public.zz_fail_bind_row() returns trigger language plpgsql as $f$
+    begin
+      if exists (select 1 from public.runs where id = new.run_id and target_version_hash = '${TRACE_FAULT_HASH}') then
+        raise exception 'injected bind-row failure' using errcode = 'XX001';
+      end if;
+      return new;
+    end $f$;
+    create trigger zz_fail_bind_row before insert on public.run_autonomy_decisions
+      for each row execute function public.zz_fail_bind_row();`)
 }, 180_000)
 
 afterAll(() => {
@@ -287,28 +378,92 @@ d('an admitted bind creates the run AND its bind provenance in one transaction',
 // ── 2 · Refusal writes NOTHING ────────────────────────────────────────────────
 
 d('every refused bind creates neither a run nor a trace', () => {
-  it('a LICENSED bind is refused structurally — even with an effective licence in the ledger', () => {
+  it('a LICENSED bind is refused structurally — at its own canonical placement, with an effective licence present', () => {
     expect(one(dsn, `select count(*) from public.atlas_autonomy_license_events where license_id = '${LIC_A}'`)).toBe('1')
     expectRefusedAndNothingWritten(licensedArgs(), '22023')
   })
 
-  it('no refused admission reason can be persisted', () => {
-    for (const reason of ['licence_not_effective', 'action_not_in_licence_scope',
-      'effective_level_below_required', 'allowed']) {
-      expectRefusedAndNothingWritten(licensedArgs({ p_reason: reason }), '22023')
+  it('the RPC has NO classification parameter a caller could forge', () => {
+    // The spoof shape of the earlier revision — p_action_class / provenance —
+    // does not exist any more: PostgreSQL refuses the call itself.
+    for (const forged of [{ p_action_class: 'READ_ONLY' }, { p_policy_mode: 'license_exempt_observation' },
+      { p_reason: 'exempt_observation' }, { p_required_level: 'L0' }, { p_max_attempts: 5 },
+      { p_authorization_id: null }, { p_policy_class: 'non_destructive' }] as Args[]) {
+      expectRefusedAndNothingWritten(exemptArgs(forged), '42883')
     }
-    expectRefusedAndNothingWritten(exemptArgs({ p_policy_mode: 'unsupported', p_reason: 'unsupported_action',
-      p_policy_reason: 'v1_scope_incomplete', p_required_level: null }), '22023')
+  })
+})
+
+// ── 2b · Direct service-role SPOOFS (reproduced against the earlier revision) ─
+
+d('licence-exempt BY CONSTRUCTION — direct service-role spoofs bind nothing', () => {
+  it('SPOOF 1: a dangerous non-exempt kind (upload_protected_artifacts) at its own placement → refused, 0/0', () => {
+    const inst = instanceAt('familje-stunden.monthly-release', 'protected_upload')
+    expectRefusedAndNothingWritten(exemptArgs({ p_workflow_instance_id: inst,
+      p_workflow_from_state: 'protected_upload', p_action_kind: 'upload_protected_artifacts' }), '22023')
   })
 
-  it('impossible mode/reason pairs are refused', () => {
-    expectRefusedAndNothingWritten(exemptArgs({ p_reason: 'allowed' }), '22023')
-    expectRefusedAndNothingWritten(exemptArgs({ p_policy_mode: null }), '22023')
+  it('SPOOF 2: an unknown / invented kind → refused, 0/0', () => {
+    for (const kind of ['totally_invented_kind', 'observe_anything', 'PROBE_ANONYMOUS_PROTECTED_ACCESS', '']) {
+      expectRefusedAndNothingWritten(exemptArgs({ p_action_kind: kind }), '22023')
+    }
   })
 
-  it('a non-READ_ONLY action cannot borrow the observation exemption', () => {
-    expectRefusedAndNothingWritten(exemptArgs({ p_action_kind: 'proof_governed_effect',
-      p_action_class: 'FINANCIAL', p_max_attempts: 1, p_authorization_id: AUTH }), '22023')
+  it('SPOOF 3: a real exempt kind in a definition/state it is not placed in → refused, 0/0', () => {
+    const inst = instanceAt('familje-stunden.monthly-release', 'protected_upload')
+    expectRefusedAndNothingWritten(exemptArgs({ p_workflow_instance_id: inst,
+      p_workflow_from_state: 'protected_upload', p_action_kind: 'observe_vercel_production_ready' }), '22023')
+  })
+
+  it('every non-exempt registered kind (and an invented one) is refused at EVERY placement, including its own — 0/0 each', () => {
+    const nonExempt = [...Object.keys(ACTION_REGISTRY)
+      .filter(k => !(LICENCE_EXEMPT_OBSERVATION_KINDS as readonly string[]).includes(k)), 'totally_invented_kind']
+    expect(nonExempt.length).toBeGreaterThan(1)
+    for (const [cell, r] of bindMatrix(nonExempt)) {
+      expect(r.sqlstate, cell).toBe('22023')
+      expect([r.runs, r.binds], cell).toEqual([0, 0])
+    }
+  })
+
+  it('every reviewed exempt kind binds at each of its canonical placements — and NOWHERE else', () => {
+    const m = bindMatrix(LICENCE_EXEMPT_OBSERVATION_KINDS)
+    for (const kind of LICENCE_EXEMPT_OBSERVATION_KINDS) {
+      for (const p of ALL_PLACEMENTS) {
+        const cell = `${kind}|${p.def_key}|${p.state}`
+        const placed = EXEMPT_PLACEMENTS.some(e => e.kind === kind && e.defKey === p.def_key && e.state === p.state)
+        const r = m.get(cell)!
+        if (placed) {
+          expect(r.sqlstate, cell).toBe('')
+          expect([r.runs, r.binds], `${cell}: run + bind row together`).toEqual([1, 1])
+        } else {
+          expect(r.sqlstate, cell).toBe('22023')
+          expect([r.runs, r.binds], cell).toEqual([0, 0])
+        }
+      }
+    }
+  })
+
+  it('a bound exempt run carries the FIXED READ_ONLY values and the bare exempt row', () => {
+    const inst = instanceAt('familje-stunden.monthly-release', 'frontend_deploy')
+    const a = exemptArgs({ p_workflow_instance_id: inst, p_workflow_from_state: 'frontend_deploy',
+      p_action_kind: 'observe_vercel_production_ready' })
+    expect(bind(a)).toBe('')
+    expect(one(dsn, `select action_class, policy_class, max_attempts, authorization_id is null, workflow_from_state
+      from public.runs where idempotency_key = '${a.p_idempotency_key}'`)).toBe('READ_ONLY|non_destructive|5|t|frontend_deploy')
+    expect(bindRowFor(a.p_idempotency_key)).toBe(BARE_EXEMPT_ROW)
+  })
+
+  it('the set of kinds the DATABASE will bind is never wider than the reviewed TypeScript exempt set', () => {
+    const all = [...Object.keys(ACTION_REGISTRY), 'totally_invented_kind']
+    const admitted = new Set([...bindMatrix(all)].filter(([, r]) => r.sqlstate === '').map(([c]) => c.split('|')[0]))
+    expect([...admitted].sort()).toEqual([...LICENCE_EXEMPT_OBSERVATION_KINDS].sort())
+    // …and per placement, exactly the canonical exempt placements.
+    const cells = new Set([...bindMatrix(all)].filter(([, r]) => r.sqlstate === '').map(([c]) => c))
+    expect([...cells].sort()).toEqual(EXEMPT_PLACEMENTS.map(e => `${e.kind}|${e.defKey}|${e.state}`).sort())
+  })
+
+  it('a stale from_state is refused before anything is written', () => {
+    expectRefusedAndNothingWritten(exemptArgs({ p_workflow_from_state: 'some_other_state' }), '22023')
   })
 })
 
@@ -329,12 +484,9 @@ d('identity substitution is refused before anything is written', () => {
     expectRefusedAndNothingWritten(exemptArgs({ p_workflow_def_hash: DEF_HASH_B }), '22023')
   })
 
-  it('ActionKind/class: one kind parameter feeds both the run and the trace; a mismatched class is refused', () => {
-    expectRefusedAndNothingWritten(exemptArgs({ p_action_class: 'MATERIAL_WRITE' }), '22023')
-  })
-
-  it('from_state must be the instance\'s current state (binding trigger) — and no trace survives', () => {
-    expectRefusedAndNothingWritten(exemptArgs({ p_workflow_from_state: 'some_other_state' }), '23001')
+  it('ActionKind: one kind parameter feeds both the run and the placement proof — a kind placed elsewhere is refused', () => {
+    // compute_release_instant is exempt, but placed at familje-stunden/planning, not omnira.probe-validation/probe.
+    expectRefusedAndNothingWritten(exemptArgs({ p_action_kind: 'compute_release_instant' }), '22023')
   })
 })
 
@@ -408,11 +560,11 @@ d('two-session: no concurrent authority act can narrow what an open bind commits
 
 d('a failure of EITHER write rolls back BOTH', () => {
   it('trace persistence failure (after the run insert succeeded) leaves NO run', () => {
-    // Every RPC precheck passes and the run INSERT succeeds; the bind-row INSERT
-    // then violates the 3B1A exempt matrix (required_level must be L0 → 23514).
-    const a = exemptArgs({ p_required_level: 'L3' })
+    // Every RPC precheck passes and the run INSERT succeeds; a TEST-ONLY trigger
+    // then fails the bind-row INSERT (XX001). The run must not survive.
+    const a = exemptArgs({ p_target_version_hash: TRACE_FAULT_HASH })
     const before = counts()
-    expect(bind(a)).toBe('23514')
+    expect(bind(a)).toBe('XX001')
     expect(counts()).toEqual(before)
     expect(runsWithKey(a.p_idempotency_key)).toBe(0)
   })
@@ -501,8 +653,7 @@ d('3B1A protections remain', () => {
 // ── 8 · Privilege closure ─────────────────────────────────────────────────────
 
 d('the atomic writer is server-only', () => {
-  const SIG = `public.bind_workflow_action_run(uuid, uuid, text, text, text, text, text, integer, text, uuid, text, uuid,
-    text, text, text, text)`
+  const SIG = 'public.bind_workflow_action_run(uuid, uuid, text, text, text, text, text, uuid)'
 
   it('anon and authenticated cannot execute it; service_role can', () => {
     expect(one(dsn, `select has_function_privilege('anon', '${SIG}', 'execute'),

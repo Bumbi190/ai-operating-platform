@@ -92,8 +92,11 @@ describe('derivation', () => {
   })
 
   it('a caller cannot force max_attempts or bypass approval', () => {
-    // Both come from the derived policy, never from the input.
-    expect(runSrc).toMatch(/max_attempts: policy\.maxAttempts/)
+    // Both come from the derived policy, never from the input. Since Phase 3B1B
+    // the attempt budget is not even SENT: the atomic bind RPC writes the fixed
+    // READ_ONLY value, pinned equal to ACTION_CLASS_POLICY.READ_ONLY by
+    // autonomy-bind-guards — so no caller of the RPC can force it either.
+    expect(runSrc).not.toMatch(/p_max_attempts|max_attempts:/)
     expect(runSrc).toMatch(/const policy = ACTION_CLASS_POLICY\[actionClass\]/)
     const input = runSrc.slice(runSrc.indexOf('interface CreateWorkflowActionRunInput'),
                                runSrc.indexOf('export type CreateWorkflowActionRunResult'))

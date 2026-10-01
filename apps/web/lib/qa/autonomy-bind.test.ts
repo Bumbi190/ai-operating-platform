@@ -36,7 +36,7 @@ import {
   AUTONOMY_RUNTIME_POLICY, LICENCE_EXEMPT_OBSERVATION_KINDS, NOT_EXECUTABLE_KINDS,
 } from '@/lib/atlas/autonomy-runtime/policy'
 import { createWorkflowActionRun } from '@/lib/workflows/action-run'
-import { BIND_RPC, type RecordedWrite } from './bind-rpc-fake'
+import { BIND_RPC, BIND_RPC_PARAMS, type RecordedWrite } from './bind-rpc-fake'
 
 const INSTANCE = '00000000-0000-4000-8000-00000000c0de'
 const LICENSED_KINDS = Object.entries(AUTONOMY_RUNTIME_POLICY)
@@ -171,13 +171,12 @@ describe('the bind seam', () => {
     expect(rpcCalls.map(c => c.name)).toEqual([BIND_RPC])
     const a = rpcCalls[0].args
     expect(a).toMatchObject({
-      p_workflow_instance_id: INSTANCE, p_action_kind: PROBE_ACTION, p_action_class: 'READ_ONLY',
-      p_project_id: '00000000-0000-4000-8000-0000000000b1',
-      p_policy_mode: 'license_exempt_observation', p_reason: 'exempt_observation',
-      p_policy_reason: 'canonical_read_only_observation', p_required_level: 'L0',
+      p_workflow_instance_id: INSTANCE, p_action_kind: PROBE_ACTION,
+      p_project_id: '00000000-0000-4000-8000-0000000000b1', p_workflow_from_state: 'probe',
     })
-    // No boundary, claim, licence or Survival argument exists at all.
-    expect(Object.keys(a).filter(k => /boundary|claim|license|survival|effective|bounded/.test(k))).toEqual([])
+    // IDENTITY ONLY. No class, policy class, attempt budget, authorization or
+    // provenance is sent: the RPC fixes them, so none can be forged.
+    expect(Object.keys(a).sort()).toEqual([...BIND_RPC_PARAMS].sort())
     expect(a.p_idempotency_key).toMatch(/^[0-9a-f]{64}$/)
   })
 

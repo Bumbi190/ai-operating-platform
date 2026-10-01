@@ -9,7 +9,7 @@
  *   • a refusal writes NOTHING: no RPC, no table write — no run, no trace;
  *   • the veto runs only AFTER every existing gate has passed; a run refused by
  *     an existing gate never even asks autonomy;
- *   • an admitted bind passes its provenance to the ONE atomic RPC, unmodified.
+ *   • an admitted bind calls the ONE atomic RPC with identity only.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -25,6 +25,7 @@ vi.mock('@/lib/atlas/autonomy-runtime/bind', () => ({
 
 import { createWorkflowActionRun } from '@/lib/workflows/action-run'
 import type { BindProvenance } from '@/lib/atlas/autonomy-runtime/bind'
+import { BIND_RPC_PARAMS } from './bind-rpc-fake'
 
 const INSTANCE = '00000000-0000-4000-8000-00000000c0de'
 const PROJECT = '00000000-0000-4000-8000-0000000000b1'
@@ -125,7 +126,7 @@ describe('autonomy is an ADDITIONAL veto, after every existing gate', () => {
 })
 
 describe('an admitted bind', () => {
-  it('passes the admitted provenance to the ONE atomic RPC, unmodified, with the subject in the same call', async () => {
+  it('calls the ONE atomic RPC with the subject identity ONLY — never a classification or provenance claim', async () => {
     admitMock.mockResolvedValue({ admitted: true, provenance: EXEMPT })
     const { db, writes, rpcCalls } = fakeDb()
     const r = await createWorkflowActionRun(db as never, { instanceId: INSTANCE, actionKind: PROBE_ACTION })
@@ -133,7 +134,7 @@ describe('an admitted bind', () => {
     expect(writes).toEqual([])
     expect(rpcCalls).toHaveLength(1)
     const a = rpcCalls[0].args
-    for (const [k, v] of Object.entries(EXEMPT)) expect(a[`p_${k}`], k).toEqual(v)
+    expect(Object.keys(a).sort()).toEqual([...BIND_RPC_PARAMS].sort())
     expect(a).toMatchObject({ p_action_kind: PROBE_ACTION, p_workflow_instance_id: INSTANCE, p_project_id: PROJECT })
   })
 

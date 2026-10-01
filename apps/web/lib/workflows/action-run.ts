@@ -38,7 +38,7 @@ import { isSpendGateEnforced } from '@/lib/cost/spend-gate-flag'
 import { isFinancialExecutionEnabled } from '@/lib/governance/financial-execution-flag'
 import {
   ACTION_CLASS_POLICY, computeActionIdempotencyKey, computeWorkflowActionTarget,
-  policyClassForActionClass, WORKFLOW_ACTION_TARGET_TYPE, type ActionClass,
+  WORKFLOW_ACTION_TARGET_TYPE, type ActionClass,
 } from './action-target'
 import { lookupAction } from './action-registry'
 // Bind-time ONLY. Readiness and pre-dispatch below deliberately do not consult
@@ -279,7 +279,6 @@ export async function createWorkflowActionRun(
   if (!autonomy.admitted) {
     return { ok: false, refusal: 'autonomy_not_admitted', detail: autonomy.detail }
   }
-  const provenance = autonomy.provenance
 
   // 9) identity. attemptGroup is stamped once so retries hash identically.
   const attemptGroup = input.attemptGroup ?? uuid()
@@ -290,8 +289,10 @@ export async function createWorkflowActionRun(
   })
 
   // 10) the immutable snapshot AND its bind provenance, in ONE transaction.
-  //     Every binding column is derived above; the RPC re-proves the subject,
-  //     and the DB trigger re-checks project/def_hash/state.
+  //     The RPC is licence-exempt BY CONSTRUCTION: it takes no class, policy,
+  //     attempt budget, authorization or provenance from us — it binds only a
+  //     reviewed exempt kind at its canonical placement (read from the instance
+  //     itself) and writes the fixed READ_ONLY values and exempt provenance.
   //     There is deliberately no direct `runs` insert left in this module: a
   //     bound run without its bind provenance must not be expressible.
   const { data, error } = await db.rpc('bind_workflow_action_run', {
@@ -300,19 +301,9 @@ export async function createWorkflowActionRun(
     p_workflow_def_hash: instance.def_hash,
     p_workflow_from_state: instance.current_state,
     p_action_kind: input.actionKind,
-    p_action_class: actionClass,
-    p_policy_class: policyClassForActionClass(actionClass),
-    p_max_attempts: policy.maxAttempts,
     p_target_version_hash: target.versionHash,
-    // Null only for a class that needs none. The DB refuses a null here for
-    // every other class (runs_unauthorized_action_is_read_only).
-    p_authorization_id: policy.requiresAuthorization ? input.authorizationId : null,
     p_idempotency_key: idempotencyKey,
     p_attempt_group: attemptGroup,
-    p_policy_mode: provenance.policy_mode,
-    p_policy_reason: provenance.policy_reason,
-    p_reason: provenance.reason,
-    p_required_level: provenance.required_level,
   })
 
   if (error) {

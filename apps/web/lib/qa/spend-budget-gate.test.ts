@@ -11,6 +11,15 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
+// PR9b's ORIGINAL migration. Read here for the properties this suite is about —
+// the table shape, the settle/release guards, the ACL lockdown — all of which
+// this file introduced and which later work inherited unchanged.
+//
+// It is NOT the effective definition of `budget_reserve`. G2 dropped and
+// recreated that function in `20260831_budget_scopes.sql`, which is where the
+// replay state machine lives (this file contains no `replay_` state at all).
+// Any assertion about replay semantics belongs against the effective migration
+// or, better, the real-Postgres fixture in `budget-scopes-sql.test.ts`.
 const MIGRATION = join(process.cwd(), 'supabase/migrations/20260830_spend_budget_gate.sql')
 const sql = readFileSync(MIGRATION, 'utf8')
 const sqlCode = sql.replace(/--.*$/gm, '')
@@ -79,8 +88,21 @@ describe('SQL tells the truth; the flag decides enforcement', () => {
   it('the verdict distinguishes "budget said yes" from "we let it through"', () => {
     // allowed vs wouldAllow vs advisoryOverride — collapsing these would make
     // advisory mode indistinguishable from a passing budget in the audit trail.
-    expect(gate).toMatch(/allowed:\s*p\.wouldAllow \|\| !enforced/)
+    // Still three distinct fields, still derived from the same two inputs.
+    expect(gate).toMatch(/allowed:\s*p\.wouldAllow \|\|/)
+    expect(gate).toMatch(/wouldAllow:\s*p\.wouldAllow/)
     expect(gate).toMatch(/advisoryOverride:\s*!p\.wouldAllow && !enforced/)
+  })
+
+  it('advisory mode may downgrade a CEILING refusal, never a DISPATCH-SAFETY one', () => {
+    // G3C-3C-B PRE-1. A replay refusal says this logical spend identity may still
+    // be live on another worker; downgrading it would return `allowed: true`
+    // carrying that worker's reservation id and dispatch the provider twice.
+    // The behaviour is proven end to end in `spend-replay-advisory.test.ts`;
+    // this pins that the term exists and that both fields respect it.
+    expect(gate).toMatch(/hardRefusal\s*=\s*!p\.wouldAllow && isReplayRefusal\(p\.reason\)/)
+    expect(gate).toMatch(/allowed:[^\n]*!hardRefusal/)
+    expect(gate).toMatch(/advisoryOverride:[^\n]*!hardRefusal/)
   })
 
   it('one predicate, shared — the status surface cannot report a fiction', () => {

@@ -281,14 +281,17 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
     // substrate, no rollout flag exists, and no runtime wiring exists — the
     // phase is inert by construction.
     //
-    // 1C1A, 1C1B, 2B, 1C2, 2C and 3B1A each arrived on their own branch and each moved this
-    // count by one, so the reconciled value is 88 and none may be dropped to make
-    // another fit.
-    // Migration Guard v2 owns the repository-wide 102/88 count contract. This
+    // 89: Phase 3B1B's `autonomy_bind_atomic` — the atomic bind RPC that creates a run
+    // and its bind provenance in ONE transaction. NOT applied to production on its branch.
+    //
+    // 1C1A, 1C1B, 2B, 1C2, 2C, 3B1A and 3B1B each arrived on their own branch and each
+    // moved this count by one, so the reconciled value is 89 and none may be dropped to
+    // make another fit.
+    // Migration Guard v2 owns the repository-wide 103/89 count contract. This
     // older assertion remains as an independent EI activation companion so a
     // canonical migration cannot move or disappear without both gates noticing.
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(88)
+    expect(enforced).toBe(89)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

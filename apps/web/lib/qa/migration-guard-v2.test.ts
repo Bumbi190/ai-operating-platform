@@ -51,7 +51,10 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
   // 99 → 100: `sdf1c2_broker_control_channel` (Phase 1C2), merged to main and already
   // applied to production.
   // 100 → 101: `autonomy_license_phase2c` (Phase 2C), on this branch.
-  // 101 → 102: `autonomy_trace_decisions` (Phase 3B1A), on this branch.
+  // 101 → 102: `autonomy_trace_decisions` (Phase 3B1A) — merged and APPLIED.
+  // 102 → 103: `autonomy_bind_atomic` (Phase 3B1B), on this branch, NOT applied. The
+  // production-ledger pin below (125) is therefore deliberately RED on this branch until
+  // the operator-approved apply, exactly as it was for 3B1A before its apply.
   //
   // 1C2 and 2C each computed 100/86 — both were written against main's 99/85 — which is
   // exactly why the number alone could not distinguish them and why the merged figure is
@@ -60,14 +63,14 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
   // NOTE ON 3B1A: these two counts describe the CANONICAL CORPUS, so they move as soon
   // as the file exists. The production APPLY is a separate fact, and it has NOT happened
   // for 3B1A — see the ledger assertion below, which is deliberately left RED.
-  it('pins policy v2 and the current 102/88/14/30 counts', () => {
+  it('pins policy v2 and the current 103/89/14/30 counts', () => {
     expect(MIGRATION_GUARD_POLICY_VERSION).toBe(2)
-    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(102)
-    expect(EXPECTED_ENFORCED_COUNT).toBe(88)
+    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(103)
+    expect(EXPECTED_ENFORCED_COUNT).toBe(89)
     expect(GRANDFATHERED_MIGRATION_NAMES).toHaveLength(14)
     expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).toHaveLength(30)
-    expect(repositoryState.sqlFiles).toHaveLength(102)
-    expect(repositoryState.enforcedNames).toHaveLength(88)
+    expect(repositoryState.sqlFiles).toHaveLength(103)
+    expect(repositoryState.enforcedNames).toHaveLength(89)
   })
 
   it('uses exact explicit names with no wildcard policy entries', () => {
@@ -252,8 +255,8 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
     expect(result).toMatchObject({
       skipped: false,
       policyVersion: 2,
-      canonicalSqlCount: 102,
-      enforcedCount: 88,
+      canonicalSqlCount: 103,
+      enforcedCount: 89,
       appliedLedgerCount: 125,
     })
   })

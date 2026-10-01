@@ -41,8 +41,11 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // ever absent again — or present TWICE — the guard must fail just as hard. Neither
 // absence nor duplication is tolerated, and the current production ledger satisfies
 // the guard.
-export const EXPECTED_CANONICAL_SQL_COUNT = 102
-export const EXPECTED_ENFORCED_COUNT = 88
+// Phase 3B1B adds `autonomy_bind_atomic` (enforced): 102/88 → 103/89. NOT applied to
+// production on its branch, so the guard is RED there until the operator-approved apply —
+// the apply-before-PR contract reporting its own pre-apply condition.
+export const EXPECTED_CANONICAL_SQL_COUNT = 103
+export const EXPECTED_ENFORCED_COUNT = 89
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

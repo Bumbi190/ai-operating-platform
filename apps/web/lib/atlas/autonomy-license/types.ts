@@ -317,6 +317,17 @@ export interface ResolvedAutonomyLicense {
    * choose the time could choose the answer.
    */
   readonly resolvedAt: string
+
+  /**
+   * The highest licence `event_seq` among the events THIS resolution read for
+   * the instance — every lineage, not only the selected one. `null` when no
+   * event was read (none exists, the instance is unknown, or the read failed).
+   *
+   * Evidence of WHICH ledger state the answer was computed from, so a later
+   * atomic write can prove the ledger has not moved since (Phase 3B1B). It
+   * grants nothing and is not a licence term.
+   */
+  readonly ledgerWatermark: number | null
 }
 
 /**
@@ -352,5 +363,6 @@ export function noLicense(
     generation: null,
     eventCount: 0,
     resolvedAt,
+    ledgerWatermark: null,
   }
 }

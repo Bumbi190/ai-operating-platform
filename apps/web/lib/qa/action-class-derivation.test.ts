@@ -37,9 +37,13 @@ describe('a caller cannot assert the class', () => {
   it('MUTATION — skipping the registry lookup is impossible: it gates every path', () => {
     const lookupAt = runSrc.indexOf('lookupAction(input.actionKind)')
     expect(lookupAt).toBeGreaterThan(-1)
-    // The lookup precedes the first DB read AND the insert.
+    // The lookup precedes the first DB read AND the write. Since Phase 3B1B the
+    // write is the atomic bind RPC (run + bind provenance), never a bare insert.
     expect(lookupAt).toBeLessThan(runSrc.indexOf('readInstance(db, input.instanceId)'))
-    expect(lookupAt).toBeLessThan(runSrc.indexOf(".from('runs').insert"))
+    const writeAt = runSrc.indexOf("db.rpc('bind_workflow_action_run'")
+    expect(writeAt).toBeGreaterThan(-1)
+    expect(lookupAt).toBeLessThan(writeAt)
+    expect(runSrc).not.toContain(".from('runs').insert")
   })
 
   it('MUTATION — an unknown kind must NOT default to READ_ONLY', () => {

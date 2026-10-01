@@ -85,6 +85,7 @@ function effectiveLicence(over: Partial<ResolvedAutonomyLicense> = {}): Resolved
     // The read clock the resolver reports. A fixed instant, so a test that
     // asserts on it cannot pass by accident of when the suite ran.
     resolvedAt: '2026-09-01T00:00:00.000Z',
+    ledgerWatermark: 1,
     ...over,
   }
 }
@@ -592,10 +593,18 @@ describe('O · the foundation has ZERO runtime execution importers', () => {
   }
 
   it('no file under any execution root names autonomy-runtime', () => {
+    // Phase 3B1B's ONE deliberate exception: the bind seam in action-run.ts may
+    // import the bind admission module. Nothing else under an execution root may
+    // name the foundation, and action-run may name no OTHER foundation module.
+    const BIND_SEAM = resolve(APP, 'lib/workflows/action-run.ts')
     const offenders: string[] = []
     for (const root of EXECUTION_ROOTS) {
       for (const file of walk(resolve(APP, root))) {
-        if (readFileSync(file, 'utf8').includes('autonomy-runtime')) offenders.push(file)
+        const src = readFileSync(file, 'utf8')
+        if (!src.includes('autonomy-runtime')) continue
+        const named = [...src.matchAll(/autonomy-runtime\/([a-z-]+)/g)].map(m => m[1])
+        if (file === BIND_SEAM && named.length > 0 && named.every(n => n === 'bind')) continue
+        offenders.push(file)
       }
     }
     expect(offenders, `execution paths must not import the foundation:\n${offenders.join('\n')}`)
@@ -619,7 +628,12 @@ describe('O · the foundation has ZERO runtime execution importers', () => {
   })
 
   it('the whole foundation is unreachable from the executor and the drain', () => {
-    for (const f of ['lib/workflows/action-run.ts', 'lib/workflows/action-executor.ts',
+    // action-run.ts is the 3B1B bind seam and is guarded separately: it may call
+    // the bind admission, never the pure core or the Survival reader directly.
+    const runSrc = readFileSync(join(APP, 'lib/workflows/action-run.ts'), 'utf8')
+    expect(runSrc).not.toContain('admitAutonomyAction')
+    expect(runSrc).not.toContain('readPlatformSurvivalCeiling')
+    for (const f of ['lib/workflows/action-executor.ts',
                      'app/api/runs/drain/route.ts', 'lib/workflows/action-scheduling.ts']) {
       const src = readFileSync(join(APP, f), 'utf8')
       expect(src, f).not.toContain('autonomy-runtime')

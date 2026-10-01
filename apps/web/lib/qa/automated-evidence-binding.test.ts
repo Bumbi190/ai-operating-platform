@@ -25,6 +25,7 @@ import { summarizeStateEvidence } from '../workflows/evidence-consumption'
 import { computeEvidenceTargetHash } from '../workflows/attestation'
 import { evidenceTargetHashFor } from '../workflows/evidence-binding'
 import { findAdapter } from '../workflows/adapters/registry'
+import { bindRpcFake } from './bind-rpc-fake'
 
 const PROBE_DEF_KEY = 'omnira.probe-validation'
 const PROBE_ACTION = 'probe_anonymous_protected_access'
@@ -84,6 +85,7 @@ function makeDb(o: DbOptions = {}) {
   }
   const db = {
     inserted,
+    rpc: bindRpcFake(inserted),
     from(table: string) {
       const q: Record<string, any> = { _table: table, _insert: null, _single: false }
       const self = () => q

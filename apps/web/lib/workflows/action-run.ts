@@ -41,6 +41,9 @@ import {
   policyClassForActionClass, WORKFLOW_ACTION_TARGET_TYPE, type ActionClass,
 } from './action-target'
 import { lookupAction } from './action-registry'
+// Bind-time ONLY. Readiness and pre-dispatch below deliberately do not consult
+// autonomy yet (Phase 3B1C); a permanent guard pins that.
+import { admitAutonomyAtBind } from '@/lib/atlas/autonomy-runtime/bind'
 
 // any: the Supabase client in this project has no generated DB types.
 type AnyDb = any
@@ -60,6 +63,11 @@ export type ActionBindingRefusal =
   | 'insert_rejected'
   /** The kind is not in the canonical registry, so it has no class. */
   | 'unknown_action_kind'
+  /**
+   * Phase 3B1B: the canonical autonomy admission refused at bind, or the
+   * licence it relied on changed before the atomic bind committed.
+   */
+  | 'autonomy_not_admitted'
 
 export interface CreateWorkflowActionRunInput {
   instanceId: string
@@ -262,6 +270,16 @@ export async function createWorkflowActionRun(
     }
   }
 
+  // 8½) AUTONOMY — Phase 3B1B. An ADDITIONAL veto, evaluated only after every
+  //     gate above has already passed, and never a substitute for any of them.
+  //     `admitted` means only that the autonomy layer adds no refusal. A refusal
+  //     returns here, before anything is written: no run, no trace.
+  const autonomy = await admitAutonomyAtBind(input.actionKind, instance.id)
+  if (!autonomy.admitted) {
+    return { ok: false, refusal: 'autonomy_not_admitted', detail: autonomy.detail }
+  }
+  const provenance = autonomy.provenance
+
   // 9) identity. attemptGroup is stamped once so retries hash identically.
   const attemptGroup = input.attemptGroup ?? uuid()
   const idempotencyKey = computeActionIdempotencyKey({
@@ -270,42 +288,65 @@ export async function createWorkflowActionRun(
     targetVersionHash: target.versionHash, attemptGroup,
   })
 
-  // 10) the immutable snapshot. Every binding column is derived above; the DB
-  //     trigger re-checks project/def_hash/state independently.
-  const { data, error } = await db.from('runs').insert({
-    project_id: instance.project_id,
-    status: 'pending',
-    kind: `workflow.action:${input.actionKind}`,
-    input: {}, context: {},
-    max_attempts: policy.maxAttempts,
-    policy_class: policyClassForActionClass(actionClass),
-    workflow_instance_id: instance.id,
-    workflow_def_hash: instance.def_hash,
-    workflow_from_state: instance.current_state,
-    action_kind: input.actionKind,
-    action_class: actionClass,
-    target_version_hash: target.versionHash,
+  // 10) the immutable snapshot AND its bind provenance, in ONE transaction.
+  //     Every binding column is derived above; the RPC re-proves the subject
+  //     and the licence, and the DB trigger re-checks project/def_hash/state.
+  //     There is deliberately no direct `runs` insert left in this module: a
+  //     bound run without its bind provenance must not be expressible.
+  const { data, error } = await db.rpc('bind_workflow_action_run', {
+    p_project_id: instance.project_id,
+    p_workflow_instance_id: instance.id,
+    p_workflow_def_hash: instance.def_hash,
+    p_workflow_from_state: instance.current_state,
+    p_action_kind: input.actionKind,
+    p_action_class: actionClass,
+    p_policy_class: policyClassForActionClass(actionClass),
+    p_max_attempts: policy.maxAttempts,
+    p_target_version_hash: target.versionHash,
     // Null only for a class that needs none. The DB refuses a null here for
     // every other class (runs_unauthorized_action_is_read_only).
-    authorization_id: policy.requiresAuthorization ? input.authorizationId : null,
-    idempotency_key: idempotencyKey,
-    attempt_group: attemptGroup,
-    authorized_at: new Date().toISOString(),
-  }).select('id').maybeSingle()
+    p_authorization_id: policy.requiresAuthorization ? input.authorizationId : null,
+    p_idempotency_key: idempotencyKey,
+    p_attempt_group: attemptGroup,
+    p_policy_mode: provenance.policy_mode,
+    p_policy_reason: provenance.policy_reason,
+    p_reason: provenance.reason,
+    p_license_id: provenance.license_id,
+    p_license_generation: provenance.license_generation,
+    p_license_reason: provenance.license_reason,
+    p_required_level: provenance.required_level,
+    p_effective_level: provenance.effective_level,
+    p_survival_state: provenance.survival_state,
+    p_survival_ceiling: provenance.survival_ceiling,
+    p_survival_reason: provenance.survival_reason,
+    p_bounded_by: provenance.bounded_by,
+    p_license_resolved_at: provenance.license_resolved_at,
+    p_survival_as_of: provenance.survival_as_of,
+    p_license_watermark: provenance.license_watermark,
+  })
 
   if (error) {
+    const code = (error as { code?: string }).code
     // 23505 is the action-identity index: this exact act already has a live run.
-    const duplicate = (error as { code?: string }).code === '23505'
-    return {
-      ok: false,
-      refusal: duplicate ? 'duplicate_action_identity' : 'insert_rejected',
-      detail: duplicate
-        ? 'an active run already exists for this action identity — retry it, do not create a second'
-        : error.message,
+    if (code === '23505') {
+      return {
+        ok: false, refusal: 'duplicate_action_identity',
+        detail: 'an active run already exists for this action identity — retry it, do not create a second',
+      }
     }
+    // 40001: the licence moved, expired or went stale between resolution and
+    // commit. Nothing was written; the next attempt re-resolves.
+    if (code === '40001') {
+      return { ok: false, refusal: 'autonomy_not_admitted', detail: `autonomy changed during bind: ${error.message}` }
+    }
+    return { ok: false, refusal: 'insert_rejected', detail: error.message }
+  }
+  const row = Array.isArray(data) ? data[0] : data
+  if (!row?.bound_run_id || !row?.bind_event_id) {
+    return { ok: false, refusal: 'insert_rejected', detail: 'bind returned no run and provenance pair' }
   }
   return {
-    ok: true, runId: data.id, idempotencyKey,
+    ok: true, runId: row.bound_run_id, idempotencyKey,
     targetVersionHash: target.versionHash, attemptGroup,
   }
 }

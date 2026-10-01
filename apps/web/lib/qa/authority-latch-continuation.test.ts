@@ -195,6 +195,9 @@ vi.mock('@/lib/cost/budget-gate', () => ({
     reason: 'ok', reservationId: 'res-1', budgetSek: 700, committedSek: 0, reservedSek: 0, headroomSek: 700 }),
   settleSpend: async () => {}, releaseSpend: async () => {},
   estimateImageSek: async () => 1,
+  // M0: dispatch intent always records; an advisory override gets an accounting reservation.
+  markSpendDispatchIntent: async () => true,
+  openOverrideReservation: async () => 'm0-override-reservation',
 }))
 vi.mock('@/lib/cost/track', () => ({ logLlmCost: () => {}, logImageCost: () => {} }))
 vi.mock('@/lib/cost/rates', () => ({ getRates: async () => ({ usd_sek: 10 }) }))

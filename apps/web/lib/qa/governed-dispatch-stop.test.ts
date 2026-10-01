@@ -48,6 +48,9 @@ vi.mock('@/lib/cost/budget-gate', () => ({
     releaseCalls.push(id)
     if (releaseThrows) throw new Error('release exploded')
   },
+  // M0: dispatch intent always records; an advisory override gets an accounting reservation.
+  markSpendDispatchIntent: async () => true,
+  openOverrideReservation: async () => 'm0-override-reservation',
 }))
 
 // Billing-project resolution must actually succeed, so the compat-slug test

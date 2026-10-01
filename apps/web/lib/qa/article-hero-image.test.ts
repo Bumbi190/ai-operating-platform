@@ -202,6 +202,11 @@ vi.mock('@/lib/cost/track', () => ({
   logImageCost: async (count: number, provider: string, ctx: Record<string, unknown>) => {
     costCaptures.push({ count, provider, ctx })
   },
+  // M0: the hero's own row is zero-amount attribution — the paid call is settled
+  // inside its governed adapter. Captured with count 0 so a priced row would show.
+  logCostAttribution: async (provider: string, ctx: Record<string, unknown>) => {
+    costCaptures.push({ count: 0, provider, ctx })
+  },
   logLlmCost: async () => undefined,
 }))
 
@@ -311,7 +316,7 @@ describe('generateHeroImage — MVP Commit 3 + Hero Image V2 shadow', () => {
     expect(uploadCalls[0].articleId).toBe(ARTICLE_ID)
 
     expect(costCaptures).toHaveLength(1)
-    expect(costCaptures[0].count).toBe(1)
+    expect(costCaptures[0].count).toBe(0)            // M0: attribution only, never a second amount
     expect(costCaptures[0].provider).toBe('ideogram')
     expect(costCaptures[0].ctx.operation).toBe('Article Hero Image')
     expect((costCaptures[0].ctx.metadata as Record<string, unknown>).articleId).toBe(ARTICLE_ID)

@@ -87,7 +87,11 @@ vi.mock('@/lib/cost/governed-spend', () => ({
 }))
 vi.mock('@/lib/cost/track', () => ({ logLlmCost: () => {}, logImageCost: () => {} }))
 vi.mock('@/lib/cost/rates', () => ({ getRates: async () => ({ usd_sek: 10 }) }))
-vi.mock('@/lib/cost/budget-gate', () => ({ estimateImageSek: async () => 1 }))
+vi.mock('@/lib/cost/budget-gate', () => ({ estimateImageSek: async () => 1,
+  // M0: dispatch intent always records; an advisory override gets an accounting reservation.
+  markSpendDispatchIntent: async () => true,
+  openOverrideReservation: async () => 'm0-override-reservation',
+}))
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({

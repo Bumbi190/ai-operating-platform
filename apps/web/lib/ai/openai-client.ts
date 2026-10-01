@@ -321,9 +321,9 @@ export async function estimateOpenAISpeechSek(charCount: number): Promise<number
 }
 
 /**
- * Governed chat completion. `stream: true` is supported; usage is not available
- * on a streamed response, so the ledger records the estimate's token shape the
- * same way the pre-existing call site did (zeros), and the reservation bounds it.
+ * Governed chat completion. `stream: true` is supported. A non-streaming call
+ * meters its real usage into the settlement; a streamed one reports no usage
+ * here and settles at the reserved upper bound (M0).
  */
 export async function openAIChatCompletion(
   ctx: OpenAIGovernanceContext,
@@ -335,6 +335,7 @@ export async function openAIChatCompletion(
   return withGovernedSpend(
     { project: ctx.project, execution: ctx.execution, provider: 'openai', operation: ctx.operation, estimatedSek },
     async () => {
+      let response: any
       try {
         // ── G3C-3C-A · ONE PHYSICAL REQUEST ─────────────────────────────────
         // The watcher's scope is exactly this call — not the step, not the image
@@ -349,7 +350,7 @@ export async function openAIChatCompletion(
         // smallest faithful wrapper is an async-iterable that disposes in its
         // `finally` — covering exhaustion, error, abort and an early `break`.
         // A generic Proxy would be more surface for no behaviour anyone uses.
-        return await governedPhysicalRequest(ctx, init?.signal,
+        response = await governedPhysicalRequest(ctx, init?.signal,
           signal => raw().chat.completions.create(params as any, { signal }),
           (value, mapError) => (params as { stream?: boolean }).stream
             ? followAsyncIterable(value, mapError)
@@ -360,6 +361,18 @@ export async function openAIChatCompletion(
         }
         throw e
       }
+      // M0: a non-streaming completion carries its real usage, metered INSIDE
+      // the governed call so the settlement writes it. (Before M0 nothing was
+      // recorded here, and a caller logged it best-effort afterwards.) A
+      // streamed completion reports no usage to this boundary, so it settles at
+      // the reserved upper bound, labelled `estimate_unmetered`.
+      if (!(params as { stream?: boolean }).stream && response?.usage) {
+        await logLlmCost(String((params as { model?: unknown }).model), {
+          tokensIn: Number(response.usage.prompt_tokens ?? 0),
+          tokensOut: Number(response.usage.completion_tokens ?? 0),
+        }, costContext(ctx))
+      }
+      return response
     },
   )
 }
@@ -503,11 +516,12 @@ export async function openAISpeech(
       const followed = responseBodyLifetime(res, e => governanceInFlight(watch, e))
       void followed.settled.finally(release)
 
-      await logLlmCost(
-        String(payload.model ?? 'gpt-4o-mini-tts'),
-        { tokensIn: 0, tokensOut: 0 },
-        { ...costContext(ctx), metadata: { unit: 'characters', characters: charCount } },
-      )
+      // M0: no usage row is metered here. The speech endpoint reports no token
+      // usage, so the old `logLlmCost(model, 0 tokens)` priced this call at
+      // 0 SEK — and once settlement took its amount from metered rows, that
+      // zero would have REMOVED the spend from authority. With nothing metered,
+      // `withGovernedSpend` settles at the reserved upper bound, which for
+      // speech is the per-character estimate itself, labelled `estimate_unmetered`.
       return followed.response
     },
   )

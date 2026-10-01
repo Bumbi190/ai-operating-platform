@@ -47,6 +47,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getRates } from './rates'
 import { isSpendGateEnforced } from './spend-gate-flag'
+import type { MeteredCostRow } from './spend-meter'
 
 export { isSpendGateEnforced }
 
@@ -155,22 +156,143 @@ export async function reserveSpend(input: ReserveInput): Promise<SpendVerdict> {
   }
 }
 
-/** The call happened; its real cost is in cost_events. Never throws. */
-export async function settleSpend(reservationId: string | null, actualSek?: number): Promise<void> {
-  if (!reservationId) return
+// ── M0: dispatch intent, durable settlement, proven-not-dispatched release ──
+//
+// The lifecycle a governed call drives (see `withGovernedSpend`):
+//
+//   reserve → markSpendDispatchIntent → FINAL stop check → provider call
+//           → settleSpend (durable: cost rows + settled, one transaction)
+//
+// Once intent is marked the reservation counts as held until it is settled,
+// however old it gets, and only the dispatcher holding the intent's token can
+// release it — on the canonical proven-not-dispatched path. A failure of any of
+// these calls leaves the reservation counted: uncertainty over-counts, it never
+// removes spend from budget or Survival authority.
+
+/**
+ * Accounting-only reservation for a dispatch whose budget refusal was
+ * overridden in advisory mode (H1_SPEND_GATE off). Changes no verdict; makes the
+ * overridden spend durably accountable. Null when it could not be opened.
+ */
+export async function openOverrideReservation(input: ReserveInput): Promise<string | null> {
   try {
     const db = createAdminClient() as any
-    await db.rpc('budget_settle', { p_reservation_id: reservationId, p_actual_sek: actualSek ?? null })
-  } catch { /* best effort: a stale reservation ages out of the headroom sum */ }
+    const { data, error } = await db.rpc('budget_open_override_reservation', {
+      p_project_id: input.projectId,
+      p_estimated_sek: input.estimatedSek,
+      p_provider: input.provider ?? null,
+      p_operation: input.operation ?? null,
+    })
+    if (error || typeof data !== 'string') return null
+    return data
+  } catch {
+    return null
+  }
 }
 
-/** The call never happened. Frees headroom immediately. Never throws. */
-export async function releaseSpend(reservationId: string | null): Promise<void> {
+/**
+ * From here on the provider MAY be called. Returns false when intent could not
+ * be durably recorded — the caller must then not dispatch. Never throws.
+ */
+export async function markSpendDispatchIntent(reservationId: string, dispatchToken: string): Promise<boolean> {
+  try {
+    const db = createAdminClient() as any
+    const { data, error } = await db.rpc('budget_mark_dispatch_intent', {
+      p_reservation_id: reservationId, p_dispatch_token: dispatchToken,
+    })
+    return !error && data === true
+  } catch {
+    return false
+  }
+}
+
+export type SettlementKind = 'metered' | 'estimate_ambiguous' | 'estimate_unmetered'
+
+export interface SpendSettlement {
+  /** The token `markSpendDispatchIntent` recorded. Only its holder may settle. */
+  readonly dispatchToken: string
+  readonly kind: SettlementKind
+  /** Metered usage rows (`kind = 'metered'`); empty for the estimate kinds. */
+  readonly rows: readonly MeteredCostRow[]
+}
+
+export interface SettlementOutcome {
+  /** True once the reservation is settled (by this call or an earlier one). */
+  readonly settled: boolean
+  readonly result: 'settled' | 'already_settled' | 'failed'
+  readonly settledSek: number | null
+  /** Metered cost exceeded the reserved upper bound: an estimator assumption failed. */
+  readonly estimateExceeded: boolean
+}
+
+/**
+ * The call may have been billed: write its authoritative cost and settle, in ONE
+ * transaction (`budget_settle_recorded`). Never throws.
+ *
+ * On failure the reservation stays open with dispatch intent — counted as held
+ * at its upper-bound estimate — and the crash reconciler settles it later. One
+ * retry covers a lost response: a settlement that had already committed answers
+ * `already_settled` and writes nothing.
+ */
+export async function settleSpend(reservationId: string | null, settlement: SpendSettlement): Promise<SettlementOutcome> {
+  const failed: SettlementOutcome = { settled: false, result: 'failed', settledSek: null, estimateExceeded: false }
+  if (!reservationId) return failed
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const db = createAdminClient() as any
+      const { data, error } = await db.rpc('budget_settle_recorded', {
+        p_reservation_id: reservationId,
+        p_dispatch_token: settlement.dispatchToken,
+        p_kind: settlement.kind,
+        p_rows: settlement.rows,
+      })
+      if (error) {
+        console.error(`[budget] durable settlement failed (attempt ${attempt}); reservation ${reservationId} `
+          + 'stays counted at its estimate:', error.message ?? error)
+        continue
+      }
+      const row = Array.isArray(data) ? data[0] : data
+      if (!row || (row.result !== 'settled' && row.result !== 'already_settled')) continue
+      const outcome: SettlementOutcome = {
+        settled: true,
+        result: row.result,
+        settledSek: row.settled_sek === null || row.settled_sek === undefined ? null : Number(row.settled_sek),
+        estimateExceeded: row.estimate_exceeded === true,
+      }
+      if (outcome.estimateExceeded) {
+        console.error(`[budget] metered cost ${outcome.settledSek} SEK EXCEEDED the reserved upper bound `
+          + `${row.estimate_sek} SEK for reservation ${reservationId} — the estimator under-reserved.`)
+      }
+      return outcome
+    } catch (e) {
+      console.error(`[budget] durable settlement threw (attempt ${attempt}); reservation ${reservationId} `
+        + 'stays counted at its estimate:', e instanceof Error ? e.message : e)
+    }
+  }
+  return failed
+}
+
+/**
+ * The provider was NOT called. Never throws.
+ *
+ * Without a token this is the pre-intent release: the database refuses it for a
+ * reservation with dispatch intent, which then keeps counting. With the
+ * dispatcher's token it is the canonical proven-not-dispatched release — the
+ * final stop check refused, governance refused admission, or the adapter threw
+ * `ProviderNotDispatchedError`.
+ */
+export async function releaseSpend(reservationId: string | null, opts: { dispatchToken?: string } = {}): Promise<void> {
   if (!reservationId) return
   try {
     const db = createAdminClient() as any
-    await db.rpc('budget_release', { p_reservation_id: reservationId })
-  } catch { /* best effort: same staleness fallback */ }
+    if (opts.dispatchToken) {
+      await db.rpc('budget_release_undispatched', {
+        p_reservation_id: reservationId, p_dispatch_token: opts.dispatchToken,
+      })
+    } else {
+      await db.rpc('budget_release', { p_reservation_id: reservationId })
+    }
+  } catch { /* best effort: an unreleased reservation over-counts, never under-counts */ }
 }
 
 // ── Estimators ───────────────────────────────────────────────────────────────
@@ -189,35 +311,4 @@ export async function estimateImageSek(images: number, provider: 'ideogram' | 'g
     ? (r.ideogram_v3_usd_per_image ?? 0.08)
     : (r.gpt_image_usd_per_image ?? 0.042)
   return images * unit * (r.usd_sek ?? 10.5)
-}
-
-/**
- * Wrap a billable call: reserve, run, then settle or release.
- *
- * `onRefused` decides what a refusal means for this caller — there is no sensible
- * generic answer, since refusing a newsletter send and refusing a retry-able
- * image generation are different outcomes. When enforcement is off the verdict
- * still reports `advisoryOverride`, so callers can log what would have happened.
- */
-export async function withSpendGate<T>(
-  input: ReserveInput,
-  run: () => Promise<T>,
-  onRefused: (v: SpendVerdict) => Promise<T> | T,
-): Promise<T> {
-  const v = await reserveSpend(input)
-  if (!v.allowed) {
-    await releaseSpend(v.reservationId)
-    return onRefused(v)
-  }
-  try {
-    const result = await run()
-    await settleSpend(v.reservationId, input.estimatedSek)
-    return result
-  } catch (e) {
-    // The call failed, so the money was probably not spent. Releasing is the
-    // safe direction: worst case we under-count for one call, versus permanently
-    // consuming headroom for a call that never landed.
-    await releaseSpend(v.reservationId)
-    throw e
-  }
 }

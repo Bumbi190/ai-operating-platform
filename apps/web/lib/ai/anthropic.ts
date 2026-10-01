@@ -38,6 +38,7 @@ import Anthropic from '@anthropic-ai/sdk'
 
 import { getModelPricing } from './pricing'
 import { logLlmCost, type CostContext } from '@/lib/cost/track'
+import { currentSpendMeter } from '@/lib/cost/spend-meter'
 import { getRates } from '@/lib/cost/rates'
 import {
   watchExecutionAuthority, composeAbortSignals, authorityForRequest, followAsyncIterable,
@@ -340,12 +341,11 @@ export function getAnthropic(ctx: AnthropicGovernanceContext) {
        * non-streaming call; the ledger write is attached to the stream's own
        * completion so the caller's consumption pattern is unchanged.
        *
-       * Settlement happens when `withGovernedSpend` returns the stream handle,
-       * not when the stream finishes — the money is committed the moment the
-       * request is accepted, and holding the reservation open until the last
-       * token would let a slow consumer block a concurrent caller for the whole
-       * generation. A stream that dies mid-flight was still billed for what it
-       * produced, so settling the upper bound is the conservative direction.
+       * M0: settlement happens when the stream ENDS, not at handle return. The
+       * reservation stays counted at its upper bound for the whole generation —
+       * a concurrent caller sees that headroom as taken, which is the
+       * conservative direction — and then settles durably with the real usage.
+       * A stream that dies mid-flight settles at the reserved upper bound.
        */
       async stream(
         params: Anthropic.MessageStreamParams,
@@ -384,22 +384,33 @@ export function getAnthropic(ctx: AnthropicGovernanceContext) {
               }
               throw e
             }
-            // Fire-and-forget ledger write once the real usage exists. Detached
-            // on purpose: the caller owns the stream, and a logging failure must
-            // never surface as a broken response. `.catch` is mandatory — an
-            // unhandled rejection here would take the process down.
+            // ── M0 · THE STREAM'S COST SETTLES THE RESERVATION ───────────────
+            // The real usage exists only once the stream ends. It is metered
+            // into this governed call's spend meter, and the meter is told to
+            // wait for it: the reservation stays counted at its upper bound
+            // until then, and settles DURABLY with the real usage — or, if the
+            // stream ends without usage, at the reserved upper bound. Before M0
+            // this was a detached best-effort insert while the reservation had
+            // already been settled at handle return, so a failed insert made the
+            // stream's spend vanish.
+            //
+            // Still detached from the CALLER: the caller owns the stream, and a
+            // metering failure must never surface as a broken response.
             //
             // Guarded because the request has ALREADY been dispatched by this
             // point: a stream object without `finalMessage` would otherwise
             // throw out of a governed call that really did reach the provider,
             // reporting "never happened" about billable work — and stranding
-            // the watcher created three lines above.
-            void Promise.resolve()
+            // the watcher created above.
+            const metered = Promise.resolve()
               .then(() => typeof (stream as { finalMessage?: unknown }).finalMessage === 'function'
                 ? stream.finalMessage()
                 : Promise.reject(new Error('no finalMessage')))
               .then(msg => logLlmCost(params.model, (msg as { usage: never }).usage, costContext(ctx)))
-              .catch(() => { /* stream aborted or logging failed; estimate stands */ })
+            currentSpendMeter()?.settleAfter(metered)
+            // `.catch` is mandatory — an unhandled rejection would take the
+            // process down. The settlement observes the rejection separately.
+            void metered.catch(() => { /* stream aborted: settled at the reserved upper bound */ })
 
             // ── G3C-3C-A · STREAM TERMINATION, NOT HANDLE RETURN ──────────────
             // Returning the handle is NOT the end of the physical request: the

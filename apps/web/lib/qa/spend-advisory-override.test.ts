@@ -27,6 +27,9 @@ vi.mock('@/lib/cost/budget-gate', async orig => ({
   reserveSpend: (...a: unknown[]) => reserveSpy(...a),
   settleSpend: async () => {},
   releaseSpend: async () => {},
+  // M0: dispatch intent always records; an advisory override gets an accounting reservation.
+  markSpendDispatchIntent: async () => true,
+  openOverrideReservation: async () => 'm0-override-reservation',
 }))
 
 vi.mock('@/lib/supabase/admin', () => ({
@@ -283,7 +286,7 @@ describe('D. implemented once, at the shared layer', () => {
   it('D4 — the recording happens BEFORE dispatch, not after', () => {
     const gs = readFileSync(join(process.cwd(), 'lib/cost/governed-spend.ts'), 'utf8')
     expect(gs.indexOf('await recordAdvisoryOverride('))
-      .toBeLessThan(gs.indexOf('const result = await run()'))
+      .toBeLessThan(gs.indexOf('result = await runWithSpendMeter(meter, run)'))
     // And after the verdict exists — there is nothing to record before that.
     expect(gs.indexOf('const verdict = await reserveSpend('))
       .toBeLessThan(gs.indexOf('await recordAdvisoryOverride('))

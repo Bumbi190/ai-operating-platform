@@ -74,6 +74,9 @@ vi.mock('@/lib/cost/budget-gate', () => ({
   settleSpend: (a: any) => settleSpend(a),
   releaseSpend: (a: any) => releaseSpend(a),
   estimateVoiceSek: async () => 1,
+  // M0: dispatch intent always records; an advisory override gets an accounting reservation.
+  markSpendDispatchIntent: async () => true,
+  openOverrideReservation: async () => 'm0-override-reservation',
 }))
 // G3C-1: the paid boundary now resolves the canonical stop authority immediately
 // before dispatch. These suites are about SPEND lifecycle, not stop policy, so

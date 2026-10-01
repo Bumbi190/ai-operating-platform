@@ -131,6 +131,10 @@ const ACTOR = 'user:00000000-0000-4000-8000-000000000001'
 /** omnira.execution-proof @ effect — the canonical placement of the licensed kind. */
 const INST_EFFECT = '44444444-4444-4444-8444-444444444444'
 const TRACE_FAULT_HASH = 'f'.repeat(64)
+/** The authenticated user who owns project A under runs_owner. */
+const OWNER_A = '0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a'
+/** A workflow-bound run that existed BEFORE 3B1B (seeded pre-migration, no provenance). */
+const HISTORICAL_RUN = '0b0b0b0b-0b0b-4b0b-8b0b-0b0b0b0b0b0b'
 
 const FIXTURE = `
 create extension if not exists pgcrypto;
@@ -144,9 +148,14 @@ alter default privileges in schema public grant all on sequences to anon, authen
 alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
 grant usage on schema public to anon, authenticated, service_role;
 
+-- Supabase's auth.uid(), reduced to what the runs_owner policy reads.
+create schema if not exists auth;
+create or replace function auth.uid() returns uuid language sql stable as
+  $u$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $u$;
+grant usage on schema auth to anon, authenticated, service_role;
 create table public.projects (
   id uuid primary key, slug text unique not null, name text,
-  execution_paused boolean not null default false);
+  execution_paused boolean not null default false, owner_id uuid);
 create table public.workflow_instances (
   id uuid primary key, project_id uuid not null references public.projects (id),
   def_key text not null, def_hash text not null, current_state text not null,
@@ -166,8 +175,15 @@ create table public.runs (
   policy_class text, claim_id uuid, claimed_at timestamptz, started_at timestamptz,
   lease_until timestamptz, cancel_requested boolean not null default false,
   created_at timestamptz not null default now());
+-- The production runs_owner shape: an authenticated user may write runs only in
+-- projects they own.
+alter table public.runs enable row level security;
+create policy runs_owner on public.runs for all to authenticated
+  using (project_id in (select id from public.projects where owner_id = auth.uid()))
+  with check (project_id in (select id from public.projects where owner_id = auth.uid()));
 
-insert into public.projects (id, slug, name) values ('${P_A}','alpha','Alpha'), ('${P_B}','beta','Beta');
+insert into public.projects (id, slug, name, owner_id) values
+  ('${P_A}','alpha','Alpha','${OWNER_A}'), ('${P_B}','beta','Beta', NULL);
 insert into public.workflow_instances (id, project_id, def_key, def_hash, current_state) values
   ('${INST_A}','${P_A}','${DEF_KEY}','${DEF_HASH_A}','probe'),
   ('${INST_B}','${P_B}','${DEF_KEY}','${DEF_HASH_B}','probe'),
@@ -321,6 +337,16 @@ beforeAll(() => {
   execFileSync(PSQL!, psqlArgs(dsn, ['-f', '/dev/stdin']),
     { input: FIXTURE, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 60_000 })
   for (const m of MIGRATIONS) {
+    if (m.endsWith('20260926120000_autonomy_bind_atomic.sql')) {
+      // HISTORY: a workflow-bound run created BEFORE 3B1B, with no provenance —
+      // exactly what production holds today. The migration must leave it alone.
+      query(dsn, `insert into public.runs (id, project_id, status, kind, input, context, max_attempts, policy_class,
+        workflow_instance_id, workflow_def_hash, workflow_from_state, action_kind, action_class,
+        target_version_hash, authorization_id, idempotency_key, attempt_group, authorized_at)
+        values ('${HISTORICAL_RUN}', '${P_A}', 'done', 'workflow.action:probe_anonymous_protected_access', '{}', '{}',
+          5, 'non_destructive', '${INST_A}', '${DEF_HASH_A}', 'probe', 'probe_anonymous_protected_access',
+          'READ_ONLY', '${hex64('historical-t')}', NULL, '${hex64('historical-k')}', gen_random_uuid(), now())`)
+    }
     execFileSync(PSQL!, psqlArgs(dsn, ['-f', m]), { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 60_000 })
   }
   // An EFFECTIVE licence for instance A exists, through the real writer — so
@@ -623,6 +649,119 @@ d('idempotency — one durable run per identity, and no orphaned provenance', ()
       p_survival_reason := NULL, p_bounded_by := NULL, p_license_resolved_at := NULL, p_survival_as_of := NULL);`
     expect(sqlstateOf(dsn, readiness)).toBe('')
     expect(sqlstateOf(dsn, readiness)).toBe('')
+  })
+})
+
+// ── 6b · STRUCTURAL: a NEW bound run commits only WITH its bind provenance ────
+
+d('structural invariant — a new workflow-bound run cannot commit without its bind provenance', () => {
+  /** A fully valid READ_ONLY workflow binding, written DIRECTLY (bypassing the RPC). */
+  const boundInsert = (seed: string, projectId = P_A, instanceId = INST_A) =>
+    `insert into public.runs (project_id, status, kind, input, context, max_attempts, policy_class,
+      workflow_instance_id, workflow_def_hash, workflow_from_state, action_kind, action_class,
+      target_version_hash, authorization_id, idempotency_key, attempt_group, authorized_at)
+     values ('${projectId}', 'pending', 'workflow.action:probe_anonymous_protected_access', '{}', '{}', 5,
+      'non_destructive', '${instanceId}', '${DEF_HASH_A}', 'probe', 'probe_anonymous_protected_access',
+      'READ_ONLY', '${hex64(`direct-t-${seed}`)}', NULL, '${hex64(`direct-k-${seed}-${DB_NAME}`)}',
+      gen_random_uuid(), now())`
+  const unboundInsert = (projectId = P_A) =>
+    `insert into public.runs (project_id, status, kind, input, context) values ('${projectId}', 'pending', 'legacy.kind', '{}', '{}')`
+  const asOwner = `set role authenticated; set request.jwt.claim.sub = '${OWNER_A}';`
+  const boundRuns = () => Number(one(dsn, `select count(*) from public.runs where workflow_instance_id is not null`))
+  const unboundRuns = () => Number(one(dsn, `select count(*) from public.runs where workflow_instance_id is null`))
+
+  it('control: the direct bound row is otherwise VALID — accepted inside the transaction, refused at COMMIT', () => {
+    // Inside the transaction the INSERT succeeds (binding guard, RLS and every
+    // CHECK pass) and a later statement still runs; the refusal is the DEFERRED
+    // provenance check at COMMIT.
+    let stdout = ''
+    let stderr = ''
+    try {
+      stdout = execFileSync(PSQL!, psqlArgs(dsn, ['-t', '-A', '-c',
+        `set role service_role; begin; ${boundInsert('ctl')}; select 'row-accepted-in-txn'; commit;`]),
+        { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] })
+    } catch (e) {
+      stdout = String((e as { stdout?: string }).stdout ?? '')
+      stderr = String((e as { stderr?: string }).stderr ?? '')
+    }
+    expect(stdout).toContain('row-accepted-in-txn')
+    expect(sqlstateIn(stderr)).toBe('23000')
+    expect(stderr).toMatch(/no bind autonomy provenance/)
+  })
+
+  it('a direct service_role bound INSERT cannot commit — 0 rows', () => {
+    const before = boundRuns()
+    expect(sqlstateOf(dsn, `set role service_role; ${boundInsert('svc')}`)).toBe('23000')
+    expect(boundRuns()).toBe(before)
+  })
+
+  it('service_role cannot rescue it by writing the bind row itself — the ledger is not writable', () => {
+    const before = { b: boundRuns(), c: counts() }
+    expect(sqlstateOf(dsn, `set role service_role; begin; ${boundInsert('rescue')};
+      insert into public.run_autonomy_decisions (run_id, boundary, policy_mode, policy_reason, reason, required_level)
+        select id, 'bind', 'license_exempt_observation', 'canonical_read_only_observation', 'exempt_observation', 'L0'
+        from public.runs where idempotency_key = '${hex64(`direct-k-rescue-${DB_NAME}`)}';
+      commit;`)).toBe('42501')
+    expect(boundRuns()).toBe(before.b)
+    expect(counts()).toEqual(before.c)
+  })
+
+  it('an authenticated PROJECT OWNER bound INSERT (allowed by runs_owner RLS) cannot commit — 0 rows', () => {
+    const before = boundRuns()
+    expect(sqlstateOf(dsn, `${asOwner} ${boundInsert('owner')}`)).toBe('23000')
+    expect(boundRuns()).toBe(before)
+  })
+
+  it('control: RLS still refuses a non-owner — the trigger adds a veto, it replaces nothing', () => {
+    expect(sqlstateOf(dsn, `${asOwner} ${unboundInsert(P_B)}`)).toBe('42501')
+  })
+
+  it('ordinary UNBOUND / legacy run inserts are unaffected — service_role and authenticated owner both commit', () => {
+    const before = unboundRuns()
+    expect(sqlstateOf(dsn, `set role service_role; ${unboundInsert()}`)).toBe('')
+    expect(sqlstateOf(dsn, `${asOwner} ${unboundInsert()}`)).toBe('')
+    expect(unboundRuns()).toBe(before + 2)
+    // …and updating one is unaffected too (the trigger is INSERT-only).
+    expect(sqlstateOf(dsn, `set role service_role; update public.runs set status = 'done'
+      where workflow_instance_id is null and kind = 'legacy.kind'`)).toBe('')
+  })
+
+  it('an unbound run cannot be turned into a bound one by UPDATE (binding columns are immutable)', () => {
+    query(dsn, unboundInsert())
+    expect(sqlstateOf(dsn, `set role service_role; update public.runs set workflow_instance_id = '${INST_A}'
+      where id = (select id from public.runs where workflow_instance_id is null limit 1)`)).toBe('23001')
+  })
+
+  it('HISTORY is untouched: the pre-3B1B bound run still exists, has NO fabricated provenance, and stays updatable', () => {
+    expect(one(dsn, `select count(*) from public.runs where id = '${HISTORICAL_RUN}'`)).toBe('1')
+    expect(one(dsn, `select count(*) from public.run_autonomy_decisions where run_id = '${HISTORICAL_RUN}'`)).toBe('0')
+    expect(sqlstateOf(dsn, `set role service_role; update public.runs set status = 'cancelled' where id = '${HISTORICAL_RUN}'`)).toBe('')
+    expect(one(dsn, `select count(*) from public.run_autonomy_decisions where run_id = '${HISTORICAL_RUN}'`)).toBe('0')
+  })
+
+  it('the sanctioned RPC still commits run + bind row atomically under the deferred check', () => {
+    const a = exemptArgs()
+    const before = counts()
+    expect(bind(a)).toBe('')
+    expect(counts()).toEqual({ runs: before.runs + 1, binds: before.binds + 1 })
+  })
+
+  it('forcing the check IMMEDIATE only makes it stricter: the RPC then fails and writes NOTHING', () => {
+    const a = exemptArgs()
+    const before = counts()
+    expect(sqlstateOf(dsn, `set role service_role; begin; set constraints all immediate; ${callSql(a)} commit;`)).toBe('23000')
+    expect(counts()).toEqual(before)
+  })
+
+  it('the check is trigger machinery: no role can execute it; it is a deferred constraint trigger', () => {
+    const sig = 'public.runs_require_bind_provenance()'
+    expect(one(dsn, `select has_function_privilege('anon', '${sig}', 'execute'),
+      has_function_privilege('authenticated', '${sig}', 'execute'),
+      has_function_privilege('service_role', '${sig}', 'execute')`)).toBe('f|f|f')
+    expect(one(dsn, `select prosecdef, array_to_string(proconfig, ',') from pg_proc where proname = 'runs_require_bind_provenance'`))
+      .toBe('t|search_path=""')
+    expect(one(dsn, `select tgdeferrable, tginitdeferred, tgconstraint <> 0 from pg_trigger
+      where tgname = 'runs_require_bind_provenance_trg'`)).toBe('t|t|t')
   })
 })
 

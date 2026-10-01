@@ -44,9 +44,29 @@ const SOURCE = ['lib', 'app', 'components', 'scripts']
 
 const MIGRATION_DIR = 'supabase/migrations'
 const BIND_MIGRATION = '20260926120000_autonomy_bind_atomic.sql'
+/** sha256 of the reviewed 3B1B migration, LF-normalized. Immutable after the production apply. */
+const BIND_MIGRATION_SHA256 = '601c24b756bd096ebfb268fd91457bd326239c71ce830e025573817eca16b5a2'
 const TRACE_MIGRATION = '20260925120000_autonomy_trace_decisions.sql'
-const bindSql = read(`${MIGRATION_DIR}/${BIND_MIGRATION}`)
+const ALL_MIGRATIONS = readdirSync(join(APP, MIGRATION_DIR)).filter(f => f.endsWith('.sql')).sort()
+const BIND_WRITER_DEF = 'create or replace function public.bind_workflow_action_run('
+
+/**
+ * The EFFECTIVE bind surface: the LAST migration (in apply order) that defines
+ * `bind_workflow_action_run`. Once 3B1B is applied it is immutable, so a
+ * reviewed widening or narrowing arrives as a FORWARD migration that redefines
+ * the function — and every structural guard below then judges THAT definition,
+ * never a stale one. Nothing here makes widening easier: the effective
+ * snapshot must stay SET-EQUAL to current canonical TypeScript policy.
+ */
+const BIND_WRITER_MIGRATIONS = ALL_MIGRATIONS
+  .filter(f => read(`${MIGRATION_DIR}/${f}`).replace(/--.*$/gm, '').includes(BIND_WRITER_DEF))
+const EFFECTIVE_BIND_MIGRATION = BIND_WRITER_MIGRATIONS[BIND_WRITER_MIGRATIONS.length - 1]
+/** The migration holding the effective definition (each defines it exactly once). */
+const bindSql = read(`${MIGRATION_DIR}/${EFFECTIVE_BIND_MIGRATION}`)
 const bindSqlCode = bindSql.replace(/--.*$/gm, '')
+/** The full 3B1B migration text (index, trigger, privileges). */
+const bindMigrationSql = read(`${MIGRATION_DIR}/${BIND_MIGRATION}`)
+const bindMigrationCode = bindMigrationSql.replace(/--.*$/gm, '')
 
 const runSrc = read('lib/workflows/action-run.ts')
 const runCode = codeOnly(runSrc)
@@ -178,6 +198,48 @@ describe('the atomic bind migration', () => {
     expect(files.slice(files.indexOf(TRACE_MIGRATION) + 1)).toEqual([BIND_MIGRATION])
   })
 
+  it('the EFFECTIVE bind surface is the last definition in apply order, and every definition is closed', () => {
+    // Today exactly one migration defines it. A future reviewed change adds a
+    // FORWARD migration; this guard then judges that one (and requires it to
+    // carry the same closed snapshot markers), never the applied 3B1B file.
+    expect(BIND_WRITER_MIGRATIONS[0]).toBe(BIND_MIGRATION)
+    expect(EFFECTIVE_BIND_MIGRATION).toBe(BIND_WRITER_MIGRATIONS[BIND_WRITER_MIGRATIONS.length - 1])
+    for (const f of BIND_WRITER_MIGRATIONS) {
+      const text = read(`${MIGRATION_DIR}/${f}`)
+      const code = text.replace(/--.*$/gm, '')
+      expect(code.split(BIND_WRITER_DEF).length - 1, `${f}: exactly one definition`).toBe(1)
+      expect(text.split('-- bind-exempt-placements:begin').length - 1, `${f}: one snapshot`).toBe(1)
+      expect(text.split('-- bind-exempt-placements:end').length - 1, `${f}: one snapshot`).toBe(1)
+    }
+  })
+
+  it('3B1B is immutable once applied: its bytes are pinned (line endings normalized)', () => {
+    // Pinned at the reviewed content. After the production apply this file is
+    // history: any change to the bind surface or the provenance trigger must be
+    // a FORWARD migration, and this hash must never move again.
+    const bytes = bindMigrationSql.replace(/\r\n/g, '\n')
+    expect(createHash('sha256').update(bytes).digest('hex')).toBe(BIND_MIGRATION_SHA256)
+  })
+
+  it('only the 3B1A writer and the bind writer(s) ever INSERT into the provenance ledger', () => {
+    const writers = ALL_MIGRATIONS.filter(f =>
+      /insert into public\.run_autonomy_decisions/.test(read(`${MIGRATION_DIR}/${f}`).replace(/--.*$/gm, '')))
+    expect(writers.sort()).toEqual([TRACE_MIGRATION, ...BIND_WRITER_MIGRATIONS].sort())
+  })
+
+  it('the bind-provenance constraint trigger is DEFERRED, INSERT-only, bound-runs-only, and nobody may weaken it', () => {
+    expect(bindMigrationCode).toMatch(/create constraint trigger runs_require_bind_provenance_trg\s+after insert on public\.runs\s+deferrable initially deferred\s+for each row\s+when \(new\.workflow_instance_id is not null\)\s+execute function public\.runs_require_bind_provenance\(\);/)
+    const fn = bindMigrationCode.slice(bindMigrationCode.indexOf('function public.runs_require_bind_provenance()'))
+    expect(fn).toMatch(/security definer\s*\n\s*set search_path = ''/)
+    expect(fn).toMatch(/where d\.run_id = new\.id and d\.boundary = 'bind'/)
+    expect(bindMigrationCode).toMatch(/revoke all on function public\.runs_require_bind_provenance\(\)\s+from public, anon, authenticated, service_role;/)
+    expect(bindMigrationCode).not.toMatch(/grant [^;]*runs_require_bind_provenance/i)
+    // No other migration may drop, disable or replace it.
+    for (const f of ALL_MIGRATIONS.filter(x => x !== BIND_MIGRATION)) {
+      expect(read(`${MIGRATION_DIR}/${f}`).replace(/--.*$/gm, ''), f).not.toMatch(/runs_require_bind_provenance/)
+    }
+  })
+
   it('does NOT touch the 3B1A generic writer — it still refuses bind', () => {
     expect(bindSqlCode).not.toMatch(/record_run_autonomy_decision/)
     const trace = read(`${MIGRATION_DIR}/${TRACE_MIGRATION}`)
@@ -282,8 +344,8 @@ describe('the atomic bind migration', () => {
   })
 
   it('bind is exactly-once per run; readiness/pre_dispatch keep repeated observations', () => {
-    expect(bindSqlCode).toMatch(/create unique index if not exists run_autonomy_decisions_one_bind_per_run\s+on public\.run_autonomy_decisions \(run_id\)\s+where boundary = 'bind';/)
-    expect(bindSqlCode).not.toMatch(/unique[^;]*\(run_id, boundary\)/)
+    expect(bindMigrationCode).toMatch(/create unique index if not exists run_autonomy_decisions_one_bind_per_run\s+on public\.run_autonomy_decisions \(run_id\)\s+where boundary = 'bind';/)
+    expect(bindMigrationCode).not.toMatch(/unique[^;]*\(run_id, boundary\)/)
   })
 
   it('creates no rollout flag', () => {

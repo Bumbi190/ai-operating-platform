@@ -189,3 +189,67 @@ revoke all on function public.bind_workflow_action_run(
 grant execute on function public.bind_workflow_action_run(
   uuid, uuid, text, text, text, text, text, uuid
 ) to service_role;
+
+-- ── 4. Structural invariant: a NEW bound run commits only WITH its bind row ──
+--
+-- The RPC above makes the sanctioned path atomic. That alone is an
+-- APPLICATION property: `runs` stays directly INSERT-capable for service_role
+-- (and for an authenticated project owner under the runs_owner RLS policy), and
+-- the binding guard proves binding identity, not autonomy provenance. So a
+-- direct INSERT of a workflow-bound run could still commit with no bind row.
+--
+-- This constraint trigger closes that at the DATABASE: at COMMIT, every NEW run
+-- with a workflow binding must have exactly the canonical `boundary = 'bind'`
+-- row. It is DEFERRED because the RPC inserts the run first and its provenance
+-- second in the same transaction; an immediate check would refuse the RPC
+-- itself. Fail-closed both ways: a caller who sets it IMMEDIATE only makes the
+-- check stricter (the RPC then fails, writing nothing), and DISABLING it needs
+-- table ownership, which no client role holds.
+--
+-- Scope, deliberately narrow:
+--   • INSERT only, and only `workflow_instance_id is not null`. Unbound/legacy
+--     runs are untouched.
+--   • A bound run cannot be CREATED by UPDATE: the binding guard already makes
+--     every binding column immutable, so an unbound run can never become bound.
+--   • Existing rows are not touched, backfilled or given provenance. A trigger
+--     on INSERT never fires for history.
+--
+-- Privileges: the check reads the server-only ledger, so it is SECURITY DEFINER
+-- with an empty search_path — the minimum that lets it see the row without
+-- granting any role SELECT on the table — and EXECUTE is revoked from every
+-- role: it is trigger machinery, not an API.
+
+create or replace function public.runs_require_bind_provenance()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if not exists (
+    select 1 from public.run_autonomy_decisions d
+     where d.run_id = new.id and d.boundary = 'bind'
+  ) then
+    raise exception
+      'run % is workflow-bound but has no bind autonomy provenance; bound runs are created only '
+      'by bind_workflow_action_run', new.id
+      using errcode = '23000';
+  end if;
+  return null;
+end;
+$$;
+
+comment on function public.runs_require_bind_provenance is
+  'Phase 3B1B: deferred (commit-time) proof that every NEW workflow-bound run carries its '
+  'canonical boundary=bind autonomy provenance. Trigger machinery only; executable by no role.';
+
+drop trigger if exists runs_require_bind_provenance_trg on public.runs;
+create constraint trigger runs_require_bind_provenance_trg
+  after insert on public.runs
+  deferrable initially deferred
+  for each row
+  when (new.workflow_instance_id is not null)
+  execute function public.runs_require_bind_provenance();
+
+revoke all on function public.runs_require_bind_provenance()
+  from public, anon, authenticated, service_role;

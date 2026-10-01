@@ -193,9 +193,13 @@ describe('bind.ts composes canonical systems and writes nothing', () => {
 // ── The migration ────────────────────────────────────────────────────────────
 
 describe('the atomic bind migration', () => {
-  it('is the only migration after Phase 3B1A', () => {
+  it('is the only AUTONOMY migration after Phase 3B1A (M0 is the one reviewed non-autonomy successor)', () => {
     const files = readdirSync(join(APP, MIGRATION_DIR)).filter(f => f.endsWith('.sql')).sort()
-    expect(files.slice(files.indexOf(TRACE_MIGRATION) + 1)).toEqual([BIND_MIGRATION])
+    expect(files.slice(files.indexOf(TRACE_MIGRATION) + 1))
+      .toEqual([BIND_MIGRATION, '20261001160000_m0_durable_spend_settlement.sql'])
+    // M0 is spend accounting only: it must not touch the bind surface or the trace.
+    const m0 = read(`${MIGRATION_DIR}/20261001160000_m0_durable_spend_settlement.sql`)
+    expect(m0).not.toMatch(/bind_workflow_action_run|run_autonomy_decisions|autonomy_license/)
   })
 
   it('the EFFECTIVE bind surface is the last definition in apply order, and every definition is closed', () => {

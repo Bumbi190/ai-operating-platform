@@ -44,8 +44,10 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Phase 3B1B adds `autonomy_bind_atomic` (enforced): 102/88 → 103/89. NOT applied to
 // production on its branch, so the guard is RED there until the operator-approved apply —
 // the apply-before-PR contract reporting its own pre-apply condition.
-export const EXPECTED_CANONICAL_SQL_COUNT = 103
-export const EXPECTED_ENFORCED_COUNT = 89
+// M0 adds `m0_durable_spend_settlement` (enforced): 103/89 → 104/90. NOT applied to
+// production on its branch, so the guard is RED there until the operator-approved apply.
+export const EXPECTED_CANONICAL_SQL_COUNT = 104
+export const EXPECTED_ENFORCED_COUNT = 90
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

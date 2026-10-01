@@ -302,10 +302,11 @@ describe('migration discipline', () => {
     const files = readdirSync(MIGRATION_DIR).filter(f => f.endsWith('.sql')).sort()
     expect(files).toContain(TRACE_MIGRATION)
     const after = files.slice(files.indexOf(TRACE_MIGRATION) + 1)
-    // Exactly ONE reviewed successor: Phase 3B1B's atomic bind. Anything else
-    // wedged in after 3B1A must be noticed, never absorbed.
+    // Exactly the reviewed successors: Phase 3B1B's atomic bind, then M0's durable
+    // spend settlement (which touches no autonomy table). Anything else wedged in
+    // after 3B1A must be noticed, never absorbed.
     expect(after, `unexpected migrations after Phase 3B1A:\n${after.join('\n')}`)
-      .toEqual(['20260926120000_autonomy_bind_atomic.sql'])
+      .toEqual(['20260926120000_autonomy_bind_atomic.sql', '20261001160000_m0_durable_spend_settlement.sql'])
   })
 })
 

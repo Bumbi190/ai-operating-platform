@@ -145,10 +145,9 @@ describe('bind.ts composes canonical systems and writes nothing', () => {
 
   it('imports exactly the canonical sources and nothing else', () => {
     const specs = [...code.matchAll(/from '([^']+)'/g)].map(m => m[1]).sort()
-    expect(specs).toEqual([
-      './admission', './platform-survival', './policy',
-      '@/lib/atlas/autonomy-license/resolve',
-    ].sort())
+    // NO licence resolver, NO Survival reader, NO Decision Ledger: licensed kinds
+    // fail closed at bind, so no mutable authority input is ever read here.
+    expect(specs).toEqual(['./admission', './policy'])
     expect(code).toMatch(/^import 'server-only'/m)
   })
 
@@ -196,9 +195,10 @@ describe('the atomic bind migration', () => {
     expect(bindSqlCode).not.toMatch(/grant (insert|update|delete|select|all) on/i)
   })
 
-  it('accepts ONLY the two permissive representations — a refusal has nothing to persist', () => {
-    expect(bindSqlCode).toMatch(/p_policy_mode is not distinct from 'license_exempt_observation'\s+and p_reason is not distinct from 'exempt_observation'/)
-    expect(bindSqlCode).toMatch(/p_policy_mode is not distinct from 'licensed'\s+and p_reason is not distinct from 'allowed'/)
+  it('accepts ONLY the admitted licence-exempt representation — licensed binds are refused structurally', () => {
+    expect(bindSqlCode).toMatch(/if not \(p_policy_mode is not distinct from 'license_exempt_observation'\s+and p_reason is not distinct from 'exempt_observation'\) then\s+raise exception/)
+    expect(bindSqlCode).not.toMatch(/'licensed'|'allowed'/)
+    expect(bindSqlCode).toMatch(/p_action_class is distinct from 'READ_ONLY'/)
   })
 
   it('writes the run and its bind provenance in ONE function body, run first', () => {
@@ -211,15 +211,18 @@ describe('the atomic bind migration', () => {
     expect(bindSqlCode).toMatch(/v_run_id, 'bind', null,/)
   })
 
-  it('proves the licence under lock: FOR SHARE, watermark, head, subject, scope, expiry', () => {
-    expect(bindSqlCode).toMatch(/where workflow_instance_id = p_workflow_instance_id\s+for share;/)
-    expect(bindSqlCode).toMatch(/v_max_seq is distinct from p_license_watermark/)
-    expect(bindSqlCode).toMatch(/v_head_gen is distinct from p_license_generation/)
-    expect(bindSqlCode).toMatch(/v_licence\.project_id is distinct from v_inst\.project_id/)
-    expect(bindSqlCode).toMatch(/v_licence\.workflow_instance_id is distinct from p_workflow_instance_id/)
-    expect(bindSqlCode).toMatch(/v_licence\.bound_def_hash is distinct from v_inst\.def_hash/)
-    expect(bindSqlCode).toMatch(/p_action_kind = any \(v_licence\.allowed_action_kinds\)/)
-    expect(bindSqlCode).toMatch(/now\(\) >= v_expires/)
+  it('proves subject identity before writing', () => {
+    expect(bindSqlCode).toMatch(/v_inst\.project_id is distinct from p_project_id/)
+    expect(bindSqlCode).toMatch(/v_inst\.def_hash is distinct from p_workflow_def_hash/)
+  })
+
+  it('takes NO licence, Survival or level-composition input — nothing mutable can narrow before commit', () => {
+    const params = bindSqlCode.slice(
+      bindSqlCode.indexOf('bind_workflow_action_run('), bindSqlCode.indexOf('returns table'))
+    expect(params).not.toMatch(/license|survival|effective|bounded|watermark|decision/i)
+    // …and the bind row it writes is bare: only the exemption itself.
+    expect(bindSqlCode).toMatch(
+      /run_id, boundary, claim_id, policy_mode, policy_reason, reason, required_level\s*\)/)
   })
 
   it('bind is exactly-once per run; readiness/pre_dispatch keep repeated observations', () => {

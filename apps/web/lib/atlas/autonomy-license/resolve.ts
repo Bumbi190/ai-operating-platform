@@ -209,19 +209,15 @@ export async function resolveAutonomyLicense(
     return { ...noLicense(workflowInstanceId, 'unavailable', at), projectId: instance.project_id }
   }
 
-  // The ledger state this answer is computed from — every event read, every
-  // lineage. Reported, never interpreted here (see `ledgerWatermark` in types).
-  const ledgerWatermark = events.length === 0 ? null : Math.max(...events.map(e => e.eventSeq))
-
   const selection = selectCurrentLineage(events)
   if (selection.kind === 'none') {
     return { ...noLicense(workflowInstanceId, 'no_license', at), projectId: instance.project_id }
   }
   if (selection.kind === 'ambiguous') {
-    return { ...noLicense(workflowInstanceId, 'ambiguous_licenses', at), projectId: instance.project_id, ledgerWatermark }
+    return { ...noLicense(workflowInstanceId, 'ambiguous_licenses', at), projectId: instance.project_id }
   }
   if (selection.kind === 'malformed') {
-    return { ...noLicense(workflowInstanceId, 'malformed_lineage', at), projectId: instance.project_id, ledgerWatermark }
+    return { ...noLicense(workflowInstanceId, 'malformed_lineage', at), projectId: instance.project_id }
   }
   const lineage = selection.lineage
 
@@ -230,7 +226,7 @@ export async function resolveAutonomyLicense(
     state = deriveLicenseState(lineage)
   } catch (error) {
     if (error instanceof MalformedLicenseLineageError) {
-      return { ...noLicense(workflowInstanceId, 'malformed_lineage', at), projectId: instance.project_id, ledgerWatermark }
+      return { ...noLicense(workflowInstanceId, 'malformed_lineage', at), projectId: instance.project_id }
     }
     throw error
   }
@@ -281,7 +277,6 @@ export async function resolveAutonomyLicense(
     generation: state.generation,
     eventCount: state.eventCount,
     resolvedAt: at,
-    ledgerWatermark,
   }
 }
 

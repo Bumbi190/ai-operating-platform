@@ -64,8 +64,9 @@ export type ActionBindingRefusal =
   /** The kind is not in the canonical registry, so it has no class. */
   | 'unknown_action_kind'
   /**
-   * Phase 3B1B: the canonical autonomy admission refused at bind, or the
-   * licence it relied on changed before the atomic bind committed.
+   * Phase 3B1B: the autonomy layer refused at bind — a canonical admission
+   * refusal, or a licensed kind (fail-closed until its authority inputs can be
+   * serialized with the bind commit).
    */
   | 'autonomy_not_admitted'
 
@@ -289,8 +290,8 @@ export async function createWorkflowActionRun(
   })
 
   // 10) the immutable snapshot AND its bind provenance, in ONE transaction.
-  //     Every binding column is derived above; the RPC re-proves the subject
-  //     and the licence, and the DB trigger re-checks project/def_hash/state.
+  //     Every binding column is derived above; the RPC re-proves the subject,
+  //     and the DB trigger re-checks project/def_hash/state.
   //     There is deliberately no direct `runs` insert left in this module: a
   //     bound run without its bind provenance must not be expressible.
   const { data, error } = await db.rpc('bind_workflow_action_run', {
@@ -311,33 +312,16 @@ export async function createWorkflowActionRun(
     p_policy_mode: provenance.policy_mode,
     p_policy_reason: provenance.policy_reason,
     p_reason: provenance.reason,
-    p_license_id: provenance.license_id,
-    p_license_generation: provenance.license_generation,
-    p_license_reason: provenance.license_reason,
     p_required_level: provenance.required_level,
-    p_effective_level: provenance.effective_level,
-    p_survival_state: provenance.survival_state,
-    p_survival_ceiling: provenance.survival_ceiling,
-    p_survival_reason: provenance.survival_reason,
-    p_bounded_by: provenance.bounded_by,
-    p_license_resolved_at: provenance.license_resolved_at,
-    p_survival_as_of: provenance.survival_as_of,
-    p_license_watermark: provenance.license_watermark,
   })
 
   if (error) {
-    const code = (error as { code?: string }).code
     // 23505 is the action-identity index: this exact act already has a live run.
-    if (code === '23505') {
+    if ((error as { code?: string }).code === '23505') {
       return {
         ok: false, refusal: 'duplicate_action_identity',
         detail: 'an active run already exists for this action identity — retry it, do not create a second',
       }
-    }
-    // 40001: the licence moved, expired or went stale between resolution and
-    // commit. Nothing was written; the next attempt re-resolves.
-    if (code === '40001') {
-      return { ok: false, refusal: 'autonomy_not_admitted', detail: `autonomy changed during bind: ${error.message}` }
     }
     return { ok: false, refusal: 'insert_rejected', detail: error.message }
   }

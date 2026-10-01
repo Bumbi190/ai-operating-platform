@@ -85,7 +85,6 @@ function effectiveLicence(over: Partial<ResolvedAutonomyLicense> = {}): Resolved
     // The read clock the resolver reports. A fixed instant, so a test that
     // asserts on it cannot pass by accident of when the suite ran.
     resolvedAt: '2026-09-01T00:00:00.000Z',
-    ledgerWatermark: 1,
     ...over,
   }
 }

@@ -9,8 +9,7 @@
  *   • a refusal writes NOTHING: no RPC, no table write — no run, no trace;
  *   • the veto runs only AFTER every existing gate has passed; a run refused by
  *     an existing gate never even asks autonomy;
- *   • an admitted licensed bind passes the exact pinned licence event and the
- *     watermark through to the ONE atomic RPC, unmodified.
+ *   • an admitted bind passes its provenance to the ONE atomic RPC, unmodified.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -76,20 +75,15 @@ function fakeDb(state = 'probe', paused = false) {
   return { db, writes, rpcCalls }
 }
 
-const LICENSED: BindProvenance = {
-  policy_mode: 'licensed', policy_reason: null, reason: 'allowed',
-  license_id: '77777777-7777-4777-8777-777777777777', license_generation: 2,
-  license_reason: 'active', required_level: 'L3', effective_level: 'L3',
-  survival_state: 'NORMAL', survival_ceiling: 'L4', survival_reason: null,
-  bounded_by: 'licence',
-  license_resolved_at: '2026-10-01T10:00:00.000Z', survival_as_of: '2026-10-01T09:59:00.000Z',
-  license_watermark: 41,
+const EXEMPT: BindProvenance = {
+  policy_mode: 'license_exempt_observation', policy_reason: 'canonical_read_only_observation',
+  reason: 'exempt_observation', required_level: 'L0',
 }
 
 beforeEach(() => admitMock.mockReset())
 
 describe('refusal creates NOTHING', () => {
-  it.each(['licence_not_effective', 'action_not_in_licence_scope',
+  it.each(['licensed_bind_not_serializable', 'licence_not_effective', 'action_not_in_licence_scope',
            'effective_level_below_required', 'unsupported_action', 'unknown_action_kind'])(
     '%s → autonomy_not_admitted, no RPC, no write', async reason => {
       admitMock.mockResolvedValue({ admitted: false, reason, detail: `autonomy: ${reason}` })
@@ -104,7 +98,7 @@ describe('refusal creates NOTHING', () => {
 
 describe('autonomy is an ADDITIONAL veto, after every existing gate', () => {
   it('a paused project is refused by the existing gate; autonomy is never asked', async () => {
-    admitMock.mockResolvedValue({ admitted: true, provenance: LICENSED })
+    admitMock.mockResolvedValue({ admitted: true, provenance: EXEMPT })
     const { db, rpcCalls } = fakeDb('probe', true)
     const r = await createWorkflowActionRun(db as never, { instanceId: INSTANCE, actionKind: PROBE_ACTION })
     expect(r).toMatchObject({ ok: false, refusal: 'project_paused' })
@@ -113,7 +107,7 @@ describe('autonomy is an ADDITIONAL veto, after every existing gate', () => {
   })
 
   it('a state the definition does not have is refused first; an admitted autonomy answer cannot rescue it', async () => {
-    admitMock.mockResolvedValue({ admitted: true, provenance: LICENSED })
+    admitMock.mockResolvedValue({ admitted: true, provenance: EXEMPT })
     const { db, rpcCalls } = fakeDb('no_such_state')
     const r = await createWorkflowActionRun(db as never, { instanceId: INSTANCE, actionKind: PROBE_ACTION })
     expect(r.ok).toBe(false)
@@ -130,22 +124,21 @@ describe('autonomy is an ADDITIONAL veto, after every existing gate', () => {
   })
 })
 
-describe('an admitted licensed bind', () => {
-  it('passes the pinned licence event and the watermark to the ONE atomic RPC, unmodified', async () => {
-    admitMock.mockResolvedValue({ admitted: true, provenance: LICENSED })
+describe('an admitted bind', () => {
+  it('passes the admitted provenance to the ONE atomic RPC, unmodified, with the subject in the same call', async () => {
+    admitMock.mockResolvedValue({ admitted: true, provenance: EXEMPT })
     const { db, writes, rpcCalls } = fakeDb()
     const r = await createWorkflowActionRun(db as never, { instanceId: INSTANCE, actionKind: PROBE_ACTION })
     expect(r).toMatchObject({ ok: true, runId: 'run-1' })
     expect(writes).toEqual([])
     expect(rpcCalls).toHaveLength(1)
     const a = rpcCalls[0].args
-    for (const [k, v] of Object.entries(LICENSED)) expect(a[`p_${k}`], k).toEqual(v)
-    // Subject identity in the SAME call: one action kind, one instance, one project.
+    for (const [k, v] of Object.entries(EXEMPT)) expect(a[`p_${k}`], k).toEqual(v)
     expect(a).toMatchObject({ p_action_kind: PROBE_ACTION, p_workflow_instance_id: INSTANCE, p_project_id: PROJECT })
   })
 
   it('a malformed RPC answer is not success', async () => {
-    admitMock.mockResolvedValue({ admitted: true, provenance: LICENSED })
+    admitMock.mockResolvedValue({ admitted: true, provenance: EXEMPT })
     const { db } = fakeDb()
     ;(db as { rpc: unknown }).rpc = async () => ({ data: [{ bound_run_id: 'run-1' }], error: null })
     const r = await createWorkflowActionRun(db as never, { instanceId: INSTANCE, actionKind: PROBE_ACTION })

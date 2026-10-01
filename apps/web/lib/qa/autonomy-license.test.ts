@@ -1699,11 +1699,10 @@ describe('Phase 2C — inertness', () => {
       // NONE. The platform-reader layer has no business touching licence
       // machinery at all.
       'lib/atlas/autonomy-runtime/platform-survival.ts': [],
-      // Phase 3B1B — the bind admission, reviewed DELIBERATELY. It reads the
-      // CANONICAL resolution (`resolveAutonomyLicense`) and nothing else: no
-      // `store`, no `issue`, no `derive`. It never constructs or re-folds a
-      // licence; it hands the resolved shape to the pure admission core.
-      'lib/atlas/autonomy-runtime/bind.ts': ['resolve'],
+      // Phase 3B1B — the bind admission, reviewed DELIBERATELY with NO licence
+      // machinery at all: licensed kinds fail closed at bind until their
+      // authority inputs can be serialized with the bind commit.
+      'lib/atlas/autonomy-runtime/bind.ts': [],
     }
 
     /** The `autonomy-license/<name>` specifiers a file actually imports. */

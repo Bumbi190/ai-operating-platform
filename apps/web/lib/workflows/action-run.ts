@@ -38,9 +38,12 @@ import { isSpendGateEnforced } from '@/lib/cost/spend-gate-flag'
 import { isFinancialExecutionEnabled } from '@/lib/governance/financial-execution-flag'
 import {
   ACTION_CLASS_POLICY, computeActionIdempotencyKey, computeWorkflowActionTarget,
-  policyClassForActionClass, WORKFLOW_ACTION_TARGET_TYPE, type ActionClass,
+  WORKFLOW_ACTION_TARGET_TYPE, type ActionClass,
 } from './action-target'
 import { lookupAction } from './action-registry'
+// Bind-time ONLY. Readiness and pre-dispatch below deliberately do not consult
+// autonomy yet (Phase 3B1C); a permanent guard pins that.
+import { admitAutonomyAtBind } from '@/lib/atlas/autonomy-runtime/bind'
 
 // any: the Supabase client in this project has no generated DB types.
 type AnyDb = any
@@ -60,6 +63,12 @@ export type ActionBindingRefusal =
   | 'insert_rejected'
   /** The kind is not in the canonical registry, so it has no class. */
   | 'unknown_action_kind'
+  /**
+   * Phase 3B1B: the autonomy layer refused at bind — a canonical admission
+   * refusal, or a licensed kind (fail-closed until its authority inputs can be
+   * serialized with the bind commit).
+   */
+  | 'autonomy_not_admitted'
 
 export interface CreateWorkflowActionRunInput {
   instanceId: string
@@ -262,6 +271,15 @@ export async function createWorkflowActionRun(
     }
   }
 
+  // 8½) AUTONOMY — Phase 3B1B. An ADDITIONAL veto, evaluated only after every
+  //     gate above has already passed, and never a substitute for any of them.
+  //     `admitted` means only that the autonomy layer adds no refusal. A refusal
+  //     returns here, before anything is written: no run, no trace.
+  const autonomy = await admitAutonomyAtBind(input.actionKind, instance.id)
+  if (!autonomy.admitted) {
+    return { ok: false, refusal: 'autonomy_not_admitted', detail: autonomy.detail }
+  }
+
   // 9) identity. attemptGroup is stamped once so retries hash identically.
   const attemptGroup = input.attemptGroup ?? uuid()
   const idempotencyKey = computeActionIdempotencyKey({
@@ -270,42 +288,40 @@ export async function createWorkflowActionRun(
     targetVersionHash: target.versionHash, attemptGroup,
   })
 
-  // 10) the immutable snapshot. Every binding column is derived above; the DB
-  //     trigger re-checks project/def_hash/state independently.
-  const { data, error } = await db.from('runs').insert({
-    project_id: instance.project_id,
-    status: 'pending',
-    kind: `workflow.action:${input.actionKind}`,
-    input: {}, context: {},
-    max_attempts: policy.maxAttempts,
-    policy_class: policyClassForActionClass(actionClass),
-    workflow_instance_id: instance.id,
-    workflow_def_hash: instance.def_hash,
-    workflow_from_state: instance.current_state,
-    action_kind: input.actionKind,
-    action_class: actionClass,
-    target_version_hash: target.versionHash,
-    // Null only for a class that needs none. The DB refuses a null here for
-    // every other class (runs_unauthorized_action_is_read_only).
-    authorization_id: policy.requiresAuthorization ? input.authorizationId : null,
-    idempotency_key: idempotencyKey,
-    attempt_group: attemptGroup,
-    authorized_at: new Date().toISOString(),
-  }).select('id').maybeSingle()
+  // 10) the immutable snapshot AND its bind provenance, in ONE transaction.
+  //     The RPC is licence-exempt BY CONSTRUCTION: it takes no class, policy,
+  //     attempt budget, authorization or provenance from us — it binds only a
+  //     reviewed exempt kind at its canonical placement (read from the instance
+  //     itself) and writes the fixed READ_ONLY values and exempt provenance.
+  //     There is deliberately no direct `runs` insert left in this module: a
+  //     bound run without its bind provenance must not be expressible.
+  const { data, error } = await db.rpc('bind_workflow_action_run', {
+    p_project_id: instance.project_id,
+    p_workflow_instance_id: instance.id,
+    p_workflow_def_hash: instance.def_hash,
+    p_workflow_from_state: instance.current_state,
+    p_action_kind: input.actionKind,
+    p_target_version_hash: target.versionHash,
+    p_idempotency_key: idempotencyKey,
+    p_attempt_group: attemptGroup,
+  })
 
   if (error) {
     // 23505 is the action-identity index: this exact act already has a live run.
-    const duplicate = (error as { code?: string }).code === '23505'
-    return {
-      ok: false,
-      refusal: duplicate ? 'duplicate_action_identity' : 'insert_rejected',
-      detail: duplicate
-        ? 'an active run already exists for this action identity — retry it, do not create a second'
-        : error.message,
+    if ((error as { code?: string }).code === '23505') {
+      return {
+        ok: false, refusal: 'duplicate_action_identity',
+        detail: 'an active run already exists for this action identity — retry it, do not create a second',
+      }
     }
+    return { ok: false, refusal: 'insert_rejected', detail: error.message }
+  }
+  const row = Array.isArray(data) ? data[0] : data
+  if (!row?.bound_run_id || !row?.bind_event_id) {
+    return { ok: false, refusal: 'insert_rejected', detail: 'bind returned no run and provenance pair' }
   }
   return {
-    ok: true, runId: data.id, idempotencyKey,
+    ok: true, runId: row.bound_run_id, idempotencyKey,
     targetVersionHash: target.versionHash, attemptGroup,
   }
 }

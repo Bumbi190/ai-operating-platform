@@ -1113,7 +1113,7 @@ describe('Phase 2C — the migration does not collide with the chain it joins', 
     // and the file count is pinned so an unexpected addition is noticed.
     expect(files).toContain(MY_FILE)
     expect(files[files.length - 1] > MY_FILE).toBe(true)
-    expect(files).toHaveLength(102)
+    expect(files).toHaveLength(103)
   })
 })
 
@@ -1699,6 +1699,10 @@ describe('Phase 2C — inertness', () => {
       // NONE. The platform-reader layer has no business touching licence
       // machinery at all.
       'lib/atlas/autonomy-runtime/platform-survival.ts': [],
+      // Phase 3B1B — the bind admission, reviewed DELIBERATELY with NO licence
+      // machinery at all: licensed kinds fail closed at bind until their
+      // authority inputs can be serialized with the bind commit.
+      'lib/atlas/autonomy-runtime/bind.ts': [],
     }
 
     /** The `autonomy-license/<name>` specifiers a file actually imports. */

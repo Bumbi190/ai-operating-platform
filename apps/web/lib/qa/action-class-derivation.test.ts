@@ -37,9 +37,13 @@ describe('a caller cannot assert the class', () => {
   it('MUTATION — skipping the registry lookup is impossible: it gates every path', () => {
     const lookupAt = runSrc.indexOf('lookupAction(input.actionKind)')
     expect(lookupAt).toBeGreaterThan(-1)
-    // The lookup precedes the first DB read AND the insert.
+    // The lookup precedes the first DB read AND the write. Since Phase 3B1B the
+    // write is the atomic bind RPC (run + bind provenance), never a bare insert.
     expect(lookupAt).toBeLessThan(runSrc.indexOf('readInstance(db, input.instanceId)'))
-    expect(lookupAt).toBeLessThan(runSrc.indexOf(".from('runs').insert"))
+    const writeAt = runSrc.indexOf("db.rpc('bind_workflow_action_run'")
+    expect(writeAt).toBeGreaterThan(-1)
+    expect(lookupAt).toBeLessThan(writeAt)
+    expect(runSrc).not.toContain(".from('runs').insert")
   })
 
   it('MUTATION — an unknown kind must NOT default to READ_ONLY', () => {
@@ -88,8 +92,11 @@ describe('derivation', () => {
   })
 
   it('a caller cannot force max_attempts or bypass approval', () => {
-    // Both come from the derived policy, never from the input.
-    expect(runSrc).toMatch(/max_attempts: policy\.maxAttempts/)
+    // Both come from the derived policy, never from the input. Since Phase 3B1B
+    // the attempt budget is not even SENT: the atomic bind RPC writes the fixed
+    // READ_ONLY value, pinned equal to ACTION_CLASS_POLICY.READ_ONLY by
+    // autonomy-bind-guards — so no caller of the RPC can force it either.
+    expect(runSrc).not.toMatch(/p_max_attempts|max_attempts:/)
     expect(runSrc).toMatch(/const policy = ACTION_CLASS_POLICY\[actionClass\]/)
     const input = runSrc.slice(runSrc.indexOf('interface CreateWorkflowActionRunInput'),
                                runSrc.indexOf('export type CreateWorkflowActionRunResult'))

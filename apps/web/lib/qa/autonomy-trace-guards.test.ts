@@ -302,7 +302,10 @@ describe('migration discipline', () => {
     const files = readdirSync(MIGRATION_DIR).filter(f => f.endsWith('.sql')).sort()
     expect(files).toContain(TRACE_MIGRATION)
     const after = files.slice(files.indexOf(TRACE_MIGRATION) + 1)
-    expect(after, `unexpected migrations after Phase 3B1A:\n${after.join('\n')}`).toEqual([])
+    // Exactly ONE reviewed successor: Phase 3B1B's atomic bind. Anything else
+    // wedged in after 3B1A must be noticed, never absorbed.
+    expect(after, `unexpected migrations after Phase 3B1A:\n${after.join('\n')}`)
+      .toEqual(['20260926120000_autonomy_bind_atomic.sql'])
   })
 })
 
@@ -334,8 +337,13 @@ describe('Phase 3B1A remains INERT', () => {
   })
 
   it('the execution roots named by the ruling are untouched by this phase', () => {
+    // Phase 3B1B deliberately wires BIND, and only bind: action-run.ts may name
+    // exactly one autonomy-runtime module — the bind admission — and nothing
+    // else. The claimed boundaries stay unwired (see autonomy-bind-guards).
+    const runCode = readFileSync(join(APP, 'lib/workflows/action-run.ts'), 'utf8')
+    const named = [...runCode.matchAll(/autonomy-runtime\/([a-z-]+)/g)].map(m => m[1])
+    expect(new Set(named)).toEqual(new Set(['bind']))
     for (const rel of [
-      'lib/workflows/action-run.ts',
       'lib/workflows/action-executor.ts',
       'lib/workflows/action-scheduling.ts',
       'lib/workflows/effect/effect-execution.ts',

@@ -171,7 +171,14 @@ describe('READ_ONLY needs no authorization, everything else still does', () => {
   it('the create path refuses a write class with no authorization', async () => {
     const run = readFileSync(join(process.cwd(), 'lib/workflows/action-run.ts'), 'utf8')
     expect(run).toMatch(/if \(!input\.authorizationId\) \{[\s\S]{0,200}authorization_not_effective/)
-    expect(run).toMatch(/policy\.requiresAuthorization \? input\.authorizationId : null/)
+    // Phase 3B1B: the only bindable representation is a licence-exempt READ_ONLY
+    // observation, so the atomic bind RPC writes a NULL authorization itself —
+    // legal only for READ_ONLY (runs_unauthorized_action_is_read_only) — and no
+    // caller can send one. A write class cannot reach a run at all yet.
+    expect(run).not.toMatch(/p_authorization_id/)
+    const bindSql = readFileSync(join(process.cwd(),
+      'supabase/migrations/20260926120000_autonomy_bind_atomic.sql'), 'utf8')
+    expect(bindSql).toMatch(/p_action_kind, 'READ_ONLY', p_target_version_hash, null,/)
   })
 
   it('MUTATION — no authorization is ever fabricated for READ_ONLY', () => {

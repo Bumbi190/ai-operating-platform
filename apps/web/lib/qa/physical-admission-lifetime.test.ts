@@ -23,6 +23,8 @@
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 
+// M0: fixtures use priced models with an explicit output cap — an unboundable
+// request is now refused before reservation, by design.
 vi.mock('server-only', () => ({}))
 
 const PROJ = '11111111-1111-1111-1111-111111111111'
@@ -217,7 +219,7 @@ describe('C1–C4 · a stream is watched for its whole life, not until the handl
 
     const stream = await openAIChatCompletion(
       { project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never,
-      { model: 'gpt', messages: [], stream: true } as never,
+      { model: 'gpt-4o-mini', max_tokens: 16, messages: [], stream: true } as never,
     )
     await inFlight
     const sig = seen.at(-1)!.signal
@@ -238,7 +240,7 @@ describe('C1–C4 · a stream is watched for its whole life, not until the handl
     const { openAIChatCompletion } = await import('@/lib/ai/openai-client')
     const stream = await openAIChatCompletion(
       { project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never,
-      { model: 'gpt', messages: [], stream: true } as never,
+      { model: 'gpt-4o-mini', max_tokens: 16, messages: [], stream: true } as never,
     )
     const sig = seen.at(-1)!.signal!
     const drained = (async () => { for await (const _ of stream as AsyncIterable<unknown>) { /* … */ } })()
@@ -255,7 +257,7 @@ describe('C1–C4 · a stream is watched for its whole life, not until the handl
     const { openAIChatCompletion } = await import('@/lib/ai/openai-client')
     const stream = await openAIChatCompletion(
       { project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never,
-      { model: 'gpt', messages: [], stream: true } as never,
+      { model: 'gpt-4o-mini', max_tokens: 16, messages: [], stream: true } as never,
     )
     const sig = seen.at(-1)!.signal!
     const drained = (async () => {
@@ -274,7 +276,7 @@ describe('C1–C4 · a stream is watched for its whole life, not until the handl
     const { openAIChatCompletion } = await import('@/lib/ai/openai-client')
     const stream = await openAIChatCompletion(
       { project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never,
-      { model: 'gpt', messages: [], stream: true } as never,
+      { model: 'gpt-4o-mini', max_tokens: 16, messages: [], stream: true } as never,
     )
     void (async () => { for await (const _ of stream as AsyncIterable<unknown>) { /* … */ } })().catch(() => {})
     const before = state.runReads
@@ -298,7 +300,7 @@ describe('C5–C8 · admission: a refused attempt is never made', () => {
       () => { state.run.cancel_requested = true },
       () => openAIChatCompletion(
         { project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never,
-        { model: 'gpt', messages: [] } as never),
+        { model: 'gpt-4o-mini', max_tokens: 16, messages: [] } as never),
     )
     expect(isPhysicalAdmissionRefusal(err), 'refused as an admission failure').toBe(true)
     expect(calls, 'no physical call was made').toBe(0)
@@ -324,7 +326,7 @@ describe('C5–C8 · admission: a refused attempt is never made', () => {
       () => { state.runReadFails = true },
       () => openAIChatCompletion(
         { project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never,
-        { model: 'gpt', messages: [] } as never),
+        { model: 'gpt-4o-mini', max_tokens: 16, messages: [] } as never),
     )
     expect(isPhysicalAdmissionRefusal(err),
       'unprovable authority must not become permission').toBe(true)
@@ -342,7 +344,7 @@ describe('C5–C8 · admission: a refused attempt is never made', () => {
     state.run.cancel_requested = true
     const err = await openAIChatCompletion(
       { project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never,
-      { model: 'gpt', messages: [] } as never).then(() => null, e => e)
+      { model: 'gpt-4o-mini', max_tokens: 16, messages: [] } as never).then(() => null, e => e)
     expect(state.spendReleased, 'it reached the spend boundary as a throw').toBe(1)
     expect(isPhysicalAdmissionRefusal(err), 'and kept its identity on the way out').toBe(true)
   })
@@ -362,7 +364,7 @@ describe('C5–C8 · admission: a refused attempt is never made', () => {
       () => { state.globalPaused = true },
       () => openAIChatCompletion(
         { project: { projectId: PROJ }, execution: EXEC_GLOBAL } as never,
-        { model: 'gpt', messages: [] } as never),
+        { model: 'gpt-4o-mini', max_tokens: 16, messages: [] } as never),
     )
     expect(isPhysicalAdmissionRefusal(err),
       'admission did not claim authority the contract gate already holds').toBe(false)
@@ -382,7 +384,7 @@ describe('C22–C24 · ANTHROPIC admits too — not only the provider I wired fi
     state.run.cancel_requested = true
     const err = await getAnthropic(
       { project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never)
-      .messages.create({ model: 'c', max_tokens: 1, messages: [] } as never)
+      .messages.create({ model: 'claude-sonnet-4-6', max_tokens: 1, messages: [] } as never)
       .then(() => null, (e: unknown) => e)
     expect(isPhysicalAdmissionRefusal(err)).toBe(true)
     expect(seen.length, 'no physical call was made').toBe(0)
@@ -394,7 +396,7 @@ describe('C22–C24 · ANTHROPIC admits too — not only the provider I wired fi
     state.run.claim_id = 'someone-else'
     const err = await getAnthropic(
       { project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never)
-      .messages.stream({ model: 'c', max_tokens: 1, messages: [] } as never)
+      .messages.stream({ model: 'claude-sonnet-4-6', max_tokens: 1, messages: [] } as never)
       .then(() => null, (e: unknown) => e)
     expect(isPhysicalAdmissionRefusal(err)).toBe(true)
     expect(seen.length, 'no physical call was made').toBe(0)
@@ -410,7 +412,7 @@ describe('C22–C24 · ANTHROPIC admits too — not only the provider I wired fi
     state.run.status = 'cancelled'
     const err = await getAnthropic(
       { project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never)
-      .messages.create({ model: 'c', max_tokens: 1, messages: [] } as never)
+      .messages.create({ model: 'claude-sonnet-4-6', max_tokens: 1, messages: [] } as never)
       .then(() => null, (e: unknown) => e)
     expect(isPhysicalAdmissionRefusal(err), 'not re-labelled as a provider verdict').toBe(true)
     expect((err as { refusal?: string }).refusal, 'and it says which authority refused').toBe('FENCED')
@@ -425,7 +427,7 @@ describe('C9–C11 · in-flight authority loss reaches the owner without killing
     const inFlight = new Promise<void>(res => { state.started = res })
     const p = openAIChatCompletion(
       { project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never,
-      { model: 'gpt', messages: [] } as never).then(() => 'ok', e => e)
+      { model: 'gpt-4o-mini', max_tokens: 16, messages: [] } as never).then(() => 'ok', e => e)
     await inFlight
     const sig = seen.at(-1)!.signal!
     state.runReadFails = true
@@ -442,7 +444,7 @@ describe('C9–C11 · in-flight authority loss reaches the owner without killing
     const stream = await openAIChatCompletion(
       { project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND,
         onFlight: (f: never) => { flight = f } } as never,
-      { model: 'gpt', messages: [], stream: true } as never,
+      { model: 'gpt-4o-mini', max_tokens: 16, messages: [], stream: true } as never,
     )
     void (async () => { for await (const _ of stream as AsyncIterable<unknown>) { /* … */ } })().catch(() => {})
     expect(flight, 'the owner received a flight handle').toBeDefined()
@@ -461,7 +463,7 @@ describe('C9–C11 · in-flight authority loss reaches the owner without killing
     const stream = await openAIChatCompletion(
       { project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND,
         onFlight: (f: never) => { flight = f } } as never,
-      { model: 'gpt', messages: [], stream: true } as never,
+      { model: 'gpt-4o-mini', max_tokens: 16, messages: [], stream: true } as never,
     )
     void (async () => { for await (const _ of stream as AsyncIterable<unknown>) { /* … */ } })().catch(() => {})
     state.runReadFails = true
@@ -572,7 +574,7 @@ describe('C15–C17 · the caller keeps its own abort', () => {
     const { getAnthropic } = await import('@/lib/ai/anthropic')
     const caller = new AbortController()
     const p = getAnthropic({ project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never)
-      .messages.create({ model: 'c', max_tokens: 1, messages: [] } as never,
+      .messages.create({ model: 'claude-sonnet-4-6', max_tokens: 1, messages: [] } as never,
                        { signal: caller.signal } as never).then(() => 'ok', e => e)
     await new Promise(r => setTimeout(r, 0))
     const sig = seen.at(-1)!.signal!
@@ -585,7 +587,7 @@ describe('C15–C17 · the caller keeps its own abort', () => {
     const { getAnthropic } = await import('@/lib/ai/anthropic')
     const caller = new AbortController()
     getAnthropic({ project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never)
-      .messages.stream({ model: 'c', max_tokens: 1, messages: [] } as never,
+      .messages.stream({ model: 'claude-sonnet-4-6', max_tokens: 1, messages: [] } as never,
                        { signal: caller.signal } as never)
     await new Promise(r => setTimeout(r, 0))
     const sig = seen.at(-1)!.signal!
@@ -598,7 +600,7 @@ describe('C15–C17 · the caller keeps its own abort', () => {
     const caller = new AbortController()
     const p = openAIChatCompletion(
       { project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never,
-      { model: 'gpt', messages: [] } as never,
+      { model: 'gpt-4o-mini', max_tokens: 16, messages: [] } as never,
       { signal: caller.signal }).then(() => 'ok', e => e)
     await new Promise(r => setTimeout(r, 0))
     const sig = seen.at(-1)!.signal!
@@ -615,7 +617,7 @@ describe('C18 · an unobservable stream end is never treated as an end', () => {
     anthropicStreamSeam.mode = 'none'
     const { getAnthropic } = await import('@/lib/ai/anthropic')
     getAnthropic({ project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never)
-      .messages.stream({ model: 'c', max_tokens: 1, messages: [] } as never)
+      .messages.stream({ model: 'claude-sonnet-4-6', max_tokens: 1, messages: [] } as never)
     await vi.advanceTimersByTimeAsync(0)
     const sig = seen.at(-1)!.signal!
 
@@ -634,7 +636,7 @@ describe('C18 · an unobservable stream end is never treated as an end', () => {
     // never start the stream.
     const stream = await getAnthropic(
       { project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never)
-      .messages.stream({ model: 'c', max_tokens: 1, messages: [] } as never)
+      .messages.stream({ model: 'claude-sonnet-4-6', max_tokens: 1, messages: [] } as never)
     await vi.advanceTimersByTimeAsync(0)
     const sig = seen.at(-1)!.signal!
     const drained = (async () => {
@@ -700,7 +702,7 @@ describe('C19–C21 · the RUNNER call sites, not just the adapters', () => {
     const { runStep } = await import('@/lib/ai/runner')
     const inFlight = new Promise<void>(res => { state.started = res })
     const p = runStep({
-      model: 'claude-sonnet-4-20250514', systemPrompt: 's', userMessage: 'u',
+      model: 'claude-sonnet-4-6', systemPrompt: 's', userMessage: 'u',
       execution: EXEC_PROJECT, authority: RUN_BOUND,
     } as never).then(() => 'ok', e => e)
     await inFlight
@@ -940,7 +942,7 @@ describe('F5–F8 · the STREAM CONSUMER receives the classified outcome', () =>
     const { isGovernanceDispatchUnknown } = await import('@/lib/governance/execution-signal')
     const stream = await openAIChatCompletion(
       { project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never,
-      { model: 'gpt', messages: [], stream: true } as never,
+      { model: 'gpt-4o-mini', max_tokens: 16, messages: [], stream: true } as never,
     )
     const consumed = (async () => {
       for await (const _ of stream as AsyncIterable<unknown>) { /* … */ }

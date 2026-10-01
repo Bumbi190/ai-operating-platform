@@ -219,7 +219,8 @@ describe('ElevenLabs — the spend Familje-Stunden names explicitly', () => {
   })
 
   it('estimates from character count, which is knowable before the call', () => {
-    expect(el).toMatch(/estimateVoiceSek\(text\.length\)/)
+    // M0: priced with the pinned rate snapshot the metering also uses.
+    expect(el).toMatch(/estimateVoiceSek\(text\.length, rates\)/)
   })
 })
 

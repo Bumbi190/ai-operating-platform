@@ -13,23 +13,24 @@
  * models and response shapes are unchanged; only the boundary is new.
  *
  * ── ESTIMATES ───────────────────────────────────────────────────────────────
- * Chat uses the same conservative upper bound as the Anthropic adapter — real
- * input length plus the FULL `max_tokens` allowance, priced from the shared
- * `MODEL_PRICING`. Images are per-image from `cost_rates`. Speech is per
- * character from `cost_rates`, with a fallback for the rate row that does not
- * exist yet, mirroring how every other rate in `getRates()` is defaulted.
+ * M0: every reservation is a HARD ceiling. Chat: the model's context window plus
+ * n × the request's output cap, priced from the shared `MODEL_PRICING`; a
+ * request with no output cap (or other unboundable features) is refused. Images
+ * are per-image and speech per character from `cost_rates` — fixed units,
+ * priced exactly as the settlement prices them, at the same rate snapshot.
  */
 
 import 'server-only'
 
 import OpenAI from 'openai'
 
-import { getModelPricing } from './pricing'
 import { logImageCost, logLlmCost, type CostContext } from '@/lib/cost/track'
 import { getRates } from '@/lib/cost/rates'
+import { containsKey, fixedUnitCeiling, tokenWindowCeiling, type RateSnapshot } from '@/lib/cost/spend-ceiling'
 import { estimateImageSek } from '@/lib/cost/budget-gate'
 import {
   ProviderNotDispatchedError,
+  SpendRefusedError,
   withGovernedSpend,
   resolveGovernedProjectId,
   type ProjectRef,
@@ -49,9 +50,6 @@ import {
 import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
 const OPENAI_SPEECH_URL = 'https://api.openai.com/v1/audio/speech'
-
-/** Same pessimistic ratio as the Anthropic adapter, for the same reason. */
-const CHARS_PER_TOKEN = 3
 
 /**
  * USD per 1 000 characters of synthesised speech, when `cost_rates` has no row.
@@ -298,32 +296,72 @@ function provablyNotBilled(e: unknown): boolean {
   return status === 400 || status === 401 || status === 403 || status === 404 || status === 422
 }
 
+/**
+ * The HARD ceiling in SEK for one chat completion (M0). Throws
+ * `SpendRefusedError('unbounded_spend')` when the request cannot be bounded.
+ *
+ * It used to count string characters at 3 chars/token, count non-string
+ * (multimodal, tool) content as ZERO, ignore `max_completion_tokens` and treat a
+ * missing `max_tokens` as zero output — an estimate that could be exceeded by
+ * any long answer. The bound now comes from the provider's own contract:
+ *
+ *   billed input  ≤ the model's context window (a larger prompt is rejected)
+ *   billed output ≤ n × (max_completion_tokens ?? max_tokens) — reasoning
+ *                   tokens count inside that cap
+ *
+ * priced by the same `MODEL_PRICING` entry the metering uses. REFUSED: no
+ * output cap, an unknown model, audio output, predicted outputs, and any tool
+ * other than `function` (built-in tools bill per use).
+ */
 export async function estimateOpenAIChatSek(
-  params: { model: string; max_tokens?: number | null; messages?: unknown[] },
+  params: {
+    model: string; max_tokens?: number | null; max_completion_tokens?: number | null; n?: number | null
+    messages?: unknown[]; tools?: unknown; modalities?: unknown; prediction?: unknown; web_search_options?: unknown
+  },
+  rates?: RateSnapshot,
 ): Promise<number> {
-  const rates = await getRates()
-  const pricing = getModelPricing(params.model)
-  const chars = (params.messages ?? []).reduce<number>((sum, m) => {
-    const c = (m as { content?: unknown })?.content
-    return sum + (typeof c === 'string' ? c.length : 0)
-  }, 0)
-  const tokensIn = Math.ceil(chars / CHARS_PER_TOKEN)
-  const tokensOut = Math.max(0, params.max_tokens ?? 0)
-  const usd = (tokensIn / 1_000_000) * pricing.inputPer1M
-            + (tokensOut / 1_000_000) * pricing.outputPer1M
-  return usd * (rates.usd_sek ?? 10.5)
+  const unbounded = (reason: string) => new SpendRefusedError({
+    reason: 'unbounded_spend', provider: 'openai', operation: 'chat.completions', detail: reason,
+  })
+  const n = params.n ?? 1
+  if (!Number.isInteger(n) || n < 1) throw unbounded('n must be a positive integer')
+  const cap = params.max_completion_tokens ?? params.max_tokens
+  if (cap === null || cap === undefined) throw unbounded('no max_completion_tokens / max_tokens: output is unbounded')
+  if (Array.isArray(params.modalities) && params.modalities.includes('audio')) throw unbounded('audio output is priced separately')
+  if (params.prediction !== undefined && params.prediction !== null) throw unbounded('predicted outputs bill rejected tokens')
+  if (params.web_search_options !== undefined || containsKey(params.messages, 'input_audio')) {
+    throw unbounded('web search / audio input bill outside text tokens')
+  }
+  const tools = Array.isArray(params.tools) ? params.tools : []
+  if (tools.some(t => !t || typeof t !== 'object' || (t as { type?: unknown }).type !== 'function')) {
+    throw unbounded('only function tools are boundable')
+  }
+  const ceiling = tokenWindowCeiling(params.model, n * (cap as number), rates ?? await getRates())
+  if (!ceiling.ok) throw unbounded(ceiling.reason)
+  return ceiling.sek
 }
 
-export async function estimateOpenAISpeechSek(charCount: number): Promise<number> {
-  const rates = await getRates()
-  const perK = rates.openai_tts_usd_per_1k_chars ?? OPENAI_TTS_USD_PER_1K_CHARS_FALLBACK
-  return (charCount / 1000) * perK * (rates.usd_sek ?? 10.5)
+/**
+ * Speech ceiling: characters × the per-character price book entry. Speech is
+ * never metered (the endpoint reports no usage), so it settles at exactly this
+ * figure: the ceiling IS the ledger amount, and nothing can exceed it in the
+ * ledger. Whether the per-character entry covers the provider's per-token
+ * audio billing is a price-book fact owned by the operator.
+ */
+export async function estimateOpenAISpeechSek(charCount: number, rates?: RateSnapshot): Promise<number> {
+  const r = rates ?? await getRates()
+  const perK = r.openai_tts_usd_per_1k_chars ?? OPENAI_TTS_USD_PER_1K_CHARS_FALLBACK
+  const ceiling = fixedUnitCeiling(charCount / 1000, perK, r, `speech:${charCount}chars`)
+  if (!ceiling.ok) {
+    throw new SpendRefusedError({ reason: 'unbounded_spend', provider: 'openai', operation: 'audio.speech', detail: ceiling.reason })
+  }
+  return ceiling.sek
 }
 
 /**
  * Governed chat completion. `stream: true` is supported. A non-streaming call
  * meters its real usage into the settlement; a streamed one reports no usage
- * here and settles at the reserved upper bound (M0).
+ * here and settles at the reserved hard ceiling (M0).
  */
 export async function openAIChatCompletion(
   ctx: OpenAIGovernanceContext,
@@ -331,9 +369,12 @@ export async function openAIChatCompletion(
   /** Narrow by design — never an arbitrary SDK RequestOptions passthrough. */
   init?: { signal?: AbortSignal },
 ): Promise<any> {
-  const estimatedSek = await estimateOpenAIChatSek(params as any)
+  // M0: ONE rate snapshot prices both the hard ceiling and the metering.
+  const rates = await getRates()
+  const estimatedSek = await estimateOpenAIChatSek(params as any, rates)
   return withGovernedSpend(
-    { project: ctx.project, execution: ctx.execution, provider: 'openai', operation: ctx.operation, estimatedSek },
+    { project: ctx.project, execution: ctx.execution, provider: 'openai', operation: ctx.operation, estimatedSek,
+      ceilingBasis: 'token_window', rates },
     async () => {
       let response: any
       try {
@@ -365,7 +406,7 @@ export async function openAIChatCompletion(
       // the governed call so the settlement writes it. (Before M0 nothing was
       // recorded here, and a caller logged it best-effort afterwards.) A
       // streamed completion reports no usage to this boundary, so it settles at
-      // the reserved upper bound, labelled `estimate_unmetered`.
+      // the reserved hard ceiling, labelled `estimate_unmetered`.
       if (!(params as { stream?: boolean }).stream && response?.usage) {
         await logLlmCost(String((params as { model?: unknown }).model), {
           tokensIn: Number(response.usage.prompt_tokens ?? 0),
@@ -384,9 +425,11 @@ export async function openAIImageGenerate(
   init?: { signal?: AbortSignal },
 ): Promise<any> {
   const count = Math.max(1, (params as { n?: number }).n ?? 1)
-  const estimatedSek = await estimateImageSek(count, 'gpt_image')
+  const rates = await getRates()
+  const estimatedSek = await estimateImageSek(count, 'gpt_image', rates)
   return withGovernedSpend(
-    { project: ctx.project, execution: ctx.execution, provider: 'openai', operation: ctx.operation, estimatedSek },
+    { project: ctx.project, execution: ctx.execution, provider: 'openai', operation: ctx.operation, estimatedSek,
+      ceilingBasis: 'fixed_units', rates },
     async () => {
       let res: any
       try {
@@ -411,9 +454,11 @@ export async function openAIImageEdit(
   init?: { signal?: AbortSignal },
 ): Promise<any> {
   const count = Math.max(1, (params as { n?: number }).n ?? 1)
-  const estimatedSek = await estimateImageSek(count, 'gpt_image')
+  const rates = await getRates()
+  const estimatedSek = await estimateImageSek(count, 'gpt_image', rates)
   return withGovernedSpend(
-    { project: ctx.project, execution: ctx.execution, provider: 'openai', operation: ctx.operation, estimatedSek },
+    { project: ctx.project, execution: ctx.execution, provider: 'openai', operation: ctx.operation, estimatedSek,
+      ceilingBasis: 'fixed_units', rates },
     async () => {
       let res: any
       try {
@@ -447,10 +492,12 @@ export async function openAISpeech(
   if (!apiKey) throw new Error('OPENAI_API_KEY is not set')
 
   const charCount = typeof payload.input === 'string' ? payload.input.length : 0
-  const estimatedSek = await estimateOpenAISpeechSek(charCount)
+  const rates = await getRates()
+  const estimatedSek = await estimateOpenAISpeechSek(charCount, rates)
 
   return withGovernedSpend(
-    { project: ctx.project, execution: ctx.execution, provider: 'openai', operation: ctx.operation, estimatedSek },
+    { project: ctx.project, execution: ctx.execution, provider: 'openai', operation: ctx.operation, estimatedSek,
+      ceilingBasis: 'fixed_units', rates },
     async () => {
       // ── C4 · SPEECH IS A PHYSICAL REQUEST LIKE ANY OTHER ────────────────
       // It bypasses the SDK, so it also bypassed everything the SDK paths got.
@@ -520,7 +567,7 @@ export async function openAISpeech(
       // usage, so the old `logLlmCost(model, 0 tokens)` priced this call at
       // 0 SEK — and once settlement took its amount from metered rows, that
       // zero would have REMOVED the spend from authority. With nothing metered,
-      // `withGovernedSpend` settles at the reserved upper bound, which for
+      // `withGovernedSpend` settles at the reserved hard ceiling, which for
       // speech is the per-character estimate itself, labelled `estimate_unmetered`.
       return followed.response
     },

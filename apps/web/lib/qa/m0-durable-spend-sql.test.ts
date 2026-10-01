@@ -148,7 +148,7 @@ function reserve(pid: string, est: number, key: string | null = null): string {
 const TOKEN = (i: number) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`
 
 function mark(rid: string, token: string): string {
-  return query(dsn, `select budget_mark_dispatch_intent('${rid}'::uuid, '${token}'::uuid)`)[0][0]
+  return query(dsn, `select budget_mark_dispatch_intent('${rid}'::uuid, '${token}'::uuid, 'token_window')`)[0][0]
 }
 
 function meteredRows(...amounts: number[]): string {
@@ -160,13 +160,13 @@ function meteredRows(...amounts: number[]): string {
 }
 
 function settle(rid: string, token: string, kind: string, rows = '[]'): string[] {
-  return query(dsn, `select result, settled_sek, estimate_sek, estimate_exceeded
+  return query(dsn, `select result, settled_sek, ceiling_sek, ceiling_exceeded
     from budget_settle_recorded('${rid}'::uuid, '${token}'::uuid, '${kind}', '${rows}'::jsonb)`)[0]
 }
 
 function reservation(rid: string): Record<string, string> {
   const [r] = query(dsn, `select status, coalesce(dispatched_at::text,''), coalesce(settlement_kind,''),
-      coalesce(release_basis,''), coalesce(actual_sek::text,''), coalesce(estimate_exceeded::text,'')
+      coalesce(release_basis,''), coalesce(actual_sek::text,''), coalesce(ceiling_exceeded::text,'')
     from spend_reservations where id = '${rid}'`)
   return { status: r[0], dispatched: r[1], kind: r[2], basis: r[3], actual: r[4], exceeded: r[5] }
 }
@@ -185,6 +185,38 @@ function age(rid: string, minutes: number) {
       dispatched_at = dispatched_at - interval '${minutes} minutes' where id = '${rid}';
     alter table spend_reservations enable trigger spend_reservations_guard_transition;`])
 }
+
+/**
+ * Place a reservation's created_at/dispatched_at at a LOCAL (Europe/Stockholm)
+ * instant given as a SQL expression over `now()` — equivalent to the clock
+ * advancing past that boundary.
+ */
+function placeAt(rid: string, localExpr: string) {
+  run(dsn, ['-c', `
+    alter table spend_reservations disable trigger spend_reservations_guard_transition;
+    update spend_reservations
+       set created_at = (${localExpr}) at time zone 'Europe/Stockholm',
+           dispatched_at = case when dispatched_at is null then null
+                                else (${localExpr}) at time zone 'Europe/Stockholm' end
+     where id = '${rid}';
+    alter table spend_reservations enable trigger spend_reservations_guard_transition;`])
+}
+
+/** held and remaining for all six scopes, keyed by scope. */
+function scopes(pid: string): Record<string, { held: number; remaining: number }> {
+  return Object.fromEntries(query(dsn, `select scope, held_sek, remaining_sek
+    from budget_scope_state('${pid}'::uuid, 30)`).map(([scope, held, rem]) =>
+    [scope, { held: Number(held), remaining: Number(rem) }]))
+}
+
+const SIX = ['project_daily', 'project_weekly', 'project_monthly', 'global_daily', 'global_weekly', 'global_monthly']
+const LOCAL_NOW = `now() at time zone 'Europe/Stockholm'`
+const BOUNDARIES: Array<[string, string]> = [
+  ['daily',   `date_trunc('day', ${LOCAL_NOW}) - interval '1 second'`],
+  ['weekly',  `date_trunc('week', ${LOCAL_NOW}) - interval '1 second'`],
+  ['monthly', `date_trunc('month', ${LOCAL_NOW}) - interval '1 second'`],
+  ['all three, long ago', `date_trunc('month', ${LOCAL_NOW}) - interval '90 days'`],
+]
 
 function sessionAs(role: string, sql: string): string {
   return sqlstateOf(dsn, `set role ${role}; ${sql}`)
@@ -318,7 +350,7 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M0 durable spend settlement (real 
       expect(remaining(p)).toBe(970)
     })
 
-    it('actual HIGHER than the estimate is recorded honestly and flagged', () => {
+    it('metered ABOVE the hard ceiling (a broken bound proof) is recorded at the real figure and flagged', () => {
       const p = project()
       const rid = reserve(p, 30); mark(rid, TOKEN(4))
       expect(settle(rid, TOKEN(4), 'metered', meteredRows(45))).toEqual(['settled', '45.0000', '30.0000', 't'])
@@ -448,6 +480,88 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M0 durable spend settlement (real 
       const [r] = query(dsn, `select allowed, reason from budget_reserve('${p}'::uuid, 50, '${key}', 'anthropic', 'messages.create')`)
       expect(r).toEqual(['f', 'replay_stale'])
       expect(reservation(rid)).toMatchObject({ status: 'released', basis: 'replay_stale_undispatched' })
+    })
+  })
+
+  // ── Review finding 1: budget-window rollover ─────────────────────────────
+
+  describe('window rollover (review finding 1): unsettled dispatched spend never leaves current authority', () => {
+    for (const [name, at] of BOUNDARIES) {
+      it(`crossing the ${name} boundary with NO settlement and NO reconciler keeps the hold in all six scopes`, () => {
+        const p = project()
+        const base = scopes(p)        // global scopes also hold OTHER projects' unsettled dispatches
+        const rid = reserve(p, 30); mark(rid, TOKEN(60 + name.length))
+        placeAt(rid, at)
+        const s = scopes(p)
+        for (const scope of SIX) expect(s[scope]?.held, scope).toBe(base[scope].held + 30)
+        expect(s.project_monthly.remaining).toBe(970)
+        expect(linked(rid).count).toBe(0)                       // no cost event exists — it is held, not spent
+        expect(reservation(rid).status).toBe('open')
+      })
+    }
+
+    it('an UNDISPATCHED reservation is unchanged: it leaves the window it was created in', () => {
+      const p = project()
+      const rid = reserve(p, 30)
+      placeAt(rid, BOUNDARIES[0][1])
+      const s = scopes(p)
+      expect(s.project_daily.held).toBe(0)
+    })
+
+    it('a live settlement long after the boundary moves held → spent with no instant at which it counts nowhere', () => {
+      const p = project()
+      const rid = reserve(p, 30); mark(rid, TOKEN(70))
+      placeAt(rid, BOUNDARIES[3][1])                             // dispatched three months ago
+      const before = scopes(p)
+      settle(rid, TOKEN(70), 'metered', meteredRows(12))       // lower than the ceiling
+      const after = scopes(p)
+      for (const scope of SIX) {
+        expect(before[scope].held - after[scope].held, scope).toBe(30)
+        expect(after[scope].remaining, scope).toBe(before[scope].remaining + 30 - 12)   // the spend lands NOW
+      }
+    })
+
+    it('the reconciler after a rollover moves the ceiling from held to spent in the current window', () => {
+      const p = project()
+      const rid = reserve(p, 30); mark(rid, TOKEN(71))
+      placeAt(rid, BOUNDARIES[3][1])
+      const before = scopes(p)
+      query(dsn, `select budget_reconcile_dispatched()`)
+      const after = scopes(p)
+      for (const scope of SIX) expect(after[scope].remaining, scope).toBe(before[scope].remaining)
+      expect(linked(rid)).toEqual({ count: 1, sum: 30, kinds: 'estimate_reconciled' })
+    })
+  })
+
+  // ── Review finding 2: the held amount is a hard ceiling ──────────────────
+
+  describe('hard ceiling (review finding 2): a lost settlement can only over-count', () => {
+    it('actual 45 known under a 50 SEK ceiling, settlement lost, process gone → the reconciler records 50 ≥ 45', () => {
+      const p = project()
+      const rid = reserve(p, 50); mark(rid, TOKEN(80))
+      // the real usage (45) became known and the settlement began — then the process died
+      run(dsn, ['-c', `begin; select * from budget_settle_recorded('${rid}'::uuid, '${TOKEN(80)}'::uuid,
+        'metered', '${meteredRows(45)}'::jsonb); rollback;`])
+      expect(reservation(rid).status).toBe('open')
+      expect(remaining(p)).toBe(950)                             // held at the ceiling meanwhile
+      age(rid, 25 * 60)
+      query(dsn, `select budget_reconcile_dispatched()`)
+      expect(linked(rid)).toEqual({ count: 1, sum: 50, kinds: 'estimate_reconciled' })
+      expect(remaining(p)).toBe(950)                             // ≥ the 45 that was really known
+    })
+
+    it('dispatch intent REQUIRES a ceiling basis, records it, and never lets it change', () => {
+      const p = project()
+      const rid = reserve(p, 10)
+      expect(sqlstateOf(dsn, `select budget_mark_dispatch_intent('${rid}'::uuid, '${TOKEN(81)}'::uuid, null)`)).toBe('22023')
+      expect(sqlstateOf(dsn, `select budget_mark_dispatch_intent('${rid}'::uuid, '${TOKEN(81)}'::uuid, 'a_guess')`)).toBe('22023')
+      expect(reservation(rid).dispatched).toBe('')
+      expect(query(dsn, `select budget_mark_dispatch_intent('${rid}'::uuid, '${TOKEN(81)}'::uuid, 'fixed_units')`)[0][0]).toBe('t')
+      expect(query(dsn, `select ceiling_basis from spend_reservations where id = '${rid}'`)[0][0]).toBe('fixed_units')
+      expect(sqlstateOf(dsn, `update spend_reservations set ceiling_basis = 'token_window' where id = '${rid}'`)).toBe('55000')
+      expect(sqlstateOf(dsn, `alter table spend_reservations disable trigger spend_reservations_guard_transition;
+        update spend_reservations set ceiling_basis = null where id = '${rid}'`)).toBe('23514')
+      run(dsn, ['-c', 'alter table spend_reservations enable trigger spend_reservations_guard_transition'])
     })
   })
 

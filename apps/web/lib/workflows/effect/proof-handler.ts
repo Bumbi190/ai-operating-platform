@@ -70,6 +70,8 @@ export const proofGovernedEffectHandler: EffectHandler = async input => {
         provider: 'proof',
         operation: 'governed_effect.proof',
         estimatedSek: PROOF_EFFECT_ESTIMATED_SEK,
+        // M0: no provider is billed by this boundary; the reservation is the whole amount.
+        ceilingBasis: 'internal_fixed',
         idempotencyKey: input.idempotencyKey,
       },
       async () => {

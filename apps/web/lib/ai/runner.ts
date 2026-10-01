@@ -770,7 +770,7 @@ async function runOpenAIStep(
 
   // M0: no cost is logged here. Both branches above went through the governed
   // `openAIChatCompletion`, which now settles its reservation DURABLY — with the
-  // real usage for a non-streaming call, at the reserved upper bound for a
+  // real usage for a non-streaming call, at the reserved hard ceiling for a
   // stream. The fire-and-forget row this used to write sat outside that
   // settlement, so it would count the same call twice.
 

@@ -22,7 +22,14 @@
 --                                     still applies, with its canonical meaning:
 --                                     "no progress observed, so never dispatched".
 --   open,  dispatched_at IS NOT NULL  dispatch MAY have happened. Counted as held
---                                     for as long as it is open. Never stale.
+--                                     at its HARD CEILING in EVERY current budget
+--                                     window (daily/weekly/monthly, project and
+--                                     global) for as long as it is open — never
+--                                     stale, and never carried out of scope by a
+--                                     calendar rollover. Its settlement row is
+--                                     written in the window it is recorded in, so
+--                                     the amount moves from held to spent with no
+--                                     instant in which it counts nowhere.
 --   settled                           its authoritative cost rows exist, linked by
 --                                     reservation_id, written in the SAME
 --                                     transaction as the status flip.
@@ -34,6 +41,16 @@
 --
 --   `remaining = limit - spent - held` is unchanged. M0 changes how reliably
 --   spend reaches `spent`/`held`, not any limit.
+--
+-- THE HELD AMOUNT IS A HARD CEILING (independent review, finding 2)
+--   The amount a dispatched reservation holds is what the crash reconciler
+--   settles if the real cost is lost, so it must be ≥ every billable outcome the
+--   provider request allows — not a likely figure. The application derives it
+--   from the provider's own request contract (lib/cost/spend-ceiling.ts) and
+--   refuses requests it cannot bound; dispatch intent records the basis
+--   (token_window | fixed_units | internal_fixed). A metered amount above it is
+--   still recorded at its real figure and flagged `ceiling_exceeded`: a broken
+--   proof must surface, never be clipped into an under-count.
 --
 -- 1 RESERVATION : N COST ROWS
 --   Every governed adapter today records at most one metered row per call, but
@@ -60,7 +77,8 @@ alter table public.spend_reservations
   add column if not exists dispatch_token    uuid,
   add column if not exists settlement_kind   text,
   add column if not exists release_basis     text,
-  add column if not exists estimate_exceeded boolean;
+  add column if not exists ceiling_basis     text,
+  add column if not exists ceiling_exceeded  boolean;
 
 comment on column public.spend_reservations.dispatched_at is
   'M0: provider dispatch MAY have occurred from this instant. An open reservation with this set counts as held until settled, regardless of age.';
@@ -68,13 +86,19 @@ comment on column public.spend_reservations.dispatch_token is
   'M0: capability of the one dispatcher that marked intent. Required to settle it or to release it as proven-not-dispatched.';
 comment on column public.spend_reservations.settlement_kind is
   'M0: how the settled amount was established — metered | estimate_ambiguous | estimate_unmetered | estimate_reconciled. NULL on pre-M0 settlements.';
-comment on column public.spend_reservations.estimate_exceeded is
-  'M0: metered cost exceeded the reserved upper bound. Recorded honestly; surfaces a violated estimator assumption.';
+comment on column public.spend_reservations.ceiling_basis is
+  'M0: why the held amount is a HARD ceiling, recorded with dispatch intent — token_window | fixed_units | internal_fixed.';
+comment on column public.spend_reservations.ceiling_exceeded is
+  'M0: metered cost exceeded the reserved hard ceiling — a broken bound proof. Recorded at the real figure, never clipped.';
 
 alter table public.spend_reservations
   drop constraint if exists spend_reservations_dispatch_pair,
   add constraint spend_reservations_dispatch_pair
-    check ((dispatched_at is null) = (dispatch_token is null)),
+    check ((dispatched_at is null) = (dispatch_token is null)
+           and (dispatched_at is null) = (ceiling_basis is null)),
+  drop constraint if exists spend_reservations_ceiling_basis_vocab,
+  add constraint spend_reservations_ceiling_basis_vocab
+    check (ceiling_basis is null or ceiling_basis in ('token_window', 'fixed_units', 'internal_fixed')),
   drop constraint if exists spend_reservations_settlement_kind_vocab,
   add constraint spend_reservations_settlement_kind_vocab
     check (settlement_kind is null or settlement_kind in
@@ -82,9 +106,9 @@ alter table public.spend_reservations
   drop constraint if exists spend_reservations_settlement_kind_only_settled,
   add constraint spend_reservations_settlement_kind_only_settled
     check (settlement_kind is null or status = 'settled'),
-  drop constraint if exists spend_reservations_estimate_exceeded_only_settled,
-  add constraint spend_reservations_estimate_exceeded_only_settled
-    check (estimate_exceeded is null or settlement_kind is not null),
+  drop constraint if exists spend_reservations_ceiling_exceeded_only_settled,
+  add constraint spend_reservations_ceiling_exceeded_only_settled
+    check (ceiling_exceeded is null or settlement_kind is not null),
   drop constraint if exists spend_reservations_release_basis_vocab,
   add constraint spend_reservations_release_basis_vocab
     check (release_basis is null or release_basis in
@@ -154,7 +178,8 @@ begin
   end if;
   if old.dispatched_at is not null
      and (new.dispatched_at is distinct from old.dispatched_at
-          or new.dispatch_token is distinct from old.dispatch_token) then
+          or new.dispatch_token is distinct from old.dispatch_token
+          or to_jsonb(new) ->> 'ceiling_basis' is distinct from to_jsonb(old) ->> 'ceiling_basis') then
     raise exception 'spend_reservations: dispatch intent is set once and never changed' using errcode = '55000';
   end if;
   if old.dispatched_at is null and new.dispatched_at is not null and new.status <> 'open' then
@@ -307,11 +332,25 @@ create or replace function public.budget_scope_state(
       coalesce((select sum(greatest(c.cost_sek, 0)) from public.cost_events c
                  where c.created_at >= s.since and c.created_at < s.until
                    and (s.all_projects or c.project_id = p_project_id)), 0) as spent,
+      -- M0 held. Two disjoint populations of OPEN reservations:
+      --   undispatched — exactly the pre-M0 rule: inside this window and fresh;
+      --   dispatched   — EVERY current window until durably settled, whatever
+      --                  its original created_at. A calendar rollover must not
+      --                  carry possibly-billed spend out of scope before a cost
+      --                  row exists; that row is written in the window it is
+      --                  recorded in, so held → spent has no gap at a boundary,
+      --                  and a dead reconciler can only leave it over-counted.
+      --   (`created_at < s.until` still excludes a future-dated row.)
       coalesce((select sum(r.estimated_sek) from public.spend_reservations r
                  where r.status = 'open'
-                   and r.created_at >= s.since and r.created_at < s.until
-                   and (r.created_at > win.stale or r.dispatched_at is not null)
-                   and (s.all_projects or r.project_id = p_project_id)), 0) as held
+                   and (s.all_projects or r.project_id = p_project_id)
+                   and (
+                     (r.dispatched_at is null
+                      and r.created_at >= s.since and r.created_at < s.until
+                      and r.created_at > win.stale)
+                     or
+                     (r.dispatched_at is not null and r.created_at < s.until)
+                   )), 0) as held
   ) x
   where s.lim is not null
   order by (s.lim - x.spent - x.held) asc;
@@ -490,20 +529,23 @@ grant execute on function public.budget_reserve(uuid, numeric, text, text, text,
 -- Called after an allowed reservation and BEFORE the final execution-stop check,
 -- so nothing is added between that check and the provider call. Idempotent for
 -- the same token (a retried RPC whose first attempt committed), refused for any
--- other.
+-- other. Records WHY the held amount is a hard ceiling: no basis, no intent.
 create or replace function public.budget_mark_dispatch_intent(
-  p_reservation_id uuid, p_dispatch_token uuid
+  p_reservation_id uuid, p_dispatch_token uuid, p_ceiling_basis text
 ) returns boolean language plpgsql security definer set search_path = '' as $$
 declare v public.spend_reservations;
 begin
   if p_reservation_id is null or p_dispatch_token is null then
     raise exception 'reservation and dispatch token are required' using errcode = '22023';
   end if;
+  if p_ceiling_basis is null or p_ceiling_basis not in ('token_window', 'fixed_units', 'internal_fixed') then
+    raise exception 'dispatch intent requires a hard-ceiling basis (got %)', p_ceiling_basis using errcode = '22023';
+  end if;
   select * into v from public.spend_reservations where id = p_reservation_id for update;
   if not found or v.status <> 'open' then return false; end if;
   if v.dispatched_at is not null then return v.dispatch_token = p_dispatch_token; end if;
   update public.spend_reservations
-     set dispatched_at = now(), dispatch_token = p_dispatch_token
+     set dispatched_at = now(), dispatch_token = p_dispatch_token, ceiling_basis = p_ceiling_basis
    where id = p_reservation_id;
   return true;
 end $$;
@@ -573,14 +615,14 @@ end $$;
 -- ── 8. Durable settlement ───────────────────────────────────────────────────
 -- Locks the reservation, writes its authoritative cost rows, settles it — one
 -- transaction. A failure anywhere leaves the reservation open and dispatched,
--- i.e. still counted at its upper-bound estimate.
+-- i.e. still counted at its hard ceiling in every current window.
 --
 --   metered             p_rows = the adapter's real usage rows (≥1), priced by
 --                       the existing canonical rate logic in TypeScript.
 --   estimate_ambiguous  the call failed in a way that may have been billed.
 --   estimate_unmetered  the call succeeded but the adapter has no usage figure.
 --   (p_rows must be empty for both estimate kinds: ONE row at the reserved
---    upper bound is written here, never pretending to be metered.)
+--    hard ceiling is written here, never pretending to be metered.)
 --
 -- Attribution: rows are charged to the RESERVATION's project — that is where
 -- the held amount was counted, so settlement moves the same money from held to
@@ -588,7 +630,7 @@ end $$;
 -- metadata.
 create or replace function public.budget_settle_recorded(
   p_reservation_id uuid, p_dispatch_token uuid, p_kind text, p_rows jsonb default '[]'::jsonb
-) returns table (result text, settled_sek numeric, estimate_sek numeric, estimate_exceeded boolean)
+) returns table (result text, settled_sek numeric, ceiling_sek numeric, ceiling_exceeded boolean)
 language plpgsql security definer set search_path = '' as $$
 declare
   v       public.spend_reservations;
@@ -616,7 +658,7 @@ begin
   if v.status = 'settled' then
     -- Already settled (by the reconciler, or a retried call whose first attempt
     -- committed). Nothing is written: no double count.
-    return query select 'already_settled'::text, v.actual_sek, v.estimated_sek, v.estimate_exceeded;
+    return query select 'already_settled'::text, v.actual_sek, v.estimated_sek, v.ceiling_exceeded;
     return;
   end if;
   if v.status <> 'open' then
@@ -669,7 +711,7 @@ begin
 
   update public.spend_reservations r
      set status = 'settled', resolved_at = now(), actual_sek = v_sum, settlement_kind = p_kind,
-         estimate_exceeded = (v_sum > v.estimated_sek)
+         ceiling_exceeded = (v_sum > v.estimated_sek)
    where r.id = v.id;
 
   return query select 'settled'::text, v_sum, v.estimated_sek, (v_sum > v.estimated_sek);
@@ -691,7 +733,7 @@ end $$;
 -- ── 10. Crash reconciler ────────────────────────────────────────────────────
 -- A reservation with dispatch intent that never settled (the process died, or
 -- the settle RPC failed) is ALREADY counted as held, so this is bookkeeping, not
--- safety: it moves the reserved upper bound from held into spent, never
+-- safety: it moves the reserved hard ceiling from held into spent, never
 -- releases, and skips rows a live settlement is holding. A live settlement that
 -- loses the race receives 'already_settled' and writes nothing.
 --
@@ -727,7 +769,7 @@ begin
             r.id, 'estimate_reconciled');
     update public.spend_reservations s
        set status = 'settled', resolved_at = now(), actual_sek = r.estimated_sek,
-           settlement_kind = 'estimate_reconciled', estimate_exceeded = false
+           settlement_kind = 'estimate_reconciled', ceiling_exceeded = false
      where s.id = r.id;
     n := n + 1;
   end loop;
@@ -753,8 +795,8 @@ begin
   execute format('grant insert (%s), update (%s) on table public.cost_events to service_role', v_cols, v_cols);
 end $grant$;
 
-revoke all on function public.budget_mark_dispatch_intent(uuid, uuid) from public, anon, authenticated;
-grant execute on function public.budget_mark_dispatch_intent(uuid, uuid) to service_role;
+revoke all on function public.budget_mark_dispatch_intent(uuid, uuid, text) from public, anon, authenticated;
+grant execute on function public.budget_mark_dispatch_intent(uuid, uuid, text) to service_role;
 revoke all on function public.budget_release(uuid) from public, anon, authenticated;
 grant execute on function public.budget_release(uuid) to service_role;
 revoke all on function public.budget_release_undispatched(uuid, uuid) from public, anon, authenticated;

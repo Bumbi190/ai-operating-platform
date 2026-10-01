@@ -26,6 +26,8 @@
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 
+// M0: fixtures use priced models with an explicit output cap — an unboundable
+// request is now refused before reservation, by design.
 vi.mock('server-only', () => ({}))
 
 type Row = Record<string, unknown>
@@ -396,7 +398,7 @@ describe('D6–D8 · unified executor', () => {
     // Not the streaming branch: no production caller supplies `onChunk`, so the
     // executor reaches `messages.create`. The stream branch is proven at the
     // runner boundary in D7b, which is where it actually terminates today.
-    const r = await withAuthorityLostInFlight(() => exec('claude-sonnet-4-20250514')) as { error?: unknown }
+    const r = await withAuthorityLostInFlight(() => exec('claude-sonnet-4-6')) as { error?: unknown }
     expect(state.providerCalls).toEqual(['anthropic.create'])
     expect(r.error, 'the owner refused to continue').toBeDefined()
     const contextWrites = state.writes.filter(w => w.table === 'runs' && 'context' in w.payload)
@@ -473,7 +475,7 @@ describe('D7b · streams — the runner observes a latch that appeared MID-STREA
 
   it('D7b — Anthropic stream: the latch survives to the returned RunStepResult', async () => {
     const r = await withAuthorityLostInFlight(
-      () => streamStep('claude-sonnet-4-20250514')) as
+      () => streamStep('claude-sonnet-4-6')) as
       { value?: { result: { content: string; authorityRefreshRequired: boolean }; chunks: string[] } }
 
     expect(state.providerCalls, 'the STREAM branch ran').toEqual(['anthropic.stream'])
@@ -494,7 +496,7 @@ describe('D7b · streams — the runner observes a latch that appeared MID-STREA
   it('D7d — a clean stream does NOT latch', async () => {
     vi.useFakeTimers()
     const inFlight = new Promise<void>(res => { state.started = res })
-    const p = streamStep('claude-sonnet-4-20250514')
+    const p = streamStep('claude-sonnet-4-6')
     await inFlight
     state.finish!()
     const { result } = await p
@@ -931,7 +933,7 @@ describe('F6/F9 · the Anthropic stream consumer receives the classified outcome
       project: { projectId: PROJ },
       execution: { context: 'AUTONOMOUS', scope: { kind: 'PROJECT', project: { projectId: PROJ } } },
       authority: { kind: 'RUN_BOUND', runId: RUN, claimId: CLAIM },
-    } as never).messages.stream({ model: 'c', max_tokens: 1, messages: [] } as never)
+    } as never).messages.stream({ model: 'claude-sonnet-4-6', max_tokens: 1, messages: [] } as never)
 
     const consumed = (async () => {
       for await (const _ of stream as unknown as AsyncIterable<unknown>) { /* … */ }
@@ -960,7 +962,7 @@ describe('F6/F9 · the Anthropic stream consumer receives the classified outcome
       execution: { context: 'AUTONOMOUS', scope: { kind: 'PROJECT', project: { projectId: PROJ } } },
       authority: { kind: 'RUN_BOUND', runId: RUN, claimId: CLAIM },
       onStreamSettled: (s: Promise<unknown>) => { settled = s },
-    } as never).messages.stream({ model: 'c', max_tokens: 1, messages: [] } as never)
+    } as never).messages.stream({ model: 'claude-sonnet-4-6', max_tokens: 1, messages: [] } as never)
     await inFlight
 
     expect(settled, 'the owner was handed a termination promise').toBeDefined()

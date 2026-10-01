@@ -28,6 +28,7 @@ import 'server-only'
 
 import { logImageCost } from '@/lib/cost/track'
 import { estimateImageSek } from '@/lib/cost/budget-gate'
+import { getRates } from '@/lib/cost/rates'
 import {
   ProviderNotDispatchedError,
   withGovernedSpend,
@@ -90,11 +91,13 @@ export async function generateIdeogramV3(
   // Refuse before reserving: a missing credential is not a spend decision.
   if (!apiKey) throw new Error('IDEOGRAM_API_KEY not set')
 
-  const estimatedSek = await estimateImageSek(1, 'ideogram')
+  // M0: one rate snapshot prices the fixed-unit ceiling AND the metering.
+  const rates = await getRates()
+  const estimatedSek = await estimateImageSek(1, 'ideogram', rates)
 
   return withGovernedSpend(
     { project: ctx.project, execution: ctx.execution, provider: 'ideogram', operation: ctx.operation, estimatedSek,
-      idempotencyKey: ctx.idempotencyKey },
+      idempotencyKey: ctx.idempotencyKey, ceilingBasis: 'fixed_units', rates },
     async () => {
       let res: Response
       try {
@@ -214,10 +217,13 @@ export async function generateIdeogramLegacy(
   const apiKey = process.env.IDEOGRAM_API_KEY
   if (!apiKey) throw new Error('IDEOGRAM_API_KEY not set')
 
-  const estimatedSek = await estimateImageSek(1, 'ideogram')
+  // M0: one rate snapshot prices the fixed-unit ceiling AND the metering.
+  const rates = await getRates()
+  const estimatedSek = await estimateImageSek(1, 'ideogram', rates)
 
   return withGovernedSpend(
-    { project: ctx.project, execution: ctx.execution, provider: 'ideogram', operation: ctx.operation, estimatedSek },
+    { project: ctx.project, execution: ctx.execution, provider: 'ideogram', operation: ctx.operation, estimatedSek,
+      ceilingBasis: 'fixed_units', rates },
     async () => {
       // ── G3C-3C-A · E2 · A CLAIMED RUN REACHES THIS PROVIDER TOO ──────────
       // This is the saga/activity image path of a RUN_BOUND workflow run, and

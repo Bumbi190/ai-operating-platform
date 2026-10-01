@@ -48,6 +48,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getRates } from './rates'
 import { isSpendGateEnforced } from './spend-gate-flag'
 import type { MeteredCostRow } from './spend-meter'
+import type { CeilingBasis, RateSnapshot } from './spend-ceiling'
 
 export { isSpendGateEnforced }
 
@@ -191,14 +192,17 @@ export async function openOverrideReservation(input: ReserveInput): Promise<stri
 }
 
 /**
- * From here on the provider MAY be called. Returns false when intent could not
- * be durably recorded — the caller must then not dispatch. Never throws.
+ * From here on the provider MAY be called. Records WHY the held amount is a hard
+ * ceiling (`ceilingBasis`) alongside the intent. Returns false when intent could
+ * not be durably recorded — the caller must then not dispatch. Never throws.
  */
-export async function markSpendDispatchIntent(reservationId: string, dispatchToken: string): Promise<boolean> {
+export async function markSpendDispatchIntent(
+  reservationId: string, dispatchToken: string, ceilingBasis: CeilingBasis,
+): Promise<boolean> {
   try {
     const db = createAdminClient() as any
     const { data, error } = await db.rpc('budget_mark_dispatch_intent', {
-      p_reservation_id: reservationId, p_dispatch_token: dispatchToken,
+      p_reservation_id: reservationId, p_dispatch_token: dispatchToken, p_ceiling_basis: ceilingBasis,
     })
     return !error && data === true
   } catch {
@@ -221,8 +225,8 @@ export interface SettlementOutcome {
   readonly settled: boolean
   readonly result: 'settled' | 'already_settled' | 'failed'
   readonly settledSek: number | null
-  /** Metered cost exceeded the reserved upper bound: an estimator assumption failed. */
-  readonly estimateExceeded: boolean
+  /** Metered cost exceeded the reserved HARD ceiling: a bound proof failed. Recorded honestly. */
+  readonly ceilingExceeded: boolean
 }
 
 /**
@@ -230,12 +234,12 @@ export interface SettlementOutcome {
  * transaction (`budget_settle_recorded`). Never throws.
  *
  * On failure the reservation stays open with dispatch intent — counted as held
- * at its upper-bound estimate — and the crash reconciler settles it later. One
+ * at its hard ceiling in every current window — and the reconciler settles it later. One
  * retry covers a lost response: a settlement that had already committed answers
  * `already_settled` and writes nothing.
  */
 export async function settleSpend(reservationId: string | null, settlement: SpendSettlement): Promise<SettlementOutcome> {
-  const failed: SettlementOutcome = { settled: false, result: 'failed', settledSek: null, estimateExceeded: false }
+  const failed: SettlementOutcome = { settled: false, result: 'failed', settledSek: null, ceilingExceeded: false }
   if (!reservationId) return failed
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
@@ -257,11 +261,12 @@ export async function settleSpend(reservationId: string | null, settlement: Spen
         settled: true,
         result: row.result,
         settledSek: row.settled_sek === null || row.settled_sek === undefined ? null : Number(row.settled_sek),
-        estimateExceeded: row.estimate_exceeded === true,
+        ceilingExceeded: row.ceiling_exceeded === true,
       }
-      if (outcome.estimateExceeded) {
-        console.error(`[budget] metered cost ${outcome.settledSek} SEK EXCEEDED the reserved upper bound `
-          + `${row.estimate_sek} SEK for reservation ${reservationId} — the estimator under-reserved.`)
+      if (outcome.ceilingExceeded) {
+        console.error(`[budget] metered cost ${outcome.settledSek} SEK EXCEEDED the hard ceiling `
+          + `${row.ceiling_sek} SEK for reservation ${reservationId} — a ceiling proof is broken; `
+          + 'recorded at the real figure.')
       }
       return outcome
     } catch (e) {
@@ -300,13 +305,19 @@ export async function releaseSpend(reservationId: string | null, opts: { dispatc
 // write cost_events. A second price table here would drift, and the estimate
 // would stop matching the figure later recorded.
 
-export async function estimateVoiceSek(charCount: number): Promise<number> {
-  const r = await getRates()
+// M0: these are fixed-unit HARD ceilings — the same units × the same per-unit
+// price the metering (`logVoiceCost` / `logImageCost`) records — and they take
+// the caller's rate snapshot so ceiling and metering price identically.
+
+export async function estimateVoiceSek(charCount: number, rates?: RateSnapshot): Promise<number> {
+  const r = rates ?? await getRates()
   return (charCount / 1000) * (r.elevenlabs_usd_per_1k_chars ?? 0.24) * (r.usd_sek ?? 10.5)
 }
 
-export async function estimateImageSek(images: number, provider: 'ideogram' | 'gpt_image' = 'ideogram'): Promise<number> {
-  const r = await getRates()
+export async function estimateImageSek(
+  images: number, provider: 'ideogram' | 'gpt_image' = 'ideogram', rates?: RateSnapshot,
+): Promise<number> {
+  const r = rates ?? await getRates()
   const unit = provider === 'ideogram'
     ? (r.ideogram_v3_usd_per_image ?? 0.08)
     : (r.gpt_image_usd_per_image ?? 0.042)

@@ -23,7 +23,7 @@
  * Once a meter is closed its reservation has been (or is being) settled. A cost
  * that arrives afterwards is refused here and NOT inserted — inserting it would
  * count the same call twice next to the settlement row. The settlement already
- * holds at least the reserved upper bound.
+ * holds at least the reserved hard ceiling.
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks'
@@ -48,6 +48,13 @@ export interface MeteredCostRow {
 }
 
 export class SpendMeter {
+  /**
+   * M0: the rate snapshot that priced this call's hard ceiling. Metered rows are
+   * priced with it too, so a rate or FX edit between reservation and metering
+   * cannot lift the metered amount above the ceiling.
+   */
+  constructor(readonly rates?: Readonly<Record<string, number>>) {}
+
   private readonly collected: MeteredCostRow[] = []
   private closed = false
   private deferred: Promise<unknown> | null = null

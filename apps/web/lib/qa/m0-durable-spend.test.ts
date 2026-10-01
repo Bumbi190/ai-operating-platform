@@ -60,11 +60,12 @@ const CLEAR = {
 const PAUSED = { ...CLEAR, allowed: false, globalPaused: true, reason: 'global_automation_paused' as const }
 const ALLOWED = { allowed: true, wouldAllow: true, advisoryOverride: false, reason: 'ok',
   reservationId: 'res-1', budgetSek: 700, committedSek: 0, reservedSek: 0, headroomSek: 700, bindingScope: null }
-const SETTLED = { settled: true, result: 'settled', settledSek: 1, estimateExceeded: false }
+const SETTLED = { settled: true, result: 'settled', settledSek: 1, ceilingExceeded: false }
 
 const input = (estimatedSek = 3) => ({
   project: { projectId: 'proj-1' }, execution: TEST_AUTONOMOUS_GLOBAL,
   provider: 'anthropic', operation: 'op', estimatedSek,
+  ceilingBasis: 'token_window' as const, rates: { usd_sek: 10 },
 })
 
 async function load() {
@@ -144,7 +145,7 @@ describe('M0 settlement: metered cost reaches the durable settlement, not the be
 
   it('cost persistence failure: the call still returns, and the reservation is NOT released (it stays counted)', async () => {
     const { withGovernedSpend, logLlmCost } = await load()
-    settleSpend.mockResolvedValue({ settled: false, result: 'failed', settledSek: null, estimateExceeded: false })
+    settleSpend.mockResolvedValue({ settled: false, result: 'failed', settledSek: null, ceilingExceeded: false })
     const out = await withGovernedSpend(input(), async () => {
       await logLlmCost('claude-sonnet-4-6', { tokensIn: 10, tokensOut: 10 })
       return 'answer'
@@ -309,7 +310,7 @@ describe('M0: advisory overrides are accounted; replays never release another ca
     reserveSpend.mockResolvedValue({ ...ALLOWED, wouldAllow: false, advisoryOverride: true,
       reason: 'budget_exceeded', reservationId: 'res-refused' })
     await withGovernedSpend(input(), async () => 'ok')
-    expect(markSpendDispatchIntent).toHaveBeenCalledWith('res-override', expect.any(String))
+    expect(markSpendDispatchIntent).toHaveBeenCalledWith('res-override', expect.any(String), 'token_window')
     expect(settleSpend).toHaveBeenCalledWith('res-override', expect.anything())
   })
 

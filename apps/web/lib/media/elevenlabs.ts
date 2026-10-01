@@ -16,6 +16,7 @@
 import { getBrandVoice, BRAND_MODEL, type BrandVoiceName } from '@/lib/voice/config'
 import { logVoiceCost } from '@/lib/cost/track'
 import { estimateVoiceSek } from '@/lib/cost/budget-gate'
+import { getRates } from '@/lib/cost/rates'
 import {
   MEDIA_PIPELINE_PROJECT, ProviderNotDispatchedError, withGovernedSpend, type ProjectRef,
 } from '@/lib/cost/governed-spend'
@@ -73,10 +74,13 @@ export async function generateVoiceover(
   // of hand-rolling the lifecycle, which is what closes audit F-002: the old
   // `projectId ? reserve : null` skipped the gate entirely when the project
   // could not be resolved, and a database blip was enough to trigger it.
-  const estimatedSek = await estimateVoiceSek(text.length)
+  // M0: one rate snapshot prices the fixed-unit ceiling AND the metering.
+  const rates = await getRates()
+  const estimatedSek = await estimateVoiceSek(text.length, rates)
 
   return withGovernedSpend(
-    { project, execution, provider: 'elevenlabs', operation: 'generateVoiceover', estimatedSek, idempotencyKey },
+    { project, execution, provider: 'elevenlabs', operation: 'generateVoiceover', estimatedSek, idempotencyKey,
+      ceilingBasis: 'fixed_units', rates },
     async () => {
       let response: Response
       try {
@@ -228,10 +232,12 @@ export async function generateSoundEffect(
   // ~200 character-equivalents per second of generated audio. Pessimistic on
   // purpose: an over-estimate reserves too much, an under-estimate lets a
   // concurrent caller through.
-  const estimatedSek = await estimateVoiceSek(Math.ceil(durationSeconds * 200))
+  const rates = await getRates()
+  const estimatedSek = await estimateVoiceSek(Math.ceil(durationSeconds * 200), rates)
 
   return withGovernedSpend(
-    { project, execution, provider: 'elevenlabs', operation: 'generateSoundEffect', estimatedSek },
+    { project, execution, provider: 'elevenlabs', operation: 'generateSoundEffect', estimatedSek,
+      ceilingBasis: 'fixed_units', rates },
     async () => {
       let res: Response
       try {

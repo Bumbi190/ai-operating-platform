@@ -138,7 +138,7 @@ const OPERATOR_GLOBAL = { context: 'OPERATOR_EXECUTION' as const, scope: { kind:
 const spend = async (execution: unknown, project: unknown = { projectId: 'bill-1' }) => {
   const { withGovernedSpend } = await boundary()
   return withGovernedSpend(
-    { project, execution, provider: 'anthropic', operation: 'op', estimatedSek: 1 } as never,
+    { project, execution, provider: 'anthropic', operation: 'op', estimatedSek: 1, ceilingBasis: 'internal_fixed' } as never,
     provider,
   )
 }
@@ -219,7 +219,7 @@ describe('G3C-1 · ordering', () => {
     const { withGovernedSpend } = await boundary()
     await withGovernedSpend(
       { project: { projectId: 'b' }, execution: AUTONOMOUS_GLOBAL,
-        provider: 'anthropic', operation: 'op', estimatedSek: 1 } as never,
+        provider: 'anthropic', operation: 'op', estimatedSek: 1, ceilingBasis: 'internal_fixed' } as never,
       async () => { order.push('dispatch'); return 1 },
     )
     // reserve happened (observed via the ledger), then the contract was seen,
@@ -340,7 +340,7 @@ describe('G3C-1 · an outer retry re-authorizes', () => {
     const { withGovernedSpend } = await boundary()
     const call = () => withGovernedSpend(
       { project: { projectId: 'b' }, execution: AUTONOMOUS_GLOBAL,
-        provider: 'anthropic', operation: 'op', estimatedSek: 1 } as never,
+        provider: 'anthropic', operation: 'op', estimatedSek: 1, ceilingBasis: 'internal_fixed' } as never,
       async () => { dispatches += 1; throw new Error('503 retryable') },
     )
 
@@ -387,7 +387,7 @@ describe('G3C-1 · a paused PROJECT refuses its own work', () => {
     try {
       return await withGovernedSpend(
         { project: { projectSlug: 'ai-media-automation' }, execution,
-          provider: 'anthropic', operation: 'op', estimatedSek: 1 } as never,
+          provider: 'anthropic', operation: 'op', estimatedSek: 1, ceilingBasis: 'internal_fixed' } as never,
         provider,
       )
     } finally { contractsSeen.push = originalPush }

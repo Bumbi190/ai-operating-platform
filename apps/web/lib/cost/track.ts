@@ -30,6 +30,15 @@ export { getRates } from './rates'
 import { getRates } from './rates'
 import { currentSpendMeter, type MeteredCostRow } from './spend-meter'
 
+/**
+ * The rates to price a cost row with. Inside a governed call: the snapshot that
+ * priced its hard ceiling (M0), so ceiling and metering can never diverge.
+ * Outside: the current rates.
+ */
+async function ratesForCost(): Promise<Record<string, number>> {
+  return currentSpendMeter()?.rates ?? await getRates()
+}
+
 // ── Project slug → id cache ─────────────────────────────────────────────────
 const projectIdCache = new Map<string, string | null>()
 
@@ -85,7 +94,7 @@ interface CostRow {
 // insert in `{ error }` rather than throwing, and that result used to be ignored.
 async function insertCostEvent(row: CostRow, ctx: CostContext): Promise<void> {
   try {
-    const [rates, projectId] = await Promise.all([getRates(), resolveProjectId(ctx)])
+    const [rates, projectId] = await Promise.all([ratesForCost(), resolveProjectId(ctx)])
     const costSek = row.costUsd * (rates.usd_sek ?? 10.5)
     const record: MeteredCostRow = {
       project_id: projectId,
@@ -107,7 +116,7 @@ async function insertCostEvent(row: CostRow, ctx: CostContext): Promise<void> {
     const meter = currentSpendMeter()
     if (meter) {
       if (meter.record(record)) return
-      // The governed call already settled (at least its reserved upper bound).
+      // The governed call already settled (at least its reserved hard ceiling).
       // Inserting this as well would count the same provider call twice.
       console.error('[cost] metered cost arrived after its governed settlement; NOT written to avoid '
         + 'double-counting:', { provider: record.provider, model: record.model, costSek: record.cost_sek })
@@ -150,7 +159,7 @@ export async function logLlmCost(
 
 // ── Voice (ElevenLabs) ──────────────────────────────────────────────────────
 export async function logVoiceCost(charCount: number, ctx: CostContext = {}): Promise<void> {
-  const rates = await getRates()
+  const rates = await ratesForCost()
   const costUsd = (charCount / 1000) * (rates.elevenlabs_usd_per_1k_chars ?? 0.24)
   await insertCostEvent(
     { provider: 'elevenlabs', model: 'tts', unitType: 'characters', units: charCount, costUsd },
@@ -183,7 +192,7 @@ export async function logImageCost(
   ctx: CostContext = {},
 ): Promise<void> {
   if (count <= 0) return
-  const rates = await getRates()
+  const rates = await ratesForCost()
   const perImage = provider === 'ideogram'
     ? (rates.ideogram_v3_usd_per_image ?? 0.08)
     : (rates.gpt_image_usd_per_image ?? 0.042)

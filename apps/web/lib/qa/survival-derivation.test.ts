@@ -810,6 +810,9 @@ describe('read-only, with a closed consumer set', () => {
       // ceiling rules (null → L0, hostile state → L0), which requires importing
       // the backend rather than copying its constants.
       resolve(process.cwd(), 'lib/qa/autonomy-runtime-foundation.test.ts'),
+      // M0's ceiling suite: it proves that burn counts possibly-billed spend
+      // (open reservations with dispatch intent) by driving the real snapshot.
+      resolve(process.cwd(), 'lib/qa/m0-spend-ceiling.test.ts'),
       // Phase 3B1A's trace guards: they assert the trace migration's
       // `survival_state` vocabulary is SET-EQUAL to the canonical states, which
       // means reading `SURVIVAL_STATES` rather than restating it — the whole
@@ -880,7 +883,9 @@ describe('read-only, with a closed consumer set', () => {
     // another tenant's burn, headroom or revenue.
     const src = readCode('lib/atlas/survival/snapshot.ts')
     expect(src).toContain("allowedProjectIds.includes(row.project_id")
-    expect((src.match(/\.in\('project_id', allowedProjectIds\)/g) ?? [])).toHaveLength(2)
+    // 3 since M0: burn also reads open reservations with dispatch intent —
+    // scoped to the same allow-list as every other read.
+    expect((src.match(/\.in\('project_id', allowedProjectIds\)/g) ?? [])).toHaveLength(3)
   })
 
   it('returns no secret and no environment value', () => {

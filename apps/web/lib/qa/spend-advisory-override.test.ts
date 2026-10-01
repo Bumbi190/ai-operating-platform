@@ -79,6 +79,9 @@ const input = (over: Record<string, unknown> = {}) => ({
   provider: 'anthropic',
   operation: 'Write Article',
   estimatedSek: 0.1024,
+  // M0: every governed call declares its hard-ceiling basis and the snapshot that priced it.
+  ceilingBasis: 'token_window' as const,
+  rates: { usd_sek: 10 },
   ...over,
 })
 

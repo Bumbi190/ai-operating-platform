@@ -193,13 +193,17 @@ describe('bind.ts composes canonical systems and writes nothing', () => {
 // ── The migration ────────────────────────────────────────────────────────────
 
 describe('the atomic bind migration', () => {
-  it('is the only AUTONOMY migration after Phase 3B1A (M0 is the one reviewed non-autonomy successor)', () => {
+  it('is the only BIND migration after Phase 3B1A (M0 and 3B1B2 M1 are the reviewed successors)', () => {
     const files = readdirSync(join(APP, MIGRATION_DIR)).filter(f => f.endsWith('.sql')).sort()
     expect(files.slice(files.indexOf(TRACE_MIGRATION) + 1))
-      .toEqual([BIND_MIGRATION, '20261001160000_m0_durable_spend_settlement.sql'])
+      .toEqual([BIND_MIGRATION, '20261001160000_m0_durable_spend_settlement.sql', '20261002140000_autonomy_authority_serialization.sql'])
     // M0 is spend accounting only: it must not touch the bind surface or the trace.
     const m0 = read(`${MIGRATION_DIR}/20261001160000_m0_durable_spend_settlement.sql`)
     expect(m0).not.toMatch(/bind_workflow_action_run|run_autonomy_decisions|autonomy_license/)
+    // 3B1B2 M1 adds serialization primitives (decision head, licence-writer
+    // instance lock) and must not touch the bind surface, the run or the trace.
+    const m1 = read(`${MIGRATION_DIR}/20261002140000_autonomy_authority_serialization.sql`).replace(/--[^\n]*/g, '')
+    expect(m1).not.toMatch(/bind_workflow_action_run|run_autonomy_decisions|public\.runs\b/)
   })
 
   it('the EFFECTIVE bind surface is the last definition in apply order, and every definition is closed', () => {

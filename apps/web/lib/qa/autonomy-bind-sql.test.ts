@@ -55,6 +55,9 @@ const MIGRATIONS = [
   '20260830_readonly_action_authorization.sql',
   '20260925120000_autonomy_trace_decisions.sql',
   '20260926120000_autonomy_bind_atomic.sql',
+  // 3B1B2 M1: exempt binds must keep working with the decision head and the
+  // licence writer's instance-first lock in place.
+  '20261002140000_autonomy_authority_serialization.sql',
 ].map(f => join(process.cwd(), 'supabase/migrations', f))
 
 function dsnFor(database: string): string {
@@ -164,7 +167,7 @@ create table public.workflow_instances (
 create table public.atlas_decision_ledger (
   record_id uuid primary key, decision_id uuid not null, version integer not null,
   project_id uuid not null references public.projects (id), materiality jsonb not null,
-  record_type text);
+  record_type text, lifecycle_generation integer not null default 0);
 -- The pre-binding shape of runs; the REAL binding migrations add the rest.
 create table public.runs (
   id uuid primary key default gen_random_uuid(),
@@ -535,6 +538,9 @@ d('two-session: no concurrent authority act can narrow what an open bind commits
     const [b, i] = await Promise.all([bindTx, issue])
     expect(i.ok, i.stderr).toBe(true)
     expect(b.ok, b.stderr).toBe(true)
+    // 3B1B2 M1: the licence writer locks the instance FOR NO KEY UPDATE first. The
+    // open bind's run insert holds only FOR KEY SHARE on that instance (its FK), and
+    // the two do not conflict — so the licence writer is still NOT blocked.
     expect(i.end, 'the licence writer is NOT blocked by an exempt bind').toBeLessThan(b.end)
     // Two live lineages now exist (the resolver would say ambiguous_licenses) —
     // and the committed bind row is still TRUE: it never claimed a licence.
@@ -549,7 +555,20 @@ d('two-session: no concurrent authority act can narrow what an open bind commits
     const [b, r] = await Promise.all([bindTx, revoke])
     expect(r.ok, r.stderr).toBe(true)
     expect(b.ok, b.stderr).toBe(true)
-    expect(r.end).toBeLessThan(b.end)
+    expect(r.end).toBeLessThan(b.end)                                  // KEY SHARE vs NO KEY UPDATE: no wait
+    expect(bindRowFor(a.p_idempotency_key)).toBe(BARE_EXEMPT_ROW)
+  })
+
+  it('the reverse: an OPEN licence act on the instance does not delay an exempt bind on it (3B1B2 M1)', async () => {
+    const licence = '7a7a7a7a-7a7a-47a7-87a7-7a7a7a7a7a7a'
+    const open = runAsync(dsn, `begin; ${licenceAct(licence, 'LICENSE_ISSUED', 0)}; select pg_sleep(2.5); commit;`)
+    await sleep(900)
+    const a = exemptArgs()
+    const b = await runAsync(dsn, `set role service_role; ${callSql(a)}`)
+    const l = await open
+    expect(b.ok, b.stderr).toBe(true)
+    expect(l.ok, l.stderr).toBe(true)
+    expect(b.end, 'the exempt bind finished while the licence act still held the instance').toBeLessThan(l.end)
     expect(bindRowFor(a.p_idempotency_key)).toBe(BARE_EXEMPT_ROW)
   })
 
@@ -558,7 +577,7 @@ d('two-session: no concurrent authority act can narrow what an open bind commits
     const bindTx = openBind(a)
     await sleep(900)
     const reversal = runAsync(dsn, `insert into public.atlas_decision_ledger
-      values (gen_random_uuid(), '${DECISION}', 2, '${P_A}', '["autonomy"]'::jsonb, 'reversed')`)
+      values (gen_random_uuid(), '${DECISION}', 2, '${P_A}', '["autonomy"]'::jsonb, 'reversed', 1)`)   // head + 1 (3B1B2 M1)
     const [b, r] = await Promise.all([bindTx, reversal])
     expect(r.ok, r.stderr).toBe(true)
     expect(b.ok, b.stderr).toBe(true)

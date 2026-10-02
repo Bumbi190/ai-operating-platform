@@ -46,8 +46,10 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // the apply-before-PR contract reporting its own pre-apply condition.
 // M0 adds `m0_durable_spend_settlement` (enforced): 103/89 → 104/90. NOT applied to
 // production on its branch, so the guard is RED there until the operator-approved apply.
-export const EXPECTED_CANONICAL_SQL_COUNT = 104
-export const EXPECTED_ENFORCED_COUNT = 90
+// 3B1B2 M1 adds `autonomy_authority_serialization` (enforced): 104/90 → 105/91. APPLIED to
+// production on 2026-10-02 (ledger version 20261002134227).
+export const EXPECTED_CANONICAL_SQL_COUNT = 105
+export const EXPECTED_ENFORCED_COUNT = 91
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

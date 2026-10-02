@@ -58,6 +58,9 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
   // 103 → 104: `m0_durable_spend_settlement` (M0) — APPLIED to production on
   // 2026-10-02 under the operator-approved M0 rollout (ledger version 20261002062908);
   // the production-ledger pin below is reconciled 126 → 127 accordingly.
+  // 104 → 105: `autonomy_authority_serialization` (Phase 3B1B2 M1), on this branch, NOT
+  // applied. The production-ledger pin (127) is therefore deliberately RED on this branch
+  // until the operator-approved apply, exactly as for every phase before it.
   //
   // 1C2 and 2C each computed 100/86 — both were written against main's 99/85 — which is
   // exactly why the number alone could not distinguish them and why the merged figure is
@@ -66,14 +69,14 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
   // NOTE ON 3B1A: these two counts describe the CANONICAL CORPUS, so they move as soon
   // as the file exists. The production APPLY is a separate fact, and it has NOT happened
   // for 3B1A — see the ledger assertion below, which is deliberately left RED.
-  it('pins policy v2 and the current 104/90/14/30 counts', () => {
+  it('pins policy v2 and the current 105/91/14/30 counts', () => {
     expect(MIGRATION_GUARD_POLICY_VERSION).toBe(2)
-    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(104)
-    expect(EXPECTED_ENFORCED_COUNT).toBe(90)
+    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(105)
+    expect(EXPECTED_ENFORCED_COUNT).toBe(91)
     expect(GRANDFATHERED_MIGRATION_NAMES).toHaveLength(14)
     expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).toHaveLength(30)
-    expect(repositoryState.sqlFiles).toHaveLength(104)
-    expect(repositoryState.enforcedNames).toHaveLength(90)
+    expect(repositoryState.sqlFiles).toHaveLength(105)
+    expect(repositoryState.enforcedNames).toHaveLength(91)
   })
 
   it('uses exact explicit names with no wildcard policy entries', () => {
@@ -268,15 +271,15 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
       ...runtimeHarness,
     })
     // The whole post-apply picture in one assertion: the canonical corpus is
-    // 104 files / 90 enforced after Phase M0, and the synthetic known ledger
-    // is 127 because `m0_durable_spend_settlement` is now APPLIED to production
+    // 105 files / 91 enforced after Phase 3B1B2 M1 (on its branch), and the synthetic
+    // known ledger pin stays 127 because `m0_durable_spend_settlement` is APPLIED to production
     // (version 20261002062908). See the note on the integrity test above for
     // why this number is hardcoded rather than derived.
     expect(result).toMatchObject({
       skipped: false,
       policyVersion: 2,
-      canonicalSqlCount: 104,
-      enforcedCount: 90,
+      canonicalSqlCount: 105,
+      enforcedCount: 91,
       appliedLedgerCount: 127,
     })
   })

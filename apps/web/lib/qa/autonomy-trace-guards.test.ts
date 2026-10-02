@@ -306,7 +306,8 @@ describe('migration discipline', () => {
     // spend settlement (which touches no autonomy table). Anything else wedged in
     // after 3B1A must be noticed, never absorbed.
     expect(after, `unexpected migrations after Phase 3B1A:\n${after.join('\n')}`)
-      .toEqual(['20260926120000_autonomy_bind_atomic.sql', '20261001160000_m0_durable_spend_settlement.sql'])
+      .toEqual(['20260926120000_autonomy_bind_atomic.sql', '20261001160000_m0_durable_spend_settlement.sql',
+        '20261002140000_autonomy_authority_serialization.sql'])
   })
 })
 

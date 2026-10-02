@@ -29,6 +29,7 @@ export { getRates } from './rates'
 
 import { getRates } from './rates'
 import { currentSpendMeter, type MeteredCostRow } from './spend-meter'
+import { ceilToLedgerScale } from './spend-ceiling'
 
 /**
  * The rates to price a cost row with. Inside a governed call: the snapshot that
@@ -95,7 +96,15 @@ interface CostRow {
 async function insertCostEvent(row: CostRow, ctx: CostContext): Promise<void> {
   try {
     const [rates, projectId] = await Promise.all([ratesForCost(), resolveProjectId(ctx)])
-    const costSek = row.costUsd * (rates.usd_sek ?? 10.5)
+    // M0 ledger precision: `cost_sek` is the AUTHORITY amount — `budget_scope_state`
+    // sums it for budget and Survival — so it is quantized UP to the 4-decimal
+    // SEK ledger scale, never rounded to nearest: a stored cost may exceed the
+    // calculated one by at most one 0.0001 SEK quantum, and never fall below it.
+    // This is the ONE place an application cost row's amount is computed, for
+    // governed (metered) and ungoverned rows alike. Units, tokens, provider and
+    // model stay factual; the exact calculated figure is kept in metadata.
+    const costSekCalculated = row.costUsd * (rates.usd_sek ?? 10.5)
+    const costSek = ceilToLedgerScale(costSekCalculated)
     const record: MeteredCostRow = {
       project_id: projectId,
       provider:   row.provider,
@@ -107,10 +116,12 @@ async function insertCostEvent(row: CostRow, ctx: CostContext): Promise<void> {
       tokens_in:  row.tokensIn ?? 0,
       tokens_out: row.tokensOut ?? 0,
       cost_usd:   Number(row.costUsd.toFixed(6)),
-      cost_sek:   Number(costSek.toFixed(4)),
+      cost_sek:   costSek,
       run_id:     ctx.runId ?? null,
       script_id:  ctx.scriptId ?? null,
-      metadata:   toJson(ctx.metadata ?? {}),
+      metadata:   costSek === costSekCalculated
+        ? toJson(ctx.metadata ?? {})
+        : toJson({ ...(ctx.metadata ?? {}), cost_sek_calculated: costSekCalculated }),
     }
 
     const meter = currentSpendMeter()

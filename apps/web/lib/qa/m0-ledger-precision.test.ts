@@ -16,9 +16,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { TEST_AUTONOMOUS_GLOBAL } from './execution-fixtures'
 import {
-  SEK_LEDGER_SCALE, ceilToLedgerScale, fixedUnitCeiling, openAISpeechCeiling, tokenWindowCeiling,
+  SEK_LEDGER_MAX, SEK_LEDGER_SCALE, ceilToLedgerScale, fixedUnitCeiling, openAISpeechCeiling, tokenWindowCeiling,
   CONTEXT_WINDOW_TOKENS,
 } from '@/lib/cost/spend-ceiling'
+import { MODEL_PRICING, calculateCost } from '@/lib/ai/pricing'
 
 const reserveSpend = vi.fn()
 const settleSpend = vi.fn()
@@ -40,7 +41,15 @@ vi.mock('@/lib/governance/execution-stop', async (orig) => ({
   }),
 }))
 vi.mock('server-only', () => ({}))
-vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({}) }))
+const inserted: Array<{ table: string; row: Record<string, unknown> }> = []
+vi.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: () => ({
+    from: (table: string) => ({
+      insert: async (row: Record<string, unknown>) => { inserted.push({ table, row }); return { error: null } },
+    }),
+  }),
+}))
+vi.mock('@/lib/cost/rates', () => ({ getRates: async () => ({ usd_sek: 10.5 }) }))
 
 /** cost_rates as read from production on 2026-10-02 (incl. the M0 tts-1 row). */
 const PROD_RATES = {
@@ -58,10 +67,13 @@ function storedAsNumeric4(value: number): number {
 }
 
 const decimals = (x: number) => (String(x).split('.')[1] ?? '').length
+/** The next 4-decimal amount below a ledger amount, computed exactly (integer quanta), not by float subtraction. */
+const belowByOneQuantum = (q: number) => (Math.round(q * 10 ** SEK_LEDGER_SCALE) - 1) / 10 ** SEK_LEDGER_SCALE
 
 beforeEach(() => {
   vi.clearAllMocks()
   vi.resetModules()
+  inserted.length = 0
   reserveSpend.mockResolvedValue({ allowed: true, wouldAllow: true, advisoryOverride: false, reason: 'ok',
     reservationId: 'res-1', budgetSek: 700, committedSek: 0, reservedSek: 0, headroomSek: 700, bindingScope: null })
   settleSpend.mockResolvedValue({ settled: true, result: 'settled', settledSek: 0, ceilingExceeded: false })
@@ -83,7 +95,8 @@ describe('ceilToLedgerScale: the smallest 4-decimal amount ≥ the ceiling', () 
     [0.0945, 0.0945],
     [0.00001, 0.0001],
     [5, 5],
-    [99999999.99995, 100000000],
+    [99999999.99985, 99999999.9999],
+    [SEK_LEDGER_MAX, SEK_LEDGER_MAX],
   ])('%s → %s', (raw, expected) => {
     expect(ceilToLedgerScale(raw)).toBe(expected)
   })
@@ -130,7 +143,7 @@ describe('ceilToLedgerScale: the smallest 4-decimal amount ≥ the ceiling', () 
       if (!(x > 0)) continue
       const q = ceilToLedgerScale(x)
       if (!(q >= x)) throw new Error(`under-reserved: ${x} → ${q}`)
-      if (!(q - 0.0001 < x)) throw new Error(`not minimal: ${x} → ${q}`)
+      if (!(belowByOneQuantum(q) < x)) throw new Error(`not minimal: ${x} → ${q}`)
       if (decimals(q) > SEK_LEDGER_SCALE) throw new Error(`not on the ledger scale: ${x} → ${q}`)
       if (storedAsNumeric4(q) !== q) throw new Error(`database would change it: ${q}`)
     }
@@ -260,5 +273,161 @@ describe('withGovernedSpend quantizes ONCE, before reserve / override / advisory
       'lib/media/image-client.ts', 'lib/cost/budget-gate.ts', 'app/api/chat/tts/route.ts']) {
       expect(strip(adapter)).not.toMatch(/ceilToLedgerScale/)
     }
+  })
+})
+
+// ── The ledger's domain: maximum, huge and invalid inputs ────────────────────
+
+describe('ledger maximum and huge inputs: refused, never clamped, never looping', () => {
+  it('the maximum is the numeric(12,4) maximum 99 999 999.9999, itself on the ledger scale', () => {
+    expect(SEK_LEDGER_MAX).toBe(99_999_999.9999)
+    expect(ceilToLedgerScale(SEK_LEDGER_MAX)).toBe(SEK_LEDGER_MAX)
+    expect(String(SEK_LEDGER_MAX)).toBe('99999999.9999')
+  })
+
+  it('anything above the maximum is returned UNCHANGED (for refusal), never clamped down to fit', () => {
+    for (const v of [99_999_999.99995, 100_000_000, 1e12, 2 ** 53, 1e300, Number.MAX_VALUE]) {
+      expect(ceilToLedgerScale(v)).toBe(v)
+    }
+  })
+
+  it('huge finite values cannot hang: the k±1 === k territory returns at once', () => {
+    const k = 1e300 * 10_000
+    expect(k - 1).toBe(k)                                         // the progress-free case the review named
+    const t0 = performance.now()
+    for (let i = 0; i < 100_000; i += 1) ceilToLedgerScale(Number.MAX_VALUE / (1 + (i % 7)))
+    expect(performance.now() - t0).toBeLessThan(2_000)
+  })
+
+  it('the helper is loop-free (permanent source guard)', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const src = readFileSync(join(process.cwd(), 'lib/cost/spend-ceiling.ts'), 'utf8')
+    const body = src.slice(src.indexOf('export function ceilToLedgerScale'))
+    expect(body.slice(0, body.indexOf('\n}\n'))).not.toMatch(/\b(while|for)\s*\(/)
+  })
+
+  it('property near the maximum: every value in [max - 1, max] lands on the scale, >= input, <= max', () => {
+    let seed = 12345
+    const rand = () => { seed = (seed * 1103515245 + 12345) >>> 0; return seed / 2 ** 32 }
+    for (let i = 0; i < 50_000; i += 1) {
+      const x = SEK_LEDGER_MAX - rand()
+      const q = ceilToLedgerScale(x)
+      if (!(q >= x && q <= SEK_LEDGER_MAX && belowByOneQuantum(q) < x && decimals(q) <= SEK_LEDGER_SCALE)) {
+        throw new Error(`bad quantization near max: ${x} -> ${q}`)
+      }
+    }
+  })
+
+  it('the maximum is accepted and reserved as-is', async () => {
+    const { withGovernedSpend } = await import('@/lib/cost/governed-spend')
+    await withGovernedSpend(governed(SEK_LEDGER_MAX), async () => 'ok')
+    expect(reserveSpend.mock.calls[0][0].estimatedSek).toBe(SEK_LEDGER_MAX)
+  })
+
+  it.each([99_999_999.99991, 99_999_999.99995, 100_000_000, 1e300, Number.MAX_VALUE])(
+    'just-over / far-over maximum %s is REFUSED before reserveSpend and before any provider call', async (v) => {
+      const { withGovernedSpend } = await import('@/lib/cost/governed-spend')
+      const provider = vi.fn()
+      await expect(withGovernedSpend(governed(v), provider))
+        .rejects.toMatchObject({ reason: 'invalid_estimate', message: expect.stringMatching(/exceeds the ledger maximum/) })
+      expect(reserveSpend).not.toHaveBeenCalled()
+      expect(openOverrideReservation).not.toHaveBeenCalled()
+      expect(provider).not.toHaveBeenCalled()
+    })
+
+  it.each([-0.0001, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+    'non-finite / negative %s keeps the existing invalid_estimate refusal', async (v) => {
+      const { withGovernedSpend } = await import('@/lib/cost/governed-spend')
+      await expect(withGovernedSpend(governed(v), async () => 'ok'))
+        .rejects.toMatchObject({ reason: 'invalid_estimate', message: expect.stringMatching(/not a usable amount/) })
+      expect(reserveSpend).not.toHaveBeenCalled()
+    })
+})
+
+// ── Metered / ungoverned authority cost: cost_events.cost_sek ────────────────
+
+/** Run `log` inside a governed meter (the governed path); return the rows it collected. */
+async function meteredRows(log: () => Promise<void>) {
+  const { SpendMeter, runWithSpendMeter } = await import('@/lib/cost/spend-meter')
+  const meter = new SpendMeter({ usd_sek: 10.5 })
+  await runWithSpendMeter(meter, log)
+  return meter.rows
+}
+
+describe('authority cost_sek is quantized UP; the metering itself stays factual', () => {
+  it('the production Atlas smoke (Sonnet 104 in / 4 out): 0.003906 SEK persists as 0.0040, not 0.0039', async () => {
+    const { logLlmCost } = await import('@/lib/cost/track')
+    const raw = calculateCost('claude-sonnet-4-6', 104, 4) * 10.5
+    expect(raw).toBeCloseTo(0.003906, 12)
+    const [row] = await meteredRows(() => logLlmCost('claude-sonnet-4-6', { input_tokens: 104, output_tokens: 4 }))
+    expect(row.cost_sek).toBe(0.004)
+    expect(row.cost_sek).toBeGreaterThanOrEqual(raw)
+    // Factual metering is untouched; the exact calculated figure is kept.
+    expect(row).toMatchObject({ tokens_in: 104, tokens_out: 4, units: 108, provider: 'anthropic',
+      model: 'claude-sonnet-4-6', cost_usd: 0.000372 })
+    expect((row.metadata as Record<string, number>).cost_sek_calculated).toBeCloseTo(0.003906, 12)
+  })
+
+  it('a 1-token tiny positive provider cost never persists as 0.0000', async () => {
+    const { logLlmCost } = await import('@/lib/cost/track')
+    const [row] = await meteredRows(() => logLlmCost('claude-haiku-4-5', { input_tokens: 1, output_tokens: 0 }))
+    expect(calculateCost('claude-haiku-4-5', 1, 0) * 10.5).toBeGreaterThan(0)
+    expect(row.cost_sek).toBe(0.0001)
+  })
+
+  it('an already 4-decimal cost is stable and carries no extra metadata', async () => {
+    const { logLlmCost } = await import('@/lib/cost/track')
+    const [row] = await meteredRows(() => logLlmCost('claude-sonnet-4-6', { input_tokens: 1_000_000, output_tokens: 0 },
+      { metadata: { a: 1 } }))
+    expect(row.cost_sek).toBe(31.5)
+    expect(row.metadata).toEqual({ a: 1 })
+  })
+
+  it('zero attribution rows stay exactly zero', async () => {
+    const { logCostAttribution } = await import('@/lib/cost/track')
+    await logCostAttribution('ideogram', { projectId: 'proj-1', metadata: { assetId: 'a1' } })
+    expect(inserted).toHaveLength(1)
+    expect(inserted[0].row).toMatchObject({ cost_sek: 0, cost_usd: 0 })
+    expect(inserted[0].row.metadata).toEqual({ assetId: 'a1', attribution_only: true })
+  })
+
+  it('UNGOVERNED positive rows (budget_scope_state sums ALL cost_events) are quantized the same way', async () => {
+    const { logLlmCost } = await import('@/lib/cost/track')
+    await logLlmCost('claude-sonnet-4-6', { input_tokens: 104, output_tokens: 4 }, { projectId: 'proj-1' })
+    expect(inserted).toHaveLength(1)                               // outside any meter: a direct insert
+    expect(inserted[0]).toMatchObject({ table: 'cost_events', row: { cost_sek: 0.004 } })
+  })
+
+  it('property: every positive governed metered cost persists >= raw, minimal, <= one quantum above', async () => {
+    const { logLlmCost } = await import('@/lib/cost/track')
+    let seed = 777
+    const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 2 ** 32 }
+    const models = Object.keys(MODEL_PRICING)
+    for (let i = 0; i < 3_000; i += 1) {
+      const model = models[i % models.length]
+      const tin = Math.floor(rand() * 10 ** Math.floor(rand() * 7))
+      const tout = Math.floor(rand() * 10 ** Math.floor(rand() * 5))
+      const raw = calculateCost(model, tin, tout) * 10.5
+      const [row] = await meteredRows(() => logLlmCost(model, { input_tokens: tin, output_tokens: tout }))
+      if (!(row.cost_sek >= raw)) throw new Error(`under-counted ${model} ${tin}/${tout}: ${row.cost_sek} < ${raw}`)
+      if (!(belowByOneQuantum(row.cost_sek) < raw)) throw new Error(`not minimal: ${row.cost_sek} vs ${raw}`)
+      if (raw > 0 && row.cost_sek === 0) throw new Error('positive cost persisted as zero')
+      if (decimals(row.cost_sek) > SEK_LEDGER_SCALE) throw new Error(`not on the ledger scale: ${row.cost_sek}`)
+    }
+  })
+
+  it('1:N rows cannot accumulate downward rounding: each row is >= its raw, so the sum is >= the raw sum', async () => {
+    const { logLlmCost } = await import('@/lib/cost/track')
+    const usages = [[104, 4], [1, 0], [333, 17], [2, 2], [99_999, 1]] as const
+    const rows = await meteredRows(async () => {
+      for (const [i, o] of usages) await logLlmCost('claude-sonnet-4-6', { input_tokens: i, output_tokens: o })
+    })
+    const rawSum = usages.reduce((s, [i, o]) => s + calculateCost('claude-sonnet-4-6', i, o) * 10.5, 0)
+    const nearestSum = usages.reduce((s, [i, o]) => s + Number((calculateCost('claude-sonnet-4-6', i, o) * 10.5).toFixed(4)), 0)
+    const storedSum = rows.reduce((s, r) => s + r.cost_sek, 0)
+    expect(nearestSum).toBeLessThan(rawSum)                        // the old rule under-counted this batch
+    expect(storedSum).toBeGreaterThanOrEqual(rawSum)
+    expect(storedSum - rawSum).toBeLessThan(usages.length * 0.0001)
   })
 })

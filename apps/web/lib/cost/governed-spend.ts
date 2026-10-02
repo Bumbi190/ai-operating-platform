@@ -63,7 +63,7 @@ import {
 } from './budget-gate'
 import { SpendMeter, runWithSpendMeter } from './spend-meter'
 import { keepFunctionAliveUntil } from './function-lifetime'
-import { CEILING_BASES, ceilToLedgerScale, type CeilingBasis, type RateSnapshot } from './spend-ceiling'
+import { CEILING_BASES, SEK_LEDGER_MAX, ceilToLedgerScale, type CeilingBasis, type RateSnapshot } from './spend-ceiling'
 // Value import, but no runtime cycle: `execution-signal` imports only
 // `run-authority` and `execution-stop`, and the latter's reference back here is
 // `import type` — erased at compile time.
@@ -290,6 +290,15 @@ export async function withGovernedSpend<T>(
     throw new SpendRefusedError({
       reason: 'invalid_estimate', provider, operation,
       detail: `estimate ${String(input.estimatedSek)} is not a usable amount`,
+    })
+  }
+  // M0: an amount the SEK ledger (numeric(12,4)) cannot hold is refused HERE,
+  // before anything is reserved or dispatched — never clamped down to fit, and
+  // never left to a database overflow to reject.
+  if (input.estimatedSek > SEK_LEDGER_MAX) {
+    throw new SpendRefusedError({
+      reason: 'invalid_estimate', provider, operation,
+      detail: `estimate ${String(input.estimatedSek)} SEK exceeds the ledger maximum ${SEK_LEDGER_MAX} SEK`,
     })
   }
 

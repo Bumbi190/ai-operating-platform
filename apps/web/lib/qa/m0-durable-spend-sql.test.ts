@@ -805,6 +805,65 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M0 durable spend settlement (real 
       expect(linked(rid)).toEqual({ count: 1, sum: 0.0029, kinds: 'estimate_unmetered' })
     })
 
+    it('metered authority cost: the 104/4 Sonnet smoke settles at 0.0040 (>= 0.003906); linked sum = actual_sek', async () => {
+      const { SpendMeter, runWithSpendMeter } = await import('@/lib/cost/spend-meter')
+      const { logLlmCost } = await import('@/lib/cost/track')
+      const meter = new SpendMeter({ usd_sek: 10.5 })
+      await runWithSpendMeter(meter, () => logLlmCost('claude-sonnet-4-6', { input_tokens: 104, output_tokens: 4 }))
+      const p = project()
+      const rid = reserve(p, 6.489); mark(rid, TOKEN(93))
+      const [result, settled] = settle(rid, TOKEN(93), 'metered', JSON.stringify(meter.rows))
+      expect(result).toBe('settled')
+      expect(settled).toBe('0.0040')
+      expect(Number(settled)).toBeGreaterThanOrEqual(0.003906)
+      expect(reservation(rid)).toMatchObject({ status: 'settled', kind: 'metered', actual: '0.0040' })
+      expect(linked(rid)).toEqual({ count: 1, sum: 0.004, kinds: 'metered' })
+      const [[tin, tout, units]] = query(dsn, `select tokens_in, tokens_out, units from cost_events where reservation_id = '${rid}'`)
+      expect([tin, tout, Number(units)]).toEqual(['104', '4', 108])            // factual metering untouched
+    })
+
+    it('1:N metered rows: each stored row >= its raw cost, the linked sum = actual_sek, and the sum >= the raw sum', async () => {
+      const { SpendMeter, runWithSpendMeter } = await import('@/lib/cost/spend-meter')
+      const { logLlmCost } = await import('@/lib/cost/track')
+      const { calculateCost } = await import('@/lib/ai/pricing')
+      const usages = [[104, 4], [1, 0], [333, 17], [2, 2], [99_999, 1]] as const
+      const meter = new SpendMeter({ usd_sek: 10.5 })
+      await runWithSpendMeter(meter, async () => {
+        for (const [i, o] of usages) await logLlmCost('claude-sonnet-4-6', { input_tokens: i, output_tokens: o })
+      })
+      const p = project()
+      const rid = reserve(p, 6.489); mark(rid, TOKEN(94))
+      const [result, settled] = settle(rid, TOKEN(94), 'metered', JSON.stringify(meter.rows))
+      expect(result).toBe('settled')
+      const stored = query(dsn, `select cost_sek::text, tokens_in, tokens_out from cost_events where reservation_id = '${rid}'`)
+      expect(stored).toHaveLength(usages.length)
+      for (const [sek, tin, tout] of stored) {
+        expect(Number(sek)).toBeGreaterThanOrEqual(calculateCost('claude-sonnet-4-6', Number(tin), Number(tout)) * 10.5)
+      }
+      const rawSum = usages.reduce((s2, [i, o]) => s2 + calculateCost('claude-sonnet-4-6', i, o) * 10.5, 0)
+      expect(Number(settled)).toBeGreaterThanOrEqual(rawSum)
+      expect(linked(rid).sum).toBeCloseTo(Number(settled), 10)
+      expect(reservation(rid).actual).toBe(settled)
+    })
+
+    it('estimate_reconciled stays conservative: a crashed quantized reservation settles at exactly its stored ceiling', async () => {
+      const { ceilToLedgerScale } = await import('@/lib/cost/spend-ceiling')
+      const raw = 18 / 1000 * 0.015 * 10.5
+      const p = project()
+      const rid = reserve(p, ceilToLedgerScale(raw)); mark(rid, TOKEN(95))
+      age(rid, 120)
+      query(dsn, `select budget_reconcile_dispatched(interval '1 hour', 1000)`)
+      expect(reservation(rid)).toMatchObject({ status: 'settled', kind: 'estimate_reconciled', actual: '0.0029' })
+      expect(linked(rid)).toEqual({ count: 1, sum: 0.0029, kinds: 'estimate_reconciled' })
+      expect(linked(rid).sum).toBeGreaterThanOrEqual(raw)
+    })
+
+    it('the ledger maximum 99999999.9999 is storable; one quantum more overflows numeric(12,4) (why the app refuses first)', () => {
+      const [[ok]] = query(dsn, `select (99999999.9999::numeric(12,4))::text`)
+      expect(ok).toBe('99999999.9999')
+      expect(sqlstateOf(dsn, `select 99999999.99995::numeric(12,4)`)).toBe('22003')
+    })
+
     it('representative quantized ceilings round-trip through budget_reserve unchanged and ≥ raw', async () => {
       const { ceilToLedgerScale, openAISpeechCeiling } = await import('@/lib/cost/spend-ceiling')
       const rates = { usd_sek: 10.5, openai_tts_1_usd_per_1k_chars: 0.015 }

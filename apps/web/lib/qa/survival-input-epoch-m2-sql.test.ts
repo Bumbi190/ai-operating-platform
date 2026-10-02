@@ -6,7 +6,8 @@
  *      only, readable by service_role, writable by no role.
  *   B. Every committed mutation of a Survival authority input advances shard
  *      txid_current() % 8 in the SAME transaction (deferred row constraint
- *      trigger + AFTER TRUNCATE statement trigger). Rollback undoes both.
+ *      trigger) AT LEAST ONCE. Rollback undoes both. TRUNCATE of a source is
+ *      refused (revoked + BEFORE TRUNCATE guard), so it can never commit.
  *   C. `survival_input_epoch_vector()` — all 8 epochs, ascending, one snapshot,
  *      fail-closed.
  *
@@ -83,6 +84,18 @@ function sqlstate(dsn: string, sql: string): string {
     return ''
   } catch (e) {
     return /ERROR:\s+([0-9A-Z]{5}):/.exec(String((e as { stderr?: unknown }).stderr ?? ''))?.[1] ?? 'unknown'
+  }
+}
+
+/** SQLSTATE and message of a statement expected to fail ({ state: '' } if it succeeded). */
+function failure(dsn: string, sql: string): { state: string; message: string } {
+  try {
+    execFileSync(PSQL!, ['-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=verbose', '-X', '-q', '-d', dsn, '-c', sql],
+      { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 60_000 })
+    return { state: '', message: '' }
+  } catch (e) {
+    const err = String((e as { stderr?: unknown }).stderr ?? '')
+    return { state: /ERROR:\s+([0-9A-Z]{5}):/.exec(err)?.[1] ?? 'unknown', message: err }
   }
 }
 
@@ -454,13 +467,15 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 sharded Survival input epoch (r
     })
 
     it('the machinery is SECURITY DEFINER with an empty search_path, and not callable by any client role', () => {
-      for (const fn of ['survival_input_epoch_bump()', 'survival_input_epoch_shards_guard()', 'survival_input_epoch_vector()']) {
+      for (const fn of ['survival_input_epoch_bump()', 'survival_input_epoch_shards_guard()', 'survival_input_epoch_vector()',
+        'survival_input_truncate_refused()']) {
         expect(one(dsn, `select prosecdef::text || '|' || array_to_string(proconfig, ',') from pg_proc where oid = 'public.${fn}'::regprocedure`), fn)
           .toBe('true|search_path=""')
       }
       for (const role of ['anon', 'authenticated', 'service_role']) {
         expect(one(dsn, `select has_function_privilege('${role}', 'public.survival_input_epoch_bump()', 'execute')`), role).toBe('f')
         expect(one(dsn, `select has_function_privilege('${role}', 'public.survival_input_epoch_shards_guard()', 'execute')`), role).toBe('f')
+        expect(one(dsn, `select has_function_privilege('${role}', 'public.survival_input_truncate_refused()', 'execute')`), role).toBe('f')
       }
       expect(one(dsn, `select has_function_privilege('service_role', 'public.survival_input_epoch_vector()', 'execute')`)).toBe('t')
       expect(one(dsn, `select has_function_privilege('anon', 'public.survival_input_epoch_vector()', 'execute')`)).toBe('f')
@@ -478,9 +493,11 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 sharded Survival input epoch (r
       }
     })
 
-    it('OWNER LIMITATION, stated honestly: the owner can disable the guard (PostgreSQL cannot bind a superuser)', () => {
+    it('OWNER LIMITATION, stated honestly: the owner can disable the guards (PostgreSQL cannot bind a superuser)', () => {
       expect(sqlstate(dsn, `begin; alter table survival_input_epoch_shards disable trigger survival_input_epoch_shards_guard;
         update survival_input_epoch_shards set epoch = 0; rollback;`)).toBe('')
+      expect(sqlstate(dsn, `begin; alter table revenue_snapshots disable trigger survival_input_truncate_refused;
+        truncate revenue_snapshots; rollback;`)).toBe('')
     })
   })
 
@@ -567,48 +584,105 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 sharded Survival input epoch (r
 
   // ── TRUNCATE ──────────────────────────────────────────────────────────────
 
-  describe('TRUNCATE — the statement-level path a row trigger alone would miss', () => {
-    it.each([
-      ['cost_events', 'truncate cost_events'],
-      ['spend_reservations', 'truncate spend_reservations cascade'],
-      ['project_budgets', 'truncate project_budgets'],
-      ['platform_config', 'truncate platform_config'],
-      ['revenue_snapshots', 'truncate revenue_snapshots'],
-      ['survival_funding_config', 'truncate survival_funding_config'],
-    ])('%s: TRUNCATE bumps inside its transaction and rolls back with it', (_t, sql) => {
-      expectRollbackClean(sql)
-    })
+  describe('TRUNCATE cannot change Survival, because TRUNCATE cannot commit', { timeout: 90_000 }, () => {
+    const SOURCES = ['cost_events', 'platform_config', 'project_budgets', 'projects', 'revenue_snapshots',
+      'spend_reservations', 'survival_funding_config']
+    /** Lift every OTHER refusal a cascade could hit, so only `t`'s own guard can answer. */
+    const othersOff = (t: string) => [
+      ...SOURCES.filter(x => x !== t).map(x => `alter table ${x} disable trigger survival_input_truncate_refused;`),
+      'alter table survival_state_events disable trigger user;',
+    ].join('\n')
 
-    it('projects: TRUNCATE is structurally refused (append-only audit ledgers cascade-refuse it) — and its own trigger still bumps', () => {
-      // TRUNCATE projects CASCADE reaches survival_state_events, whose append-only guard refuses it
-      // (production additionally has ON DELETE RESTRICT children). With that guard lifted inside a
-      // rolled-back transaction, the projects TRUNCATE trigger is shown to bump on its own.
-      expect(sqlstate(dsn, 'begin; truncate projects cascade; rollback;')).toBe('42501')
-      expectRollbackClean(`alter table survival_state_events disable trigger user;
-        alter table cost_events disable trigger survival_input_epoch_bump_truncate;
-        alter table spend_reservations disable trigger survival_input_epoch_bump_truncate;
-        alter table project_budgets disable trigger survival_input_epoch_bump_truncate;
-        alter table revenue_snapshots disable trigger survival_input_epoch_bump_truncate;
-        truncate projects cascade`, 'projects TRUNCATE (own trigger only)')
-    })
-
-    it('a COMMITTED truncate bumps exactly once even when CASCADE empties several sources', () => {
-      run(dsn, ['-c', `create table m2_truncate_probe as select * from revenue_snapshots`])
-      expectBump('truncate revenue_snapshots')
-      run(dsn, ['-c', `insert into revenue_snapshots select * from m2_truncate_probe; drop table m2_truncate_probe`])
+    it.each(SOURCES)('%s: TRUNCATE (even CASCADE, even as the OWNER) is refused by its own guard; the epoch does not move', (t) => {
       const v0 = vec()
-      const out = query(dsn, `begin; truncate spend_reservations cascade;
-        select 'm2shard=' || (txid_current() % 8); rollback;`)
-      expect(out.flat().some(l => l.startsWith('m2shard='))).toBe(true)
+      const f = failure(dsn, `begin; ${othersOff(t)} truncate ${t} cascade; commit;`)
+      expect(f.state).toBe('42501')
+      expect(f.message).toContain(`TRUNCATE of Survival authority source public.${t} is refused`)
       expect(vec()).toEqual(v0)
     })
 
-    it('service_role holds TRUNCATE on cost_events in production — and its truncate still bumps', () => {
-      expectRollbackClean('set local role service_role; truncate cost_events')
+    it.each(SOURCES)('%s: no client role and not service_role holds TRUNCATE — and an attempt is denied', (t) => {
+      for (const role of ['anon', 'authenticated', 'service_role']) {
+        expect(one(dsn, `select has_table_privilege('${role}', 'public.${t}', 'TRUNCATE')`), `${role} on ${t}`).toBe('f')
+        expect(failure(dsn, `set role ${role}; truncate public.${t} cascade`).state, `${role} on ${t}`).toBe('42501')
+      }
+      expect(one(dsn, `select count(*) from information_schema.role_table_grants
+        where table_schema = 'public' and table_name = '${t}' and privilege_type = 'TRUNCATE' and grantee <> 'postgres'`)).toBe('0')
+    })
+
+    it('an ACL REGRESSION cannot reopen it: TRUNCATE granted back to service_role is still refused by the guard', () => {
+      const f = failure(dsn, `begin; grant truncate on revenue_snapshots to service_role; set local role service_role;
+        truncate revenue_snapshots; commit;`)
+      expect(f.state).toBe('42501')
+      expect(f.message).toContain('TRUNCATE of Survival authority source public.revenue_snapshots is refused')
+    })
+
+    it('records the full privilege posture of every source (TRUNCATE nowhere; DML as the existing migrations left it)', () => {
+      const posture = query(dsn, `select table_name, grantee, string_agg(privilege_type, ',' order by privilege_type)
+        from information_schema.role_table_grants
+        where table_schema = 'public' and table_name in (${SOURCES.map(x => `'${x}'`).join(', ')})
+          and grantee in ('anon', 'authenticated', 'service_role', 'PUBLIC')
+        group by 1, 2 order by 1, 2`).map(r => r.join(':'))
+      report.sourcePrivilegePosture = posture
+      expect(posture.filter(r => r.includes('TRUNCATE'))).toEqual([])
+    })
+
+    // The exact cycle the review named:
+    //   A: shard S; TRUNCATE a source; (immediate bump takes S); then wants row X held by B.
+    //   B: shard S; holds row X in another source; COMMIT → deferred bump wants S.
+    const raceRow = () => {
+      const x = project()
+      run(dsn, ['-c', `insert into revenue_snapshots (project_id, snapshot_date, mrr_sek) values ('${x}', current_date, 7)`])
+      return x
+    }
+    const B_SQL = (x: string) => `update public.project_budgets set daily_sek = daily_sek + 1 where project_id = '${x}';`
+    const A_SQL = (x: string) => `truncate public.revenue_snapshots; perform pg_sleep(0.3);
+      update public.project_budgets set weekly_sek = weekly_sek + 1 where project_id = '${x}';`
+
+    it('REJECTED DESIGN, reproduced: an immediate AFTER TRUNCATE bump closes the cycle → exactly one 40P01', async () => {
+      const x = raceRow()
+      run(dsn, ['-c', `create table m2_revenue_keep as select * from revenue_snapshots;
+        alter table revenue_snapshots disable trigger survival_input_truncate_refused;
+        create trigger m2_rejected_truncate_bump after truncate on revenue_snapshots
+          for each statement execute function survival_input_epoch_bump();`])
+      const dl = deadlocks()
+      try {
+        const b = writer('m2_tr_rej_b', 3, B_SQL(x), { holdS: 3 })
+        expect(await holding('m2_tr_rej_b')).toBe(true)
+        const a = writer('m2_tr_rej_a', 3, A_SQL(x))
+        // A has truncated (holding shard 3) and now waits for row X, held by B.
+        expect(await waitingBehind('m2_tr_rej_a')).toEqual(['m2_tr_rej_b'])
+        expect(shardLocks('m2_tr_rej_a')).toEqual({ 3: 'No Key Update' })
+        const [ra, rb] = await Promise.all([a, b])
+        expect([ra.state, rb.state].filter(st => st === '40P01')).toHaveLength(1)
+        expect(deadlocks() - dl).toBe(1)
+        report.truncateRejectedDesign = { a: ra.state || 'committed', b: rb.state || 'committed' }
+      } finally {
+        run(dsn, ['-c', `drop trigger m2_rejected_truncate_bump on revenue_snapshots;
+          alter table revenue_snapshots enable trigger survival_input_truncate_refused;
+          insert into revenue_snapshots select k.* from m2_revenue_keep k
+            where not exists (select 1 from revenue_snapshots r where r.id = k.id);
+          drop table m2_revenue_keep;`])
+      }
+    })
+
+    it('FINAL DESIGN: the same interleaving cannot form the cycle — A is refused before any shard lock; B commits; zero 40P01', async () => {
+      const x = raceRow()
+      const dl = deadlocks()
+      const v0 = vec()
+      const b = writer('m2_tr_fin_b', 3, B_SQL(x), { holdS: 3 })
+      expect(await holding('m2_tr_fin_b')).toBe(true)
+      const a = writer('m2_tr_fin_a', 3, A_SQL(x))
+      const ra = await a
+      expect(ra.state).toBe('42501')
+      expect(ra.stderr).toContain('TRUNCATE of Survival authority source public.revenue_snapshots is refused')
+      const rb = await b
+      expect([rb.ok, rb.state]).toEqual([true, ''])
+      expect(deadlocks() - dl).toBe(0)
+      expect(delta(v0, vec())).toEqual(unit(3))
+      expect(one(dsn, `select count(*) from revenue_snapshots where project_id = '${x}'`)).toBe('1')
     })
   })
-
-  // ── FK cascades ───────────────────────────────────────────────────────────
 
   describe('FK cascades reach the epoch through the child tables\' own triggers', () => {
     it('deleting a project cascades to budgets, cost rows and reservations — one transaction, one +1', () => {
@@ -666,18 +740,44 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 sharded Survival input epoch (r
       expect(tag('c')[1]).toBe(tag('a')[1])
     })
 
-    it('a first bump inside a SUBTRANSACTION stays on the same shard (at worst +2, never a miss)', () => {
+    const costRowSql = (p: string) => `insert into cost_events (project_id, provider, cost_sek, cost_usd) values ('${p}', 'anthropic', 1, 0.1)`
+    const savepoints = (p: string, n: number) => Array.from({ length: n }, (_, i) =>
+      `savepoint s${i}; ${costRowSql(p)}; release s${i};`).join('\n')
+
+    it.each([1, 5, 10])('MEASURED: %i subtransactions each forced IMMEDIATE advance the ONE shard exactly that many times', (k) => {
+      const p = project()
+      const { shard, d } = committed(`set constraints all immediate;\n${savepoints(p, k)}`)
+      expect(d).toEqual(unit(shard, k))
+      report[`immediateSubtransactions${k}`] = d[shard]
+    })
+
+    it('a first bump in a subtransaction followed by top-level writes: same shard, +2 (sub + top), never a miss', () => {
+      const p = project()
+      const { shard, d } = committed(`set constraints all immediate;
+        savepoint s; ${costRowSql(p)}; release s;
+        update project_budgets set daily_sek = 997 where project_id = '${p}';
+        ${costRowSql(p)}`)
+      expect(d).toEqual(unit(shard, 2))
+    })
+
+    it('the DEFAULT deferred mode is exactly +1 however many savepoints the transaction used', () => {
+      const p = project()
+      const { shard, d } = committed(savepoints(p, 10))
+      expect(d).toEqual(unit(shard))
+    })
+
+    it('PL/pgSQL EXCEPTION blocks (implicit subtransactions, as M0 RPCs use) in deferred mode: exactly +1', () => {
+      const p = project()
+      const { shard, d } = committed(`do $x$ begin for i in 1..5 loop
+        begin ${costRowSql(p)}; exception when others then raise; end; end loop; end $x$`)
+      expect(d).toEqual(unit(shard))
+    })
+
+    it('a subtransaction that bumped and ROLLED BACK leaves no committed advance', () => {
       const p = project()
       const v0 = vec()
-      const rows = query(dsn, `begin; set constraints all immediate;
-        savepoint s; insert into cost_events (project_id, provider, cost_sek, cost_usd) values ('${p}', 'anthropic', 1, 0.1); release s;
-        update project_budgets set daily_sek = 997 where project_id = '${p}';
-        select 'm2shard=' || (txid_current() % 8); commit;`).map(r => r.join('|'))
-      const shard = Number(rows.find(l => l.startsWith('m2shard='))!.split('=')[1])
-      const d = delta(v0, vec())
-      expect(d.filter((x, i) => i !== shard && x !== 0)).toEqual([])
-      expect(d[shard]).toBeGreaterThanOrEqual(1)
-      expect(d[shard]).toBeLessThanOrEqual(2)
+      run(dsn, ['-c', `begin; set constraints all immediate; savepoint s; ${costRowSql(p)}; rollback to s; commit;`])
+      expect(vec()).toEqual(v0)
     })
 
     it('a rolled-back SAVEPOINT that bumped leaves the outer transaction able to bump again', () => {
@@ -1058,7 +1158,7 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 sharded Survival input epoch (r
   })
 
   describe('revenue proof — every mutation that can change the trend moves the epoch', () => {
-    it('the trend input changes and the epoch follows (insert / update / delete / upsert / truncate)', () => {
+    it('the trend input changes and the epoch follows (insert / update / delete / upsert); truncate is refused', () => {
       const p = project(false)
       expectBump(`insert into revenue_snapshots (project_id, snapshot_date, mrr_sek) values ('${p}', current_date - 1, 100)`)
       expectBump(`insert into revenue_snapshots (project_id, snapshot_date, mrr_sek) values ('${p}', current_date, 90)`)
@@ -1066,7 +1166,8 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 sharded Survival input epoch (r
       expectBump(`insert into revenue_snapshots (project_id, snapshot_date, mrr_sek) values ('${p}', current_date, 140)
                   on conflict (project_id, snapshot_date) do update set mrr_sek = excluded.mrr_sek, captured_at = now()`)
       expectBump(`delete from revenue_snapshots where project_id = '${p}' and snapshot_date = current_date - 1`)
-      expectRollbackClean(`truncate revenue_snapshots`)
+      // The bulk path: TRUNCATE cannot commit at all, so it cannot change the trend unseen.
+      expectFailedClean(`truncate revenue_snapshots`)
     })
   })
 
@@ -1089,7 +1190,7 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 sharded Survival input epoch (r
   // ── Exact coverage, introspected ──────────────────────────────────────────
 
   describe('exact trigger coverage in the catalog', () => {
-    it('every source has its deferred bump and its TRUNCATE bump — and nothing else carries one', () => {
+    it('every source has its deferred bump — and nothing else carries one; no TRUNCATE bump exists', () => {
       const rows = query(dsn, `select c.relname, t.tgname, t.tgdeferrable::text, t.tginitdeferred::text,
           (t.tgtype & 1)::bool::text as row_level, (t.tgtype & 4)::bool::text as ins, (t.tgtype & 8)::bool::text as del,
           (t.tgtype & 16)::bool::text as upd, (t.tgtype & 32)::bool::text as trunc, (t.tgqual is not null)::text as has_when
@@ -1098,22 +1199,23 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 sharded Survival input epoch (r
         order by 1, 2`).map(r => r.join('|'))
       expect(rows).toEqual([
         'cost_events|survival_input_epoch_bump|true|true|true|true|true|true|false|false',
-        'cost_events|survival_input_epoch_bump_truncate|false|false|false|false|false|false|true|false',
         'platform_config|survival_input_epoch_bump|true|true|true|true|true|false|false|false',
         'platform_config|survival_input_epoch_bump_limits|true|true|true|false|false|true|false|true',
-        'platform_config|survival_input_epoch_bump_truncate|false|false|false|false|false|false|true|false',
         'project_budgets|survival_input_epoch_bump|true|true|true|true|true|true|false|false',
-        'project_budgets|survival_input_epoch_bump_truncate|false|false|false|false|false|false|true|false',
         'projects|survival_input_epoch_bump|true|true|true|true|true|false|false|false',
         'projects|survival_input_epoch_bump_population|true|true|true|false|false|true|false|true',
-        'projects|survival_input_epoch_bump_truncate|false|false|false|false|false|false|true|false',
         'revenue_snapshots|survival_input_epoch_bump|true|true|true|true|true|true|false|false',
-        'revenue_snapshots|survival_input_epoch_bump_truncate|false|false|false|false|false|false|true|false',
         'spend_reservations|survival_input_epoch_bump|true|true|true|true|true|true|false|false',
-        'spend_reservations|survival_input_epoch_bump_truncate|false|false|false|false|false|false|true|false',
         'survival_funding_config|survival_input_epoch_bump|true|true|true|true|true|true|false|false',
-        'survival_funding_config|survival_input_epoch_bump_truncate|false|false|false|false|false|false|true|false',
       ])
+    })
+
+    it('every source carries the BEFORE TRUNCATE statement refusal, and nothing else does', () => {
+      expect(query(dsn, `select c.relname, (t.tgtype & 1)::bool::text, (t.tgtype & 2)::bool::text, (t.tgtype & 32)::bool::text
+        from pg_trigger t join pg_class c on c.oid = t.tgrelid
+        where not t.tgisinternal and t.tgfoid = 'public.survival_input_truncate_refused()'::regprocedure order by 1`)
+        .map(r => r.join('|'))).toEqual(['cost_events', 'platform_config', 'project_budgets', 'projects', 'revenue_snapshots',
+        'spend_reservations', 'survival_funding_config'].map(t => `${t}|false|true|true`))
     })
 
     it('no BEFORE trigger on a column-sensitive source rewrites an authority column (so WHEN sees the real change)', () => {

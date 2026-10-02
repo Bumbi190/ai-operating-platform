@@ -6,11 +6,17 @@
  * and make a future edit fail until its epoch coverage is reviewed:
  *
  *   - exactly 8 shards, ids 0..7, one documented shard formula;
- *   - every Survival authority source carries its deferred bump + TRUNCATE bump,
- *     and nothing else does;
- *   - the Survival read surface (TypeScript reads, SQL dependencies of the RPCs
- *     it calls, the SurvivalInput shape) equals the reviewed set — a new input
- *     fails here first;
+ *   - every Survival authority source carries its deferred bump, and nothing
+ *     else does; TRUNCATE is revoked and refused on every source, and no
+ *     immediate (mid-transaction) bump exists anywhere;
+ *   - the epoch contract is stated as AT-LEAST-ONCE change identity, never as a
+ *     bounded count;
+ *   - the Survival read surface (TypeScript reads and imports, the reviewed
+ *     public-function CALL GRAPH below the RPCs it calls, the tables that graph
+ *     reads, the SurvivalInput shape) equals the reviewed set — a new input,
+ *     direct or hidden behind a helper function, fails here first;
+ *   - the stable-observation helper is inert: no route, workflow or bind
+ *     consumer imports it;
  *   - presentation fields (operatingPaused, slug) are not silently promoted;
  *   - no role gains direct epoch mutation; vector order is ascending;
  *   - the fence simulator locks in ascending order;
@@ -66,18 +72,36 @@ const RPC_TABLE_DEPENDENCIES: Record<string, string[]> = {
 /** The SurvivalInput shape. `operatingPaused` is PRESENTATION: copied, never branched on. */
 const SURVIVAL_INPUT_FIELDS = ['scopes', 'reads', 'burnSekPerDay', 'runwayCoverage', 'funding', 'revenueTrendSek', 'operatingPaused']
 
-/** The LAST migration (apply order) that defines `public.<fn>(` — the effective body. */
-function effectiveDefinition(fn: string): string {
-  let body = ''
+/** The LAST migration (apply order) that defines `public.<fn>(` — its header and body. */
+function effectiveFunction(fn: string): { header: string; body: string; file: string } | null {
+  let found: { header: string; body: string; file: string } | null = null
   for (const f of MIGRATION_FILES) {
     const code = sqlCode(read(join(MIGRATIONS, f)))
     const re = new RegExp(`create or replace function public\\.${fn}\\(([\\s\\S]*?)\\$\\$([\\s\\S]*?)\\$\\$`, 'gi')
-    for (const m of code.matchAll(re)) body = m[2]
+    for (const m of code.matchAll(re)) found = { header: m[1], body: m[2], file: f }
   }
-  return body
+  return found
 }
+const effectiveDefinition = (fn: string) => effectiveFunction(fn)?.body ?? ''
 const tablesIn = (sql: string) =>
   [...new Set([...sql.matchAll(/\bpublic\.([a-z_]+)\b(?!\s*\()/g)].map(m => m[1]))].sort()
+const callsIn = (sql: string) =>
+  [...new Set([...sql.matchAll(/\bpublic\.([a-z_]+)\s*\(/g)].map(m => m[1]))].sort()
+
+/**
+ * THE REVIEWED PUBLIC-FUNCTION CALL GRAPH below the Survival observation.
+ * Roots are the RPCs the TypeScript read path calls; edges are every
+ * `public.<fn>(` call in each function's EFFECTIVE (last-applied) body. A new
+ * helper anywhere in this graph changes it, and so does a new table read by any
+ * function in it — both fail until reviewed and given epoch coverage.
+ */
+const SURVIVAL_SQL_CALL_GRAPH: Record<string, string[]> = {
+  budget_headroom: ['budget_scope_state'],
+  budget_scope_state: [],
+  survival_scope_is_platform_complete: [],
+  survival_input_epoch_vector: [],
+}
+const SURVIVAL_SQL_ROOTS = ['budget_headroom', 'survival_input_epoch_vector', 'survival_scope_is_platform_complete']
 
 // ── Shards ───────────────────────────────────────────────────────────────────
 
@@ -124,7 +148,7 @@ describe('M2 coverage: every Survival authority source, and nothing else', () =>
     expect([...new Set(bumpers.map(t => t.table))].sort()).toEqual([...AUTHORITY_SOURCES])
   })
 
-  it.each(AUTHORITY_SOURCES)('%s: INSERT and DELETE bump (deferred row constraint trigger), TRUNCATE bumps (statement)', (table) => {
+  it.each(AUTHORITY_SOURCES)('%s: INSERT, UPDATE and DELETE bump (deferred row constraint trigger); TRUNCATE is refused', (table) => {
     const mine = bumpers.filter(t => t.table === table)
     const deferred = mine.filter(t => t.constraint)
     for (const t of deferred) {
@@ -134,9 +158,28 @@ describe('M2 coverage: every Survival authority source, and nothing else', () =>
     expect(events).toContain('insert')
     expect(events).toContain('delete')
     expect(events).toContain('update')
-    const truncate = mine.filter(t => !t.constraint)
-    expect(truncate.map(t => t.events)).toEqual(['truncate'])
-    expect(truncate[0].rest).toMatch(/for each statement/)
+    // No immediate bump of any kind: every bump trigger is a deferred constraint trigger.
+    expect(mine.filter(t => !t.constraint)).toEqual([])
+    expect(m2Code).toContain(`create trigger survival_input_truncate_refused before truncate on public.${table}\n  for each statement execute function public.survival_input_truncate_refused();`)
+  })
+
+  it('TRUNCATE is revoked from PUBLIC, anon, authenticated and service_role on all seven sources', () => {
+    const revoke = /revoke truncate on table ([\s\S]*?)\n\s*from public, anon, authenticated, service_role;/.exec(m2Code)?.[1] ?? ''
+    expect(revoke.split(',').map(x => x.trim().replace(/^public\./, '')).sort()).toEqual([...AUTHORITY_SOURCES])
+    for (const f of MIGRATION_FILES.filter(f => f > M2_FILE)) {
+      expect(sqlCode(read(join(MIGRATIONS, f))), f).not.toMatch(/grant [^;]*truncate/i)
+    }
+  })
+
+  it('no trigger anywhere in M2 bumps the epoch immediately (no AFTER … FOR EACH STATEMENT bump)', () => {
+    expect(m2Code).not.toMatch(/after truncate/)
+    expect(triggers.filter(t => t.fn === 'survival_input_epoch_bump' && !t.constraint)).toEqual([])
+  })
+
+  it('the epoch contract is AT-LEAST-ONCE change identity — no bounded-count promise survives in the migration', () => {
+    expect(m2).toMatch(/AT LEAST ONCE/)
+    expect(m2).toMatch(/CHANGE IDENTITY, not a count/)
+    expect(m2).not.toMatch(/worst case is one extra|at most \+?2|\+2 max/i)
   })
 
   it('UPDATE bumps unconditionally everywhere except the reviewed column-sensitive sources', () => {
@@ -188,6 +231,53 @@ describe('M2 source set is pinned to the CURRENT Survival read surface', () => {
     expect(tablesIn(effectiveDefinition(fn))).toEqual(tables)
   })
 
+  it('the TypeScript read path calls exactly the reviewed SQL roots (snapshot, funding, stable observation)', () => {
+    const all = ['lib/atlas/survival/snapshot.ts', 'lib/atlas/survival/funding.ts', 'lib/atlas/survival/stable-observation.ts']
+      .map(f => tsCode(read(join(APP, f)))).join('\n')
+    expect([...new Set([...all.matchAll(/\.rpc\(\s*'(\w+)'/g)].map(m => m[1]))].sort()).toEqual(SURVIVAL_SQL_ROOTS)
+  })
+
+  it('the public-function CALL GRAPH below those roots is exactly the reviewed graph (no hidden helper)', () => {
+    const seen: Record<string, string[]> = {}
+    const queue = [...SURVIVAL_SQL_ROOTS]
+    while (queue.length) {
+      const fn = queue.shift()!
+      if (fn in seen) continue
+      const def = effectiveFunction(fn)
+      expect(def, `public.${fn} has a definition in the corpus`).not.toBeNull()
+      seen[fn] = callsIn(def!.body)
+      queue.push(...seen[fn])
+    }
+    expect(seen).toEqual(SURVIVAL_SQL_CALL_GRAPH)
+  })
+
+  it('every function in the graph is search_path-pinned and runs no dynamic SQL (nothing can resolve around the graph)', () => {
+    for (const fn of Object.keys(SURVIVAL_SQL_CALL_GRAPH)) {
+      const def = effectiveFunction(fn)!
+      expect(def.header, fn).toMatch(/set search_path (to|=) ''/)
+      expect(def.body, fn).not.toMatch(/\bexecute\b|\bformat\s*\(/i)
+    }
+  })
+
+  it('the tables read by the WHOLE graph are exactly the reviewed authority tables', () => {
+    const tables = new Set(Object.keys(SURVIVAL_SQL_CALL_GRAPH).flatMap(fn => tablesIn(effectiveDefinition(fn))))
+    tables.delete('survival_input_epoch_shards') // the epoch itself, read only by the vector
+    expect([...tables].sort()).toEqual(['cost_events', 'platform_config', 'project_budgets', 'projects', 'spend_reservations'])
+  })
+
+  it('the Survival modules import exactly the reviewed modules (no new data reader behind an import)', () => {
+    const imports = (f: string) =>
+      [...new Set([...read(join(APP, f)).matchAll(/^import\b[^']*?'([^']+)'/gm)].map(m => m[1]))].sort()
+    expect(imports('lib/atlas/survival/snapshot.ts')).toEqual(
+      ['./ceiling', './derive', './funding', './types', '@/lib/cost/budget-gate', '@/lib/supabase/admin', 'server-only'])
+    expect(imports('lib/atlas/survival/funding.ts')).toEqual(['./types', '@/lib/supabase/admin', 'server-only'])
+    expect(imports('lib/atlas/survival/stable-observation.ts')).toEqual(['./snapshot', './types', '@/lib/supabase/admin', 'server-only'])
+    for (const pure of ['lib/atlas/survival/derive.ts', 'lib/atlas/survival/ceiling.ts']) {
+      const code = tsCode(read(join(APP, pure)))
+      expect(code, pure).not.toMatch(/supabase|\.rpc\(|\.from\(/)
+    }
+  })
+
   it('every table the read surface reaches is either an authority source or reviewed presentation', () => {
     const reached = new Set([...SNAPSHOT_TABLE_READS, ...Object.values(RPC_TABLE_DEPENDENCIES).flat()])
     expect([...reached].sort()).toEqual([...AUTHORITY_SOURCES])
@@ -219,6 +309,7 @@ describe('M2 privileges', () => {
     expect(m2Code).toMatch(/revoke all on table public\.survival_input_epoch_shards from public, anon, authenticated, service_role;/)
     expect(m2Code).toMatch(/revoke all on function public\.survival_input_epoch_bump\(\) from public, anon, authenticated, service_role;/)
     expect(m2Code).toMatch(/revoke all on function public\.survival_input_epoch_shards_guard\(\) from public, anon, authenticated, service_role;/)
+    expect(m2Code).toMatch(/revoke all on function public\.survival_input_truncate_refused\(\) from public, anon, authenticated, service_role;/)
     expect(m2Code).toMatch(/alter table public\.survival_input_epoch_shards enable row level security;/)
     expect(m2Code).not.toMatch(/create policy/)
   })
@@ -231,7 +322,8 @@ describe('M2 privileges', () => {
 
   it('every M2 function is SECURITY DEFINER with an empty search_path', () => {
     const fns = [...m2Code.matchAll(/create or replace function public\.(\w+)\(\)\s*returns [^\n]*\n?[^$]*?security definer set search_path = ''/g)].map(m => m[1])
-    expect(fns.sort()).toEqual(['survival_input_epoch_bump', 'survival_input_epoch_shards_guard', 'survival_input_epoch_vector'])
+    expect(fns.sort()).toEqual(['survival_input_epoch_bump', 'survival_input_epoch_shards_guard', 'survival_input_epoch_vector',
+      'survival_input_truncate_refused'])
   })
 })
 
@@ -261,7 +353,7 @@ describe('M2 did NOT widen runtime authority', () => {
     expect(r).toMatchObject({ admitted: false, reason: 'licensed_bind_not_serializable' })
   })
 
-  it('no runtime code (outside lib/qa) references the epoch', () => {
+  it('no runtime code (outside lib/qa) references the epoch — except the inert stable-observation helper', () => {
     const hits: string[] = []
     const walk = (dir: string) => {
       for (const e of readdirSync(dir)) {
@@ -272,7 +364,47 @@ describe('M2 did NOT widen runtime authority', () => {
       }
     }
     for (const root of ['lib', 'app']) walk(join(APP, root))
-    expect(hits).toEqual([])
+    expect(hits).toEqual([join(APP, 'lib/atlas/survival/stable-observation.ts')])
+  })
+
+  it('the stable-observation helper has NO consumer: no route, workflow, bind or other runtime module imports it', () => {
+    const hits: string[] = []
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir)) {
+        const p = join(dir, e)
+        if (statSync(p).isDirectory()) {
+          // Tests are not consumers; every runtime directory is scanned.
+          if (!['node_modules', '.next', 'qa'].includes(e)) walk(p)
+        } else if (/\.(ts|tsx|mjs|js)$/.test(e) && !/\.test\.tsx?$/.test(e)
+          && /stable-observation|observeSurvivalStable/.test(read(p))) hits.push(p)
+      }
+    }
+    for (const root of ['lib', 'app', 'scripts']) walk(join(APP, root))
+    expect(hits).toEqual([join(APP, 'lib/atlas/survival/stable-observation.ts')])
+  })
+
+  it('the helper is inert by construction: it binds nothing, writes nothing, and its shard count is the migration\'s', () => {
+    const helper = tsCode(read(join(APP, 'lib/atlas/survival/stable-observation.ts')))
+    expect(helper).not.toMatch(/\.from\(|\.insert\(|\.update\(|\.upsert\(|\.delete\(|admitAutonomyAtBind|bind_workflow|autonomy-runtime|runs\b|provenance/)
+    expect(helper).toMatch(/export const SURVIVAL_EPOCH_SHARDS = 8\b/)
+    // Accepts ONLY equal vectors, and carries V_after.
+    expect(helper).toMatch(/if \(sameVector\(before, after\)\) \{\n\s+return \{ kind: 'STABLE', asOf, observation, observedEpochVector: Object\.freeze\(\[\.\.\.after\]\), attempts \}/)
+  })
+})
+
+// ── M4 blocking precondition: provisional Survival policy ───────────────────
+
+describe('M4 BLOCKING PRECONDITION stays visible while Survival policy is provisional', () => {
+  it('while SURVIVAL_THRESHOLD_STATUS is provisional, the future bind entry point carries the precondition', () => {
+    const derive = read(join(APP, 'lib/atlas/survival/derive.ts'))
+    const helper = read(join(APP, 'lib/atlas/survival/stable-observation.ts'))
+    const provisional = /export const SURVIVAL_THRESHOLD_STATUS = 'provisional' as const/.test(derive)
+    const sixProvisional = [...derive.matchAll(/^export const (PROVISIONAL_[A-Z_]+) = /gm)].map(m => m[1])
+    expect(sixProvisional).toHaveLength(6)
+    if (provisional) {
+      expect(helper).toMatch(/M4 BLOCKING PRECONDITION/)
+      for (const n of ['0.1', '0.35', '0.5', '3 / 14 / 60']) expect(helper).toContain(n)
+    }
   })
 })
 

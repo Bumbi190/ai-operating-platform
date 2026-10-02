@@ -62,6 +62,7 @@ import {
   type SettlementKind, type SpendVerdict,
 } from './budget-gate'
 import { SpendMeter, runWithSpendMeter } from './spend-meter'
+import { keepFunctionAliveUntil } from './function-lifetime'
 import { CEILING_BASES, type CeilingBasis, type RateSnapshot } from './spend-ceiling'
 // Value import, but no runtime cycle: `execution-signal` imports only
 // `run-authority` and `execution-stop`, and the latter's reference back here is
@@ -498,12 +499,34 @@ export async function withGovernedSpend<T>(
   // if the stream failed without usage, at the reserved hard ceiling. If this
   // process dies first, the reservation is still counted and the reconciler
   // settles it.
+  //
+  // M0 hotfix — the settlement is REGISTERED with the Function's lifetime. It
+  // runs after the route has returned its streaming Response, and on Vercel an
+  // unregistered promise is frozen with the Function once the response ends:
+  // production (2026-10-02) metered, closed the response, and never sent the
+  // settlement. ONE promise covers stream lifetime → metering → durable
+  // settlement, on both branches, and resolves only when the settlement has
+  // completed or definitively failed (`settleSpend` never throws; a failed
+  // settlement leaves the reservation open and held). The stream handle is
+  // still returned immediately: nothing here waits for generation.
   const lifetime = meter.pendingSettlement
   if (lifetime) {
-    void lifetime.then(
-      () => settleWithWhatIsKnown('estimate_unmetered'),
-      () => settleWithWhatIsKnown('estimate_ambiguous'),
-    )
+    const durableSettlement: Promise<void> = lifetime
+      .then(
+        () => settleWithWhatIsKnown('estimate_unmetered'),
+        () => settleWithWhatIsKnown('estimate_ambiguous'),
+      )
+      .then(outcome => {
+        if (outcome?.settled !== true) {
+          console.error(`[governed-spend] streamed settlement did not complete; reservation ${accountedId} `
+            + 'stays held at its hard ceiling until it is settled or reconciled')
+        }
+      })
+      .catch(e => {
+        console.error(`[governed-spend] streamed settlement threw; reservation ${accountedId} stays held:`,
+          e instanceof Error ? e.message : e)
+      })
+    keepFunctionAliveUntil(durableSettlement, `stream settlement of reservation ${accountedId}`)
     return result
   }
 

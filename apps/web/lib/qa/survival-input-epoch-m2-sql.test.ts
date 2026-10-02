@@ -647,7 +647,7 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 sharded Survival input epoch (r
           for each statement execute function survival_input_epoch_bump();`])
       const dl = deadlocks()
       try {
-        const b = writer('m2_tr_rej_b', 3, B_SQL(x), { holdS: 3 })
+        const b = writer('m2_tr_rej_b', 3, B_SQL(x), { holdS: 8 })
         expect(await holding('m2_tr_rej_b')).toBe(true)
         const a = writer('m2_tr_rej_a', 3, A_SQL(x))
         // A has truncated (holding shard 3) and now waits for row X, held by B.

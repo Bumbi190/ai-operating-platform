@@ -39,6 +39,60 @@ export const CEILING_BASES: readonly CeilingBasis[] = ['token_window', 'fixed_un
 export type RateSnapshot = Readonly<Record<string, number>>
 
 /**
+ * Decimal places of the authoritative SEK ledger: `spend_reservations.estimated_sek`,
+ * `actual_sek` and `cost_events.cost_sek` are all `numeric(12,4)`.
+ */
+export const SEK_LEDGER_SCALE = 4
+const LEDGER_QUANTA = 10 ** SEK_LEDGER_SCALE
+
+/**
+ * The largest amount `numeric(12,4)` can hold: 8 integer digits, 4 decimals.
+ * An amount above it cannot be represented by the ledger at all, so a governed
+ * call whose quantized ceiling exceeds it is REFUSED before reserving — never
+ * clamped down, and never left to a PostgreSQL overflow to catch.
+ */
+export const SEK_LEDGER_MAX = 99_999_999.9999
+
+/**
+ * M0: an amount quantized UP to the ledger scale — the smallest 4-decimal amount
+ * that is ≥ the input. Used for EVERY authoritative SEK amount the ledger holds:
+ * hard ceilings before they are reserved, and metered/ungoverned costs before
+ * they reach `cost_events.cost_sek`.
+ *
+ * Postgres rounds a value written to `numeric(12,4)` to NEAREST, so an unquantized
+ * amount can be stored BELOW itself (production, Atlas TTS 18 chars: ceiling
+ * 0.002835 → 0.0028; Atlas chat 104 in / 4 out: cost 0.003906 → 0.0039), and
+ * budget and Survival authority would count less than the computed amount.
+ *
+ * Float-safe and loop-free. `Math.ceil(sek * 10^4)` alone is not safe — the
+ * product can land on either side of an integer (600 TTS chars compute to
+ * 0.09449999999999999). For any input up to `SEK_LEDGER_MAX` the product is
+ * below 10^12 with a relative error under 2^-52, so its absolute error is far
+ * below 1 and the candidate `k` is off by at most one in either direction; ONE
+ * correction step each way against the exact comparison `k / 10^4 >= sek`
+ * therefore lands on the right integer. `k` is an integer below 2^53, so `k ± 1`
+ * is exact; there is no loop to fail to make progress. An IEEE division of two
+ * exact integers is the correctly rounded double of the decimal `k / 10^4`, and
+ * that double serializes back to exactly that decimal.
+ *
+ * The result is never below the input and at most one 0.0001 SEK quantum above.
+ *
+ * Inputs outside the ledger's domain are returned UNCHANGED for the caller to
+ * refuse: zero, negative, non-finite, and anything above `SEK_LEDGER_MAX` (whose
+ * quantum count would leave the exact-integer range). No input can make this
+ * function loop. `SEK_LEDGER_MAX` is itself 4-decimal, so a quantized in-range
+ * amount never exceeds it.
+ */
+export function ceilToLedgerScale(sek: number): number {
+  if (!Number.isFinite(sek) || sek <= 0 || sek > SEK_LEDGER_MAX) return sek
+  let k = Math.ceil(sek * LEDGER_QUANTA)
+  if (k > 0 && (k - 1) / LEDGER_QUANTA >= sek) k -= 1
+  if (k / LEDGER_QUANTA < sek) k += 1
+  return k / LEDGER_QUANTA
+}
+
+
+/**
  * Context windows in tokens: the provider-enforced maximum prompt size. A
  * request above it is rejected before inference (unbilled), so the window is a
  * hard bound on billed input. Only models with BOTH a price-book entry and a

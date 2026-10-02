@@ -63,7 +63,7 @@ import {
 } from './budget-gate'
 import { SpendMeter, runWithSpendMeter } from './spend-meter'
 import { keepFunctionAliveUntil } from './function-lifetime'
-import { CEILING_BASES, type CeilingBasis, type RateSnapshot } from './spend-ceiling'
+import { CEILING_BASES, SEK_LEDGER_MAX, ceilToLedgerScale, type CeilingBasis, type RateSnapshot } from './spend-ceiling'
 // Value import, but no runtime cycle: `execution-signal` imports only
 // `run-authority` and `execution-stop`, and the latter's reference back here is
 // `import type` — erased at compile time.
@@ -292,6 +292,15 @@ export async function withGovernedSpend<T>(
       detail: `estimate ${String(input.estimatedSek)} is not a usable amount`,
     })
   }
+  // M0: an amount the SEK ledger (numeric(12,4)) cannot hold is refused HERE,
+  // before anything is reserved or dispatched — never clamped down to fit, and
+  // never left to a database overflow to reject.
+  if (input.estimatedSek > SEK_LEDGER_MAX) {
+    throw new SpendRefusedError({
+      reason: 'invalid_estimate', provider, operation,
+      detail: `estimate ${String(input.estimatedSek)} SEK exceeds the ledger maximum ${SEK_LEDGER_MAX} SEK`,
+    })
+  }
 
   // ── M0 · NO DISPATCH WITHOUT A DECLARED HARD CEILING ─────────────────────
   if (!CEILING_BASES.includes(input.ceilingBasis)
@@ -301,6 +310,13 @@ export async function withGovernedSpend<T>(
       detail: 'a governed call must declare its hard-ceiling basis and the rate snapshot that priced it',
     })
   }
+
+  // ── M0 · THE CEILING, AS THE LEDGER WILL HOLD IT ─────────────────────────
+  // Quantized UP to the SEK ledger scale here, ONCE, before anything is
+  // reserved, recorded or persisted, so every basis (token_window, fixed_units,
+  // internal_fixed) is treated identically and the stored held amount can never
+  // be rounded below the derived hard ceiling. Metered real cost is untouched.
+  const estimatedSek = ceilToLedgerScale(input.estimatedSek)
 
   const resolved = await resolveGovernedProjectId(input.project)
   if (!resolved.ok) {
@@ -312,7 +328,7 @@ export async function withGovernedSpend<T>(
 
   const verdict = await reserveSpend({
     projectId: resolved.projectId,
-    estimatedSek: input.estimatedSek,
+    estimatedSek,
     idempotencyKey: input.idempotencyKey,
     provider,
     operation,
@@ -331,7 +347,7 @@ export async function withGovernedSpend<T>(
   await recordAdvisoryOverride({
     projectId: resolved.projectId,
     provider, operation,
-    estimatedSek: input.estimatedSek,
+    estimatedSek,
     idempotencyKey: input.idempotencyKey,
     verdict,
   })
@@ -344,7 +360,7 @@ export async function withGovernedSpend<T>(
     if (!verdict.reason.startsWith('replay_')) await releaseSpend(verdict.reservationId)
     throw new SpendRefusedError({
       reason: verdict.reason, provider, operation,
-      detail: `estimate ${input.estimatedSek.toFixed(4)} SEK, headroom `
+      detail: `estimate ${estimatedSek.toFixed(4)} SEK, headroom `
         + `${verdict.headroomSek ?? 'unknown'} SEK`
         + (verdict.bindingScope ? ` (binding scope: ${verdict.bindingScope})` : ''),
       verdict,
@@ -361,7 +377,7 @@ export async function withGovernedSpend<T>(
   const accountedId = !verdict.advisoryOverride && verdict.reservationId
     ? verdict.reservationId
     : await openOverrideReservation({
-      projectId: resolved.projectId, estimatedSek: input.estimatedSek, provider, operation,
+      projectId: resolved.projectId, estimatedSek, provider, operation,
     })
   if (!accountedId) {
     throw new SpendRefusedError({

@@ -51,6 +51,11 @@ async function metered(log: () => Promise<void>, rates: Record<string, number> =
   return meter.rows.reduce((s, r) => s + r.cost_sek, 0)
 }
 
+/** The amount `withGovernedSpend` actually reserves for a derived ceiling (M0 ledger precision). */
+async function reservedOf() { return (await import('@/lib/cost/spend-ceiling')).ceilToLedgerScale }
+let reserved: (sek: number) => number = () => Number.NaN
+beforeEach(async () => { reserved = await reservedOf() })
+
 const WINDOW = { 'claude-sonnet-4-6': 200_000, 'claude-haiku-4-5-20251001': 200_000, 'claude-opus-4-6': 200_000,
   'gpt-4o': 128_000, 'gpt-4o-mini': 128_000 } as const
 
@@ -65,7 +70,9 @@ describe('hard-bound proof per governed adapter: ceiling ≥ maximal metered out
       const ceiling = await estimateAnthropicSek({ model, max_tokens: maxTokens, messages: [{ role: 'user', content: 'x' }] }, RATES)
       const worst = await metered(() => logLlmCost(model, { input_tokens: WINDOW[model], output_tokens: maxTokens }))
       expect(worst).toBeGreaterThan(0)
-      expect(ceiling).toBeGreaterThanOrEqual(worst - 1e-9)
+      // What is RESERVED (the ceiling quantized up) covers what is STORED (the metered
+      // cost quantized up) — exactly, no tolerance: both use the one ledger rule.
+      expect(reserved(ceiling)).toBeGreaterThanOrEqual(worst)
     })
   }
 
@@ -84,7 +91,7 @@ describe('hard-bound proof per governed adapter: ceiling ≥ maximal metered out
       const cap = 2048
       const ceiling = await estimateOpenAIChatSek({ model, [field]: cap, n, messages: [{ role: 'user', content: 'x' }] }, RATES)
       const worst = await metered(() => logLlmCost(model, { tokensIn: WINDOW[model], tokensOut: n * cap }))
-      expect(ceiling).toBeGreaterThanOrEqual(worst - 1e-9)
+      expect(reserved(ceiling)).toBeGreaterThanOrEqual(worst)
     })
   }
 
@@ -103,7 +110,7 @@ describe('hard-bound proof per governed adapter: ceiling ≥ maximal metered out
       const ceiling = fixedUnitCeiling(billable, RATES.elevenlabs_sound_usd_per_second, RATES, 'sound')
       if (!ceiling.ok) throw new Error(ceiling.reason)
       const worst = await metered(() => logSoundCost(billable))
-      expect(ceiling.sek).toBeCloseTo(worst, 6)
+      expect(reserved(ceiling.sek)).toBe(worst)
       expect(ceiling.sek).toBeGreaterThanOrEqual(seconds * RATES.elevenlabs_sound_usd_per_second * RATES.usd_sek - 1e-9)
     })
   }
@@ -130,7 +137,7 @@ describe('hard-bound proof per governed adapter: ceiling ≥ maximal metered out
     const { estimateImageSek } = await import('@/lib/cost/budget-gate')
     const { logImageCost } = await import('@/lib/cost/track')
     const ceiling = await estimateImageSek(1, 'ideogram', RATES)
-    expect(ceiling).toBeGreaterThanOrEqual(await metered(() => logImageCost(1, 'ideogram')) - 1e-4)
+    expect(reserved(ceiling)).toBeGreaterThanOrEqual(await metered(() => logImageCost(1, 'ideogram')))
   })
 
   for (const chars of [1, 999, 4096, 25_000]) {
@@ -138,7 +145,7 @@ describe('hard-bound proof per governed adapter: ceiling ≥ maximal metered out
       const { estimateVoiceSek } = await import('@/lib/cost/budget-gate')
       const { logVoiceCost } = await import('@/lib/cost/track')
       const ceiling = await estimateVoiceSek(chars, RATES)
-      expect(ceiling).toBeGreaterThanOrEqual(await metered(() => logVoiceCost(chars)) - 1e-4)
+      expect(reserved(ceiling)).toBeGreaterThanOrEqual(await metered(() => logVoiceCost(chars)))
     })
   }
 

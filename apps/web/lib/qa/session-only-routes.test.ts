@@ -26,6 +26,17 @@ import { resolve } from 'node:path'
 // DB-less unit test is not refused for having no resolvable project. That the
 // routes ARE governed is proven by lib/qa/governance-provider-boundary.test.ts,
 // which reads the real source, and by that suite's lifecycle tests.
+
+// M0: Atlas TTS uses tts-1, which IS hard-bounded — these route tests run the
+// REAL speech ceiling against the M0 production price book (cost_rates as read
+// 2026-10-02 plus the M0 migration's canonical tts-1 row). No ceiling is mocked.
+vi.mock('@/lib/cost/rates', () => ({
+  getRates: async () => ({
+    usd_sek: 10.5, elevenlabs_usd_per_1k_chars: 0.24, ideogram_v3_usd_per_image: 0.08,
+    gpt_image_usd_per_image: 0.042, openai_tts_1_usd_per_1k_chars: 0.015,
+  }),
+}))
+
 vi.mock('@/lib/cost/governed-spend', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/cost/governed-spend')>()
   return { ...actual, withGovernedSpend: async (_input: unknown, run: () => Promise<unknown>) => run() }
@@ -272,7 +283,7 @@ describe('session positive paths', () => {
     // `hd` is gone from the contract; an explicit `speed` is still honoured.
     await ttsRoute.POST(postT({ text: '  hej  ', voice: 'nova', hd: false, speed: 2 }))
     const body = openaiCalls[0].body as Record<string, unknown>
-    expect(body.model).toBe('gpt-4o-mini-tts')
+    expect(body.model).toBe('tts-1')   // M0 compatibility model (per-character billed)
     expect(body.voice).toBe('nova')
     expect(body.input).toBe('hej')
     expect(body.response_format).toBe('mp3')
@@ -305,7 +316,7 @@ describe('session positive paths', () => {
     // The clamp is unchanged; only the DEFAULT of 1.08 was dropped.
     expect(b.speed).toBe(4.0)
     expect(b.voice).toBe('onyx')
-    expect(b.model).toBe('gpt-4o-mini-tts')
+    expect(b.model).toBe('tts-1')
   })
 
   it('tts clamps a too-low explicit speed to the floor', async () => {

@@ -28,6 +28,16 @@ const DEFAULT_MEDIA_SLUG = 'ai-media-automation'
 export { getRates } from './rates'
 
 import { getRates } from './rates'
+import { currentSpendMeter, type MeteredCostRow } from './spend-meter'
+
+/**
+ * The rates to price a cost row with. Inside a governed call: the snapshot that
+ * priced its hard ceiling (M0), so ceiling and metering can never diverge.
+ * Outside: the current rates.
+ */
+async function ratesForCost(): Promise<Record<string, number>> {
+  return currentSpendMeter()?.rates ?? await getRates()
+}
 
 // ── Project slug → id cache ─────────────────────────────────────────────────
 const projectIdCache = new Map<string, string | null>()
@@ -72,13 +82,21 @@ interface CostRow {
   costUsd: number
 }
 
-// ── Core insert (never throws) ──────────────────────────────────────────────
+// ── Core write (never throws) ───────────────────────────────────────────────
+//
+// INSIDE a governed call (M0) the row is handed to that call's spend meter, and
+// `withGovernedSpend` writes it through `budget_settle_recorded` together with
+// the settlement — so for governed spend this function is no longer the
+// authority, and its failure can no longer make spend disappear.
+//
+// OUTSIDE any governed call the row is ungoverned telemetry and stays a
+// best-effort insert, but a failure is now SEEN: supabase-js reports a failed
+// insert in `{ error }` rather than throwing, and that result used to be ignored.
 async function insertCostEvent(row: CostRow, ctx: CostContext): Promise<void> {
   try {
-    const [rates, projectId] = await Promise.all([getRates(), resolveProjectId(ctx)])
+    const [rates, projectId] = await Promise.all([ratesForCost(), resolveProjectId(ctx)])
     const costSek = row.costUsd * (rates.usd_sek ?? 10.5)
-    const db = createAdminClient()
-    await db.from('cost_events').insert({
+    const record: MeteredCostRow = {
       project_id: projectId,
       provider:   row.provider,
       model:      row.model ?? null,
@@ -93,9 +111,26 @@ async function insertCostEvent(row: CostRow, ctx: CostContext): Promise<void> {
       run_id:     ctx.runId ?? null,
       script_id:  ctx.scriptId ?? null,
       metadata:   toJson(ctx.metadata ?? {}),
-    })
+    }
+
+    const meter = currentSpendMeter()
+    if (meter) {
+      if (meter.record(record)) return
+      // The governed call already settled (at least its reserved hard ceiling).
+      // Inserting this as well would count the same provider call twice.
+      console.error('[cost] metered cost arrived after its governed settlement; NOT written to avoid '
+        + 'double-counting:', { provider: record.provider, model: record.model, costSek: record.cost_sek })
+      return
+    }
+
+    const db = createAdminClient()
+    const { error } = await db.from('cost_events').insert(record as never)
+    if (error) {
+      console.error('[cost] ungoverned cost_events insert FAILED — this spend is missing from the ledger:',
+        { provider: record.provider, costSek: record.cost_sek, error: error.message })
+    }
   } catch (err) {
-    console.warn('[cost] Kunde inte logga kostnad:', err instanceof Error ? err.message : err)
+    console.error('[cost] Kunde inte logga kostnad:', err instanceof Error ? err.message : err)
   }
 }
 
@@ -122,13 +157,57 @@ export async function logLlmCost(
   )
 }
 
+// ── Sound generation (ElevenLabs), per second ───────────────────────────────
+/**
+ * The canonical per-second rate key for ElevenLabs sound generation. There is
+ * deliberately NO fallback: a guessed per-second price — or a voice-character
+ * proxy — is not a hard ceiling (M0), so with no configured row the governed
+ * adapter refuses the call before reserving.
+ */
+export const ELEVENLABS_SOUND_RATE_KEY = 'elevenlabs_sound_usd_per_second'
+
+/** Meters `seconds` of generated sound at the pinned canonical per-second rate. */
+export async function logSoundCost(seconds: number, ctx: CostContext = {}): Promise<void> {
+  const rates = await ratesForCost()
+  const perSecond = rates[ELEVENLABS_SOUND_RATE_KEY]
+  if (typeof perSecond !== 'number' || !Number.isFinite(perSecond) || perSecond < 0) {
+    // Unreachable through the governed adapter (it refuses without the rate).
+    // Never price a row from a guess: with nothing metered, the governed call
+    // settles at its hard ceiling instead.
+    console.error('[cost] no canonical sound-generation rate; nothing metered')
+    return
+  }
+  await insertCostEvent(
+    { provider: 'elevenlabs', model: 'sound-generation', unitType: 'seconds', units: seconds, costUsd: seconds * perSecond },
+    { agent: 'Music Director', operation: 'Generate Background Music', ...ctx },
+  )
+}
+
 // ── Voice (ElevenLabs) ──────────────────────────────────────────────────────
 export async function logVoiceCost(charCount: number, ctx: CostContext = {}): Promise<void> {
-  const rates = await getRates()
+  const rates = await ratesForCost()
   const costUsd = (charCount / 1000) * (rates.elevenlabs_usd_per_1k_chars ?? 0.24)
   await insertCostEvent(
     { provider: 'elevenlabs', model: 'tts', unitType: 'characters', units: charCount, costUsd },
     { agent: 'Voice Director', operation: 'Generate Voiceover', ...ctx },
+  )
+}
+
+// ── Attribution only (no amount) ────────────────────────────────────────────
+/**
+ * Names WHICH provider call produced an artifact, without counting it again.
+ *
+ * The paid call was reserved and settled inside its governed adapter, and that
+ * settlement is the ledger's amount. A second row carrying a price would count
+ * the same call twice, so this row is deliberately zero-cost and says so.
+ */
+export async function logCostAttribution(
+  provider: string,
+  ctx: CostContext = {},
+): Promise<void> {
+  await insertCostEvent(
+    { provider, model: null, unitType: 'requests', units: 0, costUsd: 0 },
+    { ...ctx, metadata: { ...(ctx.metadata ?? {}), attribution_only: true } },
   )
 }
 
@@ -139,7 +218,7 @@ export async function logImageCost(
   ctx: CostContext = {},
 ): Promise<void> {
   if (count <= 0) return
-  const rates = await getRates()
+  const rates = await ratesForCost()
   const perImage = provider === 'ideogram'
     ? (rates.ideogram_v3_usd_per_image ?? 0.08)
     : (rates.gpt_image_usd_per_image ?? 0.042)

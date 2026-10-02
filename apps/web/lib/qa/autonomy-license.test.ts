@@ -1113,7 +1113,7 @@ describe('Phase 2C — the migration does not collide with the chain it joins', 
     // and the file count is pinned so an unexpected addition is noticed.
     expect(files).toContain(MY_FILE)
     expect(files[files.length - 1] > MY_FILE).toBe(true)
-    expect(files).toHaveLength(103)
+    expect(files).toHaveLength(104)                   // + M0 durable spend settlement
   })
 })
 

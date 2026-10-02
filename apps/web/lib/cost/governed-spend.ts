@@ -56,7 +56,13 @@ import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { recordAdvisoryOverride } from './advisory-override'
-import { reserveSpend, settleSpend, releaseSpend, type SpendVerdict } from './budget-gate'
+import { randomUUID } from 'node:crypto'
+import {
+  markSpendDispatchIntent, openOverrideReservation, releaseSpend, reserveSpend, settleSpend,
+  type SettlementKind, type SpendVerdict,
+} from './budget-gate'
+import { SpendMeter, runWithSpendMeter } from './spend-meter'
+import { CEILING_BASES, type CeilingBasis, type RateSnapshot } from './spend-ceiling'
 // Value import, but no runtime cycle: `execution-signal` imports only
 // `run-authority` and `execution-stop`, and the latter's reference back here is
 // `import type` — erased at compile time.
@@ -109,6 +115,8 @@ export type SpendRefusalReason =
   | 'project_unresolved'
   | 'project_lookup_failed'
   | 'invalid_estimate'
+  /** M0: the request's billable outcome cannot be hard-bounded, so it is never dispatched. */
+  | 'unbounded_spend'
   | SpendVerdict['reason']
 
 /** Thrown instead of calling the provider. Carries why, never a credential. */
@@ -213,11 +221,25 @@ export interface GovernedSpendInput {
   /** What is being paid for, e.g. 'messages.create'. */
   operation: string
   /**
-   * Conservative UPPER BOUND in SEK, computed before the call from the shared
-   * rate accessor. Never an optimistic figure: the reservation is what stops a
-   * concurrent caller, so under-estimating re-opens the race it exists to close.
+   * M0: the HARD CEILING in SEK — at least every billable outcome this provider
+   * request allows (see `lib/cost/spend-ceiling.ts`). It is what stays held, in
+   * every current budget window, until the call is durably settled, and what
+   * the crash reconciler settles if it never is. A likely figure is not enough:
+   * a request that cannot be bounded must be refused before it gets here.
    */
   estimatedSek: number
+  /**
+   * M0: WHY `estimatedSek` is a hard ceiling. Required, no default: a governed
+   * call must declare its bound, and the declaration is recorded with the
+   * dispatch intent.
+   */
+  ceilingBasis: CeilingBasis
+  /**
+   * M0: the rate snapshot that priced the ceiling. The call's metering is priced
+   * with THIS snapshot, so a rate or FX edit mid-flight cannot lift the metered
+   * amount above the ceiling. Required for every basis except `internal_fixed`.
+   */
+  rates?: RateSnapshot
   /**
    * Stable identity for ONE logical spend, so a retry reserves once.
    *
@@ -270,6 +292,15 @@ export async function withGovernedSpend<T>(
     })
   }
 
+  // ── M0 · NO DISPATCH WITHOUT A DECLARED HARD CEILING ─────────────────────
+  if (!CEILING_BASES.includes(input.ceilingBasis)
+      || (input.ceilingBasis !== 'internal_fixed' && !input.rates)) {
+    throw new SpendRefusedError({
+      reason: 'unbounded_spend', provider, operation,
+      detail: 'a governed call must declare its hard-ceiling basis and the rate snapshot that priced it',
+    })
+  }
+
   const resolved = await resolveGovernedProjectId(input.project)
   if (!resolved.ok) {
     throw new SpendRefusedError({
@@ -306,14 +337,53 @@ export async function withGovernedSpend<T>(
 
   if (!verdict.allowed) {
     // The reservation row, if any, is already 'released' by budget_reserve when
-    // it refuses; releasing again is a harmless no-op that also covers the
-    // replay path, where the id belongs to a reservation we did not create.
-    await releaseSpend(verdict.reservationId)
+    // it refuses. A REPLAY refusal names a reservation this call did not create
+    // — possibly another caller's live spend — so it is never released here
+    // (M0: releasing it could remove spend that may already have been billed).
+    if (!verdict.reason.startsWith('replay_')) await releaseSpend(verdict.reservationId)
     throw new SpendRefusedError({
       reason: verdict.reason, provider, operation,
       detail: `estimate ${input.estimatedSek.toFixed(4)} SEK, headroom `
         + `${verdict.headroomSek ?? 'unknown'} SEK`
         + (verdict.bindingScope ? ` (binding scope: ${verdict.bindingScope})` : ''),
+      verdict,
+    })
+  }
+
+  // ── M0 · THE RESERVATION THIS DISPATCH WILL BE ACCOUNTED AGAINST ──────────
+  // Normally the one just taken. In advisory mode a refusal is allowed through,
+  // but then there is no open reservation of this call's own: `budget_reserve`
+  // recorded a budget refusal as released, a replay names someone else's
+  // reservation, and an unavailable gate returned none. The overridden spend
+  // gets an accounting-only open reservation instead. A dispatch that cannot be
+  // durably accounted is not made.
+  const accountedId = !verdict.advisoryOverride && verdict.reservationId
+    ? verdict.reservationId
+    : await openOverrideReservation({
+      projectId: resolved.projectId, estimatedSek: input.estimatedSek, provider, operation,
+    })
+  if (!accountedId) {
+    throw new SpendRefusedError({
+      reason: 'unavailable', provider, operation,
+      detail: 'no open reservation could be established, so this spend could not be durably accounted',
+      verdict,
+    })
+  }
+
+  // ── M0 · DISPATCH INTENT, recorded BEFORE the final stop check ────────────
+  // From this point the provider MAY be called, so the reservation counts as
+  // held until it is settled — however long that takes — and only this call,
+  // holding the token, can release it. Marked here rather than between the stop
+  // check and `run()`, which must stay adjacent. If the mark cannot be recorded
+  // the provider is not called: the plain release is safe because, without
+  // intent, nothing can have been dispatched (and if the mark did commit, the
+  // database refuses the release and the reservation stays counted).
+  const dispatchToken = randomUUID()
+  if (!(await markSpendDispatchIntent(accountedId, dispatchToken, input.ceilingBasis))) {
+    await releaseSpend(accountedId)
+    throw new SpendRefusedError({
+      reason: 'unavailable', provider, operation,
+      detail: 'dispatch intent could not be recorded; the provider was not called',
       verdict,
     })
   }
@@ -348,15 +418,15 @@ export async function withGovernedSpend<T>(
 
   if (!decision.allowed) {
     // KNOWN-NOT-DISPATCHED: the provider was never called, so the headroom is
-    // free. Release rather than settle.
+    // free. This is the canonical proven-not-dispatched release, by token.
     try {
-      await releaseSpend(verdict.reservationId)
+      await releaseSpend(accountedId, { dispatchToken })
     } catch (releaseError) {
       // A failed release must NEVER become a dispatch. The reservation stays
-      // conservatively open and ages out through normal stale handling; the one
-      // thing that does not happen is calling the provider anyway.
+      // conservatively counted; the one thing that does not happen is calling
+      // the provider anyway.
       console.error('[governed-spend] release after stop refusal failed; the '
-        + 'refusal stands and the reservation will age out:',
+        + 'refusal stands and the reservation stays counted:',
         releaseError instanceof Error ? releaseError.message : String(releaseError))
     }
     throw new ExecutionStoppedError({
@@ -368,10 +438,20 @@ export async function withGovernedSpend<T>(
     })
   }
 
+  // ── M0 · THE CALL, METERED ────────────────────────────────────────────────
+  // Every `log*Cost` the adapter makes inside `run()` is collected by this meter
+  // instead of being inserted best-effort, and is written by the settlement.
+  const meter = new SpendMeter(input.rates)
+  /** Settle with what the call established: its metered rows if any, else the reserved hard ceiling. */
+  const settleWithWhatIsKnown = (fallback: SettlementKind) => {
+    meter.close()
+    const kind: SettlementKind = meter.rows.length > 0 ? 'metered' : fallback
+    return settleSpend(accountedId, { dispatchToken, kind, rows: kind === 'metered' ? meter.rows : [] })
+  }
+
+  let result: T
   try {
-    const result = await run()
-    await settleSpend(verdict.reservationId, input.estimatedSek)
-    return result
+    result = await runWithSpendMeter(meter, run)
   } catch (e) {
     if (isPhysicalAdmissionRefusal(e)) {
       // ── G3C-3C-A · GOVERNANCE REFUSED BEFORE DISPATCH ──────────────────────
@@ -382,31 +462,51 @@ export async function withGovernedSpend<T>(
       //
       // D4: the release is bookkeeping ABOUT the refusal, never a revision of
       // it. If it throws, the refusal still stands — the reservation stays
-      // conservatively open and ages out through normal stale handling. Letting
-      // the release error escape instead would turn "governance refused before
-      // dispatch" into an unrecognised failure at the drain, which would then
-      // charge a retry for a request that never left. Same principle as the
-      // canonical stop-refusal path above.
+      // conservatively counted. Letting the release error escape instead would
+      // turn "governance refused before dispatch" into an unrecognised failure
+      // at the drain, which would then charge a retry for a request that never
+      // left. Same principle as the canonical stop-refusal path above.
+      meter.close()
       try {
-        await releaseSpend(verdict.reservationId)
+        await releaseSpend(accountedId, { dispatchToken })
       } catch (releaseError) {
         console.error('[governed-spend] release after admission refusal failed; the '
-          + 'refusal stands and the reservation will age out:',
+          + 'refusal stands and the reservation stays counted:',
           releaseError instanceof Error ? releaseError.message : String(releaseError))
       }
       throw e
     }
     if (e instanceof ProviderNotDispatchedError) {
       // The adapter can prove nothing was billed. Free the headroom now rather
-      // than making a burst of auth failures starve the budget for 30 minutes.
-      await releaseSpend(verdict.reservationId)
+      // than making a burst of auth failures starve the budget.
+      meter.close()
+      await releaseSpend(accountedId, { dispatchToken })
       throw e.cause ?? e
     }
     // Everything else is AMBIGUOUS: a timeout, a socket reset mid-response, a
-    // parse failure after the provider already did the work. Settling keeps the
-    // estimate counted, so the worst case is over-counting one call rather than
-    // handing back budget for a call that was charged.
-    await settleSpend(verdict.reservationId, input.estimatedSek)
+    // parse failure after the provider already did the work. M0: it is settled
+    // DURABLY — with the metered rows if the adapter recorded any, otherwise at
+    // the reserved hard ceiling, labelled as an estimate. Never released.
+    await settleWithWhatIsKnown('estimate_ambiguous')
     throw e
   }
+
+  // ── STREAMING: settle when the cost is known, never before ───────────────
+  // A streaming adapter's usage arrives after `run()` returns the handle. It
+  // registers that lifetime on the meter; the reservation stays counted at its
+  // hard ceiling until the lifetime ends, then settles with the real usage — or,
+  // if the stream failed without usage, at the reserved hard ceiling. If this
+  // process dies first, the reservation is still counted and the reconciler
+  // settles it.
+  const lifetime = meter.pendingSettlement
+  if (lifetime) {
+    void lifetime.then(
+      () => settleWithWhatIsKnown('estimate_unmetered'),
+      () => settleWithWhatIsKnown('estimate_ambiguous'),
+    )
+    return result
+  }
+
+  await settleWithWhatIsKnown('estimate_unmetered')
+  return result
 }

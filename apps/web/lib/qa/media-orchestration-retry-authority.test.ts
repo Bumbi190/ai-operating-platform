@@ -95,6 +95,9 @@ vi.mock('@/lib/cost/budget-gate', () => ({
   },
   settleSpend: async () => undefined,
   releaseSpend: async () => undefined,
+  // M0: dispatch intent always records; an advisory override gets an accounting reservation.
+  markSpendDispatchIntent: async () => true,
+  openOverrideReservation: async () => 'm0-override-reservation',
 }))
 
 vi.mock('@/lib/governance/execution-stop', async (orig) => {

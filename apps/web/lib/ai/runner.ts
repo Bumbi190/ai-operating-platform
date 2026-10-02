@@ -22,7 +22,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { isAnthropicModel, isOpenAIModel, isImageModel } from './models'
 import { buildStylePrefix } from './style-governance'
 import { buildVisionQaPrompt } from './golden-checklist'
-import { logLlmCost } from '@/lib/cost/track'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import {
   isExecutionGovernanceControlFlow,
@@ -769,12 +768,11 @@ async function runOpenAIStep(
     outputTokens = response.usage?.completion_tokens ?? 0
   }
 
-  void logLlmCost(model, { tokensIn: inputTokens, tokensOut: outputTokens }, {
-    projectId: input.cost?.projectId ?? null,
-    agent: input.cost?.agent,
-    operation: input.cost?.operation,
-    runId: input.runId,
-  })
+  // M0: no cost is logged here. Both branches above went through the governed
+  // `openAIChatCompletion`, which now settles its reservation DURABLY — with the
+  // real usage for a non-streaming call, at the reserved hard ceiling for a
+  // stream. The fire-and-forget row this used to write sat outside that
+  // settlement, so it would count the same call twice.
 
   // The streaming branch above iterates to exhaustion before reaching here, so
   // a latch that appeared mid-stream is already visible.

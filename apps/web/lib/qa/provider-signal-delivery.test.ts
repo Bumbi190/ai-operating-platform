@@ -15,6 +15,18 @@
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 
+
+// M0: these tests exercise transport / governance MECHANICS (or the route's auth
+// and payload contract), not pricing. Speech via gpt-4o-mini-tts and gpt-image-1
+// have NO hard ceiling in production and are refused before reserving — that
+// outcome is pinned in m0-spend-ceiling.test.ts. Here a configured ceiling is
+// substituted so the mechanics stay covered for when one is configured.
+vi.mock('@/lib/cost/spend-ceiling', async (orig) => {
+  const actual = await orig<typeof import('@/lib/cost/spend-ceiling')>()
+  const priced = () => ({ ok: true as const, sek: 0.01, basis: 'fixed_units' as const, detail: 'test: configured ceiling' })
+  return { ...actual, openAISpeechCeiling: priced, gptImageCeiling: priced }
+})
+
 vi.mock('server-only', () => ({}))
 
 const PROJ = '11111111-1111-1111-1111-111111111111'
@@ -87,7 +99,11 @@ vi.mock('@/lib/cost/governed-spend', () => ({
 }))
 vi.mock('@/lib/cost/track', () => ({ logLlmCost: () => {}, logImageCost: () => {} }))
 vi.mock('@/lib/cost/rates', () => ({ getRates: async () => ({ usd_sek: 10 }) }))
-vi.mock('@/lib/cost/budget-gate', () => ({ estimateImageSek: async () => 1 }))
+vi.mock('@/lib/cost/budget-gate', () => ({ estimateImageSek: async () => 1,
+  // M0: dispatch intent always records; an advisory override gets an accounting reservation.
+  markSpendDispatchIntent: async () => true,
+  openOverrideReservation: async () => 'm0-override-reservation',
+}))
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
@@ -143,7 +159,7 @@ describe('B1–B5 · RUN_BOUND: the SDK receives a signal that governance can ab
     const { getAnthropic } = await import('@/lib/ai/anthropic')
     const { error, signal } = await raceAgainst(
       () => getAnthropic({ project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND } as never)
-        .messages.create({ model: 'claude', max_tokens: 10, messages: [] } as never),
+        .messages.create({ model: 'claude-sonnet-4-6', max_tokens: 10, messages: [] } as never),
       () => { state.run.cancel_requested = true },
     )
     expect(signal, 'the SDK was handed a signal at all').toBeDefined()
@@ -158,7 +174,7 @@ describe('B1–B5 · RUN_BOUND: the SDK receives a signal that governance can ab
     const stream = await getAnthropic({
       project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND,
       onStreamSettled: (s: Promise<unknown>) => { settled = s },
-    } as never).messages.stream({ model: 'claude', max_tokens: 10, messages: [] } as never)
+    } as never).messages.stream({ model: 'claude-sonnet-4-6', max_tokens: 10, messages: [] } as never)
 
     const signal = seen[0]?.signal
     expect(signal, 'the stream call received a signal').toBeDefined()
@@ -176,7 +192,7 @@ describe('B1–B5 · RUN_BOUND: the SDK receives a signal that governance can ab
     const { error, signal } = await raceAgainst(
       () => openAIChatCompletion(
         { project: { projectId: PROJ }, execution: EXEC_PROJECT, operation: 'chat', authority: RUN_BOUND } as never,
-        { model: 'gpt-4', messages: [] } as never),
+        { model: 'gpt-4o-mini', max_tokens: 16, messages: [] } as never),
       () => { state.globalPaused = true },
     )
     expect(signal!.aborted).toBe(true)
@@ -216,7 +232,7 @@ describe('B6–B8 · CONTRACT_ONLY is watched too', () => {
     const { getAnthropic } = await import('@/lib/ai/anthropic')
     const { error, signal } = await raceAgainst(
       () => getAnthropic({ project: { projectId: PROJ }, execution: EXEC_GLOBAL } as never)
-        .messages.create({ model: 'claude', max_tokens: 10, messages: [] } as never),
+        .messages.create({ model: 'claude-sonnet-4-6', max_tokens: 10, messages: [] } as never),
       () => { state.globalPaused = true },
     )
     expect(signal!.aborted, 'contract-only work is stop-observable').toBe(true)
@@ -227,7 +243,7 @@ describe('B6–B8 · CONTRACT_ONLY is watched too', () => {
     const { getAnthropic } = await import('@/lib/ai/anthropic')
     const { error, signal } = await raceAgainst(
       () => getAnthropic({ project: { projectId: PROJ }, execution: EXEC_PROJECT } as never)
-        .messages.create({ model: 'claude', max_tokens: 10, messages: [] } as never),
+        .messages.create({ model: 'claude-sonnet-4-6', max_tokens: 10, messages: [] } as never),
       () => { state.projectPaused = true },
     )
     expect(signal!.aborted).toBe(true)
@@ -240,7 +256,7 @@ describe('B6–B8 · CONTRACT_ONLY is watched too', () => {
     vi.useFakeTimers()
     const inFlight = new Promise<void>(res => { state.started = res })
     const p = getAnthropic({ project: { projectId: PROJ }, execution: EXEC_PROJECT } as never)
-      .messages.create({ model: 'claude', max_tokens: 10, messages: [] } as never)
+      .messages.create({ model: 'claude-sonnet-4-6', max_tokens: 10, messages: [] } as never)
       .then(() => 'ok', e => e)
     await inFlight
     state.run.cancel_requested = true
@@ -262,7 +278,7 @@ describe('B9–B11 · stop-state truth', () => {
     const inFlight = new Promise<void>(res => { state.started = res })
     const p = getAnthropic({
       project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND,
-    } as never).messages.create({ model: 'claude', max_tokens: 10, messages: [] } as never)
+    } as never).messages.create({ model: 'claude-sonnet-4-6', max_tokens: 10, messages: [] } as never)
       .then(() => 'ok', e => e)
     await inFlight
     state.stopReadFails = true
@@ -311,7 +327,7 @@ describe('B13 · the latch survives a stream', () => {
     await getAnthropic({
       project: { projectId: PROJ }, execution: EXEC_PROJECT, authority: RUN_BOUND,
       onFlight: (f: unknown) => { flight = f as never },
-    } as never).messages.stream({ model: 'claude', max_tokens: 10, messages: [] } as never)
+    } as never).messages.stream({ model: 'claude-sonnet-4-6', max_tokens: 10, messages: [] } as never)
 
     expect(flight, 'live flight state handed to the owner').toBeDefined()
     expect(flight!.authorityUnavailable, 'clean at handle return').toBe(false)
@@ -349,8 +365,8 @@ describe('B14/B16 · retries each get their own physical scope', () => {
     const bothStarted = new Promise<void>(res => {
       state.started = () => { if (++startedCount === 2) res() }
     })
-    const a = client.messages.create({ model: 'c', max_tokens: 1, messages: [] } as never).catch(() => {})
-    const b = client.messages.create({ model: 'c', max_tokens: 1, messages: [] } as never).catch(() => {})
+    const a = client.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 1, messages: [] } as never).catch(() => {})
+    const b = client.messages.create({ model: 'claude-sonnet-4-6', max_tokens: 1, messages: [] } as never).catch(() => {})
     await bothStarted
     expect(seen.length).toBe(2)
     expect(seen[0].signal, 'distinct physical scopes').not.toBe(seen[1].signal)

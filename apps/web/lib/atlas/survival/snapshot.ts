@@ -199,11 +199,25 @@ async function readBurn(
       .in('project_id', allowedProjectIds)
       .gte('created_at', cutoff)
     if (error) return [null, false]
-    const total = (data ?? []).reduce(
+    const recorded = (data ?? []).reduce(
       (sum: number, row: any) => sum + (Number(row.cost_sek) || 0),
       0,
     )
-    return [total / BURN_WINDOW_DAYS, true]
+    // M0: spend that MAY already have been billed but is not yet a cost row —
+    // an open reservation with dispatch intent — counts at its hard ceiling
+    // until it is durably settled, whatever its age. Without this, a dispatch
+    // whose process died before settlement would be invisible to burn forever.
+    const pending = await db.from('spend_reservations')
+      .select('estimated_sek')
+      .eq('status', 'open')
+      .not('dispatched_at', 'is', null)
+      .in('project_id', allowedProjectIds)
+    if (pending.error) return [null, false]
+    const unsettled = (pending.data ?? []).reduce(
+      (sum: number, row: any) => sum + (Number(row.estimated_sek) || 0),
+      0,
+    )
+    return [(recorded + unsettled) / BURN_WINDOW_DAYS, true]
   } catch {
     return [null, false]
   }

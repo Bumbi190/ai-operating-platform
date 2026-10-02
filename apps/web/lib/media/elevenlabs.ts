@@ -14,10 +14,12 @@
  */
 
 import { getBrandVoice, BRAND_MODEL, type BrandVoiceName } from '@/lib/voice/config'
-import { logVoiceCost } from '@/lib/cost/track'
+import { ELEVENLABS_SOUND_RATE_KEY, logSoundCost, logVoiceCost } from '@/lib/cost/track'
 import { estimateVoiceSek } from '@/lib/cost/budget-gate'
+import { getRates } from '@/lib/cost/rates'
+import { fixedUnitCeiling } from '@/lib/cost/spend-ceiling'
 import {
-  MEDIA_PIPELINE_PROJECT, ProviderNotDispatchedError, withGovernedSpend, type ProjectRef,
+  MEDIA_PIPELINE_PROJECT, ProviderNotDispatchedError, SpendRefusedError, withGovernedSpend, type ProjectRef,
 } from '@/lib/cost/governed-spend'
 import {
   ProviderDispatchUnknownError,
@@ -73,10 +75,13 @@ export async function generateVoiceover(
   // of hand-rolling the lifecycle, which is what closes audit F-002: the old
   // `projectId ? reserve : null` skipped the gate entirely when the project
   // could not be resolved, and a database blip was enough to trigger it.
-  const estimatedSek = await estimateVoiceSek(text.length)
+  // M0: one rate snapshot prices the fixed-unit ceiling AND the metering.
+  const rates = await getRates()
+  const estimatedSek = await estimateVoiceSek(text.length, rates)
 
   return withGovernedSpend(
-    { project, execution, provider: 'elevenlabs', operation: 'generateVoiceover', estimatedSek, idempotencyKey },
+    { project, execution, provider: 'elevenlabs', operation: 'generateVoiceover', estimatedSek, idempotencyKey,
+      ceilingBasis: 'fixed_units', rates },
     async () => {
       let response: Response
       try {
@@ -209,10 +214,19 @@ function buildWordTimings(alignment: {
  * after-the-fact accounting. It is now governed and logged like every other
  * billable call.
  *
- * Sound generation is billed per second of audio rather than per character, and
- * `cost_rates` has no row for it yet. The estimate reuses the voice rate against
- * the requested duration at a deliberately generous character-equivalent, which
- * over-estimates — the safe direction for a ceiling — until G2 adds a real rate.
+ * ── M0: A HARD CEILING OR NO CALL ──────────────────────────────────────────
+ * Sound generation is billed per SECOND of audio. This used to reserve
+ * `durationSeconds × 200` "character-equivalents" at the VOICE character rate —
+ * a proxy for a different billing unit, called generous but proven nothing. A
+ * proxy is not a hard ceiling, so it is gone:
+ *
+ *   ceiling  = ceil(durationSeconds) × cost_rates.elevenlabs_sound_usd_per_second
+ *              × usd_sek, at the pinned rate snapshot
+ *   metering = the SAME seconds × the SAME pinned rate (`logSoundCost`)
+ *
+ * With no canonical per-second rate configured — the case today — or no
+ * explicit positive duration (auto-duration has no request-fixed bound), the
+ * call is REFUSED with `unbounded_spend` and the provider is never called.
  */
 export async function generateSoundEffect(
   prompt: string,
@@ -225,13 +239,26 @@ export async function generateSoundEffect(
   const apiKey = process.env.ELEVENLABS_API_KEY
   if (!apiKey) throw new Error('ELEVENLABS_API_KEY is not set')
 
-  // ~200 character-equivalents per second of generated audio. Pessimistic on
-  // purpose: an over-estimate reserves too much, an under-estimate lets a
-  // concurrent caller through.
-  const estimatedSek = await estimateVoiceSek(Math.ceil(durationSeconds * 200))
+  const unbounded = (detail: string) => new SpendRefusedError({
+    reason: 'unbounded_spend', provider: 'elevenlabs', operation: 'generateSoundEffect', detail,
+  })
+  if (typeof durationSeconds !== 'number' || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    throw unbounded('an explicit positive duration_seconds is required: auto-duration has no request-fixed bound')
+  }
+  // A started second is a billable second: the maximum the request can bill.
+  const billableSeconds = Math.ceil(durationSeconds)
+  const rates = await getRates()
+  const perSecond = rates[ELEVENLABS_SOUND_RATE_KEY]
+  if (typeof perSecond !== 'number' || !Number.isFinite(perSecond) || perSecond < 0) {
+    throw unbounded(`no canonical per-second rate is configured (cost_rates.${ELEVENLABS_SOUND_RATE_KEY})`)
+  }
+  const ceiling = fixedUnitCeiling(billableSeconds, perSecond, rates, `sound:${billableSeconds}s`)
+  if (!ceiling.ok) throw unbounded(ceiling.reason)
+  const estimatedSek = ceiling.sek
 
   return withGovernedSpend(
-    { project, execution, provider: 'elevenlabs', operation: 'generateSoundEffect', estimatedSek },
+    { project, execution, provider: 'elevenlabs', operation: 'generateSoundEffect', estimatedSek,
+      ceilingBasis: 'fixed_units', rates },
     async () => {
       let res: Response
       try {
@@ -281,10 +308,8 @@ export async function generateSoundEffect(
 
       const audioBuffer = Buffer.from(await res.arrayBuffer())
 
-      await logVoiceCost(Math.ceil(durationSeconds * 200), {
+      await logSoundCost(billableSeconds, {
         ...('projectId' in project ? { projectId: project.projectId } : { projectSlug: project.projectSlug }),
-        agent: 'Music Director',
-        operation: 'Generate Background Music',
         metadata: { duration_seconds: durationSeconds, model: 'sound-generation' },
       })
 

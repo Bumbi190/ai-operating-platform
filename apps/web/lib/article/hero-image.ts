@@ -26,7 +26,7 @@
  *                                 (canonical G3 authority; replaced the legacy
  *                                  checkAutomationPaused in G3C-1)
  *   • sendPipelineAlert()       — lib/media/alert.ts (Brevo on hard failure)
- *   • logImageCost()            — lib/cost/track.ts
+ *   • logCostAttribution()      — lib/cost/track.ts (zero-amount attribution)
  *
  * Idempotency: if a row is already in 'generating' state we return 'skipped'
  * without re-firing. Best-effort, not atomic. Worst-case under a tight race is
@@ -53,7 +53,7 @@ import { dispatchedGenerationIsNotRetryable } from '@/lib/media/orchestrator/ret
 import { stopIsNotRetryable } from '@/lib/governance/execution-dispatch'
 import { resolveExecutionEligibility } from '@/lib/governance/execution-preflight'
 import { sendPipelineAlert } from '@/lib/media/alert'
-import { logImageCost } from '@/lib/cost/track'
+import { logCostAttribution } from '@/lib/cost/track'
 import {
   runPhotoEditor,
   PHOTO_EDITOR_MODEL,
@@ -331,7 +331,10 @@ export async function generateHeroImage(
     // Attribution row. The PAID call was already reserved and settled inside the
     // adapter the orchestrator dispatched to; this is the cost_events entry that
     // names which one, so a hero can be traced to the provider that made it.
-    void logImageCost(1, (selection?.candidate === 'openai' ? 'openai' : 'ideogram'), {
+    //
+    // M0: ZERO-amount. That settlement is the ledger's amount for the call; the
+    // priced row this used to write counted the same image a second time.
+    void logCostAttribution((selection?.candidate === 'openai' ? 'openai' : 'ideogram'), {
       projectId: article.project_id,
       operation: 'Article Hero Image',
       // assetId rides in the existing metadata field, so cost_events links to

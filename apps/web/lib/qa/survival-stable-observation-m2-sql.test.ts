@@ -2,30 +2,42 @@
  * Phase 3B1B2 · M2 — a Survival observation bound to its epoch vector, proven
  * on REAL PostgreSQL 17 against the REAL `readSurvivalSnapshot()`.
  *
- * `observeSurvivalStable()` reads V_before, the multi-statement snapshot, then
- * V_after, and accepts only V_before == V_after. These cases commit a Survival
- * authority writer from a SEPARATE session at every gap between the snapshot's
- * statements and prove each one is caught; that a stable read, a rolled-back
- * writer and a non-authority write are accepted; and that a change committed
- * after V_after is caught by the future-fence model.
+ * `observeSurvivalStable(allowedProjectIds)` reads V_before, the multi-statement
+ * snapshot, then V_after, and accepts only V_before == V_after. These cases
+ * commit a Survival authority writer from a SEPARATE session at every gap
+ * between the snapshot's statements and prove each one is caught; that a stable
+ * read, a rolled-back writer and a non-authority write are accepted; and that a
+ * change committed after V_after is caught by the future-fence model.
  *
- * The snapshot runs through a minimal psql-backed client that implements only
- * the query-builder calls `snapshot.ts` and `funding.ts` make, executed AS
- * service_role (the production role). A hook fires before every database read,
- * which is where the interfering writer commits. The client pins the exact read
- * sequence first, so a reordering of the snapshot is noticed, not absorbed.
+ * ── NO SEAM IN THE FUNCTION UNDER TEST ────────────────────────────────────
+ * The production function accepts nothing but the project scope. It is reached
+ * here ONLY through module-boundary substitution, exactly as a test would
+ * substitute a network:
+ *   - `@/lib/supabase/admin` is mocked so `createAdminClient()` returns a
+ *     minimal psql-backed client (the query-builder calls `snapshot.ts` and
+ *     `funding.ts` make, executed AS service_role, the production role);
+ *   - the clock is frozen (Date only) so the server-derived `asOf` is known.
+ * A hook fires before every database read; that is where the interfering
+ * writer commits. The read sequence is pinned first, so a reordering of the
+ * snapshot is noticed, not absorbed.
  */
 
 import { describe, expect, it, beforeAll, afterAll, vi } from 'vitest'
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 
+const boundary = vi.hoisted(() => ({ client: null as unknown }))
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => { throw new Error('the stable observation must use the injected client') },
+  createAdminClient: () => {
+    if (!boundary.client) throw new Error('no admin client installed for this case')
+    return boundary.client
+  },
 }))
 
-import { observeSurvivalStable, SURVIVAL_EPOCH_SHARDS } from '@/lib/atlas/survival/stable-observation'
+import {
+  observeSurvivalStable, SURVIVAL_EPOCH_SHARDS, SURVIVAL_OBSERVATION_MAX_ATTEMPTS,
+} from '@/lib/atlas/survival/stable-observation'
 
 function findPsql(): string | null {
   const candidates = [
@@ -182,24 +194,38 @@ function pgClient(hook: Hook, role = 'service_role') {
 
 const vec = (): number[] => one(dsn, 'select survival_input_epoch_vector()').replace(/[{}]/g, '').split(',').map(Number)
 const allProjects = (): string[] => query(dsn, 'select id from projects order by id').map(r => r[0])
-const AS_OF = '2026-10-02T12:00:00.000Z'
+/** The frozen server clock: the only instant the function can observe. */
+const AS_OF = new Date(Math.floor(Date.now() / 1000) * 1000).toISOString()
+const MAX = SURVIVAL_OBSERVATION_MAX_ATTEMPTS
 
-/** Commit `sql` from a SEPARATE session the first time `label` is about to be read (occurrence `nth`). */
-function interfereAt(label: string, sql: string, nth = 1): { hook: Hook; fired: () => boolean; labels: string[] } {
-  let seen = 0
-  let fired = false
+/** Install the module-boundary client and call the PRODUCTION function exactly as a caller would. */
+function observe(hook: Hook, role = 'service_role') {
+  boundary.client = pgClient(hook, role)
+  return observeSurvivalStable(allProjects())
+}
+
+/**
+ * Commit `sql` from a SEPARATE session just before `label` is read.
+ *   'V_after' targets the SECOND vector read of each attempt.
+ *   every=true fires at every attempt (so the bounded retry is exhausted);
+ *   every=false fires once (so the retry succeeds).
+ */
+function interfereAt(label: string, sql: string, every: boolean) {
+  let vectorReads = 0
+  let fired = 0
   const labels: string[] = []
-  return {
-    labels,
-    fired: () => fired,
-    hook: (l: string) => {
-      labels.push(l)
-      if (l === label && ++seen === nth && !fired) {
-        fired = true
-        run(dsnFor(DB, 'm2_writer'), ['-c', sql])
-      }
-    },
+  const hook: Hook = (l: string) => {
+    labels.push(l)
+    if (l === 'rpc:survival_input_epoch_vector') vectorReads += 1
+    const hit = label === 'V_after'
+      ? l === 'rpc:survival_input_epoch_vector' && vectorReads % 2 === 0
+      : l === label
+    if (hit && (every || fired === 0)) {
+      fired += 1
+      run(dsnFor(DB, 'm2_writer'), ['-c', sql])
+    }
   }
+  return { hook, fired: () => fired, labels }
 }
 
 /** The future commit fence, simulated: lock all 8 FOR SHARE ascending and compare. */
@@ -221,7 +247,7 @@ const READ_SEQUENCE = [
   'rpc:survival_input_epoch_vector',          // V_after
 ]
 
-describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 stable Survival observation (real PostgreSQL, real readSurvivalSnapshot)', { timeout: 120_000 }, () => {
+describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 stable Survival observation (real PostgreSQL, real readSurvivalSnapshot)', { timeout: 180_000 }, () => {
   let p1 = ''
   let p2 = ''
 
@@ -240,9 +266,14 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 stable Survival observation (re
     run(dsn, ['-c', `insert into revenue_snapshots (project_id, snapshot_date, mrr_sek)
                      values ('${p1}', current_date - 1, 100), ('${p1}', current_date, 120)`])
     run(dsn, ['-c', `select * from survival_set_declared_operating_capital(50000, 'user:11111111-1111-4111-8111-111111111111')`])
+    // Freeze ONLY Date: timers and I/O stay real.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(AS_OF))
   }, 240_000)
 
   afterAll(() => {
+    vi.useRealTimers()
+    boundary.client = null
     if (!AVAILABLE || !dsn) return
     try { run(ADMIN_URL, ['-c', `drop database if exists ${DB} with (force)`]) } catch { /* best effort */ }
   })
@@ -250,11 +281,12 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 stable Survival observation (re
   it('PostgreSQL is reachable — this suite must never pass by skipping in CI', () => {
     if (!AVAILABLE && SQL_REQUIRED) throw new Error('SQL proof is REQUIRED but no Postgres was reachable.')
     expect(SURVIVAL_EPOCH_SHARDS).toBe(8)
+    expect(MAX).toBe(3)
   })
 
-  it('NO authority mutation during the read → STABLE, carrying V_after and the fixed asOf; the read order is pinned', async () => {
+  it('NO authority mutation during the read → STABLE, carrying V_after and the server-clock asOf; the read order is pinned', async () => {
     const labels: string[] = []
-    const r = await observeSurvivalStable(allProjects(), { db: pgClient(l => { labels.push(l) }), now: AS_OF, maxAttempts: 1 })
+    const r = await observe(l => { labels.push(l) })
     expect(labels).toEqual(READ_SEQUENCE)
     expect(r.kind).toBe('STABLE')
     if (r.kind !== 'STABLE') return
@@ -262,44 +294,71 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 stable Survival observation (re
     expect(r.observation.snapshot.asOf).toBe(AS_OF)
     expect(r.observedEpochVector).toEqual(vec())
     expect(r.attempts).toBe(1)
-    // The snapshot really read the database: the readings are established.
+    // The canonical readers ran: funding KNOWN from survival_funding_config, coverage from the DB check.
     expect(r.observation.snapshot.fundingState).toBe('KNOWN')
+    expect(r.observation.snapshot.declaredFundingSek).toBe(50000)
     expect(r.observation.snapshot.runwayCoverage).toBe('PLATFORM_COMPLETE')
   })
 
+  it('NOTHING is injectable: extra arguments (db, now, funding, coverage, vector, snapshot) are ignored at runtime', async () => {
+    const poisoned = { from: () => { throw new Error('injected db used') }, rpc: () => { throw new Error('injected db used') } }
+    const injected = {
+      db: poisoned, now: '1999-01-01T00:00:00.000Z', funding: { kind: 'KNOWN', declaredFundingSek: 9e12 },
+      testRunwayCoverage: 'PLATFORM_COMPLETE', observedEpochVector: [0, 0, 0, 0, 0, 0, 0, 0],
+      snapshot: { funding: { kind: 'KNOWN', declaredFundingSek: 9e12 }, testRunwayCoverage: 'PLATFORM_COMPLETE' },
+      maxAttempts: 99,
+    }
+    boundary.client = pgClient(() => {})
+    const r = await (observeSurvivalStable as unknown as (...a: unknown[]) => ReturnType<typeof observeSurvivalStable>)(
+      allProjects(), injected, injected)
+    expect(r.kind).toBe('STABLE')
+    if (r.kind !== 'STABLE') return
+    expect(r.asOf).toBe(AS_OF)
+    expect(r.observation.snapshot.asOf).toBe(AS_OF)
+    expect(r.observation.snapshot.declaredFundingSek).toBe(50000)
+    expect(r.observedEpochVector).toEqual(vec())
+    // A partial scope stays partial: no caller can claim platform coverage.
+    boundary.client = pgClient(() => {})
+    const partial = await (observeSurvivalStable as unknown as (...a: unknown[]) => ReturnType<typeof observeSurvivalStable>)(
+      [p1], injected)
+    expect(partial.kind === 'STABLE' && partial.observation.snapshot.runwayCoverage).toBe('PARTIAL_SCOPE')
+  })
+
   // The six gaps of the multi-statement snapshot (and the internal burn gap).
-  const GAPS: Array<[string, string, number, () => string]> = [
-    ['1. between V_before and the first source read', 'rpc:budget_headroom', 1,
+  const GAPS: Array<[string, string, () => string]> = [
+    ['1. between V_before and the first source read', 'rpc:budget_headroom',
       () => `insert into cost_events (project_id, provider, cost_sek, cost_usd) values ('${p1}', 'anthropic', 1, 0.1)`],
-    ['2. between headroom and burn', 'from:cost_events', 1,
+    ['2. between headroom and burn', 'from:cost_events',
       () => `update project_budgets set daily_sek = daily_sek - 1 where project_id = '${p1}'`],
-    ['2b. between recorded burn and pending burn', 'from:spend_reservations', 1,
+    ['2b. between recorded burn and pending burn', 'from:spend_reservations',
       () => `select budget_reserve('${p2}'::uuid, 1::numeric, null, 'anthropic', 'obs')`],
-    ['3. between burn and revenue', 'from:revenue_snapshots', 1,
+    ['3. between burn and revenue', 'from:revenue_snapshots',
       () => `update revenue_snapshots set mrr_sek = mrr_sek + 1 where project_id = '${p1}' and snapshot_date = current_date`],
-    ['4. between revenue and funding', 'from:survival_funding_config', 1,
-      // A NEW value each time: re-declaring the current value is a no-op that writes nothing
-      // (and therefore, correctly, moves no epoch).
-      () => `select * from survival_set_declared_operating_capital(${40000 + Math.floor(Math.random() * 9000)}, 'user:11111111-1111-4111-8111-111111111111')`],
-    ['5. between funding and runway coverage', 'rpc:survival_scope_is_platform_complete', 1,
-      () => `insert into projects (slug) values ('obs-late-${Math.random().toString(36).slice(2, 7)}')`],
-    ['6. after the final source read, before V_after', 'rpc:survival_input_epoch_vector', 2,
+    // A NEW value on every execution (current + 1): re-declaring the current value is a no-op
+    // that writes nothing — and therefore, correctly, moves no epoch.
+    ['4. between revenue and funding', 'from:survival_funding_config',
+      () => `select * from survival_set_declared_operating_capital(
+        (select coalesce(declared_operating_capital_sek, 0) + 1 from survival_funding_config where id = 1),
+        'user:11111111-1111-4111-8111-111111111111')`],
+    ['5. between funding and runway coverage', 'rpc:survival_scope_is_platform_complete',
+      () => `insert into projects (slug) values ('obs-late-' || substr(md5(random()::text), 1, 8))`],
+    ['6. after the final source read, before V_after', 'V_after',
       () => `update platform_config set global_weekly_sek = global_weekly_sek - 1 where id = 1`],
   ]
 
-  it.each(GAPS)('%s: a committed writer makes V_before ≠ V_after → UNSTABLE, never accepted', async (_name, label, nth, sql) => {
+  it.each(GAPS)('%s: a committed writer makes V_before ≠ V_after → UNSTABLE after the bounded retries, never accepted', async (_name, label, sql) => {
     const before = vec()
-    const i = interfereAt(label, sql(), nth)
-    const r = await observeSurvivalStable(allProjects(), { db: pgClient(i.hook), now: AS_OF, maxAttempts: 1 })
-    expect(i.fired()).toBe(true)
+    const i = interfereAt(label, sql(), true)
+    const r = await observe(i.hook)
+    expect(i.fired()).toBe(MAX)
     expect(vec()).not.toEqual(before)
-    expect(r).toEqual({ kind: 'UNSTABLE', asOf: AS_OF, reason: 'survival_inputs_changed_during_observation', attempts: 1 })
+    expect(r).toEqual({ kind: 'UNSTABLE', asOf: AS_OF, reason: 'survival_inputs_changed_during_observation', attempts: MAX })
   })
 
-  it.each(GAPS)('%s: with a retry budget the next attempt is STABLE, at the SAME asOf', async (_name, label, nth, sql) => {
-    const i = interfereAt(label, sql(), nth)
-    const r = await observeSurvivalStable(allProjects(), { db: pgClient(i.hook), now: AS_OF, maxAttempts: 2 })
-    expect(i.fired()).toBe(true)
+  it.each(GAPS)('%s: a single interference is retried — the next attempt is STABLE at the SAME asOf', async (_name, label, sql) => {
+    const i = interfereAt(label, sql(), false)
+    const r = await observe(i.hook)
+    expect(i.fired()).toBe(1)
     expect(r.kind).toBe('STABLE')
     if (r.kind !== 'STABLE') return
     expect(r.attempts).toBe(2)
@@ -310,25 +369,26 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 stable Survival observation (re
   })
 
   it('a ROLLED-BACK writer at every gap does not invalidate the observation', async () => {
-    for (const [name, label, nth, sql] of GAPS) {
-      const i = interfereAt(label, `begin; ${sql()}; rollback;`, nth)
-      const r = await observeSurvivalStable(allProjects(), { db: pgClient(i.hook), now: AS_OF, maxAttempts: 1 })
-      expect(i.fired(), name).toBe(true)
+    for (const [name, label, sql] of GAPS) {
+      const i = interfereAt(label, `begin; ${sql()}; rollback;`, true)
+      const r = await observe(i.hook)
+      expect(i.fired(), name).toBe(1)
       expect(r.kind, name).toBe('STABLE')
+      expect(r.attempts, name).toBe(1)
     }
   })
 
   it('a NON-authority write during the read (pause toggle, project rename) does not invalidate it', async () => {
     const i = interfereAt('from:revenue_snapshots',
       `update platform_config set automation_paused = not automation_paused where id = 1;
-       update projects set name = 'renamed-during-read' where id = '${p2}'`)
-    const r = await observeSurvivalStable(allProjects(), { db: pgClient(i.hook), now: AS_OF, maxAttempts: 1 })
-    expect(i.fired()).toBe(true)
+       update projects set name = 'renamed-during-read' where id = '${p2}'`, true)
+    const r = await observe(i.hook)
+    expect(i.fired()).toBe(1)
     expect(r.kind).toBe('STABLE')
   })
 
   it('a change committed AFTER V_after is caught later by the future-fence model', async () => {
-    const r = await observeSurvivalStable(allProjects(), { db: pgClient(() => {}), now: AS_OF, maxAttempts: 1 })
+    const r = await observe(() => {})
     expect(r.kind).toBe('STABLE')
     if (r.kind !== 'STABLE') return
     expect(fenceVerdict(r.observedEpochVector)).toBe('proceed')
@@ -337,20 +397,7 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 stable Survival observation (re
   })
 
   it('an unreadable vector is a refusal, never a silent pass (anon cannot read it)', async () => {
-    const r = await observeSurvivalStable(allProjects(), { db: pgClient(() => {}, 'anon'), now: AS_OF, maxAttempts: 3 })
+    const r = await observe(() => {}, 'anon')
     expect(r).toEqual({ kind: 'UNSTABLE', asOf: AS_OF, reason: 'survival_epoch_unavailable', attempts: 1 })
-  })
-
-  it('the retry budget is bounded: a writer at EVERY attempt exhausts it and refuses', async () => {
-    let n = 0
-    const hook: Hook = l => {
-      if (l === 'from:cost_events') {
-        n += 1
-        run(dsnFor(DB, 'm2_writer'), ['-c', `insert into cost_events (project_id, provider, cost_sek, cost_usd) values ('${p1}', 'anthropic', 1, 0.1)`])
-      }
-    }
-    const r = await observeSurvivalStable(allProjects(), { db: pgClient(hook), now: AS_OF, maxAttempts: 99 })
-    expect(r).toEqual({ kind: 'UNSTABLE', asOf: AS_OF, reason: 'survival_inputs_changed_during_observation', attempts: 5 })
-    expect(n).toBe(5)
   })
 })

@@ -62,14 +62,20 @@
 --   order. Two writers on the same shard then deadlock (40P01) whenever the one
 --   that bumped first later needs a row the second locked before its own bump —
 --   e.g. a settlement and a release racing on one reservation. Before M2 that
---   race simply waited. Deferring the bump to COMMIT makes the shard the LAST
---   lock a writer takes: a writer holding its shard holds every other lock it
---   will ever need, so it cannot wait on a same-shard peer, and the peer cannot
---   close a cycle. The only other deferred trigger on these tables
+--   race simply waited. Deferring the bump to COMMIT means that, under
+--   CANONICAL (default) runtime operation, the shard is the writer's FINAL M2
+--   lock: a writer holding its shard holds every other lock it will ever need,
+--   so it cannot wait on a same-shard peer, and the peer cannot close a cycle.
+--   The only other deferred trigger on these tables
 --   (spend_reservations_settlement_complete) reads and takes no lock.
 --
---   Correctness never depends on the deferral: `SET CONSTRAINTS … IMMEDIATE`
---   makes the bump fire at statement end instead, which still bumps.
+--   THE CONTRACT IS QUALIFIED, NOT UNCONDITIONAL. `SET CONSTRAINTS … IMMEDIATE`
+--   (maintenance/test behaviour) fires the bump at statement end and so MAY take
+--   the shard EARLY in the transaction. That still bumps — epoch correctness
+--   never depends on the deferral — but the deadlock-freedom argument above does
+--   not cover such a writer. No production runtime code issues it today (a
+--   permanent guard scans for it), and M3/M4 correctness may not rely on a
+--   writer that does unless that writer's lock order is independently proven.
 --
 --   Row-level is the only level a constraint trigger supports. A bulk statement
 --   still writes the shard ONCE per transaction: the bump is skipped when the

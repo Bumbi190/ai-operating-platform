@@ -20,35 +20,56 @@
  * in S saw the same committed authority. The accepted observation carries
  * V_after as the vector a future commit fence (M3/M4) must re-lock and compare.
  * Otherwise the attempt is discarded — never silently accepted — and retried up
- * to `maxAttempts`, then refused.
+ * to SURVIVAL_OBSERVATION_MAX_ATTEMPTS times, then refused.
+ *
+ * ── AN AUTHORITY BOUNDARY: NOTHING IS INJECTABLE ───────────────────────────
+ * This is the future canonical Survival authority observation, so its exported
+ * signature accepts ONLY the project scope. Everything else is derived here and
+ * cannot be supplied by any caller, server module or not:
+ *   - the database client: always `createAdminClient()`;
+ *   - funding and runway coverage: read by readSurvivalSnapshot's canonical
+ *     readers — this function passes NO funding and NO coverage override;
+ *   - the instant: taken from the server clock ONCE, here, and carried through
+ *     every attempt (a caller cannot pick a historical or future `now`; M3 owns
+ *     commit-clock validity);
+ *   - the epoch vectors: read here, never accepted;
+ *   - the retry budget: a reviewed internal constant.
+ * Tests reach it only by mocking `createAdminClient` and the clock at the module
+ * boundary. A permanent guard fails if any of these seams reappears.
  *
  * ── WHAT THIS DOES NOT DO ──────────────────────────────────────────────────
- * - It does not solve the CLOCK. One fixed `asOf` is carried through every
- *   attempt so the observation has a single instant, but whether that instant
- *   is still valid at commit (day/week/month windows, the 30-day burn window)
- *   is M3's commit-clock problem.
+ * - It does not solve the CLOCK: whether `asOf` is still valid at commit
+ *   (day/week/month windows, the 30-day burn window) is M3's problem.
  * - It does not derive anything: the pure derivation and its SQL policy are
  *   reached only through `readSurvivalSnapshot()`.
  * - It binds nothing, creates no run and records no provenance. A permanent
  *   guard proves no route, workflow or bind consumer imports it in M2.
  *
- * ── M4 BLOCKING PRECONDITION ───────────────────────────────────────────────
- * A STABLE observation proves only that the inputs did not move. It does not
- * make the policy that turned them into a state authoritative. The six numeric
- * thresholds in derive.ts (`PROVISIONAL_*`: headroom 0.1 / 0.35 / 0.5, runway
- * 3 / 14 / 60 days; `SURVIVAL_THRESHOLD_STATUS === 'provisional'`) are an
- * implementer's choice, not owner-approved canonical policy. Survival policy
- * values that can restrict licensed autonomy must be reviewed and promoted to
- * owner-approved canonical policy BEFORE a licensed bind may use this
- * observation as authority. (The Chapter 18 state → ceiling mapping in
- * ceiling.ts is separate.) A guard keeps this note here while the status is
- * provisional.
+ * ── M4 BLOCKING PRECONDITIONS ──────────────────────────────────────────────
+ * 1. POLICY. A STABLE observation proves only that the inputs did not move. It
+ *    does not make the policy that turned them into a state authoritative. The
+ *    six numeric thresholds in derive.ts (`PROVISIONAL_*`: headroom 0.1 / 0.35 /
+ *    0.5, runway 3 / 14 / 60 days; `SURVIVAL_THRESHOLD_STATUS === 'provisional'`)
+ *    are an implementer's choice, not owner-approved canonical policy. Survival
+ *    policy values that can restrict licensed autonomy must be reviewed and
+ *    promoted to owner-approved canonical policy BEFORE a licensed bind may use
+ *    this observation as authority. (The Chapter 18 state → ceiling mapping in
+ *    ceiling.ts is separate.) A guard keeps this note here while the status is
+ *    provisional.
+ * 2. SCOPE. `allowedProjectIds` is inherited from the existing read API and
+ *    grants nothing in M2. The licensed-bind authority transaction must derive
+ *    the observation scope SERVER-SIDE from canonical bind/instance authority
+ *    (cf. the parameterless platform adapter in
+ *    autonomy-runtime/platform-survival.ts). It must never accept
+ *    caller-supplied project ids as a way to select a more permissive Survival
+ *    view — a narrower scope caps runway at PARTIAL_SCOPE, but it also omits the
+ *    headroom and burn of every project outside it.
  */
 
 import 'server-only'
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { readSurvivalSnapshot, type SnapshotOptions } from './snapshot'
+import { readSurvivalSnapshot } from './snapshot'
 import type { SurvivalObservation } from './types'
 
 type AnyDb = any
@@ -56,12 +77,13 @@ type AnyDb = any
 /** The number of epoch shards. Must equal the migration's 8 (guarded). */
 export const SURVIVAL_EPOCH_SHARDS = 8
 
-const MAX_ATTEMPTS_CEILING = 5
+/** The reviewed retry budget for an unstable observation. Not caller authority. */
+export const SURVIVAL_OBSERVATION_MAX_ATTEMPTS = 3
 
 export type StableSurvivalObservation =
   | {
       kind: 'STABLE'
-      /** The single instant every read in this observation was evaluated at. */
+      /** The single server-clock instant every read in this observation used. */
       asOf: string
       observation: SurvivalObservation
       /** V_after — the vector a future commit fence must re-lock and compare. */
@@ -74,16 +96,6 @@ export type StableSurvivalObservation =
       reason: 'survival_inputs_changed_during_observation' | 'survival_epoch_unavailable'
       attempts: number
     }
-
-export interface StableObservationOptions {
-  db?: AnyDb
-  /** The fixed instant. Defaults to now, taken ONCE before the first attempt. */
-  now?: string
-  /** Bounded retries on an unstable read. 1..5; default 3. */
-  maxAttempts?: number
-  /** Passed through to readSurvivalSnapshot (test seams only). */
-  snapshot?: Omit<SnapshotOptions, 'db' | 'now'>
-}
 
 /**
  * Read the epoch vector. Anything but exactly 8 non-negative safe integers is
@@ -107,22 +119,20 @@ const sameVector = (a: readonly number[], b: readonly number[]) =>
 
 /**
  * Observe Survival and prove the observation corresponds to ONE committed
- * authority state. See the module header for the protocol.
+ * authority state. See the module header for the protocol and the boundary.
  */
 export async function observeSurvivalStable(
   allowedProjectIds: readonly string[],
-  options: StableObservationOptions = {},
 ): Promise<StableSurvivalObservation> {
-  const db: AnyDb = options.db ?? createAdminClient()
-  const asOf = options.now ?? new Date().toISOString()
-  const maxAttempts = Math.min(Math.max(Math.trunc(options.maxAttempts ?? 3), 1), MAX_ATTEMPTS_CEILING)
+  const db: AnyDb = createAdminClient()
+  const asOf = new Date().toISOString()
 
   let attempts = 0
-  while (attempts < maxAttempts) {
+  while (attempts < SURVIVAL_OBSERVATION_MAX_ATTEMPTS) {
     attempts += 1
     const before = await readEpochVector(db)
     if (!before) return { kind: 'UNSTABLE', asOf, reason: 'survival_epoch_unavailable', attempts }
-    const observation = await readSurvivalSnapshot(allowedProjectIds, { ...options.snapshot, db, now: asOf })
+    const observation = await readSurvivalSnapshot(allowedProjectIds, { db, now: asOf })
     const after = await readEpochVector(db)
     if (!after) return { kind: 'UNSTABLE', asOf, reason: 'survival_epoch_unavailable', attempts }
     if (sameVector(before, after)) {

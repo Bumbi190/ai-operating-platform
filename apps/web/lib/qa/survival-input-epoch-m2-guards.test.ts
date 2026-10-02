@@ -379,7 +379,9 @@ describe('M2 did NOT widen runtime authority', () => {
           // Tests are not consumers; every runtime directory is scanned.
           if (!['node_modules', '.next', 'qa'].includes(e)) walk(p)
         } else if (/\.(ts|tsx|mjs|js)$/.test(e) && !/\.test\.tsx?$/.test(e)
-          && /stable-observation|observeSurvivalStable/.test(read(p))) hits.push(p)
+          // An import of the module, or a call — prose that NAMES it is not a consumer.
+          && /from\s+['"][^'"]*stable-observation['"]|import\(\s*['"][^'"]*stable-observation['"]|observeSurvivalStable\s*\(/
+            .test(tsCode(read(p)))) hits.push(p)
       }
     }
     for (const root of ['lib', 'app', 'scripts']) walk(join(APP, root))
@@ -396,6 +398,92 @@ describe('M2 did NOT widen runtime authority', () => {
 })
 
 // ── M4 blocking precondition: provisional Survival policy ───────────────────
+
+// ── The authority boundary: nothing injectable ─────────────────────────────
+
+describe('observeSurvivalStable is an UNSPOOFABLE authority boundary', () => {
+  const raw = read(join(APP, 'lib/atlas/survival/stable-observation.ts'))
+  const helper = tsCode(raw)
+  const prose = raw.replace(/\n\s*\*\s?/g, ' ').replace(/\s+/g, ' ')
+
+  it('its only exported runtime signature takes the project scope and nothing else', () => {
+    const sig = /export async function observeSurvivalStable\(([\s\S]*?)\): Promise<StableSurvivalObservation>/.exec(helper)?.[1] ?? ''
+    expect(sig.replace(/\s+/g, ' ').trim()).toBe('allowedProjectIds: readonly string[],')
+    const exported = [...helper.matchAll(/^export (?:async function|function|const|let|var|type|interface|class|enum) (\w+)/gm)]
+      .map(m => m[1]).sort()
+    expect(exported).toEqual(['SURVIVAL_EPOCH_SHARDS', 'SURVIVAL_OBSERVATION_MAX_ATTEMPTS', 'StableSurvivalObservation', 'observeSurvivalStable'])
+    expect(helper).not.toMatch(/^export\s*\{|^export default|^export \*/m)
+    expect(helper).not.toMatch(/Options\b|\boptions\b|\boverrides?\b|\bargs\b/)
+  })
+
+  it('it derives its own database client: createAdminClient(), unconditionally — no parameter, no fallback', () => {
+    expect(helper).toMatch(/\n  const db: AnyDb = createAdminClient\(\)\n/)
+    expect([...helper.matchAll(/createAdminClient\(/g)]).toHaveLength(1)
+    expect(helper).not.toContain('??')
+  })
+
+  it('it reaches readSurvivalSnapshot with ONLY its own client and clock — no funding, coverage or snapshot override', () => {
+    const calls = [...helper.matchAll(/readSurvivalSnapshot\(([^)]*)\)/g)].map(m => m[1].replace(/\s+/g, ' ').trim())
+    expect(calls).toEqual(['allowedProjectIds, { db, now: asOf }'])
+    expect(helper).not.toMatch(/funding|Funding|testRunwayCoverage|RunwayCoverage|SnapshotOptions/)
+  })
+
+  it('the instant is the server clock, read ONCE inside — no caller can choose `now`', () => {
+    expect([...helper.matchAll(/new Date\(\)\.toISOString\(\)/g)]).toHaveLength(1)
+    expect(helper).toMatch(/\n  const asOf = new Date\(\)\.toISOString\(\)\n/)
+    expect(helper).not.toMatch(/\bnow\s*\?\s*:|\bnow\s*:(?!\s*asOf\b)|process\.env|Date\.parse|new Date\(\s*\w/)
+  })
+
+  it('the epoch vectors are read inside and never accepted; the retry budget is a reviewed constant', () => {
+    expect(helper).toMatch(/\nexport const SURVIVAL_OBSERVATION_MAX_ATTEMPTS = 3\n/)
+    expect(helper).toMatch(/while \(attempts < SURVIVAL_OBSERVATION_MAX_ATTEMPTS\)/)
+    expect([...helper.matchAll(/await readEpochVector\(db\)/g)]).toHaveLength(2)
+    expect(helper).not.toMatch(/maxAttempts|observedEpochVector\s*\?|epochVector\s*:/)
+  })
+
+  it('M4 SCOPE precondition is recorded at the boundary', () => {
+    expect(prose).toContain('must derive the observation scope SERVER-SIDE from canonical bind/instance authority')
+    expect(prose).toContain('must never accept caller-supplied project ids')
+  })
+})
+
+// ── The deferred-lock contract is qualified ─────────────────────────────────
+
+describe('the deferred-lock contract is QUALIFIED, and runtime never forces the bump early', () => {
+  const SET_IMMEDIATE = /set\s+constraints[^;]*?\bimmediate\b/i
+
+  it('no production runtime TS/JS issues SET CONSTRAINTS … IMMEDIATE (tests and QA exempt)', () => {
+    const hits: string[] = []
+    const walk = (dir: string) => {
+      for (const e of readdirSync(dir)) {
+        const p = join(dir, e)
+        if (statSync(p).isDirectory()) {
+          if (!['node_modules', '.next', 'qa', '__tests__'].includes(e)) walk(p)
+        } else if (/\.(ts|tsx|mjs|js|cjs)$/.test(e) && !/\.test\.[cm]?[jt]sx?$/.test(e) && SET_IMMEDIATE.test(read(p))) hits.push(p)
+      }
+    }
+    for (const root of ['lib', 'app', 'scripts']) walk(join(APP, root))
+    expect(hits).toEqual([])
+  })
+
+  it('no SQL FUNCTION body in the migration corpus issues it either (top-level maintenance SQL is not prohibited)', () => {
+    const hits: string[] = []
+    for (const f of MIGRATION_FILES) {
+      for (const m of sqlCode(read(join(MIGRATIONS, f))).matchAll(/\$(\w*)\$([\s\S]*?)\$\1\$/g)) {
+        if (SET_IMMEDIATE.test(m[2])) hits.push(f)
+      }
+    }
+    expect(hits).toEqual([])
+  })
+
+  it('the migration states the qualified contract — never an unconditional "always last lock" claim', () => {
+    const comments = m2.replace(/\n--\s*/g, ' ')
+    expect(comments).toContain("under CANONICAL (default) runtime operation, the shard is the writer's FINAL M2 lock")
+    expect(comments).toContain('MAY take the shard EARLY')
+    expect(comments).toContain('M3/M4 correctness may not rely on a writer that does unless that writer\'s lock order is independently proven')
+    expect(comments).not.toMatch(/makes the shard the LAST lock a writer takes/)
+  })
+})
 
 describe('M4 BLOCKING PRECONDITION stays visible while Survival policy is provisional', () => {
   it('while SURVIVAL_THRESHOLD_STATUS is provisional, the future bind entry point carries the precondition', () => {

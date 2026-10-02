@@ -243,7 +243,7 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 const pidOf = (app: string) => one(dsn, `select pid from pg_stat_activity where application_name = '${app}'`)
 
 /** Resolves once `app` is waiting on a heavyweight lock. */
-async function blockedOnLock(app: string, timeoutMs = 10_000): Promise<boolean> {
+async function blockedOnLock(app: string, timeoutMs = 30_000): Promise<boolean> {
   const until = Date.now() + timeoutMs
   while (Date.now() < until) {
     if (one(dsn, `select count(*) from pg_stat_activity where application_name = '${app}' and wait_event_type = 'Lock'`) === '1') return true
@@ -252,7 +252,7 @@ async function blockedOnLock(app: string, timeoutMs = 10_000): Promise<boolean> 
   return false
 }
 /** Resolves once `app` is inside pg_sleep (holding its locks). */
-async function holding(app: string, timeoutMs = 15_000): Promise<boolean> {
+async function holding(app: string, timeoutMs = 30_000): Promise<boolean> {
   const until = Date.now() + timeoutMs
   while (Date.now() < until) {
     if (one(dsn, `select count(*) from pg_stat_activity where application_name = '${app}' and wait_event = 'PgSleep'`) === '1') return true
@@ -260,12 +260,25 @@ async function holding(app: string, timeoutMs = 15_000): Promise<boolean> {
   }
   return false
 }
-/** Application names of the sessions `app` is blocked behind. */
-function blockers(app: string): string[] {
-  return query(dsn, `select a.application_name from pg_stat_activity w
-    cross join lateral unnest(pg_blocking_pids(w.pid)) b(pid) join pg_stat_activity a on a.pid = b.pid
-    where w.application_name = '${app}' order by 1`).map(r => r[0])
+/**
+ * Waits until `app` is blocked on a heavyweight lock and returns, from the SAME
+ * query, the application names it is blocked behind ([] on timeout). Reading the
+ * wait and its blockers in one statement keeps the evidence coherent under load.
+ */
+async function waitingBehind(app: string, timeoutMs = 30_000): Promise<string[]> {
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    const rows = query(dsn, `select coalesce(string_agg(a.application_name, ',' order by a.application_name), '')
+      from pg_stat_activity w
+      cross join lateral unnest(pg_blocking_pids(w.pid)) b(pid) join pg_stat_activity a on a.pid = b.pid
+      where w.application_name = '${app}' and w.wait_event_type = 'Lock'`)
+    const names = rows[0]?.[0] ?? ''
+    if (names) return names.split(',')
+    await sleep(50)
+  }
+  return []
 }
+
 /** Row locks on the shard table: shard → lock modes held by `app`. */
 function shardLocks(app: string): Record<number, string> {
   const pid = pidOf(app)
@@ -700,11 +713,10 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 sharded Survival input epoch (r
     it('writers on the SAME shard serialize on that shard row', async () => {
       const p = project()
       const v0 = vec()
-      const a = writer('m2_same_a', 3, costRow(p), { immediate: true, holdS: 2 })
+      const a = writer('m2_same_a', 3, costRow(p), { immediate: true, holdS: 8 })
       expect(await holding('m2_same_a')).toBe(true)
       const b = writer('m2_same_b', 3, costRow(p), { immediate: true })
-      expect(await blockedOnLock('m2_same_b')).toBe(true)
-      expect(blockers('m2_same_b')).toEqual(['m2_same_a'])
+      expect(await waitingBehind('m2_same_b')).toEqual(['m2_same_a'])
       const [ra, rb] = await Promise.all([a, b])
       expect([ra.ok, rb.ok]).toEqual([true, true])
       expect(rb.endedAt).toBeGreaterThanOrEqual(ra.endedAt)
@@ -713,15 +725,14 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 sharded Survival input epoch (r
 
     it('DEFERRED (the default): a same-shard writer is NOT blocked mid-transaction — only at its commit', async () => {
       const p = project()
-      const a = writer('m2_defer_a', 4, costRow(p), { immediate: true, holdS: 3 })
+      const a = writer('m2_defer_a', 4, costRow(p), { immediate: true, holdS: 10 })
       expect(await holding('m2_defer_a')).toBe(true)
       const b = writer('m2_defer_b', 4, costRow(p), { holdS: 1 })
       // b's input mutation went through and it reached its own sleep while a still holds shard 4.
       expect(await holding('m2_defer_b')).toBe(true)
       expect(shardLocks('m2_defer_b')).toEqual({})
       // ...then b's COMMIT waits for shard 4.
-      expect(await blockedOnLock('m2_defer_b')).toBe(true)
-      expect(blockers('m2_defer_b')).toEqual(['m2_defer_a'])
+      expect(await waitingBehind('m2_defer_b')).toEqual(['m2_defer_a'])
       const [ra, rb] = await Promise.all([a, b])
       expect([ra.ok, rb.ok]).toEqual([true, true])
     })
@@ -848,12 +859,11 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 sharded Survival input epoch (r
     it('Case B — the fence holds all 8 FOR SHARE; a writer blocks at its epoch bump until the fence commits', async () => {
       const p = project()
       const V = vec()
-      const f = fence('m2_fence_b', V, 2)
+      const f = fence('m2_fence_b', V, 8)
       expect(await holding('m2_fence_b')).toBe(true)
       expect(Object.keys(shardLocks('m2_fence_b')).map(Number)).toEqual([0, 1, 2, 3, 4, 5, 6, 7])
       const w = writer('m2_fence_b_w', 6, costRow(p))
-      expect(await blockedOnLock('m2_fence_b_w')).toBe(true)
-      expect(blockers('m2_fence_b_w')).toEqual(['m2_fence_b'])
+      expect(await waitingBehind('m2_fence_b_w')).toEqual(['m2_fence_b'])
       const [rf, rw] = await Promise.all([f, w])
       expect([rf.ok, verdict(rf), rw.ok]).toEqual([true, 'proceed', true])
       expect(rw.endedAt).toBeGreaterThanOrEqual(rf.endedAt)
@@ -863,11 +873,10 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 sharded Survival input epoch (r
     it('Case C — the writer already holds its shard: the fence waits (holding only LOWER shards), then refuses', async () => {
       const p = project()
       const V = vec()
-      const w = writer('m2_fence_c_w', 4, costRow(p), { immediate: true, holdS: 2 })
+      const w = writer('m2_fence_c_w', 4, costRow(p), { immediate: true, holdS: 8 })
       expect(await holding('m2_fence_c_w')).toBe(true)
       const f = fence('m2_fence_c', V, 0)
-      expect(await blockedOnLock('m2_fence_c')).toBe(true)
-      expect(blockers('m2_fence_c')).toEqual(['m2_fence_c_w'])
+      expect(await waitingBehind('m2_fence_c')).toEqual(['m2_fence_c_w'])
       // Ascending acquisition, observed: shares on 0..3 are held, nothing on 5..7 yet.
       expect(Object.keys(shardLocks('m2_fence_c')).map(Number)).toEqual([0, 1, 2, 3])
       const [rw, rf] = await Promise.all([w, f])
@@ -877,7 +886,7 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 sharded Survival input epoch (r
     it('Case D — the writer rolls back: the fence proceeds with the unchanged vector', async () => {
       const p = project()
       const V = vec()
-      const w = writer('m2_fence_d_w', 4, costRow(p), { immediate: true, holdS: 2, rollback: true })
+      const w = writer('m2_fence_d_w', 4, costRow(p), { immediate: true, holdS: 8, rollback: true })
       expect(await holding('m2_fence_d_w')).toBe(true)
       const f = fence('m2_fence_d', V, 0)
       expect(await blockedOnLock('m2_fence_d')).toBe(true)

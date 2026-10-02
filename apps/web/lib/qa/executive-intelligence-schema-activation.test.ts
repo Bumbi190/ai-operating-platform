@@ -292,11 +292,13 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
     // 91: Phase 3B1B2 M1's `autonomy_authority_serialization` — the Decision lineage
     // head and the licence writer's instance-first lock. APPLIED to production on
     // 2026-10-02 (ledger version 20261002134227).
-    // Migration Guard v2 owns the repository-wide 105/91 count contract. This
+    // 92: Phase 3B1B2 M2's `survival_input_epoch` — the sharded Survival input epoch.
+    // NOT applied to production on its branch.
+    // Migration Guard v2 owns the repository-wide 106/92 count contract. This
     // older assertion remains as an independent EI activation companion so a
     // canonical migration cannot move or disappear without both gates noticing.
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(91)
+    expect(enforced).toBe(92)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

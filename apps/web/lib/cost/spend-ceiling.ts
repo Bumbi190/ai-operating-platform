@@ -106,3 +106,56 @@ export function containsKey(value: unknown, key: string): boolean {
   }
   return false
 }
+
+// ── OpenAI speech ────────────────────────────────────────────────────────────
+
+/**
+ * The speech models OpenAI bills PER INPUT CHARACTER, each with its own
+ * canonical `cost_rates` key. Only these have a request-fixed billable unit (the
+ * input text) that a hard ceiling can price. gpt-4o-mini-tts bills text-input
+ * AND audio-output tokens, and the request carries no cap on audio output, so it
+ * is not boundable. There is deliberately NO fallback price: the old $0.015 /
+ * 1k-character figure was a proxy for per-token billing.
+ */
+export const OPENAI_PER_CHARACTER_SPEECH_RATE_KEYS: Readonly<Record<string, string>> = Object.freeze({
+  'tts-1': 'openai_tts_1_usd_per_1k_chars',
+  'tts-1-hd': 'openai_tts_1_hd_usd_per_1k_chars',
+})
+
+/**
+ * Speech: input characters × the model's canonical per-character rate, for a
+ * per-character-billed model with a configured rate only. `charCount` is the
+ * UTF-16 length of the input, which is ≥ the number of characters billed.
+ */
+export function openAISpeechCeiling(charCount: number, model: string, rates: RateSnapshot): Ceiling {
+  const key = Object.prototype.hasOwnProperty.call(OPENAI_PER_CHARACTER_SPEECH_RATE_KEYS, model)
+    ? OPENAI_PER_CHARACTER_SPEECH_RATE_KEYS[model] : undefined
+  if (!key) {
+    return refuse(`speech model "${model}" is not billed per input character (or is unknown): `
+      + 'its audio output is not bounded by the request')
+  }
+  const perK = rates[key]
+  if (typeof perK !== 'number' || !Number.isFinite(perK) || perK < 0) {
+    return refuse(`no canonical per-character rate is configured (cost_rates.${key})`)
+  }
+  return fixedUnitCeiling(charCount / 1000, perK, rates, `speech:${model}:${charCount}chars`)
+}
+
+// ── OpenAI gpt-image-1 ───────────────────────────────────────────────────────
+
+/**
+ * gpt-image-1: currently NO hard ceiling, so every request is refused.
+ *
+ * OpenAI bills gpt-image-1 by TOKENS: text (and, for edits, image) input tokens
+ * plus image output tokens that depend on `quality` × `size`. Omnira's price
+ * book has one flat `gpt_image_usd_per_image` figure, which prices one
+ * quality/size tier and none of the input tokens; requests do not pin
+ * `quality`. That figure is a proxy for a different billing unit. Making this
+ * boundable needs canonical per-(quality, size) output prices plus a proven
+ * input-token bound — a reviewed price-book change, not a guess here.
+ */
+export function gptImageCeiling(count: number, params: Record<string, unknown>, rates: RateSnapshot): Ceiling {
+  void count; void params; void rates
+  return refuse('gpt-image-1 bills text/image tokens by quality and size; the flat per-image price-book '
+    + 'entry is a proxy for one tier, not a hard ceiling for this request')
+}

@@ -157,6 +157,32 @@ export async function logLlmCost(
   )
 }
 
+// ── Sound generation (ElevenLabs), per second ───────────────────────────────
+/**
+ * The canonical per-second rate key for ElevenLabs sound generation. There is
+ * deliberately NO fallback: a guessed per-second price — or a voice-character
+ * proxy — is not a hard ceiling (M0), so with no configured row the governed
+ * adapter refuses the call before reserving.
+ */
+export const ELEVENLABS_SOUND_RATE_KEY = 'elevenlabs_sound_usd_per_second'
+
+/** Meters `seconds` of generated sound at the pinned canonical per-second rate. */
+export async function logSoundCost(seconds: number, ctx: CostContext = {}): Promise<void> {
+  const rates = await ratesForCost()
+  const perSecond = rates[ELEVENLABS_SOUND_RATE_KEY]
+  if (typeof perSecond !== 'number' || !Number.isFinite(perSecond) || perSecond < 0) {
+    // Unreachable through the governed adapter (it refuses without the rate).
+    // Never price a row from a guess: with nothing metered, the governed call
+    // settles at its hard ceiling instead.
+    console.error('[cost] no canonical sound-generation rate; nothing metered')
+    return
+  }
+  await insertCostEvent(
+    { provider: 'elevenlabs', model: 'sound-generation', unitType: 'seconds', units: seconds, costUsd: seconds * perSecond },
+    { agent: 'Music Director', operation: 'Generate Background Music', ...ctx },
+  )
+}
+
 // ── Voice (ElevenLabs) ──────────────────────────────────────────────────────
 export async function logVoiceCost(charCount: number, ctx: CostContext = {}): Promise<void> {
   const rates = await ratesForCost()

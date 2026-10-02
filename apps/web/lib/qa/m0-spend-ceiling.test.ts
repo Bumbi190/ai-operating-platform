@@ -34,7 +34,8 @@ const RATES = Object.freeze({
   elevenlabs_usd_per_1k_chars: 0.24,
   ideogram_v3_usd_per_image: 0.08,
   gpt_image_usd_per_image: 0.042,
-  openai_tts_usd_per_1k_chars: 0.015,
+  openai_tts_1_usd_per_1k_chars: 0.015,
+  elevenlabs_sound_usd_per_second: 0.01,
 })
 
 beforeEach(() => {
@@ -94,14 +95,34 @@ describe('hard-bound proof per governed adapter: ceiling ≥ maximal metered out
     expect(a).toBe(b)
   })
 
-  for (const n of [1, 4]) {
-    it(`gpt-image-1 (n=${n}): fixed units, priced exactly as the metering prices them`, async () => {
-      const { estimateImageSek } = await import('@/lib/cost/budget-gate')
-      const { logImageCost } = await import('@/lib/cost/track')
-      const ceiling = await estimateImageSek(n, 'gpt_image', RATES)
-      const worst = await metered(() => logImageCost(n, 'openai'))
-      expect(ceiling).toBeCloseTo(worst, 4)
-      expect(ceiling).toBeGreaterThanOrEqual(worst - 1e-4)
+  for (const seconds of [0.5, 1, 7.2, 22]) {
+    it(`ElevenLabs sound generation (${seconds}s): ceil(seconds) × the canonical per-second rate = metering`, async () => {
+      const { logSoundCost } = await import('@/lib/cost/track')
+      const { fixedUnitCeiling } = await import('@/lib/cost/spend-ceiling')
+      const billable = Math.ceil(seconds)
+      const ceiling = fixedUnitCeiling(billable, RATES.elevenlabs_sound_usd_per_second, RATES, 'sound')
+      if (!ceiling.ok) throw new Error(ceiling.reason)
+      const worst = await metered(() => logSoundCost(billable))
+      expect(ceiling.sek).toBeCloseTo(worst, 6)
+      expect(ceiling.sek).toBeGreaterThanOrEqual(seconds * RATES.elevenlabs_sound_usd_per_second * RATES.usd_sek - 1e-9)
+    })
+  }
+
+  it('ElevenLabs sound metering never prices a row from a guess when the rate is absent', async () => {
+    const { logSoundCost } = await import('@/lib/cost/track')
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { usd_sek } = RATES
+    expect(await metered(() => logSoundCost(10), { usd_sek })).toBe(0)
+    err.mockRestore()
+  })
+
+  for (const model of ['tts-1', 'tts-1-hd'] as const) {
+    it(`OpenAI speech ${model}: input characters × the model's canonical per-character rate`, async () => {
+      const { estimateOpenAISpeechSek, OPENAI_PER_CHARACTER_SPEECH_RATE_KEYS } = await import('@/lib/ai/openai-client')
+      const key = OPENAI_PER_CHARACTER_SPEECH_RATE_KEYS[model]
+      const rates: Record<string, number> = { ...RATES, [key]: model === 'tts-1' ? 0.015 : 0.03 }
+      const ceiling = await estimateOpenAISpeechSek(4096, rates, model)
+      expect(ceiling).toBeCloseTo((4096 / 1000) * rates[key] * RATES.usd_sek, 9)
     })
   }
 
@@ -174,6 +195,83 @@ describe('a request that cannot be bounded is REFUSED, never reserved at a guess
     })
   }
 
+  it('ElevenLabs sound generation: no canonical per-second rate configured → refused, provider never called', async () => {
+    LIVE_RATES.mockResolvedValue({ usd_sek: 10.5, elevenlabs_usd_per_1k_chars: 0.24 })   // production today
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    process.env.ELEVENLABS_API_KEY = 'test-key'
+    const { generateSoundEffect } = await import('@/lib/media/elevenlabs')
+    await expect(generateSoundEffect('rain', 10, { context: 'AUTONOMOUS', scope: { kind: 'GLOBAL_ONLY' } } as never,
+      { projectId: 'p' })).rejects.toMatchObject({ reason: 'unbounded_spend' })
+    expect(fetchSpy).not.toHaveBeenCalled()
+    fetchSpy.mockRestore()
+  })
+
+  for (const duration of [0, -1, Number.NaN, undefined]) {
+    it(`ElevenLabs sound generation: duration ${String(duration)} (no request-fixed bound) → refused`, async () => {
+      process.env.ELEVENLABS_API_KEY = 'test-key'
+      const { generateSoundEffect } = await import('@/lib/media/elevenlabs')
+      await expect(generateSoundEffect('rain', duration as never, { context: 'AUTONOMOUS', scope: { kind: 'GLOBAL_ONLY' } } as never,
+        { projectId: 'p' })).rejects.toMatchObject({ reason: 'unbounded_spend' })
+    })
+  }
+
+  for (const [model, rates] of [
+    ['gpt-4o-mini-tts', RATES],                                   // token-billed audio output: unbounded
+    ['tts', RATES],                                               // unknown
+    ['tts-1', { usd_sek: 10.5 }],                                 // per-character, but no canonical rate configured
+  ] as const) {
+    it(`OpenAI speech: ${model} with ${Object.keys(rates).length} rate rows → refused`, async () => {
+      const { estimateOpenAISpeechSek } = await import('@/lib/ai/openai-client')
+      await expect(estimateOpenAISpeechSek(100, rates, model)).rejects.toMatchObject({ reason: 'unbounded_spend' })
+    })
+  }
+
+  it('ROLLOUT FACT: Atlas TTS (the route\'s own model, today\'s production price book) is refused', async () => {
+    const route = readFileSync(join(process.cwd(), 'app/api/chat/tts/route.ts'), 'utf8')
+    const model = /const ATLAS_TTS_MODEL = '([^']+)'/.exec(route)?.[1]
+    expect(model).toBe('gpt-4o-mini-tts')
+    const productionRates = { usd_sek: 10.5, elevenlabs_usd_per_1k_chars: 0.24,
+      ideogram_v3_usd_per_image: 0.08, gpt_image_usd_per_image: 0.042 }    // cost_rates as read 2026-10-02
+    const { estimateOpenAISpeechSek } = await import('@/lib/ai/openai-client')
+    await expect(estimateOpenAISpeechSek(600, productionRates, model!)).rejects.toMatchObject({ reason: 'unbounded_spend' })
+  })
+
+  it('gpt-image-1: the flat per-image row is a proxy for token billing → generate and edit are refused', async () => {
+    const { openAIImageGenerate, openAIImageEdit, gptImageCeiling } = await import('@/lib/ai/openai-client')
+    expect(gptImageCeiling(1, { quality: 'low', size: '1024x1024' }, RATES).ok).toBe(false)
+    const ctx = { project: { projectId: 'p' }, execution: { context: 'AUTONOMOUS', scope: { kind: 'GLOBAL_ONLY' } } } as never
+    await expect(openAIImageGenerate(ctx, { model: 'gpt-image-1', prompt: 'x', n: 1 } as never)).rejects.toMatchObject({ reason: 'unbounded_spend' })
+    await expect(openAIImageEdit(ctx, { model: 'gpt-image-1', prompt: 'x', image: {} } as never)).rejects.toMatchObject({ reason: 'unbounded_spend' })
+  })
+
+  for (const [name, body, legacy] of [
+    ['QUALITY rendering speed', { rendering_speed: 'QUALITY' }, false],
+    ['two images', { num_images: 2 }, false],
+    ['legacy V_2 model', { model: 'V_2' }, true],
+    ['legacy two images', { model: 'V_3', num_images: 4 }, true],
+  ] as const) {
+    it(`Ideogram: ${name} is not priced by the canonical row → refused before reserving`, async () => {
+      process.env.IDEOGRAM_API_KEY = 'test-key'
+      const { generateIdeogramV3, generateIdeogramLegacy } = await import('@/lib/media/image-client')
+      const ctx = { project: { projectId: 'p' }, execution: { context: 'AUTONOMOUS', scope: { kind: 'GLOBAL_ONLY' } }, operation: 'op' } as never
+      const call = legacy ? generateIdeogramLegacy(ctx, { prompt: 'x', ...body }) : generateIdeogramV3(ctx, { prompt: 'x', ...body })
+      await expect(call).rejects.toMatchObject({ reason: 'unbounded_spend' })
+    })
+  }
+
+  it('MuAPI: every resource descriptor is unpriced, so every billable dispatch is refused (sandbox only, at 0)', async () => {
+    const resources = await import('@/lib/media/providers/resources')
+    const descriptors = Object.values(resources).flatMap(v =>
+      v && typeof v === 'object' && 'costRateKey' in (v as object) ? [v as unknown as { costRateKey: unknown }]
+      : Array.isArray(v) ? (v as unknown[]).filter((d): d is { costRateKey: unknown } => !!d && typeof d === 'object' && 'costRateKey' in (d as object))
+      : v && typeof v === 'object' ? Object.values(v as object).filter((d): d is { costRateKey: unknown } => !!d && typeof d === 'object' && 'costRateKey' in (d as object))
+      : [])
+    expect(descriptors.length).toBeGreaterThan(0)
+    for (const d of descriptors) expect(d.costRateKey).toBeNull()
+    const admission = resources.admitMuapiSpend(descriptors[0] as never, { allowed: true, reason: null, code: null, billable: true })
+    expect(admission.admitted).toBe(false)
+  })
+
   it('a missing usd_sek refuses rather than defaulting', async () => {
     const { estimateAnthropicSek } = await import('@/lib/ai/anthropic')
     await expect(estimateAnthropicSek({ model: 'claude-sonnet-4-6', max_tokens: 10, messages: [] }, {}))
@@ -222,6 +320,23 @@ describe('M0 ceiling guards', () => {
     const users = all.filter(f => f !== 'lib/cost/spend-ceiling.ts' && f !== 'lib/cost/governed-spend.ts'
       && /ceilingBasis: 'internal_fixed'/.test(readFileSync(join(ROOT, f), 'utf8')))
     expect(users.sort()).toEqual(['lib/workflows/effect/effect-execution.ts', 'lib/workflows/effect/proof-handler.ts'])
+  })
+
+  it('the fixed_units sweep: exactly the audited call sites claim it, and none prices a proxy unit', () => {
+    const sites = all.flatMap(f => {
+      const src = readFileSync(join(ROOT, f), 'utf8')
+      const n = (src.match(/ceilingBasis: 'fixed_units'/g) ?? []).length
+      return n ? [`${f}:${n}`] : []
+    }).sort()
+    expect(sites).toEqual([
+      'lib/ai/openai-client.ts:3',                       // speech (per-char models only) + 2 gpt-image (refused before reserving)
+      'lib/media/dispatch/governed-dispatch.ts:1',       // MuAPI (billable refused; sandbox 0)
+      'lib/media/elevenlabs.ts:2',                       // voice (chars) + sound (seconds, canonical rate or refused)
+      'lib/media/image-client.ts:2',                     // Ideogram v3 + legacy (one DEFAULT/TURBO v3 image or refused)
+    ])
+    const el = readFileSync(join(ROOT, 'lib/media/elevenlabs.ts'), 'utf8')
+    expect(el).not.toMatch(/\* 200\)|durationSeconds \* 200/)
+    expect(readFileSync(join(ROOT, 'lib/ai/openai-client.ts'), 'utf8')).not.toMatch(/OPENAI_TTS_USD_PER_1K_CHARS_FALLBACK/)
   })
 
   it('no chars-per-token heuristic survives in a governed estimator', () => {

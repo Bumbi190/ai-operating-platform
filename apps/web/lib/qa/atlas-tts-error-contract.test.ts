@@ -33,6 +33,18 @@ import { resolveAtlasServiceWarning } from '@/lib/atlas/orb-state'
 // DB-less unit test is not refused for having no resolvable project. That the
 // routes ARE governed is proven by lib/qa/governance-provider-boundary.test.ts,
 // which reads the real source, and by that suite's lifecycle tests.
+
+// M0: these tests exercise transport / governance MECHANICS (or the route's auth
+// and payload contract), not pricing. Speech via gpt-4o-mini-tts and gpt-image-1
+// have NO hard ceiling in production and are refused before reserving — that
+// outcome is pinned in m0-spend-ceiling.test.ts. Here a configured ceiling is
+// substituted so the mechanics stay covered for when one is configured.
+vi.mock('@/lib/cost/spend-ceiling', async (orig) => {
+  const actual = await orig<typeof import('@/lib/cost/spend-ceiling')>()
+  const priced = () => ({ ok: true as const, sek: 0.01, basis: 'fixed_units' as const, detail: 'test: configured ceiling' })
+  return { ...actual, openAISpeechCeiling: priced, gptImageCeiling: priced }
+})
+
 vi.mock('@/lib/cost/governed-spend', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/cost/governed-spend')>()
   return { ...actual, withGovernedSpend: async (_input: unknown, run: () => Promise<unknown>) => run() }

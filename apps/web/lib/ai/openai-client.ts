@@ -26,8 +26,10 @@ import OpenAI from 'openai'
 
 import { logImageCost, logLlmCost, type CostContext } from '@/lib/cost/track'
 import { getRates } from '@/lib/cost/rates'
-import { containsKey, fixedUnitCeiling, tokenWindowCeiling, type RateSnapshot } from '@/lib/cost/spend-ceiling'
-import { estimateImageSek } from '@/lib/cost/budget-gate'
+import {
+  containsKey, gptImageCeiling, openAISpeechCeiling, tokenWindowCeiling, type RateSnapshot,
+} from '@/lib/cost/spend-ceiling'
+export { OPENAI_PER_CHARACTER_SPEECH_RATE_KEYS, gptImageCeiling } from '@/lib/cost/spend-ceiling'
 import {
   ProviderNotDispatchedError,
   SpendRefusedError,
@@ -50,13 +52,6 @@ import {
 import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
 const OPENAI_SPEECH_URL = 'https://api.openai.com/v1/audio/speech'
-
-/**
- * USD per 1 000 characters of synthesised speech, when `cost_rates` has no row.
- * OpenAI bills gpt-4o-mini-tts per token of input text; $0.015 / 1k chars is a
- * deliberate over-estimate of that, which is the safe direction for a ceiling.
- */
-const OPENAI_TTS_USD_PER_1K_CHARS_FALLBACK = 0.015
 
 export interface OpenAIGovernanceContext {
   /**
@@ -342,18 +337,24 @@ export async function estimateOpenAIChatSek(
 }
 
 /**
- * Speech ceiling: characters × the per-character price book entry. Speech is
- * never metered (the endpoint reports no usage), so it settles at exactly this
- * figure: the ceiling IS the ledger amount, and nothing can exceed it in the
- * ledger. Whether the per-character entry covers the provider's per-token
- * audio billing is a price-book fact owned by the operator.
+ * Speech hard ceiling (M0) — see `openAISpeechCeiling`. Throws `unbounded_spend`
+ * for a token-billed model or one with no configured canonical rate; the
+ * provider is then never called. Speech is never metered, so it settles at
+ * exactly this figure.
  */
-export async function estimateOpenAISpeechSek(charCount: number, rates?: RateSnapshot): Promise<number> {
-  const r = rates ?? await getRates()
-  const perK = r.openai_tts_usd_per_1k_chars ?? OPENAI_TTS_USD_PER_1K_CHARS_FALLBACK
-  const ceiling = fixedUnitCeiling(charCount / 1000, perK, r, `speech:${charCount}chars`)
+export async function estimateOpenAISpeechSek(charCount: number, rates: RateSnapshot | undefined, model: string): Promise<number> {
+  const ceiling = openAISpeechCeiling(charCount, model, rates ?? await getRates())
   if (!ceiling.ok) {
     throw new SpendRefusedError({ reason: 'unbounded_spend', provider: 'openai', operation: 'audio.speech', detail: ceiling.reason })
+  }
+  return ceiling.sek
+}
+
+/** gpt-image-1 hard ceiling (M0) — see `gptImageCeiling`; refused while none exists. */
+function boundedGptImageSek(count: number, params: Record<string, unknown>, rates: RateSnapshot): number {
+  const ceiling = gptImageCeiling(count, params, rates)
+  if (!ceiling.ok) {
+    throw new SpendRefusedError({ reason: 'unbounded_spend', provider: 'openai', operation: 'images', detail: ceiling.reason })
   }
   return ceiling.sek
 }
@@ -418,7 +419,7 @@ export async function openAIChatCompletion(
   )
 }
 
-/** Governed gpt-image-1 generation. Cost is per image and known up front. */
+/** Governed gpt-image-1 generation. M0: refused until a hard ceiling exists (`gptImageCeiling`). */
 export async function openAIImageGenerate(
   ctx: OpenAIGovernanceContext,
   params: OpenAI.Images.ImageGenerateParams,
@@ -426,7 +427,7 @@ export async function openAIImageGenerate(
 ): Promise<any> {
   const count = Math.max(1, (params as { n?: number }).n ?? 1)
   const rates = await getRates()
-  const estimatedSek = await estimateImageSek(count, 'gpt_image', rates)
+  const estimatedSek = boundedGptImageSek(count, params as unknown as Record<string, unknown>, rates)
   return withGovernedSpend(
     { project: ctx.project, execution: ctx.execution, provider: 'openai', operation: ctx.operation, estimatedSek,
       ceilingBasis: 'fixed_units', rates },
@@ -455,7 +456,7 @@ export async function openAIImageEdit(
 ): Promise<any> {
   const count = Math.max(1, (params as { n?: number }).n ?? 1)
   const rates = await getRates()
-  const estimatedSek = await estimateImageSek(count, 'gpt_image', rates)
+  const estimatedSek = boundedGptImageSek(count, params as unknown as Record<string, unknown>, rates)
   return withGovernedSpend(
     { project: ctx.project, execution: ctx.execution, provider: 'openai', operation: ctx.operation, estimatedSek,
       ceilingBasis: 'fixed_units', rates },
@@ -493,7 +494,7 @@ export async function openAISpeech(
 
   const charCount = typeof payload.input === 'string' ? payload.input.length : 0
   const rates = await getRates()
-  const estimatedSek = await estimateOpenAISpeechSek(charCount, rates)
+  const estimatedSek = await estimateOpenAISpeechSek(charCount, rates, String(payload.model ?? ''))
 
   return withGovernedSpend(
     { project: ctx.project, execution: ctx.execution, provider: 'openai', operation: ctx.operation, estimatedSek,

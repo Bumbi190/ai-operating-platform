@@ -395,10 +395,14 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 sharded Survival input epoch (r
       report.applyMs = applyMs
     })
 
-    it('the table carries change identity ONLY: (shard_id smallint, epoch bigint), nothing else', () => {
-      expect(query(dsn, `select column_name, data_type, is_nullable from information_schema.columns
+    it('the table carries change identity ONLY: (shard_id smallint, epoch bigint) + the xid8 dedupe marker', () => {
+      expect(query(dsn, `select column_name, format_type(atttypid, atttypmod), not attnotnull
+        from information_schema.columns c join pg_attribute a
+          on a.attrelid = 'public.survival_input_epoch_shards'::regclass and a.attname = c.column_name
         where table_schema = 'public' and table_name = 'survival_input_epoch_shards' order by ordinal_position`))
-        .toEqual([['shard_id', 'smallint', 'NO'], ['epoch', 'bigint', 'NO']])
+        .toEqual([['shard_id', 'smallint', 'f'], ['epoch', 'bigint', 'f'], ['last_bump_xid', 'xid8', 't']])
+      // Seeded unstamped: no transaction has advanced any shard yet.
+      expect(one(dsn, `select count(*) from survival_input_epoch_shards where last_bump_xid is not null and epoch = 0`)).toBe('0')
     })
 
     it('the vector is all 8 epochs in ascending shard order: a bump on shard s appears at position s', () => {
@@ -443,6 +447,8 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 sharded Survival input epoch (r
     it('service_role cannot fabricate, delete, add or truncate epochs', () => {
       for (const sql of ['update survival_input_epoch_shards set epoch = epoch + 1 where shard_id = 0',
         'update survival_input_epoch_shards set epoch = 0', 'delete from survival_input_epoch_shards',
+        'update survival_input_epoch_shards set last_bump_xid = pg_current_xact_id() where shard_id = 0',
+        'update survival_input_epoch_shards set last_bump_xid = null',
         'insert into survival_input_epoch_shards values (0, 9)', 'truncate survival_input_epoch_shards']) {
         expect(as('service_role', sql), sql).toBe('42501')
       }
@@ -491,6 +497,25 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 sharded Survival input epoch (r
         'insert into survival_input_epoch_shards values (0, 0)', 'truncate survival_input_epoch_shards']) {
         expect(sqlstate(dsn, sql), sql).toBe('42501')
       }
+    })
+
+    it('the OWNER cannot forge the dedupe marker: a +1 must be stamped with THIS transaction\'s own xid8', () => {
+      for (const sql of [
+        // another transaction's identity (would make that transaction's later bump skip)
+        `update survival_input_epoch_shards set epoch = epoch + 1, last_bump_xid = '1'::xid8 where shard_id = 0`,
+        `update survival_input_epoch_shards set epoch = epoch + 1,
+           last_bump_xid = ((pg_current_xact_id()::text)::numeric + 4294967296)::text::xid8 where shard_id = 0`,
+        // a marker change without an advance, or an advance that erases the marker
+        `update survival_input_epoch_shards set last_bump_xid = pg_current_xact_id() where shard_id = 0`,
+        `update survival_input_epoch_shards set epoch = epoch + 1, last_bump_xid = null where shard_id = 0`,
+        // an advance that leaves ANOTHER transaction's (or no) stamp in place
+        `update survival_input_epoch_shards set epoch = epoch + 1 where shard_id = 0`,
+      ]) {
+        expect(sqlstate(dsn, `begin; ${sql}; rollback;`), sql).toBe('42501')
+      }
+      // The ONLY admissible stamp is the writer's own xid8, together with +1.
+      expect(sqlstate(dsn, `begin; update survival_input_epoch_shards set epoch = epoch + 1,
+        last_bump_xid = pg_current_xact_id() where shard_id = 0; rollback;`)).toBe('')
     })
 
     it('OWNER LIMITATION, stated honestly: the owner can disable the guards (PostgreSQL cannot bind a superuser)', () => {
@@ -744,20 +769,109 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 sharded Survival input epoch (r
     const savepoints = (p: string, n: number) => Array.from({ length: n }, (_, i) =>
       `savepoint s${i}; ${costRowSql(p)}; release s${i};`).join('\n')
 
-    it.each([1, 5, 10])('MEASURED: %i subtransactions each forced IMMEDIATE advance the ONE shard exactly that many times', (k) => {
+    it('pg_current_xact_id() is ONE full xid8 across top level and nested subtransactions, and the stamp records it', () => {
+      const p = project()
+      const rows = query(dsn, `begin; set constraints all immediate;
+        select 'top=' || pg_current_xact_id();
+        savepoint a; select 'a=' || pg_current_xact_id();
+          savepoint b; ${costRowSql(p)}; select 'b=' || pg_current_xact_id(); release b;
+        release a;
+        select 'stamp=' || (select last_bump_xid from survival_input_epoch_shards
+          where shard_id = ((pg_current_xact_id()::text)::numeric % 8)::smallint);
+        commit;`).map(r => r.join('|'))
+      const v = (k: string) => rows.find(l => l.startsWith(`${k}=`))!.slice(k.length + 1)
+      expect(v('a')).toBe(v('top'))
+      expect(v('b')).toBe(v('top'))
+      expect(v('stamp')).toBe(v('top'))
+    })
+
+    it.each([1, 5, 10])('MEASURED: %i subtransactions each forced IMMEDIATE advance the ONE shard EXACTLY once (xid8 marker)', (k) => {
       const p = project()
       const { shard, d } = committed(`set constraints all immediate;\n${savepoints(p, k)}`)
-      expect(d).toEqual(unit(shard, k))
+      expect(d).toEqual(unit(shard))
       report[`immediateSubtransactions${k}`] = d[shard]
     })
 
-    it('a first bump in a subtransaction followed by top-level writes: same shard, +2 (sub + top), never a miss', () => {
+    it('a first bump in a subtransaction followed by top-level writes in several sources: same shard, exactly +1', () => {
       const p = project()
       const { shard, d } = committed(`set constraints all immediate;
         savepoint s; ${costRowSql(p)}; release s;
         update project_budgets set daily_sek = 997 where project_id = '${p}';
+        insert into revenue_snapshots (project_id, snapshot_date, mrr_sek) values ('${p}', current_date, 5);
         ${costRowSql(p)}`)
-      expect(d).toEqual(unit(shard, 2))
+      expect(d).toEqual(unit(shard))
+    })
+
+    it('a write SKIPPED because of an earlier advance is undone together with that advance (ROLLBACK TO before both)', () => {
+      const p = project()
+      const v0 = vec()
+      const before = one(dsn, `select count(*) from cost_events where project_id = '${p}'`)
+      run(dsn, ['-c', `begin; set constraints all immediate;
+        savepoint outer_sp; ${costRowSql(p)}; savepoint inner_sp; ${costRowSql(p)}; release inner_sp;
+        rollback to outer_sp; commit;`])
+      expect(vec()).toEqual(v0)
+      expect(one(dsn, `select count(*) from cost_events where project_id = '${p}'`)).toBe(before)
+    })
+
+    it('rolling back ONLY the skipped write keeps the earlier write AND its advance (+1)', () => {
+      const p = project()
+      const { shard, d } = committed(`set constraints all immediate;
+        ${costRowSql(p)}; savepoint s; ${costRowSql(p)}; rollback to s`)
+      expect(d).toEqual(unit(shard))
+    })
+
+    it('whole-transaction ROLLBACK leaves both the epoch AND the marker exactly as they were', () => {
+      const p = project()
+      const state = () => one(dsn, `select string_agg(shard_id || ':' || epoch || ':' || coalesce(last_bump_xid::text, '-'), ',' order by shard_id)
+        from survival_input_epoch_shards`)
+      const s0 = state()
+      run(dsn, ['-c', `begin; set constraints all immediate; ${costRowSql(p)};
+        update project_budgets set daily_sek = 995 where project_id = '${p}'; rollback;`])
+      expect(state()).toBe(s0)
+    })
+
+    it('LONG HORIZON (mechanical): two full xid8 identities in different xid epochs share one 32-bit xid but never compare equal', () => {
+      // 100 and 2^32 + 100: the same 32-bit xid (what `xmin` would show after wraparound),
+      // two different transactions. The retired low-32 dedupe would have called them equal.
+      expect(one(dsn, `select ('100'::xid8 = '4294967396'::xid8)::text || '|' ||
+        (xid('100'::xid8) = xid('4294967396'::xid8))::text || '|' ||
+        (('100'::xid8)::text::numeric % 4294967296 = ('4294967396'::xid8)::text::numeric % 4294967296)::text || '|' ||
+        ('100'::xid8 is distinct from '4294967396'::xid8)::text`)).toBe('false|true|true|true')
+    })
+
+    it('LONG HORIZON (real): a shard stamped by an ALIASING transaction (same 32-bit xid, other xid epoch) is still advanced', () => {
+      const p = project()
+      const rows = query(dsn, `begin;
+        select 'cur=' || pg_current_xact_id();
+        alter table survival_input_epoch_shards disable trigger survival_input_epoch_shards_guard;
+        update survival_input_epoch_shards
+           set last_bump_xid = ((pg_current_xact_id()::text)::numeric + 4294967296)::text::xid8
+         where shard_id = ((pg_current_xact_id()::text)::numeric % 8)::smallint;
+        alter table survival_input_epoch_shards enable trigger survival_input_epoch_shards_guard;
+        select 'alias=' || last_bump_xid || '|' || (xid(last_bump_xid) = xid(pg_current_xact_id()))::text || '|' || epoch
+          from survival_input_epoch_shards where shard_id = ((pg_current_xact_id()::text)::numeric % 8)::smallint;
+        set constraints all immediate;
+        ${costRowSql(p)};
+        select 'after=' || last_bump_xid || '|' || epoch
+          from survival_input_epoch_shards where shard_id = ((pg_current_xact_id()::text)::numeric % 8)::smallint;
+        rollback;`).map(r => r.join('|'))
+      const get = (k: string) => rows.find(l => l.startsWith(`${k}=`))!.slice(k.length + 1).split('|')
+      const cur = get('cur')[0]
+      const [aliasXid, low32Equal, epochBefore] = get('alias')
+      const [stampAfter, epochAfter] = get('after')
+      expect(String(BigInt(aliasXid) - BigInt(cur))).toBe(String(2 ** 32))
+      expect(low32Equal).toBe('true')            // the 32-bit identities collide …
+      expect(Number(epochAfter)).toBe(Number(epochBefore) + 1)   // … and the shard is STILL advanced
+      expect(stampAfter).toBe(cur)               // and now carries this transaction's full identity
+    })
+
+    it('BULK: a 500-row insert in one transaction advances exactly once (measured)', () => {
+      const p = project()
+      const t0 = Date.now()
+      const { shard, d } = committed(`insert into cost_events (project_id, provider, cost_sek, cost_usd)
+        select '${p}', 'anthropic', 0.01, 0.001 from generate_series(1, 500)`)
+      report.bulk500Ms = Date.now() - t0
+      expect(d).toEqual(unit(shard))
     })
 
     it('the DEFAULT deferred mode is exactly +1 however many savepoints the transaction used', () => {

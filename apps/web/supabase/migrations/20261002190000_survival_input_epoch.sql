@@ -16,28 +16,31 @@
 -- and its provenance are M4; licensed binds still return
 -- licensed_bind_not_serializable)
 --
---   A. `survival_input_epoch_shards` — 8 rows, (shard_id 0..7, epoch bigint).
---      CHANGE IDENTITY ONLY: no Survival state, no ceiling, no policy, no
---      project value, no timestamp, no source label.
+--   A. `survival_input_epoch_shards` — 8 rows, (shard_id 0..7, epoch bigint,
+--      last_bump_xid xid8). CHANGE IDENTITY ONLY: no Survival state, no
+--      ceiling, no policy, no project value, no timestamp, no source label.
+--      `last_bump_xid` is internal dedupe metadata — the full 64-bit id of the
+--      transaction that last advanced the shard — never authority.
 --   B. Every committed mutation of a Survival authority input advances shard
---      txid_current() % 8, in the SAME transaction, by a database trigger.
---      Rollback of either rolls back both. TRUNCATE of a source cannot commit.
+--      pg_current_xact_id() mod 8, in the SAME transaction, by a database
+--      trigger. Rollback of either rolls back both. TRUNCATE of a source cannot
+--      commit.
 --   C. `survival_input_epoch_vector()` — all 8 epochs, ascending shard order,
 --      in one statement snapshot; fails closed on a missing, extra or
 --      malformed shard.
 --
 -- THE EPOCH CONTRACT (exactly what is promised, and nothing more)
---   - one top-level transaction maps to ONE shard (txid_current() is the
---     top-level id, identical inside every subtransaction);
+--   - one top-level transaction maps to ONE shard (pg_current_xact_id() is the
+--     full xid8 of the TOP-LEVEL transaction, identical inside every
+--     subtransaction);
 --   - a committed transaction that mutated Survival authority has advanced
---     that shard AT LEAST ONCE;
+--     that shard AT LEAST ONCE — and, by the xid8 marker below, exactly once,
+--     however many rows, statements, sources or savepoints it used and whether
+--     or not it forced the bump IMMEDIATE;
 --   - a rolled-back transaction (or rolled-back subtransaction) leaves no
 --     committed advance;
---   - the epoch is CHANGE IDENTITY, not a count. Under the default deferred
---     mode a transaction advances its shard exactly once however many rows,
---     statements or savepoints it used; a transaction that forces the bump
---     IMMEDIATE inside N separate subtransactions may advance it up to N times.
---     No consumer may read meaning into the magnitude of a difference.
+--   - the epoch is CHANGE IDENTITY, not a count of mutations. No consumer may
+--     read meaning into the magnitude of a difference.
 --
 -- THE AUTHORITY SOURCE SET (Phase 3B1B2 M2 Section 0, derived from
 -- readSurvivalSnapshot → deriveSurvivalState → survivalCeiling on d7de380):
@@ -79,8 +82,7 @@
 --
 --   Row-level is the only level a constraint trigger supports. A bulk statement
 --   still writes the shard ONCE per transaction: the bump is skipped when the
---   shard row's current version was already written by this transaction at top
---   level (see the contract above for the subtransaction case).
+--   shard's `last_bump_xid` already equals this transaction's full xid8.
 --
 -- TRUNCATE CANNOT CHANGE SURVIVAL, BECAUSE TRUNCATE CANNOT COMMIT
 --   TRUNCATE fires no row events, so a deferred row trigger never sees it, and
@@ -99,8 +101,28 @@
 --   the deferred bump. No shard lock is ever taken before commit.
 --
 -- SHARD FORMULA
---   shard = txid_current() % 8   (txid_current() is the 64-bit top-level id,
---   identical in every subtransaction, so one transaction maps to one shard.)
+--   shard = pg_current_xact_id() mod 8, computed on the full 64-bit value
+--   (xid8 → text → numeric, so no width or sign limit applies). The xid8 is the
+--   top-level id, identical in every subtransaction, so one transaction maps to
+--   one shard. Shard selection needs no uniqueness — only determinism.
+--
+-- DEDUPE IDENTITY: FULL xid8, NEVER A 32-BIT XID
+--   The skip test is `last_bump_xid IS NOT DISTINCT FROM pg_current_xact_id()`
+--   — the full epoch-qualified 64-bit transaction id, which PostgreSQL never
+--   reuses. It deliberately does NOT use the row's `xmin` system column or any
+--   low-32-bit comparison: `xid` is 32-bit and wraps, so a later transaction can
+--   share an old row version's 32-bit xid, and an `xmin`/low-32 equality would
+--   then report "already bumped" for a transaction that never bumped — a
+--   Survival change with no epoch change, the one false negative M2 exists to
+--   prevent.
+--
+--   Why one advance per transaction is safe, including savepoints: the marker
+--   is written in the SAME (sub)transaction as the advance it records, so it is
+--   visible exactly when that advance survives. A later write in the same
+--   transaction skips only while that earlier advance is visible; any ROLLBACK
+--   TO that undoes the advance also undoes every later write, because a
+--   savepoint rollback discards all work after the savepoint. A surviving
+--   mutation therefore always implies a surviving advance.
 --
 -- DATABASE-OWNER LIMITATION
 --   The table owner (postgres) can disable triggers, re-grant TRUNCATE and
@@ -112,25 +134,33 @@
 
 -- ── A. The shards ───────────────────────────────────────────────────────────
 create table public.survival_input_epoch_shards (
-  shard_id smallint primary key check (shard_id between 0 and 7),
-  epoch    bigint   not null check (epoch >= 0)
+  shard_id      smallint primary key check (shard_id between 0 and 7),
+  epoch         bigint   not null check (epoch >= 0),
+  last_bump_xid xid8
 );
 
 comment on table public.survival_input_epoch_shards is
   'Phase 3B1B2 M2: change identity for Survival authority inputs. 8 fixed shards; a committed '
-  'mutation of any Survival input advances shard txid_current() % 8 in the same transaction. '
+  'mutation of any Survival input advances shard pg_current_xact_id() mod 8 in the same transaction. '
   'Stores no Survival state, ceiling, policy, project value or timestamp.';
+comment on column public.survival_input_epoch_shards.last_bump_xid is
+  'Internal dedupe metadata, NOT authority: the full xid8 of the transaction that last advanced this '
+  'shard. Written only by the bump machinery, together with the advance it records.';
 
 insert into public.survival_input_epoch_shards (shard_id, epoch)
 select g::smallint, 0 from generate_series(0, 7) g;
 
--- Only a +1 advance of an existing shard is ever legal. Refuses INSERT, DELETE,
--- TRUNCATE, a shard_id change, and any epoch move that is not exactly +1 — for
+-- Only a +1 advance of an existing shard, stamped with the CURRENT
+-- transaction's own full xid8, is ever legal. Refuses INSERT, DELETE, TRUNCATE,
+-- a shard_id change, any epoch move that is not exactly +1, and any
+-- `last_bump_xid` other than this transaction's own — so the marker cannot be
+-- forged to another transaction's identity (to make a later bump skip) — for
 -- every role, the owner included (short of disabling the trigger).
 create or replace function public.survival_input_epoch_shards_guard()
 returns trigger language plpgsql security definer set search_path = '' as $$
 begin
-  if tg_op = 'UPDATE' and new.shard_id = old.shard_id and new.epoch = old.epoch + 1 then
+  if tg_op = 'UPDATE' and new.shard_id = old.shard_id and new.epoch = old.epoch + 1
+     and new.last_bump_xid is not distinct from pg_catalog.pg_current_xact_id() then
     return new;
   end if;
   raise exception 'survival_input_epoch_shards: only a +1 advance of an existing shard is permitted (%)', tg_op
@@ -145,29 +175,27 @@ create trigger survival_input_epoch_shards_no_truncate
   for each statement execute function public.survival_input_epoch_shards_guard();
 
 -- ── B. The bump ─────────────────────────────────────────────────────────────
--- Fired ONLY by the deferred row constraint triggers below. The `xmin` test is
--- the skip: the shard row's visible version carries this transaction's xid
--- only if this transaction advanced it AT TOP LEVEL. A version written inside a
--- subtransaction carries the subtransaction's xid, so it never matches and the
--- shard is advanced again — an extra +1, never a missed one (the contract above
--- promises at-least-once, not a count). Deferred events fire at top level at
--- commit, so in the default mode this is exactly one advance per transaction.
--- A missing shard raises, so the input mutation cannot commit without its
--- epoch.
+-- Fired ONLY by the deferred row constraint triggers below. Advances the
+-- transaction's shard and stamps it with the transaction's FULL xid8, unless
+-- that stamp is already visible (this transaction already advanced it — see the
+-- header for why that is exact under savepoints). If nothing was updated, the
+-- shard must exist AND carry this transaction's stamp; anything else — a
+-- missing shard included — raises, so the input mutation cannot commit without
+-- its epoch.
 create or replace function public.survival_input_epoch_bump()
 returns trigger language plpgsql security definer set search_path = '' as $$
 declare
-  v_xid   bigint   := pg_catalog.txid_current();
-  v_shard smallint := (v_xid % 8)::smallint;
-  v_mine  bigint   := v_xid % 4294967296;
+  v_xact  xid8     := pg_catalog.pg_current_xact_id();
+  v_shard smallint := ((v_xact::text)::numeric % 8)::smallint;
 begin
   update public.survival_input_epoch_shards s
-     set epoch = s.epoch + 1
+     set epoch = s.epoch + 1,
+         last_bump_xid = v_xact
    where s.shard_id = v_shard
-     and s.xmin::text::bigint <> v_mine;
+     and s.last_bump_xid is distinct from v_xact;
   if not found then
     perform 1 from public.survival_input_epoch_shards s
-     where s.shard_id = v_shard and s.xmin::text::bigint = v_mine;
+     where s.shard_id = v_shard and s.last_bump_xid = v_xact;
     if not found then
       raise exception 'survival input epoch shard % is missing', v_shard using errcode = '55000';
     end if;

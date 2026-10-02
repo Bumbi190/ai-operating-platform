@@ -108,25 +108,43 @@ const SURVIVAL_SQL_ROOTS = ['budget_headroom', 'survival_input_epoch_vector', 's
 // ── Shards ───────────────────────────────────────────────────────────────────
 
 describe('M2 shards: exactly 8, ids 0..7, one formula', () => {
-  it('shard ids are constrained to 0..7 and seeded 0..7 at epoch 0', () => {
-    expect(m2Code).toMatch(/shard_id smallint primary key check \(shard_id between 0 and 7\)/)
-    expect(m2Code).toMatch(/select g::smallint, 0 from generate_series\(0, 7\) g;/)
+  it('shard ids are constrained to 0..7 and seeded 0..7 at epoch 0, unstamped', () => {
+    expect(m2Code).toMatch(/shard_id\s+smallint primary key check \(shard_id between 0 and 7\)/)
+    expect(m2Code).toMatch(/insert into public\.survival_input_epoch_shards \(shard_id, epoch\)\nselect g::smallint, 0 from generate_series\(0, 7\) g;/)
     expect(m2Code).toMatch(/epoch\s+bigint\s+not null check \(epoch >= 0\)/)
   })
 
-  it('the table has exactly two columns — change identity, nothing else', () => {
+  it('the table is change identity + the full-width xid8 dedupe marker — nothing else', () => {
     const table = /create table public\.survival_input_epoch_shards \(([\s\S]*?)\n\);/.exec(m2Code)?.[1] ?? ''
-    expect(table.split('\n').map(l => l.trim()).filter(Boolean).map(l => l.split(/\s+/)[0])).toEqual(['shard_id', 'epoch'])
+    expect(table.split('\n').map(l => l.trim()).filter(Boolean).map(l => l.split(/\s+/).slice(0, 2).join(' ').replace(/,$/, '')))
+      .toEqual(['shard_id smallint', 'epoch bigint', 'last_bump_xid xid8'])
     expect(table).not.toMatch(/timestamp|state|ceiling|policy|project|source|label/i)
   })
 
-  it('the shard formula is txid_current() % 8, in one place, and no other modulus appears', () => {
+  it('the shard formula is pg_current_xact_id() mod 8 on the FULL xid8, in one place, and no other modulus appears', () => {
     const bump = effectiveDefinition('survival_input_epoch_bump')
-    expect(bump).toMatch(/v_xid\s+bigint\s+:= pg_catalog\.txid_current\(\);/)
-    expect(bump).toMatch(/v_shard smallint := \(v_xid % 8\)::smallint;/)
-    // 8 is the shard count; 2^32 only maps the 64-bit txid onto the 32-bit xmin for the once-per-transaction skip.
-    const moduli = [...bump.matchAll(/%\s*(\d+)/g)].map(m => m[1])
-    expect(moduli.sort()).toEqual(['4294967296', '8'])
+    expect(bump).toMatch(/v_xact\s+xid8\s+:= pg_catalog\.pg_current_xact_id\(\);/)
+    expect(bump).toMatch(/v_shard smallint := \(\(v_xact::text\)::numeric % 8\)::smallint;/)
+    expect([...bump.matchAll(/%\s*(\d+)/g)].map(m => m[1])).toEqual(['8'])
+  })
+
+  it('NO 32-bit transaction identity anywhere in M2 code: no xmin, no txid_current(), no low-32 arithmetic, no xid cast', () => {
+    for (const forbidden of [/\bxmin\b/i, /\btxid_current\b/i, /\btxid_[a-z_]+\s*\(/i, /4294967296|4_294_967_296|2\s*\^\s*32|1\s*<<\s*32/,
+      /::\s*xid\b(?!8)/i, /\bxid\s*\(/i, /\bxid_[a-z]*\s*\(/i]) {
+      expect(m2Code, String(forbidden)).not.toMatch(forbidden)
+    }
+  })
+
+  it('DEDUPE is on the full xid8: the skip compares last_bump_xid with pg_current_xact_id(), and the stamp is written with the advance', () => {
+    const bump = effectiveDefinition('survival_input_epoch_bump')
+    expect(bump).toMatch(/set epoch = s\.epoch \+ 1,\s+last_bump_xid = v_xact\s+where s\.shard_id = v_shard\s+and s\.last_bump_xid is distinct from v_xact;/)
+    expect(bump).toMatch(/where s\.shard_id = v_shard and s\.last_bump_xid = v_xact;/)
+    expect(bump).toMatch(/raise exception 'survival input epoch shard % is missing'/)
+  })
+
+  it('the guard admits only a +1 stamped with THIS transaction\'s own xid8 (the marker cannot be forged)', () => {
+    const guard = effectiveDefinition('survival_input_epoch_shards_guard')
+    expect(guard).toMatch(/new\.epoch = old\.epoch \+ 1\s+and new\.last_bump_xid is not distinct from pg_catalog\.pg_current_xact_id\(\)/)
   })
 
   it('the vector reader is ascending by shard_id and demands exactly 0..7', () => {

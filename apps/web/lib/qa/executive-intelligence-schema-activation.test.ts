@@ -290,8 +290,8 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
     // 90: M0's `m0_durable_spend_settlement` — durable spend settlement. APPLIED to
     // production on 2026-10-02 (ledger version 20261002062908).
     // 91: Phase 3B1B2 M1's `autonomy_authority_serialization` — the Decision lineage
-    // head and the licence writer's instance-first lock. NOT applied to production on
-    // its branch.
+    // head and the licence writer's instance-first lock. APPLIED to production on
+    // 2026-10-02 (ledger version 20261002134227).
     // Migration Guard v2 owns the repository-wide 105/91 count contract. This
     // older assertion remains as an independent EI activation companion so a
     // canonical migration cannot move or disappear without both gates noticing.

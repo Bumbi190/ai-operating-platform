@@ -35,7 +35,8 @@
 --      after the bind releases — or roll back together.
 --
 --   B. `autonomy_license_append` locks the licence subject's workflow_instances
---      row FOR UPDATE FIRST, before it reads or locks any licence-lineage truth.
+--      row FOR NO KEY UPDATE FIRST, before it reads or locks any licence-lineage
+--      truth.
 --      Every licence act — including a LICENSE_ISSUED for a brand-new
 --      license_id with zero rows — now serializes on its instance. The rest of
 --      the function is the Phase 2C body, unchanged.
@@ -43,7 +44,8 @@
 -- CANONICAL LOCK ORDER (fixed here; M4 must follow it)
 --   workflow_instances row  →  decision lineage head  →  licence lineage rows
 --   →  (M2/M3 primitives)
---   Licence writer:  instance FOR UPDATE → licence rows FOR UPDATE → append.
+--   Licence writer:  instance FOR NO KEY UPDATE → licence rows FOR UPDATE → append.
+--   Future bind (M4): instance FOR UPDATE → decision head FOR SHARE → licence read.
 --   Decision writer: its ledger row → head row (UPDATE). It never takes an
 --   instance or licence lock, so it cannot close a cycle with either.
 --
@@ -277,13 +279,25 @@ revoke all on function public.atlas_decision_record_type_advances(text) from pub
 --
 --     perform 1 from public.workflow_instances
 --      where id = p_workflow_instance_id
---      for update;
+--      for no key update;
 --
 -- A brand-new license_id has no rows to lock, so this is what serializes a
 -- fresh LICENSE_ISSUED — against another licence for the same instance and
 -- against a future bind holding the instance. The foreign key's implicit
 -- FOR KEY SHARE at insert time is NOT enough: two key-share locks do not
 -- conflict, and it is taken only at the very end, after every check has read.
+--
+-- WHY NO KEY UPDATE, NOT UPDATE — the minimum sufficient lock. In PostgreSQL's
+-- row-lock conflict table FOR NO KEY UPDATE conflicts with FOR NO KEY UPDATE,
+-- FOR SHARE and FOR UPDATE, but NOT with FOR KEY SHARE. So:
+--   - two licence writers on one instance still serialize (NO KEY vs NO KEY);
+--   - a future bind holding the instance FOR UPDATE blocks every licence act,
+--     and a licence act in progress blocks that bind (NO KEY vs UPDATE);
+--   - ordinary referential-integrity traffic — a child row inserted under a
+--     foreign key (a bound run, a transition, evidence), which holds only
+--     FOR KEY SHARE on the instance — neither waits for nor delays a licence
+--     act. A suspension or revocation must serialize against authority-bearing
+--     binds, not queue behind unrelated child inserts.
 --
 -- The caller-NAMED instance is locked. For a continuing act that names the
 -- wrong instance this briefly locks an unrelated row before the unchanged
@@ -366,9 +380,11 @@ begin
   -- has no rows to lock, so this is what serializes a fresh LICENSE_ISSUED
   -- against every other licence act and every future bind on the same
   -- instance. Canonical order: instance -> decision head -> licence rows.
+  -- NO KEY UPDATE: conflicts with other licence writers and with a bind's
+  -- FOR UPDATE, but not with FK child inserts (FOR KEY SHARE).
   perform 1 from public.workflow_instances
    where id = p_workflow_instance_id
-   for update;
+   for no key update;
 
   -- The lineage is serialized here. `for update` on the existing chain, then the
   -- max generation read under that lock.

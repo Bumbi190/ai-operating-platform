@@ -538,11 +538,10 @@ d('two-session: no concurrent authority act can narrow what an open bind commits
     const [b, i] = await Promise.all([bindTx, issue])
     expect(i.ok, i.stderr).toBe(true)
     expect(b.ok, b.stderr).toBe(true)
-    // 3B1B2 M1: the licence writer now locks the workflow instance FOR UPDATE first,
-    // and the open bind's run insert holds FOR KEY SHARE on that instance (its FK),
-    // so the licence act WAITS for the bind to commit. Both still succeed, nothing
-    // deadlocks, and the bind's row is unchanged.
-    expect(i.end, 'the licence writer waits for the open exempt bind on its instance').toBeGreaterThanOrEqual(b.end)
+    // 3B1B2 M1: the licence writer locks the instance FOR NO KEY UPDATE first. The
+    // open bind's run insert holds only FOR KEY SHARE on that instance (its FK), and
+    // the two do not conflict — so the licence writer is still NOT blocked.
+    expect(i.end, 'the licence writer is NOT blocked by an exempt bind').toBeLessThan(b.end)
     // Two live lineages now exist (the resolver would say ambiguous_licenses) —
     // and the committed bind row is still TRUE: it never claimed a licence.
     expect(bindRowFor(a.p_idempotency_key)).toBe(BARE_EXEMPT_ROW)
@@ -556,7 +555,20 @@ d('two-session: no concurrent authority act can narrow what an open bind commits
     const [b, r] = await Promise.all([bindTx, revoke])
     expect(r.ok, r.stderr).toBe(true)
     expect(b.ok, b.stderr).toBe(true)
-    expect(r.end).toBeGreaterThanOrEqual(b.end)                       // 3B1B2 M1: waits on the instance
+    expect(r.end).toBeLessThan(b.end)                                  // KEY SHARE vs NO KEY UPDATE: no wait
+    expect(bindRowFor(a.p_idempotency_key)).toBe(BARE_EXEMPT_ROW)
+  })
+
+  it('the reverse: an OPEN licence act on the instance does not delay an exempt bind on it (3B1B2 M1)', async () => {
+    const licence = '7a7a7a7a-7a7a-47a7-87a7-7a7a7a7a7a7a'
+    const open = runAsync(dsn, `begin; ${licenceAct(licence, 'LICENSE_ISSUED', 0)}; select pg_sleep(2.5); commit;`)
+    await sleep(900)
+    const a = exemptArgs()
+    const b = await runAsync(dsn, `set role service_role; ${callSql(a)}`)
+    const l = await open
+    expect(b.ok, b.stderr).toBe(true)
+    expect(l.ok, l.stderr).toBe(true)
+    expect(b.end, 'the exempt bind finished while the licence act still held the instance').toBeLessThan(l.end)
     expect(bindRowFor(a.p_idempotency_key)).toBe(BARE_EXEMPT_ROW)
   })
 

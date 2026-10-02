@@ -144,7 +144,7 @@ describe('licence writer: workflow instance FIRST, in the effective definition',
     const full = sqlCode(functionBody(m1, 'autonomy_license_append'))
     const body = full.slice(full.indexOf('\nbegin\n'))
     expect(body.length).toBeLessThan(full.length)
-    const lock = body.search(/perform 1 from public\.workflow_instances\s+where id = p_workflow_instance_id\s+for update;/)
+    const lock = body.search(/perform 1 from public\.workflow_instances\s+where id = p_workflow_instance_id\s+for no key update;/)
     expect(lock, 'the instance lock exists').toBeGreaterThan(0)
     for (const table of ['public.atlas_autonomy_license_events', 'public.atlas_decision_ledger']) {
       expect(body.indexOf(table), `${table} is first touched after the instance lock`).toBeGreaterThan(lock)
@@ -155,9 +155,17 @@ describe('licence writer: workflow instance FIRST, in the effective definition',
 
   it('apart from that one block, the function body is the merged Phase 2C body, unchanged', () => {
     const phase2c = read(join(MIGRATIONS, '20260924180000_autonomy_license_phase2c.sql'))
-    const block = /  -- ── Phase 3B1B2 M1: the workflow instance is locked FIRST[\s\S]*?   for update;\n\n/.exec(m1)?.[0]
+    const block = /  -- ── Phase 3B1B2 M1: the workflow instance is locked FIRST[\s\S]*?   for no key update;\n\n/.exec(m1)?.[0]
     expect(block).toBeTruthy()
     expect(functionBody(m1, 'autonomy_license_append').replace(block!, '')).toBe(functionBody(phase2c, 'autonomy_license_append'))
+  })
+
+  it('the instance lock is EXACTLY FOR NO KEY UPDATE — the minimum mode that still conflicts with a bind\'s FOR UPDATE', () => {
+    const body = sqlCode(functionBody(m1, 'autonomy_license_append'))
+    const instanceLocks = [...body.matchAll(/from public\.workflow_instances\s+where id = p_workflow_instance_id\s+for ([a-z ]+);/g)].map(m => m[1])
+    // Not weaker (key share / share would not serialize two licence writers),
+    // not stronger (update would queue behind every FK child insert).
+    expect(instanceLocks).toEqual(['no key update'])
   })
 
   it('privileges are restated exactly: service_role may execute, client roles may not', () => {

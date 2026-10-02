@@ -173,6 +173,11 @@ create table public.projects (id uuid primary key default gen_random_uuid(), slu
 create table public.workflow_instances (
   id uuid primary key, project_id uuid not null references public.projects (id),
   def_key text not null, def_hash text not null, current_state text not null default 'planning');
+-- A representative FK child of workflow_instances, shaped like runs / transitions /
+-- evidence: inserting a row takes FOR KEY SHARE on its instance, nothing more.
+create table public.instance_children (
+  id bigserial primary key,
+  workflow_instance_id uuid not null references public.workflow_instances (id));
 insert into public.projects (id, slug) values ('${P_A}','alpha'), ('${P_B}','beta');
 insert into public.workflow_instances (id, project_id, def_key, def_hash) values
   ('${INST_A}','${P_A}','${DEF_KEY}', repeat('f',64)),
@@ -605,11 +610,16 @@ d('Phase 3B1B2 M1 — authority serialization (real PostgreSQL, real concurrent 
     }, 30_000)
 
     it.each([
-      ['3. a RESTRICTION', 'LICENSE_RESTRICTED', { level: 'L2' }],
-      ['4. a REVOCATION', 'LICENSE_REVOKED', {}],
-    ] as const)('%s waits while the bind-simulator holds the instance', async (_label, actName, extra) => {
-      const licence = L(actName === 'LICENSE_RESTRICTED' ? 13 : 14)
+      ['3. a RESTRICTION', 'LICENSE_RESTRICTED', 13, { level: 'L2' }],
+      ['4. a REVOCATION', 'LICENSE_REVOKED', 14, {}],
+      ['4b. a SUSPENSION', 'LICENSE_SUSPENDED', 20, {}],
+      ['4c. a SUPERSESSION', 'LICENSE_SUPERSEDED', 21, { supersededBy: uuid(22, '7') }],
+    ] as const)('%s waits while the bind-simulator holds the instance FOR UPDATE', async (_label, actName, n, extra) => {
+      const licence = L(n)
       run(dsn, ['-c', licenceCall({ licence, generation: 0, act: 'LICENSE_ISSUED', decision: DEC, record: REC })])
+      if (actName === 'LICENSE_SUPERSEDED') {
+        run(dsn, ['-c', licenceCall({ licence: uuid(22, '7'), generation: 0, act: 'LICENSE_ISSUED', decision: DEC, record: REC })])
+      }
       const app = `m1_bind_${actName}_${tag}`.toLowerCase()
       const bind = session(app, bindSimulator(INST_A, DEC, 2))
       expect(await holding(app)).toBe(true)
@@ -644,6 +654,66 @@ d('Phase 3B1B2 M1 — authority serialization (real PostgreSQL, real concurrent 
       expect(other.endedAt).toBeLessThan(a.endedAt)                          // finished while A still held INST_A
     }, 30_000)
 
+    // ── The narrower lock's advantage: FK traffic does not couple to licence acts ──
+    it.each([
+      ['a fresh LICENSE_ISSUED', 'LICENSE_ISSUED', 30],
+      ['a LICENSE_SUSPENDED', 'LICENSE_SUSPENDED', 31],
+      ['a LICENSE_REVOKED', 'LICENSE_REVOKED', 32],
+    ] as const)('KEY SHARE holder first: an open FK child insert on the instance does NOT delay %s', async (_label, actName, n) => {
+      const licence = L(n)
+      if (actName !== 'LICENSE_ISSUED') {
+        run(dsn, ['-c', licenceCall({ licence, generation: 0, act: 'LICENSE_ISSUED', decision: DEC, record: REC })])
+      }
+      const app = `m1_ks_child_${n}_${tag}`
+      const child = session(app, `begin; insert into public.instance_children (workflow_instance_id) values ('${INST_A}');
+        select pg_sleep(2); commit;`)
+      expect(await holding(app)).toBe(true)
+      expect(one(dsn, `select count(*) from pg_locks l join pg_stat_activity a on a.pid = l.pid
+        where a.application_name = '${app}' and l.relation = 'public.workflow_instances'::regclass and l.mode = 'RowShareLock'`)).toBe('1')
+      const act = await session(`${app}_lic`, licenceCall({ licence, generation: actName === 'LICENSE_ISSUED' ? 0 : 1, act: actName, decision: DEC, record: REC }))
+      const c = await child
+      expect(act.ok, act.stderr).toBe(true)
+      expect(c.ok).toBe(true)
+      expect(act.endedAt, 'the licence act finished while the child insert still held KEY SHARE').toBeLessThan(c.endedAt)
+    }, 30_000)
+
+    it.each([
+      ['a fresh LICENSE_ISSUED', 'LICENSE_ISSUED', 33],
+      ['a LICENSE_SUSPENDED', 'LICENSE_SUSPENDED', 34],
+      ['a LICENSE_REVOKED', 'LICENSE_REVOKED', 35],
+    ] as const)('licence act first: %s holding the instance does NOT delay an FK child insert', async (_label, actName, n) => {
+      const licence = L(n)
+      if (actName !== 'LICENSE_ISSUED') {
+        run(dsn, ['-c', licenceCall({ licence, generation: 0, act: 'LICENSE_ISSUED', decision: DEC, record: REC })])
+      }
+      const app = `m1_ks_lic_${n}_${tag}`
+      const lic = session(app, `begin; ${licenceCall({ licence, generation: actName === 'LICENSE_ISSUED' ? 0 : 1, act: actName, decision: DEC, record: REC })};
+        select pg_sleep(2); commit;`)
+      expect(await holding(app)).toBe(true)
+      const child = await session(`${app}_child`, `insert into public.instance_children (workflow_instance_id) values ('${INST_A}')`)
+      const l = await lic
+      expect(child.ok, child.stderr).toBe(true)
+      expect(l.ok, l.stderr).toBe(true)
+      expect(child.endedAt, 'the child insert finished while the licence act still held the instance').toBeLessThan(l.endedAt)
+    }, 30_000)
+
+    it.each([
+      ['LICENSE_SUSPENDED', 36],
+      ['LICENSE_REVOKED', 37],
+    ] as const)('…but %s IS delayed by a future bind holding the instance FOR UPDATE (authority, not RI traffic)', async (actName, n) => {
+      const licence = L(n)
+      run(dsn, ['-c', licenceCall({ licence, generation: 0, act: 'LICENSE_ISSUED', decision: DEC, record: REC })])
+      const app = `m1_bind_safety_${n}_${tag}`
+      const bind = session(app, bindSimulator(INST_A, DEC, 2))
+      expect(await holding(app)).toBe(true)
+      const act = session(`${app}_w`, licenceCall({ licence, generation: 1, act: actName, decision: DEC, record: REC }))
+      expect(await blockedOnLock(`${app}_w`)).toBe(true)
+      expect(lockedRelations(`${app}_w`)).toEqual([])
+      const [b, a] = await Promise.all([bind, act])
+      expect(b.ok && a.ok).toBe(true)
+      expect(a.endedAt).toBeGreaterThanOrEqual(b.endedAt)
+    }, 30_000)
+
     it('7. two humans on the same licence state: the second, released by the first, is still refused 40001 (nothing written)', async () => {
       const licence = L(19)
       run(dsn, ['-c', licenceCall({ licence, generation: 0, act: 'LICENSE_ISSUED', decision: DEC, record: REC })])
@@ -662,21 +732,41 @@ d('Phase 3B1B2 M1 — authority serialization (real PostgreSQL, real concurrent 
   // ── Cross-proof: the future M4 order against every writer ────────────────
 
   describe('cross-proof: future bind order vs licence and Decision writers — no deadlock', () => {
-    it('8. a mixed storm (binds, issues, restrictions, revocations, Decision acts) completes with zero deadlocks', async () => {
+    it('8. a mixed storm with the FINAL lock modes completes with zero deadlocks and bounded waits', async () => {
+      // Licence writer: instance FOR NO KEY UPDATE → licence rows FOR UPDATE.
+      // Future bind:    instance FOR UPDATE → decision head FOR SHARE → licence read.
+      // Decision writer: ledger append → head UPDATE.
+      // Plus ordinary RI traffic (FK child inserts: FOR KEY SHARE) and a second instance.
       const DEC = uuid(700, 'd')
       const REC = approvedDecision(DEC)
-      const licences = [0, 1, 2].map(i => uuid(7000 + i, '6'))
+      const DEC_B = uuid(701, 'd')
+      const REC_B = approvedDecision(DEC_B, P_B)
+      const licences = [0, 1, 2, 3].map(i => uuid(7000 + i, '6'))
       for (const l of licences) run(dsn, ['-c', licenceCall({ licence: l, generation: 0, act: 'LICENSE_ISSUED', decision: DEC, record: REC })])
+      const started = Date.now()
       const ops: Promise<Outcome>[] = []
       for (let i = 0; i < 4; i += 1) ops.push(session(`m1_storm_bind_${i}_${tag}`, bindSimulator(INST_A, DEC, 0.3)))
       ops.push(session(`m1_storm_issue_${tag}`, licenceCall({ licence: uuid(7010, '6'), generation: 0, act: 'LICENSE_ISSUED', decision: DEC, record: REC })))
       ops.push(session(`m1_storm_restrict_${tag}`, licenceCall({ licence: licences[0], generation: 1, act: 'LICENSE_RESTRICTED', decision: DEC, record: REC, level: 'L2' })))
+      ops.push(session(`m1_storm_suspend_${tag}`, licenceCall({ licence: licences[2], generation: 1, act: 'LICENSE_SUSPENDED', decision: DEC, record: REC })))
       ops.push(session(`m1_storm_revoke_${tag}`, licenceCall({ licence: licences[1], generation: 1, act: 'LICENSE_REVOKED', decision: DEC, record: REC })))
+      ops.push(session(`m1_storm_supersede_${tag}`, licenceCall({ licence: licences[3], generation: 1, act: 'LICENSE_SUPERSEDED', decision: DEC, record: REC, supersededBy: uuid(7010, '6') })))
+      ops.push(session(`m1_storm_other_instance_${tag}`, licenceCall({ licence: uuid(7020, '6'), generation: 0, act: 'LICENSE_ISSUED',
+        instance: INST_B, project: P_B, decision: DEC_B, record: REC_B })))
+      for (let i = 0; i < 3; i += 1) {
+        ops.push(session(`m1_storm_child_${i}_${tag}`, `begin; insert into public.instance_children (workflow_instance_id) values ('${INST_A}');
+          select pg_sleep(0.2); commit;`))
+      }
       ops.push(session(`m1_storm_decision_${tag}`, act(DEC, 'amended', 3, { version: 2 })))
       ops.push(session(`m1_storm_note_${tag}`, act(DEC, 'reviewed', 3)))
       const results = await Promise.all(ops)
       expect(results.map(r => r.state).filter(s => s === '40P01'), 'deadlocks').toEqual([])
-      expect(results.filter(r => !r.ok).map(r => r.stderr)).toEqual([])
+      // The supersession may legitimately race the issue of its own replacement; every
+      // OTHER session must succeed, and nothing may fail for a lock reason.
+      const failures = results.filter(r => !r.ok)
+      expect(failures.map(r => r.state).filter(s => ['40P01', '55P03', '57014'].includes(s)), 'lock failures').toEqual([])
+      expect(failures.filter(r => !r.stderr.includes('a supersession must name a replacement')).map(r => r.stderr)).toEqual([])
+      expect(Date.now() - started, 'bounded: the whole storm drains well inside the lock_timeout').toBeLessThan(15_000)
       expect(head(DEC)?.type).toBe('amended')
     }, 60_000)
 

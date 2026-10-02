@@ -550,6 +550,19 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M0 durable spend settlement (real 
       expect(remaining(p)).toBe(950)                             // ≥ the 45 that was really known
     })
 
+    it('Atlas TTS (tts-1): the migration seeds the canonical rate, and a 600-char reservation settles at exactly 0.0945 SEK', () => {
+      const [rate, note] = query(dsn, `select value, note from cost_rates where key = 'openai_tts_1_usd_per_1k_chars'`)[0]
+      expect(Number(rate)).toBe(0.015)
+      expect(note).toMatch(/tts-1/)
+      expect(query(dsn, `select count(*) from cost_rates where key ilike '%4o_mini_tts%' or key ilike '%4o-mini-tts%'`)[0][0]).toBe('0')
+      const p = project()
+      const ceiling = (600 / 1000) * 0.015 * 10.5                   // chars × canonical rate × usd_sek
+      const rid = reserve(p, ceiling)
+      expect(query(dsn, `select budget_mark_dispatch_intent('${rid}'::uuid, '${TOKEN(82)}'::uuid, 'fixed_units')`)[0][0]).toBe('t')
+      expect(settle(rid, TOKEN(82), 'estimate_unmetered')).toEqual(['settled', '0.0945', '0.0945', 'f'])
+      expect(linked(rid)).toEqual({ count: 1, sum: 0.0945, kinds: 'estimate_unmetered' })
+    })
+
     it('dispatch intent REQUIRES a ceiling basis, records it, and never lets it change', () => {
       const p = project()
       const rid = reserve(p, 10)

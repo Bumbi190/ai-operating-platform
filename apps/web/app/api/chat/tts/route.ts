@@ -6,24 +6,27 @@
  * Body: { text: string, voice?: string, speed?: number }
  * Returns: audio/mpeg binary
  *
- * Atlas speaks with `gpt-4o-mini-tts` and the `onyx` voice. Both were chosen by
- * a latency benchmark followed by an owner listening test, replacing the older
- * tts-1-hd path. Changing either is a product decision, not a tuning knob —
- * hence the named constant below.
+ * Atlas speaks with `tts-1` and the `onyx` voice.
+ *
+ * ── M0 COMPATIBILITY DECISION (temporary) ───────────────────────────────────
+ * The benchmarked winner was `gpt-4o-mini-tts`. It bills text-input AND
+ * audio-output TOKENS, and nothing in the request caps the audio output, so M0's
+ * hard-ceiling layer cannot bound it and refuses it (`unbounded_spend`). To keep
+ * Atlas TTS operational with durable spend accounting, the M0 rollout switches
+ * to `tts-1`, which is billed per INPUT CHARACTER: the reservation is
+ *   input chars × cost_rates.openai_tts_1_usd_per_1k_chars × pinned usd_sek
+ * and, because speech is never metered, the settlement records exactly that.
+ * This is a compatibility choice, not a claim that `tts-1` is the preferred
+ * Atlas voice model; it can be revisited in a dedicated Atlas voice/latency
+ * phase. `gpt-4o-mini-tts` stays unsupported by the hard-ceiling layer.
  *
  * THE DEFAULT REQUEST SENDS FOUR FIELDS AND NOTHING ELSE: model, voice, input,
- * response_format. That is exactly the payload the approved voice sample was
- * generated from, and keeping it identical is the point. Anything added here by
- * default ships a configuration nobody listened to.
+ * response_format. Anything added here by default ships a configuration nobody
+ * listened to.
  *
- * So there is no default `speed` — the previous 1.08 was a workaround for the
- * old model sounding sluggish in Swedish and did not survive the change — and
- * no `instructions`, which is this model's real pacing lever and should be
- * benchmarked and listened to before it is used.
- *
- * An EXPLICIT `speed` from a caller is still honoured and clamped, as it always
- * was. Note that the installed SDK's JSDoc claims speed does not work with this
- * model; that is stale, and a direct check against the API disproved it.
+ * So there is no default `speed` and no `instructions` (a gpt-4o-mini-tts-only
+ * pacing lever that `tts-1` does not take). An EXPLICIT `speed` from a caller is
+ * still honoured and clamped, as it always was; `tts-1` supports 0.25–4.0.
  *
  * Speech normalisation of numbers, dates and currency is a SEPARATE slice. The
  * text arriving here is still raw, and that is expected.
@@ -38,8 +41,11 @@ import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 20
 
-/** The benchmarked winner. Named so a future change has to be deliberate. */
-const ATLAS_TTS_MODEL = 'gpt-4o-mini-tts'
+/**
+ * M0 compatibility model — per-character billed, so its spend is hard-bounded.
+ * Named so a future change has to be deliberate (see the header).
+ */
+const ATLAS_TTS_MODEL = 'tts-1'
 
 export async function POST(request: Request) {
   // SESSION ONLY (4B2). Kräver inloggad användare — den globala AIOPS_API_KEY

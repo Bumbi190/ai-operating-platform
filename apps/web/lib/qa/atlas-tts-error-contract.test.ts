@@ -34,16 +34,15 @@ import { resolveAtlasServiceWarning } from '@/lib/atlas/orb-state'
 // routes ARE governed is proven by lib/qa/governance-provider-boundary.test.ts,
 // which reads the real source, and by that suite's lifecycle tests.
 
-// M0: these tests exercise transport / governance MECHANICS (or the route's auth
-// and payload contract), not pricing. Speech via gpt-4o-mini-tts and gpt-image-1
-// have NO hard ceiling in production and are refused before reserving — that
-// outcome is pinned in m0-spend-ceiling.test.ts. Here a configured ceiling is
-// substituted so the mechanics stay covered for when one is configured.
-vi.mock('@/lib/cost/spend-ceiling', async (orig) => {
-  const actual = await orig<typeof import('@/lib/cost/spend-ceiling')>()
-  const priced = () => ({ ok: true as const, sek: 0.01, basis: 'fixed_units' as const, detail: 'test: configured ceiling' })
-  return { ...actual, openAISpeechCeiling: priced, gptImageCeiling: priced }
-})
+// M0: Atlas TTS uses tts-1, which IS hard-bounded — these route tests run the
+// REAL speech ceiling against the M0 production price book (cost_rates as read
+// 2026-10-02 plus the M0 migration's canonical tts-1 row). No ceiling is mocked.
+vi.mock('@/lib/cost/rates', () => ({
+  getRates: async () => ({
+    usd_sek: 10.5, elevenlabs_usd_per_1k_chars: 0.24, ideogram_v3_usd_per_image: 0.08,
+    gpt_image_usd_per_image: 0.042, openai_tts_1_usd_per_1k_chars: 0.015,
+  }),
+}))
 
 vi.mock('@/lib/cost/governed-spend', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/cost/governed-spend')>()

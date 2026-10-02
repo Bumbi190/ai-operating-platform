@@ -226,14 +226,15 @@ describe('a request that cannot be bounded is REFUSED, never reserved at a guess
     })
   }
 
-  it('ROLLOUT FACT: Atlas TTS (the route\'s own model, today\'s production price book) is refused', async () => {
+  it('ROLLOUT FACT: Atlas TTS uses tts-1 and is bounded under the M0 price book; gpt-4o-mini-tts stays refused', async () => {
     const route = readFileSync(join(process.cwd(), 'app/api/chat/tts/route.ts'), 'utf8')
     const model = /const ATLAS_TTS_MODEL = '([^']+)'/.exec(route)?.[1]
-    expect(model).toBe('gpt-4o-mini-tts')
-    const productionRates = { usd_sek: 10.5, elevenlabs_usd_per_1k_chars: 0.24,
-      ideogram_v3_usd_per_image: 0.08, gpt_image_usd_per_image: 0.042 }    // cost_rates as read 2026-10-02
+    expect(model).toBe('tts-1')
+    const m0ProductionRates = { usd_sek: 10.5, elevenlabs_usd_per_1k_chars: 0.24, ideogram_v3_usd_per_image: 0.08,
+      gpt_image_usd_per_image: 0.042, openai_tts_1_usd_per_1k_chars: 0.015 }  // cost_rates 2026-10-02 + M0 migration row
     const { estimateOpenAISpeechSek } = await import('@/lib/ai/openai-client')
-    await expect(estimateOpenAISpeechSek(600, productionRates, model!)).rejects.toMatchObject({ reason: 'unbounded_spend' })
+    await expect(estimateOpenAISpeechSek(600, m0ProductionRates, model!)).resolves.toBeCloseTo(0.0945, 12)
+    await expect(estimateOpenAISpeechSek(600, m0ProductionRates, 'gpt-4o-mini-tts')).rejects.toMatchObject({ reason: 'unbounded_spend' })
   })
 
   it('gpt-image-1: the flat per-image row is a proxy for token billing → generate and edit are refused', async () => {

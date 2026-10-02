@@ -776,6 +776,29 @@ begin
   return n;
 end $$;
 
+-- ── 10b. Canonical price: OpenAI `tts-1` speech ────────────────────────────
+-- Product decision for the M0 rollout: Atlas TTS speaks with `tts-1` so that
+-- its spend has a hard ceiling (lib/cost/spend-ceiling.ts → openAISpeechCeiling).
+--
+--   provider : OpenAI, POST /v1/audio/speech
+--   model    : tts-1 (and ONLY tts-1 — tts-1-hd has its own key and no row here)
+--   unit     : USD per 1 000 INPUT characters; tts-1 is billed per input
+--              character, so the request text fixes the billable units
+--   value    : 0.015 USD / 1k chars = 15 USD / 1M characters (OpenAI list price)
+--   used by  : the speech hard ceiling = input chars × this × pinned usd_sek.
+--              Speech is never metered, so the settlement records exactly that
+--              ceiling, priced from the same pinned rate snapshot.
+--
+-- Deliberately NO row for `gpt-4o-mini-tts`: it bills text-input AND
+-- audio-output TOKENS, a different unit, and its audio output has no
+-- request-level cap — no rate can make it hard-bounded, so it stays refused.
+-- A price-book audit that changes OpenAI's tts-1 price edits this row.
+insert into public.cost_rates (key, value, note)
+values ('openai_tts_1_usd_per_1k_chars', 0.015,
+        'OpenAI tts-1 speech: USD per 1000 input characters (15 USD / 1M chars). M0 hard-ceiling unit for Atlas TTS.')
+on conflict (key) do update
+  set value = excluded.value, note = excluded.note, updated_at = now();
+
 -- ── 11. Privileges ──────────────────────────────────────────────────────────
 
 -- Reservations: every write goes through the functions above.

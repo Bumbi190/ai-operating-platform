@@ -39,6 +39,40 @@ export const CEILING_BASES: readonly CeilingBasis[] = ['token_window', 'fixed_un
 export type RateSnapshot = Readonly<Record<string, number>>
 
 /**
+ * Decimal places of the authoritative SEK ledger: `spend_reservations.estimated_sek`,
+ * `actual_sek` and `cost_events.cost_sek` are all `numeric(12,4)`.
+ */
+export const SEK_LEDGER_SCALE = 4
+const LEDGER_QUANTA = 10 ** SEK_LEDGER_SCALE
+
+/**
+ * M0: a hard ceiling quantized UP to the ledger scale — the smallest 4-decimal
+ * amount that is ≥ the derived ceiling.
+ *
+ * Postgres rounds a value written to `numeric(12,4)` to NEAREST, so an unquantized
+ * ceiling can be stored BELOW itself (production, Atlas TTS 18 chars: 0.002835 →
+ * 0.0028), and the held amount would no longer cover every permitted outcome.
+ *
+ * Float-safe by construction: `Math.ceil(sek * 10^4)` alone is not, because the
+ * product can land on either side of an integer (600 TTS chars compute to
+ * 0.09449999999999999). The candidate is therefore corrected in both directions
+ * against an exact comparison, `k / 10^4 >= sek` — an IEEE division of two exact
+ * integers is the correctly rounded double of the decimal `k / 10^4`, and that
+ * double serializes back to exactly that decimal. The result is never below the
+ * input; at most it is one 0.0001 SEK quantum above it.
+ *
+ * Non-finite and negative inputs are returned unchanged for the caller's
+ * validation to refuse.
+ */
+export function ceilToLedgerScale(sek: number): number {
+  if (!Number.isFinite(sek) || sek <= 0) return sek
+  let k = Math.ceil(sek * LEDGER_QUANTA)
+  while (k > 0 && (k - 1) / LEDGER_QUANTA >= sek) k -= 1
+  while (k / LEDGER_QUANTA < sek) k += 1
+  return k / LEDGER_QUANTA
+}
+
+/**
  * Context windows in tokens: the provider-enforced maximum prompt size. A
  * request above it is rejected before inference (unbilled), so the window is a
  * hard bound on billed input. Only models with BOTH a price-book entry and a

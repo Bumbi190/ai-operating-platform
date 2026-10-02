@@ -99,12 +99,15 @@ describe('the canonical tts-1 rate comes from the M0 migration', () => {
 })
 
 describe('Atlas TTS under the M0 production price book', () => {
-  it('reservation = input chars × openai_tts_1_usd_per_1k_chars × pinned usd_sek, basis fixed_units', async () => {
-    const text = 'Hej, jag är Atlas.'
+  it('reservation = input chars × openai_tts_1_usd_per_1k_chars × pinned usd_sek, quantized UP to the ledger scale, basis fixed_units', async () => {
+    const text = 'Hej, jag är Atlas.'                         // 18 chars → raw 0.002835 SEK
     const res = await speak({ text })
     expect(res.status).toBe(200)
     const [reserved] = reserveSpend.mock.calls[0]
-    expect(reserved.estimatedSek).toBeCloseTo(sek(text.length), 12)
+    // M0 ledger precision: numeric(12,4) would round 0.002835 to 0.0028 — below
+    // the ceiling. The reservation is the smallest 4-decimal amount ≥ it.
+    expect(reserved.estimatedSek).toBe(0.0029)
+    expect(reserved.estimatedSek).toBeGreaterThanOrEqual(sek(text.length))
     expect(markSpendDispatchIntent).toHaveBeenCalledWith('res-tts', expect.any(String), 'fixed_units')
   })
 

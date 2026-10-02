@@ -769,4 +769,56 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M0 durable spend settlement (real 
       expect(linked(rid)).toEqual({ count: 1, sum: 30, kinds: 'estimate_ambiguous' })
     })
   })
+
+  // ── M0 ledger precision: the stored ceiling covers the derived one ─────────
+  describe('ledger precision (numeric(12,4)) — the quantized ceiling is what PostgreSQL holds', () => {
+    it('an UNQUANTIZED 0.002835 ceiling is stored as 0.0028 — below itself (the production defect)', () => {
+      const p = project()
+      const rid = reserve(p, 0.002835)
+      expect(query(dsn, `select estimated_sek::text from spend_reservations where id = '${rid}'`)[0][0]).toBe('0.0028')
+    })
+
+    it('the quantized 0.0029 is stored exactly, held at it, and a LOWER real cost moves held → spent', async () => {
+      const { ceilToLedgerScale } = await import('@/lib/cost/spend-ceiling')
+      const raw = 18 / 1000 * 0.015 * 10.5
+      const q = ceilToLedgerScale(raw)
+      expect(q).toBe(0.0029)
+      const p = project()
+      const before = remaining(p)
+      const rid = reserve(p, q)
+      const [stored] = query(dsn, `select estimated_sek::text from spend_reservations where id = '${rid}'`)[0]
+      expect(stored).toBe('0.0029')
+      expect(Number(stored)).toBeGreaterThanOrEqual(raw)
+      mark(rid, TOKEN(91))
+      expect(before - remaining(p)).toBeCloseTo(0.0029, 10)          // held at the quantized ceiling
+      const [result, settled, ceiling, exceeded] = settle(rid, TOKEN(91), 'metered', meteredRows(0.0001))
+      expect([result, Number(settled), Number(ceiling), exceeded]).toEqual(['settled', 0.0001, 0.0029, 'f'])
+      expect(before - remaining(p)).toBeCloseTo(0.0001, 10)          // only the real cost remains, as spent
+      expect(reservation(rid)).toMatchObject({ status: 'settled', kind: 'metered', actual: '0.0001', exceeded: 'false' })
+      expect(linked(rid)).toEqual({ count: 1, sum: 0.0001, kinds: 'metered' })
+    })
+
+    it('estimate_unmetered settles at exactly the stored quantized ceiling (TTS shape)', async () => {
+      const p = project()
+      const rid = reserve(p, 0.0029); mark(rid, TOKEN(92))
+      expect(settle(rid, TOKEN(92), 'estimate_unmetered')[1]).toBe('0.0029')
+      expect(linked(rid)).toEqual({ count: 1, sum: 0.0029, kinds: 'estimate_unmetered' })
+    })
+
+    it('representative quantized ceilings round-trip through budget_reserve unchanged and ≥ raw', async () => {
+      const { ceilToLedgerScale, openAISpeechCeiling } = await import('@/lib/cost/spend-ceiling')
+      const rates = { usd_sek: 10.5, openai_tts_1_usd_per_1k_chars: 0.015 }
+      const p = project()
+      for (const chars of [1, 7, 18, 19, 333, 599, 600]) {
+        const c = openAISpeechCeiling(chars, 'tts-1', rates)
+        if (!c.ok) throw new Error('tts-1 must be boundable')
+        const q = ceilToLedgerScale(c.sek)
+        const rid = reserve(p, q)
+        const [stored] = query(dsn, `select estimated_sek::text from spend_reservations where id = '${rid}'`)[0]
+        expect(Number(stored)).toBe(q)
+        expect(Number(stored)).toBeGreaterThanOrEqual(c.sek)
+        query(dsn, `select budget_release('${rid}'::uuid)`)
+      }
+    })
+  })
 })

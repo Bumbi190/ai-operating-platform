@@ -83,10 +83,12 @@ function effectiveFunction(fn: string): { header: string; body: string; file: st
   return found
 }
 const effectiveDefinition = (fn: string) => effectiveFunction(fn)?.body ?? ''
+// Identifiers may contain digits (an `m2_helper` must not slip past) and SQL is
+// case-insensitive. A quoted identifier (`public."X"`) is refused by the graph test.
 const tablesIn = (sql: string) =>
-  [...new Set([...sql.matchAll(/\bpublic\.([a-z_]+)\b(?!\s*\()/g)].map(m => m[1]))].sort()
+  [...new Set([...sql.matchAll(/\bpublic\s*\.\s*([a-z0-9_]+)\b(?!\s*\()/gi)].map(m => m[1].toLowerCase()))].sort()
 const callsIn = (sql: string) =>
-  [...new Set([...sql.matchAll(/\bpublic\.([a-z_]+)\s*\(/g)].map(m => m[1]))].sort()
+  [...new Set([...sql.matchAll(/\bpublic\s*\.\s*([a-z0-9_]+)\s*\(/gi)].map(m => m[1].toLowerCase()))].sort()
 
 /**
  * THE REVIEWED PUBLIC-FUNCTION CALL GRAPH below the Survival observation.
@@ -256,6 +258,7 @@ describe('M2 source set is pinned to the CURRENT Survival read surface', () => {
       const def = effectiveFunction(fn)!
       expect(def.header, fn).toMatch(/set search_path (to|=) ''/)
       expect(def.body, fn).not.toMatch(/\bexecute\b|\bformat\s*\(/i)
+      expect(def.body, fn).not.toMatch(/public\s*\.\s*"/i)
     }
   })
 

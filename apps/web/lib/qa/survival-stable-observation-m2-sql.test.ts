@@ -304,6 +304,8 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M2 stable Survival observation (re
     if (r.kind !== 'STABLE') return
     expect(r.attempts).toBe(2)
     expect(r.asOf).toBe(AS_OF)
+    // The retried SNAPSHOT itself was evaluated at the same instant, not a new one.
+    expect(r.observation.snapshot.asOf).toBe(AS_OF)
     expect(r.observedEpochVector).toEqual(vec())
   })
 

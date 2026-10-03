@@ -831,6 +831,11 @@ describe('read-only, with a closed consumer set', () => {
       // `observeSurvivalStable()` helper (and through it the real snapshot)
       // against real PostgreSQL. A test, not a runtime consumer.
       resolve(process.cwd(), 'lib/qa/survival-stable-observation-m2-sql.test.ts'),
+      // Phase 3B1B2 M3's proofs: the commit-bound observation suite drives the inert
+      // observeSurvivalCommitBound() helper; the M3 guards read the Survival sources as
+      // TEXT to keep the clock deadline in lock-step with them. Tests, not consumers.
+      resolve(process.cwd(), 'lib/qa/survival-commit-bound-observation-m3-sql.test.ts'),
+      resolve(process.cwd(), 'lib/qa/survival-commit-fence-m3-guards.test.ts'),
     ]
     const offenders: string[] = []
 

@@ -284,7 +284,7 @@ jobs:
             // WITH CHECK, client grants on SERVER_ONLY tables, and views that
             // run as their owner. A blocking finding passes only with an exact
             // reviewed allowlist entry. No database: it is pure text analysis.
-            'migration-security-gate.test.ts': 125,
+            'migration-security-gate.test.ts': 133,
             // Phase 9AA — POST /api/bugscanner/run compared
             // `user.email !== BREVO_ADMIN_EMAIL`, which admitted an email-less
             // session whenever the address was unset. The counters matter more

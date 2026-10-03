@@ -365,6 +365,11 @@ export type Op =
 
 const TABLE_PRIVS = ['select', 'insert', 'update', 'delete', 'truncate', 'references', 'trigger']
 const CLIENT_ROLES = ['anon', 'authenticated', 'public']
+/** Roles a DB_INTERNAL table may hold NO privilege for — the client roles AND service_role. */
+const DB_INTERNAL_FORBIDDEN_ROLES = [...CLIENT_ROLES, 'service_role']
+/** The forbidden privileges a relation still holds, as `role:privilege` — read from the replayed model. */
+const dbInternalDirectGrants = (r: Rel): string[] =>
+  DB_INTERNAL_FORBIDDEN_ROLES.flatMap(role => [...(r.grants.get(role) ?? [])].sort().map(priv => `${role}:${priv}`))
 const isClientRole = (r: string): boolean => CLIENT_ROLES.includes(r)
 
 /** Does this statement start like one the gate must understand? Used to fail closed on a parse miss. */
@@ -955,6 +960,7 @@ export const RULES = {
   RESTRICTIVE_POLICY_DROPPED: 'WEAKENING',
   CLIENT_GRANT_ON_SERVER_ONLY: 'WEAKENING',
   SERVICE_ROLE_GRANT_ON_DB_INTERNAL: 'WEAKENING',
+  DB_INTERNAL_DIRECT_GRANT_REMAINS: 'WEAKENING',
   CLIENT_GRANT_ON_RLS_OFF_TABLE: 'WEAKENING',
   CLIENT_DML_GRANT_ON_PUBLIC_TABLE: 'WEAKENING',
   CLIENT_GRANT_ALL_TABLES: 'WEAKENING',
@@ -1542,6 +1548,13 @@ function runFile(model: Model, file: { relPath: string; root: Root | 'bootstrap'
     if (rel && rel.kind === 'table' && !rel.rls) {
       emit(ctx, 'NEW_TABLE_WITHOUT_RLS', st, key, null, `created without row level security${clientAny(rel) ? ' while Supabase default grants hand it to anon and authenticated' : ''}`)
     }
+    // DB_INTERNAL is judged on the FINAL replayed grant state, not on the REVOKEs the file
+    // happens to contain: a public table starts with Supabase's default grants to anon,
+    // authenticated and service_role, and any of them left behind is a direct API-role path.
+    if (rel && rel.kind === 'table' && rel.schema === 'public' && tableClass(ctx.registry, rel.name) === 'DB_INTERNAL') {
+      const left = dbInternalDirectGrants(rel)
+      if (left.length) emit(ctx, 'DB_INTERNAL_DIRECT_GRANT_REMAINS', st, key, null, `DB_INTERNAL table ends its creating migration with direct privileges: ${left.join(', ')}`)
+    }
   }
   for (const [key, st] of ctx.touchedViews) {
     const rel = model.rels.get(key)
@@ -1597,6 +1610,7 @@ export function stillOpen(e: AllowEntry, a: Analysis, reg: Registry): boolean {
     return !!v && (!v.invoker || (viewClass(reg, v.name) === 'SERVER_ONLY' && clientAny(v)))
   }
   if (e.rule === 'CLIENT_GRANT_ON_SERVER_ONLY' || e.rule === 'CLIENT_GRANT_ON_RLS_OFF_TABLE') { const r = m.rels.get(e.table); return !!r && clientAny(r) }
+  if (e.rule === 'DB_INTERNAL_DIRECT_GRANT_REMAINS') { const r = m.rels.get(e.table); return !!r && dbInternalDirectGrants(r).length > 0 }
   return true
 }
 

@@ -107,9 +107,17 @@ export async function readSurvivalSnapshot(
   const db: AnyDb = options.db ?? createAdminClient()
   const at = options.now ?? new Date().toISOString()
 
-  // The funding source and the scope check are read alongside the measurements,
-  // in the same pass, so a snapshot can never mix a fresh burn with a stale
-  // declaration or vice versa.
+  // A MULTI-STATEMENT observation: headroom, burn, pending burn, revenue,
+  // funding, coverage and the pause are separate reads, each its own snapshot of
+  // committed data, so a Survival input that commits between two of them is seen
+  // by the later reads and not by the earlier ones. This raw snapshot therefore
+  // makes NO database-stability claim. Stability — every read having seen one
+  // committed authority state — is established only by `observeSurvivalStable()`
+  // (stable-observation.ts), which brackets this call with the M2 epoch vector
+  // and refuses when it moved. The current direct callers — the survival route,
+  // the Systemhälsa loader, the history recorder, and the still-inert Phase 3B0
+  // platform adapter (autonomy-runtime/platform-survival.ts) — gain no licensed
+  // authority from this raw snapshot.
   const [scopes, budgetsOk] = await readHeadroom(db, allowedProjectIds)
   const [burnSekPerDay, burnOk] = await readBurn(db, allowedProjectIds, at)
   const [revenueTrendSek, revenueOk] = await readRevenueTrend(db, allowedProjectIds)

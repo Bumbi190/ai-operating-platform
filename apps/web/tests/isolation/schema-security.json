@@ -3,7 +3,7 @@
     "purpose": "Phase 9Y schema-security classification for every table in schema 'public'. Captured from the EFFECTIVE database catalog, not parsed from migration text \u2014 because the exposure this file exists to prevent (workflow_stories) was created by a migration that simply never mentioned row level security, so migration text alone could never have revealed it.",
     "captured_from": "production project iboepohjwrhtgshrqaol",
     "captured_at": "2026-09-25",
-    "total_tables": 84,
+    "total_tables": 85,
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
     "platform_tokens_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090000_platform_tokens_client_revoke.sql (Settings S0): client grants revoked, RLS on, no policy.",
     "platform_credential_events_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090100_platform_credential_events.sql (Settings S0), applied to production before this row was merged: created with RLS on and no policy, every client grant revoked, service_role holding SELECT and INSERT only, UPDATE/DELETE/TRUNCATE refused by triggers.",
@@ -54,7 +54,8 @@
     "views": "Phase 9AA. Public VIEWS, classified like tables. A view runs as its owner unless it is security_invoker, so base-table RLS does not protect it; the migration security gate fails any client-reachable public view without security_invoker and any public view absent from this map. `live` records whether it exists in production.",
     "atlas_code_broker_note": "Phase 1C1A trusted broker identity (supabase/migrations/20260923150000_sdf1c1_trusted_broker_identity.sql). APPLIED to production 2026-09-24 (ledger name sdf1c1_trusted_broker_identity) and observed live at capture time; the rows above are as-observed, not inferred from migration text. Both tables: RLS enabled, zero policies, anon and authenticated hold no table grants, service_role holds SELECT only (no INSERT, UPDATE, DELETE or TRUNCATE for any role). The `service_role: true` boolean records REACHABILITY only. All mutation goes through five SECURITY DEFINER functions (atlas_code_broker_begin_enrollment, _complete_enrollment, _approve, _revoke, _accept_request) that only service_role may EXECUTE, guarded by BEFORE UPDATE triggers and BEFORE DELETE/TRUNCATE reject triggers. Both tables were empty at apply time. Identity and enrollment only: the dormant broker_token_* seam on atlas_code_work_runs is untouched, and no claim, heartbeat, evidence or transition path references these tables. Generated type file synced in the same PR.",
     "autonomy_license_phase2c_note": "Atlas Autonomy Licensing Phase 2C (supabase/migrations/20260924180000_autonomy_license_phase2c.sql). APPLIED to production on 2026-09-25 (ledger name autonomy_license_phase2c, Supabase ledger version 20260925102918) and observed live at capture time; the row above is as-observed, not inferred from migration text. The table exists and held ZERO rows at evidence capture — no licence has been issued, and nothing in this note should be read as one having been. SERVER_ONLY: RLS enabled with ZERO policies, anon and authenticated hold no grant at all, and service_role holds SELECT and nothing else, so no role anywhere has direct INSERT, UPDATE, DELETE or TRUNCATE. The identity sequence atlas_autonomy_license_events_event_seq_seq is revoked from every role, and two triggers enforce append-only structurally (BEFORE UPDATE OR DELETE per row, BEFORE TRUNCATE per statement, both raising 42501), which makes the SECURITY DEFINER function autonomy_license_append the single reviewed write path that can exist. That writer has an EMPTY search_path, is executable only by postgres and service_role (not PUBLIC, anon or authenticated), and carries p_expected_generation — the caller's observed lineage generation, compared against the locked truth before any insert and refused with SQLSTATE 40001 when stale. The previous 17-parameter writer signature is absent, leaving exactly one overload. The `service_role: true` boolean records REACHABILITY only and cannot express privilege breadth — production grants SELECT and nothing more. Chapter 18 licence truth only: Phase 2C still has NO runtime execution consumer, and no executor, gate, provider, spend boundary or scheduler reads this table.",
-    "atlas_decision_lineage_heads_note": "Its row reflects production after apps/web/supabase/migrations/20261002140000_autonomy_authority_serialization.sql (Phase 3B1B2 M1) was APPLIED on 2026-10-02 (ledger version 20261002134227), introspected read-only after the apply: RLS on with ZERO policies, every privilege revoked from public/anon/authenticated/service_role and SELECT granted to service_role alone. The only writer is the SECURITY DEFINER AFTER INSERT trigger on atlas_decision_ledger; a guard trigger refuses DELETE, TRUNCATE and any non-advancing UPDATE."
+    "atlas_decision_lineage_heads_note": "Its row reflects production after apps/web/supabase/migrations/20261002140000_autonomy_authority_serialization.sql (Phase 3B1B2 M1) was APPLIED on 2026-10-02 (ledger version 20261002134227), introspected read-only after the apply: RLS on with ZERO policies, every privilege revoked from public/anon/authenticated/service_role and SELECT granted to service_role alone. The only writer is the SECURITY DEFINER AFTER INSERT trigger on atlas_decision_ledger; a guard trigger refuses DELETE, TRUNCATE and any non-advancing UPDATE.",
+    "survival_input_epoch_shards_note": "Its row reflects production after apps/web/supabase/migrations/20261002190000_survival_input_epoch.sql (Phase 3B1B2 M2) was APPLIED on 2026-10-03 (ledger version 20261003053532, stored statement sha256 93e002f0e4308b606816895b91c810c324f66754d3d058026566e898a5761d80), introspected read-only after the apply: RLS on with ZERO policies, every privilege revoked from public/anon/authenticated/service_role and SELECT granted to service_role alone. The only writer is the SECURITY DEFINER survival_input_epoch_bump trigger machinery; a guard trigger refuses INSERT, DELETE, TRUNCATE and any write that is not a +1 epoch advance stamped with the writer's own xid8."
   },
   "tables": {
     "account_snapshots": {
@@ -198,6 +199,16 @@
       "created_by_migration": true
     },
     "atlas_decision_lineage_heads": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "survival_input_epoch_shards": {
       "class": "SERVER_ONLY",
       "rls": true,
       "policies": 0,

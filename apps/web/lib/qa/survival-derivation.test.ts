@@ -822,6 +822,15 @@ describe('read-only, with a closed consumer set', () => {
       // only `atlas/survival/types` (a closed vocabulary of string constants);
       // it does not import `readSurvivalSnapshot` and cannot read Survival.
       resolve(process.cwd(), 'lib/qa/autonomy-trace-guards.test.ts'),
+      // Phase 3B1B2 M2's guards: they read the Survival source FILES as text to
+      // pin the epoch's source set to the current read surface (a new input must
+      // fail there until its epoch coverage is reviewed). They import nothing
+      // from `atlas/survival` and cannot read Survival.
+      resolve(process.cwd(), 'lib/qa/survival-input-epoch-m2-guards.test.ts'),
+      // Phase 3B1B2 M2's stable-observation proof: it drives the inert
+      // `observeSurvivalStable()` helper (and through it the real snapshot)
+      // against real PostgreSQL. A test, not a runtime consumer.
+      resolve(process.cwd(), 'lib/qa/survival-stable-observation-m2-sql.test.ts'),
     ]
     const offenders: string[] = []
 

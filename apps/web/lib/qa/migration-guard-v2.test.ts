@@ -61,6 +61,9 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
   // 104 → 105: `autonomy_authority_serialization` (Phase 3B1B2 M1) — APPLIED to production
   // on 2026-10-02 under the operator-approved M1 rollout (ledger version 20261002134227);
   // the production-ledger pin below is reconciled 127 → 128 accordingly.
+  // 105 → 106: `survival_input_epoch` (Phase 3B1B2 M2) — APPLIED to production on
+  // 2026-10-03 under the operator-approved M2 rollout (ledger version 20261003053532);
+  // the production-ledger pin below is reconciled 128 → 129 accordingly.
   //
   // 1C2 and 2C each computed 100/86 — both were written against main's 99/85 — which is
   // exactly why the number alone could not distinguish them and why the merged figure is
@@ -69,14 +72,14 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
   // NOTE ON 3B1A: these two counts describe the CANONICAL CORPUS, so they move as soon
   // as the file exists. The production APPLY is a separate fact, and it has NOT happened
   // for 3B1A — see the ledger assertion below, which is deliberately left RED.
-  it('pins policy v2 and the current 105/91/14/30 counts', () => {
+  it('pins policy v2 and the current 106/92/14/30 counts', () => {
     expect(MIGRATION_GUARD_POLICY_VERSION).toBe(2)
-    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(105)
-    expect(EXPECTED_ENFORCED_COUNT).toBe(91)
+    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(106)
+    expect(EXPECTED_ENFORCED_COUNT).toBe(92)
     expect(GRANDFATHERED_MIGRATION_NAMES).toHaveLength(14)
     expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).toHaveLength(30)
-    expect(repositoryState.sqlFiles).toHaveLength(105)
-    expect(repositoryState.enforcedNames).toHaveLength(91)
+    expect(repositoryState.sqlFiles).toHaveLength(106)
+    expect(repositoryState.enforcedNames).toHaveLength(92)
   })
 
   it('uses exact explicit names with no wildcard policy entries', () => {
@@ -169,7 +172,15 @@ describe('Migration Guard v2 — production ledger set integrity', () => {
     // 20261002134227 (the file is named 20261002140000). The applied statement is
     // byte-identical to the reviewed file (sha256 c84f604d…87cd5, verified against
     // `schema_migrations.statements`), so 127 here would now be stale information.
-    expect(result.appliedLedgerCount).toBe(128)
+    //
+    // POST-APPLY RECORD — Phase 3B1B2 M2. `survival_input_epoch` took the enforced set
+    // from 91 to 92 and this fixture from 128 to 129. It was APPLIED to production on
+    // 2026-10-03 under the operator-approved M2 rollout; the production ledger now holds
+    // 129 rows and contains the name exactly once, at version 20261003053532 (the file is
+    // named 20261002190000). The applied statement is byte-identical to the reviewed file
+    // (sha256 93e002f0…761d80, verified against `schema_migrations.statements`), so 128
+    // here would now be stale information.
+    expect(result.appliedLedgerCount).toBe(129)
     expect(result.unknownLedgerNames).toEqual([])
     expect(result.duplicateLedgerNames).toEqual([])
   })
@@ -279,16 +290,16 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
       ...runtimeHarness,
     })
     // The whole post-apply picture in one assertion: the canonical corpus is
-    // 105 files / 91 enforced after Phase 3B1B2 M1, and the synthetic known ledger is 128
-    // because `autonomy_authority_serialization` is now APPLIED to production
+    // 106 files / 92 enforced after Phase 3B1B2 M2, and the synthetic known ledger is 129
+    // because `survival_input_epoch` is now APPLIED to production
     // (version 20261002062908). See the note on the integrity test above for
     // why this number is hardcoded rather than derived.
     expect(result).toMatchObject({
       skipped: false,
       policyVersion: 2,
-      canonicalSqlCount: 105,
-      enforcedCount: 91,
-      appliedLedgerCount: 128,
+      canonicalSqlCount: 106,
+      enforcedCount: 92,
+      appliedLedgerCount: 129,
     })
   })
 })

@@ -26,7 +26,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   ALLOWLIST_FILE, BOOTSTRAP_FILE, MIGRATION_ROOTS, REGISTRY_FILE, RULES,
-  allowlistProblems, analyze, analyzeExprText, discoverMigrations, findRepoRoot, gate, isBlocking, lex, parseOp, splitStatements,
+  allowlistProblems, analyze, analyzeExprText, discoverMigrations, findRepoRoot, gate, isBlocking, lex, parseOp, splitStatements, tableClass,
   type Allowlist, type Finding, type MigrationFile, type Registry, type Root, type RuleId,
 } from './migration-security-gate'
 
@@ -644,5 +644,116 @@ describe('Phase 9AA — the rule catalogue keeps its five categories honest', ()
     expect(f.migration).toMatch(/20260528_agent_decisions\.sql$/)
     expect(f.fingerprint).toMatch(/^[0-9a-f]{16}$/)
     expect(f.detail).toMatch(/public\.agents/)
+  })
+})
+
+// ─── 11. DB_INTERNAL (Phase 3B1B2 M3) ───────────────────────────────────────
+
+describe('Phase 3B1B2 M3 — DB_INTERNAL is stricter than SERVER_ONLY, never an escape hatch', () => {
+  const T = 'public.survival_commit_fence_intents'
+
+  it('the registry classifies the M3 intents table DB_INTERNAL', () => {
+    expect(tableClass(REGISTRY, 'survival_commit_fence_intents')).toBe('DB_INTERNAL')
+  })
+
+  it('the real M3 migration raises no blocking finding under the new class', () => {
+    const mine = FULL.findings.filter(f => f.migration.endsWith('20261003120000_survival_commit_fence.sql'))
+    expect(mine.length).toBeGreaterThan(0)
+    expect(mine.filter(f => f.blocking).map(f => f.rule)).toEqual([])
+  })
+
+  it('a client grant on a DB_INTERNAL table FAILS — anon and authenticated alike', () => {
+    expect(probe(`grant select on ${T} to anon;`).blocking).toEqual(['CLIENT_GRANT_ON_SERVER_ONLY'])
+    expect(probe(`grant select on ${T} to authenticated;`).blocking).toEqual(['CLIENT_GRANT_ON_SERVER_ONLY'])
+  })
+
+  it('a service_role grant on a DB_INTERNAL table FAILS — explicit, mixed, or via ALL TABLES IN SCHEMA', () => {
+    expect(probe(`grant select on ${T} to service_role;`).blocking).toEqual(['SERVICE_ROLE_GRANT_ON_DB_INTERNAL'])
+    expect(probe(`grant all on ${T} to anon, service_role;`).blocking.sort()).toEqual(['CLIENT_GRANT_ON_SERVER_ONLY', 'SERVICE_ROLE_GRANT_ON_DB_INTERNAL'])
+    expect(probe('grant select on all tables in schema public to service_role;').blocking).toContain('SERVICE_ROLE_GRANT_ON_DB_INTERNAL')
+  })
+
+  it('ANY policy on a DB_INTERNAL table FAILS — client, service-role or restrictive', () => {
+    expect(probe(`create policy probe_di on ${T} for select to service_role using (true);`).blocking).toEqual(['POLICY_ON_DB_INTERNAL'])
+    expect(probe(`create policy probe_di on ${T} for select to authenticated using (auth.uid() is not null);`).blocking).toEqual(['POLICY_ON_DB_INTERNAL'])
+    expect(probe(`create policy probe_di on ${T} as restrictive for select to authenticated using (false);`).blocking).toEqual(['POLICY_ON_DB_INTERNAL'])
+  })
+
+  it('revoking from a DB_INTERNAL table is hardening, never blocking', () => {
+    expect(probe(`revoke all on ${T} from anon, authenticated, service_role;`).blocking).toEqual([])
+  })
+
+  it('the class, not the name, decides: a NEW DB_INTERNAL table gets the same contract', () => {
+    const reg = withClasses({ probe_dbi: 'DB_INTERNAL' })
+    const create = 'create table public.probe_dbi (id uuid primary key);\nalter table public.probe_dbi enable row level security;\nrevoke all on public.probe_dbi from public, anon, authenticated, service_role;'
+    expect(probe(create, { registry: reg }).blocking).toEqual([])
+    expect([...probe(`${create}\ngrant select on public.probe_dbi to service_role;`, { registry: reg }).blocking].sort())
+      .toEqual(['DB_INTERNAL_DIRECT_GRANT_REMAINS', 'SERVICE_ROLE_GRANT_ON_DB_INTERNAL'])
+  })
+
+  it('SERVER_ONLY is unchanged: its service-role grant stays contextual and its client grant stays blocking', () => {
+    const svc = probe('grant select on public.cost_events to service_role;')
+    expect(svc.blocking).toEqual([])
+    expect(svc.rules).toEqual(['SERVICE_ROLE_GRANT'])
+    expect(probe('grant select on public.cost_events to anon;').blocking).toEqual(['CLIENT_GRANT_ON_SERVER_ONLY'])
+  })
+})
+
+describe('Phase 3B1B2 M3 — DB_INTERNAL is judged on the FINAL replayed grant state of its creating migration', () => {
+  // A synthetic DB_INTERNAL table: the contract comes from the CLASS, never from a table name.
+  const reg = withClasses({ probe_dbi: 'DB_INTERNAL' })
+  const CREATE = 'create table public.probe_dbi (id uuid primary key);\nalter table public.probe_dbi enable row level security;'
+  const remains = (sql: string) => probe(sql, { registry: reg }).findings.filter(f => f.rule === 'DB_INTERNAL_DIRECT_GRANT_REMAINS')
+
+  it('A — CREATE + ENABLE RLS with NO revoke FAILS: the Supabase default grants are still there', () => {
+    expect(probe(CREATE, { registry: reg }).blocking).toEqual(['DB_INTERNAL_DIRECT_GRANT_REMAINS'])
+    const d = remains(CREATE)[0].detail
+    for (const role of ['anon', 'authenticated', 'service_role']) expect(d).toContain(`${role}:select`)
+  })
+
+  it('B — revoking anon + authenticated but leaving service_role FAILS, and names service_role only', () => {
+    const sql = `${CREATE}\nrevoke all on public.probe_dbi from public, anon, authenticated;`
+    expect(probe(sql, { registry: reg }).blocking).toEqual(['DB_INTERNAL_DIRECT_GRANT_REMAINS'])
+    expect(remains(sql)[0].detail).toMatch(/service_role:/)
+    expect(remains(sql)[0].detail).not.toMatch(/\b(anon|authenticated):/)
+  })
+
+  it('C — revoking service_role but leaving anon/authenticated FAILS, and names the client roles only', () => {
+    const sql = `${CREATE}\nrevoke all on public.probe_dbi from service_role;`
+    expect(probe(sql, { registry: reg }).blocking).toEqual(['DB_INTERNAL_DIRECT_GRANT_REMAINS'])
+    expect(remains(sql)[0].detail).toMatch(/\banon:.*\bauthenticated:/)
+    expect(remains(sql)[0].detail).not.toMatch(/service_role:/)
+  })
+
+  it('C′ — a partial revoke (one privilege left to one role) still FAILS', () => {
+    const sql = `${CREATE}\nrevoke all on public.probe_dbi from public, anon, authenticated, service_role;\ngrant references on public.probe_dbi to anon;`
+    expect(probe(sql, { registry: reg }).blocking).toEqual(expect.arrayContaining(['CLIENT_GRANT_ON_SERVER_ONLY', 'DB_INTERNAL_DIRECT_GRANT_REMAINS']))
+    expect(remains(sql)[0].detail).toMatch(/: anon:references$/)
+  })
+
+  it('D — a full revoke from public, anon, authenticated and service_role PASSES', () => {
+    expect(probe(`${CREATE}\nrevoke all on public.probe_dbi from public, anon, authenticated, service_role;`, { registry: reg }).blocking).toEqual([])
+  })
+
+  it('E — a full revoke followed by a service_role GRANT still FAILS (explicit-grant rule AND final state)', () => {
+    const p = probe(`${CREATE}\nrevoke all on public.probe_dbi from public, anon, authenticated, service_role;\ngrant select on public.probe_dbi to service_role;`, { registry: reg })
+    expect([...p.blocking].sort()).toEqual(['DB_INTERNAL_DIRECT_GRANT_REMAINS', 'SERVICE_ROLE_GRANT_ON_DB_INTERNAL'])
+  })
+
+  it('F — SERVER_ONLY is unchanged: the same CREATE with client grants revoked passes and keeps service_role', () => {
+    const so = withClasses({ probe_so: 'SERVER_ONLY' })
+    const sql = 'create table public.probe_so (id uuid primary key);\nalter table public.probe_so enable row level security;\nrevoke all on public.probe_so from anon, authenticated;'
+    const p = probe(sql, { registry: so })
+    expect(p.blocking).toEqual([])
+    expect(p.rules).not.toContain('DB_INTERNAL_DIRECT_GRANT_REMAINS')
+    expect(probe('create table public.probe_so (id uuid primary key);\nalter table public.probe_so enable row level security;', { registry: so }).rules)
+      .not.toContain('DB_INTERNAL_DIRECT_GRANT_REMAINS')
+  })
+
+  it('the real M3 migration leaves its DB_INTERNAL table with zero direct privileges', () => {
+    const r = FULL.model.rels.get('public.survival_commit_fence_intents')!
+    expect(r).toBeTruthy()
+    expect(['public', 'anon', 'authenticated', 'service_role'].flatMap(role => [...(r.grants.get(role) ?? [])])).toEqual([])
+    expect(FULL.findings.filter(f => f.rule === 'DB_INTERNAL_DIRECT_GRANT_REMAINS')).toEqual([])
   })
 })

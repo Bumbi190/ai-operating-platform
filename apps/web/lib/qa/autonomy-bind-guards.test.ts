@@ -193,11 +193,11 @@ describe('bind.ts composes canonical systems and writes nothing', () => {
 // ── The migration ────────────────────────────────────────────────────────────
 
 describe('the atomic bind migration', () => {
-  it('is the only BIND migration after Phase 3B1A (M0, 3B1B2 M1 and M2 are the reviewed successors)', () => {
+  it('is the only BIND migration after Phase 3B1A (M0, 3B1B2 M1, M2 and M3 are the reviewed successors)', () => {
     const files = readdirSync(join(APP, MIGRATION_DIR)).filter(f => f.endsWith('.sql')).sort()
     expect(files.slice(files.indexOf(TRACE_MIGRATION) + 1))
       .toEqual([BIND_MIGRATION, '20261001160000_m0_durable_spend_settlement.sql', '20261002140000_autonomy_authority_serialization.sql',
-        '20261002190000_survival_input_epoch.sql'])
+        '20261002190000_survival_input_epoch.sql', '20261003120000_survival_commit_fence.sql'])
     // M0 is spend accounting only: it must not touch the bind surface or the trace.
     const m0 = read(`${MIGRATION_DIR}/20261001160000_m0_durable_spend_settlement.sql`)
     expect(m0).not.toMatch(/bind_workflow_action_run|run_autonomy_decisions|autonomy_license/)
@@ -209,6 +209,10 @@ describe('the atomic bind migration', () => {
     // the trace, the licence or the Decision Ledger.
     const m2 = read(`${MIGRATION_DIR}/20261002190000_survival_input_epoch.sql`).replace(/--[^\n]*/g, '')
     expect(m2).not.toMatch(/bind_workflow_action_run|run_autonomy_decisions|public\.runs\b|autonomy_license|atlas_decision/)
+    // 3B1B2 M3 adds the inert commit fence and must not touch the bind surface, the run, the
+    // trace, the licence or the Decision Ledger either.
+    const m3 = read(`${MIGRATION_DIR}/20261003120000_survival_commit_fence.sql`).replace(/--[^\n]*/g, '').replace(/'[^']*'/g, "''")
+    expect(m3).not.toMatch(/bind_workflow_action_run|run_autonomy_decisions|public\.runs\b|autonomy_license|atlas_decision/)
   })
 
   it('the EFFECTIVE bind surface is the last definition in apply order, and every definition is closed', () => {

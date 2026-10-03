@@ -39,7 +39,7 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 interface Entry {
-  class: 'SERVER_ONLY' | 'TENANT_RLS' | 'INTERNAL_DENY_ALL' | 'INTENTIONALLY_PUBLIC'
+  class: 'SERVER_ONLY' | 'TENANT_RLS' | 'INTERNAL_DENY_ALL' | 'INTENTIONALLY_PUBLIC' | 'DB_INTERNAL'
   rls: boolean
   policies: number
   anon_grants: boolean
@@ -52,6 +52,28 @@ const REGISTRY = JSON.parse(
 ) as { _meta: Record<string, unknown>; tables: Record<string, Entry> }
 
 const TABLES = Object.entries(REGISTRY.tables)
+
+/**
+ * Class contracts that the live rules below AND their negative tests share, so a negative
+ * test exercises exactly the predicate that judges the real registry.
+ *
+ * SERVER_ONLY and DB_INTERNAL are two different, truthful security models:
+ * - SERVER_ONLY: the service-role writer MUST stay reachable (service_role true);
+ * - DB_INTERNAL: NO API role holds anything — service_role included — and the table is
+ *   reached only through reviewed database-internal SECURITY DEFINER machinery.
+ * Neither predicate knows a table name: the class alone decides.
+ */
+export const serverOnlyLosesWriter = (e: Entry): boolean => e.class === 'SERVER_ONLY' && !e.service_role
+export function dbInternalViolations(e: Entry): string[] {
+  if (e.class !== 'DB_INTERNAL') return []
+  const v: string[] = []
+  if (e.rls !== true) v.push('rls must be true')
+  if (e.policies !== 0) v.push(`policies must be 0 (has ${e.policies})`)
+  if (e.anon_grants !== false) v.push('anon must hold no grant')
+  if (e.authenticated_grants !== false) v.push('authenticated must hold no grant')
+  if (e.service_role !== false) v.push('service_role must hold no grant')
+  return v
+}
 
 /** Both migration roots. The repo has two, and the gap lived under the second. */
 const MIGRATION_DIRS = [
@@ -139,7 +161,7 @@ describe('Phase 9Y — schema-security invariant: effective state', () => {
   })
 
   it('every SERVER_ONLY table still reaches its own writer', () => {
-    const broken = TABLES.filter(([, e]) => e.class === 'SERVER_ONLY' && !e.service_role).map(([t]) => t)
+    const broken = TABLES.filter(([, e]) => serverOnlyLosesWriter(e)).map(([t]) => t)
     expect(broken, 'locking a table down must not cut off the service-role writer').toEqual([])
   })
 
@@ -162,6 +184,14 @@ describe('Phase 9Y — schema-security invariant: effective state', () => {
       .filter(([, e]) => e.class === 'INTERNAL_DENY_ALL' && (!e.rls || e.policies !== 0))
       .map(([t, e]) => `${t} (rls=${e.rls}, policies=${e.policies})`)
     expect(offenders, 'deny-all table is not actually deny-all').toEqual([])
+  })
+
+  it('a DB_INTERNAL table has RLS on, no policy, and NO grant to anon, authenticated OR service_role', () => {
+    const offenders = TABLES
+      .map(([t, e]) => [t, dbInternalViolations(e)] as const)
+      .filter(([, v]) => v.length > 0)
+      .map(([t, v]) => `${t}: ${v.join('; ')}`)
+    expect(offenders, 'a database-internal table is reachable by an API role').toEqual([])
   })
 
   it('the class of every entry is one the registry declares', () => {
@@ -500,6 +530,98 @@ describe('Phase 9AB — cost-ledger RLS isolation', () => {
       expect(REGISTRY.tables[t].anon_grants, t).toBe(false)
       expect(REGISTRY.tables[t].authenticated_grants, t).toBe(false)
       expect(REGISTRY.tables[t].policies, t).toBe(0)
+    }
+  })
+})
+
+// ─── DB_INTERNAL: the class, its negative tests, and the one table that uses it ─────────────
+
+describe('Phase 3B1B2 M3 — DB_INTERNAL class contract (negative tests on the shared predicates)', () => {
+  const ok: Entry = { class: 'DB_INTERNAL', rls: true, policies: 0, anon_grants: false, authenticated_grants: false, service_role: false }
+
+  it('the registry declares DB_INTERNAL', () => {
+    expect(Object.keys((REGISTRY._meta.classes ?? {}) as Record<string, unknown>)).toContain('DB_INTERNAL')
+  })
+
+  it('a conforming DB_INTERNAL entry passes', () => {
+    expect(dbInternalViolations(ok)).toEqual([])
+  })
+
+  it.each([
+    ['service_role true', { service_role: true }, 'service_role must hold no grant'],
+    ['anon grant', { anon_grants: true }, 'anon must hold no grant'],
+    ['authenticated grant', { authenticated_grants: true }, 'authenticated must hold no grant'],
+    ['RLS off', { rls: false }, 'rls must be true'],
+    ['a policy', { policies: 1 }, 'policies must be 0 (has 1)'],
+  ] as const)('DB_INTERNAL + %s => FAILS', (_n, patch, why) => {
+    expect(dbInternalViolations({ ...ok, ...patch })).toEqual([why])
+  })
+
+  it('SERVER_ONLY + service_role false STILL fails — the new class does not weaken SERVER_ONLY', () => {
+    const serverOnly: Entry = { ...ok, class: 'SERVER_ONLY' }
+    expect(serverOnlyLosesWriter(serverOnly)).toBe(true)
+    expect(dbInternalViolations(serverOnly)).toEqual([])           // judged by SERVER_ONLY's rule, not DB_INTERNAL's
+    expect(serverOnlyLosesWriter({ ...serverOnly, service_role: true })).toBe(false)
+  })
+
+  it('no table-name exception exists: the predicates read only the class and the recorded facts', () => {
+    const src = readFileSync(resolve(process.cwd(), 'lib/qa/schema-security-invariant.test.ts'), 'utf8')
+    const preds = src.slice(src.indexOf('export const serverOnlyLosesWriter'), src.indexOf("describe('Phase 9Y"))
+    expect(preds).not.toMatch(/survival_commit_fence_intents|['"][a-z_]+_(intents|events|config)['"]/)
+  })
+})
+
+describe('Phase 3B1B2 M3 — survival_commit_fence_intents is DB_INTERNAL, in the registry and in the migration', () => {
+  const T = 'survival_commit_fence_intents'
+  const EXPECTED: Entry = { class: 'DB_INTERNAL', rls: true, policies: 0, anon_grants: false, authenticated_grants: false, service_role: false }
+  const NOT_LIVE = REGISTRY._meta.created_not_live as { tables: string[]; classes: Record<string, string> }
+  const M3 = SOURCES.find(s => s.file.replace(/\\/g, '/').endsWith('supabase/migrations/20261003120000_survival_commit_fence.sql'))
+  const sql = (M3?.sql ?? '').replace(/--[^\n]*/g, '').toLowerCase()
+
+  it('the registry records it exactly once: created-not-live (DB_INTERNAL) before the apply, a live DB_INTERNAL row after', () => {
+    const live = REGISTRY.tables[T] ?? null
+    const pending = NOT_LIVE.tables.includes(T)
+    expect(Number(live !== null) + Number(pending), 'listed both live and created-not-live, or neither').toBe(1)
+    if (live) {
+      expect(live).toMatchObject(EXPECTED)
+      expect(T in NOT_LIVE.classes).toBe(false)
+    } else {
+      expect(NOT_LIVE.classes[T]).toBe('DB_INTERNAL')
+    }
+    expect(dbInternalViolations(EXPECTED)).toEqual([])               // the row reconciliation must introspect
+  })
+
+  it('the migration enables RLS, creates no policy, and revokes every table privilege from every API role', () => {
+    expect(M3, 'the M3 migration is in the corpus').toBeTruthy()
+    expect(sql).toMatch(/alter\s+table\s+public\.survival_commit_fence_intents\s+enable\s+row\s+level\s+security/)
+    expect(sql).not.toMatch(/create\s+policy/)
+    expect(sql).toMatch(/revoke\s+all\s+on\s+table\s+public\.survival_commit_fence_intents\s+from\s+public,\s*anon,\s*authenticated,\s*service_role\s*;/)
+  })
+
+  it('no migration ever grants the table, or creates a policy on it', () => {
+    for (const { file, sql: raw } of SOURCES) {
+      const body = raw.replace(/--[^\n]*/g, '').toLowerCase()
+      expect(body, file).not.toMatch(/grant\s[^;]*\bon\s+(table\s+)?(public\.)?survival_commit_fence_intents\b/)
+      expect(body, file).not.toMatch(/create\s+policy\s[^;]*\bon\s+(public\.)?survival_commit_fence_intents\b/)
+      expect(body, file).not.toMatch(/grant\s[^;]*\bon\s+all\s+tables\s+in\s+schema\s+public\s+to\s[^;]*service_role/)
+    }
+  })
+
+  it('its writer survival_commit_fence() is SECURITY DEFINER and executable by NO API role, service_role included', () => {
+    expect(sql).toMatch(/create\s+or\s+replace\s+function\s+public\.survival_commit_fence\(p_observed_vector\s+bigint\[\],\s*p_anchor\s+timestamptz\)[\s\S]*?security\s+definer/)
+    expect(sql).toMatch(/revoke\s+all\s+on\s+function\s+public\.survival_commit_fence\(bigint\[\],\s*timestamptz\)\s+from\s+public,\s*anon,\s*authenticated,\s*service_role\s*;/)
+    for (const { file, sql: raw } of SOURCES) {
+      expect(raw.replace(/--[^\n]*/g, '').toLowerCase(), file).not.toMatch(/grant\s+execute\s+on\s+function\s+public\.survival_commit_fence\s*\(/)
+    }
+  })
+
+  it('its readers — the recheck and guard trigger functions — are executable by no API role', () => {
+    for (const fn of ['survival_commit_fence_recheck', 'survival_fenced_transaction_guard']) {
+      expect(sql).toMatch(new RegExp(`create\\s+or\\s+replace\\s+function\\s+public\\.${fn}\\(\\)\\s+returns\\s+trigger[\\s\\S]*?security\\s+definer`))
+      expect(sql).toMatch(new RegExp(`revoke\\s+all\\s+on\\s+function\\s+public\\.${fn}\\(\\)\\s+from\\s+public,\\s*anon,\\s*authenticated,\\s*service_role\\s*;`))
+      for (const { file, sql: raw } of SOURCES) {
+        expect(raw.replace(/--[^\n]*/g, '').toLowerCase(), file).not.toMatch(new RegExp(`grant\\s+execute\\s+on\\s+function\\s+public\\.${fn}\\b`))
+      }
     }
   })
 })

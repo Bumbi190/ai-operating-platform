@@ -64,9 +64,9 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
   // 105 → 106: `survival_input_epoch` (Phase 3B1B2 M2) — APPLIED to production on
   // 2026-10-03 under the operator-approved M2 rollout (ledger version 20261003053532);
   // the production-ledger pin below is reconciled 128 → 129 accordingly.
-  // 106 → 107: `survival_commit_fence` (Phase 3B1B2 M3), on this branch, NOT applied. The
-  // production-ledger pin (129) is therefore deliberately RED on this branch until the
-  // operator-approved apply, exactly as for every phase before it.
+  // 106 → 107: `survival_commit_fence` (Phase 3B1B2 M3) — APPLIED to production on
+  // 2026-10-03 under the operator-approved M3 rollout (ledger version 20261003183855);
+  // the production-ledger pin below is reconciled 129 → 130 accordingly.
   //
   // 1C2 and 2C each computed 100/86 — both were written against main's 99/85 — which is
   // exactly why the number alone could not distinguish them and why the merged figure is
@@ -183,7 +183,15 @@ describe('Migration Guard v2 — production ledger set integrity', () => {
     // named 20261002190000). The applied statement is byte-identical to the reviewed file
     // (sha256 93e002f0…761d80, verified against `schema_migrations.statements`), so 128
     // here would now be stale information.
-    expect(result.appliedLedgerCount).toBe(129)
+    //
+    // POST-APPLY RECORD — Phase 3B1B2 M3. `survival_commit_fence` took the enforced set
+    // from 92 to 93 and this fixture from 129 to 130. It was APPLIED to production on
+    // 2026-10-03 under the operator-approved M3 rollout; the production ledger now holds
+    // 130 rows and contains the name exactly once, at version 20261003183855 (the file is
+    // named 20261003120000). The applied statement is byte-identical to the reviewed file
+    // (sha256 c114496b…752cb7, verified against `schema_migrations.statements`), so 129
+    // here would now be stale information.
+    expect(result.appliedLedgerCount).toBe(130)
     expect(result.unknownLedgerNames).toEqual([])
     expect(result.duplicateLedgerNames).toEqual([])
   })
@@ -293,8 +301,8 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
       ...runtimeHarness,
     })
     // The whole post-apply picture in one assertion: the canonical corpus is
-    // 107 files / 93 enforced after Phase 3B1B2 M3 (on its branch), and the synthetic known
-    // ledger pin stays 129 because `survival_input_epoch` is APPLIED to production
+    // 107 files / 93 enforced after Phase 3B1B2 M3, and the synthetic known ledger is 130
+    // because `survival_commit_fence` is now APPLIED to production
     // (version 20261002062908). See the note on the integrity test above for
     // why this number is hardcoded rather than derived.
     expect(result).toMatchObject({
@@ -302,7 +310,7 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
       policyVersion: 2,
       canonicalSqlCount: 107,
       enforcedCount: 93,
-      appliedLedgerCount: 129,
+      appliedLedgerCount: 130,
     })
   })
 })

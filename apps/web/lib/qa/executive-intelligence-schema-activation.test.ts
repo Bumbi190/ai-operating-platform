@@ -295,7 +295,7 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
     // 92: Phase 3B1B2 M2's `survival_input_epoch` — the sharded Survival input epoch.
     // APPLIED to production on 2026-10-03 (ledger version 20261003053532).
     // 93: Phase 3B1B2 M3's `survival_commit_fence` — commit clock + self-probing fence.
-    // NOT applied to production on its branch.
+    // APPLIED to production on 2026-10-03 (ledger version 20261003183855).
     // Migration Guard v2 owns the repository-wide 107/93 count contract. This
     // older assertion remains as an independent EI activation companion so a
     // canonical migration cannot move or disappear without both gates noticing.

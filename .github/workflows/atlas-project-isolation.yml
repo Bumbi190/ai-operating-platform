@@ -272,7 +272,7 @@ jobs:
             // Phase 9AB pins the cost-ledger policy fix here too. Its behavioural
             // proof needs Postgres and skips in CI, so without these the only guard
             // against a reverted fix would be a suite that never runs on a PR.
-            'schema-security-invariant.test.ts': 60,
+            'schema-security-invariant.test.ts': 76,
             // Phase 9AA — the migration security DIFF gate. Closure audit #5
             // wrote throwaway migrations that DISABLE RLS, add an anon USING
             // (true) policy and grant anon onto a server-only table, and CI
@@ -284,7 +284,7 @@ jobs:
             // WITH CHECK, client grants on SERVER_ONLY tables, and views that
             // run as their owner. A blocking finding passes only with an exact
             // reviewed allowlist entry. No database: it is pure text analysis.
-            'migration-security-gate.test.ts': 117,
+            'migration-security-gate.test.ts': 125,
             // Phase 9AA — POST /api/bugscanner/run compared
             // `user.email !== BREVO_ADMIN_EMAIL`, which admitted an email-less
             // session whenever the address was unset. The counters matter more

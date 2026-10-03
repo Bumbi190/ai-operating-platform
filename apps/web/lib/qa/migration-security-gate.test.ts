@@ -26,7 +26,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   ALLOWLIST_FILE, BOOTSTRAP_FILE, MIGRATION_ROOTS, REGISTRY_FILE, RULES,
-  allowlistProblems, analyze, analyzeExprText, discoverMigrations, findRepoRoot, gate, isBlocking, lex, parseOp, splitStatements,
+  allowlistProblems, analyze, analyzeExprText, discoverMigrations, findRepoRoot, gate, isBlocking, lex, parseOp, splitStatements, tableClass,
   type Allowlist, type Finding, type MigrationFile, type Registry, type Root, type RuleId,
 } from './migration-security-gate'
 
@@ -644,5 +644,56 @@ describe('Phase 9AA — the rule catalogue keeps its five categories honest', ()
     expect(f.migration).toMatch(/20260528_agent_decisions\.sql$/)
     expect(f.fingerprint).toMatch(/^[0-9a-f]{16}$/)
     expect(f.detail).toMatch(/public\.agents/)
+  })
+})
+
+// ─── 11. DB_INTERNAL (Phase 3B1B2 M3) ───────────────────────────────────────
+
+describe('Phase 3B1B2 M3 — DB_INTERNAL is stricter than SERVER_ONLY, never an escape hatch', () => {
+  const T = 'public.survival_commit_fence_intents'
+
+  it('the registry classifies the M3 intents table DB_INTERNAL', () => {
+    expect(tableClass(REGISTRY, 'survival_commit_fence_intents')).toBe('DB_INTERNAL')
+  })
+
+  it('the real M3 migration raises no blocking finding under the new class', () => {
+    const mine = FULL.findings.filter(f => f.migration.endsWith('20261003120000_survival_commit_fence.sql'))
+    expect(mine.length).toBeGreaterThan(0)
+    expect(mine.filter(f => f.blocking).map(f => f.rule)).toEqual([])
+  })
+
+  it('a client grant on a DB_INTERNAL table FAILS — anon and authenticated alike', () => {
+    expect(probe(`grant select on ${T} to anon;`).blocking).toEqual(['CLIENT_GRANT_ON_SERVER_ONLY'])
+    expect(probe(`grant select on ${T} to authenticated;`).blocking).toEqual(['CLIENT_GRANT_ON_SERVER_ONLY'])
+  })
+
+  it('a service_role grant on a DB_INTERNAL table FAILS — explicit, mixed, or via ALL TABLES IN SCHEMA', () => {
+    expect(probe(`grant select on ${T} to service_role;`).blocking).toEqual(['SERVICE_ROLE_GRANT_ON_DB_INTERNAL'])
+    expect(probe(`grant all on ${T} to anon, service_role;`).blocking.sort()).toEqual(['CLIENT_GRANT_ON_SERVER_ONLY', 'SERVICE_ROLE_GRANT_ON_DB_INTERNAL'])
+    expect(probe('grant select on all tables in schema public to service_role;').blocking).toContain('SERVICE_ROLE_GRANT_ON_DB_INTERNAL')
+  })
+
+  it('ANY policy on a DB_INTERNAL table FAILS — client, service-role or restrictive', () => {
+    expect(probe(`create policy probe_di on ${T} for select to service_role using (true);`).blocking).toEqual(['POLICY_ON_DB_INTERNAL'])
+    expect(probe(`create policy probe_di on ${T} for select to authenticated using (auth.uid() is not null);`).blocking).toEqual(['POLICY_ON_DB_INTERNAL'])
+    expect(probe(`create policy probe_di on ${T} as restrictive for select to authenticated using (false);`).blocking).toEqual(['POLICY_ON_DB_INTERNAL'])
+  })
+
+  it('revoking from a DB_INTERNAL table is hardening, never blocking', () => {
+    expect(probe(`revoke all on ${T} from anon, authenticated, service_role;`).blocking).toEqual([])
+  })
+
+  it('the class, not the name, decides: a NEW DB_INTERNAL table gets the same contract', () => {
+    const reg = withClasses({ probe_dbi: 'DB_INTERNAL' })
+    const create = 'create table public.probe_dbi (id uuid primary key);\nalter table public.probe_dbi enable row level security;\nrevoke all on public.probe_dbi from public, anon, authenticated, service_role;'
+    expect(probe(create, { registry: reg }).blocking).toEqual([])
+    expect(probe(`${create}\ngrant select on public.probe_dbi to service_role;`, { registry: reg }).blocking).toEqual(['SERVICE_ROLE_GRANT_ON_DB_INTERNAL'])
+  })
+
+  it('SERVER_ONLY is unchanged: its service-role grant stays contextual and its client grant stays blocking', () => {
+    const svc = probe('grant select on public.cost_events to service_role;')
+    expect(svc.blocking).toEqual([])
+    expect(svc.rules).toEqual(['SERVICE_ROLE_GRANT'])
+    expect(probe('grant select on public.cost_events to anon;').blocking).toEqual(['CLIENT_GRANT_ON_SERVER_ONLY'])
   })
 })

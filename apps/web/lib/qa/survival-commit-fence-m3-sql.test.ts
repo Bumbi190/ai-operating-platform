@@ -152,6 +152,10 @@ function clearClockData() {
 
 // Sessions (as M1/M2 suites).
 interface Outcome { ok: boolean; out: string; stderr: string; state: string; endedAt: number }
+// Commit ORDER is read from the SERVER clock (µs since epoch), never from client process exit
+// times: two psql processes' teardown order is not their commit order at ms resolution.
+const SERVER_US = `select (extract(epoch from clock_timestamp()) * 1000000)::bigint`
+const lastUs = (r: Outcome): bigint => BigInt(r.out.split(/\r?\n/).filter(Boolean).pop() ?? '0')
 function session(app: string, statements: string[]): Promise<Outcome> {
   const args = ['-v', 'ON_ERROR_STOP=1', '-v', 'VERBOSITY=verbose', '-X', '-q', '-t', '-A', '-F', '|',
     '-d', dsnFor(ADMIN_URL, DB, app), '-c', `set lock_timeout = '20s'`, '-c', `set deadlock_timeout = '200ms'`,
@@ -344,14 +348,14 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M3 commit clock + self-probing Sur
 
     it('C1. a writer in flight (uncommitted, bump pending) when the fence starts: the fence is admitted first; the writer waits for it', async () => {
       const V = vecSql()
-      const w = session('m3_c1_w', ['begin', costRow(), 'select pg_sleep(2)', 'commit'])
+      const w = session('m3_c1_w', ['begin', costRow(), 'select pg_sleep(6)', 'commit', SERVER_US])
       expect(await holding('m3_c1_w')).toBe(true)
-      const f = session('m3_c1_f', ['begin', fenceSql(V), 'select pg_sleep(5)', 'commit'])
+      const f = session('m3_c1_f', ['begin', fenceSql(V), 'select pg_sleep(9)', SERVER_US, 'commit'])
       expect(await holding('m3_c1_f')).toBe(true)            // admitted: the writer had not committed
       expect(await waitingBehind('m3_c1_w')).toEqual(['m3_c1_f'])  // its commit-time bump waits on the fence
       const [rf, rw] = await Promise.all([f, w])
       expect([rf.ok, rw.ok]).toEqual([true, true])
-      expect(rw.endedAt).toBeGreaterThanOrEqual(rf.endedAt)  // serialized AFTER the fenced commit
+      expect(lastUs(rw) > lastUs(rf)).toBe(true)              // the writer's commit returned only after the fence committed
     })
 
     it('C2. a writer already holding its shard (bump done, not yet committed): the fence waits, then refuses (SV004)', async () => {
@@ -366,13 +370,13 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M3 commit clock + self-probing Sur
 
     it('D. a writer committing AFTER the fence holds its shares waits until the fence commits — and until it rolls back', async () => {
       for (const end of ['commit', 'rollback']) {
-        const f = session(`m3_d_${end}`, ['begin', fenceSql(), 'select pg_sleep(4)', end])
+        const f = session(`m3_d_${end}`, ['begin', fenceSql(), 'select pg_sleep(4)', SERVER_US, end])
         expect(await holding(`m3_d_${end}`)).toBe(true)
-        const w = session(`m3_d_w_${end}`, ['begin', costRow(), 'commit'])
+        const w = session(`m3_d_w_${end}`, ['begin', costRow(), 'commit', SERVER_US])
         expect(await waitingBehind(`m3_d_w_${end}`)).toEqual([`m3_d_${end}`])
         const [rf, rw] = await Promise.all([f, w])
         expect([rf.ok, rw.ok], end).toEqual([true, true])
-        expect(rw.endedAt).toBeGreaterThanOrEqual(rf.endedAt)
+        expect(lastUs(rw) > lastUs(rf), end).toBe(true)
       }
     })
 
@@ -404,8 +408,14 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M3 commit clock + self-probing Sur
     })
 
     it('J. concurrent fences share the shards: none waits on another, all commit, no deadlock', async () => {
-      const fs = Array.from({ length: 6 }, (_, i) => session(`m3_j_${i}`, ['begin', fenceSql(), 'select pg_sleep(2)', 'commit']))
-      for (let i = 0; i < 6; i++) expect(await holding(`m3_j_${i}`)).toBe(true)  // all six inside, simultaneously
+      // A long sleep so the six spawns overlap even under full-suite load; ONE snapshot proves
+      // all six are past the fence (sleeping, holding their shares) at the same instant.
+      const fs = Array.from({ length: 6 }, (_, i) => session(`m3_j_${i}`, ['begin', fenceSql(), 'select pg_sleep(10)', 'commit']))
+      let together = false
+      for (const until = Date.now() + 30_000; !together && Date.now() < until; await sleep(50)) {
+        together = one(dsn, `select count(*) from pg_stat_activity where application_name like 'm3\\_j\\_%' and wait_event = 'PgSleep'`) === '6'
+      }
+      expect(together, 'all six fenced transactions inside at once').toBe(true)
       const rs = await Promise.all(fs)
       expect(rs.map(r => r.state)).toEqual(rs.map(() => ''))
     })

@@ -69,8 +69,8 @@ const M4A_FUNCTIONS = { SUPPORTED, DECISION, LICENCE, SURVIVAL, RECHECK, REGISTE
 describe('M4-A V1 supported set = the TS policy, exactly', () => {
   const block = /-- licensed-bind-v1-supported:begin\n([\s\S]*?)\n\s*-- licensed-bind-v1-supported:end/.exec(m4a)
   const rows = block
-    ? [...block[1].matchAll(/select '([^']+)'::text, '([^']+)'::text, '([^']+)'::text,\s*'([0-9a-f]{64})'::text/g)]
-        .map(m => ({ kind: m[1], level: m[2], defKey: m[3], fp: m[4] }))
+    ? [...block[1].matchAll(/select '([^']+)'::text, '([^']+)'::text, '([^']+)'::text, '([^']+)'::text,\s*'([0-9a-f]{64})'::text/g)]
+        .map(m => ({ kind: m[1], level: m[2], defKey: m[3], state: m[4], fp: m[5] }))
     : []
 
   it('the marked block exists and lists at least one row', () => {
@@ -88,10 +88,10 @@ describe('M4-A V1 supported set = the TS policy, exactly', () => {
     for (const r of rows) expect(r.level).toBe(licensed.find(l => l.kind === r.kind)!.level)
   })
 
-  it('one row per registry placement, each carrying the canonical fingerprintFor([kind], def_key)', () => {
+  it('one row per registry placement (def_key AND state), each carrying the canonical fingerprintFor([kind], def_key)', () => {
     for (const kind of new Set(rows.map(r => r.kind))) {
-      const defKeys = [...new Set(ACTION_REGISTRY[kind as ActionKind].placements.map(p => p.def_key))].sort()
-      expect(rows.filter(r => r.kind === kind).map(r => r.defKey).sort()).toEqual(defKeys)
+      const placements = ACTION_REGISTRY[kind as ActionKind].placements.map(p => `${p.def_key}@${p.state}`).sort()
+      expect(rows.filter(r => r.kind === kind).map(r => `${r.defKey}@${r.state}`).sort()).toEqual(placements)
     }
     for (const r of rows) expect(r.fp).toBe(fingerprintFor([r.kind], r.defKey))
   })
@@ -327,7 +327,7 @@ describe('canonical Survival v1 thresholds — values and EQUALITY semantics are
 })
 
 describe('M4-A ships no new runtime consumer', () => {
-  it('no TS module outside the QA suites names a licensed_bind_* function', () => {
+  it('no TS module outside the QA suites CALLS an M4-A primitive (only the M4-B bind RPC does, in SQL)', () => {
     const hits: string[] = []
     const walk = (dir: string) => {
       for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -335,7 +335,7 @@ describe('M4-A ships no new runtime consumer', () => {
         const p = join(dir, e.name)
         if (e.isDirectory()) walk(p)
         else if (/\.(ts|tsx)$/.test(e.name) && !p.includes(join('lib', 'qa'))) {
-          if (/licensed_bind_(v1_|authority_|register_)/.test(read(p))) hits.push(p)
+          if (/licensed_bind_(v1_|authority_|register_)/.test(tsCode(read(p)))) hits.push(p)
         }
       }
     }

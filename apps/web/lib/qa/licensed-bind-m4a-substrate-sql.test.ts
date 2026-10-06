@@ -382,6 +382,29 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M4-A licensed-bind authority subst
   })
 
   // ── 6. Privileges ─────────────────────────────────────────────────────────
+  // Mutant D6 removes `v_head.project_id <> p_project_id` from the Decision proof. It
+  // survives the one-way parity oracle BY CONSTRUCTION: the canonical TypeScript fold
+  // never reads the head row. These are the database invariants that make the removed
+  // condition IMPLIED by the surviving per-row check (`v_g0/v_g1.project_id = p`):
+  //   a head is created by the ledger trigger with its FIRST act's project; no later
+  //   lifecycle act may change project; the head row's project can never be updated.
+  // ⇒ for every reachable database, head.project_id = every lineage row's project_id.
+  it('D6 equivalence: a head\'s project is always its lineage\'s project, so the head-project check is implied by the per-row check', () => {
+    const d = approvedDecision(DB)
+    // 1. No lifecycle act can move the lineage to another project (M1 maintenance trigger).
+    expect(sqlstate(dsn, `insert into public.atlas_decision_ledger (record_id, decision_id, record_type, occurred_at, project_id, principal_id, title, statement, materiality, version, reason, lifecycle_generation)
+      values ('${id('d6000000')}', '${d.decision}', 'reversed', now(), '${P1}', '${PRINCIPAL}', 't', 's', '["autonomy"]', 1, 'undo', 2)`)).toBe('23514')
+    // 2. The head's project can never be rewritten (M1 head guard).
+    expect(sqlstate(dsn, `update public.atlas_decision_lineage_heads set project_id = '${P1}' where decision_id = '${d.decision}'`)).toBe('42501')
+    // 3. Hence, across EVERY lineage in this database, head project = row project.
+    expect(one(dsn, `select count(*) from public.atlas_decision_lineage_heads h
+      join public.atlas_decision_ledger l on l.decision_id = h.decision_id where l.project_id <> h.project_id`)).toBe('0')
+    // 4. A pin to another project is refused whether or not the head check exists:
+    //    the per-row check refuses it too.
+    expect(one(dsn, `select admissible || ':' || reason from public.licensed_bind_v1_decision_proof('${d.decision}', '${d.approval}', 1, '${P1}', clock_timestamp())`))
+      .toMatch(/^false:decision_(shape_outside_v1_subset|project_mismatch)$/)
+  })
+
   it('every M4-A predicate and deadline primitive is INTERNAL: no API role may execute it; all SECURITY DEFINER with empty search_path', () => {
     const fns = [
       'licensed_bind_v1_supported()', 'licensed_bind_v1_decision_proof(uuid, uuid, integer, uuid, timestamptz)',

@@ -459,14 +459,25 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M4-A one-way parity: DB_ALLOW => c
         // Today's spend against a daily limit of 100 on project 0: the remaining
         // fraction is (100 - spend) / 100, straddling the canonical 0.10 and the
         // V1 margin 0.11.
-        spendToday: [1, 50, 65, 66, 88, 89, 89.5, 90, 90.5, 95, 100, 120],
+        spendToday: [1, 0, 50, 65, 66, 88, 89, 89.5, 90, 90.5, 95, 100, 120],
         otherScopes: ['large', 'tight', 'zero_limit'],
         funding: ['null', 'missing', '1000000', '5000', '500', '300', '100', '20', '10.5', '1', '0', '-5', 'NaN', 'missing'],
         // With funding 300: burn 3000/30 = 100 per day → 3 days; 4000 → 2.25 days; 2500 → 3.6 days.
         burnSpend: [0, 30, 300, 1500, 2500, 3000, 4000, 4500, 9000, 30000],
         burnAge: ['3 days', '719 hours 59 minutes', '720 hours 30 seconds', '40 days'],
         pending: [0, 5, 50],
+        // CORRELATED funding + burn, so ONE flip lands on a runway edge (two
+        // independent flips almost never do). With burnSpend 3000 the canonical
+        // burn is (1 + 3000) / 30 ≈ 100.03 SEK/day: 250 → 2.5 d and 290 → 2.9 d
+        // (canonical CRITICAL), 300 → 2.999 d (CRITICAL by a hair), 330 → 3.3 d
+        // (CONSERVE, but below the V1 4-day margin: an intended false refusal),
+        // 400 → 3.999 d (refused: below 4 × the upper bound), 410 → 4.1 d (both
+        // allow). 4000 → 133.37/day: 600 → 4.5 d, 200 → 1.5 d. Zero and negative
+        // funding are KNOWN-but-not-positive (canonical HIBERNATE).
+        runway: [null, ['250', 3000], ['290', 3000], ['300', 3000], ['330', 3000], ['400', 3000],
+          ['410', 3000], ['600', 4000], ['200', 4000], ['0', 3000], ['-5', 30], ['0', 0]],
       } as const)
+      const burnSpend = f.runway ? f.runway[1] : f.burnSpend
       const projects = f.projects
       const sql: string[] = ['begin;']
       if (projects < 4) sql.push(`delete from public.projects where id not in (${P.slice(0, projects).map(p => `'${p}'`).join(',') || 'null'});`)
@@ -480,9 +491,9 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M4-A one-way parity: DB_ALLOW => c
       if (projects > 0) {
         if (f.spendToday > 0) sql.push(`insert into public.cost_events (project_id, provider, cost_sek, cost_usd, created_at) values ('${P[0]}', 'anthropic', ${f.spendToday}, 0, now());`)
         if (f.otherScopes === 'tight' && projects > 1) sql.push(`insert into public.cost_events (project_id, provider, cost_sek, cost_usd, created_at) values ('${P[1]}', 'anthropic', 17.9, 0, now());`)
-        if (f.burnSpend > 0) sql.push(`insert into public.cost_events (project_id, provider, cost_sek, cost_usd, created_at) values ('${P[projects - 1]}', 'anthropic', ${f.burnSpend}, 0, now() - interval '${f.burnAge}');`)
+        if (burnSpend > 0) sql.push(`insert into public.cost_events (project_id, provider, cost_sek, cost_usd, created_at) values ('${P[projects - 1]}', 'anthropic', ${burnSpend}, 0, now() - interval '${f.burnAge}');`)
       }
-      const funding = f.funding
+      const funding = f.runway ? f.runway[0] : f.funding
       if (funding === 'missing') sql.push(`delete from public.survival_funding_config;`)
       else sql.push(`update public.survival_funding_config set declared_operating_capital_sek = ${funding === 'NaN' ? `'NaN'::numeric` : funding} where id = 1;`)
       if (projects > 0 && f.pending > 0) {

@@ -507,13 +507,13 @@ grant execute on function public.autonomy_license_append(
 -- adding a licensed kind, changing its minimum level, or moving the registry
 -- fails CI until a reviewed migration updates this function.
 create or replace function public.licensed_bind_v1_supported()
-returns table (action_kind text, minimum_level text, bound_def_key text, scope_fingerprint text)
+returns table (action_kind text, minimum_level text, bound_def_key text, placement_state text, scope_fingerprint text)
 language sql
 immutable
 set search_path = ''
 as $$
   -- licensed-bind-v1-supported:begin
-  select 'proof_governed_effect'::text, 'L3'::text, 'omnira.execution-proof'::text,
+  select 'proof_governed_effect'::text, 'L3'::text, 'omnira.execution-proof'::text, 'effect'::text,
          'c2f8cc24bc5cca84100be20283148f970393a4385e89b1c3d0617822ccb9875a'::text
   -- licensed-bind-v1-supported:end
 $$;

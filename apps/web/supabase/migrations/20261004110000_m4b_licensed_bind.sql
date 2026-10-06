@@ -30,15 +30,31 @@
 --     4. the licence's pinned Decision head FOR SHARE (M1 lock order, step 2)
 --          → no Decision writer can append to that lineage until COMMIT.
 --     5. licensed_bind_v1_licence_proof()  (includes the Decision proof), at the anchor
---     6. licensed_bind_v1_survival_proof(), at the anchor
---     7. licensed_bind_register_authority_deadline(<from the proven rows>)
---     8. INSERT run; INSERT bind provenance (atomic: both or neither)
---     9. survival_commit_fence(vector, anchor)   ← LAST authority action
+--     6. the HUMAN EXECUTION AUTHORIZATION's head FOR SHARE (M4 order, step 3)
+--          → no authorization writer (grant, revoke, supersede, close) can
+--            append to that chain until COMMIT; then
+--        licensed_bind_v1_authorization_proof(), at the anchor. The caller's
+--        authorization id is a SELECTOR only: the chain must prove, on its own,
+--        a human `workflow.action.execute` grant pinning exactly this instance,
+--        definition, state, kind, class, target hash and attempt group.
+--     7. licensed_bind_v1_survival_proof(), at the anchor
+--     8. licensed_bind_register_authority_deadline(<earliest proven expiry:
+--        licence, Decision, human authorization>)
+--     9. INSERT run; INSERT bind provenance (atomic: both or neither)
+--    10. survival_commit_fence(vector, anchor)   ← LAST authority action
 --        then only RETURN of local variables.
 --
 --   No SET CONSTRAINTS. No authority read or lock after the fence. Three deferred
 --   commit-time rechecks (M3 Survival clock, M4 authority deadline, bind
 --   provenance) run at COMMIT.
+--
+-- TOTAL LOCK ORDER
+--   workflow_instances → atlas_decision_lineage_heads → atlas_authorization_heads
+--   → (M2/M3) survival_input_epoch_shards. Each writer takes at most one of these
+--   and nothing after it: licence writers take the instance (then, for ISSUED,
+--   the Decision head — same order); Decision writers take only the Decision
+--   head; authorization writers take only the authorization head; Survival
+--   writers take only shards. No cycle is possible.
 --
 -- REFUSAL
 --   Any unproven fact raises (LB010 + the predicate's subset reason). The
@@ -74,7 +90,19 @@ alter table public.run_autonomy_decisions
   add column survival_epoch_vector    bigint[],
   add column survival_valid_until     timestamptz,
   add column authority_valid_until    timestamptz,
-  add column proven_min_level         text;
+  add column proven_min_level         text,
+  add column authorization_id               uuid,
+  add column authorization_request_event_id uuid,
+  add column authorization_grant_event_id   uuid,
+  add column authorization_granted_by       uuid,
+  add column authorization_proof            text,
+  add column authorization_valid_until      timestamptz;
+
+comment on column public.run_autonomy_decisions.authorization_grant_event_id is
+  'M4 V1: the exact immutable atlas_authorizations GRANT event the database proved permits this '
+  'bound action (workflow.action.execute, pinning the run''s instance, definition, state, kind, class, '
+  'target hash and attempt group). With authorization_granted_by it answers "which human '
+  'authorization permitted this exact bound action?".';
 
 comment on column public.run_autonomy_decisions.admission_basis is
   'NULL: the 3B1A shape (exempt, or a TypeScript-resolved licensed observation). '
@@ -99,7 +127,10 @@ alter table public.run_autonomy_decisions
         and decision_id is null and decision_record_id is null and decision_version is null
         and decision_head_generation is null and decision_proof is null and licence_proof is null
         and survival_proof is null and survival_anchor is null and survival_epoch_vector is null
-        and survival_valid_until is null and authority_valid_until is null and proven_min_level is null)
+        and survival_valid_until is null and authority_valid_until is null and proven_min_level is null
+        and authorization_id is null and authorization_request_event_id is null
+        and authorization_grant_event_id is null and authorization_granted_by is null
+        and authorization_proof is null and authorization_valid_until is null)
       or
       (admission_basis is not distinct from 'db_conservative_proof_v1'
         and boundary        is not distinct from 'bind'
@@ -128,7 +159,13 @@ alter table public.run_autonomy_decisions
         and survival_epoch_vector is not null
         and pg_catalog.array_length(survival_epoch_vector, 1) is not distinct from 8
         and survival_valid_until is not null and survival_valid_until > survival_anchor
-        and authority_valid_until is not null and authority_valid_until > survival_anchor)
+        and authority_valid_until is not null and authority_valid_until > survival_anchor
+        -- Claimed: the exact human authorization proof.
+        and authorization_id is not null and authorization_request_event_id is not null
+        and authorization_grant_event_id is not null and authorization_granted_by is not null
+        and authorization_proof is not distinct from 'v1_single_unconditioned_execution_grant_in_force'
+        and authorization_valid_until is not null and authorization_valid_until > survival_anchor
+        and authority_valid_until <= authorization_valid_until)
     );
 
 -- The three 3B1A matrices that require a TypeScript-resolved observation now
@@ -175,10 +212,242 @@ alter table public.run_autonomy_decisions add constraint run_autonomy_decisions_
            and effective_level is not distinct from 'L0')
         ));
 
--- ═══ 2. No authority write after a bind, in the same transaction ═══════════════
+alter table public.run_autonomy_decisions
+  add constraint run_autonomy_decisions_authorization_request_fk
+    foreign key (authorization_request_event_id) references public.atlas_authorizations (event_id),
+  add constraint run_autonomy_decisions_authorization_grant_fk
+    foreign key (authorization_grant_event_id) references public.atlas_authorizations (event_id);
+
+-- ═══ 2. Human execution authorization: serialization head + V1 proof ═══════════
+--
+-- WHY. A governed effect needs a HUMAN `workflow.action.execute` grant
+-- (ACTION_CLASS_POLICY.FINANCIAL.requiresAuthorization; checked canonically by
+-- assertExecutionAuthorized → isEffectiveNow). That chain is mutable authority:
+-- a revoke / supersede / close can be appended, and the grant expires. Before
+-- this section the bind took a caller-chosen authorization id on trust, and
+-- nothing serialized the ledger's writers against a bind.
+--
+-- A2a. `atlas_authorization_heads` — ONE row per authorization chain, moved by
+--      the DATABASE in the same transaction as every authorization event (an
+--      AFTER INSERT row trigger, inside the writer's statement). A SERIALIZATION
+--      CURSOR only: the event count and
+--      the latest event id — no status, no "effective" flag. The immutable
+--      ledger remains the only truth; isEffectiveNow() the only interpretation.
+--      Lock contract: a licensed bind takes the head FOR SHARE; any authorization
+--      writer's head UPDATE then waits until the bind commits (and its ledger row
+--      commits with it — or both roll back).
+create table public.atlas_authorization_heads (
+  authorization_id uuid primary key,
+  event_count      integer not null
+    constraint atlas_authorization_heads_count_positive check (event_count >= 1),
+  last_event_id    uuid not null unique
+                     references public.atlas_authorizations (event_id) on delete restrict
+);
+
+comment on table public.atlas_authorization_heads is
+  'Phase 3B1B2 M4-B: serialization cursor per atlas_authorizations chain (event count + latest '
+  'event id), moved only by the ledger''s insert trigger. DB_INTERNAL: no role holds any privilege.';
+
+-- The head moves only by the ledger trigger (owner). It is never deleted, and an
+-- update may only advance it by exactly one event.
+create or replace function public.atlas_authorization_heads_guard()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if tg_op in ('DELETE', 'TRUNCATE') then
+    raise exception 'atlas_authorization_heads: % is not permitted', tg_op using errcode = '42501';
+  end if;
+  if new.authorization_id is distinct from old.authorization_id
+     or new.event_count is distinct from old.event_count + 1 then
+    raise exception 'atlas_authorization_heads: a head only advances by one event' using errcode = '42501';
+  end if;
+  return new;
+end $$;
+
+create trigger atlas_authorization_heads_guard
+  before update or delete on public.atlas_authorization_heads
+  for each row execute function public.atlas_authorization_heads_guard();
+create trigger atlas_authorization_heads_no_truncate
+  before truncate on public.atlas_authorization_heads
+  for each statement execute function public.atlas_authorization_heads_guard();
+
+-- The maintenance trigger. It must run BEFORE the ledger row exists (so the head
+-- row is locked first, exactly like the Decision head) — but last_event_id has a
+-- foreign key to the ledger, so the head is written AFTER INSERT, still inside
+-- the writer's transaction. The UPDATE takes the head's row lock; a bind holding
+-- FOR SHARE makes it wait.
+create or replace function public.atlas_authorization_head_advance()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into public.atlas_authorization_heads as h (authorization_id, event_count, last_event_id)
+  values (new.authorization_id, 1, new.event_id)
+  on conflict (authorization_id) do update
+     set event_count = h.event_count + 1, last_event_id = excluded.last_event_id;
+  return null;
+end $$;
+
+create trigger atlas_authorization_head_advance
+  after insert on public.atlas_authorizations
+  for each row execute function public.atlas_authorization_head_advance();
+
+-- Backfill AFTER the trigger exists, so no event can land between the two. An
+-- existing head (an event inserted concurrently) is left alone.
+insert into public.atlas_authorization_heads (authorization_id, event_count, last_event_id)
+select a.authorization_id, pg_catalog.count(*)::integer,
+       (pg_catalog.array_agg(a.event_id order by a.occurred_at desc, a.event_id desc))[1]
+  from public.atlas_authorizations a
+ group by a.authorization_id
+on conflict (authorization_id) do nothing;
+
+alter table public.atlas_authorization_heads enable row level security;
+revoke all on table public.atlas_authorization_heads from public, anon, authenticated, service_role;
+revoke all on function public.atlas_authorization_heads_guard() from public, anon, authenticated, service_role;
+revoke all on function public.atlas_authorization_head_advance() from public, anon, authenticated, service_role;
+
+-- A2b. The V1 admissible subset of "assertExecutionAuthorized() would ALLOW".
+--
+-- ACCEPTS ONLY the two-event chain  {requested} → {granted}  (no conditions, no
+-- close, nothing else), whose every row names the instance's project, the action
+-- `workflow.action.execute`, target type `workflow_execution`, target id
+-- `<instance>:<state>:<kind>:<attempt group>`, and a target version hash that the
+-- DATABASE recomputes from the instance row plus the run's target hash and
+-- attempt group — so a caller cannot pair an authorization with a different
+-- target, attempt group, state, definition or class. Under the canonical fold
+-- that chain is `granted` and effective for exactly that target.
+--
+-- The hash is canonicalJson() of the flat execution payload (sorted keys,
+-- JSON.stringify values). It is rebuilt here ONLY over a strict value domain in
+-- which JSON.stringify of a string is exactly '"' || s || '"' and of the two
+-- integers is their decimal text; any value outside that domain REFUSES. Parity
+-- with computeExecutionAuthorizationTarget() is a permanent generated test.
+--
+-- Time: millisecond comparison (Date.parse); finite instants in years 2000–9999;
+-- request ≤ grant (equal ms is ordered request-first by phase); the grant is in
+-- the past (≥ 1 ms before the instant); its expiry is strictly after the grant
+-- AND strictly after the instant. The caller holds the head FOR SHARE.
+create or replace function public.licensed_bind_v1_authorization_proof(
+  p_authorization_id    uuid,
+  p_project_id          uuid,
+  p_instance_id         uuid,
+  p_def_key             text,
+  p_def_version         integer,
+  p_def_hash            text,
+  p_state               text,
+  p_action_kind         text,
+  p_action_class        text,
+  p_target_version_hash text,
+  p_attempt_group       uuid,
+  p_at                  timestamptz
+)
+returns table (admissible boolean, reason text, request_event_id uuid, grant_event_id uuid,
+               granted_by uuid, authority_invalid_at timestamptz)
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_head     public.atlas_authorization_heads;
+  v_n        bigint;
+  v_req      public.atlas_authorizations;
+  v_grant    public.atlas_authorizations;
+  v_tid      text;
+  v_payload  text;
+  v_hash     text;
+  c_plain    constant text := '^[A-Za-z0-9_.:-]+$';
+begin
+  if p_authorization_id is null or p_project_id is null or p_instance_id is null or p_def_key is null
+     or p_def_version is null or p_def_hash is null or p_state is null or p_action_kind is null
+     or p_action_class is null or p_target_version_hash is null or p_attempt_group is null
+     or p_at is null or not pg_catalog.isfinite(p_at) then
+    return query select false, 'malformed_input'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+  end if;
+
+  -- The canonical-JSON domain. Outside it the database does not claim parity.
+  if p_def_key !~ c_plain or p_state !~ c_plain or p_action_kind !~ c_plain or p_action_class !~ c_plain
+     or p_def_hash !~ '^[a-f0-9]{64}$' or p_target_version_hash !~ '^[a-f0-9]{64}$'
+     or p_def_version < 0 or p_def_version > 999999999 then
+    return query select false, 'authorization_target_outside_v1_subset'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+  end if;
+
+  select * into v_head from public.atlas_authorization_heads h where h.authorization_id = p_authorization_id;
+  if not found then
+    return query select false, 'authorization_unknown'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+  end if;
+
+  select pg_catalog.count(*) into v_n from public.atlas_authorizations a where a.authorization_id = p_authorization_id;
+  if v_n <> 2 or v_head.event_count <> 2 then
+    return query select false, 'authorization_history_outside_v1_subset'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+  end if;
+
+  select * into v_req from public.atlas_authorizations a
+   where a.authorization_id = p_authorization_id and a.event_type = 'requested';
+  select * into v_grant from public.atlas_authorizations a
+   where a.authorization_id = p_authorization_id and a.event_type = 'granted';
+  if v_req.event_id is null or v_grant.event_id is null or v_head.last_event_id <> v_grant.event_id then
+    -- denied, granted_with_conditions, or any close: outside the subset.
+    return query select false, 'authorization_not_an_unconditioned_grant'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+  end if;
+
+  -- One subject on BOTH rows (the fold requires it stable; we require it exact).
+  v_tid := p_instance_id::text || ':' || p_state || ':' || p_action_kind || ':' || p_attempt_group::text;
+  v_payload := '{"action_class":"' || p_action_class
+    || '","action_kind":"' || p_action_kind
+    || '","attempt_group":"' || p_attempt_group::text
+    || '","def_hash":"' || p_def_hash
+    || '","def_key":"' || p_def_key
+    || '","def_version":' || p_def_version::text
+    || ',"instance_id":"' || p_instance_id::text
+    || '","kind":"workflow.action.execute","schema":1,"state":"' || p_state
+    || '","target_version_hash":"' || p_target_version_hash || '"}';
+  v_hash := pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(v_payload, 'UTF8')), 'hex');
+
+  if v_req.project_id <> p_project_id or v_grant.project_id <> p_project_id then
+    return query select false, 'authorization_project_mismatch'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+  end if;
+  if v_req.action_kind <> 'workflow.action.execute' or v_grant.action_kind <> 'workflow.action.execute' then
+    return query select false, 'authorization_action_mismatch'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+  end if;
+  if v_req.target_type <> 'workflow_execution' or v_grant.target_type <> 'workflow_execution'
+     or v_req.target_id <> v_tid or v_grant.target_id <> v_tid
+     or v_req.target_version_hash <> v_hash or v_grant.target_version_hash <> v_hash then
+    return query select false, 'authorization_target_mismatch'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+  end if;
+
+  if not pg_catalog.isfinite(v_req.occurred_at) or not pg_catalog.isfinite(v_grant.occurred_at)
+     or v_grant.expires_at is null or not pg_catalog.isfinite(v_grant.expires_at)
+     or extract(year from v_req.occurred_at at time zone 'UTC') not between 2000 and 9999
+     or extract(year from v_grant.occurred_at at time zone 'UTC') not between 2000 and 9999
+     or extract(year from v_grant.expires_at at time zone 'UTC') not between 2000 and 9999
+     or pg_catalog.date_trunc('milliseconds', v_req.occurred_at) > pg_catalog.date_trunc('milliseconds', v_grant.occurred_at)
+     or pg_catalog.date_trunc('milliseconds', v_grant.expires_at) <= pg_catalog.date_trunc('milliseconds', v_grant.occurred_at) then
+    return query select false, 'authorization_time_outside_v1_subset'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+  end if;
+  if v_grant.occurred_at > p_at - interval '1 millisecond' then
+    return query select false, 'authorization_grant_not_yet_in_force'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+  end if;
+  if pg_catalog.date_trunc('milliseconds', v_grant.expires_at) <= pg_catalog.date_trunc('milliseconds', p_at) then
+    return query select false, 'authorization_expired'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+  end if;
+
+  return query select true, 'v1_single_unconditioned_execution_grant_in_force'::text, v_req.event_id, v_grant.event_id,
+    v_grant.principal_id, pg_catalog.date_trunc('milliseconds', v_grant.expires_at);
+end $$;
+
+revoke all on function public.licensed_bind_v1_authorization_proof(
+  uuid, uuid, uuid, text, integer, text, text, text, text, text, uuid, timestamptz
+) from public, anon, authenticated, service_role;
+
+-- ═══ 3. No authority write after a bind, in the same transaction ═══════════════
 -- PostgREST runs the bind as one statement in its own transaction, so nothing can
--- follow it. A direct session could still try: bind, then append a Decision act or
--- a licence act, then COMMIT both — a run bound under authority that the same
+-- follow it. A direct session could still try: bind, then append a Decision act,
+-- a licence act or a human-authorization act, then COMMIT both — a run bound under authority that the same
 -- transaction withdrew. The M4 intent row (one per licensed-bind transaction)
 -- makes that structurally impossible for every writer, not just the canonical
 -- ones. (Survival authority writes after the fence are already refused by M3.)
@@ -198,7 +467,7 @@ begin
 end $$;
 
 comment on function public.licensed_bind_no_authority_write_after_bind() is
-  'Phase 3B1B2 M4-B: refuses a Decision Ledger or licence-ledger insert in a transaction that already '
+  'Phase 3B1B2 M4-B: refuses a Decision Ledger, licence-ledger or authorization-ledger insert in a transaction that already '
   'performed a licensed bind. Trigger machinery only; executable by no role.';
 
 create trigger atlas_decision_ledger_no_write_after_licensed_bind
@@ -207,11 +476,14 @@ create trigger atlas_decision_ledger_no_write_after_licensed_bind
 create trigger atlas_autonomy_license_events_no_write_after_licensed_bind
   before insert on public.atlas_autonomy_license_events
   for each row execute function public.licensed_bind_no_authority_write_after_bind();
+create trigger atlas_authorizations_no_write_after_licensed_bind
+  before insert on public.atlas_authorizations
+  for each row execute function public.licensed_bind_no_authority_write_after_bind();
 
 revoke all on function public.licensed_bind_no_authority_write_after_bind()
   from public, anon, authenticated, service_role;
 
--- ═══ 3. The licensed bind ═════════════════════════════════════════════════════
+-- ═══ 4. The licensed bind ═════════════════════════════════════════════════════
 
 create or replace function public.bind_licensed_workflow_action_run_v1(
   p_workflow_instance_id uuid,
@@ -237,6 +509,8 @@ declare
   v_pin      record;
   v_head     public.atlas_decision_lineage_heads;
   v_lic      record;
+  v_auth     record;
+  v_deadline timestamptz;
   v_srv      record;
   v_srv_inv  timestamptz;
   v_run_id   uuid;
@@ -305,7 +579,23 @@ begin
     raise exception 'licensed bind: the locked Decision head is not the one proven' using errcode = 'LB010';
   end if;
 
-  -- 6. Survival: at least the required level, from raw rows, at the anchor.
+  -- 6. M4 lock order, step 3: the HUMAN execution authorization's head, then its
+  --    proof. The caller's id only SELECTS a chain; the chain must prove itself
+  --    for exactly this instance, definition, state, kind, class, target hash and
+  --    attempt group. While the share lock is held no grant/revoke/supersede/close
+  --    can be appended to that chain.
+  perform 1 from public.atlas_authorization_heads ah
+   where ah.authorization_id = p_authorization_id
+   for share;
+  select * into v_auth from public.licensed_bind_v1_authorization_proof(
+    p_authorization_id, v_inst.project_id, v_inst.id, v_inst.def_key, v_inst.def_version, v_inst.def_hash,
+    v_inst.current_state, p_action_kind, 'FINANCIAL', p_target_version_hash, p_attempt_group, v_anchor) a;
+  if v_auth.admissible is not true then
+    raise exception 'licensed bind: human execution authorization not proven (%)', v_auth.reason
+      using errcode = 'LB010';
+  end if;
+
+  -- 7. Survival: at least the required level, from raw rows, at the anchor.
   select * into v_srv from public.licensed_bind_v1_survival_proof(v_anchor) s;
   if v_srv.admissible is not true then
     raise exception 'licensed bind: Survival ceiling >= % not proven (%)', v_v1.minimum_level, v_srv.reason
@@ -313,10 +603,12 @@ begin
   end if;
   v_srv_inv := public.survival_clock_invalid_at(v_anchor);
 
-  -- 7. The commit-time authority deadline, from the PROVEN rows only.
-  perform public.licensed_bind_register_authority_deadline(v_lic.authority_invalid_at);
+  -- 8. The commit-time authority deadline: the EARLIEST proven expiry of the
+  --    licence, its Decision and the human authorization. Never caller-supplied.
+  v_deadline := least(v_lic.authority_invalid_at, v_auth.authority_invalid_at);
+  perform public.licensed_bind_register_authority_deadline(v_deadline);
 
-  -- 8. The run and its provenance, together. FINANCIAL class values are the
+  -- 9. The run and its provenance, together. FINANCIAL class values are the
   --    canonical ACTION_CLASS_POLICY.FINANCIAL ones (pinned by guard).
   insert into public.runs (
     project_id, status, kind, input, context, max_attempts, policy_class,
@@ -337,18 +629,22 @@ begin
     license_id, license_generation,
     admission_basis, decision_id, decision_record_id, decision_version, decision_head_generation,
     decision_proof, licence_proof, survival_proof,
-    survival_anchor, survival_epoch_vector, survival_valid_until, authority_valid_until, proven_min_level
+    survival_anchor, survival_epoch_vector, survival_valid_until, authority_valid_until, proven_min_level,
+    authorization_id, authorization_request_event_id, authorization_grant_event_id, authorization_granted_by,
+    authorization_proof, authorization_valid_until
   ) values (
     v_run_id, 'bind', null, 'licensed', null, 'allowed', v_v1.minimum_level,
     v_lic.license_id, v_lic.license_generation,
     'db_conservative_proof_v1', v_lic.decision_id, v_lic.decision_record_id, v_lic.decision_version,
     v_lic.decision_head_generation,
     'v1_two_act_approval_in_force', v_lic.reason, v_srv.reason,
-    v_anchor, v_vector, v_srv_inv, v_lic.authority_invalid_at, v_v1.minimum_level
+    v_anchor, v_vector, v_srv_inv, v_deadline, v_v1.minimum_level,
+    p_authorization_id, v_auth.request_event_id, v_auth.grant_event_id, v_auth.granted_by,
+    v_auth.reason, v_auth.authority_invalid_at
   )
   returning event_id into v_event_id;
 
-  -- 9. LAST authority action. Nothing below reads or locks anything.
+  -- 10. LAST authority action. Nothing below reads or locks anything.
   perform public.survival_commit_fence(v_vector, v_anchor);
 
   return query select v_run_id, v_event_id;

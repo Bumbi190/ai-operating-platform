@@ -39,7 +39,9 @@ const NEVER_CLAIMED = ['survival_state', 'survival_ceiling', 'survival_reason', 
 /** Columns a V1 row must always carry: the proof facts. */
 const PROOF_FACTS = ['license_id', 'license_generation', 'decision_id', 'decision_record_id', 'decision_version',
   'decision_head_generation', 'decision_proof', 'licence_proof', 'survival_proof', 'survival_anchor',
-  'survival_epoch_vector', 'survival_valid_until', 'authority_valid_until', 'proven_min_level']
+  'survival_epoch_vector', 'survival_valid_until', 'authority_valid_until', 'proven_min_level',
+  'authorization_id', 'authorization_request_event_id', 'authorization_grant_event_id', 'authorization_granted_by',
+  'authorization_proof', 'authorization_valid_until']
 
 describe('licensed-bind provenance: proof facts only, never a fabricated canonical state', () => {
   const fn = m4b.slice(m4b.indexOf('function public.bind_licensed_workflow_action_run_v1('))
@@ -64,10 +66,17 @@ describe('licensed-bind provenance: proof facts only, never a fabricated canonic
   })
 
   it('every proof value comes from the function\'s own locals or the predicates — never a parameter', () => {
-    for (const col of PROOF_FACTS) {
+    for (const col of PROOF_FACTS.filter(c => c !== 'authorization_id')) {
       const v = values[columns.indexOf(col)]
       expect(v, col).not.toMatch(/^p_/)
     }
+    // The ONE parameter-valued fact: the authorization id the caller used as a
+    // SELECTOR. It is written only after the proof admitted that exact chain, and
+    // the row also carries the grant event, principal and expiry the PROOF returned.
+    expect(values[columns.indexOf('authorization_id')]).toBe('p_authorization_id')
+    expect(values[columns.indexOf('authorization_grant_event_id')]).toBe('v_auth.grant_event_id')
+    expect(values[columns.indexOf('authorization_granted_by')]).toBe('v_auth.granted_by')
+    expect(values[columns.indexOf('authorization_proof')]).toBe('v_auth.reason')
     // The Survival profile is the predicate's OWN success reason, not a constant this function chose.
     expect(values[columns.indexOf('survival_proof')]).toBe('v_srv.reason')
     expect(values[columns.indexOf('licence_proof')]).toBe('v_lic.reason')
@@ -78,7 +87,7 @@ describe('licensed-bind provenance: proof facts only, never a fabricated canonic
     const v1Branch = matrix.slice(matrix.indexOf("admission_basis is not distinct from 'db_conservative_proof_v1'"))
     expect(v1Branch.length).toBeGreaterThan(100)
     for (const col of NEVER_CLAIMED) expect(v1Branch, col).toMatch(new RegExp(`\\b${col} is null\\b`))
-    for (const col of PROOF_FACTS.filter(c => !['decision_proof', 'licence_proof', 'decision_head_generation', 'proven_min_level'].includes(c))) {
+    for (const col of PROOF_FACTS.filter(c => !['decision_proof', 'licence_proof', 'decision_head_generation', 'proven_min_level', 'authorization_proof'].includes(c))) {
       expect(v1Branch, col).toMatch(new RegExp(`\\b${col} is not null\\b`))
     }
   })

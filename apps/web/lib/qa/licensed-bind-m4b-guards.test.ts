@@ -97,6 +97,8 @@ describe('M4-B: lock order and FENCE LAST', () => {
     'from public.licensed_bind_v1_supported()',
     /from public\.atlas_decision_lineage_heads h\s*where h\.decision_id = v_pin\.decision_id\s*for share;/,
     'public.licensed_bind_v1_licence_proof(',
+    /from public\.atlas_authorization_heads ah\s*where ah\.authorization_id = p_authorization_id\s*for share;/,
+    'public.licensed_bind_v1_authorization_proof(',
     'public.licensed_bind_v1_survival_proof(',
     'public.licensed_bind_register_authority_deadline(',
     'insert into public.runs',
@@ -104,7 +106,7 @@ describe('M4-B: lock order and FENCE LAST', () => {
     'perform public.survival_commit_fence(',
   ]
 
-  it('anchor → instance FOR UPDATE → supported set → Decision head FOR SHARE → proofs → deadline → run → provenance → fence', () => {
+  it('anchor → instance FOR UPDATE → supported set → Decision head FOR SHARE → licence proof → authorization head FOR SHARE → authorization proof → Survival proof → deadline → run → provenance → fence', () => {
     const positions = ORDER.map(n => at(n))
     for (const [i, p] of positions.entries()) expect(p, String(ORDER[i])).toBeGreaterThan(-1)
     expect([...positions].sort((a, b) => a - b)).toEqual(positions)
@@ -116,13 +118,23 @@ describe('M4-B: lock order and FENCE LAST', () => {
     expect(tail).toBe('perform public.survival_commit_fence(v_vector, v_anchor); return query select v_run_id, v_event_id; end')
   })
 
-  it('takes no lock other than the instance row and the Decision head', () => {
-    expect(BODY.match(/\bfor (update|share|no key update|key share)\b/gi)).toEqual(['for update', 'for share'])
+  it('takes no lock other than the instance row, the Decision head and the authorization head — in that order', () => {
+    expect(BODY.match(/\bfor (update|share|no key update|key share)\b/gi)).toEqual(['for update', 'for share', 'for share'])
     expect(BODY).not.toMatch(/lock table|pg_advisory/i)
   })
 
-  it('the deadline is registered from the PROVEN licence/Decision rows only', () => {
-    expect(BODY).toMatch(/perform public\.licensed_bind_register_authority_deadline\(v_lic\.authority_invalid_at\);/)
+  it('the deadline is the EARLIEST proven expiry — licence/Decision and human authorization — and nothing else', () => {
+    expect(BODY).toMatch(/v_deadline := least\(v_lic\.authority_invalid_at, v_auth\.authority_invalid_at\);/)
+    expect(BODY).toMatch(/perform public\.licensed_bind_register_authority_deadline\(v_deadline\);/)
+    expect(BODY.match(/v_deadline :=/g)).toHaveLength(1)
+  })
+
+  it('the authorization id is only a SELECTOR: it reaches the proof and the head lock, and is written only after the proof admitted', () => {
+    const proof = at('public.licensed_bind_v1_authorization_proof(')
+    expect(BODY).toMatch(/if v_auth\.admissible is not true then\s*raise exception 'licensed bind: human execution authorization not proven/)
+    // The proof is fed the INSTANCE's facts and the run identity, never another caller field.
+    expect(BODY).toMatch(/licensed_bind_v1_authorization_proof\(\s*p_authorization_id, v_inst\.project_id, v_inst\.id, v_inst\.def_key, v_inst\.def_version, v_inst\.def_hash,\s*v_inst\.current_state, p_action_kind, 'FINANCIAL', p_target_version_hash, p_attempt_group, v_anchor\)/)
+    expect(at('insert into public.runs')).toBeGreaterThan(proof)
   })
 
   it('no SET CONSTRAINTS, cron, scheduler, licence issuance or Decision creation anywhere in M4-B', () => {
@@ -174,7 +186,8 @@ describe('M4-B provenance: proof facts, never fabricated states', () => {
   it('the bind writes the predicates\' OWN success reasons, never a constant it could invent for Survival', () => {
     const insert = BODY.slice(at('insert into public.run_autonomy_decisions'), at('returning event_id into v_event_id'))
     expect(insert).toMatch(/v_lic\.reason, v_srv\.reason/)
-    expect(insert).toMatch(/v_anchor, v_vector, v_srv_inv, v_lic\.authority_invalid_at/)
+    expect(insert).toMatch(/v_anchor, v_vector, v_srv_inv, v_deadline, v_v1\.minimum_level/)
+    expect(insert).toMatch(/p_authorization_id, v_auth\.request_event_id, v_auth\.grant_event_id, v_auth\.granted_by,\s*v_auth\.reason, v_auth\.authority_invalid_at/)
   })
 
   it('the three narrowed 3B1A matrices are their original expressions guarded only by admission_basis', () => {
@@ -208,5 +221,30 @@ describe('M4-B is the last migration and leaves the exempt bind untouched', () =
     expect(files[files.length - 1]).toBe(M4B_FILE)
     expect(code).not.toMatch(/function public\.bind_workflow_action_run\(/)
     expect(code).not.toMatch(/runs_require_bind_provenance/)
+  })
+})
+
+describe('M4: the TypeScript bind preflight checks the SAME human authorization the database proves', () => {
+  const run = read(join(APP, 'lib/workflows/action-run.ts')).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/[^\n]*/g, '$1')
+  const create = run.slice(run.indexOf('export async function createWorkflowActionRun('), run.indexOf('\nexport ', run.indexOf('export async function createWorkflowActionRun(') + 10))
+
+  it('a governed effect is checked at BIND with assertExecutionAuthorized over the run\'s own identity, attempt group required', () => {
+    expect(create).toMatch(/if \(policy\.requiresAuthorization && canonical\.executor_family === 'governed_effect'\) \{/)
+    expect(create).toMatch(/if \(!input\.authorizationId \|\| !input\.attemptGroup\) \{/)
+    const call = create.slice(create.indexOf('await assertExecutionAuthorized({'))
+    const args = call.slice(0, call.indexOf('})'))
+    for (const field of ['authorizationId: input.authorizationId', 'projectId: instance.project_id', 'instanceId: instance.id',
+      'defKey: instance.def_key', 'defVersion: instance.def_version', 'defHash: instance.def_hash', 'state: instance.current_state',
+      'actionKind: input.actionKind', 'actionClass', 'targetVersionHash: target.versionHash', 'attemptGroup: input.attemptGroup']) {
+      expect(args, field).toContain(field)
+    }
+    // …before identity is computed and before anything is written.
+    expect(create.indexOf('await assertExecutionAuthorized({')).toBeLessThan(create.indexOf('computeActionIdempotencyKey('))
+  })
+
+  it('the attempt group bound is the one the authorization pinned (no fresh uuid for a governed effect)', () => {
+    expect(create).toMatch(/const attemptGroup = input\.attemptGroup \?\? uuid\(\)/)
+    // For a governed effect the earlier branch already refused a missing attempt group,
+    // so `?? uuid()` can only apply to classes that need no execution authorization.
   })
 })

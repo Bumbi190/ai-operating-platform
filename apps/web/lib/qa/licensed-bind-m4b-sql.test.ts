@@ -27,6 +27,8 @@ import { execFileSync, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 
+import { computeExecutionAuthorizationTarget } from '@/lib/workflows/effect/execution-authorization'
+
 function findPsql(): string | null {
   for (const c of [process.env.ATLAS_SQL_TEST_PSQL, 'psql', '/usr/bin/psql'].filter(Boolean) as string[]) {
     try { execFileSync(c, ['--version'], { stdio: 'pipe' }); return c } catch { /* next */ }
@@ -40,6 +42,7 @@ const MIGRATIONS = join(process.cwd(), 'supabase/migrations')
 /** Apply order. The bind/trace chain sits where it sits in production: after 2C, before M1. */
 const CHAIN = [
   '20260602_cost_events.sql', '20260602_project_budgets.sql', '20260819_atlas_decision_ledger.sql',
+  '20260819_atlas_authorizations.sql',
   '20260830_spend_budget_gate.sql', '20260831_budget_scopes.sql', '20260910120000_cost_ledger_rls_isolation.sql',
   '20261001160000_m0_durable_spend_settlement.sql', '20260923120000_survival_state_events.sql',
   '20260924120000_survival_funding_phase2b.sql', '20260924180000_autonomy_license_phase2c.sql',
@@ -203,12 +206,45 @@ const revokeSql = (inst: string, d: Decision, licence: string) =>
 const reverseSql = (d: Decision) =>
   `select record_type from public.atlas_decision_ledger_append('${id('d3000000')}', '${d.decision}', 'reversed', clock_timestamp(), '${P0}', '${PRINCIPAL}',
     't', 's', null, null, '["autonomy"]', null, null, null, null, null, null, null, null, null, null, null, 1, null, null, 'undo', 2)`
-/** The bind exactly as service_role calls it. */
-function bindSql(inst: string, o: { kind?: string; state?: string; hash?: string; key?: string; auth?: string | null } = {}): string {
+/** A human `workflow.action.execute` authorization chain, written as the canonical store writes it. */
+interface AuthOpts {
+  target: string; group: string; project?: string; inst: string; kind?: string; state?: string; cls?: string
+  defVersion?: number; defHash?: string; defKey?: string; actionKind?: string; targetType?: string
+  events?: string[]; grantedAgo?: string; expires?: string; requestAfterGrant?: boolean
+}
+function authorize(o: AuthOpts): string {
+  const auth = id('a0000000')
+  const t = computeExecutionAuthorizationTarget({
+    instanceId: o.inst, defKey: o.defKey ?? V1_DEF, defVersion: o.defVersion ?? 1, defHash: o.defHash ?? HASH,
+    state: o.state ?? 'effect', actionKind: o.kind ?? 'proof_governed_effect', actionClass: (o.cls ?? 'FINANCIAL') as never,
+    targetVersionHash: o.target, attemptGroup: o.group,
+  })
+  const row = (type: string, at: string, extra = '') =>
+    `insert into public.atlas_authorizations (event_id, authorization_id, event_type, occurred_at, project_id, principal_id,
+       action_kind, target_type, target_id, target_version_hash, expires_at, superseded_by)
+     values ('${id('e0000000')}', '${auth}', '${type}', ${at}, '${o.project ?? P0}', '${PRINCIPAL}',
+       '${o.actionKind ?? 'workflow.action.execute'}', '${o.targetType ?? t.targetType}', '${t.targetId}', '${t.versionHash}',
+       ${type.startsWith('granted') ? (o.expires ?? `now() + interval '7 days'`) : 'null'}, ${extra || 'null'});`
+  const granted = `now() - interval '${o.grantedAgo ?? '1 hour'}'`
+  const requested = o.requestAfterGrant ? `now() - interval '1 minute'` : `now() - interval '2 hours'`
+  const sql = [row('requested', requested)]
+  for (const e of o.events ?? ['granted']) {
+    sql.push(row(e, e === 'granted' || e === 'granted_with_conditions' || e === 'denied' ? granted : `now() - interval '30 minutes'`,
+      e === 'superseded' ? `'${id('a1000000')}'` : ''))
+  }
+  run(dsn, ['-c', sql.join('\n')])
+  return auth
+}
+/** The bind exactly as service_role calls it. Unless `auth` is given, a matching human grant is created. */
+function bindSql(inst: string, o: { kind?: string; state?: string; hash?: string; key?: string; auth?: string | null;
+  target?: string; group?: string } = {}): string {
   const key = o.key ?? hex64(`k${seq++}`)
+  const target = o.target ?? hex64(`t${seq++}`)
+  const group = o.group ?? id('a9000000')
+  const auth = o.auth === undefined ? authorize({ inst, target, group }) : o.auth
   return `select bound_run_id || ',' || bind_event_id from public.bind_licensed_workflow_action_run_v1(
     '${inst}', '${o.kind ?? 'proof_governed_effect'}', '${o.hash ?? HASH}', '${o.state ?? 'effect'}',
-    '${hex64(`t${seq++}`)}', '${key}', gen_random_uuid(), ${o.auth === null ? 'null' : `'${o.auth ?? id('aaaaaaaa')}'`})`
+    '${target}', '${key}', '${group}', ${auth === null ? 'null' : `'${auth}'`})`
 }
 const asService = (sql: string) => `set role service_role; ${sql}`
 const runsFor = (inst: string) => Number(one(dsn, `select count(*) from public.runs where workflow_instance_id = '${inst}'`))
@@ -496,7 +532,9 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M4-B single-statement licensed bin
     const target = one(dsn, `insert into public.runs (project_id) values ('${P0}') returning id`)
     const cols = `boundary, policy_mode, reason, required_level, license_id, license_generation, admission_basis, decision_id,
       decision_record_id, decision_version, decision_head_generation, decision_proof, licence_proof, survival_proof, survival_anchor,
-      survival_epoch_vector, survival_valid_until, authority_valid_until, proven_min_level`
+      survival_epoch_vector, survival_valid_until, authority_valid_until, proven_min_level,
+      authorization_id, authorization_request_event_id, authorization_grant_event_id, authorization_granted_by,
+      authorization_proof, authorization_valid_until`
     const copyWith = (extraCol: string, extraVal: string) =>
       `insert into public.run_autonomy_decisions (run_id, ${cols}${extraCol ? `, ${extraCol}` : ''})
        select '${target}', ${cols}${extraCol ? `, ${extraVal}` : ''} from public.run_autonomy_decisions where run_id = '${source}'`
@@ -509,5 +547,156 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M4-B single-statement licensed bin
     // A 3B1A row carrying a stray proof column.
     expect(failure(dsn, `insert into public.run_autonomy_decisions (run_id, boundary, policy_mode, policy_reason, reason, required_level, decision_proof)
       values ('${target}', 'bind', 'license_exempt_observation', 'canonical_read_only_observation', 'exempt_observation', 'L0', 'v1_two_act_approval_in_force')`).state).toBe('23514')
+  })
+
+  // ── Human execution authorization (M4 authority closure) ───────────────────
+  describe('human execution authorization: the caller id is a SELECTOR, never authority', () => {
+    /** A fully licensed instance plus the identity a bind will use. */
+    const subject = () => {
+      const l = licensed()
+      return { ...l, target: hex64(`at${seq++}`), group: id('a8000000'), key: hex64(`ak${seq++}`) }
+    }
+    type Subject = ReturnType<typeof subject>
+    const bindWith = (s: Subject, auth: string | null) =>
+      asService(bindSql(s.inst, { auth, target: s.target, group: s.group, key: s.key }))
+    const refused = (s: Subject, f: { state: string; message: string }, reason: RegExp) => {
+      expect([f.state, reason.test(f.message)], f.message.slice(0, 300)).toEqual(['LB010', true])
+      expect([runsFor(s.inst), provenanceFor(s.inst)]).toEqual([0, 0])
+    }
+    const revokeOf = (auth: string) => `insert into public.atlas_authorizations (authorization_id, event_type, project_id, principal_id, action_kind,
+      target_type, target_id, target_version_hash) select authorization_id, 'revoked', project_id, principal_id, action_kind, target_type, target_id,
+      target_version_hash from public.atlas_authorizations where authorization_id = '${auth}' and event_type = 'requested'`
+
+    it('POSITIVE: a simple human grant + V1 licence + current Decision + Survival → ONE run, ONE provenance naming the grant', () => {
+      const s = subject()
+      const auth = authorize({ inst: s.inst, target: s.target, group: s.group })
+      const [runId] = one(dsn, bindWith(s, auth)).split(',')
+      expect([runsFor(s.inst), provenanceFor(s.inst)]).toEqual([1, 1])
+      const grant = one(dsn, `select event_id || '|' || principal_id || '|' || date_trunc('milliseconds', expires_at)
+        from public.atlas_authorizations where authorization_id = '${auth}' and event_type = 'granted'`).split('|')
+      expect(one(dsn, `select authorization_id || '|' || authorization_grant_event_id || '|' || authorization_granted_by
+        || '|' || authorization_proof || '|' || (authorization_valid_until = '${grant[2]}'::timestamptz)
+        || '|' || (authority_valid_until <= authorization_valid_until)
+        from public.run_autonomy_decisions where run_id = '${runId}'`))
+        .toBe(`${auth}|${grant[0]}|${grant[1]}|v1_single_unconditioned_execution_grant_in_force|true|true`)
+      expect(one(dsn, `select authorization_id from public.runs where id = '${runId}'`)).toBe(auth)
+    })
+
+    it('A. a random authorization UUID is refused', () => {
+      const s = subject(); refused(s, failure(dsn, bindWith(s, id('ffffffff'))), /authorization_unknown/)
+    })
+    it('B. a missing authorization is refused (22023), nothing written', () => {
+      const s = subject()
+      expect(failure(dsn, bindWith(s, null)).state).toBe('22023')
+      expect(runsFor(s.inst)).toBe(0)
+    })
+    it('C. a real grant from ANOTHER project is refused', () => {
+      const s = subject()
+      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, project: P1 }))), /authorization_project_mismatch/)
+    })
+    it('D. a real grant for ANOTHER workflow instance is refused', () => {
+      const s = subject(); const other = instance()
+      refused(s, failure(dsn, bindWith(s, authorize({ inst: other, target: s.target, group: s.group }))), /authorization_target_mismatch/)
+    })
+    it('E. a real grant for ANOTHER action (kind, class, or a gate-advance grant) is refused', () => {
+      const s = subject()
+      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, kind: 'generate_monthly_story' }))), /authorization_target_mismatch/)
+      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, cls: 'MATERIAL_WRITE' }))), /authorization_target_mismatch/)
+      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, actionKind: 'workflow.gate.advance' }))), /authorization_action_mismatch/)
+    })
+    it('F. a real grant for ANOTHER target hash (or definition version / state) is refused', () => {
+      const s = subject()
+      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: hex64('other-target'), group: s.group }))), /authorization_target_mismatch/)
+      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, defVersion: 2 }))), /authorization_target_mismatch/)
+      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, state: 'proof' }))), /authorization_target_mismatch/)
+    })
+    it('G. a real grant for ANOTHER attempt group is refused', () => {
+      const s = subject()
+      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: id('a7000000') }))), /authorization_target_mismatch/)
+    })
+    it('H. an expired grant is refused', async () => {
+      const s = subject()
+      const auth = authorize({ inst: s.inst, target: s.target, group: s.group, expires: `now() + interval '1200 milliseconds'` })
+      await sleep(1_600)
+      refused(s, failure(dsn, bindWith(s, auth)), /authorization_expired/)
+    })
+    it('I. a revoked grant is refused', () => {
+      const s = subject()
+      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, events: ['granted', 'revoked'] }))), /authorization_history_outside_v1_subset/)
+    })
+    it('J. a superseded grant (and an explicitly expired one) is refused', () => {
+      const s = subject()
+      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, events: ['granted', 'superseded'] }))), /authorization_history_outside_v1_subset/)
+      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, events: ['granted', 'expired'] }))), /authorization_history_outside_v1_subset/)
+    })
+    it('K. malformed / non-grant lineages are refused: pending, denied, conditional, request-after-grant, future grant', () => {
+      const s = subject()
+      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, events: [] }))), /authorization_history_outside_v1_subset/)
+      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, events: ['denied'] }))), /authorization_not_an_unconditioned_grant/)
+      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, events: ['granted_with_conditions'] }))), /authorization_not_an_unconditioned_grant/)
+      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, requestAfterGrant: true }))), /authorization_time_outside_v1_subset/)
+      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, grantedAgo: '-1 hour', expires: `now() + interval '2 days'` }))), /authorization_grant_not_yet_in_force/)
+    })
+
+    it('L1. a REVOKE racing an OPEN bind waits for it (authorization head), then commits after it', async () => {
+      const s = subject(); const auth = authorize({ inst: s.inst, target: s.target, group: s.group })
+      const bind = session('m4b_l1_bind', ['begin', bindWith(s, auth), 'select pg_sleep(2)', 'commit'])
+      expect(await sleeping('m4b_l1_bind')).toBe(true)
+      const revoke = session('m4b_l1_rev', [revokeOf(auth)])
+      expect(await waitingBehind('m4b_l1_rev')).toContain('m4b_l1_bind')
+      const [b, r] = await Promise.all([bind, revoke])
+      expect([b.ok, r.ok]).toEqual([true, true])
+      expect(r.endedAt).toBeGreaterThanOrEqual(b.endedAt)
+      expect(runsFor(s.inst)).toBe(1)
+    })
+
+    it('L2. a bind racing an OPEN revoke waits for it, then sees the revoke and refuses', async () => {
+      const s = subject(); const auth = authorize({ inst: s.inst, target: s.target, group: s.group })
+      const revoke = session('m4b_l2_rev', ['begin', revokeOf(auth), 'select pg_sleep(2)', 'commit'])
+      expect(await sleeping('m4b_l2_rev')).toBe(true)
+      const bind = session('m4b_l2_bind', [bindWith(s, auth)])
+      expect(await waitingBehind('m4b_l2_bind')).toContain('m4b_l2_rev')
+      const [r, b] = await Promise.all([revoke, bind])
+      expect(r.ok).toBe(true)
+      expect([b.ok, b.state]).toEqual([false, 'LB010'])
+      expect(runsFor(s.inst)).toBe(0)
+    })
+
+    it('the grant expiry passing before COMMIT → LB003 at commit (the authorization joins the authority deadline)', async () => {
+      const s = subject()
+      const auth = authorize({ inst: s.inst, target: s.target, group: s.group, expires: `now() + interval '2500 milliseconds'` })
+      const b = await session('m4b_auth_j', ['begin', bindWith(s, auth), 'select pg_sleep(3)', 'commit'])
+      expect([b.ok, b.state]).toEqual([false, 'LB003'])
+      expect(runsFor(s.inst)).toBe(0)
+    })
+
+    it('LB004: no authorization act may be written in the transaction AFTER a licensed bind', () => {
+      const s = subject(); const auth = authorize({ inst: s.inst, target: s.target, group: s.group })
+      expect(failure(dsn, `begin; ${bindWith(s, auth)}; reset role; ${revokeOf(auth)}; commit;`).state).toBe('LB004')
+      expect(runsFor(s.inst)).toBe(0)
+    })
+
+    it('every OTHER authority input still refuses independently, even with a valid human grant', () => {
+      const a = subject(); run(dsn, ['-c', revokeSql(a.inst, a.d, a.licence)])
+      refused(a, failure(dsn, bindWith(a, authorize({ inst: a.inst, target: a.target, group: a.group }))), /licence_history_outside_v1_subset/)
+      const b = subject(); run(dsn, ['-c', reverseSql(b.d)])
+      refused(b, failure(dsn, bindWith(b, authorize({ inst: b.inst, target: b.target, group: b.group }))), /decision:/)
+      const c = subject(); const cost = id('c1000000')
+      run(dsn, ['-c', `insert into public.cost_events (id, project_id, provider, cost_sek, cost_usd, created_at) values ('${cost}', '${P1}', 'anthropic', 9500, 0, now())`])
+      try { refused(c, failure(dsn, bindWith(c, authorize({ inst: c.inst, target: c.target, group: c.group }))), /headroom_below_v1_margin/) }
+      finally { run(dsn, ['-c', `delete from public.cost_events where id = '${cost}'`]) }
+    })
+
+    it('the authorization head is maintained by the ledger trigger and is DB_INTERNAL', () => {
+      const s = subject(); const auth = authorize({ inst: s.inst, target: s.target, group: s.group, events: ['granted', 'revoked'] })
+      expect(one(dsn, `select event_count || '|' || (last_event_id = (select event_id from public.atlas_authorizations
+        where authorization_id = '${auth}' and event_type = 'revoked')) from public.atlas_authorization_heads where authorization_id = '${auth}'`)).toBe('3|true')
+      expect(failure(dsn, `update public.atlas_authorization_heads set event_count = 2 where authorization_id = '${auth}'`).state).toBe('42501')
+      expect(failure(dsn, `delete from public.atlas_authorization_heads where authorization_id = '${auth}'`).state).toBe('42501')
+      for (const role of ['anon', 'authenticated', 'service_role']) {
+        expect(one(dsn, `select has_table_privilege('${role}', 'public.atlas_authorization_heads', 'select')`), role).toBe('f')
+        expect(one(dsn, `select has_function_privilege('${role}', 'public.licensed_bind_v1_authorization_proof(uuid,uuid,uuid,text,integer,text,text,text,text,text,uuid,timestamptz)', 'execute')`), role).toBe('f')
+      }
+    })
   })
 })

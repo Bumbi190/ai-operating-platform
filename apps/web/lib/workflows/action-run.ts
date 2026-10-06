@@ -169,7 +169,39 @@ export async function createWorkflowActionRun(
 
   // 5) the authorization must be currently effective for THIS instance
   const policy = ACTION_CLASS_POLICY[actionClass]
-  if (policy.requiresAuthorization) {
+  if (policy.requiresAuthorization && canonical.executor_family === 'governed_effect') {
+    // ── The split, at BIND (Phase 3B1B2 M4) ───────────────────────────────────
+    // An EFFECT needs permission to ACT — a `workflow.action.execute` grant that
+    // pins this run's exact identity, attempt group included — not permission to
+    // ADVANCE. This is the SAME check readiness and pre-dispatch run
+    // (assertExecutionAuthorized), made here before anything is written. The
+    // gate-plus-`workflow_action`-pin branch below can never hold for one chain
+    // (a chain's target type is stable), so before this split no governed effect
+    // could bind at all. The licensed bind re-proves this grant in the database,
+    // serialized against every authorization writer.
+    if (!input.authorizationId || !input.attemptGroup) {
+      return {
+        ok: false, refusal: 'authorization_not_effective',
+        detail: `${actionClass} effect requires an execution authorization and the attempt group it pins`,
+      }
+    }
+    const verdict = await assertExecutionAuthorized({
+      authorizationId: input.authorizationId,
+      projectId: instance.project_id,
+      instanceId: instance.id,
+      defKey: instance.def_key,
+      defVersion: instance.def_version,
+      defHash: instance.def_hash,
+      state: instance.current_state,
+      actionKind: input.actionKind,
+      actionClass,
+      targetVersionHash: target.versionHash,
+      attemptGroup: input.attemptGroup,
+    })
+    if (!verdict.valid) {
+      return { ok: false, refusal: 'authorization_not_effective', detail: verdict.reason }
+    }
+  } else if (policy.requiresAuthorization) {
     if (!input.authorizationId) {
       return {
         ok: false, refusal: 'authorization_not_effective',

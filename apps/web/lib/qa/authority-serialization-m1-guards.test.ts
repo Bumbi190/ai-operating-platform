@@ -218,10 +218,11 @@ describe('M1 did NOT widen runtime authority (M4-B is the only licensed path)', 
     // M4-A adds the licensed-bind SUBSTRATE (conservative predicates and the commit-time
     // deadline) — none of them binds anything. A licensed BIND function is M4-B.
     // M4-B adds the licensed bind itself (bind_licensed_workflow_action_run_v1, which this
-    // pattern does not name) and its same-transaction authority-write refusal.
+    // pattern does not name), its same-transaction authority-write refusal, and the
+    // conservative human-execution-authorization proof.
     const SUBSTRATE = ['licensed_bind_v1_supported', 'licensed_bind_v1_decision_proof', 'licensed_bind_v1_licence_proof',
       'licensed_bind_v1_survival_proof', 'licensed_bind_authority_recheck', 'licensed_bind_register_authority_deadline',
-      'licensed_bind_no_authority_write_after_bind']
+      'licensed_bind_no_authority_write_after_bind', 'licensed_bind_v1_authorization_proof']
     const named = [...all.matchAll(/create or replace function public\.(\w*licensed\w*bind\w*)\(/gi)].map(m => m[1])
     expect(named.filter(n => !SUBSTRATE.includes(n))).toEqual([])
   })

@@ -39,7 +39,8 @@
         "ai_cost_snapshots",
         "memory_refs",
         "run_autonomy_decisions",
-        "licensed_bind_authority_intents"
+        "licensed_bind_authority_intents",
+        "atlas_authorization_heads"
       ],
       "meaning": "Created by a migration but absent from the production catalog at capture time \u2014 never applied there, or dropped out-of-band. They are NOT a fresh-deploy hazard: each declares RLS in its own migration, so a rebuild creates them protected. Listed so their absence from the table map is a recorded fact rather than a silent gap, and so the fail-closed rule can distinguish them from a genuinely new unprotected table.",
       "requirement": "Every entry must have RLS declared in the migration corpus.",
@@ -48,9 +49,11 @@
         "ai_cost_snapshots": "SERVER_ONLY",
         "memory_refs": "SERVER_ONLY",
         "run_autonomy_decisions": "SERVER_ONLY",
-        "licensed_bind_authority_intents": "DB_INTERNAL"
+        "licensed_bind_authority_intents": "DB_INTERNAL",
+        "atlas_authorization_heads": "DB_INTERNAL"
       },
-      "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class — except licensed_bind_authority_intents, which grants nothing even to service_role and is DB_INTERNAL (see its note).",
+      "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class — except licensed_bind_authority_intents and atlas_authorization_heads, which grant nothing even to service_role and are DB_INTERNAL (see their notes).",
+      "atlas_authorization_heads_note": "Phase 3B1B2 M4-B (apps/web/supabase/migrations/20261004110000_m4b_licensed_bind.sql). NOT YET APPLIED to production, so it cannot be introspected and its class is declared from the migration. Class DB_INTERNAL: RLS enabled; ZERO policies; every table privilege revoked from public, anon, authenticated AND service_role. A serialization cursor per atlas_authorizations chain (event count + latest event id): written only by the SECURITY DEFINER AFTER INSERT trigger atlas_authorization_head_advance() on atlas_authorizations, locked FOR SHARE only by bind_licensed_workflow_action_run_v1(), read by licensed_bind_v1_authorization_proof(). When the migration is applied, replace this entry with an introspected row in `tables` that keeps class DB_INTERNAL and service_role false.",
       "licensed_bind_authority_intents_note": "Phase 3B1B2 M4-A (apps/web/supabase/migrations/20261004100000_m4a_licensed_authority_substrate.sql). NOT YET APPLIED to production, so it cannot be introspected and its class is declared from the migration. Class DB_INTERNAL: RLS enabled; ZERO policies; NO direct grant to any API role — the migration revokes all table privileges from public, anon, authenticated AND service_role, so service_role is false. Writer: licensed_bind_register_authority_deadline(). Reader: its deferred commit-time recheck (licensed_bind_authority_recheck). Both are SECURITY DEFINER database-internal machinery owned by postgres and executable by no API role. When the migration is applied, replace this entry with an introspected row in `tables` that keeps class DB_INTERNAL and service_role false.",
       "run_autonomy_decisions_note": "Phase 3B1A (20260925120000_autonomy_trace_decisions.sql). NOT YET APPLIED to production — this branch is local and the phase explicitly forbids applying it, so the row cannot be introspected and its class is declared from the migration the same way the other entries are. The migration creates it with RLS enabled, ZERO policies, every client grant revoked, and SELECT granted to service_role alone; the only write path is the SECURITY DEFINER RPC record_run_autonomy_decision, which holds no INSERT grant for any role. SERVER_ONLY is therefore its intended and only correct class. When the migration is eventually applied, this entry should be replaced by an introspected row in `tables`, in the same way platform_credential_events was."
     },

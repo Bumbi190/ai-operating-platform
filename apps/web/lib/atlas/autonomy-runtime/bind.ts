@@ -1,11 +1,11 @@
 /**
- * lib/atlas/autonomy-runtime/bind.ts — Phase 3B1B bind-time autonomy admission.
+ * lib/atlas/autonomy-runtime/bind.ts — bind-time autonomy admission.
  *
  * ── WHAT THIS IS ────────────────────────────────────────────────────────────
  * The ONE place autonomy is consulted when a workflow action run is about to be
  * bound. It composes the closed per-ActionKind policy (`autonomyPolicyFor`) and
  * the pure Phase 3B0 core (`admitAutonomyAction`), and turns a PERMISSIVE
- * answer into the exact provenance the atomic bind RPC persists together with
+ * answer into the provenance shape the atomic bind RPC persists together with
  * the run. It re-implements nothing.
  *
  * ── WHAT `admitted` MEANS ───────────────────────────────────────────────────
@@ -14,89 +14,127 @@
  * definition binding, evidence, spend, financial rollout) and replaces none of
  * them. capability ≠ authority.
  *
- * ── WHY LICENSED KINDS FAIL CLOSED HERE (Phase 3B1B scope) ──────────────────
- * A licensed admission depends on three MUTABLE authority inputs — the licence
- * ledger, the Decision Ledger decision that governs the licence, and the
- * platform Survival ceiling — which are read here, in TypeScript, BEFORE the
- * atomic bind transaction commits. A bind may only commit on authority that is
- * structurally serialized with that commit, and today only one of the three can
- * be:
+ * ── LICENCE-EXEMPT KINDS (Phase 3B1B) ───────────────────────────────────────
+ * Admitted from the reviewed, compiled policy table alone. Nothing mutable is
+ * read, so there is no TOCTOU: the provenance is the exemption itself.
  *
- *   • licence ledger — serializable per workflow instance (its FK to
- *     `workflow_instances` takes FOR KEY SHARE on every licence insert, so a
- *     FOR UPDATE on the instance row would serialize issue AND narrowing acts);
- *   • Decision Ledger — NOT serializable without a project-wide lock or a SQL
- *     re-implementation of the Chapter 11 lifecycle fold (forbidden): records
- *     are plain project-scoped inserts and governance is also clock-driven;
- *   • Survival — NOT serializable at all: a continuous measurement with no
- *     event a transaction could lock against.
+ * ── LICENSED KINDS (Phase 3B1B2 M4) ─────────────────────────────────────────
+ * A licensed admission rests on three MUTABLE authority inputs — the licence
+ * ledger, the Decision that governs the licence, and the platform Survival
+ * ceiling. TypeScript cannot hold them still, so a TypeScript "yes" is never
+ * sufficient on its own. It is the canonical, COMPLETE preflight (Option B+ part
+ * B): the licence resolver (which folds the Decision through Chapter 11), the
+ * whole-platform Survival ceiling, and the admission core — min(licence,
+ * ceiling) >= the kind's minimum. Survival can only lower that; it never grants.
  *
- * Two-session PostgreSQL review proved the race is real (a reversal record and
- * a competing licence lineage both committed inside an open bind). A freshness
- * window is not serialization. So until a reviewed proof exists for every input,
- * a licensed kind is REFUSED at bind — before any of those inputs is even read.
- * This is a further veto, never a fallback: nothing becomes admissible that was
- * not before, and production holds zero licences.
+ * Admission here only selects the licensed RPC. The AUTHORITY is decided again,
+ * serialized, inside `bind_licensed_workflow_action_run_v1`: instance lock →
+ * current Decision head lock → the conservative database proofs → commit-time
+ * deadline → run + provenance → `survival_commit_fence()` last. Both must say
+ * yes; neither can compensate for the other.
  *
- * ── WHAT IS READ ────────────────────────────────────────────────────────────
- * Nothing mutable. Licence-exempt admission is a function of the reviewed,
- * compiled policy table alone, which is exactly why it has no TOCTOU: the
- * provenance is the exemption itself, and inventing a licence or a Survival
- * observation would be a fabricated record.
+ * A licensed kind OUTSIDE the M4 V1 set (`LICENSED_BIND_V1_KINDS`) has no
+ * database proof, so it is still refused BEFORE any authority input is read.
  *
  * ── NO TRACE WRITER ─────────────────────────────────────────────────────────
- * This module writes nothing. The only bind-provenance writer is the atomic
- * `bind_workflow_action_run` RPC, called from `createWorkflowActionRun`.
+ * This module writes nothing. Bind provenance is written only by the two atomic
+ * bind RPCs, called from `createWorkflowActionRun`.
  */
 
 import 'server-only'
 
+import { resolveAutonomyLicense } from '@/lib/atlas/autonomy-license/resolve'
 import { admitAutonomyAction, type AutonomyAdmissionResult } from './admission'
-import { autonomyPolicyFor } from './policy'
+import { readPlatformSurvivalCeiling } from './platform-survival'
+import { autonomyPolicyFor, LICENSED_BIND_V1_KINDS } from './policy'
 
 /**
- * Exactly the bind-provenance fields the atomic RPC accepts.
+ * Exempt bind provenance: exactly the fields the exempt RPC writes.
  *
  * Deliberately NO run id, NO claim id and NO boundary: the run does not exist
  * yet, no claim exists before a run, and the boundary is fixed by the RPC
- * itself rather than chosen by a caller. Only the exempt shape exists in 3B1B.
+ * itself rather than chosen by a caller.
  */
-export interface BindProvenance {
+export interface ExemptBindProvenance {
   readonly policy_mode: 'license_exempt_observation'
   readonly policy_reason: 'canonical_read_only_observation'
   readonly reason: 'exempt_observation'
   readonly required_level: 'L0'
 }
 
-/** Why a bind was refused. The canonical admission reasons, plus the 3B1B scope veto. */
+/**
+ * A licensed V1 admission. It selects the licensed RPC and carries NOTHING the
+ * RPC would accept: the database derives the level, the licence, the Decision
+ * and the Survival proof itself, and records only what it proved.
+ */
+export interface LicensedV1BindAdmission {
+  readonly policy_mode: 'licensed'
+  readonly admission_basis: 'db_conservative_proof_v1'
+}
+
+export type BindProvenance = ExemptBindProvenance | LicensedV1BindAdmission
+
+/** Why a bind was refused. The canonical admission reasons, plus the M4 V1 scope veto. */
 export type BindRefusalReason =
   | AutonomyAdmissionResult['reason']
-  /** A licensed kind: its authority inputs cannot yet be serialized with the bind commit. */
+  /** A licensed kind outside the M4 V1 set: no database proof can serialize its authority. */
   | 'licensed_bind_not_serializable'
 
 export type BindAdmission =
   | { readonly admitted: true; readonly provenance: BindProvenance }
   | { readonly admitted: false; readonly reason: BindRefusalReason; readonly detail: string }
 
+const isLicensedV1Kind = (kind: string): boolean =>
+  (LICENSED_BIND_V1_KINDS as readonly string[]).includes(kind)
+
 /**
  * Bind-time autonomy admission for one ActionKind on one workflow instance.
  *
- * Takes no level, no licence, no ceiling and no clock. The instance id is part
- * of the signature so the admission names its subject, but no input derived
- * from it can widen anything: nothing mutable is read.
+ * Takes no level, no licence, no ceiling and no clock. Every authority input is
+ * resolved server-side from the instance id; nothing a caller passes can widen it.
  */
 export async function admitAutonomyAtBind(
   actionKind: string, workflowInstanceId: string,
 ): Promise<BindAdmission> {
   const policy = autonomyPolicyFor(actionKind)
 
-  // ── licensed: fail closed BEFORE reading licence, Decision Ledger or Survival
   if (policy?.mode === 'licensed') {
+    // ── outside V1: fail closed BEFORE reading licence, Decision or Survival
+    if (!isLicensedV1Kind(actionKind)) {
+      return {
+        admitted: false, reason: 'licensed_bind_not_serializable',
+        detail: `autonomy: ${actionKind} is licensed (minimum ${policy.minimumLevel}) but outside the M4 V1 `
+          + 'licensed-bind set; its licence, Decision and Survival inputs have no database proof that '
+          + `serializes them with the bind commit (instance ${workflowInstanceId})`,
+      }
+    }
+
+    // ── V1: the canonical complete preflight. A refusal here is final, and so is
+    //    a licence that could not be resolved at all: unknown authority is none.
+    let licence: Awaited<ReturnType<typeof resolveAutonomyLicense>>
+    let survival: Awaited<ReturnType<typeof readPlatformSurvivalCeiling>>
+    try {
+      [licence, survival] = await Promise.all([
+        resolveAutonomyLicense(workflowInstanceId),
+        readPlatformSurvivalCeiling(),
+      ])
+    } catch (e) {
+      return {
+        admitted: false, reason: 'licence_not_effective',
+        detail: `autonomy: ${actionKind} was not admitted (licence authority could not be resolved: `
+          + `${e instanceof Error ? e.message : String(e)})`,
+      }
+    }
+    const r = admitAutonomyAction({
+      actionKind, licence, survivalCeiling: survival.ok ? survival.ceiling : null,
+    })
+    if (r.allowed && r.reason === 'allowed') {
+      return { admitted: true, provenance: { policy_mode: 'licensed', admission_basis: 'db_conservative_proof_v1' } }
+    }
     return {
-      admitted: false, reason: 'licensed_bind_not_serializable',
-      detail: `autonomy: ${actionKind} is licensed (minimum ${policy.minimumLevel}); licensed binds are `
-        + 'refused until licence, Decision Ledger and Survival inputs are structurally serialized '
-        + `with the bind commit (instance ${workflowInstanceId})`,
+      admitted: false, reason: r.reason,
+      detail: `autonomy: ${actionKind} was not admitted (${r.reason}; licence ${licence.reason}`
+        + `${survival.ok ? '' : `; survival ${survival.reason}`})`,
     }
   }
 

@@ -4,10 +4,12 @@
  * Two layers, both with the REAL canonical policy table and the REAL pure
  * admission core:
  *
- *   1. `admitAutonomyAtBind` — exempt kinds are admitted with bare provenance;
- *      licensed kinds FAIL CLOSED before any mutable authority input is read;
- *      unsupported and unknown kinds are refused. The licence resolver and the
- *      Survival reader are mocked only to prove they are NEVER called.
+ *   1. `admitAutonomyAtBind` — exempt kinds are admitted with bare provenance
+ *      and read nothing; unsupported and unknown kinds are refused and read
+ *      nothing; an M4 V1 licensed kind runs the canonical preflight (licence
+ *      resolver + platform Survival ceiling + admission core) and, only if that
+ *      allows, selects the licensed RPC. The resolver and the Survival reader are
+ *      mocked to drive every outcome and to prove WHEN they are called.
  *   2. `createWorkflowActionRun` — the bind seam, against a chainable fake DB:
  *      an admitted bind writes run + provenance through the ONE atomic RPC and
  *      never a bare `runs` insert.
@@ -33,7 +35,7 @@ vi.mock('@/lib/atlas/autonomy-runtime/platform-survival', () => ({
 
 import { admitAutonomyAtBind } from '@/lib/atlas/autonomy-runtime/bind'
 import {
-  AUTONOMY_RUNTIME_POLICY, LICENCE_EXEMPT_OBSERVATION_KINDS, NOT_EXECUTABLE_KINDS,
+  AUTONOMY_RUNTIME_POLICY, LICENCE_EXEMPT_OBSERVATION_KINDS, LICENSED_BIND_V1_KINDS, NOT_EXECUTABLE_KINDS,
 } from '@/lib/atlas/autonomy-runtime/policy'
 import { createWorkflowActionRun } from '@/lib/workflows/action-run'
 import { BIND_RPC, BIND_RPC_PARAMS, type RecordedWrite } from './bind-rpc-fake'
@@ -68,23 +70,78 @@ describe('licence-exempt observation', () => {
   })
 })
 
-describe('licensed kinds FAIL CLOSED at bind (Phase 3B1B scope)', () => {
-  it('there is at least one licensed kind, so this proof is not vacuous', () => {
+describe('licensed kinds at bind (Phase 3B1B2 M4): the canonical preflight, then the database proof', () => {
+  const licence = (over: Record<string, unknown> = {}) => ({ effective: true, reason: 'active',
+    allowedActionKinds: [...LICENSED_BIND_V1_KINDS], resolvedLevel: 'L6', licensedLevel: 'L6', ...over })
+  const survival = (ceiling: string, state = 'EXPAND') => ({ ok: true, ceiling, state, asOf: '2026-10-01T00:00:00Z' })
+
+  it('there is at least one licensed kind, and every V1 kind is one of them', () => {
     expect(LICENSED_KINDS.length).toBeGreaterThan(0)
+    for (const k of LICENSED_BIND_V1_KINDS) expect(LICENSED_KINDS).toContain(k)
   })
 
-  it('every licensed kind is refused — even with an effective licence and an EXPAND ceiling on offer', async () => {
-    // If bind.ts ever consulted these, a permissive answer would be available.
-    resolveMock.mockResolvedValue({ effective: true, reason: 'active', allowedActionKinds: LICENSED_KINDS,
-      resolvedLevel: 'L6', licensedLevel: 'L6' })
-    survivalMock.mockResolvedValue({ ok: true, ceiling: 'L6', state: 'EXPAND', asOf: '2026-10-01T00:00:00Z' })
-    for (const kind of LICENSED_KINDS) {
-      const r = await admitAutonomyAtBind(kind, INSTANCE)
-      expect(r, kind).toMatchObject({ admitted: false, reason: 'licensed_bind_not_serializable' })
+  it('a licensed kind OUTSIDE the V1 set is refused before any authority read', async () => {
+    // Today every licensed kind is in V1, so this is checked for each one that is not.
+    resolveMock.mockResolvedValue(licence())
+    survivalMock.mockResolvedValue(survival('L6'))
+    for (const kind of LICENSED_KINDS.filter(k => !(LICENSED_BIND_V1_KINDS as readonly string[]).includes(k))) {
+      expect(await admitAutonomyAtBind(kind, INSTANCE), kind).toMatchObject({ admitted: false, reason: 'licensed_bind_not_serializable' })
     }
-    // Refused BEFORE any licence, Decision Ledger or Survival read.
     expect(resolveMock).not.toHaveBeenCalled()
     expect(survivalMock).not.toHaveBeenCalled()
+  })
+
+  it('a V1 kind with an effective in-scope licence and a sufficient ceiling selects the licensed RPC — and carries NO authority value', async () => {
+    resolveMock.mockResolvedValue(licence())
+    survivalMock.mockResolvedValue(survival('L6'))
+    for (const kind of LICENSED_BIND_V1_KINDS) {
+      expect(await admitAutonomyAtBind(kind, INSTANCE), kind).toEqual({
+        admitted: true, provenance: { policy_mode: 'licensed', admission_basis: 'db_conservative_proof_v1' } })
+    }
+    expect(resolveMock).toHaveBeenCalledWith(INSTANCE)
+    expect(survivalMock).toHaveBeenCalledWith()
+  })
+
+  it('no licence → refused (a healthy Survival creates nothing)', async () => {
+    resolveMock.mockResolvedValue(licence({ effective: false, reason: 'no_license', resolvedLevel: 'L0', licensedLevel: null }))
+    survivalMock.mockResolvedValue(survival('L6'))
+    for (const kind of LICENSED_BIND_V1_KINDS) {
+      expect(await admitAutonomyAtBind(kind, INSTANCE), kind).toMatchObject({ admitted: false, reason: 'licence_not_effective' })
+    }
+  })
+
+  it('a licence below the minimum is refused — an EXPAND ceiling cannot raise it', async () => {
+    resolveMock.mockResolvedValue(licence({ resolvedLevel: 'L2', licensedLevel: 'L2' }))
+    survivalMock.mockResolvedValue(survival('L6'))
+    for (const kind of LICENSED_BIND_V1_KINDS) {
+      expect(await admitAutonomyAtBind(kind, INSTANCE), kind).toMatchObject({ admitted: false, reason: 'effective_level_below_required' })
+    }
+  })
+
+  it('Survival only LOWERS: an L6 licence under CRITICAL (L1) or HIBERNATE (L0) is refused', async () => {
+    resolveMock.mockResolvedValue(licence())
+    for (const [ceiling, state] of [['L1', 'CRITICAL'], ['L0', 'HIBERNATE']]) {
+      survivalMock.mockResolvedValue(survival(ceiling, state))
+      for (const kind of LICENSED_BIND_V1_KINDS) {
+        expect(await admitAutonomyAtBind(kind, INSTANCE), `${kind} ${state}`).toMatchObject({ admitted: false, reason: 'effective_level_below_required' })
+      }
+    }
+  })
+
+  it('an unavailable Survival observation fails closed to L0 → refused', async () => {
+    resolveMock.mockResolvedValue(licence())
+    survivalMock.mockResolvedValue({ ok: false, ceiling: 'L0', reason: 'snapshot_unavailable' })
+    for (const kind of LICENSED_BIND_V1_KINDS) {
+      expect(await admitAutonomyAtBind(kind, INSTANCE), kind).toMatchObject({ admitted: false, reason: 'effective_level_below_required' })
+    }
+  })
+
+  it('a V1 kind missing from the licence scope is refused', async () => {
+    resolveMock.mockResolvedValue(licence({ allowedActionKinds: [] }))
+    survivalMock.mockResolvedValue(survival('L6'))
+    for (const kind of LICENSED_BIND_V1_KINDS) {
+      expect(await admitAutonomyAtBind(kind, INSTANCE), kind).toMatchObject({ admitted: false, reason: 'action_not_in_licence_scope' })
+    }
   })
 })
 
@@ -103,12 +160,25 @@ describe('unsupported and unknown kinds', () => {
     expect(r).toMatchObject({ admitted: false, reason: 'unknown_action_kind' })
   })
 
-  it('the admitted set is EXACTLY the reviewed exempt list', async () => {
+  it('with NO licence anywhere (production today), the admitted set is EXACTLY the reviewed exempt list', async () => {
+    resolveMock.mockResolvedValue({ effective: false, reason: 'no_license', allowedActionKinds: [], resolvedLevel: 'L0', licensedLevel: null })
+    survivalMock.mockResolvedValue({ ok: true, ceiling: 'L6', state: 'EXPAND', asOf: '2026-10-01T00:00:00Z' })
     const admitted: string[] = []
     for (const kind of Object.keys(AUTONOMY_RUNTIME_POLICY)) {
       if ((await admitAutonomyAtBind(kind, INSTANCE)).admitted) admitted.push(kind)
     }
     expect(admitted.sort()).toEqual([...LICENCE_EXEMPT_OBSERVATION_KINDS].sort())
+  })
+
+  it('even with a maximal licence on offer, nothing beyond exempt ∪ V1 is ever admitted', async () => {
+    resolveMock.mockResolvedValue({ effective: true, reason: 'active', allowedActionKinds: Object.keys(AUTONOMY_RUNTIME_POLICY),
+      resolvedLevel: 'L6', licensedLevel: 'L6' })
+    survivalMock.mockResolvedValue({ ok: true, ceiling: 'L6', state: 'EXPAND', asOf: '2026-10-01T00:00:00Z' })
+    const admitted: string[] = []
+    for (const kind of Object.keys(AUTONOMY_RUNTIME_POLICY)) {
+      if ((await admitAutonomyAtBind(kind, INSTANCE)).admitted) admitted.push(kind)
+    }
+    expect(admitted.sort()).toEqual([...LICENCE_EXEMPT_OBSERVATION_KINDS, ...LICENSED_BIND_V1_KINDS].sort())
   })
 })
 

@@ -55,8 +55,10 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // 3B1B2 M4-A adds `survival_threshold_status_canonical` and
 // `m4a_licensed_authority_substrate` (both enforced): 107/93 → 109/95. NOT applied
 // to production on its branch, so the guard is RED there until the operator-approved apply.
-export const EXPECTED_CANONICAL_SQL_COUNT = 109
-export const EXPECTED_ENFORCED_COUNT = 95
+// 3B1B2 M4-B adds `m4b_licensed_bind` (enforced): 109/95 → 110/96. NOT applied to
+// production on its branch either.
+export const EXPECTED_CANONICAL_SQL_COUNT = 110
+export const EXPECTED_ENFORCED_COUNT = 96
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

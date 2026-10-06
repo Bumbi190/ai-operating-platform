@@ -27,7 +27,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 import { LIFECYCLE_ADVANCING } from '@/lib/atlas/decision-ledger/derive'
 import { admitAutonomyAtBind } from '@/lib/atlas/autonomy-runtime/bind'
-import { AUTONOMY_RUNTIME_POLICY } from '@/lib/atlas/autonomy-runtime/policy'
+import { AUTONOMY_RUNTIME_POLICY, LICENSED_BIND_V1_KINDS } from '@/lib/atlas/autonomy-runtime/policy'
 
 const APP = process.cwd()
 const MIGRATIONS = join(APP, 'supabase/migrations')
@@ -186,35 +186,42 @@ describe('licence writer: workflow instance FIRST, in the effective definition',
   })
 })
 
-// ── Licensed binds stay OFF ─────────────────────────────────────────────────
+// ── Licensed binds: only through M4 ─────────────────────────────────────────
 
-describe('M1 did NOT widen runtime authority', () => {
+describe('M1 did NOT widen runtime authority (M4-B is the only licensed path)', () => {
   const licensed = Object.entries(AUTONOMY_RUNTIME_POLICY).filter(([, p]) => p.mode === 'licensed').map(([k]) => k)
+  const v1 = LICENSED_BIND_V1_KINDS as readonly string[]
 
   it('there are licensed kinds to test (the guard is not vacuous)', () => {
     expect(licensed.length).toBeGreaterThan(0)
   })
 
-  it.each(licensed)('licensed kind %s is still refused with licensed_bind_not_serializable, touching no database', async (kind) => {
+  it.each(licensed)('licensed kind %s is never admitted when no authority can be read (fail closed)', async (kind) => {
+    // The admin client throws here: a TypeScript "yes" is impossible without a real
+    // licence read, and even a "yes" only selects the serialized database bind.
     const r = await admitAutonomyAtBind(kind, '99999999-9999-4999-8999-999999999999')
-    expect(r).toMatchObject({ admitted: false, reason: 'licensed_bind_not_serializable' })
+    expect(r).toMatchObject({ admitted: false,
+      reason: v1.includes(kind) ? 'licence_not_effective' : 'licensed_bind_not_serializable' })
   })
 
-  it('bind.ts reads no M1 primitive, no licence and no Decision Ledger', () => {
+  it('bind.ts reads no M1 primitive and no Decision Ledger store — only the canonical licence resolver', () => {
     const bind = tsCode(read(join(APP, 'lib/atlas/autonomy-runtime/bind.ts')))
-    expect(bind).not.toMatch(/atlas_decision_lineage_heads|decision-ledger|autonomy-license\/(store|resolve|issue)|createAdminClient|\.rpc\(|\.from\(/)
+    expect(bind).not.toMatch(/atlas_decision_lineage_heads|decision-ledger|autonomy-license\/(store|issue)|createAdminClient|\.rpc\(|\.from\(/)
     expect(bind).toMatch(/reason: 'licensed_bind_not_serializable'/)
   })
 
-  it('the exempt bind RPC is untouched by M1, and no licensed bind RPC exists', () => {
+  it('the exempt bind RPC is untouched by M1, and the only licensed-bind functions are the reviewed M4 ones', () => {
     const code = sqlCode(m1)
     expect(code).not.toMatch(/bind_workflow_action_run|run_autonomy_decisions|runs_require_bind_provenance/)
     const all = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql'))
       .map(f => sqlCode(read(join(MIGRATIONS, f)))).join('\n')
     // M4-A adds the licensed-bind SUBSTRATE (conservative predicates and the commit-time
     // deadline) — none of them binds anything. A licensed BIND function is M4-B.
+    // M4-B adds the licensed bind itself (bind_licensed_workflow_action_run_v1, which this
+    // pattern does not name) and its same-transaction authority-write refusal.
     const SUBSTRATE = ['licensed_bind_v1_supported', 'licensed_bind_v1_decision_proof', 'licensed_bind_v1_licence_proof',
-      'licensed_bind_v1_survival_proof', 'licensed_bind_authority_recheck', 'licensed_bind_register_authority_deadline']
+      'licensed_bind_v1_survival_proof', 'licensed_bind_authority_recheck', 'licensed_bind_register_authority_deadline',
+      'licensed_bind_no_authority_write_after_bind']
     const named = [...all.matchAll(/create or replace function public\.(\w*licensed\w*bind\w*)\(/gi)].map(m => m[1])
     expect(named.filter(n => !SUBSTRATE.includes(n))).toEqual([])
   })

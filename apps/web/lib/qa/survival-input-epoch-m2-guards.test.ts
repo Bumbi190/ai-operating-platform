@@ -34,7 +34,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 }))
 
 import { admitAutonomyAtBind } from '@/lib/atlas/autonomy-runtime/bind'
-import { AUTONOMY_RUNTIME_POLICY } from '@/lib/atlas/autonomy-runtime/policy'
+import { AUTONOMY_RUNTIME_POLICY, LICENSED_BIND_V1_KINDS } from '@/lib/atlas/autonomy-runtime/policy'
 
 const APP = process.cwd()
 const MIGRATIONS = join(APP, 'supabase/migrations')
@@ -369,9 +369,12 @@ describe('M2 did NOT widen runtime authority', () => {
     expect(licensed.length).toBeGreaterThan(0)
   })
 
-  it.each(licensed)('licensed kind %s is still refused with licensed_bind_not_serializable', async (kind) => {
+  it.each(licensed)('licensed kind %s is never admitted when no authority can be read (fail closed; M4-B is the only licensed path)', async (kind) => {
+    // The admin client throws here. A V1 kind's canonical preflight cannot read a
+    // licence, so it refuses; any other licensed kind is refused before reading.
     const r = await admitAutonomyAtBind(kind, '99999999-9999-4999-8999-999999999999')
-    expect(r).toMatchObject({ admitted: false, reason: 'licensed_bind_not_serializable' })
+    expect(r).toMatchObject({ admitted: false,
+      reason: (LICENSED_BIND_V1_KINDS as readonly string[]).includes(kind) ? 'licence_not_effective' : 'licensed_bind_not_serializable' })
   })
 
   it('no runtime code (outside lib/qa) references the epoch — except the inert stable-observation helper', () => {

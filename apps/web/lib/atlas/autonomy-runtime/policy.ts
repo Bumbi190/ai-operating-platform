@@ -116,6 +116,17 @@ export const LICENCE_EXEMPT_OBSERVATION_KINDS = [
   'validate_monthly_story',
 ] as const satisfies readonly ActionKind[]
 
+/**
+ * Phase 3B1B2 M4 V1: the licensed kinds the single-statement licensed bind may
+ * admit (`bind_licensed_workflow_action_run_v1`). Deliberately a literal, NOT
+ * derived from the table: a kind becoming `licensed` does not make it bindable.
+ * A permanent guard keeps it SET-EQUAL to the database's
+ * `licensed_bind_v1_supported()`, so widening needs a reviewed migration too.
+ */
+export const LICENSED_BIND_V1_KINDS = [
+  'proof_governed_effect',
+] as const satisfies readonly ActionKind[]
+
 /** The kinds with no executor. Listed so the table's `unsupported` set is pinned. */
 export const NOT_EXECUTABLE_KINDS = [
   'apply_release_gate_migration',

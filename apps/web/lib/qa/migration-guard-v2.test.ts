@@ -75,14 +75,14 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
   // NOTE ON 3B1A: these two counts describe the CANONICAL CORPUS, so they move as soon
   // as the file exists. The production APPLY is a separate fact, and it has NOT happened
   // for 3B1A — see the ledger assertion below, which is deliberately left RED.
-  it('pins policy v2 and the current 107/93/14/30 counts', () => {
+  it('pins policy v2 and the current 109/95/14/30 counts', () => {
     expect(MIGRATION_GUARD_POLICY_VERSION).toBe(2)
-    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(107)
-    expect(EXPECTED_ENFORCED_COUNT).toBe(93)
+    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(109)
+    expect(EXPECTED_ENFORCED_COUNT).toBe(95)
     expect(GRANDFATHERED_MIGRATION_NAMES).toHaveLength(14)
     expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).toHaveLength(30)
-    expect(repositoryState.sqlFiles).toHaveLength(107)
-    expect(repositoryState.enforcedNames).toHaveLength(93)
+    expect(repositoryState.sqlFiles).toHaveLength(109)
+    expect(repositoryState.enforcedNames).toHaveLength(95)
   })
 
   it('uses exact explicit names with no wildcard policy entries', () => {
@@ -308,8 +308,8 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
     expect(result).toMatchObject({
       skipped: false,
       policyVersion: 2,
-      canonicalSqlCount: 107,
-      enforcedCount: 93,
+      canonicalSqlCount: 109,
+      enforcedCount: 95,
       appliedLedgerCount: 130,
     })
   })

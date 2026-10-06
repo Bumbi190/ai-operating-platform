@@ -46,16 +46,12 @@
  *   guard proves no route, workflow or bind consumer imports it in M2.
  *
  * ── M4 BLOCKING PRECONDITIONS ──────────────────────────────────────────────
- * 1. POLICY. A STABLE observation proves only that the inputs did not move. It
- *    does not make the policy that turned them into a state authoritative. The
- *    six numeric thresholds in derive.ts (`PROVISIONAL_*`: headroom 0.1 / 0.35 /
- *    0.5, runway 3 / 14 / 60 days; `SURVIVAL_THRESHOLD_STATUS === 'provisional'`)
- *    are an implementer's choice, not owner-approved canonical policy. Survival
- *    policy values that can restrict licensed autonomy must be reviewed and
- *    promoted to owner-approved canonical policy BEFORE a licensed bind may use
- *    this observation as authority. (The Chapter 18 state → ceiling mapping in
- *    ceiling.ts is separate.) A guard keeps this note here while the status is
- *    provisional.
+ * 1. POLICY — RESOLVED 2026-10-04. The six numeric thresholds in derive.ts
+ *    (headroom 0.1 / 0.35 / 0.5, runway 3 / 14 / 60 days) were promoted to
+ *    OWNER-APPROVED canonical Survival v1 policy (`SURVIVAL_THRESHOLD_STATUS ===
+ *    'canonical'`). That approval does NOT make THIS M2 observation authority:
+ *    M4 uses the database-anchored commit-bound path (M3) and a conservative
+ *    database proof of "ceiling >= L3", never `observeSurvivalStable()`.
  * 2. SCOPE. `allowedProjectIds` is inherited from the existing read API and
  *    grants nothing in M2. The licensed-bind authority transaction must derive
  *    the observation scope SERVER-SIDE from canonical bind/instance authority

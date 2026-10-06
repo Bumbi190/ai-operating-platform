@@ -503,17 +503,19 @@ describe('the deferred-lock contract is QUALIFIED, and runtime never forces the 
   })
 })
 
-describe('M4 BLOCKING PRECONDITION stays visible while Survival policy is provisional', () => {
-  it('while SURVIVAL_THRESHOLD_STATUS is provisional, the future bind entry point carries the precondition', () => {
+describe('M4 POLICY PRECONDITION — resolved by owner approval, and recorded as resolved', () => {
+  it('the six thresholds are canonical (no PROVISIONAL_ prefix), and the helper records the precondition as RESOLVED', () => {
     const derive = read(join(APP, 'lib/atlas/survival/derive.ts'))
     const helper = read(join(APP, 'lib/atlas/survival/stable-observation.ts'))
-    const provisional = /export const SURVIVAL_THRESHOLD_STATUS = 'provisional' as const/.test(derive)
-    const sixProvisional = [...derive.matchAll(/^export const (PROVISIONAL_[A-Z_]+) = /gm)].map(m => m[1])
-    expect(sixProvisional).toHaveLength(6)
-    if (provisional) {
-      expect(helper).toMatch(/M4 BLOCKING PRECONDITION/)
-      for (const n of ['0.1', '0.35', '0.5', '3 / 14 / 60']) expect(helper).toContain(n)
-    }
+    expect(derive).toMatch(/export const SURVIVAL_THRESHOLD_STATUS = 'canonical' as const/)
+    expect([...derive.matchAll(/^export const (PROVISIONAL_[A-Z_]+) = /gm)]).toHaveLength(0)
+    const six = ['CRITICAL_HEADROOM_FRACTION', 'CONSERVE_HEADROOM_FRACTION', 'EXPAND_MIN_HEADROOM_FRACTION',
+      'RUNWAY_CRITICAL_DAYS', 'RUNWAY_CONSERVE_DAYS', 'EXPAND_MIN_RUNWAY_DAYS']
+    for (const n of six) expect(derive).toMatch(new RegExp(`^export const ${n} = `, 'm'))
+    expect(helper).toMatch(/M4 BLOCKING PRECONDITIONS/)
+    expect(helper).toMatch(/POLICY — RESOLVED 2026-10-04/)
+    // Approval of the policy is NOT authority for this M2 observation.
+    expect(helper).toMatch(/never `observeSurvivalStable\(\)`/)
   })
 })
 

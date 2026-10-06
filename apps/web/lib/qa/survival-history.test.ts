@@ -26,12 +26,12 @@ import {
 } from '@/lib/atlas/survival/history'
 import { SURVIVAL_STATES, FUNDING_STATES, RUNWAY_COVERAGES } from '@/lib/atlas/survival/types'
 import {
-  PROVISIONAL_CRITICAL_HEADROOM_FRACTION,
-  PROVISIONAL_CONSERVE_HEADROOM_FRACTION,
-  PROVISIONAL_EXPAND_MIN_HEADROOM_FRACTION,
-  PROVISIONAL_RUNWAY_CRITICAL_DAYS,
-  PROVISIONAL_RUNWAY_CONSERVE_DAYS,
-  PROVISIONAL_EXPAND_MIN_RUNWAY_DAYS,
+  CRITICAL_HEADROOM_FRACTION,
+  CONSERVE_HEADROOM_FRACTION,
+  EXPAND_MIN_HEADROOM_FRACTION,
+  RUNWAY_CRITICAL_DAYS,
+  RUNWAY_CONSERVE_DAYS,
+  EXPAND_MIN_RUNWAY_DAYS,
   FUNDING_UNDECLARED_FLOOR,
   FUNDING_DEPLETED_FLOOR,
   FUNDING_UNAVAILABLE_FLOOR,
@@ -419,12 +419,12 @@ describe('the derivation version is load-bearing', () => {
   it('freezes every value that derivation_version 2 describes', () => {
     const live = {
       thresholds: {
-        criticalHeadroomFraction: PROVISIONAL_CRITICAL_HEADROOM_FRACTION,
-        conserveHeadroomFraction: PROVISIONAL_CONSERVE_HEADROOM_FRACTION,
-        expandMinHeadroomFraction: PROVISIONAL_EXPAND_MIN_HEADROOM_FRACTION,
-        criticalRunwayDays: PROVISIONAL_RUNWAY_CRITICAL_DAYS,
-        conserveRunwayDays: PROVISIONAL_RUNWAY_CONSERVE_DAYS,
-        expandMinRunwayDays: PROVISIONAL_EXPAND_MIN_RUNWAY_DAYS,
+        criticalHeadroomFraction: CRITICAL_HEADROOM_FRACTION,
+        conserveHeadroomFraction: CONSERVE_HEADROOM_FRACTION,
+        expandMinHeadroomFraction: EXPAND_MIN_HEADROOM_FRACTION,
+        criticalRunwayDays: RUNWAY_CRITICAL_DAYS,
+        conserveRunwayDays: RUNWAY_CONSERVE_DAYS,
+        expandMinRunwayDays: EXPAND_MIN_RUNWAY_DAYS,
       },
       floors: {
         undeclared: FUNDING_UNDECLARED_FLOOR,

@@ -193,11 +193,20 @@ describe('bind.ts composes canonical systems and writes nothing', () => {
 // ── The migration ────────────────────────────────────────────────────────────
 
 describe('the atomic bind migration', () => {
-  it('is the only BIND migration after Phase 3B1A (M0, 3B1B2 M1, M2 and M3 are the reviewed successors)', () => {
+  it('is the only BIND migration after Phase 3B1A (M0, 3B1B2 M1, M2, M3 and M4-A are the reviewed successors)', () => {
     const files = readdirSync(join(APP, MIGRATION_DIR)).filter(f => f.endsWith('.sql')).sort()
     expect(files.slice(files.indexOf(TRACE_MIGRATION) + 1))
       .toEqual([BIND_MIGRATION, '20261001160000_m0_durable_spend_settlement.sql', '20261002140000_autonomy_authority_serialization.sql',
-        '20261002190000_survival_input_epoch.sql', '20261003120000_survival_commit_fence.sql'])
+        '20261002190000_survival_input_epoch.sql', '20261003120000_survival_commit_fence.sql',
+        '20261004090000_survival_threshold_status_canonical.sql', '20261004100000_m4a_licensed_authority_substrate.sql'])
+    // 3B1B2 M4-A adds the licensed-bind AUTHORITY SUBSTRATE (Decision append boundary, licence
+    // writer serialization, conservative predicates, commit-time deadline). It legitimately
+    // touches the licence writer and the Decision Ledger, but NOT the bind surface, the run, the
+    // trace or the M3 fence: the licensed bind itself is M4-B.
+    for (const f of ['20261004090000_survival_threshold_status_canonical.sql', '20261004100000_m4a_licensed_authority_substrate.sql']) {
+      const code = read(`${MIGRATION_DIR}/${f}`).replace(/--[^\n]*/g, '').replace(/'[^']*'/g, "''")
+      expect(code, f).not.toMatch(/bind_workflow_action_run|run_autonomy_decisions|public\.runs\b|survival_commit_fence\s*\(/)
+    }
     // M0 is spend accounting only: it must not touch the bind surface or the trace.
     const m0 = read(`${MIGRATION_DIR}/20261001160000_m0_durable_spend_settlement.sql`)
     expect(m0).not.toMatch(/bind_workflow_action_run|run_autonomy_decisions|autonomy_license/)

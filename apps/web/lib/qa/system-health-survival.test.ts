@@ -37,7 +37,7 @@ import {
   UNREADABLE_LABEL,
 } from '@/lib/os/system-health-shared'
 import {
-  PROVISIONAL_POLICY_NOTICE,
+  SURVIVAL_POLICY_NOTICE,
   SURVIVAL_CEILING_EFFECT,
   SURVIVAL_THRESHOLD_STATUS,
   describeCeiling,
@@ -93,7 +93,7 @@ function survival(state: SurvivalState, over: Partial<SurvivalSection> = {}): Su
     gaps: ['infrastructure_cost_untracked'],
     operatingPaused: false,
     thresholdStatus: SURVIVAL_THRESHOLD_STATUS,
-    policyNotice: PROVISIONAL_POLICY_NOTICE,
+    policyNotice: SURVIVAL_POLICY_NOTICE,
     ...over,
   }
 }
@@ -366,7 +366,7 @@ describe('provisional policy is stated in the reading order', () => {
     expect(block).not.toBeNull()
     expect(rendered).toContain(SURVIVAL_THRESHOLD_STATUS)
     // The backend's own string, verbatim — not a UI-authored paraphrase.
-    expect(rendered).toContain(PROVISIONAL_POLICY_NOTICE)
+    expect(rendered).toContain(SURVIVAL_POLICY_NOTICE)
   })
 
   it('is not hidden behind title/aria-hidden or a collapsed detail', async () => {
@@ -378,8 +378,10 @@ describe('provisional policy is stated in the reading order', () => {
     expect(block).not.toMatch(/<details|tooltip/i)
   })
 
-  it('the notice claims observation, not enforcement', () => {
-    expect(PROVISIONAL_POLICY_NOTICE).toMatch(/NOT wired to execution/)
+  it('the notice claims observation and a LOWER-only effect, never a grant', () => {
+    expect(SURVIVAL_POLICY_NOTICE).toMatch(/applied to the Survival observation/)
+    expect(SURVIVAL_POLICY_NOTICE).toMatch(/can only LOWER autonomy/)
+    expect(SURVIVAL_POLICY_NOTICE).not.toMatch(/\bgrants? (autonomy|authority)\b(?! .*never)/i)
   })
 })
 
@@ -420,7 +422,7 @@ describe('no survival policy is duplicated in the UI', () => {
       // loader must import them; the six NUMERIC thresholds are what may not
       // appear here.
       expect(src, file).not.toMatch(/PROVISIONAL_(CRITICAL|CONSERVE|EXPAND)[A-Z_]*/)
-      expect(src, file).not.toMatch(/HEADROOM_FRACTION|RUNWAY_(CRITICAL|CONSERVE)_DAYS/)
+      expect(src, file).not.toMatch(/HEADROOM_FRACTION|RUNWAY_(CRITICAL|CONSERVE)_DAYS|EXPAND_MIN_RUNWAY_DAYS/)
       expect(src, file).not.toMatch(/FUNDING_(UNDECLARED|UNAVAILABLE|DEPLETED)_FLOOR/)
     }
   })

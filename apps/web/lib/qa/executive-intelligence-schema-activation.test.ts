@@ -297,8 +297,10 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
     // 93: Phase 3B1B2 M3's `survival_commit_fence` — commit clock + self-probing fence.
     // APPLIED to production on 2026-10-03 (ledger version 20261003183855).
     // 94, 95: Phase 3B1B2 M4-A's `survival_threshold_status_canonical` and
-    // `m4a_licensed_authority_substrate`. NOT applied to production on their branch.
-    // 96: Phase 3B1B2 M4-B's `m4b_licensed_bind`. NOT applied to production on its branch.
+    // `m4a_licensed_authority_substrate`. APPLIED to production on 2026-10-07 (ledger
+    // versions 20261007094814 and 20261007095425).
+    // 96: Phase 3B1B2 M4-B's `m4b_licensed_bind`. APPLIED to production on 2026-10-07
+    // (ledger version 20261007100001).
     // Migration Guard v2 owns the repository-wide 110/96 count contract. This
     // older assertion remains as an independent EI activation companion so a
     // canonical migration cannot move or disappear without both gates noticing.

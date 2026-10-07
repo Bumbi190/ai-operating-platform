@@ -344,7 +344,7 @@ describe('the declaration control is an input, not a survival surface', () => {
     expect(src).not.toMatch(/deriveSurvivalState|survivalCeiling|effectiveAutonomy|mostRestrictive/)
     expect(src).not.toMatch(/@\/lib\/atlas\/survival/)
     // No arithmetic over the amount at all — no ratio, no division, no floor.
-    expect(src).not.toMatch(/runwayDays|burnSekPerDay|declaredFundingSek|PROVISIONAL_/)
+    expect(src).not.toMatch(/runwayDays|burnSekPerDay|declaredFundingSek|PROVISIONAL_|HEADROOM_FRACTION|RUNWAY_(CRITICAL|CONSERVE)_DAYS|EXPAND_MIN_RUNWAY_DAYS/)
   })
 
   it('performs no authorization of its own — the server decides', () => {

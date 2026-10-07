@@ -307,7 +307,13 @@ describe('migration discipline', () => {
     // after 3B1A must be noticed, never absorbed.
     expect(after, `unexpected migrations after Phase 3B1A:\n${after.join('\n')}`)
       .toEqual(['20260926120000_autonomy_bind_atomic.sql', '20261001160000_m0_durable_spend_settlement.sql',
-        '20261002140000_autonomy_authority_serialization.sql', '20261002190000_survival_input_epoch.sql', '20261003120000_survival_commit_fence.sql'])
+        '20261002140000_autonomy_authority_serialization.sql', '20261002190000_survival_input_epoch.sql', '20261003120000_survival_commit_fence.sql',
+        '20261004090000_survival_threshold_status_canonical.sql', '20261004100000_m4a_licensed_authority_substrate.sql',
+        // M4-B: the licensed bind. It is the one successor that touches the 3B1A
+        // ledger — new nullable proof columns, one closed V1 matrix, and three 3B1A
+        // matrices narrowed ONLY by `admission_basis is not null` (pinned
+        // expression-for-expression in licensed-bind-m4b-guards.test.ts).
+        '20261004110000_m4b_licensed_bind.sql'])
   })
 })
 

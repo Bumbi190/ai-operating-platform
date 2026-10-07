@@ -14,9 +14,9 @@ import { join, resolve } from 'node:path'
 import {
   deriveSurvivalState,
   mostRestrictive,
-  PROVISIONAL_CRITICAL_HEADROOM_FRACTION,
-  PROVISIONAL_CONSERVE_HEADROOM_FRACTION,
-  PROVISIONAL_POLICY_NOTICE,
+  CRITICAL_HEADROOM_FRACTION,
+  CONSERVE_HEADROOM_FRACTION,
+  SURVIVAL_POLICY_NOTICE,
   SURVIVAL_THRESHOLD_STATUS,
   FUNDING_UNDECLARED_FLOOR,
   FUNDING_UNAVAILABLE_FLOOR,
@@ -167,7 +167,7 @@ describe('survival state derivation', () => {
   })
 
   it('threshold constants sit in the documented order', () => {
-    expect(PROVISIONAL_CRITICAL_HEADROOM_FRACTION).toBeLessThan(PROVISIONAL_CONSERVE_HEADROOM_FRACTION)
+    expect(CRITICAL_HEADROOM_FRACTION).toBeLessThan(CONSERVE_HEADROOM_FRACTION)
   })
 
   it('pinned: carrying operatingPaused never changes the state', () => {
@@ -726,32 +726,31 @@ describe('the thresholds cannot be mistaken for approved policy', () => {
     'EXPAND_MIN_RUNWAY_DAYS',
   ]
 
-  it('every threshold constant is EXPORTED with the PROVISIONAL_ prefix', () => {
-    // The name is the signal. A phase that approves these numbers must rename
-    // them, which puts the act in the diff instead of letting an implementer's
-    // choice drift into policy through nobody's decision.
+  it('every threshold constant is EXPORTED under its canonical (owner-approved) name', () => {
+    // The owner approved the six values on 2026-10-04 (Survival v1). The rename
+    // from PROVISIONAL_* is that approval made visible in the diff.
     const src = readCode('lib/atlas/survival/derive.ts')
     for (const name of THRESHOLDS) {
-      expect(src, `missing PROVISIONAL_${name}`).toContain(`export const PROVISIONAL_${name} =`)
+      expect(src, `missing ${name}`).toContain(`export const ${name} =`)
     }
   })
 
-  it('no threshold is exported WITHOUT the prefix', () => {
+  it('no PROVISIONAL_ threshold remains as an active policy definition', () => {
     const src = readCode('lib/atlas/survival/derive.ts')
     for (const bare of THRESHOLDS) {
-      expect(src, `${bare} exported unqualified`).not.toContain(`export const ${bare} =`)
+      expect(src, `PROVISIONAL_${bare} still exported`).not.toContain(`export const PROVISIONAL_${bare} =`)
     }
+    expect(src).not.toMatch(/export const PROVISIONAL_/)
   })
 
   it('declares its own status rather than leaving it to prose', () => {
-    expect(SURVIVAL_THRESHOLD_STATUS).toBe('provisional')
-    expect(PROVISIONAL_POLICY_NOTICE).toMatch(/provisional/i)
-    expect(PROVISIONAL_POLICY_NOTICE).toMatch(/not owner-approved/i)
-    // The corrected claim: the thresholds ARE applied, to the Phase 1
-    // observation. Only the wiring to anything that acts is absent.
-    expect(PROVISIONAL_POLICY_NOTICE).toMatch(/ARE applied/i)
-    expect(PROVISIONAL_POLICY_NOTICE).not.toMatch(/applied to nothing/i)
-    expect(PROVISIONAL_POLICY_NOTICE).toMatch(/NOT wired to execution/i)
+    expect(SURVIVAL_THRESHOLD_STATUS).toBe('canonical')
+    expect(SURVIVAL_POLICY_NOTICE).toMatch(/owner-approved canonical policy/i)
+    expect(SURVIVAL_POLICY_NOTICE).toMatch(/are applied/i)
+    expect(SURVIVAL_POLICY_NOTICE).not.toMatch(/applied to nothing/i)
+    // Survival only ever lowers authority; the notice must say so.
+    expect(SURVIVAL_POLICY_NOTICE).toMatch(/can only LOWER autonomy/)
+    expect(SURVIVAL_POLICY_NOTICE).toMatch(/never grants, raises or substitutes for an owner-issued licence/)
   })
 
   it('travels to the surface that shows the numbers to an operator', () => {
@@ -759,7 +758,7 @@ describe('the thresholds cannot be mistaken for approved policy', () => {
     // ride with the response in BOTH branches.
     const src = readCode('app/api/system/survival/route.ts')
     expect(src).toContain('SURVIVAL_THRESHOLD_STATUS')
-    expect(src).toContain('PROVISIONAL_POLICY_NOTICE')
+    expect(src).toContain('SURVIVAL_POLICY_NOTICE')
     expect(src.match(/\.\.\.policy,/g) ?? []).toHaveLength(2)
   })
 })
@@ -836,6 +835,13 @@ describe('read-only, with a closed consumer set', () => {
       // TEXT to keep the clock deadline in lock-step with them. Tests, not consumers.
       resolve(process.cwd(), 'lib/qa/survival-commit-bound-observation-m3-sql.test.ts'),
       resolve(process.cwd(), 'lib/qa/survival-commit-fence-m3-guards.test.ts'),
+      // Phase 3B1B2 M4-A's one-way parity proof drives the REAL readSurvivalSnapshot()
+      // against real rows to check the database's conservative ">= L3" predicate. A
+      // test, not a consumer.
+      resolve(process.cwd(), 'lib/qa/licensed-bind-v1-parity-sql.test.ts'),
+      // …and its static guards pin the canonical thresholds the SQL margins sit
+      // beyond. A test, not a consumer.
+      resolve(process.cwd(), 'lib/qa/licensed-bind-m4a-guards.test.ts'),
     ]
     const offenders: string[] = []
 

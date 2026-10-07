@@ -34,7 +34,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 }))
 
 import { admitAutonomyAtBind } from '@/lib/atlas/autonomy-runtime/bind'
-import { AUTONOMY_RUNTIME_POLICY } from '@/lib/atlas/autonomy-runtime/policy'
+import { AUTONOMY_RUNTIME_POLICY, LICENSED_BIND_V1_KINDS } from '@/lib/atlas/autonomy-runtime/policy'
 
 const APP = process.cwd()
 const MIGRATIONS = join(APP, 'supabase/migrations')
@@ -369,9 +369,12 @@ describe('M2 did NOT widen runtime authority', () => {
     expect(licensed.length).toBeGreaterThan(0)
   })
 
-  it.each(licensed)('licensed kind %s is still refused with licensed_bind_not_serializable', async (kind) => {
+  it.each(licensed)('licensed kind %s is never admitted when no authority can be read (fail closed; M4-B is the only licensed path)', async (kind) => {
+    // The admin client throws here. A V1 kind's canonical preflight cannot read a
+    // licence, so it refuses; any other licensed kind is refused before reading.
     const r = await admitAutonomyAtBind(kind, '99999999-9999-4999-8999-999999999999')
-    expect(r).toMatchObject({ admitted: false, reason: 'licensed_bind_not_serializable' })
+    expect(r).toMatchObject({ admitted: false,
+      reason: (LICENSED_BIND_V1_KINDS as readonly string[]).includes(kind) ? 'licence_not_effective' : 'licensed_bind_not_serializable' })
   })
 
   it('no runtime code (outside lib/qa) references the epoch — except the inert stable-observation helper', () => {
@@ -503,17 +506,19 @@ describe('the deferred-lock contract is QUALIFIED, and runtime never forces the 
   })
 })
 
-describe('M4 BLOCKING PRECONDITION stays visible while Survival policy is provisional', () => {
-  it('while SURVIVAL_THRESHOLD_STATUS is provisional, the future bind entry point carries the precondition', () => {
+describe('M4 POLICY PRECONDITION — resolved by owner approval, and recorded as resolved', () => {
+  it('the six thresholds are canonical (no PROVISIONAL_ prefix), and the helper records the precondition as RESOLVED', () => {
     const derive = read(join(APP, 'lib/atlas/survival/derive.ts'))
     const helper = read(join(APP, 'lib/atlas/survival/stable-observation.ts'))
-    const provisional = /export const SURVIVAL_THRESHOLD_STATUS = 'provisional' as const/.test(derive)
-    const sixProvisional = [...derive.matchAll(/^export const (PROVISIONAL_[A-Z_]+) = /gm)].map(m => m[1])
-    expect(sixProvisional).toHaveLength(6)
-    if (provisional) {
-      expect(helper).toMatch(/M4 BLOCKING PRECONDITION/)
-      for (const n of ['0.1', '0.35', '0.5', '3 / 14 / 60']) expect(helper).toContain(n)
-    }
+    expect(derive).toMatch(/export const SURVIVAL_THRESHOLD_STATUS = 'canonical' as const/)
+    expect([...derive.matchAll(/^export const (PROVISIONAL_[A-Z_]+) = /gm)]).toHaveLength(0)
+    const six = ['CRITICAL_HEADROOM_FRACTION', 'CONSERVE_HEADROOM_FRACTION', 'EXPAND_MIN_HEADROOM_FRACTION',
+      'RUNWAY_CRITICAL_DAYS', 'RUNWAY_CONSERVE_DAYS', 'EXPAND_MIN_RUNWAY_DAYS']
+    for (const n of six) expect(derive).toMatch(new RegExp(`^export const ${n} = `, 'm'))
+    expect(helper).toMatch(/M4 BLOCKING PRECONDITIONS/)
+    expect(helper).toMatch(/POLICY — RESOLVED 2026-10-04/)
+    // Approval of the policy is NOT authority for this M2 observation.
+    expect(helper).toMatch(/never `observeSurvivalStable\(\)`/)
   })
 })
 

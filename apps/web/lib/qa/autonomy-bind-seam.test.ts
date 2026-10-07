@@ -146,3 +146,56 @@ describe('an admitted bind', () => {
     expect(r).toMatchObject({ ok: false, refusal: 'insert_rejected' })
   })
 })
+
+// ── Phase 3B1B2 M4: a licensed V1 admission selects the licensed RPC ─────────
+
+const LICENSED: BindProvenance = { policy_mode: 'licensed', admission_basis: 'db_conservative_proof_v1' }
+/** The licensed RPC's ONLY parameters: identity, the pinned definition/state to CHECK, and the authorization. */
+const LICENSED_RPC_PARAMS = [
+  'p_workflow_instance_id', 'p_action_kind', 'p_workflow_def_hash', 'p_workflow_from_state',
+  'p_target_version_hash', 'p_idempotency_key', 'p_attempt_group', 'p_authorization_id',
+]
+
+describe('a licensed admission (M4 V1)', () => {
+  it('calls bind_licensed_workflow_action_run_v1 ONCE — no project, level, licence, Decision, ceiling, vector or anchor', async () => {
+    admitMock.mockResolvedValue({ admitted: true, provenance: LICENSED })
+    const { db, writes, rpcCalls } = fakeDb()
+    const r = await createWorkflowActionRun(db as never, { instanceId: INSTANCE, actionKind: PROBE_ACTION })
+    expect(r).toMatchObject({ ok: true, runId: 'run-1' })
+    expect(writes).toEqual([])
+    expect(rpcCalls.map(c => c.name)).toEqual(['bind_licensed_workflow_action_run_v1'])
+    expect(Object.keys(rpcCalls[0].args).sort()).toEqual([...LICENSED_RPC_PARAMS].sort())
+    expect(rpcCalls[0].args).toMatchObject({ p_workflow_instance_id: INSTANCE, p_action_kind: PROBE_ACTION,
+      p_workflow_def_hash: 'a'.repeat(64), p_workflow_from_state: 'probe' })
+  })
+
+  it.each(['LB010', 'LB003', 'LB004', 'SV004', 'SV005', 'SV006', '40001'])(
+    'a database refusal %s is autonomy_not_admitted — never success, never insert_rejected', async code => {
+      admitMock.mockResolvedValue({ admitted: true, provenance: LICENSED })
+      const { db } = fakeDb()
+      ;(db as { rpc: unknown }).rpc = async () => ({ data: null, error: { code, message: 'refused' } })
+      const r = await createWorkflowActionRun(db as never, { instanceId: INSTANCE, actionKind: PROBE_ACTION })
+      expect(r).toMatchObject({ ok: false, refusal: 'autonomy_not_admitted' })
+    })
+
+  it('a duplicate identity stays duplicate_action_identity; any other error stays insert_rejected', async () => {
+    admitMock.mockResolvedValue({ admitted: true, provenance: LICENSED })
+    for (const [code, refusal] of [['23505', 'duplicate_action_identity'], ['22023', 'insert_rejected'], ['42501', 'insert_rejected']]) {
+      const { db } = fakeDb()
+      ;(db as { rpc: unknown }).rpc = async () => ({ data: null, error: { code, message: 'x' } })
+      expect(await createWorkflowActionRun(db as never, { instanceId: INSTANCE, actionKind: PROBE_ACTION }), code)
+        .toMatchObject({ ok: false, refusal })
+    }
+  })
+
+  it('an EXEMPT admission never reaches the licensed RPC, and LB/SV codes from the exempt RPC are not reinterpreted', async () => {
+    admitMock.mockResolvedValue({ admitted: true, provenance: EXEMPT })
+    const { db, rpcCalls } = fakeDb()
+    await createWorkflowActionRun(db as never, { instanceId: INSTANCE, actionKind: PROBE_ACTION })
+    expect(rpcCalls.map(c => c.name)).toEqual(['bind_workflow_action_run'])
+    const other = fakeDb()
+    ;(other.db as { rpc: unknown }).rpc = async () => ({ data: null, error: { code: 'LB010', message: 'x' } })
+    expect(await createWorkflowActionRun(other.db as never, { instanceId: INSTANCE, actionKind: PROBE_ACTION }))
+      .toMatchObject({ ok: false, refusal: 'insert_rejected' })
+  })
+})

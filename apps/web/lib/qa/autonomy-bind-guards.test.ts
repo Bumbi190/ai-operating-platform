@@ -172,10 +172,16 @@ describe('bind.ts composes canonical systems and writes nothing', () => {
 
   it('imports exactly the canonical sources and nothing else', () => {
     const specs = [...code.matchAll(/from '([^']+)'/g)].map(m => m[1]).sort()
-    // NO licence resolver, NO Survival reader, NO Decision Ledger: licensed kinds
-    // fail closed at bind, so no mutable authority input is ever read here.
-    expect(specs).toEqual(['./admission', './policy'])
+    // Phase 3B1B2 M4: the CANONICAL licence resolver (which folds the Decision
+    // itself) and the canonical whole-platform Survival reader — the complete
+    // TypeScript preflight for an M4 V1 licensed kind. No Decision Ledger store,
+    // no M1/M2/M3 primitive, no client: the serialized authority is the database's.
+    expect(specs).toEqual(['./admission', './platform-survival', './policy', '@/lib/atlas/autonomy-license/resolve'])
     expect(code).toMatch(/^import 'server-only'/m)
+    // The preflight is reachable ONLY for a licensed kind inside the V1 set.
+    const preflight = code.indexOf('resolveAutonomyLicense(workflowInstanceId)')
+    expect(preflight).toBeGreaterThan(code.indexOf('if (!isLicensedV1Kind(actionKind))'))
+    expect(preflight).toBeGreaterThan(code.indexOf("if (policy?.mode === 'licensed')"))
   })
 
   it('has no write path, no client, no env, no clock and no level table of its own', () => {
@@ -193,11 +199,25 @@ describe('bind.ts composes canonical systems and writes nothing', () => {
 // ── The migration ────────────────────────────────────────────────────────────
 
 describe('the atomic bind migration', () => {
-  it('is the only BIND migration after Phase 3B1A (M0, 3B1B2 M1, M2 and M3 are the reviewed successors)', () => {
+  it('is the only EXEMPT bind migration after Phase 3B1A (M0, 3B1B2 M1, M2, M3, M4-A and M4-B are the reviewed successors)', () => {
     const files = readdirSync(join(APP, MIGRATION_DIR)).filter(f => f.endsWith('.sql')).sort()
     expect(files.slice(files.indexOf(TRACE_MIGRATION) + 1))
       .toEqual([BIND_MIGRATION, '20261001160000_m0_durable_spend_settlement.sql', '20261002140000_autonomy_authority_serialization.sql',
-        '20261002190000_survival_input_epoch.sql', '20261003120000_survival_commit_fence.sql'])
+        '20261002190000_survival_input_epoch.sql', '20261003120000_survival_commit_fence.sql',
+        '20261004090000_survival_threshold_status_canonical.sql', '20261004100000_m4a_licensed_authority_substrate.sql',
+        '20261004110000_m4b_licensed_bind.sql'])
+    // 3B1B2 M4-B adds the LICENSED bind — a separate function — and must never
+    // redefine the exempt bind or its provenance trigger.
+    const m4b = read(`${MIGRATION_DIR}/20261004110000_m4b_licensed_bind.sql`).replace(/--[^\n]*/g, '')
+    expect(m4b).not.toMatch(/function public\.bind_workflow_action_run\(|runs_require_bind_provenance/)
+    // 3B1B2 M4-A adds the licensed-bind AUTHORITY SUBSTRATE (Decision append boundary, licence
+    // writer serialization, conservative predicates, commit-time deadline). It legitimately
+    // touches the licence writer and the Decision Ledger, but NOT the bind surface, the run, the
+    // trace or the M3 fence: the licensed bind itself is M4-B.
+    for (const f of ['20261004090000_survival_threshold_status_canonical.sql', '20261004100000_m4a_licensed_authority_substrate.sql']) {
+      const code = read(`${MIGRATION_DIR}/${f}`).replace(/--[^\n]*/g, '').replace(/'[^']*'/g, "''")
+      expect(code, f).not.toMatch(/bind_workflow_action_run|run_autonomy_decisions|public\.runs\b|survival_commit_fence\s*\(/)
+    }
     // M0 is spend accounting only: it must not touch the bind surface or the trace.
     const m0 = read(`${MIGRATION_DIR}/20261001160000_m0_durable_spend_settlement.sql`)
     expect(m0).not.toMatch(/bind_workflow_action_run|run_autonomy_decisions|autonomy_license/)
@@ -238,10 +258,15 @@ describe('the atomic bind migration', () => {
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(BIND_MIGRATION_SHA256)
   })
 
-  it('only the 3B1A writer and the bind writer(s) ever INSERT into the provenance ledger', () => {
+  it('only the 3B1A writer, the exempt bind writer(s) and the M4-B licensed bind ever INSERT into the provenance ledger', () => {
     const writers = ALL_MIGRATIONS.filter(f =>
       /insert into public\.run_autonomy_decisions/.test(read(`${MIGRATION_DIR}/${f}`).replace(/--.*$/gm, '')))
-    expect(writers.sort()).toEqual([TRACE_MIGRATION, ...BIND_WRITER_MIGRATIONS].sort())
+    expect(writers.sort()).toEqual([TRACE_MIGRATION, ...BIND_WRITER_MIGRATIONS, '20261004110000_m4b_licensed_bind.sql'].sort())
+    // …and in M4-B, only inside the licensed bind function.
+    const m4b = read(`${MIGRATION_DIR}/20261004110000_m4b_licensed_bind.sql`).replace(/--.*$/gm, '')
+    expect(m4b.match(/insert into public\.run_autonomy_decisions/g)).toHaveLength(1)
+    const fn = m4b.slice(m4b.indexOf('function public.bind_licensed_workflow_action_run_v1('))
+    expect(fn.slice(0, fn.indexOf('end $$;'))).toContain('insert into public.run_autonomy_decisions')
   })
 
   it('the bind-provenance constraint trigger is DEFERRED, INSERT-only, bound-runs-only, and nobody may weaken it', () => {

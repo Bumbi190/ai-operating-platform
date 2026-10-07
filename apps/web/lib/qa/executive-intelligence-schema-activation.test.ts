@@ -296,11 +296,16 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
     // APPLIED to production on 2026-10-03 (ledger version 20261003053532).
     // 93: Phase 3B1B2 M3's `survival_commit_fence` — commit clock + self-probing fence.
     // APPLIED to production on 2026-10-03 (ledger version 20261003183855).
-    // Migration Guard v2 owns the repository-wide 107/93 count contract. This
+    // 94, 95: Phase 3B1B2 M4-A's `survival_threshold_status_canonical` and
+    // `m4a_licensed_authority_substrate`. APPLIED to production on 2026-10-07 (ledger
+    // versions 20261007094814 and 20261007095425).
+    // 96: Phase 3B1B2 M4-B's `m4b_licensed_bind`. APPLIED to production on 2026-10-07
+    // (ledger version 20261007100001).
+    // Migration Guard v2 owns the repository-wide 110/96 count contract. This
     // older assertion remains as an independent EI activation companion so a
     // canonical migration cannot move or disappear without both gates noticing.
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(93)
+    expect(enforced).toBe(96)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

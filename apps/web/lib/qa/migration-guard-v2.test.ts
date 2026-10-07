@@ -67,6 +67,11 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
   // 106 → 107: `survival_commit_fence` (Phase 3B1B2 M3) — APPLIED to production on
   // 2026-10-03 under the operator-approved M3 rollout (ledger version 20261003183855);
   // the production-ledger pin below is reconciled 129 → 130 accordingly.
+  // 107 → 110: `survival_threshold_status_canonical`, `m4a_licensed_authority_substrate`
+  // and `m4b_licensed_bind` (Phase 3B1B2 M4) — APPLIED to production on 2026-10-07 under
+  // the operator-approved M4 database rollout (ledger versions 20261007094814,
+  // 20261007095425 and 20261007100001); the production-ledger pin below is reconciled
+  // 130 → 133 accordingly.
   //
   // 1C2 and 2C each computed 100/86 — both were written against main's 99/85 — which is
   // exactly why the number alone could not distinguish them and why the merged figure is
@@ -75,14 +80,14 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
   // NOTE ON 3B1A: these two counts describe the CANONICAL CORPUS, so they move as soon
   // as the file exists. The production APPLY is a separate fact, and it has NOT happened
   // for 3B1A — see the ledger assertion below, which is deliberately left RED.
-  it('pins policy v2 and the current 107/93/14/30 counts', () => {
+  it('pins policy v2 and the current 110/96/14/30 counts', () => {
     expect(MIGRATION_GUARD_POLICY_VERSION).toBe(2)
-    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(107)
-    expect(EXPECTED_ENFORCED_COUNT).toBe(93)
+    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(110)
+    expect(EXPECTED_ENFORCED_COUNT).toBe(96)
     expect(GRANDFATHERED_MIGRATION_NAMES).toHaveLength(14)
     expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).toHaveLength(30)
-    expect(repositoryState.sqlFiles).toHaveLength(107)
-    expect(repositoryState.enforcedNames).toHaveLength(93)
+    expect(repositoryState.sqlFiles).toHaveLength(110)
+    expect(repositoryState.enforcedNames).toHaveLength(96)
   })
 
   it('uses exact explicit names with no wildcard policy entries', () => {
@@ -191,7 +196,21 @@ describe('Migration Guard v2 — production ledger set integrity', () => {
     // named 20261003120000). The applied statement is byte-identical to the reviewed file
     // (sha256 c114496b…752cb7, verified against `schema_migrations.statements`), so 129
     // here would now be stale information.
-    expect(result.appliedLedgerCount).toBe(130)
+    //
+    // POST-APPLY RECORD — Phase 3B1B2 M4. Three enforced migrations took the enforced set
+    // from 93 to 96 and this fixture from 130 to 133. They were APPLIED to production on
+    // 2026-10-07 under the operator-approved M4 database rollout, in order; the production
+    // ledger now holds 133 rows and contains each name exactly once:
+    //   survival_threshold_status_canonical  version 20261007094814  (file 20261004090000)
+    //     sha256 2ea819a3…ec11f91
+    //   m4a_licensed_authority_substrate     version 20261007095425  (file 20261004100000)
+    //     sha256 d9ecf802…719f593
+    //   m4b_licensed_bind                    version 20261007100001  (file 20261004110000)
+    //     sha256 d4e124c7…2aa417d3
+    // Each applied statement is byte-identical to its reviewed file (verified against
+    // `schema_migrations.statements`), so 130 here would now be stale information. The M4
+    // APPLICATION is not deployed by that rollout; this pin records the database only.
+    expect(result.appliedLedgerCount).toBe(133)
     expect(result.unknownLedgerNames).toEqual([])
     expect(result.duplicateLedgerNames).toEqual([])
   })
@@ -301,16 +320,17 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
       ...runtimeHarness,
     })
     // The whole post-apply picture in one assertion: the canonical corpus is
-    // 107 files / 93 enforced after Phase 3B1B2 M3, and the synthetic known ledger is 130
-    // because `survival_commit_fence` is now APPLIED to production
-    // (version 20261002062908). See the note on the integrity test above for
+    // 110 files / 96 enforced after Phase 3B1B2 M4, and the synthetic known ledger is 133
+    // because the three M4 migrations are now APPLIED to production
+    // (versions 20261007094814, 20261007095425, 20261007100001). See the note on the
+    // integrity test above for
     // why this number is hardcoded rather than derived.
     expect(result).toMatchObject({
       skipped: false,
       policyVersion: 2,
-      canonicalSqlCount: 107,
-      enforcedCount: 93,
-      appliedLedgerCount: 130,
+      canonicalSqlCount: 110,
+      enforcedCount: 96,
+      appliedLedgerCount: 133,
     })
   })
 })

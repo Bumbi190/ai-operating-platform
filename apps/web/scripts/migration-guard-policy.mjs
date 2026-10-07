@@ -52,8 +52,13 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // production on 2026-10-03 (ledger version 20261003053532).
 // 3B1B2 M3 adds `survival_commit_fence` (enforced): 106/92 → 107/93. APPLIED to
 // production on 2026-10-03 (ledger version 20261003183855).
-export const EXPECTED_CANONICAL_SQL_COUNT = 107
-export const EXPECTED_ENFORCED_COUNT = 93
+// 3B1B2 M4-A adds `survival_threshold_status_canonical` and
+// `m4a_licensed_authority_substrate` (both enforced): 107/93 → 109/95. APPLIED to
+// production on 2026-10-07 (ledger versions 20261007094814 and 20261007095425).
+// 3B1B2 M4-B adds `m4b_licensed_bind` (enforced): 109/95 → 110/96. APPLIED to
+// production on 2026-10-07 (ledger version 20261007100001).
+export const EXPECTED_CANONICAL_SQL_COUNT = 110
+export const EXPECTED_ENFORCED_COUNT = 96
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

@@ -27,7 +27,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 import { LIFECYCLE_ADVANCING } from '@/lib/atlas/decision-ledger/derive'
 import { admitAutonomyAtBind } from '@/lib/atlas/autonomy-runtime/bind'
-import { AUTONOMY_RUNTIME_POLICY } from '@/lib/atlas/autonomy-runtime/policy'
+import { AUTONOMY_RUNTIME_POLICY, LICENSED_BIND_V1_KINDS } from '@/lib/atlas/autonomy-runtime/policy'
 
 const APP = process.cwd()
 const MIGRATIONS = join(APP, 'supabase/migrations')
@@ -133,10 +133,22 @@ describe('the decision head has exactly one writer: the ledger insert trigger', 
 // ── Licence writer lock order ───────────────────────────────────────────────
 
 describe('licence writer: workflow instance FIRST, in the effective definition', () => {
-  it('the LAST migration defining autonomy_license_append is M1 (it is the effective writer)', () => {
+  it('the effective writer is M1\'s body: the only later definition (M4-A) is M1 + ONE marked Decision-head block', () => {
+    const M4A_FILE = '20261004100000_m4a_licensed_authority_substrate.sql'
     const files = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).sort()
     const defining = files.filter(f => sqlCode(read(join(MIGRATIONS, f))).includes('create or replace function public.autonomy_license_append('))
-    expect(defining[defining.length - 1]).toBe(M1_FILE)
+    expect(defining.slice(defining.indexOf(M1_FILE) + 1)).toEqual([M4A_FILE])
+    // Byte-level: removing the M4-A block (and the one variable it declares) from the
+    // M4-A definition gives back the M1 definition EXACTLY, so every M1 property in this
+    // file still describes the effective writer.
+    const m4a = functionBody(read(join(MIGRATIONS, M4A_FILE)), 'autonomy_license_append')
+    const start = m4a.indexOf('\n  -- ── Phase 3B1B2 M4-A: an ISSUED act serializes on the CURRENT Decision')
+    const tail = "      raise exception\n        'the pinned decision act is not the current lifecycle head of decision % (stale observation)',\n        p_decision_id using errcode = '40001';\n    end if;\n  end if;\n"
+    const end = m4a.indexOf(tail, start) + tail.length
+    expect(start).toBeGreaterThan(0)
+    expect(end).toBeGreaterThan(start + tail.length)
+    const stripped = (m4a.slice(0, start) + m4a.slice(end)).replace('  v_head         public.atlas_decision_lineage_heads;\n', '')
+    expect(stripped).toBe(functionBody(m1, 'autonomy_license_append'))
   })
 
   it('the instance FOR UPDATE precedes every read or lock of licence-lineage or Decision truth', () => {
@@ -174,32 +186,45 @@ describe('licence writer: workflow instance FIRST, in the effective definition',
   })
 })
 
-// ── Licensed binds stay OFF ─────────────────────────────────────────────────
+// ── Licensed binds: only through M4 ─────────────────────────────────────────
 
-describe('M1 did NOT widen runtime authority', () => {
+describe('M1 did NOT widen runtime authority (M4-B is the only licensed path)', () => {
   const licensed = Object.entries(AUTONOMY_RUNTIME_POLICY).filter(([, p]) => p.mode === 'licensed').map(([k]) => k)
+  const v1 = LICENSED_BIND_V1_KINDS as readonly string[]
 
   it('there are licensed kinds to test (the guard is not vacuous)', () => {
     expect(licensed.length).toBeGreaterThan(0)
   })
 
-  it.each(licensed)('licensed kind %s is still refused with licensed_bind_not_serializable, touching no database', async (kind) => {
+  it.each(licensed)('licensed kind %s is never admitted when no authority can be read (fail closed)', async (kind) => {
+    // The admin client throws here: a TypeScript "yes" is impossible without a real
+    // licence read, and even a "yes" only selects the serialized database bind.
     const r = await admitAutonomyAtBind(kind, '99999999-9999-4999-8999-999999999999')
-    expect(r).toMatchObject({ admitted: false, reason: 'licensed_bind_not_serializable' })
+    expect(r).toMatchObject({ admitted: false,
+      reason: v1.includes(kind) ? 'licence_not_effective' : 'licensed_bind_not_serializable' })
   })
 
-  it('bind.ts reads no M1 primitive, no licence and no Decision Ledger', () => {
+  it('bind.ts reads no M1 primitive and no Decision Ledger store — only the canonical licence resolver', () => {
     const bind = tsCode(read(join(APP, 'lib/atlas/autonomy-runtime/bind.ts')))
-    expect(bind).not.toMatch(/atlas_decision_lineage_heads|decision-ledger|autonomy-license\/(store|resolve|issue)|createAdminClient|\.rpc\(|\.from\(/)
+    expect(bind).not.toMatch(/atlas_decision_lineage_heads|decision-ledger|autonomy-license\/(store|issue)|createAdminClient|\.rpc\(|\.from\(/)
     expect(bind).toMatch(/reason: 'licensed_bind_not_serializable'/)
   })
 
-  it('the exempt bind RPC is untouched by M1, and no licensed bind RPC exists', () => {
+  it('the exempt bind RPC is untouched by M1, and the only licensed-bind functions are the reviewed M4 ones', () => {
     const code = sqlCode(m1)
     expect(code).not.toMatch(/bind_workflow_action_run|run_autonomy_decisions|runs_require_bind_provenance/)
     const all = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql'))
       .map(f => sqlCode(read(join(MIGRATIONS, f)))).join('\n')
-    expect(all).not.toMatch(/create or replace function public\.\w*licensed\w*bind\w*\(/i)
+    // M4-A adds the licensed-bind SUBSTRATE (conservative predicates and the commit-time
+    // deadline) — none of them binds anything. A licensed BIND function is M4-B.
+    // M4-B adds the licensed bind itself (bind_licensed_workflow_action_run_v1, which this
+    // pattern does not name), its same-transaction authority-write refusal, and the
+    // conservative human-execution-authorization proof.
+    const SUBSTRATE = ['licensed_bind_v1_supported', 'licensed_bind_v1_decision_proof', 'licensed_bind_v1_licence_proof',
+      'licensed_bind_v1_survival_proof', 'licensed_bind_authority_recheck', 'licensed_bind_register_authority_deadline',
+      'licensed_bind_no_authority_write_after_bind', 'licensed_bind_v1_authorization_proof']
+    const named = [...all.matchAll(/create or replace function public\.(\w*licensed\w*bind\w*)\(/gi)].map(m => m[1])
+    expect(named.filter(n => !SUBSTRATE.includes(n))).toEqual([])
   })
 
   it('no M2/M3/M4 primitive sneaks into M1 (Survival, commit clock/fence, prepared-txn guard, licensed provenance)', () => {

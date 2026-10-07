@@ -2,6 +2,7 @@ import {
   Activity,
   CalendarRange,
   Cpu,
+  Orbit,
   Lightbulb,
   MessageSquare,
   Megaphone,
@@ -51,7 +52,7 @@ export type VNextNavGroupId = 'atlas' | 'arbete' | 'intelligens' | 'system'
 
 export interface VNextNavItem {
   /** Stable identity, and the registry destination where one exists. */
-  id: DestinationId | 'system' | 'planning'
+  id: DestinationId | 'system' | 'planning' | 'projects'
   label: string
   href: string
   icon: LucideIcon
@@ -87,6 +88,10 @@ export const VNEXT_NAV: readonly VNextNavGroup[] = [
       // boundary Phase 6 enforced in the code. Desktop only: the mobile sheet
       // is a quick-jump surface, and a hierarchy is not a quick jump.
       { id: 'organisation', label: 'Organisation', href: '/organisation', icon: Users, desktop: true, mobile: false },
+      // The Project Spiral — one destination for the portfolio as a whole. It is
+      // deliberately NOT a list of projects: individual projects are reached
+      // from Atlas Home's "Nuvarande fokus" or from the spiral itself.
+      { id: 'projects', label: 'Projekt', href: '/projects', icon: Orbit, desktop: true, mobile: false },
     ],
   },
   {

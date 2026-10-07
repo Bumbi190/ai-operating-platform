@@ -34,7 +34,9 @@ describe('vnext nav · approved information architecture', () => {
     // a real route. It sits with Atlas rather than under Intelligens because it
     // is the operator's own structure seen from Atlas — the Intelligence Graph
     // remains the instrument for relationships and knowledge flow.
-    expect(byGroup.atlas).toEqual(['Atlas', 'Chat', 'Organisation'])
+    // Projekt (the Project Spiral) joined the Atlas group with Atlas Home vNext
+    // (owner ruling, 2026-10-07): one portfolio destination, never a project list.
+    expect(byGroup.atlas).toEqual(['Atlas', 'Chat', 'Organisation', 'Projekt'])
     expect(byGroup.arbete).toEqual([
       'Granskningar', 'Aktivitet', 'Planering', 'Marknadsgranskning', 'Content Center',
     ])
@@ -48,15 +50,17 @@ describe('vnext nav · approved information architecture', () => {
     // /settings was always reachable, but as a footer pill outside the nav model.
     // /organisation is a vNext-only surface — legacy renders a plain list at
     // the same route but has never carried it in its nav model.
-    expect(added.sort()).toEqual(['/organisation', '/planning', '/settings', '/system'])
+    expect(added.sort()).toEqual(['/organisation', '/planning', '/projects', '/settings', '/system'])
   })
 
   it('carries no individual project links', () => {
     // ProjectRail is the canonical project surface; duplicating projects here is
-    // exactly what Stage C removes.
+    // exactly what Stage C removes. The one allowed entry is the portfolio
+    // itself — /projects, the Project Spiral — never a /projects/<slug> link.
     for (const item of vnextNavItems()) {
-      expect(item.href.startsWith('/projects')).toBe(false)
+      expect(item.href.startsWith('/projects/')).toBe(false)
     }
+    expect(vnextNavItems().filter((i) => i.href.startsWith('/projects')).map((i) => i.href)).toEqual(['/projects'])
   })
 
   it('does not add Manager', () => {
@@ -108,7 +112,7 @@ describe('vnext nav · surface filtering is layout, not authorization', () => {
   it('desktop renders all four groups, each with its approved items', () => {
     const groups = vnextNavGroupsFor('desktop')
     expect(groups.map((g) => [g.label, g.items.length])).toEqual([
-      ['Atlas', 3], ['Arbete', 5], ['Intelligens', 3], ['System', 2],
+      ['Atlas', 4], ['Arbete', 5], ['Intelligens', 3], ['System', 2],
     ])
     // Grouping must not have changed the C4 order.
     expect(groups.flatMap((g) => g.items.map((i) => i.href))).toEqual(

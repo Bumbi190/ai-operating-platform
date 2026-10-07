@@ -31,7 +31,7 @@
   --ig-crumbs: calc(14px + 1.00625rem);
   --ig-hints: 2.25rem;
   --ig-mobile-header: 0px;
-  --ig-shell-chrome: calc(var(--ig-mobile-header) + var(--ig-crumbs) + var(--ig-hints));
+  --ig-shell-chrome: calc(var(--os-shell-topbar, 0px) + var(--ig-mobile-header) + var(--ig-crumbs) + var(--ig-hints));
   --ig-pad-top: 1rem;
   --ig-pad-x: 1.75rem;
   --ig-pad-bottom: 0.875rem;

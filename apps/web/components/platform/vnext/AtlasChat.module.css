@@ -346,7 +346,7 @@
   width: min(100%, 48rem);
   /* The shell above (breadcrumbs) and below (hint strip) — so a short
      conversation still docks its composer at the bottom of the screen. */
-  min-height: calc(100dvh - 6rem);
+  min-height: calc(100dvh - 6rem - var(--os-shell-topbar, 0px));
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -659,7 +659,7 @@
   .homeTitle { font-size: 1.375rem; }
   .prompts { grid-template-columns: minmax(0, 1fr); }
   /* The mobile header sits above; the hint strip and the activity peek below. */
-  .conversation { min-height: calc(100dvh - 9rem); padding-bottom: 2.5rem; }
+  .conversation { min-height: calc(100dvh - 9rem - var(--os-shell-topbar, 0px)); padding-bottom: 2.5rem; }
   .convHeader { gap: 0.5rem; }
   .convIdentity { order: 3; flex-basis: 100%; }
   .newConversation { margin-left: auto; }

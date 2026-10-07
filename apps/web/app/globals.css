@@ -1601,3 +1601,22 @@ body.mode-maintenance .orb { opacity: 0.45; }
 :root .text-secondary { color: var(--omnira-text-2); }   /* 0.72 · ~9.8:1 — supporting copy, labels  */
 .text-meta      { color: var(--omnira-text-3); }   /* 0.60 · ~6.9:1 — metadata, timestamps      */
 .text-faint     { color: rgba(255,255,255,0.52); } /* ~5.3:1 — most de-emphasized readable text  */
+
+/* ── vNext shell geometry ────────────────────────────────────────────────
+   Set on the shell root (data-shell-generation) so every page under it can
+   size itself to the space the shell leaves: the top bar exists from lg, and
+   the sidebar widens to the mockup's 287px from xl. Legacy keeps 0 / 260px. */
+:root {
+  --os-shell-topbar: 0px;
+  --os-shell-sidebar: 260px;
+}
+@media (min-width: 1024px) {
+  [data-shell-generation='vnext'] { --os-shell-topbar: 66px; }
+}
+@media (min-width: 1280px) {
+  [data-shell-generation='vnext'] { --os-shell-sidebar: 287px; }
+}
+/* .os-stage claims a full viewport (min-height: 100vh). Under the top bar row
+   that would push the canvas 66px past its grid row and clip the bottom of
+   every scrolling page, so the vNext canvas takes exactly its row instead. */
+[data-shell-generation='vnext'] > main { min-height: 0; }

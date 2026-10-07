@@ -14,6 +14,7 @@ import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { OPERATOR_DISPLAY_NAME } from '@/lib/atlas/identity'
 import { AtlasProjectReturnShortcut } from '@/components/platform/vnext/AtlasProjectReturnShortcut'
 import { AtlasMobileNav } from '@/components/platform/vnext/AtlasMobileNav'
+import { ShellTopBar } from '@/components/platform/vnext/ShellTopBar'
 import { OMNIRA_UI_COOKIE, resolveUiGeneration, isVNext } from '@/lib/ui/generation'
 import {
   DISPLAY_SCALE_ATTRIBUTE,
@@ -58,7 +59,7 @@ export default async function PlatformLayout({
   const scopedProjectIds = scopeProjectFilter(allowedProjectIds)
   const allowedProjects = new Set(allowedProjectIds)
 
-  const [projectsRes, conversationsRes, runsRes, approvalsRes] = await Promise.allSettled([
+  const [projectsRes, conversationsRes, runsRes, approvalsRes, pendingRes] = await Promise.allSettled([
     supabase
       .from('projects')
       .select('id, name, slug, color')
@@ -79,6 +80,11 @@ export default async function PlatformLayout({
       .in('project_id', scopedProjectIds)
       .order('created_at', { ascending: false })
       .limit(8),
+    // The vNext top bar's notice dot: a scoped count, not a row read.
+    (db.from('approvals') as any)
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending')
+      .in('project_id', scopedProjectIds),
   ])
 
   const projectsRaw = projectsRes.status === 'fulfilled' ? (projectsRes.value.data ?? []) : []
@@ -95,6 +101,11 @@ export default async function PlatformLayout({
         approval.project_id && allowedProjects.has(approval.project_id)
       ))
     : []
+
+  const pendingApprovals: number | null =
+    pendingRes.status === 'fulfilled' && !(pendingRes.value as any).error
+      ? ((pendingRes.value as any).count ?? 0)
+      : null
 
   const events: ActivityEvent[] = []
 
@@ -230,15 +241,29 @@ export default async function PlatformLayout({
       />
       <AtlasProjectReturnShortcut />
       <div
-        className="
+        className={`
           relative h-screen overflow-hidden
           grid
           grid-cols-1
           lg:[grid-template-columns:260px_minmax(0,1fr)]
-        "
+          ${isVNext(uiGeneration) ? 'xl:[grid-template-columns:287px_minmax(0,1fr)] lg:[grid-template-rows:66px_minmax(0,1fr)]' : ''}
+        `}
+        data-shell-generation={uiGeneration}
         style={{ background: '#030516' }}
       >
-        {/* ─── Column 1 · Sidebar (260px) ───────────────────────────────── */}
+        {/* ─── vNext top bar · one row across both columns ──────────────────
+            After the canonical Atlas Home mockup: the bar spans the window and
+            the sidebar starts under it. Desktop only — below lg the mobile
+            navigation owns the top of the screen. Pages that size themselves to
+            the viewport subtract --os-shell-topbar (globals.css), so nothing
+            is pushed into scrolling by it. Legacy renders no row here. */}
+        {isVNext(uiGeneration) && (
+          <div className="hidden lg:block lg:col-span-2">
+            <ShellTopBar pendingApprovals={pendingApprovals} />
+          </div>
+        )}
+
+        {/* ─── Column 1 · Sidebar (260px; 287px from xl in vNext) ────────── */}
         <Sidebar
           projects={projects}
           userEmail={user.email ?? ''}

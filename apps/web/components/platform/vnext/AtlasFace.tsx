@@ -118,6 +118,7 @@ export function AtlasFace({ state }: { state: AtlasOrbState }) {
   return (
     <div className={styles.faceStage} data-state={state} aria-hidden="true">
       <div className={styles.faceAura} />
+      <div className={styles.faceNebula} />
 
       <svg className={styles.faceOrbitBack} viewBox="0 0 1299 926" preserveAspectRatio="none" focusable="false">
         <defs>

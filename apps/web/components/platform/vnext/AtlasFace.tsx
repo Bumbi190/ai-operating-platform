@@ -1,5 +1,6 @@
 import Image from 'next/image'
-import type { AtlasOrbState } from '@/lib/atlas/orb-state'
+import type { CSSProperties } from 'react'
+import { ATLAS_ORB_VISUAL_PARAMETERS, type AtlasOrbState } from '@/lib/atlas/orb-state'
 import styles from './AtlasHomeVNext.module.css'
 
 /**
@@ -17,8 +18,17 @@ import styles from './AtlasHomeVNext.module.css'
  * the face, and only its nodes sit in front.
  *
  * STATE. `state` arrives already resolved from the runtime owner,
- * AtlasCommandCore. This component never computes or advances a state; in this
- * static pass it only exposes it as `data-state` for the styles.
+ * AtlasCommandCore. This component never computes, advances or times a state.
+ * It turns the state into two things only:
+ *
+ *   - continuous intensities, read from the canonical per-state table
+ *     ATLAS_ORB_VISUAL_PARAMETERS (energy, orbit speed, particle budget, colour
+ *     balance) and handed to CSS as custom properties;
+ *   - `data-state`, which selects each state's discrete treatment (rings,
+ *     accents, which loop runs) in AtlasHomeVNext.module.css.
+ *
+ * Face identity and geometry never change: the face image is only ever
+ * re-lit (brightness/saturation), never moved, scaled or warped.
  */
 
 const ORBIT = { cx: 663, cy: 259, rx: 345, ry: 125, rotate: 14 }
@@ -114,9 +124,34 @@ function mirror(path: string) {
   return path.replace(/(-?\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?)/g, (_, x, y) => `${AXIS2 - Number(x)} ${y}`)
 }
 
+const CYAN = [34, 211, 238]
+const BLUE = [59, 130, 246]
+const VIOLET = [139, 92, 246]
+
+/** Canonical state parameters → CSS custom properties for the face layers. */
+function stateVars(state: AtlasOrbState): CSSProperties {
+  const v = ATLAS_ORB_VISUAL_PARAMETERS[state]
+  // The state's colour balance, mixed from the palette's cyan, blue and violet.
+  const mix = v.cyan + v.blue + v.violet || 1
+  const rgb = [0, 1, 2].map((k) => Math.round((v.cyan * CYAN[k] + v.blue * BLUE[k] + v.violet * VIOLET[k]) / mix))
+  return {
+    '--atlas-energy': v.energy.toFixed(2),
+    '--atlas-core-rgb': rgb.join(' '),
+    // One lap of the light running along the orbit. Slow when calm, never
+    // faster than ~3s even when executing — working, not frantic.
+    '--atlas-orbit-lap': `${Math.min(40, Math.max(3, 2.4 / Math.max(v.orbitSpeed, 0.01))).toFixed(1)}s`,
+  } as CSSProperties
+}
+
+/** How many of the shoulder sparks are lit, from the state's particle budget. */
+function litSparks(state: AtlasOrbState) {
+  return Math.round((ATLAS_ORB_VISUAL_PARAMETERS[state].particleBudget / 42) * SPARKS.length)
+}
+
 export function AtlasFace({ state }: { state: AtlasOrbState }) {
+  const lit = litSparks(state)
   return (
-    <div className={styles.faceStage} data-state={state} aria-hidden="true">
+    <div className={styles.faceStage} data-state={state} style={stateVars(state)} aria-hidden="true">
       <div className={styles.faceAura} />
       <div className={styles.faceNebula} />
 
@@ -139,6 +174,17 @@ export function AtlasFace({ state }: { state: AtlasOrbState }) {
         <g transform={ORBIT_TRANSFORM} filter="url(#atlas-orbit-glow)">
           <path d={FAR_ARC} fill="none" stroke="url(#atlas-orbit-stroke)" strokeWidth="1.3" opacity="0.72" />
           <path d={NEAR_ARC} fill="none" stroke="url(#atlas-orbit-stroke)" strokeWidth="1.3" opacity="0.6" />
+          {/* A short light running along the orbit; its lap time is the state's
+              orbit speed. Paused (not hidden) when Atlas is held. */}
+          <ellipse
+            className={styles.orbitFlow}
+            cx={ORBIT.cx}
+            cy={ORBIT.cy}
+            rx={ORBIT.rx}
+            ry={ORBIT.ry}
+            pathLength={1000}
+            fill="none"
+          />
         </g>
         <defs>
           <radialGradient id="atlas-torso-haze" cx="627" cy="640" r="440" gradientUnits="userSpaceOnUse" gradientTransform="translate(627 640) scale(1 0.32) translate(-627 -640)">
@@ -173,7 +219,13 @@ export function AtlasFace({ state }: { state: AtlasOrbState }) {
             ))}
           </g>
           {SPARKS.map(([x, y, r, o], i) => (
-            <g key={i} opacity={o}>
+            <g
+              key={i}
+              opacity={o}
+              className={styles.spark}
+              data-lit={i < lit || undefined}
+              style={{ animationDelay: `${((i * 0.73) % 5).toFixed(2)}s` }}
+            >
               <circle cx={x} cy={y} r={r} fill="#a5f3fc" />
               <circle cx={AXIS2 - x} cy={y} r={r} fill={i % 3 === 0 ? '#c4b5fd' : '#a5f3fc'} />
             </g>
@@ -204,6 +256,17 @@ export function AtlasFace({ state }: { state: AtlasOrbState }) {
           unoptimized
           sizes="560px"
         />
+      </div>
+
+      {/* The forehead core — where Atlas's state is most legible. Glow and
+          rings sit OVER the face's own core (screen blend), centred on its
+          measured position (626, 177). */}
+      <div className={styles.faceCoreLight}>
+        <span className={styles.faceCoreGlow} />
+        <span className={styles.faceCoreRing} data-ring="inner" />
+        <span className={styles.faceCoreRing} data-ring="outer" />
+        <span className={styles.faceCoreWave} />
+        <span className={styles.faceCoreWave} data-delay="true" />
       </div>
 
       <svg className={styles.faceOrbitFront} viewBox="0 0 1299 926" preserveAspectRatio="none" focusable="false">

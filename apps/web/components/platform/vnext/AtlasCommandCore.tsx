@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { ArrowRight, Mic, MicOff, Square } from 'lucide-react'
-import { useAtlas } from '@/lib/atlas/runtime'
+import { useAtlas, useAtlasAudioLevel } from '@/lib/atlas/runtime'
 import {
   ATLAS_ORB_STATE_CHIP_LABELS,
   ATLAS_ORB_STATE_LABELS,
@@ -15,6 +15,22 @@ import { AtlasFace } from './AtlasFace'
 import styles from './AtlasHomeVNext.module.css'
 
 /**
+ * Writes the playback audio level into `--atlas-audio-level` on the command
+ * core. It subscribes on its own, so the per-frame level re-renders this
+ * null component only — never the face, the composer or the identity column.
+ * `override` is the dev-only review harness (see below); it never reaches a
+ * production build.
+ */
+function AtlasAudioLevelBridge({ target, override }: { target: RefObject<HTMLElement>; override: number | null }) {
+  const level = useAtlasAudioLevel()
+  const value = override ?? level
+  useEffect(() => {
+    target.current?.style.setProperty('--atlas-audio-level', Math.min(1, Math.max(0, value)).toFixed(3))
+  }, [target, value])
+  return null
+}
+
+/**
  * Atlas Home's command core: the face, the identity column, and the composer.
  *
  * This is the single runtime owner of Atlas's visible state on this page. It
@@ -24,6 +40,7 @@ import styles from './AtlasHomeVNext.module.css'
 export function AtlasCommandCore() {
   const atlas = useAtlas()
   const searchParams = useSearchParams()
+  const coreRef = useRef<HTMLElement>(null)
   const [message, setMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const busy = submitting || atlas.voicePhase === 'thinking'
@@ -34,12 +51,17 @@ export function AtlasCommandCore() {
     awaitingApproval: atlas.awaitingApproval,
     warning: atlas.warning,
   })
-  // Isolated visual QA harness. Next replaces NODE_ENV at build time, so this
-  // query parameter is inert in production and never alters runtime signals.
+  // Isolated visual QA harness (`?orbPreview=<state>`, `?orbAudio=0..1`). Next
+  // replaces NODE_ENV at build time, so both parameters are dead code in a
+  // production build: an operator can never see or set a previewed state, and
+  // the runtime signals are never touched — the preview only replaces what
+  // this one page DRAWS.
   const previewState = process.env.NODE_ENV === 'development'
     ? searchParams.get('orbPreview')
     : null
   const orbState = isAtlasOrbState(previewState) ? previewState : runtimeOrbState
+  const previewAudioRaw = process.env.NODE_ENV === 'development' ? searchParams.get('orbAudio') : null
+  const previewAudio = previewAudioRaw !== null && Number.isFinite(Number(previewAudioRaw)) ? Number(previewAudioRaw) : null
   const stateDescription = ATLAS_ORB_STATE_LABELS[orbState]
 
   function handleVoiceToggle() {
@@ -83,7 +105,8 @@ export function AtlasCommandCore() {
     : atlas.voicePhase === 'speaking' ? 'Avbryt svaret' : 'Starta röstläge'
 
   return (
-    <section className={styles.commandCore} aria-labelledby="atlas-vnext-title" data-state={orbState}>
+    <section ref={coreRef} className={styles.commandCore} aria-labelledby="atlas-vnext-title" data-state={orbState}>
+      <AtlasAudioLevelBridge target={coreRef} override={previewAudio} />
       <AtlasFace state={orbState} />
 
       {/* The forehead core is Atlas's own control: it starts and stops voice,

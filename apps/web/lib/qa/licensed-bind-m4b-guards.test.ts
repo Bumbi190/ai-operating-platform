@@ -248,3 +248,74 @@ describe('M4: the TypeScript bind preflight checks the SAME human authorization 
     // so `?? uuid()` can only apply to classes that need no execution authorization.
   })
 })
+
+describe('M4 human origin: only the authenticated boundary can create M4-acceptable human authority', () => {
+  const ALL = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).map(f => sqlCode(read(join(MIGRATIONS, f)))).join('\n')
+  const grantFn = /create or replace function public\.atlas_grant_m4_execution_authorization\(([\s\S]*?)\)\s*returns table[\s\S]*?as \$\$([\s\S]*?)\$\$;/.exec(code)
+  const PARAMS = grantFn ? grantFn[1] : ''
+  const GBODY = grantFn ? grantFn[2] : ''
+  const proof = /create or replace function public\.licensed_bind_v1_authorization_proof\([\s\S]*?as \$\$([\s\S]*?)\$\$;/.exec(code)?.[1] ?? ''
+
+  it('the grant boundary takes ONLY the authorization id and the expiry — no principal, user, project, action or target', () => {
+    expect([...PARAMS.matchAll(/\b(p_[a-z_]+)\s+[a-z]/g)].map(m => m[1])).toEqual(['p_authorization_id', 'p_expires_at'])
+    expect(GBODY).not.toMatch(/p_principal|p_granted_by|p_actor|p_user|p_project|p_action|p_target/)
+  })
+
+  it('it is executable by `authenticated` ONLY — never service_role, anon or PUBLIC', () => {
+    expect(code).toMatch(/revoke all on function public\.atlas_grant_m4_execution_authorization\(uuid, timestamptz\)\s*from public, anon, authenticated, service_role;/)
+    const grants = [...ALL.matchAll(/grant [a-z, ]+ on function public\.atlas_grant_m4_execution_authorization\([^)]*\)\s*to ([^;]+);/gi)].map(m => m[1].trim())
+    expect(grants).toEqual(['authenticated'])
+  })
+
+  it('the human is auth.uid() — required, never a parameter — and the session must be an authenticated one', () => {
+    expect(GBODY).toMatch(/v_uid := auth\.uid\(\);/)
+    expect(GBODY.match(/v_uid :=/g)).toHaveLength(1)
+    expect(GBODY).toMatch(/if v_uid is null or v_role is distinct from 'authenticated' then/)
+    // The grant row and the attestation both name v_uid as the human.
+    expect(GBODY).toMatch(/p_authorization_id, 'granted', v_now, v_req\.project_id, v_uid, 'founder_owner'/)
+    expect(GBODY).toMatch(/v_grant, v_req\.event_id, p_authorization_id, v_req\.project_id, v_uid,/)
+  })
+
+  it('the human must OWN the project, and only the M4 V1 purpose is accepted', () => {
+    expect(GBODY).toMatch(/select p\.owner_id into v_owner from public\.projects p where p\.id = v_req\.project_id;\s*if v_owner is null or v_owner <> v_uid then/)
+    expect(GBODY).toMatch(/if v_req\.action_kind <> 'workflow\.action\.execute' or v_req\.target_type <> 'workflow_execution' then/)
+    expect(GBODY).toMatch(/from public\.licensed_bind_v1_supported\(\) s/)
+    expect(GBODY).toMatch(/v_inst\.current_state <> v_parts\[2\]/)
+  })
+
+  it('every pin of the grant is COPIED from the request (the human cannot widen it)', () => {
+    expect(GBODY).toMatch(/v_req\.action_kind, v_req\.authority_description, v_req\.target_type, v_req\.target_id, v_req\.target_version_hash,/)
+    expect(GBODY).toMatch(/v_req\.action_kind, v_req\.target_type, v_req\.target_id, v_req\.target_version_hash, p_expires_at,/)
+  })
+
+  it('grant and attestation are written in ONE function body, grant first; the attestation names that grant', () => {
+    const g = GBODY.indexOf('insert into public.atlas_authorizations (')
+    const a = GBODY.indexOf('insert into public.atlas_authorization_human_grants (')
+    expect(g).toBeGreaterThan(-1)
+    expect(a).toBeGreaterThan(g)
+    expect(GBODY).toMatch(/returning event_id into v_grant;/)
+    expect(GBODY.slice(a)).toMatch(/^insert into public\.atlas_authorization_human_grants \([\s\S]*?\) values \(\s*v_grant,/)
+  })
+
+  it('the attestation table has exactly ONE writer, and no role holds any privilege on it', () => {
+    const writers = [...ALL.matchAll(/insert into public\.atlas_authorization_human_grants\b/g)]
+    expect(writers).toHaveLength(1)
+    expect(code).toMatch(/revoke all on table public\.atlas_authorization_human_grants from public, anon, authenticated, service_role;/)
+    expect(ALL).not.toMatch(/grant [a-z, ]+ on (table )?public\.atlas_authorization_human_grants/i)
+    expect(code).toMatch(/grant_event_id\s+uuid\s+not null unique/)
+    expect(code).toMatch(/before update or delete on public\.atlas_authorization_human_grants/)
+  })
+
+  it('the M4 proof REQUIRES a matching attestation for the exact grant event', () => {
+    expect(proof).toMatch(/from public\.atlas_authorization_human_grants h where h\.grant_event_id = v_grant\.event_id;/)
+    for (const clause of ['if not found', 'v_att.authorization_id <> p_authorization_id', 'v_att.request_event_id <> v_req.event_id',
+      'v_att.project_id <> p_project_id', 'v_att.human_principal <> v_grant.principal_id', 'v_att.target_id <> v_grant.target_id',
+      'v_att.target_version_hash <> v_grant.target_version_hash', 'v_att.expires_at is distinct from v_grant.expires_at',
+      "v_att.profile <> 'm4_v1_human_execution_grant'"]) {
+      expect(proof, clause).toContain(clause)
+    }
+    expect(proof).toMatch(/'authorization_not_human_attested'/)
+    // The only success path follows the attestation check.
+    expect(proof.indexOf("'v1_human_attested_execution_grant_in_force'")).toBeGreaterThan(proof.indexOf("'authorization_not_human_attested'"))
+  })
+})

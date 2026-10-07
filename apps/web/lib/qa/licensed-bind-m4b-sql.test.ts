@@ -211,7 +211,14 @@ interface AuthOpts {
   target: string; group: string; project?: string; inst: string; kind?: string; state?: string; cls?: string
   defVersion?: number; defHash?: string; defKey?: string; actionKind?: string; targetType?: string
   events?: string[]; grantedAgo?: string; expires?: string; requestAfterGrant?: boolean
+  /** Grant through the AUTHENTICATED human boundary (default) — false forges it as a raw ledger row. */
+  human?: boolean; granter?: string; requester?: string
 }
+/** Statements run AS an authenticated human (auth.uid() = uid). */
+const asHuman = (uid: string, sql: string) =>
+  `set role authenticated; set request.jwt.claim.sub = '${uid}'; set request.jwt.claim.role = 'authenticated'; ${sql}`
+const humanGrantSql = (auth: string, expires = `now() + interval '7 days'`) =>
+  `select grant_event_id from public.atlas_grant_m4_execution_authorization('${auth}', ${expires})`
 function authorize(o: AuthOpts): string {
   const auth = id('a0000000')
   const t = computeExecutionAuthorizationTarget({
@@ -222,17 +229,25 @@ function authorize(o: AuthOpts): string {
   const row = (type: string, at: string, extra = '') =>
     `insert into public.atlas_authorizations (event_id, authorization_id, event_type, occurred_at, project_id, principal_id,
        action_kind, target_type, target_id, target_version_hash, expires_at, superseded_by)
-     values ('${id('e0000000')}', '${auth}', '${type}', ${at}, '${o.project ?? P0}', '${PRINCIPAL}',
+     values ('${id('e0000000')}', '${auth}', '${type}', ${at}, '${o.project ?? P0}', '${type === 'requested' ? (o.requester ?? PRINCIPAL) : PRINCIPAL}',
        '${o.actionKind ?? 'workflow.action.execute'}', '${o.targetType ?? t.targetType}', '${t.targetId}', '${t.versionHash}',
        ${type.startsWith('granted') ? (o.expires ?? `now() + interval '7 days'`) : 'null'}, ${extra || 'null'});`
   const granted = `now() - interval '${o.grantedAgo ?? '1 hour'}'`
   const requested = o.requestAfterGrant ? `now() - interval '1 minute'` : `now() - interval '2 hours'`
-  const sql = [row('requested', requested)]
-  for (const e of o.events ?? ['granted']) {
-    sql.push(row(e, e === 'granted' || e === 'granted_with_conditions' || e === 'denied' ? granted : `now() - interval '30 minutes'`,
+  const events = o.events ?? ['granted']
+  const human = (o.human ?? true) && events[0] === 'granted' && !o.requestAfterGrant && !o.grantedAgo
+  run(dsn, ['-c', row('requested', requested)])
+  if (human) {
+    // The REAL human boundary: authenticated, auth.uid() = the project owner.
+    run(dsn, ['-c', asHuman(o.granter ?? PRINCIPAL, humanGrantSql(auth, o.expires))])
+  }
+  const sql: string[] = []
+  for (const e of human ? events.slice(1) : events) {
+    sql.push(row(e, e === 'granted' || e === 'granted_with_conditions' || e === 'denied'
+      ? granted : (human ? 'clock_timestamp()' : `now() - interval '30 minutes'`),
       e === 'superseded' ? `'${id('a1000000')}'` : ''))
   }
-  run(dsn, ['-c', sql.join('\n')])
+  if (sql.length) run(dsn, ['-c', sql.join('\n')])
   return auth
 }
 /** The bind exactly as service_role calls it. Unless `auth` is given, a matching human grant is created. */
@@ -351,12 +366,12 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M4-B single-statement licensed bin
     expect(failure(dsn, asService(bindSql(inst, { state: 'planning' }))).state).toBe('22023')
     expect(failure(dsn, asService(bindSql(inst, { kind: 'generate_monthly_story' }))).state).toBe('LB010')
     expect(failure(dsn, asService(bindSql(inst, { kind: 'probe_anonymous_protected_access' }))).state).toBe('LB010')
-    expect(failure(dsn, asService(bindSql(id('99999999')))).state).toBe('P0002')
+    expect(failure(dsn, asService(bindSql(id('99999999'), { auth: id('fa000000') }))).state).toBe('P0002')
     // A FULLY LICENSED instance of the V1 definition, moved to a state that is not
     // the placement: only the placement check can refuse it (its licence is valid).
     const { inst: elsewhere } = licensed()
     run(dsn, ['-c', `update public.workflow_instances set current_state = 'proof' where id = '${elsewhere}'`])
-    const f = failure(dsn, asService(bindSql(elsewhere, { state: 'proof' })))
+    const f = failure(dsn, asService(bindSql(elsewhere, { state: 'proof', auth: id('fa000000') })))
     expect([f.state, /outside the M4 V1 supported set/.test(f.message)]).toEqual(['LB010', true])
     expect(runsFor(inst) + runsFor(elsewhere)).toBe(0)
   })
@@ -534,7 +549,7 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M4-B single-statement licensed bin
       decision_record_id, decision_version, decision_head_generation, decision_proof, licence_proof, survival_proof, survival_anchor,
       survival_epoch_vector, survival_valid_until, authority_valid_until, proven_min_level,
       authorization_id, authorization_request_event_id, authorization_grant_event_id, authorization_granted_by,
-      authorization_proof, authorization_valid_until`
+      authorization_proof, authorization_valid_until, authorization_attestation_id`
     const copyWith = (extraCol: string, extraVal: string) =>
       `insert into public.run_autonomy_decisions (run_id, ${cols}${extraCol ? `, ${extraCol}` : ''})
        select '${target}', ${cols}${extraCol ? `, ${extraVal}` : ''} from public.run_autonomy_decisions where run_id = '${source}'`
@@ -578,7 +593,7 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M4-B single-statement licensed bin
         || '|' || authorization_proof || '|' || (authorization_valid_until = '${grant[2]}'::timestamptz)
         || '|' || (authority_valid_until <= authorization_valid_until)
         from public.run_autonomy_decisions where run_id = '${runId}'`))
-        .toBe(`${auth}|${grant[0]}|${grant[1]}|v1_single_unconditioned_execution_grant_in_force|true|true`)
+        .toBe(`${auth}|${grant[0]}|${grant[1]}|v1_human_attested_execution_grant_in_force|true|true`)
       expect(one(dsn, `select authorization_id from public.runs where id = '${runId}'`)).toBe(auth)
     })
 
@@ -592,7 +607,7 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M4-B single-statement licensed bin
     })
     it('C. a real grant from ANOTHER project is refused', () => {
       const s = subject()
-      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, project: P1 }))), /authorization_project_mismatch/)
+      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, project: P1, human: false }))), /authorization_project_mismatch/)
     })
     it('D. a real grant for ANOTHER workflow instance is refused', () => {
       const s = subject(); const other = instance()
@@ -600,15 +615,15 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M4-B single-statement licensed bin
     })
     it('E. a real grant for ANOTHER action (kind, class, or a gate-advance grant) is refused', () => {
       const s = subject()
-      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, kind: 'generate_monthly_story' }))), /authorization_target_mismatch/)
+      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, kind: 'generate_monthly_story', human: false }))), /authorization_target_mismatch/)
       refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, cls: 'MATERIAL_WRITE' }))), /authorization_target_mismatch/)
-      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, actionKind: 'workflow.gate.advance' }))), /authorization_action_mismatch/)
+      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, actionKind: 'workflow.gate.advance', human: false }))), /authorization_action_mismatch/)
     })
     it('F. a real grant for ANOTHER target hash (or definition version / state) is refused', () => {
       const s = subject()
       refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: hex64('other-target'), group: s.group }))), /authorization_target_mismatch/)
       refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, defVersion: 2 }))), /authorization_target_mismatch/)
-      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, state: 'proof' }))), /authorization_target_mismatch/)
+      refused(s, failure(dsn, bindWith(s, authorize({ inst: s.inst, target: s.target, group: s.group, state: 'proof', human: false }))), /authorization_target_mismatch/)
     })
     it('G. a real grant for ANOTHER attempt group is refused', () => {
       const s = subject()
@@ -697,6 +712,193 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M4-B single-statement licensed bin
         expect(one(dsn, `select has_table_privilege('${role}', 'public.atlas_authorization_heads', 'select')`), role).toBe('f')
         expect(one(dsn, `select has_function_privilege('${role}', 'public.licensed_bind_v1_authorization_proof(uuid,uuid,uuid,text,integer,text,text,text,text,text,uuid,timestamptz)', 'execute')`), role).toBe('f')
       }
+    })
+  })
+
+  // ── Human ORIGIN (M4 final closure): service_role cannot manufacture human authority ──
+  describe('human origin: only the authenticated grant boundary creates M4-acceptable authority', () => {
+    const OTHER_HUMAN = '22222222-2222-4222-8222-222222222222'
+    const subject = () => {
+      const l = licensed()
+      return { ...l, target: hex64(`ho${seq++}`), group: id('a6000000'), key: hex64(`hk${seq++}`) }
+    }
+    type Subject = ReturnType<typeof subject>
+    const bindWith = (s: Subject, auth: string | null) =>
+      asService(bindSql(s.inst, { auth, target: s.target, group: s.group, key: s.key }))
+    const refusedNotHuman = (s: Subject, auth: string) => {
+      const f = failure(dsn, bindWith(s, auth))
+      expect([f.state, /authorization_not_human_attested/.test(f.message)], f.message.slice(0, 300)).toEqual(['LB010', true])
+      expect([runsFor(s.inst), provenanceFor(s.inst)]).toEqual([0, 0])
+    }
+    /** A pending execution REQUEST only (as any writer may create it). */
+    const request = (s: Subject, o: Partial<AuthOpts> = {}) => authorize({ inst: s.inst, target: s.target, group: s.group, events: [], ...o })
+    const attestations = (auth: string) => Number(one(dsn, `select count(*) from public.atlas_authorization_human_grants where authorization_id = '${auth}'`))
+    const grants = (auth: string) => Number(one(dsn, `select count(*) from public.atlas_authorizations where authorization_id = '${auth}' and event_type = 'granted'`))
+
+    // ── Direct service_role attack matrix (all TypeScript bypassed) ────────────
+    it('ATTACK A/H. service_role forges requested + granted with a PERFECT M4 target → refused: no human attestation', () => {
+      const s = subject(); refusedNotHuman(s, authorize({ inst: s.inst, target: s.target, group: s.group, human: false }))
+    })
+    it('ATTACK B. a forged grant naming a REAL human (the project owner) as principal → refused', () => {
+      const s = subject()
+      const auth = authorize({ inst: s.inst, target: s.target, group: s.group, human: false })
+      expect(one(dsn, `select principal_id from public.atlas_authorizations where authorization_id = '${auth}' and event_type = 'granted'`)).toBe(PRINCIPAL)
+      refusedNotHuman(s, auth)
+    })
+    it('ATTACK C/D. another chain\'s real attestation (or grant event) cannot be reused for a forged grant', () => {
+      const real = subject(); const realAuth = authorize({ inst: real.inst, target: real.target, group: real.group })
+      const s = subject(); const forged = authorize({ inst: s.inst, target: s.target, group: s.group, human: false })
+      refusedNotHuman(s, forged)
+      const realAtt = one(dsn, `select attestation_id || '|' || grant_event_id from public.atlas_authorization_human_grants where authorization_id = '${realAuth}'`).split('|')
+      // service_role cannot write the attestation table at all…
+      expect(failure(dsn, `set role service_role; insert into public.atlas_authorization_human_grants select * from public.atlas_authorization_human_grants where attestation_id = '${realAtt[0]}'`).state).toBe('42501')
+      // …and even the table owner cannot point a copied attestation at another grant:
+      const forgedGrant = one(dsn, `select event_id from public.atlas_authorizations where authorization_id = '${forged}' and event_type = 'granted'`)
+      expect(failure(dsn, `insert into public.atlas_authorization_human_grants (grant_event_id, request_event_id, authorization_id, project_id,
+          human_principal, action_kind, target_type, target_id, target_version_hash, expires_at, profile, attested_at)
+        select '${forgedGrant}', request_event_id, authorization_id, project_id, human_principal, action_kind, target_type, target_id,
+          target_version_hash, expires_at, profile, attested_at from public.atlas_authorization_human_grants where attestation_id = '${realAtt[0]}'`).state).toBe('23514')
+      // …nor attest the same grant twice.
+      expect(failure(dsn, `insert into public.atlas_authorization_human_grants (grant_event_id, request_event_id, authorization_id, project_id,
+          human_principal, action_kind, target_type, target_id, target_version_hash, expires_at, profile, attested_at)
+        select grant_event_id, request_event_id, authorization_id, project_id, human_principal, action_kind, target_type, target_id,
+          target_version_hash, expires_at, profile, attested_at from public.atlas_authorization_human_grants where attestation_id = '${realAtt[0]}'`).state).toBe('23505')
+      refusedNotHuman(s, forged)
+    })
+    it('ATTACK E/F. service_role cannot INSERT, UPDATE, DELETE or TRUNCATE attestations; the owner cannot mutate them either', () => {
+      const s = subject(); const auth = authorize({ inst: s.inst, target: s.target, group: s.group })
+      const att = one(dsn, `select attestation_id from public.atlas_authorization_human_grants where authorization_id = '${auth}'`)
+      for (const sql of [`update public.atlas_authorization_human_grants set human_principal = '${OTHER_HUMAN}' where attestation_id = '${att}'`,
+        `delete from public.atlas_authorization_human_grants where attestation_id = '${att}'`,
+        'truncate public.atlas_authorization_human_grants']) {
+        expect(failure(dsn, `set role service_role; ${sql}`).state, sql).toBe('42501')
+        // The owner is refused structurally too: the immutability trigger (42501), or for
+        // TRUNCATE the foreign keys that reference the table (0A000) — whichever fires first.
+        expect(['42501', '0A000'], `owner: ${sql}`).toContain(failure(dsn, sql).state)
+      }
+      expect(attestations(auth)).toBe(1)
+    })
+    it('ATTACK G. service_role (and anon) cannot EXECUTE the human grant boundary', () => {
+      const s = subject(); const auth = request(s)
+      for (const role of ['service_role', 'anon']) {
+        expect(failure(dsn, `set role ${role}; set request.jwt.claim.sub = '${PRINCIPAL}'; set request.jwt.claim.role = 'authenticated'; ${humanGrantSql(auth)}`).state, role).toBe('42501')
+      }
+      expect([grants(auth), attestations(auth)]).toEqual([0, 0])
+      for (const role of ['service_role', 'anon', 'public']) {
+        expect(one(dsn, `select has_function_privilege('${role}', 'public.atlas_grant_m4_execution_authorization(uuid,timestamptz)', 'execute')`), role).toBe('f')
+        if (role !== 'public') expect(one(dsn, `select has_table_privilege('${role}', 'public.atlas_authorization_human_grants', 'insert')`), role).toBe('f')
+      }
+      expect(one(dsn, `select has_function_privilege('authenticated', 'public.atlas_grant_m4_execution_authorization(uuid,timestamptz)', 'execute')`)).toBe('t')
+    })
+
+    // ── Authenticated human matrix ─────────────────────────────────────────────
+    it('HUMAN A. the project owner approves a valid pending M4 request → grant + attestation, principal = auth.uid(), pins copied from the request', () => {
+      const s = subject()
+      // The REQUEST is made by someone else, so the grantor and requester differ.
+      const auth = request(s, { requester: OTHER_HUMAN })
+      run(dsn, ['-c', `update public.projects set owner_id = '${PRINCIPAL}' where id = '${P0}'`])
+      const out = one(dsn, asHuman(PRINCIPAL, `select grant_event_id || '|' || attestation_id || '|' || human_principal
+        from public.atlas_grant_m4_execution_authorization('${auth}', now() + interval '3 days')`)).split('|')
+      expect(out[2]).toBe(PRINCIPAL)
+      expect(one(dsn, `select count(*) from public.atlas_authorizations g join public.atlas_authorizations r
+          on r.authorization_id = g.authorization_id and r.event_type = 'requested'
+        where g.event_id = '${out[0]}' and g.event_type = 'granted' and g.principal_id = '${PRINCIPAL}'
+          and g.project_id = r.project_id and g.action_kind = r.action_kind and g.target_type = r.target_type
+          and g.target_id = r.target_id and g.target_version_hash = r.target_version_hash`)).toBe('1')
+      expect(one(dsn, `select principal_id from public.atlas_authorizations where authorization_id = '${auth}' and event_type = 'requested'`)).toBe(OTHER_HUMAN)
+      expect(one(dsn, `select (grant_event_id = '${out[0]}') || '|' || human_principal || '|' || profile
+        from public.atlas_authorization_human_grants where attestation_id = '${out[1]}'`)).toBe(`true|${PRINCIPAL}|m4_v1_human_execution_grant`)
+      // …and that human grant now admits the bind, with the attestation in its provenance.
+      const [runId] = one(dsn, bindWith(s, auth)).split(',')
+      expect(one(dsn, `select authorization_attestation_id || '|' || authorization_granted_by from public.run_autonomy_decisions where run_id = '${runId}'`))
+        .toBe(`${out[1]}|${PRINCIPAL}`)
+    })
+    it('HUMAN B. no auth.uid() → refused', () => {
+      const s = subject(); const auth = request(s)
+      expect(failure(dsn, `set role authenticated; set request.jwt.claim.role = 'authenticated'; ${humanGrantSql(auth)}`).state).toBe('42501')
+      expect([grants(auth), attestations(auth)]).toEqual([0, 0])
+    })
+    it('HUMAN C. a service_role JWT role cannot pass even with EXECUTE (belt and braces)', () => {
+      const s = subject(); const auth = request(s)
+      expect(failure(dsn, `set role authenticated; set request.jwt.claim.sub = '${PRINCIPAL}'; set request.jwt.claim.role = 'service_role'; ${humanGrantSql(auth)}`).state).toBe('42501')
+      expect([grants(auth), attestations(auth)]).toEqual([0, 0])
+    })
+    it('HUMAN D. an authenticated user who does NOT own the project → refused', () => {
+      const s = subject(); const auth = request(s)
+      expect(failure(dsn, asHuman(OTHER_HUMAN, humanGrantSql(auth))).state).toBe('42501')
+      expect([grants(auth), attestations(auth)]).toEqual([0, 0])
+    })
+    it('HUMAN E/F. the wrong purpose (action) or the wrong target type → refused', () => {
+      const s = subject()
+      const a = request(s, { actionKind: 'workflow.gate.advance' })
+      expect(failure(dsn, asHuman(PRINCIPAL, humanGrantSql(a))).state).toBe('22023')
+      const b = request(s, { targetType: 'workflow_action' })
+      expect(failure(dsn, asHuman(PRINCIPAL, humanGrantSql(b))).state).toBe('22023')
+      const c = request(s, { kind: 'generate_monthly_story' })
+      expect(failure(dsn, asHuman(PRINCIPAL, humanGrantSql(c))).state).toBe('22023')
+      expect([grants(a), grants(b), grants(c)]).toEqual([0, 0, 0])
+    })
+    it('HUMAN G. the request target drifted (the instance moved state) → refused', () => {
+      const s = subject(); const auth = request(s)
+      run(dsn, ['-c', `update public.workflow_instances set current_state = 'proof' where id = '${s.inst}'`])
+      expect(failure(dsn, asHuman(PRINCIPAL, humanGrantSql(auth))).state).toBe('22023')
+      expect(grants(auth)).toBe(0)
+    })
+    it('HUMAN H. malformed / past / unbounded expiry → refused', () => {
+      const s = subject(); const auth = request(s)
+      for (const e of ['null', `now() - interval '1 second'`, 'now()', `now() + interval '31 days'`, `'infinity'::timestamptz`]) {
+        expect(failure(dsn, asHuman(PRINCIPAL, humanGrantSql(auth, e))).state, e).toBe('22023')
+      }
+      expect(grants(auth)).toBe(0)
+    })
+    it('HUMAN I. a replayed / already-decided request → deterministic refusal (55000), exactly one grant', () => {
+      const s = subject(); const auth = request(s)
+      one(dsn, asHuman(PRINCIPAL, humanGrantSql(auth)))
+      expect(failure(dsn, asHuman(PRINCIPAL, humanGrantSql(auth))).state).toBe('55000')
+      const denied = request(s)
+      run(dsn, ['-c', `insert into public.atlas_authorizations (authorization_id, event_type, project_id, principal_id, action_kind, target_type, target_id,
+        target_version_hash) select authorization_id, 'denied', project_id, principal_id, action_kind, target_type, target_id, target_version_hash
+        from public.atlas_authorizations where authorization_id = '${denied}'`])
+      expect(failure(dsn, asHuman(PRINCIPAL, humanGrantSql(denied))).state).toBe('55000')
+      expect(failure(dsn, asHuman(PRINCIPAL, humanGrantSql(id('fb000000')))).state).toBe('P0002')
+      expect([grants(auth), attestations(auth), grants(denied)]).toEqual([1, 1, 0])
+    })
+
+    // ── Atomicity ─────────────────────────────────────────────────────────────
+    it('the grant event and its attestation commit together — or not at all', () => {
+      const s = subject(); const auth = request(s)
+      run(dsn, ['-c', `begin; ${asHuman(PRINCIPAL, humanGrantSql(auth))}; rollback;`])
+      expect([grants(auth), attestations(auth)]).toEqual([0, 0])
+      one(dsn, asHuman(PRINCIPAL, humanGrantSql(auth)))
+      expect([grants(auth), attestations(auth)]).toEqual([1, 1])
+      // Every attestation references a COMMITTED grant event of its own chain.
+      expect(one(dsn, `select count(*) from public.atlas_authorization_human_grants h
+        left join public.atlas_authorizations g on g.event_id = h.grant_event_id and g.event_type = 'granted' and g.authorization_id = h.authorization_id
+        where g.event_id is null`)).toBe('0')
+    })
+
+    it('a human revoke after a human grant (and service_role narrowing) still refuses the bind', () => {
+      const s = subject(); const auth = authorize({ inst: s.inst, target: s.target, group: s.group, events: ['granted', 'revoked'] })
+      const f = failure(dsn, bindWith(s, auth))
+      expect([f.state, /authorization_history_outside_v1_subset/.test(f.message)]).toEqual(['LB010', true])
+    })
+
+    it('mixed storm — human grants, revokes, licensed binds, Decision, licence and Survival writers: zero 40P01', async () => {
+      const work: Promise<Outcome>[] = []
+      for (let i = 0; i < 4; i += 1) {
+        const s = subject(); const pending = request(s); const granted = authorize({ inst: s.inst, target: s.target, group: s.group })
+        work.push(session(`m4b_hs_g${i}`, [asHuman(PRINCIPAL, humanGrantSql(pending))]))
+        work.push(session(`m4b_hs_b${i}`, [bindWith(s, granted)]))
+        work.push(session(`m4b_hs_r${i}`, [`insert into public.atlas_authorizations (authorization_id, event_type, project_id, principal_id, action_kind,
+          target_type, target_id, target_version_hash) select authorization_id, 'revoked', project_id, principal_id, action_kind, target_type, target_id,
+          target_version_hash from public.atlas_authorizations where authorization_id = '${granted}' and event_type = 'requested'`]))
+        work.push(session(`m4b_hs_d${i}`, [reverseSql(s.d)]))
+        work.push(session(`m4b_hs_l${i}`, [revokeSql(s.inst, s.d, s.licence)]))
+        work.push(session(`m4b_hs_s${i}`, [`insert into public.cost_events (project_id, provider, cost_sek, cost_usd, created_at) values ('${P1}', 'anthropic', 0.01, 0, now())`]))
+      }
+      const outcomes = await Promise.all(work)
+      expect(outcomes.filter(o => o.state === '40P01')).toEqual([])
+      for (const o of outcomes.filter(x => !x.ok)) expect(['LB010', 'SV004', '40001', '55000'], o.stderr.slice(0, 200)).toContain(o.state)
     })
   })
 })

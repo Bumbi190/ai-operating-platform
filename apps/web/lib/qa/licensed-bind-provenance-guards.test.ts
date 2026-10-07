@@ -41,7 +41,7 @@ const PROOF_FACTS = ['license_id', 'license_generation', 'decision_id', 'decisio
   'decision_head_generation', 'decision_proof', 'licence_proof', 'survival_proof', 'survival_anchor',
   'survival_epoch_vector', 'survival_valid_until', 'authority_valid_until', 'proven_min_level',
   'authorization_id', 'authorization_request_event_id', 'authorization_grant_event_id', 'authorization_granted_by',
-  'authorization_proof', 'authorization_valid_until']
+  'authorization_proof', 'authorization_valid_until', 'authorization_attestation_id']
 
 describe('licensed-bind provenance: proof facts only, never a fabricated canonical state', () => {
   const fn = m4b.slice(m4b.indexOf('function public.bind_licensed_workflow_action_run_v1('))
@@ -77,6 +77,8 @@ describe('licensed-bind provenance: proof facts only, never a fabricated canonic
     expect(values[columns.indexOf('authorization_grant_event_id')]).toBe('v_auth.grant_event_id')
     expect(values[columns.indexOf('authorization_granted_by')]).toBe('v_auth.granted_by')
     expect(values[columns.indexOf('authorization_proof')]).toBe('v_auth.reason')
+    // The HUMAN-ORIGIN attestation the proof required (FK to the immutable attestation row).
+    expect(values[columns.indexOf('authorization_attestation_id')]).toBe('v_auth.attestation_id')
     // The Survival profile is the predicate's OWN success reason, not a constant this function chose.
     expect(values[columns.indexOf('survival_proof')]).toBe('v_srv.reason')
     expect(values[columns.indexOf('licence_proof')]).toBe('v_lic.reason')

@@ -96,7 +96,8 @@ alter table public.run_autonomy_decisions
   add column authorization_grant_event_id   uuid,
   add column authorization_granted_by       uuid,
   add column authorization_proof            text,
-  add column authorization_valid_until      timestamptz;
+  add column authorization_valid_until      timestamptz,
+  add column authorization_attestation_id   uuid;
 
 comment on column public.run_autonomy_decisions.authorization_grant_event_id is
   'M4 V1: the exact immutable atlas_authorizations GRANT event the database proved permits this '
@@ -130,7 +131,8 @@ alter table public.run_autonomy_decisions
         and survival_valid_until is null and authority_valid_until is null and proven_min_level is null
         and authorization_id is null and authorization_request_event_id is null
         and authorization_grant_event_id is null and authorization_granted_by is null
-        and authorization_proof is null and authorization_valid_until is null)
+        and authorization_proof is null and authorization_valid_until is null
+        and authorization_attestation_id is null)
       or
       (admission_basis is not distinct from 'db_conservative_proof_v1'
         and boundary        is not distinct from 'bind'
@@ -163,7 +165,8 @@ alter table public.run_autonomy_decisions
         -- Claimed: the exact human authorization proof.
         and authorization_id is not null and authorization_request_event_id is not null
         and authorization_grant_event_id is not null and authorization_granted_by is not null
-        and authorization_proof is not distinct from 'v1_single_unconditioned_execution_grant_in_force'
+        and authorization_proof is not distinct from 'v1_human_attested_execution_grant_in_force'
+        and authorization_attestation_id is not null
         and authorization_valid_until is not null and authorization_valid_until > survival_anchor
         and authority_valid_until <= authorization_valid_until)
     );
@@ -310,6 +313,245 @@ revoke all on table public.atlas_authorization_heads from public, anon, authenti
 revoke all on function public.atlas_authorization_heads_guard() from public, anon, authenticated, service_role;
 revoke all on function public.atlas_authorization_head_advance() from public, anon, authenticated, service_role;
 
+-- A2c. HUMAN ORIGIN — the non-forgeable attestation of an M4 execution grant.
+--
+-- THREAT. service_role can append ordinary atlas_authorizations rows, including
+-- `requested` → `granted` with any principal_id. A ledger that service_role can
+-- write proves internal consistency, never human origin. Owner ruling: a
+-- service_role capability must not be convertible into human authority — NO
+-- HUMAN-AUTHENTICATED GRANT = NO LICENSED BIND.
+--
+-- DESIGN. `atlas_authorization_human_grants` holds ONE attestation per grant
+-- event. Its ONLY writer is atlas_grant_m4_execution_authorization(), a SECURITY
+-- DEFINER boundary EXECUTABLE BY `authenticated` ONLY (never service_role, anon or
+-- PUBLIC). It derives the human from auth.uid(), requires that user to OWN the
+-- authorization's project (projects.owner_id — the platform's isolation truth),
+-- accepts only the M4 V1 purpose, copies every pin from the pending REQUEST, and
+-- appends the `granted` event AND its attestation in one statement — both commit
+-- or neither. The grant event moves the same authorization head through the
+-- ledger's own insert trigger: there is no second authorization history.
+--
+-- Ordinary service_role authorization writes still work (mixed-version safety),
+-- but a grant WITHOUT this attestation can never satisfy the M4 proof.
+create table public.atlas_authorization_human_grants (
+  attestation_id      uuid        primary key default gen_random_uuid(),
+  -- The exact grant event this attestation vouches for: one attestation per grant.
+  grant_event_id      uuid        not null unique
+                        references public.atlas_authorizations (event_id) on delete restrict,
+  request_event_id    uuid        not null
+                        references public.atlas_authorizations (event_id) on delete restrict,
+  authorization_id    uuid        not null,
+  project_id          uuid        not null references public.projects (id) on delete restrict,
+  -- auth.uid() of the authenticated human who granted it. Never a caller value.
+  human_principal     uuid        not null,
+  action_kind         text        not null
+    constraint atlas_authorization_human_grants_action check (action_kind = 'workflow.action.execute'),
+  target_type         text        not null
+    constraint atlas_authorization_human_grants_target_type check (target_type = 'workflow_execution'),
+  target_id           text        not null,
+  target_version_hash text        not null
+    constraint atlas_authorization_human_grants_hash check (target_version_hash ~ '^[a-f0-9]{64}$'),
+  expires_at          timestamptz not null,
+  profile             text        not null
+    constraint atlas_authorization_human_grants_profile check (profile = 'm4_v1_human_execution_grant'),
+  attested_at         timestamptz not null
+);
+
+comment on table public.atlas_authorization_human_grants is
+  'Phase 3B1B2 M4-B: non-forgeable HUMAN-ORIGIN attestation of one M4 execution grant event. Written '
+  'only by atlas_grant_m4_execution_authorization() (authenticated only; principal = auth.uid(); caller '
+  'must own the project). Immutable. DB_INTERNAL: no role holds any privilege.';
+
+-- Defence in depth: an attestation must describe EXACTLY its grant and request
+-- rows (one chain, one project, one human, one target, one expiry), whoever
+-- writes it.
+create or replace function public.atlas_authorization_human_grants_integrity()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_req   public.atlas_authorizations;
+  v_grant public.atlas_authorizations;
+begin
+  select * into v_grant from public.atlas_authorizations a where a.event_id = new.grant_event_id;
+  select * into v_req   from public.atlas_authorizations a where a.event_id = new.request_event_id;
+  if v_grant.event_id is null or v_req.event_id is null
+     or v_grant.event_type <> 'granted' or v_req.event_type <> 'requested'
+     or v_grant.authorization_id <> new.authorization_id or v_req.authorization_id <> new.authorization_id
+     or v_grant.project_id <> new.project_id or v_req.project_id <> new.project_id
+     or v_grant.principal_id <> new.human_principal
+     or v_grant.action_kind <> new.action_kind or v_req.action_kind <> new.action_kind
+     or v_grant.target_type <> new.target_type or v_req.target_type <> new.target_type
+     or v_grant.target_id <> new.target_id or v_req.target_id <> new.target_id
+     or v_grant.target_version_hash <> new.target_version_hash or v_req.target_version_hash <> new.target_version_hash
+     or v_grant.expires_at is distinct from new.expires_at then
+    raise exception 'atlas_authorization_human_grants: attestation does not describe its grant and request exactly'
+      using errcode = '23514';
+  end if;
+  return new;
+end $$;
+
+create trigger atlas_authorization_human_grants_integrity
+  before insert on public.atlas_authorization_human_grants
+  for each row execute function public.atlas_authorization_human_grants_integrity();
+
+-- Immutable: an attestation is a historical fact.
+create or replace function public.atlas_authorization_human_grants_immutable()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  raise exception 'atlas_authorization_human_grants is append-only: % is not permitted', tg_op
+    using errcode = '42501';
+end $$;
+
+create trigger atlas_authorization_human_grants_no_mutation
+  before update or delete on public.atlas_authorization_human_grants
+  for each row execute function public.atlas_authorization_human_grants_immutable();
+create trigger atlas_authorization_human_grants_no_truncate
+  before truncate on public.atlas_authorization_human_grants
+  for each statement execute function public.atlas_authorization_human_grants_immutable();
+
+alter table public.atlas_authorization_human_grants enable row level security;
+revoke all on table public.atlas_authorization_human_grants from public, anon, authenticated, service_role;
+revoke all on function public.atlas_authorization_human_grants_integrity() from public, anon, authenticated, service_role;
+revoke all on function public.atlas_authorization_human_grants_immutable() from public, anon, authenticated, service_role;
+
+alter table public.run_autonomy_decisions
+  add constraint run_autonomy_decisions_authorization_attestation_fk
+    foreign key (authorization_attestation_id)
+    references public.atlas_authorization_human_grants (attestation_id);
+
+-- The ONLY writer of human-origin attestations. The caller chooses exactly two
+-- things: WHICH pending request to approve, and an expiry within the V1 bound.
+-- Everything authority-bearing — the human, the project, the action, the target
+-- pin — is derived here, never accepted.
+create or replace function public.atlas_grant_m4_execution_authorization(
+  p_authorization_id uuid,
+  p_expires_at       timestamptz
+)
+returns table (authorization_id uuid, grant_event_id uuid, attestation_id uuid,
+               human_principal uuid, expires_at timestamptz)
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid    uuid;
+  v_role   text;
+  v_now    timestamptz;
+  v_n      bigint;
+  v_req    public.atlas_authorizations;
+  v_owner  uuid;
+  v_parts  text[];
+  v_inst   public.workflow_instances;
+  v_grant  uuid;
+  v_att    uuid;
+  c_uuid   constant text := '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+begin
+  -- 1. A REAL authenticated human. The principal is auth.uid(), never a parameter.
+  v_uid := auth.uid();
+  v_role := coalesce(nullif(pg_catalog.current_setting('request.jwt.claim.role', true), ''),
+                     nullif(pg_catalog.current_setting('request.jwt.claims', true), '')::jsonb ->> 'role');
+  if v_uid is null or v_role is distinct from 'authenticated' then
+    raise exception 'human execution grant: requires an authenticated human session' using errcode = '42501';
+  end if;
+
+  v_now := pg_catalog.clock_timestamp();
+  if p_authorization_id is null or p_expires_at is null or not pg_catalog.isfinite(p_expires_at)
+     or pg_catalog.date_trunc('milliseconds', p_expires_at) <= pg_catalog.date_trunc('milliseconds', v_now)
+     or p_expires_at > v_now + interval '30 days' then
+    raise exception 'human execution grant: expiry must be after now and within 30 days' using errcode = '22023';
+  end if;
+
+  -- 2. Serialize on the chain's authorization head — the same row the ledger's
+  --    insert trigger moves (so a concurrent revoke, grant or bind is ordered).
+  perform 1 from public.atlas_authorization_heads h where h.authorization_id = p_authorization_id for update;
+  if not found then
+    raise exception 'human execution grant: unknown authorization %', p_authorization_id using errcode = 'P0002';
+  end if;
+
+  -- 3. Exactly one PENDING request; replay and already-decided chains refuse.
+  select pg_catalog.count(*) into v_n from public.atlas_authorizations a where a.authorization_id = p_authorization_id;
+  select * into v_req from public.atlas_authorizations a
+   where a.authorization_id = p_authorization_id and a.event_type = 'requested';
+  if v_n <> 1 or v_req.event_id is null then
+    raise exception 'human execution grant: authorization % is not a single pending request', p_authorization_id
+      using errcode = '55000';
+  end if;
+  if not pg_catalog.isfinite(v_req.occurred_at) or v_req.occurred_at > v_now then
+    raise exception 'human execution grant: the request time is outside the V1 subset' using errcode = '22023';
+  end if;
+
+  -- 4. The M4 V1 purpose only.
+  if v_req.action_kind <> 'workflow.action.execute' or v_req.target_type <> 'workflow_execution' then
+    raise exception 'human execution grant: only workflow.action.execute / workflow_execution requests'
+      using errcode = '22023';
+  end if;
+
+  -- 5. The human must OWN the project (projects.owner_id, the isolation truth).
+  select p.owner_id into v_owner from public.projects p where p.id = v_req.project_id;
+  if v_owner is null or v_owner <> v_uid then
+    raise exception 'human execution grant: the authenticated user does not own this project' using errcode = '42501';
+  end if;
+
+  -- 6. The request must still name a CURRENT M4 V1 placement:
+  --    <instance>:<state>:<kind>:<attempt group>, on an instance of this project,
+  --    at that state, for a supported (kind, definition, state).
+  v_parts := pg_catalog.string_to_array(v_req.target_id, ':');
+  if pg_catalog.array_length(v_parts, 1) is distinct from 4
+     or v_parts[1] !~ c_uuid or v_parts[4] !~ c_uuid then
+    raise exception 'human execution grant: malformed execution target' using errcode = '22023';
+  end if;
+  select * into v_inst from public.workflow_instances w where w.id = v_parts[1]::uuid;
+  if not found or v_inst.project_id <> v_req.project_id or v_inst.current_state <> v_parts[2] then
+    raise exception 'human execution grant: the request target drifted from the workflow instance'
+      using errcode = '22023';
+  end if;
+  if not exists (select 1 from public.licensed_bind_v1_supported() s
+                  where s.action_kind = v_parts[3] and s.bound_def_key = v_inst.def_key
+                    and s.placement_state = v_inst.current_state) then
+    raise exception 'human execution grant: not an M4 V1 governed effect' using errcode = '22023';
+  end if;
+
+  -- 7. The grant (every pin copied from the REQUEST) and its attestation, together.
+  insert into public.atlas_authorizations (
+    authorization_id, event_type, occurred_at, project_id, principal_id, authority_basis,
+    action_kind, authority_description, target_type, target_id, target_version_hash,
+    conditions, evidence, expires_at, superseded_by, reason
+  ) values (
+    p_authorization_id, 'granted', v_now, v_req.project_id, v_uid, 'founder_owner',
+    v_req.action_kind, v_req.authority_description, v_req.target_type, v_req.target_id, v_req.target_version_hash,
+    '[]'::jsonb, '[]'::jsonb, p_expires_at, null, null
+  )
+  returning event_id into v_grant;
+
+  insert into public.atlas_authorization_human_grants (
+    grant_event_id, request_event_id, authorization_id, project_id, human_principal,
+    action_kind, target_type, target_id, target_version_hash, expires_at, profile, attested_at
+  ) values (
+    v_grant, v_req.event_id, p_authorization_id, v_req.project_id, v_uid,
+    v_req.action_kind, v_req.target_type, v_req.target_id, v_req.target_version_hash, p_expires_at,
+    'm4_v1_human_execution_grant', v_now
+  )
+  returning atlas_authorization_human_grants.attestation_id into v_att;
+
+  return query select p_authorization_id, v_grant, v_att, v_uid, p_expires_at;
+end $$;
+
+comment on function public.atlas_grant_m4_execution_authorization(uuid, timestamptz) is
+  'Phase 3B1B2 M4-B: the ONLY path that creates an M4-acceptable human execution grant. Authenticated '
+  'only; principal = auth.uid(); caller must own the project; M4 V1 purpose only; every pin copied from the '
+  'pending request; grant event + human-origin attestation in one statement.';
+
+revoke all on function public.atlas_grant_m4_execution_authorization(uuid, timestamptz)
+  from public, anon, authenticated, service_role;
+grant execute on function public.atlas_grant_m4_execution_authorization(uuid, timestamptz) to authenticated;
+
 -- A2b. The V1 admissible subset of "assertExecutionAuthorized() would ALLOW".
 --
 -- ACCEPTS ONLY the two-event chain  {requested} → {granted}  (no conditions, no
@@ -346,7 +588,7 @@ create or replace function public.licensed_bind_v1_authorization_proof(
   p_at                  timestamptz
 )
 returns table (admissible boolean, reason text, request_event_id uuid, grant_event_id uuid,
-               granted_by uuid, authority_invalid_at timestamptz)
+               granted_by uuid, authority_invalid_at timestamptz, attestation_id uuid)
 language plpgsql
 stable
 security definer
@@ -360,30 +602,31 @@ declare
   v_tid      text;
   v_payload  text;
   v_hash     text;
+  v_att      public.atlas_authorization_human_grants;
   c_plain    constant text := '^[A-Za-z0-9_.:-]+$';
 begin
   if p_authorization_id is null or p_project_id is null or p_instance_id is null or p_def_key is null
      or p_def_version is null or p_def_hash is null or p_state is null or p_action_kind is null
      or p_action_class is null or p_target_version_hash is null or p_attempt_group is null
      or p_at is null or not pg_catalog.isfinite(p_at) then
-    return query select false, 'malformed_input'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+    return query select false, 'malformed_input'::text, null::uuid, null::uuid, null::uuid, null::timestamptz, null::uuid; return;
   end if;
 
   -- The canonical-JSON domain. Outside it the database does not claim parity.
   if p_def_key !~ c_plain or p_state !~ c_plain or p_action_kind !~ c_plain or p_action_class !~ c_plain
      or p_def_hash !~ '^[a-f0-9]{64}$' or p_target_version_hash !~ '^[a-f0-9]{64}$'
      or p_def_version < 0 or p_def_version > 999999999 then
-    return query select false, 'authorization_target_outside_v1_subset'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+    return query select false, 'authorization_target_outside_v1_subset'::text, null::uuid, null::uuid, null::uuid, null::timestamptz, null::uuid; return;
   end if;
 
   select * into v_head from public.atlas_authorization_heads h where h.authorization_id = p_authorization_id;
   if not found then
-    return query select false, 'authorization_unknown'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+    return query select false, 'authorization_unknown'::text, null::uuid, null::uuid, null::uuid, null::timestamptz, null::uuid; return;
   end if;
 
   select pg_catalog.count(*) into v_n from public.atlas_authorizations a where a.authorization_id = p_authorization_id;
   if v_n <> 2 or v_head.event_count <> 2 then
-    return query select false, 'authorization_history_outside_v1_subset'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+    return query select false, 'authorization_history_outside_v1_subset'::text, null::uuid, null::uuid, null::uuid, null::timestamptz, null::uuid; return;
   end if;
 
   select * into v_req from public.atlas_authorizations a
@@ -392,7 +635,7 @@ begin
    where a.authorization_id = p_authorization_id and a.event_type = 'granted';
   if v_req.event_id is null or v_grant.event_id is null or v_head.last_event_id <> v_grant.event_id then
     -- denied, granted_with_conditions, or any close: outside the subset.
-    return query select false, 'authorization_not_an_unconditioned_grant'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+    return query select false, 'authorization_not_an_unconditioned_grant'::text, null::uuid, null::uuid, null::uuid, null::timestamptz, null::uuid; return;
   end if;
 
   -- One subject on BOTH rows (the fold requires it stable; we require it exact).
@@ -409,15 +652,15 @@ begin
   v_hash := pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(v_payload, 'UTF8')), 'hex');
 
   if v_req.project_id <> p_project_id or v_grant.project_id <> p_project_id then
-    return query select false, 'authorization_project_mismatch'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+    return query select false, 'authorization_project_mismatch'::text, null::uuid, null::uuid, null::uuid, null::timestamptz, null::uuid; return;
   end if;
   if v_req.action_kind <> 'workflow.action.execute' or v_grant.action_kind <> 'workflow.action.execute' then
-    return query select false, 'authorization_action_mismatch'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+    return query select false, 'authorization_action_mismatch'::text, null::uuid, null::uuid, null::uuid, null::timestamptz, null::uuid; return;
   end if;
   if v_req.target_type <> 'workflow_execution' or v_grant.target_type <> 'workflow_execution'
      or v_req.target_id <> v_tid or v_grant.target_id <> v_tid
      or v_req.target_version_hash <> v_hash or v_grant.target_version_hash <> v_hash then
-    return query select false, 'authorization_target_mismatch'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+    return query select false, 'authorization_target_mismatch'::text, null::uuid, null::uuid, null::uuid, null::timestamptz, null::uuid; return;
   end if;
 
   if not pg_catalog.isfinite(v_req.occurred_at) or not pg_catalog.isfinite(v_grant.occurred_at)
@@ -427,17 +670,31 @@ begin
      or extract(year from v_grant.expires_at at time zone 'UTC') not between 2000 and 9999
      or pg_catalog.date_trunc('milliseconds', v_req.occurred_at) > pg_catalog.date_trunc('milliseconds', v_grant.occurred_at)
      or pg_catalog.date_trunc('milliseconds', v_grant.expires_at) <= pg_catalog.date_trunc('milliseconds', v_grant.occurred_at) then
-    return query select false, 'authorization_time_outside_v1_subset'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+    return query select false, 'authorization_time_outside_v1_subset'::text, null::uuid, null::uuid, null::uuid, null::timestamptz, null::uuid; return;
   end if;
   if v_grant.occurred_at > p_at - interval '1 millisecond' then
-    return query select false, 'authorization_grant_not_yet_in_force'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+    return query select false, 'authorization_grant_not_yet_in_force'::text, null::uuid, null::uuid, null::uuid, null::timestamptz, null::uuid; return;
   end if;
   if pg_catalog.date_trunc('milliseconds', v_grant.expires_at) <= pg_catalog.date_trunc('milliseconds', p_at) then
-    return query select false, 'authorization_expired'::text, null::uuid, null::uuid, null::uuid, null::timestamptz; return;
+    return query select false, 'authorization_expired'::text, null::uuid, null::uuid, null::uuid, null::timestamptz, null::uuid; return;
   end if;
 
-  return query select true, 'v1_single_unconditioned_execution_grant_in_force'::text, v_req.event_id, v_grant.event_id,
-    v_grant.principal_id, pg_catalog.date_trunc('milliseconds', v_grant.expires_at);
+  -- HUMAN ORIGIN: the grant must carry the non-forgeable attestation written by the
+  -- authenticated-only boundary, describing exactly this chain. A service_role-
+  -- written grant has none, whatever its principal_id says.
+  select * into v_att from public.atlas_authorization_human_grants h where h.grant_event_id = v_grant.event_id;
+  if not found
+     or v_att.authorization_id <> p_authorization_id or v_att.request_event_id <> v_req.event_id
+     or v_att.project_id <> p_project_id or v_att.human_principal <> v_grant.principal_id
+     or v_att.action_kind <> v_grant.action_kind or v_att.target_type <> v_grant.target_type
+     or v_att.target_id <> v_grant.target_id or v_att.target_version_hash <> v_grant.target_version_hash
+     or v_att.expires_at is distinct from v_grant.expires_at
+     or v_att.profile <> 'm4_v1_human_execution_grant' then
+    return query select false, 'authorization_not_human_attested'::text, null::uuid, null::uuid, null::uuid, null::timestamptz, null::uuid; return;
+  end if;
+
+  return query select true, 'v1_human_attested_execution_grant_in_force'::text, v_req.event_id, v_grant.event_id,
+    v_att.human_principal, pg_catalog.date_trunc('milliseconds', v_grant.expires_at), v_att.attestation_id;
 end $$;
 
 revoke all on function public.licensed_bind_v1_authorization_proof(
@@ -631,7 +888,7 @@ begin
     decision_proof, licence_proof, survival_proof,
     survival_anchor, survival_epoch_vector, survival_valid_until, authority_valid_until, proven_min_level,
     authorization_id, authorization_request_event_id, authorization_grant_event_id, authorization_granted_by,
-    authorization_proof, authorization_valid_until
+    authorization_proof, authorization_valid_until, authorization_attestation_id
   ) values (
     v_run_id, 'bind', null, 'licensed', null, 'allowed', v_v1.minimum_level,
     v_lic.license_id, v_lic.license_generation,
@@ -640,7 +897,7 @@ begin
     'v1_two_act_approval_in_force', v_lic.reason, v_srv.reason,
     v_anchor, v_vector, v_srv_inv, v_deadline, v_v1.minimum_level,
     p_authorization_id, v_auth.request_event_id, v_auth.grant_event_id, v_auth.granted_by,
-    v_auth.reason, v_auth.authority_invalid_at
+    v_auth.reason, v_auth.authority_invalid_at, v_auth.attestation_id
   )
   returning event_id into v_event_id;
 

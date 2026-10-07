@@ -161,6 +161,8 @@ const at = (anchor: string, us: number | 'null' | 'infinity') =>
   us === 'null' ? 'null' : us === 'infinity' ? `'infinity'::timestamptz` : `('${anchor}'::timestamptz + interval '${us} microseconds')`
 
 const DOMAINS = {
+  // Who created the grant: the authenticated human boundary, or a raw service_role row.
+  origin: ['human', 'forged'],
   // Chain shape after the request. The V1 subset is exactly ['granted'].
   events: [['granted'], [], ['denied'], ['granted_with_conditions'], ['granted', 'revoked'], ['granted', 'superseded'],
     ['granted', 'expired'], ['denied', 'revoked']] as readonly string[][],
@@ -178,7 +180,7 @@ const DOMAINS = {
   expiresAt: [7 * 86_400_000_000, 2 * MS, 1 * MS, 500, 0, -1 * MS, -3_600_000_000, 'null', 'infinity'] as readonly (number | 'null' | 'infinity')[],
 } as const
 
-interface Outcome { kase: number; db: boolean; dbReason: string; ts: boolean; tsReason: string }
+interface Outcome { kase: number; db: boolean; dbReason: string; ts: boolean; tsReason: string; origin: 'human' | 'forged'; attested: number; attestationId: string | null }
 
 describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M4 human authorization: DB_AUTH_ALLOW => assertExecutionAuthorized ALLOWS (real PostgreSQL)', { timeout: 1_800_000 }, () => {
   beforeAll(() => {
@@ -213,7 +215,7 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M4 human authorization: DB_AUTH_AL
     }
   })
 
-  it('DB_AUTH_ALLOW => assertExecutionAuthorized() ALLOWS — zero counterexamples over the generated matrix', async () => {
+  it('DB_AUTH_ALLOW => assertExecutionAuthorized() ALLOWS, and only human-attested grants are ever admitted — zero counterexamples', async () => {
     const N = Number(process.env.M4_AUTH_PARITY_CASES ?? 1200)
     const outcomes: Outcome[] = []
     vi.useFakeTimers({ toFake: ['Date'] })
@@ -245,44 +247,65 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M4 human authorization: DB_AUTH_AL
              action_kind, target_type, target_id, target_version_hash, expires_at, superseded_by)
            values ('${uid('ev')}', '${auth}', '${type}', ${occurred}, '${opts.project ?? project}', '${PRINCIPAL}',
              '${f.actionKind}', '${f.targetType}', '${targetId.replace(/'/g, "''")}', '${t.versionHash}', ${opts.expires ?? 'null'}, ${opts.superseded ?? 'null'});`
+        // ORIGIN: 'human' grants are created by the REAL authenticated boundary
+        // (auth.uid() = the project owner); 'forged' grants are raw ledger rows, as
+        // a service_role holder could write them. Only the former may ever be
+        // M4-admissible. For a human grant the evaluation instant is placed
+        // relative to the grant's own (database-chosen) time.
+        const human = f.origin === 'human' && f.events[0] === 'granted'
         const sql = [
           'begin;',
           `insert into public.workflow_instances (id, def_key, def_version, def_hash, project_id, current_state)
              values ('${inst}', '${f.defKey.replace(/'/g, "''")}', ${f.defVersion}, '${HASH}', '${project}', 'effect');`,
           row('requested', at(anchor, f.requestAt), { project: f.project === 'other_on_request' ? P[1] : project }),
         ]
-        for (const e of f.events) {
+        if (human) {
+          const expires = typeof f.expiresAt === 'number'
+            ? `pg_catalog.clock_timestamp() + interval '${-f.grantAt + f.expiresAt} microseconds'` : f.expiresAt === 'null' ? 'null' : `'infinity'::timestamptz`
+          sql.push(`set local role authenticated; set local request.jwt.claim.sub = '${PRINCIPAL}'; set local request.jwt.claim.role = 'authenticated';`,
+            `select 1 from public.atlas_grant_m4_execution_authorization('${auth}', ${expires});`, 'reset role;')
+        }
+        for (const e of human ? f.events.slice(1) : f.events) {
           const decision = e === 'granted' || e === 'granted_with_conditions' || e === 'denied'
-          sql.push(row(e, decision ? at(anchor, f.grantAt) : at(anchor, f.grantAt + 1000),
+          sql.push(row(e, human ? 'pg_catalog.clock_timestamp()' : decision ? at(anchor, f.grantAt) : at(anchor, f.grantAt + 1000),
             { project: f.project === 'other' ? P[1] : project,
               expires: e.startsWith('granted') ? at(anchor, f.expiresAt) : undefined,
               superseded: e === 'superseded' ? `'${uid('succ')}'` : undefined }))
         }
+        const evalAt = human
+          ? `(select g.occurred_at - interval '${f.grantAt} microseconds' from public.atlas_authorizations g
+               where g.authorization_id = '${auth}' and g.event_type = 'granted')`
+          : `'${anchor}'::timestamptz`
         sql.push(`select 'PARITYJSON:' || json_build_object(
+          'at', to_char(${evalAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
           'db', (select row_to_json(p) from public.licensed_bind_v1_authorization_proof('${auth}', '${project}', '${inst}',
                    '${f.defKey.replace(/'/g, "''")}', ${f.defVersion}, '${HASH}', 'effect', '${KIND}', 'FINANCIAL', '${target}', '${group}',
-                   '${anchor}'::timestamptz) p),
+                   ${evalAt}) p),
+          'attested', (select count(*) from public.atlas_authorization_human_grants h where h.authorization_id = '${auth}'),
           'rows', (select coalesce(json_agg(a), '[]') from public.atlas_authorizations a where a.authorization_id = '${auth}'))::jsonb::text;`)
         sql.push('commit;')
         let out: string
         try { out = run(dsn, ['-f', '-'], sql.join('\n')) }
         catch (e) {
-          // A chain the ledger's own constraints refuse never exists; it is not a case.
+          // A chain the ledger's own constraints — or the human boundary — refuse
+          // never exists; it is not a case.
           const msg = String((e as { stderr?: unknown }).stderr)
-          if (/violates (check|unique|foreign key) constraint|invalid input syntax/.test(msg)) { run(dsn, ['-c', 'select 1']); continue }
+          if (/violates (check|unique|foreign key) constraint|invalid input syntax|human execution grant:/.test(msg)) { run(dsn, ['-c', 'select 1']); continue }
           throw e
         }
         const line = out.split('\n').find(l => l.startsWith('PARITYJSON:'))!
-        const r = JSON.parse(line.slice('PARITYJSON:'.length)) as { db: { admissible: boolean; reason: string }; rows: Rows }
+        const r = JSON.parse(line.slice('PARITYJSON:'.length)) as {
+          at: string; attested: number; db: { admissible: boolean; reason: string; attestation_id: string | null }; rows: Rows }
         boundary.client = tableClient({ atlas_authorizations: r.rows })
         boundary.allowed = [project]
-        vi.setSystemTime(new Date(Date.parse(anchor)))
+        vi.setSystemTime(new Date(Date.parse(r.at)))
         let ts = false, tsReason = ''
         try {
           const v = await assertExecutionAuthorized({ ...id, projectId: project, authorizationId: auth })
           ts = v.valid; tsReason = v.reason
         } catch (e) { ts = false; tsReason = `threw: ${(e as Error).message}` }
-        outcomes.push({ kase: n, db: r.db.admissible, dbReason: r.db.reason, ts, tsReason })
+        outcomes.push({ kase: n, db: r.db.admissible, dbReason: r.db.reason, ts, tsReason,
+          origin: human ? 'human' : 'forged', attested: r.attested, attestationId: r.db.attestation_id })
       }
     } finally {
       vi.useRealTimers()
@@ -296,6 +319,13 @@ describe.skipIf(!AVAILABLE && !SQL_REQUIRED)('M4 human authorization: DB_AUTH_AL
       + ` both_allow=${bothAllow.length} DB_ALLOW&&TS_REFUSE=${violations.length} TS_ALLOW&&DB_REFUSE=${falseRefusals.length}`)
     console.log(`[authorization] intentional false-refusal reasons: ${JSON.stringify(reasons)}`)
     expect(violations.map(v => `${v.kase} db=${v.dbReason} ts=${v.tsReason}`)).toEqual([])
+    // HUMAN ORIGIN: every DB_ALLOW is a human grant from the authenticated boundary,
+    // carrying its attestation; a raw service_role grant NEVER satisfies the proof.
+    const allowed = outcomes.filter(o => o.db)
+    console.log(`[authorization] human-origin: db_allow=${allowed.length} human=${allowed.filter(o => o.origin === 'human').length}`
+      + ` forged_admitted=${allowed.filter(o => o.origin !== 'human').length} forged_cases=${outcomes.filter(o => o.origin === 'forged').length}`)
+    expect(allowed.filter(o => o.origin !== 'human' || o.attested !== 1 || !o.attestationId).map(o => o.kase)).toEqual([])
+    expect(outcomes.filter(o => o.origin === 'forged').length).toBeGreaterThan(50)
     expect(bothAllow.length).toBeGreaterThan(20)
     expect(falseRefusals.length).toBeGreaterThan(5)
   })

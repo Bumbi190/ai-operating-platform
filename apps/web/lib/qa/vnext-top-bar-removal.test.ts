@@ -13,6 +13,11 @@
  *
  * Legacy is the rollback path until PR #82 merges, so its rendering must be
  * provably untouched.
+ *
+ * Superseded in part (owner ruling 2026-10-07): vNext has a top bar again —
+ * `ShellTopBar`, after the canonical Atlas Home mockup. It is a different
+ * component from `CommandBar` and opens the same palette through
+ * CommandPaletteHost, so everything asserted below about CommandBar still holds.
  */
 
 import { describe, it, expect } from 'vitest'

@@ -12,8 +12,9 @@
  * broke, would mean Atlas Home is no longer the thing that was approved:
  *
  *   1. it is still what /atlas renders for the vNext generation
- *   2. its visual layer stack is still assembled
- *   3. the orb's runtime state still has exactly one owner, with the same states
+ *   2. its visual layer stack is still assembled, with the face where the
+ *      canonical mockup measures it
+ *   3. Atlas's runtime state still has exactly one owner, with the same states
  *   4. it is insulated from the accent contract the shell slices retune
  *   5. no Claude Design prototype runtime has entered the app
  *
@@ -32,7 +33,7 @@ const read = (p: string) => readFileSync(resolve(WEB_ROOT, p), 'utf8')
 const ATLAS_PAGE = read('app/(platform)/atlas/page.tsx')
 const HOME = read('components/platform/vnext/AtlasHomeVNext.tsx')
 const HOME_CSS = read('components/platform/vnext/AtlasHomeVNext.module.css')
-const ORB_VISUAL = read('components/platform/vnext/AtlasOrbVisual.tsx')
+const FACE = read('components/platform/vnext/AtlasFace.tsx')
 const COMMAND_CORE = read('components/platform/vnext/AtlasCommandCore.tsx')
 const ORB_STATE = read('lib/atlas/orb-state.ts')
 
@@ -60,10 +61,15 @@ describe('atlas home · is the vNext landing surface', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('atlas home · visual layers remain present', () => {
-  const AMBIENT_LAYERS = ['ambientGrid', 'ambientStars', 'ambientOrbit', 'ambientGlow']
-  const COMPOSITION = ['AtlasCommandCore', 'ProjectRail', 'ActivitySystemRail', 'AtlasMobileNav']
+  // Owner ruling 2026-10-07: Atlas Home follows
+  // Design/references/Atlas/omnira-atlas-home-living-intelligence-v1.png.
+  const BACKDROP = ['backdropNebula', 'backdropStars', 'backdropVignette']
+  const COMPOSITION = [
+    'AtlasCommandCore', 'AtlasDisplayScaleControl',
+    'ActivitySystemRail', 'ProjectRail', 'AtlasMobileNav',
+  ]
 
-  it.each(AMBIENT_LAYERS)('renders the %s ambient layer', (layer) => {
+  it.each(BACKDROP)('renders the %s backdrop layer', (layer) => {
     expect(HOME).toContain(`styles.${layer}`)
     expect(HOME_CSS).toContain(`.${layer}`)
   })
@@ -72,22 +78,35 @@ describe('atlas home · visual layers remain present', () => {
     expect(HOME).toContain(`<${child}`)
   })
 
-  it('keeps the orb layer stack that gives the orb its depth', () => {
-    const ORB_LAYERS = [
-      'orbEnergyField', 'orbHalo', 'orbAxisHorizontal', 'orbAxisVertical',
-      'orbOrbitOuter', 'orbOrbitInner', 'orbOrbitTilted', 'orbParticleField',
-      'orbGlass', 'orbReflection', 'orbCore', 'orbMark',
-    ]
-    for (const layer of ORB_LAYERS) {
-      expect(ORB_VISUAL, `orb layer ${layer}`).toContain(`styles.${layer}`)
-      expect(HOME_CSS, `orb layer ${layer} has no style`).toContain(`.${layer}`)
+  it('gives Atlas its face, from the handoff asset, inside the command core', () => {
+    expect(COMMAND_CORE).toContain('<AtlasFace')
+    expect(FACE).toContain('/atlas/atlas-face.png')
+    for (const layer of ['faceStage', 'faceAura', 'faceOrbitBack', 'faceImage', 'faceOrbitFront']) {
+      expect(FACE, `face layer ${layer}`).toContain(`styles.${layer}`)
+      expect(HOME_CSS, `face layer ${layer} has no style`).toContain(`.${layer}`)
     }
   })
 
-  it('keeps the orb reachable and described for assistive tech', () => {
-    expect(ORB_VISUAL).toContain('aria-label')
-    expect(ORB_VISUAL).toContain('aria-describedby="atlas-orb-state-description"')
-    expect(ORB_VISUAL).toContain('id="atlas-orb-state-description"')
+  it('places the face where the canonical mockup measures it (560×665 at 363, -6)', () => {
+    // Template-matched against the mockup: the asset sits there at exactly 1:1.
+    const face = HOME_CSS.slice(HOME_CSS.indexOf('.faceImage {'))
+    const block = face.slice(0, face.indexOf('}'))
+    expect(block).toContain('top: calc(-6 * var(--u));')
+    expect(block).toContain('left: calc(363 * var(--u));')
+    expect(block).toContain('width: calc(560 * var(--u));')
+    expect(block).toContain('height: calc(665 * var(--u));')
+  })
+
+  it('keeps the stage in the mockup canvas proportions', () => {
+    expect(HOME_CSS).toContain('--u: min(calc(100cqh / 926), calc(100cqw / 1299));')
+    expect(HOME_CSS).toContain('width: calc(1299 * var(--u));')
+    expect(HOME_CSS).toContain('height: calc(926 * var(--u));')
+  })
+
+  it('keeps the forehead core reachable and described for assistive tech', () => {
+    expect(COMMAND_CORE).toContain('className={styles.faceCore}')
+    expect(COMMAND_CORE).toContain('aria-describedby="atlas-state-description"')
+    expect(COMMAND_CORE).toContain('id="atlas-state-description"')
   })
 
   it('still answers prefers-reduced-motion', () => {
@@ -99,7 +118,7 @@ describe('atlas home · visual layers remain present', () => {
 // 3 · The runtime state owner has not moved or forked
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('atlas orb · runtime remains the single state owner', () => {
+describe('atlas state · runtime remains the single state owner', () => {
   it('keeps exactly the seven approved states', () => {
     expect([...ATLAS_ORB_STATES]).toEqual([
       'idle', 'listening', 'thinking', 'speaking',
@@ -110,9 +129,10 @@ describe('atlas orb · runtime remains the single state owner', () => {
   it('derives state in orb-state.ts and nowhere else', () => {
     expect(ORB_STATE).toContain('export function resolveAtlasOrbState')
     expect(COMMAND_CORE).toContain('resolveAtlasOrbState')
-    // The visual is handed a state; it must never compute one.
-    expect(ORB_VISUAL).not.toContain('resolveAtlasOrbState')
-    expect(ORB_VISUAL).toMatch(/state:\s*AtlasOrbState/)
+    // The face is handed a state; it must never compute one.
+    expect(FACE).not.toContain('resolveAtlasOrbState')
+    expect(FACE).not.toContain('useAtlas')
+    expect(FACE).toMatch(/state:\s*AtlasOrbState/)
   })
 
   it('drives state from the live runtime, not from a timer', () => {
@@ -121,6 +141,7 @@ describe('atlas orb · runtime remains the single state owner', () => {
     // A self-advancing visual state machine is the specific thing the design
     // handoff forbids: the prototype's chips are demo controls, not runtime.
     expect(COMMAND_CORE).not.toMatch(/setInterval|setTimeout/)
+    expect(FACE).not.toMatch(/setInterval|setTimeout|requestAnimationFrame/)
   })
 })
 
@@ -138,12 +159,12 @@ describe('atlas home · is insulated from shell accent retuning', () => {
     expect(HOME_CSS).toMatch(/var\(--omnira-/)
   })
 
-  it('keeps its orb-local variables local', () => {
-    // These describe one orb's rendering, not a platform colour. If they ever
-    // move to :root they become a shared contract nobody intended to sign.
-    for (const local of ['--orb-cyan', '--orb-blue', '--atlas-audio-level']) {
-      expect(HOME_CSS).toContain(`${local}:`)
-    }
+  it('keeps its stage units local', () => {
+    // --u and --t describe one stage's geometry, not a platform measure. If they
+    // ever move to :root they become a shared contract nobody intended to sign.
+    expect(HOME_CSS).toMatch(/\.stage \{[^}]*--u:/)
+    expect(HOME_CSS).toMatch(/\.stage \{[^}]*--t:/)
+    expect(HOME_CSS).not.toMatch(/:root[^{]*\{[^}]*--u:/)
   })
 })
 

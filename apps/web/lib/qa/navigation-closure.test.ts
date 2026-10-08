@@ -58,7 +58,7 @@ const cssRule = (css: string, selector: string) => {
 describe('sidebar · Organisation joins the approved IA', () => {
   it('appears in the vNext nav, in the Atlas group', () => {
     const atlas = VNEXT_NAV.find((group) => group.id === 'atlas')!
-    expect(atlas.items.map((item) => item.label)).toEqual(['Atlas', 'Chat', 'Organisation'])
+    expect(atlas.items.map((item) => item.label)).toEqual(['Atlas', 'Chat', 'Organisation', 'Projekt'])
   })
 
   it('uses the registry path rather than a literal', () => {

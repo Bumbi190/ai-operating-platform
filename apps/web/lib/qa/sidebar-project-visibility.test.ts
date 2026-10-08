@@ -125,7 +125,8 @@ describe('sidebar · which nav list each generation renders', () => {
   it('vNext renders the canonical model in its approved order', () => {
     expect(vnextNavItemsFor('desktop').map((i) => i.label)).toEqual([
       // Organisation joined the Atlas group in Phase 6.5.
-      'Atlas', 'Chat', 'Organisation',
+      // Projekt (the Project Spiral) joined with Atlas Home vNext.
+      'Atlas', 'Chat', 'Organisation', 'Projekt',
       'Granskningar', 'Aktivitet', 'Planering', 'Marknadsgranskning', 'Content Center',
       'Minne', 'Intelligence Graph', 'Pengar',
       'System', 'Inställningar',
@@ -135,7 +136,7 @@ describe('sidebar · which nav list each generation renders', () => {
   it('adds exactly the approved destinations', () => {
     const legacy = new Set(LEGACY_GLOBAL_NAV.map((i) => i.href))
     const added = vnextNavItemsFor('desktop').map((i) => i.href).filter((h) => !legacy.has(h))
-    expect(added.sort()).toEqual(['/organisation', '/planning', '/settings', '/system'])
+    expect(added.sort()).toEqual(['/organisation', '/planning', '/projects', '/settings', '/system'])
   })
 
   it('drops nothing that legacy carried', () => {
@@ -146,7 +147,9 @@ describe('sidebar · which nav list each generation renders', () => {
   it('still excludes Manager and any project link', () => {
     const hrefs = vnextNavItemsFor('desktop').map((i) => i.href)
     expect(hrefs).not.toContain('/manager')
-    expect(hrefs.some((h) => h.startsWith('/projects'))).toBe(false)
+    // The Project Spiral is the one portfolio destination; no single project.
+    expect(hrefs.some((h) => h.startsWith('/projects/'))).toBe(false)
+    expect(hrefs.filter((h) => h.startsWith('/projects'))).toEqual(['/projects'])
   })
 
   it('legacy order is untouched by the vNext reorder', () => {

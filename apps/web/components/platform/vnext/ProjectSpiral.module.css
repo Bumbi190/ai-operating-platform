@@ -17,7 +17,7 @@
   /* The shell already scrolls; the stage fills the canvas it is given without
      claiming a viewport height of its own. */
   min-height: 32rem;
-  height: calc(100dvh - 11rem);
+  height: calc(100dvh - 11rem - var(--os-shell-topbar, 0px));
   display: grid;
   place-items: center;
   overflow: hidden;

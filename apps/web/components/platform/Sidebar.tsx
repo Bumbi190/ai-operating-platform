@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
-import { OmniraSidebarLogo } from '@/components/platform/OmniraLogo'
+import { OmniraMark, OmniraSidebarLogo } from '@/components/platform/OmniraLogo'
 import {
   Settings,
   ChevronRight,
@@ -127,6 +127,21 @@ export function Sidebar({
       />
 
       {/* ── Header / Logo ───────────────────────────────────── */}
+      {isVNextShell ? (
+        <div className={vnextStyles.brandBlock}>
+          <div className={vnextStyles.brand}>
+            <OmniraMark size={36} variant="silver" />
+            <span className={vnextStyles.brandText}>
+              <span className={vnextStyles.brandName}>Omnira</span>
+              <span className={vnextStyles.brandSub}>AI Operating System</span>
+            </span>
+          </div>
+          <p className={vnextStyles.brandStatus}>
+            <span className={vnextStyles.brandStatusDot} aria-hidden="true" />
+            {projects.length} projekt kopplade
+          </p>
+        </div>
+      ) : (
       <div
         className="relative px-5 pt-5 pb-4 shrink-0"
         style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
@@ -147,6 +162,7 @@ export function Sidebar({
           <span className="caption-mono text-[9px] text-faint">{isVNextShell ? 'ATLAS' : 'v4.2'}</span>
         </div>
       </div>
+      )}
 
       {/* ── Navigation ──────────────────────────────────────── */}
       <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 py-5 space-y-6">
@@ -164,6 +180,46 @@ export function Sidebar({
               const isActive = item.href === '/chat'
                 ? isChatActive
                 : pathname === item.href || pathname.startsWith(item.href + '/')
+
+              // vNext draws every destination the same way the mockup does: a
+              // small marker dot and a label, with the active one in a bordered
+              // pill. Atlas is no longer a special-cased banner — it is simply
+              // the first destination.
+              if (isVNextShell) {
+                return (
+                  <div key={item.href}>
+                    <Link
+                      href={item.primary ? '/atlas?ui=vnext' : item.href}
+                      className={cn('nav-pill ease-os', vnextStyles.navItem)}
+                      data-active={isActive}
+                      aria-current={isActive ? 'page' : undefined}
+                    >
+                      <span className={vnextStyles.navDot} aria-hidden="true" />
+                      <span className="flex-1 tracking-tight">{item.label}</span>
+                      {isActive && item.href === '/approvals' && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400" style={{ boxShadow: '0 0 6px #fbbf24' }} />
+                      )}
+                    </Link>
+                    {item.href === '/chat' && isChatActive && recentConversations.length > 0 && (
+                      <div className="ml-3 mt-1 space-y-0.5 pl-3 border-l" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                        {recentConversations.map(conv => (
+                          <Link
+                            key={conv.id}
+                            href={`/chat/${conv.id}`}
+                            className={cn(
+                              'flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] transition-colors',
+                              pathname === `/chat/${conv.id}` ? 'bg-white/[0.06] text-zinc-200' : 'text-meta hover:text-zinc-400',
+                            )}
+                          >
+                            <MessageSquare className="w-2.5 h-2.5 shrink-0 opacity-60" />
+                            <span className="truncate">{conv.title}</span>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              }
 
               if (item.primary) {
                 return (
@@ -355,7 +411,11 @@ export function Sidebar({
         )}
       </nav>
 
-      {/* ── Bottom ──────────────────────────────────────────── */}
+      {/* ── Bottom ──────────────────────────────────────────────
+          vNext has no operator card: the operator lives in the shell top
+          bar's avatar menu (ShellTopBar), which also carries Logga ut — as in
+          the canonical mockup, the sidebar is destinations only. */}
+      {!isVNextShell && (
       <div
         className="px-3 py-3 space-y-1"
         style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}
@@ -406,6 +466,7 @@ export function Sidebar({
           </div>
         )}
       </div>
+      )}
     </aside>
   )
 }

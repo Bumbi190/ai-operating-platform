@@ -1,0 +1,195 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   SHELL TOP BAR · vNext
+   One 66px row across the whole window, as in the canonical Atlas Home mockup.
+   The first segment sits over the sidebar column and tracks its width; the
+   second holds search (centred where the mockup puts it) and the actions.
+   Shell chrome: CSS pixels, not the Atlas stage units.
+═══════════════════════════════════════════════════════════════════════════ */
+
+.topBar {
+  position: relative;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: var(--os-shell-sidebar, 260px) minmax(0, 1fr);
+  align-items: center;
+  height: var(--os-shell-topbar, 66px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  background: #09121e;
+  font-family: var(--font-geist-sans), Inter, ui-sans-serif, system-ui, sans-serif;
+}
+
+.osSegment {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding-left: 28px;
+}
+.osName { color: rgba(236, 242, 250, 0.92); font-size: 16px; font-weight: 500; letter-spacing: 0.005em; }
+
+.mainSegment {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  min-width: 0;
+  padding: 0 16px;
+}
+
+.topSearch {
+  position: absolute;
+  left: 46.4%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: clamp(260px, 41.5%, 620px);
+  height: 46px;
+  padding: 0 12px 0 16px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  color: rgba(166, 178, 194, 0.78);
+  background: rgba(255, 255, 255, 0.025);
+  font-size: 15px;
+  text-align: left;
+  cursor: text;
+}
+.topSearch > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topSearch kbd {
+  padding: 3px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  color: rgba(200, 208, 220, 0.6);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 11px;
+}
+.topSearch:hover { border-color: rgba(255, 255, 255, 0.16); }
+.topSearch:focus-visible { outline: 2px solid var(--omnira-cyan); outline-offset: 2px; }
+
+.topActions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-left: auto;
+}
+
+.topAtlasPill {
+  display: flex;
+  text-decoration: none;
+  align-items: center;
+  gap: 10px;
+  height: 50px;
+  margin: 0 18px 0 0;
+  padding: 0 22px 0 9px;
+  border: 1px solid rgba(64, 170, 196, 0.38);
+  border-radius: 14px;
+  color: #a3ffff;
+  background: rgba(16, 52, 66, 0.32);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12.5px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.topAtlasOrb {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  overflow: hidden;
+  border-radius: 50%;
+  box-shadow: 0 0 14px rgba(34, 211, 238, 0.45);
+}
+.topAtlasOrb img { position: absolute; inset: -22%; width: 144%; height: 144%; }
+.topAtlasPill[data-state='warning'] { color: #fcd34d; border-color: rgba(251, 191, 36, 0.4); }
+
+.topIconButton {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 51px;
+  height: 51px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  color: rgba(236, 240, 248, 0.9);
+  background: rgba(255, 255, 255, 0.025);
+}
+.topNoticeDot {
+  position: absolute;
+  top: 10px;
+  right: 11px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--omnira-amber);
+  box-shadow: 0 0 8px var(--omnira-amber);
+}
+.topAvatar {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 50%;
+  color: #f4f8ff;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 16px;
+  font-weight: 500;
+}
+.topIconButton:focus-visible,
+.topAvatar:focus-visible { outline: 2px solid var(--omnira-cyan); outline-offset: 2px; }
+
+
+/* ── Operator menu ───────────────────────────────────────────────────── */
+.avatarMenuRoot { position: relative; }
+.topAvatar { padding: 0; cursor: pointer; }
+.topAvatar[aria-expanded='true'] { border-color: rgb(var(--omnira-cyan-rgb) / 0.55); }
+.avatarMenu {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 10px);
+  right: 0;
+  display: grid;
+  gap: 2px;
+  min-width: 220px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(7, 12, 24, 0.97);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(16px);
+}
+.avatarMenuHeader { display: grid; gap: 3px; padding: 10px 12px 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.07); margin-bottom: 4px; }
+.avatarMenuName { color: #f4f8ff; font-size: 14px; font-weight: 600; }
+.avatarMenuRole { color: rgba(170, 180, 196, 0.8); font-family: var(--font-geist-mono), ui-monospace, monospace; font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; }
+.avatarMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 9px;
+  color: rgba(226, 234, 244, 0.9);
+  background: transparent;
+  font-size: 14px;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.avatarMenuItem:hover,
+.avatarMenuItem:focus-visible { color: #ffffff; background: rgba(255, 255, 255, 0.06); outline: none; }
+
+/* Narrower canvases: the centred search would run into the actions, so it
+   joins the row and shrinks instead. */
+@media (max-width: 1499px) {
+  .topSearch {
+    position: relative;
+    left: auto;
+    flex: 1 1 auto;
+    width: auto;
+    max-width: 560px;
+    min-width: 0;
+    margin: 0 24px 0 8%;
+    transform: none;
+  }
+  .topActions { flex: none; margin-left: auto; }
+}

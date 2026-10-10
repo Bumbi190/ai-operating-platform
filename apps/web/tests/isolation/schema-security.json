@@ -37,6 +37,7 @@
       "tables": [
         "agent_decisions",
         "ai_cost_snapshots",
+        "handlarborsen_marketplace_snapshots",
         "memory_refs"
       ],
       "meaning": "Created by a migration but absent from the production catalog at capture time \u2014 never applied there, or dropped out-of-band. They are NOT a fresh-deploy hazard: each declares RLS in its own migration, so a rebuild creates them protected. Listed so their absence from the table map is a recorded fact rather than a silent gap, and so the fail-closed rule can distinguish them from a genuinely new unprotected table.",
@@ -44,9 +45,11 @@
       "classes": {
         "agent_decisions": "SERVER_ONLY",
         "ai_cost_snapshots": "SERVER_ONLY",
+        "handlarborsen_marketplace_snapshots": "SERVER_ONLY",
         "memory_refs": "SERVER_ONLY"
       },
-      "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class."
+      "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class.",
+      "handlarborsen_marketplace_snapshots_note": "Atlas collector P1B (supabase/migrations/20261010100000_handlarborsen_marketplace_snapshots.sql). NOT applied to production and NOT introspected: this is the intended class, declared by the migration (RLS enabled, no policy, PUBLIC/anon/authenticated revoked, service_role SELECT/INSERT/UPDATE only). Move it to the live table map with as-observed values only after the operator-approved apply and a read-only introspection."
     },
     "post_migration": "20260909120000_workflow_stories_rls.sql (Phase 9Y) and 20260910090000_declarative_rls_parity.sql (Phase 9Z). Every row reflects effective production state, which those two migrations now also declare; and 20260910120000_cost_ledger_rls_isolation.sql (Phase 9AB), which moves cost_events and infra_costs from TENANT_RLS to SERVER_ONLY: their `project_id IS NULL OR \u2026` policies on role public are dropped and anon/authenticated grants revoked.",
     "views": "Phase 9AA. Public VIEWS, classified like tables. A view runs as its owner unless it is security_invoker, so base-table RLS does not protect it; the migration security gate fails any client-reachable public view without security_invoker and any public view absent from this map. `live` records whether it exists in production.",

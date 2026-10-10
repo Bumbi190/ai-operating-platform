@@ -80,7 +80,7 @@ const UNAVAIL = { status: 'unavailable', value: null, reason: 'query_failed' }
 let fetchMock: ReturnType<typeof vi.fn>
 function respond(payload: unknown, status = 200) {
   const text = typeof payload === 'string' ? payload : JSON.stringify(payload)
-  fetchMock.mockResolvedValue({ status, text: vi.fn().mockResolvedValue(text) })
+  fetchMock.mockImplementation(async () => new Response(text, { status }))
 }
 
 const ctx = (over: Record<string, unknown> = {}) => ({
@@ -252,6 +252,88 @@ describe('HandlarborsenMarketplaceCollector — configuration, identity, failure
     expect(recordSignal).not.toHaveBeenCalled()
   })
 
+  it('the deadline covers the response body: a stalled body is aborted and reported as a timeout', async () => {
+    vi.useFakeTimers()
+    try {
+      let aborted = false
+      fetchMock.mockImplementation(async (_url: string, init: { signal: AbortSignal }) => {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('{"status":'))
+            init.signal.addEventListener('abort', () => {
+              aborted = true
+              controller.error(new DOMException('aborted', 'AbortError'))
+            })
+          },
+        })
+        return new Response(stream, { status: 200 }) // headers arrive; the body never finishes
+      })
+      const pending = new HandlarborsenMarketplaceCollector().run(ctx())
+      await vi.advanceTimersByTimeAsync(9_000)
+      expect(aborted).toBe(false)
+      await vi.advanceTimersByTimeAsync(2_000)
+      const result = await pending
+      expect(aborted).toBe(true)
+      expect(result.status).toBe('error')
+      expect(result.error).toBe('handlarborsen_metrics_timeout')
+      expect(upserts()).toHaveLength(0)
+      expect(recordSignal).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('stops reading an endless body at the size cap instead of buffering it', async () => {
+    let pulls = 0
+    let cancelled = false
+    fetchMock.mockImplementation(async () => new Response(new ReadableStream<Uint8Array>({
+      pull(controller) { pulls += 1; controller.enqueue(new Uint8Array(4_096).fill(0x20)) },
+      cancel() { cancelled = true },
+    }), { status: 200 }))
+    const result = await new HandlarborsenMarketplaceCollector().run(ctx())
+    expect(result.status).toBe('error')
+    expect(result.error).toBe('handlarborsen_metrics_invalid:body_too_large')
+    expect(pulls).toBeLessThanOrEqual(8) // 16 KiB cap, 4 KiB chunks (plus stream read-ahead)
+    expect(cancelled).toBe(true)
+  })
+
+  it('rejects an oversized declared content-length without reading the body', async () => {
+    const text = vi.fn()
+    fetchMock.mockResolvedValue({
+      status: 200,
+      headers: new Headers({ 'content-length': '1000000' }),
+      body: { cancel: vi.fn().mockResolvedValue(undefined), getReader: text },
+    })
+    const result = await new HandlarborsenMarketplaceCollector().run(ctx())
+    expect(result.error).toBe('handlarborsen_metrics_invalid:body_too_large')
+    expect(text).not.toHaveBeenCalled()
+  })
+
+  it('does not read the body of a non-200 answer', async () => {
+    const getReader = vi.fn()
+    const cancel = vi.fn().mockResolvedValue(undefined)
+    fetchMock.mockResolvedValue({ status: 503, headers: new Headers(), body: { getReader, cancel } })
+    const result = await new HandlarborsenMarketplaceCollector().run(ctx())
+    expect(result.error).toBe('handlarborsen_metrics_http_503')
+    expect(getReader).not.toHaveBeenCalled()
+    expect(cancel).toHaveBeenCalled()
+  })
+
+  it('reports a body that errors mid-stream as a network error without leaking detail', async () => {
+    fetchMock.mockImplementation(async () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) { controller.error(new Error(`socket reset Bearer ${TOKEN}`)) },
+    }), { status: 200 }))
+    const result = await new HandlarborsenMarketplaceCollector().run(ctx())
+    expect(result.error).toBe('handlarborsen_metrics_network_error')
+    expect(JSON.stringify(result)).not.toContain(TOKEN)
+  })
+
+  it('rejects a body that is not valid UTF-8', async () => {
+    fetchMock.mockImplementation(async () => new Response(new Uint8Array([0x7b, 0xff, 0xfe, 0x7d]), { status: 200 }))
+    const result = await new HandlarborsenMarketplaceCollector().run(ctx())
+    expect(result.error).toBe('handlarborsen_metrics_invalid:not_utf8')
+  })
+
   it('parseMarketplaceMetrics accepts the exact contract and nothing else', () => {
     const parsed = parseMarketplaceMetrics(body())
     expect(Object.keys(parsed.metrics).sort()).toEqual([...MARKETPLACE_METRIC_KEYS].sort())
@@ -376,14 +458,16 @@ describe('migration 20261010100000_handlarborsen_marketplace_snapshots.sql', () 
     expect(code).not.toMatch(/cron\.|SECURITY DEFINER|CREATE (OR REPLACE )?FUNCTION/i)
   })
 
-  it('enables RLS, revokes every client role, and grants only service_role', () => {
+  it('enables RLS, revokes every role (stripping default service_role privileges), then grants service_role SELECT/INSERT/UPDATE only', () => {
     expect(code).toMatch(/ENABLE ROW LEVEL SECURITY/)
-    for (const role of ['PUBLIC', 'anon', 'authenticated']) {
+    for (const role of ['PUBLIC', 'anon', 'authenticated', 'service_role']) {
       expect(code).toMatch(new RegExp(`REVOKE ALL ON TABLE public\\.handlarborsen_marketplace_snapshots FROM ${role}`))
     }
     const grants = code.match(/GRANT [^;]+;/g) ?? []
     expect(grants).toHaveLength(1)
-    expect(grants[0]).toMatch(/TO service_role;$/)
+    expect(grants[0]).toMatch(/^GRANT SELECT, INSERT, UPDATE ON TABLE public.handlarborsen_marketplace_snapshots TO service_role;$/)
+    // The revoke from service_role must precede the grant, or default privileges would survive.
+    expect(code.indexOf('FROM service_role')).toBeLessThan(code.indexOf('GRANT SELECT'))
     expect(code).not.toMatch(/CREATE POLICY/i)
   })
 

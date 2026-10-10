@@ -34,7 +34,7 @@ export const HANDLARBORSEN_TOKEN_ENV = 'HANDLARBORSEN_METRICS_TOKEN'
 
 const MIN_TOKEN_LENGTH = 32
 const FETCH_TIMEOUT_MS = 10_000
-const MAX_BODY_CHARS = 16_384
+const MAX_BODY_BYTES = 16_384
 /** observed_at must be this close to now; guards against replayed or stale answers. */
 const MAX_OBSERVATION_SKEW_MS = 10 * 60_000
 
@@ -164,6 +164,54 @@ export function completenessOf(metrics: Record<MarketplaceMetricKey, number | nu
   return available === 0 ? 'unavailable' : 'partial'
 }
 
+// ── Bounded body read ─────────────────────────────────────────────────────────
+
+function failureCode(controller: AbortController): string {
+  return controller.signal.aborted ? 'handlarborsen_metrics_timeout' : 'handlarborsen_metrics_network_error'
+}
+
+/**
+ * Reads the body incrementally and stops as soon as MAX_BODY_BYTES is exceeded, so an
+ * oversized or endless answer is never buffered. Subject to the same abort signal as
+ * the request: a stalled body hits the overall deadline.
+ */
+async function readBodyCapped(response: Response, controller: AbortController): Promise<string> {
+  const declared = Number(response.headers?.get?.('content-length'))
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+    await response.body?.cancel().catch(() => undefined)
+    throw new Error('handlarborsen_metrics_invalid:body_too_large')
+  }
+  const reader = response.body?.getReader()
+  if (!reader) throw new Error('handlarborsen_metrics_invalid:no_body')
+
+  const chunks: Uint8Array[] = []
+  let received = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      received += value.byteLength
+      if (received > MAX_BODY_BYTES) {
+        await reader.cancel().catch(() => undefined)
+        throw new Error('handlarborsen_metrics_invalid:body_too_large')
+      }
+      chunks.push(value)
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('handlarborsen_metrics_invalid:')) throw error
+    throw new Error(failureCode(controller))
+  }
+
+  const bytes = new Uint8Array(received)
+  let offset = 0
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength }
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+  } catch {
+    throw new Error('handlarborsen_metrics_invalid:not_utf8')
+  }
+}
+
 // ── Collector ─────────────────────────────────────────────────────────────────
 
 export class HandlarborsenMarketplaceCollector extends BaseCollector {
@@ -185,36 +233,37 @@ export class HandlarborsenMarketplaceCollector extends BaseCollector {
     const credential = resolveMetricsCredential()
     if (!credential.ok) return null
 
+    // One deadline covers the whole exchange: connecting, headers AND the body. The
+    // timer is cleared only after the body has been read (or the attempt has failed).
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-    let response: Response
     try {
-      response = await fetch(HANDLARBORSEN_METRICS_URL, {
-        method: 'GET',
-        headers: { authorization: `Bearer ${credential.token}`, accept: 'application/json' },
-        redirect: 'error', // never follow a redirect with the bearer attached
-        cache: 'no-store',
-        signal: controller.signal,
-      })
-    } catch {
-      throw new Error('handlarborsen_metrics_network_error')
+      let response: Response
+      try {
+        response = await fetch(HANDLARBORSEN_METRICS_URL, {
+          method: 'GET',
+          headers: { authorization: `Bearer ${credential.token}`, accept: 'application/json' },
+          redirect: 'error', // never follow a redirect with the bearer attached
+          cache: 'no-store',
+          signal: controller.signal,
+        })
+      } catch {
+        throw new Error(failureCode(controller))
+      }
+
+      if (response.status !== 200) {
+        await response.body?.cancel().catch(() => undefined)
+        throw new Error(`handlarborsen_metrics_http_${response.status}`)
+      }
+
+      const text = await readBodyCapped(response, controller)
+      try {
+        return JSON.parse(text)
+      } catch {
+        throw new Error('handlarborsen_metrics_invalid:not_json')
+      }
     } finally {
       clearTimeout(timer)
-    }
-
-    if (response.status !== 200) throw new Error(`handlarborsen_metrics_http_${response.status}`)
-
-    let text: string
-    try {
-      text = await response.text()
-    } catch {
-      throw new Error('handlarborsen_metrics_network_error')
-    }
-    if (text.length > MAX_BODY_CHARS) throw new Error('handlarborsen_metrics_invalid:body_too_large')
-    try {
-      return JSON.parse(text)
-    } catch {
-      throw new Error('handlarborsen_metrics_invalid:not_json')
     }
   }
 

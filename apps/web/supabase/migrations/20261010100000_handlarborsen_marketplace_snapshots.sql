@@ -10,7 +10,7 @@
 --
 -- Isolation: the table is bound to the Handlarbörsen project (FK + fixed-id check),
 -- RLS is on with no policy, and every client role is revoked. Only service_role
--- (the collector route) can read or write it. Purely additive: creates one new
+-- (the collector route) can read, insert or update it; it cannot delete or truncate. Purely additive: creates one new
 -- table; touches no existing object. Not scheduled by any cron.
 -- ─────────────────────────────────────────────────────────────────────────────
 
@@ -80,4 +80,7 @@ ALTER TABLE public.handlarborsen_marketplace_snapshots ENABLE ROW LEVEL SECURITY
 REVOKE ALL ON TABLE public.handlarborsen_marketplace_snapshots FROM PUBLIC;
 REVOKE ALL ON TABLE public.handlarborsen_marketplace_snapshots FROM anon;
 REVOKE ALL ON TABLE public.handlarborsen_marketplace_snapshots FROM authenticated;
+-- Supabase default privileges grant ALL on new public tables to service_role. Strip them so
+-- the collector gets exactly SELECT/INSERT/UPDATE (no DELETE, TRUNCATE, TRIGGER, REFERENCES).
+REVOKE ALL ON TABLE public.handlarborsen_marketplace_snapshots FROM service_role;
 GRANT SELECT, INSERT, UPDATE ON TABLE public.handlarborsen_marketplace_snapshots TO service_role;

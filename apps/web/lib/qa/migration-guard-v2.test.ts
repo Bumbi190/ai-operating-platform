@@ -29,26 +29,18 @@ const GRANDFATHERED_PRESENT_IN_VERIFIED_LEDGER = [
 
 // Enforced canonical migrations that exist in the repository but are NOT yet applied to
 // production. This list is the only place a migration may be declared "not yet applied";
-// remove an entry in the same change that records its real, operator-approved apply.
-//   handlarborsen_marketplace_snapshots — P1B, file 20261010100000; NOT applied.
-const ENFORCED_NOT_YET_APPLIED = ['handlarborsen_marketplace_snapshots']
+// an entry is removed in the same change that records its real, operator-approved apply.
+// Empty: `handlarborsen_marketplace_snapshots` (P1B, file 20261010100000) was APPLIED to
+// production on 2026-10-10 as ledger version 20261010080307.
+const ENFORCED_NOT_YET_APPLIED: string[] = []
+const P1B_MIGRATION = 'handlarborsen_marketplace_snapshots'
 
-// The CURRENT, verified production history: every enforced migration that has really
-// been applied (133 rows) plus the grandfathered and legacy-only names. It deliberately
-// omits ENFORCED_NOT_YET_APPLIED, so the guard must reject it while one is pending.
-const currentVerifiedProductionLedger = [
+// The CURRENT verified production history: 134 rows = every enforced migration (all
+// applied) plus the grandfathered and legacy-only names. Perturbation tests start from it.
+const exactVerifiedKnownLedger = [
   ...repositoryState.enforcedNames.filter((name) => !ENFORCED_NOT_YET_APPLIED.includes(name)),
   ...GRANDFATHERED_PRESENT_IN_VERIFIED_LEDGER,
   ...LEGACY_ONLY_PRODUCTION_LEDGER_NAMES,
-]
-
-// HYPOTHETICAL future history (134 rows): the current production ledger after the pending
-// migration(s) have been applied. It is a synthetic fixture for exercising the guard in
-// its healthy state; it does NOT describe production today and nothing is marked applied
-// by it. The perturbation tests below start from this healthy history.
-const postApplySyntheticLedger = [
-  ...currentVerifiedProductionLedger,
-  ...ENFORCED_NOT_YET_APPLIED,
 ]
 
 const quietLogger = {
@@ -142,21 +134,22 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
 })
 
 describe('Migration Guard v2 — production ledger set integrity', () => {
-  it('REJECTS the exact current verified production history (133) while an enforced migration is not yet applied', () => {
-    expect(currentVerifiedProductionLedger).toHaveLength(133)
-    expect(ENFORCED_NOT_YET_APPLIED.every((name) => repositoryState.enforcedNames.includes(name))).toBe(true)
+  it('REJECTS the pre-apply 133-row history that lacks the P1B migration (drift is still caught)', () => {
+    const preApply = exactVerifiedKnownLedger.filter((name) => name !== P1B_MIGRATION)
+    expect(preApply).toHaveLength(133)
+    expect(repositoryState.enforcedNames).toContain(P1B_MIGRATION)
     let message = ''
     try {
-      evaluateAppliedMigrationLedger(currentVerifiedProductionLedger, repositoryState)
+      evaluateAppliedMigrationLedger(preApply, repositoryState)
     } catch (error) {
       message = error instanceof Error ? error.message : String(error)
     }
     expect(message).toMatch(/not applied to the production ledger/)
-    for (const name of ENFORCED_NOT_YET_APPLIED) expect(message).toContain(name)
+    expect(message).toContain(P1B_MIGRATION)
   })
 
-  it('passes the hypothetical post-apply synthetic history (134)', () => {
-    const result = evaluateAppliedMigrationLedger(postApplySyntheticLedger, repositoryState)
+  it('passes the exact current verified production history (134)', () => {
+    const result = evaluateAppliedMigrationLedger(exactVerifiedKnownLedger, repositoryState)
     // 125 = main's 124 (which already contains sdf1c1b_broker_claim_credentials,
     // survival_funding_phase2b, sdf1c2_broker_control_channel and
     // autonomy_license_phase2c) + Phase 3B1A's autonomy_trace_decisions. The
@@ -241,9 +234,13 @@ describe('Migration Guard v2 — production ledger set integrity', () => {
     // Each applied statement is byte-identical to its reviewed file (verified against
     // `schema_migrations.statements`), so 130 here would now be stale information. The M4
     // APPLICATION is not deployed by that rollout; this pin records the database only.
-    // HYPOTHETICAL: P1B `handlarborsen_marketplace_snapshots` took the enforced set from 96
-    // to 97. It is NOT applied to production, so production stays at 133 (see the test
-    // above); 134 is the history this branch requires before it may merge.
+    // POST-APPLY RECORD — P1B. `handlarborsen_marketplace_snapshots` took the enforced set
+    // from 96 to 97 and this fixture from 133 to 134. It was APPLIED to production on
+    // 2026-10-10 under the operator-approved P1B rollout; the production ledger now holds
+    // 134 rows and contains the name exactly once, at version 20261010080307 (the file is
+    // named 20261010100000). The applied statement is byte-identical to the reviewed file
+    // (4821 characters, sha256 ee59a8c9…441653, verified against
+    // `schema_migrations.statements`), so 133 here would now be stale information.
     expect(result.appliedLedgerCount).toBe(134)
     expect(result.unknownLedgerNames).toEqual([])
     expect(result.duplicateLedgerNames).toEqual([])
@@ -272,7 +269,7 @@ describe('Migration Guard v2 — production ledger set integrity', () => {
   })
 
   it('does not claim order, version, SQL hashes, or replayability', () => {
-    const result = evaluateAppliedMigrationLedger([...postApplySyntheticLedger].reverse(), repositoryState)
+    const result = evaluateAppliedMigrationLedger([...exactVerifiedKnownLedger].reverse(), repositoryState)
     expect(result.doesNotVerify).toEqual([
       'application order',
       'ledger version values',
@@ -284,28 +281,28 @@ describe('Migration Guard v2 — production ledger set integrity', () => {
   it('fails when an enforced migration is missing', () => {
     const missing = repositoryState.enforcedNames[0]
     expect(() => evaluateAppliedMigrationLedger(
-      postApplySyntheticLedger.filter((name) => name !== missing),
+      exactVerifiedKnownLedger.filter((name) => name !== missing),
       repositoryState,
     )).toThrow(/not applied to the production ledger/)
   })
 
   it('fails on an unknown production ledger name', () => {
     expect(() => evaluateAppliedMigrationLedger([
-      ...postApplySyntheticLedger,
+      ...exactVerifiedKnownLedger,
       'unknown_production_migration',
     ], repositoryState)).toThrow(/unknown migration name/)
   })
 
   it('fails on a duplicate production ledger name before Set construction can hide it', () => {
     expect(() => evaluateAppliedMigrationLedger([
-      ...postApplySyntheticLedger,
-      postApplySyntheticLedger[0],
+      ...exactVerifiedKnownLedger,
+      exactVerifiedKnownLedger[0],
     ], repositoryState)).toThrow(/duplicate migration name/)
   })
 
   it('fails on a malformed ledger payload', () => {
-    expect(() => evaluateAppliedMigrationLedger({ names: postApplySyntheticLedger }, repositoryState)).toThrow(/did not return an array/)
-    expect(() => evaluateAppliedMigrationLedger([...postApplySyntheticLedger, 'not-explicit-*'], repositoryState)).toThrow(/malformed migration name/)
+    expect(() => evaluateAppliedMigrationLedger({ names: exactVerifiedKnownLedger }, repositoryState)).toThrow(/did not return an array/)
+    expect(() => evaluateAppliedMigrationLedger([...exactVerifiedKnownLedger, 'not-explicit-*'], repositoryState)).toThrow(/malformed migration name/)
   })
 })
 
@@ -347,24 +344,27 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
     })).rejects.toThrow(/did not return an array/)
   })
 
-  it('fails a Vercel build against the current production ledger while a migration is unapplied', async () => {
+  it('fails a Vercel build against the pre-apply ledger that lacks the P1B migration', async () => {
     await expect(runMigrationGuard({
       env: vercelEnv,
-      fetchImpl: vi.fn().mockResolvedValue({ ok: true, json: async () => currentVerifiedProductionLedger }),
+      fetchImpl: vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => exactVerifiedKnownLedger.filter((name) => name !== P1B_MIGRATION),
+      }),
       ...runtimeHarness,
     })).rejects.toThrow(/not applied to the production ledger/)
   })
 
-  it('passes a Vercel build only for the validated known ledger set (hypothetical post-apply)', async () => {
+  it('passes a Vercel build only for the validated known ledger set', async () => {
     const result = await runMigrationGuard({
       env: vercelEnv,
-      fetchImpl: vi.fn().mockResolvedValue({ ok: true, json: async () => postApplySyntheticLedger }),
+      fetchImpl: vi.fn().mockResolvedValue({ ok: true, json: async () => exactVerifiedKnownLedger }),
       ...runtimeHarness,
     })
     // The whole post-apply picture in one assertion: the canonical corpus is
-    // 110 files / 96 enforced after Phase 3B1B2 M4, and the HYPOTHETICAL post-apply
-    // ledger is 134 (production itself is 133 until P1B is applied; M4's three migrations
-    // were applied as versions 20261007094814, 20261007095425, 20261007100001).
+    // 111 files / 97 enforced after P1B, and the production ledger is 134 because P1B is
+    // APPLIED (version 20261010080307; M4's three migrations are 20261007094814,
+    // 20261007095425, 20261007100001).
     expect(result).toMatchObject({
       skipped: false,
       policyVersion: 2,

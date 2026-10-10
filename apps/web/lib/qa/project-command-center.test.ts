@@ -771,6 +771,28 @@ describe('project command center · legacy rollback', () => {
 // 19–21 · Honesty and navigation
 // ═════════════════════════════════════════════════════════════════════════════
 
+describe('project command center · Marknadsplatsstatistik link', () => {
+  const HB = { ...PROJECT, id: '8f673c09-1c8f-4d78-876e-4c14bf1c89b3', slug: 'handlarborsen', name: 'Handlarbörsen' }
+
+  it('is present for the verified Handlarbörsen project, through the registry href', () => {
+    expect(assembleProjectCommandCenter(input({ project: HB })).links.marketplace).toBe('/projects/handlarborsen/marketplace')
+  })
+
+  it.each([
+    ['another project', PROJECT],
+    ['right slug, wrong id', { ...HB, id: '11111111-1111-1111-1111-111111111111' }],
+    ['right id, wrong slug', { ...HB, slug: 'handlarborsen-2' }],
+    ['right id and slug, wrong name', { ...HB, name: 'Something else' }],
+  ])('is absent for %s', (_n, project) => {
+    expect(assembleProjectCommandCenter(input({ project })).links.marketplace).toBeNull()
+  })
+
+  it('the view renders it as a plain link, with no project name of its own', () => {
+    expect(VIEW).toContain("{ label: 'Marknadsplatsstatistik', href: links.marketplace }")
+    expect(codeOnly(VIEW)).not.toMatch(/handlarborsen/i)
+  })
+})
+
 describe('project command center · navigation is the registry’s', () => {
   it('derives every project link from resolveDestination(project_home)', () => {
     const model = assembleProjectCommandCenter(input())

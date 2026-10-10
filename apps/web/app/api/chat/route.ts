@@ -49,6 +49,7 @@ import { recordAction, buildActionMemory } from '@/lib/atlas/action-memory'
 // CL Commit 5 (Stage 0, shadow): assembler-vs-legacy diff instrumentation.
 // Flag-gated (ATLAS_CTX_ASSEMBLER=shadow), fire-and-forget, never in the live path.
 import { isContextShadowEnabled, runContextShadow } from '@/lib/atlas/context/shadow'
+import { buildHandlarborsenChatFacts } from '@/lib/atlas/project-analytics/handlarborsen-chat'
 import { isExplicitlyAuthorizedInternalPrincipal } from '@/lib/architecture-knowledge/policy'
 import { resolveDestination, resolveLinks, resolveProjectSlug, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
 import { toJson, parseWorkflowSteps } from '@/lib/supabase/json'
@@ -768,6 +769,15 @@ export async function POST(request: Request) {
             systemPrompt += await buildRecordsInView(db, nv, allowedProjectIds)
           }
         }
+      } catch { /* icke-kritiskt */ }
+    }
+    // Handlarbörsen marketplace facts (P1D.2): read-only, observer-safe, and ONLY when this
+    // turn is a plain question that names Handlarbörsen and nothing else. The user's
+    // allow-list (server-verified above) is the permission; the text is only a clue.
+    // Not for action/navigation/resolution turns, and never in every global answer.
+    if (!actionIntent && !navIntent && !resolutionIntent) {
+      try {
+        systemPrompt += await buildHandlarborsenChatFacts({ db, allowedProjectIds, text: lastUserText })
       } catch { /* icke-kritiskt */ }
     }
     if (voice) systemPrompt += VOICE_DIRECTIVE

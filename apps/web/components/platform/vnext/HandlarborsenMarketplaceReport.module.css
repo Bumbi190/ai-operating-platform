@@ -1,0 +1,85 @@
+/* Handlarbörsen · Marknadsplatsstatistik. Flow-based rem layout; nothing scrolls sideways.
+   Colour carries tone only: every state is also a word. */
+
+.field {
+  font-family: var(--font-geist-sans), Inter, ui-sans-serif, system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.5rem 1.5rem 5rem;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.header { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.kicker {
+  margin: 0;
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.5625rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgb(var(--omnira-cyan-soft-rgb) / 0.55);
+}
+
+.title { margin: 0; font-size: 1.5rem; font-weight: 600; overflow-wrap: anywhere; }
+
+.back { font-size: 0.8125rem; color: rgb(var(--omnira-cyan-soft-rgb) / 0.8); text-decoration: none; }
+.back:hover, .back:focus-visible { text-decoration: underline; }
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.125rem;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 0.75rem;
+  min-width: 0;
+}
+
+.sectionTitle { margin: 0; font-size: 0.9375rem; font-weight: 600; }
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.75rem 1.25rem;
+  margin: 0;
+}
+.fact { min-width: 0; }
+.fact dt { font-size: 0.6875rem; letter-spacing: 0.06em; text-transform: uppercase; opacity: 0.6; }
+.fact dd { margin: 0.125rem 0 0; font-size: 0.9375rem; overflow-wrap: anywhere; }
+.fact dd[data-tone='ok'] { color: var(--omnira-teal, #2dd4bf); }
+.fact dd[data-tone='warning'] { color: var(--omnira-amber, #fbbf24); }
+
+.detail { font-size: 0.8125rem; opacity: 0.65; }
+
+.metrics { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.metric {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid rgb(255 255 255 / 0.06);
+}
+.metric:first-child { border-top: 0; }
+.metricLabel { font-size: 0.875rem; }
+.metricValue { font-size: 1rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.metric[data-unavailable='true'] .metricValue { color: var(--omnira-amber, #fbbf24); }
+.delta { margin-left: 0.5rem; font-size: 0.75rem; opacity: 0.7; }
+
+.note, .noteQuiet { margin: 0; font-size: 0.8125rem; line-height: 1.5; }
+.noteQuiet { opacity: 0.75; }
+.note {
+  padding: 0.5rem 0.75rem;
+  border: 1px dashed rgb(255 255 255 / 0.18);
+  border-radius: 0.5rem;
+}
+.note[data-tone='warning'] { border-color: rgb(251 191 36 / 0.3); color: var(--omnira-amber, #fbbf24); }
+.note[data-tone='error'] { border-style: solid; border-color: rgb(248 113 113 / 0.32); color: var(--omnira-rose, #f87171); }
+
+@media (max-width: 40rem) {
+  .field { padding: 1rem 1rem 4rem; }
+}

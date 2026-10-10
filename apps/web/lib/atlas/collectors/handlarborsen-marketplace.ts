@@ -18,14 +18,23 @@
  * An unavailable metric stays null end to end. It is never coerced to 0, and a
  * run with any null is flagged completeness = 'partial' (or 'unavailable').
  *
+ * Storage is GUARDED (P1E): the snapshot is written only through the database function
+ * handlarborsen_store_marketplace_snapshot, which decides atomically under a row lock
+ * whether the observation may replace what is stored for today. A complete report is never
+ * replaced by a less complete one, an older observation never replaces a newer one of equal
+ * quality, and earlier days are immutable. When the database declines, the run is 'skipped'
+ * with the reason and NO signal is emitted, so nothing claims a save that did not happen.
+ *
  * Signal kind:  handlarborsen.marketplace_snapshot
- * Version:      handlarborsen-marketplace-collector-1.0.0
- * Cadence:      none yet — no cron is scheduled in this phase.
+ * Version:      handlarborsen-marketplace-collector-1.1.0
+ * Cadence:      daily 06:55 UTC by the pg_cron job omnira_handlarborsen_marketplace, once
+ *               that job has been activated (a separate, manually approved step; see
+ *               docs/handlarborsen-p1e/). The route itself schedules nothing.
  */
 
-import { BaseCollector, type CollectorContext } from './types'
+import { BaseCollector, type CollectorContext, type StoreDeclined } from './types'
 
-export const HANDLARBORSEN_COLLECTOR_VERSION = 'handlarborsen-marketplace-collector-1.0.0'
+export const HANDLARBORSEN_COLLECTOR_VERSION = 'handlarborsen-marketplace-collector-1.1.0'
 export const HANDLARBORSEN_PROJECT_ID = '8f673c09-1c8f-4d78-876e-4c14bf1c89b3'
 export const HANDLARBORSEN_PROJECT_SLUG = 'handlarborsen'
 /** Canonical production host (the apex domains 308-redirect here). Fixed on purpose. */
@@ -293,28 +302,90 @@ export class HandlarborsenMarketplaceCollector extends BaseCollector {
     }
   }
 
-  async store(payload: Record<string, unknown>, ctx: CollectorContext): Promise<void> {
+  /**
+   * Hands the observation to the guarded database function. Returns undefined when the
+   * snapshot was stored (inserted, upgraded or refreshed) and a StoreDeclined when the
+   * database deliberately kept what it had (rejected, unchanged). Throws a fixed code on a
+   * real failure, which storeRequired turns into status 'error'.
+   */
+  async store(payload: Record<string, unknown>, ctx: CollectorContext): Promise<void | StoreDeclined> {
     if (ctx.projectId !== HANDLARBORSEN_PROJECT_ID) return
     const metrics = payload.metrics as Record<MarketplaceMetricKey, number | null>
-    // handlarborsen_marketplace_snapshots is not in generated types — established cast.
-    const { error } = await (ctx.db as any).from('handlarborsen_marketplace_snapshots').upsert(
-      {
-        project_id:     ctx.projectId,
-        snapshot_date:  ctx.snapshotDate,
-        observed_at:    payload.observed_at,
-        captured_at:    new Date().toISOString(),
-        schema_version: 1,
-        window_hours:   24,
-        completeness:   payload.completeness,
-        unavailable:    payload.unavailable,
-        ...metrics,
-      },
-      { onConflict: 'project_id,snapshot_date' },
-    )
+    // The function is not in generated types — established cast. Completeness is derived
+    // by the database from the metrics; only the values and the reasons are sent.
+    const { data, error } = await (ctx.db as any).rpc('handlarborsen_store_marketplace_snapshot', {
+      p_snapshot_date: ctx.snapshotDate,
+      p_observed_at:   payload.observed_at,
+      p_unavailable:   payload.unavailable,
+      p_metrics:       metrics,
+    })
     // Fixed code only: the database error text must not travel into logs, the run record or the response.
     if (error) {
-      console.error(`[handlarborsen.marketplace] snapshot upsert failed (code: ${(error as { code?: string }).code ?? 'unknown'})`)
+      console.error(`[handlarborsen.marketplace] snapshot store failed (code: ${(error as { code?: string }).code ?? 'unknown'})`)
       throw new Error('handlarborsen_snapshot_store_failed')
     }
+
+    const result = parseStoreResult(data)
+    if (!result || result.completeness !== payload.completeness) {
+      console.error('[handlarborsen.marketplace] snapshot store returned an unexpected answer')
+      throw new Error('handlarborsen_snapshot_store_failed')
+    }
+
+    // What actually happened, for the signal payload and the audit log.
+    payload.storage_outcome = result.outcome
+    if (result.stored) return
+
+    return {
+      declined: true,
+      reason:   `snapshot_not_stored:${result.reason ?? result.outcome}`,
+      metadata: {
+        storage_outcome:  result.outcome,
+        storage_reason:   result.reason,
+        snapshot_date:    ctx.snapshotDate,
+        project_id:       ctx.projectId,
+        observed:         { completeness: result.completeness, available_count: result.availableCount, observed_at: payload.observed_at },
+        existing:         { completeness: result.existingCompleteness, available_count: result.existingAvailableCount, observed_at: result.existingObservedAt },
+      },
+    }
+  }
+}
+
+export type StoreOutcome = 'inserted' | 'upgraded' | 'refreshed' | 'unchanged' | 'rejected'
+const STORED_OUTCOMES: readonly string[] = ['inserted', 'upgraded', 'refreshed']
+const DECLINED_OUTCOMES: readonly string[] = ['unchanged', 'rejected']
+const REJECT_REASONS: readonly string[] = ['lower_quality', 'older_observation']
+
+interface ParsedStoreResult {
+  outcome: StoreOutcome
+  stored: boolean
+  reason: string | null
+  completeness: string
+  availableCount: number
+  existingCompleteness: string | null
+  existingAvailableCount: number | null
+  existingObservedAt: string | null
+}
+
+/** Strict: anything but the documented answer of the database function is a failure, not a guess. */
+export function parseStoreResult(data: unknown): ParsedStoreResult | null {
+  if (!isPlainObject(data)) return null
+  const outcome = data.outcome
+  if (typeof outcome !== 'string') return null
+  const stored = STORED_OUTCOMES.includes(outcome)
+  if (!stored && !DECLINED_OUTCOMES.includes(outcome)) return null
+  if (data.stored !== stored) return null
+  const reason = data.reason ?? null
+  if (outcome === 'rejected' ? typeof reason !== 'string' || !REJECT_REASONS.includes(reason) : reason !== null) return null
+  if (typeof data.completeness !== 'string' || !Number.isInteger(data.available_count)) return null
+  const existing = outcome === 'inserted'
+  return {
+    outcome: outcome as StoreOutcome,
+    stored,
+    reason: reason as string | null,
+    completeness: data.completeness,
+    availableCount: data.available_count as number,
+    existingCompleteness: existing ? null : (typeof data.existing_completeness === 'string' ? data.existing_completeness : null),
+    existingAvailableCount: existing ? null : (Number.isInteger(data.existing_available_count) ? (data.existing_available_count as number) : null),
+    existingObservedAt: existing ? null : (typeof data.existing_observed_at === 'string' ? data.existing_observed_at : null),
   }
 }

@@ -70,6 +70,19 @@
 .metric[data-unavailable='true'] .metricValue { color: var(--omnira-amber, #fbbf24); }
 .delta { margin-left: 0.5rem; font-size: 0.75rem; opacity: 0.7; }
 
+.history { list-style: none; margin: 0.25rem 0 0; padding: 0; display: flex; flex-direction: column; }
+.historyRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid rgb(255 255 255 / 0.06);
+}
+.historyDate { font-size: 0.875rem; font-variant-numeric: tabular-nums; }
+.historyValues { display: flex; flex-wrap: wrap; gap: 0.125rem 1rem; }
+.historyValue { font-size: 0.75rem; font-variant-numeric: tabular-nums; opacity: 0.8; overflow-wrap: anywhere; }
+.historyValue[data-unavailable='true'] { color: var(--omnira-amber, #fbbf24); opacity: 1; }
+
 .note, .noteQuiet { margin: 0; font-size: 0.8125rem; line-height: 1.5; }
 .noteQuiet { opacity: 0.75; }
 .note {

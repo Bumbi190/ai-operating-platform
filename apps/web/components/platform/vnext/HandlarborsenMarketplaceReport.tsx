@@ -1,12 +1,15 @@
 import Link from 'next/link'
 import {
+  COLLECTION_TODAY_LABELS,
   COMPLETENESS_LABELS,
   METRIC_GROUP_ORDER,
   STALE_AFTER_HOURS,
   formatAge,
   formatStockholm,
+  type CollectionStatus,
   type MarketplaceReport,
   type MetricView,
+  type ReportSnapshot,
   type ReportState,
   REPORT_STATE_MESSAGES,
 } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-report'
@@ -72,10 +75,16 @@ export function HandlarborsenMarketplaceReport({
                 <dt>Rapportdag</dt>
                 <dd>{latest.snapshotDate}</dd>
               </div>
+              {report.collection ? <CollectionFacts collection={report.collection} /> : null}
             </dl>
             {latest.freshness === 'stale' ? (
               <p className={styles.note} data-tone="warning" role="note">
-                Rapporten är gammal. Insamlingen är ännu inte schemalagd, så nya rapporter kommer först när den körs.
+                Rapporten är äldre än {STALE_AFTER_HOURS} tim och kan vara inaktuell.
+              </p>
+            ) : null}
+            {report.collection?.latestAttemptFailed ? (
+              <p className={styles.note} data-tone="warning" role="note">
+                Det senaste insamlingsförsöket misslyckades eller gav ingen ny rapport. Siffrorna är från den senast sparade rapporten.
               </p>
             ) : null}
             {latest.completeness !== 'complete' ? (
@@ -112,10 +121,67 @@ export function HandlarborsenMarketplaceReport({
               Sparade rapporter: {report.history.snapshotCount}
               {report.history.skippedInvalid > 0 ? ` · ${report.history.skippedInvalid} kunde inte verifieras och hoppades över` : ''}
             </p>
+            {report.history.series.length > 1 ? (
+              <ol className={styles.history} aria-label="Sparade rapporter, senaste först">
+                {report.history.series.slice(0, HISTORY_ROWS).map((snapshot) => (
+                  <HistoryRow key={snapshot.snapshotDate} snapshot={snapshot} />
+                ))}
+              </ol>
+            ) : null}
           </section>
         </>
       )}
     </main>
+  )
+}
+
+/** How many saved days the history list shows; the report model holds more. */
+const HISTORY_ROWS = 14
+
+function CollectionFacts({ collection }: { collection: CollectionStatus }) {
+  const today = COLLECTION_TODAY_LABELS[collection.today]
+  return (
+    <>
+      <div className={styles.fact}>
+        <dt>Senaste lyckade insamling</dt>
+        <dd>
+          {collection.lastSuccess ? (
+            <>
+              <time dateTime={collection.lastSuccess.ranAt}>{formatStockholm(collection.lastSuccess.ranAt)}</time>
+              <span className={styles.detail}> · {formatAge(collection.lastSuccess.ageHours)} sedan</span>
+            </>
+          ) : (
+            'Ingen lyckad insamling registrerad'
+          )}
+        </dd>
+      </div>
+      <div className={styles.fact}>
+        <dt>Dagens insamling</dt>
+        <dd data-tone={today.tone}>{today.value}</dd>
+      </div>
+    </>
+  )
+}
+
+/**
+ * One saved day: the stock-type figures only (totals and current levels). The 24 h window
+ * figures are a different window each day and are not lined up against each other.
+ */
+function HistoryRow({ snapshot }: { snapshot: ReportSnapshot }) {
+  return (
+    <li className={styles.historyRow}>
+      <span className={styles.historyDate}>
+        {snapshot.snapshotDate}
+        <span className={styles.detail}> · {COMPLETENESS_LABELS[snapshot.completeness]}</span>
+      </span>
+      <span className={styles.historyValues}>
+        {snapshot.metrics.filter((m) => m.kind !== 'window24h').map((m) => (
+          <span key={m.key} className={styles.historyValue} data-unavailable={m.value === null ? 'true' : undefined}>
+            {m.label} {m.value === null ? 'okänt' : m.value}
+          </span>
+        ))}
+      </span>
+    </li>
   )
 }
 

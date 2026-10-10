@@ -67,6 +67,14 @@ export abstract class BaseCollector {
   abstract readonly id: string
   /** Signal kind emitted on success, e.g. "stripe.mrr_snapshot". */
   abstract readonly signalKind: string
+  /**
+   * Opt-in. When true, a failed store() fails the run: status 'error', NO signal is
+   * emitted and the failure is recorded by the caller in collector_runs. Default false
+   * keeps the original behaviour (store failure is non-fatal, signal still emitted), so
+   * every collector that does not opt in behaves exactly as before.
+   */
+  readonly storeRequired: boolean = false
+
   /** Producer version string, e.g. "stripe-collector-1.0.0". */
   abstract readonly version: string
   /** Source label, e.g. "stripe", "instagram". Stored in atlas_signals.source. */
@@ -118,6 +126,13 @@ export abstract class BaseCollector {
             `[${this.id}] store() failed (non-fatal): ` +
             (storeErr instanceof Error ? storeErr.message : String(storeErr))
           )
+          if (this.storeRequired) {
+            // The snapshot is part of the contract: report the run as failed and emit
+            // nothing. The error text is a fixed code, never the underlying message
+            // (which stays in the server log above).
+            return this._result(ctx, 'error', null, null, Date.now() - t0,
+              'snapshot_store_failed', { store_failed: true })
+          }
           payload.__store_error = storeErr instanceof Error ? storeErr.message : String(storeErr)
         }
       }

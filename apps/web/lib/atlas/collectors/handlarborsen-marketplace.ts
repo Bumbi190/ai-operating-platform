@@ -219,6 +219,8 @@ export class HandlarborsenMarketplaceCollector extends BaseCollector {
   readonly signalKind = 'handlarborsen.marketplace_snapshot'
   readonly version    = HANDLARBORSEN_COLLECTOR_VERSION
   readonly source     = 'handlarborsen'
+  /** A run without its stored snapshot is a failed run: no signal, status 'error'. */
+  readonly storeRequired = true
 
   /**
    * Returns null when the credential is unusable (=> skipped, nothing fetched).
@@ -309,6 +311,10 @@ export class HandlarborsenMarketplaceCollector extends BaseCollector {
       },
       { onConflict: 'project_id,snapshot_date' },
     )
-    if (error) throw new Error(`handlarborsen_marketplace_snapshots upsert failed: ${error.message}`)
+    // Fixed code only: the database error text must not travel into logs, the run record or the response.
+    if (error) {
+      console.error(`[handlarborsen.marketplace] snapshot upsert failed (code: ${(error as { code?: string }).code ?? 'unknown'})`)
+      throw new Error('handlarborsen_snapshot_store_failed')
+    }
   }
 }

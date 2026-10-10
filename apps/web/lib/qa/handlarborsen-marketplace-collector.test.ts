@@ -53,6 +53,7 @@ import {
   isEligibleHandlarborsenProject,
   parseMarketplaceMetrics,
 } from '@/lib/atlas/collectors/handlarborsen-marketplace'
+import { BaseCollector } from '@/lib/atlas/collectors/types'
 import { GET } from '@/app/api/collectors/handlarborsen/marketplace/route'
 
 const TOKEN = 'h'.repeat(40)
@@ -166,11 +167,42 @@ describe('HandlarborsenMarketplaceCollector — contract and storage', () => {
     expect(recordSignal).not.toHaveBeenCalled()
   })
 
-  it('a failing snapshot write is non-fatal and still emits the signal', async () => {
-    upsertError = { message: 'db down' }
+  it('a failed snapshot write is NEVER a successful collection: error, no signal, no DB text', async () => {
+    upsertError = { message: 'relation "x" does not exist, host db.secret.internal', code: '42P01' }
     const result = await new HandlarborsenMarketplaceCollector().run(ctx())
+    expect(result.status).toBe('error')
+    expect(result.error).toBe('snapshot_store_failed')
+    expect(result.signalKind).toBeNull()
+    expect(result.signalId).toBeNull()
+    expect(result.metadata).toEqual({ store_failed: true })
+    expect(recordSignal).not.toHaveBeenCalled()
+    expect(JSON.stringify(result)).not.toMatch(/secret|does not exist|42P01/)
+    const logged = JSON.stringify((console.error as unknown as { mock: { calls: unknown[] } }).mock.calls)
+    expect(logged).not.toMatch(/secret.internal|does not exist/) // only the code reaches the server log
+  })
+
+  it('dry run never touches the snapshot table, so it works even when that table is missing', async () => {
+    upsertError = { message: 'relation does not exist', code: '42P01' }
+    const result = await new HandlarborsenMarketplaceCollector().run(ctx({ dryRun: true }))
     expect(result.status).toBe('ok')
-    expect(result.metadata.__store_error).toContain('upsert failed')
+    expect(ops).toHaveLength(0)
+    expect(recordSignal).not.toHaveBeenCalled()
+  })
+
+  it('other collectors are unchanged: storeRequired defaults to false and a store failure stays non-fatal', async () => {
+    class Legacy extends BaseCollector {
+      readonly id = 'test.legacy'; readonly signalKind = 'test.kind'; readonly version = 't-1'; readonly source = 'test'
+      async fetch() { return {} }
+      validate(raw: unknown) { return raw }
+      normalize() { return { a: 1 } as Record<string, unknown> }
+      async store() { throw new Error('boom') }
+    }
+    const legacy = new Legacy()
+    expect(legacy.storeRequired).toBe(false)
+    expect(new HandlarborsenMarketplaceCollector().storeRequired).toBe(true)
+    const result = await legacy.run(ctx({ projectId: 'p', projectSlug: 's' }))
+    expect(result.status).toBe('ok')
+    expect(result.metadata.__store_error).toBe('boom')
     expect(recordSignal).toHaveBeenCalledTimes(1)
   })
 })
@@ -436,6 +468,29 @@ describe('GET /api/collectors/handlarborsen/marketplace', () => {
     expect(JSON.parse(text).runs[0].metrics.vehicles_reserved).toBeNull()
     expect(text).not.toContain(TOKEN)
     expect(text).not.toContain(CRON)
+  })
+
+  it('a failed snapshot write returns 500, records an error run, emits no signal and leaks nothing', async () => {
+    upsertError = { message: 'permission denied for table handlarborsen_marketplace_snapshots', code: '42501' }
+    const res = await call()
+    const text = await res.text()
+    expect(res.status).toBe(500)
+    expect(JSON.parse(text).runs[0]).toMatchObject({ status: 'error', error: 'snapshot_store_failed', signalId: null })
+    expect(text).not.toMatch(/permission denied|42501|handlarborsen_marketplace_snapshots/)
+    expect(recordSignal).not.toHaveBeenCalled()
+    const runs = ops.filter((o) => o.table === 'collector_runs' && o.op === 'insert')
+    expect(runs).toHaveLength(1)
+    expect(runs[0].args[0]).toMatchObject({
+      collector_id: 'handlarborsen.marketplace', status: 'error', error_message: 'snapshot_store_failed',
+      signal_id: null, signal_kind: null, metadata: { store_failed: true },
+    })
+  })
+
+  it('dry_run=1 succeeds even when the snapshot table is unavailable', async () => {
+    upsertError = { message: 'relation does not exist', code: '42P01' }
+    const res = await call('?dry_run=1')
+    expect(res.status).toBe(200)
+    expect(ops.filter((o) => o.op !== 'maybeSingle')).toHaveLength(0)
   })
 
   it('returns 500 when the collector fails validation', async () => {

@@ -27,8 +27,18 @@ const GRANDFATHERED_PRESENT_IN_VERIFIED_LEDGER = [
   'migration_guard_fn',
 ]
 
+// Enforced canonical migrations that exist in the repository but are NOT yet applied to
+// production. This list is the only place a migration may be declared "not yet applied";
+// an entry is removed in the same change that records its real, operator-approved apply.
+// Empty: `handlarborsen_marketplace_snapshots` (P1B, file 20261010100000) was APPLIED to
+// production on 2026-10-10 as ledger version 20261010080307.
+const ENFORCED_NOT_YET_APPLIED: string[] = []
+const P1B_MIGRATION = 'handlarborsen_marketplace_snapshots'
+
+// The CURRENT verified production history: 134 rows = every enforced migration (all
+// applied) plus the grandfathered and legacy-only names. Perturbation tests start from it.
 const exactVerifiedKnownLedger = [
-  ...repositoryState.enforcedNames,
+  ...repositoryState.enforcedNames.filter((name) => !ENFORCED_NOT_YET_APPLIED.includes(name)),
   ...GRANDFATHERED_PRESENT_IN_VERIFIED_LEDGER,
   ...LEGACY_ONLY_PRODUCTION_LEDGER_NAMES,
 ]
@@ -80,14 +90,14 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
   // NOTE ON 3B1A: these two counts describe the CANONICAL CORPUS, so they move as soon
   // as the file exists. The production APPLY is a separate fact, and it has NOT happened
   // for 3B1A — see the ledger assertion below, which is deliberately left RED.
-  it('pins policy v2 and the current 110/96/14/30 counts', () => {
+  it('pins policy v2 and the current 111/97/14/30 counts', () => {
     expect(MIGRATION_GUARD_POLICY_VERSION).toBe(2)
-    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(110)
-    expect(EXPECTED_ENFORCED_COUNT).toBe(96)
+    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(111)
+    expect(EXPECTED_ENFORCED_COUNT).toBe(97)
     expect(GRANDFATHERED_MIGRATION_NAMES).toHaveLength(14)
     expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).toHaveLength(30)
-    expect(repositoryState.sqlFiles).toHaveLength(110)
-    expect(repositoryState.enforcedNames).toHaveLength(96)
+    expect(repositoryState.sqlFiles).toHaveLength(111)
+    expect(repositoryState.enforcedNames).toHaveLength(97)
   })
 
   it('uses exact explicit names with no wildcard policy entries', () => {
@@ -124,7 +134,21 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
 })
 
 describe('Migration Guard v2 — production ledger set integrity', () => {
-  it('passes the exact current synthetic known history', () => {
+  it('REJECTS the pre-apply 133-row history that lacks the P1B migration (drift is still caught)', () => {
+    const preApply = exactVerifiedKnownLedger.filter((name) => name !== P1B_MIGRATION)
+    expect(preApply).toHaveLength(133)
+    expect(repositoryState.enforcedNames).toContain(P1B_MIGRATION)
+    let message = ''
+    try {
+      evaluateAppliedMigrationLedger(preApply, repositoryState)
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error)
+    }
+    expect(message).toMatch(/not applied to the production ledger/)
+    expect(message).toContain(P1B_MIGRATION)
+  })
+
+  it('passes the exact current verified production history (134)', () => {
     const result = evaluateAppliedMigrationLedger(exactVerifiedKnownLedger, repositoryState)
     // 125 = main's 124 (which already contains sdf1c1b_broker_claim_credentials,
     // survival_funding_phase2b, sdf1c2_broker_control_channel and
@@ -210,7 +234,14 @@ describe('Migration Guard v2 — production ledger set integrity', () => {
     // Each applied statement is byte-identical to its reviewed file (verified against
     // `schema_migrations.statements`), so 130 here would now be stale information. The M4
     // APPLICATION is not deployed by that rollout; this pin records the database only.
-    expect(result.appliedLedgerCount).toBe(133)
+    // POST-APPLY RECORD — P1B. `handlarborsen_marketplace_snapshots` took the enforced set
+    // from 96 to 97 and this fixture from 133 to 134. It was APPLIED to production on
+    // 2026-10-10 under the operator-approved P1B rollout; the production ledger now holds
+    // 134 rows and contains the name exactly once, at version 20261010080307 (the file is
+    // named 20261010100000). The applied statement is byte-identical to the reviewed file
+    // (4821 characters, sha256 ee59a8c9…441653, verified against
+    // `schema_migrations.statements`), so 133 here would now be stale information.
+    expect(result.appliedLedgerCount).toBe(134)
     expect(result.unknownLedgerNames).toEqual([])
     expect(result.duplicateLedgerNames).toEqual([])
   })
@@ -313,6 +344,17 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
     })).rejects.toThrow(/did not return an array/)
   })
 
+  it('fails a Vercel build against the pre-apply ledger that lacks the P1B migration', async () => {
+    await expect(runMigrationGuard({
+      env: vercelEnv,
+      fetchImpl: vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => exactVerifiedKnownLedger.filter((name) => name !== P1B_MIGRATION),
+      }),
+      ...runtimeHarness,
+    })).rejects.toThrow(/not applied to the production ledger/)
+  })
+
   it('passes a Vercel build only for the validated known ledger set', async () => {
     const result = await runMigrationGuard({
       env: vercelEnv,
@@ -320,17 +362,15 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
       ...runtimeHarness,
     })
     // The whole post-apply picture in one assertion: the canonical corpus is
-    // 110 files / 96 enforced after Phase 3B1B2 M4, and the synthetic known ledger is 133
-    // because the three M4 migrations are now APPLIED to production
-    // (versions 20261007094814, 20261007095425, 20261007100001). See the note on the
-    // integrity test above for
-    // why this number is hardcoded rather than derived.
+    // 111 files / 97 enforced after P1B, and the production ledger is 134 because P1B is
+    // APPLIED (version 20261010080307; M4's three migrations are 20261007094814,
+    // 20261007095425, 20261007100001).
     expect(result).toMatchObject({
       skipped: false,
       policyVersion: 2,
-      canonicalSqlCount: 110,
-      enforcedCount: 96,
-      appliedLedgerCount: 133,
+      canonicalSqlCount: 111,
+      enforcedCount: 97,
+      appliedLedgerCount: 134,
     })
   })
 })

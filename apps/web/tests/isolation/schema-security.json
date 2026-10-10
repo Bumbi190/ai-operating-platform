@@ -3,7 +3,7 @@
     "purpose": "Phase 9Y schema-security classification for every table in schema 'public'. Captured from the EFFECTIVE database catalog, not parsed from migration text \u2014 because the exposure this file exists to prevent (workflow_stories) was created by a migration that simply never mentioned row level security, so migration text alone could never have revealed it.",
     "captured_from": "production project iboepohjwrhtgshrqaol",
     "captured_at": "2026-09-25",
-    "total_tables": 90,
+    "total_tables": 91,
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
     "platform_tokens_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090000_platform_tokens_client_revoke.sql (Settings S0): client grants revoked, RLS on, no policy.",
     "platform_credential_events_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090100_platform_credential_events.sql (Settings S0), applied to production before this row was merged: created with RLS on and no policy, every client grant revoked, service_role holding SELECT and INSERT only, UPDATE/DELETE/TRUNCATE refused by triggers.",
@@ -58,7 +58,8 @@
     "run_autonomy_decisions_note": "Its row reflects production after apps/web/supabase/migrations/20260925120000_autonomy_trace_decisions.sql (Phase 3B1A) was APPLIED on 2026-09-26 (ledger version 20260926082643), as extended by apps/web/supabase/migrations/20261004110000_m4b_licensed_bind.sql (Phase 3B1B2 M4-B, APPLIED 2026-10-07, ledger version 20261007100001), introspected read-only on 2026-10-07. It was previously listed under created_not_live, a pre-existing bookkeeping error: the table has been live since the 3B1A apply. Class SERVER_ONLY, unchanged: RLS on with ZERO policies, no grant to anon or authenticated, SELECT granted to service_role alone; writers are SECURITY DEFINER bind RPCs only. At introspection it held one 3B1A exempt-bind row and ZERO db_conservative_proof_v1 rows.",
     "licensed_bind_authority_intents_note": "Its row reflects production after apps/web/supabase/migrations/20261004100000_m4a_licensed_authority_substrate.sql (Phase 3B1B2 M4-A) was APPLIED on 2026-10-07 (ledger version 20261007095425, stored statement sha256 d9ecf8024cf2e393e8616ccbe41593b0e1c4b250db10703ad5302fada719f593), introspected read-only after the apply. Class DB_INTERNAL: RLS on with ZERO policies and NO direct privilege for public, anon, authenticated OR service_role (service_role false). Written only by licensed_bind_register_authority_deadline() and read only by its deferred commit-time recheck licensed_bind_authority_recheck() and by the LB004 no-authority-write-after-bind triggers \u2014 all SECURITY DEFINER database-internal machinery owned by postgres and executable by no API role. It held ZERO rows at introspection.",
     "atlas_authorization_heads_note": "Its row reflects production after apps/web/supabase/migrations/20261004110000_m4b_licensed_bind.sql (Phase 3B1B2 M4-B) was APPLIED on 2026-10-07 (ledger version 20261007100001, stored statement sha256 d4e124c759b4cdf2f45c1a874fa8c2278a7e598547e002d626a3f2f32aa417d3), introspected read-only after the apply. Class DB_INTERNAL: RLS on with ZERO policies and NO direct privilege for public, anon, authenticated OR service_role (service_role false). A serialization cursor per atlas_authorizations chain (event count + latest event id), moved only by the SECURITY DEFINER AFTER INSERT trigger atlas_authorization_head_advance(); a guard trigger refuses DELETE, TRUNCATE and any non-advancing UPDATE. The apply backfilled exactly two heads, one per historical workflow.gate.advance chain, each with event_count 2 and last_event_id its historical grant.",
-    "atlas_authorization_human_grants_note": "Its row reflects production after apps/web/supabase/migrations/20261004110000_m4b_licensed_bind.sql (Phase 3B1B2 M4-B) was APPLIED on 2026-10-07 (ledger version 20261007100001, stored statement sha256 d4e124c759b4cdf2f45c1a874fa8c2278a7e598547e002d626a3f2f32aa417d3), introspected read-only after the apply. Class DB_INTERNAL: RLS on with ZERO policies and NO direct privilege for public, anon, authenticated OR service_role (service_role false); append-only (UPDATE/DELETE/TRUNCATE refused by trigger). The non-forgeable HUMAN-ORIGIN attestation of one M4 execution grant event, written ONLY by atlas_grant_m4_execution_authorization() (EXECUTE held by authenticated alone; service_role, anon and PUBLIC hold none). It held ZERO rows at introspection: no human execution authorization exists."
+    "atlas_authorization_human_grants_note": "Its row reflects production after apps/web/supabase/migrations/20261004110000_m4b_licensed_bind.sql (Phase 3B1B2 M4-B) was APPLIED on 2026-10-07 (ledger version 20261007100001, stored statement sha256 d4e124c759b4cdf2f45c1a874fa8c2278a7e598547e002d626a3f2f32aa417d3), introspected read-only after the apply. Class DB_INTERNAL: RLS on with ZERO policies and NO direct privilege for public, anon, authenticated OR service_role (service_role false); append-only (UPDATE/DELETE/TRUNCATE refused by trigger). The non-forgeable HUMAN-ORIGIN attestation of one M4 execution grant event, written ONLY by atlas_grant_m4_execution_authorization() (EXECUTE held by authenticated alone; service_role, anon and PUBLIC hold none). It held ZERO rows at introspection: no human execution authorization exists.",
+    "handlarborsen_marketplace_snapshots_note": "Its row reflects production after apps/web/supabase/migrations/20261010100000_handlarborsen_marketplace_snapshots.sql (Atlas collector P1B) was APPLIED on 2026-10-10 (ledger version 20261010080307, 4821-character statement byte-identical to the repository file, sha256 ee59a8c936dc0692715e60b1f4ec2e4870681c9433fbde384ff8d1d434441653), introspected read-only after the apply: RLS on with ZERO policies, no grant to anon or authenticated, service_role holds INSERT, SELECT and UPDATE only (DELETE, TRUNCATE, TRIGGER and REFERENCES were revoked). Class SERVER_ONLY. The table held ZERO rows at introspection. It was previously listed under created_not_live; no cron or token is active, so nothing writes to it yet."
   },
   "tables": {
     "account_snapshots": {
@@ -517,6 +518,16 @@
       "policies": 0,
       "anon_grants": true,
       "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "handlarborsen_marketplace_snapshots": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
       "service_role": true,
       "rls_declared_in_migration": true,
       "created_by_migration": true

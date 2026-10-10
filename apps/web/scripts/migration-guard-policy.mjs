@@ -57,8 +57,10 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // production on 2026-10-07 (ledger versions 20261007094814 and 20261007095425).
 // 3B1B2 M4-B adds `m4b_licensed_bind` (enforced): 109/95 → 110/96. APPLIED to
 // production on 2026-10-07 (ledger version 20261007100001).
-export const EXPECTED_CANONICAL_SQL_COUNT = 110
-export const EXPECTED_ENFORCED_COUNT = 96
+// P1B adds `handlarborsen_marketplace_snapshots` (enforced): 110/96 → 111/97. NOT applied to
+// production on its branch, so the guard is RED there until the operator-approved apply.
+export const EXPECTED_CANONICAL_SQL_COUNT = 111
+export const EXPECTED_ENFORCED_COUNT = 97
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

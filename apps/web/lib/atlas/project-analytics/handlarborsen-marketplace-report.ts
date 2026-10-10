@@ -16,6 +16,9 @@
  *  - Deltas exist only for stock-type metrics (totals and current levels). A 24 h window
  *    metric is a different window each day, so it is never differenced.
  *  - Values are never hardcoded: every number rendered comes from a stored row.
+ *  - Collection status (last success, today's outcome) comes from the collector's own audit
+ *    rows (`collector_runs`). With no audit rows nothing is claimed about scheduling or
+ *    failure: "no run recorded" is said as exactly that.
  */
 
 import {
@@ -70,6 +73,11 @@ export const UNKNOWN_REASON_LABEL = 'Orsak saknas'
 export const STALE_AFTER_HOURS = 26
 /** How many snapshots the reader fetches — enough for later week/month comparisons. */
 export const HISTORY_LIMIT = 30
+
+/** The collector's audit rows (`collector_runs`) that describe the daily collection. */
+export const COLLECTOR_ID = 'handlarborsen.marketplace'
+export const COLLECTION_RUN_LIMIT = 30
+export const COLLECTION_RUN_SELECT = 'status, ran_at, snapshot_date, storage_outcome:metadata->>storage_outcome'
 
 // ── Stored row (exactly the columns the reader selects) ───────────────────────
 
@@ -135,10 +143,43 @@ export type ReportState =
   /** The project is not in observer or active mode. */
   | 'not_enabled'
 
+/** What the collector's audit rows say about the daily collection. */
+export type CollectionToday =
+  /** A snapshot was stored today (inserted, upgraded or refreshed). */
+  | 'stored'
+  /** Today's run found a snapshot at least as good already stored and kept it. Not a failure. */
+  | 'kept_existing'
+  /** Today's run(s) failed, or collected nothing (no access, network, invalid statistics). */
+  | 'failed'
+  /** No run is recorded for today (UTC). Says nothing about whether one is expected. */
+  | 'none'
+
+export interface CollectionStatus {
+  lastSuccess: { ranAt: string; snapshotDate: string; ageHours: number } | null
+  /** The most recent run of any outcome. */
+  lastAttempt: { ranAt: string; status: 'ok' | 'skipped' | 'error' } | null
+  today: CollectionToday
+  /** UTC date `today` refers to. */
+  todayDate: string
+  /** The latest run failed AFTER the last success: the newest data is not from the newest try. */
+  latestAttemptFailed: boolean
+}
+
+export const COLLECTION_TODAY_LABELS: Record<CollectionToday, { value: string; tone?: 'ok' | 'warning' }> = {
+  stored: { value: 'Rapport sparad', tone: 'ok' },
+  kept_existing: { value: 'Redan sparad rapport behölls', tone: 'ok' },
+  failed: { value: 'Insamlingen misslyckades', tone: 'warning' },
+  none: { value: 'Ingen körning registrerad ännu idag' },
+}
+
 export interface MarketplaceReport {
   state: ReportState
   latest: ReportSnapshot | null
+  /** null = the audit rows could not be read; nothing is claimed about the collection. */
+  collection: CollectionStatus | null
   history: {
+    /** Every valid snapshot in the fetched window, newest first (including the latest). */
+    series: ReportSnapshot[]
     /** Valid snapshots in the fetched window (including the latest). */
     snapshotCount: number
     /** Rows skipped because they failed validation. */
@@ -152,7 +193,9 @@ export function emptyReport(state: Exclude<ReportState, 'ok'>): MarketplaceRepor
   return {
     state,
     latest: null,
+    collection: null,
     history: {
+      series: [],
       snapshotCount: 0,
       skippedInvalid: 0,
       previous: null,
@@ -283,8 +326,69 @@ export function compareSnapshots(latest: ReportSnapshot, previous: ReportSnapsho
   }
 }
 
-/** Builds the report from stored rows (any order). Pure. */
-export function buildMarketplaceReport(rows: readonly unknown[], now: Date = new Date()): MarketplaceReport {
+// ── Collection status (from the collector's audit rows) ───────────────────────
+
+const RUN_STATUSES: readonly string[] = ['ok', 'skipped', 'error']
+const KEPT_OUTCOMES: readonly string[] = ['rejected', 'unchanged']
+
+interface ValidRun { status: 'ok' | 'skipped' | 'error'; ranAt: string; ranAtMs: number; snapshotDate: string; storageOutcome: string | null }
+
+function validateRun(row: unknown): ValidRun | null {
+  if (typeof row !== 'object' || row === null) return null
+  const r = row as Record<string, unknown>
+  if (typeof r.status !== 'string' || !RUN_STATUSES.includes(r.status)) return null
+  if (typeof r.ran_at !== 'string' || Number.isNaN(Date.parse(r.ran_at))) return null
+  if (typeof r.snapshot_date !== 'string' || !ISO_DATE.test(r.snapshot_date)) return null
+  return {
+    status: r.status as ValidRun['status'],
+    ranAt: r.ran_at,
+    ranAtMs: Date.parse(r.ran_at),
+    snapshotDate: r.snapshot_date,
+    storageOutcome: typeof r.storage_outcome === 'string' ? r.storage_outcome : null,
+  }
+}
+
+/** Pure. Rows that fail validation are ignored, never guessed at. */
+export function buildCollectionStatus(rows: readonly unknown[], now: Date = new Date()): CollectionStatus {
+  const runs = rows.map(validateRun).filter((r): r is ValidRun => r !== null).sort((a, b) => b.ranAtMs - a.ranAtMs)
+  const todayDate = now.toISOString().slice(0, 10)
+
+  const success = runs.find((r) => r.status === 'ok') ?? null
+  const latest = runs[0] ?? null
+  const todays = runs.filter((r) => r.snapshotDate === todayDate)
+
+  let today: CollectionToday = 'none'
+  if (todays.some((r) => r.status === 'ok')) today = 'stored'
+  else if (todays.some((r) => r.status === 'skipped' && r.storageOutcome !== null && KEPT_OUTCOMES.includes(r.storageOutcome))) today = 'kept_existing'
+  else if (todays.length > 0) today = 'failed'
+
+  return {
+    lastSuccess: success
+      ? { ranAt: success.ranAt, snapshotDate: success.snapshotDate, ageHours: Math.max(0, (now.getTime() - success.ranAtMs) / 3_600_000) }
+      : null,
+    lastAttempt: latest ? { ranAt: latest.ranAt, status: latest.status } : null,
+    today,
+    todayDate,
+    latestAttemptFailed:
+      latest !== null && latest.status !== 'ok' && !(latest.status === 'skipped' && latest.storageOutcome !== null && KEPT_OUTCOMES.includes(latest.storageOutcome)),
+  }
+}
+
+/**
+ * Builds the report from stored rows (any order). Pure. `runs` are the collector's audit
+ * rows; omit them (or pass undefined) when they could not be read.
+ */
+export function buildMarketplaceReport(
+  rows: readonly unknown[],
+  now: Date = new Date(),
+  runs?: readonly unknown[],
+): MarketplaceReport {
+  const report = buildSnapshotReport(rows, now)
+  report.collection = runs === undefined ? null : buildCollectionStatus(runs, now)
+  return report
+}
+
+function buildSnapshotReport(rows: readonly unknown[], now: Date): MarketplaceReport {
   if (rows.length === 0) return emptyReport('no_snapshot')
   const nowMs = now.getTime()
 
@@ -310,12 +414,15 @@ export function buildMarketplaceReport(rows: readonly unknown[], now: Date = new
     return report
   }
 
-  const latest = toSnapshot(valid[0], nowMs)
-  const previous = valid.length > 1 ? toSnapshot(valid[1], nowMs) : null
+  const series = valid.map((v) => toSnapshot(v, nowMs))
+  const latest = series[0]
+  const previous = series.length > 1 ? series[1] : null
   return {
     state: 'ok',
     latest,
+    collection: null,
     history: {
+      series,
       snapshotCount: valid.length,
       skippedInvalid,
       previous,
@@ -366,6 +473,9 @@ export function renderHandlarborsenFactBlock(report: MarketplaceReport): string 
   ]
   if (latest.freshness === 'stale') {
     lines.push(`OBS: rapporten är äldre än ${STALE_AFTER_HOURS} tim och kan vara inaktuell.`)
+  }
+  if (report.collection?.latestAttemptFailed) {
+    lines.push('OBS: det senaste insamlingsförsöket misslyckades eller gav ingen ny rapport; siffrorna nedan är från den senast sparade rapporten.')
   }
   lines.push('Källa: Handlarbörsens statistik-API, aggregerade antal (inga personuppgifter).')
 

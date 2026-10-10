@@ -11,7 +11,31 @@ type Op = { table: string; op: string; args: unknown[] }
 let ops: Op[] = []
 let projectRow: Record<string, unknown> | null = null
 let projectQueryError: unknown = null
-let upsertError: unknown = null
+let rpcError: unknown = null
+/** Overrides the modelled database answer (undefined = use the model below). */
+let rpcOverride: unknown = undefined
+/** In-memory model of public.handlarborsen_store_marketplace_snapshot, keyed by snapshot date.
+ *  It mirrors the decision table of the SQL; the SQL itself is proven against a real Postgres
+ *  by docs/handlarborsen-p1e/verify-guarded-store.sh. */
+let stored = new Map<string, { obs: string; avail: number; completeness: string }>()
+const KEYS = [
+  'companies_registered_total','companies_verified_total','vehicles_published_active','vehicles_reserved',
+  'vehicles_published_last_24h','bids_total','bids_last_24h','interests_last_24h','offers_last_24h',
+  'deals_completed_total','deals_completed_last_24h',
+]
+function modelStore(args: { p_snapshot_date: string; p_observed_at: string; p_metrics: Record<string, number | null> }) {
+  const avail = KEYS.filter((k) => args.p_metrics[k] !== null).length
+  const completeness = avail === 11 ? 'complete' : avail === 0 ? 'unavailable' : 'partial'
+  const base = { snapshot_date: args.p_snapshot_date, completeness, available_count: avail }
+  const old = stored.get(args.p_snapshot_date)
+  const put = () => stored.set(args.p_snapshot_date, { obs: args.p_observed_at, avail, completeness })
+  if (!old) { put(); return { ...base, outcome: 'inserted', stored: true } }
+  const existing = { existing_completeness: old.completeness, existing_available_count: old.avail, existing_observed_at: old.obs }
+  if (avail > old.avail) { put(); return { ...base, outcome: 'upgraded', stored: true, reason: null, ...existing } }
+  if (avail === old.avail && args.p_observed_at > old.obs) { put(); return { ...base, outcome: 'refreshed', stored: true, reason: null, ...existing } }
+  if (avail === old.avail && args.p_observed_at === old.obs) return { ...base, outcome: 'unchanged', stored: false, reason: null, ...existing }
+  return { ...base, outcome: 'rejected', stored: false, reason: avail < old.avail ? 'lower_quality' : 'older_observation', ...existing }
+}
 const adminCreated = vi.fn()
 
 function fakeDb() {
@@ -28,7 +52,7 @@ function fakeDb() {
         },
         upsert: async (...a: unknown[]) => {
           ops.push({ table, op: 'upsert', args: a })
-          return { error: upsertError }
+          return { error: null }
         },
         insert: async (...a: unknown[]) => {
           ops.push({ table, op: 'insert', args: a })
@@ -36,6 +60,11 @@ function fakeDb() {
         },
       }
       return builder
+    },
+    rpc: async (fn: string, args: any) => {
+      ops.push({ table: `rpc:${fn}`, op: 'rpc', args: [args] })
+      if (rpcError) return { data: null, error: rpcError }
+      return { data: rpcOverride !== undefined ? rpcOverride : modelStore(args), error: null }
     },
   }
 }
@@ -53,7 +82,7 @@ import {
   isEligibleHandlarborsenProject,
   parseMarketplaceMetrics,
 } from '@/lib/atlas/collectors/handlarborsen-marketplace'
-import { BaseCollector } from '@/lib/atlas/collectors/types'
+import { BaseCollector, type StoreDeclined } from '@/lib/atlas/collectors/types'
 import { GET } from '@/app/api/collectors/handlarborsen/marketplace/route'
 
 const TOKEN = 'h'.repeat(40)
@@ -91,7 +120,7 @@ const ctx = (over: Record<string, unknown> = {}) => ({
 
 beforeEach(() => {
   ops = []; projectRow = { id: HANDLARBORSEN_PROJECT_ID, slug: HANDLARBORSEN_PROJECT_SLUG, atlas_mode: 'observer' }
-  projectQueryError = null; upsertError = null
+  projectQueryError = null; rpcError = null; rpcOverride = undefined; stored = new Map()
   recordSignal.mockReset().mockResolvedValue({ id: 'sig-1' })
   adminCreated.mockReset()
   fetchMock = vi.fn()
@@ -103,7 +132,11 @@ beforeEach(() => {
 })
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
-const upserts = () => ops.filter((o) => o.op === 'upsert')
+const STORE_FN = 'rpc:handlarborsen_store_marketplace_snapshot'
+const storeCalls = () => ops.filter((o) => o.table === STORE_FN)
+const storeArgs = (i = 0) => storeCalls()[i].args[0] as { p_snapshot_date: string; p_observed_at: string; p_unavailable: Record<string, string>; p_metrics: Record<string, number | null> }
+/** The snapshot table must never be written directly: the guarded function is the only path. */
+const directSnapshotWrites = () => ops.filter((o) => o.table === 'handlarborsen_marketplace_snapshots')
 
 describe('HandlarborsenMarketplaceCollector — contract and storage', () => {
   it('collects the 11 metrics, stores a project-bound snapshot and emits one signal', async () => {
@@ -111,16 +144,16 @@ describe('HandlarborsenMarketplaceCollector — contract and storage', () => {
     expect(result.status).toBe('ok')
     expect(result.metadata).toMatchObject({ completeness: 'complete', available_count: 11, unavailable_count: 0 })
 
-    expect(upserts()).toHaveLength(1)
-    const row = upserts()[0].args[0] as Record<string, unknown>
-    expect(upserts()[0].table).toBe('handlarborsen_marketplace_snapshots')
-    expect(upserts()[0].args[1]).toEqual({ onConflict: 'project_id,snapshot_date' })
-    expect(row).toMatchObject({ project_id: HANDLARBORSEN_PROJECT_ID, snapshot_date: '2026-10-10', completeness: 'complete', schema_version: 1, window_hours: 24, ...COUNTS })
+    expect(storeCalls()).toHaveLength(1)
+    expect(directSnapshotWrites()).toHaveLength(0)
+    expect(Object.keys(storeArgs()).sort()).toEqual(['p_metrics', 'p_observed_at', 'p_snapshot_date', 'p_unavailable'])
+    expect(storeArgs()).toMatchObject({ p_snapshot_date: '2026-10-10', p_unavailable: {}, p_metrics: COUNTS })
 
     expect(recordSignal).toHaveBeenCalledTimes(1)
     expect(recordSignal.mock.calls[0][0]).toMatchObject({
       projectId: HANDLARBORSEN_PROJECT_ID, source: 'handlarborsen', kind: 'handlarborsen.marketplace_snapshot',
     })
+    expect(recordSignal.mock.calls[0][0].payload).toMatchObject({ storage_outcome: 'inserted' })
   })
 
   it('calls only the fixed HTTPS URL with a bearer, no redirects, no caching', async () => {
@@ -141,11 +174,12 @@ describe('HandlarborsenMarketplaceCollector — contract and storage', () => {
       completeness: 'partial', available_count: 9, unavailable_count: 2,
       unavailable: { bids_total: 'query_failed', bids_last_24h: 'invalid_count' },
     })
-    const row = upserts()[0].args[0] as Record<string, unknown>
-    expect(row.bids_total).toBeNull()
-    expect(row.bids_last_24h).toBeNull()
-    expect(row.companies_verified_total).toBe(9)
-    expect(row.completeness).toBe('partial')
+    const sent = storeArgs()
+    expect(sent.p_metrics.bids_total).toBeNull()
+    expect(sent.p_metrics.bids_last_24h).toBeNull()
+    expect(sent.p_metrics.companies_verified_total).toBe(9)
+    expect(sent.p_unavailable).toEqual({ bids_total: 'query_failed', bids_last_24h: 'invalid_count' })
+    expect('p_completeness' in sent).toBe(false) // derived by the database, never trusted from the caller
     const signalPayload = recordSignal.mock.calls[0][0].payload
     expect((signalPayload.metrics as Record<string, unknown>).bids_total).toBeNull()
   })
@@ -155,20 +189,19 @@ describe('HandlarborsenMarketplaceCollector — contract and storage', () => {
     respond(body({}, all))
     const result = await new HandlarborsenMarketplaceCollector().run(ctx())
     expect(result.metadata).toMatchObject({ completeness: 'unavailable', available_count: 0 })
-    const row = upserts()[0].args[0] as Record<string, unknown>
-    for (const key of MARKETPLACE_METRIC_KEYS) expect(row[key]).toBeNull()
+    for (const key of MARKETPLACE_METRIC_KEYS) expect(storeArgs().p_metrics[key]).toBeNull()
   })
 
   it('dry run fetches and validates but writes nothing', async () => {
     const result = await new HandlarborsenMarketplaceCollector().run(ctx({ dryRun: true }))
     expect(result.status).toBe('ok')
-    expect(upserts()).toHaveLength(0)
+    expect(storeCalls()).toHaveLength(0)
     expect(ops).toHaveLength(0)
     expect(recordSignal).not.toHaveBeenCalled()
   })
 
   it('a failed snapshot write is NEVER a successful collection: error, no signal, no DB text', async () => {
-    upsertError = { message: 'relation "x" does not exist, host db.secret.internal', code: '42P01' }
+    rpcError = { message: 'relation "x" does not exist, host db.secret.internal', code: '42P01' }
     const result = await new HandlarborsenMarketplaceCollector().run(ctx())
     expect(result.status).toBe('error')
     expect(result.error).toBe('snapshot_store_failed')
@@ -182,7 +215,7 @@ describe('HandlarborsenMarketplaceCollector — contract and storage', () => {
   })
 
   it('dry run never touches the snapshot table, so it works even when that table is missing', async () => {
-    upsertError = { message: 'relation does not exist', code: '42P01' }
+    rpcError = { message: 'relation does not exist', code: '42P01' }
     const result = await new HandlarborsenMarketplaceCollector().run(ctx({ dryRun: true }))
     expect(result.status).toBe('ok')
     expect(ops).toHaveLength(0)
@@ -217,7 +250,7 @@ describe('HandlarborsenMarketplaceCollector — configuration, identity, failure
     const result = await new HandlarborsenMarketplaceCollector().run(ctx())
     expect(result.status).toBe('skipped')
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(upserts()).toHaveLength(0)
+    expect(storeCalls()).toHaveLength(0)
     expect(recordSignal).not.toHaveBeenCalled()
   })
 
@@ -230,7 +263,7 @@ describe('HandlarborsenMarketplaceCollector — configuration, identity, failure
     expect(result.status).toBe('error')
     expect(result.error).toBe('handlarborsen_project_not_allowed')
     expect(fetchMock).not.toHaveBeenCalled()
-    expect(upserts()).toHaveLength(0)
+    expect(storeCalls()).toHaveLength(0)
     expect(recordSignal).not.toHaveBeenCalled()
   })
 
@@ -240,7 +273,7 @@ describe('HandlarborsenMarketplaceCollector — configuration, identity, failure
     expect(result.status).toBe('error')
     expect(result.error).toBe('handlarborsen_metrics_network_error')
     expect(JSON.stringify(result)).not.toContain(TOKEN)
-    expect(upserts()).toHaveLength(0)
+    expect(storeCalls()).toHaveLength(0)
     expect(recordSignal).not.toHaveBeenCalled()
   })
 
@@ -249,7 +282,7 @@ describe('HandlarborsenMarketplaceCollector — configuration, identity, failure
     const result = await new HandlarborsenMarketplaceCollector().run(ctx())
     expect(result.status).toBe('error')
     expect(result.error).toBe(`handlarborsen_metrics_http_${status}`)
-    expect(upserts()).toHaveLength(0)
+    expect(storeCalls()).toHaveLength(0)
     expect(recordSignal).not.toHaveBeenCalled()
   })
 
@@ -280,7 +313,7 @@ describe('HandlarborsenMarketplaceCollector — configuration, identity, failure
     respond(payload)
     const result = await new HandlarborsenMarketplaceCollector().run(ctx())
     expect(result.status).toBe('error')
-    expect(upserts()).toHaveLength(0)
+    expect(storeCalls()).toHaveLength(0)
     expect(recordSignal).not.toHaveBeenCalled()
   })
 
@@ -308,7 +341,7 @@ describe('HandlarborsenMarketplaceCollector — configuration, identity, failure
       expect(aborted).toBe(true)
       expect(result.status).toBe('error')
       expect(result.error).toBe('handlarborsen_metrics_timeout')
-      expect(upserts()).toHaveLength(0)
+      expect(storeCalls()).toHaveLength(0)
       expect(recordSignal).not.toHaveBeenCalled()
     } finally {
       vi.useRealTimers()
@@ -445,7 +478,8 @@ describe('GET /api/collectors/handlarborsen/marketplace', () => {
   it('a real run writes one snapshot, one signal and one collector_runs row', async () => {
     const res = await call()
     expect(res.status).toBe(200)
-    expect(upserts()).toHaveLength(1)
+    expect((await res.json()).runs[0]).toMatchObject({ status: 'ok', storage: 'inserted' })
+    expect(storeCalls()).toHaveLength(1)
     expect(recordSignal).toHaveBeenCalledTimes(1)
     const runs = ops.filter((o) => o.table === 'collector_runs' && o.op === 'insert')
     expect(runs).toHaveLength(1)
@@ -471,7 +505,7 @@ describe('GET /api/collectors/handlarborsen/marketplace', () => {
   })
 
   it('a failed snapshot write returns 500, records an error run, emits no signal and leaks nothing', async () => {
-    upsertError = { message: 'permission denied for table handlarborsen_marketplace_snapshots', code: '42501' }
+    rpcError = { message: 'permission denied for table handlarborsen_marketplace_snapshots', code: '42501' }
     const res = await call()
     const text = await res.text()
     expect(res.status).toBe(500)
@@ -487,7 +521,7 @@ describe('GET /api/collectors/handlarborsen/marketplace', () => {
   })
 
   it('dry_run=1 succeeds even when the snapshot table is unavailable', async () => {
-    upsertError = { message: 'relation does not exist', code: '42P01' }
+    rpcError = { message: 'relation does not exist', code: '42P01' }
     const res = await call('?dry_run=1')
     expect(res.status).toBe(200)
     expect(ops.filter((o) => o.op !== 'maybeSingle')).toHaveLength(0)
@@ -497,7 +531,267 @@ describe('GET /api/collectors/handlarborsen/marketplace', () => {
     respond(body({ schema_version: 9 }))
     const res = await call()
     expect(res.status).toBe(500)
-    expect(upserts()).toHaveLength(0)
+    expect(storeCalls()).toHaveLength(0)
+  })
+})
+
+describe('guarded daily storage (P1E)', () => {
+  const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString()
+  const run = (over: Record<string, unknown> = {}) => new HandlarborsenMarketplaceCollector().run(ctx(over))
+  const partial = () => body({}, { bids_total: UNAVAIL, vehicles_reserved: UNAVAIL, offers_last_24h: UNAVAIL })
+  const signalOutcomes = () => recordSignal.mock.calls.map((c) => (c[0].payload as Record<string, unknown>).storage_outcome)
+
+  it('first run: snapshot stored, one signal emitted, nothing written to the table directly', async () => {
+    const result = await run()
+    expect(result.status).toBe('ok')
+    expect(storeCalls()).toHaveLength(1)
+    expect(directSnapshotWrites()).toHaveLength(0)
+    expect(signalOutcomes()).toEqual(['inserted'])
+    expect(stored.size).toBe(1)
+  })
+
+  it('two runs the same day leave one snapshot: a newer observation refreshes it, an identical one changes nothing', async () => {
+    respond(body({ observed_at: minutesAgo(5) }))
+    expect((await run()).status).toBe('ok')
+    respond(body({ observed_at: minutesAgo(1) }))
+    expect((await run()).status).toBe('ok')
+    expect(stored.size).toBe(1)
+    expect(signalOutcomes()).toEqual(['inserted', 'refreshed'])
+
+    // The very same observation again: the database keeps its row, the run is skipped, no signal.
+    respond(body({ observed_at: minutesAgo(1) }))
+    rpcOverride = undefined
+    const sameObserved = stored.get('2026-10-10')!.obs
+    respond(body({ observed_at: sameObserved }))
+    const again = await run()
+    expect(again.status).toBe('skipped')
+    expect(again.error).toBe('snapshot_not_stored:unchanged')
+    expect(again.signalId).toBeNull()
+    expect(recordSignal).toHaveBeenCalledTimes(2)
+    expect(stored.size).toBe(1)
+  })
+
+  it('complete followed by partial: the complete report survives, the run is skipped, NO signal and no success claim', async () => {
+    respond(body({ observed_at: minutesAgo(5) }))
+    await run()
+    respond({ ...partial(), observed_at: minutesAgo(1) })
+    const result = await run()
+
+    expect(stored.get('2026-10-10')).toMatchObject({ completeness: 'complete', avail: 11 })
+    expect(result.status).toBe('skipped')
+    expect(result.error).toBe('snapshot_not_stored:lower_quality')
+    expect(result.signalKind).toBeNull()
+    expect(result.signalId).toBeNull()
+    expect(recordSignal).toHaveBeenCalledTimes(1) // only the first, complete run
+    expect(result.metadata).toMatchObject({
+      storage_outcome: 'rejected', storage_reason: 'lower_quality',
+      observed: { completeness: 'partial', available_count: 8 },
+      existing: { completeness: 'complete', available_count: 11 },
+    })
+    expect(result.metadata).not.toHaveProperty('metrics') // the audit row records the decision, not a fake save
+  })
+
+  it('partial followed by complete: the partial report is upgraded and the signal says so', async () => {
+    respond({ ...partial(), observed_at: minutesAgo(5) })
+    await run()
+    expect(stored.get('2026-10-10')).toMatchObject({ completeness: 'partial', avail: 8 })
+    respond(body({ observed_at: minutesAgo(1) }))
+    const result = await run()
+    expect(result.status).toBe('ok')
+    expect(stored.get('2026-10-10')).toMatchObject({ completeness: 'complete', avail: 11 })
+    expect(signalOutcomes()).toEqual(['inserted', 'upgraded'])
+    expect(result.metadata).toMatchObject({ storage_outcome: 'upgraded' })
+  })
+
+  it('an older observation never replaces a newer one of the same quality', async () => {
+    respond(body({ observed_at: minutesAgo(1) }))
+    await run()
+    const kept = stored.get('2026-10-10')!.obs
+    respond(body({ observed_at: minutesAgo(6) }))
+    const result = await run()
+    expect(result.status).toBe('skipped')
+    expect(result.error).toBe('snapshot_not_stored:older_observation')
+    expect(stored.get('2026-10-10')!.obs).toBe(kept)
+    expect(recordSignal).toHaveBeenCalledTimes(1)
+  })
+
+  it('a new date creates a new historical report and leaves the earlier one untouched', async () => {
+    respond(body({ observed_at: minutesAgo(1) }))
+    await run({ snapshotDate: '2026-10-09' })
+    const yesterday = { ...stored.get('2026-10-09')! }
+    respond(body({ observed_at: minutesAgo(0) }))
+    const today = await run({ snapshotDate: '2026-10-10' })
+    expect(today.status).toBe('ok')
+    expect([...stored.keys()].sort()).toEqual(['2026-10-09', '2026-10-10'])
+    expect(stored.get('2026-10-09')).toEqual(yesterday)
+    expect(storeArgs(1).p_snapshot_date).toBe('2026-10-10') // each call targets exactly one date
+  })
+
+  it('concurrent runs: both reach the database function, which alone decides; at most one row results', async () => {
+    const [a, b] = await Promise.all([run(), run()])
+    expect(storeCalls()).toHaveLength(2)
+    expect(stored.size).toBe(1)
+    expect([a.status, b.status].every((x) => x === 'ok' || x === 'skipped')).toBe(true)
+  })
+
+  it('refuses to trust a malformed or inconsistent database answer', async () => {
+    for (const answer of [
+      null, 'ok', {}, { outcome: 'inserted' },
+      { outcome: 'weird', stored: true, completeness: 'complete', available_count: 11 },
+      { outcome: 'inserted', stored: false, completeness: 'complete', available_count: 11 },
+      { outcome: 'rejected', stored: false, reason: 'nope', completeness: 'complete', available_count: 11 },
+      { outcome: 'inserted', stored: true, completeness: 'partial', available_count: 11 }, // disagrees with what was sent
+    ]) {
+      recordSignal.mockClear()
+      rpcOverride = answer
+      const result = await run()
+      expect(result.status).toBe('error')
+      expect(result.error).toBe('snapshot_store_failed')
+      expect(recordSignal).not.toHaveBeenCalled()
+    }
+  })
+
+  it('a missing token, a network failure or invalid statistics never reach the database function', async () => {
+    vi.stubEnv('HANDLARBORSEN_METRICS_TOKEN', '')
+    expect((await run()).status).toBe('skipped')
+    vi.stubEnv('HANDLARBORSEN_METRICS_TOKEN', TOKEN)
+    fetchMock.mockImplementation(async () => { throw new Error('socket hang up') })
+    expect((await run()).status).toBe('error')
+    respond(body({}, { bids_total: { status: 'ok', value: -3 } }))
+    expect((await run()).status).toBe('error')
+    respond(body({}, { bids_total: { status: 'ok', value: null } }))
+    expect((await run()).status).toBe('error')
+    expect(storeCalls()).toHaveLength(0)
+    expect(recordSignal).not.toHaveBeenCalled()
+  })
+
+  it('null is never turned into 0 on the way to the database', async () => {
+    respond(body({}, { bids_total: UNAVAIL }))
+    await run()
+    const sent = storeArgs()
+    expect(sent.p_metrics.bids_total).toBeNull()
+    expect(Object.values(sent.p_metrics).filter((v) => v === 0)).toHaveLength(0)
+    expect(sent.p_unavailable).toEqual({ bids_total: 'query_failed' })
+  })
+
+  it('dry run performs no database call at all, even for the guarded store', async () => {
+    const result = await run({ dryRun: true })
+    expect(result.status).toBe('ok')
+    expect(ops).toHaveLength(0)
+    expect(stored.size).toBe(0)
+  })
+
+  it('another collector whose store returns nothing is unaffected; one that declines is skipped without a signal', async () => {
+    class Plain extends BaseCollector {
+      readonly id: string = 'test.plain'; readonly signalKind = 'test.kind'; readonly version = 't-1'; readonly source = 'test'
+      async fetch() { return {} }
+      validate(raw: unknown) { return raw }
+      normalize() { return { a: 1 } as Record<string, unknown> }
+      async store(): Promise<void | StoreDeclined> { /* returns nothing */ }
+    }
+    class Declining extends Plain {
+      readonly id: string = 'test.declining'
+      async store(): Promise<void | StoreDeclined> { return { declined: true as const, reason: 'nope', metadata: { why: 'test' } } }
+    }
+    const plain = await new Plain().run(ctx({ projectId: 'p', projectSlug: 's' }))
+    expect(plain.status).toBe('ok')
+    expect(recordSignal).toHaveBeenCalledTimes(1)
+    recordSignal.mockClear()
+    const declined = await new Declining().run(ctx({ projectId: 'p', projectSlug: 's' }))
+    expect(declined).toMatchObject({ status: 'skipped', error: 'nope', signalId: null, metadata: { why: 'test' } })
+    expect(recordSignal).not.toHaveBeenCalled()
+  })
+
+  describe('through the route', () => {
+    const call = () => GET(new Request('http://localhost/api/collectors/handlarborsen/marketplace', { headers: { authorization: `Bearer ${CRON}` } }))
+    const auditRows = () => ops.filter((o) => o.table === 'collector_runs' && o.op === 'insert').map((o) => o.args[0] as Record<string, any>)
+
+    it('first run: snapshot + signal + one audit row that says what was stored', async () => {
+      const json = await (await call()).json()
+      expect(json).toMatchObject({ ok: true })
+      expect(json.runs[0]).toMatchObject({ status: 'ok', storage: 'inserted', completeness: 'complete' })
+      expect(recordSignal).toHaveBeenCalledTimes(1)
+      expect(auditRows()).toHaveLength(1)
+      expect(auditRows()[0]).toMatchObject({ status: 'ok', signal_kind: 'handlarborsen.marketplace_snapshot', metadata: { storage_outcome: 'inserted' } })
+    })
+
+    it('a declined snapshot is reported as skipped with the reason: no signal, an honest audit row, still HTTP 200', async () => {
+      await call()
+      respond(partial())
+      const res = await call()
+      const json = await res.json()
+      expect(res.status).toBe(200)
+      expect(json.ok).toBe(true)
+      expect(json.runs[0]).toMatchObject({ status: 'skipped', storage: 'rejected', reason: 'snapshot_not_stored:lower_quality', signalId: null })
+      expect(json.runs[0].completeness).toBeUndefined()
+      expect(recordSignal).toHaveBeenCalledTimes(1)
+      const rows = auditRows()
+      expect(rows).toHaveLength(2)
+      expect(rows[1]).toMatchObject({
+        status: 'skipped', signal_id: null, signal_kind: null, error_message: 'snapshot_not_stored:lower_quality',
+        metadata: { storage_outcome: 'rejected', storage_reason: 'lower_quality' },
+      })
+    })
+
+    it('dry_run=1 stays fully read-only: no database function, no signal, no audit row', async () => {
+      const res = await GET(new Request('http://localhost/api/collectors/handlarborsen/marketplace?dry_run=1', { headers: { authorization: `Bearer ${CRON}` } }))
+      expect(res.status).toBe(200)
+      expect(ops.filter((o) => o.op !== 'maybeSingle')).toHaveLength(0)
+      expect(recordSignal).not.toHaveBeenCalled()
+    })
+  })
+})
+
+describe('migration 20261010130000_handlarborsen_guarded_snapshot_store.sql', () => {
+  const sql = readFileSync(
+    join(process.cwd(), 'supabase/migrations/20261010130000_handlarborsen_guarded_snapshot_store.sql'), 'utf8',
+  ).replace(/\r\n/g, '\n')
+  const code = sql.split('\n').filter((l) => !l.trim().startsWith('--')).join('\n')
+  const SIG = 'public.handlarborsen_store_marketplace_snapshot(date, timestamptz, jsonb, jsonb)'
+
+  it('creates one function and changes one table privilege; it schedules nothing and touches no data', () => {
+    expect(code.match(/CREATE (OR REPLACE )?FUNCTION/gi)).toHaveLength(1)
+    expect(code).not.toMatch(/cron\./i)
+    expect(code).not.toMatch(/\b(CREATE TABLE|ALTER TABLE|DROP|TRUNCATE|CREATE POLICY|CREATE TRIGGER)\b/i)
+    // The only top-level DELETE/UPDATE keywords are inside the function body (the guarded UPDATE).
+    expect(code.match(/\bDELETE\b/gi)).toBeNull()
+  })
+
+  it('is a pinned-search-path SECURITY DEFINER bound to the fixed project, with no project parameter', () => {
+    expect(code).toMatch(/SECURITY DEFINER\s+SET search_path = ''/)
+    expect(code).toContain(`'${HANDLARBORSEN_PROJECT_ID}'`)
+    expect(code).toMatch(/p_snapshot_date date,\s+p_observed_at\s+timestamptz,\s+p_unavailable\s+jsonb,\s+p_metrics\s+jsonb\s*\)/)
+    expect(code).not.toMatch(/p_project|p_completeness/)
+    // Every table reference inside the function is schema-qualified.
+    expect(code.match(/(?:FROM|INTO|UPDATE)\s+(?!public\.|jsonb_object_keys|unnest|v_old|v_inserted)\w+/gi)?.filter((m) => /handlarborsen_marketplace_snapshots/.test(m)) ?? []).toHaveLength(0)
+  })
+
+  it('decides under a row lock and only writes today, derived completeness, non-negative integers', () => {
+    expect(code).toMatch(/ON CONFLICT \(project_id, snapshot_date\) DO NOTHING/)
+    expect(code).toMatch(/FOR UPDATE;/)
+    expect(code).toContain("p_snapshot_date <> (now() AT TIME ZONE 'UTC')::date")
+    expect(code).toContain("'^[0-9]{1,15}$'")
+    expect(code).toMatch(/v_completeness := CASE/)
+    for (const outcome of ['inserted', 'upgraded', 'refreshed', 'unchanged', 'rejected', 'lower_quality', 'older_observation']) {
+      expect(code).toContain(`'${outcome}'`)
+    }
+    // null is never coalesced to 0 anywhere in the function.
+    expect(code).not.toMatch(/coalesce\([^)]*,\s*0\s*\)/i)
+  })
+
+  it('grants EXECUTE to service_role only and removes the direct write path', () => {
+    expect(code).toContain(`REVOKE ALL ON FUNCTION ${SIG} FROM PUBLIC;`)
+    expect(code).toContain(`REVOKE ALL ON FUNCTION ${SIG} FROM anon;`)
+    expect(code).toContain(`REVOKE ALL ON FUNCTION ${SIG} FROM authenticated;`)
+    expect(code).toContain(`GRANT EXECUTE ON FUNCTION ${SIG} TO service_role;`)
+    expect((code.match(/GRANT [^;]+;/g) ?? [])).toHaveLength(1)
+    expect(code).toContain('REVOKE INSERT, UPDATE ON TABLE public.handlarborsen_marketplace_snapshots FROM service_role;')
+    expect(code).not.toMatch(/GRANT [^;]*\b(anon|authenticated|PUBLIC)\b/)
+  })
+
+  it('documents its own rollback', () => {
+    expect(sql).toMatch(/ROLLBACK/)
+    expect(sql).toContain('GRANT INSERT, UPDATE ON TABLE public.handlarborsen_marketplace_snapshots TO service_role;')
   })
 })
 

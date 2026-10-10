@@ -103,6 +103,7 @@ function Header({ model }: { model: ProjectCommandCenterModel }) {
     { label: 'Ny agent', href: links.newAgent },
     { label: 'Nytt workflow', href: links.newWorkflow },
     { label: 'Media Pipeline', href: links.media },
+    { label: 'Marknadsplatsstatistik', href: links.marketplace },
   ]
 
   return (

@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { scopeProjectFilter } from '@/lib/atlas/isolation'
 import { resolveDestination } from '@/lib/nav/registry'
+import { BUSINESS_PROFILES } from '@/lib/atlas/identity'
+import { HANDLARBORSEN_PROJECT_ID, HANDLARBORSEN_PROJECT_SLUG } from '@/lib/atlas/collectors/handlarborsen-marketplace'
 import { listInstancesForProjects } from '@/lib/workflows/store'
 import { isSchedulable, wakeState, type WakeState } from '@/lib/workflows/schedule'
 import { findVendoredDefinition, type VendoredDefinition } from '@/lib/workflows/definitions'
@@ -263,6 +265,8 @@ export interface ProjectCommandCenterModel {
     newWorkflow: string | null
     media: string | null
     approvals: string | null
+    /** Handlarbörsen's own marketplace report. null for every other project. */
+    marketplace: string | null
   }
   activity: {
     /** Exact count of non-terminal runs. null → not known (never shown as zero). */
@@ -378,6 +382,20 @@ function describeDefinition(
     nextState: current?.next_state ?? null,
     terminal: definition.spec.terminal_states.includes(instance.current_state),
   }
+}
+
+/**
+ * The marketplace report belongs to exactly one project. Id, slug AND the registered
+ * name must all match, so a lookalike slug or a renamed project never shows the link.
+ */
+export function isHandlarborsenProject(project: { id: string; slug: string; name: string }): boolean {
+  const registered = BUSINESS_PROFILES[HANDLARBORSEN_PROJECT_SLUG]?.name
+  return (
+    project.id === HANDLARBORSEN_PROJECT_ID &&
+    project.slug === HANDLARBORSEN_PROJECT_SLUG &&
+    !!registered &&
+    project.name.normalize('NFC').trim().toLowerCase() === registered.normalize('NFC').toLowerCase()
+  )
 }
 
 export function assembleProjectCommandCenter(input: AssembleCommandCenterInput): ProjectCommandCenterModel {
@@ -541,6 +559,7 @@ export function assembleProjectCommandCenter(input: AssembleCommandCenterInput):
       newAgent: under('agents/new'),
       newWorkflow: under('workflows/new'),
       media: under('media'),
+      marketplace: isHandlarborsenProject(project) ? under('marketplace') : null,
       // The approvals queue has no project filter, so no project is claimed in its link.
       approvals: resolveDestination('approvals')?.href ?? null,
     },

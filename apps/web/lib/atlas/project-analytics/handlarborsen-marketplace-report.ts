@@ -399,3 +399,26 @@ export function renderHandlarborsenFactBlock(report: MarketplaceReport): string 
   )
   return lines.join('\n')
 }
+
+// ── Honest absence (used when the user asked about Handlarbörsen) ─────────────
+
+const UNAVAILABLE_NOTICE_REASONS: Record<Exclude<ReportState, 'ok'>, string> = {
+  no_snapshot: 'ingen marknadsplatsrapport har sparats ännu',
+  invalid_snapshot: 'den senast sparade rapporten kunde inte verifieras mot datakontraktet och används därför inte',
+  read_failed: 'rapporten kunde inte läsas just nu',
+  not_enabled: 'insamling är inte aktiv för projektet (varken observer eller aktivt läge)',
+}
+
+/**
+ * What Atlas is told when the user asked about Handlarbörsen but no verified report can
+ * be given. Names the reason and forbids filling the gap. Null for 'ok' (a real fact
+ * block exists instead).
+ */
+export function renderUnavailableNotice(state: ReportState): string | null {
+  if (state === 'ok') return null
+  return [
+    `\n\n[HANDLARBÖRSEN — MARKNADSPLATSSTATISTIK SAKNAS (observer)]`,
+    `Det finns ingen verifierad statistik att redovisa: ${UNAVAILABLE_NOTICE_REASONS[state]}.`,
+    'Säg det rakt ut. Hitta inte på siffror, uppskatta inte och använd inte minne eller tidigare svar som om de vore aktuell statistik. Frånvaro av data är inte noll.',
+  ].join('\n')
+}

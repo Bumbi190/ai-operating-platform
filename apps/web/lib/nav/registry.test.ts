@@ -196,6 +196,14 @@ describe('navigation targets — the exact hrefs `navigate` resolves', () => {
       .toBe('/projects/familje-stunden')
   })
 
+  it('Handlarbörsen resolves from the display name, the ASCII form and the slug', () => {
+    for (const ref of ['Handlarbörsen', 'handlarbörsen', 'Handlarborsen', 'handlarborsen']) {
+      expect(resolveDestination('project_home', { project: ref })?.href)
+        .toBe('/projects/handlarborsen')
+    }
+    expect(resolveProjectSlug('Handlarbörsen')).toBe('handlarborsen')
+  })
+
   it('approvals navigates to the approvals page (with pending filter)', () => {
     expect(resolveDestination('approvals', { filters: { state: 'pending' } })?.href)
       .toBe('/approvals?state=pending')

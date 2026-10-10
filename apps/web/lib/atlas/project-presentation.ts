@@ -24,6 +24,11 @@ const PROJECT_PRESENTATION: Readonly<Record<string, ProjectPresentation>> = {
     heroImage: '/project-rail/gainpilot.png',
     heroPosition: '50% 42%',
   },
+  handlarborsen: {
+    shortLabel: 'Handlarbörsen',
+    heroImage: '/project-rail/handlarborsen.png',
+    heroPosition: '50% 50%',
+  },
   studieos: {
     shortLabel: 'StudieOS',
     heroImage: '/project-rail/studieos.png',

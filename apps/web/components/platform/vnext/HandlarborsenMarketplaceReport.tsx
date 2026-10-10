@@ -8,6 +8,7 @@ import {
   type MarketplaceReport,
   type MetricView,
   type ReportState,
+  REPORT_STATE_MESSAGES,
 } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-report'
 import styles from './HandlarborsenMarketplaceReport.module.css'
 
@@ -18,29 +19,6 @@ import styles from './HandlarborsenMarketplaceReport.module.css'
  * nothing is computed, estimated or defaulted here. An unavailable metric reads
  * "Okänt" with its reason — never 0 — and no change is claimed without a previous report.
  */
-
-const STATE_MESSAGES: Record<Exclude<ReportState, 'ok'>, { title: string; body: string; tone: 'empty' | 'error' }> = {
-  no_snapshot: {
-    title: 'Ingen rapport ännu',
-    body: 'Ingen marknadsplatsstatistik har sparats för Handlarbörsen. Inga värden visas.',
-    tone: 'empty',
-  },
-  invalid_snapshot: {
-    title: 'Senaste rapporten kunde inte verifieras',
-    body: 'Den senast sparade rapporten uppfyller inte datakontraktet och visas därför inte. Inga värden visas.',
-    tone: 'error',
-  },
-  read_failed: {
-    title: 'Statistiken kunde inte läsas',
-    body: 'Läsningen misslyckades. Det betyder inte att värdena är noll — de är okända just nu.',
-    tone: 'error',
-  },
-  not_enabled: {
-    title: 'Insamling är inte aktiv för projektet',
-    body: 'Projektet står varken i observer- eller aktivt läge, så ingen statistik visas.',
-    tone: 'empty',
-  },
-}
 
 export function HandlarborsenMarketplaceReport({
   slug,
@@ -142,7 +120,7 @@ export function HandlarborsenMarketplaceReport({
 }
 
 function StateNote({ state }: { state: Exclude<ReportState, 'ok'> }) {
-  const message = STATE_MESSAGES[state]
+  const message = REPORT_STATE_MESSAGES[state]
   return (
     <section className={styles.panel} aria-labelledby="hb-state">
       <h2 id="hb-state" className={styles.sectionTitle}>{message.title}</h2>

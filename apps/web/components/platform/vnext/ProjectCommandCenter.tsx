@@ -41,11 +41,23 @@ import styles from './ProjectCommandCenter.module.css'
  * idle or as zero, and a failed read is never rendered as an empty list.
  */
 
-export function ProjectCommandCenter({ model }: { model: ProjectCommandCenterModel }) {
+export function ProjectCommandCenter({
+  model,
+  overview,
+}: {
+  model: ProjectCommandCenterModel
+  /**
+   * Key figures shown directly under the header, ahead of the workspace. Supplied only by
+   * a project that has them; every other project passes nothing and renders as before.
+   */
+  overview?: ReactNode
+}) {
   return (
     <div className={styles.field}>
       <div className={styles.ambient} aria-hidden />
       <Header model={model} />
+      {overview ?? null}
+      {overview ? <h2 className={styles.workspaceHeading}>Arbetsyta</h2> : null}
       <div className={styles.workspace}>
         <div className={styles.primary}>
           <WorkflowsSection model={model} />

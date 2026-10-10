@@ -2,7 +2,9 @@ import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { getProjectBySlug, type ResolvedProject } from '@/lib/project/get-project'
-import { loadProjectCommandCenter } from '@/lib/os/project-command-center'
+import { isHandlarborsenProject, loadProjectCommandCenter } from '@/lib/os/project-command-center'
+import { loadHandlarborsenMarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-read'
+import { HandlarborsenOverview } from '@/components/platform/vnext/HandlarborsenOverview'
 import {
   ProjectCommandCenter,
   ProjectCommandCenterLoading,
@@ -47,6 +49,18 @@ export default async function ProjectPage({
 }
 
 async function LoadedProjectCommandCenter({ project }: { project: ResolvedProject }) {
-  const model = await loadProjectCommandCenter(project)
-  return <ProjectCommandCenter model={model} />
+  // Key figures lead the page for Handlarbörsen only. The project (verified by id, slug and
+  // name) is the RLS-resolved one, and it is also the allow-list handed to the reader, which
+  // re-checks identity and atlas_mode. Every other project loads exactly what it did before.
+  const withKeyFigures = isHandlarborsenProject(project)
+  const [model, reportResult] = await Promise.all([
+    loadProjectCommandCenter(project),
+    withKeyFigures
+      ? loadHandlarborsenMarketplaceReport(project, { allowedProjectIds: [project.id] })
+      : Promise.resolve(null),
+  ])
+  const overview = reportResult && reportResult.status === 'ok'
+    ? <HandlarborsenOverview report={reportResult.report} reportHref={model.links.marketplace} />
+    : undefined
+  return <ProjectCommandCenter model={model} overview={overview} />
 }

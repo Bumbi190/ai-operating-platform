@@ -422,3 +422,28 @@ export function renderUnavailableNotice(state: ReportState): string | null {
     'Säg det rakt ut. Hitta inte på siffror, uppskatta inte och använd inte minne eller tidigare svar som om de vore aktuell statistik. Frånvaro av data är inte noll.',
   ].join('\n')
 }
+
+// ── Messages for a report that cannot be shown (page and overview share them) ─
+
+export const REPORT_STATE_MESSAGES: Record<Exclude<ReportState, 'ok'>, { title: string; body: string; tone: 'empty' | 'error' }> = {
+  no_snapshot: {
+    title: 'Ingen rapport ännu',
+    body: 'Ingen marknadsplatsstatistik har sparats för Handlarbörsen. Inga värden visas.',
+    tone: 'empty',
+  },
+  invalid_snapshot: {
+    title: 'Senaste rapporten kunde inte verifieras',
+    body: 'Den senast sparade rapporten uppfyller inte datakontraktet och visas därför inte. Inga värden visas.',
+    tone: 'error',
+  },
+  read_failed: {
+    title: 'Statistiken kunde inte läsas',
+    body: 'Läsningen misslyckades. Det betyder inte att värdena är noll — de är okända just nu.',
+    tone: 'error',
+  },
+  not_enabled: {
+    title: 'Insamling är inte aktiv för projektet',
+    body: 'Projektet står varken i observer- eller aktivt läge, så ingen statistik visas.',
+    tone: 'empty',
+  },
+}

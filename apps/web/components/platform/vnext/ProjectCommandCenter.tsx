@@ -44,6 +44,7 @@ import styles from './ProjectCommandCenter.module.css'
 export function ProjectCommandCenter({
   model,
   overview,
+  briefing,
 }: {
   model: ProjectCommandCenterModel
   /**
@@ -51,12 +52,15 @@ export function ProjectCommandCenter({
    * a project that has them; every other project passes nothing and renders as before.
    */
   overview?: ReactNode
+  /** Optional, project-scoped, read-only briefing; absent for every other project. */
+  briefing?: ReactNode
 }) {
   return (
     <div className={styles.field}>
       <div className={styles.ambient} aria-hidden />
       <Header model={model} />
       {overview ?? null}
+      {briefing ?? null}
       {overview ? <h2 className={styles.workspaceHeading}>Arbetsyta</h2> : null}
       <div className={styles.workspace}>
         <div className={styles.primary}>

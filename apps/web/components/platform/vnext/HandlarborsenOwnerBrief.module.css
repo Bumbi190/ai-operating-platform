@@ -1,0 +1,178 @@
+/* Handlarbörsen's decision-oriented content, below the existing verified KPI report.
+   Scope is local: generic Project Command Center and other projects do not change. */
+
+.section {
+  position: relative;
+  min-width: 0;
+}
+
+.heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  margin: 0 0 0.875rem;
+}
+
+.kicker {
+  margin: 0 0 0.35rem;
+  font: 600 0.625rem/1.5 var(--font-geist-mono, ui-monospace), monospace;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: rgb(var(--omnira-cyan-soft-rgb) / 0.75);
+}
+
+.heading h2 {
+  margin: 0;
+  font-size: clamp(1.05rem, 1.5vw, 1.35rem);
+  font-weight: 660;
+  letter-spacing: -0.02em;
+  color: hsl(var(--foreground));
+}
+
+.readOnly {
+  margin: 0 0 0.05rem;
+  font-size: 0.6875rem;
+  color: var(--omnira-text-3);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(0.75rem, 1.3vw, 1.15rem);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  gap: 0.7rem;
+  min-width: 0;
+  min-height: 13.5rem;
+  padding: clamp(1rem, 1.6vw, 1.4rem);
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.19);
+  border-radius: 1rem;
+  background: linear-gradient(155deg, rgb(12 36 55 / 0.86), rgb(4 13 29 / 0.82) 83%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.035), 0 0.8rem 2.4rem rgb(0 0 0 / 0.12);
+}
+
+.card[data-tone='warning'] {
+  border-color: rgb(251 191 36 / 0.29);
+}
+
+.cardTop {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font: 600 0.58rem/1.4 var(--font-geist-mono, ui-monospace), monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  color: rgb(var(--omnira-aqua-rgb) / 0.71);
+}
+
+.cardTop svg {
+  color: var(--omnira-cyan);
+}
+
+.card[data-tone='warning'] .cardTop svg {
+  color: var(--omnira-amber);
+}
+
+.card h3 {
+  margin: 0;
+  font-size: clamp(0.98rem, 1.25vw, 1.18rem);
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: hsl(var(--foreground));
+  overflow-wrap: anywhere;
+}
+
+.card p {
+  margin: 0;
+  font-size: 0.79rem;
+  line-height: 1.55;
+  color: var(--omnira-text-2);
+  overflow-wrap: anywhere;
+}
+
+.card p strong {
+  color: hsl(var(--foreground));
+  font-weight: 650;
+}
+
+.card .collection {
+  font-size: 0.69rem;
+  color: rgb(var(--omnira-aqua-rgb) / 0.78);
+}
+
+.counts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.2rem;
+  margin: 0;
+  width: 100%;
+}
+
+.counts > div {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.15rem;
+}
+
+.counts dt {
+  font-size: 0.66rem;
+  color: var(--omnira-text-3);
+}
+
+.counts dd {
+  margin: 0;
+  font: 600 1.35rem/1.2 var(--font-geist-mono, ui-monospace), monospace;
+  color: hsl(var(--foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.9rem;
+  margin-top: auto;
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: auto;
+  min-height: 2.25rem;
+  font-size: 0.76rem;
+  font-weight: 650;
+  text-decoration: none;
+  color: var(--omnira-cyan);
+}
+
+.link:hover { color: hsl(var(--foreground)); }
+.link:focus-visible {
+  outline: 2px solid rgb(var(--omnira-cyan-rgb) / 0.8);
+  outline-offset: 3px;
+  border-radius: 0.25rem;
+}
+
+@media (max-width: 80rem) {
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .card:last-child { grid-column: 1 / -1; }
+}
+
+@media (max-width: 50rem) {
+  .cards { grid-template-columns: minmax(0, 1fr); }
+  .card:last-child { grid-column: auto; }
+  .card { min-height: 0; gap: 0.65rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(html:not([data-motion='full'])) .link {
+    transition: none;
+  }
+}

@@ -105,7 +105,7 @@ describe('vnext nav · surface filtering is layout, not authorization', () => {
 
   it('mobile is a deliberate subset, not a copy', () => {
     const mobile = vnextNavItemsFor('mobile').map((i) => i.href)
-    expect(mobile).toEqual(['/atlas', '/chat', '/approvals', '/agent-activity', '/memory'])
+    expect(mobile).toEqual(['/atlas', '/chat', '/projects', '/approvals', '/agent-activity', '/memory'])
     expect(mobile.length).toBeLessThan(vnextNavItems().length)
   })
 

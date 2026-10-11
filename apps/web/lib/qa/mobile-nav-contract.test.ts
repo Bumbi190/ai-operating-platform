@@ -5,6 +5,12 @@ import { vnextNavItemsFor } from '@/lib/nav/vnext-nav'
 import { resolveDestination } from '@/lib/nav/registry'
 import { LEGACY_PROJECT_NAV } from '@/lib/nav/legacy-nav'
 import { shouldRenderGlobalProjectList } from '@/lib/nav/sidebar-visibility'
+import * as React from 'react'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { AtlasMobileNav } from '@/components/platform/vnext/AtlasMobileNav'
+
+;(globalThis as unknown as { React: typeof React }).React = React
 
 /**
  * Mobile navigation contract.
@@ -16,40 +22,47 @@ import { shouldRenderGlobalProjectList } from '@/lib/nav/sidebar-visibility'
  * "Aktivitet" and "Minne" — and `knowledge` is an alias to /memory that never
  * had a page.
  *
- * What this suite guards is that reconciliation is all that happened: the same
- * five destinations, in the same order, with the model — not the component —
- * deciding which are mobile.
+ * The original quick-jumps keep their order, with one intentional addition:
+ * the existing /projects portfolio route must be reachable from mobile.
+ * The shared model — not the component — still owns every menu destination.
  */
 
 const read = (rel: string) => readFileSync(resolve(__dirname, '../..', rel), 'utf8')
 
 const MOBILE = read('components/platform/vnext/AtlasMobileNav.tsx')
 
-describe('mobile nav · destinations are unchanged', () => {
-  it('renders the same five destinations, in the same order, as before C6', () => {
-    // The pre-C6 list, resolved exactly as the component used to build it.
+describe('mobile nav · portfolio is reachable', () => {
+  it('preserves the original quick-jumps in their original order', () => {
     const before = ['atlas', 'chat', 'approvals', 'activity', 'knowledge']
       .map((id) => resolveDestination(id as never)?.href)
-    expect(vnextNavItemsFor('mobile').map((i) => i.href)).toEqual(before)
+    expect(vnextNavItemsFor('mobile').filter((i) => i.id !== 'projects').map((i) => i.href)).toEqual(before)
   })
 
-  it('is exactly the five approved mobile entries', () => {
+  it('adds exactly one portfolio link, not a list of project names', () => {
     expect(vnextNavItemsFor('mobile').map((i) => i.href)).toEqual([
-      '/atlas', '/chat', '/approvals', '/agent-activity', '/memory',
+      '/atlas', '/chat', '/projects', '/approvals', '/agent-activity', '/memory',
     ])
+    expect(vnextNavItemsFor('mobile').filter((i) => i.href.startsWith('/projects'))).toHaveLength(1)
   })
 
-  it('adds no new route', () => {
-    for (const item of vnextNavItemsFor('mobile')) {
-      expect(resolveDestination(item.id as never)?.href ?? item.href).toBe(item.href)
-    }
+  it('uses the already-implemented, scoped project index', () => {
+    const index = read('app/(platform)/projects/page.tsx')
+    expect(index).toContain('loadAtlasHomeViewModel()')
+    expect(index).toContain('composeAtlasRailCards(model?.projects ?? [])')
+    expect(index).toContain('<ProjectSpiral cards={cards} projectsAvailable={projectsAvailable} />')
+  })
+
+  it('renders one actual, tappable Projekt link in the mobile header', () => {
+    const markup = renderToStaticMarkup(createElement(AtlasMobileNav))
+    expect(markup).toMatch(/href="\/projects"[^>]*>Projekt<\/a>/)
+    expect(markup.match(/href="\/projects"/g)).toHaveLength(1)
   })
 })
 
 describe('mobile nav · identity is now canonical', () => {
   it('uses the desktop labels, retiring the registry English ones', () => {
     expect(vnextNavItemsFor('mobile').map((i) => i.label)).toEqual([
-      'Atlas', 'Chat', 'Granskningar', 'Aktivitet', 'Minne',
+      'Atlas', 'Chat', 'Projekt', 'Granskningar', 'Aktivitet', 'Minne',
     ])
   })
 
@@ -81,10 +94,11 @@ describe('mobile nav · scope was not broadened', () => {
     }
   })
 
-  it('adds no Manager and no project route', () => {
+  it('adds no Manager and no individual project route', () => {
     const hrefs = vnextNavItemsFor('mobile').map((i) => i.href)
     expect(hrefs).not.toContain('/manager')
-    expect(hrefs.some((h) => h.startsWith('/projects'))).toBe(false)
+    expect(hrefs).toContain('/projects')
+    expect(hrefs.some((h) => h.startsWith('/projects/'))).toBe(false)
   })
 
   it('stays a strict subset of desktop', () => {

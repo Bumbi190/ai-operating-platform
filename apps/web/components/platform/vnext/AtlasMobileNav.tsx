@@ -11,13 +11,13 @@ import styles from './AtlasHomeVNext.module.css'
  * desktop showed 'Granskningar', 'Aktivitet' and 'Minne' — and 'knowledge' is an
  * alias to /memory that never had a page of its own.
  *
- * The destinations are unchanged; the model simply owns their identity now, and
- * decides which of them are mobile.
+ * The original destinations retain their identity, and the shared model owns
+ * mobile visibility, including the portfolio quick-jump added for touch access.
  *
- * Project selection is deliberately absent. This menu used to list every project
- * as well, which put the same destinations on screen twice — ProjectRail sits on
- * this very page and is the canonical project surface, so the menu copy was a
- * second path rather than the only one.
+ * Individual project selection is deliberately absent. The shared model now
+ * includes a single portfolio entry, so mobile operators can reach the project
+ * index without scrolling the Atlas Home screen. Individual destinations stay
+ * with ProjectRail and the index; this menu duplicates no project cards.
  */
 const PRIMARY_LINKS = vnextNavItemsFor('mobile')
 

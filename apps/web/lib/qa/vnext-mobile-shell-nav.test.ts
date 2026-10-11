@@ -190,11 +190,10 @@ describe('NAVIGATION CONTRACT — the canonical model is the only source', () =>
   })
 
   it('did not widen the approved mobile IA', () => {
-    // Exactly the five owner-approved entries. /revenue and /planning are
-    // deliberately desktop-only and must NOT be added just because the review
-    // named them as stranded routes.
+    // Keep the approved quick-jumps, adding only the existing /projects index.
+    // /revenue and /planning remain desktop-only, and project details are not enumerated.
     expect(mobile.map((i) => i.href)).toEqual([
-      '/atlas', '/chat', '/approvals', '/agent-activity', '/memory',
+      '/atlas', '/chat', '/projects', '/approvals', '/agent-activity', '/memory',
     ])
     expect(mobile.map((i) => i.href)).not.toContain('/revenue')
     expect(mobile.map((i) => i.href)).not.toContain('/planning')

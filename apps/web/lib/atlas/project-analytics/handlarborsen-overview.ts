@@ -9,6 +9,8 @@
 
 import type { MarketplaceMetricKey } from '@/lib/atlas/collectors/handlarborsen-marketplace'
 import {
+  COLLECTION_TODAY_LABELS,
+  type CollectionStatus,
   COMPLETENESS_LABELS,
   REPORT_STATE_MESSAGES,
   STALE_AFTER_HOURS,
@@ -59,11 +61,26 @@ function item(metric: MetricView, deltaText: string | null): OverviewItem {
   }
 }
 
+/** Collection rows for the meta list. Empty when the audit rows could not be read: nothing is claimed. */
+function collectionMeta(collection: CollectionStatus | null): Array<{ label: string; value: string; tone?: 'ok' | 'warning' }> {
+  if (!collection) return []
+  const last = collection.lastSuccess
+  return [
+    {
+      label: 'Senaste lyckade insamling',
+      value: last ? `${formatStockholm(last.ranAt)} · ${formatAge(last.ageHours)} sedan` : 'Ingen lyckad insamling registrerad',
+    },
+    { label: 'Dagens insamling', ...COLLECTION_TODAY_LABELS[collection.today] },
+  ]
+}
+
 export function buildHandlarborsenOverview(report: MarketplaceReport): HandlarborsenOverviewModel {
   if (report.state !== 'ok' || !report.latest) {
     const state = report.state === 'ok' ? 'no_snapshot' : report.state
     const message = REPORT_STATE_MESSAGES[state]
-    return { kind: 'note', title: message.title, text: message.body, tone: message.tone }
+    // No report to show, but the audit rows can still say that today's collection failed.
+    const failure = report.collection?.latestAttemptFailed ? ' Det senaste insamlingsförsöket misslyckades.' : ''
+    return { kind: 'note', title: message.title, text: `${message.body}${failure}`, tone: message.tone }
   }
 
   const { latest, history } = report
@@ -86,7 +103,13 @@ export function buildHandlarborsenOverview(report: MarketplaceReport): Handlarbo
   if (latest.freshness === 'stale') {
     notices.push({
       tone: 'warning',
-      text: `Rapporten är äldre än ${STALE_AFTER_HOURS} tim och kan vara inaktuell. Insamlingen är ännu inte schemalagd.`,
+      text: `Rapporten är äldre än ${STALE_AFTER_HOURS} tim och kan vara inaktuell.`,
+    })
+  }
+  if (report.collection?.latestAttemptFailed) {
+    notices.push({
+      tone: 'warning',
+      text: 'Det senaste insamlingsförsöket misslyckades eller gav ingen ny rapport. Siffrorna är från den senast sparade rapporten.',
     })
   }
   if (latest.completeness !== 'complete') {
@@ -112,11 +135,12 @@ export function buildHandlarborsenOverview(report: MarketplaceReport): Handlarbo
         value: `${COMPLETENESS_LABELS[latest.completeness]} · ${latest.availableCount} av ${latest.metrics.length} mätvärden`,
         tone: latest.completeness === 'complete' ? 'ok' : 'warning',
       },
+      ...collectionMeta(report.collection),
     ],
     notices,
     historyText: comparison.available
       ? `${history.snapshotCount} rapporter sparade. Förändring mot rapporten ${comparison.previousDate} visas på totaler och aktuella nivåer; ` +
-        'värden för senaste 24 h jämförs inte mellan dagar. Ett diagram visas när tillräcklig historik finns.'
+        'värden för senaste 24 h jämförs inte mellan dagar. Varje sparad dag finns i den fullständiga statistikrapporten.'
       : 'Det finns bara en rapport. Utveckling över tid visas först när fler rapporter har sparats — ingen ökning eller minskning kan bedömas nu.',
   }
 }

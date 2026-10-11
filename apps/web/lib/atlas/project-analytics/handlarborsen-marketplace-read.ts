@@ -28,6 +28,9 @@ import {
 } from '@/lib/atlas/collectors/handlarborsen-marketplace'
 import type { ContextRequest } from '@/lib/atlas/context/request'
 import {
+  COLLECTION_RUN_LIMIT,
+  COLLECTION_RUN_SELECT,
+  COLLECTOR_ID,
   HISTORY_LIMIT,
   SNAPSHOT_SELECT_COLUMNS,
   buildMarketplaceReport,
@@ -90,7 +93,24 @@ export async function loadHandlarborsenMarketplaceReport(
       .limit(HISTORY_LIMIT)
     if (error) return failed('snapshots')
 
-    return { status: 'ok', report: buildMarketplaceReport(data ?? [], options.now) }
+    // The collector's own audit rows say whether the daily collection ran and what it did.
+    // A failure here must not hide the report: the collection status is then simply unknown.
+    let runs: unknown[] | undefined
+    try {
+      const { data: runRows, error: runError } = await (db as any)
+        .from('collector_runs')
+        .select(COLLECTION_RUN_SELECT)
+        .eq('collector_id', COLLECTOR_ID)
+        .eq('project_id', HANDLARBORSEN_PROJECT_ID)
+        .order('ran_at', { ascending: false })
+        .limit(COLLECTION_RUN_LIMIT)
+      if (runError) console.error('[handlarborsen.report] read failed (stage: collector_runs)')
+      else runs = runRows ?? []
+    } catch {
+      console.error('[handlarborsen.report] read failed (stage: collector_runs)')
+    }
+
+    return { status: 'ok', report: buildMarketplaceReport(data ?? [], options.now, runs) }
   } catch {
     return failed('exception')
   }

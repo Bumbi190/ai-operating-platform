@@ -60,6 +60,15 @@ export interface CollectorResult {
   metadata:     Record<string, unknown>
 }
 
+/** Returned by store() when the snapshot was deliberately not kept. See BaseCollector.store. */
+export interface StoreDeclined {
+  declined: true
+  /** Fixed code recorded as the run's error_message, e.g. 'snapshot_not_stored:lower_quality'. */
+  reason:   string
+  /** Written to collector_runs.metadata in place of the payload. */
+  metadata: Record<string, unknown>
+}
+
 // ── BaseCollector abstract class ──────────────────────────────────────────────
 
 export abstract class BaseCollector {
@@ -95,8 +104,14 @@ export abstract class BaseCollector {
   /**
    * (Optional) Persist to a snapshot table. Called AFTER normalize(), BEFORE
    * signal emission. A store() failure is non-fatal — the signal still emits.
+   *
+   * A store() that decides NOT to keep the snapshot (e.g. a guarded store that refuses to
+   * overwrite better data) may return a StoreDeclined. The run is then reported as
+   * 'skipped' with the given reason and metadata, and no signal is emitted, so neither the
+   * signal stream nor the audit log claims something was saved that was not. Returning
+   * nothing (every existing collector) keeps the original behaviour.
    */
-  store?(payload: Record<string, unknown>, ctx: CollectorContext): Promise<void>
+  store?(payload: Record<string, unknown>, ctx: CollectorContext): Promise<void | StoreDeclined>
 
   /** Run the full collector lifecycle. Never throws. */
   async run(ctx: CollectorContext): Promise<CollectorResult> {
@@ -115,7 +130,11 @@ export abstract class BaseCollector {
       // store() is skipped entirely during dry runs — no DB writes of any kind.
       if (this.store && !ctx.dryRun) {
         try {
-          await this.store(payload, ctx)
+          const declined = await this.store(payload, ctx)
+          if (declined && declined.declined === true) {
+            return this._result(ctx, 'skipped', null, null, Date.now() - t0,
+              declined.reason, declined.metadata)
+          }
         } catch (storeErr) {
           // store() failure is non-fatal: signal is the Atlas source of truth;
           // snapshot tables are secondary derived storage. The run is recorded as

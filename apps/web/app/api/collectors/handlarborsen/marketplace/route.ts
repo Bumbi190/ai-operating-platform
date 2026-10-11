@@ -5,7 +5,10 @@
  * Runs for exactly one project (the verified Handlarbörsen id + slug) and only while
  * its atlas_mode is 'observer' or 'active'. Accepts no URL, host or project input.
  *
- * NOT scheduled: no pg_cron entry exists for this route yet.
+ * Scheduling: this route schedules nothing. The daily call comes from the pg_cron job
+ * omnira_handlarborsen_marketplace (06:55 UTC) once that job has been activated, which is a
+ * separate, manually approved step (docs/handlarborsen-p1e/). It can also be called by hand
+ * with the CRON_SECRET.
  * Protected: Authorization: Bearer {CRON_SECRET} (constant-time compare).
  *
  * Query params:
@@ -76,7 +79,9 @@ export async function GET(request: Request) {
   if (!dryRun) await writeCollectorRun(db, result)
 
   const credential = resolveMetricsCredential()
-  const meta = result.metadata as { completeness?: string; unavailable?: unknown; metrics?: unknown }
+  const meta = result.metadata as {
+    completeness?: string; unavailable?: unknown; metrics?: unknown; storage_outcome?: string
+  }
 
   return json(
     {
@@ -87,7 +92,12 @@ export async function GET(request: Request) {
         collectorId:  result.collectorId,
         projectSlug:  result.projectSlug,
         status:       result.status,
-        reason:       result.status === 'skipped' && !credential.ok ? credential.reason : undefined,
+        // Why nothing was stored: no usable credential, or the guarded store kept better data.
+        reason:       result.status === 'skipped'
+          ? (!credential.ok ? credential.reason : meta.storage_outcome ? result.error ?? undefined : undefined)
+          : undefined,
+        // What the database actually did with the snapshot (not present on dry runs).
+        storage:      meta.storage_outcome,
         completeness: result.status === 'ok' ? meta.completeness : undefined,
         unavailable:  result.status === 'ok' ? meta.unavailable : undefined,
         // Aggregate counts only; returned on dry runs so the payload can be reviewed.

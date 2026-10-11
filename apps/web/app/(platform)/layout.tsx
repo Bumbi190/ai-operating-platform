@@ -372,7 +372,7 @@ export default async function PlatformLayout({
       </div>
 
       {/* Atlas permanent närvaro — fixed bottom-right, dold på /atlas */}
-      <AtlasMiniOrb />
+      <AtlasMiniOrb uiGeneration={uiGeneration} />
     </OperatorModeProvider>
     </AtlasRuntimeProvider>
   )

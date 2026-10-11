@@ -178,7 +178,22 @@ describe('Handlarbörsen visual pulse — verified read-only representation', ()
       ),
     ).toBeNull()
     const out = html([])
-    expect(out).not.toContain('Verksamheten i en överblick')
+    expect(out).not.toContain('Marknadspuls')
     expect(out).toContain('Ingen rapport')
+  })
+})
+
+describe('Handlarborsen overview hierarchy', () => {
+  it('places charts after KPI and before secondary pulse, collapsing only the breakdown', () => {
+    const out = html()
+    expect(out.indexOf('id="hb-overview"')).toBeLessThan(out.indexOf('id="hb-trend-heading"'))
+    expect(out.indexOf('id="hb-trend-heading"')).toBeLessThan(out.indexOf('id="hb-market-pulse"'))
+    const pulse = out.slice(out.indexOf('aria-labelledby="hb-market-pulse"'))
+    const disclosure = pulse.match(/<details\b[^>]*>[\s\S]*?<\/details>/)![0]
+    expect(disclosure).not.toMatch(/<details[^>]*\bopen/)
+    expect(disclosure.match(/data-stage=/g)).toHaveLength(3)
+    expect(disclosure).not.toContain('data-priority=')
+    expect(pulse.slice(pulse.indexOf('</details>'))).toContain('data-priority=')
+    expect(pulse).toContain('href="/projects/handlarborsen/marketplace"')
   })
 })

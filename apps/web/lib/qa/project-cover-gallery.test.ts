@@ -1,10 +1,20 @@
 /**
- * /projects: cover gallery replacing the overlapping spiral.
+ * /projects: image-led desktop spiral with normal-flow responsive covers.
  * Tests prioritize readable layout, real authorized destinations, existing
  * artwork, keyboard ownership and accessible/mobile fallback behavior.
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import * as React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+;(globalThis as unknown as { React: typeof React }).React = React
+
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }))
+vi.mock('@/components/platform/vnext/AtlasProjectReturnShortcut', () => ({ markAtlasProjectRailOpen: vi.fn() }))
+vi.mock('next/image', () => ({ default: ({ fill, priority, ...props }: Record<string, unknown>) => React.createElement('img', props) }))
+
+import { ProjectCoverGallery, projectOrbitPosition } from '@/components/platform/vnext/ProjectCoverGallery'
+import { composeAtlasRailCards } from '@/lib/atlas/first-party-workspaces'
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { presentationForProject } from '@/lib/atlas/project-presentation'
@@ -100,19 +110,22 @@ describe('project cover gallery · mobile readability', () => {
     expect(CSS).toMatch(/\.gallery\s*\{[^}]*grid-template-columns:\s*repeat\(2/)
     expect(CSS).toContain('@media (max-width: 767px)')
     expect(CSS).toMatch(/grid-template-columns:\s*minmax\(0, 1fr\)/)
-    expect(CSS).not.toMatch(/\.item\s*\{[^}]*position:\s*absolute/)
-    expect(GALLERY).not.toContain('spiralPlacements')
+    expect(CSS.slice(0, CSS.indexOf('@media (min-width: 1024px)'))).not.toMatch(/\.item\s*\{[^}]*position:\s*absolute/)
+    expect(CSS).toContain('@media (min-width: 1024px)')
+    expect(CSS).toContain('.navigation { display: none;')
+    expect(CSS).toContain('.selectCard { display: none;')
+    expect(CSS).toContain('.navigation { display: flex; }')
+    expect(CSS).toContain('.selectCard { display: grid; }')
     expect(GALLERY).not.toContain('translate3d(')
     expect(GALLERY).not.toContain('onTouchStart')
   })
 
-  it('uses a balanced three-column arrangement on ultrawide screens', () => {
-    expect(CSS).toContain('width: min(100%, 140rem)')
-    expect(CSS).toContain('@media (min-width: 1720px)')
-    expect(CSS).toMatch(/grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/)
-    expect(CSS).toContain('aspect-ratio: 16 / 9')
-    expect(CSS).toContain('max-height: 28rem')
-    expect(CSS).toContain('border-bottom: 1px solid')
+  it('bounds the desktop canvas and gives one focused cover prominence', () => {
+    expect(CSS).toContain('width: min(100%, 100rem)')
+    expect(CSS).toMatch(/\.item\[data-focused\]\s*\{[^}]*width: 620px/)
+    expect(CSS).toContain('.spine')
+    expect(CSS).toContain('.orbitRing')
+    expect(CSS).toContain('.particles')
   })
 
   it('removes the duplicate page kicker while keeping the shell breadcrumbs', () => {
@@ -123,11 +136,10 @@ describe('project cover gallery · mobile readability', () => {
   })
 
   it('keeps activity accessible without covering an entire project cover', () => {
-    expect(PEEK).toContain("pathname === '/projects'")
-    expect(PEEK).toContain("uiGeneration === 'vnext'")
+    expect(PEEK).toContain('isVNextProjectPath(pathname, uiGeneration)')
     expect(PEEK).toContain("compactOnProjects ? 'w-11 justify-center px-0' : 'px-4'")
     expect(PEEK).toContain('aria-label="Visa aktivitet"')
-    expect(PEEK).toContain("compactOnProjects ? 'sr-only'")
+    expect(PEEK).not.toContain('>Activity</span>')
     expect(PEEK).toContain('safe-area-inset-bottom')
     expect(CSS).toContain('padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px))')
   })
@@ -169,5 +181,47 @@ describe('project breadcrumbs', () => {
     })
     expect(crumbs[1]).toMatchObject({ label: 'Projekt', href: '/projects', current: false })
     expect(buildBreadcrumbs('/projects').at(-1)).toMatchObject({ label: 'Projekt', current: true })
+  })
+})
+
+describe('project cover gallery rendered structure and orbit geometry', () => {
+  it('renders a native list of authorized destinations with one selection', () => {
+    const cards = composeAtlasRailCards([
+      { id: 'authorized-hb', slug: 'handlarborsen', name: 'Handlarborsen', color: '#22d3ee', href: '/projects/handlarborsen?ui=vnext', runningRuns: null, pendingApprovals: null },
+      { id: 'authorized-study', slug: 'studieos', name: 'StudieOS', color: '#22d3ee', href: '/projects/studieos', runningRuns: 0, pendingApprovals: 0 },
+    ])
+    const out = renderToStaticMarkup(React.createElement(ProjectCoverGallery, { cards, projectsAvailable: true }))
+    expect(out.match(/<ul\b/g)).toHaveLength(1)
+    expect(out.match(/<li\b/g)).toHaveLength(cards.length)
+    expect(out.match(/<a\b/g)).toHaveLength(cards.length)
+    for (const card of cards) expect(out).toContain(`href="${card.href}"`)
+    expect(out.match(/data-focused="true"/g)).toHaveLength(1)
+    expect(out.match(/aria-pressed="true"/g)).toHaveLength(1)
+    expect(out).toContain('aria-live="polite"')
+    expect(out).not.toContain('disabled=""')
+    expect(out.match(/<img\b/g)).toHaveLength(2)
+  })
+
+  it('distinguishes unavailable from an empty authorized portfolio', () => {
+    const render = (projectsAvailable: boolean) => renderToStaticMarkup(React.createElement(ProjectCoverGallery, { cards: [], projectsAvailable }))
+    expect(render(false)).toContain('role="status"')
+    expect(render(false)).not.toContain('<a')
+    expect(render(true)).not.toBe(render(false))
+  })
+
+  it('keeps every orbit position inside its canvas and selects exactly one card', () => {
+    for (const count of [1, 2, 6, 7, 12]) {
+      for (let selected = 0; selected < count; selected++) {
+        const positions = Array.from({ length: count }, (_, index) => projectOrbitPosition(index, selected, count))
+        expect(positions.filter((p) => p.offset === 0)).toHaveLength(1)
+        expect(new Set(positions.map((p) => p.offset)).size).toBe(count)
+        for (const p of positions) {
+          const halfHeight = p.offset === 0 ? 194 : 100
+          expect(p.y - halfHeight).toBeGreaterThanOrEqual(0)
+          expect(p.y + halfHeight).toBeLessThanOrEqual(p.height)
+        }
+        expect(projectOrbitPosition(selected + count, selected, count).offset).toBe(0)
+      }
+    }
   })
 })

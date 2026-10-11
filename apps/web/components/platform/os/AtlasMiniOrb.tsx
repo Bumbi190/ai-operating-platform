@@ -19,6 +19,8 @@ import { useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { X, Maximize2, MessageSquare, ArrowRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { isVNextProjectPath } from '@/lib/nav/activity-peek-visibility'
+import type { OmniraUiGeneration } from '@/lib/ui/generation'
 import { useAtlas } from '@/lib/atlas/runtime'
 import type { OrbPhase } from './AtlasOrb'
 import { AtlasLauncherOrb } from './AtlasLauncherOrb'
@@ -28,17 +30,8 @@ const MINI_SIZE = 52
 
 // ── Nedre högra hörnet delas med aktivitets-peeken ──────────────────────────
 //
-// Den här krocken har setts förut. En tidigare slice mätte upp exakt samma
-// ~52x40 px överlapp mot aktivitets-peeken och löste den genom att göra orben
-// desktop-only — under antagandet att peeken ägde hörnet UNDER lg. Antagandet
-// höll inte: peeken är "universell aktivitets-peek (alla skärmstorlekar)" och
-// gömmer sig på desktop enbart på /atlas?ui=vnext. Eftersom launchern aldrig
-// renderas på /atlas är det villkoret aldrig sant där launchern syns, så
-// krocken flyttade bara upp till desktop i stället för att försvinna.
-//
-// Lösningen är en vertikal stapel: peeken ligger kvar längst ned, launchern
-// vilar ovanför den. Offseten är HÄRLEDD ur peekens egen geometri i stället för
-// gissad, så den följer med om den knappen ändrar storlek.
+// On ordinary desktop routes the launcher sits above the activity peek.
+// vNext project pages hide that peek, so the launcher uses the bottom slot.
 const ACTIVITY_PEEK_BOTTOM = 20   // MobileRailToggle: bottom-5
 const ACTIVITY_PEEK_HEIGHT = 44   // MobileRailToggle: h-11
 const STACK_GAP = 12              // andrum mellan peek och launcher
@@ -47,7 +40,6 @@ const LAUNCHER_BOTTOM = ACTIVITY_PEEK_BOTTOM + ACTIVITY_PEEK_HEIGHT + STACK_GAP 
 const STACK_RIGHT = ACTIVITY_PEEK_BOTTOM
 // Panelen vilar 10 px ovanför launchern, som tidigare.
 const PANEL_GAP = 10
-const PANEL_BOTTOM = LAUNCHER_BOTTOM + MINI_SIZE + PANEL_GAP
 
 /** Fasbeskrivning för hjälpmedel — samma ordval som orbens tidigare etikett. */
 function phaseDescription(phase: OrbPhase): string {
@@ -59,9 +51,11 @@ function phaseDescription(phase: OrbPhase): string {
   }
 }
 
-export function AtlasMiniOrb() {
+export function AtlasMiniOrb({ uiGeneration }: { uiGeneration: OmniraUiGeneration }) {
   const pathname = usePathname()
   const atlas    = useAtlas()
+  const launcherBottom = isVNextProjectPath(pathname, uiGeneration) ? ACTIVITY_PEEK_BOTTOM : LAUNCHER_BOTTOM
+  const panelBottom = launcherBottom + MINI_SIZE + PANEL_GAP
 
   // Lokal UI-state: panel öppen/stängd. Konversationsstate ägs av runtime.
   const [panelOpen, setPanelOpen] = useState(false)
@@ -114,7 +108,7 @@ export function AtlasMiniOrb() {
             'shadow-[0_0_0_1px_rgba(99,102,241,0.08),0_24px_48px_rgba(0,0,0,0.65)]',
             'animate-fade-in-up',
           )}
-          style={{ bottom: `${PANEL_BOTTOM}px`, right: `${STACK_RIGHT}px` }}
+          style={{ bottom: `calc(${panelBottom}px + env(safe-area-inset-bottom, 0px))`, right: `calc(${STACK_RIGHT}px + env(safe-area-inset-right, 0px))` }}
         >
           {/* ── Header ─────────────────────────────────────────────────── */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.06]">
@@ -219,7 +213,7 @@ export function AtlasMiniOrb() {
       {/* ── Mini-orb: fast position bottom-right ──────────────────────────── */}
       <div
         className="hidden lg:block fixed z-50"
-        style={{ bottom: `${LAUNCHER_BOTTOM}px`, right: `${STACK_RIGHT}px` }}
+        style={{ bottom: `calc(${launcherBottom}px + env(safe-area-inset-bottom, 0px))`, right: `calc(${STACK_RIGHT}px + env(safe-area-inset-right, 0px))` }}
       >
 
         {/* Aktiv-prick: syns när session pågår men panel är stängd */}

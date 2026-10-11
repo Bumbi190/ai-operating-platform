@@ -16,10 +16,16 @@
  * something else entirely.
  */
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+import * as React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+;(globalThis as unknown as { React: typeof React }).React = React
+const routeState = vi.hoisted(() => ({ pathname: '/projects' }))
+vi.mock('next/navigation', () => ({ usePathname: () => routeState.pathname }))
+import { MobileRailToggle } from '@/components/platform/os/MobileRailToggle'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { hasDesktopActivityRail, ATLAS_HOME_PATH } from '@/lib/nav/activity-peek-visibility'
+import { hasDesktopActivityRail, shouldHideDesktopActivityPeek, isVNextProjectPath, ATLAS_HOME_PATH } from '@/lib/nav/activity-peek-visibility'
 import {
   resolveUiGeneration,
   parseUiGeneration,
@@ -176,7 +182,7 @@ describe('COUPLING — the component consumes the resolved value', () => {
   })
 
   it('calls the shared decision rather than restating it inline', () => {
-    expect(PEEK).toContain('hasDesktopActivityRail(pathname, uiGeneration)')
+    expect(PEEK).toContain('shouldHideDesktopActivityPeek(pathname, uiGeneration)')
     expect(PEEK).toContain("from '@/lib/nav/activity-peek-visibility'")
   })
 
@@ -195,7 +201,7 @@ describe('COUPLING — the component consumes the resolved value', () => {
   it('keeps applying the decision as lg:hidden, not an outright hide', () => {
     // Below lg the peek is the ONLY activity surface — .insightRail is
     // display:none under 1024px — so suppression must remain desktop-scoped.
-    expect(PEEK).toContain("atlasVNextHasDesktopRail ? 'lg:hidden' : ''")
+    expect(PEEK).toContain("hideDesktopPeek ? 'lg:hidden' : ''")
     expect(PEEK).toContain('fixed z-50 bottom-5 right-5 h-11')
   })
 })
@@ -281,5 +287,38 @@ describe('PR #82 FORWARD COMPATIBILITY — simulated, branch untouched', () => {
           .toBe(isVNext(generation))
       }
     }
+  })
+})
+
+describe('project activity chrome', () => {
+  it.each(['/projects', '/projects/', '/projects/handlarborsen', '/projects/gainpilot/'])('suppresses only desktop vNext project peek on %s', (route) => {
+    expect(isVNextProjectPath(route, 'vnext')).toBe(true)
+    expect(shouldHideDesktopActivityPeek(route, 'vnext')).toBe(true)
+    expect(shouldHideDesktopActivityPeek(route, 'legacy')).toBe(false)
+  })
+  it.each(['/projects-other', '/project', '/agent-activity', '/chat', '/atlas/content'])('keeps the ordinary peek on %s', (route) => {
+    expect(isVNextProjectPath(route, 'vnext')).toBe(false)
+    expect(shouldHideDesktopActivityPeek(route, 'vnext')).toBe(false)
+  })
+})
+
+describe('rendered activity control', () => {
+  it.each(['/projects', '/projects/handlarborsen'])('retains one compact accessible mobile control on %s', (route) => {
+    routeState.pathname = route
+    const out = renderToStaticMarkup(React.createElement(MobileRailToggle, { uiGeneration: 'vnext', liveCount: 0, children: 'rail' }))
+    expect(out.match(/<button\b/g)).toHaveLength(1)
+    expect(out).toContain('aria-expanded="false"')
+    expect(out).toContain('lg:hidden')
+    expect(out).toContain('w-11')
+    expect(out).toContain('h-11')
+    expect(out).toContain('safe-area-inset-bottom')
+    expect(out).not.toContain('Activity</span>')
+    expect(out).not.toContain('linear-gradient')
+  })
+  it('retains a labeled peek on other routes', () => {
+    routeState.pathname = '/memory'
+    const out = renderToStaticMarkup(React.createElement(MobileRailToggle, { uiGeneration: 'vnext', children: 'rail' }))
+    expect(out).not.toContain('lg:hidden')
+    expect(out).toContain('Aktivitet')
   })
 })

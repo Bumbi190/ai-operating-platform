@@ -53,8 +53,8 @@
 .intro,
 .proposalIntro {
   margin: 0.4rem 0 0;
-  font-size: 0.8125rem;
-  line-height: 1.55;
+  font-size: 0.9375rem;
+  line-height: 1.65;
   color: rgb(216 230 241 / 0.73);
 }
 
@@ -111,7 +111,7 @@
   --stage-rgb: var(--omnira-teal-rgb);
 }
 .stage[data-stage='trading'] {
-  --stage-rgb: 155 143 246;
+  --stage-rgb: var(--omnira-cyan-soft-rgb);
 }
 
 .stage:not(:last-child)::after {
@@ -272,8 +272,8 @@
 .nextStep {
   margin: 0.45rem 0 0;
   color: rgb(216 230 241 / 0.8);
-  font-size: 0.75rem;
-  line-height: 1.55;
+  font-size: 0.875rem;
+  line-height: 1.65;
   overflow-wrap: anywhere;
 }
 .nextStep {
@@ -333,3 +333,14 @@
     font-size: 1.5rem;
   }
 }
+
+/* Secondary interpretation follows the primary KPI and chart surfaces. */
+.surface { border-color: rgb(var(--omnira-cyan-rgb) / 0.12); padding: clamp(1rem, 2vw, 1.75rem); gap: 1.4rem; }
+.disclosure { border-block: 1px solid rgb(var(--omnira-cyan-rgb) / 0.14); }
+.disclosure summary { cursor: pointer; min-height: 44px; padding: 1rem 0; font-size: 0.9375rem; color: #c9eff5; }
+.disclosure summary span { margin-left: 0.75rem; color: #9cb6c8; font-size: 0.8125rem; }
+.disclosure summary:focus-visible { outline: 2px solid #67e8f9; outline-offset: 3px; border-radius: 4px; }
+.disclosure .boundary { padding: 1rem 0 1.25rem; }
+.proposalPanel { padding-top: 0; border-top: 0; }
+.proposalTitle { font-size: clamp(1.25rem, 2vw, 1.5rem); letter-spacing: -0.025em; }
+@media (max-width: 40rem) { .disclosure summary span { display: block; margin: 0.4rem 0 0 1rem; } }

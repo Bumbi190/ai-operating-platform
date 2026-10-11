@@ -28,7 +28,7 @@
   margin: 0;
 }
 .heading {
-  font-size: clamp(1.1rem, 2vw, 1.45rem);
+  font-size: clamp(1.5rem, 2.5vw, 2rem);
   font-weight: 650;
   letter-spacing: -0.02em;
   margin: 0.35rem 0 0;
@@ -43,8 +43,8 @@
 }
 .intro {
   margin: 0;
-  font-size: 0.75rem;
-  line-height: 1.5;
+  font-size: 0.9375rem;
+  line-height: 1.65;
   color: rgb(216 230 241 / 0.73);
 }
 .grid {
@@ -72,7 +72,7 @@
   border-color: rgb(var(--omnira-teal-rgb) / 0.17);
 }
 .card[data-kind='trading'] {
-  border-color: rgb(147 130 250 / 0.19);
+  border-color: rgb(var(--omnira-cyan-soft-rgb) / 0.19);
 }
 .cardHeader {
   min-width: 0;
@@ -297,3 +297,19 @@
     max-width: 100%;
   }
 }
+
+.section { padding: clamp(1rem, 2.4vw, 2rem); gap: 1.25rem; border-color: rgb(var(--omnira-cyan-rgb) / 0.25); }
+.historyEmpty {
+  display: grid; grid-template-columns: minmax(11rem, 0.7fr) minmax(0, 2fr); align-items: center; gap: 2rem;
+  padding: clamp(1.25rem, 3vw, 2.5rem); border-radius: 1rem; border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.18);
+  background: radial-gradient(ellipse at 12% 50%, rgb(var(--omnira-cyan-rgb) / 0.1), transparent 65%), #061525;
+}
+.observation { display: flex; flex-direction: column; align-items: center; gap: 0.7rem; text-align: center; }
+.observationPoint { width: 14px; height: 14px; border-radius: 50%; background: #a5f3fc; box-shadow: 0 0 0 10px rgb(34 211 238 / 0.08), 0 0 35px rgb(34 211 238 / 0.5); margin-bottom: 0.75rem; }
+.observation time { color: #ddf9ff; font-size: 0.875rem; font-variant-numeric: tabular-nums; }
+.observation > span:last-child { font-size: 0.8125rem; color: #aac8d6; }
+.historyEmpty h3 { margin: 0; font-size: clamp(1.25rem, 2vw, 1.65rem); font-weight: 600; letter-spacing: -0.025em; }
+.historyEmpty p { margin: 0.65rem 0 0; max-width: 65ch; font-size: 0.9375rem; line-height: 1.7; color: #b7cddc; }
+.cardDescription, .barTitle, .dateNote, .disclaimer, .legendLabel { font-size: 0.8125rem; line-height: 1.55; }
+.disclaimer { color: #9bb6c7; }
+@media (max-width: 42rem) { .historyEmpty { grid-template-columns: 1fr; gap: 1.5rem; } }

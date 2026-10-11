@@ -4,7 +4,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
 import { Activity, X } from 'lucide-react'
 import { PulseDot } from './PulseDot'
-import { hasDesktopActivityRail } from '@/lib/nav/activity-peek-visibility'
+import { isVNextProjectPath, shouldHideDesktopActivityPeek } from '@/lib/nav/activity-peek-visibility'
 import type { OmniraUiGeneration } from '@/lib/ui/generation'
 
 interface MobileRailToggleProps {
@@ -18,14 +18,8 @@ interface MobileRailToggleProps {
   children: ReactNode  // the rail content to render inside the sheet
 }
 
-/**
- * MobileRailToggle · P0: universell aktivitets-peek (alla skärmstorlekar) —
- * flytande knapp som öppnar railen som panel. Tidigare endast <lg; railen var
- * dismissible bottom sheet with a floating indicator button.
- *
- * Restraint: invisible on desktop. On mobile the indicator sits in the
- * bottom-right above the safe area and shows a small live count.
- */
+/** Shared activity sheet. vNext Atlas/project chrome suppresses the desktop
+ * trigger; project mobile chrome keeps a compact safe-area-aware control. */
 export function MobileRailToggle({ liveCount = 0, uiGeneration, children }: MobileRailToggleProps) {
   const [open, setOpen] = useState(false)
   const pathname = usePathname()
@@ -33,10 +27,10 @@ export function MobileRailToggle({ liveCount = 0, uiGeneration, children }: Mobi
   // not read `?ui=`, the cookie or the default — that precedence lives in
   // lib/ui/generation.ts and nowhere else, so the peek behaves the same however
   // the operator navigated to the route.
-  const atlasVNextHasDesktopRail = hasDesktopActivityRail(pathname, uiGeneration)
+  const hideDesktopPeek = shouldHideDesktopActivityPeek(pathname, uiGeneration)
   // The portfolio is a full-width image gallery. Its global peek remains
   // accessible, but collapses to a 44px icon so it hides far less artwork.
-  const compactOnProjects = (pathname === '/projects' || pathname === '/projects/') && uiGeneration === 'vnext'
+  const compactOnProjects = isVNextProjectPath(pathname, uiGeneration)
 
   // Lock background scroll while sheet is open
   useEffect(() => {
@@ -56,28 +50,25 @@ export function MobileRailToggle({ liveCount = 0, uiGeneration, children }: Mobi
 
   return (
     <>
-      {/* Indicator button · only visible <lg */}
+      {/* Desktop suppression is scoped to the resolved route/generation. */}
       <button
         type="button"
         aria-label="Visa aktivitet"
+        aria-expanded={open}
+        aria-controls={open ? 'activity-sheet' : undefined}
         onClick={() => setOpen(true)}
-        className={`${atlasVNextHasDesktopRail ? 'lg:hidden' : ''} fixed z-50 bottom-5 right-5 h-11 ${compactOnProjects ? 'w-11 justify-center px-0' : 'px-4'} rounded-full flex items-center gap-2 press ease-os`}
+        className={`${hideDesktopPeek ? 'lg:hidden' : ''} fixed z-50 bottom-5 right-5 h-11 ${compactOnProjects ? 'w-11 justify-center px-0' : 'px-4'} rounded-full flex items-center gap-2 press ease-os focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-300`}
         style={{
-          background: compactOnProjects
-            ? 'linear-gradient(145deg, rgba(5,24,40,0.96), rgba(8,44,59,0.94))'
-            : 'linear-gradient(180deg, rgba(99,102,241,0.40) 0%, rgba(79,70,229,0.55) 100%)',
-          border: compactOnProjects ? '1px solid rgba(103,232,249,0.45)' : '1px solid rgba(99,102,241,0.55)',
-          color: 'white',
-          boxShadow: compactOnProjects
-            ? '0 9px 28px rgba(0,0,0,0.48), 0 0 20px rgba(34,211,238,0.10)'
-            : '0 16px 36px -10px rgba(99,102,241,0.55), 0 0 0 1px rgba(255,255,255,0.05) inset',
-          bottom: compactOnProjects ? 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' : undefined,
-          right: compactOnProjects ? 'calc(1rem + env(safe-area-inset-right, 0px))' : undefined,
-          paddingBottom: compactOnProjects ? 0 : 'env(safe-area-inset-bottom, 0px)',
+          background: 'rgba(5,24,40,0.96)',
+          border: '1px solid rgba(103,232,249,0.45)',
+          color: '#a5f3fc',
+          boxShadow: '0 9px 28px rgba(0,0,0,0.48)',
+          bottom: 'calc(1.25rem + env(safe-area-inset-bottom, 0px))',
+          right: 'calc(1.25rem + env(safe-area-inset-right, 0px))',
         }}
       >
         <Activity className={compactOnProjects ? 'w-5 h-5' : 'w-3.5 h-3.5'} aria-hidden="true" />
-        <span className={compactOnProjects ? 'sr-only' : 'text-[12px] font-semibold tracking-tight'}>Activity</span>
+        {!compactOnProjects && <span className="text-[12px] font-semibold tracking-tight">Aktivitet</span>}
         {liveCount > 0 && (
           <span className={compactOnProjects
             ? 'absolute -top-1 -right-1 inline-flex min-w-4 items-center justify-center gap-1 rounded-full bg-emerald-800 px-1 text-[10px] text-white'
@@ -115,6 +106,7 @@ export function MobileRailToggle({ liveCount = 0, uiGeneration, children }: Mobi
             boxShadow: '0 -24px 60px -16px rgba(0,0,0,0.65)',
             paddingBottom: 'env(safe-area-inset-bottom, 0px)',
           }}
+          id="activity-sheet"
           role="dialog"
           aria-label="Live activity"
         >

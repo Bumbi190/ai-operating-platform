@@ -44,8 +44,8 @@ export function HandlarborsenOverview({
         historyTitle="Historisk utveckling"
         historyText={model.historyText}
       />
-      <HandlarborsenVisualPulse report={report} reportHref={reportHref} />
       <HandlarborsenTrends report={report} />
+      <HandlarborsenVisualPulse report={report} reportHref={reportHref} />
     </>
   )
 }

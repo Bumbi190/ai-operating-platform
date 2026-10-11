@@ -184,7 +184,7 @@ describe('overview: nothing says the collection is "not scheduled", and nothing 
 
   it('renders the visual read-only pulse without an invented time-series chart or status', () => {
     const out = html(buildMarketplaceReport(rows, new Date('2026-10-13T08:00:00.000Z'), []))
-    expect(out).toContain('Verksamheten i en överblick')
+    expect(out).toContain('Marknadspuls')
     expect(out).toContain('Förslag att granska')
     expect(out).toContain('inte en uppmätt kundresa eller konvertering')
     expect(out).not.toMatch(/schemalagd|<canvas|[↑↓▲▼]/i)

@@ -33,6 +33,19 @@ export function HandlarborsenTrends({ report }: { report: MarketplaceReport }) {
           ? 'Historik för sparade UTC-rapporter. Saknade dagar och okända värden fylls inte i.'
           : 'Ännu finns bara en dagsrapport. Staplarna visar uppmätta nivåer, inte en historisk trend.'}
       </p>
+      {!history && (
+        <div className={styles.historyEmpty} role="note" aria-labelledby="hb-history-empty">
+          <div className={styles.observation}>
+            <span className={styles.observationPoint} aria-hidden="true" />
+            <time dateTime={panels[0].observations[0].date}>{panels[0].observations[0].date} · UTC</time>
+            <span>En faktisk observation</span>
+          </div>
+          <div>
+            <h3 id="hb-history-empty">Historiken börjar här</h3>
+            <p>En andra verifierad, sparad UTC-dagsrapport behövs innan en verklig historisk graf kan visas. Nedan jämförs exakta antal från den enda observationen.</p>
+          </div>
+        </div>
+      )}
       <div className={styles.grid}>
         {panels.map((panel) => (
           <TrendCard key={panel.id} panel={panel} />

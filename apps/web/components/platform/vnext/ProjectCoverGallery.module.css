@@ -1,12 +1,12 @@
 /* PROJECT COVER GALLERY · /projects
-   Readable, full-size covers instead of an overlapping spatial spiral.
+   Image-led orbit with a prominent focused cover and normal-flow mobile cards.
    All cards remain native links with intact keyboard and touch navigation. */
 
 .page {
   position: relative;
   isolation: isolate;
   /* Wider canvas for the 49-inch display; centred so covers remain readable. */
-  width: min(100%, 140rem);
+  width: min(100%, 100rem);
   min-height: calc(100dvh - 11rem);
   margin: 0 auto;
   padding: clamp(1.25rem, 3vw, 3.25rem);
@@ -90,6 +90,7 @@
 
 .item {
   min-width: 0;
+  position: relative;
 }
 
 .card {
@@ -315,21 +316,51 @@
   border: 0;
 }
 
-/* Ultrawide desktop: a balanced 3 x 2 portfolio instead of two enormous cards. */
-@media (min-width: 1720px) {
-  .gallery {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: clamp(1.4rem, 1.8vw, 2.1rem);
-  }
+/* Keep the energy axis centred even on a 49-inch display. Only desktop
+   uses depth; every link stays rendered, focusable and reachable. */
+.scene { position: relative; isolation: isolate; }
+.focusTarget { display: none; }
+.energy { display: none; pointer-events: none; }
+.navigation { display: none; align-items: center; justify-content: center; gap: 1rem; margin-bottom: 1.5rem; }
+.navigation p { margin: 0; font-size: 0.9rem; text-align: center; }
+.navigation p span { display: block; margin-top: 0.25rem; color: #a4c8da; font-size: 0.75rem; }
+.navigation button, .selectCard {
+  display: grid; place-items: center; min-width: 44px; min-height: 44px;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.32); border-radius: 50%;
+  color: #c8f7ff; background: #071b2c; cursor: pointer;
+}
+.navigation button:disabled { opacity: 0.4; cursor: default; }
+.navigation button:focus-visible, .selectCard:focus-visible { outline: 3px solid #67e8f9; outline-offset: 4px; }
+.selectCard { display: none; position: absolute; z-index: 4; right: 1rem; top: 4rem; border-radius: 0.75rem; padding: 0 0.75rem; font-size: 0.75rem; }
+.card[data-selected] { border-color: #67e8f9; box-shadow: 0 0 0 1px rgb(103 232 249 / 0.25), 0 0 35px rgb(34 211 238 / 0.14), 0 24px 65px rgb(0 0 0 / 0.5); }
 
-  .card {
-    aspect-ratio: 16 / 9;
-    min-height: 20rem;
-    max-height: 28rem;
+@media (min-width: 1024px) {
+  .navigation { display: flex; }
+  .selectCard { display: grid; }
+  .scene { height: var(--scene-height); margin: 0 auto 4rem; max-width: 1400px; perspective: 1400px; }
+  .focusTarget { display: block; position: absolute; top: var(--focus-y); left: 50%; width: min(620px, calc(100% - 2rem)); height: 388px; transform: translateX(-50%); visibility: hidden; pointer-events: none; }
+  .gallery { display: block; padding: 0; }
+  .energy { display: block; position: absolute; inset: 0; z-index: -1; overflow: hidden; background: radial-gradient(ellipse at center, rgb(0 146 192 / 0.12), transparent 65%); }
+  .spine { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: linear-gradient(transparent, #2edaff 12%, #d5fcff 50%, #2edaff 88%, transparent); box-shadow: 0 0 12px #22d3ee, 0 0 40px #1696da, 0 0 90px #22d3ee; }
+  .particles { position: absolute; inset: 0; opacity: 0.55; background-image: radial-gradient(circle, #67e8f9 1px, transparent 2px), radial-gradient(circle, #38bdf8 1px, transparent 2px); background-size: 137px 173px, 223px 197px; background-position: 17px 39px, 73px 91px; mask-image: radial-gradient(ellipse, black, transparent 75%); }
+  .orbitRing { position: absolute; left: 50%; top: calc(8% + var(--ring) * 19%); width: min(85%, 980px); height: 190px; border: 1px solid rgb(34 211 238 / 0.48); border-radius: 50%; transform: translateX(-50%) rotate(calc(-9deg + var(--ring) * 4deg)); box-shadow: 0 0 15px rgb(34 211 238 / 0.12), inset 0 -2px 3px rgb(56 189 248 / 0.36); }
+  .orbitRing::after { content: ''; position: absolute; inset: 22px 80px; border: 1px solid rgb(56 189 248 / 0.22); border-radius: 50%; transform: rotate(-8deg); }
+  .item { position: absolute; left: 50%; top: 0; width: 320px; height: 200px; z-index: 1;
+    transform: translate(-50%, calc(var(--orbit-y) - 100px)) translateX(calc(var(--orbit-side) * clamp(120px, 17vw, 270px))) translateZ(var(--orbit-depth)) rotateY(var(--orbit-tilt)) rotateZ(var(--orbit-tilt));
+    transition: transform 650ms cubic-bezier(0.22, 1, 0.36, 1), width 650ms cubic-bezier(0.22, 1, 0.36, 1), height 650ms cubic-bezier(0.22, 1, 0.36, 1);
   }
-
-  .cardHeading { font-size: clamp(2rem, 2.1vw, 2.65rem); }
-  .cardBottom { gap: 0.9rem; }
+  .card { min-height: 0; height: 100%; aspect-ratio: auto; transition: border-color 300ms ease, box-shadow 300ms ease; }
+  .item[data-focused] { width: 620px; height: 388px; max-width: calc(100% - 2rem); z-index: 3; transform: translate(-50%, calc(var(--orbit-y) - 194px)); }
+  .item:not([data-focused]) .cardHeading { font-size: 1.45rem; }
+  .item:not([data-focused]) .cardBottom { left: 1rem; right: 1rem; bottom: 1rem; gap: 0.4rem; }
+  .item:not([data-focused]) .cardInfo { display: none; }
+  .item:not([data-focused]) .kind, .item:not([data-focused]) .mode { font-size: 0.55rem; padding: 0.3rem 0.4rem; }
+  .item:not([data-focused]) .cardTop { top: 0.75rem; left: 0.75rem; right: 0.75rem; gap: 0.25rem; }
+  .item:not([data-focused]) .logoImage { padding: 2rem 3rem 5rem; }
+  .item[data-focused] .logoImage { padding: 3rem 7rem 9rem; }
+  .selectCard { top: 3rem; right: 0.75rem; }
+  .item[data-focused] .selectCard { top: 4rem; right: 1.5rem; }
+  .card:hover { transform: none; }
 }
 
 @media (max-width: 767px) {
@@ -365,13 +396,19 @@
   .fallbackMark { font-size: 4.5rem; }
 }
 
+/* Explicit Omnira preference and OS fallback both stop selection/hover motion. */
+:global(html[data-motion='reduce']) .item,
+:global(html[data-motion='reduce']) .card,
+:global(html[data-motion='reduce']) .coverImage,
+:global(html[data-motion='reduce']) .card::after,
+:global(html[data-motion='reduce']) .open svg { transition: none; }
+:global(html[data-motion='reduce']) .card:hover .coverImage { transform: none; }
 @media (prefers-reduced-motion: reduce) {
+  :where(html:not([data-motion='full'])) .item,
   :where(html:not([data-motion='full'])) .card,
   :where(html:not([data-motion='full'])) .card::after,
   :where(html:not([data-motion='full'])) .coverImage,
-  :where(html:not([data-motion='full'])) .open svg {
-    transition: none;
-  }
+  :where(html:not([data-motion='full'])) .open svg { transition: none; }
   :where(html:not([data-motion='full'])) .card:hover { transform: none; }
   :where(html:not([data-motion='full'])) .card:hover .coverImage { transform: none; }
 }

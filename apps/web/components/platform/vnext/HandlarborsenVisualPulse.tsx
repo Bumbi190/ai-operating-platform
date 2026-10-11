@@ -50,11 +50,10 @@ export function HandlarborsenVisualPulse({
         <div className={styles.heading}>
           <p className={styles.kicker}>Handlarbörsen / marknadspuls</p>
           <h2 className={styles.title} id="hb-market-pulse">
-            Verksamheten i en överblick
+            Marknadspuls
           </h2>
           <p className={styles.intro}>
-            Tre separata delar av marknadsplatsen, baserade på senast sparade
-            statistik.
+            Observationer och förslag från senast sparade statistik.
           </p>
         </div>
         <span
@@ -71,18 +70,21 @@ export function HandlarborsenVisualPulse({
         </span>
       </header>
 
-      <ol className={styles.stages} aria-label="Marknadsplatsens tre områden">
-        {pulse.stages.map((stage, index) => (
-          <StageCard key={stage.id} stage={stage} index={index + 1} />
-        ))}
-      </ol>
-      <p className={styles.boundary} role="note">
-        Företag, fordon och handel är separata lägesvärden – inte en uppmätt
-        kundresa eller konvertering.
-        {pulse.historyCount < 2
-          ? ' Förändringar över tid kan visas först efter fler sparade dagsrapporter.'
-          : ` ${pulse.historyCount} dagsrapporter finns för historisk jämförelse.`}
-      </p>
+      <details className={styles.disclosure}>
+        <summary>Visa fördjupning <span>Företag, fordon och handel</span></summary>
+        <ol className={styles.stages} aria-label="Marknadsplatsens tre områden">
+          {pulse.stages.map((stage, index) => (
+            <StageCard key={stage.id} stage={stage} index={index + 1} />
+          ))}
+        </ol>
+        <p className={styles.boundary} role="note">
+          Företag, fordon och handel är separata lägesvärden – inte en uppmätt
+          kundresa eller konvertering.
+          {pulse.historyCount < 2
+            ? ' Förändringar över tid kan visas först efter fler sparade dagsrapporter.'
+            : ` ${pulse.historyCount} dagsrapporter finns för historisk jämförelse.`}
+        </p>
+      </details>
 
       <div className={styles.proposalPanel}>
         <div className={styles.proposalHeading}>

@@ -4,7 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
-import { ArrowUpRight, CircleDot } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ArrowUpRight, CircleDot } from 'lucide-react'
 import { ATLAS_MODE_LABELS } from '@/lib/atlas/lifecycle'
 import type { AtlasRailCard } from '@/lib/atlas/first-party-workspaces'
 import { presentationForProject, type ProjectPresentation } from '@/lib/atlas/project-presentation'
@@ -20,25 +20,40 @@ interface ProjectCoverGalleryProps {
   projectsAvailable: boolean
 }
 
-/**
- * Project selection through real, readable image cards.
- *
- * Cards never overlap, disappear behind another card, or become inaccessible
- * because of animation. Mobile is a vertical list; wider screens form a grid.
- * The gallery only presents already-authorized cards and uses each card's own
- * href. Arrow keys reuse the rail's guarded resolver and native links own Enter
- * while focused, so the ordinary Tab/Enter path is always available.
- */
+/** Desktop orbit; tablet and mobile use the same links in normal document flow. */
+export function projectOrbitPosition(index: number, selected: number, length: number) {
+  const above = Math.floor(length / 2)
+  const offset = wrapIndex(index - selected + above, length) - above
+  const slot = wrapIndex(index - selected, length)
+  // Two upper satellites frame the focus; further pairs continue down the axis.
+  // Keep the focused cover near the top, regardless of portfolio size.
+  const center = length > 1 ? 420 : 230
+  const lowerRows = Math.ceil(Math.max(0, length - 3) / 2)
+  const distance = slot === 0 ? 0 : slot <= 2 ? -300 : 300 + Math.floor((slot - 3) / 2) * 230
+  return {
+    offset,
+    side: slot === 0 ? 0 : slot % 2 === 1 ? -1 : 1,
+    depth: slot === 0 ? 0 : -20 - Math.floor(slot / 2) * 15,
+    y: center + distance,
+    height: center + (lowerRows ? 300 + (lowerRows - 1) * 230 + 130 : 230),
+  }
+}
+
 export function ProjectCoverGallery({ cards, projectsAvailable }: ProjectCoverGalleryProps) {
   const router = useRouter()
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const activeIndex = wrapIndex(selectedIndex, cards.length)
   const cardRefs = useRef<Array<HTMLAnchorElement | null>>([])
+  const focusTarget = useRef<HTMLSpanElement | null>(null)
 
   const select = useCallback((next: number) => {
     if (cards.length === 0) return
     const index = wrapIndex(next, cards.length)
     setSelectedIndex(index)
-    cardRefs.current[index]?.focus({ preventScroll: false })
+    const desktop = window.matchMedia('(min-width: 1024px)').matches
+    cardRefs.current[index]?.focus({ preventScroll: desktop })
+    // Scroll to the stable foreground slot, rather than the moving satellite.
+    if (desktop) focusTarget.current?.scrollIntoView({ block: 'nearest' })
   }, [cards.length])
 
   const open = useCallback((card: AtlasRailCard) => {
@@ -55,18 +70,18 @@ export function ProjectCoverGallery({ cards, projectsAvailable }: ProjectCoverGa
 
       if (action === 'previous') {
         event.preventDefault()
-        select(selectedIndex - 1)
+        select(activeIndex - 1)
       } else if (action === 'next') {
         event.preventDefault()
-        select(selectedIndex + 1)
-      } else if (action === 'open' && cards[selectedIndex]) {
+        select(activeIndex + 1)
+      } else if (action === 'open' && cards[activeIndex]) {
         event.preventDefault()
-        open(cards[selectedIndex])
+        open(cards[activeIndex])
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [cards, open, select, selectedIndex])
+  }, [cards, open, select, activeIndex])
 
   if (cards.length === 0) {
     return (
@@ -106,92 +121,110 @@ export function ProjectCoverGallery({ cards, projectsAvailable }: ProjectCoverGa
         <p className={styles.notice}>Inga projekt är kopplade till ditt konto ännu.</p>
       ) : null}
 
-      <ul className={styles.gallery}>
-        {cards.map((card, index) => {
-          const project = card.kind === 'PROJECT' ? card.project : null
-          const workspace = card.kind === 'SYSTEM_WORKSPACE' ? card.workspace : null
-          const presentation: ProjectPresentation = project
-            ? presentationForProject(project.slug, project.name)
-            : { shortLabel: workspace!.shortLabel }
-          const hasCover = Boolean(presentation.heroImage)
-          const contain = presentation.heroFit === 'contain'
+      <div className={styles.navigation} role="group" aria-label="Välj arbetsyta">
+        <button type="button" onClick={() => select(activeIndex - 1)} aria-label="Föregående arbetsyta" disabled={cards.length < 2}><ArrowLeft size={18} aria-hidden="true" /></button>
+        <p>{cards[activeIndex].label} <span>{activeIndex + 1} / {cards.length}</span></p>
+        <button type="button" onClick={() => select(activeIndex + 1)} aria-label="Nästa arbetsyta" disabled={cards.length < 2}><ArrowRight size={18} aria-hidden="true" /></button>
+      </div>
+      <div className={styles.scene} style={{
+        '--scene-height': `${projectOrbitPosition(0, activeIndex, cards.length).height}px`,
+        '--focus-y': `${projectOrbitPosition(activeIndex, activeIndex, cards.length).y - 194}px`,
+      } as CSSProperties}>
+        <span ref={focusTarget} className={styles.focusTarget} aria-hidden="true" />
+        <div className={styles.energy} aria-hidden="true">
+          <span className={styles.spine} />
+          <span className={styles.particles} />
+          {[0, 1, 2, 3, 4].map((ring) => <span key={ring} className={styles.orbitRing} style={{ '--ring': ring } as CSSProperties} />)}
+        </div>
+        <ul className={styles.gallery}>
+          {cards.map((card, index) => {
+            const orbit = projectOrbitPosition(index, activeIndex, cards.length)
+            const project = card.kind === 'PROJECT' ? card.project : null
+            const workspace = card.kind === 'SYSTEM_WORKSPACE' ? card.workspace : null
+            const presentation: ProjectPresentation = project
+              ? presentationForProject(project.slug, project.name)
+              : { shortLabel: workspace!.shortLabel }
+            const hasCover = Boolean(presentation.heroImage)
+            const contain = presentation.heroFit === 'contain'
 
-          return (
-            <li key={card.id} className={styles.item}>
-              <Link
-                ref={(node) => { cardRefs.current[index] = node }}
-                href={card.href}
-                className={styles.card}
-                data-selected={selectedIndex === index || undefined}
-                style={{ '--card-accent': card.color } as CSSProperties}
-                onFocus={() => setSelectedIndex(index)}
-                onMouseEnter={() => setSelectedIndex(index)}
-                onClick={() => markAtlasProjectRailOpen(card.selectionKey, 'projects-index')}
-                aria-label={`Öppna ${presentation.shortLabel}`}
-              >
-                <span className={contain ? styles.logoMedia : styles.media} aria-hidden="true">
-                  {hasCover && presentation.heroImage ? (
-                    <Image
-                      src={presentation.heroImage}
-                      alt=""
-                      fill
-                      priority={index < 2}
-                      sizes="(max-width: 767px) calc(100vw - 40px), (max-width: 1023px) 46vw, (max-width: 1719px) 42vw, (max-width: 2400px) 30vw, 740px"
-                      className={contain ? styles.logoImage : styles.coverImage}
-                      style={{ objectPosition: presentation.heroPosition }}
-                    />
-                  ) : (
-                    <span className={styles.artFallback}>
-                      <span className={styles.fallbackHalo} />
-                      <span className={styles.fallbackMark}>
-                        {presentation.shortLabel.slice(0, 2).toLocaleUpperCase('sv-SE')}
+            return (
+              <li key={card.id} className={styles.item} data-focused={activeIndex === index || undefined}
+                style={{ '--orbit-y': `${orbit.y}px`, '--orbit-side': orbit.side, '--orbit-depth': `${orbit.depth}px`, '--orbit-tilt': `${orbit.side * -5}deg` } as CSSProperties}>
+                <button type="button" className={styles.selectCard} onClick={() => select(index)} aria-label={`Välj ${presentation.shortLabel}`} aria-pressed={activeIndex === index}>Välj</button>
+                <Link
+                  ref={(node) => { cardRefs.current[index] = node }}
+                  href={card.href}
+                  className={styles.card}
+                  data-selected={activeIndex === index || undefined}
+                  style={{ '--card-accent': card.color } as CSSProperties}
+                  onFocus={(event) => { if (event.currentTarget.matches(':focus-visible')) select(index) }}
+                  onClick={() => markAtlasProjectRailOpen(card.selectionKey, 'projects-index')}
+                  aria-label={`Öppna ${presentation.shortLabel}`}
+                >
+                  <span className={contain ? styles.logoMedia : styles.media} aria-hidden="true">
+                    {hasCover && presentation.heroImage ? (
+                      <Image
+                        src={presentation.heroImage}
+                        alt=""
+                        fill
+                        priority={index < 2}
+                        sizes="(max-width: 767px) calc(100vw - 40px), (max-width: 1023px) 46vw, 620px"
+                        className={contain ? styles.logoImage : styles.coverImage}
+                        style={{ objectPosition: presentation.heroPosition }}
+                      />
+                    ) : (
+                      <span className={styles.artFallback}>
+                        <span className={styles.fallbackHalo} />
+                        <span className={styles.fallbackMark}>
+                          {presentation.shortLabel.slice(0, 2).toLocaleUpperCase('sv-SE')}
+                        </span>
                       </span>
-                    </span>
-                  )}
-                </span>
-
-                <span className={styles.shade} aria-hidden="true" />
-
-                <span className={styles.cardTop}>
-                  <span className={styles.kind}>{workspace ? 'Systemarbetsyta' : 'Projekt'}</span>
-                  {project?.atlasMode ? (
-                    <span className={styles.mode}>{ATLAS_MODE_LABELS[project.atlasMode]}</span>
-                  ) : workspace ? (
-                    <span className={styles.mode}>{workspace.stage === 'DEVELOPMENT' ? 'Utveckling' : workspace.stage}</span>
-                  ) : null}
-                </span>
-
-                <span className={styles.cardBottom}>
-                  <span className={styles.cardHeading}>{presentation.shortLabel}</span>
-                  {project ? (
-                    <span className={styles.cardInfo}>
-                      {project.runningRuns !== null && project.runningRuns > 0 ? (
-                        <span className={styles.live}><CircleDot size={12} aria-hidden="true" /> {project.runningRuns} kör</span>
-                      ) : null}
-                      {project.pendingApprovals !== null && project.pendingApprovals > 0 ? (
-                        <span className={styles.pending}>{project.pendingApprovals} väntar på beslut</span>
-                      ) : null}
-                      {project.latestActivityTitle ? (
-                        <span className={styles.activity}>{project.latestActivityTitle}</span>
-                      ) : null}
-                    </span>
-                  ) : workspace ? (
-                    <span className={styles.cardInfo}>
-                      <span className={styles.activity}>{workspace.summary}</span>
-                    </span>
-                  ) : null}
-                  <span className={styles.open}>
-                    {workspace ? 'Öppna arbetsyta' : 'Öppna projekt'} <ArrowUpRight size={17} aria-hidden="true" />
+                    )}
                   </span>
-                </span>
-              </Link>
-            </li>
-          )
-        })}
-      </ul>
+
+                  <span className={styles.shade} aria-hidden="true" />
+
+                  <span className={styles.cardTop}>
+                    <span className={styles.kind}>{workspace ? 'Systemarbetsyta' : 'Projekt'}</span>
+                    {project?.atlasMode ? (
+                      <span className={styles.mode}>{ATLAS_MODE_LABELS[project.atlasMode]}</span>
+                    ) : workspace ? (
+                      <span className={styles.mode}>{workspace.stage === 'DEVELOPMENT' ? 'Utveckling' : workspace.stage}</span>
+                    ) : null}
+                  </span>
+
+                  <span className={styles.cardBottom}>
+                    <span className={styles.cardHeading}>{presentation.shortLabel}</span>
+                    {project ? (
+                      <span className={styles.cardInfo}>
+                        {project.runningRuns !== null && project.runningRuns > 0 ? (
+                          <span className={styles.live}><CircleDot size={12} aria-hidden="true" /> {project.runningRuns} kör</span>
+                        ) : null}
+                        {project.pendingApprovals !== null && project.pendingApprovals > 0 ? (
+                          <span className={styles.pending}>{project.pendingApprovals} väntar på beslut</span>
+                        ) : null}
+                        {project.latestActivityTitle ? (
+                          <span className={styles.activity}>{project.latestActivityTitle}</span>
+                        ) : null}
+                      </span>
+                    ) : workspace ? (
+                      <span className={styles.cardInfo}>
+                        <span className={styles.activity}>{workspace.summary}</span>
+                      </span>
+                    ) : null}
+                    <span className={styles.open}>
+                      {workspace ? 'Öppna arbetsyta' : 'Öppna projekt'} <ArrowUpRight size={17} aria-hidden="true" />
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
 
       <p className={styles.visuallyHidden} aria-live="polite">
-        Valt: {cards[selectedIndex]?.label ?? cards[0]?.label}
+        Valt: {cards[activeIndex]?.label ?? cards[0]?.label}
       </p>
     </section>
   )

@@ -16,7 +16,7 @@ import styles from './AtlasHomeVNext.module.css'
  *
  * Individual project selection is deliberately absent. The mobile menu now has
  * one 'Projekt' quick jump to /projects (the spatial portfolio overview),
- * but never lists individual projects. ProjectRail and ProjectSpiral remain the
+ * but never lists individual projects. ProjectRail and ProjectCoverGallery remain the
  * canonical project selection surfaces; no private destination list is added.
  */
 const PRIMARY_LINKS = vnextNavItemsFor('mobile')

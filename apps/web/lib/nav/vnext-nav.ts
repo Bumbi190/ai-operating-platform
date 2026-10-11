@@ -88,7 +88,7 @@ export const VNEXT_NAV: readonly VNextNavGroup[] = [
       // boundary Phase 6 enforced in the code. Desktop only: the mobile sheet
       // is a quick-jump surface, and a hierarchy is not a quick jump.
       { id: 'organisation', label: 'Organisation', href: '/organisation', icon: Users, desktop: true, mobile: false },
-      // The Project Spiral is a single quick jump to the portfolio on desktop
+      // The project cover gallery is a single quick jump to the portfolio on desktop
       // AND mobile. It is NOT a list of individual projects: those remain scoped
       // to the already-authorized cards on Atlas Home and /projects.
       { id: 'projects', label: 'Projekt', href: '/projects', icon: Orbit, desktop: true, mobile: true },

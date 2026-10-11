@@ -7,7 +7,7 @@
  * reorder is not, so the untouched groups are pinned alongside the new item.
  *
  * The RETURN risk is a wrong destination. Sending someone who came from the
- * spiral back to Atlas Home is worse than not returning at all, which is why
+ * projects gallery back to Atlas Home is worse than not returning at all, which is why
  * Phase 5 marked nothing until the marker could carry an origin. The round trip
  * is exercised against a stubbed sessionStorage rather than asserted from
  * source, because the shape of what gets stored is the whole point.
@@ -36,7 +36,7 @@ const read = (p: string) => readFileSync(resolve(WEB_ROOT, p), 'utf8')
 
 const RETURN_SRC = read('components/platform/vnext/AtlasProjectReturnShortcut.tsx')
 const RAIL = read('components/platform/vnext/ProjectRail.tsx')
-const SPIRAL = read('components/platform/vnext/ProjectSpiral.tsx')
+const GALLERY = read('components/platform/vnext/ProjectCoverGallery.tsx')
 const HINT_LIST = read('components/platform/os/KeyboardHintList.tsx')
 const HINT_BAR = read('components/platform/os/KeyboardHints.tsx')
 const HINT_CSS = read('components/platform/os/KeyboardHints.module.css')
@@ -129,7 +129,7 @@ describe('project return · the marker carries where you came from', () => {
     expect(typeof marker().openedAt).toBe('number')
   })
 
-  it('the spiral writes the projects-index origin', () => {
+  it('the projects gallery writes the projects-index origin', () => {
     markAtlasProjectRailOpen('trading', 'projects-index')
     expect(marker()).toMatchObject({ slug: 'trading', origin: 'projects-index' })
   })
@@ -141,7 +141,7 @@ describe('project return · the marker carries where you came from', () => {
 
   it('a direct arrival writes nothing at all', () => {
     // Nothing marks on navigation the operator did not start from a rail or the
-    // spiral — no bookmark, reload or deep link gains invented back behaviour.
+    // gallery — no bookmark, reload or deep link gains invented back behaviour.
     expect(store.size).toBe(0)
   })
 })
@@ -153,7 +153,7 @@ describe('project return · each origin resolves to its own surface', () => {
     expect(href).toContain('project=familje-stunden')
   })
 
-  it('projects-index returns to the spiral', () => {
+  it('projects-index returns to the gallery', () => {
     expect(projectReturnHref('projects-index', 'trading')).toBe('/projects')
     expect(projectReturnHref('projects-index', 'trading'))
       .toBe(destinationBasePath('project_home'))
@@ -204,7 +204,7 @@ describe('project return · the guards and the owner are unchanged', () => {
     // be written there too or a pointer user gets no return.
     for (const [name, src, origin] of [
       ['rail', RAIL, 'atlas-home'],
-      ['spiral', SPIRAL, 'projects-index'],
+      ['gallery', GALLERY, 'projects-index'],
     ] as const) {
       const marks = [...src.matchAll(/markAtlasProjectRailOpen\([^)]*\)/g)].map((m) => m[0])
       expect(marks.length, name).toBeGreaterThanOrEqual(2)

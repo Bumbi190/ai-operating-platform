@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { formatDistanceToNow } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
 import { ProjectPauseToggle } from '@/components/platform/ProjectPauseToggle'
+import { shouldCollapseEmptyOwnerWorkspace } from '@/lib/os/project-command-center-visibility'
 import { statusConfig, UNKNOWN_STATUS } from '@/components/platform/RunStatusBadge'
 import type { RunStatus } from '@/lib/supabase/types'
 import type {
@@ -44,6 +45,7 @@ import styles from './ProjectCommandCenter.module.css'
 export function ProjectCommandCenter({
   model,
   overview,
+  briefing,
 }: {
   model: ProjectCommandCenterModel
   /**
@@ -51,25 +53,48 @@ export function ProjectCommandCenter({
    * a project that has them; every other project passes nothing and renders as before.
    */
   overview?: ReactNode
+  /** Optional, project-scoped, read-only briefing; absent for every other project. */
+  briefing?: ReactNode
 }) {
+  // Only the project-specific owner briefing may fold a proven-empty technical
+  // workspace. Other project pages and any unknown/error/live states stay open.
+  const foldEmptyWorkspace = Boolean(briefing) && shouldCollapseEmptyOwnerWorkspace(model)
+  const workspace = (
+    <div className={styles.workspace}>
+      <div className={styles.primary}>
+        <WorkflowsSection model={model} />
+        <InstancesSection model={model} />
+      </div>
+      <div className={styles.secondary}>
+        <ApprovalsSection model={model} />
+        <RunsSection model={model} />
+        <AgentsSection model={model} />
+        <OutputsSection model={model} />
+      </div>
+    </div>
+  )
+
   return (
-    <div className={styles.field}>
+    <div className={styles.field} data-owner-brief={briefing ? 'true' : undefined}>
       <div className={styles.ambient} aria-hidden />
       <Header model={model} />
       {overview ?? null}
-      {overview ? <h2 className={styles.workspaceHeading}>Arbetsyta</h2> : null}
-      <div className={styles.workspace}>
-        <div className={styles.primary}>
-          <WorkflowsSection model={model} />
-          <InstancesSection model={model} />
-        </div>
-        <div className={styles.secondary}>
-          <ApprovalsSection model={model} />
-          <RunsSection model={model} />
-          <AgentsSection model={model} />
-          <OutputsSection model={model} />
-        </div>
-      </div>
+      {briefing ?? null}
+      {foldEmptyWorkspace ? (
+        <details className={styles.technicalDetails}>
+          <summary className={styles.technicalSummary}>
+            <span className={styles.technicalSummaryName}>Teknisk arbetsyta</span>
+            <span className={styles.technicalSummaryNote}>Inga konfigurerade agenter eller workflows · visa detaljer</span>
+            <span className={styles.technicalChevron} aria-hidden="true">⌄</span>
+          </summary>
+          {workspace}
+        </details>
+      ) : (
+        <>
+          {overview ? <h2 className={styles.workspaceHeading}>Arbetsyta</h2> : null}
+          {workspace}
+        </>
+      )}
     </div>
   )
 }

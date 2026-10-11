@@ -5,6 +5,7 @@ import { getProjectBySlug, type ResolvedProject } from '@/lib/project/get-projec
 import { isHandlarborsenProject, loadProjectCommandCenter } from '@/lib/os/project-command-center'
 import { loadHandlarborsenMarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-read'
 import { HandlarborsenOverview } from '@/components/platform/vnext/HandlarborsenOverview'
+import { HandlarborsenOwnerBrief } from '@/components/platform/vnext/HandlarborsenOwnerBrief'
 import {
   ProjectCommandCenter,
   ProjectCommandCenterLoading,
@@ -62,5 +63,10 @@ async function LoadedProjectCommandCenter({ project }: { project: ResolvedProjec
   const overview = reportResult && reportResult.status === 'ok'
     ? <HandlarborsenOverview report={reportResult.report} reportHref={model.links.marketplace} />
     : undefined
-  return <ProjectCommandCenter model={model} overview={overview} />
+  // Only Handlarbörsen's verified, scoped report unlocks the dedicated briefing.
+  // Not-permitted reads never receive a substitute report or project data.
+  const briefing = reportResult && reportResult.status === 'ok'
+    ? <HandlarborsenOwnerBrief model={model} report={reportResult.report} />
+    : undefined
+  return <ProjectCommandCenter model={model} overview={overview} briefing={briefing} />
 }

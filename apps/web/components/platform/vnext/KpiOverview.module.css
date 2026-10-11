@@ -102,7 +102,47 @@
 .note[data-tone='warning'] { border-color: rgb(251 191 36 / 0.3); color: var(--omnira-amber, #fbbf24); }
 .note[data-tone='error'] { border-style: solid; border-color: rgb(248 113 113 / 0.32); color: var(--omnira-rose, #f87171); }
 
+/* Only the Handlarbörsen owner view opts into larger KPI typography. */
+.overview[data-prominent='true'] {
+  gap: 1.25rem;
+  padding: 1.45rem 1.55rem 1.55rem;
+}
+.overview[data-prominent='true'] .kicker,
+.overview[data-prominent='true'] .bandTitle {
+  font-size: 0.73rem;
+}
+.overview[data-prominent='true'] .label {
+  font-size: 0.91rem;
+  opacity: 0.9;
+}
+.overview[data-prominent='true'] .cardNote {
+  font-size: 0.77rem;
+}
+.overview[data-prominent='true'] .metaItem dt {
+  font-size: 0.7rem;
+  opacity: 0.68;
+}
+.overview[data-prominent='true'] .metaItem dd {
+  font-size: 0.98rem;
+}
+.overview[data-prominent='true'] .bandCaption,
+.overview[data-prominent='true'] .history {
+  font-size: 0.88rem;
+}
+.overview[data-prominent='true'] .reportLink,
+.overview[data-prominent='true'] .note {
+  font-size: 0.88rem;
+}
+.overview[data-prominent='true'] .card {
+  padding: 1rem 1.1rem;
+}
+.overview[data-prominent='true'] .activity .value {
+  font-size: 1.75rem;
+}
+
 @media (max-width: 40rem) {
+  .overview[data-prominent='true'] { padding: 1rem 0.875rem 1.125rem; }
+  .overview[data-prominent='true'] .card { padding: 0.75rem; }
   .overview { padding: 1rem 0.875rem 1.125rem; }
   /* Two figures per row on a phone: big numbers stay big without a tall single column. */
   .headline { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -44,6 +44,7 @@ export function KpiOverview({
   historyText,
   reportHref,
   reportLabel,
+  prominent = false,
 }: {
   titleId: string
   kicker: string
@@ -57,9 +58,11 @@ export function KpiOverview({
   historyText: string
   reportHref: string | null
   reportLabel: string
+  /** Optional, project-specific typography; defaults preserve existing UI. */
+  prominent?: boolean
 }) {
   return (
-    <section className={styles.overview} aria-labelledby={titleId}>
+    <section className={styles.overview} aria-labelledby={titleId} data-prominent={prominent || undefined}>
       <div className={styles.head}>
         <h2 id={titleId} className={styles.kicker}>{kicker}</h2>
         {reportHref ? <Link href={reportHref} className={styles.reportLink}>{reportLabel} →</Link> : null}
@@ -102,7 +105,7 @@ export function KpiOverview({
 
 /** A report that cannot be shown: one honest note in place of the figures. */
 export function KpiOverviewNote({
-  titleId, kicker, title, text, tone, reportHref, reportLabel,
+  titleId, kicker, title, text, tone, reportHref, reportLabel, prominent = false,
 }: {
   titleId: string
   kicker: string
@@ -111,9 +114,10 @@ export function KpiOverviewNote({
   tone: 'error' | 'empty'
   reportHref: string | null
   reportLabel: string
+  prominent?: boolean
 }) {
   return (
-    <section className={styles.overview} aria-labelledby={titleId}>
+    <section className={styles.overview} aria-labelledby={titleId} data-prominent={prominent || undefined}>
       <div className={styles.head}>
         <h2 id={titleId} className={styles.kicker}>{kicker}</h2>
         {reportHref ? <Link href={reportHref} className={styles.reportLink}>{reportLabel} →</Link> : null}

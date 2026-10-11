@@ -10,7 +10,7 @@ import { KpiOverview, KpiOverviewNote } from './KpiOverview'
  */
 export function HandlarborsenOverview({ report, reportHref }: { report: MarketplaceReport; reportHref: string | null }) {
   const model = buildHandlarborsenOverview(report)
-  const common = { titleId: 'hb-overview', kicker: 'Marknadsplats · Nyckeltal', reportHref, reportLabel: 'Fullständig statistikrapport' }
+  const common = { titleId: 'hb-overview', kicker: 'Marknadsplats · Nyckeltal', reportHref, reportLabel: 'Fullständig statistikrapport', prominent: true }
 
   if (model.kind === 'note') {
     return <KpiOverviewNote {...common} title={model.title} text={model.text} tone={model.tone} />

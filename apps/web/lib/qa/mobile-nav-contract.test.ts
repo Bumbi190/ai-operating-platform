@@ -48,7 +48,7 @@ describe('mobile nav · portfolio is reachable', () => {
   it('uses the already-implemented, scoped project index', () => {
     const index = read('app/(platform)/projects/page.tsx')
     expect(index).toContain('loadAtlasHomeViewModel()')
-    expect(index).toContain('composeAtlasRailCards(model?.projects ?? [])')
+    expect(index).toContain('composeAtlasRailCards(model.projects)')
     expect(index).toContain('<ProjectSpiral cards={cards} projectsAvailable={projectsAvailable} />')
   })
 

@@ -1,0 +1,79 @@
+/* Route-level loading shells: no fake project names, counts, or data.
+   Next.js can send these while the authenticated server loader is pending. */
+.screen {
+  position: relative;
+  max-width: 65rem;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.heading {
+  margin: 0;
+  font-size: clamp(1.4rem, 3vw, 1.8rem);
+  color: hsl(var(--foreground));
+  font-weight: 650;
+}
+.description {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: rgb(216 230 241 / 0.74);
+  margin: 0;
+}
+.grid {
+  margin-top: 0.6rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+.ghost {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.875rem;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.16);
+  background: rgb(7 21 38 / 0.5);
+  border-radius: 0.875rem;
+  min-height: 13.5rem;
+}
+.cover,
+.text {
+  position: relative;
+  overflow: hidden;
+  background: rgb(216 230 241 / 0.055);
+  border-radius: 0.5rem;
+}
+.cover {
+  height: 8rem;
+  width: 100%;
+}
+.text {
+  height: 1rem;
+  max-width: 10rem;
+  width: 65%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cover,
+  .text {
+    animation: load-pulse 2s ease-in-out infinite alternate;
+  }
+  @keyframes load-pulse {
+    from {
+      opacity: 0.35;
+    }
+    to {
+      opacity: 0.8;
+    }
+  }
+}
+@media (max-width: 40rem) {
+  .screen {
+    padding: 1.25rem 1rem 4rem;
+  }
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

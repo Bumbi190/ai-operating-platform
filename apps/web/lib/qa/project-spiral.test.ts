@@ -104,7 +104,7 @@ describe('projects index · data', () => {
   })
 
   it('says so when the projects query failed rather than showing an empty list', () => {
-    expect(PAGE).toContain('model?.availability.projects')
+    expect(PAGE).toContain('model.availability.projects')
     expect(SPIRAL).toContain('projectsAvailable')
   })
 })

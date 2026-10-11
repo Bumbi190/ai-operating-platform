@@ -2,6 +2,7 @@ import type { MarketplaceReport } from '@/lib/atlas/project-analytics/handlarbor
 import { buildHandlarborsenOverview } from '@/lib/atlas/project-analytics/handlarborsen-overview'
 import { KpiOverview, KpiOverviewNote } from './KpiOverview'
 import { HandlarborsenVisualPulse } from './HandlarborsenVisualPulse'
+import { HandlarborsenTrends } from './HandlarborsenTrends'
 
 /**
  * Handlarbörsen-specific composition on the project Command Center.
@@ -49,6 +50,7 @@ export function HandlarborsenOverview({
         historyText={model.historyText}
       />
       <HandlarborsenVisualPulse report={report} reportHref={reportHref} />
+      <HandlarborsenTrends report={report} />
     </>
   )
 }

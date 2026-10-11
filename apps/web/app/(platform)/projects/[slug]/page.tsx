@@ -49,18 +49,46 @@ export default async function ProjectPage({
 }
 
 async function LoadedProjectCommandCenter({ project }: { project: ResolvedProject }) {
-  // Key figures lead the page for Handlarbörsen only. The project (verified by id, slug and
-  // name) is the RLS-resolved one, and it is also the allow-list handed to the reader, which
-  // re-checks identity and atlas_mode. Every other project loads exactly what it did before.
-  const withKeyFigures = isHandlarborsenProject(project)
-  const [model, reportResult] = await Promise.all([
-    loadProjectCommandCenter(project),
-    withKeyFigures
-      ? loadHandlarborsenMarketplaceReport(project, { allowedProjectIds: [project.id] })
-      : Promise.resolve(null),
-  ])
-  const overview = reportResult && reportResult.status === 'ok'
-    ? <HandlarborsenOverview report={reportResult.report} reportHref={model.links.marketplace} />
-    : undefined
+  // The RLS-resolved project is passed as the single allowed id to the existing
+  // guarded reader. Kick off the read beside the workspace model, but don't
+  // hold the workspace hostage while the optional marketplace data completes.
+  const reportPromise = isHandlarborsenProject(project)
+    ? loadHandlarborsenMarketplaceReport(project, { allowedProjectIds: [project.id] })
+    : null
+  const model = await loadProjectCommandCenter(project)
+
+  const overview = reportPromise ? (
+    <Suspense fallback={<HandlarborsenStatsLoading />}>
+      <LoadedHandlarborsenOverview reportPromise={reportPromise} reportHref={model.links.marketplace} />
+    </Suspense>
+  ) : undefined
+
   return <ProjectCommandCenter model={model} overview={overview} />
+}
+
+/** A second stream boundary: source report and charts never add a fetch of their
+ * own. The workspace is immediately renderable once its model is available. */
+async function LoadedHandlarborsenOverview({
+  reportPromise,
+  reportHref,
+}: {
+  reportPromise: ReturnType<typeof loadHandlarborsenMarketplaceReport>
+  reportHref: string | null
+}) {
+  const result = await reportPromise
+  return result.status === 'ok'
+    ? <HandlarborsenOverview report={result.report} reportHref={reportHref} />
+    : null
+}
+
+function HandlarborsenStatsLoading() {
+  return (
+    <section
+      aria-busy="true"
+      role="status"
+      className="rounded-xl border border-white/10 bg-white/[0.025] p-5"
+    >
+      <p className="text-sm text-muted-foreground">Läser Handlarbörsens senaste verifierade statistik…</p>
+    </section>
+  )
 }

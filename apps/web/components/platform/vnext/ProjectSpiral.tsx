@@ -53,7 +53,7 @@ export function ProjectSpiral({ cards, projectsAvailable }: ProjectSpiralProps) 
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [spread, setSpread] = useState<SpiralSpread>(DEFAULT_SPREAD)
   const cardRefs = useRef<Array<HTMLAnchorElement | null>>([])
-  const touchStartX = useRef<number | null>(null)
+  const touchStart = useRef<{ x: number; y: number } | null>(null)
 
   useEffect(() => {
     const measure = () => setSpread(spiralSpreadForWidth(window.innerWidth))
@@ -154,16 +154,21 @@ export function ProjectSpiral({ cards, projectsAvailable }: ProjectSpiralProps) 
           however it happens to be arranged visually. */}
       <ul
         className={styles.orbit}
-        onTouchStart={(event) => { touchStartX.current = event.touches[0]?.clientX ?? null }}
+        onTouchStart={(event) => {
+          const point = event.touches[0]
+          touchStart.current = point ? { x: point.clientX, y: point.clientY } : null
+        }}
         onTouchEnd={(event) => {
-          const start = touchStartX.current
-          touchStartX.current = null
-          if (start === null || !event.changedTouches[0]) return
-          const dx = event.changedTouches[0].clientX - start
-          if (Math.abs(dx) < 48) return
+          const start = touchStart.current
+          touchStart.current = null
+          const end = event.changedTouches[0]
+          if (!start || !end) return
+          const dx = end.clientX - start.x
+          const dy = end.clientY - start.y
+          if (Math.abs(dx) < 48 || Math.abs(dx) <= Math.abs(dy) * 1.3) return
           select(selectedIndex + (dx < 0 ? 1 : -1))
         }}
-        onTouchCancel={() => { touchStartX.current = null }}
+        onTouchCancel={() => { touchStart.current = null }}
       >
         {cards.map((card, index) => {
           const placement = placements[index]
@@ -177,7 +182,9 @@ export function ProjectSpiral({ cards, projectsAvailable }: ProjectSpiralProps) 
                 opacity: placement.opacity,
                 zIndex: placement.z,
                 animationDelay: `${index * -2.3}s`,
-              }}
+                '--depth': placement.depth,
+                '--turn': `${(placement.x / Math.max(spread.x, 1)) * -12}deg`,
+              } as React.CSSProperties}
               data-focused={placement.focused || undefined}
             >
               <Link
@@ -187,7 +194,7 @@ export function ProjectSpiral({ cards, projectsAvailable }: ProjectSpiralProps) 
                 data-focused={placement.focused || undefined}
                 style={{ '--card-accent': card.color } as React.CSSProperties}
                 aria-current={placement.focused ? 'true' : undefined}
-                onMouseEnter={() => select(index)}
+                onMouseEnter={() => { if (!window.matchMedia('(hover: hover)').matches) return; select(index) }}
                 onFocus={() => select(index)}
                 // The pointer path navigates through the link itself, so it
                 // records the origin here — the same place ProjectRail does.
@@ -236,10 +243,10 @@ export function ProjectSpiral({ cards, projectsAvailable }: ProjectSpiralProps) 
       <div className={styles.navigation} aria-label="Bläddra bland projekt">
         <button type="button" onClick={() => select(selectedIndex - 1, true)} aria-label="Föregående projekt">←</button>
         <p className={styles.position} aria-live="polite">
-        <span className={styles.positionName}>{selectedCard?.label}</span>
-        <span className={styles.positionCount}>
-          {wrapIndex(selectedIndex, cards.length) + 1} / {cards.length}
-        </span>
+          <span className={styles.positionName}>{selectedCard?.label}</span>
+          <span className={styles.positionCount}>
+            {wrapIndex(selectedIndex, cards.length) + 1} / {cards.length}
+          </span>
         </p>
         <button type="button" onClick={() => select(selectedIndex + 1, true)} aria-label="Nästa projekt">→</button>
       </div>

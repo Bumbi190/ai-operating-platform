@@ -5,7 +5,8 @@
 .page {
   position: relative;
   isolation: isolate;
-  width: min(100%, 94rem);
+  /* Wider canvas for the 49-inch display; centred so covers remain readable. */
+  width: min(100%, 140rem);
   min-height: calc(100dvh - 11rem);
   margin: 0 auto;
   padding: clamp(1.25rem, 3vw, 3.25rem);
@@ -27,15 +28,9 @@
   justify-content: space-between;
   align-items: end;
   gap: 1rem;
-  margin: 0 0 clamp(1.5rem, 3vw, 2.5rem);
-}
-
-.eyebrow {
-  margin: 0 0 0.7rem;
-  font: 600 0.67rem/1.3 var(--font-geist-mono, ui-monospace), monospace;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
-  color: rgb(var(--omnira-aqua-rgb) / 0.62);
+  margin: 0 0 clamp(1.25rem, 2vw, 2rem);
+  padding-bottom: clamp(1rem, 1.6vw, 1.5rem);
+  border-bottom: 1px solid rgb(var(--omnira-cyan-rgb) / 0.12);
 }
 
 .title {
@@ -90,7 +85,7 @@
   gap: clamp(1rem, 2vw, 1.6rem);
   list-style: none;
   margin: 0;
-  padding: 0 0 3rem;
+  padding: 0 0 5rem;
 }
 
 .item {
@@ -102,6 +97,7 @@
   isolation: isolate;
   display: block;
   min-height: clamp(19rem, 27vw, 25rem);
+  aspect-ratio: 16 / 10;
   overflow: hidden;
   border: 1px solid rgb(175 212 228 / 0.17);
   border-radius: clamp(1rem, 1.8vw, 1.4rem);
@@ -117,6 +113,22 @@
   border-color: color-mix(in srgb, var(--card-accent) 60%, white 10%);
   box-shadow: 0 1.6rem 4rem rgb(0 0 0 / 0.35);
 }
+
+.card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--card-accent) 55%, transparent),
+    inset 0 0 5rem color-mix(in srgb, var(--card-accent) 10%, transparent);
+  transition: opacity 230ms ease;
+}
+
+.card:hover::after,
+.card:focus-visible::after { opacity: 1; }
 
 .card:focus-visible {
   outline: 3px solid rgb(var(--omnira-cyan-rgb) / 0.95);
@@ -303,14 +315,34 @@
   border: 0;
 }
 
+/* Ultrawide desktop: a balanced 3 x 2 portfolio instead of two enormous cards. */
+@media (min-width: 1720px) {
+  .gallery {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: clamp(1.4rem, 1.8vw, 2.1rem);
+  }
+
+  .card {
+    aspect-ratio: 16 / 9;
+    min-height: 20rem;
+    max-height: 28rem;
+  }
+
+  .cardHeading { font-size: clamp(2rem, 2.1vw, 2.65rem); }
+  .cardBottom { gap: 0.9rem; }
+}
+
 @media (max-width: 767px) {
   .page {
     padding: 1.15rem 1.15rem 2rem;
     min-height: auto;
   }
 
-  .intro { align-items: start; margin: 0 0 1.35rem; }
-  .eyebrow { font-size: 0.58rem; }
+  .intro {
+    align-items: start;
+    margin: 0 0 1.1rem;
+    padding-bottom: 1rem;
+  }
   .title { font-size: clamp(1.9rem, 7vw, 2.4rem); }
   .description { font-size: 0.86rem; max-width: 21rem; }
   .count { margin-top: 0.35rem; }
@@ -323,16 +355,19 @@
 
   .card {
     min-height: clamp(18.5rem, 83vw, 24rem);
+    aspect-ratio: auto;
     border-radius: 1.15rem;
   }
 
   .cardHeading { font-size: clamp(1.7rem, 7vw, 2.3rem); }
+  .gallery { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px)); }
   .logoImage { padding: 2.4rem 4.5rem 7rem; }
   .fallbackMark { font-size: 4.5rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   :where(html:not([data-motion='full'])) .card,
+  :where(html:not([data-motion='full'])) .card::after,
   :where(html:not([data-motion='full'])) .coverImage,
   :where(html:not([data-motion='full'])) .open svg {
     transition: none;

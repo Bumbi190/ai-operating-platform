@@ -34,6 +34,9 @@ export function MobileRailToggle({ liveCount = 0, uiGeneration, children }: Mobi
   // lib/ui/generation.ts and nowhere else, so the peek behaves the same however
   // the operator navigated to the route.
   const atlasVNextHasDesktopRail = hasDesktopActivityRail(pathname, uiGeneration)
+  // The portfolio is a full-width image gallery. Its global peek remains
+  // accessible, but collapses to a 44px icon so it hides far less artwork.
+  const compactOnProjects = (pathname === '/projects' || pathname === '/projects/') && uiGeneration === 'vnext'
 
   // Lock background scroll while sheet is open
   useEffect(() => {
@@ -56,21 +59,29 @@ export function MobileRailToggle({ liveCount = 0, uiGeneration, children }: Mobi
       {/* Indicator button · only visible <lg */}
       <button
         type="button"
-        aria-label="Open live activity"
+        aria-label="Visa aktivitet"
         onClick={() => setOpen(true)}
-        className={`${atlasVNextHasDesktopRail ? 'lg:hidden' : ''} fixed z-50 bottom-5 right-5 h-11 px-4 rounded-full flex items-center gap-2 press ease-os`}
+        className={`${atlasVNextHasDesktopRail ? 'lg:hidden' : ''} fixed z-50 bottom-5 right-5 h-11 ${compactOnProjects ? 'w-11 justify-center px-0' : 'px-4'} rounded-full flex items-center gap-2 press ease-os`}
         style={{
-          background: 'linear-gradient(180deg, rgba(99,102,241,0.40) 0%, rgba(79,70,229,0.55) 100%)',
-          border: '1px solid rgba(99,102,241,0.55)',
+          background: compactOnProjects
+            ? 'linear-gradient(145deg, rgba(5,24,40,0.96), rgba(8,44,59,0.94))'
+            : 'linear-gradient(180deg, rgba(99,102,241,0.40) 0%, rgba(79,70,229,0.55) 100%)',
+          border: compactOnProjects ? '1px solid rgba(103,232,249,0.45)' : '1px solid rgba(99,102,241,0.55)',
           color: 'white',
-          boxShadow: '0 16px 36px -10px rgba(99,102,241,0.55), 0 0 0 1px rgba(255,255,255,0.05) inset',
-          paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+          boxShadow: compactOnProjects
+            ? '0 9px 28px rgba(0,0,0,0.48), 0 0 20px rgba(34,211,238,0.10)'
+            : '0 16px 36px -10px rgba(99,102,241,0.55), 0 0 0 1px rgba(255,255,255,0.05) inset',
+          bottom: compactOnProjects ? 'calc(1.25rem + env(safe-area-inset-bottom, 0px))' : undefined,
+          right: compactOnProjects ? 'calc(1rem + env(safe-area-inset-right, 0px))' : undefined,
+          paddingBottom: compactOnProjects ? 0 : 'env(safe-area-inset-bottom, 0px)',
         }}
       >
-        <Activity className="w-3.5 h-3.5" />
-        <span className="text-[12px] font-semibold tracking-tight">Activity</span>
+        <Activity className={compactOnProjects ? 'w-5 h-5' : 'w-3.5 h-3.5'} aria-hidden="true" />
+        <span className={compactOnProjects ? 'sr-only' : 'text-[12px] font-semibold tracking-tight'}>Activity</span>
         {liveCount > 0 && (
-          <span className="inline-flex items-center gap-1 caption-mono text-[10px] text-white/90">
+          <span className={compactOnProjects
+            ? 'absolute -top-1 -right-1 inline-flex min-w-4 items-center justify-center gap-1 rounded-full bg-emerald-800 px-1 text-[10px] text-white'
+            : 'inline-flex items-center gap-1 caption-mono text-[10px] text-white/90'}>
             <PulseDot tone="emerald" size={4} />
             {liveCount}
           </span>

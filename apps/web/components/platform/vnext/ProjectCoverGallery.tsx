@@ -72,7 +72,6 @@ export function ProjectCoverGallery({ cards, projectsAvailable }: ProjectCoverGa
     return (
       <section className={styles.page} aria-labelledby="projects-title">
         <header className={styles.intro}>
-          <p className={styles.eyebrow}>Omnira / Portfölj</p>
           <h1 id="projects-title" className={styles.title}>Dina projekt</h1>
         </header>
         <p className={styles.empty} role="status">
@@ -90,9 +89,8 @@ export function ProjectCoverGallery({ cards, projectsAvailable }: ProjectCoverGa
     <section className={styles.page} aria-labelledby="projects-title">
       <header className={styles.intro}>
         <div>
-          <p className={styles.eyebrow}>Omnira / Portfölj</p>
           <h1 id="projects-title" className={styles.title}>Dina projekt</h1>
-          <p className={styles.description}>Välj det projekt eller den arbetsyta du vill öppna.</p>
+          <p className={styles.description}>Välj projekt eller arbetsyta.</p>
         </div>
         <p className={styles.count} aria-label={`${cards.length} projekt och arbetsytor`}>
           <strong>{String(cards.length).padStart(2, '0')}</strong>
@@ -138,7 +136,7 @@ export function ProjectCoverGallery({ cards, projectsAvailable }: ProjectCoverGa
                       alt=""
                       fill
                       priority={index < 2}
-                      sizes="(max-width: 767px) calc(100vw - 40px), (max-width: 1200px) 46vw, 690px"
+                      sizes="(max-width: 767px) calc(100vw - 40px), (max-width: 1023px) 46vw, (max-width: 1719px) 42vw, (max-width: 2400px) 30vw, 740px"
                       className={contain ? styles.logoImage : styles.coverImage}
                       style={{ objectPosition: presentation.heroPosition }}
                     />

@@ -18,6 +18,7 @@ const PAGE = read('app/(platform)/projects/page.tsx')
 const GALLERY = read('components/platform/vnext/ProjectCoverGallery.tsx')
 const CSS = read('components/platform/vnext/ProjectCoverGallery.module.css')
 const LEGACY = read('app/(platform)/projects/ProjectsIndexLegacy.tsx')
+const PEEK = read('components/platform/os/MobileRailToggle.tsx')
 const codeOnly = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
 describe('projects index · routing and security', () => {
@@ -96,6 +97,32 @@ describe('project cover gallery · mobile readability', () => {
     expect(GALLERY).not.toContain('spiralPlacements')
     expect(GALLERY).not.toContain('translate3d(')
     expect(GALLERY).not.toContain('onTouchStart')
+  })
+
+  it('uses a balanced three-column arrangement on ultrawide screens', () => {
+    expect(CSS).toContain('width: min(100%, 140rem)')
+    expect(CSS).toContain('@media (min-width: 1720px)')
+    expect(CSS).toMatch(/grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/)
+    expect(CSS).toContain('aspect-ratio: 16 / 9')
+    expect(CSS).toContain('max-height: 28rem')
+    expect(CSS).toContain('border-bottom: 1px solid')
+  })
+
+  it('removes the duplicate page kicker while keeping the shell breadcrumbs', () => {
+    expect(GALLERY).not.toContain('Omnira / Portfölj')
+    expect(GALLERY).toContain('Dina projekt')
+    expect(GALLERY).toContain('Välj projekt eller arbetsyta.')
+    expect(GALLERY).not.toContain('styles.eyebrow')
+  })
+
+  it('keeps activity accessible without covering an entire project cover', () => {
+    expect(PEEK).toContain("pathname === '/projects'")
+    expect(PEEK).toContain("uiGeneration === 'vnext'")
+    expect(PEEK).toContain("compactOnProjects ? 'w-11 justify-center px-0' : 'px-4'")
+    expect(PEEK).toContain('aria-label="Visa aktivitet"')
+    expect(PEEK).toContain("compactOnProjects ? 'sr-only'")
+    expect(PEEK).toContain('safe-area-inset-bottom')
+    expect(CSS).toContain('padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px))')
   })
 
   it('makes each entire cover a readable link', () => {

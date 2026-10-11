@@ -695,6 +695,89 @@ a.agentName:hover {
   color: rgb(var(--omnira-cyan-soft-rgb) / 0.7);
 }
 
+/* Handlarbörsen's owner view: easier reading on ultrawide displays.
+   All other projects keep the existing Command Center proportions. */
+.field[data-owner-brief='true'] .title {
+  font-size: clamp(1.55rem, 1.85vw, 2.2rem);
+}
+.field[data-owner-brief='true'] .kicker,
+.field[data-owner-brief='true'] .workspaceHeading {
+  font-size: 0.72rem;
+}
+.field[data-owner-brief='true'] .fact dt {
+  font-size: 0.67rem;
+}
+.field[data-owner-brief='true'] .fact dd {
+  font-size: 0.92rem;
+}
+.field[data-owner-brief='true'] .action {
+  min-height: 2rem;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.76rem;
+}
+.field[data-owner-brief='true'] .slug {
+  font-size: 0.75rem;
+}
+
+/* A native, keyboard-accessible disclosure. All six panels remain inspectable
+   and only a positively verified empty workspace is folded by the component. */
+.technicalDetails {
+  position: relative;
+  min-width: 0;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.18);
+  border-radius: 1rem;
+  background: linear-gradient(110deg, rgb(8 26 43 / 0.75), rgb(4 14 27 / 0.6));
+  overflow: hidden;
+}
+.technicalSummary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 4.2rem;
+  padding: 1rem 1.3rem;
+  cursor: pointer;
+  list-style: none;
+  color: hsl(var(--foreground));
+}
+.technicalSummary::-webkit-details-marker { display: none; }
+.technicalSummary:hover { background: rgb(var(--omnira-cyan-rgb) / 0.035); }
+.technicalSummary:focus-visible {
+  outline: 2px solid rgb(var(--omnira-cyan-rgb) / 0.85);
+  outline-offset: -3px;
+}
+.technicalSummaryName {
+  font-size: 0.95rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.technicalSummaryNote {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--omnira-text-2);
+  text-align: right;
+}
+.technicalChevron {
+  flex: none;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--omnira-cyan);
+  transition: transform 180ms ease;
+}
+.technicalDetails[open] .technicalChevron { transform: rotate(180deg); }
+.technicalDetails[open] > .workspace {
+  padding: 0 1.2rem 1.2rem;
+}
+
+@media (max-width: 48rem) {
+  .technicalSummary { flex-wrap: wrap; padding: 0.9rem 1rem; }
+  .technicalSummaryNote { flex: 1 1 100%; order: 3; margin-left: 0; text-align: left; }
+  .technicalDetails[open] > .workspace { padding: 0 0.85rem 0.85rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(html:not([data-motion='full'])) .technicalChevron { transition: none; }
+}
+
 /* ── Width ───────────────────────────────────────────────────────────────── */
 
 /* One column before the secondary list gets cramped. DOM order is the priority

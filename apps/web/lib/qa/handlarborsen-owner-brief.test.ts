@@ -114,7 +114,7 @@ describe('Handlarbörsen owner brief', () => {
 
   it('uses the stored report freshness, without generating trends', () => {
     expect(html(model(), report())).toContain('Senaste rapporten är sparad')
-    expect(html(model(), report('stale'))).toContain('Rapporten behöver uppdateras')
+    expect(html(model(), report('stale'))).toContain('Rapporten är äldre än 26 timmar')
     expect(html(model(), report('stale'))).toContain('data-tone="warning"')
     expect(html()).not.toContain('Ökning')
     expect(html()).not.toContain('Minskning')

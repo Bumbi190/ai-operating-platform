@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as React from 'react'
 import { createElement, isValidElement, type ReactElement } from 'react'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 // vitest compiles JSX with the classic transform: components need React in scope.
 ;(globalThis as unknown as { React: typeof React }).React = React
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -126,6 +128,13 @@ describe('overview model', () => {
 })
 
 describe('rendered overview', () => {
+  it('opts only this project into clearer KPI type in both data and no-data states', () => {
+    expect(render(report([row()]))).toContain('data-prominent="true"')
+    expect(render(report([]))).toContain('data-prominent="true"')
+    const css = readFileSync(resolve(__dirname, '../../components/platform/vnext/KpiOverview.module.css'), 'utf8')
+    expect(css).toContain(".overview[data-prominent='true']")
+  })
+
   it('leads with big numbers, shows Okänt for null, links the full report, draws no chart or arrow', () => {
     const html = render(report([row({ completeness: 'partial', unavailable: { vehicles_reserved: 'query_failed' } }, { vehicles_reserved: null })]))
     expect(html).toContain('Registrerade företag')

@@ -3,7 +3,7 @@ import { ArrowUpRight, Bot, ClipboardList, DatabaseZap } from 'lucide-react'
 import { resolveDestination } from '@/lib/nav/registry'
 import type { ProjectCommandCenterModel, CommandCenterSection } from '@/lib/os/project-command-center'
 import type { MarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-report'
-import { COLLECTION_TODAY_LABELS, COMPLETENESS_LABELS, formatStockholm } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-report'
+import { COLLECTION_TODAY_LABELS, COMPLETENESS_LABELS, STALE_AFTER_HOURS, formatStockholm } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-report'
 import styles from './HandlarborsenOwnerBrief.module.css'
 
 type BriefModel = Pick<ProjectCommandCenterModel, 'agents' | 'workflows' | 'links'>
@@ -17,7 +17,7 @@ function reportStatus(report: MarketplaceReport): { headline: string; detail: st
   if (report.state === 'ok' && report.latest) {
     const latest = report.latest
     return {
-      headline: latest.freshness === 'stale' ? 'Rapporten behöver uppdateras' : 'Senaste rapporten är sparad',
+      headline: latest.freshness === 'stale' ? `Rapporten är äldre än ${STALE_AFTER_HOURS} timmar` : 'Senaste rapporten är sparad',
       detail: `${formatStockholm(latest.observedAt)} · ${COMPLETENESS_LABELS[latest.completeness].toLowerCase()} datakvalitet`,
       tone: latest.freshness === 'stale' || latest.completeness !== 'complete' ? 'warning' : 'ok',
     }

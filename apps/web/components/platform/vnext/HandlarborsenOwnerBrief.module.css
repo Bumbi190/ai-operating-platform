@@ -12,12 +12,12 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 0.75rem 1.5rem;
-  margin: 0 0 0.875rem;
+  margin: 0 0 1.2rem;
 }
 
 .kicker {
   margin: 0 0 0.35rem;
-  font: 600 0.625rem/1.5 var(--font-geist-mono, ui-monospace), monospace;
+  font: 600 0.7rem/1.5 var(--font-geist-mono, ui-monospace), monospace;
   letter-spacing: 0.13em;
   text-transform: uppercase;
   color: rgb(var(--omnira-cyan-soft-rgb) / 0.75);
@@ -25,7 +25,7 @@
 
 .heading h2 {
   margin: 0;
-  font-size: clamp(1.05rem, 1.5vw, 1.35rem);
+  font-size: clamp(1.22rem, 1.6vw, 1.65rem);
   font-weight: 660;
   letter-spacing: -0.02em;
   color: hsl(var(--foreground));
@@ -33,24 +33,24 @@
 
 .readOnly {
   margin: 0 0 0.05rem;
-  font-size: 0.6875rem;
+  font-size: 0.8rem;
   color: var(--omnira-text-3);
 }
 
 .cards {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(0.75rem, 1.3vw, 1.15rem);
+  gap: clamp(0.9rem, 1.4vw, 1.3rem);
 }
 
 .card {
   display: flex;
   flex-direction: column;
   align-items: start;
-  gap: 0.7rem;
+  gap: 0.85rem;
   min-width: 0;
-  min-height: 13.5rem;
-  padding: clamp(1rem, 1.6vw, 1.4rem);
+  min-height: 15rem;
+  padding: clamp(1.15rem, 1.6vw, 1.75rem);
   border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.19);
   border-radius: 1rem;
   background: linear-gradient(155deg, rgb(12 36 55 / 0.86), rgb(4 13 29 / 0.82) 83%);
@@ -65,7 +65,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font: 600 0.58rem/1.4 var(--font-geist-mono, ui-monospace), monospace;
+  font: 600 0.68rem/1.4 var(--font-geist-mono, ui-monospace), monospace;
   text-transform: uppercase;
   letter-spacing: 0.11em;
   color: rgb(var(--omnira-aqua-rgb) / 0.71);
@@ -81,7 +81,7 @@
 
 .card h3 {
   margin: 0;
-  font-size: clamp(0.98rem, 1.25vw, 1.18rem);
+  font-size: clamp(1.08rem, 1.35vw, 1.32rem);
   font-weight: 650;
   line-height: 1.25;
   letter-spacing: -0.01em;
@@ -91,8 +91,8 @@
 
 .card p {
   margin: 0;
-  font-size: 0.79rem;
-  line-height: 1.55;
+  font-size: 0.91rem;
+  line-height: 1.58;
   color: var(--omnira-text-2);
   overflow-wrap: anywhere;
 }
@@ -103,7 +103,7 @@
 }
 
 .card .collection {
-  font-size: 0.69rem;
+  font-size: 0.8rem;
   color: rgb(var(--omnira-aqua-rgb) / 0.78);
 }
 
@@ -122,13 +122,13 @@
 }
 
 .counts dt {
-  font-size: 0.66rem;
+  font-size: 0.76rem;
   color: var(--omnira-text-3);
 }
 
 .counts dd {
   margin: 0;
-  font: 600 1.35rem/1.2 var(--font-geist-mono, ui-monospace), monospace;
+  font: 600 1.6rem/1.2 var(--font-geist-mono, ui-monospace), monospace;
   color: hsl(var(--foreground));
   font-variant-numeric: tabular-nums;
 }
@@ -147,7 +147,7 @@
   gap: 0.3rem;
   margin-top: auto;
   min-height: 2.25rem;
-  font-size: 0.76rem;
+  font-size: 0.87rem;
   font-weight: 650;
   text-decoration: none;
   color: var(--omnira-cyan);

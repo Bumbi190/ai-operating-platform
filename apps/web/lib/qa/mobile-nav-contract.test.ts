@@ -5,6 +5,12 @@ import { vnextNavItemsFor } from '@/lib/nav/vnext-nav'
 import { resolveDestination } from '@/lib/nav/registry'
 import { LEGACY_PROJECT_NAV } from '@/lib/nav/legacy-nav'
 import { shouldRenderGlobalProjectList } from '@/lib/nav/sidebar-visibility'
+import * as React from 'react'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { AtlasMobileNav } from '@/components/platform/vnext/AtlasMobileNav'
+
+;(globalThis as unknown as { React: typeof React }).React = React
 
 /**
  * Mobile navigation contract.
@@ -42,10 +48,17 @@ describe('mobile nav · portfolio quick jump', () => {
     expect(vnextNavItemsFor('mobile').map((i) => i.href).filter((href) => href.startsWith('/projects/'))).toEqual([])
   })
 
-  it('adds no new route', () => {
-    for (const item of vnextNavItemsFor('mobile')) {
-      expect(resolveDestination(item.id as never)?.href ?? item.href).toBe(item.href)
-    }
+  it('uses the already-implemented, scoped project index', () => {
+    const index = read('app/(platform)/projects/page.tsx')
+    expect(index).toContain('loadAtlasHomeViewModel()')
+    expect(index).toContain('composeAtlasRailCards(model.projects)')
+    expect(index).toContain('<ProjectCoverGallery cards={cards} projectsAvailable={projectsAvailable} />')
+  })
+
+  it('renders one actual, tappable Projekt link in the mobile header', () => {
+    const markup = renderToStaticMarkup(createElement(AtlasMobileNav))
+    expect(markup).toMatch(/href="\/projects"[^>]*>Projekt<\/a>/)
+    expect(markup.match(/href="\/projects"/g)).toHaveLength(1)
   })
 })
 

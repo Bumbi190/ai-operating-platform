@@ -84,33 +84,41 @@ export async function loadHandlarborsenMarketplaceReport(
       return { status: 'ok', report: emptyReport('not_enabled') }
     }
 
-    // Table is not in generated types — established cast.
-    const { data, error } = await (db as any)
-      .from('handlarborsen_marketplace_snapshots')
-      .select(SNAPSHOT_SELECT_COLUMNS)
-      .eq('project_id', HANDLARBORSEN_PROJECT_ID)
-      .order('snapshot_date', { ascending: false })
-      .limit(HISTORY_LIMIT)
-    if (error) return failed('snapshots')
-
-    // The collector's own audit rows say whether the daily collection ran and what it did.
-    // A failure here must not hide the report: the collection status is then simply unknown.
-    let runs: unknown[] | undefined
-    try {
-      const { data: runRows, error: runError } = await (db as any)
+    // Two independent, project-bound reads start together after the authorization
+    // and observer-mode gates above. Avoid serial network latency without adding
+    // queries, weakening filters or changing failure semantics.
+    const [snapshotRead, auditRead] = await Promise.allSettled([
+      Promise.resolve().then(() => (db as any)
+        .from('handlarborsen_marketplace_snapshots')
+        .select(SNAPSHOT_SELECT_COLUMNS)
+        .eq('project_id', HANDLARBORSEN_PROJECT_ID)
+        .order('snapshot_date', { ascending: false })
+        .limit(HISTORY_LIMIT)),
+      Promise.resolve().then(() => (db as any)
         .from('collector_runs')
         .select(COLLECTION_RUN_SELECT)
         .eq('collector_id', COLLECTOR_ID)
         .eq('project_id', HANDLARBORSEN_PROJECT_ID)
         .order('ran_at', { ascending: false })
-        .limit(COLLECTION_RUN_LIMIT)
-      if (runError) console.error('[handlarborsen.report] read failed (stage: collector_runs)')
-      else runs = runRows ?? []
-    } catch {
-      console.error('[handlarborsen.report] read failed (stage: collector_runs)')
+        .limit(COLLECTION_RUN_LIMIT)),
+    ])
+    if (snapshotRead.status === 'rejected' || snapshotRead.value.error) {
+      return failed('snapshots')
     }
 
-    return { status: 'ok', report: buildMarketplaceReport(data ?? [], options.now, runs) }
+    // Failure to read the audit must never hide a valid saved snapshot.
+    // Unknown collection status remains unknown, never presented as "none".
+    let runs: unknown[] | undefined
+    if (auditRead.status === 'rejected' || auditRead.value.error) {
+      console.error('[handlarborsen.report] read failed (stage: collector_runs)')
+    } else {
+      runs = auditRead.value.data ?? []
+    }
+
+    return {
+      status: 'ok',
+      report: buildMarketplaceReport(snapshotRead.value.data ?? [], options.now, runs),
+    }
   } catch {
     return failed('exception')
   }

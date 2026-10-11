@@ -130,7 +130,7 @@ describe('Handlarbörsen owner brief', () => {
   it('is mounted only after the identity check and an allowed report read', () => {
     const page = source('app/(platform)/projects/[slug]/page.tsx')
     expect(page).toContain('isHandlarborsenProject(project)')
-    expect(page).toMatch(/reportResult && reportResult.status === 'ok'[\s\S]*?<HandlarborsenOwnerBrief/)
+    expect(page).toMatch(/result.status === 'ok'[\s\S]*?<HandlarborsenOwnerBrief/)
     expect(page).toContain('<ProjectCommandCenter model={model} overview={overview} briefing={briefing} />')
     const generic = source('components/platform/vnext/ProjectCommandCenter.tsx')
     expect(generic).toContain('{briefing ?? null}')

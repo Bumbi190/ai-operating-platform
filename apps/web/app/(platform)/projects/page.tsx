@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
-import { createClient } from '@/lib/supabase/server'
 import { loadAtlasHomeViewModel } from '@/lib/atlas/home-view-model'
 import { composeAtlasRailCards } from '@/lib/atlas/first-party-workspaces'
 import { ProjectCoverGallery } from '@/components/platform/vnext/ProjectCoverGallery'
@@ -25,18 +24,17 @@ import { ProjectsIndexLegacy } from './ProjectsIndexLegacy'
 export const dynamic = 'force-dynamic'
 
 export default async function ProjectsIndexPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
+  // loadAtlasHomeViewModel already authenticates the user. Avoid requesting
+  // getUser twice for this route; never show project data on an anonymous session.
   const cookieStore = await cookies()
   const generation = resolveUiGeneration({
     cookie: cookieStore.get(OMNIRA_UI_COOKIE)?.value ?? null,
   })
 
   const model = await loadAtlasHomeViewModel()
-  const cards = composeAtlasRailCards(model?.projects ?? [])
-  const projectsAvailable = model?.availability.projects ?? false
+  if (!model) redirect('/login')
+  const cards = composeAtlasRailCards(model.projects)
+  const projectsAvailable = model.availability.projects
 
   // The cover gallery is a vNext surface. Legacy gets a plain list of the same
   // scoped cards rather than the visual portfolio — the rollback path has

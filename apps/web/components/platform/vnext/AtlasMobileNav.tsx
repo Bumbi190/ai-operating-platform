@@ -11,8 +11,8 @@ import styles from './AtlasHomeVNext.module.css'
  * desktop showed 'Granskningar', 'Aktivitet' and 'Minne' — and 'knowledge' is an
  * alias to /memory that never had a page of its own.
  *
- * The destinations are unchanged; the model simply owns their identity now, and
- * decides which of them are mobile.
+ * The original destinations retain their identity, and the shared model owns
+ * mobile visibility, including the portfolio quick-jump added for touch access.
  *
  * Individual project selection is deliberately absent. The mobile menu now has
  * one 'Projekt' quick jump to /projects (the spatial portfolio overview),

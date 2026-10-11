@@ -2,7 +2,7 @@ import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { getProjectBySlug, type ResolvedProject } from '@/lib/project/get-project'
-import { isHandlarborsenProject, loadProjectCommandCenter } from '@/lib/os/project-command-center'
+import { isHandlarborsenProject, loadProjectCommandCenter, type ProjectCommandCenterModel } from '@/lib/os/project-command-center'
 import { loadHandlarborsenMarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-read'
 import { HandlarborsenOverview } from '@/components/platform/vnext/HandlarborsenOverview'
 import { HandlarborsenOwnerBrief } from '@/components/platform/vnext/HandlarborsenOwnerBrief'
@@ -50,23 +50,50 @@ export default async function ProjectPage({
 }
 
 async function LoadedProjectCommandCenter({ project }: { project: ResolvedProject }) {
-  // Key figures lead the page for Handlarbörsen only. The project (verified by id, slug and
-  // name) is the RLS-resolved one, and it is also the allow-list handed to the reader, which
-  // re-checks identity and atlas_mode. Every other project loads exactly what it did before.
-  const withKeyFigures = isHandlarborsenProject(project)
-  const [model, reportResult] = await Promise.all([
-    loadProjectCommandCenter(project),
-    withKeyFigures
-      ? loadHandlarborsenMarketplaceReport(project, { allowedProjectIds: [project.id] })
-      : Promise.resolve(null),
-  ])
-  const overview = reportResult && reportResult.status === 'ok'
-    ? <HandlarborsenOverview report={reportResult.report} reportHref={model.links.marketplace} />
+  // Start the existing scoped report beside the workspace model. The fallback
+  // keeps the workspace readable while the same report loads for both the
+  // overview and owner brief; a refused read unlocks neither.
+  const reportPromise = isHandlarborsenProject(project)
+    ? loadHandlarborsenMarketplaceReport(project, { allowedProjectIds: [project.id] })
+    : null
+  const model = await loadProjectCommandCenter(project)
+
+  if (!reportPromise) return <ProjectCommandCenter model={model} />
+
+  return (
+    <Suspense fallback={<ProjectCommandCenter model={model} overview={<HandlarborsenStatsLoading />} />}>
+      <LoadedHandlarborsenCommandCenter reportPromise={reportPromise} model={model} />
+    </Suspense>
+  )
+}
+
+/** One report feeds both slots after authorization. Until then the boundary
+ * streams the existing workspace, without an owner brief or fictional data. */
+async function LoadedHandlarborsenCommandCenter({
+  reportPromise,
+  model,
+}: {
+  reportPromise: ReturnType<typeof loadHandlarborsenMarketplaceReport>
+  model: ProjectCommandCenterModel
+}) {
+  const result = await reportPromise
+  const overview = result.status === 'ok'
+    ? <HandlarborsenOverview report={result.report} reportHref={model.links.marketplace} />
     : undefined
-  // Only Handlarbörsen's verified, scoped report unlocks the dedicated briefing.
-  // Not-permitted reads never receive a substitute report or project data.
-  const briefing = reportResult && reportResult.status === 'ok'
-    ? <HandlarborsenOwnerBrief model={model} report={reportResult.report} />
+  const briefing = result.status === 'ok'
+    ? <HandlarborsenOwnerBrief model={model} report={result.report} />
     : undefined
   return <ProjectCommandCenter model={model} overview={overview} briefing={briefing} />
+}
+
+function HandlarborsenStatsLoading() {
+  return (
+    <section
+      aria-busy="true"
+      role="status"
+      className="rounded-xl border border-white/10 bg-white/[0.025] p-5"
+    >
+      <p className="text-sm text-muted-foreground">Läser Handlarbörsens senaste verifierade statistik…</p>
+    </section>
+  )
 }

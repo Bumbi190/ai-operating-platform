@@ -27,6 +27,12 @@ describe('projects index · routing and security', () => {
     expect(PAGE).toContain('isVNext(generation)')
     expect(PAGE).toContain('<ProjectCoverGallery cards={cards} projectsAvailable={projectsAvailable} />')
     expect(PAGE).toContain('<ProjectsIndexLegacy')
+    expect(PAGE).not.toContain('ProjectSpiral')
+    for (const removed of [
+      'components/platform/vnext/ProjectSpiral.tsx',
+      'components/platform/vnext/ProjectSpiral.module.css',
+      'lib/qa/project-spiral.test.ts',
+    ]) expect(existsSync(resolve(WEB_ROOT, removed)), removed).toBe(false)
     expect(destinationBasePath('project_home')).toBe('/projects')
   })
 
@@ -56,7 +62,8 @@ describe('projects index · routing and security', () => {
     expect(GALLERY).toContain('project.pendingApprovals !== null')
     expect(GALLERY).toContain('project.latestActivityTitle')
     expect(GALLERY).toContain('projectsAvailable')
-    expect(PAGE).toContain('model?.availability.projects')
+    expect(PAGE).toContain('model.availability.projects')
+    expect(PAGE).toContain("if (!model) redirect('/login')")
   })
 })
 

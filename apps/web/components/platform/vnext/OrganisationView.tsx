@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { ChevronDown } from 'lucide-react'
 import { OmniraMark } from '@/components/platform/OmniraLogo'
 import type { OrganisationModel } from '@/lib/os/organisation'
+import { initiallyCollapsedOrganisationProjects, ORG_LONG_AGENT_LIST_THRESHOLD } from '@/lib/nav/organisation-presentation'
 import styles from './OrganisationView.module.css'
 
 /**
@@ -25,7 +26,11 @@ import styles from './OrganisationView.module.css'
  * provides. There is no arrow-key graph navigation to invent here.
  */
 export function OrganisationView({ model }: { model: OrganisationModel }) {
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set())
+  // All project nodes remain visible. Large agent families begin folded so
+  // their height cannot push the next project row out of sight.
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(
+    () => initiallyCollapsedOrganisationProjects(model.projects),
+  )
 
   const toggle = useCallback((projectId: string) => {
     setCollapsed((previous) => {
@@ -117,6 +122,9 @@ export function OrganisationView({ model }: { model: OrganisationModel }) {
                       onClick={() => toggle(project.id)}
                       aria-expanded={!isCollapsed}
                       aria-controls={panelId}
+                      aria-label={isCollapsed
+                        ? `Visa agenter i ${project.name} (${project.agents.length})`
+                        : `Dölj agenter i ${project.name} (${project.agents.length})`}
                     >
                       <ChevronDown
                         className={styles.toggleIcon}
@@ -133,7 +141,13 @@ export function OrganisationView({ model }: { model: OrganisationModel }) {
                 {/* Collapsed removes the children from the tree, rather than
                     hiding them — nothing is announced that is not on screen. */}
                 {!isCollapsed && project.agents.length > 0 ? (
-                  <ul className={styles.agents} id={panelId}>
+                  <ul
+                    className={styles.agents}
+                    id={panelId}
+                    data-long={project.agents.length > ORG_LONG_AGENT_LIST_THRESHOLD || undefined}
+                    aria-label={`Agenter i ${project.name}`}
+                    tabIndex={project.agents.length > ORG_LONG_AGENT_LIST_THRESHOLD ? 0 : undefined}
+                  >
                     {project.agents.map((agent) => (
                       <li key={agent.id} className={styles.agentSlot}>
                         <span className={styles.agentBranch} aria-hidden="true" />

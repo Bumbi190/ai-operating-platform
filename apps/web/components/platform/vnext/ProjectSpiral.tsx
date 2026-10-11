@@ -53,6 +53,7 @@ export function ProjectSpiral({ cards, projectsAvailable }: ProjectSpiralProps) 
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [spread, setSpread] = useState<SpiralSpread>(DEFAULT_SPREAD)
   const cardRefs = useRef<Array<HTMLAnchorElement | null>>([])
+  const touchStartX = useRef<number | null>(null)
 
   useEffect(() => {
     const measure = () => setSpread(spiralSpreadForWidth(window.innerWidth))
@@ -151,7 +152,19 @@ export function ProjectSpiral({ cards, projectsAvailable }: ProjectSpiralProps) 
 
       {/* A real list, so the spiral is a set of links in the accessibility tree
           however it happens to be arranged visually. */}
-      <ul className={styles.orbit}>
+      <ul
+        className={styles.orbit}
+        onTouchStart={(event) => { touchStartX.current = event.touches[0]?.clientX ?? null }}
+        onTouchEnd={(event) => {
+          const start = touchStartX.current
+          touchStartX.current = null
+          if (start === null || !event.changedTouches[0]) return
+          const dx = event.changedTouches[0].clientX - start
+          if (Math.abs(dx) < 48) return
+          select(selectedIndex + (dx < 0 ? 1 : -1))
+        }}
+        onTouchCancel={() => { touchStartX.current = null }}
+      >
         {cards.map((card, index) => {
           const placement = placements[index]
           const isSystem = card.kind === 'SYSTEM_WORKSPACE'
@@ -220,12 +233,16 @@ export function ProjectSpiral({ cards, projectsAvailable }: ProjectSpiralProps) 
 
       {/* Position in the spiral, for pointer users and as a live region for
           anyone driving it from the keyboard. */}
-      <p className={styles.position} aria-live="polite">
+      <div className={styles.navigation} aria-label="Bläddra bland projekt">
+        <button type="button" onClick={() => select(selectedIndex - 1, true)} aria-label="Föregående projekt">←</button>
+        <p className={styles.position} aria-live="polite">
         <span className={styles.positionName}>{selectedCard?.label}</span>
         <span className={styles.positionCount}>
           {wrapIndex(selectedIndex, cards.length) + 1} / {cards.length}
         </span>
-      </p>
+        </p>
+        <button type="button" onClick={() => select(selectedIndex + 1, true)} aria-label="Nästa projekt">→</button>
+      </div>
     </div>
   )
 }

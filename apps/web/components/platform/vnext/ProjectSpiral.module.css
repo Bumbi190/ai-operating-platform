@@ -21,6 +21,8 @@
   display: grid;
   place-items: center;
   overflow: hidden;
+  isolation: isolate;
+  background: radial-gradient(ellipse 38% 65% at 50% 49%, rgb(var(--omnira-cyan-rgb) / 0.07), transparent 85%);
   /* No horizontal overflow at any width — the geometry narrows instead. */
   max-width: 100%;
 }
@@ -51,7 +53,7 @@
   position: absolute;
   top: 6%;
   bottom: 6%;
-  width: 1px;
+  width: 3px;
   background: linear-gradient(
     180deg,
     transparent,
@@ -60,7 +62,7 @@
     rgb(var(--omnira-cyan-rgb) / 0.32) 82%,
     transparent
   );
-  box-shadow: 0 0 2.5rem rgb(var(--omnira-cyan-rgb) / 0.22);
+  box-shadow: 0 0 1.25rem 0.12rem rgb(var(--omnira-cyan-rgb) / 0.28), 0 0 5rem 0.8rem rgb(var(--omnira-teal-rgb) / 0.12);
 }
 
 .spineRing {
@@ -221,13 +223,46 @@
 /* ── Status line ─────────────────────────────────────────────────────────── */
 
 .position {
-  position: absolute;
-  bottom: 0;
+  position: relative;
   display: flex;
   align-items: baseline;
   gap: 0.625rem;
   margin: 0;
   font-size: 0.6875rem;
+}
+
+.navigation {
+  position: absolute;
+  bottom: 0.35rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.17);
+  background: rgb(4 12 24 / 0.68);
+  backdrop-filter: blur(16px);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.navigation button {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  color: hsl(var(--foreground));
+  font-size: 1.25rem;
+  background: transparent;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.2);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.navigation button:hover, .navigation button:focus-visible {
+  border-color: rgb(var(--omnira-cyan-rgb) / 0.7);
+  outline-offset: 2px;
 }
 
 .positionName {

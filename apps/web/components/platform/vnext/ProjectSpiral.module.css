@@ -133,6 +133,12 @@
   transition: border-color 0.24s ease, box-shadow 0.24s ease, background 0.24s ease;
 }
 
+/* The same scoped project covers as Atlas Home, exposed only in the small-
+   screen card list. The desktop spiral retains its exact original appearance. */
+.mobileCover {
+  display: none;
+}
+
 /* Focus is carried by border, glow AND the geometry's scale — never by glow
    alone, and never by colour alone. */
 .card[data-focused] {
@@ -261,6 +267,164 @@
   margin: 0 0 0.5rem;
   font-size: 1.25rem;
   color: hsl(var(--foreground));
+}
+
+/* ── Touch layout ──────────────────────────────────────────────────────────
+   The orbit's inline transform/opacity are correct on desktop but squeeze six
+   absolute-positioned cards into a tiny phone viewport. At the same breakpoint
+   where the app uses mobile navigation, expose the SAME list as normal document
+   flow. Important only neutralizes inline geometry; no second project list and
+   no JS media-query hydration branch. The shell owns vertical scrolling. */
+@media (max-width: 1023px) {
+  .stage {
+    display: block;
+    box-sizing: border-box;
+    height: auto;
+    min-height: 0;
+    padding: 1.5rem 1.25rem 5.5rem;
+    overflow: visible;
+  }
+
+  .visuallyHidden {
+    position: static;
+    display: block;
+    width: auto;
+    height: auto;
+    padding: 0;
+    margin: 0 auto 1.25rem;
+    overflow: visible;
+    clip-path: none;
+    white-space: normal;
+    border: 0;
+    max-width: 58rem;
+    font-size: 1.5rem;
+    font-weight: 650;
+    letter-spacing: -0.02em;
+    color: hsl(var(--foreground));
+  }
+
+  .spine {
+    display: none;
+  }
+
+  .orbit {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+    justify-items: stretch;
+    gap: 1rem;
+    height: auto;
+    width: 100%;
+    max-width: 58rem;
+    margin: 0 auto;
+  }
+
+  .slot {
+    position: relative;
+    min-width: 0;
+    width: 100%;
+    transform: none !important;
+    opacity: 1 !important;
+    z-index: auto !important;
+    transition: none;
+    will-change: auto;
+  }
+
+  .slot > * {
+    animation: none !important;
+  }
+
+  .card,
+  .card[data-focused] {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    min-height: 14.5rem;
+    border-color: color-mix(in srgb, var(--card-accent) 30%, transparent);
+    background: linear-gradient(
+      160deg,
+      color-mix(in srgb, var(--card-accent) 12%, transparent),
+      rgb(4 12 24 / 0.96) 78%
+    );
+    box-shadow: 0 0.75rem 1.75rem rgb(0 0 0 / 0.24);
+    animation: none;
+  }
+
+  .card:hover,
+  .card:focus-visible {
+    border-color: color-mix(in srgb, var(--card-accent) 72%, transparent);
+  }
+
+  .mobileCover {
+    display: block;
+    flex: none;
+    position: relative;
+    height: 7.75rem;
+    border-radius: 0.7rem;
+    border: 1px solid color-mix(in srgb, var(--card-accent) 24%, transparent);
+    background-color: rgb(7 24 42 / 0.85);
+    background-image:
+      linear-gradient(0deg, rgb(4 12 24 / 0.35), transparent 64%),
+      var(--project-cover-image,
+        linear-gradient(135deg,
+          color-mix(in srgb, var(--card-accent) 32%, transparent),
+          rgb(4 12 24 / 0.95)));
+    background-size: cover;
+    background-position: center, var(--project-cover-position, center);
+    background-repeat: no-repeat;
+  }
+
+  .cardName {
+    font-size: 1.125rem;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+  }
+
+  .metaActivity {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .position {
+    display: none;
+  }
+
+  .degraded {
+    position: relative;
+    top: auto;
+    margin: 0 auto 1rem;
+    max-width: 58rem;
+  }
+}
+
+@media (max-width: 639px) {
+  .stage {
+    padding: 1.25rem 1rem 6rem;
+  }
+
+  .visuallyHidden,
+  .orbit {
+    max-width: 30rem;
+  }
+
+  .orbit {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.875rem;
+  }
+
+  .card,
+  .card[data-focused] {
+    min-height: 0;
+    padding: 0.875rem 1rem 1rem;
+  }
+
+  .mobileCover {
+    height: 8rem;
+  }
 }
 
 /* ── Reduced motion ──────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ import {
   type SpiralSpread,
 } from '@/lib/atlas/project-spiral-geometry'
 import type { AtlasRailCard } from '@/lib/atlas/first-party-workspaces'
+import { presentationForProject } from '@/lib/atlas/project-presentation'
 import { markAtlasProjectRailOpen } from './AtlasProjectReturnShortcut'
 import styles from './ProjectSpiral.module.css'
 
@@ -155,6 +156,11 @@ export function ProjectSpiral({ cards, projectsAvailable }: ProjectSpiralProps) 
         {cards.map((card, index) => {
           const placement = placements[index]
           const isSystem = card.kind === 'SYSTEM_WORKSPACE'
+          // Existing, locally-hosted cover art: presentation only, never an
+          // additional project or a source of authorization.
+          const cover = card.kind === 'PROJECT'
+            ? presentationForProject(card.project.slug, card.project.name)
+            : null
           return (
             <li
               key={card.id}
@@ -180,6 +186,14 @@ export function ProjectSpiral({ cards, projectsAvailable }: ProjectSpiralProps) 
                 // records the origin here — the same place ProjectRail does.
                 onClick={() => markAtlasProjectRailOpen(card.selectionKey, 'projects-index')}
               >
+                <span
+                  className={styles.mobileCover}
+                  aria-hidden="true"
+                  style={cover?.heroImage ? {
+                    '--project-cover-image': `url("${cover.heroImage}")`,
+                    '--project-cover-position': cover.heroPosition ?? 'center',
+                  } as React.CSSProperties : undefined}
+                />
                 <span className={styles.cardTop}>
                   <span className={styles.cardMark} aria-hidden="true">
                     {card.label.slice(0, 2).toUpperCase()}

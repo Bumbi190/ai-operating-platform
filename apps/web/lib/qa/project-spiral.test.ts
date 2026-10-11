@@ -314,6 +314,31 @@ describe('project spiral · motion and presentation', () => {
     expect(SPIRAL_CSS).toMatch(/width: min\(/)
   })
 
+  it('renders a non-overlapping, scrollable list instead of absolute 3D cards on touch widths', () => {
+    const touch = SPIRAL_CSS.split('/* ── Touch layout')[1]?.split('/* ── Reduced motion')[0] ?? ''
+    expect(touch).toContain('@media (max-width: 1023px)')
+    expect(touch).toMatch(/\.stage\s*\{[^}]*height:\s*auto/)
+    expect(touch).toMatch(/\.stage\s*\{[^}]*overflow:\s*visible/)
+    expect(touch).toMatch(/\.orbit\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/)
+    expect(touch).toMatch(/\.slot\s*\{[^}]*position:\s*relative/)
+    expect(touch).toMatch(/\.slot\s*\{[^}]*transform:\s*none !important/)
+    expect(touch).toMatch(/\.slot\s*\{[^}]*opacity:\s*1 !important/)
+    expect(touch).toMatch(/\.slot\s*\{[^}]*z-index:\s*auto !important/)
+    expect(touch).toMatch(/\.spine\s*\{\s*display:\s*none/)
+    expect(touch).toContain('@media (max-width: 639px)')
+    expect(touch).toMatch(/\.orbit\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)/)
+    expect(touch).toMatch(/\.position\s*\{\s*display:\s*none/)
+  })
+
+  it('reuses scoped project covers without changing the desktop spiral or linking to new routes', () => {
+    expect(SPIRAL).toContain('presentationForProject(card.project.slug, card.project.name)')
+    expect(SPIRAL).toContain('className={styles.mobileCover}')
+    expect(SPIRAL).toContain('aria-hidden="true"')
+    expect(SPIRAL).toContain('href={card.href}')
+    expect(SPIRAL_CSS).toMatch(/\.mobileCover\s*\{\s*display:\s*none;/)
+    expect(SPIRAL_CSS).toMatch(/@media \(max-width: 1023px\)[\s\S]*?\.mobileCover\s*\{[^}]*display:\s*block;/)
+  })
+
   it('is a real list of links, however it is arranged visually', () => {
     expect(SPIRAL).toContain('<ul')
     expect(SPIRAL).toContain('<li')

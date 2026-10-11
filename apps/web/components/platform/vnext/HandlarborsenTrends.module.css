@@ -1,0 +1,299 @@
+/* Static, read-only charts. No client chart bundle or extra queries.
+   Uses the same dark glass language as the existing Handlarbörsen pulse. */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  min-width: 0;
+  padding: 1.25rem 1.375rem 1.375rem;
+  border-radius: 1rem;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.15);
+  background: linear-gradient(170deg, rgb(8 22 40 / 0.73), rgb(4 12 24 / 0.64));
+  box-shadow: inset 0 1px 0 var(--omnira-glass-3);
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+.kicker {
+  font:
+    600 0.625rem var(--font-geist-mono, ui-monospace),
+    monospace;
+  letter-spacing: 0.13em;
+  color: rgb(var(--omnira-cyan-soft-rgb) / 0.8);
+  margin: 0;
+}
+.heading {
+  font-size: clamp(1.1rem, 2vw, 1.45rem);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  margin: 0.35rem 0 0;
+  color: hsl(var(--foreground));
+}
+.mode {
+  font-size: 0.71875rem;
+  padding: 0.35rem 0.625rem;
+  border: 1px solid var(--omnira-edge);
+  border-radius: 999px;
+  color: rgb(214 233 245 / 0.8);
+}
+.intro {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: rgb(216 230 241 / 0.73);
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+.card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 1rem;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.12);
+  border-radius: 0.875rem;
+  background:
+    radial-gradient(
+      ellipse 70% 70% at 90% 0%,
+      rgb(var(--omnira-cyan-rgb) / 0.06),
+      transparent
+    ),
+    rgb(255 255 255 / 0.02);
+}
+.card[data-kind='vehicles'] {
+  border-color: rgb(var(--omnira-teal-rgb) / 0.17);
+}
+.card[data-kind='trading'] {
+  border-color: rgb(147 130 250 / 0.19);
+}
+.cardHeader {
+  min-width: 0;
+}
+.cardTitle {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+.cardDescription {
+  margin: 0.25rem 0 0;
+  font-size: 0.71875rem;
+  line-height: 1.45;
+  color: rgb(216 230 241 / 0.62);
+}
+.bars {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1.25rem;
+  min-height: 10rem;
+  padding-block: 0.5rem;
+}
+.barGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+.barTitle {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: rgb(216 230 241 / 0.87);
+  font-size: 0.71875rem;
+}
+.barTitle strong {
+  font-weight: 700;
+  color: hsl(var(--foreground));
+  font-variant-numeric: tabular-nums;
+}
+.track {
+  height: 0.7rem;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.05);
+  background: rgb(255 255 255 / 0.055);
+  position: relative;
+}
+.track > span:not(.unknown) {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+.firstFill {
+  background: linear-gradient(90deg, #3575d3, #73c4ff);
+}
+.secondFill {
+  background: linear-gradient(90deg, #157f84, #32dabd);
+}
+.unknown {
+  position: absolute;
+  inset: 0;
+  text-align: center;
+  font-size: 0.55rem;
+  line-height: 0.7rem;
+  color: var(--omnira-amber, #fbbf24);
+}
+.plotWrap {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+.plot {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.axis {
+  stroke: rgb(216 230 241 / 0.2);
+  stroke-width: 1;
+}
+.gridLine {
+  stroke: rgb(216 230 241 / 0.105);
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+}
+.tick {
+  fill: rgb(216 230 241 / 0.61);
+  font-size: 10px;
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+}
+.firstLine {
+  stroke: #77bafa;
+  stroke-width: 2.8;
+  stroke-linecap: round;
+}
+.secondLine {
+  stroke: #33d8bd;
+  stroke-width: 2.8;
+  stroke-linecap: round;
+}
+.firstPoint {
+  fill: #77bafa;
+  stroke: #0c2442;
+  stroke-width: 1.3;
+}
+.secondPoint {
+  fill: #33d8bd;
+  stroke: #0c2442;
+  stroke-width: 1.3;
+}
+
+.legend {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgb(216 230 241 / 0.1);
+  margin: auto 0 0;
+}
+.legendItem {
+  min-width: 0;
+}
+.legendLabel {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  font-size: 0.6875rem;
+  color: rgb(216 230 241 / 0.66);
+  line-height: 1.35;
+}
+.firstDot,
+.secondDot {
+  flex: none;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  margin-top: 0.22rem;
+  background: #77bafa;
+}
+.secondDot {
+  background: #33d8bd;
+}
+.legendValue {
+  margin: 0.2rem 0 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--foreground));
+}
+.legendValue[data-unknown='true'] {
+  font-size: 0.95rem;
+  color: var(--omnira-amber, #fbbf24);
+}
+.dateNote,
+.disclaimer {
+  margin: 0;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: rgb(216 230 241 / 0.65);
+}
+.disclaimer {
+  color: rgb(216 230 241 / 0.54);
+}
+.details {
+  font-size: 0.71875rem;
+  color: rgb(216 230 241 / 0.76);
+  min-width: 0;
+}
+.details summary {
+  cursor: pointer;
+  padding: 0.375rem 0;
+}
+.details summary:focus-visible {
+  outline: 2px solid #77bafa;
+  outline-offset: 3px;
+}
+.valuesTable {
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: fixed;
+  margin-top: 0.5rem;
+}
+.valuesTable th,
+.valuesTable td {
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  padding: 0.3rem 0.25rem;
+  border-top: 1px solid rgb(216 230 241 / 0.09);
+}
+.valuesTable th {
+  font-weight: 600;
+}
+
+@media (max-width: 75rem) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .card:last-child {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 42rem) {
+  .section {
+    padding: 1rem 0.875rem 1.125rem;
+  }
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .card:last-child {
+    grid-column: auto;
+  }
+  .card {
+    padding: 0.875rem;
+  }
+  .plotWrap {
+    max-width: 100%;
+  }
+}

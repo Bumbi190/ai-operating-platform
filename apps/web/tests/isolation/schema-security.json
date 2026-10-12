@@ -44,7 +44,9 @@
       "classes": {
         "agent_decisions": "SERVER_ONLY",
         "ai_cost_snapshots": "SERVER_ONLY",
-        "memory_refs": "SERVER_ONLY"
+        "memory_refs": "SERVER_ONLY",
+        "atlas_analysis_drafts": "SERVER_ONLY",
+        "atlas_analysis_draft_events": "SERVER_ONLY"
       },
       "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class."
     },

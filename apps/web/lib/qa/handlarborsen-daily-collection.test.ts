@@ -278,7 +278,7 @@ describe('reader: collector_runs', () => {
     const result = await load(d)
     const q = d.calls.find((c) => c.table === 'collector_runs')!
     expect(q.ops).toEqual(expect.arrayContaining([
-      ['select', [COLLECTION_RUN_SELECT]],
+      ['select', ['id, project_id, collector_id, ' + COLLECTION_RUN_SELECT]],
       ['eq', ['collector_id', COLLECTOR_ID]],
       ['eq', ['project_id', HANDLARBORSEN_PROJECT_ID]],
       ['order', ['ran_at', { ascending: false }]],

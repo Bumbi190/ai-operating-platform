@@ -197,19 +197,37 @@
 
 .orbHalo {
   position: relative;
-  width: clamp(275px, 29vw, 450px);
+  width: min(100%, clamp(275px, 29vw, 450px));
   aspect-ratio: 1;
   flex: none;
-  animation: floatOrb 8s ease-in-out infinite;
-  filter: drop-shadow(0 0 38px rgba(36, 191, 230, .14));
 }
 
-/* Official approved Atlas orb, rather than a generated CSS placeholder.
-   Screen blending lets the image's near-black background dissolve into the
-   existing night-blue canvas without cutting off its energy trails. */
+.orbHalo::before {
+  content: "";
+  position: absolute;
+  inset: 8%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(36, 191, 230, .18), rgba(36, 191, 230, .06) 48%, transparent 72%);
+  filter: blur(20px);
+  opacity: .55;
+  animation: fadeOrbHalo 5.5s ease-in-out infinite;
+}
+
+.orbPulse {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  mix-blend-mode: screen;
+  transform-origin: center;
+  animation: pulseOrb 5.5s ease-in-out infinite;
+}
+
+/* Alpha-masked derivative of the approved image: original RGB and sphere/star
+   pixels are preserved. A smooth radial alpha fade runs from radius .70 to .98
+   (relative to half the image width), reaching zero before every outer edge.
+   Screen blending on the pulse layer integrates its remaining navy tones. */
 .orbImage {
   object-fit: contain;
-  mix-blend-mode: screen;
   user-select: none;
   pointer-events: none;
 }
@@ -449,9 +467,14 @@
 
 .loading { width: 100%; min-height: 100dvh; display: grid; place-items: center; color: #97cbd9; background: #030a14; }
 
-@keyframes floatOrb {
-  0%, 100% { transform: translateY(0) rotate(0deg); }
-  50% { transform: translateY(-9px) rotate(2deg); }
+@keyframes pulseOrb {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+
+@keyframes fadeOrbHalo {
+  0%, 100% { opacity: .55; }
+  50% { opacity: .7; }
 }
 
 @media (max-width: 1100px) {
@@ -492,6 +515,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .orbHalo { animation: none; }
+  .orbPulse, .orbHalo::before { animation: none; }
   .submitButton, .inputWrap input { transition: none; }
 }

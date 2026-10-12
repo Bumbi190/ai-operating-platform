@@ -176,3 +176,23 @@
     transition: none;
   }
 }
+
+
+/* Owner workspace v2: stronger hierarchy while preserving source and action gates. */
+.section {padding:clamp(1rem,1.7vw,1.5rem);border:1px solid rgba(66,170,208,.17);border-radius:1.15rem;background:linear-gradient(130deg,#081b2c,#041022 80%);box-shadow:inset 0 1px rgba(255,255,255,.035)}
+.heading{margin-bottom:1rem;padding-bottom:.8rem;border-bottom:1px solid rgba(71,168,196,.14)}
+.heading h2{font-size:clamp(1.35rem,1.9vw,1.75rem);font-weight:700;letter-spacing:-.035em}
+.kicker{color:#65d5e6}
+.cards{gap:clamp(.6rem,1.1vw,1.1rem)}
+.card{position:relative;overflow:hidden;min-height:13.5rem;padding:clamp(1.1rem,1.5vw,1.5rem);border-radius:.95rem;border-color:rgba(75,169,204,.2);background:radial-gradient(ellipse at 0% 0%,rgba(27,112,151,.1),transparent 70%),linear-gradient(152deg,rgba(9,39,60,.9),rgba(4,18,34,.91));box-shadow:inset 0 1px rgba(255,255,255,.035)}
+.card::before{content:'';height:1px;position:absolute;inset:0 30% auto;background:linear-gradient(90deg,transparent,rgba(37,184,225,.22),transparent);pointer-events:none}
+.card[data-tone='warning']{border-color:rgba(251,191,36,.24)}
+.cardTop{color:#82dbe9}
+.card h3{font-size:clamp(1.15rem,1.35vw,1.45rem);letter-spacing:-.03em}
+.card p{color:#b2c7d6;font-size:.82rem;line-height:1.6}
+.card .collection{font-size:.77rem}
+.counts dd{font-size:1.75rem;color:#ecffff}
+.link{font-size:.84rem;color:#7ce2f0}
+@media(max-width:80rem){.cards{grid-template-columns:repeat(3,minmax(0,1fr))}.card:last-child{grid-column:auto}}
+@media(max-width:68rem){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.card:last-child{grid-column:1/-1}}
+@media(max-width:48rem){.cards{grid-template-columns:minmax(0,1fr)}.card:last-child{grid-column:auto}}

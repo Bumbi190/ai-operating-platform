@@ -70,7 +70,24 @@ export function HandlarborsenVisualPulse({
         </span>
       </header>
 
-      <details className={styles.disclosure}>
+      <div className={styles.contentGrid}>
+        <div className={styles.pulseColumn}>
+          <div className={styles.pulseHighlights} aria-label="Senast observerade värden inom företag, fordon och handel">
+            {pulse.stages.map((stage) => {
+              const Icon = stageIcons[stage.id]
+              return (
+                <div className={styles.highlightCard} key={stage.id} data-stage={stage.id}>
+                  <span className={styles.highlightIcon} aria-hidden="true"><Icon size={19} /></span>
+                  <span className={styles.highlightBody}>
+                    <strong>{stage.title}</strong>
+                    <span className={styles.highlightValue}>{stage.main.value === null ? 'Okänt' : stage.main.value.toLocaleString('sv-SE')}</span>
+                    <small>{stage.main.label}</small>
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+          <details className={styles.disclosure}>
         <summary>Visa fördjupning <span>Företag, fordon och handel</span></summary>
         <ol className={styles.stages} aria-label="Marknadsplatsens tre områden">
           {pulse.stages.map((stage, index) => (
@@ -84,9 +101,10 @@ export function HandlarborsenVisualPulse({
             ? ' Förändringar över tid kan visas först efter fler sparade dagsrapporter.'
             : ` ${pulse.historyCount} dagsrapporter finns för historisk jämförelse.`}
         </p>
-      </details>
+          </details>
+        </div>
 
-      <div className={styles.proposalPanel}>
+        <div className={styles.proposalPanel}>
         <div className={styles.proposalHeading}>
           <div>
             <p className={styles.kicker}>Nästa steg</p>
@@ -117,6 +135,7 @@ export function HandlarborsenVisualPulse({
             <span aria-hidden="true">→</span>
           </Link>
         ) : null}
+        </div>
       </div>
     </section>
   )

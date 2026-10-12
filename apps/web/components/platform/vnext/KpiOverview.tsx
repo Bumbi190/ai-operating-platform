@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
+import { Building2, ShieldCheck, CarFront, CircleParking, Gavel, Handshake } from 'lucide-react'
 import styles from './KpiOverview.module.css'
 
 /**
@@ -69,7 +70,7 @@ export function KpiOverview({
       </div>
 
       <ul className={styles.headline}>
-        {headline.map((item) => <KpiCard key={item.key} item={item} large />)}
+        {headline.map((item) => <KpiCard key={item.key} item={item} large visual={prominent} />)}
       </ul>
 
       <dl className={styles.meta}>
@@ -128,13 +129,36 @@ export function KpiOverviewNote({
   )
 }
 
-function KpiCard({ item, large }: { item: KpiItem; large?: boolean }) {
+const marketIcons = {
+  companies_registered_total: Building2,
+  companies_verified_total: ShieldCheck,
+  vehicles_published_active: CarFront,
+  vehicles_reserved: CircleParking,
+  bids_total: Gavel,
+  deals_completed_total: Handshake,
+} as const
+
+function KpiCard({ item, large, visual = false }: { item: KpiItem; large?: boolean; visual?: boolean }) {
   const unknown = item.value === null
+  const Icon = visual ? marketIcons[item.key as keyof typeof marketIcons] : undefined
+  if (!Icon) {
+    // Preserve the exact original markup for other projects and the 24h activity row.
+    return (
+      <li className={styles.card} data-size={large ? 'large' : 'small'} data-unknown={unknown ? 'true' : undefined}>
+        <span className={styles.value}>{unknown ? 'Okänt' : item.value}</span>
+        <span className={styles.label}>{item.label}</span>
+        {item.note ? <span className={styles.cardNote}>{item.note}</span> : null}
+      </li>
+    )
+  }
   return (
-    <li className={styles.card} data-size={large ? 'large' : 'small'} data-unknown={unknown ? 'true' : undefined}>
-      <span className={styles.value}>{unknown ? 'Okänt' : item.value}</span>
-      <span className={styles.label}>{item.label}</span>
-      {item.note ? <span className={styles.cardNote}>{item.note}</span> : null}
+    <li className={styles.card} data-size={large ? 'large' : 'small'} data-unknown={unknown ? 'true' : undefined} data-visual="true">
+      <span className={styles.cardIcon} aria-hidden="true"><Icon size={22} strokeWidth={1.75} /></span>
+      <span className={styles.cardBody}>
+        <span className={styles.value}>{item.value === null ? 'Okänt' : item.value.toLocaleString('sv-SE')}</span>
+        <span className={styles.label}>{item.label}</span>
+        {item.note ? <span className={styles.cardNote}>{item.note}</span> : null}
+      </span>
     </li>
   )
 }

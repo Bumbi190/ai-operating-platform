@@ -32,7 +32,7 @@ export interface TrendPanelModel {
   first: TrendPair
   second: TrendPair
   observations: TrendObservation[]
-  mode: 'snapshot' | 'history'
+  mode: 'snapshot' | 'comparison' | 'history'
 }
 
 const PANELS: readonly Omit<TrendPanelModel, 'observations' | 'mode'>[] = [
@@ -87,7 +87,7 @@ export function buildHandlarborsenTrendPanels(
       first: count(snapshot, panel.first.key),
       second: count(snapshot, panel.second.key),
     })),
-    mode: snapshots.length >= 2 ? 'history' : 'snapshot',
+    mode: snapshots.length >= 3 ? 'history' : snapshots.length === 2 ? 'comparison' : 'snapshot',
   }))
 }
 

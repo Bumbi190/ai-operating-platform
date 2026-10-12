@@ -18,8 +18,10 @@ export function HandlarborsenWorkflowDrafts({ report, now }: { report: Marketpla
             <p className={styles.status}>{draft.status === 'blocked' ? 'Blockerat underlag' : 'Endast förhandsutkast'}</p>
             <p>{draft.evidenceSummary}</p>
             {draft.blockers.length > 0 && <ul aria-label="Blockerande skäl">{draft.blockers.map((reason) => <li key={reason}>{reason}</li>)}</ul>}
-            <h4>Manuella steg</h4>
-            <ol>{draft.humanChecklist.map((step) => <li key={step}>{step}</li>)}</ol>
+            <details className={styles.steps}>
+              <summary>Manuella steg – visa checklista</summary>
+              <ol>{draft.humanChecklist.map((step) => <li key={step}>{step}</li>)}</ol>
+            </details>
             <details className={styles.evidence}>
               <summary>Exakt underlag och proveniens</summary>
               <dl>

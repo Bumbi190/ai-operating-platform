@@ -152,6 +152,11 @@ function Header({ model }: { model: ProjectCommandCenterModel }) {
           <h1 className={styles.title}>{project.name}</h1>
           <span className={styles.slug}>{project.slug}</span>
         </div>
+        {project.slug === 'handlarborsen' ? (
+          <p className={styles.projectDescription}>
+            AI-operativ överblick över företag, fordon, handel och observerad trafik.
+          </p>
+        ) : null}
 
         <dl className={styles.facts}>
           <div className={styles.fact}>

@@ -2,6 +2,7 @@ import type { MarketplaceReport } from '@/lib/atlas/project-analytics/handlarbor
 import { buildHandlarborsenOverview } from '@/lib/atlas/project-analytics/handlarborsen-overview'
 import { KpiOverview, KpiOverviewNote } from './KpiOverview'
 import { HandlarborsenVisualPulse } from './HandlarborsenVisualPulse'
+import { HandlarborsenInsights } from './HandlarborsenInsights'
 import { HandlarborsenTrends } from './HandlarborsenTrends'
 import { HandlarborsenPosthogTraffic } from './HandlarborsenPosthogTraffic'
 import type { HandlarborsenTraffic } from '@/lib/atlas/project-analytics/handlarborsen-posthog-traffic'
@@ -17,10 +18,12 @@ export function HandlarborsenOverview({
   report,
   reportHref,
   traffic,
+  now = new Date(),
 }: {
   report: MarketplaceReport
   reportHref: string | null
   traffic?: HandlarborsenTraffic | null
+  now?: Date
 }) {
   const model = buildHandlarborsenOverview(report)
   const common = { titleId: 'hb-overview', kicker: 'Marknadsplats · Nyckeltal', reportHref, reportLabel: 'Fullständig statistikrapport', prominent: true }
@@ -54,6 +57,7 @@ export function HandlarborsenOverview({
       {traffic && <HandlarborsenPosthogTraffic traffic={traffic} />}
       <HandlarborsenTrends report={report} />
       <HandlarborsenVisualPulse report={report} reportHref={reportHref} />
+      <HandlarborsenInsights report={report} now={now} />
     </>
   )
 }

@@ -1,0 +1,87 @@
+.panel {
+  padding: clamp(1rem, 3vw, 1.5rem);
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 1rem;
+  background: #111827;
+  color: #f1f5f9;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.panel h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+.panel h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+.panel p {
+  margin: 0.5rem 0;
+}
+.kicker {
+  color: #c4b5fd;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+}
+.metadata {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+.metadata dt {
+  color: #cbd5e1;
+}
+.metadata dd {
+  margin: 0.25rem 0 0;
+}
+.insights {
+  display: grid;
+  gap: 1rem;
+  padding: 0;
+  list-style: none;
+}
+.insights > li {
+  padding-top: 1rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.3);
+  min-width: 0;
+}
+.check {
+  color: #ddd6fe;
+}
+.panel summary {
+  cursor: pointer;
+  padding: 0.5rem 0;
+  color: #e2e8f0;
+}
+.panel summary:focus-visible {
+  outline: 2px solid #c4b5fd;
+  outline-offset: 4px;
+  border-radius: 0.25rem;
+}
+.evidence {
+  padding-left: 1.25rem;
+  color: #cbd5e1;
+}
+.evidence li + li {
+  margin-top: 1rem;
+}
+.panel code {
+  font-size: 0.8rem;
+}
+@media (max-width: 640px) {
+  .metadata {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel *,
+  .panel *::before,
+  .panel *::after {
+    animation: none;
+    transition: none;
+  }
+}

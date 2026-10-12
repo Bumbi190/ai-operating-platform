@@ -153,3 +153,10 @@ Omfattning: kvalitetsnotice, verifieringsskillnad med populationsvarning samt to
 UI: liten serverrenderad **Underlag och förslag**-panel på `apps/web/app/(platform)/projects/[slug]/page.tsx`, efter samma auktoriserade rapportgrind; visa observationstid, fönster, källa, kvalitet och ”Förslag – kräver granskning”. Länk till befintlig statistikrapport; ingen Kör/Publicera-knapp eller påhittad workflowstatus.
 Tester senare i `apps/web/lib/qa/handlarborsen-insights.test.ts`: 10/6 inklusive stängda-statusvarning, 2/0 utan kausalitet, null/0, en dag, stale, gap, invalid snapshot, stabila id och berört mått saknat. Route/UI-integration ska bevisa att främmande/nekade projekt aldrig renderar panelen; ren funktions-test kan inte ensam bevisa auth.
 Acceptans: granskbar panel och reproducerbara regler, rätt semantik för verifierade nu, inga nya anrop/skriverättigheter eller kostnader; befintliga relevanta tester/typecheck körs då offline. Denna slice **är endast föreslagen och inte implementerad här**.
+
+### Lokal P0-implementation, senare samma datum
+
+Den rena regelmotorn och read-only evidenspanelen är nu implementerade i den isolerade
+branchen `codex/omnira-atlas-analytics-p0-20261012`, med negativa semantik- och
+isoleringstester. Detta är inte en deployment eller produktionsaktivering.
+Se [P0:s data-/UI-gräns och verifieringsstatus](HANDLARBORSEN_ATLAS_ANALYTICS_P0_20261012.md).

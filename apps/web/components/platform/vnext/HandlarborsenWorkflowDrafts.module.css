@@ -1,0 +1,14 @@
+.section { margin-top: 1rem; padding: 1rem; border: 1px solid #cbd5e1; border-radius: 0.75rem; background: #fff; color: #0f172a; font-size: 0.875rem; }
+.section h2 { font-size: 1.125rem; margin: 0 0 0.5rem; }
+.label { display: inline-block; color: #854d0e; background: #fef9c3; padding: 0.25rem 0.5rem; border-radius: 0.25rem; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr)); gap: 0.75rem; }
+.card { min-width: 0; padding: 0.75rem; border: 1px solid #cbd5e1; border-radius: 0.5rem; }
+.card h3 { font-size: 1rem; margin: 0; }
+.card h4 { font-size: 0.875rem; margin-bottom: 0.25rem; }
+.card li { margin-bottom: 0.4rem; }
+.status { font-weight: 600; color: #475569; }
+.evidence summary { cursor: pointer; padding: 0.5rem 0; font-weight: 600; }
+.evidence summary:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
+.evidence dd { margin: 0 0 0.5rem; overflow-wrap: anywhere; white-space: pre-wrap; }
+.evidence dt { font-weight: 600; }
+.evidence pre { max-height: 20rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.75rem; }

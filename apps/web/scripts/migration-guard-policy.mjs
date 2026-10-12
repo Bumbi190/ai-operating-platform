@@ -61,8 +61,10 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // production on its branch, so the guard is RED there until the operator-approved apply.
 // P1E adds `handlarborsen_guarded_snapshot_store` (enforced): 111/97 → 112/98. NOT applied to
 // production on its branch, so the guard is RED there until the operator-approved apply.
-export const EXPECTED_CANONICAL_SQL_COUNT = 112
-export const EXPECTED_ENFORCED_COUNT = 98
+// P2 adds `handlarborsen_competitor_observations` (enforced): 112/98 -> 113/99.
+// NOT applied on this branch. The deployment ledger gate must remain RED until reviewed apply.
+export const EXPECTED_CANONICAL_SQL_COUNT = 113
+export const EXPECTED_ENFORCED_COUNT = 99
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

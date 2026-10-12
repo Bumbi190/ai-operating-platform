@@ -1,3 +1,4 @@
+import type { AnalysisRuleId, SaveSelector } from '@/lib/atlas/project-analytics/analysis-review-contract'
 import type { MarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-report'
 import { buildHandlarborsenOverview } from '@/lib/atlas/project-analytics/handlarborsen-overview'
 import { KpiOverview, KpiOverviewNote } from './KpiOverview'
@@ -18,26 +19,36 @@ export function HandlarborsenOverview({
   report,
   reportHref,
   traffic,
+  projectSlug,
+  analysisSelectors,
   now = new Date(),
 }: {
   report: MarketplaceReport
   reportHref: string | null
+  projectSlug?: string
+  analysisSelectors?: Partial<Record<AnalysisRuleId, SaveSelector>>
   traffic?: HandlarborsenTraffic | null
   now?: Date
 }) {
   const model = buildHandlarborsenOverview(report)
-  const common = { titleId: 'hb-overview', kicker: 'Marknadsplats · Nyckeltal', reportHref, reportLabel: 'Fullständig statistikrapport', prominent: true }
+  const common = {
+    titleId: 'hb-overview',
+    kicker: 'Marknadsplats · Nyckeltal',
+    reportHref,
+    reportLabel: 'Fullständig statistikrapport',
+    prominent: true,
+  }
 
   if (model.kind === 'note') {
     return (
       <>
-        <KpiOverviewNote
-          {...common}
-          title={model.title}
-          text={model.text}
-          tone={model.tone}
-        />
+        <KpiOverviewNote {...common} title={model.title} text={model.text} tone={model.tone} />
         {traffic && <HandlarborsenPosthogTraffic traffic={traffic} />}
+        {projectSlug && (
+          <p>
+            <a href={'/projects/' + encodeURIComponent(projectSlug) + '/atlas/analysis-drafts'}>Sparade analysutkast</a>
+          </p>
+        )}
       </>
     )
   }
@@ -57,7 +68,17 @@ export function HandlarborsenOverview({
       {traffic && <HandlarborsenPosthogTraffic traffic={traffic} />}
       <HandlarborsenTrends report={report} />
       <HandlarborsenVisualPulse report={report} reportHref={reportHref} />
-      <HandlarborsenInsights report={report} now={now} />
+      <HandlarborsenInsights
+        report={report}
+        now={now}
+        projectSlug={projectSlug}
+        analysisSelectors={analysisSelectors}
+      />
+      {projectSlug && (
+        <p>
+          <a href={'/projects/' + encodeURIComponent(projectSlug) + '/atlas/analysis-drafts'}>Sparade analysutkast</a>
+        </p>
+      )}
     </>
   )
 }

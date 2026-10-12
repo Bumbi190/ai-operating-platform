@@ -61,8 +61,9 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // production on its branch, so the guard is RED there until the operator-approved apply.
 // P1E adds `handlarborsen_guarded_snapshot_store` (enforced): 111/97 → 112/98. NOT applied to
 // production on its branch, so the guard is RED there until the operator-approved apply.
-export const EXPECTED_CANONICAL_SQL_COUNT = 112
-export const EXPECTED_ENFORCED_COUNT = 98
+// P1 adds atlas_analysis_drafts (20261012183305): 113/99. Local only; no activation claim.
+export const EXPECTED_CANONICAL_SQL_COUNT = 113
+export const EXPECTED_ENFORCED_COUNT = 99
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

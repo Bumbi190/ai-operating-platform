@@ -14,6 +14,7 @@ import {
   MARKETPLACE_METRIC_KEYS,
 } from '@/lib/atlas/collectors/handlarborsen-marketplace'
 import { loadHandlarborsenMarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-read'
+import { deriveHandlarborsenInsights } from '@/lib/atlas/project-analytics/handlarborsen-insights'
 
 const read = (path: string) =>
   readFileSync(resolve(__dirname, '../..', path), 'utf8')
@@ -138,8 +139,11 @@ describe('Handlarbörsen: fewer network waterfalls without weakening auth', () =
     pending.get('collector_runs')!({ data: [], error: null })
     const result = await request
     expect(result.status).toBe('ok')
-    if (result.status === 'ok')
+    if (result.status === 'ok') {
       expect(result.report.latest?.metrics[0].value).toBe(1)
+      deriveHandlarborsenInsights(result.report, new Date('2026-10-11T10:00:00Z'))
+      expect(started).toHaveLength(2) // same snapshot + audit reads, no insight storage read
+    }
   })
 
   it('rejects wrong scope before even creating the privileged database client', async () => {

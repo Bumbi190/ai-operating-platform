@@ -1,0 +1,98 @@
+.history {
+  --atlas-muted: #bbccdf;
+  --atlas-cyan: #8ae4ed;
+  color: hsl(var(--foreground, 0 0% 96%));
+  max-width: 72rem;
+  margin: 1.5rem auto;
+  min-width: 0;
+  line-height: 1.6;
+}
+.list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 1.25rem;
+}
+.card {
+  min-width: 0;
+  padding: clamp(1rem, 3vw, 1.75rem);
+  border: 1px solid hsl(var(--border, 232 6% 25%));
+  border-radius: 1rem;
+  background: hsl(var(--card, 230 30% 5%));
+  overflow-wrap: anywhere;
+}
+.card h2 {
+  font-size: 1.25rem;
+  margin: 0.5rem 0;
+}
+.card h3 {
+  font-size: 1rem;
+  margin-top: 1.25rem;
+}
+.kicker {
+  font-size: 0.875rem;
+  color: hsl(var(--muted-foreground, 240 5% 70%));
+}
+.identifier {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.875rem;
+}
+.raw {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.8125rem;
+  padding: 1rem;
+  background: hsl(var(--background, 230 50% 3%));
+  border-radius: 0.5rem;
+}
+.warnings {
+  padding-left: 1.25rem;
+}
+.save {
+  margin-top: 1rem;
+  font-size: 0.9375rem;
+  overflow-wrap: anywhere;
+}
+.save button,
+.pageLink {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.625rem 1rem;
+  border: 1px solid hsl(var(--border, 232 6% 25%));
+  border-radius: 0.625rem;
+  background: hsl(var(--secondary, 232 12% 9%));
+  color: inherit;
+  cursor: pointer;
+}
+.save button:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+.history a,
+.save a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.history a:focus-visible,
+.history summary:focus-visible,
+.save a:focus-visible,
+.save button:focus-visible {
+  outline: 3px solid hsl(var(--ring, 240 4.9% 83.9%));
+  outline-offset: 4px;
+}
+.history summary {
+  padding: 0.65rem 0;
+  min-height: 44px;
+  cursor: pointer;
+}
+@media (max-width: 480px) {
+  .history {
+    margin: 1rem 0.25rem;
+  }
+  .save button {
+    width: 100%;
+    justify-content: center;
+  }
+}

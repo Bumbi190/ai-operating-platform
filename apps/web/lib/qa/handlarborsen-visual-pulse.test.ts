@@ -17,6 +17,7 @@ import {
 } from '@/lib/atlas/collectors/handlarborsen-marketplace'
 import { buildMarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-report'
 import { buildHandlarborsenVisualPulse } from '@/lib/atlas/project-analytics/handlarborsen-visual-pulse'
+import { HandlarborsenVisualPulse } from '@/components/platform/vnext/HandlarborsenVisualPulse'
 import { HandlarborsenOverview } from '@/components/platform/vnext/HandlarborsenOverview'
 
 const NOW = new Date('2026-10-11T12:00:00.000Z')
@@ -86,7 +87,7 @@ describe('Handlarbörsen visual pulse — verified read-only representation', ()
     expect(html()).not.toContain('konverteringsgrad')
   })
 
-  it('produces at most three explained proposals; they are not represented as agent decisions', () => {
+  it('keeps legacy proposals out of Marknadspuls while Atlas retains its manual analysis', () => {
     const model = buildHandlarborsenVisualPulse(report())!
     expect(model.suggestions.map((p) => p.id)).toEqual([
       'history',
@@ -99,10 +100,19 @@ describe('Handlarbörsen visual pulse — verified read-only representation', ()
       ),
     ).toBe(true)
     const out = html()
-    expect(out).toContain('Regelbaserade observationer')
-    expect(out).toContain('inget utförs automatiskt')
-    expect(out).toContain('Underlag:')
-    expect(out).toContain('Förslag:')
+    const pulse = renderToStaticMarkup(
+      createElement(HandlarborsenVisualPulse, {
+        report: report(),
+        reportHref: '/projects/handlarborsen/marketplace',
+      }),
+    )
+    expect(pulse).not.toContain('Förslag att granska')
+    expect(pulse).not.toContain('data-priority=')
+    expect(pulse).not.toContain('Förslag:')
+    expect(pulse).toContain('Rapport 2026-10-11')
+    expect(pulse).toContain('11/11')
+    expect(pulse).toContain('Registrerade totalt')
+    expect(out).toContain('Atlas Intelligence')
     expect(out).not.toContain('Atlas har beslutat')
   })
 
@@ -188,12 +198,12 @@ describe('Handlarborsen overview hierarchy', () => {
     const out = html()
     expect(out.indexOf('id="hb-overview"')).toBeLessThan(out.indexOf('id="hb-trend-heading"'))
     expect(out.indexOf('id="hb-trend-heading"')).toBeLessThan(out.indexOf('id="hb-market-pulse"'))
-    const pulse = out.slice(out.indexOf('aria-labelledby="hb-market-pulse"'))
+    const pulse = out.slice(out.indexOf('aria-labelledby="hb-market-pulse"')).split('</section>')[0]
     const disclosure = pulse.match(/<details\b[^>]*>[\s\S]*?<\/details>/)![0]
     expect(disclosure).not.toMatch(/<details[^>]*\bopen/)
     expect(disclosure.match(/data-stage=/g)).toHaveLength(3)
     expect(disclosure).not.toContain('data-priority=')
-    expect(pulse.slice(pulse.indexOf('</details>'))).toContain('data-priority=')
+    expect(pulse).not.toContain('data-priority=')
     expect(pulse).toContain('href="/projects/handlarborsen/marketplace"')
   })
 })

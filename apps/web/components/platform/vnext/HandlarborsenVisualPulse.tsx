@@ -4,14 +4,12 @@ import {
   AlertCircle,
   CarFront,
   CircleCheck,
-  Lightbulb,
   UsersRound,
 } from 'lucide-react'
 import type { MarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-report'
 import {
   buildHandlarborsenVisualPulse,
   type PulseStage,
-  type PulseSuggestion,
   type PulseValue,
 } from '@/lib/atlas/project-analytics/handlarborsen-visual-pulse'
 import styles from './HandlarborsenVisualPulse.module.css'
@@ -22,16 +20,9 @@ const stageIcons = {
   trading: Activity,
 } as const
 
-const priorityLabel: Record<PulseSuggestion['priority'], string> = {
-  check: 'Kontrollera',
-  review: 'Granska',
-  observe: 'Bevaka',
-}
-
 /**
  * A deliberately read-only visual layer. Values come only from the already scoped,
- * validated stored report. Recommendations are deterministic suggestions, not
- * an Atlas decision, approval, task or execution.
+ * validated stored report. Analysis and manual next checks belong to Atlas Intelligence.
  */
 export function HandlarborsenVisualPulse({
   report,
@@ -53,7 +44,7 @@ export function HandlarborsenVisualPulse({
             Marknadspuls
           </h2>
           <p className={styles.intro}>
-            Observationer och förslag från senast sparade statistik.
+            Lägesbild från senast sparade statistik.
           </p>
         </div>
         <span
@@ -104,38 +95,12 @@ export function HandlarborsenVisualPulse({
           </details>
         </div>
 
-        <div className={styles.proposalPanel}>
-        <div className={styles.proposalHeading}>
-          <div>
-            <p className={styles.kicker}>Nästa steg</p>
-            <h3 className={styles.proposalTitle}>Förslag att granska</h3>
-            <p className={styles.proposalIntro}>
-              Regelbaserade observationer – ingen agent har fattat beslut och
-              inget utförs automatiskt.
-            </p>
-          </div>
-          <Lightbulb
-            size={21}
-            className={styles.lightbulb}
-            aria-hidden="true"
-          />
-        </div>
-        <ol className={styles.suggestions}>
-          {pulse.suggestions.map((suggestion, index) => (
-            <SuggestionRow
-              key={suggestion.id}
-              suggestion={suggestion}
-              index={index + 1}
-            />
-          ))}
-        </ol>
         {reportHref ? (
           <Link href={reportHref} className={styles.reportLink}>
             Öppna underliggande statistikrapport
             <span aria-hidden="true">→</span>
           </Link>
         ) : null}
-        </div>
       </div>
     </section>
   )
@@ -173,43 +138,6 @@ function StageCard({ stage, index }: { stage: PulseStage; index: number }) {
       <div className={styles.valueGrid}>
         <Value item={stage.main} />
         <Value item={stage.secondary} />
-      </div>
-    </li>
-  )
-}
-
-function SuggestionRow({
-  suggestion,
-  index,
-}: {
-  suggestion: PulseSuggestion
-  index: number
-}) {
-  const Icon =
-    suggestion.priority === 'check'
-      ? AlertCircle
-      : suggestion.priority === 'review'
-        ? Lightbulb
-        : Activity
-  return (
-    <li className={styles.suggestion} data-priority={suggestion.priority}>
-      <span className={styles.suggestionIndex}>
-        {String(index).padStart(2, '0')}
-      </span>
-      <div className={styles.suggestionBody}>
-        <div className={styles.suggestionTitleRow}>
-          <h4 className={styles.suggestionTitle}>{suggestion.title}</h4>
-          <span className={styles.priority}>
-            <Icon size={12} aria-hidden="true" />
-            {priorityLabel[suggestion.priority]}
-          </span>
-        </div>
-        <p className={styles.evidence}>
-          <strong>Underlag:</strong> {suggestion.evidence}
-        </p>
-        <p className={styles.nextStep}>
-          <strong>Förslag:</strong> {suggestion.nextStep}
-        </p>
       </div>
     </li>
   )

@@ -1,18 +1,40 @@
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { assertProjectAllowed } from '@/lib/atlas/isolation'
-import { HANDLARBORSEN_PROJECT_ID,HANDLARBORSEN_PROJECT_SLUG,isEligibleHandlarborsenProject,MARKETPLACE_METRIC_KEYS } from '@/lib/atlas/collectors/handlarborsen-marketplace'
-import { COLLECTION_RUN_LIMIT,COLLECTION_RUN_SELECT,COLLECTOR_ID,HISTORY_LIMIT,SNAPSHOT_SELECT_COLUMNS,buildMarketplaceReport,emptyReport,type MarketplaceReport } from './handlarborsen-marketplace-report'
-import type { MarketplaceReadScope,MarketplaceReadOptions } from './handlarborsen-marketplace-read'
-import { normalizeAnalysisSource,type AnalysisSourceEnvelopeV1 } from './analysis-source-binding'
-export type MarketplaceSourceResult={status:'not_permitted'}|{status:'ok';report:MarketplaceReport;source:AnalysisSourceEnvelopeV1|null}
-function safeReportRows(rows:unknown[]):unknown[] {
- return rows.map(r=>{
- if(!r||typeof r!=='object')return r
- const x={...r} as Record<string,unknown>
- for(const k of MARKETPLACE_METRIC_KEYS)if(typeof x[k]==='string'&&/^(0|[1-9]\d*)$/.test(x[k] as string)&&BigInt(x[k] as string)<=9007199254740991n)x[k]=Number(x[k])
- return x
- })
+import {
+  HANDLARBORSEN_PROJECT_ID,
+  HANDLARBORSEN_PROJECT_SLUG,
+  isEligibleHandlarborsenProject,
+  MARKETPLACE_METRIC_KEYS,
+} from '@/lib/atlas/collectors/handlarborsen-marketplace'
+import {
+  COLLECTION_RUN_LIMIT,
+  COLLECTION_RUN_SELECT,
+  COLLECTOR_ID,
+  HISTORY_LIMIT,
+  SNAPSHOT_SELECT_COLUMNS,
+  buildMarketplaceReport,
+  emptyReport,
+  type MarketplaceReport,
+} from './handlarborsen-marketplace-report'
+import type { MarketplaceReadScope, MarketplaceReadOptions } from './handlarborsen-marketplace-read'
+import { normalizeAnalysisSource, type AnalysisSourceEnvelopeV1 } from './analysis-source-binding'
+export type MarketplaceSourceResult =
+  | { status: 'not_permitted' }
+  | { status: 'ok'; report: MarketplaceReport; source: AnalysisSourceEnvelopeV1 | null }
+function safeReportRows(rows: unknown[]): unknown[] {
+  return rows.map((r) => {
+    if (!r || typeof r !== 'object') return r
+    const x = { ...r } as Record<string, unknown>
+    for (const k of MARKETPLACE_METRIC_KEYS)
+      if (
+        typeof x[k] === 'string' &&
+        /^(0|[1-9]\d*)$/.test(x[k] as string) &&
+        BigInt(x[k] as string) <= BigInt('9007199254740991')
+      )
+        x[k] = Number(x[k])
+    return x
+  })
 }
 export async function readMarketplaceSourceRows(
   project: { id: string; slug: string },
@@ -45,19 +67,25 @@ export async function readMarketplaceSourceRows(
     // and observer-mode gates above. Avoid serial network latency without adding
     // queries, weakening filters or changing failure semantics.
     const [snapshotRead, auditRead] = await Promise.allSettled([
-      Promise.resolve().then(() => (db as any)
-        .from('handlarborsen_marketplace_snapshots')
-        .select('id, '+SNAPSHOT_SELECT_COLUMNS)
-        .eq('project_id', HANDLARBORSEN_PROJECT_ID)
-        .order('snapshot_date', { ascending: false }).order('id', { ascending: false })
-        .limit(HISTORY_LIMIT)),
-      Promise.resolve().then(() => (db as any)
-        .from('collector_runs')
-        .select('id, project_id, collector_id, '+COLLECTION_RUN_SELECT)
-        .eq('collector_id', COLLECTOR_ID)
-        .eq('project_id', HANDLARBORSEN_PROJECT_ID)
-        .order('ran_at', { ascending: false }).order('id', { ascending: false })
-        .limit(COLLECTION_RUN_LIMIT)),
+      Promise.resolve().then(() =>
+        (db as any)
+          .from('handlarborsen_marketplace_snapshots')
+          .select('id, ' + SNAPSHOT_SELECT_COLUMNS)
+          .eq('project_id', HANDLARBORSEN_PROJECT_ID)
+          .order('snapshot_date', { ascending: false })
+          .order('id', { ascending: false })
+          .limit(HISTORY_LIMIT),
+      ),
+      Promise.resolve().then(() =>
+        (db as any)
+          .from('collector_runs')
+          .select('id, project_id, collector_id, ' + COLLECTION_RUN_SELECT)
+          .eq('collector_id', COLLECTOR_ID)
+          .eq('project_id', HANDLARBORSEN_PROJECT_ID)
+          .order('ran_at', { ascending: false })
+          .order('id', { ascending: false })
+          .limit(COLLECTION_RUN_LIMIT),
+      ),
     ])
     if (snapshotRead.status === 'rejected' || snapshotRead.value.error) {
       return failed('snapshots')

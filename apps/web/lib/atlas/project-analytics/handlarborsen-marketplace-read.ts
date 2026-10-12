@@ -20,10 +20,7 @@ import 'server-only'
  */
 
 import { readMarketplaceSourceRows } from './handlarborsen-marketplace-source'
-import {
-  HANDLARBORSEN_PROJECT_ID,
-  HANDLARBORSEN_PROJECT_SLUG,
-} from '@/lib/atlas/collectors/handlarborsen-marketplace'
+import { HANDLARBORSEN_PROJECT_ID, HANDLARBORSEN_PROJECT_SLUG } from '@/lib/atlas/collectors/handlarborsen-marketplace'
 import type { ContextRequest } from '@/lib/atlas/context/request'
 import {
   renderHandlarborsenFactBlock,
@@ -33,9 +30,7 @@ import {
 
 type AnyDb = any
 
-export type MarketplaceReportResult =
-  | { status: 'not_permitted' }
-  | { status: 'ok'; report: MarketplaceReport }
+export type MarketplaceReportResult = { status: 'not_permitted' } | { status: 'ok'; report: MarketplaceReport }
 
 export interface MarketplaceReadScope {
   /** Projects the caller is already authorized for. An empty list permits nothing. */
@@ -48,9 +43,13 @@ export interface MarketplaceReadOptions {
   now?: Date
 }
 
-export async function loadHandlarborsenMarketplaceReport(project:{id:string;slug:string},scope:MarketplaceReadScope,options:MarketplaceReadOptions={}):Promise<MarketplaceReportResult> {
- const result=await readMarketplaceSourceRows(project,scope,options)
- return result.status==='ok'?{status:'ok',report:result.report}:result
+export async function loadHandlarborsenMarketplaceReport(
+  project: { id: string; slug: string },
+  scope: MarketplaceReadScope,
+  options: MarketplaceReadOptions = {},
+): Promise<MarketplaceReportResult> {
+  const result = await readMarketplaceSourceRows(project, scope, options)
+  return result.status === 'ok' ? { status: 'ok', report: result.report } : result
 }
 
 // ── Atlas side ────────────────────────────────────────────────────────────────

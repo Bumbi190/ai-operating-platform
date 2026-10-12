@@ -22,7 +22,13 @@ vi.mock('@/lib/supabase/admin', () => ({
   },
 }))
 const NOW = new Date('2026-10-12T11:00:00.000Z')
-const AUDIT = [{ status: 'ok', ran_at: '2026-10-12T10:01:00.000Z', snapshot_date: '2026-10-12' }]
+const AUDIT = [
+  {
+    status: 'ok',
+    ran_at: '2026-10-12T10:01:00.000Z',
+    snapshot_date: '2026-10-12',
+  },
+]
 function row(date = '2026-10-12', metrics: Record<string, number | null> = {}) {
   const values = {
     ...Object.fromEntries(MARKETPLACE_METRIC_KEYS.map((key) => [key, 0])),
@@ -113,12 +119,12 @@ describe('pure Handlarbörsen evidence rules', () => {
         expect.objectContaining({
           rule: 'published-stock',
           reason: expect.stringContaining('intilliggande'),
-        }),
+        })
       )
       expect(
         derive(r)
           .insights.map((item) => item.observation)
-          .join(' '),
+          .join(' ')
       ).not.toMatch(/idag|ökning/)
     }
   })
@@ -138,9 +144,9 @@ describe('pure Handlarbörsen evidence rules', () => {
     expect(
       derive(r)
         .insights.filter((item) =>
-          item.evidence.some((e) => e.metricKey === 'companies_verified_total'),
+          item.evidence.some((e) => e.metricKey === 'companies_verified_total')
         )
-        .every((item) => item.rule !== 'published-stock'),
+        .every((item) => item.rule !== 'published-stock')
     ).toBe(true)
     expect(derive(r).insights.filter((item) => item.rule === 'published-stock')).toHaveLength(1)
     r.history.previous!.observedAt = '2026-10-10T23:00:00Z'
@@ -151,7 +157,7 @@ describe('pure Handlarbörsen evidence rules', () => {
 
   it('known zero stays zero, while null or missing required metrics block the numeric rule', () => {
     expect(
-      rule(report([row('2026-10-12', { bids_total: 0 })]), 'bid-window')!.evidence[0].value,
+      rule(report([row('2026-10-12', { bids_total: 0 })]), 'bid-window')!.evidence[0].value
     ).toBe(0)
     for (const key of ['bids_total', 'bids_last_24h'] as const) {
       const r = report([row('2026-10-12', { [key]: null })])
@@ -186,7 +192,7 @@ describe('pure Handlarbörsen evidence rules', () => {
     expect(
       derive(unavailable)
         .insights.flatMap((item) => item.evidence)
-        .every((item) => item.value === null),
+        .every((item) => item.value === null)
     ).toBe(true)
   })
 
@@ -201,7 +207,14 @@ describe('pure Handlarbörsen evidence rules', () => {
   it('failed collection audit blocks business proposals, while unknown audit is explicitly unknown', () => {
     const failed = report(
       [row()],
-      [...AUDIT, { status: 'error', ran_at: '2026-10-12T10:30:00Z', snapshot_date: '2026-10-12' }],
+      [
+        ...AUDIT,
+        {
+          status: 'error',
+          ran_at: '2026-10-12T10:30:00Z',
+          snapshot_date: '2026-10-12',
+        },
+      ]
     )
     expect(derive(failed).quality.collection?.latestAttemptFailed).toBe(true)
     expect(derive(failed).insights.every((item) => item.kind === 'quality')).toBe(true)
@@ -217,7 +230,7 @@ describe('pure Handlarbörsen evidence rules', () => {
       expect(derive(r).insights.flatMap((item) => item.evidence)).toEqual([])
       expect(derive(r).quality.availableCount).toBeNull()
       expect(html(r)).toBe('')
-    },
+    }
   )
 
   it('handles missing/invalid latest timestamps, corrupt rows and invalid clocks without numerical claims', () => {
@@ -231,11 +244,11 @@ describe('pure Handlarbörsen evidence rules', () => {
     expect(derive(r).quality.freshness).toBe('unknown')
     expect(html(r)).toBe('')
     expect(
-      derive(buildMarketplaceReport([{ ...row(), schema_version: 7 }], NOW)).insights[0].kind,
+      derive(buildMarketplaceReport([{ ...row(), schema_version: 7 }], NOW)).insights[0].kind
     ).toBe('quality')
     expect(derive(report(), new Date('invalid')).evaluatedAt).toBeNull()
     expect(
-      derive(report(), new Date('2026-10-11T00:00:00Z')).insights.flatMap((item) => item.evidence),
+      derive(report(), new Date('2026-10-11T00:00:00Z')).insights.flatMap((item) => item.evidence)
     ).toEqual([])
     expect(derive(emptyReport('no_snapshot')).insights.flatMap((item) => item.evidence)).toEqual([])
   })
@@ -255,14 +268,14 @@ describe('pure Handlarbörsen evidence rules', () => {
     expect(derive(r)).toEqual(first)
     expect(first.evaluatedAt).toBe('2026-10-12T11:00:00.000Z')
     expect(first.insights.map((item) => item.id)).toEqual(
-      derive(r, new Date('2026-10-12T12:00:00Z')).insights.map((item) => item.id),
+      derive(r, new Date('2026-10-12T12:00:00Z')).insights.map((item) => item.id)
     )
     expect(new Set(first.insights.map((item) => item.id)).size).toBe(first.insights.length)
     expect(
-      first.insights.every((item) => item.ruleVersion === HANDLARBORSEN_INSIGHT_RULE_VERSION),
+      first.insights.every((item) => item.ruleVersion === HANDLARBORSEN_INSIGHT_RULE_VERSION)
     ).toBe(true)
     expect(rule(report([row('2026-10-12', { bids_total: 3 })]), 'bid-window')!.id).not.toBe(
-      rule(r, 'bid-window')!.id,
+      rule(r, 'bid-window')!.id
     )
     expect(first.insights[1].evidence[0]).toMatchObject({
       source: 'handlarborsen.marketplace',
@@ -292,5 +305,28 @@ describe('pure Handlarbörsen evidence rules', () => {
     const staleMarkup = html(r, new Date('2026-10-14T12:00:00Z'))
     expect(staleMarkup).toContain('Äldre än 26 h')
     expect(staleMarkup).not.toContain('Förslag · Att granska')
+  })
+
+  it('renders the compact Atlas card contract with real proposal counts and jargon behind native disclosures', () => {
+    const markup = html(report())
+    expect(markup).toContain('Atlas Intelligence')
+    expect(markup).toContain('Regelbaserad analys · Endast förslag')
+    expect(markup).toContain('2 förslag att granska')
+    expect(markup).toContain('data-card-count="3"')
+    expect(markup.match(/data-kind="proposal"/g)).toHaveLength(2)
+    expect(markup.match(/<summary>Visa underlag<\/summary>/g)).toHaveLength(3)
+    for (const card of markup.split('data-kind=').slice(1)) {
+      const primary = card.split('<details>')[0]
+      expect(primary).toContain('Att granska:')
+      expect(primary).not.toMatch(/company-status|bid-window|published-stock|Snapshotreferens/)
+      expect(card).toContain('Regelversion:')
+      expect(card).toContain('Snapshotreferens:')
+    }
+    expect(html(report([row('2026-10-12', { bids_last_24h: 1 })]))).toContain(
+      '1 förslag att granska'
+    )
+    const stale = html(report(), new Date('2026-10-14T12:00:00Z'))
+    expect(stale).toContain('0 förslag att granska')
+    expect(stale).toContain('data-card-count="1"')
   })
 })

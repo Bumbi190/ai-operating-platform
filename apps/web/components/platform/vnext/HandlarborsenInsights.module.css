@@ -1,17 +1,40 @@
-.panel {
-  padding: clamp(1rem, 3vw, 1.5rem);
-  border: 1px solid rgba(148, 163, 184, 0.3);
+﻿.panel {
+  --atlas-muted: #b8c8d9;
+  --atlas-teal: #81e1d2;
+  padding: clamp(1rem, 2vw, 1.25rem);
+  border: 1px solid #30455d;
   border-radius: 1rem;
-  background: #111827;
+  background: #0e1b2c;
   color: #f1f5f9;
   font-size: 0.875rem;
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
+.header,
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.header {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.brandIcon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  height: 44px;
+  border: 1px solid #315e63;
+  border-radius: 0.875rem;
+  background: #173538;
+  color: var(--atlas-teal);
+}
 .panel h2 {
   margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-size: 1.125rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
 }
 .panel h3 {
   margin: 0;
@@ -21,60 +44,141 @@
 .panel p {
   margin: 0.5rem 0;
 }
+.panel .status,
+.panel .count {
+  margin: 0;
+  color: var(--atlas-muted);
+  font-size: 0.8125rem;
+}
 .kicker {
-  color: #c4b5fd;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--card-accent);
   font-size: 0.75rem;
-  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+.kicker svg {
+  flex-shrink: 0;
 }
 .metadata {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-  margin: 1.25rem 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem 1.25rem;
+  padding: 0.75rem 0;
+  margin: 0.875rem 0;
+  border-top: 1px solid #30455d;
+  border-bottom: 1px solid #30455d;
+  color: var(--atlas-muted);
+  font-size: 0.75rem;
+}
+.metadata div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
 }
 .metadata dt {
-  color: #cbd5e1;
+  font-weight: 600;
 }
 .metadata dd {
-  margin: 0.25rem 0 0;
+  margin: 0;
 }
 .insights {
   display: grid;
-  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
   padding: 0;
+  margin: 0;
   list-style: none;
 }
-.insights > li {
-  padding-top: 1rem;
-  border-top: 1px solid rgba(148, 163, 184, 0.3);
+.card {
+  --card-accent: var(--atlas-teal);
   min-width: 0;
+  padding: 1rem;
+  border: 1px solid #30455d;
+  border-top: 2px solid var(--card-accent);
+  border-radius: 0.75rem;
+  background: #142438;
+}
+.card[data-kind="quality"] {
+  --card-accent: #f4cf89;
+  background: #1b2938;
+}
+.card[data-kind="fact"] {
+  --card-accent: #a6c9ff;
+}
+.panel .kicker {
+  margin: 0 0 0.375rem;
+}
+.observation {
+  color: #f1f5f9;
+}
+.limit {
+  color: var(--atlas-muted);
+  font-size: 0.8125rem;
 }
 .check {
-  color: #ddd6fe;
+  padding-top: 0.625rem;
+  border-top: 1px solid #30455d;
+  color: #dce9f3;
+}
+.check strong {
+  display: block;
+  font-size: 0.8125rem;
+}
+.panel details {
+  margin-top: 0.625rem;
 }
 .panel summary {
   cursor: pointer;
-  padding: 0.5rem 0;
-  color: #e2e8f0;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0.625rem 0;
+  color: var(--card-accent);
+  font-weight: 600;
+  font-size: 0.8125rem;
 }
 .panel summary:focus-visible {
-  outline: 2px solid #c4b5fd;
-  outline-offset: 4px;
+  outline: 2px solid var(--atlas-teal);
+  outline-offset: 3px;
   border-radius: 0.25rem;
 }
+.provenance,
 .evidence {
-  padding-left: 1.25rem;
-  color: #cbd5e1;
+  color: var(--atlas-muted);
+  font-size: 0.8125rem;
+}
+.provenance {
+  border-top: 1px solid #30455d;
+  padding-top: 0.5rem;
+}
+.evidence {
+  padding-left: 1.125rem;
 }
 .evidence li + li {
   margin-top: 1rem;
 }
 .panel code {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
 }
-@media (max-width: 640px) {
-  .metadata {
-    grid-template-columns: minmax(0, 1fr);
+@media (min-width: 700px) {
+  .insights[data-card-count="2"],
+  .insights[data-card-count="3"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .insights[data-card-count="3"] > .card[data-kind="quality"],
+  .insights[data-card-count="3"]
+    > .card:first-child:not([data-kind="quality"])
+    ~ .card:last-child {
+    grid-column: 1 / -1;
+  }
+}
+@media (hover: hover) {
+  .brandIcon {
+    transition: border-color 160ms ease;
+  }
+  .panel:hover .brandIcon {
+    border-color: var(--atlas-teal);
   }
 }
 @media (prefers-reduced-motion: reduce) {

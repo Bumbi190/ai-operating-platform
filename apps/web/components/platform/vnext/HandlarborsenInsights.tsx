@@ -1,7 +1,5 @@
-import {
-  deriveHandlarborsenInsights,
-  HANDLARBORSEN_INSIGHT_RULE_VERSION,
-} from '@/lib/atlas/project-analytics/handlarborsen-insights'
+import { Brain, ClipboardCheck, Info, ShieldAlert } from 'lucide-react'
+import { deriveHandlarborsenInsights } from '@/lib/atlas/project-analytics/handlarborsen-insights'
 import {
   COMPLETENESS_LABELS,
   type MarketplaceReport,
@@ -15,12 +13,29 @@ export function HandlarborsenInsights({ report, now }: { report: MarketplaceRepo
   const latest = report.latest
   const { quality } = analysis
   if (quality.freshness === 'unknown') return null
+  const insights = analysis.insights.slice(0, 3)
+  const proposalCount = insights.filter((insight) => insight.kind === 'proposal').length
+  const factChecks = {
+    'company-status':
+      'Kontrollera populationsdefinitionen och faktiska företagsstatusar före nästa bedömning.',
+    'bid-window': 'Kontrollera fönstrets täckning innan budnivåerna används i nästa bedömning.',
+    'published-stock':
+      'Granska de två daterade nivåläsningarna; förändringen förklarar inte orsaken.',
+    quality: '',
+  }
   return (
     <section className={styles.panel} aria-labelledby="hb-atlas-evidence">
-      <header>
-        <p className={styles.kicker}>Atlas · Evidens</p>
-        <h2 id="hb-atlas-evidence">Atlas – Underlag och förslag</h2>
-        <p>Regelbaserad analys – ej exekverat. Ingen LLM har anropats.</p>
+      <header className={styles.header}>
+        <div className={styles.identity}>
+          <span className={styles.brandIcon}>
+            <Brain size={22} aria-hidden="true" />
+          </span>
+          <div>
+            <h2 id="hb-atlas-evidence">Atlas Intelligence</h2>
+            <p className={styles.status}>Regelbaserad analys · Endast förslag</p>
+          </div>
+        </div>
+        <p className={styles.count}>{proposalCount} förslag att granska</p>
       </header>
       <dl className={styles.metadata}>
         <div>
@@ -47,41 +62,86 @@ export function HandlarborsenInsights({ report, now }: { report: MarketplaceRepo
                 : 'Okänd aktualitet'}
           </dd>
         </div>
-        <div>
-          <dt>Regelversion</dt>
-          <dd>{HANDLARBORSEN_INSIGHT_RULE_VERSION}</dd>
-        </div>
       </dl>
-      <ol className={styles.insights}>
-        {analysis.insights.slice(0, 3).map((insight) => (
-          <li key={insight.id}>
+      <ul className={styles.insights} data-card-count={insights.length}>
+        {insights.map((insight) => (
+          <li key={insight.id} className={styles.card} data-kind={insight.kind}>
             <p className={styles.kicker}>
+              {insight.kind === 'quality' ? (
+                <ShieldAlert size={16} aria-hidden="true" />
+              ) : insight.kind === 'proposal' ? (
+                <ClipboardCheck size={16} aria-hidden="true" />
+              ) : (
+                <Info size={16} aria-hidden="true" />
+              )}
               {insight.kind === 'quality'
-                ? 'Kvalitet'
+                ? 'Kvalitet · Kontrollera'
                 : insight.kind === 'proposal'
                   ? 'Förslag · Att granska'
-                  : 'Faktum'}{' '}
-              · {insight.rule} ·{' '}
-              {insight.priority === 'check'
-                ? 'Kontrollera'
-                : insight.priority === 'review'
-                  ? 'Granska'
-                  : 'Observera'}
+                  : 'Faktum · Observera'}
             </p>
-            <h3>{insight.title}</h3>
-            <p>{insight.observation}</p>
+            <h3>
+              {insight.rule === 'company-status'
+                ? 'Företagsstatus'
+                : insight.rule === 'bid-window'
+                  ? 'Bud vid observationen'
+                  : insight.rule === 'published-stock'
+                    ? 'Publicerat utbud'
+                    : insight.title}
+            </h3>
+            <p className={styles.observation}>
+              {insight.kind === 'quality'
+                ? [
+                    ...quality.reasons,
+                    ...new Set(quality.blockedRules.map((block) => block.reason)),
+                  ].join(' ')
+                : insight.observation}
+            </p>
             {insight.kind === 'proposal' && (
-              <p>
+              <p className={styles.limit}>
                 <strong>Varför granskning krävs:</strong> {insight.reviewReason}
               </p>
             )}
-            {insight.kind !== 'fact' && (
-              <p className={styles.check}>
-                <strong>Att granska:</strong> {insight.nextCheck.replace(/^Att granska: /, '')}
-              </p>
-            )}
+            <p className={styles.check}>
+              <strong>Att granska:</strong>{' '}
+              {insight.kind === 'fact'
+                ? factChecks[insight.rule]
+                : insight.nextCheck.replace(/^Att granska: /, '')}
+            </p>
             <details>
-              <summary>Visa exakt evidens och proveniens</summary>
+              <summary>Visa underlag</summary>
+              <div className={styles.provenance}>
+                <p>
+                  Atlas – Underlag och förslag. Regelbaserad analys – ej exekverat. Ingen LLM har
+                  anropats.
+                </p>
+                <p>
+                  Regel: <code>{insight.rule}</code> · Regelversion:{' '}
+                  <code>{insight.ruleVersion}</code> · Prioritet: {insight.priority}
+                </p>
+                <p>Observation: {insight.observation}</p>
+                {insight.kind === 'quality' && <p>Begränsning: {insight.blockedReason}</p>}
+                <p>
+                  Källa: handlarborsen.marketplace · sparad statistikrapport · Observerat (UTC):{' '}
+                  <time dateTime={latest.observedAt}>{latest.observedAt}</time>
+                </p>
+                <p>
+                  Kvalitet:{' '}
+                  {quality.completeness === 'unknown'
+                    ? 'Okänd'
+                    : COMPLETENESS_LABELS[quality.completeness]}{' '}
+                  · {quality.availableCount ?? 'Okänt'}/{quality.totalCount} mått · Bortvalda
+                  ogiltiga snapshots: {quality.skippedInvalid}
+                </p>
+                {quality.reasons.map((reason) => (
+                  <p key={reason}>{reason}</p>
+                ))}
+                {quality.blockedRules.map((block) => (
+                  <p key={block.rule}>
+                    <code>{block.rule}</code>: {block.reason}
+                  </p>
+                ))}
+              </div>
               {insight.evidence.length === 0 && <p>Verifierad numerisk evidens saknas.</p>}
               <ul className={styles.evidence}>
                 {insight.evidence.map((item) => (
@@ -89,6 +149,9 @@ export function HandlarborsenInsights({ report, now }: { report: MarketplaceRepo
                     <p>
                       <code>{item.metricKey}</code>: <strong>{item.value ?? 'Okänt'}</strong>
                       {item.reason ? ` · ${item.reason}` : ''}
+                    </p>
+                    <p>
+                      Tillgänglighet: {item.availability} · Projekt: {item.projectId}
                     </p>
                     <p>
                       Observerat: <time dateTime={item.observedAt}>{item.observedAt}</time> ·
@@ -111,7 +174,7 @@ export function HandlarborsenInsights({ report, now }: { report: MarketplaceRepo
             </details>
           </li>
         ))}
-      </ol>
+      </ul>
     </section>
   )
 }

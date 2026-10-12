@@ -275,11 +275,82 @@ describe('pure Handlarbörsen evidence rules', () => {
     })
   })
 
+  it.each([
+    [10, 6, 0, 2],
+    [10, 10, 0, 1],
+    [10, 10, 1, 0],
+  ])('counts actual proposals for company %i/%i and recent bids %i', (registered, verified, bids, count) => {
+    const r = report([row('2026-10-12', {
+      companies_registered_total: registered,
+      companies_verified_total: verified,
+      bids_last_24h: bids,
+    })])
+    expect(html(r)).toContain(`<dt>Förslag att granska</dt><dd>${count}</dd>`)
+  })
+
+  it('retains every insight and evidence field even when quality precedes three business insights', () => {
+    const r = report([
+      row('2026-10-11', { vehicles_published_active: 4 }),
+      row('2026-10-12', { vehicles_published_active: 9, offers_last_24h: null }),
+    ])
+    const markup = html(r)
+    expect(markup.match(/<article\b/g)).toHaveLength(3)
+    expect(markup).toContain('Publicerat utbud mellan observationer')
+    expect(markup).toContain('+5 mellan 2026-10-11 och 2026-10-12')
+    const raw = markup.match(/<pre[^>]*>([\s\S]*?)<\/pre>/)![1]
+    const decoded = raw.replace(/&quot;/g, '"').replace(/&#x27;/g, "'")
+      .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+    expect(JSON.parse(decoded)).toEqual(derive(r))
+    const visible = markup.split('<details')[0]
+    expect(visible).toContain('Underlagets begränsningar')
+    expect(visible).toContain('okända mått är inte noll')
+    expect(visible).not.toContain('handlarborsen-insights-1.0.0')
+  })
+
+  it.each(['stale', 'failed', 'unavailable', 'unknown audit'] as const)(
+    'keeps %s quality limitations visible before disclosures',
+    (state) => {
+      const r = state === 'unavailable'
+        ? report([row('2026-10-12', Object.fromEntries(MARKETPLACE_METRIC_KEYS.map((key) => [key, null])))])
+        : state === 'failed'
+          ? report([row()], [...AUDIT, { status: 'error', ran_at: '2026-10-12T10:30:00Z', snapshot_date: '2026-10-12' }])
+          : state === 'unknown audit' ? buildMarketplaceReport([row()], NOW) : report()
+      const now = state === 'stale' ? new Date('2026-10-14T12:00:00Z') : NOW
+      const markup = html(r, now)
+      const visible = markup.split('<details')[0]
+      expect(visible).toContain('Underlagets begränsningar')
+      const warning = state === 'stale' ? 'äldre än 26 timmar'
+        : state === 'failed' ? 'insamlingsförsöket misslyckades'
+          : state === 'unavailable' ? 'okända mått är inte noll' : 'Insamlingsaudit är okänd'
+      expect(visible).toContain(warning)
+      if (state === 'unknown audit') {
+        expect(markup.match(/<article\b/g)).toHaveLength(2)
+        expect(markup).toContain('<dt>Förslag att granska</dt><dd>2</dd>')
+      } else {
+        expect(markup).not.toMatch(/<article\b/)
+        expect(markup).toContain('<dt>Förslag att granska</dt><dd>0</dd>')
+      }
+    },
+  )
+
+  it('uses labelled Swedish time and keeps numeric caveats on the cards', () => {
+    const markup = html(report())
+    expect(markup).toContain('Senaste observation · svensk tid')
+    expect(markup).toContain('2026-10-12 12:00')
+    expect(markup).toContain('Analyserat utifrån Handlarbörsens senaste verifierade rapport.')
+    const cards = [...markup.matchAll(/<article[^>]*>([\s\S]*?)<\/article>/g)].map((match) => match[1].split('<details')[0])
+    expect(cards).toHaveLength(2)
+    expect(cards[0]).toContain('Skillnaden visar inte hur många som väntar på verifiering')
+    expect(cards[1]).toContain('fastställer varken efterfrågan eller orsak')
+    expect(cards.every((card) => card.includes('Nästa manuella kontroll:'))).toBe(true)
+    expect(markup).not.toMatch(/4 väntar|60\s*%/)
+  })
+
   it('server renders at most three reviewable insights, exact evidence and sources with no executable controls', () => {
     const r = report([row('2026-10-11'), row()])
     const markup = html(r)
     expect(markup).toContain('aria-labelledby="hb-atlas-evidence"')
-    expect(markup).toContain('Atlas – Underlag och förslag')
+    expect(markup).toContain('Atlas Intelligence')
     expect(markup).toContain('Regelbaserad analys – ej exekverat')
     expect(markup).toContain('Att granska')
     expect(markup).toContain('handlarborsen.marketplace')
@@ -287,7 +358,8 @@ describe('pure Handlarbörsen evidence rules', () => {
     expect(markup).toContain('collectorversion okänd')
     expect(markup).toContain(HANDLARBORSEN_INSIGHT_RULE_VERSION)
     expect(markup).toContain('2026-10-11T10:00:00.000Z')
-    expect(markup.match(/<summary>/g)).toHaveLength(3)
+    expect(markup.match(/<article\b/g)).toHaveLength(3)
+    expect(markup.match(/<summary>/g)).toHaveLength(5)
     expect(markup).not.toMatch(/<button\b|<form\b|\bonClick\b|\b(?:Run|Publish|Kör|Publicera)\b/)
     const staleMarkup = html(r, new Date('2026-10-14T12:00:00Z'))
     expect(staleMarkup).toContain('Äldre än 26 h')

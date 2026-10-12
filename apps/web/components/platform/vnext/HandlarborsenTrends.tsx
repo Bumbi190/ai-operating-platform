@@ -2,7 +2,6 @@ import type { MarketplaceReport } from '@/lib/atlas/project-analytics/handlarbor
 import {
   buildHandlarborsenTrendPanels,
   trendLineSegments,
-  type TrendObservation,
   type TrendPanelModel,
 } from '@/lib/atlas/project-analytics/handlarborsen-trends'
 import styles from './HandlarborsenTrends.module.css'
@@ -13,7 +12,10 @@ import styles from './HandlarborsenTrends.module.css'
 export function HandlarborsenTrends({ report }: { report: MarketplaceReport }) {
   const panels = buildHandlarborsenTrendPanels(report)
   if (panels.length === 0) return null
-  const history = panels[0].mode === 'history'
+  const history = panels[0].mode !== 'snapshot'
+  const comparison = panels[0].mode === 'comparison'
+  const gap = comparison &&
+    Date.parse(panels[0].observations[1].date) - Date.parse(panels[0].observations[0].date) > 86_400_000
 
   return (
     <section className={styles.section} aria-labelledby="hb-trend-heading">
@@ -25,11 +27,13 @@ export function HandlarborsenTrends({ report }: { report: MarketplaceReport }) {
           </h2>
         </div>
         <span className={styles.mode}>
-          {history ? 'Historiska mätpunkter' : 'Senaste dagsrapport'}
+          {comparison ? 'Två sparade mätdagar' : history ? 'Historiska mätpunkter' : 'Senaste dagsrapport'}
         </span>
       </div>
       <p className={styles.intro}>
-        {history
+        {comparison
+          ? `Jämförelse av två sparade mätdagar${gap ? '; värden saknas däremellan.' : ' i följd.'} Endast uppmätta värden visas.`
+          : history
           ? 'Historik för sparade UTC-rapporter. Saknade dagar och okända värden fylls inte i.'
           : 'Ännu finns bara en dagsrapport. Staplarna visar uppmätta nivåer, inte en historisk trend.'}
       </p>
@@ -69,7 +73,9 @@ function TrendCard({ panel }: { panel: TrendPanelModel }) {
         </h3>
         <p className={styles.cardDescription}>{panel.description}</p>
       </header>
-      {panel.mode === 'history' ? (
+      {panel.mode === 'comparison' ? (
+        <ComparisonBars panel={panel} />
+      ) : panel.mode === 'history' ? (
         <HistoryPlot panel={panel} />
       ) : (
         <SnapshotBars panel={panel} />
@@ -90,12 +96,12 @@ function TrendCard({ panel }: { panel: TrendPanelModel }) {
       ) : null}
       <p className={styles.dateNote}>
         Senast uppmätt {latest.date}
-        {panel.mode === 'history'
+        {panel.mode !== 'snapshot'
           ? ` · ${panel.observations.length} sparade dagar`
           : ''}
       </p>
       <p className={styles.disclaimer}>{panel.note}</p>
-      {panel.mode === 'history' ? (
+      {panel.mode !== 'snapshot' ? (
         <details className={styles.details}>
           <summary>Visa exakta historiska värden</summary>
           <table className={styles.valuesTable}>
@@ -187,26 +193,57 @@ function SnapshotBars({ panel }: { panel: TrendPanelModel }) {
   )
 }
 
-// No data points between dates are synthesized. Even if two readings are
-// separated by several days, SVG only draws two points (not a continuous line).
+/** Both dates share one zero-based scale. Null has a label, never a bar. */
+function ComparisonBars({ panel }: { panel: TrendPanelModel }) {
+  const peak = Math.max(1, ...panel.observations.flatMap((row) => [row.first ?? 0, row.second ?? 0]))
+  return (
+    <div className={styles.comparison} aria-label={`Jämförelse för ${panel.title}. Gemensam skala från 0 till ${formatValue(peak)}.`}>
+      <p className={styles.scaleNote}>Antal · gemensam skala 0–{formatValue(peak)}</p>
+      {panel.observations.map((row) => (
+        <div className={styles.dateGroup} key={row.date}>
+          <time className={styles.comparisonDate} dateTime={row.date}>{row.date} <span>UTC</span></time>
+          {([
+            { ...panel.first, value: row.first, color: 'first' },
+            { ...panel.second, value: row.second, color: 'second' },
+          ] as const).map((bar) => (
+            <div className={styles.barGroup} key={bar.key} data-series={bar.color} data-unknown={bar.value === null ? 'true' : undefined}>
+              <div className={styles.barTitle}>
+                <span>{bar.label}</span>
+                <strong>{formatValue(bar.value)}</strong>
+              </div>
+              <div className={styles.track} aria-hidden="true">
+                {bar.value !== null && (
+                  <span className={bar.color === 'first' ? styles.firstFill : styles.secondFill}
+                    style={{ width: `${(bar.value / peak) * 100}%` }} />
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// No data points between dates are synthesized.
 // Unknown values remain unconnected. True zeros are plotted at zero.
 function HistoryPlot({ panel }: { panel: TrendPanelModel }) {
   const data = panel.observations
-  const left = 30
+  const left = 62
   const right = 402
-  const top = 16
+  const top = 24
   const bottom = 155
   const dates = data.map((row) => Date.parse(row.date + 'T00:00:00Z'))
   const minDate = dates[0]
   const span = Math.max(1, dates[dates.length - 1] - minDate)
-  const peak = Math.max(
+  const peak = Math.ceil(1.15 * Math.max(
     1,
     ...data.flatMap((row) =>
       [row.first, row.second].filter(
         (value): value is number => value !== null,
       ),
     ),
-  )
+  ))
   const x = (index: number) =>
     left + ((dates[index] - minDate) / span) * (right - left)
   const y = (value: number) => bottom - (value / peak) * (bottom - top)
@@ -215,9 +252,11 @@ function HistoryPlot({ panel }: { panel: TrendPanelModel }) {
 
   return (
     <div className={styles.plotWrap}>
+      <p className={styles.scaleNote}>Antal · endast sparade UTC-mätdagar</p>
       <svg
         className={styles.plot}
-        viewBox="0 0 438 188"
+        viewBox="0 0 438 210"
+        style={{ minWidth: Math.max(340, data.length * 44) }}
         preserveAspectRatio="xMidYMid meet"
         role="img"
         aria-label={`Historik för ${panel.title} från ${data[0].date} till ${data[data.length - 1].date}. Exakta värden finns i tabellen nedanför.`}
@@ -244,7 +283,7 @@ function HistoryPlot({ panel }: { panel: TrendPanelModel }) {
           y2={(top + bottom) / 2}
         />
         <text className={styles.tick} x={left - 8} y={top + 4} textAnchor="end">
-          {peak}
+          {formatValue(peak)}
         </text>
         <text
           className={styles.tick}
@@ -254,17 +293,12 @@ function HistoryPlot({ panel }: { panel: TrendPanelModel }) {
         >
           0
         </text>
-        <text className={styles.tick} x={left} y={bottom + 20}>
-          {dateLabel(data[0])}
-        </text>
-        <text
-          className={styles.tick}
-          x={right}
-          y={bottom + 20}
-          textAnchor="end"
-        >
-          {dateLabel(data[data.length - 1])}
-        </text>
+        {data.map((row, i) => (
+          <text key={row.date} className={styles.tick} x={x(i)}
+            y={bottom + 22 + (i % 2) * 18} textAnchor={i === 0 ? 'start' : i === data.length - 1 ? 'end' : 'middle'}>
+            {row.date.slice(8)} / {row.date.slice(5, 7)}
+          </text>
+        ))}
         {first.map(([a, b]) => (
           <line
             key={`a-${a}-${b}`}
@@ -292,26 +326,24 @@ function HistoryPlot({ panel }: { panel: TrendPanelModel }) {
               className={styles.firstPoint}
               cx={x(i)}
               cy={y(row.first)}
-              r={3.7}
-            />
+              r={4.5}
+            ><title>{`${row.date} · ${panel.first.label}: ${formatValue(row.first)}`}</title></circle>
           ),
         )}
         {data.map((row, i) =>
           row.second === null ? null : (
-            <circle
+            <rect
               key={`b-${row.date}`}
               className={styles.secondPoint}
-              cx={x(i)}
-              cy={y(row.second)}
-              r={3.7}
-            />
+              x={x(i) - 6}
+              y={y(row.second) - 6}
+              width={12}
+              height={12}
+              rx={2}
+            ><title>{`${row.date} · ${panel.second.label}: ${formatValue(row.second)}`}</title></rect>
           ),
         )}
       </svg>
     </div>
   )
-}
-
-function dateLabel(row: TrendObservation) {
-  return row.date.slice(5)
 }

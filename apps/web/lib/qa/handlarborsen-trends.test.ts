@@ -98,27 +98,83 @@ describe('Handlarbörsen read-only trend charts', () => {
     expect(out).not.toMatch(/konverteringsgrad|MRR|SEK/)
   })
 
-  it('renders real points after two distinct stored dates, and a table of exact values', () => {
+  it('renders paired bars for two consecutive dates, and a table of exact values', () => {
     const rows = [
       snap('2026-10-11', { companies_registered_total: 13, bids_total: 4 }),
       snap('2026-10-10'),
     ]
     const panels = buildHandlarborsenTrendPanels(report(rows))
-    expect(panels[0].mode).toBe('history')
+    expect(panels[0].mode).toBe('comparison')
     expect(panels[0].observations.map((r) => r.date)).toEqual([
       '2026-10-10',
       '2026-10-11',
     ])
     const out = html(rows)
-    expect(out).toContain('Historiska mätpunkter')
-    expect(out.match(/<svg\b/g)).toHaveLength(3)
-    expect(out.match(/<circle\b/g)).toHaveLength(12)
+    expect(out).toContain('Två sparade mätdagar')
+    expect(out).toContain('mätdagar i följd')
+    expect(out).not.toContain('<svg')
+    expect(out.match(/data-series=/g)).toHaveLength(12)
     expect(out).not.toContain('hb-history-empty')
     expect(out).toContain('Visa exakta historiska värden')
     expect(out).toContain('2026-10-10')
     expect(out).toContain('2026-10-11')
     expect(out).toContain('13')
     expect(out).toContain('4')
+  })
+
+  it('compares the real 10 and 12 October levels without inventing 11 October', () => {
+    const rows = [snap('2026-10-12'), snap('2026-10-10')]
+    const panels = buildHandlarborsenTrendPanels(report(rows))
+    expect(panels.every((panel) => panel.mode === 'comparison')).toBe(true)
+    expect(panels[0].observations).toEqual([
+      { date: '2026-10-10', first: 10, second: 6 },
+      { date: '2026-10-12', first: 10, second: 6 },
+    ])
+    expect(trendLineSegments(panels[0].observations, 'first')).toEqual([])
+    const out = html(rows)
+    expect(out).toContain('Jämförelse av två sparade mätdagar; värden saknas däremellan.')
+    expect(out).not.toContain('2026-10-11')
+    expect(out).not.toContain('<svg')
+    expect(out.match(/<time\b/g)).toHaveLength(6)
+    expect(out.match(/<strong>10<\/strong>/g)).toHaveLength(2)
+    expect(out.match(/<strong>6<\/strong>/g)).toHaveLength(2)
+    expect(out.match(/<strong>2<\/strong>/g)).toHaveLength(8)
+    expect(out.match(/<table\b/g)).toHaveLength(3)
+  })
+
+  it('labels unknown comparison values while preserving true zero bars', () => {
+    const rows = [snap('2026-10-12', {
+      completeness: 'partial', bids_total: null, deals_completed_total: 0,
+      unavailable: { bids_total: 'query_failed' },
+    }), snap('2026-10-10')]
+    const out = html(rows)
+    expect(buildHandlarborsenTrendPanels(report(rows))[2].observations[1]).toEqual({ date: '2026-10-12', first: null, second: 0 })
+    expect(out).toMatch(/data-series="first" data-unknown="true"[^]*?<strong>Okänt<\/strong>[^]*?<div[^>]*><\/div>/)
+    expect(out).toContain('<strong>0</strong>')
+    expect(out).toContain('width:0%')
+    expect(out).not.toContain('2026-10-11')
+  })
+
+  it('renders 3+ real dates with isolated points and only consecutive known segments', () => {
+    const rows = [snap('2026-10-12'), snap('2026-10-10', {
+      completeness: 'partial', bids_total: null,
+      unavailable: { bids_total: 'query_failed' },
+    }), snap('2026-10-09')]
+    const panels = buildHandlarborsenTrendPanels(report(rows))
+    expect(panels.every((panel) => panel.mode === 'history')).toBe(true)
+    expect(trendLineSegments(panels[0].observations, 'first')).toEqual([[0, 1]])
+    expect(trendLineSegments(panels[2].observations, 'first')).toEqual([])
+    const out = html(rows)
+    expect(out.match(/<svg\b/g)).toHaveLength(3)
+    expect(out.match(/<circle\b/g)).toHaveLength(8)
+    expect(out.match(/<rect\b/g)).toHaveLength(9)
+    expect(out.match(/class="[^"]*firstLine[^"]*"/g)).toHaveLength(2)
+    expect(out.match(/class="[^"]*secondLine[^"]*"/g)).toHaveLength(3)
+    expect(out).toContain('09 / 10')
+    expect(out).toContain('10 / 10')
+    expect(out).toContain('12 / 10')
+    expect(out).not.toContain('2026-10-11')
+    expect(out).toContain('Okänt')
   })
 
   it('does not connect unknown metric values or absent calendar days', () => {

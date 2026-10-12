@@ -373,3 +373,28 @@
 .historyEmpty{background:linear-gradient(105deg,rgba(6,68,91,.19),rgba(2,14,30,.7));border-color:rgba(63,183,211,.18)}
 @media(max-width:75rem){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:48rem){.grid{grid-template-columns:minmax(0,1fr)}.card:last-child{grid-column:auto}}
+
+/* Two genuine dates: grouped bars with a shared zero baseline. */
+.comparison { display: flex; flex-direction: column; gap: 0.9rem; }
+.scaleNote { margin: 0 0 0.25rem; color: #b7cfde; font-size: 0.75rem; line-height: 1.5; }
+.dateGroup { display: grid; gap: 0.85rem; padding: 1rem; border: 1px solid rgb(128 192 224 / 0.16); border-radius: 0.75rem; background: rgb(5 17 31 / 0.6); }
+.comparisonDate { display: flex; justify-content: space-between; gap: 0.5rem; color: #e8f6ff; font-size: 0.875rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.comparisonDate span { color: #aec8d8; font-size: 0.75rem; font-weight: 400; }
+.comparison .track { height: 0.875rem; border-radius: 0.25rem; }
+.comparison .barTitle { font-size: 0.8125rem; color: #c0d8e6; }
+.comparison .barTitle strong { font-size: 1rem; }
+.comparison [data-series='first'] .barTitle strong { color: #8ed4ff; }
+.comparison [data-series='second'] .barTitle strong { color: #77ead8; }
+.comparison [data-unknown='true'] .barTitle strong { color: #fbd28b; }
+.comparison [data-unknown='true'] .track { border-style: dashed; background: transparent; }
+.plotWrap { overflow-x: auto; padding: 0.5rem 0; }
+.plot { overflow: hidden; filter: none; }
+.tick { fill: #b9d2e1; font-size: 12px; }
+.secondPoint { fill: none; stroke: #4df0dc; stroke-width: 2; }
+.secondLine { stroke-dasharray: 5 4; }
+.legendLabel { font-size: 0.8125rem; }
+.secondDot { border-radius: 1px; }
+.details summary { min-height: 2.75rem; }
+@media (max-width: 42rem) {
+  .dateGroup { padding: 0.85rem; }
+}

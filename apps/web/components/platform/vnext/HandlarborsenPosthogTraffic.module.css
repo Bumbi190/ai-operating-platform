@@ -281,3 +281,22 @@
 .chartSurface{border-radius:.95rem;border-color:rgba(79,172,218,.15);background:rgba(3,20,35,.42)}
 .emptyIcon{box-shadow:0 0 27px rgba(62,204,238,.12)}
 .barFill{background:linear-gradient(180deg,#71e6e7,#2388b7);box-shadow:0 0 15px rgba(37,177,212,.2)}
+
+/* Waiting state is a message, never a synthetic chart silhouette. */
+.empty { margin-top: 1.1rem; padding: 2rem 1rem; gap: 0.8rem; border: 1px dashed rgb(130 191 219 / 0.23); border-radius: 0.8rem; background: linear-gradient(135deg, rgb(23 65 87 / 0.18), rgb(3 15 29 / 0.3)); }
+.emptyIcon { width: 3.25rem; height: 3.25rem; border-radius: 1rem; box-shadow: none; }
+.empty strong { font-size: 1.0625rem; color: #e6f6ff; }
+.empty p { color: #bbd1df; font-size: 0.875rem; }
+.metricValue, .barValue { font-variant-numeric: tabular-nums; }
+.metricNote, .chartHeading p, .footer { color: #b4ccda; }
+.chart { gap: clamp(0.4rem, 1.5vw, 1.25rem); }
+.barTrack { border-bottom: 1px solid rgb(172 215 233 / 0.3); background: repeating-linear-gradient(to top, transparent 0, transparent calc(25% - 1px), rgb(140 194 219 / 0.09) calc(25% - 1px), rgb(140 194 219 / 0.09) 25%); }
+.barFill { max-width: 4rem; margin-inline: auto; box-shadow: none; }
+.barValue { color: #e6f7ff; font-size: 0.8125rem; overflow-wrap: anywhere; text-align: center; }
+.dayLabel { color: #bdd4e2; font-size: 0.75rem; }
+.footer a { min-height: 2.75rem; }
+.footer a:focus-visible { outline: 2px solid #86e4e8; outline-offset: 4px; border-radius: 0.25rem; }
+@media (max-width: 620px) {
+  .chart { gap: 0.35rem; }
+  .barValue, .dayLabel { font-size: 0.75rem; }
+}

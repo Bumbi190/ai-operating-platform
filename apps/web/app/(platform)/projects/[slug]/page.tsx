@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import { getProjectBySlug, type ResolvedProject } from '@/lib/project/get-project'
 import { isHandlarborsenProject, loadProjectCommandCenter, type ProjectCommandCenterModel } from '@/lib/os/project-command-center'
 import { loadHandlarborsenMarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-read'
+import { loadHandlarborsenTraffic } from '@/lib/atlas/project-analytics/handlarborsen-posthog-traffic'
 import { HandlarborsenOverview } from '@/components/platform/vnext/HandlarborsenOverview'
 import { HandlarborsenOwnerBrief } from '@/components/platform/vnext/HandlarborsenOwnerBrief'
 import {
@@ -62,7 +63,7 @@ async function LoadedProjectCommandCenter({ project }: { project: ResolvedProjec
 
   return (
     <Suspense fallback={<ProjectCommandCenter model={model} overview={<HandlarborsenStatsLoading />} />}>
-      <LoadedHandlarborsenCommandCenter reportPromise={reportPromise} model={model} />
+      <LoadedHandlarborsenCommandCenter reportPromise={reportPromise} model={model} project={project} />
     </Suspense>
   )
 }
@@ -72,13 +73,18 @@ async function LoadedProjectCommandCenter({ project }: { project: ResolvedProjec
 async function LoadedHandlarborsenCommandCenter({
   reportPromise,
   model,
+  project,
 }: {
   reportPromise: ReturnType<typeof loadHandlarborsenMarketplaceReport>
   model: ProjectCommandCenterModel
+  project: ResolvedProject
 }) {
   const result = await reportPromise
+  const traffic = result.status === 'ok'
+    ? await loadHandlarborsenTraffic(project, { allowedProjectIds: [project.id] })
+    : null
   const overview = result.status === 'ok'
-    ? <HandlarborsenOverview report={result.report} reportHref={model.links.marketplace} />
+    ? <HandlarborsenOverview report={result.report} reportHref={model.links.marketplace} traffic={traffic} />
     : undefined
   const briefing = result.status === 'ok'
     ? <HandlarborsenOwnerBrief model={model} report={result.report} />

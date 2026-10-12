@@ -1,214 +1,226 @@
 'use client'
 
-import { Suspense, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { useSearchParams } from 'next/navigation'
+import { Suspense, useState, type FormEvent } from 'react'
+import Image from 'next/image'
+import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { ArrowRight, Check, Eye, EyeOff, Fingerprint, KeyRound, LockKeyhole, Mail, ShieldCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import styles from './login.module.css'
 
+/**
+ * Presentation-only refresh of the existing Supabase sign-in flow.
+ * Password and OTP routing are intentionally unchanged.
+ */
 function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const urlError = searchParams.get('error')
 
-  const [email, setEmail]       = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState<string | null>(urlError)
-
-  // Magic Link fallback — hidden by default, shown via toggle
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(urlError)
   const [magicMode, setMagicMode] = useState(false)
   const [magicSent, setMagicSent] = useState(false)
+  const [passwordVisible, setPasswordVisible] = useState(false)
 
   const supabase = createClient()
 
-  // ── Primary: email + password ─────────────────────────────────────────────
-  async function handlePasswordLogin(e: React.FormEvent) {
+  async function handlePasswordLogin(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoading(true)
     setError(null)
-
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-
-    if (error) {
-      // Supabase returns "Invalid login credentials" for both wrong email and
-      // wrong password — keep message generic to avoid leaking account existence.
+    const { error: loginError } = await supabase.auth.signInWithPassword({ email, password })
+    if (loginError) {
+      // Never distinguish between an unknown user and an invalid password.
       setError('Fel e-post eller lösenord.')
       setLoading(false)
       return
     }
-
     router.push('/atlas')
   }
 
-  // ── Fallback: Magic Link (OTP) ────────────────────────────────────────────
-  async function handleMagicLink(e: React.FormEvent) {
+  async function handleMagicLink(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoading(true)
     setError(null)
 
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error: otpError } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/confirm`,
-        // SECURITY: never auto-provision an account from a magic-link request.
-        // Only existing users may receive a login link; unknown emails are rejected
-        // by GoTrue ("Signups not allowed for otp") instead of silently creating a user.
+        emailRedirectTo: window.location.origin + '/auth/confirm',
+        // No account provisioning from a login-only form.
         shouldCreateUser: false,
       },
     })
 
-    if (error) {
-      setError(error.message)
+    if (otpError) {
+      setError(otpError.message)
     } else {
       setMagicSent(true)
     }
     setLoading(false)
   }
 
-  // ── Magic Link sent confirmation ──────────────────────────────────────────
-  if (magicSent) {
-    return (
-      <div className="w-full max-w-sm space-y-8 px-6">
-        <div className="rounded-lg border border-border bg-card p-6 text-center space-y-2">
-          <div className="text-2xl">📬</div>
-          <p className="font-medium">Kolla din inbox</p>
-          <p className="text-sm text-muted-foreground">
-            Vi skickade en inloggningslänk till <strong>{email}</strong>
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => { setMagicSent(false); setMagicMode(false) }}
-          className="w-full rounded-md border border-input bg-background px-4 py-2 text-sm text-muted-foreground hover:bg-accent transition-colors"
-        >
-          Tillbaka
-        </button>
-      </div>
-    )
+  function switchMode(next: boolean) {
+    setMagicMode(next)
+    setError(null)
   }
 
   return (
-    <div className="w-full max-w-sm space-y-8 px-6">
-      {/* Header */}
-      <div className="text-center space-y-2">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary text-primary-foreground text-xl font-bold mb-4">
-          ⚡
-        </div>
-        <h1 className="text-2xl font-bold tracking-tight">AI Ops Platform</h1>
-        <p className="text-sm text-muted-foreground">
-          Centraliserad kontroll för dina AI-agenter
-        </p>
-      </div>
-
-      {magicMode ? (
-        /* ── Magic Link form ─────────────────────────────────────────────── */
-        <form onSubmit={handleMagicLink} className="space-y-4">
-          <div className="space-y-2">
-            <label htmlFor="email-magic" className="text-sm font-medium">
-              E-postadress
-            </label>
-            <input
-              id="email-magic"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="du@exempel.se"
-              required
-              autoComplete="email"
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
+    <main className={styles.page}>
+      <div className={styles.shell}>
+        <section className={styles.showcase} aria-label="Välkommen till Omnira">
+          <div className={styles.brand}>
+            <span className={styles.brandMark}>
+              <Image src="/omnira-favicon.svg" alt="" width={38} height={38} priority />
+            </span>
+            <span className={styles.brandWords}>
+              <span className={styles.brandName}>OMNIRA</span>
+              <span className={styles.brandSub}>AI OPERATING SYSTEM</span>
+            </span>
           </div>
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          <div className={styles.showcaseContent}>
+            <span className={styles.eyebrow}><span className={styles.liveDot} /> YOUR INTELLIGENCE COMMAND CENTER</span>
+            <h1 className={styles.headline}>Från insikt<br />till <span>handling.</span></h1>
+            <p className={styles.showcaseDescription}>
+              Samla projekt, intelligens och arbetsflöden i ett operativsystem.
+              Atlas hjälper dig att analysera, prioritera och hålla riktningen.
+            </p>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-          >
-            {loading ? 'Skickar...' : 'Skicka inloggningslänk'}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => { setMagicMode(false); setError(null) }}
-            className="w-full rounded-md border border-input bg-background px-4 py-2 text-sm text-muted-foreground hover:bg-accent transition-colors"
-          >
-            Tillbaka till lösenord
-          </button>
-        </form>
-      ) : (
-        /* ── Password form (primary) ─────────────────────────────────────── */
-        <form onSubmit={handlePasswordLogin} className="space-y-4">
-          <div className="space-y-2">
-            <label htmlFor="email" className="text-sm font-medium">
-              E-postadress
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="du@exempel.se"
-              required
-              autoComplete="email"
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label htmlFor="password" className="text-sm font-medium">
-                Lösenord
-              </label>
-              <a
-                href="/forgot-password"
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                Glömt lösenord?
-              </a>
+            <div className={styles.atlasVisual} aria-hidden="true">
+              <div className={styles.axis} />
+              <div className={styles.orbitOne} />
+              <div className={styles.orbitTwo} />
+              <div className={styles.orbitThree} />
+              <div className={styles.orbHalo}>
+                <div className={styles.orbCore} />
+              </div>
+              <div className={styles.orbLabel}>A T L A S</div>
             </div>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              autoComplete="current-password"
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
+
+            <div className={styles.capabilities} aria-label="Omniras arbetsområden">
+              <span>PROJEKT</span>
+              <span>INTELLIGENS</span>
+              <span>GRANSKNING</span>
+            </div>
+          </div>
+          <p className={styles.showcaseFooter}>OMNIRA OS <span aria-hidden="true">/</span> MÄNNISKAN HAR SISTA ORDET</p>
+        </section>
+
+        <section className={styles.authPanel} aria-label="Logga in i Omnira">
+          <div className={styles.mobileBrand}>
+            <Image src="/omnira-favicon.svg" alt="" width={36} height={36} priority />
+            <div><strong>OMNIRA</strong><span>AI OPERATING SYSTEM</span></div>
+          </div>
+          <div className={styles.loginBox}>
+            <span className={styles.panelEyebrow}><span className={styles.panelDot} /> SÄKER ÅTKOMST</span>
+            {magicSent ? (
+              <div className={styles.successPanel} role="status">
+                <span className={styles.successIcon}><Mail size={25} aria-hidden="true" /></span>
+                <h2 className={styles.title}>Kolla din inbox</h2>
+                <p className={styles.subtitle}>
+                  Vi skickade en inloggningslänk till <strong className={styles.emailValue}>{email}</strong>.
+                </p>
+                <p className={styles.hint}>Öppna länken på samma enhet för att fortsätta.</p>
+                <button type="button" className={styles.secondaryButton} onClick={() => { setMagicSent(false); switchMode(false) }}>
+                  Tillbaka till lösenord
+                </button>
+              </div>
+            ) : (
+              <>
+                <h2 className={styles.title}>{magicMode ? 'Logga in med e-postlänk' : 'Välkommen tillbaka'}</h2>
+                <p className={styles.subtitle}>
+                  {magicMode ? 'Få en säker inloggningslänk skickad till din inkorg.' : 'Logga in för att öppna din arbetsyta i Omnira.'}
+                </p>
+
+                <form onSubmit={magicMode ? handleMagicLink : handlePasswordLogin} className={styles.form}>
+                  <div className={styles.field}>
+                    <label htmlFor="omnira-login-email">E-postadress</label>
+                    <div className={styles.inputWrap}>
+                      <Mail size={18} aria-hidden="true" className={styles.fieldIcon} />
+                      <input
+                        id="omnira-login-email"
+                        type="email"
+                        name="email"
+                        autoComplete="email"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        placeholder="du@foretag.se"
+                        required
+                        disabled={loading}
+                      />
+                    </div>
+                  </div>
+
+                  {!magicMode && (
+                    <div className={styles.field}>
+                      <div className={styles.labelRow}>
+                        <label htmlFor="omnira-login-password">Lösenord</label>
+                        <Link href="/forgot-password" className={styles.inlineLink}>Glömt lösenord?</Link>
+                      </div>
+                      <div className={styles.inputWrap}>
+                        <LockKeyhole size={18} aria-hidden="true" className={styles.fieldIcon} />
+                        <input
+                          id="omnira-login-password"
+                          type={passwordVisible ? 'text' : 'password'}
+                          name="password"
+                          autoComplete="current-password"
+                          value={password}
+                          onChange={e => setPassword(e.target.value)}
+                          placeholder="Ditt lösenord"
+                          required
+                          disabled={loading}
+                        />
+                        <button
+                          type="button"
+                          className={styles.eyeButton}
+                          onClick={() => setPasswordVisible(v => !v)}
+                          aria-label={passwordVisible ? 'Dölj lösenord' : 'Visa lösenord'}
+                          aria-pressed={passwordVisible}
+                        >
+                          {passwordVisible ? <EyeOff size={19} aria-hidden="true" /> : <Eye size={19} aria-hidden="true" />}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {error && <p className={styles.error} role="alert">{error}</p>}
+
+                  <button className={styles.submitButton} type="submit" disabled={loading}>
+                    {loading ? (magicMode ? 'Skickar länken…' : 'Loggar in…') : magicMode ? 'Skicka inloggningslänk' : 'Öppna Omnira'}
+                    {!loading && <ArrowRight size={18} aria-hidden="true" />}
+                  </button>
+                </form>
+
+                <div className={styles.divider}><span>ELLER</span></div>
+                <button type="button" className={styles.switchButton} onClick={() => switchMode(!magicMode)} disabled={loading}>
+                  {magicMode ? <KeyRound size={17} aria-hidden="true" /> : <Mail size={17} aria-hidden="true" />}
+                  {magicMode ? 'Logga in med lösenord' : 'Logga in med e-postlänk'}
+                </button>
+              </>
+            )}
+            <div className={styles.trustRow}>
+              <ShieldCheck size={16} aria-hidden="true" />
+              <span>Privat arbetsyta. Åtkomst enligt dina behörigheter.</span>
+            </div>
           </div>
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-          >
-            {loading ? 'Loggar in...' : 'Logga in'}
-          </button>
-
-          {/* Magic Link fallback — secondary, unobtrusive */}
-          <div className="pt-2 text-center">
-            <button
-              type="button"
-              onClick={() => { setMagicMode(true); setError(null) }}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Logga in med e-postlänk istället
-            </button>
+          <div className={styles.rightFooter}>
+            <span><Fingerprint size={14} aria-hidden="true" /> OPERATÖRSÅTKOMST</span>
+            <span><Check size={14} aria-hidden="true" /> OMNIRA OS</span>
           </div>
-        </form>
-      )}
-    </div>
+        </section>
+      </div>
+    </main>
   )
 }
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="w-full max-w-sm px-6 text-center text-muted-foreground">Laddar...</div>}>
+    <Suspense fallback={<div className={styles.loading} role="status">Laddar inloggningen…</div>}>
       <LoginForm />
     </Suspense>
   )

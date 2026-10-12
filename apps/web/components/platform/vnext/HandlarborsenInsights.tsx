@@ -1,7 +1,4 @@
-import {
-  deriveHandlarborsenInsights,
-  HANDLARBORSEN_INSIGHT_RULE_VERSION,
-} from '@/lib/atlas/project-analytics/handlarborsen-insights'
+import { deriveHandlarborsenInsights } from '@/lib/atlas/project-analytics/handlarborsen-insights'
 import {
   COMPLETENESS_LABELS,
   type MarketplaceReport,
@@ -15,23 +12,24 @@ export function HandlarborsenInsights({ report, now }: { report: MarketplaceRepo
   const latest = report.latest
   const { quality } = analysis
   if (quality.freshness === 'unknown') return null
+  const reviewCount = analysis.insights.filter((insight) => insight.kind === 'proposal').length
+  const rank = { proposal: 0, quality: 1, fact: 2 }
+  const insights = [...analysis.insights].sort((a, b) => rank[a.kind] - rank[b.kind]).slice(0, 3)
   return (
     <section className={styles.panel} aria-labelledby="hb-atlas-evidence">
-      <header>
-        <p className={styles.kicker}>Atlas · Evidens</p>
-        <h2 id="hb-atlas-evidence">Atlas – Underlag och förslag</h2>
-        <p>Regelbaserad analys – ej exekverat. Ingen LLM har anropats.</p>
+      <header className={styles.header}>
+        <div>
+          <h2 id="hb-atlas-evidence">Atlas Intelligence</h2>
+          <p className={styles.subtitle}>Regelbaserad analys · Ej exekverat</p>
+        </div>
+        {reviewCount > 0 && (
+          <p className={styles.count}>{reviewCount} förslag att granska</p>
+        )}
       </header>
       <dl className={styles.metadata}>
         <div>
-          <dt>Observerat (UTC)</dt>
-          <dd>
-            <time dateTime={latest.observedAt}>{latest.observedAt}</time>
-          </dd>
-        </div>
-        <div>
           <dt>Källa</dt>
-          <dd>handlarborsen.marketplace · sparad statistikrapport</dd>
+          <dd>Handlarbörsen · sparad rapport</dd>
         </div>
         <div>
           <dt>Kvalitet</dt>
@@ -39,7 +37,7 @@ export function HandlarborsenInsights({ report, now }: { report: MarketplaceRepo
             {quality.completeness === 'unknown'
               ? 'Okänd'
               : COMPLETENESS_LABELS[quality.completeness]}{' '}
-            · {quality.availableCount ?? 'Okänt'}/{quality.totalCount} mått ·{' '}
+            ·{' '}
             {quality.freshness === 'fresh'
               ? 'Aktuell'
               : quality.freshness === 'stale'
@@ -48,20 +46,24 @@ export function HandlarborsenInsights({ report, now }: { report: MarketplaceRepo
           </dd>
         </div>
         <div>
-          <dt>Regelversion</dt>
-          <dd>{HANDLARBORSEN_INSIGHT_RULE_VERSION}</dd>
+          <dt>Observerat (UTC)</dt>
+          <dd>
+            <time dateTime={latest.observedAt}>
+              {new Date(latest.observedAt).toISOString().slice(0, 16).replace('T', ' ')}
+            </time>
+          </dd>
         </div>
       </dl>
       <ol className={styles.insights}>
-        {analysis.insights.slice(0, 3).map((insight) => (
-          <li key={insight.id}>
+        {insights.map((insight) => (
+          <li key={insight.id} data-kind={insight.kind}>
             <p className={styles.kicker}>
               {insight.kind === 'quality'
                 ? 'Kvalitet'
                 : insight.kind === 'proposal'
                   ? 'Förslag · Att granska'
                   : 'Faktum'}{' '}
-              · {insight.rule} ·{' '}
+              ·{' '}
               {insight.priority === 'check'
                 ? 'Kontrollera'
                 : insight.priority === 'review'
@@ -69,25 +71,43 @@ export function HandlarborsenInsights({ report, now }: { report: MarketplaceRepo
                   : 'Observera'}
             </p>
             <h3>{insight.title}</h3>
-            <p>{insight.observation}</p>
-            {insight.kind === 'proposal' && (
-              <p>
-                <strong>Varför granskning krävs:</strong> {insight.reviewReason}
-              </p>
-            )}
-            {insight.kind !== 'fact' && (
-              <p className={styles.check}>
-                <strong>Att granska:</strong> {insight.nextCheck.replace(/^Att granska: /, '')}
-              </p>
-            )}
+            <p>
+              {insight.kind === 'quality'
+                ? quality.reasons.join(' ') || 'Vissa regler saknar verifierat underlag. Kontrollera begränsningarna.'
+                : insight.observation}
+            </p>
+            <p className={styles.check}>
+              <strong>Att granska:</strong>{' '}
+              {insight.kind === 'fact'
+                ? 'Kontrollera observationerna i underlaget.'
+                : insight.nextCheck.replace(/^Att granska: /, '')}
+            </p>
             <details>
               <summary>Visa exakt evidens och proveniens</summary>
+              <p>Regel: <code>{insight.rule}</code> · {insight.ruleVersion}</p>
+              {insight.kind === 'proposal' && (
+                <p><strong>Varför granskning krävs:</strong> {insight.reviewReason}</p>
+              )}
+              {insight.kind === 'quality' && <p>{insight.blockedReason}</p>}
+              <p>
+                Kvalitet: {quality.reportState} · {quality.completeness} · {quality.freshness} ·{' '}
+                {quality.availableCount ?? 'Okänt'}/{quality.totalCount} mått · ålder{' '}
+                {quality.ageHours ?? 'okänd'} h · bortvalda snapshots {quality.skippedInvalid}
+              </p>
+              <p>Analys utvärderad (UTC): {analysis.evaluatedAt ?? 'Okänt'}</p>
+              <p>Insamlingsaudit: <code>{quality.collection ? JSON.stringify(quality.collection) : 'Okänd'}</code></p>
+              <ul className={styles.evidence}>
+                {quality.reasons.map((reason) => <li key={reason}>{reason}</li>)}
+                {quality.blockedRules.map((block) => (
+                  <li key={block.rule}><code>{block.rule}</code>: {block.reason}</li>
+                ))}
+              </ul>
               {insight.evidence.length === 0 && <p>Verifierad numerisk evidens saknas.</p>}
               <ul className={styles.evidence}>
                 {insight.evidence.map((item) => (
                   <li key={`${item.snapshotRef}/${item.metricKey}`}>
                     <p>
-                      <code>{item.metricKey}</code>: <strong>{item.value ?? 'Okänt'}</strong>
+                      <code>{item.metricKey}</code>: <strong>{item.value ?? 'Okänt'}</strong> · {item.availability}
                       {item.reason ? ` · ${item.reason}` : ''}
                     </p>
                     <p>
@@ -99,7 +119,7 @@ export function HandlarborsenInsights({ report, now }: { report: MarketplaceRepo
                       täckning {item.window.complete === null ? 'okänd' : 'punktobservation'}
                     </p>
                     <p>
-                      Källa: {item.source} · schema {item.schemaVersion} · collector{' '}
+                      Källa: {item.source} · projekt {item.projectId} · schema {item.schemaVersion} · collector{' '}
                       {item.collectorId} · collectorversion okänd i rapporten
                     </p>
                     <p>

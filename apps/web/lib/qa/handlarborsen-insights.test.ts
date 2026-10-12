@@ -7,6 +7,7 @@ import {
 } from '@/lib/atlas/collectors/handlarborsen-marketplace'
 import {
   buildMarketplaceReport,
+  COMPLETENESS_LABELS,
   emptyReport,
   type MarketplaceReport,
 } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-report'
@@ -279,18 +280,79 @@ describe('pure Handlarbörsen evidence rules', () => {
     const r = report([row('2026-10-11'), row()])
     const markup = html(r)
     expect(markup).toContain('aria-labelledby="hb-atlas-evidence"')
-    expect(markup).toContain('Atlas – Underlag och förslag')
-    expect(markup).toContain('Regelbaserad analys – ej exekverat')
+    expect(markup).toContain('Atlas Intelligence')
+    expect(markup).toContain('Regelbaserad analys · Ej exekverat')
+    expect(markup).toContain('2 förslag att granska')
     expect(markup).toContain('Att granska')
     expect(markup).toContain('handlarborsen.marketplace')
     expect(markup).toContain('Snapshotreferens')
     expect(markup).toContain('collectorversion okänd')
     expect(markup).toContain(HANDLARBORSEN_INSIGHT_RULE_VERSION)
     expect(markup).toContain('2026-10-11T10:00:00.000Z')
-    expect(markup.match(/<summary>/g)).toHaveLength(3)
-    expect(markup).not.toMatch(/<button\b|<form\b|\bonClick\b|\b(?:Run|Publish|Kör|Publicera)\b/)
+    const disclosures = markup.match(/<details>[\s\S]*?<\/details>/g)!
+    expect(disclosures).toHaveLength(3)
+    expect(markup).not.toMatch(/<details\s+open|<button\b|<form\b|<a\b|\bonClick\b|\b(?:Run|Publish|Kör|Publicera|LLM|AI)\b/)
+    const escaped = (value: unknown) => renderToStaticMarkup(React.createElement('span', null, String(value))).slice(6, -7)
+    for (const insight of derive(r).insights) {
+      const detail = disclosures.find((item) => item.includes(`<code>${insight.rule}</code>`))!
+      expect(detail).toBeDefined()
+      expect(detail).toContain('<summary>Visa exakt evidens och proveniens</summary>')
+      expect(detail).toContain(insight.ruleVersion)
+      expect(detail).toContain('11/11 mått')
+      expect(detail).toContain(escaped(JSON.stringify(insight.quality.collection)))
+      expect(detail).toContain(derive(r).evaluatedAt)
+      if (insight.kind === 'proposal') expect(detail).toContain(escaped(insight.reviewReason))
+      for (const item of insight.evidence) {
+        expect(detail).toContain(`<code>${item.metricKey}</code>: <strong>${item.value ?? 'Okänt'}</strong>`)
+        for (const value of [item.observedAt, item.capturedAt, item.snapshotDate, item.source,
+          item.projectId, item.snapshotRef, item.collectorId, item.semanticKind,
+          item.availability, item.window.start, item.window.end]) {
+          expect(detail).toContain(escaped(value))
+        }
+        expect(detail).toContain(`schema ${item.schemaVersion}`)
+        expect(detail).toContain(COMPLETENESS_LABELS[item.completeness])
+        expect(detail).toContain(`täckning ${item.window.complete === null ? 'okänd' : 'punktobservation'}`)
+      }
+    }
+    const compact = markup.replace(/<details>[\s\S]*?<\/details>/g, '')
+    expect(compact).not.toContain('Snapshotreferens')
+    expect(compact).not.toContain(HANDLARBORSEN_INSIGHT_RULE_VERSION)
+    expect(compact).not.toContain('companies_registered_total')
+    expect(markup.indexOf('data-kind="proposal"')).toBeLessThan(markup.indexOf('data-kind="fact"'))
     const staleMarkup = html(r, new Date('2026-10-14T12:00:00Z'))
     expect(staleMarkup).toContain('Äldre än 26 h')
     expect(staleMarkup).not.toContain('Förslag · Att granska')
+    expect(staleMarkup).not.toContain('förslag att granska')
+    for (const block of derive(r, new Date('2026-10-14T12:00:00Z')).quality.blockedRules) {
+      expect(staleMarkup).toContain(block.rule)
+      expect(staleMarkup).toContain(escaped(block.reason))
+    }
+  })
+
+  it('keeps quality warnings and blocked reasons while counting only grounded proposals', () => {
+    for (const r of [
+      report(), // history gap warning beside two proposals
+      report([row('2026-10-11'), row('2026-10-12', { offers_last_24h: null })]),
+      report([row()], [...AUDIT, { status: 'error', ran_at: '2026-10-12T10:30:00Z', snapshot_date: '2026-10-12' }]),
+      report([row('2026-10-12', { companies_registered_total: 6, bids_last_24h: 1 })]),
+    ]) {
+      const analysis = derive(r)
+      const markup = html(r)
+      const count = analysis.insights.filter((insight) => insight.kind === 'proposal').length
+      if (count) expect(markup).toContain(`${count} förslag att granska`)
+      else expect(markup).not.toContain('förslag att granska')
+      expect(markup.match(/<details>/g)!.length).toBeLessThanOrEqual(3)
+      expect(markup).toContain('data-kind="quality"')
+      for (const reason of analysis.quality.reasons) expect(markup).toContain(reason)
+      for (const block of analysis.quality.blockedRules) expect(markup).toContain(block.reason)
+      if (analysis.quality.collection?.latestAttemptFailed) {
+        expect(markup).not.toContain('data-kind="proposal"')
+        expect(markup).not.toContain('data-kind="fact"')
+      }
+      if (analysis.quality.completeness === 'partial') {
+        expect(markup).toContain('<code>offers_last_24h</code>: <strong>Okänt</strong>')
+        expect(markup).toContain('Kunde inte beräknas hos Handlarbörsen')
+      }
+    }
   })
 })

@@ -197,40 +197,26 @@
 
 .orbHalo {
   position: relative;
-  display: grid;
-  place-items: center;
-  width: clamp(210px, 21vw, 305px);
+  width: clamp(275px, 29vw, 450px);
   aspect-ratio: 1;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 35% 22%, rgba(170, 251, 255, .45), transparent 34%),
-    radial-gradient(circle at 43% 50%, rgba(31, 109, 167, .64), transparent 64%),
-    conic-gradient(from 20deg, rgba(75, 212, 241, .75), rgba(11, 30, 75, .20), rgba(78, 211, 231, .76), rgba(2, 12, 36, .55), rgba(75, 212, 241, .75));
-  border: 1px solid rgba(174, 241, 253, .44);
-  box-shadow: 0 0 0 15px rgba(22, 160, 201, .025), 0 0 88px rgba(39, 185, 239, .20), inset 0 0 48px rgba(10, 24, 64, .92);
+  flex: none;
   animation: floatOrb 8s ease-in-out infinite;
+  filter: drop-shadow(0 0 38px rgba(36, 191, 230, .14));
 }
 
-.orbHalo::after {
-  content: "";
-  position: absolute;
-  inset: 17%;
-  border-radius: 50%;
-  background: radial-gradient(circle at 40% 35%, rgba(193, 248, 255, .65), rgba(48, 127, 185, .2) 24%, rgba(4, 13, 44, .90) 72%);
-  box-shadow: inset 0 0 25px #061125, 0 0 42px rgba(25, 149, 212, .27);
-  border: 1px solid rgba(190, 240, 251, .17);
-}
-
-.orbCore {
-  position: absolute;
-  inset: -13%;
-  border: 1px solid rgba(39, 174, 221, .13);
-  border-radius: 50%;
+/* Official approved Atlas orb, rather than a generated CSS placeholder.
+   Screen blending lets the image's near-black background dissolve into the
+   existing night-blue canvas without cutting off its energy trails. */
+.orbImage {
+  object-fit: contain;
+  mix-blend-mode: screen;
+  user-select: none;
+  pointer-events: none;
 }
 
 .orbLabel {
   position: absolute;
-  top: calc(50% + clamp(126px, 12vw, 185px));
+  top: calc(50% + clamp(145px, 14vw, 205px));
   color: #94e6f2;
   letter-spacing: .6em;
   font: 750 10px var(--font-geist-mono), monospace;

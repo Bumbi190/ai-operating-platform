@@ -3,6 +3,7 @@ import { buildHandlarborsenOverview } from '@/lib/atlas/project-analytics/handla
 import { KpiOverview, KpiOverviewNote } from './KpiOverview'
 import { HandlarborsenVisualPulse } from './HandlarborsenVisualPulse'
 import { HandlarborsenInsights } from './HandlarborsenInsights'
+import { HandlarborsenWorkflowDrafts } from './HandlarborsenWorkflowDrafts'
 import { HandlarborsenTrends } from './HandlarborsenTrends'
 import { HandlarborsenPosthogTraffic } from './HandlarborsenPosthogTraffic'
 import type { HandlarborsenTraffic } from '@/lib/atlas/project-analytics/handlarborsen-posthog-traffic'
@@ -38,6 +39,7 @@ export function HandlarborsenOverview({
           tone={model.tone}
         />
         {traffic && <HandlarborsenPosthogTraffic traffic={traffic} />}
+        <HandlarborsenWorkflowDrafts report={report} now={now} />
       </>
     )
   }
@@ -58,6 +60,7 @@ export function HandlarborsenOverview({
       <HandlarborsenTrends report={report} />
       <HandlarborsenVisualPulse report={report} reportHref={reportHref} />
       <HandlarborsenInsights report={report} now={now} />
+      <HandlarborsenWorkflowDrafts report={report} now={now} />
     </>
   )
 }

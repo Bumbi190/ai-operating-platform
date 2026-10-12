@@ -1,0 +1,126 @@
+.section {
+  --flow-muted: #a7bfd0;
+  --flow-accent: #83e3e4;
+  margin-top: 1rem;
+  padding: clamp(1rem, 1.9vw, 1.4rem);
+  border: 1px solid rgba(79, 179, 204, 0.23);
+  border-radius: 1rem;
+  background: radial-gradient(ellipse 56% 85% at 100% 0%, rgba(19, 112, 155, .12), transparent 82%), linear-gradient(145deg, #0a1d31, #051223 88%);
+  box-shadow: inset 0 1px rgba(255,255,255,.045), 0 16px 50px rgba(0,0,0,.11);
+  color: #effaff;
+  line-height: 1.55;
+  font-size: .84rem;
+  overflow-wrap: anywhere;
+}
+.section h2 {
+  margin: 0 0 .3rem;
+  font-size: clamp(1.15rem, 1.6vw, 1.4rem);
+  font-weight: 690;
+  letter-spacing: -.03em;
+}
+.section > p {
+  color: var(--flow-muted);
+  font-size: .78rem;
+  margin: .5rem 0 1rem;
+}
+.label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.85rem;
+  color: #a7efeb;
+  background: rgba(39, 143, 157, .13);
+  border: 1px solid rgba(88, 221, 224, .25);
+  padding: .25rem .7rem;
+  border-radius: 99px;
+  font-size: .73rem;
+  font-weight: 680;
+}
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 23rem), 1fr));
+  align-items: start;
+  gap: .8rem;
+}
+.card {
+  min-width: 0;
+  border: 1px solid rgba(104, 169, 195, .17);
+  border-radius: .85rem;
+  padding: clamp(.95rem, 1.25vw, 1.2rem);
+  background: linear-gradient(135deg, rgba(18, 49, 72, .78), rgba(7, 25, 42, .85));
+}
+.card h3 {
+  margin: 0 0 .45rem;
+  color: #f2fdff;
+  font-size: 1rem;
+  font-weight: 670;
+  letter-spacing: -.02em;
+}
+.card > p:not(.status) {
+  color: #bad4e0;
+  line-height: 1.55;
+  font-size: .79rem;
+}
+.status {
+  display: inline-flex;
+  align-items: center;
+  margin: .2rem 0 .65rem;
+  padding: .25rem .55rem;
+  border: 1px solid rgba(126, 192, 206, .16);
+  border-radius: .4rem;
+  background: rgba(15, 58, 78, .35);
+  color: var(--flow-accent);
+  font-size: .72rem;
+  font-weight: 660;
+}
+.card:has(ul[aria-label="Blockerande skäl"]) .status {
+  color: #f0ce8c;
+  border-color: rgba(232, 175, 90, .24);
+  background: rgba(144, 97, 36, .09);
+}
+.card ul[aria-label="Blockerande skäl"] {
+  color: #e9c99d;
+  padding-left: 1.15rem;
+  margin: .6rem 0;
+  font-size: .78rem;
+}
+.card ol, .card ul { padding-left: 1.2rem; }
+.card li + li { margin-top: .42rem; }
+.steps, .evidence { border-top: 1px solid rgba(105, 172, 205, .15); margin-top: .6rem; }
+.section summary {
+  cursor: pointer;
+  padding: .65rem .2rem;
+  min-height: 44px;
+  box-sizing: border-box;
+  font-size: .78rem;
+  color: var(--flow-accent);
+  font-weight: 640;
+}
+.section summary:hover { color: #b1fbf1; }
+.section summary:focus-visible { outline: 2px solid #86e4e8; outline-offset: 3px; border-radius: .3rem; }
+.steps ol { padding-bottom: .35rem; color: #d1e3ee; font-size: .79rem; }
+.evidence dl {
+  display: grid; grid-template-columns: auto minmax(0,1fr);
+  column-gap: .75rem; row-gap: .4rem;
+  margin: .35rem 0;
+  font-size: .72rem;
+}
+.evidence dt { color: #a2bdcf; font-weight: 640; }
+.evidence dd { margin: 0; color: #d4e8f0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.evidence pre {
+  max-height: 16rem;
+  padding: .65rem;
+  overflow: auto;
+  border: 1px solid rgba(106, 172, 207, .11);
+  border-radius: .4rem;
+  background: rgba(1, 12, 26, .55);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+  color: #bad6e4;
+  font-size: .68rem;
+}
+@media (max-width: 640px) {
+  .cards { grid-template-columns: 1fr; }
+  .evidence dl { grid-template-columns: 1fr; gap: .12rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .section *, .section *::before, .section *::after { animation: none !important; transition: none !important; }
+}

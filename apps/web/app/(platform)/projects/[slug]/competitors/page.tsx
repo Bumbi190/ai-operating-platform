@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { getProjectBySlug } from '@/lib/project/get-project'
 import { isHandlarborsenProject } from '@/lib/os/project-command-center'
-import { scanPublicSources } from '@/lib/atlas/project-analytics/handlarborsen-competitors-scan'
+import { loadCompetitorHistory } from '@/lib/atlas/project-analytics/handlarborsen-competitor-store'
 import { HandlarborsenCompetitors } from '@/components/platform/vnext/HandlarborsenCompetitors'
 
 export const dynamic = 'force-dynamic'
@@ -13,6 +13,7 @@ export default async function CompetitorsPage({ params, searchParams }: {
 }) {
   const project = await getProjectBySlug(params.slug)
   if (!project || !isHandlarborsenProject(project)) notFound()
-  const scan = searchParams?.scan === '1' ? await scanPublicSources() : null
-  return <HandlarborsenCompetitors scan={scan} />
+  const history = await loadCompetitorHistory()
+  const result = typeof searchParams?.result === 'string' ? searchParams.result : undefined
+  return <HandlarborsenCompetitors scan={null} history={history} result={result} />
 }

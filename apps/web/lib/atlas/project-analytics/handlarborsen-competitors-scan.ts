@@ -43,7 +43,7 @@ async function readPublicDocument(url: string, robots: boolean, fetcher: typeof 
   }
 }
 
-/** Called only by the authorized route's explicit scan=1 path. No persistence or historical comparison. */
+/** Called only by the authorized manual POST store. No persistence or historical comparison here. */
 export async function scanPublicSources(fetcher: typeof fetch = fetch): Promise<PublicScan> {
   const checked_at = new Date().toISOString()
   let allowed = false

@@ -63,6 +63,14 @@ describe('Omnira login design — behavior and accessibility contract', () => {
     expect(page).toContain('disabled={loading}')
   })
 
+  it('uses the approved original Atlas orb instead of the generic generated placeholder', () => {
+    expect(page).toContain('src="/atlas-orb-login.png"')
+    expect(page).toContain('className={styles.orbImage}')
+    expect(page).not.toContain('className={styles.orbCore}')
+    expect(css).toContain('mix-blend-mode: screen')
+    expect(readFileSync(resolve(__dirname, '../../public/atlas-orb-login.png')).byteLength).toBeGreaterThan(100_000)
+  })
+
   it('uses mobile-specific layout and reduced motion without changing global theme', () => {
     expect(css).toContain('@media (max-width: 800px)')
     expect(css).toContain('@media (max-width: 460px)')

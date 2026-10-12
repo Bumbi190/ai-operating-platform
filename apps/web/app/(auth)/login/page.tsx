@@ -96,7 +96,14 @@ function LoginForm() {
               <div className={styles.orbitTwo} />
               <div className={styles.orbitThree} />
               <div className={styles.orbHalo}>
-                <div className={styles.orbCore} />
+                <Image
+                  src="/atlas-orb-login.png"
+                  alt=""
+                  fill
+                  sizes="(max-width: 1100px) 260px, 380px"
+                  className={styles.orbImage}
+                  priority
+                />
               </div>
               <div className={styles.orbLabel}>A T L A S</div>
             </div>

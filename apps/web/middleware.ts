@@ -69,6 +69,36 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
+  // Collaborator containment: protect every legacy Atlas page/API until audited.
+  // Role is read from the authenticated Supabase session, never from a cookie claim.
+  if (user) {
+    const { data: membership, error: membershipError } = await (supabase as any)
+      .from('omnira_organization_memberships')
+      .select('role, revoked_at')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    // Before deployment of the new membership table, existing owner logins
+    // continue their previous behavior. Invites are default-disabled until then.
+    if (!membershipError && membership?.role === 'collaborator') {
+      const denied = !!membership.revoked_at
+      if (pathname.startsWith('/api') && (denied || pathname !== '/api/organization/projects')) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+      const allowedPage = !denied && (
+        pathname === '/organization' || pathname.startsWith('/auth/') ||
+        pathname === '/update-password' || pathname === '/forgot-password' ||
+        pathname === '/privacy' || pathname === '/terms'
+      )
+      if (!allowedPage && !pathname.startsWith('/api')) {
+        const url = request.nextUrl.clone()
+        if (denied) return new NextResponse('Access revoked', { status: 403 })
+        url.pathname = '/organization'
+        url.search = ''
+        return withUiGenerationCookie(NextResponse.redirect(url), requestedGeneration, request)
+      }
+    }
+  }
+
   const isAuthRoute    = pathname.startsWith('/login')
   const isApiRoute     = pathname.startsWith('/api')
   const isAuthRoute2   = pathname.startsWith('/auth/')

@@ -8,10 +8,10 @@ export type OrganizationRoleState =
   | { readonly active: false; readonly role: null }
 
 interface OrganizationRoleReader {
-  from(table: 'omnira_organization_memberships'): {
-    select(columns: 'user_id, role, revoked_at'): {
-      eq(column: 'user_id', id: string): {
-        maybeSingle(): Promise<{ data: { user_id: string; role: string; revoked_at: string | null } | null; error: unknown }>
+  from(table: string): {
+    select(columns: string): {
+      eq(column: string, id: string): {
+        maybeSingle(): Promise<{ data: unknown; error: unknown }>
       }
     }
   }
@@ -28,9 +28,11 @@ export async function resolveOrganizationRole(
       .select('user_id, role, revoked_at')
       .eq('user_id', authenticatedUserId)
       .maybeSingle()
-    if (error || !data || data.user_id !== authenticatedUserId || data.revoked_at !== null) return denied
-    if (data.role !== 'owner' && data.role !== 'collaborator') return denied
-    return { active: true, role: data.role }
+    if (error || !data || typeof data !== 'object' || Array.isArray(data)) return denied
+    const row = data as Record<string, unknown>
+    if (row.user_id !== authenticatedUserId || row.revoked_at !== null) return denied
+    if (row.role !== 'owner' && row.role !== 'collaborator') return denied
+    return { active: true, role: row.role }
   } catch {
     return denied
   }

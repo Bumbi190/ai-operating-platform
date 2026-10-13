@@ -64,3 +64,7 @@ Final contract derives the frozen insight from the authoritative original P0 rep
 ## Pending production activation (separate approval)
 
 P1 storage installation, actual live grants/triggers/ledger/hash and production readiness remain unverified. The migration stays enforced (113 canonical / 99 enforced, frozen 14 grandfathered / 30 legacy-only). Synthetic post-apply fixture 136 is not a production ledger observation. Preview builds may correctly fail until operator-approved storage activation; the guard is not weakened. Deploy with feature off; enabling Save needs separate storage/API readiness approval. No collection/cron or execution activation follows from this implementation.
+
+## Recovery verification — 2026-10-13
+
+Exact PR323 head 2dd5c0fd50fc18a203f1866a4b1cc5f21816b740 was verified afresh: 355 targeted tests PASS, TypeScript PASS, separate real P1 SQL gate PASS (51.05s). A fresh read-only whole-branch review against 22923263a09500ebb601a6c38a53e7f91ce808d8 identified no new Critical/Important/Minor findings; reviewer did not independently rerun tests. The separate local replay repair and its remaining inherited media_insights baseline blocker are described in [atlas-analytics-p1-replay-recovery-20261013.md](atlas-analytics-p1-replay-recovery-20261013.md). Full replay and production installation remain unverified. This update does not claim live storage, authenticated production API/browser success, or green deployment.

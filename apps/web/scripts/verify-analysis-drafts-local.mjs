@@ -4,6 +4,7 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import assert from 'node:assert/strict'
+import { orderReplayMigrations } from './analysis-replay-order.mjs'
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..'),
   repo = resolve(web, '../..')
 const migrationDir = resolve(web, 'supabase/migrations')
@@ -24,8 +25,9 @@ assert.ok(
   ),
   'P1 function missing',
 )
-const replay = process.argv.includes('--mode=canonical-replay')
-const name = replay ? 'omnira-atlas-p1-canonical-replay' : 'omnira-atlas-p1-local'
+const dependencyReplay = process.argv.includes('--mode=dependency-replay')
+const replay = dependencyReplay || process.argv.includes('--mode=canonical-replay')
+const name = dependencyReplay ? 'omnira-atlas-p1-dependency-replay' : replay ? 'omnira-atlas-p1-canonical-replay' : 'omnira-atlas-p1-local'
 const image = 'public.ecr.aws/supabase/postgres:17.11.0.004'
 const docker = (args, input) =>
   spawnSync('docker', args, { encoding: 'utf8', input, timeout: 60000, maxBuffer: 8 * 1024 * 1024 })
@@ -138,12 +140,29 @@ try {
     sql(
       "CREATE SCHEMA IF NOT EXISTS extensions; CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions; CREATE SCHEMA IF NOT EXISTS auth; CREATE TABLE IF NOT EXISTS auth.users(id uuid PRIMARY KEY); CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$; DO $$ BEGIN IF NOT EXISTS(SELECT FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon; END IF; IF NOT EXISTS(SELECT FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated; END IF; IF NOT EXISTS(SELECT FROM pg_roles WHERE rolname='service_role') THEN CREATE ROLE service_role BYPASSRLS; END IF; END $$;",
     )
+    // Supabase's cached PostgreSQL image has Auth, but Storage schema is installed by Storage API.
+    // Use exact upstream SQL bytes; preserve image roles with the upstream install_roles switch.
+    for (const [upstream, expected] of [
+      ['0002-storage-schema.sql','19562682ff1b77cda9ba096671b873e7e226b10f0b0564bd4823e6c1754393b6'],
+      ['0008-add-public-to-buckets.sql','1d881092aea62e83493f1a9c4cb4f101f3035a08d62be84a7e7970ee0c6f0f48'],
+    ]) {
+      const extracted=docker(['run','--rm','--pull=never','--network','none','--entrypoint','cat',
+        'public.ecr.aws/supabase/storage-api:v1.79.36','/app/migrations/tenant/'+upstream]);
+      assert.equal(extracted.status,0,'cached Storage API prerequisite unavailable: '+extracted.stderr);
+      const digest=createHash('sha256').update(extracted.stdout).digest('hex');
+      assert.equal(digest,expected,'unreviewed upstream Storage bootstrap: '+upstream);
+      console.log('UPSTREAM STORAGE '+upstream+' sha256='+digest);
+      sql("SET storage.install_roles='false';"+extracted.stdout);
+    }
+    const entries=readdirSync(migrationDir).filter(n=>n.endsWith('.sql')).map(name=>{
+      const bytes=reviewedBytes(resolve(migrationDir,name));
+      return {name,sha256:createHash('sha256').update(bytes).digest('hex')};
+    });
+    const ordered=dependencyReplay ? orderReplayMigrations(entries) : entries.sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0);
+    if(dependencyReplay) console.log('LOCAL REPLAY ORDER: hash-pinned media_tables before media_images; all canonical files retained');
     const files = [
       resolve(repo, 'packages/db/full_schema_run_in_supabase.sql'),
-      ...readdirSync(migrationDir)
-        .filter((n) => n.endsWith('.sql'))
-        .sort()
-        .map((n) => resolve(migrationDir, n)),
+      ...ordered.map(entry=>resolve(migrationDir,entry.name)),
     ]
     for (const file of files) {
       const bytes = reviewedBytes(file)
@@ -152,7 +171,7 @@ try {
       )
       sql(bytes.toString('utf8'))
     }
-    console.log('CANONICAL REPLAY PASS')
+    console.log(dependencyReplay ? 'DEPENDENCY REPLAY PASS' : 'CANONICAL REPLAY PASS')
     process.exitCode = 0
   } else {
     sql(readFileSync(resolve(web, 'lib/qa/fixtures/analysis-drafts-local-bootstrap.sql'), 'utf8'))

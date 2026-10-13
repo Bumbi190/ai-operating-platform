@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { formatDistanceToNow } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
 import { ProjectPauseToggle } from '@/components/platform/ProjectPauseToggle'
@@ -128,6 +129,7 @@ export function ProjectCommandCenterLoading({ name, color }: { name: string; col
 
 function Header({ model }: { model: ProjectCommandCenterModel }) {
   const { project, activity, links, approvals } = model
+  const hasCover = project.slug === 'handlarborsen'
   // The exact pending count the approvals read returned. It sits in the header so
   // review stays in view on a narrow screen, where the list itself stacks below
   // the workflows.
@@ -144,11 +146,26 @@ function Header({ model }: { model: ProjectCommandCenterModel }) {
   ]
 
   return (
-    <header className={styles.header}>
+    <header className={hasCover ? styles.coverHeader + ' ' + styles.header : styles.header}>
+      {hasCover && (
+        <div className={styles.coverBackdrop} aria-hidden="true">
+          <Image
+            src="/project-covers/handlarborsen-showroom-v1.png"
+            alt=""
+            fill
+            priority
+            sizes="(max-width: 768px) 100vw, 85vw"
+          />
+        </div>
+      )}
       <div className={styles.headerMain}>
         <p className={styles.kicker}>Projekt · Command Center</p>
         <div className={styles.identity}>
-          <span className={styles.swatch} style={{ backgroundColor: project.color }} aria-hidden />
+          {hasCover ? (
+            <Image className={styles.coverLogo} src="/project-rail/handlarborsen.png" alt="" width={64} height={64} />
+          ) : (
+            <span className={styles.swatch} style={{ backgroundColor: project.color }} aria-hidden />
+          )}
           <h1 className={styles.title}>{project.name}</h1>
           <span className={styles.slug}>{project.slug}</span>
         </div>

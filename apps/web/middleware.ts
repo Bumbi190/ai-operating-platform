@@ -77,8 +77,25 @@ export async function middleware(request: NextRequest) {
       .select('role, revoked_at')
       .eq('user_id', user.id)
       .maybeSingle()
-    // Before deployment of the new membership table, existing owner logins
-    // continue their previous behavior. Invites are default-disabled until then.
+    // Old owner sessions remain compatible while the new table is rolled out.
+    // Unknown new users must NEVER fall through into existing Atlas routes,
+    // including when the membership table is missing or temporarily unavailable.
+    if (membershipError || !membership || membership.revoked_at !== null && membership.role !== 'collaborator') {
+      const { data: owned, error: ownershipError } = await supabase.from('projects')
+        .select('id').eq('owner_id', user.id).limit(1)
+      if (ownershipError || !owned?.length) {
+        if (pathname.startsWith('/api'))
+          return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+        if (!pathname.startsWith('/auth/') && pathname !== '/login' &&
+            pathname !== '/update-password' && pathname !== '/forgot-password' &&
+            pathname !== '/organization' && pathname !== '/privacy' && pathname !== '/terms') {
+          const url = request.nextUrl.clone()
+          url.pathname = '/organization'
+          url.search = ''
+          return NextResponse.redirect(url)
+        }
+      }
+    }
     if (!membershipError && membership?.role === 'collaborator') {
       const denied = !!membership.revoked_at
       if (pathname.startsWith('/api') && (denied || pathname !== '/api/organization/projects')) {

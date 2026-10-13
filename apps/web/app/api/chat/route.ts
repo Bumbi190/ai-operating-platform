@@ -1133,6 +1133,8 @@ async function executeTool(
   }
 
   if (name === 'list_atlas_workflow_catalog') {
+    const operator = await resolvePlatformOperator()
+    if (!operator.ok) return { denied: 'platform_operator_required' }
     return listAtlasWorkflowCatalog()
   }
 

@@ -11,9 +11,9 @@ describe('Atlas workflow catalog chat integration', () => {
   })
 
   it('handles catalog reads separately from existing executable workflow actions', () => {
-    expect(route).toMatch(
-      /if \(name === 'list_atlas_workflow_catalog'\) \{\s*return listAtlasWorkflowCatalog\(\)\s*\}/,
-    )
+    expect(route).toContain("if (name === 'list_atlas_workflow_catalog')")
+    expect(route).toContain('const operator = await resolvePlatformOperator()')
+    expect(route).toContain("if (!operator.ok) return { denied: 'platform_operator_required' }")
     expect(route.indexOf("if (name === 'list_atlas_workflow_catalog')")).toBeLessThan(
       route.indexOf("if (name === 'list_workflows')"),
     )

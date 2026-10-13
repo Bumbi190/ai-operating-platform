@@ -48,4 +48,3 @@ using (
 
 comment on table public.project_viewer_memberships is
 'Project viewer grants registry only. Not sufficient to read project resources, use Atlas tools or perform writes.';
-

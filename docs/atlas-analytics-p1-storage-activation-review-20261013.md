@@ -42,4 +42,4 @@ These are prerequisite checks, not a claim that P1 has been installed or exercis
 
 Rollback of the feature is disabling Save and retaining immutable history. Do not delete analysis tables/history or restore the whole database as an automatic rollback. No backup/restore operation has been performed.
 
-**Current state: prepared for human scope review; storage installation is NOT authorized or performed.**
+**Updated state: André authorized storage-only installation on 2026-10-13 at 07:15 Europe/Stockholm. It was applied and verified; actual ledger version 20261013051724. Save enablement and application deployment remain separate, unperformed stages. See [production storage record](atlas-analytics-p1-production-storage-20261013.md).**

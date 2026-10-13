@@ -6,6 +6,7 @@ import { HandlarborsenVisualPulse } from './HandlarborsenVisualPulse'
 import { HandlarborsenInsights } from './HandlarborsenInsights'
 import { HandlarborsenTrends } from './HandlarborsenTrends'
 import { HandlarborsenPosthogTraffic } from './HandlarborsenPosthogTraffic'
+import { AnalysisDraftHistoryLink } from './AnalysisDraftHistoryLink'
 import type { HandlarborsenTraffic } from '@/lib/atlas/project-analytics/handlarborsen-posthog-traffic'
 
 /**
@@ -44,11 +45,7 @@ export function HandlarborsenOverview({
       <>
         <KpiOverviewNote {...common} title={model.title} text={model.text} tone={model.tone} />
         {traffic && <HandlarborsenPosthogTraffic traffic={traffic} />}
-        {projectSlug && (
-          <p>
-            <a href={'/projects/' + encodeURIComponent(projectSlug) + '/atlas/analysis-drafts'}>Sparade analysutkast</a>
-          </p>
-        )}
+        {projectSlug && <AnalysisDraftHistoryLink projectSlug={projectSlug} />}
       </>
     )
   }
@@ -74,11 +71,7 @@ export function HandlarborsenOverview({
         projectSlug={projectSlug}
         analysisSelectors={analysisSelectors}
       />
-      {projectSlug && (
-        <p>
-          <a href={'/projects/' + encodeURIComponent(projectSlug) + '/atlas/analysis-drafts'}>Sparade analysutkast</a>
-        </p>
-      )}
+      {projectSlug && <AnalysisDraftHistoryLink projectSlug={projectSlug} />}
     </>
   )
 }

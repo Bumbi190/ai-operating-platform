@@ -942,3 +942,42 @@ html[data-motion='reduce'] .runState[data-tone='live']::before {
   .field[data-owner-brief='true'] .actions { gap: .35rem; }
   .field[data-owner-brief='true'] .action { font-size: .68rem; padding: .45rem .6rem; }
 }
+
+/* Decorative cover for the Handlarbörsen project in Omnira. */
+.coverHeader {
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 21rem;
+  padding: clamp(1.25rem, 3vw, 2.25rem);
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.22);
+  border-radius: 1.25rem;
+  background: #07121f;
+  box-shadow: 0 1.25rem 3rem rgb(0 0 0 / 0.18);
+}
+.coverBackdrop { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.coverBackdrop img { object-fit: cover; object-position: 60% 50%; }
+.coverBackdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(0deg, rgb(4 12 24 / 0.94), transparent 62%),
+    linear-gradient(90deg, rgb(4 12 24 / 0.95), rgb(4 12 24 / 0.65) 45%, rgb(4 12 24 / 0.08) 80%);
+}
+.coverHeader .headerMain { align-self: center; }
+.coverHeader .identity { align-items: center; gap: 0.75rem; }
+.coverHeader .title { font-size: clamp(1.75rem, 3vw, 2.75rem); color: #f1f7fd; }
+.coverHeader .kicker { color: #a8dce7; }
+.coverHeader .slug { color: #b7cada; }
+.coverHeader .facts { margin-top: 1.5rem; }
+.coverHeader .fact dt { color: #acd0de; }
+.coverHeader .actions { align-self: end; }
+.coverHeader .action { background: rgb(5 16 29 / 0.75); color: #d8e8f4; }
+.coverLogo { width: 4rem; height: 4rem; object-fit: contain; flex: none; }
+@media (max-width: 640px) {
+  .coverHeader { min-height: 23rem; }
+  .coverBackdrop img { object-position: 58% 50%; }
+  .coverBackdrop::after { background: linear-gradient(90deg, rgb(4 12 24 / 0.88), rgb(4 12 24 / 0.3)), linear-gradient(0deg, #07121f, transparent); }
+  .coverHeader .identity { gap: 0.5rem; }
+  .coverLogo { width: 3rem; height: 3rem; }
+}

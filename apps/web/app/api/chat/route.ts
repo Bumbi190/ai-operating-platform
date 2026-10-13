@@ -40,6 +40,7 @@ import { resolvePlatformOperator } from '@/lib/auth/platform-operator'
 import { resolveOwnedProjectId } from '@/lib/atlas/project-resolution'
 import { executeLegacyDelegate } from '@/lib/atlas/legacy-delegate'
 import { validateWorkflowDraft, type WorkflowDraft } from '@/lib/atlas/workflow-authoring'
+import { listAtlasWorkflowCatalog } from '@/lib/atlas/workflow-catalog'
 import type { Json } from '@/lib/supabase/database.types'
 import { isViewAwarenessEnabled, normalizeView, renderViewBlock, type ClientViewEnvelope } from '@/lib/atlas/view-context'
 import { fetchRecords } from '@/lib/atlas/record-access'
@@ -322,6 +323,15 @@ const TOOLS: Anthropic.Tool[] = [
           description: 'Exakt IANA-tidszon, t.ex. "America/New_York". Föredras när den är känd; slår location.',
         },
       },
+    },
+  },
+  {
+    name: 'list_atlas_workflow_catalog',
+    description: 'Visa Omniras tekniska katalog över deklarerade workflow-åtgärder och deras säkerhetsklass. Enbart läsning. Visar INTE vilka flöden som är aktiva, godkända, driftsatta eller kan köras just nu. Kör aldrig en åtgärd från katalogen.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
     },
   },
   {
@@ -1120,6 +1130,10 @@ async function executeTool(
     const { location, timezone } = input as { location?: string; timezone?: string }
     const result: TimeLookup = currentTimeFor({ location, timezone }, new Date())
     return result
+  }
+
+  if (name === 'list_atlas_workflow_catalog') {
+    return listAtlasWorkflowCatalog()
   }
 
   if (name === 'list_workflows') {

@@ -1,0 +1,311 @@
+/* Handlarbörsen Marknadspuls — a scoped, read-only business picture.
+   Responsive/rem-based, text accompanies every status, no horizontal scrolling. */
+
+.surface {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem 1.375rem 1.375rem;
+  border-radius: 1rem;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.2);
+  background:
+    radial-gradient(
+      ellipse 55% 80% at 100% 0%,
+      rgb(var(--omnira-cyan-rgb) / 0.07),
+      transparent 75%
+    ),
+    linear-gradient(155deg, rgb(8 22 40 / 0.75), rgb(4 12 24 / 0.65));
+  box-shadow: inset 0 1px 0 var(--omnira-glass-3);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.heading {
+  min-width: 0;
+}
+.kicker {
+  margin: 0;
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  color: rgb(var(--omnira-cyan-soft-rgb) / 0.78);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0.3rem 0 0;
+  font-size: clamp(1.2rem, 2.4vw, 1.65rem);
+  line-height: 1.25;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+
+.intro {
+  margin: 0.4rem 0 0;
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  color: rgb(216 230 241 / 0.73);
+}
+
+.source {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex: none;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid rgb(var(--omnira-teal-rgb) / 0.22);
+  color: rgb(var(--omnira-teal-rgb) / 0.96);
+  background: rgb(var(--omnira-teal-rgb) / 0.05);
+  border-radius: 999px;
+}
+.source[data-quality='partial'] {
+  border-color: rgb(251 191 36 / 0.28);
+  background: rgb(251 191 36 / 0.05);
+  color: var(--omnira-amber, #fbbf24);
+}
+
+.stages {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stage {
+  --stage-rgb: var(--omnira-cyan-rgb);
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 1rem;
+  border: 1px solid rgb(var(--stage-rgb) / 0.23);
+  border-radius: 0.875rem;
+  background:
+    radial-gradient(
+      ellipse at 0% 0%,
+      rgb(var(--stage-rgb) / 0.12),
+      transparent 70%
+    ),
+    rgb(255 255 255 / 0.025);
+}
+
+.stage[data-stage='inventory'] {
+  --stage-rgb: var(--omnira-teal-rgb);
+}
+.stage[data-stage='trading'] {
+  --stage-rgb: var(--omnira-cyan-soft-rgb);
+}
+
+.stage:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  right: -0.85rem;
+  top: 50%;
+  width: 0.85rem;
+  border-top: 1px dashed rgb(var(--omnira-cyan-rgb) / 0.3);
+  pointer-events: none;
+}
+
+.stageHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.stageIndex {
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
+  color: rgb(var(--stage-rgb) / 0.85);
+}
+.stageIcon {
+  color: rgb(var(--stage-rgb) / 0.86);
+}
+.stageTitle {
+  margin: 0.125rem 0 0;
+  font-size: 1.0625rem;
+  font-weight: 650;
+  line-height: 1.3;
+}
+.stageDescription {
+  margin: 0;
+  font-size: 0.75rem;
+  color: rgb(216 230 241 / 0.64);
+  line-height: 1.45;
+}
+
+.valueGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-top: auto;
+  padding-top: 0.85rem;
+}
+
+.valueItem {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgb(var(--stage-rgb) / 0.17);
+}
+.value {
+  color: hsl(var(--foreground));
+  font-size: clamp(1.5rem, 2.35vw, 2rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.valueItem[data-unknown='true'] .value {
+  font-size: 1.125rem;
+  color: var(--omnira-amber, #fbbf24);
+}
+.valueLabel {
+  font-size: 0.71875rem;
+  line-height: 1.4;
+  color: rgb(216 230 241 / 0.74);
+}
+.reason {
+  font-size: 0.6875rem;
+  color: var(--omnira-amber, #fbbf24);
+  line-height: 1.45;
+}
+
+.boundary {
+  margin: 0;
+  font-size: 0.71875rem;
+  line-height: 1.55;
+  color: rgb(216 230 241 / 0.67);
+}
+
+.reportLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  align-self: flex-start;
+  font-size: 0.8125rem;
+  color: rgb(var(--omnira-cyan-soft-rgb) / 0.92);
+  text-decoration: none;
+}
+.reportLink:hover,
+.reportLink:focus-visible {
+  text-decoration: underline;
+}
+
+@media (max-width: 48rem) {
+  .stages {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+  .stage:not(:last-child)::after {
+    top: auto;
+    bottom: -0.75rem;
+    left: 1.625rem;
+    width: 0;
+    height: 0.75rem;
+    border-top: 0;
+    border-left: 1px dashed rgb(var(--omnira-cyan-rgb) / 0.3);
+  }
+}
+
+@media (max-width: 40rem) {
+  .surface {
+    padding: 1rem 0.875rem 1.125rem;
+  }
+  .source {
+    flex: 1 1 auto;
+    width: fit-content;
+  }
+  .value {
+    font-size: 1.5rem;
+  }
+}
+
+/* Secondary status summary follows the primary KPI and chart surfaces. */
+.surface { border-color: rgb(var(--omnira-cyan-rgb) / 0.12); padding: clamp(1rem, 2vw, 1.75rem); gap: 1.4rem; }
+.disclosure { border-block: 1px solid rgb(var(--omnira-cyan-rgb) / 0.14); }
+.disclosure summary { cursor: pointer; min-height: 44px; padding: 1rem 0; font-size: 0.9375rem; color: #c9eff5; }
+.disclosure summary span { margin-left: 0.75rem; color: #9cb6c8; font-size: 0.8125rem; }
+.disclosure summary:focus-visible { outline: 2px solid #67e8f9; outline-offset: 3px; border-radius: 4px; }
+.disclosure .boundary { padding: 1rem 0 1.25rem; }
+@media (max-width: 40rem) { .disclosure summary span { display: block; margin: 0.4rem 0 0 1rem; } }
+
+/* Marknadspuls v2 — every visible number comes from the same verified report. */
+.surface {
+  padding: clamp(1.15rem,1.7vw,1.9rem);
+  border-radius: 1.15rem;
+  border-color: rgb(var(--omnira-cyan-rgb) / .22);
+  background:
+    radial-gradient(ellipse 38% 100% at 0% 50%,rgba(25,119,157,.1),transparent 88%),
+    linear-gradient(132deg,#081d2e,#031020 72%);
+  box-shadow: inset 0 1px rgba(235,253,255,.045), 0 18px 55px rgba(0,0,0,.11);
+}
+.surface::before {
+  content: ''; height: 1px; position: absolute; inset: 0 28% auto;
+  background:linear-gradient(90deg,transparent,rgba(47,214,238,.27),transparent);pointer-events:none;
+}
+.title{font-size:clamp(1.4rem,2vw,1.9rem);letter-spacing:-.04em}
+.header{align-items:center;padding-bottom:.85rem;border-bottom:1px solid rgba(101,168,197,.13)}
+.contentGrid {display:grid;grid-template-columns:minmax(0,1fr);gap:clamp(.85rem,1.35vw,1.5rem);align-items:stretch}
+.pulseColumn{min-width:0;display:flex;flex-direction:column;gap:.9rem}
+.pulseHighlights {
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.55rem;
+  position:relative;padding:1.05rem .9rem;
+  border:1px solid rgba(59,168,201,.15);border-radius:.9rem;
+  background:
+   radial-gradient(ellipse at 20% 80%,rgba(5,167,202,.13),transparent 65%),
+   repeating-linear-gradient(0deg,transparent 0 25px,rgba(62,176,211,.035) 26px),
+   linear-gradient(160deg,rgba(9,40,57,.72),rgba(3,20,36,.82));
+}
+.pulseHighlights::before{
+  content:'';position:absolute;inset:0;pointer-events:none;opacity:.38;
+  background:radial-gradient(ellipse at 10% 55%,rgba(7,214,243,.17),transparent 40%);
+}
+.highlightCard{
+  position:relative;min-width:0;display:flex;align-items:flex-start;gap:.55rem;
+  padding:.75rem;border-radius:.76rem;border:1px solid rgba(86,171,206,.16);
+  background:linear-gradient(145deg,rgba(20,60,82,.78),rgba(5,27,45,.87));
+}
+.highlightCard[data-stage='inventory'] .highlightIcon{color:#72b8f9}
+.highlightCard[data-stage='trading'] .highlightIcon{color:#b4b7ff}
+.highlightIcon{flex:none;width:2.2rem;height:2.2rem;display:grid;place-items:center;border-radius:.58rem;color:#63dfdc;background:rgba(21,164,210,.13)}
+.highlightBody{min-width:0;display:flex;flex-direction:column;gap:.2rem}
+.highlightBody strong{font-size:.79rem;color:#dff6ff}
+.highlightValue{font-size:clamp(1.35rem,1.7vw,1.75rem);font-variant-numeric:tabular-nums;font-weight:740;line-height:1.15;color:#f4ffff}
+.highlightBody small{font-size:.67rem;line-height:1.38;color:#9bb9cb}
+.disclosure { border:0; }
+.disclosure summary {
+  display:inline-flex;align-items:center;min-height:2.6rem;gap:.5rem;
+  padding:.52rem .8rem;border:1px solid rgba(93,188,210,.22);border-radius:.65rem;
+  background:rgba(10,39,56,.74);color:#8fe2ed;font-size:.79rem;font-weight:600;
+}
+.disclosure summary span{margin:0;color:#a1b8c9;font-size:.72rem;font-weight:400}
+.disclosure[open] {border-top:1px solid rgba(83,175,196,.17);padding-top:.7rem}
+.disclosure .stages{margin:1rem 0 0}
+.reportLink {min-height:2rem;align-items:center;margin-top:0;font-weight:640}
+@media(max-width:88rem){.contentGrid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:52rem){
+  .pulseHighlights{grid-template-columns:minmax(0,1fr);padding:.7rem}
+  .highlightCard{align-items:center}
+  .highlightBody{flex-direction:row;align-items:center;flex-wrap:wrap;gap:.45rem}
+  .highlightBody small{width:100%}
+}
+@media(prefers-reduced-motion:reduce){.surface *, .surface *::before, .surface *::after{animation:none!important;transition:none!important}}

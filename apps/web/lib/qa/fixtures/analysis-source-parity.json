@@ -1,0 +1,1325 @@
+[
+  {
+    "name": "complete",
+    "source": {
+      "schemaVersion": 1,
+      "reportContractVersion": "handlarborsen-marketplace-report-1",
+      "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+      "slug": "handlarborsen",
+      "auditReadable": true,
+      "semantics": [
+        {
+          "key": "companies_registered_total",
+          "label": "Registrerade företag",
+          "group": "Företag",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "companies_verified_total",
+          "label": "Verifierade företag",
+          "group": "Företag",
+          "kind": "total",
+          "populationCaveat": "population_unverified",
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_published_active",
+          "label": "Publicerade fordon",
+          "group": "Fordon",
+          "kind": "current",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_reserved",
+          "label": "Reserverade fordon",
+          "group": "Fordon",
+          "kind": "current",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_published_last_24h",
+          "label": "Nya fordon senaste 24 h",
+          "group": "Fordon",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "bids_total",
+          "label": "Bud totalt",
+          "group": "Bud och intresse",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "bids_last_24h",
+          "label": "Bud senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "interests_last_24h",
+          "label": "Intresseanmälningar senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "offers_last_24h",
+          "label": "Erbjudanden senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "deals_completed_total",
+          "label": "Slutförda affärer totalt",
+          "group": "Affärer",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "deals_completed_last_24h",
+          "label": "Slutförda affärer senaste 24 h",
+          "group": "Affärer",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        }
+      ],
+      "snapshots": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "project_id": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+          "snapshot_date": "2026-10-12",
+          "observed_at": "2026-10-12T10:00:00.123456Z",
+          "captured_at": "2026-10-12T10:01:00.654321Z",
+          "schema_version": 1,
+          "window_hours": 24,
+          "completeness": "complete",
+          "unavailable": {},
+          "companies_registered_total": "10",
+          "companies_verified_total": "6",
+          "vehicles_published_active": "0",
+          "vehicles_reserved": "0",
+          "vehicles_published_last_24h": "0",
+          "bids_total": "2",
+          "bids_last_24h": "0",
+          "interests_last_24h": "0",
+          "offers_last_24h": "0",
+          "deals_completed_total": "0",
+          "deals_completed_last_24h": "0"
+        }
+      ],
+      "runs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "project_id": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+          "collector_id": "handlarborsen.marketplace",
+          "status": "ok",
+          "ran_at": "2026-10-12T10:01:00.123456Z",
+          "snapshot_date": "2026-10-12",
+          "storage_outcome": "inserted"
+        }
+      ]
+    },
+    "encoding": "[1,\"68616e646c6172626f7273656e2d6d61726b6574706c6163652d7265706f72742d31\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"68616e646c6172626f7273656e\",true,[[\"636f6d70616e6965735f726567697374657265645f746f74616c\",\"5265676973747265726164652066c3b67265746167\",\"46c3b67265746167\",\"746f74616c\",null,null,null],[\"636f6d70616e6965735f76657269666965645f746f74616c\",\"56657269666965726164652066c3b67265746167\",\"46c3b67265746167\",\"746f74616c\",\"706f70756c6174696f6e5f756e7665726966696564\",null,null],[\"76656869636c65735f7075626c69736865645f616374697665\",\"5075626c6963657261646520666f72646f6e\",\"466f72646f6e\",\"63757272656e74\",null,null,null],[\"76656869636c65735f7265736572766564\",\"526573657276657261646520666f72646f6e\",\"466f72646f6e\",\"63757272656e74\",null,null,null],[\"76656869636c65735f7075626c69736865645f6c6173745f323468\",\"4e796120666f72646f6e2073656e617374652032342068\",\"466f72646f6e\",\"77696e646f77323468\",null,null,null],[\"626964735f746f74616c\",\"42756420746f74616c74\",\"427564206f636820696e747265737365\",\"746f74616c\",null,null,null],[\"626964735f6c6173745f323468\",\"4275642073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"696e746572657374735f6c6173745f323468\",\"496e747265737365616e6dc3a46c6e696e6761722073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"6f66666572735f6c6173745f323468\",\"4572626a7564616e64656e2073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"6465616c735f636f6d706c657465645f746f74616c\",\"536c757466c3b672646120616666c3a472657220746f74616c74\",\"416666c3a4726572\",\"746f74616c\",null,null,null],[\"6465616c735f636f6d706c657465645f6c6173745f323468\",\"536c757466c3b672646120616666c3a47265722073656e617374652032342068\",\"416666c3a4726572\",\"77696e646f77323468\",null,null,null]],[[\"30303030303030302d303030302d343030302d383030302d303030303030303030303031\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"323032362d31302d3132\",\"323032362d31302d31325431303a30303a30302e3132333435365a\",\"323032362d31302d31325431303a30313a30302e3635343332315a\",1,24,\"636f6d706c657465\",\"3130\",null,\"36\",null,\"30\",null,\"30\",null,\"30\",null,\"32\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null]],[[\"30303030303030302d303030302d343030302d383030302d303030303030303030303032\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"68616e646c6172626f7273656e2e6d61726b6574706c616365\",\"6f6b\",\"323032362d31302d31325431303a30313a30302e3132333435365a\",\"323032362d31302d3132\",\"696e736572746564\"]]]",
+    "hash": "51fd21784da0976ccf3fea64c9714c09e482f642de84857e0dab4b39b893db12"
+  },
+  {
+    "name": "partial",
+    "source": {
+      "schemaVersion": 1,
+      "reportContractVersion": "handlarborsen-marketplace-report-1",
+      "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+      "slug": "handlarborsen",
+      "auditReadable": true,
+      "semantics": [
+        {
+          "key": "companies_registered_total",
+          "label": "Registrerade företag",
+          "group": "Företag",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "companies_verified_total",
+          "label": "Verifierade företag",
+          "group": "Företag",
+          "kind": "total",
+          "populationCaveat": "population_unverified",
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_published_active",
+          "label": "Publicerade fordon",
+          "group": "Fordon",
+          "kind": "current",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_reserved",
+          "label": "Reserverade fordon",
+          "group": "Fordon",
+          "kind": "current",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_published_last_24h",
+          "label": "Nya fordon senaste 24 h",
+          "group": "Fordon",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "bids_total",
+          "label": "Bud totalt",
+          "group": "Bud och intresse",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "bids_last_24h",
+          "label": "Bud senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "interests_last_24h",
+          "label": "Intresseanmälningar senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "offers_last_24h",
+          "label": "Erbjudanden senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "deals_completed_total",
+          "label": "Slutförda affärer totalt",
+          "group": "Affärer",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "deals_completed_last_24h",
+          "label": "Slutförda affärer senaste 24 h",
+          "group": "Affärer",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        }
+      ],
+      "snapshots": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "project_id": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+          "snapshot_date": "2026-10-12",
+          "observed_at": "2026-10-12T10:00:00.123456Z",
+          "captured_at": "2026-10-12T10:01:00.654321Z",
+          "schema_version": 1,
+          "window_hours": 24,
+          "completeness": "partial",
+          "unavailable": {
+            "vehicles_reserved": "query_failed"
+          },
+          "companies_registered_total": "10",
+          "companies_verified_total": "6",
+          "vehicles_published_active": "0",
+          "vehicles_reserved": null,
+          "vehicles_published_last_24h": "0",
+          "bids_total": "2",
+          "bids_last_24h": "0",
+          "interests_last_24h": "0",
+          "offers_last_24h": "0",
+          "deals_completed_total": "0",
+          "deals_completed_last_24h": "0"
+        }
+      ],
+      "runs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "project_id": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+          "collector_id": "handlarborsen.marketplace",
+          "status": "ok",
+          "ran_at": "2026-10-12T10:01:00.123456Z",
+          "snapshot_date": "2026-10-12",
+          "storage_outcome": "inserted"
+        }
+      ]
+    },
+    "encoding": "[1,\"68616e646c6172626f7273656e2d6d61726b6574706c6163652d7265706f72742d31\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"68616e646c6172626f7273656e\",true,[[\"636f6d70616e6965735f726567697374657265645f746f74616c\",\"5265676973747265726164652066c3b67265746167\",\"46c3b67265746167\",\"746f74616c\",null,null,null],[\"636f6d70616e6965735f76657269666965645f746f74616c\",\"56657269666965726164652066c3b67265746167\",\"46c3b67265746167\",\"746f74616c\",\"706f70756c6174696f6e5f756e7665726966696564\",null,null],[\"76656869636c65735f7075626c69736865645f616374697665\",\"5075626c6963657261646520666f72646f6e\",\"466f72646f6e\",\"63757272656e74\",null,null,null],[\"76656869636c65735f7265736572766564\",\"526573657276657261646520666f72646f6e\",\"466f72646f6e\",\"63757272656e74\",null,null,null],[\"76656869636c65735f7075626c69736865645f6c6173745f323468\",\"4e796120666f72646f6e2073656e617374652032342068\",\"466f72646f6e\",\"77696e646f77323468\",null,null,null],[\"626964735f746f74616c\",\"42756420746f74616c74\",\"427564206f636820696e747265737365\",\"746f74616c\",null,null,null],[\"626964735f6c6173745f323468\",\"4275642073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"696e746572657374735f6c6173745f323468\",\"496e747265737365616e6dc3a46c6e696e6761722073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"6f66666572735f6c6173745f323468\",\"4572626a7564616e64656e2073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"6465616c735f636f6d706c657465645f746f74616c\",\"536c757466c3b672646120616666c3a472657220746f74616c74\",\"416666c3a4726572\",\"746f74616c\",null,null,null],[\"6465616c735f636f6d706c657465645f6c6173745f323468\",\"536c757466c3b672646120616666c3a47265722073656e617374652032342068\",\"416666c3a4726572\",\"77696e646f77323468\",null,null,null]],[[\"30303030303030302d303030302d343030302d383030302d303030303030303030303031\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"323032362d31302d3132\",\"323032362d31302d31325431303a30303a30302e3132333435365a\",\"323032362d31302d31325431303a30313a30302e3635343332315a\",1,24,\"7061727469616c\",\"3130\",null,\"36\",null,\"30\",null,null,\"71756572795f6661696c6564\",\"30\",null,\"32\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null]],[[\"30303030303030302d303030302d343030302d383030302d303030303030303030303032\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"68616e646c6172626f7273656e2e6d61726b6574706c616365\",\"6f6b\",\"323032362d31302d31325431303a30313a30302e3132333435365a\",\"323032362d31302d3132\",\"696e736572746564\"]]]",
+    "hash": "b91cf8f05678854f04ef6929714c0caa24be8e18932725ab777e81b63247b8a3"
+  },
+  {
+    "name": "zero",
+    "source": {
+      "schemaVersion": 1,
+      "reportContractVersion": "handlarborsen-marketplace-report-1",
+      "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+      "slug": "handlarborsen",
+      "auditReadable": true,
+      "semantics": [
+        {
+          "key": "companies_registered_total",
+          "label": "Registrerade företag",
+          "group": "Företag",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "companies_verified_total",
+          "label": "Verifierade företag",
+          "group": "Företag",
+          "kind": "total",
+          "populationCaveat": "population_unverified",
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_published_active",
+          "label": "Publicerade fordon",
+          "group": "Fordon",
+          "kind": "current",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_reserved",
+          "label": "Reserverade fordon",
+          "group": "Fordon",
+          "kind": "current",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_published_last_24h",
+          "label": "Nya fordon senaste 24 h",
+          "group": "Fordon",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "bids_total",
+          "label": "Bud totalt",
+          "group": "Bud och intresse",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "bids_last_24h",
+          "label": "Bud senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "interests_last_24h",
+          "label": "Intresseanmälningar senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "offers_last_24h",
+          "label": "Erbjudanden senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "deals_completed_total",
+          "label": "Slutförda affärer totalt",
+          "group": "Affärer",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "deals_completed_last_24h",
+          "label": "Slutförda affärer senaste 24 h",
+          "group": "Affärer",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        }
+      ],
+      "snapshots": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "project_id": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+          "snapshot_date": "2026-10-12",
+          "observed_at": "2026-10-12T10:00:00.123456Z",
+          "captured_at": "2026-10-12T10:01:00.654321Z",
+          "schema_version": 1,
+          "window_hours": 24,
+          "completeness": "complete",
+          "unavailable": {},
+          "companies_registered_total": "10",
+          "companies_verified_total": "6",
+          "vehicles_published_active": "0",
+          "vehicles_reserved": "0",
+          "vehicles_published_last_24h": "0",
+          "bids_total": "0",
+          "bids_last_24h": "0",
+          "interests_last_24h": "0",
+          "offers_last_24h": "0",
+          "deals_completed_total": "0",
+          "deals_completed_last_24h": "0"
+        }
+      ],
+      "runs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "project_id": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+          "collector_id": "handlarborsen.marketplace",
+          "status": "ok",
+          "ran_at": "2026-10-12T10:01:00.123456Z",
+          "snapshot_date": "2026-10-12",
+          "storage_outcome": "inserted"
+        }
+      ]
+    },
+    "encoding": "[1,\"68616e646c6172626f7273656e2d6d61726b6574706c6163652d7265706f72742d31\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"68616e646c6172626f7273656e\",true,[[\"636f6d70616e6965735f726567697374657265645f746f74616c\",\"5265676973747265726164652066c3b67265746167\",\"46c3b67265746167\",\"746f74616c\",null,null,null],[\"636f6d70616e6965735f76657269666965645f746f74616c\",\"56657269666965726164652066c3b67265746167\",\"46c3b67265746167\",\"746f74616c\",\"706f70756c6174696f6e5f756e7665726966696564\",null,null],[\"76656869636c65735f7075626c69736865645f616374697665\",\"5075626c6963657261646520666f72646f6e\",\"466f72646f6e\",\"63757272656e74\",null,null,null],[\"76656869636c65735f7265736572766564\",\"526573657276657261646520666f72646f6e\",\"466f72646f6e\",\"63757272656e74\",null,null,null],[\"76656869636c65735f7075626c69736865645f6c6173745f323468\",\"4e796120666f72646f6e2073656e617374652032342068\",\"466f72646f6e\",\"77696e646f77323468\",null,null,null],[\"626964735f746f74616c\",\"42756420746f74616c74\",\"427564206f636820696e747265737365\",\"746f74616c\",null,null,null],[\"626964735f6c6173745f323468\",\"4275642073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"696e746572657374735f6c6173745f323468\",\"496e747265737365616e6dc3a46c6e696e6761722073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"6f66666572735f6c6173745f323468\",\"4572626a7564616e64656e2073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"6465616c735f636f6d706c657465645f746f74616c\",\"536c757466c3b672646120616666c3a472657220746f74616c74\",\"416666c3a4726572\",\"746f74616c\",null,null,null],[\"6465616c735f636f6d706c657465645f6c6173745f323468\",\"536c757466c3b672646120616666c3a47265722073656e617374652032342068\",\"416666c3a4726572\",\"77696e646f77323468\",null,null,null]],[[\"30303030303030302d303030302d343030302d383030302d303030303030303030303031\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"323032362d31302d3132\",\"323032362d31302d31325431303a30303a30302e3132333435365a\",\"323032362d31302d31325431303a30313a30302e3635343332315a\",1,24,\"636f6d706c657465\",\"3130\",null,\"36\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null]],[[\"30303030303030302d303030302d343030302d383030302d303030303030303030303032\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"68616e646c6172626f7273656e2e6d61726b6574706c616365\",\"6f6b\",\"323032362d31302d31325431303a30313a30302e3132333435365a\",\"323032362d31302d3132\",\"696e736572746564\"]]]",
+    "hash": "122a75de934d86625e6e4537182b9433d1112de57676023d7156e343576f1679"
+  },
+  {
+    "name": "unicode",
+    "source": {
+      "schemaVersion": 1,
+      "reportContractVersion": "handlarborsen-marketplace-report-1",
+      "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+      "slug": "handlarborsen",
+      "auditReadable": true,
+      "semantics": [
+        {
+          "key": "companies_registered_total",
+          "label": "Registrerade företag",
+          "group": "Företag",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "companies_verified_total",
+          "label": "Verifierade företag",
+          "group": "Företag",
+          "kind": "total",
+          "populationCaveat": "population_unverified",
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_published_active",
+          "label": "Publicerade fordon",
+          "group": "Fordon",
+          "kind": "current",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_reserved",
+          "label": "Reserverade fordon",
+          "group": "Fordon",
+          "kind": "current",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_published_last_24h",
+          "label": "Nya fordon senaste 24 h",
+          "group": "Fordon",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "bids_total",
+          "label": "Bud totalt",
+          "group": "Bud och intresse",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "bids_last_24h",
+          "label": "Bud senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "interests_last_24h",
+          "label": "Intresseanmälningar senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "offers_last_24h",
+          "label": "Erbjudanden senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "deals_completed_total",
+          "label": "Slutförda affärer totalt",
+          "group": "Affärer",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "deals_completed_last_24h",
+          "label": "Slutförda affärer senaste 24 h",
+          "group": "Affärer",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        }
+      ],
+      "snapshots": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "project_id": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+          "snapshot_date": "2026-10-12",
+          "observed_at": "2026-10-12T10:00:00.123456Z",
+          "captured_at": "2026-10-12T10:01:00.654321Z",
+          "schema_version": 1,
+          "window_hours": 24,
+          "completeness": "complete",
+          "unavailable": {},
+          "companies_registered_total": "10",
+          "companies_verified_total": "6",
+          "vehicles_published_active": "0",
+          "vehicles_reserved": "0",
+          "vehicles_published_last_24h": "0",
+          "bids_total": "2",
+          "bids_last_24h": "0",
+          "interests_last_24h": "0",
+          "offers_last_24h": "0",
+          "deals_completed_total": "0",
+          "deals_completed_last_24h": "0"
+        }
+      ],
+      "runs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "project_id": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+          "collector_id": "handlarborsen.marketplace",
+          "status": "ok",
+          "ran_at": "2026-10-12T10:01:00.123456Z",
+          "snapshot_date": "2026-10-12",
+          "storage_outcome": "Svenska åäö 😀 \"citat\"\\\n\t"
+        }
+      ]
+    },
+    "encoding": "[1,\"68616e646c6172626f7273656e2d6d61726b6574706c6163652d7265706f72742d31\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"68616e646c6172626f7273656e\",true,[[\"636f6d70616e6965735f726567697374657265645f746f74616c\",\"5265676973747265726164652066c3b67265746167\",\"46c3b67265746167\",\"746f74616c\",null,null,null],[\"636f6d70616e6965735f76657269666965645f746f74616c\",\"56657269666965726164652066c3b67265746167\",\"46c3b67265746167\",\"746f74616c\",\"706f70756c6174696f6e5f756e7665726966696564\",null,null],[\"76656869636c65735f7075626c69736865645f616374697665\",\"5075626c6963657261646520666f72646f6e\",\"466f72646f6e\",\"63757272656e74\",null,null,null],[\"76656869636c65735f7265736572766564\",\"526573657276657261646520666f72646f6e\",\"466f72646f6e\",\"63757272656e74\",null,null,null],[\"76656869636c65735f7075626c69736865645f6c6173745f323468\",\"4e796120666f72646f6e2073656e617374652032342068\",\"466f72646f6e\",\"77696e646f77323468\",null,null,null],[\"626964735f746f74616c\",\"42756420746f74616c74\",\"427564206f636820696e747265737365\",\"746f74616c\",null,null,null],[\"626964735f6c6173745f323468\",\"4275642073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"696e746572657374735f6c6173745f323468\",\"496e747265737365616e6dc3a46c6e696e6761722073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"6f66666572735f6c6173745f323468\",\"4572626a7564616e64656e2073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"6465616c735f636f6d706c657465645f746f74616c\",\"536c757466c3b672646120616666c3a472657220746f74616c74\",\"416666c3a4726572\",\"746f74616c\",null,null,null],[\"6465616c735f636f6d706c657465645f6c6173745f323468\",\"536c757466c3b672646120616666c3a47265722073656e617374652032342068\",\"416666c3a4726572\",\"77696e646f77323468\",null,null,null]],[[\"30303030303030302d303030302d343030302d383030302d303030303030303030303031\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"323032362d31302d3132\",\"323032362d31302d31325431303a30303a30302e3132333435365a\",\"323032362d31302d31325431303a30313a30302e3635343332315a\",1,24,\"636f6d706c657465\",\"3130\",null,\"36\",null,\"30\",null,\"30\",null,\"30\",null,\"32\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null]],[[\"30303030303030302d303030302d343030302d383030302d303030303030303030303032\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"68616e646c6172626f7273656e2e6d61726b6574706c616365\",\"6f6b\",\"323032362d31302d31325431303a30313a30302e3132333435365a\",\"323032362d31302d3132\",\"5376656e736b6120c3a5c3a4c3b620f09f988020226369746174225c0a09\"]]]",
+    "hash": "e843d8584e3c2df4d5bb42610f038e74e12d008540fe5125bfff19a22aa0f936"
+  },
+  {
+    "name": "microsecond",
+    "source": {
+      "schemaVersion": 1,
+      "reportContractVersion": "handlarborsen-marketplace-report-1",
+      "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+      "slug": "handlarborsen",
+      "auditReadable": true,
+      "semantics": [
+        {
+          "key": "companies_registered_total",
+          "label": "Registrerade företag",
+          "group": "Företag",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "companies_verified_total",
+          "label": "Verifierade företag",
+          "group": "Företag",
+          "kind": "total",
+          "populationCaveat": "population_unverified",
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_published_active",
+          "label": "Publicerade fordon",
+          "group": "Fordon",
+          "kind": "current",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_reserved",
+          "label": "Reserverade fordon",
+          "group": "Fordon",
+          "kind": "current",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_published_last_24h",
+          "label": "Nya fordon senaste 24 h",
+          "group": "Fordon",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "bids_total",
+          "label": "Bud totalt",
+          "group": "Bud och intresse",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "bids_last_24h",
+          "label": "Bud senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "interests_last_24h",
+          "label": "Intresseanmälningar senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "offers_last_24h",
+          "label": "Erbjudanden senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "deals_completed_total",
+          "label": "Slutförda affärer totalt",
+          "group": "Affärer",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "deals_completed_last_24h",
+          "label": "Slutförda affärer senaste 24 h",
+          "group": "Affärer",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        }
+      ],
+      "snapshots": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "project_id": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+          "snapshot_date": "2026-10-12",
+          "observed_at": "2026-10-12T10:00:00.123456Z",
+          "captured_at": "2026-10-12T10:01:00.654322Z",
+          "schema_version": 1,
+          "window_hours": 24,
+          "completeness": "complete",
+          "unavailable": {},
+          "companies_registered_total": "10",
+          "companies_verified_total": "6",
+          "vehicles_published_active": "0",
+          "vehicles_reserved": "0",
+          "vehicles_published_last_24h": "0",
+          "bids_total": "2",
+          "bids_last_24h": "0",
+          "interests_last_24h": "0",
+          "offers_last_24h": "0",
+          "deals_completed_total": "0",
+          "deals_completed_last_24h": "0"
+        }
+      ],
+      "runs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "project_id": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+          "collector_id": "handlarborsen.marketplace",
+          "status": "ok",
+          "ran_at": "2026-10-12T10:01:00.123456Z",
+          "snapshot_date": "2026-10-12",
+          "storage_outcome": "inserted"
+        }
+      ]
+    },
+    "encoding": "[1,\"68616e646c6172626f7273656e2d6d61726b6574706c6163652d7265706f72742d31\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"68616e646c6172626f7273656e\",true,[[\"636f6d70616e6965735f726567697374657265645f746f74616c\",\"5265676973747265726164652066c3b67265746167\",\"46c3b67265746167\",\"746f74616c\",null,null,null],[\"636f6d70616e6965735f76657269666965645f746f74616c\",\"56657269666965726164652066c3b67265746167\",\"46c3b67265746167\",\"746f74616c\",\"706f70756c6174696f6e5f756e7665726966696564\",null,null],[\"76656869636c65735f7075626c69736865645f616374697665\",\"5075626c6963657261646520666f72646f6e\",\"466f72646f6e\",\"63757272656e74\",null,null,null],[\"76656869636c65735f7265736572766564\",\"526573657276657261646520666f72646f6e\",\"466f72646f6e\",\"63757272656e74\",null,null,null],[\"76656869636c65735f7075626c69736865645f6c6173745f323468\",\"4e796120666f72646f6e2073656e617374652032342068\",\"466f72646f6e\",\"77696e646f77323468\",null,null,null],[\"626964735f746f74616c\",\"42756420746f74616c74\",\"427564206f636820696e747265737365\",\"746f74616c\",null,null,null],[\"626964735f6c6173745f323468\",\"4275642073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"696e746572657374735f6c6173745f323468\",\"496e747265737365616e6dc3a46c6e696e6761722073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"6f66666572735f6c6173745f323468\",\"4572626a7564616e64656e2073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"6465616c735f636f6d706c657465645f746f74616c\",\"536c757466c3b672646120616666c3a472657220746f74616c74\",\"416666c3a4726572\",\"746f74616c\",null,null,null],[\"6465616c735f636f6d706c657465645f6c6173745f323468\",\"536c757466c3b672646120616666c3a47265722073656e617374652032342068\",\"416666c3a4726572\",\"77696e646f77323468\",null,null,null]],[[\"30303030303030302d303030302d343030302d383030302d303030303030303030303031\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"323032362d31302d3132\",\"323032362d31302d31325431303a30303a30302e3132333435365a\",\"323032362d31302d31325431303a30313a30302e3635343332325a\",1,24,\"636f6d706c657465\",\"3130\",null,\"36\",null,\"30\",null,\"30\",null,\"30\",null,\"32\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null]],[[\"30303030303030302d303030302d343030302d383030302d303030303030303030303032\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"68616e646c6172626f7273656e2e6d61726b6574706c616365\",\"6f6b\",\"323032362d31302d31325431303a30313a30302e3132333435365a\",\"323032362d31302d3132\",\"696e736572746564\"]]]",
+    "hash": "57d2c4ff57d3ebbc8ed08692b005c7e34ebf269576e9ad2a93021b5968235e81"
+  },
+  {
+    "name": "max-safe",
+    "source": {
+      "schemaVersion": 1,
+      "reportContractVersion": "handlarborsen-marketplace-report-1",
+      "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+      "slug": "handlarborsen",
+      "auditReadable": true,
+      "semantics": [
+        {
+          "key": "companies_registered_total",
+          "label": "Registrerade företag",
+          "group": "Företag",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "companies_verified_total",
+          "label": "Verifierade företag",
+          "group": "Företag",
+          "kind": "total",
+          "populationCaveat": "population_unverified",
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_published_active",
+          "label": "Publicerade fordon",
+          "group": "Fordon",
+          "kind": "current",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_reserved",
+          "label": "Reserverade fordon",
+          "group": "Fordon",
+          "kind": "current",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_published_last_24h",
+          "label": "Nya fordon senaste 24 h",
+          "group": "Fordon",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "bids_total",
+          "label": "Bud totalt",
+          "group": "Bud och intresse",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "bids_last_24h",
+          "label": "Bud senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "interests_last_24h",
+          "label": "Intresseanmälningar senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "offers_last_24h",
+          "label": "Erbjudanden senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "deals_completed_total",
+          "label": "Slutförda affärer totalt",
+          "group": "Affärer",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "deals_completed_last_24h",
+          "label": "Slutförda affärer senaste 24 h",
+          "group": "Affärer",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        }
+      ],
+      "snapshots": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "project_id": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+          "snapshot_date": "2026-10-12",
+          "observed_at": "2026-10-12T10:00:00.123456Z",
+          "captured_at": "2026-10-12T10:01:00.654321Z",
+          "schema_version": 1,
+          "window_hours": 24,
+          "completeness": "complete",
+          "unavailable": {},
+          "companies_registered_total": "10",
+          "companies_verified_total": "6",
+          "vehicles_published_active": "0",
+          "vehicles_reserved": "0",
+          "vehicles_published_last_24h": "0",
+          "bids_total": "9007199254740991",
+          "bids_last_24h": "0",
+          "interests_last_24h": "0",
+          "offers_last_24h": "0",
+          "deals_completed_total": "0",
+          "deals_completed_last_24h": "0"
+        }
+      ],
+      "runs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "project_id": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+          "collector_id": "handlarborsen.marketplace",
+          "status": "ok",
+          "ran_at": "2026-10-12T10:01:00.123456Z",
+          "snapshot_date": "2026-10-12",
+          "storage_outcome": "inserted"
+        }
+      ]
+    },
+    "encoding": "[1,\"68616e646c6172626f7273656e2d6d61726b6574706c6163652d7265706f72742d31\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"68616e646c6172626f7273656e\",true,[[\"636f6d70616e6965735f726567697374657265645f746f74616c\",\"5265676973747265726164652066c3b67265746167\",\"46c3b67265746167\",\"746f74616c\",null,null,null],[\"636f6d70616e6965735f76657269666965645f746f74616c\",\"56657269666965726164652066c3b67265746167\",\"46c3b67265746167\",\"746f74616c\",\"706f70756c6174696f6e5f756e7665726966696564\",null,null],[\"76656869636c65735f7075626c69736865645f616374697665\",\"5075626c6963657261646520666f72646f6e\",\"466f72646f6e\",\"63757272656e74\",null,null,null],[\"76656869636c65735f7265736572766564\",\"526573657276657261646520666f72646f6e\",\"466f72646f6e\",\"63757272656e74\",null,null,null],[\"76656869636c65735f7075626c69736865645f6c6173745f323468\",\"4e796120666f72646f6e2073656e617374652032342068\",\"466f72646f6e\",\"77696e646f77323468\",null,null,null],[\"626964735f746f74616c\",\"42756420746f74616c74\",\"427564206f636820696e747265737365\",\"746f74616c\",null,null,null],[\"626964735f6c6173745f323468\",\"4275642073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"696e746572657374735f6c6173745f323468\",\"496e747265737365616e6dc3a46c6e696e6761722073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"6f66666572735f6c6173745f323468\",\"4572626a7564616e64656e2073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"6465616c735f636f6d706c657465645f746f74616c\",\"536c757466c3b672646120616666c3a472657220746f74616c74\",\"416666c3a4726572\",\"746f74616c\",null,null,null],[\"6465616c735f636f6d706c657465645f6c6173745f323468\",\"536c757466c3b672646120616666c3a47265722073656e617374652032342068\",\"416666c3a4726572\",\"77696e646f77323468\",null,null,null]],[[\"30303030303030302d303030302d343030302d383030302d303030303030303030303031\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"323032362d31302d3132\",\"323032362d31302d31325431303a30303a30302e3132333435365a\",\"323032362d31302d31325431303a30313a30302e3635343332315a\",1,24,\"636f6d706c657465\",\"3130\",null,\"36\",null,\"30\",null,\"30\",null,\"30\",null,\"39303037313939323534373430393931\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null]],[[\"30303030303030302d303030302d343030302d383030302d303030303030303030303032\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"68616e646c6172626f7273656e2e6d61726b6574706c616365\",\"6f6b\",\"323032362d31302d31325431303a30313a30302e3132333435365a\",\"323032362d31302d3132\",\"696e736572746564\"]]]",
+    "hash": "5edb4be01bc5036e47290e9794193ce4196cb851287b0e29eebb10e621473cb9"
+  },
+  {
+    "name": "ties",
+    "source": {
+      "schemaVersion": 1,
+      "reportContractVersion": "handlarborsen-marketplace-report-1",
+      "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+      "slug": "handlarborsen",
+      "auditReadable": true,
+      "semantics": [
+        {
+          "key": "companies_registered_total",
+          "label": "Registrerade företag",
+          "group": "Företag",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "companies_verified_total",
+          "label": "Verifierade företag",
+          "group": "Företag",
+          "kind": "total",
+          "populationCaveat": "population_unverified",
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_published_active",
+          "label": "Publicerade fordon",
+          "group": "Fordon",
+          "kind": "current",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_reserved",
+          "label": "Reserverade fordon",
+          "group": "Fordon",
+          "kind": "current",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_published_last_24h",
+          "label": "Nya fordon senaste 24 h",
+          "group": "Fordon",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "bids_total",
+          "label": "Bud totalt",
+          "group": "Bud och intresse",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "bids_last_24h",
+          "label": "Bud senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "interests_last_24h",
+          "label": "Intresseanmälningar senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "offers_last_24h",
+          "label": "Erbjudanden senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "deals_completed_total",
+          "label": "Slutförda affärer totalt",
+          "group": "Affärer",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "deals_completed_last_24h",
+          "label": "Slutförda affärer senaste 24 h",
+          "group": "Affärer",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        }
+      ],
+      "snapshots": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "project_id": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+          "snapshot_date": "2026-10-12",
+          "observed_at": "2026-10-12T10:00:00.123456Z",
+          "captured_at": "2026-10-12T10:01:00.654321Z",
+          "schema_version": 1,
+          "window_hours": 24,
+          "completeness": "complete",
+          "unavailable": {},
+          "companies_registered_total": "10",
+          "companies_verified_total": "6",
+          "vehicles_published_active": "0",
+          "vehicles_reserved": "0",
+          "vehicles_published_last_24h": "0",
+          "bids_total": "2",
+          "bids_last_24h": "0",
+          "interests_last_24h": "0",
+          "offers_last_24h": "0",
+          "deals_completed_total": "0",
+          "deals_completed_last_24h": "0"
+        }
+      ],
+      "runs": [
+        {
+          "id": "00000000-0000-4000-8000-000000000003",
+          "project_id": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+          "collector_id": "handlarborsen.marketplace",
+          "status": "skipped",
+          "ran_at": "2026-10-12T10:01:00.123456Z",
+          "snapshot_date": "2026-10-12",
+          "storage_outcome": "inserted"
+        },
+        {
+          "id": "00000000-0000-4000-8000-000000000002",
+          "project_id": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+          "collector_id": "handlarborsen.marketplace",
+          "status": "ok",
+          "ran_at": "2026-10-12T10:01:00.123456Z",
+          "snapshot_date": "2026-10-12",
+          "storage_outcome": "inserted"
+        }
+      ]
+    },
+    "encoding": "[1,\"68616e646c6172626f7273656e2d6d61726b6574706c6163652d7265706f72742d31\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"68616e646c6172626f7273656e\",true,[[\"636f6d70616e6965735f726567697374657265645f746f74616c\",\"5265676973747265726164652066c3b67265746167\",\"46c3b67265746167\",\"746f74616c\",null,null,null],[\"636f6d70616e6965735f76657269666965645f746f74616c\",\"56657269666965726164652066c3b67265746167\",\"46c3b67265746167\",\"746f74616c\",\"706f70756c6174696f6e5f756e7665726966696564\",null,null],[\"76656869636c65735f7075626c69736865645f616374697665\",\"5075626c6963657261646520666f72646f6e\",\"466f72646f6e\",\"63757272656e74\",null,null,null],[\"76656869636c65735f7265736572766564\",\"526573657276657261646520666f72646f6e\",\"466f72646f6e\",\"63757272656e74\",null,null,null],[\"76656869636c65735f7075626c69736865645f6c6173745f323468\",\"4e796120666f72646f6e2073656e617374652032342068\",\"466f72646f6e\",\"77696e646f77323468\",null,null,null],[\"626964735f746f74616c\",\"42756420746f74616c74\",\"427564206f636820696e747265737365\",\"746f74616c\",null,null,null],[\"626964735f6c6173745f323468\",\"4275642073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"696e746572657374735f6c6173745f323468\",\"496e747265737365616e6dc3a46c6e696e6761722073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"6f66666572735f6c6173745f323468\",\"4572626a7564616e64656e2073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"6465616c735f636f6d706c657465645f746f74616c\",\"536c757466c3b672646120616666c3a472657220746f74616c74\",\"416666c3a4726572\",\"746f74616c\",null,null,null],[\"6465616c735f636f6d706c657465645f6c6173745f323468\",\"536c757466c3b672646120616666c3a47265722073656e617374652032342068\",\"416666c3a4726572\",\"77696e646f77323468\",null,null,null]],[[\"30303030303030302d303030302d343030302d383030302d303030303030303030303031\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"323032362d31302d3132\",\"323032362d31302d31325431303a30303a30302e3132333435365a\",\"323032362d31302d31325431303a30313a30302e3635343332315a\",1,24,\"636f6d706c657465\",\"3130\",null,\"36\",null,\"30\",null,\"30\",null,\"30\",null,\"32\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null]],[[\"30303030303030302d303030302d343030302d383030302d303030303030303030303033\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"68616e646c6172626f7273656e2e6d61726b6574706c616365\",\"736b6970706564\",\"323032362d31302d31325431303a30313a30302e3132333435365a\",\"323032362d31302d3132\",\"696e736572746564\"],[\"30303030303030302d303030302d343030302d383030302d303030303030303030303032\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"68616e646c6172626f7273656e2e6d61726b6574706c616365\",\"6f6b\",\"323032362d31302d31325431303a30313a30302e3132333435365a\",\"323032362d31302d3132\",\"696e736572746564\"]]]",
+    "hash": "6c81f45f52775cca3f177ab9d78ffd668111e26c9d17691baebc04af560e6bd3"
+  },
+  {
+    "name": "empty",
+    "source": {
+      "schemaVersion": 1,
+      "reportContractVersion": "handlarborsen-marketplace-report-1",
+      "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+      "slug": "handlarborsen",
+      "auditReadable": true,
+      "semantics": [
+        {
+          "key": "companies_registered_total",
+          "label": "Registrerade företag",
+          "group": "Företag",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "companies_verified_total",
+          "label": "Verifierade företag",
+          "group": "Företag",
+          "kind": "total",
+          "populationCaveat": "population_unverified",
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_published_active",
+          "label": "Publicerade fordon",
+          "group": "Fordon",
+          "kind": "current",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_reserved",
+          "label": "Reserverade fordon",
+          "group": "Fordon",
+          "kind": "current",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_published_last_24h",
+          "label": "Nya fordon senaste 24 h",
+          "group": "Fordon",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "bids_total",
+          "label": "Bud totalt",
+          "group": "Bud och intresse",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "bids_last_24h",
+          "label": "Bud senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "interests_last_24h",
+          "label": "Intresseanmälningar senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "offers_last_24h",
+          "label": "Erbjudanden senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "deals_completed_total",
+          "label": "Slutförda affärer totalt",
+          "group": "Affärer",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "deals_completed_last_24h",
+          "label": "Slutförda affärer senaste 24 h",
+          "group": "Affärer",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        }
+      ],
+      "snapshots": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "project_id": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+          "snapshot_date": "2026-10-12",
+          "observed_at": "2026-10-12T10:00:00.123456Z",
+          "captured_at": "2026-10-12T10:01:00.654321Z",
+          "schema_version": 1,
+          "window_hours": 24,
+          "completeness": "complete",
+          "unavailable": {},
+          "companies_registered_total": "10",
+          "companies_verified_total": "6",
+          "vehicles_published_active": "0",
+          "vehicles_reserved": "0",
+          "vehicles_published_last_24h": "0",
+          "bids_total": "2",
+          "bids_last_24h": "0",
+          "interests_last_24h": "0",
+          "offers_last_24h": "0",
+          "deals_completed_total": "0",
+          "deals_completed_last_24h": "0"
+        }
+      ],
+      "runs": []
+    },
+    "encoding": "[1,\"68616e646c6172626f7273656e2d6d61726b6574706c6163652d7265706f72742d31\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"68616e646c6172626f7273656e\",true,[[\"636f6d70616e6965735f726567697374657265645f746f74616c\",\"5265676973747265726164652066c3b67265746167\",\"46c3b67265746167\",\"746f74616c\",null,null,null],[\"636f6d70616e6965735f76657269666965645f746f74616c\",\"56657269666965726164652066c3b67265746167\",\"46c3b67265746167\",\"746f74616c\",\"706f70756c6174696f6e5f756e7665726966696564\",null,null],[\"76656869636c65735f7075626c69736865645f616374697665\",\"5075626c6963657261646520666f72646f6e\",\"466f72646f6e\",\"63757272656e74\",null,null,null],[\"76656869636c65735f7265736572766564\",\"526573657276657261646520666f72646f6e\",\"466f72646f6e\",\"63757272656e74\",null,null,null],[\"76656869636c65735f7075626c69736865645f6c6173745f323468\",\"4e796120666f72646f6e2073656e617374652032342068\",\"466f72646f6e\",\"77696e646f77323468\",null,null,null],[\"626964735f746f74616c\",\"42756420746f74616c74\",\"427564206f636820696e747265737365\",\"746f74616c\",null,null,null],[\"626964735f6c6173745f323468\",\"4275642073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"696e746572657374735f6c6173745f323468\",\"496e747265737365616e6dc3a46c6e696e6761722073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"6f66666572735f6c6173745f323468\",\"4572626a7564616e64656e2073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"6465616c735f636f6d706c657465645f746f74616c\",\"536c757466c3b672646120616666c3a472657220746f74616c74\",\"416666c3a4726572\",\"746f74616c\",null,null,null],[\"6465616c735f636f6d706c657465645f6c6173745f323468\",\"536c757466c3b672646120616666c3a47265722073656e617374652032342068\",\"416666c3a4726572\",\"77696e646f77323468\",null,null,null]],[[\"30303030303030302d303030302d343030302d383030302d303030303030303030303031\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"323032362d31302d3132\",\"323032362d31302d31325431303a30303a30302e3132333435365a\",\"323032362d31302d31325431303a30313a30302e3635343332315a\",1,24,\"636f6d706c657465\",\"3130\",null,\"36\",null,\"30\",null,\"30\",null,\"30\",null,\"32\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null]],[]]",
+    "hash": "88e7f79664664afabad55736127b1d3023b1215f990dc3e0f9156f6455b25784"
+  },
+  {
+    "name": "unknown",
+    "source": {
+      "schemaVersion": 1,
+      "reportContractVersion": "handlarborsen-marketplace-report-1",
+      "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+      "slug": "handlarborsen",
+      "auditReadable": false,
+      "semantics": [
+        {
+          "key": "companies_registered_total",
+          "label": "Registrerade företag",
+          "group": "Företag",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "companies_verified_total",
+          "label": "Verifierade företag",
+          "group": "Företag",
+          "kind": "total",
+          "populationCaveat": "population_unverified",
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_published_active",
+          "label": "Publicerade fordon",
+          "group": "Fordon",
+          "kind": "current",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_reserved",
+          "label": "Reserverade fordon",
+          "group": "Fordon",
+          "kind": "current",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "vehicles_published_last_24h",
+          "label": "Nya fordon senaste 24 h",
+          "group": "Fordon",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "bids_total",
+          "label": "Bud totalt",
+          "group": "Bud och intresse",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "bids_last_24h",
+          "label": "Bud senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "interests_last_24h",
+          "label": "Intresseanmälningar senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "offers_last_24h",
+          "label": "Erbjudanden senaste 24 h",
+          "group": "Bud och intresse",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "deals_completed_total",
+          "label": "Slutförda affärer totalt",
+          "group": "Affärer",
+          "kind": "total",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        },
+        {
+          "key": "deals_completed_last_24h",
+          "label": "Slutförda affärer senaste 24 h",
+          "group": "Affärer",
+          "kind": "window24h",
+          "populationCaveat": null,
+          "coverage": null,
+          "collectorVersion": null
+        }
+      ],
+      "snapshots": [
+        {
+          "id": "00000000-0000-4000-8000-000000000001",
+          "project_id": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+          "snapshot_date": "2026-10-12",
+          "observed_at": "2026-10-12T10:00:00.123456Z",
+          "captured_at": "2026-10-12T10:01:00.654321Z",
+          "schema_version": 1,
+          "window_hours": 24,
+          "completeness": "complete",
+          "unavailable": {},
+          "companies_registered_total": "10",
+          "companies_verified_total": "6",
+          "vehicles_published_active": "0",
+          "vehicles_reserved": "0",
+          "vehicles_published_last_24h": "0",
+          "bids_total": "2",
+          "bids_last_24h": "0",
+          "interests_last_24h": "0",
+          "offers_last_24h": "0",
+          "deals_completed_total": "0",
+          "deals_completed_last_24h": "0"
+        }
+      ],
+      "runs": []
+    },
+    "encoding": "[1,\"68616e646c6172626f7273656e2d6d61726b6574706c6163652d7265706f72742d31\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"68616e646c6172626f7273656e\",false,[[\"636f6d70616e6965735f726567697374657265645f746f74616c\",\"5265676973747265726164652066c3b67265746167\",\"46c3b67265746167\",\"746f74616c\",null,null,null],[\"636f6d70616e6965735f76657269666965645f746f74616c\",\"56657269666965726164652066c3b67265746167\",\"46c3b67265746167\",\"746f74616c\",\"706f70756c6174696f6e5f756e7665726966696564\",null,null],[\"76656869636c65735f7075626c69736865645f616374697665\",\"5075626c6963657261646520666f72646f6e\",\"466f72646f6e\",\"63757272656e74\",null,null,null],[\"76656869636c65735f7265736572766564\",\"526573657276657261646520666f72646f6e\",\"466f72646f6e\",\"63757272656e74\",null,null,null],[\"76656869636c65735f7075626c69736865645f6c6173745f323468\",\"4e796120666f72646f6e2073656e617374652032342068\",\"466f72646f6e\",\"77696e646f77323468\",null,null,null],[\"626964735f746f74616c\",\"42756420746f74616c74\",\"427564206f636820696e747265737365\",\"746f74616c\",null,null,null],[\"626964735f6c6173745f323468\",\"4275642073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"696e746572657374735f6c6173745f323468\",\"496e747265737365616e6dc3a46c6e696e6761722073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"6f66666572735f6c6173745f323468\",\"4572626a7564616e64656e2073656e617374652032342068\",\"427564206f636820696e747265737365\",\"77696e646f77323468\",null,null,null],[\"6465616c735f636f6d706c657465645f746f74616c\",\"536c757466c3b672646120616666c3a472657220746f74616c74\",\"416666c3a4726572\",\"746f74616c\",null,null,null],[\"6465616c735f636f6d706c657465645f6c6173745f323468\",\"536c757466c3b672646120616666c3a47265722073656e617374652032342068\",\"416666c3a4726572\",\"77696e646f77323468\",null,null,null]],[[\"30303030303030302d303030302d343030302d383030302d303030303030303030303031\",\"38663637336330392d316338662d346437382d383736652d346331346266316338396233\",\"323032362d31302d3132\",\"323032362d31302d31325431303a30303a30302e3132333435365a\",\"323032362d31302d31325431303a30313a30302e3635343332315a\",1,24,\"636f6d706c657465\",\"3130\",null,\"36\",null,\"30\",null,\"30\",null,\"30\",null,\"32\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null,\"30\",null]],[]]",
+    "hash": "2019a88edcf278dfa8bbf06b738a3a320e7b2df6615ea2b8ffd84d3be972dea0"
+  }
+]

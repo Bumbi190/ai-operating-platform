@@ -223,14 +223,16 @@
 
 /* ── Level 3 · projects ──────────────────────────────────────────────────── */
 
+/* A grid reserves a real column for EVERY scoped project. Previously the
+   68rem flex wrap placed projects 4–5 in a second row BELOW 33 agent nodes,
+   making Handlarbörsen appear absent on a large monitor. */
 .projects {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: flex-start;
-  gap: 1.25rem 1.5rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  align-items: start;
+  gap: 1.25rem 1rem;
   width: 100%;
-  max-width: 68rem;
+  max-width: 112rem;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -241,7 +243,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: min(19rem, 100%);
+  width: 100%;
+  min-width: 0;
   padding-top: 1.5rem;
 }
 
@@ -371,6 +374,22 @@
   list-style: none;
 }
 
+/* Large groups can be expanded without pushing another project row offscreen.
+   The list stays keyboard focusable and its scrollbar remains available. */
+.agents[data-long='true'] {
+  max-height: min(24rem, 52dvh);
+  padding-right: 0.25rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--omnira-cyan-rgb) / 0.3) transparent;
+}
+.agents[data-long='true']:focus-visible {
+  outline: 2px solid rgb(var(--omnira-cyan-rgb) / 0.75);
+  outline-offset: 2px;
+  border-radius: 0.5rem;
+}
+
 .agentSlot {
   position: relative;
   padding-left: 1.125rem;
@@ -488,8 +507,9 @@ a.agentNode:hover {
   }
 
   .projects {
-    flex-direction: column;
-    align-items: center;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    max-width: 26rem;
     gap: 1rem;
   }
 

@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import * as React from 'react'
-import { createElement, isValidElement, type ReactElement } from 'react'
+import { createElement, isValidElement, Suspense, type ReactElement } from 'react'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 // vitest compiles JSX with the classic transform: components need React in scope.
 ;(globalThis as unknown as { React: typeof React }).React = React
 import { renderToStaticMarkup } from 'react-dom/server'
@@ -25,11 +27,16 @@ const loadReport = vi.fn()
 vi.mock('@/lib/atlas/project-analytics/handlarborsen-marketplace-read', () => ({
   loadHandlarborsenMarketplaceReport: (...a: unknown[]) => loadReport(...a),
 }))
+const loadTraffic = vi.fn()
+vi.mock('@/lib/atlas/project-analytics/handlarborsen-posthog-traffic', () => ({
+  loadHandlarborsenTraffic: (...a: unknown[]) => loadTraffic(...a),
+}))
 
 import { MARKETPLACE_METRIC_KEYS } from '@/lib/atlas/collectors/handlarborsen-marketplace'
 import { MARKETPLACE_METRIC_DEFINITIONS, buildMarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-report'
 import { ACTIVITY_KEYS, HEADLINE_KEYS, buildHandlarborsenOverview } from '@/lib/atlas/project-analytics/handlarborsen-overview'
 import { HandlarborsenOverview } from '@/components/platform/vnext/HandlarborsenOverview'
+import { HandlarborsenOwnerBrief } from '@/components/platform/vnext/HandlarborsenOwnerBrief'
 import { ProjectCommandCenter } from '@/components/platform/vnext/ProjectCommandCenter'
 
 const HB_ID = '8f673c09-1c8f-4d78-876e-4c14bf1c89b3'
@@ -126,14 +133,25 @@ describe('overview model', () => {
 })
 
 describe('rendered overview', () => {
-  it('leads with big numbers, shows Okänt for null, links the full report, draws no chart or arrow', () => {
+  it('opts only this project into clearer KPI type in both data and no-data states', () => {
+    expect(render(report([row()]))).toContain('data-prominent="true"')
+    expect(render(report([]))).toContain('data-prominent="true"')
+    const css = readFileSync(resolve(__dirname, '../../components/platform/vnext/KpiOverview.module.css'), 'utf8')
+    expect(css).toContain(".overview[data-prominent='true']")
+  })
+
+  it('leads with big numbers, shows Okänt for null, links the full report and includes the saved-data visuals', () => {
     const html = render(report([row({ completeness: 'partial', unavailable: { vehicles_reserved: 'query_failed' } }, { vehicles_reserved: null })]))
     expect(html).toContain('Registrerade företag')
     expect(html).toContain('Aktivitet senaste 24 h')
     expect(html).toContain('Historisk utveckling')
     expect(html).toContain('href="/projects/handlarborsen/marketplace"')
     expect(html).toContain('Okänt')
-    expect(html).not.toMatch(/<svg|<canvas|[↑↓▲▼]/)
+    expect(html).toContain('id="hb-market-pulse"')
+    expect(html).toContain('id="hb-trend-companies"')
+    expect(html).toContain('id="hb-trend-vehicles"')
+    expect(html).toContain('id="hb-trend-trading"')
+    expect(html).not.toMatch(/<canvas|[↑↓▲▼]/)
   })
 })
 
@@ -141,35 +159,77 @@ describe('project page', () => {
   const HB = { id: HB_ID, slug: 'handlarborsen', name: 'Handlarbörsen', color: '#2563EB', settings: {}, executionPaused: false, pausedAt: null, pausedReason: null }
   const OTHER = { ...HB, id: '22222222-2222-2222-2222-222222222222', slug: 'the-prompt', name: 'The Prompt' }
 
-  async function loaded(project: typeof HB): Promise<ReactElement<{ overview?: unknown; model: unknown }>> {
+  async function loaded(project: typeof HB): Promise<ReactElement<{ overview?: unknown; briefing?: ReactElement; model: unknown }>> {
     getProjectBySlug.mockResolvedValue(project)
     const { default: Page } = await import('@/app/(platform)/projects/[slug]/page')
     const suspense = await Page({ params: { slug: project.slug } }) as ReactElement<{ children: ReactElement }>
     const child = suspense.props.children as ReactElement<{ project: unknown }>
-    const typeFn = child.type as (p: unknown) => Promise<ReactElement<{ overview?: unknown; model: unknown }>>
-    return typeFn(child.props)
+    const typeFn = child.type as (p: unknown) => Promise<ReactElement<{ overview?: unknown; briefing?: ReactElement; model: unknown }>>
+    const workspace = await typeFn(child.props)
+    if (workspace.type !== Suspense) return workspace
+    const reportChild = (workspace.props as unknown as { children: ReactElement }).children
+    return (reportChild.type as typeof typeFn)(reportChild.props)
   }
 
   beforeEach(() => {
     vi.clearAllMocks()
     loadCommandCenter.mockResolvedValue({ links: { marketplace: '/projects/handlarborsen/marketplace' } })
     loadReport.mockResolvedValue({ status: 'ok', report: report([row()]) })
+    loadTraffic.mockResolvedValue(null)
   })
 
   it('Handlarbörsen: reads the report through the authorized reader and passes the overview above the workspace', async () => {
     const el = await loaded(HB)
     expect(el.type).toBe(ProjectCommandCenter)
     expect(isValidElement(el.props.overview)).toBe(true)
+    expect(el.props.briefing?.type).toBe(HandlarborsenOwnerBrief)
+    expect(el.props.briefing?.props.report).toBe((el.props.overview as ReactElement).props.report)
     expect(loadReport).toHaveBeenCalledTimes(1)
     expect(loadReport).toHaveBeenCalledWith(HB, { allowedProjectIds: [HB.id] })
     expect(loadCommandCenter).toHaveBeenCalledTimes(1) // workflows etc. are still loaded
+    const fetch = vi.fn(() => { throw new Error('Evidence rendering must not fetch') })
+    vi.stubGlobal('fetch', fetch)
+    try {
+      const overview = el.props.overview as ReactElement
+      const markup = renderToStaticMarkup(React.cloneElement(overview, { now: NOW }))
+      expect(markup).toContain('id="hb-atlas-evidence"')
+      expect(markup).toContain('handlarborsen-insights-1.0.0')
+      expect(fetch).not.toHaveBeenCalled()
+      expect(loadReport).toHaveBeenCalledTimes(1)
+      expect(loadTraffic).toHaveBeenCalledTimes(1) // existing traffic path only
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('streams the workspace without a brief while the shared report is pending', async () => {
+    let resolveReport!: (value: unknown) => void
+    loadReport.mockReturnValue(new Promise((resolve) => { resolveReport = resolve }))
+    getProjectBySlug.mockResolvedValue(HB)
+    const { default: Page } = await import('@/app/(platform)/projects/[slug]/page')
+    const page = await Page({ params: { slug: HB.slug } }) as ReactElement<{ children: ReactElement }>
+    const workspaceLoader = page.props.children
+    const boundary = await (workspaceLoader.type as (p: unknown) => Promise<ReactElement>)(workspaceLoader.props)
+    expect(boundary.type).toBe(Suspense)
+    const { fallback, children } = boundary.props as { fallback: ReactElement; children: ReactElement }
+    expect(fallback.type).toBe(ProjectCommandCenter)
+    expect(fallback.props.model).toBeDefined()
+    expect(fallback.props.briefing).toBeUndefined()
+    expect(renderToStaticMarkup(fallback.props.overview)).not.toContain('hb-atlas-evidence')
+    expect(isValidElement(fallback.props.overview)).toBe(true)
+    resolveReport({ status: 'ok', report: report([row()]) })
+    const final = await (children.type as (p: unknown) => Promise<ReactElement>)(children.props)
+    expect(final.props.briefing.type).toBe(HandlarborsenOwnerBrief)
+    expect(loadReport).toHaveBeenCalledTimes(1)
   })
 
   it('another project: no report read, no overview, nothing empty rendered', async () => {
     loadCommandCenter.mockResolvedValue({ links: { marketplace: null } })
     const el = await loaded(OTHER)
     expect(el.props.overview).toBeUndefined()
+    expect(el.props.briefing).toBeUndefined()
     expect(loadReport).not.toHaveBeenCalled()
+    expect(loadTraffic).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -179,14 +239,37 @@ describe('project page', () => {
   ])('%s: treated as an ordinary project', async (_n, project) => {
     const el = await loaded(project)
     expect(el.props.overview).toBeUndefined()
+    expect(el.props.briefing).toBeUndefined()
     expect(loadReport).not.toHaveBeenCalled()
+    expect(loadTraffic).not.toHaveBeenCalled()
   })
 
   it('a refused read (not_permitted) shows no overview but the workspace still loads', async () => {
     loadReport.mockResolvedValue({ status: 'not_permitted' })
     const el = await loaded(HB)
     expect(el.props.overview).toBeUndefined()
+    expect(el.props.briefing).toBeUndefined()
     expect(el.props.model).toBeDefined()
+    expect(loadTraffic).not.toHaveBeenCalled()
+    expect(loadReport).toHaveBeenCalledTimes(1)
+  })
+
+  it('an inaccessible project stops at the page auth gate before any report or provider read', async () => {
+    getProjectBySlug.mockResolvedValue(null)
+    const { default: Page } = await import('@/app/(platform)/projects/[slug]/page')
+    await expect(Page({ params: { slug: HB.slug } })).rejects.toThrow('NEXT_NOT_FOUND')
+    expect(loadReport).not.toHaveBeenCalled()
+    expect(loadTraffic).not.toHaveBeenCalled()
+    expect(loadCommandCenter).not.toHaveBeenCalled()
+  })
+
+  it('a corrupt report is authorized but renders no evidence panel or leaked values', async () => {
+    loadReport.mockResolvedValue({ status: 'ok', report: report([row({ schema_version: 9 })]) })
+    const el = await loaded(HB)
+    const markup = renderToStaticMarkup(el.props.overview as ReactElement)
+    expect(markup).not.toContain('hb-atlas-evidence')
+    expect(markup).not.toContain('501')
+    expect(loadReport).toHaveBeenCalledTimes(1)
   })
 
   it('the command center keeps every workspace section with and without the overview', () => {

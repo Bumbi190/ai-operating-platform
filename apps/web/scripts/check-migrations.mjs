@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+// Invoked with node (package build script); no hashbang for Vitest 2 VM compatibility.
 /**
  * Migration Guard v2 (H1 process hardening — NOT a feature).
  *

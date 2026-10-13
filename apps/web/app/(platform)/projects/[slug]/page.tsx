@@ -1,14 +1,26 @@
+import { loadHandlarborsenAnalysisSource } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-source'
+import { analysisDraftsEnabled } from '@/lib/atlas/project-analytics/analysis-draft-feature'
+import {
+  buildAnalysisReviewDraft,
+  type AnalysisRuleId,
+  type SaveSelector,
+} from '@/lib/atlas/project-analytics/analysis-review-contract'
+import { hashAnalysisSource } from '@/lib/atlas/project-analytics/analysis-source-binding'
+import { HANDLARBORSEN_INSIGHT_RULE_VERSION } from '@/lib/atlas/project-analytics/handlarborsen-insights'
 import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { getProjectBySlug, type ResolvedProject } from '@/lib/project/get-project'
-import { isHandlarborsenProject, loadProjectCommandCenter } from '@/lib/os/project-command-center'
-import { loadHandlarborsenMarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-read'
-import { HandlarborsenOverview } from '@/components/platform/vnext/HandlarborsenOverview'
 import {
-  ProjectCommandCenter,
-  ProjectCommandCenterLoading,
-} from '@/components/platform/vnext/ProjectCommandCenter'
+  isHandlarborsenProject,
+  loadProjectCommandCenter,
+  type ProjectCommandCenterModel,
+} from '@/lib/os/project-command-center'
+import { loadHandlarborsenMarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-read'
+import { loadHandlarborsenTraffic } from '@/lib/atlas/project-analytics/handlarborsen-posthog-traffic'
+import { HandlarborsenOverview } from '@/components/platform/vnext/HandlarborsenOverview'
+import { HandlarborsenOwnerBrief } from '@/components/platform/vnext/HandlarborsenOwnerBrief'
+import { ProjectCommandCenter, ProjectCommandCenterLoading } from '@/components/platform/vnext/ProjectCommandCenter'
 import { OMNIRA_UI_COOKIE, isVNext, resolveUiGeneration } from '@/lib/ui/generation'
 import { ProjectLegacy } from './ProjectLegacy'
 
@@ -24,11 +36,7 @@ import { ProjectLegacy } from './ProjectLegacy'
  * The legacy branch returns before the Command Center loader is even reached,
  * so a rollback costs nothing and cannot fail on a read it does not use.
  */
-export default async function ProjectPage({
-  params,
-}: {
-  params: { slug: string }
-}) {
+export default async function ProjectPage({ params }: { params: { slug: string } }) {
   const { slug } = params
 
   const project = await getProjectBySlug(slug)
@@ -49,18 +57,73 @@ export default async function ProjectPage({
 }
 
 async function LoadedProjectCommandCenter({ project }: { project: ResolvedProject }) {
-  // Key figures lead the page for Handlarbörsen only. The project (verified by id, slug and
-  // name) is the RLS-resolved one, and it is also the allow-list handed to the reader, which
-  // re-checks identity and atlas_mode. Every other project loads exactly what it did before.
-  const withKeyFigures = isHandlarborsenProject(project)
-  const [model, reportResult] = await Promise.all([
-    loadProjectCommandCenter(project),
-    withKeyFigures
-      ? loadHandlarborsenMarketplaceReport(project, { allowedProjectIds: [project.id] })
-      : Promise.resolve(null),
-  ])
-  const overview = reportResult && reportResult.status === 'ok'
-    ? <HandlarborsenOverview report={reportResult.report} reportHref={model.links.marketplace} />
-    : undefined
-  return <ProjectCommandCenter model={model} overview={overview} />
+  // Start the existing scoped report beside the workspace model. The fallback
+  // keeps the workspace readable while the same report loads for both the
+  // overview and owner brief; a refused read unlocks neither.
+  const reportPromise = isHandlarborsenProject(project)
+    ? analysisDraftsEnabled()
+      ? loadHandlarborsenAnalysisSource(project, { allowedProjectIds: [project.id] })
+      : loadHandlarborsenMarketplaceReport(project, { allowedProjectIds: [project.id] })
+    : null
+  const model = await loadProjectCommandCenter(project)
+
+  if (!reportPromise) return <ProjectCommandCenter model={model} />
+
+  return (
+    <Suspense fallback={<ProjectCommandCenter model={model} overview={<HandlarborsenStatsLoading />} />}>
+      <LoadedHandlarborsenCommandCenter reportPromise={reportPromise} model={model} project={project} />
+    </Suspense>
+  )
+}
+
+/** One report feeds both slots after authorization. Until then the boundary
+ * streams the existing workspace, without an owner brief or fictional data. */
+async function LoadedHandlarborsenCommandCenter({
+  reportPromise,
+  model,
+  project,
+}: {
+  reportPromise:
+    | ReturnType<typeof loadHandlarborsenMarketplaceReport>
+    | ReturnType<typeof loadHandlarborsenAnalysisSource>
+  model: ProjectCommandCenterModel
+  project: ResolvedProject
+}) {
+  const result = await reportPromise
+  const now = new Date(),
+    analysisSelectors: Partial<Record<AnalysisRuleId, SaveSelector>> = {}
+  if (analysisDraftsEnabled() && result.status === 'ok' && 'source' in result && result.source) {
+    for (const ruleId of ['company-status', 'bid-window'] as const) {
+      const selector = {
+        ruleId,
+        ruleVersion: HANDLARBORSEN_INSIGHT_RULE_VERSION,
+        expectedEvidenceHash: hashAnalysisSource(result.source),
+      }
+      if (buildAnalysisReviewDraft(result.source, result.report, selector, now).status === 'ok')
+        analysisSelectors[ruleId] = selector
+    }
+  }
+  const traffic =
+    result.status === 'ok' ? await loadHandlarborsenTraffic(project, { allowedProjectIds: [project.id] }) : null
+  const overview =
+    result.status === 'ok' ? (
+      <HandlarborsenOverview
+        report={result.report}
+        reportHref={model.links.marketplace}
+        traffic={traffic}
+        now={now}
+        projectSlug={project.slug}
+        analysisSelectors={analysisSelectors}
+      />
+    ) : undefined
+  const briefing = result.status === 'ok' ? <HandlarborsenOwnerBrief model={model} report={result.report} /> : undefined
+  return <ProjectCommandCenter model={model} overview={overview} briefing={briefing} />
+}
+
+function HandlarborsenStatsLoading() {
+  return (
+    <section aria-busy="true" role="status" className="rounded-xl border border-white/10 bg-white/[0.025] p-5">
+      <p className="text-sm text-muted-foreground">Läser Handlarbörsens senaste verifierade statistik…</p>
+    </section>
+  )
 }

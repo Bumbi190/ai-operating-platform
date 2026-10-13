@@ -182,9 +182,12 @@ describe('overview: nothing says the collection is "not scheduled", and nothing 
     expect(one.historyText).toMatch(/bara en rapport/)
   })
 
-  it('renders without any scheduling claim, chart or arrow', () => {
+  it('renders the visual read-only pulse without an invented time-series chart or status', () => {
     const out = html(buildMarketplaceReport(rows, new Date('2026-10-13T08:00:00.000Z'), []))
-    expect(out).not.toMatch(/schemalagd|<svg|<canvas|[↑↓▲▼]/i)
+    expect(out).toContain('Marknadspuls')
+    expect(out).toContain('Förslag att granska')
+    expect(out).toContain('inte en uppmätt kundresa eller konvertering')
+    expect(out).not.toMatch(/schemalagd|<canvas|[↑↓▲▼]/i)
   })
 })
 
@@ -275,7 +278,7 @@ describe('reader: collector_runs', () => {
     const result = await load(d)
     const q = d.calls.find((c) => c.table === 'collector_runs')!
     expect(q.ops).toEqual(expect.arrayContaining([
-      ['select', [COLLECTION_RUN_SELECT]],
+      ['select', ['id, project_id, collector_id, ' + COLLECTION_RUN_SELECT]],
       ['eq', ['collector_id', COLLECTOR_ID]],
       ['eq', ['project_id', HANDLARBORSEN_PROJECT_ID]],
       ['order', ['ran_at', { ascending: false }]],

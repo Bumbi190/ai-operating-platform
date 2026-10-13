@@ -1,6 +1,6 @@
 -- Omnira organization membership foundation (schema only).
 -- This does not grant access to existing project resources, Atlas tools or API routes.
-create table public.omnira_organization_memberships (
+create table if not exists public.omnira_organization_memberships (
   user_id uuid primary key references auth.users(id) on delete cascade,
   role text not null check (role in ('owner','collaborator')),
   created_at timestamptz not null default now(),
@@ -10,7 +10,7 @@ create table public.omnira_organization_memberships (
 
 -- At most one active owner; all role creation/updates require an audited
 -- trusted backend or a separately reviewed owner-only RPC.
-create unique index omnira_single_active_owner
+create unique index if not exists omnira_single_active_owner
 on public.omnira_organization_memberships ((role))
 where role = 'owner' and revoked_at is null;
 
@@ -20,10 +20,18 @@ alter table public.omnira_organization_memberships force row level security;
 revoke all on public.omnira_organization_memberships from public, anon, authenticated;
 grant select on public.omnira_organization_memberships to authenticated;
 
-create policy omnira_member_own_status
-on public.omnira_organization_memberships
-for select to authenticated
-using (user_id = (select auth.uid()));
+do $policy$ begin
+  if not exists (
+    select 1 from pg_catalog.pg_policies
+    where schemaname = 'public' and tablename = 'omnira_organization_memberships'
+      and policyname = 'omnira_member_own_status'
+  ) then
+    create policy omnira_member_own_status
+    on public.omnira_organization_memberships
+    for select to authenticated
+    using (user_id = (select auth.uid()));
+  end if;
+end $policy$;
 
 comment on table public.omnira_organization_memberships is
 'Role registry only: no automatic permissions for existing project resources or execution. Managed by audited backend.';

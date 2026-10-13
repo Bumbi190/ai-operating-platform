@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -24,10 +25,12 @@ export default async function OrganizationLandingPage() {
       <p style={{ color: '#9fb3ce', letterSpacing: 2 }}>OMNIRA · ORGANISATION</p>
       <h1>Projektöversikt</h1>
       <p style={{ color: '#9fb3ce' }}>Inloggad som {scope.role.role === 'owner' ? 'Owner' : 'Collaborator'}. Projektöversikten är skrivskyddad.</p>
+      {scope.role.role === 'owner' && <Link href="/organization/invite" style={{ color: '#b8dafe' }}>Hantera inbjudningar</Link>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 16, marginTop: 32 }}>
         {(data ?? []).map(project => <div key={project.id} style={{ padding: 24, border: '1px solid #33445e', borderRadius: 16 }}>
           <h2 style={{ fontSize: 20 }}>{project.name}</h2>
           <p style={{ color: '#9fb3ce' }}>{project.slug}</p>
+          <Link style={{ color: '#b8dafe' }} href={`/organization/projects/${project.slug}`}>Visa projektöversikt</Link>
         </div>)}
       </div>
       {(!data || data.length === 0) && <p>Inga tillgängliga projekt.</p>}

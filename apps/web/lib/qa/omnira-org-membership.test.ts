@@ -7,7 +7,7 @@ const sql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20261013193
 describe('Omnira organization membership foundation', () => {
   it('only declares owner and collaborator, with one active owner', () => {
     expect(sql).toContain("role in ('owner','collaborator')")
-    expect(sql).toContain('create unique index omnira_single_active_owner')
+    expect(sql).toContain('create unique index if not exists omnira_single_active_owner')
     expect(sql).toContain("role = 'owner' and revoked_at is null")
   })
   it('has fail-closed RLS and no authenticated role writes', () => {

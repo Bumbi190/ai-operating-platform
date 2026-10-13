@@ -102,7 +102,7 @@ export async function middleware(request: NextRequest) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
       const allowedPage = !denied && (
-        pathname === '/organization' || pathname.startsWith('/auth/') ||
+        (pathname === '/organization' || pathname.startsWith('/organization/projects/')) || pathname.startsWith('/auth/') ||
         pathname === '/update-password' || pathname === '/forgot-password' ||
         pathname === '/privacy' || pathname === '/terms'
       )

@@ -15,6 +15,10 @@ function reply(body: Record<string, unknown>, status: number) {
  * are verified. This endpoint never accepts a requested role or project ID.
  */
 export async function POST(request: Request) {
+  const origin = request.headers.get('origin')
+  if (origin !== new URL(request.url).origin || !request.headers.get('content-type')?.toLowerCase().startsWith('application/json'))
+    return reply({ error: 'Invalid origin or content type' }, 403)
+
   if (process.env.OMNIRA_COLLAB_INVITES_ENABLED !== 'true')
     return reply({ error: 'Invitations disabled' }, 503)
 

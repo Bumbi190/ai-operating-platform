@@ -11,6 +11,7 @@ import type { PlanView } from "@/lib/website-build/planning/types";
 import type { BuildSessionView } from "@/lib/website-build/types";
 import { useAtlasConversation } from "@/lib/atlas/conversation/provider";
 import { AtlasChatConversation } from "./AtlasChatConversation";
+import { BuildConnectionCards } from "@/components/website-build/BuildConnectionCards";
 import { AtlasPlanCard } from "./AtlasPlanCard";
 import { BuildPreviewPane } from "@/components/website-build/BuildPreviewPane";
 import { BuildConversation } from "@/components/website-build/BuildConversation";
@@ -158,6 +159,12 @@ export function AtlasBuildSurface({
                   document.getElementById("atlas-chat-composer")?.focus()
                 }
                 pending={current?.pending}
+              />
+            )}
+            {shownPlan && (
+              <BuildConnectionCards
+                planRef={shownPlan.ref}
+                revisionId={shownPlan.currentRevision.revisionId}
               />
             )}
             {session && !shownPlan && brief && (

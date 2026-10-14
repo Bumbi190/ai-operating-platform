@@ -7,3 +7,5 @@
 
 .previewHost{align-self:start;position:sticky;top:1rem}.previewPane{max-height:calc(100dvh - 7rem);overflow-y:auto}
 @media(max-width:1000px){.previewHost{position:static}.previewPane{max-height:none;overflow:visible}}
+
+.connections{border:1px solid hsl(var(--border));border-radius:.8rem;background:hsl(var(--card));padding:1rem;margin:.75rem 0;font-size:.9rem;line-height:1.6;overflow-wrap:anywhere}.connections summary{cursor:pointer}.connections button{font:inherit;color:inherit;background:hsl(var(--background));border:1px solid hsl(var(--border));border-radius:.5rem;padding:.5rem .7rem;cursor:pointer}.connections ol{padding-left:1.3rem}.connectionCard{border-top:1px solid hsl(var(--border));padding:1rem 0}.connectionCard h3{margin:.4rem 0}.connectionLinks{display:flex;flex-direction:column;gap:.5rem}.connections code{display:inline-block;max-width:100%;overflow-wrap:anywhere}.connections small{color:hsl(var(--muted-foreground))}

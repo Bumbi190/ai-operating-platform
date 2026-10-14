@@ -34,7 +34,7 @@ function ProjectSetting({project}:{project:WebsiteBuilderSettingsModel['projects
  const [agentId,setAgentId]=useState(project.setting?.builderAgentId??''),[base,setBase]=useState(''),[os,setOs]=useState<ProjectRoot['os']>(project.setting?.location?.os??'windows'),[setting,setSetting]=useState<BuilderSetting|null>(project.setting),[busy,setBusy]=useState(false),[message,setMessage]=useState('')
  async function save(event:FormEvent){event.preventDefault();setBusy(true);setMessage('');try{const body={projectId:project.id,agentId:agentId||null,...(base.trim()?{location:{os,root:base.trim(),targetId:null}}:{})};setSetting(await post('/api/website-build-settings',body));setMessage('Projektets inställningar är sparade.')}catch(e){setMessage((e as Error).message)}finally{setBusy(false)}}
  const id='website-builder-'+project.id
- return <form className={styles.replace} id={id} onSubmit={save} aria-label={'Bygginställningar för '+project.name}>
+ return <form className={styles.replace} id={'project-'+project.id} onSubmit={save} aria-label={'Bygginställningar för '+project.name}>
   <h3 className={styles.channelTitle}>{project.name}</h3>
   {!project.readable&&<p role="alert" className={styles.note}>Projektets bygginställningar kunde inte läsas.</p>}
   <label className={styles.fieldLabel} htmlFor={id+'-agent'}>Webbbyggare för {project.name}</label>

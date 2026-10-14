@@ -26,6 +26,9 @@ const server = httpServer(async (req, res) => {
       const result = parts[2] === 'setup' ? await fixture.setup() : parts[2] === 'session' ? { session: await fixture.snapshot(parts[3]),...await fixture.conversation(await fixture.snapshot(parts[3])), userId: '20000000-0000-4000-8000-000000000001', projectSlug: 'test-project', brief: 'En hemsida för vårt svenska café' } : await fixture.step(parts[3], parts[4])
       res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(result)); return
     }
+    if(url.pathname==='/api/website-build-readiness'){
+      const api=await vite.ssrLoadModule('/lib/website-build/connections/api.ts'),response=await api.websiteBuildReadinessApi(new Request(url,{headers:req.headers}));res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));return
+    }
     if(url.pathname==='/api/chat'){
       const api=await vite.ssrLoadModule('/app/api/chat/route.ts')
       const chunks=[];for await(const chunk of req){chunks.push(chunk);if(chunks.reduce((sum,c)=>sum+c.length,0)>70000)throw Error('Fixture chat body too large')}

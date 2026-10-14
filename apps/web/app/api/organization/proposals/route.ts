@@ -13,12 +13,30 @@ export async function GET() {
   const db = createAdminClient()
   const scope = await resolveOrganizationReadScope(session, db, user.id)
   if (!scope.role.active) return fail(403)
-  if (!scope.projectIds.length) return NextResponse.json({ proposals: [] }, { headers })
+  if (!scope.projectIds.length) return NextResponse.json({ proposals: [], events: [] }, { headers })
   const { data, error } = await ((db as any).from('omnira_collaborator_proposals') as any)
     .select('id, project_id, author_id, title, detail, status, decision_reason, decided_at, created_at')
     .in('project_id', [...scope.projectIds]).order('created_at', { ascending: false }).limit(60)
-  if (error) return fail(503)
-  return NextResponse.json({ proposals: data ?? [] }, { headers })
+  if (error || !Array.isArray(data)) return fail(503)
+  // Event rows are SERVER_ONLY and have no project_id. Bound them exclusively
+  // through proposal IDs already scoped to the verified session's projects.
+  const allowedProposals = data.filter((p: { id: unknown; project_id: unknown }) =>
+    typeof p.id === 'string' && scope.projectIds.includes(p.project_id as string))
+  if (allowedProposals.length === 0)
+    return NextResponse.json({ proposals: [], events: [] }, { headers })
+  const ids = allowedProposals.map((p: { id: string }) => p.id)
+  const { data: eventRows, error: eventError } = await ((db as any).from('omnira_collaborator_proposal_events') as any)
+    .select('proposal_id, event, created_at')
+    .in('proposal_id', ids).order('created_at', { ascending: true }).limit(180)
+  if (eventError || !Array.isArray(eventRows)) return fail(503)
+  const permitted = new Set(ids)
+  return NextResponse.json({
+    proposals: allowedProposals,
+    events: eventRows.filter((e: { proposal_id: string }) => permitted.has(e.proposal_id))
+      .map((e: { proposal_id: string; event: string; created_at: string }) => ({
+        proposal_id: e.proposal_id, event: e.event, created_at: e.created_at,
+      })),
+  }, { headers })
 }
 export async function POST(request: Request) {
   if (request.headers.get('origin') !== new URL(request.url).origin ||

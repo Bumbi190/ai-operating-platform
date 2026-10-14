@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { safeAuthDestination } from '@/lib/auth/safe-redirect'
 
 /**
  * /auth/confirm — Magic Link / invite / email-verification callback (client-side)
@@ -27,6 +28,7 @@ export default function AuthConfirmPage() {
     // Read code from URL query params (PKCE flow)
     const params = new URLSearchParams(window.location.search)
     const code = params.get('code')
+    const destination = safeAuthDestination(params.get('next'))
     const supabaseError = params.get('error')
     const supabaseErrorDesc = params.get('error_description')
 
@@ -42,7 +44,7 @@ export default function AuthConfirmPage() {
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code)
         if (!error) {
-          router.replace('/atlas')
+          router.replace(destination)
           return
         }
         console.warn('[auth/confirm] Code exchange failed:', error.message)
@@ -51,7 +53,7 @@ export default function AuthConfirmPage() {
       // 2. Check if implicit flow already set a session via hash fragment
       const { data: { session } } = await supabase.auth.getSession()
       if (session) {
-        router.replace('/atlas')
+        router.replace(destination)
         return
       }
 
@@ -60,7 +62,7 @@ export default function AuthConfirmPage() {
         (event, session) => {
           if (event === 'SIGNED_IN' && session) {
             subscription.unsubscribe()
-            router.replace('/atlas')
+            router.replace(destination)
           }
         },
       )

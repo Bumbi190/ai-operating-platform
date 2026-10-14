@@ -11,6 +11,7 @@ import {
 import { resolveDestination, type DestinationId } from '@/lib/nav/registry'
 import { AtlasRuntimeProvider } from '@/lib/atlas/runtime'
 import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
+import { resolveOrganizationReadScope } from '@/lib/auth/organization-project-read'
 import { OPERATOR_DISPLAY_NAME } from '@/lib/atlas/identity'
 import { AtlasProjectReturnShortcut } from '@/components/platform/vnext/AtlasProjectReturnShortcut'
 import { AtlasMobileNav } from '@/components/platform/vnext/AtlasMobileNav'
@@ -55,15 +56,28 @@ export default async function PlatformLayout({
   })
 
   const db = createAdminClient()
-  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
-  const scopedProjectIds = scopeProjectFilter(allowedProjectIds)
-  const allowedProjects = new Set(allowedProjectIds)
+  const ownedProjectIds = await getAllowedProjectIds(db, user.id)
+  // Display-only collaborator scope: NEVER write it back into the shared
+  // owner/executor allowlist. No new role lookup for an existing project owner.
+  const organizationScope = ownedProjectIds.length === 0
+    ? await resolveOrganizationReadScope(supabase, db, user.id)
+    : null
+  const isCollaborator = organizationScope?.role.active
+    && organizationScope.role.role === 'collaborator'
+  const displayProjectIds = isCollaborator ? [...organizationScope.projectIds] : ownedProjectIds
+  const scopedProjectIds = scopeProjectFilter(displayProjectIds)
+  const allowedProjects = new Set(displayProjectIds)
 
   const [projectsRes, conversationsRes, runsRes, approvalsRes, pendingRes] = await Promise.allSettled([
-    supabase
-      .from('projects')
-      .select('id, name, slug, color')
-      .order('created_at', { ascending: true }),
+    isCollaborator
+      ? (db.from('projects') as any)
+          .select('id, name, slug, color')
+          .in('id', scopedProjectIds)
+          .order('created_at', { ascending: true })
+      : supabase
+          .from('projects')
+          .select('id, name, slug, color')
+          .order('created_at', { ascending: true }),
     db
       .from('conversations')
       .select('id, title, project_id')
@@ -125,7 +139,7 @@ export default async function PlatformLayout({
         projectColor: p?.color,
         timestamp: r.finished_at ?? r.created_at,
         intense: true,
-        action: { label: 'Åtgärda', href: navHref('activity', { project: p?.slug, filters: { status: 'failed' } }) },
+        action: isCollaborator ? undefined : { label: 'Åtgärda', href: navHref('activity', { project: p?.slug, filters: { status: 'failed' } }) },
       })
     } else if (r.status === 'running') {
       events.push({
@@ -164,7 +178,7 @@ export default async function PlatformLayout({
         projectColor: p?.color,
         timestamp: a.created_at,
         intense: true,
-        action: { label: 'Granska', href: navHref('approvals', { project: p?.slug, filters: { state: 'pending' } }) },
+        action: isCollaborator ? undefined : { label: 'Granska', href: navHref('approvals', { project: p?.slug, filters: { state: 'pending' } }) },
       })
     } else if (a.status === 'approved') {
       events.push({
@@ -214,7 +228,7 @@ export default async function PlatformLayout({
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
-    <AtlasRuntimeProvider projects={projects}>
+    <AtlasRuntimeProvider projects={isCollaborator ? [] : projects}>
     <OperatorModeProvider uiGeneration={uiGeneration}>
       {/* Presentation preferences are applied before first paint.
           Without this the provider would only reach the DOM after hydration, so
@@ -270,6 +284,7 @@ export default async function PlatformLayout({
           operatorName={OPERATOR_DISPLAY_NAME}
           recentConversations={conversations}
           uiGeneration={uiGeneration}
+          readOnly={Boolean(isCollaborator)}
         />
 
         {/* ─── Column 2 · Operating Canvas (fluid 1fr) ──────────────────── */}

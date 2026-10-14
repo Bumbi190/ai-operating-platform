@@ -172,8 +172,8 @@ describe('sidebar · the shell actually consumes these decisions', () => {
 
   it('gates the section and the deploy affordances on the decisions', () => {
     expect(SIDEBAR).toContain('{showProjectSection && (')
-    expect(SIDEBAR).toContain('{showGlobalProjectList && (')
-    expect(SIDEBAR).toContain('{showGlobalProjectList && projects.length === 0 && (')
+    expect(SIDEBAR).toContain('{showGlobalProjectList && !readOnly && (')
+    expect(SIDEBAR).toContain('{showGlobalProjectList && !readOnly && projects.length === 0 && (')
   })
 
   it('renders the nav list from the resolved sections, not the legacy constant', () => {

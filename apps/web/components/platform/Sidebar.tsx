@@ -49,6 +49,8 @@ interface SidebarProps {
   recentConversations?: RecentConversation[]
   /** Resolved server-side by the platform layout — never parsed here. */
   uiGeneration?: OmniraUiGeneration
+  /** Presentation only: route viewer to audited organization read pages. */
+  readOnly?: boolean
 }
 
 
@@ -58,6 +60,7 @@ export function Sidebar({
   operatorName,
   recentConversations = [],
   uiGeneration = DEFAULT_UI_GENERATION,
+  readOnly = false,
 }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
@@ -316,7 +319,7 @@ export function Sidebar({
             <span className="eyebrow !text-[9px] !text-faint">
               Autonom stack
             </span>
-            {showGlobalProjectList && (
+            {showGlobalProjectList && !readOnly && (
             <Link
                 href="/projects/new"
                 className="w-5 h-5 flex items-center justify-center rounded-md hover:bg-white/[0.06] text-meta hover:text-indigo-200 transition-colors ease-os"
@@ -330,7 +333,7 @@ export function Sidebar({
           <div className="space-y-1">
             {sidebarProjects.map((project) => {
               const isActive = activeSlug === project.slug
-              const projectBase = `/projects/${project.slug}`
+              const projectBase = readOnly ? `/organization/projects/${project.slug}` : `/projects/${project.slug}`
               return (
                 <div key={project.id}>
                   <Link
@@ -362,7 +365,7 @@ export function Sidebar({
                     />
                   </Link>
 
-                  {isActive && (
+                  {isActive && !readOnly && (
                     <div
                       className="ml-3 mt-1 mb-2 space-y-0.5 pl-3 border-l animate-fade-in"
                       style={{ borderColor: `${project.color}40` }}
@@ -397,7 +400,7 @@ export function Sidebar({
               )
             })}
 
-            {showGlobalProjectList && projects.length === 0 && (
+            {showGlobalProjectList && !readOnly && projects.length === 0 && (
               <Link
                 href="/projects/new"
                 className="flex items-center gap-2 px-3 py-2 text-[11px] text-meta hover:text-zinc-300 transition-colors rounded-lg hover:bg-white/[0.04] ease-os"

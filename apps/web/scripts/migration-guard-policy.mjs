@@ -62,10 +62,8 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // P1E adds `handlarborsen_guarded_snapshot_store` (enforced): 111/97 → 112/98. NOT applied to
 // production on its branch, so the guard is RED there until the operator-approved apply.
 // P1 adds atlas_analysis_drafts (20261012183305): 113/99. Local only; no activation claim.
-// Website build sessions adds one enforced migration: 115/101 -> 116/102.
-// Production remains gated until website_build_sessions is actually applied.
-export const EXPECTED_CANONICAL_SQL_COUNT = 116
-export const EXPECTED_ENFORCED_COUNT = 102
+// Website build sessions: 115/101 -> 116/102 (already applied).\n// Handlarborsen competitor observations: 116/102 -> 117/103 (pending apply).\nexport const EXPECTED_CANONICAL_SQL_COUNT = 117
+export const EXPECTED_ENFORCED_COUNT = 103
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

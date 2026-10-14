@@ -408,3 +408,12 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
 })
 
 it("rejects missing P1 by its exact ledger name",()=>{expect(()=>evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger.filter(n=>n!=="atlas_analysis_drafts"),repositoryState)).toThrow(/atlas_analysis_drafts/)})
+
+it('fails closed before the future competitor observation migration is applied', () => {
+  const name = 'handlarborsen_competitor_observations_v1'
+  expect(repositoryState.enforcedNames).toContain(name)
+  expect(() => evaluateAppliedMigrationLedger(
+    hypotheticalPostApplyLedger.filter(n => n !== name),
+    repositoryState,
+  )).toThrow(/handlarborsen_competitor_observations_v1/)
+})

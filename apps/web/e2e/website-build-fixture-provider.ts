@@ -1,0 +1,14 @@
+import { createAdminClient } from './website-build-fixture-db'
+import { testSql } from '../lib/website-build/test-db'
+import { loadBuildSnapshot } from '../lib/website-build/store'
+export async function runStep(input: { runId: string; cost: { operation: string } }) {
+  if (!/^[0-9a-f-]{36}$/.test(input.runId)) throw Error('Invalid fixture run')
+  const writer = JSON.parse(testSql(`select jsonb_build_object('projectId',s.project_id,'sessionId',s.id,'runId',r.id,'claimId',r.claim_id,'generation',s.generation) from website_build_sessions s join runs r on r.id=s.current_run_id where r.id='${input.runId}';`))
+  const snapshot = await loadBuildSnapshot(createAdminClient(), writer)
+  const text = snapshot.feedback.at(-1)?.text || 'Välkommen till vårt café'
+  const content = input.cost.operation.includes('interpret') ? { items: snapshot.feedback.map(item => ({ feedbackId: item.id, summary: 'Jag ändrar hemsidan: ' + item.text, disposition: 'apply', changeKey: 'title', supersedesFeedbackIds: [] })) } : { format: 'static-website.v1', title: 'Café', pages: [
+    { key: 'index', title: 'Hem', bodyHtml: `<h1>${text.replace(/[<>&]/g, '')}</h1><button id="menu" aria-expanded="false">Meny</button><nav id="nav" hidden><a href="contact.html">Kontakt</a></nav>`, css: 'body{font-family:system-ui;padding:32px;background:#fff8ef}h1{font-size:42px}button{padding:12px}', behaviors: [{ kind: 'toggle', triggerId: 'menu', targetIds: ['nav'] }] },
+    { key: 'contact', title: 'Kontakt', bodyHtml: '<h1>Kontakta caféet</h1><a href="index.html">Hem</a>', css: 'body{font-family:system-ui;padding:32px}', behaviors: [] },
+  ] }
+  return { content: JSON.stringify(content), tokensIn: 0, tokensOut: 0, durationMs: 1, authorityRefreshRequired: false }
+}

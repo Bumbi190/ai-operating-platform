@@ -59,4 +59,5 @@ export function renderPreviewDocument(artifact: WebsiteArtifact, pageKey: string
     .replace(/<meta http-equiv="Content-Security-Policy" content="[^"]*">/, `<meta http-equiv="Content-Security-Policy" content="${escapeHtml(websiteCsp(`'nonce-${nonce}'`))}">`)
     .replace(match[0], `<script type="application/json" id="__atlas_config">${scriptJson({ ...config, preview: { token: channelToken, artifactHash: artifact.sha256 } })}</script>`)
     .replace(/<script src="website\.js" integrity="[^"]*" crossorigin="anonymous"><\/script>/, `<script nonce="${nonce}">${WEBSITE_RUNTIME}</script>`)
+    .replace(`<script id="__atlas_runtime">${WEBSITE_RUNTIME}</script>`, `<script nonce="${nonce}">${WEBSITE_RUNTIME}</script>`)
 }

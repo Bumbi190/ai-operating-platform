@@ -257,6 +257,7 @@ export interface ProjectCommandCenterModel {
     pausedReason: string | null
   }
   links: {
+    build: string | null
     runs: string | null
     workflows: string | null
     outputs: string | null
@@ -552,6 +553,7 @@ export function assembleProjectCommandCenter(input: AssembleCommandCenterInput):
       pausedReason: text(project.pausedReason),
     },
     links: {
+      build: under('build'),
       runs: under('runs'),
       workflows: under('workflows'),
       outputs: under('outputs'),

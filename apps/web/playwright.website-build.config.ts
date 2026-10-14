@@ -1,0 +1,2 @@
+import { defineConfig } from '@playwright/test'
+export default defineConfig({ testDir: './e2e', testMatch: 'website-build-workspace.spec.ts', workers: 1, timeout: 30_000, expect: { timeout: 8000 }, use: { baseURL: 'http://127.0.0.1:54390', browserName: 'chromium', screenshot: 'only-on-failure' }, outputDir: '../../.superpowers/sdd/2026-10-14-atlas-live-build-workspace/browser-results', webServer: { command: 'node e2e/website-build-server.mjs', url: 'http://127.0.0.1:54390', reuseExistingServer: false, timeout: 60_000 } })

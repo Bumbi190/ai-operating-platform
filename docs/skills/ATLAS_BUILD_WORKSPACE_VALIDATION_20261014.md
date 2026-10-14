@@ -97,3 +97,6 @@ Pause during interpretation was observed RED and fixed with independently cached
 
 ## Task 4 — API and Atlas
 Seven real-SQL API tests verify authentication, tenant scope, idempotency/conflict, feedback and private authenticated ZIP. The actual Atlas POST tool loop queues a real session/run and returns its workspace URL. 125/125 combined API/chat assertions pass; tsc exit0. Existing chat SHA guards now canonicalize Windows CRLF while preserving pinned content hashes.
+
+## Task 5 — browser workspace
+Real browser, real API/store/RPC and actual website worker with deterministic zero-cost provider:5/5 Chromium flows pass. Preview history/navigation, concurrent composer/reload, failure retaining previous preview, keyboard splitter at1440 and mobile tabs768/390/320 at200% text, opaque origin/CSP/network/popup/top-navigation and forged message denial. Export downloaded and unpacked: menu and page navigation work from file://. Three reducer/draft assertions pass. Screenshots inspected. Typecheck exit0. Two existing project-command-center regression failures remain (legacy content hash and outdated no-handlarborsen assertion); unchanged from baseline, final comparison required.

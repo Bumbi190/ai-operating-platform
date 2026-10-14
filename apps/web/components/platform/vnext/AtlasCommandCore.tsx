@@ -45,6 +45,7 @@ export function AtlasCommandCore({ readOnly = false }: { readOnly?: boolean }) {
   const [submitting, setSubmitting] = useState(false)
   const [observerAnswer, setObserverAnswer] = useState('')
   const [observerError, setObserverError] = useState('')
+  const voicePending = atlas.isSessionActive && atlas.voicePhase === 'idle'
   const busy = submitting || atlas.voicePhase === 'thinking'
   const textBusy = busy || atlas.voicePhase === 'listening' || atlas.voicePhase === 'speaking'
   const runtimeOrbState = resolveAtlasOrbState({
@@ -76,6 +77,7 @@ export function AtlasCommandCore({ readOnly = false }: { readOnly?: boolean }) {
       atlas.deactivate()
       return
     }
+    if (voicePending) { atlas.deactivate(); return }
     if (!busy) atlas.activate()
   }
 
@@ -121,7 +123,7 @@ export function AtlasCommandCore({ readOnly = false }: { readOnly?: boolean }) {
 
   const voiceLabel = atlas.voicePhase === 'listening'
     ? 'Stäng av mikrofonen'
-    : atlas.voicePhase === 'speaking' ? 'Avbryt svaret' : 'Starta röstläge'
+    : atlas.voicePhase === 'speaking' ? 'Avbryt svaret' : voicePending ? 'Avbryt röststart' : 'Starta röstläge'
 
   return (
     <section ref={coreRef} className={styles.commandCore} aria-labelledby="atlas-vnext-title" data-state={orbState}>
@@ -161,6 +163,9 @@ export function AtlasCommandCore({ readOnly = false }: { readOnly?: boolean }) {
       </div>
 
       <div className={styles.dialogue} aria-live="polite">
+        {!readOnly && voicePending ? (
+          <p className={styles.runtimeDetail} role="status">Väntar på mikrofonen. Tillåt mikrofonåtkomst om webbläsaren frågar, eller avbryt röststarten för att skriva.</p>
+        ) : null}
         {atlas.transcript && atlas.voicePhase === 'listening' ? (
           <p className={styles.transcript}>{atlas.transcript}</p>
         ) : null}

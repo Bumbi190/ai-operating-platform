@@ -1,5 +1,6 @@
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
+import { getProjectBySlug } from '@/lib/project/get-project'
 import { loadOrganizationProjectCommandCenter } from '@/lib/os/organization-command-center-reader'
 import { isHandlarborsenProject } from '@/lib/os/project-command-center'
 import { loadHandlarborsenMarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-read'
@@ -25,6 +26,12 @@ export default async function OrganizationProjectPage({ params }: { params: { sl
   const memberRole = await resolveOrganizationRole(
     session as unknown as Parameters<typeof resolveOrganizationRole>[0], user?.id,
   )
+  // Owners entering via the organization map retain their own project workspace.
+  // The session-bound RLS read must confirm this exact project before redirect.
+  if (memberRole.active && memberRole.role === 'owner') {
+    const ownedProject = await getProjectBySlug(params.slug)
+    if (ownedProject?.id === model.project.id) redirect('/projects/' + encodeURIComponent(ownedProject.slug))
+  }
   const mayWorkWithHandlarborsen = canCollaborateOnProject(
     memberRole, model.project, 'operate_workflow',
   )

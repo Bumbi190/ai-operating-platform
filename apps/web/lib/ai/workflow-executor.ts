@@ -9,6 +9,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { interpolate } from '@/lib/utils'
 import { runStep } from '@/lib/ai/runner'
+import { composeAgentDesignSkills } from '@/lib/skills/compose-agent-skills'
 import { validateStepOutput } from '@/lib/ai/validators/output-validator'
 import { mergeRunContext } from '@/lib/ai/checkpoint'
 import { isDuplicateOutputError } from '@/lib/ai/output-idempotency'
@@ -153,8 +154,9 @@ export async function executeRunSteps(
       // Ladda agenten
       const { data: agent, error: agentErr } = await db
         .from('agents')
-        .select('id, name, system_prompt, model, config')
+        .select('id, name, system_prompt, model, config, skill_ids')
         .eq('id', step.agent_id)
+        .eq('project_id', projectId)
         .single()
 
       if (agentErr || !agent) {
@@ -162,6 +164,8 @@ export async function executeRunSteps(
       }
 
       // Interpolera {{variabler}} med nuvarande context
+      const designKnowledge = composeAgentDesignSkills(agent.system_prompt, Array.isArray(agent.skill_ids) ? agent.skill_ids : [])
+      if (designKnowledge.unresolvedSkillIds.length) console.warn('[design-skills] unresolved labels', { runId, agentId: agent.id, count: designKnowledge.unresolvedSkillIds.length })
       const userMessage = interpolate(step.input_template, context)
 
       // ── Logga: user message ──────────────────────────────────────────────
@@ -204,7 +208,7 @@ export async function executeRunSteps(
         // AUTONOMOUS: the executor runs under the drain/scheduler, never a
         // human, and its scope is the instance's own project.
         execution: { context: 'AUTONOMOUS', scope: projectScope({ projectId }) },
-        systemPrompt: agent.system_prompt,
+        systemPrompt: designKnowledge.systemPrompt,
         userMessage,
         model: agent.model,
         maxTokens: stepConfig?.max_tokens ?? 4000,
@@ -250,7 +254,7 @@ export async function executeRunSteps(
             context: 'AUTONOMOUS',
             scope: projectScope({ projectId }),
           },
-          systemPrompt: agent.system_prompt,
+          systemPrompt: designKnowledge.systemPrompt,
           userMessage: correctedMessage,
           model: agent.model,
           maxTokens: stepConfig?.max_tokens ?? 4000,

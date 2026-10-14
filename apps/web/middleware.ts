@@ -98,7 +98,9 @@ export async function middleware(request: NextRequest) {
     }
     if (!membershipError && membership?.role === 'collaborator') {
       const denied = !!membership.revoked_at
-      if (pathname.startsWith('/api') && (denied || pathname !== '/api/organization/projects')) {
+      if (pathname.startsWith('/api/organization/projects/') && request.method !== 'GET')
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      if (pathname.startsWith('/api') && (denied || pathname !== '/api/organization/projects' && !/^\/api\/organization\/projects\/[a-z0-9][a-z0-9-]{0,79}\/workflows$/.test(pathname))) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
       const allowedPage = !denied && (

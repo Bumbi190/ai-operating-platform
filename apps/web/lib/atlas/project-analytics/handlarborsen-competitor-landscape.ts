@@ -43,6 +43,7 @@ export const COMPETITOR_SITES: readonly CompetitorSite[] = Object.freeze([
 export type LandscapeSourceStatus =
   | 'metadata_checked'
   | 'robots_denied'
+  | 'robots_unavailable'
   | 'redirect_refused'
   | 'http_error'
   | 'invalid_content_type'

@@ -112,10 +112,32 @@ describe('manual competitor market landscape boundary', () => {
     expect(fetcher).toHaveBeenCalledTimes(6)
   })
 
+  it('accepts a complete official head title before huge later scripts', async () => {
+    const fixture = '<!doctype html><html><head>' +
+      '<meta charset="utf-8"><meta name="viewport" content="width=device-width">' +
+      '<title>AutoProff official B2B</title>' +
+      '<script>' + 'x'.repeat(225000) + '</script></head></html>'
+    const fetcher = vi.fn<typeof fetch>(async url => String(url).endsWith('/robots.txt')
+      ? new Response(policy)
+      : new Response(fixture, { headers: { 'content-type': 'text/html' } }))
+    const scan = await scanCompetitorLandscape(fetcher)
+    expect(scan.observations.every(x => x.status === 'metadata_checked')).toBe(true)
+    expect(scan.observations.every(x => x.title === 'AutoProff official B2B')).toBe(true)
+  })
+
+  it('does not accept a fake title inside an unfinished script as official metadata', async () => {
+    const fixture = '<html><head><script><title>not a page title</title>' + 'x'.repeat(225000)
+    const fetcher = vi.fn<typeof fetch>(async url => String(url).endsWith('/robots.txt')
+      ? new Response(policy)
+      : new Response(fixture, { headers: { 'content-type': 'text/html' } }))
+    const scan = await scanCompetitorLandscape(fetcher)
+    expect(scan.observations.every(x => x.status === 'too_large')).toBe(true)
+  })
+
   it('never treats invalid robots or failure as permission to retrieve its document', async () => {
     const fetcher = vi.fn<typeof fetch>(async () => new Response('<html>invalid robots</html>'))
     const scan = await scanCompetitorLandscape(fetcher)
     expect(fetcher).toHaveBeenCalledTimes(3)
-    expect(scan.observations.every(x => x.status === 'robots_denied')).toBe(true)
+    expect(scan.observations.every(x => x.status === 'robots_unavailable')).toBe(true)
   })
 })

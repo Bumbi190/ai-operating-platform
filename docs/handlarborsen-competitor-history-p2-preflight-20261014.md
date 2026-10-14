@@ -26,3 +26,16 @@ Tidigare draft-PR #306 innehåller en prototyp för endast tre Handlarbudet-käl
 ATLAS_ROADMAP_SV.md kräver verifierad Cost Governance i både Preview och produktion före autonom exekvering. Schemaläggning behöver separat godkännande, budgettak, robots/terms-kontroller, rate limit, kill switch, audit och återkallning. Denna etapp aktiverar inget av detta.
 
 Inga GitHub Actions-körningar, migrationsändringar, behörigheter eller produktionstokens ingår i P2-kärnan.
+
+
+## P2.5 – owner-gatad lagringsadapter (kodkandidat)
+
+- Servermiljöflagga HANDLARBORSEN_COMPETITOR_HISTORY_ENABLED måste vara exakt true. Default är av. Ingen produktion/Preview-flagga är aktiverad i denna kodetapp.
+- Den befintliga RLS-klienten och owner-scope kontrollerar inloggad ägare, Handlarbörsens fasta projekt-ID, live owner_id och slug innan admin-DB-anrop och extern scanning. Medarbetare med enbart läsbehörighet kan inte anropa sparningen.
+- En POST till /api/projects/handlarborsen/competitors/history kräver exakt Origin, rätt slug, tom request-body och inga URL-parametrar. Den ger inte klienten möjlighet att välja källor, domän, tid, SQL eller agent-åtgärd.
+- Skanningen är manuell (efter ägarens klick) och sker först efter en lyckad databasläsning. Finns redan dagens uppsättning görs inga fler externa anrop. Max sex fastlåsta källor skrivs med ON CONFLICT DO NOTHING. Returvärdet räknar faktiskt insatta rader, inte planerade rader.
+- Tidsstämplar från PostgREST normaliseras säkert från RFC3339-offset till kanonisk UTC; titelns SHA256 jämförs vid läsning innan diagrammet visas.
+- Historiken visas server-renderad först efter owner-gatad, framgångsrik läsning. Vid fel visas ett tydligt saknas/otillgänglig-läge. Den manuella Spara-knappen visas endast om owner + DB-läsning är verifierad.
+- Regressionstester för default-off, origin/body/slug, owner-scope, live owner-ID, idempotens, sex fasta källor, felaktig digest, tidsformat, avsaknad av DB och exakta lagrade antal.
+
+**Kvarstående säkerhetsgrindar innan produktion:** godkänn och applicera föreslagen schemafil via ordinarie migrationsprocess med uppdaterat guard/inventory; bevisa rollback och samtidiga POST-försök med race; granska rättigheter på riktig Supabase; verifiera Preview med flagga och separat testkonto; definiera retention/operatörsrensning. Inga schemalagda kontroller eller automatiska Atlas-åtgärder. Flagga får inte aktiveras förrän samtliga granskningar är godkända.

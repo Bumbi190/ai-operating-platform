@@ -4,6 +4,7 @@ import { isHandlarborsenProject } from '@/lib/os/project-command-center'
 import { scanPublicSources } from '@/lib/atlas/project-analytics/handlarborsen-competitors-scan'
 import { scanCompetitorLandscape } from '@/lib/atlas/project-analytics/handlarborsen-competitor-landscape-scan'
 import { HandlarborsenCompetitors } from '@/components/platform/vnext/HandlarborsenCompetitors'
+import { competitorHistoryEnabled, loadCompetitorHistory } from '@/lib/atlas/project-analytics/handlarborsen-competitor-history-service'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,8 +15,14 @@ export default async function CompetitorsPage({ params, searchParams }: {
 }) {
   const project = await getProjectBySlug(params.slug)
   if (!project || !isHandlarborsenProject(project)) notFound()
+  const historyEnabled = competitorHistoryEnabled()
   const [scan, landscape] = searchParams?.scan === '1'
     ? await Promise.all([scanPublicSources(), scanCompetitorLandscape()])
     : [null, null]
-  return <HandlarborsenCompetitors scan={scan} landscape={landscape} />
+  const result = historyEnabled ? await loadCompetitorHistory() : null
+  const history = result?.status === 'ok' ? result.history : null
+  return <HandlarborsenCompetitors
+    scan={scan} landscape={landscape} history={history}
+    historyEnabled={historyEnabled} canSaveHistory={result?.status === 'ok'}
+  />
 }

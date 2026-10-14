@@ -10,7 +10,7 @@ create table public.website_build_sessions (
  generation bigint not null default 0, feedback_seq bigint not null default 0, processed_feedback_seq bigint not null default 0,
  current_run_id uuid references public.runs(id), active_preview_revision_id uuid,
  control_requested text check(control_requested in ('pause','cancel')), control_keys jsonb not null default '{}',
- candidate jsonb, candidate_feedback_seq bigint, interpretation jsonb,
+ candidate jsonb, candidate_feedback_seq bigint, interpretation jsonb, interpretation_feedback_seq bigint,
  created_at timestamptz not null default now(), updated_at timestamptz not null default now(),
  unique(id,project_id), unique(project_id,created_by,idempotency_key)
 );
@@ -58,7 +58,7 @@ begin
  select * into strict s from public.website_build_sessions where id=(p_ref->>'sessionId')::uuid and project_id=(p_ref->>'projectId')::uuid;
  select coalesce(jsonb_agg(jsonb_build_object('id',f.id,'sequence',f.sequence,'authorId',f.author_id,'text',f.text,'inputSource',f.input_source,'viewedRevisionId',f.viewed_revision_id,'status',f.status,'interpretation',f.interpretation,'appliedRevisionId',f.applied_revision_id,'createdAt',f.created_at) order by f.sequence),'[]') into feedback from public.website_build_feedback f where f.session_id=s.id;
  select coalesce(jsonb_agg(jsonb_build_object('id',r.id,'number',r.number,'generation',r.generation,'feedbackSequence',r.feedback_sequence,'sha256',r.sha256,'createdAt',r.created_at,'pages',(select jsonb_agg(jsonb_build_object('key',p->>'key','title',p->>'title')) from jsonb_array_elements(r.artifact->'pages') p)) order by r.number),'[]') into revisions from public.website_preview_revisions r where r.session_id=s.id;
- return jsonb_build_object('projectId',s.project_id,'sessionId',s.id,'stateVersion',s.state_version,'conversationId',s.conversation_id,'status',s.status,'stage',s.stage,'agentId',s.agent_id,'activePreviewRevisionId',s.active_preview_revision_id,'controlRequested',s.control_requested,'updatedAt',s.updated_at,'revisions',revisions,'feedback',feedback);
+ return jsonb_build_object('projectId',s.project_id,'sessionId',s.id,'stateVersion',s.state_version,'conversationId',s.conversation_id,'status',s.status,'stage',s.stage,'agentId',s.agent_id,'activePreviewRevisionId',s.active_preview_revision_id,'currentRunId',s.current_run_id,'controlRequested',s.control_requested,'updatedAt',s.updated_at,'revisions',revisions,'feedback',feedback);
 end $$;
 create function public.website_build_enqueue(p_session_id uuid) returns uuid language plpgsql security invoker set search_path='' as $$
 declare s public.website_build_sessions; rid uuid:=gen_random_uuid(); nextgen bigint;
@@ -111,6 +111,14 @@ begin
  if not p_allow_pause and s.control_requested='pause' then raise exception 'WEBSITE_BUILD_PAUSING' using errcode='55000'; end if;
  return s;
 end $$;
+create function public.website_build_set_stage(p_writer jsonb,p_status text) returns jsonb language plpgsql security invoker set search_path='' as $$
+declare s public.website_build_sessions;
+begin
+ s:=public.website_build_lock_writer(p_writer);
+ if p_status not in ('interpreting','building','validating') then raise exception 'INVALID_BUILD_STAGE' using errcode='22023'; end if;
+ update public.website_build_sessions set status=p_status,stage=case when p_status='interpreting' then 'Tolkar din feedback' when p_status='building' and active_preview_revision_id is null then 'Skapar första utkastet' when p_status='building' then 'Tillämpar feedback' else 'Kontrollerar sidpaketet' end,state_version=state_version+1,updated_at=now() where id=s.id;
+ return jsonb_build_object('ok',true);
+end $$;
 create function public.website_build_snapshot(p_writer jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
 declare s public.website_build_sessions; cutoff bigint; pending jsonb; previous jsonb; interp jsonb;
 begin
@@ -118,12 +126,12 @@ begin
  select (input->>'feedbackSequence')::bigint,context->'websiteInterpretation' into cutoff,interp from public.runs where id=s.current_run_id;
  select coalesce(jsonb_agg(jsonb_build_object('id',f.id,'sequence',f.sequence,'authorId',f.author_id,'text',f.text,'inputSource',f.input_source,'viewedRevisionId',f.viewed_revision_id,'status',f.status,'interpretation',f.interpretation,'appliedRevisionId',f.applied_revision_id,'createdAt',f.created_at) order by f.sequence),'[]') into pending from public.website_build_feedback f where f.session_id=s.id and f.sequence<=cutoff and (f.sequence>s.processed_feedback_seq or (f.status='acknowledged' and f.disposition='decision'));
  select artifact into previous from public.website_preview_revisions where id=s.active_preview_revision_id;
- return jsonb_build_object('writer',p_writer,'brief',s.brief,'agentId',s.agent_id,'feedback',pending,'previousArtifact',previous,'candidate',case when s.candidate_feedback_seq=cutoff then s.candidate else null end,'interpretation',coalesce(interp,case when s.candidate_feedback_seq=cutoff then s.interpretation else null end),'controlRequested',s.control_requested);
+ return jsonb_build_object('writer',p_writer,'brief',s.brief,'agentId',s.agent_id,'feedback',pending,'previousArtifact',previous,'candidate',case when s.candidate_feedback_seq=cutoff then s.candidate else null end,'interpretation',coalesce(interp,case when s.interpretation_feedback_seq=cutoff then s.interpretation else null end),'controlRequested',s.control_requested);
 end $$;
 create function public.website_build_record_interpretation(p_writer jsonb,p_interpretation jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
 declare s public.website_build_sessions; cutoff bigint; item jsonb; oldid text; f public.website_build_feedback;
 begin
- s:=public.website_build_lock_writer(p_writer);
+ s:=public.website_build_lock_writer(p_writer,true);
  select (input->>'feedbackSequence')::bigint into cutoff from public.runs where id=s.current_run_id;
  if jsonb_typeof(p_interpretation->'items')<>'array' then raise exception 'INVALID_INTERPRETATION' using errcode='22023'; end if;
  for item in select value from jsonb_array_elements(p_interpretation->'items') loop
@@ -136,7 +144,7 @@ begin
   end loop;
  end loop;
  update public.runs set context=context||jsonb_build_object('websiteInterpretation',p_interpretation) where id=s.current_run_id;
- update public.website_build_sessions set interpretation=p_interpretation,status='building',stage='Tillämpar feedback',state_version=state_version+1,updated_at=now() where id=s.id;
+ update public.website_build_sessions set interpretation=p_interpretation,interpretation_feedback_seq=cutoff,status=case when control_requested='pause' then 'pausing' else 'building' end,stage=case when control_requested='pause' then 'Pausar vid nästa stegräns' else 'Tillämpar feedback' end,state_version=state_version+1,updated_at=now() where id=s.id;
  return jsonb_build_object('ok',true);
 end $$;
 create function public.website_build_validate_artifact(p_artifact jsonb) returns void language plpgsql security invoker set search_path='' as $$
@@ -171,16 +179,16 @@ begin
  insert into public.website_preview_revisions(session_id,project_id,generation,number,feedback_sequence,sha256,artifact) values(s.id,s.project_id,s.generation,nextnum,cutoff,p_artifact->>'sha256',p_artifact) returning * into r;
  update public.website_build_feedback set status='applied',applied_revision_id=r.id where session_id=s.id and sequence<=cutoff and status='acknowledged' and disposition='apply';
  update public.runs set context=context||jsonb_build_object('websiteBuildCompleted',true,'websiteRevisionId',r.id) where id=s.current_run_id;
- update public.website_build_sessions set active_preview_revision_id=r.id,current_run_id=null,candidate=null,candidate_feedback_seq=null,interpretation=null,status='ready',stage='Previewversionen är klar',processed_feedback_seq=greatest(processed_feedback_seq,cutoff),state_version=state_version+1,updated_at=now() where id=s.id;
+ update public.website_build_sessions set active_preview_revision_id=r.id,current_run_id=null,candidate=null,candidate_feedback_seq=null,interpretation=null,interpretation_feedback_seq=null,status='ready',stage='Previewversionen är klar',processed_feedback_seq=greatest(processed_feedback_seq,cutoff),state_version=state_version+1,updated_at=now() where id=s.id;
  if s.feedback_seq>cutoff then perform public.website_build_enqueue(s.id); end if;
  return jsonb_build_object('id',r.id,'number',r.number,'generation',r.generation,'feedbackSequence',r.feedback_sequence,'sha256',r.sha256,'createdAt',r.created_at,'pages',(select jsonb_agg(jsonb_build_object('key',p->>'key','title',p->>'title')) from jsonb_array_elements(r.artifact->'pages') p));
 end $$;
 create function public.website_build_control(p_principal jsonb,p_ref jsonb,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
-declare s public.website_build_sessions; rid uuid; action text:=p_input->>'action'; key text:=p_input->>'idempotencyKey';
+declare s public.website_build_sessions; rid uuid; runstatus text; action text:=p_input->>'action'; key text:=p_input->>'idempotencyKey';
 begin
  perform public.website_build_check_access(p_principal,(p_ref->>'projectId')::uuid,true);
  select current_run_id into rid from public.website_build_sessions where id=(p_ref->>'sessionId')::uuid and project_id=(p_ref->>'projectId')::uuid;
- if rid is not null then perform 1 from public.runs where id=rid for update; end if;
+ if rid is not null then select status into runstatus from public.runs where id=rid for update; end if;
  select * into strict s from public.website_build_sessions where id=(p_ref->>'sessionId')::uuid and project_id=(p_ref->>'projectId')::uuid for update;
  if s.current_run_id is distinct from rid then raise exception 'SESSION_CHANGED_RETRY' using errcode='40001'; end if;
  if key is null or key !~ '^[A-Za-z0-9_-]{1,100}$' or action not in ('pause','resume','cancel') then raise exception 'INVALID_CONTROL' using errcode='22023'; end if;
@@ -189,7 +197,10 @@ begin
   return public.website_build_view(p_principal,p_ref);
  end if;
  if s.status in ('cancelled','cancelling') and action<>'cancel' then raise exception 'BUILD_CANCELLED' using errcode='55000'; end if;
- if action='resume' then
+ if runstatus='unknown' then
+  if action<>'cancel' then raise exception 'RECONCILIATION_REQUIRED' using errcode='55000'; end if;
+  update public.website_build_sessions set current_run_id=null,control_requested=null,status='cancelled',stage='Byggsessionen är avbruten; det externa anropets resultat är fortfarande okänt' where id=s.id;
+ elsif action='resume' then
   if s.status not in ('paused','failed','awaiting_decision') or s.current_run_id is not null then raise exception 'NOT_PAUSED' using errcode='55000'; end if;
   update public.website_build_sessions set status='ready',control_requested=null where id=s.id;
   perform public.website_build_enqueue(s.id);
@@ -214,7 +225,7 @@ create trigger website_preview_revision_immutable before update on public.websit
 create function public.website_build_reconcile_run() returns trigger language plpgsql security invoker set search_path='' as $$
 begin
  if new.kind='website.static.build.v1' and new.status is distinct from old.status then
-  update public.website_build_sessions set control_requested=case when new.status in ('failed','cancelled','done') then null else control_requested end,current_run_id=case when new.status in ('failed','cancelled','done') then null else current_run_id end,status=case when new.status='cancelled' then 'cancelled' when new.status in ('failed','done') then 'failed' when new.status='pending' and control_requested='pause' then 'pausing' when new.status='pending' then 'queued' else status end,stage=case when new.status='cancelled' then 'Bygget är avbrutet' when new.status='failed' then 'Byggjobbet misslyckades; senaste preview finns kvar' when new.status='done' then 'Ingen verifierad version levererades' when new.status='pending' and control_requested='pause' then 'Pausar vid nästa stegräns' when new.status='pending' then 'Väntar på nästa försök' else stage end,state_version=state_version+1,updated_at=now() where current_run_id=new.id;
+  update public.website_build_sessions set control_requested=case when new.status in ('failed','cancelled','done') then null else control_requested end,current_run_id=case when new.status in ('failed','cancelled','done') then null else current_run_id end,status=case when new.status='cancelled' then 'cancelled' when new.status in ('failed','done') then 'failed' when new.status='unknown' then 'awaiting_decision' when new.status='pending' and control_requested='pause' then 'pausing' when new.status='pending' then 'queued' else status end,stage=case when new.status='cancelled' then 'Bygget är avbrutet' when new.status='failed' then 'Byggjobbet misslyckades; senaste preview finns kvar' when new.status='done' then 'Ingen verifierad version levererades' when new.status='unknown' then 'Bygganropets resultat är okänt; inväntar avstämning' when new.status='pending' and control_requested='pause' then 'Pausar vid nästa stegräns' when new.status='pending' then 'Väntar på nästa försök' else stage end,state_version=state_version+1,updated_at=now() where current_run_id=new.id;
  end if;
  return new;
 end $$;

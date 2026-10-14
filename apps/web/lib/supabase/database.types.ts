@@ -49,14 +49,14 @@ isOneToOne: false
                 },
 "website_build_sessions": {
                   Row: {
-                    "active_preview_revision_id": string | null,"agent_id": string,"brief": string,"candidate": Json | null,"candidate_feedback_seq": number | null,"control_keys": NonNullable<Json>,"control_requested": string | null,"conversation_id": string,"created_at": string,"created_by": string,"current_run_id": string | null,"feedback_seq": number,"generation": number,"id": string,"idempotency_key": string,"interpretation": Json | null,"processed_feedback_seq": number,"project_id": string,"stage": string,"state_version": number,"status": string,"updated_at": string
+                    "active_preview_revision_id": string | null,"agent_id": string,"brief": string,"candidate": Json | null,"candidate_feedback_seq": number | null,"control_keys": NonNullable<Json>,"control_requested": string | null,"conversation_id": string,"created_at": string,"created_by": string,"current_run_id": string | null,"feedback_seq": number,"generation": number,"id": string,"idempotency_key": string,"interpretation": Json | null,"interpretation_feedback_seq": number | null,"processed_feedback_seq": number,"project_id": string,"stage": string,"state_version": number,"status": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "active_preview_revision_id"?: string | null,"agent_id": string,"brief": string,"candidate"?: Json | null,"candidate_feedback_seq"?: number | null,"control_keys"?: NonNullable<Json>,"control_requested"?: string | null,"conversation_id": string,"created_at"?: string,"created_by": string,"current_run_id"?: string | null,"feedback_seq"?: number,"generation"?: number,"id"?: string,"idempotency_key": string,"interpretation"?: Json | null,"processed_feedback_seq"?: number,"project_id": string,"stage"?: string,"state_version"?: number,"status"?: string,"updated_at"?: string
+                    "active_preview_revision_id"?: string | null,"agent_id": string,"brief": string,"candidate"?: Json | null,"candidate_feedback_seq"?: number | null,"control_keys"?: NonNullable<Json>,"control_requested"?: string | null,"conversation_id": string,"created_at"?: string,"created_by": string,"current_run_id"?: string | null,"feedback_seq"?: number,"generation"?: number,"id"?: string,"idempotency_key": string,"interpretation"?: Json | null,"interpretation_feedback_seq"?: number | null,"processed_feedback_seq"?: number,"project_id": string,"stage"?: string,"state_version"?: number,"status"?: string,"updated_at"?: string
                   }
                   Update: {
-                    "active_preview_revision_id"?: string | null,"agent_id"?: string,"brief"?: string,"candidate"?: Json | null,"candidate_feedback_seq"?: number | null,"control_keys"?: NonNullable<Json>,"control_requested"?: string | null,"conversation_id"?: string,"created_at"?: string,"created_by"?: string,"current_run_id"?: string | null,"feedback_seq"?: number,"generation"?: number,"id"?: string,"idempotency_key"?: string,"interpretation"?: Json | null,"processed_feedback_seq"?: number,"project_id"?: string,"stage"?: string,"state_version"?: number,"status"?: string,"updated_at"?: string
+                    "active_preview_revision_id"?: string | null,"agent_id"?: string,"brief"?: string,"candidate"?: Json | null,"candidate_feedback_seq"?: number | null,"control_keys"?: NonNullable<Json>,"control_requested"?: string | null,"conversation_id"?: string,"created_at"?: string,"created_by"?: string,"current_run_id"?: string | null,"feedback_seq"?: number,"generation"?: number,"id"?: string,"idempotency_key"?: string,"interpretation"?: Json | null,"interpretation_feedback_seq"?: number | null,"processed_feedback_seq"?: number,"project_id"?: string,"stage"?: string,"state_version"?: number,"status"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -5290,6 +5290,10 @@ isOneToOne: false
       [_ in never]: never
     }
     Functions: {
+"website_build_set_stage":
+{ Args: { "p_status": string,"p_writer": Json }; Returns: Json
+                           },
+
 "website_build_append_feedback":
 { Args: { "p_input": Json,"p_principal": Json,"p_ref": Json }; Returns: Json
                            },
@@ -5326,6 +5330,7 @@ isOneToOne: false
 "id": string,
 "idempotency_key": string,
 "interpretation": Json | null,
+"interpretation_feedback_seq": number | null,
 "processed_feedback_seq": number,
 "project_id": string,
 "stage": string,

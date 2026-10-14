@@ -139,6 +139,7 @@ export function AtlasBuildSurface({
           data-mobile-hidden={panelOpen && tab !== "atlas"}
         >
           <AtlasChatConversation
+            key={conversationModel.id}
             model={conversationModel}
             asking={asking}
             plan={plan}

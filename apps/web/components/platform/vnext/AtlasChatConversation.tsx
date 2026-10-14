@@ -230,6 +230,7 @@ export function AtlasChatConversation({ model, asking = false,plan=null,initialS
           {createFailed && <p className={styles.formError} role="status">{CREATE_FAILED_NOTICE}</p>}
         </header>
 
+        <div className={embedded?styles.embeddedScroll:styles.plainBody} data-embedded-scroll={embedded||undefined}>
         {children}
         {blocked ? (
           <p className={styles.blocked} role="note">{TRANSCRIPT_UNREADABLE}</p>
@@ -267,6 +268,7 @@ export function AtlasChatConversation({ model, asking = false,plan=null,initialS
         )}
 
         <div ref={endRef} className={styles.endAnchor} aria-hidden />
+        </div>
 
         <div className={styles.dock}>
           {atlas&&<div className={styles.voiceControls}><button type="button" onClick={listen} disabled={pending||blocked}>{capturing?'Avbryt mikrofon':'Prata med Atlas'}</button><button type="button" onClick={()=>atlas.stopAudio()}>Stoppa uppläsning</button></div>}

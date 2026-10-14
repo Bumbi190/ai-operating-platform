@@ -1,3 +1,4 @@
+import {setProjectWebsiteBuilder} from '../lib/website-build/planning/store'
 import {readConversationWorkspace} from '../lib/website-build/planning/conversation-workspace'
 import { createAdminClient } from './website-build-fixture-db'
 import { TEST_AGENT, TEST_CONVERSATION, TEST_PRINCIPAL, TEST_PROJECT, testSql, resetWorkerDb } from '../lib/website-build/test-db'
@@ -37,3 +38,16 @@ export async function step(sessionId: string, action: string) {
   return snapshot(sessionId)
 }
 export async function conversation(session:Awaited<ReturnType<typeof snapshot>>){const workspace=await readConversationWorkspace(db,TEST_PRINCIPAL,session.conversationId,session.sessionId);const saved=JSON.parse(testSql("select coalesce(jsonb_agg(to_jsonb(m) order by created_at),'[]') from conversation_messages m where conversation_id='"+session.conversationId+"';"));return {conversationModel:{id:session.conversationId,operatorId:TEST_PRINCIPAL.userId,title:'Webbbygge med Atlas',projectId:TEST_PROJECT,projectName:'Testprojekt',state:'ok',saved,chatBase:'/chat'},plan:workspace.plan}}
+export async function setupConversation({missingBuilder=false,historical=false}:{missingBuilder?:boolean;historical?:boolean}={}){
+ resetWorkerDb()
+ const id=crypto.randomUUID();testSql("insert into conversations(id,user_id,project_id) values('"+id+"','"+TEST_PRINCIPAL.userId+"','"+TEST_PROJECT+"');")
+ await setProjectWebsiteBuilder(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,agentId:missingBuilder?null:TEST_AGENT})
+ if(historical)testSql("insert into website_build_sessions(project_id,created_by,agent_id,conversation_id,brief,idempotency_key,status) values('"+TEST_PROJECT+"','"+TEST_PRINCIPAL.userId+"','"+TEST_AGENT+"','"+id+"','Ursprunglig brief för historiskt bygge','"+crypto.randomUUID()+"','paused');")
+ return loadConversation(id)
+}
+export async function loadConversation(id:string){
+ if(!/^[0-9a-f-]{36}$/.test(id))throw Error('Invalid fixture conversation')
+ const workspace=await readConversationWorkspace(db,TEST_PRINCIPAL,id)
+ const saved=JSON.parse(testSql("select coalesce(jsonb_agg(to_jsonb(m) order by created_at),'[]') from conversation_messages m where conversation_id='"+id+"';"))
+ return {session:workspace.session,plan:workspace.plan,brief:workspace.brief,userId:TEST_PRINCIPAL.userId,projectSlug:'test-project',conversationModel:{id,operatorId:TEST_PRINCIPAL.userId,title:'Webbbygge med Atlas',projectId:TEST_PROJECT,projectName:'Testprojekt',state:'ok',saved,chatBase:'/chat'}}
+}

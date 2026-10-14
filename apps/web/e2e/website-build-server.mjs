@@ -23,7 +23,7 @@ const server = httpServer(async (req, res) => {
     if (url.pathname.startsWith('/__fixture/')) {
       const fixture = await vite.ssrLoadModule('/e2e/website-build-fixture.ts')
       const parts = url.pathname.split('/')
-      const result = parts[2] === 'setup' ? await fixture.setup() : parts[2] === 'session' ? { session: await fixture.snapshot(parts[3]),...await fixture.conversation(await fixture.snapshot(parts[3])), userId: '20000000-0000-4000-8000-000000000001', projectSlug: 'test-project', brief: 'En hemsida för vårt svenska café' } : await fixture.step(parts[3], parts[4])
+      const result = parts[2] === 'setup-conversation' ? await fixture.setupConversation({missingBuilder:url.searchParams.get('builder')==='missing',historical:url.searchParams.get('historical')==='1'}) : parts[2] === 'conversation' ? await fixture.loadConversation(parts[3]) : parts[2] === 'setup' ? await fixture.setup() : parts[2] === 'session' ? { session: await fixture.snapshot(parts[3]),...await fixture.conversation(await fixture.snapshot(parts[3])), userId: '20000000-0000-4000-8000-000000000001', projectSlug: 'test-project', brief: 'En hemsida för vårt svenska café' } : await fixture.step(parts[3], parts[4])
       res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(result)); return
     }
     if(url.pathname==='/api/website-build-readiness'){
@@ -43,7 +43,7 @@ const server = httpServer(async (req, res) => {
       const response = await api.websiteBuildApi(action, new Request(url, { method: req.method, headers: req.headers, body: req.method === 'POST' ? Buffer.concat(chunks) : undefined }), { sessionId: parts[3], revisionId: parts[5] })
       res.writeHead(response.status, Object.fromEntries(response.headers)); res.end(Buffer.from(await response.arrayBuffer())); return
     }
-    vite.middlewares(req, res, async () => { res.setHeader('content-type', 'text/html'); res.end(await vite.transformIndexHtml(req.url, '<!doctype html><html lang="sv" class="dark" data-motion="reduced"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#0c121b;padding:12px;font-family:system-ui}#root{max-width:1600px;margin:auto}</style><div id="root"></div><script type="module" src="/e2e/website-build-entry.tsx"></script></html>')) })
+    vite.middlewares(req, res, async () => { res.setHeader('content-type', 'text/html'); res.end(await vite.transformIndexHtml(req.url, '<!doctype html><html lang="sv" class="dark" data-motion="reduce"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#0c121b;padding:12px;font-family:system-ui}#root{max-width:1600px;margin:auto}</style><div id="root"></div><script type="module" src="/e2e/website-build-entry.tsx"></script></html>')) })
   } catch (error) { console.error(error); res.statusCode = 500; res.end(JSON.stringify({ error: String(error) })) }
 })
 server.listen(54390, '127.0.0.1')

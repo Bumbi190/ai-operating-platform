@@ -87,9 +87,7 @@ export function BuildConnectionCards({
             <p>
               Projektmapp:{" "}
               {view.directory
-                ? view.directory.root +
-                  (view.directory.os === "windows" ? "\\" : "/") +
-                  view.directory.folderName
+                ? view.directory.root
                 : "Välj en standardmapp i bygginställningarna."}
             </p>
             <p>

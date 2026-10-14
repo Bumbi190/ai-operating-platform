@@ -1,3 +1,4 @@
+import {AtlasBuildSurface} from '../components/platform/vnext/AtlasBuildSurface'
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { BuildWorkspace } from '../components/website-build/BuildWorkspace'
@@ -13,4 +14,13 @@ async function open(fresh = false) {
   root.render(<AtlasConversationProvider><AtlasRuntimeProvider><BuildWorkspace key={initial.session.sessionId} initialSession={initial.session} projectSlug={initial.projectSlug} userId={initial.userId} brief={initial.brief} conversationModel={initial.conversationModel} plan={initial.plan} /></AtlasRuntimeProvider></AtlasConversationProvider>)
 }
 Object.assign(window, { fixtureSwitchSession: () => open(true) })
-void open()
+
+async function openConversation(fresh=false,existing?:string){
+ const query=new URL(location.href).searchParams,id=existing??(fresh?null:query.get('conversation'))
+ const initial=await (await fetch(id?'/__fixture/conversation/'+id:'/__fixture/setup-conversation?builder='+query.get('builder')+'&historical='+query.get('historical'))).json()
+ history.replaceState(null,'','/?conversation='+initial.conversationModel.id);window.dispatchEvent(new PopStateEvent('popstate'))
+ root.render(<AtlasConversationProvider><AtlasRuntimeProvider><AtlasBuildSurface conversationModel={initial.conversationModel} plan={initial.plan} initialSession={initial.session} brief={initial.brief??undefined}/></AtlasRuntimeProvider></AtlasConversationProvider>)
+}
+Object.assign(window,{fixtureSwitchConversation:()=>openConversation(true),fixtureOpenConversation:(id:string)=>openConversation(false,id)})
+const query=new URL(location.href).searchParams
+void (query.has('fresh')||query.has('conversation')||query.has('historical')?openConversation():open())

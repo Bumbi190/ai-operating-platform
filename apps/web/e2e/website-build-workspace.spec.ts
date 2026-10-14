@@ -3,6 +3,20 @@ import JSZip from 'jszip'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+test('independent tab groups preserve unrelated visible content', async ({ page, request }) => {
+  await page.goto('/'); await expect(page.getByRole('heading', { name: 'Bygg med Atlas' })).toBeVisible()
+  const id = new URL(page.url()).searchParams.get('session')!
+  await request.get(`/__fixture/step/${id}/tabs`); await expect(page.getByTitle('Webbpreview version 1')).toBeVisible()
+  const frame = page.frameLocator('iframe')
+  await frame.getByRole('button', { name: 'A2', exact: true }).click(); await expect(frame.getByText('Andra A', { exact: true })).toBeVisible(); await expect(frame.getByText('Första B', { exact: true })).toBeVisible()
+  await frame.getByRole('button', { name: 'B2', exact: true }).click(); await expect(frame.getByText('Andra B', { exact: true })).toBeVisible(); await expect(frame.getByText('Andra A', { exact: true })).toBeVisible()
+})
+test('form limitation stays readable outside model styles', async ({ page, request }) => {
+  await page.goto('/'); await expect(page.getByRole('heading', { name: 'Bygg med Atlas' })).toBeVisible()
+  const id = new URL(page.url()).searchParams.get('session')!
+  await request.get(`/__fixture/step/${id}/forms`); await expect(page.getByTitle('Webbpreview version 1')).toBeVisible()
+  await expect(page.getByText('Formuläret behöver en ansluten mottagare innan meddelanden kan skickas.', { exact: true })).toBeVisible()
+})
 test('brief to preview, concurrent feedback, history and reload', async ({ page, request }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Bygg med Atlas' })).toBeVisible()

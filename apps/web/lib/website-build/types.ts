@@ -1,6 +1,6 @@
 export type FeedbackStatus = 'received' | 'acknowledged' | 'applied' | 'rejected' | 'superseded'
 export type BuildStatus = 'queued' | 'interpreting' | 'building' | 'validating' | 'ready' | 'awaiting_decision' | 'pausing' | 'paused' | 'cancelling' | 'cancelled' | 'failed'
-export type WebsiteBehavior = { kind: 'toggle' | 'tabs' | 'accordion'; triggerId: string; targetIds: string[] }
+export type WebsiteBehavior = { kind: 'toggle' | 'tabs' | 'accordion'; triggerId: string; targetIds: string[]; groupId?: string }
 export type WebsiteDraft = { format: 'static-website.v1'; title: string; pages: { key: string; title: string; bodyHtml: string; css: string; behaviors: WebsiteBehavior[] }[] }
 export type WebsiteArtifact = { format: 'static-website.v1'; sha256: string; pages: { key: string; title: string; html: string }[]; files: { path: string; content: string }[]; integrationNeeds: string[] }
 export type BuildPrincipal = { userId: string; allowedProjectIds: string[] }

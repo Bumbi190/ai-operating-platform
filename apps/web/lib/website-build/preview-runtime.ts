@@ -12,7 +12,7 @@ export const WEBSITE_RUNTIME = String.raw`(() => {
       for (const target of targets) target.hidden = !expanded;
       trigger.setAttribute('aria-expanded', String(expanded));
       if (behavior.kind === 'tabs') {
-        for (const sibling of config.behaviors.filter(b => b.kind === 'tabs' && b.triggerId !== behavior.triggerId)) {
+        for (const sibling of config.behaviors.filter(b => b.kind === 'tabs' && b.groupId === behavior.groupId && b.triggerId !== behavior.triggerId)) {
           for (const id of sibling.targetIds) document.getElementById(id).hidden = true;
           document.getElementById(sibling.triggerId).setAttribute('aria-selected', 'false');
         }
@@ -59,5 +59,5 @@ export function renderPreviewDocument(artifact: WebsiteArtifact, pageKey: string
     .replace(/<meta http-equiv="Content-Security-Policy" content="[^"]*">/, `<meta http-equiv="Content-Security-Policy" content="${escapeHtml(websiteCsp(`'nonce-${nonce}'`))}">`)
     .replace(match[0], `<script type="application/json" id="__atlas_config">${scriptJson({ ...config, preview: { token: channelToken, artifactHash: artifact.sha256 } })}</script>`)
     .replace(/<script src="website\.js" integrity="[^"]*" crossorigin="anonymous"><\/script>/, `<script nonce="${nonce}">${WEBSITE_RUNTIME}</script>`)
-    .replace(`<script id="__atlas_runtime">${WEBSITE_RUNTIME}</script>`, `<script nonce="${nonce}">${WEBSITE_RUNTIME}</script>`)
+    .replace(/<script id="__atlas_runtime">[\s\S]*?<\/script>/, `<script nonce="${nonce}">${WEBSITE_RUNTIME}</script>`)
 }

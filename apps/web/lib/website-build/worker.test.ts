@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { executeWebsiteBuildRun } from './worker'
-import { appendBuildFeedback, createBuildSession, loadBuildSnapshot, readBuildArtifact, readBuildSession, requestBuildControl } from './store'
+import { appendBuildFeedback, createBuildSession, loadBuildSnapshot, readBuildArtifact, readBuildSession, requestBuildControl, recordBuildInterpretation, commitBuildRevision } from './store'
+import { compileWebsiteArtifact } from './artifact'
 import { initializeWorkerDb, resetWorkerDb, testSql, TEST_AGENT, TEST_CONVERSATION, TEST_PRINCIPAL, TEST_PROJECT } from './test-db'
 import type { Run } from '@/lib/supabase/types'
 import type { BuildSessionView, WriterRef } from './types'
@@ -21,6 +22,55 @@ async function claim(view: BuildSessionView): Promise<Run> {
 async function view(s: BuildSessionView) { return readBuildSession(db, TEST_PRINCIPAL, s) }
 function writer(s: BuildSessionView, run: Run): WriterRef { return { projectId: s.projectId, sessionId: s.sessionId, runId: run.id, claimId: run.claim_id!, generation: (run.input as { generation: number }).generation } }
 describe('durable website worker with real SQL', () => {
+  it('commit_receipts_match_only_the_current_generation_interpretation', async () => {
+    const s = await session()
+    await requestBuildControl(db, TEST_PRINCIPAL, s, 'pause', 'receipt-pause')
+    // Observe the worker's pause boundary for the queued initial unit.
+    const initial = await claim(s); await executeWebsiteBuildRun(db, initial, initial.claim_id!)
+    const a = await appendBuildFeedback(db, TEST_PRINCIPAL, s, { idempotencyKey: 'old-ack', text: 'Gammal instruktion', inputSource: 'text', viewedRevisionId: null })
+    const b = await appendBuildFeedback(db, TEST_PRINCIPAL, s, { idempotencyKey: 'new-ack', text: 'Aktuell instruktion', inputSource: 'text', viewedRevisionId: null })
+    const resumed = await requestBuildControl(db, TEST_PRINCIPAL, s, 'resume', 'receipt-resume'), run = await claim(resumed), w = writer(s, run)
+    testSql(`update website_build_feedback set status='acknowledged',disposition='apply',interpretation='Tidigare accepterad' where id='${a.id}';`)
+    await recordBuildInterpretation(db, w, { items: [{ feedbackId: b.id, summary: 'Aktuellt underlag', disposition: 'apply', changeKey: 'title', supersedesFeedbackIds: [] }] })
+    await commitBuildRevision(db, w, compileWebsiteArtifact(draft('Aktuell instruktion')))
+    const final = await view(s)
+    expect(final.feedback.find(item => item.id === a.id)?.appliedRevisionId).toBeNull()
+    expect(final.feedback.find(item => item.id === b.id)?.appliedRevisionId).toBe(final.activePreviewRevisionId)
+  }, 30_000)
+  it('mixed_apply_and_decision_survive_resolution_with_exact_revision_receipts', async () => {
+    const s = await session(), first = await claim(s)
+    await executeWebsiteBuildRun(db, first, first.claim_id!)
+    await requestBuildControl(db, TEST_PRINCIPAL, s, 'pause', 'mix-pause')
+    const a = await appendBuildFeedback(db, TEST_PRINCIPAL, s, { idempotencyKey: 'mix-a', text: 'Gör rubriken större', inputSource: 'text', viewedRevisionId: (await view(s)).activePreviewRevisionId })
+    const b = await appendBuildFeedback(db, TEST_PRINCIPAL, s, { idempotencyKey: 'mix-b', text: 'Kan sidan ta betalt?', inputSource: 'text', viewedRevisionId: (await view(s)).activePreviewRevisionId })
+    const resumed = await requestBuildControl(db, TEST_PRINCIPAL, s, 'resume', 'mix-resume'), run = await claim(resumed)
+    provider.mockResolvedValueOnce(response({ items: [{ feedbackId: a.id, summary: 'Större rubrik', disposition: 'apply', changeKey: 'hero.title', supersedesFeedbackIds: [] }, { feedbackId: b.id, summary: 'Behöver besked om betalning', disposition: 'decision', changeKey: 'payments', supersedesFeedbackIds: [] }] }))
+    await executeWebsiteBuildRun(db, run, run.claim_id!)
+    expect((await view(s)).status).toBe('awaiting_decision')
+    const c = await appendBuildFeedback(db, TEST_PRINCIPAL, s, { idempotencyKey: 'mix-c', text: 'Ingen betalning, ändra färgen också', inputSource: 'text', viewedRevisionId: (await view(s)).activePreviewRevisionId })
+    const next = await claim(await view(s)), snap = await loadBuildSnapshot(db, writer(s, next))
+    expect(snap.feedback.map(item => item.id)).toEqual([a.id, b.id, c.id])
+    provider.mockResolvedValueOnce(response({ items: [{ feedbackId: a.id, summary: 'Större rubrik', disposition: 'apply', changeKey: 'hero.title', supersedesFeedbackIds: [] }, { feedbackId: b.id, summary: 'Betalning utgår', disposition: 'answer', changeKey: 'payments', supersedesFeedbackIds: [] }, { feedbackId: c.id, summary: 'Ändrar färgen', disposition: 'apply', changeKey: 'color', supersedesFeedbackIds: [] }] })).mockResolvedValueOnce(response(draft('Större rubrik med ny färg')))
+    await executeWebsiteBuildRun(db, next, next.claim_id!)
+    const final = await view(s)
+    expect(final.revisions).toHaveLength(2)
+    for (const id of [a.id, c.id]) expect(final.feedback.find(item => item.id === id)?.appliedRevisionId).toBe(final.activePreviewRevisionId)
+    expect(final.feedback.find(item => item.id === b.id)?.appliedRevisionId).toBeNull()
+  }, 40_000)
+  it('a_superseded_decision_does_not_park_an_actionable_batch', async () => {
+    const s = await session(), first = await claim(s)
+    await executeWebsiteBuildRun(db, first, first.claim_id!)
+    await requestBuildControl(db, TEST_PRINCIPAL, s, 'pause', 'sup-pause')
+    const a = await appendBuildFeedback(db, TEST_PRINCIPAL, s, { idempotencyKey: 'sup-a', text: 'Kanske blå eller grön rubrik?', inputSource: 'text', viewedRevisionId: (await view(s)).activePreviewRevisionId })
+    const b = await appendBuildFeedback(db, TEST_PRINCIPAL, s, { idempotencyKey: 'sup-b', text: 'Bestämt: blå rubrik', inputSource: 'text', viewedRevisionId: (await view(s)).activePreviewRevisionId })
+    const resumed = await requestBuildControl(db, TEST_PRINCIPAL, s, 'resume', 'sup-resume'), next = await claim(resumed)
+    provider.mockResolvedValueOnce(response({ items: [{ feedbackId: a.id, summary: 'Oklart färgval', disposition: 'decision', changeKey: 'hero.color', supersedesFeedbackIds: [] }, { feedbackId: b.id, summary: 'Blå rubrik', disposition: 'apply', changeKey: 'hero.color', supersedesFeedbackIds: [a.id] }] })).mockResolvedValueOnce(response(draft('Blå rubrik')))
+    await executeWebsiteBuildRun(db, next, next.claim_id!)
+    const final = await view(s)
+    expect(final.revisions).toHaveLength(2)
+    expect(final.feedback.find(item => item.id === a.id)?.status).toBe('superseded')
+    expect(final.feedback.find(item => item.id === b.id)?.appliedRevisionId).toBe(final.activePreviewRevisionId)
+  }, 40_000)
   it('real_brief_produces_revision_one', async () => {
     const s = await session(), run = await claim(s)
     await executeWebsiteBuildRun(db, run, run.claim_id!)

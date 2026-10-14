@@ -90,7 +90,7 @@ export function BuildWorkspace({ initialSession, projectSlug, userId, brief }: {
         <p className={styles.version}>{loaded ? `Visar version ${loaded.revision.number} · ${new Date(loaded.revision.createdAt).toLocaleString('sv-SE')}` : 'Första previewn visas när en version är validerad.'}{loaded && selected !== loaded.revision.id ? ' · Hämtar vald version…' : ''}</p>
         {previewError && <p role="alert">{previewError} Senast fungerande preview visas.</p>}
         <div className={styles.canvas}>{loaded ? <BuildPreview artifact={loaded.artifact} revision={loaded.revision} pageKey={pageKey} onPageChange={setPageKey} mobile={mobile} /> : <div className={styles.empty}>Din idé blir en hemsida här.<br />Du kan fortsätta prata med Atlas under tiden.</div>}</div>
-        {loaded?.artifact.integrationNeeds.map((need, index) => <p key={index} className={styles.version}>{need}</p>)}
+        {loaded?.artifact.integrationNeeds.map((need, index) => <p key={index} className={styles.version}>{need === 'form_delivery' ? 'Formuläret behöver en ansluten mottagare innan meddelanden kan skickas.' : need}</p>)}
         <p className={styles.version}>Statiskt webbpaket. Publicering och externa integrationer hanteras separat.</p>
       </section>
     </div>

@@ -124,7 +124,7 @@ declare s public.website_build_sessions; cutoff bigint; pending jsonb; previous 
 begin
  s:=public.website_build_lock_writer(p_writer,true);
  select (input->>'feedbackSequence')::bigint,context->'websiteInterpretation' into cutoff,interp from public.runs where id=s.current_run_id;
- select coalesce(jsonb_agg(jsonb_build_object('id',f.id,'sequence',f.sequence,'authorId',f.author_id,'text',f.text,'inputSource',f.input_source,'viewedRevisionId',f.viewed_revision_id,'status',f.status,'interpretation',f.interpretation,'appliedRevisionId',f.applied_revision_id,'createdAt',f.created_at) order by f.sequence),'[]') into pending from public.website_build_feedback f where f.session_id=s.id and f.sequence<=cutoff and (f.sequence>s.processed_feedback_seq or (f.status='acknowledged' and f.disposition='decision'));
+ select coalesce(jsonb_agg(jsonb_build_object('id',f.id,'sequence',f.sequence,'authorId',f.author_id,'text',f.text,'inputSource',f.input_source,'viewedRevisionId',f.viewed_revision_id,'status',f.status,'interpretation',f.interpretation,'appliedRevisionId',f.applied_revision_id,'createdAt',f.created_at) order by f.sequence),'[]') into pending from public.website_build_feedback f where f.session_id=s.id and f.sequence<=cutoff and f.status in ('received','acknowledged') and (f.sequence>s.processed_feedback_seq or (f.status='acknowledged' and f.disposition in ('apply','decision')));
  select artifact into previous from public.website_preview_revisions where id=s.active_preview_revision_id;
  return jsonb_build_object('writer',p_writer,'brief',s.brief,'agentId',s.agent_id,'feedback',pending,'previousArtifact',previous,'candidate',case when s.candidate_feedback_seq=cutoff then s.candidate else null end,'interpretation',coalesce(interp,case when s.interpretation_feedback_seq=cutoff then s.interpretation else null end),'controlRequested',s.control_requested);
 end $$;
@@ -171,13 +171,14 @@ begin
  return jsonb_build_object('ok',true);
 end $$;
 create function public.website_build_commit_revision(p_writer jsonb,p_artifact jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
-declare s public.website_build_sessions; cutoff bigint; r public.website_preview_revisions; nextnum bigint;
+declare s public.website_build_sessions; cutoff bigint; r public.website_preview_revisions; nextnum bigint; accepted jsonb;
 begin
  s:=public.website_build_lock_writer(p_writer); perform public.website_build_validate_artifact(p_artifact);
- select (input->>'feedbackSequence')::bigint into cutoff from public.runs where id=s.current_run_id;
+ select (input->>'feedbackSequence')::bigint,context->'websiteInterpretation' into cutoff,accepted from public.runs where id=s.current_run_id;
+ if accepted is null and s.interpretation_feedback_seq=cutoff then accepted:=s.interpretation; end if;
  select coalesce(max(number),0)+1 into nextnum from public.website_preview_revisions where session_id=s.id;
  insert into public.website_preview_revisions(session_id,project_id,generation,number,feedback_sequence,sha256,artifact) values(s.id,s.project_id,s.generation,nextnum,cutoff,p_artifact->>'sha256',p_artifact) returning * into r;
- update public.website_build_feedback set status='applied',applied_revision_id=r.id where session_id=s.id and sequence<=cutoff and status='acknowledged' and disposition='apply';
+ update public.website_build_feedback set status='applied',applied_revision_id=r.id where session_id=s.id and sequence<=cutoff and status='acknowledged' and disposition='apply' and id in (select (item->>'feedbackId')::uuid from jsonb_array_elements(coalesce(accepted->'items','[]'::jsonb)) item where item->>'disposition'='apply');
  update public.runs set context=context||jsonb_build_object('websiteBuildCompleted',true,'websiteRevisionId',r.id) where id=s.current_run_id;
  update public.website_build_sessions set active_preview_revision_id=r.id,current_run_id=null,candidate=null,candidate_feedback_seq=null,interpretation=null,interpretation_feedback_seq=null,status='ready',stage='Previewversionen är klar',processed_feedback_seq=greatest(processed_feedback_seq,cutoff),state_version=state_version+1,updated_at=now() where id=s.id;
  if s.feedback_seq>cutoff then perform public.website_build_enqueue(s.id); end if;

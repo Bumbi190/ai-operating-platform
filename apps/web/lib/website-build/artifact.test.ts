@@ -14,6 +14,13 @@ function draft(bodyHtml = '<h1>Vår idé</h1><a href="about.html">Om oss</a>') {
 }
 
 describe('static website artifacts', () => {
+  it('tabs require an explicit validated group and preserve it in the artifact', () => {
+    const input = draft('<button id="tab">Flik</button><div id="panel">Innehåll</div>')
+    const withGroup = (groupId?: string) => ({ ...input, pages: [{ ...input.pages[0], behaviors: [{ kind: 'tabs', triggerId: 'tab', targetIds: ['panel'], ...(groupId === undefined ? {} : { groupId }) }] }] })
+    expect(() => compileWebsiteArtifact(withGroup())).toThrow(WebsiteArtifactError)
+    expect(() => compileWebsiteArtifact(withGroup('bad group'))).toThrow(WebsiteArtifactError)
+    expect(compileWebsiteArtifact(withGroup('products')).pages[0].html).toContain('"groupId":"products"')
+  })
   it('compiles_real_two_page_site', () => {
     const artifact = compileWebsiteArtifact(draft())
     expect(artifact.format).toBe('static-website.v1')

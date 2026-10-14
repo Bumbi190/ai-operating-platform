@@ -73,7 +73,8 @@ function validateBehaviors(value: unknown, ids: Set<string>): WebsiteBehavior[] 
     if (!['toggle', 'tabs', 'accordion'].includes(String(item.kind)) || typeof item.triggerId !== 'string' || !ids.has(item.triggerId) || triggers.has(item.triggerId)) fail('INVALID_BEHAVIOR')
     triggers.add(item.triggerId)
     if (!Array.isArray(item.targetIds) || !item.targetIds.length || item.targetIds.length > 64 || item.targetIds.some(id => typeof id !== 'string' || !ids.has(id)) || new Set(item.targetIds).size !== item.targetIds.length) fail('INVALID_BEHAVIOR_TARGET')
-    return { kind: item.kind as WebsiteBehavior['kind'], triggerId: item.triggerId, targetIds: item.targetIds as string[] }
+    if (item.kind === 'tabs' && (typeof item.groupId !== 'string' || !SAFE_ID.test(item.groupId))) fail('INVALID_TAB_GROUP')
+    return { kind: item.kind as WebsiteBehavior['kind'], triggerId: item.triggerId, targetIds: item.targetIds as string[], ...(item.kind === 'tabs' ? { groupId: item.groupId as string } : {}) }
   })
 }
 function canonical(value: unknown): string {

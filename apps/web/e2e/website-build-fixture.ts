@@ -2,6 +2,7 @@ import { createAdminClient } from './website-build-fixture-db'
 import { TEST_AGENT, TEST_CONVERSATION, TEST_PRINCIPAL, TEST_PROJECT, testSql, resetWorkerDb } from '../lib/website-build/test-db'
 import { createBuildSession, readBuildSession, loadBuildSnapshot, setBuildStage, recordBuildInterpretation, parkBuildSession } from '../lib/website-build/store'
 import { executeWebsiteBuildRun } from '../lib/website-build/worker'
+import { setFixtureTemplate } from './website-build-fixture-provider'
 import type { WriterRef } from '../lib/website-build/types'
 const db = createAdminClient()
 export async function setup() {
@@ -27,7 +28,8 @@ export async function step(sessionId: string, action: string) {
     await setBuildStage(db, w, 'building'); return snapshot(sessionId)
   }
   const run = JSON.parse(testSql(`select to_jsonb(r) from runs r where id='${w.runId}';`))
-  await executeWebsiteBuildRun(db, run, w.claimId)
+  setFixtureTemplate(action === 'tabs' ? 'tabs' : action === 'forms' ? 'forms' : 'default')
+  try { await executeWebsiteBuildRun(db, run, w.claimId) } finally { setFixtureTemplate('default') }
   testSql(`update runs set status='done' where id='${w.runId}';`)
   return snapshot(sessionId)
 }

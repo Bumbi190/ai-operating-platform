@@ -60,7 +60,9 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
       snapshot = await loadBuildSnapshot(db, writer)
     }
     if (snapshot.controlRequested === 'pause') { await parkBuildSession(db, writer); return }
-    if (interpretation?.items.some(i => i.disposition === 'decision') || snapshot.previousArtifact && interpretation && !interpretation.items.some(i => i.disposition === 'apply')) { await parkBuildSession(db, writer); return }
+    const superseded = new Set(interpretation?.items.flatMap(item => item.supersedesFeedbackIds) ?? [])
+    const effectiveItems = interpretation?.items.filter(item => !superseded.has(item.feedbackId))
+    if (effectiveItems?.some(i => i.disposition === 'decision') || snapshot.previousArtifact && effectiveItems && !effectiveItems.some(i => i.disposition === 'apply')) { await parkBuildSession(db, writer); return }
     let artifact = snapshot.candidate
     if (!artifact) {
       await setBuildStage(db, writer, 'building')

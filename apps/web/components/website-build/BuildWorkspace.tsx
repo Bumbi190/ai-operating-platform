@@ -8,9 +8,14 @@ import { BuildConversation } from './BuildConversation'
 import { BuildControls } from './BuildControls'
 import { BuildPreview } from './BuildPreview'
 import styles from './BuildWorkspace.module.css'
+import { useAtlas } from '@/lib/atlas/runtime'
 const statusLabels = { queued: 'I kö', interpreting: 'Tolkar feedback', building: 'Bygger', validating: 'Kontrollerar', ready: 'Preview klar', awaiting_decision: 'Behöver besked', pausing: 'Pausar', paused: 'Pausad', cancelling: 'Avbryter', cancelled: 'Avbruten', failed: 'Bygget misslyckades' }
 const emptyDraft: BuildDraft = { text: '', inputSource: 'text', pending: null }
 export function BuildWorkspace({ initialSession, projectSlug, userId, brief }: { initialSession: BuildSessionView; projectSlug: string; userId: string; brief?: string }) {
+  const atlas = useAtlas(), atlasRef = useRef(atlas)
+  atlasRef.current = atlas
+  const capture = useRef<(() => void) | null>(null), speaking = useRef(false)
+  const [capturing, setCapturing] = useState(false), [voiceError, setVoiceError] = useState('')
   const { session, connection, submitFeedback, requestControl } = useBuildSession(initialSession, initialSession)
   const [draft, setDraft] = useState<BuildDraft>(emptyDraft), [hydrated, setHydrated] = useState(false)
   const [sending, setSending] = useState(false), [error, setError] = useState('')
@@ -21,6 +26,8 @@ export function BuildWorkspace({ initialSession, projectSlug, userId, brief }: {
   const active = useRef(session.activePreviewRevisionId), cache = useRef(new Map<string, WebsiteArtifact>())
   const root = useRef<HTMLDivElement>(null), mounted = useRef(true), draftRef = useRef(draft)
   const storageKey = `atlas-build:${userId}:${session.projectId}:${session.sessionId}`
+  useEffect(() => () => { capture.current?.(); if (speaking.current) atlasRef.current.stopAudio() }, [session.sessionId])
+  useEffect(() => { if (atlas.captureError) setCapturing(false) }, [atlas.captureError])
   draftRef.current = draft
   useEffect(() => {
     mounted.current = true
@@ -51,6 +58,20 @@ export function BuildWorkspace({ initialSession, projectSlug, userId, brief }: {
     try { await submitFeedback(prepared.pending!); if (mounted.current) setDraft(current => acceptDraft(current)) }
     catch (error) { if (mounted.current) setError((error as Error).message) } finally { if (mounted.current) setSending(false) }
   }
+  const listen = () => {
+    setVoiceError(''); setCapturing(true)
+    capture.current?.()
+    capture.current = atlas.captureUtterance(text => { if (mounted.current) { setDraft(current => ({ ...current, text, inputSource: 'voice' })); setCapturing(false) } })
+  }
+  const voiceControls = <>
+    <button type="button" onClick={() => { if (capturing) { capture.current?.(); setCapturing(false) } else listen() }}>{capturing ? 'Stoppa mikrofon' : 'Prata med Atlas'}</button>
+    <button type="button" disabled={!session.feedback.some(item => item.interpretation)} onClick={() => {
+      const text = [...session.feedback].reverse().find(item => item.interpretation)?.interpretation
+      if (text) { speaking.current = true; setVoiceError(''); void atlas.speakText(text).catch(error => { if (mounted.current) setVoiceError((error as Error).message) }).finally(() => { speaking.current = false }) }
+    }}>Läs upp Atlas svar</button>
+    <button type="button" onClick={() => atlas.stopAudio()}>Stoppa uppläsning</button>
+    {(atlas.captureError || voiceError) && <p role="alert">{atlas.captureError || voiceError}</p>}
+  </>
   return <div className={styles.workspace} ref={root} style={{ '--atlas-split': `${split}%` } as CSSProperties}>
     <header className={styles.header}>
       <div><a href={`/projects/${encodeURIComponent(projectSlug)}`}>← Projektet</a><h1>Bygg med Atlas</h1><p role="status"><strong>{statusLabels[session.status]}</strong> · {session.stage}</p></div>
@@ -59,7 +80,7 @@ export function BuildWorkspace({ initialSession, projectSlug, userId, brief }: {
     </header>
     <div className={styles.tabs} role="tablist" aria-label="Byggvy"><button role="tab" aria-selected={tab === 'atlas'} onClick={() => setTab('atlas')}>Atlas</button><button role="tab" aria-selected={tab === 'preview'} onClick={() => setTab('preview')}>Preview</button></div>
     <div className={styles.split}>
-      <div className={styles.chatPane} data-mobile-hidden={tab !== 'atlas'}><BuildConversation session={session} brief={brief} draft={draft} setDraft={setDraft} send={() => void send()} sending={sending} error={error} /></div>
+      <div className={styles.chatPane} data-mobile-hidden={tab !== 'atlas'}><BuildConversation session={session} brief={brief} draft={draft} setDraft={setDraft} send={() => void send()} sending={sending} error={error} voiceControls={voiceControls} /></div>
       <div className={styles.divider} role="separator" aria-label="Bredd på Atlas-panelen" aria-orientation="vertical" aria-valuemin={25} aria-valuemax={70} aria-valuenow={split} tabIndex={0} onKeyDown={event => { if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) { event.preventDefault(); setSplit(value => event.key === 'Home' ? 25 : event.key === 'End' ? 70 : Math.max(25, Math.min(70, value + (event.key === 'ArrowRight' ? 2 : -2)))) } }} onPointerDown={event => event.currentTarget.setPointerCapture(event.pointerId)} onPointerMove={event => { if (!event.currentTarget.hasPointerCapture(event.pointerId)) return; const bounds = root.current!.getBoundingClientRect(); setSplit(Math.max(25, Math.min(70, 100 * (event.clientX - bounds.left) / bounds.width))) }} onPointerUp={event => event.currentTarget.releasePointerCapture(event.pointerId)} />
       <section className={styles.previewPane} data-mobile-hidden={tab !== 'preview'} aria-label="Preview">
         <div className={styles.toolbar}>

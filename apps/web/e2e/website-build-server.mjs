@@ -4,6 +4,8 @@ import { createServer } from 'vite'
 const root = process.cwd()
 const vite = await createServer({ configFile: false, root, appType: 'custom', esbuild: { jsx: 'automatic' }, css: { postcss: {} }, resolve: { alias: [
   { find: '@/lib/ai/runner', replacement: resolve(root, 'e2e/website-build-fixture-provider.ts') },
+  { find: 'next/navigation', replacement: resolve(root, 'e2e/website-build-fixture-navigation.ts') },
+  { find: '@/lib/supabase/client', replacement: resolve(root, 'e2e/website-build-fixture-client.ts') },
   { find: '@/lib/supabase/admin', replacement: resolve(root, 'e2e/website-build-fixture-db.ts') },
   { find: '@/lib/auth/project-access', replacement: resolve(root, 'e2e/website-build-fixture-db.ts') },
   { find: 'server-only', replacement: resolve(root, 'lib/qa/__stubs__/server-only.ts') },

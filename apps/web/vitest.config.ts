@@ -17,6 +17,7 @@ export default defineConfig({
     environment: "node",
     include: [
       'lib/website-build/**/*.test.ts',
+      'lib/atlas/voice-capture.test.ts',
       "lib/qa/**/*.test.ts",
       "lib/nav/**/*.test.ts",
       "lib/intelligence/**/*.test.ts",

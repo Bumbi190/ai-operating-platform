@@ -41,6 +41,7 @@ import { resolveOwnedProjectId } from '@/lib/atlas/project-resolution'
 import { executeLegacyDelegate } from '@/lib/atlas/legacy-delegate'
 import { validateWorkflowDraft, type WorkflowDraft } from '@/lib/atlas/workflow-authoring'
 import { listAtlasWorkflowCatalog } from '@/lib/atlas/workflow-catalog'
+import { DESIGN_SKILL_TOOLS, DESIGN_SKILL_GUIDE, executeDesignSkillTool } from '@/lib/skills/atlas-tools'
 import type { Json } from '@/lib/supabase/database.types'
 import { isViewAwarenessEnabled, normalizeView, renderViewBlock, type ClientViewEnvelope } from '@/lib/atlas/view-context'
 import { fetchRecords } from '@/lib/atlas/record-access'
@@ -305,6 +306,7 @@ När operatören vill köra något: hitta rätt workflow, trigga det, presentera
 - Hitta aldrig på run_id, status eller utfall.`
 
 const TOOLS: Anthropic.Tool[] = [
+  ...DESIGN_SKILL_TOOLS,
   {
     // Read-only, side-effect free, and the ONLY source of a clock value. Atlas
     // must never answer a time question from training data or from reading a
@@ -729,7 +731,7 @@ export async function POST(request: Request) {
     // tur, så en felklassad fråga inte kan besvaras med påhittade siffror.
     systemPrompt = STATIC_CONVERSATION_SYSTEM + (voice ? VOICE_DIRECTIVE : '')
   } else {
-    systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE
+    systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE + DESIGN_SKILL_GUIDE
     // UNCONDITIONAL, AND DELIBERATELY BEFORE EVERYTHING THAT CAN FAIL. The bug
     // this slice fixes was partly that the only timestamp lived inside a block
     // guarded by `try`, so a single failed database read left Atlas with no idea
@@ -1130,6 +1132,10 @@ async function executeTool(
     const { location, timezone } = input as { location?: string; timezone?: string }
     const result: TimeLookup = currentTimeFor({ location, timezone }, new Date())
     return result
+  }
+
+  if (name === 'list_design_skills' || name === 'read_design_skill') {
+    return executeDesignSkillTool(name, input)
   }
 
   if (name === 'list_atlas_workflow_catalog') {

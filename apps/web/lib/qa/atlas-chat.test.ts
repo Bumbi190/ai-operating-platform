@@ -23,6 +23,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
+import { DESIGN_SKILL_TOOLS } from '@/lib/skills/atlas-tools'
 import {
   ALREADY_HERE_NOTICE,
   ATLAS_FAILED_NOTICE,
@@ -460,10 +461,11 @@ describe('atlas chat · the route contract it speaks', () => {
   })
 
   it('has one label here for every tool it offers, and none for a tool it does not', () => {
-    const start = ROUTE.indexOf('const TOOLS: Anthropic.Tool[] = [')
+    const normalizedRoute = ROUTE.replace(/\r\n/g, '\n')
+    const start = normalizedRoute.indexOf('const TOOLS: Anthropic.Tool[] = [')
     expect(start).toBeGreaterThan(-1)
-    const block = ROUTE.slice(start, ROUTE.indexOf('\n]\n', start))
-    const names = [...block.matchAll(/\bname: '([a-z_]+)'/g)].map((m) => m[1])
+    const block = normalizedRoute.slice(start, normalizedRoute.indexOf('\n]\n', start))
+    const names = [...block.matchAll(/\bname: '([a-z_]+)'/g)].map((m) => m[1]).concat(DESIGN_SKILL_TOOLS.map(tool => tool.name))
     expect(names.length).toBeGreaterThanOrEqual(15)
     expect(Object.keys(TOOL_LABELS).sort()).toEqual([...names].sort())
   })

@@ -287,3 +287,23 @@ describe('9X.2 · every chat handler reading a project-owned table is bounded', 
     expect(src.slice(rms!.s, rms!.e).join('\n')).toContain('resolvePlatformOperator()')
   })
 })
+
+
+describe('Atlas design knowledge through authenticated chat', () => {
+  it('returns the actual pinned skill through the real tool loop', async () => {
+    const { res } = await ask('read_design_skill', { id: 'impeccable' })
+    expect(res.status).toBe(200)
+    const result = JSON.parse(TOOL_RESULTS[0])
+    expect(result.id).toBe('impeccable')
+    expect(result.status).toBe('knowledge_only')
+    expect(result.commit).toMatch(/^[a-f0-9]{40}$/)
+    expect(result.text).toContain('Core principles')
+  })
+  it('rejects an unauthenticated design knowledge request before any model call', async () => {
+    CURRENT_USER = null
+    const { res } = await ask('read_design_skill', { id: 'impeccable' })
+    expect(res.status).toBe(401)
+    expect(streamCall).toBe(0)
+    expect(TOOL_RESULTS).toEqual([])
+  })
+})

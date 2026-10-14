@@ -1,0 +1,29 @@
+.section { display:grid;gap:17px;padding:22px;border:1px solid rgba(108,213,231,.24);border-radius:19px;background:linear-gradient(135deg,#10283c,#122138);color:#eaf6fb; }
+.header { display:flex;flex-wrap:wrap;align-items:start;justify-content:space-between;gap:12px; }
+.header h2 {font-size:clamp(1.18rem,2vw,1.5rem);font-weight:760;letter-spacing:-.025em;margin:4px 0 8px;}
+.header p {color:#b4cede;max-width:55rem;line-height:1.55;font-size:.84rem;margin:0;}
+.header .kicker {color:#6de2ef;font-size:.69rem;letter-spacing:.14em;text-transform:uppercase;font-weight:760;}
+.status {border:1px solid rgba(124,206,231,.28);border-radius:50px;padding:8px 11px;color:#a5c8d4;font-size:.71rem;font-weight:720;}
+.status[data-scanned='yes'] {color:#8cebd5;border-color:rgba(81,215,188,.3);}
+.grid {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;}
+.card {min-width:0;padding:16px;border-radius:14px;border:1px solid rgba(126,197,225,.22);background:rgba(8,29,47,.75);display:flex;flex-direction:column;gap:9px;}
+.card h3 {font-size:1.06rem;font-weight:760;color:#f5fbff;margin:0;}
+.card p {margin:0;font-size:.79rem;line-height:1.5;color:#b6cbdc;}
+.card .cardEyebrow {font-size:.62rem;letter-spacing:.045em;text-transform:uppercase;color:#80dbea;font-weight:750;}
+.card a {font-size:.74rem;font-weight:730;text-decoration:none;color:#78e9ea;margin-top:auto;padding-top:4px;}
+.card a:hover {text-decoration:underline;}
+.card a:focus-visible,.planDetails summary:focus-visible{outline:2px solid #80ebeb;outline-offset:4px;}
+.card .checked {color:#edcb8e;font-weight:690;font-size:.72rem;}
+.card .checked[data-ok='yes'] {color:#8cebd5;}
+.card .sourceTitle {color:#8aa8ba;font-size:.69rem;}
+.progressBlock {display:grid;gap:6px;}
+.progressBlock p {font-size:.7rem;color:#a7bfce;margin:0;}
+.track {height:7px;background:#16354b;border-radius:30px;overflow:hidden;}
+.track span {display:block;height:100%;background:linear-gradient(90deg,#338bad,#66ddda);border-radius:30px;}
+.planDetails {padding:13px 16px;border:1px solid rgba(111,194,212,.25);border-radius:11px;}
+.planDetails summary {cursor:pointer;font-size:.82rem;color:#b3e9ef;font-weight:740;}
+.planDetails ol {margin:12px 0 0;padding-left:20px;display:grid;gap:11px;}
+.planDetails li {font-size:.79rem;line-height:1.5;color:#d0e1e9;}
+.planDetails li span {display:block;color:#8daabb;font-size:.72rem;margin-top:3px;}
+@media(max-width:1180px){.grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:640px){.section{padding:16px}.grid{grid-template-columns:1fr}.card{padding:13px}}

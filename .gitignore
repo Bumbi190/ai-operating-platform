@@ -57,3 +57,4 @@ apps/web/data/intelligence/
 
 # Nested git worktrees (e.g. .worktrees/omnira-intelligence-graph) — never tracked
 .worktrees/
+.superpowers/sdd/2026-10-14-atlas-live-build-workspace/

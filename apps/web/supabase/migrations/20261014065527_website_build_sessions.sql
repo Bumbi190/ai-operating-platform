@@ -40,9 +40,9 @@ create index website_build_current_run on public.website_build_sessions(current_
 alter table public.website_build_sessions enable row level security;
 alter table public.website_build_feedback enable row level security;
 alter table public.website_preview_revisions enable row level security;
-create policy website_sessions_project_read on public.website_build_sessions for select to authenticated using(exists(select 1 from public.projects p where p.id=project_id));
-create policy website_feedback_project_read on public.website_build_feedback for select to authenticated using(exists(select 1 from public.projects p where p.id=project_id));
-create policy website_revisions_project_read on public.website_preview_revisions for select to authenticated using(exists(select 1 from public.projects p where p.id=project_id));
+create policy website_sessions_project_read on public.website_build_sessions for select to authenticated using(exists(select 1 from public.projects p where p.id=project_id and p.owner_id = auth.uid()));
+create policy website_feedback_project_read on public.website_build_feedback for select to authenticated using(exists(select 1 from public.projects p where p.id=project_id and p.owner_id = auth.uid()));
+create policy website_revisions_project_read on public.website_preview_revisions for select to authenticated using(exists(select 1 from public.projects p where p.id=project_id and p.owner_id = auth.uid()));
 revoke all on public.website_build_sessions,public.website_build_feedback,public.website_preview_revisions from anon,authenticated;
 grant select on public.website_build_sessions,public.website_build_feedback,public.website_preview_revisions to authenticated;
 grant all on public.website_build_sessions,public.website_build_feedback,public.website_preview_revisions to service_role;

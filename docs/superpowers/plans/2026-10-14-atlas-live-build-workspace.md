@@ -150,4 +150,4 @@ Efter godkända lokala kontroller och slutreview: pusha featurebranch och skapa 
 
 Specens delar är täckta: statiskt bygge/export/isolation → Task 1/3; durabilitet, konflikter, fencing och stopp → Task 2/3; Atlas-ingång/projektgräns → Task 4; arbetsvy/versionshistorik/feedback/reconnect → Task 5; röst/kontrollkvittenser/slutbevis → Task 6. Review Focus 1–5 har egna ägda tester ovan. Publik hosting, backendintegration, förbättring av befintliga app-repos och The Prompts mediearbete ligger i separata senare leveranser enligt spec.
 
-Dokumentet är en implementeringsplan. Runtime, migration och UI är ännu inte byggda.
+Runtime, migration och UI är implementerade i featurebranchen. Valideringsrapporten skiljer lokala bevis från kvarvarande liveprov, schemaaktivering och separat publicering.

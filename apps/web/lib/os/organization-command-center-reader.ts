@@ -46,6 +46,7 @@ export function sanitizeOrganizationCommandCenter(model: ProjectCommandCenterMod
     ...model,
     project: { ...model.project, href: null },
     links: {
+      build: null,
       runs: null, workflows: null, outputs: null, agents: null,
       newAgent: null, newWorkflow: null, media: null, approvals: null, marketplace: null,
     },

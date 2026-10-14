@@ -17,10 +17,12 @@ Object.assign(window, { fixtureSwitchSession: () => open(true) })
 
 async function openConversation(fresh=false,existing?:string){
  const query=new URL(location.href).searchParams,id=existing??(fresh?null:query.get('conversation'))
- const initial=await (await fetch(id?'/__fixture/conversation/'+id:'/__fixture/setup-conversation?builder='+query.get('builder')+'&historical='+query.get('historical'))).json()
- history.replaceState(null,'','/?conversation='+initial.conversationModel.id);window.dispatchEvent(new PopStateEvent('popstate'))
+ const preferred=!existing&&!fresh?query.get('viewSession'):null
+ const initial=await (await fetch(id?'/__fixture/conversation/'+id+(preferred?'?viewSession='+preferred:''):'/__fixture/setup-conversation?builder='+query.get('builder')+'&historical='+query.get('historical')+'&multiple='+query.get('multiple'))).json()
+ const viewed=initial.preferredSessionId??preferred
+ history.replaceState(null,'','/?conversation='+initial.conversationModel.id+(viewed?'&viewSession='+viewed:''));window.dispatchEvent(new PopStateEvent('popstate'))
  root.render(<AtlasConversationProvider><AtlasRuntimeProvider><AtlasBuildSurface conversationModel={initial.conversationModel} plan={initial.plan} initialSession={initial.session} brief={initial.brief??undefined}/></AtlasRuntimeProvider></AtlasConversationProvider>)
 }
 Object.assign(window,{fixtureSwitchConversation:()=>openConversation(true),fixtureOpenConversation:(id:string)=>openConversation(false,id)})
 const query=new URL(location.href).searchParams
-void (query.has('fresh')||query.has('conversation')||query.has('historical')?openConversation():open())
+void (query.has('fresh')||query.has('conversation')||query.has('historical')||query.has('multiple')?openConversation():open())

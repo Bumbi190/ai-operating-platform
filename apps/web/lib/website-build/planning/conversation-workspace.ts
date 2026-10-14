@@ -39,26 +39,28 @@ export async function readConversationWorkspace(
     .eq("conversation_id", conversationId)
     .eq("created_by", p.userId)
     .maybeSingle();
-  let sessions = query
-    .from("website_build_sessions")
-    .select("id,project_id,brief")
-    .eq("conversation_id", conversationId)
-    .eq("created_by", p.userId);
-  if (preferredSessionId) sessions = sessions.eq("id", preferredSessionId);
-  const { data: sessionRow, error: sessionError } = await sessions
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (planError || sessionError)
-    throw new WebsiteBuildError("BUILD_UNAVAILABLE", 503);
-  if (preferredSessionId && !sessionRow)
-    throw new WebsiteBuildError("NOT_FOUND", 404);
+  if (planError) throw new WebsiteBuildError("BUILD_UNAVAILABLE", 503);
   const plan = planRow
     ? await readWebsitePlan(db, p, {
         projectId: planRow.project_id,
         planId: planRow.id,
       })
     : null;
+  const selectedSessionId = preferredSessionId ?? plan?.activeSessionId ?? null;
+  let sessions = query
+    .from("website_build_sessions")
+    .select("id,project_id,brief")
+    .eq("conversation_id", conversationId)
+    .eq("created_by", p.userId);
+  if (selectedSessionId) sessions = sessions.eq("id", selectedSessionId);
+  const { data: sessionRow, error: sessionError } = await sessions
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (sessionError)
+    throw new WebsiteBuildError("BUILD_UNAVAILABLE", 503);
+  if (selectedSessionId && !sessionRow)
+    throw new WebsiteBuildError("NOT_FOUND", 404);
   const session = sessionRow
     ? await readBuildSession(db, p, {
         projectId: sessionRow.project_id,

@@ -68,3 +68,23 @@ it("foreign conversation is refused before its workspace can load", async () => 
     ),
   ).rejects.toMatchObject({ code: "NOT_FOUND" });
 });
+
+it("reload follows the plan's active build even when an older build was updated later, while explicit history stays pinned", async () => {
+  const c = conv();
+  const first = await approvedTestBuild(db, TEST_PRINCIPAL, {
+    projectId: TEST_PROJECT, agentId: TEST_AGENT, conversationId: c,
+    brief: "Första projektet", idempotencyKey: crypto.randomUUID(),
+  });
+  const second = await approvedTestBuild(db, TEST_PRINCIPAL, {
+    projectId: TEST_PROJECT, agentId: TEST_AGENT, conversationId: c,
+    brief: "Andra projektet", idempotencyKey: crypto.randomUUID(),
+  });
+  testSql("update website_build_sessions set updated_at=now()+interval '10 minutes' where id='" + first.sessionId + "';");
+  const current = await readConversationWorkspace(db, TEST_PRINCIPAL, c);
+  expect(current.plan?.activeSessionId).toBe(second.sessionId);
+  expect(current.session?.sessionId).toBe(second.sessionId);
+  const historical = await readConversationWorkspace(db, TEST_PRINCIPAL, c, first.sessionId);
+  expect(historical.session?.sessionId).toBe(first.sessionId);
+  expect(historical.brief).toContain("Första projektet");
+  expect(historical.brief).not.toContain("Andra projektet");
+});

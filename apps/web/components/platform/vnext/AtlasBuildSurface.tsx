@@ -36,6 +36,8 @@ export function AtlasBuildSurface({
   const shownPlan = current?.plan ?? plan,
     session = current?.session ?? initialSession;
   const panelOpen = current?.panelOpen ?? !!initialSession;
+  const differentPlan = !!shownPlan && !!session &&
+    shownPlan.approvedDecision?.sessionId !== session.sessionId;
   const [tab, setTab] = useState<"atlas" | "preview">("atlas"),
     [split, setSplit] = useState(38);
   const previousSession = useRef(initialSession?.sessionId);
@@ -152,9 +154,16 @@ export function AtlasBuildSurface({
                 byggvyn.
               </p>
             )}
+            {differentPlan && (
+              <p>
+                Du visar ett äldre bygge. Planen och kopplingsguiderna nedan gäller
+                samtalets senaste plan.
+              </p>
+            )}
             {shownPlan && (
               <AtlasPlanCard
                 plan={shownPlan}
+                displayedSessionId={session?.sessionId ?? null}
                 onApprove={approve}
                 onEdit={() =>
                   document.getElementById("atlas-chat-composer")?.focus()
@@ -168,11 +177,13 @@ export function AtlasBuildSurface({
                 revisionId={shownPlan.currentRevision.revisionId}
               />
             )}
-            {session && !shownPlan && brief && (
+            {session && (!shownPlan || differentPlan) && brief && (
               <details className={styles.plan}>
                 <summary>Byggets sparade brief</summary>
                 <p>{brief}</p>
-                <p>Detta historiska bygge har ingen sparad planrevision.</p>
+                <p>{shownPlan
+                  ? "Denna brief sparades när det visade bygget startade."
+                  : "Detta historiska bygge har ingen sparad planrevision."}</p>
               </details>
             )}
             {session && (

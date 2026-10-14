@@ -190,4 +190,59 @@ describe("one Atlas conversation controller", () => {
     expect(c.snapshot().id).toBeNull();
     expect(c.snapshot().history).toEqual([]);
   });
+  it.each(["activation", "stream"] as const)("clears the rendered revision before feedback on a replacement build via %s", async (path) => {
+    const nextId = "60000000-0000-4000-8000-000000000002";
+    const revisionId = "70000000-0000-4000-8000-000000000001";
+    const bodies: any[] = [];
+    const nextPlan = {
+      ref: { projectId: P, planId: D }, conversationId: C,
+      currentRevision: { projectId: P, planId: D, revisionId: D, sha256: "a".repeat(64),
+        content: { title: "Ny plan", pages: [], features: [], steps: [], design: {}, domain: { registrar: "strato" } } },
+      setting: {}, budget: {}, activeSessionId: nextId
+    };
+    const oldSession = { ...receipt.session, revisions: [{ id: revisionId, sha256: "a".repeat(64), pages: [] }] } as any;
+    const nextSession = { ...receipt.session, sessionId: nextId } as any;
+    const c = new AtlasConversationController(async (_url, init) => {
+      bodies.push(JSON.parse(init!.body as string));
+      return path === "stream" && bodies.length === 1
+        ? events({ event: "website_plan", conversationId: C, plan: nextPlan }, { ...receipt, session: nextSession }, { event: "done" })
+        : events({ event: "done" });
+    });
+    c.activateConversation({ id: C, saved: [], state: "ok", projectId: P, session: oldSession });
+    c.setRenderedRevision(revisionId);
+    if (path === "activation") c.activateConversation({ id: C, saved: [], state: "ok", session: nextSession });
+    else await c.sendTurn({ conversationId: C, text: "jag godkänner", inputSource: "text" });
+    expect(c.snapshot().session?.sessionId).toBe(nextId);
+    expect(c.snapshot().viewedRevisionId).toBeNull();
+    c.setRenderedRevision(revisionId);
+    expect(c.snapshot().viewedRevisionId).toBeNull();
+    await c.sendTurn({ conversationId: C, text: "Lägg till kontakt", inputSource: "text" });
+    expect(bodies.at(-1).buildContext).toEqual({ projectId: P, sessionId: nextId, viewedRevisionId: null });
+  });
+  it("rehydrates successful history recovery before allowing the next send", async () => {
+    const bodies: any[] = [];
+    const c = new AtlasConversationController(async (_url, init) => {
+      bodies.push(JSON.parse(init!.body as string));
+      return events({ event: "done" });
+    });
+    c.activateConversation({ id: C, saved: [], state: "error" });
+    c.activateConversation({ id: C, saved, state: "ok" });
+    expect(c.snapshot().entries).toEqual(expect.arrayContaining([expect.objectContaining({ text: "Hej" })]));
+    await c.sendTurn({ conversationId: C, text: "Fortsätt", inputSource: "text" });
+    expect(bodies[0].messages.map((m: any) => m.content)).toEqual(["Hej", "Fortsätt"]);
+  });
+  it("reconciles saved extensions without dropping newer local turns on a stale refresh", async () => {
+    const c = new AtlasConversationController(async () => events({ event: "text", text: "Svar" }, { event: "done" }));
+    c.activateConversation({ id: C, saved, state: "ok" });
+    await c.sendTurn({ conversationId: C, text: "Lokalt", inputSource: "text" });
+    c.activateConversation({ id: C, saved, state: "ok" });
+    expect(c.snapshot().history.map(m => m.content)).toEqual(["Hej", "Lokalt", "Svar"]);
+    const extended = [...saved, { role: "user", content: "Lokalt", tool_data: null, created_at: null },
+      { role: "assistant", content: "Svar", tool_data: null, created_at: null },
+      { role: "user", content: "Från annan flik", tool_data: null, created_at: null }];
+    c.activateConversation({ id: C, saved: extended, state: "ok" });
+    expect(c.snapshot().history.map(m => m.content)).toEqual(extended.map(m => m.content));
+    expect(c.snapshot().entries.at(-1)).toMatchObject({ kind: "user", text: "Från annan flik" });
+  });
+
 });

@@ -101,15 +101,32 @@ export class AtlasConversationController {
         session: input.session ?? null,
         panelOpen: !!input.session,
       };
-    else
+    else {
+      const incomingHistory = textHistory(input.saved);
+      const savedIsPrefix = incomingHistory.every(
+        (message, index) =>
+          s!.history[index]?.role === message.role &&
+          s!.history[index]?.content === message.content,
+      );
+      // A stale server refresh may precede locally completed turns. An error
+      // recovery or newer authoritative history must rehydrate the transcript.
+      const rehydrate = !s.pending && input.state === "ok" &&
+        (s.state === "error" || !savedIsPrefix || incomingHistory.length > s.history.length);
+      const sessionChanged = !s.pending && !!input.session &&
+        input.session.sessionId !== s.session?.sessionId;
       s = {
         ...s,
         state: input.state,
         projectId: s.projectId ?? input.projectId ?? null,
+        ...(rehydrate ? {
+          history: incomingHistory, entries: hydrateTranscript(input.saved),
+        } : {}),
         ...(!s.pending
           ? { plan: input.plan ?? s.plan, session: input.session ?? s.session }
           : {}),
+        ...(sessionChanged ? { viewedRevisionId: null, panelOpen: true } : {}),
       };
+    }
     this.conversations.set(input.id, s);
     this.active = s;
     this.listeners.forEach((f) => f());
@@ -271,6 +288,8 @@ export class AtlasConversationController {
               this.update(id, {
                 session: effect.session,
                 projectId: effect.session.projectId,
+                viewedRevisionId: now.session?.sessionId === effect.session.sessionId
+                  ? now.viewedRevisionId : null,
                 panelOpen:
                   now.session?.sessionId === effect.session.sessionId
                     ? now.panelOpen

@@ -6,15 +6,18 @@ export function AtlasPlanCard({
   onApprove,
   onEdit,
   pending = false,
+  displayedSessionId = null,
 }: {
   plan: PlanView;
   onApprove: () => void;
   onEdit: () => void;
   pending?: boolean;
+  displayedSessionId?: string | null;
 }) {
   const r = plan.currentRevision,
     c = r.content,
-    started = !!plan.approvedDecision?.sessionId;
+    started = !!plan.approvedDecision?.sessionId,
+    usedByDisplayedBuild = started && plan.approvedDecision?.sessionId === displayedSessionId;
   return (
     <section
       className={styles.plan}
@@ -24,7 +27,7 @@ export function AtlasPlanCard({
       <details open={!started}>
         <summary>
           Planversion {r.number} ·{" "}
-          {started ? "Godkänd · visa planen" : "Granska förslaget"}
+          {started ? (usedByDisplayedBuild ? "Godkänd · visa planen" : "Godkänd för ett annat bygge · visa planen") : "Granska förslaget"}
         </summary>
         <header>
           <p>Planversion {r.number}</p>
@@ -105,7 +108,7 @@ export function AtlasPlanCard({
             disabled={pending || !plan.setting.builderAgentId || started}
           >
             {started
-              ? "Planen används av bygget"
+              ? (usedByDisplayedBuild ? "Planen används av bygget" : "Planen används av ett annat bygge")
               : pending
                 ? "Inväntar kvitto…"
                 : "Godkänn och bygg"}

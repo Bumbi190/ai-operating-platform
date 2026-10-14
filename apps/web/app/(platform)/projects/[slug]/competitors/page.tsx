@@ -1,0 +1,18 @@
+import { notFound } from 'next/navigation'
+import { getProjectBySlug } from '@/lib/project/get-project'
+import { isHandlarborsenProject } from '@/lib/os/project-command-center'
+import { scanPublicSources } from '@/lib/atlas/project-analytics/handlarborsen-competitors-scan'
+import { HandlarborsenCompetitors } from '@/components/platform/vnext/HandlarborsenCompetitors'
+
+export const dynamic = 'force-dynamic'
+
+/** RLS resolution precedes the exact identity guard and all public-source I/O. */
+export default async function CompetitorsPage({ params, searchParams }: {
+  params: { slug: string }
+  searchParams?: Record<string, string | string[] | undefined>
+}) {
+  const project = await getProjectBySlug(params.slug)
+  if (!project || !isHandlarborsenProject(project)) notFound()
+  const scan = searchParams?.scan === '1' ? await scanPublicSources() : null
+  return <HandlarborsenCompetitors scan={scan} />
+}

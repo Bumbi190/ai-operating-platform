@@ -14,6 +14,22 @@ class RejectedSource extends Error {
   constructor(readonly status: LandscapeSourceStatus) { super(status) }
 }
 
+/**
+ * Accept a short, complete <title> before any active/scriptable markup in the
+ * document head. A malformed/unfinished script or an HTML comment cannot supply
+ * a trusted early title. The existing normalizer still strips unsafe content.
+ */
+function hasSafeEarlyTitle(html: string): boolean {
+  const head = /<head\b[^>]*>/i.exec(html)
+  const title = /<title\b[^>]*>[\s\S]*?<\/title\s*>/i.exec(html)
+  if (!head || !title || title.index < head.index + head[0].length) return false
+  const preceding = html.slice(head.index + head[0].length, title.index)
+  if (/<\s*\/?(?:script|style|template|noscript|body|iframe|object|svg)\b/i.test(preceding))
+    return false
+  if (preceding.includes('<!--') || preceding.includes('<![CDATA[')) return false
+  return normalizeTitle(html) !== null
+}
+
 async function readBounded(url: string, kind: 'robots' | 'document', fetcher: typeof fetch): Promise<string> {
   const allowed = COMPETITOR_SITES.some(site =>
     kind === 'robots' ? site.robotsUrl === url : site.url === url,
@@ -46,7 +62,7 @@ async function readBounded(url: string, kind: 'robots' | 'document', fetcher: ty
   }
   if (kind === 'robots' && contentType && contentType !== 'text/plain') {
     await cancel()
-    throw new RejectedSource('robots_denied')
+    throw new RejectedSource('robots_unavailable')
   }
   const contentLength = response.headers.get('content-length')
   // robots rules must be fully read, but a public HTML title may occur in
@@ -70,11 +86,12 @@ async function readBounded(url: string, kind: 'robots' | 'document', fetcher: ty
       const prefix = chunk.value.subarray(0, remaining)
       bytes += prefix.byteLength
       result += decoder.decode(prefix, { stream: true })
-      // Wait for a complete head when early-returning: a fake <title>
-      // within an unfinished <script> must not be treated as page metadata.
-      if (kind === 'document' && /<\/head\s*>/i.test(result) && normalizeTitle(result)) {
-        return result
-      }
+      // A valid title before the first executable tag may be accepted without
+      // waiting for a potentially enormous head. Otherwise require the whole
+      // head before using the normalizer (which removes complete scripts).
+      if (kind === 'document' && (
+        hasSafeEarlyTitle(result) || (/<\/head\s*>/i.test(result) && normalizeTitle(result))
+      )) return result
       if (chunk.value.byteLength > remaining) throw new RejectedSource('too_large')
     }
     return result + decoder.decode()
@@ -94,7 +111,13 @@ export async function scanCompetitorLandscape(fetcher: typeof fetch = fetch): Pr
     let title: string | null = null
     try {
       const policy = await readBounded(site.robotsUrl, 'robots', fetcher)
-      if (robotsAllows(policy, new URL(site.url).pathname)) {
+      if (!robotsAllows(policy, new URL(site.url).pathname)) {
+        // A challenge/error document is not a known Disallow directive.
+        // We still refuse to access the source in either case.
+        if (/^\s*</.test(policy) || !/(?:^|\n)\s*user-agent\s*:/i.test(policy)) {
+          status = 'robots_unavailable'
+        }
+      } else {
         try {
           title = normalizeTitle(await readBounded(site.url, 'document', fetcher))
           status = title ? 'metadata_checked' : 'metadata_missing'
@@ -103,7 +126,9 @@ export async function scanCompetitorLandscape(fetcher: typeof fetch = fetch): Pr
         }
       }
     } catch {
-      status = 'robots_denied'
+      // Network/challenge/invalid robots is not evidence of an explicit
+      // Disallow directive. Fail closed while stating the accurate reason.
+      status = 'robots_unavailable'
     }
     observations.push({ id: site.id, title, status, checkedAt: observedAt })
   }

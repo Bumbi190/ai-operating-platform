@@ -37,12 +37,14 @@ function AtlasAudioLevelBridge({ target, override }: { target: RefObject<HTMLEle
  * reads the live runtime once, resolves it through `resolveAtlasOrbState`, and
  * hands the result down; the face and the chip only display it.
  */
-export function AtlasCommandCore() {
+export function AtlasCommandCore({ readOnly = false }: { readOnly?: boolean }) {
   const atlas = useAtlas()
   const searchParams = useSearchParams()
   const coreRef = useRef<HTMLElement>(null)
   const [message, setMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [observerAnswer, setObserverAnswer] = useState('')
+  const [observerError, setObserverError] = useState('')
   const busy = submitting || atlas.voicePhase === 'thinking'
   const textBusy = busy || atlas.voicePhase === 'listening' || atlas.voicePhase === 'speaking'
   const runtimeOrbState = resolveAtlasOrbState({
@@ -65,6 +67,7 @@ export function AtlasCommandCore() {
   const stateDescription = ATLAS_ORB_STATE_LABELS[orbState]
 
   function handleVoiceToggle() {
+    if (readOnly) return
     if (atlas.voicePhase === 'speaking') {
       atlas.stopAudio()
       return
@@ -82,7 +85,23 @@ export function AtlasCommandCore() {
     setSubmitting(true)
     setMessage('')
     try {
-      await atlas.sendMessage(text)
+      if (readOnly) {
+        setObserverAnswer('')
+        setObserverError('')
+        const response = await fetch('/api/organization/atlas', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ question: text }),
+        })
+        if (!response.ok) throw Error('Atlas unavailable')
+        const result: { answer?: string } = await response.json()
+        setObserverAnswer(result.answer ?? 'Inget svar kunde formuleras.')
+      } else {
+        await atlas.sendMessage(text)
+      }
+    } catch {
+      if (readOnly) setObserverError('Atlas kan inte svara just nu.')
     } finally {
       setSubmitting(false)
     }
@@ -115,7 +134,7 @@ export function AtlasCommandCore() {
         type="button"
         className={styles.faceCore}
         onClick={handleVoiceToggle}
-        disabled={busy && atlas.voicePhase !== 'speaking'}
+        disabled={readOnly || (busy && atlas.voicePhase !== 'speaking')}
         aria-label={atlas.voicePhase === 'speaking' ? 'Avbryt Atlas svar' : 'Aktivera Atlas röst'}
         aria-describedby="atlas-state-description"
       />
@@ -145,14 +164,14 @@ export function AtlasCommandCore() {
         {atlas.transcript && atlas.voicePhase === 'listening' ? (
           <p className={styles.transcript}>{atlas.transcript}</p>
         ) : null}
-        {atlas.response ? (
+        {(readOnly ? observerAnswer : atlas.response) ? (
           <div className={styles.responsePanel}>
             <div className={styles.responseHeading}>
               <span>Atlas</span>
               {atlas.perf ? <span className={styles.performance}>{atlas.perf}</span> : null}
             </div>
-            <p>{atlas.response}</p>
-            {atlas.conversationId && atlas.voicePhase === 'idle' ? (
+            <p>{readOnly ? observerAnswer : atlas.response}</p>
+            {!readOnly && atlas.conversationId && atlas.voicePhase === 'idle' ? (
               <button
                 type="button"
                 className={styles.openConversation}
@@ -163,10 +182,11 @@ export function AtlasCommandCore() {
             ) : null}
           </div>
         ) : null}
-        {atlas.awaitingApproval?.detail ? (
+        {readOnly && observerError ? <p role="alert" className={styles.runtimeDetail}>{observerError}</p> : null}
+        {!readOnly && atlas.awaitingApproval?.detail ? (
           <p className={styles.runtimeDetail} role="status">{atlas.awaitingApproval.detail}</p>
         ) : null}
-        {atlas.warning?.detail ? (
+        {!readOnly && atlas.warning?.detail ? (
           <div className={styles.runtimeNotice} role="alert">
             <span className={styles.runtimeNoticeDot} aria-hidden="true" />
             <p>{atlas.warning.detail}</p>
@@ -179,8 +199,8 @@ export function AtlasCommandCore() {
           type="button"
           className={styles.voiceButton}
           onClick={handleVoiceToggle}
-          disabled={busy}
-          aria-label={voiceLabel}
+          disabled={busy || readOnly}
+          aria-label={readOnly ? 'Röstläge är avstängt för Collaborator' : voiceLabel}
           data-active={atlas.voicePhase === 'listening' || atlas.voicePhase === 'speaking' || undefined}
         >
           {atlas.voicePhase === 'listening' ? <MicOff size={19} /> : atlas.voicePhase === 'speaking' ? <Square size={16} /> : <Mic size={19} />}

@@ -10,12 +10,12 @@ describe('Collaborator navigation containment', () => {
     expect(middleware).toContain('collaboratorDirectoryRead')
     expect(middleware).toContain('handlWorkflowCreate')
     expect(middleware).toContain('handlWorkflowEdit')
-    expect(middleware).toContain('!(collaboratorDirectoryRead || collaboratorWorkflowRead || handlWorkflowCreate || handlWorkflowEdit)')
+    expect(middleware).toContain('collaboratorAtlasRead')
     expect(middleware).toContain("status: 403")
   })
   it('redirects collaborators out of legacy Atlas screens', () => {
     expect(middleware).toContain("pathname === '/organization'")
-    expect(middleware).toContain("url.pathname = '/organization'")
+    expect(middleware).toContain("'/organization/atlas'")
     expect(middleware).toContain("if (denied) return new NextResponse('Access revoked', { status: 403 })")
   })
   it('honors allowlisted invitation callback destination in fallback browser exchange', () => {

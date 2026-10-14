@@ -39,3 +39,14 @@ Inga GitHub Actions-körningar, migrationsändringar, behörigheter eller produk
 - Regressionstester för default-off, origin/body/slug, owner-scope, live owner-ID, idempotens, sex fasta källor, felaktig digest, tidsformat, avsaknad av DB och exakta lagrade antal.
 
 **Kvarstående säkerhetsgrindar innan produktion:** godkänn och applicera föreslagen schemafil via ordinarie migrationsprocess med uppdaterat guard/inventory; bevisa rollback och samtidiga POST-försök med race; granska rättigheter på riktig Supabase; verifiera Preview med flagga och separat testkonto; definiera retention/operatörsrensning. Inga schemalagda kontroller eller automatiska Atlas-åtgärder. Flagga får inte aktiveras förrän samtliga granskningar är godkända.
+
+### Säkerhetskomplettering 2026-10-14 – utfört lokalt
+
+- Idempotens och samtidighet kontrollerad i isolerad PostgreSQL 16: 8 parallella kompletta sexkälls-INSERT med ON CONFLICT DO NOTHING gav exakt 6 rader och en enda fullständig vinnande uppsättning titlar. Container stängd efteråt.
+- Om en sparad UTC-dag bara har en del av de sex källorna avbryter tjänsten utan ny skanning; ingen falsk lyckad-dag-status.
+- Scan som korsar midnatt UTC avvisas utan DB-skrivning; sex källor kan inte delas på två datum.
+- En saknad jämförelse renderas som "Ingen jämförelse", inte som ett nollvärde.
+- Föreslagen FK använder ON DELETE CASCADE så att historik inte låser projektradering och tas bort när projektet raderas. Fönstret som API:t läser är 30 UTC-dagar; faktisk fysisk retention i DB är **inte** satt än och kräver separat policy.
+- Docker-fixture: docs/sql/handlarborsen_competitor_observations_p2_local_fixture.sql; parallell race-fixture: docs/sql/handlarborsen_competitor_observations_p2_concurrency.sql. Ingen produktionsmigration körd.
+
+**Kvar:** Review av full canonical-migration, produktionsledger och schema inventory samt explicit beslut före Supabase-apply. Separat drift-/retentionstrategi krävs innan automatisk bevakning.

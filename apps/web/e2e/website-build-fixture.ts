@@ -1,5 +1,7 @@
+import {readConversationWorkspace} from '../lib/website-build/planning/conversation-workspace'
 import { createAdminClient } from './website-build-fixture-db'
 import { TEST_AGENT, TEST_CONVERSATION, TEST_PRINCIPAL, TEST_PROJECT, testSql, resetWorkerDb } from '../lib/website-build/test-db'
+import {approvedTestBuild} from '../lib/website-build/planning/test-fixture'
 import { createBuildSession, readBuildSession, loadBuildSnapshot, setBuildStage, recordBuildInterpretation, parkBuildSession } from '../lib/website-build/store'
 import { executeWebsiteBuildRun } from '../lib/website-build/worker'
 import { setFixtureTemplate } from './website-build-fixture-provider'
@@ -7,8 +9,9 @@ import type { WriterRef } from '../lib/website-build/types'
 const db = createAdminClient()
 export async function setup() {
   resetWorkerDb()
-  const session = await createBuildSession(db, TEST_PRINCIPAL, { projectId: TEST_PROJECT, agentId: TEST_AGENT, conversationId: TEST_CONVERSATION, brief: 'En hemsida för vårt svenska café', idempotencyKey: crypto.randomUUID() })
-  return { session, userId: TEST_PRINCIPAL.userId, projectSlug: 'test-project', brief: 'En hemsida för vårt svenska café' }
+  const conversationId=crypto.randomUUID();testSql("insert into conversations(id,user_id,project_id) values('"+conversationId+"','"+TEST_PRINCIPAL.userId+"','"+TEST_PROJECT+"');")
+  const session = await approvedTestBuild(db, TEST_PRINCIPAL, { projectId: TEST_PROJECT, agentId: TEST_AGENT, conversationId, brief: 'En hemsida för vårt svenska café', idempotencyKey: crypto.randomUUID() })
+  return { session,...await conversation(session), userId: TEST_PRINCIPAL.userId, projectSlug: 'test-project', brief: 'En hemsida för vårt svenska café' }
 }
 export async function snapshot(sessionId: string) { return readBuildSession(db, TEST_PRINCIPAL, { projectId: TEST_PROJECT, sessionId }) }
 function writer(sessionId: string): WriterRef {
@@ -33,3 +36,4 @@ export async function step(sessionId: string, action: string) {
   testSql(`update runs set status='done' where id='${w.runId}';`)
   return snapshot(sessionId)
 }
+export async function conversation(session:Awaited<ReturnType<typeof snapshot>>){const workspace=await readConversationWorkspace(db,TEST_PRINCIPAL,session.conversationId,session.sessionId);const saved=JSON.parse(testSql("select coalesce(jsonb_agg(to_jsonb(m) order by created_at),'[]') from conversation_messages m where conversation_id='"+session.conversationId+"';"));return {conversationModel:{id:session.conversationId,operatorId:TEST_PRINCIPAL.userId,title:'Webbbygge med Atlas',projectId:TEST_PROJECT,projectName:'Testprojekt',state:'ok',saved,chatBase:'/chat'},plan:workspace.plan}}

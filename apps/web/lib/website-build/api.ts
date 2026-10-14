@@ -1,7 +1,7 @@
 import 'server-only'
 import { resolveProjectAccess } from '@/lib/auth/project-access'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { exportWebsiteZip } from './artifact'
+import {exportWebsiteProject} from './project-export'
 import { appendBuildFeedback, createBuildSession, readBuildArtifact, readBuildSession, requestBuildControl, WebsiteBuildError } from './store'
 import { assertSameOrigin } from '@/lib/atlas/executive/http'
 import type { CreateBuildInput, FeedbackInput } from './types'
@@ -55,7 +55,7 @@ export async function websiteBuildApi(action: 'create' | 'get' | 'feedback' | 'c
     if (action === 'control') return Response.json(await requestBuildControl(db, access, ref, body.action as 'pause' | 'resume' | 'cancel', body.idempotencyKey as string), { headers })
     const artifact = await readBuildArtifact(db, access, ref, params.revisionId as string)
     if (action === 'artifact') return Response.json(artifact, { headers })
-    const bytes = await exportWebsiteZip(artifact)
+    const bytes = await exportWebsiteProject(db,access,ref,params.revisionId as string,artifact)
     return new Response(new Uint8Array(bytes), { headers: { ...headers, 'content-type': 'application/zip', 'content-disposition': `attachment; filename="website-${params.revisionId}.zip"` } })
   } catch (error) {
     const response=buildErrorResponse(error)

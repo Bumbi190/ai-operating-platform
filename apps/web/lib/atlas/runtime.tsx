@@ -131,6 +131,8 @@ export function useAtlas(): AtlasValue {
   return ctx
 }
 
+export function useOptionalAtlas():AtlasValue|null { return useContext(AtlasContext) }
+
 /** Subscribe only the visual consumer to the high-frequency Web Audio level. */
 export function useAtlasAudioLevel(): number {
   const store = useContext(AtlasAudioLevelContext)

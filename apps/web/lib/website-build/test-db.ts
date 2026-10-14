@@ -65,7 +65,7 @@ export function initializeWorkerDb(): ReturnType<typeof createAdminClient> {
     },
     from: (table: string) => {
       let fields = '*', update: Record<string, unknown> | null = null, insert: Record<string, unknown> | null = null
-      const where: string[] = []
+      const where: string[] = [];let sort='',limit=''
       const execute = async (single = false) => {
         try {
           const columns = fields === '*' ? '*' : fields.split(',').map(s => ident(s.trim())).join(',')
@@ -73,7 +73,7 @@ export function initializeWorkerDb(): ReturnType<typeof createAdminClient> {
           let statement: string
           if (update) statement = `update public.${ident(table)} set ${Object.entries(update).map(([k, v]) => ident(k) + '=' + literal(v)).join(',')}${filter} returning ${columns}`
           else if (insert) statement = `insert into public.${ident(table)}(${Object.keys(insert).map(ident).join(',')}) values(${Object.values(insert).map(literal).join(',')}) returning ${columns}`
-          else statement = `select ${columns} from public.${ident(table)}${filter}`
+          else statement = `select ${columns} from public.${ident(table)}${filter}${sort}${limit}`
           const body = update || insert ? `with r as (${statement}) select coalesce(jsonb_agg(to_jsonb(r)),'[]') from r;` : `select coalesce(jsonb_agg(to_jsonb(r)),'[]') from (${statement}) r;`
           const rows = JSON.parse(testSql(body, true))
           return { data: single ? rows[0] || null : rows, error: null }
@@ -83,6 +83,8 @@ export function initializeWorkerDb(): ReturnType<typeof createAdminClient> {
         select: (selection = '*') => { fields = selection; return chain },
         eq: (key: string, value: unknown) => { where.push(ident(key) + '=' + literal(value)); return chain },
         is: (key: string, value: unknown) => { where.push(ident(key) + ' is ' + literal(value)); return chain },
+        order: (key:string,options?:{ascending?:boolean})=>{sort=' order by '+ident(key)+(options?.ascending===false?' desc':' asc');return chain},
+        limit: (n:number)=>{if(!Number.isSafeInteger(n)||n<1||n>1000)throw Error('Invalid test limit');limit=' limit '+n;return chain},
         update: (payload: Record<string, unknown>) => { update = payload; return chain },
         insert: (payload: Record<string, unknown>) => { insert = payload; return chain },
         maybeSingle: () => execute(true), single: () => execute(true),

@@ -107,6 +107,8 @@ export interface ChatHomeModel {
 }
 
 export interface ChatConversationModel {
+  website?: import("@/lib/website-build/planning/conversation-workspace").ConversationWorkspace
+  operatorId?: string
   projectId?: string | null
   id: string
   title: string

@@ -29,6 +29,8 @@
 import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import {getAllowedProjectIds} from '@/lib/atlas/isolation'
+import {readConversationWorkspace,type ConversationWorkspace} from '@/lib/website-build/planning/conversation-workspace'
 import { deriveOperatorName } from '@/lib/os/briefing'
 import { destinationBasePath } from '@/lib/nav/registry'
 import { ATLAS_HOME_TIMEZONE } from '@/lib/atlas/utilities/time'
@@ -193,11 +195,15 @@ export async function loadChatConversation(id: string): Promise<ChatConversation
   )
 
   const row = conv as { title?: unknown; projects?: unknown; project_id?:unknown }
+  let website:ConversationWorkspace|undefined
+  if(/^[0-9a-f-]{36}$/i.test(id))try{website=await readConversationWorkspace(db,{userId:user.id,allowedProjectIds:await getAllowedProjectIds(db,user.id)},id)}catch{website={state:'error',plan:null,session:null,brief:null}}
   return {
     id,
     title: text(row.title) ?? 'Konversation',
     projectName: projectNameOf(row.projects),
+    operatorId:user.id,
     projectId: text(row.project_id),
+    ...(website?{website}:{}),
     state: messages.ok ? 'ok' : 'error',
     saved: messages.ok ? (messages.data as SavedMessage[]) : [],
     chatBase: chatBase(),

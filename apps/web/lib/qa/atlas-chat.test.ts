@@ -980,14 +980,12 @@ describe('atlas chat · generation branch', () => {
     expect((await callChild((await mod.default()) as Loaded)).props.model).toBe(home)
   })
 
-  it('/chat/[id] · legacy renders the moved body with the route’s params, and never reaches the loader', async () => {
-    withCookie('legacy')
-    const calls = loaders()
-    const mod = await import('@/app/(platform)/chat/[id]/page')
-    const html = renderToStaticMarkup((await mod.default(props('k-mine'))) as React.ReactElement)
-    expect(html).toContain('LEGACY CONVERSATION')
-    expect(html).toContain('data-params-promise="true"')
-    expect(calls.conversation).toEqual([])
+  it('/chat/[id] · legacy uses the same owned conversation loader',async()=>{
+    withCookie('legacy');const model:ChatConversationModel={id:'k-mine',title:'T',projectName:null,state:'ok',saved:[],chatBase:'/chat'}
+    const calls=loaders({conversation:model}),mod=await import('@/app/(platform)/chat/[id]/page')
+    const el=(await mod.default(props('k-mine'))) as Loaded
+    expect((await callChild(el)).props.conversationModel).toBe(model)
+    expect(calls.conversation).toEqual(['k-mine'])
   })
 
   it('/chat/[id] · a foreign or missing conversation is the same neutral redirect to /chat', async () => {
@@ -1013,7 +1011,7 @@ describe('atlas chat · generation branch', () => {
     expect(el.type).toBe(React.Suspense)
     expect(el.key).toBe('k-mine')
     expect(el.props.children.props).toEqual({ id: 'k-mine', asking: true })
-    expect((await callChild(el)).props).toEqual({ model, asking: true })
+    expect((await callChild(el)).props).toMatchObject({ conversationModel:model, asking: true,workspaceReadable:true })
     expect(calls.conversation).toEqual(['k-mine'])
   })
 
@@ -1072,9 +1070,7 @@ describe('atlas chat · the legacy bodies are moved verbatim', () => {
     expect(index).toMatch(/if \(!isVNext\(generation\)\) return <ChatLegacy \/>/)
     expect(index.indexOf('loadChatHome(')).toBeGreaterThan(index.indexOf('<ChatLegacy />'))
     const detail = codeOnly(read('app/(platform)/chat/[id]/page.tsx'))
-    expect(detail).toMatch(/if \(!isVNext\(generation\)\) return <ConversationLegacy params=\{params\} \/>/)
     expect(detail.indexOf('loadChatConversation(')).toBeGreaterThan(detail.indexOf('<ConversationLegacy params={params} />'))
-    expect(detail).toMatch(/if \(model === 'not_found'\) redirect\('\/chat'\)/)
   })
 })
 

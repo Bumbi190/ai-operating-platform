@@ -129,8 +129,15 @@ export class AtlasConversationController {
   setPanelOpen(panelOpen: boolean) {
     if (this.active.id) this.update(this.active.id, { panelOpen });
   }
+  applySessionSnapshot(session:BuildSessionView) {
+    const current=this.active
+    if(!current.id||!current.session||session.sessionId!==current.session.sessionId||session.stateVersion<current.session.stateVersion)return
+    const effect=decodeWebsiteEffect({event:"website_workspace",conversationId:current.id,session},{conversationId:current.id,projectId:current.projectId,sessionId:current.session.sessionId})
+    if(effect?.session)this.update(current.id,{session:effect.session})
+  }
   setRenderedRevision(id: string | null) {
     const s = this.active;
+    if(id===s.viewedRevisionId)return
     if (s.id && (!id || s.session?.revisions.some((r) => r.id === id)))
       this.update(s.id, { viewedRevisionId: id });
   }

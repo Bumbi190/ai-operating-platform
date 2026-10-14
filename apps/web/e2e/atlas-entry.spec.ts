@@ -77,3 +77,27 @@ await page.getByRole('button',{name:'Avbryt röststart',exact:true}).click()
 await page.getByRole('button',{name:'Starta röstläge',exact:true}).click()
 expect(await page.evaluate(()=> (window as any).pendingStarts)).toBe(2)
 })
+
+test('a late microphone callback cannot replace a typed request thinking phase', async ({ page }) => {
+await page.addInitScript(()=> { Object.assign(window,{lateSpeechStart:null,SpeechRecognition:class { onstart:any; start(){(window as any).lateSpeechStart=this.onstart} stop(){} abort(){} }}) })
+let release!:()=>void
+const hold=new Promise<void>(resolve=>{release=resolve})
+await page.route('**/api/chat',async route=>{await hold; await route.fulfill({status:200,contentType:'text/event-stream',body:'data: {"type":"done"}\n\n'})})
+try {
+await page.goto('/')
+await page.getByRole('button',{name:'Starta röstläge',exact:true}).click()
+await page.getByLabel('Meddelande till Atlas').fill('Vi fortsätter med en skriven fråga')
+await page.getByRole('button',{name:'Skicka till Atlas',exact:true}).click()
+await expect(page.getByText('Tänker',{exact:true})).toBeVisible()
+await page.evaluate(()=> (window as any).lateSpeechStart?.())
+await expect(page.getByText('Tänker',{exact:true})).toBeVisible()
+await expect(page.getByLabel('Meddelande till Atlas')).toBeDisabled()
+} finally { release() }
+})
+test('legacy microphone failure offers a real text-chat destination', async ({ page }) => {
+await page.addInitScript(()=> { delete (window as any).SpeechRecognition; delete (window as any).webkitSpeechRecognition })
+await page.goto('/?ui=legacy')
+await page.getByRole('button',{name:'Atlas — Tryck för att prata',exact:true}).click()
+await expect(page.getByRole('alert')).not.toContainText('textfältet')
+await expect(page.getByRole('link',{name:'Öppna textchatten'})).toHaveAttribute('href','/chat')
+})

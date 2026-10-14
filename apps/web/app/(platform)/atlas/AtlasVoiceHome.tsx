@@ -120,7 +120,10 @@ export function AtlasVoiceHome({ operatorName }: Props) {
       </div>
 
       {atlas.warning?.detail && (
-        <p role="alert" className="mt-6 max-w-md text-sm text-amber-200">{atlas.warning.detail}</p>
+        <div role="alert" className="mt-6 max-w-md text-sm text-amber-200">
+          <p>{atlas.warning.detail}</p>
+          <a href="/chat" className="mt-2 inline-block underline underline-offset-4">Öppna textchatten</a>
+        </div>
       )}
 
       {/* ── Svarsbubbla ────────────────────────────────────────────────── */}

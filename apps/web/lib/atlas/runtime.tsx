@@ -379,11 +379,11 @@ export function AtlasRuntimeProvider({
     }
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SR) {
-      failVoice('Röstinmatning stöds inte i denna webbläsare. Du kan fortsätta skriva i textfältet.')
+      failVoice('Röstinmatning stöds inte i denna webbläsare. Du kan fortsätta skriva med text.')
       return
     }
     try { rec = new SR() } catch {
-      failVoice('Mikrofonen kunde inte starta. Du kan skriva i textfältet eller försöka igen.')
+      failVoice('Mikrofonen kunde inte starta. Du kan skriva med text eller försöka igen.')
       return
     }
     recRef.current = rec
@@ -575,6 +575,8 @@ export function AtlasRuntimeProvider({
 
   // ── Streaming + TTS-pipeline ──────────────────────────────────────────────
   async function sendMessage(text: string) {
+    // A delayed native start/result must not overtake this new chat request.
+    stopListening()
     // A new request retires the previous timeline. Anything still in flight for
     // the old one now fails its generation check instead of contaminating this.
     const generation = ++requestGenRef.current

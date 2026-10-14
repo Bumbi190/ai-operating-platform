@@ -32,3 +32,9 @@ expect(hasDisabledFieldset(page)).toBe(true)
 expect(mocks.owned).not.toHaveBeenCalled()
 })
 })
+
+it('does not redirect when the RLS-owned project is non-null but has a different ID',async()=>{
+mocks.owned.mockResolvedValue({id:'different-project',slug:'test-project'})
+const page=await OrganizationProjectPage({params:{slug:'test-project'}})
+expect(hasDisabledFieldset(page)).toBe(true)
+})

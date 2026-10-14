@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-const sql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20261013193000_omnira_org_memberships.sql'), 'utf8')
+const sql = readFileSync(resolve(process.cwd(), 'supabase/migrations/20261013193000_omnira_org_memberships_v1.sql'), 'utf8')
 
 describe('Omnira organization membership foundation', () => {
   it('only declares owner and collaborator, with one active owner', () => {

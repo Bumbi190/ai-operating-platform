@@ -2,7 +2,7 @@
 -- canonical migrations with exact migration-guard and security inventory.
 -- Public source title metadata only. No raw HTML, free URLs, or user data.
 CREATE TABLE public.handlarborsen_competitor_observations (
-  project_id uuid NOT NULL REFERENCES public.projects(id) ON DELETE RESTRICT,
+  project_id uuid NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
   source_id text NOT NULL,
   observed_on date NOT NULL,
   checked_at timestamptz NOT NULL,

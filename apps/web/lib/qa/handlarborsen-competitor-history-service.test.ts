@@ -64,10 +64,10 @@ function harness(saved: any[] = [], enabled = true) {
   const lookup = vi.fn(async () => project)
   const deps = {
     access, project: lookup, db: () => db, publicScan, landscapeScan,
-    clock: () => clock,
+    clock: vi.fn(() => clock),
     env: { HANDLARBORSEN_COMPETITOR_HISTORY_ENABLED: enabled ? 'true' : 'false' },
   } as unknown as HistoryDependencies
-  return { service: createCompetitorHistoryService(deps), from, read, upsert, access, lookup, publicScan, landscapeScan }
+  return { service: createCompetitorHistoryService(deps), deps, from, read, upsert, access, lookup, publicScan, landscapeScan }
 }
 
 function stored(title = 'Saved source') {
@@ -126,12 +126,35 @@ describe('gated immutable competitor observation storage', () => {
       expect(await h.service.load()).toEqual({ status: 'invalid' })
     }
   })
-  it('does not rescan or overwrite when any same-day observation is already saved', async () => {
-    const h = harness([stored()])
-    expect(await h.service.save()).toEqual({ status: 'already_saved', count: 1 })
+  it('does not rescan or overwrite when all six same-day observations are already saved', async () => {
+    const today = [...EVIDENCE.map(x => x.id), ...COMPETITOR_SITES.map(x => x.id)]
+      .map(source_id => ({ ...stored(), source_id }))
+    const h = harness(today)
+    expect(await h.service.save()).toEqual({ status: 'already_saved', count: 6 })
     expect(h.publicScan).not.toHaveBeenCalled()
     expect(h.landscapeScan).not.toHaveBeenCalled()
     expect(h.upsert).not.toHaveBeenCalled()
+  })
+  it('fails closed on incomplete six-source day, rather than presenting it as fully saved', async () => {
+    const h = harness([stored()])
+    expect(await h.service.save()).toEqual({ status: 'invalid' })
+    expect(h.publicScan).not.toHaveBeenCalled()
+    expect(h.upsert).not.toHaveBeenCalled()
+  })
+  it('refuses a batch if UTC midnight passes between authorization and scan completion', async () => {
+    const h = harness()
+    const mockedClock = vi.mocked(h.deps.clock)
+    mockedClock.mockReturnValueOnce(new Date('2026-10-14T23:59:59.000Z'))
+    mockedClock.mockReturnValueOnce(new Date('2026-10-15T00:00:01.000Z'))
+    expect(await h.service.save()).toEqual({ status: 'invalid' })
+    expect(h.upsert).not.toHaveBeenCalled()
+  })
+  it('does not claim records saved if another concurrent INSERT wins unique-day conflicts', async () => {
+    const h = harness()
+    h.upsert.mockImplementationOnce(() => ({
+      select: vi.fn(async () => ({ data: [], error: null })),
+    }))
+    expect(await h.service.save()).toEqual({ status: 'already_saved', count: 0 })
   })
   it('stores only six fixed source IDs, one per day, using DO NOTHING semantics', async () => {
     const h = harness()

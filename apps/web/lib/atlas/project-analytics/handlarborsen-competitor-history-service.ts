@@ -155,8 +155,13 @@ export function createCompetitorHistoryService(deps: HistoryDependencies = live)
         if (checked.status !== 'ok') return { status: 'invalid' }
         const today = now.toISOString().slice(0, 10)
         const todaysRows = checked.observations.filter(x => x.checkedAt.startsWith(today))
-        // At most one owner-initiated persisted batch per UTC day. No rescans on retries.
-        if (todaysRows.length > 0) return { status: 'already_saved', count: todaysRows.length }
+        // A partial same-day batch is inconsistent, not a successful saved day.
+        // Stop without rescanning so an operator can investigate and repair it.
+        if (todaysRows.length > 0 && todaysRows.length !== HISTORY_SOURCE_IDS.length)
+          return { status: 'invalid' }
+        // One full owner-initiated persisted batch per UTC day. No rescans on retries.
+        if (todaysRows.length === HISTORY_SOURCE_IDS.length)
+          return { status: 'already_saved', count: todaysRows.length }
 
         const [publicScan, landscape] = await Promise.all([deps.publicScan(), deps.landscapeScan()])
         const observations = [
@@ -170,6 +175,12 @@ export function createCompetitorHistoryService(deps: HistoryDependencies = live)
         if (observations.length !== HISTORY_SOURCE_IDS.length
           || new Set(observations.map(x => x.sourceId)).size !== HISTORY_SOURCE_IDS.length
           || observations.some(x => !HISTORY_SOURCE_IDS.includes(x.sourceId))) return { status: 'invalid' }
+        // A slow manual scan can cross midnight. Never save two partial days,
+        // or silently record yesterday's observations under today's button.
+        const finishedAt = deps.clock()
+        if (finishedAt.toISOString().slice(0, 10) !== today
+          || observations.some(x => x.checkedAt.slice(0, 10) !== today))
+          return { status: 'invalid' }
         const validated = evaluateCompetitorHistory([...checked.observations, ...observations], deps.clock())
         if (validated.status !== 'ok') return { status: 'invalid' }
 

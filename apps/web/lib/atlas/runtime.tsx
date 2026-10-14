@@ -360,26 +360,47 @@ export function AtlasRuntimeProvider({
     if (recActiveRef.current) return
     cancelRef.current = false
 
+    let rec: any = null
+    const failVoice = (detail: string) => {
+      if (rec && recRef.current !== rec) return
+      listeningRef.current = false
+      recActiveRef.current = false
+      closedRef.current = true
+      cancelRef.current = true
+      setIsSessionActive(false)
+      setVoicePhase('idle')
+      setWarning({ active: true, code: 'ATLAS_VOICE_START_FAILED', detail })
+      if (silenceRef.current) clearTimeout(silenceRef.current)
+      if (rec) {
+        rec.onstart = null; rec.onresult = null; rec.onerror = null; rec.onend = null
+        try { rec.abort() } catch { /* already stopped */ }
+      }
+      recRef.current = null
+    }
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SR) {
-      alert('Röstigenkänning kräver Chrome eller Safari.')
+      failVoice('Röstinmatning stöds inte i denna webbläsare. Du kan fortsätta skriva i textfältet.')
       return
     }
-
-    const rec = new SR()
+    try { rec = new SR() } catch {
+      failVoice('Mikrofonen kunde inte starta. Du kan skriva i textfältet eller försöka igen.')
+      return
+    }
+    recRef.current = rec
     rec.lang           = 'sv-SE'
     rec.continuous     = true
     rec.interimResults = true
     listeningRef.current = true
 
     rec.onstart = () => {
+      if (recRef.current !== rec || closedRef.current) return
       recActiveRef.current = true
       setVoicePhase('listening')
       setTranscript('')
     }
 
     rec.onresult = (e: any) => {
-      if (!listeningRef.current || closedRef.current) return
+      if (recRef.current !== rec || !listeningRef.current || closedRef.current) return
       const text = Array.from(e.results as any[])
         .map((r: any) => r[0].transcript)
         .join('')
@@ -397,15 +418,18 @@ export function AtlasRuntimeProvider({
     }
 
     rec.onerror = (ev: any) => {
+      if (recRef.current !== rec || closedRef.current || !listeningRef.current) return
       const err = ev?.error
-      if (err === 'not-allowed' || err === 'service-not-allowed') {
-        listeningRef.current = false
-        setVoicePhase('idle')
-        alert('Mikrofon-åtkomst nekad. Tillåt mikrofonen i webbläsaren.')
-      }
+      if (err === 'no-speech') return
+      failVoice(err === 'not-allowed' || err === 'service-not-allowed'
+        ? 'Mikrofonåtkomst nekad. Tillåt mikrofonen för Omnira i webbläsaren, eller fortsätt med text.'
+        : err === 'audio-capture'
+          ? 'Ingen mikrofon kunde användas. Kontrollera mikrofonen eller fortsätt med text.'
+          : 'Rösttjänsten kunde inte starta eller tappade anslutningen. Du kan försöka igen eller fortsätta med text.')
     }
 
     rec.onend = () => {
+      if (recRef.current !== rec) return
       recActiveRef.current = false
       if (silenceRef.current) clearTimeout(silenceRef.current)
       if (listeningRef.current && !cancelRef.current) {
@@ -417,13 +441,21 @@ export function AtlasRuntimeProvider({
       }
     }
 
-    recRef.current = rec
-    try { rec.start() } catch { recActiveRef.current = false }
+    recActiveRef.current = true
+    try { rec.start() } catch {
+      failVoice('Mikrofonen kunde inte starta. Kontrollera mikrofonåtkomsten eller fortsätt med text.')
+    }
   }
 
   function stopListening() {
     listeningRef.current = false
-    try { recRef.current?.stop() } catch { /* ignore */ }
+    const rec = recRef.current
+    recRef.current = null
+    recActiveRef.current = false
+    if (rec) {
+      rec.onstart = null; rec.onresult = null; rec.onerror = null; rec.onend = null
+      try { rec.abort() } catch { try { rec.stop() } catch { /* already stopped */ } }
+    }
     if (silenceRef.current) clearTimeout(silenceRef.current)
     setVoicePhase('idle')
   }

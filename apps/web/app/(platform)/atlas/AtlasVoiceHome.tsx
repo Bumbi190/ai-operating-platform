@@ -119,6 +119,10 @@ export function AtlasVoiceHome({ operatorName }: Props) {
         </div>
       </div>
 
+      {atlas.warning?.detail && (
+        <p role="alert" className="mt-6 max-w-md text-sm text-amber-200">{atlas.warning.detail}</p>
+      )}
+
       {/* ── Svarsbubbla ────────────────────────────────────────────────── */}
       {atlas.response && (
         <div className={cn(

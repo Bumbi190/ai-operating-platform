@@ -67,7 +67,7 @@ begin
  if s.current_run_id is not null then return s.current_run_id; end if;
  if s.control_requested is not null or s.status in ('paused','cancelled','cancelling') then raise exception 'CONTROL_PENDING' using errcode='55000'; end if;
  nextgen:=s.generation+1;
- insert into public.runs(id,project_id,workflow_id,kind,status,input,context,idempotency_key,policy_class) values(rid,s.project_id,null,'website.static.build.v1','pending',jsonb_build_object('projectId',s.project_id,'sessionId',s.id,'generation',nextgen,'feedbackSequence',s.feedback_seq),'{}','website:'||s.id||':'||nextgen,'non_destructive');
+ insert into public.runs(id,project_id,workflow_id,kind,status,input,context,policy_class) values(rid,s.project_id,null,'website.static.build.v1','pending',jsonb_build_object('projectId',s.project_id,'sessionId',s.id,'generation',nextgen,'feedbackSequence',s.feedback_seq),jsonb_build_object('websiteBuildIdempotencyKey','website:'||s.id||':'||nextgen),'non_destructive');
  update public.website_build_sessions set current_run_id=rid,generation=nextgen,status='queued',stage='Väntar på byggjobbet',state_version=state_version+1,updated_at=now() where id=s.id;
  return rid;
 end $$;

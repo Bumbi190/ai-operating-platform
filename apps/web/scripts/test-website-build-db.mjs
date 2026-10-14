@@ -43,6 +43,16 @@ insert into conversations values('50000000-0000-4000-8000-000000000001','2000000
 `
 try {
   sql(bootstrap)
+  // Mirror the actual existing non-workflow binding boundary, not a relaxed runs double.
+  sql('alter table public.runs add column workflow_instance_id uuid, add column workflow_def_hash text, add column workflow_from_state text, add column action_kind text, add column action_class text, add column target_version_hash text, add column authorization_id uuid, add column attempt_group uuid, add column authorized_at timestamptz;')
+  const bindingSql = readFileSync(resolve(root, 'apps/web/supabase/migrations/20260830_workflow_action_binding.sql'), 'utf8')
+  const readonlyBindingSql = readFileSync(resolve(root, 'apps/web/supabase/migrations/20260830_readonly_action_authorization.sql'), 'utf8')
+  for (const [source, name] of [[bindingSql, 'runs_idempotency_key_sha256'], [readonlyBindingSql, 'runs_action_binding_complete']]) {
+    const start = source.indexOf('alter table public.runs add constraint ' + name + ' check (')
+    const end = source.indexOf(');', start) + 2
+    if (start < 0 || end < start) throw Error('Canonical runs constraint missing: ' + name)
+    sql(source.slice(start, end))
+  }
   const canonicalCancel = readFileSync(resolve(root, 'apps/web/supabase/migrations/20260903120000_durable_cancellation_reaper.sql'), 'utf8')
   const cancelStart = canonicalCancel.indexOf('create or replace function public.request_run_cancel(')
   const cancelEnd = canonicalCancel.indexOf('$fn$;', cancelStart) + 6

@@ -98,6 +98,8 @@ export async function middleware(request: NextRequest) {
     }
     if (!membershipError && membership?.role === 'collaborator') {
       const denied = !!membership.revoked_at
+      const collaboratorAtlasRead = pathname === '/api/organization/atlas' && request.method === 'POST'
+      const collaboratorProposals = pathname === '/api/organization/proposals' && (request.method === 'GET' || request.method === 'POST')
       const collaboratorDirectoryRead =
         request.method === 'GET' && pathname === '/api/organization/projects'
       const collaboratorWorkflowRead =
@@ -111,18 +113,21 @@ export async function middleware(request: NextRequest) {
         /^\/api\/organization\/projects\/handlarborsen\/workflows\/[0-9a-f-]{36}$/i.test(pathname)
       // The Owner's old API remains blocked for every collaborator.
       if (pathname.startsWith('/api') &&
-          (denied || !(collaboratorDirectoryRead || collaboratorWorkflowRead || handlWorkflowCreate || handlWorkflowEdit))) {
+          (denied || !(collaboratorDirectoryRead || collaboratorAtlasRead || collaboratorProposals || collaboratorWorkflowRead || handlWorkflowCreate || handlWorkflowEdit))) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
       const allowedPage = !denied && (
-        (pathname === '/organization' || pathname.startsWith('/organization/projects/')) || pathname.startsWith('/auth/') ||
+        (pathname === '/organization' || pathname === '/organization/atlas' || pathname === '/organization/reviews' || pathname.startsWith('/organization/projects/')) || pathname.startsWith('/auth/') ||
         pathname === '/update-password' || pathname === '/forgot-password' ||
         pathname === '/privacy' || pathname === '/terms'
       )
       if (!allowedPage && !pathname.startsWith('/api')) {
         const url = request.nextUrl.clone()
         if (denied) return new NextResponse('Access revoked', { status: 403 })
-        url.pathname = '/organization'
+        const projectMatch = /^\/projects\/([a-z0-9][a-z0-9-]{0,79})$/.exec(pathname)
+        url.pathname = pathname === '/atlas' || pathname.startsWith('/chat')
+          ? '/organization/atlas'
+          : projectMatch ? '/organization/projects/' + projectMatch[1] : '/organization'
         url.search = ''
         return withUiGenerationCookie(NextResponse.redirect(url), requestedGeneration, request)
       }

@@ -24,6 +24,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import { DESIGN_SKILL_TOOLS } from '@/lib/skills/atlas-tools'
+import { WEBSITE_BUILD_TOOLS } from '@/lib/website-build/atlas-tools'
 import {
   ALREADY_HERE_NOTICE,
   ATLAS_FAILED_NOTICE,
@@ -84,7 +85,7 @@ vi.mock('next/navigation', () => ({
 const WEB = resolve(__dirname, '../..')
 const read = (p: string) => readFileSync(resolve(WEB, p), 'utf8')
 const codeOnly = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')
-const sha = (s: string) => createHash('sha256').update(s).digest('hex')
+const sha = (s: string) => createHash('sha256').update(s.replace(/\r\n/g, '\n')).digest('hex')
 const textOf = (html: string) =>
   html
     .replace(/<[^>]+>/g, ' ')
@@ -465,7 +466,7 @@ describe('atlas chat · the route contract it speaks', () => {
     const start = normalizedRoute.indexOf('const TOOLS: Anthropic.Tool[] = [')
     expect(start).toBeGreaterThan(-1)
     const block = normalizedRoute.slice(start, normalizedRoute.indexOf('\n]\n', start))
-    const names = [...block.matchAll(/\bname: '([a-z_]+)'/g)].map((m) => m[1]).concat(DESIGN_SKILL_TOOLS.map(tool => tool.name))
+    const names = [...block.matchAll(/\bname: '([a-z_]+)'/g)].map((m) => m[1]).concat(DESIGN_SKILL_TOOLS.map(tool => tool.name), WEBSITE_BUILD_TOOLS.map(tool => tool.name))
     expect(names.length).toBeGreaterThanOrEqual(15)
     expect(Object.keys(TOOL_LABELS).sort()).toEqual([...names].sort())
   })

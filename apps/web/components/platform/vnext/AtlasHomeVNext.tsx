@@ -19,7 +19,7 @@ import styles from './AtlasHomeVNext.module.css'
  * proportions from a laptop to a 49" ultrawide. The backdrop fills whatever is
  * left around it.
  */
-export function AtlasHomeVNext({ model }: { model: AtlasHomeViewModel }) {
+export function AtlasHomeVNext({ model, collaboratorReadOnly = false }: { model: AtlasHomeViewModel; collaboratorReadOnly?: boolean }) {
   return (
     <div className={styles.page}>
       <div className={styles.backdropNebula} aria-hidden="true" />
@@ -28,7 +28,7 @@ export function AtlasHomeVNext({ model }: { model: AtlasHomeViewModel }) {
       <AtlasMobileNav />
       <div className={styles.stageFrame}>
         <div className={styles.stage}>
-          <AtlasCommandCore />
+          <AtlasCommandCore readOnly={collaboratorReadOnly} />
 
           <blockquote className={styles.quote}>
             <p>”Större förståelse.<br />Större möjligheter.”</p>
@@ -39,7 +39,7 @@ export function AtlasHomeVNext({ model }: { model: AtlasHomeViewModel }) {
           </div>
 
           <div className={styles.summaryRow}>
-            <ActivitySystemRail model={model} />
+            <ActivitySystemRail model={model} readOnly={collaboratorReadOnly} />
             {/*
               The rail carries the operator's authorized projects plus first-party
               system workspaces. Composition happens HERE, in presentation, on a
@@ -47,7 +47,7 @@ export function AtlasHomeVNext({ model }: { model: AtlasHomeViewModel }) {
               a system workspace, so the project allow-list is untouched by it.
             */}
             <ProjectRail
-              cards={composeAtlasRailCards(model.projects)}
+              cards={composeAtlasRailCards(model.projects, collaboratorReadOnly ? [] : undefined)}
               generatedAt={model.generatedAt}
               availability={model.availability}
             />

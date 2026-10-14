@@ -30,7 +30,7 @@ describe('collaborator middleware HTTP isolation', () => {
   it('redirects a collaborator away from Atlas', async () => {
     const response = await middleware(req('/atlas'))
     expect(response.status).toBe(307)
-    expect(response.headers.get('location')).toBe('https://app.omniraos.se/organization')
+    expect(response.headers.get('location')).toBe('https://app.omniraos.se/organization/atlas')
   })
   it('rejects direct access to legacy privileged APIs', async () => {
     const response = await middleware(req('/api/chat'))
@@ -51,6 +51,14 @@ describe('collaborator middleware HTTP isolation', () => {
     expect((await middleware(req('/api/organization/projects/familje-stunden/workflows', 'POST'))).status).toBe(403)
     expect((await middleware(req('/api/organization/projects/familje-stunden/workflows/' + workflowId, 'PATCH'))).status).toBe(403)
     expect((await middleware(req('/api/projects/handlarborsen/workflows', 'POST'))).status).toBe(403)
+  })
+  it('admits only the collaborator tool-free Atlas POST endpoint', async () => {
+    expect((await middleware(req('/organization/atlas'))).status).toBe(200)
+    expect((await middleware(req('/api/organization/atlas', 'POST'))).status).toBe(200)
+    expect((await middleware(req('/api/organization/atlas', 'GET'))).status).toBe(403)
+    expect((await middleware(req('/api/chat', 'POST'))).status).toBe(403)
+    expect((await middleware(req('/projects/handlarborsen'))).headers.get('location'))
+      .toBe('https://app.omniraos.se/organization/projects/handlarborsen')
   })
   it('rejects revoked collaborators even on allowed endpoints', async () => {
     state.member = { role: 'collaborator', revoked_at: '2026-10-13T20:00:00Z' }

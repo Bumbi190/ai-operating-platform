@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { collaboratorNavHref } from '@/lib/auth/collaborator-navigation'
 import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
@@ -180,7 +181,10 @@ export function Sidebar({
           <div className="space-y-1">
             {section.items.map((item) => {
               const Icon = item.icon
-              const isActive = item.href === '/chat'
+              const displayHref = readOnly ? collaboratorNavHref(item.href) : item.href
+              const isActive = readOnly
+                ? (pathname === displayHref || pathname.startsWith(displayHref + '/'))
+                : item.href === '/chat'
                 ? isChatActive
                 : pathname === item.href || pathname.startsWith(item.href + '/')
 
@@ -192,7 +196,7 @@ export function Sidebar({
                 return (
                   <div key={item.href}>
                     <Link
-                      href={item.primary ? '/atlas?ui=vnext' : item.href}
+                      href={readOnly ? displayHref : item.primary ? '/atlas?ui=vnext' : item.href}
                       className={cn('nav-pill ease-os', vnextStyles.navItem)}
                       data-active={isActive}
                       aria-current={isActive ? 'page' : undefined}
@@ -228,7 +232,7 @@ export function Sidebar({
                 return (
                   <Link
                     key={item.href}
-                    href={isVNextShell ? '/atlas?ui=vnext' : item.href}
+                    href={readOnly ? displayHref : isVNextShell ? '/atlas?ui=vnext' : item.href}
                     className={cn(
                       'relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[12.5px] font-semibold transition-all ease-os overflow-hidden group',
                       isVNextShell && vnextStyles.primaryNav,
@@ -265,7 +269,7 @@ export function Sidebar({
 
               return (
                 <div key={item.href}>
-                  <Link href={item.href} className="nav-pill ease-os" data-active={isActive}>
+                  <Link href={displayHref} className="nav-pill ease-os" data-active={isActive}>
                     <Icon className={cn('w-3.5 h-3.5 shrink-0', isActive ? 'text-indigo-200' : 'text-meta')} />
                     <span className="flex-1 tracking-tight">{item.label}</span>
                     {isActive && item.href === '/approvals' && (

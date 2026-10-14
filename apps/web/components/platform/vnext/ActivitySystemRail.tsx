@@ -14,6 +14,7 @@ function timeLabel(iso: string): string {
 
 interface ActivitySystemRailProps {
   model: AtlasHomeViewModel
+  readOnly?: boolean
 }
 
 /**
@@ -23,15 +24,15 @@ interface ActivitySystemRailProps {
  * whose source failed is left out rather than shown as zero. The panel above
  * the card holds the operational detail the old right-hand rail carried.
  */
-export function ActivitySystemRail({ model }: ActivitySystemRailProps) {
+export function ActivitySystemRail({ model, readOnly = false }: ActivitySystemRailProps) {
   const [open, setOpen] = useState(false)
   const panelId = useId()
   const rootRef = useRef<HTMLElement>(null)
   useDismissOnOutside(rootRef, open, () => setOpen(false))
 
-  const activityHref = resolveDestination('activity')?.href ?? '/agent-activity'
-  const failedActivityHref = resolveDestination('activity', { filters: { status: 'failed' } })?.href ?? '/agent-activity?status=failed'
-  const approvalsHref = resolveDestination('approvals')?.href ?? '/approvals'
+  const activityHref = readOnly ? '/organization' : resolveDestination('activity')?.href ?? '/agent-activity'
+  const failedActivityHref = readOnly ? '/organization' : resolveDestination('activity', { filters: { status: 'failed' } })?.href ?? '/agent-activity?status=failed'
+  const approvalsHref = readOnly ? '/organization' : resolveDestination('approvals')?.href ?? '/approvals'
 
   const summary = [
     `${model.totals.projects} projekt`,

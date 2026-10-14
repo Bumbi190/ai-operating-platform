@@ -28,3 +28,13 @@
 - Ingen ny GitHub Actions-körning, PR, deployment eller Supabase-förändring i den här migration-grenen.
 - Ingen aktivering av cron, köparekontakt, agentexekvering eller andra projekt.
 - Den tidigare säkra förhandsversionen är fortfarande åtkomlig från separat funktionsgren och har historiken OFF.
+
+## Slutlig preflightkontroll 2026-10-14
+
+- Supabase-produktion kontrollerad **enbart med SELECT**: PostgreSQL 17.6, Handlarbörsens projekt-ID och slug matchar exakt, 99 aktuella public-bastabeller, nya konkurrenttabellen saknas, nya ledgernamnet saknas. Atlas andra arbetsgren har redan tillfört `website_build_sessions` till produktionsledgern men ännu inte till main; dess PR måste landa innan vi försöker ny vanlig Preview från äldre kod.
+- Lokalt PostgreSQL 16: constraints, RLS + FORCE RLS, noll policies, anon/authenticated utan SELECT/INSERT och service_role med enbart SELECT+INSERT bekräftat. 8 samtidiga batcher gav sex unika vinnarrader. Rollback lämnade inga tabeller eller index. **Lokala tester gäller PostgreSQL 16, inte full versionstrogen replay på produktions-17.6.**
+- Läsbart, **read-only**, operatörsverifieringsskript `docs/sql/handlarborsen_competitor_observations_p2_postapply_verify.sql` är provkört i isolerad PG16 med en explicit **syntetisk** migrationsledger. Verifierar även projektets slug, RLS, grants, constraints och ett enda ledgernamn.
+- Schema-inventeringen klassar nya `handlarborsen_competitor_observations` i `_meta.created_not_live` som `SERVER_ONLY` och **saknas fortfarande från livedatabaskartan**. Ingen falsk live-klassning. Ett Windows-sökvägsfel i inventeringstestet korrigerades utan att ändra någon RLS-kontroll. Schema + guard: 101/101 tester passerar.
+- Efter godkänd produktionstillämpning måste `_meta.created_not_live` för denna tabell tas bort och faktisk `public`-katalog inventeras till tabellkartan. Enbart att uppdatera antal är inte likvärdigt med schemaaudit.
+- **Full återspelning av samtliga historiska migrationer är fortfarande blockerad** av tidigare dokumenterat arv: den separata mediagrundens `media_insights`-tabell saknas i den begränsade replay-ordningen (se `docs/atlas-analytics-p1-replay-recovery-20261013.md`). Detta P2-paket gör inga påståenden om full migration-replay PASS.
+- Framgång i isolerad fixture innebär inte automatiskt godkännande av produktion. Aktiv migrationsprocess, live-katalog- och ledgerkontroll, separat operatörsbeslut, samt senare ägarinloggad Preview krävs.

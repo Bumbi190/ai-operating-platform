@@ -235,7 +235,7 @@ describe('Phase 9Y — schema-security invariant: effective state', () => {
 describe('Phase 9Y — schema-security invariant: migration text, forward-looking', () => {
   it('finds migrations in BOTH roots — the gap lived under the second one', () => {
     expect(SOURCES.length, 'no migrations found; the rule below would be vacuous').toBeGreaterThan(50)
-    const roots = new Set(SOURCES.map(s => (s.file.includes('/apps/web/') ? 'apps/web' : 'repo-root')))
+    const roots = new Set(SOURCES.map(s => (s.file.replace(/\\/g, '/').includes('/apps/web/') ? 'apps/web' : 'repo-root')))
     expect([...roots].sort()).toEqual(['apps/web', 'repo-root'])
   })
 

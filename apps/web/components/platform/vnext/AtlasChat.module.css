@@ -712,3 +712,13 @@
 :where(html[data-motion='reduce']) .pendingDots span,
 :where(html[data-motion='reduce']) .spin,
 :where(html[data-motion='reduce']) .step[data-outcome='running'] .stepDot { animation: none; }
+/* Embedded conversation shares the shell tokens and keeps its composer in the shell scroll flow. */
+.embedded {padding:1rem;}
+.embedded .conversation {width:100%;min-height:32rem;}
+.embedded .convIdentity {flex-basis:10rem;}
+.voiceControls {display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:.5rem;}
+.voiceControls button {font:inherit;font-size:.8rem;color:hsl(var(--foreground));background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:.6rem;padding:.5rem .75rem;cursor:pointer;}
+
+.embedded .dock {--dock-inset:0px;padding-left:0;padding-right:0;}
+
+.plainBody{display:contents}.embedded .conversation{height:max(32rem,calc(100dvh - 16rem - var(--os-shell-topbar,0px)));padding-bottom:0}.embedded .convHeader{flex-shrink:0}.embeddedScroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 .15rem 1rem;scroll-padding-bottom:1rem}.embedded .dock{position:static;flex-shrink:0;margin-top:0;padding-top:.75rem}.embedded .dock::after{display:none}

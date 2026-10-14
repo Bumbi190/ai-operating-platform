@@ -9,6 +9,7 @@ import {
   type ActivityEvent,
 } from '@/components/platform/os'
 import { resolveDestination, type DestinationId } from '@/lib/nav/registry'
+import { AtlasConversationProvider } from '@/lib/atlas/conversation/provider'
 import { AtlasRuntimeProvider } from '@/lib/atlas/runtime'
 import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { resolveOrganizationReadScope } from '@/lib/auth/organization-project-read'
@@ -228,6 +229,7 @@ export default async function PlatformLayout({
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
+    <AtlasConversationProvider>
     <AtlasRuntimeProvider projects={isCollaborator ? [] : projects}>
     <OperatorModeProvider uiGeneration={uiGeneration}>
       {/* Presentation preferences are applied before first paint.
@@ -390,5 +392,6 @@ export default async function PlatformLayout({
       <AtlasMiniOrb uiGeneration={uiGeneration} />
     </OperatorModeProvider>
     </AtlasRuntimeProvider>
+    </AtlasConversationProvider>
   )
 }

@@ -27,3 +27,5 @@ describe('website build canonical migration enforcement', () => {
     expect(() => evaluateAppliedMigrationLedger([...state.repositoryNames, websiteMigration], state)).toThrow(/duplicate/)
   })
 })
+
+it('planning v1 is enforced and neither a missing nor duplicate planning ledger entry is accepted',()=>{const state=inspectCanonicalMigrationFiles(files),name='website_build_planning_v1';expect(state.enforcedNames).toContain(name);expect(state.grandfatheredNames).not.toContain(name);expect(state.legacyOnlyNames).not.toContain(name);expect(()=>evaluateAppliedMigrationLedger(state.repositoryNames.filter(n=>n!==name),state)).toThrow(/website_build_planning_v1/);expect(()=>evaluateAppliedMigrationLedger([...state.repositoryNames,name],state)).toThrow(/duplicate/)})

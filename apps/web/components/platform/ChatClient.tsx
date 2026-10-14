@@ -12,7 +12,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { AtlasActionChips } from '@/components/platform/os/AtlasActionChips'
 import type { ResolvedLink } from '@/lib/nav/registry'
-import { buildChatRequestBody } from '@/lib/atlas/view-client'
+import {useAtlasConversation} from '@/lib/atlas/conversation/provider'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -56,6 +56,8 @@ interface Props {
   conversationTitle?: string
   projectName?: string | null
   savedMessages?: SavedMessage[]
+  historyReadable?: boolean
+  projectId?: string | null
 }
 
 const SUGGESTED_PROMPTS = [
@@ -72,6 +74,8 @@ export function ChatClient({
   conversationTitle,
   projectName,
   savedMessages = [],
+  historyReadable=true,
+  projectId=null,
 }: Props) {
   const router = useRouter()
   const pathname = usePathname()
@@ -98,172 +102,38 @@ export function ChatClient({
         },
       ]
 
-  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages)
+  const {controller,snapshot}=useAtlasConversation()
+  useEffect(()=>{if(conversationId)controller.activateConversation({id:conversationId,saved:savedMessages,state:historyReadable?'ok':'error',projectId})},[controller,conversationId,savedMessages,historyReadable,projectId])
+  const messages:ChatMessage[]=snapshot.id===conversationId&&snapshot.entries.length?snapshot.entries.map(entry=>{
+    if(entry.kind==='tool')return {role:'assistant',type:'tool_call',tool:entry.tool,input:entry.input,result:entry.result} as ToolCallMessage
+    if(entry.kind==='links')return {role:'assistant',type:'links',links:entry.links} as LinksMessage
+    if(entry.kind==='notice')return {role:'system',type:'system',content:entry.text} as SystemMessage
+    return {role:entry.kind==='user'?'user':'assistant',type:'text',content:entry.text} as TextMessage
+  }):initialMessages
   const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
+  const loading=snapshot.id===conversationId&&snapshot.pending
   const [mode, setMode] = useState<'fast_path' | 'atlas' | null>(null)   // routing-verifiering
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-
-  // Track API message history for Claude (text only)
-  const apiMessages = useRef<Anthropic.MessageParam[]>(
-    savedMessages
-      .filter(m => (m.role === 'user' || m.role === 'assistant') && !!m.content)
-      .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content as string }))
-  )
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const handleSubmit = useCallback(async (e?: React.FormEvent, overrideText?: string) => {
+  const handleSubmit=useCallback(async(e?:React.FormEvent,overrideText?:string)=>{
     e?.preventDefault()
-    const text = (overrideText ?? input).trim()
-    if (!text || loading) return
-
+    const text=(overrideText??input).trim()
+    if(!text||loading||!conversationId||!historyReadable)return
     setInput('')
-    setLoading(true)
-
-    setMessages(prev => [...prev, { role: 'user', type: 'text', content: text }])
-    apiMessages.current = [...apiMessages.current, { role: 'user', content: text }]
-
-    let assistantText = ''
-    setMessages(prev => [...prev, { role: 'assistant', type: 'text', content: '' }])
-
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildChatRequestBody({
-          messages: apiMessages.current,
-          conversation_id: conversationId,
-        })),
-      })
-
-      if (!res.ok || !res.body) throw new Error('Anslutning misslyckades')
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          try {
-            const event = JSON.parse(line.slice(6))
-
-            if (event.event === 'text') {
-              assistantText += event.text
-              setMessages(prev => {
-                const updated = [...prev]
-                const lastIdx = updated.length - 1
-                if (updated[lastIdx]?.type === 'text' && updated[lastIdx]?.role === 'assistant') {
-                  updated[lastIdx] = { role: 'assistant', type: 'text', content: assistantText }
-                } else {
-                  updated.push({ role: 'assistant', type: 'text', content: assistantText })
-                }
-                return updated
-              })
-            }
-
-            if (event.event === 'tool_call') {
-              setMessages(prev => [
-                ...prev,
-                { role: 'assistant', type: 'tool_call', tool: event.tool, input: event.input } as ToolCallMessage,
-              ])
-            }
-
-            if (event.event === 'tool_result') {
-              setMessages(prev => {
-                const updated = [...prev]
-                for (let i = updated.length - 1; i >= 0; i--) {
-                  const msg = updated[i]
-                  if (msg.type === 'tool_call' && msg.tool === event.tool && !('result' in msg && msg.result)) {
-                    updated[i] = { ...msg, result: event.result }
-                    break
-                  }
-                }
-                return updated
-              })
-            }
-
-            // Atlas navigation layer — deep-link chips beneath the answer.
-            if (event.event === 'links' && Array.isArray(event.links) && event.links.length) {
-              setMessages(prev => [
-                ...prev,
-                { role: 'assistant', type: 'links', links: event.links as ResolvedLink[] } as LinksMessage,
-              ])
-            }
-
-            // Atlas navigation layer — direct navigation (after operator confirmation).
-            if (event.event === 'navigate' && event.href) {
-              const href = event.href as string
-              const targetPath = href.split('?')[0]
-              if (targetPath === pathname) {
-                // Same page already in view — router.push would be a silent
-                // no-op. Surface a clickable chip + a short note instead, so the
-                // operator gets a real affordance rather than "nothing happened".
-                const link: ResolvedLink = {
-                  id: (event.id as ResolvedLink['id']) ?? 'atlas',
-                  label: (event.label as string) ?? 'Öppna vyn',
-                  href,
-                }
-                setMessages(prev => [
-                  ...prev,
-                  { role: 'system', type: 'system', content: 'Du är redan på den här vyn.' } as SystemMessage,
-                  { role: 'assistant', type: 'links', links: [link] } as LinksMessage,
-                ])
-              } else {
-                router.push(href)
-              }
-            }
-
-            if (event.event === 'done') {
-              if (assistantText) {
-                apiMessages.current = [...apiMessages.current, { role: 'assistant', content: assistantText }]
-              }
-              // Refresh sidebar title if this was first message
-              if (apiMessages.current.filter(m => m.role === 'user').length === 1) {
-                router.refresh()
-              }
-            }
-
-            if (event.event === 'timing') {
-              setMode(event.reqType ?? null)
-              // eslint-disable-next-line no-console
-              console.log(`[chat-mode] ${event.reqType} · första token ${event.firstTokenMs}ms · totalt ${event.serverTotalMs}ms`)
-            }
-
-            if (event.event === 'error') {
-              setMessages(prev => [
-                ...prev,
-                { role: 'system', type: 'system', content: `Fel: ${event.message}` } as SystemMessage,
-              ])
-            }
-          } catch { /* ignore parse errors */ }
-        }
-      }
-    } catch (err) {
-      setMessages(prev => [
-        ...prev,
-        {
-          role: 'system',
-          type: 'system',
-          content: err instanceof Error ? err.message : 'Något gick fel',
-        } as SystemMessage,
-      ])
-    } finally {
-      setLoading(false)
-      setTimeout(() => inputRef.current?.focus(), 100)
-    }
-  }, [input, loading, conversationId, router, pathname])
+    await controller.sendTurn({conversationId,text,inputSource:'text',onEvent:event=>{
+      if(event.event==='navigate'&&typeof event.href==='string'&&event.href.split('?')[0]!==pathname)router.push(event.href)
+      if(event.event==='done'&&controller.snapshot().history.filter(m=>m.role==='user').length===1)router.refresh()
+      if(event.event==='timing')setMode(event.reqType==='fast_path'?'fast_path':'atlas')
+      if(event.event==='website_plan'||event.event==='website_workspace')router.push('/chat/'+conversationId+'?build=1')
+    }})
+    inputRef.current?.focus()
+  },[input,loading,conversationId,historyReadable,controller,pathname,router])
+  useEffect(()=>{if(snapshot.id===conversationId&&snapshot.speechDraft!==null)setInput(snapshot.speechDraft)},[snapshot.id,snapshot.speechDraft,conversationId])
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {

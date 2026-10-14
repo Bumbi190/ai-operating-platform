@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+test.beforeEach(async({page})=>{await page.route('**/api/conversations',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({id:'50000000-0000-4000-8000-000000000001'})}))})
 test('a thrown microphone start exposes an actionable error and leaves text usable', async ({ page }) => {
 await page.addInitScript(() => { Object.assign(window,{SpeechRecognition: class { start() { throw new DOMException('denied','NotAllowedError') } stop(){} abort(){} }}) })
 await page.goto('/')

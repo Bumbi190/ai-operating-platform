@@ -23,6 +23,9 @@ export const WEBSITE_RUNTIME = String.raw`(() => {
   }
   for (const form of document.querySelectorAll('form')) form.addEventListener('submit', e => e.preventDefault());
   if (config.preview) {
+    const ready = () => parent.postMessage({ type: 'atlas-preview-ready', token: config.preview.token, artifactHash: config.preview.artifactHash, pageKey: config.preview.pageKey }, '*');
+    window.addEventListener('message', event => { if(event.source === parent && event.data && event.data.type === 'atlas-preview-ping' && event.data.token === config.preview.token && event.data.artifactHash === config.preview.artifactHash) ready(); });
+    ready();
     document.addEventListener('click', event => {
       const link = event.target.closest && event.target.closest('a[href]');
       if (!link) return;
@@ -57,7 +60,7 @@ export function renderPreviewDocument(artifact: WebsiteArtifact, pageKey: string
   const nonce = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')
   return page.html
     .replace(/<meta http-equiv="Content-Security-Policy" content="[^"]*">/, `<meta http-equiv="Content-Security-Policy" content="${escapeHtml(websiteCsp(`'nonce-${nonce}'`))}">`)
-    .replace(match[0], `<script type="application/json" id="__atlas_config">${scriptJson({ ...config, preview: { token: channelToken, artifactHash: artifact.sha256 } })}</script>`)
+    .replace(match[0], `<script type="application/json" id="__atlas_config">${scriptJson({ ...config, preview: { token: channelToken, artifactHash: artifact.sha256,pageKey } })}</script>`)
     .replace(/<script src="website\.js" integrity="[^"]*" crossorigin="anonymous"><\/script>/, `<script nonce="${nonce}">${WEBSITE_RUNTIME}</script>`)
     .replace(/<script id="__atlas_runtime">[\s\S]*?<\/script>/, `<script nonce="${nonce}">${WEBSITE_RUNTIME}</script>`)
 }

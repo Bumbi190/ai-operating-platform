@@ -1,7 +1,8 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { executeWebsiteBuildRun } from './worker'
-import { appendBuildFeedback, createBuildSession, loadBuildSnapshot, readBuildArtifact, readBuildSession, requestBuildControl, recordBuildInterpretation, commitBuildRevision } from './store'
+import { appendBuildFeedback, loadBuildSnapshot, readBuildArtifact, readBuildSession, requestBuildControl, recordBuildInterpretation, commitBuildRevision } from './store'
 import { compileWebsiteArtifact } from './artifact'
+import { approvedTestBuild } from './planning/test-fixture'
 import { initializeWorkerDb, resetWorkerDb, testSql, TEST_AGENT, TEST_CONVERSATION, TEST_PRINCIPAL, TEST_PROJECT } from './test-db'
 import type { Run } from '@/lib/supabase/types'
 import type { BuildSessionView, WriterRef } from './types'
@@ -12,7 +13,7 @@ const draft = (title = 'Vår idé') => ({ format: 'static-website.v1', title: 'S
 const response = (content: unknown) => ({ content: JSON.stringify(content), tokensIn: 100, tokensOut: 200, durationMs: 1, authorityRefreshRequired: false })
 beforeAll(() => { db = initializeWorkerDb() }, 30_000)
 beforeEach(() => { resetWorkerDb(); provider.mockReset(); provider.mockResolvedValue(response(draft())) })
-async function session(): Promise<BuildSessionView> { return createBuildSession(db, TEST_PRINCIPAL, { projectId: TEST_PROJECT, agentId: TEST_AGENT, conversationId: TEST_CONVERSATION, brief: 'Bygg en svensk hemsida för mitt företag.', idempotencyKey: 'test-' + crypto.randomUUID() }) }
+async function session(): Promise<BuildSessionView> { return approvedTestBuild(db, TEST_PRINCIPAL, { projectId: TEST_PROJECT, agentId: TEST_AGENT, conversationId: TEST_CONVERSATION, brief: 'Bygg en svensk hemsida för mitt företag.', idempotencyKey: 'test-' + crypto.randomUUID() }) }
 async function claim(view: BuildSessionView): Promise<Run> {
   testSql(`update runs set status='running',claim_id=gen_random_uuid(),claimed_at=now(),lease_until=now()+interval '5 minutes',attempts=attempts+1 where id=(select current_run_id from website_build_sessions where id='${view.sessionId}');`)
   // Use direct SQL for JSON-path selection; the transport intentionally supports

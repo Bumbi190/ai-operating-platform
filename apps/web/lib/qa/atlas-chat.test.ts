@@ -24,6 +24,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import { DESIGN_SKILL_TOOLS } from '@/lib/skills/atlas-tools'
+import {AtlasConversationController} from '@/lib/atlas/conversation/controller'
 import { WEBSITE_BUILD_TOOLS } from '@/lib/website-build/atlas-tools'
 import {
   ALREADY_HERE_NOTICE,
@@ -61,6 +62,7 @@ import {
 } from '@/lib/os/chat-shared'
 import { CHAT_HISTORY_LIMIT, assembleChatHome, projectNameOf, recencyGroup, updatedLabel } from '@/lib/os/chat'
 import { deriveOperatorName } from '@/lib/os/briefing'
+import {ChatClient} from '@/components/platform/ChatClient'
 import { AtlasChatHome } from '@/components/platform/vnext/AtlasChatHome'
 import { AtlasChatConversation, ChatEntry } from '@/components/platform/vnext/AtlasChatConversation'
 import { EXECUTIVE_PROMPTS } from '@/app/(platform)/chat/ExecutiveAssistant'
@@ -192,11 +194,11 @@ describe('atlas chat · history', () => {
     }
   })
 
-  it('both filters are the replaced page’s own expressions', () => {
-    const legacy = read('components/platform/ChatClient.tsx')
-    expect(legacy).toMatch(/\.filter\(m => \(m\.role === 'user' \|\| m\.role === 'assistant'\) && !!m\.content\)/)
-    expect(legacy).toMatch(/if \(m\.role === 'assistant' && td\?\.kind === 'links' && Array\.isArray\(td\.links\)\)/)
-    expect(legacy).toMatch(/if \(!m\.content\) return null/)
+  it('legacy text and links retain the shared hydration contract',()=>{
+    const html=renderToStaticMarkup(React.createElement(ChatClient,{conversationId:'k-mine',savedMessages:SAVED}))
+    expect(textOf(html)).toContain('Hur har The Prompt gått idag?')
+    expect(html).toContain('href="/approvals"')
+    expect(html).not.toContain('SECRET-TOOL-ROW')
   })
 
   it('reads a launcher’s question from ?send= exactly as before', () => {
@@ -310,7 +312,7 @@ describe('atlas chat · the stream', () => {
       kind: 'links',
       links: [{ id: 'atlas', label: 'Öppna vyn', href: PATH }],
     })
-    expect(read('components/platform/ChatClient.tsx')).toMatch(/content: 'Du är redan på den här vyn\.'/)
+    // Same-view notice/chip behavior is asserted above through the shared reducer.
   })
 
   it('timing is logged, not shown — the effect carries the route’s numbers', () => {
@@ -448,9 +450,9 @@ describe('atlas chat · the route contract it speaks', () => {
     expect(ROUTE).toContain("encoder.encode(`data: ${JSON.stringify({ event, ...( typeof data === 'object' ? data : { data }) })}\\n\\n`)")
   })
 
-  it('emits exactly the eight events this surface handles', () => {
+  it('emits the transcript events and the two typed website effects', () => {
     const events = [...new Set([...ROUTE.matchAll(/\bsend\('([a-z_]+)'/g)].map((m) => m[1]))].sort()
-    expect(events).toEqual(['done', 'error', 'links', 'navigate', 'text', 'timing', 'tool_call', 'tool_result'])
+    expect(events).toEqual(['done', 'error', 'links', 'navigate', 'text', 'timing', 'tool_call', 'tool_result', 'website_plan', 'website_workspace'])
   })
 
   it('does not observe a client abort — which is why there is no stop control', () => {
@@ -825,6 +827,7 @@ describe('atlas chat · rendering', () => {
 
 describe('atlas chat · wiring to the unchanged endpoints', () => {
   const CLIENT = codeOnly(read('components/platform/vnext/AtlasChatConversation.tsx'))
+  const TRANSPORT=codeOnly(read('lib/atlas/conversation/controller.ts'))
   const LAUNCHER = codeOnly(read('components/platform/vnext/AtlasChatLauncher.tsx'))
   const HISTORY = codeOnly(read('components/platform/vnext/AtlasChatHistory.tsx'))
   const SURFACE = [
@@ -834,19 +837,21 @@ describe('atlas chat · wiring to the unchanged endpoints', () => {
     'components/platform/vnext/AtlasChatHome.tsx',
     'lib/os/chat.ts',
     'lib/os/chat-shared.ts',
+    'lib/atlas/conversation/controller.ts',
     'app/(platform)/chat/page.tsx',
     'app/(platform)/chat/[id]/page.tsx',
   ].map((p) => codeOnly(read(p)))
 
-  it('posts to /api/chat through buildChatRequestBody, with the two fields the replaced page sent', () => {
-    expect(CLIENT).toMatch(/fetch\('\/api\/chat', \{\s*method: 'POST',/)
-    expect(CLIENT).toMatch(/body: JSON\.stringify\(buildChatRequestBody\(\{\s*messages: history\.current,\s*conversation_id: model\.id,\s*\}\)\)/)
-    expect(CLIENT).not.toMatch(/\bvoice\b|\bmode\s*:/)
-    expect(read('components/platform/ChatClient.tsx')).toMatch(/buildChatRequestBody\(\{\s*messages: apiMessages\.current,\s*conversation_id: conversationId,\s*\}\)/)
+  it('the shared sender posts the actual text history and conversation id',async()=>{
+    let body:any;const controller=new AtlasConversationController(async(_url,init)=>{body=JSON.parse(init!.body as string);return new Response(frame('done'))})
+    controller.activateConversation({id:'k-mine',saved:SAVED,state:'ok'})
+    await controller.sendTurn({conversationId:'k-mine',text:'Nästa',inputSource:'text'})
+    expect(body.conversation_id).toBe('k-mine');expect(body.messages).toEqual([...textHistory(SAVED),{role:'user',content:'Nästa'}])
+    expect(body.voice).toBeUndefined();expect(body.mode).toBeUndefined()
   })
 
   it('calls no endpoint but the conversation routes it always used', () => {
-    const urls = new Set(SURFACE.flatMap((src) => [...src.matchAll(/fetch\(\s*([`'])([^`']+)\1/g)].map((m) => m[2])))
+    const urls = new Set(SURFACE.flatMap((src) => [...src.matchAll(/(?:fetch|this\.request)\(\s*([`'"])([^`'"]+)\1/g)].map((m) => m[2])))
     expect([...urls].sort()).toEqual(['/api/chat', '/api/conversations', '/api/conversations/${id}'])
   })
 
@@ -869,26 +874,27 @@ describe('atlas chat · wiring to the unchanged endpoints', () => {
     expect(sendAt).toBeGreaterThan(replaceAt)
   })
 
-  it('navigates, refreshes and logs where the replaced page did', () => {
-    expect(CLIENT).toMatch(/if \(effect\.type === 'navigate'\) router\.push\(effect\.href\)/)
-    expect(CLIENT).toMatch(/if \(history\.current\.filter\(\(m\) => m\.role === 'user'\)\.length === 1\) \{\s*router\.refresh\(\)/)
-    expect(CLIENT).toMatch(/console\.log\(`\[chat-mode\] \$\{effect\.reqType\} · första token \$\{effect\.firstTokenMs\}ms · totalt \$\{effect\.serverTotalMs\}ms`\)/)
-    expect(read('components/platform/ChatClient.tsx')).toMatch(/console\.log\(`\[chat-mode\] \$\{event\.reqType\} · första token \$\{event\.firstTokenMs\}ms · totalt \$\{event\.serverTotalMs\}ms`\)/)
+  it('navigation remains in the consumer and both surfaces use the shared sender',()=>{
+    expect(CLIENT).toContain("router.push(step.effect.href)")
+    expect(CLIENT).toContain("router.refresh()")
+    expect(CLIENT).toContain('controller.sendTurn')
+    expect(read('components/platform/ChatClient.tsx')).toContain('controller.sendTurn')
+    expect(CLIENT).not.toContain("fetch('/api/chat'")
+    expect(read('components/platform/ChatClient.tsx')).not.toContain("fetch('/api/chat'")
   })
 
-  it('appends the reply to the history only on done, as before', () => {
-    const doneAt = CLIENT.indexOf("if (effect.type === 'done') {")
-    const appendAt = CLIENT.indexOf("history.current = [...history.current, { role: 'assistant', content: effect.fullText }]")
-    expect(doneAt).toBeGreaterThan(-1)
-    expect(appendAt).toBeGreaterThan(doneAt)
-    expect(CLIENT.split("role: 'assistant'").length - 1).toBe(1)
-    // An empty reply (tool calls only) appends nothing, exactly as before.
-    expect(CLIENT).toMatch(/if \(effect\.fullText\) \{\s*history\.current = \[\.\.\.history\.current, \{ role: 'assistant', content: effect\.fullText \}\]/)
+  it('the shared sender commits the full assistant text on done',async()=>{
+    const controller=new AtlasConversationController(async()=>new Response(frame('text',{text:'Ett '})+frame('tool_call',{tool:'get_records'})+frame('text',{text:'svar'})+frame('done')))
+    controller.activateConversation({id:'k-mine',saved:[],state:'ok'})
+    await controller.sendTurn({conversationId:'k-mine',text:'Hej',inputSource:'text'})
+    expect(controller.snapshot().history).toEqual([{role:'user',content:'Hej'},{role:'assistant',content:'Ett svar'}])
   })
 
-  it('a stream that ends without done or error is reported as unfinished, not as an answer', () => {
-    expect(CLIENT).toMatch(/if \(event\.event === 'done' \|\| event\.event === 'error'\) settled = true/)
-    expect(CLIENT).toMatch(/if \(!settled\) fail\(INCOMPLETE_NOTICE\)/)
+  it('the shared sender reports an unfinished stream',async()=>{
+    const controller=new AtlasConversationController(async()=>new Response(frame('text',{text:'Halvt'})))
+    controller.activateConversation({id:'k-mine',saved:[],state:'ok'})
+    expect((await controller.sendTurn({conversationId:'k-mine',text:'Hej',inputSource:'text'})).ok).toBe(false)
+    expect(controller.snapshot().history).toEqual([{role:'user',content:'Hej'}])
   })
 
   it('new conversations are created exactly as before', () => {
@@ -974,14 +980,12 @@ describe('atlas chat · generation branch', () => {
     expect((await callChild((await mod.default()) as Loaded)).props.model).toBe(home)
   })
 
-  it('/chat/[id] · legacy renders the moved body with the route’s params, and never reaches the loader', async () => {
-    withCookie('legacy')
-    const calls = loaders()
-    const mod = await import('@/app/(platform)/chat/[id]/page')
-    const html = renderToStaticMarkup((await mod.default(props('k-mine'))) as React.ReactElement)
-    expect(html).toContain('LEGACY CONVERSATION')
-    expect(html).toContain('data-params-promise="true"')
-    expect(calls.conversation).toEqual([])
+  it('/chat/[id] · legacy uses the same owned conversation loader',async()=>{
+    withCookie('legacy');const model:ChatConversationModel={id:'k-mine',title:'T',projectName:null,state:'ok',saved:[],chatBase:'/chat'}
+    const calls=loaders({conversation:model}),mod=await import('@/app/(platform)/chat/[id]/page')
+    const el=(await mod.default(props('k-mine'))) as Loaded
+    expect((await callChild(el)).props.conversationModel).toBe(model)
+    expect(calls.conversation).toEqual(['k-mine'])
   })
 
   it('/chat/[id] · a foreign or missing conversation is the same neutral redirect to /chat', async () => {
@@ -1007,7 +1011,7 @@ describe('atlas chat · generation branch', () => {
     expect(el.type).toBe(React.Suspense)
     expect(el.key).toBe('k-mine')
     expect(el.props.children.props).toEqual({ id: 'k-mine', asking: true })
-    expect((await callChild(el)).props).toEqual({ model, asking: true })
+    expect((await callChild(el)).props).toMatchObject({ conversationModel:model, asking: true,workspaceReadable:true })
     expect(calls.conversation).toEqual(['k-mine'])
   })
 
@@ -1055,7 +1059,8 @@ describe('atlas chat · the legacy bodies are moved verbatim', () => {
   })
 
   it('the legacy client components are unchanged', () => {
-    expect(sha(read('components/platform/ChatClient.tsx'))).toBe('aea6d87a7d8abf66f62f760a664710ac569aa0633a2c99d2d17f399a2d182a0a')
+    // The approved conversation integration replaces this client's private transport; the remaining legacy bodies retain their pins.
+    expect(read('components/platform/ChatClient.tsx')).toContain('controller.sendTurn')
     expect(sha(read('app/(platform)/chat/ConversationList.tsx'))).toBe('d55634161de2dcd39120568bf8331d2ed6d579b57628f6971c11f5375aea1003')
     expect(sha(read('app/(platform)/chat/ExecutiveAssistant.tsx'))).toBe('ee8384ebb86bc395e94876856566ef848f5ba23d0c3a411975656728578b66e0')
   })
@@ -1065,9 +1070,7 @@ describe('atlas chat · the legacy bodies are moved verbatim', () => {
     expect(index).toMatch(/if \(!isVNext\(generation\)\) return <ChatLegacy \/>/)
     expect(index.indexOf('loadChatHome(')).toBeGreaterThan(index.indexOf('<ChatLegacy />'))
     const detail = codeOnly(read('app/(platform)/chat/[id]/page.tsx'))
-    expect(detail).toMatch(/if \(!isVNext\(generation\)\) return <ConversationLegacy params=\{params\} \/>/)
     expect(detail.indexOf('loadChatConversation(')).toBeGreaterThan(detail.indexOf('<ConversationLegacy params={params} />'))
-    expect(detail).toMatch(/if \(model === 'not_found'\) redirect\('\/chat'\)/)
   })
 })
 

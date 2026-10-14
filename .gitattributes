@@ -1,0 +1,9 @@
+# Preserve vendored skill bytes so provenance hashes survive Git on Windows.
+.agents/skills/design-taste-frontend/** -text
+.agents/skills/redesign-existing-projects/** -text
+.agents/skills/impeccable/** -text
+.agents/skills/emil-design-eng/** -text
+.agents/skills/animate/** -text
+.agents/skills/review-animations/** -text
+.agents/skills/improve-animations/** -text
+.agents/skills/break-ui/** -text

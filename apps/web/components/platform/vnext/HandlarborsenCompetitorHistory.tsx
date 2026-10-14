@@ -5,7 +5,7 @@ import styles from './HandlarborsenCompetitorHistory.module.css'
  * Read-only decision dashboard. A null input is the explicit OFF state; never
  * substitute fixture events, projected counts, or zeroes for absent history.
  */
-export function HandlarborsenCompetitorHistory({ history }: { history: HistoryAnalysis | null }) {
+export function HandlarborsenCompetitorHistory({ history, historyEnabled = false }: { history: HistoryAnalysis | null; historyEnabled?: boolean }) {
   if (!history) {
     return (
       <section className={styles.panel} aria-labelledby="hb-competitor-history">
@@ -14,11 +14,12 @@ export function HandlarborsenCompetitorHistory({ history }: { history: HistoryAn
             <p className={styles.kicker}>Konkurrentspanaren / Historik</p>
             <h2 id="hb-competitor-history">Förändringar över tid</h2>
           </div>
-          <span className={styles.disabled}>Inväntar lagring</span>
+          <span className={styles.disabled}>{historyEnabled ? 'Kan inte läsa historik' : 'Inväntar lagring'}</span>
         </header>
         <p className={styles.explainer}>
-          Källkontrollen fungerar, men inga observationer lagras ännu. Historik och förändringsgrafer
-          visas först när en separat granskad databasanslutning har aktiverats.
+          {historyEnabled
+            ? 'Historik är aktiverad men kunde inte hämtas eller verifieras. Inga mätvärden visas.'
+            : 'Källkontrollen fungerar, men inga observationer lagras ännu. Historik och förändringsgrafer visas först när en separat granskad databasanslutning har aktiverats.'}
         </p>
       </section>
     )

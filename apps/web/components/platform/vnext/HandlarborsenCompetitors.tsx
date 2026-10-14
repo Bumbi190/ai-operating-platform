@@ -1,6 +1,7 @@
 import { DOSSIER_DATE, EVIDENCE, STATUS_LABELS, summarizeScan, type PublicScan } from '@/lib/atlas/project-analytics/handlarborsen-competitors'
 import { HandlarborsenLandscape } from './HandlarborsenLandscape'
 import { HandlarborsenCompetitorHistory } from './HandlarborsenCompetitorHistory'
+import { HandlarborsenSaveCompetitorScan } from './HandlarborsenSaveCompetitorScan'
 import type { HistoryAnalysis } from '@/lib/atlas/project-analytics/handlarborsen-competitor-history-core'
 import type { LandscapeScan } from '@/lib/atlas/project-analytics/handlarborsen-competitor-landscape'
 import styles from './HandlarborsenCompetitors.module.css'
@@ -9,7 +10,7 @@ function CheckedTime({ value }: { value: string }) {
   return <time dateTime={value}>{new Date(value).toLocaleString('sv-SE', { timeZone: 'Europe/Stockholm' })} (Stockholm)</time>
 }
 
-export function HandlarborsenCompetitors({ scan, landscape = null, history = null }: { scan: PublicScan | null; landscape?: LandscapeScan | null; history?: HistoryAnalysis | null }) {
+export function HandlarborsenCompetitors({ scan, landscape = null, history = null, historyEnabled = false, canSaveHistory = false }: { scan: PublicScan | null; landscape?: LandscapeScan | null; history?: HistoryAnalysis | null; historyEnabled?: boolean; canSaveHistory?: boolean }) {
   const summary = scan ? summarizeScan(scan) : null
   return (
     <div className={styles.page}>
@@ -26,7 +27,9 @@ export function HandlarborsenCompetitors({ scan, landscape = null, history = nul
           <div><dt>Schemalagt</dt><dd>ej aktiverad</dd></div>
           <div><dt>Lagring</dt><dd>ej inkopplat</dd></div>
         </dl>
-        <p>Kontrollen läser offentliga källor vid ditt klick och sparar inga observationer. Historiska förändringar och långsiktig bevakning väntar på framtida lagring och godkännande. Autonom exekvering är spärrad tills Cost Governance är verifierad i preview och produktion.</p>
+        <p>{historyEnabled
+          ? 'Offentliga källor kan kontrolleras manuellt och sparas högst en gång per UTC-dag. Förändringar kräver två verifierade observationer av samma källa. Ingen automatisk bevakning eller exekvering är aktiverad.'
+          : 'Kontrollen läser offentliga källor vid ditt klick och sparar inga observationer. Historiska förändringar och långsiktig bevakning väntar på framtida lagring och godkännande. Autonom exekvering är spärrad tills Cost Governance är verifierad i preview och produktion.'}</p>
         {/* A native GET form avoids Next Link prefetch executing an on-demand scan. */}
         <form method="get" action="/projects/handlarborsen/competitors">
           <button type="submit" name="scan" value="1" className={styles.button}>Kontrollera offentliga källor</button>
@@ -36,7 +39,8 @@ export function HandlarborsenCompetitors({ scan, landscape = null, history = nul
         <p>En tillgänglig titel verifierar endast sidans tillgänglighet och titelmetadata vid kontrollen. Innehåll, aktuella villkor och förändringar över tid verifieras inte.</p>
       </section>
       <HandlarborsenLandscape scan={landscape} />
-      <HandlarborsenCompetitorHistory history={history} />
+      <HandlarborsenCompetitorHistory history={history} historyEnabled={historyEnabled} />
+      {historyEnabled && canSaveHistory ? <HandlarborsenSaveCompetitorScan /> : null}
       <section aria-labelledby="competitor-evidence">
         <h2 id="competitor-evidence">Handlarbudet · daterade observationer</h2>
         <p>Belägg: de angivna publicerade nyheterna. Säkerheten gäller historiska publiceringar; dagens erbjudanden och våra hypoteser är inte verifierade.</p>

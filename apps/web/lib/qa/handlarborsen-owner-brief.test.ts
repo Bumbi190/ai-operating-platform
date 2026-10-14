@@ -30,7 +30,7 @@ function model(agents: number | null = 0, workflows: number | null = 0, failed =
   return {
     agents: section(agents),
     workflows: section(workflows),
-    links: {
+    links: { build: null,
       agents: '/projects/handlarborsen/agents',
       workflows: '/projects/handlarborsen/workflows',
       marketplace: '/projects/handlarborsen/marketplace',

@@ -42,6 +42,7 @@ import {
   type AtlasOrbRuntimeSignal,
 } from './orb-state'
 import { resolveWorkspace, resolveActiveProject } from './workspace-registry'
+import { createVoiceCaptureDriver, browserCaptureRecognition } from './voice-capture'
 
 // ── Typer ────────────────────────────────────────────────────────────────────
 
@@ -113,6 +114,9 @@ export interface AtlasValue {
   deactivate():                     void
   stopAudio():                      void
   sendMessage(text: string): Promise<void>
+  captureUtterance(onTranscript: (text: string) => void): () => void
+  speakText(text: string): Promise<void>
+  captureError: string | null
 }
 
 // ── Context ──────────────────────────────────────────────────────────────────
@@ -206,6 +210,12 @@ export function AtlasRuntimeProvider({
   }, [pathname])
 
   // ── Voice-refs ────────────────────────────────────────────────────────────
+  const captureDriverRef = useRef<ReturnType<typeof createVoiceCaptureDriver> | null>(null)
+  captureDriverRef.current ??= createVoiceCaptureDriver(browserCaptureRecognition)
+  const [captureError, setCaptureError] = useState<string | null>(null)
+  const buildSpeechGeneration = useRef(0)
+  const buildSpeakingRef = useRef(false)
+  useEffect(() => { captureDriverRef.current?.stop(); buildSpeechGeneration.current++; return () => { captureDriverRef.current?.stop(); buildSpeechGeneration.current++; if (buildSpeakingRef.current) { playbackRef.current?.stop(); buildSpeakingRef.current = false; setVoicePhase('idle') } } }, [pathname])
   const recRef       = useRef<any>(null)
   // One live segment at a time. The handle owns the element, the analyser and
   // the object URL, so nothing here has to reach past it to tear a segment down.
@@ -369,6 +379,7 @@ export function AtlasRuntimeProvider({
     }
 
     rec.onresult = (e: any) => {
+      if (!listeningRef.current || closedRef.current) return
       const text = Array.from(e.results as any[])
         .map((r: any) => r[0].transcript)
         .join('')
@@ -480,6 +491,7 @@ export function AtlasRuntimeProvider({
   // ── Publika kontroller ────────────────────────────────────────────────────
 
   function activate() {
+    captureDriverRef.current?.stop()
     closedRef.current    = false
     cancelRef.current    = false
     setAwaitingApproval(null)
@@ -491,6 +503,7 @@ export function AtlasRuntimeProvider({
   }
 
   function deactivate() {
+    captureDriverRef.current?.stop()
     closedRef.current    = true
     cancelRef.current    = true
     listeningRef.current = false
@@ -509,6 +522,8 @@ export function AtlasRuntimeProvider({
   }
 
   function stopAudio() {
+    buildSpeechGeneration.current++
+    buildSpeakingRef.current = false
     cancelRef.current = true
     playbackRef.current?.stop()
     getAudioAnalyser().disconnect()
@@ -756,6 +771,33 @@ export function AtlasRuntimeProvider({
     }
   }
 
+
+  function captureUtterance(onTranscript: (text: string) => void): () => void {
+    deactivate()
+    setCaptureError(null)
+    setVoicePhase('listening')
+    const cleanup = captureDriverRef.current!.capture(text => {
+      setTranscript(text)
+      setVoicePhase('idle')
+      onTranscript(text)
+    }, message => { setCaptureError(message); setVoicePhase('idle') })
+    return () => { cleanup(); setVoicePhase('idle') }
+  }
+
+  async function speakText(text: string): Promise<void> {
+    // Close auto-chat listening first; optional build narration never auto-sends.
+    deactivate()
+    const generation = ++buildSpeechGeneration.current
+    buildSpeakingRef.current = true
+    const result = await fetchTTSUrl(text.slice(0, 4000))
+    if (!result.url) { if (generation === buildSpeechGeneration.current) buildSpeakingRef.current = false; throw new Error('Uppläsningen kunde inte starta.') }
+    if (generation !== buildSpeechGeneration.current) { URL.revokeObjectURL(result.url); return }
+    try {
+      const played = await playUrl(result.url, requestGenRef.current)
+      if (played.status === 'failed' || played.status === 'blocked') throw new Error('Uppläsningen kunde inte spelas.')
+    } finally { if (generation === buildSpeechGeneration.current) { buildSpeakingRef.current = false; setVoicePhase('idle') } }
+  }
+
   // Håll function-refs à jour med senaste definitions (undviker stale closures)
   startListeningRef.current = startListening
   activateRef.current       = activate
@@ -784,6 +826,9 @@ export function AtlasRuntimeProvider({
     deactivate,
     stopAudio,
     sendMessage,
+    captureUtterance,
+    speakText,
+    captureError,
   }
 
   return (

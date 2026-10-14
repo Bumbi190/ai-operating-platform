@@ -135,6 +135,7 @@ function Header({ model }: { model: ProjectCommandCenterModel }) {
   // the workflows.
   const pendingApprovals = approvals.state === 'ok' ? approvals.total ?? approvals.items.length : null
   const actions: { label: string; href: string | null }[] = [
+    { label: 'Bygg hemsida med Atlas', href: links.build },
     { label: 'Alla körningar', href: links.runs },
     { label: 'Workflows', href: links.workflows },
     { label: 'Agenter', href: links.agents },

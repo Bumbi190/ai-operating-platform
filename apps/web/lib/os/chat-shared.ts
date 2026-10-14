@@ -325,6 +325,10 @@ export function awaitingAtlas(entries: TranscriptEntry[], pending: boolean): boo
 
 /** One label per tool `/api/chat` offers — the names are the route's, the words are the surface's. */
 export const TOOL_LABELS: Record<string, string> = {
+  start_website_build: 'Köar webbbygge',
+  get_website_build: 'Läser byggstatus',
+  submit_website_build_feedback: 'Sparar byggfeedback',
+  control_website_build: 'Begär byggkontroll',
   list_design_skills: 'Listar designfärdigheter',
   read_design_skill: 'Läser designfärdighet',
   list_atlas_workflow_catalog: 'Listar workflowkatalog',

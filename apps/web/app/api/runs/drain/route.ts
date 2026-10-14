@@ -16,6 +16,7 @@ import { decideGate, type GateOutcome } from '@/lib/ai/policy-gate'
 import { fencedRunUpdate, isFencedError } from '@/lib/ai/fencing'
 import { isCancelledError } from '@/lib/ai/cancel'
 import { MARKETING_HANDLERS, isMarketingRun } from '@/lib/marketing/workflows'
+import { executeWebsiteBuildRun, isWebsiteBuildRun, isWebsiteBuildPermanentError } from '@/lib/website-build/worker'
 import {
   checkpointClaimedRun, settleRefusal, terminalizeCancelledRun, recordDispatchUnknown,
   isRunCheckpointRefusal, isRunLifecycleWriteError, checkOwnedFinalization,
@@ -266,7 +267,9 @@ export async function GET(request: Request) {
       let outputContent: string | undefined
       let lastOutputKey: string | undefined
 
-      if (isMarketingRun(kind)) {
+      if (isWebsiteBuildRun(kind)) {
+        await executeWebsiteBuildRun(db, run as Run, run.claim_id!)
+      } else if (isMarketingRun(kind)) {
         // Kod-driven marketing-workflow: dispatch på `kind` till rätt handler.
         // (Fas 1: no-op-handlers.) Drainern äger fortfarande run-statuslogiken.
         // PR2 (decision A): marketing-runs gate:as INTE — outcome förblir 'done'.
@@ -670,6 +673,7 @@ export async function GET(request: Request) {
       const msg = e instanceof Error ? e.message : 'Okänt fel'
       // attempts är redan inkrementerad av claim_runs → willRetry om vi inte nått taket.
       const willRetry = (run.attempts ?? 0) < (run.max_attempts ?? 3)
+        && !(isWebsiteBuildRun(run.kind) && isWebsiteBuildPermanentError(e))
       const history = [
         ...(Array.isArray(run.error_history) ? run.error_history : []),
         { at: new Date().toISOString(), attempt: run.attempts, error: msg },

@@ -13,7 +13,7 @@ function model(): ProjectCommandCenterModel {
   const run = { id: 'run', status: 'running', createdAt: null, startedAt: null, finishedAt: null, href: '/projects/foo/runs/run' }
   return {
     project: { id: 'project', name: 'Project', slug: 'foo', color: '#336699', href: '/projects/foo', executionPaused: false, pausedAt: null, pausedReason: null },
-    links: { runs: '/projects/foo/runs', workflows: '/projects/foo/workflows', agents: '/projects/foo/agents', outputs: '/projects/foo/outputs', newAgent: '/projects/foo/agents/new', newWorkflow: '/projects/foo/workflows/new', media: '/projects/foo/media', approvals: '/approvals', marketplace: '/projects/foo/marketplace' },
+    links: { build: '/projects/foo/build', runs: '/projects/foo/runs', workflows: '/projects/foo/workflows', agents: '/projects/foo/agents', outputs: '/projects/foo/outputs', newAgent: '/projects/foo/agents/new', newWorkflow: '/projects/foo/workflows/new', media: '/projects/foo/media', approvals: '/approvals', marketplace: '/projects/foo/marketplace' },
     activity: { activeRuns: 1, lastRun: { state: 'ok', at: null } },
     workflows: section([{
       id: 'wf', name: 'Workflow', description: 'private detail', trigger: null, cronExpr: null, active: true, href: '/projects/foo/workflows/wf',
@@ -50,6 +50,7 @@ describe('shared Owner/Collaborator Command Center', () => {
     const old = model()
     const view = sanitizeOrganizationCommandCenter(old)
     expect(view.project.href).toBeNull()
+    expect(view.links.build).toBeNull()
     expect(Object.values(view.links).every(value => value === null)).toBe(true)
     expect(view.workflows.items[0].href).toBeNull()
     expect(view.workflows.items[0].description).toBeNull()

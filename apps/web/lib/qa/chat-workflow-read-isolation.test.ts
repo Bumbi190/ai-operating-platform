@@ -108,14 +108,14 @@ vi.mock('@anthropic-ai/sdk', () => {
   return { default: FakeAnthropic }
 })
 
-async function ask(name = 'list_workflows', input: Record<string, unknown> = {}) {
+async function ask(name = 'list_workflows', input: Record<string, unknown> = {}, conversationId?: string) {
   TOOL_NAME = name; TOOL_INPUT = input
   streamCall = 0; TOOL_RESULTS = []; WORKFLOW_OPS = []
   vi.resetModules()
   const { POST } = await import('@/app/api/chat/route')
   const res: any = await POST(new Request('http://localhost/api/chat', {
     method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ messages: [{ role: 'user', content: 'lista mina workflows' }] }),
+    body: JSON.stringify({ messages: [{ role: 'user', content: 'lista mina workflows' }], conversation_id: conversationId }),
   }) as any)
   if (res?.body) await new Response(res.body).text()
   await new Promise(r => setTimeout(r, 30))

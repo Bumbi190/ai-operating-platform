@@ -20,6 +20,13 @@ vi.mock('@supabase/ssr', () => ({
     // propagation path is not accidentally bypassed by the mock.
     opts?.cookies?.getAll?.()
     return {
+      // These cases describe the existing Owner routes. Main's membership
+      // containment is exercised by organization-middleware-runtime.test.ts.
+      from(table: string) {
+        if (table !== 'omnira_organization_memberships') throw new Error('Unexpected middleware table: ' + table)
+        const query = { select: () => query, eq: () => query, maybeSingle: async () => ({ data: { role: 'owner', revoked_at: null }, error: null }) }
+        return query
+      },
       auth: {
         getUser: async () => ({ data: { user: currentUser }, error: null }),
       },

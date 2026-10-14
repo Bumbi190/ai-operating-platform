@@ -15,19 +15,25 @@ class RejectedSource extends Error {
 }
 
 /**
- * Accept a short, complete <title> before any active/scriptable markup in the
- * document head. A malformed/unfinished script or an HTML comment cannot supply
- * a trusted early title. The existing normalizer still strips unsafe content.
+ * Read a complete early title from the real document head, before any
+ * scriptable element. Ignore completed HTML comments (Squarespace commonly
+ * puts them before <title>), but reject unfinished comments/CDATA.
+ *
+ * Return only a tiny title fragment, never raw remote page markup. This also
+ * prevents a fake <title> inside a completed HTML comment from being used.
  */
-function hasSafeEarlyTitle(html: string): boolean {
+function safeEarlyTitle(html: string): string | null {
   const head = /<head\b[^>]*>/i.exec(html)
-  const title = /<title\b[^>]*>[\s\S]*?<\/title\s*>/i.exec(html)
-  if (!head || !title || title.index < head.index + head[0].length) return false
-  const preceding = html.slice(head.index + head[0].length, title.index)
-  if (/<\s*\/?(?:script|style|template|noscript|body|iframe|object|svg)\b/i.test(preceding))
-    return false
-  if (preceding.includes('<!--') || preceding.includes('<![CDATA[')) return false
-  return normalizeTitle(html) !== null
+  if (!head) return null
+  const afterHead = html.slice(head.index + head[0].length)
+  const active = /<\s*\/?(?:script|style|template|noscript|body|iframe|object|svg|head)\b/i.exec(afterHead)
+  const prefix = active ? afterHead.slice(0, active.index) : afterHead
+  const withoutComments = prefix.replace(/<!--[\s\S]*?-->/g, '')
+  if (withoutComments.includes('<!--') || withoutComments.includes('<![CDATA[')) return null
+  const title = /<title\b[^>]*>([\s\S]*?)<\/title\s*>/i.exec(withoutComments)
+  if (!title || /<[^>]*>/.test(title[1])) return null
+  const fragment = '<title>' + title[1] + '</title>'
+  return normalizeTitle(fragment) ? fragment : null
 }
 
 async function readBounded(url: string, kind: 'robots' | 'document', fetcher: typeof fetch): Promise<string> {
@@ -86,12 +92,18 @@ async function readBounded(url: string, kind: 'robots' | 'document', fetcher: ty
       const prefix = chunk.value.subarray(0, remaining)
       bytes += prefix.byteLength
       result += decoder.decode(prefix, { stream: true })
-      // A valid title before the first executable tag may be accepted without
-      // waiting for a potentially enormous head. Otherwise require the whole
-      // head before using the normalizer (which removes complete scripts).
-      if (kind === 'document' && (
-        hasSafeEarlyTitle(result) || (/<\/head\s*>/i.test(result) && normalizeTitle(result))
-      )) return result
+      // Prefer a bounded, comment-safe title fragment. A full short head may
+      // alternatively include a title after a completed script or template.
+      if (kind === 'document') {
+        const earlyTitle = safeEarlyTitle(result)
+        if (earlyTitle) return earlyTitle
+        if (/<\/head\s*>/i.test(result)) {
+          const withoutComments = result.replace(/<!--[\s\S]*?-->/g, '')
+          if (!withoutComments.includes('<!--') && normalizeTitle(withoutComments)) {
+            return withoutComments
+          }
+        }
+      }
       if (chunk.value.byteLength > remaining) throw new RejectedSource('too_large')
     }
     return result + decoder.decode()

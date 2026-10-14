@@ -134,6 +134,40 @@ describe('manual competitor market landscape boundary', () => {
     expect(scan.observations.every(x => x.status === 'too_large')).toBe(true)
   })
 
+  it('accepts a completed HTML comment before a real early title on large HTML', async () => {
+    const fixture = '<!doctype html><html><head>' +
+      '<meta charset="utf-8"><!-- Squarespace theme metadata -->' +
+      '<title>AutoProff SE &mdash; B2B Marketplace</title>' +
+      '<script>' + 'x'.repeat(230000) + '</script></head></html>'
+    const fetcher = vi.fn<typeof fetch>(async url => String(url).endsWith('/robots.txt')
+      ? new Response(policy)
+      : new Response(fixture, { headers: { 'content-type': 'text/html' } }))
+    const scan = await scanCompetitorLandscape(fetcher)
+    expect(scan.observations.every(x => x.status === 'metadata_checked')).toBe(true)
+    expect(scan.observations.every(x => x.title === 'AutoProff SE — B2B Marketplace')).toBe(true)
+  })
+
+  it('ignores fake titles inside completed comments and accepts the subsequent real title', async () => {
+    const fixture = '<html><head><!-- <title>Fake title</title> -->' +
+      '<meta charset="utf-8"><title>Actual dealer title</title>' +
+      '<script>' + 'x'.repeat(230000) + '</script></head></html>'
+    const fetcher = vi.fn<typeof fetch>(async url => String(url).endsWith('/robots.txt')
+      ? new Response(policy)
+      : new Response(fixture, { headers: { 'content-type': 'text/html' } }))
+    const scan = await scanCompetitorLandscape(fetcher)
+    expect(scan.observations.every(x => x.status === 'metadata_checked')).toBe(true)
+    expect(scan.observations.every(x => x.title === 'Actual dealer title')).toBe(true)
+  })
+
+  it('refuses fake titles within unfinished HTML comments', async () => {
+    const fixture = '<html><head><!-- <title>Fake title</title>' + 'x'.repeat(230000)
+    const fetcher = vi.fn<typeof fetch>(async url => String(url).endsWith('/robots.txt')
+      ? new Response(policy)
+      : new Response(fixture, { headers: { 'content-type': 'text/html' } }))
+    const scan = await scanCompetitorLandscape(fetcher)
+    expect(scan.observations.every(x => x.status === 'too_large')).toBe(true)
+  })
+
   it('never treats invalid robots or failure as permission to retrieve its document', async () => {
     const fetcher = vi.fn<typeof fetch>(async () => new Response('<html>invalid robots</html>'))
     const scan = await scanCompetitorLandscape(fetcher)

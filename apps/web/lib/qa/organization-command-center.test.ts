@@ -31,8 +31,11 @@ function model(): ProjectCommandCenterModel {
 describe('shared Owner/Collaborator Command Center', () => {
   it('renders the exact shared component with an explicit read-only mode', () => {
     expect(page).toContain('loadOrganizationProjectCommandCenter(params.slug)')
-    expect(page).toContain('<ProjectCommandCenter model={model} />')
+    expect(page).toContain('<ProjectCommandCenter model={model} overview={overview} />')
     expect(page).toContain('<fieldset disabled')
+    expect(page).toContain('isHandlarborsenProject(model.project)')
+    expect(page).toContain('loadHandlarborsenMarketplaceReport(model.project')
+    expect(page).toContain('reportHref={null}')
     expect(component).toContain('ProjectPauseToggle')
     expect(page).not.toContain('loadProjectCommandCenter(')
   })

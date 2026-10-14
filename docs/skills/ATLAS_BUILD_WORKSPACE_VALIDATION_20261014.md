@@ -1,6 +1,6 @@
 # Atlas build workspace validation
 
-Implementation in progress; no activation or production migration.
+Source implementation and independent review fix pass complete. Delivery is a draft PR; no activation or production migration.
 
 ## Baseline before runtime implementation
 
@@ -113,7 +113,7 @@ Configured Next production build exited0 with non-production public loopback Sup
 One fresh gpt-6-astra reviewer reviewed190e8f1..fe6b8c4 read-only. Two Important findings: ignored production route files (links404 in a clone), and mixed apply/decision parking losing instructions then falsely marking them applied; related superseded-decision parking. These were reproduced before correction. Both production routes are now tracked with a narrow build-directory ignore exception and a tracked-source regression. Snapshots retain unapplied apply/decision feedback; worker decisions ignore superseded items; committed receipts are limited to the exact accepted generation interpretation (including paused candidate reuse). Three real-SQL regressions pass.
 The reviewer also flagged independent tab groups as Minor; regraded Important because unrelated visible site content disappears. New tab behaviors require validated groupId and operate within that group; renderer can update reviewed runtime in earlier stored inline artifacts. Browser two-group regression passes. Parent form integration notice is readable even when child CSS hides its note. Post-fix targeted267/267 and Chromium9/9 pass, standalone tsc0. No second review seat was dispatched.
 Deferred Minor: definitive start rejection freezes its original request; corrected agent/brief requires reload while retaining the unsaved brief manually. This remains visible as draft-stage recovery friction.
-Before review fixes, exhaustive disjoint full matrix464 files:12,155 passed,362 failed in70 files,1,110 pending; zero newly failing assertion names versus the initial baseline (five baseline assertions resolved). Final post-fix matrix includes465 files; result is recorded below.
+Before review fixes, exhaustive disjoint full matrix464 files:12,155 passed,362 failed in70 files,1,110 pending; zero newly failing assertion names versus the initial baseline (five baseline assertions resolved). Subsequent DB-free CI portability work splits the website chat cases into a dedicated integration file; final post-fix matrix includes466 files, recorded below.
 
 
 ## Reproducible local SQL fixture
@@ -135,3 +135,14 @@ cd apps/web
 npx playwright test --config=playwright.website-build.config.ts
 ```
 The explicit database name is validated against the owned timestamp prefix, and the Docker ownership label is checked before queries. The plan scratch log is only a legacy fallback; a fresh checkout does not require it.
+
+
+## Final delivery evidence
+
+Final post-fix disjoint matrix:466 unique files (462 without the shared website fixture at four workers; four shared-fixture files serialized). 12,161 passed,362 failed in70 files,1,110 pending. Exhaustive comparison with the initial436-file baseline found zero new failed assertion names and five resolved baseline assertions. The full repository suite remains red; all362 exact remaining names are in ATLAS_BUILD_WORKSPACE_REMAINING_TESTS_20261014.md. Final SQL complement exited0; non-SQL complement exited1 from these inherited failures.
+
+The reviewed source passed267/267 targeted assertions and9/9 Chromium flows; final portability split additionally passed the existing16/16 DB-free chat assertions and all three dedicated real-SQL chat assertions with an explicit owned fixture name. Standalone tsc exited0. The actual hardened migration passed25 SQL assertions plus both two-connection commit/cancel races. Configured Next production build exited0 and its app manifest lists both tracked workspace routes. The temporary public loopback build environment is removed at handoff; it proves compilation/prerender compatibility, not production connectivity.
+
+One independent whole-branch review and one root RED→GREEN fix pass were performed; no re-review. Source checks use deterministic zero-cost provider responses and mocked browser speech recognition. Real model v1/v2/v3, microphone permission/accuracy and audible TTS remain release smoke checks. Migration20261014065527 is not applied to production. PR332 remains a design-runtime dependency; merged PR331/333/334 are already integrated from main. No public website, backend, payments or social-media workflow is delivered by this preview change.
+
+The feature worktree is preserved for PR iteration. Only this plan ignored execution scratch and its own temporary dummy .env.local are removed after recording decisions and test names in git. No hosted GitHub Actions workflow is requested; final commit carries [skip ci]. Draft delivery does not claim merge or activation readiness.

@@ -7,7 +7,7 @@ vi.mock('@/lib/atlas/project-analytics/handlarborsen-competitor-history-service'
   competitorHistoryEnabled: mocked.enabled,
   saveCompetitorHistory: mocked.save,
 }))
-import { POST } from '@/app/api/projects/[slug]/competitors/history/route'
+import { POST, maxDuration } from '@/app/api/projects/[slug]/competitors/history/route'
 
 const path = 'https://omniraos.se/api/projects/handlarborsen/competitors/history'
 const invoke = (
@@ -23,6 +23,9 @@ beforeEach(() => {
 })
 
 describe('owner-only competitor history endpoint', () => {
+  it('reserves enough time for bounded manual external checks', () => {
+    expect(maxDuration).toBe(60)
+  })
   it('is disabled by default, without calling the persistence service', async () => {
     const response = await invoke()
     expect(response.status).toBe(409)

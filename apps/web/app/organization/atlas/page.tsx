@@ -17,7 +17,11 @@ export default async function OrganizationAtlasPage() {
   if (!user) redirect('/login')
   const db = createAdminClient()
   const scope = await resolveOrganizationReadScope(session, db, user.id)
-  if (!scope.role.active || scope.role.role !== 'collaborator') notFound()
+  if (!scope.role.active) notFound()
+  // /organization/atlas is the Collaborator-safe entrypoint. Owners have the
+  // full original Atlas at /atlas; don't show them a confusing 404 here.
+  if (scope.role.role === 'owner') redirect('/atlas')
+  if (scope.role.role !== 'collaborator') notFound()
 
   const ids = [...scope.projectIds]
   if (!ids.length) notFound()

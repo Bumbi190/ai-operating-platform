@@ -7,13 +7,23 @@ export function OrganizationReviewBoard({ owner, projects }: { owner: boolean; p
   const [title, setTitle] = useState('')
   const [detail, setDetail] = useState('')
   const [notice, setNotice] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
+  const [loadFailed, setLoadFailed] = useState(false)
   async function reload() {
     const r = await fetch('/api/organization/proposals', { cache: 'no-store' })
     if (!r.ok) throw Error('Kunde inte läsa förslag')
     const body: { proposals: Proposal[] } = await r.json()
     setRows(body.proposals)
+    setIsLoading(false)
+    setLoadFailed(false)
   }
-  useEffect(() => { void reload().catch(() => setNotice('Kunde inte läsa förslag.')) }, [])
+  useEffect(() => {
+    void reload().catch(() => {
+      setNotice('Kunde inte läsa förslag.')
+      setLoadFailed(true)
+      setIsLoading(false)
+    })
+  }, [])
   async function create(event: FormEvent) {
     event.preventDefault()
     const r = await fetch('/api/organization/proposals', {
@@ -47,6 +57,17 @@ export function OrganizationReviewBoard({ owner, projects }: { owner: boolean; p
       <button type="submit" className="rounded bg-sky-300 p-2 font-medium text-slate-950">Lämna förslag</button>
     </form>}
     {notice && <p role="status">{notice}</p>}
+    {isLoading && <p className="rounded-xl border border-white/10 p-5 text-sm text-slate-400" role="status">Hämtar förslag…</p>}
+    {!isLoading && !loadFailed && rows.length === 0 && (
+      <div className="rounded-xl border border-white/10 bg-slate-900/60 p-6">
+        <h2 className="font-semibold">Inga förslag ännu</h2>
+        <p className="mt-2 text-sm text-slate-400">
+          {owner
+            ? 'När Oscar skickar ett förslag för Handlarbörsen visas det här. Du kan då godkänna eller avvisa det.'
+            : 'Du har inga registrerade förslag ännu. Använd formuläret ovan för att skicka ett till Owner.'}
+        </p>
+      </div>
+    )}
     <div className="grid gap-4">{rows.map(p => <article key={p.id} className="rounded-xl border border-white/10 bg-slate-900/60 p-5">
       <div className="flex items-center justify-between"><h2 className="font-semibold">{p.title}</h2><span className="text-xs">{p.status}</span></div>
       <p className="my-3 whitespace-pre-wrap text-sm text-slate-300">{p.detail}</p>

@@ -117,8 +117,11 @@ export function normalizeTitle(html: string): string | null {
   const inert = html.replace(/<(script|style|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '')
   const title = /<title\b[^>]*>([\s\S]*?)<\/title\s*>/i.exec(inert)?.[1]
   if (!title) return null
-  const entities: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' }
-  const plain = title.replace(/<[^>]*>/g, ' ').replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (_, entity: string) => {
+  const entities: Record<string, string> = {
+    amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
+    mdash: '—', ndash: '–', rsquo: '’', lsquo: '‘', hellip: '…',
+  }
+  const plain = title.replace(/<[^>]*>/g, ' ').replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp|mdash|ndash|rsquo|lsquo|hellip);/gi, (_, entity: string) => {
     if (!entity.startsWith('#')) return entities[entity.toLowerCase()] ?? ' '
     const code = entity.toLowerCase().startsWith('#x') ? parseInt(entity.slice(2), 16) : parseInt(entity.slice(1), 10)
     return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : ' '

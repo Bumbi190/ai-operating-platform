@@ -6,6 +6,8 @@ import { HandlarborsenVisualPulse } from './HandlarborsenVisualPulse'
 import { HandlarborsenInsights } from './HandlarborsenInsights'
 import { HandlarborsenTrends } from './HandlarborsenTrends'
 import { HandlarborsenPosthogTraffic } from './HandlarborsenPosthogTraffic'
+import { HandlarborsenExecutiveSummary } from './HandlarborsenExecutiveSummary'
+import styles from './HandlarborsenExecutiveSummary.module.css'
 import { AnalysisDraftHistoryLink } from './AnalysisDraftHistoryLink'
 import type { HandlarborsenTraffic } from '@/lib/atlas/project-analytics/handlarborsen-posthog-traffic'
 
@@ -51,27 +53,36 @@ export function HandlarborsenOverview({
   }
   return (
     <>
-      <KpiOverview
-        {...common}
-        headline={model.headline}
-        activityTitle="Aktivitet senaste 24 h"
-        activityCaption="Fönstervärden — jämförs inte mellan dagar"
-        activity={model.activity}
-        meta={model.meta}
-        notices={model.notices}
-        historyTitle="Historisk utveckling"
-        historyText={model.historyText}
-      />
-      {traffic && <HandlarborsenPosthogTraffic traffic={traffic} />}
+      <HandlarborsenExecutiveSummary report={report} model={model} traffic={traffic} now={now} />
       <HandlarborsenTrends report={report} />
-      <HandlarborsenVisualPulse report={report} reportHref={reportHref} />
-      <HandlarborsenInsights
-        report={report}
-        now={now}
-        projectSlug={projectSlug}
-        analysisSelectors={analysisSelectors}
-      />
-      {projectSlug && <AnalysisDraftHistoryLink projectSlug={projectSlug} />}
+      {traffic && <HandlarborsenPosthogTraffic traffic={traffic} />}
+      <details className={styles.deepDive}>
+        <summary>
+          <span>Fördjupning · alla nyckeltal, aktivitet och analysunderlag</span>
+          <span className={styles.deepDiveHint}>Visa detaljer</span>
+        </summary>
+        <div className={styles.deepDiveContent}>
+          <KpiOverview
+            {...common}
+            headline={model.headline}
+            activityTitle="Aktivitet senaste 24 h"
+            activityCaption="Fönstervärden — jämförs inte mellan dagar"
+            activity={model.activity}
+            meta={model.meta}
+            notices={model.notices}
+            historyTitle="Historisk utveckling"
+            historyText={model.historyText}
+          />
+          <HandlarborsenVisualPulse report={report} reportHref={reportHref} />
+          <HandlarborsenInsights
+            report={report}
+            now={now}
+            projectSlug={projectSlug}
+            analysisSelectors={analysisSelectors}
+          />
+          {projectSlug && <AnalysisDraftHistoryLink projectSlug={projectSlug} />}
+        </div>
+      </details>
     </>
   )
 }

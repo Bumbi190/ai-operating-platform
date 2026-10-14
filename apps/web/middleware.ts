@@ -98,9 +98,20 @@ export async function middleware(request: NextRequest) {
     }
     if (!membershipError && membership?.role === 'collaborator') {
       const denied = !!membership.revoked_at
-      if (pathname.startsWith('/api/organization/projects/') && request.method !== 'GET')
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      if (pathname.startsWith('/api') && (denied || pathname !== '/api/organization/projects' && !/^\/api\/organization\/projects\/[a-z0-9][a-z0-9-]{0,79}\/workflows$/.test(pathname))) {
+      const collaboratorDirectoryRead =
+        request.method === 'GET' && pathname === '/api/organization/projects'
+      const collaboratorWorkflowRead =
+        request.method === 'GET' &&
+        /^\/api\/organization\/projects\/[a-z0-9][a-z0-9-]{0,79}\/workflows$/.test(pathname)
+      const handlWorkflowCreate =
+        request.method === 'POST' &&
+        pathname === '/api/organization/projects/handlarborsen/workflows'
+      const handlWorkflowEdit =
+        request.method === 'PATCH' &&
+        /^\/api\/organization\/projects\/handlarborsen\/workflows\/[0-9a-f-]{36}$/i.test(pathname)
+      // The Owner's old API remains blocked for every collaborator.
+      if (pathname.startsWith('/api') &&
+          (denied || !(collaboratorDirectoryRead || collaboratorWorkflowRead || handlWorkflowCreate || handlWorkflowEdit))) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
       const allowedPage = !denied && (

@@ -1,8 +1,10 @@
 'use client'
 import { useEffect, useState, type FormEvent } from 'react'
 type Proposal = { id: string; project_id: string; author_id: string; title: string; detail: string; status: string; decision_reason: string | null }
+type ProposalEvent = { proposal_id: string; event: 'submitted' | 'approved' | 'rejected'; created_at: string }
 export function OrganizationReviewBoard({ owner, projects }: { owner: boolean; projects: { id: string; name: string }[] }) {
   const [rows, setRows] = useState<Proposal[]>([])
+  const [events, setEvents] = useState<ProposalEvent[]>([])
   const [projectId, setProjectId] = useState(projects[0]?.id ?? '')
   const [title, setTitle] = useState('')
   const [detail, setDetail] = useState('')
@@ -12,8 +14,10 @@ export function OrganizationReviewBoard({ owner, projects }: { owner: boolean; p
   async function reload() {
     const r = await fetch('/api/organization/proposals', { cache: 'no-store' })
     if (!r.ok) throw Error('Kunde inte läsa förslag')
-    const body: { proposals: Proposal[] } = await r.json()
+    const body: { proposals: Proposal[]; events: ProposalEvent[] } = await r.json()
+    if (!Array.isArray(body.proposals) || !Array.isArray(body.events)) throw Error('Invalid review response')
     setRows(body.proposals)
+    setEvents(body.events)
     setIsLoading(false)
     setLoadFailed(false)
   }
@@ -72,6 +76,21 @@ export function OrganizationReviewBoard({ owner, projects }: { owner: boolean; p
       <div className="flex items-center justify-between"><h2 className="font-semibold">{p.title}</h2><span className="text-xs">{p.status}</span></div>
       <p className="my-3 whitespace-pre-wrap text-sm text-slate-300">{p.detail}</p>
       {p.decision_reason && <p className="text-xs text-slate-400">Beslut: {p.decision_reason}</p>}
+      <div className="mt-4 border-t border-white/10 pt-3" aria-label="Förslagets händelsehistorik">
+        <p className="mb-2 text-xs font-semibold text-sky-200">Historik</p>
+        <ol className="space-y-2 text-xs text-slate-400">
+          {events.filter(e => e.proposal_id === p.id).map((e, index) => {
+            const label = e.event === 'submitted' ? 'Skickat av Collaborator'
+              : e.event === 'approved' ? 'Godkänt av Owner' : 'Avvisat av Owner'
+            return <li key={e.proposal_id + '-' + e.event + '-' + index}>
+              <span>{label}</span>
+              <time dateTime={e.created_at} className="ml-2">
+                {new Date(e.created_at).toLocaleString('sv-SE')}
+              </time>
+            </li>
+          })}
+        </ol>
+      </div>
       {owner && p.status === 'pending' && <div className="mt-3 flex gap-3">
         <button className="rounded border border-white/20 p-2" onClick={() => void decide(p.id, 'approved')}>Godkänn förslag</button>
         <button className="rounded border border-white/20 p-2" onClick={() => void decide(p.id, 'rejected')}>Avvisa</button>

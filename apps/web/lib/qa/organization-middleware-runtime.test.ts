@@ -19,7 +19,7 @@ vi.mock('@supabase/ssr', () => ({
   }),
 }))
 import { middleware } from '@/middleware'
-function req(path: string) { return new NextRequest(new URL(path, 'https://app.omniraos.se')) }
+function req(path: string, method = 'GET') { return new NextRequest(new URL(path, 'https://app.omniraos.se'), { method }) }
 beforeEach(() => {
   state.user = { id: 'viewer' }
   state.member = { role: 'collaborator', revoked_at: null }
@@ -39,6 +39,18 @@ describe('collaborator middleware HTTP isolation', () => {
   it('allows only the scoped organization project directory API', async () => {
     const response = await middleware(req('/api/organization/projects'))
     expect(response.status).toBe(200)
+  })
+  it('only opens precisely scoped Handlarborsen workflow draft and metadata methods', async () => {
+    const p = '/api/organization/projects/handlarborsen/workflows'
+    const workflowId = '11111111-1111-4111-8111-111111111111'
+    expect((await middleware(req(p, 'GET'))).status).toBe(200)
+    expect((await middleware(req(p, 'POST'))).status).toBe(200)
+    expect((await middleware(req(p, 'DELETE'))).status).toBe(403)
+    expect((await middleware(req(p + '/' + workflowId, 'PATCH'))).status).toBe(200)
+    expect((await middleware(req(p + '/' + workflowId, 'DELETE'))).status).toBe(403)
+    expect((await middleware(req('/api/organization/projects/familje-stunden/workflows', 'POST'))).status).toBe(403)
+    expect((await middleware(req('/api/organization/projects/familje-stunden/workflows/' + workflowId, 'PATCH'))).status).toBe(403)
+    expect((await middleware(req('/api/projects/handlarborsen/workflows', 'POST'))).status).toBe(403)
   })
   it('rejects revoked collaborators even on allowed endpoints', async () => {
     state.member = { role: 'collaborator', revoked_at: '2026-10-13T20:00:00Z' }

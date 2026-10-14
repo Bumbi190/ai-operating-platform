@@ -15,6 +15,8 @@ describe('organization collaborator per-project permissions', () => {
   it('may operate workflows only for canonical Handlarbörsen identity', () => {
     expect(allow(collaborator, hb, 'operate_workflow')).toBe(true)
     expect(allow(collaborator, other, 'operate_workflow')).toBe(false)
+    expect(allow(collaborator, hb, 'propose_workflow')).toBe(true)
+    expect(allow(collaborator, other, 'propose_workflow')).toBe(false)
     expect(allow(collaborator, { ...hb, slug: 'another' }, 'operate_workflow')).toBe(false)
     expect(allow(collaborator, { ...hb, id: other.id }, 'operate_workflow')).toBe(false)
   })

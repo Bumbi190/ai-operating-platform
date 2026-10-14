@@ -7,7 +7,10 @@ describe('Collaborator navigation containment', () => {
   it('uses authenticated session identity and rejects legacy API routes', () => {
     expect(middleware).toContain(".eq('user_id', user.id)")
     expect(middleware).toContain("membership?.role === 'collaborator'")
-    expect(middleware).toContain("pathname !== '/api/organization/projects'")
+    expect(middleware).toContain('collaboratorDirectoryRead')
+    expect(middleware).toContain('handlWorkflowCreate')
+    expect(middleware).toContain('handlWorkflowEdit')
+    expect(middleware).toContain('!(collaboratorDirectoryRead || collaboratorWorkflowRead || handlWorkflowCreate || handlWorkflowEdit)')
     expect(middleware).toContain("status: 403")
   })
   it('redirects collaborators out of legacy Atlas screens', () => {

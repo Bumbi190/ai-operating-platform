@@ -3,7 +3,7 @@
     "purpose": "Phase 9Y schema-security classification for every table in schema 'public'. Captured from the EFFECTIVE database catalog, not parsed from migration text — because the exposure this file exists to prevent (workflow_stories) was created by a migration that simply never mentioned row level security, so migration text alone could never have revealed it.",
     "captured_from": "production project iboepohjwrhtgshrqaol",
     "captured_at": "2026-09-25",
-    "total_tables": 100,
+    "total_tables": 105,
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
     "platform_tokens_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090000_platform_tokens_client_revoke.sql (Settings S0): client grants revoked, RLS on, no policy.",
     "platform_credential_events_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090100_platform_credential_events.sql (Settings S0), applied to production before this row was merged: created with RLS on and no policy, every client grant revoked, service_role holding SELECT and INSERT only, UPDATE/DELETE/TRUNCATE refused by triggers.",
@@ -62,7 +62,8 @@
     "handlarborsen_marketplace_snapshots_note": "Its row reflects production after apps/web/supabase/migrations/20261010100000_handlarborsen_marketplace_snapshots.sql (Atlas collector P1B) was APPLIED on 2026-10-10 (ledger version 20261010080307, 4821-character statement byte-identical to the repository file, sha256 ee59a8c936dc0692715e60b1f4ec2e4870681c9433fbde384ff8d1d434441653), introspected read-only after the apply: RLS on with ZERO policies, no grant to anon or authenticated, service_role holds INSERT, SELECT and UPDATE only (DELETE, TRUNCATE, TRIGGER and REFERENCES were revoked). Class SERVER_ONLY. The table held ZERO rows at introspection. It was previously listed under created_not_live; no cron or token is active, so nothing writes to it yet.",
     "website_build_note": "Applied to production iboepohjwrhtgshrqaol on2026-10-14 as ledger20261014112755; stored statement sha256 a3a36396a181af89340482f5a51210a65b5fef6f03480651155177d56363fa0b matches reviewed source (28857 characters). All three tables introspected: RLS on, one owner/auth.uid SELECT policy, no anon grants, authenticated SELECT only, service-role writes. All17 website_build functions are SECURITY INVOKER with empty search_path, anon/authenticated EXECUTE revoked and service_role EXECUTE present. Only these three table entries are refreshed; older snapshot entries remain unchanged.",
     "omnira_collaborator_proposals_note": "Additive proposal queue with server-only grants and non-executing review; local PostgreSQL replay verified 2026-10-14.",
-    "catalog_reconciliation_20261014": "Read-only live catalog verified 2026-10-14 after Handlarborsen competitor migration. Three newly live server-only tables reconciled: atlas_analysis_drafts, atlas_analysis_draft_events, handlarborsen_competitor_observations. All three had RLS ON, zero policies, no anon/authenticated table grants, and service_role reachability. Handlarborsen competitor table also FORCE RLS, service_role SELECT+INSERT but no UPDATE/DELETE. Existing 97 entries retain their earlier reviewed classifications; this is not a new full 100-table privilege-by-privilege audit."
+    "catalog_reconciliation_20261014": "Read-only live catalog verified 2026-10-14 after Handlarborsen competitor migration. Three newly live server-only tables reconciled: atlas_analysis_drafts, atlas_analysis_draft_events, handlarborsen_competitor_observations. All three had RLS ON, zero policies, no anon/authenticated table grants, and service_role reachability. Handlarborsen competitor table also FORCE RLS, service_role SELECT+INSERT but no UPDATE/DELETE. Existing 97 entries retain their earlier reviewed classifications; this is not a new full 100-table privilege-by-privilege audit.",
+    "website_build_planning_note": "The five website_build operator/project settings and immutable plan/revision/decision tables were introspected read-only after the 2026-10-14 production apply (ledger version 20261014185247; stored statement sha256 0abd0a7ac17669b8db9bc8fcb3b298d158a1678e157932adfd1911e5765496b4). Each has RLS ON, one owner-rooted authenticated SELECT policy, no anon grants, authenticated SELECT only, and service-role reachability. Client mutation and planning RPC execution are revoked. Only these five entries are refreshed; older classifications are unchanged."
   },
   "tables": {
     "account_snapshots": {
@@ -1055,6 +1056,56 @@
       "policies": 0,
       "anon_grants": false,
       "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "website_build_operator_settings": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": false,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "website_build_project_settings": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": false,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "website_build_plans": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": false,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "website_build_plan_revisions": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": false,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "website_build_plan_decisions": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": false,
+      "authenticated_grants": true,
       "service_role": true,
       "rls_declared_in_migration": true,
       "created_by_migration": true

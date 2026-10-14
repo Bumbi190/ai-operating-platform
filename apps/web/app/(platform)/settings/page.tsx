@@ -49,7 +49,8 @@ export default async function SettingsPage({ searchParams }: { searchParams?: Re
 }
 
 async function LoadedSettings({ youtubeOutcome }: { youtubeOutcome: YouTubeConnectOutcome | null }) {
-  const [model, brokerModel, websiteBuilderModel] = await Promise.all([loadSettings(), loadBrokerSettings(),loadWebsiteBuilderSettings()])
+  const model = await loadSettings()
   if (!model) redirect('/login')
+  const [brokerModel, websiteBuilderModel] = await Promise.all([loadBrokerSettings(), loadWebsiteBuilderSettings()])
   return <SettingsSurface model={model} brokerModel={brokerModel} websiteBuilderModel={websiteBuilderModel} displayPreferences={<DisplayPreferences />} youtubeOutcome={youtubeOutcome} />
 }

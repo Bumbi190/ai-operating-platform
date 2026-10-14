@@ -28,6 +28,7 @@ describe('competitor history visualization respects source and activation gate',
     expect(html).toContain('2026-10-14')
     expect(html).not.toContain('2026-10-13')
     expect(html).toContain('1/1 ändrade')
+    expect(html).toContain('Ingen jämförelse')
     expect(html).toContain('Public title A')
     expect(html).toContain('Public title B')
     expect(html).toContain('Förslag – inte godkänt eller utfört')

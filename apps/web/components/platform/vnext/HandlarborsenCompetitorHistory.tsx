@@ -63,14 +63,16 @@ export function HandlarborsenCompetitorHistory({ history }: { history: HistoryAn
             {days.map(day => (
               <div className={styles.day} key={day.date}>
                 <div className={styles.plot}>
-                  <div className={styles.bar} style={{ height: day.comparablePairs / maxBar * 100 + '%' }}>
-                    {day.changedTitles > 0 && (
-                      <div className={styles.changed} style={{ height: day.changedTitles / day.comparablePairs * 100 + '%' }} />
-                    )}
-                  </div>
+                  {day.comparablePairs > 0 && (
+                    <div className={styles.bar} style={{ height: day.comparablePairs / maxBar * 100 + '%' }}>
+                      {day.changedTitles > 0 && (
+                        <div className={styles.changed} style={{ height: day.changedTitles / day.comparablePairs * 100 + '%' }} />
+                      )}
+                    </div>
+                  )}
                 </div>
                 <time dateTime={day.date}>{day.date.slice(5)}</time>
-                <span>{day.changedTitles}/{day.comparablePairs} ändrade</span>
+                <span>{day.comparablePairs === 0 ? 'Ingen jämförelse' : day.changedTitles + '/' + day.comparablePairs + ' ändrade'}</span>
               </div>
             ))}
           </div>

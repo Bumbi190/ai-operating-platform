@@ -24,7 +24,7 @@ C. Ny allmän agentmotor med shell och browser: större förändring; väljs int
 2. Lägg till läsverktyg för Atlas: lista designfärdigheter och hämta en skill eller dess tillåtna referenser. ID och referenssökväg måste matcha registret. Inga godtyckliga filvägar, URL-hämtningar, installationer eller exekveringar tillåts.
 3. Projektagentens promptkomposition laddar endast explicit tilldelade, godkända skill-ID:n. Okända ID:n får aldrig räknas som verifierad förmåga. Befintliga okända etiketter rapporteras som olösta och ger inte nya rättigheter.
 4. Håll instruktionerna under befintlig systempolicy. En färdighet ger kunskap; den kan aldrig ge behörighet att installera, generera, spendera, skriva till andra projekt eller publicera. Upstream-instruktioner som förutsätter saknade verktyg blir redovisade beroenden.
-5. Ladda bara relevant innehåll med en uttrycklig storleksbudget. Ge tydligt fel om en referens saknas eller budgeten överskrids. Den stora katalogen ska inte injiceras i varje chatt.
+5. Ladda bara relevant innehåll. Läsverktyget returnerar högst 16 000 tecken per anrop med explicit nextOffset för fortsatt läsning. Agentpromptens skilltext har högst 64 000 tecken totalt; överträdelse blir ett tydligt fel, aldrig tyst trunkering. Den stora katalogen ska inte injiceras i varje chatt. Runtime-paketet innehåller bara SKILL.md och registrerade instruktionsreferenser, aldrig körbara scripts eller eval-data.
 
 ## Användarflöde och ärlig status
 

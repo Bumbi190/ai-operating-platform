@@ -1,19 +1,21 @@
 import { DOSSIER_DATE, EVIDENCE, STATUS_LABELS, summarizeScan, type PublicScan } from '@/lib/atlas/project-analytics/handlarborsen-competitors'
+import { HandlarborsenLandscape } from './HandlarborsenLandscape'
+import type { LandscapeScan } from '@/lib/atlas/project-analytics/handlarborsen-competitor-landscape'
 import styles from './HandlarborsenCompetitors.module.css'
 
 function CheckedTime({ value }: { value: string }) {
   return <time dateTime={value}>{new Date(value).toLocaleString('sv-SE', { timeZone: 'Europe/Stockholm' })} (Stockholm)</time>
 }
 
-export function HandlarborsenCompetitors({ scan }: { scan: PublicScan | null }) {
+export function HandlarborsenCompetitors({ scan, landscape = null }: { scan: PublicScan | null; landscape?: LandscapeScan | null }) {
   const summary = scan ? summarizeScan(scan) : null
   return (
     <div className={styles.page}>
       <header>
         <a href="/projects/handlarborsen" className={styles.link}>Tillbaka till Handlarbörsen</a>
         <p className={styles.kicker}>Handlarbörsen · Offentligt beslutsunderlag</p>
-        <h1>Konkurrentspanaren · Handlarbudet</h1>
-        <p>Daterad källdossier · sammanställd <time dateTime={DOSSIER_DATE}>{DOSSIER_DATE}</time>. Skrivskyddad läsning av tre publicerade nyheter.</p>
+        <h1>Konkurrentspanaren</h1>
+        <p>Fyra B2B-aktörer. Daterad dossier om Handlarbudet (<time dateTime={DOSSIER_DATE}>{DOSSIER_DATE}</time>) och tre ytterligare officiella jämförelsekällor. Inga påståenden om livepriser eller nyupptäckta förändringar.</p>
       </header>
       <section className={styles.panel} aria-labelledby="competitor-mode">
         <h2 id="competitor-mode">Manuell kontroll</h2>
@@ -31,8 +33,9 @@ export function HandlarborsenCompetitors({ scan }: { scan: PublicScan | null }) 
           : <p>Inte kontrollerad i denna vy. Källdossierns datum är inte en senaste körning.</p>}
         <p>En tillgänglig titel verifierar endast sidans tillgänglighet och titelmetadata vid kontrollen. Innehåll, aktuella villkor och förändringar över tid verifieras inte.</p>
       </section>
+      <HandlarborsenLandscape scan={landscape} />
       <section aria-labelledby="competitor-evidence">
-        <h2 id="competitor-evidence">Källbelagda observationer</h2>
+        <h2 id="competitor-evidence">Handlarbudet · daterade observationer</h2>
         <p>Belägg: de angivna publicerade nyheterna. Säkerheten gäller historiska publiceringar; dagens erbjudanden och våra hypoteser är inte verifierade.</p>
         <div className={styles.cards}>
           {EVIDENCE.map(source => {

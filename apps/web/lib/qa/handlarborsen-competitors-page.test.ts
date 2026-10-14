@@ -62,8 +62,11 @@ describe('project-authorized manual competitors page', () => {
   it('scans once after RLS resolution and renders statuses, dated source links and no writes', async () => {
     const element = await Page({ params: { slug: 'handlarborsen' }, searchParams: { scan: '1', url: 'https://evil.example' } })
     const html = renderToStaticMarkup(element)
-    expect(fetcher).toHaveBeenCalledTimes(4)
+    expect(fetcher).toHaveBeenCalledTimes(10) // 4 historical dossier + 3 robots + 3 official sites
     expect(fetcher.mock.calls.some(([url]) => String(url).includes('evil.example'))).toBe(false)
+    expect(html).toContain('AutoProff')
+    expect(html).toContain('BCA Sverige')
+    expect(html).toContain('AUTO1.com')
     expect(html).toContain('3 av 3')
     expect(html).toContain('dateTime=')
     for (const source of EVIDENCE) {

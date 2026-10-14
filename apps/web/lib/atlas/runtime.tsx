@@ -22,7 +22,7 @@ import {
 } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { createClient }           from '@/lib/supabase/client'
-import { buildChatRequestBody }   from '@/lib/atlas/view-client'
+import {useAtlasConversation} from '@/lib/atlas/conversation/provider'
 import { AtlasAudioAnalyser, AtlasAudioLevelStore } from './audio-analysis'
 import { playTtsUrl, type PlaybackHandle, type PlaybackResult } from './playback'
 import {
@@ -131,6 +131,8 @@ export function useAtlas(): AtlasValue {
   return ctx
 }
 
+export function useOptionalAtlas():AtlasValue|null { return useContext(AtlasContext) }
+
 /** Subscribe only the visual consumer to the high-frequency Web Audio level. */
 export function useAtlasAudioLevel(): number {
   const store = useContext(AtlasAudioLevelContext)
@@ -190,11 +192,13 @@ export function AtlasRuntimeProvider({
   useEffect(() => { isSessionActiveRef.current = isSessionActive }, [isSessionActive])
 
   // ── Konversation ─────────────────────────────────────────────────────────
-  const [history, setHistory]               = useState<ConversationMessage[]>([])
-  const historyRef                          = useRef<ConversationMessage[]>([])
-  const [conversationId, setConversationId] = useState<string | null>(null)
-  const convRef                             = useRef<string | null>(null)
-
+  const {controller:conversation,snapshot:sharedConversation}=useAtlasConversation()
+  const history=sharedConversation.history
+  const historyRef=useRef<ConversationMessage[]>(history)
+  historyRef.current=history
+  const conversationId=sharedConversation.id
+  const previousConversation=useRef<string|null>(null)
+  useEffect(()=>{if(previousConversation.current&&previousConversation.current!==conversationId)deactivate();previousConversation.current=conversationId},[conversationId])
   // ── Workspace ────────────────────────────────────────────────────────────
   const [currentWorkspace, setCurrentWorkspace] = useState<Workspace>(() =>
     resolveWorkspace(pathname, projects)
@@ -336,22 +340,16 @@ export function AtlasRuntimeProvider({
   }, [mounted])
 
   // ── Konversations-skapare ─────────────────────────────────────────────────
-  async function ensureConversation(firstText: string): Promise<string | null> {
-    if (convRef.current) return convRef.current
-    try {
-      const sb = createClient()
-      const { data: { user } } = await sb.auth.getUser()
-      if (!user) return null
-      const { data } = await sb
-        .from('conversations')
-        .insert({ user_id: user.id, title: '🎙 ' + firstText.slice(0, 56) })
-        .select('id')
-        .single()
-      const id = (data as any)?.id ?? null
-      convRef.current = id
-      if (id) setConversationId(id)
-    } catch { /* osparat samtal är ok */ }
-    return convRef.current
+  async function ensureConversation(firstText:string):Promise<string|null>{
+    const current=conversation.snapshot()
+    if(current.id)return current.state==='ok'?current.id:null
+    try{
+      const res=await fetch('/api/conversations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:'🎙 '+firstText.slice(0,56),...(activeProject?{project_id:activeProject.id}:{})})})
+      const row=await res.json()
+      if(res.ok&&typeof row.id==='string'){conversation.activateConversation({id:row.id,saved:[],state:'ok',projectId:activeProject?.id});return row.id}
+    }catch{}
+    setWarning({active:true,detail:'Konversationen kunde inte sparas. Försök igen.'})
+    return null
   }
 
   // ── STT ──────────────────────────────────────────────────────────────────
@@ -412,7 +410,11 @@ export function AtlasRuntimeProvider({
           listeningRef.current = false
           try { rec.stop() } catch { /* ignore */ }
           pendingSpeechEndRef.current = performance.now()
-          sendMessage(t)
+          const current=conversation.snapshot()
+          if(current.plan||current.session||/hemsida|webbsida|website|landningssida/i.test(t)){
+            deactivate()
+            void ensureConversation(t).then(id=>{if(id){conversation.stageSpeechDraft(t);router.push('/chat/'+id+'?build=1')}})
+          }else void sendMessage(t)
         }
       }, SILENCE_MS)
     }
@@ -575,6 +577,8 @@ export function AtlasRuntimeProvider({
 
   // ── Streaming + TTS-pipeline ──────────────────────────────────────────────
   async function sendMessage(text: string) {
+    const currentConversation=conversation.snapshot()
+    if(currentConversation.pending||currentConversation.state==='error'){setWarning({active:true,detail:'Vänta på svaret eller läs in konversationen igen innan du skickar nästa meddelande.'});return}
     // A delayed native start/result must not overtake this new chat request.
     stopListening()
     // A new request retires the previous timeline. Anything still in flight for
@@ -603,9 +607,6 @@ export function AtlasRuntimeProvider({
     setExecutiveState(isFirstMessage ? 'briefing' : 'advising')
     resetInactivityTimer()
 
-    // Uppdatera historik
-    historyRef.current = [...historyRef.current, { role: 'user', content: text }]
-    setHistory(h => [...h, { role: 'user', content: text }])
 
     const urlQueue: Promise<{ url: string | null; errorCode?: unknown }>[] = []
     let reply         = ''
@@ -698,98 +699,33 @@ export function AtlasRuntimeProvider({
     markOnce(marksRef.current, generation, 'sent', performance.now())
 
     try {
-      const res = await fetch('/api/chat', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(
-          buildChatRequestBody({
-            messages:        historyRef.current,
-            voice:           true,
-            conversation_id: convId,
-          })
-        ),
-      })
-
-      if (!res.ok) {
-        const payload = await res.json().catch(() => null) as { code?: unknown } | null
-        setWarning(resolveAtlasServiceWarning(payload?.code))
-        streamDone = true
-        setVoicePhase('idle')
-        return
-      }
-
-      if (res.body) {
-        const reader  = res.body.getReader()
-        const decoder = new TextDecoder()
-        let   buf     = ''
-
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          if (cancelRef.current) { try { reader.cancel() } catch { /* ignore */ }; break }
-
-          buf += decoder.decode(value, { stream: true })
-          const lines = buf.split('\n')
-          buf = lines.pop() ?? ''
-
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue
-            try {
-              const d = JSON.parse(line.slice(6))
-
-              if (d.event === 'text' && d.text) {
-                markOnce(marksRef.current, generation, 'firstByte', performance.now())
-                reply += d.text
-                setResponse(reply)
-                flush(false)
-
-              } else if (d.event === 'timing') {
-                // Two frames arrive: an early one at first token, a final one at
-                // completion. Merging keeps what the early frame already proved.
-                serverTiming = mergeServerTiming(serverTiming, {
-                  contextMs:     d.contextMs,
-                  firstTokenMs:  d.firstTokenMs,
-                  serverTotalMs: d.serverTotalMs,
-                })
-
-              } else if (d.event === 'navigate' && d.href) {
-                // Atlas delegerar till ett workspace
-                setExecutiveState('delegating')
-                const href = d.href as string
-                if (href.split('?')[0] !== pathnameRef.current) {
-                  openWorkspace(href)
-                }
-
-              } else if (d.event === 'tool_call' && typeof d.tool === 'string' && ATLAS_ACTION_TOOL_NAMES.has(d.tool)) {
-                beginExecution(d.tool)
-
-              } else if (d.event === 'tool_result' && typeof d.tool === 'string' && ATLAS_ACTION_TOOL_NAMES.has(d.tool)) {
-                const result = d.result && typeof d.result === 'object'
-                  ? d.result as Record<string, unknown>
-                  : null
-                finishExecution(d.tool, result)
-
-              } else if (d.event === 'error') {
-                executionRef.current = null
-                setExecution(null)
-                setWarning(resolveAtlasServiceWarning(d.code))
-
-              } else if (d.event === 'done' && executionRef.current) {
-                // Defensive cleanup for a truncated stream. A completion pulse
-                // is never fabricated without the corresponding tool_result.
-                executionRef.current = null
-                setExecution(null)
-              }
-            } catch { /* ignorera felaktiga SSE-frames */ }
-          }
+      if(!convId){streamDone=true;setVoicePhase('idle');return}
+      const outcome=await conversation.sendTurn({conversationId:convId,text,inputSource:origin==='voice'?'voice':'text',onEvent:d=>{
+        if(cancelRef.current||generation!==requestGenRef.current)return
+        if(d.event==='text'&&typeof d.text==='string'){
+          markOnce(marksRef.current,generation,'firstByte',performance.now())
+          reply+=d.text;setResponse(reply);flush(false)
+        }else if(d.event==='timing'){
+          serverTiming=mergeServerTiming(serverTiming,{contextMs:d.contextMs as number,firstTokenMs:d.firstTokenMs as number,serverTotalMs:d.serverTotalMs as number})
+        }else if(d.event==='navigate'&&typeof d.href==='string'){
+          setExecutiveState('delegating')
+          if(d.href.split('?')[0]!==pathnameRef.current)openWorkspace(d.href)
+        }else if(d.event==='tool_call'&&typeof d.tool==='string'&&ATLAS_ACTION_TOOL_NAMES.has(d.tool)){
+          beginExecution(d.tool)
+        }else if(d.event==='tool_result'&&typeof d.tool==='string'&&ATLAS_ACTION_TOOL_NAMES.has(d.tool)){
+          finishExecution(d.tool,d.result&&typeof d.result==='object'?d.result as Record<string,unknown>:null)
+        }else if(d.event==='error'){
+          executionRef.current=null;setExecution(null);setWarning(resolveAtlasServiceWarning(d.code))
+        }else if(d.event==='done'&&executionRef.current){
+          executionRef.current=null;setExecution(null)
+        }else if(d.event==='website_plan'||d.event==='website_workspace'){
+          router.push('/chat/'+convId+'?build=1')
         }
-      }
-
+      }})
+      if(!outcome.ok)setWarning({active:true,detail:outcome.notice??'Atlas kunde inte slutföra svaret.'})
       streamDone = true
       flush(true)
 
-      historyRef.current = [...historyRef.current, { role: 'assistant', content: reply }]
-      setHistory(h => [...h, { role: 'assistant', content: reply }])
 
       if (!playerStarted) {
         setVoicePhase('idle')

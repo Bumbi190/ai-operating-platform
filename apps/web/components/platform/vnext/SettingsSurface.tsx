@@ -31,6 +31,7 @@ import {
   type YouTubeConnectOutcome,
 } from '@/lib/os/settings-shared'
 import type { BrokerSettingsModel } from '@/lib/atlas/code-broker/types'
+import {ProjectWebsiteBuilderSettings,type WebsiteBuilderSettingsModel} from './ProjectWebsiteBuilderSettings'
 import { SettingsBrokerPanel } from './SettingsBrokerPanel'
 import { SettingsCredentialForm } from './SettingsCredentialForm'
 import { SettingsVerifyButton } from './SettingsVerifyButton'
@@ -63,8 +64,9 @@ import styles from './SettingsSurface.module.css'
  * credential/verification/YouTube routes and the purpose-specific C1 broker lifecycle
  * routes rendered below; there is no generic settings mutation boundary.
  */
-export function SettingsSurface({ model, brokerModel, displayPreferences, youtubeOutcome = null }: {
+export function SettingsSurface({ model, brokerModel, displayPreferences, youtubeOutcome = null, websiteBuilderModel }: {
   model: SettingsModel
+  websiteBuilderModel?:WebsiteBuilderSettingsModel|null
   brokerModel?: BrokerSettingsModel
   displayPreferences: ReactNode
   youtubeOutcome?: YouTubeConnectOutcome | null
@@ -91,6 +93,7 @@ export function SettingsSurface({ model, brokerModel, displayPreferences, youtub
 
       <div className={styles.columns}>
         <div className={styles.column}>
+          {websiteBuilderModel ? <ProjectWebsiteBuilderSettings model={websiteBuilderModel}/> : null}
           <ProjectsPanel model={model} youtubeOutcome={youtubeOutcome} />
         </div>
         <div className={styles.column}>

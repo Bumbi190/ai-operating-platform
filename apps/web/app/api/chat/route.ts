@@ -42,6 +42,14 @@ import { executeLegacyDelegate } from '@/lib/atlas/legacy-delegate'
 import { validateWorkflowDraft, type WorkflowDraft } from '@/lib/atlas/workflow-authoring'
 import { listAtlasWorkflowCatalog } from '@/lib/atlas/workflow-catalog'
 import { DESIGN_SKILL_TOOLS, DESIGN_SKILL_GUIDE, executeDesignSkillTool } from '@/lib/skills/atlas-tools'
+import {resolveConversationBuildContext} from '@/lib/website-build/planning/build-context'
+import {readWebsitePlan} from '@/lib/website-build/planning/store'
+import type {BuildContext} from '@/lib/atlas/conversation/stream-effects'
+import {executeVisiblePlanApproval,parseWebsitePlanRef} from '@/lib/website-build/planning/operator-command'
+import {buildErrorResponse} from '@/lib/website-build/api'
+import {WebsiteBuildError} from '@/lib/website-build/store'
+import {assertSameOrigin} from '@/lib/atlas/executive/http'
+import type {PlanRevisionRef} from '@/lib/website-build/planning/types'
 import { WEBSITE_BUILD_TOOLS, WEBSITE_BUILD_GUIDE, WEBSITE_BUILD_TOOL_NAMES, handleWebsiteBuildTool } from '@/lib/website-build/atlas-tools'
 import type { Json } from '@/lib/supabase/database.types'
 import { isViewAwarenessEnabled, normalizeView, renderViewBlock, type ClientViewEnvelope } from '@/lib/atlas/view-context'
@@ -630,12 +638,15 @@ export async function POST(request: Request) {
     }, agent: 'Atlas', operation: 'Atlas Chat',
   })
 
-  const { messages, conversation_id, voice, mode, view } = await request.json() as {
+  const { messages, conversation_id, voice, mode, view, websitePlanRef, buildContext:rawBuildContext, inputSource } = await request.json() as {
     messages: Anthropic.MessageParam[]
     conversation_id?: string
     voice?: boolean
     mode?: string
     view?: ClientViewEnvelope
+    websitePlanRef?:unknown
+    buildContext?:unknown
+    inputSource?:unknown
   }
 
   const db = createAdminClient()
@@ -681,12 +692,12 @@ export async function POST(request: Request) {
     const m = messages[messages.length - 1]
     return m?.role === 'user' && typeof m.content === 'string' ? m.content : ''
   })()
-  const fastPath = mode === 'content' || isFastPathContent(lastUserText)
+  const fastPath = !websitePlanRef && !rawBuildContext && (mode === 'content' || isFastPathContent(lastUserText))
   // Statisk konversation (hej/tack/vem är du) — besvaras ur Atlas identitet ensam.
   // Allow-list, aldrig gissning: allt som inte bevisligen klarar sig utan live-
   // data, projekt, Memory, klocka och verktyg går full path.
   const staticConversation =
-    !fastPath && classifyStaticConversation(lastUserText) === 'static_conversation'
+    !fastPath && !websitePlanRef && !rawBuildContext && classifyStaticConversation(lastUserText) === 'static_conversation'
   // Resolution is a state-changing action with one exact boundary. Detect it
   // separately so turn zero can force resolve_dream_finding rather than any tool.
   const resolutionIntent = !fastPath && !staticConversation && isDreamResolutionIntent(lastUserText)
@@ -716,7 +727,40 @@ export async function POST(request: Request) {
   // that path builds no project context and is sent no tools, so `executeTool`
   // — the one remaining reader of this list — cannot be reached. Every other
   // path, the content fast path included, reads it exactly as before.
-  const allowedProjectIds = staticConversation ? [] : await getAllowedProjectIds(db, user.id)
+  const allowedProjectIds = staticConversation && !websitePlanRef && !rawBuildContext ? [] : await getAllowedProjectIds(db, user.id)
+
+
+  // A visible-plan confirmation is an authenticated operator command, never a model tool.
+  let visiblePlan:PlanRevisionRef|null=null
+  try{visiblePlan=parseWebsitePlanRef(websitePlanRef)}catch(error){return buildErrorResponse(error)}
+  let verifiedBuildContext:BuildContext|null=null
+  if(rawBuildContext!==undefined&&rawBuildContext!==null){
+    const denied=assertSameOrigin(request);if(denied)return denied
+    try{verifiedBuildContext=await resolveConversationBuildContext(db,{userId,allowedProjectIds},await resolveOwnedConversationId(),rawBuildContext)}catch(error){return buildErrorResponse(error)}
+  }
+  if(visiblePlan){
+    const denied=assertSameOrigin(request);if(denied){denied.headers.set('cache-control','private, no-store');return denied}
+    try{
+      const owned=await resolveOwnedConversationId()
+      if(!owned)throw new WebsiteBuildError('NOT_FOUND',404)
+      const native=await executeVisiblePlanApproval({db,principal:{userId,allowedProjectIds},conversationId:owned,visiblePlan,userText:lastUserText})
+      if(native){
+        const reply='Planen är godkänd och bygget är köat. Du kan fortsätta prata eller skriva medan previewn uppdateras.'
+        await saveMessage('user',lastUserText)
+        await saveMessage('assistant',reply)
+        await saveMessage('tool',null,{kind:'website_effect',conversationId:owned,planRef:native.plan.ref,sessionRef:{projectId:native.session.projectId,sessionId:native.session.sessionId}})
+        const frames=[
+          {event:'website_plan',plan:native.plan,conversationId:owned},
+          {event:'website_workspace',session:native.session,conversationId:owned},
+          {event:'text',text:reply},{event:'done'},
+        ].map(frame=>'data: '+JSON.stringify(frame)+'\n\n').join('')
+        return new Response(frames,{headers:{'content-type':'text/event-stream','cache-control':'private, no-store'}})
+      }
+      const plan=await readWebsitePlan(db,{userId,allowedProjectIds},visiblePlan)
+      if(plan.conversationId!==owned)throw new WebsiteBuildError('NOT_FOUND',404)
+      if(plan.currentRevision.revisionId!==visiblePlan.revisionId||plan.currentRevision.sha256!==visiblePlan.sha256)throw new WebsiteBuildError('PLAN_STALE',409)
+    }catch(error){return buildErrorResponse(error)}
+  }
 
   // True when the action ledger already shows a delegation — corroborates truthful
   // recall so the delegation honesty guard does NOT fire on it (set below).
@@ -734,6 +778,8 @@ export async function POST(request: Request) {
     systemPrompt = STATIC_CONVERSATION_SYSTEM + (voice ? VOICE_DIRECTIVE : '')
   } else {
     systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE + DESIGN_SKILL_GUIDE + WEBSITE_BUILD_GUIDE
+    if(visiblePlan)systemPrompt+='\nCURRENT REVIEWED PLAN REFERENCES: '+JSON.stringify(visiblePlan)+'; read get_website_build_plan before revising.\n'
+    if(verifiedBuildContext)systemPrompt+='\nCURRENT BUILD (verified for this conversation): '+JSON.stringify(verifiedBuildContext)+'; user change requests go to submit_website_build_feedback in this session, using the actually rendered revision. Questions about status go to get_website_build. Never start a second build for a feedback request.\n'
     // UNCONDITIONAL, AND DELIBERATELY BEFORE EVERYTHING THAT CAN FAIL. The bug
     // this slice fixes was partly that the only timestamp lived inside a block
     // guarded by `try`, so a single failed database read left Atlas with no idea
@@ -992,7 +1038,7 @@ export async function POST(request: Request) {
 
             let result: unknown
             try {
-              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds, toolUse.id, await resolveOwnedConversationId())
+              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds, toolUse.id, await resolveOwnedConversationId(), verifiedBuildContext, inputSource==='voice'?'voice':'text')
             } catch (err) {
               result = { error: err instanceof Error ? err.message : 'Okänt fel' }
             }
@@ -1060,6 +1106,12 @@ export async function POST(request: Request) {
             }
 
             send('tool_result', { tool: toolUse.name, result })
+            // Typed effects come only from these authorized server tool outcomes.
+            const ownedWebsiteConversation=WEBSITE_BUILD_TOOL_NAMES.includes(toolUse.name)?await resolveOwnedConversationId():null
+            if(ownedWebsiteConversation&&r&&!(r as any).error&&(r as any).conversationId===ownedWebsiteConversation){
+              if(['draft_website_build_plan','get_website_build_plan'].includes(toolUse.name))send('website_plan',{plan:r,conversationId:ownedWebsiteConversation})
+              if(['start_website_build','get_website_build'].includes(toolUse.name))send('website_workspace',{session:r,conversationId:ownedWebsiteConversation})
+            }
 
             // PERSISTENS: spara verktygsanrop + resultat som en 'tool'-rad så att
             // utdata (särskilt Dream issue_id) överlever mellan turer och vid reload.
@@ -1128,6 +1180,8 @@ async function executeTool(
   allowedProjectIds: string[] = [],
   toolCallId = globalThis.crypto.randomUUID(),
   ownedConversationId: string | null = null,
+  verifiedBuildContext:BuildContext|null=null,
+  inputSource:'text'|'voice'='text',
 ): Promise<unknown> {
   // Deterministic, read-only, no database and no network. Placed first because
   // it is the cheapest branch and touches nothing else in the system.
@@ -1142,7 +1196,7 @@ async function executeTool(
   }
 
   if (WEBSITE_BUILD_TOOL_NAMES.includes(name)) {
-    return handleWebsiteBuildTool(name, input, { userId, allowedProjectIds }, ownedConversationId, db)
+    return handleWebsiteBuildTool(name, input, { userId, allowedProjectIds }, ownedConversationId, db, verifiedBuildContext, inputSource==='voice'?'voice':'text')
   }
 
   if (name === 'list_atlas_workflow_catalog') {

@@ -64,8 +64,9 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // P1 adds atlas_analysis_drafts (20261012183305): 113/99. Local only; no activation claim.
 // Website build sessions: 115/101 -> 116/102 (already applied).
 // Handlarborsen competitor observations: 116/102 -> 117/103 (pending apply).
-export const EXPECTED_CANONICAL_SQL_COUNT = 117
-export const EXPECTED_ENFORCED_COUNT = 103
+// Website build planning v1: 117/103 -> 118/104 (enforced; pending reviewed apply).
+export const EXPECTED_CANONICAL_SQL_COUNT = 118
+export const EXPECTED_ENFORCED_COUNT = 104
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

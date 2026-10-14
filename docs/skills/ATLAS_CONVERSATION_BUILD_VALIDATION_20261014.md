@@ -1,0 +1,126 @@
+# Atlas conversation → plan → preview — validation, 2026-10-14
+
+## Delivered behavior and scope
+
+This branch implements approved delivery A. Text and editable voice input use one owned durable Atlas conversation. Atlas saves a versioned architecture proposal; an exact operator approval starts that version, selects the explicitly configured builder and opens the existing governed static preview. Feedback carries the actually rendered revision. Historical owner sessions retain their real brief without invented approval.
+
+The project directory default and bound per-project path are persisted. The private ZIP collects src/, assets/images/, assets/media/, plans/, previews/ and project.json under one project root; it explicitly records physicalDirectoryCreated=false. It pins the session's approved plan even when a newer draft exists. Delivery B still needs a verified native/cloud development runner; C needs real provider write adapters, publication, DNS and HTTPS evidence. A does not deliver those execution capabilities.
+
+All generated-site terminal, Vercel, Supabase, Strato account/DNS and form-delivery adapters remain not_implemented. Account state is unknown until an actual adapter verifies it. Platform hosting/environment variables, broker identity and ChatGPT connectors do not change that. A simple static website has no unnecessary Supabase requirement. Domain discovery uses Strato first and purchases stay in the operator's own account.
+
+## Evidence boundary
+
+Browser fixtures mount the actual AtlasConversationProvider, AtlasRuntimeProvider, AtlasChatConversation, AtlasBuildSurface, preview runtime, server POST route, owner APIs, SQL RPCs and website worker. Framework routing/auth transport and external Anthropic/SpeechRecognition responses are adapted. No paid provider call, physical microphone, logged-in owner browser or generated-site provider deployment is inferred from doubles. The prior aborted browser login is not retried or bypassed.
+
+All database proofs use the newly owned labeled Docker fixture and the explicitly selected private test database. Stateful suites are serialized: resetWorkerDb in an overlapping suite can reconcile another suite's pending jobs. Two earlier overlapping runs are discarded, not counted as final evidence.
+
+## RED → GREEN findings
+
+- Bounded plan validation and deterministic brief/hash:32 tests; project names use the full UUID to prevent collisions.
+- Real SQL plan/decision/start locking, canonical run insertion and stale/replay handling:13 planning tests plus13 worker tests and32 validators,59 total in the Task2 final gate.
+- Authenticated APIs/settings:26 real SQL/API/store assertions,3 settings browser cases. Service-role auth.users SELECT was denied in the production privilege probe; the fixture now matches that and the unnecessary root lookup was removed rather than granting access.
+- Actual chat native approval/model-tool boundaries and isolation:84 tests. A committed exact retry after a newer draft returns the original session; an unstarted stale decision is refused.
+- Shared controller, voice capture and chat:111 tests; actual build-context/ownership gate33. Released microphone browser13, external speech doubles.
+- Preview/workspace:9 released cases plus5 actual-surface cases. The loading-revision test proves both POST context and persisted feedback stay bound to the rendered v1 while v2 is selected/loading.
+- Readiness/guides:21 catalog/API/SQL/tool assertions;6 initial browser states and a seventh expanded-guide layout case.
+- Joined new-conversation flow:7 browser cases cover text idea→edited plan→approval→v1→feedback→v2; editable voice idea; lost acknowledgement/reload/exact replay; missing builder; historical feedback/foreign reference denial; mobile auto-open; separate unsent drafts across conversation switches.
+- Visual inspection revealed a duplicated project-directory suffix and guide/composer overlap. Each had an observed browser RED and is fixed by showing the bound path once and a bounded conversation scroll pane. The same-component switch reproduced an unsent draft leak; a per-conversation React key restores independent drafts.
+- A missing fixture Next router refresh method falsely produced an interrupted-turn notice despite a completed SSE. The strengthened joined assertion observed RED; the routing adapter now includes the actual documented method. This is fixture repair, not a production network fix.
+- The broader initial351-test gate had4 failures: the new read tool lacked its Swedish UI label and the canonical source-count tripwire still expected117 instead of118. The label and explicit118/104 enforced inventory are repaired; frozen grandfathered/legacy allowlists are unchanged. No production application is claimed from a synthetic ledger.
+- Real SQL export-pinning regression verifies a newer unapproved draft and a changed owner directory default cannot alter the approved plan/bound location in the ZIP; a foreign principal is refused.
+
+Final fresh gate totals and activation evidence are appended after execution. No repository-wide green is claimed; unrelated inherited Windows/source baseline failures remain documented in ATLAS_ENTRY_VOICE_FIX_20261014.md.
+
+## Implementation rulings (chronological)
+
+1. Native skill's bundled scripts/resources are not readable through the configured cloud skill provider (three reads failed); use the same ignored workspace/brief/ledger/test contract manually on Windows — preserves checkpoints and evidence — cost if wrong: checkpoint formatting can differ, no product authority changes.
+
+2. The user's project-directory addition is implemented in A as persistent owner defaults, bound per-project locations and real structured exports; actual host folder/image generation waits for a verified B execution adapter — current Vercel static worker cannot write to a Windows filesystem — cost if wrong: user might expect a host folder sooner; UI must explicitly show pending native creation.
+
+3. Full-suite baseline already has known failures documented in the earlier validation; use fresh impacted baseline and appropriate focused regression gates, then record broader checks only where justified — higher-level instructions require appropriate checks, not repeating unchanged unrelated failures — cost if wrong: an unrelated integration regression may escape focused tests; required isolation CI and final review remain.
+
+4. Folder names use the complete UUID rather than the first eight characters — projects sharing a prefix must never collide — cost if wrong: longer names, no data overwrite.
+
+5. Existing worker fixtures now need explicit real plan/operator decisions because the legacy RPC is intentionally closed — update test-only session setup, preserve worker assertions — cost if wrong: fixture setup could mask a gate bug; direct unplanned SQL denial remains separately tested.
+
+6. Production service_role cannot SELECT auth.users (read-only privilege probe=false), unlike the original SQL fixture — remove the unnecessary root-get existence query, keep authenticated server principal and table FK; never grant auth access or use SECURITY DEFINER — cost if wrong: a trusted internal caller can read null for a nonexistent UUID, but cannot persist it past FK. Reproduced permission-denied RED in owned fixture; permanent canonical grants regression added.
+
+7. Add /settings/website-build as a direct owner-bound settings destination alongside the vNext settings panel — Atlas needs a working settings link even when the legacy UI generation is selected — cost if wrong: one extra route to maintain, no legacy credential mutation changes.
+
+8. Approved shared conversation work supersedes the old ChatClient private transport freeze; retargeted the legacy hydration/source-location tripwires to real rendering and shared sender behavior, kept the other legacy hash pins, ownership and history assertions — cost if wrong: legacy presentation may change; browser and SSR hydration checks remain. Expanded the event contract to the two reviewed website effects and supplied labels for the two actual plan tools. Fixture conversation POST/STT/TTS transport is adapted, not production auth.
+
+9. Conversation pages use the shared owner-bound surface under both UI generations; keeping the old early legacy branch would leave the requested preview unavailable — cost if wrong: legacy chat body differs, but original shell tokens, owned history, and other legacy body pins remain. Updated the generation behavior tests to the shared loader rather than requiring the removed branch.
+
+10. The fresh-idea approval/auto-open and missing-builder checks will be proved together in Task8's new-conversation joined fixture, rather than duplicating a second stub fixture here — uses the actual route/controller/SQL once — cost if wrong: Task6's intermediate commit alone is not releasable; final review and activation wait for Task8.
+
+11. No generated-site terminal/provider account adapters are callable in Omnira, so all production connection statuses remain unknown with not_implemented adapters; readiness reads only the owned saved plan/settings — platform environment, broker enrollment and ChatGPT connectors do not prove capability — cost if wrong: manual login may exist but Atlas will not claim or exercise unproven access. Verified-target guides add explicit owner/project scope checks; no target is inferred.
+
+12. A static preview currently requires no new app secret, so no local CSPRNG/key-generation recipe is emitted; provider tokens must be created through the issuing provider — avoids a fabricated API key or unused credential — cost if wrong: a later live feature needs its actual named secret and protected destination added in B/C.
+
+13. Move Task9's pure canonical migration inventory/count update into Task8 so the impacted regression gate can complete before final review — the new SQL file is explicitly enforced118/104, never grandfathered; production remains unapplied — cost if wrong: a count reconciliation may be needed after refreshing main, not a relaxed guard.
+
+14. Existing user approval includes the planned normal protected PR, merge and activation, so execute the already chosen integration instead of re-presenting the finish-skill menu — persistent session authority takes precedence over routine re-confirmation — cost if wrong: release occurs sooner than another permission round, within the expressly approved target/scope. The documented focused-gate ruling applies to the finish skill's generic full-suite instruction; unchanged unrelated baseline failures are not concealed or re-run.
+
+15. Physical directory/fullstack execution remains B — approved A deliberately exposes pending runner rather than inventing execution — cost if wrong: native files still need a subsequent runner delivery.
+
+16. Provider writes/purchases/deployment/DNS/HTTPS remain C — guides do not create a connection — cost if wrong: full product publication still needs scoped provider adapters.
+
+17. Physical mic, paid generation and signed-in owner-browser success are not established by fixtures — preserve the limitation and do not retry/bypass the user-aborted login — cost if wrong: the user's specific live-browser failure may still need their session to reproduce.
+
+18. Unrelated known-red legacy suite remains outside this change — fresh impacted377 and protected CI provide the actual gate, without claiming repository-wide green — cost if wrong: an unrelated integration problem may remain.
+
+19. Required CI exposed missing live schema-registry entries and three old conversation-generation source assertions beyond the initial focused gate; complete the required integration with observed production catalog classes and shared-loader retargeting, never exceptions or relaxed protection — cost if wrong: classification/presentation metadata may drift; actual RLS/foreign refusal and unchanged migration SHA are verified separately. This is Task9 release integration, not a second reviewer/fix cycle.
+
+## Release contract
+
+The new planning migration is enforced, not grandfathered. Frozen applied migrations stay byte-identical. Final review and required checks precede production application. Apply-before-PR guard policy creates a schema-first window in which new starts are gated until the matching UI is deployed; historical reads/feedback continue. Failed activation keeps the gate closed; never restore unplanned creation.
+
+Protected main is merged only with its real required PR contexts. No admin merge, forged check status or workflow_dispatch substitution is used. Exact merge SHA, deployment aliases, canonical guard, owner assignment and anonymous/foreign access checks must be recorded before A is called live.
+
+## Reviewed provider guides
+
+Reviewed2026-10-14 using official sources:
+
+- https://www.strato.se/domannamn/sok-doman/
+- https://www.strato.se/apps/CustomerService
+- https://www.strato.se/faq/domaen/vilka-dns-poster-finns-tillgaengliga-hos-strato-och-hur-kan-jag-hantera-dem/
+- https://vercel.com/docs/cli/login
+- https://vercel.com/docs/cli/link
+- https://vercel.com/docs/environment-variables/managing-environment-variables
+- https://supabase.com/docs/guides/getting-started/api-keys
+
+No price, static A/CNAME value, nameserver/mail change, registrar transfer, arbitrary model URL or fabricated API-key generator is encoded. Manual provider commands are non-secret, require the appropriate CLI/OS and do not connect Atlas's unavailable execution adapters.
+
+## Fresh Task8 gates before review
+
+-377/377 tests across30 impacted Vitest files, including real SQL planning/worker/API/export pinning, chat ownership/operator/read isolation, controller/voice and pure migration guard. Explicit private fixture; non-overlapping final run, exit0.
+-Joined conversation7/7, readiness/status/expanded-guide7/7 and released microphone/entry13/13 Chromium cases, zero retries.
+-Standalone TypeScript check exit0; main refreshed once and remains630a12c, so no integration conflict or count reconciliation was required.
+-The final old workspace9 and actual-surface5 browser gates execute through the Task8 completion helper. Their result is recorded in the subsequent release evidence; no broader legacy baseline green is inferred.
+
+## Final independent review and repairs
+
+One fresh-context whole-branch review inspected630a12c..5804a6d. Its verdict was With fixes:0 Critical,4 Important,0 Minor. Root accepted all four findings based on user impact. No second review is claimed.
+
+1. Session replacement retained the previously rendered revision. The activation and typed workspace-effect paths now clear it atomically before any feedback can be sent for the new build. Both paths observed RED before repair.
+2. Successful hydration after an unreadable history retained the empty cache. The controller now restores authoritative saved history; nonpending server extensions are reconciled while a stale prefix cannot discard newer local turns. Recovery and reconciliation each observed RED.
+3. Ordinary reload sorted builds by updated_at and could reopen an older build. The loader now follows the owned plan's activeSessionId, while an explicit historical request remains pinned. A real SQL test starts two approved builds and updates the old one later: RED then GREEN.
+4. An explicitly viewed older build could be presented alongside the current plan without distinction. The UI now identifies that relationship, exposes the actual saved brief, labels the latest plan's other-build decision and keeps feedback bound to the displayed session. Actual two-build browser reproduction observed RED then GREEN.
+
+Focused repair gate:16/16 controller/real SQL tests and8/8 joined browser cases GREEN; standalone TypeScript exit0. Final impacted suite/browser totals and protected release evidence are recorded below or in the PR's release record. Initial browser setup allowance was corrected for two real fixture worker runs; assertions verify the brief within its own details, since the latest plan is intentionally also present. Neither fixture correction is presented as a product repair.
+
+Deferred minors: none were reported.
+
+## Fresh final repair gates
+
+After the one fix pass, the non-overlapping final impacted run passed382/382 across30 Vitest files (158.38s). Joined conversation8/8, released workspace9/9, actual surface5/5, guides7/7 and released microphone/entry13/13 passed with zero retries:42 browser cases total. TypeScript and git diff --check exit0. This includes exact rendered-revision feedback while another preview loads, disk-extracted ZIP behavior, real pause/resume/cancel receipts, mobile layout and old-build feedback with the newer active build preserved.
+
+Main was checked again before release and remains630a12c. The prepared planning SQL is byte-identical to its repository file (SHA2560abd0a7ac17669b8db9bc8fcb3b298d158a1678e157932adfd1911e5765496b4,21238 bytes). Production preflight found140 ledger entries, no planning table,0 website build sessions, no service_role auth.users SELECT grant, and the unchanged frozen website-session statement hash. Exact production activation evidence is attached to the protected PR release record; no live claim is made solely from these local gates.
+
+## Required release integration
+
+The first real protected Atlas job on59f1651 failed7 assertions:5 new tables were unclassified in the live registry,3 source expectations still required the removed conversation generation branch/format, and the settings null-session test reached a newly added parallel loader. The five TENANT_RLS registry rows now reflect actual production introspection (one owner SELECT policy, authenticated SELECT only, no anon grant, service-role reachability); no security exception or migration edit was added. Shared-loader assertions retain ownership-before-messages and neutral foreign/missing refusal. The settings test now proves broker/website loaders are never called before a null-session redirect; observed RED→GREEN after moving those reads after loadSettings succeeds.
+
+All300 tests across those4 files pass with no skips, typecheck0. A33-file Windows run had1048 pass and13 unrelated path-separator/working-copy hash failures; no full Windows green is claimed. The unchanged SettingsLegacy blob has its frozen expected hash; restoring that working copy from the exact git blob resolves its CRLF-only failure with no repository diff. The required Linux PR job is the full1061-test release gate and must pass on the final head before merge.
+
+Production migration is applied as ledger20261014185247;141 known names. Stored statement hash equals the exact reviewed source. Five RLS tables and revoked client RPC execution were verified; a foreign builder read was refused. No production plan/session was created for proof. The intended owner builder was assigned through the owner-scoped RPC, with directory location still unselected. Security advisor baseline remains5 notices with0 planning notices. Preview build on59f1651 is READY and its real build log reports policy v2,104/104 enforced migrations and141 known ledger names without override.

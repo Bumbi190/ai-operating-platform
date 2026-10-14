@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getProjectBySlug } from '@/lib/project/get-project'
 import { readBuildSession, WebsiteBuildError } from '@/lib/website-build/store'
+import {loadChatConversation} from '@/lib/os/chat'
+import {readConversationWorkspace} from '@/lib/website-build/planning/conversation-workspace'
 import { BuildWorkspace } from '@/components/website-build/BuildWorkspace'
 export default async function WebsiteBuildPage({ params }: { params: { slug: string; sessionId: string } }) {
   const project = await getProjectBySlug(params.slug)
@@ -11,9 +13,11 @@ export default async function WebsiteBuildPage({ params }: { params: { slug: str
   if (!user) notFound()
   try {
     const session = await readBuildSession(createAdminClient(), { userId: user.id, allowedProjectIds: [project.id] }, { projectId: project.id, sessionId: params.sessionId })
-    const { data, error } = await db.from('website_build_sessions').select('brief').eq('id', session.sessionId).eq('project_id', project.id).maybeSingle()
-    if (error || !data) return <p role="alert">Den sparade briefen kunde inte läsas. Försök igen.</p>
-    return <BuildWorkspace key={session.sessionId} initialSession={session} projectSlug={project.slug} userId={user.id} brief={data.brief} />
+    const model=await loadChatConversation(session.conversationId)
+    if(!model||model==='not_found')notFound()
+    const workspace=await readConversationWorkspace(createAdminClient(),{userId:user.id,allowedProjectIds:[project.id]},session.conversationId,session.sessionId)
+    return <BuildWorkspace key={session.sessionId} conversationModel={model} initialSession={session} plan={workspace.plan} brief={workspace.brief??undefined}/>
+
   } catch (error) {
     if (error instanceof WebsiteBuildError && error.status < 500) notFound()
     return <p role="alert">Byggtjänsten kunde inte svara. Försök igen.</p>

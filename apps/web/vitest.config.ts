@@ -18,6 +18,7 @@ export default defineConfig({
     include: [
       'lib/website-build/**/*.test.ts',
       'lib/atlas/voice-capture.test.ts',
+      'lib/atlas/conversation/**/*.test.ts',
       "lib/qa/**/*.test.ts",
       "lib/nav/**/*.test.ts",
       "lib/intelligence/**/*.test.ts",

@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test'
+export default defineConfig({testDir:'./e2e',testMatch:'website-builder-settings.spec.ts',workers:1,retries:0,timeout:30000,use:{baseURL:'http://127.0.0.1:54391',browserName:'chromium',screenshot:'only-on-failure'},outputDir:'../../.superpowers/sdd/2026-10-14-atlas-conversation-build/settings-browser-results',webServer:{command:'node e2e/atlas-entry-server.mjs',url:'http://127.0.0.1:54391',reuseExistingServer:false,timeout:60000}})

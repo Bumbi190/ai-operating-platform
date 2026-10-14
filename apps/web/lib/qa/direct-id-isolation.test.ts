@@ -310,7 +310,7 @@ describe('9D · chat/[id] — the vNext conversation keeps user ownership', () =
 
   it('the loader under test is the one the page renders', () => {
     expect(loader.length).toBeGreaterThan(0)
-    expect(PAGE_CODE).toMatch(/const model = await loadChatConversation\(id\)/)
+    expect(PAGE_CODE).toMatch(/const\s+model\s*=\s*await\s+loadChatConversation\(id\)/)
   })
 
   it('messages are fetched ONLY after ownership resolves', () => {
@@ -329,12 +329,13 @@ describe('9D · chat/[id] — the vNext conversation keeps user ownership', () =
   })
 
   it('a foreign or missing conversation is the same neutral redirect as before', () => {
-    expect(PAGE_CODE).toMatch(/if \(model === 'not_found'\) redirect\('\/chat'\)/)
+    expect(PAGE_CODE).toMatch(/if\s*\(model\s*===\s*'not_found'\)\s*redirect\('\/chat'\)/)
     expect(PAGE_CODE + loader).not.toMatch(/another project|not yours|forbidden|unauthorized/i)
   })
 
-  it('the legacy body is only reached behind the generation branch', () => {
-    expect(PAGE_CODE).toMatch(/if \(!isVNext\(generation\)\) return <ConversationLegacy params=\{params\} \/>/)
-    expect(PAGE_CODE.indexOf('<ConversationLegacy params={params} />')).toBeLessThan(PAGE_CODE.indexOf('loadChatConversation('))
+  it('both generations render the owned conversation through the shared build surface', () => {
+    expect(PAGE_CODE).not.toMatch(/ConversationLegacy|isVNext/)
+    expect(PAGE_CODE).toMatch(/<AtlasBuildSurface\s+conversationModel=\{model\}/)
+    expect(PAGE_CODE.indexOf("if(model==='not_found')")).toBeLessThan(PAGE_CODE.indexOf('<AtlasBuildSurface'))
   })
 })

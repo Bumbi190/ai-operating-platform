@@ -3,6 +3,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { IMPOSSIBLE_PROJECT_ID } from '@/lib/atlas/isolation'
 import { initializeWorkerDb, resetWorkerDb, TEST_AGENT, TEST_CONVERSATION, TEST_PRINCIPAL, TEST_PROJECT, testSql } from '@/lib/website-build/test-db'
+import {approvedTestInput} from './planning/test-fixture'
+import {handleWebsitePlanningTool} from './planning/chat-tools'
+import {setProjectWebsiteBuilder} from './planning/store'
 let REAL_BUILD_DB: ReturnType<typeof initializeWorkerDb> | null = null
 
 const A_USER = 'user-a', A_EMAIL = 'a@example.test', A_PROJECT = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
@@ -90,21 +93,21 @@ vi.mock('@anthropic-ai/sdk', () => {
   return { default: FakeAnthropic }
 })
 
-async function ask(name = 'list_workflows', input: Record<string, unknown> = {}, conversationId?: string) {
+async function ask(name = 'list_workflows', input: Record<string, unknown> = {}, conversationId?: string, text = 'lista mina workflows', websitePlanRef?:unknown) {
   TOOL_NAME = name; TOOL_INPUT = input
   streamCall = 0; TOOL_RESULTS = []; WORKFLOW_OPS = []
   vi.resetModules()
   const { POST } = await import('@/app/api/chat/route')
   const res: any = await POST(new Request('http://localhost/api/chat', {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ messages: [{ role: 'user', content: 'lista mina workflows' }], conversation_id: conversationId }),
+    method: 'POST', headers: { 'content-type': 'application/json', origin:'http://localhost',host:'localhost' },
+    body: JSON.stringify({ messages: [{ role: 'user', content: text }], conversation_id: conversationId, websitePlanRef }),
   }) as any)
-  if (res?.body) await new Response(res.body).text()
+  const stream = res?.body ? await new Response(res.body).text() : ''
   await new Promise(r => setTimeout(r, 30))
   const raw = JSON.stringify(TOOL_RESULTS)
   let rows: any[] = []
   try { for (const r of TOOL_RESULTS) { const p = typeof r === 'string' ? JSON.parse(r) : r; if (Array.isArray(p)) rows = p } } catch { /* non-array result */ }
-  return { res, raw, rows }
+  return { res, raw, rows, stream }
 }
 
 beforeEach(() => {
@@ -119,7 +122,7 @@ describe('Website build through actual authenticated chat tool loop', () => {
   beforeEach(() => { REAL_BUILD_DB = initializeWorkerDb(); resetWorkerDb(); CURRENT_USER = { id: TEST_PRINCIPAL.userId, email: 'builder@example.test' } })
   afterEach(() => { REAL_BUILD_DB = null })
   it('queues one durable build and gives its actual workspace link', async () => {
-    const input = { projectId: TEST_PROJECT, agentId: TEST_AGENT, brief: 'Bygg en svensk hemsida', idempotencyKey: crypto.randomUUID() }
+    const {decisionId:_decision,...input} = await approvedTestInput(REAL_BUILD_DB!,TEST_PRINCIPAL,{projectId:TEST_PROJECT,agentId:TEST_AGENT,conversationId:TEST_CONVERSATION,brief:'Bygg en svensk hemsida',idempotencyKey:crypto.randomUUID()})
     const { res } = await ask('start_website_build', input, TEST_CONVERSATION)
     expect(res.status).toBe(200)
     const result = JSON.parse(TOOL_RESULTS[0])
@@ -136,6 +139,31 @@ describe('Website build through actual authenticated chat tool loop', () => {
     await ask('start_website_build', { ...input, projectId: TEST_PROJECT }, crypto.randomUUID())
     expect(JSON.parse(TOOL_RESULTS[0]).error).toBeTruthy()
   }, 30_000)
+
+  it('emits a typed plan from a real draft without creating a decision',async()=>{
+    const c=crypto.randomUUID();testSql("insert into conversations(id,user_id,project_id) values('"+c+"','"+TEST_PRINCIPAL.userId+"','"+TEST_PROJECT+"');");
+    const {res,stream}=await ask('draft_website_build_plan',{projectId:TEST_PROJECT,expectedRevisionId:null,content:{title:'Webb',purpose:'Visa',audience:'Alla',pages:[{key:'index',title:'Hem',purpose:'Visa'}],design:{style:'Omnira',reference:null},features:[],architecture:'Statisk',steps:['Bygg'],domain:{registrar:'strato',requestedName:null}},idempotencyKey:crypto.randomUUID()},c);
+    expect(res.status).toBe(200);expect(stream).toContain('"event":"website_plan"');expect(testSql("select count(*) from website_build_plan_decisions d join website_build_plans p on p.id=d.plan_id where p.conversation_id='"+c+"';")).toBe('0');
+  },30_000)
+  it('exact visible confirmation bypasses model dispatch and returns a durable receipt',async()=>{
+    const c=crypto.randomUUID();testSql("insert into conversations(id,user_id,project_id) values('"+c+"','"+TEST_PRINCIPAL.userId+"','"+TEST_PROJECT+"');");
+    await setProjectWebsiteBuilder(REAL_BUILD_DB!,TEST_PRINCIPAL,{projectId:TEST_PROJECT,agentId:TEST_AGENT});
+    const p:any=await handleWebsitePlanningTool('draft_website_build_plan',{projectId:TEST_PROJECT,expectedRevisionId:null,content:{title:'Webb',purpose:'Visa',audience:'Alla',pages:[{key:'index',title:'Hem',purpose:'Visa'}],design:{style:'Omnira',reference:null},features:[],architecture:'Statisk',steps:['Bygg'],domain:{registrar:'strato',requestedName:null}},idempotencyKey:crypto.randomUUID()},TEST_PRINCIPAL,c,REAL_BUILD_DB!);
+    const ref={...p.ref,revisionId:p.currentRevision.revisionId,sha256:p.currentRevision.sha256};
+    const {res,stream}=await ask('start_website_build',{},c,'kör',ref);
+    expect(testSql("select count(*) from conversation_messages where conversation_id='"+c+"' and tool_data->>'kind'='website_effect';")).toBe('1');
+    expect(res.status).toBe(200);expect(streamCall).toBe(0);expect(stream).toContain('"event":"website_workspace"');expect(stream).toContain('"event":"done"');
+    const retry=await ask('start_website_build',{},c,'jag godkänner',ref);expect(retry.stream).toContain('"event":"website_workspace"');
+    expect(testSql("select count(*) from website_build_plan_decisions d join website_build_plans p on p.id=d.plan_id where p.conversation_id='"+c+"';")).toBe('1');
+  },30_000)
+  it('model-supplied confirmation cannot approve or start',async()=>{
+    await ask('start_website_build',{projectId:TEST_PROJECT,agentId:TEST_AGENT,brief:'Bygg',confirm:true},TEST_CONVERSATION);
+    expect(JSON.parse(TOOL_RESULTS[0]).code).toBe('PLAN_REVIEW_REQUIRED');
+  })
+  it('rejects authority fields in visible references before model dispatch',async()=>{
+    const {res}=await ask('start_website_build',{},TEST_CONVERSATION,'kör',{projectId:TEST_PROJECT,planId:crypto.randomUUID(),revisionId:crypto.randomUUID(),sha256:'a'.repeat(64),approved:true});
+    expect(res.status).toBe(400);expect(streamCall).toBe(0);
+  })
   it('authentication precedes any website tool execution', async () => {
     CURRENT_USER = null
     const { res } = await ask('start_website_build')

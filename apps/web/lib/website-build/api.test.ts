@@ -1,36 +1,37 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { websiteBuildApi } from './api'
 import { initializeWorkerDb, resetWorkerDb, testSql, TEST_AGENT, TEST_CONVERSATION, TEST_PRINCIPAL, TEST_PROJECT } from './test-db'
-import { createBuildSession } from './store'
+import { approvedTestInput, approvedTestBuild } from './planning/test-fixture'
 import { compileWebsiteArtifact } from './artifact'
 const state = vi.hoisted(() => ({ db: null as unknown, authenticated: true }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => state.db }))
 vi.mock('@/lib/auth/project-access', () => ({ resolveProjectAccess: async () => state.authenticated ? { ok: true, ...TEST_PRINCIPAL } : { ok: false, response: new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }) } }))
 let db: ReturnType<typeof initializeWorkerDb>
-const input = () => ({ projectId: TEST_PROJECT, agentId: TEST_AGENT, conversationId: TEST_CONVERSATION, brief: 'Bygg min hemsida', idempotencyKey: crypto.randomUUID() })
-const request = (body?: unknown, projectId = TEST_PROJECT) => new Request('http://localhost/api/website-builds?projectId=' + projectId, body === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+const legacyInput = () => ({ projectId: TEST_PROJECT, agentId: TEST_AGENT, conversationId: TEST_CONVERSATION, brief: 'Bygg min hemsida', idempotencyKey: crypto.randomUUID() })
+const input = async () => approvedTestInput(db,TEST_PRINCIPAL,legacyInput())
+const request = (body?: unknown, projectId = TEST_PROJECT) => new Request('http://localhost/api/website-builds?projectId=' + projectId, body === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json', origin:'http://localhost',host:'localhost' }, body: JSON.stringify(body) })
 beforeAll(() => { db = initializeWorkerDb(); state.db = db }, 30_000)
 beforeEach(() => { state.authenticated = true; resetWorkerDb() })
 describe('website build API authorization and durable results', () => {
-  it('unauthenticated_request_is_denied_before_body_or_database', async () => { state.authenticated = false; const response = await websiteBuildApi('create', request(input()), {}); expect(response.status).toBe(401) })
-  it('creates_one_real_queued_session_without_waiting_for_model', async () => { const payload = input(); const response = await websiteBuildApi('create', request(payload), {}); expect(response.status).toBe(201); const body = await response.json(); expect(body.status).toBe('queued'); expect(body.revisions).toEqual([]); expect((await websiteBuildApi('create', request(payload), {})).status).toBe(201) })
-  it('invalid_input_is_400_and_conflicting_replay_is_409', async () => { expect((await websiteBuildApi('create', request({}), {})).status).toBe(400); const payload = input(); await websiteBuildApi('create', request(payload), {}); expect((await websiteBuildApi('create', request({ ...payload, brief: 'Annan brief' }), {})).status).toBe(409) })
+  it('unauthenticated_request_is_denied_before_body_or_database', async () => { state.authenticated = false; const response = await websiteBuildApi('create', request(await input()), {}); expect(response.status).toBe(401) })
+  it('creates_one_real_queued_session_without_waiting_for_model', async () => { const payload = await input(); const response = await websiteBuildApi('create', request(payload), {}); expect(response.status).toBe(201); const body = await response.json(); expect(body.status).toBe('queued'); expect(body.revisions).toEqual([]); expect((await websiteBuildApi('create', request(payload), {})).status).toBe(201) })
+  it('invalid_input_and_attempted_approved_brief_override_are_400', async () => { expect((await websiteBuildApi('create', request({}), {})).status).toBe(400); const payload = await input(); await websiteBuildApi('create', request(payload), {}); expect((await websiteBuildApi('create', request({ ...payload, brief: 'Annan brief' }), {})).status).toBe(400) })
   it('foreign_project_session_agent_or_conversation_is_denied', async () => {
-    const own = await createBuildSession(db, TEST_PRINCIPAL, input())
+    const own = await approvedTestBuild(db, TEST_PRINCIPAL, legacyInput())
     expect((await websiteBuildApi('get', request(undefined, '10000000-0000-4000-8000-000000000002'), { sessionId: own.sessionId })).status).toBe(404)
     expect((await websiteBuildApi('get', request(), { sessionId: crypto.randomUUID() })).status).toBe(404)
-    expect((await websiteBuildApi('create', request({ ...input(), agentId: '40000000-0000-4000-8000-000000000002' }), {})).status).toBe(404)
-    expect((await websiteBuildApi('create', request({ ...input(), conversationId: crypto.randomUUID() }), {})).status).toBe(404)
+    expect((await websiteBuildApi('create', request({ ...await input(), agentId: '40000000-0000-4000-8000-000000000002' }), {})).status).toBe(400)
+    expect((await websiteBuildApi('create', request({ ...await input(), conversationId: crypto.randomUUID() }), {})).status).toBe(400)
   })
   it('feedback_returns_persisted_receipt_and_replay_does_not_duplicate', async () => {
-    const own = await createBuildSession(db, TEST_PRINCIPAL, input()), payload = { projectId: TEST_PROJECT, text: 'Gör rubriken större', inputSource: 'text', viewedRevisionId: null, idempotencyKey: 'same-feedback' }
+    const own = await approvedTestBuild(db, TEST_PRINCIPAL, legacyInput()), payload = { projectId: TEST_PROJECT, text: 'Gör rubriken större', inputSource: 'text', viewedRevisionId: null, idempotencyKey: 'same-feedback' }
     const first = await (await websiteBuildApi('feedback', request(payload), { sessionId: own.sessionId })).json()
     const second = await (await websiteBuildApi('feedback', request(payload), { sessionId: own.sessionId })).json()
     expect(first.id).toBe(second.id); expect(first.status).toBe('received')
     expect(testSql(`select count(*) from website_build_feedback where session_id='${own.sessionId}';`)).toBe('1')
   })
   it('unknown_artifact_is_404_and_export_is_private_verified_utf8', async () => {
-    const own = await createBuildSession(db, TEST_PRINCIPAL, input())
+    const own = await approvedTestBuild(db, TEST_PRINCIPAL, legacyInput())
     expect((await websiteBuildApi('artifact', request(), { sessionId: own.sessionId, revisionId: crypto.randomUUID() })).status).toBe(404)
     const artifact = compileWebsiteArtifact({ format: 'static-website.v1', title: 'Test', pages: [{ key: 'index', title: 'Hem', bodyHtml: '<h1>Vår idé</h1>', css: '', behaviors: [] }] })
     testSql(`update runs set status='running',claim_id=gen_random_uuid(),lease_until=now()+interval '5 minutes' where id=(select current_run_id from website_build_sessions where id='${own.sessionId}');`)
@@ -41,7 +42,7 @@ describe('website build API authorization and durable results', () => {
   })
   it('rejects_oversized_body_and_unknown_control', async () => {
     expect((await websiteBuildApi('create', request({ blob: 'a'.repeat(70_000) }), {})).status).toBe(413)
-    const own = await createBuildSession(db, TEST_PRINCIPAL, input())
+    const own = await approvedTestBuild(db, TEST_PRINCIPAL, legacyInput())
     expect((await websiteBuildApi('control', request({ projectId: TEST_PROJECT, action: 'deploy', idempotencyKey: 'x' }), { sessionId: own.sessionId })).status).toBe(400)
   })
 })

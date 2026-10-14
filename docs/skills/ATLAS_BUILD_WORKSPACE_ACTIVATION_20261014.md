@@ -30,3 +30,15 @@ Actual production introspection: three tables have RLS=true, authenticated SELEC
 PR332 merged as5bb514d. Its actual parents arefbaa85d and687b8ea; tree7ba0541 matches the independently calculated merge tree. PR338 arrived concurrently and is integrated without conflict (proposal timeline only, no new migration).
 
 Post-enqueue-fix focused337/337 pass. Latest main integration tests56/56 pass. One newly failing inherited mobile navigation source guard expected a one-argument compose call; main adds a collaborator argument. Keep checking the authorized model.projects first argument and mounted ProjectRail with a bounded pattern. This is a test compatibility correction, with separate collaborator runtime tests retained.
+
+
+## Final release verification and protected-main activation
+
+- Post-fix focused suite: 337/337 assertions; latest-main integration: 56/56. Standalone typecheck exit 0.
+- Complete disjoint release matrix: 471 unique files, 12,207 passed assertions, 362 inherited failures in 69 files, 1,110 pending. No new failed assertion names versus the recorded 362-name baseline. The repository-wide suite remains red.
+- Chromium: 9/9 flows passed with no retries or timeout changes in the isolated run. The preceding concurrent full-suite/typecheck run exhausted the voice flow's 30-second budget at its final reload (8/9); this is not claimed as a product timing fix.
+- Feature-head 361de52225ef42380879915ebb23709c8d8b3c54 Vercel preview is READY and its actual production migration guard passed.
+- Main requires three GitHub Actions contexts from app 15368: Memory M4 boundary suites, Trading canon integrity, Atlas project isolation suites. The approved activation includes these necessary protected-main checks; the earlier draft's no-hosted-CI scope does not authorize a bypass of protected main.
+- The three manual runs on 361de52225ef42380879915ebb23709c8d8b3c54 all succeeded: runs 38559809609, 38559813503, 38559817244. GitHub nevertheless rejected normal merge (HTTP 405: all three required statuses expected). GitHub documents that workflow_dispatch jobs do not satisfy pull-request requirements: https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks
+- The release evidence commit uses the normal pull_request trigger, preserving workflow definitions and branch protection. Only the three mandatory suites are needed for activation; other automatically triggered workflows on this owned branch may be cancelled to retain that scope. No check status is fabricated, no admin merge is used, and no production credential is introduced into CI.
+- User cancelled browser credential entry. No logged-in UI smoke, real-provider generation, physical microphone proof or audible TTS proof is claimed.

@@ -192,11 +192,12 @@ export async function loadChatConversation(id: string): Promise<ChatConversation
       .order('created_at', { ascending: true }),
   )
 
-  const row = conv as { title?: unknown; projects?: unknown }
+  const row = conv as { title?: unknown; projects?: unknown; project_id?:unknown }
   return {
     id,
     title: text(row.title) ?? 'Konversation',
     projectName: projectNameOf(row.projects),
+    projectId: text(row.project_id),
     state: messages.ok ? 'ok' : 'error',
     saved: messages.ok ? (messages.data as SavedMessage[]) : [],
     chatBase: chatBase(),

@@ -69,6 +69,7 @@ import {
   type TranscriptEntry,
 } from '@/lib/os/chat-shared'
 import styles from './AtlasChat.module.css'
+import {useAtlasConversation} from '@/lib/atlas/conversation/provider'
 
 interface Props {
   model: ChatConversationModel
@@ -97,26 +98,19 @@ export function AtlasChatConversation({ model, asking = false }: Props) {
   const pathname = usePathname()
   const blocked = model.state === 'error'
 
-  const [entries, setEntries] = useState<TranscriptEntry[]>(() => hydrateTranscript(model.saved))
+  const {controller,snapshot}=useAtlasConversation()
+  useEffect(()=>{controller.activateConversation({id:model.id,saved:model.saved,state:model.state,projectId:model.projectId})},[controller,model])
+  const entries=snapshot.id===model.id?snapshot.entries:hydrateTranscript(model.saved)
   const [input, setInput] = useState('')
-  const [pending, setPending] = useState(false)
+  const pending=snapshot.id===model.id&&snapshot.pending
   const [launchChecked, setLaunchChecked] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createFailed, setCreateFailed] = useState(false)
 
-  const entriesRef = useRef(entries)
-  const pendingRef = useRef(false)
-  // The API history — text only, exactly as the replaced page kept it.
-  const history = useRef<HistoryMessage[]>(textHistory(model.saved))
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const followRef = useRef(true)
   const shownRef = useRef(0)
-
-  const commit = useCallback((next: TranscriptEntry[]) => {
-    entriesRef.current = next
-    setEntries(next)
-  }, [])
 
   // Follow the conversation only while the operator is at its end.
   useEffect(() => {
@@ -138,92 +132,21 @@ export function AtlasChatConversation({ model, asking = false }: Props) {
     endRef.current?.scrollIntoView({ block: 'end', behavior: !first && grew && motionAllowed() ? 'smooth' : 'auto' })
   }, [entries, pending])
 
-  const send = useCallback(async (raw: string) => {
-    const text = raw.trim()
-    if (!text || pendingRef.current || blocked) return
-    pendingRef.current = true
-    setPending(true)
+  const send = useCallback(async (raw:string) => {
+    const text=raw.trim()
+    if(!text||controller.snapshot().pending||blocked)return
     setInput('')
-    if (inputRef.current) {
-      inputRef.current.style.height = ''
-      inputRef.current.style.overflowY = ''
-    }
-    followRef.current = true
-
-    history.current = [...history.current, { role: 'user', content: text }]
-    let state: ReplyState = startReply([...entriesRef.current, { kind: 'user', text }])
-    commit(state.entries)
-
-    const fail = (notice: string) => commit([...state.entries, { kind: 'notice', tone: 'error', text: notice }])
-    let streaming = false
-    let settled = false
-
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildChatRequestBody({
-          messages: history.current,
-          conversation_id: model.id,
-        })),
-      })
-
-      if (!res.ok || !res.body) {
-        fail(res.ok ? CONNECTION_FAILED_NOTICE : failedResponseNotice(res.status, await res.json().catch(() => null)))
-        return
-      }
-
-      streaming = true
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const { lines, rest } = splitStreamBuffer(buffer)
-        buffer = rest
-
-        for (const line of lines) {
-          const event = parseStreamLine(line)
-          if (!event) continue
-          if (event.event === 'done' || event.event === 'error') settled = true
-          const step = applyStreamEvent(state, event, pathname)
-          state = step.state
-          const effect = step.effect
-
-          if (effect.type === 'navigate') router.push(effect.href)
-
-          if (effect.type === 'done') {
-            if (effect.fullText) {
-              history.current = [...history.current, { role: 'assistant', content: effect.fullText }]
-            }
-            // The route titles a conversation on its first exchange — let the page and the sidebar see it.
-            if (history.current.filter((m) => m.role === 'user').length === 1) {
-              router.refresh()
-            }
-          }
-
-          if (effect.type === 'timing') {
-            // eslint-disable-next-line no-console
-            console.log(`[chat-mode] ${effect.reqType} · första token ${effect.firstTokenMs}ms · totalt ${effect.serverTotalMs}ms`)
-          }
-        }
-        commit(state.entries)
-      }
-
-      if (!settled) fail(INCOMPLETE_NOTICE)
-    } catch {
-      fail(streaming ? INTERRUPTED_NOTICE : CONNECTION_FAILED_NOTICE)
-    } finally {
-      pendingRef.current = false
-      setPending(false)
-      setTimeout(() => {
-        if (window.matchMedia?.('(pointer: fine)').matches) inputRef.current?.focus()
-      }, 100)
-    }
-  }, [blocked, commit, model.id, pathname, router])
+    if(inputRef.current){inputRef.current.style.height='';inputRef.current.style.overflowY=''}
+    followRef.current=true
+    await controller.sendTurn({conversationId:model.id,text,inputSource:'text',onEvent:event=>{
+      const step=applyStreamEvent(startReply([]),event,pathname)
+      if(step.effect.type==='navigate')router.push(step.effect.href)
+      if(step.effect.type==='timing')console.log(`[chat-mode] ${step.effect.reqType} · första token ${step.effect.firstTokenMs}ms · totalt ${step.effect.serverTotalMs}ms`)
+      if(event.event==='done'&&controller.snapshot().history.filter(m=>m.role==='user').length===1)router.refresh()
+    }})
+    if(window.matchMedia?.('(pointer: fine)').matches)inputRef.current?.focus()
+  },[blocked,controller,model.id,pathname,router])
+  useEffect(()=>{if(snapshot.id===model.id&&snapshot.speechDraft!==null){setInput(snapshot.speechDraft);inputRef.current?.focus()}},[snapshot.id,snapshot.speechDraft,model.id])
 
   // A launcher's question (`?send=`): sent once, into an empty conversation only,
   // after the parameter is removed from the address — as before.

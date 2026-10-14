@@ -42,6 +42,9 @@ import { executeLegacyDelegate } from '@/lib/atlas/legacy-delegate'
 import { validateWorkflowDraft, type WorkflowDraft } from '@/lib/atlas/workflow-authoring'
 import { listAtlasWorkflowCatalog } from '@/lib/atlas/workflow-catalog'
 import { DESIGN_SKILL_TOOLS, DESIGN_SKILL_GUIDE, executeDesignSkillTool } from '@/lib/skills/atlas-tools'
+import {resolveConversationBuildContext} from '@/lib/website-build/planning/build-context'
+import {readWebsitePlan} from '@/lib/website-build/planning/store'
+import type {BuildContext} from '@/lib/atlas/conversation/stream-effects'
 import {executeVisiblePlanApproval,parseWebsitePlanRef} from '@/lib/website-build/planning/operator-command'
 import {buildErrorResponse} from '@/lib/website-build/api'
 import {WebsiteBuildError} from '@/lib/website-build/store'
@@ -635,13 +638,15 @@ export async function POST(request: Request) {
     }, agent: 'Atlas', operation: 'Atlas Chat',
   })
 
-  const { messages, conversation_id, voice, mode, view, websitePlanRef } = await request.json() as {
+  const { messages, conversation_id, voice, mode, view, websitePlanRef, buildContext:rawBuildContext, inputSource } = await request.json() as {
     messages: Anthropic.MessageParam[]
     conversation_id?: string
     voice?: boolean
     mode?: string
     view?: ClientViewEnvelope
     websitePlanRef?:unknown
+    buildContext?:unknown
+    inputSource?:unknown
   }
 
   const db = createAdminClient()
@@ -722,12 +727,17 @@ export async function POST(request: Request) {
   // that path builds no project context and is sent no tools, so `executeTool`
   // — the one remaining reader of this list — cannot be reached. Every other
   // path, the content fast path included, reads it exactly as before.
-  const allowedProjectIds = staticConversation && !websitePlanRef ? [] : await getAllowedProjectIds(db, user.id)
+  const allowedProjectIds = staticConversation && !websitePlanRef && !rawBuildContext ? [] : await getAllowedProjectIds(db, user.id)
 
 
   // A visible-plan confirmation is an authenticated operator command, never a model tool.
   let visiblePlan:PlanRevisionRef|null=null
   try{visiblePlan=parseWebsitePlanRef(websitePlanRef)}catch(error){return buildErrorResponse(error)}
+  let verifiedBuildContext:BuildContext|null=null
+  if(rawBuildContext!==undefined&&rawBuildContext!==null){
+    const denied=assertSameOrigin(request);if(denied)return denied
+    try{verifiedBuildContext=await resolveConversationBuildContext(db,{userId,allowedProjectIds},await resolveOwnedConversationId(),rawBuildContext)}catch(error){return buildErrorResponse(error)}
+  }
   if(visiblePlan){
     const denied=assertSameOrigin(request);if(denied){denied.headers.set('cache-control','private, no-store');return denied}
     try{
@@ -746,6 +756,9 @@ export async function POST(request: Request) {
         ].map(frame=>'data: '+JSON.stringify(frame)+'\n\n').join('')
         return new Response(frames,{headers:{'content-type':'text/event-stream','cache-control':'private, no-store'}})
       }
+      const plan=await readWebsitePlan(db,{userId,allowedProjectIds},visiblePlan)
+      if(plan.conversationId!==owned)throw new WebsiteBuildError('NOT_FOUND',404)
+      if(plan.currentRevision.revisionId!==visiblePlan.revisionId||plan.currentRevision.sha256!==visiblePlan.sha256)throw new WebsiteBuildError('PLAN_STALE',409)
     }catch(error){return buildErrorResponse(error)}
   }
 
@@ -765,6 +778,8 @@ export async function POST(request: Request) {
     systemPrompt = STATIC_CONVERSATION_SYSTEM + (voice ? VOICE_DIRECTIVE : '')
   } else {
     systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE + DESIGN_SKILL_GUIDE + WEBSITE_BUILD_GUIDE
+    if(visiblePlan)systemPrompt+='\nCURRENT REVIEWED PLAN REFERENCES: '+JSON.stringify(visiblePlan)+'; read get_website_build_plan before revising.\n'
+    if(verifiedBuildContext)systemPrompt+='\nCURRENT BUILD (verified for this conversation): '+JSON.stringify(verifiedBuildContext)+'; user change requests go to submit_website_build_feedback in this session, using the actually rendered revision. Questions about status go to get_website_build. Never start a second build for a feedback request.\n'
     // UNCONDITIONAL, AND DELIBERATELY BEFORE EVERYTHING THAT CAN FAIL. The bug
     // this slice fixes was partly that the only timestamp lived inside a block
     // guarded by `try`, so a single failed database read left Atlas with no idea
@@ -1023,7 +1038,7 @@ export async function POST(request: Request) {
 
             let result: unknown
             try {
-              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds, toolUse.id, await resolveOwnedConversationId())
+              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds, toolUse.id, await resolveOwnedConversationId(), verifiedBuildContext, inputSource==='voice'?'voice':'text')
             } catch (err) {
               result = { error: err instanceof Error ? err.message : 'Okänt fel' }
             }
@@ -1165,6 +1180,8 @@ async function executeTool(
   allowedProjectIds: string[] = [],
   toolCallId = globalThis.crypto.randomUUID(),
   ownedConversationId: string | null = null,
+  verifiedBuildContext:BuildContext|null=null,
+  inputSource:'text'|'voice'='text',
 ): Promise<unknown> {
   // Deterministic, read-only, no database and no network. Placed first because
   // it is the cheapest branch and touches nothing else in the system.
@@ -1179,7 +1196,7 @@ async function executeTool(
   }
 
   if (WEBSITE_BUILD_TOOL_NAMES.includes(name)) {
-    return handleWebsiteBuildTool(name, input, { userId, allowedProjectIds }, ownedConversationId, db)
+    return handleWebsiteBuildTool(name, input, { userId, allowedProjectIds }, ownedConversationId, db, verifiedBuildContext, inputSource==='voice'?'voice':'text')
   }
 
   if (name === 'list_atlas_workflow_catalog') {

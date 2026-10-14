@@ -43,6 +43,9 @@ export function initializeWorkerDb(): ReturnType<typeof createAdminClient> {
   testSql(`alter table agents add column if not exists name text not null default 'Webbbyggare', add column if not exists model text not null default 'claude-sonnet-4-20250514', add column if not exists system_prompt text not null default 'Bygg genomtänkta svenska hemsidor.', add column if not exists config jsonb not null default '{}', add column if not exists skill_ids text[] not null default '{}';
     alter table projects add column if not exists paused_at timestamptz,add column if not exists paused_reason text,add column if not exists name text not null default 'Testprojekt',add column if not exists slug text not null default 'test-project';
     alter table runs add column if not exists error_history jsonb not null default '[]',add column if not exists last_error text,add column if not exists next_retry_at timestamptz,add column if not exists steps_snapshot jsonb,add column if not exists workflow_instance_id uuid,add column if not exists started_at timestamptz,add column if not exists reconciliation_required boolean not null default false,add column if not exists reconciliation_reason text;
+    alter table conversations add column if not exists title text,add column if not exists updated_at timestamptz default now();
+    create table if not exists conversation_messages(id uuid primary key default gen_random_uuid(),conversation_id uuid references conversations(id),role text,content text,tool_data jsonb,created_at timestamptz default now());
+    grant select,insert on conversation_messages to service_role;
     create table if not exists platform_config(id integer primary key,automation_paused boolean not null default false,paused_at timestamptz,paused_reason text);
     insert into platform_config(id) values(1) on conflict do nothing;
     create table if not exists run_logs(id uuid default gen_random_uuid(),run_id uuid,role text,content text);

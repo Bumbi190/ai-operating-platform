@@ -151,6 +151,7 @@ describe('Website build through actual authenticated chat tool loop', () => {
     const p:any=await handleWebsitePlanningTool('draft_website_build_plan',{projectId:TEST_PROJECT,expectedRevisionId:null,content:{title:'Webb',purpose:'Visa',audience:'Alla',pages:[{key:'index',title:'Hem',purpose:'Visa'}],design:{style:'Omnira',reference:null},features:[],architecture:'Statisk',steps:['Bygg'],domain:{registrar:'strato',requestedName:null}},idempotencyKey:crypto.randomUUID()},TEST_PRINCIPAL,c,REAL_BUILD_DB!);
     const ref={...p.ref,revisionId:p.currentRevision.revisionId,sha256:p.currentRevision.sha256};
     const {res,stream}=await ask('start_website_build',{},c,'kör',ref);
+    expect(testSql("select count(*) from conversation_messages where conversation_id='"+c+"' and tool_data->>'kind'='website_effect';")).toBe('1');
     expect(res.status).toBe(200);expect(streamCall).toBe(0);expect(stream).toContain('"event":"website_workspace"');expect(stream).toContain('"event":"done"');
     const retry=await ask('start_website_build',{},c,'jag godkänner',ref);expect(retry.stream).toContain('"event":"website_workspace"');
     expect(testSql("select count(*) from website_build_plan_decisions d join website_build_plans p on p.id=d.plan_id where p.conversation_id='"+c+"';")).toBe('1');

@@ -5,6 +5,7 @@ import { appendBuildFeedback, readBuildSession, requestBuildControl, WebsiteBuil
 import {WEBSITE_PLANNING_TOOLS,WEBSITE_PLANNING_GUIDE,handleWebsitePlanningTool} from './planning/chat-tools'
 import {readWebsitePlan,startApprovedWebsitePlan,findWebsitePlanDecision} from './planning/store'
 import {parseWebsitePlanRef} from './planning/operator-command'
+import type {BuildContext} from '@/lib/atlas/conversation/stream-effects'
 import type { BuildPrincipal, FeedbackInput } from './types'
 
 const project = { projectId: { type: 'string', description: 'Existing authorized project UUID.' } }
@@ -19,12 +20,19 @@ export const WEBSITE_BUILD_TOOLS: Anthropic.Tool[] = [
 export const WEBSITE_BUILD_TOOL_NAMES = WEBSITE_BUILD_TOOLS.map(tool => tool.name)
 export const WEBSITE_BUILD_GUIDE = WEBSITE_PLANNING_GUIDE + '\nWEBSITE BUILDS: Use start_website_build only after the exact saved plan revision has a real operator decision. Resolve the builder on the server; never select the first agent or supply an invented brief. This tool queues governed static HTML/CSS with reviewed interactions, not backend, payments or public hosting. Read get_website_build before claiming progress or completion. Open the returned workspaceUrl with a Markdown link so the operator can view preview and send feedback during the build. Distinguish received, acknowledged and applied to an exact revision. Never invent a public URL or claim deployment. Pause/cancel only claim the status returned by the server. Idempotency keys identify one intent; reuse after retry, use a fresh key for a new intent.\n'
 
-export async function handleWebsiteBuildTool(name: string, input: Record<string, unknown>, principal: BuildPrincipal, conversationId: string | null = null, db = createAdminClient()): Promise<unknown> {
+export async function handleWebsiteBuildTool(name: string, input: Record<string, unknown>, principal: BuildPrincipal, conversationId: string | null = null, db = createAdminClient(), buildContext:BuildContext|null=null, inputSource:'text'|'voice'='text'): Promise<unknown> {
   if(['draft_website_build_plan','get_website_build_plan'].includes(name))return handleWebsitePlanningTool(name,input,principal,conversationId,db)
   const ref = { projectId: input.projectId as string, sessionId: input.sessionId as string }
   try {
-    if (name === 'submit_website_build_feedback') return await appendBuildFeedback(db, principal, ref, input as unknown as FeedbackInput)
-    if (name === 'control_website_build') return await requestBuildControl(db, principal, ref, input.action as 'pause' | 'resume' | 'cancel', input.idempotencyKey as string)
+    if(['submit_website_build_feedback','control_website_build'].includes(name)){
+      const existing=await readBuildSession(db,principal,ref)
+      if(!conversationId||existing.conversationId!==conversationId)throw new WebsiteBuildError('NOT_FOUND',404)
+      if(name==='submit_website_build_feedback'){
+        if(!buildContext||buildContext.projectId!==ref.projectId||buildContext.sessionId!==ref.sessionId)throw new WebsiteBuildError('BUILD_CONTEXT_REQUIRED',409)
+        return await appendBuildFeedback(db,principal,ref,{...input as unknown as FeedbackInput,viewedRevisionId:buildContext.viewedRevisionId,inputSource})
+      }
+      return await requestBuildControl(db,principal,ref,input.action as 'pause'|'resume'|'cancel',input.idempotencyKey as string)
+    }
     let state
     if(name==='start_website_build'){
       if(!principal.allowedProjectIds.includes(input.projectId as string))throw new WebsiteBuildError('NOT_FOUND',404)

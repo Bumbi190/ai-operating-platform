@@ -1,7 +1,7 @@
 # Atlas: samtal, plan och livebygge i Omnira
 
 Datum: 2026-10-14
-Status: konkret designförslag för granskning; inga produktändringar genom detta dokument.
+Status: arkitekturen godkänd av användaren 2026-10-14, med tillägget att domäner söks och köps via hans Strato-konto. Inga produktändringar genom detta dokument.
 Grund: main 630a12cd01f2c9ed45cc65d7be42da2e51904168 och användarens feedback på mobilbyggvyn.
 
 ## Mål och godkänt tidigare arbete
@@ -102,7 +102,7 @@ Länkar och kommandon kommer från en granskad guidekatalog, inte från fritt mo
 | Supabase managementåtkomst | Officiell anslutning eller scoped PAT från konto-/tokeninställning | Skilj managementåtkomst från appens data-API-nyckel |
 | Lokal apphemlighet | CSPRNG med verifierat kommando för OS, alternativt säker genereringsknapp | Spara direkt i rätt skyddade fält utan utskrift i chatten |
 | Omnira-projektnyckel | Omniras riktiga utfärdarflöde med projekt och scopes | En slumpsträng ensam skapar ingen giltig registrerad nyckel |
-| Lokal terminal | Installerad och testad projektbunden runner | Godkänd identitet, onlinekontroll och tillåtet repo/kommandoset krävs |
+| Domännamn och köp | Stratos domänsökning och användarens Strato-konto | Skilj ledigt namn, bevisat ägande och köp; guide till DNS för rätt Vercel-projekt |\n| Lokal terminal | Installerad och testad projektbunden runner | Godkänd identitet, onlinekontroll och tillåtet repo/kommandoset krävs |
 
 Lokalt genererade apphemligheter och leverantörsutfärdade API-nycklar är olika saker. Ett slumpkommando kan skapa exempelvis en sessionshemlighet men ersätter inte Vercels/Supabases utfärdarflöden.
 
@@ -111,6 +111,20 @@ Hemligheter skrivs i en separat säker inställningsyta eller hos leverantören.
 För lokala filer ska kortet öppna en verklig, tillåten fil i den projektbundna runnerns filvy med hemliga värden maskerade. Om ingen sådan runner finns visas leverantörens inställningssida och exakt fil-/variabelnamn som hjälp; knappen ”Öppna fil” visas inte som om mobilen kan öppna en Windowsfil.
 
 Projektlänkar genereras först efter målverifiering. Visa tydligt om länken avser hemsidans eget projekt eller Omniras driftsmiljö. Inga produktions-id:n, privata användar-id:n eller hemligheter hårdkodas i guiderna.
+
+## Domäner: Strato först
+
+Strato är användarens valda domänregistrar. Namn och tillgänglighet kontrolleras först via Stratos domänsökning: https://www.strato.se/domannamn/sok-doman/. Atlas föreslår även att använda en redan ägd domän eller underdomän när det passar projektet, men en publik namnkontroll kan inte bevisa vad användaren äger.
+
+Köp sker genom användarens befintliga Strato-konto. Detta är ett leverantörsval, inte ett mandat att köpa en okänd domän till ett okänt pris. Visa valt namn, registreringskostnad, förnyelsekostnad och eventuell avtalsperiod från aktuellt Strato-underlag inför själva beställningen. Föreslå inte Vercels domänköp eller registrarbyte i detta flöde.
+
+Atlas visar ett Strato-kort med separata fakta för namnkontroll, kontokoppling, ägande och DNS. Utan verifierad kontoåtkomst kan han länka till sökningen och kundinloggningen och säga att kontoinventeringen återstår. Han får inte presentera en påhittad automatisk Strato-anslutning som fungerande.
+
+Efter vald/registrerad domän hämtas de aktuella DNS-posterna från rätt Vercel-projekt. Atlas visar posttyp, värdnamn, värde och var användaren lägger dem: Strato kundinloggning → Domäner → Domänadministration → vald domän → DNS. Direkta kontospecifika länkar används bara när deras mål verkligen kan verifieras; annars används den officiella sidan med denna exakta väg.
+
+Domänen kan stanna hos Strato medan hemsidan körs på Vercel. Första leveransen ger en granskad guide. Automatisk DNS-write kräver en verklig anslutning och motsvarande separat tillåtelse. Befintliga e-postposter eller namnservrar ändras inte för att ett nytt webbprojekt behöver A/CNAME. Krav på annat upplägg, exempelvis wildcard, måste förklaras innan beslut.
+
+En domän är inte klar för hemsidan förrän rätt ägande/mål, DNS, Vercels domänverifiering och HTTPS har kontrollerats. Varken domänsökning, betalning eller sparat DNS-formulär är ensamt bevis för fungerande publicering. DNS-värden och priser hårdkodas inte från gamla guider.
 
 ## Tillåtelse och verkligt utförande
 
@@ -126,7 +140,7 @@ Nya Vercel-/Supabase-adaptrar måste vara separata från det begränsade kodarbe
 
 ### A. Samtal, plan, preview och anslutningsvägledning
 
-Omfattar gemensam konversationskontext, plangranskning, automatisk öppning av befintlig statisk preview, projektets byggagent, samma Omnira-design samt verkliga statusar och guider för tillgängliga respektive saknade adaptrar. Inga nya externa resurser behövs för statisk preview.
+Omfattar gemensam konversationskontext, plangranskning, automatisk öppning av befintlig statisk preview, projektets byggagent, samma Omnira-design samt verkliga statusar och guider för tillgängliga respektive saknade adaptrar, inklusive Strato som första domänväg. Inga nya externa resurser behövs för statisk preview.
 
 Klart när ett text- och ett röstinitierat jobb går från idé via granskad plan till preview utan byggblankett, och ändringar/reload fungerar i samma samtal. För en backendidé visar Atlas både den planerade funktionen och den faktiska saknade kopplingen.
 
@@ -138,7 +152,7 @@ Klart när Atlas kan skapa eller ändra ett riktigt projekt, köra dess godkänd
 
 ### C. Vercel, Supabase och färdig produkt
 
-Eget implementationsarbete för skyddade, projektspecifika anslutningar och rättigheter, miljökonfiguration, migrations-/deploymentkvitton samt livekontroller. Data och hemligheter går aldrig via den statiska previewiframes miljö.
+Eget implementationsarbete för skyddade, projektspecifika anslutningar och rättigheter, miljökonfiguration, migrations-/deploymentkvitton samt livekontroller. Domännamn söks och köps via Strato; DNS kopplas till rätt Vercel-projekt och HTTPS verifieras. Data och hemligheter går aldrig via den statiska previewiframes miljö.
 
 Klart när en verklig vald hemsida kan publiceras, rätt databaskoppling fungerar för avsedda användare, och Atlas kan visa verkliga resultat eller ett konkret återhämtningssteg. Kontoskapande, avgiftsbelagda resurser och produktionsändringar följer användarens uttryckliga omfattning.
 
@@ -168,13 +182,13 @@ En efterföljande implementationsplan för A måste specificera schema/RPC, inte
 11. Guider leder till rätt verifierat projekt/miljö och ger OS-kompatibla kommandon. Ingen fejkad ”nyckelgenerator” för tjänstetokens.
 12. Hemligheter förekommer inte i chattdata, modellinput, URLs, preview, export, Git eller loggar.
 13. Senaste fungerande preview kvarstår vid fel; sandbox/CSP, revisionshashar och meddelandevalidering försvagas inte.
-14. Publicering och databasfunktion visas inte som färdiga innan deras separata adaptrar och verkliga kontroller passerar.
+14. Publicering och databasfunktion visas inte som färdiga innan deras separata adaptrar och verkliga kontroller passerar.\n15. Domännamn kontrolleras först hos Strato; nya köp går via användarens befintliga Strato-konto. Saknad kontoåtkomst redovisas, och korrekt DNS-/HTTPS-guide visas utan påhittad inventering eller registrarbyte.
 
 Använd meningsfulla kontrakts-/isoleringstester och browserflöden för ändrade beteenden. Genomför verklig mikrofon-, generation- och senare deploymentkontroll där en godkänd session och tjänsteåtkomst finns. Redovisa uttryckligen vilka delar som bara testats med provider-/röst-fixtures.
 
 ## Officiella guider kontrollerade 2026-10-14
 
-- Vercel login: https://vercel.com/docs/cli/login
+- Strato domänsökning: https://www.strato.se/domannamn/sok-doman/\n- Strato DNS: https://www.strato.se/faq/domaen/vilka-dns-poster-finns-tillgaengliga-hos-strato-och-hur-kan-jag-hantera-dem/\n- Vercel domänkontroll: https://vercel.com/docs/domains/troubleshooting\n- Vercel login: https://vercel.com/docs/cli/login
 - Vercel link: https://vercel.com/docs/cli/link
 - Vercel miljövariabler: https://vercel.com/docs/environment-variables/managing-environment-variables
 - Vercel Secret/Config: https://vercel.com/changelog/environment-variables-now-use-config-and-secret-types

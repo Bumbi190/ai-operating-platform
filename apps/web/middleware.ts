@@ -69,6 +69,53 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
+  // Collaborator containment: protect every legacy Atlas page/API until audited.
+  // Role is read from the authenticated Supabase session, never from a cookie claim.
+  if (user) {
+    const { data: membership, error: membershipError } = await (supabase as any)
+      .from('omnira_organization_memberships')
+      .select('role, revoked_at')
+      .eq('user_id', user.id)
+      .maybeSingle()
+    // Old owner sessions remain compatible while the new table is rolled out.
+    // Unknown new users must NEVER fall through into existing Atlas routes,
+    // including when the membership table is missing or temporarily unavailable.
+    if (membershipError || !membership || membership.revoked_at !== null && membership.role !== 'collaborator') {
+      const { data: owned, error: ownershipError } = await supabase.from('projects')
+        .select('id').eq('owner_id', user.id).limit(1)
+      if (ownershipError || !owned?.length) {
+        if (pathname.startsWith('/api'))
+          return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+        if (!pathname.startsWith('/auth/') && pathname !== '/login' &&
+            pathname !== '/update-password' && pathname !== '/forgot-password' &&
+            pathname !== '/organization' && pathname !== '/privacy' && pathname !== '/terms') {
+          const url = request.nextUrl.clone()
+          url.pathname = '/organization'
+          url.search = ''
+          return NextResponse.redirect(url)
+        }
+      }
+    }
+    if (!membershipError && membership?.role === 'collaborator') {
+      const denied = !!membership.revoked_at
+      if (pathname.startsWith('/api') && (denied || pathname !== '/api/organization/projects')) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+      const allowedPage = !denied && (
+        (pathname === '/organization' || pathname.startsWith('/organization/projects/')) || pathname.startsWith('/auth/') ||
+        pathname === '/update-password' || pathname === '/forgot-password' ||
+        pathname === '/privacy' || pathname === '/terms'
+      )
+      if (!allowedPage && !pathname.startsWith('/api')) {
+        const url = request.nextUrl.clone()
+        if (denied) return new NextResponse('Access revoked', { status: 403 })
+        url.pathname = '/organization'
+        url.search = ''
+        return withUiGenerationCookie(NextResponse.redirect(url), requestedGeneration, request)
+      }
+    }
+  }
+
   const isAuthRoute    = pathname.startsWith('/login')
   const isApiRoute     = pathname.startsWith('/api')
   const isAuthRoute2   = pathname.startsWith('/auth/')

@@ -1,10 +1,10 @@
-# Atlas Byggstudio — design för granskning
+# Atlas Byggstudio — godkänd design
 Datum: 2026-10-14
-Status: Förslag inför implementation. Föregående leverans A är publicerad; funktionerna nedan är nästa utbyggnad.
+Status: Godkänd av ägaren 2026-10-14, med preciseringen att butiken var ett exempel och att befintliga projekt ska kunna underhållas med full projektmappsåtkomst. Föregående leverans A är publicerad; funktionerna nedan är nästa utbyggnad.
 Bas: Omnira main efter PR #341, commit 910376b2eb485f136e1b36073f08e7788f0be2d6.
 
 ## Målet
-André ska kunna öppna Bygg med Atlas i menyn, bifoga en produktbild eller annan referens och samtala med Atlas medan en riktig hemsida eller butik byggs. Arbetsytan visar webbplatsen, Atlas separata desktop och verkliga uppgifter hos specialistagenter. Atlas driver arbetet framåt, frågar när en uppgift saknar avgörande information och låter en oberoende agent granska resultatet före människans slutgranskning. Stripe är standard för betalningar. Domäner söks först hos Strato och köps via ägarens konto.
+Ägaren ska kunna öppna Bygg med Atlas i menyn, bifoga bilder eller andra referenser och samtala med Atlas medan en riktig hemsida byggs eller en befintlig sida förbättras. Arbetsytan visar webbplatsen, Atlas separata desktop och verkliga uppgifter hos specialistagenter. Atlas driver arbetet framåt, frågar när en uppgift saknar avgörande information och låter en oberoende agent granska resultatet före människans slutgranskning. Ingen butik ska byggas i denna leverans. Produktbild/dropshipping är ett exempel på en framtida användning; Stripe är standard endast när ett projekt faktiskt behöver betalningar. Domäner söks först hos Strato och köps via ägarens konto.
 
 Alla källfiler, referenser, genererade bilder, planer, tester och granskningar tillhör ett och samma projekt med en vald standardmapp. Dåliga eller övergivna projekt ska kunna arkiveras eller läggas i papperskorgen utan att andra projekt eller externa resurser förstörs.
 
@@ -34,7 +34,7 @@ Det är en projektarbetsmiljö med ett eget grafiskt Linux-skrivbord, inte en ex
 - Desktop: chatt till vänster; arbetsområde till höger med Webbplats, Desktop, Filer och Uppgifter. Originalets Omnira-färger behålls.
 - Mobil: flikar Chatt, Webbplats och Desktop; Filer/Uppgifter nås inom arbetsområdet. Composer ska alltid gå att nå.
 - Tomt läge visar relevanta förslag: bifoga produktbild, beskriv en hemsida, använd en referens. De generella verksamhetsfrågorna visas inte här.
-- Projektväljaren erbjuder Nytt projekt och ägarens befintliga byggprojekt. En gammal projektkonversation blir inte automatiskt en annan butik.
+- Projektväljaren erbjuder Nytt projekt och ägarens befintliga projekt, med tydligt val mellan att skapa en sida och förbättra den valda sidan. Ett projekt utan verifierad lokal koppling visas ändå och får enkla anslutningssteg.
 - Första meddelandet kan skapa ett nytt utkastprojekt och dess konversation idempotent. Namnet går att ändra.
 - Ett nytt byggprojekt använder en versionsbunden godkänd webbbyggarmall med projektets egna agentidentiteter. Visa vald roll/modell och fråga om budget som saknas; välj aldrig första agenten eller kopiera ett annat projekts agent-id.
 - Tidigare projektspecifika bygglänkar och historiska sessioner öppnar samma arbetsyta efter befintlig ägarkontroll.
@@ -58,7 +58,7 @@ Det är en projektarbetsmiljö med ett eget grafiskt Linux-skrivbord, inte en ex
 
 ## Projektmapp
 Standardmappen anges i befintliga bygginställningar och binds till en verifierad runner. Det exakta valet används för nya projekt; ändringar flyttar inte gamla projekt tyst.
-Projektroten får följande struktur:
+Nya projekt får följande struktur:
 - src/ — appkällor
 - assets/images/references/ — inskickade bildreferenser
 - assets/images/generated/ — Atlas genererade bilder
@@ -69,8 +69,19 @@ Projektroten får följande struktur:
 - previews/ — versionsbundna previewartefakter
 - project.json — identiteter, relativsökvägar, hashar och materialiseringskvitton
 
-Runnern verifierar Windows-roten, junctions/reparse points och relativsökvägar innan varje write. Desktopen monterar endast det aktuella projektets arbetsmapp. Äldre externa git-repon kan kopplas explicit och arbetar i en isolerad worktree; de ändras inte genom ett generellt Nytt projekt-flöde.
+Runnern verifierar Windows-roten, junctions/reparse points och relativsökvägar före läsning, skrivning och monteringar. Desktopen monterar endast det aktuella projektets arbetsmapp. Atlas får full läs-/skrivåtkomst inom alla ägarens anslutna projektmappar, även befintliga källor, bilder, planer, tester och konfiguration. Ägaren väljer en projektkoppling; normal bearbetning kräver inte nya tillåtelser för varje fil. Atlas kan växla mellan projekt, men ett jobb kan inte använda ett annat projekts filer eller nycklar.
+
+Befintliga projekt kan kopplas som git-repo eller vanlig mapp. Deras befintliga ramverk och katalogstruktur bevaras; de behöver inte flyttas till standardmappen för nya projekt. Atlas metadata läggs i .atlas/ och plan/bild/granskningsmappar binds till lämpliga relativa mål utan att befintliga filer skrivs över vid anslutningen. Råa hemligheter injiceras skyddat i rätt runtime; full projektkontroll innebär inte att nycklar skickas till modellen eller visas i chatt.
 Ny projektkoppling och genererade tillgångar får inte ärva The Prompts agent, konton eller mappar utan ett explicit projektspecifikt val.
+
+## Ändra och uppdatera befintliga sidor
+- Anslut Omnira-projektet till en verifierad lokal rot, eventuell repoidentitet och dess verkliga preview-/publiceringsmål. Alla tre identiteterna visas begripligt och kontrolleras separat.
+- Börja med inventering av befintligt ramverk, start-/testkommandon, filer och faktisk git-/mappstatus. Använd projektets egna verktyg; välj inte Next.js eller Supabase bara för att det är ett befintligt bygge.
+- En ändringsplan beskriver vad användaren vill förbättra och behåller tidigare fungerande beteende. Atlas kan ta emot nya instruktioner medan underhållet pågår.
+- Git-projekt använder isolerad worktree från en pinnad bas och tar med en verifierad snapshot av relevanta ocommittade ägarändringar. Vanliga mappar använder en separat stagingkopia med en hashmanifest över originalet. Övriga projekt förblir orörda.
+- Granska och testa hela ändringspaketet och visa riktig preview. Före integrering i ursprungsmappen jämförs filernas aktuella hashar med basen. Konflikter med senare ägarändringar stoppar de berörda ändringarna och förklaras; inget reset/force eller tyst overwrite.
+- Godkänt lokalt resultat appliceras med återställningsbart kvitto. Git-publicering använder projektets normala branch/PR/CI-flöde och dess verkliga authority; nya lokala ändringar är inte automatiskt en uppdaterad livesida.
+- När publiceringskoppling saknas säger Atlas exakt vad som saknas och länkar till rätt inställning. En lyckad uppdatering kvitteras med faktisk commit/artifact-hash, mål och deployment; misslyckad deployment lämnar en tydlig status och ett fungerande föregående resultat.
 
 ## Egen desktop på stationären
 - Windows-brokern får OS-stött skydd av sin privata identitet. macOS Secure Enclave/Keychain räknas inte som Windows-stöd.
@@ -99,8 +110,8 @@ Ny projektkoppling och genererade tillgångar får inte ärva The Prompts agent,
 Atlas är samordnare. En versionerad arbetsplan innehåller verkliga child jobs med dessa roller:
 1. Arkitekt — komponenter, datamodell, kopplingar och krav.
 2. Webbdesign/frontend — layout, responsivitet, navigering och tillgänglighet.
-3. Backend/commerce — katalog, orders, kontoanslutningar och Stripe.
-4. Bild/content — referensanvändning, GPT Image 2 och produkttext med källor.
+3. Backend/integration — serverfunktioner, datamodell och de externa tjänster projektet faktiskt behöver.
+4. Bild/content — referensanvändning, GPT Image 2 och innehåll med verifierade fakta.
 5. Test/QA — verkliga funktioner, mobil, felvägar och integrationer.
 6. Granskare — självständig kontroll av exakt sammansatt version.
 
@@ -122,25 +133,19 @@ Pausa, Stoppa och Återuppta gäller child jobs också. Generation/lease/fences 
 Atlas frågar när en avgörande uppgift är okänd, tvetydig eller kräver ägarens val. Frågan namnger vad som saknas och visar alternativ, rätt sida/fil eller anslutningssteg.
 Icke blockerade uppgifter fortsätter inom befintligt godkännande. Atlas samlar relaterade frågor; användaren ska inte behöva svara om varje färg, tangenttryckning eller fil.
 
-## Från kaffebild till verklig butik
-Produktbilden räcker för att starta: skapa projekt, analysera referensen, föreslå butik/produktpresentation, bygga responsiv UI och förbereda katalog/checkout.
-Produktbilden bevisar inte leverantör, modellnummer, pris, frakt, lagersaldo eller produktens egenskaper. Atlas håller fakta, förslag och obekräftade antaganden isär och frågar om det avgörande.
-Standard är egen Next.js-butik, Supabase för de delar som faktiskt kräver data och Stripe Checkout Sessions för betalningar. Andra val gäller endast om användaren säger till.
-Varukorgens pris räknas server-side från verifierad katalog; klienten får inte bestämma beloppet.
-Stripe-konto binds explicit till rätt ägare/projekt och miljö. Ett konto kopplat i ChatGPT är inte automatiskt en anslutning till den genererade butiken.
-Utveckling och integrationstest använder separat Stripe-sandbox. Keys hålls server-side och transporteras genom den skyddade anslutningen, inte chatt.
-Signerade webhooks hanterar betald och fördröjd betalning idempotent. En lyckad success-sida är inte bevis för betalning eller skapad leverantörsorder.
-Order lagras med projekt-, betalnings- och leverantörsreferens. Automatisk leverantörsorder kräver en verklig integration eller verifierad rutin och korrekt leverantörsprodukt.
-Om bara manuellt orderarbete finns ska Atlas säga det. En knapp Köp gör inte en butik till fungerande automatisk dropshipping.
-Före verklig lansering: verifierat merchantkonto, godkänd katalog/pris, leverantörs-/fraktrutin, villkor, sandbox-orderflöde, providerkopplingar, ägargranskning och fungerande HTTPS.
-Liveaktivering är en särskild exakt version/miljö. Strato först för domän, Vercel för den verifierade deploymenten om inget annat valts.
+## Projektberoende externa kopplingar
+Bilden på en kaffekokare och en dropship-sida var ett kapacitetsexempel, inte en beställning på en butik. Denna leverans bygger den generella studion och underhåll av befintliga hemsidor; den inför inte en produktkatalog, ordermotor eller leverantörsintegration.
+
+Atlas väljer externa tjänster utifrån den godkända projektplanen och befintlig arkitektur. Vercel och Supabase ska kunna anslutas när de behövs. Stripe är förvalt när ett senare projekt kräver betalningar, med separat konto-/miljöbindning och verifierat betalningsflöde. Domäner kollas först hos Strato via ägarens konto; inget domänköp sker från en namnsökning ensam.
+
+Saknad anslutning visas med en enkel förklaring, direktlänk till rätt sida/fil och ett säkert kommando när en nyckel faktiskt kan skapas lokalt. Providerutfärdade API-nycklar skapas på rätt providersida; Atlas hittar inte på ett terminalkommando som skulle utfärda en sådan nyckel. Nycklar matas in i en skyddad anslutning. Atlas fortsätter oberoende arbete medan ett externt steg väntar.
 
 ## Arkivera och ta bort projekt
 - Arkivera: stoppa nya jobb, avsluta/pausa aktiva arbeten säkert, dölj från aktiv lista och behåll materialet. Återställning är enkel.
 - Papperskorg: visa konsekvensen, flytta det valda Omnira-projektet ur den vanliga listan och erbjud återställning. Inga externa tjänster tas bort implicit.
 - Permanenta projektdata, lokal mapp, Vercel-projekt, Supabase-projekt och Stripe-objekt är separata mål i en konsekvensvy.
 - Radering av lokala filer kräver verifierad project.json/rot/ägare, stoppade writers och exakt projektval. Inga globala docker volume-/mapp-rensningar.
-- Betalningshistorik och aktiva butikers order får inte försvinna genom ett generellt dåligt utkast-projekt-flöde.
+- Befintlig data, publicerade sidor och eventuell betalningshistorik får inte försvinna genom att ett utkast eller dess studiokonversation läggs i papperskorgen.
 - Oklart eller delat externt resursägarskap ger fråga och hjälplänk. Ta inte bort en gemensam Supabase- eller Stripe-anslutning för att ett utkast läggs i papperskorgen.
 - Collaborator/observer kan inte arkivera eller radera ett bevakat ägarprojekt.
 
@@ -151,7 +156,7 @@ Liveaktivering är en särskild exakt version/miljö. Strato först för domän,
 | 2. Referenser och GPT Image 2 | Bildbilagor fungerar som riktiga modellinputs, bildjobb mäts och sparas privat i rätt projekt med verkliga bilder i chatten. |
 | 3. Windows-broker och desktop | Verifierad lokal projektmapp, browser/terminal, verklig live-bildserie, apppreview och offline/stop/återstart fungerar. |
 | 4. Workforce och granskningsgrind | Specialistjobb utförs faktiskt och en annan agent granskar exakt resultat innan mänsklig slutgranskning. |
-| 5. Butik och provideraktivering | Riktig testorder, signerad webhook, orderpersistens och verifierad leverantörsväg; därefter separat livepublicering. |
+| 5. Underhåll av befintliga projekt och uppdatering | Kopplat git-repo/vanlig mapp kan ändras, granskas, integreras utan dataförlust och uppdateras via rätt publiceringsmål med verkligt kvitto. |
 
 Varje leverans får eget fokuserat spec/implementation plan och meningsfulla tester. Befintlig Native-metod återanvänds utan ny metodmeny. Inga stora installations-/betalnings-/providerändringar görs genom att kalla en UI-prototyp färdig.
 
@@ -163,9 +168,9 @@ Varje leverans får eget fokuserat spec/implementation plan och meningsfulla tes
 - Bild-, ZIP- och filflöden provar traversal, Windows-junction, fel MIME, stora bilder och bortkopplad desktop.
 - Datorbilden avspeglar faktiskt navigerad sida/terminal; webbappens preview har ett separat kvitto.
 - Instruktion medan frontend/backend arbetar får ett kvitto och syns i nästa integrerade version.
-- Granskare som inte är skrivande agent hittar ett avsiktligt bruten mobil/checkout-version och hindrar Ready for owner.
-- Saknad leverantör/nyckel/behörighet ger rätt fråga och länk samtidigt som oberoende arbete kan fortsätta.
-- Stripe-serverpris, signaturfel, dubbel webhook, delayed payment och misslyckad leverantörsorder ger korrekt orderstatus.
+- Granskare som inte är skrivande agent hittar ett avsiktligt bruten mobil-/serverversion och hindrar Ready for owner.
+- Saknad anslutning/nyckel/behörighet ger rätt fråga och länk samtidigt som oberoende arbete kan fortsätta.
+- Befintliga git-/mappbaserade projekt behåller originalstruktur och ägarändringar; ändrad bas, fel repo-/deploymål och appliceringsavbrott ger konflikt/återställning, aldrig dataförlust.
 - Projektarkiv/återställning stoppar nya writes och bevarar korrekt material; permanent radering kräver rätt mål och omfattning.
 - Release behåller normala skyddade PR-kontroller, budgetar och oförändrade tillämpade migrationer.
 
@@ -175,7 +180,7 @@ Projektlivscykel: nytt lib/project/lifecycle/ med ägarskap, API, tombstone/rest
 Bilder: nytt lib/atlas/conversation/attachments/ och website-build/assets/, återanvänd lib/media/asset/ samt separat gpt-image-2-adapter och rätt cost/spend-ceiling.
 Desktop: apps/code-broker med Windows identity, ny website capability/worker, projektmaterialisering och privata frame-kvitton.
 Workforce: lib/atlas/delegation/workforce/ med riktiga jobbföräldrar, capabilities, specialiststaging och read-only review.
-Butik: lib/website-build/commerce/ med produktbrief, serverpris, orders, sandbox/live-binding, webhooks och provideradaptrar.
+Befintliga projekt: nytt lib/website-build/maintenance/ och broker workspace-binding, snapshot/apply/restore med verklig providerkoppling. Ingen commerce-implementation beställs i denna leverans.
 Exakta migrationsnamn skapas med repositoryts faktiska CLI i respektive implementation. Ingen gammal tillämpad SQL ändras.
 
 ## Officiella källor kontrollerade 2026-10-14

@@ -174,6 +174,13 @@ describe('gated immutable competitor observation storage', () => {
       onConflict: 'project_id,source_id,observed_on', ignoreDuplicates: true,
     })
   })
+  it('rejects partially inserted concurrent batches instead of claiming a completed day', async () => {
+    const h = harness()
+    h.upsert.mockImplementationOnce(() => ({
+      select: vi.fn(async () => ({ data: [{ source_id: 'auto1' }], error: null })),
+    }))
+    expect(await h.service.save()).toEqual({ status: 'invalid' })
+  })
   it('fails closed without scanning when storage is unavailable', async () => {
     const h = harness()
     h.read.mockResolvedValueOnce({ data: null, error: { message: 'table missing' } })

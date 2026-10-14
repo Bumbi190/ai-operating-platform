@@ -202,7 +202,12 @@ export function createCompetitorHistoryService(deps: HistoryDependencies = live)
           return { status: 'unavailable' }
         // Do not claim rows were stored merely because the request returned OK:
         // another simultaneous owner click may have won the unique-day conflict.
-        return inserted.length > 0
+        // A partially inserted group cannot be described as a saved day.
+        // It must be reconciled by an operator, never auto-retried or silently
+        // completed with new evidence for the same source/day.
+        if (inserted.length > 0 && inserted.length !== payload.length)
+          return { status: 'invalid' }
+        return inserted.length === payload.length
           ? { status: 'saved', count: inserted.length }
           : { status: 'already_saved', count: 0 }
       } catch { return { status: 'unavailable' } }

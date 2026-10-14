@@ -14,6 +14,106 @@ export type Database = {
   }
   public: {
     Tables: {
+"website_build_feedback": {
+                  Row: {
+                    "applied_revision_id": string | null,"author_id": string,"change_key": string | null,"created_at": string,"disposition": string | null,"id": string,"idempotency_key": string,"input_source": string,"interpretation": string | null,"project_id": string,"sequence": number,"session_id": string,"status": string,"superseded_by": string | null,"text": string,"viewed_revision_id": string | null
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "applied_revision_id"?: string | null,"author_id": string,"change_key"?: string | null,"created_at"?: string,"disposition"?: string | null,"id"?: string,"idempotency_key": string,"input_source": string,"interpretation"?: string | null,"project_id": string,"sequence": number,"session_id": string,"status"?: string,"superseded_by"?: string | null,"text": string,"viewed_revision_id"?: string | null
+                  }
+                  Update: {
+                    "applied_revision_id"?: string | null,"author_id"?: string,"change_key"?: string | null,"created_at"?: string,"disposition"?: string | null,"id"?: string,"idempotency_key"?: string,"input_source"?: string,"interpretation"?: string | null,"project_id"?: string,"sequence"?: number,"session_id"?: string,"status"?: string,"superseded_by"?: string | null,"text"?: string,"viewed_revision_id"?: string | null
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "website_build_feedback_applied_revision_id_session_id_proj_fkey"
+      columns: ["applied_revision_id","session_id","project_id"]
+isOneToOne: false
+      referencedRelation: "website_preview_revisions"
+      referencedColumns: ["id","session_id","project_id"]
+    },{
+      foreignKeyName: "website_build_feedback_session_id_project_id_fkey"
+      columns: ["session_id","project_id"]
+isOneToOne: false
+      referencedRelation: "website_build_sessions"
+      referencedColumns: ["id","project_id"]
+    },{
+      foreignKeyName: "website_build_feedback_viewed_revision_id_session_id_proje_fkey"
+      columns: ["viewed_revision_id","session_id","project_id"]
+isOneToOne: false
+      referencedRelation: "website_preview_revisions"
+      referencedColumns: ["id","session_id","project_id"]
+    }
+                  ]
+                },
+"website_build_sessions": {
+                  Row: {
+                    "active_preview_revision_id": string | null,"agent_id": string,"brief": string,"candidate": Json | null,"candidate_feedback_seq": number | null,"control_keys": NonNullable<Json>,"control_requested": string | null,"conversation_id": string,"created_at": string,"created_by": string,"current_run_id": string | null,"feedback_seq": number,"generation": number,"id": string,"idempotency_key": string,"interpretation": Json | null,"processed_feedback_seq": number,"project_id": string,"stage": string,"state_version": number,"status": string,"updated_at": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "active_preview_revision_id"?: string | null,"agent_id": string,"brief": string,"candidate"?: Json | null,"candidate_feedback_seq"?: number | null,"control_keys"?: NonNullable<Json>,"control_requested"?: string | null,"conversation_id": string,"created_at"?: string,"created_by": string,"current_run_id"?: string | null,"feedback_seq"?: number,"generation"?: number,"id"?: string,"idempotency_key": string,"interpretation"?: Json | null,"processed_feedback_seq"?: number,"project_id": string,"stage"?: string,"state_version"?: number,"status"?: string,"updated_at"?: string
+                  }
+                  Update: {
+                    "active_preview_revision_id"?: string | null,"agent_id"?: string,"brief"?: string,"candidate"?: Json | null,"candidate_feedback_seq"?: number | null,"control_keys"?: NonNullable<Json>,"control_requested"?: string | null,"conversation_id"?: string,"created_at"?: string,"created_by"?: string,"current_run_id"?: string | null,"feedback_seq"?: number,"generation"?: number,"id"?: string,"idempotency_key"?: string,"interpretation"?: Json | null,"processed_feedback_seq"?: number,"project_id"?: string,"stage"?: string,"state_version"?: number,"status"?: string,"updated_at"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "website_build_sessions_active_preview_revision_id_id_proje_fkey"
+      columns: ["active_preview_revision_id","id","project_id"]
+isOneToOne: false
+      referencedRelation: "website_preview_revisions"
+      referencedColumns: ["id","session_id","project_id"]
+    },{
+      foreignKeyName: "website_build_sessions_agent_id_fkey"
+      columns: ["agent_id"]
+isOneToOne: false
+      referencedRelation: "agents"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "website_build_sessions_conversation_id_fkey"
+      columns: ["conversation_id"]
+isOneToOne: false
+      referencedRelation: "conversations"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "website_build_sessions_current_run_id_fkey"
+      columns: ["current_run_id"]
+isOneToOne: false
+      referencedRelation: "runs"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "website_build_sessions_project_id_fkey"
+      columns: ["project_id"]
+isOneToOne: false
+      referencedRelation: "projects"
+      referencedColumns: ["id"]
+    }
+                  ]
+                },
+"website_preview_revisions": {
+                  Row: {
+                    "artifact": NonNullable<Json>,"created_at": string,"feedback_sequence": number,"generation": number,"id": string,"number": number,"project_id": string,"session_id": string,"sha256": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "artifact": NonNullable<Json>,"created_at"?: string,"feedback_sequence": number,"generation": number,"id"?: string,"number": number,"project_id": string,"session_id": string,"sha256": string
+                  }
+                  Update: {
+                    "artifact"?: NonNullable<Json>,"created_at"?: string,"feedback_sequence"?: number,"generation"?: number,"id"?: string,"number"?: number,"project_id"?: string,"session_id"?: string,"sha256"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "website_preview_revisions_session_id_project_id_fkey"
+      columns: ["session_id","project_id"]
+isOneToOne: false
+      referencedRelation: "website_build_sessions"
+      referencedColumns: ["id","project_id"]
+    }
+                  ]
+                }
+
       account_snapshots: {
         Row: {
           captured_at: string
@@ -5190,6 +5290,77 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+"website_build_append_feedback":
+{ Args: { "p_input": Json,"p_principal": Json,"p_ref": Json }; Returns: Json
+                           },
+"website_build_check_access":
+{ Args: { "p_principal": Json,"p_project_id": string,"p_write"?: boolean }; Returns: undefined
+                           },
+"website_build_commit_revision":
+{ Args: { "p_artifact": Json,"p_writer": Json }; Returns: Json
+                           },
+"website_build_control":
+{ Args: { "p_input": Json,"p_principal": Json,"p_ref": Json }; Returns: Json
+                           },
+"website_build_create":
+{ Args: { "p_input": Json,"p_principal": Json }; Returns: Json
+                           },
+"website_build_enqueue":
+{ Args: { "p_session_id": string }; Returns: string
+                           },
+"website_build_lock_writer":
+{ Args: { "p_allow_pause"?: boolean,"p_writer": Json }; Returns: {
+              "active_preview_revision_id": string | null,
+"agent_id": string,
+"brief": string,
+"candidate": Json | null,
+"candidate_feedback_seq": number | null,
+"control_keys": NonNullable<Json>,
+"control_requested": string | null,
+"conversation_id": string,
+"created_at": string,
+"created_by": string,
+"current_run_id": string | null,
+"feedback_seq": number,
+"generation": number,
+"id": string,
+"idempotency_key": string,
+"interpretation": Json | null,
+"processed_feedback_seq": number,
+"project_id": string,
+"stage": string,
+"state_version": number,
+"status": string,
+"updated_at": string
+            }
+                          SetofOptions: {
+        from: "*"
+        to: "website_build_sessions"
+        isOneToOne: true
+        isSetofReturn: false
+      } },
+"website_build_park":
+{ Args: { "p_writer": Json }; Returns: Json
+                           },
+"website_build_read_artifact":
+{ Args: { "p_principal": Json,"p_ref": Json,"p_revision_id": string }; Returns: Json
+                           },
+"website_build_record_interpretation":
+{ Args: { "p_interpretation": Json,"p_writer": Json }; Returns: Json
+                           },
+"website_build_save_candidate":
+{ Args: { "p_artifact": Json,"p_writer": Json }; Returns: Json
+                           },
+"website_build_snapshot":
+{ Args: { "p_writer": Json }; Returns: Json
+                           },
+"website_build_validate_artifact":
+{ Args: { "p_artifact": Json }; Returns: undefined
+                           },
+"website_build_view":
+{ Args: { "p_principal": Json,"p_ref": Json }; Returns: Json
+                           }
+
       action_phase_rank: { Args: { p: string }; Returns: number }
       atlas_code_broker_accept_request: {
         Args: {

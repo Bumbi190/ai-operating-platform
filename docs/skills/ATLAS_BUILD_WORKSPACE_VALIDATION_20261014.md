@@ -82,3 +82,9 @@ Implementation in progress; no activation or production migration.
 ## Task 1
 
 Artifact tests: observed 29 failures before implementation, then 29/29 pass. Typecheck exit 0. Multi-page files, UTF-8 export, immutable hash, hostile markup rejection, interaction runtime, CSP, and non-delivering form notice covered. Browser behavior remains to be verified in tasks 5/6.
+
+## Task 2
+
+Actual CLI migration: 20261014065527_website_build_sessions.sql; no production change. Store6/6 and artifact29/29 pass. Local SQL25 assertions and both lock-order outcomes (commit-first/cancel-first) pass using multiple real connections. Retry/pausing and pending-cancel stale control flags were observed RED then fixed GREEN. Candidate hash/feedback binding survives pause/resume; unknown project/generation, stale claim and expired lease cannot activate previews.
+
+Supabase CLI2.120.0 gen types and db advisors succeeded against the isolated loopback DB (sslmode=disable only on that local fixture). Regenerated only three new tables and fourteen new RPC definitions; unrelated database type entries unchanged. Advisor findings: zero for owned tables/functions. Four fixture-only warnings: owner_read initplan, two temporary test helpers mutable search_path, and pgcrypto in public. These fixture objects are not added by the product migration.

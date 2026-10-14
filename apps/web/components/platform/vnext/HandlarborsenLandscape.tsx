@@ -9,7 +9,8 @@ import styles from './HandlarborsenLandscape.module.css'
 
 const statusText: Record<LandscapeSourceStatus, string> = {
   metadata_checked: 'Titel verifierad vid kontrollen',
-  robots_denied: 'Ingen inläsning: robots ej godkänd',
+  robots_denied: 'Ingen inläsning: robots-reglerna tillåter inte sidan',
+  robots_unavailable: 'Ingen inläsning: robots-reglerna kunde inte verifieras',
   redirect_refused: 'Omdirigering nekades',
   http_error: 'Källan svarade inte OK',
   invalid_content_type: 'Inte giltig HTML',

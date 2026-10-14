@@ -10,7 +10,7 @@
 
 **Spec:** docs/superpowers/specs/2026-10-14-atlas-conversation-build-design.md — approved 2026-10-14 with Strato addition.
 
-**Execution:** Native, preserved from the existing task. This plan is a review artifact; no product changes have been made by writing it.
+**Execution:** Native. Approved 2026-10-14 with the added requirement for a configurable project base directory and structured project assets.
 
 ## Global Constraints
 
@@ -28,6 +28,9 @@
 - Domain search is not account inventory; broker identity is not terminal availability; platform hosting is not an Atlas provider connection.
 - Existing stop/budget/run admission, leases/fences, HTML/CSS containment, sandbox/CSP and immutable artifact hashes remain in force.
 - A delivers static preview and connection guidance. B delivers a real development runner; C delivers provider writes/publication/DNS/HTTPS. Never label all three complete after shipping A.
+
+- Operator default project directory is owner-scoped; each project binds its own location. Changing a default never relocates existing projects.
+- All exported/generated artifacts use src/, assets/images/, assets/media/, plans/, previews/ and project.json beneath one project root. Actual native folder creation requires a verified runner; never claim it from saved metadata.
 
 ## Review Focus
 
@@ -53,9 +56,9 @@ New bounded units live under apps/web/lib/website-build/planning and apps/web/li
 
 Commands below run from apps/web unless stated otherwise. Real-SQL commands use the owned labeled Docker fixture described in docs/skills/ATLAS_BUILD_WORKSPACE_VALIDATION_20261014.md, never production. Each implementation task uses RED → minimal implementation → GREEN and a focused commit.
 
-### Task 1: Validated plan content and deterministic brief
+### Task 1: Validated plan content, deterministic brief and project layout
 
-**Files:** Create lib/website-build/planning/{types,validation}.ts and validation.test.ts; modify lib/website-build/types.ts only for additive plan refs.
+**Files:** Create lib/website-build/planning/{types,validation,project-layout}.ts, validation.test.ts and project-layout.test.ts; modify lib/website-build/types.ts only for additive plan refs.
 
 **Interfaces:** Export PlanRef {projectId, planId}; PlanRevisionRef extends PlanRef {revisionId, sha256}; PlanContent {title, purpose, audience, pages, design, features, architecture, steps, domain}; PlanView {ref, conversationId, currentRevision, approvedDecision, activeSessionId, budget:{state:'configured'|'missing'|'unknown',monthlySek:number|null}}; PlanDecision {id, revisionRef, approvedBy, scope:'static_preview', builderAgentId, startIntentId, sessionId|null}. domain contains registrar:'strato', requestedName|null. Feature requirements explicitly distinguish preview_demo from live_required with provider needs.
 
@@ -67,13 +70,13 @@ Produce validatePlanContent(input:unknown):PlanContent, hashPlanContent(content:
 - [ ] Run the same tests and npm run typecheck. Expect GREEN without weakening existing website artifact validation.
 - [ ] Commit: feat: define bounded website plan revisions.
 
-### Task 2: Atomic plan decisions, builder configuration and start fencing
+### Task 2: Atomic plan decisions, builder/location configuration and start fencing
 
 **Files:** Create a CLI-named migration with suffix website_build_planning_v1.sql; create planning/store.ts and store.test.ts; modify website-build/test-db.ts and test fixture setup to apply the new migration to a newly owned fixture.
 
 **Interfaces:** planning/store.ts exports readWebsitePlan(db,principal,ref):Promise<PlanView>, saveWebsitePlanRevision(db,principal,input):Promise<PlanView>, approveWebsitePlan(db,principal,input):Promise<PlanDecision>, startApprovedWebsitePlan(db,principal,input):Promise<BuildSessionView>, readProjectWebsiteBuilder(db,principal,projectId):Promise<BuilderSetting>, setProjectWebsiteBuilder(db,principal,{projectId,agentId|null}):Promise<BuilderSetting>. SavePlanInput {projectId,conversationId,planId?:string,expectedRevisionId:string|null,content:PlanContent,idempotencyKey}; ApprovePlanInput {projectId,planId,revisionId,sha256,idempotencyKey}; StartApprovedPlanInput {projectId,planId,revisionId,decisionId}. BuilderSetting {projectId,builderAgentId:string|null,domainRegistrar:'strato'}. Actor identity only comes from BuildPrincipal. Read the authorized project's project_budgets.monthly_sek for the card; missing/error is never unlimited/zero. This read creates no budget reservation and does not confer spend authority.
 
-Tables: website_build_project_settings (project PK, builder_agent_id, domain_registrar='strato'); website_build_plans (project, owner, conversation, current revision, active session); website_build_plan_revisions (immutable number/content/hash/compiled brief); website_build_plan_decisions (actor, revision/hash, static scope, selected builder, unique start intent, optional committed session). Cross-project relationships use explicit composite constraints and RPC validation, not UUID existence alone.
+Tables: website_build_operator_settings (owner PK, default_project_root, OS, target ref); website_build_project_settings (project PK, builder_agent_id, domain_registrar='strato', bound project root/OS/target ref); website_build_plans (project, owner, conversation, current revision, active session); website_build_plan_revisions (immutable number/content/hash/compiled brief); website_build_plan_decisions (actor, revision/hash, static scope, selected builder, unique start intent, optional committed session). Cross-project relationships use explicit composite constraints and RPC validation, not UUID existence alone.
 
 RPCs: website_build_plan_save/view/approve/start and website_build_builder_get/set, SECURITY INVOKER, empty search_path, service_role execution only. Owner-scoped authenticated SELECT; no anon access or client writes. Approval/current-revision validation and session/run insertion occur in one transaction under the plan lock.
 
@@ -135,7 +138,7 @@ BuildContext {projectId,sessionId,viewedRevisionId|null} is validated server-sid
 - [ ] Run UI tests and existing website-build browser suite. Visually inspect at all three widths; verify focus, reduced motion and display scale. No manually selected News Hunter; no empty disabled start form; no clipping from sticky/scroll containers.
 - [ ] Commit: feat: build websites in the Atlas conversation.
 
-### Task 7: Real readiness, reviewed guides and Strato domain path
+### Task 7: Real readiness, project directory settings, reviewed guides and Strato domain path
 
 **Files:** Create website-build/connections/{types,catalog,readiness}.ts and tests; app/api/website-build-readiness/route.ts; components/website-build/BuildConnectionCards.tsx; integrate cards into plan/build surface and chat read tools.
 
@@ -177,6 +180,8 @@ getConnectionGuide({provider,verifiedTarget|null,os:'windows'|'macos'|'linux'|'u
 
 Spec requirements map as follows: intent/alternatives/scope to all tasks; visual identity and form replacement to 6; plan/agent/decision/retry contract to 1–4; shared voice/history and validated navigation to 5–6; connections/keys/files/Strato to 7; containment/historical/collaborator/feedback regression to 2/3/6/8; release/authority/cost limits to 9.
 
+Additional approved directory requirement: Task 1 defines safe absolute paths and project-relative layout; Task 2 persists owner defaults and project-bound locations; Task 3 provides the authenticated settings API; Task 6 exports source/plan/assets in that layout; Task 7 displays directory configuration with honest runner status; Task 8 verifies containment/default stability and ZIP contents. Actual OS folder creation belongs to B's verified file adapter.
+
 This plan implements delivery A. The full goal remains A+B+C. B needs a separately designed runnable Windows/cloud development substrate; C needs real scoped provider connections, protected secret transport, deployment/database/DNS writes and live HTTPS evidence. Their existing unavailable states are implemented honestly by Task 7, not represented as delivered execution.
 
-User review of this written plan is the next gate. Native remains selected; do not ask the execution-method question again. After that review, read superpowers:executing-plans and carry the work through implementation, checks and the authorized release.
+User review is complete. Native remains selected; execute tasks without further routine approval prompts, preserving the user's added directory requirement.

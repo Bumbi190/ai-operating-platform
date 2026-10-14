@@ -102,7 +102,8 @@ Länkar och kommandon kommer från en granskad guidekatalog, inte från fritt mo
 | Supabase managementåtkomst | Officiell anslutning eller scoped PAT från konto-/tokeninställning | Skilj managementåtkomst från appens data-API-nyckel |
 | Lokal apphemlighet | CSPRNG med verifierat kommando för OS, alternativt säker genereringsknapp | Spara direkt i rätt skyddade fält utan utskrift i chatten |
 | Omnira-projektnyckel | Omniras riktiga utfärdarflöde med projekt och scopes | En slumpsträng ensam skapar ingen giltig registrerad nyckel |
-| Domännamn och köp | Stratos domänsökning och användarens Strato-konto | Skilj ledigt namn, bevisat ägande och köp; guide till DNS för rätt Vercel-projekt |\n| Lokal terminal | Installerad och testad projektbunden runner | Godkänd identitet, onlinekontroll och tillåtet repo/kommandoset krävs |
+| Domännamn och köp | Stratos domänsökning och användarens Strato-konto | Skilj ledigt namn, bevisat ägande och köp; guide till DNS för rätt Vercel-projekt |
+| Lokal terminal | Installerad och testad projektbunden runner | Godkänd identitet, onlinekontroll och tillåtet repo/kommandoset krävs |
 
 Lokalt genererade apphemligheter och leverantörsutfärdade API-nycklar är olika saker. Ett slumpkommando kan skapa exempelvis en sessionshemlighet men ersätter inte Vercels/Supabases utfärdarflöden.
 
@@ -111,6 +112,16 @@ Hemligheter skrivs i en separat säker inställningsyta eller hos leverantören.
 För lokala filer ska kortet öppna en verklig, tillåten fil i den projektbundna runnerns filvy med hemliga värden maskerade. Om ingen sådan runner finns visas leverantörens inställningssida och exakt fil-/variabelnamn som hjälp; knappen ”Öppna fil” visas inte som om mobilen kan öppna en Windowsfil.
 
 Projektlänkar genereras först efter målverifiering. Visa tydligt om länken avser hemsidans eget projekt eller Omniras driftsmiljö. Inga produktions-id:n, privata användar-id:n eller hemligheter hårdkodas i guiderna.
+
+## Projektmappar och standardplats (användartillägg 2026-10-14)
+
+Operatören kan välja en förbestämd basmapp för nya projekt och ange en annan plats per projekt. Inställningen omfattar målmiljö/runner, OS och absolut sökväg; det är inte en fristående rättighet att skriva på en dator. Inga privata lokala paths hårdkodas för alla användare.
+
+När projektet börjar binds ett unikt mappnamn under basmappen till just projektet. En senare ändring av standardplatsen flyttar inte befintliga projekt. Befintlig mapp får inte skrivas över eller återanvändas för ett annat projekt utan ett separat uttryckligt val.
+
+Projektets struktur är: src/ för källfiler, assets/images/ och assets/media/ för resurser, plans/ för krav och arkitektur, previews/ för versionerade previews samt project.json för manifestet. Alla nya artifacts, bilder och planer registreras med relativ sökväg, typ och hash under projektets rot. Mappstrukturen och manifestet ska ingå i projektets privata export; hemligheter ingår aldrig.
+
+I leverans A sparas platsvalet och en verklig strukturerad export med plan och sidkällor skapas. Visa tydligt att en lokal mapp ännu inte är skapad när ingen körbar filadapter finns. I B måste runnern bevisa att mappen är skapad på den avsedda platsen, och hålla samtliga writes inom den verifierade roten även vid symlinks/reparse points. OS-sökvägen får inte påstås vara öppningsbar från en mobil utan en fungerande filvy.
 
 ## Domäner: Strato först
 
@@ -182,13 +193,17 @@ En efterföljande implementationsplan för A måste specificera schema/RPC, inte
 11. Guider leder till rätt verifierat projekt/miljö och ger OS-kompatibla kommandon. Ingen fejkad ”nyckelgenerator” för tjänstetokens.
 12. Hemligheter förekommer inte i chattdata, modellinput, URLs, preview, export, Git eller loggar.
 13. Senaste fungerande preview kvarstår vid fel; sandbox/CSP, revisionshashar och meddelandevalidering försvagas inte.
-14. Publicering och databasfunktion visas inte som färdiga innan deras separata adaptrar och verkliga kontroller passerar.\n15. Domännamn kontrolleras först hos Strato; nya köp går via användarens befintliga Strato-konto. Saknad kontoåtkomst redovisas, och korrekt DNS-/HTTPS-guide visas utan påhittad inventering eller registrarbyte.
+14. Publicering och databasfunktion visas inte som färdiga innan deras separata adaptrar och verkliga kontroller passerar.
+15. Domännamn kontrolleras först hos Strato; nya köp går via användarens befintliga Strato-konto. Saknad kontoåtkomst redovisas, och korrekt DNS-/HTTPS-guide visas utan påhittad inventering eller registrarbyte.
 
 Använd meningsfulla kontrakts-/isoleringstester och browserflöden för ändrade beteenden. Genomför verklig mikrofon-, generation- och senare deploymentkontroll där en godkänd session och tjänsteåtkomst finns. Redovisa uttryckligen vilka delar som bara testats med provider-/röst-fixtures.
 
 ## Officiella guider kontrollerade 2026-10-14
 
-- Strato domänsökning: https://www.strato.se/domannamn/sok-doman/\n- Strato DNS: https://www.strato.se/faq/domaen/vilka-dns-poster-finns-tillgaengliga-hos-strato-och-hur-kan-jag-hantera-dem/\n- Vercel domänkontroll: https://vercel.com/docs/domains/troubleshooting\n- Vercel login: https://vercel.com/docs/cli/login
+- Strato domänsökning: https://www.strato.se/domannamn/sok-doman/
+- Strato DNS: https://www.strato.se/faq/domaen/vilka-dns-poster-finns-tillgaengliga-hos-strato-och-hur-kan-jag-hantera-dem/
+- Vercel domänkontroll: https://vercel.com/docs/domains/troubleshooting
+- Vercel login: https://vercel.com/docs/cli/login
 - Vercel link: https://vercel.com/docs/cli/link
 - Vercel miljövariabler: https://vercel.com/docs/environment-variables/managing-environment-variables
 - Vercel Secret/Config: https://vercel.com/changelog/environment-variables-now-use-config-and-secret-types

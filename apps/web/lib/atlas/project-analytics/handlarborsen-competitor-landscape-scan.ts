@@ -49,7 +49,9 @@ async function readBounded(url: string, kind: 'robots' | 'document', fetcher: ty
     throw new RejectedSource('robots_denied')
   }
   const contentLength = response.headers.get('content-length')
-  if (contentLength && Number(contentLength) > MAX_BYTES) {
+  // robots rules must be fully read, but a public HTML title may occur in
+  // the first 200 KB of a document whose *total* size is much larger.
+  if (kind === 'robots' && contentLength && Number(contentLength) > MAX_BYTES) {
     await cancel()
     throw new RejectedSource('too_large')
   }
@@ -61,9 +63,19 @@ async function readBounded(url: string, kind: 'robots' | 'document', fetcher: ty
     while (true) {
       const chunk = await reader.read()
       if (chunk.done) break
-      bytes += chunk.value.byteLength
-      if (bytes > MAX_BYTES) throw new RejectedSource('too_large')
-      result += decoder.decode(chunk.value, { stream: true })
+      const remaining = MAX_BYTES - bytes
+      if (remaining <= 0) throw new RejectedSource('too_large')
+      // Inspect no more than the bounded prefix, even if a server delivers
+      // an oversized chunk; always cancel the stream after finding the title.
+      const prefix = chunk.value.subarray(0, remaining)
+      bytes += prefix.byteLength
+      result += decoder.decode(prefix, { stream: true })
+      // Wait for a complete head when early-returning: a fake <title>
+      // within an unfinished <script> must not be treated as page metadata.
+      if (kind === 'document' && /<\/head\s*>/i.test(result) && normalizeTitle(result)) {
+        return result
+      }
+      if (chunk.value.byteLength > remaining) throw new RejectedSource('too_large')
     }
     return result + decoder.decode()
   } finally {

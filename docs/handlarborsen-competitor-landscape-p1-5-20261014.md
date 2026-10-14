@@ -17,7 +17,7 @@ Dessa källor är självbeskrivningar. **Jämförbarhet, aktuella avgifter, lage
 - Vyn visar en fast lista med 4 aktörer (Handlarbudet + tre nya). Ingen extern HTTP-hämtning vid vanlig sidvisning.
 - Den behörighetskontrollerade `?scan=1`-vägen kör redan existerande Handlarbudet-dossier (max 4 GET), samt separata tre officiella konkurrentkällor (max 6 GET) – 10 GET totalt. Allt är read-only.
 - Varje domäns `robots.txt` kontrolleras före dokumentet. Vid nekad/ogiltig policy **hämtas inte sidan**.
-- Inga redirects, cookies, authorization headers, fria användar-URL:er eller retries. Enskild begäran har 8 s timeout och högst 200 KB stream-läsning; bara kort, normaliserad titelmetadata returneras.
+- Inga redirects, cookies, authorization headers, fria användar-URL:er eller retries. Enskild begäran har 8 s timeout. Robots-dokument måste rymmas inom 200 KB. För HTML kan ett större dokument accepteras om en giltig titel hittas inom en begränsad prefixläsning på högst 200 KB; då avbryts resten av strömmen direkt. Om titeln inte kan verifieras inom gränsen nekas hämtningen. Bara kort, normaliserad titelmetadata returneras.
 - En misslyckad källa visas som misslyckad, inte "ingen förändring"; en lyckad titel visar endast att titelmetadata kunde kontrolleras.
 - Inga DB-skrivningar, LLM-anrop, cron-jobb, externa kundkontakter eller producentåtgärder.
 

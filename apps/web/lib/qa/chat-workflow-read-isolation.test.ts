@@ -23,8 +23,6 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { IMPOSSIBLE_PROJECT_ID } from '@/lib/atlas/isolation'
-import { initializeWorkerDb, resetWorkerDb, TEST_AGENT, TEST_CONVERSATION, TEST_PRINCIPAL, TEST_PROJECT, testSql } from '@/lib/website-build/test-db'
-let REAL_BUILD_DB: ReturnType<typeof initializeWorkerDb> | null = null
 
 const A_USER = 'user-a', A_EMAIL = 'a@example.test', A_PROJECT = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
 const B_USER = 'user-b', B_EMAIL = 'b@example.test', B_PROJECT = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
@@ -52,7 +50,6 @@ const get = (r: any, p: string): unknown => p.split('.').reduce((a: any, k) => (
 
 /** Service-role double: returns EVERYTHING unless the query filters it. */
 function makeDb() {
-  if (REAL_BUILD_DB && CURRENT_USER?.id === TEST_PRINCIPAL.userId) return REAL_BUILD_DB
   const from = (table: string) => {
     let rows: any[] = table === 'workflows' ? [...WORKFLOWS] : table === 'projects' ? [...PROJECTS] : []
     const rec = (op: string, c: string, v: unknown) => { if (table === 'workflows') WORKFLOW_OPS.push([op, c, v]) }
@@ -308,33 +305,5 @@ describe('Atlas design knowledge through authenticated chat', () => {
     expect(res.status).toBe(401)
     expect(streamCall).toBe(0)
     expect(TOOL_RESULTS).toEqual([])
-  })
-})
-
-describe('Website build through actual authenticated chat tool loop', () => {
-  beforeEach(() => { REAL_BUILD_DB = initializeWorkerDb(); resetWorkerDb(); CURRENT_USER = { id: TEST_PRINCIPAL.userId, email: 'builder@example.test' } })
-  afterEach(() => { REAL_BUILD_DB = null })
-  it('queues one durable build and gives its actual workspace link', async () => {
-    const input = { projectId: TEST_PROJECT, agentId: TEST_AGENT, brief: 'Bygg en svensk hemsida', idempotencyKey: crypto.randomUUID() }
-    const { res } = await ask('start_website_build', input, TEST_CONVERSATION)
-    expect(res.status).toBe(200)
-    const result = JSON.parse(TOOL_RESULTS[0])
-    expect(result.status).toBe('queued')
-    expect(result.revisions).toEqual([])
-    expect(result.workspaceUrl).toMatch(new RegExp('/build/' + result.sessionId + '$'))
-    expect(result.published).toBe(false)
-    expect(testSql("select count(*) from runs where input->>'sessionId'='" + result.sessionId + "';")).toBe('1')
-  }, 30_000)
-  it('foreign project and conversation never create a session', async () => {
-    const input = { projectId: '10000000-0000-4000-8000-000000000002', agentId: TEST_AGENT, brief: 'Bygg', idempotencyKey: crypto.randomUUID() }
-    await ask('start_website_build', input, TEST_CONVERSATION)
-    expect(JSON.parse(TOOL_RESULTS[0]).code).toBe('NOT_FOUND')
-    await ask('start_website_build', { ...input, projectId: TEST_PROJECT }, crypto.randomUUID())
-    expect(JSON.parse(TOOL_RESULTS[0]).error).toBeTruthy()
-  }, 30_000)
-  it('authentication precedes any website tool execution', async () => {
-    CURRENT_USER = null
-    const { res } = await ask('start_website_build')
-    expect(res.status).toBe(401); expect(streamCall).toBe(0)
   })
 })

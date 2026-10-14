@@ -114,3 +114,24 @@ One fresh gpt-6-astra reviewer reviewed190e8f1..fe6b8c4 read-only. Two Important
 The reviewer also flagged independent tab groups as Minor; regraded Important because unrelated visible site content disappears. New tab behaviors require validated groupId and operate within that group; renderer can update reviewed runtime in earlier stored inline artifacts. Browser two-group regression passes. Parent form integration notice is readable even when child CSS hides its note. Post-fix targeted267/267 and Chromium9/9 pass, standalone tsc0. No second review seat was dispatched.
 Deferred Minor: definitive start rejection freezes its original request; corrected agent/brief requires reload while retaining the unsaved brief manually. This remains visible as draft-stage recovery friction.
 Before review fixes, exhaustive disjoint full matrix464 files:12,155 passed,362 failed in70 files,1,110 pending; zero newly failing assertion names versus the initial baseline (five baseline assertions resolved). Final post-fix matrix includes465 files; result is recorded below.
+
+
+## Reproducible local SQL fixture
+
+The existing DB-free Atlas chat suite remains DB-free (16/16). The three actual-SQL website chat tests live in lib/website-build/chat-tools.test.ts. No hosted CI workflow was invoked. Run these integration tests only against the labeled local test container, never a production database.
+
+Start PostgreSQL16 with the label com.omnira.testplan=atlas-live-build-20261014, container name omnira-website-build-test-20261014, loopback127.0.0.1:54389:5432, POSTGRES_DB=omnira_website_test and POSTGRES_HOST_AUTH_METHOD=trust. Image digest: postgres@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d.
+
+From repository root in PowerShell:
+
+```powershell
+$env:WEBSITE_BUILD_TEST_DATABASE_URL='postgresql://postgres@127.0.0.1:54389/omnira_website_test'
+$env:WEBSITE_BUILD_TEST_KEEP_DATABASE='1'
+node apps/web/scripts/test-website-build-db.mjs
+# Set the exact website_test_<timestamp> value printed as KEEP_DB:
+$env:WEBSITE_BUILD_TEST_DATABASE_NAME='website_test_<printed timestamp>'
+npm test --workspace=apps/web -- lib/website-build lib/qa/website-build-drain.test.ts --maxWorkers=1 --minWorkers=1
+cd apps/web
+npx playwright test --config=playwright.website-build.config.ts
+```
+The explicit database name is validated against the owned timestamp prefix, and the Docker ownership label is checked before queries. The plan scratch log is only a legacy fallback; a fresh checkout does not require it.

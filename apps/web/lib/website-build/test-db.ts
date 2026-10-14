@@ -33,8 +33,11 @@ function canonicalFunction(file: string, name: string): string {
   return part.slice(0, part.indexOf(match[1] + ';', match.index! + match[0].length) + match[1].length + 1)
 }
 export function initializeWorkerDb(): ReturnType<typeof createAdminClient> {
-  const log = readFileSync(resolve(root, '.superpowers/sdd/2026-10-14-atlas-live-build-workspace/task3-db-setup.log'), 'utf8').replace(/\u0000/g, '')
-  database = log.match(/KEEP_DB=(website_test_\d+)/)?.[1] || ''
+  const configured = process.env.WEBSITE_BUILD_TEST_DATABASE_NAME
+  if (configured) database = configured
+  else {
+    try { const log = readFileSync(resolve(root, '.superpowers/sdd/2026-10-14-atlas-live-build-workspace/task3-db-setup.log'), 'utf8').replace(/\u0000/g, ''); database = log.match(/KEEP_DB=(website_test_\d+)/)?.[1] || '' } catch { throw Error('Prepare the isolated SQL fixture and set WEBSITE_BUILD_TEST_DATABASE_NAME to its KEEP_DB value; see the build validation report.') }
+  }
   const label = spawnSync('docker', ['inspect', '--format', '{{index .Config.Labels "com.omnira.testplan"}}', container], { encoding: 'utf8' })
   if (label.status !== 0 || label.stdout.trim() !== 'atlas-live-build-20261014') throw Error('Local fixture ownership missing')
   testSql(`alter table agents add column if not exists name text not null default 'Webbbyggare', add column if not exists model text not null default 'claude-sonnet-4-20250514', add column if not exists system_prompt text not null default 'Bygg genomtänkta svenska hemsidor.', add column if not exists config jsonb not null default '{}', add column if not exists skill_ids text[] not null default '{}';

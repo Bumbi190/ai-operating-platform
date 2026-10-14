@@ -67,7 +67,7 @@ describe('manual competitor market landscape boundary', () => {
         return new Response('', { status: 302, headers: { location: 'https://example.invalid/' } })
       if (String(url) === COMPETITOR_SITES[1].url)
         return new Response('{}', { headers: { 'content-type': 'application/json' } })
-      return new Response('<title>big</title>', { headers: { 'content-type': 'text/html', 'content-length': '300000' } })
+      return new Response('x'.repeat(200001) + '<title>too late</title>', { headers: { 'content-type': 'text/html', 'content-length': '300000' } })
     })
     const scan = await scanCompetitorLandscape(fetcher)
     expect(scan.observations.map(x => x.status)).toEqual([
@@ -75,6 +75,41 @@ describe('manual competitor market landscape boundary', () => {
     ])
     expect(fetcher).toHaveBeenCalledTimes(6)
     expect(fetcher.mock.calls.some(([url]) => String(url).includes('example.invalid'))).toBe(false)
+  })
+
+  it('accepts a bounded title prefix from a large page and cancels the unread body', async () => {
+    const cancel = vi.fn()
+    const fetcher = vi.fn<typeof fetch>(async url => {
+      if (String(url).endsWith('/robots.txt')) return new Response(policy)
+      return new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('<html><head><title>Verified marketplace</title></head>'))
+          // Intentionally do not close: early title detection must cancel
+          // the response rather than downloading the whole large document.
+        },
+        cancel,
+      }), { headers: { 'content-type': 'text/html', 'content-length': '900000' } })
+    })
+    const scan = await scanCompetitorLandscape(fetcher)
+    expect(scan.observations.map(x => x.status)).toEqual([
+      'metadata_checked', 'metadata_checked', 'metadata_checked',
+    ])
+    expect(scan.observations.every(x => x.title === 'Verified marketplace')).toBe(true)
+    expect(cancel).toHaveBeenCalledTimes(3)
+    expect(fetcher).toHaveBeenCalledTimes(6)
+  })
+
+  it('takes only the bounded prefix when a single chunk exceeds 200 KB', async () => {
+    const fetcher = vi.fn<typeof fetch>(async url => String(url).endsWith('/robots.txt')
+      ? new Response(policy)
+      : new Response(
+          '<html><head><title>Early official heading</title></head>' + 'x'.repeat(250000),
+          { headers: { 'content-type': 'text/html', 'content-length': '250055' } },
+        ))
+    const scan = await scanCompetitorLandscape(fetcher)
+    expect(scan.observations.every(x => x.status === 'metadata_checked')).toBe(true)
+    expect(scan.observations.every(x => x.title === 'Early official heading')).toBe(true)
+    expect(fetcher).toHaveBeenCalledTimes(6)
   })
 
   it('never treats invalid robots or failure as permission to retrieve its document', async () => {

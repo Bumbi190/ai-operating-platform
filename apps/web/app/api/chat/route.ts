@@ -42,6 +42,11 @@ import { executeLegacyDelegate } from '@/lib/atlas/legacy-delegate'
 import { validateWorkflowDraft, type WorkflowDraft } from '@/lib/atlas/workflow-authoring'
 import { listAtlasWorkflowCatalog } from '@/lib/atlas/workflow-catalog'
 import { DESIGN_SKILL_TOOLS, DESIGN_SKILL_GUIDE, executeDesignSkillTool } from '@/lib/skills/atlas-tools'
+import {executeVisiblePlanApproval,parseWebsitePlanRef} from '@/lib/website-build/planning/operator-command'
+import {buildErrorResponse} from '@/lib/website-build/api'
+import {WebsiteBuildError} from '@/lib/website-build/store'
+import {assertSameOrigin} from '@/lib/atlas/executive/http'
+import type {PlanRevisionRef} from '@/lib/website-build/planning/types'
 import { WEBSITE_BUILD_TOOLS, WEBSITE_BUILD_GUIDE, WEBSITE_BUILD_TOOL_NAMES, handleWebsiteBuildTool } from '@/lib/website-build/atlas-tools'
 import type { Json } from '@/lib/supabase/database.types'
 import { isViewAwarenessEnabled, normalizeView, renderViewBlock, type ClientViewEnvelope } from '@/lib/atlas/view-context'
@@ -630,12 +635,13 @@ export async function POST(request: Request) {
     }, agent: 'Atlas', operation: 'Atlas Chat',
   })
 
-  const { messages, conversation_id, voice, mode, view } = await request.json() as {
+  const { messages, conversation_id, voice, mode, view, websitePlanRef } = await request.json() as {
     messages: Anthropic.MessageParam[]
     conversation_id?: string
     voice?: boolean
     mode?: string
     view?: ClientViewEnvelope
+    websitePlanRef?:unknown
   }
 
   const db = createAdminClient()
@@ -716,7 +722,32 @@ export async function POST(request: Request) {
   // that path builds no project context and is sent no tools, so `executeTool`
   // — the one remaining reader of this list — cannot be reached. Every other
   // path, the content fast path included, reads it exactly as before.
-  const allowedProjectIds = staticConversation ? [] : await getAllowedProjectIds(db, user.id)
+  const allowedProjectIds = staticConversation && !websitePlanRef ? [] : await getAllowedProjectIds(db, user.id)
+
+
+  // A visible-plan confirmation is an authenticated operator command, never a model tool.
+  let visiblePlan:PlanRevisionRef|null=null
+  try{visiblePlan=parseWebsitePlanRef(websitePlanRef)}catch(error){return buildErrorResponse(error)}
+  if(visiblePlan){
+    const denied=assertSameOrigin(request);if(denied){denied.headers.set('cache-control','private, no-store');return denied}
+    try{
+      const owned=await resolveOwnedConversationId()
+      if(!owned)throw new WebsiteBuildError('NOT_FOUND',404)
+      const native=await executeVisiblePlanApproval({db,principal:{userId,allowedProjectIds},conversationId:owned,visiblePlan,userText:lastUserText})
+      if(native){
+        const reply='Planen är godkänd och bygget är köat. Du kan fortsätta prata eller skriva medan previewn uppdateras.'
+        await saveMessage('user',lastUserText)
+        await saveMessage('assistant',reply)
+        await saveMessage('tool',null,{kind:'website_effect',conversationId:owned,planRef:native.plan.ref,sessionRef:{projectId:native.session.projectId,sessionId:native.session.sessionId}})
+        const frames=[
+          {event:'website_plan',plan:native.plan,conversationId:owned},
+          {event:'website_workspace',session:native.session,conversationId:owned},
+          {event:'text',text:reply},{event:'done'},
+        ].map(frame=>'data: '+JSON.stringify(frame)+'\n\n').join('')
+        return new Response(frames,{headers:{'content-type':'text/event-stream','cache-control':'private, no-store'}})
+      }
+    }catch(error){return buildErrorResponse(error)}
+  }
 
   // True when the action ledger already shows a delegation — corroborates truthful
   // recall so the delegation honesty guard does NOT fire on it (set below).
@@ -1060,6 +1091,12 @@ export async function POST(request: Request) {
             }
 
             send('tool_result', { tool: toolUse.name, result })
+            // Typed effects come only from these authorized server tool outcomes.
+            const ownedWebsiteConversation=WEBSITE_BUILD_TOOL_NAMES.includes(toolUse.name)?await resolveOwnedConversationId():null
+            if(ownedWebsiteConversation&&r&&!(r as any).error&&(r as any).conversationId===ownedWebsiteConversation){
+              if(['draft_website_build_plan','get_website_build_plan'].includes(toolUse.name))send('website_plan',{plan:r,conversationId:ownedWebsiteConversation})
+              if(['start_website_build','get_website_build'].includes(toolUse.name))send('website_workspace',{session:r,conversationId:ownedWebsiteConversation})
+            }
 
             // PERSISTENS: spara verktygsanrop + resultat som en 'tool'-rad så att
             // utdata (särskilt Dream issue_id) överlever mellan turer och vid reload.

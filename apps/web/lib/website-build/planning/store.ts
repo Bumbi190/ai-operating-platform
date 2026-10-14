@@ -2,7 +2,7 @@ import 'server-only'
 import type { createAdminClient } from '@/lib/supabase/admin'
 import { WebsiteBuildError, validateBuildUuid } from '../store'
 import type { BuildPrincipal, BuildSessionView } from '../types'
-import type { PlanView,PlanRef,SavePlanInput,ApprovePlanInput,StartApprovedPlanInput,BuilderSetting,ProjectRoot,PlanDecision } from './types'
+import type { PlanView,PlanRef,SavePlanInput,ApprovePlanInput,StartApprovedPlanInput,BuilderSetting,ProjectRoot,PlanDecision,PlanRevisionRef } from './types'
 import { validatePlanContent, hashPlanContent, compileStaticBrief } from './validation'
 import { bindProjectLocation, validateProjectRoot } from './project-layout'
 type Db=ReturnType<typeof createAdminClient>
@@ -41,4 +41,13 @@ export async function setProjectWebsiteBuilder(db:Db,p:BuildPrincipal,i:{project
  const base=root??(!location?await readOperatorProjectRoot(db,p):null)
  if(base){const {data,error}=await db.from('projects').select('id,name').eq('id',i.projectId).maybeSingle();if(error||!data)throw new WebsiteBuildError('NOT_FOUND',404);location=bindProjectLocation(base,data.name,i.projectId,root?null:current.location)}
  return call(db,'website_build_builder_set',p,{projectId:i.projectId,agentId:i.agentId,location})
+}
+/** Reads authority only after the parent plan is owner/conversation checked. SQL start revalidates it. */
+export async function findWebsitePlanDecision(db:Db,p:BuildPrincipal,ref:PlanRevisionRef):Promise<{id:string;sha256:string;session_id:string|null}|null>{
+ allowed(p,ref.projectId);revision({...ref,decisionId:'00000000-0000-4000-8000-000000000000'})
+ const query=db as unknown as {from(n:string):any}
+ const {data,error}=await query.from('website_build_plan_decisions').select('id,sha256,session_id').eq('project_id',ref.projectId).eq('plan_id',ref.planId).eq('revision_id',ref.revisionId).eq('approved_by',p.userId).maybeSingle()
+ if(error)throw new WebsiteBuildError('BUILD_UNAVAILABLE',503)
+ if(data&&data.sha256!==ref.sha256)throw new WebsiteBuildError('PLAN_STALE',409)
+ return data
 }

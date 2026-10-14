@@ -84,7 +84,7 @@ create trigger website_plan_decision_no_rewrite before update on public.website_
 create function public.website_build_root_get(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
 declare value jsonb;
 begin
- if not exists(select 1 from auth.users where id=(p_principal->>'userId')::uuid) then raise exception 'WEBSITE_BUILD_NOT_FOUND' using errcode='P0002'; end if;
+ if p_principal->>'userId' is null then raise exception 'WEBSITE_BUILD_NOT_FOUND' using errcode='P0002'; end if;
  select default_root into value from public.website_build_operator_settings where owner_id=(p_principal->>'userId')::uuid;
  return coalesce(value,'null'::jsonb);
 end $$;

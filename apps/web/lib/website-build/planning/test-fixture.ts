@@ -11,7 +11,7 @@ export async function approvedTestInput(db:ReturnType<typeof createAdminClient>,
  const current=JSON.parse(raw)[0] as {id:string;revision:string}|undefined
  const plan=await saveWebsitePlanRevision(db,p,{projectId:input.projectId,conversationId:input.conversationId,planId:current?.id,expectedRevisionId:current?.revision??null,content,idempotencyKey:input.idempotencyKey})
  const decision=await approveWebsitePlan(db,p,{...plan.currentRevision,idempotencyKey:'approve-'+input.idempotencyKey})
- return {...plan.currentRevision,decisionId:decision.id}
+ return {projectId:plan.ref.projectId,planId:plan.ref.planId,revisionId:plan.currentRevision.revisionId,sha256:plan.currentRevision.sha256,decisionId:decision.id}
 }
 export async function approvedTestBuild(db:ReturnType<typeof createAdminClient>,p:BuildPrincipal,input:{projectId:string;agentId:string;conversationId:string;brief:string;idempotencyKey:string}):Promise<BuildSessionView>{
  return startApprovedWebsitePlan(db,p,await approvedTestInput(db,p,input))

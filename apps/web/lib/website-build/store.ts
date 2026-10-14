@@ -31,9 +31,11 @@ async function rpc<T>(db: Db, name: string, args: Record<string, unknown>): Prom
   return data as T
 }
 export async function createBuildSession(db: Db, principal: BuildPrincipal, input: CreateBuildInput): Promise<BuildSessionView> {
-  allowed(principal, { projectId: input.projectId, sessionId: input.agentId }); validateBuildUuid(input.conversationId); validateKey(input.idempotencyKey)
-  if (typeof input.brief !== 'string' || !input.brief.trim() || input.brief.length > WEBSITE_BUILD_LIMITS.briefChars) throw new WebsiteBuildError('INVALID_BRIEF')
-  return rpc(db, 'website_build_create', { p_principal: principal, p_input: input })
+  allowed(principal,{projectId:input.projectId,sessionId:input.projectId})
+  if(!('planId' in input))throw new WebsiteBuildError('PLAN_REVIEW_REQUIRED',409)
+  if(Object.keys(input).some(key=>!['projectId','planId','revisionId','sha256','decisionId'].includes(key)))throw new WebsiteBuildError('INVALID_BODY')
+  const {startApprovedWebsitePlan}=await import('./planning/store')
+  return startApprovedWebsitePlan(db,principal,input)
 }
 export async function readBuildSession(db: Db, principal: BuildPrincipal, ref: BuildRef): Promise<BuildSessionView> {
   allowed(principal, ref); return rpc(db, 'website_build_view', { p_principal: principal, p_ref: ref })

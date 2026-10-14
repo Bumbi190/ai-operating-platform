@@ -30,3 +30,12 @@ describe('Atlas design knowledge tools', () => {
     expect(route).toContain('(fastPath || staticConversation) ? [] : TOOLS')
   })
 })
+
+
+describe('design tool labels', () => {
+  it('shows Swedish progress labels for design knowledge reads', async () => {
+    const { toolLabel } = await import('../os/chat-shared')
+    expect(toolLabel('list_design_skills')).toBe('Listar designfärdigheter')
+    expect(toolLabel('read_design_skill')).toBe('Läser designfärdighet')
+  })
+})

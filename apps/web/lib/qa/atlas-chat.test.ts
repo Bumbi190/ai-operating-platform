@@ -851,7 +851,7 @@ describe('atlas chat · wiring to the unchanged endpoints', () => {
   })
 
   it('calls no endpoint but the conversation routes it always used', () => {
-    const urls = new Set(SURFACE.flatMap((src) => [...src.matchAll(/(?:fetch|this\.request)\(\s*([`'])([^`']+)\1/g)].map((m) => m[2])))
+    const urls = new Set(SURFACE.flatMap((src) => [...src.matchAll(/(?:fetch|this\.request)\(\s*([`'"])([^`'"]+)\1/g)].map((m) => m[2])))
     expect([...urls].sort()).toEqual(['/api/chat', '/api/conversations', '/api/conversations/${id}'])
   })
 

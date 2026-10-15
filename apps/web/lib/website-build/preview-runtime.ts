@@ -30,7 +30,13 @@ export const WEBSITE_RUNTIME = String.raw`(() => {
       const link = event.target.closest && event.target.closest('a[href]');
       if (!link) return;
       const href = link.getAttribute('href');
-      if (href.startsWith('#')) return;
+      if (href.startsWith('#')) {
+        // srcdoc fragments otherwise resolve against the embedding page URL.
+        event.preventDefault();
+        if (href === '#') window.scrollTo(0, 0);
+        else document.getElementById(href.slice(1))?.scrollIntoView();
+        return;
+      }
       event.preventDefault();
       const key = href.split('#')[0].replace(/\.html$/, '');
       if (config.pages.includes(key)) parent.postMessage({ type: 'atlas-preview-page', token: config.preview.token, artifactHash: config.preview.artifactHash, pageKey: key }, '*');

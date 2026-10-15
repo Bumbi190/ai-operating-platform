@@ -42,6 +42,8 @@ test('brief to preview, concurrent feedback, history and reload', async ({ page,
   await page.frameLocator('iframe').getByRole('button', { name: 'Meny' }).click()
   await page.frameLocator('iframe').getByRole('link', { name: 'Kontakt' }).click()
   await expect(page.getByLabel('Sida', { exact: true })).toHaveValue('contact')
+  await page.frameLocator('iframe').getByRole('link', { name: 'Hem', exact: true }).click()
+  await expect(page.getByLabel('Sida', { exact: true })).toHaveValue('index')
   await page.screenshot({ path: '../../.superpowers/sdd/2026-10-14-atlas-conversation-build/workspace-desktop.png', fullPage: true })
 })
 test('opaque preview blocks parent access, network, popups and forged navigation', async ({ page, request }) => {
@@ -69,6 +71,33 @@ test('opaque preview blocks parent access, network, popups and forged navigation
   expect(await page.evaluate(() => document.body.dataset.compromised)).toBeUndefined()
   expect(unexpected).toEqual([])
 })
+test('fragment links stay in the opaque preview and work natively in the export', async ({ page, request, context }) => {
+  await page.goto('/'); await expect(page.getByRole('heading', { name: 'Bygg med Atlas' })).toBeVisible()
+  const id = new URL(page.url()).searchParams.get('session')!
+  await request.get(`/__fixture/step/${id}/anchors`); await expect(page.getByTitle('Webbpreview version 1')).toBeVisible()
+  const frame = page.frames().find(frame => frame.parentFrame())!
+  const navigations: string[] = []
+  page.on('request', req => { if (req.isNavigationRequest() && req.frame().parentFrame()) navigations.push(req.url()) })
+  await frame.getByRole('link', { name: 'Till sektionen', exact: true }).click()
+  await expect.poll(() => frame.evaluate(() => scrollY)).toBeGreaterThan(1000)
+  expect(frame.url()).toBe('about:srcdoc')
+  await expect(frame.getByRole('heading', { name: 'Nedre sektionen' })).toBeVisible()
+  await frame.getByRole('link', { name: 'Till toppen', exact: true }).click()
+  await expect.poll(() => frame.evaluate(() => scrollY)).toBe(0)
+  expect(frame.url()).toBe('about:srcdoc'); expect(navigations).toEqual([])
+  await expect(frame.getByRole('link', { name: 'Till sektionen', exact: true })).toBeVisible()
+  const href = await page.getByRole('link', { name: 'Ladda ner ZIP' }).getAttribute('href')
+  const response = await request.get(href!); expect(response.ok()).toBe(true)
+  const zip = await JSZip.loadAsync(await response.body()), folder = resolve('../../.superpowers/sdd/2026-10-14-atlas-conversation-build/export-anchors', id)
+  await mkdir(folder, { recursive: true })
+  for (const file of Object.values(zip.files)) if (!file.dir) {const target=resolve(folder,file.name);await mkdir(dirname(target),{recursive:true});await writeFile(target,await file.async('nodebuffer'))}
+  const exportRoot=Object.keys(zip.files).find(name=>name.endsWith('/project.json'))!.replace(/\/project\.json$/,'')
+  const exported=await context.newPage(); await exported.goto(pathToFileURL(resolve(folder,exportRoot,'src','index.html')).href)
+  await exported.getByRole('link', { name: 'Till sektionen', exact: true }).click()
+  await expect(exported).toHaveURL(/index\.html#lower$/); await expect.poll(()=>exported.evaluate(()=>scrollY)).toBeGreaterThan(1000)
+  await exported.getByRole('link', { name: 'Till toppen', exact: true }).click()
+  await expect.poll(()=>exported.evaluate(()=>scrollY)).toBe(0); await expect(exported).toHaveURL(/index\.html#$/)
+})
 test('downloaded export runs menu and page navigation from disk', async ({ page, request, context }) => {
   await page.goto('/'); await expect(page.getByRole('heading', { name: 'Bygg med Atlas' })).toBeVisible()
   const id = new URL(page.url()).searchParams.get('session')!
@@ -82,6 +111,8 @@ test('downloaded export runs menu and page navigation from disk', async ({ page,
   const exported = await context.newPage(); await exported.goto(pathToFileURL(resolve(folder,exportRoot,'src','index.html')).href)
   await exported.getByRole('button', { name: 'Meny' }).click(); await expect(exported.getByRole('link', { name: 'Kontakt' })).toBeVisible()
   await exported.getByRole('link', { name: 'Kontakt' }).click(); await expect(exported.getByRole('heading', { name: 'Kontakta caféet' })).toBeVisible()
+  await exported.getByRole('link', { name: 'Hem', exact: true }).click()
+  await expect(exported).toHaveURL(/\/index\.html$/)
 })
 test('broken candidate keeps previous preview', async ({ page, request }) => {
   await page.goto('/'); await expect(page.getByRole('heading', { name: 'Bygg med Atlas' })).toBeVisible()

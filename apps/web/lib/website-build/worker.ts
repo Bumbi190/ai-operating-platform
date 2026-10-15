@@ -6,10 +6,11 @@ import { atlasModelPolicy } from '@/lib/ai/atlas-model-policy'
 import { isAnthropicModel, isImageModel, isOpenAIModel } from '@/lib/ai/models'
 import { fencedError } from '@/lib/ai/fencing'
 import { cancelledError } from '@/lib/ai/cancel'
-import { checkpointClaimedRun, settleRefusal, RunCheckpointRefusedError, RunLifecycleWriteError } from '@/lib/governance/run-execution-checkpoint'
+import { checkOwnedFinalization, checkpointClaimedRun, settleRefusal, RunCheckpointRefusedError, RunLifecycleWriteError } from '@/lib/governance/run-execution-checkpoint'
 import { projectScope } from '@/lib/governance/execution-stop'
 import { composeAgentDesignSkills } from '@/lib/skills/compose-agent-skills'
 import { compileWebsiteArtifact, WebsiteArtifactError } from './artifact'
+import { rejectedDraftLog } from './rejected-draft'
 import { commitBuildRevision, loadBuildSnapshot, parkBuildSession, recordBuildInterpretation, saveBuildCandidate, setBuildStage, WebsiteBuildError } from './store'
 import { interpretBuildFeedback, parseWebsiteModelJson, WebsiteBuildPermanentError } from './feedback-interpretation'
 import { FEEDBACK_CONTRACT, WEBSITE_OUTPUT_CONTRACT, websiteUserMessage } from './prompt'
@@ -71,7 +72,28 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
       await setBuildStage(db, writer, 'building')
       const result = await paid(knowledge.systemPrompt + '\n\n' + WEBSITE_OUTPUT_CONTRACT, websiteUserMessage(snapshot, interpretation), config?.max_tokens ?? 12000, 'website.artifact.generate')
       if (!result) return
-      artifact = compileWebsiteArtifact(parseWebsiteModelJson(result.content))
+      try { artifact = compileWebsiteArtifact(parseWebsiteModelJson(result.content)) }
+      catch (error) {
+        if (error instanceof WebsiteArtifactError || error instanceof WebsiteBuildPermanentError) {
+          // This response already failed permanently. Finalization checks claim
+          // and cancellation without letting a later governance stop requeue it.
+          const finalization = await checkOwnedFinalization(db, run.id, claimId)
+          if (finalization === 'FENCED') throw fencedError(run.id)
+          if (finalization === 'CANCELLED') {
+            const settled = await settleRefusal(db, 'CANCELLED', run.id, claimId)
+            if (settled === 'ERROR') throw new RunLifecycleWriteError(run.id, 'website:rejected-draft', 'cancellation finalization failed')
+            if (settled === 'FENCED') throw fencedError(run.id)
+            throw cancelledError(run.id)
+          }
+          // Failure evidence is a system log, never a successful assistant
+          // checkpoint, trusted artifact or new paid generation.
+          try {
+            const saved = await db.from('run_logs').insert({run_id:run.id,role:'system',content:rejectedDraftLog(writer,executionModel,result.content,error.code)})
+            if (saved.error) console.warn('[website-build] rejected draft diagnostic could not be saved', {runId:run.id,code:error.code})
+          } catch { console.warn('[website-build] rejected draft diagnostic could not be saved', {runId:run.id}) }
+        }
+        throw error
+      }
       await saveBuildCandidate(db, writer, artifact)
     }
     snapshot = await loadBuildSnapshot(db, writer)

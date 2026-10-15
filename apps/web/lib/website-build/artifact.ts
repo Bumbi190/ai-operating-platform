@@ -24,11 +24,12 @@ type Node = DefaultTreeAdapterMap['node']
 type Element = DefaultTreeAdapterMap['element']
 function isElement(node: Node): node is Element { return 'tagName' in node }
 
-function validateMarkup(html: string, pageKeys: Set<string>, homeAlias = false): { html: string; ids: Set<string>; forms: boolean } {
+function validateMarkup(html: string, pageKeys: Set<string>, homeAlias = false, pageKey = 'index'): { html: string; ids: Set<string>; forms: boolean } {
   const fragment = parseFragment(html)
   const ids = new Set<string>()
   const anchorTargets: string[] = []
-  let forms = false
+  let forms = false, linkNumber = 0
+  const invalidLink = (reason:string):never => { throw new WebsiteArtifactError('INVALID_LINK', 'Sidan '+pageKey+', länk '+linkNumber+': '+reason+' Tillåtna sidor: '+[...pageKeys].map(key=>key+'.html').join(', ')+'. Använd #id för en befintlig sektion eller en button för en demoåtgärd.') }
   const walk = (nodes: Node[], depth: number): void => {
     if (depth > 100) fail('MARKUP_TOO_DEEP')
     for (const node of nodes) {
@@ -42,12 +43,20 @@ function validateMarkup(html: string, pageKeys: Set<string>, homeAlias = false):
           ids.add(attr.value)
         }
         if (attr.name === 'href') {
-          if (node.tagName !== 'a') fail('INVALID_LINK')
-          if(homeAlias && /^home\.html(?:#[A-Za-z][A-Za-z0-9_-]{0,79})?$/.test(attr.value))attr.value='index.html'+attr.value.slice('home.html'.length)
+          linkNumber++
+          if (node.tagName !== 'a') invalidLink('href får bara finnas på en a-länk.')
+          // An empty fragment is native same-page navigation, not an external capability.
+          if (attr.value === '#') continue
           if (attr.value.startsWith('#') && SAFE_ID.test(attr.value.slice(1))) anchorTargets.push(attr.value.slice(1))
           else {
-            const match = attr.value.match(/^([a-z][a-z0-9-]{0,49})\.html(?:#([A-Za-z][A-Za-z0-9_-]{0,79}))?$/)
-            if (!match || !pageKeys.has(match[1])) fail('INVALID_LINK')
+            const value = attr.value === '/' ? 'index.html' : attr.value
+            // Only flat, known package pages. Never decode URLs, dot segments,
+            // schemes, protocol-relative paths, queries or arbitrary filenames.
+            const match = value.match(/^\/?([a-z][a-z0-9-]{0,49})(?:\.html)?(#[A-Za-z][A-Za-z0-9_-]{0,79})?$/)
+            if (!match) invalidLink('Länkformatet stöds inte i en statisk preview.')
+            const key = homeAlias && match![1] === 'home' ? 'index' : match![1]
+            if (!pageKeys.has(key)) invalidLink('Målsidan finns inte i sidpaketet.')
+            attr.value = key + '.html' + (match![2] ?? '')
           }
         }
         if (attr.name === 'src') {
@@ -107,7 +116,7 @@ export function compileWebsiteArtifact(input: unknown): WebsiteArtifact {
   const scriptHash = createHash('sha256').update(WEBSITE_RUNTIME).digest('base64')
   const pages = rawPages.map((page,index) => {
     const pageTitle = text(page.title, 200)
-    const markup = validateMarkup(text(page.bodyHtml), pageKeys, homeAlias)
+    const markup = validateMarkup(text(page.bodyHtml), pageKeys, homeAlias, keys[index])
     forms ||= markup.forms
     const behaviors = validateBehaviors(page.behaviors, markup.ids)
     const css = ((sharedCss ? sharedCss + '\n' : '') + (page.css === undefined && draft.css !== undefined ? '' : text(page.css))).replace(/</g, '\\3c ')

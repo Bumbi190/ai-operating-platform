@@ -198,3 +198,56 @@ it('uses OpenAI in the temporary economy profile without changing the saved agen
   expect(testSql("select model from agents where id='"+TEST_AGENT+"';")).toBe(savedModel)
  }finally{delete process.env.ATLAS_MODEL_PROFILE}
 },30000)
+
+it('retains a rejected paid draft as a non-executable diagnostic without retry or preview',async()=>{
+ const s=await session(),run=await claim(s)
+ const rejected=draft();rejected.pages[0].bodyHtml='<a href="https://bad.example">Extern</a>'
+ const content=JSON.stringify(rejected)
+ provider.mockResolvedValueOnce({...response(rejected),content})
+ await expect(executeWebsiteBuildRun(db,run,run.claim_id!)).rejects.toMatchObject({code:'INVALID_LINK'})
+ expect(provider).toHaveBeenCalledTimes(1);expect((await view(s)).revisions).toHaveLength(0)
+ const stored=testSql("select content from run_logs where run_id='"+run.id+"' and content like '%website.rejected-draft.v1%' limit 1;")
+ expect(stored).not.toBe('')
+ const log=JSON.parse(stored)
+ expect(log).toMatchObject({kind:'website.rejected-draft.v1',projectId:TEST_PROJECT,sessionId:s.sessionId,model:provider.mock.calls[0][0].model,code:'INVALID_LINK',content})
+ expect(log.sha256).toMatch(/^[a-f0-9]{64}$/)
+ expect(testSql("select role from run_logs where run_id='"+run.id+"' and content like '%website.rejected-draft.v1%' limit 1;")).toBe('system')
+},30000)
+
+it('keeps the validation failure when rejected-draft logging is unavailable',async()=>{
+ const s=await session(),run=await claim(s),bad=draft();bad.pages[0].bodyHtml='<a href="mailto:example@example.com">E-post</a>'
+ provider.mockResolvedValueOnce(response(bad))
+ const from=db.from.bind(db),attempts:string[]=[]
+ const unavailable={...db,from:(table:string)=>table==='run_logs'?{insert:async()=>{attempts.push(table);return{error:{message:'test unavailable'}}}}:from(table as any)} as typeof db
+ const warning=vi.spyOn(console,'warn').mockImplementation(()=>{})
+ try{
+  await expect(executeWebsiteBuildRun(unavailable,run,run.claim_id!)).rejects.toMatchObject({code:'INVALID_LINK'})
+  expect(attempts).toEqual(['run_logs']);expect(provider).toHaveBeenCalledTimes(1);expect((await view(s)).revisions).toHaveLength(0)
+ }finally{warning.mockRestore()}
+},30000)
+it('does not retain a draft after losing the claim during the paid call',async()=>{
+ const s=await session(),run=await claim(s),bad=draft();bad.pages[0].bodyHtml='<a href="https://bad.example">Extern</a>'
+ provider.mockImplementationOnce(async()=>{testSql("update runs set claim_id=gen_random_uuid() where id='"+run.id+"';");return response(bad)})
+ await expect(executeWebsiteBuildRun(db,run,run.claim_id!)).rejects.toThrow(/^fenced:/)
+ expect(testSql("select count(*) from run_logs where run_id='"+run.id+"' and content like '%website.rejected-draft.v1%';")).toBe('0')
+ expect((await view(s)).revisions).toHaveLength(0);expect(provider).toHaveBeenCalledTimes(1)
+},30000)
+
+it.each(['stop','cancel','fence'])('preserves rejection finalization after compilation begins: %s',async reason=>{
+ const s=await session(),run=await claim(s),bad=draft();bad.pages[0].bodyHtml='<a href="https://bad.example">Extern</a>'
+ const content=JSON.stringify(bad);let changed=false
+ provider.mockResolvedValueOnce({...response(bad),get content(){
+  if(!changed){changed=true
+   if(reason==='stop')testSql('update platform_config set automation_paused=true;')
+   if(reason==='cancel')testSql("select request_run_cancel('"+run.id+"','"+TEST_PROJECT+"',null,'test cancel');")
+   if(reason==='fence')testSql("update runs set claim_id=gen_random_uuid() where id='"+run.id+"';")
+  }
+  return content
+ }})
+ const task=executeWebsiteBuildRun(db,run,run.claim_id!)
+ if(reason==='stop')await expect(task).rejects.toMatchObject({code:'INVALID_LINK'})
+ else await expect(task).rejects.toThrow(reason==='cancel'?/^cancelled:/:/^fenced:/)
+ expect(testSql("select status from runs where id='"+run.id+"';")).toBe(reason==='cancel'?'cancelled':'running')
+ expect(testSql("select count(*) from run_logs where run_id='"+run.id+"' and content like '%website.rejected-draft.v1%';")).toBe(reason==='stop'?'1':'0')
+ expect(provider).toHaveBeenCalledTimes(1);expect((await view(s)).revisions).toHaveLength(0)
+},30000)

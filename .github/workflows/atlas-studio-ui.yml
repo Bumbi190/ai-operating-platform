@@ -19,6 +19,8 @@ on:
       - 'apps/web/lib/website-build/prompt*'
       - 'apps/web/lib/website-build/worker*'
       - 'apps/web/lib/website-build/rejected-draft*'
+      - 'apps/web/lib/website-build/recovery*'
+      - 'apps/web/lib/website-build/atlas-tools.ts'
       - 'apps/web/lib/website-build/preview-runtime*'
       - 'apps/web/lib/website-build/types.ts'
       - 'apps/web/lib/ai/runner.ts'

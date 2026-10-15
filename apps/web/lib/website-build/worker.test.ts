@@ -251,3 +251,56 @@ it.each(['stop','cancel','fence'])('preserves rejection finalization after compi
  expect(testSql("select count(*) from run_logs where run_id='"+run.id+"' and content like '%website.rejected-draft.v1%';")).toBe(reason==='stop'?'1':'0')
  expect(provider).toHaveBeenCalledTimes(1);expect((await view(s)).revisions).toHaveLength(0)
 },30000)
+
+it.each(['valid','paused','paused-feedback','legacy-worker','rejected-stop','rejected-cancel','rejected-fence','wrong-hash','wrong-session','unsafe-draft'])('recovers a saved rejected draft without paid dispatch: %s',async mode=>{
+ const s=await session(),source=await claim(s),bad=draft();bad.pages[0].bodyHtml='<svg><rect width="10" height="10"></rect></svg>'
+ provider.mockResolvedValueOnce(response(bad))
+ await expect(executeWebsiteBuildRun(db,source,source.claim_id!)).rejects.toMatchObject({code:'UNSUPPORTED_ELEMENT'})
+ const log=JSON.parse(testSql("select content from run_logs where run_id='"+source.id+"' and content like '%website.rejected-draft.v1%' limit 1;"))
+ testSql("update runs set status='failed' where id='"+source.id+"'; update website_build_sessions set status='failed',current_run_id=null where id='"+s.sessionId+"';")
+ const resumed=await requestBuildControl(db,TEST_PRINCIPAL,s,'resume','recovery-'+mode),next=await claim(resumed)
+ const recovery={sourceRunId:source.id,sourceSha256:mode==='wrong-hash'?'0'.repeat(64):log.sha256,draft:mode==='unsafe-draft'||mode.startsWith('rejected-')?bad:draft('Återställd utan nytt modellanrop')}
+ if(mode==='wrong-session')testSql("update runs set input=jsonb_set(input,'{sessionId}','\"00000000-0000-4000-8000-000000000099\"'::jsonb) where id='"+source.id+"';")
+ next.input={...(next.input as object),recovery}
+ testSql("update runs set input='"+JSON.stringify(next.input).replaceAll("'","''")+"'::jsonb where id='"+next.id+"';")
+ provider.mockClear();provider.mockRejectedValue(new Error('Paid generation must not be called during recovery'))
+ if(mode.startsWith('rejected-')){
+  let changed=false
+  Object.defineProperty(recovery,'draft',{get(){
+   if(!changed){changed=true
+    if(mode==='rejected-stop')testSql('update platform_config set automation_paused=true;')
+    if(mode==='rejected-cancel')testSql("select request_run_cancel('"+next.id+"','"+TEST_PROJECT+"',null,'test recovery cancel');")
+    if(mode==='rejected-fence')testSql("update runs set claim_id=gen_random_uuid() where id='"+next.id+"';")
+   }
+   return bad
+  }})
+  const task=executeWebsiteBuildRun(db,next,next.claim_id!)
+  if(mode==='rejected-stop')await expect(task).rejects.toMatchObject({code:'UNSUPPORTED_ELEMENT'})
+  else await expect(task).rejects.toThrow(mode==='rejected-cancel'?/^cancelled:/:/^fenced:/)
+  expect(testSql("select status from runs where id='"+next.id+"';")).toBe(mode==='rejected-cancel'?'cancelled':'running')
+  expect((await view(s)).revisions).toHaveLength(0)
+ }
+ else if(mode==='legacy-worker'){
+  // Old deployed workers have no recovery protocol marker and must fail before
+  // obtaining the snapshot from which they could dispatch paid generation.
+  await expect(loadBuildSnapshot(db,writer(s,next))).rejects.toMatchObject({message:expect.stringContaining('RECOVERY_WORKER_REQUIRED')})
+  expect((await view(s)).revisions).toHaveLength(0)
+ }
+ else if(mode==='paused'||mode==='paused-feedback'){
+  await requestBuildControl(db,TEST_PRINCIPAL,s,'pause','pause-recovery')
+  await executeWebsiteBuildRun(db,next,next.claim_id!)
+  expect((await view(s)).status).toBe('paused')
+  if(mode==='paused-feedback')await appendBuildFeedback(db,TEST_PRINCIPAL,s,{idempotencyKey:'during-recovery',text:'Byt rubriken',inputSource:'text',viewedRevisionId:null})
+  const resumedAgain=await requestBuildControl(db,TEST_PRINCIPAL,s,'resume','resume-recovery'),last=await claim(resumedAgain)
+  if(mode==='paused-feedback'){
+   await expect(executeWebsiteBuildRun(db,last,last.claim_id!)).rejects.toMatchObject({code:'INVALID_RECOVERY'})
+   expect((await view(s)).revisions).toHaveLength(0)
+  }else{
+   await executeWebsiteBuildRun(db,last,last.claim_id!)
+   expect((await view(s)).status).toBe('ready');expect((await view(s)).revisions).toHaveLength(1)
+  }
+ }
+ else if(mode==='valid'){await executeWebsiteBuildRun(db,next,next.claim_id!);expect((await view(s)).status).toBe('ready');expect((await view(s)).revisions).toHaveLength(1)}
+ else{await expect(executeWebsiteBuildRun(db,next,next.claim_id!)).rejects.toMatchObject({code:mode==='unsafe-draft'?'UNSUPPORTED_ELEMENT':'INVALID_RECOVERY'});expect((await view(s)).revisions).toHaveLength(0)}
+ expect(provider).not.toHaveBeenCalled()
+},30000)

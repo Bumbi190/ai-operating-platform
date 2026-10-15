@@ -57,6 +57,8 @@ export function initializeWorkerDb(): ReturnType<typeof createAdminClient> {
   testSql(canonicalFunction('20260903120000_durable_cancellation_reaper.sql', 'claim_runs'))
   testSql(canonicalFunction('20261015041654_atlas_builder_studio_workspace.sql', 'claim_runs'))
   testSql(`grant execute on function stop_state(uuid),release_stopped_run(uuid,uuid),claim_runs(integer,integer) to service_role;`)
+  testSql(canonicalFunction('20261015154741_website_saved_draft_worker_protocol.sql', 'website_build_lock_writer'))
+  testSql(canonicalFunction('20261015154741_website_saved_draft_worker_protocol.sql', 'website_build_enqueue'))
   const setReturning = new Set(['stop_state', 'claim_runs'])
   const transport = {
     rpc: async (name: string, args: Record<string, unknown> = {}) => {

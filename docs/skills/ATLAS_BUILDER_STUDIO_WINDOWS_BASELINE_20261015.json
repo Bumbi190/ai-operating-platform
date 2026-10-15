@@ -1,0 +1,303 @@
+{
+  "testedCommit": "c4c34ec39334ff3cfd29776bdaef504a3813b385",
+  "files": 77,
+  "failedFiles": 71,
+  "tests": 3406,
+  "failed": 363,
+  "passed": 3029,
+  "skipped": 14,
+  "passingFiles": [
+    "lib/qa/design-skill-chat.test.ts",
+    "lib/qa/migration-guard-v2.test.ts",
+    "lib/qa/migration-security-gate.test.ts",
+    "lib/qa/mobile-nav-contract.test.ts",
+    "lib/qa/sidebar-project-visibility.test.ts",
+    "lib/qa/vnext-mobile-shell-nav.test.ts"
+  ],
+  "failures": [
+    {
+      "file": "lib/qa/activity-stream.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/admission-inventory.test.ts",
+      "count": 4
+    },
+    {
+      "file": "lib/qa/atlas-knowledge-boundary.test.ts",
+      "count": 2
+    },
+    {
+      "file": "lib/qa/atlas-knowledge-snapshot.test.ts",
+      "count": 3
+    },
+    {
+      "file": "lib/qa/atlas-latency.test.ts",
+      "count": 2
+    },
+    {
+      "file": "lib/qa/atlas-launcher-vnext.test.ts",
+      "count": 4
+    },
+    {
+      "file": "lib/qa/atlas-memory-dream-producers.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/atlas-memory-emit-durability.test.ts",
+      "count": 3
+    },
+    {
+      "file": "lib/qa/atlas-memory-terminal-outcomes.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/atlas-static-conversation-route.test.ts",
+      "count": 2
+    },
+    {
+      "file": "lib/qa/autonomy-bind-guards.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/autonomy-license.test.ts",
+      "count": 4
+    },
+    {
+      "file": "lib/qa/autonomy-runtime-foundation.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/autonomy-trace-guards.test.ts",
+      "count": 3
+    },
+    {
+      "file": "lib/qa/budget-scopes.test.ts",
+      "count": 2
+    },
+    {
+      "file": "lib/qa/canonical-evidence-pin.test.ts",
+      "count": 2
+    },
+    {
+      "file": "lib/qa/cl-shadow.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/content-center.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/delegation-mission-activation.test.ts",
+      "count": 11
+    },
+    {
+      "file": "lib/qa/desktop-commander-unlicensed.test.ts",
+      "count": 5
+    },
+    {
+      "file": "lib/qa/execution-contract-propagation.test.ts",
+      "count": 8
+    },
+    {
+      "file": "lib/qa/executive-brief-apex.test.ts",
+      "count": 2
+    },
+    {
+      "file": "lib/qa/executive-intelligence-schema-activation.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/external-dispatch-guards.test.ts",
+      "count": 4
+    },
+    {
+      "file": "lib/qa/global-auth-retired.test.ts",
+      "count": 6
+    },
+    {
+      "file": "lib/qa/global-design-tokens.test.ts",
+      "count": 2
+    },
+    {
+      "file": "lib/qa/handlarborsen-visual-pulse.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/leads-dual-accept.test.ts",
+      "count": 2
+    },
+    {
+      "file": "lib/qa/leads-legacy-auth-removed.test.ts",
+      "count": 4
+    },
+    {
+      "file": "lib/qa/legacy-v1-api-removed.test.ts",
+      "count": 5
+    },
+    {
+      "file": "lib/qa/licensed-bind-m4b-guards.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/marketing-review.test.ts",
+      "count": 3
+    },
+    {
+      "file": "lib/qa/media-orchestration-retry-authority.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/media-token-authority.test.ts",
+      "count": 3
+    },
+    {
+      "file": "lib/qa/memory-vnext.test.ts",
+      "count": 2
+    },
+    {
+      "file": "lib/qa/mission-brief-v1.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/mobile-chrome-contract.test.ts",
+      "count": 2
+    },
+    {
+      "file": "lib/qa/money-overview.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/monthly-release-v2.test.ts",
+      "count": 3
+    },
+    {
+      "file": "lib/qa/muapi-media-provider.test.ts",
+      "count": 8
+    },
+    {
+      "file": "lib/qa/platform-authority-closure.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/platform-credential-events.test.ts",
+      "count": 3
+    },
+    {
+      "file": "lib/qa/project-api-credentials.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/project-command-center.test.ts",
+      "count": 2
+    },
+    {
+      "file": "lib/qa/project-workspace-vnext.test.ts",
+      "count": 3
+    },
+    {
+      "file": "lib/qa/release-gate-proof-workflow.test.ts",
+      "count": 2
+    },
+    {
+      "file": "lib/qa/review-queue.test.ts",
+      "count": 2
+    },
+    {
+      "file": "lib/qa/scoped-read-isolation.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/sdf1b2-code-work-operator-plane.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/sdf1c-broker-claim-credential.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/sdf1c-trusted-broker.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/sdf1c2-broker-control-channel.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-integration.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "count": 83
+    },
+    {
+      "file": "lib/qa/session-only-routes.test.ts",
+      "count": 2
+    },
+    {
+      "file": "lib/qa/social-credentials.test.ts",
+      "count": 5
+    },
+    {
+      "file": "lib/qa/spend-financial-decoupling.test.ts",
+      "count": 2
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "count": 52
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "count": 44
+    },
+    {
+      "file": "lib/qa/system-health.test.ts",
+      "count": 2
+    },
+    {
+      "file": "lib/qa/vnext-intelligence-graph.test.ts",
+      "count": 9
+    },
+    {
+      "file": "lib/qa/vnext-settings.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/qa/workflows-definition-familje-stunden.test.ts",
+      "count": 2
+    },
+    {
+      "file": "lib/qa/youtube-project-oauth.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/architecture-knowledge/architecture-knowledge.test.ts",
+      "count": 8
+    },
+    {
+      "file": "lib/architecture-knowledge/executive-knowledge.test.ts",
+      "count": 12
+    },
+    {
+      "file": "lib/trading/market-data/import-discipline.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/trading/market-view/import-discipline.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/trading/provider-normalization/recorded-adapter.test.ts",
+      "count": 1
+    },
+    {
+      "file": "lib/trading/replay/import-discipline.test.ts",
+      "count": 2
+    },
+    {
+      "file": "lib/trading/session-calendar/import-discipline.test.ts",
+      "count": 1
+    }
+  ]
+}

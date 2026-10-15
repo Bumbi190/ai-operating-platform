@@ -67,6 +67,9 @@ import { isExplicitlyAuthorizedInternalPrincipal } from '@/lib/architecture-know
 import { resolveDestination, resolveLinks, resolveProjectSlug, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
 import { toJson, parseWorkflowSteps } from '@/lib/supabase/json'
 import { getAnthropic } from '@/lib/ai/anthropic'
+import type { OpenAIGovernanceContext } from '@/lib/ai/openai-client'
+import { atlasModelPolicy } from '@/lib/ai/atlas-model-policy'
+import { openAIAtlasStream } from '@/lib/atlas/openai-chat'
 import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
 import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
 
@@ -627,8 +630,10 @@ export async function POST(request: Request) {
   // streaming closure further down.
   const userId = user.id
 
-  const anthropicApiKey = process.env.ANTHROPIC_API_KEY?.trim()
-  if (!anthropicApiKey) {
+  const modelPolicy = atlasModelPolicy()
+  const openaiEconomy = modelPolicy.profile === 'openai_economy'
+  const providerApiKey = (openaiEconomy ? process.env.OPENAI_API_KEY : process.env.ANTHROPIC_API_KEY)?.trim()
+  if (!providerApiKey) {
     const code = 'ATLAS_PROVIDER_NOT_CONFIGURED' as const
     return NextResponse.json(
       { code, error: getAtlasServiceErrorMessage(code) },
@@ -638,7 +643,7 @@ export async function POST(request: Request) {
   // Atlas chat serves every project at once and belongs to none of them, so it
   // names the platform compatibility project explicitly. Listed in the G1 report
   // as a mapping G2 must decide when it introduces budget scopes.
-  let anthropic = getAnthropic({
+  let providerContext: Pick<OpenAIGovernanceContext,'project'|'execution'|'agent'|'operation'> = {
     project: PLATFORM_COMPAT_PROJECT,
     execution: {
       // Ordinary operator assistance. GLOBAL_ONLY, never the billing project:
@@ -646,7 +651,8 @@ export async function POST(request: Request) {
       // stop would take Atlas offline whenever the media project is paused.
       context: 'OPERATOR_INTERACTIVE', scope: GLOBAL_ONLY,
     }, agent: 'Atlas', operation: 'Atlas Chat',
-  })
+  }
+  let anthropic = openaiEconomy ? null : getAnthropic(providerContext)
 
   const { messages, conversation_id, voice, mode, view, websitePlanRef, buildContext:rawBuildContext, inputSource, studioContext:rawStudioContext } = await request.json() as {
     messages: Anthropic.MessageParam[]
@@ -666,7 +672,8 @@ export async function POST(request: Request) {
   if(rawStudioContext!==undefined&&rawStudioContext!==null){
     const denied=assertSameOrigin(request);if(denied)return denied
     try{studioContext=await resolveStudioTurnContext(db,{userId,allowedProjectIds:await getAllowedProjectIds(db,userId)},conversation_id??null,rawStudioContext)}catch(error){return buildErrorResponse(error)}
-    anthropic=getAnthropic({project:{projectId:studioContext.projectId},execution:{context:'OPERATOR_EXECUTION',scope:projectScope({projectId:studioContext.projectId})},agent:'Atlas',operation:'Atlas Studio Chat'})
+    providerContext={project:{projectId:studioContext.projectId},execution:{context:'OPERATOR_EXECUTION',scope:projectScope({projectId:studioContext.projectId})},agent:'Atlas',operation:'Atlas Studio Chat'}
+    anthropic=openaiEconomy?null:getAnthropic(providerContext)
   }
 
   // ── CONVERSATION OWNERSHIP ────────────────────────────────────────────────
@@ -979,14 +986,17 @@ export async function POST(request: Request) {
                   ? { tool_choice: { type: 'any' as const } }
                   : {})
             : {}
-          const llm = await anthropic.messages.stream({
-            model: 'claude-sonnet-4-6',
+          const modelInput = {
+            model: modelPolicy.chatModel,
             max_tokens: voice ? 150 : (fastPath ? 1200 : 4096),
             system: systemPrompt,
             tools: activeTools,   // fast path = [] → ingen verktygsloop
             ...toolChoice,
             messages: msgs,
-          })
+          }
+          const llm = openaiEconomy
+            ? await openAIAtlasStream(providerContext,modelInput,request.signal)
+            : await anthropic!.messages.stream(modelInput)
           llm.on('text', (delta: string) => {
             if (!firstTokenMs) {
               firstTokenMs = Date.now() - tStart

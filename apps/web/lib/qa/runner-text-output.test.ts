@@ -34,3 +34,13 @@ describe('text provider completion metadata',()=>{
   expect(result.stopReason).toBe('length')
  })
 })
+
+it('uses a bounded completion cap without legacy sampling for the economy model',async()=>{
+ sdk.openai.mockResolvedValue({choices:[{message:{content:'complete'},finish_reason:'stop'}],usage:{prompt_tokens:10,completion_tokens:20}})
+ await runStep({...input,model:'gpt-5.4-mini',maxTokens:12000})
+ const params=sdk.openai.mock.calls[0][1]
+ expect(params.max_completion_tokens).toBe(12000)
+ expect(params.max_tokens).toBeUndefined()
+ expect(params.reasoning_effort).toBe('none')
+ expect(params.temperature).toBeUndefined()
+})

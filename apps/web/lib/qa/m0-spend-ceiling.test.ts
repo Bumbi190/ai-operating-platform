@@ -57,7 +57,7 @@ let reserved: (sek: number) => number = () => Number.NaN
 beforeEach(async () => { reserved = await reservedOf() })
 
 const WINDOW = { 'claude-sonnet-4-6': 200_000, 'claude-haiku-4-5-20251001': 200_000, 'claude-opus-4-6': 200_000,
-  'gpt-4o': 128_000, 'gpt-4o-mini': 128_000 } as const
+  'gpt-4o': 128_000, 'gpt-4o-mini': 128_000, 'gpt-5.4-mini':400_000 } as const
 
 // ── Hard-bound proofs ────────────────────────────────────────────────────────
 
@@ -84,7 +84,7 @@ describe('hard-bound proof per governed adapter: ceiling ≥ maximal metered out
     expect(huge).toBe(tiny)
   })
 
-  for (const [model, n, field] of [['gpt-4o', 1, 'max_tokens'], ['gpt-4o-mini', 3, 'max_completion_tokens']] as const) {
+  for (const [model, n, field] of [['gpt-4o', 1, 'max_tokens'], ['gpt-4o-mini', 3, 'max_completion_tokens'], ['gpt-5.4-mini',1,'max_completion_tokens']] as const) {
     it(`OpenAI chat ${model}: input ≤ context window, output ≤ n × ${field} (n=${n})`, async () => {
       const { estimateOpenAIChatSek } = await import('@/lib/ai/openai-client')
       const { logLlmCost } = await import('@/lib/cost/track')

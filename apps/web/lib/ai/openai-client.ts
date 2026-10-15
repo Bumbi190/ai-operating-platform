@@ -26,6 +26,7 @@ import OpenAI from 'openai'
 
 import { logImageCost, logLlmCost, type CostContext } from '@/lib/cost/track'
 import { getRates } from '@/lib/cost/rates'
+import { currentSpendMeter } from '@/lib/cost/spend-meter'
 import {
   containsKey, gptImageCeiling, openAISpeechCeiling, tokenWindowCeiling, type RateSnapshot,
 } from '@/lib/cost/spend-ceiling'
@@ -359,14 +360,40 @@ function boundedGptImageSek(count: number, params: Record<string, unknown>, rate
   return ceiling.sek
 }
 
-/**
- * Governed chat completion. `stream: true` is supported. A non-streaming call
- * meters its real usage into the settlement; a streamed one reports no usage
- * here and settles at the reserved hard ceiling (M0).
- */
+/** Keep streaming settlement inside its original async spend context. */
+function meterChatStream(response:any,model:string,ctx:OpenAIGovernanceContext):AsyncIterable<any> {
+  type Usage={prompt_tokens:number;completion_tokens:number}
+  let resolve!: (usage:Usage|null)=>void
+  let reject!: (error:unknown)=>void
+  const ended=new Promise<Usage|null>((yes,no)=>{resolve=yes;reject=no})
+  // This continuation is created inside withGovernedSpend, so real usage goes
+  // into that reservation's meter even though the caller iterates elsewhere.
+  const metered=ended.then(usage=>usage?logLlmCost(model,{tokensIn:usage.prompt_tokens,tokensOut:usage.completion_tokens},costContext(ctx)):undefined)
+  currentSpendMeter()?.settleAfter(metered)
+  void metered.catch(()=>{})
+  return (async function*(){
+    let usage:Usage|null=null,complete=false
+    try{
+      for await(const chunk of response){
+        const u=chunk.usage
+        if(u&&Number.isSafeInteger(u.prompt_tokens)&&u.prompt_tokens>=0&&Number.isSafeInteger(u.completion_tokens)&&u.completion_tokens>=0)usage=u
+        yield chunk
+      }
+      complete=true
+    }catch(error){reject(error);throw error}
+    finally{
+      if(complete)resolve(usage)
+      else reject(new Error('OpenAI stream ended before complete usage was observed'))
+    }
+  })()
+}
+
+/** Governed chat completion. Both modes meter actual provider usage; missing usage retains the ceiling. */
+// The installed SDK predates GPT-5.4's documented 'none' effort; keep the rest of its request contract typed.
+export type GovernedOpenAIChatParams=Omit<OpenAI.Chat.ChatCompletionCreateParams,'reasoning_effort'> & {reasoning_effort?:OpenAI.Chat.ChatCompletionCreateParams['reasoning_effort']|'none'}
 export async function openAIChatCompletion(
   ctx: OpenAIGovernanceContext,
-  params: OpenAI.Chat.ChatCompletionCreateParams,
+  params: GovernedOpenAIChatParams,
   /** Narrow by design — never an arbitrary SDK RequestOptions passthrough. */
   init?: { signal?: AbortSignal },
 ): Promise<any> {
@@ -393,7 +420,9 @@ export async function openAIChatCompletion(
         // `finally` — covering exhaustion, error, abort and an early `break`.
         // A generic Proxy would be more surface for no behaviour anyone uses.
         response = await governedPhysicalRequest(ctx, init?.signal,
-          signal => raw().chat.completions.create(params as any, { signal }),
+          signal => raw().chat.completions.create((params as {stream?:boolean}).stream
+            ? {...params,stream_options:{...(params as any).stream_options,include_usage:true}}
+            : params as any, { signal }),
           (value, mapError) => (params as { stream?: boolean }).stream
             ? followAsyncIterable(value, mapError)
             : undefined)
@@ -403,11 +432,12 @@ export async function openAIChatCompletion(
         }
         throw e
       }
+      if ((params as {stream?:boolean}).stream) return meterChatStream(response,params.model,ctx)
       // M0: a non-streaming completion carries its real usage, metered INSIDE
       // the governed call so the settlement writes it. (Before M0 nothing was
       // recorded here, and a caller logged it best-effort afterwards.) A
-      // streamed completion reports no usage to this boundary, so it settles at
-      // the reserved hard ceiling, labelled `estimate_unmetered`.
+      // streamed completion above registers its actual iteration lifetime and
+      // usage. Missing usage still settles conservatively at the hard ceiling.
       if (!(params as { stream?: boolean }).stream && response?.usage) {
         await logLlmCost(String((params as { model?: unknown }).model), {
           tokensIn: Number(response.usage.prompt_tokens ?? 0),

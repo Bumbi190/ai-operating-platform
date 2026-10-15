@@ -1,4 +1,5 @@
 import 'server-only'
+import {atlasModelPolicy,type AtlasModelPolicy} from '@/lib/ai/atlas-model-policy'
 import {isSpendGateEnforced} from '@/lib/cost/spend-gate-flag'
 import {operatorActor,setProjectExecutionStop} from '@/lib/governance/execution-stop'
 import {WebsiteBuildError,validateBuildUuid} from '../store'
@@ -7,6 +8,7 @@ import type {Db,Principal} from './types'
 
 export type StudioCostSnapshot={
  projectId:string;paused:boolean;enforced:boolean;observedAt:string
+ modelPolicy?:AtlasModelPolicy
  monthly:{spentSek:number;heldSek:number;limitSek:number;remainingSek:number}|null
 }
 async function ownedProject(db:Db,p:Principal,projectId:unknown){
@@ -35,7 +37,7 @@ export async function readStudioCosts(db:Db,p:Principal,projectId:string):Promis
  if(rows.length>1)throw new WebsiteBuildError('BUILD_UNAVAILABLE',503)
  const row=rows[0],monthly=row?{spentSek:amount(row.spent_sek),heldSek:amount(row.held_sek),limitSek:amount(row.limit_sek),remainingSek:amount(row.remaining_sek)}:null
  if(monthly&&[monthly.spentSek,monthly.heldSek,monthly.limitSek].some(n=>n<0))throw new WebsiteBuildError('BUILD_UNAVAILABLE',503)
- return {projectId,paused:project.execution_paused,enforced:isSpendGateEnforced(),observedAt:new Date().toISOString(),monthly}
+ return {projectId,paused:project.execution_paused,enforced:isSpendGateEnforced(),observedAt:new Date().toISOString(),monthly,modelPolicy:atlasModelPolicy()}
 }
 export async function stopStudioProject(db:Db,p:Principal,value:unknown):Promise<{projectId:string;paused:true}>{
  const input=studioObject(value,['projectId']),project=await ownedProject(db,p,input.projectId)

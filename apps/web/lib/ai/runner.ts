@@ -19,6 +19,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import OpenAI, { toFile } from 'openai'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { openAITextOptions } from '@/lib/ai/atlas-model-policy'
 import { isAnthropicModel, isOpenAIModel, isImageModel } from './models'
 import { buildStylePrefix } from './style-governance'
 import { buildVisionQaPrompt } from './golden-checklist'
@@ -732,8 +733,7 @@ async function runOpenAIStep(
         onFlight: flights.onFlight },
       {
         model,
-        max_tokens: maxTokens,
-        temperature,
+        ...openAITextOptions(model,maxTokens,temperature),
         stream: true,
         messages: [
           { role: 'system', content: systemPrompt },
@@ -760,8 +760,7 @@ async function runOpenAIStep(
         onFlight: flights.onFlight },
       {
         model,
-        max_tokens: maxTokens,
-        temperature,
+        ...openAITextOptions(model,maxTokens,temperature),
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMessage },
@@ -777,8 +776,7 @@ async function runOpenAIStep(
 
   // M0: no cost is logged here. Both branches above went through the governed
   // `openAIChatCompletion`, which now settles its reservation DURABLY — with the
-  // real usage for a non-streaming call, at the reserved hard ceiling for a
-  // stream. The fire-and-forget row this used to write sat outside that
+  // real usage when the provider reports it, including a completed stream. The fire-and-forget row this used to write sat outside that
   // settlement, so it would count the same call twice.
 
   // The streaming branch above iterates to exhaustion before reaching here, so

@@ -2,6 +2,7 @@ import 'server-only'
 import type { createAdminClient } from '@/lib/supabase/admin'
 import type { Run } from '@/lib/supabase/types'
 import { runStep } from '@/lib/ai/runner'
+import { atlasModelPolicy } from '@/lib/ai/atlas-model-policy'
 import { isAnthropicModel, isImageModel, isOpenAIModel } from '@/lib/ai/models'
 import { fencedError } from '@/lib/ai/fencing'
 import { cancelledError } from '@/lib/ai/cancel'
@@ -38,6 +39,7 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
     if (error) throw new Error('Byggagenten kunde inte läsas säkert.')
     if (!agent || isImageModel(agent.model) || !(isAnthropicModel(agent.model) || isOpenAIModel(agent.model))) throw new WebsiteBuildPermanentError('INVALID_BUILD_AGENT')
     const config = agent.config as { max_tokens?: number; temperature?: number } | null
+    const executionModel = atlasModelPolicy().buildModel ?? agent.model
     let knowledge: ReturnType<typeof composeAgentDesignSkills>
     try { knowledge = composeAgentDesignSkills(agent.system_prompt, ['design-taste-frontend','impeccable',...(Array.isArray(agent.skill_ids) ? agent.skill_ids.filter((id): id is string => typeof id === 'string') : [])]) }
     catch { throw new WebsiteBuildPermanentError('DESIGN_CONTEXT_TOO_LARGE') }
@@ -45,7 +47,7 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
       await gate('website:before:' + operation)
       snapshot = await loadBuildSnapshot(db, writer)
       if (snapshot.controlRequested === 'pause') { await parkBuildSession(db, writer); return null }
-      const result = await runStep({ execution: { context: 'AUTONOMOUS', scope: projectScope({ projectId: writer.projectId }) }, authority: { kind: 'RUN_BOUND', runId: run.id, claimId }, runId: run.id, cost: { projectId: writer.projectId, agent: agent.name, operation }, model: agent.model, systemPrompt, userMessage, maxTokens, temperature: config?.temperature ?? 0.7 })
+      const result = await runStep({ execution: { context: 'AUTONOMOUS', scope: projectScope({ projectId: writer.projectId }) }, authority: { kind: 'RUN_BOUND', runId: run.id, claimId }, runId: run.id, cost: { projectId: writer.projectId, agent: agent.name, operation }, model: executionModel, systemPrompt, userMessage, maxTokens, temperature: config?.temperature ?? 0.7 })
       // Always re-establish; also satisfies a sticky authorityRefreshRequired latch.
       await gate('website:after:' + operation)
       if(['max_tokens','model_context_window_exceeded','length'].includes(result.stopReason??''))throw new WebsiteBuildPermanentError('MODEL_OUTPUT_TRUNCATED','Byggsvaret nådde sin längdgräns innan paketet var färdigt. Ingen automatisk betald omkörning görs.')

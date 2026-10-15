@@ -282,5 +282,5 @@ for(const width of [390,1440])test('operator reviews mockups before building at 
  await page.reload();if(width<=1000)await page.getByRole('tab',{name:'Preview',exact:true}).click();await expect(review.getByText('Godkänd design: Bild i fokus',{exact:true})).toBeVisible()
  if(width<=1000)await page.getByRole('tab',{name:'Chatt',exact:true}).click()
  await page.getByRole('button',{name:'Godkänn och bygg',exact:true}).click();await expect(page.getByText('Planen används av bygget',{exact:true})).toBeDisabled()
- const state=await(await request.get('/api/website-build/studio'+new URL(page.url()).search)).json();expect(state.session).not.toBeNull();expect(state.plan.designReview.approved.mockupId).toBeTruthy()
+ const state=await(await request.get('/api/website-build/studio'+new URL(page.url()).search)).json();expect(state.session).not.toBeNull();expect(state.plan.designReview.approved.mockupId).toBeTruthy();expect(JSON.parse(chats.at(-1)!).websitePlanRef.mockupDecisionId).toBe(state.plan.designReview.approved.id)
 })

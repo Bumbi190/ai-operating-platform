@@ -11,8 +11,8 @@ it('a newer unapproved plan and changed default directory cannot rewrite the exp
  await setProjectWebsiteBuilder(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,agentId:TEST_AGENT})
  const original={title:'Godkänd originalplan',purpose:'Visa caféet',audience:'Gäster',pages:[{key:'index',title:'Hem',purpose:'Visa'}],design:{style:'Lugn',reference:null},features:[],architecture:'Statisk',steps:['Bygg'],domain:{registrar:'strato' as const,requestedName:'original.se'}}
  const plan=await saveWebsitePlanRevision(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,conversationId,expectedRevisionId:null,content:original,idempotencyKey:crypto.randomUUID()})
- await approveTestMockup(db,TEST_PRINCIPAL,plan)
- const decision=await approveWebsitePlan(db,TEST_PRINCIPAL,{...plan.currentRevision,idempotencyKey:crypto.randomUUID()})
+ const reviewed=await approveTestMockup(db,TEST_PRINCIPAL,plan)
+ const decision=await approveWebsitePlan(db,TEST_PRINCIPAL,{...plan.currentRevision,mockupDecisionId:reviewed.designReview?.approved?.id,idempotencyKey:crypto.randomUUID()})
  const session=await startApprovedWebsitePlan(db,TEST_PRINCIPAL,{...plan.currentRevision,decisionId:decision.id})
  const artifact=compileWebsiteArtifact({format:'static-website.v1',title:'Webb',pages:[{key:'index',title:'Hem',bodyHtml:'<h1>Original</h1>',css:'',behaviors:[]}]})
  testSql("update runs set status='running',claim_id=gen_random_uuid(),lease_until=now()+interval '5 minutes' where id=(select current_run_id from website_build_sessions where id='"+session.sessionId+"');")

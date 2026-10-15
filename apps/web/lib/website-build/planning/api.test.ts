@@ -14,7 +14,7 @@ const req=(body?:unknown,query='',origin='http://localhost')=>new Request('http:
 const content=()=>({title:'Plan',purpose:'Visa',audience:'Alla',pages:[{key:'index',title:'Hem',purpose:'Visa'}],design:{style:'Blå',reference:null},features:[],architecture:'Statisk',steps:['Bygg'],domain:{registrar:'strato' as const,requestedName:null}})
 function conv(){const id=randomUUID();testSql("insert into conversations(id,user_id,project_id) values('"+id+"','"+TEST_PRINCIPAL.userId+"','"+TEST_PROJECT+"');");return id}
 async function plan(){await setProjectWebsiteBuilder(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,agentId:TEST_AGENT});return approveTestMockup(db,TEST_PRINCIPAL,await saveWebsitePlanRevision(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,conversationId:conv(),expectedRevisionId:null,content:content(),idempotencyKey:randomUUID()}))}
-const approval=(p:PlanView)=>({projectId:TEST_PROJECT,revisionId:p.currentRevision.revisionId,sha256:p.currentRevision.sha256,idempotencyKey:randomUUID()})
+const approval=(p:PlanView)=>({projectId:TEST_PROJECT,revisionId:p.currentRevision.revisionId,sha256:p.currentRevision.sha256,mockupDecisionId:p.designReview?.approved?.id,idempotencyKey:randomUUID()})
 beforeAll(()=>{db=initializeWorkerDb();state.db=db})
 beforeEach(()=>{state.authenticated=true;state.allowed=true})
 describe('operator website plan HTTP boundary',()=>{

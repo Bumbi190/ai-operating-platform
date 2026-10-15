@@ -311,8 +311,8 @@ it.each(['missing-pages','complete'] as const)('enforces the approved three-page
  await planning.setProjectWebsiteBuilder(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,agentId:TEST_AGENT})
  const plan=await planning.saveWebsitePlanRevision(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,conversationId,expectedRevisionId:null,idempotencyKey:crypto.randomUUID(),content:{title:'Tre sidor',purpose:'Behåll hela den överenskomna webbplatsen',audience:'Kunder',pages:[{key:'home',title:'Hem',purpose:'Introduktion'},{key:'policy',title:'Policy',purpose:'Villkor'},{key:'order',title:'Order',purpose:'Exempel'}],design:{style:'Varm',reference:null},features:[],architecture:'Statiskt paket',steps:['Granska','Bygg'],domain:{registrar:'strato',requestedName:null}}})
  const option=plan.designReview!.options[0]
- await planning.approveWebsiteMockup(db,TEST_PRINCIPAL,{...plan.currentRevision,mockupId:option.id,mockupSha256:option.sha256,idempotencyKey:crypto.randomUUID()})
- const decision=await planning.approveWebsitePlan(db,TEST_PRINCIPAL,{...plan.currentRevision,idempotencyKey:crypto.randomUUID()}),s=await planning.startApprovedWebsitePlan(db,TEST_PRINCIPAL,{...plan.currentRevision,decisionId:decision.id}),run=await claim(s)
+ const reviewed=await planning.approveWebsiteMockup(db,TEST_PRINCIPAL,{...plan.currentRevision,mockupId:option.id,mockupSha256:option.sha256,idempotencyKey:crypto.randomUUID()})
+ const decision=await planning.approveWebsitePlan(db,TEST_PRINCIPAL,{...plan.currentRevision,mockupDecisionId:reviewed.designReview?.approved?.id,idempotencyKey:crypto.randomUUID()}),s=await planning.startApprovedWebsitePlan(db,TEST_PRINCIPAL,{...plan.currentRevision,decisionId:decision.id}),run=await claim(s)
  if(mode==='complete'){
   const complete=draft();complete.pages.push({...complete.pages[0],key:'policy',title:'Policy'},{...complete.pages[0],key:'order',title:'Order'})
   provider.mockResolvedValueOnce(response(complete))

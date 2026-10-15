@@ -198,6 +198,7 @@ export class AtlasConversationController {
               ...start.plan.ref,
               revisionId: start.plan.currentRevision.revisionId,
               sha256: start.plan.currentRevision.sha256,
+              mockupDecisionId:start.plan.designReview?.approved?.id??null,
             }
           : null
         : turn.visiblePlan;

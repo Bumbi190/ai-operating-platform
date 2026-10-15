@@ -63,6 +63,8 @@ export function initializeWorkerDb(): ReturnType<typeof createAdminClient> {
   testSql(canonicalFunction('20261015210000_website_mockup_review.sql','website_build_lock_writer'))
   testSql(canonicalFunction('20261015210000_website_mockup_review.sql','website_build_snapshot'))
   testSql(canonicalFunction('20261015210000_website_mockup_review.sql','website_build_mockup_pin_session'))
+  testSql(canonicalFunction('20261015210000_website_mockup_review.sql','website_build_mockup_pin_plan'))
+  testSql(canonicalFunction('20261015210000_website_mockup_review.sql','website_build_plan_approve'))
   const setReturning = new Set(['stop_state', 'claim_runs'])
   const transport = {
     rpc: async (name: string, args: Record<string, unknown> = {}) => {

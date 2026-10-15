@@ -104,7 +104,7 @@ begin
  return jsonb_build_object('mockupId',m.id,'canonicalDraft',m.canonical_draft,'sha256',m.sha256);
 end $$;
 
-create function public.website_build_mockup_pin_plan() returns trigger language plpgsql security invoker set search_path='' as $$
+create or replace function public.website_build_mockup_pin_plan() returns trigger language plpgsql security invoker set search_path='' as $$
 declare r public.website_build_plan_revisions; d public.website_build_mockup_decisions; p public.website_build_plans;
 begin
  select * into strict r from public.website_build_plan_revisions where id=new.revision_id and plan_id=new.plan_id and project_id=new.project_id;
@@ -112,9 +112,29 @@ begin
  select * into strict p from public.website_build_plans where id=new.plan_id and project_id=new.project_id for update;
  select * into d from public.website_build_mockup_decisions where id=p.current_mockup_decision_id and revision_id=r.id and plan_id=p.id and project_id=p.project_id and approved_by=new.approved_by;
  if d.id is null or r.sha256 is distinct from new.sha256 or not exists(select 1 from public.website_build_mockups m where m.id=d.mockup_id and m.sha256=d.sha256 and m.source_sha256=r.sha256 and m.revision_id=r.id) then raise exception 'MOCKUP_REVIEW_REQUIRED' using errcode='55000'; end if;
+ if new.mockup_decision_id is distinct from d.id then raise exception 'MOCKUP_STALE' using errcode='55000';end if;
  new.mockup_decision_id:=d.id;return new;
 end $$;
 create trigger website_plan_pin_mockup before insert on public.website_build_plan_decisions for each row execute function public.website_build_mockup_pin_plan();
+
+create or replace function public.website_build_plan_approve(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
+declare p public.website_build_plans; r public.website_build_plan_revisions; d public.website_build_plan_decisions; aid uuid; key text:=p_input->>'idempotencyKey'; view jsonb;
+begin
+ perform public.website_build_check_access(p_principal,(p_input->>'projectId')::uuid,true);
+ select * into strict p from public.website_build_plans where id=(p_input->>'planId')::uuid and project_id=(p_input->>'projectId')::uuid and created_by=(p_principal->>'userId')::uuid for update;
+ select * into strict r from public.website_build_plan_revisions where id=(p_input->>'revisionId')::uuid and plan_id=p.id and project_id=p.project_id;
+ if p.current_revision_id is distinct from r.id or r.sha256 is distinct from p_input->>'sha256' then raise exception 'PLAN_STALE' using errcode='55000'; end if;
+ if key is null or key !~ '^[A-Za-z0-9_-]{1,100}$' then raise exception 'INVALID_IDEMPOTENCY_KEY' using errcode='22023'; end if;
+ select * into d from public.website_build_plan_decisions where project_id=p.project_id and approved_by=p.created_by and intent_key=key;
+ if found and (d.plan_id is distinct from p.id or d.revision_id is distinct from r.id) then raise exception 'IDEMPOTENCY_CONFLICT' using errcode='23505'; end if;
+ select builder_agent_id into aid from public.website_build_project_settings where project_id=p.project_id for update;
+ if aid is null then raise exception 'BUILD_AGENT_REQUIRED' using errcode='55000'; end if;
+ if not exists(select 1 from public.agents a where a.id=aid and a.project_id=p.project_id and (a.model like 'claude%' or (a.model like 'gpt%' and a.model not like 'gpt-image%'))) then raise exception 'BUILD_AGENT_REQUIRED' using errcode='55000'; end if;
+ insert into public.website_build_plan_decisions(plan_id,project_id,revision_id,approved_by,sha256,builder_agent_id,intent_key,mockup_decision_id)
+ values(p.id,p.project_id,r.id,p.created_by,r.sha256,aid,key,(p_input->>'mockupDecisionId')::uuid) on conflict(plan_id,revision_id) do nothing;
+ view:=public.website_build_plan_view(p_principal,jsonb_build_object('projectId',p.project_id,'planId',p.id));
+ return view->'approvedDecision';
+end $$;
 
 create or replace function public.website_build_mockup_pin_session() returns trigger language plpgsql security invoker set search_path='' as $$
 declare r public.website_build_plan_revisions; pd public.website_build_plan_decisions; d public.website_build_mockup_decisions; m public.website_build_mockups;

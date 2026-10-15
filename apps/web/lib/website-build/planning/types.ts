@@ -8,7 +8,7 @@ export type PlanContent = {
  domain:{registrar:'strato';requestedName:string|null}
 }
 export type PlanRef={projectId:string;planId:string}
-export type PlanRevisionRef=PlanRef&{revisionId:string;sha256:string}
+export type PlanRevisionRef=PlanRef&{revisionId:string;sha256:string;mockupDecisionId?:string|null}
 export type PlanRevision=PlanRevisionRef&{number:number;content:PlanContent;brief:string;createdAt:string}
 export type PlanDecision={id:string;revisionRef:PlanRevisionRef;approvedBy:string;scope:'static_preview';builderAgentId:string;startIntentId:string;sessionId:string|null}
 export type ProjectRoot={os:'windows'|'macos'|'linux';root:string;targetId:string|null}

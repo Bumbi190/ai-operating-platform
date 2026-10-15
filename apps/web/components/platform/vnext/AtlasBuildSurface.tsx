@@ -86,6 +86,7 @@ export function AtlasBuildSurface({
           ...shownPlan.ref,
           revisionId: shownPlan.currentRevision.revisionId,
           sha256: shownPlan.currentRevision.sha256,
+          mockupDecisionId:shownPlan.designReview?.approved?.id??null,
         },
       });
   };

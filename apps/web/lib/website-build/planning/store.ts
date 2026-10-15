@@ -31,7 +31,7 @@ export async function saveWebsitePlanRevision(db:Db,p:BuildPrincipal,i:SavePlanI
  const content=validatePlanContent(i.content)
  return hydrateDesignReview(db,p,await call<PlanView>(db,'website_build_plan_save',p,{...i,content,canonicalContent:JSON.stringify(content),sha256:hashPlanContent(content),brief:compileStaticBrief(content)}))
 }
-export async function approveWebsitePlan(db:Db,p:BuildPrincipal,i:ApprovePlanInput):Promise<PlanDecision>{allowed(p,i.projectId);revision(i);key(i.idempotencyKey);return call(db,'website_build_plan_approve',p,i)}
+export async function approveWebsitePlan(db:Db,p:BuildPrincipal,i:ApprovePlanInput):Promise<PlanDecision>{allowed(p,i.projectId);revision(i);key(i.idempotencyKey);if(i.mockupDecisionId!=null)validateBuildUuid(i.mockupDecisionId);return call(db,'website_build_plan_approve',p,i)}
 export async function startApprovedWebsitePlan(db:Db,p:BuildPrincipal,i:StartApprovedPlanInput):Promise<BuildSessionView>{allowed(p,i.projectId);revision(i);validateBuildUuid(i.decisionId);return call(db,'website_build_plan_start',p,i)}
 export async function readProjectWebsiteBuilder(db:Db,p:BuildPrincipal,projectId:string):Promise<BuilderSetting>{allowed(p,projectId);return call(db,'website_build_builder_get',p,{projectId})}
 export async function readOperatorProjectRoot(db:Db,p:BuildPrincipal):Promise<ProjectRoot|null>{principal(p);return call(db,'website_build_root_get',p,{},true)}
@@ -46,10 +46,10 @@ export async function setProjectWebsiteBuilder(db:Db,p:BuildPrincipal,i:{project
  return call(db,'website_build_builder_set',p,{projectId:i.projectId,agentId:i.agentId,location})
 }
 /** Reads authority only after the parent plan is owner/conversation checked. SQL start revalidates it. */
-export async function findWebsitePlanDecision(db:Db,p:BuildPrincipal,ref:PlanRevisionRef):Promise<{id:string;sha256:string;session_id:string|null}|null>{
+export async function findWebsitePlanDecision(db:Db,p:BuildPrincipal,ref:PlanRevisionRef):Promise<{id:string;sha256:string;session_id:string|null;mockup_decision_id:string|null}|null>{
  allowed(p,ref.projectId);revision(ref)
  const query=db as unknown as {from(n:string):any}
- const {data,error}=await query.from('website_build_plan_decisions').select('id,sha256,session_id').eq('project_id',ref.projectId).eq('plan_id',ref.planId).eq('revision_id',ref.revisionId).eq('approved_by',p.userId).maybeSingle()
+ const {data,error}=await query.from('website_build_plan_decisions').select('id,sha256,session_id,mockup_decision_id').eq('project_id',ref.projectId).eq('plan_id',ref.planId).eq('revision_id',ref.revisionId).eq('approved_by',p.userId).maybeSingle()
  if(error)throw new WebsiteBuildError('BUILD_UNAVAILABLE',503)
  if(data&&data.sha256!==ref.sha256)throw new WebsiteBuildError('PLAN_STALE',409)
  return data

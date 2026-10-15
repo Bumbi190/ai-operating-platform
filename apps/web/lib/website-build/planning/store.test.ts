@@ -8,7 +8,7 @@ let db:ReturnType<typeof initializeWorkerDb>
 const content=()=>({title:'Min hemsida',purpose:'Visa aktiviteter',audience:'Familjer',pages:[{key:'index',title:'Hem',purpose:'Visa idé'}],design:{style:'Blå',reference:null},features:[],architecture:'Statiska sidor',steps:['Bygg','Testa'],domain:{registrar:'strato' as const,requestedName:null}})
 function conversation(){const id=randomUUID();testSql("insert into conversations(id,user_id,project_id) values('"+id+"','"+TEST_PRINCIPAL.userId+"','"+TEST_PROJECT+"');");return id}
 async function plan():Promise<PlanView>{await setProjectWebsiteBuilder(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,agentId:TEST_AGENT});return approveTestMockup(db,TEST_PRINCIPAL,await saveWebsitePlanRevision(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,conversationId:conversation(),expectedRevisionId:null,content:content(),idempotencyKey:randomUUID()}))}
-const ref=(p:PlanView)=>p.currentRevision
+const ref=(p:PlanView)=>({...p.currentRevision,mockupDecisionId:p.designReview?.approved?.id})
 beforeAll(()=>{db=initializeWorkerDb()})
 describe('real SQL website planning',()=>{
  it('saves and reads an owner-bound immutable architecture',async()=>{const p=await plan();expect(p.currentRevision.content.title).toBe('Min hemsida');expect(p.currentRevision.sha256).toMatch(/^[a-f0-9]{64}$/);expect(await readWebsitePlan(db,TEST_PRINCIPAL,p.ref)).toEqual(p);expect(()=>testSql("update website_build_plan_revisions set brief='Changed' where id='"+p.currentRevision.revisionId+"';")).toThrow('PLAN_REVISION_IMMUTABLE')})

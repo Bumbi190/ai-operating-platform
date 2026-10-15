@@ -55,3 +55,11 @@ describe('studio project costs and immediate stop',()=>{
   for(const query of ['?projectId='+PROJECT+'&projectId='+OTHER,'?projectId=bad','?projectId='+PROJECT+'&ownerId='+OWNER])expect((await studioApi('costs' as any,get(query))).status).toBe(400)
  })
 })
+
+it('reports the active economy model on the protected cost snapshot',async()=>{
+ process.env.ATLAS_MODEL_PROFILE='openai_economy'
+ try{
+  const response=await studioApi('costs' as any,get())
+  expect((await response.json()).modelPolicy).toEqual({profile:'openai_economy',chatModel:'gpt-5.4-mini',buildModel:'gpt-5.4-mini',localAvailable:false})
+ }finally{delete process.env.ATLAS_MODEL_PROFILE}
+})

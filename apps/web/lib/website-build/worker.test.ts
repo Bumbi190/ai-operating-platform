@@ -186,3 +186,15 @@ describe('website output limits', () => {
     expect(provider.mock.calls[0][0].maxTokens).toBe(3500)
   },30000)
 })
+
+it('uses OpenAI in the temporary economy profile without changing the saved agent',async()=>{
+ process.env.ATLAS_MODEL_PROFILE='openai_economy'
+ try{
+  const s=await session(),run=await claim(s)
+  const savedModel=testSql("select model from agents where id='"+TEST_AGENT+"';")
+  await executeWebsiteBuildRun(db,run,run.claim_id!)
+  expect(provider.mock.calls[0][0].model).toBe('gpt-5.4-mini')
+  expect((await view(s)).status).toBe('ready')
+  expect(testSql("select model from agents where id='"+TEST_AGENT+"';")).toBe(savedModel)
+ }finally{delete process.env.ATLAS_MODEL_PROFILE}
+},30000)

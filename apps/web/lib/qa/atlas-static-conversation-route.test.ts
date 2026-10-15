@@ -81,6 +81,13 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 // ── Recording Anthropic client ────────────────────────────────────────────────
 let streamCalls: Array<{ system: string; tools: unknown[]; messages: unknown[] }> = []
+let openaiCalls:any[]=[]
+let openaiContexts:any[]=[]
+vi.mock('@/lib/ai/openai-client',()=>({openAIChatCompletion:async(ctx:unknown,params:any)=>{
+  openaiContexts.push(ctx)
+  openaiCalls.push(params)
+  return {async *[Symbol.asyncIterator](){yield {choices:[{index:0,delta:{content:'OpenAI svar'},finish_reason:null}]};yield {choices:[{index:0,delta:{},finish_reason:'stop'}]};yield {choices:[],usage:{prompt_tokens:10,completion_tokens:5}}}}
+}}))
 
 vi.mock('@anthropic-ai/sdk', () => {
   class FakeAnthropic {
@@ -105,6 +112,8 @@ async function post(body: unknown) {
   vi.resetModules()          // fresh module state, incl. the 45s live-context cache
   touchedTables = []
   streamCalls = []
+  openaiCalls = []
+  openaiContexts = []
   const { POST } = await import('@/app/api/chat/route')
   const res = await POST(new Request('http://localhost/api/chat', {
     method: 'POST',
@@ -120,6 +129,7 @@ const userMsg = (content: string) => ({ messages: [{ role: 'user', content }] })
 beforeEach(() => {
   sessionUser = { id: 'user-1', email: 'owner@example.com' }
   process.env.ANTHROPIC_API_KEY = 'test-key'
+  delete process.env.ATLAS_MODEL_PROFILE
 })
 
 describe('authentication is unchanged', () => {
@@ -408,4 +418,42 @@ describe('website studio context economy', () => {
     expect(call.tools).not.toEqual(expect.arrayContaining([expect.objectContaining({name:'trigger_workflow'})]))
     for(const table of ['atlas_actions','opportunities','manager_tasks','cost_events']) expect(studioTables).not.toContain(table)
   })
+})
+
+describe('OpenAI economy test profile',()=>{
+  beforeEach(()=>{delete process.env.ATLAS_MODEL_PROFILE;delete process.env.OPENAI_API_KEY})
+  it('runs Atlas without an Anthropic key using the existing OpenAI connection',async()=>{
+    process.env.ATLAS_MODEL_PROFILE='openai_economy'
+    process.env.OPENAI_API_KEY='test-openai'
+    delete process.env.ANTHROPIC_API_KEY
+    const {res,text}=await post(userMsg('Hej'))
+    expect(res.status).toBe(200)
+    expect(text).toContain('OpenAI svar')
+    expect(streamCalls).toHaveLength(0)
+    expect(openaiCalls[0].model).toBe('gpt-5.4-mini')
+    expect(openaiCalls[0].max_completion_tokens).toBe(4096)
+    expect(openaiCalls[0].stream_options).toEqual({include_usage:true})
+  })
+  it('does not fall back to a configured Claude key when OpenAI is missing',async()=>{
+    process.env.ATLAS_MODEL_PROFILE='openai_economy'
+    const {res}=await post(userMsg('Hej'))
+    expect(res.status).toBe(503)
+    expect(streamCalls).toHaveLength(0)
+  })
+})
+
+it('binds OpenAI Studio spend and tools to the verified project while preserving history',async()=>{
+ process.env.ATLAS_MODEL_PROFILE='openai_economy';process.env.OPENAI_API_KEY='test-openai'
+ try{
+  delete process.env.ANTHROPIC_API_KEY
+  const studioContext={projectId:'10000000-0000-4000-8000-000000000001',conversationId:'50000000-0000-4000-8000-000000000001'}
+  const history=[{role:'user',content:'Planera tre sidor'},{role:'assistant',content:'Vi planerar.'},{role:'user',content:'Behåll färgerna'}]
+  const {res,text}=await post({messages:history,conversation_id:studioContext.conversationId,studioContext})
+  expect(res.status).toBe(200);expect(text).toContain('OpenAI svar');expect(streamCalls).toHaveLength(0)
+  expect(openaiContexts[0]).toMatchObject({project:{projectId:studioContext.projectId},execution:{context:'OPERATOR_EXECUTION'}})
+  expect(openaiCalls[0].messages.slice(1)).toEqual(history)
+  expect(openaiCalls[0].messages[0].content).toContain('ACTIVE WEBSITE STUDIO PROJECT')
+  const names=openaiCalls[0].tools.map((t:any)=>t.function.name)
+  expect(names).toContain('get_website_build_plan');expect(names).not.toContain('trigger_workflow')
+ }finally{delete process.env.ATLAS_MODEL_PROFILE}
 })

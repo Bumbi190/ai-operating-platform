@@ -108,6 +108,7 @@ export const CONTEXT_WINDOW_TOKENS: Readonly<Record<string, number>> = Object.fr
   'claude-haiku-4-5-20251001': 200_000,
   'claude-3-5-haiku-20241022': 200_000,
   'claude-3-5-sonnet-20241022': 200_000,
+  'gpt-5.4-mini': 400_000,
   'gpt-4o': 128_000,
   'gpt-4o-mini': 128_000,
 })

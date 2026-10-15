@@ -39,11 +39,11 @@ Interfaces:
 - findKnowledge(config, corpus, query, signal): Promise<KnowledgeEvidence[]>
 - Context evidence includes id, title, path, canonicalPath, snapshotId and bounded content.
 
-- [ ] Write behavior tests for corpus integrity, scope, identifiers, HTTP contract, remote-content rejection and time limits.
-- [ ] Run new tests and observe missing-feature failures.
-- [ ] Implement the three small modules and an empty default artifact.
-- [ ] Run new tests and existing memory/knowledge regressions.
-- [ ] Commit the implementation and update the execution ledger.
+- [x] Write behavior tests for corpus integrity, scope, identifiers, HTTP contract, remote-content rejection and time limits.
+- [x] Run new tests and observe missing-feature failures.
+- [x] Implement the three small modules and an empty default artifact.
+- [x] Run new tests and existing memory/knowledge regressions.
+- [x] Commit the implementation and update the execution ledger.
 
 ### Task 2: Operator preparation and synchronization
 
@@ -59,11 +59,11 @@ Interfaces:
 - Preparation consumes the existing KnowledgeProjectionSource and builds the existing snapshot format.
 - Publication consumes a validated corpus and explicit HTTP configuration, and returns a receipt only after completed tasks.
 
-- [ ] Write failing tests using temporary vaults and an actual local HTTP server.
-- [ ] Implement policy-preserving preparation and explicit upload/polling.
-- [ ] Test unreadable/drifting documents, scope, denied metadata, failed jobs and bounded waits.
-- [ ] Update graph boundaries to permit only the specific operator importers.
-- [ ] Commit and record test evidence.
+- [x] Write failing tests using temporary vaults and an actual local HTTP server.
+- [x] Implement policy-preserving preparation and explicit upload/polling.
+- [x] Test unreadable/drifting documents, scope, denied metadata, failed jobs and bounded waits.
+- [x] Update graph boundaries to permit only the specific operator importers.
+- [x] Commit and record test evidence.
 
 ### Task 3: Atlas chat integration and handoff
 
@@ -81,8 +81,8 @@ Interfaces:
 - An optional DB handle is forwarded through the existing M4 bridge for the current request.
 - Only the full chat path consumes the resulting data block.
 
-- [ ] Write failing tests for strict gates, denied/revoked scope, shadow mode, fallback and rendered evidence.
-- [ ] Add the narrowly scoped integration and explicitly replace the old unwired-chat guard with read-only/authority/opt-in guards.
-- [ ] Run targeted tests, typecheck, lint and the whole project suite.
-- [ ] Review the whole branch, fix material findings and commit.
-- [ ] Push only the feature branch and open a draft PR with exact validation and activation limits.
+- [x] Write failing tests for strict gates, denied/revoked scope, shadow mode, fallback and rendered evidence.
+- [x] Add the narrowly scoped integration and explicitly replace the old unwired-chat guard with read-only/authority/opt-in guards.
+- [x] Run targeted tests, typecheck, lint and the whole project suite.
+- [x] Review the whole branch, fix material findings and commit.
+- [x] Push only the feature branch and open a draft PR with exact validation and activation limits.

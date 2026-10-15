@@ -20,7 +20,7 @@ Verification:
 - RED: shared CSS ignored/rejected; runner termination missing; a provider-marked truncated package was incorrectly committed; new factory allowance expected 12,000 but returned 6,000.
 - 153 DB-free assertions in 10 files pass, including real POST route behavior, transcript continuity, global-path invariance, cost authorization, artifact validation and governed provider boundaries.
 - Real PostgreSQL complement: 16 worker + 7 Studio store + 2 exact-factory migration assertions pass. The owned local DB is website_test_1792066644371 in the labeled atlas-live-build container; no production SQL fixture was used.
-- Standalone workspace typecheck passed. Chromium workspace regression run is recorded in the release PR once complete.
+- Standalone workspace typecheck passed. Chromium: all 10 workspace cases pass with zero retries and the existing 30-second per-test limit. The original monolithic voice case hit the cumulative 30-second limit on this branch; a separate exact-base474bbdd replay failed earlier because a fixture commit raced persisted chat feedback. The test now waits for actual feedback/control receipts and separates voice and control scenarios; no product timeout changed.
 - The full repository suite was not rerun for this bounded patch; its previously documented Windows baseline remains red. This is not a whole-suite green claim.
 
 Migration: 20261015122500_atlas_builder_output_allowance_v2.sql. Replaces the existing private creation function with the same signature and privileges, accepts the prior v1 envelope for rolling deployment compatibility, and adds no table or grant. Canonical migration counters move from 119/105 to 120/106. Exact production apply/release evidence belongs in the PR.

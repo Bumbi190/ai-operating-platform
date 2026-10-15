@@ -181,6 +181,34 @@ describe('gated immutable competitor observation storage', () => {
     }))
     expect(await h.service.save()).toEqual({ status: 'invalid' })
   })
+  it('rejects unsafe remote titles and logs only harmless shape metadata in preview', async () => {
+    const h = harness()
+    h.deps.env.VERCEL_ENV = 'preview'
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const unsafeTitle = 'UNSAFE_SENTINEL<>'
+    h.publicScan.mockResolvedValueOnce({
+      checked_at: clock.toISOString(),
+      sources: EVIDENCE.map((x, i) => ({
+        id: x.id,
+        status: 'metadata_checked' as const,
+        title: i === 0 ? unsafeTitle : 'Verified ' + x.id,
+        checked_at: clock.toISOString(),
+      })),
+    })
+    try {
+      expect(await h.service.save()).toEqual({ status: 'invalid' })
+      expect(h.upsert).not.toHaveBeenCalled()
+      expect(warning).toHaveBeenCalledWith(
+        '[hb-history-smoke] candidate validation failed',
+        'invalid_observation',
+        expect.any(Array),
+      )
+      expect(JSON.stringify(warning.mock.calls)).not.toContain(unsafeTitle)
+    } finally {
+      warning.mockRestore()
+    }
+  })
+
   it('fails closed without scanning when storage is unavailable', async () => {
     const h = harness()
     h.read.mockResolvedValueOnce({ data: null, error: { message: 'table missing' } })

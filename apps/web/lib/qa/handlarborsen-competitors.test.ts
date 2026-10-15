@@ -38,6 +38,8 @@ describe('public competitor observation boundaries', () => {
     expect(normalizeTitle('<script><title>Injected</title></script><title>Safe</title>')).toBe('Safe')
     expect(normalizeTitle('<title>&#x3c;img src=x onerror=alert(1)&#x3e;</title>')).toBeNull()
     expect(normalizeTitle('<title>' + 'x'.repeat(400) + '</title>')?.length).toBeLessThanOrEqual(160)
+    // Previously clipped exactly at a space, then failed history's trim invariant.
+    expect(normalizeTitle('<title>' + 'x'.repeat(159) + ' other words</title>')).toBe('x'.repeat(159))
     expect(normalizeTitle('<p>No title</p>')).toBeNull()
     expect(normalizeTitle('<title>Kontakt test@example.se +46 70 123 45 67</title>')).toBe('Kontakt [kontaktuppgift borttagen] [kontaktuppgift borttagen]')
   })

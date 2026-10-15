@@ -128,6 +128,8 @@ export function normalizeTitle(html: string): string | null {
   }).replace(/<[^>]*>/g, ' ').replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g, '')
     .replace(/\b[^\s@]+@[^\s@]+\.[^\s@]+\b/g, '[kontaktuppgift borttagen]')
     .replace(/(?:\+\d[\d ()-]{6,}\d|\b0\d[\d ()-]{6,}\d\b)/g, '[kontaktuppgift borttagen]')
-    .replace(/\s+/g, ' ').trim().slice(0, 160)
+    // A title longer than 160 characters may be cut exactly after a space.
+    // Trim again so the persisted title satisfies the immutable history contract.
+    .replace(/\s+/g, ' ').trim().slice(0, 160).trim()
   return plain || null
 }

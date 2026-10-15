@@ -112,6 +112,8 @@ export interface MemoryContextRequest {
   projectIds?: string[]
   /** User scope (e.g. manager chat): identity whose allowed projects bound recall. */
   userId?: string | null
+  /** Optional request-scoped DB handle; never changes the allowed project scope. */
+  db?: unknown
   focus?: FocusRef[]
 }
 
@@ -146,6 +148,7 @@ export async function resolveMemoryContext(
   const pack = await recallMemories({
     userId: req.userId ?? null,
     projectIds: req.projectIds,
+    db: req.db,
     focus: req.focus,
   })
 

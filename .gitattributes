@@ -7,3 +7,7 @@
 .agents/skills/review-animations/** -text
 .agents/skills/improve-animations/** -text
 .agents/skills/break-ui/** -text
+
+# These golden publication artifacts are compared byte-for-byte.
+/apps/web/lib/qa/__fixtures__/knowledge-snapshot/documents.jsonl text eol=lf
+/apps/web/lib/qa/__fixtures__/knowledge-snapshot/knowledge-manifest.json text eol=lf

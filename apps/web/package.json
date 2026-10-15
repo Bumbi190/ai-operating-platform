@@ -13,6 +13,8 @@
     "knowledge:verify": "../../node_modules/.bin/tsx scripts/verify-architecture-knowledge.ts",
     "knowledge:shadow": "../../node_modules/.bin/tsx scripts/knowledge-shadow.ts",
     "knowledge:projection": "../../node_modules/.bin/tsx scripts/knowledge-projection-report.ts",
+    "openviking:prepare": "tsx scripts/openviking-prepare.ts",
+    "openviking:sync": "tsx scripts/openviking-sync.ts",
     "knowledge:test": "../../node_modules/.bin/vitest run lib/architecture-knowledge lib/qa/architecture-knowledge*.test.ts"
   },
   "dependencies": {

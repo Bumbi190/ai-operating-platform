@@ -60,6 +60,7 @@ import { recordAction, buildActionMemory } from '@/lib/atlas/action-memory'
 // CL Commit 5 (Stage 0, shadow): assembler-vs-legacy diff instrumentation.
 // Flag-gated (ATLAS_CTX_ASSEMBLER=shadow), fire-and-forget, never in the live path.
 import { isContextShadowEnabled, runContextShadow } from '@/lib/atlas/context/shadow'
+import { buildProjectRecall } from '@/lib/atlas/context/project-recall'
 import { buildHandlarborsenChatFacts } from '@/lib/atlas/project-analytics/handlarborsen-chat'
 import { isExplicitlyAuthorizedInternalPrincipal } from '@/lib/architecture-knowledge/policy'
 import { resolveDestination, resolveLinks, resolveProjectSlug, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
@@ -840,6 +841,11 @@ export async function POST(request: Request) {
         systemPrompt += await buildHandlarborsenChatFacts({ db, allowedProjectIds, text: lastUserText })
       } catch { /* icke-kritiskt */ }
     }
+    // Read-only pilot recall. Scope is the fresh server allow-list, never the client view.
+    systemPrompt += await buildProjectRecall({
+      userId, allowedProjectIds, query: lastUserText, db,
+      viewProjectSlug: normalizeView(view)?.project?.slug ?? null,
+    })
     if (voice) systemPrompt += VOICE_DIRECTIVE
 
     // ── CL Commit 5 (Stage 0): context-shadow — INSTRUMENTATION ONLY ──────────

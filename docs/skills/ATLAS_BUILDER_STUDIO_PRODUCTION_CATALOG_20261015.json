@@ -1,0 +1,174 @@
+{
+  "captured_at": "2026-10-15T10:03:49.755Z",
+  "migration_sha256_lf": "4a488c4febcf6f91f239f1ee07687ef36df2b392aaf3788023700376bda38bfa",
+  "tables": [
+    {
+      "rls": true,
+      "name": "project_lifecycle",
+      "grants": [
+        {
+          "grantee": "authenticated",
+          "privilege": "SELECT"
+        },
+        {
+          "grantee": "service_role",
+          "privilege": "SELECT"
+        }
+      ],
+      "policies": [
+        {
+          "qual": "((owner_id = ( SELECT auth.uid() AS uid)) AND (EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = project_lifecycle.project_id) AND (p.owner_id = ( SELECT auth.uid() AS uid))))))",
+          "command": "r"
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "rls": true,
+      "name": "website_build_studio_budget_events",
+      "grants": [
+        {
+          "grantee": "authenticated",
+          "privilege": "SELECT"
+        },
+        {
+          "grantee": "service_role",
+          "privilege": "SELECT"
+        }
+      ],
+      "policies": [
+        {
+          "qual": "((owner_id = ( SELECT auth.uid() AS uid)) AND (EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = website_build_studio_budget_events.project_id) AND (p.owner_id = ( SELECT auth.uid() AS uid))))))",
+          "command": "r"
+        }
+      ],
+      "triggers": [
+        "website_studio_budget_no_rewrite",
+        "website_studio_budget_no_truncate"
+      ]
+    },
+    {
+      "rls": true,
+      "name": "website_build_studio_intents",
+      "grants": [
+        {
+          "grantee": "authenticated",
+          "privilege": "SELECT"
+        },
+        {
+          "grantee": "service_role",
+          "privilege": "SELECT"
+        }
+      ],
+      "policies": [
+        {
+          "qual": "((owner_id = ( SELECT auth.uid() AS uid)) AND (EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = website_build_studio_intents.project_id) AND (p.owner_id = ( SELECT auth.uid() AS uid))))))",
+          "command": "r"
+        }
+      ],
+      "triggers": null
+    },
+    {
+      "rls": true,
+      "name": "website_build_workspace_requests",
+      "grants": [
+        {
+          "grantee": "authenticated",
+          "privilege": "SELECT"
+        },
+        {
+          "grantee": "service_role",
+          "privilege": "SELECT"
+        }
+      ],
+      "policies": [
+        {
+          "qual": "((owner_id = ( SELECT auth.uid() AS uid)) AND (EXISTS ( SELECT 1\n   FROM projects p\n  WHERE ((p.id = website_build_workspace_requests.project_id) AND (p.owner_id = ( SELECT auth.uid() AS uid))))))",
+          "command": "r"
+        }
+      ],
+      "triggers": null
+    }
+  ],
+  "ledger_entry": [
+    {
+      "name": "atlas_builder_studio_workspace",
+      "version": "20261015100050"
+    }
+  ],
+  "resume_guard": 1,
+  "routines": [
+    {
+      "args": "p_principal jsonb, p_input jsonb",
+      "name": "project_lifecycle_change",
+      "anon_execute": false,
+      "auth_execute": false,
+      "service_execute": true,
+      "security_definer": true
+    },
+    {
+      "args": "p_principal jsonb, p_input jsonb",
+      "name": "project_lifecycle_read",
+      "anon_execute": false,
+      "auth_execute": false,
+      "service_execute": true,
+      "security_definer": true
+    },
+    {
+      "args": "",
+      "name": "project_lifecycle_resume_guard",
+      "anon_execute": false,
+      "auth_execute": false,
+      "service_execute": true,
+      "security_definer": true
+    },
+    {
+      "args": "",
+      "name": "website_build_studio_budget_immutable",
+      "anon_execute": false,
+      "auth_execute": false,
+      "service_execute": true,
+      "security_definer": false
+    },
+    {
+      "args": "p_principal jsonb, p_input jsonb",
+      "name": "website_build_studio_budget_set",
+      "anon_execute": false,
+      "auth_execute": false,
+      "service_execute": true,
+      "security_definer": true
+    },
+    {
+      "args": "p_principal jsonb, p_input jsonb, p_preset jsonb",
+      "name": "website_build_studio_ensure",
+      "anon_execute": false,
+      "auth_execute": false,
+      "service_execute": true,
+      "security_definer": true
+    },
+    {
+      "args": "p_project_id uuid",
+      "name": "website_build_studio_require_active",
+      "anon_execute": false,
+      "auth_execute": false,
+      "service_execute": true,
+      "security_definer": true
+    },
+    {
+      "args": "p_principal jsonb, p_project_id uuid",
+      "name": "website_build_studio_require_owner",
+      "anon_execute": false,
+      "auth_execute": false,
+      "service_execute": true,
+      "security_definer": true
+    },
+    {
+      "args": "p_principal jsonb, p_input jsonb",
+      "name": "website_build_workspace_request",
+      "anon_execute": false,
+      "auth_execute": false,
+      "service_execute": true,
+      "security_definer": true
+    }
+  ]
+}

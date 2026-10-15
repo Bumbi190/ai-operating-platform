@@ -1,4 +1,6 @@
 import React from 'react'
+import { OverviewDashboard } from '../components/platform/overview/OverviewDashboard'
+import { overviewFixture } from './atlas-overview-messenger-model'
 import { createRoot } from 'react-dom/client'
 import {
   AtlasConversationProvider,
@@ -40,20 +42,40 @@ function Workspace() {
           Fixture switch thread
         </button>
       </nav>
-      <main>
-        <h1>
-          {path === '/atlas'
-            ? 'Atlas'
-            : path.startsWith('/chat')
-              ? 'Full chatt'
-              : 'Projektöversikt'}
-        </h1>
-        {path.startsWith('/chat') && (
-          <p data-testid="full-history">
-            {snapshot.history.map((m) => m.content).join(' | ')}
-          </p>
+      <main style={{ padding: path === '/dashboard' ? 0 : 32 }}>
+        {path === '/dashboard' ? (
+          <OverviewDashboard
+            model={overviewFixture(
+              new URLSearchParams(location.search).get('period') === '30'
+                ? 30
+                : 7,
+              new URLSearchParams(location.search).get('fixture-state') ===
+                'partial'
+                ? 'partial'
+                : new URLSearchParams(location.search).get('fixture-state') ===
+                    'unavailable'
+                  ? 'unavailable'
+                  : 'complete',
+              new URLSearchParams(location.search).has('fixture-empty')
+            )}
+          />
+        ) : (
+          <>
+            <h1>
+              {path === '/atlas'
+                ? 'Atlas'
+                : path.startsWith('/chat')
+                  ? 'Full chatt'
+                  : 'Projektöversikt'}
+            </h1>
+            {path.startsWith('/chat') && (
+              <p data-testid="full-history">
+                {snapshot.history.map((m) => m.content).join(' | ')}
+              </p>
+            )}
+            <p>Din arbetsyta finns kvar bakom chatten.</p>
+          </>
         )}
-        <p>Din arbetsyta finns kvar bakom chatten.</p>
       </main>
       <AtlasMiniOrb uiGeneration="vnext" />
     </>

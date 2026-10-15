@@ -9,6 +9,7 @@ export interface ModelPricing {
   perImage?: number    // USD per image (for image models)
   label: string
   provider: 'anthropic' | 'openai'
+  longContext?: { threshold: number; inputPer1M: number; outputPer1M: number }
 }
 
 export const MODEL_PRICING: Record<string, ModelPricing> = {
@@ -20,6 +21,10 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   'claude-3-5-haiku-20241022':    { inputPer1M: 0.80,  outputPer1M: 4.00,  label: 'Claude Haiku 3.5',   provider: 'anthropic' },
   'claude-3-5-sonnet-20241022':   { inputPer1M: 3.00,  outputPer1M: 15.00, label: 'Claude Sonnet 3.5',  provider: 'anthropic' },
   // OpenAI text
+  // Official Luna Standard pricing, verified 2026-10-15. The long-context
+  // rate applies to the WHOLE request once input exceeds 272k tokens.
+  'gpt-6-luna': { inputPer1M: 0.10, outputPer1M: 0.50, label: 'GPT-6 Luna', provider: 'openai',
+    longContext: { threshold: 272_000, inputPer1M: 0.20, outputPer1M: 0.75 } },
   'gpt-4o':                       { inputPer1M: 2.50,  outputPer1M: 10.00, label: 'GPT-4o',            provider: 'openai' },
   'gpt-4o-mini':                  { inputPer1M: 0.15,  outputPer1M: 0.60,  label: 'GPT-4o Mini',       provider: 'openai' },
   // OpenAI image (dall-e-3 retired 2026-03-04)
@@ -35,7 +40,8 @@ export function getModelPricing(model: string): ModelPricing {
  * Calculate cost in USD for a given number of tokens
  */
 export function calculateCost(model: string, tokensIn: number, tokensOut: number): number {
-  const pricing = getModelPricing(model)
+  const base = getModelPricing(model)
+  const pricing = base.longContext && tokensIn > base.longContext.threshold ? base.longContext : base
   return (tokensIn / 1_000_000) * pricing.inputPer1M +
          (tokensOut / 1_000_000) * pricing.outputPer1M
 }

@@ -1,0 +1,96 @@
+{
+  "date": "2026-10-15",
+  "purpose": "Economical opt-in Atlas OpenAI chat for the existing guarded local OpenViking pilot",
+  "base_head": "30bdcc5742712318f1ab2f1e01145a6d1fc130fd",
+  "branch": "codex/atlas-openviking-integration-20261015",
+  "owner_authorized_existing_key_reuse_and_private_destination": true,
+  "credential_values_in_receipt": false,
+  "production_changed": false,
+  "merged": false,
+  "runtime": {
+    "flag": "ATLAS_CHAT_PROVIDER=openai",
+    "default_provider": "anthropic",
+    "private_preview_only": true,
+    "model": "gpt-6-luna",
+    "local_memory_models_unchanged": true,
+    "paid_fallback": false,
+    "read_and_navigation_tools_only": true,
+    "native_website_plan_approval_blocked": true,
+    "max_output_tokens": 1200,
+    "voice_output_tokens": 150,
+    "per_process_pilot_budget_usd": 1,
+    "budget_resets_on_process_restart": true,
+    "not_a_monthly_or_account_wide_cap": true,
+    "global_and_financial_governance_preserved": true,
+    "login_http_status": 200,
+    "unauthenticated_chat_http_status": 401
+  },
+  "validation": {
+    "new_tests_passed": 43,
+    "current_passed": 469,
+    "current_failed": 2,
+    "baseline_passed": 427,
+    "baseline_failed": 2,
+    "added_failure_entries": [],
+    "unchanged_failures": [
+      {
+        "file": "lib/qa/atlas-static-conversation-route.test.ts",
+        "test": "FULL → STATIC history transition PINS THE UPSTREAM INVARIANT: the client sends a text-only API history"
+      },
+      {
+        "file": "lib/qa/atlas-static-conversation-route.test.ts",
+        "test": "FULL → STATIC history transition PINS THE SAME INVARIANT for the vNext conversation client"
+      }
+    ],
+    "focused_typescript_exit": 0,
+    "targeted_eslint_exit": 0,
+    "review_critical_or_important_remaining": 0,
+    "review_fixes": [
+      "Block native build-plan approval in pilot",
+      "Accept capped text, reject truncated tool calls"
+    ],
+    "full_application_suite_repeated": false,
+    "full_application_typecheck_repeated": false,
+    "test_transport_note": "Cold Windows bind imports caused 5-second timing failures. Identical limits passed from isolated Linux source snapshots; no test timeout or assertion was weakened."
+  },
+  "live_provider_and_recall": {
+    "scope": "real governed provider plus actual recall; not an authenticated browser request",
+    "provider": "openai",
+    "model": "gpt-6-luna",
+    "success": true,
+    "started_at": "2026-10-15T14:08:51.712Z",
+    "production_changed": false,
+    "snapshot_id": "e320719db950c432e2f85f49d3ec2a5079790ebc944937285e1c33fbdaf04de2",
+    "documents": 5,
+    "source_retrieved": true,
+    "answer_text": "Starta den via skrivbordsgenvägen **Atlas minnestest**. Testpasset kör i högst **30 minuter** och stoppas vid **80 °C GPU-kärntemperatur**.\n\nKälla: `60 Memory/omnira-selftest-local-memory-pilot.md`",
+    "text_deltas": 61,
+    "stop_reason": "end_turn",
+    "cost": {
+      "model": "gpt-6-luna",
+      "tokens_in": 2672,
+      "tokens_out": 64,
+      "cost_usd": 0.000299,
+      "cost_sek": 0.0032
+    },
+    "cloud_model_calls": 1,
+    "browser_auth_verified": false,
+    "finished_at": "2026-10-15T14:08:57.245Z"
+  },
+  "gpu_watch": {
+    "armed": true,
+    "stopped": false,
+    "temperature_c": 42.0,
+    "max_temperature_c": 44.0,
+    "sampled_at": "2026-10-15T14:10:30.196292+00:00"
+  },
+  "limits": [
+    "Browser-authenticated OpenAI answer has not been observed",
+    "Existing five-source relevance gate remains failed",
+    "Exact provider balance not read"
+  ],
+  "sources": [
+    "https://developers.openai.com/api/docs/models/gpt-6-luna",
+    "https://developers.openai.com/api/docs/guides/prompt-caching"
+  ]
+}

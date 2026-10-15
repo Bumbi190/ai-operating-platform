@@ -26,6 +26,7 @@ import OpenAI from 'openai'
 
 import { logImageCost, logLlmCost, type CostContext } from '@/lib/cost/track'
 import { getRates } from '@/lib/cost/rates'
+import { currentSpendMeter, runWithSpendMeter } from '@/lib/cost/spend-meter'
 import {
   containsKey, gptImageCeiling, openAISpeechCeiling, tokenWindowCeiling, type RateSnapshot,
 } from '@/lib/cost/spend-ceiling'
@@ -312,12 +313,19 @@ export async function estimateOpenAIChatSek(
   params: {
     model: string; max_tokens?: number | null; max_completion_tokens?: number | null; n?: number | null
     messages?: unknown[]; tools?: unknown; modalities?: unknown; prediction?: unknown; web_search_options?: unknown
+    service_tier?: unknown; prompt_cache_options?: { mode?: unknown } | null
   },
   rates?: RateSnapshot,
 ): Promise<number> {
   const unbounded = (reason: string) => new SpendRefusedError({
     reason: 'unbounded_spend', provider: 'openai', operation: 'chat.completions', detail: reason,
   })
+  // Luna's automatic cache writes and premium tiers bill above the ordinary
+  // token price. Only uncached Standard requests are supported in this pilot.
+  if (params.model === 'gpt-6-luna' && (
+    params.service_tier !== 'default' || params.prompt_cache_options?.mode !== 'explicit'
+    || containsKey(params, 'prompt_cache_breakpoint') || containsKey(params, 'cache_control')
+  )) throw unbounded('Luna requires Standard processing and explicit caching without breakpoints')
   const n = params.n ?? 1
   if (!Number.isInteger(n) || n < 1) throw unbounded('n must be a positive integer')
   const cap = params.max_completion_tokens ?? params.max_tokens
@@ -360,9 +368,53 @@ function boundedGptImageSek(count: number, params: Record<string, unknown>, rate
 }
 
 /**
+ * Keep streaming metering in the originating governed scope. Usage arrives in
+ * the final empty-choices chunk; no usage means settlement keeps the ceiling.
+ * The pending lifetime is registered before returning the handle, and ends on
+ * exhaustion, error or consumer cancellation.
+ */
+function meteredChatStream(source: AsyncIterable<any>, model: string, ctx: OpenAIGovernanceContext): AsyncIterable<any> {
+  const meter = currentSpendMeter()
+  let done!: () => void
+  let failed!: (error: unknown) => void
+  const lifetime = new Promise<void>((resolve, reject) => { done = resolve; failed = reject })
+  void lifetime.catch(() => {})
+  meter?.settleAfter(lifetime)
+  let consumed = false
+  return {
+    async *[Symbol.asyncIterator]() {
+      if (consumed) throw new Error('OpenAI stream has already been consumed')
+      consumed = true
+      let usage: { prompt_tokens: number; completion_tokens: number } | undefined
+      try {
+        for await (const chunk of source) {
+          const next = chunk.usage
+          if (next && Number.isInteger(next.prompt_tokens) && next.prompt_tokens >= 0
+            && Number.isInteger(next.completion_tokens) && next.completion_tokens >= 0) usage = next
+          yield chunk
+        }
+        if (usage) {
+          const record = () => logLlmCost(model, {
+            tokensIn: usage!.prompt_tokens, tokensOut: usage!.completion_tokens,
+          }, costContext(ctx))
+          if (meter) await runWithSpendMeter(meter, record)
+          else await record()
+        }
+        done()
+      } catch (error) {
+        failed(error)
+        throw error
+      } finally {
+        done()
+      }
+    },
+  }
+}
+
+/**
  * Governed chat completion. `stream: true` is supported. A non-streaming call
  * meters its real usage into the settlement; a streamed one reports no usage
- * here and settles at the reserved hard ceiling (M0).
+ * before stream exhaustion; missing usage retains the reserved hard ceiling.
  */
 export async function openAIChatCompletion(
   ctx: OpenAIGovernanceContext,
@@ -407,14 +459,17 @@ export async function openAIChatCompletion(
       // the governed call so the settlement writes it. (Before M0 nothing was
       // recorded here, and a caller logged it best-effort afterwards.) A
       // streamed completion reports no usage to this boundary, so it settles at
-      // the reserved hard ceiling, labelled `estimate_unmetered`.
+      // the reserved hard ceiling if final usage is missing; otherwise the
+      // streaming wrapper records actual usage before durable settlement.
       if (!(params as { stream?: boolean }).stream && response?.usage) {
         await logLlmCost(String((params as { model?: unknown }).model), {
           tokensIn: Number(response.usage.prompt_tokens ?? 0),
           tokensOut: Number(response.usage.completion_tokens ?? 0),
         }, costContext(ctx))
       }
-      return response
+      return (params as { stream?: boolean }).stream
+        ? meteredChatStream(response, params.model, ctx)
+        : response
     },
   )
 }

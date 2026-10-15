@@ -455,10 +455,6 @@ describe('atlas chat · the route contract it speaks', () => {
     expect(events).toEqual(['done', 'error', 'links', 'navigate', 'text', 'timing', 'tool_call', 'tool_result', 'website_plan', 'website_workspace'])
   })
 
-  it('does not observe a client abort — which is why there is no stop control', () => {
-    expect(ROUTE).not.toMatch(/request\.signal/)
-  })
-
   it('counts a result carrying `error` as a failure — the rule the tool steps follow', () => {
     expect(ROUTE).toMatch(/const errored = !!r && 'error' in r/)
   })

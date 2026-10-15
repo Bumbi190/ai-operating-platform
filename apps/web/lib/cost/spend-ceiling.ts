@@ -108,6 +108,7 @@ export const CONTEXT_WINDOW_TOKENS: Readonly<Record<string, number>> = Object.fr
   'claude-haiku-4-5-20251001': 200_000,
   'claude-3-5-haiku-20241022': 200_000,
   'claude-3-5-sonnet-20241022': 200_000,
+  'gpt-6-luna': 1_050_000,
   'gpt-4o': 128_000,
   'gpt-4o-mini': 128_000,
 })
@@ -139,7 +140,9 @@ export function tokenWindowCeiling(model: string, outputCap: number, rates: Rate
   if (!isPositiveInt(outputCap)) return refuse('the request carries no positive integer output cap')
   const rate = fx(rates)
   if (rate === null) return refuse('the rate snapshot has no usable usd_sek')
-  const usd = (m.window / 1_000_000) * m.pricing.inputPer1M + (outputCap / 1_000_000) * m.pricing.outputPer1M
+  const pricing = m.pricing.longContext && m.window > m.pricing.longContext.threshold
+    ? m.pricing.longContext : m.pricing
+  const usd = (m.window / 1_000_000) * pricing.inputPer1M + (outputCap / 1_000_000) * pricing.outputPer1M
   return { ok: true, sek: usd * rate, basis: 'token_window', detail: `${model}:in<=${m.window},out<=${outputCap}` }
 }
 

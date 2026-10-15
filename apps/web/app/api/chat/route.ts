@@ -19,7 +19,7 @@ import { buildAgentRunInsert } from '@/lib/ai/run-create'
 import { fetchOperatorPatterns } from '@/lib/os/patterns'
 import { buildAtlasSystemPrompt } from '@/lib/atlas/identity'
 import {
-  classifyAnthropicError,
+  classifyAtlasProviderError,
   getAtlasServiceErrorMessage,
 } from '@/lib/atlas/provider-errors'
 import { gatherAtlasContext } from '@/lib/atlas/context'
@@ -66,6 +66,7 @@ import { isExplicitlyAuthorizedInternalPrincipal } from '@/lib/architecture-know
 import { resolveDestination, resolveLinks, resolveProjectSlug, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
 import { toJson, parseWorkflowSteps } from '@/lib/supabase/json'
 import { getAnthropic } from '@/lib/ai/anthropic'
+import { createAtlasOpenAIStream, resolveAtlasChatProvider } from '@/lib/atlas/openai-chat'
 import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
 import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
 
@@ -618,8 +619,14 @@ export async function POST(request: Request) {
   // streaming closure further down.
   const userId = user.id
 
-  const anthropicApiKey = process.env.ANTHROPIC_API_KEY?.trim()
-  if (!anthropicApiKey) {
+  let chatProvider: 'anthropic' | 'openai'
+  try { chatProvider = resolveAtlasChatProvider(process.env) } catch {
+    const code = 'ATLAS_PROVIDER_NOT_CONFIGURED' as const
+    return NextResponse.json({ code, error: getAtlasServiceErrorMessage(code) }, { status: 503 })
+  }
+  const useOpenAI = chatProvider === 'openai'
+  const providerApiKey = (useOpenAI ? process.env.OPENAI_API_KEY : process.env.ANTHROPIC_API_KEY)?.trim()
+  if (!providerApiKey) {
     const code = 'ATLAS_PROVIDER_NOT_CONFIGURED' as const
     return NextResponse.json(
       { code, error: getAtlasServiceErrorMessage(code) },
@@ -629,15 +636,19 @@ export async function POST(request: Request) {
   // Atlas chat serves every project at once and belongs to none of them, so it
   // names the platform compatibility project explicitly. Listed in the G1 report
   // as a mapping G2 must decide when it introduces budget scopes.
-  const anthropic = getAnthropic({
+  const chatGovernance = {
     project: PLATFORM_COMPAT_PROJECT,
     execution: {
       // Ordinary operator assistance. GLOBAL_ONLY, never the billing project:
       // PLATFORM_COMPAT resolves to the media slug, and inheriting its project
       // stop would take Atlas offline whenever the media project is paused.
-      context: 'OPERATOR_INTERACTIVE', scope: GLOBAL_ONLY,
+      context: 'OPERATOR_INTERACTIVE' as const, scope: GLOBAL_ONLY,
     }, agent: 'Atlas', operation: 'Atlas Chat',
-  })
+  }
+  const anthropic = useOpenAI
+    ? { messages: { stream: async (params: Anthropic.MessageStreamParams) =>
+        createAtlasOpenAIStream(chatGovernance, params, undefined, request.signal) } }
+    : getAnthropic(chatGovernance)
 
   const { messages, conversation_id, voice, mode, view, websitePlanRef, buildContext:rawBuildContext, inputSource } = await request.json() as {
     messages: Anthropic.MessageParam[]
@@ -650,6 +661,12 @@ export async function POST(request: Request) {
     inputSource?:unknown
   }
 
+  // A visible-plan approval is a native write path, outside model tools.
+  // Reject it here too: the economical pilot cannot queue paid build work.
+  if (useOpenAI && websitePlanRef !== undefined && websitePlanRef !== null) {
+    const code = 'ATLAS_PILOT_READ_ONLY' as const
+    return NextResponse.json({ code, error: getAtlasServiceErrorMessage(code) }, { status: 403 })
+  }
   const db = createAdminClient()
   const tStart = Date.now()
 
@@ -873,8 +890,8 @@ export async function POST(request: Request) {
   // executeTool is unreachable on this path. Every other class keeps TOOLS
   // exactly as before — this is not general per-class schema pruning.
   const activeTools = (fastPath || staticConversation) ? [] : TOOLS
-  const forceToolFirstTurn = actionIntent && activeTools.length > 0
-  const forceResolutionFirstTurn = resolutionIntent && activeTools.length > 0
+  const forceToolFirstTurn = !useOpenAI && actionIntent && activeTools.length > 0
+  const forceResolutionFirstTurn = !useOpenAI && resolutionIntent && activeTools.length > 0
   // Direkt navigeringskommando → tvinga specifikt navigate-verktyget på turn 0.
   const forceNavigateFirstTurn = navIntent && activeTools.length > 0
   const contextMs = Date.now() - tStart
@@ -964,7 +981,7 @@ export async function POST(request: Request) {
           const llm = await anthropic.messages.stream({
             model: 'claude-sonnet-4-6',
             max_tokens: voice ? 150 : (fastPath ? 1200 : 4096),
-            system: systemPrompt,
+            system: useOpenAI ? systemPrompt + '\n\n[LOKAL ATLAS-PILOT] Du kan svara, läsa befintlig information och navigera. Du kan inte starta byggen, workflows eller andra agenter i detta testläge. Förklara begränsningen om användaren ber om det.' : systemPrompt,
             tools: activeTools,   // fast path = [] → ingen verktygsloop
             ...toolChoice,
             messages: msgs,
@@ -1152,8 +1169,8 @@ export async function POST(request: Request) {
       try {
         await runConversation(messages)
       } catch (err) {
-        const code = classifyAnthropicError(err)
-        console.error(`[atlas-chat] Anthropic request failed (${code})`, {
+        const code = classifyAtlasProviderError(err, chatProvider)
+        console.error(`[atlas-chat] ${chatProvider} request failed (${code})`, {
           name: err instanceof Error ? err.name : 'UnknownError',
           status: typeof (err as { status?: unknown } | null)?.status === 'number'
             ? (err as { status: number }).status

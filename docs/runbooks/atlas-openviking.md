@@ -121,3 +121,31 @@ A local authenticated UI attempt on 2026-10-15 reached the chat provider but fai
 Atlas now classifies that specific provider refusal as ATLAS_PROVIDER_INSUFFICIENT_CREDITS and retains the controlled Swedish warning through the shared text/voice conversation result. It does not expose the upstream error body. Other malformed requests and authentication failures retain their existing categories.
 
 The account owner can check and fund the API organization's balance at https://platform.claude.com/settings/billing. Official instructions: https://support.claude.com/en/articles/8977456-how-do-i-pay-for-my-claude-api-usage. No credit purchase, auto-reload setting, model change or budget-limit change was performed. A successful generated answer after replenishment remains unverified; use a new local conversation under the existing hardware guard once credits are available.
+
+## Economical OpenAI chat in the private local preview
+
+The owner authorized an OpenAI pilot on 2026-10-15, including reuse of the existing OpenAI credential at the separately confirmed private preview env path. Credentials stay outside Git. No production provider flag, account funding, subscription, auto-reload or shared database budget was changed.
+
+Set ATLAS_CHAT_PROVIDER=openai only in the private preview's apps/web/.env.local. The absent flag preserves Anthropic. An unknown provider or missing selected credential fails closed; there is no provider fallback.
+
+The pilot uses gpt-6-luna through the existing governed OpenAI boundary, with Standard processing, reasoning_effort=none, streamed usage and at most 1,200 output tokens (the existing 150-token voice cap still applies). The original scoped project-recall text and publication are unchanged. The Qwen embedding and processing models continue running locally.
+
+Only the explicit read/navigation tool allow-list is offered. Agent, workflow, media and website-build tools are unavailable in this pilot. Native website-plan approval must also be rejected before any build-start operation. Ordinary Anthropic behavior stays available when the flag is absent.
+
+A shared in-process pilot budget reserves the maximum documented per-request USD amount before dispatch, including Luna's long-context premium. Known final token usage releases unused headroom. Missing usage or an ambiguous transport outcome retains the full reservation. The default limit is 1 USD for Atlas chat in one preview server process. Hot reload shares the budget; restarting the server starts a NEW budget. This is not a monthly limit, a provider-account limit, a cross-process limit, or a cap on other applications. Global and project financial/execution controls remain enforced separately.
+
+The governed streamed response now defers its durable settlement until exhaustion, failure or consumer cancellation. Its real final usage is recorded in that call's original spend meter. A stream without usable usage remains conservatively accounted at its reservation; it does not disappear from the ledger.
+
+Official Standard pricing checked on 2026-10-15: 0.10 USD per million input tokens and 0.50 USD per million output tokens. Above 272,000 input tokens, the WHOLE request uses 0.20 USD input and 0.75 USD output. The documented context window is 1,050,000 tokens. The pilot explicitly disables automatic cache writes by selecting explicit cache mode without breakpoints; other Luna billing modes are refused by the estimator.
+
+Sources:
+- https://developers.openai.com/api/docs/models/gpt-6-luna
+- https://developers.openai.com/api/docs/guides/prompt-caching
+- https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create
+- https://developers.openai.com/api/reference/resources/chat/subresources/completions/streaming-events
+
+A successful model-list response confirms credential authentication and model visibility; it does not establish a remaining credit balance. Live inference and local recall results are recorded separately in the validation receipt. The failed five-source relevance gate is unchanged: this provider switch is not evidence that OpenViking retrieval improved.
+
+Rollback: remove ATLAS_CHAT_PROVIDER or set it to anthropic in the private preview and restart that preview process. This does not fund Anthropic or resolve its previously observed insufficient-credit refusal.
+
+Live local verification on 2026-10-15 succeeded: one governed Luna request used the actual five-source publication and returned the shortcut, 30-minute duration, 80 C guard and exact original note path. The recorded usage was 2,672 input and 64 output tokens; the ledger recorded 0.000299 USD / 0.0032 SEK. This was a provider-plus-recall probe, not a browser-authenticated request. The real preview login returned 200 and unauthenticated chat returned 401. See infra/openviking/validation-openai-pilot-20261015.json for the exact validation scope.

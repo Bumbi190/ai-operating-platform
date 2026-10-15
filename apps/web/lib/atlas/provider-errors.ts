@@ -3,6 +3,9 @@ export const ATLAS_SERVICE_ERROR_CODES = [
   'ATLAS_PROVIDER_AUTHENTICATION_FAILED',
   'ATLAS_PROVIDER_REQUEST_FAILED',
   'ATLAS_PROVIDER_INSUFFICIENT_CREDITS',
+  'ATLAS_OPENAI_INSUFFICIENT_CREDITS',
+  'ATLAS_PILOT_BUDGET_EXHAUSTED',
+  'ATLAS_PILOT_READ_ONLY',
   'ATLAS_TTS_NOT_CONFIGURED',
   'ATLAS_TTS_REQUEST_FAILED',
   'ATLAS_TTS_PLAYBACK_BLOCKED',
@@ -16,6 +19,9 @@ const ATLAS_SERVICE_ERROR_MESSAGES: Record<AtlasServiceErrorCode, string> = {
   ATLAS_PROVIDER_AUTHENTICATION_FAILED: 'Atlas AI-leverantör kunde inte autentiseras. Kontrollera serverns lokala provider-konfiguration.',
   ATLAS_PROVIDER_REQUEST_FAILED: 'Atlas kunde inte hämta ett AI-svar just nu.',
   ATLAS_PROVIDER_INSUFFICIENT_CREDITS: 'Anthropics API-krediter räcker inte för att generera ett svar. Fyll på saldot i Claude Console och försök igen.',
+  ATLAS_OPENAI_INSUFFICIENT_CREDITS: 'OpenAI-kontots API-krediter eller kvot räcker inte. Kontrollera API-saldot och kontots gränser.',
+  ATLAS_PILOT_READ_ONLY: 'Atlas-piloten kan läsa och svara, men kan inte godkänna eller starta webbbyggen.',
+  ATLAS_PILOT_BUDGET_EXHAUSTED: 'Atlas-pilotens lokala testbudget är slut eller reserverad av ett pågående svar. Inga fler modellanrop startas i detta testpass.',
   ATLAS_TTS_NOT_CONFIGURED: 'Atlas svarade i text, men röstleverantören är inte konfigurerad i servermiljön.',
   ATLAS_TTS_REQUEST_FAILED: 'Atlas svarade i text, men ljudet kunde inte skapas just nu.',
   ATLAS_TTS_PLAYBACK_BLOCKED: 'Atlas kunde skapa rösten men webbläsaren blockerade ljuduppspelningen. Klicka i fönstret och försök igen.',
@@ -50,4 +56,14 @@ export function classifyAnthropicError(error: unknown): AtlasServiceErrorCode {
   }
 
   return 'ATLAS_PROVIDER_REQUEST_FAILED'
+}
+
+/** Provider-neutral classification; client text stays controlled and credential-free. */
+export function classifyAtlasProviderError(error: unknown, provider: 'anthropic' | 'openai'): AtlasServiceErrorCode {
+  const candidate = error as { status?: unknown; code?: unknown; error?: { code?: unknown } } | null
+  if (candidate?.code === 'ATLAS_PILOT_BUDGET_EXHAUSTED') return 'ATLAS_PILOT_BUDGET_EXHAUSTED'
+  if (provider === 'openai' && (candidate?.code === 'insufficient_quota' || candidate?.error?.code === 'insufficient_quota')) {
+    return 'ATLAS_OPENAI_INSUFFICIENT_CREDITS'
+  }
+  return classifyAnthropicError(error)
 }

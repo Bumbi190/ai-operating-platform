@@ -219,7 +219,7 @@ export function buildBreadcrumbs(
   const segments = path.split('/').filter(Boolean)
 
   const trail: Array<Omit<BreadcrumbItem, 'current'>> = [
-    { label: ROOT_LABEL, href: ATLAS_HOME_PATH },
+    { label: ROOT_LABEL, href: destinationBasePath('overview') ?? undefined },
   ]
 
   if (segments[0] === PROJECTS_SEGMENT) {
@@ -343,6 +343,6 @@ export function shouldRenderBreadcrumbs(
   generation: OmniraUiGeneration,
 ): boolean {
   if (!isVNext(generation)) return false
-  if (normalizePath(pathname ?? '/') === ATLAS_HOME_PATH) return false
+  if ([ATLAS_HOME_PATH, destinationBasePath('overview')].includes(normalizePath(pathname ?? '/'))) return false
   return buildBreadcrumbs(pathname).length > 1
 }

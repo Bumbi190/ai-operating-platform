@@ -132,8 +132,8 @@ describe('breadcrumbs · current item', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('breadcrumbs · ancestors link only to real destinations', () => {
-  it('the root points at Atlas Home', () => {
-    expect(buildBreadcrumbs('/approvals')[0].href).toBe('/atlas')
+  it('the root points at Overview', () => {
+    expect(buildBreadcrumbs('/approvals')[0].href).toBe('/dashboard')
   })
 
   it('"Projekt" links to the index, which Phase 5 built', () => {
@@ -152,7 +152,7 @@ describe('breadcrumbs · ancestors link only to real destinations', () => {
       projects: PROJECTS,
     })
     expect(built.map((i) => i.href)).toEqual([
-      '/atlas',
+      '/dashboard',
       '/projects', // the index — a real page since Phase 5
       '/projects/trading',
       '/projects/trading/agents',

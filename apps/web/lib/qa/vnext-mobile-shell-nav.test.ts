@@ -151,11 +151,9 @@ describe('CASE D — desktop is untouched', () => {
     expect(SIDEBAR).toContain('hidden lg:flex')
   })
 
-  it('cannot collide with the Atlas launcher — the two never coexist', () => {
-    // Launcher is `hidden lg:block` (>=1024) and the header only exists <1024,
-    // so the bands are disjoint. This is the collision class that has already
-    // bitten this corner of the UI twice.
-    expect(MINI).toContain('hidden lg:block fixed z-50')
+  it('keeps the mobile launcher above the activity toggle', () => {
+    expect(MINI).toContain('styles.launcherDock')
+    expect(read('components/platform/os/AtlasMiniChatPanel.module.css')).toContain('bottom: calc(76px +')
   })
 
   it('cannot overlap the activity peek — it is in flow, not fixed', () => {
@@ -194,7 +192,7 @@ describe('NAVIGATION CONTRACT — the canonical model is the only source', () =>
     // portfolio destination, not a list of user-specific projects. Other
     // desktop-only destinations like /revenue and /planning stay hidden.
     expect(mobile.map((i) => i.href)).toEqual([
-      '/atlas', '/chat', '/build', '/projects', '/approvals', '/agent-activity', '/memory',
+      '/dashboard', '/atlas', '/chat', '/build', '/projects', '/approvals', '/agent-activity', '/memory',
     ])
     expect(mobile.map((i) => i.href)).not.toContain('/revenue')
     expect(mobile.map((i) => i.href)).not.toContain('/planning')

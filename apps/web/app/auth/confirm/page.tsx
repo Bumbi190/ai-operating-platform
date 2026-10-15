@@ -8,7 +8,7 @@ import { safeAuthDestination } from '@/lib/auth/safe-redirect'
 /**
  * /auth/confirm — Magic Link / invite / email-verification callback (client-side)
  *
- * Handles SIGNED_IN flows only (Magic Link, invite). Always redirects to /atlas.
+ * Handles SIGNED_IN flows only (Magic Link, invite). Redirects only to a reviewed internal destination.
  *
  * Password recovery does NOT route here. resetPasswordForEmail() points directly
  * to /update-password, which handles code exchange and shows the password form.

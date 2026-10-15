@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { safeAuthDestination } from '@/lib/auth/safe-redirect'
 
 /**
  * /update-password — Set a new password after clicking a password-reset link.
@@ -95,7 +96,7 @@ export default function UpdatePasswordPage() {
     }
 
     setDone(true)
-    setTimeout(() => router.replace('/atlas'), 1500)
+    setTimeout(() => router.replace(safeAuthDestination(new URLSearchParams(window.location.search).get('next'))), 1500)
   }
 
   // ── Loading / session-check spinner ──────────────────────────────────────

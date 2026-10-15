@@ -1,6 +1,7 @@
 import type {
   DataState,
   OverviewModel,
+  RunDay,
   OverviewPeriod
 } from '../lib/overview/types'
 export function overviewFixture(
@@ -47,10 +48,10 @@ export function overviewFixture(
         : [{ projectId: '10000000-0000-4000-8000-000000000001', costSek: 22 }]
     ),
     runsByDay: metric(
-      days.map((date, i) => ({
+      days.map<RunDay>((date, i) => ({
         date,
         counts: empty
-          ? {}
+          ? ({} as Record<string, number>)
           : {
               completed: i % 4,
               running: i === period - 1 ? 1 : 0,

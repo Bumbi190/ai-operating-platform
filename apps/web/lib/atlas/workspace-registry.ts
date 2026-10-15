@@ -84,7 +84,7 @@ export function resolveWorkspace(
     return { href: pathname, label: 'Kostnader', icon: 'credit-card' }
   }
   if (pathname === '/dashboard') {
-    return { href: pathname, label: 'Dashboard', icon: 'layout-dashboard' }
+    return { href: pathname, label: 'Översikt', icon: 'layout-dashboard' }
   }
   if (pathname === '/action-center') {
     return { href: pathname, label: 'Action Center', icon: 'inbox' }

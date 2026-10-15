@@ -23,6 +23,7 @@ import { BUSINESS_PROFILES } from '@/lib/atlas/identity'
 export type DestinationId =
   | 'atlas'
   | 'chat'
+  | 'build'
   | 'approvals'
   | 'activity'
   | 'money'
@@ -74,6 +75,7 @@ export interface NavResult {
 const ROUTE_MAP: Record<DestinationId, string> = {
   atlas: '/atlas',
   chat: '/chat',
+  build: '/build',
   approvals: '/approvals',
   activity: '/agent-activity', // → '/activity' when the Activity instrument ships
   money: '/revenue', // P0: kostnader bor i /revenue (→ '/money' när Money-instrumentet skeppas)
@@ -94,6 +96,7 @@ const ROUTE_MAP: Record<DestinationId, string> = {
 }
 
 const DESTINATIONS: Record<DestinationId, Destination> = {
+  build: {id:'build',label:'Bygg med Atlas',keywords:['bygg med atlas','hemsida','byggstudio','website','webbplats','build'],projectMode:'query'},
   atlas: { id: 'atlas', label: 'Atlas', keywords: ['atlas', 'home', 'start', 'hem', 'briefing'], projectMode: 'none' },
   chat: { id: 'chat', label: 'Chat', keywords: ['chat', 'ask atlas', 'prata', 'fråga'], projectMode: 'none' },
   approvals: {

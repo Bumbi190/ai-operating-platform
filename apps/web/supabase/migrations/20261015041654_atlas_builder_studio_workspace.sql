@@ -312,7 +312,13 @@ begin
  perform public.website_build_check_access(p_principal,(p_ref->>'projectId')::uuid,true);
  perform public.website_build_studio_require_active((p_ref->>'projectId')::uuid);
  select current_run_id into rid from public.website_build_sessions where id=(p_ref->>'sessionId')::uuid and project_id=(p_ref->>'projectId')::uuid;
- if rid is not null then select status into runstatus from public.runs where id=rid for update; end if;
+ if rid is not null then
+  begin
+   select status into runstatus from public.runs where id=rid for update nowait;
+  exception when lock_not_available then
+   raise exception 'SESSION_CHANGED_RETRY' using errcode='40001';
+  end;
+ end if;
  select * into strict s from public.website_build_sessions where id=(p_ref->>'sessionId')::uuid and project_id=(p_ref->>'projectId')::uuid for update;
  if s.current_run_id is distinct from rid then raise exception 'SESSION_CHANGED_RETRY' using errcode='40001'; end if;
  if key is null or key !~ '^[A-Za-z0-9_-]{1,100}$' or action not in ('pause','resume','cancel') then raise exception 'INVALID_CONTROL' using errcode='22023'; end if;
@@ -357,7 +363,11 @@ declare r public.runs; s public.website_build_sessions;
 begin
  perform 1 from public.projects where id=(p_writer->>'projectId')::uuid for update;
  if not found or exists(select 1 from public.project_lifecycle where project_id=(p_writer->>'projectId')::uuid and state<>'active') then raise exception 'WEBSITE_WRITER_FENCED' using errcode='40001'; end if;
- select * into r from public.runs where id=(p_writer->>'runId')::uuid for update;
+ begin
+  select * into r from public.runs where id=(p_writer->>'runId')::uuid for update nowait;
+ exception when lock_not_available then
+  raise exception 'WEBSITE_WRITER_BUSY' using errcode='40001';
+ end;
  if not found or r.project_id is distinct from (p_writer->>'projectId')::uuid or r.claim_id is distinct from (p_writer->>'claimId')::uuid or r.status<>'running' or r.lease_until is null or r.lease_until<=clock_timestamp() or r.kind is distinct from 'website.static.build.v1' then raise exception 'WEBSITE_WRITER_FENCED' using errcode='40001'; end if;
  if coalesce((r.context->>'atlasLifecycleVersion')::bigint,0) is distinct from coalesce((select version from public.project_lifecycle where project_id=r.project_id),0) then raise exception 'WEBSITE_WRITER_FENCED' using errcode='40001'; end if;
  if r.cancel_requested then raise exception 'WEBSITE_RUN_CANCELLED' using errcode='57014'; end if;

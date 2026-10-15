@@ -21,6 +21,18 @@ const vite = await createServer({ configFile: false, root, appType: 'custom', es
 const server = httpServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://127.0.0.1:'+port)
+    if(url.pathname.startsWith('/__fixture/studio-auth/')){
+      const auth=await vite.ssrLoadModule('/e2e/website-build-fixture-db.ts');auth.setFixtureSignedIn(url.pathname.endsWith('/signed-in'));res.end('{}');return
+    }
+    // Execute the real Next server entries; only Next's redirect/notFound effects
+    // are adapted to this localhost HTTP harness. Ownership stays in the loader.
+    const legacyEntry=url.pathname.match(/^\/projects\/([^/]+)\/build(?:\/([0-9a-f-]{36}))?$/)
+    if(process.env.ATLAS_STUDIO_FIXTURE==='1'&&(url.pathname==='/build'||legacyEntry)){
+      const file=legacyEntry?'/app/(platform)/projects/[slug]/build/'+(legacyEntry[2]?'[sessionId]/':'')+'page.tsx':'/app/(platform)/build/page.tsx'
+      const entry=await vite.ssrLoadModule(file),query={};for(const key of url.searchParams.keys()){const values=url.searchParams.getAll(key);query[key]=values.length>1?values:values[0]}
+      try{await entry.default(legacyEntry?{params:{slug:decodeURIComponent(legacyEntry[1]),sessionId:legacyEntry[2]}}:{searchParams:Promise.resolve(query)})}
+      catch(error){if(error.fixtureRedirect){res.writeHead(307,{location:error.fixtureRedirect});res.end();return}if(error.fixtureStatus===404){res.statusCode=404;res.end('Not found');return}throw error}
+    }
     if(url.pathname==='/__fixture/studio-metrics'){
       const fixture=await vite.ssrLoadModule('/e2e/website-build-fixture-db.ts');fixture.createAdminClient();
       const sql=await vite.ssrLoadModule('/lib/website-build/test-db.ts');
@@ -65,6 +77,9 @@ const server = httpServer(async (req, res) => {
     vite.middlewares(req, res, async () => { res.setHeader('content-type', 'text/html'); res.end(await vite.transformIndexHtml(req.url, '<!doctype html><html lang="sv" class="dark" data-motion="reduce"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#0c121b;padding:12px;font-family:system-ui}#root{max-width:1600px;margin:auto}</style><div id="root"></div><script type="module" src="'+(process.env.ATLAS_STUDIO_FIXTURE==='1'?'/e2e/atlas-builder-studio-entry.tsx':'/e2e/website-build-entry.tsx')+'"></script></html>')) })
   } catch (error) { console.error(error); res.statusCode = 500; res.end(JSON.stringify({ error: String(error) })) }
 })
+// Prepare the real SQL fixture before the readiness URL reports success.
+// Cold module compilation/database bootstrap is server startup, not UI latency.
+await vite.ssrLoadModule('/e2e/website-build-fixture.ts')
 server.listen(port, '127.0.0.1')
 async function close() { server.close(); await vite.close(); process.exit(0) }
 process.on('SIGTERM', close); process.on('SIGINT', close)

@@ -49,6 +49,7 @@ export function resolveWorkspace(
   }
 
   // ── Plattformssidor ───────────────────────────────────────────────────────
+  if(pathname==='/build')return {href:pathname,label:'Bygg med Atlas',icon:'panels-top-left'}
   if (pathname === '/approvals') {
     return { href: pathname, label: 'Granskningar', icon: 'shield-check' }
   }

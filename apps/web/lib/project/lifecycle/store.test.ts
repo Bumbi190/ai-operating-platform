@@ -108,4 +108,33 @@ describe('owner lifecycle and real static worker fences',()=>{
   testSql(`update runs set status='pending',claim_id=null,lease_until=null where id='${writer.runId}';`)
   expect(testSql(`select count(*) from claim_runs(100,320) where id='${writer.runId}';`,true)).toBe('0')
  },30000)
+ it.each(['writer','control'] as const)('a project-first %s refuses a busy run without deadlocking canonical claim',async kind=>{
+  const f=await fixture(),writer=f.claim();testSql(`update runs set status='pending',claim_id=null,lease_until=null where id='${writer.runId}';`)
+  const holder=connection();await holder.hold(`select id from projects where id='${writer.projectId}' for update;`)
+  const operation=connection(),op=operation.finish(kind==='writer'?`select website_build_snapshot(${sqlJson(writer)});`:`select website_build_control(${sqlJson(f.p)},${sqlJson(f.session)},${sqlJson({action:'pause',idempotencyKey:randomUUID()})});`)
+  await waitBlocked(operation,holder)
+  const claim=connection(),claimed=claim.finish(`select count(*) from claim_runs(100,320) where id='${writer.runId}';`)
+  await waitBlocked(claim,holder)
+  expect((await holder.finish()).code).toBe(0)
+  const [result,admitted]=await Promise.all([op,claimed])
+  expect(admitted.err).not.toContain('deadlock detected');expect(result.err).not.toContain('deadlock detected');expect(result.code).not.toBe(0)
+  expect(result.err).toContain(kind==='writer'?'WEBSITE_WRITER_BUSY':'SESSION_CHANGED_RETRY')
+  expect(admitted.code).toBe(0);expect(admitted.out.trim()).toBe('1')
+ },30000)
+
+ it('retries a transient writer lock on the same artifact, but never retries an actual fence',async()=>{
+  const f=await fixture(),writer=f.claim(),holder=connection();let released=false,calls=0
+  await holder.hold(`select id from runs where id='${writer.runId}' for update;`)
+  const invoke=(f.db as any).rpc.bind(f.db),db={...f.db,rpc:async(name:string,args:Record<string,unknown>)=>{
+   calls++;const result=await invoke(name,args)
+   if(!released&&result.error?.message.includes('WEBSITE_WRITER_BUSY')){released=true;expect((await holder.finish()).code).toBe(0)}
+   return result
+  }} as unknown as typeof f.db
+  try{
+   await expect(commitBuildRevision(db,writer,artifact())).resolves.toMatchObject({number:1})
+   expect(calls).toBe(2);expect(testSql(`select count(*) from website_preview_revisions where project_id='${writer.projectId}';`)).toBe('1')
+   await expect(commitBuildRevision(db,writer,artifact())).rejects.toMatchObject({code:'FENCED'});expect(calls).toBe(3)
+  }finally{if(!released)await holder.finish()}
+ },30000)
+
 })

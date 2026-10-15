@@ -13,6 +13,7 @@ import {
   Radio,
   ShieldCheck,
   Sparkles,
+  PanelsTopLeft,
   TrendingUp,
   Video,
   type LucideIcon,
@@ -49,6 +50,8 @@ export interface LegacyNavItem {
 // Marknadsgranskning + Content Center flyttar till projektscope i P2.
 export const LEGACY_GLOBAL_NAV: readonly LegacyNavItem[] = [
   { href: '/atlas',          label: 'Atlas',             icon: Sparkles, primary: true },
+  // Explicit owner-approved studio entry; existing legacy destinations keep order.
+  { href: '/build', label: 'Bygg med Atlas', icon: PanelsTopLeft },
   { href: '/atlas/marketing', label: 'Marknadsgranskning', icon: Megaphone },
   { href: '/atlas/content',  label: 'Content Center',    icon: Newspaper },
   { href: '/revenue',        label: 'Revenue Center',    icon: TrendingUp },

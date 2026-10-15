@@ -12,6 +12,7 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
+  PanelsTopLeft,
   TrendingUp,
   type LucideIcon,
 } from 'lucide-react'
@@ -81,6 +82,7 @@ export const VNEXT_NAV: readonly VNextNavGroup[] = [
     items: [
       { id: 'atlas', label: 'Atlas', href: '/atlas', icon: Sparkles, desktop: true, mobile: true, primary: true },
       { id: 'chat', label: 'Chat', href: '/chat', icon: MessageSquare, desktop: true, mobile: true },
+      { id: 'build', label: 'Bygg med Atlas', href: '/build', icon: PanelsTopLeft, desktop: true, mobile: true },
       // Andre → Atlas → projects → agents. It belongs to the Atlas group rather
       // than Intelligens because it is the operator's own structure seen from
       // Atlas, not an instrument for understanding the system — that is the

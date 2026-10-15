@@ -111,3 +111,27 @@ test('archive, trash and restore preserve the studio and require explicit projec
  expect((await(await request.get('/__fixture/studio-metrics')).json()).projects).toBe(before.projects+1)
  await expect(page.getByRole('button',{name:/Radera permanent/})).toHaveCount(0)
 })
+test('the real mobile menu and command palette both open the builder',async({page})=>{
+ await page.setViewportSize({width:390,height:900});await page.goto('/build')
+ await page.getByLabel('Öppna huvudnavigation').click()
+ await page.getByRole('navigation',{name:'Huvudnavigation'}).getByRole('link',{name:'Bygg med Atlas',exact:true}).click()
+ await expect(page.getByLabel('Meddelande till Atlas')).toBeVisible()
+ await page.keyboard.press('Control+k');const palette=page.getByRole('dialog',{name:'Command palette'})
+ await palette.getByPlaceholder('Jump to a page, a project, or ask Atlas…').fill('bygg med atlas')
+ await palette.getByRole('button',{name:/Bygg med Atlas/}).click()
+ await expect(page.getByLabel('Projekt i byggstudion')).toBeVisible();expect(new URL(page.url()).pathname).toBe('/build')
+})
+test('real server entries authenticate and verify historical parent links before redirecting',async({page,request})=>{
+ await page.goto('/build');await expect(page.getByLabel('Projekt i byggstudion')).toBeVisible()
+ const setup=await(await request.get('/__fixture/setup')).json(),slug=setup.projectSlug,s=setup.session
+ const old='/projects/'+slug+'/build/'+s.sessionId
+ const response=await request.get(old,{maxRedirects:0});expect(response.status()).toBe(307)
+ const target=new URL(response.headers().location,'http://localhost')
+ expect(target.pathname).toBe('/build');expect(target.searchParams.get('session')).toBe(s.sessionId);expect(target.searchParams.get('conversation')).toBe(s.conversationId)
+ await page.goto(old);await expect(page.getByLabel('Projekt i byggstudion')).toHaveValue(s.projectId)
+ expect(new URL(page.url()).searchParams.get('session')).toBe(s.sessionId)
+ expect((await request.get('/build?project=not-owned&session='+s.sessionId,{maxRedirects:0})).status()).toBe(404)
+ expect((await request.get('/projects/not-owned/build/'+s.sessionId,{maxRedirects:0})).status()).toBe(404)
+ await request.get('/__fixture/studio-auth/signed-out')
+ try{const anonymous=await request.get('/build',{maxRedirects:0});expect(anonymous.status()).toBe(307);expect(anonymous.headers().location).toBe('/login');expect((await request.get('/api/website-build/studio')).status()).toBe(401)}finally{await request.get('/__fixture/studio-auth/signed-in')}
+})

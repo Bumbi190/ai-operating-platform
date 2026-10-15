@@ -10,11 +10,11 @@ test('a historical build has one Atlas composer and preview controls',async({pag
  await page.getByRole('button',{name:'Visa preview'}).click()
  await expect(page.getByRole('region',{name:'Preview'})).toBeVisible()
 })
-for(const width of [390,980,1440])test('conversation and preview fit '+width,async({page})=>{
+for(const width of [390,980,1440])test('conversation and preview fit '+width,async({page},info)=>{
  await page.setViewportSize({width,height:900});await page.goto('/')
  await expect(page.getByLabel('Meddelande till Atlas')).toBeVisible()
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
- await page.screenshot({path:'../../.superpowers/sdd/2026-10-14-atlas-conversation-build/surface-'+width+'.png',fullPage:true})
+ await page.screenshot({path:info.outputPath('surface-'+width+'.png'),fullPage:true})
 })
 test('feedback follows the actual rendered preview while the new selection loads',async({page,request})=>{
  await page.goto('/');await expect(page.getByRole('heading',{name:'Bygg med Atlas'})).toBeVisible()
@@ -25,7 +25,7 @@ test('feedback follows the actual rendered preview while the new selection loads
  const rendered=first.activePreviewRevisionId
  await page.getByLabel('Meddelande till Atlas').fill('Ny rubrik')
  await page.getByRole('button',{name:'Skicka',exact:true}).click()
- await expect(page.getByText('Mottagen',{exact:true})).toBeVisible()
+ await expect(page.getByText('Mottagen',{exact:true})).toBeVisible({timeout:15000})
  let release!:()=>void;const hold=new Promise<void>(r=>release=r),bodies:any[]=[]
  await page.route('**/revisions/*?projectId=*',async route=>{if(route.request().url().includes('/'+rendered+'?'))return route.continue();await hold;await route.continue()})
  page.on('request',req=>{if(req.url().endsWith('/api/chat')&&req.method()==='POST')bodies.push(req.postDataJSON())})

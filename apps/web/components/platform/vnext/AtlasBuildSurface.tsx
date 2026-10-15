@@ -16,6 +16,7 @@ import type { BuildSessionView } from "@/lib/website-build/types";
 import { useAtlasConversation } from "@/lib/atlas/conversation/provider";
 import { AtlasChatConversation } from "./AtlasChatConversation";
 import { BuildConnectionCards } from "@/components/website-build/BuildConnectionCards";
+import {WebsiteMockupReview} from "@/components/website-build/WebsiteMockupReview";
 import { AtlasPlanCard } from "./AtlasPlanCard";
 import { BuildPreviewPane } from "@/components/website-build/BuildPreviewPane";
 import { BuildConversation } from "@/components/website-build/BuildConversation";
@@ -47,6 +48,7 @@ export function AtlasBuildSurface({
 }) {
   const { controller, snapshot } = useAtlasConversation();
   const [refreshFailed,setRefreshFailed]=useState(false);
+  const [designOpen,setDesignOpen]=useState(false),[previewRequest,setPreviewRequest]=useState(0);
   const current = snapshot.id === conversationModel.id ? snapshot : null;
   const shownPlan = current?.plan ?? plan,
     session = current?.session ?? initialSession;
@@ -71,6 +73,9 @@ export function AtlasBuildSurface({
     (id: string | null) => controller.setRenderedRevision(id),
     [controller],
   );
+  const showMockups=!!shownPlan?.designReview?.required&&!shownPlan.approvedDecision?.sessionId&&(!session||designOpen);
+  const reviewDesign=()=>{setDesignOpen(true);setPreviewRequest(value=>value+1);setTab('preview');controller.setRenderedRevision(null)};
+  const designPane=shownPlan?<WebsiteMockupReview key={shownPlan.currentRevision.revisionId} plan={shownPlan} onPlan={value=>controller.applyPlanReview(value)} disabled={readOnly||!canSend||!!current?.pending} embedded={mode==='studio'} onClose={session?()=>setDesignOpen(false):undefined}/>:null;
   const approve = () => {
     if (shownPlan)
       void controller.sendTurn({
@@ -149,6 +154,7 @@ export function AtlasBuildSurface({
                 approvalDisabled={readOnly||!canSend}
                 displayedSessionId={session?.sessionId ?? null}
                 onApprove={approve}
+                onReview={reviewDesign}
                 onEdit={() =>
                   document.getElementById("atlas-chat-composer")?.focus()
                 }
@@ -180,7 +186,7 @@ export function AtlasBuildSurface({
             )}
           </AtlasChatConversation>
   );
-  if(mode==='studio')return <StudioLayout chat={chat} website={session?<BuildPreviewPane embedded readOnly={readOnly} key={session.sessionId} initialSession={session} onSession={onSession} onRenderedRevision={onRendered}/>:<StudioEmptyPreview/>} desktop={<section><h2>Atlas skrivbord</h2><p>Skrivbordet är ännu inte tillgängligt. Här visas Atlas dator när anslutningen är klar.</p><a href={'/settings/website-build'+(studioProject?'#project-'+studioProject.id:'')}>Visa projektets mappinställningar</a></section>} files={<StudioFilesPane session={session} revisionId={current?.viewedRevisionId??null}/>} tasks={<section><h2>Atlas arbetssteg</h2>{refreshFailed&&<p role="alert">Byggläget kunde inte uppdateras. Kontrollera anslutningen.</p>}{session?<><p>{session.stage}</p><p>Senast uppdaterat: {new Date(session.updatedAt).toLocaleTimeString('sv-SE')}</p></>:<p>Arbetet börjar med en plan i chatten.</p>}{shownPlan&&<><h3>Planerade steg</h3><ol>{shownPlan.currentRevision.content.steps.map((step,i)=><li key={i}>{step}</li>)}</ol></>}</section>}/>;
+  if(mode==='studio')return <StudioLayout previewRequest={previewRequest} chat={chat} website={showMockups?designPane:session?<BuildPreviewPane embedded readOnly={readOnly} key={session.sessionId} initialSession={session} onSession={onSession} onRenderedRevision={onRendered}/>:<StudioEmptyPreview/>} desktop={<section><h2>Atlas skrivbord</h2><p>Skrivbordet är ännu inte tillgängligt. Här visas Atlas dator när anslutningen är klar.</p><a href={'/settings/website-build'+(studioProject?'#project-'+studioProject.id:'')}>Visa projektets mappinställningar</a></section>} files={<StudioFilesPane session={session} revisionId={current?.viewedRevisionId??null}/>} tasks={<section><h2>Atlas arbetssteg</h2>{refreshFailed&&<p role="alert">Byggläget kunde inte uppdateras. Kontrollera anslutningen.</p>}{session?<><p>{session.stage}</p><p>Senast uppdaterat: {new Date(session.updatedAt).toLocaleTimeString('sv-SE')}</p></>:<p>Arbetet börjar med en plan i chatten.</p>}{shownPlan&&<><h3>Planerade steg</h3><ol>{shownPlan.currentRevision.content.steps.map((step,i)=><li key={i}>{step}</li>)}</ol></>}</section>}/>;
   return (
     <div
       className={styles.workspace}
@@ -201,7 +207,7 @@ export function AtlasBuildSurface({
           </button>
         </div>
       )}
-      {session && panelOpen && (
+      {((session && panelOpen)||showMockups) && (
         <div className={styles.tabs} role="tablist" aria-label="Byggvy">
           <button
             role="tab"
@@ -219,14 +225,14 @@ export function AtlasBuildSurface({
           </button>
         </div>
       )}
-      <div className={styles.split} data-has-preview={!!session && panelOpen}>
+      <div className={styles.split} data-has-preview={(!!session && panelOpen)||showMockups}>
         <div
           className={styles.chatPane}
-          data-mobile-hidden={panelOpen && tab !== "atlas"}
+          data-mobile-hidden={(panelOpen||showMockups) && tab !== "atlas"}
         >
 {chat}
         </div>
-        {session && panelOpen && (
+        {((session && panelOpen)||showMockups) && (
           <div
             className={styles.divider}
             role="separator"
@@ -247,18 +253,18 @@ export function AtlasBuildSurface({
           />
         )}
 
-        {session && (
+        {(session||showMockups) && (
           <div
-            data-mobile-hidden={panelOpen && tab !== "preview"}
+            data-mobile-hidden={(panelOpen||showMockups) && tab !== "preview"}
             className={styles.previewHost}
-            hidden={!panelOpen}
+            hidden={!panelOpen&&!showMockups}
           >
-            <BuildPreviewPane
+            {showMockups?designPane:session?<BuildPreviewPane
               key={session.sessionId}
               initialSession={session}
               onSession={onSession}
               onRenderedRevision={onRendered}
-            />
+            />:null}
           </div>
         )}
       </div>

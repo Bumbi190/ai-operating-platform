@@ -4,29 +4,32 @@ import { WebsiteBuildError, validateBuildUuid } from '../store'
 import type { BuildPrincipal, BuildSessionView } from '../types'
 import type { PlanView,PlanRef,SavePlanInput,ApprovePlanInput,StartApprovedPlanInput,BuilderSetting,ProjectRoot,PlanDecision,PlanRevisionRef } from './types'
 import { validatePlanContent, hashPlanContent, compileStaticBrief } from './validation'
+import {createWebsiteMockups,validateMockupReference} from './mockups'
+import {compileWebsiteArtifact} from '../artifact'
+import type {DesignReview,MockupApprovalInput} from './types'
 import { bindProjectLocation, validateProjectRoot } from './project-layout'
 type Db=ReturnType<typeof createAdminClient>
 const hash=/^[a-f0-9]{64}$/
 function principal(p:BuildPrincipal){validateBuildUuid(p.userId)}
 function allowed(p:BuildPrincipal,projectId:string){principal(p);validateBuildUuid(projectId);if(!p.allowedProjectIds.includes(projectId))throw new WebsiteBuildError('NOT_FOUND',404)}
 function key(k:string){if(typeof k!=='string'||!/^[A-Za-z0-9_-]{1,100}$/.test(k))throw new WebsiteBuildError('INVALID_IDEMPOTENCY_KEY')}
-function revision(i:ApprovePlanInput|StartApprovedPlanInput){validateBuildUuid(i.planId);validateBuildUuid(i.revisionId);if(typeof i.sha256!=='string'||!hash.test(i.sha256))throw new WebsiteBuildError('INVALID_PLAN')}
+function revision(i:PlanRevisionRef){validateBuildUuid(i.planId);validateBuildUuid(i.revisionId);if(typeof i.sha256!=='string'||!hash.test(i.sha256))throw new WebsiteBuildError('INVALID_PLAN')}
 async function call<T>(db:Db,name:string,p:BuildPrincipal,input:unknown,allowNull=false):Promise<T>{
  const invoke=db as unknown as {rpc(n:string,args:Record<string,unknown>):Promise<{data:unknown;error:{code?:string;message?:string}|null}>}
  const {data,error}=await invoke.rpc(name,{p_principal:p,p_input:input})
  if(error){
-  const known=['PLAN_REVIEW_REQUIRED','PLAN_STALE','BUILD_AGENT_REQUIRED','PROJECT_LOCATION_LOCKED','PLAN_REVISION_IMMUTABLE','PLAN_DECISION_IMMUTABLE','INVALID_PLAN','INVALID_PROJECT_ROOT','INVALID_IDEMPOTENCY_KEY'].find(c=>error.message?.includes(c))
+  const known=['MOCKUP_REVIEW_REQUIRED','MOCKUP_STALE','MOCKUP_LOCKED','INVALID_MOCKUP','PLAN_REVIEW_REQUIRED','PLAN_STALE','BUILD_AGENT_REQUIRED','PROJECT_LOCATION_LOCKED','PLAN_REVISION_IMMUTABLE','PLAN_DECISION_IMMUTABLE','INVALID_PLAN','INVALID_PROJECT_ROOT','INVALID_IDEMPOTENCY_KEY'].find(c=>error.message?.includes(c))
   const code=known??(error.code==='23505'?'CONFLICT':error.code==='P0002'||error.code==='42501'?'NOT_FOUND':'BUILD_UNAVAILABLE')
   throw new WebsiteBuildError(code,code==='NOT_FOUND'?404:code.startsWith('INVALID_')?400:code==='BUILD_UNAVAILABLE'?503:409)
  }
  if(data==null&&!allowNull)throw new WebsiteBuildError('BUILD_UNAVAILABLE',503)
  return data as T
 }
-export async function readWebsitePlan(db:Db,p:BuildPrincipal,i:PlanRef):Promise<PlanView>{allowed(p,i.projectId);validateBuildUuid(i.planId);return call(db,'website_build_plan_view',p,i)}
+export async function readWebsitePlan(db:Db,p:BuildPrincipal,i:PlanRef):Promise<PlanView>{allowed(p,i.projectId);validateBuildUuid(i.planId);return hydrateDesignReview(db,p,await call<PlanView>(db,'website_build_plan_view',p,i))}
 export async function saveWebsitePlanRevision(db:Db,p:BuildPrincipal,i:SavePlanInput):Promise<PlanView>{
  allowed(p,i.projectId);validateBuildUuid(i.conversationId);if(i.planId)validateBuildUuid(i.planId);if(i.expectedRevisionId!==null)validateBuildUuid(i.expectedRevisionId);key(i.idempotencyKey)
  const content=validatePlanContent(i.content)
- return call(db,'website_build_plan_save',p,{...i,content,canonicalContent:JSON.stringify(content),sha256:hashPlanContent(content),brief:compileStaticBrief(content)})
+ return hydrateDesignReview(db,p,await call<PlanView>(db,'website_build_plan_save',p,{...i,content,canonicalContent:JSON.stringify(content),sha256:hashPlanContent(content),brief:compileStaticBrief(content)}))
 }
 export async function approveWebsitePlan(db:Db,p:BuildPrincipal,i:ApprovePlanInput):Promise<PlanDecision>{allowed(p,i.projectId);revision(i);key(i.idempotencyKey);return call(db,'website_build_plan_approve',p,i)}
 export async function startApprovedWebsitePlan(db:Db,p:BuildPrincipal,i:StartApprovedPlanInput):Promise<BuildSessionView>{allowed(p,i.projectId);revision(i);validateBuildUuid(i.decisionId);return call(db,'website_build_plan_start',p,i)}
@@ -44,10 +47,31 @@ export async function setProjectWebsiteBuilder(db:Db,p:BuildPrincipal,i:{project
 }
 /** Reads authority only after the parent plan is owner/conversation checked. SQL start revalidates it. */
 export async function findWebsitePlanDecision(db:Db,p:BuildPrincipal,ref:PlanRevisionRef):Promise<{id:string;sha256:string;session_id:string|null}|null>{
- allowed(p,ref.projectId);revision({...ref,decisionId:'00000000-0000-4000-8000-000000000000'})
+ allowed(p,ref.projectId);revision(ref)
  const query=db as unknown as {from(n:string):any}
  const {data,error}=await query.from('website_build_plan_decisions').select('id,sha256,session_id').eq('project_id',ref.projectId).eq('plan_id',ref.planId).eq('revision_id',ref.revisionId).eq('approved_by',p.userId).maybeSingle()
  if(error)throw new WebsiteBuildError('BUILD_UNAVAILABLE',503)
  if(data&&data.sha256!==ref.sha256)throw new WebsiteBuildError('PLAN_STALE',409)
  return data
+}
+
+async function hydrateDesignReview(db:Db,p:BuildPrincipal,plan:PlanView):Promise<PlanView>{
+ const review=plan.designReview
+ if(!review?.required||review.options.length===3)return plan
+ if(review.options.length)throw new WebsiteBuildError('INVALID_MOCKUP',409)
+ const options=createWebsiteMockups(plan.currentRevision.content).map(({draft,...option})=>option)
+ const designReview=await call<DesignReview>(db,'website_build_mockup_prepare',p,{...plan.currentRevision,options})
+ return {...plan,designReview}
+}
+export async function approveWebsiteMockup(db:Db,p:BuildPrincipal,i:MockupApprovalInput):Promise<PlanView>{
+ allowed(p,i.projectId);revision(i);key(i.idempotencyKey);validateBuildUuid(i.mockupId)
+ if(typeof i.mockupSha256!=='string'||!hash.test(i.mockupSha256))throw new WebsiteBuildError('INVALID_MOCKUP')
+ await call<DesignReview>(db,'website_build_mockup_approve',p,i)
+ return readWebsitePlan(db,p,i)
+}
+export async function readWebsiteMockupArtifact(db:Db,p:BuildPrincipal,i:Omit<MockupApprovalInput,'idempotencyKey'>){
+ allowed(p,i.projectId);revision(i);validateBuildUuid(i.mockupId)
+ if(typeof i.mockupSha256!=='string'||!hash.test(i.mockupSha256))throw new WebsiteBuildError('INVALID_MOCKUP')
+ const reference=await call<{canonicalDraft:string;sha256:string}>(db,'website_build_mockup_read',p,i)
+ try{return compileWebsiteArtifact(validateMockupReference(reference))}catch{throw new WebsiteBuildError('INVALID_MOCKUP',409)}
 }

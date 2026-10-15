@@ -65,9 +65,9 @@ export async function readBuildArtifact(db: Db, principal: BuildPrincipal, ref: 
   const artifact = await rpc<WebsiteArtifact>(db, 'website_build_read_artifact', { p_principal: principal, p_ref: ref, p_revision_id: revisionId })
   assertWebsiteArtifact(artifact); return artifact
 }
-export async function loadBuildSnapshot(db: Db, writer: WriterRef): Promise<BuildSnapshot> { writerRef(writer); return rpc(db, 'website_build_snapshot', { p_writer: writer }) }
-export async function setBuildStage(db: Db, writer: WriterRef, status: 'interpreting' | 'building' | 'validating'): Promise<void> { writerRef(writer); await rpc(db, 'website_build_set_stage', { p_writer: writer, p_status: status }) }
-export async function recordBuildInterpretation(db: Db, writer: WriterRef, interpretation: FeedbackInterpretation): Promise<void> { writerRef(writer); await rpc(db, 'website_build_record_interpretation', { p_writer: writer, p_interpretation: interpretation }) }
-export async function saveBuildCandidate(db: Db, writer: WriterRef, artifact: WebsiteArtifact): Promise<void> { writerRef(writer); assertWebsiteArtifact(artifact); await rpc(db, 'website_build_save_candidate', { p_writer: writer, p_artifact: artifact }) }
-export async function parkBuildSession(db: Db, writer: WriterRef): Promise<void> { writerRef(writer); await rpc(db, 'website_build_park', { p_writer: writer }) }
-export async function commitBuildRevision(db: Db, writer: WriterRef, artifact: WebsiteArtifact): Promise<PreviewRevision> { writerRef(writer); assertWebsiteArtifact(artifact); return rpc(db, 'website_build_commit_revision', { p_writer: writer, p_artifact: artifact }) }
+export async function loadBuildSnapshot(db: Db, writer: WriterRef): Promise<BuildSnapshot> { writerRef(writer); return rpc(db, 'website_build_snapshot', { p_writer: {...writer,designVersion:1} }) }
+export async function setBuildStage(db: Db, writer: WriterRef, status: 'interpreting' | 'building' | 'validating'): Promise<void> { writerRef(writer); await rpc(db, 'website_build_set_stage', { p_writer: {...writer,designVersion:1}, p_status: status }) }
+export async function recordBuildInterpretation(db: Db, writer: WriterRef, interpretation: FeedbackInterpretation): Promise<void> { writerRef(writer); await rpc(db, 'website_build_record_interpretation', { p_writer: {...writer,designVersion:1}, p_interpretation: interpretation }) }
+export async function saveBuildCandidate(db: Db, writer: WriterRef, artifact: WebsiteArtifact): Promise<void> { writerRef(writer); assertWebsiteArtifact(artifact); await rpc(db, 'website_build_save_candidate', { p_writer: {...writer,designVersion:1}, p_artifact: artifact }) }
+export async function parkBuildSession(db: Db, writer: WriterRef): Promise<void> { writerRef(writer); await rpc(db, 'website_build_park', { p_writer: {...writer,designVersion:1} }) }
+export async function commitBuildRevision(db: Db, writer: WriterRef, artifact: WebsiteArtifact): Promise<PreviewRevision> { writerRef(writer); assertWebsiteArtifact(artifact); return rpc(db, 'website_build_commit_revision', { p_writer: {...writer,designVersion:1}, p_artifact: artifact }) }

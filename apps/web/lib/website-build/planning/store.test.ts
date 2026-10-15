@@ -1,3 +1,4 @@
+import {approveTestMockup} from './test-fixture'
 import {beforeAll,describe,it,expect} from 'vitest'
 import {randomUUID} from 'node:crypto'
 import {initializeWorkerDb,testSql,TEST_AGENT,TEST_PRINCIPAL,TEST_PROJECT} from '../test-db'
@@ -6,7 +7,7 @@ import type {PlanView} from './types'
 let db:ReturnType<typeof initializeWorkerDb>
 const content=()=>({title:'Min hemsida',purpose:'Visa aktiviteter',audience:'Familjer',pages:[{key:'index',title:'Hem',purpose:'Visa idé'}],design:{style:'Blå',reference:null},features:[],architecture:'Statiska sidor',steps:['Bygg','Testa'],domain:{registrar:'strato' as const,requestedName:null}})
 function conversation(){const id=randomUUID();testSql("insert into conversations(id,user_id,project_id) values('"+id+"','"+TEST_PRINCIPAL.userId+"','"+TEST_PROJECT+"');");return id}
-async function plan():Promise<PlanView>{await setProjectWebsiteBuilder(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,agentId:TEST_AGENT});return saveWebsitePlanRevision(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,conversationId:conversation(),expectedRevisionId:null,content:content(),idempotencyKey:randomUUID()})}
+async function plan():Promise<PlanView>{await setProjectWebsiteBuilder(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,agentId:TEST_AGENT});return approveTestMockup(db,TEST_PRINCIPAL,await saveWebsitePlanRevision(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,conversationId:conversation(),expectedRevisionId:null,content:content(),idempotencyKey:randomUUID()}))}
 const ref=(p:PlanView)=>p.currentRevision
 beforeAll(()=>{db=initializeWorkerDb()})
 describe('real SQL website planning',()=>{

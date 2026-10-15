@@ -1,11 +1,12 @@
 'use client'
-import {useId,useRef,useState,type CSSProperties,type ReactNode} from 'react'
+import {useEffect,useId,useRef,useState,type CSSProperties,type ReactNode} from 'react'
 import {Sparkles} from 'lucide-react'
 import styles from './AtlasBuilderStudio.module.css'
-export function StudioLayout({chat,website,desktop,files,tasks}:{chat:ReactNode;website:ReactNode;desktop:ReactNode;files:ReactNode;tasks:ReactNode}){
+export function StudioLayout({chat,website,desktop,files,tasks,previewRequest=0}:{chat:ReactNode;website:ReactNode;desktop:ReactNode;files:ReactNode;tasks:ReactNode;previewRequest?:number}){
  const [mobile,setMobile]=useState<'chat'|'work'>('chat'),[area,setArea]=useState<'website'|'desktop'|'files'|'tasks'>('website'),[split,setSplit]=useState(38)
  const root=useRef<HTMLDivElement>(null),id=useId()
  const choose=(value:typeof area)=>{setArea(value);setMobile('work')}
+ useEffect(()=>{if(previewRequest){setArea('website');setMobile('work')}},[previewRequest])
  return <div className={styles.layout} ref={root} style={{'--studio-split':split+'%'} as CSSProperties}>
   <div className={styles.mobileNavigation}><div className={styles.mobileTabs} role="tablist" aria-label="Byggvy" onKeyDown={e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;const buttons=Array.from(e.currentTarget.querySelectorAll('button'));const index=buttons.indexOf(e.target as HTMLButtonElement);if(index<0)return;e.preventDefault();const next=e.key==='Home'?0:e.key==='End'?1:1-index;if(next===0)setMobile('chat');else choose('website');buttons[next]?.focus()}}>
    <button type="button" role="tab" tabIndex={mobile==='chat'||area!=='website'?0:-1} aria-selected={mobile==='chat'} aria-controls={id+'-chat'} onClick={()=>setMobile('chat')}>Chatt</button>

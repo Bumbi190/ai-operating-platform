@@ -64,9 +64,30 @@
     "omnira_collaborator_proposals_note": "Additive proposal queue with server-only grants and non-executing review; local PostgreSQL replay verified 2026-10-14.",
     "catalog_reconciliation_20261014": "Read-only live catalog verified 2026-10-14 after Handlarborsen competitor migration. Three newly live server-only tables reconciled: atlas_analysis_drafts, atlas_analysis_draft_events, handlarborsen_competitor_observations. All three had RLS ON, zero policies, no anon/authenticated table grants, and service_role reachability. Handlarborsen competitor table also FORCE RLS, service_role SELECT+INSERT but no UPDATE/DELETE. Existing 97 entries retain their earlier reviewed classifications; this is not a new full 100-table privilege-by-privilege audit.",
     "website_build_planning_note": "The five website_build operator/project settings and immutable plan/revision/decision tables were introspected read-only after the 2026-10-14 production apply (ledger version 20261014185247; stored statement sha256 0abd0a7ac17669b8db9bc8fcb3b298d158a1678e157932adfd1911e5765496b4). Each has RLS ON, one owner-rooted authenticated SELECT policy, no anon grants, authenticated SELECT only, and service-role reachability. Client mutation and planning RPC execution are revoked. Only these five entries are refreshed; older classifications are unchanged.",
+    "website_mockup_review_note": "The two SERVER_ONLY rows are verified against the isolated local fixture for migration 20261015210000_website_mockup_review.sql; production apply is pending the independent review. RLS enabled, zero policies, no anon/authenticated grants, service_role reachable. This is a two-table scoped observation, not a whole-catalog refresh.",
     "atlas_builder_studio_note": "Atlas studio migration APPLIED to production 2026-10-15 (ledger name atlas_builder_studio_workspace, version 20261015100050), then introspected read-only. All four live TENANT_RLS rows have RLS enabled, one authenticated owner/project SELECT policy, no anon SELECT, authenticated/service_role SELECT only and no direct INSERT, UPDATE or DELETE. The service_role boolean records reachability, not mutation breadth; mutations use reviewed private RPCs. All nine new routines refuse anon/authenticated EXECUTE. Existing capture timestamp remains the earlier full-catalog capture; this note records the four-row update only."
   },
   "tables": {
+    "website_build_mockups": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "website_build_mockup_decisions": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
     "account_snapshots": {
       "class": "INTERNAL_DENY_ALL",
       "rls": true,

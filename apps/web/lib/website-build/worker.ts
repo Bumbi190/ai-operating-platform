@@ -14,6 +14,7 @@ import { rejectedDraftLog } from './rejected-draft'
 import { recoverWebsiteArtifact } from './recovery'
 import { commitBuildRevision, loadBuildSnapshot, parkBuildSession, recordBuildInterpretation, saveBuildCandidate, setBuildStage, WebsiteBuildError } from './store'
 import { interpretBuildFeedback, parseWebsiteModelJson, WebsiteBuildPermanentError } from './feedback-interpretation'
+import {assertApprovedWebsiteScope} from './planning/design-reference'
 import { FEEDBACK_CONTRACT, WEBSITE_OUTPUT_CONTRACT, websiteUserMessage } from './prompt'
 import type { WriterRef } from './types'
 export { isWebsiteBuildPermanentError } from './feedback-interpretation'
@@ -54,6 +55,7 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
       // candidate first so canonical resume can reuse it in the next generation.
       // The save RPC allows build pause, but still fences claims/cancellation.
       const recovered = await recoverWebsiteArtifact(db, writer, input.recovery)
+      assertApprovedWebsiteScope(recovered,snapshot.designReference)
       await gate('website:recovery-candidate')
       await saveBuildCandidate(db, writer, recovered)
       snapshot = await loadBuildSnapshot(db, writer)
@@ -81,7 +83,7 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
     let interpretation = snapshot.interpretation
     if (snapshot.feedback.length && !interpretation) {
       await setBuildStage(db, writer, 'interpreting')
-      const result = await paid(FEEDBACK_CONTRACT, websiteUserMessage(snapshot, null), 2000, 'website.feedback.interpret')
+      const result = await paid(FEEDBACK_CONTRACT, websiteUserMessage(snapshot, null, false), 2000, 'website.feedback.interpret')
       if (!result) return
       interpretation = interpretBuildFeedback(parseWebsiteModelJson(result.content), snapshot.feedback)
       await recordBuildInterpretation(db, writer, interpretation)
@@ -92,13 +94,14 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
     const effectiveItems = interpretation?.items.filter(item => !superseded.has(item.feedbackId))
     if (effectiveItems?.some(i => i.disposition === 'decision') || snapshot.previousArtifact && effectiveItems && !effectiveItems.some(i => i.disposition === 'apply')) { await parkBuildSession(db, writer); return }
     let artifact = snapshot.candidate
+    if(artifact)assertApprovedWebsiteScope(artifact,snapshot.designReference)
     if (!artifact) {
       await setBuildStage(db, writer, 'building')
       if (recovering) artifact = await recoverWebsiteArtifact(db, writer, input.recovery)
       else {
       const result = await paid(knowledge.systemPrompt + '\n\n' + WEBSITE_OUTPUT_CONTRACT, websiteUserMessage(snapshot, interpretation), config?.max_tokens ?? 12000, 'website.artifact.generate')
       if (!result) return
-      try { artifact = compileWebsiteArtifact(parseWebsiteModelJson(result.content)) }
+      try { artifact = compileWebsiteArtifact(parseWebsiteModelJson(result.content));assertApprovedWebsiteScope(artifact,snapshot.designReference) }
       catch (error) {
         if (error instanceof WebsiteArtifactError || error instanceof WebsiteBuildPermanentError) {
           // This response already failed permanently. Finalization checks claim
@@ -114,6 +117,7 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
         throw error
       }
       }
+      assertApprovedWebsiteScope(artifact,snapshot.designReference)
       await saveBuildCandidate(db, writer, artifact)
     }
     snapshot = await loadBuildSnapshot(db, writer)

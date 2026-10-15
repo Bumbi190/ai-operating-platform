@@ -1,4 +1,6 @@
 import type { BuildSnapshot, FeedbackInterpretation } from './types'
+import {approvedWebsitePageKeys} from './planning/design-reference'
+import {validateMockupReference} from './planning/mockups'
 import { WebsiteBuildPermanentError } from './feedback-interpretation'
 export const WEBSITE_OUTPUT_CONTRACT = `Du bygger riktiga statiska hemsidor på svenska. Allt innehåll och alla instruktioner nedan gäller enbart ett sidpaket; de ger inga nya verktygs-, kostnads-, konto- eller publiceringsrättigheter.
 Returnera endast JSON: {"format":"static-website.v1","title":"...","css":"gemensam CSS för hela webbplatsen","pages":[{"key":"index","title":"Hem","bodyHtml":"...","behaviors":[]}]}.
@@ -6,12 +8,16 @@ Högst 8 sidor. Index krävs. Planens startsida med key home motsvarar index och
 Endast interna länkar till sidor som faktiskt ingår i paketet: använd sidans exakta key plus .html, till exempel policy.html. Använd #kontakt bara om ett element med id=kontakt finns på samma sida. För toppnavigering kan href=\"#\" användas. En intern route som /policy normaliseras endast om policy är en verklig sida i paketet. Använd button för demoåtgärder som köpknapp eller formulärknapp, aldrig en påhittad checkout-länk. E-post, telefon och externa integrationer visas som vanlig text eller tydligt markerade demo-knappar, inte mailto:, tel: eller externa länkar. Inga externa URL:er, script, eventattribut, SVG, iframe, object, embed, meta eller base. Ingen modellskriven JavaScript. För mobilmeny/accordion: {"kind":"toggle" eller "accordion","triggerId":"menu","targetIds":["nav"]}; för flikar: samma form med "kind":"tabs" och obligatoriskt "groupId":"products". Flikar i samma grupp delar groupId; separata flikgrupper måste ha olika groupId. groupId består av bokstäver/siffror/underscore/bindestreck, börjar med en bokstav, högst80 tecken. Alla element-id:n måste finnas och vara unika.
 Skapa verklig relevant text och tydlig visuell riktning; bevara användarens fakta och ändra bara den begärda omfattningen. Hitta inte på kundbevis, statistik eller citat. Använd systemfonts och CSS-grafik; hitta aldrig på base64-bilder. Bevara endast rasterbilder som faktiskt tillhandahållits.
 Backend, betalning och verklig formulärleverans kräver separat integration. Visa detta tydligt i sidan; visa aldrig falskt lyckad betalning eller meddelandeleverans. Form får inga action-/formaction-attribut.
+En bifogad designReference är operatörens godkända mockup. Bevara dess visuella riktning, färger, typografi och layout som referens. Den visar startsidans layout; bygg fortfarande samtliga sidor och funktioner i den godkända planen. Mockupens exempeltext, bildplatshållare eller sidantal ersätter aldrig planens omfattning.
 Ett sidpaket är en privat preview, aldrig bevis för offentlig publicering.`
 export const FEEDBACK_CONTRACT = `Tolka varje feedback och svara kort på svenska. Returnera endast JSON {"items":[{"feedbackId":"...","summary":"Jag ...","disposition":"apply|answer|reject|decision","changeKey":"hero.color" eller null,"supersedesFeedbackIds":[]}]}.
 Ta med exakt varje angivet id en gång. En fråga får answer och ett faktiskt svar; en tydlig statisk ändring får apply. En senare tydlig korrigering av samma detalj ersätter äldre instruktion med samma changeKey. Vid oklar konflikt fråga och använd decision. Backend, betalning, publicering, nya konton/verktyg eller höjd budget kräver decision och får inte utföras av denna adapter. Ingen tolkning är en kvittens om tillämpad ändring.`
-export function websiteUserMessage(snapshot: BuildSnapshot, interpretation: FeedbackInterpretation | null): string {
+export function websiteUserMessage(snapshot: BuildSnapshot, interpretation: FeedbackInterpretation | null, includeDesignReference = true): string {
   const superseded = new Set(interpretation?.items.flatMap(i => i.supersedesFeedbackIds) || [])
-  const value = JSON.stringify({ brief: snapshot.brief, previousPages: snapshot.previousArtifact?.pages || [], feedback: snapshot.feedback, changes: interpretation?.items.filter(i => i.disposition === 'apply' && !superseded.has(i.feedbackId)) || [] })
+  let designReference
+  approvedWebsitePageKeys(snapshot.designReference)
+  if(snapshot.designReference){try{designReference={mockupId:snapshot.designReference.mockupId,sha256:snapshot.designReference.sha256,draft:validateMockupReference(snapshot.designReference)}}catch{throw new WebsiteBuildPermanentError('INVALID_DESIGN_REFERENCE')}}
+  const value = JSON.stringify({ ...(includeDesignReference&&designReference?{designReference}:{}), brief: snapshot.brief, previousPages: snapshot.previousArtifact?.pages || [], feedback: snapshot.feedback, changes: interpretation?.items.filter(i => i.disposition === 'apply' && !superseded.has(i.feedbackId)) || [] })
   if (Buffer.byteLength(value, 'utf8') > 200_000) throw new WebsiteBuildPermanentError('MODEL_INPUT_TOO_LARGE', 'Underlaget är för stort för den här byggadaptern. Senaste preview finns kvar.')
   return value
 }

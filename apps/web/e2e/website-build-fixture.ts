@@ -11,7 +11,7 @@ const db = createAdminClient()
 export async function setup() {
   resetWorkerDb()
   const conversationId=crypto.randomUUID();testSql("insert into conversations(id,user_id,project_id) values('"+conversationId+"','"+TEST_PRINCIPAL.userId+"','"+TEST_PROJECT+"');")
-  const session = await approvedTestBuild(db, TEST_PRINCIPAL, { projectId: TEST_PROJECT, agentId: TEST_AGENT, conversationId, brief: 'En hemsida för vårt svenska café', idempotencyKey: crypto.randomUUID() })
+  const session = await approvedTestBuild(db, TEST_PRINCIPAL, { projectId: TEST_PROJECT, agentId: TEST_AGENT, conversationId, brief: 'En hemsida för vårt svenska café', idempotencyKey: crypto.randomUUID(),pages:[{key:'index',title:'Hem',purpose:'Visa caféet'},{key:'contact',title:'Kontakt',purpose:'Hitta kontaktvägar'}] })
   return { session,...await conversation(session), userId: TEST_PRINCIPAL.userId, projectSlug: 'test-project', brief: 'En hemsida för vårt svenska café' }
 }
 export async function snapshot(sessionId:string){if(!/^[0-9a-f-]{36}$/.test(sessionId))throw Error('Invalid fixture session');const projectId=testSql("select project_id from website_build_sessions where id='"+sessionId+"' and created_by='"+TEST_PRINCIPAL.userId+"';");const access=await resolveProjectAccess();if(!access.ok)throw Error('Fixture session unavailable');return readBuildSession(db,access,{projectId,sessionId})}
@@ -44,9 +44,9 @@ export async function setupConversation({missingBuilder=false,historical=false,m
  await setProjectWebsiteBuilder(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,agentId:missingBuilder?null:TEST_AGENT})
  if(historical)testSql("insert into website_build_sessions(project_id,created_by,agent_id,conversation_id,brief,idempotency_key,status) values('"+TEST_PROJECT+"','"+TEST_PRINCIPAL.userId+"','"+TEST_AGENT+"','"+id+"','Ursprunglig brief för historiskt bygge','"+crypto.randomUUID()+"','paused');")
  if(multiple){
-   const first=await approvedTestBuild(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,agentId:TEST_AGENT,conversationId:id,brief:'Första caféets hemsida',idempotencyKey:crypto.randomUUID()})
+   const first=await approvedTestBuild(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,agentId:TEST_AGENT,conversationId:id,brief:'Första caféets hemsida',idempotencyKey:crypto.randomUUID(),pages:[{key:'index',title:'Hem',purpose:'Visa caféet'},{key:'contact',title:'Kontakt',purpose:'Hitta kontaktvägar'}]})
    await step(first.sessionId,'commit')
-   const second=await approvedTestBuild(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,agentId:TEST_AGENT,conversationId:id,brief:'Andra caféets hemsida',idempotencyKey:crypto.randomUUID()})
+   const second=await approvedTestBuild(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,agentId:TEST_AGENT,conversationId:id,brief:'Andra caféets hemsida',idempotencyKey:crypto.randomUUID(),pages:[{key:'index',title:'Hem',purpose:'Visa caféet'},{key:'contact',title:'Kontakt',purpose:'Hitta kontaktvägar'}]})
    await step(second.sessionId,'commit')
    return {...await loadConversation(id,first.sessionId),preferredSessionId:first.sessionId}
  }

@@ -59,6 +59,10 @@ export function initializeWorkerDb(): ReturnType<typeof createAdminClient> {
   testSql(`grant execute on function stop_state(uuid),release_stopped_run(uuid,uuid),claim_runs(integer,integer) to service_role;`)
   testSql(canonicalFunction('20261015154741_website_saved_draft_worker_protocol.sql', 'website_build_lock_writer'))
   testSql(canonicalFunction('20261015154741_website_saved_draft_worker_protocol.sql', 'website_build_enqueue'))
+  if(testSql("select to_regclass('public.website_build_mockups') is null;")==='t')testSql(readFileSync(resolve(root,'apps/web/supabase/migrations/20261015210000_website_mockup_review.sql'),'utf8'))
+  testSql(canonicalFunction('20261015210000_website_mockup_review.sql','website_build_lock_writer'))
+  testSql(canonicalFunction('20261015210000_website_mockup_review.sql','website_build_snapshot'))
+  testSql(canonicalFunction('20261015210000_website_mockup_review.sql','website_build_mockup_pin_session'))
   const setReturning = new Set(['stop_state', 'claim_runs'])
   const transport = {
     rpc: async (name: string, args: Record<string, unknown> = {}) => {

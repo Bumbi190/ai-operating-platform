@@ -1,3 +1,4 @@
+import {approveTestMockup} from './test-fixture'
 import {beforeAll,it,expect} from 'vitest'
 import JSZip from 'jszip'
 import {initializeWorkerDb,testSql,TEST_PROJECT,TEST_PRINCIPAL,TEST_AGENT} from '../test-db'
@@ -10,11 +11,12 @@ it('a newer unapproved plan and changed default directory cannot rewrite the exp
  await setProjectWebsiteBuilder(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,agentId:TEST_AGENT})
  const original={title:'Godkänd originalplan',purpose:'Visa caféet',audience:'Gäster',pages:[{key:'index',title:'Hem',purpose:'Visa'}],design:{style:'Lugn',reference:null},features:[],architecture:'Statisk',steps:['Bygg'],domain:{registrar:'strato' as const,requestedName:'original.se'}}
  const plan=await saveWebsitePlanRevision(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,conversationId,expectedRevisionId:null,content:original,idempotencyKey:crypto.randomUUID()})
+ await approveTestMockup(db,TEST_PRINCIPAL,plan)
  const decision=await approveWebsitePlan(db,TEST_PRINCIPAL,{...plan.currentRevision,idempotencyKey:crypto.randomUUID()})
  const session=await startApprovedWebsitePlan(db,TEST_PRINCIPAL,{...plan.currentRevision,decisionId:decision.id})
  const artifact=compileWebsiteArtifact({format:'static-website.v1',title:'Webb',pages:[{key:'index',title:'Hem',bodyHtml:'<h1>Original</h1>',css:'',behaviors:[]}]})
  testSql("update runs set status='running',claim_id=gen_random_uuid(),lease_until=now()+interval '5 minutes' where id=(select current_run_id from website_build_sessions where id='"+session.sessionId+"');")
- const writer=JSON.parse(testSql("select jsonb_build_object('projectId',s.project_id,'sessionId',s.id,'runId',r.id,'claimId',r.claim_id,'generation',s.generation) from website_build_sessions s join runs r on r.id=s.current_run_id where s.id='"+session.sessionId+"';"))
+ const writer=JSON.parse(testSql("select jsonb_build_object('projectId',s.project_id,'sessionId',s.id,'runId',r.id,'claimId',r.claim_id,'generation',s.generation,'designVersion',1) from website_build_sessions s join runs r on r.id=s.current_run_id where s.id='"+session.sessionId+"';"))
  const revision=JSON.parse(testSql("select website_build_commit_revision('"+JSON.stringify(writer)+"','"+JSON.stringify(artifact).replaceAll("'","''")+"');"))
  await saveWebsitePlanRevision(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,conversationId,planId:plan.ref.planId,expectedRevisionId:plan.currentRevision.revisionId,content:{...original,title:'Ny ej godkänd plan'},idempotencyKey:crypto.randomUUID()})
  const before=await readProjectWebsiteBuilder(db,TEST_PRINCIPAL,TEST_PROJECT)

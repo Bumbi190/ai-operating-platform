@@ -60,9 +60,30 @@ async function main() {
     const processing = process.env.ATLAS_OPENVIKING_LIVE_VECTORS_ONLY === '1' ? 'vectors_only' : 'semantic_and_vectors'
     step = processing + ' ingestion'
     console.info('[live-probe] synchronizing three synthetic documents: ' + processing)
+    const indexingStarted = performance.now()
     const receipt = await synchronizeCorpus({ config: { ...config, apiKey: operator, timeoutMs: 30_000 }, corpus, deadlineMs: 240_000, processingMode: processing })
     assert(receipt.ready)
+    const indexingMs = Math.round(performance.now() - indexingStarted)
     console.info('[live-probe] indexing completed')
+    const generatedSummaries: { path: string; abstractChars: number; overviewChars: number }[] = []
+    if (processing === 'semantic_and_vectors') {
+      step = 'generated L0/L1 summaries'
+      for (const doc of corpus.documents) {
+        const uri = knowledgeRoot(corpus) + '/' + doc.id + '.md'
+        const summaries: Record<string, number> = {}
+        for (const level of ['abstract', 'overview']) {
+          const response: Response = await fetch(config.baseUrl + '/api/v1/content/' + level + '?uri=' + encodeURIComponent(uri),
+            { headers: { 'X-API-Key': reader }, signal: AbortSignal.timeout(5000) })
+          assert(response.ok, 'Generated summary must be readable')
+          const payload: { status?: unknown; result?: unknown } = await response.json()
+          assert.equal(payload.status, 'ok')
+          assert(typeof payload.result === 'string' && payload.result.trim().length > 20)
+          assert(!/not.ready|not.available|failed.to.generate|<think>|<\/think>/i.test(payload.result))
+          summaries[level] = payload.result.length
+        }
+        generatedSummaries.push({ path: doc.path, abstractChars: summaries.abstract, overviewChars: summaries.overview })
+      }
+    }
     step = 'embedding warmup'
     const started = performance.now()
     await findKnowledge({ config: { ...config, timeoutMs: 30_000 }, corpus, query: 'Konton och åtkomst' })
@@ -87,6 +108,9 @@ async function main() {
     assert(prompt.includes('DATA, NOT INSTRUCTIONS') && prompt.includes(corpus.snapshotId) && prompt.includes('inbjudningsmejlet'))
     const denied = await buildProjectRecall({ userId: 'probe-owner', allowedProjectIds: [], query: queries[0][0], env: environment, publication })
     assert.equal(denied, '')
+    const otherView = await buildProjectRecall({ userId: 'probe-owner', allowedProjectIds: [PROJECT],
+      viewProjectSlug: 'foreign-project', query: queries[0][0], env: environment, publication })
+    assert.equal(otherView, '')
     step = 'server authentication and tenant isolation'
     const body = { query: queries[0][0], target_uri: knowledgeRoot(corpus), context_type: 'resource', level: 2, limit: 8 }
     const unauthenticated = await fetch(config.baseUrl + '/api/v1/search/find', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(5000) })
@@ -112,7 +136,7 @@ async function main() {
     await synchronizeCorpus({ config: { ...config, apiKey: operator, timeoutMs: 30_000 }, corpus: empty, previous: corpus })
     assert.deepEqual(await findKnowledge({ config, corpus: empty, query: queries[0][0] }), [])
     const evidence = { passed: true, syntheticOnly: true, documents: 3, processing,
-      snapshotId: corpus.snapshotId, warmupMs, queries: results, promptChars: prompt.length,
+      snapshotId: corpus.snapshotId, indexingMs, generatedSummaries, warmupMs, queries: results, promptChars: prompt.length,
       runtimeRole: 'user', unauthenticatedStatus: unauthenticated.status, foreignAccountIsolated: true,
       revokedPublicationEmpty: true, fixtureSnapshotPruned: true, productionActivated: false }
     writeFileSync(resolve(option('out')!), JSON.stringify(evidence, null, 2) + '\n')

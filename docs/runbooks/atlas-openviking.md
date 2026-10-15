@@ -108,7 +108,7 @@ Set ATLAS_OPENVIKING_MODE=off and ATLAS_CHAT_MEMORY=0, or roll back the branch d
 
 An explicit real-server vectors-only probe passed on 2026-10-15 using local Qwen3 embeddings and three synthetic Swedish notes. It verified completed indexing, expected first hits, original-text injection through the Atlas seam, denied project scope, HTTP 401 without a key, foreign-account isolation and cleanup. The real v0.5.0 leaf is <snapshot>/<id>.md/<id>.md; the ingestion root receipt names its parent folder. Runtime whitelists only the exact leaf.
 
-See [local pilot evidence and operating limits](../../infra/openviking/README.md). The full semantic-processing probe exceeded its deadline and remains unverified. Local model inference is stopped after testing, requires an explicit GPU profile, and does not activate production.
+See [local pilot evidence and operating limits](../../infra/openviking/README.md). The initial semantic-processing probe exceeded its deadline; switching the processing model to qwen3:4b-instruct resolved unwanted reasoning output. A strengthened semantic-and-vectors probe then completed indexing and verified readable L0/L1 artifacts for all three synthetic documents. Local model inference requires an explicit GPU profile and a manually armed hardware watch. The owner's separate local Atlas preview has a 30-minute guarded test window and does not activate production.
 
 ## Validation limits
 

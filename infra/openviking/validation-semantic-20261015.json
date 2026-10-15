@@ -1,0 +1,119 @@
+{
+  "base_commit": "a0f3c9ad0c8d5a4ccd08275b6da8e47c94110c9b",
+  "server": "OpenViking v0.5.0",
+  "ollama": "0.40.4",
+  "models": {
+    "embedding": "qwen3-embedding:0.6b",
+    "processing": "qwen3:4b-instruct",
+    "processing_model_id": "0edcdef34593",
+    "previous_processing": "qwen3:4b"
+  },
+  "diagnostic": {
+    "old_model_ignored_thinking_controls": true,
+    "old_model_hit_128_token_limit": true,
+    "instruct_completion": "KLAR",
+    "instruct_reasoning_chars": 0,
+    "instruct_finish_reason": "stop"
+  },
+  "live_semantic_probe": {
+    "passed": true,
+    "syntheticOnly": true,
+    "documents": 3,
+    "processing": "semantic_and_vectors",
+    "snapshotId": "472c7b267d17fdf20245bbf70004754509571857d5c58bbe1676468e742f0130",
+    "indexingMs": 56355,
+    "generatedSummaries": [
+      {
+        "path": "access.md",
+        "abstractChars": 109,
+        "overviewChars": 2700
+      },
+      {
+        "path": "backup.md",
+        "abstractChars": 216,
+        "overviewChars": 2602
+      },
+      {
+        "path": "support.md",
+        "abstractChars": 227,
+        "overviewChars": 2692
+      }
+    ],
+    "warmupMs": 160,
+    "queries": [
+      {
+        "expected": "access.md",
+        "firstHit": "access.md",
+        "durationMs": 191
+      },
+      {
+        "expected": "backup.md",
+        "firstHit": "backup.md",
+        "durationMs": 101
+      },
+      {
+        "expected": "support.md",
+        "firstHit": "support.md",
+        "durationMs": 100
+      }
+    ],
+    "promptChars": 1551,
+    "runtimeRole": "user",
+    "unauthenticatedStatus": 401,
+    "foreignAccountIsolated": true,
+    "revokedPublicationEmpty": true,
+    "fixtureSnapshotPruned": true,
+    "productionActivated": false
+  },
+  "thermal": {
+    "maximum_observed_c": 76.0,
+    "stop_threshold_c": 80,
+    "semantic_verification_services_stopped": true
+  },
+  "manual_preview": {
+    "local_url": "http://127.0.0.1:3015/projects/omnira-selftest",
+    "synthetic_only": true,
+    "projectId": "4a1d83c9-09dc-4f3b-902e-67284588352b",
+    "snapshotId": "a47b6220cd8aac2b473bbf41246af803ab118ae51eb89dfd29ab3576c3fe61f5",
+    "firstHitUri": "viking://resources/omnira/projects/4a1d83c9-09dc-4f3b-902e-67284588352b/knowledge/a47b6220cd8aac2b473bbf41246af803ab118ae51eb89dfd29ab3576c3fe61f5/d3e8a9f46ba2fb27.md/d3e8a9f46ba2fb27.md",
+    "queryMs": 94,
+    "expected_code": "NORDLJUS-7426",
+    "expected_location": "hylla C7",
+    "productionActivated": false
+  },
+  "manual_preview_verification": {
+    "local_preview_ready": true,
+    "original_source_injection": true,
+    "paraphrase": true,
+    "other_project_suppressed": true,
+    "off_suppressed": true,
+    "login_status": 200,
+    "unauthenticated_chat_status": 401,
+    "owner_login_and_chat_pending": true
+  },
+  "manual_window": {
+    "duration_minutes": 30,
+    "armed": true,
+    "maximum_observed_c": 66.0,
+    "sampled_at": "2026-10-15T10:09:33.959372+00:00",
+    "stop_threshold_c": 80,
+    "stop_threshold_vram_percent": 94,
+    "fails_closed": true,
+    "restart_shortcut": "Atlas minnestest"
+  },
+  "normal_verification": {
+    "tests_passed": 39,
+    "live_probe_skipped_by_default": 1,
+    "typescript": "passed",
+    "targeted_eslint": "passed (TypeScript unused variables, constant conditions, unreachable code)",
+    "compose_syntax": "passed"
+  },
+  "previous_full_suite_receipt": "validation-20261015.json",
+  "limits": [
+    "Synthetic test notes only; no real Obsidian note promotion or private M4 export",
+    "Generated summary presence verified; factual quality and relevance on a production corpus are not established",
+    "Owner login and authenticated interactive Atlas chat remain to be tested by the owner",
+    "Local preview uses existing backend and Anthropic chat provider; it is not a separate database sandbox",
+    "Production remains off and PR is not merged"
+  ]
+}

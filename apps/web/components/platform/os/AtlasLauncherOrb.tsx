@@ -43,18 +43,22 @@ export function AtlasLauncherOrb({
   size = 52,
   label = 'Öppna Atlas',
   stateDescription,
-  className,
+  className
 }: AtlasLauncherOrbProps) {
   const descriptionId = stateDescription ? 'atlas-launcher-state' : undefined
 
   return (
-    <div className={cn(styles.root, className)} style={{ width: size, height: size }}>
+    <div
+      className={cn(styles.root, className)}
+      style={{ width: Math.max(44, size), height: Math.max(44, size) }}
+    >
       <button
         type="button"
         onClick={onClick}
         className={styles.launcher}
-        style={{ width: size, height: size }}
+        style={{ width: Math.max(44, size), height: Math.max(44, size) }}
         data-phase={phase}
+        data-compact={size < 44 || undefined}
         /* The accessible name matches the visible tooltip (WCAG "Label in
            Name"); the phase travels separately so it is announced without
            competing with the label. */
@@ -76,15 +80,36 @@ export function AtlasLauncherOrb({
           focusable="false"
         >
           <defs>
-            <linearGradient id="atlas-launcher-crystal" x1="28%" y1="12%" x2="76%" y2="92%">
-              <stop offset="0%" stopColor="var(--omnira-aqua-bright, #ecfeff)" stopOpacity="0.98" />
-              <stop offset="42%" stopColor="var(--omnira-cyan-soft, #67e8f9)" stopOpacity="0.92" />
-              <stop offset="100%" stopColor="var(--omnira-teal, #2dd4bf)" stopOpacity="0.72" />
+            <linearGradient
+              id="atlas-launcher-crystal"
+              x1="28%"
+              y1="12%"
+              x2="76%"
+              y2="92%"
+            >
+              <stop
+                offset="0%"
+                stopColor="var(--omnira-aqua-bright, #ecfeff)"
+                stopOpacity="0.98"
+              />
+              <stop
+                offset="42%"
+                stopColor="var(--omnira-cyan-soft, #67e8f9)"
+                stopOpacity="0.92"
+              />
+              <stop
+                offset="100%"
+                stopColor="var(--omnira-teal, #2dd4bf)"
+                stopOpacity="0.72"
+              />
             </linearGradient>
           </defs>
 
           {/* The canonical four-point crystal, cyan-lit. */}
-          <polygon points={OMNIRA_MARK_POINTS} fill="url(#atlas-launcher-crystal)" />
+          <polygon
+            points={OMNIRA_MARK_POINTS}
+            fill="url(#atlas-launcher-crystal)"
+          />
           {/* Hairline edge — keeps the points crisp at 24px. */}
           <polygon
             points={OMNIRA_MARK_POINTS}

@@ -1,17 +1,4 @@
-/**
- * Atlas mini-launcher — vNext presentation contract.
- *
- * This slice is presentation-only, and the risk in a presentation-only slice is
- * that something behavioural moves with it. So the assertions that matter most
- * here are the ones proving nothing changed: the click handler, the position,
- * the footprint, and the legacy orb that another page still depends on.
- *
- * The repo has no React testing environment (vitest runs in `environment: node`
- * with no testing-library), and adding one for a button would be a heavier
- * change than the button itself. These are therefore source contracts, the same
- * approach `atlas-latency.test.ts` uses for the chat route.
- */
-
+/** Brand/source invariants. Actual messenger interaction is exercised by Playwright. */
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -25,95 +12,24 @@ const LAUNCHER_CSS = read('components/platform/os/AtlasLauncherOrb.module.css')
 const LEGACY_ORB = read('components/platform/os/AtlasOrb.tsx')
 const LOGO = read('components/platform/OmniraLogo.tsx')
 
-describe('launcher renders in the platform layout', () => {
-  it('is mounted by the platform layout', () => {
-    expect(read('app/(platform)/layout.tsx')).toContain('<AtlasMiniOrb />')
-  })
-
-  it('the mini orb now renders the vNext launcher', () => {
+describe('persistent messenger integration', () => {
+  it('mounts in the authenticated shell and opens text', () => {
+    expect(read('app/(platform)/layout.tsx')).toContain('<AtlasMiniOrb ')
     expect(MINI).toContain('<AtlasLauncherOrb')
-    // The legacy orb component is no longer rendered here.
+    expect(MINI).toContain('onClick={state.openPanel}')
     expect(MINI).not.toMatch(/<AtlasOrb\b/)
   })
-
-  it('stays hidden on /atlas, where the full orb lives', () => {
-    expect(MINI).toContain("if (pathname === '/atlas') return null")
+  it('hides on full Atlas surfaces without resetting the shell state', () => {
+    expect(MINI).toContain("'/atlas'")
+    expect(MINI).toContain("pathname.startsWith('/chat/')")
+    expect(MINI).toContain('useMiniChatState(atlas.deactivate)')
   })
-})
-
-describe('NAVIGATION INVARIANT — behaviour is untouched', () => {
-  it('still calls the same handler', () => {
-    expect(MINI).toContain('onClick={handleOrbClick}')
-  })
-
-  it('the handler body is unchanged in every branch', () => {
-    // Each mapping from UI intention to runtime action, exactly as before.
-    expect(MINI).toContain('if (!atlas.isSessionActive) {')
-    expect(MINI).toContain('atlas.activate()')
-    expect(MINI).toContain('setPanelOpen(true)')
-    expect(MINI).toContain("if (atlas.voicePhase === 'speaking') {")
-    expect(MINI).toContain('atlas.stopAudio()')
-    expect(MINI).toContain("if (atlas.voicePhase === 'listening') {")
-    expect(MINI).toContain('atlas.deactivate()')
-    expect(MINI).toContain('setPanelOpen(p => !p)')
-  })
-
-  it('keeps the panel’s own navigation targets', () => {
-    expect(MINI).toContain("atlas.openWorkspace('/atlas')")
-    expect(MINI).toContain('atlas.openWorkspace(`/chat/${atlas.conversationId}`)')
-  })
-
-  it('keeps the same footprint, breakpoint and stacking level', () => {
-    expect(MINI).toContain('hidden lg:block fixed z-50')
-    expect(MINI).toContain('const MINI_SIZE = 52')
-    expect(MINI).toContain('size={MINI_SIZE}')
-  })
-})
-
-describe('PLACEMENT — the bottom-right corner is shared with the activity peek', () => {
-  const PEEK = read('components/platform/os/MobileRailToggle.tsx')
-
-  it('the activity peek really is on screen at desktop where the launcher renders', () => {
-    // Its `lg:hidden` is conditional: it only applies on Atlas Home under
-    // vNext, and the launcher returns null on /atlas. So wherever the launcher
-    // is visible, the peek is visible too — they cannot be treated as
-    // breakpoint-exclusive, and the stack geometry below is load-bearing.
-    //
-    // The condition used to be spelled `searchParams.get('ui') === 'vnext'`,
-    // which read raw URL state rather than the resolved generation; the peek
-    // now consumes the value the shell resolved. Semantics are covered in
-    // lib/qa/activity-peek-generation.test.ts — this only needs the peek to
-    // still occupy the corner at desktop.
-    expect(PEEK).toContain('hasDesktopActivityRail(pathname, uiGeneration)')
-    expect(PEEK).toContain("${atlasVNextHasDesktopRail ? 'lg:hidden' : ''} fixed z-50 bottom-5 right-5 h-11")
-  })
-
-  it('derives the launcher offset from the peek geometry rather than a magic number', () => {
-    expect(MINI).toContain('const ACTIVITY_PEEK_BOTTOM = 20')
-    expect(MINI).toContain('const ACTIVITY_PEEK_HEIGHT = 44')
-    expect(MINI).toContain('const LAUNCHER_BOTTOM = ACTIVITY_PEEK_BOTTOM + ACTIVITY_PEEK_HEIGHT + STACK_GAP')
-  })
-
-  it('clears the peek with real breathing room', () => {
-    const gap = Number(MINI.match(/const STACK_GAP = (\d+)/)?.[1])
-    expect(gap).toBeGreaterThanOrEqual(8)
-    // 20 + 44 + gap must put the launcher's lower edge above the peek's top (64px).
-    expect(20 + 44 + gap).toBeGreaterThan(64)
-  })
-
-  it('shares a right edge with the peek so the corner reads as one stack', () => {
-    expect(MINI).toContain('const STACK_RIGHT = ACTIVITY_PEEK_BOTTOM')
-    expect(MINI).toContain('right: `${STACK_RIGHT}px`')
-  })
-
-  it('rides the panel above the launcher, not beside the peek', () => {
-    expect(MINI).toContain('const PANEL_BOTTOM = LAUNCHER_BOTTOM + MINI_SIZE + PANEL_GAP')
-    expect(MINI).toContain('bottom: `${PANEL_BOTTOM}px`')
-  })
-
-  it('no longer hard-codes the old colliding offsets', () => {
-    expect(MINI).not.toContain('fixed bottom-6 right-6')
-    expect(MINI).not.toContain('MINI_SIZE + 24 + 10')
+  it('uses the compact symbol and clears the activity peek', () => {
+    expect(MINI).toContain('size={40}')
+    expect(MINI).toContain('styles.projectDock')
+    expect(
+      read('components/platform/os/AtlasMiniChatPanel.module.css')
+    ).toContain('safe-area-inset-bottom')
   })
 })
 
@@ -133,7 +49,7 @@ describe('LEGACY SAFETY — the shared orb is not collateral damage', () => {
 describe('accessible label and keyboard contract', () => {
   it('uses a real button element', () => {
     expect(LAUNCHER).toContain('<button')
-    expect(LAUNCHER).toContain("type=\"button\"")
+    expect(LAUNCHER).toContain('type="button"')
   })
 
   it('the accessible name matches the visible tooltip', () => {
@@ -147,8 +63,8 @@ describe('accessible label and keyboard contract', () => {
   it('still exposes the voice phase to assistive tech', () => {
     expect(LAUNCHER).toContain('aria-describedby={descriptionId}')
     expect(LAUNCHER).toContain('className="sr-only"')
-    expect(MINI).toContain('stateDescription={`Atlas — ${phaseDescription(atlas.voicePhase)}`}')
-    for (const s of ['Tryck för att prata', 'Lyssnar…', 'Tänker…', 'Talar…']) {
+    expect(MINI).toContain('stateDescription=')
+    for (const s of ['Samtal pågår', 'Öppna textchatt']) {
       expect(MINI, s).toContain(s)
     }
   })
@@ -180,13 +96,15 @@ describe('accessible label and keyboard contract', () => {
 describe('vNext visual language', () => {
   it('reuses the canonical four-point crystal rather than a second identity', () => {
     expect(LOGO).toContain('export const OMNIRA_MARK_POINTS')
-    expect(LAUNCHER).toContain("import { OMNIRA_MARK_POINTS } from '@/components/platform/OmniraLogo'")
+    expect(LAUNCHER).toContain(
+      "import { OMNIRA_MARK_POINTS } from '@/components/platform/OmniraLogo'"
+    )
     expect(LAUNCHER).toContain('points={OMNIRA_MARK_POINTS}')
   })
 
   it('is cyan/teal, with no legacy pink or purple in the launcher surface', () => {
-    expect(LAUNCHER_CSS).toMatch(/rgba\(34,\s*211,\s*238/)   // cyan
-    expect(LAUNCHER_CSS).toMatch(/rgba\(45,\s*212,\s*191/)   // teal
+    expect(LAUNCHER_CSS).toMatch(/rgba\(34,\s*211,\s*238/) // cyan
+    expect(LAUNCHER_CSS).toMatch(/rgba\(45,\s*212,\s*191/) // teal
     // The old indigo #6366f1 / violet #8b5cf6 families must not appear on the
     // resting launcher surface.
     expect(LAUNCHER_CSS).not.toMatch(/rgba\(99,\s*102,\s*241/)
@@ -217,7 +135,9 @@ describe('vNext visual language', () => {
 
   it('keeps the glow restrained — no oversized halo', () => {
     // Every blur radius in the launcher's shadows stays modest.
-    const blurs = [...LAUNCHER_CSS.matchAll(/\d+px\s+(\d+)px\s+rgba/g)].map(m => Number(m[1]))
+    const blurs = [...LAUNCHER_CSS.matchAll(/\d+px\s+(\d+)px\s+rgba/g)].map(
+      (m) => Number(m[1])
+    )
     expect(blurs.length).toBeGreaterThan(0)
     expect(Math.max(...blurs)).toBeLessThanOrEqual(40)
   })
@@ -226,13 +146,19 @@ describe('vNext visual language', () => {
 describe('motion', () => {
   it('is completely still at rest — idle draws no animation', () => {
     // Only the non-idle phases attach a ring animation.
-    expect(LAUNCHER_CSS).not.toMatch(/\.launcher\[data-phase='idle'\][^}]*animation/)
-    expect(LAUNCHER_CSS).toMatch(/\.launcher\[data-phase='listening'\] \.stateRing/)
+    expect(LAUNCHER_CSS).not.toMatch(
+      /\.launcher\[data-phase='idle'\][^}]*animation/
+    )
+    expect(LAUNCHER_CSS).toMatch(
+      /\.launcher\[data-phase='listening'\] \.stateRing/
+    )
   })
 
   it('honours prefers-reduced-motion', () => {
     expect(LAUNCHER_CSS).toContain('@media (prefers-reduced-motion: reduce)')
-    const reduced = LAUNCHER_CSS.slice(LAUNCHER_CSS.indexOf('@media (prefers-reduced-motion: reduce)'))
+    const reduced = LAUNCHER_CSS.slice(
+      LAUNCHER_CSS.indexOf('@media (prefers-reduced-motion: reduce)')
+    )
     expect(reduced).toContain('animation: none')
     expect(reduced).toContain('transition: none')
     expect(reduced).toMatch(/transform:\s*none/)
@@ -241,7 +167,15 @@ describe('motion', () => {
 
 describe('no new runtime dependency', () => {
   it('the launcher owns no state, effects, fetching or routing', () => {
-    for (const forbidden of ['useState', 'useEffect', 'useRef', 'fetch(', 'useRouter', 'usePathname', 'useAtlas']) {
+    for (const forbidden of [
+      'useState',
+      'useEffect',
+      'useRef',
+      'fetch(',
+      'useRouter',
+      'usePathname',
+      'useAtlas'
+    ]) {
       expect(LAUNCHER, forbidden).not.toContain(forbidden)
     }
   })

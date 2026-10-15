@@ -218,7 +218,7 @@ it('keeps the validation failure when rejected-draft logging is unavailable',asy
  const s=await session(),run=await claim(s),bad=draft();bad.pages[0].bodyHtml='<a href="mailto:example@example.com">E-post</a>'
  provider.mockResolvedValueOnce(response(bad))
  const from=db.from.bind(db),attempts:string[]=[]
- const unavailable={...db,from:(table:string)=>table==='run_logs'?{insert:async()=>{attempts.push(table);return{error:{message:'test unavailable'}}}}:from(table)} as typeof db
+ const unavailable={...db,from:(table:string)=>table==='run_logs'?{insert:async()=>{attempts.push(table);return{error:{message:'test unavailable'}}}}:from(table as any)} as typeof db
  const warning=vi.spyOn(console,'warn').mockImplementation(()=>{})
  try{
   await expect(executeWebsiteBuildRun(unavailable,run,run.claim_id!)).rejects.toMatchObject({code:'INVALID_LINK'})

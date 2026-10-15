@@ -4,6 +4,7 @@ import { HandlarborsenCompetitorHistory } from './HandlarborsenCompetitorHistory
 import { HandlarborsenCompetitorDiscovery } from './HandlarborsenCompetitorDiscovery'
 import { HandlarborsenSaveCompetitorScan } from './HandlarborsenSaveCompetitorScan'
 import type { HistoryAnalysis } from '@/lib/atlas/project-analytics/handlarborsen-competitor-history-core'
+import { latestSavedCompetitorObservation, savedCompetitorDay } from '@/lib/atlas/project-analytics/handlarborsen-competitor-latest'
 import type { LandscapeScan } from '@/lib/atlas/project-analytics/handlarborsen-competitor-landscape'
 import styles from './HandlarborsenCompetitors.module.css'
 
@@ -39,7 +40,7 @@ export function HandlarborsenCompetitors({ scan, landscape = null, history = nul
           : <p>Inte kontrollerad i denna vy. Källdossierns datum är inte en senaste körning.</p>}
         <p>En tillgänglig titel verifierar endast sidans tillgänglighet och titelmetadata vid kontrollen. Innehåll, aktuella villkor och förändringar över tid verifieras inte.</p>
       </section>
-      <HandlarborsenLandscape scan={landscape} />
+      <HandlarborsenLandscape scan={landscape} history={history} />
       <HandlarborsenCompetitorHistory history={history} historyEnabled={historyEnabled} />
       <HandlarborsenCompetitorDiscovery />
       {historyEnabled && canSaveHistory ? <HandlarborsenSaveCompetitorScan /> : null}
@@ -49,11 +50,14 @@ export function HandlarborsenCompetitors({ scan, landscape = null, history = nul
         <div className={styles.cards}>
           {EVIDENCE.map(source => {
             const check = scan?.sources.find(item => item.id === source.id)
+            const saved = latestSavedCompetitorObservation(history, source.id)
+            const savedDay = saved ? savedCompetitorDay(saved) : null
             return <article className={styles.panel} key={source.id} aria-labelledby={`source-${source.id}`}>
               <h3 id={`source-${source.id}`}>{source.label}</h3>
               <p>Publicerad <time dateTime={source.published}>{source.published}</time> · <a href={source.url} className={styles.link} rel="noreferrer">Officiell källa hos Handlarbudet</a></p>
               <p><strong>Observation ur daterad källa:</strong> {source.observation}</p>
-              <p><strong>Kontrollstatus:</strong> {check ? STATUS_LABELS[check.status] : 'Inte kontrollerad i denna vy'}</p>
+              <p><strong>Senast sparad observation:</strong> {saved && savedDay ? <><time dateTime={savedDay.date}>{savedDay.label}</time> · {saved.status === 'metadata_checked' ? 'Sidtitel verifierad' : 'Källan kunde inte verifieras'}</> : 'Ingen sparad observation för denna källa'}</p>
+              {check ? <p><strong>Separat kontroll i denna vy:</strong> {STATUS_LABELS[check.status]}</p> : null}
               {check ? <p>Kontrollerat: <CheckedTime value={check.checked_at} /></p> : null}
               {check?.title ? <p><strong>Hämtad titelmetadata:</strong> {check.title}</p> : null}
             </article>

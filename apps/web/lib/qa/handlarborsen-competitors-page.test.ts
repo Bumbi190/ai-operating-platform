@@ -110,6 +110,20 @@ describe('project-authorized manual competitors page', () => {
     expect(failed).toContain('Kan inte läsa historik')
     expect(failed).not.toContain('Kontrollera och spara dagens observation')
   })
+  it('shows actual latest saved dates, not an unsaved page scan', () => {
+    const history = evaluateCompetitorHistory([
+      { sourceId: 'battery-vdn-2025', checkedAt: '2026-10-15T05:10:39.000Z', status: 'metadata_checked', title: 'Historical title' },
+      { sourceId: 'auto1', checkedAt: '2026-10-15T05:10:38.000Z', status: 'metadata_checked', title: 'Marketplace title' },
+      { sourceId: 'bca', checkedAt: '2026-10-15T05:10:38.000Z', status: 'robots_unavailable', title: null },
+    ], new Date('2026-10-15T08:00:00.000Z'))
+    expect(history.status).toBe('ok')
+    const html = renderToStaticMarkup(React.createElement(HandlarborsenCompetitors, { scan: null, history, historyEnabled: true }))
+    expect(html).toContain('Senast sparad observation:')
+    expect(html).toContain('15 oktober 2026')
+    expect(html).toContain('Sparad historik finns')
+    expect(html).toContain('Källan kunde inte verifieras vid den sparade kontrollen')
+    expect(html).not.toContain('Inte kontrollerad i den här vyn')
+  })
   it('has no secret, storage, scheduler, LLM or raw HTML entry points in this slice', () => {
     const paths = [
       'app/(platform)/projects/[slug]/competitors/page.tsx',

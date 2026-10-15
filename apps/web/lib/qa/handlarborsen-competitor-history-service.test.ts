@@ -100,6 +100,18 @@ describe('gated immutable competitor observation storage', () => {
     expect(await h.service.save()).toEqual({ status: 'forbidden' })
     expect(h.publicScan).not.toHaveBeenCalled()
   })
+  it('denies missing sessions and even collaborators who can view the project but are not its owner', async () => {
+    const missing = harness()
+    missing.access.mockResolvedValueOnce({ ok: false, response: { status: 401 } } as any)
+    expect(await missing.service.save()).toEqual({ status: 'unauthorized' })
+    expect(missing.from).not.toHaveBeenCalled()
+    expect(missing.publicScan).not.toHaveBeenCalled()
+    const viewer = harness()
+    viewer.access.mockResolvedValueOnce({ ok: true, userId: 'read-only-viewer', allowedProjectIds: [project.id] })
+    expect(await viewer.service.save()).toEqual({ status: 'forbidden' })
+    expect(viewer.publicScan).not.toHaveBeenCalled()
+    expect(viewer.upsert).not.toHaveBeenCalled()
+  })
   it('reads only verified immutable same-project records and creates truthful daily chart', async () => {
     const h = harness([stored()])
     const result = await h.service.load()

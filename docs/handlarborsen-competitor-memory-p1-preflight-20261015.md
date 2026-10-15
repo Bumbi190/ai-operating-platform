@@ -30,3 +30,6 @@ Separat historik för upptäckta, källverifierade konkurrentkandidater, skild f
 
 ## Viktigt
 Den manuella sexkällors historik och PostHog fortsätter som tidigare. Oscars kontobehörigheter, Atlas generell minnesarkitektur och andra projekt påverkas inte. Inga cron-, kostnads-, RLS-, migrations- eller utgående notisändringar i P1-implementationen.
+
+## Skyddad CI-grind
+- PR:n måste passera normala obligatoriska GitHub Actions-kontroller före merge. Ingen skip-ci eller policyundantag.

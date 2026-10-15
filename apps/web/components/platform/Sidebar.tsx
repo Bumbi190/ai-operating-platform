@@ -107,6 +107,7 @@ export function Sidebar({
 
   return (
     <aside
+      id="omnira-sidebar"
       className={cn(
         'relative z-40 hidden lg:flex flex-col sidebar-border-gradient h-full overflow-hidden',
         isVNextShell && vnextStyles.sidebar,
@@ -477,3 +478,4 @@ export function Sidebar({
     </aside>
   )
 }
+

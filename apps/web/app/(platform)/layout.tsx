@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { Sidebar } from '@/components/platform/Sidebar'
+import { PlatformWorkspace } from '@/components/platform/os/PlatformWorkspace'
 import {
   ActivityRail, CommandBar, CommandPaletteHost, OperatorModeProvider,
   MobileRailToggle, AtlasMiniOrb, ShellMobileNav, Breadcrumbs, KeyboardHints,
@@ -256,7 +257,8 @@ export default async function PlatformLayout({
         }}
       />
       <AtlasProjectReturnShortcut />
-      <div
+      <PlatformWorkspace
+        uiGeneration={uiGeneration}
         className={`
           relative h-screen overflow-hidden
           grid
@@ -264,7 +266,6 @@ export default async function PlatformLayout({
           lg:[grid-template-columns:260px_minmax(0,1fr)]
           ${isVNext(uiGeneration) ? 'xl:[grid-template-columns:287px_minmax(0,1fr)] lg:[grid-template-rows:66px_minmax(0,1fr)]' : ''}
         `}
-        data-shell-generation={uiGeneration}
         style={{ background: '#030516' }}
       >
         {/* ─── vNext top bar · one row across both columns ──────────────────
@@ -274,7 +275,7 @@ export default async function PlatformLayout({
             the viewport subtract --os-shell-topbar (globals.css), so nothing
             is pushed into scrolling by it. Legacy renders no row here. */}
         {isVNext(uiGeneration) && (
-          <div className="hidden lg:block lg:col-span-2">
+          <div className="hidden lg:block lg:col-span-2" data-shell-topbar>
             <ShellTopBar pendingApprovals={pendingApprovals} />
           </div>
         )}
@@ -365,7 +366,7 @@ export default async function PlatformLayout({
           />
 
           {/* Page canvas */}
-          <div className="relative z-content">
+          <div className="relative z-content" data-shell-page>
             {children}
           </div>
 
@@ -386,7 +387,7 @@ export default async function PlatformLayout({
         <MobileRailToggle liveCount={liveCount} uiGeneration={uiGeneration}>
           <ActivityRail events={activityEvents} />
         </MobileRailToggle>
-      </div>
+      </PlatformWorkspace>
 
       {/* Atlas permanent närvaro — fixed bottom-right, dold på /atlas */}
       <AtlasMiniOrb uiGeneration={uiGeneration} />

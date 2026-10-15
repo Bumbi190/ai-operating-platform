@@ -260,7 +260,7 @@ export function AtlasChatConversation({ model, asking = false,plan=null,initialS
         <div ref={endRef} className={styles.endAnchor} aria-hidden />
         </div>
 
-        <AtlasConversationComposer value={input} onChange={draft.setText} onSend={()=>void send(input)} disabled={!!pending||blocked} sendDisabled={!canSend} pending={!!pending} capturing={draft.capturing} onVoice={draft.toggleCapture} onStopSpeech={()=>atlas?.stopAudio()} inputSource={inputSource} captureAvailable={!!atlas} captureError={atlas?.captureError} inputRef={inputRef}/>
+        <AtlasConversationComposer variant={mode==='studio'?'studio':'default'} value={input} onChange={draft.setText} onSend={()=>void send(input)} disabled={!!pending||blocked} sendDisabled={!canSend} pending={!!pending} capturing={draft.capturing} onVoice={draft.toggleCapture} onStopSpeech={()=>atlas?.stopAudio()} inputSource={inputSource} captureAvailable={!!atlas} captureError={atlas?.captureError} inputRef={inputRef}/>
       </div>
     </div>
   )
@@ -362,3 +362,4 @@ export function AtlasChatConversationLoading() {
     </div>
   )
 }
+

@@ -1,0 +1,42 @@
+name: Atlas Studio Responsive UI
+on:
+  pull_request:
+    paths:
+      - 'apps/web/components/platform/os/PlatformWorkspace*'
+      - 'apps/web/components/platform/Sidebar*'
+      - 'apps/web/components/platform/vnext/ShellTopBar*'
+      - 'apps/web/components/platform/vnext/AtlasChat*'
+      - 'apps/web/components/platform/vnext/AtlasConversationComposer*'
+      - 'apps/web/components/website-build/**'
+      - 'apps/web/app/(platform)/layout.tsx'
+      - 'apps/web/e2e/atlas-studio-ui-*'
+      - 'apps/web/e2e/atlas-studio-ui.spec.ts'
+      - 'apps/web/playwright.atlas-studio-ui.config.ts'
+      - '.github/workflows/atlas-studio-ui.yml'
+permissions:
+  contents: read
+concurrency:
+  group: atlas-studio-ui-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck --workspace=apps/web
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+      - run: npx playwright test --config=playwright.atlas-studio-ui.config.ts
+        working-directory: apps/web
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: atlas-studio-ui
+          path: .superpowers/atlas-studio-ui-playwright
+          retention-days: 5

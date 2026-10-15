@@ -5,6 +5,7 @@ import { scanPublicSources } from '@/lib/atlas/project-analytics/handlarborsen-c
 import { scanCompetitorLandscape } from '@/lib/atlas/project-analytics/handlarborsen-competitor-landscape-scan'
 import { HandlarborsenCompetitors } from '@/components/platform/vnext/HandlarborsenCompetitors'
 import { competitorHistoryEnabled, loadCompetitorHistory } from '@/lib/atlas/project-analytics/handlarborsen-competitor-history-service'
+import { candidateMemoryEnabled, loadCandidateMemory } from '@/lib/atlas/project-analytics/handlarborsen-competitor-memory-service'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,10 +20,15 @@ export default async function CompetitorsPage({ params, searchParams }: {
   const [scan, landscape] = searchParams?.scan === '1'
     ? await Promise.all([scanPublicSources(), scanCompetitorLandscape()])
     : [null, null]
-  const result = historyEnabled ? await loadCompetitorHistory() : null
+  const memoryEnabled = candidateMemoryEnabled()
+  const [result, memory] = await Promise.all([
+    historyEnabled ? loadCompetitorHistory() : Promise.resolve(null),
+    memoryEnabled ? loadCandidateMemory() : Promise.resolve(null),
+  ])
   const history = result?.status === 'ok' ? result.history : null
   return <HandlarborsenCompetitors
     scan={scan} landscape={landscape} history={history}
     historyEnabled={historyEnabled} canSaveHistory={result?.status === 'ok'}
+    memoryEnabled={memoryEnabled} memory={memory}
   />
 }

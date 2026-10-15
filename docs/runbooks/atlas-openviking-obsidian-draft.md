@@ -1,12 +1,10 @@
-# Proposed Obsidian note: local omnira-selftest memory pilot
+# Owner-approved Obsidian note: local omnira-selftest memory pilot
 
-This is a reviewable candidate on the integration branch, not an approved vault note or a publication. The actual Obsidian vault remains unchanged. Its policy §4 reserves status promotion for the owner; §6.1 requires owner/operator classification, and §6.7 reserves status, classification and scope decisions for explicit owner authorization.
+The owner explicitly approved this note, its approved status, internal classification and project scope for omnira-selftest on 2026-10-15 at 13:46 Europe/Stockholm. The approved copy is now in the actual Obsidian vault on its dedicated branch. This repository copy records the reviewed content; canonical repository sources retain precedence.
 
-## Proposed destination and metadata
+## Approved destination and metadata
 
-Proposed destination: `60 Memory/omnira-selftest-local-memory-pilot.md`.
-
-After owner approval, the intended metadata is:
+Vault path: 60 Memory/omnira-selftest-local-memory-pilot.md.
 
 ```yaml
 type: project
@@ -20,7 +18,9 @@ created: 2026-10-15
 updated: 2026-10-15
 ```
 
-These are proposed values, not assigned metadata. Confirm them with the owner before creating/promoting the actual note on a separate vault branch. Do not relabel existing platform notes. Prepare from the resulting clean vault commit and review the exact publication before local synchronization.
+The vault branch is codex/atlas-openviking-approved-note-20261015 at commit c1980d493be6fd3fa8039340d71dae7da4ef6c0b. Its main remains unchanged at a2a9ae428ac84227ae845dd96456f0abc99b61ad and the vault is clean. Existing curated notes were not relabeled.
+
+The note was prepared from that captured commit, synchronized in vectors-only mode, and activated only in the private local preview. Receipt: [approved publication](../../infra/openviking/validation-approved-note-20261015.json). The integration branch's default corpus remains empty and production remains OFF.
 
 ## Candidate note body
 

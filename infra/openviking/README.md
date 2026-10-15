@@ -1,6 +1,6 @@
 # Local OpenViking pilot
 
-Real **vectors-only and semantic-and-vectors** probes passed on 2026-10-15. Production remains OFF. The owner selected local testing first; a separate Atlas preview uses synthetic project knowledge and the existing login.
+Real **vectors-only and semantic-and-vectors** probes passed on 2026-10-15. Production remains OFF. The owner selected local testing first; the separate Atlas preview now uses the first owner-approved internal Obsidian note and the existing login. The original probes used synthetic fixtures.
 
 ## Measured result
 
@@ -94,9 +94,9 @@ From `apps/web`:
 
 The existing Vitest server-only alias supplies the Next module environment. Plain Node cannot import that request-time marker directly. No new dependency was added.
 
-## Actual knowledge and production remain pending
+## Actual knowledge and production status
 
-The real vault was clean at `a2a9ae4`, with six tracked Markdown files. Its approved material has platform scope; no approved project-scoped notes qualify for the single-project pilot. No status, classification or scope was changed and no private M4 content was exported. The canonical registry was read without modification and its mapping saved privately.
+Before the owner's note approval, the real vault was clean at `a2a9ae4`, with six tracked Markdown files and no eligible approved project notes. The owner-approved publication below adds exactly one new project note on its own vault branch; existing platform notes were not relabeled and private M4 content was not exported. The canonical registry was read without modification and its mapping saved privately.
 
 The local endpoint cannot serve the hosted production application. Before production activation, select the production host/private-network route, obtain eligible owner-approved project knowledge and evaluate relevance on that actual corpus. No production environment, migration, merge or private vault import was performed.
 
@@ -104,22 +104,21 @@ Sources: release-matched OpenViking configuration/authentication and Ollama Open
 
 ## Manual local Atlas test
 
-The private preview is an archive of reviewed branch commit `a0f3c9a`, with its own dependencies, build cache and environment. Production source and the branch's empty checked-in corpus are unchanged. Its login is the existing Omnira login; the app uses the existing backend and model provider. Treat this as an authenticated application copy, not an isolated database sandbox.
+The private preview is an archive of reviewed branch commit a0f3c9a with its own dependencies, cache and environment. Later branch commits add validation/docs, with no further request-time runtime change. The preview uses the existing Omnira login, backend and Anthropic provider; it is not a separate database sandbox.
 
-On the stationary PC open:
+Start the desktop shortcut **Atlas minnestest**, then open http://127.0.0.1:3015/projects/omnira-selftest on the stationary PC. The guarded launcher waits for health and warms the current publication. Cold startup may take about a minute. The query budget remains 1.2 seconds and the manual test window is 30 minutes.
 
-    http://127.0.0.1:3015/projects/omnira-selftest
+The active publication now contains the owner-approved internal note **Lokal minnespilot för omnira-selftest**, from the actual vault at commit c1980d4. It replaces the old synthetic control-code publication. The old artifact/index remain privately available for rollback, but their text is excluded by the active snapshot.
 
-Only this local preview receives the synthetic `minnespilot-test.md` publication for canonical project `omnira-selftest`. Its separate clean test vault is under the private pilot directory; no note in the actual Obsidian vault was promoted or modified.
+1. Start a **new Atlas conversation** while viewing omnira-selftest.
+2. Ask: **Hur startar jag minnespiloten, hur länge kör testpasset och vilken temperaturgräns gäller? Ange källan.**
+3. Expect **Atlas minnestest**, **30 minuter**, **80 °C**, and the note title or path 60 Memory/omnira-selftest-local-memory-pilot.md.
+4. In another new conversation, paraphrase the question.
+5. Switch projects and start another new conversation. The pilot note must not be injected. Existing chat history can retain an earlier answer.
 
-1. Open a new Atlas conversation while viewing `omnira-selftest`. Ask: **Vilken kontrollkod har minnespiloten och var ligger testlådan? Ange anteckningens namn.**
-2. Expect **NORDLJUS-7426**, **hylla C7**, and `minnespilot-test.md` (or its title).
-3. Open another new conversation and paraphrase the question. The same original source should support the answer.
-4. Switch to a different project and start another new conversation. Ask the same question. The pilot source must not be injected. Reusing an old conversation can retain the old answer in normal chat history and is not an isolation test.
+The launcher now warms the title of the currently deployed source and validates its exact indexed leaf. It no longer reports the retired synthetic control code as the expected answer. Localhost is reachable only from this PC. At thermal stop or expiry, the two GPU services stop and Atlas falls back without this evidence; start a new guarded session with the shortcut.
 
-The desktop shortcut **Atlas minnestest** runs the private `start-local-pilot.ps1` with its browser option. The launcher starts the guarded services, waits for health, warms the actual published search, and opens the local preview. Cold model loading was observed around 50 seconds with the local RAM limit; startup warmup allows 90 seconds, while the application's 1.2-second query budget is unchanged. Models are kept loaded for up to 30 minutes to fit the guarded manual window. The manual window lasts 30 minutes. A thermal stop or expiry makes OpenViking unavailable and Atlas falls back without this evidence. Restart the guarded session before testing again. Localhost is reachable only from this PC.
-
-The app's normal authentication and project-access checks remain in effect. On 2026-10-15 at 12:31 Europe/Stockholm, the owner reported that Atlas found the synthetic note immediately in the authenticated local UI. This confirms the first positive manual retrieval step; it does not attest that all interactive isolation/lifecycle steps were completed.
+The owner confirmed the earlier synthetic UI retrieval at 12:31 Europe/Stockholm. After this note's 13:46 approval, the automated actual-source/paraphrase/provenance/project/off/authentication probe passed against the restored preview. A new interactive answer for the approved note remains for the owner to observe.
 
 ## Lifecycle follow-up and Obsidian candidate
 
@@ -142,4 +141,16 @@ Final checks: **86 regular tests passed**, both explicit real-service tests skip
 
 Receipt: [validation-lifecycle-20261015.json](./validation-lifecycle-20261015.json). The explicit test is `apps/web/lib/qa/atlas-openviking-lifecycle.test.ts`, enabled with `ATLAS_OPENVIKING_LIFECYCLE_APPLY=1`. It uses the original probe's LIVE_URL/LIVE_CREDENTIALS variables and `ATLAS_OPENVIKING_LIFECYCLE_REPORT` for its private receipt. To reproduce the isolated mode, also set `ATLAS_OPENVIKING_LIVE_VECTORS_ONLY=1` and disable automatic L0/L1 on a separate server volume. Preserve existing service data; a failed run may leave synthetic fixtures.
 
-A [concrete Obsidian note candidate](../../docs/runbooks/atlas-openviking-obsidian-draft.md) proposes internal project knowledge for `omnira-selftest`. It has not been created/promoted in the real vault or included in the default corpus. The vault policy reserves promotion/classification/scope decisions for the owner.
+The [Obsidian note](../../docs/runbooks/atlas-openviking-obsidian-draft.md) was subsequently explicitly approved by the owner and published locally as recorded below. The original candidate and lifecycle receipt describe their earlier review state.
+
+## Owner-approved local publication
+
+At 13:46 Europe/Stockholm the owner approved the concrete note and its status/classification/project scope. Exactly one actual vault source was committed on codex/atlas-openviking-approved-note-20261015 (c1980d4); vault main remains a2a9ae4. No existing note metadata was changed.
+
+The publication snapshot is 88113d0204f2abd58c3ff72d1d3acedd122442329a163a026d0a271aefb99d7c. The operator waited for completed vectors-only indexing before replacing the local preview artifact. Automatic L0/L1 was disabled during synchronization to limit background work; the original private semantic configuration was restored afterward.
+
+Two paraphrased questions produced the approved original text with note path, canonical path and current snapshot provenance in **116 / 169 ms**. The retained synthetic snapshot remained separately searchable but its control code, location and snapshot were absent from the new prompt. Different-project, denied-membership and mode-off checks returned empty; login was 200 and unauthenticated chat was 401.
+
+The guarded session reached **74 C**, below the 80 C stop threshold. Both GPU services were stopped after validation; start the shortcut for another session. The mixed semantic-load limits above still apply. The code branch's checked-in corpus is unchanged and empty; production remains OFF and no merge was performed.
+
+Receipt: [validation-approved-note-20261015.json](./validation-approved-note-20261015.json). The vault commit and normalized source hash are recorded without credentials or private M4 data.

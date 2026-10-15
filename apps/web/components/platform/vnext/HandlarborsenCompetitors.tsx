@@ -1,6 +1,7 @@
 import { DOSSIER_DATE, EVIDENCE, STATUS_LABELS, summarizeScan, type PublicScan } from '@/lib/atlas/project-analytics/handlarborsen-competitors'
 import { HandlarborsenLandscape } from './HandlarborsenLandscape'
 import { HandlarborsenCompetitorHistory } from './HandlarborsenCompetitorHistory'
+import { HandlarborsenCompetitorDiscovery } from './HandlarborsenCompetitorDiscovery'
 import { HandlarborsenSaveCompetitorScan } from './HandlarborsenSaveCompetitorScan'
 import type { HistoryAnalysis } from '@/lib/atlas/project-analytics/handlarborsen-competitor-history-core'
 import type { LandscapeScan } from '@/lib/atlas/project-analytics/handlarborsen-competitor-landscape'
@@ -40,6 +41,7 @@ export function HandlarborsenCompetitors({ scan, landscape = null, history = nul
       </section>
       <HandlarborsenLandscape scan={landscape} />
       <HandlarborsenCompetitorHistory history={history} historyEnabled={historyEnabled} />
+      <HandlarborsenCompetitorDiscovery />
       {historyEnabled && canSaveHistory ? <HandlarborsenSaveCompetitorScan /> : null}
       <section aria-labelledby="competitor-evidence">
         <h2 id="competitor-evidence">Handlarbudet · daterade observationer</h2>

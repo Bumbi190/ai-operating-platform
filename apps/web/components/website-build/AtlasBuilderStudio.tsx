@@ -20,6 +20,7 @@ async function getView(selection:StudioSelection,include:Filter='active'):Promis
 export function AtlasBuilderStudio({model}:{model:StudioView}){
  const [view,setView]=useState(model),[busy,setBusy]=useState(false),[loading,setLoading]=useState(false),[error,setError]=useState(''),[name,setName]=useState(''),[initialTurn,setInitialTurn]=useState<InitialTurn|null>(null)
  const current=useRef(view),generation=useRef(0);current.current=view
+ const createIntents=useRef(new Map<string,EnsureStudioInput|null>())
  const {controller}=useAtlasConversation(),atlas=useOptionalAtlas()
  const draft=useComposerDraft({draftKey:'atlas-studio-draft:'+model.operatorId+':'+(view.selected?.id??'new'),capture:atlas?cb=>atlas.captureUtterance(cb):null,captureError:atlas?.captureError})
  useEffect(()=>()=>{generation.current++},[])
@@ -38,17 +39,23 @@ export function AtlasBuilderStudio({model}:{model:StudioView}){
   const storageKey='atlas-studio-create:'+model.operatorId+':'+(selected?.id??'new')
   setBusy(true);setError('')
   try{
-   let input:EnsureStudioInput|null=null
-   try{const saved=JSON.parse(sessionStorage.getItem(storageKey)??'null');if(saved?.idempotencyKey&&(selected?saved.kind==='existing'&&saved.projectId===selected.id:saved.kind==='new'))input=saved}catch{}
+   let input=createIntents.current.get(storageKey)??null
+   if(!createIntents.current.has(storageKey))try{const saved=JSON.parse(sessionStorage.getItem(storageKey)??'null');if(saved?.idempotencyKey&&(selected?saved.kind==='existing'&&saved.projectId===selected.id:saved.kind==='new'))input=saved}catch{}
    input??=selected?{kind:'existing',projectId:selected.id,idempotencyKey:crypto.randomUUID()}:{kind:'new',name:name.trim()||text.split('\n')[0].slice(0,80),idempotencyKey:crypto.randomUUID()}
+   createIntents.current.set(storageKey,input)
    try{sessionStorage.setItem(storageKey,JSON.stringify(input))}catch{}
    const r=await fetch('/api/website-build/studio',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)}),ref:StudioWorkspaceRef&{error?:string}=await r.json().catch(()=>null)
    if(!r.ok||!ref?.projectId||!ref?.conversationId||!ref?.projectSlug)throw Error(ref?.error??'Projektet kunde inte startas. Din idé finns kvar; försök igen.')
    const selection={projectSlug:ref.projectSlug,conversationId:ref.conversationId},next=await getView(selection)
    if(generation.current!==token)return
-   try{sessionStorage.setItem('atlas-chat-draft:'+model.operatorId+':'+ref.conversationId,JSON.stringify({version:1,text,inputSource}));sessionStorage.removeItem(storageKey)}catch{}
+   if(next.state!=='ok'||next.selected?.id!==ref.projectId||next.conversation?.id!==ref.conversationId)throw Error('Projektet skapades men chatten kunde inte läsas. Din idé finns kvar; försök igen.')
+   // The live handoff carries the brief even when browser persistence fails.
+   setInitialTurn({token:input.idempotencyKey,text,inputSource})
+   try{sessionStorage.setItem('atlas-chat-draft:'+model.operatorId+':'+ref.conversationId,JSON.stringify({version:1,text,inputSource}))}catch{}
+   try{sessionStorage.removeItem(storageKey)}catch{}
+   // A completed in-memory intent also prevents reuse of a stale storage entry.
+   createIntents.current.set(storageKey,null)
    draft.clear();setView(next);replaceUrl(selection)
-   if(next.selected?.budget.state==='configured'&&!next.selected.lifecycle.executionPaused&&next.selected.lifecycle.state==='active'&&next.state==='ok')setInitialTurn({token:input.idempotencyKey,text,inputSource})
   }catch(e){if(generation.current===token)setError((e as Error).message)}finally{if(generation.current===token)setBusy(false)}
  }
  const selected=view.selected,readOnly=!!selected&&(selected.lifecycle.state!=='active'||selected.lifecycle.executionPaused),canSend=!!selected&&selected.budget.state==='configured'&&!readOnly&&view.state==='ok'

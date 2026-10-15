@@ -157,6 +157,8 @@ export function AtlasChatConversation({ model, asking = false,plan=null,initialS
   },[blocked,controller,model.id,pathname,router,inputSource,canSend,draft.clear])
   useEffect(()=>{if(snapshot.id===model.id&&snapshot.speechDraft!==null){draft.setText(snapshot.speechDraft,'voice');controller.clearSpeechDraft();inputRef.current?.focus()}},[snapshot.id,snapshot.speechDraft,model.id])
 
+  const initialDraftSet=useRef<string|null>(null)
+  useEffect(()=>{if(initialTurn&&initialDraftSet.current!==initialTurn.token){initialDraftSet.current=initialTurn.token;draft.setText(initialTurn.text,initialTurn.inputSource)}},[initialTurn,draft.setText])
   const firstTurnSent=useRef<string|null>(null)
   useEffect(()=>{if(initialTurn&&firstTurnSent.current!==initialTurn.token&&canSend&&!blocked){firstTurnSent.current=initialTurn.token;void send(initialTurn.text,initialTurn.inputSource)}},[initialTurn,canSend,blocked,send])
 

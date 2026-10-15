@@ -315,6 +315,14 @@ När operatören vill köra något: hitta rätt workflow, trigga det, presentera
 - Spegla alltid verkligheten: körde inget verktyg → säg det rakt ut. Körde ett verktyg → visa resultatet (t.ex. run_id och att körningen är köad).
 - Hitta aldrig på run_id, status eller utfall.`
 
+// Studio capabilities stay within its selected website project. Dispatch enforces
+// the same set even if a provider returns a tool absent from its schema.
+const STUDIO_TOOL_NAMES = new Set([
+  ...DESIGN_SKILL_TOOLS.map(tool => tool.name),
+  ...WEBSITE_BUILD_TOOL_NAMES,
+  'get_current_time', 'present_links', 'navigate',
+])
+
 const TOOLS: Anthropic.Tool[] = [
   ...DESIGN_SKILL_TOOLS,
   ...WEBSITE_BUILD_TOOLS,
@@ -875,7 +883,7 @@ export async function POST(request: Request) {
   // read safe: with no tool schema the model cannot emit a tool_use block, so
   // executeTool is unreachable on this path. Every other class keeps TOOLS
   // exactly as before — this is not general per-class schema pruning.
-  const activeTools = (fastPath || staticConversation) ? [] : studioContext ? TOOLS.filter(tool=>tool.name!=='ask_manager') : TOOLS
+  const activeTools = (fastPath || staticConversation) ? [] : studioContext ? TOOLS.filter(tool=>STUDIO_TOOL_NAMES.has(tool.name)) : TOOLS
   const forceToolFirstTurn = actionIntent && activeTools.length > 0
   const forceResolutionFirstTurn = resolutionIntent && activeTools.length > 0
   // Direkt navigeringskommando → tvinga specifikt navigate-verktyget på turn 0.
@@ -1193,6 +1201,10 @@ async function executeTool(
   inputSource:'text'|'voice'='text',
   studioProjectId:string|null=null,
 ): Promise<unknown> {
+  if (studioProjectId && !STUDIO_TOOL_NAMES.has(name)) {
+    return { error: 'Verktyget är inte tillgängligt i byggstudion.', denied: 'studio_tool_not_allowed' }
+  }
+
   // Deterministic, read-only, no database and no network. Placed first because
   // it is the cheapest branch and touches nothing else in the system.
   if (name === 'get_current_time') {

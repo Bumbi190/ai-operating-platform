@@ -9,11 +9,11 @@ export function useComposerDraft({draftKey,capture,captureError}:{draftKey:strin
  useEffect(()=>{
   const key=draftKey;cancel.current?.();cancel.current=null;generation.current++;setCapturing(false)
   let text='',inputSource:Source='text'
-  try{const saved=JSON.parse(sessionStorage.getItem(key)??'null');if(saved?.version===1&&typeof saved.text==='string'&&saved.text.length<=8000&&['text','voice'].includes(saved.inputSource)){text=saved.text;inputSource=saved.inputSource}}catch{}
+  try{const saved=JSON.parse(sessionStorage.getItem(key)??'null');if(saved?.version===1&&typeof saved.text==='string'&&['text','voice'].includes(saved.inputSource)){text=saved.text;inputSource=saved.inputSource}}catch{}
   setDraft({key,text,inputSource,hydrated:true})
   return()=>{generation.current++;cancel.current?.();cancel.current=null}
  },[draftKey])
- useEffect(()=>{if(!draft.hydrated||draft.key!==draftKey)return;try{if(draft.text&&draft.text.length<=8000)sessionStorage.setItem(draftKey,JSON.stringify({version:1,text:draft.text,inputSource:draft.inputSource}));else sessionStorage.removeItem(draftKey)}catch{}},[draft,draftKey])
+ useEffect(()=>{if(!draft.hydrated||draft.key!==draftKey)return;try{if(draft.text)sessionStorage.setItem(draftKey,JSON.stringify({version:1,text:draft.text,inputSource:draft.inputSource}));else sessionStorage.removeItem(draftKey)}catch{}},[draft,draftKey])
  useEffect(()=>{if(captureError){generation.current++;cancel.current?.();cancel.current=null;setCapturing(false)}},[captureError])
  const setText=useCallback((text:string,source?:Source)=>setDraft(old=>({key:draftKey,text,inputSource:source??(old.key===draftKey?old.inputSource:'text'),hydrated:true})),[draftKey])
  const toggleCapture=useCallback(()=>{

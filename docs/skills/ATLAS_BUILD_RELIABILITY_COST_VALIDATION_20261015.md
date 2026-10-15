@@ -4,6 +4,7 @@ The failed Lumvy run returned 6,000 output tokens, exactly the factory builder l
 
 This change:
 - Gives factory v2 builders a 12,000-token output allowance. A migration upgrades only the exact, unchanged v1 name/model/prompt/skills/config/provenance with a project-builder binding. Custom caps, prompts and extra config fields are preserved. Project budgets and approval decisions are not modified.
+- Canonicalizes an approved home page alias to index.html, rewriting only its valid internal page links, while retaining a distinct home page when index already exists. The actual approved Lumvy plan uses home; this closes a second concrete plan/output contract mismatch without rewriting the approved plan.
 - Accepts one shared stylesheet in a static package, with optional page-specific overrides. Existing page-only packages retain their compiled output. Markup validation, preview CSP, artifact bounds and hashing remain enforced.
 - Preserves Anthropic/OpenAI termination reasons and all Anthropic text blocks. The worker rechecks run authority and then rejects a truncated response as permanent MODEL_OUTPUT_TRUNCATED, without a second paid dispatch or an incomplete preview commit.
 - Uses a dedicated Studio system prompt and the existing Studio tool allowlist. Full chat history, authenticated project binding, visible plan and viewed build references remain. Global executive snapshots and action/tool memory are omitted in this scoped workspace; ordinary Atlas paths are unchanged.
@@ -18,7 +19,7 @@ Cost boundaries:
 
 Verification:
 - RED: shared CSS ignored/rejected; runner termination missing; a provider-marked truncated package was incorrectly committed; new factory allowance expected 12,000 but returned 6,000.
-- 153 DB-free assertions in 10 files pass, including real POST route behavior, transcript continuity, global-path invariance, cost authorization, artifact validation and governed provider boundaries.
+- 181 DB-free assertions in 11 files pass, including real POST route behavior, transcript continuity, global-path invariance, cost authorization, artifact validation and governed provider boundaries.
 - Real PostgreSQL complement: 16 worker + 7 Studio store + 2 exact-factory migration assertions pass. The owned local DB is website_test_1792066644371 in the labeled atlas-live-build container; no production SQL fixture was used.
 - Standalone workspace typecheck passed. Chromium: all 10 workspace cases pass with zero retries and the existing 30-second per-test limit. The original monolithic voice case hit the cumulative 30-second limit on this branch; a separate exact-base474bbdd replay failed earlier because a fixture commit raced persisted chat feedback. The test now waits for actual feedback/control receipts and separates voice and control scenarios; no product timeout changed.
 - The full repository suite was not rerun for this bounded patch; its previously documented Windows baseline remains red. This is not a whole-suite green claim.

@@ -128,3 +128,23 @@ describe('compact multi-page packages', () => {
     expect(()=>compileWebsiteArtifact({...draft('<script>alert(1)</script>'),css:''})).toThrow(WebsiteArtifactError)
   })
 })
+
+describe('approved home page aliases',()=>{
+ it('exports a plan named home as index and rewrites only its internal page links',async()=>{
+  const input=draft('<h1 id="top">Lumvy</h1><a href="about.html">Om oss</a>')
+  input.pages[0].key='home'
+  input.pages[1].bodyHtml='<h1>Om oss</h1><a href="home.html#top">Hem</a>'
+  const artifact=compileWebsiteArtifact(input)
+  expect(artifact.pages.map(p=>p.key)).toEqual(['index','about'])
+  expect(artifact.pages[1].html).toContain('href="index.html#top"')
+  const zip=await JSZip.loadAsync(await exportWebsiteZip(artifact))
+  expect(await zip.file('index.html')!.async('string')).toContain('Lumvy')
+ })
+ it('keeps home as a distinct page when the package already has index',()=>{
+  const input=draft()
+  input.pages.push({key:'home',title:'Extra sida',bodyHtml:'<a href="home.html">Extra</a>',css:'',behaviors:[]})
+  const artifact=compileWebsiteArtifact(input)
+  expect(artifact.pages.map(p=>p.key)).toEqual(['index','about','home'])
+  expect(artifact.pages[2].html).toContain('href="home.html"')
+ })
+})

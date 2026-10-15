@@ -24,7 +24,7 @@ type Node = DefaultTreeAdapterMap['node']
 type Element = DefaultTreeAdapterMap['element']
 function isElement(node: Node): node is Element { return 'tagName' in node }
 
-function validateMarkup(html: string, pageKeys: Set<string>): { html: string; ids: Set<string>; forms: boolean } {
+function validateMarkup(html: string, pageKeys: Set<string>, homeAlias = false): { html: string; ids: Set<string>; forms: boolean } {
   const fragment = parseFragment(html)
   const ids = new Set<string>()
   const anchorTargets: string[] = []
@@ -43,6 +43,7 @@ function validateMarkup(html: string, pageKeys: Set<string>): { html: string; id
         }
         if (attr.name === 'href') {
           if (node.tagName !== 'a') fail('INVALID_LINK')
+          if(homeAlias && /^home\.html(?:#[A-Za-z][A-Za-z0-9_-]{0,79})?$/.test(attr.value))attr.value='index.html'+attr.value.slice('home.html'.length)
           if (attr.value.startsWith('#') && SAFE_ID.test(attr.value.slice(1))) anchorTargets.push(attr.value.slice(1))
           else {
             const match = attr.value.match(/^([a-z][a-z0-9-]{0,49})\.html(?:#([A-Za-z][A-Za-z0-9_-]{0,79}))?$/)
@@ -97,20 +98,22 @@ export function compileWebsiteArtifact(input: unknown): WebsiteArtifact {
   if (!title.trim() || !Array.isArray(draft.pages) || !draft.pages.length || draft.pages.length > WEBSITE_BUILD_LIMITS.pages) fail('INVALID_PAGES')
   const sharedCss = draft.css === undefined ? '' : text(draft.css)
   const rawPages = draft.pages.map(record)
-  const keys = rawPages.map(p => text(p.key, 50))
+  // Plans may call their start page home; static exports always need index.html.
+  const homeAlias = !rawPages.some(p=>p.key==='index') && rawPages.some(p=>p.key==='home')
+  const keys = rawPages.map(p => {const key=text(p.key,50);return homeAlias&&key==='home'?'index':key})
   if (keys.some(k => !SAFE_KEY.test(k)) || new Set(keys).size !== keys.length || !keys.includes('index')) fail('INVALID_PAGE_KEY')
   const pageKeys = new Set(keys)
   let forms = false
   const scriptHash = createHash('sha256').update(WEBSITE_RUNTIME).digest('base64')
-  const pages = rawPages.map(page => {
+  const pages = rawPages.map((page,index) => {
     const pageTitle = text(page.title, 200)
-    const markup = validateMarkup(text(page.bodyHtml), pageKeys)
+    const markup = validateMarkup(text(page.bodyHtml), pageKeys, homeAlias)
     forms ||= markup.forms
     const behaviors = validateBehaviors(page.behaviors, markup.ids)
     const css = ((sharedCss ? sharedCss + '\n' : '') + (page.css === undefined && draft.css !== undefined ? '' : text(page.css))).replace(/</g, '\\3c ')
     const config = scriptJson({ behaviors, pages: keys })
     const html = `<!doctype html><html lang="sv"><head><meta http-equiv="Content-Security-Policy" content="${escapeHtml(websiteCsp(`'sha256-${scriptHash}'`))}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(pageTitle || title)}</title><style>*,*::before,*::after{box-sizing:border-box}body{margin:0}[hidden]{display:none!important}img{max-width:100%;height:auto}${css}</style></head><body>${markup.html}<script type="application/json" id="__atlas_config">${config}</script><script id="__atlas_runtime">${WEBSITE_RUNTIME}</script></body></html>`
-    return { key: text(page.key), title: pageTitle, html }
+    return { key: keys[index], title: pageTitle, html }
   })
   const payload = { format: 'static-website.v1' as const, pages, files: [...pages.map(p => ({ path: `${p.key}.html`, content: p.html })), { path: 'website.js', content: WEBSITE_RUNTIME }], integrationNeeds: forms ? ['form_delivery'] : [] }
   const artifact = { ...payload, sha256: artifactHash(payload) }

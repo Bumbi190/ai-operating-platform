@@ -232,3 +232,22 @@ it('does not retain a draft after losing the claim during the paid call',async()
  expect(testSql("select count(*) from run_logs where run_id='"+run.id+"' and content like '%website.rejected-draft.v1%';")).toBe('0')
  expect((await view(s)).revisions).toHaveLength(0);expect(provider).toHaveBeenCalledTimes(1)
 },30000)
+
+it.each(['stop','cancel','fence'])('preserves rejection finalization after compilation begins: %s',async reason=>{
+ const s=await session(),run=await claim(s),bad=draft();bad.pages[0].bodyHtml='<a href="https://bad.example">Extern</a>'
+ const content=JSON.stringify(bad);let changed=false
+ provider.mockResolvedValueOnce({...response(bad),get content(){
+  if(!changed){changed=true
+   if(reason==='stop')testSql('update platform_config set automation_paused=true;')
+   if(reason==='cancel')testSql("select request_run_cancel('"+run.id+"','"+TEST_PROJECT+"',null,'test cancel');")
+   if(reason==='fence')testSql("update runs set claim_id=gen_random_uuid() where id='"+run.id+"';")
+  }
+  return content
+ }})
+ const task=executeWebsiteBuildRun(db,run,run.claim_id!)
+ if(reason==='stop')await expect(task).rejects.toMatchObject({code:'INVALID_LINK'})
+ else await expect(task).rejects.toThrow(reason==='cancel'?/^cancelled:/:/^fenced:/)
+ expect(testSql("select status from runs where id='"+run.id+"';")).toBe(reason==='cancel'?'cancelled':'running')
+ expect(testSql("select count(*) from run_logs where run_id='"+run.id+"' and content like '%website.rejected-draft.v1%';")).toBe(reason==='stop'?'1':'0')
+ expect(provider).toHaveBeenCalledTimes(1);expect((await view(s)).revisions).toHaveLength(0)
+},30000)

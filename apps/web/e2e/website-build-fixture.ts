@@ -32,7 +32,7 @@ export async function step(sessionId: string, action: string) {
     await setBuildStage(db, w, 'building'); return snapshot(sessionId)
   }
   const run = JSON.parse(testSql(`select to_jsonb(r) from runs r where id='${w.runId}';`))
-  setFixtureTemplate(action === 'tabs' ? 'tabs' : action === 'forms' ? 'forms' : 'default')
+  setFixtureTemplate(action === 'tabs' ? 'tabs' : action === 'forms' ? 'forms' : action === 'anchors' ? 'anchors' : 'default')
   try { await executeWebsiteBuildRun(db, run, w.claimId) } finally { setFixtureTemplate('default') }
   testSql(`update runs set status='done' where id='${w.runId}';`)
   return snapshot(sessionId)

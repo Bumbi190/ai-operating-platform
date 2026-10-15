@@ -6,7 +6,7 @@ import { atlasModelPolicy } from '@/lib/ai/atlas-model-policy'
 import { isAnthropicModel, isImageModel, isOpenAIModel } from '@/lib/ai/models'
 import { fencedError } from '@/lib/ai/fencing'
 import { cancelledError } from '@/lib/ai/cancel'
-import { checkpointClaimedRun, settleRefusal, RunCheckpointRefusedError, RunLifecycleWriteError } from '@/lib/governance/run-execution-checkpoint'
+import { checkOwnedFinalization, checkpointClaimedRun, settleRefusal, RunCheckpointRefusedError, RunLifecycleWriteError } from '@/lib/governance/run-execution-checkpoint'
 import { projectScope } from '@/lib/governance/execution-stop'
 import { composeAgentDesignSkills } from '@/lib/skills/compose-agent-skills'
 import { compileWebsiteArtifact, WebsiteArtifactError } from './artifact'
@@ -75,7 +75,16 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
       try { artifact = compileWebsiteArtifact(parseWebsiteModelJson(result.content)) }
       catch (error) {
         if (error instanceof WebsiteArtifactError || error instanceof WebsiteBuildPermanentError) {
-          await gate('website:rejected-draft')
+          // This response already failed permanently. Finalization checks claim
+          // and cancellation without letting a later governance stop requeue it.
+          const finalization = await checkOwnedFinalization(db, run.id, claimId)
+          if (finalization === 'FENCED') throw fencedError(run.id)
+          if (finalization === 'CANCELLED') {
+            const settled = await settleRefusal(db, 'CANCELLED', run.id, claimId)
+            if (settled === 'ERROR') throw new RunLifecycleWriteError(run.id, 'website:rejected-draft', 'cancellation finalization failed')
+            if (settled === 'FENCED') throw fencedError(run.id)
+            throw cancelledError(run.id)
+          }
           // Failure evidence is a system log, never a successful assistant
           // checkpoint, trusted artifact or new paid generation.
           try {

@@ -1,7 +1,7 @@
 import { createAdminClient } from './website-build-fixture-db'
 import { testSql } from '../lib/website-build/test-db'
 import { loadBuildSnapshot } from '../lib/website-build/store'
-let template: 'default' | 'tabs' | 'forms' = 'default'
+let template: 'default' | 'tabs' | 'forms' | 'anchors' = 'default'
 export function setFixtureTemplate(value: typeof template) { template = value }
 export async function runStep(input: { runId: string; cost: { operation: string } }) {
   if (!/^[0-9a-f-]{36}$/.test(input.runId)) throw Error('Invalid fixture run')
@@ -16,5 +16,6 @@ export async function runStep(input: { runId: string; cost: { operation: string 
     { kind: 'tabs', triggerId: 'a1', targetIds: ['pa1'], groupId: 'a' }, { kind: 'tabs', triggerId: 'a2', targetIds: ['pa2'], groupId: 'a' }, { kind: 'tabs', triggerId: 'b1', targetIds: ['pb1'], groupId: 'b' }, { kind: 'tabs', triggerId: 'b2', targetIds: ['pb2'], groupId: 'b' },
   ] }]
   if ('pages' in content && template === 'forms') content.pages = [{ key: 'index', title: 'Kontaktformulär', bodyHtml: '<form><input type="text" name="name"><button>Skicka</button></form>', css: '[role=note]{display:none}', behaviors: [] }]
+  if ('pages' in content && template === 'anchors') content.pages = [{ key: 'index', title: 'Sektionslänkar', bodyHtml: '<a href="#lower">Till sektionen</a><div style="height:1800px"></div><h2 id="lower">Nedre sektionen</h2><a href="#">Till toppen</a>', css: 'body{padding:20px}', behaviors: [] }]
   return { content: JSON.stringify(content), tokensIn: 0, tokensOut: 0, durationMs: 1, authorityRefreshRequired: false }
 }

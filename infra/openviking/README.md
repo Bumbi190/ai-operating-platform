@@ -1,6 +1,6 @@
 # Local OpenViking pilot
 
-Real **vectors-only and semantic-and-vectors** probes passed on 2026-10-15. Production remains OFF. The owner selected local testing first; the separate Atlas preview now uses the first owner-approved internal Obsidian note and the existing login. The original probes used synthetic fixtures.
+Real **vectors-only and semantic-and-vectors** probes passed on 2026-10-15. Production remains OFF. The owner selected local testing first; the separate Atlas preview now uses five owner-approved internal Obsidian notes and the existing login. The original probes used synthetic fixtures.
 
 ## Measured result
 
@@ -98,7 +98,7 @@ The existing Vitest server-only alias supplies the Next module environment. Plai
 
 Before the owner's note approval, the real vault was clean at `a2a9ae4`, with six tracked Markdown files and no eligible approved project notes. The owner-approved publication below adds exactly one new project note on its own vault branch; existing platform notes were not relabeled and private M4 content was not exported. The canonical registry was read without modification and its mapping saved privately.
 
-The local endpoint cannot serve the hosted production application. Before production activation, select the production host/private-network route and evaluate relevance on representative owner-approved project knowledge. Exactly one owner-approved vault note has been imported into the local pilot; production environments, migrations and merges are unchanged.
+The local endpoint cannot serve the hosted production application. Before production activation, select the production host/private-network route and evaluate relevance on representative owner-approved project knowledge. Five owner-approved vault notes have been imported into the local pilot; production environments, migrations and merges are unchanged.
 
 Sources: release-matched OpenViking configuration/authentication and Ollama OpenAI-compatibility documentation; [official Qwen3 instruct model](https://ollama.com/library/qwen3:4b-instruct) and the [upstream thinking-control issue](https://github.com/ollama/ollama/issues/12022).
 
@@ -108,7 +108,7 @@ The private preview is an archive of reviewed branch commit a0f3c9a with its own
 
 Start the desktop shortcut **Atlas minnestest**, then open http://127.0.0.1:3015/projects/omnira-selftest on the stationary PC. The guarded launcher waits for health and warms the current publication. Cold startup may take about a minute. The query budget remains 1.2 seconds and the manual test window is 30 minutes.
 
-The active publication now contains the owner-approved internal note **Lokal minnespilot för omnira-selftest**, from the actual vault at commit c1980d4. It replaces the old synthetic control-code publication. The old artifact/index remain privately available for rollback, but their text is excluded by the active snapshot.
+The active publication now contains five owner-approved internal notes from actual vault commit b6b7c84, including **Lokal minnespilot för omnira-selftest** and four specialized notes approved at 14:43 Europe/Stockholm. Its snapshot prefix is e320719d. Prior one-note and synthetic artifacts/indexes remain privately available for rollback, but current prompts use only the active publication.
 
 1. Start a **new Atlas conversation** while viewing omnira-selftest.
 2. Ask: **Hur startar jag minnespiloten, hur länge kör testpasset och vilken temperaturgräns gäller? Ange källan.**
@@ -155,8 +155,14 @@ The guarded session reached **74 C**, below the 80 C stop threshold. Both GPU se
 
 Receipt: [validation-approved-note-20261015.json](./validation-approved-note-20261015.json). The vault commit and normalized source hash are recorded without credentials or private M4 data.
 
-## Relevance diagnostic and proposed next corpus
+## Relevance diagnostic and approved five-source corpus
 
-The existing lexical vault provider and OpenViking were measured over the same approved note on 2026-10-15: both found it for 8/8 answerable questions and returned it for 4/4 unanswerable questions, each repeated three times. Median measured retrieval was 8 ms versus 41 ms. This is a completed diagnostic, not a passed relevance gate or an answer-quality comparison. No retrieval threshold or runtime behavior was tuned from it.
+The owner approved the four concrete sources at 14:43 Europe/Stockholm. The actual vault now has five approved internal sources on its dedicated branch at b6b7c84; main remains unchanged. Snapshot e320719db950c432e2f85f49d3ec2a5079790ebc944937285e1c33fbdaf04de2 completed vectors-only indexing and is selected only by the local preview. Repository source-record bytes match the committed vault notes. Automatic L0/L1 was temporarily disabled for synchronization, then the original semantic configuration was restored.
 
-Four short draft source descriptions are prepared in the integration worktree for a subsequent five-source local test. They are not in the actual vault or active publication and require the owner's explicit editorial approval. See [method, results and concrete proposed notes](../../docs/runbooks/atlas-openviking-relevance.md), [measured receipt](./validation-relevance-20261015.json) and [draft validation](./validation-next-corpus-20261015.json). Production remains OFF.
+The five-source diagnostic locked twenty answerable and four unanswerable questions before indexing, with three repetitions per method. Accepted first source: existing lexical provider **16/20**, OpenViking **11/20**. An accepted source was present somewhere in results for **20/20** with both methods. Both also returned sources for **4/4** unanswerable questions. Median measured retrieval was **12 ms / 36 ms**, p95 **16 ms / 83 ms**. **The relevance gate did not pass; production enablement is not recommended.** No runtime ranking, threshold, model or deadline was tuned to this set.
+
+All twenty actual Atlas prompt checks passed original-source/current-provenance and text-budget checks. Denied membership, another project, missing identity, off/shadow injection, unavailable service and empty publication returned no knowledge. The previous snapshot remained separately searchable but was absent from current prompts; login returned 200 and unauthenticated chat 401.
+
+The guarded publication session reached **38 C** and stopped its two GPU services after validation. The desktop shortcut starts a separate guarded manual session. A five-source authenticated UI answer has not yet been observed. In a new local conversation ask: **Vad skiljer M4-minnen från kunskapen i Obsidian, och kan en anteckning godkänna åtgärder eller ändra budgeten? Ange källan.** Expect the memory-layers source and snapshot prefix e320719d.
+
+See [method, results and approved source records](../../docs/runbooks/atlas-openviking-relevance.md), [publication receipt](./publication-five-source-20261015.json) and [all measured results](./validation-five-source-20261015.json). The prior one-source comparison and draft-eligibility receipts remain historical evidence. These pilot descriptions and authored questions are not a blind benchmark or evidence of general improvement. Production remains OFF.

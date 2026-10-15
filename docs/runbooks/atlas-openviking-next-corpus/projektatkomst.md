@@ -1,6 +1,6 @@
 ---
 type: project
-status: draft
+status: approved
 classification: internal
 scope: project
 project: omnira-selftest

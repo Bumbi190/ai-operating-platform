@@ -13,6 +13,7 @@ import {StudioLayout} from './StudioLayout'
 import {StudioLifecycleActions} from './StudioLifecycleActions'
 import {StudioBudgetForm} from './StudioBudgetForm'
 import {StudioCostControl} from './StudioCostControl'
+import {StudioSettings} from './StudioSettings'
 import styles from './AtlasBuilderStudio.module.css'
 type Filter='active'|'archived'|'trashed'
 type InitialTurn={token:string;text:string;inputSource:'text'|'voice'}
@@ -84,9 +85,30 @@ export function AtlasBuilderStudio({model}:{model:StudioView}){
   </div>
   <AtlasConversationComposer variant="studio" value={draft.text} onChange={draft.setText} onSend={()=>void start()} disabled={busy||loading||readOnly||view.state!=='ok'||!selected&&!view.canCreateProject} pending={busy} capturing={draft.capturing} onVoice={draft.toggleCapture} onStopSpeech={()=>atlas?.stopAudio()} inputSource={draft.inputSource} captureAvailable={!!atlas} captureError={atlas?.captureError}/>
  </div>
- return <section className={styles.studio} aria-label="Bygg med Atlas"><header className={styles.header}><div className={styles.headerTitle}><h1>Bygg med Atlas</h1><p>{selected?selected.name:'Från idé till färdig hemsida'}</p></div><label>Visa <select aria-label="Projektlista" value={view.include??'active'} onChange={e=>void open({},e.target.value as Filter)}><option value="active">Aktiva projekt</option><option value="archived">Arkiverade projekt</option><option value="trashed">Papperskorgen</option></select></label><StudioProjectPicker projects={view.projects} selected={selected} onChange={id=>{const p=view.projects.find(p=>p.id===id)??(selected?.id===id?selected:null);void open(p?{projectSlug:p.slug}:{})}}/><div className={styles.headerActions}><button type="button" onClick={reload}>Uppdatera</button>{selected&&<StudioCostControl key={selected.id} projectId={selected.id} projectSlug={selected.slug} paused={selected.lifecycle.executionPaused} onPauseChange={paused=>rememberPause(selected.id,paused)}/>}</div></header>
+ return <section className={styles.studio} aria-label="Bygg med Atlas">
+  <header className={styles.header}>
+   <div className={styles.headerTitle}><h1>Bygg med Atlas</h1><p title={selected?.name}>{selected?selected.name:'Från idé till färdig hemsida'}</p></div>
+   <StudioProjectPicker projects={view.projects} selected={selected} onChange={id=>{const p=view.projects.find(p=>p.id===id)??(selected?.id===id?selected:null);void open(p?{projectSlug:p.slug}:{})}}/>
+   <div className={styles.headerActions}>
+    <div className={styles.headerActionButtons}>
+     <StudioSettings key={selected?.id??'new'}>
+      <label>Visa <select aria-label="Projektlista" value={view.include??'active'} onChange={e=>void open({},e.target.value as Filter)}><option value="active">Aktiva projekt</option><option value="archived">Arkiverade projekt</option><option value="trashed">Papperskorgen</option></select></label>
+      {selected&&<div className={styles.setup}>
+       <StudioLifecycleActions key={selected.id} project={selected} onChanged={state=>{if(current.current.selected?.id===selected.id)void open({projectSlug:selected.slug,conversationId:current.current.conversation?.id},state)}}/>
+       {selected.lifecycle.state==='active'?(selected.budget.state==='configured'&&<StudioBudgetForm key={selected.id} project={selected} onSaved={()=>{if(current.current.selected?.id===selected.id)reload()}}/>):<p>Projektet är {selected.lifecycle.state==='archived'?'arkiverat':'i papperskorgen'}. Historiken finns kvar.</p>}
+       {selected.lifecycle.executionPaused&&<p>Projektet är pausat. <a href={'/projects/'+encodeURIComponent(selected.slug)}>Öppna projektets kontroller</a>.</p>}
+       {!selected.builderAgentId&&<p>Välj projektets byggagent i <a href={'/settings/website-build#project-'+selected.id}>bygginställningarna</a> innan bygget startas.</p>}
+       <a href={'/settings/website-build#project-'+selected.id}>Projektmapp och anslutningar</a>
+       {selected.workspaceRequest&&<p>Begärd mapp: {selected.workspaceRequest.root.root} · väntar på datoranslutning.</p>}
+      </div>}
+     </StudioSettings>
+     <button type="button" onClick={reload}>Uppdatera</button>
+    </div>
+    {selected&&<StudioCostControl key={selected.id} projectId={selected.id} projectSlug={selected.slug} paused={selected.lifecycle.executionPaused} onPauseChange={paused=>rememberPause(selected.id,paused)}/>}
+   </div>
+  </header>
   {error&&<p role="alert" className={styles.error}>{error}</p>}{loading&&<p role="status" className={styles.status}>Läser projektet…</p>}
-  {selected&&<div className={styles.setup}><StudioLifecycleActions key={selected.id} project={selected} onChanged={state=>{if(current.current.selected?.id===selected.id)void open({projectSlug:selected.slug,conversationId:current.current.conversation?.id},state)}}/>{selected.lifecycle.state==='active'?<StudioBudgetForm key={selected.id} project={selected} onSaved={()=>{if(current.current.selected?.id===selected.id)reload()}}/>:<p>Projektet är {selected.lifecycle.state==='archived'?'arkiverat':'i papperskorgen'}. Historiken finns kvar.</p>}{selected.lifecycle.executionPaused&&<p>Projektet är pausat. <a href={'/projects/'+encodeURIComponent(selected.slug)}>Öppna projektets kontroller</a>.</p>}{!selected.builderAgentId&&<p>Välj projektets byggagent i <a href={'/settings/website-build#project-'+selected.id}>bygginställningarna</a> innan bygget startas.</p>}<a href={'/settings/website-build#project-'+selected.id}>Projektmapp och anslutningar</a>{selected.workspaceRequest&&<p>Begärd mapp: {selected.workspaceRequest.root.root} · väntar på datoranslutning.</p>}</div>}
+  {selected&&selected.lifecycle.state==='active'&&selected.budget.state!=='configured'&&<div className={styles.budgetPrompt}><StudioBudgetForm key={selected.id} project={selected} onSaved={()=>{if(current.current.selected?.id===selected.id)reload()}}/></div>}
   {view.conversation?<AtlasBuildSurface key={view.conversation.id} mode="studio" conversationModel={view.conversation} plan={view.plan} initialSession={view.session} workspaceReadable={view.state==='ok'} brief={view.conversation.website?.brief??undefined} studioProject={selected} readOnly={readOnly||loading} canSend={canSend} initialTurn={initialTurn}/>:<StudioLayout chat={draftChat} website={<StudioEmptyPreview/>} desktop={<section><h2>Atlas skrivbord</h2><p>Skrivbordet visas här när en verifierad datoranslutning finns.</p><a href="/settings/website-build">Visa mappinställningar</a></section>} files={<section><h2>Projektets filer</h2><p>Välj projekt eller beskriv en ny hemsida. Projektets material samlas här när det har sparats.</p></section>} tasks={<section><h2>Atlas arbetssteg</h2><p>Börja med en plan i chatten. Här visas sedan byggets verkliga status.</p></section>}/>}
  </section>
 }

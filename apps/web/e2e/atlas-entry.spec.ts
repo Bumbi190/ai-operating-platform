@@ -33,11 +33,11 @@ await page.getByRole('button',{name:'Starta röstläge',exact:true}).click()
 await expect(page.getByRole('alert')).toContainText(/skriva|text/i)
 await expect(page.getByLabel('Meddelande till Atlas')).toBeEnabled()
 })
-test('the owner can find a project-bound website entry directly on Atlas', async ({ page }) => {
+test('the owner can find one website entry without a project list directly on Atlas', async ({ page }) => {
 await page.goto('/')
 const entry=page.getByRole('navigation',{name:'Bygg hemsida med Atlas'})
 await expect(entry).toBeVisible()
-await expect(entry.getByRole('link',{name:'Testprojekt'})).toHaveAttribute('href','/projects/test-project/build')
+await expect(entry.getByRole('link',{name:'Bygg med Atlas'})).toHaveAttribute('href','/build')
 })
 test('collaborator has no website-start entry or enabled microphone', async ({ page }) => {
 await page.goto('/?role=collaborator')
@@ -67,7 +67,7 @@ const entry=page.getByRole('navigation',{name:'Bygg hemsida med Atlas'})
 await expect(entry).toBeVisible()
 const header=await page.locator('header').boundingBox(), nav=await entry.boundingBox()
 expect(nav!.y).toBeGreaterThanOrEqual(header!.y + header!.height)
-await expect(entry.getByRole('link',{name:'Testprojekt'})).toBeVisible()
+await expect(entry.getByRole('link',{name:'Bygg med Atlas'})).toBeVisible()
 })
 
 test('cancelling a pending native start allows a fresh microphone request', async ({ page }) => {

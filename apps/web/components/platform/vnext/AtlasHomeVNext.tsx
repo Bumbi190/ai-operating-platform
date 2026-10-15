@@ -26,12 +26,9 @@ export function AtlasHomeVNext({ model, collaboratorReadOnly = false }: { model:
       <AtlasStarfield className={styles.backdropStars} />
       <div className={styles.backdropVignette} aria-hidden="true" />
       <AtlasMobileNav />
-      {!collaboratorReadOnly && model.availability.projects && model.projects.length > 0 && (
+      {!collaboratorReadOnly && model.availability.projects && (
         <nav className={styles.buildLinks} aria-label="Bygg hemsida med Atlas">
-          <span>Bygg hemsida</span>
-          {model.projects.map(project => (
-            <a key={project.id} href={'/projects/' + encodeURIComponent(project.slug) + '/build'}>{project.name}</a>
-          ))}
+          <a href="/build">Bygg med Atlas</a>
         </nav>
       )}
       <div className={styles.stageFrame}>

@@ -51,7 +51,7 @@ Additional tests cover nested processing failures in completed task reports, exa
 
 ## Isolation and activation
 
-The original Omnira checkout stayed on `feat/phase3b1b-atomic-bind-provenance` with its original nine pending paths. Only this feature branch was pushed. Main remained at the base above. No merge, schema migration, production environment change or private vault import was performed.
+This task did not edit the original Omnira checkout; its branch and nine pre-existing pending paths were preserved when checked. Only the feature branch was pushed. No merge or push to main was performed. Main advanced independently after the recorded baseline; those later changes were not incorporated into this branch or its validation. No schema migration, production environment change or private vault import was performed.
 
 Before activation, configure the private OpenViking service and its model providers, obtain the canonical pilot project mapping, prepare and review the approved corpus, synchronize it to completed readiness, and evaluate shadow retrieval. Real embedding relevance, production connectivity and production memory volumes remain unverified.
 

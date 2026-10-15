@@ -19,7 +19,7 @@ export function HandlarborsenCompetitorHistory({ history, historyEnabled = false
         <p className={styles.explainer}>
           {historyEnabled
             ? 'Historik är aktiverad men kunde inte hämtas eller verifieras. Inga mätvärden visas.'
-            : 'Källkontrollen fungerar, men inga observationer lagras ännu. Historik och förändringsgrafer visas först när en separat granskad databasanslutning har aktiverats.'}
+            : 'Historik är avstängd i den här miljön. Tidigare sparade observationer raderas inte och visas när läsningen aktiveras. Inga påhittade värden visas.'}
         </p>
       </section>
     )

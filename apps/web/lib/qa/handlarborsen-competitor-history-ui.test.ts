@@ -18,7 +18,7 @@ describe('competitor history visualization respects source and activation gate',
   it('shows truthful off state instead of fake chart before storage activation', () => {
     const html = render(null)
     expect(html).toContain('Inväntar lagring')
-    expect(html).toContain('inga observationer lagras')
+    expect(html).toContain('Tidigare sparade observationer raderas inte')
     expect(html).not.toContain('role="img"')
   })
   it('renders only the two real observation dates and audit-bound review proposal', () => {

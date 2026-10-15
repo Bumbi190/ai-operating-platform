@@ -18,7 +18,16 @@ export function HandlarborsenSaveCompetitorScan() {
         cache: 'no-store',
       })
       if (!result.ok) {
-        setNotice('Kunde inte spara kontrollen. Ingen sparad observation kan bekräftas.')
+        // The response exposes only safe, fixed status codes. Show the HTTP code
+        // so Preview failures can be diagnosed without collecting session data.
+        const reason = result.status === 400 ? 'Ogiltig begäran'
+          : result.status === 401 ? 'Inloggning krävs'
+          : result.status === 403 ? 'Behörighets- eller ursprungskontroll avvisade begäran'
+          : result.status === 409 ? 'Historiklagringen är avstängd'
+          : result.status === 422 ? 'Underlaget kunde inte valideras'
+          : result.status === 503 ? 'Kontrollen eller lagringen är otillgänglig'
+          : result.status === 504 ? 'Kontrollen tog för lång tid' : 'Okänt serverfel'
+        setNotice(`Kunde inte spara kontrollen (HTTP ${result.status}: ${reason}). Ingen observation kan bekräftas.`)
       } else {
         const body: unknown = await result.json()
         const status = body && typeof body === 'object' && 'status' in body ? body.status : null

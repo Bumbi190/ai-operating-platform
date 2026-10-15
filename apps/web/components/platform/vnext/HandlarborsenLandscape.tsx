@@ -5,6 +5,8 @@ import {
   type LandscapeScan,
   type LandscapeSourceStatus,
 } from '@/lib/atlas/project-analytics/handlarborsen-competitor-landscape'
+import type { HistoryAnalysis } from '@/lib/atlas/project-analytics/handlarborsen-competitor-history-core'
+import { latestSavedCompetitorObservation, savedCompetitorDay } from '@/lib/atlas/project-analytics/handlarborsen-competitor-latest'
 import styles from './HandlarborsenLandscape.module.css'
 
 const statusText: Record<LandscapeSourceStatus, string> = {
@@ -19,7 +21,7 @@ const statusText: Record<LandscapeSourceStatus, string> = {
   fetch_failed: 'Hämtningen misslyckades',
 }
 
-export function HandlarborsenLandscape({ scan }: { scan: LandscapeScan | null }) {
+export function HandlarborsenLandscape({ scan, history = null }: { scan: LandscapeScan | null; history?: HistoryAnalysis | null }) {
   const summary = summarizeLandscape(scan)
   return (
     <section className={styles.section} aria-labelledby="hb-landscape">
@@ -30,7 +32,7 @@ export function HandlarborsenLandscape({ scan }: { scan: LandscapeScan | null })
           <p>Tre ytterligare officiella B2B-källor utöver Handlarbudet. Offentliga beskrivningar granskades {LANDSCAPE_OBSERVED_ON} och kan ha ändrats.</p>
         </div>
         <span className={styles.status} data-scanned={scan ? 'yes' : undefined}>
-          {scan ? summary.checked + '/3 titlar verifierade' : 'Inväntar manuell kontroll'}
+          {scan ? summary.checked + '/3 titlar verifierade' : history?.status === 'ok' && history.observedDays > 0 ? 'Sparad historik finns' : 'Inväntar manuell kontroll'}
         </span>
       </header>
       {scan ? (
@@ -50,14 +52,19 @@ export function HandlarborsenLandscape({ scan }: { scan: LandscapeScan | null })
         </article>
         {COMPETITOR_SITES.map(source => {
           const observation = scan?.observations.find(result => result.id === source.id)
+          const saved = latestSavedCompetitorObservation(history, source.id)
+          const savedDay = saved ? savedCompetitorDay(saved) : null
           return (
             <article className={styles.card} key={source.id}>
               <p className={styles.cardEyebrow}>Officiell B2B-källa · {source.observedOn}</p>
               <h3>{source.name}</h3>
               <p>{source.description}</p>
-              <p className={styles.checked} data-ok={observation?.status === 'metadata_checked' ? 'yes' : undefined}>
-                {observation ? statusText[observation.status] : 'Inte kontrollerad i den här vyn'}
-              </p>
+              {saved && savedDay ? <p className={styles.checked} data-ok={saved.status === 'metadata_checked' ? 'yes' : undefined}>
+                Senast sparad observation: <time dateTime={savedDay.date}>{savedDay.label}</time>. {saved.status === 'metadata_checked' ? 'Sidtitel verifierad.' : 'Källan kunde inte verifieras vid den sparade kontrollen.'}
+              </p> : <p className={styles.checked}>Ingen sparad observation för den här källan.</p>}
+              {observation ? <p className={styles.checked} data-ok={observation.status === 'metadata_checked' ? 'yes' : undefined}>
+                Separat kontroll i denna vy: {statusText[observation.status]}
+              </p> : null}
               {observation?.title ? <p className={styles.sourceTitle}>Titel: {observation.title}</p> : null}
               <a href={source.url} target="_blank" rel="noopener noreferrer">Öppna officiell källa ↗</a>
             </article>

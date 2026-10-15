@@ -102,7 +102,7 @@ async function ask(name = 'list_workflows', input: Record<string, unknown> = {},
   const { POST } = await import('@/app/api/chat/route')
   const res: any = await POST(new Request('http://localhost/api/chat', {
     method: 'POST', headers: { 'content-type': 'application/json', origin:'http://localhost',host:'localhost' },
-    body: JSON.stringify({ messages: [{ role: 'user', content: text }], conversation_id: conversationId, websitePlanRef, studioContext }),
+    body: JSON.stringify({ messages: [{ role: 'user', content: text }], conversation_id: conversationId, inputSource: "text", websitePlanRef, studioContext }),
   }) as any)
   const stream = res?.body ? await new Response(res.body).text() : ''
   await new Promise(r => setTimeout(r, 30))
@@ -157,6 +157,24 @@ describe('Website build through actual authenticated chat tool loop', () => {
     expect(res.status).toBe(200);expect(streamCall).toBe(0);expect(stream).toContain('"event":"website_workspace"');expect(stream).toContain('"event":"done"');
     const retry=await ask('start_website_build',{},c,'jag godkänner',ref);expect(retry.stream).toContain('"event":"website_workspace"');
     expect(testSql("select count(*) from website_build_plan_decisions d join website_build_plans p on p.id=d.plan_id where p.conversation_id='"+c+"';")).toBe('1');
+  },30_000)
+  it('compact approval without a visible reference does not dispatch a build',async()=>{
+    const c=crypto.randomUUID();
+    testSql("insert into conversations(id,user_id,project_id) values('"+c+"','"+TEST_PRINCIPAL.userId+"','"+TEST_PROJECT+"');");
+    await setProjectWebsiteBuilder(REAL_BUILD_DB!,TEST_PRINCIPAL,{projectId:TEST_PROJECT,agentId:TEST_AGENT});
+    const plan:any=await handleWebsitePlanningTool('draft_website_build_plan',{
+      projectId:TEST_PROJECT,expectedRevisionId:null,
+      content:{title:'Webb',purpose:'Visa',audience:'Alla',pages:[{key:'index',title:'Hem',purpose:'Visa'}],
+        design:{style:'Omnira',reference:null},features:[],architecture:'Statisk',steps:['Bygg'],
+        domain:{registrar:'strato',requestedName:null}},idempotencyKey:crypto.randomUUID(),
+    },TEST_PRINCIPAL,c,REAL_BUILD_DB!);
+    expect(plan.currentRevision.revisionId).toBeTruthy();
+    for(const text of ['jag godkänner','starta bygget nu']){
+      const {res}=await ask('start_website_build',{projectId:TEST_PROJECT,agentId:TEST_AGENT,confirm:true},c,text);
+      expect(res.status).toBe(200);
+      expect(testSql("select count(*) from website_build_plan_decisions d join website_build_plans p on p.id=d.plan_id where p.conversation_id='"+c+"';")).toBe('0');
+      expect(testSql("select count(*) from website_build_sessions where conversation_id='"+c+"';")).toBe('0');
+    }
   },30_000)
   it('model-supplied confirmation cannot approve or start',async()=>{
     await ask('start_website_build',{projectId:TEST_PROJECT,agentId:TEST_AGENT,brief:'Bygg',confirm:true},TEST_CONVERSATION);

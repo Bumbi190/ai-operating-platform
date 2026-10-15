@@ -256,3 +256,70 @@ describe("one Atlas conversation controller", () => {
   });
 
 });
+
+describe("compact text entry", () => {
+  it("is quiet and excludes an unseen plan and build context", async () => {
+    const bodies: any[] = [];
+    const c = new AtlasConversationController(async (_url, init) => {
+      bodies.push(JSON.parse(init!.body as string));
+      return events({event:"text",text:"Svar"},{event:"done"});
+    });
+    c.activateConversation({id:C,saved,projectId:P,state:"ok",plan:{ref:{projectId:P,planId:P},currentRevision:{revisionId:P,sha256:"a".repeat(64)}} as any});
+    await c.sendCompactText({text:"jag godkänner",initialProjectId:D});
+    expect(bodies).toHaveLength(1);
+    expect(bodies[0].inputSource).toBe("text");
+    expect(bodies[0]).not.toHaveProperty("voice");
+    expect(bodies[0]).not.toHaveProperty("websitePlanRef");
+    expect(bodies[0]).not.toHaveProperty("buildContext");
+    expect(c.snapshot().projectId).toBe(P);
+  });
+  it("double send during creation creates one conversation and one turn", async () => {
+    let release!: (r:Response)=>void;
+    const calls: string[]=[];
+    const c=new AtlasConversationController(async(url)=>{
+      calls.push(String(url));
+      return String(url)==="/api/conversations" ? new Promise<Response>(r=>release=r) : events({event:"text",text:"Svar"},{event:"done"});
+    });
+    const a=c.sendCompactText({text:"Hej",initialProjectId:P});
+    const b=c.sendCompactText({text:"Hej",initialProjectId:P});
+    release(Response.json({id:C,project_id:P}));
+    await Promise.all([a,b]);
+    expect(calls.filter(x=>x==="/api/conversations")).toHaveLength(1);
+    expect(calls.filter(x=>x==="/api/chat")).toHaveLength(1);
+    expect(c.snapshot().history.map(m=>m.content)).toEqual(["Hej","Svar"]);
+  });
+  it.each(["signout","switch"] as const)("%s invalidates pending creation",async(action)=>{
+    let release!: (r:Response)=>void;
+    const calls: string[]=[];
+    const c=new AtlasConversationController(async(url)=>{
+      calls.push(String(url));return new Promise<Response>(r=>release=r);
+    });
+    const job=c.sendCompactText({text:"Hej",initialProjectId:P});
+    if(action==="signout") c.clearOnSignout();
+    else c.activateConversation({id:D,saved:[],state:"ok",projectId:P});
+    release(Response.json({id:C}));
+    expect((await job).ok).toBe(false);
+    expect(c.snapshot().id).toBe(action==="signout"?null:D);
+    expect(calls).toEqual(["/api/conversations"]);
+  });
+  it.each([new Response("denied",{status:403}),Response.json({}),Response.json({id:""})])("does not send when creation fails",async(response)=>{
+    const calls:string[]=[];
+    const c=new AtlasConversationController(async(url)=>{calls.push(String(url));return response});
+    expect((await c.sendCompactText({text:"Hej",initialProjectId:null})).ok).toBe(false);
+    expect(c.snapshot().id).toBeNull();expect(calls).toEqual(["/api/conversations"]);
+  });
+  it("does not create empty turns and keeps one text voice text history",async()=>{
+    const calls:string[]=[],bodies:any[]=[];
+    const c=new AtlasConversationController(async(url,init)=>{
+      calls.push(String(url));bodies.push(JSON.parse(init!.body as string));
+      return String(url)==="/api/conversations"?Response.json({id:C}):events({event:"text",text:"Svar"},{event:"done"});
+    });
+    await c.sendCompactText({text:"  ",initialProjectId:P});
+    expect(calls).toEqual([]);
+    await c.sendCompactText({text:"Text",initialProjectId:P});
+    await c.sendTurn({conversationId:C,text:"Röst",inputSource:"voice"});
+    await c.sendCompactText({text:"Igen",initialProjectId:D});
+    expect(bodies.at(-1).messages.map((m:any)=>m.content)).toEqual(["Text","Svar","Röst","Svar","Igen"]);
+    expect(c.snapshot().projectId).toBe(P);
+  });
+});

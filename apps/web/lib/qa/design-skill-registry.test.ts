@@ -10,9 +10,10 @@ const fixture = (text = 'A'.repeat(17000)) => ({ version: 1, skills: [{
 }] })
 
 describe('deployable design skill registry', () => {
-  it('lists the eight installed skills with provenance but no execution promise', () => {
+  it('lists nine pinned skills including UI UX Pro Max as knowledge only', () => {
     const skills = listDesignSkills()
-    expect(skills).toHaveLength(8)
+    expect(skills).toHaveLength(9)
+    expect(readDesignSkill({id:'ui-ux-pro-max'}).text).toContain('UI/UX Pro Max')
     expect(skills.find(s => s.id === 'impeccable')?.commit).toMatch(/^[a-f0-9]{40}$/)
     expect(skills.every(s => s.status === 'knowledge_only')).toBe(true)
     expect(readDesignSkill({ id: 'impeccable' }).text).toContain('Impeccable')

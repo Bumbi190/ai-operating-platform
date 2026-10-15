@@ -2,13 +2,13 @@ import { readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve, dirname, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
-const IDS = ['design-taste-frontend','redesign-existing-projects','impeccable','emil-design-eng','animate','review-animations','improve-animations','break-ui']
+const IDS = ['design-taste-frontend','redesign-existing-projects','impeccable','emil-design-eng','animate','review-animations','improve-animations','break-ui','ui-ux-pro-max']
 export function buildDesignBundle(root) {
   const lock = JSON.parse(readFileSync(resolve(root,'docs/skills/design-bundle.lock.json'),'utf8'))
   if (lock.version !== 1 || lock.skills.length !== IDS.length || new Set(lock.skills.map(s=>s.id)).size !== IDS.length) throw Error('Unexpected skill manifest')
   const skills = lock.skills.map(skill => {
     if (!IDS.includes(skill.id) || skill.installedPath !== '.agents/skills/'+skill.id) throw Error('Unregistered skill')
-    if (!/^[a-f0-9]{40}$/.test(skill.commit) || !/^https:\/\/github\.com\/(Leonxlnx\/taste-skill|pbakaus\/impeccable|emilkowalski\/skills)$/.test(skill.source)) throw Error('Invalid provenance')
+    if (!/^[a-f0-9]{40}$/.test(skill.commit) || !/^https:\/\/github\.com\/(Leonxlnx\/taste-skill|pbakaus\/impeccable|emilkowalski\/skills|nextlevelbuilder\/ui-ux-pro-max-skill)$/.test(skill.source)) throw Error('Invalid provenance')
     const base = resolve(root,skill.installedPath), documents = {}
     for (const file of skill.files) {
       const target = resolve(base,file.path)

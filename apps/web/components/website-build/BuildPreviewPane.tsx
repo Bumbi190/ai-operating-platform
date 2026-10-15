@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   buildFetch,
   useBuildSession,
@@ -52,6 +52,8 @@ export function BuildPreviewPane({
   const [error, setError] = useState(""),
     [pageKey, setPageKey] = useState("index"),
     [mobile, setMobile] = useState(false);
+  const [toolsOpen,setToolsOpen]=useState(false);
+  const toolsId=useId();
   const active = useRef(session.activePreviewRevisionId),
     cache = useRef(new Map<string, WebsiteArtifact>());
   useEffect(() => onSession(session), [session, onSession]);
@@ -105,15 +107,17 @@ export function BuildPreviewPane({
       aria-label="Preview"
       hidden={hidden}
     >
-      <p role="status">
-        <strong>{BUILD_STATUS_LABELS[session.status]}</strong> · {session.stage}
-      </p>
-      {!readOnly && (embedded?<details className={styles.previewControls}><summary>Byggkontroller</summary><BuildControls session={session} requestControl={requestControl}/></details>:<BuildControls session={session} requestControl={requestControl}/>)}
+      <div className={styles.previewTopline} data-ready={session.status==='ready'}>
+       <p role="status"><strong>{BUILD_STATUS_LABELS[session.status]}</strong><span className={styles.previewStage}> · {session.stage}</span></p>
+       {embedded&&<button type="button" className={styles.mobilePreviewTools} aria-expanded={toolsOpen} aria-controls={toolsId} onClick={()=>setToolsOpen(v=>!v)}>Verktyg</button>}
+      </div>
       {connection === "reconnecting" && (
         <p role="alert">
           Anslutningen återställs. Senast sparade preview finns kvar.
         </p>
       )}
+      <div id={toolsId} className={styles.previewTools} data-open={toolsOpen}>
+      {!readOnly && (embedded?<details className={styles.previewControls}><summary>Byggkontroller</summary><BuildControls session={session} requestControl={requestControl}/></details>:<BuildControls session={session} requestControl={requestControl}/>)}
       <div className={styles.toolbar}>
         <label>
           Version{" "}
@@ -177,6 +181,7 @@ export function BuildPreviewPane({
           ? " · Hämtar vald version…"
           : ""}
       </p>
+      </div>
       {error && <p role="alert">{error} Senast fungerande preview visas.</p>}
       <div className={styles.canvas}>
         {loaded ? (

@@ -1,3 +1,4 @@
+import {MobileRailToggle} from '../components/platform/os/MobileRailToggle'
 import {PlatformWorkspace} from '../components/platform/os/PlatformWorkspace'
 import {Sidebar} from '../components/platform/Sidebar'
 import {ShellTopBar} from '../components/platform/vnext/ShellTopBar'
@@ -20,6 +21,7 @@ void fetch('/api/website-build/studio'+location.search).then(async r=>{if(!r.ok)
    <AtlasMobileNav/><CommandPaletteHost projects={model.projects}/><Breadcrumbs uiGeneration="vnext" projects={model.projects}/>
    <div data-shell-page><AtlasBuilderStudio model={model}/></div><KeyboardHints uiGeneration="vnext"/>
   </main>
+  <MobileRailToggle uiGeneration="vnext" liveCount={4}><p>Aktivitetsflöde</p></MobileRailToggle>
  </PlatformWorkspace>
 </AtlasRuntimeProvider></AtlasConversationProvider>)).catch(error=>root.render(<p role="alert">{error.message}</p>))
 

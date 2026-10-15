@@ -23,7 +23,7 @@ const PRIMARY_LINKS = vnextNavItemsFor('mobile')
 
 export function AtlasMobileNav() {
   return (
-    <header className={styles.mobileHeader}>
+    <header data-shell-mobile-nav className={styles.mobileHeader}>
       <Link href="/atlas?ui=vnext" className={styles.mobileBrand} aria-label="Omnira Atlas hem">
         <OmniraMark size={28} />
         <span>OMNIRA</span>

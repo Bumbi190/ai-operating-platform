@@ -118,7 +118,7 @@ The active publication now contains the owner-approved internal note **Lokal min
 
 The launcher now warms the title of the currently deployed source and validates its exact indexed leaf. It no longer reports the retired synthetic control code as the expected answer. Localhost is reachable only from this PC. At thermal stop or expiry, the two GPU services stop and Atlas falls back without this evidence; start a new guarded session with the shortcut.
 
-The owner confirmed the earlier synthetic UI retrieval at 12:31 Europe/Stockholm. After this note's 13:46 approval, the automated actual-source/paraphrase/provenance/project/off/authentication probe passed against the restored preview. A new interactive answer for the approved note remains for the owner to observe.
+The owner confirmed the earlier synthetic UI retrieval at 12:31 Europe/Stockholm. After this note's 13:46 approval, the automated actual-source/paraphrase/provenance/project/off/authentication probe passed against the restored preview. At 14:17 Europe/Stockholm, the owner supplied the authenticated local Atlas answer for the approved note: correct shortcut, 30-minute window, 80 C guard, note/canonical paths and snapshot prefix 88113d02. This confirms end-to-end use of this source; it is not a general relevance benchmark.
 
 ## Lifecycle follow-up and Obsidian candidate
 
@@ -154,3 +154,9 @@ Two paraphrased questions produced the approved original text with note path, ca
 The guarded session reached **74 C**, below the 80 C stop threshold. Both GPU services were stopped after validation; start the shortcut for another session. The mixed semantic-load limits above still apply. The code branch's checked-in corpus is unchanged and empty; production remains OFF and no merge was performed.
 
 Receipt: [validation-approved-note-20261015.json](./validation-approved-note-20261015.json). The vault commit and normalized source hash are recorded without credentials or private M4 data.
+
+## Relevance diagnostic and proposed next corpus
+
+The existing lexical vault provider and OpenViking were measured over the same approved note on 2026-10-15: both found it for 8/8 answerable questions and returned it for 4/4 unanswerable questions, each repeated three times. Median measured retrieval was 8 ms versus 41 ms. This is a completed diagnostic, not a passed relevance gate or an answer-quality comparison. No retrieval threshold or runtime behavior was tuned from it.
+
+Four short draft source descriptions are prepared in the integration worktree for a subsequent five-source local test. They are not in the actual vault or active publication and require the owner's explicit editorial approval. See [method, results and concrete proposed notes](../../docs/runbooks/atlas-openviking-relevance.md), [measured receipt](./validation-relevance-20261015.json) and [draft validation](./validation-next-corpus-20261015.json). Production remains OFF.

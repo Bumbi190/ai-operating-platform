@@ -1,0 +1,825 @@
+{
+  "measurement_completed": true,
+  "measured_at": "2026-10-15T12:25:11.977Z",
+  "corpus_documents": 1,
+  "snapshot_id": "88113d0204f2abd58c3ff72d1d3acedd122442329a163a026d0a271aefb99d7c",
+  "vault_commit": "c1980d493be6fd3fa8039340d71dae7da4ef6c0b",
+  "source_path": "60 Memory/omnira-selftest-local-memory-pilot.md",
+  "common_source_set_and_normalized_original_verified": true,
+  "baseline": "existing createVaultKnowledgeProvider / scoreDocument, project filter, limit 8",
+  "candidate": "existing findKnowledge, exact snapshot, limit 8, unchanged 1200 ms deadline",
+  "ordering": "3 repetitions; lexical-first, OpenViking-first, lexical-first for every query",
+  "comparison_scope": "retrieval only; no answer model called; native excerpt limits differ and answer quality is not compared",
+  "predeclared_cases": true,
+  "lexical": {
+    "answerable_queries": 8,
+    "correct_first_hit_all_three_runs": 8,
+    "unanswerable_queries": 4,
+    "returned_source_for_unanswerable_all_three_runs": 4,
+    "unanswerable_returning_any_source_runs": 12,
+    "measured_runs": 36,
+    "median_ms": 8,
+    "p95_ms": 13,
+    "max_ms": 14
+  },
+  "openviking": {
+    "answerable_queries": 8,
+    "correct_first_hit_all_three_runs": 8,
+    "unanswerable_queries": 4,
+    "returned_source_for_unanswerable_all_three_runs": 4,
+    "unanswerable_returning_any_source_runs": 12,
+    "measured_runs": 36,
+    "median_ms": 41,
+    "p95_ms": 368,
+    "max_ms": 471
+  },
+  "results": [
+    {
+      "id": "start",
+      "kind": "answerable",
+      "query": "Hur startar jag minnespiloten?",
+      "expected_path": "60 Memory/omnira-selftest-local-memory-pilot.md",
+      "lexical": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            4.5
+          ],
+          "duration_ms": 8
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            4.5
+          ],
+          "duration_ms": 11
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            4.5
+          ],
+          "duration_ms": 9
+        }
+      ],
+      "openviking": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.668091356754303
+          ],
+          "duration_ms": 471
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.668091356754303
+          ],
+          "duration_ms": 368
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.668091356754303
+          ],
+          "duration_ms": 95
+        }
+      ]
+    },
+    {
+      "id": "duration",
+      "kind": "answerable",
+      "query": "Hur länge kör testpasset?",
+      "expected_path": "60 Memory/omnira-selftest-local-memory-pilot.md",
+      "lexical": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            4.5
+          ],
+          "duration_ms": 9
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            4.5
+          ],
+          "duration_ms": 10
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            4.5
+          ],
+          "duration_ms": 10
+        }
+      ],
+      "openviking": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.6844894289970398
+          ],
+          "duration_ms": 114
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.6844894289970398
+          ],
+          "duration_ms": 156
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.6844894289970398
+          ],
+          "duration_ms": 76
+        }
+      ]
+    },
+    {
+      "id": "thermal",
+      "kind": "answerable",
+      "query": "Vilken temperaturgräns gäller?",
+      "expected_path": "60 Memory/omnira-selftest-local-memory-pilot.md",
+      "lexical": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            4.5
+          ],
+          "duration_ms": 9
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            4.5
+          ],
+          "duration_ms": 7
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            4.5
+          ],
+          "duration_ms": 8
+        }
+      ],
+      "openviking": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.577796459197998
+          ],
+          "duration_ms": 51
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.577796459197998
+          ],
+          "duration_ms": 42
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.577796459197998
+          ],
+          "duration_ms": 28
+        }
+      ]
+    },
+    {
+      "id": "vram",
+      "kind": "answerable",
+      "query": "Vad händer om grafikminnet nästan är fullt?",
+      "expected_path": "60 Memory/omnira-selftest-local-memory-pilot.md",
+      "lexical": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            5.5
+          ],
+          "duration_ms": 9
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            5.5
+          ],
+          "duration_ms": 9
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            5.5
+          ],
+          "duration_ms": 8
+        }
+      ],
+      "openviking": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.6462196111679077
+          ],
+          "duration_ms": 65
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.6462196111679077
+          ],
+          "duration_ms": 30
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.6462196111679077
+          ],
+          "duration_ms": 31
+        }
+      ]
+    },
+    {
+      "id": "monitoring",
+      "kind": "answerable",
+      "query": "Vad händer om temperaturövervakningen försvinner?",
+      "expected_path": "60 Memory/omnira-selftest-local-memory-pilot.md",
+      "lexical": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            4.5
+          ],
+          "duration_ms": 10
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            4.5
+          ],
+          "duration_ms": 13
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            4.5
+          ],
+          "duration_ms": 14
+        }
+      ],
+      "openviking": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.6052866578102112
+          ],
+          "duration_ms": 71
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.6052866578102112
+          ],
+          "duration_ms": 128
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.6052866578102112
+          ],
+          "duration_ms": 30
+        }
+      ]
+    },
+    {
+      "id": "restart",
+      "kind": "answerable",
+      "query": "Tiden har gått ut. Hur öppnar jag ett nytt pass?",
+      "expected_path": "60 Memory/omnira-selftest-local-memory-pilot.md",
+      "lexical": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            7.5
+          ],
+          "duration_ms": 11
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            7.5
+          ],
+          "duration_ms": 9
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            7.5
+          ],
+          "duration_ms": 9
+        }
+      ],
+      "openviking": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.6286216974258423
+          ],
+          "duration_ms": 70
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.6286216974258423
+          ],
+          "duration_ms": 44
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.6286216974258423
+          ],
+          "duration_ms": 25
+        }
+      ]
+    },
+    {
+      "id": "local_address",
+      "kind": "answerable",
+      "query": "Var finns sidan där jag kan prova den lokala kunskapssökningen?",
+      "expected_path": "60 Memory/omnira-selftest-local-memory-pilot.md",
+      "lexical": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            7.5
+          ],
+          "duration_ms": 6
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            7.5
+          ],
+          "duration_ms": 7
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            7.5
+          ],
+          "duration_ms": 6
+        }
+      ],
+      "openviking": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.7237991690635681
+          ],
+          "duration_ms": 55
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.7237991690635681
+          ],
+          "duration_ms": 28
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.7237991690635681
+          ],
+          "duration_ms": 28
+        }
+      ]
+    },
+    {
+      "id": "models",
+      "kind": "answerable",
+      "query": "Vilka modeller används i det lokala minnestestet?",
+      "expected_path": "60 Memory/omnira-selftest-local-memory-pilot.md",
+      "lexical": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            6.5
+          ],
+          "duration_ms": 7
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            6.5
+          ],
+          "duration_ms": 8
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            6.5
+          ],
+          "duration_ms": 6
+        }
+      ],
+      "openviking": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.7354743480682373
+          ],
+          "duration_ms": 43
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.7354743480682373
+          ],
+          "duration_ms": 32
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.7354743480682373
+          ],
+          "duration_ms": 23
+        }
+      ]
+    },
+    {
+      "id": "irrelevant_shipping",
+      "kind": "unanswerable",
+      "query": "Vilket fraktbolag levererar våra paket till kunder?",
+      "expected_path": null,
+      "lexical": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            4.5
+          ],
+          "duration_ms": 6
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            4.5
+          ],
+          "duration_ms": 7
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            4.5
+          ],
+          "duration_ms": 6
+        }
+      ],
+      "openviking": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.5809882879257202
+          ],
+          "duration_ms": 39
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.5809882879257202
+          ],
+          "duration_ms": 26
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.5809882879257202
+          ],
+          "duration_ms": 24
+        }
+      ]
+    },
+    {
+      "id": "irrelevant_school",
+      "kind": "unanswerable",
+      "query": "När börjar förskolans sommarlov?",
+      "expected_path": null,
+      "lexical": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            4.5
+          ],
+          "duration_ms": 7
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            4.5
+          ],
+          "duration_ms": 8
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            4.5
+          ],
+          "duration_ms": 8
+        }
+      ],
+      "openviking": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.5605444312095642
+          ],
+          "duration_ms": 45
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.5605444312095642
+          ],
+          "duration_ms": 36
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.5605444312095642
+          ],
+          "duration_ms": 24
+        }
+      ]
+    },
+    {
+      "id": "missing_password",
+      "kind": "unanswerable",
+      "query": "Vad är lösenordet till min dator?",
+      "expected_path": null,
+      "lexical": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            5.5
+          ],
+          "duration_ms": 8
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            5.5
+          ],
+          "duration_ms": 8
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            5.5
+          ],
+          "duration_ms": 7
+        }
+      ],
+      "openviking": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.6079634428024292
+          ],
+          "duration_ms": 27
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.6079634428024292
+          ],
+          "duration_ms": 21
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.6079634428024292
+          ],
+          "duration_ms": 22
+        }
+      ]
+    },
+    {
+      "id": "missing_production_date",
+      "kind": "unanswerable",
+      "query": "Vilket datum är produktionens minnesfunktion planerad att lanseras?",
+      "expected_path": null,
+      "lexical": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            5.5
+          ],
+          "duration_ms": 7
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            5.5
+          ],
+          "duration_ms": 7
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            5.5
+          ],
+          "duration_ms": 8
+        }
+      ],
+      "openviking": [
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.6448850631713867
+          ],
+          "duration_ms": 41
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.6448850631713867
+          ],
+          "duration_ms": 32
+        },
+        {
+          "paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "scores": [
+            0.6448850631713867
+          ],
+          "duration_ms": 58
+        }
+      ]
+    }
+  ],
+  "guard": {
+    "armed": true,
+    "max_temperature_c": 53,
+    "temperature_limit_c": 80,
+    "stopped": false,
+    "temperature_c": 38,
+    "utilization_percent": 24,
+    "memory_mib": 8431,
+    "sampled_at": "2026-10-15T12:25:11.663493+00:00"
+  },
+  "production_activated": false,
+  "corpus_changed": false,
+  "vault_changed": false,
+  "limitations": [
+    "One source cannot test discrimination among competing documents.",
+    "Queries were authored after reading this source; this is a diagnostic, not a blind relevance benchmark.",
+    "A returned source on an unanswerable query is a retrieval false positive; it does not prove the chat fabricated an answer.",
+    "No paid generation call or production environment change was made."
+  ]
+}

@@ -148,3 +148,32 @@ describe('approved home page aliases',()=>{
   expect(artifact.pages[2].html).toContain('href="home.html"')
  })
 })
+
+describe('canonical internal website links',()=>{
+ it.each([['/','index.html'],['/about','about.html'],['about','about.html'],['/about.html','about.html'],['/about#team','about.html#team']])('maps known internal route %s to the exported page', (href,expected)=>{
+  const artifact=compileWebsiteArtifact(draft('<a href="'+href+'">Länk</a>'))
+  expect(artifact.pages[0].html).toContain('href="'+expected+'"')
+ })
+ it('keeps the empty fragment as a native same-page top link',()=>{
+  expect(compileWebsiteArtifact(draft('<a href="#">Till toppen</a>')).pages[0].html).toContain('href="#"')
+ })
+ it('normalizes home aliases without confusing a distinct home page',()=>{
+  const input=draft('<a href="/home">Hem</a>');input.pages[0].key='home'
+  expect(compileWebsiteArtifact(input).pages[0].html).toContain('href="index.html"')
+  input.pages[0].key='index';input.pages.push({key:'home',title:'Extra',bodyHtml:'<p>Extra</p>',css:'',behaviors:[]})
+  expect(compileWebsiteArtifact(input).pages[0].html).toContain('href="home.html"')
+ })
+ it.each(['//bad.example','/../about','/%2e%2e/about','/about?token=private','mailto:secret@example.com','javascript:alert(1)','/missing','/about/extra','/about\\evil','&#x2f;&#x2f;bad.example'])('still rejects unsafe or unknown target %s',href=>{
+  expect(()=>compileWebsiteArtifact(draft('<a href="'+href+'">Länk</a>'))).toThrow(WebsiteArtifactError)
+ })
+ it('reports the page, anchor position and a safe reason without echoing URL secrets',()=>{
+  try{compileWebsiteArtifact(draft('<a href="about.html">OK</a><a href="https://user:SECRET@example.com/?token=SECRET">Extern</a>'));throw Error('expected validation rejection')}
+  catch(error){
+   expect(error).toBeInstanceOf(WebsiteArtifactError)
+   expect((error as Error).message).toContain('index')
+   expect((error as Error).message).toContain('länk 2')
+   expect((error as Error).message).not.toContain('SECRET')
+   expect((error as WebsiteArtifactError).code).toBe('INVALID_LINK')
+  }
+ })
+})

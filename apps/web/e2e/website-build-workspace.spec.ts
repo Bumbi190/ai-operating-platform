@@ -42,6 +42,8 @@ test('brief to preview, concurrent feedback, history and reload', async ({ page,
   await page.frameLocator('iframe').getByRole('button', { name: 'Meny' }).click()
   await page.frameLocator('iframe').getByRole('link', { name: 'Kontakt' }).click()
   await expect(page.getByLabel('Sida', { exact: true })).toHaveValue('contact')
+  await page.frameLocator('iframe').getByRole('link', { name: 'Hem', exact: true }).click()
+  await expect(page.getByLabel('Sida', { exact: true })).toHaveValue('index')
   await page.screenshot({ path: '../../.superpowers/sdd/2026-10-14-atlas-conversation-build/workspace-desktop.png', fullPage: true })
 })
 test('opaque preview blocks parent access, network, popups and forged navigation', async ({ page, request }) => {
@@ -82,6 +84,8 @@ test('downloaded export runs menu and page navigation from disk', async ({ page,
   const exported = await context.newPage(); await exported.goto(pathToFileURL(resolve(folder,exportRoot,'src','index.html')).href)
   await exported.getByRole('button', { name: 'Meny' }).click(); await expect(exported.getByRole('link', { name: 'Kontakt' })).toBeVisible()
   await exported.getByRole('link', { name: 'Kontakt' }).click(); await expect(exported.getByRole('heading', { name: 'Kontakta caféet' })).toBeVisible()
+  await exported.getByRole('link', { name: 'Hem', exact: true }).click()
+  await expect(exported).toHaveURL(/\/index\.html$/)
 })
 test('broken candidate keeps previous preview', async ({ page, request }) => {
   await page.goto('/'); await expect(page.getByRole('heading', { name: 'Bygg med Atlas' })).toBeVisible()

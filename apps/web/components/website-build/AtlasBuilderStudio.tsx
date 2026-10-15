@@ -1,6 +1,6 @@
 'use client'
-import {useEffect,useRef,useState} from 'react'
-import {Sparkles,Globe2,PanelsTopLeft,ImagePlus,ArrowUpRight} from 'lucide-react'
+import {useEffect,useId,useRef,useState} from 'react'
+import {Sparkles,Globe2,PanelsTopLeft,ImagePlus,ArrowUpRight,ChevronDown} from 'lucide-react'
 import {useAtlasConversation} from '@/lib/atlas/conversation/provider'
 import {useComposerDraft} from '@/lib/atlas/conversation/use-composer-draft'
 import {useOptionalAtlas} from '@/lib/atlas/runtime'
@@ -21,7 +21,8 @@ function urlFor(selection:StudioSelection,include:Filter='active'){const q=new U
 function replaceUrl(selection:StudioSelection,include:Filter='active'){window.history.replaceState(window.history.state,'',urlFor(selection,include))}
 async function getView(selection:StudioSelection,include:Filter='active'):Promise<StudioView>{const r=await fetch('/api/website-build/studio'+urlFor(selection,include).slice('/build'.length),{cache:'no-store'}),value=await r.json().catch(()=>null);if(!r.ok||!value)throw Error(value?.error??'Projektet kunde inte läsas. Uppdatera och försök igen.');return value}
 export function AtlasBuilderStudio({model}:{model:StudioView}){
- const [view,setView]=useState(model),[busy,setBusy]=useState(false),[loading,setLoading]=useState(false),[error,setError]=useState(''),[name,setName]=useState(''),[initialTurn,setInitialTurn]=useState<InitialTurn|null>(null)
+ const [view,setView]=useState(model),[busy,setBusy]=useState(false),[loading,setLoading]=useState(false),[error,setError]=useState(''),[name,setName]=useState(''),[initialTurn,setInitialTurn]=useState<InitialTurn|null>(null),[controlsExpanded,setControlsExpanded]=useState(false)
+ const controlsId=useId()
  const current=useRef(view),generation=useRef(0);current.current=view
  const pauseClock=useRef(0),pauseChanges=useRef(new Map<string,{epoch:number;paused:boolean}>())
  const createIntents=useRef(new Map<string,EnsureStudioInput|null>())
@@ -86,11 +87,12 @@ export function AtlasBuilderStudio({model}:{model:StudioView}){
   <AtlasConversationComposer variant="studio" value={draft.text} onChange={draft.setText} onSend={()=>void start()} disabled={busy||loading||readOnly||view.state!=='ok'||!selected&&!view.canCreateProject} pending={busy} capturing={draft.capturing} onVoice={draft.toggleCapture} onStopSpeech={()=>atlas?.stopAudio()} inputSource={draft.inputSource} captureAvailable={!!atlas} captureError={atlas?.captureError}/>
  </div>
  return <section className={styles.studio} aria-label="Bygg med Atlas">
-  <header className={styles.header}>
-   <div className={styles.headerTitle}><h1>Bygg med Atlas</h1><p title={selected?.name}>{selected?selected.name:'Från idé till färdig hemsida'}</p></div>
-   <StudioProjectPicker projects={view.projects} selected={selected} onChange={id=>{const p=view.projects.find(p=>p.id===id)??(selected?.id===id?selected:null);void open(p?{projectSlug:p.slug}:{})}}/>
+  <header className={styles.header} data-controls-open={controlsExpanded}>
+   <button type="button" className={styles.mobileProjectToggle} aria-label="Projektkontroller" aria-expanded={controlsExpanded} aria-controls={[controlsId+'-title',controlsId+'-project',controlsId+'-actions'].join(' ')} onClick={()=>setControlsExpanded(v=>!v)}>Projekt<ChevronDown size={15} aria-hidden/></button>
+   <div id={controlsId+'-title'} className={styles.headerTitle}><h1>Bygg med Atlas</h1><p title={selected?.name}>{selected?selected.name:'Från idé till färdig hemsida'}</p></div>
+   <StudioProjectPicker id={controlsId+'-project'} projects={view.projects} selected={selected} onChange={id=>{const p=view.projects.find(p=>p.id===id)??(selected?.id===id?selected:null);void open(p?{projectSlug:p.slug}:{})}}/>
    <div className={styles.headerActions}>
-    <div className={styles.headerActionButtons}>
+    <div id={controlsId+'-actions'} className={styles.headerActionButtons}>
      <StudioSettings key={selected?.id??'new'}>
       <label>Visa <select aria-label="Projektlista" value={view.include??'active'} onChange={e=>void open({},e.target.value as Filter)}><option value="active">Aktiva projekt</option><option value="archived">Arkiverade projekt</option><option value="trashed">Papperskorgen</option></select></label>
       {selected&&<div className={styles.setup}>

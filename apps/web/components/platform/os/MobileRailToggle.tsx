@@ -53,6 +53,7 @@ export function MobileRailToggle({ liveCount = 0, uiGeneration, children }: Mobi
       {/* Desktop suppression is scoped to the resolved route/generation. */}
       <button
         type="button"
+        data-activity-peek
         aria-label="Visa aktivitet"
         aria-expanded={open}
         aria-controls={open ? 'activity-sheet' : undefined}
@@ -68,9 +69,9 @@ export function MobileRailToggle({ liveCount = 0, uiGeneration, children }: Mobi
         }}
       >
         <Activity className={compactOnProjects ? 'w-5 h-5' : 'w-3.5 h-3.5'} aria-hidden="true" />
-        {!compactOnProjects && <span className="text-[12px] font-semibold tracking-tight">Aktivitet</span>}
+        {!compactOnProjects && <span data-activity-label className="text-[12px] font-semibold tracking-tight">Aktivitet</span>}
         {liveCount > 0 && (
-          <span className={compactOnProjects
+          <span data-activity-count className={compactOnProjects
             ? 'absolute -top-1 -right-1 inline-flex min-w-4 items-center justify-center gap-1 rounded-full bg-emerald-800 px-1 text-[10px] text-white'
             : 'inline-flex items-center gap-1 caption-mono text-[10px] text-white/90'}>
             <PulseDot tone="emerald" size={4} />

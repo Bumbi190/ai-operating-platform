@@ -21,3 +21,17 @@
 }
 @media(min-width:1280px){.shell[data-shell-generation='vnext']{grid-template-columns:287px minmax(0,1fr)}}
 @media(max-width:1023px){.shell[data-workspace='studio']>main>[data-shell-page]{padding:8px 8px 4px}}
+
+/* The mobile builder gives the canvas priority while keeping the main menu. */
+@media(max-width:1000px){
+ .shell[data-workspace='studio']>main>[data-shell-mobile-nav]{box-sizing:border-box;height:44px;min-height:44px;padding:3px 10px;flex-shrink:0}
+ .shell[data-workspace='studio']>main>[data-shell-mobile-nav]>a{font-size:11px;gap:7px}
+ .shell[data-workspace='studio']>main>[data-shell-mobile-nav]>a svg{width:22px;height:22px}
+ .shell[data-workspace='studio']>main>[data-shell-mobile-nav] summary{padding:5px 8px}
+ .shell[data-workspace='studio']>main>[data-shell-breadcrumbs],.shell[data-workspace='studio']>main>[data-shell-keyboard-hints]{display:none}
+ .shell[data-workspace='studio']>main>[data-shell-page]{padding:4px}
+ .shell[data-workspace='studio']>[data-activity-peek]{position:fixed;z-index:50;width:44px;height:44px;padding:0;justify-content:center}
+ .shell[data-workspace='studio']>[data-activity-peek]>svg{width:20px;height:20px}
+ .shell[data-workspace='studio']>[data-activity-peek]>[data-activity-label]{display:none}
+ .shell[data-workspace='studio']>[data-activity-peek]>[data-activity-count]{position:absolute;top:-4px;right:-4px;min-width:16px;justify-content:center;border-radius:8px;background:#065f46;padding:0 3px;font-size:10px}
+}

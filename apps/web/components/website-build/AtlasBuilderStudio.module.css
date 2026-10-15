@@ -94,3 +94,23 @@
  .canvas.previewCanvas{padding:.5rem}
  .settingsDialog{padding:1rem}.settingsDialog label{font-size:.8rem}
 }
+
+.mobileProjectToggle{display:none}
+@media(max-width:1000px){
+ .studio{border-radius:12px}
+ .header .mobileProjectToggle{display:inline-flex;align-items:center;justify-content:center;gap:.3rem;grid-column:1;grid-row:1;justify-self:start;min-height:44px;padding:.4rem .6rem;font-size:.75rem}
+ .mobileProjectToggle[aria-expanded=true] svg{transform:rotate(180deg)}
+ .headerTitle{display:none}
+ .header[data-controls-open=false]{grid-template-columns:auto minmax(0,1fr);gap:.4rem;padding:.25rem .4rem}
+ .header[data-controls-open=false]>label,.header[data-controls-open=false] .headerActionButtons>button{display:none}
+ .header[data-controls-open=false] .headerActionButtons{display:contents}
+ .header[data-controls-open=false] .costControl{grid-column:2;grid-row:1;min-width:0}
+ .header[data-controls-open=false] .costFigure{min-width:0;align-items:center}
+ .header[data-controls-open=false] .costFigure strong{font-size:.7rem;white-space:nowrap}
+ .header[data-controls-open=false] .costNote{display:none}
+ .header .costStop{min-height:44px;font-size:.65rem;padding:.35rem .4rem;white-space:nowrap}
+ .mobileNavigation{padding:.2rem .3rem;gap:.3rem}
+ .mobileTabs button{min-height:44px;padding:.4rem .7rem}
+ .chatHeading{display:none}
+ .canvas.previewCanvas{padding:.3rem}
+}

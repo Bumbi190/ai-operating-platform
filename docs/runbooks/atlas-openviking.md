@@ -49,7 +49,7 @@ The checked-in publication is deliberately empty. Merely enabling an environment
 
 Work on an isolated branch. Obtain project slug/UUID mapping from the canonical project registry and put the trusted map in a local JSON file, for example under this task's .superpowers workspace.
 
-The vault must be its own clean Git working tree. Do not change status, scope or classification to make more documents qualify. Preparation refuses dirty/unversioned vaults, unreadable sources, source drift and invalid output.
+The vault must be its own clean Git working tree. Do not change status, scope or classification to make more documents qualify. Preparation refuses dirty/unversioned vaults, unreadable sources, source drift and invalid output. Every included note must belong to the captured Git commit and match its Git-normalized content; eligible ignored notes cause refusal. Ineligible ignored notes are still evaluated by the exhaustive policy pipeline.
 
 From the repository root:
 

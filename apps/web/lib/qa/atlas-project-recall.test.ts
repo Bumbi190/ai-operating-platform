@@ -23,6 +23,7 @@ async function fixture(handler: RequestListener) {
 }
 afterEach(async () => {
   vi.unstubAllEnvs()
+  vi.restoreAllMocks()
   for (const server of servers.splice(0)) {
     server.closeAllConnections()
     await new Promise<void>((resolve) => server.close(() => resolve()))
@@ -90,6 +91,20 @@ describe('project-scoped recall before Atlas reasoning', () => {
     expect(text).toContain('Prior successful method')
     expect(params).toEqual([{ p_project_ids: [PROJECT], p_focus_kinds: [], p_focus_ids: [], p_episodic_days: 90, p_limit: 60 },
       { p_project_ids: [PROJECT], p_focus_kinds: [], p_focus_ids: [], p_episodic_days: 90, p_limit: 60 }])
+  })
+  it.each(['returned', 'thrown'] as const)('keeps private %s M4 errors out of chat logs', async (failure) => {
+    vi.stubEnv('ATLAS_MEMORY_RECALL', '1')
+    vi.stubEnv('ATLAS_MEMORY_INJECT', '1')
+    const sentinel = 'PRIVATE_SOURCE_AND_CREDENTIAL_SENTINEL'
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const db = { rpc: async () => {
+      if (failure === 'thrown') throw new Error(sentinel)
+      return { error: { message: sentinel } }
+    } }
+    expect(await buildProjectRecall({ userId: 'owner', allowedProjectIds: [PROJECT], query: 'process', db,
+      env: { ...env, ATLAS_CHAT_MEMORY: '1' } })).toBe('')
+    expect(errors).toHaveBeenCalled()
+    expect(JSON.stringify(errors.mock.calls)).not.toContain(sentinel)
   })
   it('bounds stalled M4 reads without failing the chat', async () => {
     vi.stubEnv('ATLAS_MEMORY_RECALL', '1')

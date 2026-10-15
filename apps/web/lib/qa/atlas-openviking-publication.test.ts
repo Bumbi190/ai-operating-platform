@@ -1,7 +1,8 @@
 import { createServer, type RequestListener, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, existsSync, symlinkSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { describe, it, expect, afterEach } from 'vitest'
 import { createKnowledgeProjectionSource } from '@/lib/atlas/knowledge/projection/source'
@@ -59,6 +60,65 @@ describe('publication through existing eligibility policy', () => {
       ...delegate,
       readDocument(relativePath) { writeFileSync(path, note('Changed.')); return delegate.readDocument(relativePath) },
     }, { projectId: PROJECT, projectSlug: 'pilot' })).toThrow(/changed/)
+  })
+  it.each(['direct', 'symlink'] as const)('refuses a %s output inside the vault before creating any directory', (kind) => {
+    const root = vault()
+    writeFileSync(join(root, 'good.md'), note('Approved knowledge.'))
+    execFileSync('git', ['-C', root, 'init', '-q'])
+    execFileSync('git', ['-C', root, 'add', 'good.md'])
+    execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture'])
+    const mapRoot = vault()
+    const map = join(mapRoot, 'projects.json')
+    writeFileSync(map, JSON.stringify({ pilot: PROJECT }))
+    const link = join(mapRoot, 'vault-link')
+    if (kind === 'symlink') symlinkSync(root, link, 'junction')
+    const outputDirectory = join(kind === 'symlink' ? link : root, 'must-not-be-created')
+    const result = spawnSync(process.execPath, ['--import', 'tsx', 'scripts/openviking-prepare.ts',
+      '--vault=' + root, '--project-map=' + map, '--project=pilot', '--out=' + join(outputDirectory, 'corpus.json')],
+      { cwd: process.cwd(), encoding: 'utf8', timeout: 15_000 })
+    expect(result.status).toBe(1)
+    expect(existsSync(outputDirectory)).toBe(false)
+  })
+  it('refuses an eligible ignored note absent from the captured vault commit', () => {
+    const root = vault()
+    writeFileSync(join(root, 'good.md'), note('Versioned knowledge.'))
+    writeFileSync(join(root, '.gitignore'), 'ignored.md\n')
+    execFileSync('git', ['-C', root, 'init', '-q'])
+    execFileSync('git', ['-C', root, 'add', 'good.md', '.gitignore'])
+    execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture'])
+    writeFileSync(join(root, 'ignored.md'), note('UNVERSIONED PRIVATE KNOWLEDGE'))
+    const mapRoot = vault()
+    const map = join(mapRoot, 'projects.json')
+    const output = join(mapRoot, 'corpus.json')
+    writeFileSync(map, JSON.stringify({ pilot: PROJECT }))
+    const result = spawnSync(process.execPath, ['--import', 'tsx', 'scripts/openviking-prepare.ts',
+      '--vault=' + root, '--project-map=' + map, '--project=pilot', '--out=' + output],
+      { cwd: process.cwd(), encoding: 'utf8', timeout: 15_000 })
+    expect(result.status).toBe(1)
+    expect(existsSync(output)).toBe(false)
+    expect(result.stdout + result.stderr).not.toContain('UNVERSIONED PRIVATE KNOWLEDGE')
+  })
+  it('prepares tracked content with checkout line endings and ignores ineligible ignored notes', () => {
+    const root = vault()
+    writeFileSync(join(root, '.gitattributes'), '*.md text eol=crlf\n')
+    writeFileSync(join(root, 'good.md'), note('Versioned knowledge.').replaceAll('\n', '\r\n'))
+    writeFileSync(join(root, '.gitignore'), 'ignored.md\n')
+    execFileSync('git', ['-C', root, 'init', '-q'])
+    execFileSync('git', ['-C', root, 'add', 'good.md', '.gitignore', '.gitattributes'])
+    execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture'])
+    writeFileSync(join(root, 'ignored.md'), note('Draft content.').replace('status: approved', 'status: draft'))
+    const mapRoot = vault()
+    const map = join(mapRoot, 'projects.json')
+    const output = join(mapRoot, 'corpus.json')
+    writeFileSync(map, JSON.stringify({ pilot: PROJECT }))
+    const result = spawnSync(process.execPath, ['--import', 'tsx', 'scripts/openviking-prepare.ts',
+      '--vault=' + root, '--project-map=' + map, '--project=pilot', '--out=' + output],
+      { cwd: process.cwd(), encoding: 'utf8', timeout: 15_000 })
+    expect(result.status).toBe(0)
+    expect(JSON.parse(result.stdout).vaultCommit).toMatch(/^[a-f0-9]{40,64}$/)
+    const prepared = parseCorpus(JSON.parse(readFileSync(output, 'utf8')))!
+    expect(prepared.documents.map((doc) => doc.path)).toEqual(['good.md'])
+    expect(prepared.documents[0].content).toContain('Versioned knowledge.')
   })
   it('returns an explicit empty publication when no notes qualify', () => {
     const prepared = prepareCorpus(source(vault()), { projectId: PROJECT, projectSlug: 'pilot' })

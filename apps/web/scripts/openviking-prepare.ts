@@ -2,7 +2,7 @@
  * Explicit operator action. Requires a clean Git-pinned vault.
  * Never edits notes or changes approval/classification metadata.
  */
-import { readFileSync, writeFileSync, renameSync, mkdirSync, realpathSync } from 'node:fs'
+import { readFileSync, writeFileSync, renameSync, mkdirSync, realpathSync, existsSync } from 'node:fs'
 import { resolve, dirname, relative, isAbsolute } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { createKnowledgeProjectionSource } from '../lib/atlas/knowledge/projection/source'
@@ -30,10 +30,27 @@ try {
   const map = Object.fromEntries(Object.entries(rawMap))
   const projectId = Object.hasOwn(map, projectSlug) ? map[projectSlug] : null
   if (typeof projectId !== 'string') throw new Error('Unmapped project')
-  const artifact = prepareCorpus(createKnowledgeProjectionSource({ vaultRoot, projectScopeMap: map }),
-    { projectId, projectSlug })
+  const source = createKnowledgeProjectionSource({ vaultRoot, projectScopeMap: map })
+  const artifact = prepareCorpus({
+    ...source,
+    readDocument(path) {
+      // A clean working tree can still contain ignored notes. Bind each included
+      // source to HEAD, with Git's own filters accounting for checkout line endings.
+      const committedHash = git('rev-parse', commit + ':' + path)
+      const currentHash = git('hash-object', '--path=' + path, '--', path)
+      if (!/^[a-f0-9]{40,64}$/.test(committedHash) || committedHash !== currentHash) {
+        throw new Error('Publication source is not the captured Git version')
+      }
+      return source.readDocument(path)
+    },
+  }, { projectId, projectSlug })
   if (git('rev-parse', 'HEAD') !== commit || git('status', '--porcelain', '--untracked-files=normal')) throw new Error('Vault changed')
   const output = resolve(option('out') ?? 'data/openviking/corpus.json')
+  // Reject lexical and symlink-resolved containment before creating directories.
+  if (inside(vaultRoot, output)) throw new Error('Output cannot be inside the vault')
+  let ancestor = dirname(output)
+  while (!existsSync(ancestor)) ancestor = dirname(ancestor)
+  if (inside(vaultRoot, realpathSync(ancestor))) throw new Error('Output cannot be inside the vault')
   mkdirSync(dirname(output), { recursive: true })
   if (inside(vaultRoot, realpathSync(dirname(output)))) throw new Error('Output cannot be inside the vault')
   const temporary = output + '.preparing'

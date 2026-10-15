@@ -16,7 +16,8 @@ export async function findKnowledge(args: {
     }, args.signal) as { status?: unknown; result?: { resources?: unknown } }
     if (response?.status !== 'ok' || !Array.isArray(response.result?.resources) ||
       response.result.resources.length > 64) return []
-    const available = new Map(args.corpus.documents.map((doc) => [root + '/' + doc.id + '.md', doc]))
+    // v0.5.0 root_uri names a resource folder; its leaf keeps the uploaded filename.
+    const available = new Map(args.corpus.documents.map((doc) => [root + '/' + doc.id + '.md/' + doc.id + '.md', doc]))
     const selected = new Set<string>()
     const evidence: KnowledgeEvidence[] = []
     let remaining = 6000

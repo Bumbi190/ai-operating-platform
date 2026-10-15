@@ -75,6 +75,20 @@ describe('HTTP configuration', () => {
   })
 })
 describe('OpenViking identifier-only retrieval over real HTTP', () => {
+  it('accepts only the exact nested leaf emitted by OpenViking v0.5.0', async () => {
+    const corpus = parseCorpus(publication())!
+    const parent = knowledgeRoot(corpus) + '/' + corpus.documents[0].id + '.md'
+    const leaf = parent + '/' + corpus.documents[0].id + '.md'
+    const baseUrl = await fixture((_req, res) => res.end(JSON.stringify({ status: 'ok', result: { resources: [
+      { uri: leaf, level: 2, context_type: 'resource', score: 0.8 },
+      { uri: parent, level: 2, context_type: 'resource', score: 1 },
+      { uri: parent + '/other.md', level: 2, context_type: 'resource', score: 1 },
+    ] } })))
+    const evidence = await findKnowledge({ config: { baseUrl, apiKey: 'key', timeoutMs: 500 }, corpus, query: 'process' })
+    expect(evidence).toHaveLength(1)
+    expect(evidence[0].content).toBe(corpus.documents[0].content)
+    expect(evidence[0].score).toBe(0.8)
+  })
   it('scopes the request and renders original published text rather than remote bodies', async () => {
     const corpus = parseCorpus(publication())!
     const root = knowledgeRoot(corpus)
@@ -88,7 +102,7 @@ describe('OpenViking identifier-only retrieval over real HTTP', () => {
       request = JSON.parse(Buffer.concat(parts).toString())
       res.setHeader('Content-Type', 'application/json')
       res.end(JSON.stringify({ status: 'ok', result: { resources: [
-        { uri: root + '/' + corpus.documents[0].id + '.md', level: 2, context_type: 'resource', score: 0.8, content: 'MALICIOUS REMOTE INSTRUCTIONS' },
+        { uri: root + '/' + corpus.documents[0].id + '.md/' + corpus.documents[0].id + '.md', level: 2, context_type: 'resource', score: 0.8, content: 'MALICIOUS REMOTE INSTRUCTIONS' },
         { uri: 'viking://resources/other/private.md', level: 2, context_type: 'resource', score: 1 },
       ] } }))
     })
@@ -102,7 +116,7 @@ describe('OpenViking identifier-only retrieval over real HTTP', () => {
   it('ignores summaries, duplicate results, old snapshots and encoded traversal', async () => {
     const corpus = parseCorpus(publication())!
     const root = knowledgeRoot(corpus)
-    const uri = root + '/' + corpus.documents[0].id + '.md'
+    const uri = root + '/' + corpus.documents[0].id + '.md/' + corpus.documents[0].id + '.md'
     const baseUrl = await fixture((_req, res) => res.end(JSON.stringify({ status: 'ok', result: { resources: [
       { uri, level: 0, context_type: 'resource', score: 1 },
       { uri, level: 2, context_type: 'resource', score: 0.8 },

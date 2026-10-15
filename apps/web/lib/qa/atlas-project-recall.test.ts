@@ -52,7 +52,7 @@ describe('project-scoped recall before Atlas reasoning', () => {
     const input = publication()
     const parsed = parseCorpus(input)!
     const baseUrl = await fixture((_req, res) => res.end(JSON.stringify({ status: 'ok', result: {
-      resources: [{ uri: knowledgeRoot(parsed) + '/' + parsed.documents[0].id + '.md', level: 2, context_type: 'resource', score: 0.9 }],
+      resources: [{ uri: knowledgeRoot(parsed) + '/' + parsed.documents[0].id + '.md/' + parsed.documents[0].id + '.md', level: 2, context_type: 'resource', score: 0.9 }],
     } })))
     const text = await buildProjectRecall({ userId: 'owner', allowedProjectIds: [PROJECT], query: 'process',
       publication: input, env: { ...env, ATLAS_OPENVIKING_MODE: 'on', ATLAS_OPENVIKING_URL: baseUrl, ATLAS_OPENVIKING_API_KEY: 'key' } })
@@ -66,7 +66,7 @@ describe('project-scoped recall before Atlas reasoning', () => {
     const parsed = parseCorpus(input)!
     let calls = 0
     const baseUrl = await fixture((_req, res) => { calls++; res.end(JSON.stringify({ status: 'ok', result: {
-      resources: [{ uri: knowledgeRoot(parsed) + '/' + parsed.documents[0].id + '.md', level: 2, context_type: 'resource', score: 0.9 }],
+      resources: [{ uri: knowledgeRoot(parsed) + '/' + parsed.documents[0].id + '.md/' + parsed.documents[0].id + '.md', level: 2, context_type: 'resource', score: 0.9 }],
     } })) })
     expect(await buildProjectRecall({ userId: 'owner', allowedProjectIds: [PROJECT], query: 'process', publication: input,
       env: { ...env, ATLAS_OPENVIKING_MODE: 'shadow', ATLAS_OPENVIKING_URL: baseUrl, ATLAS_OPENVIKING_API_KEY: 'key' } })).toBe('')

@@ -1,7 +1,7 @@
 # Översikt och kompakt Atlas-chatt
 
 Datum: 2026-10-15
-Status: designspecifikation för ägarens granskning; produktkod har inte ändrats.
+Status: godkänd design; implementerad och verifierad i egen gren. Ingen produktionsaktivering.
 Arbetsgren: `codex/atlas-overview-messenger-20261015`
 Utgångspunkt: main `605cc176dcdd60cae0c45b90947c84ce279b5d8a`.
 

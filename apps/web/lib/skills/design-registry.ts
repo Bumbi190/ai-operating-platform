@@ -9,7 +9,7 @@ export interface DesignSkillMetadata { id: string; name: string; description: st
 export interface DesignSkillInput { id: string; reference?: string; offset?: number; limit?: number }
 export interface DesignSkillChunk { id: string; reference: string; source: string; commit: string; sha256: string; status: 'knowledge_only'; text: string; offset: number; totalCharacters: number; nextOffset: number | null }
 export const DESIGN_SKILL_READ_LIMIT = 16000
-const ids = new Set(['design-taste-frontend','redesign-existing-projects','impeccable','emil-design-eng','animate','review-animations','improve-animations','break-ui'])
+const ids = new Set(['design-taste-frontend','redesign-existing-projects','impeccable','emil-design-eng','animate','review-animations','improve-animations','break-ui','ui-ux-pro-max'])
 const own = (obj: object, key: string) => Object.prototype.hasOwnProperty.call(obj,key)
 
 export function createDesignSkillRegistry(input: DesignBundle) {

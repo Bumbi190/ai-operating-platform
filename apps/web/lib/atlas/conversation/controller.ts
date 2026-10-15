@@ -162,6 +162,13 @@ export class AtlasConversationController {
     const effect=decodeWebsiteEffect({event:"website_workspace",conversationId:current.id,session},{conversationId:current.id,projectId:current.projectId,sessionId:current.session.sessionId})
     if(effect?.session)this.update(current.id,{session:effect.session})
   }
+  applyPlanReview(plan:PlanView):boolean {
+    const current=this.active,shown=current.plan
+    if(!current.id||current.pending||!shown||plan.conversationId!==current.id||plan.ref.projectId!==current.projectId||plan.ref.planId!==shown.ref.planId||plan.currentRevision.revisionId!==shown.currentRevision.revisionId||plan.currentRevision.sha256!==shown.currentRevision.sha256)return false
+    const effect=decodeWebsiteEffect({event:'website_plan',conversationId:current.id,plan},{conversationId:current.id,projectId:current.projectId,sessionId:current.session?.sessionId??null})
+    if(!effect?.plan)return false
+    this.update(current.id,{plan:effect.plan});return true
+  }
   setRenderedRevision(id: string | null) {
     const s = this.active;
     if(id===s.viewedRevisionId)return
@@ -191,6 +198,7 @@ export class AtlasConversationController {
               ...start.plan.ref,
               revisionId: start.plan.currentRevision.revisionId,
               sha256: start.plan.currentRevision.sha256,
+              mockupDecisionId:start.plan.designReview?.approved?.id??null,
             }
           : null
         : turn.visiblePlan;

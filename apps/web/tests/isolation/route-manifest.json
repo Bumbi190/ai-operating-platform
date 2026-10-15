@@ -16,6 +16,8 @@
   },
 
   "routes": [
+    {"path": "/website-build-plans/[planId]/mockups/[mockupId]", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "na", "risk": "Low", "verified": true, "note": "Private compiled design proposal; authenticated owner and exact project/plan/revision/digests checked. No provider dispatch; no-store."},
+    {"path": "/website-build-plans/[planId]/mockups/approve", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "na", "risk": "Medium", "verified": true, "note": "Same-origin operator-only immutable design decision; exact current revision and option digest, idempotent intent. No queue or model call."},
     {"path": "/website-build/studio", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "na", "risk": "Medium", "verified": true, "note": "Atlas studio: authenticated owner inventory and atomic idempotent workspace creation. Every project/conversation/session parent is verified; private no-store. No provider dispatch."},
     {"path": "/website-build/studio/workspace-request", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "na", "risk": "Medium", "verified": true, "note": "Owner-only active-project folder intent through private RPC; pending_runner, never filesystem execution or verified access."},
     {"path": "/website-build/studio/budget", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "na", "risk": "High", "verified": true, "note": "Owner-only explicit project budget limit with CAS and append-only audit. Changes a future spend limit; performs no paid dispatch."},

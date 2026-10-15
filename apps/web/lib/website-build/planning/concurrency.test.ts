@@ -1,3 +1,4 @@
+import {approveTestMockup} from './test-fixture'
 import {beforeAll,describe,it,expect} from 'vitest'
 import {spawn} from 'node:child_process'
 import {randomUUID} from 'node:crypto'
@@ -14,7 +15,8 @@ describe('planning concurrency with two real SQL connections',()=>{
   await setProjectWebsiteBuilder(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,agentId:TEST_AGENT})
   const content={title:'Race',purpose:'Visa',audience:'Alla',pages:[{key:'index',title:'Hem',purpose:'Visa'}],design:{style:'Enkel',reference:null},features:[],architecture:'Statisk',steps:['Bygg'],domain:{registrar:'strato' as const,requestedName:null}}
   const plan=await saveWebsitePlanRevision(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,conversationId:c,expectedRevisionId:null,content,idempotencyKey:randomUUID()})
-  const d=await approveWebsitePlan(db,TEST_PRINCIPAL,{...plan.currentRevision,idempotencyKey:randomUUID()}),input={...plan.currentRevision,decisionId:d.id}
+  const reviewed=await approveTestMockup(db,TEST_PRINCIPAL,plan)
+  const d=await approveWebsitePlan(db,TEST_PRINCIPAL,{...plan.currentRevision,mockupDecisionId:reviewed.designReview?.approved?.id,idempotencyKey:randomUUID()}),input={...plan.currentRevision,decisionId:d.id}
   const child=spawn('docker',['exec','-i','omnira-website-build-test-20261014','psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-U','postgres','-d',database!])
   let out='',err=''
   child.stdout.on('data',b=>out+=b);child.stderr.on('data',b=>err+=b)

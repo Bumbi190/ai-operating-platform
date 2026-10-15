@@ -1,4 +1,4 @@
-import type { PlanView } from "@/lib/website-build/planning/types";
+import type { PlanView, DesignReview } from "@/lib/website-build/planning/types";
 import type { BuildSessionView } from "@/lib/website-build/types";
 import type { StreamEvent } from "@/lib/os/chat-shared";
 export type BuildContext = {
@@ -32,6 +32,15 @@ function fields(value: Record<string, any>, keys: string[]) {
 }
 function ref(v: Record<string, any>) {
   return fields(v, ["projectId", "planId", "revisionId", "sha256"]);
+}
+function decodeDesignReview(v:unknown):DesignReview|null{
+ if(!record(v)||typeof v.required!=='boolean'||!Array.isArray(v.options)||![0,3].includes(v.options.length))return null
+ const options=[]
+ for(const option of v.options){if(!record(option)||!uuid(option.id)||!['editorial','visual','structured'].includes(option.key)||typeof option.title!=='string'||option.title.length>180||typeof option.summary!=='string'||option.summary.length>600||typeof option.sha256!=='string'||!(/^[a-f0-9]{64}$/).test(option.sha256))return null;options.push(fields(option,['id','key','title','summary','sha256']))}
+ if(new Set(options.map(o=>o.id)).size!==options.length||new Set(options.map(o=>o.key)).size!==options.length)return null
+ let approved=null
+ if(v.approved!==null){const a=v.approved;if(!record(a)||!uuid(a.id)||!uuid(a.mockupId)||!uuid(a.approvedBy)||!options.some(o=>o.id===a.mockupId&&o.sha256===a.sha256))return null;approved=fields(a,['id','mockupId','sha256','approvedBy'])}
+ return {required:v.required,options,approved} as DesignReview
 }
 export function decodeWebsiteEffect(
   event: StreamEvent,
@@ -148,6 +157,8 @@ export function decodeWebsiteEffect(
       !record(p.budget)
     )
       return null;
+    const designReview=p.designReview===undefined?undefined:decodeDesignReview(p.designReview);
+    if(p.designReview!==undefined&&!designReview)return null;
     const decision =
       record(p.approvedDecision) && record(p.approvedDecision.revisionRef)
         ? {
@@ -183,6 +194,7 @@ export function decodeWebsiteEffect(
           },
         },
         approvedDecision: decision,
+        ...(designReview?{designReview}:{}),
         activeSessionId: p.activeSessionId ?? null,
         budget: fields(p.budget, ["state", "monthlySek"]),
         setting: {

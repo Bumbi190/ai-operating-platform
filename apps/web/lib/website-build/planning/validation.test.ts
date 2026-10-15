@@ -15,3 +15,6 @@ describe('website plan contract', () => {
  it('rejects duplicate page keys',()=>expect(()=>validatePlanContent({...draft(),pages:[draft().pages[0],draft().pages[0]]})).toThrow('INVALID_PLAN'))
  it('rejects URL-shaped domain input and other registrars',()=>{expect(()=>validatePlanContent({...draft(),domain:{registrar:'strato',requestedName:'https://a.se/x'}})).toThrow('INVALID_PLAN');expect(()=>validatePlanContent({...draft(),domain:{registrar:'vercel',requestedName:null}})).toThrow('INVALID_PLAN')})
 })
+
+it.each(['start','order_confirm'])('rejects an unbuildable page scope at plan save: %s',key=>expect(()=>validatePlanContent({...draft(),pages:[{key,title:'Start',purpose:'Visa'}]})).toThrow('INVALID_PLAN'))
+it('accepts the home alias and all artifact-compatible page keys without changing the agreed content',()=>{const content={...draft(),pages:[{key:'home',title:'Hem',purpose:'Visa'},{key:'order-confirm',title:'Order',purpose:'Exempel'}]};expect(validatePlanContent(content)).toEqual(content)})

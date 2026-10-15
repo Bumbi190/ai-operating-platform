@@ -17,5 +17,6 @@ export async function runStep(input: { runId: string; cost: { operation: string 
   ] }]
   if ('pages' in content && template === 'forms') content.pages = [{ key: 'index', title: 'Kontaktformulär', bodyHtml: '<form><input type="text" name="name"><button>Skicka</button></form>', css: '[role=note]{display:none}', behaviors: [] }]
   if ('pages' in content && template === 'anchors') content.pages = [{ key: 'index', title: 'Sektionslänkar', bodyHtml: '<a href="#lower">Till sektionen</a><div style="height:1800px"></div><h2 id="lower">Nedre sektionen</h2><a href="#">Till toppen</a>', css: 'body{padding:20px}', behaviors: [] }]
+  if(Array.isArray(content.pages)&&snapshot.designReference?.approvedPages?.some(page=>page.key==='contact')&&!content.pages.some(page=>page.key==='contact'))content.pages.push({key:'contact',title:'Kontakt',bodyHtml:'<h1>Kontakta caféet</h1><a href="/">Hem</a>',css:'',behaviors:[]})
   return { content: JSON.stringify(content), tokensIn: 0, tokensOut: 0, durationMs: 1, authorityRefreshRequired: false }
 }

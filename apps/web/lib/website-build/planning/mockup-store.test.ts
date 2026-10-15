@@ -23,3 +23,12 @@ it('rejects an old visible design when another tab changes the choice within the
  expect(testSql("select count(*) from website_build_plan_decisions where revision_id='"+plan.currentRevision.revisionId+"';")).toBe('0')
  expect(second.designReview!.approved!.id).not.toBe(first.designReview!.approved!.id)
 })
+
+it('preserves archive and trash refusal before a new plan decision',async()=>{
+ const plan=await proposal(),reviewed=await approveWebsiteMockup(db,TEST_PRINCIPAL,selection(plan)),input={...plan.currentRevision,mockupDecisionId:reviewed.designReview!.approved!.id,idempotencyKey:randomUUID()}
+ for(const state of ['archived','trashed']){
+  const sql="begin;insert into project_lifecycle(project_id,owner_id,state) values('"+TEST_PROJECT+"','"+TEST_PRINCIPAL.userId+"','"+state+"') on conflict(project_id) do update set state=excluded.state;set role service_role;select website_build_plan_approve('"+JSON.stringify(TEST_PRINCIPAL)+"'::jsonb,'"+JSON.stringify(input).replaceAll("'","''")+"'::jsonb);rollback;"
+  expect(()=>testSql(sql)).toThrow('PROJECT_INACTIVE')
+ }
+ expect(testSql("select count(*) from website_build_plan_decisions where revision_id='"+plan.currentRevision.revisionId+"';")).toBe('0')
+})

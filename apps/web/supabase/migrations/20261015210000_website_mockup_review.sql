@@ -121,6 +121,7 @@ create or replace function public.website_build_plan_approve(p_principal jsonb,p
 declare p public.website_build_plans; r public.website_build_plan_revisions; d public.website_build_plan_decisions; aid uuid; key text:=p_input->>'idempotencyKey'; view jsonb;
 begin
  perform public.website_build_check_access(p_principal,(p_input->>'projectId')::uuid,true);
+ perform public.website_build_studio_require_active((p_input->>'projectId')::uuid);
  select * into strict p from public.website_build_plans where id=(p_input->>'planId')::uuid and project_id=(p_input->>'projectId')::uuid and created_by=(p_principal->>'userId')::uuid for update;
  select * into strict r from public.website_build_plan_revisions where id=(p_input->>'revisionId')::uuid and plan_id=p.id and project_id=p.project_id;
  if p.current_revision_id is distinct from r.id or r.sha256 is distinct from p_input->>'sha256' then raise exception 'PLAN_STALE' using errcode='55000'; end if;

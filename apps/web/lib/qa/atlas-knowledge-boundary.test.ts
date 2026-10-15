@@ -9,7 +9,7 @@
  *   • the provider surface is read-only, with no mutation verb and no escape hatch
  *   • Knowledge cannot reach authority, execution or policy-gate surfaces
  *   • Knowledge and Atlas Memory M4 stay separate systems in both directions
- *   • Knowledge has ZERO production consumers in this phase
+ *   • production reads are limited to validated published data; never the local vault
  *
  * That last one is the Phase-1 contract itself. When a consumer is deliberately
  * added, this test fails and forces the decision to be visible in review.
@@ -223,7 +223,7 @@ describe('SEPARATION — Knowledge and Atlas Memory M4 are different systems', (
   })
 })
 
-describe('NO PRODUCTION CONSUMER — Phase 1 wires nothing', () => {
+describe('PUBLISHED CORPUS — no runtime vault access', () => {
   function filesUnder(dir: string): string[] {
     const out: string[] = []
     const walk = (d: string): void => {
@@ -259,30 +259,34 @@ describe('NO PRODUCTION CONSUMER — Phase 1 wires nothing', () => {
 
   it('the only importers are the operator harness and these QA tests', () => {
     expect(knowledgeImporters()).toEqual([
+      'lib/atlas/openviking/corpus.ts',
+      'lib/atlas/openviking/publish.ts',
       'lib/qa/atlas-knowledge-boundary.test.ts',
       'lib/qa/atlas-knowledge-projection.test.ts',
       'lib/qa/atlas-knowledge-provider.test.ts',
-      // Slice 3A: the snapshot core is pure and local, and its only consumer is
-      // its own suite. It builds bytes; nothing uploads or reads them yet.
       'lib/qa/atlas-knowledge-snapshot.test.ts',
+      'lib/qa/atlas-openviking-publication.test.ts',
+      'lib/qa/atlas-openviking.test.ts',
+      'lib/qa/atlas-project-recall.test.ts',
       'scripts/knowledge-projection-report.ts',
       'scripts/knowledge-shadow.ts',
+      'scripts/openviking-prepare.ts',
     ])
   })
 
-  it('chat, Executive and Delegation do not reach Knowledge', () => {
-    for (const entry of [
-      'app/api/chat/route.ts',
-      'lib/atlas/intelligence/producers/brief-orchestrator.ts',
-      'lib/atlas/context/request.ts',
-    ]) {
-      const abs = path.join(WEB_ROOT, entry)
-      if (!fs.existsSync(abs)) continue
-      const parents = moduleGraph([abs])
-      const hits = [...parents.keys()]
-        .map((f) => path.relative(WEB_ROOT, f))
-        .filter((rel) => rel.startsWith('lib/atlas/knowledge/'))
-      expect(hits.join(', '), `${entry} reaches Knowledge`).toBe('')
+  it('runtime reaches only pure published-data validation, never vault IO', () => {
+    const parents = moduleGraph([path.join(WEB_ROOT, 'app/api/chat/route.ts')])
+    const hits = [...parents.keys()].map((file) => path.relative(WEB_ROOT, file).split(path.sep).join('/'))
+      .filter((rel) => rel.startsWith('lib/atlas/knowledge/')).sort()
+    expect(hits).toEqual([
+      'lib/atlas/knowledge/document.ts',
+      'lib/atlas/knowledge/policy.ts',
+      'lib/atlas/knowledge/types.ts',
+    ])
+    for (const entry of ['lib/atlas/intelligence/producers/brief-orchestrator.ts', 'lib/atlas/context/request.ts']) {
+      const graph = moduleGraph([path.join(WEB_ROOT, entry)])
+      const knowledge = [...graph.keys()].filter((file) => path.relative(WEB_ROOT, file).split(path.sep).join('/').startsWith('lib/atlas/knowledge/'))
+      expect(knowledge).toEqual([])
     }
   })
 })
@@ -322,9 +326,14 @@ describe('PROJECTION SOURCE — a local boundary, never an Atlas one', () => {
 
   it('the only importers are the operator script and its QA suite', () => {
     expect(projectionImporters()).toEqual([
+      'lib/atlas/openviking/publish.ts',
       'lib/qa/atlas-knowledge-projection.test.ts',
       'lib/qa/atlas-knowledge-snapshot.test.ts',
+      'lib/qa/atlas-openviking-publication.test.ts',
+      'lib/qa/atlas-openviking.test.ts',
+      'lib/qa/atlas-project-recall.test.ts',
       'scripts/knowledge-projection-report.ts',
+      'scripts/openviking-prepare.ts',
     ])
   })
 
@@ -392,7 +401,7 @@ describe('PROJECTION SOURCE — a local boundary, never an Atlas one', () => {
       if (!fs.existsSync(abs)) continue
       const hits = [...moduleGraph([abs]).keys()]
         .map((f) => path.relative(WEB_ROOT, f))
-        .filter((rel) => rel.startsWith('lib/atlas/knowledge/'))
+        .filter((rel) => rel.startsWith('lib/atlas/knowledge/projection/'))
       expect(hits.join(', '), `${entry} reaches Knowledge`).toBe('')
     }
   })

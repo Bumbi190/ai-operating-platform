@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "approved_source_hashes_verified": 4,
+  "metrics_and_negative_gate_verified": true,
+  "links_verified": true,
+  "vault_clean": true,
+  "vault_main_unchanged": true,
+  "active_documents": 5,
+  "snapshot_id": "e320719db950c432e2f85f49d3ec2a5079790ebc944937285e1c33fbdaf04de2",
+  "default_corpus_empty": true,
+  "production_activated": false
+}

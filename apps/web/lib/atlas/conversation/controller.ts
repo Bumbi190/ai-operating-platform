@@ -1,4 +1,5 @@
 import { buildChatRequestBody } from "@/lib/atlas/view-client";
+import { getAtlasServiceErrorMessage, isAtlasServiceErrorCode } from "@/lib/atlas/provider-errors";
 import {
   applyStreamEvent,
   hydrateTranscript,
@@ -9,6 +10,7 @@ import {
   failedResponseNotice,
   CONNECTION_FAILED_NOTICE,
   INCOMPLETE_NOTICE,
+  ATLAS_FAILED_NOTICE,
   INTERRUPTED_NOTICE,
   type SavedMessage,
   type TranscriptEntry,
@@ -212,6 +214,7 @@ export class AtlasConversationController {
       settled = false,
       completed = false,
       streaming = false;
+    let failureNotice: string | undefined;
     this.update(id, {
       history,
       entries: reply.entries,
@@ -282,7 +285,12 @@ export class AtlasConversationController {
                 ],
               });
           }
-          if (event.event === "error") settled = true;
+          if (event.event === "error") {
+            settled = true;
+            failureNotice = isAtlasServiceErrorCode(event.code)
+              ? getAtlasServiceErrorMessage(event.code)
+              : ATLAS_FAILED_NOTICE;
+          }
           if (isCurrent()) {
             const now = this.snapshot(),
               effect = decodeWebsiteEffect(event, {
@@ -313,7 +321,7 @@ export class AtlasConversationController {
         this.update(id, { entries: reply.entries });
       }
       if (!settled) return fail(INCOMPLETE_NOTICE);
-      return { ok: completed };
+      return completed ? { ok: true } : { ok: false, notice: failureNotice };
     } catch {
       return fail(streaming ? INTERRUPTED_NOTICE : CONNECTION_FAILED_NOTICE);
     } finally {

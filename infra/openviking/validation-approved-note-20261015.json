@@ -1,0 +1,67 @@
+{
+  "owner_approved_at": "2026-10-15T13:46:10+02:00",
+  "vault_branch": "codex/atlas-openviking-approved-note-20261015",
+  "vault_base": "a2a9ae428ac84227ae845dd96456f0abc99b61ad",
+  "vault_commit": "c1980d493be6fd3fa8039340d71dae7da4ef6c0b",
+  "vault_clean": true,
+  "vault_main_unchanged": true,
+  "source_path": "60 Memory/omnira-selftest-local-memory-pilot.md",
+  "source_sha256": "a2ad7332779ec064909e746251f7023caf93f1f06a4930a713d4ade59d47174f",
+  "snapshot_id": "88113d0204f2abd58c3ff72d1d3acedd122442329a163a026d0a271aefb99d7c",
+  "documents": 1,
+  "classification": "internal",
+  "project_slug": "omnira-selftest",
+  "project_id": "4a1d83c9-09dc-4f3b-902e-67284588352b",
+  "ready": true,
+  "production_activated": false,
+  "local_preview_activated": true,
+  "processing": "vectors_only",
+  "automatic_l0_l1_during_sync": false,
+  "activated_at_utc": "2026-10-15T11:53:13.553804+00:00",
+  "validation": {
+    "passed": true,
+    "source_path": "60 Memory/omnira-selftest-local-memory-pilot.md",
+    "snapshot_id": "88113d0204f2abd58c3ff72d1d3acedd122442329a163a026d0a271aefb99d7c",
+    "queries": [
+      {
+        "duration_ms": 116,
+        "original_source_and_provenance": true
+      },
+      {
+        "duration_ms": 169,
+        "original_source_and_provenance": true
+      }
+    ],
+    "old_synthetic_snapshot_retained": true,
+    "old_synthetic_text_excluded": true,
+    "canonical_path_present": true,
+    "different_project_empty": true,
+    "denied_membership_empty": true,
+    "off_empty": true,
+    "login_status": 200,
+    "unauthenticated_chat_status": 401,
+    "runtime_role": "user",
+    "production_activated": false,
+    "interactive_new_note_answer_pending": true
+  },
+  "previous_synthetic_snapshot_retained_for_rollback": true,
+  "thermal_watch": {
+    "armed": false,
+    "max_temperature_c": 74.0,
+    "temperature_limit_c": 80,
+    "stopped": true,
+    "temperature_c": 72.0,
+    "utilization_percent": 43.0,
+    "memory_mib": 8237.0,
+    "sampled_at": "2026-10-15T11:53:14.753903+00:00",
+    "reason": "operator requested completion"
+  },
+  "semantic_configuration_restored": true,
+  "gpu_services_stopped": true,
+  "source_hash_format": "SHA256 of Git-normalized committed note",
+  "schema_version": "atlas-openviking-approved-publication-v1",
+  "integration_parent_commit": "12f8ad857bb7bb1ec5863c6a157dcd6482126cc6",
+  "active_artifact_sha256": "1e6d33a4ebb9f1cc3077be64b1cbdb94e56e4451c0b68859e5b216e89a3883b4",
+  "validated_at_utc": "2026-10-15T11:55:44.442294+00:00",
+  "integration_default_corpus_unchanged": true
+}

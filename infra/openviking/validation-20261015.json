@@ -1,0 +1,124 @@
+{
+  "implementation": "a0968e2",
+  "baseline": "910376b2eb485f136e1b36073f08e7788f0be2d6",
+  "server": "OpenViking v0.5.0",
+  "models": {
+    "embedding": "qwen3-embedding:0.6b",
+    "local_processing": "qwen3:4b"
+  },
+  "live_vectors_probe": {
+    "passed": true,
+    "syntheticOnly": true,
+    "documents": 3,
+    "processing": "vectors_only",
+    "snapshotId": "472c7b267d17fdf20245bbf70004754509571857d5c58bbe1676468e742f0130",
+    "warmupMs": 195,
+    "queries": [
+      {
+        "expected": "access.md",
+        "firstHit": "access.md",
+        "durationMs": 103
+      },
+      {
+        "expected": "backup.md",
+        "firstHit": "backup.md",
+        "durationMs": 87
+      },
+      {
+        "expected": "support.md",
+        "firstHit": "support.md",
+        "durationMs": 29
+      }
+    ],
+    "promptChars": 1551,
+    "runtimeRole": "user",
+    "unauthenticatedStatus": 401,
+    "foreignAccountIsolated": true,
+    "revokedPublicationEmpty": true,
+    "fixtureSnapshotPruned": true,
+    "productionActivated": false
+  },
+  "thermal": {
+    "maximum_observed_c": 70.0,
+    "stop_threshold_c": 80,
+    "services_stopped": true,
+    "stop_reason": "operator requested completion"
+  },
+  "full_suite": {
+    "baseline": [
+      "Test Files  54 failed | 406 passed | 33 skipped (493)",
+      "Tests  207 failed | 12487 passed | 1182 skipped (13880)"
+    ],
+    "final": [
+      "Test Files  53 failed | 410 passed | 34 skipped (497)",
+      "Tests  204 failed | 12529 passed | 1183 skipped (13920)"
+    ],
+    "added_failure_entries": [],
+    "removed_failure_entries": [
+      "FAIL  lib/qa/atlas-knowledge-snapshot.test.ts > golden artifacts — independently derived bytes > documents.jsonl matches the golden byte for byte",
+      "FAIL  lib/qa/atlas-knowledge-snapshot.test.ts > golden artifacts — independently derived bytes > knowledge-manifest.json matches the golden byte for byte",
+      "FAIL  lib/qa/atlas-knowledge-snapshot.test.ts > golden artifacts — independently derived bytes > the identity preimage matches the golden byte for byte, with no trailing LF"
+    ],
+    "remaining_failing_files": [
+      "lib/architecture-knowledge/architecture-knowledge.test.ts",
+      "lib/architecture-knowledge/executive-knowledge.test.ts",
+      "lib/qa/activity-stream.test.ts",
+      "lib/qa/analysis-draft-sql.test.ts",
+      "lib/qa/atlas-latency.test.ts",
+      "lib/qa/atlas-launcher-vnext.test.ts",
+      "lib/qa/atlas-static-conversation-route.test.ts",
+      "lib/qa/autonomy-bind-guards.test.ts",
+      "lib/qa/autonomy-license.test.ts",
+      "lib/qa/autonomy-trace-guards.test.ts",
+      "lib/qa/budget-scopes.test.ts",
+      "lib/qa/cl-shadow.test.ts",
+      "lib/qa/content-center.test.ts",
+      "lib/qa/delegation-mission-activation.test.ts",
+      "lib/qa/execution-contract-propagation.test.ts",
+      "lib/qa/executive-intelligence-schema-activation.test.ts",
+      "lib/qa/global-design-tokens.test.ts",
+      "lib/qa/handlarborsen-visual-pulse.test.ts",
+      "lib/qa/licensed-bind-m4b-guards.test.ts",
+      "lib/qa/marketing-review.test.ts",
+      "lib/qa/memory-vnext.test.ts",
+      "lib/qa/mission-brief-v1.test.ts",
+      "lib/qa/mobile-chrome-contract.test.ts",
+      "lib/qa/money-overview.test.ts",
+      "lib/qa/monthly-release-v2.test.ts",
+      "lib/qa/platform-credential-events.test.ts",
+      "lib/qa/project-command-center.test.ts",
+      "lib/qa/project-workspace-vnext.test.ts",
+      "lib/qa/release-gate-proof-workflow.test.ts",
+      "lib/qa/review-queue.test.ts",
+      "lib/qa/run-bound-provider-spend.test.ts",
+      "lib/qa/sdf1b2-code-work-operator-plane.test.ts",
+      "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "lib/qa/survival-funding-sql.test.ts",
+      "lib/qa/survival-history-sql.test.ts",
+      "lib/qa/system-health.test.ts",
+      "lib/qa/vnext-intelligence-graph.test.ts",
+      "lib/qa/vnext-settings.test.ts",
+      "lib/qa/website-build-drain.test.ts",
+      "lib/qa/workflows-definition-familje-stunden.test.ts",
+      "lib/trading/session-calendar/import-discipline.test.ts",
+      "lib/website-build/api.test.ts",
+      "lib/website-build/chat-tools.test.ts",
+      "lib/website-build/connections/api.test.ts",
+      "lib/website-build/planning/api.test.ts",
+      "lib/website-build/planning/build-context.test.ts",
+      "lib/website-build/planning/chat-tools.test.ts",
+      "lib/website-build/planning/concurrency.test.ts",
+      "lib/website-build/planning/conversation-workspace.test.ts",
+      "lib/website-build/planning/export-pinning.test.ts",
+      "lib/website-build/planning/store.test.ts",
+      "lib/website-build/published-routes.test.ts",
+      "lib/website-build/worker.test.ts"
+    ]
+  },
+  "limits": [
+    "Full suite is not green",
+    "Full semantic processing exceeded the 240-second ingestion deadline and has not passed",
+    "No eligible approved project-scoped notes exist in the checked vault",
+    "No production activation, merge or private vault import"
+  ]
+}

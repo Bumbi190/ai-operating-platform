@@ -1,0 +1,48 @@
+{
+  "date": "2026-10-15",
+  "scope": "local Atlas chat provider failure",
+  "observed_ui": "HTTP 200 SSE ended with generic error; server recorded upstream HTTP 400",
+  "control_probe": {
+    "governed": true,
+    "model": "claude-sonnet-4-6",
+    "max_output_tokens": 16,
+    "provider_request_succeeded": false,
+    "status": 400,
+    "reason": "insufficient_credits",
+    "prompt_or_credentials_logged": false
+  },
+  "change": {
+    "code": "ATLAS_PROVIDER_INSUFFICIENT_CREDITS",
+    "classifier": "exact observed low-credit refusal with HTTP 400",
+    "controller": "preserve controlled error notice in text and voice turn outcomes",
+    "raw_provider_body_exposed": false
+  },
+  "validation": {
+    "new_regression_red": {
+      "failed": 5,
+      "passed": 3
+    },
+    "new_regression_green": 8,
+    "initial_related_selection_passed": 51,
+    "broader_related_selection": {
+      "files": 9,
+      "passed": 137
+    },
+    "focused_typecheck": "passed for changed source/test files and their imports",
+    "whole_application_typecheck": "attempted; Node heap limit reached; not completed",
+    "targeted_eslint": "passed with checkLoops=false for the pre-existing while(true) SSE reader",
+    "diff_check": "passed",
+    "full_application_suite": "not repeated; prior documented red baseline remains"
+  },
+  "unchanged": {
+    "published_documents": 5,
+    "snapshot_id": "e320719db950c432e2f85f49d3ec2a5079790ebc944937285e1c33fbdaf04de2",
+    "credits_purchased": false,
+    "auto_reload_changed": false,
+    "model_changed": false,
+    "budget_limits_changed": false,
+    "production_activated": false
+  },
+  "successful_generated_answer_after_replenishment_verified": false,
+  "official_billing_help": "https://support.claude.com/en/articles/8977456-how-do-i-pay-for-my-claude-api-usage"
+}

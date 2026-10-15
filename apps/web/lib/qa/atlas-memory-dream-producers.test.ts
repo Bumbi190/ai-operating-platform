@@ -716,15 +716,18 @@ function importGraph(entry: string): Set<string> {
   }
   return seen
 }
-const rel = (f: string) => path.relative(WEB_ROOT, f)
+const rel = (f: string) => path.relative(WEB_ROOT, f).split(path.sep).join('/')
 
 describe('2B-2 · placement and boundaries', () => {
-  it('the Dream emitter lives in lib/ai/dream.ts, which chat cannot reach', () => {
+  it('chat cannot reach the Dream emitter or memory writers; only the approved recall seam', () => {
     expect(codeOnly(read('lib/ai/dream.ts'))).toMatch(/recordMemoryEvent/)
     const chat = new Set([...importGraph('app/api/chat/route.ts')].map(rel))
     expect(chat.has('lib/ai/dream.ts')).toBe(false)
     expect(chat.has('lib/atlas/memory/record-event.ts')).toBe(false)
-    expect([...chat].filter((f) => MEMORY_IMPORT.test(codeOnly(read(f))))).toEqual([])
+    expect([...chat].filter((f) => MEMORY_IMPORT.test(codeOnly(read(f)))).sort()).toEqual([
+      'lib/atlas/intelligence/memory-context.ts',
+      'lib/atlas/memory/recall-memories.ts',
+    ])
   })
 
   it('lib/atlas/dream.ts — which chat DOES import — stays memory-free', () => {

@@ -214,15 +214,13 @@ export async function recallMemories(args: RecallArgs): Promise<MemoryPack> {
     })
 
     if (error) {
-      console.error(`[atlas-memory] recallMemories failed: ${error.message}`)
+      console.error('[atlas-memory] recallMemories RPC failed')
       return { items: [], totalConsidered: 0, budgetTokens, skipped: false }
     }
 
     return assembleMemoryPack((data ?? []) as RecallRow[], { allowedProjectIds, budgetTokens })
-  } catch (err) {
-    console.error(
-      `[atlas-memory] recallMemories threw (swallowed): ${err instanceof Error ? err.message : String(err)}`,
-    )
+  } catch {
+    console.error('[atlas-memory] recallMemories threw (swallowed)')
     return { items: [], totalConsidered: 0, budgetTokens, skipped: false }
   }
 }

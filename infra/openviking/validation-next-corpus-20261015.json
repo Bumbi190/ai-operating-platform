@@ -1,0 +1,47 @@
+{
+  "passed": true,
+  "candidates": [
+    {
+      "file": "publicering.md",
+      "body_chars": 1003,
+      "editorial_status": "draft",
+      "publishable": false,
+      "blockers": [
+        "status_not_approved"
+      ]
+    },
+    {
+      "file": "minneslager.md",
+      "body_chars": 869,
+      "editorial_status": "draft",
+      "publishable": false,
+      "blockers": [
+        "status_not_approved"
+      ]
+    },
+    {
+      "file": "felsokning.md",
+      "body_chars": 1117,
+      "editorial_status": "draft",
+      "publishable": false,
+      "blockers": [
+        "status_not_approved"
+      ]
+    },
+    {
+      "file": "projektatkomst.md",
+      "body_chars": 926,
+      "editorial_status": "draft",
+      "publishable": false,
+      "blockers": [
+        "status_not_approved"
+      ]
+    }
+  ],
+  "diagnostic_metrics_verified": true,
+  "links_verified": true,
+  "actual_vault_unchanged": true,
+  "active_publication_unchanged": true,
+  "default_corpus_empty": true,
+  "production_activated": false
+}

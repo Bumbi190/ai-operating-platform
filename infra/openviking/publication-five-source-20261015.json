@@ -1,0 +1,62 @@
+{
+  "owner_approved_at": "2026-10-15T14:43:13+02:00",
+  "candidate_app_commit": "07b8e68e4b41a6af9402fadf819eb5beba73ce9b",
+  "vault_branch": "codex/atlas-openviking-approved-note-20261015",
+  "vault_main": "a2a9ae428ac84227ae845dd96456f0abc99b61ad",
+  "previous_vault_commit": "c1980d493be6fd3fa8039340d71dae7da4ef6c0b",
+  "vault_commit": "b6b7c848b30208018c433fb9a4efff48b7c2abc3",
+  "vault_clean": true,
+  "vault_main_unchanged": true,
+  "new_sources": [
+    {
+      "candidate": "docs/runbooks/atlas-openviking-next-corpus/publicering.md",
+      "source_path": "60 Memory/omnira-selftest-publicering.md",
+      "approved_note_sha256": "aca6e14041ff03c5f5ac756a44a453a6c853914e1359ea56fe1066f2a5c645ab"
+    },
+    {
+      "candidate": "docs/runbooks/atlas-openviking-next-corpus/minneslager.md",
+      "source_path": "60 Memory/omnira-selftest-minneslager.md",
+      "approved_note_sha256": "4d2e3f7f59aa6f0f67ecb09d5bcd3cefcc9fc8ac53e5f34ba2862069166bccd1"
+    },
+    {
+      "candidate": "docs/runbooks/atlas-openviking-next-corpus/felsokning.md",
+      "source_path": "60 Memory/omnira-selftest-felsokning.md",
+      "approved_note_sha256": "b91abb30a553a6620cdd06ef0f1f2357ddf0a56abdd49d08f16fcb86d2b388e6"
+    },
+    {
+      "candidate": "docs/runbooks/atlas-openviking-next-corpus/projektatkomst.md",
+      "source_path": "60 Memory/omnira-selftest-projektatkomst.md",
+      "approved_note_sha256": "eb7abfc87e59b68733778177651ecbb1be9e71f280b2d841119621c00aaa2928"
+    }
+  ],
+  "documents": 5,
+  "project_slug": "omnira-selftest",
+  "project_id": "4a1d83c9-09dc-4f3b-902e-67284588352b",
+  "snapshot_id": "e320719db950c432e2f85f49d3ec2a5079790ebc944937285e1c33fbdaf04de2",
+  "previous_snapshot_id": "88113d0204f2abd58c3ff72d1d3acedd122442329a163a026d0a271aefb99d7c",
+  "prepared": true,
+  "ready": true,
+  "production_activated": false,
+  "local_preview_activated": true,
+  "processing": "vectors_only",
+  "automatic_l0_l1_during_sync": false,
+  "activated_at_utc": "2026-10-15T12:47:41.481108+00:00",
+  "validation_file": "validation.json",
+  "previous_snapshot_retained_for_rollback": true,
+  "thermal_watch": {
+    "armed": false,
+    "max_temperature_c": 38.0,
+    "temperature_limit_c": 80,
+    "stopped": true,
+    "temperature_c": 37.0,
+    "utilization_percent": 1.0,
+    "memory_mib": 4562.0,
+    "sampled_at": "2026-10-15T12:47:43.059555+00:00",
+    "reason": "operator requested completion"
+  },
+  "semantic_configuration_restored": true,
+  "gpu_services_stopped": true,
+  "validation_sha256": "2e458f0db11c94e992ab4c0ab3e91e1c036e8a67979ef8b896ec1c3fdf0d19e4",
+  "quality_gate_passed": false,
+  "production_enable_recommended": false
+}

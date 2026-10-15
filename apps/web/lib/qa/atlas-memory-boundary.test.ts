@@ -4,7 +4,7 @@
  * This file locks three boundaries that must hold BEFORE any Memory flag is
  * enabled. It adds NO Memory behaviour and touches NO runtime code.
  *
- *   BOUNDARY A — chat is not wired to Atlas Memory M4.
+ *   BOUNDARY A — chat reaches read-only M4 only through the approved project recall seam.
  *       Proven twice: (1) on the chat route's own source, and (2) across the
  *       whole local module graph reachable from it, so a wrapper module that
  *       re-exports Memory cannot smuggle it in one hop away.
@@ -181,10 +181,10 @@ const CHAT_ROUTE = path.join(WEB_ROOT, 'app/api/chat/route.ts')
 const CHAT_TTS_ROUTE = path.join(WEB_ROOT, 'app/api/chat/tts/route.ts')
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BOUNDARY A — chat remains unwired
+// BOUNDARY A — scoped read-only chat recall
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('BOUNDARY A — chat is not wired to Atlas Memory M4', () => {
+describe('BOUNDARY A — chat has only the approved read-only M4 seam', () => {
   it('the chat route source references no Atlas Memory module or identifier', () => {
     const source = fs.readFileSync(CHAT_ROUTE, 'utf8')
     expect(memoryWiringFindings(source)).toEqual([])
@@ -195,14 +195,16 @@ describe('BOUNDARY A — chat is not wired to Atlas Memory M4', () => {
     expect(memoryWiringFindings(source)).toEqual([])
   })
 
-  it('no module reachable from the chat route is Atlas Memory (catches wrapper indirection)', () => {
+  it('the chat graph reaches only read-only M4 modules through the scoped recall seam', () => {
     const graph = moduleGraph(CHAT_ROUTE)
     const hits = memoryModulesIn(graph)
-    expect(
-      hits.map((h) => chainTo(graph, h)).join('\n\n'),
-      'chat reaches Atlas Memory M4 through an intermediate module',
-    ).toBe('')
-    // Guard against a vacuous pass: the walk must actually have traversed the app.
+    expect(hits.map((file) => path.relative(WEB_ROOT, file).split(path.sep).join('/')).sort()).toEqual([
+      'lib/atlas/intelligence/memory-context.ts',
+      'lib/atlas/memory/recall-memories.ts',
+    ])
+    for (const hit of hits) {
+      expect(chainTo(graph, hit).split(path.sep).join('/')).toContain('lib/atlas/context/project-recall.ts')
+    }
     expect(graph.parents.size).toBeGreaterThan(25)
   })
 

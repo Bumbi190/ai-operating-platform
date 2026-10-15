@@ -129,4 +129,4 @@ Minnespiloten och port 3015 är oförändrade. Den andra konversationens bygggre
 
 12. Final: Ruling: The approved plan explicitly requires comparison against an already-red baseline, so finish as a draft PR with named baseline failures instead of applying the generic finishing skill's all-green stop to unrelated code - cost if wrong: unrelated red checks can still block later integration; no merge or production activation is authorized.
 
-PR-länken läggs till efter att den godkända draft-PR:n har skapats.
+[Draft-PR #355](https://github.com/Bumbi190/ai-operating-platform/pull/355). GitHub bekräftar öppen draft utan merge och utan textkonflikt mot observerad main 4eecb534. Verifieringen ovan gäller den egna koden från bas 605cc176; inga senare main-ändringar har slagits in eller körts som en sammanslagen produktionsversion.

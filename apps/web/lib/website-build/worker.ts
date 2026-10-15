@@ -22,7 +22,7 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
   if (!isWebsiteBuildRun(run.kind)) throw new WebsiteBuildPermanentError('INVALID_BUILD_RUN')
   const input = run.input as Record<string, unknown> | null
   if (!input || input.projectId !== run.project_id || typeof input.sessionId !== 'string' || !Number.isSafeInteger(input.generation)) throw new WebsiteBuildPermanentError('INVALID_BUILD_BINDING')
-  const writer: WriterRef = { projectId: run.project_id, sessionId: input.sessionId, runId: run.id, claimId, generation: Number(input.generation) }
+  const writer: WriterRef = { projectId: run.project_id, sessionId: input.sessionId, runId: run.id, claimId, generation: Number(input.generation), recoveryVersion: 1 }
   const gate = async (boundary: string) => {
     const check = await checkpointClaimedRun(db, { runId: run.id, projectId: run.project_id, claimId, boundary })
     if (check.allowed) return
@@ -32,12 +32,32 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
     if (settled === 'FENCED') throw fencedError(run.id)
     throw new RunCheckpointRefusedError('STOPPED', check.detail, boundary)
   }
+  const finalizeRejected = async (boundary: string) => {
+    const finalization = await checkOwnedFinalization(db, run.id, claimId)
+    if (finalization === 'FENCED') throw fencedError(run.id)
+    if (finalization === 'CANCELLED') {
+      const settled = await settleRefusal(db, 'CANCELLED', run.id, claimId)
+      if (settled === 'ERROR') throw new RunLifecycleWriteError(run.id, boundary, 'cancellation finalization failed')
+      if (settled === 'FENCED') throw fencedError(run.id)
+      throw cancelledError(run.id)
+    }
+  }
   try {
     await gate('website:entry')
     if ((run.context as Record<string, unknown> | null)?.websiteBuildCompleted === true) return
     let snapshot = await loadBuildSnapshot(db, writer)
     const recovering = Object.hasOwn(input, 'recovery')
-    if (recovering && (snapshot.feedback.length || snapshot.previousArtifact)) throw new WebsiteBuildPermanentError('INVALID_RECOVERY')
+    const noPaid = recovering || Object.hasOwn(input, 'recoveryNoPaid')
+    if (noPaid && (snapshot.feedback.length || snapshot.previousArtifact)) throw new WebsiteBuildPermanentError('INVALID_RECOVERY')
+    if (recovering) {
+      // Acknowledging pause completes this run. Persist the strictly compiled
+      // candidate first so canonical resume can reuse it in the next generation.
+      // The save RPC allows build pause, but still fences claims/cancellation.
+      const recovered = await recoverWebsiteArtifact(db, writer, input.recovery)
+      await gate('website:recovery-candidate')
+      await saveBuildCandidate(db, writer, recovered)
+      snapshot = await loadBuildSnapshot(db, writer)
+    }
     if (snapshot.controlRequested === 'pause') { await parkBuildSession(db, writer); return }
     const { data: agent, error } = await db.from('agents').select('id,name,system_prompt,model,config,skill_ids').eq('id', snapshot.agentId).eq('project_id', writer.projectId).single()
     if (error) throw new Error('Byggagenten kunde inte läsas säkert.')
@@ -48,7 +68,7 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
     try { knowledge = composeAgentDesignSkills(agent.system_prompt, ['design-taste-frontend','impeccable',...(Array.isArray(agent.skill_ids) ? agent.skill_ids.filter((id): id is string => typeof id === 'string') : [])]) }
     catch { throw new WebsiteBuildPermanentError('DESIGN_CONTEXT_TOO_LARGE') }
     const paid = async (systemPrompt: string, userMessage: string, maxTokens: number, operation: string) => {
-      if (recovering) throw new WebsiteBuildPermanentError('RECOVERY_REQUIRES_NO_PAID_CALLS')
+      if (noPaid) throw new WebsiteBuildPermanentError('RECOVERY_REQUIRES_NO_PAID_CALLS')
       await gate('website:before:' + operation)
       snapshot = await loadBuildSnapshot(db, writer)
       if (snapshot.controlRequested === 'pause') { await parkBuildSession(db, writer); return null }
@@ -83,14 +103,7 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
         if (error instanceof WebsiteArtifactError || error instanceof WebsiteBuildPermanentError) {
           // This response already failed permanently. Finalization checks claim
           // and cancellation without letting a later governance stop requeue it.
-          const finalization = await checkOwnedFinalization(db, run.id, claimId)
-          if (finalization === 'FENCED') throw fencedError(run.id)
-          if (finalization === 'CANCELLED') {
-            const settled = await settleRefusal(db, 'CANCELLED', run.id, claimId)
-            if (settled === 'ERROR') throw new RunLifecycleWriteError(run.id, 'website:rejected-draft', 'cancellation finalization failed')
-            if (settled === 'FENCED') throw fencedError(run.id)
-            throw cancelledError(run.id)
-          }
+          await finalizeRejected('website:rejected-draft')
           // Failure evidence is a system log, never a successful assistant
           // checkpoint, trusted artifact or new paid generation.
           try {
@@ -109,6 +122,7 @@ export async function executeWebsiteBuildRun(db: ReturnType<typeof createAdminCl
     await gate('website:commit')
     await commitBuildRevision(db, writer, artifact)
   } catch (error) {
+    if (error instanceof WebsiteArtifactError || error instanceof WebsiteBuildPermanentError) await finalizeRejected('website:permanent-rejection')
     if (error instanceof WebsiteArtifactError) throw new WebsiteBuildPermanentError(error.code, error.message)
     if (error instanceof WebsiteBuildError && error.code === 'FENCED') throw fencedError(run.id)
     if (error instanceof WebsiteBuildError && error.code === 'CANCELLED') { await gate('website:cancel-race'); throw cancelledError(run.id) }

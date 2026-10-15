@@ -861,6 +861,7 @@ export async function POST(request: Request) {
     // Read-only pilot recall. Scope is the fresh server allow-list, never the client view.
     systemPrompt += await buildProjectRecall({
       userId, allowedProjectIds, query: lastUserText, db,
+      internalAuthorized: isExplicitlyAuthorizedInternalPrincipal(user.email),
       viewProjectSlug: normalizeView(view)?.project?.slug ?? null,
     })
     if (voice) systemPrompt += VOICE_DIRECTIVE

@@ -1,10 +1,10 @@
-import { knowledgeRoot, type PublishedCorpus, type PublishedDocument } from './corpus'
+import { knowledgeRoot, type PublishedKnowledgeCorpus, type PublishedDocument } from './corpus'
 import { requestJson, type OpenVikingConfig } from './client'
 
 export interface KnowledgeEvidence extends PublishedDocument { snapshotId: string; score: number }
 /** The remote index selects exact IDs; all returned text comes from the deployed publication. */
 export async function findKnowledge(args: {
-  config: OpenVikingConfig; corpus: PublishedCorpus; query: string; signal?: AbortSignal
+  config: OpenVikingConfig; corpus: PublishedKnowledgeCorpus; query: string; signal?: AbortSignal
 }): Promise<KnowledgeEvidence[]> {
   const query = args.query.trim()
   if (!query || query.length > 2000 || args.corpus.documents.length === 0) return []

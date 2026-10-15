@@ -11,6 +11,13 @@ export function readClientConfig(env: Record<string, string | undefined> = proce
     return { baseUrl: url.href.replace(/\/+$/, ''), apiKey: key, timeoutMs: 1200 }
   } catch { return null }
 }
+/** Platform reads never fall back to project credentials. */
+export function readPlatformClientConfig(env: Record<string, string | undefined> = process.env): OpenVikingConfig | null {
+  return readClientConfig({
+    ATLAS_OPENVIKING_URL: env.ATLAS_OPENVIKING_PLATFORM_URL,
+    ATLAS_OPENVIKING_API_KEY: env.ATLAS_OPENVIKING_PLATFORM_API_KEY,
+  })
+}
 export async function requestJson(
   config: OpenVikingConfig, path: string, init: RequestInit = {}, signal?: AbortSignal,
 ): Promise<unknown> {

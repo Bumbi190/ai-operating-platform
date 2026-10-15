@@ -1,0 +1,71 @@
+{
+  "date": "2026-10-15",
+  "source_base_commit": "f9c04c30f6a8fa6fab483d199cdaffcf47a5a1b9",
+  "scope": "owner-only private local pilot; production defaults off",
+  "code_branch": "codex/atlas-openviking-integration-20261015",
+  "platform_documents": 8,
+  "project_documents": 5,
+  "platform_snapshot": "4a76d3188827501dd8aa6f6b1f4e24e8eb599da3abf8f652b98db9080aba2829",
+  "project_snapshot": "e320719db950c432e2f85f49d3ec2a5079790ebc944937285e1c33fbdaf04de2",
+  "source_bodies_committed": false,
+  "credentials_committed": false,
+  "new_test_cases": 30,
+  "focused_selection": {
+    "passed": 69,
+    "failed": 0
+  },
+  "full_suite_comparison": {
+    "baseline": {
+      "numPassedTests": 12578,
+      "numFailedTests": 205,
+      "numPendingTests": 1184
+    },
+    "final": {
+      "numPassedTests": 12608,
+      "numFailedTests": 205,
+      "numPendingTests": 1184
+    },
+    "new_failures": [],
+    "resolved_failures": [],
+    "suite_errors_same": true
+  },
+  "full_suite_limitations": [
+    "11 identical SQL fixture setup failures on both revisions",
+    "1184 tests pending/skipped on both revisions",
+    "No Git metadata or network in isolated source archives; unchanged fixture/hash/source-contract failures are named separately"
+  ],
+  "focused_typecheck": "passed: changed runtime modules, route and new tests with imports",
+  "focused_eslint": "passed; checkLoops=false for existing intentional loops",
+  "independent_code_review": "no Critical/Important findings; optional coverage suggestions addressed",
+  "real_authenticated_UI": {
+    "fresh_questions": 4,
+    "passed": 4,
+    "platform_answers_with_canonical_sources": 2,
+    "unsupported_fact_abstentions": 1,
+    "existing_project_answer_with_canonical_source": 1,
+    "operational_catalog_permission_remained_denied": true,
+    "general_reliability_claimed": false
+  },
+  "account_isolation": {
+    "project_reader_to_platform": "no hits",
+    "platform_reader_to_project": "no hits",
+    "anonymous_platform_search": 401
+  },
+  "runtime_bounds": {
+    "shared_knowledge_content_chars": 6000,
+    "maximum_documents_total": 8,
+    "maximum_excerpt_chars": 1200,
+    "concurrent_search_deadline_ms": 1200,
+    "M4_bound_ms": 750
+  },
+  "local_hardware": {
+    "max_GPU_core_c": 44.0,
+    "stop_reason": "operator requested completion",
+    "models_stopped": true,
+    "watch_unchanged": true
+  },
+  "no_explicit_preview_restart": true,
+  "API_provider_and_budget_settings_unchanged": true,
+  "production_changed": false,
+  "merge_performed": false
+}

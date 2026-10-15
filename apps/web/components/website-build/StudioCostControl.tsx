@@ -46,7 +46,7 @@ export function StudioCostControl({projectId,projectSlug,paused,onPauseChange}:{
  const stopped=paused||confirmed,monthly=snapshot?.monthly
  return <section className={styles.costControl} aria-label="Projektets kostnad">
   <div className={styles.costFigure} aria-live="polite" title={snapshot?'Registrerat '+new Date(snapshot.observedAt).toLocaleTimeString('sv-SE')+'. Uppdateras var femte sekund.':''}>
-   {monthly?<><strong>{sek(monthly.spentSek)} / {sek(monthly.limitSek)} kr</strong><span>denna månad · chatt och bygge</span>{snapshot?.modelPolicy?.profile==='openai_economy'&&<span>OpenAI-test · GPT-5.4 mini</span>}</>:snapshot?<span>Välj månadsbudget för kostnadsöversikt</span>:<span>{stale?'Kostnaden är inte tillgänglig':'Hämtar kostnad…'}</span>}
+   {monthly?<><strong>{sek(monthly.spentSek)} / {sek(monthly.limitSek)} kr</strong><span data-cost-detail>denna månad · chatt och bygge</span>{snapshot?.modelPolicy?.profile==='openai_economy'&&<span data-cost-detail>OpenAI-test · GPT-5.4 mini</span>}</>:snapshot?<span>Välj månadsbudget för kostnadsöversikt</span>:<span>{stale?'Kostnaden är inte tillgänglig':'Hämtar kostnad…'}</span>}
    {monthly&&monthly.heldSek>0&&<span title="Reserverat är en säkerhetsmarginal för pågående anrop, inte en redan debiterad kostnad.">Reserverat: {sek(monthly.heldSek)} kr</span>}
    {snapshot&&!snapshot.enforced&&<span>Budgeten övervakas utan hård spärr</span>}
   </div>

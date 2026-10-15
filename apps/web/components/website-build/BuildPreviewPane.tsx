@@ -31,12 +31,14 @@ export function BuildPreviewPane({
   onSession,
   hidden = false,
   readOnly = false,
+  embedded = false,
 }: {
   initialSession: BuildSessionView;
   onRenderedRevision: (id: string | null) => void;
   onSession: (session: BuildSessionView) => void;
   hidden?: boolean;
   readOnly?: boolean;
+  embedded?: boolean;
 }) {
   const { session, connection, requestControl } = useBuildSession(
     initialSession,
@@ -99,14 +101,14 @@ export function BuildPreviewPane({
   }, [selected, session.revisions, session.sessionId, session.projectId]);
   return (
     <section
-      className={styles.previewPane}
+      className={[styles.previewPane,embedded?styles.studioPreview:''].join(' ')}
       aria-label="Preview"
       hidden={hidden}
     >
       <p role="status">
         <strong>{BUILD_STATUS_LABELS[session.status]}</strong> · {session.stage}
       </p>
-      {!readOnly && <BuildControls session={session} requestControl={requestControl} />}
+      {!readOnly && (embedded?<details className={styles.previewControls}><summary>Byggkontroller</summary><BuildControls session={session} requestControl={requestControl}/></details>:<BuildControls session={session} requestControl={requestControl}/>)}
       {connection === "reconnecting" && (
         <p role="alert">
           Anslutningen återställs. Senast sparade preview finns kvar.
@@ -164,7 +166,7 @@ export function BuildPreviewPane({
           </>
         )}
       </div>
-      <p className={styles.version}>
+      <p className={[styles.version,styles.versionMetadata].join(' ')}>
         {loaded
           ? "Visar version " +
             loaded.revision.number +

@@ -9,3 +9,13 @@
 @media(max-width:1000px){.previewHost{position:static}.previewPane{max-height:none;overflow:visible}}
 
 .connections{border:1px solid hsl(var(--border));border-radius:.8rem;background:hsl(var(--card));padding:1rem;margin:.75rem 0;font-size:.9rem;line-height:1.6;overflow-wrap:anywhere}.connections summary{cursor:pointer}.connections button{font:inherit;color:inherit;background:hsl(var(--background));border:1px solid hsl(var(--border));border-radius:.5rem;padding:.5rem .7rem;cursor:pointer}.connections ol{padding-left:1.3rem}.connectionCard{border-top:1px solid hsl(var(--border));padding:1rem 0}.connectionCard h3{margin:.4rem 0}.connectionLinks{display:flex;flex-direction:column;gap:.5rem}.connections code{display:inline-block;max-width:100%;overflow-wrap:anywhere}.connections small{color:hsl(var(--muted-foreground))}
+
+/* The studio owns viewport height; its preview must share the available space. */
+.studioPreview{height:100%;min-height:0;max-height:none;overflow:hidden;gap:.5rem}
+.studioPreview>p[role=status]{margin:0;font-size:.8rem;line-height:1.4}
+.studioPreview .canvas{min-height:0;overflow:hidden}
+.studioPreview .frame,.studioPreview .mobileFrame{min-height:0;height:100%}
+.studioPreview .toolbar{gap:.4rem;font-size:.75rem}
+.studioPreview .toolbar select,.studioPreview .toolbar button,.previewControls button{font:inherit;color:inherit;background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:8px;padding:.4rem .5rem;min-width:0}
+.previewControls{font-size:.75rem}.previewControls summary{cursor:pointer;color:hsl(var(--muted-foreground))}.previewControls .composerActions{justify-content:flex-start;margin-top:.4rem}
+@media(max-width:1000px){.studioPreview .versionMetadata{display:none}.studioPreview>p[role=status]{white-space:nowrap;text-overflow:ellipsis;overflow:hidden}.studioPreview .toolbar{flex-shrink:0;line-height:1.25}.studioPreview .toolbar select{max-width:135px}.studioPreview .toolbar a{margin-left:auto}}

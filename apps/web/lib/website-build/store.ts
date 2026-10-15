@@ -21,14 +21,23 @@ function writerRef(writer: WriterRef): void {
 async function rpc<T>(db: Db, name: string, args: Record<string, unknown>): Promise<T> {
   // Only this boundary adapts JSONB RPC arguments; request handlers never cast a DB.
   const invoke = db as unknown as { rpc(name: string, args: Record<string, unknown>): Promise<{ data: unknown; error: { code?: string; message?: string } | null }> }
-  const { data, error } = await invoke.rpc(name, args)
-  if (error) {
-    const code = error.code === '23505' ? 'CONFLICT' : error.code === 'P0002' || error.code === '42501' ? 'NOT_FOUND' : error.code === '40001' ? 'FENCED' : error.code === '57014' ? 'CANCELLED' : error.code === '55000' ? 'CONTROL_PENDING' : 'DATABASE_ERROR'
-    const status = code === 'CONFLICT' ? 409 : code === 'NOT_FOUND' ? 404 : code === 'FENCED' || code === 'CONTROL_PENDING' ? 409 : code === 'DATABASE_ERROR' ? 503 : 409
-    throw new WebsiteBuildError(code, status, error.message || code)
+  for(let attempt=0;attempt<4;attempt++){
+    const { data, error } = await invoke.rpc(name, args)
+    // Retry only a lock that prevented this RPC from acquiring its writer row.
+    // Never replay a provider call, a stale claim, or an ambiguous transport failure.
+    if(error?.code==='40001'&&error.message?.includes('WEBSITE_WRITER_BUSY')&&attempt<3){
+      await new Promise(resolve=>setTimeout(resolve,25*(attempt+1)))
+      continue
+    }
+    if (error) {
+      const code = error.code === '23505' ? 'CONFLICT' : error.code === 'P0002' || error.code === '42501' ? 'NOT_FOUND' : error.code === '40001' ? 'FENCED' : error.code === '57014' ? 'CANCELLED' : error.code === '55000' ? 'CONTROL_PENDING' : 'DATABASE_ERROR'
+      const status = code === 'CONFLICT' ? 409 : code === 'NOT_FOUND' ? 404 : code === 'FENCED' || code === 'CONTROL_PENDING' ? 409 : code === 'DATABASE_ERROR' ? 503 : 409
+      throw new WebsiteBuildError(code, status, error.message || code)
+    }
+    if (data === null || data === undefined) throw new WebsiteBuildError('DATABASE_ERROR', 503)
+    return data as T
   }
-  if (data === null || data === undefined) throw new WebsiteBuildError('DATABASE_ERROR', 503)
-  return data as T
+  throw new WebsiteBuildError('DATABASE_ERROR',503)
 }
 export async function createBuildSession(db: Db, principal: BuildPrincipal, input: CreateBuildInput): Promise<BuildSessionView> {
   allowed(principal,{projectId:input.projectId,sessionId:input.projectId})

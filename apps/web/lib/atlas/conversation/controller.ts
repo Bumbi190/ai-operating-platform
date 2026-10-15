@@ -22,6 +22,7 @@ import type {
 import type { BuildSessionView } from "@/lib/website-build/types";
 import { decodeWebsiteEffect, type BuildContext } from "./stream-effects";
 export type ConversationSnapshot = {
+  studio: boolean;
   id: string | null;
   projectId: string | null;
   state: "ok" | "error";
@@ -35,6 +36,7 @@ export type ConversationSnapshot = {
   speechDraft: string | null;
 };
 const empty = (): ConversationSnapshot => ({
+  studio: false,
   id: null,
   projectId: null,
   state: "ok",
@@ -48,6 +50,7 @@ const empty = (): ConversationSnapshot => ({
   speechDraft: null,
 });
 type Activate = {
+  studio?: boolean;
   id: string;
   saved: SavedMessage[];
   state: "ok" | "error";
@@ -92,6 +95,7 @@ export class AtlasConversationController {
     if (!s)
       s = {
         ...empty(),
+        studio: input.studio===true,
         id: input.id,
         projectId: input.projectId ?? null,
         state: input.state,
@@ -116,6 +120,7 @@ export class AtlasConversationController {
         input.session.sessionId !== s.session?.sessionId;
       s = {
         ...s,
+        studio: input.studio===true,
         state: input.state,
         projectId: s.projectId ?? input.projectId ?? null,
         ...(rehydrate ? {
@@ -136,6 +141,11 @@ export class AtlasConversationController {
     this.conversations.clear();
     this.active = empty();
     this.listeners.forEach((f) => f());
+  }
+  deactivateConversation() {
+    this.generation++;
+    this.active=empty();
+    this.listeners.forEach(f=>f());
   }
   stageSpeechDraft(text: string) {
     if (this.active.id) this.update(this.active.id, { speechDraft: text });
@@ -173,6 +183,7 @@ export class AtlasConversationController {
       this.active.id === id && this.generation === generation;
     const text = turn.text.trim();
     if (!text) return { ok: false };
+    if(start.studio&&!start.projectId)return {ok:false,notice:'Välj ett projekt innan Atlas fortsätter.'};
     const visible =
       turn.visiblePlan === undefined
         ? start.plan
@@ -226,6 +237,7 @@ export class AtlasConversationController {
             conversation_id: id,
             ...(turn.inputSource === "voice" ? { voice: true } : {}),
             inputSource: turn.inputSource,
+            ...(start.studio&&start.projectId?{studioContext:{projectId:start.projectId,conversationId:id}}:{}),
             ...(visible ? { websitePlanRef: visible } : {}),
             ...(buildContext ? { buildContext } : {}),
           }),

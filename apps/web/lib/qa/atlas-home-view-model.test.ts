@@ -39,6 +39,15 @@ describe('Atlas Home presentation boundary', () => {
     expect(JSON.stringify(model)).not.toContain('foreign')
   })
 
+  it('hides archived and trashed projects and their activity without changing ownership scope',()=>{
+    const allowed=['active','archived','trashed']
+    const model=assembleAtlasHomeViewModel({allowedProjectIds:allowed,
+      projectRows:[project('active'),{...project('archived'),project_lifecycle:{state:'archived'}},{...project('trashed'),project_lifecycle:[{state:'trashed'}]}],
+      runRows:[{id:'old-run',project_id:'archived',status:'running',created_at:NOW.toISOString(),finished_at:null}],approvalRows:[],now:NOW})
+    expect(model.projects.map(p=>p.id)).toEqual(['active']);expect(model.activity).toEqual([]);expect(model.totals.runningRuns).toBe(0)
+    expect(allowed).toEqual(['active','archived','trashed'])
+  })
+
   it('does not fabricate unavailable run or approval metrics', () => {
     const model = assembleAtlasHomeViewModel({
       allowedProjectIds: ['owned'],

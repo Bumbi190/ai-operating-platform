@@ -36,7 +36,7 @@ describe('vnext nav · approved information architecture', () => {
     // remains the instrument for relationships and knowledge flow.
     // Projekt (the Project Spiral) joined the Atlas group with Atlas Home vNext
     // (owner ruling, 2026-10-07): one portfolio destination, never a project list.
-    expect(byGroup.atlas).toEqual(['Atlas', 'Chat', 'Organisation', 'Projekt'])
+    expect(byGroup.atlas).toEqual(['Atlas', 'Chat', 'Bygg med Atlas', 'Organisation', 'Projekt'])
     expect(byGroup.arbete).toEqual([
       'Granskningar', 'Aktivitet', 'Planering', 'Marknadsgranskning', 'Content Center',
     ])
@@ -105,14 +105,14 @@ describe('vnext nav · surface filtering is layout, not authorization', () => {
 
   it('mobile is a deliberate subset, not a copy', () => {
     const mobile = vnextNavItemsFor('mobile').map((i) => i.href)
-    expect(mobile).toEqual(['/atlas', '/chat', '/projects', '/approvals', '/agent-activity', '/memory'])
+    expect(mobile).toEqual(['/atlas', '/chat', '/build', '/projects', '/approvals', '/agent-activity', '/memory'])
     expect(mobile.length).toBeLessThan(vnextNavItems().length)
   })
 
   it('desktop renders all four groups, each with its approved items', () => {
     const groups = vnextNavGroupsFor('desktop')
     expect(groups.map((g) => [g.label, g.items.length])).toEqual([
-      ['Atlas', 4], ['Arbete', 5], ['Intelligens', 3], ['System', 2],
+      ['Atlas', 5], ['Arbete', 5], ['Intelligens', 3], ['System', 2],
     ])
     // Grouping must not have changed the C4 order.
     expect(groups.flatMap((g) => g.items.map((i) => i.href))).toEqual(
@@ -160,6 +160,6 @@ describe('vnext nav · stays data, and stays unwired', () => {
     // Referring to legacy-nav in a comment is fine and useful; importing it
     // would couple the two models so a vNext edit could reach legacy.
     expect(NAV_SRC).not.toMatch(/^\s*import[^\n]*legacy-nav/m)
-    expect(LEGACY_GLOBAL_NAV).toHaveLength(9)
+    expect(LEGACY_GLOBAL_NAV).toHaveLength(10)
   })
 })

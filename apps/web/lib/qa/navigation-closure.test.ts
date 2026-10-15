@@ -58,7 +58,7 @@ const cssRule = (css: string, selector: string) => {
 describe('sidebar · Organisation joins the approved IA', () => {
   it('appears in the vNext nav, in the Atlas group', () => {
     const atlas = VNEXT_NAV.find((group) => group.id === 'atlas')!
-    expect(atlas.items.map((item) => item.label)).toEqual(['Atlas', 'Chat', 'Organisation', 'Projekt'])
+    expect(atlas.items.map((item) => item.label)).toEqual(['Atlas', 'Chat', 'Bygg med Atlas', 'Organisation', 'Projekt'])
   })
 
   it('uses the registry path rather than a literal', () => {
@@ -94,8 +94,8 @@ describe('sidebar · Organisation joins the approved IA', () => {
     expect(vnextNavItemsFor('desktop').some((i) => i.href === '/organisation')).toBe(true)
   })
 
-  it('leaves legacy navigation untouched', () => {
-    expect(LEGACY_GLOBAL_NAV).toHaveLength(9)
+  it('keeps legacy free of Organisation alongside the approved builder entry', () => {
+    expect(LEGACY_GLOBAL_NAV).toHaveLength(10)
     expect(LEGACY_GLOBAL_NAV.map((i) => i.href)).not.toContain('/organisation')
   })
 })

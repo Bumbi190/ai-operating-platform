@@ -11,7 +11,9 @@ export default class FixtureAnthropic {
    if(build){const context=JSON.parse(build);return {stop_reason:'tool_use',content:[{type:'tool_use',id:'fixture-'+crypto.randomUUID(),name:'submit_website_build_feedback',input:{...context,text,inputSource:'text',idempotencyKey:crypto.randomUUID()}}]}}
    const ref=system.match(/CURRENT REVIEWED PLAN REFERENCES: (\{[^\n]*?\});/)?.[1]
    const current=ref?JSON.parse(ref):null
-   return {stop_reason:'tool_use',content:[{type:'tool_use',id:'fixture-'+crypto.randomUUID(),name:'draft_website_build_plan',input:{projectId:TEST_PROJECT,...(current?{planId:current.planId}:{}),expectedRevisionId:current?.revisionId??null,idempotencyKey:crypto.randomUUID(),content:{title:'Caféets hemsida',purpose:text,audience:'Gäster',pages:[{key:'index',title:'Hem',purpose:'Visa caféet'},{key:'contact',title:'Kontakt',purpose:'Hitta oss'}],design:{style:'Omniras färger',reference:null},features:[],architecture:'Statisk hemsida med två sidor',steps:['Bygg','Kontrollera'],domain:{registrar:'strato',requestedName:'cafe-exempel.se'}}}}]}
+   const studio=system.match(/ACTIVE WEBSITE STUDIO PROJECT: (\{[^\n]*?\});/)?.[1]
+   const projectId=studio?JSON.parse(studio).projectId:TEST_PROJECT
+   return {stop_reason:'tool_use',content:[{type:'tool_use',id:'fixture-'+crypto.randomUUID(),name:'draft_website_build_plan',input:{projectId,...(current?{planId:current.planId}:{}),expectedRevisionId:current?.revisionId??null,idempotencyKey:crypto.randomUUID(),content:{title:'Caféets hemsida',purpose:text,audience:'Gäster',pages:[{key:'index',title:'Hem',purpose:'Visa caféet'},{key:'contact',title:'Kontakt',purpose:'Hitta oss'}],design:{style:'Omniras färger',reference:null},features:[],architecture:'Statisk hemsida med två sidor',steps:['Bygg','Kontrollera'],domain:{registrar:'strato',requestedName:'cafe-exempel.se'}}}}]}
   }}
  }}
 }

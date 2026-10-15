@@ -323,43 +323,38 @@ describe('FULL → STATIC history transition', () => {
     expect(res.status).toBe(401)
   })
 
-  it('PINS THE UPSTREAM INVARIANT: the client sends a text-only API history', async () => {
-    // If this ever stops being true — if tool_use/tool_result blocks start being
-    // persisted into apiMessages — then sending `tools: []` on a later static
-    // turn becomes a protocol error. This test is the tripwire for that change.
-    const { readFileSync } = await import('node:fs')
-    const { resolve } = await import('node:path')
-    const src = readFileSync(
-      resolve(__dirname, '../../components/platform/ChatClient.tsx'), 'utf8',
-    )
-    // Hydration filters persisted rows down to user/assistant with string content.
-    expect(src).toMatch(/m\.role === 'user' \|\| m\.role === 'assistant'/)
-    expect(src).toMatch(/content: m\.content as string/)
-    // Appends are plain strings on both sides of the exchange.
-    expect(src).toMatch(/apiMessages\.current = \[\.\.\.apiMessages\.current, \{ role: 'user', content: text \}\]/)
-    expect(src).toMatch(/apiMessages\.current = \[\.\.\.apiMessages\.current, \{ role: 'assistant', content: assistantText \}\]/)
+  it.each([
+    ['legacy', '../../components/platform/ChatClient.tsx'],
+    ['vNext', '../../components/platform/vnext/AtlasChatConversation.tsx'],
+  ])('%s uses the shared controller and sends text-only history after full replies', async (_surface, file) => {
+    const {readFileSync} = await import('node:fs')
+    const {resolve} = await import('node:path')
+    const client = readFileSync(resolve(__dirname, file), 'utf8')
+    expect(client).toContain('controller.activateConversation(')
+    expect(client).toContain('controller.sendTurn(')
+    const {AtlasConversationController} = await import('../atlas/conversation/controller')
+    const bodies: {messages: {role:string;content:string}[]}[] = []
+    const controller = new AtlasConversationController(async (_url, init) => {
+      bodies.push(JSON.parse(init!.body as string))
+      return new Response('data: {"event":"text","text":"Fullt svar"}\n\ndata: {"event":"done"}\n\n')
+    })
+    const id = '50000000-0000-4000-8000-000000000001'
+    controller.activateConversation({id, state:'ok', saved:[
+      {role:'user', content:'Visa statistik',tool_data:null,created_at:null},
+      {role:'assistant',content:'Tidigare svar',tool_data:[{type:'tool_use',id:'tool-1',name:'read',input:{}}],created_at:null},
+      {role:'tool',content:'Internt verktygsresultat',tool_data:null,created_at:null},
+    ]})
+    await controller.sendTurn({conversationId:id,text:'Analysera',inputSource:'text'})
+    await controller.sendTurn({conversationId:id,text:'Tack',inputSource:'text'})
+    expect(bodies[1].messages).toEqual([
+      {role:'user',content:'Visa statistik'},
+      {role:'assistant',content:'Tidigare svar'},
+      {role:'user',content:'Analysera'},
+      {role:'assistant',content:'Fullt svar'},
+      {role:'user',content:'Tack'},
+    ])
   })
 
-  it('PINS THE SAME INVARIANT for the vNext conversation client', async () => {
-    // vNext renders /chat/[id] with its own client. It must keep the history
-    // exactly as text-only as ChatClient does, for exactly the same reason.
-    const { readFileSync } = await import('node:fs')
-    const { resolve } = await import('node:path')
-    const shared = readFileSync(resolve(__dirname, '../../lib/os/chat-shared.ts'), 'utf8')
-    const client = readFileSync(
-      resolve(__dirname, '../../components/platform/vnext/AtlasChatConversation.tsx'), 'utf8',
-    )
-    // Hydration filters persisted rows down to user/assistant with string content.
-    expect(shared).toMatch(/\(m\.role === 'user' \|\| m\.role === 'assistant'\) && !!m\.content/)
-    expect(shared).toMatch(/content: m\.content as string/)
-    // The history starts from that filter and nothing else.
-    expect(client).toMatch(/useRef<HistoryMessage\[\]>\(textHistory\(model\.saved\)\)/)
-    // Appends are plain strings on both sides of the exchange.
-    expect(client).toMatch(/history\.current = \[\.\.\.history\.current, \{ role: 'user', content: text \}\]/)
-    expect(client).toMatch(/history\.current = \[\.\.\.history\.current, \{ role: 'assistant', content: effect\.fullText \}\]/)
-    // And it is the only thing the request carries as messages.
-    expect(client).toMatch(/buildChatRequestBody\(\{\s*messages: history\.current,\s*conversation_id: model\.id,\s*\}\)/)
-  })
 })
 
 describe('the two paths are genuinely different', () => {

@@ -189,12 +189,12 @@ describe('NAVIGATION CONTRACT — the canonical model is the only source', () =>
     expect(resolveDestination('atlas')?.href).toBe(ATLAS_HOME_PATH)
   })
 
-  it('adds only the portfolio index to the original mobile IA', () => {
+  it('adds the builder and portfolio index to the original mobile IA', () => {
     // The existing five quick jumps retain their order; /projects is one new
     // portfolio destination, not a list of user-specific projects. Other
     // desktop-only destinations like /revenue and /planning stay hidden.
     expect(mobile.map((i) => i.href)).toEqual([
-      '/atlas', '/chat', '/projects', '/approvals', '/agent-activity', '/memory',
+      '/atlas', '/chat', '/build', '/projects', '/approvals', '/agent-activity', '/memory',
     ])
     expect(mobile.map((i) => i.href)).not.toContain('/revenue')
     expect(mobile.map((i) => i.href)).not.toContain('/planning')

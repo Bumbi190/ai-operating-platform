@@ -73,12 +73,18 @@ import type {PlanView} from '@/lib/website-build/planning/types'
 import type {BuildSessionView} from '@/lib/website-build/types'
 import {useOptionalAtlas} from '@/lib/atlas/runtime'
 import {useAtlasConversation} from '@/lib/atlas/conversation/provider'
+import {useComposerDraft} from '@/lib/atlas/conversation/use-composer-draft'
+import {AtlasConversationComposer} from './AtlasConversationComposer'
 
 interface Props {
   model: ChatConversationModel
   plan?:PlanView|null
   initialSession?:BuildSessionView|null
   embedded?:boolean
+  mode?:'conversation'|'studio'
+  readOnly?:boolean
+  canSend?:boolean
+  initialTurn?:{token:string;text:string;inputSource:'text'|'voice'}|null
   children?:React.ReactNode
   /**
    * A launcher handed over a question in `?send=`. Read on the server only so
@@ -88,37 +94,23 @@ interface Props {
   asking?: boolean
 }
 
-const COMPOSER_MAX_HEIGHT = 192
-
-function fit(el: HTMLTextAreaElement) {
-  el.style.height = 'auto'
-  el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT)}px`
-  el.style.overflowY = el.scrollHeight > COMPOSER_MAX_HEIGHT ? 'auto' : 'hidden'
-}
-
 function motionAllowed(): boolean {
   return document.documentElement.getAttribute('data-motion') === 'full'
 }
 
-export function AtlasChatConversation({ model, asking = false,plan=null,initialSession=null,embedded=false,children }: Props) {
+export function AtlasChatConversation({ model, asking = false,plan=null,initialSession=null,embedded=false,children,mode='conversation',readOnly=false,canSend=true,initialTurn=null }: Props) {
   const router = useRouter()
   const pathname = usePathname()
-  const blocked = model.state === 'error'
+  const historyUnreadable = model.state === 'error'
+  const blocked = historyUnreadable || readOnly
 
   const {controller,snapshot}=useAtlasConversation()
-  useEffect(()=>{controller.activateConversation({id:model.id,saved:model.saved,state:model.state,projectId:model.projectId,plan,session:initialSession})},[controller,model,plan,initialSession])
+  useEffect(()=>{controller.activateConversation({id:model.id,saved:model.saved,state:model.state,projectId:model.projectId,plan,session:initialSession,studio:mode==='studio'})},[controller,model,plan,initialSession,mode])
   const entries=snapshot.id===model.id?snapshot.entries:hydrateTranscript(model.saved)
-  const [input, setInput] = useState('')
-  const [inputSource,setInputSource]=useState<'text'|'voice'>('text')
+  const atlas=useOptionalAtlas()
   const draftKey='atlas-chat-draft:'+ (model.operatorId??'session')+':'+model.id
-  const [draftHydrated,setDraftHydrated]=useState(false)
-  useEffect(()=>{try{const saved=JSON.parse(sessionStorage.getItem(draftKey)??'null');if(saved?.version===1&&typeof saved.text==='string'&&saved.text.length<=8000&&['text','voice'].includes(saved.inputSource)){setInput(saved.text);setInputSource(saved.inputSource)}}catch{}setDraftHydrated(true)},[draftKey])
-  useEffect(()=>{if(!draftHydrated)return;try{if(input)sessionStorage.setItem(draftKey,JSON.stringify({version:1,text:input,inputSource}));else sessionStorage.removeItem(draftKey)}catch{}},[draftHydrated,draftKey,input,inputSource])
-  const atlas=useOptionalAtlas(),capture=useRef<(()=>void)|null>(null)
-  const [capturing,setCapturing]=useState(false)
-  useEffect(()=>()=>{capture.current?.()},[model.id])
-  useEffect(()=>{if(atlas?.captureError)setCapturing(false)},[atlas?.captureError])
-  const listen=()=>{if(capturing){capture.current?.();setCapturing(false);return}if(!atlas)return;setCapturing(true);capture.current=atlas.captureUtterance(text=>{setInput(text);setInputSource('voice');setCapturing(false);inputRef.current?.focus()})}
+  const draft=useComposerDraft({draftKey,capture:atlas?cb=>atlas.captureUtterance(cb):null,captureError:atlas?.captureError})
+  const input=draft.text,inputSource=draft.inputSource
   const pending=snapshot.id===model.id&&snapshot.pending
   const [launchChecked, setLaunchChecked] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -149,21 +141,26 @@ export function AtlasChatConversation({ model, asking = false,plan=null,initialS
     endRef.current?.scrollIntoView({ block: 'end', behavior: !first && grew && motionAllowed() ? 'smooth' : 'auto' })
   }, [entries, pending])
 
-  const send = useCallback(async (raw:string) => {
+  const send = useCallback(async (raw:string,source:'text'|'voice'=inputSource) => {
     const text=raw.trim()
-    if(!text||controller.snapshot().pending||blocked)return
-    setInput('');setInputSource('text')
+    if(!text||controller.snapshot().pending||blocked||!canSend)return
     if(inputRef.current){inputRef.current.style.height='';inputRef.current.style.overflowY=''}
     followRef.current=true
-    await controller.sendTurn({conversationId:model.id,text,inputSource,onEvent:event=>{
+    const result=await controller.sendTurn({conversationId:model.id,text,inputSource:source,onEvent:event=>{
       const step=applyStreamEvent(startReply([]),event,pathname)
       if(step.effect.type==='navigate')router.push(step.effect.href)
       if(step.effect.type==='timing')console.log(`[chat-mode] ${step.effect.reqType} · första token ${step.effect.firstTokenMs}ms · totalt ${step.effect.serverTotalMs}ms`)
       if(event.event==='done'&&controller.snapshot().history.filter(m=>m.role==='user').length===1)router.refresh()
     }})
+    if(result.ok)draft.clear()
     if(window.matchMedia?.('(pointer: fine)').matches)inputRef.current?.focus()
-  },[blocked,controller,model.id,pathname,router,inputSource])
-  useEffect(()=>{if(snapshot.id===model.id&&snapshot.speechDraft!==null){setInput(snapshot.speechDraft);setInputSource('voice');inputRef.current?.focus()}},[snapshot.id,snapshot.speechDraft,model.id])
+  },[blocked,controller,model.id,pathname,router,inputSource,canSend,draft.clear])
+  useEffect(()=>{if(snapshot.id===model.id&&snapshot.speechDraft!==null){draft.setText(snapshot.speechDraft,'voice');controller.clearSpeechDraft();inputRef.current?.focus()}},[snapshot.id,snapshot.speechDraft,model.id])
+
+  const initialDraftSet=useRef<string|null>(null)
+  useEffect(()=>{if(initialTurn&&initialDraftSet.current!==initialTurn.token){initialDraftSet.current=initialTurn.token;draft.setText(initialTurn.text,initialTurn.inputSource)}},[initialTurn,draft.setText])
+  const firstTurnSent=useRef<string|null>(null)
+  useEffect(()=>{if(initialTurn&&firstTurnSent.current!==initialTurn.token&&canSend&&!blocked){firstTurnSent.current=initialTurn.token;void send(initialTurn.text,initialTurn.inputSource)}},[initialTurn,canSend,blocked,send])
 
   // A launcher's question (`?send=`): sent once, into an empty conversation only,
   // after the parameter is removed from the address — as before.
@@ -201,20 +198,13 @@ export function AtlasChatConversation({ model, asking = false,plan=null,initialS
     setCreating(false)
   }
 
-  function onKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-      event.preventDefault()
-      void send(input)
-    }
-  }
-
   const waiting = awaitingAtlas(entries, pending)
   const showIntro = !blocked && !plan && !initialSession && entries.length === 0 && !pending && (launchChecked || !asking)
 
   return (
-    <div className={embedded?`${styles.field} ${styles.embedded}`:styles.field}>
+    <div className={(embedded?`${styles.field} ${styles.embedded}`:styles.field)+(mode==='studio'?' '+styles.studio:'')}>
       <div className={styles.conversation} data-state={model.state}>
-        <header className={styles.convHeader}>
+        <header className={styles.convHeader} hidden={mode==='studio'}>
           <Link href={model.chatBase} className={styles.back}>
             <ArrowLeft aria-hidden />
             Alla konversationer
@@ -232,18 +222,18 @@ export function AtlasChatConversation({ model, asking = false,plan=null,initialS
 
         <div className={embedded?styles.embeddedScroll:styles.plainBody} data-embedded-scroll={embedded||undefined}>
         {children}
-        {blocked ? (
+        {historyUnreadable ? (
           <p className={styles.blocked} role="note">{TRANSCRIPT_UNREADABLE}</p>
         ) : (
           <>
             {showIntro && (
               <section className={styles.intro} aria-labelledby="atlas-chat-intro" data-intro>
-                <h2 id="atlas-chat-intro" className={styles.introTitle}>{INTRO_TITLE}</h2>
-                <p className={styles.introText}>{EMPTY_CONVERSATION}</p>
+                <h2 id="atlas-chat-intro" className={styles.introTitle}>{mode==='studio'?'Bygg vidare tillsammans med Atlas':INTRO_TITLE}</h2>
+                <p className={styles.introText}>{mode==='studio'?'Beskriv önskemålen och planera innan Atlas bygger.':EMPTY_CONVERSATION}</p>
                 <ul className={styles.starters} aria-label="Förslag">
-                  {CONVERSATION_STARTERS.map((starter) => (
+                  {(mode==='studio'?['Beskriv din hemsida','Förbättra en befintlig sida','Använd en referens']:CONVERSATION_STARTERS).map((starter) => (
                     <li key={starter}>
-                      <button type="button" className={styles.starter} onClick={() => void send(starter)}>
+                      <button type="button" className={styles.starter} onClick={() => mode==='studio'?draft.setText(starter):void send(starter)}>
                         {starter}
                       </button>
                     </li>
@@ -270,32 +260,7 @@ export function AtlasChatConversation({ model, asking = false,plan=null,initialS
         <div ref={endRef} className={styles.endAnchor} aria-hidden />
         </div>
 
-        <div className={styles.dock}>
-          {atlas&&<div className={styles.voiceControls}><button type="button" onClick={listen} disabled={pending||blocked}>{capturing?'Avbryt mikrofon':'Prata med Atlas'}</button><button type="button" onClick={()=>atlas.stopAudio()}>Stoppa uppläsning</button></div>}
-          {inputSource==='voice'&&<p role="status">Kontrollera rösttexten och skicka när den stämmer.</p>}
-          {atlas?.captureError&&<p role="alert">{atlas.captureError}</p>}
-          <form className={styles.composer} onSubmit={(event) => { event.preventDefault(); void send(input) }}>
-            <label className={styles.srOnly} htmlFor="atlas-chat-composer">{inputSource==='voice'?'Redigera rösttranskript':'Meddelande till Atlas'}</label>
-            <textarea
-              id="atlas-chat-composer"
-              ref={inputRef}
-              className={styles.input}
-              value={input}
-              onChange={(event) => { setInput(event.target.value); fit(event.target) }}
-              onKeyDown={onKeyDown}
-              placeholder={COMPOSER_PLACEHOLDER}
-              rows={1}
-              disabled={pending || blocked}
-            />
-            <button type="submit" className={styles.send} disabled={!input.trim() || pending || blocked} aria-label="Skicka">
-              {pending ? <Loader2 className={styles.spin} aria-hidden /> : <ArrowUp aria-hidden />}
-            </button>
-          </form>
-          <p className={styles.composerHint}>
-            <span className={styles.hintKeys}>{COMPOSER_HINT} · </span>
-            {DISCLAIMER}
-          </p>
-        </div>
+        <AtlasConversationComposer value={input} onChange={draft.setText} onSend={()=>void send(input)} disabled={!!pending||blocked} sendDisabled={!canSend} pending={!!pending} capturing={draft.capturing} onVoice={draft.toggleCapture} onStopSpeech={()=>atlas?.stopAudio()} inputSource={inputSource} captureAvailable={!!atlas} captureError={atlas?.captureError} inputRef={inputRef}/>
       </div>
     </div>
   )

@@ -4,6 +4,7 @@ import {createAdminClient} from '@/lib/supabase/admin'
 import {isAnthropicModel,isOpenAIModel,isImageModel} from '@/lib/ai/models'
 import {readOperatorProjectRoot,readProjectWebsiteBuilder} from './store'
 import type {WebsiteBuilderSettingsModel} from './settings-types'
+import {readLatestWorkspaceRequest} from '../studio/store'
 export async function loadWebsiteBuilderSettings():Promise<WebsiteBuilderSettingsModel|null>{
  const access=await resolveProjectAccess();if(!access.ok)return null
  const db=createAdminClient(),result:WebsiteBuilderSettingsModel={root:null,rootReadable:true,projectsReadable:true,projects:[]}
@@ -15,9 +16,9 @@ export async function loadWebsiteBuilderSettings():Promise<WebsiteBuilderSetting
  ])
  if(projects.error||!projects.data)return {...result,rootReadable:result.rootReadable,projectsReadable:false,projects:[]}
  result.projects=await Promise.all(projects.data.map(async project=>{
-  let setting=null,readable=!agents.error
-  try{setting=await readProjectWebsiteBuilder(db,access,project.id)}catch{readable=false}
-  return {id:project.id,name:project.name,setting,readable,agents:(agents.data??[]).filter(a=>a.project_id===project.id&&!isImageModel(a.model)&&(isAnthropicModel(a.model)||isOpenAIModel(a.model))).map(a=>({id:a.id,name:a.name}))}
+  let setting=null,workspaceRequest=null,readable=!agents.error
+  try{setting=await readProjectWebsiteBuilder(db,access,project.id);workspaceRequest=await readLatestWorkspaceRequest(db,access,project.id)}catch{readable=false}
+  return {id:project.id,name:project.name,setting,workspaceRequest,readable,agents:(agents.data??[]).filter(a=>a.project_id===project.id&&!isImageModel(a.model)&&(isAnthropicModel(a.model)||isOpenAIModel(a.model))).map(a=>({id:a.id,name:a.name}))}
  }))
  return result
 }

@@ -30,11 +30,13 @@ export function BuildPreviewPane({
   onRenderedRevision,
   onSession,
   hidden = false,
+  readOnly = false,
 }: {
   initialSession: BuildSessionView;
   onRenderedRevision: (id: string | null) => void;
   onSession: (session: BuildSessionView) => void;
   hidden?: boolean;
+  readOnly?: boolean;
 }) {
   const { session, connection, requestControl } = useBuildSession(
     initialSession,
@@ -104,7 +106,7 @@ export function BuildPreviewPane({
       <p role="status">
         <strong>{BUILD_STATUS_LABELS[session.status]}</strong> · {session.stage}
       </p>
-      <BuildControls session={session} requestControl={requestControl} />
+      {!readOnly && <BuildControls session={session} requestControl={requestControl} />}
       {connection === "reconnecting" && (
         <p role="alert">
           Anslutningen återställs. Senast sparade preview finns kvar.

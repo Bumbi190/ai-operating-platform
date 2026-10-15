@@ -68,11 +68,13 @@ vi.mock('@/lib/supabase/server', () => ({
 }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => makeDb() }))
 
+let advertisedTools: string[] = []
 let streamCall = 0
 vi.mock('@anthropic-ai/sdk', () => {
   class FakeAnthropic {
     messages = {
       stream: (args: any) => {
+        advertisedTools = (args.tools ?? []).map((tool: {name:string}) => tool.name)
         streamCall += 1
         const turn = streamCall
         if (turn > 1) for (const m of args.messages ?? []) {
@@ -93,14 +95,14 @@ vi.mock('@anthropic-ai/sdk', () => {
   return { default: FakeAnthropic }
 })
 
-async function ask(name = 'list_workflows', input: Record<string, unknown> = {}, conversationId?: string, text = 'lista mina workflows', websitePlanRef?:unknown) {
+async function ask(name = 'list_workflows', input: Record<string, unknown> = {}, conversationId?: string, text = 'lista mina workflows', websitePlanRef?:unknown, studioContext?:unknown) {
   TOOL_NAME = name; TOOL_INPUT = input
   streamCall = 0; TOOL_RESULTS = []; WORKFLOW_OPS = []
   vi.resetModules()
   const { POST } = await import('@/app/api/chat/route')
   const res: any = await POST(new Request('http://localhost/api/chat', {
     method: 'POST', headers: { 'content-type': 'application/json', origin:'http://localhost',host:'localhost' },
-    body: JSON.stringify({ messages: [{ role: 'user', content: text }], conversation_id: conversationId, websitePlanRef }),
+    body: JSON.stringify({ messages: [{ role: 'user', content: text }], conversation_id: conversationId, websitePlanRef, studioContext }),
   }) as any)
   const stream = res?.body ? await new Response(res.body).text() : ''
   await new Promise(r => setTimeout(r, 30))
@@ -169,4 +171,20 @@ describe('Website build through actual authenticated chat tool loop', () => {
     const { res } = await ask('start_website_build')
     expect(res.status).toBe(401); expect(streamCall).toBe(0)
   })
+})
+
+
+describe('studio execution capabilities at the actual chat route',()=>{
+ beforeEach(()=>{REAL_BUILD_DB=initializeWorkerDb();resetWorkerDb();CURRENT_USER={id:TEST_PRINCIPAL.userId,email:'builder@example.test'};testSql(`insert into project_budgets(project_id,monthly_sek) values('${TEST_PROJECT}',100) on conflict(project_id) do update set monthly_sek=100;`)})
+ afterEach(()=>{REAL_BUILD_DB=null;vi.unstubAllEnvs()})
+ it('denies a provider-returned global media action in Studio while ordinary operator chat keeps it',async()=>{
+  vi.stubEnv('PLATFORM_OPERATOR_EMAILS','builder@example.test');vi.stubEnv('CRON_SECRET','fixture-cron');vi.stubEnv('NEXT_PUBLIC_SITE_URL','http://localhost')
+  const network:string[]=[];globalThis.fetch=async(url)=>{network.push(String(url));return new Response(JSON.stringify({ok:true}),{headers:{'content-type':'application/json'}})}
+  const ordinary=await ask('run_media_step',{step:'generate_voiceover'},TEST_CONVERSATION,'Kör röstgenerering')
+  expect(ordinary.res.status).toBe(200);expect(advertisedTools).toContain('run_media_step');expect(network.some(url=>url.includes('/api/media/cron/'))).toBe(true)
+  network.length=0
+  const studio=await ask('run_media_step',{step:'generate_voiceover'},TEST_CONVERSATION,'Kör röstgenerering',undefined,{projectId:TEST_PROJECT,conversationId:TEST_CONVERSATION})
+  expect(studio.res.status).toBe(200);expect(advertisedTools).not.toContain('run_media_step');expect(advertisedTools).not.toContain('delegate');expect(advertisedTools).toContain('draft_website_build_plan');expect(advertisedTools).toContain('read_design_skill')
+  expect(studio.raw).toContain('studio_tool_not_allowed');expect(network).toEqual([])
+ },30000)
 })

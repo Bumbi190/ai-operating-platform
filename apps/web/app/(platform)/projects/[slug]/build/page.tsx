@@ -1,12 +1,16 @@
-import {notFound} from 'next/navigation'
-import {getProjectBySlug} from '@/lib/project/get-project'
-import {resolveProjectAccess} from '@/lib/auth/project-access'
-import {createAdminClient} from '@/lib/supabase/admin'
-import {BuildStart} from '@/components/website-build/BuildStart'
-export default async function WebsiteBuildStartPage({params}:{params:{slug:string}}){
- const project=await getProjectBySlug(params.slug);if(!project)notFound()
- const access=await resolveProjectAccess()
- if(!access.ok||!access.allowedProjectIds.includes(project.id))return <p role="alert">Webbbyggen kräver projektägarens åtkomst.</p>
- const {data:builds,error}=await createAdminClient().from('website_build_sessions').select('id,status,updated_at').eq('project_id',project.id).eq('created_by',access.userId).order('updated_at',{ascending:false}).limit(10)
- return <><BuildStart projectId={project.id} projectSlug={project.slug}/>{error?<p role="alert">Tidigare byggen kunde inte läsas.</p>:<nav aria-label="Tidigare byggen"><h2>Tidigare byggen</h2>{builds?.map(b=><p key={b.id}><a href={'/projects/'+encodeURIComponent(project.slug)+'/build/'+b.id}>Öppna bygge · {new Date(b.updated_at).toLocaleString('sv-SE')}</a></p>)}</nav>}</>
+import {redirect,notFound} from 'next/navigation'
+import {loadStudioView} from '@/lib/website-build/studio/loader'
+import {WebsiteBuildError} from '@/lib/website-build/store'
+export const dynamic='force-dynamic'
+export default async function LegacyBuildEntry({params}:{params:{slug:string}}){
+ let model
+ try{model=await loadStudioView({projectSlug:params.slug})}catch(error){
+  if(error instanceof WebsiteBuildError&&error.status===404)notFound()
+  return <p role="alert">Byggstudion kunde inte läsas. Försök igen.</p>
+ }
+ if(!model)redirect('/login')
+ if(!model.selected)notFound()
+ const query=new URLSearchParams({project:model.selected.slug})
+ if(model.conversation)query.set('conversation',model.conversation.id)
+ redirect('/build?'+query)
 }

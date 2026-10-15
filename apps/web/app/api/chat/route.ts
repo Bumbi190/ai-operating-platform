@@ -1,3 +1,4 @@
+import {resolveStudioTurnContext,type StudioTurnContext} from '@/lib/website-build/studio/turn-context'
 /**
  * POST /api/chat
  *
@@ -314,6 +315,14 @@ När operatören vill köra något: hitta rätt workflow, trigga det, presentera
 - Spegla alltid verkligheten: körde inget verktyg → säg det rakt ut. Körde ett verktyg → visa resultatet (t.ex. run_id och att körningen är köad).
 - Hitta aldrig på run_id, status eller utfall.`
 
+// Studio capabilities stay within its selected website project. Dispatch enforces
+// the same set even if a provider returns a tool absent from its schema.
+const STUDIO_TOOL_NAMES = new Set([
+  ...DESIGN_SKILL_TOOLS.map(tool => tool.name),
+  ...WEBSITE_BUILD_TOOL_NAMES,
+  'get_current_time', 'present_links', 'navigate',
+])
+
 const TOOLS: Anthropic.Tool[] = [
   ...DESIGN_SKILL_TOOLS,
   ...WEBSITE_BUILD_TOOLS,
@@ -628,7 +637,7 @@ export async function POST(request: Request) {
   // Atlas chat serves every project at once and belongs to none of them, so it
   // names the platform compatibility project explicitly. Listed in the G1 report
   // as a mapping G2 must decide when it introduces budget scopes.
-  const anthropic = getAnthropic({
+  let anthropic = getAnthropic({
     project: PLATFORM_COMPAT_PROJECT,
     execution: {
       // Ordinary operator assistance. GLOBAL_ONLY, never the billing project:
@@ -638,7 +647,7 @@ export async function POST(request: Request) {
     }, agent: 'Atlas', operation: 'Atlas Chat',
   })
 
-  const { messages, conversation_id, voice, mode, view, websitePlanRef, buildContext:rawBuildContext, inputSource } = await request.json() as {
+  const { messages, conversation_id, voice, mode, view, websitePlanRef, buildContext:rawBuildContext, inputSource, studioContext:rawStudioContext } = await request.json() as {
     messages: Anthropic.MessageParam[]
     conversation_id?: string
     voice?: boolean
@@ -647,10 +656,17 @@ export async function POST(request: Request) {
     websitePlanRef?:unknown
     buildContext?:unknown
     inputSource?:unknown
+    studioContext?:unknown
   }
 
   const db = createAdminClient()
   const tStart = Date.now()
+  let studioContext:StudioTurnContext|null=null
+  if(rawStudioContext!==undefined&&rawStudioContext!==null){
+    const denied=assertSameOrigin(request);if(denied)return denied
+    try{studioContext=await resolveStudioTurnContext(db,{userId,allowedProjectIds:await getAllowedProjectIds(db,userId)},conversation_id??null,rawStudioContext)}catch(error){return buildErrorResponse(error)}
+    anthropic=getAnthropic({project:{projectId:studioContext.projectId},execution:{context:'OPERATOR_EXECUTION',scope:projectScope({projectId:studioContext.projectId})},agent:'Atlas',operation:'Atlas Studio Chat'})
+  }
 
   // ── CONVERSATION OWNERSHIP ────────────────────────────────────────────────
   // `conversation_id` arrives in the REQUEST BODY. It is a client-supplied id
@@ -692,12 +708,12 @@ export async function POST(request: Request) {
     const m = messages[messages.length - 1]
     return m?.role === 'user' && typeof m.content === 'string' ? m.content : ''
   })()
-  const fastPath = !websitePlanRef && !rawBuildContext && (mode === 'content' || isFastPathContent(lastUserText))
+  const fastPath = !studioContext && !websitePlanRef && !rawBuildContext && (mode === 'content' || isFastPathContent(lastUserText))
   // Statisk konversation (hej/tack/vem är du) — besvaras ur Atlas identitet ensam.
   // Allow-list, aldrig gissning: allt som inte bevisligen klarar sig utan live-
   // data, projekt, Memory, klocka och verktyg går full path.
   const staticConversation =
-    !fastPath && !websitePlanRef && !rawBuildContext && classifyStaticConversation(lastUserText) === 'static_conversation'
+    !studioContext && !fastPath && !websitePlanRef && !rawBuildContext && classifyStaticConversation(lastUserText) === 'static_conversation'
   // Resolution is a state-changing action with one exact boundary. Detect it
   // separately so turn zero can force resolve_dream_finding rather than any tool.
   const resolutionIntent = !fastPath && !staticConversation && isDreamResolutionIntent(lastUserText)
@@ -727,7 +743,7 @@ export async function POST(request: Request) {
   // that path builds no project context and is sent no tools, so `executeTool`
   // — the one remaining reader of this list — cannot be reached. Every other
   // path, the content fast path included, reads it exactly as before.
-  const allowedProjectIds = staticConversation && !websitePlanRef && !rawBuildContext ? [] : await getAllowedProjectIds(db, user.id)
+  const allowedProjectIds = studioContext ? [studioContext.projectId] : staticConversation && !websitePlanRef && !rawBuildContext ? [] : await getAllowedProjectIds(db, user.id)
 
 
   // A visible-plan confirmation is an authenticated operator command, never a model tool.
@@ -778,6 +794,7 @@ export async function POST(request: Request) {
     systemPrompt = STATIC_CONVERSATION_SYSTEM + (voice ? VOICE_DIRECTIVE : '')
   } else {
     systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE + DESIGN_SKILL_GUIDE + WEBSITE_BUILD_GUIDE
+    if(studioContext)systemPrompt+='\nACTIVE WEBSITE STUDIO PROJECT: '+JSON.stringify(studioContext)+'; plan and improve this project only. Ask about critical missing facts and use verified website planning/build tools. Specialist delegation, generated images and local desktop require their actual capabilities; never claim they are running from a plan alone.\n'
     if(visiblePlan)systemPrompt+='\nCURRENT REVIEWED PLAN REFERENCES: '+JSON.stringify(visiblePlan)+'; read get_website_build_plan before revising.\n'
     if(verifiedBuildContext)systemPrompt+='\nCURRENT BUILD (verified for this conversation): '+JSON.stringify(verifiedBuildContext)+'; user change requests go to submit_website_build_feedback in this session, using the actually rendered revision. Questions about status go to get_website_build. Never start a second build for a feedback request.\n'
     // UNCONDITIONAL, AND DELIBERATELY BEFORE EVERYTHING THAT CAN FAIL. The bug
@@ -866,7 +883,7 @@ export async function POST(request: Request) {
   // read safe: with no tool schema the model cannot emit a tool_use block, so
   // executeTool is unreachable on this path. Every other class keeps TOOLS
   // exactly as before — this is not general per-class schema pruning.
-  const activeTools = (fastPath || staticConversation) ? [] : TOOLS
+  const activeTools = (fastPath || staticConversation) ? [] : studioContext ? TOOLS.filter(tool=>STUDIO_TOOL_NAMES.has(tool.name)) : TOOLS
   const forceToolFirstTurn = actionIntent && activeTools.length > 0
   const forceResolutionFirstTurn = resolutionIntent && activeTools.length > 0
   // Direkt navigeringskommando → tvinga specifikt navigate-verktyget på turn 0.
@@ -1038,7 +1055,7 @@ export async function POST(request: Request) {
 
             let result: unknown
             try {
-              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds, toolUse.id, await resolveOwnedConversationId(), verifiedBuildContext, inputSource==='voice'?'voice':'text')
+              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds, toolUse.id, await resolveOwnedConversationId(), verifiedBuildContext, inputSource==='voice'?'voice':'text',studioContext?.projectId??null)
             } catch (err) {
               result = { error: err instanceof Error ? err.message : 'Okänt fel' }
             }
@@ -1182,7 +1199,12 @@ async function executeTool(
   ownedConversationId: string | null = null,
   verifiedBuildContext:BuildContext|null=null,
   inputSource:'text'|'voice'='text',
+  studioProjectId:string|null=null,
 ): Promise<unknown> {
+  if (studioProjectId && !STUDIO_TOOL_NAMES.has(name)) {
+    return { error: 'Verktyget är inte tillgängligt i byggstudion.', denied: 'studio_tool_not_allowed' }
+  }
+
   // Deterministic, read-only, no database and no network. Placed first because
   // it is the cheapest branch and touches nothing else in the system.
   if (name === 'get_current_time') {
@@ -1420,6 +1442,7 @@ async function executeTool(
   }
 
   if (name === 'ask_manager') {
+    if(studioProjectId)return {error:'Specialistdelegering är inte ansluten till byggstudion ännu.',availability:'not_implemented'}
     const { message, project_id } = input as { message: string; project_id?: string }
     // ISOLATION: only narrow by a model-supplied project_id if the operator owns
     // it; otherwise ignore it. The manager's reads are scoped to allowedProjectIds

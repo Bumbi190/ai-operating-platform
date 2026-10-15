@@ -12,6 +12,7 @@ import {StudioEmptyPreview} from './StudioEmptyPreview'
 import {StudioLayout} from './StudioLayout'
 import {StudioLifecycleActions} from './StudioLifecycleActions'
 import {StudioBudgetForm} from './StudioBudgetForm'
+import {StudioCostControl} from './StudioCostControl'
 import styles from './AtlasBuilderStudio.module.css'
 type Filter='active'|'archived'|'trashed'
 type InitialTurn={token:string;text:string;inputSource:'text'|'voice'}
@@ -21,22 +22,33 @@ async function getView(selection:StudioSelection,include:Filter='active'):Promis
 export function AtlasBuilderStudio({model}:{model:StudioView}){
  const [view,setView]=useState(model),[busy,setBusy]=useState(false),[loading,setLoading]=useState(false),[error,setError]=useState(''),[name,setName]=useState(''),[initialTurn,setInitialTurn]=useState<InitialTurn|null>(null)
  const current=useRef(view),generation=useRef(0);current.current=view
+ const pauseClock=useRef(0),pauseChanges=useRef(new Map<string,{epoch:number;paused:boolean}>())
  const createIntents=useRef(new Map<string,EnsureStudioInput|null>())
  const {controller}=useAtlasConversation(),atlas=useOptionalAtlas()
  const draft=useComposerDraft({draftKey:'atlas-studio-draft:'+model.operatorId+':'+(view.selected?.id??'new'),capture:atlas?cb=>atlas.captureUtterance(cb):null,captureError:atlas?.captureError})
  useEffect(()=>()=>{generation.current++},[])
+ // Keep pause changes newer than a read without discarding its project navigation.
+ function mergePauseChanges(next:StudioView,readEpoch:number):StudioView{
+  const apply=(project:NonNullable<StudioView['selected']>)=>{const change=pauseChanges.current.get(project.id);return change&&change.epoch>readEpoch?{...project,lifecycle:{...project.lifecycle,executionPaused:change.paused}}:project}
+  return {...next,selected:next.selected?apply(next.selected):null,projects:next.projects.map(apply)}
+ }
+ function rememberPause(projectId:string,paused:boolean){
+  if(current.current.selected?.id!==projectId||current.current.selected.lifecycle.executionPaused===paused)return
+  pauseChanges.current.set(projectId,{epoch:++pauseClock.current,paused})
+  setView(old=>({...old,selected:old.selected?.id===projectId?{...old.selected,lifecycle:{...old.selected.lifecycle,executionPaused:paused}}:old.selected,projects:old.projects.map(project=>project.id===projectId?{...project,lifecycle:{...project.lifecycle,executionPaused:paused}}:project)}))
+ }
  async function open(selection:StudioSelection,include:Filter=current.current.include??'active'){
-  const token=++generation.current;setLoading(true);setBusy(false);setError('');setInitialTurn(null)
+  const token=++generation.current,readEpoch=pauseClock.current;setLoading(true);setBusy(false);setError('');setInitialTurn(null)
   const target=selection.projectSlug?current.current.projects.find(p=>p.slug===selection.projectSlug)??(current.current.selected?.slug===selection.projectSlug?current.current.selected:null):null
   const changing=target?.id!==current.current.selected?.id||!selection.projectSlug
   if(changing){controller.deactivateConversation();setView(old=>({...old,selected:target,conversation:null,plan:null,session:null}))}
-  try{const next=await getView(selection,include);if(generation.current!==token)return;setView(next);replaceUrl(selection,include)}catch(e){if(generation.current===token){setError((e as Error).message);setView(old=>({...old,state:'error'}))}}finally{if(generation.current===token)setLoading(false)}
+  try{const next=mergePauseChanges(await getView(selection,include),readEpoch);if(generation.current!==token)return;setView(next);replaceUrl(selection,include)}catch(e){if(generation.current===token){setError((e as Error).message);setView(old=>({...old,state:'error'}))}}finally{if(generation.current===token)setLoading(false)}
  }
  useEffect(()=>{if(!view.selected?.lifecycle.stopping)return;const id=view.selected.id,timer=setInterval(()=>{if(current.current.selected?.id===id)reload()},4000);return()=>clearInterval(timer)},[view.selected?.id,view.selected?.lifecycle.stopping])
  function reload(){const v=current.current;void open({projectSlug:v.selected?.slug,conversationId:v.conversation?.id,...(v.session?{sessionId:v.session.sessionId}:{})})}
  async function start(){
   if(busy||loading||!draft.text.trim()||view.state!=='ok'||!view.selected&&!view.canCreateProject)return
-  const selected=view.selected,text=draft.text.trim(),inputSource=draft.inputSource,token=++generation.current
+  const selected=view.selected,text=draft.text.trim(),inputSource=draft.inputSource,token=++generation.current,readEpoch=pauseClock.current
   const storageKey='atlas-studio-create:'+model.operatorId+':'+(selected?.id??'new')
   setBusy(true);setError('')
   try{
@@ -47,7 +59,7 @@ export function AtlasBuilderStudio({model}:{model:StudioView}){
    try{sessionStorage.setItem(storageKey,JSON.stringify(input))}catch{}
    const r=await fetch('/api/website-build/studio',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(input)}),ref:StudioWorkspaceRef&{error?:string}=await r.json().catch(()=>null)
    if(!r.ok||!ref?.projectId||!ref?.conversationId||!ref?.projectSlug)throw Error(ref?.error??'Projektet kunde inte startas. Din idé finns kvar; försök igen.')
-   const selection={projectSlug:ref.projectSlug,conversationId:ref.conversationId},next=await getView(selection)
+   const selection={projectSlug:ref.projectSlug,conversationId:ref.conversationId},next=mergePauseChanges(await getView(selection),readEpoch)
    if(generation.current!==token)return
    if(next.state!=='ok'||next.selected?.id!==ref.projectId||next.conversation?.id!==ref.conversationId)throw Error('Projektet skapades men chatten kunde inte läsas. Din idé finns kvar; försök igen.')
    // The live handoff carries the brief even when browser persistence fails.
@@ -72,7 +84,7 @@ export function AtlasBuilderStudio({model}:{model:StudioView}){
   </div>
   <AtlasConversationComposer variant="studio" value={draft.text} onChange={draft.setText} onSend={()=>void start()} disabled={busy||loading||readOnly||view.state!=='ok'||!selected&&!view.canCreateProject} pending={busy} capturing={draft.capturing} onVoice={draft.toggleCapture} onStopSpeech={()=>atlas?.stopAudio()} inputSource={draft.inputSource} captureAvailable={!!atlas} captureError={atlas?.captureError}/>
  </div>
- return <section className={styles.studio} aria-label="Bygg med Atlas"><header className={styles.header}><div><h1>Bygg med Atlas</h1><p>{selected?selected.name:'Från idé till färdig hemsida'}</p></div><label>Visa <select aria-label="Projektlista" value={view.include??'active'} onChange={e=>void open({},e.target.value as Filter)}><option value="active">Aktiva projekt</option><option value="archived">Arkiverade projekt</option><option value="trashed">Papperskorgen</option></select></label><StudioProjectPicker projects={view.projects} selected={selected} onChange={id=>{const p=view.projects.find(p=>p.id===id)??(selected?.id===id?selected:null);void open(p?{projectSlug:p.slug}:{})}}/><button type="button" onClick={reload}>Uppdatera</button></header>
+ return <section className={styles.studio} aria-label="Bygg med Atlas"><header className={styles.header}><div className={styles.headerTitle}><h1>Bygg med Atlas</h1><p>{selected?selected.name:'Från idé till färdig hemsida'}</p></div><label>Visa <select aria-label="Projektlista" value={view.include??'active'} onChange={e=>void open({},e.target.value as Filter)}><option value="active">Aktiva projekt</option><option value="archived">Arkiverade projekt</option><option value="trashed">Papperskorgen</option></select></label><StudioProjectPicker projects={view.projects} selected={selected} onChange={id=>{const p=view.projects.find(p=>p.id===id)??(selected?.id===id?selected:null);void open(p?{projectSlug:p.slug}:{})}}/><div className={styles.headerActions}><button type="button" onClick={reload}>Uppdatera</button>{selected&&<StudioCostControl key={selected.id} projectId={selected.id} projectSlug={selected.slug} paused={selected.lifecycle.executionPaused} onPauseChange={paused=>rememberPause(selected.id,paused)}/>}</div></header>
   {error&&<p role="alert" className={styles.error}>{error}</p>}{loading&&<p role="status" className={styles.status}>Läser projektet…</p>}
   {selected&&<div className={styles.setup}><StudioLifecycleActions key={selected.id} project={selected} onChanged={state=>{if(current.current.selected?.id===selected.id)void open({projectSlug:selected.slug,conversationId:current.current.conversation?.id},state)}}/>{selected.lifecycle.state==='active'?<StudioBudgetForm key={selected.id} project={selected} onSaved={()=>{if(current.current.selected?.id===selected.id)reload()}}/>:<p>Projektet är {selected.lifecycle.state==='archived'?'arkiverat':'i papperskorgen'}. Historiken finns kvar.</p>}{selected.lifecycle.executionPaused&&<p>Projektet är pausat. <a href={'/projects/'+encodeURIComponent(selected.slug)}>Öppna projektets kontroller</a>.</p>}{!selected.builderAgentId&&<p>Välj projektets byggagent i <a href={'/settings/website-build#project-'+selected.id}>bygginställningarna</a> innan bygget startas.</p>}<a href={'/settings/website-build#project-'+selected.id}>Projektmapp och anslutningar</a>{selected.workspaceRequest&&<p>Begärd mapp: {selected.workspaceRequest.root.root} · väntar på datoranslutning.</p>}</div>}
   {view.conversation?<AtlasBuildSurface key={view.conversation.id} mode="studio" conversationModel={view.conversation} plan={view.plan} initialSession={view.session} workspaceReadable={view.state==='ok'} brief={view.conversation.website?.brief??undefined} studioProject={selected} readOnly={readOnly||loading} canSend={canSend} initialTurn={initialTurn}/>:<StudioLayout chat={draftChat} website={<StudioEmptyPreview/>} desktop={<section><h2>Atlas skrivbord</h2><p>Skrivbordet visas här när en verifierad datoranslutning finns.</p><a href="/settings/website-build">Visa mappinställningar</a></section>} files={<section><h2>Projektets filer</h2><p>Välj projekt eller beskriv en ny hemsida. Projektets material samlas här när det har sparats.</p></section>} tasks={<section><h2>Atlas arbetssteg</h2><p>Börja med en plan i chatten. Här visas sedan byggets verkliga status.</p></section>}/>}

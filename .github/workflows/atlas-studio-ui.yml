@@ -11,6 +11,10 @@ on:
       - 'apps/web/app/(platform)/layout.tsx'
       - 'apps/web/e2e/atlas-studio-ui-*'
       - 'apps/web/e2e/atlas-studio-ui.spec.ts'
+      - 'apps/web/e2e/atlas-studio-costs.spec.ts'
+      - 'apps/web/lib/website-build/studio/costs*'
+      - 'apps/web/lib/website-build/studio/api.ts'
+      - 'apps/web/app/api/website-build/studio/costs/**'
       - 'apps/web/playwright.atlas-studio-ui.config.ts'
       - '.github/workflows/atlas-studio-ui.yml'
 permissions:
@@ -30,6 +34,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck --workspace=apps/web
+      - run: npx vitest run lib/website-build/studio/costs.test.ts
+        working-directory: apps/web
       - run: npx playwright install --with-deps chromium
         working-directory: apps/web
       - run: npx playwright test --config=playwright.atlas-studio-ui.config.ts

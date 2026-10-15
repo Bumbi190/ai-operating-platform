@@ -1,10 +1,10 @@
 import {beforeAll,describe,it,expect} from 'vitest'
 import {spawn} from 'node:child_process'
 import {randomUUID} from 'node:crypto'
-import {initializeWorkerDb,testSql,TEST_AGENT,TEST_PRINCIPAL,TEST_PROJECT} from '../test-db'
+import {initializeWorkerDb,resetWorkerDb,testSql,TEST_AGENT,TEST_PRINCIPAL,TEST_PROJECT} from '../test-db'
 import {saveWebsitePlanRevision,approveWebsitePlan,startApprovedWebsitePlan,setProjectWebsiteBuilder} from './store'
 let db:ReturnType<typeof initializeWorkerDb>
-beforeAll(()=>{db=initializeWorkerDb()})
+beforeAll(()=>{db=initializeWorkerDb();resetWorkerDb()})
 const literal=(x:unknown)=>"'"+JSON.stringify(x).replaceAll("'","''")+"'::jsonb"
 describe('planning concurrency with two real SQL connections',()=>{
  it('both concurrent starts return the same committed session',async()=>{
@@ -19,7 +19,7 @@ describe('planning concurrency with two real SQL connections',()=>{
   let out='',err=''
   child.stdout.on('data',b=>out+=b);child.stderr.on('data',b=>err+=b)
   const completed=new Promise<void>((resolve,reject)=>{child.on('error',reject);child.on('exit',code=>code===0?resolve():reject(Error(err)))})
-  child.stdin.end("begin; set role service_role; select id from website_build_plans where id='"+plan.ref.planId+"' for update; select pg_advisory_xact_lock(882015); select pg_sleep(1); select website_build_plan_start("+literal(TEST_PRINCIPAL)+","+literal(input)+"); commit;")
+  child.stdin.end("begin; set role service_role; select id from public.projects where id='"+TEST_PROJECT+"' for update; select id from website_build_plans where id='"+plan.ref.planId+"' for update; select pg_advisory_xact_lock(882015); select pg_sleep(1); select website_build_plan_start("+literal(TEST_PRINCIPAL)+","+literal(input)+"); commit;")
   let held=false
   for(let n=0;n<20;n++){if(testSql("select exists(select 1 from pg_locks where locktype='advisory' and objid=882015 and granted);")==='t'){held=true;break}await new Promise(resolve=>setTimeout(resolve,20))}
   expect(held).toBe(true)

@@ -27,7 +27,7 @@ describe('Atlas design knowledge tools', () => {
     expect(route).toContain('...DESIGN_SKILL_TOOLS')
     expect(route).toContain('executeDesignSkillTool(name, input)')
     expect(route).toContain('if (!user)')
-    expect(route).toContain('(fastPath || staticConversation) ? [] : TOOLS')
+    expect(route).toContain('(fastPath || staticConversation) ? [] : studioContext ? TOOLS.filter(tool=>tool.name!==\'ask_manager\') : TOOLS')
   })
 })
 

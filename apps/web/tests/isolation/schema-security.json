@@ -34,15 +34,27 @@
       "rule": "An entry here excuses a table from the migration-text rule. It must still be RLS-enabled in effective state, and it should be treated as temporary: an exception that outlives its cause is a hole with a comment next to it."
     },
     "created_not_live": {
-      "tables": ["agent_decisions","ai_cost_snapshots","memory_refs","website_build_studio_intents","website_build_workspace_requests","project_lifecycle","website_build_studio_budget_events"],
+      "tables": [
+        "agent_decisions",
+        "ai_cost_snapshots",
+        "memory_refs",
+        "website_build_studio_intents",
+        "website_build_workspace_requests",
+        "project_lifecycle",
+        "website_build_studio_budget_events"
+      ],
       "meaning": "Created by a migration but absent from the production catalog at capture time — never applied there, or dropped out-of-band. They are NOT a fresh-deploy hazard: each declares RLS in its own migration, so a rebuild creates them protected. Listed so their absence from the table map is a recorded fact rather than a silent gap, and so the fail-closed rule can distinguish them from a genuinely new unprotected table.",
       "requirement": "Every entry must have RLS declared in the migration corpus.",
       "classes": {
         "agent_decisions": "SERVER_ONLY",
         "ai_cost_snapshots": "SERVER_ONLY",
-        "memory_refs": "SERVER_ONLY"
+        "memory_refs": "SERVER_ONLY",
+        "website_build_studio_intents": "TENANT_RLS",
+        "website_build_workspace_requests": "TENANT_RLS",
+        "project_lifecycle": "TENANT_RLS",
+        "website_build_studio_budget_events": "TENANT_RLS"
       },
-      "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class."
+      "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class. Atlas studio entries are intended TENANT_RLS: owner/project SELECT policies, no direct DML grants. They remain absent from the live map until verified production apply."
     },
     "post_migration": "20260909120000_workflow_stories_rls.sql (Phase 9Y) and 20260910090000_declarative_rls_parity.sql (Phase 9Z). Every row reflects effective production state, which those two migrations now also declare; and 20260910120000_cost_ledger_rls_isolation.sql (Phase 9AB), which moves cost_events and infra_costs from TENANT_RLS to SERVER_ONLY: their `project_id IS NULL OR …` policies on role public are dropped and anon/authenticated grants revoked.",
     "views": "Phase 9AA. Public VIEWS, classified like tables. A view runs as its owner unless it is security_invoker, so base-table RLS does not protect it; the migration security gate fails any client-reachable public view without security_invoker and any public view absent from this map. `live` records whether it exists in production.",

@@ -26,11 +26,11 @@ export function HandlarborsenCompetitors({ scan, landscape = null, history = nul
         <dl className={styles.facts}>
           <div><dt>Aktiverat</dt><dd>manuell läsning</dd></div>
           <div><dt>Schemalagt</dt><dd>ej aktiverad</dd></div>
-          <div><dt>Lagring</dt><dd>ej inkopplat</dd></div>
+          <div><dt>Lagring</dt><dd>{historyEnabled ? (history?.status === 'ok' ? 'manuell historik aktiv' : 'aktiverad – läsning ej verifierad') : 'avstängd i denna miljö'}</dd></div>
         </dl>
         <p>{historyEnabled
           ? 'Offentliga källor kan kontrolleras manuellt och sparas högst en gång per UTC-dag. Förändringar kräver två verifierade observationer av samma källa. Ingen automatisk bevakning eller exekvering är aktiverad.'
-          : 'Kontrollen läser offentliga källor vid ditt klick och sparar inga observationer. Historiska förändringar och långsiktig bevakning väntar på framtida lagring och godkännande. Autonom exekvering är spärrad tills Cost Governance är verifierad i preview och produktion.'}</p>
+          : 'Kontrollen läser offentliga källor vid ditt klick. Manuell historiklagring är avstängd i denna miljö, men tidigare sparade observationer påverkas inte. Autonom exekvering är spärrad tills Cost Governance är verifierad i preview och produktion.'}</p>
         {/* A native GET form avoids Next Link prefetch executing an on-demand scan. */}
         <form method="get" action="/projects/handlarborsen/competitors">
           <button type="submit" name="scan" value="1" className={styles.button}>Kontrollera offentliga källor</button>

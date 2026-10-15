@@ -106,3 +106,25 @@ describe('static website artifacts', () => {
     expect(() => makePreviewDocument(artifact, 'index', 'x')).toThrow(WebsiteArtifactError)
   })
 })
+
+describe('compact multi-page packages', () => {
+  it('shares a single stylesheet across all pages and retains page overrides', () => {
+    const input = draft()
+    const shared = 'body{background:#0e0e0e;color:#eee}'
+    const artifact = compileWebsiteArtifact({...input, css: shared})
+    expect(artifact.pages).toHaveLength(2)
+    for (const page of artifact.pages) expect(page.html).toContain(shared)
+    expect(artifact.pages[0].html.indexOf(shared)).toBeLessThan(artifact.pages[0].html.indexOf(input.pages[0].css))
+  })
+  it('accepts pages without duplicate per-page styles in a shared-style package', () => {
+    const input = {...draft(), css: 'body{color:gold}'}
+    const pages = input.pages.map(({css: _css, ...page}) => page)
+    const artifact = compileWebsiteArtifact({...input, pages})
+    expect(artifact.pages.map(p=>p.key)).toEqual(['index','about'])
+    expect(artifact.pages[1].html).toContain('body{color:gold}')
+  })
+  it('rejects non-text shared styles and still rejects hostile markup', () => {
+    expect(()=>compileWebsiteArtifact({...draft(),css:{bad:true}})).toThrow(WebsiteArtifactError)
+    expect(()=>compileWebsiteArtifact({...draft('<script>alert(1)</script>'),css:''})).toThrow(WebsiteArtifactError)
+  })
+})

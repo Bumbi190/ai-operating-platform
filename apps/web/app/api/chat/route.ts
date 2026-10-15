@@ -1,3 +1,4 @@
+import {studioSystemPrompt} from '@/lib/website-build/studio/chat-context'
 import {resolveStudioTurnContext,type StudioTurnContext} from '@/lib/website-build/studio/turn-context'
 /**
  * POST /api/chat
@@ -792,9 +793,15 @@ export async function POST(request: Request) {
     // STATIC_CONVERSATION_SYSTEM säger uttryckligen att live-data saknas denna
     // tur, så en felklassad fråga inte kan besvaras med påhittade siffror.
     systemPrompt = STATIC_CONVERSATION_SYSTEM + (voice ? VOICE_DIRECTIVE : '')
+  } else if(studioContext) {
+    // Keep the transcript and verified bindings, without the global executive snapshot.
+    systemPrompt=studioSystemPrompt(studioContext)
+    if(visiblePlan)systemPrompt+='\nCURRENT REVIEWED PLAN REFERENCES: '+JSON.stringify(visiblePlan)+'; read get_website_build_plan before revising.\n'
+    if(verifiedBuildContext)systemPrompt+='\nCURRENT BUILD (verified for this conversation): '+JSON.stringify(verifiedBuildContext)+'; user changes go to submit_website_build_feedback for this rendered revision. Status questions go to get_website_build. Never start a second build for feedback.\n'
+    systemPrompt+=renderCurrentInstant(new Date())
+    if(voice)systemPrompt+=VOICE_DIRECTIVE
   } else {
     systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE + DESIGN_SKILL_GUIDE + WEBSITE_BUILD_GUIDE
-    if(studioContext)systemPrompt+='\nACTIVE WEBSITE STUDIO PROJECT: '+JSON.stringify(studioContext)+'; plan and improve this project only. Ask about critical missing facts and use verified website planning/build tools. Specialist delegation, generated images and local desktop require their actual capabilities; never claim they are running from a plan alone.\n'
     if(visiblePlan)systemPrompt+='\nCURRENT REVIEWED PLAN REFERENCES: '+JSON.stringify(visiblePlan)+'; read get_website_build_plan before revising.\n'
     if(verifiedBuildContext)systemPrompt+='\nCURRENT BUILD (verified for this conversation): '+JSON.stringify(verifiedBuildContext)+'; user change requests go to submit_website_build_feedback in this session, using the actually rendered revision. Questions about status go to get_website_build. Never start a second build for a feedback request.\n'
     // UNCONDITIONAL, AND DELIBERATELY BEFORE EVERYTHING THAT CAN FAIL. The bug

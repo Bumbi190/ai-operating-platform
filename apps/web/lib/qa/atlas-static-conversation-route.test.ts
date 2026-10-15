@@ -108,7 +108,7 @@ async function post(body: unknown) {
   const { POST } = await import('@/app/api/chat/route')
   const res = await POST(new Request('http://localhost/api/chat', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', origin: 'http://localhost', host: 'localhost' },
     body: JSON.stringify(body),
   }) as any)
   const text = res.body ? await new Response(res.body).text() : ''
@@ -378,5 +378,34 @@ describe('the two paths are genuinely different', () => {
 
     expect(staticTools).toBe(0)
     expect(fullTools).toBeGreaterThan(0)
+  })
+})
+
+vi.mock('@/lib/website-build/studio/turn-context', () => ({
+  resolveStudioTurnContext: async (_db:unknown,_p:unknown,_id:unknown,value:unknown) => value,
+}))
+describe('website studio context economy', () => {
+  it('keeps project references and conversation without building the global executive snapshot', async () => {
+    const studioContext={projectId:'10000000-0000-4000-8000-000000000001',conversationId:'50000000-0000-4000-8000-000000000001'}
+    const history=[{role:'user',content:'Skapa en arkitektur för tre sidor'},{role:'assistant',content:'Vi planerar tillsammans.'},{role:'user',content:'Behåll färgerna och lägg till kontakt.'}]
+    const {res}=await post({messages:history,conversation_id:studioContext.conversationId,studioContext})
+    expect(res.status).toBe(200)
+    expect(streamCalls).toHaveLength(1)
+    const call=streamCalls[0]
+    expect(call.messages).toEqual(history)
+    expect(call.system).toContain('ACTIVE WEBSITE STUDIO PROJECT: '+JSON.stringify(studioContext))
+    expect(call.system).toContain('Strato')
+    expect(call.system).toContain('Stripe')
+    expect(call.system).toContain('0 kr')
+    expect(call.system).toContain('Europe/Stockholm')
+    expect(call.system.length).toBeLessThan(9000)
+    const studioChars=call.system.length,studioTables=[...touchedTables]
+    await post(userMsg('Skapa en arkitektur för tre sidor'))
+    const globalChars=streamCalls[0].system.length
+    console.log('[studio-context-size]',JSON.stringify({studioChars,globalChars}))
+    expect(studioChars).toBeLessThan(globalChars/2)
+    expect(call.tools).toEqual(expect.arrayContaining([expect.objectContaining({name:'get_website_build_plan'}),expect.objectContaining({name:'submit_website_build_feedback'})]))
+    expect(call.tools).not.toEqual(expect.arrayContaining([expect.objectContaining({name:'trigger_workflow'})]))
+    for(const table of ['atlas_actions','opportunities','manager_tasks','cost_events']) expect(studioTables).not.toContain(table)
   })
 })

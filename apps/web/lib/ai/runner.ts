@@ -549,6 +549,8 @@ export interface RunStepResult {
   tokensIn: number
   tokensOut: number
   durationMs: number
+  /** Provider termination, used to reject incomplete structured output without a retry. */
+  stopReason?: string | null
   /**
    * G3C-3C-A · D2. TRUE when a RUN_BOUND physical request in this step reported
    * that authority became unreadable while it was in flight.
@@ -633,6 +635,7 @@ async function runAnthropicStep(
   let fullContent = ''
   let inputTokens = 0
   let outputTokens = 0
+  let stopReason: string | null = null
 
   // ── G3C-3C-A · F2 · TERMINATION IS OBSERVED BY ITERATING, NOT BY A HANDLE ──
   // This function used to also return a `settled` promise from
@@ -673,6 +676,7 @@ async function runAnthropicStep(
     }
 
     const finalMsg = await stream.finalMessage()
+    stopReason = finalMsg.stop_reason
     inputTokens = finalMsg.usage.input_tokens
     outputTokens = finalMsg.usage.output_tokens
   } else {
@@ -689,8 +693,8 @@ async function runAnthropicStep(
       messages: [{ role: 'user', content: userMessage }],
     })
 
-    const block = response.content[0]
-    fullContent = block.type === 'text' ? block.text : ''
+    fullContent = response.content.filter((block): block is Anthropic.TextBlock => block.type === 'text').map(block => block.text).join('')
+    stopReason = response.stop_reason
     inputTokens = response.usage.input_tokens
     outputTokens = response.usage.output_tokens
   }
@@ -701,7 +705,7 @@ async function runAnthropicStep(
   // Read HERE: the stream has been iterated to completion and its final message
   // awaited above, so a latch that appeared mid-stream is visible.
   return {
-    content: fullContent, tokensIn: inputTokens, tokensOut: outputTokens,
+    content: fullContent, tokensIn: inputTokens, tokensOut: outputTokens, stopReason,
     durationMs: Date.now() - start, authorityRefreshRequired: flights.required(),
   }
 }
@@ -718,6 +722,7 @@ async function runOpenAIStep(
   let fullContent = ''
   let inputTokens = 0
   let outputTokens = 0
+  let stopReason: string | null = null
   const flights = flightCollector(input.authority)
 
   if (onChunk) {
@@ -741,6 +746,7 @@ async function runOpenAIStep(
     )
 
     for await (const chunk of stream) {
+      if(chunk.choices[0]?.finish_reason)stopReason=chunk.choices[0].finish_reason
       const text = chunk.choices[0]?.delta?.content ?? ''
       if (text) {
         fullContent += text
@@ -764,6 +770,7 @@ async function runOpenAIStep(
       { signal: input.signal },
     )
     fullContent = response.choices[0]?.message?.content ?? ''
+    stopReason = response.choices[0]?.finish_reason ?? null
     inputTokens = response.usage?.prompt_tokens ?? 0
     outputTokens = response.usage?.completion_tokens ?? 0
   }
@@ -776,7 +783,7 @@ async function runOpenAIStep(
 
   // The streaming branch above iterates to exhaustion before reaching here, so
   // a latch that appeared mid-stream is already visible.
-  return { content: fullContent, tokensIn: inputTokens, tokensOut: outputTokens,
+  return { content: fullContent, tokensIn: inputTokens, tokensOut: outputTokens, stopReason,
            durationMs: Date.now() - start, authorityRefreshRequired: flights.required() }
 }
 

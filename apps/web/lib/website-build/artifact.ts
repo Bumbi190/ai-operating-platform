@@ -95,6 +95,7 @@ export function compileWebsiteArtifact(input: unknown): WebsiteArtifact {
   if (draft.format !== 'static-website.v1') fail('INVALID_FORMAT')
   const title = text(draft.title, 200)
   if (!title.trim() || !Array.isArray(draft.pages) || !draft.pages.length || draft.pages.length > WEBSITE_BUILD_LIMITS.pages) fail('INVALID_PAGES')
+  const sharedCss = draft.css === undefined ? '' : text(draft.css)
   const rawPages = draft.pages.map(record)
   const keys = rawPages.map(p => text(p.key, 50))
   if (keys.some(k => !SAFE_KEY.test(k)) || new Set(keys).size !== keys.length || !keys.includes('index')) fail('INVALID_PAGE_KEY')
@@ -106,7 +107,7 @@ export function compileWebsiteArtifact(input: unknown): WebsiteArtifact {
     const markup = validateMarkup(text(page.bodyHtml), pageKeys)
     forms ||= markup.forms
     const behaviors = validateBehaviors(page.behaviors, markup.ids)
-    const css = text(page.css).replace(/</g, '\\3c ')
+    const css = ((sharedCss ? sharedCss + '\n' : '') + (page.css === undefined && draft.css !== undefined ? '' : text(page.css))).replace(/</g, '\\3c ')
     const config = scriptJson({ behaviors, pages: keys })
     const html = `<!doctype html><html lang="sv"><head><meta http-equiv="Content-Security-Policy" content="${escapeHtml(websiteCsp(`'sha256-${scriptHash}'`))}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(pageTitle || title)}</title><style>*,*::before,*::after{box-sizing:border-box}body{margin:0}[hidden]{display:none!important}img{max-width:100%;height:auto}${css}</style></head><body>${markup.html}<script type="application/json" id="__atlas_config">${config}</script><script id="__atlas_runtime">${WEBSITE_RUNTIME}</script></body></html>`
     return { key: text(page.key), title: pageTitle, html }

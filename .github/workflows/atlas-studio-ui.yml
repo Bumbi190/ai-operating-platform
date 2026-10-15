@@ -13,6 +13,17 @@ on:
       - 'apps/web/e2e/atlas-studio-ui.spec.ts'
       - 'apps/web/e2e/atlas-studio-costs.spec.ts'
       - 'apps/web/lib/website-build/studio/costs*'
+      - 'apps/web/lib/website-build/studio/chat-context*'
+      - 'apps/web/lib/website-build/studio/preset.ts'
+      - 'apps/web/lib/website-build/artifact*'
+      - 'apps/web/lib/website-build/prompt*'
+      - 'apps/web/lib/website-build/worker*'
+      - 'apps/web/lib/website-build/types.ts'
+      - 'apps/web/lib/ai/runner.ts'
+      - 'apps/web/lib/qa/runner-text-output.test.ts'
+      - 'apps/web/lib/qa/atlas-static-conversation-route.test.ts'
+      - 'apps/web/app/api/chat/route.ts'
+      - 'apps/web/supabase/migrations/*atlas_builder_output_allowance*'
       - 'apps/web/lib/website-build/studio/api.ts'
       - 'apps/web/app/api/website-build/studio/costs/**'
       - 'apps/web/playwright.atlas-studio-ui.config.ts'
@@ -34,7 +45,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck --workspace=apps/web
-      - run: npx vitest run lib/website-build/studio/costs.test.ts
+      - run: npx vitest run lib/website-build/studio/costs.test.ts lib/website-build/artifact.test.ts lib/website-build/feedback-interpretation.test.ts lib/qa/runner-text-output.test.ts lib/qa/atlas-static-conversation-route.test.ts
         working-directory: apps/web
       - run: npx playwright install --with-deps chromium
         working-directory: apps/web

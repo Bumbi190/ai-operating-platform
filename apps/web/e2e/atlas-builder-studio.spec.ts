@@ -206,7 +206,8 @@ for(const width of [390,430])test('mobile saved preview leaves room for chat and
  const settings=page.getByRole('dialog',{name:'Projektinställningar'})
  await expect(settings.getByRole('button',{name:'Arkivera',exact:true})).toBeVisible()
  await settings.getByRole('button',{name:'Stäng inställningar',exact:true}).click()
- await page.getByRole('tab',{name:'Preview',exact:true}).click()
+ await page.getByRole('tab',{name:'Chatt',exact:true}).focus();await page.keyboard.press('ArrowRight')
+ await expect(page.getByRole('tab',{name:'Preview',exact:true})).toHaveAttribute('aria-selected','true')
  const frame=page.getByTitle('Webbpreview version 1')
  await expect(frame).toBeInViewport({ratio:.5})
  expect((await frame.boundingBox())!.height).toBeGreaterThanOrEqual(220)
@@ -217,4 +218,27 @@ for(const width of [390,430])test('mobile saved preview leaves room for chat and
  await expect(draft).toBeInViewport({ratio:1})
  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
  await page.screenshot({path:info.outputPath('mobile-ready-chat-'+width+'.png')})
+})
+
+test('mobile preview retains the form connection warning',async({page,request})=>{
+ await page.setViewportSize({width:390,height:780})
+ const setup=await(await request.get('/__fixture/setup')).json(),s=setup.session
+ await request.get('/__fixture/step/'+s.sessionId+'/forms')
+ await page.goto('/projects/'+setup.projectSlug+'/build/'+s.sessionId)
+ await page.getByRole('tab',{name:'Preview',exact:true}).click()
+ await expect(page.getByTitle('Webbpreview version 1')).toBeVisible()
+ await expect(page.getByText('Formuläret behöver en ansluten mottagare innan meddelanden kan skickas.',{exact:true})).toBeVisible()
+})
+test('desktop saved preview and chat remain visible together',async({page,request},info)=>{
+ await page.setViewportSize({width:1440,height:900})
+ const setup=await(await request.get('/__fixture/setup')).json(),s=setup.session
+ await request.get('/__fixture/step/'+s.sessionId+'/commit')
+ await page.goto('/projects/'+setup.projectSlug+'/build/'+s.sessionId)
+ const draft=page.getByLabel('Meddelande till Atlas',{exact:true}),frame=page.getByTitle('Webbpreview version 1')
+ await expect(draft).toBeInViewport({ratio:1});await expect(frame).toBeInViewport({ratio:1})
+ await expect(frame.contentFrame().getByRole('heading',{name:/Välkommen/})).toBeVisible()
+ const left=await draft.boundingBox(),right=await frame.boundingBox()
+ expect(left!.x+left!.width).toBeLessThan(right!.x)
+ expect(right!.height).toBeGreaterThanOrEqual(300)
+ await page.screenshot({path:info.outputPath('desktop-ready-workspace.png')})
 })

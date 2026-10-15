@@ -166,7 +166,7 @@ export function BuildPreviewPane({
           </>
         )}
       </div>
-      <p className={styles.version}>
+      <p className={[styles.version,styles.versionMetadata].join(' ')}>
         {loaded
           ? "Visar version " +
             loaded.revision.number +

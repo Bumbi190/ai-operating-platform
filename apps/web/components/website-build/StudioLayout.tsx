@@ -7,10 +7,10 @@ export function StudioLayout({chat,website,desktop,files,tasks}:{chat:ReactNode;
  const root=useRef<HTMLDivElement>(null),id=useId()
  const choose=(value:typeof area)=>{setArea(value);setMobile('work')}
  return <div className={styles.layout} ref={root} style={{'--studio-split':split+'%'} as CSSProperties}>
-  <div className={styles.mobileTabs} role="tablist" aria-label="Byggvy">
-   <button type="button" role="tab" aria-selected={mobile==='chat'} aria-controls={id+'-chat'} onClick={()=>setMobile('chat')}>Chatt</button>
-   <button type="button" role="tab" aria-selected={mobile==='work'&&area==='website'} aria-controls={id+'-work'} onClick={()=>choose('website')}>Preview</button>
-   <select aria-label="Fler arbetsvyer" value={mobile==='work'&&area!=='website'?area:''} onChange={e=>choose(e.target.value as typeof area)}><option value="" disabled>Mer</option><option value="files">Filer</option><option value="tasks">Uppgifter</option><option value="desktop">Desktop</option></select>
+  <div className={styles.mobileNavigation}><div className={styles.mobileTabs} role="tablist" aria-label="Byggvy" onKeyDown={e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;const buttons=Array.from(e.currentTarget.querySelectorAll('button'));const index=buttons.indexOf(e.target as HTMLButtonElement);if(index<0)return;e.preventDefault();const next=e.key==='Home'?0:e.key==='End'?1:1-index;if(next===0)setMobile('chat');else choose('website');buttons[next]?.focus()}}>
+   <button type="button" role="tab" tabIndex={mobile==='chat'||area!=='website'?0:-1} aria-selected={mobile==='chat'} aria-controls={id+'-chat'} onClick={()=>setMobile('chat')}>Chatt</button>
+   <button type="button" role="tab" tabIndex={mobile==='work'&&area==='website'?0:-1} aria-selected={mobile==='work'&&area==='website'} aria-controls={id+'-work'} onClick={()=>choose('website')}>Preview</button>
+  </div><select aria-label="Fler arbetsvyer" value={mobile==='work'&&area!=='website'?area:''} onChange={e=>choose(e.target.value as typeof area)}><option value="" disabled>Mer</option><option value="files">Filer</option><option value="tasks">Uppgifter</option><option value="desktop">Desktop</option></select>
   </div>
   <div className={styles.columns}>
    <div id={id+'-chat'} className={styles.chat} data-mobile-hidden={mobile!=='chat'}><div className={styles.chatHeading}><Sparkles size={17} aria-hidden/><strong>Atlas</strong><span>Din byggpartner</span></div><div className={styles.chatBody}>{chat}</div></div>

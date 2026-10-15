@@ -18,4 +18,4 @@
 .studioPreview .toolbar{gap:.4rem;font-size:.75rem}
 .studioPreview .toolbar select,.studioPreview .toolbar button,.previewControls button{font:inherit;color:inherit;background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:8px;padding:.4rem .5rem;min-width:0}
 .previewControls{font-size:.75rem}.previewControls summary{cursor:pointer;color:hsl(var(--muted-foreground))}.previewControls .composerActions{justify-content:flex-start;margin-top:.4rem}
-@media(max-width:1000px){.studioPreview .version{display:none}.studioPreview>p[role=status]{white-space:nowrap;text-overflow:ellipsis;overflow:hidden}.studioPreview .toolbar{flex-shrink:0;line-height:1.25}.studioPreview .toolbar select{max-width:135px}.studioPreview .toolbar a{margin-left:auto}}
+@media(max-width:1000px){.studioPreview .versionMetadata{display:none}.studioPreview>p[role=status]{white-space:nowrap;text-overflow:ellipsis;overflow:hidden}.studioPreview .toolbar{flex-shrink:0;line-height:1.25}.studioPreview .toolbar select{max-width:135px}.studioPreview .toolbar a{margin-left:auto}}

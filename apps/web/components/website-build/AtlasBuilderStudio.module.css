@@ -73,7 +73,8 @@
 .budgetPrompt{flex-shrink:0;max-height:30%;overflow:auto;padding:.6rem 1rem;border-bottom:1px solid hsl(var(--border));font-size:.8rem}
 .previewCanvas{display:flex;overflow:hidden;padding:.75rem}
 .previewCanvas>section{flex:1;min-height:0;padding:0;line-height:normal}
-.mobileTabs select{max-width:95px;min-width:0;color:hsl(var(--foreground));background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:10px;padding:.5rem;font:inherit;font-size:.75rem}
+.mobileNavigation{display:none}
+.mobileNavigation select{max-width:95px;min-width:0;color:hsl(var(--foreground));background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:10px;padding:.5rem;font:inherit;font-size:.75rem}
 @media(max-width:1000px){
  .header{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.5rem;padding:.6rem .75rem}
  .headerTitle{grid-column:1;grid-row:1;min-width:0}
@@ -88,7 +89,7 @@
  .costFigure{align-items:flex-start}.costFigure [data-cost-detail]{display:none}
  .costFigure strong{font-size:.78rem}.header .costStop{min-height:40px}
  .costNote,.costControl>[role=status],.costControl>[role=alert],.costControl>a{grid-column:1/-1;max-width:100%;font-size:.62rem}
- .mobileTabs{padding:.4rem .5rem;gap:.35rem;flex-wrap:nowrap;align-items:stretch}
+ .mobileNavigation{display:flex;gap:.35rem;padding:.4rem .5rem;border-bottom:1px solid hsl(var(--border));flex-shrink:0}.mobileTabs{display:flex;flex:1;padding:0;gap:.35rem;flex-wrap:nowrap;align-items:stretch;border:0}
  .mobileTabs button{min-height:42px}.areaTabs{display:none}
  .canvas.previewCanvas{padding:.5rem}
  .settingsDialog{padding:1rem}.settingsDialog label{font-size:.8rem}

@@ -251,3 +251,19 @@ it.each(['stop','cancel','fence'])('preserves rejection finalization after compi
  expect(testSql("select count(*) from run_logs where run_id='"+run.id+"' and content like '%website.rejected-draft.v1%';")).toBe(reason==='stop'?'1':'0')
  expect(provider).toHaveBeenCalledTimes(1);expect((await view(s)).revisions).toHaveLength(0)
 },30000)
+
+it.each(['valid','wrong-hash','wrong-session','unsafe-draft'])('recovers a saved rejected draft without paid dispatch: %s',async mode=>{
+ const s=await session(),source=await claim(s),bad=draft();bad.pages[0].bodyHtml='<svg><rect width="10" height="10"></rect></svg>'
+ provider.mockResolvedValueOnce(response(bad))
+ await expect(executeWebsiteBuildRun(db,source,source.claim_id!)).rejects.toMatchObject({code:'UNSUPPORTED_ELEMENT'})
+ const log=JSON.parse(testSql("select content from run_logs where run_id='"+source.id+"' and content like '%website.rejected-draft.v1%' limit 1;"))
+ testSql("update runs set status='failed' where id='"+source.id+"'; update website_build_sessions set status='failed',current_run_id=null where id='"+s.sessionId+"';")
+ const resumed=await requestBuildControl(db,TEST_PRINCIPAL,s,'resume','recovery-'+mode),next=await claim(resumed)
+ const recovery={sourceRunId:source.id,sourceSha256:mode==='wrong-hash'?'0'.repeat(64):log.sha256,draft:mode==='unsafe-draft'?bad:draft('Återställd utan nytt modellanrop')}
+ if(mode==='wrong-session')testSql("update runs set input=jsonb_set(input,'{sessionId}','\"00000000-0000-4000-8000-000000000099\"'::jsonb) where id='"+source.id+"';")
+ next.input={...(next.input as object),recovery}
+ provider.mockClear();provider.mockRejectedValue(new Error('Paid generation must not be called during recovery'))
+ if(mode==='valid'){await executeWebsiteBuildRun(db,next,next.claim_id!);expect((await view(s)).status).toBe('ready');expect((await view(s)).revisions).toHaveLength(1)}
+ else{await expect(executeWebsiteBuildRun(db,next,next.claim_id!)).rejects.toMatchObject({code:mode==='unsafe-draft'?'UNSUPPORTED_ELEMENT':'INVALID_RECOVERY'});expect((await view(s)).revisions).toHaveLength(0)}
+ expect(provider).not.toHaveBeenCalled()
+},30000)

@@ -98,7 +98,7 @@ The existing Vitest server-only alias supplies the Next module environment. Plai
 
 Before the owner's note approval, the real vault was clean at `a2a9ae4`, with six tracked Markdown files and no eligible approved project notes. The owner-approved publication below adds exactly one new project note on its own vault branch; existing platform notes were not relabeled and private M4 content was not exported. The canonical registry was read without modification and its mapping saved privately.
 
-The local endpoint cannot serve the hosted production application. Before production activation, select the production host/private-network route, obtain eligible owner-approved project knowledge and evaluate relevance on that actual corpus. No production environment, migration, merge or private vault import was performed.
+The local endpoint cannot serve the hosted production application. Before production activation, select the production host/private-network route and evaluate relevance on representative owner-approved project knowledge. Exactly one owner-approved vault note has been imported into the local pilot; production environments, migrations and merges are unchanged.
 
 Sources: release-matched OpenViking configuration/authentication and Ollama OpenAI-compatibility documentation; [official Qwen3 instruct model](https://ollama.com/library/qwen3:4b-instruct) and the [upstream thinking-control issue](https://github.com/ollama/ollama/issues/12022).
 

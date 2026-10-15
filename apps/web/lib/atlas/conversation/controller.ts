@@ -80,6 +80,8 @@ export class AtlasConversationController {
     if (this.active.id) return this.active.state === "ok" ? this.active.id : null;
     const generation = this.generation;
     if (this.creating?.generation === generation) return this.creating.promise;
+    this.active = {...this.active, pending: true};
+    this.listeners.forEach(listener => listener());
     const promise = (async () => {
       try {
         const response = await this.request("/api/conversations", {
@@ -91,13 +93,19 @@ export class AtlasConversationController {
         });
         const row = await response.json();
         if (!response.ok || typeof row?.id !== "string" || !row.id.trim() || generation !== this.generation) return null;
-        this.activateConversation({id: row.id, saved: [], state: "ok", projectId: input.projectId});
+        this.activateSnapshot({id: row.id, saved: [], state: "ok", projectId: input.projectId}, true);
         return row.id as string;
       } catch { return null; }
     })();
     this.creating = {generation, promise};
     try { return await promise; }
-    finally { if (this.creating?.promise === promise) this.creating = null; }
+    finally {
+      if (this.creating?.promise === promise) this.creating = null;
+      if (this.generation === generation && !this.active.id && this.active.pending) {
+        this.active = {...this.active, pending: false};
+        this.listeners.forEach(listener => listener());
+      }
+    }
   }
 
   async sendCompactText(input: {text: string; initialProjectId: string | null}): Promise<TurnResult> {
@@ -133,7 +141,13 @@ export class AtlasConversationController {
     }
   }
   activateConversation(input: Activate) {
-    if (this.active.id !== input.id) this.generation++;
+    this.activateSnapshot(input, false);
+  }
+  private activateSnapshot(input: Activate, preserveCompact: boolean) {
+    if (this.active.id !== input.id) {
+      this.generation++;
+      if (!preserveCompact) this.compactPending = null;
+    }
     let s = this.conversations.get(input.id);
     if (!s)
       s = {
@@ -188,6 +202,8 @@ export class AtlasConversationController {
     this.listeners.forEach((f) => f());
   }
   deactivateConversation() {
+    this.creating = null;
+    this.compactPending = null;
     this.generation++;
     this.active=empty();
     this.listeners.forEach(f=>f());

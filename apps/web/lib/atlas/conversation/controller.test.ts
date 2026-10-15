@@ -264,7 +264,7 @@ describe("compact text entry", () => {
       bodies.push(JSON.parse(init!.body as string));
       return events({event:"text",text:"Svar"},{event:"done"});
     });
-    c.activateConversation({id:C,saved,projectId:P,state:"ok",plan:{ref:{projectId:P,planId:P},currentRevision:{revisionId:P,sha256:"a".repeat(64)}} as any});
+    c.activateConversation({id:C,saved,projectId:P,state:"ok",session:receipt.session as any,plan:{ref:{projectId:P,planId:P},currentRevision:{revisionId:P,sha256:"a".repeat(64)}} as any});
     await c.sendCompactText({text:"jag godkänner",initialProjectId:D});
     expect(bodies).toHaveLength(1);
     expect(bodies[0].inputSource).toBe("text");
@@ -323,3 +323,21 @@ describe("compact text entry", () => {
     expect(c.snapshot().projectId).toBe(P);
   });
 });
+
+it.each(["existing","new"] as const)("allows a compact turn in a %s thread while the previous turn is pending",async(mode)=>{
+ let wire!:ReadableStreamDefaultController<Uint8Array>
+ const bodies:any[]=[]
+ const c=new AtlasConversationController(async(_url,init)=>{
+  if(String(_url)==="/api/conversations")return Response.json({id:D})
+  const body=JSON.parse(init!.body as string);bodies.push(body)
+  return body.conversation_id===C?new Response(new ReadableStream({start(value){wire=value}})):events({event:"text",text:"Nytt"},{event:"done"})
+ })
+ c.activateConversation({id:C,saved:[],state:"ok",projectId:P})
+ const old=c.sendCompactText({text:"Gammalt",initialProjectId:P})
+ await new Promise(r=>setTimeout(r,0))
+ if(mode==="new")c.deactivateConversation();else c.activateConversation({id:D,saved:[],state:"ok",projectId:P})
+ expect((await c.sendCompactText({text:"Ny fråga",initialProjectId:P})).ok).toBe(true)
+ expect(bodies.map(b=>b.conversation_id)).toEqual([C,D])
+ wire.enqueue(new TextEncoder().encode('data: {"event":"text","text":"Gammalt svar"}\n\ndata: {"event":"done"}\n\n'));wire.close();await old
+ expect(c.snapshot().history.map(m=>m.content)).toEqual(["Ny fråga","Nytt"])
+})

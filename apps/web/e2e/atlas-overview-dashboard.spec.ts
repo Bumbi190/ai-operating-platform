@@ -34,3 +34,14 @@ test('7 and 30 day controls and honest source states', async ({ page }) => {
     page.getByText('Inga projekt', { exact: false }).first()
   ).toBeVisible()
 })
+
+test('period links preserve an open chat draft', async ({ page }) => {
+  await page.goto('/dashboard')
+  await page.getByRole('button', { name: 'Öppna Atlas' }).click()
+  await page.getByRole('textbox').fill('Spara mitt utkast')
+  await page.getByRole('link', { name: '30 dagar', exact: true }).click()
+  await expect(
+    page.getByRole('link', { name: '30 dagar', exact: true })
+  ).toHaveAttribute('aria-current', 'page')
+  await expect(page.getByRole('textbox')).toHaveValue('Spara mitt utkast')
+})

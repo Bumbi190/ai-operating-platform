@@ -1,4 +1,7 @@
-import React from 'react'
+import React, { useMemo } from 'react'
+import { AtlasChatConversation } from '../components/platform/vnext/AtlasChatConversation'
+import { AtlasHomeVNext } from '../components/platform/vnext/AtlasHomeVNext'
+import type { AtlasHomeViewModel } from '../lib/atlas/home-view-model'
 import { OverviewDashboard } from '../components/platform/overview/OverviewDashboard'
 import { overviewFixture } from './atlas-overview-messenger-model'
 import { createRoot } from 'react-dom/client'
@@ -8,13 +11,43 @@ import {
 } from '../lib/atlas/conversation/provider'
 import { AtlasRuntimeProvider } from '../lib/atlas/runtime'
 import { AtlasMiniOrb } from '../components/platform/os/AtlasMiniOrb'
-import { usePathname, useRouter } from './atlas-overview-messenger-navigation'
+import {
+  usePathname,
+  useRouter,
+  useSearchParams
+} from './atlas-overview-messenger-navigation'
 const C = '50000000-0000-4000-8000-000000000001',
   D = '50000000-0000-4000-8000-000000000002'
+const atlasModel: AtlasHomeViewModel = {
+  generatedAt: '2026-10-15T12:00:00Z',
+  projects: [],
+  activity: [],
+  totals: {
+    projects: 0,
+    runningRuns: 0,
+    pendingApprovals: 0,
+    failedRuns24h: 0
+  },
+  availability: { projects: true, runs: true, approvals: true }
+}
+;(window as any).fixtureToken = crypto.randomUUID()
 function Workspace() {
   const path = usePathname(),
     router = useRouter(),
     { controller, snapshot } = useAtlasConversation()
+  const params = useSearchParams()
+  const chatModel = useMemo(
+    () => ({
+      id: path.split('/')[2] ?? C,
+      title: 'Testkonversation',
+      projectName: 'Testprojekt',
+      projectId: '10000000-0000-4000-8000-000000000001',
+      state: 'ok' as const,
+      saved: [],
+      chatBase: '/chat'
+    }),
+    [path]
+  )
   return (
     <>
       <nav aria-label="Fixture navigation">
@@ -46,33 +79,22 @@ function Workspace() {
         {path === '/dashboard' ? (
           <OverviewDashboard
             model={overviewFixture(
-              new URLSearchParams(location.search).get('period') === '30'
-                ? 30
-                : 7,
-              new URLSearchParams(location.search).get('fixture-state') ===
-                'partial'
+              params.get('period') === '30' ? 30 : 7,
+              params.get('fixture-state') === 'partial'
                 ? 'partial'
-                : new URLSearchParams(location.search).get('fixture-state') ===
-                    'unavailable'
+                : params.get('fixture-state') === 'unavailable'
                   ? 'unavailable'
                   : 'complete',
-              new URLSearchParams(location.search).has('fixture-empty')
+              params.has('fixture-empty')
             )}
           />
+        ) : path.startsWith('/chat/') ? (
+          <AtlasChatConversation model={chatModel} />
+        ) : path === '/atlas' ? (
+          <AtlasHomeVNext model={atlasModel} />
         ) : (
           <>
-            <h1>
-              {path === '/atlas'
-                ? 'Atlas'
-                : path.startsWith('/chat')
-                  ? 'Full chatt'
-                  : 'Projektöversikt'}
-            </h1>
-            {path.startsWith('/chat') && (
-              <p data-testid="full-history">
-                {snapshot.history.map((m) => m.content).join(' | ')}
-              </p>
-            )}
+            <h1>Projektöversikt</h1>
             <p>Din arbetsyta finns kvar bakom chatten.</p>
           </>
         )}

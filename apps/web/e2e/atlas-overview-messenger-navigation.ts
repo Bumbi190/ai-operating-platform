@@ -11,7 +11,12 @@ export function usePathname() {
   )
 }
 export function useSearchParams() {
-  return new URLSearchParams(location.search)
+  const query = useSyncExternalStore(
+    subscribe,
+    () => location.search,
+    () => ''
+  )
+  return new URLSearchParams(query)
 }
 export function useRouter() {
   const push = (url: string) => {

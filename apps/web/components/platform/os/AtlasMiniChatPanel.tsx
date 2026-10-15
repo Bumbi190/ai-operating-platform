@@ -7,7 +7,8 @@ import {
   type PointerEvent
 } from 'react'
 import { Minus, Phone, PhoneOff, ArrowUp } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
+import Link from 'next/link'
+import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { OMNIRA_MARK_POINTS } from '@/components/platform/OmniraLogo'
 import { useAtlasConversation } from '@/lib/atlas/conversation/provider'
@@ -25,6 +26,27 @@ type Props = {
   position: Point | null
   onPositionChange: (point: Point) => void
   initialProjectId: string | null
+}
+const markdownComponents: Components = {
+  a({ href, children, node: _node, ref: _ref, ...props }) {
+    if (!href) return <span>{children}</span>
+    if (href.startsWith('/') && !href.startsWith('//'))
+      return (
+        <Link {...props} href={href}>
+          {children}
+        </Link>
+      )
+    return (
+      <a
+        {...props}
+        href={href}
+        rel="noopener noreferrer"
+        target={href.startsWith('#') ? undefined : '_blank'}
+      >
+        {children}
+      </a>
+    )
+  }
 }
 export function AtlasMiniChatPanel({
   onMinimize,
@@ -53,6 +75,7 @@ export function AtlasMiniChatPanel({
       height: 480,
       mobile: false
     })
+  const requestSeq = useRef(0)
   const drag = useRef<{
     pointer: number
     x: number
@@ -67,6 +90,9 @@ export function AtlasMiniChatPanel({
     }
   }, [])
   useEffect(() => {
+    requestSeq.current++
+    sending.current = false
+    setBusy(false)
     setNotice('')
   }, [snapshot.id])
   useLayoutEffect(() => {
@@ -125,13 +151,15 @@ export function AtlasMiniChatPanel({
   async function submit() {
     if (!draft.trim() || sending.current || snapshot.pending) return
     const text = draft,
-      id = snapshot.id
+      id = snapshot.id,
+      token = ++requestSeq.current
     sending.current = true
     setBusy(true)
     setNotice('')
     onDraftChange('')
     const result = await controller.sendCompactText({ text, initialProjectId })
-    if (alive.current) {
+    if (alive.current && requestSeq.current === token) {
+      sending.current = false
       setBusy(false)
       if (!result.ok && result.notice) {
         setNotice(result.notice)
@@ -139,7 +167,6 @@ export function AtlasMiniChatPanel({
           onDraftChange(text)
       }
     }
-    sending.current = false
   }
   function beginDrag(event: PointerEvent<HTMLDivElement>) {
     if (
@@ -238,7 +265,11 @@ export function AtlasMiniChatPanel({
                 (entry.kind === 'user' ? styles.user : '')
               }
             >
-              <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={markdownComponents}
+                skipHtml
+              >
                 {entry.text}
               </ReactMarkdown>
             </div>
@@ -252,9 +283,9 @@ export function AtlasMiniChatPanel({
       </div>
       {(snapshot.plan || snapshot.session) && snapshot.id && (
         <p className={styles.workspace}>
-          <a href={'/chat/' + snapshot.id + '?build=1'}>
+          <Link href={'/chat/' + snapshot.id + '?build=1'}>
             Granska byggplanen i arbetsytan
-          </a>
+          </Link>
         </p>
       )}
       {atlas.isSessionActive && (
@@ -286,7 +317,7 @@ export function AtlasMiniChatPanel({
           rows={1}
           className={styles.editor}
           value={draft}
-          disabled={busy && !snapshot.id}
+          disabled={(busy || snapshot.pending) && !snapshot.id}
           onChange={(e) => onDraftChange(e.target.value)}
           onKeyDown={(e) => {
             if (

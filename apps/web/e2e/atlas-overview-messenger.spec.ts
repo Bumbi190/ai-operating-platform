@@ -313,3 +313,178 @@ test('mobile launcher clears the existing activity toggle', async ({
   const activity = { x: 326, y: 780, width: 44, height: 44 }
   expect(orb!.y + orb!.height).toBeLessThanOrEqual(activity.y - 8)
 })
+
+test('message links preserve the shell and unsent draft', async ({ page }) => {
+  const state = await setup(page)
+  await page.route('**/api/chat', (route) =>
+    route.fulfill({
+      contentType: 'text/event-stream',
+      body:
+        'data: ' +
+        JSON.stringify({
+          event: 'text',
+          text: '[Öppna översikten](/dashboard)'
+        }) +
+        '\n\ndata: {"event":"done"}\n\n'
+    })
+  )
+  await page.getByRole('button', { name: 'Öppna Atlas' }).click()
+  await page.getByRole('textbox').fill('Länk')
+  await page.getByRole('button', { name: 'Skicka', exact: true }).click()
+  const link = page.getByRole('link', { name: 'Öppna översikten', exact: true })
+  await expect(link).toBeVisible()
+  await page.getByRole('textbox').fill('behåll detta utkast')
+  const token = await page.evaluate(() => (window as any).fixtureToken)
+  await link.click()
+  await expect(page).toHaveURL(/\/dashboard$/)
+  await expect(page.getByRole('textbox')).toHaveValue('behåll detta utkast')
+  expect(await page.evaluate(() => (window as any).fixtureToken)).toBe(token)
+})
+test('the real full chat reuses the compact thread, and Atlas has its own surface', async ({
+  page
+}) => {
+  const state = await setup(page)
+  await page.getByRole('button', { name: 'Öppna Atlas' }).click()
+  await page.getByRole('textbox').fill('Hej från lilla chatten')
+  await page.getByRole('button', { name: 'Skicka', exact: true }).click()
+  await expect(page.getByRole('dialog')).toContainText(
+    'hela det strömmade svaret'
+  )
+  await page.getByRole('textbox').fill('utkast att behålla')
+  await page.getByRole('button', { name: '/chat/' + C, exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(
+    page.getByText('Hej från lilla chatten', { exact: true })
+  ).toBeVisible()
+  expect(
+    state.requests.filter((r) => r.url === '/api/conversations')
+  ).toHaveLength(1)
+  await page
+    .getByRole('button', { name: '/projects/test-project', exact: true })
+    .click()
+  await expect(page.getByRole('textbox')).toHaveValue('utkast att behålla')
+  await page.getByRole('button', { name: '/atlas', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(
+    page.locator('nav[aria-label="Bygg hemsida med Atlas"]')
+  ).toHaveCount(0)
+})
+test('Markdown never injects raw HTML or javascript links', async ({
+  page
+}) => {
+  await setup(page)
+  await page.route('**/api/chat', (route) =>
+    route.fulfill({
+      contentType: 'text/event-stream',
+      body:
+        'data: ' +
+        JSON.stringify({
+          event: 'text',
+          text: '<img src=x onerror="window.compromised=true"> [Test](javascript:alert(1))'
+        }) +
+        '\n\ndata: {"event":"done"}\n\n'
+    })
+  )
+  await page.getByRole('button', { name: 'Öppna Atlas' }).click()
+  await page.getByRole('textbox').fill('Visa')
+  await page.getByRole('button', { name: 'Skicka', exact: true }).click()
+  await expect(page.getByRole('dialog')).toContainText('Test')
+  await expect(
+    page.getByRole('dialog').locator('img,script,a[href^="javascript:"]')
+  ).toHaveCount(0)
+  expect(await page.evaluate(() => (window as any).compromised)).toBeUndefined()
+})
+
+test('zoom keeps the entire panel in the visual viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await setup(page)
+  await page.getByRole('button', { name: 'Öppna Atlas' }).click()
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1.5 })
+  await expect
+    .poll(async () =>
+      page.getByRole('dialog').evaluate((element) => {
+        const r = element.getBoundingClientRect(),
+          v = visualViewport!
+        return (
+          r.left >= v.offsetLeft + 7 &&
+          r.top >= v.offsetTop + 7 &&
+          r.right <= v.offsetLeft + v.width - 7 &&
+          r.bottom <= v.offsetTop + v.height - 7
+        )
+      })
+    )
+    .toBe(true)
+})
+
+test('pending conversation creation remains busy after minimize and reopen', async ({
+  page
+}) => {
+  await setup(page)
+  let release = () => {},
+    creations = 0
+  await page.route('**/api/conversations', async (route) => {
+    creations++
+    await new Promise<void>((r) => (release = r))
+    await route.fulfill({ json: { id: C } })
+  })
+  try {
+    await page.getByRole('button', { name: 'Öppna Atlas' }).click()
+    await page.getByRole('textbox').fill('Första frågan')
+    await page.getByRole('button', { name: 'Skicka', exact: true }).click()
+    await expect.poll(() => creations).toBe(1)
+    await page.getByRole('button', { name: 'Minimera Atlas' }).click()
+    await page.getByRole('button', { name: 'Öppna Atlas' }).click()
+    await expect(page.getByRole('textbox')).toBeDisabled()
+  } finally {
+    release()
+  }
+  await expect(page.getByRole('textbox')).toBeEditable()
+  await expect(page.getByRole('dialog')).toContainText('Första frågan')
+})
+test('switching threads allows a new turn while the old one is pending', async ({
+  page
+}) => {
+  await setup(page)
+  let release = () => {},
+    oldStarted = false
+  await page.route('**/api/chat', async (route) => {
+    const body = route.request().postDataJSON()
+    if (body.conversation_id === C) {
+      oldStarted = true
+      await new Promise<void>((r) => (release = r))
+      return route.fulfill({
+        status: 503,
+        json: { error: 'old request failed' }
+      })
+    }
+    return route.fulfill({
+      contentType: 'text/event-stream',
+      body: 'data: {"event":"text","text":"Nytt svar"}\n\ndata: {"event":"done"}\n\n'
+    })
+  })
+  try {
+    await page.getByRole('button', { name: 'Öppna Atlas' }).click()
+    await page.getByRole('textbox').fill('Gammal fråga')
+    await page.getByRole('button', { name: 'Skicka', exact: true }).click()
+    await expect.poll(() => oldStarted).toBe(true)
+    await page.getByRole('button', { name: 'Fixture switch thread' }).click()
+    await page.getByRole('textbox').fill('Ny fråga')
+    await expect(
+      page.getByRole('button', { name: 'Skicka', exact: true })
+    ).toBeEnabled()
+    await page.getByRole('button', { name: 'Skicka', exact: true }).click()
+    await expect(page.getByRole('dialog')).toContainText('Nytt svar')
+    await page.getByRole('textbox').fill('Utkast i nya tråden')
+  } finally {
+    release()
+  }
+  await page.evaluate(
+    () =>
+      new Promise<void>((r) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => r()))
+      )
+  )
+  await expect(page.getByRole('textbox')).toHaveValue('Utkast i nya tråden')
+  await expect(page.getByRole('dialog').getByRole('status')).toHaveCount(0)
+})

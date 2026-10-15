@@ -206,7 +206,7 @@ describe('NAVIGATION CONTRACT — the canonical model is the only source', () =>
   it('keeps its accessible labels and a real tap target', () => {
     expect(MOBILE_NAV).toContain('aria-label="Öppna huvudnavigation"')
     expect(MOBILE_NAV).toContain('aria-label="Huvudnavigation"')
-    expect(MOBILE_NAV).toContain('aria-label="Omnira Atlas hem"')
+    expect(MOBILE_NAV).toContain('aria-label="Omnira hem"')
     // <details>/<summary> is keyboard- and touch-operable without JS, which
     // matters because this is the surface for people who have neither ⌘K nor a
     // sidebar.

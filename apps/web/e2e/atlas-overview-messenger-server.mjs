@@ -17,7 +17,7 @@ const vite = await createServer({
       },
       {
         find: 'next/link',
-        replacement: resolve(root, 'e2e/atlas-entry-next.tsx')
+        replacement: resolve(root, 'e2e/atlas-overview-messenger-link.tsx')
       },
       {
         find: 'next/image',

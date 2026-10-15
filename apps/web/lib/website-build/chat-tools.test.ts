@@ -171,7 +171,7 @@ describe('Website build through actual authenticated chat tool loop', () => {
     expect(plan.currentRevision.revisionId).toBeTruthy();
     for(const text of ['jag godkänner','starta bygget nu']){
       const {res}=await ask('start_website_build',{projectId:TEST_PROJECT,agentId:TEST_AGENT,confirm:true},c,text);
-      expect(res.status).toBe(200);
+      expect(res.status).toBe(200);expect(TOOL_RESULTS.map(raw=>JSON.parse(raw).code)).toContain('PLAN_REVIEW_REQUIRED');
       expect(testSql("select count(*) from website_build_plan_decisions d join website_build_plans p on p.id=d.plan_id where p.conversation_id='"+c+"';")).toBe('0');
       expect(testSql("select count(*) from website_build_sessions where conversation_id='"+c+"';")).toBe('0');
     }

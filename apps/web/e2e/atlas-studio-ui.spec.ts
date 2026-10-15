@@ -7,7 +7,7 @@ for(const viewport of [{width:390,height:844},{width:1440,height:900},{width:192
  expect(geometry.composerBottom).toBeLessThanOrEqual(viewport.height)
  expect(geometry.width).toBeLessThanOrEqual(viewport.width)
  await page.setViewportSize({...viewport,height:viewport.height-100});await expect(draft).toHaveValue('Behåll min idé när jag ändrar arbetsytan')
- expect(await draft.evaluate(e=>e.getBoundingClientRect().bottom)).toBeLessThanOrEqual(viewport.height-100)
+ await expect.poll(()=>draft.evaluate(e=>e.getBoundingClientRect().bottom)).toBeLessThanOrEqual(viewport.height-100)
  await page.setViewportSize(viewport);await page.screenshot({path:info.outputPath('studio-'+viewport.width+'.jpg'),type:'jpeg',quality:45})
 })
 test('sidebar can be hidden and restored without losing the chat draft',async({page})=>{

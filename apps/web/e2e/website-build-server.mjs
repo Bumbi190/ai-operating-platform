@@ -10,6 +10,7 @@ const vite = await createServer({ configFile: false, root, appType: 'custom', es
   { find: '@/lib/supabase/server',replacement:resolve(root,'e2e/atlas-build-chat-auth.ts') },
   { find: '@/lib/cost/governed-spend',replacement:resolve(root,'e2e/atlas-build-chat-spend.ts') },
   { find: '@/lib/ai/runner', replacement: resolve(root, 'e2e/website-build-fixture-provider.ts') },
+  { find: 'next/image', replacement: resolve(root,'e2e/atlas-entry-image.tsx') },
   { find: 'next/link', replacement: resolve(root,'e2e/atlas-entry-next.tsx') },
   { find: 'next/navigation', replacement: resolve(root, 'e2e/website-build-fixture-navigation.ts') },
   { find: '@/lib/supabase/client', replacement: resolve(root, 'e2e/website-build-fixture-client.ts') },
@@ -74,7 +75,7 @@ const server = httpServer(async (req, res) => {
       const response = await api.websiteBuildApi(action, new Request(url, { method: req.method, headers: req.headers, body: req.method === 'POST' ? Buffer.concat(chunks) : undefined }), { sessionId: parts[3], revisionId: parts[5] })
       res.writeHead(response.status, Object.fromEntries(response.headers)); res.end(Buffer.from(await response.arrayBuffer())); return
     }
-    vite.middlewares(req, res, async () => { res.setHeader('content-type', 'text/html'); res.end(await vite.transformIndexHtml(req.url, '<!doctype html><html lang="sv" class="dark" data-motion="reduce"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#0c121b;padding:12px;font-family:system-ui}#root{max-width:1600px;margin:auto}</style><div id="root"></div><script type="module" src="'+(process.env.ATLAS_STUDIO_FIXTURE==='1'?'/e2e/atlas-builder-studio-entry.tsx':'/e2e/website-build-entry.tsx')+'"></script></html>')) })
+    vite.middlewares(req, res, async () => { res.setHeader('content-type', 'text/html'); res.end(await vite.transformIndexHtml(req.url, '<!doctype html><html lang="sv" class="dark" data-motion="reduce"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#0c121b;font-family:system-ui;'+(process.env.ATLAS_STUDIO_FIXTURE==='1'?'padding:0':'padding:12px')+'}#root{'+(process.env.ATLAS_STUDIO_FIXTURE==='1'?'height:100dvh;width:100%':'max-width:1600px;margin:auto')+'}</style><div id="root"></div><script type="module" src="'+(process.env.ATLAS_STUDIO_FIXTURE==='1'?'/e2e/atlas-builder-studio-entry.tsx':'/e2e/website-build-entry.tsx')+'"></script></html>')) })
   } catch (error) { console.error(error); res.statusCode = 500; res.end(JSON.stringify({ error: String(error) })) }
 })
 // Prepare the real SQL fixture before the readiness URL reports success.
@@ -83,3 +84,4 @@ await vite.ssrLoadModule('/e2e/website-build-fixture.ts')
 server.listen(port, '127.0.0.1')
 async function close() { server.close(); await vite.close(); process.exit(0) }
 process.on('SIGTERM', close); process.on('SIGINT', close)
+

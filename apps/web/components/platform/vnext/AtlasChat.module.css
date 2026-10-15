@@ -742,3 +742,6 @@
 .studio .conversation{padding:clamp(1rem,2vw,1.75rem);gap:.75rem}
 .studio .intro{padding-top:1rem}.studio .introTitle{font-size:1.4rem;letter-spacing:-.025em}
 @media(max-width:1000px){.studioComposer,.studio .studioComposer{padding:.65rem;border-radius:15px}.studioComposer .composer{min-height:52px}.studioComposer .input{min-height:48px;font-size:1rem}.studioComposer .composerHint{margin-top:.4rem}.studio .conversation{padding:1rem}}
+
+.studioComposer .input:focus-visible{outline:none;box-shadow:none}
+.studioComposer .composer:focus-within{box-shadow:none}

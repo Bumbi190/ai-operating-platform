@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'apps/web/components/platform/os/PlatformWorkspace*'
+      - 'apps/web/components/platform/Sidebar*'
+      - 'apps/web/components/platform/vnext/ShellTopBar*'
       - 'apps/web/components/platform/vnext/AtlasChat*'
       - 'apps/web/components/platform/vnext/AtlasConversationComposer*'
       - 'apps/web/components/website-build/**'
@@ -27,6 +29,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run typecheck --workspace=apps/web
       - run: npx playwright install --with-deps chromium
         working-directory: apps/web
       - run: npx playwright test --config=playwright.atlas-studio-ui.config.ts

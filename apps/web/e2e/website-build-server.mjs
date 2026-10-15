@@ -34,6 +34,11 @@ const server = httpServer(async (req, res) => {
       const action=url.pathname.endsWith('/budget')?'budget':url.pathname.endsWith('/workspace-request')?'workspace-request':req.method==='POST'?'ensure':'get';
       const response=await api.studioApi(action,new Request(url,{method:req.method,headers:req.headers,body:req.method==='POST'?Buffer.concat(chunks):undefined}));res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));return;
     }
+    const lifecycle=url.pathname.match(/^\/api\/projects\/by-id\/([0-9a-f-]{36})\/lifecycle$/)
+    if(lifecycle){
+      const api=await vite.ssrLoadModule('/lib/project/lifecycle/api.ts'),chunks=[];for await(const chunk of req){chunks.push(chunk);if(chunks.reduce((n,c)=>n+c.length,0)>70000)throw Error('Fixture body too large')}
+      const response=await api.lifecycleApi(req.method==='POST'?'change':'get',new Request(url,{method:req.method,headers:req.headers,body:req.method==='POST'?Buffer.concat(chunks):undefined}),lifecycle[1]);res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));return
+    }
     if (url.pathname.startsWith('/__fixture/')) {
       const fixture = await vite.ssrLoadModule('/e2e/website-build-fixture.ts')
       const parts = url.pathname.split('/')

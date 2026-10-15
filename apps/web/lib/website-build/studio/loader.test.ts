@@ -20,6 +20,14 @@ describe('studio project and conversation identity',()=>{
   expect(view?.projects.map(p=>p.name)).toEqual(['Andra projektet','Befintligt'])
   expect(view?.selected).toBeNull();expect(view?.conversation).toBeNull();expect(f.countOwnedProjects()).toBe(2)
  })
+ it('loads project metadata in a bounded batch rather than querying every project separately',async()=>{
+  const f=fixture(),reads=new Map<string,number>(),actual=f.db
+  state.db={...actual,from:(table:string)=>{reads.set(table,(reads.get(table)??0)+1);return (actual as any).from(table)}}
+  const view=await loadStudioView({});expect(view?.projects).toHaveLength(2)
+  expect(reads.get('project_lifecycle')).toBe(1)
+  expect(reads.get('project_budgets')).toBe(1)
+  expect(reads.get('website_build_workspace_requests')).toBe(1)
+ })
  it('loads a selected studio conversation with its missing budget and no invented desktop',async()=>{
   const f=fixture(),a=await ensureStudioWorkspace(f.db,f.owner,{kind:'new',name:'Min sida',idempotencyKey:randomUUID()})
   state.p={...f.owner,allowedProjectIds:[...f.owner.allowedProjectIds,a.projectId]}

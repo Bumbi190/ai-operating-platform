@@ -5,3 +5,5 @@
 
 .columns{height:min(740px,70dvh);min-height:560px}.chat{height:100%;min-height:0;overflow:hidden}.work{display:flex;flex-direction:column;height:100%;overflow:hidden}.canvas{flex:1;min-height:0;overflow:auto}.draft{height:100%;min-height:0}.intro{min-height:0;overflow:auto}.draft>div:last-child{flex-shrink:0}.header>div{min-width:0;max-width:100%;overflow-wrap:anywhere}.setup{overflow-wrap:anywhere}
 @media(max-width:1000px){.columns{height:auto;min-height:0}.chat{height:min(650px,70dvh);min-height:500px}.work{height:auto;min-height:500px;overflow:visible}.canvas{min-height:450px}.draft{min-height:0}}
+
+.lifecycle{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center}.lifecycle p{width:100%}.lifecycleDialog{max-width:min(560px,calc(100vw - 2rem));color:hsl(var(--foreground));background:hsl(var(--card));border:1px solid hsl(var(--border));border-radius:14px;padding:1.4rem;line-height:1.7}.lifecycleDialog::backdrop{background:rgb(0 0 0 / .65)}.lifecycleDialog button{margin:.3rem}

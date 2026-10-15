@@ -1,3 +1,4 @@
+import {restoreWebsiteStopFixture} from '@/lib/qa/__stubs__/website-stop-fixture'
 // Test-only SQL transport. It executes the real RPCs and table queries in the
 // labeled local fixture; no in-memory imitation of fencing or feedback state.
 import { spawnSync } from 'node:child_process'
@@ -50,9 +51,11 @@ export function initializeWorkerDb(): ReturnType<typeof createAdminClient> {
     insert into platform_config(id) values(1) on conflict do nothing;
     create table if not exists run_logs(id uuid default gen_random_uuid(),run_id uuid,role text,content text);
     grant all on platform_config,run_logs to service_role;`)
+  restoreWebsiteStopFixture(testSql,root)
   testSql(canonicalFunction('20260831_unified_stop_authority.sql', 'stop_state'))
   testSql(canonicalFunction('20260903120000_durable_cancellation_reaper.sql', 'release_stopped_run'))
-  testSql(canonicalFunction('20260902081500_stop_atomic_execution_admission.sql', 'claim_runs'))
+  testSql(canonicalFunction('20260903120000_durable_cancellation_reaper.sql', 'claim_runs'))
+  testSql(canonicalFunction('20261015041654_atlas_builder_studio_workspace.sql', 'claim_runs'))
   testSql(`grant execute on function stop_state(uuid),release_stopped_run(uuid,uuid),claim_runs(integer,integer) to service_role;`)
   const setReturning = new Set(['stop_state', 'claim_runs'])
   const transport = {
@@ -99,4 +102,4 @@ export function initializeWorkerDb(): ReturnType<typeof createAdminClient> {
   }
   return transport as unknown as ReturnType<typeof createAdminClient>
 }
-export function resetWorkerDb(): void { testSql('update platform_config set automation_paused=false; update projects set execution_paused=false; update runs set status=\'failed\' where status in (\'pending\',\'running\');') }
+export function resetWorkerDb(): void { testSql('update platform_config set automation_paused=false; update projects set execution_paused=false where not exists(select 1 from project_lifecycle l where l.project_id=projects.id and l.state<>\'active\'); update runs set status=\'failed\' where status in (\'pending\',\'running\');') }

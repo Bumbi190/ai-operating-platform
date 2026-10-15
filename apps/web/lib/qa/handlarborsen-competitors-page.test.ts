@@ -17,6 +17,7 @@ import Page from '@/app/(platform)/projects/[slug]/competitors/page'
 import { HandlarborsenCompetitors } from '@/components/platform/vnext/HandlarborsenCompetitors'
 import { HANDLARBORSEN_PROJECT_ID } from '@/lib/atlas/collectors/handlarborsen-marketplace'
 import { EVIDENCE, type PublicScan } from '@/lib/atlas/project-analytics/handlarborsen-competitors'
+import { evaluateCompetitorHistory } from '@/lib/atlas/project-analytics/handlarborsen-competitor-history-core'
 
 ;(globalThis as unknown as { React: typeof React }).React = React
 const authorized = {
@@ -52,7 +53,7 @@ describe('project-authorized manual competitors page', () => {
       expect(html).toContain('Inte kontrollerad i denna vy')
       expect(html).toContain('manuell läsning')
       expect(html).toContain('ej aktiverad')
-      expect(html).toContain('ej inkopplat')
+      expect(html).toContain('avstängd i denna miljö')
       expect(html).toContain('Kontrollera offentliga källor')
       expect(html).toContain('method="get"')
       expect(html).toContain('name="scan" value="1"')
@@ -87,8 +88,41 @@ describe('project-authorized manual competitors page', () => {
     expect(html).toContain('Från konkurrentsignal till testbar plan')
     expect(html).toContain('Ingen uppgift är godkänd')
     expect(html).toContain('Ej verifierad produktprioritet')
-    expect(html).toContain('Historiska förändringar')
-    expect(html).toContain('framtida lagring och godkännande')
+    expect(html).toContain('Manuell historiklagring är avstängd i denna miljö')
+    expect(html).toContain('tidigare sparade observationer påverkas inte')
+  })
+  it('shows the true manual history state when enabled, but never claims data is loaded on a read failure', () => {
+    const history = evaluateCompetitorHistory(
+      [{ sourceId: 'auto1', checkedAt: '2026-10-15T05:10:00.000Z', status: 'metadata_checked', title: 'Verified title' }],
+      new Date('2026-10-15T07:00:00.000Z'),
+    )
+    expect(history.status).toBe('ok')
+    const enabled = renderToStaticMarkup(React.createElement(HandlarborsenCompetitors, {
+      scan: null, historyEnabled: true, history, canSaveHistory: true,
+    }))
+    expect(enabled).toContain('manuell historik aktiv')
+    expect(enabled).toContain('Observerade data')
+    expect(enabled).not.toContain('avstängd i denna miljö')
+    const failed = renderToStaticMarkup(React.createElement(HandlarborsenCompetitors, {
+      scan: null, historyEnabled: true, history: null, canSaveHistory: false,
+    }))
+    expect(failed).toContain('aktiverad – läsning ej verifierad')
+    expect(failed).toContain('Kan inte läsa historik')
+    expect(failed).not.toContain('Kontrollera och spara dagens observation')
+  })
+  it('shows actual latest saved dates, not an unsaved page scan', () => {
+    const history = evaluateCompetitorHistory([
+      { sourceId: 'battery-vdn-2025', checkedAt: '2026-10-15T05:10:39.000Z', status: 'metadata_checked', title: 'Historical title' },
+      { sourceId: 'auto1', checkedAt: '2026-10-15T05:10:38.000Z', status: 'metadata_checked', title: 'Marketplace title' },
+      { sourceId: 'bca', checkedAt: '2026-10-15T05:10:38.000Z', status: 'robots_unavailable', title: null },
+    ], new Date('2026-10-15T08:00:00.000Z'))
+    expect(history.status).toBe('ok')
+    const html = renderToStaticMarkup(React.createElement(HandlarborsenCompetitors, { scan: null, history, historyEnabled: true }))
+    expect(html).toContain('Senast sparad observation:')
+    expect(html).toContain('15 oktober 2026')
+    expect(html).toContain('Sparad historik finns')
+    expect(html).toContain('Källan kunde inte verifieras vid den sparade kontrollen')
+    expect(html).not.toContain('Inte kontrollerad i den här vyn')
   })
   it('has no secret, storage, scheduler, LLM or raw HTML entry points in this slice', () => {
     const paths = [

@@ -174,15 +174,37 @@ export function createCompetitorHistoryService(deps: HistoryDependencies = live)
         ]
         if (observations.length !== HISTORY_SOURCE_IDS.length
           || new Set(observations.map(x => x.sourceId)).size !== HISTORY_SOURCE_IDS.length
-          || observations.some(x => !HISTORY_SOURCE_IDS.includes(x.sourceId))) return { status: 'invalid' }
+          || observations.some(x => !HISTORY_SOURCE_IDS.includes(x.sourceId))) {
+          if (deps.env.VERCEL_ENV === 'preview') console.warn('[hb-history-smoke] source set invalid')
+          return { status: 'invalid' }
+        }
         // A slow manual scan can cross midnight. Never save two partial days,
         // or silently record yesterday's observations under today's button.
         const finishedAt = deps.clock()
         if (finishedAt.toISOString().slice(0, 10) !== today
-          || observations.some(x => x.checkedAt.slice(0, 10) !== today))
+          || observations.some(x => x.checkedAt.slice(0, 10) !== today)) {
+          if (deps.env.VERCEL_ENV === 'preview') console.warn('[hb-history-smoke] UTC day mismatch')
           return { status: 'invalid' }
+        }
         const validated = evaluateCompetitorHistory([...checked.observations, ...observations], deps.clock())
-        if (validated.status !== 'ok') return { status: 'invalid' }
+        if (validated.status !== 'ok') {
+          if (deps.env.VERCEL_ENV === 'preview') {
+            // Log only a fixed source ID and non-sensitive shape checks. Never
+            // log remote titles, HTML, cookies, user identifiers or URLs.
+            console.warn('[hb-history-smoke] candidate validation failed', validated.reason,
+              observations.map(x => ({
+                sourceId: x.sourceId,
+                status: x.status,
+                titleLength: x.title?.length ?? 0,
+                titleNotTrimmed: x.title !== null && x.title !== x.title.trim(),
+                titleHasForbiddenChars: x.title !== null && /[<>\u0000-\u001f\u007f-\u009f]/.test(x.title),
+                canonicalTimestamp: typeof x.checkedAt === 'string'
+                  && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(x.checkedAt),
+              })),
+            )
+          }
+          return { status: 'invalid' }
+        }
 
         const payload = observations.map(x => ({
           project_id: HANDLARBORSEN_PROJECT_ID,

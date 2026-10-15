@@ -1,8 +1,10 @@
 import { DOSSIER_DATE, EVIDENCE, STATUS_LABELS, summarizeScan, type PublicScan } from '@/lib/atlas/project-analytics/handlarborsen-competitors'
 import { HandlarborsenLandscape } from './HandlarborsenLandscape'
 import { HandlarborsenCompetitorHistory } from './HandlarborsenCompetitorHistory'
+import { HandlarborsenCompetitorDiscovery } from './HandlarborsenCompetitorDiscovery'
 import { HandlarborsenSaveCompetitorScan } from './HandlarborsenSaveCompetitorScan'
 import type { HistoryAnalysis } from '@/lib/atlas/project-analytics/handlarborsen-competitor-history-core'
+import { latestSavedCompetitorObservation, savedCompetitorDay } from '@/lib/atlas/project-analytics/handlarborsen-competitor-latest'
 import type { LandscapeScan } from '@/lib/atlas/project-analytics/handlarborsen-competitor-landscape'
 import styles from './HandlarborsenCompetitors.module.css'
 
@@ -25,11 +27,11 @@ export function HandlarborsenCompetitors({ scan, landscape = null, history = nul
         <dl className={styles.facts}>
           <div><dt>Aktiverat</dt><dd>manuell läsning</dd></div>
           <div><dt>Schemalagt</dt><dd>ej aktiverad</dd></div>
-          <div><dt>Lagring</dt><dd>ej inkopplat</dd></div>
+          <div><dt>Lagring</dt><dd>{historyEnabled ? (history?.status === 'ok' ? 'manuell historik aktiv' : 'aktiverad – läsning ej verifierad') : 'avstängd i denna miljö'}</dd></div>
         </dl>
         <p>{historyEnabled
           ? 'Offentliga källor kan kontrolleras manuellt och sparas högst en gång per UTC-dag. Förändringar kräver två verifierade observationer av samma källa. Ingen automatisk bevakning eller exekvering är aktiverad.'
-          : 'Kontrollen läser offentliga källor vid ditt klick och sparar inga observationer. Historiska förändringar och långsiktig bevakning väntar på framtida lagring och godkännande. Autonom exekvering är spärrad tills Cost Governance är verifierad i preview och produktion.'}</p>
+          : 'Kontrollen läser offentliga källor vid ditt klick. Manuell historiklagring är avstängd i denna miljö, men tidigare sparade observationer påverkas inte. Autonom exekvering är spärrad tills Cost Governance är verifierad i preview och produktion.'}</p>
         {/* A native GET form avoids Next Link prefetch executing an on-demand scan. */}
         <form method="get" action="/projects/handlarborsen/competitors">
           <button type="submit" name="scan" value="1" className={styles.button}>Kontrollera offentliga källor</button>
@@ -38,8 +40,9 @@ export function HandlarborsenCompetitors({ scan, landscape = null, history = nul
           : <p>Inte kontrollerad i denna vy. Källdossierns datum är inte en senaste körning.</p>}
         <p>En tillgänglig titel verifierar endast sidans tillgänglighet och titelmetadata vid kontrollen. Innehåll, aktuella villkor och förändringar över tid verifieras inte.</p>
       </section>
-      <HandlarborsenLandscape scan={landscape} />
+      <HandlarborsenLandscape scan={landscape} history={history} />
       <HandlarborsenCompetitorHistory history={history} historyEnabled={historyEnabled} />
+      <HandlarborsenCompetitorDiscovery />
       {historyEnabled && canSaveHistory ? <HandlarborsenSaveCompetitorScan /> : null}
       <section aria-labelledby="competitor-evidence">
         <h2 id="competitor-evidence">Handlarbudet · daterade observationer</h2>
@@ -47,11 +50,14 @@ export function HandlarborsenCompetitors({ scan, landscape = null, history = nul
         <div className={styles.cards}>
           {EVIDENCE.map(source => {
             const check = scan?.sources.find(item => item.id === source.id)
+            const saved = latestSavedCompetitorObservation(history, source.id)
+            const savedDay = saved ? savedCompetitorDay(saved) : null
             return <article className={styles.panel} key={source.id} aria-labelledby={`source-${source.id}`}>
               <h3 id={`source-${source.id}`}>{source.label}</h3>
               <p>Publicerad <time dateTime={source.published}>{source.published}</time> · <a href={source.url} className={styles.link} rel="noreferrer">Officiell källa hos Handlarbudet</a></p>
               <p><strong>Observation ur daterad källa:</strong> {source.observation}</p>
-              <p><strong>Kontrollstatus:</strong> {check ? STATUS_LABELS[check.status] : 'Inte kontrollerad i denna vy'}</p>
+              <p><strong>Senast sparad observation:</strong> {saved && savedDay ? <><time dateTime={savedDay.date}>{savedDay.label}</time> · {saved.status === 'metadata_checked' ? 'Sidtitel verifierad' : 'Källan kunde inte verifieras'}</> : 'Ingen sparad observation för denna källa'}</p>
+              {check ? <p><strong>Separat kontroll i denna vy:</strong> {STATUS_LABELS[check.status]}</p> : null}
               {check ? <p>Kontrollerat: <CheckedTime value={check.checked_at} /></p> : null}
               {check?.title ? <p><strong>Hämtad titelmetadata:</strong> {check.title}</p> : null}
             </article>

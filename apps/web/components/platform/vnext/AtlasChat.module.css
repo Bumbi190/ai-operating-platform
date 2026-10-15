@@ -725,3 +725,20 @@
 
 /* Studio owns the panel height; only the transcript scrolls. */
 .studio.field{height:100%;min-height:0;padding:0;border:0;border-radius:0}.studio .conversation{height:100%;min-height:0;width:100%;padding:1rem;display:flex;flex-direction:column}.studio .convHeader{display:none}.studio .embeddedScroll{flex:1;min-height:0;overflow-y:auto}.studio .dock{position:static;flex-shrink:0;margin-top:0;padding:0;background:transparent}.studio .dock::after{display:none}
+
+
+/* Studio composer stays inside its panel and uses the existing Omnira tokens. */
+.studioComposer,.studio .studioComposer{display:flex;flex-direction:column;flex-shrink:0;position:static;bottom:auto;gap:0;margin:0;padding:.85rem;border:1px solid rgb(var(--omnira-cyan-rgb)/.23);border-radius:18px;background:linear-gradient(135deg,rgb(var(--omnira-cyan-rgb)/.035),transparent 70%),hsl(var(--card));box-shadow:0 8px 28px rgb(0 0 0/.12)}
+.studioComposer:focus-within{border-color:rgb(var(--omnira-cyan-rgb)/.55);box-shadow:0 0 0 3px rgb(var(--omnira-cyan-rgb)/.05)}
+.studioComposer .composer{order:1;align-items:flex-end;min-height:72px;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+.studioComposer .input{min-height:64px;max-height:min(192px,20dvh);padding:.4rem .35rem;font-size:.9rem;line-height:1.6;background:transparent}
+.studioComposer .input::placeholder{color:hsl(var(--muted-foreground))}
+.studioComposer .send{flex-shrink:0;width:38px;height:38px;min-height:38px;margin-bottom:.25rem;border-radius:12px}
+.studioComposer .voiceControls{order:2;gap:.4rem;margin:.65rem 0 0;align-items:center}
+.studioComposer .voiceControls button{display:inline-flex;align-items:center;gap:.4rem;border:0;padding:.4rem .55rem;font-size:.7rem;background:transparent;color:hsl(var(--muted-foreground))}
+.studioComposer .voiceControls button:hover:not(:disabled){color:rgb(var(--omnira-cyan-rgb));background:rgb(var(--omnira-cyan-rgb)/.06)}
+.studioComposer .composerHint{order:3;margin:.65rem 0 0;font-size:.6rem;line-height:1.5;color:hsl(var(--muted-foreground));text-align:left}
+.studioComposer>p[role]{order:0;margin:0 0 .6rem;font-size:.75rem}
+.studio .conversation{padding:clamp(1rem,2vw,1.75rem);gap:.75rem}
+.studio .intro{padding-top:1rem}.studio .introTitle{font-size:1.4rem;letter-spacing:-.025em}
+@media(max-width:1000px){.studioComposer,.studio .studioComposer{padding:.65rem;border-radius:15px}.studioComposer .composer{min-height:52px}.studioComposer .input{min-height:48px;font-size:1rem}.studioComposer .composerHint{margin-top:.4rem}.studio .conversation{padding:1rem}}

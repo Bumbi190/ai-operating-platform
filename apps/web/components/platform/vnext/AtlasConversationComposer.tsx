@@ -1,12 +1,12 @@
 'use client'
 import {useRef,type RefObject} from 'react'
-import {ArrowUp,Loader2} from 'lucide-react'
+import {ArrowUp,Loader2,Mic,Square} from 'lucide-react'
 import {COMPOSER_HINT,COMPOSER_PLACEHOLDER,DISCLAIMER} from '@/lib/os/chat-shared'
 import styles from './AtlasChat.module.css'
-export function AtlasConversationComposer({value,onChange,onSend,disabled,capturing,onVoice,onStopSpeech,inputSource='text',captureAvailable=true,captureError,inputRef,pending=false,sendDisabled=false}:{value:string;onChange:(value:string)=>void;onSend:()=>void;disabled:boolean;capturing:boolean;onVoice:()=>void;onStopSpeech:()=>void;inputSource?:'text'|'voice';captureAvailable?:boolean;captureError?:string|null;inputRef?:RefObject<HTMLTextAreaElement>;pending?:boolean;sendDisabled?:boolean}){
+export function AtlasConversationComposer({value,onChange,onSend,disabled,capturing,onVoice,onStopSpeech,inputSource='text',captureAvailable=true,captureError,inputRef,pending=false,sendDisabled=false,variant='default'}:{value:string;onChange:(value:string)=>void;onSend:()=>void;disabled:boolean;capturing:boolean;onVoice:()=>void;onStopSpeech:()=>void;inputSource?:'text'|'voice';captureAvailable?:boolean;captureError?:string|null;inputRef?:RefObject<HTMLTextAreaElement>;pending?:boolean;sendDisabled?:boolean;variant?:'default'|'studio'}){
  const local=useRef<HTMLTextAreaElement>(null),ref=inputRef??local
- return <div className={styles.dock}>
-  {captureAvailable&&<div className={styles.voiceControls}><button type="button" onClick={onVoice} disabled={disabled}>{capturing?'Avbryt mikrofon':'Prata med Atlas'}</button><button type="button" onClick={onStopSpeech}>Stoppa uppläsning</button></div>}
+ return <div className={[styles.dock,variant==='studio'?styles.studioComposer:''].filter(Boolean).join(' ')}>
+  {captureAvailable&&<div className={styles.voiceControls}><button type="button" onClick={onVoice} disabled={disabled}>{variant==='studio'&&<Mic size={14} aria-hidden/>}{capturing?'Avbryt mikrofon':'Prata med Atlas'}</button><button type="button" onClick={onStopSpeech}>{variant==='studio'&&<Square size={12} aria-hidden/>}Stoppa uppläsning</button></div>}
   {inputSource==='voice'&&<p role="status">Kontrollera rösttexten och skicka när den stämmer.</p>}
   {captureError&&<p role="alert">{captureError}</p>}
   <form className={styles.composer} onSubmit={event=>{event.preventDefault();if(!disabled&&!sendDisabled&&value.trim())onSend()}}>
@@ -17,3 +17,4 @@ export function AtlasConversationComposer({value,onChange,onSend,disabled,captur
   <p className={styles.composerHint}><span className={styles.hintKeys}>{COMPOSER_HINT} · </span>{DISCLAIMER}</p>
  </div>
 }
+

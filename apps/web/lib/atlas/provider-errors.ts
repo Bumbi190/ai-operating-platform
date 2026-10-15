@@ -2,6 +2,7 @@ export const ATLAS_SERVICE_ERROR_CODES = [
   'ATLAS_PROVIDER_NOT_CONFIGURED',
   'ATLAS_PROVIDER_AUTHENTICATION_FAILED',
   'ATLAS_PROVIDER_REQUEST_FAILED',
+  'ATLAS_PROVIDER_INSUFFICIENT_CREDITS',
   'ATLAS_TTS_NOT_CONFIGURED',
   'ATLAS_TTS_REQUEST_FAILED',
   'ATLAS_TTS_PLAYBACK_BLOCKED',
@@ -14,6 +15,7 @@ const ATLAS_SERVICE_ERROR_MESSAGES: Record<AtlasServiceErrorCode, string> = {
   ATLAS_PROVIDER_NOT_CONFIGURED: 'Atlas AI-leverantör är inte konfigurerad i servermiljön.',
   ATLAS_PROVIDER_AUTHENTICATION_FAILED: 'Atlas AI-leverantör kunde inte autentiseras. Kontrollera serverns lokala provider-konfiguration.',
   ATLAS_PROVIDER_REQUEST_FAILED: 'Atlas kunde inte hämta ett AI-svar just nu.',
+  ATLAS_PROVIDER_INSUFFICIENT_CREDITS: 'Anthropics API-krediter räcker inte för att generera ett svar. Fyll på saldot i Claude Console och försök igen.',
   ATLAS_TTS_NOT_CONFIGURED: 'Atlas svarade i text, men röstleverantören är inte konfigurerad i servermiljön.',
   ATLAS_TTS_REQUEST_FAILED: 'Atlas svarade i text, men ljudet kunde inte skapas just nu.',
   ATLAS_TTS_PLAYBACK_BLOCKED: 'Atlas kunde skapa rösten men webbläsaren blockerade ljuduppspelningen. Klicka i fönstret och försök igen.',
@@ -41,6 +43,10 @@ export function classifyAnthropicError(error: unknown): AtlasServiceErrorCode {
     || message.includes('authtoken')
   ) {
     return 'ATLAS_PROVIDER_AUTHENTICATION_FAILED'
+  }
+
+  if (status === 400 && message.includes('credit balance is too low')) {
+    return 'ATLAS_PROVIDER_INSUFFICIENT_CREDITS'
   }
 
   return 'ATLAS_PROVIDER_REQUEST_FAILED'

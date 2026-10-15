@@ -113,3 +113,11 @@ See [local pilot evidence and operating limits](../../infra/openviking/README.md
 ## Validation limits
 
 Regular CI uses loopback HTTP fixtures and temporary vaults. The optional live-service test is skipped unless explicitly enabled. The successful three-note vector probe is not a production relevance benchmark or proof of improvement over the prior retrieval system. Five owner-approved project notes have now been published and verified in the separate local preview. The owner observed an authenticated answer for the earlier one-note snapshot; the five-source comparison did not pass its relevance gate (OpenViking accepted first sources 11/20 versus the existing lexical provider 16/20). Production connectivity, relevance over representative approved project knowledge, active production flags and production memory volumes remain unverified. Those checks precede activation. The [local relevance diagnostic and next corpus proposal](./atlas-openviking-relevance.md) records the subsequent comparison without claiming a quality improvement.
+
+## Chat provider credit refusal
+
+A local authenticated UI attempt on 2026-10-15 reached the chat provider but failed before generation with HTTP 400. A separate minimal governed Anthropic stream request reproduced the insufficient-credit refusal without depending on OpenViking or project knowledge. The local model server and GPU watch remained healthy. This is a chat-provider account blocker, separate from retrieval readiness and ranking quality.
+
+Atlas now classifies that specific provider refusal as ATLAS_PROVIDER_INSUFFICIENT_CREDITS and retains the controlled Swedish warning through the shared text/voice conversation result. It does not expose the upstream error body. Other malformed requests and authentication failures retain their existing categories.
+
+The account owner can check and fund the API organization's balance at https://platform.claude.com/settings/billing. Official instructions: https://support.claude.com/en/articles/8977456-how-do-i-pay-for-my-claude-api-usage. No credit purchase, auto-reload setting, model change or budget-limit change was performed. A successful generated answer after replenishment remains unverified; use a new local conversation under the existing hardware guard once credits are available.

@@ -2,6 +2,7 @@ import { createServer as httpServer } from 'node:http'
 import { resolve } from 'node:path'
 import { createServer } from 'vite'
 const root = process.cwd()
+const port=process.env.ATLAS_STUDIO_FIXTURE==='1'?54392:54390
 process.env.ANTHROPIC_API_KEY='fixture-key'
 process.env.PLATFORM_OPERATOR_EMAILS='fixture-operator@example.test'
 const vite = await createServer({ configFile: false, root, appType: 'custom', esbuild: { jsx: 'automatic' }, css: { postcss: {} }, resolve: { alias: [
@@ -19,7 +20,20 @@ const vite = await createServer({ configFile: false, root, appType: 'custom', es
 ] }, server: { middlewareMode: true, host: '127.0.0.1' } })
 const server = httpServer(async (req, res) => {
   try {
-    const url = new URL(req.url, 'http://127.0.0.1:54390')
+    const url = new URL(req.url, 'http://127.0.0.1:'+port)
+    if(url.pathname==='/__fixture/studio-metrics'){
+      const fixture=await vite.ssrLoadModule('/e2e/website-build-fixture-db.ts');fixture.createAdminClient();
+      const sql=await vite.ssrLoadModule('/lib/website-build/test-db.ts');
+      res.setHeader('content-type','application/json');res.end(JSON.stringify({projects:Number(sql.testSql("select count(*) from projects where owner_id='"+sql.TEST_PRINCIPAL.userId+"';"))}));return;
+    }
+    if(url.pathname==='/__fixture/studio-billing'){
+      const spend=await vite.ssrLoadModule('/e2e/atlas-build-chat-spend.ts');res.setHeader('content-type','application/json');res.end(JSON.stringify(spend.readFixtureBilling()));return;
+    }
+    if(url.pathname.startsWith('/api/website-build/studio')){
+      const api=await vite.ssrLoadModule('/lib/website-build/studio/api.ts');const chunks=[];for await(const chunk of req){chunks.push(chunk);if(chunks.reduce((n,c)=>n+c.length,0)>70000)throw Error('Fixture body too large')}
+      const action=url.pathname.endsWith('/budget')?'budget':url.pathname.endsWith('/workspace-request')?'workspace-request':req.method==='POST'?'ensure':'get';
+      const response=await api.studioApi(action,new Request(url,{method:req.method,headers:req.headers,body:req.method==='POST'?Buffer.concat(chunks):undefined}));res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));return;
+    }
     if (url.pathname.startsWith('/__fixture/')) {
       const fixture = await vite.ssrLoadModule('/e2e/website-build-fixture.ts')
       const parts = url.pathname.split('/')
@@ -43,9 +57,9 @@ const server = httpServer(async (req, res) => {
       const response = await api.websiteBuildApi(action, new Request(url, { method: req.method, headers: req.headers, body: req.method === 'POST' ? Buffer.concat(chunks) : undefined }), { sessionId: parts[3], revisionId: parts[5] })
       res.writeHead(response.status, Object.fromEntries(response.headers)); res.end(Buffer.from(await response.arrayBuffer())); return
     }
-    vite.middlewares(req, res, async () => { res.setHeader('content-type', 'text/html'); res.end(await vite.transformIndexHtml(req.url, '<!doctype html><html lang="sv" class="dark" data-motion="reduce"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#0c121b;padding:12px;font-family:system-ui}#root{max-width:1600px;margin:auto}</style><div id="root"></div><script type="module" src="/e2e/website-build-entry.tsx"></script></html>')) })
+    vite.middlewares(req, res, async () => { res.setHeader('content-type', 'text/html'); res.end(await vite.transformIndexHtml(req.url, '<!doctype html><html lang="sv" class="dark" data-motion="reduce"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#0c121b;padding:12px;font-family:system-ui}#root{max-width:1600px;margin:auto}</style><div id="root"></div><script type="module" src="'+(process.env.ATLAS_STUDIO_FIXTURE==='1'?'/e2e/atlas-builder-studio-entry.tsx':'/e2e/website-build-entry.tsx')+'"></script></html>')) })
   } catch (error) { console.error(error); res.statusCode = 500; res.end(JSON.stringify({ error: String(error) })) }
 })
-server.listen(54390, '127.0.0.1')
+server.listen(port, '127.0.0.1')
 async function close() { server.close(); await vite.close(); process.exit(0) }
 process.on('SIGTERM', close); process.on('SIGINT', close)

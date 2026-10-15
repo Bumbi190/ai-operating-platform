@@ -68,7 +68,10 @@ export function initializeWorkerDb(): ReturnType<typeof createAdminClient> {
       const where: string[] = [];let sort='',limit=''
       const execute = async (single = false) => {
         try {
-          const columns = fields === '*' ? '*' : fields.split(',').map(s => ident(s.trim())).join(',')
+          const columns = fields === '*' ? '*' : fields.split(/,(?![^()]*\))/).map(s => {
+            const field=s.trim();if(table==='conversations'&&field.replaceAll(' ','')==='projects(name,slug)')return "(select jsonb_build_object('name',p.name,'slug',p.slug) from public.projects p where p.id=conversations.project_id) as projects";
+            return ident(field)
+          }).join(',')
           const filter = where.length ? ' where ' + where.join(' and ') : ''
           let statement: string
           if (update) statement = `update public.${ident(table)} set ${Object.entries(update).map(([k, v]) => ident(k) + '=' + literal(v)).join(',')}${filter} returning ${columns}`
@@ -82,6 +85,7 @@ export function initializeWorkerDb(): ReturnType<typeof createAdminClient> {
       const chain = {
         select: (selection = '*') => { fields = selection; return chain },
         eq: (key: string, value: unknown) => { where.push(ident(key) + '=' + literal(value)); return chain },
+        in: (key:string,values:unknown[])=>{if(!Array.isArray(values)||values.length>1000)throw Error('Invalid fixture IN');where.push(values.length?ident(key)+' in ('+values.map(literal).join(',')+')':'false');return chain},
         is: (key: string, value: unknown) => { where.push(ident(key) + ' is ' + literal(value)); return chain },
         order: (key:string,options?:{ascending?:boolean})=>{sort=' order by '+ident(key)+(options?.ascending===false?' desc':' asc');return chain},
         limit: (n:number)=>{if(!Number.isSafeInteger(n)||n<1||n>1000)throw Error('Invalid test limit');limit=' limit '+n;return chain},

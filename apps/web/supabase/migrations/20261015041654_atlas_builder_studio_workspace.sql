@@ -35,6 +35,19 @@ create policy project_lifecycle_owner_read on public.project_lifecycle for selec
 revoke all on public.website_build_studio_intents,public.website_build_workspace_requests,public.project_lifecycle from public,anon,authenticated,service_role;
 grant select on public.website_build_studio_intents,public.website_build_workspace_requests,public.project_lifecycle to authenticated,service_role;
 
+-- Studio budget audit (private, append-only; never a fabricated cost event).
+create table public.website_build_studio_budget_events(
+ id uuid primary key default gen_random_uuid(), owner_id uuid not null references auth.users(id),
+ project_id uuid not null references public.projects(id), intent_key text not null check(intent_key~'^[A-Za-z0-9_-]{1,100}$'),
+ input jsonb not null, previous_monthly_sek numeric, monthly_sek numeric not null check(monthly_sek between 0 and 1000000),
+ created_at timestamptz not null default now(),unique(owner_id,intent_key)
+);
+create index website_studio_budget_project on public.website_build_studio_budget_events(project_id);
+alter table public.website_build_studio_budget_events enable row level security;
+create policy website_studio_budget_owner_read on public.website_build_studio_budget_events for select to authenticated using(owner_id=(select auth.uid()) and exists(select 1 from public.projects p where p.id=project_id and p.owner_id=(select auth.uid())));
+revoke all on public.website_build_studio_budget_events from public,anon,authenticated,service_role;
+grant select on public.website_build_studio_budget_events to authenticated,service_role;
+
 -- Only the authenticated server may invoke these RPCs. Narrow definer writes
 -- keep table DML unavailable even to service_role; the principal comes from Auth.
 create function public.website_build_studio_require_owner(p_principal jsonb,p_project_id uuid default null) returns uuid language plpgsql security definer set search_path='' as $$
@@ -114,4 +127,29 @@ revoke all on function public.website_build_workspace_request(jsonb,jsonb) from 
 grant execute on function public.website_build_workspace_request(jsonb,jsonb) to service_role;
 revoke all on function public.website_build_studio_require_owner(jsonb,uuid),public.website_build_studio_require_active(uuid),public.website_build_studio_ensure(jsonb,jsonb,jsonb) from public,anon,authenticated;
 grant execute on function public.website_build_studio_ensure(jsonb,jsonb,jsonb) to service_role;
+create function public.website_build_studio_budget_immutable() returns trigger language plpgsql security invoker set search_path='' as $$
+begin raise exception 'STUDIO_BUDGET_EVENT_IMMUTABLE' using errcode='55000'; end $$;
+create trigger website_studio_budget_no_rewrite before update or delete on public.website_build_studio_budget_events for each row execute function public.website_build_studio_budget_immutable();
+create trigger website_studio_budget_no_truncate before truncate on public.website_build_studio_budget_events for each statement execute function public.website_build_studio_budget_immutable();
+create function public.website_build_studio_budget_set(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql security definer set search_path='' as $$
+declare uid uuid; pid uuid:=(p_input->>'projectId')::uuid; amount numeric:=(p_input->>'monthlySek')::numeric; expected numeric:=(p_input->>'expectedMonthlySek')::numeric; previous numeric; key text:=p_input->>'idempotencyKey'; normalized jsonb:=p_input-'idempotencyKey'; old public.website_build_studio_budget_events;
+begin
+ uid:=public.website_build_studio_require_owner(p_principal,pid);
+ if key is null or key !~ '^[A-Za-z0-9_-]{1,100}$' or amount is null or amount not between 0 and 1000000 or amount<>round(amount,2) then raise exception 'INVALID_BUDGET' using errcode='22023'; end if;
+ perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('atlas-budget:'||uid::text||':'||key,0));
+ perform public.website_build_studio_require_active(pid);
+ perform public.website_build_studio_require_owner(p_principal,pid);
+ select * into old from public.website_build_studio_budget_events where owner_id=uid and intent_key=key;
+ if found then
+  if old.input is distinct from normalized then raise exception 'BUDGET_KEY_CONFLICT' using errcode='23505'; end if;
+  return jsonb_build_object('projectId',old.project_id,'monthlySek',old.monthly_sek);
+ end if;
+ select monthly_sek into previous from public.project_budgets where project_id=pid for update;
+ if previous is distinct from expected then raise exception 'BUDGET_STALE' using errcode='40001'; end if;
+ insert into public.project_budgets(project_id,monthly_sek) values(pid,amount) on conflict(project_id) do update set monthly_sek=excluded.monthly_sek,updated_at=now();
+ insert into public.website_build_studio_budget_events(owner_id,project_id,intent_key,input,previous_monthly_sek,monthly_sek) values(uid,pid,key,normalized,previous,amount);
+ return jsonb_build_object('projectId',pid,'monthlySek',amount);
+end $$;
+revoke all on function public.website_build_studio_budget_set(jsonb,jsonb),public.website_build_studio_budget_immutable() from public,anon,authenticated;
+grant execute on function public.website_build_studio_budget_set(jsonb,jsonb) to service_role;
 commit;

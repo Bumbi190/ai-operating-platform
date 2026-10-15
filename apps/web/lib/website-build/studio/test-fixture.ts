@@ -8,6 +8,7 @@ export function createStudioFixture() {
   const ownerId = randomUUID(), foreignId = randomUUID()
   const projectId = randomUUID(), otherProjectId = randomUUID(), foreignProjectId = randomUUID()
   testSql(`insert into auth.users(id) values('${ownerId}'),('${foreignId}');
+    alter table project_budgets add column if not exists daily_sek numeric,add column if not exists weekly_sek numeric,add column if not exists updated_at timestamptz default now();
     insert into projects(id,owner_id,name,slug) values
     ('${projectId}','${ownerId}','Befintligt','existing-${projectId}'),
     ('${otherProjectId}','${ownerId}','Andra projektet','other-${otherProjectId}'),

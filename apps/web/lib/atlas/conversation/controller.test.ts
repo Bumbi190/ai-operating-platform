@@ -33,6 +33,16 @@ const receipt = {
   },
 };
 describe("one Atlas conversation controller", () => {
+  it("binds explicit studio turns to their project and removes the hint in ordinary chat", async () => {
+    const bodies:any[]=[];
+    const c=new AtlasConversationController(async(_url,init)=>{bodies.push(JSON.parse(init!.body as string));return events({event:'text',text:'Svar'},{event:'done'})});
+    c.activateConversation({id:C,saved:[],state:'ok',projectId:P,studio:true});
+    await c.sendTurn({conversationId:C,text:'Min hemsida',inputSource:'text'});
+    expect(bodies[0].studioContext).toEqual({projectId:P,conversationId:C});
+    c.activateConversation({id:C,saved:[],state:'ok',projectId:P});
+    await c.sendTurn({conversationId:C,text:'Vanlig fråga',inputSource:'text'});
+    expect(bodies[1]).not.toHaveProperty('studioContext');
+  });
   it("text→voice→text sends one shared text-only history and context", async () => {
     const bodies: any[] = [];
     const c = new AtlasConversationController(async (_url, init) => {

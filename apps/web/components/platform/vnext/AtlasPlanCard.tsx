@@ -3,12 +3,14 @@ import type { PlanView } from "@/lib/website-build/planning/types";
 import styles from "@/components/website-build/BuildWorkspace.module.css";
 export function AtlasPlanCard({
   plan,
+  approvalDisabled=false,
   onApprove,
   onEdit,
   pending = false,
   displayedSessionId = null,
 }: {
   plan: PlanView;
+  approvalDisabled?:boolean;
   onApprove: () => void;
   onEdit: () => void;
   pending?: boolean;
@@ -105,7 +107,7 @@ export function AtlasPlanCard({
           <button
             type="button"
             onClick={onApprove}
-            disabled={pending || !plan.setting.builderAgentId || started}
+            disabled={pending || approvalDisabled || !plan.setting.builderAgentId || started}
           >
             {started
               ? (usedByDisplayedBuild ? "Planen används av bygget" : "Planen används av ett annat bygge")

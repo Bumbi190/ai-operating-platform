@@ -1,6 +1,6 @@
 import {setProjectWebsiteBuilder} from '../lib/website-build/planning/store'
 import {readConversationWorkspace} from '../lib/website-build/planning/conversation-workspace'
-import { createAdminClient } from './website-build-fixture-db'
+import { createAdminClient,resolveProjectAccess } from './website-build-fixture-db'
 import { TEST_AGENT, TEST_CONVERSATION, TEST_PRINCIPAL, TEST_PROJECT, testSql, resetWorkerDb } from '../lib/website-build/test-db'
 import {approvedTestBuild} from '../lib/website-build/planning/test-fixture'
 import { createBuildSession, readBuildSession, loadBuildSnapshot, setBuildStage, recordBuildInterpretation, parkBuildSession } from '../lib/website-build/store'
@@ -14,7 +14,7 @@ export async function setup() {
   const session = await approvedTestBuild(db, TEST_PRINCIPAL, { projectId: TEST_PROJECT, agentId: TEST_AGENT, conversationId, brief: 'En hemsida för vårt svenska café', idempotencyKey: crypto.randomUUID() })
   return { session,...await conversation(session), userId: TEST_PRINCIPAL.userId, projectSlug: 'test-project', brief: 'En hemsida för vårt svenska café' }
 }
-export async function snapshot(sessionId: string) { return readBuildSession(db, TEST_PRINCIPAL, { projectId: TEST_PROJECT, sessionId }) }
+export async function snapshot(sessionId:string){if(!/^[0-9a-f-]{36}$/.test(sessionId))throw Error('Invalid fixture session');const projectId=testSql("select project_id from website_build_sessions where id='"+sessionId+"' and created_by='"+TEST_PRINCIPAL.userId+"';");return readBuildSession(db,await resolveProjectAccess(),{projectId,sessionId})}
 function writer(sessionId: string): WriterRef {
   testSql(`update runs set status='running', claim_id=coalesce(claim_id,gen_random_uuid()),lease_until=now()+interval '5 minutes' where id=(select current_run_id from website_build_sessions where id='${sessionId}');`)
   return JSON.parse(testSql(`select jsonb_build_object('projectId',s.project_id,'sessionId',s.id,'runId',r.id,'claimId',r.claim_id,'generation',s.generation) from website_build_sessions s join runs r on r.id=s.current_run_id where s.id='${sessionId}';`))

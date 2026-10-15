@@ -1,0 +1,1 @@
+export function StudioEmptyPreview(){return <section role="region" aria-label="Preview"><h2>Din hemsida tar form här</h2><p>Beskriv din idé i chatten. Planera sidor och funktioner med Atlas och granska förslaget innan bygget börjar.</p></section>}

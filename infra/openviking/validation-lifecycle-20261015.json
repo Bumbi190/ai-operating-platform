@@ -1,0 +1,206 @@
+{
+  "schema_version": "atlas-openviking-lifecycle-validation-v1",
+  "validated_at_utc": "2026-10-15T11:39:31.843010+00:00",
+  "source_parent_commit": "0ee3611d71f2cc4eb3adc296cb517ebf603778bb",
+  "test_sha256": "682235f296c2b4febefb2f2eb6d41847e86e6d7a23f593e0c9ac568af34f2154",
+  "regular_tests": {
+    "passed": 86,
+    "skipped": 2,
+    "files_passed": 5,
+    "files_skipped": 2
+  },
+  "worktree_typecheck_exit": 0,
+  "targeted_lint_exit": 0,
+  "lifecycle": {
+    "passed": true,
+    "syntheticOnly": true,
+    "processing": "vectors_only",
+    "ingestion": [
+      {
+        "revision": "A",
+        "documents": 2,
+        "durationMs": 1414
+      },
+      {
+        "revision": "B",
+        "documents": 2,
+        "durationMs": 1065
+      },
+      {
+        "revision": "C",
+        "documents": 1,
+        "durationMs": 281
+      },
+      {
+        "revision": "foreign",
+        "documents": 1,
+        "durationMs": 533
+      }
+    ],
+    "snapshots": {
+      "original": "0e4a6fb0d8c0fabb8f0b9e0a01e8a474f4741bd4b5250795f82ad6db30569390",
+      "updated": "6e946496fef6db88e92be32323cd698798b669118b0d387725b109dddb162462",
+      "removed": "47199a033730d7bfee9320847894763081fbd2373be5dba08e5cc3fa1358e9eb"
+    },
+    "changedSourceUsesNewOriginal": true,
+    "oldSnapshotStillSearchableBeforePrune": true,
+    "removedSourceExcludedBeforePrune": true,
+    "emptyPublicationRevokesBeforePrune": true,
+    "deniedMembershipEmpty": true,
+    "otherViewEmpty": true,
+    "targetedPrunePreservesNewerSnapshots": true,
+    "targetedPrunePreservesOtherProject": true,
+    "fixtureSnapshotsPruned": true,
+    "manualPreviewPublicationEdited": false,
+    "actualVaultEdited": false,
+    "productionActivated": false
+  },
+  "isolated_server": {
+    "isolated_volume": "omnira-openviking-pilot-20261015_state_lifecycle_20261015",
+    "automatic_l0_l1": false,
+    "production_activated": false,
+    "lifecycle_passed": true,
+    "isolated_gpu_watch": {
+      "armed": true,
+      "max_temperature_c": 52.0,
+      "temperature_limit_c": 80,
+      "stopped": false,
+      "temperature_c": 50.0,
+      "utilization_percent": 2.0,
+      "memory_mib": 4449.0,
+      "sampled_at": "2026-10-15T11:36:47.265783+00:00"
+    },
+    "loaded_models_after_lifecycle": "NAME                    ID              SIZE      PROCESSOR    CONTEXT    RUNNER      UNTIL               \nqwen3-embedding:0.6b    ac6da0dfba84    2.9 GB    100% GPU     8192       llamacpp    29 minutes from now    \n",
+    "old_fixture_cleanup": {
+      "deleted_snapshots": [
+        "viking://resources/omnira/projects/33333333-3333-4333-8333-333333333333/knowledge/0aded1cf7a3b92abcd4ca681d163d70694a55bcec3fd8fa3eb73881831ff7489",
+        "viking://resources/omnira/projects/33333333-3333-4333-8333-333333333333/knowledge/5824731fc417827f2008a4084b9a52814364f7cd63032375bf89f864ab097d5f",
+        "viking://resources/omnira/projects/33333333-3333-4333-8333-333333333333/knowledge/c830743b8cd748face1b52af06a6e48ebbdf1f04d07be1802583fb53e3d60434",
+        "viking://resources/omnira/projects/33333333-3333-4333-8333-333333333333/knowledge/e554558c2892bf01196d2255419f76b890eb6540a4e53b71768c5e94fe82cdf2",
+        "viking://resources/omnira/projects/33333333-3333-4333-8333-333333333333/knowledge/ecfbcf8cde786669f83204ee9f582c78eca3af35c3ba9336827a11ecd5716a54",
+        "viking://resources/omnira/projects/44444444-4444-4444-8444-444444444444/knowledge/04b3dead379299f2a8cacc24c91529be2afbfb0bfadff20bc0bf6477a236fd63",
+        "viking://resources/omnira/projects/44444444-4444-4444-8444-444444444444/knowledge/c718056f6be195d9f9e5d942ad1d3c5e5c99bb939eb27390b82c7362b8fe6f8b"
+      ],
+      "only_reserved_synthetic_projects": true,
+      "manual_preview_project_touched": false
+    },
+    "manual_preview_passed": true,
+    "passed": true,
+    "final_gpu_watch": {
+      "armed": false,
+      "max_temperature_c": 52.0,
+      "temperature_limit_c": 80,
+      "stopped": true,
+      "temperature_c": 47.0,
+      "utilization_percent": 11.0,
+      "memory_mib": 6919.0,
+      "sampled_at": "2026-10-15T11:37:34.881122+00:00",
+      "reason": "operator requested completion"
+    },
+    "semantic_config_restored": true,
+    "original_server_restored": true,
+    "gpu_services_stopped": true
+  },
+  "prior_semantic_attempt": {
+    "passed": false,
+    "failed_stage": "ingestion foreign",
+    "thermal_watch": {
+      "armed": false,
+      "max_temperature_c": 80.0,
+      "temperature_limit_c": 80,
+      "stopped": true,
+      "temperature_c": 80.0,
+      "utilization_percent": 82.0,
+      "memory_mib": 8464.0,
+      "sampled_at": "2026-10-15T10:48:11.506508+00:00",
+      "reason": "80 C thermal guard"
+    }
+  },
+  "prior_mixed_state_vectors_attempt": {
+    "passed": false,
+    "failed_stage": "targeted prune of A",
+    "later_thermal_watch": {
+      "armed": false,
+      "max_temperature_c": 80.0,
+      "temperature_limit_c": 80,
+      "stopped": true,
+      "temperature_c": 80.0,
+      "utilization_percent": 80.0,
+      "memory_mib": 8545.0,
+      "sampled_at": "2026-10-15T11:30:40.531317+00:00",
+      "reason": "80 C thermal guard"
+    },
+    "independent_remaining_snapshot_queries": [
+      {
+        "root": "viking://resources/omnira/projects/33333333-3333-4333-8333-333333333333/knowledge/5824731fc417827f2008a4084b9a52814364f7cd63032375bf89f864ab097d5f",
+        "status": "ok",
+        "duration_ms": 157,
+        "hits": [
+          {
+            "uri": "viking://resources/omnira/projects/33333333-3333-4333-8333-333333333333/knowledge/5824731fc417827f2008a4084b9a52814364f7cd63032375bf89f864ab097d5f/15ff435c5512b77e.md/15ff435c5512b77e.md",
+            "level": 2
+          },
+          {
+            "uri": "viking://resources/omnira/projects/33333333-3333-4333-8333-333333333333/knowledge/5824731fc417827f2008a4084b9a52814364f7cd63032375bf89f864ab097d5f/017fcd31229e5b6d.md/017fcd31229e5b6d.md",
+            "level": 2
+          }
+        ]
+      },
+      {
+        "root": "viking://resources/omnira/projects/33333333-3333-4333-8333-333333333333/knowledge/c830743b8cd748face1b52af06a6e48ebbdf1f04d07be1802583fb53e3d60434",
+        "status": "ok",
+        "duration_ms": 93,
+        "hits": [
+          {
+            "uri": "viking://resources/omnira/projects/33333333-3333-4333-8333-333333333333/knowledge/c830743b8cd748face1b52af06a6e48ebbdf1f04d07be1802583fb53e3d60434/017fcd31229e5b6d.md/017fcd31229e5b6d.md",
+            "level": 2
+          }
+        ]
+      },
+      {
+        "root": "viking://resources/omnira/projects/44444444-4444-4444-8444-444444444444/knowledge/c718056f6be195d9f9e5d942ad1d3c5e5c99bb939eb27390b82c7362b8fe6f8b",
+        "status": "ok",
+        "duration_ms": 79,
+        "hits": [
+          {
+            "uri": "viking://resources/omnira/projects/44444444-4444-4444-8444-444444444444/knowledge/c718056f6be195d9f9e5d942ad1d3c5e5c99bb939eb27390b82c7362b8fe6f8b/15ff435c5512b77e.md/15ff435c5512b77e.md",
+            "level": 2
+          }
+        ]
+      }
+    ],
+    "exact_assertion_failure_cause_unresolved": true
+  },
+  "manual_preview": {
+    "local_preview_ready": true,
+    "original_source_injection": true,
+    "paraphrase": true,
+    "other_project_suppressed": true,
+    "off_suppressed": true,
+    "login_status": 200,
+    "unauthenticated_chat_status": 401,
+    "owner_interactive_result": "recorded separately; this probe verifies the backend only"
+  },
+  "owner_positive_ui_report": {
+    "reported_at": "2026-10-15T12:31:00+02:00",
+    "scope": "Immediate retrieval of synthetic note; not all interactive isolation/lifecycle steps."
+  },
+  "actual_vault": {
+    "commit": "a2a9ae428ac84227ae845dd96456f0abc99b61ad",
+    "clean": true,
+    "edited": false
+  },
+  "original_checkout_observed": {
+    "branch": "feat/phase3b1b-atomic-bind-provenance",
+    "pending_paths": 9
+  },
+  "deployed_default_corpus_unchanged": true,
+  "production_activated": false,
+  "limits": [
+    "Successful lifecycle uses isolated vectors-only server with automatic L0/L1 disabled.",
+    "Earlier semantic readiness is separate evidence; mixed-load lifecycle is not claimed to pass.",
+    "Full suite not repeated; prior baseline differential and failures still apply.",
+    "No actual vault note promoted; no production merge or environment activation."
+  ],
+  "test_hash_source": "Git index blob"
+}

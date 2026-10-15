@@ -119,4 +119,27 @@ Only this local preview receives the synthetic `minnespilot-test.md` publication
 
 The desktop shortcut **Atlas minnestest** runs the private `start-local-pilot.ps1` with its browser option. The launcher starts the guarded services, waits for health, warms the actual published search, and opens the local preview. Cold model loading was observed around 50 seconds with the local RAM limit; startup warmup allows 90 seconds, while the application's 1.2-second query budget is unchanged. Models are kept loaded for up to 30 minutes to fit the guarded manual window. The manual window lasts 30 minutes. A thermal stop or expiry makes OpenViking unavailable and Atlas falls back without this evidence. Restart the guarded session before testing again. Localhost is reachable only from this PC.
 
-The app's normal authentication and project-access checks remain in effect. This step must be completed interactively by the owner; backend retrieval and prompt construction are verified separately by the live probe.
+The app's normal authentication and project-access checks remain in effect. On 2026-10-15 at 12:31 Europe/Stockholm, the owner reported that Atlas found the synthetic note immediately in the authenticated local UI. This confirms the first positive manual retrieval step; it does not attest that all interactive isolation/lifecycle steps were completed.
+
+## Lifecycle follow-up and Obsidian candidate
+
+The explicit lifecycle acceptance passed against a fresh, isolated vectors-only server volume with automatic L0/L1 generation disabled. It used the real preparation CLI, clean temporary Git vault revisions, USER retrieval and the actual Atlas prompt seam. Request checks retained the normal 1.2-second runtime budget.
+
+| Scenario | Verified result |
+|---|---|
+| Deploy changed revision B while A remains indexed | New original text and B provenance; no A text |
+| Deploy C without one note while A/B remain indexed | Removed source excluded; retained source still injected |
+| Empty deployed publication before index pruning | No knowledge injection |
+| Revoked membership or another project view | No knowledge injection |
+| Prune only snapshot A | B, C and another project's source remain retrievable |
+| Clean disposable fixtures | Test snapshots removed; manual publication preserved |
+
+The successful test took 8.81 seconds; indexing the four fixture revisions took 1,414 / 1,065 / 281 / 533 ms. Its guarded session, including original-server restoration and preview revalidation, reached a maximum of 52 C. The original semantic server volume/container and private configuration were restored; both GPU services were stopped at completion. Seven synthetic snapshots from interrupted earlier attempts were also individually removed from their two reserved test-project roots. No account, whole project or actual vault was deleted.
+
+The earlier semantic lifecycle attempt reached the 80 C guard and stopped before the foreign fixture completed. A vectors-only retry against that mixed semantic state reached its post-prune preservation checks but did not pass; independent queries still found both newer snapshots and the other project in 157 / 93 / 79 ms. Server logs contained model-runner failures, and that session subsequently reached the thermal guard too. The exact mixed-load assertion failure was not isolated. The successful fresh-volume run proves the data lifecycle under the stated conditions, not stability under simultaneous semantic background load. The earlier successful three-note semantic-readiness probe remains separate evidence. No thermal limit, model memory limit or application deadline was increased.
+
+Final checks: **86 regular tests passed**, both explicit real-service tests skipped by default, worktree TypeScript passed, targeted ESLint passed, and the restored manual preview's original-source/paraphrase/project/off/authentication probe passed. Login returned 200 and unauthenticated chat returned 401. The complete suite was not repeated; the earlier baseline differential and its red-suite limits still apply.
+
+Receipt: [validation-lifecycle-20261015.json](./validation-lifecycle-20261015.json). The explicit test is `apps/web/lib/qa/atlas-openviking-lifecycle.test.ts`, enabled with `ATLAS_OPENVIKING_LIFECYCLE_APPLY=1`. It uses the original probe's LIVE_URL/LIVE_CREDENTIALS variables and `ATLAS_OPENVIKING_LIFECYCLE_REPORT` for its private receipt. To reproduce the isolated mode, also set `ATLAS_OPENVIKING_LIVE_VECTORS_ONLY=1` and disable automatic L0/L1 on a separate server volume. Preserve existing service data; a failed run may leave synthetic fixtures.
+
+A [concrete Obsidian note candidate](../../docs/runbooks/atlas-openviking-obsidian-draft.md) proposes internal project knowledge for `omnira-selftest`. It has not been created/promoted in the real vault or included in the default corpus. The vault policy reserves promotion/classification/scope decisions for the owner.

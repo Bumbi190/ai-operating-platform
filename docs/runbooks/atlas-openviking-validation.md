@@ -1,5 +1,7 @@
 # Atlas OpenViking validation — 2026-10-15
 
+> Historical initial implementation report. Later real-service, semantic, owner-UI and lifecycle results are recorded in the [local pilot evidence](../../infra/openviking/README.md) and [lifecycle receipt](../../infra/openviking/validation-lifecycle-20261015.json).
+
 Implementation: `7c8a0758a8df766cad64807ad06fd1ede8a2f56f`.
 Base: `910376b2eb485f136e1b36073f08e7788f0be2d6`.
 Branch: `codex/atlas-openviking-integration-20261015`.

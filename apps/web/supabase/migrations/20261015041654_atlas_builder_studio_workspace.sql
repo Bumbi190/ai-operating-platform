@@ -56,6 +56,7 @@ declare uid uuid; pid uuid; aid uuid; cid uuid; slug text; title text;
  result jsonb; base jsonb; location jsonb; folder text;
 begin
  uid:=public.website_build_studio_require_owner(p_principal);
+ if p_input->>'kind'='new' and not exists(select 1 from public.projects where owner_id=uid and coalesce(p_principal->'allowedProjectIds' ? id::text,false)) then raise exception 'WEBSITE_BUILD_NOT_FOUND' using errcode='P0002'; end if;
  if key is null or key !~ '^[A-Za-z0-9_-]{1,100}$' or jsonb_typeof(p_input)<>'object' then raise exception 'INVALID_STUDIO_INPUT' using errcode='22023'; end if;
  if p_input->>'kind'='existing' then
   pid:=(p_input->>'projectId')::uuid;
@@ -66,6 +67,7 @@ begin
  if found then
   if old.input is distinct from normalized then raise exception 'STUDIO_KEY_CONFLICT' using errcode='23505'; end if;
   perform public.website_build_studio_require_active(old.project_id);
+  if not exists(select 1 from public.projects where id=old.project_id and owner_id=uid) then raise exception 'WEBSITE_BUILD_NOT_FOUND' using errcode='P0002'; end if;
   return old.result;
  end if;
  if p_input->>'kind'='new' then
@@ -82,6 +84,7 @@ begin
   insert into public.website_build_project_settings(project_id,builder_agent_id,location) values(pid,aid,location);
  else
   perform public.website_build_studio_require_active(pid);
+  perform public.website_build_studio_require_owner(p_principal,pid);
   select name,projects.slug into title,slug from public.projects where id=pid and owner_id=uid;
  end if;
  cid:=gen_random_uuid();
@@ -90,6 +93,25 @@ begin
  insert into public.website_build_studio_intents(owner_id,project_id,conversation_id,intent_key,input,result) values(uid,pid,cid,key,normalized,result);
  return result;
 end $$;
+create function public.website_build_workspace_request(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql security definer set search_path='' as $$
+declare uid uuid; pid uuid:=(p_input->>'projectId')::uuid; key text:=p_input->>'idempotencyKey'; normalized jsonb:=p_input-'idempotencyKey'; row public.website_build_workspace_requests; nextgen bigint;
+begin
+ uid:=public.website_build_studio_require_owner(p_principal,pid);
+ if key is null or key !~ '^[A-Za-z0-9_-]{1,100}$' or p_input->>'mode' is null or p_input->>'mode' not in ('new','existing_git','existing_folder') or jsonb_typeof(p_input->'root') is distinct from 'object' or p_input->'root'->>'os' not in ('windows','macos','linux') or length(p_input->'root'->>'root') not between 1 and 1200 or p_input->'root'->>'targetId' is distinct from p_input->>'targetId' then raise exception 'INVALID_STUDIO_INPUT' using errcode='22023'; end if;
+ perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('atlas-workspace:'||uid::text||':'||key,0));
+ perform public.website_build_studio_require_active(pid);
+ perform public.website_build_studio_require_owner(p_principal,pid);
+ select * into row from public.website_build_workspace_requests where owner_id=uid and intent_key=key;
+ if found then
+  if row.input is distinct from normalized then raise exception 'WORKSPACE_KEY_CONFLICT' using errcode='23505'; end if;
+ else
+  select coalesce(max(generation),0)+1 into nextgen from public.website_build_workspace_requests where project_id=pid;
+  insert into public.website_build_workspace_requests(owner_id,project_id,intent_key,generation,mode,root,target_id,input) values(uid,pid,key,nextgen,p_input->>'mode',p_input->'root',(p_input->>'targetId')::uuid,normalized) returning * into row;
+ end if;
+ return jsonb_build_object('requestId',row.id,'projectId',row.project_id,'idempotencyKey',row.intent_key,'generation',row.generation,'mode',row.mode,'root',row.root,'targetId',row.target_id,'state','pending_runner','requestedAt',row.created_at);
+end $$;
+revoke all on function public.website_build_workspace_request(jsonb,jsonb) from public,anon,authenticated;
+grant execute on function public.website_build_workspace_request(jsonb,jsonb) to service_role;
 revoke all on function public.website_build_studio_require_owner(jsonb,uuid),public.website_build_studio_require_active(uuid),public.website_build_studio_ensure(jsonb,jsonb,jsonb) from public,anon,authenticated;
 grant execute on function public.website_build_studio_ensure(jsonb,jsonb,jsonb) to service_role;
 commit;

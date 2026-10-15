@@ -1,7 +1,35 @@
 import 'server-only'
 import { WebsiteBuildError, validateBuildUuid } from '../store'
 import { ATLAS_WEB_BUILDER_PRESET } from './preset'
-import type { Db, Principal, EnsureStudioInput, StudioWorkspaceRef } from './types'
+import {bindProjectLocation,validateProjectRoot} from '../planning/project-layout'
+import {readProjectWebsiteBuilder} from '../planning/store'
+import type { Db, Principal, EnsureStudioInput, StudioWorkspaceRef, WorkspaceRequestInput, WorkspaceRequestView } from './types'
+
+export async function requestStudioWorkspace(db:Db,p:Principal,value:WorkspaceRequestInput):Promise<WorkspaceRequestView>{
+  const input=studioObject(value,['projectId','targetId','mode','root','idempotencyKey'])
+  validateBuildUuid(input.projectId);studioPrincipal(p,input.projectId);studioKey(input.idempotencyKey)
+  if(!['new','existing_git','existing_folder'].includes(String(input.mode)))throw new WebsiteBuildError('INVALID_STUDIO_INPUT')
+  if(input.targetId!==null)validateBuildUuid(input.targetId)
+  let root=validateProjectRoot(input.root)
+  if(root.targetId!==input.targetId)throw new WebsiteBuildError('INVALID_PROJECT_ROOT')
+  if(input.mode==='new'){
+    const setting=await readProjectWebsiteBuilder(db,p,input.projectId)
+    const {data,error}=await db.from('projects').select('name').eq('id',input.projectId).eq('owner_id',p.userId).maybeSingle()
+    if(error)throw new WebsiteBuildError('BUILD_UNAVAILABLE',503)
+    if(!data)throw new WebsiteBuildError('NOT_FOUND',404)
+    const location=bindProjectLocation(root,data.name,input.projectId,setting.location)
+    root={os:location.os,root:location.root,targetId:location.targetId}
+    if(root.targetId!==input.targetId)throw new WebsiteBuildError('INVALID_PROJECT_ROOT')
+  }
+  return studioRpc(db,'website_build_workspace_request',p,{projectId:input.projectId,targetId:input.targetId,mode:input.mode,root,idempotencyKey:input.idempotencyKey})
+}
+export async function readLatestWorkspaceRequest(db:Db,p:Principal,projectId:string):Promise<WorkspaceRequestView|null>{
+  studioPrincipal(p,projectId)
+  const query=db as unknown as {from:(table:string)=>any}
+  const {data,error}=await query.from('website_build_workspace_requests').select('id,project_id,mode,root,target_id,generation,state,intent_key,created_at').eq('project_id',projectId).eq('owner_id',p.userId).order('generation',{ascending:false}).limit(1).maybeSingle()
+  if(error)throw new WebsiteBuildError('BUILD_UNAVAILABLE',503)
+  return data?{projectId:data.project_id,requestId:data.id,targetId:data.target_id,mode:data.mode,root:data.root,generation:Number(data.generation),state:'pending_runner',idempotencyKey:data.intent_key,requestedAt:data.created_at}:null
+}
 
 export function studioObject(value:unknown, keys:readonly string[]):Record<string,unknown> {
   if (!value || typeof value!=='object' || Array.isArray(value) || Object.keys(value).some(k=>!keys.includes(k))) throw new WebsiteBuildError('INVALID_STUDIO_INPUT')
@@ -31,6 +59,7 @@ export async function ensureStudioWorkspace(db:Db,p:Principal,value:EnsureStudio
   studioKey(input.idempotencyKey)
   let validated:EnsureStudioInput
   if(input.kind==='new'){
+    if(p.allowedProjectIds.length===0)throw new WebsiteBuildError('NOT_FOUND',404)
     if(typeof input.name!=='string'||!input.name.trim()||input.name.trim().length>120||/[\u0000-\u001f]/.test(input.name))throw new WebsiteBuildError('INVALID_STUDIO_INPUT')
     validated={kind:'new',name:input.name.trim(),idempotencyKey:input.idempotencyKey}
   }else if(input.kind==='existing'){

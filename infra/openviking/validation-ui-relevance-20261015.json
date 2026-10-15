@@ -1,0 +1,4631 @@
+{
+  "recorded_at": "2026-10-15T15:24:43.009280+00:00",
+  "branch": "codex/atlas-openviking-integration-20261015",
+  "tested_app_commit": "47b4d7c02cc9da71d2343cc988aab0093aee47d6",
+  "production_activated": false,
+  "application_code_changed": false,
+  "configuration_changed": false,
+  "new_models_downloaded": false,
+  "source_snapshot": "e320719db950c432e2f85f49d3ec2a5079790ebc944937285e1c33fbdaf04de2",
+  "authenticated_ui": {
+    "method": "five fresh authenticated project-scoped UI conversations via Desktop Commander",
+    "new_conversations": 5,
+    "core_answers_passed": 5,
+    "strict_complete": 4,
+    "strict_partial": 1,
+    "unsupported_answers_correctly_abstained": 2,
+    "cases": [
+      {
+        "id": "memory_layers",
+        "kind": "answerable",
+        "query": "Vad skiljer M4 från Obsidian-kunskap? Kopieras privata M4-minnen till valvet, och kan en hämtad anteckning höja budgeten? Ange källa.",
+        "expected": [
+          "M4 operativa händelser/minnen, Obsidian kurerad kunskap",
+          "Privat M4 kopieras inte",
+          "Text kan inte ändra budget"
+        ],
+        "expected_paths": [
+          "60 Memory/omnira-selftest-minneslager.md"
+        ]
+      },
+      {
+        "id": "publication_readiness",
+        "kind": "answerable",
+        "query": "Jag har rättat en Obsidian-anteckning. När kan Atlas läsa ändringen, och räcker det att uppladdningen är accepterad? Ange källa.",
+        "expected": [
+          "Ny förberedd, granskad, synkroniserad och vald publicering",
+          "Indexering slutförd och ready=true för rätt snapshot"
+        ],
+        "expected_paths": [
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ]
+      },
+      {
+        "id": "shadow_deadline",
+        "kind": "answerable",
+        "query": "Vad gör kunskapsläget shadow, och hur länge får OpenViking-anropet vänta innan chatten fortsätter utan extra kunskap? Ange källa.",
+        "expected": [
+          "shadow söker men injicerar ingen text",
+          "1,2 sekunders deadline",
+          "Felfall hindrar inte chatten"
+        ],
+        "expected_paths": [
+          "60 Memory/omnira-selftest-projektatkomst.md"
+        ]
+      },
+      {
+        "id": "missing_backup_schedule",
+        "kind": "unanswerable",
+        "query": "Vilket klockslag körs den automatiska säkerhetskopieringen av OpenViking i den här piloten? Ange källa.",
+        "expected": [
+          "Saknar stöd för ett klockslag eller ett fastställt backupschema",
+          "Inget påhittat klockslag eller falsk källhänvisning"
+        ],
+        "expected_paths": []
+      },
+      {
+        "id": "missing_production_cost",
+        "kind": "unanswerable",
+        "query": "Vilken månadskostnad i kronor är beslutad för produktionens OpenViking-server? Ange källa.",
+        "expected": [
+          "Saknar beslutad månadskostnad i underlaget",
+          "Inget påhittat belopp eller falsk källhänvisning"
+        ],
+        "expected_paths": []
+      }
+    ],
+    "observations": [
+      {
+        "id": "memory_layers",
+        "conversation_id": "16f8d208-5091-40ef-ab1f-a414651c9e1d",
+        "answer": "M4 hanterar operativa händelser och minnen; Obsidian är mänskligt skriven och granskad kunskap. Privata M4-minnen kopieras inte till valvet/indexet. Återläst text kan inte bevilja åtkomst, godkänna åtgärder eller ändra budget.",
+        "citation": "docs/runbooks/atlas-openviking.md; Skilj M4-minne från Obsidian-kunskap; exact current e320719d snapshot",
+        "evidence": "atlas-ui-memory-layers.png",
+        "core_answer_passed": true,
+        "result": "pass"
+      },
+      {
+        "id": "publication_readiness",
+        "conversation_id": "e4df51fe-6d00-42c4-b02b-ef84eec80326",
+        "answer": "Atlas kan läsa ändringen först efter publicering från ren Git-version, synkronisering och slutförd indexering. ready=true måste gälla samma snapshot som applikationen använder. Accepterad eller köad uppladdning räcker inte.",
+        "citation": "60 Memory/omnira-selftest-publicering.md; docs/runbooks/atlas-openviking.md",
+        "note": "Does not explicitly repeat review or selecting the new artifact; states matching application snapshot and completed readiness.",
+        "evidence": "atlas-ui-publication-readiness.png",
+        "core_answer_passed": true,
+        "result": "partial"
+      },
+      {
+        "id": "shadow_deadline",
+        "conversation_id": "8d04a9fd-5665-4904-a100-67590f6933f1",
+        "answer": "Shadow söker men injicerar inte resultat. Tidsgräns 1,2 sekunder; nätverksfel/ogiltigt svar/saknad konfiguration låter chatten fortsätta utan extra kunskap.",
+        "citation": "Projektåtkomst och avstängd återläsning; docs/runbooks/atlas-openviking.md; snapshot e320719d",
+        "evidence": "atlas-ui-shadow-deadline.png",
+        "core_answer_passed": true,
+        "result": "pass"
+      },
+      {
+        "id": "missing_backup_schedule",
+        "conversation_id": "c22002b4-fe19-4560-919a-abbdefc375fa",
+        "answer": "Jag hittar inget klockslag för automatisk säkerhetskopiering i den tillgängliga pilotdokumentationen. Källorna beskriver uppstart och övervakning, men inte säkerhetskopiering.",
+        "citation": "60 Memory/omnira-selftest-local-memory-pilot.md and 60 Memory/omnira-selftest-felsokning.md cited as checked sources, explicitly not supporting a backup time",
+        "evidence": "atlas-ui-missing-backup-schedule.png",
+        "core_answer_passed": true,
+        "result": "pass"
+      },
+      {
+        "id": "missing_production_cost",
+        "conversation_id": "083490f5-5bec-416c-857d-e5b5afc2e42a",
+        "answer": "Jag kan inte verifiera någon beslutad månadskostnad för produktionens OpenViking-server i tillgängliga källor. Pilotens minnesanteckningar beskriver en lokal testinstallation, men anger ingen produktionskostnad.",
+        "citation": null,
+        "evidence": "atlas-ui-missing-production-cost.png",
+        "core_answer_passed": true,
+        "result": "pass"
+      }
+    ],
+    "limitations": [
+      "Small source-aware paraphrase set, not a blind quality benchmark.",
+      "Publication answer did not explicitly repeat content review and application selection; it did require completed indexing and matching active snapshot.",
+      "No ranking change was active."
+    ]
+  },
+  "query_instruction_probe": {
+    "plan": {
+      "hypothesis": "The configured Ollama path supplies plain queries although Qwen recommends a task instruction. Test the official generic query prefix only, against unchanged corpus/index and API budget.",
+      "prefix": "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: ",
+      "cases": [
+        {
+          "id": "start",
+          "query": "Hur startar jag minnespiloten?",
+          "expected_paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md",
+            "60 Memory/omnira-selftest-felsokning.md"
+          ],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "duration",
+          "query": "Hur länge kör testpasset?",
+          "expected_paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "thermal",
+          "query": "Vilken temperaturgräns gäller?",
+          "expected_paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "vram",
+          "query": "Vad händer om grafikminnet nästan är fullt?",
+          "expected_paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "monitoring",
+          "query": "Vad händer om temperaturövervakningen försvinner?",
+          "expected_paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md",
+            "60 Memory/omnira-selftest-felsokning.md"
+          ],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "restart",
+          "query": "Tiden har gått ut. Hur öppnar jag ett nytt pass?",
+          "expected_paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md",
+            "60 Memory/omnira-selftest-felsokning.md"
+          ],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "local_address",
+          "query": "Var finns sidan där jag kan prova den lokala kunskapssökningen?",
+          "expected_paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md",
+            "60 Memory/omnira-selftest-felsokning.md"
+          ],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "models",
+          "query": "Vilka modeller används i det lokala minnestestet?",
+          "expected_paths": [
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "changed_note",
+          "query": "Jag rättade en anteckning i Obsidian. När ser Atlas ändringen?",
+          "expected_paths": [
+            "60 Memory/omnira-selftest-publicering.md",
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "accepted_not_ready",
+          "query": "Räcker det att uppladdningen har accepterats för att kunskapen ska vara sökbar?",
+          "expected_paths": [
+            "60 Memory/omnira-selftest-publicering.md"
+          ],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "revocation",
+          "query": "Hur återkallar vi en källa innan det gamla indexet rensats?",
+          "expected_paths": [
+            "60 Memory/omnira-selftest-publicering.md",
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "prune_scope",
+          "query": "Får vi rensa hela kontot när en källa tas bort?",
+          "expected_paths": [
+            "60 Memory/omnira-selftest-publicering.md"
+          ],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "memory_layers",
+          "query": "Vad skiljer operativa M4-minnen från kurerad kunskap i Obsidian?",
+          "expected_paths": [
+            "60 Memory/omnira-selftest-minneslager.md"
+          ],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "authority",
+          "query": "Kan en återläst anteckning godkänna en åtgärd och ändra vår budget?",
+          "expected_paths": [
+            "60 Memory/omnira-selftest-minneslager.md"
+          ],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "independent_flags",
+          "query": "Kan M4 vara avstängt samtidigt som kunskapssökningen fungerar?",
+          "expected_paths": [
+            "60 Memory/omnira-selftest-minneslager.md"
+          ],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "wrong_environment",
+          "query": "Varför når den hostade applikationen inte min lokala minnespilot?",
+          "expected_paths": [
+            "60 Memory/omnira-selftest-felsokning.md"
+          ],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "conversation_history",
+          "query": "Varför finns ett gammalt svar kvar efter att jag bytt projekt?",
+          "expected_paths": [
+            "60 Memory/omnira-selftest-felsokning.md",
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "modes",
+          "query": "Vad är skillnaden mellan off, shadow och on för kunskapssökningen?",
+          "expected_paths": [
+            "60 Memory/omnira-selftest-projektatkomst.md"
+          ],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "deadline",
+          "query": "Hur länge får kunskapssökningen vänta på nätverket?",
+          "expected_paths": [
+            "60 Memory/omnira-selftest-projektatkomst.md"
+          ],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "membership",
+          "query": "Ger ett konfigurerat pilotprojekt automatiskt användaren åtkomst?",
+          "expected_paths": [
+            "60 Memory/omnira-selftest-projektatkomst.md"
+          ],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "irrelevant_shipping",
+          "query": "Vilket fraktbolag levererar våra paket till kunder?",
+          "expected_paths": [],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "irrelevant_school",
+          "query": "När börjar förskolans sommarlov?",
+          "expected_paths": [],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "missing_password",
+          "query": "Vad är lösenordet till min dator?",
+          "expected_paths": [],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "missing_production_date",
+          "query": "Vilket datum är produktionens minnesfunktion planerad att lanseras?",
+          "expected_paths": [],
+          "cohort": "existing_development"
+        },
+        {
+          "id": "memory_layers",
+          "kind": "answerable",
+          "query": "Vad skiljer M4 från Obsidian-kunskap? Kopieras privata M4-minnen till valvet, och kan en hämtad anteckning höja budgeten? Ange källa.",
+          "expected": [
+            "M4 operativa händelser/minnen, Obsidian kurerad kunskap",
+            "Privat M4 kopieras inte",
+            "Text kan inte ändra budget"
+          ],
+          "expected_paths": [
+            "60 Memory/omnira-selftest-minneslager.md"
+          ],
+          "cohort": "new_ui_paraphrases"
+        },
+        {
+          "id": "publication_readiness",
+          "kind": "answerable",
+          "query": "Jag har rättat en Obsidian-anteckning. När kan Atlas läsa ändringen, och räcker det att uppladdningen är accepterad? Ange källa.",
+          "expected": [
+            "Ny förberedd, granskad, synkroniserad och vald publicering",
+            "Indexering slutförd och ready=true för rätt snapshot"
+          ],
+          "expected_paths": [
+            "60 Memory/omnira-selftest-publicering.md",
+            "60 Memory/omnira-selftest-local-memory-pilot.md"
+          ],
+          "cohort": "new_ui_paraphrases"
+        },
+        {
+          "id": "shadow_deadline",
+          "kind": "answerable",
+          "query": "Vad gör kunskapsläget shadow, och hur länge får OpenViking-anropet vänta innan chatten fortsätter utan extra kunskap? Ange källa.",
+          "expected": [
+            "shadow söker men injicerar ingen text",
+            "1,2 sekunders deadline",
+            "Felfall hindrar inte chatten"
+          ],
+          "expected_paths": [
+            "60 Memory/omnira-selftest-projektatkomst.md"
+          ],
+          "cohort": "new_ui_paraphrases"
+        },
+        {
+          "id": "missing_backup_schedule",
+          "kind": "unanswerable",
+          "query": "Vilket klockslag körs den automatiska säkerhetskopieringen av OpenViking i den här piloten? Ange källa.",
+          "expected": [
+            "Saknar stöd för ett klockslag eller ett fastställt backupschema",
+            "Inget påhittat klockslag eller falsk källhänvisning"
+          ],
+          "expected_paths": [],
+          "cohort": "new_ui_paraphrases"
+        },
+        {
+          "id": "missing_production_cost",
+          "kind": "unanswerable",
+          "query": "Vilken månadskostnad i kronor är beslutad för produktionens OpenViking-server? Ange källa.",
+          "expected": [
+            "Saknar beslutad månadskostnad i underlaget",
+            "Inget påhittat belopp eller falsk källhänvisning"
+          ],
+          "expected_paths": [],
+          "cohort": "new_ui_paraphrases"
+        }
+      ],
+      "production_changed": false,
+      "runtime_changed": false,
+      "configuration_changed": false,
+      "new_indexing": false,
+      "cloud_calls": 0,
+      "repetitions": 3
+    },
+    "summary": {
+      "existing_development": {
+        "plain": {
+          "correct_first_all_three": 11,
+          "answerable": 20,
+          "expected_present_all_three": 20,
+          "unanswerable": 4,
+          "unanswerable_with_any_hit_all_three": 4,
+          "errors": 0,
+          "median_ms": 33,
+          "p95_ms": 54
+        },
+        "instruct": {
+          "correct_first_all_three": 12,
+          "answerable": 20,
+          "expected_present_all_three": 20,
+          "unanswerable": 4,
+          "unanswerable_with_any_hit_all_three": 4,
+          "errors": 0,
+          "median_ms": 38,
+          "p95_ms": 78
+        }
+      },
+      "new_ui_paraphrases": {
+        "plain": {
+          "correct_first_all_three": 3,
+          "answerable": 3,
+          "expected_present_all_three": 3,
+          "unanswerable": 2,
+          "unanswerable_with_any_hit_all_three": 2,
+          "errors": 0,
+          "median_ms": 36,
+          "p95_ms": 63
+        },
+        "instruct": {
+          "correct_first_all_three": 3,
+          "answerable": 3,
+          "expected_present_all_three": 3,
+          "unanswerable": 2,
+          "unanswerable_with_any_hit_all_three": 2,
+          "errors": 0,
+          "median_ms": 37,
+          "p95_ms": 140
+        }
+      }
+    },
+    "results": [
+      {
+        "id": "start",
+        "cohort": "existing_development",
+        "query": "Hur startar jag minnespiloten?",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-felsokning.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.6763491630554199,
+              0.6745098829269409,
+              0.668091356754303,
+              0.6468683481216431,
+              0.5790270566940308
+            ],
+            "duration_ms": 80
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.6763491630554199,
+              0.6745098829269409,
+              0.668091356754303,
+              0.6468683481216431,
+              0.5790270566940308
+            ],
+            "duration_ms": 31
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.6763491630554199,
+              0.6745098829269409,
+              0.668091356754303,
+              0.6468683481216431,
+              0.5790270566940308
+            ],
+            "duration_ms": 50
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.713348388671875,
+              0.6997992396354675,
+              0.6992842555046082,
+              0.669728696346283,
+              0.606523871421814
+            ],
+            "duration_ms": 82
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.713348388671875,
+              0.6997992396354675,
+              0.6992842555046082,
+              0.669728696346283,
+              0.606523871421814
+            ],
+            "duration_ms": 78
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.713348388671875,
+              0.6997992396354675,
+              0.6992842555046082,
+              0.669728696346283,
+              0.606523871421814
+            ],
+            "duration_ms": 36
+          }
+        ]
+      },
+      {
+        "id": "duration",
+        "cohort": "existing_development",
+        "query": "Hur länge kör testpasset?",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.6844894289970398,
+              0.675826907157898,
+              0.6643062233924866,
+              0.6030151844024658,
+              0.58034747838974
+            ],
+            "duration_ms": 33
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.6844894289970398,
+              0.675826907157898,
+              0.6643062233924866,
+              0.6030151844024658,
+              0.58034747838974
+            ],
+            "duration_ms": 29
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.6844894289970398,
+              0.675826907157898,
+              0.6643062233924866,
+              0.6030151844024658,
+              0.58034747838974
+            ],
+            "duration_ms": 28
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7317719459533691,
+              0.7164605855941772,
+              0.6817780137062073,
+              0.6128633618354797,
+              0.6003817319869995
+            ],
+            "duration_ms": 67
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7317719459533691,
+              0.7164605855941772,
+              0.6817780137062073,
+              0.6128633618354797,
+              0.6003817319869995
+            ],
+            "duration_ms": 33
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7317719459533691,
+              0.7164605855941772,
+              0.6817780137062073,
+              0.6128633618354797,
+              0.6003817319869995
+            ],
+            "duration_ms": 87
+          }
+        ]
+      },
+      {
+        "id": "thermal",
+        "cohort": "existing_development",
+        "query": "Vilken temperaturgräns gäller?",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.5811319351196289,
+              0.577796459197998,
+              0.5745018124580383,
+              0.5656559467315674,
+              0.5305512547492981
+            ],
+            "duration_ms": 33
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.5811319351196289,
+              0.577796459197998,
+              0.5745018124580383,
+              0.5656559467315674,
+              0.5305512547492981
+            ],
+            "duration_ms": 34
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.5811319351196289,
+              0.577796459197998,
+              0.5745018124580383,
+              0.5656559467315674,
+              0.5305512547492981
+            ],
+            "duration_ms": 31
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.6081081628799438,
+              0.6029230356216431,
+              0.5981457233428955,
+              0.5966967344284058,
+              0.5664876699447632
+            ],
+            "duration_ms": 41
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.6081081628799438,
+              0.6029230356216431,
+              0.5981457233428955,
+              0.5966967344284058,
+              0.5664876699447632
+            ],
+            "duration_ms": 32
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.6081081628799438,
+              0.6029230356216431,
+              0.5981457233428955,
+              0.5966967344284058,
+              0.5664876699447632
+            ],
+            "duration_ms": 46
+          }
+        ]
+      },
+      {
+        "id": "vram",
+        "cohort": "existing_development",
+        "query": "Vad händer om grafikminnet nästan är fullt?",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.673599898815155,
+              0.6584998369216919,
+              0.6462196111679077,
+              0.6318296194076538,
+              0.6162437796592712
+            ],
+            "duration_ms": 35
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.673599898815155,
+              0.6584998369216919,
+              0.6462196111679077,
+              0.6318296194076538,
+              0.6162437796592712
+            ],
+            "duration_ms": 29
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.673599898815155,
+              0.6584998369216919,
+              0.6462196111679077,
+              0.6318296194076538,
+              0.6162437796592712
+            ],
+            "duration_ms": 30
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.684512734413147,
+              0.6691431999206543,
+              0.6633638143539429,
+              0.6480560302734375,
+              0.6277633905410767
+            ],
+            "duration_ms": 64
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.684512734413147,
+              0.6691431999206543,
+              0.6633638143539429,
+              0.6480560302734375,
+              0.6277633905410767
+            ],
+            "duration_ms": 35
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.684512734413147,
+              0.6691431999206543,
+              0.6633638143539429,
+              0.6480560302734375,
+              0.6277633905410767
+            ],
+            "duration_ms": 37
+          }
+        ]
+      },
+      {
+        "id": "monitoring",
+        "cohort": "existing_development",
+        "query": "Vad händer om temperaturövervakningen försvinner?",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-felsokning.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-projektatkomst.md"
+            ],
+            "scores": [
+              0.620844841003418,
+              0.6157341003417969,
+              0.612751841545105,
+              0.6052866578102112,
+              0.5992383360862732
+            ],
+            "duration_ms": 33
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-projektatkomst.md"
+            ],
+            "scores": [
+              0.620844841003418,
+              0.6157341003417969,
+              0.612751841545105,
+              0.6052866578102112,
+              0.5992383360862732
+            ],
+            "duration_ms": 43
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-projektatkomst.md"
+            ],
+            "scores": [
+              0.620844841003418,
+              0.6157341003417969,
+              0.612751841545105,
+              0.6052866578102112,
+              0.5992383360862732
+            ],
+            "duration_ms": 30
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-projektatkomst.md"
+            ],
+            "scores": [
+              0.6461833715438843,
+              0.6421909332275391,
+              0.6385787725448608,
+              0.6322889924049377,
+              0.6202030777931213
+            ],
+            "duration_ms": 39
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-projektatkomst.md"
+            ],
+            "scores": [
+              0.6461833715438843,
+              0.6421909332275391,
+              0.6385787725448608,
+              0.6322889924049377,
+              0.6202030777931213
+            ],
+            "duration_ms": 48
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-projektatkomst.md"
+            ],
+            "scores": [
+              0.6461833715438843,
+              0.6421909332275391,
+              0.6385787725448608,
+              0.6322889924049377,
+              0.6202030777931213
+            ],
+            "duration_ms": 38
+          }
+        ]
+      },
+      {
+        "id": "restart",
+        "cohort": "existing_development",
+        "query": "Tiden har gått ut. Hur öppnar jag ett nytt pass?",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-felsokning.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.6938554048538208,
+              0.6621119976043701,
+              0.6575786471366882,
+              0.6416792869567871,
+              0.6286216974258423
+            ],
+            "duration_ms": 43
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.6938554048538208,
+              0.6621119976043701,
+              0.6575786471366882,
+              0.6416792869567871,
+              0.6286216974258423
+            ],
+            "duration_ms": 31
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.6938554048538208,
+              0.6621119976043701,
+              0.6575786471366882,
+              0.6416792869567871,
+              0.6286216974258423
+            ],
+            "duration_ms": 34
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.6925974488258362,
+              0.668029248714447,
+              0.6671607494354248,
+              0.6596441268920898,
+              0.6498302817344666
+            ],
+            "duration_ms": 33
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.6925974488258362,
+              0.668029248714447,
+              0.6671607494354248,
+              0.6596441268920898,
+              0.6498302817344666
+            ],
+            "duration_ms": 34
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.6925974488258362,
+              0.668029248714447,
+              0.6671607494354248,
+              0.6596441268920898,
+              0.6498302817344666
+            ],
+            "duration_ms": 55
+          }
+        ]
+      },
+      {
+        "id": "local_address",
+        "cohort": "existing_development",
+        "query": "Var finns sidan där jag kan prova den lokala kunskapssökningen?",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-felsokning.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7315969467163086,
+              0.7296265363693237,
+              0.7237991690635681,
+              0.7047632336616516,
+              0.6563601493835449
+            ],
+            "duration_ms": 47
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7315969467163086,
+              0.7296265363693237,
+              0.7237991690635681,
+              0.7047632336616516,
+              0.6563601493835449
+            ],
+            "duration_ms": 38
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7315969467163086,
+              0.7296265363693237,
+              0.7237991690635681,
+              0.7047632336616516,
+              0.6563601493835449
+            ],
+            "duration_ms": 31
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7415122985839844,
+              0.7388567328453064,
+              0.737556517124176,
+              0.728947103023529,
+              0.6687348484992981
+            ],
+            "duration_ms": 32
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7415122985839844,
+              0.7388567328453064,
+              0.737556517124176,
+              0.728947103023529,
+              0.6687348484992981
+            ],
+            "duration_ms": 58
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7415122985839844,
+              0.7388567328453064,
+              0.737556517124176,
+              0.728947103023529,
+              0.6687348484992981
+            ],
+            "duration_ms": 38
+          }
+        ]
+      },
+      {
+        "id": "models",
+        "cohort": "existing_development",
+        "query": "Vilka modeller används i det lokala minnestestet?",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7354743480682373,
+              0.6744257211685181,
+              0.6293341517448425,
+              0.6273321509361267,
+              0.5663623809814453
+            ],
+            "duration_ms": 45
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7354743480682373,
+              0.6744257211685181,
+              0.6293341517448425,
+              0.6273321509361267,
+              0.5663623809814453
+            ],
+            "duration_ms": 36
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7354743480682373,
+              0.6744257211685181,
+              0.6293341517448425,
+              0.6273321509361267,
+              0.5663623809814453
+            ],
+            "duration_ms": 31
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7626103162765503,
+              0.7052520513534546,
+              0.6436306238174438,
+              0.6405932307243347,
+              0.5867358446121216
+            ],
+            "duration_ms": 44
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7626103162765503,
+              0.7052520513534546,
+              0.6436306238174438,
+              0.6405932307243347,
+              0.5867358446121216
+            ],
+            "duration_ms": 37
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7626103162765503,
+              0.7052520513534546,
+              0.6436306238174438,
+              0.6405932307243347,
+              0.5867358446121216
+            ],
+            "duration_ms": 48
+          }
+        ]
+      },
+      {
+        "id": "changed_note",
+        "cohort": "existing_development",
+        "query": "Jag rättade en anteckning i Obsidian. När ser Atlas ändringen?",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md"
+            ],
+            "scores": [
+              0.8047019839286804,
+              0.7855623960494995,
+              0.736812949180603,
+              0.7367540001869202,
+              0.6797963380813599
+            ],
+            "duration_ms": 48
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md"
+            ],
+            "scores": [
+              0.8047019839286804,
+              0.7855623960494995,
+              0.736812949180603,
+              0.7367540001869202,
+              0.6797963380813599
+            ],
+            "duration_ms": 32
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md"
+            ],
+            "scores": [
+              0.8047019839286804,
+              0.7855623960494995,
+              0.736812949180603,
+              0.7367540001869202,
+              0.6797963380813599
+            ],
+            "duration_ms": 31
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md"
+            ],
+            "scores": [
+              0.8186402320861816,
+              0.795293927192688,
+              0.7506753206253052,
+              0.7376270890235901,
+              0.6705976128578186
+            ],
+            "duration_ms": 34
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md"
+            ],
+            "scores": [
+              0.8186402320861816,
+              0.795293927192688,
+              0.7506753206253052,
+              0.7376270890235901,
+              0.6705976128578186
+            ],
+            "duration_ms": 35
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md"
+            ],
+            "scores": [
+              0.8186402320861816,
+              0.795293927192688,
+              0.7506753206253052,
+              0.7376270890235901,
+              0.6705976128578186
+            ],
+            "duration_ms": 35
+          }
+        ]
+      },
+      {
+        "id": "accepted_not_ready",
+        "cohort": "existing_development",
+        "query": "Räcker det att uppladdningen har accepterats för att kunskapen ska vara sökbar?",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7620455026626587,
+              0.7523254156112671,
+              0.7101128697395325,
+              0.6781691908836365,
+              0.666028618812561
+            ],
+            "duration_ms": 32
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7620455026626587,
+              0.7523254156112671,
+              0.7101128697395325,
+              0.6781691908836365,
+              0.666028618812561
+            ],
+            "duration_ms": 43
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7620455026626587,
+              0.7523254156112671,
+              0.7101128697395325,
+              0.6781691908836365,
+              0.666028618812561
+            ],
+            "duration_ms": 51
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7800819873809814,
+              0.7757779955863953,
+              0.729079008102417,
+              0.6907575130462646,
+              0.6836199760437012
+            ],
+            "duration_ms": 50
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7800819873809814,
+              0.7757779955863953,
+              0.729079008102417,
+              0.6907575130462646,
+              0.6836199760437012
+            ],
+            "duration_ms": 38
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7800819873809814,
+              0.7757779955863953,
+              0.729079008102417,
+              0.6907575130462646,
+              0.6836199760437012
+            ],
+            "duration_ms": 43
+          }
+        ]
+      },
+      {
+        "id": "revocation",
+        "cohort": "existing_development",
+        "query": "Hur återkallar vi en källa innan det gamla indexet rensats?",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7236331701278687,
+              0.6743746399879456,
+              0.6628787517547607,
+              0.6510544419288635,
+              0.6150587201118469
+            ],
+            "duration_ms": 52
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7236331701278687,
+              0.6743746399879456,
+              0.6628787517547607,
+              0.6510544419288635,
+              0.6150587201118469
+            ],
+            "duration_ms": 36
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7236331701278687,
+              0.6743746399879456,
+              0.6628787517547607,
+              0.6510544419288635,
+              0.6150587201118469
+            ],
+            "duration_ms": 36
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7385575175285339,
+              0.6775102019309998,
+              0.6526877880096436,
+              0.6416833996772766,
+              0.614849328994751
+            ],
+            "duration_ms": 54
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7385575175285339,
+              0.6775102019309998,
+              0.6526877880096436,
+              0.6416833996772766,
+              0.614849328994751
+            ],
+            "duration_ms": 41
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7385575175285339,
+              0.6775102019309998,
+              0.6526877880096436,
+              0.6416833996772766,
+              0.614849328994751
+            ],
+            "duration_ms": 81
+          }
+        ]
+      },
+      {
+        "id": "prune_scope",
+        "cohort": "existing_development",
+        "query": "Får vi rensa hela kontot när en källa tas bort?",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.6329239010810852,
+              0.6293154358863831,
+              0.6026290655136108,
+              0.6008994579315186,
+              0.5859110355377197
+            ],
+            "duration_ms": 33
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.6329239010810852,
+              0.6293154358863831,
+              0.6026290655136108,
+              0.6008994579315186,
+              0.5859110355377197
+            ],
+            "duration_ms": 32
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.6329239010810852,
+              0.6293154358863831,
+              0.6026290655136108,
+              0.6008994579315186,
+              0.5859110355377197
+            ],
+            "duration_ms": 57
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.6411576867103577,
+              0.638225257396698,
+              0.6152747273445129,
+              0.6145848035812378,
+              0.600615382194519
+            ],
+            "duration_ms": 37
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.6411576867103577,
+              0.638225257396698,
+              0.6152747273445129,
+              0.6145848035812378,
+              0.600615382194519
+            ],
+            "duration_ms": 36
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.6411576867103577,
+              0.638225257396698,
+              0.6152747273445129,
+              0.6145848035812378,
+              0.600615382194519
+            ],
+            "duration_ms": 34
+          }
+        ]
+      },
+      {
+        "id": "memory_layers",
+        "cohort": "existing_development",
+        "query": "Vad skiljer operativa M4-minnen från kurerad kunskap i Obsidian?",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-minneslager.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.8503636121749878,
+              0.6973685026168823,
+              0.6935262680053711,
+              0.6755645871162415,
+              0.627997636795044
+            ],
+            "duration_ms": 34
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.8503636121749878,
+              0.6973685026168823,
+              0.6935262680053711,
+              0.6755645871162415,
+              0.627997636795044
+            ],
+            "duration_ms": 29
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.8503636121749878,
+              0.6973685026168823,
+              0.6935262680053711,
+              0.6755645871162415,
+              0.627997636795044
+            ],
+            "duration_ms": 40
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.8523498773574829,
+              0.6958760023117065,
+              0.6931961178779602,
+              0.6900035738945007,
+              0.6297727823257446
+            ],
+            "duration_ms": 56
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.8523498773574829,
+              0.6958760023117065,
+              0.6931961178779602,
+              0.6900035738945007,
+              0.6297727823257446
+            ],
+            "duration_ms": 49
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.8523498773574829,
+              0.6958760023117065,
+              0.6931961178779602,
+              0.6900035738945007,
+              0.6297727823257446
+            ],
+            "duration_ms": 30
+          }
+        ]
+      },
+      {
+        "id": "authority",
+        "cohort": "existing_development",
+        "query": "Kan en återläst anteckning godkänna en åtgärd och ändra vår budget?",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-minneslager.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7088757753372192,
+              0.6691903471946716,
+              0.6385527849197388,
+              0.6292648911476135,
+              0.603033185005188
+            ],
+            "duration_ms": 32
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7088757753372192,
+              0.6691903471946716,
+              0.6385527849197388,
+              0.6292648911476135,
+              0.603033185005188
+            ],
+            "duration_ms": 45
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7088757753372192,
+              0.6691903471946716,
+              0.6385527849197388,
+              0.6292648911476135,
+              0.603033185005188
+            ],
+            "duration_ms": 29
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7197937369346619,
+              0.6762421727180481,
+              0.6542562246322632,
+              0.652782678604126,
+              0.6222631931304932
+            ],
+            "duration_ms": 33
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7197937369346619,
+              0.6762421727180481,
+              0.6542562246322632,
+              0.652782678604126,
+              0.6222631931304932
+            ],
+            "duration_ms": 33
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7197937369346619,
+              0.6762421727180481,
+              0.6542562246322632,
+              0.652782678604126,
+              0.6222631931304932
+            ],
+            "duration_ms": 33
+          }
+        ]
+      },
+      {
+        "id": "independent_flags",
+        "cohort": "existing_development",
+        "query": "Kan M4 vara avstängt samtidigt som kunskapssökningen fungerar?",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-minneslager.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7490742802619934,
+              0.7204927206039429,
+              0.65134596824646,
+              0.6420343518257141,
+              0.6402685046195984
+            ],
+            "duration_ms": 32
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7490742802619934,
+              0.7204927206039429,
+              0.65134596824646,
+              0.6420343518257141,
+              0.6402685046195984
+            ],
+            "duration_ms": 32
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7490742802619934,
+              0.7204927206039429,
+              0.65134596824646,
+              0.6420343518257141,
+              0.6402685046195984
+            ],
+            "duration_ms": 40
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7841407060623169,
+              0.7666600942611694,
+              0.6793728470802307,
+              0.6726309061050415,
+              0.6585311889648438
+            ],
+            "duration_ms": 39
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7841407060623169,
+              0.7666600942611694,
+              0.6793728470802307,
+              0.6726309061050415,
+              0.6585311889648438
+            ],
+            "duration_ms": 30
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7841407060623169,
+              0.7666600942611694,
+              0.6793728470802307,
+              0.6726309061050415,
+              0.6585311889648438
+            ],
+            "duration_ms": 30
+          }
+        ]
+      },
+      {
+        "id": "wrong_environment",
+        "cohort": "existing_development",
+        "query": "Varför når den hostade applikationen inte min lokala minnespilot?",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-felsokning.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.763839602470398,
+              0.7448398470878601,
+              0.7302631735801697,
+              0.6676656007766724,
+              0.6552897691726685
+            ],
+            "duration_ms": 35
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.763839602470398,
+              0.7448398470878601,
+              0.7302631735801697,
+              0.6676656007766724,
+              0.6552897691726685
+            ],
+            "duration_ms": 28
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.763839602470398,
+              0.7448398470878601,
+              0.7302631735801697,
+              0.6676656007766724,
+              0.6552897691726685
+            ],
+            "duration_ms": 53
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7713049650192261,
+              0.7575016617774963,
+              0.7474706172943115,
+              0.6754782199859619,
+              0.6692696809768677
+            ],
+            "duration_ms": 46
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7713049650192261,
+              0.7575016617774963,
+              0.7474706172943115,
+              0.6754782199859619,
+              0.6692696809768677
+            ],
+            "duration_ms": 46
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7713049650192261,
+              0.7575016617774963,
+              0.7474706172943115,
+              0.6754782199859619,
+              0.6692696809768677
+            ],
+            "duration_ms": 46
+          }
+        ]
+      },
+      {
+        "id": "conversation_history",
+        "cohort": "existing_development",
+        "query": "Varför finns ett gammalt svar kvar efter att jag bytt projekt?",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7322375774383545,
+              0.7014211416244507,
+              0.6944621801376343,
+              0.6444958448410034,
+              0.6175260543823242
+            ],
+            "duration_ms": 31
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7322375774383545,
+              0.7014211416244507,
+              0.6944621801376343,
+              0.6444958448410034,
+              0.6175260543823242
+            ],
+            "duration_ms": 54
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7322375774383545,
+              0.7014211416244507,
+              0.6944621801376343,
+              0.6444958448410034,
+              0.6175260543823242
+            ],
+            "duration_ms": 29
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7467966079711914,
+              0.7171131372451782,
+              0.7095204591751099,
+              0.6549346446990967,
+              0.6455715894699097
+            ],
+            "duration_ms": 49
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7467966079711914,
+              0.7171131372451782,
+              0.7095204591751099,
+              0.6549346446990967,
+              0.6455715894699097
+            ],
+            "duration_ms": 33
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md"
+            ],
+            "scores": [
+              0.7467966079711914,
+              0.7171131372451782,
+              0.7095204591751099,
+              0.6549346446990967,
+              0.6455715894699097
+            ],
+            "duration_ms": 31
+          }
+        ]
+      },
+      {
+        "id": "modes",
+        "cohort": "existing_development",
+        "query": "Vad är skillnaden mellan off, shadow och on för kunskapssökningen?",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-projektatkomst.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.6998940706253052,
+              0.6860411167144775,
+              0.625249981880188,
+              0.6229932308197021,
+              0.6019486784934998
+            ],
+            "duration_ms": 31
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.6998940706253052,
+              0.6860411167144775,
+              0.625249981880188,
+              0.6229932308197021,
+              0.6019486784934998
+            ],
+            "duration_ms": 28
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.6998940706253052,
+              0.6860411167144775,
+              0.625249981880188,
+              0.6229932308197021,
+              0.6019486784934998
+            ],
+            "duration_ms": 33
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.724105954170227,
+              0.7013251781463623,
+              0.6513197422027588,
+              0.647449254989624,
+              0.6250441074371338
+            ],
+            "duration_ms": 51
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.724105954170227,
+              0.7013251781463623,
+              0.6513197422027588,
+              0.647449254989624,
+              0.6250441074371338
+            ],
+            "duration_ms": 49
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.724105954170227,
+              0.7013251781463623,
+              0.6513197422027588,
+              0.647449254989624,
+              0.6250441074371338
+            ],
+            "duration_ms": 61
+          }
+        ]
+      },
+      {
+        "id": "deadline",
+        "cohort": "existing_development",
+        "query": "Hur länge får kunskapssökningen vänta på nätverket?",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-projektatkomst.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7109254598617554,
+              0.652928352355957,
+              0.6393143534660339,
+              0.6346360445022583,
+              0.6208702921867371
+            ],
+            "duration_ms": 44
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7109254598617554,
+              0.652928352355957,
+              0.6393143534660339,
+              0.6346360445022583,
+              0.6208702921867371
+            ],
+            "duration_ms": 36
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7109254598617554,
+              0.652928352355957,
+              0.6393143534660339,
+              0.6346360445022583,
+              0.6208702921867371
+            ],
+            "duration_ms": 30
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7558395862579346,
+              0.6857369542121887,
+              0.6804559230804443,
+              0.6735145449638367,
+              0.6585970520973206
+            ],
+            "duration_ms": 52
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7558395862579346,
+              0.6857369542121887,
+              0.6804559230804443,
+              0.6735145449638367,
+              0.6585970520973206
+            ],
+            "duration_ms": 62
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7558395862579346,
+              0.6857369542121887,
+              0.6804559230804443,
+              0.6735145449638367,
+              0.6585970520973206
+            ],
+            "duration_ms": 31
+          }
+        ]
+      },
+      {
+        "id": "membership",
+        "cohort": "existing_development",
+        "query": "Ger ett konfigurerat pilotprojekt automatiskt användaren åtkomst?",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-projektatkomst.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md"
+            ],
+            "scores": [
+              0.8338826298713684,
+              0.7504497170448303,
+              0.7199432849884033,
+              0.695459246635437,
+              0.6428424119949341
+            ],
+            "duration_ms": 49
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md"
+            ],
+            "scores": [
+              0.8338826298713684,
+              0.7504497170448303,
+              0.7199432849884033,
+              0.695459246635437,
+              0.6428424119949341
+            ],
+            "duration_ms": 54
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md"
+            ],
+            "scores": [
+              0.8338826298713684,
+              0.7504497170448303,
+              0.7199432849884033,
+              0.695459246635437,
+              0.6428424119949341
+            ],
+            "duration_ms": 42
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md"
+            ],
+            "scores": [
+              0.8243743777275085,
+              0.7478525638580322,
+              0.7216707468032837,
+              0.6795486211776733,
+              0.6337651014328003
+            ],
+            "duration_ms": 32
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md"
+            ],
+            "scores": [
+              0.8243743777275085,
+              0.7478525638580322,
+              0.7216707468032837,
+              0.6795486211776733,
+              0.6337651014328003
+            ],
+            "duration_ms": 30
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md"
+            ],
+            "scores": [
+              0.8243743777275085,
+              0.7478525638580322,
+              0.7216707468032837,
+              0.6795486211776733,
+              0.6337651014328003
+            ],
+            "duration_ms": 30
+          }
+        ]
+      },
+      {
+        "id": "irrelevant_shipping",
+        "cohort": "existing_development",
+        "query": "Vilket fraktbolag levererar våra paket till kunder?",
+        "expected_paths": [],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.5923472046852112,
+              0.5909584164619446,
+              0.5809882879257202,
+              0.5761997699737549,
+              0.5694172978401184
+            ],
+            "duration_ms": 30
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.5923472046852112,
+              0.5909584164619446,
+              0.5809882879257202,
+              0.5761997699737549,
+              0.5694172978401184
+            ],
+            "duration_ms": 27
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.5923472046852112,
+              0.5909584164619446,
+              0.5809882879257202,
+              0.5761997699737549,
+              0.5694172978401184
+            ],
+            "duration_ms": 27
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md"
+            ],
+            "scores": [
+              0.6239725351333618,
+              0.6152423620223999,
+              0.6125528216362,
+              0.6001599431037903,
+              0.5967564582824707
+            ],
+            "duration_ms": 40
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md"
+            ],
+            "scores": [
+              0.6239725351333618,
+              0.6152423620223999,
+              0.6125528216362,
+              0.6001599431037903,
+              0.5967564582824707
+            ],
+            "duration_ms": 42
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md"
+            ],
+            "scores": [
+              0.6239725351333618,
+              0.6152423620223999,
+              0.6125528216362,
+              0.6001599431037903,
+              0.5967564582824707
+            ],
+            "duration_ms": 30
+          }
+        ]
+      },
+      {
+        "id": "irrelevant_school",
+        "cohort": "existing_development",
+        "query": "När börjar förskolans sommarlov?",
+        "expected_paths": [],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.5767582058906555,
+              0.5647454857826233,
+              0.5605444312095642,
+              0.5521527528762817,
+              0.5457072257995605
+            ],
+            "duration_ms": 53
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.5767582058906555,
+              0.5647454857826233,
+              0.5605444312095642,
+              0.5521527528762817,
+              0.5457072257995605
+            ],
+            "duration_ms": 27
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.5767582058906555,
+              0.5647454857826233,
+              0.5605444312095642,
+              0.5521527528762817,
+              0.5457072257995605
+            ],
+            "duration_ms": 25
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.5916233062744141,
+              0.5772459506988525,
+              0.576757550239563,
+              0.571230947971344,
+              0.5646010637283325
+            ],
+            "duration_ms": 29
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.5916233062744141,
+              0.5772459506988525,
+              0.576757550239563,
+              0.571230947971344,
+              0.5646010637283325
+            ],
+            "duration_ms": 29
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.5916233062744141,
+              0.5772459506988525,
+              0.576757550239563,
+              0.571230947971344,
+              0.5646010637283325
+            ],
+            "duration_ms": 31
+          }
+        ]
+      },
+      {
+        "id": "missing_password",
+        "cohort": "existing_development",
+        "query": "Vad är lösenordet till min dator?",
+        "expected_paths": [],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.6341094970703125,
+              0.6155227422714233,
+              0.6141898036003113,
+              0.6079634428024292,
+              0.538747251033783
+            ],
+            "duration_ms": 34
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.6341094970703125,
+              0.6155227422714233,
+              0.6141898036003113,
+              0.6079634428024292,
+              0.538747251033783
+            ],
+            "duration_ms": 28
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.6341094970703125,
+              0.6155227422714233,
+              0.6141898036003113,
+              0.6079634428024292,
+              0.538747251033783
+            ],
+            "duration_ms": 25
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.6577239632606506,
+              0.6345356106758118,
+              0.6322349309921265,
+              0.6292147040367126,
+              0.5605347752571106
+            ],
+            "duration_ms": 29
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.6577239632606506,
+              0.6345356106758118,
+              0.6322349309921265,
+              0.6292147040367126,
+              0.5605347752571106
+            ],
+            "duration_ms": 29
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.6577239632606506,
+              0.6345356106758118,
+              0.6322349309921265,
+              0.6292147040367126,
+              0.5605347752571106
+            ],
+            "duration_ms": 44
+          }
+        ]
+      },
+      {
+        "id": "missing_production_date",
+        "cohort": "existing_development",
+        "query": "Vilket datum är produktionens minnesfunktion planerad att lanseras?",
+        "expected_paths": [],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.6689615249633789,
+              0.6638842821121216,
+              0.6448850631713867,
+              0.6426287889480591,
+              0.6039856672286987
+            ],
+            "duration_ms": 30
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.6689615249633789,
+              0.6638842821121216,
+              0.6448850631713867,
+              0.6426287889480591,
+              0.6039856672286987
+            ],
+            "duration_ms": 31
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.6689615249633789,
+              0.6638842821121216,
+              0.6448850631713867,
+              0.6426287889480591,
+              0.6039856672286987
+            ],
+            "duration_ms": 28
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.6746869683265686,
+              0.667526364326477,
+              0.6596440076828003,
+              0.6550388932228088,
+              0.6130726933479309
+            ],
+            "duration_ms": 68
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.6746869683265686,
+              0.667526364326477,
+              0.6596440076828003,
+              0.6550388932228088,
+              0.6130726933479309
+            ],
+            "duration_ms": 33
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.6746869683265686,
+              0.667526364326477,
+              0.6596440076828003,
+              0.6550388932228088,
+              0.6130726933479309
+            ],
+            "duration_ms": 30
+          }
+        ]
+      },
+      {
+        "id": "memory_layers",
+        "cohort": "new_ui_paraphrases",
+        "query": "Vad skiljer M4 från Obsidian-kunskap? Kopieras privata M4-minnen till valvet, och kan en hämtad anteckning höja budgeten? Ange källa.",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-minneslager.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.8567990064620972,
+              0.7323684692382812,
+              0.7054990530014038,
+              0.6827831268310547,
+              0.6625982522964478
+            ],
+            "duration_ms": 50
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.8567990064620972,
+              0.7323684692382812,
+              0.7054990530014038,
+              0.6827831268310547,
+              0.6625982522964478
+            ],
+            "duration_ms": 38
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.8567990064620972,
+              0.7323684692382812,
+              0.7054990530014038,
+              0.6827831268310547,
+              0.6625982522964478
+            ],
+            "duration_ms": 51
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.8537343740463257,
+              0.7386398315429688,
+              0.7008864879608154,
+              0.6895647644996643,
+              0.6598917841911316
+            ],
+            "duration_ms": 140
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.8537343740463257,
+              0.7386398315429688,
+              0.7008864879608154,
+              0.6895647644996643,
+              0.6598917841911316
+            ],
+            "duration_ms": 36
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.8537343740463257,
+              0.7386398315429688,
+              0.7008864879608154,
+              0.6895647644996643,
+              0.6598917841911316
+            ],
+            "duration_ms": 35
+          }
+        ]
+      },
+      {
+        "id": "publication_readiness",
+        "cohort": "new_ui_paraphrases",
+        "query": "Jag har rättat en Obsidian-anteckning. När kan Atlas läsa ändringen, och räcker det att uppladdningen är accepterad? Ange källa.",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-projektatkomst.md"
+            ],
+            "scores": [
+              0.8677876591682434,
+              0.7981215715408325,
+              0.7716629505157471,
+              0.7604687213897705,
+              0.7264437675476074
+            ],
+            "duration_ms": 47
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-projektatkomst.md"
+            ],
+            "scores": [
+              0.8677876591682434,
+              0.7981215715408325,
+              0.7716629505157471,
+              0.7604687213897705,
+              0.7264437675476074
+            ],
+            "duration_ms": 31
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-projektatkomst.md"
+            ],
+            "scores": [
+              0.8677876591682434,
+              0.7981215715408325,
+              0.7716629505157471,
+              0.7604687213897705,
+              0.7264437675476074
+            ],
+            "duration_ms": 51
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md"
+            ],
+            "scores": [
+              0.8623213171958923,
+              0.8055455088615417,
+              0.7640652060508728,
+              0.7604222297668457,
+              0.7055924534797668
+            ],
+            "duration_ms": 44
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md"
+            ],
+            "scores": [
+              0.8623213171958923,
+              0.8055455088615417,
+              0.7640652060508728,
+              0.7604222297668457,
+              0.7055924534797668
+            ],
+            "duration_ms": 37
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-projektatkomst.md"
+            ],
+            "scores": [
+              0.8623213171958923,
+              0.8055455088615417,
+              0.7640652060508728,
+              0.7604222297668457,
+              0.7055924534797668
+            ],
+            "duration_ms": 34
+          }
+        ]
+      },
+      {
+        "id": "shadow_deadline",
+        "cohort": "new_ui_paraphrases",
+        "query": "Vad gör kunskapsläget shadow, och hur länge får OpenViking-anropet vänta innan chatten fortsätter utan extra kunskap? Ange källa.",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-projektatkomst.md"
+        ],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.8159895539283752,
+              0.756181001663208,
+              0.697352409362793,
+              0.693374514579773,
+              0.6804183721542358
+            ],
+            "duration_ms": 33
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.8159895539283752,
+              0.756181001663208,
+              0.697352409362793,
+              0.693374514579773,
+              0.6804183721542358
+            ],
+            "duration_ms": 38
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.8159895539283752,
+              0.756181001663208,
+              0.697352409362793,
+              0.693374514579773,
+              0.6804183721542358
+            ],
+            "duration_ms": 32
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.8266716599464417,
+              0.7783310413360596,
+              0.7208818793296814,
+              0.7031092047691345,
+              0.6959172487258911
+            ],
+            "duration_ms": 39
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.8266716599464417,
+              0.7783310413360596,
+              0.7208818793296814,
+              0.7031092047691345,
+              0.6959172487258911
+            ],
+            "duration_ms": 51
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-publicering.md",
+              "60 Memory/omnira-selftest-felsokning.md"
+            ],
+            "scores": [
+              0.8266716599464417,
+              0.7783310413360596,
+              0.7208818793296814,
+              0.7031092047691345,
+              0.6959172487258911
+            ],
+            "duration_ms": 59
+          }
+        ]
+      },
+      {
+        "id": "missing_backup_schedule",
+        "cohort": "new_ui_paraphrases",
+        "query": "Vilket klockslag körs den automatiska säkerhetskopieringen av OpenViking i den här piloten? Ange källa.",
+        "expected_paths": [],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7572375535964966,
+              0.7477552890777588,
+              0.7471669316291809,
+              0.7156213521957397,
+              0.6712878942489624
+            ],
+            "duration_ms": 63
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7572375535964966,
+              0.7477552890777588,
+              0.7471669316291809,
+              0.7156213521957397,
+              0.6712878942489624
+            ],
+            "duration_ms": 32
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7572375535964966,
+              0.7477552890777588,
+              0.7471669316291809,
+              0.7156213521957397,
+              0.6712878942489624
+            ],
+            "duration_ms": 31
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7688584327697754,
+              0.7507866024971008,
+              0.7464586496353149,
+              0.7129461169242859,
+              0.6752002239227295
+            ],
+            "duration_ms": 37
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7688584327697754,
+              0.7507866024971008,
+              0.7464586496353149,
+              0.7129461169242859,
+              0.6752002239227295
+            ],
+            "duration_ms": 35
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7688584327697754,
+              0.7507866024971008,
+              0.7464586496353149,
+              0.7129461169242859,
+              0.6752002239227295
+            ],
+            "duration_ms": 38
+          }
+        ]
+      },
+      {
+        "id": "missing_production_cost",
+        "cohort": "new_ui_paraphrases",
+        "query": "Vilken månadskostnad i kronor är beslutad för produktionens OpenViking-server? Ange källa.",
+        "expected_paths": [],
+        "plain": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.705744206905365,
+              0.6972521543502808,
+              0.6949079036712646,
+              0.662285327911377,
+              0.645998477935791
+            ],
+            "duration_ms": 33
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.705744206905365,
+              0.6972521543502808,
+              0.6949079036712646,
+              0.662285327911377,
+              0.645998477935791
+            ],
+            "duration_ms": 36
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.705744206905365,
+              0.6972521543502808,
+              0.6949079036712646,
+              0.662285327911377,
+              0.645998477935791
+            ],
+            "duration_ms": 28
+          }
+        ],
+        "instruct": [
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7147524952888489,
+              0.7135679721832275,
+              0.7073036432266235,
+              0.6708377599716187,
+              0.6608160734176636
+            ],
+            "duration_ms": 56
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7147524952888489,
+              0.7135679721832275,
+              0.7073036432266235,
+              0.6708377599716187,
+              0.6608160734176636
+            ],
+            "duration_ms": 34
+          },
+          {
+            "paths": [
+              "60 Memory/omnira-selftest-minneslager.md",
+              "60 Memory/omnira-selftest-local-memory-pilot.md",
+              "60 Memory/omnira-selftest-projektatkomst.md",
+              "60 Memory/omnira-selftest-felsokning.md",
+              "60 Memory/omnira-selftest-publicering.md"
+            ],
+            "scores": [
+              0.7147524952888489,
+              0.7135679721832275,
+              0.7073036432266235,
+              0.6708377599716187,
+              0.6608160734176636
+            ],
+            "duration_ms": 33
+          }
+        ]
+      }
+    ],
+    "limitations": [
+      "Small same five-note corpus; no production relevance claim.",
+      "All source-aware authored questions; not a blind test.",
+      "Only the query text sent to retrieval changes; generation and prompt budget unchanged and not measured."
+    ]
+  },
+  "hybrid_rank_simulation": {
+    "measured_at": "2026-10-15T15:22:34.656409+00:00",
+    "plan": {
+      "purpose": "Offline feasibility only: reciprocal-rank fusion of existing lexical ranking and same-query OpenViking shortlist. Do not tune against expected labels.",
+      "k": 60,
+      "weights": [
+        1,
+        1
+      ],
+      "tie_break": [
+        "existing semantic rank",
+        "path"
+      ],
+      "cohort": "existing 20 development questions only",
+      "runtime_change": false,
+      "cloud_calls": 0,
+      "gpu_calls": 0
+    },
+    "summary": {
+      "plain": {
+        "correct_first": 11,
+        "answerable": 20
+      },
+      "lexical": {
+        "correct_first": 16,
+        "answerable": 20
+      },
+      "hybrid": {
+        "correct_first": 14,
+        "answerable": 20
+      }
+    },
+    "top_score_intervals": {
+      "plain": {
+        "answerable": {
+          "min": 0.5811319351196289,
+          "max": 0.8503636121749878
+        },
+        "unanswerable": {
+          "min": 0.5767582058906555,
+          "max": 0.6689615249633789
+        }
+      },
+      "instruct": {
+        "answerable": {
+          "min": 0.6081081628799438,
+          "max": 0.8523498773574829
+        },
+        "unanswerable": {
+          "min": 0.5916233062744141,
+          "max": 0.6746869683265686
+        }
+      }
+    },
+    "results": [
+      {
+        "id": "start",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-felsokning.md"
+        ],
+        "plain": [
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-felsokning.md": 0.01639344262295082,
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.016129032258064516,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.032266458495966696,
+          "60 Memory/omnira-selftest-minneslager.md": 0.015625,
+          "60 Memory/omnira-selftest-publicering.md": 0.015384615384615385
+        }
+      },
+      {
+        "id": "duration",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "plain": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.03278688524590164,
+          "60 Memory/omnira-selftest-felsokning.md": 0.016129032258064516,
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.015873015873015872,
+          "60 Memory/omnira-selftest-minneslager.md": 0.015625,
+          "60 Memory/omnira-selftest-publicering.md": 0.015384615384615385
+        }
+      },
+      {
+        "id": "thermal",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "plain": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.01639344262295082,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.03252247488101534,
+          "60 Memory/omnira-selftest-minneslager.md": 0.015873015873015872,
+          "60 Memory/omnira-selftest-felsokning.md": 0.015625,
+          "60 Memory/omnira-selftest-publicering.md": 0.015384615384615385
+        }
+      },
+      {
+        "id": "vram",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "plain": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-felsokning.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-minneslager.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-felsokning.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.03252247488101534,
+          "60 Memory/omnira-selftest-minneslager.md": 0.0315136476426799,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.032266458495966696,
+          "60 Memory/omnira-selftest-publicering.md": 0.03149801587301587,
+          "60 Memory/omnira-selftest-felsokning.md": 0.031009615384615385
+        }
+      },
+      {
+        "id": "monitoring",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-felsokning.md"
+        ],
+        "plain": [
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-projektatkomst.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-minneslager.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-publicering.md": 0.032266458495966696,
+          "60 Memory/omnira-selftest-felsokning.md": 0.016129032258064516,
+          "60 Memory/omnira-selftest-minneslager.md": 0.015873015873015872,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.032018442622950824,
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.0315136476426799
+        }
+      },
+      {
+        "id": "restart",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-felsokning.md"
+        ],
+        "plain": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.032018442622950824,
+          "60 Memory/omnira-selftest-minneslager.md": 0.03200204813108039,
+          "60 Memory/omnira-selftest-publicering.md": 0.03125763125763126,
+          "60 Memory/omnira-selftest-felsokning.md": 0.032018442622950824,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.0315136476426799
+        }
+      },
+      {
+        "id": "local_address",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-felsokning.md"
+        ],
+        "plain": [
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-projektatkomst.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-minneslager.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-felsokning.md": 0.03278688524590164,
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.0315136476426799,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.03200204813108039,
+          "60 Memory/omnira-selftest-minneslager.md": 0.03125,
+          "60 Memory/omnira-selftest-publicering.md": 0.03125763125763126
+        }
+      },
+      {
+        "id": "models",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "plain": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-projektatkomst.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.03252247488101534,
+          "60 Memory/omnira-selftest-felsokning.md": 0.03252247488101534,
+          "60 Memory/omnira-selftest-minneslager.md": 0.031746031746031744,
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.031009615384615385,
+          "60 Memory/omnira-selftest-publicering.md": 0.031009615384615385
+        }
+      },
+      {
+        "id": "changed_note",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "plain": [
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-projektatkomst.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-projektatkomst.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-projektatkomst.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-publicering.md": 0.032018442622950824,
+          "60 Memory/omnira-selftest-minneslager.md": 0.03200204813108039,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.03200204813108039,
+          "60 Memory/omnira-selftest-felsokning.md": 0.032018442622950824,
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.03076923076923077
+        }
+      },
+      {
+        "id": "accepted_not_ready",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "plain": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-minneslager.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-felsokning.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.032266458495966696,
+          "60 Memory/omnira-selftest-publicering.md": 0.03225806451612903,
+          "60 Memory/omnira-selftest-minneslager.md": 0.03125763125763126,
+          "60 Memory/omnira-selftest-felsokning.md": 0.03125,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.03177805800756621
+        }
+      },
+      {
+        "id": "revocation",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "plain": [
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-minneslager.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-projektatkomst.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-publicering.md": 0.03278688524590164,
+          "60 Memory/omnira-selftest-minneslager.md": 0.0315136476426799,
+          "60 Memory/omnira-selftest-felsokning.md": 0.031746031746031744,
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.03125,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.0315136476426799
+        }
+      },
+      {
+        "id": "prune_scope",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "plain": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-minneslager.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.032018442622950824,
+          "60 Memory/omnira-selftest-publicering.md": 0.03252247488101534,
+          "60 Memory/omnira-selftest-minneslager.md": 0.03125763125763126,
+          "60 Memory/omnira-selftest-felsokning.md": 0.031754032258064516,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.03125763125763126
+        }
+      },
+      {
+        "id": "memory_layers",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-minneslager.md"
+        ],
+        "plain": [
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-felsokning.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-minneslager.md": 0.03278688524590164,
+          "60 Memory/omnira-selftest-publicering.md": 0.0315136476426799,
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.031746031746031744,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.03125,
+          "60 Memory/omnira-selftest-felsokning.md": 0.0315136476426799
+        }
+      },
+      {
+        "id": "authority",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-minneslager.md"
+        ],
+        "plain": [
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-publicering.md": 0.03278688524590164,
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.03225806451612903,
+          "60 Memory/omnira-selftest-felsokning.md": 0.03149801587301587,
+          "60 Memory/omnira-selftest-minneslager.md": 0.03149801587301587,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.03076923076923077
+        }
+      },
+      {
+        "id": "independent_flags",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-minneslager.md"
+        ],
+        "plain": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-projektatkomst.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.03177805800756621,
+          "60 Memory/omnira-selftest-minneslager.md": 0.03252247488101534,
+          "60 Memory/omnira-selftest-felsokning.md": 0.031746031746031744,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.03125,
+          "60 Memory/omnira-selftest-publicering.md": 0.0315136476426799
+        }
+      },
+      {
+        "id": "wrong_environment",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-felsokning.md"
+        ],
+        "plain": [
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-projektatkomst.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-minneslager.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-felsokning.md": 0.03278688524590164,
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.0315136476426799,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.03200204813108039,
+          "60 Memory/omnira-selftest-minneslager.md": 0.03125,
+          "60 Memory/omnira-selftest-publicering.md": 0.03125763125763126
+        }
+      },
+      {
+        "id": "conversation_history",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "plain": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-minneslager.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-minneslager.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.032018442622950824,
+          "60 Memory/omnira-selftest-publicering.md": 0.03200204813108039,
+          "60 Memory/omnira-selftest-felsokning.md": 0.03200204813108039,
+          "60 Memory/omnira-selftest-minneslager.md": 0.031009615384615385,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.03177805800756621
+        }
+      },
+      {
+        "id": "modes",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-projektatkomst.md"
+        ],
+        "plain": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-felsokning.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-minneslager.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-felsokning.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.03278688524590164,
+          "60 Memory/omnira-selftest-minneslager.md": 0.0315136476426799,
+          "60 Memory/omnira-selftest-publicering.md": 0.031746031746031744,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.031754032258064516,
+          "60 Memory/omnira-selftest-felsokning.md": 0.031009615384615385
+        }
+      },
+      {
+        "id": "deadline",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-projektatkomst.md"
+        ],
+        "plain": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-minneslager.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.03278688524590164,
+          "60 Memory/omnira-selftest-felsokning.md": 0.03225806451612903,
+          "60 Memory/omnira-selftest-minneslager.md": 0.015873015873015872,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.03149801587301587,
+          "60 Memory/omnira-selftest-publicering.md": 0.031009615384615385
+        }
+      },
+      {
+        "id": "membership",
+        "expected_paths": [
+          "60 Memory/omnira-selftest-projektatkomst.md"
+        ],
+        "plain": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-minneslager.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-felsokning.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-minneslager.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.03278688524590164,
+          "60 Memory/omnira-selftest-felsokning.md": 0.0315136476426799,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.031746031746031744,
+          "60 Memory/omnira-selftest-publicering.md": 0.031754032258064516,
+          "60 Memory/omnira-selftest-minneslager.md": 0.031009615384615385
+        }
+      },
+      {
+        "id": "irrelevant_shipping",
+        "expected_paths": [],
+        "plain": [
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-projektatkomst.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-felsokning.md": 0.03278688524590164,
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.016129032258064516,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.03200204813108039,
+          "60 Memory/omnira-selftest-minneslager.md": 0.03149801587301587,
+          "60 Memory/omnira-selftest-publicering.md": 0.031009615384615385
+        }
+      },
+      {
+        "id": "irrelevant_school",
+        "expected_paths": [],
+        "plain": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.01639344262295082,
+          "60 Memory/omnira-selftest-minneslager.md": 0.016129032258064516,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.03200204813108039,
+          "60 Memory/omnira-selftest-felsokning.md": 0.032018442622950824,
+          "60 Memory/omnira-selftest-publicering.md": 0.015384615384615385
+        }
+      },
+      {
+        "id": "missing_password",
+        "expected_paths": [],
+        "plain": [
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-projektatkomst.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-minneslager.md": 0.032266458495966696,
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.0315136476426799,
+          "60 Memory/omnira-selftest-felsokning.md": 0.032266458495966696,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.031754032258064516,
+          "60 Memory/omnira-selftest-publicering.md": 0.031009615384615385
+        }
+      },
+      {
+        "id": "missing_production_date",
+        "expected_paths": [],
+        "plain": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-publicering.md",
+          "60 Memory/omnira-selftest-felsokning.md"
+        ],
+        "lexical": [
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "hybrid": [
+          "60 Memory/omnira-selftest-projektatkomst.md",
+          "60 Memory/omnira-selftest-minneslager.md",
+          "60 Memory/omnira-selftest-local-memory-pilot.md",
+          "60 Memory/omnira-selftest-felsokning.md",
+          "60 Memory/omnira-selftest-publicering.md"
+        ],
+        "scores": {
+          "60 Memory/omnira-selftest-projektatkomst.md": 0.032018442622950824,
+          "60 Memory/omnira-selftest-minneslager.md": 0.03200204813108039,
+          "60 Memory/omnira-selftest-local-memory-pilot.md": 0.03200204813108039,
+          "60 Memory/omnira-selftest-publicering.md": 0.031009615384615385,
+          "60 Memory/omnira-selftest-felsokning.md": 0.03177805800756621
+        }
+      }
+    ],
+    "limitations": [
+      "Uses prior recorded lexical rankings; not a fresh native hybrid implementation test.",
+      "Source-aware development set, not held-out or representative.",
+      "Fusion only reorders the semantic shortlist. It does not reject unsupported queries."
+    ]
+  },
+  "final_hardware_watch": {
+    "armed": false,
+    "max_temperature_c": 47.0,
+    "temperature_limit_c": 80,
+    "stopped": true,
+    "temperature_c": 43.0,
+    "utilization_percent": 18.0,
+    "memory_mib": 4794.0,
+    "sampled_at": "2026-10-15T15:22:49.744506+00:00",
+    "reason": "30 minute manual test window ended"
+  },
+  "decision": "Retain current runtime. Neither candidate beats existing lexical first-hit baseline of 16/20. Need broader representative approved corpus and independently authored questions before production ranking changes.",
+  "known_release_blockers": [
+    "Five-source relevance gate remains failed.",
+    "Production private-network route unverified.",
+    "Previously observed Vercel preview blocked by migration ledger names absent from branch; not changed in this investigation."
+  ]
+}

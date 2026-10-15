@@ -53,7 +53,7 @@ All twenty answerable queries passed the actual Atlas prompt seam: approved orig
 
 The hardware watch remained active and reached a maximum of **38 C**, below the unchanged 80 C guard. The two GPU services were stopped after this automated run and the original semantic configuration restored. A subsequent manual session, if started, has its own existing thirty-minute watch; this receipt describes the completed automated run.
 
-The owner confirmed an authenticated answer for the earlier one-note snapshot at 14:17. A five-source authenticated UI answer has not yet been observed. Start Atlas minnestest and use a **new** local Atlas conversation. Ask: **Vad skiljer M4-minnen från kunskapen i Obsidian, och kan en anteckning godkänna åtgärder eller ändra budgeten? Ange källan.** Expect the memory-layers note and current snapshot prefix e320719d.
+The owner confirmed an authenticated answer for the earlier one-note snapshot at 14:17. A five-source authenticated UI answer was subsequently observed through Desktop Commander in the owner's existing signed-in Brave session. Five additional fresh project-scoped conversations were tested at 17:11-17:19 Europe/Stockholm; see the follow-up below. The historical five-source receipt above still describes its earlier retrieval-only run.
 
 ## Earlier one-source diagnostic
 
@@ -66,3 +66,41 @@ OpenViking's answerable and unanswerable scores overlapped, so a single threshol
 Ranking and unsupported-query handling need improvement before recommending production enablement. Evaluate a proposed ranking change against separately locked questions, with a larger representative owner-approved corpus and owner-authored questions that were not used to tune retrieval. Keep the same original-text authority, fresh access checks and request budgets.
 
 The production host/private-network route is still undecided and unverified. The stationary PC's loopback endpoint remains local only. No production activation or merge is authorized by this publication.
+
+
+## Authenticated UI and ranking follow-up, 17:11-17:23 Europe/Stockholm
+
+The exact five questions and expected checks were saved before execution. Each used a new authenticated conversation scoped to Omnira Selftest in the private preview. Existing Brave authentication was reused; no password was requested or copied.
+
+| UI case | Observation |
+|---|---|
+| M4, Obsidian, private data and budget authority | Correct distinction; no private M4 copy or authority from a note; current e320719d snapshot and correct source title. |
+| Changed note and accepted upload | Correct clean Git publication, sync, completed indexing, ready=true and matching application snapshot. Partial under the stricter predeclared completeness check: review and selection were not explicitly repeated. |
+| Shadow mode and search deadline | Correct no-injection behavior, 1.2-second deadline and chat continuation on unavailable knowledge. |
+| Automatic backup time, absent from sources | Explicitly could not find a backup time; no invented schedule. |
+| Decided production server monthly cost, absent from sources | Explicitly could not verify a decided amount; no invented cost. |
+
+All five core answers were correct; four met the full predeclared checks and the publication answer was partial. Both unsupported questions were answered with an explicit limitation. This does not prove general hallucination resistance. These source-aware paraphrases over five pilot descriptions are not a blind or representative benchmark. Screenshots stay in the private local evidence directory and are not checked in.
+
+### Diagnosis and two deliberately limited probes
+
+The existing findKnowledge path forwards the plain question to search/find and preserves the service's ordering after exact snapshot/URI validation. All nonnegative finite scores are eligible. In this five-document corpus, every measured search returned all five sources, so false-positive retrieval and generated-answer behavior must be evaluated separately.
+
+The configured Ollama embedding provider uses qwen3-embedding:0.6b, 1024 dimensions, content_only and a 4096-token input guard. Inspection of the installed v0.5.0 provider confirmed that the path sends the supplied text without a Qwen task-instruction prefix. Qwen's official examples recommend an English task instruction on retrieval queries, while documents stay unprefixed: https://github.com/QwenLM/Qwen3-Embedding/blob/main/README.md.
+
+A throwaway read-only probe compared the plain query with that official generic prefix against the unchanged active index, three alternating repetitions per variant. No runtime/config change, new indexing, model download or cloud model call was made.
+
+| Existing development questions | Correct first source | Expected source present |
+|---|---:|---:|
+| Plain OpenViking, reproduced | 11/20 | 20/20 |
+| Query instruction only | 12/20 | 20/20 |
+| Existing lexical reference | 16/20 | 20/20 |
+| Offline equal-weight reciprocal-rank fusion, k=60 | 14/20 | 20/20 |
+
+The fusion row is a simulation using the previously recorded lexical ordering and the fresh plain OpenViking shortlist. It is not a native runtime hybrid test. No weights or thresholds were tuned against the expected labels. Both live variants ranked the three new answerable UI paraphrases correctly first in all repetitions. Both also returned sources for all six unsupported questions, as expected from the absence of a relevance rejection policy.
+
+For the existing cohort, plain top scores ranged 0.5811-0.8504 for answerable questions and 0.5768-0.6690 for unsupported questions. With the prefix, the intervals were 0.6081-0.8523 and 0.5916-0.6747. A score-only cutoff cannot perfectly separate these measured questions.
+
+Neither probe justifies a runtime change. Keep production off and gather a broader owner-approved project corpus plus independently authored questions before choosing a ranking policy or a local reranker. Do not add a cloud reranking call or increase hardware/request budgets on the strength of this diagnostic.
+
+The guard reached a maximum of 47 C and stopped the two pilot GPU services at 17:22:49 when the existing 30-minute window ended. No restart was needed for the remaining offline analysis. Detailed questions, observations, probe plans, scores and limits: [follow-up receipt](../../infra/openviking/validation-ui-relevance-20261015.json).

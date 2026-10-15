@@ -104,6 +104,12 @@ The command refuses a previous artifact belonging to another project. It never d
 
 Set ATLAS_OPENVIKING_MODE=off and ATLAS_CHAT_MEMORY=0, or roll back the branch deployment. Existing chat history, action memory and live data remain usable. Rollback does not delete canonical M4 events or edit the vault.
 
+## Local service verification
+
+An explicit real-server vectors-only probe passed on 2026-10-15 using local Qwen3 embeddings and three synthetic Swedish notes. It verified completed indexing, expected first hits, original-text injection through the Atlas seam, denied project scope, HTTP 401 without a key, foreign-account isolation and cleanup. The real v0.5.0 leaf is <snapshot>/<id>.md/<id>.md; the ingestion root receipt names its parent folder. Runtime whitelists only the exact leaf.
+
+See [local pilot evidence and operating limits](../../infra/openviking/README.md). The full semantic-processing probe exceeded its deadline and remains unverified. Local model inference is stopped after testing, requires an explicit GPU profile, and does not activate production.
+
 ## Validation limits
 
-Unit/integration tests use an actual loopback HTTP fixture and temporary vaults. They verify our transport, scope, source selection and fallback behavior. They do not establish semantic quality with a real embedding model, the state of a production server, active production flags or production memory volumes. Those checks precede activation.
+Regular CI uses loopback HTTP fixtures and temporary vaults. The optional live-service test is skipped unless explicitly enabled. The successful three-note vector probe is not a production relevance benchmark or proof of improvement over the prior retrieval system. Production connectivity, eligible approved project knowledge, active production flags and production memory volumes remain unverified. Those checks precede activation.

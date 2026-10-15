@@ -31,11 +31,19 @@ The earlier `semantic_and_vectors` probe exceeded its 240-second ingestion deadl
 
 The successful retry used a fresh state volume, `vectors_only`, disabled L0/L1 generation and two available model slots. The earlier semantic volume was preserved. This isolates the working vector/transport/prompt path; it does not prove generated summaries work. The application search deadline stays 1.2 seconds.
 
+## Code validation
+
+The relevant Atlas/OpenViking regression selection passed: 375 tests, with the explicit live probe skipped by default. Worktree TypeScript checking and targeted ESLint passed. Compose syntax passed; the default service selection is empty without the `local-gpu` profile.
+
+The complete archive suite remains red. Against base `910376b2eb485f136e1b36073f08e7788f0be2d6`, the same harness reported 54 failed files / 207 failed tests; the implementation reported 53 failed files / 204 failed tests. Comparison of the complete failure entries found no added failures and three removed golden-fixture failures. The final suite had 12,529 passed tests and 1,183 skipped tests. This comparison does not claim the full suite is green. Archive TypeScript checking lacked nested workspace dependencies; the separate check from the installed worktree passed.
+
+The metadata receipt, suite summaries, failure comparison and thermal result are recorded in [validation-20261015.json](./validation-20261015.json).
+
 ## Hardware and lifecycle
 
 The owner noticed loud fan noise. Both services were immediately stopped; GPU utilization then measured 1%. After the owner authorized continued testing with temperature monitoring, the GPU had cooled to 44 C.
 
-The monitored retry sampled every two seconds and stopped the task's own services if core temperature reached 80 C, VRAM reached 94%, monitoring failed, or the ten-minute test window ended. Its observed maximum was 44 C. No clocks or hardware power limits were changed.
+The monitored retry sampled every two seconds and stopped the task's own services if core temperature reached 80 C, VRAM reached 94%, monitoring failed, or the ten-minute test window ended. Its observed maximum over the complete monitored window was 70 C, below the 80 C stop threshold. No clocks or hardware power limits were changed. The watch script is a separate, manually armed safeguard; Compose alone does not enforce a temperature limit.
 
 The private monitor script and receipt are in the local state directory below. Models are stopped after verification. Both Compose services require the explicit `local-gpu` profile and have no automatic restart policy.
 

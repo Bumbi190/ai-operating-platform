@@ -21,6 +21,7 @@ const shortDate = (date: string) =>
     timeZone: 'Europe/Stockholm'
   }).format(new Date(date + 'T12:00:00Z'))
 const statusLabels = new Map([
+  ['done', 'Klart'],
   ['completed', 'Klart'],
   ['running', 'Pågår'],
   ['failed', 'Fel'],
@@ -29,6 +30,7 @@ const statusLabels = new Map([
   ['cancelled', 'Avbrutet']
 ])
 const statusColors = new Map([
+  ['done', '#77d4c4'],
   ['completed', '#77d4c4'],
   ['running', '#74b5ef'],
   ['failed', '#eea283'],

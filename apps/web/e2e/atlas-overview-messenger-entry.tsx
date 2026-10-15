@@ -63,6 +63,12 @@ function Workspace() {
         >
           Fixture signout
         </button>
+        <button onClick={() => controller.ensureConversation({
+          firstText: 'Talat meddelande', inputSource: 'voice', projectId: null
+        })}>Fixture voice create</button>
+        <button onClick={() => controller.deactivateConversation()}>
+          Fixture new thread
+        </button>
         <button
           onClick={() =>
             controller.activateConversation({

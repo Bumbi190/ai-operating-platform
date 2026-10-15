@@ -188,3 +188,22 @@
     bottom: calc(20px + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* Variable-height notices and live speech scroll above a reserved composer. */
+.status,
+.workspace {
+  overflow-wrap: anywhere;
+}
+.short .messages {
+  padding: 6px 8px;
+}
+.short .composer {
+  padding-top: 4px;
+  padding-bottom: max(4px, env(safe-area-inset-bottom, 0px));
+}
+.short .editor {
+  min-height: 36px;
+  max-height: 40px;
+  padding-top: 7px;
+  padding-bottom: 7px;
+}

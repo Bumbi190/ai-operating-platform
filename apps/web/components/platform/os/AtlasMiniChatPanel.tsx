@@ -211,7 +211,7 @@ export function AtlasMiniChatPanel({
       ref={panel}
       role="dialog"
       aria-label="Atlas chatt"
-      className={styles.panel}
+      className={styles.panel + (frame.height < 260 ? ' ' + styles.short : '')}
       style={{
         left: frame.x,
         top: frame.y,
@@ -280,29 +280,29 @@ export function AtlasMiniChatPanel({
           ) : null
         )}
         {snapshot.pending && <p className={styles.status}>Atlas skriver…</p>}
+        {(snapshot.plan || snapshot.session) && snapshot.id && (
+          <p className={styles.workspace}>
+            <Link href={'/chat/' + snapshot.id + '?build=1'}>
+              Granska byggplanen i arbetsytan
+            </Link>
+          </p>
+        )}
+        {atlas.isSessionActive && (
+          <p role="status" className={styles.status}>
+            {atlas.voicePhase === 'listening'
+              ? 'Lyssnar…'
+              : atlas.voicePhase === 'speaking'
+                ? 'Atlas talar…'
+                : 'Samtal pågår'}
+            {atlas.transcript ? ' ' + atlas.transcript : ''}
+          </p>
+        )}
+        {error && (
+          <p role="status" className={styles.status + ' ' + styles.error}>
+            {error}
+          </p>
+        )}
       </div>
-      {(snapshot.plan || snapshot.session) && snapshot.id && (
-        <p className={styles.workspace}>
-          <Link href={'/chat/' + snapshot.id + '?build=1'}>
-            Granska byggplanen i arbetsytan
-          </Link>
-        </p>
-      )}
-      {atlas.isSessionActive && (
-        <p role="status" className={styles.status}>
-          {atlas.voicePhase === 'listening'
-            ? 'Lyssnar…'
-            : atlas.voicePhase === 'speaking'
-              ? 'Atlas talar…'
-              : 'Samtal pågår'}
-          {atlas.transcript ? ' ' + atlas.transcript : ''}
-        </p>
-      )}
-      {error && (
-        <p role="status" className={styles.status + ' ' + styles.error}>
-          {error}
-        </p>
-      )}
       <form
         className={styles.composer}
         onSubmit={(e) => {

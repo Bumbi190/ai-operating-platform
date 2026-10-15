@@ -9,6 +9,8 @@ async function setup(page: Page, denied = false) {
       ;(window as any).micStarts = 0
       ;(window as any).micStops = 0
       class Recognition {
+        constructor() { (window as any).fixtureRecognition = this }
+        onresult?: (e: any) => void
         onstart?: () => void
         onerror?: (e: any) => void
         onend?: () => void
@@ -487,4 +489,59 @@ test('switching threads allows a new turn while the old one is pending', async (
   )
   await expect(page.getByRole('textbox')).toHaveValue('Utkast i nya tråden')
   await expect(page.getByRole('dialog').getByRole('status')).toHaveCount(0)
+})
+
+test('a typed draft follows voice-first creation without resurfacing in a new thread', async ({ page }) => {
+  await setup(page)
+  await page.getByRole('button', { name: 'Öppna Atlas' }).click()
+  await page.getByRole('textbox').fill('Oskickat medan jag pratar')
+  await page.getByRole('button', { name: 'Fixture voice create' }).click()
+  await expect(page.getByRole('textbox')).toHaveValue('Oskickat medan jag pratar')
+  await page.getByRole('button', { name: 'Fixture switch thread' }).click()
+  await expect(page.getByRole('textbox')).toHaveValue('')
+  await page.getByRole('button', { name: 'Fixture switch thread' }).click()
+  await expect(page.getByRole('textbox')).toHaveValue('Oskickat medan jag pratar')
+  await page.getByRole('button', { name: 'Fixture new thread' }).click()
+  await expect(page.getByRole('textbox')).toHaveValue('')
+  await page.getByRole('textbox').fill('Separat nytt utkast')
+  await page.getByRole('button', { name: 'Fixture switch thread' }).click()
+  await expect(page.getByRole('textbox')).toHaveValue('')
+})
+test('short keyboard viewport keeps text and controls reachable after microphone failure', async ({ page }) => {
+  await page.setViewportSize({width: 390, height: 200})
+  await setup(page, true)
+  await page.getByRole('button', { name: 'Öppna Atlas' }).click()
+  await page.getByRole('textbox').fill('rad ett\nrad två\nrad tre')
+  await page.getByRole('button', { name: 'Starta samtal' }).click()
+  await expect(page.getByRole('dialog')).toContainText('text')
+  const panel = page.getByRole('dialog')
+  for (const control of [page.getByRole('textbox'),
+    panel.getByRole('button', {name: 'Skicka', exact: true}),
+    panel.getByRole('button', {name: 'Minimera Atlas'})]) {
+    await expect.poll(async () => {
+      const outer=await panel.boundingBox(), inner=await control.boundingBox()
+      return !!outer && !!inner && inner.y>=outer.y && inner.y+inner.height<=outer.y+outer.height
+    }).toBe(true)
+  }
+  await page.getByRole('textbox').fill('Jag kan fortfarande skriva')
+  await page.getByRole('button', {name: 'Skicka', exact: true}).click()
+  await expect(panel).toContainText('hela det strömmade svaret')
+})
+
+test('long live transcript scrolls without hiding the composer', async ({page}) => {
+  await page.setViewportSize({width: 390, height: 350})
+  await setup(page)
+  await page.getByRole('button', { name: 'Öppna Atlas' }).click()
+  await page.getByRole('button', { name: 'Starta samtal' }).click()
+  await expect(page.getByRole('button', {name: 'Avsluta samtal'})).toBeVisible()
+  await page.evaluate(() => (window as any).fixtureRecognition.onresult({
+    results: [[{ transcript: 'En lång talad mening '.repeat(60) }]]
+  }))
+  const panel = page.getByRole('dialog'), editor=page.getByRole('textbox')
+  await expect(panel).toContainText('En lång talad mening')
+  const outer=await panel.boundingBox(), inner=await editor.boundingBox()
+  expect(inner!.y+inner!.height).toBeLessThanOrEqual(outer!.y+outer!.height)
+  await page.getByRole('button', {name: 'Avsluta samtal'}).click()
+  await editor.fill('Text efter samtalet')
+  await expect(editor).toHaveValue('Text efter samtalet')
 })

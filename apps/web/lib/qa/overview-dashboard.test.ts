@@ -36,6 +36,14 @@ describe('overview presentation', () => {
     expect(html).toContain('Inga projekt')
     expect(html).not.toContain('Data kunde inte läsas')
   })
+  it('labels the canonical successful run status as complete', () => {
+    const model = overviewFixture()
+    model.runsByDay.value = [{ date: '2026-10-15', counts: { done: 1 } }]
+    const html = render(model)
+    expect(html).toContain('Klart')
+    expect(html).not.toContain('Övrigt')
+    expect(html).toContain('#77d4c4')
+  })
   it('keeps negative corrections visible and unknown statuses counted', () => {
     const model = overviewFixture()
     model.costByDay.value![0].costSek = -2

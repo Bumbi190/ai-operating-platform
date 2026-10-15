@@ -39,6 +39,13 @@ export function useMiniChatState(onSignout: () => void): MiniChatState {
     })
     return () => data.subscription.unsubscribe()
   }, [])
+  useEffect(() => controller.subscribeCreated((id) => {
+    setDrafts((old) => {
+      if (!Object.prototype.hasOwnProperty.call(old, 'new')) return old
+      const { new: draft, ...remaining } = old
+      return { ...remaining, [id]: draft }
+    })
+  }), [controller])
   const setDraft = useCallback(
     (text: string) =>
       setDrafts((old) => ({

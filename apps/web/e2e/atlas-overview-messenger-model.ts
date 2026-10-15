@@ -53,7 +53,7 @@ export function overviewFixture(
         counts: empty
           ? ({} as Record<string, number>)
           : {
-              completed: i % 4,
+              done: i % 4,
               running: i === period - 1 ? 1 : 0,
               failed: i === 2 ? 1 : 0
             }

@@ -75,6 +75,11 @@ export class AtlasConversationController {
   constructor(private request: typeof fetch = (...args) => fetch(...args)) {}
   private creating: {generation: number; promise: Promise<string | null>} | null = null;
   private compactPending: symbol | null = null;
+  private createdListeners = new Set<(id: string) => void>();
+  subscribeCreated = (listener: (id: string) => void) => {
+    this.createdListeners.add(listener);
+    return () => { this.createdListeners.delete(listener); };
+  };
 
   async ensureConversation(input: {firstText: string; inputSource: "text" | "voice"; projectId: string | null}): Promise<string | null> {
     if (this.active.id) return this.active.state === "ok" ? this.active.id : null;
@@ -93,6 +98,9 @@ export class AtlasConversationController {
         });
         const row = await response.json();
         if (!response.ok || typeof row?.id !== "string" || !row.id.trim() || generation !== this.generation) return null;
+        // This event preserves logical new-thread drafts without transferring
+        // them when an existing conversation is explicitly selected.
+        this.createdListeners.forEach(listener => listener(row.id));
         this.activateSnapshot({id: row.id, saved: [], state: "ok", projectId: input.projectId}, true);
         return row.id as string;
       } catch { return null; }

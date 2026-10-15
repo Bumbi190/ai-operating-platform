@@ -63,3 +63,29 @@ test('polling confirms a stop whose response was lost and clears the temporary e
  await expect(meter.getByRole('alert')).toHaveCount(0)
  expect(writes).toBe(1)
 })
+
+test('an Update response started before stop cannot re-enable the project',async({page})=>{
+ let paused=false,started!:()=>void,release!:()=>void,served!:()=>void
+ const reading=new Promise<void>(r=>started=r),pending=new Promise<void>(r=>release=r),finished=new Promise<void>(r=>served=r)
+ await page.route('**/api/website-build/studio/costs*',async route=>{if(route.request().method()==='POST'){paused=true;await route.fulfill({json:{projectId:first,paused:true}})}else await route.fulfill({status:paused?503:200,json:paused?{error:'offline after stop'}:costs(first)})})
+ await page.route('**/api/website-build/studio?*',async route=>{const model=await page.evaluate(()=>(window as any).__studioCostModel);started();await pending;await route.fulfill({json:model});served()})
+ await page.goto('/build?costs=1')
+ const meter=page.getByRole('region',{name:'Projektets kostnad'});await expect(meter).toContainText('7,79')
+ await page.getByRole('button',{name:'Uppdatera',exact:true}).click();await reading
+ await meter.getByRole('button',{name:'Stoppa projektet',exact:true}).click();await expect(meter).toContainText('Projektet är pausat')
+ release();await finished;await expect(page.getByText('Läser projektet…',{exact:true})).toHaveCount(0)
+ await expect(page.getByLabel('Meddelande till Atlas',{exact:true})).toBeDisabled()
+})
+
+test('a pause detected during project navigation preserves the selected project and URL',async({page})=>{
+ let release!:()=>void,reads=0;const pending=new Promise<void>(r=>release=r)
+ await page.route('**/api/website-build/studio/costs?*',async route=>{
+  const id=new URL(route.request().url()).searchParams.get('projectId')!;if(id===second)reads++
+  await route.fulfill({status:id===second&&reads>1?503:200,json:costs(id,3,id===second)})
+ })
+ await page.route('**/api/website-build/studio?*',async route=>{const model=await page.evaluate(()=>(window as any).__studioCostModel);await pending;await route.fulfill({json:{...model,selected:model.projects.find((p:any)=>p.id===second)}})})
+ await page.goto('/build?costs=1');await page.getByLabel('Projekt i byggstudion').selectOption(second)
+ await expect(page.getByRole('region',{name:'Projektets kostnad'})).toContainText('Projektet är pausat');release()
+ await expect(page).toHaveURL(/project=cost-project-2/);await expect(page.getByText('Läser projektet…',{exact:true})).toHaveCount(0)
+ await expect(page.getByLabel('Meddelande till Atlas',{exact:true})).toBeDisabled()
+})

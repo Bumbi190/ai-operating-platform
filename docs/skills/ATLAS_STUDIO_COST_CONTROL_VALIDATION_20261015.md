@@ -20,7 +20,7 @@ Scope: the selected project's cost control in /build. The widget appears below U
 - Existing stop authority suites: 61 authorization + 44 resolver tests passed; combined with the new tests, 113 passed.
 - 42 existing cost-ledger SQL isolation tests were skipped because ATLAS_SQL_TEST_URL was not configured. No SQL isolation proof is claimed for that optional run; there are no schema or grant changes.
 - Full repository TypeScript check passed.
-- Chromium UI fixture: 13 passed, zero retries. Includes live updates, stale data, preserving chat draft, failed stop and retry, lost response recovery, project switch, 390px and desktop placement, five existing viewport checks and sidebar persistence.
+- Chromium UI fixture: 15 passed, zero retries. Includes live updates, stale data, preserving chat draft, failed stop and retry, lost response recovery, project switch, 390px and desktop placement, five existing viewport checks and sidebar persistence.
 - Desktop and mobile screenshots visually inspected.
 - git diff --check passed; Git on Windows reports normal LF/CRLF conversion notices.
 - Read-only production budget_headroom check for the user-supplied project returned the expected project_monthly numeric fields. No production stop or paid build was executed.
@@ -28,3 +28,6 @@ Scope: the selected project's cost control in /build. The widget appears below U
 
 ## Separate outstanding work
 The existing failed Lumvy generation and its 6000-token response cap are not changed by this cost-control patch. This patch does not implement new model routing, local runners, domains, hosting, payments or generation capabilities.
+
+## Review correction
+Independent review of 3b32128 found one Important race: a parent Studio read begun before stop could overwrite the paused flag after receipt. A regression test reproduced the enabled composer while later cost polls failed. Per-project logical pause epochs now reconcile both normal view reads and workspace handoffs, preserving selected-project navigation. The delayed Update and paused-target navigation browser tests pass; final full typecheck and all 15 UI cases passed after the correction. No further findings were reported in the initial review.

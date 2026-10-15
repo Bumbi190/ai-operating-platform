@@ -66,8 +66,9 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Handlarborsen competitor observations: 116/102 -> 117/103 (pending apply).
 // Website build planning v1: 117/103 -> 118/104 (enforced; pending reviewed apply).
 // Atlas studio: 118/104 -> 119/105 (enforced; pending reviewed apply).
-export const EXPECTED_CANONICAL_SQL_COUNT = 119
-export const EXPECTED_ENFORCED_COUNT = 105
+// Builder output allowance v2: 119/105 -> 120/106 (enforced).
+export const EXPECTED_CANONICAL_SQL_COUNT = 120
+export const EXPECTED_ENFORCED_COUNT = 106
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

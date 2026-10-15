@@ -106,3 +106,45 @@ describe('static website artifacts', () => {
     expect(() => makePreviewDocument(artifact, 'index', 'x')).toThrow(WebsiteArtifactError)
   })
 })
+
+describe('compact multi-page packages', () => {
+  it('shares a single stylesheet across all pages and retains page overrides', () => {
+    const input = draft()
+    const shared = 'body{background:#0e0e0e;color:#eee}'
+    const artifact = compileWebsiteArtifact({...input, css: shared})
+    expect(artifact.pages).toHaveLength(2)
+    for (const page of artifact.pages) expect(page.html).toContain(shared)
+    expect(artifact.pages[0].html.indexOf(shared)).toBeLessThan(artifact.pages[0].html.indexOf(input.pages[0].css))
+  })
+  it('accepts pages without duplicate per-page styles in a shared-style package', () => {
+    const input = {...draft(), css: 'body{color:gold}'}
+    const pages = input.pages.map(({css: _css, ...page}) => page)
+    const artifact = compileWebsiteArtifact({...input, pages})
+    expect(artifact.pages.map(p=>p.key)).toEqual(['index','about'])
+    expect(artifact.pages[1].html).toContain('body{color:gold}')
+  })
+  it('rejects non-text shared styles and still rejects hostile markup', () => {
+    expect(()=>compileWebsiteArtifact({...draft(),css:{bad:true}})).toThrow(WebsiteArtifactError)
+    expect(()=>compileWebsiteArtifact({...draft('<script>alert(1)</script>'),css:''})).toThrow(WebsiteArtifactError)
+  })
+})
+
+describe('approved home page aliases',()=>{
+ it('exports a plan named home as index and rewrites only its internal page links',async()=>{
+  const input=draft('<h1 id="top">Lumvy</h1><a href="about.html">Om oss</a>')
+  input.pages[0].key='home'
+  input.pages[1].bodyHtml='<h1>Om oss</h1><a href="home.html#top">Hem</a>'
+  const artifact=compileWebsiteArtifact(input)
+  expect(artifact.pages.map(p=>p.key)).toEqual(['index','about'])
+  expect(artifact.pages[1].html).toContain('href="index.html#top"')
+  const zip=await JSZip.loadAsync(await exportWebsiteZip(artifact))
+  expect(await zip.file('index.html')!.async('string')).toContain('Lumvy')
+ })
+ it('keeps home as a distinct page when the package already has index',()=>{
+  const input=draft()
+  input.pages.push({key:'home',title:'Extra sida',bodyHtml:'<a href="home.html">Extra</a>',css:'',behaviors:[]})
+  const artifact=compileWebsiteArtifact(input)
+  expect(artifact.pages.map(p=>p.key)).toEqual(['index','about','home'])
+  expect(artifact.pages[2].html).toContain('href="home.html"')
+ })
+})

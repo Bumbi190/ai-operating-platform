@@ -107,7 +107,7 @@ test('splitter and mobile tabs keep composer usable', async ({ page }) => {
   expect(tabBounds!.x + tabBounds!.width).toBeLessThanOrEqual(308)
   await page.screenshot({ path: '../../.superpowers/sdd/2026-10-14-atlas-conversation-build/workspace-mobile.png', fullPage: true })
 })
-test('voice transcript requires explicit send, then v3 and real pause resume cancel receipts', async ({ page, request }) => {
+test('voice transcript requires explicit send and preserves the viewed revision through v3', async ({ page, request }) => {
   await page.addInitScript(() => {
     class Recognition {
       onresult: ((event: unknown) => void) | null = null; onerror: ((event: unknown) => void) | null = null; onend: (() => void) | null = null
@@ -122,7 +122,8 @@ test('voice transcript requires explicit send, then v3 and real pause resume can
   const id = new URL(page.url()).searchParams.get('session')!
   await request.get(`/__fixture/step/${id}/commit`); await expect(page.getByTitle('Webbpreview version 1')).toBeVisible()
   await page.getByLabel('Meddelande till Atlas').fill('Version två'); await page.getByRole('button', { name: 'Skicka', exact: true }).click()
-  await request.get(`/__fixture/step/${id}/commit`); await expect(page.getByTitle('Webbpreview version 2')).toBeVisible()
+  await expect(page.getByText('Mottagen', { exact: true })).toBeVisible()
+  expect((await request.get(`/__fixture/step/${id}/commit`)).ok()).toBe(true); await expect(page.getByTitle('Webbpreview version 2')).toBeVisible()
   const state = await (await request.get(`/api/website-builds/${id}?projectId=10000000-0000-4000-8000-000000000001`)).json()
   await page.getByRole('button', { name: 'Prata med Atlas' }).click()
   await page.evaluate(() => { (window as unknown as { fixtureRecognition: { onresult: (e: unknown) => void } }).fixtureRecognition.onresult({ results: [{ 0: { transcript: 'Röst med fel ord' }, isFinal: true }] }) })
@@ -130,16 +131,37 @@ test('voice transcript requires explicit send, then v3 and real pause resume can
   expect(posts).toHaveLength(1)
   await page.getByLabel('Redigera rösttranskript').fill('Rättad rösttext till version tre'); await page.getByRole('button', { name: 'Skicka', exact: true }).click()
   await expect.poll(() => posts.length).toBe(2); expect(posts[1]).toMatchObject({ inputSource: 'voice', buildContext:{viewedRevisionId: state.activePreviewRevisionId} })
-  await request.get(`/__fixture/step/${id}/commit`); await expect(page.getByTitle('Webbpreview version 3')).toBeVisible()
+  await expect(page.getByText('Mottagen', { exact: true })).toBeVisible()
+  expect((await request.get(`/__fixture/step/${id}/commit`)).ok()).toBe(true); await expect(page.getByTitle('Webbpreview version 3')).toBeVisible()
   await page.getByRole('button', { name: 'Stoppa uppläsning' }).click(); expect(controls).toHaveLength(0)
-  await page.getByRole('button', { name: 'Pausa bygget' }).click(); await expect(page.getByText('Pausad', { exact: true })).toBeVisible()
-  await page.getByLabel('Meddelande till Atlas').fill('Sparad ändring i paus'); await page.getByRole('button', { name: 'Skicka', exact: true }).click()
-  await page.getByRole('button', { name: 'Fortsätt bygget' }).click(); await expect(page.getByText('I kö', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Pausa bygget' }).click(); await expect(page.getByText('Pausar', { exact: true })).toBeVisible(); await expect(page.getByRole('button', { name: 'Fortsätt bygget' })).toHaveCount(0)
-  await request.get(`/__fixture/step/${id}/pause`); await expect(page.getByText('Pausad', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Fortsätt bygget' }).click(); await request.get(`/__fixture/step/${id}/commit`); await expect(page.getByTitle('Webbpreview version 4')).toBeVisible()
-  await page.getByRole('button', { name: 'Avbryt bygget' }).click(); await expect(page.getByText('Avbruten', { exact: true })).toBeVisible()
-  await page.reload(); await expect(page.getByTitle('Webbpreview version 4')).toBeVisible(); await expect(page.getByText('Införd · version 4', { exact: true })).toBeVisible()
+})
+
+test('pause resume and cancel preserve saved feedback and preview receipts', async ({page,request}) => {
+  await page.goto('/'); await expect(page.getByRole('heading', {name:'Bygg med Atlas'})).toBeVisible()
+  const id=new URL(page.url()).searchParams.get('session')!
+  expect((await request.get(`/__fixture/step/${id}/commit`)).ok()).toBe(true)
+  await expect(page.getByTitle('Webbpreview version 1')).toBeVisible()
+  await page.getByRole('button', {name:'Pausa bygget'}).click()
+  await expect(page.getByText('Pausad', {exact:true})).toBeVisible()
+  await page.getByLabel('Meddelande till Atlas').fill('Sparad ändring i paus')
+  await page.getByRole('button', {name:'Skicka',exact:true}).click()
+  await expect(page.getByText('Mottagen', {exact:true})).toBeVisible()
+  await page.getByRole('button', {name:'Fortsätt bygget'}).click()
+  await expect(page.getByText('I kö', {exact:true})).toBeVisible()
+  await page.getByRole('button', {name:'Pausa bygget'}).click()
+  await expect(page.getByText('Pausar', {exact:true})).toBeVisible()
+  await expect(page.getByRole('button', {name:'Fortsätt bygget'})).toHaveCount(0)
+  expect((await request.get(`/__fixture/step/${id}/pause`)).ok()).toBe(true)
+  await expect(page.getByText('Pausad', {exact:true})).toBeVisible()
+  await page.getByRole('button', {name:'Fortsätt bygget'}).click()
+  await expect(page.getByText('I kö', {exact:true})).toBeVisible()
+  expect((await request.get(`/__fixture/step/${id}/commit`)).ok()).toBe(true)
+  await expect(page.getByTitle('Webbpreview version 2')).toBeVisible()
+  await page.getByRole('button', {name:'Avbryt bygget'}).click()
+  await expect(page.getByText('Avbruten', {exact:true})).toBeVisible()
+  await page.reload()
+  await expect(page.getByTitle('Webbpreview version 2')).toBeVisible()
+  await expect(page.getByText('Införd · version 2', {exact:true})).toBeVisible()
 })
 test('unsupported and denied mic keep text available and route cleanup drops late voice', async ({ page }) => {
   await page.addInitScript(() => { Object.assign(window, { SpeechRecognition: undefined, webkitSpeechRecognition: undefined }) })

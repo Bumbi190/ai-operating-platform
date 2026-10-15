@@ -165,3 +165,24 @@ describe('durable website worker with real SQL', () => {
     expect(provider.mock.calls[0][0].cost.operation).toBe('website.artifact.generate')
   }, 45_000)
 })
+describe('website output limits', () => {
+  it('reports a truncated successful provider response without retrying or committing it',async()=>{
+    const s=await session(),run=await claim(s)
+    provider.mockResolvedValueOnce({...response(draft()),stopReason:'max_tokens',tokensOut:6000})
+    await expect(executeWebsiteBuildRun(db,run,run.claim_id!)).rejects.toMatchObject({code:'MODEL_OUTPUT_TRUNCATED'})
+    expect(provider).toHaveBeenCalledTimes(1)
+    expect((await view(s)).revisions).toHaveLength(0)
+  },30000)
+  it('uses the configured output allowance for a complete package',async()=>{
+    testSql("update agents set config=jsonb_build_object('max_tokens',12000) where id='"+TEST_AGENT+"';")
+    const s=await session(),run=await claim(s)
+    await executeWebsiteBuildRun(db,run,run.claim_id!)
+    expect(provider.mock.calls[0][0].maxTokens).toBe(12000)
+  },30000)
+  it('preserves a custom builder output cap',async()=>{
+    testSql("update agents set config='{\"max_tokens\":3500}'::jsonb where id='"+TEST_AGENT+"';")
+    const s=await session(),run=await claim(s)
+    await executeWebsiteBuildRun(db,run,run.claim_id!)
+    expect(provider.mock.calls[0][0].maxTokens).toBe(3500)
+  },30000)
+})

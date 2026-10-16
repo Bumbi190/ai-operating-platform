@@ -3,10 +3,11 @@ import {useCallback,useEffect,useRef,useState} from 'react'
 import {SOCIAL_LAUNCH_CHANNELS} from '@/lib/social-launch/catalog'
 import {parseSocialContent,stockholmToUtc,stockholmLocal} from '@/lib/social-launch/content/validate'
 import type {SocialContentInput,SocialContentView,SocialContentPost} from '@/lib/social-launch/content/types'
+import {SocialPublicationPanel} from './SocialPublicationPanel'
 import styles from './SocialContentPanel.module.css'
 const formats={text:'Text',image:'Bild',video:'Video',link:'Länk'}
 const statuses={proposal:'Förslag att granska',approved:'Innehållet godkänt',rejected:'Avvisat innehåll',needs_review:'Behöver granskas igen'}
-const reasons:Record<string,string>={activation_required:'Publicering är inte aktiverad',account_required:'Väntar på kontokoppling',plan_changed:'Kanalplanen har ändrats',destination_changed:'Mottagarkontot har ändrats eller blockerats',media_changed:'Bifogat material har ändrats',time_passed:'Önskad tid har passerat – inget skickades',media_required:'Bifoga projektets bild eller video före granskning.'}
+const reasons:Record<string,string>={activation_required:'Kalendern skickar inget automatiskt',account_required:'Väntar på kontokoppling',plan_changed:'Kanalplanen har ändrats',destination_changed:'Mottagarkontot har ändrats eller blockerats',media_changed:'Bifogat material har ändrats',time_passed:'Önskad tid har passerat – inget skickades',media_required:'Bifoga projektets bild eller video före granskning.'}
 type Editor={postId:string;expectedRevisionId:string|null;draft:SocialContentInput;localTime:string}
 function empty(channel:SocialContentInput['channel']='facebook',format:SocialContentInput['format']='text'):SocialContentInput{return {channel,format,title:'',text:'',linkUrl:null,mediaIds:[],mediaBrief:'',scheduledAt:null}}
 function mediaUrl(projectId:string,id:string,sha:string){return '/api/social-content/media?'+new URLSearchParams({projectId,assetId:id,sha256:sha})}
@@ -66,7 +67,7 @@ function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{project
  const calendar=[...(model?.posts??[])].filter(p=>p.revision.draft.scheduledAt).sort((a,b)=>a.revision.draft.scheduledAt!.localeCompare(b.revision.draft.scheduledAt!))
  return <section className={styles.panel} aria-label={'Innehåll för '+projectName} aria-busy={busy||loading}>
   <header className={styles.header}><div><span className={styles.eyebrow}>Förbered lanseringen</span><h2>Innehåll – {projectName}</h2><p>Samla utkast, återanvänd material och granska innehållet tillsammans med Atlas.</p></div>
-   <p className={styles.notice}>Detta är förberedelser. Konton ansluts och publicering aktiveras separat när du väljer det. Inga inlägg skickas från kalendern.</p>
+   <p className={styles.notice}>Börja med utkast och granskning. När rätt konto är anslutet kan du bekräfta ett enskilt Facebook- eller Instagram-inlägg nedan. Inga inlägg skickas från kalendern.</p>
   </header>
   <div className={styles.actions}><button type="button" disabled={busy||loading||(!model?.planApproved||!model.plannedChannels.length)} onClick={()=>edit()}>Nytt utkast</button><button type="button" disabled={busy||loading} onClick={()=>{if(!dirty||window.confirm('Ersätt ditt osparade utkast med senaste sparade versionen?')){setEditor(null);setDirty(false);void load()}}}>Läs senaste innehållet</button></div>
   {error&&<p className={styles.error} role="alert">{error}</p>}
@@ -94,6 +95,7 @@ function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{project
      <div className={styles.actions}><button type="button" disabled={busy||loading} onClick={()=>edit(selected)}>Redigera utkast</button>{!selected.decision&&<><button type="button" disabled={reviewDisabled} onClick={()=>void send('decide','approve')}>Godkänn innehållet</button><button type="button" disabled={busy||loading||dirty||stale} onClick={()=>void send('decide','reject')}>Avvisa innehållet</button></>}</div>
      {dirty&&<p className={styles.notice}>Spara den nya versionen innan du granskar den.</p>}
      <details><summary>Granskningskvitto</summary><p>SHA256: {selected.revision.sha256}</p><p>Godkännandet gäller innehållet. Publicering kräver separat aktivering och kontroll av kanalens krav.</p></details>
+     <SocialPublicationPanel projectId={projectId} post={selected} disabled={busy||loading||dirty||stale}/>
     </article>}
    </div>
   </div>}

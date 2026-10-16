@@ -20,29 +20,29 @@ No real connections/posts/provider/model calls in development. No budgets/standi
 ## Task1: Publication contract and durable state
 Files lib/social-launch/publication/{types,validate,store,test-db}.ts and tests; CLI-generated social_manual_publication_v1 migration.
 Interfaces: publicationRead(db,p,{projectId,postId}):Promise<PublicationView>; publicationPrepare(db,p,input:PublicationRequest):Promise<PublicationRecord>; publicationStep(db,p,{publicationId,expectedVersion,action,capabilityHash?,containerId?,providerId?,permalink?,failureCode?}):Promise<{changed:boolean,record:PublicationRecord}>; private publicationMediaLookup(db,{publicationId,keyHash}).
-- [ ] Write pure format/eligibility and SQL tests first; observe RED.
-- [ ] Implement states/invariants, exact approved references and one-post uniqueness with serialized preparation/CAS step, immutable events, owner/stops/current inputs, private safe read and capability lookup.
-- [ ] Verify concurrent claims, changed snapshots, exact replay, RLS/client denial and events; commit.
+- [x] Write pure format/eligibility and SQL tests first; observe RED.
+- [x] Implement states/invariants, exact approved references and one-post uniqueness with serialized preparation/CAS step, immutable events, owner/stops/current inputs, private safe read and capability lookup.
+- [x] Verify concurrent claims, changed snapshots, exact replay, RLS/client denial and events; commit.
 
 ## Task2: Fixed-host provider adapters and bounded orchestrator
 Files lib/social-launch/publication/{provider,dispatch,media}.ts and tests.
 Interfaces: checkManualFormat(post):blocker[]; verifyPublicationImage(db,asset):Promise<verified JPEG>; dispatchPublication(db,p,input,deps):Promise<PublicationView>. Deps are explicit identity resolvers, fixed provider fetch and clock for fixture tests; default production dependencies perform no work until explicit authorized POST.
-- [ ] RED exact Facebook/Instagram body/header contracts; authority/media refusal produces zero writes.
-- [ ] Implement Facebook /feed or /photos and Instagram create/status/publish/permalink with8s timeout and64KiB bounded JSON; never retry POST.
-- [ ] RED lost response, corrupt provider data, DB receipt failure, double request, processing resume, stop/rebind before publish, PUBLISHED confirmation without known permalink. GREEN; commit.
+- [x] RED exact Facebook/Instagram body/header contracts; authority/media refusal produces zero writes.
+- [x] Implement Facebook /feed or /photos and Instagram create/status/publish/permalink with8s timeout and64KiB bounded JSON; never retry POST.
+- [x] RED lost response, corrupt provider data, DB receipt failure, double request, processing resume, stop/rebind before publish, PUBLISHED confirmation without known permalink. GREEN; commit.
 
 ## Task3: Authenticated API and bounded public image capability
 Files app/api/social-publications/route.ts, app/api/social-publication-media/route.ts, lib/social-launch/publication/api.ts/tests and manifest.
 Interfaces: socialPublicationApi(Request); socialPublicationMedia(Request). Request fields from spec; GET cannot call provider. Anonymous capability endpoint serves only exact verified JPEG for live admitted request.
-- [ ] API RED unauthorized/foreign/nonoperator/same-origin/bounds/authority injection and token expiry/scope/checksum/stop/streaming.
-- [ ] Implement private no-store safe errors, operator resolution and bounded capability handler. Verify zero external calls on denial; commit.
+- [x] API RED unauthorized/foreign/nonoperator/same-origin/bounds/authority injection and token expiry/scope/checksum/stop/streaming.
+- [x] Implement private no-store safe errors, operator resolution and bounded capability handler. Verify zero external calls on denial; commit.
 
 ## Task4: Exact manual confirmation and receipt UI
 Files components/social-launch/SocialPublicationPanel.tsx/css, SocialContentPanel.tsx, provider-free fixture/spec/config; CI workflow.
 Interfaces: SocialPublicationPanel({projectId,post,disabled}); keyed revision, GET/load sequence fence, confirmation checkbox.
-- [ ] Browser RED explicit exact-account confirmation, no dispatch from mount/approval/calendar, success receipt, uncertain no-send action, processing completion and switched-post responses.
-- [ ] Implement compact UI with clear supported-format/account prerequisites and separate manual action. Existing calendar remains planning-only.
-- [ ] Run new and existing social browser suites, relevant SQL/API/chat/type/security checks; inspect mobile/desktop; commit.
+- [x] Browser RED explicit exact-account confirmation, no dispatch from mount/approval/calendar, success receipt, uncertain no-send action, processing completion and switched-post responses.
+- [x] Implement compact UI with clear supported-format/account prerequisites and separate manual action. Existing calendar remains planning-only.
+- [x] Run new and existing social browser suites, relevant SQL/API/chat/type/security checks; inspect mobile/desktop; commit.
 
 ## Task5: Coordinated review and deployment
 - [ ] Reconcile all new routes, schema classes and canonical migration counts without weakening gates.

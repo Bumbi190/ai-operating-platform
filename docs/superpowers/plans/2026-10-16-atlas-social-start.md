@@ -20,20 +20,20 @@ No account connection, public post, paid generation, budget change, The Prompt a
 ## Task 1: Profile contract, database, API and Atlas
 Files: lib/social-launch/profile/{types,validate,store,api,atlas-tools,test-db}.ts and their tests; app/api/social-profile/route.ts; generated migration social_project_profiles_v1; app/api/chat/route.ts; route/schema and migration integrity metadata.
 Interfaces: parseSocialProfile(unknown):SocialProfileInput; readSocialProfile(db,principal,{projectId,conversationId?}):Promise<SocialProfileView>; saveSocialProfile(db,principal,{projectId,conversationId?,expectedRevisionId,idempotencyKey,profile}):Promise<SocialProfileView>; socialProfileApi(Request):Promise<Response>; handleSocialProfileTool(name,input,principal,conversationId,db?).
-- [ ] Tests first: reject unknown/missing fields, invalid HTTPS/UUID/control bytes/limits. Observe RED, implement validation, GREEN.
-- [ ] Real SQL/API tests first: owned save/read, foreign user/project/conversation refusal, exact repeat/current-head replay, changed-key conflict, concurrent single writer, inactive asset refusal, stop/archive, RLS and immutable history. Observe RED, implement generated SQL and store. GREEN.
-- [ ] Register get_social_profile and propose_social_profile in existing chat; test unknown approval/secret/publication fields, no-conversation denial and project-scoped review link.
-- [ ] Run profile, current social/chat and migration checks; commit.
+- [x] Tests first: reject unknown/missing fields, invalid HTTPS/UUID/control bytes/limits. Observe RED, implement validation, GREEN.
+- [x] Real SQL/API tests first: owned save/read, foreign user/project/conversation refusal, exact repeat/current-head replay, changed-key conflict, concurrent single writer, inactive asset refusal, stop/archive, RLS and immutable history. Observe RED, implement generated SQL and store. GREEN.
+- [x] Register get_social_profile and propose_social_profile in existing chat; test unknown approval/secret/publication fields, no-conversation denial and project-scoped review link.
+- [x] Run profile, current social/chat and migration checks; commit.
 
 ## Task 2: Actionable guide and retained profile editor
 Files: components/social-launch/{SocialStartGuide,SocialProfilePanel}.tsx and css; SocialLaunchPanel.tsx; SocialContentPanel.tsx; lib/social-launch/content/atlas-tools.ts; e2e social profile fixture/config/spec; relevant CI workflow.
 Interfaces: SocialProfilePanel({projectId,projectName,onSaved?}); SocialStartGuide({model,onPlan,onContent,onProfile}); SocialContentPanel optional onPlanRequested callback.
-- [ ] Browser RED: missing plan→direct action opens channel plan; save/approve plan then content can be prepared without connecting accounts.
-- [ ] Browser RED: save profile, refresh persists, failed save retains values/key, tab changes retain draft, held GET never overrides dirty/saved input, project switch does not leak.
-- [ ] Implement desktop/mobile panels with current theme, labeled next steps and plain-language states. Read profile context before Atlas content proposals.
-- [ ] Run new browser tests plus existing social launch/content/connection, relevant chat, typecheck, diff checks; inspect mobile/desktop screenshots; commit.
+- [x] Browser RED: missing plan→direct action opens channel plan; save/approve plan then content can be prepared without connecting accounts.
+- [x] Browser RED: save profile, refresh persists, failed save retains values/key, tab changes retain draft, held GET never overrides dirty/saved input, project switch does not leak.
+- [x] Implement desktop/mobile panels with current theme, labeled next steps and plain-language states. Read profile context before Atlas content proposals.
+- [x] Run new browser tests plus existing social launch/content/connection, relevant chat, typecheck, diff checks; inspect mobile/desktop screenshots; commit.
 
 ## Task 3: Independent verification and coordinated release
-- [ ] Record verification and hand over to separate manual publication plan; never imply posting works early.
+- [x] Record verification and hand over to separate manual publication plan; never imply posting works early.
 - [ ] One whole-branch review after both independent plans; fix important findings via reproduced regressions.
 - [ ] Additive schema preflight/apply exact SQL, record stored digest and scoped security metadata. Exact-head CI; locked merge; identical merge tree; production READY/domain checks.

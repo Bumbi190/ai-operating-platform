@@ -24,24 +24,24 @@
 ## Task 1: Content contract, dates and SQL store
 Files: apps/web/lib/social-launch/content/{types,validate,store,test-db}.ts and tests; generated social_content_preparation_v1 migration.
 Interfaces: parseSocialContent(input:unknown):SocialContentInput; stockholmToUtc(local:string):string; readSocialContent(db,principal,{projectId,conversationId?}); proposeSocialContent(db,principal,SocialContentProposal); decideSocialContent(db,principal,SocialContentDecision).
-- [ ] Add independent literal tests for strict fields, HTTPS, channel/media formats, Stockholm DST and future bounds; observe RED.
-- [ ] Add real SQL tests for ownership/conversation/asset/binding, revision conflicts, exact review, idempotency, immutable evidence, stop and zero runs; observe RED.
-- [ ] Implement validators, additive server-only tables/RPCs and server store; verify GREEN.
-- [ ] Reconcile migration guard/security metadata by canonical repository procedure; commit.
+- [x] Add independent literal tests for strict fields, HTTPS, channel/media formats, Stockholm DST and future bounds; observe RED.
+- [x] Add real SQL tests for ownership/conversation/asset/binding, revision conflicts, exact review, idempotency, immutable evidence, stop and zero runs; observe RED.
+- [x] Implement validators, additive server-only tables/RPCs and server store; verify GREEN.
+- [x] Reconcile migration guard/security metadata by canonical repository procedure; commit.
 
 ## Task 2: API and Atlas preparation tools
 Files: content/api.ts, content/atlas-tools.ts, tests; app/api/social-content/route.ts; app/api/social-content/media/route.ts; app/api/chat/route.ts.
 Interfaces: socialContentApi(request):Promise<Response>; socialContentMedia(request):Promise<Response>; SOCIAL_CONTENT_TOOLS/GUIDE/NAMES and handleSocialContentTool.
-- [ ] Test auth, CSRF, closed/bounded request fields, false model decisions, owned conversation, actual review link and private media access; observe RED.
-- [ ] Implement read/propose/decide API and read/propose-only Atlas tools; retain existing publishing boundaries.
-- [ ] Verify affected chat/isolation tests and typecheck; commit.
+- [x] Test auth, CSRF, closed/bounded request fields, false model decisions, owned conversation, actual review link and private media access; observe RED.
+- [x] Implement read/propose/decide API and read/propose-only Atlas tools; retain existing publishing boundaries.
+- [x] Verify affected chat/isolation tests and typecheck; commit.
 
 ## Task 3: Existing social workspace and calendar
 Files: components/social-launch/SocialContentPanel.tsx and module.css; SocialLaunchPanel.tsx; e2e/social-content fixture/spec/config.
 Interfaces: panel receives {projectId,projectName,workspaceUrl}; loads one project, edits/proposes content and reviews exact receipts.
-- [ ] Browser tests cover create/edit/review/calendar, mobile390px, failed-save draft retention, project switch during request and dirty review gate; observe RED.
-- [ ] Implement project content navigation, canonical asset selectors/previews, explicit Stockholm time and preparation-only status; verify GREEN.
-- [ ] Verify existing channel/connection/browser regressions and typecheck; commit.
+- [x] Browser tests cover create/edit/review/calendar, mobile390px, failed-save draft retention, project switch during request and dirty review gate; observe RED.
+- [x] Implement project content navigation, canonical asset selectors/previews, explicit Stockholm time and preparation-only status; verify GREEN.
+- [x] Verify existing channel/connection/browser regressions and typecheck; commit.
 
 ## Task 4: Review and ship
 - [ ] Final branch review against spec and Review Focus; reproduce/fix blockers.

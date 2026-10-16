@@ -62,3 +62,5 @@ apps/web/data/intelligence/
 # Website source routes are not generated build output.
 !apps/web/app/(platform)/projects/*/build/
 !apps/web/app/(platform)/projects/*/build/**
+
+.superpowers/sdd/2026-10-16-atlas-social-content/

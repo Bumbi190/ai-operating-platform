@@ -3,6 +3,7 @@ import {useState,useRef,useEffect} from 'react'
 import {SOCIAL_LAUNCH_CHANNELS} from '@/lib/social-launch/catalog'
 import type {SocialLaunchPageModel,SocialLaunchChoice,SocialLaunchChannelId,SocialLaunchReadiness} from '@/lib/social-launch/types'
 import styles from './SocialLaunchPanel.module.css'
+import {SocialContentPanel} from './SocialContentPanel'
 import {SocialConnectionControls} from './SocialConnectionControls'
 const formats={text:'Text',image:'Bild',video:'Video',link:'Länk'}
 const cadences={manual:'Vid behov',weekly:'En gång i veckan',twice_weekly:'Två gånger i veckan',daily:'Dagligen'}
@@ -13,6 +14,9 @@ export function SocialLaunchPanel({initial}:{initial:SocialLaunchPageModel}){
 function ProjectPanel({initial}:{initial:SocialLaunchPageModel}){
  const [model,setModel]=useState(initial),[choices,setChoices]=useState(initial.plan.currentRevision?.choices??[])
  const [dirty,setDirty]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[stale,setStale]=useState(false)
+ const [contentOpen,setContentOpen]=useState(false),[contentEverOpened,setContentEverOpened]=useState(false)
+ useEffect(()=>{if(contentOpen)setContentEverOpened(true)},[contentOpen])
+ useEffect(()=>{const open=()=>{if(window.location.hash==='#content')setContentOpen(true)};open();window.addEventListener('hashchange',open);return()=>window.removeEventListener('hashchange',open)},[])
  const live=useRef(true),pending=useRef<{fingerprint:string;key:string}|null>(null),controller=useRef<AbortController|null>(null)
  useEffect(()=>{live.current=true;return()=>{live.current=false;controller.current?.abort()}},[])
  const projectId=initial.plan.project.id,revision=model.plan.currentRevision
@@ -38,6 +42,8 @@ function ProjectPanel({initial}:{initial:SocialLaunchPageModel}){
  }
  return <section className={styles.panel} aria-label="Projektets sociala medier" aria-busy={busy}>
   <header><h1>Sociala medier · {model.plan.project.name}</h1><p>Bestäm kanaler och innehåll med Atlas. Spara ett förslag och godkänn sedan exakt version.</p><p className={styles.note}>Kanalplanen ansluter inga konton och ger ingen publiceringsrätt. Inga betalda anrop görs här.</p></header>
+  <div className={styles.actions} role="group" aria-label="Social arbetsyta"><button aria-pressed={!contentOpen} onClick={()=>setContentOpen(false)}>Kanaler och konton</button><button aria-pressed={contentOpen} onClick={()=>setContentOpen(true)}>Innehåll och kalender</button></div>
+  <div hidden={contentOpen}>
   <div className={styles.review}>
    <strong>{dirty?'Osparade ändringar':model.plan.decision?.decision==='approve'?'Godkänd kanalplan':model.plan.decision?.decision==='reject'?'Avvisad kanalplan':revision?'Förslag att granska':'Ingen sparad kanalplan'}</strong>
    {revision&&<span>Version {revision.sequence}</span>}
@@ -71,5 +77,7 @@ function ProjectPanel({initial}:{initial:SocialLaunchPageModel}){
    })}
   </div>
   {revision&&<details className={styles.evidence}><summary>Versionskvitto</summary><p>Version {revision.sequence} · {revision.id}</p><p>SHA256: {revision.sha256}</p>{model.plan.decision&&<p>Beslut: {model.plan.decision.decision==='approve'?'Godkänd':'Avvisad'} · {model.plan.decision.decidedAt}</p>}</details>}
+  </div>
+  <div id="content" hidden={!contentOpen}>{contentEverOpened&&<SocialContentPanel projectId={projectId} projectName={model.plan.project.name}/>}</div>
  </section>
 }

@@ -1213,6 +1213,36 @@
       "service_role": true,
       "rls_declared_in_migration": true,
       "created_by_migration": true
+    },
+    "social_content_posts": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "social_content_revisions": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "social_content_decisions": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     }
   },
   "views": {

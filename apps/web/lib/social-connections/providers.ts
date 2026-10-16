@@ -13,7 +13,8 @@ function accountId(v:unknown){if(typeof v!=='string'||!idPattern.test(v))return 
 function secret(v:unknown){if(typeof v!=='string'||!v||v.length>16384||/[\u0000-\u0020\u007f]/.test(v))return fail('IDENTITY_UNVERIFIED');return v}
 const callback=(provider:Provider)=>'https://app.omniraos.se/api/social-connections/'+provider+'/callback'
 export function providerConfig(provider:Provider):OAuthConfig|null{
- const prefix=provider.toUpperCase(),clientId=process.env[prefix+'_CLIENT_ID'],clientSecret=process.env[prefix+'_CLIENT_SECRET']
+ const configs={linkedin:{clientId:process.env.LINKEDIN_CLIENT_ID,clientSecret:process.env.LINKEDIN_CLIENT_SECRET},pinterest:{clientId:process.env.PINTEREST_CLIENT_ID,clientSecret:process.env.PINTEREST_CLIENT_SECRET},x:{clientId:process.env.X_CLIENT_ID,clientSecret:process.env.X_CLIENT_SECRET}}
+ const {clientId,clientSecret}=configs[provider]
  if(!clientId||!clientSecret)return null
  try{return {clientId:secret(clientId),clientSecret:secret(clientSecret)}}catch{return null}
 }
@@ -106,11 +107,13 @@ export async function exchangeAndDiscover(provider:Provider,config:OAuthConfig,i
  const candidates=provider==='linkedin'?await linkedCandidates(accessToken,fetcher):await pinterestCandidates(accessToken,fetcher)
  return {accessToken,refreshToken:data.refresh_token==null?null:secret(data.refresh_token),scopes:grantedScopes,expiresAt,refreshExpiresAt:data.refresh_token_expires_in==null?null:expiry(data.refresh_token_expires_in),candidates}
 }
-export async function attestDestination(provider:Provider,config:OAuthConfig,token:string,candidate:Candidate,fetcher:typeof fetch=fetch):Promise<void>{
+export async function attestDestination(provider:Provider,config:OAuthConfig,token:string,candidate:Candidate,fetcher:typeof fetch=fetch):Promise<Candidate>{
  if(provider==='x')return fail('COST_POLICY_REQUIRED')
  if(provider==='linkedin')await linkedScopes(config,token,fetcher)
  const candidates=provider==='linkedin'?await linkedCandidates(token,fetcher):await pinterestCandidates(token,fetcher)
- if(!candidates.some(c=>c.accountId===candidate.accountId&&c.key===candidate.key&&c.destinationId===candidate.destinationId))return fail('IDENTITY_UNVERIFIED')
+ const matched=candidates.find(c=>c.accountId===candidate.accountId&&c.key===candidate.key&&c.destinationId===candidate.destinationId)
+ if(!matched)return fail('IDENTITY_UNVERIFIED')
+ return matched
 }
 export function parseXAccount(value:unknown):Candidate{
  const data=object(object(value).data),id=accountId(data.id)

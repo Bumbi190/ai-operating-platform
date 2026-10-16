@@ -12,6 +12,8 @@
  */
 import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { verifyNewBindingHealth } from '@/lib/social-connections/credentials'
+import { writeConnectionHealth } from '@/lib/social-connections/store'
 import { recordProviderAttestation, type SocialAccountBinding } from './social-bindings'
 import {
   resolveFacebookCredential,
@@ -91,7 +93,7 @@ export async function verifyBindingHealth(binding: SocialAccountBinding): Promis
     }
 
     // A new provider must never fall through to another provider's credentials.
-    if (binding.platform !== 'youtube') return refused('provider_unavailable')
+    if (binding.platform !== 'youtube') return verifyNewBindingHealth(binding)
     const r = await resolveYouTubeCredential(binding.projectId)
     if (!r.ok) return refused(r.refusal)
     const verified = r.credential.channelVerifiedBeforeUpload
@@ -117,6 +119,11 @@ export async function writeCredentialHealth(
 ): Promise<boolean> {
   try {
     const db = client ?? createAdminClient()
+    if (['linkedin', 'pinterest', 'x'].includes(binding.platform)) return writeConnectionHealth(db, {
+      bindingId: binding.bindingId, status: verdict.status, identityVerified: verdict.identityVerified,
+      verifiedAccountId: verdict.verifiedAccountId, accountLabel: verdict.accountLabel, checkedAt,
+      ...(lastWarnedThreshold !== undefined ? { lastWarnedThreshold } : {}),
+    })
     const { error } = await (db as AnyDb).from('social_credential_health').upsert({
       project_id:          binding.projectId,
       platform:            binding.platform,

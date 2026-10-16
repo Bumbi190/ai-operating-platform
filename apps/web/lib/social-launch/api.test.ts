@@ -17,7 +17,7 @@ it('denies unauthenticated and unowned requests with private cache control',asyn
 })
 it('saves and approves an exact proposal without publishing, then rejects a stale decision',async()=>{
  const r=await socialLaunchApi(req(proposal()));expect(r.status).toBe(200);const model=await r.json(),rev=model.plan.currentRevision
- expect(model.plan.decision).toBeNull();expect(model.channels.find((c:any)=>c.channel==='pinterest').connection).toBe('adapter_unavailable')
+ expect(model.plan.decision).toBeNull();expect(model.channels.find((c:any)=>c.channel==='pinterest').connection).toBe('unreadable')
  const body={operation:'decide',projectId:state.projectId,revisionId:rev.id,sha256:rev.sha256,decision:'approve',idempotencyKey:randomUUID()}
  expect((await socialLaunchApi(req({...body,sha256:'0'.repeat(64)}))).status).toBe(409)
  const approved=await socialLaunchApi(req(body));expect((await approved.json()).plan.decision.decision).toBe('approve')

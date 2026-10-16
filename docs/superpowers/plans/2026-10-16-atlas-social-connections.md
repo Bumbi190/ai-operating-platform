@@ -30,7 +30,7 @@ Interfaces:
 - Grant={accessToken,refreshToken,scopes,expiresAt,refreshExpiresAt,candidates}.
 - providerConfig(provider): client credentials or null; connectionSetup(provider): safe setup metadata.
 - authorizationUrl(provider,config,state,challenge):string; exchangeAndDiscover(provider,config,{code,verifier},fetcher?):Promise<Grant>.
-- attestDestination(provider,config,accessToken,candidate,fetcher?):Promise<void>.
+- attestDestination(provider,config,accessToken,candidate,fetcher?):Promise<Candidate>.
 - ConnectionError carries closed code only; no provider response text.
 - [ ] Write tests asserting exact LinkedIn/Pinterest/X OAuth endpoints, registered redirects and minimal scopes; S256 for X; LinkedIn introspection and organization-admin proof; Pinterest stable id and owned board; missing scope/id, ambiguous pagination overflow, expiry,401/403/429/errors and X runtime guard before fetch.
 - [ ] Run npx vitest run lib/social-connections/providers.test.ts; Expected: meaningful RED.

@@ -72,7 +72,7 @@ export async function GET(request: Request) {
       // The project's own verified Facebook page.
       const fb = await credentials.facebook(projectId)
       await capture(projectId, 'facebook', fb.ok ? await fbAccountSnapshot(fb.credential) : null, fb.ok ? undefined : fb.refusal)
-    } else {
+    } else if (binding.platform === 'youtube') {
       // YouTube: public channel data for a video this project uploaded.
       if (!ytKey) { results.push({ projectId, platform: 'youtube', status: 'no_api_key' }); continue }
       const { data: lastYt } = await db

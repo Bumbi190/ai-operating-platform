@@ -4,7 +4,7 @@ import {spawn} from 'node:child_process'
 import {initializeConnectionDb} from './test-db'
 import {testSql,TEST_PRINCIPAL} from '../website-build/test-db'
 import {proposeSocialLaunchPlan,decideSocialLaunchPlan} from '../social-launch/store'
-import {beginConnection,consumeConnection,stageConnection,readConnection,commitConnection} from './store'
+import {beginConnection,consumeConnection,stageConnection,readConnection,commitConnection,probeConnectionGrant,abortConnection,writeConnectionHealth} from './store'
 import type {Grant} from './types'
 let db:ReturnType<typeof initializeConnectionDb>
 beforeAll(()=>{db=initializeConnectionDb()},15000)
@@ -115,4 +115,31 @@ it('serializes independent simultaneous commits and never replaces the winning b
  const results=await Promise.all([run(sql(a.intentId)),run(sql(b.intentId))])
  expect(results.filter(r=>r.code===0)).toHaveLength(1);expect(results.find(r=>r.code!==0)?.error).toContain('SOCIAL_CONNECTION_BINDING_CHANGED')
  expect(testSql("select count(*) from social_account_bindings where project_id='"+f.input.projectId+"' and superseded_at is null;")).toBe('1')
+})
+
+it('exposes a grant only to the server probe and closes failed attempts without a binding',async()=>{
+ const f=await fixture(),v=await staged(f),input={projectId:f.input.projectId,intentId:v.intentId,candidateKey:f.grant.candidates[0].key}
+ expect((await probeConnectionGrant(db,f.p,input)).accessToken).toBe('private-access')
+ await abortConnection(db,f.p,{projectId:input.projectId,intentId:input.intentId,failureStage:'provider_verification'})
+ expect(testSql("select access_token is null and refresh_token is null from social_connection_intents where id='"+v.intentId+"';")).toBe('t')
+ expect(testSql("select count(*) from platform_credential_events where operation_id='"+v.intentId+"' and outcome='failed';")).toBe('1')
+ await expect(commitConnection(db,f.p,input)).rejects.toMatchObject({code:'EXPIRED'})
+})
+it('fences health persistence to the current binding and canonical credential',async()=>{
+ const f=await fixture(),v=await staged(f),done=await commitConnection(db,f.p,{projectId:f.input.projectId,intentId:v.intentId,candidateKey:f.grant.candidates[0].key})
+ const input={bindingId:done.bindingId,status:'ok',identityVerified:true,verifiedAccountId:f.grant.candidates[0].accountId,accountLabel:'Handlarbörsen',checkedAt:new Date().toISOString()}
+ expect(await writeConnectionHealth(db,input)).toBe(true)
+ const next={...f.input,expectedBindingId:done.bindingId,stateHash:createHash('sha256').update(randomUUID()).digest('hex')},intent=await beginConnection(db,f.p,next)
+ await consumeConnection(db,f.p,{provider:'linkedin',stateHash:next.stateHash});await stageConnection(db,f.p,{intentId:intent.intentId,grant:f.grant})
+ const changed=await commitConnection(db,f.p,{projectId:f.input.projectId,intentId:intent.intentId,candidateKey:f.grant.candidates[0].key})
+ expect(await writeConnectionHealth(db,input)).toBe(false)
+ expect(testSql("select binding_id='"+changed.bindingId+"'::uuid from social_credential_health where project_id='"+f.input.projectId+"';")).toBe('t')
+})
+
+it('does not present a superseded successful intent as a current connection',async()=>{
+ const f=await fixture(),v=await staged(f),first={projectId:f.input.projectId,intentId:v.intentId,candidateKey:f.grant.candidates[0].key}
+ const done=await commitConnection(db,f.p,first),input={...f.input,expectedBindingId:done.bindingId,stateHash:createHash('sha256').update(randomUUID()).digest('hex')}
+ const next=await beginConnection(db,f.p,input);await consumeConnection(db,f.p,{provider:'linkedin',stateHash:input.stateHash});await stageConnection(db,f.p,{intentId:next.intentId,grant:f.grant});await commitConnection(db,f.p,{...first,intentId:next.intentId})
+ await expect(readConnection(db,f.p,{projectId:first.projectId,intentId:first.intentId})).rejects.toMatchObject({code:'BINDING_CHANGED'})
+ await expect(commitConnection(db,f.p,first)).rejects.toMatchObject({code:'BINDING_CHANGED'})
 })

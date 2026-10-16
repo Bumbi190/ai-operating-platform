@@ -132,6 +132,7 @@ begin
  perform public.social_connection_owner(p_principal,(p_input->>'projectId')::uuid);
  select * into r from public.social_connection_intents where id=(p_input->>'intentId')::uuid and project_id=(p_input->>'projectId')::uuid and operator_id=(p_principal->>'userId')::uuid;
  if r.id is null then raise exception 'SOCIAL_CONNECTION_NOT_FOUND' using errcode='P0002'; end if;
+ if r.committed_binding_id is not null and not exists(select 1 from public.social_account_bindings where binding_id=r.committed_binding_id and project_id=r.project_id and platform=r.provider and superseded_at is null) then raise exception 'SOCIAL_CONNECTION_BINDING_CHANGED'; end if;
  if r.committed_binding_id is null and r.expires_at<=now() then raise exception 'SOCIAL_CONNECTION_EXPIRED'; end if;
  if r.committed_binding_id is null and r.access_token is null then raise exception 'SOCIAL_CONNECTION_UNAVAILABLE'; end if;
  return jsonb_build_object('intentId',r.id,'projectId',r.project_id,'provider',r.provider,'status',case when r.committed_binding_id is null then 'awaiting_selection' else 'connected' end,
@@ -212,3 +213,79 @@ end $fn$;
 revoke all on function public.social_connection_guard(),public.social_connection_owner(jsonb,uuid),public.social_connection_fence(jsonb,uuid,text,uuid,uuid),public.social_connection_begin(jsonb,jsonb),public.social_connection_consume(jsonb,jsonb),public.social_connection_read(jsonb,jsonb),public.social_connection_stage(jsonb,jsonb),public.social_connection_commit(jsonb,jsonb) from public,anon,authenticated;
 grant execute on function public.social_connection_guard(),public.social_connection_owner(jsonb,uuid),public.social_connection_fence(jsonb,uuid,text,uuid,uuid),public.social_connection_begin(jsonb,jsonb),public.social_connection_consume(jsonb,jsonb),public.social_connection_read(jsonb,jsonb),public.social_connection_stage(jsonb,jsonb),public.social_connection_commit(jsonb,jsonb) to service_role;
 comment on table public.social_connection_intents is 'Server-only operator/project/approved-plan/binding-fenced OAuth state and transient grant. Safe candidate view only; no publication authority.';
+
+-- Additional server-only seams: re-attest before commit, close failure, safe metadata, fenced health.
+create or replace function public.social_connection_probe(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $fn$
+declare r public.social_connection_intents;candidate jsonb;
+begin
+ perform public.social_connection_owner(p_principal,(p_input->>'projectId')::uuid);
+ select * into r from public.social_connection_intents where id=(p_input->>'intentId')::uuid and project_id=(p_input->>'projectId')::uuid and operator_id=(p_principal->>'userId')::uuid;
+ if r.id is null then raise exception 'SOCIAL_CONNECTION_NOT_FOUND' using errcode='P0002'; end if;
+ perform 1 from public.projects where id=r.project_id for update;
+ perform public.social_connection_fence(p_principal,r.project_id,r.provider,r.plan_revision_id,r.expected_binding_id);
+ if r.provider='x' then raise exception 'SOCIAL_CONNECTION_COST_POLICY_REQUIRED'; end if;
+ if r.committed_binding_id is not null then raise exception 'SOCIAL_CONNECTION_CONFLICT'; end if;
+ if r.expires_at<=now() or r.credential_expires_at<=now() or r.access_token is null then raise exception 'SOCIAL_CONNECTION_EXPIRED'; end if;
+ select value into candidate from jsonb_array_elements(r.candidates) where value->>'key'=p_input->>'candidateKey';
+ if candidate is null then raise exception 'SOCIAL_CONNECTION_INVALID_BODY'; end if;
+ return jsonb_build_object('provider',r.provider,'accessToken',r.access_token,'candidate',candidate,'expiresAt',r.credential_expires_at);
+end $fn$;
+create or replace function public.social_connection_abort(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $fn$
+declare r public.social_connection_intents;stage text=p_input->>'failureStage';
+begin
+ perform public.social_connection_owner(p_principal,(p_input->>'projectId')::uuid);
+ select * into r from public.social_connection_intents where id=(p_input->>'intentId')::uuid and project_id=(p_input->>'projectId')::uuid and operator_id=(p_principal->>'userId')::uuid;
+ if r.id is null then raise exception 'SOCIAL_CONNECTION_NOT_FOUND' using errcode='P0002'; end if;
+ perform 1 from public.projects where id=r.project_id for update;
+ perform public.social_connection_owner(p_principal,r.project_id);
+ select * into r from public.social_connection_intents where id=r.id for update;
+ if r.committed_binding_id is not null then raise exception 'SOCIAL_CONNECTION_CONFLICT'; end if;
+ if coalesce(stage,'') not in ('authorization_denied','code_exchange','scope_missing','provider_verification','store','unexpected') then raise exception 'SOCIAL_CONNECTION_INVALID_BODY'; end if;
+ update public.social_connection_intents set access_token=null,refresh_token=null,code_verifier=null,candidates='[]',
+  expires_at=least(r.expires_at,greatest(r.created_at+interval '1 microsecond',now())) where id=r.id;
+ insert into public.platform_credential_events(operation_id,project_id,platform,credential_type,actor,outcome,event_version,detail)
+ values(r.id,r.project_id,r.provider,'oauth_user','user:'||r.operator_id::text,'failed',2,jsonb_build_object('failure_stage',stage)) on conflict do nothing;
+ return jsonb_build_object('ok',true);
+end $fn$;
+create or replace function public.social_connection_metadata(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $fn$
+declare project uuid=(p_input->>'projectId')::uuid;result jsonb;
+begin
+ perform 1 from public.projects where id=project for share;
+ perform public.social_connection_owner(p_principal,project);
+ select jsonb_agg(jsonb_build_object('provider',p.provider,'bindingId',b.binding_id,'accountId',b.external_account_id,'accountLabel',b.account_label,'blocked',b.blocked_at is not null,
+  'credentialStored',t.id is not null,'matchesBinding',t.binding_id=b.binding_id and t.account_id=b.external_account_id,
+  'expiresAt',t.expires_at,'destinationId',t.destination_id,'destinationLabel',t.destination_label,
+  'health',jsonb_build_object('status',h.status,'identityVerified',h.identity_verified,'bindingId',h.binding_id,'accountId',h.verified_account_id,'checkedAt',h.checked_at,'expiresAt',h.expires_at)))
+ into result from unnest(array['linkedin','pinterest','x']) p(provider)
+ left join public.social_account_bindings b on b.project_id=project and b.platform=p.provider and b.superseded_at is null
+ left join public.platform_tokens t on t.project_id=project and t.platform=p.provider and t.token_type='oauth_user'
+ left join public.social_credential_health h on h.project_id=project and h.platform=p.provider;
+ return result;
+end $fn$;
+create or replace function public.social_connection_health_write(p_input jsonb) returns boolean language plpgsql security invoker set search_path='' as $fn$
+declare b public.social_account_bindings;t public.platform_tokens;verified boolean=(p_input->>'identityVerified')::boolean;checked timestamptz=(p_input->>'checkedAt')::timestamptz;status text=p_input->>'status';
+begin
+ select * into b from public.social_account_bindings where binding_id=(p_input->>'bindingId')::uuid;
+ if b.binding_id is null or b.platform not in ('linkedin','pinterest','x') then return false; end if;
+ perform 1 from public.projects where id=b.project_id for update;
+ select * into b from public.social_account_bindings where binding_id=b.binding_id for update;
+ if b.superseded_at is not null then return false; end if;
+ select * into t from public.platform_tokens where project_id=b.project_id and platform=b.platform and token_type='oauth_user';
+ if t.binding_id is distinct from b.binding_id or t.account_id is distinct from b.external_account_id then return false; end if;
+ if jsonb_typeof(p_input->'identityVerified') is distinct from 'boolean' or checked is null or checked>now()+interval '1 minute'
+  or coalesce(status,'') not in ('ok','warning','expired','account_mismatch','binding_blocked','credential_missing','verification_failed')
+  or verified and (b.blocked_at is not null or b.platform='x' or t.expires_at<=now() or p_input->>'verifiedAccountId' is distinct from b.external_account_id or status not in ('ok','warning'))
+  or not verified and status in ('ok','warning')
+ then return false; end if;
+ if verified then
+  if char_length(coalesce(p_input->>'accountLabel','')) not between 1 and 200 or p_input->>'accountLabel' ~ '[[:cntrl:]]' then return false; end if;
+  update public.social_account_bindings set account_label=p_input->>'accountLabel',verification='provider_attested',verified_at=greatest(b.verified_at,checked) where binding_id=b.binding_id;
+ end if;
+ insert into public.social_credential_health(project_id,platform,binding_id,status,identity_verified,verified_account_id,checked_at,expires_at,days_left,last_warned_threshold)
+ values(b.project_id,b.platform,b.binding_id,status,verified,case when verified then b.external_account_id else null end,checked,t.expires_at,floor(extract(epoch from t.expires_at-now())/86400)::integer,(p_input->>'lastWarnedThreshold')::integer)
+ on conflict(project_id,platform) do update set binding_id=excluded.binding_id,status=excluded.status,identity_verified=excluded.identity_verified,verified_account_id=excluded.verified_account_id,checked_at=excluded.checked_at,expires_at=excluded.expires_at,days_left=excluded.days_left,
+ last_warned_threshold=case when p_input ? 'lastWarnedThreshold' then excluded.last_warned_threshold else public.social_credential_health.last_warned_threshold end;
+ return true;
+end $fn$;
+revoke all on function public.social_connection_probe(jsonb,jsonb),public.social_connection_abort(jsonb,jsonb),public.social_connection_metadata(jsonb,jsonb),public.social_connection_health_write(jsonb) from public,anon,authenticated;
+grant execute on function public.social_connection_probe(jsonb,jsonb),public.social_connection_abort(jsonb,jsonb),public.social_connection_metadata(jsonb,jsonb),public.social_connection_health_write(jsonb) to service_role;

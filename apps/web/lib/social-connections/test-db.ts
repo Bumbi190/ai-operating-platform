@@ -13,5 +13,10 @@ export function initializeConnectionDb(){
  const file=readdirSync(dir).find(f=>f.endsWith('_social_project_connections_v1.sql'))!
  const migration=readFileSync(resolve(dir,file),'utf8')
  if(testSql("select to_regclass('public.social_connection_intents') is null;")==='t'&&migration.includes('create table'))testSql('begin;'+migration+'commit;')
+ else if(migration.includes('create table')){
+  const definitions=[...migration.matchAll(/create(?: or replace)? function public\.social_connection_[\s\S]*?\$fn\$;/g)].map(m=>m[0].replace(/^create function/,'create or replace function'))
+  const acl=[...migration.matchAll(/(?:revoke all|grant execute) on function [\s\S]*?;/g)].map(m=>m[0])
+  testSql('begin;'+definitions.join('\n')+acl.join('\n')+'commit;')
+ }
  return db
 }

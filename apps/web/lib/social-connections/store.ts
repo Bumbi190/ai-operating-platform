@@ -63,3 +63,23 @@ export async function commitConnection(db:Db,p:SocialLaunchPrincipal,input:{proj
  if(typeof input.candidateKey!=='string'||!/^[A-Za-z0-9_-]{1,64}$/.test(input.candidateKey))throw new ConnectionError('INVALID_BODY')
  return call(db,p,'social_connection_commit',input)
 }
+
+export async function probeConnectionGrant(db:Db,p:SocialLaunchPrincipal,input:{projectId:string;intentId:string;candidateKey:string}):Promise<{provider:Provider;accessToken:string;candidate:Candidate;expiresAt:string}>{
+ connectionFields(input,['projectId','intentId','candidateKey']);scoped(p,input.projectId);connectionId(input.intentId);bounded(input.candidateKey,64)
+ return call(db,p,'social_connection_probe',input)
+}
+export async function abortConnection(db:Db,p:SocialLaunchPrincipal,input:{projectId:string;intentId:string;failureStage:string}):Promise<void>{
+ connectionFields(input,['projectId','intentId','failureStage']);scoped(p,input.projectId);connectionId(input.intentId)
+ if(!['authorization_denied','code_exchange','scope_missing','provider_verification','store','unexpected'].includes(input.failureStage))throw new ConnectionError('INVALID_BODY')
+ await call(db,p,'social_connection_abort',input)
+}
+export async function writeConnectionHealth(db:Db,input:Record<string,unknown>):Promise<boolean>{
+ try{
+  connectionFields(input,['bindingId','status','identityVerified','verifiedAccountId','accountLabel','checkedAt','lastWarnedThreshold']);connectionId(input.bindingId)
+  const {data,error}=await (db as any).rpc('social_connection_health_write',{p_input:input})
+  return !error&&data===true
+ }catch{return false}
+}
+export async function readConnectionMetadata(db:Db,p:SocialLaunchPrincipal,projectId:string):Promise<unknown>{
+ scoped(p,projectId);return call(db,p,'social_connection_metadata',{projectId})
+}

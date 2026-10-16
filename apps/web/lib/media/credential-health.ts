@@ -90,6 +90,8 @@ export async function verifyBindingHealth(binding: SocialAccountBinding): Promis
                accountLabel: r.credential.pageName, expiresAt: r.credential.expiresAt, daysLeft, refusal: null }
     }
 
+    // A new provider must never fall through to another provider's credentials.
+    if (binding.platform !== 'youtube') return refused('provider_unavailable')
     const r = await resolveYouTubeCredential(binding.projectId)
     if (!r.ok) return refused(r.refusal)
     const verified = r.credential.channelVerifiedBeforeUpload

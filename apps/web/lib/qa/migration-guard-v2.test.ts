@@ -140,7 +140,7 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
 describe('Migration Guard v2 — production ledger set integrity', () => {
   it('REJECTS the pre-apply synthetic history that lacks the P1B migration (drift is still caught)', () => {
     const preApply = hypotheticalPostApplyLedger.filter((name) => name !== P1B_MIGRATION && name !== P1E_MIGRATION)
-    expect(preApply).toHaveLength(146)
+    expect(preApply).toHaveLength(148)
     expect(repositoryState.enforcedNames).toContain(P1B_MIGRATION)
     let message = ''
     try {
@@ -154,7 +154,7 @@ describe('Migration Guard v2 — production ledger set integrity', () => {
 
   it('REJECTS the synthetic history that lacks the P1E migration until it is applied', () => {
     const preApply = hypotheticalPostApplyLedger.filter((name) => name !== P1E_MIGRATION)
-    expect(preApply).toHaveLength(147)
+    expect(preApply).toHaveLength(149)
     expect(repositoryState.enforcedNames).toContain(P1E_MIGRATION)
     let message = ''
     try {

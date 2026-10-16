@@ -57,6 +57,7 @@ describe('acoustic thinking pause', () => {
 })
 
 function captureFixture(playbackMode?: 'speakers' | 'headphones') {
+  let now = 0
   let grant!: (stream: MediaStream) => void
   let level!: (rms: number, now: number) => void
   const track = { stop: vi.fn() }, stream = { getTracks: () => [track], getAudioTracks: () => [track] } as unknown as MediaStream
@@ -64,14 +65,164 @@ function captureFixture(playbackMode?: 'speakers' | 'headphones') {
   const receive = vi.fn(), interrupt = vi.fn(), draft = vi.fn(), notice = vi.fn(), active = vi.fn(), listening = vi.fn(), stopMonitor = vi.fn()
   const capture = createPilotVoiceCapture({ pauseMs: 2000, playbackMode, receive, interrupt, draft, notice, active, listening }, {
     getMedia: () => new Promise<MediaStream>(resolve => { grant = resolve }),
-    recognition: () => { const rec = { start: vi.fn(), abort: vi.fn() }; recognizers.push(rec); return rec as any },
+    recognition: () => { const rec = { start: vi.fn(), stop: vi.fn(), abort: vi.fn() }; recognizers.push(rec); return rec as any },
     monitor: async (_stream, callback) => { level = callback; return stopMonitor },
+    now: () => now,
   })
-  return { capture, grant: () => grant(stream), level: (rms: number, now: number) => level(rms, now), track, recognizers, receive, interrupt, draft, notice, active, listening, stopMonitor }
+  return { capture, grant: () => grant(stream), at: (value: number) => { now = value }, level: (rms: number, time: number) => { now = time; level(rms, time) }, track, recognizers, receive, interrupt, draft, notice, active, listening, stopMonitor }
 }
 const finals = (...texts: string[]) => ({ results: texts.map(text => Object.assign([{ transcript: text }], { isFinal: true })) })
 
 describe('continuous microphone lifecycle', () => {
+  it('keeps quiet native speech active across final segments until a real endpoint', async () => {
+    const f = captureFixture(), start = f.capture.start(); f.grant(); await start
+    const rec = f.recognizers[0]
+    rec.onspeechstart(); f.at(100); rec.onresult(finals('Jag vill'))
+    f.level(0.002, 4000)
+    expect(f.receive).not.toHaveBeenCalled(); expect(rec.stop).not.toHaveBeenCalled()
+    f.at(4100); rec.onresult(finals('Jag vill', 'fortsätta hela tanken.'))
+    f.at(4200); rec.onspeechend(); f.level(0, 6199)
+    expect(f.receive).not.toHaveBeenCalled()
+    f.level(0, 6200)
+    expect(f.receive.mock.calls).toEqual([['Jag vill fortsätta hela tanken.']])
+    f.capture.stop()
+  })
+  it('renews a final-only fallback pause when more recognized words arrive', async () => {
+    const f = captureFixture(), start = f.capture.start(); f.grant(); await start
+    const rec = f.recognizers[0]
+    f.at(100); rec.onresult(finals('Jag tänker'))
+    f.level(0, 1900); f.at(2000); rec.onresult(finals('Jag tänker', 'på nästa steg.'))
+    f.level(0, 2100); expect(f.receive).not.toHaveBeenCalled()
+    f.level(0, 3999); expect(f.receive).not.toHaveBeenCalled()
+    f.level(0, 4000)
+    expect(f.receive.mock.calls).toEqual([['Jag tänker på nästa steg.']])
+    f.capture.stop()
+  })
+  it.each([false, true])('rejects buffered native finals after manual discard, vanished interim=%s', async vanishedInterim => {
+    vi.useFakeTimers()
+    const f = captureFixture(), start = f.capture.start(); f.grant(); await start
+    const rec = f.recognizers[0], lateResult = rec.onresult
+    if (vanishedInterim) {
+      rec.onresult({ results: [Object.assign([{ transcript: 'gammalt tal' }], { isFinal: false })] })
+      rec.onresult({ results: [] })
+    }
+    f.capture.discard(); lateResult(finals('gammalt tal'))
+    f.level(0, 3000)
+    expect(f.receive).not.toHaveBeenCalled()
+    expect(rec.abort).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(250)
+    expect(f.recognizers).toHaveLength(2)
+    f.at(3100); f.recognizers[1].onresult(finals('Ny fråga.')); f.level(0, 5100)
+    expect(f.receive.mock.calls).toEqual([['Ny fråga.']])
+    f.capture.stop(); expect(vi.getTimerCount()).toBe(0)
+  })
+  it('accepts a native final answer without RMS or native speech-detection events', async () => {
+    const f = captureFixture('speakers'), start = f.capture.start(); f.grant(); await start
+    f.at(100); f.recognizers[0].onresult(finals('Ja, gör planen.'))
+    f.level(0.002, 2099); expect(f.receive).not.toHaveBeenCalled()
+    f.level(0, 2100); expect(f.receive).toHaveBeenCalledWith('Ja, gör planen.')
+    f.capture.stop()
+  })
+  it('uses a proven acoustic pause when native speechend is missing and drains all final deltas before sending', async () => {
+    vi.useFakeTimers()
+    const f = captureFixture(), start = f.capture.start(); f.grant(); await start
+    const rec = f.recognizers[0]
+    rec.onspeechstart()
+    rec.onresult({ results: [Object.assign([{ transcript: 'Hallå Atlas kan du kolla på planen' }], { isFinal: false })] })
+    f.level(0.1, 0); f.level(0.1, 200); f.level(0, 2200)
+    expect(rec.stop).toHaveBeenCalledTimes(1)
+    rec.onresult(finals('Hallå Atlas'))
+    f.level(0, 2250); expect(f.receive).not.toHaveBeenCalled()
+    rec.onresult(finals('Hallå Atlas', 'kan du kolla på planen?'))
+    f.at(2300); rec.onend(); f.level(0, 2300)
+    expect(f.receive.mock.calls).toEqual([['Hallå Atlas kan du kolla på planen?']])
+    f.capture.stop(); expect(vi.getTimerCount()).toBe(0)
+  })
+  it('never treats a watchdog as proof that a final recognition snapshot is complete', async () => {
+    vi.useFakeTimers()
+    const f = captureFixture(), start = f.capture.start(); f.grant(); await start
+    const rec = f.recognizers[0]
+    rec.onresult({ results: [Object.assign([{ transcript: 'hela frågan saknas' }], { isFinal: false })] })
+    f.level(0.1, 0); f.level(0.1, 200); f.level(0, 2200)
+    rec.onresult(finals('hela'))
+    f.level(0, 2250); vi.advanceTimersByTime(4000); f.level(0, 6500)
+    expect(f.receive).not.toHaveBeenCalled()
+    expect(f.notice).toHaveBeenCalledTimes(1)
+    expect(f.track.stop).toHaveBeenCalledTimes(1)
+  })
+  it('discard cancels a drain even if native results have become final before native end', async () => {
+    vi.useFakeTimers()
+    const f = captureFixture(), start = f.capture.start(); f.grant(); await start
+    const rec = f.recognizers[0]
+    rec.onresult({ results: [Object.assign([{ transcript: 'utkast' }], { isFinal: false })] })
+    f.level(0.1, 0); f.level(0.1, 200); f.level(0, 2200)
+    rec.onresult(finals('utkast'))
+    const lateEnd = rec.onend
+    f.capture.discard(); vi.advanceTimersByTime(4000); lateEnd(); f.level(0, 6500)
+    expect(f.receive).not.toHaveBeenCalled(); expect(f.notice).not.toHaveBeenCalled()
+    expect(f.recognizers).toHaveLength(2); expect(f.track.stop).not.toHaveBeenCalled()
+    f.capture.stop(); expect(vi.getTimerCount()).toBe(0)
+  })
+  it('preserves the pending words for review when native recognition removes an interim slot during drain', async () => {
+    vi.useFakeTimers()
+    const f = captureFixture(), start = f.capture.start(); f.grant(); await start
+    const rec = f.recognizers[0]
+    rec.onresult({ results: [Object.assign([{ transcript: 'Kan du kolla hela min plan' }], { isFinal: false })] })
+    f.level(0.1, 0); f.level(0.1, 200); f.level(0, 2200)
+    rec.onresult({ results: [] }); rec.onend(); f.level(0, 2250)
+    expect(f.receive).not.toHaveBeenCalled()
+    expect(f.draft).toHaveBeenLastCalledWith('Kan du kolla hela min plan')
+    expect(f.notice).toHaveBeenCalledTimes(1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+  it('accepts a quiet short answer confirmed by native speech events even below the RMS threshold', async () => {
+    const f = captureFixture('speakers'), start = f.capture.start(); f.grant(); await start
+    const rec = f.recognizers[0]
+    rec.onspeechstart(); f.level(0.002, 50)
+    f.at(100); rec.onspeechend(); rec.onresult(finals('Ja.'))
+    f.level(0, 2099); expect(f.receive).not.toHaveBeenCalled()
+    f.level(0, 2100); expect(f.receive).toHaveBeenCalledWith('Ja.')
+    f.capture.stop()
+  })
+  it('keeps listening through long quiet speech and asks native recognition to finalize interim text after the pause', async () => {
+    vi.useFakeTimers()
+    const f = captureFixture(), start = f.capture.start(); f.grant(); await start
+    const rec = f.recognizers[0]
+    rec.onspeechstart()
+    rec.onresult({ results: [Object.assign([{ transcript: 'Hallå Atlas kan du kolla' }], { isFinal: false })] })
+    f.level(0.002, 8000)
+    expect(rec.stop).not.toHaveBeenCalled(); expect(f.receive).not.toHaveBeenCalled()
+    f.at(8500); rec.onspeechend(); f.level(0, 10499)
+    expect(rec.stop).not.toHaveBeenCalled()
+    f.level(0, 10500); f.level(0, 10600)
+    expect(rec.stop).toHaveBeenCalledTimes(1); expect(rec.abort).not.toHaveBeenCalled()
+    rec.onresult(finals('Hallå Atlas kan du kolla på planen?')); rec.onend(); f.level(0, 10650)
+    expect(f.receive.mock.calls).toEqual([['Hallå Atlas kan du kolla på planen?']])
+    vi.advanceTimersByTime(250); expect(f.recognizers).toHaveLength(2)
+    expect(f.track.stop).not.toHaveBeenCalled(); f.capture.stop(); expect(vi.getTimerCount()).toBe(0)
+  })
+  it('finalizes a pending transcript from the acoustic pause even when native speech events are unavailable', async () => {
+    vi.useFakeTimers()
+    const f = captureFixture(), start = f.capture.start(); f.grant(); await start
+    const rec = f.recognizers[0]
+    rec.onresult({ results: [Object.assign([{ transcript: 'En hel fråga' }], { isFinal: false })] })
+    f.level(0.1, 0); f.level(0.1, 200); f.level(0, 2200)
+    expect(rec.stop).toHaveBeenCalledTimes(1)
+    rec.onresult(finals('En hel fråga.')); rec.onend(); f.level(0, 2250)
+    expect(f.receive).toHaveBeenCalledWith('En hel fråga.')
+    f.capture.stop(); expect(vi.getTimerCount()).toBe(0)
+  })
+  it('bounds a missing final transcript without silently sending the partial question', async () => {
+    vi.useFakeTimers()
+    const f = captureFixture(), start = f.capture.start(); f.grant(); await start
+    f.recognizers[0].onresult({ results: [Object.assign([{ transcript: 'Frågan är inte klar' }], { isFinal: false })] })
+    f.level(0.1, 0); f.level(0.1, 200); f.level(0, 2200)
+    vi.advanceTimersByTime(4000)
+    expect(f.receive).not.toHaveBeenCalled()
+    expect(f.notice).toHaveBeenCalledTimes(1)
+    expect(f.draft).toHaveBeenLastCalledWith('Frågan är inte klar')
+    expect(f.track.stop).toHaveBeenCalledTimes(1); expect(vi.getTimerCount()).toBe(0)
+  })
   it('signals ready only after the current recognizer starts, never during speaker recovery or from a stale callback', async () => {
     vi.useFakeTimers()
     const f = captureFixture('speakers'), start = f.capture.start(); f.grant(); await start
@@ -104,10 +255,10 @@ describe('continuous microphone lifecycle', () => {
     f.level(0.1, 3000); f.level(0.1, 3200)
     vi.advanceTimersByTime(1)
     expect(f.recognizers).toHaveLength(2)
-    f.recognizers[1].onresult(finals('Min egen fråga.'))
+    f.recognizers[1].onresult({ results: [Object.assign([{ transcript: 'Min egen fråga.' }], { isFinal: false })] })
     f.level(0, 5400)
     expect(f.receive).not.toHaveBeenCalled()
-    f.level(0.1, 6000); f.level(0.1, 6200); f.level(0, 8200)
+    f.level(0.1, 6000); f.level(0.1, 6200); f.recognizers[1].onresult(finals('Min egen fråga.')); f.level(0, 8200)
     expect(f.receive.mock.calls).toEqual([['Min egen fråga.']])
     f.capture.stop(); expect(vi.getTimerCount()).toBe(0)
   })

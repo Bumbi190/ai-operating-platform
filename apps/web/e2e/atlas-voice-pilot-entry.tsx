@@ -28,9 +28,12 @@ class FixtureRecognition {
   onresult: ((value: any) => void) | null = null
   onend: (() => void) | null = null
   onstart: (() => void) | null = null
+  onspeechstart: (() => void) | null = null
+  onspeechend: (() => void) | null = null
   onerror: ((value: any) => void) | null = null
   results: any[] = []
   start() { currentRecognition = this; this.onstart?.(); update() }
+  stop() { this.onend?.() }
   abort() { if (currentRecognition === this) currentRecognition = null; update() }
 }
 Object.assign(window, { SpeechRecognition: FixtureRecognition })
@@ -76,11 +79,13 @@ window.fetch = async (input, init) => {
 
 async function say(text: string) {
   if (!currentRecognition || !gain) throw new Error('Start the fixture microphone first')
+  currentRecognition.onspeechstart?.()
   gain.gain.value = 0.12
   await new Promise(resolve => setTimeout(resolve, 300))
   gain.gain.value = 0
   const rec = currentRecognition
   if (!rec) return
+  rec.onspeechend?.()
   rec.results.push(Object.assign([{ transcript: text }], { isFinal: true }))
   rec.onresult?.({ results: rec.results })
 }

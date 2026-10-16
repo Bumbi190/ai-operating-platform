@@ -7,7 +7,9 @@ export interface PilotRecognition {
   onerror: ((event: { error: string }) => void) | null
   onend: (() => void) | null
   onstart?: (() => void) | null
-  start(audioTrack?: MediaStreamTrack): void; abort(): void
+  onspeechstart?: (() => void) | null
+  onspeechend?: (() => void) | null
+  start(audioTrack?: MediaStreamTrack): void; stop(): void; abort(): void
 }
 type Options = {
   pauseMs: number; receive(text: string): void; interrupt(): void
@@ -20,6 +22,7 @@ type Dependencies = {
   getMedia(): Promise<MediaStream>
   recognition(): PilotRecognition | null
   monitor(stream: MediaStream, receive: (rms: number, now: number) => void): Promise<() => void>
+  now?(): number
 }
 
 /** Owns microphone lifetime; speaker mode suspends ASR during output and its tail. */
@@ -28,18 +31,36 @@ export function createPilotVoiceCapture(options: Options, dependencies?: Depende
   let generation = 0, live = false, media: MediaStream | null = null
   let rec: PilotRecognition | null = null, stopMonitor: (() => void) | null = null
   let restart: ReturnType<typeof setTimeout> | undefined
+  let finishTimer: ReturnType<typeof setTimeout> | undefined
+  let finalizing = false, pendingDraft = '', drainingDraft = ''
+  const now = deps.now ?? (() => performance.now())
   let outputActive = false, recovering = false
   const blocked = () => options.playbackMode === 'speakers' && (outputActive || recovering)
   let carry = '', results: Result[] = [], consumed = 0
   const gate = createAcousticTurnGate({ ...options, receive(text) {
     carry = ''; consumed = results.length
     options.receive(text)
+  }, finalize() {
+    if (!live || !rec || finalizing || blocked()) return
+    const current = rec, token = generation
+    finalizing = true; drainingDraft = pendingDraft; options.listening?.(false)
+    // stop() drains the recognizer's buffered audio into a final result.
+    // abort() would throw that audio away. Bound a missing native completion.
+    finishTimer = setTimeout(() => {
+      if (live && token === generation && rec === current) {
+        if (drainingDraft) options.draft(drainingDraft)
+        fail('Taligenkänningen blev inte klar med sista orden. Texten finns kvar; granska och skicka den eller starta mikrofonen igen.')
+      }
+    }, 4000)
+    try { current.stop() } catch { fail('Taligenkänningen kunde inte bekräfta sista orden. Texten finns kvar; granska och skicka den eller starta mikrofonen igen.') }
   } })
   const detach = () => {
+    clearTimeout(finishTimer); finishTimer = undefined; finalizing = false
+    pendingDraft = drainingDraft = ''
     options.listening?.(false)
     if (!rec) return
     const old = rec; rec = null
-    old.onstart = old.onend = old.onerror = old.onresult = null
+    old.onspeechstart = old.onspeechend = old.onstart = old.onend = old.onerror = old.onresult = null
     try { old.abort() } catch { /* already ended */ }
   }
   function stop() {
@@ -62,15 +83,29 @@ export function createPilotVoiceCapture(options: Options, dependencies?: Depende
       current.onstart = () => {
         if (live && token === generation && rec === current && !blocked()) options.listening?.(true)
       }
+      current.onspeechstart = () => {
+        if (live && token === generation && rec === current && !blocked() && !finalizing) gate.speechStart(now())
+      }
+      current.onspeechend = () => {
+        if (live && token === generation && rec === current && !blocked()) gate.speechEnd(now())
+      }
       current.onresult = event => {
         if (!live || token !== generation || rec !== current) return
+        const previous = results
         results = Array.from(event.results)
         const fresh = results.slice(consumed)
+        const newFinal = fresh.some((result, index) => result.isFinal && result[0].transcript.trim() && !previous[consumed + index]?.isFinal)
         const committed = [carry, ...fresh.filter(r => r.isFinal).map(r => r[0].transcript.trim())].filter(Boolean).join(' ')
         const interim = fresh.filter(r => !r.isFinal).map(r => r[0].transcript).join(' ')
-        // A lagging ASR hypothesis must not split off the end of the thought.
-        gate.text(interim ? '' : committed)
-        options.draft([committed, interim].filter(Boolean).join(' '))
+        const full = [committed, interim].filter(Boolean).join(' ')
+        if (interim) pendingDraft = full
+        else if (newFinal) pendingDraft = ''
+        const visible = full || pendingDraft || (finalizing ? drainingDraft : '')
+        // While stop() drains, even an all-final event may be followed by
+        // another final delta. Only real native end releases that snapshot.
+        gate.text(visible, !interim && !pendingDraft && !finalizing)
+        if (newFinal && !interim && !finalizing) gate.recognitionFinal(now())
+        options.draft(visible)
       }
       current.onerror = event => {
         if (!live || token !== generation || rec !== current) return
@@ -79,9 +114,12 @@ export function createPilotVoiceCapture(options: Options, dependencies?: Depende
           ? 'Tillåt mikrofonen i webbläsaren, eller fortsätt skriva.'
           : 'Taligenkänningen tappade anslutningen. Starta mikrofonen igen eller skriv.')
       }
-      current.onend = () => {
+      const finishRecognition = () => {
         if (!live || token !== generation || rec !== current) return
-        if (results.slice(consumed).some(result => !result.isFinal)) {
+        gate.speechEnd(now())
+        if (pendingDraft || results.slice(consumed).some(result => !result.isFinal)
+          || (finalizing && drainingDraft && !results.slice(consumed).some(result => result.isFinal && result[0].transcript.trim()))) {
+          if (drainingDraft || pendingDraft) options.draft(drainingDraft || pendingDraft)
           fail('Taligenkänningen avslutades innan sista orden var klara. Texten finns kvar för granskning; starta mikrofonen igen när du vill.')
           return
         }
@@ -91,6 +129,7 @@ export function createPilotVoiceCapture(options: Options, dependencies?: Depende
         detach()
         restart = setTimeout(() => listen(token), 250)
       }
+      current.onend = finishRecognition
       // Desktop Chrome supports start(track). Older implementations may ignore
       // the argument; speaker-mode safety does not depend on that support.
       current.start(media?.getAudioTracks()[0])
@@ -129,15 +168,15 @@ export function createPilotVoiceCapture(options: Options, dependencies?: Depende
       restart = setTimeout(() => { recovering = false; listen(token) }, 400)
     }
   }, discard() {
-    carry = ''; gate.discard()
-    if (results.some(result => !result.isFinal)) {
-      // Interim slots can disappear or be replaced in place. A new native
-      // recognition boundary makes late discarded hypotheses unambiguous.
+    carry = ''; pendingDraft = ''; gate.discard()
+    if (rec) {
+      // Even with no visible interim, native audio may still be buffered.
+      // A fresh recognizer rejects every late result from the discarded turn.
       detach(); results = []; consumed = 0
       const token = generation
       clearTimeout(restart)
       if (live) restart = setTimeout(() => listen(token), 250)
-    } else consumed = results.length
+    } else { results = []; consumed = 0 }
   } }
 }
 

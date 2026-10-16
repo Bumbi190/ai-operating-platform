@@ -1,5 +1,6 @@
 import {
   Activity,
+  LayoutDashboard,
   CalendarRange,
   Cpu,
   Orbit,
@@ -80,7 +81,8 @@ export const VNEXT_NAV: readonly VNextNavGroup[] = [
     id: 'atlas',
     label: 'Atlas',
     items: [
-      { id: 'atlas', label: 'Atlas', href: '/atlas', icon: Sparkles, desktop: true, mobile: true, primary: true },
+      { id: 'overview', label: 'Översikt', href: '/dashboard', icon: LayoutDashboard, desktop: true, mobile: true, primary: true },
+      { id: 'atlas', label: 'Atlas', href: '/atlas', icon: Sparkles, desktop: true, mobile: true },
       { id: 'chat', label: 'Chat', href: '/chat', icon: MessageSquare, desktop: true, mobile: true },
       { id: 'build', label: 'Bygg med Atlas', href: '/build', icon: PanelsTopLeft, desktop: true, mobile: true },
       // Andre → Atlas → projects → agents. It belongs to the Atlas group rather

@@ -21,6 +21,7 @@ import { BUSINESS_PROFILES } from '@/lib/atlas/identity'
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type DestinationId =
+  | 'overview'
   | 'atlas'
   | 'chat'
   | 'build'
@@ -73,6 +74,7 @@ export interface NavResult {
 // Logical id → current base path. Repoint these (and only these) when the P3
 // instruments ship — e.g. activity → '/activity', money → '/money'.
 const ROUTE_MAP: Record<DestinationId, string> = {
+  overview: '/dashboard',
   atlas: '/atlas',
   chat: '/chat',
   build: '/build',
@@ -96,8 +98,9 @@ const ROUTE_MAP: Record<DestinationId, string> = {
 }
 
 const DESTINATIONS: Record<DestinationId, Destination> = {
+  overview: {id:'overview',label:'Översikt',keywords:['overview','översikt','home','start','hem'],projectMode:'none'},
   build: {id:'build',label:'Bygg med Atlas',keywords:['bygg med atlas','hemsida','byggstudio','website','webbplats','build'],projectMode:'query'},
-  atlas: { id: 'atlas', label: 'Atlas', keywords: ['atlas', 'home', 'start', 'hem', 'briefing'], projectMode: 'none' },
+  atlas: { id: 'atlas', label: 'Atlas', keywords: ['atlas', 'briefing'], projectMode: 'none' },
   chat: { id: 'chat', label: 'Chat', keywords: ['chat', 'ask atlas', 'prata', 'fråga'], projectMode: 'none' },
   approvals: {
     id: 'approvals', label: 'Granskningar',
@@ -374,6 +377,7 @@ export function projectDisplayName(slug: string): string | undefined {
 
 /** Default jump targets shown in the palette before the operator types. */
 export const PRIMARY_JUMP_TARGETS: DestinationId[] = [
+  'overview',
   'atlas', 'chat', 'approvals', 'activity', 'money', 'revenue', 'actions', 'health', 'knowledge',
   'trading',
 ]

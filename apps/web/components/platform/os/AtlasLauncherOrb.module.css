@@ -31,8 +31,16 @@
   border-radius: 999px;
   border: 1px solid var(--omnira-edge);
   background:
-    radial-gradient(circle at 36% 30%, rgba(103, 232, 249, 0.10) 0%, transparent 58%),
-    radial-gradient(circle at 70% 78%, rgba(45, 212, 191, 0.055) 0%, transparent 62%),
+    radial-gradient(
+      circle at 36% 30%,
+      rgba(103, 232, 249, 0.1) 0%,
+      transparent 58%
+    ),
+    radial-gradient(
+      circle at 70% 78%,
+      rgba(45, 212, 191, 0.055) 0%,
+      transparent 62%
+    ),
     linear-gradient(160deg, rgba(9, 17, 31, 0.92) 0%, rgba(3, 8, 18, 0.96) 100%);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -44,7 +52,10 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.055);
   cursor: pointer;
   outline: none;
-  transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
+  transition:
+    transform 220ms ease,
+    border-color 220ms ease,
+    box-shadow 220ms ease;
 }
 
 /* Refraction: a soft highlight arc across the upper-left of the glass. */
@@ -53,7 +64,11 @@
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  background: linear-gradient(148deg, rgba(255, 255, 255, 0.10) 0%, transparent 42%);
+  background: linear-gradient(
+    148deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    transparent 42%
+  );
   opacity: 0.9;
 }
 
@@ -63,9 +78,15 @@
   inset: -6px;
   border-radius: inherit;
   pointer-events: none;
-  background: radial-gradient(circle, rgba(34, 211, 238, 0.16) 0%, transparent 68%);
+  background: radial-gradient(
+    circle,
+    rgba(34, 211, 238, 0.16) 0%,
+    transparent 68%
+  );
   opacity: 0.5;
-  transition: opacity 240ms ease, transform 240ms ease;
+  transition:
+    opacity 240ms ease,
+    transform 240ms ease;
 }
 
 .crystal {
@@ -73,7 +94,9 @@
   z-index: 1;
   display: block;
   filter: drop-shadow(0 0 5px rgba(34, 211, 238, 0.42));
-  transition: filter 220ms ease, transform 220ms ease;
+  transition:
+    filter 220ms ease,
+    transform 220ms ease;
 }
 
 /* ── Interaction ─────────────────────────────────────────────────────────── */
@@ -139,9 +162,18 @@
 }
 
 @keyframes launcher-ring {
-  0%   { transform: scale(1);    opacity: 0.75; }
-  70%  { transform: scale(1.16); opacity: 0;    }
-  100% { transform: scale(1.16); opacity: 0;    }
+  0% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  70% {
+    transform: scale(1.16);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.16);
+    opacity: 0;
+  }
 }
 
 /* ── Tooltip ─────────────────────────────────────────────────────────────────
@@ -166,7 +198,9 @@
   letter-spacing: 0.01em;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 180ms ease, transform 180ms ease;
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
 }
 
 .launcher:hover + .tooltip,
@@ -183,22 +217,61 @@
   :where(html:not([data-motion='full'])) .launcher,
   :where(html:not([data-motion='full'])) .aura,
   :where(html:not([data-motion='full'])) .crystal,
-  :where(html:not([data-motion='full'])) .tooltip { transition: none; }
+  :where(html:not([data-motion='full'])) .tooltip {
+    transition: none;
+  }
 
   :where(html:not([data-motion='full'])) .launcher:hover,
   :where(html:not([data-motion='full'])) .launcher:focus-visible,
-  :where(html:not([data-motion='full'])) .launcher:active { transform: none; }
+  :where(html:not([data-motion='full'])) .launcher:active {
+    transform: none;
+  }
 
   :where(html:not([data-motion='full'])) .launcher:hover .aura,
-  :where(html:not([data-motion='full'])) .launcher:focus-visible .aura { transform: none; }
+  :where(html:not([data-motion='full'])) .launcher:focus-visible .aura {
+    transform: none;
+  }
 
   :where(html:not([data-motion='full'])) .launcher:hover .crystal,
-  :where(html:not([data-motion='full'])) .launcher:focus-visible .crystal { transform: none; }
+  :where(html:not([data-motion='full'])) .launcher:focus-visible .crystal {
+    transform: none;
+  }
 
-  :where(html:not([data-motion='full'])) .launcher[data-phase='listening'] .stateRing,
-  :where(html:not([data-motion='full'])) .launcher[data-phase='thinking'] .stateRing,
-  :where(html:not([data-motion='full'])) .launcher[data-phase='speaking'] .stateRing { animation: none; }
+  :where(html:not([data-motion='full']))
+    .launcher[data-phase='listening']
+    .stateRing,
+  :where(html:not([data-motion='full']))
+    .launcher[data-phase='thinking']
+    .stateRing,
+  :where(html:not([data-motion='full']))
+    .launcher[data-phase='speaking']
+    .stateRing {
+    animation: none;
+  }
 
   :where(html:not([data-motion='full'])) .launcher:hover + .tooltip,
-  :where(html:not([data-motion='full'])) .launcher:focus-visible + .tooltip { transform: translateY(-50%); }
+  :where(html:not([data-motion='full'])) .launcher:focus-visible + .tooltip {
+    transform: translateY(-50%);
+  }
+}
+
+/* A 40px visible circle inside a true 44px pointer target. */
+.launcher[data-compact] {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.launcher[data-compact]::before {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 999px;
+  border: 1px solid var(--omnira-edge);
+  background: linear-gradient(160deg, #102438, #07111d);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
+}
+.launcher[data-compact] .sheen {
+  inset: 2px;
 }

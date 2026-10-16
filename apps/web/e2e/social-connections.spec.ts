@@ -1,0 +1,56 @@
+import {test,expect} from '@playwright/test'
+import {connectionFixture} from './social-connections-fixture'
+test.beforeEach(async({page})=>{await page.setViewportSize({width:390,height:844})})
+test('requires explicit board choice and saves only that proven key',async({page})=>{
+ let sent:any,restarted:any
+ await page.route('**/api/social-connections/pinterest/start',async route=>{restarted=route.request().postDataJSON();await route.fulfill({status:503,json:{code:'UNAVAILABLE'}})})
+ await page.route('**/api/social-connections',async route=>{sent=route.request().postDataJSON();const v=connectionFixture().connectionIntent!;await route.fulfill({json:{...v,status:'connected',bindingId:'60000000-0000-4000-8000-000000000001',selectedKey:sent.candidateKey}})})
+ await page.goto('/social?connections=select')
+ const save=page.getByRole('button',{name:'Anslut valt konto',exact:true})
+ await expect(save).toBeDisabled();await expect(page.getByRole('radio',{checked:true})).toHaveCount(0)
+ await page.getByRole('radio',{name:'Familje-Stunden · Recept',exact:true}).check();await save.click()
+ await expect(page.getByText('Anslutet: Familje-Stunden · Recept',{exact:true})).toBeVisible()
+ await expect(page.getByRole('button',{name:'Anslut på nytt till Pinterest',exact:true})).toBeVisible()
+ expect(sent).toEqual({projectId:connectionFixture().plan.project.id,intentId:connectionFixture().connectionIntent!.intentId,candidateKey:'board2'})
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+ await page.screenshot({path:'../../.superpowers/sdd/2026-10-16-atlas-social-connections/mobile-connections.png',fullPage:true})
+ await page.getByRole('button',{name:'Anslut på nytt till Pinterest',exact:true}).click()
+ await expect.poll(()=>restarted?.expectedBindingId).toBe('60000000-0000-4000-8000-000000000001')
+})
+test('retains explicit selection on failed commit',async({page})=>{
+ await page.route('**/api/social-connections',r=>r.fulfill({status:503,json:{code:'UNAVAILABLE'}}))
+ await page.goto('/social?connections=select');await page.getByRole('radio',{name:'Familje-Stunden · Aktiviteter',exact:true}).check();await page.getByRole('button',{name:'Anslut valt konto',exact:true}).click()
+ await expect(page.getByRole('alert')).toContainText('kunde inte sparas');await expect(page.getByRole('radio',{name:'Familje-Stunden · Aktiviteter',exact:true})).toBeChecked()
+})
+test('requires approved plan and shows missing app setup without secret fields',async({page})=>{
+ await page.goto('/social?connections=unapproved');await expect(page.getByRole('button',{name:'Anslut Pinterest',exact:true})).toBeDisabled()
+ await page.goto('/social?connections=missing');await expect(page.getByText('Appkonfiguration saknas.',{exact:true})).toHaveCount(2)
+ await page.getByText('Appinställningar för Pinterest',{exact:true}).click()
+ await expect(page.getByText('PINTEREST_CLIENT_ID och PINTEREST_CLIENT_SECRET',{exact:true})).toBeVisible()
+ await expect(page.getByRole('textbox',{name:/secret|token/i})).toHaveCount(0)
+})
+test('X has no usable connect action and describes its cost gate',async({page})=>{
+ await page.goto('/social?connections=ready')
+ await expect(page.getByText('X kräver en godkänd kostnadspolicy innan API-anrop kan aktiveras.',{exact:true})).toBeVisible()
+ await expect(page.getByRole('button',{name:'Anslut X',exact:true})).toHaveCount(0)
+})
+test('ignores delayed save after changing project',async({page})=>{
+ let release!:()=>void;const gate=new Promise<void>(r=>release=r)
+ await page.route('**/api/social-connections',async route=>{await gate;await route.fulfill({json:{...connectionFixture().connectionIntent,status:'connected',selectedKey:'board1'}}).catch(()=>{})})
+ await page.goto('/social?connections=select');await page.getByRole('radio',{name:'Familje-Stunden · Aktiviteter',exact:true}).check();await page.getByRole('button',{name:'Anslut valt konto',exact:true}).click();await page.getByRole('button',{name:'Byt testprojekt'}).click();release()
+ await expect(page.getByRole('heading',{name:'Sociala medier · Handlarbörsen'})).toBeVisible();await expect(page.getByText(/^Anslutet:/)).toHaveCount(0)
+})
+
+test('automatic connection metadata refresh preserves edits made during a delayed commit',async({page})=>{
+ let release!:()=>void;const gate=new Promise<void>(r=>release=r)
+ await page.route('**/api/social-connections',async route=>{await gate;await route.fulfill({json:{...connectionFixture().connectionIntent,status:'connected',bindingId:'60000000-0000-4000-8000-000000000001',selectedKey:'board1'}})})
+ await page.route('**/api/social-launch?*',r=>r.fulfill({json:connectionFixture('ready')}))
+ await page.goto('/social?connections=select')
+ await page.getByRole('radio',{name:'Familje-Stunden · Aktiviteter',exact:true}).check();await page.getByRole('button',{name:'Anslut valt konto',exact:true}).click()
+ await page.getByLabel('Syfte för Pinterest',{exact:true}).fill('Mitt nya osparade syfte')
+ release()
+ await expect(page.getByText('Anslutet: Familje-Stunden · Aktiviteter',{exact:true})).toBeVisible()
+ await expect(page.getByRole('button',{name:'Läs senaste versionen',exact:true})).toBeEnabled()
+ await expect(page.getByLabel('Syfte för Pinterest',{exact:true})).toHaveValue('Mitt nya osparade syfte')
+ await expect(page.getByText('Osparade ändringar',{exact:true})).toBeVisible()
+})

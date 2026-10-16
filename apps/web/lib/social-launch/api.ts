@@ -31,6 +31,6 @@ export async function socialLaunchApi(request:Request):Promise<Response>{
    else if(operation==='decide')plan=await decideSocialLaunchPlan(db,access,input as SocialLaunchDecisionInput)
    else throw new SocialLaunchError('INVALID_BODY')
   }
-  return Response.json(await loadSocialLaunchPage(plan),{headers})
+  return Response.json(await loadSocialLaunchPage(plan,{principal:access,db}),{headers})
  }catch(error){const known=error instanceof SocialLaunchError;return Response.json({code:known?error.code:'PLAN_UNAVAILABLE'},{status:known?error.status:503,headers})}
 }

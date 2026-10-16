@@ -58,7 +58,7 @@ const cssRule = (css: string, selector: string) => {
 describe('sidebar · Organisation joins the approved IA', () => {
   it('appears in the vNext nav, in the Atlas group', () => {
     const atlas = VNEXT_NAV.find((group) => group.id === 'atlas')!
-    expect(atlas.items.map((item) => item.label)).toEqual(['Atlas', 'Chat', 'Bygg med Atlas', 'Organisation', 'Projekt'])
+    expect(atlas.items.map((item) => item.label)).toEqual(['Översikt', 'Atlas', 'Chat', 'Bygg med Atlas', 'Organisation', 'Projekt'])
   })
 
   it('uses the registry path rather than a literal', () => {
@@ -85,8 +85,8 @@ describe('sidebar · Organisation joins the approved IA', () => {
     expect(byGroup.system).toEqual(['System', 'Inställningar'])
   })
 
-  it('keeps Atlas the single primary entry', () => {
-    expect(vnextNavItems().filter((i) => i.primary).map((i) => i.href)).toEqual(['/atlas'])
+  it('keeps Overview the single primary entry', () => {
+    expect(vnextNavItems().filter((i) => i.primary).map((i) => i.href)).toEqual(['/dashboard'])
   })
 
   it('is desktop-only — the mobile sheet stays a quick-jump surface', () => {
@@ -95,7 +95,7 @@ describe('sidebar · Organisation joins the approved IA', () => {
   })
 
   it('keeps legacy free of Organisation alongside the approved builder entry', () => {
-    expect(LEGACY_GLOBAL_NAV).toHaveLength(10)
+    expect(LEGACY_GLOBAL_NAV).toHaveLength(11)
     expect(LEGACY_GLOBAL_NAV.map((i) => i.href)).not.toContain('/organisation')
   })
 })

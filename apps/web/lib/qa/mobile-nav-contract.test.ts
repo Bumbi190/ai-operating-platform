@@ -38,12 +38,12 @@ describe('mobile nav · portfolio quick jump', () => {
       .map((id) => resolveDestination(id as never)!.href)
     const current = vnextNavItemsFor('mobile').map((i) => i.href)
     expect(original.every((href) => current.includes(href))).toBe(true)
-    expect(original).toEqual(current.filter((href) => href !== '/projects' && href !== '/build'))
+    expect(original).toEqual(current.filter((href) => href !== '/projects' && href !== '/build' && href !== '/dashboard'))
   })
 
   it('includes the builder and portfolio index, never an individual project', () => {
     expect(vnextNavItemsFor('mobile').map((i) => i.href)).toEqual([
-      '/atlas', '/chat', '/build', '/projects', '/approvals', '/agent-activity', '/memory',
+      '/dashboard', '/atlas', '/chat', '/build', '/projects', '/approvals', '/agent-activity', '/memory',
     ])
     expect(vnextNavItemsFor('mobile').map((i) => i.href).filter((href) => href.startsWith('/projects/'))).toEqual([])
   })
@@ -65,7 +65,7 @@ describe('mobile nav · portfolio quick jump', () => {
 describe('mobile nav · identity is now canonical', () => {
   it('uses the desktop labels, including the portfolio quick jump', () => {
     expect(vnextNavItemsFor('mobile').map((i) => i.label)).toEqual([
-      'Atlas', 'Chat', 'Bygg med Atlas', 'Projekt', 'Granskningar', 'Aktivitet', 'Minne',
+      'Översikt', 'Atlas', 'Chat', 'Bygg med Atlas', 'Projekt', 'Granskningar', 'Aktivitet', 'Minne',
     ])
   })
 

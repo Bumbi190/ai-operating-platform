@@ -1,0 +1,21 @@
+# Atlas social content preparation — Increment 3A
+Date: 2026-10-16. Base: main 9a1cb9a3de381a1fd886f416b44c1fcf51ea6208.
+André asked to continue the remaining social work while postponing real account connections until he requests them. Existing social-launch design and development/release authorization remain; do not ask again per implementation task.
+
+## Outcome
+Within each project's social workspace, Atlas proposes reusable content and the operator edits, reviews exact revisions and sees an intended publication calendar. Supported: YouTube, Facebook, Instagram, LinkedIn, X, Pinterest. This increment is preparation only: no dispatch worker, provider writes, OAuth activation, paid generation, subscriptions, budget changes or changes to The Prompt.
+
+## Boundaries
+Use immutable content revisions and operator decisions, distinct from channel plans and actual permission to publish. A content revision pins the current approved channel plan, channel, format, title, text, optional HTTPS link, media brief, intended UTC time, actual canonical media asset IDs/checksums/kinds and current active destination binding ID (or null). Only server-derived asset and binding metadata can be pinned. Missing media can be drafted but image/video content cannot be approved without the required actual media.
+Every read/write independently verifies project ownership and optional owned project conversation. Serialize mutations on the project and post, require expected revision, and preserve idempotency without resurrecting old versions. Web roles cannot access tables/RPCs; SQL rechecks owner. Decisions are immutable exact-revision/SHA receipts. Model tools may read/propose only.
+Approval is editorial preparation, never publication permission. Plan changes, replaced/blocked bindings, changed/inactive/foreign media and concurrent edits invalidate readiness. Drafts may be prepared without an account; after connecting, a new revision captures the real destination and requires review. Paused/archived projects cannot receive new preparations/decisions. Read views remain available.
+Store only text and asset identities; accept no passwords, cookies, raw tokens, arbitrary media URLs or caller-supplied hashes. Render text as text; external links must use HTTPS and contain no credentials. Media preview uses an authenticated owned-project route with bounded stored active image/video metadata, private/no-store headers and no browser secrets.
+
+## User experience
+Keep channel planning and content/calendar navigation in the existing project social workspace. Show explicit proposal/approved/rejected/needs-review status, account and media requirements, intended time in Europe/Stockholm and the notice that nothing is sent before separate activation. A failed save retains draft fields; a late response after project switch/unmount cannot overwrite another project; retry of the same intent is stable. Dirty content cannot be approved. Mobile 390px controls and long text must fit.
+Use project existing active assets first. A media brief is an idea, not an attached image. Display actual attached media for review. New proposal can reuse existing post content; editing only the requested post does not regenerate other content.
+Provide get_social_content and propose_social_content in the existing owned Atlas conversation path with real workspace review links. No model approval, schedule execution or universal run_media_step authority.
+Date input uses Europe/Stockholm explicitly. Reject impossible and ambiguous DST local times instead of silently shifting. Persist UTC; a dated preparation must be future and within 366 days. Past-due preparations remain visibly not sent.
+
+## Verification
+Use actual owned isolated PostgreSQL plus pure/API/Atlas tests and provider-free Chromium mobile tests. Prove owner/conversation/asset isolation, stale and concurrent mutations, immutable decisions, exact idempotency, changed plan/binding/media, missing media, paused/stopped projects, retained drafts and cross-project late responses. Test zero runs/provider/model calls and truthful non-dispatch state. Run targeted shared-DB suites sequentially, typecheck, migration integrity and affected regressions. Independent final review, final-head CI, locked merge and production verification follow existing release procedure. Keep external activation pending.

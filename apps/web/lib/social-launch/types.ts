@@ -8,5 +8,5 @@ export type SocialLaunchView={project:{id:string;name:string;slug:string};curren
 export type SocialLaunchAccount={readable:boolean;accountId:string|null;label:string|null;blocked:boolean;credentialStored:boolean;matchesBinding:boolean;identityVerified:boolean;health:string;checkedAt:string|null;expiresAt:string|null}
 export type SocialLaunchReadinessInput={channel:SocialLaunchChannelId;selected:boolean;account:SocialLaunchAccount|null;now:string}
 export type SocialLaunchReadiness={channel:SocialLaunchChannelId;label:string;selection:'planned'|'not_selected';connection:'adapter_unavailable'|'unreadable'|'needs_connection'|'needs_renewal'|'needs_verification'|'blocked'|'verified';accountId:string|null;accountLabel:string|null;checkedAt:string|null;publicationReady:false;setupHref:string;note:string}
-export type SocialLaunchPageModel={plan:SocialLaunchView;channels:SocialLaunchReadiness[]}
+export type SocialLaunchPageModel={plan:SocialLaunchView;channels:SocialLaunchReadiness[];connections?:import('../social-connections/types').SocialConnectionCard[];connectionIntent?:import('../social-connections/types').ConnectionView|null;connectionNotice?:string|null}
 export type SocialLaunchPrincipal={userId:string;allowedProjectIds:string[]}

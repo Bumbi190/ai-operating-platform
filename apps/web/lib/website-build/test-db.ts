@@ -51,6 +51,22 @@ export function initializeWorkerDb(): ReturnType<typeof createAdminClient> {
     insert into platform_config(id) values(1) on conflict do nothing;
     create table if not exists run_logs(id uuid default gen_random_uuid(),run_id uuid,role text,content text);
     grant all on platform_config,run_logs to service_role;`)
+  // A fresh base fixture has sessions but not the later planning/Studio
+  // tables. Apply their canonical migrations before mockup review references
+  // them. Preserve existing per-test budgets and conversation ownership.
+  testSql(`alter table conversations add column if not exists project_id uuid references projects(id);
+    update conversations set project_id='${TEST_PROJECT}' where id='${TEST_CONVERSATION}' and project_id is null;
+    create table if not exists project_budgets(project_id uuid primary key references projects(id),monthly_sek numeric,daily_sek numeric,weekly_sek numeric,updated_at timestamptz default now());
+    insert into project_budgets(project_id,monthly_sek) values('${TEST_PROJECT}',100) on conflict do nothing;
+    grant select on project_budgets to service_role;
+    revoke select on auth.users from service_role;`)
+  for (const [table, file] of [
+    ['website_build_plans', '20261014153354_website_build_planning_v1.sql'],
+    ['website_build_studio_intents', '20261015041654_atlas_builder_studio_workspace.sql'],
+  ]) {
+    if (testSql("select to_regclass('public." + table + "') is null;") === 't')
+      testSql(readFileSync(resolve(root, 'apps/web/supabase/migrations', file), 'utf8'))
+  }
   restoreWebsiteStopFixture(testSql,root)
   testSql(canonicalFunction('20260831_unified_stop_authority.sql', 'stop_state'))
   testSql(canonicalFunction('20260903120000_durable_cancellation_reaper.sql', 'release_stopped_run'))

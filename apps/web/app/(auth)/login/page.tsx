@@ -6,11 +6,12 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowRight, Check, Eye, EyeOff, Fingerprint, KeyRound, LockKeyhole, Mail, ShieldCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { safeAuthDestination } from '@/lib/auth/safe-redirect'
 import styles from './login.module.css'
 
 /**
  * Presentation-only refresh of the existing Supabase sign-in flow.
- * Password and OTP routing are intentionally unchanged.
+ * Password and OTP use the same reviewed post-auth destination allowlist.
  */
 function LoginForm() {
   const router = useRouter()
@@ -38,7 +39,7 @@ function LoginForm() {
       setLoading(false)
       return
     }
-    router.push('/atlas')
+    router.push(safeAuthDestination(searchParams.get('next')))
   }
 
   async function handleMagicLink(e: FormEvent<HTMLFormElement>) {
@@ -49,7 +50,7 @@ function LoginForm() {
     const { error: otpError } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: window.location.origin + '/auth/confirm',
+        emailRedirectTo: window.location.origin + '/auth/confirm?next=' + encodeURIComponent(safeAuthDestination(searchParams.get('next'))),
         // No account provisioning from a login-only form.
         shouldCreateUser: false,
       },

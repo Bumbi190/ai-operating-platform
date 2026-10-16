@@ -1,6 +1,7 @@
 import {beforeAll,beforeEach,it,expect,vi} from 'vitest'
 import {randomUUID} from 'node:crypto'
-import {initializeWorkerDb,testSql,TEST_PRINCIPAL} from '../website-build/test-db'
+import {testSql,TEST_PRINCIPAL} from '../website-build/test-db'
+import {initializeSocialLaunchDb as initializeWorkerDb} from './test-db'
 import {socialLaunchApi} from './api'
 const state=vi.hoisted(()=>({db:null as unknown,auth:true,allowed:true,projectId:''}))
 vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>state.db}))

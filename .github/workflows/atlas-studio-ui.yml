@@ -10,6 +10,12 @@ on:
       - 'apps/web/components/platform/vnext/AtlasChat*'
       - 'apps/web/components/platform/vnext/AtlasConversationComposer*'
       - 'apps/web/components/website-build/**'
+      - 'apps/web/components/social-launch/**'
+      - 'apps/web/lib/social-launch/**'
+      - 'apps/web/app/api/social-launch/**'
+      - 'apps/web/app/(platform)/projects/[slug]/social/**'
+      - 'apps/web/e2e/social-launch*'
+      - 'apps/web/playwright.social-launch.config.ts'
       - 'apps/web/app/(platform)/layout.tsx'
       - 'apps/web/e2e/atlas-studio-ui-*'
       - 'apps/web/e2e/atlas-studio-ui.spec.ts'
@@ -66,6 +72,10 @@ jobs:
       - run: npx playwright install --with-deps chromium
         working-directory: apps/web
       - run: npx playwright test --config=playwright.atlas-studio-ui.config.ts
+        working-directory: apps/web
+      - run: npx vitest run lib/social-launch/catalog.test.ts lib/social-launch/loader.test.ts
+        working-directory: apps/web
+      - run: npx playwright test --config=playwright.social-launch.config.ts
         working-directory: apps/web
       - run: npx playwright test --config=playwright.activity-sheet.config.ts
         working-directory: apps/web

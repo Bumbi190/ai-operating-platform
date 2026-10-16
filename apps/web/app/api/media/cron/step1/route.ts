@@ -22,7 +22,7 @@ import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 import { classifyTopic } from '@/lib/atlas/content-tags'
 import { NEWS_SYSTEM, buildScriptSystem } from '@/lib/media/script-prompt'
 import { toJson } from '@/lib/supabase/json'
-import { getAnthropic } from '@/lib/ai/anthropic'
+import { getMediaTextClient } from '@/lib/media/text-client'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 import { GLOBAL_ONLY, projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
 
@@ -144,13 +144,13 @@ export async function GET(request: Request) {
   }
 
   const db     = createAdminClient()
-  const newsHunter = getAnthropic({
+  const newsHunter = getMediaTextClient({
     project: MEDIA_PIPELINE_PROJECT, execution: { context: 'AUTONOMOUS', scope: projectScope(MEDIA_PIPELINE_PROJECT) }, agent: 'News Hunter', operation: 'Analyze News',
   })
-  const scriptWriter = getAnthropic({
+  const scriptWriter = getMediaTextClient({
     project: MEDIA_PIPELINE_PROJECT, execution: { context: 'AUTONOMOUS', scope: projectScope(MEDIA_PIPELINE_PROJECT) }, agent: 'Script Writer', operation: 'Generate Script',
   })
-  const scriptRewriter = getAnthropic({
+  const scriptRewriter = getMediaTextClient({
     project: MEDIA_PIPELINE_PROJECT, execution: { context: 'AUTONOMOUS', scope: projectScope(MEDIA_PIPELINE_PROJECT) }, agent: 'Script Writer', operation: 'Rewrite Script',
   })
   const t0     = Date.now()   // budget tracker — step1 must finish within Vercel's 60s

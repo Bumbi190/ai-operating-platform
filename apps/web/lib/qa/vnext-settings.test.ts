@@ -889,7 +889,7 @@ describe('settings · the loader reads inside the session boundary', () => {
 describe('settings · the legacy rollback is the page that shipped', () => {
   it('the legacy body is the previous page verbatim — pinned by hash', () => {
     const legacy = read(FILES.legacy)
-    const body = legacy.slice(legacy.indexOf('import '))
+    const body = legacy.slice(legacy.indexOf('import ')).replace(/\r\n/g, '\n')
     expect(createHash('sha256').update(body).digest('hex')).toBe('3cd199ffdc6fc5b14c0a7ea3beab0f04c28d22a32cae834d0fb10825a1fc74de')
   })
 

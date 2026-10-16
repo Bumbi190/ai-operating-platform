@@ -387,3 +387,9 @@
     transition: none;
   }
 }
+
+.driftDetails{margin-top:26px;border-top:1px solid #a0bfd325;padding-top:20px}
+.driftDetails>summary{cursor:pointer;color:#9db7c8;font-size:13px;font-weight:500;padding:8px 0;margin-bottom:12px}
+.driftDetails>summary:focus-visible{outline:2px solid #96e7d6;outline-offset:4px}
+.projectGrowth{display:flex;flex-direction:column;gap:7px;color:#94aebe;font-size:11px;margin-top:14px;padding-top:14px;border-top:1px solid #a0bfd31c;line-height:1.6}
+.projectGrowth>span:last-child{color:#b7d8d3}

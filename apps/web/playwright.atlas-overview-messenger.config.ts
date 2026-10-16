@@ -3,7 +3,8 @@ export default defineConfig({
   testDir: './e2e',
   testMatch: [
     'atlas-overview-messenger.spec.ts',
-    'atlas-overview-dashboard.spec.ts'
+    'atlas-overview-dashboard.spec.ts',
+    'overview-growth.spec.ts'
   ],
   workers: 1,
   retries: 0,

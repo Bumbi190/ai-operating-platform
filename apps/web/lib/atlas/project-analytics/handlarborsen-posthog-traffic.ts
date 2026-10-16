@@ -23,10 +23,10 @@ export type HandlarborsenTraffic =
 
 const API_ORIGIN = "https://eu.posthog.com";
 const RESPONSE_LIMIT = 32768;
-const TRAFFIC_DAYS = 7;
 
 type Fetcher = typeof fetch;
 export type TrafficOptions = {
+  period?: 7 | 30;
   fetcher?: Fetcher;
   now?: Date;
   env?: {
@@ -36,12 +36,16 @@ export type TrafficOptions = {
 };
 
 export function lastSevenUtcDates(now: Date): string[] {
+  return utcDates(now, 7);
+}
+
+function utcDates(now: Date, days: 7 | 30): string[] {
   if (!Number.isFinite(now.getTime())) return [];
   const today = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
   );
-  return Array.from({ length: TRAFFIC_DAYS }, (_, i) => {
-    const date = new Date(today.getTime() - (TRAFFIC_DAYS - 1 - i) * 86400000);
+  return Array.from({ length: days }, (_, i) => {
+    const date = new Date(today.getTime() - (days - 1 - i) * 86400000);
     return date.toISOString().slice(0, 10);
   });
 }
@@ -58,7 +62,7 @@ export function parsePageviewRows(
   input: unknown,
   expectedDates: string[],
 ): TrafficDay[] | null {
-  if (!Array.isArray(input) || input.length > TRAFFIC_DAYS) return null;
+  if (!Array.isArray(input) || ![7, 30].includes(expectedDates.length) || input.length > expectedDates.length) return null;
   const allowed = new Set(expectedDates);
   const seen = new Set<string>();
   const rows = new Map<string, number>();
@@ -105,12 +109,13 @@ export async function loadHandlarborsenTraffic(
   );
   if (!config) return { status: "not_connected", days: [], checkedAt: null };
   const now = options.now ?? new Date();
-  const dates = lastSevenUtcDates(now);
-  if (dates.length !== TRAFFIC_DAYS)
+  const period = options.period === 30 ? 30 : 7;
+  const dates = utcDates(now, period);
+  if (dates.length !== period)
     return { status: "unavailable", days: [], checkedAt: null };
 
   const until = new Date(
-    Date.parse(dates[TRAFFIC_DAYS - 1] + "T00:00:00.000Z") + 86400000,
+    Date.parse(dates[period - 1] + "T00:00:00.000Z") + 86400000,
   )
     .toISOString()
     .slice(0, 10);
@@ -121,7 +126,7 @@ export async function loadHandlarborsenTraffic(
     "WHERE event = '$pageview'",
     "AND timestamp >= toDateTime('" + dates[0] + " 00:00:00', 'UTC')",
     "AND timestamp < toDateTime('" + until + " 00:00:00', 'UTC')",
-    "GROUP BY day ORDER BY day ASC LIMIT 7",
+    "GROUP BY day ORDER BY day ASC LIMIT " + period,
   ].join("\n");
 
   try {
@@ -135,7 +140,7 @@ export async function loadHandlarborsenTraffic(
         },
         body: JSON.stringify({
           query: { kind: "HogQLQuery", query },
-          name: "omnira_handlarborsen_daily_pageviews_last_7_utc_days",
+          name: "omnira_handlarborsen_daily_pageviews_last_" + period + "_utc_days",
         }),
         cache: "no-store",
         redirect: "error",
@@ -164,7 +169,7 @@ export async function loadHandlarborsenTraffic(
       totalPageviews: days.reduce((sum, day) => sum + day.pageviews, 0),
       checkedAt,
       firstDate: dates[0],
-      lastDate: dates[TRAFFIC_DAYS - 1],
+      lastDate: dates[period - 1],
     };
   } catch {
     // Never log credentials, endpoints, queries or raw PostHog response payloads.

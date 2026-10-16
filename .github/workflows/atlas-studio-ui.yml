@@ -13,6 +13,7 @@ on:
       - 'apps/web/app/(platform)/layout.tsx'
       - 'apps/web/e2e/atlas-studio-ui-*'
       - 'apps/web/e2e/atlas-studio-ui.spec.ts'
+      - 'apps/web/e2e/atlas-preview-*'
       - 'apps/web/e2e/atlas-studio-costs.spec.ts'
       - 'apps/web/e2e/activity-sheet*'
       - 'apps/web/playwright.activity-sheet.config.ts'

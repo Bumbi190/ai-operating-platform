@@ -105,6 +105,23 @@ describe('Handlarbörsen permanent competitor candidate memory P1 (fail-closed)'
     expect(await h.service.saveReviewedLead()).toEqual({ status: 'already_recorded', count: 0 })
     expect(h.insert).toHaveBeenCalledTimes(1)
   })
+  it('accepts a narrowly authorized collaborator without reusing owner access on candidate data', async () => {
+    const h = harness([makeRow()])
+    const delegated = vi.fn(async () => ({ ok: true as const, db: { from: h.from } as any }))
+    const service = createCandidateMemoryService(h.deps, delegated)
+    expect((await service.load()).status).toBe('ok')
+    expect(await service.saveReviewedLead()).toEqual({ status: 'already_recorded', count: 0 })
+    expect(delegated).toHaveBeenCalledTimes(2)
+    expect(h.access).not.toHaveBeenCalled()
+    expect(h.insert).not.toHaveBeenCalled()
+  })
+  it('denies revoked collaborator authorization before any database read or write', async () => {
+    const h = harness()
+    const service = createCandidateMemoryService(h.deps, async () => ({ ok: false, status: 'forbidden' }))
+    expect(await service.saveReviewedLead()).toEqual({ status: 'forbidden' })
+    expect(h.from).not.toHaveBeenCalled()
+    expect(h.insert).not.toHaveBeenCalled()
+  })
   it('reads real persisted evidence and derives one review-only candidate without notifying', async () => {
     const h = harness([makeRow()])
     const result = await h.service.load()

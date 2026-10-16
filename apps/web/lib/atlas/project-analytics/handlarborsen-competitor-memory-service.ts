@@ -8,6 +8,7 @@ import {
   HANDLARBORSEN_PROJECT_SLUG,
 } from '@/lib/atlas/collectors/handlarborsen-marketplace'
 import { isHandlarborsenProject } from '@/lib/os/project-command-center'
+import { authorizeOrganizationCompetitorAction } from '@/lib/auth/organization-competitor-access'
 import {
   officialHost, reconcileDiscovery, KNOWN_OFFICIAL_HOSTS,
   type OfficialCandidateEvidence,
@@ -113,9 +114,13 @@ function decodeRows(input: unknown, now: Date): PersistedCandidate[] | null {
  * URLs. The active project owner is checked against the LIVE projects row
  * before any privileged DB reads/writes.
  */
-export function createCandidateMemoryService(deps: CandidateMemoryDependencies = live) {
+export function createCandidateMemoryService(
+  deps: CandidateMemoryDependencies = live,
+  delegatedAuthorize?: () => ReturnType<typeof authorizeOrganizationCompetitorAction>,
+) {
   async function authorize(): Promise<Auth> {
     if (!candidateMemoryEnabled(deps.env)) return { ok: false, status: 'disabled' }
+    if (delegatedAuthorize) return delegatedAuthorize()
     const access = await deps.access()
     if (!access.ok) return { ok: false, status: 'unauthorized' }
     const project = await deps.project(HANDLARBORSEN_PROJECT_SLUG)
@@ -188,3 +193,9 @@ export function createCandidateMemoryService(deps: CandidateMemoryDependencies =
 
 export const loadCandidateMemory = () => createCandidateMemoryService().load()
 export const saveReviewedCandidateLead = () => createCandidateMemoryService().saveReviewedLead()
+
+// Isolated organization delegation. Owner-only call paths above are unchanged.
+export const loadOrganizationCandidateMemory = () =>
+  createCandidateMemoryService(live, () => authorizeOrganizationCompetitorAction('view_competitors')).load()
+export const saveOrganizationReviewedCandidate = () =>
+  createCandidateMemoryService(live, () => authorizeOrganizationCompetitorAction('record_competitor_evidence')).saveReviewedLead()

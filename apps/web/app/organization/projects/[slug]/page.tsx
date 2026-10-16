@@ -68,6 +68,10 @@ export default async function OrganizationProjectPage({ params }: { params: { sl
       </fieldset>
       {mayWorkWithHandlarborsen && (
         <div className="mx-auto max-w-6xl px-6 pb-16">
+          <Link href="/organization/projects/handlarborsen/competitors"
+            className="mb-6 inline-flex min-h-11 items-center rounded-lg border border-cyan-300/40 bg-cyan-300/10 px-5 py-3 font-semibold text-cyan-200">
+            Konkurrentspanaren · historik och nya konkurrenter →
+          </Link>
           <HandlarborsenCollaboratorWorkflows />
         </div>
       )}

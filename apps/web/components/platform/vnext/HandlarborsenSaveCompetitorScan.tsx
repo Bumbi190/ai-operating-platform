@@ -1,10 +1,15 @@
 'use client'
+import * as React from 'react'
 import { useState } from 'react'
 
-const endpoint = '/api/projects/handlarborsen/competitors/history'
+const endpoints = {
+  owner: '/api/projects/handlarborsen/competitors/history',
+  collaborator: '/api/organization/projects/handlarborsen/competitors/history',
+} as const
 
-/** Explicit Owner gesture. No background scans, timers or automatic retries. */
-export function HandlarborsenSaveCompetitorScan() {
+/** Explicit owner/collaborator gesture, separately authorized at each endpoint. No background scans or retries. */
+export function HandlarborsenSaveCompetitorScan({ mode = 'owner' }: { mode?: 'owner' | 'collaborator' }) {
+  const endpoint = endpoints[mode]
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   async function save() {

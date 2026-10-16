@@ -112,6 +112,26 @@ describe('gated immutable competitor observation storage', () => {
     expect(viewer.publicScan).not.toHaveBeenCalled()
     expect(viewer.upsert).not.toHaveBeenCalled()
   })
+  it('permits collaborator history read and idempotent save only through scoped authorization', async () => {
+    const today = [...EVIDENCE.map(x => x.id), ...COMPETITOR_SITES.map(x => x.id)]
+      .map(source_id => ({ ...stored(), source_id }))
+    const h = harness(today)
+    const delegated = vi.fn(async () => ({ ok: true as const, db: { from: h.from } as any }))
+    const service = createCompetitorHistoryService(h.deps, delegated)
+    expect((await service.load()).status).toBe('ok')
+    expect(await service.save()).toEqual({ status: 'already_saved', count: 6 })
+    expect(delegated).toHaveBeenCalledTimes(2)
+    expect(h.access).not.toHaveBeenCalled()
+    expect(h.publicScan).not.toHaveBeenCalled()
+    expect(h.upsert).not.toHaveBeenCalled()
+  })
+  it('denies a revoked collaborator before running any history scanner', async () => {
+    const h = harness()
+    const service = createCompetitorHistoryService(h.deps, async () => ({ ok: false, status: 'forbidden' }))
+    expect(await service.save()).toEqual({ status: 'forbidden' })
+    expect(h.publicScan).not.toHaveBeenCalled()
+    expect(h.upsert).not.toHaveBeenCalled()
+  })
   it('reads only verified immutable same-project records and creates truthful daily chart', async () => {
     const h = harness([stored()])
     const result = await h.service.load()

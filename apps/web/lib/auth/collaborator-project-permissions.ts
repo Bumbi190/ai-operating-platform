@@ -10,6 +10,8 @@ export type CollaboratorProjectAction =
   | 'view'
   | 'propose_workflow'
   | 'operate_workflow'
+  | 'view_competitors'
+  | 'record_competitor_evidence'
   | 'edit_project'
   | 'approve'
   | 'deploy'
@@ -27,7 +29,8 @@ export function canCollaborateOnProject(
   if (role.role !== 'collaborator') return false // Owner uses existing privileged gate
   // Monitoring-only on projects other than Handlarbörsen: not even a new
   // workflow proposal grants a write path on the other businesses.
-  if (action !== 'operate_workflow' && action !== 'propose_workflow') return false
+  if (action !== 'operate_workflow' && action !== 'propose_workflow'
+    && action !== 'view_competitors' && action !== 'record_competitor_evidence') return false
   // This is only a precondition. Existing workflow server authorization,
   // human gates, spending limits and privileged-action checks remain mandatory.
   return project.id === HANDLARBORSEN_PROJECT_ID && project.slug === HANDLARBORSEN_PROJECT_SLUG

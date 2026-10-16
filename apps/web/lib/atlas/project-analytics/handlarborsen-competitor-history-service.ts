@@ -8,6 +8,7 @@ import {
   HANDLARBORSEN_PROJECT_SLUG,
 } from '@/lib/atlas/collectors/handlarborsen-marketplace'
 import { isHandlarborsenProject } from '@/lib/os/project-command-center'
+import { authorizeOrganizationCompetitorAction } from '@/lib/auth/organization-competitor-access'
 import { scanPublicSources } from './handlarborsen-competitors-scan'
 import { scanCompetitorLandscape } from './handlarborsen-competitor-landscape-scan'
 import {
@@ -99,9 +100,13 @@ function decodeRows(data: unknown, now: Date): HistoryAnalysis {
   return evaluateCompetitorHistory(rows, now)
 }
 
-export function createCompetitorHistoryService(deps: HistoryDependencies = live) {
+export function createCompetitorHistoryService(
+  deps: HistoryDependencies = live,
+  delegatedAuthorize?: () => ReturnType<typeof authorizeOrganizationCompetitorAction>,
+) {
   async function authorize(): Promise<Authorization> {
     if (!competitorHistoryEnabled(deps.env)) return { ok: false, status: 'disabled' }
+    if (delegatedAuthorize) return delegatedAuthorize()
     const access = await deps.access()
     if (!access.ok) return { ok: false, status: 'unauthorized' }
     // The collaborator role is read-only and must not use this Owner write path.
@@ -239,3 +244,9 @@ export function createCompetitorHistoryService(deps: HistoryDependencies = live)
 
 export const loadCompetitorHistory = () => createCompetitorHistoryService().load()
 export const saveCompetitorHistory = () => createCompetitorHistoryService().save()
+
+// Explicit project-bounded collaborator delegation; no broader RLS grant.
+export const loadOrganizationCompetitorHistory = () =>
+  createCompetitorHistoryService(live, () => authorizeOrganizationCompetitorAction('view_competitors')).load()
+export const saveOrganizationCompetitorHistory = () =>
+  createCompetitorHistoryService(live, () => authorizeOrganizationCompetitorAction('record_competitor_evidence')).save()

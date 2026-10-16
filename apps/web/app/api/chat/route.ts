@@ -53,6 +53,7 @@ import {WebsiteBuildError} from '@/lib/website-build/store'
 import {assertSameOrigin} from '@/lib/atlas/executive/http'
 import type {PlanRevisionRef} from '@/lib/website-build/planning/types'
 import { WEBSITE_BUILD_TOOLS, WEBSITE_BUILD_GUIDE, WEBSITE_BUILD_TOOL_NAMES, handleWebsiteBuildTool } from '@/lib/website-build/atlas-tools'
+import {SOCIAL_CONTENT_TOOLS,SOCIAL_CONTENT_TOOL_NAMES,SOCIAL_CONTENT_GUIDE,handleSocialContentTool} from '@/lib/social-launch/content/atlas-tools'
 import {SOCIAL_LAUNCH_TOOLS,SOCIAL_LAUNCH_TOOL_NAMES,SOCIAL_LAUNCH_GUIDE,handleSocialLaunchTool} from '@/lib/social-launch/atlas-tools'
 import type { Json } from '@/lib/supabase/database.types'
 import { isViewAwarenessEnabled, normalizeView, renderViewBlock, type ClientViewEnvelope } from '@/lib/atlas/view-context'
@@ -326,6 +327,7 @@ const STUDIO_TOOL_NAMES = new Set([
   ...DESIGN_SKILL_TOOLS.map(tool => tool.name),
   ...WEBSITE_BUILD_TOOL_NAMES,
   ...SOCIAL_LAUNCH_TOOL_NAMES,
+  ...SOCIAL_CONTENT_TOOL_NAMES,
   'get_current_time', 'present_links', 'navigate',
 ])
 
@@ -333,6 +335,7 @@ const TOOLS: Anthropic.Tool[] = [
   ...DESIGN_SKILL_TOOLS,
   ...WEBSITE_BUILD_TOOLS,
   ...SOCIAL_LAUNCH_TOOLS,
+  ...SOCIAL_CONTENT_TOOLS,
   {
     // Read-only, side-effect free, and the ONLY source of a clock value. Atlas
     // must never answer a time question from training data or from reading a
@@ -805,13 +808,13 @@ export async function POST(request: Request) {
     systemPrompt = STATIC_CONVERSATION_SYSTEM + (voice ? VOICE_DIRECTIVE : '')
   } else if(studioContext) {
     // Keep the transcript and verified bindings, without the global executive snapshot.
-    systemPrompt=studioSystemPrompt(studioContext)+SOCIAL_LAUNCH_GUIDE
+    systemPrompt=studioSystemPrompt(studioContext)+SOCIAL_LAUNCH_GUIDE+SOCIAL_CONTENT_GUIDE
     if(visiblePlan)systemPrompt+='\nCURRENT REVIEWED PLAN REFERENCES: '+JSON.stringify(visiblePlan)+'; read get_website_build_plan before revising.\n'
     if(verifiedBuildContext)systemPrompt+='\nCURRENT BUILD (verified for this conversation): '+JSON.stringify(verifiedBuildContext)+'; user changes go to submit_website_build_feedback for this rendered revision. Status questions go to get_website_build. Never start a second build for feedback.\n'
     systemPrompt+=renderCurrentInstant(new Date())
     if(voice)systemPrompt+=VOICE_DIRECTIVE
   } else {
-    systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE + DESIGN_SKILL_GUIDE + WEBSITE_BUILD_GUIDE + SOCIAL_LAUNCH_GUIDE
+    systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE + DESIGN_SKILL_GUIDE + WEBSITE_BUILD_GUIDE + SOCIAL_LAUNCH_GUIDE + SOCIAL_CONTENT_GUIDE
     if(visiblePlan)systemPrompt+='\nCURRENT REVIEWED PLAN REFERENCES: '+JSON.stringify(visiblePlan)+'; read get_website_build_plan before revising.\n'
     if(verifiedBuildContext)systemPrompt+='\nCURRENT BUILD (verified for this conversation): '+JSON.stringify(verifiedBuildContext)+'; user change requests go to submit_website_build_feedback in this session, using the actually rendered revision. Questions about status go to get_website_build. Never start a second build for a feedback request.\n'
     // UNCONDITIONAL, AND DELIBERATELY BEFORE EVERYTHING THAT CAN FAIL. The bug
@@ -1235,6 +1238,10 @@ async function executeTool(
 
   if (name === 'list_design_skills' || name === 'read_design_skill') {
     return executeDesignSkillTool(name, input)
+  }
+
+  if (SOCIAL_CONTENT_TOOL_NAMES.includes(name)) {
+    return handleSocialContentTool(name,input,{userId,allowedProjectIds},ownedConversationId,db)
   }
 
   if (SOCIAL_LAUNCH_TOOL_NAMES.includes(name)) {

@@ -16,6 +16,9 @@ on:
       - 'apps/web/app/api/social-connections/**'
       - 'apps/web/e2e/social-connections*'
       - 'apps/web/playwright.social-connections.config.ts'
+      - 'apps/web/app/api/social-content/**'
+      - 'apps/web/e2e/social-content*'
+      - 'apps/web/playwright.social-content.config.ts'
       - 'apps/web/app/api/social-launch/**'
       - 'apps/web/app/(platform)/projects/[slug]/social/**'
       - 'apps/web/e2e/social-launch*'
@@ -77,11 +80,13 @@ jobs:
         working-directory: apps/web
       - run: npx playwright test --config=playwright.atlas-studio-ui.config.ts
         working-directory: apps/web
-      - run: npx vitest run lib/social-launch/catalog.test.ts lib/social-launch/loader.test.ts lib/social-launch/release.test.ts lib/social-connections/providers.test.ts lib/social-connections/readiness.test.ts lib/social-connections/release.test.ts lib/social-connections/legacy-dispatch.test.ts lib/social-connections/snapshot-dispatch.test.ts
+      - run: npx vitest run lib/social-launch/content/validate.test.ts lib/social-launch/catalog.test.ts lib/social-launch/loader.test.ts lib/social-launch/release.test.ts lib/social-connections/providers.test.ts lib/social-connections/readiness.test.ts lib/social-connections/release.test.ts lib/social-connections/legacy-dispatch.test.ts lib/social-connections/snapshot-dispatch.test.ts
         working-directory: apps/web
       - run: npx playwright test --config=playwright.social-launch.config.ts
         working-directory: apps/web
       - run: npx playwright test --config=playwright.social-connections.config.ts
+        working-directory: apps/web
+      - run: npx playwright test --config=playwright.social-content.config.ts
         working-directory: apps/web
       - run: npx playwright test --config=playwright.activity-sheet.config.ts
         working-directory: apps/web
@@ -92,4 +97,5 @@ jobs:
           path: |
             .superpowers/atlas-studio-ui-playwright
             .superpowers/sdd/2026-10-16-activity-sheet/browser
+            .superpowers/sdd/2026-10-16-atlas-social-content/browser
           retention-days: 5

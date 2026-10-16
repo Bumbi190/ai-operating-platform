@@ -3,7 +3,7 @@
     "purpose": "Phase 9Y schema-security classification for every table in schema 'public'. Captured from the EFFECTIVE database catalog, not parsed from migration text — because the exposure this file exists to prevent (workflow_stories) was created by a migration that simply never mentioned row level security, so migration text alone could never have revealed it.",
     "captured_from": "production project iboepohjwrhtgshrqaol",
     "captured_at": "2026-09-25",
-    "total_tables": 115,
+    "total_tables": 118,
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
     "platform_tokens_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090000_platform_tokens_client_revoke.sql (Settings S0): client grants revoked, RLS on, no policy.",
     "platform_credential_events_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090100_platform_credential_events.sql (Settings S0), applied to production before this row was merged: created with RLS on and no policy, every client grant revoked, service_role holding SELECT and INSERT only, UPDATE/DELETE/TRUNCATE refused by triggers.",
@@ -67,7 +67,8 @@
     "website_mockup_review_note": "The two SERVER_ONLY rows were introspected in production after reviewed migration website_mockup_review was applied on 2026-10-15 (ledger20261015213043; stored statement23930 bytes, SHA256516487ed7f2ade1782d5a19aeeda9151109fcce81119634a1505a59b3cc3dd25 matching reviewed source). RLS enabled, zero policies, no anon/authenticated SELECT, service_role reachable. All eight new routines are SECURITY INVOKER with empty search_path and only service_role EXECUTE among API roles. This is a two-table scoped observation, not a whole-catalog refresh.",
     "atlas_builder_studio_note": "Atlas studio migration APPLIED to production 2026-10-15 (ledger name atlas_builder_studio_workspace, version 20261015100050), then introspected read-only. All four live TENANT_RLS rows have RLS enabled, one authenticated owner/project SELECT policy, no anon SELECT, authenticated/service_role SELECT only and no direct INSERT, UPDATE or DELETE. The service_role boolean records reachability, not mutation breadth; mutations use reviewed private RPCs. All nine new routines refuse anon/authenticated EXECUTE. Existing capture timestamp remains the earlier full-catalog capture; this note records the four-row update only.",
     "social_launch_note": "The three social_launch rows were observed in production iboepohjwrhtgshrqaol at 2026-10-16T05:45:43Z after applying social_launch_plans_v1 (ledger version 20261016054513; canonical SQL file20261016052226). RLS on, zero policies, no public/anon/authenticated grants. service_role SELECT/INSERT on immutable revisions/decisions and SELECT/INSERT/UPDATE on roots; all six RPC/trigger functions SECURITY INVOKER, client EXECUTE revoked. Empty owned plan read verified, no seeded plan or decision.",
-    "social_connections_note": "Observed in production iboepohjwrhtgshrqaol at2026-10-16T07:10:48Z after reviewed social_project_connections_v1 (ledger20261016071026; canonical20261016061728). RLS on, zero policies, no public/anon/authenticated grants; service_role SELECT/INSERT/UPDATE only. All12 social_connection functions SECURITY INVOKER with empty search_path, client EXECUTE revoked and service EXECUTE enabled. Zero intents; existing three legacy bindings retained. Safe owned Familje-Stunden metadata read verified without credentials or provider calls."
+    "social_connections_note": "Observed in production iboepohjwrhtgshrqaol at2026-10-16T07:10:48Z after reviewed social_project_connections_v1 (ledger20261016071026; canonical20261016061728). RLS on, zero policies, no public/anon/authenticated grants; service_role SELECT/INSERT/UPDATE only. All12 social_connection functions SECURITY INVOKER with empty search_path, client EXECUTE revoked and service EXECUTE enabled. Zero intents; existing three legacy bindings retained. Safe owned Familje-Stunden metadata read verified without credentials or provider calls.",
+    "social_content_note": "Three social_content tables observed in production iboepohjwrhtgshrqaol after social_content_preparation_v1 was applied on 2026-10-16 (ledger 20261016103411; canonical SQL SHA256 638305f235bc453729bc3fd414faf602a536854342220d8e5ade9e34ce40d967). RLS enabled, zero policies, no anon/authenticated reads and service_role reachability. All six new functions SECURITY INVOKER with empty search_path and client EXECUTE revoked. Scoped three-table observation; older classifications retain their earlier capture dates."
   },
   "tables": {
     "website_build_mockups": {
@@ -1205,6 +1206,36 @@
       "created_by_migration": true
     },
     "social_connection_intents": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "social_content_posts": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "social_content_revisions": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "social_content_decisions": {
       "class": "SERVER_ONLY",
       "rls": true,
       "policies": 0,

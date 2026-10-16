@@ -12,7 +12,18 @@
  * become the thing the vNext plan exists to prevent.
  */
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+import * as React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { parseFragment } from 'parse5'
+import { Breadcrumbs } from '@/components/platform/os/Breadcrumbs'
+vi.mock('next/navigation', () => ({ usePathname: () => '/projects/trading/agents' }))
+;(globalThis as any).React = React
+function elements(node: any): any[] {
+  return [node, ...(node.childNodes ?? []).flatMap(elements)]
+}
+const attr = (node: any, name: string) => node.attrs?.find((a: any) => a.name === name)?.value
+
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { buildBreadcrumbs, shouldRenderBreadcrumbs } from '@/lib/nav/breadcrumbs'
@@ -322,10 +333,18 @@ describe('breadcrumbs · derive from the existing model, never restate it', () =
 
 describe('breadcrumbs · accessibility', () => {
   it('uses semantic breadcrumb markup', () => {
-    expect(COMPONENT_SRC).toMatch(/<nav\s+aria-label=/)
-    expect(COMPONENT_SRC).toContain('<ol')
-    expect(COMPONENT_SRC).toContain('<li')
-    expect(COMPONENT_SRC).toContain('aria-current="page"')
+    const tree = parseFragment(renderToStaticMarkup(
+      React.createElement(Breadcrumbs, { uiGeneration: 'vnext', projects: PROJECTS }),
+    ))
+    const nodes = elements(tree)
+    const nav = nodes.find((node) => node.tagName === 'nav')
+    expect(nav).toBeDefined()
+    expect(attr(nav, 'aria-label')).toBe('Brödsmulor')
+    const list = nav.childNodes.find((node: any) => node.tagName === 'ol')
+    expect(list).toBeDefined()
+    expect(list.childNodes.filter((node: any) => node.tagName === 'li').length).toBeGreaterThan(1)
+    expect(nodes.filter((node) => attr(node, 'aria-current') === 'page')).toHaveLength(1)
+    expect(nodes.some((node) => node.tagName === 'a' && attr(node, 'href') === '/dashboard')).toBe(true)
   })
 
   it('hides decorative separators from assistive tech', () => {

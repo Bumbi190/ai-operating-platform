@@ -1,4 +1,16 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import * as React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { parseFragment } from 'parse5'
+import { MobileRailToggle } from '@/components/platform/os/MobileRailToggle'
+const route = vi.hoisted(() => ({ pathname: '/memory' }))
+vi.mock('next/navigation', () => ({ usePathname: () => route.pathname }))
+;(globalThis as any).React = React
+function elements(node: any): any[] {
+  return [node, ...(node.childNodes ?? []).flatMap(elements)]
+}
+const attr = (node: any, name: string) => node.attrs?.find((a: any) => a.name === name)?.value
+
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
@@ -35,8 +47,23 @@ describe('mobile chrome · MobileRailToggle is untouched', () => {
   })
 
   it('keeps its own desktop-rail suppression', () => {
-    // It hides at lg only when the vNext desktop rail exists — unrelated to M1.
-    expect(RAIL).toContain("atlasVNextHasDesktopRail ? 'lg:hidden' : ''")
+    for (const [pathname, generation, hidden] of [
+      ['/atlas', 'vnext', true],
+      ['/projects/trading', 'vnext', true],
+      ['/memory', 'vnext', false],
+      ['/atlas', 'legacy', false],
+      ['/projects/trading', 'legacy', false],
+    ] as const) {
+      route.pathname = pathname
+      const tree = parseFragment(renderToStaticMarkup(React.createElement(
+        MobileRailToggle, { uiGeneration: generation } as React.ComponentProps<typeof MobileRailToggle>, 'Aktivitet',
+      )))
+      const trigger = elements(tree).find((node) => node.tagName === 'button'
+        && attr(node, 'data-activity-peek') !== undefined)
+      expect(trigger, pathname + ' ' + generation).toBeDefined()
+      expect((attr(trigger, 'class') ?? '').split(/\s+/).includes('lg:hidden'),
+        pathname + ' ' + generation).toBe(hidden)
+    }
   })
 
   it('is not gated on lg the way the orb now is', () => {

@@ -3,7 +3,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { IMPOSSIBLE_PROJECT_ID } from '@/lib/atlas/isolation'
 import { initializeWorkerDb, resetWorkerDb, TEST_AGENT, TEST_CONVERSATION, TEST_PRINCIPAL, TEST_PROJECT, testSql } from '@/lib/website-build/test-db'
-import {approvedTestInput} from './planning/test-fixture'
+import {approvedTestInput,approveTestMockup} from './planning/test-fixture'
 import {handleWebsitePlanningTool} from './planning/chat-tools'
 import {setProjectWebsiteBuilder} from './planning/store'
 let REAL_BUILD_DB: ReturnType<typeof initializeWorkerDb> | null = null
@@ -151,7 +151,9 @@ describe('Website build through actual authenticated chat tool loop', () => {
     const c=crypto.randomUUID();testSql("insert into conversations(id,user_id,project_id) values('"+c+"','"+TEST_PRINCIPAL.userId+"','"+TEST_PROJECT+"');");
     await setProjectWebsiteBuilder(REAL_BUILD_DB!,TEST_PRINCIPAL,{projectId:TEST_PROJECT,agentId:TEST_AGENT});
     const p:any=await handleWebsitePlanningTool('draft_website_build_plan',{projectId:TEST_PROJECT,expectedRevisionId:null,content:{title:'Webb',purpose:'Visa',audience:'Alla',pages:[{key:'index',title:'Hem',purpose:'Visa'}],design:{style:'Omnira',reference:null},features:[],architecture:'Statisk',steps:['Bygg'],domain:{registrar:'strato',requestedName:null}},idempotencyKey:crypto.randomUUID()},TEST_PRINCIPAL,c,REAL_BUILD_DB!);
-    const ref={...p.ref,revisionId:p.currentRevision.revisionId,sha256:p.currentRevision.sha256};
+    const reviewed=await approveTestMockup(REAL_BUILD_DB!,TEST_PRINCIPAL,p);
+    expect(reviewed.designReview?.approved?.id).toBeTruthy();
+    const ref={...reviewed.ref,revisionId:reviewed.currentRevision.revisionId,sha256:reviewed.currentRevision.sha256,mockupDecisionId:reviewed.designReview?.approved?.id};
     const {res,stream}=await ask('start_website_build',{},c,'kör',ref);
     expect(testSql("select count(*) from conversation_messages where conversation_id='"+c+"' and tool_data->>'kind'='website_effect';")).toBe('1');
     expect(res.status).toBe(200);expect(streamCall).toBe(0);expect(stream).toContain('"event":"website_workspace"');expect(stream).toContain('"event":"done"');

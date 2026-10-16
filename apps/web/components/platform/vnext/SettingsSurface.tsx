@@ -192,6 +192,7 @@ function ProjectBlock({ project, canAct }: { project: SettingsProject; canAct: b
         <h3 id={headingId} className={styles.projectTitle}>{project.name}</h3>
         {project.slug ? <code className={styles.code}>{project.slug}</code> : null}
       </div>
+      {project.slug ? <Link href={`/projects/${encodeURIComponent(project.slug)}/social`}>Planera sociala medier med Atlas</Link> : null}
       <ul className={styles.channels} aria-labelledby={headingId}>
         {project.channels.map((channel) => (
           <ChannelCard key={channel.id} project={project} channel={channel} canAct={canAct} />

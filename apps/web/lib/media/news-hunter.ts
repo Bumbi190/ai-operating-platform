@@ -15,7 +15,7 @@
 
 import { Anthropic } from '@anthropic-ai/sdk'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { getAnthropic } from '@/lib/ai/anthropic'
+import { getMediaTextClient } from '@/lib/media/text-client'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
@@ -410,7 +410,7 @@ export async function claudeEditorialPick(
   maxCandidates = 3,
   trendingTopics: string[] = [],   // Optional: trending topics from Hermes to guide selection
 ): Promise<{ candidates: HunterCandidate[]; summary: string }> {
-  const claude = getAnthropic({
+  const claude = getMediaTextClient({
     project: MEDIA_PIPELINE_PROJECT, execution, agent: 'News Hunter', operation: 'Analyze News',
   })
 

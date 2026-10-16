@@ -35,7 +35,7 @@ export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
   // Public, credential-free executable asset: microphone startup must not wait
   // for session refresh or membership reads.
-  if ((path === '/atlas-voice-recorder.js' || /^\/atlas-vad\/(?:silero_vad_v5\.onnx|ort-wasm-simd-threaded\.(?:wasm|mjs))$/.test(path)) && (request.method === 'GET' || request.method === 'HEAD')) {
+  if ((path === '/atlas-voice-recorder.js' || /^\/atlas-vad\/(?:silero_vad_v5\.onnx|ort\.wasm\.min\.mjs|ort-wasm-simd-threaded\.(?:wasm|mjs))$/.test(path)) && (request.method === 'GET' || request.method === 'HEAD')) {
     return NextResponse.next({ request })
   }
   // This exact route performs fresh identity + operator + legacy containment
@@ -188,6 +188,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|atlas-voice-recorder\\.js$|atlas-vad/(?:silero_vad_v5\\.onnx|ort-wasm-simd-threaded\\.(?:wasm|mjs))$|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|txt|ico)$).*)',
+    '/((?!_next/static|_next/image|atlas-voice-recorder\\.js$|atlas-vad/(?:silero_vad_v5\\.onnx|ort\\.wasm\\.min\\.mjs|ort-wasm-simd-threaded\\.(?:wasm|mjs))$|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|txt|ico)$).*)',
   ],
 }

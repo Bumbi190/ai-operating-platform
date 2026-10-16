@@ -49,7 +49,10 @@ export function createSpeechFrameProcessor(model: SpeechModel, receive: (frame: 
 
 /** Pinned Silero V5 graph, shipped with the site; no runtime CDN dependency. */
 export async function loadSpeechModel(signal: AbortSignal): Promise<SpeechModel> {
-  const ort = await import('onnxruntime-web/wasm')
+  // Load the pinned browser ESM as a static asset. Next 14's SWC minifier
+  // cannot safely re-bundle the vendor's already-bundled module.
+  const modulePath = '/atlas-vad/ort.wasm.min.mjs'
+  const ort = await import(/* webpackIgnore: true */ /* @vite-ignore */ modulePath) as typeof import('onnxruntime-web/wasm')
   signal.throwIfAborted()
   ort.env.wasm.numThreads = 1
   ort.env.wasm.proxy = false

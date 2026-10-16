@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import { readFile } from 'node:fs/promises'
 import { createServer } from 'vite'
 const root = process.cwd(), boundary = resolve(root, 'e2e/atlas-voice-pilot-boundaries.ts')
-const vite = await createServer({ configFile: false, optimizeDeps: { include: ['onnxruntime-web/wasm'] }, root, appType: 'custom', esbuild: { jsx: 'automatic' }, resolve: { alias: [
+const vite = await createServer({ configFile: false, root, appType: 'custom', esbuild: { jsx: 'automatic' }, resolve: { alias: [
   { find: '@/lib/atlas/runtime', replacement: boundary },
   { find: '@/lib/supabase/client', replacement: boundary },
   { find: 'next/link', replacement: resolve(root, 'e2e/atlas-entry-next.tsx') },
@@ -19,7 +19,7 @@ const server = httpServer(async (req, res) => {
   }
   // Serve WASM runtime modules as actual static files, just as Next public assets.
   // Vite otherwise tries to transform an imported public .mjs file and rejects it.
-  if (/^\/atlas-vad\/(?:silero_vad_v5\.onnx|ort-wasm-simd-threaded\.(?:wasm|mjs))$/.test(url.pathname)) {
+  if (/^\/atlas-vad\/(?:silero_vad_v5\.onnx|ort\.wasm\.min\.mjs|ort-wasm-simd-threaded\.(?:wasm|mjs))$/.test(url.pathname)) {
     if (url.pathname.endsWith('.onnx')) {
       modelRequests++
       if (modelMode === 'fail-once' && modelRequests === 1) { res.writeHead(503); res.end(); return }

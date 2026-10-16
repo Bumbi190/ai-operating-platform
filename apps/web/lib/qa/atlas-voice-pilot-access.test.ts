@@ -49,7 +49,7 @@ beforeEach(() => {
 })
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs() })
 describe('voice requests through the actual middleware and route authority', () => {
-  it.each(['/atlas-voice-recorder.js', '/atlas-vad/silero_vad_v5.onnx', '/atlas-vad/ort-wasm-simd-threaded.wasm', '/atlas-vad/ort-wasm-simd-threaded.mjs'])('serves public audio asset %s without depending on auth availability', async path => {
+  it.each(['/atlas-voice-recorder.js', '/atlas-vad/silero_vad_v5.onnx', '/atlas-vad/ort.wasm.min.mjs', '/atlas-vad/ort-wasm-simd-threaded.wasm', '/atlas-vad/ort-wasm-simd-threaded.mjs'])('serves public audio asset %s without depending on auth availability', async path => {
     const response = await middleware(new NextRequest('https://preview.test' + path))
     expect(response.headers.get('x-middleware-next')).toBe('1')
     expect(s.getUser).not.toHaveBeenCalled(); expect(s.query).not.toHaveBeenCalled()

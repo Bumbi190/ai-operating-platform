@@ -19,7 +19,7 @@ This is an architectural limitation of amplitude-only detection, not evidence th
 - Keep one second around confirmed onset instead of uploading the entire waiting period. Manual completion still has the bounded 90-second review fallback. A detected question has its own 90-second maximum and capped questions still require review.
 - Change the initial thinking pause from 2000 to 1200 ms. Longer pauses remain selectable. This removes 800 ms from that configured wait; it does not prove an 800 ms improvement in total live response time.
 - Explain in the UI that Atlas submits automatically after the pause and the finish button is optional.
-- Self-host the pinned model/runtime assets. Only the three exact static asset paths bypass middleware authentication. Speech API authorization, revocation, project containment, budget ceilings, billing and no-retry behavior remain intact.
+- Self-host the pinned model/runtime assets. Only the four exact static asset paths bypass middleware authentication. Speech API authorization, revocation, project containment, budget ceilings, billing and no-retry behavior remain intact.
 - Bound initial model loading to 15 seconds, keep stop immediately effective, release late model sessions, and drain worklet frames during startup so audio from before “Atlas lyssnar” cannot be replayed afterward.
 - Add an allowlisted `endReason` (pause/manual/limit/unknown) to existing transcription timing logs. Never log arbitrary header contents, audio or transcripts.
 
@@ -27,12 +27,16 @@ The startup replay defect was independently reproduced with a two-second delayed
 
 ## Verification
 
-- Targeted voice/live-voice/middleware suite: **188/188 passed**.
+- Targeted voice/live-voice/middleware suite after the packaging follow-up: **189/189 passed**.
 - TypeScript: passed.
-- Native Chromium: **17/17** full voice scenarios passed using real Web Audio, worklet, resampling and the actual pinned Silero model. After the startup-drain correction, **3/3** relevant startup/retry/cancellation scenarios passed, including the new delayed-model/pre-listening-audio regression. There are 18 distinct browser scenarios.
+- Native Chromium after the packaging follow-up: **18/18** full voice scenarios passed using real Web Audio, worklet, resampling, the self-hosted browser ESM runtime and the actual pinned Silero model. This includes delayed-model/pre-listening audio, failed model download followed by retry, cancellation, room noise, quiet speech and three consecutive turns.
 - The browser speech fixture is locally synthesized English speech with seeded room noise and a reduced-amplitude case. External transcription, chat and TTS are simulated. This checks local detection, dispatch and lifecycle, not Swedish transcription quality or actual mobile provider latency.
-- Full suite: **12729 passed, 403 failed, 1277 pending** across the same 97 failing files. Exact failed-test identities match the parent recovery run: zero new or removed failures. All 154 voice/live-voice tests passed inside the full run. The full suite is not green; inherited failure details are recorded in the preceding latency/restart verification documents.
+- Full suite on `7e6b80c`, before the packaging-only follow-up: **12729 passed, 403 failed, 1277 pending** across the same 97 failing files. Exact failed-test identities match the parent recovery run: zero new or removed failures. All 154 voice/live-voice tests passed inside the full run. The full suite is not green; inherited failure details are recorded in the preceding latency/restart verification documents.
 - Diff check: passed.
+
+## Packaging follow-up
+
+The first Vercel build (`dpl_4moejjBw9TVgJhoDEsMRsJ76E8RL`, head `7e6b80c`) passed migration guard 113/113 but failed because Next 14's SWC minifier tried to re-bundle the vendor ESM (`import/export outside module`). The follow-up serves the pinned browser ESM as a fourth exact public asset, with an ignored native dynamic import, instead of sending vendor ESM through Next's bundler. All 189 targeted tests, all 18 native browser scenarios and TypeScript passed again against that loading path. Deployment state is recorded in PR #359 and Notion after the next build completes.
 
 ## Remaining response-time work
 

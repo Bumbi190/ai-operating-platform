@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { Mic, MicOff, Play, Send, Square, ArrowLeft, Headphones } from 'lucide-react'
 import { AtlasConversationController } from '@/lib/atlas/conversation/controller'
-import { createPilotVoiceCapture } from '@/lib/atlas/voice-pilot/capture'
+import { createPcmVoiceCapture } from '@/lib/atlas/voice-pilot/pcm-capture'
 import { createPcmSpeechPlayer } from '@/lib/atlas/voice-pilot/player'
 import { takeSpeechChunk } from '@/lib/atlas/voice-pilot/reply'
 import { isAtlasSwedishVoice, type AtlasSwedishVoice } from '@/lib/atlas/voice-pilot/voices'
@@ -25,13 +25,14 @@ export function AtlasVoiceTrial() {
   const [playbackMode, setPlaybackMode] = useState<'speakers' | 'headphones'>('speakers')
   const [outputBusy, setOutputBusy] = useState(false)
   const [listening, setListening] = useState(false)
+  const [transcribing, setTranscribing] = useState(false)
   const [timing, setTiming] = useState<Timing | null>(null)
   const [mic, setMic] = useState(false), [opening, setOpening] = useState(false), [speaking, setSpeaking] = useState(false)
   const [draft, setDraft] = useState(''), [reply, setReply] = useState(''), [notice, setNotice] = useState('')
   const [sending, setSending] = useState(false)
   const mounted = useRef(false), sendingRef = useRef(false), speechEpoch = useRef(0), lifetime = useRef(0)
   const player = useRef<ReturnType<typeof createPcmSpeechPlayer> | null>(null)
-  const capture = useRef<ReturnType<typeof createPilotVoiceCapture> | null>(null)
+  const capture = useRef<ReturnType<typeof createPcmVoiceCapture> | null>(null)
   const heldDraft = useRef(''), draftRevision = useRef(0), draftSource = useRef<'text' | 'voice'>('text')
   const outputActive = useRef(false), lastQuietMs = useRef(0)
   const timedReply = useRef<(Timing & { startedAt: number; audioToken: number }) | null>(null)
@@ -56,7 +57,7 @@ export function AtlasVoiceTrial() {
   function stopSpeech() { speechEpoch.current++; timedReply.current = null; player.current?.stop() }
   function stopAll() {
     lifetime.current++; stopSpeech(); capture.current?.stop(); capture.current = null
-    if (mounted.current) { setMic(false); setOpening(false); setListening(false) }
+    if (mounted.current) { setMic(false); setOpening(false); setListening(false); setTranscribing(false) }
   }
 
   useEffect(() => {
@@ -104,9 +105,10 @@ export function AtlasVoiceTrial() {
     if (mic || opening) { stopAll(); return }
     atlas?.deactivate(); setNotice(''); setOpening(true)
     const token = lifetime.current
-    const next = createPilotVoiceCapture({ pauseMs, playbackMode,
+    const next = createPcmVoiceCapture({ pauseMs, playbackMode,
       endpoint: quietMs => { lastQuietMs.current = quietMs },
       listening: value => { if (mounted.current && token === lifetime.current) setListening(value) },
+      processing: value => { if (mounted.current && token === lifetime.current) setTranscribing(value) },
       active: value => { if (mounted.current && token === lifetime.current) { setMic(value); setOpening(false) } },
       notice: message => { if (mounted.current && token === lifetime.current) { setOpening(false); setNotice(message) } },
       draft: text => { if (mounted.current && token === lifetime.current) writeDraft([heldDraft.current, text].filter(Boolean).join(' '), 'voice') },
@@ -195,11 +197,13 @@ export function AtlasVoiceTrial() {
       <p className="mt-4 flex items-center gap-2 text-xs text-slate-400"><Headphones size={14} />{playbackMode === 'speakers' ? 'Med högtalare lyssnar Atlas när han har tystnat. Tryck på Avbryt under svaret och börja prata när det står Atlas lyssnar.' : 'Med hörlurar kan du avbryta genom att börja prata.'}</p>
     </section>
     <section className="mt-5 rounded-2xl border border-white/10 bg-slate-900/40 p-5" aria-label="Testsamtal">
+      <p className="mb-4 text-xs leading-5 text-slate-400">ElevenLabs tolkar din svenska. Tala när det står Atlas lyssnar. När du pratat klart kan du även trycka på Klar med frågan.</p>
       <div className="flex flex-wrap items-center gap-3">
         <button className={button + (mic || opening ? ' bg-teal-400/15 text-teal-200' : '')} disabled={!voices.length} onClick={() => void toggleMic()}>{mic || opening ? <MicOff size={17} /> : <Mic size={17} />}{opening ? 'Avbryt mikrofonstart' : mic ? 'Stäng mikrofonen' : 'Starta mikrofonen'}</button>
         <button className={button} onClick={stopAll}><Square size={15} /> Stoppa allt ljud</button>
         {mic && playbackMode === 'speakers' && outputBusy && <button className={button + ' border-teal-300 text-teal-200'} onClick={stopSpeech}>Avbryt</button>}
-        <p role="status" className="text-sm text-teal-200">{speaking ? playbackMode === 'speakers' ? 'Atlas pratar · avbryt med knappen' : 'Atlas pratar · du kan avbryta' : mic || opening ? listening ? 'Atlas lyssnar' : 'Vänta ett ögonblick · mikrofonen görs redo' : 'Mikrofonen är avstängd'}</p>
+        {mic && <button className={button} disabled={!listening || transcribing} onClick={() => void capture.current?.finish()}>Klar med frågan</button>}
+        <p role="status" className="text-sm text-teal-200">{transcribing ? 'Atlas tolkar det du sa…' : speaking ? playbackMode === 'speakers' ? 'Atlas pratar · avbryt med knappen' : 'Atlas pratar · du kan avbryta' : mic || opening ? listening ? 'Atlas lyssnar' : 'Vänta ett ögonblick · mikrofonen görs redo' : 'Mikrofonen är avstängd'}</p>
       </div>
       <div className="mt-5 space-y-4" aria-live="polite">
         {snapshot.history.map((message, index) => <div key={index} className={message.role === 'user' ? 'ml-8 rounded-xl bg-teal-500/10 p-4' : 'mr-8 rounded-xl bg-white/5 p-4'}><p className="mb-1 text-xs text-slate-400">{message.role === 'user' ? 'Du' : 'Atlas'}</p><p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p></div>)}
@@ -214,6 +218,6 @@ export function AtlasVoiceTrial() {
       {timing && <details className="mt-4 text-xs leading-6 text-slate-400"><summary className="cursor-pointer">Svarstid i senaste frågan</summary><p>{timing.quietMs !== null && <>Väntan före skickat: {(timing.quietMs / 1000).toFixed(1)} s. </>}Till första text: {timing.textMs === null ? '—' : (timing.textMs / 1000).toFixed(1) + ' s'}. Till ljudstart: {timing.audioMs === null ? '—' : (timing.audioMs / 1000).toFixed(1) + ' s'}.</p></details>}
       {snapshot.id && <Link href={'/chat/' + snapshot.id} onClick={stopAll} className="mt-4 inline-block text-sm text-teal-200 underline underline-offset-4">Öppna samtalet för projektjobb och godkännanden</Link>}
     </section>
-    <p className="mt-5 text-xs leading-5 text-slate-400">Rösten debiteras per uppläst tecken inom Omniras kostnadskontroll. Atlas chattkostnad tillkommer. Avbryter du talet fortsätter ett redan påbörjat jobb; din fortsättning väntar i textrutan medan Atlas arbetar.</p>
+    <p className="mt-5 text-xs leading-5 text-slate-400">Taligenkänning debiteras efter inspelad ljudtid och rösten per uppläst tecken inom Omniras kostnadskontroll. Atlas chattkostnad tillkommer. Avbryter du talet fortsätter ett redan påbörjat jobb; din fortsättning väntar i textrutan medan Atlas arbetar.</p>
   </main>
 }

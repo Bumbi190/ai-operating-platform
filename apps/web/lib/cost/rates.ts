@@ -33,6 +33,10 @@ export async function getRates(): Promise<Record<string, number>> {
   const fallback = {
     usd_sek: 10.5,
     elevenlabs_usd_per_1k_chars: 0.24,
+    // Scribe v2 + the fixed <=100 domain keyterms, USD/audio hour.
+    // Verified 2026-10-16: elevenlabs.io/pricing/api lists 0.22 + 0.05.
+    // The endpoint's alternative +20% figure is lower; use the higher book rate.
+    elevenlabs_scribe_v2_keyterms_usd_per_hour: 0.27,
     ideogram_v3_usd_per_image: 0.08,
     gpt_image_usd_per_image: 0.042,
   }

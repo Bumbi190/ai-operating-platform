@@ -1,4 +1,4 @@
-// Native Web Audio + simulated ASR/API boundaries. No paid calls, mic permission,
+// Native Web Audio/worklet + simulated transcription/API. No paid calls, mic permission,
 // project jobs or login. Controls make lifecycle races reproducible through UI.
 import React, { useState } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -11,8 +11,8 @@ let delayResume = false, delayCreate = false, holdChat = true
 let pendingResumes: (() => void)[] = [], releaseCreate: (() => void) | undefined
 let chat: ReadableStreamDefaultController<Uint8Array> | null = null
 let mediaContext: AudioContext | null = null, gain: GainNode | null = null
-let tracks = 0, speechRequests = 0, chatRequests = 0, update = () => {}
-let currentRecognition: FixtureRecognition | null = null
+let tracks = 0, speechRequests = 0, chatRequests = 0, transcriptionRequests = 0, update = () => {}
+let transcription = ''
 const encoder = new TextEncoder()
 const event = (value: unknown) => encoder.encode('data: ' + JSON.stringify(value) + '\n\n')
 
@@ -23,20 +23,6 @@ class DelayedContext extends nativeContext {
   }
 }
 window.AudioContext = DelayedContext
-class FixtureRecognition {
-  lang = ''; continuous = false; interimResults = false
-  onresult: ((value: any) => void) | null = null
-  onend: (() => void) | null = null
-  onstart: (() => void) | null = null
-  onspeechstart: (() => void) | null = null
-  onspeechend: (() => void) | null = null
-  onerror: ((value: any) => void) | null = null
-  results: any[] = []
-  start() { currentRecognition = this; this.onstart?.(); update() }
-  stop() { this.onend?.() }
-  abort() { if (currentRecognition === this) currentRecognition = null; update() }
-}
-Object.assign(window, { SpeechRecognition: FixtureRecognition })
 Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () => {
   mediaContext ??= new nativeContext()
   await mediaContext.resume()
@@ -69,6 +55,10 @@ window.fetch = async (input, init) => {
     } }))
   }
   if (url === '/api/atlas/voice-pilot/speech' && init?.method === 'POST') {
+    if (new Headers(init.headers).get('content-type') === 'audio/pcm') {
+      transcriptionRequests++; update()
+      return Response.json({ text: transcription })
+    }
     speechRequests++; update()
     const bytes = new Uint8Array(24_000 * 2 * 3), view = new DataView(bytes.buffer)
     for (let i = 0; i < bytes.length / 2; i++) view.setInt16(i * 2, Math.sin(i * 2 * Math.PI * 440 / 24_000) * 600, true)
@@ -78,16 +68,11 @@ window.fetch = async (input, init) => {
 }
 
 async function say(text: string) {
-  if (!currentRecognition || !gain) throw new Error('Start the fixture microphone first')
-  currentRecognition.onspeechstart?.()
+  if (!tracks || !gain) throw new Error('Start the fixture microphone first')
+  transcription = text
   gain.gain.value = 0.12
   await new Promise(resolve => setTimeout(resolve, 300))
   gain.gain.value = 0
-  const rec = currentRecognition
-  if (!rec) return
-  rec.onspeechend?.()
-  rec.results.push(Object.assign([{ transcript: text }], { isFinal: true }))
-  rec.onresult?.({ results: rec.results })
 }
 function Fixture() {
   const [, render] = useState(0); update = () => render(n => n + 1)
@@ -104,7 +89,7 @@ function Fixture() {
       <button style={style} onClick={() => void say('Lägg till en blå knapp.')}>Säg första avbrottet</button>
       <button style={style} onClick={() => void say('Och gör den stor.')}>Säg andra avbrottet</button>
       <button style={style} onClick={simulateSignout}>Simulera utloggning</button>
-      <p role="status">Aktiva mikrofonspår: {tracks}. Talbegäranden: {speechRequests}. Chattbegäranden: {chatRequests}. Taligenkänning: {currentRecognition ? 'på' : 'av'}.</p>
+      <p role="status">Aktiva mikrofonspår: {tracks}. Talbegäranden: {speechRequests}. Chattbegäranden: {chatRequests}. Transkriberingar: {transcriptionRequests}.</p>
     </details>
     <AtlasVoiceTrial />
   </>

@@ -28,6 +28,7 @@ import {
 } from '@/lib/media/job/dispatch'
 import type { ExecutionContract } from '@/lib/governance/execution-stop'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { PCM_MAX_BYTES } from '@/lib/atlas/voice-pilot/pcm'
 import { admitPhysicalRequest, authorityForRequest, composeAbortSignals, GovernanceDispatchUnknownError, watchExecutionAuthority } from '@/lib/governance/execution-signal'
 
 export interface WordTiming {
@@ -438,5 +439,60 @@ export async function streamAtlasSwedishVoice(
     // zero-usage row. The authority watcher still follows body termination.
     return new Response(body, { headers: { 'Content-Type': 'audio/pcm', 'Cache-Control': 'no-store',
       'x-atlas-sample-rate': '24000' } })
+  })
+}
+
+/** One file, fixed raw-PCM duration. No live session, fallback or paid retry. */
+export async function transcribeAtlasSwedishPcm(
+  ctx: { execution: ExecutionContract; project: ProjectRef; operation: string },
+  audio: Uint8Array, callerSignal: AbortSignal,
+): Promise<string> {
+  if (audio.length < 3200 || audio.length > PCM_MAX_BYTES || audio.length % 2) throw new Error('invalid_pcm')
+  const key = process.env.ELEVENLABS_API_KEY?.trim()
+  if (!key) throw new Error('transcription_not_configured')
+  callerSignal.throwIfAborted()
+  const rates = await getRates(), perHour = rates.elevenlabs_scribe_v2_keyterms_usd_per_hour
+  if (!Number.isFinite(perHour) || perHour <= 0) throw new Error('unbounded_transcription_spend')
+  // The provider is forced to s16le/16kHz/mono, so bytes determine duration.
+  // Reserve a whole started minute, covering rounding/minimums conservatively.
+  const minutes = Math.ceil(audio.length / (16000 * 2 * 60))
+  const ceiling = fixedUnitCeiling(minutes / 60, perHour, rates, `atlas-scribe:${minutes}minutes`)
+  if (!ceiling.ok) throw new Error('unbounded_transcription_spend')
+  const authority = authorityForRequest(ctx.execution, async ref => {
+    const result = await resolveGovernedProjectId(ref); return result.ok ? result.projectId : null
+  })
+  return withGovernedSpend({ project: ctx.project, execution: ctx.execution, provider: 'elevenlabs', operation: ctx.operation,
+    estimatedSek: ceiling.sek, ceilingBasis: 'fixed_units', rates }, async () => {
+    await admitPhysicalRequest(() => createAdminClient(), authority, 'elevenlabs')
+    const watch = watchExecutionAuthority(() => createAdminClient(), authority)
+    const composed = composeAbortSignals([watch.signal, callerSignal, AbortSignal.timeout(20_000)])
+    let dispatched = false
+    try {
+      const { ElevenLabsClient } = await import('@elevenlabs/elevenlabs-js')
+      if (composed.signal.aborted) throw new ProviderNotDispatchedError('Atlas transcription stopped before dispatch')
+      const client = new ElevenLabsClient({ apiKey: key, maxRetries: 0, fetch: (input, init) => {
+        if (dispatched) throw new Error('duplicate_transcription_dispatch')
+        if (composed.signal.aborted) throw new ProviderNotDispatchedError('Atlas transcription stopped before dispatch')
+        dispatched = true
+        return fetch(input, init)
+      } })
+      const result = await client.speechToText.convert({
+        file: new Blob([new Uint8Array(audio)], { type: 'audio/pcm' }),
+        modelId: 'scribe_v2', fileFormat: 'pcm_s16le_16', languageCode: 'swe',
+        keyterms: ['Omnira', 'Atlas', 'Handlarbörsen', 'Familje-Stunden', 'The Prompt', 'GainPilot'],
+        tagAudioEvents: false, diarize: false, useMultiChannel: false, timestampsGranularity: 'none',
+      }, { maxRetries: 0, timeoutInSeconds: 20, abortSignal: composed.signal })
+      if (!('text' in result) || typeof result.text !== 'string' || result.text.length > 12000) throw new Error('invalid_transcription_response')
+      return result.text
+    } catch (error) {
+      if (!dispatched) throw new ProviderNotDispatchedError('Atlas transcription was not dispatched', error)
+      if (watch.abortReason) throw new GovernanceDispatchUnknownError('elevenlabs', watch.abortReason, error)
+      const status = (error as { statusCode?: number })?.statusCode
+      if (typeof status === 'number' && statusProvesNotCreated(status)) throw new ProviderNotDispatchedError('elevenlabs rejected transcription', error)
+      const verdict = classifyTransportFailure(error)
+      if (verdict.sent === false) throw new ProviderNotDispatchedError('elevenlabs did not receive transcription', error)
+      throw new ProviderDispatchUnknownError({ provider: 'elevenlabs', observation: 'response_lost', detail: 'Atlas transcription outcome unconfirmed', cause: error })
+    } finally { composed.dispose(); watch.dispose() }
+    // With no metered usage, settlement retains the full fixed-duration ceiling.
   })
 }

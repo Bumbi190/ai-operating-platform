@@ -3,6 +3,8 @@ import { availableSwedishVoices, streamSwedishSpeech } from '@/lib/atlas/voice-p
 import { ATLAS_SWEDISH_VOICES, isAtlasSwedishVoice } from '@/lib/atlas/voice-pilot/voices'
 import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
 import { GLOBAL_ONLY } from '@/lib/governance/execution-stop'
+import { transcribeAtlasSwedishPcm } from '@/lib/media/elevenlabs'
+import { PCM_MAX_BYTES } from '@/lib/atlas/voice-pilot/pcm'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -23,7 +25,8 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const denial = await guard(); if (denial) return denial
   if (request.headers.get('origin') !== new URL(request.url).origin) return Response.json({ error: 'Ogiltigt ursprung.' }, { status: 403 })
-  let value: unknown
+  const audio = request.headers.get('content-type')?.split(';')[0].trim() === 'audio/pcm'
+  let bytes: Uint8Array
   try {
     // Bound actual bytes, not a caller-controlled Content-Length header.
     const reader = request.body?.getReader()
@@ -32,13 +35,25 @@ export async function POST(request: Request) {
     for (;;) {
       const chunk = await reader.read(); if (chunk.done) break
       size += chunk.value.length
-      if (size > 8192) { await reader.cancel(); return Response.json({ error: 'Texten är för lång.' }, { status: 413 }) }
+      if (size > (audio ? PCM_MAX_BYTES : 8192)) { await reader.cancel(); return Response.json({ error: audio ? 'Inspelningen är för lång.' : 'Texten är för lång.' }, { status: 413 }) }
       chunks.push(chunk.value)
     }
-    const bytes = new Uint8Array(size); let offset = 0
+    bytes = new Uint8Array(size); let offset = 0
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length }
-    value = JSON.parse(new TextDecoder().decode(bytes))
   } catch { return Response.json({ error: 'Ogiltig rösttext.' }, { status: 400 }) }
+  if (audio) {
+    if (bytes.length < 3200 || bytes.length % 2) return Response.json({ error: 'Inspelningen kunde inte läsas.' }, { status: 400 })
+    try {
+      const text = await transcribeAtlasSwedishPcm({ project: PLATFORM_COMPAT_PROJECT, operation: 'Atlas Swedish transcription trial',
+        // Personal operator input, before any chat/project tool is executed.
+        execution: { context: 'OPERATOR_INTERACTIVE', scope: GLOBAL_ONLY },
+      }, bytes, request.signal)
+      return Response.json({ text }, { headers: { 'Cache-Control': 'no-store' } })
+    } catch { return Response.json({ error: 'Talet kunde inte tolkas. Kontrollera åtkomst och budget eller försök igen.', code: 'ATLAS_TRANSCRIPTION_UNAVAILABLE' }, { status: 503 }) }
+  }
+  let value: unknown
+  try { value = JSON.parse(new TextDecoder().decode(bytes)) }
+  catch { return Response.json({ error: 'Ogiltig rösttext.' }, { status: 400 }) }
   const body = value as { text?: unknown; voice?: unknown } | null
   if (!body || typeof body.text !== 'string' || !body.text.trim() || body.text.length > 600 || !isAtlasSwedishVoice(body.voice)) {
     return Response.json({ error: 'Välj svensk röst och en text på högst 600 tecken.' }, { status: 400 })

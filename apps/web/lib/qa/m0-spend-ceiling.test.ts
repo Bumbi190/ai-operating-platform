@@ -339,7 +339,7 @@ describe('M0 ceiling guards', () => {
     expect(sites).toEqual([
       'lib/ai/openai-client.ts:3',                       // speech (per-char models only) + 2 gpt-image (refused before reserving)
       'lib/media/dispatch/governed-dispatch.ts:1',       // MuAPI (billable refused; sandbox 0)
-      'lib/media/elevenlabs.ts:3',                       // narrator chars + sound seconds + Atlas streaming chars (no custom sharing rates)
+      'lib/media/elevenlabs.ts:4',                       // narrator chars + sound seconds + Atlas streaming chars + byte-bounded Scribe duration
       'lib/media/image-client.ts:2',                     // Ideogram v3 + legacy (one DEFAULT/TURBO v3 image or refused)
     ])
     const el = readFileSync(join(ROOT, 'lib/media/elevenlabs.ts'), 'utf8')

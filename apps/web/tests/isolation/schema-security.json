@@ -3,7 +3,8 @@
     "purpose": "Phase 9Y schema-security classification for every table in schema 'public'. Captured from the EFFECTIVE database catalog, not parsed from migration text — because the exposure this file exists to prevent (workflow_stories) was created by a migration that simply never mentioned row level security, so migration text alone could never have revealed it.",
     "captured_from": "production project iboepohjwrhtgshrqaol",
     "captured_at": "2026-09-25",
-    "total_tables": 122,
+    "handlarborsen_candidates_migration_note": "Additional candidate memory table to be verified against the scoped live production catalog after operator-approved application: project-locked, RLS and FORCE RLS, zero policies and client grants, service_role SELECT/INSERT only. Earlier table classifications remain unchanged.",
+    "total_tables": 123,
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
     "platform_tokens_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090000_platform_tokens_client_revoke.sql (Settings S0): client grants revoked, RLS on, no policy.",
     "platform_credential_events_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090100_platform_credential_events.sql (Settings S0), applied to production before this row was merged: created with RLS on and no policy, every client grant revoked, service_role holding SELECT and INSERT only, UPDATE/DELETE/TRUNCATE refused by triggers.",
@@ -72,6 +73,16 @@
     "social_profile_publication_note": "Scoped production observation 2026-10-16 after exact reviewed social_project_profiles_v1 (ledger20261016123853, SHA25632ba235a7a7e3d8ec40fe4e552af84b30441c2048312a883b528b666a7371d74,8764chars) and social_manual_publication_v1 (ledger20261016123902,SHA2567e90994492f3c62493e68cef41f9b515b782204f7beb63ae874a6ba1ee938bf2,16760chars). All four tables RLS ON/zero policies/no anon or authenticated privilege/service SELECT reachability. All nine new functions SECURITY INVOKER, empty search_path, client EXECUTE revoked, service EXECUTE present. Four tables empty; no synthetic approvals or publication evidence seeded. Ledger150/public tables122 observed. Existing The Prompt binding fingerprint unchanged; advisor WARN counts20/7/8/1 unchanged (four expected no-policy INFO entries added). Older classifications/capture date retain their prior scope."
   },
   "tables": {
+    "handlarborsen_competitor_candidates": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
     "website_build_mockups": {
       "class": "SERVER_ONLY",
       "rls": true,

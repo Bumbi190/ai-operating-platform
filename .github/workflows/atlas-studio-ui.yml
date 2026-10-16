@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'apps/web/components/platform/os/PlatformWorkspace*'
+      - 'apps/web/components/platform/os/MobileRailToggle*'
+      - 'apps/web/components/platform/os/ActivityRail*'
       - 'apps/web/components/platform/Sidebar*'
       - 'apps/web/components/platform/vnext/ShellTopBar*'
       - 'apps/web/components/platform/vnext/AtlasChat*'
@@ -12,6 +14,8 @@ on:
       - 'apps/web/e2e/atlas-studio-ui-*'
       - 'apps/web/e2e/atlas-studio-ui.spec.ts'
       - 'apps/web/e2e/atlas-studio-costs.spec.ts'
+      - 'apps/web/e2e/activity-sheet*'
+      - 'apps/web/playwright.activity-sheet.config.ts'
       - 'apps/web/lib/website-build/studio/costs*'
       - 'apps/web/lib/website-build/studio/chat-context*'
       - 'apps/web/lib/website-build/studio/preset.ts'
@@ -62,9 +66,13 @@ jobs:
         working-directory: apps/web
       - run: npx playwright test --config=playwright.atlas-studio-ui.config.ts
         working-directory: apps/web
+      - run: npx playwright test --config=playwright.activity-sheet.config.ts
+        working-directory: apps/web
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: atlas-studio-ui
-          path: .superpowers/atlas-studio-ui-playwright
+          path: |
+            .superpowers/atlas-studio-ui-playwright
+            .superpowers/sdd/2026-10-16-activity-sheet/browser
           retention-days: 5

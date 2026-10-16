@@ -1,5 +1,6 @@
 "use client";
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { Maximize2, Minimize2 } from "lucide-react";
 import {
   buildFetch,
   useBuildSession,
@@ -53,7 +54,32 @@ export function BuildPreviewPane({
     [pageKey, setPageKey] = useState("index"),
     [mobile, setMobile] = useState(false);
   const [toolsOpen,setToolsOpen]=useState(false);
-  const toolsId=useId();
+  const toolsId=useId(), viewportId=useId();
+  const viewport=useRef<HTMLDialogElement>(null), fullscreenTrigger=useRef<HTMLButtonElement>(null);
+  const [fullscreen,setFullscreen]=useState(false);
+  const leaveFullscreen=useCallback(()=>{
+    const dialog=viewport.current;
+    if(!dialog?.matches(':modal'))return;
+    dialog.close();
+    dialog.show();
+    setFullscreen(false);
+    fullscreenTrigger.current?.focus();
+  },[]);
+  function enterFullscreen(){
+    const dialog=viewport.current;
+    if(!loaded||!dialog||dialog.matches(':modal'))return;
+    // Promote the same canvas to the top layer; never remount its live iframe.
+    dialog.close();
+    dialog.showModal();
+    setFullscreen(true);
+  }
+  useEffect(()=>{
+    if(!fullscreen)return;
+    const previous=document.body.style.overflow;
+    document.body.style.overflow='hidden';
+    return()=>{document.body.style.overflow=previous;};
+  },[fullscreen]);
+  useEffect(()=>{if(hidden&&fullscreen)leaveFullscreen();},[hidden,fullscreen,leaveFullscreen]);
   const active = useRef(session.activePreviewRevisionId),
     cache = useRef(new Map<string, WebsiteArtifact>());
   useEffect(() => onSession(session), [session, onSession]);
@@ -109,7 +135,10 @@ export function BuildPreviewPane({
     >
       <div className={styles.previewTopline} data-ready={session.status==='ready'}>
        <p role="status"><strong>{BUILD_STATUS_LABELS[session.status]}</strong><span className={styles.previewStage}> · {session.stage}</span></p>
-       {embedded&&<button type="button" className={styles.mobilePreviewTools} aria-expanded={toolsOpen} aria-controls={toolsId} onClick={()=>setToolsOpen(v=>!v)}>Verktyg</button>}
+       <div className={styles.previewActions}>
+        <button ref={fullscreenTrigger} className={styles.fullscreenButton} type="button" aria-haspopup="dialog" aria-controls={viewportId} disabled={!loaded} onClick={enterFullscreen}><Maximize2 size={16} aria-hidden/>Helskärm</button>
+        {embedded&&<button type="button" className={styles.mobilePreviewTools} aria-expanded={toolsOpen} aria-controls={toolsId} onClick={()=>setToolsOpen(v=>!v)}>Verktyg</button>}
+       </div>
       </div>
       {connection === "reconnecting" && (
         <p role="alert">
@@ -184,6 +213,22 @@ export function BuildPreviewPane({
       </div>
       {error && <p role="alert">{error} Senast fungerande preview visas.</p>}
       <div className={styles.canvas}>
+        <dialog ref={viewport} id={viewportId} open className={styles.previewDialog}
+          aria-label={fullscreen?'Webbpreview i helskärm':'Webbpreview'}
+          onCancel={event=>{event.preventDefault();leaveFullscreen();}}
+          onClose={()=>{
+            const dialog=viewport.current;
+            // Ignore the close event queued while promoting the inline dialog.
+            if(dialog&&!dialog.open){
+              dialog.show();
+              setFullscreen(false);
+              fullscreenTrigger.current?.focus();
+            }
+          }}>
+        <div className={styles.fullscreenBar}>
+          <strong>Preview</strong>
+          <button type="button" onClick={leaveFullscreen}><Minimize2 size={16} aria-hidden/>Lämna helskärm</button>
+        </div>
         {loaded ? (
           <BuildPreview
             artifact={loaded.artifact}
@@ -192,6 +237,7 @@ export function BuildPreviewPane({
             onPageChange={setPageKey}
             mobile={mobile}
             onRenderedRevision={onRenderedRevision}
+            onExitFullscreen={leaveFullscreen}
           />
         ) : (
           <div className={styles.empty}>
@@ -200,6 +246,7 @@ export function BuildPreviewPane({
             Du kan fortsätta prata med Atlas under tiden.
           </div>
         )}
+        </dialog>
       </div>
       {loaded?.artifact.integrationNeeds.map((need, i) => (
         <p key={i} className={styles.version}>

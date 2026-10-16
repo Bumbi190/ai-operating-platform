@@ -1,7 +1,7 @@
 import {createServer} from 'vite'
 import {resolve} from 'node:path'
 const root=process.cwd(),boundary=resolve(root,'e2e/atlas-studio-ui-boundaries.tsx')
-const server=await createServer({root,configFile:false,appType:'custom',esbuild:{jsx:'automatic'},css:{postcss:{}},resolve:{alias:[
+const server=await createServer({root,configFile:false,appType:'custom',esbuild:{jsx:'automatic'},resolve:{alias:[
  {find:'@/lib/atlas/runtime',replacement:boundary},
  {find:'@/lib/supabase/client',replacement:boundary},
  {find:'@/components/platform/vnext/AtlasBuildSurface',replacement:boundary},

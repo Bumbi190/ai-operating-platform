@@ -1,0 +1,61 @@
+import {test,expect} from '@playwright/test'
+import {previewArtifact,previewSession} from './atlas-preview-fixture'
+
+for(const viewport of [{width:390,height:844},{width:430,height:932},{width:390,height:650},{width:1440,height:900}])test('preview fills the window and retains its state at '+viewport.width+'x'+viewport.height,async({page},info)=>{
+ const writes:string[]=[]
+ await page.setViewportSize(viewport)
+ await page.route('**/api/website-builds/**',route=>{
+  if(route.request().method()!=='GET'){writes.push(route.request().url());return route.abort()}
+  return route.fulfill({json:route.request().url().includes('/revisions/')?previewArtifact:previewSession})
+ })
+ await page.goto('/build?preview=1')
+ const draft=page.getByLabel('Chattutkast',{exact:true})
+ await draft.fill('Min plan med tre sidor')
+ if(viewport.width<=1000)await page.getByRole('tab',{name:'Preview',exact:true}).click()
+ const frame=page.frameLocator('iframe[title="Webbpreview version 1"]')
+ await expect(frame.getByRole('heading',{name:'Hem',exact:true})).toBeVisible()
+ // Navigate before expanding: the selected page and live demo must survive.
+ await frame.getByRole('link',{name:'Policy',exact:true}).click()
+ await expect(frame.getByRole('heading',{name:'Policy',exact:true})).toBeVisible()
+ await frame.getByLabel('Testanteckning').fill('Sparad under granskning')
+ await page.locator('iframe').evaluate(el=>{Object.assign(window,{__reviewFrame:el})})
+ const before=await page.locator('iframe').boundingBox()
+ const expand=page.getByRole('button',{name:'Helskärm',exact:true})
+ await expect(expand).toBeVisible();await expand.click()
+ const dialog=page.getByRole('dialog',{name:'Webbpreview i helskärm',exact:true})
+ await expect(dialog).toBeVisible()
+ expect(await dialog.evaluate(el=>el.matches(':modal'))).toBe(true)
+ const bounds=await dialog.boundingBox(),canvas=await page.locator('iframe').boundingBox()
+ expect(bounds!.x).toBe(0);expect(bounds!.y).toBe(0)
+ expect(bounds!.width).toBe(viewport.width);expect(bounds!.height).toBe(viewport.height)
+ expect(canvas!.height).toBeGreaterThan(viewport.height-80)
+ expect(canvas!.height).toBeGreaterThan(before!.height)
+ expect(await page.locator('iframe').evaluate(el=>el===(window as any).__reviewFrame)).toBe(true)
+ await expect(frame.getByLabel('Testanteckning')).toHaveValue('Sparad under granskning')
+ expect(await page.evaluate(()=>document.body.style.overflow)).toBe('hidden')
+ const close=dialog.getByRole('button',{name:'Lämna helskärm',exact:true})
+ expect(await close.evaluate(el=>{const b=el.getBoundingClientRect();return el.contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2))})).toBe(true)
+ await page.screenshot({path:info.outputPath('preview-fullscreen-'+viewport.width+'.png')})
+ await close.click()
+ await expect(dialog).toHaveCount(0)
+ await expect(expand).toBeFocused()
+ await expect(frame.getByLabel('Testanteckning')).toHaveValue('Sparad under granskning')
+ expect(await page.evaluate(()=>document.body.style.overflow)).toBe('')
+ // Navigation and scrolling keep working in the enlarged sandbox.
+ await expand.click()
+ await frame.getByRole('link',{name:'Order',exact:true}).click()
+ await expect(frame.getByRole('heading',{name:'Order',exact:true})).toBeVisible()
+ await frame.getByText('Sidans slut',{exact:true}).scrollIntoViewIfNeeded()
+ await expect(frame.getByText('Sidans slut',{exact:true})).toBeInViewport()
+ if(viewport.width===390&&viewport.height===844){
+  await page.setViewportSize({width:844,height:390})
+  await expect.poll(async()=>(await dialog.boundingBox())!.height).toBe(390)
+ }
+ await frame.getByLabel('Testanteckning').focus()
+ await page.keyboard.press('Escape')
+ await expect(dialog).toHaveCount(0);await expect(expand).toBeFocused()
+ await page.setViewportSize(viewport)
+ if(viewport.width<=1000)await page.getByRole('tab',{name:'Chatt',exact:true}).click()
+ await expect(draft).toHaveValue('Min plan med tre sidor')
+ expect(writes).toEqual([])
+})

@@ -3,6 +3,7 @@ import {useState,useRef,useEffect} from 'react'
 import {SOCIAL_LAUNCH_CHANNELS} from '@/lib/social-launch/catalog'
 import type {SocialLaunchPageModel,SocialLaunchChoice,SocialLaunchChannelId,SocialLaunchReadiness} from '@/lib/social-launch/types'
 import styles from './SocialLaunchPanel.module.css'
+import {SocialConnectionControls} from './SocialConnectionControls'
 const formats={text:'Text',image:'Bild',video:'Video',link:'Länk'}
 const cadences={manual:'Vid behov',weekly:'En gång i veckan',twice_weekly:'Två gånger i veckan',daily:'Dagligen'}
 const statuses:Record<SocialLaunchReadiness['connection'],string>={adapter_unavailable:'Kontokoppling saknas i Omnira',unreadable:'Kunde inte läsa anslutningen',needs_connection:'Behöver anslutas',needs_renewal:'Behöver förnyas',needs_verification:'Behöver verifieras',blocked:'Anslutningen är blockerad',verified:'Verifierat konto'}
@@ -47,6 +48,7 @@ function ProjectPanel({initial}:{initial:SocialLaunchPageModel}){
    {error&&<p role="alert">{error}</p>}
    {dirty&&<p className={styles.note}>Spara dina ändringar innan du kan godkänna dem.</p>}
   </div>
+  {model.connectionNotice&&<p role="alert">{model.connectionNotice}</p>}
   <div className={styles.grid}>
    {SOCIAL_LAUNCH_CHANNELS.map(channel=>{
     const choice=choices.find(c=>c.channel===channel.id),readiness=model.channels.find(c=>c.channel===channel.id)
@@ -63,7 +65,7 @@ function ProjectPanel({initial}:{initial:SocialLaunchPageModel}){
      {readiness?.accountId&&<p>Konto: {readiness.accountLabel??'Namn ej verifierat'}</p>}
      {readiness?.connection==='verified'&&readiness.checkedAt&&<p className={styles.note}>Verifierat {new Date(readiness.checkedAt).toLocaleString('sv-SE')}</p>}
      <p className={styles.note}>{channel.note}</p>
-     {channel.connectionAdapter&&<a href={readiness?.setupHref??'/settings'}>Visa projektets anslutning</a>}
+     {model.connections?.find(c=>c.provider===channel.id)?<SocialConnectionControls projectId={projectId} revisionId={revision?.id??null} approved={!dirty&&!stale&&!!choice&&model.plan.decision?.decision==='approve'&&model.plan.decision.revisionId===revision?.id&&model.plan.decision.sha256===revision.sha256} card={model.connections.find(c=>c.provider===channel.id)!} intent={model.connectionIntent} onConnected={()=>void request('refresh')}/>:channel.connectionAdapter&&<a href={readiness?.setupHref??'/settings'}>Visa projektets anslutning</a>}
     </article>
    })}
   </div>

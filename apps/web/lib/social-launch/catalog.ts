@@ -4,9 +4,9 @@ export const SOCIAL_LAUNCH_CHANNELS:readonly {id:SocialLaunchChannelId;label:str
  {id:'youtube',label:'YouTube',connectionAdapter:true,formats:['video'],note:'Koppla projektets kanal med Google. Anslutning ger ingen publiceringsrätt.'},
  {id:'facebook',label:'Facebook',connectionAdapter:true,formats:['text','image','video','link'],note:'Projektets egen Facebook-sida. Rätt sidbehörighet behöver verifieras.'},
  {id:'instagram',label:'Instagram',connectionAdapter:true,formats:['image','video'],note:'Ett professionellt konto med verifierade behörigheter behövs.'},
- {id:'linkedin',label:'LinkedIn',connectionAdapter:false,formats:['text','image','video','link'],note:'Främst Handlarbörsen och dess företagssida. Kontokopplingen återstår att bygga.'},
+ {id:'linkedin',label:'LinkedIn',connectionAdapter:true,formats:['text','image','video','link'],note:'Främst Handlarbörsen och dess företagssida. Välj en verifierad administrerad sida efter godkänd kanalplan.'},
  {id:'x',label:'X',connectionAdapter:false,formats:['text','image','video','link'],note:'Kontokoppling, aktuellt API-pris och kostnadstak behöver verifieras före användning.'},
- {id:'pinterest',label:'Pinterest',connectionAdapter:false,formats:['image','video'],note:'Familje-Stunden är avsedd första koppling. Kontokoppling och produktionsåtkomst återstår.'},
+ {id:'pinterest',label:'Pinterest',connectionAdapter:true,formats:['image','video'],note:'Familje-Stunden är avsedd första koppling. Välj företagskonto och egen offentlig anslagstavla efter godkänd kanalplan.'},
 ]
 export function parseSocialLaunchChoices(input:unknown):SocialLaunchChoice[]{
  if(!Array.isArray(input)||input.length>6)throw Error('INVALID_BODY')

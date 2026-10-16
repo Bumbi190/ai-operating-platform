@@ -6,6 +6,12 @@ const sql = readFileSync(resolve(__dirname,
   '../../../../docs/sql/handlarborsen_competitor_candidates_p1_proposed.sql'), 'utf8')
 
 describe('P1 competitor candidate DB proposal remains locked to one project', () => {
+  it('promotes the exact reviewed DDL (excluding only the opening two comments)', () => {
+    const canonical = readFileSync(resolve(__dirname,
+      '../../supabase/migrations/20261016195000_handlarborsen_competitor_candidates_v1.sql'), 'utf8')
+    const ddl = (input: string) => input.replace(/\r\n/g, '\n').slice(input.indexOf('CREATE TABLE public.handlarborsen_competitor_candidates'))
+    expect(ddl(canonical)).toBe(ddl(sql))
+  })
   it('stages schema outside canonical migrations and only grants service SELECT/INSERT', () => {
     expect(sql).toContain('NOT APPLIED')
     expect(sql).toContain('handlarborsen_competitor_candidates')

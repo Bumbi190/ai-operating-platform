@@ -45,3 +45,22 @@ describe('growth overview presentation',()=>{
   expect((html.match(/data-overview-chart=/g)??[]).length).toBe(2)
  })
 })
+
+describe('portfolio briefing with real source shapes',()=>{
+ it('summarizes the portfolio without promoting one project situation to a global conclusion',()=>{
+  const m=model()
+  m.growth.briefs[0].situation='No material change in this project across the window.'
+  const hero=render(m).split('aria-labelledby="atlas-briefing-title"')[1].split('</section>')[0]
+  expect(hero).toContain('1 förslag att diskutera.')
+  expect(hero).not.toContain('No material change')
+  expect(hero).toContain('1 projekt')
+ })
+ it('shows unavailable source coverage as unknown rather than zero confirmed traffic',()=>{
+  const m=model(true)
+  m.growth.coverage.projects=0
+  const hero=render(m).split('aria-labelledby="atlas-briefing-title"')[1].split('</section>')[0]
+  expect(hero).toContain('Underlaget kunde inte bekräftas just nu.')
+  expect(hero).toContain('—')
+  expect(hero).not.toContain('<strong>0<small>')
+ })
+})

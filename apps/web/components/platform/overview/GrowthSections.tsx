@@ -50,7 +50,14 @@ function Audience({series}:{series:SocialSeries}){
 }
 export function GrowthSections({growth,projects}:{growth:GrowthOverview;projects:GrowthProject[]}){
   const actual=growth.recommendations.filter(r=>r.kind==='analysis')
-  const situation=growth.briefs.find(b=>b.state==='ready'&&b.situation)
+  const sourcesConfirmed=growth.coverage.projects===projects.length
+  const proposalProjects=new Set(actual.map(r=>r.projectId)).size
+  const latestAnalysis=actual.map(r=>r.observedAt).filter((at):at is string=>at!==null).sort().at(-1)
+  const hasMetrics=growth.coverage.web>0||growth.coverage.social>0
+  const headline=!sourcesConfirmed?'Underlaget kunde inte bekräftas just nu.':
+    actual.length?actual.length+' förslag att diskutera.':
+    hasMetrics?'Aktuella mätningar finns att följa. Välj nästa fråga för Atlas.':
+    'Bättre beslut börjar med rätt underlag.'
   const audience=growth.social.filter(s=>s.state!=='missing')
   const web=growth.traffic.filter(t=>t.state!=='missing')
   return <div className={styles.sections}>
@@ -58,12 +65,13 @@ export function GrowthSections({growth,projects}:{growth:GrowthOverview;projects
       <section className={styles.briefing} aria-labelledby="atlas-briefing-title">
         <p className={styles.eyebrow}><span aria-hidden="true">✦</span> ATLAS LÄGESBILD</p>
         <h2 id="atlas-briefing-title">Atlas lägesbild</h2>
-        <p className={styles.briefLead}>{situation?.situation??(actual.length?'Här finns nästa steg att diskutera.':'Bättre beslut börjar med rätt underlag.')}</p>
-        {situation&&<p className={styles.sourceNote}>Sparad bedömning för {projects.find(p=>p.id===situation.projectId)?.name} · {when(situation.producedAt)}</p>}
+        <p className={styles.briefLead}>{headline}</p>
+        {sourcesConfirmed&&actual.length>0&&<p className={styles.sourceNote}>Sparade bedömningar från {proposalProjects} projekt · senast {when(latestAnalysis??null)} · Stockholm</p>}
+        {!sourcesConfirmed&&<p className={styles.sourceNote}>Projektens underlag kunde inte bekräftas. Mättäckningen visas som okänd tills en ny avläsning lyckas.</p>}
         <div className={styles.coverage}>
-          <div><strong>{growth.coverage.projects}</strong><span>projekt i översikten</span></div>
-          <div><strong>{growth.coverage.web}<small>/{growth.coverage.projects}</small></strong><span>med aktuell webbtrafik</span></div>
-          <div><strong>{growth.coverage.social}</strong><span>kanaler med färska följarsiffror</span></div>
+          <div><strong>{projects.length}</strong><span>projekt i översikten</span></div>
+          <div><strong>{sourcesConfirmed?growth.coverage.web:'—'}<small>/{projects.length}</small></strong><span>med aktuell webbtrafik</span></div>
+          <div><strong>{sourcesConfirmed?growth.coverage.social:'—'}</strong><span>kanaler med färska följarsiffror</span></div>
         </div>
         <p className={styles.briefFoot}>Atlas skiljer observationer från förslag. Du väljer nästa steg.</p>
       </section>

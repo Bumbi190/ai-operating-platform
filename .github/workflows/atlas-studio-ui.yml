@@ -73,7 +73,7 @@ jobs:
         working-directory: apps/web
       - run: npx playwright test --config=playwright.atlas-studio-ui.config.ts
         working-directory: apps/web
-      - run: npx vitest run lib/social-launch/catalog.test.ts lib/social-launch/loader.test.ts
+      - run: npx vitest run lib/social-launch/catalog.test.ts lib/social-launch/loader.test.ts lib/social-launch/release.test.ts
         working-directory: apps/web
       - run: npx playwright test --config=playwright.social-launch.config.ts
         working-directory: apps/web

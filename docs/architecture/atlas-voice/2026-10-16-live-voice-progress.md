@@ -13,3 +13,7 @@
 - Physical microphone quality, actual Swedish delivery, actual interruption behavior and provider latency remain untested. Native-boundary doubles verify resource/lifecycle contracts, not a successful live pilot.
 - Final validation: focused 91/91 and standalone typecheck pass. Whole repo: baseline 12,666 passed / 186 failed / 1,217 pending; final 12,703 passed / 186 failed / 1,217 pending. Failed assertion names and failed file identities match exactly: zero new failures. Full failure names and missing SQL setup are recorded in `2026-10-16-live-voice-verification.md`. ESLint has no configuration on this base and was not claimed passing.
 - Task 3 remains BLOCKED. No API endpoint, product page, real Live connection, paid voice generation or production deployment was created.
+
+## Subsequent ElevenLabs trial
+
+André explicitly requested a natural ElevenLabs voice instead of system synthesis. The separate plan is `docs/superpowers/plans/2026-10-16-elevenlabs-swedish-voice-trial.md`. It adds an operator-only preview with fixed-character-bounded speech through the existing sanctioned ElevenLabs adapter, while GPT-Live activation remains blocked. Two real native Swedish Flash listening samples (Anders/Peter) completed for $0.0604 combined. These do not establish integrated microphone quality, interruption timing or end-to-end Atlas latency. See `2026-10-16-elevenlabs-voice-verification.md` for current scope and checks; the historical foundation results above remain unchanged.

@@ -66,7 +66,7 @@
 
 - [x] Run focused tests and typecheck; use `git diff --check`. Existing repository failures must be recorded without weakening assertions or unrelated fixes.
 - [x] Read the final diff independently or use one read-only reviewer. Review the five failure modes above, including the distinction between tested transport behavior and untested provider behavior.
-- [ ] Publish only this branch's completed changes for review. Keep Task 3 explicitly pending when blocked; do not claim a working live pilot, successful Swedish evaluation or measured provider latency from doubles.
+- [x] Publish only this branch's completed changes for review. Foundation published at `17b581ded2a07d357ac5f57a1a0efbef7129dbe6`. Keep Task 3 explicitly pending when blocked; do not claim a working live pilot, successful Swedish evaluation or measured provider latency from doubles.
 
 ## Execution and current prerequisite finding
 

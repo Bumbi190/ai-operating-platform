@@ -45,7 +45,7 @@ Interfaces: SocialPublicationPanel({projectId,post,disabled}); keyed revision, G
 - [x] Run new and existing social browser suites, relevant SQL/API/chat/type/security checks; inspect mobile/desktop; commit.
 
 ## Task5: Coordinated review and deployment
-- [ ] Reconcile all new routes, schema classes and canonical migration counts without weakening gates.
-- [ ] Independent exact-base/head whole-branch review; fix important findings with regressions. No repeated review loop.
-- [ ] Verify/additively apply exact reviewed SQL, confirm stored hash, RLS/function ACL/search_path and unchanged existing data/advisor categories.
+- [x] Reconcile all new routes, schema classes and canonical migration counts without weakening gates.
+- [x] Independent exact-base/head whole-branch review; fix important findings with regressions. No repeated review loop.
+- [x] Verify/additively apply exact reviewed SQL, confirm stored hash, RLS/function ACL/search_path and unchanged existing data/advisor categories.
 - [ ] One pushed PR/CI, locked merge, exact merge tree, production READY/domains and unauthenticated route denial. Report actual account/first-post test as later joint work.

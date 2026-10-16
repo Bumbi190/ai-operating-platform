@@ -35,5 +35,5 @@ Interfaces: SocialProfilePanel({projectId,projectName,onSaved?}); SocialStartGui
 
 ## Task 3: Independent verification and coordinated release
 - [x] Record verification and hand over to separate manual publication plan; never imply posting works early.
-- [ ] One whole-branch review after both independent plans; fix important findings via reproduced regressions.
+- [x] One whole-branch review after both independent plans; fix important findings via reproduced regressions.
 - [ ] Additive schema preflight/apply exact SQL, record stored digest and scoped security metadata. Exact-head CI; locked merge; identical merge tree; production READY/domain checks.

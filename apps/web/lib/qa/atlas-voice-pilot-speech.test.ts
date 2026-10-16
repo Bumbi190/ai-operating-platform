@@ -76,3 +76,19 @@ describe('streaming PCM speech', () => {
     expect(notice.mock.calls.flat().join()).not.toContain('secret vendor text'); failed.dispose()
   })
 })
+
+it('reports stalled access separately and allows a fresh speech request without replaying the old queue', async () => {
+  let available = false
+  const notice = vi.fn(), push = vi.fn()
+  const request = vi.fn(async () => available
+    ? new Response(new Uint8Array([0, 64]))
+    : Response.json({ code: 'ATLAS_VOICE_AUTH_UNAVAILABLE', error: 'private server detail' }, { status: 503 }))
+  const player = createPcmSpeechPlayer({ notice }, { request, sink: { prepare: async () => {}, push, stop: vi.fn(), dispose: vi.fn() } })
+  player.enqueue('Första', 'anders'); player.enqueue('Gammal fortsättning', 'anders')
+  await vi.waitFor(() => expect(notice).toHaveBeenCalledWith(expect.stringContaining('Åtkomstkontrollen')))
+  expect(request).toHaveBeenCalledTimes(1)
+  expect(notice.mock.calls.flat().join()).not.toContain('private server detail')
+  available = true; player.enqueue('Ny fråga', 'anders')
+  await vi.waitFor(() => expect(push).toHaveBeenCalledTimes(1))
+  expect(request).toHaveBeenCalledTimes(2); player.dispose()
+})

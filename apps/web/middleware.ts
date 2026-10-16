@@ -32,6 +32,17 @@ function withUiGenerationCookie(
 }
 
 export async function middleware(request: NextRequest) {
+  const path = request.nextUrl.pathname
+  // Public, credential-free executable asset: microphone startup must not wait
+  // for session refresh or membership reads.
+  if (path === '/atlas-voice-recorder.js' && (request.method === 'GET' || request.method === 'HEAD')) {
+    return NextResponse.next({ request })
+  }
+  // This exact route performs fresh identity + operator + legacy containment
+  // itself, before body parsing or any provider call. Avoid verifying twice.
+  if (path === '/api/atlas/voice-pilot/speech' && (request.method === 'GET' || request.method === 'POST')) {
+    return NextResponse.next({ request })
+  }
   // UI generation is resolved before anything else so the *current* render
   // already sees the choice. Writing it onto the request (not just the
   // response) is what lets /atlas?ui=vnext render vNext immediately without a
@@ -177,6 +188,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|txt|ico)$).*)',
+    '/((?!_next/static|_next/image|atlas-voice-recorder\\.js$|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|txt|ico)$).*)',
   ],
 }

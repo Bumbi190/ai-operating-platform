@@ -1,4 +1,17 @@
 import { createPcmResampler, pcm16, PCM_MAX_BYTES, PCM_RATE } from './pcm'
+import { voiceResponseError, isVoiceAccessFailure, VOICE_ACCESS_NOTICE } from './failure'
+
+function microphoneStartNotice(error: unknown): string {
+  if (error instanceof Error && error.message === 'microphone_worklet_unavailable')
+    return 'Mikrofonens ljudmodul kunde inte laddas. Starta mikrofonen igen när anslutningen fungerar.'
+  if (error instanceof Error && error.name === 'NotAllowedError')
+    return 'Mikrofonåtkomst nekades. Tillåt mikrofonen för den här sidan och försök igen.'
+  if (error instanceof Error && error.name === 'NotFoundError')
+    return 'Ingen mikrofon hittades. Anslut mikrofonen eller hörlurarna och försök igen.'
+  if (error instanceof Error && error.name === 'NotReadableError')
+    return 'Mikrofonen är upptagen eller kunde inte öppnas. Avsluta andra samtal och försök igen.'
+  return 'Mikrofonens ljud kunde inte starta. Försök igen eller ladda om sidan.'
+}
 
 type Options = {
   pauseMs: number; playbackMode?: 'speakers' | 'headphones'
@@ -60,8 +73,8 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
         if (reviewOnly) options.notice('Inspelningen nådde 90 sekunder. Granska texten och skicka den själv, så att ingen avklippt fråga skickas automatiskt.')
         else { options.endpoint?.(wait + Math.max(0, now() - began)); options.receive(text) }
       }
-    } catch {
-      if (live && token === generation && turn === revision && !abort.signal.aborted) options.notice('Talet kunde inte tolkas. Prova att säga frågan igen eller skriv den. Kontrollera åtkomst och budget om felet återkommer.')
+    } catch (error) {
+      if (live && token === generation && turn === revision && !abort.signal.aborted) options.notice(isVoiceAccessFailure(error) ? VOICE_ACCESS_NOTICE : 'Talet kunde inte tolkas. Prova att säga frågan igen eller skriv den. Kontrollera åtkomst och budget om felet återkommer.')
     } finally {
       if (upload === abort) {
         upload = null; options.processing?.(false)
@@ -121,8 +134,8 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
       if (!live || token !== generation) { opened.stop(); return }
       source = opened; resample = createPcmResampler(opened.sampleRate)
       options.active(true); ready(); watchStream()
-    } catch {
-      if (live && token === generation) { stop(); options.notice('Mikrofonen kunde inte starta. Kontrollera behörigheten eller skriv din fråga.') }
+    } catch (error) {
+      if (live && token === generation) { stop(); options.notice(microphoneStartNotice(error)) }
     }
   }
   return { start, stop, discard, hasPendingInput: () => voiced || candidateMs > 0 || !!upload, finish: () => finish(), setOutputActive(value: boolean) {
@@ -148,13 +161,13 @@ function browserDependencies(): Dependencies {
         stream.getTracks().forEach(track => track.stop()); if (node) { node.port.onmessage = null; node.disconnect() }
         input?.disconnect(); if (context && context.state !== 'closed') void context.close().catch(() => {})
       }
-      const wait = async (task: Promise<unknown>) => {
+      const wait = async (task: Promise<unknown>, limitMs = 1500) => {
         let timer: ReturnType<typeof setTimeout> | undefined
         let onAbort = () => {}
         try { await Promise.race([task, new Promise((_, reject) => {
           onAbort = () => reject(new Error('microphone_start_aborted'))
           signal.addEventListener('abort', onAbort, { once: true })
-          timer = setTimeout(() => reject(new Error('microphone_start_timeout')), 1500)
+          timer = setTimeout(() => reject(new Error('microphone_start_timeout')), limitMs)
           if (signal.aborted) onAbort()
         })]) }
         finally { clearTimeout(timer); signal.removeEventListener('abort', onAbort) }
@@ -163,7 +176,8 @@ function browserDependencies(): Dependencies {
       try {
         signal.addEventListener('abort', stop, { once: true }); signal.throwIfAborted()
         context = new AudioContext({ sampleRate: PCM_RATE })
-        await wait(context.audioWorklet.addModule('/atlas-voice-recorder.js'))
+        try { await wait(context.audioWorklet.addModule('/atlas-voice-recorder.js'), 5000) }
+        catch { throw new Error('microphone_worklet_unavailable') }
         node = new AudioWorkletNode(context, 'atlas-voice-recorder')
         node.port.onmessage = event => { if (event.data instanceof Float32Array) receive(event.data) }
         input = context.createMediaStreamSource(stream); input.connect(node); node.connect(context.destination)
@@ -174,7 +188,7 @@ function browserDependencies(): Dependencies {
     },
     async transcribe(audio, signal) {
       const response = await fetch('/api/atlas/voice-pilot/speech', { method: 'POST', headers: { 'Content-Type': 'audio/pcm' }, body: new Uint8Array(audio), signal })
-      if (!response.ok) throw new Error('transcription_failed')
+      if (!response.ok) throw await voiceResponseError(response, 'transcription_failed')
       const result = await response.json()
       if (typeof result.text !== 'string') throw new Error('invalid_transcription')
       return result.text

@@ -1,4 +1,5 @@
 import type { AtlasSwedishVoice } from './voices'
+import { voiceResponseError, isVoiceAccessFailure, VOICE_ACCESS_NOTICE } from './failure'
 
 /** Network chunks may split a signed 16-bit PCM sample at either byte. */
 export function createPcmDecoder() {
@@ -38,7 +39,8 @@ export function createPcmSpeechPlayer(options: { notice(message: string): void; 
         const controller = new AbortController(); abort = controller
         const response = await request(item.text, item.voice, controller.signal)
         if (token !== generation || disposed) { await response.body?.cancel().catch(() => {}); return }
-        if (!response.ok || !response.body) { await response.body?.cancel().catch(() => {}); throw new Error('speech_failed') }
+        if (!response.ok) throw await voiceResponseError(response, 'speech_failed')
+        if (!response.body) throw new Error('speech_failed')
         const reader = response.body.getReader(), decoder = createPcmDecoder()
         let size = 0
         try {
@@ -57,10 +59,10 @@ export function createPcmSpeechPlayer(options: { notice(message: string): void; 
           controller.abort(); await reader.cancel().catch(() => {}); throw error
         } finally { reader.releaseLock() }
       }
-    } catch {
+    } catch (error) {
       if (token === generation && !disposed) {
         stop()
-        options.notice('Rösten kunde inte spelas. Klicka på provlyssna och försök igen; svaret finns kvar i text.')
+        options.notice(isVoiceAccessFailure(error) ? VOICE_ACCESS_NOTICE : 'Rösten kunde inte spelas. Klicka på provlyssna och försök igen; svaret finns kvar i text.')
       }
     } finally { if (token === generation) { running = false; abort = null } }
   }

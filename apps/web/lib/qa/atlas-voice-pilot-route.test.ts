@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const state = vi.hoisted(() => ({ auth: { ok: true, reason: '' }, calls: [] as any[], refused: false, lookup: true, mode: 'ok', dispose: vi.fn(), body: null as ReadableStreamDefaultController<Uint8Array> | null }))
 vi.mock('@/lib/auth/platform-operator', () => ({ resolvePlatformOperator: async () => state.auth }))
+vi.mock('@/lib/supabase/server', () => ({ createClient: async () => ({
+  from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { role: 'owner', revoked_at: null }, error: null }) }) }) }),
+}) }))
 vi.mock('@/lib/cost/rates', () => ({ getRates: async () => ({ usd_sek: 10.5, elevenlabs_usd_per_1k_chars: 0.24 }) }))
 vi.mock('@/lib/cost/governed-spend', async orig => ({ ...(await orig<any>()),
   withGovernedSpend: async (input: unknown, run: () => Promise<Response>) => { state.calls.push(input); if (state.refused) throw new Error('budget'); return run() },

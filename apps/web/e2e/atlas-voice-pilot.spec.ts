@@ -141,3 +141,27 @@ test('ending a reply does not cut off a second continuation being transcribed', 
   await expect(page.getByText('Lägg till en blå knapp. Och gör den stor.', { exact: true })).toBeVisible()
   await expect(page.getByRole('status').filter({ hasText: 'Atlas pratar' })).toBeVisible()
 })
+
+test('a failed recorder download releases the microphone and can be restarted without reloading', async ({ page }) => {
+  await page.goto('/atlas/rosttest?recorder=fail-once')
+  await page.getByRole('button', { name: 'Starta mikrofonen' }).click()
+  await expect(page.getByRole('alert')).toContainText('ljudmodul')
+  await expect(page.getByRole('status').filter({ hasText: 'Aktiva mikrofonspår: 0' })).toBeVisible()
+  await page.getByRole('button', { name: 'Starta mikrofonen' }).click()
+  await expect(page.getByRole('status').filter({ hasText: /^Atlas lyssnar$/ })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'Aktiva mikrofonspår: 1' })).toBeVisible()
+  await page.getByRole('button', { name: 'Säg första frågan' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Atlas pratar' })).toBeVisible()
+})
+
+test('a recorder download taking two seconds still starts and remains cancellable', async ({ page }) => {
+  await page.goto('/atlas/rosttest?recorder=slow')
+  await page.getByRole('button', { name: 'Starta mikrofonen' }).click()
+  await expect(page.getByRole('status').filter({ hasText: /^Atlas lyssnar$/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Stäng mikrofonen', exact: true }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Aktiva mikrofonspår: 0' })).toBeVisible()
+  await page.getByRole('button', { name: 'Starta mikrofonen' }).click()
+  await page.getByRole('button', { name: 'Avbryt mikrofonstart' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Aktiva mikrofonspår: 0' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: /^Mikrofonen är avstängd$/ })).toBeVisible()
+})

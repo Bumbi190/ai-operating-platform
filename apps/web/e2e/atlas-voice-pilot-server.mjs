@@ -1,6 +1,7 @@
 // Run from apps/web: node e2e/atlas-voice-pilot-server.mjs
 import { createServer as httpServer } from 'node:http'
 import { resolve } from 'node:path'
+import { readFile } from 'node:fs/promises'
 import { createServer } from 'vite'
 const root = process.cwd(), boundary = resolve(root, 'e2e/atlas-voice-pilot-boundaries.ts')
 const vite = await createServer({ configFile: false, root, appType: 'custom', esbuild: { jsx: 'automatic' }, resolve: { alias: [
@@ -9,10 +10,28 @@ const vite = await createServer({ configFile: false, root, appType: 'custom', es
   { find: 'next/link', replacement: resolve(root, 'e2e/atlas-entry-next.tsx') },
   { find: '@', replacement: root },
 ] }, server: { middlewareMode: true, host: '127.0.0.1' } })
-const server = httpServer((req, res) => vite.middlewares(req, res, async () => {
+let recorderMode = '', recorderRequests = 0
+const server = httpServer(async (req, res) => {
+  const url = new URL(req.url, 'http://127.0.0.1:54397')
+  if (url.pathname === '/atlas/rosttest') {
+    recorderMode = url.searchParams.get('recorder') ?? ''; recorderRequests = 0
+  }
+  // Worklet fetches are not intercepted by page.route in Chromium. Exercise
+  // real HTTP failures/delays here, before Vite's static asset handler.
+  if (url.pathname === '/atlas-voice-recorder.js') {
+    recorderRequests++
+    if (recorderMode === 'fail-once' && recorderRequests === 1) {
+      res.writeHead(503, { 'content-type': 'text/plain' }); res.end('temporarily unavailable'); return
+    }
+    if (recorderMode === 'slow') await new Promise(resolve => setTimeout(resolve, 2000))
+    if (res.destroyed) return
+    res.writeHead(200, { 'content-type': 'application/javascript', 'cache-control': 'no-store' })
+    res.end(await readFile(resolve(root, 'public/atlas-voice-recorder.js'))); return
+  }
+  vite.middlewares(req, res, async () => {
   res.setHeader('content-type', 'text/html')
   res.end(await vite.transformIndexHtml(req.url, '<!doctype html><html lang="sv" class="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;background:#070e1a;font-family:system-ui}</style></head><body><div id="root"></div><script type="module" src="/e2e/atlas-voice-pilot-entry.tsx"></script></body></html>'))
-}))
+}) })
 server.listen(54397, '127.0.0.1', () => console.log('Voice UI fixture: http://127.0.0.1:54397/atlas/rosttest'))
 async function close() { server.close(); await vite.close(); process.exit(0) }
 process.on('SIGTERM', close); process.on('SIGINT', close)

@@ -19,7 +19,7 @@ André explicitly requested ElevenLabs or another natural voice, excluding robot
 - [x] Streaming PCM alignment, first-chunk playback, cancellation and no stale reply tests, 4/4.
 - [x] Isolated preview UI, typecheck, reproducible Vite UI fixture and independent review. Final re-check: no remaining Critical or Important issues, independently ran 22/22 pilot tests.
 - [ ] Actual browser interaction and physical microphone/headphone/speaker trial. Cloud browser cannot reach the local fixture (connection refused); do not substitute unit doubles for this result.
-- [ ] Publish branch and preview; report actual voice samples and remaining listening limitations.
+- [x] Publish branch and preview; report actual voice samples and remaining listening limitations. Draft PR #359; runtime commit `0b6ff9efe3079e96123850fdc8d85e66f75a7926` is READY on Vercel. Application login is required for signed-in testing.
 
 ## Sources
 

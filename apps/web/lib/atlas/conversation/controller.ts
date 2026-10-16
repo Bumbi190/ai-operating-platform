@@ -58,6 +58,7 @@ type Activate = {
   plan?: PlanView | null;
   session?: BuildSessionView | null;
 };
+export type TurnResult = { ok: boolean; notice?: string };
 type Turn = {
   conversationId: string;
   text: string;
@@ -72,6 +73,64 @@ export class AtlasConversationController {
   private generation = 0;
   private listeners = new Set<() => void>();
   constructor(private request: typeof fetch = (...args) => fetch(...args)) {}
+  private creating: {generation: number; promise: Promise<string | null>} | null = null;
+  private compactPending: symbol | null = null;
+  private createdListeners = new Set<(id: string) => void>();
+  subscribeCreated = (listener: (id: string) => void) => {
+    this.createdListeners.add(listener);
+    return () => { this.createdListeners.delete(listener); };
+  };
+
+  async ensureConversation(input: {firstText: string; inputSource: "text" | "voice"; projectId: string | null}): Promise<string | null> {
+    if (this.active.id) return this.active.state === "ok" ? this.active.id : null;
+    const generation = this.generation;
+    if (this.creating?.generation === generation) return this.creating.promise;
+    this.active = {...this.active, pending: true};
+    this.listeners.forEach(listener => listener());
+    const promise = (async () => {
+      try {
+        const response = await this.request("/api/conversations", {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            title: input.firstText.slice(0, 56),
+            ...(input.projectId ? {project_id: input.projectId} : {}),
+          }),
+        });
+        const row = await response.json();
+        if (!response.ok || typeof row?.id !== "string" || !row.id.trim() || generation !== this.generation) return null;
+        // This event preserves logical new-thread drafts without transferring
+        // them when an existing conversation is explicitly selected.
+        this.createdListeners.forEach(listener => listener(row.id));
+        this.activateSnapshot({id: row.id, saved: [], state: "ok", projectId: input.projectId}, true);
+        return row.id as string;
+      } catch { return null; }
+    })();
+    this.creating = {generation, promise};
+    try { return await promise; }
+    finally {
+      if (this.creating?.promise === promise) this.creating = null;
+      if (this.generation === generation && !this.active.id && this.active.pending) {
+        this.active = {...this.active, pending: false};
+        this.listeners.forEach(listener => listener());
+      }
+    }
+  }
+
+  async sendCompactText(input: {text: string; initialProjectId: string | null}): Promise<TurnResult> {
+    const text = input.text.trim();
+    if (!text || this.compactPending || this.active.pending) return {ok: false};
+    const token = Symbol();
+    this.compactPending = token;
+    try {
+      const id = await this.ensureConversation({firstText: text, inputSource: "text", projectId: input.initialProjectId});
+      if (this.compactPending !== token) return {ok: false};
+      if (!id) return {ok: false, notice: "Konversationen kunde inte sparas. Försök igen."};
+      return await this.sendTurn({conversationId: id, text, inputSource: "text", visiblePlan: null, buildContext: null});
+    } finally {
+      if (this.compactPending === token) this.compactPending = null;
+    }
+  }
+
   snapshot = () => this.active;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -90,7 +149,13 @@ export class AtlasConversationController {
     }
   }
   activateConversation(input: Activate) {
-    if (this.active.id !== input.id) this.generation++;
+    this.activateSnapshot(input, false);
+  }
+  private activateSnapshot(input: Activate, preserveCompact: boolean) {
+    if (this.active.id !== input.id) {
+      this.generation++;
+      if (!preserveCompact) this.compactPending = null;
+    }
     let s = this.conversations.get(input.id);
     if (!s)
       s = {
@@ -137,12 +202,16 @@ export class AtlasConversationController {
     this.listeners.forEach((f) => f());
   }
   clearOnSignout() {
+    this.creating = null;
+    this.compactPending = null;
     this.generation++;
     this.conversations.clear();
     this.active = empty();
     this.listeners.forEach((f) => f());
   }
   deactivateConversation() {
+    this.creating = null;
+    this.compactPending = null;
     this.generation++;
     this.active=empty();
     this.listeners.forEach(f=>f());
@@ -175,7 +244,7 @@ export class AtlasConversationController {
     if (s.id && (!id || s.session?.revisions.some((r) => r.id === id)))
       this.update(s.id, { viewedRevisionId: id });
   }
-  async sendTurn(turn: Turn): Promise<{ ok: boolean; notice?: string }> {
+  async sendTurn(turn: Turn): Promise<TurnResult> {
     const start = this.conversations.get(turn.conversationId);
     if (
       !start ||

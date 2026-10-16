@@ -37,12 +37,13 @@ const SIDEBAR = readFileSync(
 )
 
 describe('legacy nav · global entries are frozen', () => {
-  it('has the nine legacy entries plus the approved builder entry', () => {
-    expect(LEGACY_GLOBAL_NAV).toHaveLength(10)
+  it('has the nine legacy entries plus approved builder and overview entries', () => {
+    expect(LEGACY_GLOBAL_NAV).toHaveLength(11)
   })
 
   it('preserves every href in exact order', () => {
     expect(LEGACY_GLOBAL_NAV.map((i) => i.href)).toEqual([
+      '/dashboard',
       '/atlas',
       '/build',
       '/atlas/marketing',
@@ -58,6 +59,7 @@ describe('legacy nav · global entries are frozen', () => {
 
   it('preserves every label in exact order', () => {
     expect(LEGACY_GLOBAL_NAV.map((i) => i.label)).toEqual([
+      'Översikt',
       'Atlas',
       'Bygg med Atlas',
       'Marknadsgranskning',
@@ -71,9 +73,9 @@ describe('legacy nav · global entries are frozen', () => {
     ])
   })
 
-  it('keeps Atlas as the only primary entry', () => {
+  it('keeps Overview as the only primary entry', () => {
     const primary = LEGACY_GLOBAL_NAV.filter((i) => i.primary)
-    expect(primary.map((i) => i.href)).toEqual(['/atlas'])
+    expect(primary.map((i) => i.href)).toEqual(['/dashboard'])
   })
 
   it('gives every entry an icon', () => {

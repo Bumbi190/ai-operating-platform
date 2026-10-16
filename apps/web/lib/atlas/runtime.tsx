@@ -341,13 +341,10 @@ export function AtlasRuntimeProvider({
 
   // ── Konversations-skapare ─────────────────────────────────────────────────
   async function ensureConversation(firstText:string):Promise<string|null>{
-    const current=conversation.snapshot()
-    if(current.id)return current.state==='ok'?current.id:null
-    try{
-      const res=await fetch('/api/conversations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:'🎙 '+firstText.slice(0,56),...(activeProject?{project_id:activeProject.id}:{})})})
-      const row=await res.json()
-      if(res.ok&&typeof row.id==='string'){conversation.activateConversation({id:row.id,saved:[],state:'ok',projectId:activeProject?.id});return row.id}
-    }catch{}
+    const id = await conversation.ensureConversation({
+      firstText, inputSource: 'voice', projectId: activeProject?.id ?? null,
+    })
+    if (id) return id
     setWarning({active:true,detail:'Konversationen kunde inte sparas. Försök igen.'})
     return null
   }

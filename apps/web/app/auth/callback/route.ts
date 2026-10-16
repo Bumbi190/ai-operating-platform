@@ -65,5 +65,5 @@ export async function GET(request: NextRequest) {
   }
 
   // No code — might be implicit flow with hash fragment; send to client page
-  return NextResponse.redirect(`${origin}/auth/confirm`)
+  return NextResponse.redirect(`${origin}/auth/confirm?next=${encodeURIComponent(next)}`)
 }

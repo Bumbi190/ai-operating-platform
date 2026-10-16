@@ -64,3 +64,7 @@ apps/web/data/intelligence/
 !apps/web/app/(platform)/projects/*/build/**
 
 .superpowers/sdd/2026-10-16-atlas-social-content/
+
+.superpowers/sdd/2026-10-16-atlas-social-start/
+
+.superpowers/sdd/2026-10-16-atlas-social-publication/

@@ -3,18 +3,19 @@ import {useCallback,useEffect,useRef,useState} from 'react'
 import {SOCIAL_LAUNCH_CHANNELS} from '@/lib/social-launch/catalog'
 import {parseSocialContent,stockholmToUtc,stockholmLocal} from '@/lib/social-launch/content/validate'
 import type {SocialContentInput,SocialContentView,SocialContentPost} from '@/lib/social-launch/content/types'
+import {SocialPublicationPanel} from './SocialPublicationPanel'
 import styles from './SocialContentPanel.module.css'
 const formats={text:'Text',image:'Bild',video:'Video',link:'Länk'}
 const statuses={proposal:'Förslag att granska',approved:'Innehållet godkänt',rejected:'Avvisat innehåll',needs_review:'Behöver granskas igen'}
-const reasons:Record<string,string>={activation_required:'Publicering är inte aktiverad',account_required:'Väntar på kontokoppling',plan_changed:'Kanalplanen har ändrats',destination_changed:'Mottagarkontot har ändrats eller blockerats',media_changed:'Bifogat material har ändrats',time_passed:'Önskad tid har passerat – inget skickades',media_required:'Bifoga projektets bild eller video före granskning.'}
+const reasons:Record<string,string>={activation_required:'Kalendern skickar inget automatiskt',account_required:'Väntar på kontokoppling',plan_changed:'Kanalplanen har ändrats',destination_changed:'Mottagarkontot har ändrats eller blockerats',media_changed:'Bifogat material har ändrats',time_passed:'Önskad tid har passerat – inget skickades',media_required:'Bifoga projektets bild eller video före granskning.'}
 type Editor={postId:string;expectedRevisionId:string|null;draft:SocialContentInput;localTime:string}
 function empty(channel:SocialContentInput['channel']='facebook',format:SocialContentInput['format']='text'):SocialContentInput{return {channel,format,title:'',text:'',linkUrl:null,mediaIds:[],mediaBrief:'',scheduledAt:null}}
 function mediaUrl(projectId:string,id:string,sha:string){return '/api/social-content/media?'+new URLSearchParams({projectId,assetId:id,sha256:sha})}
-function Workspace({projectId,projectName}:{projectId:string;projectName:string}){
+function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{projectId:string;projectName:string;onPlanRequested?:()=>void;planStateKey?:string}){
  const [model,setModel]=useState<SocialContentView|null>(null),[editor,setEditor]=useState<Editor|null>(null),[selectedId,setSelectedId]=useState<string|null>(null)
  const [dirty,setDirty]=useState(false),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState(''),[stale,setStale]=useState(false)
  const [loaded,setLoaded]=useState<Record<string,boolean>>({})
- const responseSequence=useRef(0),writeInFlight=useRef(false)
+ const responseSequence=useRef(0),writeInFlight=useRef(false),observedPlan=useRef(planStateKey)
  const live=useRef(true),controllers=useRef(new Set<AbortController>()),pending=useRef<{signature:string;body:Record<string,unknown>}|null>(null)
  const selected=model?.posts.find(p=>p.id===selectedId)??null
  const load=useCallback(async()=>{
@@ -25,6 +26,7 @@ function Workspace({projectId,projectName}:{projectId:string;projectName:string}
   catch(e){if(live.current&&!c.signal.aborted&&sequence===responseSequence.current)setError(e instanceof Error?e.message:'Innehållet kunde inte läsas.')}
   finally{controllers.current.delete(c);if(live.current&&sequence===responseSequence.current)setLoading(false)}
  },[projectId])
+ useEffect(()=>{if(!busy&&!writeInFlight.current&&observedPlan.current!==planStateKey){observedPlan.current=planStateKey;void load()}},[planStateKey,busy,load])
  useEffect(()=>{live.current=true;const active=controllers.current;void load();return()=>{live.current=false;responseSequence.current++;active.forEach(c=>c.abort())}},[load])
  function change(patch:Partial<SocialContentInput>){setEditor(e=>e?{...e,draft:{...e.draft,...patch}}:e);setDirty(true);pending.current=null}
  function edit(post?:SocialContentPost){
@@ -65,12 +67,12 @@ function Workspace({projectId,projectName}:{projectId:string;projectName:string}
  const calendar=[...(model?.posts??[])].filter(p=>p.revision.draft.scheduledAt).sort((a,b)=>a.revision.draft.scheduledAt!.localeCompare(b.revision.draft.scheduledAt!))
  return <section className={styles.panel} aria-label={'Innehåll för '+projectName} aria-busy={busy||loading}>
   <header className={styles.header}><div><span className={styles.eyebrow}>Förbered lanseringen</span><h2>Innehåll – {projectName}</h2><p>Samla utkast, återanvänd material och granska innehållet tillsammans med Atlas.</p></div>
-   <p className={styles.notice}>Detta är förberedelser. Konton ansluts och publicering aktiveras separat när du väljer det. Inga inlägg skickas från kalendern.</p>
+   <p className={styles.notice}>Börja med utkast och granskning. När rätt konto är anslutet kan du bekräfta ett enskilt Facebook- eller Instagram-inlägg nedan. Inga inlägg skickas från kalendern.</p>
   </header>
   <div className={styles.actions}><button type="button" disabled={busy||loading||(!model?.planApproved||!model.plannedChannels.length)} onClick={()=>edit()}>Nytt utkast</button><button type="button" disabled={busy||loading} onClick={()=>{if(!dirty||window.confirm('Ersätt ditt osparade utkast med senaste sparade versionen?')){setEditor(null);setDirty(false);void load()}}}>Läs senaste innehållet</button></div>
   {error&&<p className={styles.error} role="alert">{error}</p>}
   {loading&&<p role="status">Läser projektets innehåll…</p>}
-  {model&&!model.planApproved&&<p className={styles.notice}>Godkänn projektets kanalplan innan du sparar innehållsförslag.</p>}
+  {model&&!model.planApproved&&<div className={styles.notice}><p>Godkänn projektets kanalplan innan du sparar innehållsförslag. Du behöver inte ansluta några konton för att förbereda ett utkast.</p>{onPlanRequested?<button type="button" onClick={onPlanRequested}>Gå till kanalplanen</button>:<a href={'/projects/'+model.project.slug+'/social'}>Gå till kanalplanen</a>}</div>}
   {model&&<div className={styles.layout}>
    <aside className={styles.list} aria-label="Sparade innehållsförslag"><h3>Utkast och granskning</h3>{model.posts.length===0?<p>Inga sparade utkast ännu. Planera innehållet med Atlas eller börja med ett nytt utkast.</p>:model.posts.map(p=><button type="button" key={p.id} disabled={busy||loading} className={p.id===selectedId?styles.active:styles.item} onClick={()=>{if(dirty&&!window.confirm('Ersätt dina osparade ändringar?'))return;setSelectedId(p.id);setEditor(null);setDirty(false);setError('')}}><strong>{p.revision.draft.title}</strong><span>{SOCIAL_LAUNCH_CHANNELS.find(c=>c.id===p.revision.draft.channel)?.label} · v{p.revision.sequence}</span><span>{statuses[p.status]}</span></button>)}</aside>
    <div className={styles.work}>
@@ -93,10 +95,11 @@ function Workspace({projectId,projectName}:{projectId:string;projectName:string}
      <div className={styles.actions}><button type="button" disabled={busy||loading} onClick={()=>edit(selected)}>Redigera utkast</button>{!selected.decision&&<><button type="button" disabled={reviewDisabled} onClick={()=>void send('decide','approve')}>Godkänn innehållet</button><button type="button" disabled={busy||loading||dirty||stale} onClick={()=>void send('decide','reject')}>Avvisa innehållet</button></>}</div>
      {dirty&&<p className={styles.notice}>Spara den nya versionen innan du granskar den.</p>}
      <details><summary>Granskningskvitto</summary><p>SHA256: {selected.revision.sha256}</p><p>Godkännandet gäller innehållet. Publicering kräver separat aktivering och kontroll av kanalens krav.</p></details>
+     <SocialPublicationPanel projectId={projectId} post={selected} disabled={busy||loading||dirty||stale}/>
     </article>}
    </div>
   </div>}
   {model&&<section className={styles.calendar} aria-label="Planerad innehållskalender"><h3>Kalender</h3><p>Önskade tider i Stockholm. Inga inlägg skickas.</p>{calendar.length===0?<p>Inga daterade förberedelser ännu.</p>:<ol>{calendar.map(p=><li key={p.id}><time dateTime={p.revision.draft.scheduledAt!}>{stockholmLocal(p.revision.draft.scheduledAt!).replace('T',' ')}</time><button type="button" disabled={busy||loading} onClick={()=>{if(dirty&&!window.confirm('Ersätt dina osparade ändringar?'))return;setSelectedId(p.id);setEditor(null);setDirty(false)}}>{p.revision.draft.title}</button><span>{statuses[p.status]} · Väntar på aktivering</span></li>)}</ol>}</section>}
  </section>
 }
-export function SocialContentPanel(props:{projectId:string;projectName:string}){return <Workspace key={props.projectId} {...props}/>}
+export function SocialContentPanel(props:{projectId:string;projectName:string;onPlanRequested?:()=>void;planStateKey?:string}){return <Workspace key={props.projectId} {...props}/>}

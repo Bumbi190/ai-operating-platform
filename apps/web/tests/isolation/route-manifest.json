@@ -129,7 +129,40 @@
     { "path": "/atlas/executive/decision", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "na", "risk": "Medium", "verified": true, "note": "EI-S1.6B: Executive authority write surface. Session principal via resolveProjectAccess (service-role used only to enumerate ownership and to reach the append-only ledger); project asserted by assertProjectAllowed. Appends immutable institutional records through the sanctioned principal-write boundary only - never a direct table write. Creates no run, task, tool call, publication or spend, so risk is Medium under this manifest's convention that High denotes execution/external effect. Unknown and foreign ids collapse to an identical 404. Locked by lib/qa/executive-authority-entrypoint.test.ts and lib/qa/executive-authority-integration.test.ts. request_authorization is server-atomic: the binding is derived by prepareDecisionAct and is never client-supplied." },
     { "path": "/atlas/executive/mission", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "na", "risk": "Medium", "verified": true, "note": "EI-S1.6B: Executive authority write surface. Session principal via resolveProjectAccess (service-role used only to enumerate ownership and to reach the append-only ledger); project asserted by assertProjectAllowed. Appends immutable institutional records through the sanctioned principal-write boundary only - never a direct table write. Creates no run, task, tool call, publication or spend, so risk is Medium under this manifest's convention that High denotes execution/external effect. Unknown and foreign ids collapse to an identical 404. Locked by lib/qa/executive-authority-entrypoint.test.ts and lib/qa/executive-authority-integration.test.ts. activate is a lifecycle state transition, NOT execution. request_authorization is server-atomic via prepareMissionAct." },
     {"path":"/social-content","class":"U","auth":"User","serviceRole":true,"scope":"project_id","killSwitch":"na","risk":"Medium","verified":true,"note":"Owned project editorial preparation only; exact immutable revisions/decisions, same-origin bounded writes, private/no-store. No dispatch/provider/model calls. Media reads pin active owned checksum and verify stored bytes."},
-    {"path":"/social-content/media","class":"U","auth":"User","serviceRole":true,"scope":"project_id","killSwitch":"na","risk":"Medium","verified":true,"note":"Owned project editorial preparation only; exact immutable revisions/decisions, same-origin bounded writes, private/no-store. No dispatch/provider/model calls. Media reads pin active owned checksum and verify stored bytes."}
+    {"path":"/social-content/media","class":"U","auth":"User","serviceRole":true,"scope":"project_id","killSwitch":"na","risk":"Medium","verified":true,"note":"Owned project editorial preparation only; exact immutable revisions/decisions, same-origin bounded writes, private/no-store. No dispatch/provider/model calls. Media reads pin active owned checksum and verify stored bytes."},
+    {
+      "path": "/social-profile",
+      "class": "U",
+      "auth": "User",
+      "serviceRole": true,
+      "scope": "project_id",
+      "killSwitch": "na",
+      "risk": "Medium",
+      "verified": true,
+      "note": "Owned company working context only; bounded same-origin writes, immutable revisions and private/no-store. No provider calls or approval authority."
+    },
+    {
+      "path": "/social-publications",
+      "class": "U",
+      "auth": "User",
+      "serviceRole": true,
+      "scope": "project_id",
+      "killSwitch": "yes",
+      "risk": "High",
+      "verified": true,
+      "note": "GET owned receipts is read-only. POST also requires canonical platform-operator authority and same origin. Exact approved revision/decision/account/media are rechecked before durable CAS provider admission. No automatic schedule or retries of unknown POSTs."
+    },
+    {
+      "path": "/social-publication-media",
+      "class": "U",
+      "auth": "None",
+      "serviceRole": true,
+      "scope": "project_id",
+      "killSwitch": "yes",
+      "risk": "High",
+      "verified": true,
+      "note": "Public only with random 256-bit per-publication capability; database stores its hash and 15-minute expiry. Exact active owned reviewed JPEG checksum/bytes only, no arbitrary URL or path. Pause, expiry and terminal states revoke; otherwise identical 404. Private/no-store streamed response."
+    }
   ],
 
   "cleanup": [

@@ -36,6 +36,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "jpeg-js": "0.4.4",
     "jszip": "^3.10.1",
     "lightweight-charts": "^5.2.1",
     "lucide-react": "^0.511.0",

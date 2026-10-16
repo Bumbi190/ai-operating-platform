@@ -31,3 +31,15 @@ test('desktop review remains usable and produces a review screenshot',async({pag
  await page.setViewportSize({width:1440,height:1000});await mocks(page);await page.goto('/content');await fill(page);await page.getByRole('button',{name:'Spara innehållsförslag',exact:true}).click();await expect(page.getByRole('button',{name:'Godkänn innehållet',exact:true})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:'../../.superpowers/sdd/2026-10-16-atlas-social-content/desktop-review.png',fullPage:true})
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:'../../.superpowers/sdd/2026-10-16-atlas-social-content/mobile-review.png',fullPage:true})
 })
+
+test('refresh disables review until its snapshot is resolved and cannot undo a later approval',async({page})=>{
+ await mocks(page);await page.goto('/content');await fill(page)
+ const responsePromise=page.waitForResponse(r=>r.url().endsWith('/api/social-content')&&r.request().method()==='POST')
+ await page.getByRole('button',{name:'Spara innehållsförslag',exact:true}).click();const oldSnapshot=await (await responsePromise).json()
+ let release!:()=>void;const held=new Promise<void>(r=>release=r)
+ await page.route('**/api/social-content?*',async route=>{await held;await route.fulfill({json:oldSnapshot})})
+ await page.getByRole('button',{name:'Läs senaste innehållet',exact:true}).click()
+ await expect(page.getByRole('button',{name:'Godkänn innehållet',exact:true})).toBeDisabled()
+ release();await expect(page.getByRole('button',{name:'Godkänn innehållet',exact:true})).toBeEnabled();await page.getByRole('button',{name:'Godkänn innehållet',exact:true}).click()
+ await expect(page.getByRole('article',{name:'Granska sparat innehåll'}).getByText('Innehållet godkänt',{exact:true})).toBeVisible()
+})

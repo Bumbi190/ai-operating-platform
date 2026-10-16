@@ -1,5 +1,5 @@
 'use client'
-import {useEffect,useRef,useState} from 'react'
+import {useCallback,useEffect,useRef,useState} from 'react'
 import {SOCIAL_LAUNCH_CHANNELS} from '@/lib/social-launch/catalog'
 import {parseSocialContent,stockholmToUtc,stockholmLocal} from '@/lib/social-launch/content/validate'
 import type {SocialContentInput,SocialContentView,SocialContentPost} from '@/lib/social-launch/content/types'
@@ -14,15 +14,18 @@ function Workspace({projectId,projectName}:{projectId:string;projectName:string}
  const [model,setModel]=useState<SocialContentView|null>(null),[editor,setEditor]=useState<Editor|null>(null),[selectedId,setSelectedId]=useState<string|null>(null)
  const [dirty,setDirty]=useState(false),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState(''),[stale,setStale]=useState(false)
  const [loaded,setLoaded]=useState<Record<string,boolean>>({})
+ const responseSequence=useRef(0),writeInFlight=useRef(false)
  const live=useRef(true),controllers=useRef(new Set<AbortController>()),pending=useRef<{signature:string;body:Record<string,unknown>}|null>(null)
  const selected=model?.posts.find(p=>p.id===selectedId)??null
- useEffect(()=>{live.current=true;void load();return()=>{live.current=false;controllers.current.forEach(c=>c.abort())}},[])
- async function load(){
+ const load=useCallback(async()=>{
+  if(writeInFlight.current)return
+  const sequence=++responseSequence.current
   const c=new AbortController();controllers.current.add(c);setLoading(true);setError('')
-  try{const r=await fetch('/api/social-content?projectId='+encodeURIComponent(projectId),{cache:'no-store',signal:c.signal});if(!r.ok)throw Error('Innehållet kunde inte läsas. Försök igen.');const v=await r.json() as SocialContentView;if(!live.current)return;if(v.project.id!==projectId)throw Error('Svaret gäller ett annat projekt.');setModel(v);setStale(false)}
-  catch(e){if(live.current&&!c.signal.aborted)setError(e instanceof Error?e.message:'Innehållet kunde inte läsas.')}
-  finally{controllers.current.delete(c);if(live.current)setLoading(false)}
- }
+  try{const r=await fetch('/api/social-content?projectId='+encodeURIComponent(projectId),{cache:'no-store',signal:c.signal});if(!r.ok)throw Error('Innehållet kunde inte läsas. Försök igen.');const v=await r.json() as SocialContentView;if(!live.current||c.signal.aborted||sequence!==responseSequence.current)return;if(v.project.id!==projectId)throw Error('Svaret gäller ett annat projekt.');setModel(v);setStale(false)}
+  catch(e){if(live.current&&!c.signal.aborted&&sequence===responseSequence.current)setError(e instanceof Error?e.message:'Innehållet kunde inte läsas.')}
+  finally{controllers.current.delete(c);if(live.current&&sequence===responseSequence.current)setLoading(false)}
+ },[projectId])
+ useEffect(()=>{live.current=true;const active=controllers.current;void load();return()=>{live.current=false;responseSequence.current++;active.forEach(c=>c.abort())}},[load])
  function change(patch:Partial<SocialContentInput>){setEditor(e=>e?{...e,draft:{...e.draft,...patch}}:e);setDirty(true);pending.current=null}
  function edit(post?:SocialContentPost){
   if(dirty&&!window.confirm('Ersätt dina osparade ändringar?'))return
@@ -31,7 +34,7 @@ function Workspace({projectId,projectName}:{projectId:string;projectName:string}
   setDirty(!post);setError('');setStale(false);pending.current=null
  }
  async function send(operation:'propose'|'decide',decision?:'approve'|'reject'){
-  if(!model)return
+  if(!model||busy||loading||writeInFlight.current)return
   let input:Record<string,unknown>
   try{
    if(operation==='propose'){
@@ -45,19 +48,20 @@ function Workspace({projectId,projectName}:{projectId:string;projectName:string}
   }catch(e){setError((e as Error).message);return}
   const signature=JSON.stringify({operation,...input})
   if(pending.current?.signature!==signature)pending.current={signature,body:{operation,...input,idempotencyKey:crypto.randomUUID()}}
+  writeInFlight.current=true;const sequence=++responseSequence.current
   const c=new AbortController();controllers.current.add(c);setBusy(true);setError('')
   try{
    const r=await fetch('/api/social-content',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(pending.current.body),signal:c.signal})
-   const v=await r.json();if(!live.current)return
+   const v=await r.json();if(!live.current||c.signal.aborted||sequence!==responseSequence.current)return
    if(!r.ok){if(r.status===409)setStale(true);throw Error(r.status===409?'Versionen, kontot eller planen har ändrats. Ditt utkast finns kvar; läs senaste versionen före nästa försök.':'Ändringen kunde inte sparas. Ditt utkast finns kvar.')}
    if(v.project?.id!==projectId)throw Error('Svaret gäller ett annat projekt. Ditt utkast finns kvar.')
    setModel(v);setSelectedId(input.postId as string);setEditor(null);setDirty(false);setStale(false);pending.current=null
-  }catch(e){if(live.current&&!c.signal.aborted)setError(e instanceof Error?e.message:'Ändringen kunde inte sparas. Ditt utkast finns kvar.')}
-  finally{controllers.current.delete(c);if(live.current)setBusy(false)}
+  }catch(e){if(live.current&&!c.signal.aborted&&sequence===responseSequence.current)setError(e instanceof Error?e.message:'Ändringen kunde inte sparas. Ditt utkast finns kvar.')}
+  finally{controllers.current.delete(c);if(sequence===responseSequence.current){writeInFlight.current=false;if(live.current)setBusy(false)}}
  }
  const media=selected?.revision.media??[]
  const mediaMissing=!!selected&&['image','video'].includes(selected.revision.draft.format)&&media.length===0
- const reviewDisabled=busy||dirty||stale||mediaMissing||selected?.status==='needs_review'||media.some(m=>!loaded[m.id+':'+m.sha256])
+ const reviewDisabled=busy||loading||dirty||stale||mediaMissing||selected?.status==='needs_review'||media.some(m=>!loaded[m.id+':'+m.sha256])
  const calendar=[...(model?.posts??[])].filter(p=>p.revision.draft.scheduledAt).sort((a,b)=>a.revision.draft.scheduledAt!.localeCompare(b.revision.draft.scheduledAt!))
  return <section className={styles.panel} aria-label={'Innehåll för '+projectName} aria-busy={busy||loading}>
   <header className={styles.header}><div><span className={styles.eyebrow}>Förbered lanseringen</span><h2>Innehåll – {projectName}</h2><p>Samla utkast, återanvänd material och granska innehållet tillsammans med Atlas.</p></div>
@@ -68,9 +72,9 @@ function Workspace({projectId,projectName}:{projectId:string;projectName:string}
   {loading&&<p role="status">Läser projektets innehåll…</p>}
   {model&&!model.planApproved&&<p className={styles.notice}>Godkänn projektets kanalplan innan du sparar innehållsförslag.</p>}
   {model&&<div className={styles.layout}>
-   <aside className={styles.list} aria-label="Sparade innehållsförslag"><h3>Utkast och granskning</h3>{model.posts.length===0?<p>Inga sparade utkast ännu. Planera innehållet med Atlas eller börja med ett nytt utkast.</p>:model.posts.map(p=><button type="button" key={p.id} className={p.id===selectedId?styles.active:styles.item} onClick={()=>{if(dirty&&!window.confirm('Ersätt dina osparade ändringar?'))return;setSelectedId(p.id);setEditor(null);setDirty(false);setError('')}}><strong>{p.revision.draft.title}</strong><span>{SOCIAL_LAUNCH_CHANNELS.find(c=>c.id===p.revision.draft.channel)?.label} · v{p.revision.sequence}</span><span>{statuses[p.status]}</span></button>)}</aside>
+   <aside className={styles.list} aria-label="Sparade innehållsförslag"><h3>Utkast och granskning</h3>{model.posts.length===0?<p>Inga sparade utkast ännu. Planera innehållet med Atlas eller börja med ett nytt utkast.</p>:model.posts.map(p=><button type="button" key={p.id} disabled={busy||loading} className={p.id===selectedId?styles.active:styles.item} onClick={()=>{if(dirty&&!window.confirm('Ersätt dina osparade ändringar?'))return;setSelectedId(p.id);setEditor(null);setDirty(false);setError('')}}><strong>{p.revision.draft.title}</strong><span>{SOCIAL_LAUNCH_CHANNELS.find(c=>c.id===p.revision.draft.channel)?.label} · v{p.revision.sequence}</span><span>{statuses[p.status]}</span></button>)}</aside>
    <div className={styles.work}>
-    {editor&&<form className={styles.editor} onSubmit={e=>{e.preventDefault();void send('propose')}}><h3>{editor.expectedRevisionId?'Redigera innehållet':'Nytt innehållsförslag'}</h3><fieldset disabled={busy}>
+    {editor&&<form className={styles.editor} onSubmit={e=>{e.preventDefault();void send('propose')}}><h3>{editor.expectedRevisionId?'Redigera innehållet':'Nytt innehållsförslag'}</h3><fieldset disabled={busy||loading}>
      <div className={styles.row}><label>Kanal<select aria-label="Kanal" value={editor.draft.channel} onChange={e=>{const channel=e.target.value as SocialContentInput['channel'],c=model.plannedChannels.find(c=>c.channel===channel)!;change({channel,format:c.format,mediaIds:[]})}}>{model.plannedChannels.map(c=><option key={c.channel} value={c.channel}>{SOCIAL_LAUNCH_CHANNELS.find(n=>n.id===c.channel)?.label}</option>)}</select></label><label>Format<select aria-label="Format" value={editor.draft.format} onChange={e=>change({format:e.target.value as SocialContentInput['format'],mediaIds:[]})}>{SOCIAL_LAUNCH_CHANNELS.find(c=>c.id===editor.draft.channel)?.formats.map(f=><option key={f} value={f}>{formats[f]}</option>)}</select></label></div>
      <label>Rubrik<input aria-label="Rubrik" value={editor.draft.title} maxLength={150} onChange={e=>change({title:e.target.value})}/></label>
      <label>Inläggstext<textarea aria-label="Inläggstext" value={editor.draft.text} maxLength={5000} rows={7} onChange={e=>change({text:e.target.value})}/></label>
@@ -78,7 +82,7 @@ function Workspace({projectId,projectName}:{projectId:string;projectName:string}
      {['image','video'].includes(editor.draft.format)&&<><label>Bild- eller videoidé<textarea aria-label="Bild- eller videoidé" value={editor.draft.mediaBrief} maxLength={1000} rows={3} onChange={e=>change({mediaBrief:e.target.value})}/></label><p>En idé skapar ingen bild. Välj redan sparat projektmaterial för att kunna granska inlägget.</p><div className={styles.assets}>{model.assets.filter(a=>a.kind===editor.draft.format).map(a=><label key={a.id}><input type="checkbox" checked={editor.draft.mediaIds.includes(a.id)} onChange={e=>change({mediaIds:e.target.checked?(editor.draft.format==='video'?[a.id]:[...editor.draft.mediaIds,a.id]):editor.draft.mediaIds.filter(id=>id!==a.id)})}/>{a.kind==='image'?'Bild':'Video'} {a.width&&a.height?a.width+' × '+a.height+' · ':''}{a.id.slice(0,8)}</label>)}{!model.assets.some(a=>a.kind===editor.draft.format)&&<p>Inget matchande material finns i projektet ännu.</p>}{model.hasMoreAssets&&<p>Visar de 100 senaste filerna.</p>}</div></>}
      <label>Önskad publiceringstid (Stockholm)<input type="datetime-local" value={editor.localTime} onChange={e=>{setEditor({...editor,localTime:e.target.value});setDirty(true);pending.current=null}}/></label>
      <small>Europe/Stockholm. Tiden används för planering; inget skickas automatiskt.</small>
-    </fieldset><div className={styles.actions}><button disabled={busy||!dirty||stale||!model.planApproved} type="submit">Spara innehållsförslag</button><button type="button" disabled={busy} onClick={()=>{setEditor(null);setDirty(false);setError('')}}>Avbryt redigering</button></div></form>}
+    </fieldset><div className={styles.actions}><button disabled={busy||loading||!dirty||stale||!model.planApproved} type="submit">Spara innehållsförslag</button><button type="button" disabled={busy||loading} onClick={()=>{setEditor(null);setDirty(false);setError('')}}>Avbryt redigering</button></div></form>}
     {selected&&<article className={styles.preview} aria-label="Granska sparat innehåll"><div className={styles.previewHead}><span>{SOCIAL_LAUNCH_CHANNELS.find(c=>c.id===selected.revision.draft.channel)?.label} · Version {selected.revision.sequence}</span><strong>{statuses[selected.status]}</strong></div><h3>{selected.revision.draft.title}</h3><p className={styles.caption}>{selected.revision.draft.text}</p>
      {selected.revision.draft.linkUrl&&<a href={selected.revision.draft.linkUrl} target="_blank" rel="noreferrer">{selected.revision.draft.linkUrl}</a>}
      {media.map(m=><div key={m.id+':'+m.sha256} className={styles.media}>{m.kind==='image'?<img alt={'Bifogad bild '+m.id.slice(0,8)} src={mediaUrl(projectId,m.id,m.sha256)} onLoad={()=>setLoaded(s=>({...s,[m.id+':'+m.sha256]:true}))} onError={()=>setLoaded(s=>({...s,[m.id+':'+m.sha256]:false}))}/>:<video controls preload="metadata" src={mediaUrl(projectId,m.id,m.sha256)} onLoadedMetadata={()=>setLoaded(s=>({...s,[m.id+':'+m.sha256]:true}))} onError={()=>setLoaded(s=>({...s,[m.id+':'+m.sha256]:false}))}/>}</div>)}
@@ -86,13 +90,13 @@ function Workspace({projectId,projectName}:{projectId:string;projectName:string}
      {media.some(m=>!loaded[m.id+':'+m.sha256])&&<p role="status">Materialet måste kunna visas före godkännande.</p>}
      {selected.revision.binding&&<p>Konto vid granskning: {selected.revision.binding.label??selected.revision.binding.accountId}</p>}
      {selected.requirements.filter(r=>r!=='media_required').map(r=><p className={styles.requirement} key={r}>{reasons[r]??'Kräver ny kontroll'}</p>)}
-     <div className={styles.actions}><button type="button" disabled={busy} onClick={()=>edit(selected)}>Redigera utkast</button>{!selected.decision&&<><button type="button" disabled={reviewDisabled} onClick={()=>void send('decide','approve')}>Godkänn innehållet</button><button type="button" disabled={busy||dirty||stale} onClick={()=>void send('decide','reject')}>Avvisa innehållet</button></>}</div>
+     <div className={styles.actions}><button type="button" disabled={busy||loading} onClick={()=>edit(selected)}>Redigera utkast</button>{!selected.decision&&<><button type="button" disabled={reviewDisabled} onClick={()=>void send('decide','approve')}>Godkänn innehållet</button><button type="button" disabled={busy||loading||dirty||stale} onClick={()=>void send('decide','reject')}>Avvisa innehållet</button></>}</div>
      {dirty&&<p className={styles.notice}>Spara den nya versionen innan du granskar den.</p>}
      <details><summary>Granskningskvitto</summary><p>SHA256: {selected.revision.sha256}</p><p>Godkännandet gäller innehållet. Publicering kräver separat aktivering och kontroll av kanalens krav.</p></details>
     </article>}
    </div>
   </div>}
-  {model&&<section className={styles.calendar} aria-label="Planerad innehållskalender"><h3>Kalender</h3><p>Önskade tider i Stockholm. Inga inlägg skickas.</p>{calendar.length===0?<p>Inga daterade förberedelser ännu.</p>:<ol>{calendar.map(p=><li key={p.id}><time dateTime={p.revision.draft.scheduledAt!}>{stockholmLocal(p.revision.draft.scheduledAt!).replace('T',' ')}</time><button type="button" onClick={()=>{if(dirty&&!window.confirm('Ersätt dina osparade ändringar?'))return;setSelectedId(p.id);setEditor(null);setDirty(false)}}>{p.revision.draft.title}</button><span>{statuses[p.status]} · Väntar på aktivering</span></li>)}</ol>}</section>}
+  {model&&<section className={styles.calendar} aria-label="Planerad innehållskalender"><h3>Kalender</h3><p>Önskade tider i Stockholm. Inga inlägg skickas.</p>{calendar.length===0?<p>Inga daterade förberedelser ännu.</p>:<ol>{calendar.map(p=><li key={p.id}><time dateTime={p.revision.draft.scheduledAt!}>{stockholmLocal(p.revision.draft.scheduledAt!).replace('T',' ')}</time><button type="button" disabled={busy||loading} onClick={()=>{if(dirty&&!window.confirm('Ersätt dina osparade ändringar?'))return;setSelectedId(p.id);setEditor(null);setDirty(false)}}>{p.revision.draft.title}</button><span>{statuses[p.status]} · Väntar på aktivering</span></li>)}</ol>}</section>}
  </section>
 }
 export function SocialContentPanel(props:{projectId:string;projectName:string}){return <Workspace key={props.projectId} {...props}/>}

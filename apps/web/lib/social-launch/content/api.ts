@@ -53,6 +53,8 @@ export async function socialContentMedia(request:Request):Promise<Response>{
   if(downloaded.error||!downloaded.data||downloaded.data.size!==Number(asset.byte_size))throw new SocialContentError('UNAVAILABLE')
   const bytes=await downloaded.data.arrayBuffer()
   if(createHash('sha256').update(Buffer.from(bytes)).digest('hex')!==sha256)throw new SocialContentError('UNAVAILABLE')
-  return new Response(bytes,{headers:{...headers,'content-type':asset.mime_type,'content-length':String(bytes.byteLength)}})
+  const verified=new Uint8Array(bytes);let offset=0
+  const stream=new ReadableStream<Uint8Array>({pull(controller){if(offset>=verified.byteLength){controller.close();return}const end=Math.min(offset+65536,verified.byteLength);controller.enqueue(verified.subarray(offset,end));offset=end}})
+  return new Response(stream,{headers:{...headers,'content-type':asset.mime_type}})
  }catch(e){return failure(e)}
 }

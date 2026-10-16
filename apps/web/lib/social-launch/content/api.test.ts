@@ -34,3 +34,14 @@ it('private media preview proves owned active asset and exact downloaded checksu
  state.db.storage={from:()=>({download:async()=>({data:new Blob(['tampered']),error:null})})};expect((await socialContentMedia(req())).status).toBe(503)
 })
 it('rejects query duplication, unknown fields and publication operations',async()=>{expect((await socialContentApi(new Request('http://localhost/api/social-content?projectId='+state.projectId+'&projectId='+state.projectId))).status).toBe(400);for(const body of [{...proposal(),approved:true},{...proposal(),operation:'publish'}])expect((await socialContentApi(request(body))).status).toBe(400)})
+
+it('streams verified media larger than the ordinary Vercel response ceiling in bounded chunks',async()=>{
+ const bytes=Buffer.alloc(5*1024*1024,7),sha=createHash('sha256').update(bytes).digest('hex'),id=randomUUID()
+ testSql("insert into assets(id,project_id,kind,mime_type,byte_size,checksum_sha256,storage_bucket,storage_path) values('"+id+"','"+state.projectId+"','video','video/mp4',"+bytes.length+",'"+sha+"','media-assets-private','"+id+"');")
+ state.db.storage={from:()=>({download:async()=>({data:new Blob([bytes]),error:null})})}
+ const response=await socialContentMedia(new Request('http://localhost/api/social-content/media?projectId='+state.projectId+'&assetId='+id+'&sha256='+sha))
+ expect(response.status).toBe(200);expect(response.headers.get('content-length')).toBeNull()
+ const reader=response.body!.getReader();let total=0,chunks=0;const hash=createHash('sha256')
+ for(;;){const {value,done}=await reader.read();if(done)break;expect(value.byteLength).toBeLessThanOrEqual(65536);total+=value.byteLength;chunks++;hash.update(value)}
+ expect(total).toBe(5242880);expect(chunks).toBeGreaterThan(1);expect(hash.digest('hex')).toBe(sha)
+})

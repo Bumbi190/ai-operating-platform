@@ -44,6 +44,6 @@ Interfaces: panel receives {projectId,projectName,workspaceUrl}; loads one proje
 - [x] Verify existing channel/connection/browser regressions and typecheck; commit.
 
 ## Task 4: Review and ship
-- [ ] Final branch review against spec and Review Focus; reproduce/fix blockers.
+- [x] Final branch review against spec and Review Focus; reproduce/fix blockers.
 - [ ] CI exact final head, reviewed additive migration, locked merge and production READY/alias verification.
 - [ ] Report preparation deliverables and external activation still pending; never claim actual posts.

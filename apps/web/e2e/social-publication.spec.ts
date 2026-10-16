@@ -27,3 +27,10 @@ test('late prior-project publication reads cannot paint a receipt into the new p
 test('desktop and mobile publication actions stay within the viewport',async({page})=>{
  await mocks(page);await page.setViewportSize({width:1440,height:1000});await open(page);await expect(page.getByRole('heading',{name:'Publicera granskad version',exact:true})).toBeVisible();await page.screenshot({path:'../../.superpowers/sdd/2026-10-16-atlas-social-publication/desktop.png',fullPage:true});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.setViewportSize({width:390,height:844});await page.screenshot({path:'../../.superpowers/sdd/2026-10-16-atlas-social-publication/mobile.png',fullPage:true});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
 })
+
+test('unsupported image preflight gives an editing action and stays blocked after status refresh',async({page})=>{
+ const m=await mocks(page);await page.route('**/api/social-publications',async route=>{m.posts.push(route.request().postDataJSON());await route.fulfill({status:409,json:{code:'UNSUPPORTED'}})})
+ await open(page);await page.getByLabel('Jag vill publicera den granskade versionen på Familje-Stunden nu.',{exact:true}).check();await page.getByRole('button',{name:'Publicera nu på Facebook',exact:true}).click()
+ await expect(page.getByText('Bilden eller formatet kan inte publiceras. Välj en giltig JPEG-bild eller ett format som stöds, spara en ny version och granska den igen.',{exact:true})).toBeVisible()
+ await page.getByRole('button',{name:'Läs sparad publiceringsstatus',exact:true}).click();await expect(page.getByRole('button',{name:'Publicera nu på Facebook',exact:true})).toBeDisabled();expect(m.posts).toHaveLength(1)
+})

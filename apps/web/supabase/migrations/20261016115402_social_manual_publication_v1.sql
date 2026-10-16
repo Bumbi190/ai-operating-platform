@@ -44,7 +44,7 @@ begin
  if v->>'format'='image' then
   if jsonb_array_length(r.media)<>1 or jsonb_array_length(v->'mediaIds')<>1 or r.media->0->>'id'<>v->'mediaIds'->>0 or r.media->0->>'mimeType'<>'image/jpeg'
   or v->>'linkUrl' is not null and position(v->>'linkUrl' in v->>'text')=0
-  or not exists(select 1 from public.assets a where a.id=(r.media->0->>'id')::uuid and a.project_id=r.project_id and a.status='active' and a.kind='image' and a.mime_type='image/jpeg' and a.checksum_sha256=r.media->0->>'sha256' and a.byte_size between 1 and 8388608)
+  or not exists(select 1 from public.assets a where a.id=(r.media->0->>'id')::uuid and a.project_id=r.project_id and a.status='active' and a.kind='image' and a.mime_type='image/jpeg' and a.checksum_sha256=r.media->0->>'sha256' and a.byte_size between 1 and 8388608 and (a.width is null or a.width between 320 and 1440) and (a.height is null or a.height>0) and (a.width is null or a.height is null or a.width::numeric/nullif(a.height,0) between 0.8 and 1.91))
   then raise exception 'SOCIAL_PUBLICATION_UNSUPPORTED';end if;
  end if;
  return r;

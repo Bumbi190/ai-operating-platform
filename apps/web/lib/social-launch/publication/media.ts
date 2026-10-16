@@ -1,4 +1,5 @@
 import 'server-only'
+import {decode} from 'jpeg-js'
 import {createHash} from 'node:crypto'
 import type {createAdminClient} from '@/lib/supabase/admin'
 import type {SocialContentAsset} from '../content/types'
@@ -25,6 +26,7 @@ export async function verifyPublicationImage(db:ReturnType<typeof createAdminCli
   if(size!==byteSize||createHash('sha256').update(bytes).digest('hex')!==expected.sha256)throw new PublicationError('REVIEW_REQUIRED')
   const dimensions=readJpegDimensions(bytes)
   if(asset.width!==null&&asset.width!==dimensions.width||asset.height!==null&&asset.height!==dimensions.height)throw new PublicationError('REVIEW_REQUIRED')
+  try{const decoded=decode(bytes,{useTArray:true,formatAsRGBA:false,tolerantDecoding:false,maxResolutionInMP:3,maxMemoryUsageInMB:64});if(decoded.width!==dimensions.width||decoded.height!==dimensions.height||decoded.data.length!==dimensions.width*dimensions.height*3)throw Error()}catch{throw new PublicationError('UNSUPPORTED')}
   return {bytes,...dimensions}
  }catch(e){if(e instanceof PublicationError)throw e;throw new PublicationError('UNAVAILABLE')}
 }

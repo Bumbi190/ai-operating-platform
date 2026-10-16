@@ -26,3 +26,10 @@ it('cancels an oversized stream instead of buffering unbounded storage content',
  const stream=new ReadableStream<Uint8Array>({start(c){c.enqueue(new Uint8Array(8*1024*1024+1))},cancel(){canceled=true}})
  await expect(verifyPublicationImage(db,f.projectId,f.post.revision.media[0],{storageOrigin:'https://fixture.supabase.co',fetcher:async()=>new Response(stream)})).rejects.toMatchObject({code:'UNAVAILABLE'});expect(canceled).toBe(true)
 })
+
+it('rejects checksum-matching JPEG envelopes that cannot actually decode',async()=>{
+ const sos=JPEG.indexOf(Buffer.from([255,218])),entropy=sos+2+JPEG.readUInt16BE(sos+2)
+ const emptyScan=Buffer.concat([JPEG.subarray(0,entropy),Buffer.from([0,255,217])])
+ const f=await publicationFixture(db,'instagram',true,emptyScan);storage(f)
+ await expect(verifyPublicationImage(db,f.projectId,f.post.revision.media[0],{storageOrigin:'https://fixture.supabase.co',fetcher:async()=>new Response(emptyScan)})).rejects.toMatchObject({code:'UNSUPPORTED'})
+})

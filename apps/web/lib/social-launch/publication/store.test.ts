@@ -2,7 +2,7 @@ import {beforeAll,it,expect} from 'vitest'
 import {createHash} from 'node:crypto'
 import {spawn} from 'node:child_process'
 import {initializePublicationDb} from './test-db'
-import {publicationFixture} from './fixtures.test-utils'
+import {publicationFixture,JPEG} from './fixtures.test-utils'
 import {testSql} from '../../website-build/test-db'
 import {publicationRead,publicationPrepare,publicationStep,publicationMediaLookup} from './store'
 let db:ReturnType<typeof initializePublicationDb>
@@ -84,4 +84,12 @@ it('cannot mark a request published without an observed provider id or container
  const f=await publicationFixture(db,'instagram',true),r=await publicationPrepare(db,f.p,f.input)
  const a=await publicationStep(db,f.p,step(f,r,'claim_create',{capabilityHash:'c'.repeat(64)}));await publicationStep(db,f.p,step(f,a.record,'container_ready',{containerId:'12345'}))
  expect(()=>testSql("update social_publications set state='published' where id='"+r.id+"';",true)).toThrow()
+})
+
+it('readiness and the SQL guard reject known unsupported dimensions before any request is admitted',async()=>{
+ const f=await publicationFixture(db,'instagram',true,JPEG,{width:2000,height:2000})
+ const {publicationPreview}=await import('./dispatch')
+ const preview=await publicationPreview(db,f.p,{projectId:f.projectId,postId:f.postId})
+ expect(preview.canRequest).toBe(false);expect(preview.blockers).toContain('image_dimensions_not_supported')
+ await expect(publicationPrepare(db,f.p,f.input)).rejects.toMatchObject({code:'UNSUPPORTED'})
 })

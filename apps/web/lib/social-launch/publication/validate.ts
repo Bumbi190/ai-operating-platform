@@ -12,11 +12,13 @@ export function manualBlockers(post:PublicationPost):string[]{
  if(v.channel==='instagram'&&v.text.length>2200)reasons.add('caption_too_long')
  if(v.format==='image'){
   if(r.media.length!==1||v.mediaIds.length!==1||r.media[0]?.id!==v.mediaIds[0]||r.media[0]?.kind!=='image'||r.media[0]?.mimeType!=='image/jpeg')reasons.add('single_jpeg_required')
+  const image=r.media[0];if(image&&!imageDimensionsSupported(image.width,image.height))reasons.add('image_dimensions_not_supported')
   if(v.linkUrl&&!v.text.includes(v.linkUrl))reasons.add('image_link_not_in_text')
  }
  return [...reasons]
 }
-/** Validate the JPEG envelope and SOF dimensions without transcoding reviewed bytes. */
+export function imageDimensionsSupported(width:number|null,height:number|null):boolean{return (width===null||Number.isInteger(width)&&width>=320&&width<=1440)&&(height===null||Number.isInteger(height)&&height>0)&&(width===null||height===null||width/height>=0.8&&width/height<=1.91)}
+/** Bounded envelope/frame/scan preflight; the server also decodes before admitting a provider write. */
 export function readJpegDimensions(b:Uint8Array):{width:number;height:number}{
  const fail=():never=>{throw new PublicationError('UNSUPPORTED')}
  if(b.length<4||b.length>8*1024*1024||b[0]!==255||b[1]!==216||b[b.length-2]!==255||b[b.length-1]!==217)return fail()
@@ -31,7 +33,7 @@ export function readJpegDimensions(b:Uint8Array):{width:number;height:number}{
    if(width<320||width>1440||height<1||ratio<0.8||ratio>1.91)return fail()
    frame={width,height}
   }
-  if(marker===218){if(!frame)return fail();return frame}
+  if(marker===218){const components=b[offset+2];if(!frame||components<1||components>3||length!==6+2*components||offset+length>=b.length-2)return fail();return frame}
   offset+=length
  }
  return fail()

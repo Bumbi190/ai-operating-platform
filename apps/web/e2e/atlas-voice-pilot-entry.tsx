@@ -12,7 +12,7 @@ let pendingResumes: (() => void)[] = [], releaseCreate: (() => void) | undefined
 let chat: ReadableStreamDefaultController<Uint8Array> | null = null
 let mediaContext: AudioContext | null = null, gain: GainNode | null = null
 let tracks = 0, speechRequests = 0, chatRequests = 0, transcriptionRequests = 0, update = () => {}
-let transcription = ''
+let transcription = '', delayTranscription = false, releaseTranscription: (() => void) | undefined
 const encoder = new TextEncoder()
 const event = (value: unknown) => encoder.encode('data: ' + JSON.stringify(value) + '\n\n')
 
@@ -57,7 +57,10 @@ window.fetch = async (input, init) => {
   if (url === '/api/atlas/voice-pilot/speech' && init?.method === 'POST') {
     if (new Headers(init.headers).get('content-type') === 'audio/pcm') {
       transcriptionRequests++; update()
-      return Response.json({ text: transcription })
+      const text = transcription
+      if (delayTranscription) await new Promise<void>(resolve => { releaseTranscription = resolve })
+      init.signal?.throwIfAborted()
+      return Response.json({ text })
     }
     speechRequests++; update()
     const bytes = new Uint8Array(24_000 * 2 * 3), view = new DataView(bytes.buffer)
@@ -88,6 +91,9 @@ function Fixture() {
       <button style={style} onClick={() => void say('Testa en vanlig fråga.')}>Säg första frågan</button>
       <button style={style} onClick={() => void say('Lägg till en blå knapp.')}>Säg första avbrottet</button>
       <button style={style} onClick={() => void say('Och gör den stor.')}>Säg andra avbrottet</button>
+      <button style={style} onClick={() => { delayTranscription = !delayTranscription; update() }}>Fördröj tolkning: {delayTranscription ? 'på' : 'av'}</button>
+      <button style={style} onClick={() => { releaseTranscription?.(); releaseTranscription = undefined }}>Släpp tolkning</button>
+      <button style={style} onClick={() => { chat?.enqueue(event({ event: 'error', message: 'Testfel' })); chat?.close(); chat = null }}>Avsluta med fel</button>
       <button style={style} onClick={simulateSignout}>Simulera utloggning</button>
       <p role="status">Aktiva mikrofonspår: {tracks}. Talbegäranden: {speechRequests}. Chattbegäranden: {chatRequests}. Transkriberingar: {transcriptionRequests}.</p>
     </details>

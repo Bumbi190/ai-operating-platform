@@ -11,7 +11,7 @@ import { isAtlasSwedishVoice, type AtlasSwedishVoice } from '@/lib/atlas/voice-p
 import { useOptionalAtlas } from '@/lib/atlas/runtime'
 import { createClient } from '@/lib/supabase/client'
 
-const SAMPLE = 'Hej André! Det är Atlas. Vi tar det lugnt, du får tänka färdigt. Om du vill ändra något är det bara att avbryta mig. Ska vi kika på Omnira tillsammans?'
+const SAMPLE = 'Hej André! Det är Atlas. Vi tar det lugnt, du får tänka färdigt. Tryck på Avbryt och rätta om du vill ändra något. Ska vi kika på Omnira tillsammans?'
 const SAMPLE_NAMES = 'I dag är det fredag den sextonde oktober. Vi ses i Hässleholm klockan halv tre. Jag har tittat på Handlarbörsen och Familje-Stunden. Vad vill du börja med?'
 type Timing = { quietMs: number | null; textMs: number | null; audioMs: number | null }
 
@@ -34,6 +34,7 @@ export function AtlasVoiceTrial() {
   const player = useRef<ReturnType<typeof createPcmSpeechPlayer> | null>(null)
   const capture = useRef<ReturnType<typeof createPcmVoiceCapture> | null>(null)
   const heldDraft = useRef(''), draftRevision = useRef(0), draftSource = useRef<'text' | 'voice'>('text')
+  const queuedVoice = useRef<{ text: string; revision: number; lifetime: number; quietMs: number } | null>(null)
   const outputActive = useRef(false), lastQuietMs = useRef(0)
   const timedReply = useRef<(Timing & { startedAt: number; audioToken: number }) | null>(null)
   const writeDraft = (text: string, source: 'text' | 'voice') => { draftRevision.current++; draftSource.current = source; setDraft(text) }
@@ -55,7 +56,13 @@ export function AtlasVoiceTrial() {
     },
   })
   function stopSpeech() { speechEpoch.current++; timedReply.current = null; player.current?.stop() }
+  function interruptForCorrection() {
+    queuedVoice.current = null
+    stopSpeech(); capture.current?.discard()
+    setNotice(mic ? 'Rösten är avbruten. Säg rättelsen när Atlas lyssnar. Ett redan påbörjat jobb fortsätter; din rättelse skickas därefter.' : 'Rösten är stoppad. Ett redan påbörjat jobb fortsätter och svaret finns kvar i text.')
+  }
   function stopAll() {
+    queuedVoice.current = null
     lifetime.current++; stopSpeech(); capture.current?.stop(); capture.current = null
     if (mounted.current) { setMic(false); setOpening(false); setListening(false); setTranscribing(false) }
   }
@@ -119,7 +126,8 @@ export function AtlasVoiceTrial() {
         writeDraft(combined, 'voice')
         if (sendingRef.current || conversation.snapshot().pending) {
           heldDraft.current = combined
-          setNotice('Jag hörde dig. Skicka din fortsättning när det pågående svaret är klart.')
+          queuedVoice.current = { text: combined, revision: draftRevision.current, lifetime: token, quietMs: lastQuietMs.current }
+          setNotice('Jag hörde dig. Din fortsättning skickas när det pågående svaret är klart. Redigera texten om du vill ändra den först.')
         } else void submitRef.current(combined, 'voice', lastQuietMs.current)
       },
     })
@@ -131,16 +139,28 @@ export function AtlasVoiceTrial() {
     } catch { if (mounted.current && token === lifetime.current) { stopAll(); setNotice('Ljudet kunde inte starta. Prova att klicka på provlyssna först.') } }
   }
 
+  function resumeQueuedVoice(token: number, completed: boolean) {
+    // Read the ref after the await: speech callbacks can populate it during a turn.
+    const queued = queuedVoice.current
+    // Voice turns remain serial; stop, errors, edits and unfinished phrases win.
+    if (mounted.current && token === lifetime.current && completed && queued &&
+        queued.lifetime === token && queued.revision === draftRevision.current &&
+        !capture.current?.hasPendingInput()) {
+      queuedVoice.current = null
+      void submitRef.current(queued.text, 'voice', queued.quietMs)
+    }
+  }
+
   async function submit(text: string, inputSource: 'text' | 'voice', quietMs?: number) {
     if (!text.trim() || sendingRef.current || conversation.snapshot().pending) return
     sendingRef.current = true; setSending(true)
     const submittedRevision = draftRevision.current
-    heldDraft.current = ''; capture.current?.discard()
+    queuedVoice.current = null; heldDraft.current = ''; capture.current?.discard()
     atlas?.deactivate(); stopSpeech(); setNotice(''); setReply('')
     const token = lifetime.current, audioToken = speechEpoch.current, selectedVoice = voice
     const record = { quietMs: quietMs ?? null, textMs: null as number | null, audioMs: null as number | null, startedAt: performance.now(), audioToken }
     timedReply.current = record; setTiming({ ...record })
-    let responseText = '', spoken = 0
+    let responseText = '', spoken = 0, completed = false
     const current = () => mounted.current && token === lifetime.current
     const flush = (final: boolean) => {
       if (!current() || audioToken !== speechEpoch.current || !voices.some(v => v.key === selectedVoice)) return
@@ -175,9 +195,13 @@ export function AtlasVoiceTrial() {
           }
         },
       })
+      completed = outcome.ok
       if (current()) { flush(true); if (!outcome.ok) setNotice(outcome.notice ?? 'Atlas kunde inte slutföra svaret. Öppna chatten för att fortsätta.') }
     } catch { if (current()) setNotice('Samtalet kunde inte starta. Texten finns kvar, försök igen.') }
-    finally { sendingRef.current = false; if (mounted.current) setSending(false) }
+    finally {
+      sendingRef.current = false; if (mounted.current) setSending(false)
+      resumeQueuedVoice(token, completed)
+    }
   }
   submitRef.current = submit
 
@@ -194,30 +218,30 @@ export function AtlasVoiceTrial() {
         <label className="text-sm text-slate-300">Ljud<select value={playbackMode} onChange={e => { stopAll(); setPlaybackMode(e.target.value === 'headphones' ? 'headphones' : 'speakers') }} className="mt-2 block w-full rounded-lg border border-white/15 bg-slate-950 p-3 text-white"><option value="speakers">Högtalare</option><option value="headphones">Hörlurar</option></select></label>
       </div>
       <div className="mt-4 flex flex-wrap gap-3"><button className={button} disabled={!voices.length} onClick={() => void sample(SAMPLE)}><Play size={16} /> Provlyssna</button><button className={button} disabled={!voices.length} onClick={() => void sample(SAMPLE_NAMES)}>Testa svenska namn</button></div>
-      <p className="mt-4 flex items-center gap-2 text-xs text-slate-400"><Headphones size={14} />{playbackMode === 'speakers' ? 'Med högtalare lyssnar Atlas när han har tystnat. Tryck på Avbryt under svaret och börja prata när det står Atlas lyssnar.' : 'Med hörlurar kan du avbryta genom att börja prata.'}</p>
+      <p className="mt-4 flex items-center gap-2 text-xs text-slate-400"><Headphones size={14} />{playbackMode === 'speakers' ? 'Med högtalare lyssnar Atlas när han har tystnat. Tryck på Avbryt och rätta för att stoppa rösten och börja prata när det står Atlas lyssnar.' : 'Med hörlurar kan du avbryta genom att börja prata.'}</p>
     </section>
     <section className="mt-5 rounded-2xl border border-white/10 bg-slate-900/40 p-5" aria-label="Testsamtal">
       <p className="mb-4 text-xs leading-5 text-slate-400">ElevenLabs tolkar din svenska. Tala när det står Atlas lyssnar. När du pratat klart kan du även trycka på Klar med frågan.</p>
       <div className="flex flex-wrap items-center gap-3">
         <button className={button + (mic || opening ? ' bg-teal-400/15 text-teal-200' : '')} disabled={!voices.length} onClick={() => void toggleMic()}>{mic || opening ? <MicOff size={17} /> : <Mic size={17} />}{opening ? 'Avbryt mikrofonstart' : mic ? 'Stäng mikrofonen' : 'Starta mikrofonen'}</button>
         <button className={button} onClick={stopAll}><Square size={15} /> Stoppa allt ljud</button>
-        {mic && playbackMode === 'speakers' && outputBusy && <button className={button + ' border-teal-300 text-teal-200'} onClick={stopSpeech}>Avbryt</button>}
+        {(mic || sending || outputBusy) && <button className={button + ' border-teal-300 text-teal-200'} onClick={interruptForCorrection}>{mic ? 'Avbryt och rätta' : 'Stoppa rösten'}</button>}
         {mic && <button className={button} disabled={!listening || transcribing} onClick={() => void capture.current?.finish()}>Klar med frågan</button>}
         <p role="status" className="text-sm text-teal-200">{transcribing ? 'Atlas tolkar det du sa…' : speaking ? playbackMode === 'speakers' ? 'Atlas pratar · avbryt med knappen' : 'Atlas pratar · du kan avbryta' : mic || opening ? listening ? 'Atlas lyssnar' : 'Vänta ett ögonblick · mikrofonen görs redo' : 'Mikrofonen är avstängd'}</p>
       </div>
+      {notice && <p role="alert" className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-3 text-sm text-amber-100">{notice}</p>}
       <div className="mt-5 space-y-4" aria-live="polite">
         {snapshot.history.map((message, index) => <div key={index} className={message.role === 'user' ? 'ml-8 rounded-xl bg-teal-500/10 p-4' : 'mr-8 rounded-xl bg-white/5 p-4'}><p className="mb-1 text-xs text-slate-400">{message.role === 'user' ? 'Du' : 'Atlas'}</p><p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p></div>)}
         {snapshot.pending && <p className="text-sm leading-6 text-slate-300">{reply || 'Atlas tänker…'}</p>}
       </div>
       <form className="mt-5" onSubmit={e => { e.preventDefault(); void submit(draft, draftSource.current) }}>
         <label htmlFor="voice-draft" className="text-sm text-slate-300">Det du vill säga</label>
-        <textarea id="voice-draft" value={draft} onChange={e => { heldDraft.current = e.target.value; capture.current?.discard(); writeDraft(e.target.value, 'text') }} rows={3} placeholder="Prata eller skriv till Atlas…" className="mt-2 w-full resize-y rounded-xl border border-white/15 bg-slate-950 p-3 text-sm focus:border-teal-300 focus:outline-none" />
+        <textarea id="voice-draft" value={draft} onChange={e => { queuedVoice.current = null; heldDraft.current = e.target.value; capture.current?.discard(); writeDraft(e.target.value, 'text') }} rows={3} placeholder="Prata eller skriv till Atlas…" className="mt-2 w-full resize-y rounded-xl border border-white/15 bg-slate-950 p-3 text-sm focus:border-teal-300 focus:outline-none" />
         <button className={button + ' mt-3 bg-teal-300 text-slate-950 hover:bg-teal-200'} disabled={sending || snapshot.pending || !draft.trim()}><Send size={16} />{sending ? 'Atlas arbetar…' : 'Skicka'}</button>
       </form>
-      {notice && <p role="alert" className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/5 p-3 text-sm text-amber-100">{notice}</p>}
       {timing && <details className="mt-4 text-xs leading-6 text-slate-400"><summary className="cursor-pointer">Svarstid i senaste frågan</summary><p>{timing.quietMs !== null && <>Väntan före skickat: {(timing.quietMs / 1000).toFixed(1)} s. </>}Till första text: {timing.textMs === null ? '—' : (timing.textMs / 1000).toFixed(1) + ' s'}. Till ljudstart: {timing.audioMs === null ? '—' : (timing.audioMs / 1000).toFixed(1) + ' s'}.</p></details>}
       {snapshot.id && <Link href={'/chat/' + snapshot.id} onClick={stopAll} className="mt-4 inline-block text-sm text-teal-200 underline underline-offset-4">Öppna samtalet för projektjobb och godkännanden</Link>}
     </section>
-    <p className="mt-5 text-xs leading-5 text-slate-400">Taligenkänning debiteras efter inspelad ljudtid och rösten per uppläst tecken inom Omniras kostnadskontroll. Atlas chattkostnad tillkommer. Avbryter du talet fortsätter ett redan påbörjat jobb; din fortsättning väntar i textrutan medan Atlas arbetar.</p>
+    <p className="mt-5 text-xs leading-5 text-slate-400">Taligenkänning debiteras efter inspelad ljudtid och rösten per uppläst tecken inom Omniras kostnadskontroll. Atlas chattkostnad tillkommer. Avbryter du talet fortsätter ett redan påbörjat jobb; din talade fortsättning väntar i textrutan och skickas när svaret är klart. Redigering eller Stoppa allt ljud avbryter automatisk skickning.</p>
   </main>
 }

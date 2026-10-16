@@ -98,3 +98,18 @@ describe('isolated Swedish speech route', () => {
     await vi.waitFor(() => expect(state.dispose).toHaveBeenCalledTimes(1))
   })
 })
+
+it('reports speech preparation duration without logging speech text or provider secrets', async () => {
+  const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+  try {
+    const phrase = 'Privat fras för tidsmätningen.'
+    const response = await POST(post({ text: phrase, voice: 'anders' }))
+    await response.arrayBuffer()
+    expect(response.headers.get('server-timing')).toMatch(/^atlas_speech_headers;dur=\d+$/)
+    expect(info).toHaveBeenCalledWith('[atlas-voice-trial]', expect.objectContaining({
+      stage: 'speech_headers', outcome: 'ok', elapsedMs: expect.any(Number), characters: phrase.length,
+    }))
+    const logs = JSON.stringify(info.mock.calls)
+    expect(logs).not.toContain(phrase); expect(logs).not.toContain('secret-test-key')
+  } finally { info.mockRestore() }
+})

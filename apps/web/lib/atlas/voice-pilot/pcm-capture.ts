@@ -125,7 +125,7 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
       if (live && token === generation) { stop(); options.notice('Mikrofonen kunde inte starta. Kontrollera behörigheten eller skriv din fråga.') }
     }
   }
-  return { start, stop, discard, finish: () => finish(), setOutputActive(value: boolean) {
+  return { start, stop, discard, hasPendingInput: () => voiced || candidateMs > 0 || !!upload, finish: () => finish(), setOutputActive(value: boolean) {
     if (options.playbackMode !== 'speakers' || value === output) return
     output = value; clearTimeout(recovery); recovering = false; discard()
     if (!value && live) {

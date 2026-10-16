@@ -23,6 +23,13 @@ export async function GET(request: Request) {
   } catch { return Response.json({ error: 'Svenska röster kunde inte hämtas just nu.' }, { status: 503 }) }
 }
 export async function POST(request: Request) {
+  const startedAt = Date.now()
+  // Numeric timing only: never log prompts, transcripts, PCM, credentials or provider errors.
+  const measure = (stage: 'transcription' | 'speech_headers', outcome: 'ok' | 'failed', units: { audioMs?: number; characters?: number }) => {
+    const elapsedMs = Date.now() - startedAt
+    console.info('[atlas-voice-trial]', { stage, outcome, elapsedMs, ...units })
+    return elapsedMs
+  }
   const denial = await guard(); if (denial) return denial
   if (request.headers.get('origin') !== new URL(request.url).origin) return Response.json({ error: 'Ogiltigt ursprung.' }, { status: 403 })
   const audio = request.headers.get('content-type')?.split(';')[0].trim() === 'audio/pcm'
@@ -48,8 +55,11 @@ export async function POST(request: Request) {
         // Personal operator input, before any chat/project tool is executed.
         execution: { context: 'OPERATOR_INTERACTIVE', scope: GLOBAL_ONLY },
       }, bytes, request.signal)
-      return Response.json({ text }, { headers: { 'Cache-Control': 'no-store' } })
-    } catch { return Response.json({ error: 'Talet kunde inte tolkas. Kontrollera åtkomst och budget eller försök igen.', code: 'ATLAS_TRANSCRIPTION_UNAVAILABLE' }, { status: 503 }) }
+      const elapsedMs = measure('transcription', 'ok', { audioMs: bytes.length / 32 })
+      return Response.json({ text }, { headers: { 'Cache-Control': 'no-store', 'Server-Timing': 'atlas_transcription;dur=' + elapsedMs } })
+    } catch {
+      measure('transcription', 'failed', { audioMs: bytes.length / 32 })
+      return Response.json({ error: 'Talet kunde inte tolkas. Kontrollera åtkomst och budget eller försök igen.', code: 'ATLAS_TRANSCRIPTION_UNAVAILABLE' }, { status: 503 }) }
   }
   let value: unknown
   try { value = JSON.parse(new TextDecoder().decode(bytes)) }
@@ -58,11 +68,18 @@ export async function POST(request: Request) {
   if (!body || typeof body.text !== 'string' || !body.text.trim() || body.text.length > 600 || !isAtlasSwedishVoice(body.voice)) {
     return Response.json({ error: 'Välj svensk röst och en text på högst 600 tecken.' }, { status: 400 })
   }
-  try { return await streamSwedishSpeech({
-    project: PLATFORM_COMPAT_PROJECT, operation: 'Atlas Swedish voice trial',
-    // Human operator listening to personal Atlas assistance, not executing a
-    // project's work. Project actions retain their existing chat/tool scopes.
-    execution: { context: 'OPERATOR_INTERACTIVE', scope: GLOBAL_ONLY },
-  }, body.text.trim(), body.voice, request.signal) }
-  catch { return Response.json({ error: 'Rösten kunde inte spelas. Kontrollera röståtkomst och budget och försök igen.', code: 'ATLAS_SWEDISH_VOICE_UNAVAILABLE' }, { status: 503 }) }
+  try {
+    const response = await streamSwedishSpeech({
+      project: PLATFORM_COMPAT_PROJECT, operation: 'Atlas Swedish voice trial',
+      // Human operator listening to personal Atlas assistance, not executing a
+      // project's work. Project actions retain their existing chat/tool scopes.
+      execution: { context: 'OPERATOR_INTERACTIVE', scope: GLOBAL_ONLY },
+    }, body.text.trim(), body.voice, request.signal)
+    const elapsedMs = measure('speech_headers', 'ok', { characters: body.text.trim().length })
+    response.headers.set('Server-Timing', 'atlas_speech_headers;dur=' + elapsedMs)
+    return response
+  }
+  catch {
+    measure('speech_headers', 'failed', { characters: body.text.trim().length })
+    return Response.json({ error: 'Rösten kunde inte spelas. Kontrollera röståtkomst och budget och försök igen.', code: 'ATLAS_SWEDISH_VOICE_UNAVAILABLE' }, { status: 503 }) }
 }

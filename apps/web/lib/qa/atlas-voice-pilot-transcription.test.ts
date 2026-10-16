@@ -79,3 +79,17 @@ describe('bounded Swedish transcription on the existing trial boundary', () => {
     expect(await (await POST(post())).text()).not.toContain('private-provider-detail')
   })
 })
+
+it('reports transcription duration without recording the transcript', async () => {
+  const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+  try {
+    const response = await POST(post())
+    const result = await response.json()
+    expect(response.headers.get('server-timing')).toMatch(/^atlas_transcription;dur=\d+$/)
+    expect(info).toHaveBeenCalledWith('[atlas-voice-trial]', expect.objectContaining({
+      stage: 'transcription', outcome: 'ok', elapsedMs: expect.any(Number), audioMs: 2000,
+    }))
+    const logs = JSON.stringify(info.mock.calls)
+    expect(logs).not.toContain(result.text); expect(logs).not.toContain('secret-test-key')
+  } finally { info.mockRestore() }
+})

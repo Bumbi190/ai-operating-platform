@@ -181,3 +181,51 @@ describe('direct audio input without native ASR finalization', () => {
     expect(notice).toHaveBeenCalledTimes(1); expect(vi.getTimerCount()).toBe(0)
   })
 })
+
+
+describe('speaker-mode response preservation', () => {
+  it('does not cancel a pending reply when input onset is detected in speaker mode', async () => {
+    const f = fixture('speakers'), start = f.capture.start(); f.grant(); await start
+    f.frames(0.03, 200)
+    expect(f.interrupt).not.toHaveBeenCalled()
+    f.capture.stop()
+  })
+  it('retains spoken interruption in headphone mode', async () => {
+    const f = fixture('headphones'), start = f.capture.start(); f.grant(); await start
+    f.frames(0.03, 200)
+    expect(f.interrupt).toHaveBeenCalledTimes(1)
+    f.capture.stop()
+  })
+})
+
+describe('microphone stream health', () => {
+  it('does not claim to listen until a real audio frame arrives', async () => {
+    vi.useFakeTimers()
+    const f = fixture(), start = f.capture.start(); f.grant(); await start
+    expect(f.listening).toHaveBeenLastCalledWith(false)
+    f.frames(0, 20)
+    expect(f.listening).toHaveBeenLastCalledWith(true)
+    f.capture.stop(); expect(vi.getTimerCount()).toBe(0)
+  })
+  it('reports a missing stream and releases the microphone after five seconds', async () => {
+    vi.useFakeTimers()
+    const f = fixture(), start = f.capture.start(); f.grant(); await start
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(f.stop).toHaveBeenCalledTimes(1)
+    expect(f.active).toHaveBeenLastCalledWith(false)
+    expect(f.notice).toHaveBeenCalledWith(expect.stringContaining('ljudström'))
+    expect(vi.getTimerCount()).toBe(0)
+  })
+  it('accepts silent frames but detects a stream that later stops', async () => {
+    vi.useFakeTimers()
+    const f = fixture(), start = f.capture.start(); f.grant(); await start
+    for (let i = 0; i < 6; i++) {
+      f.frames(0, 20); await vi.advanceTimersByTimeAsync(1000)
+    }
+    expect(f.notice).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(4000)
+    expect(f.stop).toHaveBeenCalledTimes(1)
+    expect(f.listening).toHaveBeenLastCalledWith(false)
+    expect(f.notice).toHaveBeenCalledTimes(1)
+  })
+})

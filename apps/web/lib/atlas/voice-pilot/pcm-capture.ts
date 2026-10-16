@@ -21,17 +21,18 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
   let output = false, recovering = false, recovery: ReturnType<typeof setTimeout> | undefined
   let upload: AbortController | null = null, capped = false
   let device: AbortController | null = null, idleOverflow = false
+  let receivedFrame = false, health: ReturnType<typeof setTimeout> | undefined
   let samples: Float32Array[] = [], count = 0, idle: Float32Array[] = [], idleCount = 0
   let voiced = false, candidateMs = 0, quietMs = 0, noise = 0.0003
   const blocked = () => options.playbackMode === 'speakers' && (output || recovering)
-  const ready = () => options.listening?.(live && !!source && !blocked() && !upload && !capped)
+  const ready = () => options.listening?.(live && !!source && receivedFrame && !blocked() && !upload && !capped)
   function clearAudio() { samples = []; count = 0; idle = []; idleCount = 0; idleOverflow = false; voiced = false; candidateMs = quietMs = 0; noise = 0.0003 }
   function discard() {
     if (capped && live) { stop(); return }
     revision++; upload?.abort(); upload = null; options.processing?.(false); clearAudio(); ready()
   }
   function stop() {
-    generation++; live = false; clearTimeout(recovery); recovering = false
+    generation++; live = false; clearTimeout(recovery); clearTimeout(health); receivedFrame = false; recovering = false
     discard(); device?.abort(); device = null; source?.stop(); source = null; capped = false
     options.listening?.(false); options.active(false)
   }
@@ -48,7 +49,7 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
     for (const part of parts) { const chunk = part.subarray(0, length - offset); audio.set(chunk, offset); offset += chunk.length; if (offset === length) break }
     const wait = quietMs, token = generation, turn = revision, abort = new AbortController()
     clearAudio(); upload = abort; capped = reviewOnly
-    if (reviewOnly) { source.stop(); source = null }
+    if (reviewOnly) { clearTimeout(health); source.stop(); source = null }
     ready(); options.processing?.(true)
     try {
       const text = (await deps.transcribe(pcm16(audio), abort.signal)).trim()
@@ -74,9 +75,20 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
     live = true; const token = ++generation
     device = new AbortController()
     let resample: ReturnType<typeof createPcmResampler> | undefined
+    const watchStream = () => {
+      clearTimeout(health)
+      health = setTimeout(() => {
+        if (!live || token !== generation || !source) return
+        stop()
+        options.notice('Mikrofonens ljudström har stannat. Starta mikrofonen igen och håll sidan öppen medan du pratar.')
+      }, 5000)
+    }
     try {
       const opened = await deps.open(frame => {
-        if (!live || token !== generation || !resample || !source || blocked() || upload || capped) return
+        if (!live || token !== generation || !resample || !source || !frame.length) return
+        watchStream()
+        if (!receivedFrame) { receivedFrame = true; ready() }
+        if (blocked() || upload || capped) return
         const pcm = resample(frame)
         if (!pcm.length) return
         const ms = pcm.length / PCM_RATE * 1000
@@ -98,7 +110,9 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
           const joined = new Float32Array(idleCount); let i = 0
           for (const part of idle) { joined.set(part, i); i += part.length }
           samples = [joined]; count = idleCount; idle = []; idleCount = 0
-          options.interrupt()
+          // Speaker mode uses the explicit Avbryt button. Input arriving while
+          // a reply is still preparing must not silently cancel its speech epoch.
+          if (options.playbackMode === 'headphones') options.interrupt()
         } else { samples.push(pcm); count += pcm.length }
         quietMs = speech ? 0 : quietMs + ms
         if (count >= maxSamples) { void finish(true); return }
@@ -106,7 +120,7 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
       }, device.signal)
       if (!live || token !== generation) { opened.stop(); return }
       source = opened; resample = createPcmResampler(opened.sampleRate)
-      options.active(true); ready()
+      options.active(true); ready(); watchStream()
     } catch {
       if (live && token === generation) { stop(); options.notice('Mikrofonen kunde inte starta. Kontrollera behörigheten eller skriv din fråga.') }
     }

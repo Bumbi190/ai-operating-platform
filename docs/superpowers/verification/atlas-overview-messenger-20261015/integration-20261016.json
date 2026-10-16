@@ -1,0 +1,166 @@
+{
+  "source": "b301cb74527d985d20e736d33c3c19a9db629a51",
+  "integrated_main": "7ded1f5d36d21916a7551008c5fff1448251794b",
+  "environment": "Windows, Node 22.22.3, own locked npm ci, explicit owned local SQL fixture, mocked model providers",
+  "counts": {
+    "numTotalTests": 430,
+    "numPassedTests": 430,
+    "numFailedTests": 0,
+    "numPendingTests": 0
+  },
+  "files": [
+    {
+      "file": "apps/web/lib/atlas/voice-capture.test.ts",
+      "passed": 4,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/website-build/chat-tools.test.ts",
+      "passed": 9,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/website-build/migration-policy.test.ts",
+      "passed": 6,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/website-build/test-db-bootstrap.test.ts",
+      "passed": 2,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/website-build/worker.test.ts",
+      "passed": 35,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/website-build/planning/store.test.ts",
+      "passed": 12,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/social-launch/api.test.ts",
+      "passed": 4,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/social-launch/atlas-tools.test.ts",
+      "passed": 5,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/social-launch/catalog.test.ts",
+      "passed": 16,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/social-launch/loader.test.ts",
+      "passed": 2,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/social-launch/release.test.ts",
+      "passed": 1,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/social-launch/store.test.ts",
+      "passed": 10,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/atlas/conversation/controller.test.ts",
+      "passed": 23,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/atlas/conversation/design-review-effects.test.ts",
+      "passed": 5,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/qa/atlas-launcher-vnext.test.ts",
+      "passed": 23,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/qa/atlas-mini-chat-geometry.test.ts",
+      "passed": 3,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/qa/breadcrumbs.test.ts",
+      "passed": 39,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/qa/migration-guard-v2.test.ts",
+      "passed": 26,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/qa/mobile-chrome-contract.test.ts",
+      "passed": 7,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/qa/navigation-closure.test.ts",
+      "passed": 38,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/qa/overview-auth-navigation.test.ts",
+      "passed": 7,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/qa/overview-dashboard.test.ts",
+      "passed": 5,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/qa/overview-period.test.ts",
+      "passed": 2,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/qa/overview-sidebar-render.test.ts",
+      "passed": 4,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/qa/overview-view-model.test.ts",
+      "passed": 15,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/qa/safe-redirect.test.ts",
+      "passed": 2,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/qa/sidebar-project-visibility.test.ts",
+      "passed": 26,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/qa/vnext-settings.test.ts",
+      "passed": 66,
+      "failed": 0
+    },
+    {
+      "file": "apps/web/lib/nav/registry.test.ts",
+      "passed": 33,
+      "failed": 0
+    }
+  ],
+  "browser": {
+    "passed": 27,
+    "failed": 0,
+    "config": "apps/web/playwright.atlas-overview-messenger.config.ts"
+  },
+  "typescript_errors": 0,
+  "scoped_lint_errors": 0,
+  "scoped_lint_warnings": 0
+}

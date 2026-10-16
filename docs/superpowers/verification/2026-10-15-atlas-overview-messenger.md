@@ -1,5 +1,7 @@
 # Översikt och kompakt Atlas-chatt — verifiering
 
+> Uppdatering 2026-10-16: [Byggstabilitet och integration med publicerad main](2026-10-16-atlas-build-stability.md) redovisar färska beroenden, noll typfel, rättade testfixturer och nya kontroller. Resten av detta dokument är det ursprungliga verifieringsbeviset.
+
 Arbetsgren: `codex/atlas-overview-messenger-20261015`.
 Bas: `605cc176dcdd60cae0c45b90947c84ce279b5d8a`.
 Verifierad produktkod: `35255a20952b399a5fb75697e166b239d989882d`.

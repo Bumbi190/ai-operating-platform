@@ -20,7 +20,7 @@ function ProjectPanel({initial}:{initial:SocialLaunchPageModel}){
   setChoices(old=>patch===null?old.filter(c=>c.channel!==channel):old.some(c=>c.channel===channel)?old.map(c=>c.channel===channel?{...c,...patch}:c):[...old,{channel,purpose:'',format:SOCIAL_LAUNCH_CHANNELS.find(c=>c.id===channel)!.formats[0],cadence:'manual',...patch}])
   setDirty(true);setError('')
  }
- async function request(operation:'propose'|'decide'|'refresh',decision?:'approve'|'reject'){
+ async function request(operation:'propose'|'decide'|'refresh',decision?:'approve'|'reject',metadataOnly=false){
   setBusy(true);setError('');const abort=new AbortController();controller.current=abort
   const payload=operation==='propose'?{operation,projectId,expectedRevisionId:revision?.id??null,choices}:{operation,projectId,revisionId:revision?.id,sha256:revision?.sha256,decision}
   const fingerprint=JSON.stringify(payload)
@@ -31,6 +31,7 @@ function ProjectPanel({initial}:{initial:SocialLaunchPageModel}){
    if(!live.current)return
    if(!response.ok){if(response.status===409){setStale(true);throw Error('Planen har ändrats. Läs senaste versionen innan du granskar igen. Ditt utkast finns kvar.')}throw Error(operation==='refresh'?'Planen kunde inte läsas.':'Ändringen kunde inte sparas. Ditt utkast finns kvar.')}
    if(result?.plan?.project?.id!==projectId)throw Error('Svaret gäller ett annat projekt. Ladda om sidan.')
+   if(metadataOnly){setModel(old=>({...old,channels:result.channels,connections:result.connections}));return}
    setModel(result);setChoices(result.plan.currentRevision?.choices??[]);setDirty(false);setStale(false);pending.current=null
   }catch(e){if(live.current&&!abort.signal.aborted)setError(e instanceof Error?e.message:'Ändringen kunde inte sparas. Ditt utkast finns kvar.')}
   finally{if(live.current)setBusy(false)}
@@ -65,7 +66,7 @@ function ProjectPanel({initial}:{initial:SocialLaunchPageModel}){
      {readiness?.accountId&&<p>Konto: {readiness.accountLabel??'Namn ej verifierat'}</p>}
      {readiness?.connection==='verified'&&readiness.checkedAt&&<p className={styles.note}>Verifierat {new Date(readiness.checkedAt).toLocaleString('sv-SE')}</p>}
      <p className={styles.note}>{channel.note}</p>
-     {model.connections?.find(c=>c.provider===channel.id)?<SocialConnectionControls projectId={projectId} revisionId={revision?.id??null} approved={!dirty&&!stale&&!!choice&&model.plan.decision?.decision==='approve'&&model.plan.decision.revisionId===revision?.id&&model.plan.decision.sha256===revision.sha256} card={model.connections.find(c=>c.provider===channel.id)!} intent={model.connectionIntent} onConnected={()=>void request('refresh')}/>:channel.connectionAdapter&&<a href={readiness?.setupHref??'/settings'}>Visa projektets anslutning</a>}
+     {model.connections?.find(c=>c.provider===channel.id)?<SocialConnectionControls projectId={projectId} revisionId={revision?.id??null} approved={!dirty&&!stale&&!!choice&&model.plan.decision?.decision==='approve'&&model.plan.decision.revisionId===revision?.id&&model.plan.decision.sha256===revision.sha256} card={model.connections.find(c=>c.provider===channel.id)!} intent={model.connectionIntent} onConnected={()=>void request('refresh',undefined,true)}/>:channel.connectionAdapter&&<a href={readiness?.setupHref??'/settings'}>Visa projektets anslutning</a>}
     </article>
    })}
   </div>

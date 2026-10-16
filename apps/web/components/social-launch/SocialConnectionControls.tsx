@@ -15,7 +15,7 @@ export function SocialConnectionControls({projectId,revisionId,approved,card,int
  async function request(commit:boolean){
   setBusy(true);setError('');const abort=new AbortController();controller.current=abort
   try{
-   const response=await fetch(commit?'/api/social-connections':'/api/social-connections/'+card.provider+'/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(commit?{projectId,intentId:view!.intentId,candidateKey:selected}:{projectId,planRevisionId:revisionId,expectedBindingId:card.bindingId}),cache:'no-store',signal:abort.signal})
+   const response=await fetch(commit?'/api/social-connections':'/api/social-connections/'+card.provider+'/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(commit?{projectId,intentId:view!.intentId,candidateKey:selected}:{projectId,planRevisionId:revisionId,expectedBindingId:card.bindingId??(view?.status==='connected'?view.bindingId:null)}),cache:'no-store',signal:abort.signal})
    const result=await response.json();if(!live.current)return
    if(!response.ok)throw Error(response.status===409?'Planen eller kontot har ändrats. Läs senaste versionen och anslut igen.':commit?'Kontovalet kunde inte sparas. Ditt val finns kvar.':'Anslutningen kunde inte startas. Kontrollera appinställningarna.')
    if(commit){
@@ -36,6 +36,7 @@ export function SocialConnectionControls({projectId,revisionId,approved,card,int
    </fieldset>
    <button disabled={busy||!ready||!selected} onClick={()=>void request(true)}>Anslut valt konto</button>
   </>:card.setup.reason==='ready'?<button disabled={busy||!ready} onClick={()=>void request(false)}>{card.bindingId?'Anslut på nytt till':'Anslut'} {name}</button>:null}
+  {view?.status==='connected'&&card.setup.reason==='ready'&&<button disabled={busy||!ready} onClick={()=>void request(false)}>Anslut på nytt till {name}</button>}
   {card.destinationLabel&&<p>Anslagstavla: {card.destinationLabel}</p>}
   {card.setup.reason==='cost_policy_required'?<p>X kräver en godkänd kostnadspolicy innan API-anrop kan aktiveras.</p>:<>
    {card.setup.reason==='app_configuration_missing'&&<p>Appkonfiguration saknas.</p>}

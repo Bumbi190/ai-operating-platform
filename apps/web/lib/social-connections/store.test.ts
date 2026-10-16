@@ -143,3 +143,12 @@ it('does not present a superseded successful intent as a current connection',asy
  await expect(readConnection(db,f.p,{projectId:first.projectId,intentId:first.intentId})).rejects.toMatchObject({code:'BINDING_CHANGED'})
  await expect(commitConnection(db,f.p,first)).rejects.toMatchObject({code:'BINDING_CHANGED'})
 })
+
+it('rejects an older successful health result after a newer failure on the same binding',async()=>{
+ const f=await fixture(),v=await staged(f),done=await commitConnection(db,f.p,{projectId:f.input.projectId,intentId:v.intentId,candidateKey:f.grant.candidates[0].key})
+ const older=new Date().toISOString(),newer=new Date(Date.now()+20000).toISOString()
+ expect(await writeConnectionHealth(db,{bindingId:done.bindingId,status:'verification_failed',identityVerified:false,verifiedAccountId:null,accountLabel:null,checkedAt:newer})).toBe(true)
+ expect(await writeConnectionHealth(db,{bindingId:done.bindingId,status:'ok',identityVerified:true,verifiedAccountId:f.grant.candidates[0].accountId,accountLabel:'Stale name',checkedAt:older})).toBe(false)
+ expect(testSql("select status='verification_failed' and not identity_verified and checked_at='"+newer+"'::timestamptz from social_credential_health where binding_id='"+done.bindingId+"';")).toBe('t')
+ expect(testSql("select account_label<>'Stale name' from social_account_bindings where binding_id='"+done.bindingId+"';")).toBe('t')
+})

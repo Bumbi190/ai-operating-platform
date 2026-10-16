@@ -272,6 +272,8 @@ begin
  if b.superseded_at is not null then return false; end if;
  select * into t from public.platform_tokens where project_id=b.project_id and platform=b.platform and token_type='oauth_user';
  if t.binding_id is distinct from b.binding_id or t.account_id is distinct from b.external_account_id then return false; end if;
+ -- Project lock serializes health writers; a slow older probe cannot replace newer evidence.
+ if exists(select 1 from public.social_credential_health h where h.project_id=b.project_id and h.platform=b.platform and h.binding_id=b.binding_id and h.checked_at>checked) then return false; end if;
  if jsonb_typeof(p_input->'identityVerified') is distinct from 'boolean' or checked is null or checked>now()+interval '1 minute'
   or coalesce(status,'') not in ('ok','warning','expired','account_mismatch','binding_blocked','credential_missing','verification_failed')
   or verified and (b.blocked_at is not null or b.platform='x' or t.expires_at<=now() or p_input->>'verifiedAccountId' is distinct from b.external_account_id or status not in ('ok','warning'))

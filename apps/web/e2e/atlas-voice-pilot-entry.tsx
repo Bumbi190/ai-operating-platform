@@ -27,9 +27,10 @@ class FixtureRecognition {
   lang = ''; continuous = false; interimResults = false
   onresult: ((value: any) => void) | null = null
   onend: (() => void) | null = null
+  onstart: (() => void) | null = null
   onerror: ((value: any) => void) | null = null
   results: any[] = []
-  start() { currentRecognition = this; update() }
+  start() { currentRecognition = this; this.onstart?.(); update() }
   abort() { if (currentRecognition === this) currentRecognition = null; update() }
 }
 Object.assign(window, { SpeechRecognition: FixtureRecognition })

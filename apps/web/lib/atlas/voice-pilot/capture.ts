@@ -6,11 +6,15 @@ export interface PilotRecognition {
   onresult: ((event: { results: ArrayLike<Result> }) => void) | null
   onerror: ((event: { error: string }) => void) | null
   onend: (() => void) | null
-  start(): void; abort(): void
+  onstart?: (() => void) | null
+  start(audioTrack?: MediaStreamTrack): void; abort(): void
 }
 type Options = {
   pauseMs: number; receive(text: string): void; interrupt(): void
   draft(text: string): void; notice(message: string): void; active(value: boolean): void
+  playbackMode?: 'speakers' | 'headphones'
+  endpoint?(quietMs: number): void
+  listening?(value: boolean): void
 }
 type Dependencies = {
   getMedia(): Promise<MediaStream>
@@ -18,25 +22,29 @@ type Dependencies = {
   monitor(stream: MediaStream, receive: (rms: number, now: number) => void): Promise<() => void>
 }
 
-/** Owns one full-duplex microphone lifetime. It never sends a backend request. */
+/** Owns microphone lifetime; speaker mode suspends ASR during output and its tail. */
 export function createPilotVoiceCapture(options: Options, dependencies?: Dependencies) {
   const deps = dependencies ?? browserCaptureDependencies()
   let generation = 0, live = false, media: MediaStream | null = null
   let rec: PilotRecognition | null = null, stopMonitor: (() => void) | null = null
   let restart: ReturnType<typeof setTimeout> | undefined
+  let outputActive = false, recovering = false
+  const blocked = () => options.playbackMode === 'speakers' && (outputActive || recovering)
   let carry = '', results: Result[] = [], consumed = 0
   const gate = createAcousticTurnGate({ ...options, receive(text) {
     carry = ''; consumed = results.length
     options.receive(text)
   } })
   const detach = () => {
+    options.listening?.(false)
     if (!rec) return
     const old = rec; rec = null
-    old.onend = old.onerror = old.onresult = null
+    old.onstart = old.onend = old.onerror = old.onresult = null
     try { old.abort() } catch { /* already ended */ }
   }
   function stop() {
     generation++; live = false
+    outputActive = recovering = false
     clearTimeout(restart); restart = undefined
     detach(); stopMonitor?.(); stopMonitor = null
     media?.getTracks().forEach(track => track.stop()); media = null
@@ -45,12 +53,15 @@ export function createPilotVoiceCapture(options: Options, dependencies?: Depende
   }
   function fail(message: string) { stop(); options.notice(message) }
   function listen(token: number) {
-    if (!live || token !== generation) return
+    if (!live || token !== generation || blocked()) return
     try {
       const current = deps.recognition()
       if (!current) throw new Error('unsupported')
       rec = current
       current.lang = 'sv-SE'; current.continuous = true; current.interimResults = true
+      current.onstart = () => {
+        if (live && token === generation && rec === current && !blocked()) options.listening?.(true)
+      }
       current.onresult = event => {
         if (!live || token !== generation || rec !== current) return
         results = Array.from(event.results)
@@ -80,7 +91,9 @@ export function createPilotVoiceCapture(options: Options, dependencies?: Depende
         detach()
         restart = setTimeout(() => listen(token), 250)
       }
-      current.start()
+      // Desktop Chrome supports start(track). Older implementations may ignore
+      // the argument; speaker-mode safety does not depend on that support.
+      current.start(media?.getAudioTracks()[0])
     } catch { fail('Röstinmatningen kunde inte starta här. Du kan fortsätta skriva.') }
   }
   async function start() {
@@ -92,7 +105,7 @@ export function createPilotVoiceCapture(options: Options, dependencies?: Depende
       if (!live || token !== generation) { stream.getTracks().forEach(t => t.stop()); return }
       media = stream
       const cleanup = await deps.monitor(stream, (rms, now) => {
-        if (live && token === generation) gate.sample(rms, now)
+        if (live && token === generation && !blocked()) gate.sample(rms, now)
       })
       if (!live || token !== generation) { cleanup(); return }
       stopMonitor = cleanup
@@ -102,7 +115,20 @@ export function createPilotVoiceCapture(options: Options, dependencies?: Depende
       if (live && token === generation) fail('Mikrofonen kunde inte starta. Kontrollera behörigheten eller skriv.')
     }
   }
-  return { start, stop, discard() {
+  return { start, stop, setOutputActive(value: boolean) {
+    if (options.playbackMode !== 'speakers' || value === outputActive) return
+    outputActive = value
+    clearTimeout(restart); restart = undefined
+    detach(); carry = ''; results = []; consumed = 0; gate.discard()
+    recovering = false
+    if (!value && live) {
+      // Do not feed the loudspeaker's acoustic decay or late ASR final into a
+      // new user turn. A fresh recognizer owns the next input boundary.
+      recovering = true
+      const token = generation
+      restart = setTimeout(() => { recovering = false; listen(token) }, 400)
+    }
+  }, discard() {
     carry = ''; gate.discard()
     if (results.some(result => !result.isFinal)) {
       // Interim slots can disappear or be replaced in place. A new native

@@ -21,8 +21,8 @@ type Sink = { prepare(): Promise<void>; push(samples: Float32Array): void; stop(
 type RequestSpeech = (text: string, voice: AtlasSwedishVoice, signal: AbortSignal) => Promise<Response>
 
 /** Serial paid requests with immediate chunk playback and generation-safe stop. */
-export function createPcmSpeechPlayer(options: { notice(message: string): void; playing?(value: boolean): void }, dependencies?: { request: RequestSpeech; sink: Sink }) {
-  const sink = dependencies?.sink ?? browserPcmSink(value => options.playing?.(value))
+export function createPcmSpeechPlayer(options: { notice(message: string): void; playing?(value: boolean): void; outputActive?(value: boolean): void }, dependencies?: { request: RequestSpeech; sink: Sink }) {
+  const sink = dependencies?.sink ?? browserPcmSink(value => options.playing?.(value), value => options.outputActive?.(value))
   const request: RequestSpeech = dependencies?.request ?? ((text, voice, signal) => fetch('/api/atlas/voice-pilot/speech', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice }), signal,
   }))
@@ -77,14 +77,14 @@ export function createPcmSpeechPlayer(options: { notice(message: string): void; 
   }
 }
 
-function browserPcmSink(playing: (value: boolean) => void): Sink {
+function browserPcmSink(playing: (value: boolean) => void, outputActive: (value: boolean) => void): Sink {
   let context: AudioContext | null = null, end = 0, generation = 0
   let startTimer: ReturnType<typeof setTimeout> | undefined
   const sources = new Set<AudioBufferSourceNode>()
   function stop() {
     generation++; clearTimeout(startTimer); startTimer = undefined
     for (const source of sources) { source.onended = null; try { source.stop() } catch {} source.disconnect() }
-    sources.clear(); end = context?.currentTime ?? 0; playing(false)
+    sources.clear(); end = context?.currentTime ?? 0; outputActive(false); playing(false)
   }
   return {
     async prepare() {
@@ -107,8 +107,9 @@ function browserPcmSink(playing: (value: boolean) => void): Sink {
       sources.add(source)
       source.onended = () => {
         source.disconnect(); sources.delete(source)
-        if (token === generation && sources.size === 0) { clearTimeout(startTimer); startTimer = undefined; playing(false) }
+        if (token === generation && sources.size === 0) { clearTimeout(startTimer); startTimer = undefined; outputActive(false); playing(false) }
       }
+      if (wasEmpty) outputActive(true)
       source.start(start)
       if (wasEmpty) startTimer = setTimeout(() => {
         startTimer = undefined

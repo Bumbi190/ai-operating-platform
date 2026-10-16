@@ -45,24 +45,97 @@ describe('acoustic thinking pause', () => {
     gate.discard(); gate.sample(0, 5000)
     expect(receive).not.toHaveBeenCalled()
   })
+  it('reports actual acoustic wait including a late final transcript, rather than assuming the configured pause', () => {
+    const endpoint = vi.fn(), receive = vi.fn()
+    const gate = createAcousticTurnGate({ pauseMs: 1200, receive, interrupt: vi.fn(), endpoint })
+    gate.sample(0.1, 0); gate.sample(0.1, 200); gate.sample(0, 2000)
+    expect(endpoint).not.toHaveBeenCalled()
+    gate.text('Nu kom sista orden.'); gate.sample(0, 4200); gate.sample(0, 5000)
+    expect(endpoint.mock.calls).toEqual([[4000]])
+    expect(receive).toHaveBeenCalledTimes(1)
+  })
 })
 
-function captureFixture() {
+function captureFixture(playbackMode?: 'speakers' | 'headphones') {
   let grant!: (stream: MediaStream) => void
   let level!: (rms: number, now: number) => void
-  const track = { stop: vi.fn() }, stream = { getTracks: () => [track] } as unknown as MediaStream
+  const track = { stop: vi.fn() }, stream = { getTracks: () => [track], getAudioTracks: () => [track] } as unknown as MediaStream
   const recognizers: any[] = []
-  const receive = vi.fn(), interrupt = vi.fn(), draft = vi.fn(), notice = vi.fn(), active = vi.fn(), stopMonitor = vi.fn()
-  const capture = createPilotVoiceCapture({ pauseMs: 2000, receive, interrupt, draft, notice, active }, {
+  const receive = vi.fn(), interrupt = vi.fn(), draft = vi.fn(), notice = vi.fn(), active = vi.fn(), listening = vi.fn(), stopMonitor = vi.fn()
+  const capture = createPilotVoiceCapture({ pauseMs: 2000, playbackMode, receive, interrupt, draft, notice, active, listening }, {
     getMedia: () => new Promise<MediaStream>(resolve => { grant = resolve }),
     recognition: () => { const rec = { start: vi.fn(), abort: vi.fn() }; recognizers.push(rec); return rec as any },
     monitor: async (_stream, callback) => { level = callback; return stopMonitor },
   })
-  return { capture, grant: () => grant(stream), level: (rms: number, now: number) => level(rms, now), track, recognizers, receive, interrupt, draft, notice, active, stopMonitor }
+  return { capture, grant: () => grant(stream), level: (rms: number, now: number) => level(rms, now), track, recognizers, receive, interrupt, draft, notice, active, listening, stopMonitor }
 }
 const finals = (...texts: string[]) => ({ results: texts.map(text => Object.assign([{ transcript: text }], { isFinal: true })) })
 
 describe('continuous microphone lifecycle', () => {
+  it('signals ready only after the current recognizer starts, never during speaker recovery or from a stale callback', async () => {
+    vi.useFakeTimers()
+    const f = captureFixture('speakers'), start = f.capture.start(); f.grant(); await start
+    expect(f.listening).not.toHaveBeenCalledWith(true)
+    const lateStart = f.recognizers[0].onstart
+    lateStart(); expect(f.listening).toHaveBeenLastCalledWith(true)
+    f.capture.setOutputActive(true); expect(f.listening).toHaveBeenLastCalledWith(false)
+    lateStart(); expect(f.listening).toHaveBeenLastCalledWith(false)
+    f.capture.setOutputActive(false); vi.advanceTimersByTime(400)
+    expect(f.listening).toHaveBeenLastCalledWith(false)
+    f.recognizers[1].onstart(); expect(f.listening).toHaveBeenLastCalledWith(true)
+    f.capture.stop(); expect(f.listening).toHaveBeenLastCalledWith(false)
+  })
+  it('feeds recognition the same microphone track that requested echo cancellation', async () => {
+    const f = captureFixture(), start = f.capture.start(); f.grant(); await start
+    expect(f.recognizers[0].start).toHaveBeenCalledWith(f.track)
+    f.capture.stop()
+  })
+  it('blocks speaker echo and late recognition results until playback and its tail finish', async () => {
+    vi.useFakeTimers()
+    const f = captureFixture('speakers'), start = f.capture.start(); f.grant(); await start
+    const late = f.recognizers[0].onresult
+    f.capture.setOutputActive(true)
+    late(finals('Atlas talade själv.'))
+    f.level(0.1, 0); f.level(0.1, 200); f.level(0, 2200)
+    expect(f.recognizers[0].abort).toHaveBeenCalledTimes(1)
+    expect(f.interrupt).not.toHaveBeenCalled(); expect(f.receive).not.toHaveBeenCalled(); expect(f.draft).not.toHaveBeenCalled()
+    f.capture.setOutputActive(false); vi.advanceTimersByTime(399)
+    expect(f.recognizers).toHaveLength(1)
+    f.level(0.1, 3000); f.level(0.1, 3200)
+    vi.advanceTimersByTime(1)
+    expect(f.recognizers).toHaveLength(2)
+    f.recognizers[1].onresult(finals('Min egen fråga.'))
+    f.level(0, 5400)
+    expect(f.receive).not.toHaveBeenCalled()
+    f.level(0.1, 6000); f.level(0.1, 6200); f.level(0, 8200)
+    expect(f.receive.mock.calls).toEqual([['Min egen fråga.']])
+    f.capture.stop(); expect(vi.getTimerCount()).toBe(0)
+  })
+  it('cancels speaker-tail restarts on stop and keeps headphone voice interruption available', async () => {
+    vi.useFakeTimers()
+    const f = captureFixture('speakers'), start = f.capture.start(); f.grant(); await start
+    f.capture.setOutputActive(true); f.capture.setOutputActive(false); f.capture.stop()
+    vi.advanceTimersByTime(1000); expect(f.recognizers).toHaveLength(1)
+    const h = captureFixture('headphones'), next = h.capture.start(); h.grant(); await next
+    h.capture.setOutputActive(true)
+    h.recognizers[0].onresult(finals('Avbryt.'))
+    h.level(0.1, 0); h.level(0.1, 200); h.level(0, 2200)
+    expect(h.interrupt).toHaveBeenCalledTimes(1); expect(h.receive).toHaveBeenCalledWith('Avbryt.')
+    h.capture.stop()
+  })
+  it('starts muted during existing speaker playback and cancels recovery when another chunk arrives', async () => {
+    vi.useFakeTimers()
+    const f = captureFixture('speakers')
+    f.capture.setOutputActive(true)
+    const start = f.capture.start(); f.grant(); await start
+    expect(f.recognizers).toHaveLength(0)
+    f.capture.setOutputActive(false); vi.advanceTimersByTime(200)
+    f.capture.setOutputActive(true); vi.advanceTimersByTime(1000)
+    expect(f.recognizers).toHaveLength(0)
+    f.capture.setOutputActive(false); vi.advanceTimersByTime(400)
+    expect(f.recognizers).toHaveLength(1)
+    f.capture.stop()
+  })
   it('releases late microphone permission and never starts recognition after stop', async () => {
     const f = captureFixture(), start = f.capture.start()
     f.capture.stop(); f.grant(); await start

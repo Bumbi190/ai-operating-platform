@@ -1,6 +1,7 @@
 /** Acoustic inactivity, not transcript arrival, decides when a thought may end. */
 export function createAcousticTurnGate(options: {
   pauseMs: number; receive(text: string): void; interrupt(): void
+  endpoint?(quietMs: number): void
 }) {
   const pauseMs = Math.max(1200, Math.min(5000, options.pauseMs))
   let text = '', candidate: number | null = null, lastVoice: number | null = null
@@ -24,6 +25,7 @@ export function createAcousticTurnGate(options: {
       candidate = null
       if (confirmed && lastVoice !== null && now - lastVoice >= pauseMs && text) {
         const utterance = text
+        options.endpoint?.(now - lastVoice)
         discard()
         options.receive(utterance)
       }

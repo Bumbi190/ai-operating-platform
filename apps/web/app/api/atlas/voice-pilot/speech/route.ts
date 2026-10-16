@@ -58,7 +58,9 @@ export async function POST(request: Request) {
   // Numeric timing only: never log prompts, transcripts, PCM, credentials or provider errors.
   const measure = (stage: 'transcription' | 'speech_headers', outcome: 'ok' | 'failed', units: { audioMs?: number; characters?: number }) => {
     const elapsedMs = Date.now() - startedAt
-    console.info('[atlas-voice-trial]', { stage, outcome, elapsedMs, ...units })
+    const hint = request.headers.get('x-atlas-voice-end')
+    const endReason = hint === 'pause' || hint === 'manual' || hint === 'limit' ? hint : 'unknown'
+    console.info('[atlas-voice-trial]', { stage, outcome, elapsedMs, ...units, ...(stage === 'transcription' ? { endReason } : {}) })
     return elapsedMs
   }
   const denial = await guard(); if (denial) return denial

@@ -24,22 +24,38 @@ describe('bounded microphone PCM', () => {
 
 function fixture(mode: 'speakers' | 'headphones' = 'speakers') {
   let now = 0
-  let frame!: (value: Float32Array) => void, grant!: (value: { sampleRate: number; stop(): void }) => void
+  let frame!: (value: Float32Array, probability: number) => void, grant!: (value: { sampleRate: number; stop(): void }) => void
   let resolve!: (text: string) => void, reject!: (error: Error) => void
   const stop = vi.fn(), receive = vi.fn(), draft = vi.fn(), notice = vi.fn(), interrupt = vi.fn(), active = vi.fn(), listening = vi.fn(), processing = vi.fn(), endpoint = vi.fn()
-  const transcribe = vi.fn((_bytes: Uint8Array, _signal: AbortSignal) => new Promise<string>((yes, no) => { resolve = yes; reject = no }))
+  const transcribe = vi.fn((_bytes: Uint8Array, _signal: AbortSignal, _reason: 'pause' | 'manual' | 'limit') => new Promise<string>((yes, no) => { resolve = yes; reject = no }))
   const capture = createPcmVoiceCapture({ pauseMs: 2000, playbackMode: mode, receive, draft, notice, interrupt, active, listening, processing, endpoint }, {
     open: callback => { frame = callback; return new Promise(yes => { grant = yes }) }, transcribe, now: () => now,
   })
   return { capture, stop, receive, draft, notice, interrupt, active, listening, processing, transcribe, endpoint, at: (time: number) => { now = time },
     grant: () => grant({ sampleRate: 16000, stop }),
-    frames: (amplitude: number, ms: number) => { for (let t = 0; t < ms; t += 20) frame(new Float32Array(320).fill(amplitude)) },
+    frames: (amplitude: number, ms: number, probability = amplitude >= 0.0012 ? 0.95 : 0.01) => { for (let t = 0; t < ms; t += 20) frame(new Float32Array(320).fill(amplitude), probability) },
     resolve: async (text: string) => { resolve(text); await Promise.resolve(); await Promise.resolve() },
     reject: async () => { reject(new Error('provider_unavailable')); await Promise.resolve(); await Promise.resolve() },
   }
 }
 
 describe('direct audio input without native ASR finalization', () => {
+  it('automatically ends after speech followed by steady background sound, without the finish button', async () => {
+    const f = fixture(), start = f.capture.start(); f.grant(); await start
+    f.frames(0.03, 500, 0.95); f.frames(0.001, 2020, 0.03)
+    expect(f.transcribe).toHaveBeenCalledTimes(1)
+    expect(f.transcribe.mock.calls[0][2]).toBe('pause')
+    await f.resolve('En hel fråga.'); expect(f.receive).toHaveBeenCalledTimes(1)
+    f.capture.stop()
+  })
+  it('automatically ends quiet speech classified as speech, without a minimum volume or manual button', async () => {
+    const f = fixture(), start = f.capture.start(); f.grant(); await start
+    f.frames(0.0005, 1000, 0.95); f.frames(0.0001, 2020, 0.01)
+    expect(f.transcribe).toHaveBeenCalledTimes(1)
+    await f.resolve('En lågmäld fråga.'); expect(f.receive).toHaveBeenCalledTimes(1)
+    f.capture.stop()
+  })
+
   it('transcribes a quiet short answer with its first sound and sends the complete returned words once', async () => {
     const f = fixture(), start = f.capture.start(); f.grant(); await start
     f.frames(0, 200); f.frames(0.002, 120); f.frames(0, 1980)
@@ -68,15 +84,16 @@ describe('direct audio input without native ASR finalization', () => {
     const f = fixture(), start = f.capture.start(); f.grant(); await start
     f.frames(0.0005, 3000); f.capture.finish()
     expect(f.transcribe).toHaveBeenCalledTimes(1)
+    expect(f.transcribe.mock.calls[0][2]).toBe('manual')
     expect(f.transcribe.mock.calls[0][0].length).toBe(96000)
     await f.resolve('En lågmäld men hel fråga.'); expect(f.receive).toHaveBeenCalledWith('En lågmäld men hel fråga.')
     f.capture.stop()
   })
-  it('retains a quiet prefix when louder speech finally confirms the utterance', async () => {
+  it('retains a second around confirmed speech onset without uploading the entire idle period', async () => {
     const f = fixture(), start = f.capture.start(); f.grant(); await start
     f.frames(0.0005, 3000); f.frames(0.02, 200); f.frames(0, 2000)
     const samples = new Int16Array(f.transcribe.mock.calls[0][0].buffer)
-    expect(Array.from(samples).filter(n => n === Math.round(0.0005 * 32767))).toHaveLength(48000)
+    expect(Array.from(samples).filter(n => n === Math.round(0.0005 * 32767))).toHaveLength(14720)
     f.capture.stop()
   })
   it('includes transcription latency in the displayed wait before chat submission', async () => {
@@ -138,12 +155,14 @@ describe('direct audio input without native ASR finalization', () => {
     expect(f.draft).toHaveBeenCalledWith('Tyst tal från en begränsad inspelning.')
     expect(f.active).toHaveBeenLastCalledWith(false)
   })
-  it('does not lose the review requirement when speech becomes audible after the idle window overflowed', async () => {
+  it('starts a complete new detected question after a long idle without requiring manual review', async () => {
     const f = fixture(), start = f.capture.start(); f.grant(); await start
     f.frames(0.0005, 92000); f.frames(0.02, 200); f.frames(0, 2000)
     await f.resolve('Fråga med en möjligen förlorad början.')
-    expect(f.receive).not.toHaveBeenCalled(); expect(f.draft).toHaveBeenCalled()
-    expect(f.active).toHaveBeenLastCalledWith(false)
+    expect(f.receive).toHaveBeenCalledTimes(1); expect(f.draft).toHaveBeenCalled()
+    expect(f.transcribe.mock.calls[0][0].length).toBeLessThan(50000)
+    expect(f.active).toHaveBeenLastCalledWith(true)
+    f.capture.stop()
   })
   it('releases a real browser-source grant immediately when stopped during worklet loading', async () => {
     let loaded!: () => void

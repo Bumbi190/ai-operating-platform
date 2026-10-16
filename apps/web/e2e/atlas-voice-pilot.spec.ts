@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+test.beforeEach(async ({ page }) => { page.on('pageerror', error => console.log('Browser error:', error.message)) })
 
 test('sample schedules native PCM output without a microphone', async ({ page }) => {
   await page.goto('/atlas/rosttest')
@@ -164,4 +165,56 @@ test('a recorder download taking two seconds still starts and remains cancellabl
   await page.getByRole('button', { name: 'Avbryt mikrofonstart' }).click()
   await expect(page.getByRole('status').filter({ hasText: 'Aktiva mikrofonspår: 0' })).toBeVisible()
   await expect(page.getByRole('status').filter({ hasText: /^Mikrofonen är avstängd$/ })).toBeVisible()
+})
+
+test('real speech detector ignores steady room noise and ends a quiet spoken question automatically', async ({ page }) => {
+  await page.goto('/atlas/rosttest')
+  await page.getByRole('button', { name: 'Håll chattsvar: på' }).click()
+  await page.getByRole('button', { name: 'Starta mikrofonen' }).click()
+  await expect(page.getByRole('status').filter({ hasText: /^Atlas lyssnar$/ })).toBeVisible()
+  // Deliberate negative observation window: continuous noise alone must not send.
+  await page.waitForTimeout(3000)
+  await expect(page.getByRole('status').filter({ hasText: 'Transkriberingar: 0' })).toBeVisible()
+  await page.getByRole('button', { name: 'Säg lågmäld fråga' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Transkriberingar: 1' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'Atlas pratar' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: /^Atlas lyssnar$/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Säg första frågan' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Transkriberingar: 2' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'Atlas pratar' })).toBeVisible()
+})
+
+test('a missing speech model releases the microphone and allows a successful retry', async ({ page }) => {
+  await page.goto('/atlas/rosttest?model=fail-once')
+  await page.getByRole('button', { name: 'Starta mikrofonen' }).click()
+  await expect(page.getByRole('alert')).toContainText('Talavkänningen')
+  await expect(page.getByRole('status').filter({ hasText: 'Aktiva mikrofonspår: 0' })).toBeVisible()
+  await page.getByRole('button', { name: 'Starta mikrofonen' }).click()
+  await expect(page.getByRole('status').filter({ hasText: /^Atlas lyssnar$/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Säg första frågan' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Transkriberingar: 1' })).toBeVisible()
+})
+test('stop during speech-model loading releases the track and a late load cannot reopen listening', async ({ page }) => {
+  await page.goto('/atlas/rosttest?model=slow')
+  await page.getByRole('button', { name: 'Starta mikrofonen' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Aktiva mikrofonspår: 1' })).toBeVisible()
+  await page.getByRole('button', { name: 'Stoppa allt ljud' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Aktiva mikrofonspår: 0' })).toBeVisible()
+  await page.waitForTimeout(2200)
+  await expect(page.getByRole('status').filter({ hasText: 'Mikrofonen är avstängd' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'Transkriberingar: 0' })).toBeVisible()
+})
+
+test('slow speech-model loading does not replay old microphone frames or overflow inference', async ({ page }) => {
+  await page.goto('/atlas/rosttest?model=slow')
+  await page.getByRole('button', { name: 'Starta mikrofonen' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Aktiva mikrofonspår: 1' })).toBeVisible()
+  // Speech before "listening" must not be replayed after the model download.
+  await page.getByRole('button', { name: 'Säg första frågan' }).click()
+  await expect(page.getByRole('status').filter({ hasText: /^Atlas lyssnar$/ })).toBeVisible()
+  await page.waitForTimeout(2500)
+  await expect(page.getByRole('status').filter({ hasText: 'Transkriberingar: 0' })).toBeVisible()
+  await page.getByRole('button', { name: 'Säg första frågan' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Transkriberingar: 1' })).toBeVisible()
+  await expect(page.getByRole('alert')).not.toBeVisible()
 })

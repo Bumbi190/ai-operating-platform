@@ -49,11 +49,11 @@ beforeEach(() => {
 })
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs() })
 describe('voice requests through the actual middleware and route authority', () => {
-  it('serves the public recorder without depending on auth availability', async () => {
-    const response = await middleware(new NextRequest('https://preview.test/atlas-voice-recorder.js'))
+  it.each(['/atlas-voice-recorder.js', '/atlas-vad/silero_vad_v5.onnx', '/atlas-vad/ort-wasm-simd-threaded.wasm', '/atlas-vad/ort-wasm-simd-threaded.mjs'])('serves public audio asset %s without depending on auth availability', async path => {
+    const response = await middleware(new NextRequest('https://preview.test' + path))
     expect(response.headers.get('x-middleware-next')).toBe('1')
     expect(s.getUser).not.toHaveBeenCalled(); expect(s.query).not.toHaveBeenCalled()
-    expect(new RegExp('^' + config.matcher[0] + '$').test('/atlas-voice-recorder.js')).toBe(false)
+    expect(new RegExp('^' + config.matcher[0] + '$').test(path)).toBe(false)
   })
   it.each(['GET', 'POST'] as const)('verifies identity exactly once for %s', async method => {
     expect((await through(method)).status).toBe(200)
@@ -91,7 +91,7 @@ describe('voice requests through the actual middleware and route authority', () 
     s.release?.(); await pending; await vi.advanceTimersByTimeAsync(0)
     expect(s.provider).not.toHaveBeenCalled()
   })
-  it.each(['/api/chat', '/api/atlas/voice-pilot/speech/extra', '/atlas-voice-recorder.js/private'])('does not broaden middleware exceptions to %s', async path => {
+  it.each(['/api/chat', '/api/atlas/voice-pilot/speech/extra', '/atlas-voice-recorder.js/private', '/atlas-vad/private', '/atlas-vad/silero_vad_v5.onnx/private'])('does not broaden middleware exceptions to %s', async path => {
     s.member = { role: 'collaborator', revoked_at: null }
     const result = await middleware(new NextRequest('https://preview.test' + path))
     expect(result.headers.get('x-middleware-next')).not.toBe('1')

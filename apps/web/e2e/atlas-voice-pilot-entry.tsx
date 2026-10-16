@@ -1,4 +1,4 @@
-// Native Web Audio/worklet + simulated transcription/API. No paid calls, mic permission,
+// Native Web Audio/worklet + real local Silero + simulated transcription/API. No paid calls, mic permission,
 // project jobs or login. Controls make lifecycle races reproducible through UI.
 import React, { useState } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -11,6 +11,8 @@ let delayResume = false, delayCreate = false, holdChat = true
 let pendingResumes: (() => void)[] = [], releaseCreate: (() => void) | undefined
 let chat: ReadableStreamDefaultController<Uint8Array> | null = null
 let mediaContext: AudioContext | null = null, gain: GainNode | null = null
+let speechBuffer: AudioBuffer | null = null, background: GainNode | null = null
+const nativeFetch = window.fetch.bind(window)
 let tracks = 0, speechRequests = 0, chatRequests = 0, transcriptionRequests = 0, update = () => {}
 let transcription = '', delayTranscription = false, releaseTranscription: (() => void) | undefined
 const encoder = new TextEncoder()
@@ -27,18 +29,25 @@ Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () 
   mediaContext ??= new nativeContext()
   await mediaContext.resume()
   const destination = mediaContext.createMediaStreamDestination()
-  const oscillator = mediaContext.createOscillator()
-  gain = mediaContext.createGain(); gain.gain.value = 0
-  oscillator.connect(gain); gain.connect(destination); oscillator.start()
+  speechBuffer ??= await mediaContext.decodeAudioData(await (await nativeFetch('/e2e/fixtures/voice-question.wav')).arrayBuffer())
+  const noise = mediaContext.createBufferSource(), buffer = mediaContext.createBuffer(1, mediaContext.sampleRate, mediaContext.sampleRate)
+  let seed = 42
+  const data = buffer.getChannelData(0)
+  for (let i = 0; i < data.length; i++) { seed = (seed * 1664525 + 1013904223) >>> 0; data[i] = (seed / 4294967296 - 0.5) * 2 }
+  noise.buffer = buffer; noise.loop = true
+  background = mediaContext.createGain(); background.gain.value = 0.002
+  noise.connect(background); background.connect(destination); noise.start()
+  gain = mediaContext.createGain(); gain.gain.value = 0.4; gain.connect(destination)
   for (const track of destination.stream.getTracks()) {
     tracks++; const original = track.stop.bind(track); let closed = false
-    track.stop = () => { if (!closed) { closed = true; tracks--; oscillator.stop(); gain?.disconnect(); original(); update() } }
+    track.stop = () => { if (!closed) { closed = true; tracks--; noise.stop(); background?.disconnect(); gain?.disconnect(); original(); update() } }
   }
   update(); return destination.stream
 } })
 
 window.fetch = async (input, init) => {
   const url = String(input)
+  if (url.startsWith('/atlas-vad/') || url.includes('/atlas-vad/')) return nativeFetch(input, init)
   if (url === '/api/atlas/voice-pilot/speech' && !init?.method) return Response.json({ voices: [
     { key: 'anders', label: 'Anders · varm rikssvenska' }, { key: 'peter', label: 'Peter · naturlig skånska' },
   ] })
@@ -70,12 +79,13 @@ window.fetch = async (input, init) => {
   throw new Error('Fixture refused unexpected network request: ' + url)
 }
 
-async function say(text: string) {
-  if (!tracks || !gain) throw new Error('Start the fixture microphone first')
+async function say(text: string, quiet = false) {
+  if (!tracks || !gain || !mediaContext || !speechBuffer) throw new Error('Start the fixture microphone first')
   transcription = text
-  gain.gain.value = 0.12
-  await new Promise(resolve => setTimeout(resolve, 300))
-  gain.gain.value = 0
+  gain.gain.value = quiet ? 0.015 : 0.4
+  if (background) background.gain.value = quiet ? 0.0001 : 0.002
+  const source = mediaContext.createBufferSource(); source.buffer = speechBuffer; source.connect(gain); source.start()
+  await new Promise<void>(resolve => { source.onended = () => { source.disconnect(); resolve() } })
 }
 function Fixture() {
   const [, render] = useState(0); update = () => render(n => n + 1)
@@ -89,6 +99,7 @@ function Fixture() {
       <button style={style} onClick={() => { holdChat = !holdChat; update() }}>Håll chattsvar: {holdChat ? 'på' : 'av'}</button>
       <button style={style} onClick={() => { chat?.enqueue(event({ event: 'done' })); chat?.close(); chat = null }}>Släpp chattsvar</button>
       <button style={style} onClick={() => void say('Testa en vanlig fråga.')}>Säg första frågan</button>
+      <button style={style} onClick={() => void say('En lågmäld fråga.', true)}>Säg lågmäld fråga</button>
       <button style={style} onClick={() => void say('Lägg till en blå knapp.')}>Säg första avbrottet</button>
       <button style={style} onClick={() => void say('Och gör den stor.')}>Säg andra avbrottet</button>
       <button style={style} onClick={() => { delayTranscription = !delayTranscription; update() }}>Fördröj tolkning: {delayTranscription ? 'på' : 'av'}</button>

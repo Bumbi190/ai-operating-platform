@@ -4,17 +4,30 @@ import { resolve } from 'node:path'
 import { readFile } from 'node:fs/promises'
 import { createServer } from 'vite'
 const root = process.cwd(), boundary = resolve(root, 'e2e/atlas-voice-pilot-boundaries.ts')
-const vite = await createServer({ configFile: false, root, appType: 'custom', esbuild: { jsx: 'automatic' }, resolve: { alias: [
+const vite = await createServer({ configFile: false, optimizeDeps: { include: ['onnxruntime-web/wasm'] }, root, appType: 'custom', esbuild: { jsx: 'automatic' }, resolve: { alias: [
   { find: '@/lib/atlas/runtime', replacement: boundary },
   { find: '@/lib/supabase/client', replacement: boundary },
   { find: 'next/link', replacement: resolve(root, 'e2e/atlas-entry-next.tsx') },
   { find: '@', replacement: root },
 ] }, server: { middlewareMode: true, host: '127.0.0.1' } })
-let recorderMode = '', recorderRequests = 0
+let recorderMode = '', recorderRequests = 0, modelMode = '', modelRequests = 0
 const server = httpServer(async (req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1:54397')
   if (url.pathname === '/atlas/rosttest') {
     recorderMode = url.searchParams.get('recorder') ?? ''; recorderRequests = 0
+    modelMode = url.searchParams.get('model') ?? ''; modelRequests = 0
+  }
+  // Serve WASM runtime modules as actual static files, just as Next public assets.
+  // Vite otherwise tries to transform an imported public .mjs file and rejects it.
+  if (/^\/atlas-vad\/(?:silero_vad_v5\.onnx|ort-wasm-simd-threaded\.(?:wasm|mjs))$/.test(url.pathname)) {
+    if (url.pathname.endsWith('.onnx')) {
+      modelRequests++
+      if (modelMode === 'fail-once' && modelRequests === 1) { res.writeHead(503); res.end(); return }
+      if (modelMode === 'slow') await new Promise(resolve => setTimeout(resolve, 2000))
+      if (res.destroyed) return
+    }
+    res.writeHead(200, { 'content-type': url.pathname.endsWith('.mjs') ? 'application/javascript' : url.pathname.endsWith('.wasm') ? 'application/wasm' : 'application/octet-stream' })
+    res.end(await readFile(resolve(root, 'public' + url.pathname))); return
   }
   // Worklet fetches are not intercepted by page.route in Chromium. Exercise
   // real HTTP failures/delays here, before Vite's static asset handler.

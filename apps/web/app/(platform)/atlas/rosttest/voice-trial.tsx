@@ -21,7 +21,7 @@ export function AtlasVoiceTrial() {
   const snapshot = useSyncExternalStore(conversation.subscribe, conversation.snapshot, conversation.snapshot)
   const [voices, setVoices] = useState<{ key: AtlasSwedishVoice; label: string }[]>([])
   const [voice, setVoice] = useState<AtlasSwedishVoice>('anders')
-  const [pauseMs, setPauseMs] = useState(2000)
+  const [pauseMs, setPauseMs] = useState(1200)
   const [playbackMode, setPlaybackMode] = useState<'speakers' | 'headphones'>('speakers')
   const [outputBusy, setOutputBusy] = useState(false)
   const [listening, setListening] = useState(false)
@@ -221,7 +221,7 @@ export function AtlasVoiceTrial() {
       <p className="mt-4 flex items-center gap-2 text-xs text-slate-400"><Headphones size={14} />{playbackMode === 'speakers' ? 'Med högtalare lyssnar Atlas när han har tystnat. Tryck på Avbryt och rätta för att stoppa rösten och börja prata när det står Atlas lyssnar.' : 'Med hörlurar kan du avbryta genom att börja prata.'}</p>
     </section>
     <section className="mt-5 rounded-2xl border border-white/10 bg-slate-900/40 p-5" aria-label="Testsamtal">
-      <p className="mb-4 text-xs leading-5 text-slate-400">ElevenLabs tolkar din svenska. Tala när det står Atlas lyssnar. När du pratat klart kan du även trycka på Klar med frågan.</p>
+      <p className="mb-4 text-xs leading-5 text-slate-400">Tala när det står Atlas lyssnar. Atlas svarar automatiskt efter din paus. Klar med frågan är bara ett extra sätt att avsluta direkt.</p>
       <div className="flex flex-wrap items-center gap-3">
         <button className={button + (mic || opening ? ' bg-teal-400/15 text-teal-200' : '')} disabled={!voices.length} onClick={() => void toggleMic()}>{mic || opening ? <MicOff size={17} /> : <Mic size={17} />}{opening ? 'Avbryt mikrofonstart' : mic ? 'Stäng mikrofonen' : 'Starta mikrofonen'}</button>
         <button className={button} onClick={stopAll}><Square size={15} /> Stoppa allt ljud</button>

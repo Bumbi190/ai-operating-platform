@@ -2,6 +2,8 @@ import { createPcmResampler, pcm16, PCM_MAX_BYTES, PCM_RATE } from './pcm'
 import { voiceResponseError, isVoiceAccessFailure, VOICE_ACCESS_NOTICE } from './failure'
 
 function microphoneStartNotice(error: unknown): string {
+  if (error instanceof Error && error.message.startsWith('speech_'))
+    return 'Talavkänningen kunde inte fortsätta. Starta mikrofonen igen när anslutningen fungerar.'
   if (error instanceof Error && error.message === 'microphone_worklet_unavailable')
     return 'Mikrofonens ljudmodul kunde inte laddas. Starta mikrofonen igen när anslutningen fungerar.'
   if (error instanceof Error && error.name === 'NotAllowedError')
@@ -19,10 +21,11 @@ type Options = {
   notice(message: string): void; active(value: boolean): void
   listening?(value: boolean): void; processing?(value: boolean): void; endpoint?(quietMs: number): void
 }
-type Source = { sampleRate: number; stop(): void }
+type Source = { sampleRate: number; stop(): void; reset?(): void }
+type EndReason = 'pause' | 'manual' | 'limit'
 type Dependencies = {
-  open(frame: (samples: Float32Array) => void, signal: AbortSignal): Promise<Source>
-  transcribe(pcm: Uint8Array, signal: AbortSignal): Promise<string>
+  open(frame: (samples: Float32Array, speechProbability: number) => void, signal: AbortSignal, failed: (error: Error) => void): Promise<Source>
+  transcribe(pcm: Uint8Array, signal: AbortSignal, reason: EndReason): Promise<string>
   now?(): number
 }
 
@@ -36,10 +39,10 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
   let device: AbortController | null = null, idleOverflow = false
   let receivedFrame = false, health: ReturnType<typeof setTimeout> | undefined
   let samples: Float32Array[] = [], count = 0, idle: Float32Array[] = [], idleCount = 0
-  let voiced = false, candidateMs = 0, quietMs = 0, noise = 0.0003
+  let voiced = false, candidateMs = 0, quietMs = 0
   const blocked = () => options.playbackMode === 'speakers' && (output || recovering)
   const ready = () => options.listening?.(live && !!source && receivedFrame && !blocked() && !upload && !capped)
-  function clearAudio() { samples = []; count = 0; idle = []; idleCount = 0; idleOverflow = false; voiced = false; candidateMs = quietMs = 0; noise = 0.0003 }
+  function clearAudio() { samples = []; count = 0; idle = []; idleCount = 0; idleOverflow = false; voiced = false; candidateMs = quietMs = 0; source?.reset?.() }
   function discard() {
     if (capped && live) { stop(); return }
     revision++; upload?.abort(); upload = null; options.processing?.(false); clearAudio(); ready()
@@ -49,7 +52,7 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
     discard(); device?.abort(); device = null; source?.stop(); source = null; capped = false
     options.listening?.(false); options.active(false)
   }
-  async function finish(reviewOnly = false) {
+  async function finish(reviewOnly = false, reason: EndReason = 'manual') {
     if (!live || !source || blocked() || upload || capped) return
     if (idleOverflow) reviewOnly = true
     const began = now(), parts = voiced ? samples : idle
@@ -65,7 +68,7 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
     if (reviewOnly) { clearTimeout(health); source.stop(); source = null }
     ready(); options.processing?.(true)
     try {
-      const text = (await deps.transcribe(pcm16(audio), abort.signal)).trim()
+      const text = (await deps.transcribe(pcm16(audio), abort.signal, reviewOnly ? 'limit' : reason)).trim()
       if (!live || token !== generation || turn !== revision || abort.signal.aborted) return
       if (!text) options.notice('Jag kunde inte urskilja några ord. Prova igen eller skriv din fråga.')
       else {
@@ -97,7 +100,7 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
       }, 5000)
     }
     try {
-      const opened = await deps.open(frame => {
+      const opened = await deps.open((frame, probability) => {
         if (!live || token !== generation || !resample || !source || !frame.length) return
         watchStream()
         if (!receivedFrame) { receivedFrame = true; ready() }
@@ -105,32 +108,35 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
         const pcm = resample(frame)
         if (!pcm.length) return
         const ms = pcm.length / PCM_RATE * 1000
-        let energy = 0; for (const value of pcm) energy += value * value
-        const rms = Math.sqrt(energy / pcm.length)
-        // Quiet onset and a lower continuation threshold avoid chopping soft
-        // endings. Noise adapts only while idle and below speech onset.
-        const onset = Math.max(0.0012, noise * 3), threshold = voiced ? onset * 0.6 : onset
-        const speech = rms >= threshold
+        // Silero speech probability, not sound level: room noise must not
+        // indefinitely reset the pause after a question.
+        // Thresholds from the pinned VAD package's V5 frame defaults.
+        const speech = probability >= (voiced ? 0.25 : 0.3)
         if (!voiced) {
           idle.push(pcm); idleCount += pcm.length
           while (idleCount > maxSamples && idle.length > 1) { idleCount -= idle.shift()!.length; idleOverflow = true }
-          if (!speech) noise = noise * 0.98 + rms * 0.02
           candidateMs = speech ? candidateMs + ms : 0
           if (candidateMs < 80) return
           voiced = true
-          // Keep the entire bounded listening prefix: a quiet first phrase
-          // may be audible to Scribe before local VAD confirms louder speech.
-          const joined = new Float32Array(idleCount); let i = 0
-          for (const part of idle) { joined.set(part, i); i += part.length }
-          samples = [joined]; count = idleCount; idle = []; idleCount = 0
+          // Preserve a second around speech onset, including model confirmation
+          // delay. Minutes of waiting/room noise are not part of the question.
+          const length = Math.min(idleCount, PCM_RATE), joined = new Float32Array(length)
+          let skip = idleCount - length, i = 0
+          for (const part of idle) {
+            if (skip >= part.length) { skip -= part.length; continue }
+            const kept = part.subarray(skip); joined.set(kept, i); i += kept.length; skip = 0
+          }
+          samples = [joined]; count = length; idle = []; idleCount = 0; idleOverflow = false
           // Speaker mode uses the explicit Avbryt button. Input arriving while
           // a reply is still preparing must not silently cancel its speech epoch.
           if (options.playbackMode === 'headphones') options.interrupt()
         } else { samples.push(pcm); count += pcm.length }
         quietMs = speech ? 0 : quietMs + ms
         if (count >= maxSamples) { void finish(true); return }
-        if (quietMs >= pause) void finish()
-      }, device.signal)
+        if (quietMs >= pause) void finish(false, 'pause')
+      }, device.signal, error => {
+        if (live && token === generation) { stop(); options.notice(microphoneStartNotice(error)) }
+      })
       if (!live || token !== generation) { opened.stop(); return }
       source = opened; resample = createPcmResampler(opened.sampleRate)
       options.active(true); ready(); watchStream()
@@ -151,14 +157,15 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
 
 function browserDependencies(): Dependencies {
   return {
-    async open(receive, signal) {
+    async open(receive, signal, failed) {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } })
       let context: AudioContext | undefined, input: MediaStreamAudioSourceNode | undefined, node: AudioWorkletNode | undefined
+      let detector: ReturnType<typeof import('./speech-detector')['createSpeechFrameProcessor']> | undefined
       let stopped = false
       const stop = () => {
         if (stopped) return
         stopped = true; signal.removeEventListener('abort', stop)
-        stream.getTracks().forEach(track => track.stop()); if (node) { node.port.onmessage = null; node.disconnect() }
+        detector?.stop(); stream.getTracks().forEach(track => track.stop()); if (node) { node.port.onmessage = null; node.disconnect() }
         input?.disconnect(); if (context && context.state !== 'closed') void context.close().catch(() => {})
       }
       const wait = async (task: Promise<unknown>, limitMs = 1500) => {
@@ -179,15 +186,27 @@ function browserDependencies(): Dependencies {
         try { await wait(context.audioWorklet.addModule('/atlas-voice-recorder.js'), 5000) }
         catch { throw new Error('microphone_worklet_unavailable') }
         node = new AudioWorkletNode(context, 'atlas-voice-recorder')
-        node.port.onmessage = event => { if (event.data instanceof Float32Array) receive(event.data) }
+        // Drain startup frames while the model loads. A MessagePort otherwise
+        // replays pre-listening audio once its first handler is attached.
+        node.port.onmessage = () => {}
         input = context.createMediaStreamSource(stream); input.connect(node); node.connect(context.destination)
         await wait(context.resume())
         if (context.state !== 'running') throw new Error('microphone_suspended')
-        return { sampleRate: context.sampleRate, stop }
+        try {
+          await wait((async () => {
+            const { loadSpeechModel, createSpeechFrameProcessor } = await import('./speech-detector')
+            const model = await loadSpeechModel(signal)
+            if (stopped || signal.aborted) { await model.release(); return }
+            detector = createSpeechFrameProcessor(model, receive, error => { stop(); failed(error) })
+          })(), 15000)
+        } catch { throw new Error('speech_detector_unavailable') }
+        const resample = createPcmResampler(context.sampleRate)
+        node.port.onmessage = event => { if (event.data instanceof Float32Array) detector?.push(resample(event.data)) }
+        return { sampleRate: PCM_RATE, stop, reset: () => detector?.reset() }
       } catch (error) { stop(); throw error }
     },
-    async transcribe(audio, signal) {
-      const response = await fetch('/api/atlas/voice-pilot/speech', { method: 'POST', headers: { 'Content-Type': 'audio/pcm' }, body: new Uint8Array(audio), signal })
+    async transcribe(audio, signal, reason) {
+      const response = await fetch('/api/atlas/voice-pilot/speech', { method: 'POST', headers: { 'Content-Type': 'audio/pcm', 'x-atlas-voice-end': reason }, body: new Uint8Array(audio), signal })
       if (!response.ok) throw await voiceResponseError(response, 'transcription_failed')
       const result = await response.json()
       if (typeof result.text !== 'string') throw new Error('invalid_transcription')

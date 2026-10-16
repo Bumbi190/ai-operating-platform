@@ -96,3 +96,13 @@ it('reports transcription duration without recording the transcript', async () =
     expect(logs).not.toContain(result.text); expect(logs).not.toContain('secret-test-key')
   } finally { info.mockRestore() }
 })
+
+it.each(['pause', 'manual', 'limit', 'arbitrary-private-content'])('logs only an allowlisted turn-ending hint (%s)', async hint => {
+  const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+  try {
+    const request = post(); request.headers.set('x-atlas-voice-end', hint)
+    expect((await POST(request)).status).toBe(200)
+    expect(info).toHaveBeenCalledWith('[atlas-voice-trial]', expect.objectContaining({ endReason: hint === 'arbitrary-private-content' ? 'unknown' : hint }))
+    expect(JSON.stringify(info.mock.calls)).not.toContain('arbitrary-private-content')
+  } finally { info.mockRestore() }
+})

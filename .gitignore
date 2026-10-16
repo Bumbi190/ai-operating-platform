@@ -64,3 +64,6 @@ apps/web/data/intelligence/
 !apps/web/app/(platform)/projects/*/build/**
 
 .superpowers/sdd/2026-10-16-atlas-social-content/
+
+# Generated pinned speech detector assets
+/apps/web/public/atlas-vad/

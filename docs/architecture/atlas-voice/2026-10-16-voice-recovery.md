@@ -24,3 +24,7 @@ The listening status now requires receipt of an audio frame. Missing or stopped 
 These tests establish lifecycle behavior and scheduled output, not physical audibility or real Scribe accuracy. No paid provider request was made. Silent Provlyssna with no active microphone remains unconfirmed and is not explained by the cancellation defect. The connected Browser plugin could not attach to the user's authenticated browser. The full repository suite was not rerun; its documented inherited failures remain in the prior verification record.
 
 Only the existing isolated preview is to be updated. No production merge or GPT-Live activation is included.
+
+## Preview build reconciliation
+
+The first deployment of f74c091 failed before compilation: the production ledger already contained social_project_profiles_v1 and social_manual_publication_v1, while this older branch lacked their canonical files. Import the two unchanged migrations, guard counts and corresponding fixture counts from merged main 535523c. They are enforced (127 canonical, 113 enforced); no guard override, legacy exemption or database apply is involved. Migration Guard v2 integrity tests pass 26/26. The runtime voice code and dependencies are unchanged by this reconciliation.

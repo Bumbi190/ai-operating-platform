@@ -522,6 +522,36 @@
           "sha256": "c162e1a2f0ce720cc774b336089c7c4af01bb141bdca8dd7491b8727193ad11c"
         }
       ]
+    },
+    {
+      "id": "ui-ux-pro-max",
+      "source": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill",
+      "commit": "56ea9cf174ed86786187daa9de0e6247cb0747e4",
+      "upstreamPath": ".claude/skills/ui-ux-pro-max",
+      "installedPath": ".agents/skills/ui-ux-pro-max",
+      "runtimeStatus": "knowledge_only",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "ea087c341bfb5b23195c7302027268ede86da802554c18a5c4896a6017b439f9"
+        },
+        {
+          "path": "LICENSE",
+          "sha256": "738f69dfa83db5c347c678fb9d90e560877059f0de93a327c39001bff92dc014"
+        },
+        {
+          "path": "references/quick-reference.md",
+          "sha256": "0609bc7c89dacb40472465d8fc14257b56b2c43439660fc8d6fa3b8c022e1876"
+        },
+        {
+          "path": "references/pro-rules.md",
+          "sha256": "d28442d61c310b49c054a4ea736f89fb3008beebdbbc38c4b3a540b8f7fadf23"
+        },
+        {
+          "path": "INTEGRATION.md",
+          "sha256": "5a6154747157d5b5a1f68bbbf72f5279666dc7462af15e97247c294f7a83c0dc"
+        }
+      ]
     }
   ]
 }

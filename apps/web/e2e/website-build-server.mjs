@@ -42,6 +42,8 @@ const server = httpServer(async (req, res) => {
     if(url.pathname==='/__fixture/studio-billing'){
       const spend=await vite.ssrLoadModule('/e2e/atlas-build-chat-spend.ts');res.setHeader('content-type','application/json');res.end(JSON.stringify(spend.readFixtureBilling()));return;
     }
+    const mockupRoute=url.pathname.match(/^\/api\/website-build-plans\/([0-9a-f-]{36})\/mockups\/(approve|[0-9a-f-]{36})$/)
+    if(mockupRoute){const api=await vite.ssrLoadModule('/lib/website-build/planning/mockup-api.ts'),chunks=[];for await(const chunk of req)chunks.push(chunk);const action=mockupRoute[2]==='approve'?'approve':'get',response=await api.websiteMockupApi(action,new Request(url,{method:req.method,headers:req.headers,body:req.method==='POST'?Buffer.concat(chunks):undefined}),{planId:mockupRoute[1],mockupId:action==='get'?mockupRoute[2]:undefined});res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));return}
     if(url.pathname.startsWith('/api/website-build/studio')){
       const api=await vite.ssrLoadModule('/lib/website-build/studio/api.ts');const chunks=[];for await(const chunk of req){chunks.push(chunk);if(chunks.reduce((n,c)=>n+c.length,0)>70000)throw Error('Fixture body too large')}
       const action=url.pathname.endsWith('/budget')?'budget':url.pathname.endsWith('/workspace-request')?'workspace-request':req.method==='POST'?'ensure':'get';

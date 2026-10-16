@@ -6,6 +6,7 @@ export function AtlasPlanCard({
   approvalDisabled=false,
   onApprove,
   onEdit,
+  onReview,
   pending = false,
   displayedSessionId = null,
 }: {
@@ -13,6 +14,7 @@ export function AtlasPlanCard({
   approvalDisabled?:boolean;
   onApprove: () => void;
   onEdit: () => void;
+  onReview?: () => void;
   pending?: boolean;
   displayedSessionId?: string | null;
 }) {
@@ -100,14 +102,16 @@ export function AtlasPlanCard({
             .
           </p>
         )}
+        {plan.designReview?.required && <p>{plan.designReview.approved?'Designen är godkänd för denna briefversion.':'Granska briefen ovan och jämför tre designförslag innan bygget startar.'}</p>}
         <div className={styles.composerActions}>
+          {plan.designReview?.required && onReview && <button type="button" onClick={onReview} disabled={pending}>Granska designförslag</button>}
           <button type="button" onClick={onEdit} disabled={pending}>
             Ändra planen i chatten
           </button>
           <button
             type="button"
             onClick={onApprove}
-            disabled={pending || approvalDisabled || !plan.setting.builderAgentId || started}
+            disabled={pending || approvalDisabled || !plan.setting.builderAgentId || started || (!!plan.designReview?.required && !plan.designReview.approved)}
           >
             {started
               ? (usedByDisplayedBuild ? "Planen används av bygget" : "Planen används av ett annat bygge")

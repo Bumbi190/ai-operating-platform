@@ -26,6 +26,10 @@ export const WEBSITE_RUNTIME = String.raw`(() => {
     const ready = () => parent.postMessage({ type: 'atlas-preview-ready', token: config.preview.token, artifactHash: config.preview.artifactHash, pageKey: config.preview.pageKey }, '*');
     window.addEventListener('message', event => { if(event.source === parent && event.data && event.data.type === 'atlas-preview-ping' && event.data.token === config.preview.token && event.data.artifactHash === config.preview.artifactHash) ready(); });
     ready();
+    // Keyboard events inside the sandbox do not bubble to its modal parent.
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') parent.postMessage({ type: 'atlas-preview-exit-fullscreen', token: config.preview.token, artifactHash: config.preview.artifactHash, pageKey: config.preview.pageKey }, '*');
+    });
     document.addEventListener('click', event => {
       const link = event.target.closest && event.target.closest('a[href]');
       if (!link) return;

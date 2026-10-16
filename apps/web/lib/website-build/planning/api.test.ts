@@ -1,3 +1,4 @@
+import {approveTestMockup} from './test-fixture'
 import {beforeAll,beforeEach,describe,it,expect,vi} from 'vitest'
 import {randomUUID} from 'node:crypto'
 import {websitePlanApi,websiteBuilderSettingsApi,websiteProjectRootApi} from './api'
@@ -12,8 +13,8 @@ let db:ReturnType<typeof initializeWorkerDb>
 const req=(body?:unknown,query='',origin='http://localhost')=>new Request('http://localhost/api/website-build-plans'+query,body===undefined?{headers:{host:'localhost'}}:{method:'POST',headers:{origin,host:'localhost','content-type':'application/json'},body:JSON.stringify(body)})
 const content=()=>({title:'Plan',purpose:'Visa',audience:'Alla',pages:[{key:'index',title:'Hem',purpose:'Visa'}],design:{style:'Blå',reference:null},features:[],architecture:'Statisk',steps:['Bygg'],domain:{registrar:'strato' as const,requestedName:null}})
 function conv(){const id=randomUUID();testSql("insert into conversations(id,user_id,project_id) values('"+id+"','"+TEST_PRINCIPAL.userId+"','"+TEST_PROJECT+"');");return id}
-async function plan(){await setProjectWebsiteBuilder(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,agentId:TEST_AGENT});return saveWebsitePlanRevision(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,conversationId:conv(),expectedRevisionId:null,content:content(),idempotencyKey:randomUUID()})}
-const approval=(p:PlanView)=>({projectId:TEST_PROJECT,revisionId:p.currentRevision.revisionId,sha256:p.currentRevision.sha256,idempotencyKey:randomUUID()})
+async function plan(){await setProjectWebsiteBuilder(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,agentId:TEST_AGENT});return approveTestMockup(db,TEST_PRINCIPAL,await saveWebsitePlanRevision(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,conversationId:conv(),expectedRevisionId:null,content:content(),idempotencyKey:randomUUID()}))}
+const approval=(p:PlanView)=>({projectId:TEST_PROJECT,revisionId:p.currentRevision.revisionId,sha256:p.currentRevision.sha256,mockupDecisionId:p.designReview?.approved?.id,idempotencyKey:randomUUID()})
 beforeAll(()=>{db=initializeWorkerDb();state.db=db})
 beforeEach(()=>{state.authenticated=true;state.allowed=true})
 describe('operator website plan HTTP boundary',()=>{

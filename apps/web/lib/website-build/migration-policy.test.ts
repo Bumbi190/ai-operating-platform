@@ -40,3 +40,12 @@ it('enforces the studio migration and rejects missing or duplicate ledger entrie
   expect(() => evaluateAppliedMigrationLedger(state.repositoryNames.filter(n => n !== name), state)).toThrow(/atlas_builder_studio_workspace/)
   expect(() => evaluateAppliedMigrationLedger([...state.repositoryNames, name], state)).toThrow(/duplicate/)
 })
+
+
+it('requires exactly one mockup review migration in the production ledger',()=>{
+ const state=inspectCanonicalMigrationFiles(files),name='website_mockup_review'
+ expect(state.enforcedNames).toContain(name)
+ expect(state.grandfatheredNames).not.toContain(name)
+ expect(()=>evaluateAppliedMigrationLedger(state.repositoryNames.filter(n=>n!==name),state)).toThrow(/website_mockup_review/)
+ expect(()=>evaluateAppliedMigrationLedger([...state.repositoryNames,name],state)).toThrow(/duplicate/)
+})

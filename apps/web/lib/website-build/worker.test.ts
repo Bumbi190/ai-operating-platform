@@ -304,3 +304,24 @@ it.each(['valid','paused','paused-feedback','legacy-worker','rejected-stop','rej
  else{await expect(executeWebsiteBuildRun(db,next,next.claim_id!)).rejects.toMatchObject({code:mode==='unsafe-draft'?'UNSUPPORTED_ELEMENT':'INVALID_RECOVERY'});expect((await view(s)).revisions).toHaveLength(0)}
  expect(provider).not.toHaveBeenCalled()
 },30000)
+
+it.each(['missing-pages','complete'] as const)('enforces the approved three-page scope: %s',async(mode)=>{
+ const planning=await import('./planning/store'),conversationId=crypto.randomUUID()
+ testSql("insert into conversations(id,user_id,project_id) values('"+conversationId+"','"+TEST_PRINCIPAL.userId+"','"+TEST_PROJECT+"');")
+ await planning.setProjectWebsiteBuilder(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,agentId:TEST_AGENT})
+ const plan=await planning.saveWebsitePlanRevision(db,TEST_PRINCIPAL,{projectId:TEST_PROJECT,conversationId,expectedRevisionId:null,idempotencyKey:crypto.randomUUID(),content:{title:'Tre sidor',purpose:'Behåll hela den överenskomna webbplatsen',audience:'Kunder',pages:[{key:'home',title:'Hem',purpose:'Introduktion'},{key:'policy',title:'Policy',purpose:'Villkor'},{key:'order',title:'Order',purpose:'Exempel'}],design:{style:'Varm',reference:null},features:[],architecture:'Statiskt paket',steps:['Granska','Bygg'],domain:{registrar:'strato',requestedName:null}}})
+ const option=plan.designReview!.options[0]
+ const reviewed=await planning.approveWebsiteMockup(db,TEST_PRINCIPAL,{...plan.currentRevision,mockupId:option.id,mockupSha256:option.sha256,idempotencyKey:crypto.randomUUID()})
+ const decision=await planning.approveWebsitePlan(db,TEST_PRINCIPAL,{...plan.currentRevision,mockupDecisionId:reviewed.designReview?.approved?.id,idempotencyKey:crypto.randomUUID()}),s=await planning.startApprovedWebsitePlan(db,TEST_PRINCIPAL,{...plan.currentRevision,decisionId:decision.id}),run=await claim(s)
+ if(mode==='complete'){
+  const complete=draft();complete.pages.push({...complete.pages[0],key:'policy',title:'Policy'},{...complete.pages[0],key:'order',title:'Order'})
+  provider.mockResolvedValueOnce(response(complete))
+  await executeWebsiteBuildRun(db,run,run.claim_id!)
+  const final=await view(s);expect(final.status).toBe('ready');expect(final.revisions).toHaveLength(1)
+  const artifact=await readBuildArtifact(db,TEST_PRINCIPAL,s,final.activePreviewRevisionId!)
+  expect(artifact.pages.map(page=>page.key).sort()).toEqual(['index','order','policy'])
+ }else{
+  await expect(executeWebsiteBuildRun(db,run,run.claim_id!)).rejects.toMatchObject({code:'APPROVED_PAGE_SCOPE_MISMATCH'})
+  expect((await view(s)).revisions).toHaveLength(0)
+ }
+},30000)

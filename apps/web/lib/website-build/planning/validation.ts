@@ -29,8 +29,8 @@ export function validatePlanContent(input:unknown):PlanContent{
  const o=object(input,['title','purpose','audience','pages','design','features','architecture','steps','domain'])
  const d=object(o.design,['style','reference']),dm=object(o.domain,['registrar','requestedName'])
  if(dm.registrar!=='strato')fail()
- const pages=list(o.pages,8).map(v=>{const p=object(v,['key','title','purpose']);const key=text(p.key);if(!/^[a-z][a-z0-9_-]{0,39}$/.test(key))fail();return {key,title:text(p.title),purpose:text(p.purpose)}})
- if(!pages.length||new Set(pages.map(p=>p.key)).size!==pages.length)fail()
+ const pages=list(o.pages,8).map(v=>{const p=object(v,['key','title','purpose']);const key=text(p.key);if(!/^[a-z][a-z0-9-]{0,49}$/.test(key))fail();return {key,title:text(p.title),purpose:text(p.purpose)}})
+ if(!pages.length||!pages.some(page=>page.key==='index'||page.key==='home')||new Set(pages.map(p=>p.key)).size!==pages.length)fail()
  const features=list(o.features,24).map(v=>{const f=object(v,['name','mode','provider']);if(f.mode!=='preview_demo'&&f.mode!=='live_required')fail();if(f.provider!==null&&!providers.includes(f.provider as IntegrationProvider))fail();return {name:text(f.name),mode:f.mode as 'preview_demo'|'live_required',provider:f.provider as IntegrationProvider|null}})
  const content:PlanContent={title:text(o.title),purpose:text(o.purpose),audience:text(o.audience),pages,design:{style:text(d.style),reference:d.reference===null?null:text(d.reference)},features,architecture:text(o.architecture),steps:list(o.steps,12).map(text),domain:{registrar:'strato',requestedName:domain(dm.requestedName)}}
  if(compileStaticBrief(content).length>PLAN_LIMITS.briefChars)fail('PLAN_TOO_LARGE')

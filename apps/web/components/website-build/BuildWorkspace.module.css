@@ -32,3 +32,17 @@
  .studioPreview .previewTools .versionMetadata{display:block;margin-top:.6rem}
  .studioPreview .previewTools .toolbar{margin-top:.6rem}
 }
+
+/* Native top-layer review keeps the sandbox and its current demo state mounted. */
+.previewTopline{display:flex;align-items:center;justify-content:space-between;gap:.5rem;min-height:44px;flex-shrink:0}
+.previewActions{display:flex;align-items:center;gap:.35rem;flex-shrink:0}
+.fullscreenButton,.fullscreenBar>button{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;min-height:44px;padding:.35rem .65rem;border:1px solid hsl(var(--border));border-radius:8px;background:hsl(var(--card));color:inherit;font:inherit;font-size:.75rem;cursor:pointer}
+.previewActions>button:disabled{opacity:.5;cursor:default}
+.previewActions>button:focus-visible,.fullscreenBar>button:focus-visible{outline:2px solid rgb(var(--omnira-cyan-rgb));outline-offset:2px}
+.previewDialog{position:static;display:flex;flex:1;flex-direction:column;align-items:center;min-width:0;width:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;color:inherit;background:hsl(var(--background))}
+.studioPreview .previewDialog{height:100%;min-height:0}
+.fullscreenBar{display:none}
+.previewDialog:modal{position:fixed;inset:0;box-sizing:border-box;width:100vw;height:100dvh;max-width:none;max-height:none;margin:0;padding:0 0 env(safe-area-inset-bottom);overflow:hidden}
+.previewDialog::backdrop{background:hsl(var(--background))}
+.previewDialog:modal .fullscreenBar{display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:.5rem;width:100%;min-height:52px;padding:max(.25rem,env(safe-area-inset-top)) max(.5rem,env(safe-area-inset-right)) .25rem max(.75rem,env(safe-area-inset-left));border-bottom:1px solid hsl(var(--border));font-size:.8rem}
+.previewDialog:modal .frame,.previewDialog:modal .mobileFrame{flex:1 1 0;min-height:0;height:0}

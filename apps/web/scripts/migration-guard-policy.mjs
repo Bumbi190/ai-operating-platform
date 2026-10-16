@@ -68,8 +68,9 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Atlas studio: 118/104 -> 119/105 (enforced; pending reviewed apply).
 // Builder output allowance v2: 119/105 -> 120/106 (enforced).
 // + website_saved_draft_worker_protocol: no-paid recovery compatibility.
-export const EXPECTED_CANONICAL_SQL_COUNT = 121
-export const EXPECTED_ENFORCED_COUNT = 107
+// + website_mockup_review: immutable operator design selection and compatible worker fence.
+export const EXPECTED_CANONICAL_SQL_COUNT = 122
+export const EXPECTED_ENFORCED_COUNT = 108
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

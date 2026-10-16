@@ -21,9 +21,9 @@ export async function websitePlanApi(action:'save'|'get'|'approve'|'start',reque
   const projectId=(body.projectId??new URL(request.url).searchParams.get('projectId')) as string,planId=params.planId as string
   if(action==='get')return Response.json(await readWebsitePlan(db,a,{projectId,planId}),{headers})
   if(action==='save'){fields(body,['projectId','conversationId','planId','expectedRevisionId','content','idempotencyKey']);return Response.json(await saveWebsitePlanRevision(db,a,body as unknown as SavePlanInput),{status:201,headers})}
-  fields(body,action==='approve'?['projectId','revisionId','sha256','idempotencyKey']:['projectId','revisionId','sha256','decisionId'])
+  fields(body,action==='approve'?['projectId','revisionId','sha256','mockupDecisionId','idempotencyKey']:['projectId','revisionId','sha256','decisionId'])
   const ref={projectId,planId,revisionId:body.revisionId as string,sha256:body.sha256 as string}
-  if(action==='approve')return Response.json(await approveWebsitePlan(db,a,{...ref,idempotencyKey:body.idempotencyKey as string}),{headers})
+  if(action==='approve')return Response.json(await approveWebsitePlan(db,a,{...ref,mockupDecisionId:body.mockupDecisionId as string|null|undefined,idempotencyKey:body.idempotencyKey as string}),{headers})
   return Response.json(await startApprovedWebsitePlan(db,a,{...ref,decisionId:body.decisionId as string}),{status:201,headers})
  }catch(error){return buildErrorResponse(error)}
 }

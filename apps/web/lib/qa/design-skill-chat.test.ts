@@ -7,7 +7,7 @@ describe('Atlas design knowledge tools', () => {
   it('registers only read tools and returns honest metadata', () => {
     expect(DESIGN_SKILL_TOOLS.map(t=>t.name)).toEqual(['list_design_skills','read_design_skill'])
     const result = executeDesignSkillTool('list_design_skills', {}) as { skills: { status: string }[] }
-    expect(result.skills).toHaveLength(8)
+    expect(result.skills).toHaveLength(9)
     expect(result.skills.every(s=>s.status==='knowledge_only')).toBe(true)
   })
   it('reads actual pinned content with bounded pagination', () => {

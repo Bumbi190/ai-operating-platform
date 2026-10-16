@@ -1,0 +1,15 @@
+import {describe,it,expect} from 'vitest'
+import {SOCIAL_LAUNCH_CHANNELS,parseSocialLaunchChoices,describeSocialLaunchReadiness} from './catalog'
+const choice={channel:'pinterest',purpose:'Familjeaktiviteter',format:'image',cadence:'weekly'}
+const account={readable:true,accountId:'123',label:'Familje-Stunden',blocked:false,credentialStored:true,matchesBinding:true,identityVerified:true,health:'ok',checkedAt:'2026-10-16T05:00:00Z',expiresAt:null}
+describe('social launch catalogue and readiness',()=>{
+ it('offers exactly the six owner-selected channels',()=>expect(SOCIAL_LAUNCH_CHANNELS.map(c=>c.id)).toEqual(['youtube','facebook','instagram','linkedin','x','pinterest']))
+ it('normalizes bounded channel choices without granting authority',()=>expect(parseSocialLaunchChoices([{...choice,purpose:' Familjeaktiviteter '}])).toEqual([choice]))
+ it.each([[{...choice,channel:'tiktok'}],[choice,choice],[{...choice,purpose:'x'.repeat(501)}],[{...choice,format:'script'}],[{...choice,cadence:'every_second'}],[{...choice,publish:true}],[{...choice,purpose:''}],Array.from({length:7},()=>choice)].map(input=>({input})))('rejects invalid channel content $input',({input})=>expect(()=>parseSocialLaunchChoices(input)).toThrow('INVALID_BODY'))
+ it('allows an empty plan and sorts choices in catalogue order',()=>{expect(parseSocialLaunchChoices([])).toEqual([]);expect(parseSocialLaunchChoices([choice,{...choice,channel:'youtube',format:'video'}]).map(c=>c.channel)).toEqual(['youtube','pinterest'])})
+ it('keeps planned Pinterest distinct from an implemented connection',()=>{const r=describeSocialLaunchReadiness({channel:'pinterest',selected:true,account:null,now:'2026-10-16T05:00:00Z'});expect(r.selection).toBe('planned');expect(r.connection).toBe('adapter_unavailable');expect(r.publicationReady).toBe(false)})
+ it('does not treat an unreadable account source as absent or healthy',()=>{const r=describeSocialLaunchReadiness({channel:'instagram',selected:true,account:{...account,readable:false},now:'2026-10-16T05:00:00Z'});expect(r.connection).toBe('unreadable')})
+ it('requires identity, stored credential and matching binding before verified status',()=>{for(const change of [{identityVerified:false},{credentialStored:false},{matchesBinding:false}])expect(describeSocialLaunchReadiness({channel:'instagram',selected:true,account:{...account,...change},now:'2026-10-16T05:00:00Z'}).connection).not.toBe('verified')})
+ it('reports verification time without implying publishing permission',()=>{const r=describeSocialLaunchReadiness({channel:'instagram',selected:true,account,now:'2026-10-16T05:00:00Z'});expect(r.connection).toBe('verified');expect(r.checkedAt).toBe(account.checkedAt);expect(r.publicationReady).toBe(false)})
+ it('does not mark an expired or blocked account as verified',()=>{for(const change of [{expiresAt:'2026-10-15T00:00:00Z'},{health:'expired'},{blocked:true}])expect(describeSocialLaunchReadiness({channel:'instagram',selected:false,account:{...account,...change},now:'2026-10-16T05:00:00Z'}).connection).not.toBe('verified')})
+})

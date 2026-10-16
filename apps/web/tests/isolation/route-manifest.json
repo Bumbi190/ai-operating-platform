@@ -16,6 +16,7 @@
   },
 
   "routes": [
+    {"path": "/social-launch", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "na", "risk": "Medium", "verified": true, "note": "Private authenticated project-owner GET/POST plan boundary; server scope plus SQL owner/conversation proof. Same-origin writes, strict bounded fields, immutable revision/hash decisions. Atlas can only propose. No account connection, queue, model call, scheduling or publication; no-store."},
     {"path": "/website-build-plans/[planId]/mockups/[mockupId]", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "na", "risk": "Low", "verified": true, "note": "Private compiled design proposal; authenticated owner and exact project/plan/revision/digests checked. No provider dispatch; no-store."},
     {"path": "/website-build-plans/[planId]/mockups/approve", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "na", "risk": "Medium", "verified": true, "note": "Same-origin operator-only immutable design decision; exact current revision and option digest, idempotent intent. No queue or model call."},
     {"path": "/website-build/studio", "class": "U", "auth": "User", "serviceRole": true, "scope": "project_id", "killSwitch": "na", "risk": "Medium", "verified": true, "note": "Atlas studio: authenticated owner inventory and atomic idempotent workspace creation. Every project/conversation/session parent is verified; private no-store. No provider dispatch."},

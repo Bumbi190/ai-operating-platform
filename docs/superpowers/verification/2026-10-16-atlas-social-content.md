@@ -17,6 +17,7 @@ Scope: preparation only. Real account connections and actual social publication 
 - Browser: 8/8 content tests at mobile390 and desktop1440; 5/5 existing channel and 6/6 existing connection tests.
 - Additional isolation: 114/115 initially passed; one Atlas-page context test hit the existing 5-second test budget during parallel checks. That entire file passed 25/25 when run alone, without changing timeouts.
 - Targeted Next standard lint profile: zero errors, two advisories (stable sequence ref cleanup and intentionally native image preview for authenticated media). Repository has no committed ESLint configuration; the temporary review profile is not product configuration.
+- First CI isolation run: 1060/1061 passed; the new table entries were correct but registry total_tables still said 115 instead of118. Corrected the metadata count and added the scoped production observation note; the schema and migration security suites then passed209/209 locally. All other first-pass CI checks, including UI, passed.
 - git diff --check passed.
 
 ## Independent review

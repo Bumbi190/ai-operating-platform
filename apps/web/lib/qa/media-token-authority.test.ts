@@ -955,19 +955,24 @@ describe('/api/media/token · the one place a project’s account is chosen and 
     return out
   }
   const FILES = () => ['app', 'components', 'lib'].flatMap((d) => sourceFiles(resolve(APP, d)))
-  const rel = (f: string) => relative(APP, f)
+  const rel = (f: string) => relative(APP, f).replaceAll('\\', '/')
   const source = (f: string) => readFileSync(f, 'utf8')
   const callers = (name: string, definedIn: string) => FILES()
     .filter((f) => rel(f) !== definedIn && new RegExp(`\\b${name}\\s*\\(`).test(source(f)))
     .map(rel)
     .sort()
 
-  it('platform_tokens is written, and its credential read, only by the token store; storing is this route, the YouTube connection callback and the refresh cron', () => {
+  it('platform token writes remain in the legacy store and new OAuth health has one explicitly scoped private reader', () => {
     const files = FILES()
     expect(files.filter((f) => /from\(\s*'platform_tokens'\s*\)[\s\S]{0,200}?\.(insert|upsert|update|delete)\(/.test(source(f))).map(rel))
       .toEqual(['lib/media/token-store.ts'])
     expect(files.filter((f) => /from\(\s*'platform_tokens'\s*\)[\s\S]{0,200}?\.select\(\s*'[^']*access_token/.test(source(f))).map(rel))
-      .toEqual(['lib/media/token-store.ts'])
+      .toEqual(['lib/media/token-store.ts', 'lib/social-connections/credentials.ts'])
+    expect(callers('verifyNewBindingHealth', 'lib/social-connections/credentials.ts')).toEqual(['lib/media/credential-health.ts'])
+    const oauthReader = source(resolve(APP, 'lib/social-connections/credentials.ts'))
+    expect(oauthReader).toContain(".eq('project_id',binding.projectId).eq('platform',provider).eq('token_type','oauth_user')")
+    expect(oauthReader).toContain('token.binding_id!==binding.bindingId||token.account_id!==binding.externalAccountId')
+    expect(oauthReader).not.toMatch(/\.(insert|upsert|update|delete)\(/)
     expect(callers('storeCredential', 'lib/media/token-store.ts'))
       .toEqual(['app/api/media/cron/refresh-tokens/route.ts', 'app/api/media/token/route.ts', 'app/api/media/youtube/oauth/callback/route.ts'])
     expect(callers('readStoredCredential', 'lib/media/token-store.ts'))

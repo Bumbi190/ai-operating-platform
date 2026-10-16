@@ -13,7 +13,7 @@
  */
 
 import { Anthropic } from '@anthropic-ai/sdk'
-import { getAnthropic } from '@/lib/ai/anthropic'
+import { getMediaTextClient } from '@/lib/media/text-client'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
@@ -93,7 +93,7 @@ export async function scoreScript(
   script: string,
   sourceContext: string,
 ): Promise<QualityScore> {
-  const client = getAnthropic({
+  const client = getMediaTextClient({
     project: MEDIA_PIPELINE_PROJECT, execution, agent: 'Quality Gate', operation: 'Score Content',
   })
 

@@ -13,12 +13,12 @@ function CheckedTime({ value }: { value: string }) {
   return <time dateTime={value}>{new Date(value).toLocaleString('sv-SE', { timeZone: 'Europe/Stockholm' })} (Stockholm)</time>
 }
 
-export function HandlarborsenCompetitors({ scan, landscape = null, history = null, historyEnabled = false, canSaveHistory = false, memory = null, memoryEnabled = false }: { scan: PublicScan | null; landscape?: LandscapeScan | null; history?: HistoryAnalysis | null; historyEnabled?: boolean; canSaveHistory?: boolean; memory?: CandidateMemoryLoad | null; memoryEnabled?: boolean }) {
+export function HandlarborsenCompetitors({ scan, landscape = null, history = null, historyEnabled = false, canSaveHistory = false, memory = null, memoryEnabled = false, mode = 'owner' }: { scan: PublicScan | null; landscape?: LandscapeScan | null; history?: HistoryAnalysis | null; historyEnabled?: boolean; canSaveHistory?: boolean; memory?: CandidateMemoryLoad | null; memoryEnabled?: boolean; mode?: 'owner' | 'collaborator' }) {
   const summary = scan ? summarizeScan(scan) : null
   return (
     <div className={styles.page}>
       <header>
-        <a href="/projects/handlarborsen" className={styles.link}>Tillbaka till Handlarbörsen</a>
+        <a href={mode === 'collaborator' ? '/organization/projects/handlarborsen' : '/projects/handlarborsen'} className={styles.link}>Tillbaka till Handlarbörsen</a>
         <p className={styles.kicker}>Handlarbörsen · Offentligt beslutsunderlag</p>
         <h1>Konkurrentspanaren</h1>
         <p>Fyra B2B-aktörer. Daterad dossier om Handlarbudet (<time dateTime={DOSSIER_DATE}>{DOSSIER_DATE}</time>) och tre ytterligare officiella jämförelsekällor. Inga påståenden om livepriser eller nyupptäckta förändringar.</p>
@@ -34,7 +34,7 @@ export function HandlarborsenCompetitors({ scan, landscape = null, history = nul
           ? 'Offentliga källor kan kontrolleras manuellt och sparas högst en gång per UTC-dag. Förändringar kräver två verifierade observationer av samma källa. Ingen automatisk bevakning eller exekvering är aktiverad.'
           : 'Kontrollen läser offentliga källor vid ditt klick. Manuell historiklagring är avstängd i denna miljö, men tidigare sparade observationer påverkas inte. Autonom exekvering är spärrad tills Cost Governance är verifierad i preview och produktion.'}</p>
         {/* A native GET form avoids Next Link prefetch executing an on-demand scan. */}
-        <form method="get" action="/projects/handlarborsen/competitors">
+        <form method="get" action={mode === 'collaborator' ? '/organization/projects/handlarborsen/competitors' : '/projects/handlarborsen/competitors'}>
           <button type="submit" name="scan" value="1" className={styles.button}>Kontrollera offentliga källor</button>
         </form>
         {scan && summary ? <p role="status">{summary.checked} av {EVIDENCE.length} källor med kontrollerad titelmetadata. {summary.failed} kunde inte verifieras. Kontrollerat: <CheckedTime value={scan.checked_at} />.</p>
@@ -43,8 +43,8 @@ export function HandlarborsenCompetitors({ scan, landscape = null, history = nul
       </section>
       <HandlarborsenLandscape scan={landscape} history={history} />
       <HandlarborsenCompetitorHistory history={history} historyEnabled={historyEnabled} />
-      <HandlarborsenCompetitorDiscovery memory={memory} memoryEnabled={memoryEnabled} />
-      {historyEnabled && canSaveHistory ? <HandlarborsenSaveCompetitorScan /> : null}
+      <HandlarborsenCompetitorDiscovery memory={memory} memoryEnabled={memoryEnabled} mode={mode} />
+      {historyEnabled && canSaveHistory ? <HandlarborsenSaveCompetitorScan mode={mode} /> : null}
       <section aria-labelledby="competitor-evidence">
         <h2 id="competitor-evidence">Handlarbudet · daterade observationer</h2>
         <p>Belägg: de angivna publicerade nyheterna. Säkerheten gäller historiska publiceringar; dagens erbjudanden och våra hypoteser är inte verifierade.</p>

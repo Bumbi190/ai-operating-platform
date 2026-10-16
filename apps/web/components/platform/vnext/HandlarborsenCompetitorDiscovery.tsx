@@ -13,9 +13,11 @@ import styles from './HandlarborsenCompetitors.module.css'
 export function HandlarborsenCompetitorDiscovery({
   memory = null,
   memoryEnabled = false,
+  mode = 'owner',
 }: {
   memory?: CandidateMemoryLoad | null
   memoryEnabled?: boolean
+  mode?: 'owner' | 'collaborator'
 }) {
   const staticReview = reconcileDiscovery(MANUALLY_REVIEWED_DISCOVERY_LEADS, [], new Date())
   const stored = memoryEnabled && memory?.status === 'ok' ? memory.candidates : null
@@ -61,7 +63,7 @@ export function HandlarborsenCompetitorDiscovery({
               ))}
             </div>
           )}
-          {stored ? <HandlarborsenSaveReviewedLead /> : null}
+          {stored ? <HandlarborsenSaveReviewedLead mode={mode} /> : null}
         </>
       )}
       <p>

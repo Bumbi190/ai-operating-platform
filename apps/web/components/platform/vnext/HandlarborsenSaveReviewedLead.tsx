@@ -2,13 +2,17 @@
 import * as React from 'react'
 import { useState } from 'react'
 
-const endpoint = '/api/projects/handlarborsen/competitors/candidates'
+const endpoints = {
+  owner: '/api/projects/handlarborsen/competitors/candidates',
+  collaborator: '/api/organization/projects/handlarborsen/competitors/candidates',
+} as const
 
 /**
  * No automatic polling, no client-selected candidate or URL, no retries.
- * Saving an immutable reviewed lead is a deliberate owner click.
+ * Saving an immutable reviewed lead is a deliberate authorized user click.
  */
-export function HandlarborsenSaveReviewedLead() {
+export function HandlarborsenSaveReviewedLead({ mode = 'owner' }: { mode?: 'owner' | 'collaborator' }) {
+  const endpoint = endpoints[mode]
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   async function submit() {
@@ -20,8 +24,8 @@ export function HandlarborsenSaveReviewedLead() {
         method: 'POST', credentials: 'same-origin', cache: 'no-store',
       })
       if (!response.ok) {
-        setMessage(response.status === 403 ? 'Sparning nekades: endast projektägaren får spara.'
-          : response.status === 401 ? 'Logga in som projektägare för att fortsätta.'
+        setMessage(response.status === 403 ? 'Sparning nekades: ditt konto saknar rätt behörighet för Handlarbörsen.'
+          : response.status === 401 ? 'Logga in med ett behörigt konto för att fortsätta.'
           : response.status === 409 ? 'Kandidatminnet är avstängt.'
           : 'Kandidaten kunde inte sparas. Ingen lagring kan bekräftas.')
         return

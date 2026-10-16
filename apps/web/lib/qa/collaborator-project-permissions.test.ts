@@ -20,6 +20,15 @@ describe('organization collaborator per-project permissions', () => {
     expect(allow(collaborator, { ...hb, slug: 'another' }, 'operate_workflow')).toBe(false)
     expect(allow(collaborator, { ...hb, id: other.id }, 'operate_workflow')).toBe(false)
   })
+  it('grants bounded candidate and history monitoring only on canonical Handlarbörsen', () => {
+    for (const action of ['view_competitors', 'record_competitor_evidence'] as const) {
+      expect(allow(collaborator, hb, action)).toBe(true)
+      expect(allow(collaborator, other, action)).toBe(false)
+      expect(allow(collaborator, { ...hb, slug: 'other' }, action)).toBe(false)
+      expect(allow(owner, hb, action)).toBe(false) // Owner uses own RLS route
+      expect(allow(denied, hb, action)).toBe(false)
+    }
+  })
   it('never authorizes protected actions on any project', () => {
     for (const action of ['approve','deploy','billing','credentials','manage_members','edit_project'] as const) {
       expect(allow(collaborator, hb, action)).toBe(false)

@@ -40,7 +40,7 @@ test('ignores a delayed response after changing project',async({page})=>{
 })
 test('mobile controls fit and unavailable adapters never claim connection or publishing',async({page})=>{
  await expect(page.getByRole('checkbox')).toHaveCount(6)
- await expect(page.getByText('Kontokoppling saknas i Omnira',{exact:true})).toHaveCount(3)
+ await expect(page.getByText('Kontokoppling saknas i Omnira',{exact:true})).toHaveCount(1)
  await expect(page.getByRole('button',{name:/Publicera|Anslut/})).toHaveCount(0)
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
  await page.screenshot({path:'../../.superpowers/sdd/2026-10-16-atlas-social-launch/mobile.png',fullPage:true})

@@ -3,6 +3,7 @@ import {useState,useRef,useEffect} from 'react'
 import {SOCIAL_LAUNCH_CHANNELS} from '@/lib/social-launch/catalog'
 import type {SocialLaunchPageModel,SocialLaunchChoice,SocialLaunchChannelId,SocialLaunchReadiness} from '@/lib/social-launch/types'
 import styles from './SocialLaunchPanel.module.css'
+import {SocialConnectionControls} from './SocialConnectionControls'
 const formats={text:'Text',image:'Bild',video:'Video',link:'Länk'}
 const cadences={manual:'Vid behov',weekly:'En gång i veckan',twice_weekly:'Två gånger i veckan',daily:'Dagligen'}
 const statuses:Record<SocialLaunchReadiness['connection'],string>={adapter_unavailable:'Kontokoppling saknas i Omnira',unreadable:'Kunde inte läsa anslutningen',needs_connection:'Behöver anslutas',needs_renewal:'Behöver förnyas',needs_verification:'Behöver verifieras',blocked:'Anslutningen är blockerad',verified:'Verifierat konto'}
@@ -19,7 +20,7 @@ function ProjectPanel({initial}:{initial:SocialLaunchPageModel}){
   setChoices(old=>patch===null?old.filter(c=>c.channel!==channel):old.some(c=>c.channel===channel)?old.map(c=>c.channel===channel?{...c,...patch}:c):[...old,{channel,purpose:'',format:SOCIAL_LAUNCH_CHANNELS.find(c=>c.id===channel)!.formats[0],cadence:'manual',...patch}])
   setDirty(true);setError('')
  }
- async function request(operation:'propose'|'decide'|'refresh',decision?:'approve'|'reject'){
+ async function request(operation:'propose'|'decide'|'refresh',decision?:'approve'|'reject',metadataOnly=false){
   setBusy(true);setError('');const abort=new AbortController();controller.current=abort
   const payload=operation==='propose'?{operation,projectId,expectedRevisionId:revision?.id??null,choices}:{operation,projectId,revisionId:revision?.id,sha256:revision?.sha256,decision}
   const fingerprint=JSON.stringify(payload)
@@ -30,6 +31,7 @@ function ProjectPanel({initial}:{initial:SocialLaunchPageModel}){
    if(!live.current)return
    if(!response.ok){if(response.status===409){setStale(true);throw Error('Planen har ändrats. Läs senaste versionen innan du granskar igen. Ditt utkast finns kvar.')}throw Error(operation==='refresh'?'Planen kunde inte läsas.':'Ändringen kunde inte sparas. Ditt utkast finns kvar.')}
    if(result?.plan?.project?.id!==projectId)throw Error('Svaret gäller ett annat projekt. Ladda om sidan.')
+   if(metadataOnly){setModel(old=>({...old,channels:result.channels,connections:result.connections}));return}
    setModel(result);setChoices(result.plan.currentRevision?.choices??[]);setDirty(false);setStale(false);pending.current=null
   }catch(e){if(live.current&&!abort.signal.aborted)setError(e instanceof Error?e.message:'Ändringen kunde inte sparas. Ditt utkast finns kvar.')}
   finally{if(live.current)setBusy(false)}
@@ -47,6 +49,7 @@ function ProjectPanel({initial}:{initial:SocialLaunchPageModel}){
    {error&&<p role="alert">{error}</p>}
    {dirty&&<p className={styles.note}>Spara dina ändringar innan du kan godkänna dem.</p>}
   </div>
+  {model.connectionNotice&&<p role="alert">{model.connectionNotice}</p>}
   <div className={styles.grid}>
    {SOCIAL_LAUNCH_CHANNELS.map(channel=>{
     const choice=choices.find(c=>c.channel===channel.id),readiness=model.channels.find(c=>c.channel===channel.id)
@@ -63,7 +66,7 @@ function ProjectPanel({initial}:{initial:SocialLaunchPageModel}){
      {readiness?.accountId&&<p>Konto: {readiness.accountLabel??'Namn ej verifierat'}</p>}
      {readiness?.connection==='verified'&&readiness.checkedAt&&<p className={styles.note}>Verifierat {new Date(readiness.checkedAt).toLocaleString('sv-SE')}</p>}
      <p className={styles.note}>{channel.note}</p>
-     {channel.connectionAdapter&&<a href={readiness?.setupHref??'/settings'}>Visa projektets anslutning</a>}
+     {model.connections?.find(c=>c.provider===channel.id)?<SocialConnectionControls projectId={projectId} revisionId={revision?.id??null} approved={!dirty&&!stale&&!!choice&&model.plan.decision?.decision==='approve'&&model.plan.decision.revisionId===revision?.id&&model.plan.decision.sha256===revision.sha256} card={model.connections.find(c=>c.provider===channel.id)!} intent={model.connectionIntent} onConnected={()=>void request('refresh',undefined,true)}/>:channel.connectionAdapter&&<a href={readiness?.setupHref??'/settings'}>Visa projektets anslutning</a>}
     </article>
    })}
   </div>

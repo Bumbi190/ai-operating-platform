@@ -5,7 +5,7 @@ import { HANDLARBORSEN_PROJECT_ID as id } from '@/lib/atlas/collectors/handlarbo
 const project={id,slug:'handlarborsen',name:'Handlarbörsen',owner_id:'owner-1'}
 function fixture() {
   const row=(scope:string)=>({project_id:id,scope,limit_sek:'100',spent_sek:'10',held_sek:'2',remaining_sek:'88'})
-  const budget=vi.fn(async()=>({data:[row('project_monthly'),row('global_daily')],error:null}))
+  const budget=vi.fn(async()=>({data:['project_monthly','global_daily','global_weekly','global_monthly'].map(scope=>row(scope)),error:null}))
   const budgetFilter=vi.fn((_key:string,_value:string)=>budget())
   const projectRead=vi.fn(async()=>({data:project,error:null}))
   const chain:any={select:vi.fn(()=>chain),eq:vi.fn(()=>chain),maybeSingle:projectRead}

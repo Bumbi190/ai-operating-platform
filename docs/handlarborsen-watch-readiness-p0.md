@@ -6,7 +6,7 @@ This release adds a server-rendered read-only readiness panel to the existing ow
 
 The existing page authorization runs first. The loader then rechecks the live owner and exact Handlarbörsen identity, or uses the existing organization `view_competitors` authorization. It reads only canonical `stop_state` through `resolveExecutionStop` and project-filtered `budget_headroom(30)`. No reservation, mutation, event, provider call, scheduler, new feature flag or notification is introduced.
 
-The DTO contains only stop/budget/enforcement classifications and a timestamp. It never exposes budget amounts, global spending, owner identifiers, operator stop reasons or database errors. Read failures remain unknown. The pure DTO whitelist always returns `executionAllowed:false` and `automaticActive:false`, even if its input attempts to override them. Budget headroom is a snapshot, never authorization or a reservation.
+The DTO contains only stop/budget/enforcement classifications and a timestamp. It never exposes budget amounts, global spending, owner identifiers, operator stop reasons or database errors. Read failures remain unknown. The pure DTO whitelist always returns `executionAllowed:false` and `automaticActive:false`, even if its input attempts to override them. Budget headroom is a snapshot, never authorization or a reservation. Required configuration matches canonical budget_reserve: project_monthly plus all three global ceilings; optional project_daily/weekly also bind when present.
 
 Live read-only evidence on 2026-10-17 showed no configured Handlarbörsen project budget. The canonical global spend flag is observed, never changed. Advisory mode is explicitly insufficient for future automation.
 

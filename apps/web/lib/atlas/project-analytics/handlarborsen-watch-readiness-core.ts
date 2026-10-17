@@ -32,8 +32,9 @@ export function summarizeWatchBudget(raw:unknown):WatchBudget {
     seen.add(row.scope)
     if(remaining<=0)exhausted=true
   }
-  const project=[...seen].some(s=>s.startsWith('project_'))
-  const global=[...seen].some(s=>s.startsWith('global_'))
+  // Same required configuration as canonical budget_reserve; optional scopes also bind.
+  const project=seen.has('project_monthly')
+  const global=['global_daily','global_weekly','global_monthly'].every(scope=>seen.has(scope))
   if(!project&&!global)return 'both_missing'
   if(!project)return 'project_missing'
   if(!global)return 'global_missing'

@@ -4,16 +4,25 @@ import { HANDLARBORSEN_PROJECT_ID as project } from '@/lib/atlas/collectors/hand
 const row=(scope='project_monthly',overrides:Record<string,unknown>={})=>({
   project_id:project,scope,limit_sek:'100.0000',spent_sek:'20.0000',held_sek:'5.0000',remaining_sek:'75.0000',...overrides,
 })
+const globals=()=>['global_daily','global_weekly','global_monthly'].map(scope=>row(scope))
 describe('non-executing competitor watch readiness',()=>{
   it('reports real missing scopes instead of treating global money as a project budget',()=>{
-    expect(summarizeWatchBudget([row('global_daily')])).toBe('project_missing')
+    expect(summarizeWatchBudget(globals())).toBe('project_missing')
     expect(summarizeWatchBudget([row()])).toBe('global_missing')
     expect(summarizeWatchBudget([])).toBe('both_missing')
-    expect(summarizeWatchBudget([row(),row('global_daily')])).toBe('available')
+    expect(summarizeWatchBudget([row(),...globals()])).toBe('available')
+  })
+  it('requires canonical project-monthly and all three global ceilings',()=>{
+    for(const optional of ['project_daily','project_weekly'])
+      expect(summarizeWatchBudget([row(optional),...globals()])).toBe('project_missing')
+    expect(summarizeWatchBudget([row(),...globals(),row('project_weekly',{remaining_sek:0})])).toBe('exhausted')
+    for(const missing of ['global_daily','global_weekly','global_monthly'])
+      expect(summarizeWatchBudget([row(),...globals().filter(value=>value.scope!==missing)])).toBe('global_missing')
+    expect(summarizeWatchBudget([row('project_weekly'),row('global_daily')])).toBe('both_missing')
   })
   it('refuses exhausted headroom in any configured scope',()=>{
     for(const amount of ['0.0000','-1.0000'])expect(summarizeWatchBudget([
-      row(),row('global_daily',{remaining_sek:amount}),
+      row(),...globals().map(value=>({...value,remaining_sek:amount})),
     ])).toBe('exhausted')
   })
   it.each([null,{},[row('project_monthly',{project_id:'foreign'})],[row(),row()],

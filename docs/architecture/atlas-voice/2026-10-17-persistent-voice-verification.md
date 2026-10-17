@@ -5,7 +5,7 @@ André requested one tap on the forehead star and persistent voice throughout Om
 
 ## Evidence
 - Full real WebAudio/worklet/Silero Native suite: 47/47 on d5b7984, one worker, zero retries, simulated media and local provider only.
-- The final full-chat launcher changes only AtlasMiniOrb plus test fixtures. Targeted affected shell/full-chat suite: 19/19, including its new mobile one-tap case. Runtime, hook and controller remain byte-identical to the full-suite version.
+- The final full-chat launcher changes only AtlasMiniOrb plus test fixtures. Targeted affected shell/full-chat suite: 19/19, including its new mobile one-tap case. A final restart regression was subsequently added: after End while a job is pending, only speech from a deliberate fresh start can drain. End clears retired held input; the forehead remains available to restart. Its targeted queue/lifecycle run is recorded in PR385.
 - Dashboard/messenger suite: 32/32; home microphone/read-only/error/cancel subset: 10/10 in an isolated run. Three unrelated website-entry cases remain excluded, as their failures were reproduced on the prior release.
 - Expanded unit scope: 556 passed, one unchanged baseline failure out of 557, 30 files. All 28 controller tests pass, including five new settlement tests.
 - Baseline failure: atlas-chat.test.ts, 'does not observe a client abort — which is why there is no stop control'. Both its source and app/api/chat/route.ts are unchanged; Git blobs match main146c5db and baseline461c92a. The same failure was reproduced in the owned baseline worktree. It is not a regression from this change.

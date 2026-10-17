@@ -71,7 +71,7 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
     setNotice(mic ? 'Rösten är avbruten. Säg rättelsen när Atlas lyssnar. Ett redan påbörjat jobb fortsätter; din rättelse skickas därefter.' : 'Rösten är stoppad. Ett redan påbörjat jobb fortsätter och svaret finns kvar i text.')
   }
   function stopAll() {
-    queuedVoice.current = null
+    queuedVoice.current = null; heldDraft.current = ''
     if (draftReceiver.current) latest.current.onDraftCaptureEnd?.('Mikrofoninspelningen avslutades. Du kan starta den igen.')
     lifetime.current++; openingRef.current = false; micRef.current = false; draftReceiver.current = null; stopSpeech(); capture.current?.stop(); capture.current = null
     if (mounted.current) { setMic(false); setOpening(false); setListening(false); setTranscribing(false) }
@@ -190,7 +190,7 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
     // Read the ref after the await: speech callbacks can populate it during a turn.
     const queued = queuedVoice.current
     // Voice turns remain serial; stop, errors, edits and unfinished phrases win.
-    if (mounted.current && token === lifetime.current && completed && queued &&
+    if (mounted.current && token === lifetime.current && completed && !sendingRef.current && !conversation.snapshot().pending && queued &&
         queued.lifetime === token && queued.revision === draftRevision.current &&
         !capture.current?.hasPendingInput()) {
       queuedVoice.current = null
@@ -208,7 +208,7 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
     const token = lifetime.current, audioToken = speechEpoch.current, selectedVoice = voice
     const record = { quietMs: quietMs ?? null, textMs: null as number | null, audioMs: null as number | null, startedAt: performance.now(), audioToken, mode: inputMode }
     timedReply.current = record; setTiming({ ...record })
-    let responseText = '', spoken = 0, completed = false
+    let responseText = '', spoken = 0, completed = false, submittedConversationId: string | null = null
     const current = () => mounted.current && token === lifetime.current
     const flush = (final: boolean) => {
       if (!current() || audioToken !== speechEpoch.current || !voices.some(v => v.key === selectedVoice)) return
@@ -225,6 +225,7 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
       if (!current()) return
       const id = await conversation.ensureConversation({ firstText: text, inputSource, projectId: latest.current.projectId })
       if (!id) throw new Error('conversation_failed')
+      submittedConversationId = id
       if (!current()) return
       if (draftRevision.current === submittedRevision) writeDraft('', inputSource)
       const outcome = await conversation.sendTurn({ conversationId: id!, text, inputSource,
@@ -243,7 +244,8 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
     finally {
       if (turnToken === turnGeneration.current) {
         sendingRef.current = false; if (mounted.current) setSending(false)
-        resumeQueuedVoice(token, completed)
+        // Stop clears retired input. A deliberate restart may have queued fresh speech while this job ran.
+        resumeQueuedVoice(lifetime.current, completed && conversation.snapshot().id === submittedConversationId)
       }
     }
   }

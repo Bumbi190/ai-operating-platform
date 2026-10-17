@@ -69,6 +69,12 @@ export function AtlasCommandCore({ readOnly = false, voiceHref }: { readOnly?: b
 
   function handleVoiceToggle() {
     if (readOnly) return
+    if (atlas.voiceConversationAvailable) {
+      if (atlas.voicePhase === 'speaking') atlas.stopAudio()
+      else if (atlas.isSessionActive) atlas.deactivate()
+      else atlas.activate()
+      return
+    }
     if (atlas.voicePhase === 'speaking') {
       atlas.stopAudio()
       return
@@ -137,7 +143,7 @@ export function AtlasCommandCore({ readOnly = false, voiceHref }: { readOnly?: b
         type="button"
         className={styles.faceCore}
         onClick={handleVoiceToggle}
-        disabled={readOnly || (busy && atlas.voicePhase !== 'speaking')}
+        disabled={readOnly || (!atlas.voiceConversationAvailable && busy && atlas.voicePhase !== 'speaking')}
         aria-label={atlas.voicePhase === 'speaking' ? 'Avbryt Atlas svar' : atlas.isSessionActive ? 'Avsluta Atlas röstsamtal' : 'Aktivera Atlas röst'}
         aria-describedby="atlas-state-description"
       />
@@ -206,7 +212,7 @@ export function AtlasCommandCore({ readOnly = false, voiceHref }: { readOnly?: b
           type="button"
           className={styles.voiceButton}
           onClick={handleVoiceToggle}
-          disabled={busy || readOnly}
+          disabled={(busy && !atlas.voiceConversationAvailable) || readOnly}
           aria-label={readOnly ? 'Röstläge är avstängt för Collaborator' : voiceLabel}
           data-active={atlas.voicePhase === 'listening' || atlas.voicePhase === 'speaking' || undefined}
         >

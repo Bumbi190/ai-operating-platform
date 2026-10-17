@@ -9,6 +9,18 @@ create table public.local_text_devices (
  reported_health jsonb not null default '{}',last_heartbeat_at timestamptz, current_model_digest text, created_at timestamptz not null default now(),
  expires_at timestamptz not null default now()+interval '90 days', check(expires_at<=created_at+interval '90 days')
 );
+-- Opaque replay identities and unresolved physical/accounting authority survive
+-- content/operational retention. No source/result, names, or conversation IDs.
+-- Only verified reconciliation may settle a quarantine; no TTL is authority.
+create table public.local_text_authority_tombstones (
+ key_hash text primary key check(key_hash ~ '^[a-f0-9]{64}$'),
+ binding_hash text check(binding_hash is null or binding_hash ~ '^[a-f0-9]{64}$'),job_id uuid,
+ expired boolean not null default false,quarantined_device uuid,quarantined_project uuid,
+ held_usd numeric not null default 0 check(held_usd>=0),check(expired or binding_hash is not null)
+);
+alter table public.local_text_authority_tombstones enable row level security;
+revoke all on public.local_text_authority_tombstones from public,anon,authenticated;
+grant all on public.local_text_authority_tombstones to service_role;
 create table public.local_text_admissions (
  id uuid primary key default gen_random_uuid(),project_id uuid not null references public.projects(id),
  device_id uuid not null references public.local_text_devices(id), deployment_id uuid not null,
@@ -24,7 +36,7 @@ create table public.local_text_admissions (
 );
 create table public.local_text_jobs (
  id uuid primary key,project_id uuid not null references public.projects(id),owner_id uuid not null references auth.users(id),
- conversation_id uuid not null references public.conversations(id),idempotency_key uuid not null,
+ conversation_id uuid references public.conversations(id) on delete set null,idempotency_key uuid not null,
  input_hash text not null check(input_hash ~ '^[a-f0-9]{64}$'),schema_version integer not null default 1 check(schema_version=1),
  task_kind text not null check(task_kind in ('classify','extract','summarize')),task jsonb,
  context jsonb not null,admission_id uuid not null references public.local_text_admissions(id),selection_id uuid,
@@ -85,14 +97,20 @@ begin
 end$$;
 create function public.local_text_enqueue(p_context jsonb,p_request jsonb,p_input_hash text,p_job_id uuid,p_selection jsonb)
 returns jsonb language plpgsql security invoker set search_path='' as $$
-declare j public.local_text_jobs; a public.local_text_admissions; t jsonb=p_request->'task';project uuid;v_owner uuid;conversation uuid;expires timestamptz;
+declare j public.local_text_jobs; a public.local_text_admissions; t jsonb=p_request->'task';project uuid;v_owner uuid;conversation uuid;expires timestamptz;v_key_hash text;v_binding_hash text;identity_row public.local_text_authority_tombstones;
 begin
  project=(p_request->>'projectId')::uuid;v_owner=(p_context->>'userId')::uuid;conversation=(p_request->>'conversationId')::uuid;
  if p_context->>'projectId' is distinct from project::text or p_context->>'conversationId' is distinct from conversation::text
  or not exists(select 1 from public.projects p where p.id=project and p.owner_id=v_owner)
  or not exists(select 1 from public.conversations c where c.id=conversation and c.user_id=v_owner) then return jsonb_build_object('kind','refused','reason','SCOPE_REFUSED');end if;
  -- Serialize equal idempotency keys even before their row exists.
- perform pg_advisory_xact_lock(hashtextextended(project::text||conversation::text||(p_request->>'idempotencyKey'),0));
+ v_key_hash=encode(sha256(convert_to(v_owner::text||':'||(p_request->>'idempotencyKey'),'UTF8')),'hex');
+ v_binding_hash=encode(sha256(convert_to(project::text||':'||conversation::text||':'||p_input_hash||':1','UTF8')),'hex');
+ perform pg_advisory_xact_lock(hashtextextended(v_key_hash,0));
+ insert into public.local_text_authority_tombstones(key_hash,binding_hash) values(v_key_hash,v_binding_hash) on conflict do nothing;
+ select x.* into identity_row from public.local_text_authority_tombstones x where x.key_hash=v_key_hash for update;
+ if identity_row.binding_hash<>v_binding_hash then return jsonb_build_object('kind','refused','reason','IDEMPOTENCY_CONFLICT');end if;
+ if identity_row.expired then return jsonb_build_object('kind','refused','reason','REQUEST_EXPIRED');end if;
  select * into j from public.local_text_jobs where project_id=project and conversation_id=conversation and idempotency_key=(p_request->>'idempotencyKey')::uuid for update;
  if found then
   if j.owner_id<>v_owner or j.input_hash<>p_input_hash or (j.task is not null and j.task is distinct from t) then return jsonb_build_object('kind','refused','reason','IDEMPOTENCY_CONFLICT');end if;
@@ -122,6 +140,7 @@ begin
  or coalesce((p_selection->>'validUntil')::timestamptz<=clock_timestamp(),true) then return jsonb_build_object('kind','refused','reason','SELECTION_REFUSED');end if;
  insert into public.local_text_jobs(id,project_id,owner_id,conversation_id,idempotency_key,input_hash,task_kind,task,context,admission_id,expires_at,payload_expires_at)
  values(p_job_id,project,v_owner,conversation,(p_request->>'idempotencyKey')::uuid,p_input_hash,t->>'kind',t,p_context,a.id,expires,greatest(clock_timestamp(),expires-interval '5 minutes'));
+ update public.local_text_authority_tombstones set job_id=p_job_id where key_hash=v_key_hash;
  insert into public.local_text_selections(id,job_id,decision) values((p_selection->>'id')::uuid,p_job_id,p_selection);
  update public.local_text_jobs set selection_id=(p_selection->>'id')::uuid where id=p_job_id;
  return jsonb_build_object('kind','applied','value',public.local_text_receipt(p_job_id));
@@ -131,6 +150,7 @@ create function public.local_text_claim(p_device_id uuid) returns jsonb language
 declare d public.local_text_devices;j public.local_text_jobs;a public.local_text_admissions;s jsonb;attempt uuid=gen_random_uuid();claim uuid=gen_random_uuid();lease timestamptz;
 begin
  select * into d from public.local_text_devices where id=p_device_id for update;
+ if exists(select 1 from public.local_text_authority_tombstones where quarantined_device=p_device_id) then return jsonb_build_object('kind','refused','reason','DEVICE_QUARANTINED');end if;
  if not found or d.status<>'active' or d.expires_at<=clock_timestamp() or d.last_heartbeat_at is null or d.last_heartbeat_at<=clock_timestamp()-interval '45 seconds' then return jsonb_build_object('kind','refused','reason','DEVICE_UNAVAILABLE');end if;
  perform public.local_text_reap_device(d.id);
  if exists(select 1 from public.local_text_attempts where device_id=d.id and state in ('claimed','running','reconciling')) then return jsonb_build_object('kind','applied','value',null);end if;
@@ -203,7 +223,7 @@ end$$;
 create function public.local_text_immutable() returns trigger language plpgsql security invoker set search_path='' as $$
 begin
  if tg_table_name='local_text_selections' then raise check_violation using message='IMMUTABLE_SELECTION';end if;
- if row(new.id,new.project_id,new.owner_id,new.conversation_id,new.idempotency_key,new.input_hash,new.schema_version,new.task_kind,new.context,new.admission_id,new.created_at)
+ if row(new.id,new.project_id,new.owner_id,case when pg_trigger_depth()>1 and new.conversation_id is null and new.cancel_requested and new.task is null and new.result is null then old.conversation_id else new.conversation_id end,new.idempotency_key,new.input_hash,new.schema_version,new.task_kind,new.context,new.admission_id,new.created_at)
  is distinct from row(old.id,old.project_id,old.owner_id,old.conversation_id,old.idempotency_key,old.input_hash,old.schema_version,old.task_kind,old.context,old.admission_id,old.created_at)
  or (new.task is distinct from old.task and not(new.task is null and clock_timestamp()>=old.payload_expires_at))
  or new.expires_at>old.expires_at or new.payload_expires_at>old.payload_expires_at then raise check_violation using message='IMMUTABLE_JOB_INPUT';end if;
@@ -378,7 +398,7 @@ begin
  return coalesce((select a.project_id=p_project and p.owner_id=p_owner and d.owner_id=p_owner and a.task_kind=p_kind
  and a.status='active' and a.qualification_status='verified' and a.expires_at>clock_timestamp() and d.status='active'
  and d.expires_at>clock_timestamp() and d.health_state='ready' and d.last_heartbeat_at>clock_timestamp()-interval '45 seconds' and d.last_heartbeat_at<=clock_timestamp()
- and p_input_hash=any(a.approved_input_hashes) and public.local_text_evidence_current(a.id,d.id)
+ and p_input_hash=any(a.approved_input_hashes) and not exists(select 1 from public.local_text_authority_tombstones where quarantined_device=d.id) and public.local_text_evidence_current(a.id,d.id)
  from public.local_text_admissions a join public.local_text_devices d on d.id=a.device_id join public.projects p on p.id=a.project_id where a.id=p_admission),false);
 exception when invalid_text_representation or numeric_value_out_of_range then return false;
 end$$;
@@ -522,6 +542,7 @@ begin
  select * into a from public.local_text_admissions where id=j.admission_id;
  select * into g from public.local_text_cloud_authorizations where admission_id=a.id and status='active' and expires_at>clock_timestamp() and profile_hash=p_profile_hash for share;
  select * into st from public.stop_state(j.project_id);
+ if exists(select 1 from public.local_text_authority_tombstones where quarantined_project=j.project_id) then return false;end if;
  if j.task is null or j.cancel_requested or j.payload_expires_at<=clock_timestamp() or j.state not in ('queued','claimed','reviewing','escalation_pending') or a.status<>'active' or a.qualification_status<>'verified' or a.expires_at<=clock_timestamp() or g.id is null or g.owner_id<>j.owner_id
  or j.context->>'placement' is distinct from 'cloud_control_review_allowed' or j.context->>'dataClass' is distinct from a.data_class or not(j.input_hash=any(a.approved_input_hashes))
  or st.global_paused is distinct from false or st.project_found is distinct from true or st.project_paused is distinct from false
@@ -564,7 +585,7 @@ begin
  if p_stage='local_review' and (j.state<>'reviewing' or j.attempt_id is distinct from p_attempt_id or j.result_hash is distinct from p_result_hash or j.result is null
  or not exists(select 1 from public.local_text_attempts where id=p_attempt_id and job_id=j.id and state='completed' and input_hash=p_input_hash and result_hash=p_result_hash)
  or not exists(select 1 from public.projects p join public.conversations c on c.id=j.conversation_id where p.id=j.project_id and p.owner_id=j.owner_id and c.user_id=j.owner_id)) then return jsonb_build_object('kind','refused','reason','STAGE_BINDING_MISMATCH');end if;
- if p_stage='cloud_task' and (j.state<>'escalation_pending' or j.attempt_id is distinct from p_attempt_id or not exists(select 1 from public.local_text_attempts t where t.id=p_attempt_id and t.job_id=j.id and t.state in ('completed','failed') and t.started_at is not null) or exists(select 1 from public.local_text_cloud_stages t where t.job_id=j.id and (t.state='unknown' or (t.stage='local_review' and (t.state<>'applied' or t.receipt->>'status' is distinct from 'rejected'))))) then return jsonb_build_object('kind','refused','reason','STAGE_BINDING_MISMATCH');end if;
+ if p_stage='cloud_task' and (j.state<>'escalation_pending' or j.attempt_id is distinct from p_attempt_id or not exists(select 1 from public.local_text_attempts t where t.id=p_attempt_id and t.job_id=j.id and t.state in ('completed','failed') and (t.started_at is not null or (t.state='failed' and t.finished_at is not null))) or exists(select 1 from public.local_text_cloud_stages t where t.job_id=j.id and (t.state='unknown' or (t.stage='local_review' and (t.state<>'applied' or t.receipt->>'status' is distinct from 'rejected'))))) then return jsonb_build_object('kind','refused','reason','STAGE_BINDING_MISMATCH');end if;
  if p_stage='cloud_review' and (j.state<>'reviewing' or j.result_hash is distinct from p_result_hash or not exists(select 1 from public.local_text_cloud_stages t where t.id=p_attempt_id and t.job_id=j.id and t.stage='cloud_task' and t.state='applied' and t.raw_result=j.result and t.receipt->>'resultHash'=p_result_hash)) then return jsonb_build_object('kind','refused','reason','STAGE_BINDING_MISMATCH');end if;
  binding=jsonb_build_object('version',1,'jobId',j.id,'stageId',sid,'stage',p_stage,'attemptId',p_attempt_id,'inputHash',j.input_hash,'resultHash',p_result_hash);
  insert into public.runs(id,project_id,workflow_id,kind,status,input,context,max_attempts) values(rid,j.project_id,null,'local_text_cloud','pending',binding,'{}',1);
@@ -678,8 +699,8 @@ create function public.local_text_cancel_cloud_runs(p_owner_id uuid,p_project_id
 declare r record;
 begin
  if not exists(select 1 from public.projects where id=p_project_id and owner_id=p_owner_id) or not exists(select 1 from public.local_text_devices where id=p_device_id and owner_id=p_owner_id) then raise insufficient_privilege;end if;
- for r in select s.run_id,j.project_id from public.local_text_cloud_stages s join public.local_text_jobs j on j.id=s.job_id join public.local_text_admissions a on a.id=j.admission_id
- where j.owner_id=p_owner_id and a.device_id=p_device_id and (p_admission_id is null or a.id=p_admission_id) order by s.run_id loop
+ for r in select distinct lineage.run_id,j.project_id from (select run_id,job_id from public.local_text_cloud_stages union select run_id,job_id from public.local_text_human_reviews) lineage join public.local_text_jobs j on j.id=lineage.job_id join public.local_text_admissions a on a.id=j.admission_id
+ where j.owner_id=p_owner_id and a.device_id=p_device_id and (p_admission_id is null or a.id=p_admission_id) order by lineage.run_id loop
   perform public.request_run_cancel(r.run_id,r.project_id,p_owner_id::text,'LOCAL_TEXT_ADMISSION_REVOKED');
  end loop;
 end$$;
@@ -737,12 +758,17 @@ revoke all on function public.local_text_selection_context(uuid,uuid,uuid,text,t
 grant execute on function public.local_text_selection_context(uuid,uuid,uuid,text,text,text,timestamptz),public.local_text_enqueue_reserved(jsonb,jsonb,text,uuid,jsonb,text),public.local_text_cost_trace(uuid,uuid) to service_role;
 
 create function public.local_text_existing_request(p_owner_id uuid,p_project_id uuid,p_conversation_id uuid,p_key uuid,p_input_hash text) returns jsonb language plpgsql security invoker set search_path='' as $$
-declare j public.local_text_jobs;
+declare j public.local_text_jobs;t public.local_text_authority_tombstones;v_key_hash text;v_binding_hash text;
 begin
  if not exists(select 1 from public.projects where id=p_project_id and owner_id=p_owner_id) or not exists(select 1 from public.conversations where id=p_conversation_id and user_id=p_owner_id) then return jsonb_build_object('kind','refused','reason','SCOPE_REFUSED');end if;
- select * into j from public.local_text_jobs where project_id=p_project_id and conversation_id=p_conversation_id and idempotency_key=p_key and owner_id=p_owner_id;
+ v_key_hash=encode(sha256(convert_to(p_owner_id::text||':'||p_key::text,'UTF8')),'hex');
+ v_binding_hash=encode(sha256(convert_to(p_project_id::text||':'||p_conversation_id::text||':'||p_input_hash||':1','UTF8')),'hex');
+ select x.* into t from public.local_text_authority_tombstones x where x.key_hash=v_key_hash;
+ if t.key_hash is not null and t.binding_hash<>v_binding_hash then return jsonb_build_object('kind','refused','reason','IDEMPOTENCY_CONFLICT');end if;
+ if t.expired then return jsonb_build_object('kind','refused','reason','REQUEST_EXPIRED');end if;
+ select * into j from public.local_text_jobs where id=t.job_id;
  if not found then return jsonb_build_object('kind','absent');end if;
- if j.input_hash<>p_input_hash then return jsonb_build_object('kind','refused','reason','IDEMPOTENCY_CONFLICT');end if;
+ if j.owner_id<>p_owner_id or j.input_hash<>p_input_hash then return jsonb_build_object('kind','refused','reason','IDEMPOTENCY_CONFLICT');end if;
  return jsonb_build_object('kind','duplicate','value',public.local_text_receipt(j.id));
 end$$;
 revoke all on function public.local_text_existing_request(uuid,uuid,uuid,uuid,text) from public,anon,authenticated;

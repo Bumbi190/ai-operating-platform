@@ -52,7 +52,8 @@
         "local_text_attempts",
         "local_text_reviews",
         "local_text_events",
-        "local_text_request_nonces"
+        "local_text_request_nonces",
+        "local_text_authority_tombstones"
       ],
       "meaning": "Created by a migration but absent from the production catalog at capture time — never applied there, or dropped out-of-band. They are NOT a fresh-deploy hazard: each declares RLS in its own migration, so a rebuild creates them protected. Listed so their absence from the table map is a recorded fact rather than a silent gap, and so the fail-closed rule can distinguish them from a genuinely new unprotected table.",
       "requirement": "Every entry must have RLS declared in the migration corpus.",
@@ -73,7 +74,8 @@
         "local_text_attempts": "SERVER_ONLY",
         "local_text_reviews": "SERVER_ONLY",
         "local_text_events": "SERVER_ONLY",
-        "local_text_request_nonces": "SERVER_ONLY"
+        "local_text_request_nonces": "SERVER_ONLY",
+        "local_text_authority_tombstones": "SERVER_ONLY"
       },
       "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class."
     },

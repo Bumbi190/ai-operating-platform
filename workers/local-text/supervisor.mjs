@@ -1,4 +1,4 @@
-import {setTimeout as delay} from 'node:timers/promises';import {mkdir,appendFile,stat,rename,unlink,readFile,writeFile} from 'node:fs/promises';import {execFile} from 'node:child_process';import path from 'node:path';import {fileURLToPath} from 'node:url';import {identityEnvironment} from './identity.mjs';
+import {setTimeout as delay} from 'node:timers/promises';import {mkdir,appendFile,stat,rename,unlink,readFile,writeFile} from 'node:fs/promises';import {execFile} from 'node:child_process';import path from 'node:path';import {fileURLToPath} from 'node:url';import {identityEnvironment} from './identity.mjs';import {expireJournalPayload} from './worker.mjs';
 const codes=new Set(['SESSION_START','SESSION_EXIT','CRASH_LIMIT','UNCERTAIN_HOLD','KERNEL_UNCONFIRMED','STOPPED']);
 export const restartDelay=n=>Math.min(30000,1000*2**Math.min(5,Math.max(0,n)));
 /** Serialized metadata-only log. Child stdout/stderr is never copied into it. */
@@ -23,10 +23,14 @@ export async function main(args,signal){
  const config=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await readFile(args[1])));const base=path.dirname(fileURLToPath(import.meta.url)),state=path.join(base,'.local-state',config.deviceId??'');
  if(!/^[a-f0-9-]{36}$/.test(config.deviceId??'')||path.resolve(args[1])!==path.join(state,'config.json'))throw Error('INVALID_SUPERVISOR_CONFIG');
  const log=createLifecycleLog(path.join(state,'logs'));
- const marker=path.join(state,'stop.request');try{await stat(marker);throw Error('STOP_MARKER_PRESENT');}catch(e){if(e.code!=='ENOENT')throw e;}
+ const erase=()=>expireJournalPayload(config);await erase();
+ const marker=path.join(state,'stop.request');let stopped=false;try{await stat(marker);stopped=true;}catch(e){if(e.code!=='ENOENT')throw e;}
+ if(stopped){while(!signal.aborted){await erase().catch(()=>{});await delay(15000,undefined,{signal}).catch(()=>{});}return {status:'paused'};}
  const session=()=>new Promise(resolve=>{let escalation;const child=execFile('powershell.exe',['-NoProfile','-NonInteractive','-File',helper,'-ConfigPath',args[1],'-NodePath',process.execPath,'-ParentProcessId',String(process.pid)],{windowsHide:true,env:identityEnvironment(),maxBuffer:16384},(error,stdout)=>{signal.removeEventListener('abort',abort);clearTimeout(escalation);try{const v=JSON.parse(stdout.trim());if(error||!['crashed','stopped','needs_input'].includes(v.status)||typeof v.kernelEmpty!=='boolean')throw Error();resolve(v);}catch{resolve({status:'crashed',kernelEmpty:false});}});
   const abort=()=>{writeFile(marker,'stop\n',{mode:0o600}).catch(()=>{});escalation=setTimeout(()=>child.kill(),10000);};signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
  });
- return supervise(config,signal,{session,log});
+ const result=await supervise(config,signal,{session,log});
+ if(result.status==='paused'){while(!signal.aborted){await erase().catch(()=>{});await delay(15000,undefined,{signal}).catch(()=>{});}}
+ return result;
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){const controller=new AbortController();process.once('SIGINT',()=>controller.abort());process.once('SIGTERM',()=>controller.abort());main(process.argv.slice(2),controller.signal).then(r=>{process.stdout.write(JSON.stringify(r)+'\n');if(r.status==='paused')process.exitCode=2;}).catch(()=>{process.stderr.write('LOCAL_TEXT_SUPERVISOR_STOPPED\n');process.exitCode=1;});}

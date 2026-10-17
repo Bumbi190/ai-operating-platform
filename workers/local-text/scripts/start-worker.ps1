@@ -17,6 +17,10 @@ $mutex=New-Object Threading.Mutex($false,$mutexName);$acquired=$false;$job=$null
 try {
  try { $acquired=$mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $acquired=$true }
  if (!$acquired) { $status='needs_input';$empty=$true;return }
+ # Content erasure precedes all runtime/journal/stop guards. It neither contacts
+ # the server nor clears the uncertain physical lock.
+ & $NodePath (Join-Path $base 'worker.mjs') --expire-journal --config $ConfigPath | Out-Null
+ if ($LASTEXITCODE -ne 0) { $status='needs_input';$empty=$true;return }
  # Never infer a safe restart from a missing PID or delete an uncertain lock.
  if ((Test-Path -LiteralPath $stopMarker) -or (Test-Path -LiteralPath $lock) -or (Test-Path -LiteralPath $config.journalFile) -or (Test-Path -LiteralPath $serverRecord)) { $status='needs_input';$empty=$true;return }
  $listeners=@(& (Join-Path ([Environment]::SystemDirectory) 'netstat.exe') -ano | Where-Object {$_ -match '^\s*TCP\s+\S+:11434\s+\S+\s+LISTENING\s+\d+\s*$'})

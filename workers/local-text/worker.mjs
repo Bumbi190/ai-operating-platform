@@ -63,6 +63,15 @@ export async function executeClaim(input,deps,signal){
  }catch(error){return {kind:'known_failed',jobId:claim.jobId,reasonCode:error.message==='LOCAL_BUSY'?'LOCAL_BUSY':'LOCAL_STATE_ERROR'};}
 }
 /** A saved terminal payload is the only automatic replay. No inference or lock clearing. */
+/** Erase expired recovery content without runtime initialization, requests,
+ * acknowledgment or lock clearing. Only metadata uncertainty survives. */
+export async function expireJournalPayload(deps){
+ const journal=journalFor(deps);const saved=await journal.read();
+ if(saved?.claim&&Number.isFinite(Date.parse(saved.expiresAt))&&Date.parse(saved.expiresAt)<=nowFor(deps).getTime()){
+  await journal.write({version:1,phase:'expired_hold',jobId:saved.claim.jobId,attemptId:saved.claim.attemptId,inputHash:saved.claim.inputHash});return true;
+ }
+ return false;
+}
 export async function reconcilePending(deps,signal){
  const journal=journalFor(deps);let saved;try{saved=await journal.read();}catch{return {kind:'dispatch_unknown',reasonCode:'LOCAL_STATE_ERROR'};}
  if(!saved)return {kind:'idle'};
@@ -77,6 +86,7 @@ export async function reconcilePending(deps,signal){
 }
 export async function runWorker(config,deps,signal){
  if(!config||config.deviceId!==deps.deviceId||config.origin!==deps.origin)throw Error('INVALID_WORKER_CONFIG');
+ await expireJournalPayload(deps);
  await deps.runtime.initialize?.(signal);let lastIdleHeartbeat=-Infinity;
  while(!signal.aborted){
   const recovery=await reconcilePending(deps,signal);
@@ -93,10 +103,11 @@ export async function runWorker(config,deps,signal){
 
 export async function main(argv,signal){
  if(process.platform!=='win32')throw Error('WINDOWS_WORKER_REQUIRED');
- const once=argv[0]==='--once',args=once?argv.slice(1):argv;if(args.length!==2||args[0]!=='--config')throw Error('INVALID_ARGUMENTS');
+ const eraseOnly=argv[0]==='--expire-journal',once=argv[0]==='--once',args=once||eraseOnly?argv.slice(1):argv;if(args.length!==2||args[0]!=='--config')throw Error('INVALID_ARGUMENTS');
  const {open}=await import('node:fs/promises');const path=await import('node:path');if(!path.isAbsolute(args[1]))throw Error('INVALID_WORKER_CONFIG');
  const f=await open(args[1],'r');let config;try{const s=await f.stat();if(!s.isFile()||s.size<1||s.size>262144)throw Error();config=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(await f.readFile()));}finally{await f.close();}
  if(config.version!==1||!path.isAbsolute(config.counterFile)||!path.isAbsolute(config.journalFile))throw Error('INVALID_WORKER_CONFIG');
+ if(eraseOnly){await expireJournalPayload(config);return;}
  const {createRuntime}=await import('./runtime.mjs'),{createWorkerClient}=await import('./client.mjs');
  const runtime=createRuntime(config);let signing={};if(config.testIdentityName!==undefined){if(!once||config.testIdentityName!=='Omnira-Atlas-LocalText-test-'+config.keyId)throw Error('INVALID_TEST_IDENTITY');const {signEnvelope}=await import('./identity.mjs');signing={sign:(u,b)=>signEnvelope(u,b,config.testIdentityName)};}const client=createWorkerClient(config,signing);
  const {observeStopFile}=await import('./shutdown.mjs');const localStop=new AbortController(),stopObserving=observeStopFile(path.join(path.dirname(args[1]),'stop.request'),localStop);

@@ -10,8 +10,13 @@ import {randomUUID} from 'node:crypto'
 import {canonicalJson,sha256,hashTask} from '@omnira/local-text-contract'
 import {executeWorkerRequest} from '../worker-api'
 import type {Db,WorkerOperation} from '../types'
+import {fixtureDb} from './sql-fixture'
+import {executeLocalTextCloudRun} from '../cloud-runs'
+import {LOCAL_TEXT_QUALIFICATIONS} from '../catalog'
+import {qualificationValid} from '../policy'
 /** Opt-in, synthetic only. Private fixture DB and ephemeral key/TLS, never production.
- * This deliberately seeded SQL admission tests transport, not model qualification. */
+ * The independently qualified catalog is real; owner/device/project enrollment
+ * is deliberately seeded for an isolated synthetic test, not production authority. */
 it.skipIf(process.env.LOCAL_TEXT_E2E!=='1')('atlas_text_to_gpu_review_receipt: actual tool, signed worker, SQL and GPU stay hidden before independent approval',async()=>{
  const root=path.resolve(process.cwd(),'../..'),container=process.env.LOCAL_TEXT_TEST_CONTAINER!,database=process.env.LOCAL_TEXT_TEST_DATABASE!,runtimeRoot=process.env.LOCAL_TEXT_TEST_RUNTIME!,tlsDir=process.env.LOCAL_TEXT_TEST_TLS!
  expect(container).toBe('omnira-atlas-local-text-test-20261017');expect(database).toMatch(/^local_text_task12_e2e_[a-z0-9]+$/);expect(runtimeRoot).toContain('atlas-local-models-20261017');
@@ -22,9 +27,7 @@ it.skipIf(process.env.LOCAL_TEXT_E2E!=='1')('atlas_text_to_gpu_review_receipt: a
  const keyId=randomUUID(),deviceId=randomUUID(),ownerId=randomUUID(),projectId=randomUUID(),conversationId=randomUUID(),jobId=randomUUID(),admissionId=randomUUID(),selectionId=randomUUID(),name='Omnira-Atlas-LocalText-test-'+keyId
  const temporary=await mkdtemp(path.join(root,'.superpowers/sdd/2026-10-17-atlas-local-text-integration/e2e-'));let created=false,server:ReturnType<typeof createServer>|undefined
  const quote=(v:unknown)=>"'"+JSON.stringify(v).replaceAll("'","''")+"'::jsonb"
- const rpcNames=new Set(['local_text_device_identity','local_text_worker_operation','local_text_revalidate','local_text_existing_request','local_text_human_selection_context','local_text_enqueue','local_text_read_receipt','local_text_read_review','local_text_resolve_approval'])
- const literal=(v:unknown):string=>v===null?'null':typeof v==='object'?quote(v):typeof v==='number'?String(v):"'"+String(v).replaceAll("'","''")+"'"
- const db={rpc:async(n:string,args:Record<string,unknown>)=>{try{if(!rpcNames.has(n)||Object.keys(args).some(k=>!/^p_[a-z_]+$/.test(k)))throw Error('FORBIDDEN_RPC');const params=Object.entries(args).map(([k,v])=>k+'=>'+literal(v)).join(',');return {data:JSON.parse(sql('select public.'+n+'('+params+');')),error:null}}catch{return {data:null,error:'FIXTURE_SQL_FAILED'}}}} as unknown as Db
+ const db=fixtureDb(sql)
 
  try{
   const key=await identity.createIdentity(name);created=true
@@ -38,8 +41,10 @@ it.skipIf(process.env.LOCAL_TEXT_E2E!=='1')('atlas_text_to_gpu_review_receipt: a
   const config={...qualificationConfig,version:1,origin,deviceId,keyId,buildHash:adapterHash,testIdentityName:name,counterFile:path.join(temporary,'counter.json'),journalFile:path.join(temporary,'attempt.json')}
 
   await state.initializeCounter(config.counterFile,keyId);const configFile=path.join(temporary,'config.json');await writeFile(configFile,canonicalJson(config))
-  const task={kind:'classify' as const,text:'Jag behöver hjälp att återställa mitt lösenord.',labels:['support','annat']},inputHash=hashTask(task),h='a'.repeat(64)
-  const q={candidateId:'qwen3.5:9b',taskKind:'classify',modelDigest:evidence.modelDigest,runtimeVersion:'0.40.5',runtimeHash,templateHash:h,schemaHash:h,adapterHash,configurationHash:config.configurationHash,tokenizerEvidenceHash:sha256(canonicalJson(evidence)),review:{status:'approved',corpus:'sv-atlas-v2',cases:25,accuracy:1,invented:0,injectionPasses:0,reviewRunId:randomUUID()},license:{permission:'allowed',evidenceHash:h},p95Ms:30000},evidenceHash=sha256(canonicalJson(q))
+  const task={kind:'classify' as const,text:'Jag behöver hjälp att återställa mitt lösenord.',labels:['support','annat']},inputHash=hashTask(task)
+  const qualified=LOCAL_TEXT_QUALIFICATIONS.find(q=>q.qualification.candidateId==='qwen3.5:9b'&&q.qualification.taskKind==='classify')!
+  expect(qualified).toBeDefined();const {qualification:q,evidenceHash}=qualified
+  expect(qualificationValid(q,evidenceHash)).toBe(true);expect(q.adapterHash).toBe(adapterHash);expect(q.configurationHash).toBe(config.configurationHash)
   const spec={qualification:q,reviewMode:'human',placement:'cloud_control_review_allowed',policyVersion:'local_assist_v1',jobCostCapUsd:0.25,dailyCostCapUsd:5},deadline=new Date(Date.now()+86400000).toISOString(),context={userId:ownerId,projectId,conversationId,dataClass:'synthetic',placement:'cloud_control_review_allowed',policyVersion:'local_assist_v1',admissionId,deadlineAt:deadline,jobCostCapUsd:0.25,dailyCostCapUsd:5}
   const selection={id:selectionId,jobId,inputHash,projectId,profile:'local_assist_v1',policyVersion:'local_assist_v1',candidateId:'qwen3.5:9b',modelDigest:evidence.modelDigest,deploymentId:admissionId,admissionId,evidenceHash,healthAt:new Date().toISOString(),validUntil:new Date(Date.now()+30000).toISOString(),exclusions:{},totalExpectedCostUsd:null,costUncertainty:['operating_cost_unknown'],fallback:'human'}
   const health={state:'ready',lifecycleLock:'clear',gpuAvailable:true,runtimeVersion:'0.40.5',runtimeHash,adapterHash,configurationHash:config.configurationHash,models:config.profiles.map((p:any)=>({candidateId:p.candidateId,modelDigest:p.modelDigest}))}
@@ -55,12 +60,16 @@ it.skipIf(process.env.LOCAL_TEXT_E2E!=='1')('atlas_text_to_gpu_review_receipt: a
   expect(result.code,result.stderr).toBe(0);expect(result.stdout,result.stdout).toContain('"kind":"completed"')
   const receipt:any=await handleLocalTextTool('get_local_text_job',{jobId:actualJob},principal,conversationId,db,'text');expect(receipt.state).toBe('reviewing');expect(receipt.result).toBeNull();expect(receipt.reviewStatus).toBe('pending')
   expect(await handleLocalTextTool('get_local_text_job',{jobId:actualJob},{userId:randomUUID(),allowedProjectIds:[projectId]},conversationId,db,'text')).toHaveProperty('error')
-  const stage=JSON.parse(sql(`select jsonb_build_object('runId',run_id,'attemptId',source_attempt_id) from local_text_cloud_stages where job_id='${actualJob}';`)),runClaim=randomUUID()
-  sql(`update runs set status='running',claim_id='${runClaim}',lease_until=clock_timestamp()+interval '320 seconds',attempts=1 where id='${stage.runId}';select public.local_text_cloud_operation('${stage.runId}','${runClaim}','human','{"reasonCode":"HUMAN_REVIEW_REQUIRED"}');update runs set status='awaiting_approval' where id='${stage.runId}';select public.local_text_cloud_operation('${stage.runId}','${runClaim}','apply','{}');`)
+  // Same maintenance/claim/executor sequence as the normal drain. Canonical
+  // checkpoint + finalization run against real SQL through the fixture adapter.
+  const claimed=await db.rpc('claim_runs',{p_limit:1,p_lease_seconds:320});expect(claimed.error).toBeNull()
+  const run=(claimed.data as any[])[0];expect(run?.kind).toBe('local_text_cloud')
+  await executeLocalTextCloudRun(db,run,run.claim_id,new Date())
+  expect(sql(`select status from public.runs where id='${run.id}';`)).toBe('awaiting_approval')
   const approvalId=sql(`select approval_id from local_text_human_reviews where job_id='${actualJob}';`),review=await readLocalTextReview(db,ownerId,approvalId)
   expect(review?.task).toEqual(task);expect(review?.result).toEqual({label:'support'})
   const proof=JSON.parse(sql(`select jsonb_build_object('jobId',id,'attemptId',attempt_id,'inputHash',input_hash,'state',state,'resultHash',result_hash) from local_text_jobs where id='${actualJob}';`));
-  await writeFile(path.join(root,'.superpowers/sdd/2026-10-17-atlas-local-text-integration/task12-e2e-evidence.json'),JSON.stringify({scope:'isolated_synthetic_transport_only',database,...proof,ownerId,projectId,conversationId,approvalId,task,result:review?.result,deviceId,modelDigest:evidence.modelDigest,adapterHash,configurationHash:config.configurationHash,cloudCalls:0,stdout:result.stdout},null,2))
+  await writeFile(path.join(root,'.superpowers/sdd/2026-10-17-atlas-local-text-integration/task12-e2e-evidence.json'),JSON.stringify({scope:'isolated_synthetic_full_continuation',database,...proof,ownerId,projectId,conversationId,approvalId,task,result:review?.result,deviceId,modelDigest:evidence.modelDigest,adapterHash,configurationHash:config.configurationHash,cloudCalls:0,stdout:result.stdout},null,2))
 
  }finally{if(server){server.closeAllConnections();await new Promise<void>(resolve=>server!.close(()=>resolve()));}if(created)await identity.deleteTestIdentity(name);await rm(temporary,{recursive:true,force:true});}
 },300000)

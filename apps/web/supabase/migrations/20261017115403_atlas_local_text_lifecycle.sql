@@ -101,6 +101,8 @@ begin
  select * into h from public.local_text_human_reviews where approval_id=p_approval_id and owner_id=p_owner_id;
  if not found or not exists(select 1 from public.projects where id=h.project_id and owner_id=p_owner_id) then return jsonb_build_object('kind','refused','reason','SCOPE_REFUSED');end if;
  select * into r from public.runs where id=h.run_id for update;
+ perform 1 from public.local_text_devices where id=(select a.device_id from public.local_text_admissions a join public.local_text_jobs q on q.admission_id=a.id where q.id=h.job_id) for share;
+ perform 1 from public.local_text_admissions where id=(select admission_id from public.local_text_jobs where id=h.job_id) for share;
  select * into j from public.local_text_jobs where id=h.job_id for update;
  select * into h from public.local_text_human_reviews where approval_id=p_approval_id for update;
  if h.expires_at<=clock_timestamp() or j.payload_expires_at<=clock_timestamp() or j.task is null or j.result is null then return jsonb_build_object('kind','refused','reason','PAYLOAD_EXPIRED');end if;
@@ -124,9 +126,21 @@ end$$;
 -- lock and later waiting for RUN, the inverse of cancellation/physical spend.
 -- The server driver repeats this bounded operation (up to100), each RPC commits.
 create function public.local_text_maintain(p_limit integer default 1) returns jsonb language plpgsql security invoker set search_path='' as $$
-declare a public.local_text_admissions;d public.local_text_devices;i public.local_text_incidents;j public.local_text_jobs;s public.local_text_cloud_stages;v uuid;rejects integer;
+declare a public.local_text_admissions;d public.local_text_devices;i public.local_text_incidents;j public.local_text_jobs;s public.local_text_cloud_stages;v uuid;rejects integer;recovery jsonb;prior_state text;
 begin
  if p_limit is null or p_limit<1 or p_limit>100 then raise check_violation;end if;
+ -- Recover bookkeeping after process loss at either committed boundary. Never
+ -- reclaim a terminal run or perform inference; apply exact saved evidence.
+ for s in select stage.* from public.local_text_cloud_stages stage join public.runs r on r.id=stage.run_id join public.local_text_jobs q on q.id=stage.job_id
+ where ((stage.state='response_ready' and r.status='done') or (stage.state='human_ready' and r.status='awaiting_approval')) and not r.cancel_requested and q.task is not null and q.payload_expires_at>clock_timestamp()
+ order by stage.created_at,stage.id limit 100 loop
+  recovery=public.local_text_cloud_operation(s.run_id,(select claim_id from public.runs where id=s.run_id),'apply','{}');
+  if recovery->>'kind'='applied' then return jsonb_build_object('processed',1);end if;
+ end loop;
+ for j in select * from public.local_text_jobs where state='escalation_pending' and not exists(select 1 from public.local_text_cloud_stages stage where stage.job_id=local_text_jobs.id and stage.stage='cloud_task') and task is not null and payload_expires_at>clock_timestamp() and not cancel_requested order by created_at,id limit 100 loop
+  recovery=public.local_text_advance(j.id);
+  if (select state from public.local_text_jobs where id=j.id)<>'escalation_pending' or (recovery->>'kind'='applied' and exists(select 1 from public.local_text_cloud_stages where job_id=j.id and stage='cloud_task')) then return jsonb_build_object('processed',1);end if;
+ end loop;
  for a in select * from public.local_text_admissions where status='active' order by id limit 100 loop
   select count(*) filter(where x.quality_reject) into rejects from (
    select (lr.status='rejected' and lr.receipt->'reasonCodes' ?| array['UNSUPPORTED_FACT','INJECTION_FOLLOWED','WRONG_CLASSIFICATION','OMITTED_KEY_FACT','INVALID_EXTRACTION','UNSAFE_TRANSFORM']) as quality_reject from public.local_text_reviews lr join public.local_text_jobs q on q.id=lr.job_id join public.local_text_attempts attempt on attempt.id=lr.attempt_id and attempt.job_id=q.id and attempt.admission_id=a.id and attempt.model_digest=a.model_digest and attempt.state='completed' join public.runs r on r.id=lr.review_run_id
@@ -202,6 +216,8 @@ begin
  select * into r from public.runs where id=p_run_id for update;
  select * into s from public.local_text_cloud_stages where run_id=p_run_id;
  perform pg_advisory_xact_lock(hashtextextended('local_text_budget:'||r.project_id::text,0));
+ perform 1 from public.local_text_devices where id=(select a.device_id from public.local_text_admissions a join public.local_text_jobs q on q.admission_id=a.id where q.id=s.job_id) for share;
+ perform 1 from public.local_text_admissions where id=(select admission_id from public.local_text_jobs where id=s.job_id) for share;
  select * into j from public.local_text_jobs where id=s.job_id for update;
  if r.id is null or s.id is null or j.id is null or r.kind is distinct from 'local_text_cloud' or r.project_id<>j.project_id or r.claim_id is distinct from p_claim_id or (r.cancel_requested and p_operation<>'unknown') then return jsonb_build_object('kind','refused','reason','FENCED');end if;
  select * into s from public.local_text_cloud_stages where id=s.id for update;
@@ -237,6 +253,7 @@ begin
   update public.local_text_cloud_stages set state='response_ready',receipt=review,updated_at=clock_timestamp() where id=s.id;
   return jsonb_build_object('kind','applied','value',null);
  elsif p_operation='apply' and s.dispatch_claim_id=p_claim_id and ((s.state='response_ready' and r.status='done') or (s.state='human_ready' and r.status='awaiting_approval')) then
+  if j.cancel_requested or not public.local_text_eligible(j.project_id,j.owner_id,j.admission_id,j.task_kind,j.input_hash) or not exists(select 1 from public.conversations where id=j.conversation_id and user_id=j.owner_id) then return jsonb_build_object('kind','refused','reason','AUTHORITY_REVOKED');end if;
   if s.state='human_ready' then update public.local_text_jobs set state='needs_input',reason_code=s.reason_code,updated_at=clock_timestamp() where id=j.id;
   elsif s.stage='cloud_task' then
    if s.receipt->>'status'='completed' and j.task is not null and j.payload_expires_at>clock_timestamp() then
@@ -324,8 +341,18 @@ begin
    perform public.request_run_cancel(rid,candidate.project_id,candidate.owner_id::text,'LOCAL_TEXT_METADATA_EXPIRED');
    update public.runs set input='{}',context='{}' where id=rid;
   end loop;
+  perform pg_advisory_xact_lock(hashtextextended('local_text_budget:'||candidate.project_id::text,0));
+  perform 1 from public.local_text_devices where id=candidate.device_id for update;
+  perform 1 from public.local_text_authority_tombstones where key_hash=encode(sha256(convert_to(candidate.owner_id::text||':'||candidate.idempotency_key::text,'UTF8')),'hex') for update;
   perform 1 from public.local_text_jobs where id=candidate.id for update;
   update public.approvals set content='{"reasonCode":"METADATA_EXPIRED","authority":"none"}' where id in(select approval_id from public.local_text_human_reviews where job_id=candidate.id);
+  insert into public.local_text_authority_tombstones(key_hash,binding_hash,job_id,expired,quarantined_device,quarantined_project,held_usd)
+  values(encode(sha256(convert_to(candidate.owner_id::text||':'||candidate.idempotency_key::text,'UTF8')),'hex'),
+   null,null,true,
+   case when exists(select 1 from public.local_text_attempts where job_id=candidate.id and state in ('running','reconciling')) then candidate.device_id end,
+   case when exists(select 1 from public.local_text_cloud_stages where job_id=candidate.id and state in ('dispatching','unknown')) then candidate.project_id end,
+   coalesce((select held_usd from public.local_text_cloud_reservations where job_id=candidate.id and released_at is null),0))
+  on conflict(key_hash) do update set job_id=null,binding_hash=null,expired=true,quarantined_device=coalesce(excluded.quarantined_device,local_text_authority_tombstones.quarantined_device),quarantined_project=coalesce(excluded.quarantined_project,local_text_authority_tombstones.quarantined_project),held_usd=greatest(excluded.held_usd,local_text_authority_tombstones.held_usd);
   delete from public.local_text_human_reviews where job_id=candidate.id;
   delete from public.local_text_reviews where job_id=candidate.id;
   delete from public.local_text_cloud_reservations where job_id=candidate.id;
@@ -408,3 +435,27 @@ begin
 end$$;
 create trigger local_text_human_review_immutable before update on public.local_text_human_reviews for each row execute function public.local_text_human_review_immutable();
 revoke all on function public.local_text_human_review_immutable() from public,anon,authenticated;
+
+-- A DELETE remains an owner operation. This narrow trigger withdraws local raw
+-- content and authority while leaving unknown physical/accounting fences intact.
+create function public.local_text_conversation_deleted() returns trigger language plpgsql security definer set search_path='' as $$
+declare r record;j public.local_text_jobs;
+begin
+ if auth.uid() is not null and old.user_id<>auth.uid() then raise insufficient_privilege;end if;
+ -- All existing RUN locks before any JOB lock, including separate human runs.
+ for r in select distinct lineage.run_id,q.project_id,q.owner_id from (select run_id,job_id from public.local_text_cloud_stages union select run_id,job_id from public.local_text_human_reviews) lineage join public.local_text_jobs q on q.id=lineage.job_id where q.conversation_id=old.id order by lineage.run_id loop
+  perform public.request_run_cancel(r.run_id,r.project_id,r.owner_id::text,'LOCAL_TEXT_SOURCE_DELETED');
+ end loop;
+ for j in select * from public.local_text_jobs where conversation_id=old.id order by id for update loop
+  update public.local_text_jobs set payload_expires_at=least(payload_expires_at,clock_timestamp()),cancel_requested=true where id=j.id;
+  update public.local_text_jobs set conversation_id=null,task=null,result=null,state=case when state in ('running','reconciling') then 'reconciling' else 'cancelled' end,reason_code='SOURCE_DELETED',updated_at=clock_timestamp() where id=j.id;
+  update public.local_text_attempts set result=null where job_id=j.id;
+  update public.local_text_cloud_stages set raw_result=null where job_id=j.id;
+  update public.local_text_reviews set raw_payload=null where job_id=j.id;
+  update public.local_text_human_reviews set status='expired',version=version+1 where job_id=j.id and status='pending';
+  update public.approvals set content='{"reasonCode":"SOURCE_DELETED","authority":"none"}' where id in(select approval_id from public.local_text_human_reviews where job_id=j.id);
+ end loop;
+ return old;
+end$$;
+revoke all on function public.local_text_conversation_deleted() from public,anon,authenticated,service_role;
+create trigger local_text_conversation_deleted before delete on public.conversations for each row execute function public.local_text_conversation_deleted();

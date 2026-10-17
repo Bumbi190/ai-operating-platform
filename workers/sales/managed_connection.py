@@ -95,3 +95,9 @@ class ManagedConnection:
    with self.journal.lock():
     s=self._state();return self._post(self._secret(s['managerRef']),'report_status',generation=s['generation'],cliState=cli_state)
   except (JournalError,KeyError):raise ConnectionUnavailable('HOST_UNAVAILABLE') from None
+
+ def mailbox_client(self):
+  try:
+   with self.journal.lock():
+    s=self._state();return self.factory(s['origin'],self._secret(s['managerRef']),'mailbox')
+  except (JournalError,KeyError):raise ConnectionUnavailable('HOST_UNAVAILABLE') from None

@@ -3,7 +3,7 @@ import hashlib,json,os,re,threading
 from pathlib import Path,PurePosixPath
 from .journal import Journal,SingleInstance
 from .managed_connection import ManagedConnection
-from .credential_store import CredentialStore
+from .credential_store import CredentialStore,connection_key
 from .claude_runtime import doctor,SafeClaudeTextRuntime
 from .protocol import SalesProtocolClient
 from .harvey_adapter import HarveyDraftAdapter
@@ -62,7 +62,17 @@ def main(project):
   factory=lambda origin,token,purpose:ProtectedPreviewClient(config,token,purpose)
  else:
   factory=lambda origin,token,purpose:SalesProtocolClient(origin,token,purpose)
- connection=ManagedConnection(config,CredentialStore(),Journal(state/'connection.json'),factory)
+ store=CredentialStore();connection=ManagedConnection(config,store,Journal(state/'connection.json'),factory)
+ mailbox_cycle=None
+ if config.get('mailboxEnabled') is True:
+  from .mailbox.crypto import MailboxCrypto
+  from .mailbox.setup import process_mailbox_setup
+  crypto=MailboxCrypto(store,connection_key(config['origin'],project)+'/strato-key',config['node']);mailbox_journal=Journal(state/'mailbox.json')
+  def mailbox_cycle(current):
+   client=current.mailbox_client()
+   if not (mailbox_journal.load() or {}).get('pending'):
+    public=crypto.public_key();status=current.poll_status();client.post('publish_key',generation=status['generation'],**public)
+   process_mailbox_setup(client,crypto,store,mailbox_journal)
  stop=threading.Event()
  with SingleInstance(state/'host.lock'):
-  host_loop(connection,lambda token:factory(config['origin'],token,'worker'),lambda:HarveyDraftAdapter(SafeClaudeTextRuntime('')),doctor,Journal(state/'dispatch.json'),stop,verify_fn=verify)
+  host_loop(connection,lambda token:factory(config['origin'],token,'worker'),lambda:HarveyDraftAdapter(SafeClaudeTextRuntime('')),doctor,Journal(state/'dispatch.json'),stop,verify_fn=verify,mailbox_cycle=mailbox_cycle)

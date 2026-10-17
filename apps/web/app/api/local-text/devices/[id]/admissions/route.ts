@@ -1,4 +1,4 @@
 import {handleOwnerAdmissionRequest} from '@/lib/local-text/admission-api'
 export const runtime='nodejs'
 export const dynamic='force-dynamic'
-export async function POST(request:Request,{params}:{params:Promise<{id:string}>}){return handleOwnerAdmissionRequest(request,(await params).id)}
+export async function POST(request:Request,{params}:{params:{id:string}}){return handleOwnerAdmissionRequest(request,params.id)}

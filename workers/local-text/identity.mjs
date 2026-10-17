@@ -15,4 +15,4 @@ export async function signEnvelope(input,body,name='Omnira-Atlas-LocalText-'+inp
 }
 export async function deleteTestIdentity(name){keyId(name);if(!name.startsWith('Omnira-Atlas-LocalText-test-'))throw Error('TEST_IDENTITY_REQUIRED');return invoke('DeleteTest',name);}
 
-export function identityEnvironment(source=process.env){const allowed=['SystemRoot','WINDIR','PATH','TEMP','TMP','USERPROFILE','LOCALAPPDATA','APPDATA','PROGRAMDATA','ProgramFiles','CommonProgramFiles','SystemDrive'];return Object.fromEntries(allowed.filter(k=>typeof source[k]==='string').map(k=>[k,source[k]]));}
+export function identityEnvironment(source=process.env){const allowed=['SystemRoot','WINDIR','PATH','PATHEXT','TEMP','TMP','USERPROFILE','LOCALAPPDATA','APPDATA','PROGRAMDATA','ProgramFiles','CommonProgramFiles','SystemDrive'];const keys=Object.keys(source);return Object.fromEntries(allowed.flatMap(k=>{const actual=keys.find(x=>x.toLowerCase()===k.toLowerCase());return actual&&typeof source[actual]==='string'?[[k,source[actual]]]:[];}));}

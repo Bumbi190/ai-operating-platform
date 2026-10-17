@@ -10,7 +10,7 @@ export async function withRuntimeLease(runtimeDir,fn){
   finally{leases.delete(lease);await handle.close();if(!lease.uncertain)await unlink(lock).catch(()=>{});}
 }
 export async function runJob(value,{candidateId,expectedSnapshot,runtimeDir,client=createOllamaClient(),signal,timeoutMs=90000,lease,onInferenceStart,requirePromptBudget=false,tokenizerEvidence}) {
-  const start=performance.now();let job,dispatch=false;
+  const start=performance.now();let job,dispatch=false,generationComplete=false;
   const base={version:1,jobId:typeof value?.jobId==='string'?value.jobId:null,taskType:value?.taskType??null,metadata:{provider:'ollama_local',candidateId,modelDigest:expectedSnapshot?.modelDigest??null,serverVersion:expectedSnapshot?.serverVersion??null,wallMs:0,billedApiSek:0,totalOperatingCostSek:null}};
   const finish=(status,rest)=>({...base,status,...rest,metadata:{...base.metadata,wallMs:performance.now()-start,...rest?.metadata}});
   try {
@@ -24,14 +24,14 @@ export async function runJob(value,{candidateId,expectedSnapshot,runtimeDir,clie
     dispatch=true;let inFlight=true;const inference=(requirePromptBudget?client.inferBounded(job,actual,{signal,timeoutMs:remaining(),tokenizerEvidence}):client.infer(job,actual,{signal,timeoutMs:remaining()}));
     // The optional operator probe observes an inference already started; it cannot alter the job.
     const probe=Promise.resolve().then(()=>onInferenceStart?.({isInFlight:()=>inFlight,startedAt:new Date().toISOString()})).catch(()=>{});
-    let output;try{output=await inference;}finally{inFlight=false;await probe;}
+    let output;try{output=await inference;generationComplete=true;}finally{inFlight=false;await probe;}
     const confirmed=await client.inspectCandidate(candidateId,{signal,timeoutMs:remaining()});
     if(confirmed.modelDigest!==actual.modelDigest||confirmed.serverVersion!==actual.serverVersion)throw Error('IDENTITY_CHANGED');
-    return finish('succeeded',{result:output.result,metadata:{usage:output.usage}});
+    return finish('succeeded',{result:output.result,metadata:{usage:output.usage,dispatchCertainty:'completed'}});
   } catch(e) {
-    const uncertain=dispatch&&e.dispatched===true&&!e.complete&&!e.definite;
+    const uncertain=dispatch&&!generationComplete&&e.dispatched!==false&&!e.complete&&!e.definite;
     if(uncertain&&lease){lease.uncertain=true;await lease.handle.truncate(0);await lease.handle.write(JSON.stringify({pid:process.pid,jobId:job.jobId,state:'uncertain',reasonCode:e.code??'LOCAL_NETWORK'}),0,'utf8').catch(()=>{});}
     const code=safeCodes.has(e.code??e.message)?(e.code??e.message):'LOCAL_STATE_ERROR';
-    return finish(['INVALID_JOB','INVALID_CANDIDATE','LOCAL_BUSY','IDENTITY_CHANGED'].includes(code)?'rejected':'failed',{reasonCode:code});
+    return finish(['INVALID_JOB','INVALID_CANDIDATE','LOCAL_BUSY','IDENTITY_CHANGED'].includes(code)?'rejected':'failed',{reasonCode:code,metadata:{dispatchCertainty:uncertain?'unknown':dispatch?'completed':'not_started'}});
   }
 }

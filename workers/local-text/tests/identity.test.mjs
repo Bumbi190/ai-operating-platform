@@ -19,3 +19,6 @@ test('helper environment excludes cloud and connector credentials',()=>{
  const env=api.identityEnvironment({SystemRoot:'C:\\Windows',PATH:'C:\\Windows\\System32',OPENAI_API_KEY:'test-secret',SUPABASE_SERVICE_ROLE_KEY:'test-secret',ANTHROPIC_API_KEY:'test-secret',DESKTOP_COMMANDER_TOKEN:'test-secret'});
  assert.deepEqual(env,{SystemRoot:'C:\\Windows',PATH:'C:\\Windows\\System32'});
 });
+test('Windows helper native probes work with the restricted environment',{skip:process.platform!=='win32'},async()=>{
+ const {execFile}=await import('node:child_process');const result=await new Promise((resolve,reject)=>{const child=execFile('powershell.exe',['-NoProfile','-NonInteractive','-Command','$null=& whoami.exe /user; if ($LASTEXITCODE -ne 0) {exit 1}; Write-Output "NATIVE_PROBE_OK"'],{env:api.identityEnvironment(),timeout:5000},(error,stdout)=>error?reject(error):resolve(stdout.trim()));child.stdin.end();});assert.equal(result,'NATIVE_PROBE_OK');
+});

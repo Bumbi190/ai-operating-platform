@@ -132,6 +132,7 @@ declare d public.local_text_devices;j public.local_text_jobs;a public.local_text
 begin
  select * into d from public.local_text_devices where id=p_device_id for update;
  if not found or d.status<>'active' or d.expires_at<=clock_timestamp() or d.last_heartbeat_at is null or d.last_heartbeat_at<=clock_timestamp()-interval '45 seconds' then return jsonb_build_object('kind','refused','reason','DEVICE_UNAVAILABLE');end if;
+ perform public.local_text_reap_device(d.id);
  if exists(select 1 from public.local_text_attempts where device_id=d.id and state in ('claimed','running','reconciling')) then return jsonb_build_object('kind','applied','value',null);end if;
  select q.* into j from public.local_text_jobs q join public.local_text_admissions x on x.id=q.admission_id
  where q.state='queued' and q.task is not null and q.payload_expires_at>clock_timestamp() and q.expires_at>clock_timestamp() and not q.cancel_requested and x.device_id=d.id and x.status='active'
@@ -157,7 +158,7 @@ begin
  insert into public.local_text_attempts(id,job_id,device_id,claim_id,fence,input_hash,model_digest,admission_id,state) values(attempt,j.id,d.id,claim,j.fence+1,j.input_hash,a.model_digest,a.id,'claimed');
  update public.local_text_jobs set state='claimed',device_id=d.id,attempt_id=attempt,claim_id=claim,fence=fence+1,lease_until=lease,updated_at=clock_timestamp() where id=j.id returning * into j;
  return jsonb_build_object('kind','applied','value',jsonb_build_object('jobId',j.id,'attemptId',attempt,'deviceId',d.id,'claimId',claim,'fence',j.fence,'inputHash',j.input_hash,'selectionId',j.selection_id,'modelDigest',a.model_digest,
- 'leaseUntil',to_char(lease at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'expiresAt',to_char(j.expires_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'task',j.task));
+ 'leaseUntil',to_char(lease at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'expiresAt',to_char(least(j.expires_at,j.payload_expires_at) at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'task',j.task));
 end$$;
 create function public.local_text_transition(p_claim jsonb,p_event jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
 declare j public.local_text_jobs;d public.local_text_devices;a public.local_text_admissions;t text=p_event->>'type';r jsonb=p_event->'result';valid boolean=false;
@@ -424,3 +425,23 @@ end$$;
 create trigger local_text_admission_immutable before update on public.local_text_admissions for each row execute function public.local_text_admission_immutable();
 revoke all on function public.local_text_evidence_current(uuid,uuid),public.local_text_revalidate(jsonb),public.local_text_owner_admission(uuid,uuid,uuid,text,jsonb),public.local_text_admission_immutable() from public,anon,authenticated;
 grant execute on function public.local_text_evidence_current(uuid,uuid),public.local_text_revalidate(jsonb),public.local_text_owner_admission(uuid,uuid,uuid,text,jsonb) to service_role;
+-- Expired, never-started claims may be fenced and returned to the queue. A running
+-- or physically uncertain attempt always holds its device pending owned proof.
+create function public.local_text_reap_device(p_device_id uuid) returns void language plpgsql security invoker set search_path='' as $$
+declare j public.local_text_jobs;a public.local_text_attempts;
+begin
+ perform 1 from public.local_text_devices where id=p_device_id for update;
+ for j in select * from public.local_text_jobs where device_id=p_device_id and state in ('claimed','running') and lease_until<=clock_timestamp() order by created_at for update skip locked loop
+  select * into a from public.local_text_attempts where id=j.attempt_id for update;
+  if j.state='claimed' and a.started_at is null then
+   update public.local_text_attempts set state='expired',finished_at=clock_timestamp() where id=a.id;
+   update public.local_text_jobs set state=case when task is null or payload_expires_at<=clock_timestamp() or expires_at<=clock_timestamp() then 'needs_input' else 'queued' end,
+    reason_code='UNDISPATCHED_LEASE_EXPIRED',attempt_id=null,claim_id=null,device_id=null,lease_until=null,updated_at=clock_timestamp() where id=j.id;
+  else
+   update public.local_text_attempts set state='reconciling' where id=a.id;
+   update public.local_text_jobs set state='reconciling',reason_code='LEASE_LOST',updated_at=clock_timestamp() where id=j.id;
+  end if;
+ end loop;
+end$$;
+revoke all on function public.local_text_reap_device(uuid) from public,anon,authenticated;
+grant execute on function public.local_text_reap_device(uuid) to service_role;

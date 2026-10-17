@@ -37,7 +37,7 @@ function AtlasAudioLevelBridge({ target, override }: { target: RefObject<HTMLEle
  * reads the live runtime once, resolves it through `resolveAtlasOrbState`, and
  * hands the result down; the face and the chip only display it.
  */
-export function AtlasCommandCore({ readOnly = false }: { readOnly?: boolean }) {
+export function AtlasCommandCore({ readOnly = false, voiceHref }: { readOnly?: boolean; voiceHref?: string }) {
   const atlas = useAtlas()
   const searchParams = useSearchParams()
   const coreRef = useRef<HTMLElement>(null)
@@ -69,6 +69,7 @@ export function AtlasCommandCore({ readOnly = false }: { readOnly?: boolean }) {
 
   function handleVoiceToggle() {
     if (readOnly) return
+    if (voiceHref && !busy) { atlas.deactivate(); atlas.openWorkspace(voiceHref); return }
     if (atlas.voicePhase === 'speaking') {
       atlas.stopAudio()
       return

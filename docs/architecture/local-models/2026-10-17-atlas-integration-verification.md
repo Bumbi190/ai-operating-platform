@@ -45,3 +45,11 @@ The new contracts are not imported by existing execution paths; existing migrati
 - Raw-mode prompt behavior is new and requires expanded task qualification and independent quality review. Previous offline approvals never admit this adapter automatically.
 - Signed Windows identity, queue/policy, review/fallback, Atlas status/UI, incidents/retention and supervised startup remain plan tasks. No project is admitted or locally routed yet.
 - Native final branch review, actual governed cloud metering, full synthetic Atlas-to-GPU-to-review receipt and approved crash/reboot pilot remain outstanding.
+
+## Queue foundation (Task 3)
+
+CLI 2.121.0 generated `20261017090351_atlas_local_text.sql`. Eight dedicated RLS tables and service-only invoker RPCs are tested in a labelled, network-isolated postgres:16 container with no published ports or real data. The repository has no complete initial core-schema migration/configuration, so a minimal explicit parent-contract fixture and the existing canonical `stop_state` body were used. This proves this migration's behavior, not full repository migration replay.
+
+Fresh database replay: `LOCAL_TEXT_SQL_PASS`, covering exact idempotent receipt, changed-source refusal, cross-owner refusal, raw-column and authenticated/anonymous mutation/RPC denial, immutable source/selection, unreviewed output hidden, duplicate/late completion, purged-source retry and unknown-dispatch hold. Two independent concurrent sessions with two queued jobs on one device produce exactly one claim and one null response (1/1 test PASS). Nine TypeScript store tests PASS; `npm --prefix apps/web run typecheck` exits 0.
+
+Persistence consumes an explicit SelectionDecision as a fourth enqueue argument; it never invents model selection. A closed typed RPC bridge avoids overwriting whole-schema generated types with this minimal fixture schema. Vitest now explicitly includes local-text tests. Raw payload expiry is five minutes before the job deadline to give the later purge maintenance a margin; that maintenance is not implemented/activated yet.

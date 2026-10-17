@@ -12,6 +12,7 @@ const UUID=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i
 type UploadItem={id:string;slot:number;file:File;url:string;state:'uploading'|'saved'|'error';assetId?:string;message?:string}
 type Ticket={ticketId:string;bucket:string;path:string;token:string;mimeType:string}
 type Status='loading'|'disabled'|'available'|'unavailable'
+type StoredReference={ticketId:string;assetId:string;issuedAt:string}
 
 async function postJson(url:string,body:Record<string,unknown>,signal:AbortSignal) {
   const response=await fetch(url,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body),cache:'no-store',signal})
@@ -32,6 +33,7 @@ export function StudioReferenceUploads({projectId,conversationId,readOnly}:{
   const [status,setStatus]=useState<Status>('loading')
   const [draftId,setDraftId]=useState(()=>crypto.randomUUID())
   const [items,setItems]=useState<UploadItem[]>([])
+  const [stored,setStored]=useState<StoredReference[]>([])
   const [error,setError]=useState('')
   const filesRef=useRef<HTMLInputElement>(null),itemsRef=useRef<UploadItem[]>([])
   const controller=useRef<AbortController|null>(null)
@@ -45,7 +47,18 @@ export function StudioReferenceUploads({projectId,conversationId,readOnly}:{
     const params=new URLSearchParams({projectId,conversationId})
     void fetch('/api/website-build/references/tickets?'+params,{signal:abort.signal,cache:'no-store'})
       .then(async response=>{if(!response.ok)throw Error();return response.json()})
-      .then(result=>{if(!abort.signal.aborted)setStatus(result.available===true?'available':'disabled')})
+      .then(async result=>{
+        if(abort.signal.aborted)return
+        if(result.available!==true){setStatus('disabled');return}
+        setStatus('available')
+        const response=await fetch('/api/website-build/references/library?'+params,{signal:abort.signal,cache:'no-store'})
+        if(!response.ok)throw Error()
+        const library=await response.json()
+        if(!abort.signal.aborted&&library.available===true&&Array.isArray(library.items)){
+          setStored(library.items.filter((item:StoredReference)=>
+            UUID.test(item.ticketId)&&UUID.test(item.assetId)).slice(0,40))
+        }
+      })
       .catch(()=>{if(!abort.signal.aborted)setStatus('unavailable')})
     return()=>{
       abort.abort();controller.current?.abort();live.current=false
@@ -108,6 +121,8 @@ export function StudioReferenceUploads({projectId,conversationId,readOnly}:{
             {projectId,conversationId,ticketId:ticket.ticketId},abort.signal)
           if(result.status!=='ready'||!UUID.test(result.assetId))throw Error('Bilden kunde inte verifieras.')
           update(slot,{state:'saved',assetId:result.assetId})
+          setStored(current=>current.some(item=>item.ticketId===ticket.ticketId)?current:
+            [{ticketId:ticket.ticketId,assetId:result.assetId,issuedAt:new Date().toISOString()},...current].slice(0,40))
         }catch(e){
           if(!abort.signal.aborted)update(slot,{state:'error',message:e instanceof Error?e.message:'Okänt uppladdningsfel.'})
           if(abort.signal.aborted)break
@@ -149,6 +164,14 @@ export function StudioReferenceUploads({projectId,conversationId,readOnly}:{
         </div>
       </li>)}
     </ul>}
+    {!!stored.length&&<div className={styles.saved}><h4>Sparade bilder i denna konversation</h4>
+      <ul className={styles.gallery}>{stored.map(item=><li key={item.ticketId} className={styles.item}>
+        {/* Binary delivered only after authenticated project, ticket, asset and hash validation. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={'/api/website-build/references/image?'+new URLSearchParams({projectId,conversationId,ticketId:item.ticketId})}
+          alt="Tidigare sparad designreferens" loading="lazy"/>
+        <div><strong>Privat bildreferens</strong><span>Sparad i projektet</span></div>
+      </li>)}</ul></div>}
     {items.some(item=>item.state==='saved')&&
       <p className={styles.note}>Bilderna är sparade, men skickas inte till Atlas AI ännu. Den kopplingen kräver ett separat verifierat steg.</p>}
   </section>

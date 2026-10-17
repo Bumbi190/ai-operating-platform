@@ -76,3 +76,28 @@ Följande kod har tillkommit ovanpå tidigare draft PR #368:
 **Samlad verifiering denna etapp:** 90/90 riktade Vitest-tester (inklusive canonical media admission, tidigare ticket/finalize/recovery och tre nya UI-fall) och `tsc --noEmit -p tsconfig.json` PASS på Windows. Det är **inte** en fysisk Android-testning, server-rendering endast för UI-testet, och ingen signerad uppladdning har körts mot ett verkligt Supabase-projekt.
 
 **Aktiveringsblockerare:** Supabase-kontot har inget separat isolerat Omnira-testprojekt; produktion används därför inte för provuppladdning och inga schemamigreringar appliceras. Före release: granska SQL, skapa isolerad testmiljö och validera Storage+RLS+multi-device/telefon, säkra privat bildhämtning över omstarter, skapa en exakt konversations-/chattur-referenskoppling och ett kontrollerat multimodalt modelltest. Filpanelen är en första preview, **inte** en färdig bildbilaga i Atlas-chatten. `ATLAS_REFERENCE_UPLOAD_ENABLED` ska förbli off fram till godkänd och verifierad miljö.
+
+
+## 2026-10-17 – privat återläsning av bildreferenser (nästa draft-etapp)
+
+**Funktion i kod, ej påslagen i produktion.** I den befintliga privata bildreferensuppsättningen finns nu också:
+- `GET /api/website-build/references/library`: ger högst 40 redan färdigställda referensers ID och tid för exakt behörig projektägare/konversation. Den lämnar aldrig ut lagringsväg, public URL eller service_role-uppgifter.
+- `GET /api/website-build/references/image`: läser binär WebP först efter upprepad kontroll av inloggning, aktivt projekt, exakt ticket-ID, ägare, konversation, ready-state, kanonisk privat Asset-rad, kontrollerad förväntad filväg, uppladdad proveniens med samma ticket-ID, format, storlek och innehållets SHA256-hash. Efter nedladdningen kontrolleras den aktuella projektbehörigheten igen. Svaret är `image/webp`, `private,no-store`, `nosniff` och strikt CSP. Inga permanenta eller tillfälliga Supabase-read-URL:er lämnar servern.
+- `StudioReferenceUploads` hämtar ID-listan när capability är verifierad och visar sparade bilder igen via denna privata appväg efter omladdning; nytt uppladdat AssetId förs in i listan direkt. Funktionen är fortfarande spärrad bakom `ATLAS_REFERENCE_UPLOAD_ENABLED` och har ingen koppling till AI-modell eller bildgenerering.
+
+**Verifiering:** riktade autentiserings-/förrädiska queryparametrar-/falsk lagring-/hash-testfall samt SSR/UI. Sammanlagt 100/100 riktade Vitest i 10 filer på isolerad Windows-worktree, TypeScript-check separat. Ingen verklig Supabase Signed Upload mot en fristående instans utförd, ingen mobil interaktiv E2E eller databasmigration till produktion. Befintliga lokala Supabase-containrar på stationären tillhör andra pågående arbeten och användes inte för denna körning.
+
+**Innan merge/aktivering:** omfatta hela konversationens kvitton, integrera referens-AssetIds till exakt chattur med korrekt multimodal model-invocation, validera signering/Storage på isolerad självständig Supabase-instans, säkerhets- och rullningsgranskning samt manuellt godkännande av databas/feature flag. Ingen driftsättning eller nya kostnader i denna PR.
+
+
+## 2026-10-17 – beständiga och behörighetsstyrda referensbilder
+
+**Fortfarande isolerad draft PR #368; inga ändringar av produktionsdatabas eller aktivering.**
+
+- `GET /api/website-build/references/library` listar enbart högst 40 sparade opaque ticket-/Asset-id:n och tidsstämplar för den valda **ägda aktiva** konversationen. Inga storage-sökvägar eller publika URL:er lämnas ut.
+- `GET /api/website-build/references/image` hämtar bildbytes via serverns befintliga privata `media-assets-private` bucket, först efter behörighet, rätt projekt och konversation, `ready`-biljett, exakt kanonisk Asset-path, lämpligt WebP-format/storlek, oföränderlig uppladdad proveniens med samma ticket-ID och SHA256-integritet. Behörigheten återkontrolleras även *efter* lagringsläsningen. Den levererar enbart `image/webp` med `private,no-store`, `nosniff` och strikt CSP.
+- `StudioReferenceUploads` kan återläsa användarens tidigare sparade bilder efter omladdning med denna privata läsväg, och uppdaterar listan omedelbart efter en lyckad finalize. Bilderna kan ännu **inte** bindas till Atlas AI-meddelanden eller skickas till en bildkapabel modell. Alla läs- och skrivrutter ligger fortfarande bakom `ATLAS_REFERENCE_UPLOAD_ENABLED`, avstängd som standard.
+- Nya lokala tester omfattar öppna/okända/duplicerade queryfält, otillåten ägare/projekt, felaktig status, publik/felaktig lagring, bruten proveniens, korrupt bildhash och återkallad ägarbehörighet medan servern hämtar bytes.
+- Denna lokala etapp ger totalt **101/101 riktade Vitest-testfall** inom bildflödet och angränsande asset admission plus godkänd TypeScript-check. Den bevisar inte verklig Supabase Storage eller Android-interaktion.
+
+**Nästa blockerare:** en **separat isolerad** Supabase Storage-miljö med verkligt signerat upload, RLS-/migrationsgranskning och sedan explicit koppling mellan privat AssetId och exakt chattur, verifierad multimodal konsumtion och godkänd flaggaktivering. Befintliga lokala Supabase-kontainrar från andra parallella arbeten har inte återanvänts eller förändrats.

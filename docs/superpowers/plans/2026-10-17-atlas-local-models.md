@@ -1,12 +1,12 @@
 # Atlas Local Models Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Prova tre lokala modellkandidater på svenska, låta en separat agent granska resultaten och producera uppgiftsbundna kvalificerings-/eskaleringsbeslut.
 **Architecture:** Fristående lokal Node-worker med strikt jobbkontrakt, direkt loopback-transport och en kandidat åt gången. Ett separat kvalificeringsflöde kombinerar uppmätta tester och oberoende agentgranskning; det öppnar ingen produktionsrättighet. Molnkörd Atlas och betald OpenAI/Codex-dispatch kräver nästa integrationsleverans.
 **Tech Stack:** Node 20+ (verifierat v22.22.3 på Windows), ESM .mjs, node:http, node:test, PowerShell, portable Ollama/CUDA. Inga npm-beroenden.
 **Spec:** docs/superpowers/specs/2026-10-17-atlas-local-models-design.md, inklusive Andrés ägartillägg 2026-10-17 kl. 09:07 Europe/Stockholm.
-**State:** Plan för ägargranskning; installation, produktkod och liveprov har inte startat.
+**State:** André godkände Native-genomförande 2026-10-17 kl. 09:24 Europe/Stockholm. Implementerad och lokalt verifierad; se docs/architecture/local-models/2026-10-17-verification.md. Ingen produktionsaktivering.
 **Workspace:** C:/Users/Andre/Projects/Omnira/.worktrees/atlas-local-models-20261017
 **Branch/base:** codex/atlas-local-models-20261017 från 0249e0daa111e576c72c810f186195d7ba5a9bdf.
 
@@ -54,7 +54,7 @@ Alla råa prov-/granskningsrapporter, runtimefiler och vikter ligger ignorerat i
 **Files:** Create contracts.mjs, candidates.mjs, contracts.test.mjs och .gitignore enligt filkartan.
 **Interfaces:** validateJob(value:unknown) -> Job eller ContractError(reasonCode); validateResult(taskType,value,labels?) -> Result eller ContractError. Job = {version:1, jobId:UUID, taskType:'classify'|'extract'|'summarize', text:string, labels?:string[]}. Result = {label:string}, {company:string|null,city:string|null,registrationNumber:string|null} respektive {bullets:string[]}. CANDIDATES är fryst lista med de tre fasta kandidat-ID:na; JOB_VERSION/PROMPT_VERSION/FIXTURE_VERSION är 1.
 
-- [ ] **Step 1: Skriv contracts.test.mjs.** Assertions:
+- [x] **Step 1: Skriv contracts.test.mjs.** Assertions:
 ```js
 assert.throws(() => validateJob({...valid, model:'anything'}), /INVALID_JOB/);
 assert.throws(() => validateJob({...valid, text:'å'.repeat(3001)}), /INVALID_JOB/);
@@ -63,10 +63,10 @@ assert.throws(() => validateJob({...valid, labels:['bil','bil']}), /INVALID_JOB/
 assert.throws(() => validateResult('extract', {company:'X',city:null,registrationNumber:null,extra:1}), /INVALID_RESULT/);
 ```
 Lägg även fall för labels på fel taskType, okänd version/task, 1/9 etiketter, tomma/blankstegsetiketter, null saknade fält, tom/4-punkts sammanfattning och strängar över gräns.
-- [ ] **Step 2: Kör** `node --test workers/local-models/contracts.test.mjs`; förvänta FAIL eftersom modul saknas.
-- [ ] **Step 3: Implementera gränserna och listan.** Kandidat väljs av operatören utanför Job. JSON-schema skickas till modellen men samma kontrakt verifieras också lokalt.
-- [ ] **Step 4: Kör samma testkommando**; förvänta 0 fel. Kör `git diff --check`.
-- [ ] **Step 5: Commit endast denna tasks filer:** `feat(local-models): define bounded jobs and candidate profiles`.
+- [x] **Step 2: Kör** `node --test workers/local-models/contracts.test.mjs`; förvänta FAIL eftersom modul saknas.
+- [x] **Step 3: Implementera gränserna och listan.** Kandidat väljs av operatören utanför Job. JSON-schema skickas till modellen men samma kontrakt verifieras också lokalt.
+- [x] **Step 4: Kör samma testkommando**; förvänta 0 fel. Kör `git diff --check`.
+- [x] **Step 5: Commit endast denna tasks filer:** `feat(local-models): define bounded jobs and candidate profiles`.
 
 ### Task 2: Begränsad Ollama-transport och en lokal jobbkörning
 **Files:** Create transport.mjs/test, ollama.mjs/test, worker.mjs/test, cli.mjs.
@@ -76,7 +76,7 @@ runJob(job,{candidateId,expectedSnapshot,runtimeDir,signal}) -> Promise<JobOutco
 JobOutcome = {version:1,jobId,taskType,status:'succeeded'|'rejected'|'failed',result?,reasonCode?,metadata:{provider:'ollama_local',candidateId,modelDigest,serverVersion,wallMs,usage?,billedApiSek:0,totalOperatingCostSek:null}}.
 CLI: `node workers/local-models/cli.mjs run --candidate <allowlisted-id>`, JSON stdin, en JSON-output, ingen godtycklig fil-/endpoint-/systempromptflagga.
 
-- [ ] **Step 1: Skriv verkliga HTTP-fixturetester** för taskens exporter. Assertions inkluderar:
+- [x] **Step 1: Skriv verkliga HTTP-fixturetester** för taskens exporter. Assertions inkluderar:
 ```js
 assert.equal(observedRequest.host, '127.0.0.1:11434');
 assert.equal(observedRequest.body.think, false);
@@ -87,10 +87,10 @@ assert.equal(requestCountForInvalidJob, 0);
 ```
 Testa header-sedan-stall med kort intern testdeadline; body fortsätter överskrida 128 KiB; redirect mot extern URL får noll uppföljningsanrop. Testa digestbyte mellan inspect och dispatch, unsupported think=false, :cloud, truncering, tool_calls, icke-JSON, abort och UTF-8 bodytak.
 Testa två riktiga CLI-barnprocesser med ägt lås och en fördröjd HTTP-fixture. När ett dispatchat anrop avbryts/timeoutar lämnas en markerad osäker körstatus som blockerar nästa jobb; inga automatiska försök eller processdödningar.
-- [ ] **Step 2: Kör** `node --test workers/local-models/transport.test.mjs workers/local-models/ollama.test.mjs workers/local-models/worker.test.mjs`; förvänta FAIL för saknade moduler.
-- [ ] **Step 3: Implementera direkt node:http, fast schema/prompt och worker.** Total deadline omfattar body. Hälsoendpoints och chattsökväg är fasta. Körningslås skapas exklusivt med wx i eget runtimeDir; inga lås i andra worktrees. En normal slutförd förfrågan frigör eget lås; osäker efterdispatch hanteras fail-closed. Operatörsåterställning får endast röra verifierat ägd provprocess.
-- [ ] **Step 4: Kör samtliga tester hittills** med explicita testfilnamn; förvänta 0 fel och inga anslutningar till verklig Ollama som standard.
-- [ ] **Step 5: Commit:** `feat(local-models): add loopback inference with bounded lifecycle`.
+- [x] **Step 2: Kör** `node --test workers/local-models/transport.test.mjs workers/local-models/ollama.test.mjs workers/local-models/worker.test.mjs`; förvänta FAIL för saknade moduler.
+- [x] **Step 3: Implementera direkt node:http, fast schema/prompt och worker.** Total deadline omfattar body. Hälsoendpoints och chattsökväg är fasta. Körningslås skapas exklusivt med wx i eget runtimeDir; inga lås i andra worktrees. En normal slutförd förfrågan frigör eget lås; osäker efterdispatch hanteras fail-closed. Operatörsåterställning får endast röra verifierat ägd provprocess.
+- [x] **Step 4: Kör samtliga tester hittills** med explicita testfilnamn; förvänta 0 fel och inga anslutningar till verklig Ollama som standard.
+- [x] **Step 5: Commit:** `feat(local-models): add loopback inference with bounded lifecycle`.
 
 ### Task 3: Svenska kandidatprov och mätbar evidens
 **Files:** Create fixtures/sv-v1.json, evaluate.mjs och evaluate.test.mjs.
@@ -98,7 +98,7 @@ Testa två riktiga CLI-barnprocesser med ägt lås och en fördröjd HTTP-fixtur
 EvaluationReport v1 binder kandidat/digest/server, kvantisering, GPU-bevisreferenser, suiteHash, promptHash, adapterHash och configHash samt varje caseId/jobbutfall/duration och input/resultat från det syntetiska paketet. Normala körloggar innehåller inte text.
 Rapporten får aldrig innehålla proddata; evaluator läser bara fixturefilen i modulen.
 
-- [ ] **Step 1: Skriv tester** som hävdar exakt 10 classify +10 extract +5 summarize med unika caseId:n. Extract har minst tre saknade-fältfall och ett av dem innehåller instruktioner att hitta på ett företagsnamn. Sammanfattningsfacit innehåller källans tillåtna fakta och förbjudna påståenden.
+- [x] **Step 1: Skriv tester** som hävdar exakt 10 classify +10 extract +5 summarize med unika caseId:n. Extract har minst tre saknade-fältfall och ett av dem innehåller instruktioner att hitta på ett företagsnamn. Sammanfattningsfacit innehåller källans tillåtna fakta och förbjudna påståenden.
 ```js
 assert.equal(scoreEvaluation(reportWith9Classifications, fixtures).classify.correct, 9);
 assert.equal(scoreEvaluation(reportWithInventedMissingField, fixtures).extract.inventedMissingFields, 1);
@@ -106,11 +106,11 @@ assert.equal(reportWithOneFailedCase.cases.length, 25);
 assert.notEqual(hashReport(changedOutput), hashReport(originalReport));
 ```
 Testa att sammanfattningens semantiska kvalitet lämnas pending_review och aldrig automatiskt godkänns av schema. Varm p90 beräknas med nearest-rank efter separat kallstart och separat uppvärmning av respektive taskType. Inga mätvärden från kallstart blandas in i varm p90; små sample counts skrivs ut.
-- [ ] **Step 2: Kör** `node --test workers/local-models/evaluate.test.mjs`; förvänta FAIL.
-- [ ] **Step 3: Implementera paket och utvärdering.** Ett separat kallstartsprov och uppvärmningsprov per taskType är märkta och utanför 25 kvalitetsfall; deras overhead räknas separat. Vid fel lagras felutfall för aktuellt och ej körda fall, aldrig tyst bortfall. Osäker efterdispatch stoppar serien.
+- [x] **Step 2: Kör** `node --test workers/local-models/evaluate.test.mjs`; förvänta FAIL.
+- [x] **Step 3: Implementera paket och utvärdering.** Ett separat kallstartsprov och uppvärmningsprov per taskType är märkta och utanför 25 kvalitetsfall; deras overhead räknas separat. Vid fel lagras felutfall för aktuellt och ej körda fall, aldrig tyst bortfall. Osäker efterdispatch stoppar serien.
 Kandidater byts först efter ägd modellavlastning och bevisad frigjord GPU. Inga verkliga jobb läggs i serien.
-- [ ] **Step 4: Kör evaluator- och tidigare tester**; förvänta 0 fel. Verifiera facits täckning före liveprov, inga ändrade trösklar efter att kandidatsvar setts.
-- [ ] **Step 5: Commit:** `feat(local-models): add Swedish candidate evaluation evidence`.
+- [x] **Step 4: Kör evaluator- och tidigare tester**; förvänta 0 fel. Verifiera facits täckning före liveprov, inga ändrade trösklar efter att kandidatsvar setts.
+- [x] **Step 5: Commit:** `feat(local-models): add Swedish candidate evaluation evidence`.
 
 ### Task 4: Agentgranskning, uppgiftskvalificering och eskalering
 **Files:** Create qualification.mjs och qualification.test.mjs.
@@ -120,7 +120,7 @@ Provenance skapas av detta sessionsflöde efter en verklig separat agents körni
 Qualification = {scope:'local_evaluation_only', identity:{...hashes}, approvedTasks:TaskType[], deniedTasks:[{taskType,reasons}]}.
 RouteDecision är {status:'local_candidate',candidateId,taskType} eller {status:'escalation_required',reasonCode,target:'openai_model'|'codex_worker',dispatched:false}. Uttryckligt workKind=code ger codex_worker; giltigt textarbete utan kvalificerad kandidat ger openai_model. Ogiltig input blir rejected och eskaleras inte.
 
-- [ ] **Step 1: Skriv tester**:
+- [x] **Step 1: Skriv tester**:
 ```js
 assert.deepEqual(qualifyCandidate({ ...good, review:null }).approvedTasks, []);
 assert.deepEqual(qualifyCandidate({ ...good, review:selfReview }).approvedTasks, []);
@@ -131,10 +131,10 @@ assert.equal(qualified.scope, 'local_evaluation_only');
 ```
 Testa agent approved trots 8/10 classify, 8/10 extract, påhittat saknat fält, CPU/GPU-fel, saknat GPU-bevis, varm p90 >20000 ms, saknad casegranskning, okänd caseId och ändrat adapter-/prompt-/suite-/configHash: lokal nekning.
 Testa godkänd classify men nekad summarize: endast classify kan väljas. Vid flera godkända kandidater väljs lägst uppmätt varm p90 för samma taskType, därefter fast kandidatordning. Ny modellversion kräver ny kvalificering. Ingen test får skapa nätverk till OpenAI/Codex.
-- [ ] **Step 2: Kör** `node --test workers/local-models/qualification.test.mjs`; förvänta FAIL.
-- [ ] **Step 3: Implementera ren, deterministisk logik.** Agent kan neka men aldrig övertrumfa misslyckad kontroll. Endast samma uppgiftstyp och identitetsversion kan ärva godkännandet. Inga schema-/kvalitetskontroller tas bort för att få en kandidat godkänd.
-- [ ] **Step 4: Kör hela lokala enhetspaketet**; förvänta 0 fel och verifierat dispatched:false för eskalering.
-- [ ] **Step 5: Commit:** `feat(local-models): require independent review before qualification`.
+- [x] **Step 2: Kör** `node --test workers/local-models/qualification.test.mjs`; förvänta FAIL.
+- [x] **Step 3: Implementera ren, deterministisk logik.** Agent kan neka men aldrig övertrumfa misslyckad kontroll. Endast samma uppgiftstyp och identitetsversion kan ärva godkännandet. Inga schema-/kvalitetskontroller tas bort för att få en kandidat godkänd.
+- [x] **Step 4: Kör hela lokala enhetspaketet**; förvänta 0 fel och verifierat dispatched:false för eskalering.
+- [x] **Step 5: Commit:** `feat(local-models): require independent review before qualification`.
 
 ### Task 5: Ägd portable Ollama-runtime och GPU-förkontroll
 **Files:** Create scripts/runtime.ps1, scripts/preflight.ps1 och scripts/runtime.test.mjs.
@@ -142,30 +142,30 @@ Testa godkänd classify men nekad summarize: endast classify kan väljas. Vid fl
 Preflight ger JSON med OS, Node-version, ledig disk, verifierad runtimeversion, bind-adress, GPU-status, modellidentitet och ägd processstatus; hemligheter läses inte.
 Prepare är separat från Start och utför aldrig inferens. Stop kräver matchande journal över PID, starttid och executablePath från eget Start och får annars vägra.
 
-- [ ] **Step 1: Skriv runtime.test.mjs** med PowerShell AST-parsning och isolerad kontroll av checksummevalidering. En pytteliten testfil med fel SHA måste nekas före extraktion och får inte ändra andra filer. Preflight för upptagen port rapporterar blocked och startar/stänger ingen tjänst. Tester får aldrig ladda ned distribution eller modeller.
-- [ ] **Step 2: Kör** `node --test workers/local-models/scripts/runtime.test.mjs`; förvänta FAIL.
-- [ ] **Step 3: Implementera versionsbunden officiell runtime.** Kontrollerad kandidat vid planering: Ollama v0.40.5, ollama-windows-amd64.zip, 1471226485 byte, SHA-256 5134ce7e3bc8e94d0494721c799ec293b429450d0c52461b0ee3647dd3bb4bb7.
+- [x] **Step 1: Skriv runtime.test.mjs** med PowerShell AST-parsning och isolerad kontroll av checksummevalidering. En pytteliten testfil med fel SHA måste nekas före extraktion och får inte ändra andra filer. Preflight för upptagen port rapporterar blocked och startar/stänger ingen tjänst. Tester får aldrig ladda ned distribution eller modeller.
+- [x] **Step 2: Kör** `node --test workers/local-models/scripts/runtime.test.mjs`; förvänta FAIL.
+- [x] **Step 3: Implementera versionsbunden officiell runtime.** Kontrollerad kandidat vid planering: Ollama v0.40.5, ollama-windows-amd64.zip, 1471226485 byte, SHA-256 5134ce7e3bc8e94d0494721c799ec293b429450d0c52461b0ee3647dd3bb4bb7.
 Verifiera att officiell release/sha256sum fortfarande överensstämmer före hämtning; avvikelse stoppar och kräver dokumenterat nytt versionsval, ingen flytande latest.
 Processlokala miljövariabler inklusive OLLAMA_MODELS pekar mot runtimeområdet. Hämta modell via ägd Ollama-binary och officiellt allowlistat taggnamn; kontrollera digest/Q4_K_M/backend innan inferens. Håll högst en modell laddad. En kandidat som inte kan laddas fullt på GPU markeras blockerad.
 Kontrollera bind-adress via OS och faktisk GPU-placering under last via ägd ollama ps samt nvidia-smi; en lyckad HTTP-respons är inte GPU-bevis.
-- [ ] **Step 4: Kör skripttester och läsbaserad preflight**; förvänta 0 testfel och inga globala inställningsändringar. Inga livehämtningar före godkänd plan.
-- [ ] **Step 5: Commit:** `feat(local-models): manage isolated verified Ollama runtime`.
+- [x] **Step 4: Kör skripttester och läsbaserad preflight**; förvänta 0 testfel och inga globala inställningsändringar. Inga livehämtningar före godkänd plan.
+- [x] **Step 5: Commit:** `feat(local-models): manage isolated verified Ollama runtime`.
 
 ### Task 6: Verkliga kandidatprov, separat agentbedömning och leverans
 **Files:** Create accept.mjs, accept.test.mjs, README.md och docs/architecture/local-models/2026-10-17-verification.md. Alla råa kör-/granskningsfiler förblir ignorerade.
 **Interfaces:** `node workers/local-models/accept.mjs run --candidate <id>` kör ett synligt explicit livepaket, `... assess --report <path> --review <path>` binder separat granskat underlag; båda måste ange scope local_evaluation_only.
 README ger PowerShell-kommandon för Prepare/Start, varje kandidatprov, granskning, Stop och felåterhämtning. Ingen autostart eller produktionsflagga.
 
-- [ ] **Step 1: Skriv accept.test.mjs**: okänd kandidat/kommando ska ge exit 2 utan nätverk; nekad granskning ger ingen lokal kvalificering; missing review ger pending_review; invalid/hashändrad evidens får inte godkännas. `run` måste vara uttryckligt, testimport får inte starta arbete.
-- [ ] **Step 2: Kör** `node --test workers/local-models/accept.test.mjs`; förvänta FAIL. Implementera CLI/README och kör om; förvänta PASS.
-- [ ] **Step 3: Kör hela modulens enhetspaket och diffkontroll.** Lista testfiler explicit i PowerShell; importera inte web-appens testsvit eller dess miljö. Dokumentera faktiska antal/fel. Dokumentationskontroller får inte kallas GPU-/livebevis.
-- [ ] **Step 4: Genomför förkontroll, Prepare och Start på Hultgren** efter planens ägargodkännande. Kör de tre kandidaterna sekventiellt. Varje kandidat ger digestbunden rapport eller explicit blockerare. Gör inget betalt anrop för att jämföra.
-- [ ] **Step 5: Be separat granskningsagent granska alla kandidaters syntetiska provrapporter, facit och utdata.** Agenten får endast läsa dessa underlag, får inte ändra implementation, trösklar, fixturefacit eller andra grenar. Begär per-task verdict, skäl, fallreferenser och granskarens köridentitet. Underkända/blockerade kandidater ska behållas i jämförelsen.
+- [x] **Step 1: Skriv accept.test.mjs**: okänd kandidat/kommando ska ge exit 2 utan nätverk; nekad granskning ger ingen lokal kvalificering; missing review ger pending_review; invalid/hashändrad evidens får inte godkännas. `run` måste vara uttryckligt, testimport får inte starta arbete.
+- [x] **Step 2: Kör** `node --test workers/local-models/accept.test.mjs`; förvänta FAIL. Implementera CLI/README och kör om; förvänta PASS.
+- [x] **Step 3: Kör hela modulens enhetspaket och diffkontroll.** Lista testfiler explicit i PowerShell; importera inte web-appens testsvit eller dess miljö. Dokumentera faktiska antal/fel. Dokumentationskontroller får inte kallas GPU-/livebevis.
+- [x] **Step 4: Genomför förkontroll, Prepare och Start på Hultgren** efter planens ägargodkännande. Kör de tre kandidaterna sekventiellt. Varje kandidat ger digestbunden rapport eller explicit blockerare. Gör inget betalt anrop för att jämföra.
+- [x] **Step 5: Be separat granskningsagent granska alla kandidaters syntetiska provrapporter, facit och utdata.** Agenten får endast läsa dessa underlag, får inte ändra implementation, trösklar, fixturefacit eller andra grenar. Begär per-task verdict, skäl, fallreferenser och granskarens köridentitet. Underkända/blockerade kandidater ska behållas i jämförelsen.
 För sammanfattningar kontrolleras 5/5 svar mot källans fakta; inga uteblivna fall får godkännas. Kör sedan assess med den verkliga granskningen. Hitta inte på reviewer-ID eller godkännande.
-- [ ] **Step 6: Gör helgrensgranskning med en separat agent** av koden och felvägarna, inklusive transportgränser, granskningens bindning och isolering. Åtgärda verkliga fel i denna worktree och kör berörda tester. Kod-/promptändring som påverkar inferens ogiltigförklarar tidigare kandidatbevis och kräver nya prov/granskning.
-- [ ] **Step 7: Leverera verifieringsdokument** med godkända uppgiftstyper per kandidat eller escalation_required, faktiska provantal, kall/varm latency, GPU-bevisstatus och begränsningar. Dokumentera att Atlas-molntransport, produktionsgranskningsagent och faktisk OpenAI/Codex-dispatch ännu inte finns i leveransen.
+- [x] **Step 6: Gör helgrensgranskning med en separat agent** av koden och felvägarna, inklusive transportgränser, granskningens bindning och isolering. Åtgärda verkliga fel i denna worktree och kör berörda tester. Kod-/promptändring som påverkar inferens ogiltigförklarar tidigare kandidatbevis och kräver nya prov/granskning.
+- [x] **Step 7: Leverera verifieringsdokument** med godkända uppgiftstyper per kandidat eller escalation_required, faktiska provantal, kall/varm latency, GPU-bevisstatus och begränsningar. Dokumentera att Atlas-molntransport, produktionsgranskningsagent och faktisk OpenAI/Codex-dispatch ännu inte finns i leveransen.
 Stoppa bara egen provprocess när proverna är klara; kontrollera att andra tjänster/utcheckningar är orörda av arbetet. Runtime/vikter får ligga kvar ignorerat för nästa steg.
-- [ ] **Step 8: Commit endast tillåtna käll-/dokumentfiler, push denna gren, uppdatera projektstatus och återrapportera.** Ingen merge/deploy. Rapportera blockerare ärligt om ingen kandidat klarar kvalitet/VRAM/stabilitet.
+- [x] **Step 8: Commit endast tillåtna käll-/dokumentfiler, push denna gren, uppdatera projektstatus och återrapportera.** Ingen merge/deploy. Rapportera blockerare ärligt om ingen kandidat klarar kvalitet/VRAM/stabilitet.
 
 ## Planens självgranskning
 - Specens kontrakt/parametrar/gränser: Task 1–2.
@@ -177,8 +177,8 @@ Stoppa bara egen provprocess när proverna är klara; kontrollera att andra tjä
 - Isolation, återställning, inga produktions-/betalda sidoeffekter: globala gränser och Task 5–6.
 - Ingen komponent i planen påstår att offline-granskning är kryptografisk identitet, att tester garanterar generell korrekthet eller att Codex redan är inkopplad.
 
-## Handoff före implementation
-André har godkänt designen och uttryckligen krävt en separat agents granskning av lokala modellprov. Det är inte ännu ett val mellan implementationens två körsätt.
+## Historisk handoff före implementation
+André har godkänt designen och uttryckligen krävt en separat agents granskning av lokala modellprov. Därefter godkändes Native-genomförande kl. 09:24.
 Rekommendation: Native — huvudagenten implementerar task-by-task i samma worktree; separat agent granskar kandidattesterna och en separat helgrensgranskning utförs före leverans.
 Alternativ: Subagent-driven — ny implementeringsagent och ny granskare per task, plus kandidatgranskning och helgrensgranskning.
-Planen ska läsas och godkännas med val av körsätt innan Task 1 påbörjas enligt writing-plans-skillens handoff. Denna plan skapar ingen ny produktionsaktivering.
+Planen lästes och godkändes med Native som körsätt kl. 09:24 före Task 1. Separat helkodgranskning kördes före de slutliga modellproven eftersom rättningar ändrar evidensidentiteten; mätproblem rättades med röda/gröna regressioner och slutproven kördes om. Separat modellgranskning omfattade alla 75 slutliga svar. Denna plan skapar ingen ny produktionsaktivering.

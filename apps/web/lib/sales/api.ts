@@ -21,7 +21,7 @@ export function createSalesApi(deps:Dependencies){return async(request:Request):
    const result=url.searchParams.has('jobId')?await readSalesJob(deps.db(),p,{projectId,jobId:salesId(url.searchParams.get('jobId'))}):await readSalesWorkspace(deps.db(),p,projectId)
    return Response.json(result,{headers:salesHeaders})
   }
-  const v=await readBody(request);fields(v,['operation','projectId','id','companyName','branchName','email','websiteUrl','history','historySource','pilotMonths','confirmed','excluded','suppressed','expectedVersion','senderEmail','offerText','productFacts','freeMonths','conversationId','contactIds','offerRevisionId','idempotencyKey','revisionId','draft','jobId','workerId'])
+  const v=await readBody(request);fields(v,['operation','projectId','id','companyName','branchName','email','websiteUrl','history','historySource','pilotMonths','confirmed','excluded','suppressed','expectedVersion','senderEmail','offerText','productFacts','freeMonths','conversationId','contactIds','offerRevisionId','idempotencyKey','revisionId','draft','jobId','workerId','action'])
   const projectId=salesId(v.projectId);scoped(p,projectId);if(!deps.enabled(projectId))throw new SalesError('NOT_FOUND',404)
   const {operation,...input}=v;const db=deps.db();let result:unknown
   const call=(name:string,value:unknown)=>salesRpc(db,name,{p_principal:p,p_input:value})
@@ -42,8 +42,12 @@ export function createSalesApi(deps:Dependencies){return async(request:Request):
    fields(input,['projectId']);const token=randomBytes(32).toString('base64url'),workerId=randomUUID()
    const receipt=await call('sales_enroll_worker',{projectId,workerId,tokenHash:createHash('sha256').update(token).digest('hex')})
    result={...(receipt as object),workerId,token,projectId}
+  }else if(operation==='authorize_managed_worker'){
+   fields(input,['projectId','workerId']);result=await call('sales_host_authorize',{projectId,workerId:salesId(input.workerId)})
+  }else if(operation==='set_worker_desired'){
+   fields(input,['projectId','workerId','action']);if(!['pause','resume','reconnect'].includes(String(input.action)))throw new SalesError('INVALID_BODY');result=await call('sales_host_set_desired',{projectId,workerId:salesId(input.workerId),action:input.action})
   }else if(operation==='revoke_worker'){
-   fields(input,['projectId','workerId']);result=await call('sales_revoke_worker',{projectId,workerId:salesId(input.workerId)})
+   fields(input,['projectId','workerId','action']);result=await call('sales_revoke_worker',{projectId,workerId:salesId(input.workerId)})
   }else throw new SalesError('INVALID_BODY')
   return Response.json(result,{headers:salesHeaders})
  }catch(e){return failure(e)}

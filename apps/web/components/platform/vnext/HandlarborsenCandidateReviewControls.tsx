@@ -34,7 +34,8 @@ export function HandlarborsenCandidateReviewControls({ review }: { review: Candi
       const response = await fetch(ENDPOINT,{
         method:'POST',credentials:'same-origin',cache:'no-store',
         headers:{ 'content-type':'application/json' },
-        body:JSON.stringify({ host:review.host,status,requestId:crypto.randomUUID() }),
+        body:JSON.stringify({ host:review.host,status,requestId:crypto.randomUUID(),
+          expectedRevision:review.totalDecisions }),
       })
       if (!response.ok) {
         setMessage(response.status===403 ? 'Beslutet nekades: du saknar behörighet.'

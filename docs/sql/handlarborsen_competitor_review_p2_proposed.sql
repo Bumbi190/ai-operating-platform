@@ -30,7 +30,8 @@ COMMENT ON TABLE public.handlarborsen_competitor_review_decisions IS
 -- project+host and returns a deliberately tiny status. Service-role only.
 -- The actor comes from server-side auth.getUser, never from client input.
 CREATE FUNCTION public.handlarborsen_decide_candidate_review_v1(
-  p_project_id uuid, p_host text, p_actor_id uuid, p_status text, p_request_id uuid
+  p_project_id uuid, p_host text, p_actor_id uuid, p_status text, p_request_id uuid,
+  p_expected_revision integer
 ) RETURNS TABLE(outcome text, current_status text, decision_id bigint)
 LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = pg_catalog, public
@@ -43,9 +44,11 @@ DECLARE
   request_project uuid;
   request_host text;
   new_id bigint;
+  actual_revision integer;
 BEGIN
   IF p_project_id IS DISTINCT FROM '8f673c09-1c8f-4d78-876e-4c14bf1c89b3'::uuid
     OR p_actor_id IS NULL OR p_request_id IS NULL
+    OR p_expected_revision IS NULL OR p_expected_revision NOT BETWEEN 0 AND 300
     OR p_status IS NULL OR p_status NOT IN ('interesting', 'reviewed', 'ignored', 'pending')
     OR p_host IS NULL OR length(p_host) > 160
     OR p_host !~ '^[a-z0-9][a-z0-9.-]*[a-z0-9]\.[a-z]{2,}$'
@@ -97,6 +100,17 @@ BEGIN
     RETURN;
   END IF;
 
+  -- Optimistic concurrency: an old project view never silently replaces a
+  -- decision made meanwhile by another authorized reviewer. Replays with
+  -- the SAME request ID were already handled above and remain idempotent.
+  SELECT count(*)::integer INTO actual_revision
+  FROM public.handlarborsen_competitor_review_decisions d
+  WHERE d.project_id=p_project_id AND d.host=p_host;
+  IF actual_revision <> p_expected_revision THEN
+    RETURN QUERY SELECT 'conflict'::text, NULL::text, NULL::bigint;
+    RETURN;
+  END IF;
+
   SELECT d.status, d.id INTO previous_status, previous_id
   FROM public.handlarborsen_competitor_review_decisions d
   WHERE d.project_id=p_project_id AND d.host=p_host
@@ -115,8 +129,8 @@ BEGIN
   RETURN QUERY SELECT 'saved'::text, p_status, new_id;
 END;
 $$;
-REVOKE ALL ON FUNCTION public.handlarborsen_decide_candidate_review_v1(uuid,text,uuid,text,uuid)
+REVOKE ALL ON FUNCTION public.handlarborsen_decide_candidate_review_v1(uuid,text,uuid,text,uuid,integer)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.handlarborsen_decide_candidate_review_v1(uuid,text,uuid,text,uuid)
+GRANT EXECUTE ON FUNCTION public.handlarborsen_decide_candidate_review_v1(uuid,text,uuid,text,uuid,integer)
   TO service_role;
 -- No UPDATE/DELETE grants, no direct client RPC or table access, no background jobs.

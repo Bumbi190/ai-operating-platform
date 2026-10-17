@@ -42,3 +42,11 @@ Mobile acceptance: three natural spoken questions without pressing “Klar med f
 - [Vercel regions](https://vercel.com/docs/regions): dub1 maps to eu-west-1; functions should be close to the data source.
 - [Next.js 14 route configuration](https://nextjs.org/docs/14/app/api-reference/file-conventions/route-segment-config#preferredregion).
 - [ElevenLabs create transcript](https://elevenlabs.io/docs/api-reference/speech-to-text/convert): native multipart fields and raw PCM format.
+
+## Deployment reconciliation follow-up
+
+The first deployment of `1beb458` (`dpl_FvzgJytNfW9QduPyUQBUiuSZrZRv`) stopped at the unchanged fail-closed migration guard: the production ledger already contained `handlarborsen_competitor_candidates_v1`, merged on main after this isolated branch diverged.
+
+Synced the exact canonical SQL, guard policy/count tests, DDL equivalence test and schema-security fixture from main `a129f9460102a4de1d564385ee011ec843d05f30` (registration originated in `feabd726dc1eaa1843d4b3a47be39294ec2dc0d1`). The fixture also carries main's existing social profile/publication classifications, which this preview had not yet copied. No application code from those tracks was merged and no SQL was applied, repaired or reordered; no guard exception was added.
+
+Follow-up verification: **162/162** migration guard, migration security and canonical candidate-DDL tests passed. The canonical corpus is now 128 SQL / 114 enforced names; expected ledger is 151 known names. Voice runtime source is byte-for-byte unchanged from the tested `1beb458`.

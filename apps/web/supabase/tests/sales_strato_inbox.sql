@@ -11,7 +11,9 @@ begin
  perform pg_temp.inbox_refused(format('select sales_inbox_configure_inbox(%L::jsonb,%L::jsonb)',p,jsonb_set(v,'{folder}','"Sent"')),'22023');
  perform pg_temp.inbox_refused(format('select sales_inbox_configure_inbox(%L::jsonb,%L::jsonb)',jsonb_set(p,'{userId}','"20000000-0000-4000-8000-000000000002"'),v),'P0002');
  perform pg_temp.inbox_assert(sales_inbox_claim_sync(repeat('d',64),'{}')->'sync'='null'::jsonb,'disabled never reads');
+ perform pg_temp.inbox_assert(sales_mailbox_read_status(p,jsonb_build_object('projectId',v->>'projectId','mailboxId',v->>'mailboxId'))->>'inboxEnabled'='false','B1 proof alone is not inbox permission');
  c:=sales_inbox_set_inbox_state(p,jsonb_build_object('projectId',v->>'projectId','mailboxId',v->>'mailboxId','expectedVersion',1,'state','enabled'));
+ perform pg_temp.inbox_assert(sales_mailbox_read_status(p,jsonb_build_object('projectId',v->>'projectId','mailboxId',v->>'mailboxId'))->>'inboxEnabled'='true','B2 explicit permission projects as enabled');
  s:=sales_inbox_claim_sync(repeat('d',64),'{}')->'sync';perform pg_temp.inbox_assert(s->'ref' is not null,'enabled claim');
  perform pg_temp.inbox_assert(sales_inbox_claim_sync(repeat('d',64),'{}')->'sync'='null'::jsonb,'parallel claim refused');
  r:=jsonb_build_object('uid',12,'internalDate','2026-10-08T10:00:00Z','size',100,'headerSha256',repeat('a',64),'header',h,'text',null,'textState','not_selected','contentSha256',null);
@@ -34,6 +36,11 @@ begin
  perform pg_temp.inbox_assert(sales_inbox_read_message(p,jsonb_build_object('projectId',v->>'projectId','messageId',msg))->>'text'=tx,'selected content persisted');
  -- Extend the synthetic fixture with an owner-selected known address before epoch reread.
  insert into public.sales_contacts(id,project_id,version,data) values('30000000-0000-4000-8000-000000000081',(v->>'projectId')::uuid,1,'{"confirmed":true,"email":"dealer@example.se"}');
+ insert into public.sales_contacts(id,project_id,version,data) values('30000000-0000-4000-8000-000000000082',(v->>'projectId')::uuid,1,'{"confirmed":true,"email":"dealer@example.se","branchName":"Lund"}');
+ perform pg_temp.inbox_assert(sales_inbox_read_message(p,jsonb_build_object('projectId',v->>'projectId','messageId',msg))->>'contactState'='ambiguous','shared branch address remains ambiguous');
+ perform sales_inbox_link_message(p,jsonb_build_object('projectId',v->>'projectId','messageId',msg,'expectedVersion',3,'contactId','30000000-0000-4000-8000-000000000082'));
+ perform pg_temp.inbox_assert(sales_inbox_read_message(p,jsonb_build_object('projectId',v->>'projectId','messageId',msg))->>'contactId'='30000000-0000-4000-8000-000000000082','explicit branch link retained');
+ perform pg_temp.inbox_refused(format('select sales_inbox_link_message(%L::jsonb,%L::jsonb)',p,jsonb_build_object('projectId',v->>'projectId','messageId',msg,'expectedVersion',2,'contactId','30000000-0000-4000-8000-000000000081')),'23505');
  update public.sales_inbox_configs set selected_contact_ids=array['30000000-0000-4000-8000-000000000081'::uuid] where mailbox_id=(v->>'mailboxId')::uuid;
  -- New UIDVALIDITY preserves canonical complete message, not a campaign replay.
  s:=sales_inbox_claim_sync(repeat('d',64),'{}')->'sync';
@@ -60,6 +67,7 @@ begin
  perform pg_temp.inbox_assert((select state='enabled' from sales_inbox_configs where mailbox_id=(v->>'mailboxId')::uuid),'late failure preserved live config');
  -- Mailbox replacement fences an already claimed batch.
  s:=sales_inbox_claim_sync(repeat('d',64),'{}')->'sync';update sales_mailbox_connections set generation=7 where id=(v->>'mailboxId')::uuid;
+ perform pg_temp.inbox_assert(sales_mailbox_read_status(p,jsonb_build_object('projectId',v->>'projectId','mailboxId',v->>'mailboxId'))->>'inboxEnabled'='false','old B2 generation cannot grant replaced mailbox');
  b:=jsonb_build_object('ref',s->'ref','mode','scan','expectedCursor',s->'cursor','uidValidity','11','throughUid',15,'rangeEnd',20,'records','[]'::jsonb);
  perform pg_temp.inbox_refused(format('select sales_inbox_commit_batch(%L,%L::jsonb)',repeat('d',64),b),'40001');
  perform pg_temp.inbox_assert((select scanned_through_uid=14 from sales_inbox_configs where mailbox_id=(v->>'mailboxId')::uuid),'fenced cursor preserved');

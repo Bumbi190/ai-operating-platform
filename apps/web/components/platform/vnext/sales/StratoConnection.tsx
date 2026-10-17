@@ -26,7 +26,7 @@ export function StratoConnection({projectId}:{projectId:string}){
  }
  const verified=status?.status==='authenticated'
  return <section id="strato-connection" className={`${styles.panel} ph-no-capture`} data-ph-no-capture data-private="true" data-hj-suppress data-dd-privacy="hidden">
-  <h2>Anslut Strato</h2><p>Provar inloggningen – inga mejl skickas</p><p>Inkorgsinläsning är inte aktiverad.</p>
+  <h2>Anslut Strato</h2><p>Provar inloggningen – inga mejl skickas</p><p>{status?.inboxEnabled?'Inkorgsinläsning är aktiverad. Se inkorgens omfattning och synkstatus nedan.':'Inkorgsinläsning är inte aktiverad.'}</p>
   {message&&<p role="status">{message}</p>}{verified&&<p><strong>Strato-inloggningen är verifierad för {status.email}.</strong></p>}{status?.status==='waiting_for_host'&&<p>Väntar på specialisten för inloggningsprovet.</p>}{status?.status==='probing'&&<p>Inloggningsprovet pågår.</p>}{status?.status==='needs_input'&&<p>Kontrollera postfacksadressen och lösenordet och anslut på nytt.</p>}{status?.status==='reconciling'&&<p>Det förra provet behöver stämmas av. Ingen ny inloggning görs automatiskt.</p>}
   {hosts.length===0?<p>Atlas behöver ansluta specialisten innan du kan logga in här.</p>:<form onSubmit={e=>void submit(e)} className={styles.form} autoComplete="off">
    {hosts.length>1&&<label>Ansluten specialist<select disabled={busy||!!packetRef.current} value={workerId} onChange={e=>{emailEdited.current=false;setEmail('info@handlarborsen.se');setWorkerId(e.target.value);setStatus(null)}} required><option value="">Välj anslutning</option>{hosts.map(h=><option key={h.workerId} value={h.workerId}>{h.workerId}</option>)}</select></label>}

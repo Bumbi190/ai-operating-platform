@@ -1,0 +1,55 @@
+'use client'
+import {useEffect,useState} from 'react'
+import type {SalesContact} from '@/lib/sales/types'
+import type {HostStatus} from '@/lib/sales/host-types'
+import type {MailboxStatus} from '@/lib/sales/mailbox/types'
+import type {InboxMessage,InboxPage} from '@/lib/sales/inbox/types'
+import styles from './SalesWorkspace.module.css'
+const DEFAULT_SINCE='2026-10-07T22:00:00Z'
+function localTime(value:string){const d=new Date(value);return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16)}
+export function SalesInbox({projectId,contacts}:{projectId:string;contacts:SalesContact[]}){
+ const [hosts,setHosts]=useState<HostStatus[]>([]),[workerId,setWorkerId]=useState(''),[mailbox,setMailbox]=useState<MailboxStatus|null>(null),[page,setPage]=useState<InboxPage|null>(null),[detail,setDetail]=useState<InboxMessage|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[since,setSince]=useState(localTime(DEFAULT_SINCE)),[contactIds,setContactIds]=useState<string[]>([]),[linkId,setLinkId]=useState(''),[approved,setApproved]=useState(false)
+ const host=hosts.find(h=>h.workerId===workerId),config=page?.config,confirmed=contacts.filter(c=>c.confirmed),matches=detail?.header?confirmed.filter(c=>c.email.toLowerCase()===detail.header!.from.toLowerCase()):[]
+ async function get(url:string,signal?:AbortSignal){const r=await fetch(url,{cache:'no-store',signal});if(!r.ok)throw Error('Inkorgens status kunde inte hämtas.');return r.json()}
+ useEffect(()=>{const controller=new AbortController();void get(`/api/sales?projectId=${projectId}&connection=1`,controller.signal).then(v=>{if(controller.signal.aborted)return;const list=(v.connections as HostStatus[]).filter(h=>h.managed&&h.connectionState!=='revoked');setHosts(list);const requested=new URL(window.location.href).searchParams.get('stratoWorker');setWorkerId(list.some(h=>h.workerId===requested)?requested!:list.length===1?list[0].workerId:'')}).catch(()=>{if(!controller.signal.aborted)setError('Specialistens status kunde inte hämtas.')});return()=>controller.abort()},[projectId])
+ async function load(signal?:AbortSignal){
+  if(!workerId)return
+  const [m,h]=await Promise.all([get(`/api/sales/mailbox?projectId=${projectId}&workerId=${workerId}`,signal),get(`/api/sales?projectId=${projectId}&connection=1`,signal)])
+  if(signal?.aborted)return;setMailbox(m);setHosts(h.connections)
+  if(!m){setPage(null);return}
+  const saved=await get(`/api/sales/inbox?projectId=${projectId}&mailboxId=${m.mailboxId}`,signal);if(!signal?.aborted)setPage(saved)
+ }
+ useEffect(()=>{const c=new AbortController();setPage(null);setDetail(null);setMailbox(null);setApproved(false);void load(c.signal).catch(()=>{if(!c.signal.aborted)setError('Inkorgen kunde inte uppdateras.')});const timer=setInterval(()=>{void load(c.signal).catch(()=>{if(!c.signal.aborted)setError('Inkorgen kunde inte uppdateras. Sparat underlag kan vara äldre.')})},20000);return()=>{c.abort();clearInterval(timer)}},[projectId,workerId])
+ useEffect(()=>{setSince(localTime(config?.since??DEFAULT_SINCE));setContactIds(config?.selectedContactIds??[]);setApproved(false)},[config?.version])
+ async function open(id:string){const m=await get(`/api/sales/inbox?projectId=${projectId}&messageId=${id}`);setDetail(m);setLinkId('')}
+ async function post(operation:string,value:Record<string,unknown>){const r=await fetch('/api/sales/inbox',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({operation,projectId,...value})});if(!r.ok){if(r.status===409)throw Error('Underlaget har ändrats. Uppdatera inkorgen och granska den nya versionen innan du väljer igen.');throw Error('Åtgärden kunde inte sparas. Kontrollera inkorgens status.')}return r.json()}
+ async function action(work:()=>Promise<void>){setBusy(true);setError('');try{await work()}catch(e){setError(e instanceof Error?e.message:'Inkorgen kunde inte uppdateras.')}finally{setBusy(false)}}
+ const pending=page?.messages.filter(m=>m.textSelected&&m.textState==='not_selected').length??0
+ return <section aria-label="Inkorg" className={`${styles.panel} ph-no-capture`} data-ph-no-capture data-private="true" data-hj-suppress data-dd-privacy="hidden">
+  <div className={styles.sectionHead}><h2>Inkorg</h2><button disabled={busy||!workerId} onClick={()=>void action(async()=>{await load();if(detail)await open(detail.id)})}>Uppdatera inkorg</button></div>
+  <p>Sparade mejl från Strato. Text hämtas för de kontakter eller enskilda mejl du väljer. Inga mejl skickas.</p>
+  {error&&<p role="status">{error}</p>}
+  {hosts.length>1&&<label className={styles.form}>Välj inkorgens specialist<select value={workerId} onChange={e=>setWorkerId(e.target.value)}><option value="">Välj anslutning</option>{hosts.map((h,i)=><option key={h.workerId} value={h.workerId}>Anslutning {i+1}</option>)}</select></label>}
+  {!mailbox?<p>Anslut och verifiera Strato för att förbereda inkorgen.</p>:<>
+   <p><strong>{mailbox.email}</strong> · INBOX</p>
+   {config?.state==='enabled'?<p>Inkorgen är aktiverad.</p>:config?.state==='paused'?<p>Inkorgen är pausad.</p>:config?.state==='needs_input'?<p>Inloggningen behöver kontrolleras. Nya inloggningsförsök är stoppade tills du återupptar.</p>:config?.state==='reconciling'?<p>Inkorgen behöver stämmas av innan läsningen återupptas.</p>:config?.state==='revoked'?<p>Inkorgens behörighet är återkallad.</p>:<p>Inkorgen väntar på aktivering.</p>}
+   {host?.connectionState==='offline'&&<p>Specialisten är offline. Sparat underlag visas; nya mejl väntar.</p>}{(host?.desiredState==='paused'||host?.executionPaused)&&<p>Specialisten är pausad. Inga nya mejl läses.</p>}
+   <p>Senast lyckade synk: {config?.lastSyncedAt?new Date(config.lastSyncedAt).toLocaleString('sv-SE'):'Ingen ännu'}. {pending} textbegäran väntar i den här listan. Återstående mejl i postlådan är ännu inte verifierade.</p>
+   <details><summary>Omfattning och texturval</summary><form className={styles.form} onSubmit={e=>{e.preventDefault();void action(async()=>{await post('configure',{mailboxId:mailbox.mailboxId,expectedVersion:config?.version??0,folder:'INBOX',since:new Date(since).toISOString(),selectedContactIds:contactIds});await load()})}}>
+    <label>Läs från (din lokala tid)<input type="datetime-local" value={since} onChange={e=>setSince(e.target.value)} required disabled={busy}/></label>
+    <p>Ämne, avsändare och datum sparas inom omfattningen. Välj bekräftade kontakter vars mejltext också får läsas. En delad adress kan höra till flera filialer och kopplas aldrig automatiskt.</p>
+    {confirmed.length?confirmed.map(c=><label key={c.id} className={styles.check}><input type="checkbox" checked={contactIds.includes(c.id)} disabled={busy||(!contactIds.includes(c.id)&&contactIds.length>=50)} onChange={e=>setContactIds(e.target.checked?[...contactIds,c.id]:contactIds.filter(id=>id!==c.id))}/>{c.companyName} · {c.branchName||'Huvudkontor'} · {c.email}</label>):<p>Inga bekräftade kontakter finns. Du kan välja text för ett enskilt mejl när dess rubrik har sparats.</p>}
+    <button disabled={busy||mailbox.status!=='authenticated'||config?.state==='revoked'}>Spara omfattning</button><p>Ändrat datum eller kontakturval behöver aktiveras på nytt.</p>
+   </form></details>
+   {config&&config.state!=='revoked'&&<div className={styles.actions}>{config.state==='enabled'?<button disabled={busy} onClick={()=>void action(async()=>{await post('set_state',{mailboxId:mailbox.mailboxId,expectedVersion:config.version,state:'paused'});await load()})}>Pausa inkorg</button>:<><label className={styles.check}><input type="checkbox" checked={approved} onChange={e=>setApproved(e.target.checked)}/>Jag godkänner läsning av INBOX från {new Date(config.since).toLocaleString('sv-SE')} med sparat texturval.</label><button disabled={busy||!approved||mailbox.status!=='authenticated'} onClick={()=>void action(async()=>{await post('set_state',{mailboxId:mailbox.mailboxId,expectedVersion:config.version,state:'enabled'});await load()})}>Aktivera inkorg</button></>}</div>}
+   <div className={styles.inboxGrid}><div><h3>Sparade meddelanden</h3>{!page?.messages.length&&<p>Inga mejl är sparade ännu.</p>}<ul className={styles.jobs}>{page?.messages.map(m=><li key={m.id}><div><button disabled={busy} onClick={()=>void action(()=>open(m.id))}>{m.header?.subject||'Meddelandet saknar ämne'}</button><small>{m.header?.from} · {m.internalDate?new Date(m.internalDate).toLocaleString('sv-SE'):'Datum saknas'}</small>{m.possibleDuplicate&&<small>Möjlig dubblett – behöver granskas.</small>}</div></li>)}</ul>{page?.nextCursor&&<button disabled={busy} onClick={()=>void action(async()=>{const next=await get(`/api/sales/inbox?projectId=${projectId}&mailboxId=${mailbox.mailboxId}&cursor=${page.nextCursor}`);setPage({...next,messages:[...page.messages,...next.messages]})})}>Visa fler meddelanden</button>}</div>
+    {detail&&<article className={styles.inboxDetail}><h3>{detail.header?.subject||'Meddelande'}</h3><p>Från {detail.header?.from}<br/>Till {detail.header?.to}</p><small>Källa: sparat Strato-mejl · {detail.internalDate?new Date(detail.internalDate).toLocaleString('sv-SE'):'Datum saknas'}</small>
+     {detail.text!==null?<pre className={styles.inboxText}>{detail.text}</pre>:<p>Mejltexten är inte sparad eller inte vald för läsning.</p>}{detail.textState==='truncated'&&<p>Texten är förkortad.</p>}{['unsupported','too_large','vanished'].includes(detail.textState)&&<p>Texten kunde inte läsas fullständigt. Kontrollera originalet i Strato.</p>}
+     {!detail.textSelected&&<button disabled={busy} onClick={()=>void action(async()=>{await post('select_text',{messageId:detail.id,expectedVersion:detail.version});await load();await open(detail.id)})}>Läs texten i detta mejl</button>}
+     {(detail.contactState==='ambiguous'||matches.length>1)&&<p>Flera filialer använder adressen. Välj exakt bekräftad kontakt.</p>}{detail.contactState==='linked'&&<p>Kopplad till {contacts.find(c=>c.id===detail.contactId)?.companyName} · {contacts.find(c=>c.id===detail.contactId)?.branchName||'Huvudkontor'}.</p>}
+     <label className={styles.form}>Bekräftad kontakt och filial<select disabled={busy} value={linkId} onChange={e=>setLinkId(e.target.value)}><option value="">Välj exakt kontakt</option>{confirmed.map(c=><option key={c.id} value={c.id}>{c.companyName} · {c.branchName||'Huvudkontor'} · {c.email}{matches.includes(c)?' (adressförslag)':''}</option>)}</select></label><button disabled={busy||!linkId} onClick={()=>void action(async()=>{await post('link_message',{messageId:detail.id,expectedVersion:detail.version,contactId:linkId});await load();await open(detail.id)})}>Koppla vald kontakt</button>
+    </article>}
+   </div>
+  </>}
+ </section>
+}

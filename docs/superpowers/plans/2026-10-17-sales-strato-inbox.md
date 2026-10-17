@@ -101,12 +101,12 @@ Skapa sammanhållna `apps/web/lib/sales/inbox/{types,validate,store,api,host-api
 
 **Interfaces:** GET/POST följer befintlig session/project/same-origin-kontroll. InboxConfig-version och expectedVersion krävs för ändringar. Atlasverktygen läser bara efter conversation/project-validering.
 
-- [ ] Skriv RED för fel projekt/konversation, Modell försöker configure/link/select-text, tvetydig filialadress, HTML/prompt-injection, paus/offline/backlog och äldre B1-status som inte innebär aktiv inkorg.
-- [ ] Kör fokuserad Vitest och Playwright-fixture, avsedd RED.
-- [ ] Visa inkorgskort i befintlig säljvy med datum/omfattning, aktivera/pausa, senast lyckade synk, backlog och beständiga meddelanden. Ren text och privata/no-capture-markörer. Inga tekniska portar/token i användarflödet.
-- [ ] Ägaren kan välja text i enskilt meddelande och koppla till exakt befintlig bekräftad kontakt; versionkonflikt kräver ny läsning. Adressmatchning är endast ett förslag. Flera filialer förblir separata och tvetydiga tills ägaren väljer.
-- [ ] Atlas läser sparade referenser/status och vald text, anger källa/tid och saknade underlag. Okänd text skapar inga kommandon, modelljobb, ändringar eller svar. Uppdatera nuvarande hårdkodade inboxEnabled:false till faktisk behörighetsstatus; sendingEnabled är fortsatt literal false.
-- [ ] Kör GREEN, typecheck och desktop/mobil-Playwright. Commit `feat(sales): expose durable inbox evidence to the owner and Atlas`.
+- [x] Skriv RED för fel projekt/konversation, Modell försöker configure/link/select-text, tvetydig filialadress, HTML/prompt-injection, paus/offline/backlog och äldre B1-status som inte innebär aktiv inkorg.
+- [x] Kör fokuserad Vitest och Playwright-fixture, avsedd RED.
+- [x] Visa inkorgskort i befintlig säljvy med datum/omfattning, aktivera/pausa, senast lyckade synk, backlog och beständiga meddelanden. Ren text och privata/no-capture-markörer. Inga tekniska portar/token i användarflödet.
+- [x] Ägaren kan välja text i enskilt meddelande och koppla till exakt befintlig bekräftad kontakt; versionkonflikt kräver ny läsning. Adressmatchning är endast ett förslag. Flera filialer förblir separata och tvetydiga tills ägaren väljer.
+- [x] Atlas läser sparade referenser/status och vald text, anger källa/tid och saknade underlag. Okänd text skapar inga kommandon, modelljobb, ändringar eller svar. Uppdatera nuvarande hårdkodade inboxEnabled:false till faktisk behörighetsstatus; sendingEnabled är fortsatt literal false.
+- [x] Kör GREEN, typecheck och desktop/mobil-Playwright. Commit `feat(sales): expose durable inbox evidence to the owner and Atlas`.
 
 ### Task5: Sammanhängande verifiering, granskning och kvalificerad installation
 

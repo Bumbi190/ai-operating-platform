@@ -39,6 +39,13 @@ alter table public.sales_inbox_batches enable row level security;
 revoke all on public.sales_inbox_configs,public.sales_inbox_messages,public.sales_inbox_occurrences,public.sales_inbox_batches from public,anon,authenticated,service_role;
 grant select,insert,update on public.sales_inbox_configs,public.sales_inbox_messages,public.sales_inbox_occurrences,public.sales_inbox_batches to service_role;
 
+-- Preserve the B1 status contract while projecting the actual current B2 grant.
+create or replace function public.sales_mailbox_status(c public.sales_mailbox_connections) returns jsonb language sql security invoker set search_path='' as $$
+ select jsonb_build_object('mailboxId',c.id,'email',c.email,'status',c.status,'smtpAuthenticatedAt',c.smtp_authenticated_at,'imapAuthenticatedAt',c.imap_authenticated_at,'reasonCode',c.reason_code,
+ 'inboxEnabled',c.status='authenticated' and exists(select from public.sales_inbox_configs i where i.mailbox_id=c.id and i.project_id=c.project_id and i.owner_id=c.owner_id and i.mailbox_generation=c.generation and i.state='enabled'),'sendingEnabled',false)
+$$;
+-- CREATE OR REPLACE preserves the existing explicit service-role-only ACL.
+
 create function public.sales_inbox_cursor(c public.sales_inbox_configs) returns jsonb language sql security invoker set search_path='' as $$
  select jsonb_build_object('uidValidity',c.uid_validity::text,'scannedThroughUid',c.scanned_through_uid,'epoch',c.epoch)
 $$;

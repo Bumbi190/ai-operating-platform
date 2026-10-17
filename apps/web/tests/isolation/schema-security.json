@@ -5,7 +5,7 @@
     "captured_at": "2026-09-25",
     "handlarborsen_review_p2_migration_note": "Operator-approved, project-locked, immutable human review decision events. RLS + FORCE RLS, zero policies, no anon/auth grants; service role SELECT/INSERT only, REVIEW RPC only service role. Fully isolated PG17.6 security tests passed. Live production catalog must be checked after application.",
     "handlarborsen_candidates_migration_note": "Additional candidate memory table to be verified against the scoped live production catalog after operator-approved application: project-locked, RLS and FORCE RLS, zero policies and client grants, service_role SELECT/INSERT only. Earlier table classifications remain unchanged.",
-    "total_tables": 150,
+    "total_tables": 152,
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
     "platform_tokens_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090000_platform_tokens_client_revoke.sql (Settings S0): client grants revoked, RLS on, no policy.",
     "platform_credential_events_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090100_platform_credential_events.sql (Settings S0), applied to production before this row was merged: created with RLS on and no policy, every client grant revoked, service_role holding SELECT and INSERT only, UPDATE/DELETE/TRUNCATE refused by triggers.",
@@ -79,7 +79,8 @@
     "parallel_sales_reconciliation_note": "Read-only reconciliation2026-10-17 of already-applied sales_managed_host(20261017151718) and sales_strato_connection(20261017151722), exact source hashes pinned in tests. No SQL reapplied and no sales app code or flags changed. Public table count135, known ledger156. Inbox canonical path aligned to existing sales ledger-derived copy to avoid a duplicate migration name; SQL bytes unchanged.",
     "local_text_live_reconciliation_note": "Source-only reconciliation2026-10-17 of atlas_local_text already applied by parallel PR387 as ledger20261017174301. Exact95490-character source from frozen cff355230fe4250fa5ecd6ab4733cd99cab9a43b, SHA2565024a72db523f63ce7f42f4a5e0f774d50b34cda9a3f6e6f1c3f698610eba180. Twelve tables observed read-only with RLS enabled; eleven server-only with no client privilege/policy, jobs has one owner SELECT policy and authenticated column-only safe metadata reads, no client writes or raw payload read. Service has ALL table privileges including DELETE/TRUNCATE; all30 routines are SECURITY INVOKER with empty search_path, client EXECUTE denied and service EXECUTE allowed. No SQL reapplication, local-model application code, feature flags, admissions or worker installation included. Lifecycle migration remains outside this reconciliation until separately present in the live ledger. Earlier classifications retain their capture scope.",
     "local_text_live_note": "Scoped actual production observation2026-10-17 after owner-approved atlas_local_text(ledger20261017174301,SHA5024a72db523f63ce7f42f4a5e0f774d50b34cda9a3f6e6f1c3f698610eba180) and atlas_local_text_lifecycle(ledger20261017180713,SHAd5c1ca9aba0c993a6be27625cfa9852d0eb719be5ccc5eb826bfa95acfd0aba3). All15tables RLS ON,14SERVER_ONLY/no policies/client grants; jobs1owner policy+safe column-only authenticated SELECT. Zero anon/authenticated function EXECUTE. Security98INFO/36WARN; WARN20/7/8/1 unchanged. Ledger158/publictables150. Zero devices/jobs at observation; release/enrollment remain separate.",
-    "local_text_lifecycle_live_reconciliation_note": "Source-only reconciliation 2026-10-17: already-applied atlas_local_text_lifecycle ledger 20261017180713 matches frozen cff355230fe4250fa5ecd6ab4733cd99cab9a43b, 59067 characters, SHA256 d5c1ca9aba0c993a6be27625cfa9852d0eb719be5ccc5eb826bfa95acfd0aba3. Read-only live catalog: incidents/human_reviews/retention SERVER_ONLY, RLS on, FORCE off, zero policies/client table or column grants, service ALL including DELETE/TRUNCATE. All 44 local_text routines have empty search_path and client EXECUTE denied: 43 INVOKER plus local_text_conversation_deleted DEFINER trigger (also no service EXECUTE), scoped by auth.uid/old.user_id and old.id. Jobs metadata_expires_at is not authenticated-selectable. The earlier base migration note records its initial capture; lifecycle is now live. No apply, rollback, application/model code or activation included; other table capture scope unchanged."
+    "local_text_lifecycle_live_reconciliation_note": "Source-only reconciliation 2026-10-17: already-applied atlas_local_text_lifecycle ledger 20261017180713 matches frozen cff355230fe4250fa5ecd6ab4733cd99cab9a43b, 59067 characters, SHA256 d5c1ca9aba0c993a6be27625cfa9852d0eb719be5ccc5eb826bfa95acfd0aba3. Read-only live catalog: incidents/human_reviews/retention SERVER_ONLY, RLS on, FORCE off, zero policies/client table or column grants, service ALL including DELETE/TRUNCATE. All 44 local_text routines have empty search_path and client EXECUTE denied: 43 INVOKER plus local_text_conversation_deleted DEFINER trigger (also no service EXECUTE), scoped by auth.uid/old.user_id and old.id. Jobs metadata_expires_at is not authenticated-selectable. The earlier base migration note records its initial capture; lifecycle is now live. No apply, rollback, application/model code or activation included; other table capture scope unchanged.",
+    "handlarborsen_watch_journal_note": "Scoped live production observation2026-10-17 after handlarborsen_watch_runs_v1 ledger20261017200436; canonical20261017200038, exact SQL SHA256687d8cb87f8edf04f15618ed446d14fcae9dd9ebbf979f46b171429b7f7e9691,16520chars. Both tables RLS/FORCE ON, zero policies and anon/authenticated table or column privileges; service SELECT only, no direct mutation. Nine postgres-owned routines have empty search_path and zero client EXECUTE: three fixed-project DEFINER writers allow service EXECUTE, six INVOKER helpers allow no API-role EXECUTE. Five enabled guards/audit triggers; both tables empty, cron count38 unchanged. Ledger159/public tables152. Journal flag remains absent; no executor, schedule or source calls added. Only these two classifications refreshed; other capture scopes preserved."
   },
   "tables": {
     "handlarborsen_competitor_review_decisions": {
@@ -1550,6 +1551,24 @@
       "anon_grants": false,
       "authenticated_grants": false,
       "service_role": true
+    },
+    "handlarborsen_watch_runs": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "privilege_note": "RLS/FORCE; service SELECT only; no direct mutations. Three fixed-project DEFINER writers, six hardened invoker helpers; zero client EXECUTE."
+    },
+    "handlarborsen_watch_run_events": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "privilege_note": "RLS/FORCE; service SELECT only; no direct mutations. Three fixed-project DEFINER writers, six hardened invoker helpers; zero client EXECUTE."
     }
   },
   "views": {

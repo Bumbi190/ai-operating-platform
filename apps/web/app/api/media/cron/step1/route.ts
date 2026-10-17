@@ -117,6 +117,7 @@ async function saveFirstHunterCandidate(
         source_url: top.story.url,
         source_name: top.story.sourceLabel,
         // Preserve verified publisher time for downstream editorial audits.
+        source_key: process.env.THE_PROMPT_FRESH_NEWS_PILOT === 'true' ? top.story.source : null,
         source_published_at: process.env.THE_PROMPT_FRESH_NEWS_PILOT === 'true' ? top.story.publishedAt.toISOString() : null,
         freshness_checked_at: process.env.THE_PROMPT_FRESH_NEWS_PILOT === 'true' ? new Date().toISOString() : null,
       },

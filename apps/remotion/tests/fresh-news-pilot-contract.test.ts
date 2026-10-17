@@ -11,6 +11,9 @@ test('strict news pilot explicitly gates news hunter before LLM picks',()=>{
   assert.match(hunter,/strict \? filterFreshRelevantNews\(fresh\)\.eligible : fresh/)
   assert.match(hunter,/strict && screened\.length === 0/)
   assert.match(hunter,/Do not publish old stories/)
+  assert.match(step1,/source_key: process.env.THE_PROMPT_FRESH_NEWS_PILOT/)
+  assert.match(step1,/source_published_at: process.env.THE_PROMPT_FRESH_NEWS_PILOT/)
+  assert(!step1.includes("source_published_at: new Date().toISOString()"))
   assert.match(hunter,/!pubDate \|\| !Number\.isFinite\(new Date\(pubDate\)\.getTime\(\)\)/)
 })
 

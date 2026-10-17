@@ -3,6 +3,7 @@ import { Composition } from 'remotion'
 import { ShortFormVideo } from './compositions/ShortFormVideo'
 import { SimpleNewsReel } from './compositions/SimpleNewsReel'
 import { ContentGrowthReel } from './compositions/ContentGrowthReel'
+import { FamilyNovemberTeaser } from './compositions/FamilyNovemberTeaser'
 import type { VideoInputProps } from './lib/types'
 
 // Default props for Remotion Studio preview
@@ -32,6 +33,22 @@ export function RemotionRoot() {
         calculateMetadata={async ({ props }) => {
           const durationInFrames = Math.ceil((props.durationMs / 1000) * 30) + 30
           return { durationInFrames, props }
+        }}
+      />
+
+      {/* Family-owned November 2026 teaser ? offline visual preview ONLY.
+          Requires the matching approved assets staged locally (not committed). */}
+      <Composition
+        id="FamiljeStundenNovemberTeaser"
+        component={FamilyNovemberTeaser}
+        durationInFrames={450}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={{
+          heroImagePath: 'content-studio-local/family-november/hero.png' as const,
+          activityImagePath: 'content-studio-local/family-november/activity.png' as const,
+          musicPath: 'content-studio-local/family-november/music-bed.wav' as const,
         }}
       />
 

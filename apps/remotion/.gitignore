@@ -7,3 +7,5 @@ tmp-images/
 # Render input files (generated per-run, not source code)
 render-input.json
 [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]-*.json
+# Locally staged, hash-verified owner artwork and instrumental; never commit.
+public/content-studio-local/

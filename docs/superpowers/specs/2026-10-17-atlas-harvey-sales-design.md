@@ -1,6 +1,6 @@
 # Atlas + Harvey för Handlarbörsen
 Datum: 2026-10-17
-Status: Skriftlig integrationsdesign för granskning. Ingen installation, modellkörning, postfacksanslutning eller kundsändning har aktiverats.
+Status: Godkänd av André 2026-10-17 kl. 11:52 Europe/Stockholm. Ingen installation, modellkörning, postfacksanslutning eller kundsändning har aktiverats.
 Arbetsgren: `codex/atlas-harvey-sales-20261017`
 Omnira-bas: `146c5db4db2acb2b4c7d4bf959e1603562b6ebaa`
 Harvey-underlag: `ethanplusai/harvey@e114e95471b1bf155454fca108f0730b66a47a01`
@@ -100,4 +100,4 @@ Upstream hålls på den angivna committen och MIT-licensen bevaras. Adaptern ska
 
 Självgranskning: avsikt och första leverans är tydliga; Atlas, specialist, modell och mejltransport är skilda; befintliga kontakter räknas inte som nyimporterade; version/beslut är bundna; delad inkorg och osäker sändning har återhämtningsregler; kundautopilot och kalenderbokning utlovas inte. Detta dokument innehåller inga credentials eller produktkod.
 
-Nästa steg är granskning av denna skrivna design, därefter en exakt genomförandeplan och implementation med verifiering per del.
+Nästa steg är granskning av genomförandeplanen och val av körsätt, därefter implementation med verifiering per del.

@@ -60,3 +60,9 @@ test('canonical worker signing payload binds all header fields with a fixed doma
  assert.notDeepEqual(api.workerSigningPayload({...unsigned,bodySha256:'b'.repeat(64)}),bytes);
  assert.throws(()=>api.workerSigningPayload({...unsigned,signature}),/INVALID_UNSIGNED_ENVELOPE/);
 });
+
+test('Postgres-bound source, labels and result text reject NUL without replacing data',()=>{
+ assert.throws(()=>api.parseTask({kind:'summarize',text:'Hej\u0000Åsa'}));
+ assert.throws(()=>api.parseTask({kind:'classify',text:'Hej',labels:['a\u0000','b']}));
+ assert.throws(()=>api.validateTaskResult({kind:'extract',text:'Bolag saknas'},{company:'AB\u0000',city:null,registrationNumber:null}));
+});

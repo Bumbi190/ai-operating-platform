@@ -8,7 +8,7 @@ export type AttemptEvent =
  | {type:'completed';result:TaskResult;resultHash:string;usage?:Record<string,number>}
  | {type:'known_failed';reasonCode:string}
  | {type:'reconciled';proofRef:string}
-type RpcName='local_text_enqueue'|'local_text_claim'|'local_text_transition'|'local_text_read_receipt'
+type RpcName='local_text_enqueue_reserved'|'local_text_enqueue'|'local_text_claim'|'local_text_transition'|'local_text_read_receipt'
 type RpcResponse={data:unknown;error:unknown}
 /** Narrow bridge until whole-schema generated types include this unactivated migration.
  * Only these four names cross the bridge; every response is checked as untrusted data. */
@@ -34,13 +34,14 @@ function resultOf<T>(data:unknown,reconcileId:string,parse:(value:unknown,kind:'
  if(data.kind==='applied'||data.kind==='duplicate'){try{return {kind:data.kind,value:parse(data.value,data.kind)}}catch{return {kind:'unknown',reconcileId}}}
  return {kind:'unknown',reconcileId}
 }
-export async function enqueueJob(db:Db,ctx:VerifiedContext,input:RequestLocalText,selection:SelectionDecision):Promise<TransitionResult<JobReceipt>>{
+export async function enqueueJob(db:Db,ctx:VerifiedContext,input:RequestLocalText,selection:SelectionDecision,cloudProfileHash?:string):Promise<TransitionResult<JobReceipt>>{
  let request:RequestLocalText
  try{request=parseRequest(input)}catch{return {kind:'refused',reason:'INVALID_REQUEST'}}
  const inputHash=hashTask(request.task),reconcileId=isUuid(selection?.jobId)?selection.jobId:randomUUID()
  if(!selection||selection.projectId!==request.projectId||selection.inputHash!==inputHash||selection.admissionId!==ctx.admissionId||selection.policyVersion!==ctx.policyVersion||selection.profile!=='local_assist_v1'||ctx.projectId!==request.projectId||ctx.conversationId!==request.conversationId||!isUuid(ctx.userId)||!isUuid(selection.jobId)||!isUuid(selection.id))return {kind:'refused',reason:'SELECTION_BINDING_MISMATCH'}
  try{
-  const {data,error}=await rpc(db,'local_text_enqueue',{p_context:ctx,p_request:request,p_input_hash:inputHash,p_job_id:selection.jobId,p_selection:selection})
+  if(cloudProfileHash!==undefined&&!isSha256(cloudProfileHash))return {kind:'refused',reason:'INVALID_PROFILE'}
+  const {data,error}=await rpc(db,cloudProfileHash?'local_text_enqueue_reserved':'local_text_enqueue',{p_context:ctx,p_request:request,p_input_hash:inputHash,p_job_id:selection.jobId,p_selection:selection,...(cloudProfileHash?{p_profile_hash:cloudProfileHash}:{})})
   if(error)return {kind:'unknown',reconcileId}
   return resultOf(data,reconcileId,(v,kind)=>receipt(v,request.task,{jobId:kind==='applied'?selection.jobId:undefined,projectId:request.projectId,conversationId:request.conversationId}))
  }catch{return {kind:'unknown',reconcileId}}
@@ -77,3 +78,22 @@ export async function writeOwnerAdmission(db:Db,ownerId:string,projectId:string,
 
 // Private server consumers share the same strict result/expiry suppression.
 export {receipt as parseStoredReceipt}
+
+export async function readLocalTextCost(db:Db,userId:string,jobId:string){
+ const unknown={localApiFeeUsd:0 as const,totalApiCostUsd:null as number|null,totalOperatingCostUsd:null as number|null,guaranteedSavings:false as const,status:'unverified' as 'unverified'|'metered'|'estimated'}
+ if(!isUuid(userId)||!isUuid(jobId))return unknown
+ try{
+  const call=db.rpc.bind(db) as unknown as (name:string,args:Record<string,unknown>)=>PromiseLike<RpcResponse>
+  const {data,error}=await call('local_text_cost_trace',{p_owner_id:userId,p_job_id:jobId})
+  if(error||!object(data)||data.jobId!==jobId||!Array.isArray(data.stages)||data.stages.length>3)return unknown
+  let total=0,estimated=false
+  for(const stage of data.stages){
+   if(!object(stage)||!['local_review','cloud_task','cloud_review'].includes(String(stage.stage)))return unknown
+   if((stage.state==='pending'||stage.state==='human_ready'||stage.state==='applied')&&stage.usageRef===null&&stage.costUsd===null)continue
+   if(!isUuid(stage.usageRef)||typeof stage.costUsd!=='number'||!Number.isFinite(stage.costUsd)||stage.costUsd<0)return unknown
+   total+=stage.costUsd
+   if(!Number.isSafeInteger(stage.tokensIn)||Number(stage.tokensIn)<=0||!Number.isSafeInteger(stage.tokensOut)||Number(stage.tokensOut)<0)estimated=true
+  }
+  return {...unknown,totalApiCostUsd:estimated?null:total,status:estimated?'estimated' as const:'metered' as const}
+ }catch{return unknown}
+}

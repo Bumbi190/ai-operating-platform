@@ -68,7 +68,7 @@ create table public.local_text_request_nonces (
 create function public.local_text_receipt(p_id uuid) returns jsonb language sql stable security invoker set search_path='' as $$
  select jsonb_build_object('id',j.id,'projectId',j.project_id,'conversationId',j.conversation_id,'state',j.state,
  'reasonCode',case when j.payload_expires_at<=clock_timestamp() then 'PAYLOAD_EXPIRED' else j.reason_code end,'result',case when j.state='succeeded' and j.review_status='approved' and j.expires_at>now() and j.payload_expires_at>clock_timestamp() then j.result else null end,
- 'reviewStatus',j.review_status,'selectionId',j.selection_id,'expiresAt',to_char(j.expires_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+ 'reviewStatus',j.review_status,'selectionId',j.selection_id,'expiresAt',to_char(least(j.expires_at,j.payload_expires_at) at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
  'updatedAt',to_char(j.updated_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')) from public.local_text_jobs j where j.id=p_id;
 $$;
 create function public.local_text_eligible(p_project uuid,p_owner uuid,p_admission uuid,p_kind text,p_input_hash text) returns boolean
@@ -522,7 +522,7 @@ begin
  select * into a from public.local_text_admissions where id=j.admission_id;
  select * into g from public.local_text_cloud_authorizations where admission_id=a.id and status='active' and expires_at>clock_timestamp() and profile_hash=p_profile_hash for share;
  select * into st from public.stop_state(j.project_id);
- if j.task is null or j.cancel_requested or j.payload_expires_at<=clock_timestamp() or j.state not in ('reviewing','escalation_pending') or a.status<>'active' or a.qualification_status<>'verified' or a.expires_at<=clock_timestamp() or g.id is null or g.owner_id<>j.owner_id
+ if j.task is null or j.cancel_requested or j.payload_expires_at<=clock_timestamp() or j.state not in ('queued','claimed','reviewing','escalation_pending') or a.status<>'active' or a.qualification_status<>'verified' or a.expires_at<=clock_timestamp() or g.id is null or g.owner_id<>j.owner_id
  or j.context->>'placement' is distinct from 'cloud_control_review_allowed' or j.context->>'dataClass' is distinct from a.data_class or not(j.input_hash=any(a.approved_input_hashes))
  or st.global_paused is distinct from false or st.project_found is distinct from true or st.project_paused is distinct from false
  or not exists(select 1 from public.local_text_devices d where d.id=a.device_id and d.owner_id=j.owner_id and d.status='active' and d.expires_at>clock_timestamp())
@@ -692,3 +692,58 @@ begin
 end$$;
 create trigger local_text_cloud_authorization_immutable before update on public.local_text_cloud_authorizations for each row execute function public.local_text_cloud_authorization_immutable();
 revoke all on function public.local_text_cloud_authorization_immutable() from public,anon,authenticated;
+-- Server-derived request context; no model/task supplied privacy/budget flags.
+create function public.local_text_selection_context(p_owner_id uuid,p_project_id uuid,p_conversation_id uuid,p_input_hash text,p_kind text,p_profile_hash text,p_profile_expires_at timestamptz) returns jsonb language plpgsql security invoker set search_path='' as $$
+declare candidates jsonb;classification text;cap numeric;daily numeric;spent numeric;held numeric;deadline timestamptz;
+begin
+ if not exists(select 1 from public.projects where id=p_project_id and owner_id=p_owner_id) or not exists(select 1 from public.conversations where id=p_conversation_id and user_id=p_owner_id) then return jsonb_build_object('kind','refused','reason','SCOPE_REFUSED');end if;
+ if p_profile_expires_at is null or p_profile_expires_at<=clock_timestamp()+interval '5 minutes' then return jsonb_build_object('kind','refused','reason','CLOUD_REVIEW_UNVERIFIED');end if;
+ select a.data_class into classification from public.local_text_admissions a join public.local_text_cloud_authorizations g on g.admission_id=a.id
+ where a.project_id=p_project_id and a.task_kind=p_kind and p_input_hash=any(a.approved_input_hashes) and a.status='active' and a.qualification_status='verified' and a.expires_at>clock_timestamp()
+ and g.status='active' and g.owner_id=p_owner_id and g.profile_hash=p_profile_hash and g.expires_at>clock_timestamp() order by a.data_class,a.id limit 1;
+ if classification is null then return jsonb_build_object('kind','refused','reason','EXACT_SOURCE_APPROVAL_REQUIRED');end if;
+ select coalesce(sum(cost_usd),0) into spent from public.cost_events where project_id=p_project_id and created_at>=(date_trunc('day',clock_timestamp() at time zone 'UTC') at time zone 'UTC');
+ select coalesce(sum(held_usd),0) into held from public.local_text_cloud_reservations where project_id=p_project_id and released_at is null;
+ select jsonb_agg(jsonb_build_object('qualification',a.configuration->'qualification','evidenceHash',a.evidence_hash,
+ 'deployment',jsonb_build_object('id',a.deployment_id,'deviceId',d.id,'ownerId',d.owner_id,'status',d.status,'expiresAt',d.expires_at,'healthAt',d.last_heartbeat_at,'healthState',d.health_state,'lifecycleLock',d.reported_health->>'lifecycleLock','gpuAvailable',d.reported_health->'gpuAvailable','runtimeVersion',d.reported_health->>'runtimeVersion','runtimeHash',d.reported_health->>'runtimeHash','adapterHash',d.reported_health->>'adapterHash','configurationHash',d.reported_health->>'configurationHash','modelDigests',coalesce((select jsonb_agg(x->'modelDigest') from jsonb_array_elements(d.reported_health->'models') x),'[]'),'warmDigest',d.current_model_digest),
+ 'admission',jsonb_build_object('id',a.id,'projectId',a.project_id,'deviceId',a.device_id,'deploymentId',a.deployment_id,'taskKind',a.task_kind,'status',a.status,'qualificationStatus',a.qualification_status,'evidenceHash',a.evidence_hash,'modelDigest',a.model_digest,'dataClass',a.data_class,'placement',a.configuration->>'placement','policyVersion',a.policy_version,'approvedInputHashes',a.approved_input_hashes,'expiresAt',a.expires_at,'jobCostCapUsd',least(g.job_cap_usd,(a.configuration->>'jobCostCapUsd')::numeric),'dailyCostCapUsd',least(g.daily_cap_usd,(a.configuration->>'dailyCostCapUsd')::numeric)))),min(least(g.job_cap_usd,(a.configuration->>'jobCostCapUsd')::numeric)),min(least(g.daily_cap_usd,(a.configuration->>'dailyCostCapUsd')::numeric)),least(clock_timestamp()+interval '15 minutes',min(a.expires_at),min(g.expires_at),p_profile_expires_at)
+ into candidates,cap,daily,deadline
+ from public.local_text_admissions a join public.local_text_devices d on d.id=a.device_id join public.local_text_cloud_authorizations g on g.admission_id=a.id
+ where a.project_id=p_project_id and a.task_kind=p_kind and a.data_class=classification and p_input_hash=any(a.approved_input_hashes) and a.status='active' and a.qualification_status='verified' and a.expires_at>clock_timestamp()
+ and d.owner_id=p_owner_id and g.owner_id=p_owner_id and g.status='active' and g.profile_hash=p_profile_hash and g.expires_at>clock_timestamp();
+ return jsonb_build_object('kind','applied','value',jsonb_build_object('context',jsonb_build_object('userId',p_owner_id,'projectId',p_project_id,'conversationId',p_conversation_id,'dataClass',classification,'placement','cloud_control_review_allowed','policyVersion','local_assist_v1','deadlineAt',deadline,'jobCostCapUsd',cap,'dailyCostCapUsd',daily,'cloud',jsonb_build_object('authorized',true,'reviewReady',true,'taskReady',true,'pricingVerified',true,'reservationUsd',0.034560,'dailyRemainingUsd',greatest(0,daily-spent-held))),'candidates',coalesce(candidates,'[]')));
+end$$;
+-- Atomic worst-case reservation before the first local attempt. If headroom
+-- changed after ranking, the enqueue is rolled back and no GPU work is exposed.
+create function public.local_text_enqueue_reserved(p_context jsonb,p_request jsonb,p_input_hash text,p_job_id uuid,p_selection jsonb,p_profile_hash text) returns jsonb language plpgsql security invoker set search_path='' as $$
+declare v jsonb;id uuid;
+begin
+ perform pg_advisory_xact_lock(hashtextextended('local_text_budget:'||(p_request->>'projectId'),0));
+ v=public.local_text_enqueue(p_context,p_request,p_input_hash,p_job_id,p_selection);
+ if v->>'kind' not in ('applied','duplicate') then return v;end if;
+ id=(v#>>'{value,id}')::uuid;
+ if v->>'kind'='duplicate' then return v;end if;
+ if not public.local_text_reserve_cloud(id,p_profile_hash) then raise check_violation using message='BUDGET_UNVERIFIED';end if;
+ return v;
+exception when check_violation then return jsonb_build_object('kind','refused','reason','BUDGET_UNVERIFIED');end$$;
+create function public.local_text_cost_trace(p_owner_id uuid,p_job_id uuid) returns jsonb language plpgsql security invoker set search_path='' as $$
+declare j public.local_text_jobs;
+begin
+ select q.* into j from public.local_text_jobs q join public.projects p on p.id=q.project_id join public.conversations c on c.id=q.conversation_id where q.id=p_job_id and q.owner_id=p_owner_id and p.owner_id=p_owner_id and c.user_id=p_owner_id;
+ if j.id is null then return null;end if;
+ return jsonb_build_object('jobId',j.id,'stages',coalesce((select jsonb_agg(jsonb_build_object('stage',s.stage,'state',s.state,'usageRef',s.receipt->>'usageRef','costUsd',ce.cost_usd,'tokensIn',ce.tokens_in,'tokensOut',ce.tokens_out)) from public.local_text_cloud_stages s left join public.cost_events ce on ce.id=nullif(s.receipt->>'usageRef','')::uuid and ce.run_id=s.run_id and ce.project_id=j.project_id where s.job_id=j.id),'[]'));
+end$$;
+revoke all on function public.local_text_selection_context(uuid,uuid,uuid,text,text,text,timestamptz),public.local_text_enqueue_reserved(jsonb,jsonb,text,uuid,jsonb,text),public.local_text_cost_trace(uuid,uuid) from public,anon,authenticated;
+grant execute on function public.local_text_selection_context(uuid,uuid,uuid,text,text,text,timestamptz),public.local_text_enqueue_reserved(jsonb,jsonb,text,uuid,jsonb,text),public.local_text_cost_trace(uuid,uuid) to service_role;
+
+create function public.local_text_existing_request(p_owner_id uuid,p_project_id uuid,p_conversation_id uuid,p_key uuid,p_input_hash text) returns jsonb language plpgsql security invoker set search_path='' as $$
+declare j public.local_text_jobs;
+begin
+ if not exists(select 1 from public.projects where id=p_project_id and owner_id=p_owner_id) or not exists(select 1 from public.conversations where id=p_conversation_id and user_id=p_owner_id) then return jsonb_build_object('kind','refused','reason','SCOPE_REFUSED');end if;
+ select * into j from public.local_text_jobs where project_id=p_project_id and conversation_id=p_conversation_id and idempotency_key=p_key and owner_id=p_owner_id;
+ if not found then return jsonb_build_object('kind','absent');end if;
+ if j.input_hash<>p_input_hash then return jsonb_build_object('kind','refused','reason','IDEMPOTENCY_CONFLICT');end if;
+ return jsonb_build_object('kind','duplicate','value',public.local_text_receipt(j.id));
+end$$;
+revoke all on function public.local_text_existing_request(uuid,uuid,uuid,uuid,text) from public,anon,authenticated;
+grant execute on function public.local_text_existing_request(uuid,uuid,uuid,uuid,text) to service_role;

@@ -10,7 +10,7 @@ export const isSha256=value=>typeof value==='string' && hashPattern.test(value);
 const plain=v=>v!==null&&typeof v==='object'&&!Array.isArray(v)&&Object.getPrototypeOf(v)===Object.prototype;
 const exact=(v,keys)=>plain(v)&&Reflect.ownKeys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
 const scalar=s=>!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(s);
-const text=(v,max)=>typeof v==='string'&&v.trim().length>0&&scalar(v)&&[...v].length<=max;
+const text=(v,max)=>typeof v==='string'&&v.trim().length>0&&!v.includes('\u0000')&&scalar(v)&&[...v].length<=max;
 const iso=v=>typeof v==='string'&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(v)&&Number.isFinite(Date.parse(v))&&new Date(v).toISOString()===v;
 const origin=v=>{try{const u=new URL(v);return typeof v==='string'&&u.protocol==='https:'&&u.origin===v&&!u.username&&!u.password;}catch{return false;}};
 function fail(code){throw new Error(code);}

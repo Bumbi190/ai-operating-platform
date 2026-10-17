@@ -68,6 +68,8 @@ import {
   type ToolEntry,
   type TranscriptEntry,
 } from '@/lib/os/chat-shared'
+import {LocalTextJobReceipt} from './LocalTextJobReceipt'
+import {localTextReceiptLink} from '@/lib/local-text/receipt'
 import styles from './AtlasChat.module.css'
 import type {PlanView} from '@/lib/website-build/planning/types'
 import type {BuildSessionView} from '@/lib/website-build/types'
@@ -328,6 +330,8 @@ export function ChatEntry({ entry }: { entry: TranscriptEntry }) {
 }
 
 function ToolStep({ entry }: { entry: ToolEntry }) {
+  const localLink=localTextReceiptLink(entry.result)
+  if(localLink)return <LocalTextJobReceipt link={localLink}/>
   const outcome = toolOutcome(entry)
   const error = outcome === 'failed' ? toolError(entry) : null
   const run = runSummary(entry)

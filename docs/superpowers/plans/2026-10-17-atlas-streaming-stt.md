@@ -119,3 +119,6 @@ Tasks1/2 complete;3 implementation and applicable Starter rate verified, live pr
 
 ## Phone3133 execution adjustment
 First real provider connection failed at local ws frame decoding before any PCM provider send. Packaging fix reproduced RED/GREEN using real Next production compilation. Follow-up protocol probe uses remaining2connections (3.2+42.4=45.6s); including prior attempt total3connections/48.8s conservative. No expansion of approved cap, retries or activation. Empty-checkpoint-tail remains local-only evidence; real provider/mobile gates still pending. See latest verification section.
+
+## Phone3134 provider gate and pilot activation
+Actual phone follow-up2/2 with45.6s sent; runtime acknowledgements1+3 and complete closure. Read-only DB verifies all3 attempts settled at full conservative ceiling, including failed3133. Task3 provider/lifecycle gate complete; original provider-only probe cap exhausted. Branch-only modepilot now opens explicit selection while batch remains default. Physical three-turn/correction/audibility and20paired comparisons remain pending; slots prepared in verification note, no actual samples JSON. Earlier native/full-suite limitations unchanged. No Notion write retry, production merge or accepted09a alias change.

@@ -3,7 +3,7 @@ Plan: docs/superpowers/plans/2026-10-17-atlas-streaming-stt.md
 Approved by André 2026-10-17 07:40 Europe/Stockholm; Native.
 Accepted baseline: 09a32df71772473794ffdeea0ac335d15b267baf. Separate pilot branch; no production merge.
 
-**Current checkpoint2026-10-17:** first real phone/provider probe failed before any PCM reached ElevenLabs: bundled ws crashed decoding its first6404-byte masked frame. Minimal Node-native ws externalization fixes the same failure in an actual Next production build. Remaining probe reduced to2sessions/45.6s, preserving3sessions/48.8s conservative total including the failed attempt. Provider gate and mobile latency remain pending; mode=verify still hides microphone streaming selection and batch remains default. Earlier local286/286 passed; final follow-up checks below. Historical sections retain earlier checkpoints and are superseded by the phone3133 section.
+**Current checkpoint2026-10-17:** actual phone/provider follow-up3134 passed2/2 on dd6e1eb:102400+1356800 PCM bytes, ordered1+3 acknowledgements, complete closure. Read-only DB verification confirms all three attempts durably settled at their full conservative ceilings (not invoice measurements). Branch-only pilot activation is approved and prepared; explicit streaming selection, batch default. Physical conversation/mobile latency acceptance remains pending;20paired slots below have no actual samples. Historical sections retain earlier checkpoints and are superseded by the phone3134 section.
 
 ## Task 1: provider-free transport
 - Existing linked worktree verified, no AGENTS.md found. Baseline access suite 24/24 passed.
@@ -176,3 +176,47 @@ One provider connection has already been attempted. The follow-up page now expli
 The remote device disconnected during initial follow-up verification. Unit286/286 completed; native log ended at test startup, so that run is unconfirmed/interrupted, not passed. On reconnection final native/TypeScript are run afresh once. No code default or production merge is authorized by these local proofs.
 
 Final follow-up verification after reconnect: selected286/286 across15files completed; checker tests4/4; hardened real Next production build check exit0 with verifiedCurrentBuild:true and all4/31/32/6404-byte payloads decoded exactly. Native final frozen source,1worker,retries0:2/2 in58.9s, exactly2local connections/1459200PCMbytes/2finals/2checkpoint crossings, failure/no-retry pass. TypeScript exit0; diffcheck pass; mobile412x915 screenshot inspected. Required independent re-review confirms checker P2 resolved and no new concrete findings. Previous interrupted native run is not counted as a pass. Native provider remains simulated; actual follow-up phone/provider result and mobile latency remain pending.
+
+## Phone3134: actual provider and durable settlement gates passed
+On2026-10-17 at10:41 Europe/Stockholm the operator's screenshot3134 shows2/2 success and45.6s sent on dd6e1eb / dpl_JDKWteSpowo9VQd11Ji3mYybrY73. Correlated actual runtime:
+- Short connection at08:40:26UTC: provider ready917ms; one commit at4304ms; closed4431ms;102400 PCM bytes;1committed segment; complete.
+- Long connection at08:40:31UTC: ready305ms; ordered acknowledgements at20737ms/640000bytes,40885ms/1280000bytes,43310ms/1356800bytes; closed43434ms;3committed segments; complete.
+- Total forwarded1459200bytes/45.6s; final validation passed for prerecorded Atlas/Omnira/ThePrompt; no chat/TTS/microphone used in this provider-only probe. This is not a Swedish quality, physical audibility or conversation latency benchmark. The separate exact-checkpoint-empty-tail case remains only unit covered.
+- Runtime error/warning/fatal query over the probe window returned none. No additional provider-only attempts were made; original three-attempt cap is exhausted (failed3133 + these2), conservative browser audio48.8s total.
+
+Read-only Supabase connector query against the verified AI Operating Platform project checked only operation/time-scoped reservation lifecycle and linked cost totals, no token/audio/user text and no mutations:
+- Failed08:05 attempt settled at08:05:32 as estimate_ambiguous, estimated=actual booked0.1680SEK, one linked cost row, fixed_units, no ceiling_exceeded.
+- Short08:40:26 attempt settled08:40:30 as estimate_unmetered,0.1680SEK, one linked row, fixed_units, no ceiling_exceeded.
+- Long08:40:31 attempt settled08:41:15 as estimate_unmetered,0.1680SEK, one linked row, fixed_units, no ceiling_exceeded.
+All three dispatch intents were recorded and all are settled. These are conservative Omnira book estimates, not ElevenLabs invoice measurements; total booked0.5040SEK. This supersedes the earlier unknown actual durable-row status.
+
+Task1 transport, Task2 protocol, Task3 applicable price/lifecycle/provider protocol proof and Tasks4/5 implementation/local verification are complete within the stated scope. Task6 physical conversation acceptance and actual benefit are NOT complete.
+The existing branch-specific preview flag now changes verify → pilot under the approved plan; only this branch/preview, no shared/production/accepted09a mutation. Server page offers an explicit Strömmande tal · test selector; batch remains default. Anders/chat/TTS/pause/interruption behavior is retained. Existing six selection tests cover hidden probe/verify, pilot preview availability, batch default and production denial. No production code changed in this documentation/activation checkpoint; previous286selected+4checker/native2/2/TypeScript results remain the relevant verification, not a new full-suite claim.
+Publish the exact new SHA/READY alias before directing the operator to /atlas/rosttest. Rollback: disable branch mode or select batch, stopping current sockets/mic/output. No locked-screen/background guarantee; phone page must remain visible.
+
+### Prepared physical comparison slots (no samples recorded)
+Use same phone/browser/headset/network, Anders and same pause for each pair. Repeat the same question within its pair, alternate which mode goes first, await listening between turns. Short warm-up: three automatic questions, one spoken name correction, return to listening and audible output. Report failures separately.
+The UI keeps at most40 mode/end-to-scheduled-playback measurements in memory, including pause/transcription/queue wait. It is a scheduled-playback proxy; operator must separately confirm that sound was heard. Read/record before reload or leaving, which clears the visit. No actual mobile JSON exists yet.
+| Pair | Duration bucket | Order | Actual result |
+| --- | --- | --- | --- |
+| 01 | short (<3s) | batch → streaming | pending |
+| 02 | short (<3s) | streaming → batch | pending |
+| 03 | short (<3s) | batch → streaming | pending |
+| 04 | short (<3s) | streaming → batch | pending |
+| 05 | short (<3s) | batch → streaming | pending |
+| 06 | short (<3s) | streaming → batch | pending |
+| 07 | normal (3–10s) | batch → streaming | pending |
+| 08 | normal (3–10s) | streaming → batch | pending |
+| 09 | normal (3–10s) | batch → streaming | pending |
+| 10 | normal (3–10s) | streaming → batch | pending |
+| 11 | normal (3–10s) | batch → streaming | pending |
+| 12 | normal (3–10s) | streaming → batch | pending |
+| 13 | normal (3–10s) | batch → streaming | pending |
+| 14 | normal (3–10s) | streaming → batch | pending |
+| 15 | long (>10s, <90s) | batch → streaming | pending |
+| 16 | long (>10s, <90s) | streaming → batch | pending |
+| 17 | long (>10s, <90s) | batch → streaming | pending |
+| 18 | long (>10s, <90s) | streaming → batch | pending |
+| 19 | long (>10s, <90s) | batch → streaming | pending |
+| 20 | long (>10s, <90s) | streaming → batch | pending |
+For each actual attempt record only anonymous pair/question index,mode,durationBucket,endToPlaybackMs,outcome (no audio/text). No placeholders count as results. Calculate median/p90 per mode and paired differences only from valid complete samples; retain failed attempts separately. Required proposed benefit: >=300ms median improvement, p90 no more than200ms worse, no lost/duplicate turns/name-quality degradation. Missing measurements keep batch default. No default/production change based on a simple subjective speed report alone.

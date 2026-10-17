@@ -2,6 +2,7 @@ import React from 'react'
 import { Composition } from 'remotion'
 import { ShortFormVideo } from './compositions/ShortFormVideo'
 import { SimpleNewsReel } from './compositions/SimpleNewsReel'
+import { ContentGrowthReel } from './compositions/ContentGrowthReel'
 import type { VideoInputProps } from './lib/types'
 
 // Default props for Remotion Studio preview
@@ -32,6 +33,26 @@ export function RemotionRoot() {
           const durationInFrames = Math.ceil((props.durationMs / 1000) * 30) + 30
           return { durationInFrames, props }
         }}
+      />
+
+      {/* Creative lab only: isolated previews, never connected to publishing. */}
+      <Composition
+        id="FamiljeStundenContentLab"
+        component={ContentGrowthReel}
+        durationInFrames={360}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={{ brand: 'familje-stunden' as const, imageUrls: [] }}
+      />
+      <Composition
+        id="ThePromptContentLab"
+        component={ContentGrowthReel}
+        durationInFrames={360}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={{ brand: 'the-prompt' as const, imageUrls: [] }}
       />
 
       {/* Lite version — single static image, same audio + captions. ~5× cheaper. */}

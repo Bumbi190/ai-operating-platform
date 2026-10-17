@@ -33,3 +33,6 @@ This is a prepared release scope, not a claim of live inbox access. The approved
 ## Current live proof
 
 Read-only database observation at2026-10-17T19:53Z: B1 mailbox authenticated, generation6, IMAP proof19:07:18.240548Z, SMTP proof19:07:17.925556Z. Host online/CLI ready, generation2, latest heartbeat19:53:04.351399Z; contacts0, jobs0. B2 schema absent and no B2 permission active. These facts do not prove an inbox import.
+
+## Reviewed final candidate pins and recovery
+Client source 7acf719ae34f8d45230539c9735a458bcbf5847d; manifest 849135da5819f9cb4e1b69d93aedebe56d9d61b763b45817353faebac9a77287;49 files; staged Python108/108. Reviewed migration SHA256 1013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1. The active B1 task is unchanged; exact ownership and candidate startup plan were verified without Apply. Once an inbox config exists, a different email is explicitly refused and requires a distinct connection identity, preserving UID namespaces. Same-address password renewal is allowed but requires saving/activating the scope again; owner and Atlas effective status now explain that fence. Before changing origin, require the exact old RSA key entry to exist and public kid to match; never invoke key creation as a missing-key fallback. Server preview pin remains pending the approved migration/build gate.

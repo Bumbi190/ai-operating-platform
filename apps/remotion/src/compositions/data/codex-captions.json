@@ -1,322 +1,324 @@
 {
   "story": "codex",
+  "voiceId": "qSeXEcewz7tA0Q0qk9fH",
+  "modelId": "eleven_turbo_v2_5",
   "text": "WIRED reported that OpenAI was testing a persistent mode for its Codex coding agent. The idea: an assistant that can keep working proactively until you put it to sleep. But here's the important detail: OpenAI said there were no immediate plans to launch it. This was an experiment, not an announced product. Would you trust an AI to decide its own next task?",
-  "durationSecs": 21.6,
+  "durationSecs": 20.67,
   "words": [
     {
       "text": "WIRED",
       "startMs": 0,
-      "endMs": 400
+      "endMs": 372
     },
     {
       "text": "reported",
-      "startMs": 480,
-      "endMs": 960
+      "startMs": 430,
+      "endMs": 813
     },
     {
       "text": "that",
-      "startMs": 1040,
-      "endMs": 1120
+      "startMs": 848,
+      "endMs": 975
     },
     {
       "text": "OpenAI",
-      "startMs": 1200,
-      "endMs": 1760
+      "startMs": 1045,
+      "endMs": 1695
     },
     {
       "text": "was",
-      "startMs": 1840,
-      "endMs": 1920
+      "startMs": 1765,
+      "endMs": 1892
     },
     {
       "text": "testing",
-      "startMs": 2000,
-      "endMs": 2320
+      "startMs": 1950,
+      "endMs": 2322
     },
     {
       "text": "a",
-      "startMs": 2400,
-      "endMs": 2480
+      "startMs": 2392,
+      "endMs": 2438
     },
     {
       "text": "persistent",
-      "startMs": 2760,
-      "endMs": 3040
+      "startMs": 2508,
+      "endMs": 3042
     },
     {
       "text": "mode",
-      "startMs": 3120,
-      "endMs": 3360
+      "startMs": 3100,
+      "endMs": 3355
     },
     {
       "text": "for",
-      "startMs": 3440,
-      "endMs": 3520
+      "startMs": 3413,
+      "endMs": 3541
     },
     {
       "text": "its",
-      "startMs": 3600,
-      "endMs": 3680
+      "startMs": 3599,
+      "endMs": 3715
     },
     {
       "text": "Codex",
-      "startMs": 3760,
-      "endMs": 4080
+      "startMs": 3785,
+      "endMs": 4156
     },
     {
       "text": "coding",
-      "startMs": 4160,
-      "endMs": 4400
+      "startMs": 4226,
+      "endMs": 4528
     },
     {
       "text": "agent.",
-      "startMs": 4480,
-      "endMs": 5160
+      "startMs": 4574,
+      "endMs": 4969
     },
     {
       "text": "The",
-      "startMs": 5520,
-      "endMs": 5600
+      "startMs": 5329,
+      "endMs": 5468
     },
     {
       "text": "idea:",
-      "startMs": 5680,
-      "endMs": 6320
+      "startMs": 5526,
+      "endMs": 5991
     },
     {
       "text": "an",
-      "startMs": 6560,
-      "endMs": 6640
+      "startMs": 6211,
+      "endMs": 6339
     },
     {
       "text": "assistant",
-      "startMs": 6880,
-      "endMs": 7120
+      "startMs": 6385,
+      "endMs": 6815
     },
     {
       "text": "that",
-      "startMs": 7160,
-      "endMs": 7200
+      "startMs": 6850,
+      "endMs": 6966
     },
     {
       "text": "can",
-      "startMs": 7280,
-      "endMs": 7360
+      "startMs": 7001,
+      "endMs": 7117
     },
     {
       "text": "keep",
-      "startMs": 7440,
-      "endMs": 7600
+      "startMs": 7175,
+      "endMs": 7372
     },
     {
       "text": "working",
-      "startMs": 7680,
-      "endMs": 8000
+      "startMs": 7430,
+      "endMs": 7732
     },
     {
       "text": "proactively",
-      "startMs": 8120,
-      "endMs": 8720
+      "startMs": 7802,
+      "endMs": 8452
     },
     {
       "text": "until",
-      "startMs": 8800,
-      "endMs": 9040
+      "startMs": 8522,
+      "endMs": 8765
     },
     {
       "text": "you",
-      "startMs": 9080,
-      "endMs": 9120
+      "startMs": 8812,
+      "endMs": 8882
     },
     {
       "text": "put",
-      "startMs": 9200,
-      "endMs": 9280
+      "startMs": 8940,
+      "endMs": 9079
     },
     {
       "text": "it",
-      "startMs": 9360,
-      "endMs": 9440
+      "startMs": 9114,
+      "endMs": 9183
     },
     {
       "text": "to",
-      "startMs": 9480,
-      "endMs": 9520
+      "startMs": 9218,
+      "endMs": 9276
     },
     {
       "text": "sleep.",
-      "startMs": 9600,
-      "endMs": 10400
+      "startMs": 9323,
+      "endMs": 9729
     },
     {
       "text": "But",
-      "startMs": 10880,
-      "endMs": 10960
+      "startMs": 10089,
+      "endMs": 10252
     },
     {
       "text": "here's",
-      "startMs": 11040,
-      "endMs": 11200
+      "startMs": 10310,
+      "endMs": 10553
     },
     {
       "text": "the",
-      "startMs": 11240,
-      "endMs": 11280
+      "startMs": 10588,
+      "endMs": 10658
     },
     {
       "text": "important",
-      "startMs": 11480,
-      "endMs": 11680
+      "startMs": 10704,
+      "endMs": 11087
     },
     {
       "text": "detail:",
-      "startMs": 11880,
-      "endMs": 12360
+      "startMs": 11134,
+      "endMs": 11621
     },
     {
       "text": "OpenAI",
-      "startMs": 12640,
-      "endMs": 13120
+      "startMs": 11784,
+      "endMs": 12365
     },
     {
       "text": "said",
-      "startMs": 13200,
-      "endMs": 13360
+      "startMs": 12434,
+      "endMs": 12620
     },
     {
       "text": "there",
-      "startMs": 13440,
-      "endMs": 13520
+      "startMs": 12655,
+      "endMs": 12782
     },
     {
       "text": "were",
-      "startMs": 13600,
-      "endMs": 13680
+      "startMs": 12817,
+      "endMs": 12945
     },
     {
       "text": "no",
-      "startMs": 13760,
-      "endMs": 13840
+      "startMs": 13015,
+      "endMs": 13177
     },
     {
       "text": "immediate",
-      "startMs": 13920,
-      "endMs": 14320
+      "startMs": 13259,
+      "endMs": 13700
     },
     {
       "text": "plans",
-      "startMs": 14480,
-      "endMs": 14640
+      "startMs": 13723,
+      "endMs": 14002
     },
     {
       "text": "to",
-      "startMs": 14720,
-      "endMs": 14800
+      "startMs": 14048,
+      "endMs": 14106
     },
     {
       "text": "launch",
-      "startMs": 14920,
-      "endMs": 15040
+      "startMs": 14176,
+      "endMs": 14408
     },
     {
       "text": "it.",
-      "startMs": 15120,
-      "endMs": 15520
+      "startMs": 14454,
+      "endMs": 14628
     },
     {
       "text": "This",
-      "startMs": 15760,
-      "endMs": 15920
+      "startMs": 14849,
+      "endMs": 15023
     },
     {
       "text": "was",
-      "startMs": 15960,
-      "endMs": 16000
+      "startMs": 15058,
+      "endMs": 15163
     },
     {
       "text": "an",
-      "startMs": 16080,
-      "endMs": 16120
+      "startMs": 15209,
+      "endMs": 15267
     },
     {
       "text": "experiment,",
-      "startMs": 16160,
-      "endMs": 16920
+      "startMs": 15313,
+      "endMs": 16010
     },
     {
       "text": "not",
-      "startMs": 17040,
-      "endMs": 17200
+      "startMs": 16115,
+      "endMs": 16300
     },
     {
       "text": "an",
-      "startMs": 17280,
-      "endMs": 17360
+      "startMs": 16347,
+      "endMs": 16393
     },
     {
       "text": "announced",
-      "startMs": 17440,
-      "endMs": 17760
+      "startMs": 16440,
+      "endMs": 16788
     },
     {
       "text": "product.",
-      "startMs": 18000,
-      "endMs": 18560
+      "startMs": 16834,
+      "endMs": 17299
     },
     {
       "text": "Would",
-      "startMs": 18880,
-      "endMs": 18960
+      "startMs": 17519,
+      "endMs": 17682
     },
     {
       "text": "you",
-      "startMs": 19040,
-      "endMs": 19120
+      "startMs": 17717,
+      "endMs": 17786
     },
     {
       "text": "trust",
-      "startMs": 19200,
-      "endMs": 19440
+      "startMs": 17833,
+      "endMs": 18100
     },
     {
       "text": "an",
-      "startMs": 19480,
-      "endMs": 19520
+      "startMs": 18146,
+      "endMs": 18204
     },
     {
       "text": "AI",
-      "startMs": 19600,
-      "endMs": 19920
+      "startMs": 18274,
+      "endMs": 18622
     },
     {
       "text": "to",
-      "startMs": 19960,
-      "endMs": 20000
+      "startMs": 18692,
+      "endMs": 18750
     },
     {
       "text": "decide",
-      "startMs": 20080,
-      "endMs": 20400
+      "startMs": 18820,
+      "endMs": 19203
     },
     {
       "text": "its",
-      "startMs": 20480,
-      "endMs": 20560
+      "startMs": 19261,
+      "endMs": 19412
     },
     {
       "text": "own",
-      "startMs": 20640,
-      "endMs": 20800
+      "startMs": 19481,
+      "endMs": 19702
     },
     {
       "text": "next",
-      "startMs": 20880,
-      "endMs": 21120
+      "startMs": 19772,
+      "endMs": 20004
     },
     {
       "text": "task?",
-      "startMs": 21320,
-      "endMs": 21600
+      "startMs": 20027,
+      "endMs": 20666
     }
   ]
 }

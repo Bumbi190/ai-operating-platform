@@ -26,7 +26,7 @@ const STORIES={
   codex:{
     audio:'the-prompt-qa/codex.mp3',narration:codexNarration,
     label:'AI / CODING',kicker:'THE CODEX EXPERIMENT',
-    starts:[0,5520,10880,18880],
+    starts:[0,5329,10089,17519],
     beats:[
       'OPENAI TESTED\nA PERSISTENT\nCODEX MODE.',
       'AN AGENT THAT\nKEEPS WORKING\nBETWEEN TASKS.',
@@ -43,7 +43,7 @@ const STORIES={
   recruiter:{
     audio:'the-prompt-qa/recruiter.mp3',narration:recruiterNarration,
     label:'AI / WORK',kicker:'THE AI-TO-AI INTERVIEW',
-    starts:[0,3920,11440,17440],
+    starts:[0,3541,10716,17206],
     beats:[
       'AI RECRUITERS\nWERE GOING\nSILENT.',
       'TWO BOTS\nTALKED FOR\nTEN MINUTES.',

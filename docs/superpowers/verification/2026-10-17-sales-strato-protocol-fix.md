@@ -53,3 +53,11 @@ Follow-up integration verification: all three real PostgreSQL/API/Python integra
 Installed source aebefd539970eecf1c6fcc900a2846f70848b492 in immutable handlarborsen-aebefd539970; all 47 pinned files verified with complete coverage, manifest SHA-256 3b4e4be4efe439da153074e422a9f08e96b26975dcc559f7b6fb02a80b8fc965. No active auth setup or local in-flight dispatch was present before the controlled upgrade. The old owned process exited before the config switched. The new owned task started at 19:04:28Z, PID 5208, one instance, current user and least privilege. Generation 2, current secret references, private key and exact protected origin were preserved. The test-only Docker fixture was removed after its ownership check.
 
 Connection is still unqualified until a new explicit encrypted owner submission produces both authentication timestamps and localStored=true. No failed credential was retained, recovered or retried during installation.
+
+## Actual B1 authenticated qualification, 2026-10-17 19:07Z
+
+Owner-submitted setup dc2f5d5c-2a06-476d-bfe2-dfc474962644 completed on the installed aebefd539970eecf1c6fcc900a2846f70848b492 client. SMTP authentication: 19:07:17.925556Z, fixed smtp.strato.de:465 with verified TLS; IMAP authentication: 19:07:18.240548Z, fixed imap.strato.de:993 with verified TLS. Receipt: authenticated, reasonCode=null, localStored=true, sealed cleared. Local diagnostic phase=complete and SMTP reply=235.
+
+Server mailbox 5964032c-aad9-47c5-b986-71dc7339d775 and local mailbox journal both confirm info@handlarborsen.se, mailbox generation 6. Local pending=false and an active OS-store credential reference exists; the password itself was not retrieved for this verification. Managed worker generation 2 remains online/ready/running, heartbeat 19:07:27Z.
+
+This qualifies the actual B1 login and secure storage. InboxEnabled=false and sendingEnabled=false remain explicit in the server status. No inbox folder was selected and no message was read or sent by this qualification. B2 inbox processing and C sending still require their separate approved designs and gates. Earlier pending-input statements describe the historical state before this receipt.

@@ -99,7 +99,8 @@ export async function main(argv,signal){
  if(config.version!==1||!path.isAbsolute(config.counterFile)||!path.isAbsolute(config.journalFile))throw Error('INVALID_WORKER_CONFIG');
  const {createRuntime}=await import('./runtime.mjs'),{createWorkerClient}=await import('./client.mjs');
  const runtime=createRuntime(config);let signing={};if(config.testIdentityName!==undefined){if(!once||config.testIdentityName!=='Omnira-Atlas-LocalText-test-'+config.keyId)throw Error('INVALID_TEST_IDENTITY');const {signEnvelope}=await import('./identity.mjs');signing={sign:(u,b)=>signEnvelope(u,b,config.testIdentityName)};}const client=createWorkerClient(config,signing);
- await runWorker({...config,once},{...config,runtime,client,onOutcome:o=>process.stdout.write(JSON.stringify(o)+'\n')},signal);
+ const {observeStopFile}=await import('./shutdown.mjs');const localStop=new AbortController(),stopObserving=observeStopFile(path.join(path.dirname(args[1]),'stop.request'),localStop);
+ try{await runWorker({...config,once},{...config,runtime,client,onOutcome:o=>process.stdout.write(JSON.stringify(o)+'\n')},AbortSignal.any([signal,localStop.signal]));}finally{stopObserving();}
 }
 const entry=process.argv[1];if(entry&&(await import('node:path')).resolve(entry)===(await import('node:url')).fileURLToPath(import.meta.url)){
  const controller=new AbortController();process.once('SIGINT',()=>controller.abort());process.once('SIGTERM',()=>controller.abort());

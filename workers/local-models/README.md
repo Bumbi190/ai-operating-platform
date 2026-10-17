@@ -55,3 +55,21 @@ Den råa `cli.mjs run` är ett operatörsverktyg för ett enskilt lokalt testjob
 `createOllamaClient().inferBounded()` is the only intended Atlas inference path. It requires operator-qualified tokenizer and raw-runtime evidence bound to exact model/runtime artifacts. `runJob(...,{requirePromptBudget:true,tokenizerEvidence})` preserves the same lifecycle lease. Missing proof returns `TOKEN_BUDGET_UNVERIFIED`; oversized full raw prompt/schema plus 384 output reserve returns `INPUT_TOO_LARGE` before generation. The raw operator CLI retains its previous fixed-fixture behavior and is not a production Atlas route.
 
 `gguf-evidence.mjs` reads only an operator-selected allowlisted model blob, checks its complete SHA-256 and GPT-2 byte coverage, and refuses unknown tokenizers/pretokenizers. This is artifact evidence, not project admission, remote attestation or a semantic quality certificate. The new raw prompt needs requalification and independent review before any project pilot. See the separate integration verification record.
+
+
+### Granskad start för Atlas textworker
+
+`workers/local-text/supervisor.mjs --config <absolut sökväg>` övervakar en egen Windows-session. Konfigurationen ska finnas i `workers/local-text/.local-state/<deviceId>/config.json`; journalen heter `attempt.dpapi.json` och räknaren `counter.json` i samma katalog. Identitet och kvalificerade modellprofiler måste redan vara verifierade. Skriptet skapar inga API-nycklar och hämtar inga modeller.
+
+Förhandsgranska utan installation:
+
+```powershell
+powershell -NoProfile -File workers/local-text/scripts/install-startup.ps1 -Preview -ConfigPath <absolut-konfigurationsfil>
+powershell -NoProfile -File workers/local-text/scripts/remove-startup.ps1 -Preview -ConfigPath <samma-fil>
+```
+
+Startuppgiften använder inloggad nuvarande användare, lägsta privilegier, AtLogOn och en instans. Efter omstart krävs inloggning. Ingen autostart är installerad av utvecklingstesterna. `-Apply` används först vid separat godkänd driftaktivering.
+
+Återställning: återkalla först exakt enhet med normal ägarinloggning i Omnira (`PATCH /api/local-text/devices/<deviceId>`, aktuell projekt/version och action revoke). Detta stoppar ej startade jobb och behåller osäkra försök. Förhandsgranska sedan borttagning och använd `remove-startup.ps1 -Apply` för exakt egen uppgift. Skriptet rapporterar ärligt att serveråterkallelse krävs; det har inga ägarcredentials. Windows-jobbet avslutar bara sina egna processer. Osäkra journaler/lås rensas aldrig automatiskt, och en kvarvarande `stop.request` kräver operatörens bedömning före ny start. Lokal kernel-empty-metadata är bevis för lokal processavslutning, inte ett godkännande att frigöra ett serverjobb.
+
+Loggar är tre filer om högst64KiB med fasta livscykelkoder; råtext och barnprocessernas stdout/stderr sparas inte. Fem krascher på tio minuter pausar och kräver åtgärd. Processägande är inte ett OS-sandbox.

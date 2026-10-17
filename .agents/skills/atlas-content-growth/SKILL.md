@@ -19,6 +19,14 @@ Use as editorial knowledge for existing Omnira pipelines; do not install or exec
 - Respect supplied family marketing canon, monthly theme, asset slots and one CTA. No unapproved discounts, freebies, offers or links.
 - All family data and brand context stay within the active Familje-Stunden project.
 
+## ElevenLabs voice identity (required)
+- The Prompt retains Victoria as pinned in apps/web/lib/voice/config.ts, not any similarly named library voice.
+- Pling's official dialogue voice is the owner-approved Alternative B (vhPZICLLz0UIRNLnUe0u / eleven_v4) with the recorded December brightening profile. Nova still needs a verified exact voice-to-dialogue mapping. Sanna is story narrator, not either character.
+- Read docs/content-growth-voice-lock-v1.md and apps/web/lib/content-growth/voice-lock.ts; Nova dialogue must remain blocked; Pling requires the exact pinned model and its approved processing, verified before any future synthesis.
+- The owner approved the existing September Känslomånaden file `nova_final.wav` on 2026-10-17 as the true Nova voice. See `NOVA_APPROVED_AUDIO_REFERENCE` and its SHA-256 in `apps/web/lib/content-growth/voice-lock.ts`. This is an audio identity, NOT permission to synthesize with an unknown ElevenLabs ID; keep Nova dialogue blocked.
+- Nova voice ID `I0uKCr8dyBq1Ouru7CWl` was rejected by the owner (incorrect voice, English sample) on 2026-10-17. NEVER suggest, reuse, pin or generate with this ID for Nova, even though ElevenLabs lists it under that name.
+- No automatic fallback or paid voice-generation experiment is permitted.
+
 ## Render and learn
 - Use the existing Remotion project and its installed remotion-best-practices skill. Do not add a second video engine.
 - Inspect actual rendered video at 0, 0.5, 1, 2 and 3 seconds; a prompt-only quality check is not visual validation.

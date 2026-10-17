@@ -1,6 +1,6 @@
 # Atlas: strömmande taligenkänning
 Datum: 2026-10-17
-Status: designförslag för granskning; inte implementerat eller aktiverat.
+Status: André godkände designen 2026-10-17 kl. 07:34 Europe/Stockholm. Genomförandeplan skriven för granskning; inte implementerat eller aktiverat.
 Bas: 09a32df71772473794ffdeea0ac335d15b267baf, accepterad isolerad röstpreview.
 
 ## Mål och avgränsning
@@ -22,7 +22,7 @@ Klienten skickar numrerade binära PCM-block runt 200 ms. Servern validerar form
 
 ## Frågans liv
 Tillstånd: ansluter, lyssnar/strömmande, avslutar, färdig eller avbruten. Varje callback bär befintlig generation/revision så att gammal anslutning inte kan skriva över en ny fråga.
-Den nuvarande lokala tystnadsregeln avslutar frågan och begär en enda explicit commit efter sista ljudblocket. Klar med frågan fungerar som manuell motsvarighet. Ofärdig partialtext får aldrig starta chatt, verktyg eller TTS.
+Den nuvarande lokala tystnadsregeln avslutar frågan en enda gång efter sista ljudblocket. Interna leverantörs-checkpoints får inte avsluta användarens fråga; förslaget beskrivs i protokollförtydligandet nedan. Klar med frågan fungerar som manuell motsvarighet. Ofärdig partialtext får aldrig starta chatt, verktyg eller TTS.
 Endast stabilt slutresultat från aktuell fråga lämnas en gång till befintlig conversation-controller. Leverantörens segmenthändelser måste hanteras utan att en fråga dubbelsänds; detta ingår i protokolltesterna.
 Vid 90-sekundersgräns bevaras text för manuell kontroll, samma princip som dagens klippta fråga. Ingen automatisk inskickning av avklippt innehåll.
 Stopp, rättelse, utloggning, sidbyte, förlorad mikrofon och generationsbyte stänger båda anslutningarna. Tom fråga ger inget chattsvar. Avbruten eller osäker dispatch återförsöks inte automatiskt.
@@ -47,6 +47,9 @@ Först verifieras auth före dispatch, byte-/kögränser, exactly-once-final, st
 Därefter görs ett begränsat STT-prov inom verifierad reservation. Mobil A/B sker med samma frågor, röst och nätförhållanden; mät talets slut till första användbara hörbara svar. Föreslagen beslutströskel: minst 300 ms bättre median och högst 200 ms sämre p90 över 20 jämförbara frågor, utan försämrad transkription eller borttappade turer. Inga sådana resultat finns ännu.
 Nuvarande accepterade preview förblir standard tills faktisk förbättring och stabilitet verifierats. Ny funktion får en explicit isolerad pilotaktivering. Ingen produktionsmerge ingår.
 
+## Protokollförtydligande vid planering
+Officiell commit-dokumentation visar att även manuellt läge kan segmentera efter cirka 36 s och börjar bearbeta efter cirka 2 s ljud. Ett committed segment får därför inte behandlas som hela frågan. Genomförandeplanen föreslår interna checkpoints efter 20 s skickat ljud, en i taget med samma tvåsekunders kötak, och ett enda slutresultat till chatten när användarens lokala paus avslutar frågan. Detta är ett föreslaget tekniskt förtydligande för planens granskning; faktisk leverantörssemantik måste verifieras före aktivering.
+
 ## Källor och granskningsstatus
 Kontrollerade 2026-10-17:
 - Vercel WebSockets: https://vercel.com/docs/functions/websockets
@@ -54,4 +57,4 @@ Kontrollerade 2026-10-17:
 - ElevenLabs protokoll/keyterms: https://elevenlabs.io/docs/api-reference/speech-to-text/v-1-speech-to-text-realtime
 - ElevenLabs ljudbaserad debitering: https://elevenlabs.io/docs/overview/capabilities/speech-to-text
 - ElevenLabs API-prislista: https://elevenlabs.io/pricing/api
-Egen granskning: avgränsning, dispatchgränser, tids-/bytegränser och rollback beskrivna. Faktisk Vercel-upgrade, kontopris och mobilvinst är uttryckliga verifieringsgrindar, inte påstått färdiga resultat. Nästa steg efter Andrés granskning är skriftlig genomförandeplan enligt Superpowers brainstorming.
+Egen granskning: avgränsning, dispatchgränser, tids-/bytegränser och rollback beskrivna. Faktisk Vercel-upgrade, kontopris och mobilvinst är uttryckliga verifieringsgrindar, inte påstått färdiga resultat. Nästa steg är granskning av docs/superpowers/plans/2026-10-17-atlas-streaming-stt.md och val av körsätt enligt Superpowers writing-plans.

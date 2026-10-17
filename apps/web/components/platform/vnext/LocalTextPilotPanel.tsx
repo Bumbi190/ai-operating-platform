@@ -1,5 +1,6 @@
 'use client'
-import {useEffect,useRef,useState} from 'react'
+import {useEffect,useState} from 'react'
+import {queueLocalTextPilot} from '@/lib/local-text/pilot-client'
 import {LOCAL_TEXT_PILOT} from '@/lib/local-text/pilot-constants'
 import {localTextReceiptLink,type LocalTextReceiptLink} from '@/lib/local-text/receipt'
 import {LocalTextJobReceipt} from './LocalTextJobReceipt'
@@ -8,7 +9,6 @@ const field='w-full rounded border border-white/20 bg-transparent p-3'
 const button='rounded border border-white/20 px-4 py-2 disabled:opacity-40'
 export function LocalTextPilotPanel({projectId}:{projectId:string}){
  const [descriptor,setDescriptor]=useState(''),[device,setDevice]=useState<Device|null>(null),[fingerprint,setFingerprint]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[admitted,setAdmitted]=useState(false),[link,setLink]=useState<LocalTextReceiptLink|null>(null)
- const conversation=useRef<string|null>(null),requestKey=useRef<string|null>(null)
  useEffect(()=>{try{const saved=JSON.parse(sessionStorage.getItem('local-text-pilot:'+projectId)??'null');const restored=localTextReceiptLink(saved);if(restored&&restored.projectId===projectId&&Date.parse(saved.expiresAt)>Date.now())setLink(restored)}catch{}},[projectId])
  async function call(url:string,method='GET',body?:unknown){const r=await fetch(url,{method,cache:'no-store',headers:body?{'content-type':'application/json'}:undefined,...(body?{body:JSON.stringify(body)}:{})});const value=await r.json();if(!r.ok)throw Error(value.error??'Åtgärden kunde inte genomföras.');return value}
  async function action(work:()=>Promise<void>){if(busy)return;setBusy(true);setMessage('Arbetar…');try{await work()}catch{setMessage('Åtgärden kunde inte verifieras. Kontrollera aktuell status innan du försöker igen.')}finally{setBusy(false)}}
@@ -25,7 +25,7 @@ export function LocalTextPilotPanel({projectId}:{projectId:string}){
    <button className={button} disabled={busy||device?.status!=='active'||admitted} onClick={()=>action(async()=>{if(!device)throw Error();await call('/api/local-text/devices/'+device.deviceId+'/admissions','POST',{projectId,action:'admit',evidenceHash:LOCAL_TEXT_PILOT.evidenceHash,approvedInputHashes:[LOCAL_TEXT_PILOT.inputHash],dataClass:'synthetic',expiresAt:new Date(Date.now()+24*3600000).toISOString(),jobCostCapUsd:0.25,dailyCostCapUsd:5,reviewMode:'human'});setAdmitted(true);setMessage('Det syntetiska provet är tillåtet i högst 24 timmar.')} )}>Tillåt syntetiskt prov</button>
   </section>
   <section className="space-y-3"><h2 className="text-lg font-medium">3. Kör och granska</h2><p>Starta den parkopplade stationärens worker innan provet köas. Resultatet väntar sedan i Granskningar.</p>
-   <button className={button} disabled={busy||!admitted||!!link} onClick={()=>action(async()=>{if(!conversation.current){const c=await call('/api/conversations','POST',{project_id:projectId,title:'Lokalt anslutningsprov'});conversation.current=c.id}requestKey.current??=crypto.randomUUID();const r=await call('/api/local-text/pilot','POST',{projectId,conversationId:conversation.current,idempotencyKey:requestKey.current});const receipt=localTextReceiptLink(r.receipt);if(!receipt)throw Error();try{sessionStorage.setItem('local-text-pilot:'+projectId,JSON.stringify({type:'local_text_job',...receipt,expiresAt:r.receipt.expiresAt}))}catch{}setLink(receipt);setMessage('Provet är köat. Inget betalt chattanrop har gjorts.')} )}>Kör anslutningsprov</button>
+   <button className={button} disabled={busy||!admitted||!!link} onClick={()=>action(async()=>{const receipt=await queueLocalTextPilot(projectId,{store:sessionStorage,now:Date.now,randomUUID:()=>crypto.randomUUID(),createConversation:async()=>{const c=await call('/api/conversations','POST',{project_id:projectId,title:'Lokalt anslutningsprov'});return c.id},send:body=>call('/api/local-text/pilot','POST',body)});setLink(receipt);setMessage('Provet är köat. Inget betalt chattanrop har gjorts.')} )}>Kör anslutningsprov</button>
    {link&&<LocalTextJobReceipt link={link}/>}
    <a className="block underline" href="/approvals">Öppna Granskningar</a>
   </section>

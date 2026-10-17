@@ -84,3 +84,28 @@ Minimal fix: share the bounded closing handshake for invalid text/payload/backpr
 RED: new text policy-close/nonresponsive-peer test failed1/26 because no1008 frame was sent. GREEN:58/58 across stream access/browser verifier and original speech authority tests; final TypeScript exit0. No full-suite rerun; old inherited failures unchanged. Native exact-source result follows in the execution ledger/PR.
 A new deployed normal-session text-close proof is still required to complete Task1; positive/oversize runtime evidence is now established. Paid Task3 stays blocked, no microphone/provider activation or production merge.
 Native Chromium on the final actual probe function/page passed all three connections: exact echo and clean1000 at5018ms, oversize1009 at6ms, text1008 at25ms. This remains local evidence until the deployed phone repeats the text-close check.
+
+## Task1 complete: normal phone session at08:35
+Andre reported the full browser verifier succeeded. Runtime on55cbb12 confirms three authorized connections:
+- Positive: access208ms, exact4-byte echo/first frame102ms, clean1000 close5105ms.
+- Oversize: access164ms, no accepted/echoed frames, socket error168ms; browser advanced.
+- Text: access72ms, zero accepted/echo bytes, explicit1008 close260ms; browser succeeded.
+No request cancellation. This completes the deployed authenticated transport gate; Task2 remains complete.
+
+## Task3: unactivated governed relay implementation
+Added the sanctioned ws adapter, browser protocol bridge and lazy server pilot route. Default branch flag remains probe; no microphone selection or provider activation. Fixed operator execution/billing context, reserve/admit-before-constructor,5s readiness,20s commit/final drain,120s route-entry deadline and150s function budget. PCM count includes all actually forwarded samples,90s maximum; queues bounded, internal20s checkpoints aggregate one question and do not publish partial text. Uneven frame/checkpoint crossings split without losing/repeating samples. Both socket closures use bounded handshakes.
+
+The adapter registers its session lifetime with the existing SpendMeter before returning a handle. Existing withGovernedSpend owns durable waitUntil: full ceiling retained as estimate_unmetered on successful session completion and estimate_ambiguous after possible dispatch failure. Known caller cancellation before construction releases through ProviderNotDispatchedError. Existing watcher remains active until provider termination; an authority-unavailable latch is observed before every send and at250ms idle checks. Its global semantics were not changed. Bridge ownership lasts through the browser close; no paid work can continue afterward.
+
+RED evidence: missing adapter17fail/8pass; missing bridge12fail; pilot route2fail/26pass; pre-constructor cancellation settlement1fail/6pass; uneven checkpoint crossing1fail/27pass. Corresponding implementations/fixes passed; final selected result is recorded in the ledger/PR. New settlement tests exercise the actual withGovernedSpend boundary, including durable intent, deferred RPC, ambiguous teardown, failed settlement and known no-dispatch cancellation.
+
+## Billing evidence and activation blocker
+Read-only official evidence checked2026-10-17: API pricing lists0.39USD/hour realtime plus0.08USD/hour keyterms; API reference quotes+20%. Conservative public candidate remains0.48USD/hour (two minutes0.016USD before tax). Pricing FAQ meters STT per audio minute; capability docs bill duration sent. Six fixed keyterms, no edited-transcript feature/minimum surcharge.
+Sources:
+- https://elevenlabs.io/pricing/api
+- https://elevenlabs.io/docs/api-reference/speech-to-text/v-1-speech-to-text-realtime
+- https://elevenlabs.io/docs/overview/capabilities/speech-to-text
+The workspace connector has no subscription-read capability. Vercel env run explicitly cannot pull46 protected Secret values; no alternative credential extraction was attempted. No account lookup occurred, no provider key was printed or stored, and no account plan/minimum applicability is claimed.
+Accordingly atlas-realtime-billing.ts has a frozen unverified floor and always refuses real dispatch. A DB value or environment flag cannot override it. No canonical rate fallback/DB row was added, no provider token/paid session/test was created. Positive provider/settlement tests explicitly mock verified billing and the provider, while a separate real billing-gate test proves live code rejects even a supplied0.48 rate.
+Before enabling: establish the configured account's applicable standard/custom plan and billing terms, record evidence and canonical rate, then execute the written bounded provider protocol probe. Tasks4–6 remain pending; no stream latency benefit is claimed.
+Final Task3 implementation verification:155/155 across9 selected files (relay, real governed settlement, bridge, billing gate, stream access/protocol, existing speech settlement, dispatch stop and durable spend); TypeScript exit0. No new full-suite run; prior inherited failures remain. This is an unactivated implementation checkpoint, not completion of the pending account/live-provider gates.

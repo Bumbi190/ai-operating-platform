@@ -3,12 +3,13 @@ import type { RawData, WebSocket } from 'ws'
 import { guardAtlasVoiceAccess } from '@/lib/atlas/voice-pilot/access'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 15
+export const maxDuration = 150
 
 /** Synthetic transport probe only. No microphone, provider or spend dependencies. */
 export async function GET(request: Request): Promise<Response> {
+  const entered = Date.now(), mode = process.env.ATLAS_VOICE_STREAM_MODE
   if ((process.env.VERCEL_ENV !== 'preview' && process.env.NODE_ENV !== 'development')
-    || process.env.ATLAS_VOICE_STREAM_MODE !== 'probe') return new Response(null, { status: 404 })
+    || (mode !== 'probe' && mode !== 'pilot')) return new Response(null, { status: 404 })
   if (request.headers.get('origin') !== new URL(request.url).origin)
     return Response.json({ error: 'Ogiltigt ursprung.' }, { status: 403 })
   const unavailable = () => Response.json({ error: 'Anslutningen kunde inte starta.' }, { status: 503 })
@@ -19,7 +20,18 @@ export async function GET(request: Request): Promise<Response> {
   if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket')
     return new Response(null, { status: 426, headers: { Upgrade: 'websocket', 'Cache-Control': 'no-store' } })
   try {
-    return await upgradeWebSocket(socket => probe(socket, request.signal), { maxPayload: 6404 })
+    if (mode === 'probe') return await upgradeWebSocket(socket => probe(socket, request.signal), { maxPayload: 6404 })
+    const lifetime = new AbortController()
+    const onAbort = () => lifetime.abort()
+    request.signal.addEventListener('abort', onAbort, { once: true })
+    const timer = setTimeout(onAbort, Math.max(0, 120000 - (Date.now() - entered)))
+    if (request.signal.aborted) onAbort()
+    try {
+      return await upgradeWebSocket(async socket => {
+        const { serveAtlasVoicePilot } = await import('@/lib/atlas/voice-pilot/stream-bridge')
+        await serveAtlasVoicePilot(socket, lifetime.signal)
+      }, { maxPayload: 6404 })
+    } finally { clearTimeout(timer); request.signal.removeEventListener('abort', onAbort) }
   } catch {
     // Never log exception text, headers, cookies or URLs.
     console.info('[atlas-voice-stream-probe]', { event: 'upgrade_failed' })

@@ -6,7 +6,7 @@ const state = vi.hoisted(() => ({
   membership: { role: 'owner', revoked_at: null } as any,
   memberError: null as any, owns: false, ownershipError: null as any, hanging: false,
   release: null as null | (() => void),
-  upgraded: vi.fn(), socket: null as any,
+  upgraded: vi.fn(), pilot: vi.fn(), socket: null as any,
 }))
 vi.mock('@/lib/auth/platform-operator', () => ({ resolvePlatformOperator: async () => state.auth }))
 vi.mock('@/lib/supabase/server', () => ({ createClient: async () => ({
@@ -21,10 +21,12 @@ vi.mock('@/lib/supabase/server', () => ({ createClient: async () => ({
 vi.mock('@vercel/functions', () => ({
   upgradeWebSocket: async (handler: (ws: any) => Promise<void>, options: unknown) => {
     state.upgraded(options)
-    void handler(state.socket)
+    const work = handler(state.socket)
+    if (process.env.ATLAS_VOICE_STREAM_MODE === 'pilot') await work
     return new Response(null, { status: 204 })
   },
 }))
+vi.mock('@/lib/atlas/voice-pilot/stream-bridge', () => ({ serveAtlasVoicePilot: (...args: unknown[]) => state.pilot(...args) }))
 // Import failure is caught so the first RED is an assertion of the missing route,
 // rather than a test-collection error. All behavior tests use the actual route.
 const route = () => import('@/app/api/atlas/voice-pilot/stream/route')
@@ -44,7 +46,7 @@ beforeEach(() => {
   vi.stubEnv('VERCEL_ENV', 'preview'); vi.stubEnv('NODE_ENV', 'test'); vi.stubEnv('ATLAS_VOICE_STREAM_MODE', 'probe')
   state.auth = { ok: true, userId: 'operator' }; state.membership = { role: 'owner', revoked_at: null }
   state.memberError = state.ownershipError = null; state.owns = state.hanging = false; state.release = null
-  state.upgraded.mockClear(); state.socket = new Socket()
+  state.upgraded.mockClear(); state.pilot.mockReset(); state.pilot.mockResolvedValue(undefined); state.socket = new Socket()
 })
 afterEach(() => { state.socket?.terminate(); vi.useRealTimers(); vi.unstubAllEnvs() })
 describe('preview WebSocket access before upgrade', () => {
@@ -52,9 +54,9 @@ describe('preview WebSocket access before upgrade', () => {
     const value = await route().catch(() => null)
     expect(value?.GET, 'stream route GET is missing').toBeTypeOf('function')
   })
-  it.each(['production', 'disabled', 'pilot'])('does not expose the probe in %s mode', async scenario => {
+  it.each(['production', 'disabled', 'unknown'])('does not expose the probe in %s mode', async scenario => {
     if (scenario === 'production') vi.stubEnv('VERCEL_ENV', 'production')
-    else vi.stubEnv('ATLAS_VOICE_STREAM_MODE', scenario === 'disabled' ? '' : 'pilot')
+    else vi.stubEnv('ATLAS_VOICE_STREAM_MODE', scenario === 'disabled' ? '' : 'unknown')
     expect((await (await route()).GET(request())).status).toBe(404)
     expect(state.upgraded).not.toHaveBeenCalled()
   })
@@ -153,5 +155,29 @@ describe('bounded no-provider echo probe', () => {
     expect(state.socket.readyState).toBe(3)
     expect(state.socket.sent).toEqual([])
     expect(state.socket.listenerCount('message')).toBe(0)
+  })
+})
+
+describe('isolated pilot route lifetime', () => {
+  it('selects only the server bridge in pilot mode', async () => {
+    vi.stubEnv('ATLAS_VOICE_STREAM_MODE', 'pilot')
+    expect((await (await route()).GET(request())).status).toBe(204)
+    expect(state.pilot).toHaveBeenCalledTimes(1)
+    expect(state.pilot.mock.calls[0][0]).toBe(state.socket)
+    expect(state.pilot.mock.calls[0][1]).toBeInstanceOf(AbortSignal)
+  })
+  it('aborts the pilot at120s from route entry and cleans up its timer', async () => {
+    vi.useFakeTimers(); vi.stubEnv('ATLAS_VOICE_STREAM_MODE', 'pilot')
+    state.pilot.mockImplementation((_socket, signal) => new Promise<void>(resolve => {
+      signal.addEventListener('abort', () => { state.socket.terminate(); resolve() }, { once: true })
+    }))
+    const pending = (await route()).GET(request())
+    await vi.advanceTimersByTimeAsync(119999)
+    expect(state.pilot).toHaveBeenCalledTimes(1)
+    expect(state.pilot.mock.calls[0][1].aborted).toBe(false)
+    await vi.advanceTimersByTimeAsync(1)
+    expect((await pending).status).toBe(204)
+    expect(state.pilot.mock.calls[0][1].aborted).toBe(true)
+    expect(vi.getTimerCount()).toBe(0)
   })
 })

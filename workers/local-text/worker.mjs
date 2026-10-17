@@ -2,6 +2,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {parseClaim,hashTask,validateTaskResult,canonicalJson,sha256} from '../../packages/local-text-contract/index.mjs';
 import {withRuntimeLease} from '../local-models/worker.mjs';import {createJournal} from './journal.mjs';
 const codes=new Set(['TOKEN_BUDGET_UNVERIFIED','INPUT_TOO_LARGE','IDENTITY_CHANGED','INVALID_MODEL_RESPONSE','LOCAL_MODEL_UNAVAILABLE','LOCAL_STATE_ERROR']);
+const completedAck=r=>acknowledged(r)&&r.value&&['reviewing','escalation_pending','needs_input','succeeded','failed','cancelled','reconciling'].includes(r.value.state);
 const acknowledged=r=>r?.kind==='applied'||r?.kind==='duplicate';
 const every=(ms,fn)=>{let pending=false;const timer=setInterval(async()=>{if(pending)return;pending=true;try{await fn();}finally{pending=false;}},ms);return ()=>clearInterval(timer);};
 const journalFor=deps=>deps.journal??createJournal(deps.journalFile);
@@ -52,7 +53,7 @@ export async function executeClaim(input,deps,signal){
     const payload={claim,result,resultHash:sha256(canonicalJson(result)),usage:output.metadata?.usage??{}};
     await journal.write({...record,phase:'completion',payload});
     const ack=await send(deps,'complete',payload);
-    if(acknowledged(ack)&&ack.value?.id===claim.jobId&&ack.value?.state==='reviewing'){await journal.clear();return {kind:'completed',jobId:claim.jobId,attemptId:claim.attemptId,inputHash:claim.inputHash,resultHash:payload.resultHash};}
+    if(completedAck(ack)&&ack.value?.id===claim.jobId){await journal.clear();return {kind:'completed',jobId:claim.jobId,attemptId:claim.attemptId,inputHash:claim.inputHash,resultHash:payload.resultHash};}
     return uncertain(claim);
    }catch(error){
     if((dispatched&&!physicalComplete)||lease.uncertain){await hold(lease,claim);await journal.write({...record,phase:'physical_unknown'});await send(deps,'fail',{claim,outcome:'dispatch_unknown'});return uncertain(claim);}
@@ -71,7 +72,7 @@ export async function reconcilePending(deps,signal){
  }
  if(!['completion','known_failed'].includes(saved.phase))return uncertain(saved.claim);
  const operation=saved.phase==='completion'?'complete':'fail',ack=await send(deps,operation,saved.payload,signal);
- if(!acknowledged(ack)||ack.value?.id!==saved.claim.jobId||(operation==='complete'&&ack.value?.state!=='reviewing'))return uncertain(saved.claim);
+ if(!acknowledged(ack)||ack.value?.id!==saved.claim.jobId||(operation==='complete'&&!completedAck(ack)))return uncertain(saved.claim);
  await journal.clear();return {kind:operation==='complete'?'completed':'known_failed',jobId:saved.claim.jobId,attemptId:saved.claim.attemptId};
 }
 export async function runWorker(config,deps,signal){

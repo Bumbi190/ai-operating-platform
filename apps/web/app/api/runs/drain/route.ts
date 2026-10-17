@@ -12,6 +12,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { runSteps } from '@/lib/ai/workflow-runner'
 import { executeRunSteps } from '@/lib/ai/workflow-executor'
 import { computeCheckpoint } from '@/lib/ai/checkpoint'
+import {executeLocalTextCloudRun} from '@/lib/local-text/cloud-runs'
 import { decideGate, type GateOutcome } from '@/lib/ai/policy-gate'
 import { fencedRunUpdate, isFencedError } from '@/lib/ai/fencing'
 import { isCancelledError } from '@/lib/ai/cancel'
@@ -237,6 +238,14 @@ export async function GET(request: Request) {
         // database fault is neither a stop, a cancellation, nor lost ownership.
         const settled = await settleRefusal(db, entry.refusal, run.id, run.claim_id)
         results.push(await reportSettled(run, settled, entry.detail, stopReason))
+        continue
+      }
+
+      if(run.kind==='local_text_cloud'){
+        let status='local_text_owned'
+        try{await executeLocalTextCloudRun(db,run as Run,run.claim_id!,new Date())}
+        catch{status='local_text_settlement_pending';try{await recordDispatchUnknown(db,run.id,run.claim_id,'LOCAL_TEXT_SETTLEMENT_UNAVAILABLE')}catch{}}
+        results.push({run_id:run.id,status})
         continue
       }
 

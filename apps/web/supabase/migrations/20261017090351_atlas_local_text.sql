@@ -169,7 +169,7 @@ begin
  if not found or j.device_id<>d.id or j.claim_id is distinct from (p_claim->>'claimId')::uuid or j.attempt_id is distinct from (p_claim->>'attemptId')::uuid
  or j.fence is distinct from (p_claim->>'fence')::bigint or j.input_hash is distinct from p_claim->>'inputHash' or j.selection_id is distinct from (p_claim->>'selectionId')::uuid
  then return jsonb_build_object('kind','refused','reason','FENCED');end if;
- if t='completed' and j.state='reviewing' and j.result_hash is not distinct from p_event->>'resultHash' and j.result is not distinct from r then return jsonb_build_object('kind','duplicate','value',public.local_text_receipt(j.id));end if;
+ if t='completed' and exists(select 1 from public.local_text_attempts att where att.id=j.attempt_id and att.job_id=j.id and att.state='completed' and att.result_hash is not distinct from p_event->>'resultHash' and att.result is not distinct from r) then return jsonb_build_object('kind','duplicate','value',public.local_text_receipt(j.id));end if;
  if j.task is null or j.payload_expires_at<=clock_timestamp() or j.expires_at<=clock_timestamp() or j.lease_until is null or j.lease_until<=clock_timestamp() then return jsonb_build_object('kind','refused','reason','FENCED');end if;
  if j.cancel_requested then return jsonb_build_object('kind','refused','reason','CANCELLED');end if;
  select * into a from public.local_text_admissions where id=j.admission_id for share;
@@ -192,6 +192,7 @@ begin
   if valid is distinct from true or coalesce(p_event->>'resultHash','') !~ '^[a-f0-9]{64}$' then return jsonb_build_object('kind','refused','reason','INVALID_RESULT');end if;
   update public.local_text_attempts set state='completed',finished_at=clock_timestamp(),result=r,result_hash=p_event->>'resultHash',usage=coalesce(p_event->'usage','{}') where id=j.attempt_id;
   update public.local_text_jobs set state='reviewing',result=r,result_hash=p_event->>'resultHash',updated_at=clock_timestamp() where id=j.id;
+  perform public.local_text_enqueue_cloud(j.id,j.attempt_id,'local_review',j.input_hash,p_event->>'resultHash');
  elsif t='known_failed' and j.state in ('claimed','running') and p_event->>'reasonCode' in ('TOKEN_BUDGET_UNVERIFIED','INPUT_TOO_LARGE','IDENTITY_CHANGED','INVALID_MODEL_RESPONSE','LOCAL_MODEL_UNAVAILABLE','LOCAL_STATE_ERROR') then
   update public.local_text_attempts set state='failed',finished_at=clock_timestamp() where id=j.attempt_id;
   update public.local_text_jobs set state='escalation_pending',reason_code=p_event->>'reasonCode',updated_at=clock_timestamp() where id=j.id;
@@ -445,3 +446,107 @@ begin
 end$$;
 revoke all on function public.local_text_reap_device(uuid) from public,anon,authenticated;
 grant execute on function public.local_text_reap_device(uuid) to service_role;
+-- Canonical cloud continuations carry metadata only. Raw source/result stays in
+-- local_text_jobs and expires with its payload; never copied into runs.context.
+create table public.local_text_cloud_stages(
+ id uuid primary key default gen_random_uuid(),job_id uuid not null references public.local_text_jobs,
+ source_attempt_id uuid not null references public.local_text_attempts,run_id uuid not null unique references public.runs,
+ stage text not null check(stage in ('local_review','cloud_task','cloud_review')),input_hash text not null,result_hash text,
+ state text not null default 'pending' check(state in ('pending','dispatching','response_ready','human_ready','unknown','applied')),
+ dispatch_claim_id uuid,profile jsonb,receipt jsonb,raw_result jsonb,reason_code text,created_at timestamptz not null default now(),updated_at timestamptz not null default now(),unique(job_id,stage)
+);
+alter table public.local_text_cloud_stages enable row level security;
+revoke all on public.local_text_cloud_stages from public,anon,authenticated;
+grant all on public.local_text_cloud_stages to service_role;
+alter table public.local_text_reviews add constraint local_text_review_run_fk foreign key(review_run_id) references public.runs(id);
+create function public.local_text_enqueue_cloud(p_job_id uuid,p_attempt_id uuid,p_stage text,p_input_hash text,p_result_hash text) returns jsonb language plpgsql security invoker set search_path='' as $$
+declare j public.local_text_jobs;s public.local_text_cloud_stages;rid uuid=gen_random_uuid();sid uuid=gen_random_uuid();binding jsonb;
+begin
+ select * into j from public.local_text_jobs where id=p_job_id for update;
+ if not found or p_stage not in ('local_review','cloud_task','cloud_review') or j.input_hash is distinct from p_input_hash or j.task is null or j.payload_expires_at<=clock_timestamp() then return jsonb_build_object('kind','refused','reason','SOURCE_UNAVAILABLE');end if;
+ select * into s from public.local_text_cloud_stages where job_id=j.id and stage=p_stage;
+ if found then
+  if s.source_attempt_id is distinct from p_attempt_id or s.input_hash is distinct from p_input_hash or s.result_hash is distinct from p_result_hash then return jsonb_build_object('kind','refused','reason','STAGE_BINDING_MISMATCH');end if;
+  return jsonb_build_object('kind','duplicate','value',jsonb_build_object('runId',s.run_id));
+ end if;
+ if p_stage<>'local_review' then return jsonb_build_object('kind','refused','reason','STAGE_NOT_IMPLEMENTED');end if;
+ if j.state<>'reviewing' or j.attempt_id is distinct from p_attempt_id or j.result_hash is distinct from p_result_hash or j.result is null
+ or not exists(select 1 from public.local_text_attempts where id=p_attempt_id and job_id=j.id and state='completed' and input_hash=p_input_hash and result_hash=p_result_hash)
+ or not exists(select 1 from public.projects p join public.conversations c on c.id=j.conversation_id where p.id=j.project_id and p.owner_id=j.owner_id and c.user_id=j.owner_id) then return jsonb_build_object('kind','refused','reason','STAGE_BINDING_MISMATCH');end if;
+ binding=jsonb_build_object('version',1,'jobId',j.id,'stageId',sid,'stage',p_stage,'attemptId',p_attempt_id,'inputHash',j.input_hash,'resultHash',j.result_hash);
+ insert into public.runs(id,project_id,workflow_id,kind,status,input,context,max_attempts) values(rid,j.project_id,null,'local_text_cloud','pending',binding,'{}',1);
+ insert into public.local_text_cloud_stages(id,job_id,source_attempt_id,run_id,stage,input_hash,result_hash) values(sid,j.id,p_attempt_id,rid,p_stage,p_input_hash,p_result_hash);
+ return jsonb_build_object('kind','applied','value',jsonb_build_object('runId',rid));
+end$$;
+create function public.local_text_cloud_snapshot(p_run_id uuid,p_claim_id uuid) returns jsonb language plpgsql security invoker set search_path='' as $$
+declare r public.runs;s public.local_text_cloud_stages;j public.local_text_jobs;
+begin
+ select * into r from public.runs where id=p_run_id;
+ select * into s from public.local_text_cloud_stages where run_id=p_run_id;
+ select * into j from public.local_text_jobs where id=s.job_id;
+ if r.id is null or s.id is null or j.id is null or r.kind is distinct from 'local_text_cloud' or r.workflow_id is not null or r.workflow_instance_id is not null or r.project_id is distinct from j.project_id or r.claim_id is distinct from p_claim_id or r.status<>'running' or r.cancel_requested or r.lease_until is null or r.lease_until<=clock_timestamp()
+ or r.input is distinct from jsonb_build_object('version',1,'jobId',j.id,'stageId',s.id,'stage',s.stage,'attemptId',s.source_attempt_id,'inputHash',s.input_hash,'resultHash',s.result_hash)
+ or not exists(select 1 from public.projects p join public.conversations c on c.id=j.conversation_id where p.id=j.project_id and p.owner_id=j.owner_id and c.user_id=j.owner_id)
+ then return jsonb_build_object('kind','refused','reason','FENCED');end if;
+ if j.task is null or j.payload_expires_at<=clock_timestamp() or j.input_hash<>s.input_hash or j.result_hash is distinct from s.result_hash then return jsonb_build_object('kind','refused','reason','SOURCE_UNAVAILABLE');end if;
+ return jsonb_build_object('kind','applied','value',jsonb_build_object('stageId',s.id,'jobId',j.id,'attemptId',s.source_attempt_id,'stage',s.stage,'state',s.state,'dispatchClaimId',s.dispatch_claim_id,'projectId',j.project_id,'inputHash',s.input_hash,'resultHash',s.result_hash,'task',j.task,'result',j.result,'context',j.context,'receipt',s.receipt,'reasonCode',s.reason_code));
+end$$;
+create function public.local_text_cloud_operation(p_run_id uuid,p_claim_id uuid,p_operation text,p_value jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
+declare r public.runs;s public.local_text_cloud_stages;j public.local_text_jobs;v jsonb=p_value;review jsonb=p_value->'receipt';allowed boolean=false;
+begin
+ -- Same lock order as canonical run finalization/cancellation: RUN first.
+ select * into r from public.runs where id=p_run_id for update;
+ select * into s from public.local_text_cloud_stages where run_id=p_run_id;
+ select * into j from public.local_text_jobs where id=s.job_id for update;
+ if r.id is null or s.id is null or j.id is null or r.kind is distinct from 'local_text_cloud' or r.project_id<>j.project_id or r.claim_id is distinct from p_claim_id or r.cancel_requested then return jsonb_build_object('kind','refused','reason','FENCED');end if;
+ select * into s from public.local_text_cloud_stages where id=s.id for update;
+ if p_operation='apply' and s.state='applied' then return jsonb_build_object('kind','duplicate','value',public.local_text_receipt(j.id));end if;
+ if p_operation='unknown' and r.status='unknown' and s.state in ('dispatching','response_ready') and s.dispatch_claim_id=p_claim_id then
+  update public.local_text_cloud_stages set state='unknown',reason_code='CLOUD_DISPATCH_UNKNOWN',updated_at=clock_timestamp() where id=s.id;
+  update public.local_text_jobs set state='reconciling',reason_code='CLOUD_DISPATCH_UNKNOWN',updated_at=clock_timestamp() where id=j.id;
+  return jsonb_build_object('kind','applied','value',null);
+ end if;
+ if p_operation='dispatch' and r.status='running' and s.state='pending' and r.lease_until>clock_timestamp() and j.task is not null and j.payload_expires_at>clock_timestamp() then
+  if (public.local_text_cloud_snapshot(r.id,p_claim_id)->>'kind') is distinct from 'applied' or p_value->>'deployment' is distinct from 'gpt-5.4-mini-2026-03-17' or coalesce(p_value->>'qualificationHash','') !~ '^[a-f0-9]{64}$' then return jsonb_build_object('kind','refused','reason','PROFILE_UNVERIFIED');end if;
+  update public.local_text_cloud_stages set state='dispatching',dispatch_claim_id=p_claim_id,profile=p_value,updated_at=clock_timestamp() where id=s.id;
+  return jsonb_build_object('kind','applied','value',null);
+ elsif p_operation='human' and r.status='running' and s.state in ('pending','dispatching') and coalesce(v->>'reasonCode','') ~ '^[A-Z][A-Z0-9_]{1,63}$' then
+  update public.local_text_cloud_stages set state='human_ready',dispatch_claim_id=p_claim_id,reason_code=v->>'reasonCode',updated_at=clock_timestamp() where id=s.id;
+  return jsonb_build_object('kind','applied','value',null);
+ elsif p_operation='response' and r.status='running' and s.state='dispatching' and s.dispatch_claim_id=p_claim_id and j.task is not null and j.payload_expires_at>clock_timestamp() then
+  if review->>'jobId' is distinct from j.id::text or review->>'attemptId' is distinct from s.source_attempt_id::text or review->>'reviewRunId' is distinct from r.id::text or review->>'reviewAttemptId' is distinct from p_claim_id::text
+  or review->>'inputHash' is distinct from s.input_hash or review->>'resultHash' is distinct from s.result_hash or review->>'reviewerDeployment' is distinct from s.profile->>'deployment' or coalesce(review->>'status','') not in ('approved','rejected','unknown')
+  or (review-array['jobId','attemptId','inputHash','resultHash','reviewRunId','reviewAttemptId','reviewerDeployment','status','reasonCodes','usageRef','createdAt'])<>'{}' or review->>'createdAt' is null
+  or jsonb_typeof(review->'reasonCodes') is distinct from 'array' or not exists(select 1 from public.cost_events ce where ce.id=(review->>'usageRef')::uuid and ce.run_id=r.id and ce.project_id=j.project_id and ce.provider='openai' and ce.model=s.profile->>'deployment' and ce.operation='local_text.review') then return jsonb_build_object('kind','refused','reason','REVIEW_BINDING_MISMATCH');end if;
+  if jsonb_array_length(review->'reasonCodes')>6 or (review->>'status'='approved' and jsonb_array_length(review->'reasonCodes')<>0) or (review->>'status'<>'approved' and jsonb_array_length(review->'reasonCodes')=0)
+  or exists(select 1 from jsonb_array_elements_text(review->'reasonCodes') x where x not in ('UNSUPPORTED_FACT','INJECTION_FOLLOWED','WRONG_CLASSIFICATION','OMITTED_KEY_FACT','INVALID_EXTRACTION','UNSAFE_TRANSFORM','REVIEW_UNAVAILABLE','AUTHORITY_UNAVAILABLE','REVIEW_NOT_ADMITTED'))
+  then return jsonb_build_object('kind','refused','reason','INVALID_REVIEW_RECEIPT');end if;
+  update public.local_text_cloud_stages set state='response_ready',receipt=review,updated_at=clock_timestamp() where id=s.id;
+  return jsonb_build_object('kind','applied','value',null);
+ elsif p_operation='apply' and s.dispatch_claim_id=p_claim_id and ((s.state='response_ready' and r.status='done') or (s.state='human_ready' and r.status='awaiting_approval')) then
+  if s.state='human_ready' then update public.local_text_jobs set state='needs_input',reason_code=s.reason_code,updated_at=clock_timestamp() where id=j.id;
+  else
+   if s.receipt->>'inputHash' is distinct from j.input_hash or s.receipt->>'resultHash' is distinct from j.result_hash or j.task is null or j.payload_expires_at<=clock_timestamp() then return jsonb_build_object('kind','refused','reason','SOURCE_UNAVAILABLE');end if;
+   insert into public.local_text_reviews(job_id,attempt_id,input_hash,result_hash,review_run_id,receipt,status) values(j.id,s.source_attempt_id,j.input_hash,j.result_hash,r.id,s.receipt,s.receipt->>'status');
+   update public.local_text_jobs set state=case s.receipt->>'status' when 'approved' then 'succeeded' when 'rejected' then 'escalation_pending' else 'needs_input' end,
+    review_status=s.receipt->>'status',reason_code=case s.receipt->>'status' when 'approved' then null when 'rejected' then 'LOCAL_REVIEW_REJECTED' else 'REVIEW_UNAVAILABLE' end,updated_at=clock_timestamp() where id=j.id;
+  end if;
+  update public.local_text_cloud_stages set state='applied',updated_at=clock_timestamp() where id=s.id;
+  return jsonb_build_object('kind','applied','value',public.local_text_receipt(j.id));
+ end if;
+ return jsonb_build_object('kind','refused','reason','STAGE_FENCED');
+exception when invalid_text_representation or invalid_datetime_format or numeric_value_out_of_range then return jsonb_build_object('kind','refused','reason','INVALID_CLOUD_OPERATION');end$$;
+create function public.local_text_cloud_immutable() returns trigger language plpgsql security invoker set search_path='' as $$
+begin
+ if tg_table_name='runs' then
+  if (new.kind='local_text_cloud' or old.kind='local_text_cloud') and row(new.id,new.project_id,new.workflow_id,new.workflow_instance_id,new.kind,new.input,new.max_attempts)
+  is distinct from row(old.id,old.project_id,old.workflow_id,old.workflow_instance_id,old.kind,old.input,old.max_attempts) then raise check_violation using message='IMMUTABLE_LOCAL_TEXT_RUN';end if;
+ else
+  if row(new.id,new.job_id,new.source_attempt_id,new.run_id,new.stage,new.input_hash,new.result_hash,new.created_at) is distinct from row(old.id,old.job_id,old.source_attempt_id,old.run_id,old.stage,old.input_hash,old.result_hash,old.created_at)
+  or (old.profile is not null and new.profile is distinct from old.profile) or (old.receipt is not null and new.receipt is distinct from old.receipt) then raise check_violation using message='IMMUTABLE_LOCAL_TEXT_STAGE';end if;
+ end if;return new;
+end$$;
+create trigger local_text_run_immutable before update on public.runs for each row execute function public.local_text_cloud_immutable();
+create trigger local_text_cloud_stage_immutable before update on public.local_text_cloud_stages for each row execute function public.local_text_cloud_immutable();
+revoke all on function public.local_text_enqueue_cloud(uuid,uuid,text,text,text),public.local_text_cloud_snapshot(uuid,uuid),public.local_text_cloud_operation(uuid,uuid,text,jsonb),public.local_text_cloud_immutable() from public,anon,authenticated;
+grant execute on function public.local_text_enqueue_cloud(uuid,uuid,text,text,text),public.local_text_cloud_snapshot(uuid,uuid),public.local_text_cloud_operation(uuid,uuid,text,jsonb) to service_role;

@@ -20,5 +20,9 @@ test('readiness inspection performs no writes, provider calls, image retrieval o
     'publishContainer(', 'generateVoiceover(', 'uploadSceneImage(',
   ])assert.equal(reader.includes(forbidden),false,'Forbidden operation '+forbidden)
   assert.match(reader,/assessPersistedDailyPilot/)
+  assert.match(reader,/THE_PROMPT_PILOT_READBACK_ENABLED==='true'/)
+  assert.match(reader,/report.media.voiceReceiptRecorded/)
+  assert.match(reader,/report.media.voiceStorageVerified=verified.verified/)
+  assert.match(reader,/verifyPilotStoredVoice\(db,projectId,scriptId,/)
   assert(!reader.includes('video_url'))
 })

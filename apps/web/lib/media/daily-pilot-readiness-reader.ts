@@ -2,6 +2,7 @@ import 'server-only'
 import type {createAdminClient} from '@/lib/supabase/admin'
 import type {ProjectAccessOk} from '@/lib/auth/project-access'
 import {assertProjectAllowed} from '@/lib/auth/project-access'
+import {verifyPilotStoredVoice} from './pilot-voice-verify'
 import {
   assessPersistedDailyPilot,
   type NewsAuditRow,type ScriptAuditRow,type PilotReadiness,
@@ -42,5 +43,21 @@ export async function inspectDailyPilotScript(
     .select('id,project_id,title,summary,url,source_name,raw_output')
     .eq('id',script.news_item_id).eq('project_id',projectId).maybeSingle()
   if(newsError)throw new Error('PILOT_AUDIT_UNAVAILABLE')
-  return assessPersistedDailyPilot(projectId,script as ScriptAuditRow,(news??null) as NewsAuditRow|null,nowMs)
+  const report=assessPersistedDailyPilot(projectId,script as ScriptAuditRow,(news??null) as NewsAuditRow|null,nowMs)
+  // OFF by default: optional bounded storage-byte audit costs bandwidth and
+  // must never be triggered without an explicit, reviewed pilot setting.
+  if(process.env.THE_PROMPT_PILOT_READBACK_ENABLED==='true' &&
+      report.media.voiceReceiptRecorded && script.voice_status==='ready' &&
+      typeof script.script==='string'&&script.script.trim() &&
+      typeof script.audio_url==='string' && typeof script.timing_url==='string'){
+    const raw=script.raw_output&&typeof script.raw_output==='object'&&!Array.isArray(script.raw_output)
+      ?script.raw_output as Record<string,unknown>:{}
+    const verified=await verifyPilotStoredVoice(db,projectId,scriptId,
+      script.audio_url,script.timing_url,script.script,raw.pilot_voice_receipt)
+    report.media.voiceStorageVerified=verified.verified
+    if(verified.verified){
+      report.blockers=report.blockers.filter(b=>b!=='timing_unverified'&&b!=='voice_identity_unproven')
+    }
+  }
+  return report
 }

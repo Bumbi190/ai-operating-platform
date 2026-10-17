@@ -57,6 +57,7 @@ test('voice generation receipt is shown, but never substituted for storage verif
   }}
   const result=assessPersistedDailyPilot(projectId,s,news(),now)
   assert.equal(result.media.voiceReceiptRecorded,true)
+  assert.equal(result.media.voiceStorageVerified,false)
   assert.ok(result.blockers.includes('voice_identity_unproven'))
   assert.equal(result.canPublish,false)
   const broken=script();broken.raw_output={pilot_voice_receipt:{

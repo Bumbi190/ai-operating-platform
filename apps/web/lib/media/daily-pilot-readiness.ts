@@ -31,7 +31,7 @@ export type PilotReadiness={
   hasAuditableFreshStory:boolean
   canPublish:boolean
   blockers:PilotReadinessBlocker[]
-  media:{audioPresent:boolean;timingUrlPresent:boolean;imageCount:number;voiceReceiptRecorded:boolean}
+  media:{audioPresent:boolean;timingUrlPresent:boolean;imageCount:number;voiceReceiptRecorded:boolean;voiceStorageVerified:boolean}
 }
 const obj=(x:unknown):Record<string,unknown> =>
   x!==null&&typeof x==='object'&&!Array.isArray(x)?x as Record<string,unknown>:{}
@@ -60,7 +60,7 @@ export function assessPersistedDailyPilot(
     scriptId:script?.id??'',projectId,
     sourcePublishedAt:null as string|null,hasVerifiedSourceDate:false,
     hasAuditableFreshStory:false,canPublish:false,
-    blockers,media:{audioPresent,timingUrlPresent,imageCount,voiceReceiptRecorded},
+    blockers,media:{audioPresent,timingUrlPresent,imageCount,voiceReceiptRecorded,voiceStorageVerified:false},
   }
   if(!script){add('missing_script');return base}
   if(script.project_id!==projectId)add('wrong_project')

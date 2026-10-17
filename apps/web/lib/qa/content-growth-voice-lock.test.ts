@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BRAND_MODEL, VICTORIA_VOICE_ID } from '../voice/config'
-import { assertPinnedContentVoice, assertPinnedContentVoiceForRender, requirePinnedContentVoice } from '../content-growth/voice-lock'
+import { assertPinnedContentVoice, assertPinnedContentVoiceForRender, isRejectedNovaVoiceId, requirePinnedContentVoice } from '../content-growth/voice-lock'
 
 describe('Content Growth pinned ElevenLabs voices', () => {
   it('uses The Prompt existing Victoria config', () => {
@@ -47,6 +47,13 @@ describe('Content Growth pinned ElevenLabs voices', () => {
     expect(assertPinnedContentVoiceForRender('familje-stunden','pling-dialogue',p.voiceId,p.modelId,p.processingProfile)).toEqual(p)
     const victoria = requirePinnedContentVoice('the-prompt','news-narrator')
     expect(() => assertPinnedContentVoiceForRender('the-prompt','news-narrator',victoria.voiceId,victoria.modelId,'pling-alternative-b-december-2026')).toThrow('VOICE_PROCESSING_PROFILE_UNAPPROVED')
+  })
+
+  it('permanently rejects the incorrectly labelled English Nova preview ID', () => {
+    expect(isRejectedNovaVoiceId('I0uKCr8dyBq1Ouru7CWl')).toBe(true)
+    expect(isRejectedNovaVoiceId('vhPZICLLz0UIRNLnUe0u')).toBe(false)
+    expect(() => assertPinnedContentVoice('familje-stunden','nova-dialogue','I0uKCr8dyBq1Ouru7CWl','eleven_v4')).toThrow('VOICE_ID_REJECTED_BY_OWNER')
+    expect(() => requirePinnedContentVoice('familje-stunden','nova-dialogue')).toThrow('VOICE_LOCK_UNVERIFIED')
   })
 
   it('accepts a correctly pinned pair', () => {

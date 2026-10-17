@@ -22,7 +22,7 @@ The December instruction audio receipt also includes a documented brightening au
 
 ## Saved ElevenLabs workspace identities: Nova still NOT proven as canonical dialogue voice
 
-- Nova: cloned Swedish voice I0uKCr8dyBq1Ouru7CWl was found in the connected ElevenLabs voice collection. Before general character voice generation, compare it with the user-approved November/December Nova example and its actual voice receipt.
+- **REJECTED BY OWNER 2026-10-17 — DO NOT USE:** `I0uKCr8dyBq1Ouru7CWl`, shown under the name Nova. The user listened and confirmed that the sample was not Nova and was in English. Metadata saying Swedish/cloned is not evidence of correct character identity. This ID is now denied for Nova even if renamed or surfaced again. The true approved Nova dialogue voice ID remains **unknown** pending a verifiable audio or generation receipt.
 - Pling: cloned Swedish voice iS3S91gyCtjX6pvnxlEc also exists but is NOT the approved Alternative B. Do not use it as a backup. The confirmed official Pling dialogue ID is vhPZICLLz0UIRNLnUe0u.
 - Many unrelated public voices are named Victoria, Nova and Pling. Names alone cannot establish identity.
 - Sanna is an approved November/December narrator, not the Nova or Pling character voice.
@@ -30,7 +30,7 @@ The December instruction audio receipt also includes a documented brightening au
 ## Engineering controls
 
 1. Every Content Growth TTS request must specify project, role, voice ID and model, and verify via requirePinnedContentVoice/assertPinnedContentVoice prior to paid dispatch.
-2. Unverified Nova dialogue must fail closed; Pling dialogue requires the owner-approved Alternative B ID, model and verified processing. No Victoria or Sanna fallback and no new voice design.
+2. Unverified Nova dialogue must fail closed; the user-rejected Nova ID `I0uKCr8dyBq1Ouru7CWl` must additionally be denied by exact ID. Pling dialogue requires the owner-approved Alternative B ID, model and verified processing. No Victoria or Sanna fallback and no new voice design.
 3. Use assertPinnedContentVoiceForRender for a role with an approved processing profile. Preserve existing provider auth, spend approvals, timeouts, idempotency and review gates. This registry does not call ElevenLabs or authorize spending.
 4. Before enabling actual Content Studio speech, wire this guard into the future governed production TTS adapter and compare representative, approved historical audio. Until then this is a tested guard for future integration, NOT a claim that production TTS is already protected.
 5. Do not change or regenerate existing November or December content solely to test this.

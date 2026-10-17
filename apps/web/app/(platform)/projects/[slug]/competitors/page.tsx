@@ -7,6 +7,7 @@ import { HandlarborsenCompetitors } from '@/components/platform/vnext/Handlarbor
 import { competitorHistoryEnabled, loadCompetitorHistory } from '@/lib/atlas/project-analytics/handlarborsen-competitor-history-service'
 import { candidateMemoryEnabled, loadCandidateMemory } from '@/lib/atlas/project-analytics/handlarborsen-competitor-memory-service'
 import { candidateReviewEnabled, loadCandidateReviews } from '@/lib/atlas/project-analytics/handlarborsen-candidate-review-service'
+import { competitorInboxEnabled, loadCompetitorInbox } from '@/lib/atlas/project-analytics/handlarborsen-candidate-inbox-service'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,10 +24,12 @@ export default async function CompetitorsPage({ params, searchParams }: {
     : [null, null]
   const memoryEnabled = candidateMemoryEnabled()
   const reviewEnabled = candidateReviewEnabled()
-  const [result, memory, reviews] = await Promise.all([
+  const inboxEnabled = competitorInboxEnabled()
+  const [result, memory, reviews, inbox] = await Promise.all([
     historyEnabled ? loadCompetitorHistory() : Promise.resolve(null),
     memoryEnabled ? loadCandidateMemory() : Promise.resolve(null),
     reviewEnabled ? loadCandidateReviews() : Promise.resolve(null),
+    inboxEnabled ? loadCompetitorInbox('owner') : Promise.resolve(null),
   ])
   const history = result?.status === 'ok' ? result.history : null
   return <HandlarborsenCompetitors
@@ -34,5 +37,6 @@ export default async function CompetitorsPage({ params, searchParams }: {
     historyEnabled={historyEnabled} canSaveHistory={result?.status === 'ok'}
     memoryEnabled={memoryEnabled} memory={memory}
     reviewEnabled={reviewEnabled} reviews={reviews}
+    inboxEnabled={inboxEnabled} inbox={inbox}
   />
 }

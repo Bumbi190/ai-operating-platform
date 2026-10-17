@@ -7,7 +7,7 @@ do $$
 declare
  p jsonb:='{"userId":"20000000-0000-4000-8000-000000000001","allowedProjectIds":["10000000-0000-4000-8000-000000000001"]}';
  v jsonb:='{"projectId":"10000000-0000-4000-8000-000000000001","workerId":"60000000-0000-4000-8000-000000000077"}';
- key jsonb:=current_setting('sales.mailbox_public_key')::jsonb;
+ key jsonb:=current_setting('sales.mailbox_public_key')::jsonb;altkey jsonb:=current_setting('sales.mailbox_public_key_alt')::jsonb;other jsonb;other_context jsonb;
  c jsonb;context jsonb;claim jsonb;receipt jsonb;replayed jsonb;env jsonb:=jsonb_build_object('format','sales-strato-envelope-v1','wrappedKey',replace(encode(decode(repeat('01',384),'hex'),'base64'),E'\n',''),'iv','AQEBAQEBAQEBAQEB','ciphertext','AQEBAQEBAQEBAQEBAQEBAQE');
 begin
  perform public.sales_enroll_worker(p,v||jsonb_build_object('tokenHash',repeat('7',64)));
@@ -15,6 +15,7 @@ begin
  -- RED target: mailbox RPCs must exist.
  c:=public.sales_mailbox_publish_key(repeat('8',64),key||'{"generation":1}');
  context:=public.sales_mailbox_begin_setup(p,v||'{"email":"info@example.se"}')->'context';
+ perform pg_temp.mailbox_expect_error(format('select public.sales_mailbox_publish_key(%L,%L)',repeat('8',64),altkey||'{"generation":1}'),'23505');
  if context->>'kid'<>key->>'kid' then raise exception 'TEST FAILED: wrong host key';end if;
  perform pg_temp.mailbox_expect_error(format('select public.sales_mailbox_begin_setup(%L,%L)',p,v||'{"email":"other@example.se"}'),'23505');
  perform pg_temp.mailbox_expect_error(format('select public.sales_mailbox_publish_key(%L,%L)',repeat('8',64),key||jsonb_build_object('generation',1,'kid',repeat('0',64))),'22023');
@@ -34,9 +35,14 @@ begin
  perform pg_temp.mailbox_expect_error(format('select public.sales_mailbox_commit_probe(%L,%L)',repeat('8',64),c||jsonb_build_object('receipt',receipt||'{"localStored":false}')),'23505');
  perform public.sales_mailbox_begin_setup(p,v||'{"email":"other@example.se"}');
  if public.sales_mailbox_commit_probe(repeat('8',64),c)->>'current'<>'false' then raise exception 'TEST FAILED: stale local activation accepted';end if;
+ other:=v||'{"workerId":"60000000-0000-4000-8000-000000000076"}';
+ perform public.sales_enroll_worker(p,other||jsonb_build_object('tokenHash',repeat('9',64)));perform public.sales_host_authorize(p,other);perform public.sales_host_adopt(repeat('9',64),jsonb_build_object('managerTokenHash',repeat('6',64)));
+ perform public.sales_mailbox_publish_key(repeat('6',64),altkey||'{"generation":1}');other_context:=public.sales_mailbox_begin_setup(p,other||'{"email":"untouched@example.se"}')->'context';
+ perform public.sales_mailbox_submit_sealed(p,jsonb_build_object('projectId',v->>'projectId','setupId',other_context->>'setupId','envelope',env));
  update public.sales_mailbox_setups set expires_at=clock_timestamp()-interval '1 second' where worker_id=(v->>'workerId')::uuid and state='created';
  perform public.sales_mailbox_expire_setups();
  if exists(select from public.sales_mailbox_setups where worker_id=(v->>'workerId')::uuid and state in('created','waiting_for_host','probing')) then raise exception 'TEST FAILED: cleanup';end if;
+ if not exists(select from public.sales_mailbox_setups where id=(other_context->>'setupId')::uuid and state='waiting_for_host' and sealed is not null) then raise exception 'TEST FAILED: cleanup changed an unexpired setup';end if;
  perform public.sales_revoke_worker(p,v);
  perform pg_temp.mailbox_expect_error(format('select public.sales_mailbox_claim_setup(%L,%L)',repeat('8',64),'{}'),'P0002');
  perform pg_temp.mailbox_expect_error(format('select public.sales_mailbox_commit_probe(%L,%L)',repeat('8',64),c),'P0002');

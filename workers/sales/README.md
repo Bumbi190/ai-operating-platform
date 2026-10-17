@@ -67,3 +67,12 @@ A lost renewal response replays the same operation. It never retries a model job
 Windows startup scripts preview by default; `-Apply` affects only the exact owned
 `\Omnira\Omnira-Sales-{workerId}` task for the current interactive user.
 A dispatch interrupted by process termination stays blocked for reconciliation.
+
+Strato B1 uses an owner-only browser form and a 15-minute RSA-OAEP-SHA256 /
+AES-256-GCM envelope bound to project, host, setup and key ID. The private RSA
+key and mailbox password are separate Windows Credential Manager entries.
+The host performs PLAIN authentication only over verified Strato TLS465/993,
+with bounded timeouts; it never selects an IMAP folder or sends an SMTP message.
+A staged credential becomes active only after the matching current server receipt.
+Lost receipts replay without another login; uncertain auth requires reconciliation.
+Inbox history/UID checkpoints and sending authorizations remain separate work.

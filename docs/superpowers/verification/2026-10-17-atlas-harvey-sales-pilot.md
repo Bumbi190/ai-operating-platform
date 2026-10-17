@@ -22,7 +22,7 @@ No production migration, deployment, feature activation, real contact import, wo
 | Visual inspection | Desktop/mobile screenshots inspected. Filial name regression observed RED then corrected and GREEN |
 | TypeScript | `npm run typecheck` exit 0 |
 | Claude installation | Native CLI 2.1.296; doctor ready for required version/help surfaces. Not evidence of an authenticated inference, subscription terms or actual isolation behavior during a live call |
-| Broad existing suite | 13,076 passed; 413 failed; 1,326 skipped across 594 files. Not green. Failures include Windows-only shell incompatibility, missing older isolated database fixtures and stale source/inertness assertions. Exact base comparison is recorded below when completed |
+| Broad existing suite | Final run: 13,116 passed; 401 failed; 1,327 pending/skipped. All 401 failure identities match the exact base recheck; zero new failed tests or files. Not green. Baseline failures include Windows-only shell incompatibility, missing older isolated database fixtures and stale source/inertness assertions. Comparison is committed alongside this report |
 | Related chat/voice/social/build subset | 479 passed, 47 failed, 188 skipped across 65 files; missing existing website/social fixtures and old chat assertions are included. No claim that this entire subset is green |
 
 The synthetic fixtures contain no mail transport implementation or mailbox credentials. No SMTP/IMAP operations, customer mail or live model requests occurred. Browser component receipts are mocked; the real PostgreSQL/API/tool integration is a separate test. This does not prove deployed Next.js routing, production schema deployment, authentication/session cookies or real provider behavior.
@@ -63,7 +63,7 @@ Fresh independent whole-branch review completed against `df7f648` using GPT-6-as
 
 All five independent SQL regression cases were observed failing before fixes; the additional missing-homepage case was also observed failing before its guard. Final SQL checks pass all six cases plus canonical run constraints, concurrent claims, concurrent initial requests and the real cross-layer scenario. The migration/security/schema suites pass; declarations are explicit SQL and new table classifications are recorded as created-not-live, never fabricated live catalog observations. Typecheck and desktop/mobile browser checks pass.
 
-The exact-base full run found 401 failed, 13,066 passed and 1,326 skipped tests across 588 files (102 failed files). The first feature run added migration policy/security failures and one timing failure; these were diagnosed and the migration regressions corrected. Final JSON comparison is recorded below.
+The exact-base full run found 401 failed, 13,066 passed and 1,326 skipped tests across 588 files (102 failed files). The first feature run added migration policy/security failures and one timing failure; these were diagnosed and the migration regressions corrected. Final JSON comparison: 14,848 total tests, 13,116 passed, 401 failed and 1,327 pending/skipped. The separate exact-base recheck covered all 102 failing baseline files and reproduced the same 401 failure identities. New failed tests/files: **zero**; baseline failure identities missing in the final run: **zero**. See `2026-10-17-atlas-harvey-sales-baseline.json`. The final SQL source guard was also tested through the complete real database and security suites after the broad run started.
 
 ### Rulings carried from the final review
 

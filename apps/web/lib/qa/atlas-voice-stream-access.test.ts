@@ -22,7 +22,7 @@ vi.mock('@vercel/functions', () => ({
   upgradeWebSocket: async (handler: (ws: any) => Promise<void>, options: unknown) => {
     state.upgraded(options)
     const work = handler(state.socket)
-    if (process.env.ATLAS_VOICE_STREAM_MODE === 'pilot') await work
+    if (['pilot', 'verify'].includes(process.env.ATLAS_VOICE_STREAM_MODE ?? '')) await work
     return new Response(null, { status: 204 })
   },
 }))
@@ -189,4 +189,15 @@ it.each(['revoked_owner', 'membership_unavailable'])('strict pilot access denies
   else state.memberError = { message: 'synthetic unavailable' }
   expect((await (await route()).GET(request())).status).toBe(scenario === 'revoked_owner' ? 403 : 503)
   expect(state.upgraded).not.toHaveBeenCalled(); expect(state.pilot).not.toHaveBeenCalled()
+})
+
+it('permits authenticated verification mode using the same governed identity-bound bridge', async () => {
+  vi.stubEnv('ATLAS_VOICE_STREAM_MODE', 'verify')
+  expect((await (await route()).GET(request())).status).toBe(204)
+  expect(state.pilot).toHaveBeenCalledTimes(1); expect(state.pilot.mock.calls[0][2]).toBe('operator')
+})
+it('verification mode stays unavailable in production', async () => {
+  vi.stubEnv('ATLAS_VOICE_STREAM_MODE', 'verify'); vi.stubEnv('VERCEL_ENV', 'production')
+  expect((await (await route()).GET(request())).status).toBe(404)
+  expect(state.upgraded).not.toHaveBeenCalled()
 })

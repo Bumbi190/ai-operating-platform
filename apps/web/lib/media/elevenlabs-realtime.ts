@@ -37,6 +37,11 @@ export async function openAtlasSwedishRealtime(ctx: AtlasRealtimeContext, caller
     let socket: WebSocket | undefined, closing = false, terminal = false, ready = false
     let failure: Error | null = null, result: string | undefined, total = 0, queued = 0, segmentBytes = 0, pending = false, userFinished = false, segmentFinished = false
     const queue: Uint8Array[] = [], segments = createVoiceSegmentState()
+    let attemptedPcmBytes = 0, committedSegments = 0
+    const observe = (event: 'ready' | 'committed' | 'closed', outcome?: 'complete' | 'not_dispatched' | 'ambiguous') => {
+      console.info('[atlas-voice-realtime]', { event, elapsedMs: Date.now() - entered, attemptedPcmBytes, committedSegments,
+        ...(outcome ? { outcome } : {}) })
+    }
     let readyResolve!: (turn: RealtimeTurn) => void, readyReject!: (error: Error) => void
     const opened = new Promise<RealtimeTurn>((resolve, reject) => { readyResolve = resolve; readyReject = reject })
     let endCost!: () => void, failCost!: (error: Error) => void
@@ -57,6 +62,7 @@ export async function openAtlasSwedishRealtime(ctx: AtlasRealtimeContext, caller
       socket?.off('message', message); socket?.off('close', closed); socket?.off('unexpected-response', rejected)
       // Retain the idempotent error listener for a late terminate() error.
       queue.length = 0; queued = 0; composed.dispose(); watch.dispose()
+      observe('closed', failure ? failure instanceof ProviderNotDispatchedError ? 'not_dispatched' : 'ambiguous' : 'complete')
       if (failure) { failCost(failure); if (!ready) readyReject(failure); finishReject?.(failure) }
       else { endCost(); finishResolve?.(result ?? '') }
     }
@@ -82,6 +88,7 @@ export async function openAtlasSwedishRealtime(ctx: AtlasRealtimeContext, caller
       if (closing || !socket || socket.readyState !== 1 || watch.authorityUnavailable || composed.signal.aborted) throw unknownOutcome()
       const raw = JSON.stringify({ message_type: 'input_audio_chunk', audio_base_64: Buffer.from(audio).toString('base64'), sample_rate: 16000, ...(commit ? { commit: true } : {}) })
       if (socket.bufferedAmount + queued + Buffer.byteLength(raw) > VOICE_PCM_QUEUE_BYTES) throw unknownOutcome()
+      attemptedPcmBytes += audio.length
       socket.send(raw, error => { if (error) stop(unknownOutcome()) })
     }
     function markCommit() {
@@ -119,12 +126,12 @@ export async function openAtlasSwedishRealtime(ctx: AtlasRealtimeContext, caller
           const config = event.config
           if (ready || !config || config.model_id !== 'scribe_v2_realtime' || config.audio_format !== 'pcm_16000'
             || config.sample_rate !== 16000 || !['swe', 'sv'].includes(config.language_code)) throw unknownOutcome()
-          ready = true; clearTimeout(handshakeTimer); readyResolve(turn); return
+          ready = true; clearTimeout(handshakeTimer); observe('ready'); readyResolve(turn); return
         }
         if (!ready || typeof event.text !== 'string' || event.text.length > VOICE_TRANSCRIPT_CHARS) throw unknownOutcome()
         if (event.message_type === 'partial_transcript') return
         if (event.message_type !== 'committed_transcript' || !pending) throw unknownOutcome()
-        segments.committed(event.text); segmentBytes = 0; pending = false; clearTimeout(commitTimer); pump()
+        segments.committed(event.text); committedSegments++; observe('committed'); segmentBytes = 0; pending = false; clearTimeout(commitTimer); pump()
       } catch { stop(unknownOutcome()) }
     }
     const turn: RealtimeTurn = {

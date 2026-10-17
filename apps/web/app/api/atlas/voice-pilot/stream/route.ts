@@ -5,16 +5,16 @@ import { guardAtlasVoiceAccess, resolveAtlasVoiceAccess } from '@/lib/atlas/voic
 export const dynamic = 'force-dynamic'
 export const maxDuration = 150
 
-/** Synthetic transport probe only. No microphone, provider or spend dependencies. */
+/** Preview-only transport probe, governed provider verification, or explicit pilot. */
 export async function GET(request: Request): Promise<Response> {
   const entered = Date.now(), mode = process.env.ATLAS_VOICE_STREAM_MODE
   if ((process.env.VERCEL_ENV !== 'preview' && process.env.NODE_ENV !== 'development')
-    || (mode !== 'probe' && mode !== 'pilot')) return new Response(null, { status: 404 })
+    || (mode !== 'probe' && mode !== 'verify' && mode !== 'pilot')) return new Response(null, { status: 404 })
   if (request.headers.get('origin') !== new URL(request.url).origin)
     return Response.json({ error: 'Ogiltigt ursprung.' }, { status: 403 })
   const unavailable = () => Response.json({ error: 'Anslutningen kunde inte starta.' }, { status: 503 })
   if (request.signal.aborted) return unavailable()
-  const access = mode === 'pilot' ? await resolveAtlasVoiceAccess({ strict: true }) : await guardAtlasVoiceAccess()
+  const access = mode !== 'probe' ? await resolveAtlasVoiceAccess({ strict: true }) : await guardAtlasVoiceAccess()
   if (access instanceof Response) return access
   if (request.signal.aborted) return unavailable()
   if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket')

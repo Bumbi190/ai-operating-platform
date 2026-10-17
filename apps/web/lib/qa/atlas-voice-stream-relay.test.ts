@@ -182,3 +182,21 @@ describe('governed realtime transcription adapter', () => {
     expect(ws().readyState).toBe(3)
   })
 })
+
+it('records bounded protocol evidence without audio, text, credentials or provider errors', async () => {
+  const log = vi.spyOn(console, 'info').mockImplementation(() => {})
+  try {
+    const turn = await start(); turn.send(chunk()); const final = turn.finish('manual')
+    commit('SYNTHETIC_PRIVATE_TRANSCRIPT')
+    await expect(final).resolves.toBe('SYNTHETIC_PRIVATE_TRANSCRIPT')
+    const events = log.mock.calls.filter(call => call[0] === '[atlas-voice-realtime]').map(call => call[1])
+    expect(events).toEqual([
+      expect.objectContaining({ event: 'ready', attemptedPcmBytes: 0, committedSegments: 0 }),
+      expect.objectContaining({ event: 'committed', attemptedPcmBytes: 6400, committedSegments: 1 }),
+      expect.objectContaining({ event: 'closed', attemptedPcmBytes: 6400, committedSegments: 1, outcome: 'complete' }),
+    ])
+    expect(JSON.stringify(events)).not.toContain('SYNTHETIC_PRIVATE')
+    expect(JSON.stringify(events)).not.toContain('synthetic-private-key')
+    expect(JSON.stringify(events)).not.toContain('audio_base_64')
+  } finally { log.mockRestore() }
+})

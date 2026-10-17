@@ -31,3 +31,8 @@ it('production does not expose the page even if mode is pilot', async () => {
   vi.stubEnv('VERCEL_ENV', 'production'); vi.stubEnv('NODE_ENV', 'production'); vi.stubEnv('ATLAS_VOICE_STREAM_MODE', 'pilot')
   await expect(Page()).rejects.toThrow('not_found')
 })
+
+it('provider verification mode keeps microphone streaming selection hidden', async () => {
+  vi.stubEnv('ATLAS_VOICE_STREAM_MODE', 'verify')
+  expect((await Page()).props.streamingAvailable).toBe(false)
+})

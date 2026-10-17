@@ -1,7 +1,7 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest'
 const s = vi.hoisted(() => ({
   reserve: vi.fn(), settle: vi.fn(), release: vi.fn(), mark: vi.fn(), waitUntil: vi.fn(), dispose: vi.fn(), admit: vi.fn(),
-  socket: null as any, created: 0, order: [] as string[], watch: null as AbortController | null,
+  rate: 0.48, socket: null as any, created: 0, order: [] as string[], watch: null as AbortController | null,
 }))
 vi.mock('@vercel/functions', () => ({ waitUntil: (work: Promise<unknown>) => s.waitUntil(work) }))
 vi.mock('@/lib/cost/budget-gate', () => ({
@@ -10,8 +10,7 @@ vi.mock('@/lib/cost/budget-gate', () => ({
   openOverrideReservation: async () => null,
 }))
 vi.mock('@/lib/cost/advisory-override', () => ({ recordAdvisoryOverride: async () => {} }))
-vi.mock('@/lib/cost/rates', () => ({ getRates: async () => ({ usd_sek: 10, elevenlabs_scribe_v2_realtime_keyterms_usd_per_hour: 0.48 }) }))
-vi.mock('@/lib/cost/atlas-realtime-billing', () => ({ verifiedAtlasRealtimeRate: () => 0.48 }))
+vi.mock('@/lib/cost/rates', () => ({ getRates: async () => ({ usd_sek: 10, elevenlabs_scribe_v2_realtime_keyterms_usd_per_hour: s.rate }) }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({}) }))
 vi.mock('@/lib/governance/execution-stop', async orig => ({
   ...await orig<any>(), resolveExecutionStopForContract: async () => ({ allowed: true, resolution: 'RESOLVED' }),
@@ -40,7 +39,7 @@ const ctx = { project: { projectId: 'project-test' }, operation: 'test-realtime'
 const settled = { settled: true, result: 'settled', settledSek: 0.16, ceilingExceeded: false }
 beforeEach(() => {
   vi.clearAllMocks(); vi.stubEnv('ELEVENLABS_API_KEY', 'synthetic-key')
-  s.socket = null; s.created = 0; s.order = []; s.watch = new AbortController()
+  s.rate = 0.48; s.socket = null; s.created = 0; s.order = []; s.watch = new AbortController()
   s.reserve.mockImplementation(async () => { s.order.push('reserve'); return { allowed: true, wouldAllow: true, advisoryOverride: false, reason: 'ok', reservationId: 'res-test' } })
   s.mark.mockImplementation(async () => { s.order.push('intent'); return true })
   s.settle.mockResolvedValue(settled); s.admit.mockImplementation(async () => { s.order.push('admit') })
@@ -98,4 +97,10 @@ it('does not connect when durable dispatch intent cannot be recorded', async () 
   s.mark.mockResolvedValue(false)
   await expect(start()).rejects.toBeDefined()
   expect(s.created).toBe(0); expect(s.release).toHaveBeenCalledTimes(1)
+})
+
+it('real billing floor refuses an unsafe rate before reserve, intent or provider construction', async () => {
+  s.rate = 0.27
+  await expect(start()).rejects.toThrow('atlas_realtime_billing_unverified')
+  expect(s.reserve).not.toHaveBeenCalled(); expect(s.mark).not.toHaveBeenCalled(); expect(s.created).toBe(0)
 })

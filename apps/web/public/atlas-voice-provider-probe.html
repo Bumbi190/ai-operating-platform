@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="sv"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Atlas · prov för strömmande tal</title>
+<style>body{margin:0;background:#07101f;color:#edf4fc;font:18px system-ui,sans-serif;line-height:1.6}main{max-width:560px;margin:6vh auto;padding:24px}h1{font-size:30px}a{color:#80e5d9}button{font:inherit;padding:14px 20px;background:#80e5d9;color:#061c23;border:0;border-radius:12px;cursor:pointer}button:disabled{opacity:.5}#status{padding:20px;border:1px solid #304052;border-radius:12px;margin-top:24px;overflow-wrap:anywhere}</style>
+<main><h1>Prova Atlas strömmande tal</h1>
+<p>Provet använder förinspelade ord, inte mikrofonen. Det kontrollerar tre anslutningar och tar ungefär två minuter. Inga chattjobb startas.</p>
+<p>Det använder totalt högst 85,6 sekunder taligenkänning inom Omniras vanliga kostnadskontroll. Det belastar ditt ElevenLabs-utrymme. Ingen påfyllning eller uppgradering görs.</p>
+<p><a href="/atlas/rosttest">Öppna Atlas</a> och logga in om det behövs. Gå sedan tillbaka hit och låt sidan vara öppen under provet.</p>
+<button id="test">Starta röstprovet</button><p id="status" role="status" aria-live="polite">Redo att testa.</p></main>
+<script>
+const button=document.getElementById('test'),status=document.getElementById('status');
+const storageKey='atlas-provider-probe-20261017-v1',chunkBytes=6400;
+let attempted=false,leaving=false,activeCancel=null,sessions=0,sentBytes=0;
+const safeCodes=new Set(['already_attempted','fixture_unavailable','fixture_invalid','storage_unavailable','ready_timeout','final_timeout','absolute_timeout','invalid_event','incomplete_transcript','capacity','unavailable','aborted','setup_error']);
+try{attempted=!!sessionStorage.getItem(storageKey);if(attempted){button.disabled=true;status.textContent='Provet har redan startats under detta besök. Skicka resultatet till chatten innan ett nytt försök.';}}catch{}
+function failure(code){return new Error(code);}
+function runCase(index,fixtures){
+  return new Promise((resolve,reject)=>{
+    let socket,ended=false,ready=false,finishing=false,sequence=0,tickTimer,finalTimer;
+    const frames=index===0?16:index===1?200:212;
+    const readyTimer=setTimeout(()=>end('ready_timeout'),12000);
+    const absoluteTimer=setTimeout(()=>end('absolute_timeout'),90000);
+    function end(code){
+      if(ended)return;ended=true;clearTimeout(readyTimer);clearTimeout(absoluteTimer);clearTimeout(tickTimer);clearTimeout(finalTimer);
+      activeCancel=null;
+      if(socket){socket.onopen=socket.onmessage=socket.onerror=socket.onclose=null;if(socket.readyState<2){try{socket.close(1000);}catch{}}}
+      if(code)reject(failure(code));else resolve();
+    }
+    activeCancel=()=>end('aborted');
+    function audioAt(frame){
+      let name,offset;
+      if(index===0){if(frame>=8)return new Uint8Array(chunkBytes);name='atlas';offset=frame;}
+      else if(frame<100){name='atlas';offset=frame%8;}
+      else if(frame<200){name='omnira';offset=(frame-100)%8;}
+      else{if(frame>=208)return new Uint8Array(chunkBytes);name='prompt';offset=frame-200;}
+      return fixtures[name].subarray(offset*chunkBytes,(offset+1)*chunkBytes);
+    }
+    function next(){
+      if(ended||leaving){end('aborted');return;}
+      try{
+        if(socket.readyState!==1||socket.bufferedAmount+chunkBytes+4>64040){end('capacity');return;}
+        const raw=new Uint8Array(chunkBytes+4);new DataView(raw.buffer).setUint32(0,sequence,false);raw.set(audioAt(sequence),4);
+        sentBytes+=chunkBytes;socket.send(raw);sequence++;
+        if(sequence<frames){tickTimer=setTimeout(next,200);return;}
+        finishing=true;finalTimer=setTimeout(()=>end('final_timeout'),20000);
+        const finish=JSON.stringify({type:'finish',lastSeq:sequence-1,reason:'manual'});
+        if(socket.bufferedAmount+finish.length>64552){end('capacity');return;}socket.send(finish);
+      }catch{end('unavailable');}
+    }
+    try{
+      if(leaving){end('aborted');return;}
+      const url=new URL('/api/atlas/voice-pilot/stream',location.href);url.protocol=location.protocol==='https:'?'wss:':'ws:';
+      if(++sessions>3){end('capacity');return;}socket=new WebSocket(url);
+      socket.onmessage=event=>{
+        if(ended)return;
+        try{
+          if(typeof event.data!=='string'||event.data.length>65536)throw failure('invalid_event');
+          const value=JSON.parse(event.data);
+          if(value.type==='failed'){end(safeCodes.has(value.code)?value.code:'unavailable');return;}
+          if(value.type==='ready'&&!ready&&socket.readyState===1){ready=true;clearTimeout(readyTimer);next();return;}
+          if(value.type!=='final'||!finishing||value.reason!=='manual'||typeof value.text!=='string'||value.text.length>12000)throw failure('invalid_event');
+          const text=value.text.toLowerCase();
+          if(!text.includes('atlas')||(index>0&&!text.includes('omnira'))||(index===2&&!/the\s+prompt/.test(text))){end('incomplete_transcript');return;}
+          end();
+        }catch{end('invalid_event');}
+      };
+      socket.onerror=()=>end('unavailable');socket.onclose=()=>end('unavailable');
+    }catch{end('setup_error');}
+  });
+}
+button.onclick=async()=>{
+  if(attempted)return;attempted=true;button.disabled=true;
+  try{
+    try{sessionStorage.setItem(storageKey,'started');}catch{throw failure('storage_unavailable');}
+    status.textContent='Förbereder det förinspelade provet…';
+    const fixtures={};
+    for(const name of ['atlas','omnira','prompt']){
+      const response=await fetch('/atlas-voice-probe/'+name+'.pcm');
+      if(!response.ok)throw failure('fixture_unavailable');
+      const raw=new Uint8Array(await response.arrayBuffer());if(raw.length!==51200)throw failure('fixture_invalid');fixtures[name]=raw;
+    }
+    for(let index=0;index<3;index++){
+      if(leaving)throw failure('aborted');
+      status.textContent='Kontrollerar anslutning '+(index+1)+' av 3. Låt sidan vara öppen…';
+      await runCase(index,fixtures);
+    }
+    status.textContent='Röstprovet lyckades. Resultat: 3/3 · skickat provljud: '+(sentBytes/32000).toFixed(1).replace('.',',')+' sekunder. Skicka gärna en bild av detta till chatten.';
+  }catch(error){
+    const code=error&&safeCodes.has(error.message)?error.message:'setup_error';
+    status.textContent='Röstprovet kunde inte slutföras. Skicka gärna en bild till chatten. Kod: '+code+' · anslutningar: '+sessions+' · skickat provljud: '+(sentBytes/32000).toFixed(1).replace('.',',')+' sekunder.';
+  }
+};
+window.addEventListener('pagehide',()=>{leaving=true;activeCancel?.();});
+</script></html>

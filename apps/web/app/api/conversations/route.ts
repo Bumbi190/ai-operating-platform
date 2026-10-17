@@ -8,6 +8,9 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
 
+// Supabase is eu-west-1: avoid transatlantic auth/context/budget round trips.
+export const preferredRegion = 'dub1'
+
 export async function GET(req: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

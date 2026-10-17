@@ -71,3 +71,16 @@ RED: normal-close expectation failed1/23; browser diagnostic cases failed5/6. GR
 Task1 remains incomplete and Task3 remains blocked until the normal operator's deployed echo/deadline/invalid-frame proof succeeds. No microphone or paid provider call was used. No additional full-suite run is justified for this isolated diagnostic/probe change; earlier inherited failures remain reported above.
 
 Final diagnostic refinement: the invalid-frame subprobes accept a prompt no-echo close after an opened socket even if the browser also emits an error, because that error is consistent with deliberate payload rejection. A positive echo probe still rejects errors and unclean1006 closure. Regression RED1/8 then GREEN8/8; final changed-file selection33/33. TypeScript passed before this page-only refinement and is rechecked on the final source. No scope expansion or inferred deployed success.
+
+## Phone evidence at08:25 and explicit policy-close fix
+The normal operator's screenshot3129 reports text/rejection_timeout, opened=yes, echoed=no, no close event. Sequential page control flow establishes that the exact positive echo/deadline and oversize checks passed before the final text check began.
+Runtime correlation on8ca195e:
+- Positive connection: access200/233ms, first4-byte frame135ms, one frame/four bytes echoed, clean1000 close at5073ms, request signal not aborted.
+- Oversize connection: access200/111ms, socket error111ms, no echo; browser advanced, so prompt invalid-payload rejection passed.
+- Text connection: access200/258ms, invalid_frame after154ms, zero accepted frames/echo bytes, signal not aborted. Browser nevertheless reached its unchanged2.5s rejection deadline.
+The server correctly rejected the frame but its abrupt terminate() did not give the phone a prompt close event on this path. The exact intermediary responsible is unproven. The working positive path sends an explicit close frame; ws documentation distinguishes close() handshake from terminate()/socket.destroy(): https://github.com/websockets/ws/blob/master/doc/ws.md.
+
+Minimal fix: share the bounded closing handshake for invalid text/payload/backpressure with policy1008; retain normal deadline1000 and independent250ms hard termination. Stop reading frames immediately, clear the original deadline, and await close/hard-bound before resolving the handler. Browser deadlines and pass criteria are unchanged. Automatic ws maxPayload rejection remains1009.
+RED: new text policy-close/nonresponsive-peer test failed1/26 because no1008 frame was sent. GREEN:58/58 across stream access/browser verifier and original speech authority tests; final TypeScript exit0. No full-suite rerun; old inherited failures unchanged. Native exact-source result follows in the execution ledger/PR.
+A new deployed normal-session text-close proof is still required to complete Task1; positive/oversize runtime evidence is now established. Paid Task3 stays blocked, no microphone/provider activation or production merge.
+Native Chromium on the final actual probe function/page passed all three connections: exact echo and clean1000 at5018ms, oversize1009 at6ms, text1008 at25ms. This remains local evidence until the deployed phone repeats the text-close check.

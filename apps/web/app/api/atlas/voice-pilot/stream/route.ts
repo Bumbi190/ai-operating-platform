@@ -32,7 +32,7 @@ function probe(socket: WebSocket, signal: AbortSignal): Promise<void> {
     const started = Date.now()
     let finished = false, frames = 0, sentBytes = 0
     let closeTimer: ReturnType<typeof setTimeout> | undefined
-    let closingReason: 'deadline' | undefined
+    let closingReason: 'deadline' | 'invalid_frame' | undefined
     const timer = setTimeout(deadline, 5000)
     console.info('[atlas-voice-stream-probe]', { event: 'opened' })
     function finish(reason: 'socket_close' | 'socket_error' | 'request_abort' | 'invalid_frame' | 'send_error' | 'close_timeout' | 'close_error', closeCode = 0) {
@@ -54,19 +54,21 @@ function probe(socket: WebSocket, signal: AbortSignal): Promise<void> {
     function closed(code: number) { finish('socket_close', code) }
     function errored() { finish('socket_error') }
     function aborted() { finish('request_abort') }
-    function deadline() {
-      if (finished) return
-      closingReason = 'deadline'
+    function deadline() { beginClose('deadline', 1000) }
+    function beginClose(reason: 'deadline' | 'invalid_frame', code: 1000 | 1008) {
+      if (finished || closingReason) return
+      closingReason = reason
+      clearTimeout(timer)
       socket.off('message', message)
-      // Send an intentional close frame; await its handshake before the handler resolves.
-      // A nonresponsive peer still cannot retain this probe beyond 5.25 seconds.
+      // Send a close frame before resolving so an intermediary can forward rejection.
+      // Bound the handshake even when the peer never acknowledges it.
       closeTimer = setTimeout(() => finish('close_timeout'), 250)
-      try { socket.close(1000) } catch { finish('close_error') }
+      try { socket.close(code) } catch { finish('close_error') }
     }
     function message(data: RawData, binary: boolean) {
       if (finished || closingReason) return
       const bytes = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as ArrayBuffer)
-      if (!binary || bytes.length > 6404 || socket.bufferedAmount + bytes.length > 64000) { finish('invalid_frame'); return }
+      if (!binary || bytes.length > 6404 || socket.bufferedAmount + bytes.length > 64000) { beginClose('invalid_frame', 1008); return }
       frames++
       if (frames === 1) console.info('[atlas-voice-stream-probe]', { event: 'first_frame', elapsedMs: Date.now() - started, bytes: bytes.length })
       try { socket.send(bytes, { binary: true }, error => { if (error) finish('send_error'); else sentBytes += bytes.length }) }

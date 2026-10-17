@@ -128,6 +128,20 @@ describe('bounded no-provider echo probe', () => {
       expect(JSON.stringify(calls)).not.toContain('SYNTHETIC_PRIVATE')
     } finally { log.mockRestore() }
   })
+  it('sends an explicit policy close for text and bounds an unresponsive peer', async () => {
+    vi.useFakeTimers()
+    await (await route()).GET(request())
+    state.socket.close = (code: number) => { state.socket.closeCodes.push(code); state.socket.readyState = 2 }
+    state.socket.emit('message', Buffer.from('synthetic probe'), false)
+    expect(state.socket.closeCodes).toEqual([1008])
+    expect(state.socket.readyState).toBe(2)
+    state.socket.emit('message', Buffer.alloc(4), true)
+    expect(state.socket.sent).toEqual([])
+    await vi.advanceTimersByTimeAsync(250)
+    expect(state.socket.readyState).toBe(3)
+    expect(state.socket.listenerCount('message')).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
+  })
   it.each(['text', 'oversize', 'backpressure', 'error', 'abort'])('terminates safely on %s', async scenario => {
     const abort = new AbortController()
     await (await route()).GET(request(undefined, abort.signal))

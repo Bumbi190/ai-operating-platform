@@ -35,6 +35,8 @@ Claude runs once per contact from a temporary empty directory with tools, MCP se
 
 Each job has at most ten reserved attempts; the first implementation makes one call per selected contact and never automatically regenerates on timeout. Heartbeats renew a 90-second lease. Uncertain execution, lost claims and failures require reconciliation. The server rechecks stop state before dispatch permits and result commits. Cancellation cannot undo a model request already accepted by its provider. Revoke any connection whose token may have been exposed.
 
+Initial-contact jobs are serialized per project and blocked when the mailbox already has an uncancelled initial job, contacted history or a contact block on another branch. Separate branch records and draft alternatives within the same explicitly selected batch are retained; they grant no sending rights. Updating a contact fences stale claims and model permits. Operator reads reconcile expired leases even if the sole worker was revoked and the project is paused. A configured homepage requires evidence or an explicit question; completion cannot discard recorded evidence/questions. The attempt ceiling counts worker CLI dispatches; provider-internal retries and billing are not independently metered by this adapter and must be qualified before activation.
+
 The worker's source text and drafts are untrusted data. A syntactically valid draft is not proof of truthful business claims. Missing prerequisites, unverifiable facts and offer mismatches must remain questions or blocked states.
 
 ## Reproducible verification

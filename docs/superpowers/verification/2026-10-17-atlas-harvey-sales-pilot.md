@@ -53,4 +53,28 @@ The approved delivery is a draft PR with activation off. Existing unrelated base
 
 ## Final independent review
 
-Pending whole-branch review. Findings, fixes, baseline comparison and deferred minors are appended before delivery.
+Fresh independent whole-branch review completed against `df7f648` using GPT-6-astra. No Critical findings. Five Important findings entered one RED→GREEN fix pass:
+
+1. Block repeated initial jobs across keys and shared-mailbox history/blocks, with a project eligibility lock and real concurrent-request proof.
+2. Enforce stored research questions and evidence at the server acceptance boundary. A confirmed homepage cannot silently produce neither source nor question. The real worker API fixture proves omission is rejected and a preserved question creates `needs_input` without an approval.
+3. Reconcile expired leases through owned job/workspace reads, including when paused and the sole worker is revoked; preserve attempt count and fence late results.
+4. Serialize contact eligibility edits with claim/dispatch checks; stale/suppressed contacts cannot reserve a model attempt.
+5. Advance canonical migration counts to 130/116, retain frozen grandfathered lists and explicitly test the missing-sales-ledger rejection. Production application remains pending.
+
+All five independent SQL regression cases were observed failing before fixes; the additional missing-homepage case was also observed failing before its guard. Final SQL checks pass all six cases plus canonical run constraints, concurrent claims, concurrent initial requests and the real cross-layer scenario. The migration/security/schema suites pass; declarations are explicit SQL and new table classifications are recorded as created-not-live, never fabricated live catalog observations. Typecheck and desktop/mobile browser checks pass.
+
+The exact-base full run found 401 failed, 13,066 passed and 1,326 skipped tests across 588 files (102 failed files). The first feature run added migration policy/security failures and one timing failure; these were diagnosed and the migration regressions corrected. Final JSON comparison is recorded below.
+
+### Rulings carried from the final review
+
+- The review proposed rejecting both shared-mailbox branches within one batch. Retain separate draft alternatives for the approved five-contact fixture and explicit per-contact drafting contract. Cross-job duplicate requests and mailbox-wide contacted/suppression history are blocked. No sends occur, and Part C still requires address-level send suppression. Cost if wrong: humans may review two alternatives for one inbox.
+- Installed Claude behavior, retention, hidden provider retries and entitlement remain unproven; leave activation off pending a synthetic qualification. Cost: real drafting is not yet enabled.
+- Structural checks do not prove every Swedish business claim. Keep exact source/offer display and human editorial review. Cost: semantic errors remain possible if a human approves incorrect text.
+- Production application, deployment, enrollment, contact-history correctness, Strato and delivery remain unverified and inactive. Cost: Pilot A code is reviewable but not a live full sales flow.
+- Baseline failures are compared explicitly; green scoped checks do not erase the historical project failures. Cost: no claim of a green production release.
+
+### Deferred minors
+
+- Job summary is not recalculated when an operator revision adds/resolves the final question; the exact current draft and approval are still shown.
+- Newly enrolled worker metadata requires a manual refresh before appearing in the revoke list.
+- Some modules/functions need conventional formatting for easier future maintenance.

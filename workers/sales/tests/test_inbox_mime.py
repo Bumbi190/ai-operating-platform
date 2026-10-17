@@ -18,3 +18,13 @@ class InboxMimeTests(unittest.TestCase):
 
  def test_case_insensitive_bodystructure_type_names_still_select_text(self):
   self.assertEqual(select_text_part([b'text',b'plain',None,None,None,b'8bit',12,1]),{'section':'1','size':12})
+
+class AttachmentContainerTests(unittest.TestCase):
+ def test_multipart_attachment_cannot_expose_its_unlabelled_text_child(self):
+  text=[b'TEXT',b'PLAIN',[b'CHARSET',b'UTF-8'],None,None,b'8BIT',12,1]
+  attached=[text,b'MIXED',None,[b'ATTACHMENT',[b'FILENAME',b'private.mime']]]
+  self.assertIsNone(select_text_part(attached))
+ def test_inline_named_multipart_also_keeps_children_private(self):
+  text=[b'TEXT',b'PLAIN',[b'CHARSET',b'UTF-8'],None,None,b'8BIT',12,1]
+  named=[text,b'MIXED',[b'NAME',b'private.mime'],[b'INLINE',[b'FILENAME',b'private.mime']]]
+  self.assertIsNone(select_text_part(named))

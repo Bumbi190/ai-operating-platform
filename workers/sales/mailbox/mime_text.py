@@ -39,23 +39,32 @@ def decode_text_part(mime_headers,encoded_bytes):
 
 def select_text_part(structure):
  count=[0];choices=[]
+ def attached(params,disposition):
+  if isinstance(params,list) and any(isinstance(p,bytes) and p.upper() in (b'NAME',b'FILENAME') for p in params[::2]):return True
+  if isinstance(disposition,list) and disposition:
+   if isinstance(disposition[0],bytes) and disposition[0].upper()==b'ATTACHMENT':return True
+   if len(disposition)>1 and isinstance(disposition[1],list) and any(isinstance(p,bytes) and p.upper() in (b'NAME',b'FILENAME') for p in disposition[1][::2]):return True
+  return False
  def walk(node,path,depth):
   count[0]+=1
   if depth>8 or count[0]>50 or not isinstance(node,list) or not node:raise ValueError()
   if isinstance(node[0],list):
-   for i,child in enumerate(node):
+   children=[]
+   for child in node:
     if not isinstance(child,list):break
-    walk(child,path+[str(i+1)],depth+1)
+    children.append(child)
+   index=len(children)
+   if index>=len(node) or not isinstance(node[index],bytes):raise ValueError()
+   params=node[index+1] if len(node)>index+1 else None
+   disposition=node[index+2] if len(node)>index+2 else None
+   if attached(params,disposition):return
+   for i,child in enumerate(children):walk(child,path+[str(i+1)],depth+1)
    return
   if len(node)<7:return
   major,minor=(x.upper() if isinstance(x,bytes) else x for x in node[0:2])
   if major!=b'TEXT' or minor not in (b'PLAIN',b'HTML') or type(node[6]) is not int or node[6]<0:return
-  params=node[2] if isinstance(node[2],list) else []
-  if any(isinstance(p,bytes) and p.upper() in (b'NAME',b'FILENAME') for p in params[::2]):return
-  # TEXT adds a lines field before optional MD5 and Content-Disposition.
-  disposition=node[9] if len(node)>9 else None
-  if isinstance(disposition,list) and disposition and isinstance(disposition[0],bytes) and disposition[0].upper()==b'ATTACHMENT':return
-  if isinstance(disposition,list) and len(disposition)>1 and isinstance(disposition[1],list) and any(isinstance(p,bytes) and p.upper()==b'FILENAME' for p in disposition[1][::2]):return
+  # Attachment disposition on either a container or a leaf excludes its subtree.
+  if attached(node[2],node[9] if len(node)>9 else None):return
   choices.append((0 if minor==b'PLAIN' else 1,{'section':'.'.join(path) or '1','size':node[6]}))
  try:walk(structure,[],0)
  except Exception:return None

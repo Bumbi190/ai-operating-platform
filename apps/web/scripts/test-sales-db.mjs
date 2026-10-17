@@ -43,6 +43,9 @@ try{
  const {publicKey:altKey}=generateKeyPairSync('rsa',{modulusLength:3072,publicExponent:65537}),alt={jwk:altKey.export({format:'jwk'}),kid:createHash('sha256').update(altKey.export({format:'der',type:'spki'})).digest('hex')};
  console.log(sql(`select set_config('sales.mailbox_public_key','${JSON.stringify(pub).replaceAll("'","''")}',false);select set_config('sales.mailbox_public_key_alt','${JSON.stringify(alt).replaceAll("'","''")}',false);`+readFileSync(resolve(root,'apps/web/supabase/tests/sales_strato_connection.sql'),'utf8')))
 
+ const inboxMigration='20261017191904_sales_strato_inbox.sql';sql(readFileSync(resolve(migrations,inboxMigration),'utf8'))
+ console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_strato_inbox.sql'),'utf8')))
+
  sql(`select sales_enroll_worker('{"userId":"20000000-0000-4000-8000-000000000001","allowedProjectIds":["10000000-0000-4000-8000-000000000001"]}','{"projectId":"10000000-0000-4000-8000-000000000001","workerId":"60000000-0000-4000-8000-000000000098","tokenHash":"${'1'.repeat(64)}"}'); select sales_host_authorize('{"userId":"20000000-0000-4000-8000-000000000001","allowedProjectIds":["10000000-0000-4000-8000-000000000001"]}','{"projectId":"10000000-0000-4000-8000-000000000001","workerId":"60000000-0000-4000-8000-000000000098"}'); select sales_host_adopt(repeat('1',64),jsonb_build_object('managerTokenHash',repeat('2',64)));`)
  const rotateRace=(id,hash)=>new Promise((done,reject)=>{const p=spawn('docker',['exec','-i',container,'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-U','postgres','-d',db]);let out='',err='';p.stdout.on('data',x=>out+=x);p.stderr.on('data',x=>err+=x);p.on('error',reject);p.on('close',code=>done({code,out,err}));p.stdin.end(`select sales_host_rotate(repeat('2',64),jsonb_build_object('rotationId','${id}','newTokenHash',repeat('${hash}',64),'expectedGeneration',1));`)})
  const rotations=await Promise.all([rotateRace('70000000-0000-4000-8000-000000000098','3'),rotateRace('70000000-0000-4000-8000-000000000099','4')]);
@@ -58,6 +61,6 @@ try{
  const requests=await Promise.all([enqueue('race-a'),enqueue('race-b')]);if(requests.filter(x=>x.code===0).length!==1||requests.filter(x=>x.err.includes('INITIAL_JOB_ALREADY_EXISTS')).length!==1)throw Error('TEST FAILED: concurrent initial requests both accepted')
  console.log('PASS: concurrent different-key requests produce exactly one initial mailbox job')
  console.log('PASS: real PostgreSQL sales transactions, concurrent claim and canonical approval integration')
- const integration=spawnSync(process.execPath,[resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/qa/sales-integration.test.ts','lib/qa/sales-host-integration.test.ts','lib/qa/sales-mailbox-integration.test.ts','--maxWorkers=1','--minWorkers=1'],{cwd:resolve(root,'apps/web'),env:{...process.env,SALES_FIXTURE_DATABASE:db},encoding:'utf8',maxBuffer:2e6})
+ const integration=spawnSync(process.execPath,[resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/qa/sales-integration.test.ts','lib/qa/sales-host-integration.test.ts','lib/qa/sales-mailbox-integration.test.ts','lib/qa/sales-inbox-integration.test.ts','--maxWorkers=1','--minWorkers=1'],{cwd:resolve(root,'apps/web'),env:{...process.env,SALES_FIXTURE_DATABASE:db},encoding:'utf8',maxBuffer:2e6})
  console.log(integration.stdout);if(integration.status!==0)throw Error(integration.stderr||'Sales slice integration failed')
 }finally{docker(['exec',container,'dropdb','-U','postgres',db])}

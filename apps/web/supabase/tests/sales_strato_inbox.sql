@@ -71,6 +71,9 @@ begin
  b:=jsonb_build_object('ref',s->'ref','mode','scan','expectedCursor',s->'cursor','uidValidity','11','throughUid',15,'rangeEnd',20,'records','[]'::jsonb);
  perform pg_temp.inbox_refused(format('select sales_inbox_commit_batch(%L,%L::jsonb)',repeat('d',64),b),'40001');
  perform pg_temp.inbox_assert((select scanned_through_uid=14 from sales_inbox_configs where mailbox_id=(v->>'mailboxId')::uuid),'fenced cursor preserved');
+ update sales_mailbox_connections set generation=6 where id=(v->>'mailboxId')::uuid;
+ update sales_worker_registrations set revoked_at=clock_timestamp() where id='60000000-0000-4000-8000-000000000081';
+ perform pg_temp.inbox_assert(sales_mailbox_read_status(p,jsonb_build_object('projectId',v->>'projectId','mailboxId',v->>'mailboxId'))->>'inboxEnabled'='false','revoked host has no effective inbox permission');
  perform pg_temp.inbox_assert(not has_function_privilege('authenticated','public.sales_inbox_commit_batch(text,jsonb)','execute'),'clients cannot commit');
 end $$;
 reset role;

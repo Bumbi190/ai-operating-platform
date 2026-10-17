@@ -84,3 +84,37 @@ connections/<project>/mailbox-diagnostic.json journal records only setup ID,
 fixed phase/reason code, numeric SMTP reply and timestamp; it never records raw
 server replies or credentials. A failed password is discarded and must be
 submitted again through the encrypted owner form after the issue is corrected.
+
+## Strato B2 inbox
+
+The owner explicitly saves and enables a versioned scope: one authenticated mailbox,
+INBOX, exact since timestamp, and confirmed contact IDs whose text may be fetched.
+B1 login alone grants no inbox access. Atlas has only `get_sales_inbox` and
+`get_sales_inbox_message` after conversation/project validation. It cannot enable
+import, select new text, link a branch, send mail or start a reply job. B3 reply
+preparation and C sending remain separate, unimplemented increments.
+
+The host uses its existing manager identity at the fixed `/api/sales/inbox/host`
+endpoint. A separate stoppable thread runs no more often than every60seconds,
+independent of Claude readiness and draft-worker heartbeats. Only the active local
+mailbox credential with matching generation can authenticate. An actual AUTH error
+persists a local scope block and server needs_input state; explicit owner resume
+changes the config version. Transport failures use60/120/300second backoff.
+
+EXAMINE, UIDVALIDITY/UID and BODY.PEEK preserve flags. Each batch covers at most500
+UIDs/20records, with50KiB transport, bounded headers,64KiB encoded text part and
+8KiB saved text. No UNSEEN filter, attachment, image or external URL fetch exists.
+Persisted occurrences, text and cursor share one SQL transaction. On restart the
+host queries the pending batch receipt before another IMAP login. Journal files
+contain only references, ranges, hashes and fixed status codes, never message text
+or passwords. Complete content may share one canonical record across UID epochs;
+branch choices and stable old references remain separate.
+
+The SQL runner now also exercises fresh Python processes against a real imaplib
+loopback server and the real Next handlers/PostgreSQL RPCs. This includes crashes
+before commit, lost replies after commit, selected old-UID fills, epoch dedup,
+vanished messages, MIME bounds and pause during fetch. These are synthetic fixtures
+and do not prove a real Strato mailbox import. Real activation requires the
+reviewed concrete scope and pinned server/client installation; never change the
+preview origin without explicitly preserving and validating the existing manager,
+active mailbox and RSA key references.

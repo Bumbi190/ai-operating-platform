@@ -112,7 +112,7 @@ Skapa sammanhållna `apps/web/lib/sales/inbox/{types,validate,store,api,host-api
 
 **Files:** utöka `apps/web/scripts/test-sales-db.mjs` och lägg `lib/qa/sales-inbox-integration.test.ts` samt `workers/sales/tests/inbox_cross_fixture.py`. Skapa `docs/superpowers/verification/2026-10-17-sales-strato-inbox.md`; uppdatera README.
 
-- [ ] Kör riktig SQL -> Next-handler -> Python/imaplib-socketfixture -> atomiskt batchkvitto -> ägar/Atlasläsning. Testa redan läst svar, replay, processavbrott före/efter beständig lagring, UIDVALIDITY-byte, dubbletter, försvunnet mejl, MIME-gränser och revoke under fetch.
+- [x] Kör riktig SQL -> Next-handler -> Python/imaplib-socketfixture -> atomiskt batchkvitto -> ägar/Atlasläsning. Testa redan läst svar, replay, processavbrott före/efter beständig lagring, UIDVALIDITY-byte, dubbletter, försvunnet mejl, MIME-gränser och revoke under fetch.
 - [ ] Kör hela Python-sviten, scoped sales-/security-/schema-tester, typecheck och Playwright. Kör aktuell bred websvit och jämför mot den dokumenterade historiska 401-felbaslinjen på identitetsnivå; rapportera alla avvikelser vid namn. Inget nytt fel får gömmas i baslinjen.
 - [ ] Genomför en färsk oberoende helhetsgranskning, högst en regressionstestad fixomgång enligt vald inline-metod. Dokumentera kvarvarande risker och kostnaden om en tolkning är fel.
 - [ ] Förbered granskad migration, skyddad preview och ny hashkontrollerad installation utan att ändra befintlig aktiv host i förväg. Första aktivering ska vara konkret och reviewbar: mailbox, INBOX, exakt since, metadataläsning och valda texter visas. Inga produktionflaggor/merge.

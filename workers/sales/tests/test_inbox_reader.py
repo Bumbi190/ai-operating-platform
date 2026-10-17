@@ -57,3 +57,8 @@ class InboxReaderTests(unittest.TestCase):
    with patch('workers.sales.mailbox.inbox.TOTAL_TIMEOUT',0.2,create=True):
     with self.assertRaises(InboxReadError) as caught:self.read(factory)
    self.assertEqual(str(caught.exception),'CONNECTION_FAILED');self.assertLess(time.monotonic()-started,1)
+ def test_multipart_attachment_subtree_never_fetches_child_text(self):
+  structure=b'(("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "8BIT" 12 1) "MIXED" NIL ("ATTACHMENT" ("FILENAME" "private.mime")))'
+  with inbox_server({12:{'structure':structure}}) as (state,factory):
+   r=self.read(factory,{**CONFIG,'selectedAddresses':['dealer@example.se']})['records'][0]
+   self.assertEqual(r['textState'],'unsupported');self.assertIsNone(r['text']);self.assertNotIn('.MIME',str(state['commands']));self.assertNotIn('BODY.PEEK[1]',str(state['commands']))

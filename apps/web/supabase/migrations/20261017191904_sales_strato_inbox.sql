@@ -42,7 +42,7 @@ grant select,insert,update on public.sales_inbox_configs,public.sales_inbox_mess
 -- Preserve the B1 status contract while projecting the actual current B2 grant.
 create or replace function public.sales_mailbox_status(c public.sales_mailbox_connections) returns jsonb language sql security invoker set search_path='' as $$
  select jsonb_build_object('mailboxId',c.id,'email',c.email,'status',c.status,'smtpAuthenticatedAt',c.smtp_authenticated_at,'imapAuthenticatedAt',c.imap_authenticated_at,'reasonCode',c.reason_code,
- 'inboxEnabled',c.status='authenticated' and exists(select from public.sales_inbox_configs i where i.mailbox_id=c.id and i.project_id=c.project_id and i.owner_id=c.owner_id and i.mailbox_generation=c.generation and i.state='enabled'),'sendingEnabled',false)
+ 'inboxEnabled',c.status='authenticated' and exists(select from public.sales_worker_registrations w where w.id=c.worker_id and w.project_id=c.project_id and w.owner_id=c.owner_id and w.revoked_at is null and w.managed_authorized_at is not null and w.manager_token_hash is not null) and exists(select from public.sales_inbox_configs i where i.mailbox_id=c.id and i.project_id=c.project_id and i.owner_id=c.owner_id and i.mailbox_generation=c.generation and i.state='enabled'),'sendingEnabled',false)
 $$;
 -- CREATE OR REPLACE preserves the existing explicit service-role-only ACL.
 

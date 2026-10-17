@@ -117,6 +117,8 @@ begin
  or p_selection->>'inputHash' is distinct from p_input_hash or p_selection->>'admissionId' is distinct from a.id::text
  or p_selection->>'modelDigest' is distinct from a.model_digest or p_selection->>'evidenceHash' is distinct from a.evidence_hash
  or p_selection->>'deploymentId' is distinct from a.deployment_id::text or p_selection->>'policyVersion' is distinct from a.policy_version
+ or p_selection->>'profile' is distinct from 'local_assist_v1' or p_selection->>'candidateId' is distinct from a.configuration#>>'{qualification,candidateId}'
+ or (p_context->>'jobCostCapUsd')::numeric>(a.configuration->>'jobCostCapUsd')::numeric or (p_context->>'dailyCostCapUsd')::numeric>(a.configuration->>'dailyCostCapUsd')::numeric
  or coalesce((p_selection->>'validUntil')::timestamptz<=clock_timestamp(),true) then return jsonb_build_object('kind','refused','reason','SELECTION_REFUSED');end if;
  insert into public.local_text_jobs(id,project_id,owner_id,conversation_id,idempotency_key,input_hash,task_kind,task,context,admission_id,expires_at,payload_expires_at)
  values(p_job_id,project,v_owner,conversation,(p_request->>'idempotencyKey')::uuid,p_input_hash,t->>'kind',t,p_context,a.id,expires,greatest(clock_timestamp(),expires-interval '5 minutes'));
@@ -137,6 +139,17 @@ begin
  if not found then return jsonb_build_object('kind','applied','value',null);end if;
  select * into a from public.local_text_admissions where id=j.admission_id for share;
  select decision into s from public.local_text_selections where id=j.selection_id;
+ -- Renew only the same immutable admitted tuple, after fresh health/authority checks.
+ -- Retain the old decision as history; never revive drifted evidence or retry a started task.
+ if public.local_text_eligible(j.project_id,j.owner_id,a.id,j.task_kind,j.input_hash)
+ and s->>'modelDigest'=a.model_digest and s->>'evidenceHash'=a.evidence_hash and s->>'deploymentId'=a.deployment_id::text
+ and s->>'profile'='local_assist_v1' and s->>'candidateId'=a.configuration#>>'{qualification,candidateId}'
+ and (s->>'validUntil')::timestamptz<=clock_timestamp() then
+  s=s||jsonb_build_object('id',gen_random_uuid(),'healthAt',to_char(d.last_heartbeat_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+   'validUntil',to_char(least(clock_timestamp()+interval '30 seconds',d.last_heartbeat_at+interval '45 seconds',a.expires_at,d.expires_at,j.payload_expires_at) at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'));
+  insert into public.local_text_selections(id,job_id,decision) values((s->>'id')::uuid,j.id,s);
+  update public.local_text_jobs set selection_id=(s->>'id')::uuid where id=j.id returning * into j;
+ end if;
  if not public.local_text_eligible(j.project_id,j.owner_id,a.id,j.task_kind,j.input_hash)
  or s->>'modelDigest' is distinct from a.model_digest or s->>'evidenceHash' is distinct from a.evidence_hash
  or coalesce((s->>'validUntil')::timestamptz<=clock_timestamp(),true) then return jsonb_build_object('kind','refused','reason','SELECTION_STALE');end if;
@@ -161,6 +174,7 @@ begin
  select * into a from public.local_text_admissions where id=j.admission_id for share;
  if p_claim->>'modelDigest' is distinct from a.model_digest or not public.local_text_eligible(j.project_id,j.owner_id,a.id,j.task_kind,j.input_hash) then return jsonb_build_object('kind','refused','reason','ADMISSION_REFUSED');end if;
  if j.state='reconciling' then return jsonb_build_object('kind','refused','reason','RECONCILIATION_REQUIRES_VERIFIED_EVIDENCE');end if;
+ if t='started' and (public.local_text_revalidate(p_claim)->>'kind') is distinct from 'applied' then return jsonb_build_object('kind','refused','reason','EVIDENCE_DRIFT');end if;
  if t='started' and j.state='running' then return jsonb_build_object('kind','duplicate','value',public.local_text_receipt(j.id));end if;
  if t='started' and j.state='claimed' then
   update public.local_text_attempts set state='running',started_at=clock_timestamp() where id=j.attempt_id;
@@ -279,7 +293,7 @@ begin
  elsif p_operation='heartbeat' then
   if (p_payload-array['health','activeAttemptId'])<>'{}' or jsonb_typeof(health) is distinct from 'object' or health->>'state' not in ('ready','blocked','stopped') or health->>'lifecycleLock' not in ('clear','uncertain') then return jsonb_build_object('kind','refused','reason','INVALID_PAYLOAD');end if;
   update public.local_text_devices set last_heartbeat_at=clock_timestamp(),health_state=case when health->>'state'='ready' and health->>'lifecycleLock'='clear' and health->'gpuAvailable'='true'::jsonb then 'ready' else 'blocked' end,
-  reported_health=jsonb_build_object('state',health->'state','lifecycleLock',health->'lifecycleLock','gpuAvailable',health->'gpuAvailable','runtimeVersion',health->'runtimeVersion','adapterHash',health->'adapterHash','configurationHash',health->'configurationHash','models',health->'models') where id=d.id;
+  reported_health=jsonb_build_object('state',health->'state','lifecycleLock',health->'lifecycleLock','gpuAvailable',health->'gpuAvailable','runtimeVersion',health->'runtimeVersion','runtimeHash',health->'runtimeHash','adapterHash',health->'adapterHash','configurationHash',health->'configurationHash','models',health->'models') where id=d.id;
   if p_payload->>'activeAttemptId' is not null then
    select * into j from public.local_text_jobs where device_id=d.id and attempt_id=(p_payload->>'activeAttemptId')::uuid for update;
    if not found or j.state not in ('claimed','running') or j.cancel_requested or j.lease_until<=clock_timestamp() or j.payload_expires_at<=clock_timestamp() or not public.local_text_eligible(j.project_id,j.owner_id,j.admission_id,j.task_kind,j.input_hash) then
@@ -317,3 +331,96 @@ begin
 end$$;
 revoke all on function public.local_text_owner_devices(uuid,uuid) from public,anon,authenticated;
 grant execute on function public.local_text_owner_devices(uuid,uuid) to service_role;
+-- Qualification is supplied only by the server-owned independently reviewed catalog.
+-- No authenticated/device caller may write admissions or qualification evidence.
+alter table public.local_text_admissions add column version integer not null default 1;
+alter table public.local_text_admissions add column approved_by uuid references auth.users(id);
+alter table public.local_text_admissions add column approved_at timestamptz;
+create function public.local_text_evidence_current(p_admission uuid,p_device uuid) returns boolean language sql volatile security invoker set search_path='' as $$
+ select coalesce((
+ a.approved_by=d.owner_id and a.approved_at is not null and a.configuration->>'placement'='cloud_control_review_allowed'
+ and a.configuration->>'policyVersion'='local_assist_v1' and a.policy_version='local_assist_v1'
+ and a.configuration#>>'{qualification,taskKind}'=a.task_kind and a.configuration#>>'{qualification,modelDigest}'=a.model_digest
+ and ((a.task_kind in ('classify','extract') and a.configuration#>>'{qualification,candidateId}'='qwen3.5:4b') or (a.task_kind='classify' and a.configuration#>>'{qualification,candidateId}'='qwen3.5:9b') or (a.task_kind='summarize' and a.configuration#>>'{qualification,candidateId}'='qwen3:8b'))
+ and a.configuration#>>'{qualification,review,status}'='approved' and a.configuration#>>'{qualification,review,corpus}'='sv-atlas-v2'
+ and (a.configuration#>>'{qualification,review,cases}')::numeric>=25
+ and (a.configuration#>>'{qualification,review,accuracy}')::numeric between case when a.task_kind='summarize' then 1 else 0.9 end and 1
+ and a.configuration#>>'{qualification,review,invented}'='0' and a.configuration#>>'{qualification,review,injectionPasses}'='0'
+ and a.configuration#>>'{qualification,review,reviewRunId}' ~ '^[a-f0-9-]{36}$'
+ and a.configuration#>>'{qualification,license,permission}'='allowed'
+ and not exists(select 1 from unnest(array['runtimeHash','templateHash','schemaHash','adapterHash','configurationHash','tokenizerEvidenceHash']) k where coalesce(a.configuration->'qualification'->>k,'') !~ '^[a-f0-9]{64}$')
+ and coalesce(a.configuration#>>'{qualification,license,evidenceHash}','') ~ '^[a-f0-9]{64}$'
+ and (a.configuration->>'jobCostCapUsd')::numeric>0 and (a.configuration->>'jobCostCapUsd')::numeric<=0.25
+ and (a.configuration->>'dailyCostCapUsd')::numeric>0 and (a.configuration->>'dailyCostCapUsd')::numeric<=5
+ and d.reported_health->>'runtimeVersion'=a.configuration#>>'{qualification,runtimeVersion}'
+ and d.reported_health->>'runtimeHash'=a.configuration#>>'{qualification,runtimeHash}'
+ and d.reported_health->>'adapterHash'=a.configuration#>>'{qualification,adapterHash}'
+ and d.reported_health->>'configurationHash'=a.configuration#>>'{qualification,configurationHash}'
+ and d.reported_health->>'lifecycleLock'='clear' and d.reported_health->'gpuAvailable'='true'::jsonb
+ and d.reported_health->'models' @> jsonb_build_array(jsonb_build_object('candidateId',a.configuration#>>'{qualification,candidateId}','modelDigest',a.model_digest))
+ ),false) from public.local_text_admissions a join public.local_text_devices d on d.id=a.device_id where a.id=p_admission and d.id=p_device;
+$$;
+create or replace function public.local_text_eligible(p_project uuid,p_owner uuid,p_admission uuid,p_kind text,p_input_hash text) returns boolean
+language plpgsql volatile security invoker set search_path='' as $$
+declare s record;
+begin
+ select * into s from public.stop_state(p_project);
+ if not found or s.global_paused is distinct from false or s.project_found is distinct from true or s.project_paused is distinct from false then return false;end if;
+ return coalesce((select a.project_id=p_project and p.owner_id=p_owner and d.owner_id=p_owner and a.task_kind=p_kind
+ and a.status='active' and a.qualification_status='verified' and a.expires_at>clock_timestamp() and d.status='active'
+ and d.expires_at>clock_timestamp() and d.health_state='ready' and d.last_heartbeat_at>clock_timestamp()-interval '45 seconds' and d.last_heartbeat_at<=clock_timestamp()
+ and p_input_hash=any(a.approved_input_hashes) and public.local_text_evidence_current(a.id,d.id)
+ from public.local_text_admissions a join public.local_text_devices d on d.id=a.device_id join public.projects p on p.id=a.project_id where a.id=p_admission),false);
+exception when invalid_text_representation or numeric_value_out_of_range then return false;
+end$$;
+create function public.local_text_revalidate(p_claim jsonb) returns jsonb language plpgsql volatile security invoker set search_path='' as $$
+declare j public.local_text_jobs;a public.local_text_admissions;s jsonb;
+begin
+ select * into j from public.local_text_jobs where id=(p_claim->>'jobId')::uuid;
+ if not found or j.state not in ('claimed','running') or j.cancel_requested or j.task is null or j.payload_expires_at<=clock_timestamp() or j.expires_at<=clock_timestamp() or j.lease_until<=clock_timestamp()
+ or j.device_id is distinct from (p_claim->>'deviceId')::uuid or j.attempt_id is distinct from (p_claim->>'attemptId')::uuid or j.claim_id is distinct from (p_claim->>'claimId')::uuid or j.fence is distinct from (p_claim->>'fence')::bigint
+ or j.selection_id is distinct from (p_claim->>'selectionId')::uuid or j.input_hash is distinct from p_claim->>'inputHash' then return jsonb_build_object('kind','refused','reason','FENCED');end if;
+ select * into a from public.local_text_admissions where id=j.admission_id;
+ select decision into s from public.local_text_selections where id=j.selection_id and job_id=j.id;
+ if not public.local_text_eligible(j.project_id,j.owner_id,a.id,j.task_kind,j.input_hash)
+ or s is null or s->>'id' is distinct from j.selection_id::text or s->>'jobId' is distinct from j.id::text or s->>'inputHash' is distinct from j.input_hash
+ or s->>'projectId' is distinct from j.project_id::text or s->>'admissionId' is distinct from a.id::text or s->>'deploymentId' is distinct from a.deployment_id::text
+ or s->>'evidenceHash' is distinct from a.evidence_hash or s->>'modelDigest' is distinct from a.model_digest or p_claim->>'modelDigest' is distinct from a.model_digest
+ or s->>'policyVersion' is distinct from a.policy_version or s->>'profile' is distinct from 'local_assist_v1' or s->>'candidateId' is distinct from a.configuration#>>'{qualification,candidateId}'
+ or coalesce((s->>'validUntil')::timestamptz<=clock_timestamp(),true) then return jsonb_build_object('kind','refused','reason','EVIDENCE_DRIFT');end if;
+ return jsonb_build_object('kind','applied','value',s);
+exception when invalid_text_representation or invalid_datetime_format or numeric_value_out_of_range then return jsonb_build_object('kind','refused','reason','INVALID_CLAIM');end$$;
+create function public.local_text_owner_admission(p_owner_id uuid,p_project_id uuid,p_device_id uuid,p_action text,p_specification jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
+declare d public.local_text_devices;a public.local_text_admissions;q jsonb=p_specification->'qualification';v uuid=gen_random_uuid();expiry timestamptz;
+begin
+ select * into d from public.local_text_devices where id=p_device_id for update;
+ if not found or d.owner_id<>p_owner_id or not exists(select 1 from public.projects where id=p_project_id and owner_id=p_owner_id) then return jsonb_build_object('kind','refused','reason','SCOPE_REFUSED');end if;
+ if p_action='revoke' then
+  select * into a from public.local_text_admissions where id=(p_specification->>'id')::uuid and device_id=d.id and project_id=p_project_id for update;
+  if not found then return jsonb_build_object('kind','refused','reason','SCOPE_REFUSED');end if;
+  if a.version is distinct from (p_specification->>'expectedVersion')::integer then return jsonb_build_object('kind','refused','reason','STALE_VERSION');end if;
+  update public.local_text_admissions set status='revoked',version=version+1 where id=a.id returning * into a;
+ elsif p_action='admit' then
+  expiry=(p_specification->>'expiresAt')::timestamptz;
+  if d.status<>'active' or d.enrolled_at is null or d.expires_at<=clock_timestamp() or expiry is null or expiry<=clock_timestamp() or expiry>least(clock_timestamp()+interval '90 days',d.expires_at)
+  or p_specification->>'policyVersion' is distinct from 'local_assist_v1' or p_specification->>'placement' is distinct from 'cloud_control_review_allowed'
+  or coalesce(p_specification->>'dataClass','') not in ('synthetic','approved_cloud_text') or coalesce(p_specification->>'evidenceHash','') !~ '^[a-f0-9]{64}$'
+  or coalesce(q->>'modelDigest','') !~ '^sha256:[a-f0-9]{64}$' or q->>'taskKind' not in ('classify','extract','summarize')
+  or jsonb_typeof(p_specification->'approvedInputHashes') is distinct from 'array' then return jsonb_build_object('kind','refused','reason','INVALID_ADMISSION');end if;
+  if jsonb_array_length(p_specification->'approvedInputHashes') not between 1 and 100 or exists(select 1 from jsonb_array_elements_text(p_specification->'approvedInputHashes') x where x !~ '^[a-f0-9]{64}$') then return jsonb_build_object('kind','refused','reason','INVALID_INPUT_APPROVAL');end if;
+  insert into public.local_text_admissions(id,project_id,device_id,deployment_id,task_kind,model_digest,evidence_hash,policy_version,qualification_status,status,data_class,approved_input_hashes,configuration,expires_at,approved_by,approved_at)
+  values(v,p_project_id,d.id,v,q->>'taskKind',q->>'modelDigest',p_specification->>'evidenceHash','local_assist_v1','verified','active',p_specification->>'dataClass',array(select jsonb_array_elements_text(p_specification->'approvedInputHashes')),p_specification,expiry,p_owner_id,clock_timestamp()) returning * into a;
+  -- Raising rolls back the candidate insert; no half-admitted row is retained.
+  if public.local_text_evidence_current(a.id,d.id) is distinct from true then raise check_violation using message='EVIDENCE_UNVERIFIED';end if;
+ else return jsonb_build_object('kind','refused','reason','INVALID_OPERATION');end if;
+ return jsonb_build_object('kind','applied','value',jsonb_build_object('id',a.id,'projectId',a.project_id,'deviceId',a.device_id,'status',a.status,'evidenceHash',a.evidence_hash,'version',a.version,'expiresAt',to_char(a.expires_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')));
+exception when invalid_text_representation or invalid_datetime_format or numeric_value_out_of_range or check_violation then return jsonb_build_object('kind','refused','reason','INVALID_ADMISSION');end$$;
+create function public.local_text_admission_immutable() returns trigger language plpgsql security invoker set search_path='' as $$
+begin
+ if row(new.id,new.project_id,new.device_id,new.deployment_id,new.task_kind,new.model_digest,new.evidence_hash,new.policy_version,new.data_class,new.approved_input_hashes,new.configuration,new.created_at,new.approved_by,new.approved_at)
+ is distinct from row(old.id,old.project_id,old.device_id,old.deployment_id,old.task_kind,old.model_digest,old.evidence_hash,old.policy_version,old.data_class,old.approved_input_hashes,old.configuration,old.created_at,old.approved_by,old.approved_at)
+ or new.expires_at>old.expires_at or new.version<old.version then raise check_violation using message='IMMUTABLE_ADMISSION';end if;return new;
+end$$;
+create trigger local_text_admission_immutable before update on public.local_text_admissions for each row execute function public.local_text_admission_immutable();
+revoke all on function public.local_text_evidence_current(uuid,uuid),public.local_text_revalidate(jsonb),public.local_text_owner_admission(uuid,uuid,uuid,text,jsonb),public.local_text_admission_immutable() from public,anon,authenticated;
+grant execute on function public.local_text_evidence_current(uuid,uuid),public.local_text_revalidate(jsonb),public.local_text_owner_admission(uuid,uuid,uuid,text,jsonb) to service_role;

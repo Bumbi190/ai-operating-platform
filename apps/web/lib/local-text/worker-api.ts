@@ -1,6 +1,7 @@
 import 'server-only'
 import {canonicalJson,parseClaim,hashTask,sha256,isSha256,isUuid,validateTaskResult,JOB_STATES} from '@omnira/local-text-contract'
 import {verifyWorkerRequest} from './identity'
+import {revalidateSelection} from './policy'
 import type {Db,WorkerOperation,Claim,TaskResult,TransitionResult} from './types'
 
 const object=(v:unknown):v is Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v)
@@ -17,9 +18,9 @@ export function parseWorkerPayload(operation:WorkerOperation,bytes:Uint8Array):W
   const v=value as Record<string,unknown>
   if(operation==='enroll'||operation==='claim'){if(!exact(v,[]))fail();return v}
   if(operation==='heartbeat'){
-   if(!exact(v,['health','activeAttemptId'])||!(v.activeAttemptId===null||isUuid(v.activeAttemptId))||!exact(v.health,['state','lifecycleLock','gpuAvailable','runtimeVersion','adapterHash','configurationHash','models']))fail()
+   if(!exact(v,['health','activeAttemptId'])||!(v.activeAttemptId===null||isUuid(v.activeAttemptId))||!exact(v.health,['state','lifecycleLock','gpuAvailable','runtimeVersion','runtimeHash','adapterHash','configurationHash','models']))fail()
    const h=v.health as Record<string,unknown>
-   if(!['ready','blocked','stopped'].includes(String(h.state))||!['clear','uncertain'].includes(String(h.lifecycleLock))||typeof h.gpuAvailable!=='boolean'||typeof h.runtimeVersion!=='string'||h.runtimeVersion.length>64||!isSha256(h.adapterHash)||!isSha256(h.configurationHash)||!Array.isArray(h.models)||h.models.length>3)fail()
+   if(!['ready','blocked','stopped'].includes(String(h.state))||!['clear','uncertain'].includes(String(h.lifecycleLock))||typeof h.gpuAvailable!=='boolean'||typeof h.runtimeVersion!=='string'||h.runtimeVersion.length>64||!isSha256(h.runtimeHash)||!isSha256(h.adapterHash)||!isSha256(h.configurationHash)||!Array.isArray(h.models)||h.models.length>3)fail()
    const models=h.models as unknown[]
    if(models.some(m=>!exact(m,['candidateId','modelDigest'])||!candidates.includes(String(m.candidateId))||typeof m.modelDigest!=='string'||!/^sha256:[a-f0-9]{64}$/.test(m.modelDigest))||new Set(models.map(m=>(m as Record<string,unknown>).candidateId)).size!==models.length)fail()
    return v
@@ -44,6 +45,7 @@ export interface WorkerApiResponse {version:1;requestId:string;operation:WorkerO
 export async function executeWorkerRequest(db:Db,request:Request,operation:WorkerOperation,now=new Date()):Promise<WorkerApiResponse>{
  const verified=await verifyWorkerRequest(db,request,operation,now),payload=parseWorkerPayload(operation,verified.bodyBytes)
  if(object(payload.claim)&&payload.claim.deviceId!==verified.deviceId)throw Error('INVALID_WORKER_PAYLOAD')
+ if(operation==='started'){const gate=await revalidateSelection(db,payload.claim as Claim,now);if(gate.kind!=='applied'&&gate.kind!=='duplicate')return {version:1,requestId:verified.requestId,operation,result:gate}}
  const unknown:TransitionResult<unknown>={kind:'unknown',reconcileId:verified.requestId};let result:TransitionResult<unknown>=unknown
  try{
   const call=db.rpc.bind(db) as unknown as (name:'local_text_worker_operation',args:Record<string,unknown>)=>PromiseLike<{data:unknown;error:unknown}>

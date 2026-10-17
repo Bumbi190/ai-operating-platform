@@ -60,3 +60,17 @@ export async function readReceipt(db:Db,userId:string,jobId:string):Promise<JobR
  if(!isUuid(userId)||!isUuid(jobId))return null
  try{const {data,error}=await rpc(db,'local_text_read_receipt',{p_user_id:userId,p_job_id:jobId});if(error)throw Error('unavailable');if(data===null)return null;if(!object(data))throw Error('invalid');return receipt(data.receipt,data.task===null?null:parseTask(data.task),{jobId})}catch{throw Error('LOCAL_TEXT_STATE_UNAVAILABLE')}
 }
+
+export type AdmissionReceipt={id:string;projectId:string;deviceId:string;status:'active'|'paused'|'revoked';evidenceHash:string;version:number;expiresAt:string}
+export async function writeOwnerAdmission(db:Db,ownerId:string,projectId:string,deviceId:string,action:'admit'|'revoke',specification:Record<string,unknown>):Promise<TransitionResult<AdmissionReceipt>>{
+ if(![ownerId,projectId,deviceId].every(isUuid))return {kind:'refused',reason:'INVALID_SCOPE'}
+ try{
+  const call=db.rpc.bind(db) as unknown as (name:'local_text_owner_admission',args:Record<string,unknown>)=>PromiseLike<RpcResponse>
+  const {data,error}=await call('local_text_owner_admission',{p_owner_id:ownerId,p_project_id:projectId,p_device_id:deviceId,p_action:action,p_specification:specification})
+  if(error)return {kind:'unknown',reconcileId:deviceId}
+  return resultOf(data,deviceId,v=>{
+   if(!object(v)||!isUuid(v.id)||v.projectId!==projectId||v.deviceId!==deviceId||!['active','paused','revoked'].includes(String(v.status))||!isSha256(v.evidenceHash)||!Number.isInteger(v.version)||Number(v.version)<1||!timestamp(v.expiresAt))throw Error('INVALID_ADMISSION')
+   return {id:v.id,projectId,deviceId,status:v.status as AdmissionReceipt['status'],evidenceHash:v.evidenceHash,version:Number(v.version),expiresAt:v.expiresAt}
+  })
+ }catch{return {kind:'unknown',reconcileId:deviceId}}
+}

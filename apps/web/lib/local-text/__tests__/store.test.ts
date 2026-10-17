@@ -54,3 +54,9 @@ describe('local text store RPC boundary',()=>{
   const out=await api.readReceipt(db({data:value,error:null}),id,jobId);expect(out?.result).toBeNull();expect(out?.reasonCode).toBe('PAYLOAD_EXPIRED')
  })
 })
+it('owner admission preserves commit uncertainty and rejects foreign receipt scope',async()=>{
+ const specification={id,expectedVersion:1}
+ expect(await api.writeOwnerAdmission(db({data:null,error:Error('lost commit')}),id,id,id,'revoke',specification)).toEqual({kind:'unknown',reconcileId:id})
+ const value={id,projectId:jobId,deviceId:id,status:'revoked',evidenceHash:'a'.repeat(64),version:2,expiresAt:'2099-01-01T00:00:00.000Z'}
+ expect(await api.writeOwnerAdmission(db({data:{kind:'applied',value},error:null}),id,id,id,'revoke',specification)).toEqual({kind:'unknown',reconcileId:id})
+})

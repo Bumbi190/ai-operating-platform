@@ -19,7 +19,7 @@ it('rejects injected scopes, endpoints, swapped hashes and duplicate body keys',
  expect(()=>api.parseWorkerPayload('claim',Buffer.from([0xff]))).toThrow('INVALID_WORKER_PAYLOAD')
 })
 it('keeps heartbeat observations bounded and excludes arbitrary model names',()=>{
- const valid={health:{state:'ready',lifecycleLock:'clear',gpuAvailable:true,runtimeVersion:'0.40.5',adapterHash:h,configurationHash:h,models:[{candidateId:'qwen3.5:4b',modelDigest:'sha256:'+h}]},activeAttemptId:null}
+ const valid={health:{state:'ready',lifecycleLock:'clear',gpuAvailable:true,runtimeVersion:'0.40.5',runtimeHash:h,adapterHash:h,configurationHash:h,models:[{candidateId:'qwen3.5:4b',modelDigest:'sha256:'+h}]},activeAttemptId:null}
  expect(api.parseWorkerPayload('heartbeat',bytes(valid))).toEqual(valid)
  expect(()=>api.parseWorkerPayload('heartbeat',bytes({...valid,health:{...valid.health,models:[{candidateId:'arbitrary',modelDigest:'sha256:'+h}]}}))).toThrow('INVALID_WORKER_PAYLOAD')
 })

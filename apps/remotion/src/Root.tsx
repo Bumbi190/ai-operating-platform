@@ -3,6 +3,7 @@ import { Composition } from 'remotion'
 import { ShortFormVideo } from './compositions/ShortFormVideo'
 import { SimpleNewsReel } from './compositions/SimpleNewsReel'
 import { ContentGrowthReel } from './compositions/ContentGrowthReel'
+import { ThePromptEditorialLab } from './compositions/ThePromptEditorialLab'
 import type { VideoInputProps } from './lib/types'
 
 // Default props for Remotion Studio preview
@@ -47,12 +48,12 @@ export function RemotionRoot() {
       />
       <Composition
         id="ThePromptContentLab"
-        component={ContentGrowthReel}
+        component={ThePromptEditorialLab}
         durationInFrames={360}
         fps={30}
         width={1080}
         height={1920}
-        defaultProps={{ brand: 'the-prompt' as const, imageUrls: [] }}
+        defaultProps={{headline:'AI is changing the rules.',context:'A sharper look at the technology behind the headlines.',takeaway:'The important question is what changes next.',sourceName:'EDITORIAL CONCEPT',imageUrls:[]}}
       />
 
       {/* Lite version — single static image, same audio + captions. ~5× cheaper. */}

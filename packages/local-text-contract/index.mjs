@@ -12,6 +12,7 @@ const exact=(v,keys)=>plain(v)&&Reflect.ownKeys(v).length===keys.length&&keys.ev
 const scalar=s=>!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(s);
 const text=(v,max)=>typeof v==='string'&&v.trim().length>0&&scalar(v)&&[...v].length<=max;
 const iso=v=>typeof v==='string'&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(v)&&Number.isFinite(Date.parse(v))&&new Date(v).toISOString()===v;
+const origin=v=>{try{const u=new URL(v);return typeof v==='string'&&u.protocol==='https:'&&u.origin===v&&!u.username&&!u.password;}catch{return false;}};
 function fail(code){throw new Error(code);}
 export function parseTask(v){
  const kind=v?.kind;
@@ -44,7 +45,13 @@ export function parseClaim(v){
  return {...v,task:parseTask(v.task)};
 }
 export function parseWorkerEnvelope(v){
- if(!exact(v,['version','deviceId','buildHash','keyId','counter','nonce','issuedAt','expiresAt','method','path','bodySha256','signature'])||v.version!==1||![v.deviceId,v.keyId,v.nonce].every(isUuid)||![v.buildHash,v.bodySha256].every(isSha256)||typeof v.counter!=='string'||!/[1-9][0-9]{0,19}/.test(v.counter)||!/^([1-9][0-9]{0,19})$/.test(v.counter)||BigInt(v.counter)>18446744073709551615n||!iso(v.issuedAt)||!iso(v.expiresAt)||Date.parse(v.expiresAt)<=Date.parse(v.issuedAt)||Date.parse(v.expiresAt)-Date.parse(v.issuedAt)>60000||v.method!=='POST'||typeof v.path!=='string'||!WORKER_OPERATIONS.some(x=>v.path==='/api/local-text/worker/'+x)||typeof v.signature!=='string'||!/^[-_a-zA-Z0-9]{86}$/.test(v.signature)||Buffer.from(v.signature,'base64url').length!==64||Buffer.from(v.signature,'base64url').toString('base64url')!==v.signature)fail('INVALID_ENVELOPE');
+ if(!exact(v,['version','origin','deviceId','buildHash','keyId','counter','nonce','issuedAt','expiresAt','method','path','bodySha256','signature'])||v.version!==1||!origin(v.origin)||![v.deviceId,v.keyId,v.nonce].every(isUuid)||![v.buildHash,v.bodySha256].every(isSha256)||typeof v.counter!=='string'||!/[1-9][0-9]{0,19}/.test(v.counter)||!/^([1-9][0-9]{0,19})$/.test(v.counter)||BigInt(v.counter)>18446744073709551615n||!iso(v.issuedAt)||!iso(v.expiresAt)||Date.parse(v.expiresAt)<=Date.parse(v.issuedAt)||Date.parse(v.expiresAt)-Date.parse(v.issuedAt)>60000||v.method!=='POST'||typeof v.path!=='string'||!WORKER_OPERATIONS.some(x=>v.path==='/api/local-text/worker/'+x)||typeof v.signature!=='string'||!/^[-_a-zA-Z0-9]{86}$/.test(v.signature)||Buffer.from(v.signature,'base64url').length!==64||Buffer.from(v.signature,'base64url').toString('base64url')!==v.signature)fail('INVALID_ENVELOPE');
  return structuredClone(v);
 }
 export function toPilotJob(task,jobId){const {kind,...rest}=parseTask(task);if(!isUuid(jobId))fail('INVALID_JOB_ID');return {version:1,jobId,taskType:kind,...rest};}
+
+export function workerSigningPayload(input){
+ if(!plain(input)||Object.hasOwn(input,'signature'))fail('INVALID_UNSIGNED_ENVELOPE');
+ const {signature,...unsigned}=parseWorkerEnvelope({...input,signature:Buffer.alloc(64).toString('base64url')});
+ return Buffer.from('omnira.local_text.worker.v1\n'+canonicalJson(unsigned),'utf8');
+}

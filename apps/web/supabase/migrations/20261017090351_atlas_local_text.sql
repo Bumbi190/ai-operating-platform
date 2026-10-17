@@ -1,10 +1,12 @@
 -- Dedicated local-text authority. No existing broker or provider privileges reused.
 create table public.local_text_devices (
  id uuid primary key default gen_random_uuid(), owner_id uuid not null references auth.users(id),
- key_id uuid not null unique, public_jwk jsonb not null, build_hash text not null check(build_hash ~ '^[a-f0-9]{64}$'),
+ server_origin text not null,key_id uuid not null unique, public_jwk jsonb not null, build_hash text not null check(build_hash ~ '^[a-f0-9]{64}$'),
  status text not null default 'pending' check(status in ('pending','active','paused','revoked','lost','retired')),
  counter numeric(20,0) not null default 0 check(counter>=0 and counter<=18446744073709551615),
- last_heartbeat_at timestamptz, current_model_digest text, created_at timestamptz not null default now(),
+ pairing_project_id uuid references public.projects(id),public_key_fingerprint text,version integer not null default 1,
+ enrolled_at timestamptz,revoked_at timestamptz,health_state text not null default 'unknown' check(health_state in ('unknown','ready','blocked','stopped')),
+ reported_health jsonb not null default '{}',last_heartbeat_at timestamptz, current_model_digest text, created_at timestamptz not null default now(),
  expires_at timestamptz not null default now()+interval '90 days', check(expires_at<=created_at+interval '90 days')
 );
 create table public.local_text_admissions (
@@ -78,7 +80,7 @@ begin
  return exists(select 1 from public.local_text_admissions a join public.local_text_devices d on d.id=a.device_id join public.projects p on p.id=a.project_id
  where a.id=p_admission and a.project_id=p_project and p.owner_id=p_owner and d.owner_id=p_owner and a.task_kind=p_kind
  and a.status='active' and a.qualification_status='verified' and a.expires_at>clock_timestamp() and d.status='active'
- and d.expires_at>clock_timestamp() and d.last_heartbeat_at>clock_timestamp()-interval '45 seconds'
+ and d.expires_at>clock_timestamp() and d.health_state='ready' and d.last_heartbeat_at>clock_timestamp()-interval '45 seconds'
  and p_input_hash=any(a.approved_input_hashes));
 end$$;
 create function public.local_text_enqueue(p_context jsonb,p_request jsonb,p_input_hash text,p_job_id uuid,p_selection jsonb)
@@ -217,3 +219,101 @@ create function public.local_text_read_receipt(p_user_id uuid,p_job_id uuid) ret
 $$;
 revoke all on function public.local_text_read_receipt(uuid,uuid) from public,anon,authenticated;
 grant execute on function public.local_text_read_receipt(uuid,uuid) to service_role;
+create function public.local_text_device_identity(p_device_id uuid) returns jsonb language sql stable security invoker set search_path='' as $$
+ select jsonb_build_object('deviceId',d.id,'ownerId',d.owner_id,'keyId',d.key_id,'serverOrigin',d.server_origin,'publicJwk',d.public_jwk,'buildHash',d.build_hash,'status',d.status,'counter',d.counter::text,
+ 'expiresAt',to_char(d.expires_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+ 'allowedProjects',coalesce((select jsonb_agg(distinct a.project_id) from public.local_text_admissions a join public.projects p on p.id=a.project_id where a.device_id=d.id and p.owner_id=d.owner_id and a.status='active' and a.qualification_status='verified' and a.expires_at>now()),'[]'),
+ 'allowedTasks',coalesce((select jsonb_agg(distinct a.task_kind) from public.local_text_admissions a join public.projects p on p.id=a.project_id where a.device_id=d.id and p.owner_id=d.owner_id and a.status='active' and a.qualification_status='verified' and a.expires_at>now()),'[]'))
+ from public.local_text_devices d where d.id=p_device_id;
+$$;
+create function public.local_text_owner_device(p_owner_id uuid,p_project_id uuid,p_device_id uuid,p_action text,p_expected_version integer,p_registration jsonb)
+returns jsonb language plpgsql security invoker set search_path='' as $$
+declare d public.local_text_devices;
+begin
+ if not exists(select 1 from public.projects p where p.id=p_project_id and p.owner_id=p_owner_id) then return jsonb_build_object('kind','refused','reason','SCOPE_REFUSED');end if;
+ select * into d from public.local_text_devices where id=p_device_id for update;
+ if p_action='register' then
+  if found then return jsonb_build_object('kind','refused','reason','DEVICE_EXISTS');end if;
+  if jsonb_typeof(p_registration->'publicJwk') is distinct from 'object' or coalesce(p_registration->>'buildHash','') !~ '^[a-f0-9]{64}$' or coalesce(p_registration->>'fingerprint','') !~ '^[a-f0-9]{64}$' then return jsonb_build_object('kind','refused','reason','INVALID_IDENTITY');end if;
+  insert into public.local_text_devices(id,owner_id,key_id,public_jwk,build_hash,server_origin,pairing_project_id,public_key_fingerprint)
+  values(p_device_id,p_owner_id,(p_registration->>'keyId')::uuid,p_registration->'publicJwk',p_registration->>'buildHash',p_registration->>'origin',p_project_id,p_registration->>'fingerprint') returning * into d;
+ else
+  if not found or d.owner_id<>p_owner_id then return jsonb_build_object('kind','refused','reason','SCOPE_REFUSED');end if;
+  if d.version is distinct from p_expected_version then return jsonb_build_object('kind','refused','reason','STALE_VERSION');end if;
+  if p_action='approve' then
+   if d.pairing_project_id is distinct from p_project_id or d.status<>'pending' or d.enrolled_at is null or d.public_key_fingerprint is distinct from p_registration->>'confirmFingerprint' then return jsonb_build_object('kind','refused','reason','POSSESSION_PROOF_REQUIRED');end if;
+   update public.local_text_devices set status='active',version=version+1 where id=d.id returning * into d;
+  elsif p_action='revoke' then
+   update public.local_text_devices set status='revoked',health_state='blocked',revoked_at=clock_timestamp(),version=version+1 where id=d.id returning * into d;
+   update public.local_text_admissions set status='revoked' where device_id=d.id;
+   update public.local_text_attempts set state=case when started_at is null then 'cancelled' else 'reconciling' end where device_id=d.id and state in ('claimed','running');
+   update public.local_text_jobs j set state=case when a.started_at is null then 'cancelled' else 'reconciling' end,cancel_requested=true,reason_code='DEVICE_REVOKED',updated_at=clock_timestamp()
+   from public.local_text_attempts a where j.attempt_id=a.id and a.device_id=d.id and j.state in ('claimed','running');
+  else return jsonb_build_object('kind','refused','reason','INVALID_OPERATION');end if;
+ end if;
+ return jsonb_build_object('kind','applied','value',jsonb_build_object('deviceId',d.id,'projectId',d.pairing_project_id,'status',d.status,'version',d.version,'fingerprint',d.public_key_fingerprint));
+exception when unique_violation then return jsonb_build_object('kind','refused','reason','DEVICE_EXISTS');
+ when invalid_text_representation then return jsonb_build_object('kind','refused','reason','INVALID_REQUEST');
+end$$;
+create function public.local_text_worker_operation(p_envelope jsonb,p_operation text,p_payload jsonb) returns jsonb
+language plpgsql security invoker set search_path='' as $$
+declare d public.local_text_devices;e jsonb=p_envelope;counter_value numeric(20,0);issued timestamptz;expires timestamptz;j public.local_text_jobs;health jsonb=p_payload->'health';answer jsonb;
+begin
+ if p_operation not in ('enroll','heartbeat','claim','started','complete','fail','reconcile') or e->>'path' is distinct from '/api/local-text/worker/'||p_operation or e->>'method' is distinct from 'POST' or e->>'version' is distinct from '1' then return jsonb_build_object('kind','refused','reason','REQUEST_BINDING_REFUSED');end if;
+ issued=(e->>'issuedAt')::timestamptz;expires=(e->>'expiresAt')::timestamptz;
+ if issued is null or expires is null or issued>clock_timestamp()+interval '5 seconds' or expires<=clock_timestamp() or expires<=issued or expires-issued>interval '60 seconds' then return jsonb_build_object('kind','refused','reason','REQUEST_EXPIRED');end if;
+ if coalesce(e->>'counter','') !~ '^[1-9][0-9]{0,19}$' then return jsonb_build_object('kind','refused','reason','REPLAY_REFUSED');end if;
+ counter_value=(e->>'counter')::numeric;
+ select * into d from public.local_text_devices where id=(e->>'deviceId')::uuid for update;
+ if not found or not(d.status='active' or d.status='pending' and p_operation='enroll') or d.expires_at<=clock_timestamp() then return jsonb_build_object('kind','refused','reason','DEVICE_UNAVAILABLE');end if;
+ if e->>'origin' is distinct from d.server_origin or d.key_id is distinct from (e->>'keyId')::uuid or d.build_hash is distinct from e->>'buildHash' then return jsonb_build_object('kind','refused','reason','REQUEST_BINDING_REFUSED');end if;
+ if counter_value>18446744073709551615 or counter_value<=d.counter or exists(select 1 from public.local_text_request_nonces n where n.device_id=d.id and n.nonce=(e->>'nonce')::uuid) then return jsonb_build_object('kind','refused','reason','REPLAY_REFUSED');end if;
+ if jsonb_typeof(p_payload) is distinct from 'object' then return jsonb_build_object('kind','refused','reason','INVALID_PAYLOAD');end if;
+ insert into public.local_text_request_nonces(device_id,nonce,counter) values(d.id,(e->>'nonce')::uuid,counter_value);
+ update public.local_text_devices set counter=counter_value where id=d.id;
+ if p_operation in ('enroll','claim') and p_payload<>'{}' then return jsonb_build_object('kind','refused','reason','INVALID_PAYLOAD');end if;
+ if p_operation='enroll' then
+  update public.local_text_devices set version=case when enrolled_at is null then version+1 else version end,enrolled_at=coalesce(enrolled_at,clock_timestamp()) where id=d.id returning * into d;
+  return jsonb_build_object('kind','applied','value',jsonb_build_object('deviceId',d.id,'status',d.status,'version',d.version));
+ elsif p_operation='claim' then return public.local_text_claim(d.id);
+ elsif p_operation='heartbeat' then
+  if (p_payload-array['health','activeAttemptId'])<>'{}' or jsonb_typeof(health) is distinct from 'object' or health->>'state' not in ('ready','blocked','stopped') or health->>'lifecycleLock' not in ('clear','uncertain') then return jsonb_build_object('kind','refused','reason','INVALID_PAYLOAD');end if;
+  update public.local_text_devices set last_heartbeat_at=clock_timestamp(),health_state=case when health->>'state'='ready' and health->>'lifecycleLock'='clear' and health->'gpuAvailable'='true'::jsonb then 'ready' else 'blocked' end,
+  reported_health=jsonb_build_object('state',health->'state','lifecycleLock',health->'lifecycleLock','gpuAvailable',health->'gpuAvailable','runtimeVersion',health->'runtimeVersion','adapterHash',health->'adapterHash','configurationHash',health->'configurationHash','models',health->'models') where id=d.id;
+  if p_payload->>'activeAttemptId' is not null then
+   select * into j from public.local_text_jobs where device_id=d.id and attempt_id=(p_payload->>'activeAttemptId')::uuid for update;
+   if not found or j.state not in ('claimed','running') or j.cancel_requested or j.lease_until<=clock_timestamp() or j.payload_expires_at<=clock_timestamp() or not public.local_text_eligible(j.project_id,j.owner_id,j.admission_id,j.task_kind,j.input_hash) then
+    return jsonb_build_object('kind','applied','value',jsonb_build_object('deviceId',d.id,'jobAction','abort','reasonCode','AUTHORITY_LOST'));
+   end if;
+   update public.local_text_jobs set lease_until=least(clock_timestamp()+interval '45 seconds',expires_at,payload_expires_at),updated_at=clock_timestamp() where id=j.id;
+  end if;
+  return jsonb_build_object('kind','applied','value',jsonb_build_object('deviceId',d.id,'jobAction','continue'));
+ elsif p_operation in ('started','complete','fail','reconcile') then
+  if p_payload#>>'{claim,deviceId}' is distinct from d.id::text then return jsonb_build_object('kind','refused','reason','SCOPE_REFUSED');end if;
+  if p_operation='started' then answer=jsonb_build_object('type','started');
+  elsif p_operation='complete' then answer=jsonb_build_object('type','completed','result',p_payload->'result','resultHash',p_payload->'resultHash','usage',coalesce(p_payload->'usage','{}'));
+  elsif p_operation='fail' then answer=jsonb_build_object('type',p_payload->>'outcome','reasonCode',p_payload->>'reasonCode');
+  else return jsonb_build_object('kind','refused','reason','RECONCILIATION_REQUIRES_VERIFIED_EVIDENCE');end if;
+  return public.local_text_transition(p_payload->'claim',answer);
+ end if;
+ return jsonb_build_object('kind','refused','reason','INVALID_OPERATION');
+exception when unique_violation then return jsonb_build_object('kind','refused','reason','REPLAY_REFUSED');
+ when invalid_text_representation or numeric_value_out_of_range or invalid_datetime_format then return jsonb_build_object('kind','refused','reason','INVALID_REQUEST');
+end$$;
+create function public.local_text_device_immutable() returns trigger language plpgsql security invoker set search_path='' as $$
+begin
+ if row(new.id,new.owner_id,new.key_id,new.public_jwk,new.public_key_fingerprint,new.build_hash,new.server_origin,new.pairing_project_id,new.created_at)
+ is distinct from row(old.id,old.owner_id,old.key_id,old.public_jwk,old.public_key_fingerprint,old.build_hash,old.server_origin,old.pairing_project_id,old.created_at)
+ or new.counter<old.counter or new.expires_at>old.expires_at then raise check_violation using message='IMMUTABLE_DEVICE_IDENTITY';end if;
+ return new;
+end$$;
+create trigger local_text_device_immutable before update on public.local_text_devices for each row execute function public.local_text_device_immutable();
+revoke all on function public.local_text_device_identity(uuid),public.local_text_owner_device(uuid,uuid,uuid,text,integer,jsonb),public.local_text_worker_operation(jsonb,text,jsonb),public.local_text_device_immutable() from public,anon,authenticated;
+grant execute on function public.local_text_device_identity(uuid),public.local_text_owner_device(uuid,uuid,uuid,text,integer,jsonb),public.local_text_worker_operation(jsonb,text,jsonb) to service_role;
+create function public.local_text_owner_devices(p_owner_id uuid,p_project_id uuid) returns jsonb language plpgsql security invoker set search_path='' as $$
+begin
+ if not exists(select 1 from public.projects p where p.id=p_project_id and p.owner_id=p_owner_id) then return jsonb_build_object('kind','refused','reason','SCOPE_REFUSED');end if;
+ return jsonb_build_object('kind','applied','value',coalesce((select jsonb_agg(jsonb_build_object('deviceId',d.id,'projectId',d.pairing_project_id,'status',d.status,'version',d.version,'fingerprint',d.public_key_fingerprint,'enrolled',d.enrolled_at is not null,'lastHeartbeatAt',d.last_heartbeat_at)) from public.local_text_devices d where d.owner_id=p_owner_id and d.pairing_project_id=p_project_id),'[]'));
+end$$;
+revoke all on function public.local_text_owner_devices(uuid,uuid) from public,anon,authenticated;
+grant execute on function public.local_text_owner_devices(uuid,uuid) to service_role;

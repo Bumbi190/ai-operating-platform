@@ -12,7 +12,7 @@ export type ReviewReceipt = {jobId:string;attemptId:string;inputHash:string;resu
 export type TransitionResult<T> = {kind:'applied';value:T}|{kind:'duplicate';value:T}|{kind:'refused';reason:string}|{kind:'unknown';reconcileId:string};
 export type WorkerOperation = 'enroll'|'heartbeat'|'claim'|'started'|'complete'|'fail'|'reconcile';
 export const WORKER_OPERATIONS: readonly WorkerOperation[];
-export type WorkerEnvelope = {version:1;deviceId:string;buildHash:string;keyId:string;counter:string;nonce:string;issuedAt:string;expiresAt:string;method:'POST';path:string;bodySha256:string;signature:string};
+export type WorkerEnvelope = {version:1;origin:string;deviceId:string;buildHash:string;keyId:string;counter:string;nonce:string;issuedAt:string;expiresAt:string;method:'POST';path:string;bodySha256:string;signature:string};
 export type UnsignedWorkerEnvelope = Omit<WorkerEnvelope,'signature'>;
 export function isUuid(value:unknown):value is string;
 export function isSha256(value:unknown):value is string;
@@ -25,3 +25,4 @@ export function canonicalJson(value:unknown):string;
 export function sha256(bytes:string|Uint8Array):string;
 export function hashTask(task:Task):string;
 export function toPilotJob(task:Task,jobId:string):{version:1;jobId:string;taskType:Task['kind'];text:string;labels?:string[]};
+export function workerSigningPayload(input:UnsignedWorkerEnvelope):Uint8Array;

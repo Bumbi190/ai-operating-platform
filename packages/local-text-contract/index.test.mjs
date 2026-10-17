@@ -5,7 +5,7 @@ const id='e2a04cb3-6335-463a-ad44-09bc780b1479';
 const request=()=>({projectId:id,conversationId:id,idempotencyKey:id,task:{kind:'classify',text:'Kundfråga',labels:['support','annat']}});
 const hash='a'.repeat(64), now='2026-10-17T08:50:00.000Z';
 const claim=()=>({jobId:id,attemptId:id,deviceId:id,claimId:id,fence:1,inputHash:hash,selectionId:id,modelDigest:'sha256:'+hash,leaseUntil:now,expiresAt:now,task:request().task});
-const envelope=()=>({version:1,deviceId:id,buildHash:hash,keyId:id,counter:'1',nonce:id,issuedAt:now,expiresAt:'2026-10-17T08:51:00.000Z',method:'POST',path:'/api/local-text/worker/claim',bodySha256:hash,signature:Buffer.alloc(64).toString('base64url')});
+const envelope=()=>({version:1,origin:'https://omnira.example',deviceId:id,buildHash:hash,keyId:id,counter:'1',nonce:id,issuedAt:now,expiresAt:'2026-10-17T08:51:00.000Z',method:'POST',path:'/api/local-text/worker/claim',bodySha256:hash,signature:Buffer.alloc(64).toString('base64url')});
 
 test('parseRequest accepts only bounded task data and makes an independent copy',()=>{
  assert.equal(typeof api.parseRequest,'function','missing strict request parser');
@@ -50,4 +50,13 @@ test('envelope validates canonical counter, closed path, TTL and signature encod
 test('rejects cyclic, nonplain and symbol-keyed request objects',()=>{
  assert.throws(()=>api.parseRequest(Object.assign(Object.create({}),request())),/INVALID_REQUEST/);
  const r=request();r[Symbol('hidden')]='x';assert.throws(()=>api.parseRequest(r),/INVALID_REQUEST/);
+});
+
+test('canonical worker signing payload binds all header fields with a fixed domain',()=>{
+ assert.equal(typeof api.workerSigningPayload,'function','missing canonical signature payload');
+ const {signature,...unsigned}=envelope();const bytes=api.workerSigningPayload(unsigned);
+ assert.ok(Buffer.from(bytes).toString('utf8').startsWith('omnira.local_text.worker.v1\n{'));
+ assert.notDeepEqual(api.workerSigningPayload({...unsigned,counter:'2'}),bytes);
+ assert.notDeepEqual(api.workerSigningPayload({...unsigned,bodySha256:'b'.repeat(64)}),bytes);
+ assert.throws(()=>api.workerSigningPayload({...unsigned,signature}),/INVALID_UNSIGNED_ENVELOPE/);
 });

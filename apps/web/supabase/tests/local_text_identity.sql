@@ -1,0 +1,44 @@
+\set ON_ERROR_STOP on
+begin;
+do $$begin if to_regprocedure('public.local_text_worker_operation(jsonb,text,jsonb)') is null then raise exception 'local_text_worker_operation missing';end if;end$$;
+insert into auth.users(id) values('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+insert into projects(id,owner_id) values('11111111-1111-4111-8111-111111111111','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),('22222222-2222-4222-8222-222222222222','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+insert into conversations(id,user_id) values('33333333-3333-4333-8333-333333333333','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+insert into local_text_devices(id,owner_id,key_id,public_jwk,build_hash,status,last_heartbeat_at,pairing_project_id,public_key_fingerprint,health_state,server_origin) values('55555555-5555-4555-8555-555555555555','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','55555555-5555-4555-8555-555555555555','{}',repeat('a',64),'active',now(),'11111111-1111-4111-8111-111111111111',repeat('f',64),'ready','https://omnira.example');
+insert into local_text_admissions(id,project_id,device_id,deployment_id,task_kind,model_digest,evidence_hash,policy_version,status,qualification_status,data_class,approved_input_hashes,expires_at) values('77777777-7777-4777-8777-777777777777','11111111-1111-4111-8111-111111111111','55555555-5555-4555-8555-555555555555','55555555-5555-4555-8555-555555555555','classify','sha256:'||repeat('b',64),repeat('c',64),'local_assist_v1','active','verified','synthetic',array[repeat('d',64)],now()+interval '1 day');
+set role service_role;
+do $$
+declare e jsonb;r jsonb;snapshot jsonb;device uuid='55555555-5555-4555-8555-555555555555';owner_a uuid='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';project_a uuid='11111111-1111-4111-8111-111111111111';
+begin
+ e=jsonb_build_object('version',1,'origin','https://omnira.example','deviceId',device,'keyId',device,'buildHash',repeat('a',64),'counter','1','nonce','11111111-aaaa-4aaa-8aaa-111111111111','issuedAt',to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'expiresAt',to_char((clock_timestamp()+interval '45 seconds') at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),'method','POST','path','/api/local-text/worker/claim','bodySha256',repeat('b',64));
+ snapshot=public.local_text_device_identity(device);
+ if snapshot->>'ownerId'<>owner_a::text or snapshot->>'keyId'<>device::text then raise exception 'stored principal mismatch %',snapshot;end if;
+ r=public.local_text_worker_operation(e,'claim','{}');if r->>'kind'<>'applied' then raise exception 'first counter not accepted %',r;end if;
+ r=public.local_text_worker_operation(e,'claim','{}');if r->>'reason'<>'REPLAY_REFUSED' then raise exception 'replayed request accepted %',r;end if;
+ r=public.local_text_worker_operation(jsonb_set(e,'{nonce}','"22222222-aaaa-4aaa-8aaa-222222222222"'),'claim','{}');if r->>'reason'<>'REPLAY_REFUSED' then raise exception 'same counter/new nonce accepted %',r;end if;
+ r=public.local_text_worker_operation(jsonb_set(e,'{counter}','"2"'),'claim','{}');if r->>'reason'<>'REPLAY_REFUSED' then raise exception 'nonce reused with fresh counter %',r;end if;
+ e=jsonb_set(jsonb_set(e,'{counter}','"2"'),'{nonce}','"22222222-aaaa-4aaa-8aaa-222222222222"');
+ r=public.local_text_worker_operation(e,'complete','{}');if r->>'reason'<>'REQUEST_BINDING_REFUSED' then raise exception 'operation/path swap accepted %',r;end if;
+ r=public.local_text_worker_operation(jsonb_set(e,'{expiresAt}','"2000-01-01T00:00:00.000Z"'),'claim','{}');if r->>'reason'<>'REQUEST_EXPIRED' then raise exception 'expired request accepted %',r;end if;
+ update public.local_text_devices set status='revoked' where id=device;
+ r=public.local_text_worker_operation(e,'claim','{}');if r->>'reason'<>'DEVICE_UNAVAILABLE' then raise exception 'revocation after snapshot ignored %',r;end if;
+ update public.local_text_devices set status='pending',pairing_project_id=project_a,public_key_fingerprint=repeat('f',64),enrolled_at=null where id=device;
+ r=public.local_text_worker_operation(e,'claim','{}');if r->>'reason'<>'DEVICE_UNAVAILABLE' then raise exception 'pending device claimed %',r;end if;
+ e=jsonb_set(e,'{path}','"/api/local-text/worker/enroll"');r=public.local_text_worker_operation(e,'enroll','{}');if r#>>'{value,status}'<>'pending' then raise exception 'enrollment self approved %',r;end if;
+ r=public.local_text_owner_device('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','22222222-2222-4222-8222-222222222222',device,'approve',2,jsonb_build_object('confirmFingerprint',repeat('f',64)));
+ if r->>'reason'<>'SCOPE_REFUSED' then raise exception 'foreign owner approved device %',r;end if;
+ r=public.local_text_owner_device(owner_a,project_a,device,'approve',2,jsonb_build_object('confirmFingerprint',repeat('f',64)));
+ if r#>>'{value,status}'<>'active' then raise exception 'owner could not approve possession-proved device %',r;end if;
+ r=public.local_text_owner_device(owner_a,project_a,device,'revoke',2,'{}');if r->>'reason'<>'STALE_VERSION' then raise exception 'stale owner decision won %',r;end if;
+ r=public.local_text_owner_device(owner_a,project_a,device,'revoke',3,'{}');if r#>>'{value,status}'<>'revoked' then raise exception 'revoke failed %',r;end if;
+ r=public.local_text_owner_device(owner_a,project_a,'66666666-6666-4666-8666-666666666666','register',null,jsonb_build_object('keyId','66666666-6666-4666-8666-666666666666','publicJwk','{}'::jsonb,'buildHash',repeat('a',64),'fingerprint',repeat('f',64),'origin','https://omnira.example'));
+ if r#>>'{value,status}'<>'pending' then raise exception 'registration granted active identity %',r;end if;
+ r=public.local_text_owner_device(owner_a,project_a,'66666666-6666-4666-8666-666666666666','approve',1,jsonb_build_object('confirmFingerprint',repeat('f',64)));
+ if r->>'reason'<>'POSSESSION_PROOF_REQUIRED' then raise exception 'owner approved unproved key %',r;end if;
+end$$;
+reset role;
+set role authenticated;
+do $$begin begin perform public.local_text_device_identity('55555555-5555-4555-8555-555555555555');raise exception 'client read private device authority';exception when insufficient_privilege then null;end;end$$;
+reset role;
+select 'LOCAL_TEXT_IDENTITY_SQL_PASS' as result;
+rollback;

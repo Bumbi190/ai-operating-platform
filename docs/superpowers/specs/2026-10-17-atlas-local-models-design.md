@@ -1,6 +1,6 @@
 # Atlas lokala modeller — första leveransen
 Datum: 2026-10-17
-Status: designförslag för ägargranskning; ingen implementation eller aktivering.
+Status: grunddesign godkänd av André 2026-10-17 kl. 09:07 Europe/Stockholm med tillägget om kandidatprov, separat agentgranskning och OpenAI/Codex-eskalering nedan; ingen implementation eller aktivering.
 Gren: codex/atlas-local-models-20261017
 Bas: origin/main 0249e0daa111e576c72c810f186195d7ba5a9bdf
 Worktree: C:/Users/Andre/Projects/Omnira/.worktrees/atlas-local-models-20261017
@@ -28,7 +28,7 @@ Välj alternativ 1 som första avgränsade arkitekturleverans. Alternativ 2 föl
 
 ## Förstaleveransens komponenter
 Ny fristående Node-modul under workers/local-models/; inga ändringar av befintliga chatt-, röst-, byggstudio- eller modellstandarder.
-Använd Node 20+ och inbyggd fetch/node:test för att undvika nya produktberoenden. Modul, tester, syntetiska fixtures och PowerShell-startinstruktioner hålls i denna katalog.
+Använd Node 20+ och inbyggd node:http/node:test för att undvika nya produktberoenden och hålla transporten direkt till loopback utan miljöstyrd HTTP-proxy. Modul, tester, syntetiska fixtures och PowerShell-startinstruktioner hålls i denna katalog.
 1. Lokal förkontroll: kontrollera Windows, ledigt utrymme, Ollama-version, loopback-tillgänglighet, valda modellens digest och faktisk GPU-placering.
 2. Lokal jobbvalidering: godkänn bara versionsbundet kontrakt och allowlistade uppgifter.
 3. Ollama-adapter: en begränsad POST till /api/chat; inga verktyg, kommandon eller godtyckliga URL:er från jobb.
@@ -39,7 +39,7 @@ CLI:n läser ett uttryckligen angivet JSON-jobb från stdin; den skannar aldrig 
 Ingen produktionskontext, kunddata, hemlighet eller databasnyckel används i testerna.
 
 ## Modell och installationsgräns
-Första kandidat: qwen3:8b, Q4_K_M, cirka 5,2 GB enligt Ollamas modellkort. Detta är ett testval, inte ett påstående att modellen är bäst eller redan ryms med önskad prestanda.
+Kandidater i fast provordning: qwen3:8b som jämförelsebaslinje, qwen3.5:4b och qwen3.5:9b. Alla är lokala Q4_K_M-kandidater; faktisk backend/kvantisering och full digest verifieras efter hämtning. Provvalet lovar varken bäst kvalitet eller att alla kandidater ryms med god prestanda.
 Hämta Ollama enbart från officiell distribution. Använd separat versionsbunden portable Windows-installation under denna worktrees ignorerade .local-runtime/ för första provet; ingen global PATH, autostart eller befintlig tjänst ändras.
 Modellvikter hålls utanför Git i samma lokala runtimeområde. Kontrollera ledigt utrymme före hämtning; avbryt om mindre än 20 GB finns ledigt.
 Registrera distributionsversion, verifierad tillgänglig releasechecksumma/signatur och modellens fullständiga digest i acceptansrapporten. En flytande tagg räcker inte som reproduktionsbevis. Saknad verifierbar distribution ska blockera installationen, inte kringgå kontrollen.
@@ -56,7 +56,7 @@ Tillåtna taskType:
 
 Högst 3000 tecken källtext. Högst 64 tecken per etikett. Okända fält, otillåtna uppgifter, tom text och felaktigt kontrakt nekas före HTTP.
 Anroparen väljer inte modell, systemprompt, endpoint, verktyg eller genereringsparametrar.
-Adaptern använder qwen3:8b, stream=false, think=false efter att /api/show verifierat stödet, temperature=0, num_ctx=4096, num_predict=384, keep_alive=2m.
+Operatörens provkommando väljer exakt en kandidat ur den fasta listan; ett jobb får inte välja modell. Adaptern använder stream=false, think=false efter att /api/show verifierat stödet, temperature=0, num_ctx=4096, num_predict=384, keep_alive=2m.
 Dessa parametrar begränsar försöket; de garanterar inte korrekt språk eller faktariktighet.
 
 Output: version, jobId, taskType, status, result samt metadata med faktisk provider=ollama_local, serverversion, modelldigest, wallMs och tillgängliga token-/durationfält.
@@ -68,7 +68,7 @@ En körning åt gången. Max 90 sekunder per försök inklusive kallstart, 3 sek
 Tillåt endast exakt loopback-adress och fast port/sökväg; följ inte redirects. Ingen HTTP-proxy eller alternativ endpoint ska kunna styra denna adapter mot molnet.
 Inga automatiska omförsök och ingen automatisk övergång till betalda modeller.
 Timeout, avbrott, saknad modell, CPU-körning vid GPU-acceptans, fel modell/digest, felaktig JSON, verktygsanrop, trunkering och schemafel markeras uttryckligen. Otillförlitliga resultat används inte som lyckade jobb.
-Avbruten fetch är inte bevis på stoppad GPU-generering. Starta inte nästa prov innan tjänsten åter är verifierat ledig; kvarvarande last ger stoppad körserie och manuell återhämtning av just den ägda provprocessen.
+Avbruten HTTP-klient är inte bevis på stoppad GPU-generering. Starta inte nästa prov innan tjänsten åter är verifierat ledig; kvarvarande last ger stoppad körserie och manuell återhämtning av just den ägda provprocessen.
 Källtext behandlas som data; modellsvaret ger aldrig rätt att ändra filer, köra kod eller anropa andra verktyg.
 Normala loggar innehåller jobb-ID, modell-ID, status och mätetal; ingen prompt, svarstext eller känslig kontext. Acceptansfixtures och facit är avsiktligt syntetiska.
 
@@ -76,7 +76,7 @@ Normala loggar innehåller jobb-ID, modell-ID, status och mätetal; ingen prompt
 Meningsfulla tester med lokal HTTP-fixture verifierar riktig request/response, deadline under body-läsning, redirectnekande, bytetak, ogiltiga jobb och felaktiga modellresultat. Testerna får aldrig kontakta en verklig modell som standard.
 Liveprov startas med ett separat explicit kommando och kör endast den lokala allowlistade modellen.
 Kvalitetspaket: 10 klassificeringar, 10 informationsutplock (inklusive saknade fält) och 5 sammanfattningar på svenska.
-Godkänd kandidat kräver:
+Kvalificering sker per kandidat och uppgiftstyp. Gemensamma GPU-/kontraktskrav gäller alla; de tre kvalitetskraven gäller respektive uppgiftstyp. Godkännande kräver dessutom separat agentgranskning enligt ägartillägget nedan:
 - GPU-placering verifierad under last via ollama ps och nvidia-smi; helt GPU-laddad modell för denna första kandidat.
 - Minst 9/10 korrekta klassificeringar.
 - Minst 9/10 helt korrekta extraktionsobjekt samt noll påhittade värden i fallen med saknade fält.
@@ -92,7 +92,7 @@ Molnkörd Atlas kan inte nå datorns 127.0.0.1. Öppna därför inte Ollama mot 
 Nästa design ska använda en enhetsbunden lokal worker som själv hämtar uttryckligen tillåtna jobb via HTTPS, kör samma lokala jobbkontrakt och lämnar resultat till servern.
 Den designen ska fastställa autentisering och återkallelse, tenant/projekt-åtkomst, atomisk claim/lease, cancel/expire, idempotent resultat, dataminimering, kögränser och befintlig execution-/authority-kontroll före dispatch. Ingen service-role-nyckel placeras på datorn.
 Befintliga omergade brokergrenar får inte importeras eller förutsättas finnas i main. Inga befintliga workerbehörigheter breddas.
-Första Atlas-pilot ska vara operatörsvald, begränsad till de uppgifter som klarat kvalitetspaketet och utan betald fallback. Automatisk routing kommer först efter verifierad pilot.
+Första Atlas-pilot ska vara operatörsvald och begränsad till de uppgifter som både klarat kvalitetspaketet och fått separat agentgodkännande. André har angett OpenAI/Codex som eskaleringsväg vid otillräcklig lokal förmåga; faktisk dispatcher kräver den senare Atlas-integrationen och befintliga budget-/åtkomstkontroller. Första leveransen producerar endast ett eskaleringsbeslut, inte ett betalt anrop. Automatisk routing kommer först efter verifierad pilot.
 Denna förstaleverans innehåller varken enhetscredential, databas, molnendpoint, produktionsaktivering eller automatisk Atlas-routing.
 
 ## Isolering, leverans och återställning
@@ -103,10 +103,19 @@ Stoppa bara en Ollama-process som detta prov startat och vars PID/version/port v
 Återställning av lokal provinstallation sker genom att stoppa den ägda processen och ta bort dess egna ignorerade runtimefiler; andra installationer och modeller lämnas orörda.
 En dokumentationscommit bevisar inte att modeller eller integration fungerar. Tester och verkliga prov ska redovisas separat.
 
+## Ägartillägg — godkänt krav 2026-10-17 kl. 09:07 Europe/Stockholm
+André kräver att Atlas först provar lämpliga lokala modeller och att en separat agent granskar dem. Uppgifter som inte blir godkända lokalt ska kunna eskaleras till OpenAI och Codex efter behov.
+- Samtliga tre kandidater kör samma 25-fallspaket sekventiellt. En kandidat som inte ryms eller saknar nödvändigt stöd markeras blockerad; den hoppas inte tyst över.
+- En separat granskningsagent, som inte är kandidatmodellen eller implementationens författare, granskar rapport, facit och samtliga testutdata. Granskaren fattar separat beslut för classify, extract och summarize och anger skäl och fallreferenser. Granskningen får neka men aldrig upphäva misslyckade deterministiska kontroller.
+- Bind bedömningen till rapportens SHA-256, modellens digest, Ollama-version, jobb-/prompt-/testpaketversion och körkonfiguration. Ändrad evidens kräver nytt godkännande. Agentens identitet och körreferens sparas av operatörens granskningsflöde; en kandidat får aldrig skriva sin egen godkännandepost.
+- Godkänt betyder endast kvalificerad lokal kandidat för en viss uppgiftstyp i testmiljön, inte rätt att exekvera produktionsjobb. Varje riktigt svar måste dessutom passera resultatvalidering. Granskningen är ett begränsat testbevis, ingen generell korrekthetsgaranti.
+- Saknad/underkänd/felaktigt bunden granskning innebär lokal nekning. Om ingen kvalificerad kandidat finns ska beslutet innehålla escalation_required, utan lokalt anrop. Kodarbete rekommenderar Codex som separat worker; textarbete rekommenderar en lämplig OpenAI-modell. OpenAI-modell och Codex-worker är olika resurser, och befintlig kod bevisar inte en färdig Codex-koppling.
+- Första leveransen bygger denna lokala kvalificerings- och eskaleringslogik samt utför oberoende granskning av kandidattesterna. Atlas automatisk orkestrering av tester, en produktionsgranskningsagent och faktisk OpenAI/Codex-dispatch ingår i senare integration, inte i detta steg.
+
 ## Granskningsordning
 Detta är en ny arkitekturdel. Superpowers brainstorming kräver granskning av denna skrivna design före implementationsplan; planen granskas därefter med val av körsätt.
 Rekommenderat körsätt för den kommande planen: samma agent arbetar sekventiellt i denna worktree. Inga andra agenters pågående brancher används.
-Nuvarande status: isolering och skrivbords-/källkontroll genomförda; installation, modellhämtning, produktkod och liveinferens ännu inte genomförda.
+Nuvarande status: design godkänd med ägartillägget ovan; genomförandeplan tas fram. Isolering och skrivbords-/källkontroll genomförda; installation, modellhämtning, produktkod och liveinferens ännu inte genomförda.
 
 ## Källor lästa 2026-10-17
 - https://docs.ollama.com/windows — Windows, NVIDIA-stöd och portable CLI.
@@ -115,3 +124,5 @@ Nuvarande status: isolering och skrivbords-/källkontroll genomförda; installat
 - https://ollama.com/library/qwen3:8b — kandidatens storlek, kvantisering och modellidentitet.
 - apps/web/lib/ai/atlas-model-policy.ts, models.ts, runner.ts, openai-client.ts.
 - docs/architecture/intelligence-fabric/atlas-knowledge/v1.0/chapters/ch08.md och ch09.md.
+
+Kompletterande modellkällor lästa 2026-10-17: https://ollama.com/library/qwen3.5:4b och https://ollama.com/library/qwen3.5:9b.

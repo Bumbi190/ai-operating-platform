@@ -1,6 +1,6 @@
 import { upgradeWebSocket } from '@vercel/functions'
 import type { RawData, WebSocket } from 'ws'
-import { guardAtlasVoiceAccess } from '@/lib/atlas/voice-pilot/access'
+import { guardAtlasVoiceAccess, resolveAtlasVoiceAccess } from '@/lib/atlas/voice-pilot/access'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 150
@@ -14,8 +14,8 @@ export async function GET(request: Request): Promise<Response> {
     return Response.json({ error: 'Ogiltigt ursprung.' }, { status: 403 })
   const unavailable = () => Response.json({ error: 'Anslutningen kunde inte starta.' }, { status: 503 })
   if (request.signal.aborted) return unavailable()
-  const denial = await guardAtlasVoiceAccess()
-  if (denial) return denial
+  const access = mode === 'pilot' ? await resolveAtlasVoiceAccess({ strict: true }) : await guardAtlasVoiceAccess()
+  if (access instanceof Response) return access
   if (request.signal.aborted) return unavailable()
   if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket')
     return new Response(null, { status: 426, headers: { Upgrade: 'websocket', 'Cache-Control': 'no-store' } })
@@ -29,7 +29,7 @@ export async function GET(request: Request): Promise<Response> {
     try {
       return await upgradeWebSocket(async socket => {
         const { serveAtlasVoicePilot } = await import('@/lib/atlas/voice-pilot/stream-bridge')
-        await serveAtlasVoicePilot(socket, lifetime.signal)
+        await serveAtlasVoicePilot(socket, lifetime.signal, access?.userId ?? '')
       }, { maxPayload: 6404 })
     } finally { clearTimeout(timer); request.signal.removeEventListener('abort', onAbort) }
   } catch {

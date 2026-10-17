@@ -1,4 +1,5 @@
 import type { RawData, WebSocket } from 'ws'
+import { watchAtlasVoiceSession } from './stream-authority'
 import { openAtlasSwedishRealtime, type AtlasRealtimeContext } from '@/lib/media/elevenlabs-realtime'
 import { createVoiceFrameState, parseVoiceControl, type RealtimeTurn, type VoiceServerEvent, type VoiceFailureCode } from './stream-protocol'
 
@@ -71,10 +72,20 @@ export function serveAtlasVoiceStream(socket: WebSocket, ctx: AtlasRealtimeConte
 }
 
 /** Fixed operator scope; the browser cannot choose billing or execution context. */
-export async function serveAtlasVoicePilot(socket: WebSocket, signal: AbortSignal): Promise<void> {
-  const [{ PLATFORM_COMPAT_PROJECT }, { GLOBAL_ONLY }] = await Promise.all([
-    import('@/lib/cost/governed-spend'), import('@/lib/governance/execution-stop'),
-  ])
-  return serveAtlasVoiceStream(socket, { project: PLATFORM_COMPAT_PROJECT, operation: 'Atlas Swedish realtime transcription trial',
-    execution: { context: 'OPERATOR_INTERACTIVE', scope: GLOBAL_ONLY } }, signal)
+export async function serveAtlasVoicePilot(socket: WebSocket, signal: AbortSignal, userId: string): Promise<void> {
+  const lifetime = new AbortController(), abort = () => lifetime.abort()
+  signal.addEventListener('abort', abort, { once: true })
+  socket.on('close', abort); socket.on('error', abort)
+  if (signal.aborted || socket.readyState !== 1) abort()
+  const watch = watchAtlasVoiceSession(userId, lifetime.signal)
+  try {
+    const [{ PLATFORM_COMPAT_PROJECT }, { GLOBAL_ONLY }] = await Promise.all([
+      import('@/lib/cost/governed-spend'), import('@/lib/governance/execution-stop'), watch.ready,
+    ])
+    await serveAtlasVoiceStream(socket, { project: PLATFORM_COMPAT_PROJECT, operation: 'Atlas Swedish realtime transcription trial',
+      execution: { context: 'OPERATOR_INTERACTIVE', scope: GLOBAL_ONLY } }, watch.signal)
+  } finally {
+    watch.dispose(); signal.removeEventListener('abort', abort)
+    socket.off('close', abort); socket.off('error', abort)
+  }
 }

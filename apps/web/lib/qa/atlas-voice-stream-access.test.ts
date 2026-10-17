@@ -165,6 +165,7 @@ describe('isolated pilot route lifetime', () => {
     expect(state.pilot).toHaveBeenCalledTimes(1)
     expect(state.pilot.mock.calls[0][0]).toBe(state.socket)
     expect(state.pilot.mock.calls[0][1]).toBeInstanceOf(AbortSignal)
+    expect(state.pilot.mock.calls[0][2]).toBe('operator')
   })
   it('aborts the pilot at120s from route entry and cleans up its timer', async () => {
     vi.useFakeTimers(); vi.stubEnv('ATLAS_VOICE_STREAM_MODE', 'pilot')
@@ -180,4 +181,12 @@ describe('isolated pilot route lifetime', () => {
     expect(state.pilot.mock.calls[0][1].aborted).toBe(true)
     expect(vi.getTimerCount()).toBe(0)
   })
+})
+
+it.each(['revoked_owner', 'membership_unavailable'])('strict pilot access denies %s even with owned projects', async scenario => {
+  vi.stubEnv('ATLAS_VOICE_STREAM_MODE', 'pilot'); state.owns = true
+  if (scenario === 'revoked_owner') state.membership = { role: 'owner', revoked_at: 'now' }
+  else state.memberError = { message: 'synthetic unavailable' }
+  expect((await (await route()).GET(request())).status).toBe(scenario === 'revoked_owner' ? 403 : 503)
+  expect(state.upgraded).not.toHaveBeenCalled(); expect(state.pilot).not.toHaveBeenCalled()
 })

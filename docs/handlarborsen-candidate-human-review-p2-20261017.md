@@ -1,6 +1,6 @@
 # Handlarbörsen · kandidatgranskning P2 — kod bakom avstängd flagga
 
-Datum: 2026-10-17. Consolidated review worktree. **Denna PR installerar INTE schema och aktiverar INTE någon review-flagga.**
+Datum: 2026-10-17. Consolidated review worktree. **P2.1-koden var ursprungligen driftsatt inaktiv; detta uppföljande schemasläpp registrerar beslutstabellen utan att slå på review-flaggan.**
 
 ## Ändringsomfång
 
@@ -14,7 +14,7 @@ Datum: 2026-10-17. Consolidated review worktree. **Denna PR installerar INTE sch
 
 ## Aktivering och säkerhetsgrind
 
-1. **Förslag, inte produktion:** `docs/sql/handlarborsen_competitor_review_p2_proposed.sql` måste få separat schema-/säkerhetsgodkännande. Ingen canonical migration förrän ett godkänt införande reconcilerats mot den senast installerade migrationsledgern, schema-inventory och aktuella Migration Guard-pins.
+1. **Godkänd schemafas:** `docs/sql/handlarborsen_competitor_review_p2_proposed.sql` måste få separat schema-/säkerhetsgodkännande. Den kanoniska migrationen 20261017080000_handlarborsen_competitor_review_decisions_v1.sql är byte-identisk i alla DDL-satser med det säkerhetsgranskade SQL-förslaget. Den ska reconcileras mot produktionsledger, schema-inventory och Migration Guard efter installationen.
 2. Isolerat PostgreSQL 17.6-bevis: testade appendering intressant → granskad → ignorerad → återöppnad, samma requests dubblettfria, olika aktörsreplay konflikt, revokerat medlemskap nekat, främmande kandidat/projekt nekat, RLS/FORCE RLS, anon/auth RPC nekad, service-role UPDATE/DELETE nekade, och service-role RPC lyckas. Testcontainern raderad. Gäller *enbart* isolerad fixture, inte faktiska konton.
 3. Featureflaggan är `HANDLARBORSEN_CANDIDATE_REVIEW_ENABLED` (kräver dessutom `HANDLARBORSEN_CANDIDATE_MEMORY_ENABLED`). **Ingen flagga har satts på Vercel**; P2 default OFF i alla miljöer.
 4. Grönt GitHub CI och Vercel READY krävs före merge av *enbart inert kod*. Den nya versionskontrollen har dessutom verifierats i isolerad PostgreSQL innan databasmigration får föreslås för separat godkännande.

@@ -4,7 +4,14 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import type { CandidateReviewEntry, CandidateReviewStatus } from '@/lib/atlas/project-analytics/handlarborsen-candidate-review-service'
 
-const ENDPOINT = '/api/projects/handlarborsen/competitors/reviews'
+const ENDPOINTS = {
+  owner: '/api/projects/handlarborsen/competitors/reviews',
+  collaborator: '/api/organization/projects/handlarborsen/competitors/reviews',
+} as const
+export function reviewEndpointForMode(mode: 'owner' | 'collaborator'): string {
+  return ENDPOINTS[mode]
+}
+
 const labels: Record<CandidateReviewStatus, string> = {
   pending:'Väntar på granskning',
   interesting:'Intressant – undersök vidare',
@@ -22,7 +29,7 @@ const choices = [
  * A deliberate human click, then one audited transaction. An existing status
  * never inserts a second record. Never delegates execution or new search URLs.
  */
-export function HandlarborsenCandidateReviewControls({ review }: { review: CandidateReviewEntry }) {
+export function HandlarborsenCandidateReviewControls({ review, mode = 'owner' }: { review: CandidateReviewEntry; mode?: 'owner' | 'collaborator' }) {
   const router = useRouter()
   const [busy,setBusy]=useState(false)
   const [message,setMessage]=useState('')
@@ -31,7 +38,7 @@ export function HandlarborsenCandidateReviewControls({ review }: { review: Candi
     setBusy(true)
     setMessage('')
     try {
-      const response = await fetch(ENDPOINT,{
+      const response = await fetch(reviewEndpointForMode(mode),{
         method:'POST',credentials:'same-origin',cache:'no-store',
         headers:{ 'content-type':'application/json' },
         body:JSON.stringify({ host:review.host,status,requestId:crypto.randomUUID(),

@@ -841,23 +841,33 @@ export async function POST(request: Request) {
     // CL Commit 5: legacy segments captured verbatim for the shadow diff only —
     // the exact strings appended below, nothing recomputed, zero behavior change.
     let shadowLive = '', shadowAction = '', shadowView = ''
-    try {
-      const live = await buildLiveContext(db, allowedProjectIds)
-      shadowLive = live
-      systemPrompt += live
-    } catch { /* icke-kritiskt */ }
-    // Cross-turn tool memory: surface prior tool outputs (esp. Dream issue_ids) so
-    // delegation across turns doesn't require re-fetching (kills the fetch loop).
-    try { systemPrompt += await buildToolMemory(db, conversation_id, userId) } catch { /* icke-kritiskt */ }
-    // Action memory (atlas_actions): PROJECT-scoped so "what did you do?" works
-    // across chats/sessions. Also reports whether a delegation is on record, used
-    // to suppress a false-claim correction on truthful recall.
-    try {
-      const am = await buildActionMemory(db, allowedProjectIds)
-      shadowAction = am.text
-      systemPrompt += am.text
-      recentDelegationKnown = am.hasRecentDelegation
-    } catch { /* icke-kritiskt */ }
+    // These reads depend only on the verified principal/project scope above,
+    // not on one another. Preserve append order and each source's fallback.
+    const contextReadMs = { live: 0, tools: 0, actions: 0 }
+    async function measureContext<T>(stage: keyof typeof contextReadMs, read: () => Promise<T>): Promise<T> {
+      const started = Date.now()
+      try { return await read() }
+      finally { contextReadMs[stage] = Date.now() - started }
+    }
+    const [liveResult, toolResult, actionResult] = await Promise.allSettled([
+      measureContext('live', () => buildLiveContext(db, allowedProjectIds)),
+      measureContext('tools', () => buildToolMemory(db, conversation_id, userId)),
+      measureContext('actions', () => buildActionMemory(db, allowedProjectIds)),
+    ])
+    // Numeric durations only; never log memory contents or principal identifiers.
+    console.info('[atlas-context-latency]', contextReadMs)
+    if (liveResult.status === 'fulfilled') {
+      shadowLive = liveResult.value
+      systemPrompt += liveResult.value
+    }
+    // Cross-turn tool memory keeps Dream identities available without re-fetching.
+    if (toolResult.status === 'fulfilled') systemPrompt += toolResult.value
+    // Project-scoped action memory still corroborates truthful delegation recall.
+    if (actionResult.status === 'fulfilled') {
+      shadowAction = actionResult.value.text
+      systemPrompt += actionResult.value.text
+      recentDelegationKnown = actionResult.value.hasRecentDelegation
+    }
     // View Awareness (Foundation 1, flag-gated): tell Atlas what the operator is
     // currently looking at. Hint-only — route/project re-resolved via the registry.
     if (isViewAwarenessEnabled()) {

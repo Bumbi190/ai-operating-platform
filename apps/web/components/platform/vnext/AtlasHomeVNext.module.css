@@ -84,6 +84,8 @@
 
 /* ── Face ─────────────────────────────────────────────────────────────── */
 
+.faceControl { position: absolute; inset: 0; }
+
 .faceStage {
   position: absolute;
   inset: 0;
@@ -873,12 +875,13 @@
   .stage { --u: calc(min(100vw, 760px) / 900); --t: calc(0.82px * var(--os-scale, 1)); position: relative; top: auto; left: auto; display: flex; flex-direction: column; width: auto; height: auto; padding: 28px 16px 40px; transform: none; }
   .commandCore { position: relative; inset: auto; display: flex; flex-direction: column; }
   .identityBlock { position: relative; top: auto; left: auto; width: auto; order: 1; }
-  .faceStage { position: relative; inset: auto; order: 2; height: calc(560 * var(--u)); margin-top: 8px; }
+  .faceControl { position: relative; inset: auto; order: 2; height: calc(560 * var(--u)); margin-top: 8px; }
+  .faceStage { position: absolute; inset: 0; }
   .faceOrbitBack,
   .faceOrbitFront { display: none; }
   .faceImage { top: 0; left: 50%; width: calc(472 * var(--u)); height: calc(560 * var(--u)); transform: translateX(-50%); }
   .faceAura { top: calc(-80 * var(--u)); left: 50%; transform: translateX(-50%); }
-  .faceCore { top: calc(70 * var(--u)); left: 50%; width: calc(160 * var(--u)); height: calc(160 * var(--u)); transform: translateX(-50%); }
+  .faceCore { top: calc(74 * var(--u)); left: calc(50% - 14.3 * var(--u)); width: calc(160 * var(--u)); height: calc(160 * var(--u)); transform: translateX(-50%); }
   .dialogue { position: relative; bottom: auto; left: auto; order: 3; width: auto; margin-top: 12px; }
   .composer { position: relative; top: auto; left: auto; order: 4; width: auto; margin-top: 12px; }
   .quote,

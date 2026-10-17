@@ -43,5 +43,48 @@
       "remediation": "https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection"
     }
   ],
-  "mutations": 0
+  "mutations": 0,
+  "followUp": {
+    "scope": "read_only_follow_up_after_current_main_integration_not_full_replay",
+    "mainSha": "bb956adbe1bb2dce81c2adfcb98409f10ab64d55",
+    "migrationCount": 156,
+    "latestMigration": "20261017151722",
+    "localTableCount": 0,
+    "localFunctionCount": 0,
+    "canonicalSignaturesPresent": true,
+    "conversationNonInternalTriggers": 0,
+    "advisorSummary": [
+      {
+        "name": "rls_enabled_no_policy",
+        "level": "INFO",
+        "count": 84,
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy"
+      },
+      {
+        "name": "function_search_path_mutable",
+        "level": "WARN",
+        "count": 20,
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0011_function_search_path_mutable"
+      },
+      {
+        "name": "anon_security_definer_function_executable",
+        "level": "WARN",
+        "count": 7,
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable"
+      },
+      {
+        "name": "authenticated_security_definer_function_executable",
+        "level": "WARN",
+        "count": 8,
+        "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable"
+      },
+      {
+        "name": "auth_leaked_password_protection",
+        "level": "WARN",
+        "count": 1,
+        "remediation": "https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection"
+      }
+    ],
+    "mutations": 0
+  }
 }

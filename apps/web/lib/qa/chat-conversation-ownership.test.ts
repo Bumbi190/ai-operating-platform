@@ -99,6 +99,8 @@ let writes: Write[] = []
 let ownershipQueries = 0
 /** The counter sampled at the moment the model stream is opened. */
 let ownershipQueriesAtStreamStart = 0
+let contextGates: Record<string, Promise<void>> = {}
+let contextReads = new Set<string>()
 /**
  * When set, the ownership query hangs until released. The proof being ISSUED
  * before the stream costs nothing — it is fired inside a `void` call and never
@@ -150,7 +152,11 @@ function makeBuilder(table: string): any {
     update: (p: any) => { op = 'update'; payload = p; writes.push({ table, op, payload, filters }); return b },
     upsert: () => b,
     delete: () => b,
-    then: (ok: any) => Promise.resolve({ data: rows(), error: null }).then(ok),
+    then: (ok: any, fail?: (reason: unknown) => unknown) => {
+      if (op === 'select') contextReads.add(table)
+      return (op === 'select' ? contextGates[table] ?? Promise.resolve() : Promise.resolve())
+        .then(() => ({ data: rows(), error: null })).then(ok, fail)
+    },
   }
   return b
 }
@@ -222,6 +228,8 @@ beforeEach(() => {
   ownershipQueries = 0
   ownershipQueriesAtStreamStart = 0
   deferOwnership = null
+  contextGates = {}
+  contextReads = new Set()
   process.env.ANTHROPIC_API_KEY = 'test-key'
 })
 
@@ -425,5 +433,28 @@ describe('9E · the streaming hot path is unchanged', () => {
   it('a request with no conversation_id still performs no ownership read', async () => {
     await post(ask())
     expect(ownershipQueries).toBe(0)
+  })
+})
+
+describe('independent Atlas context reads', () => {
+  it('starts live, conversation and action reads before any of those reads finish', async () => {
+    const release: Record<string, () => void> = {}
+    const tables = ['cost_events', 'conversation_messages', 'atlas_actions']
+    for (const table of tables) {
+      contextGates[table] = new Promise<void>(resolve => { release[table] = resolve })
+    }
+    const pending = post(ask('conv-mine'))
+    try {
+      await waitFor(() => contextReads.has('cost_events'))
+      await waitFor(() => tables.every(table => contextReads.has(table)), 200)
+      expect(tables.filter(table => contextReads.has(table))).toEqual(tables)
+      expect(streamCalls).toHaveLength(0)
+    } finally {
+      Object.values(release).forEach(resolve => resolve())
+      await pending
+    }
+    expect(streamCalls).toHaveLength(1)
+    expect(streamCalls[0].system).toContain('MINE-1')
+    expect(streamCalls[0].system).not.toContain(FOREIGN_MARKER)
   })
 })

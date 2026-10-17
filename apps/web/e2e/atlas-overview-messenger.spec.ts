@@ -545,3 +545,33 @@ test('long live transcript scrolls without hiding the composer', async ({page}) 
   await editor.fill('Text efter samtalet')
   await expect(editor).toHaveValue('Text efter samtalet')
 })
+
+for(const width of [390,1280])for(const entry of ['panel','hotkey'] as const)test('live global voice '+entry+' opens persistent conversation without legacy recognition at '+width,async({page})=>{
+ await setup(page)
+ await page.setViewportSize({width,height:844})
+ await page.goto('/dashboard?voice-live=1')
+ await page.getByRole('button',{name:'Öppna Atlas',exact:true}).click()
+ await expect(page.getByRole('dialog',{name:'Atlas chatt'}).getByRole('textbox')).toBeFocused()
+ if(entry==='panel'){
+  const panel=page.getByRole('dialog',{name:'Atlas chatt'})
+  await panel.getByRole('textbox').fill('Behåll mitt utkast.')
+  await panel.getByRole('button',{name:'Starta samtal',exact:true}).click()
+ }else await page.keyboard.press('Alt+Space')
+ await expect(page).toHaveURL(/\/dashboard\?voice-live=1$/)
+ await expect(page.getByRole('region',{name:'Atlas röstsamtal'})).toBeVisible()
+ await expect(page.getByRole('dialog',{name:'Atlas chatt'})).toBeHidden()
+ expect(await page.evaluate(()=>(window as any).micStarts)).toBe(0)
+ await page.getByRole('button',{name:'Avsluta röstsamtalet'}).click()
+ if(entry==='panel'){
+  await page.getByRole('button',{name:'/projects/test-project',exact:true}).click()
+  await expect(page.getByRole('dialog',{name:'Atlas chatt'}).getByRole('textbox')).toHaveValue('Behåll mitt utkast.')
+ }
+})
+test('live global voice read-only hotkey cannot start either voice engine',async({page})=>{
+ await setup(page);await page.goto('/dashboard?voice-live=1&role=collaborator')
+ await page.getByRole('button',{name:'Öppna Atlas',exact:true}).click()
+ await expect(page.getByRole('dialog',{name:'Atlas chatt'}).getByRole('textbox')).toBeFocused()
+ await page.keyboard.press('Alt+Space')
+ await expect(page).toHaveURL(/dashboard\?voice-live=1&role=collaborator$/)
+ expect(await page.evaluate(()=>(window as any).micStarts)).toBe(0)
+})

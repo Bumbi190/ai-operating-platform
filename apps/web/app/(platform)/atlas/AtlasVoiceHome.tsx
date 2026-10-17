@@ -25,9 +25,10 @@ const QUICK_PROMPTS = [
 
 interface Props {
   operatorName: string
+  voiceHref?: string
 }
 
-export function AtlasVoiceHome({ operatorName }: Props) {
+export function AtlasVoiceHome({ operatorName, voiceHref }: Props) {
   const atlas = useAtlas()
 
   // ── Orb-klick: mappa UI-intention till runtime-åtgärder ──────────────────

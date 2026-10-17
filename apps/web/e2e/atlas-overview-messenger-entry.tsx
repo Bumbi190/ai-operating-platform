@@ -112,6 +112,8 @@ function Workspace() {
 createRoot(document.getElementById('root')!).render(
   <AtlasConversationProvider>
     <AtlasRuntimeProvider
+      voiceConversationEnabled={new URLSearchParams(location.search).has('voice-live')}
+      voiceReadOnly={new URLSearchParams(location.search).get('role') === 'collaborator'}
       projects={[
         {
           id: '10000000-0000-4000-8000-000000000001',

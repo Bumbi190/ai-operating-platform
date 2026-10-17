@@ -28,6 +28,7 @@ h1{font-size:17px;font-weight:850;margin:0 0 5px}.subtitle{font-size:12px;color:
 #caption-text{width:100%;white-space:normal;overflow-wrap:break-word}.captions .active{color:#51f1c7}
 .footer{position:absolute;bottom:5%;left:6%;right:6%;display:flex;justify-content:space-between;gap:9px;font-size:1.85cqw;font-weight:850;letter-spacing:.06em}
 .footer span:last-child{color:#51f1c7;text-align:right}
+.review-warning{position:absolute;top:16%;left:6%;right:6%;color:#ffd8a8;text-align:center;font-size:2.7cqw;letter-spacing:.06em;font-weight:900;text-shadow:0 2px 8px #000;display:none}.review-warning.show{display:block}
 .outro{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;background:radial-gradient(circle at 50% 35%,#17535b,#072534 55%,#04111d);opacity:0;visibility:hidden;transition:opacity .3s ease;pointer-events:none}
 .outro.show{opacity:1;visibility:visible}.outro-content{width:100%;padding:0 5%;transform:translateY(10px);transition:transform .35s ease}.outro.show .outro-content{transform:translateY(0)}
 .outro-lead{font-size:3.3cqw;font-weight:900;letter-spacing:.14em;color:#51f1c7;margin-bottom:12%}.outro-headline{font-size:10.4cqw;line-height:1.1;font-weight:950;letter-spacing:-.04em}.outro-headline em{font-style:normal;color:#51f1c7}.outro-rule{width:28%;height:5px;background:#51f1c7;border-radius:20px;margin:12% auto 9%}.outro-tagline{font-size:4.1cqw;font-weight:700;color:#bde9f5}
@@ -38,10 +39,11 @@ button{cursor:pointer}#play{background:#51f1c7;color:#04111d;border:0;border-rad
 @media(max-height:600px){.stage{max-height:58vh}.subtitle{display:none}}
 </style></head><body>
 <h1>The Prompt · Private Review</h1><p class="subtitle">Victoria · English voiceover · timed captions</p>
-<div class="tabs">__REPLIT_TAB__<button class="tab" data-story="codex" aria-pressed="false">Codex</button><button class="tab" data-story="recruiter" aria-pressed="false">AI recruiter</button></div>
+<div class="tabs">__REPLIT_TAB____ITAU_TAB__<button class="tab" data-story="codex" aria-pressed="false">Codex</button><button class="tab" data-story="recruiter" aria-pressed="false">AI recruiter</button></div>
 <div class="stage notranslate" lang="en" translate="no"><img id="photo" class="bg" alt="Illustrative editorial image">
 <div class="shade"></div><div class="logo">THE <em>PROMPT</em></div><div class="label" id="label"></div>
 <div class="timeline"><div id="progress"></div></div><div id="kicker" class="kicker"></div>
+<div id="review-warning" class="review-warning" role="note"></div>
 <div class="headline"><div class="scene-label" id="scene-label"></div><div class="scene-title" id="scene-title"></div><div class="line"></div></div>
 <div class="captions" aria-live="off" lang="en" translate="no"><div id="caption-text"></div></div><div class="footer"><span id="source-credit">EDITORIAL ILLUSTRATIONS</span><span>PRIVATE REVIEW · NO POSTING</span></div><div id="outro" class="outro" aria-hidden="true"><div class="outro-content"><div class="outro-lead">STAY AHEAD OF THE SIGNAL</div><div class="outro-headline">FOLLOW<br><em>THE PROMPT.</em></div><div class="outro-rule"></div><div class="outro-tagline">AI news. Daily. No fluff.</div></div></div></div>
 <div class="controls"><button type="button" id="play">Play</button><input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek narration"><span id="time">0:00</span></div>
@@ -51,7 +53,7 @@ button{cursor:pointer}#play{background:#51f1c7;color:#04111d;border:0;border-rad
 <script>
 (function(){
  const data=JSON.parse(document.getElementById('payload').textContent);
- const get=id=>document.getElementById(id), sound=get('sound'),image=get('photo'),captions=get('caption-text'),outro=get('outro'),play=get('play'),seek=get('seek');
+ const get=id=>document.getElementById(id), sound=get('sound'),image=get('photo'),captions=get('caption-text'),outro=get('outro'),warning=get('review-warning'),play=get('play'),seek=get('seek');
  let selected='codex',phase=-1,groupIndex=-1,animation=0;
  const stamp=n=>Math.floor(n/60)+':'+String(Math.floor(n%60)).padStart(2,'0');
  function refresh(){
@@ -80,7 +82,7 @@ button{cursor:pointer}#play{background:#51f1c7;color:#04111d;border:0;border-rad
   selected=story;phase=-1;groupIndex=-1;captions.replaceChildren();outro.classList.remove('show');
   const s=data.stories[story];
   sound.src=data.base+'/asset/'+story+'.mp3';
-  get('label').textContent=s.label;get('kicker').textContent=s.kicker;get('source-credit').textContent=selected==='replit'?'TECHCRUNCH / ORIGINAL ILLUSTRATIONS':'WIRED / ILLUSTRATIVE';
+  get('label').textContent=s.label;get('kicker').textContent=s.kicker;get('source-credit').textContent=selected==='replit'?'TECHCRUNCH / ORIGINAL ILLUSTRATIONS':selected==='itau'?'OPENAI / ARCHIVED COMPARISON':'WIRED / ILLUSTRATIVE';warning.textContent=s.reviewWarning||'';warning.classList.toggle('show',!!s.reviewWarning);
   for(const button of document.querySelectorAll('.tab'))button.setAttribute('aria-pressed',String(button.dataset.story===story));
   play.textContent='Play';refresh();
  }

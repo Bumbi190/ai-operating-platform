@@ -83,6 +83,29 @@ scenes.replit={
   captions:captionGroups(replit.words.map(w=>({text:w.word,startMs:w.startMs,endMs:w.endMs}))),
 }
 }
+// Explicitly optional archived episode: never treated as today's fresh news.
+// Earlier published narration contains an overstatement of rollout reach.
+if(process.env.THE_PROMPT_ITAU_COMPARISON_ENABLED==='true'){
+  const itau=JSON.parse(readFileSync(join(MEDIA,'itau-timing.json'),'utf8'))
+  if(!Array.isArray(itau.words)||itau.words.length<30||
+     itau.durationMs!==22059||itau.words[0]?.word!=='Itaú')
+    throw Error('Archived Itaú media integrity mismatch')
+  scenes.itau={
+    label:'AI / BANKING',kicker:'ITAU / OCT 16 • ARCHIVED',
+    starts:[0,4679,11367,19424],
+    beats:[
+      ['01 / SCOPE','AI BANKING: 300K IN PHASE ONE.'],
+      ['02 / APPLICATION','ASSISTANTS FOR CUSTOMERS AND STAFF.'],
+      ['03 / GOVERNANCE','IARA CONTROLS AI AT SCALE.'],
+      ['04 / WHAT NEXT','FULL ROLLOUT IS STILL A GOAL.'],
+    ],
+    duration:itau.durationMs/1000,
+    captions:captionGroups(itau.words.map(w=>({
+      text:w.word,startMs:w.startMs,endMs:w.endMs,
+    }))),
+    reviewWarning:'ARCHIVED VOICE: FIRST LINE OVERSTATES REACH. DO NOT POST.',
+  }
+}
 for(const name of ['codex','recruiter']){
   const m=JSON.parse(readFileSync(join(DATA,name+'-captions.json'),'utf8'))
   if(m.voiceId!=='qSeXEcewz7tA0Q0qk9fH'||m.modelId!=='eleven_turbo_v2_5')
@@ -93,6 +116,7 @@ for(const name of ['codex','recruiter']){
 }
 const files=new Set(['codex.mp3','recruiter.mp3',
   ...(scenes.replit?['replit.mp3',...[0,1,2].map(n=>'replit-'+n+'.svg')]:[]),
+  ...(scenes.itau?['itau.mp3',...[0,1,2].map(n=>'itau-'+n+'.png')]:[]),
   ...['codex','recruiter'].flatMap(x=>[0,1,2].map(n=>x+'-'+n+'.png'))])
 for(const file of files)if(statSync(join(MEDIA,file)).size===0)throw Error('Missing media: '+file)
 const host=process.env.THE_PROMPT_PREVIEW_HOST
@@ -109,6 +133,7 @@ function viewer(){
   const html=rawHtml
     .replace('__PAYLOAD__',payload)
     .replace('__REPLIT_TAB__',scenes.replit?'<button class="tab" data-story="replit" aria-pressed="true">New: Replit</button>':'')
+    .replace('__ITAU_TAB__',scenes.itau?'<button class="tab" data-story="itau" aria-pressed="false">Archive: Itaú</button>':'')
     .replace('__DEFAULT_STORY__',scenes.replit?'replit':'codex')
     .replace('<style>','<style nonce="'+nonce+'">')
     .replace('<script>\n(function','<script nonce="'+nonce+'">\n(function')

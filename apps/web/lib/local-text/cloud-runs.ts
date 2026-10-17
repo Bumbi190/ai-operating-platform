@@ -45,6 +45,7 @@ export async function executeLocalTextCloudRun(db:Db,run:Run,claimId:string,now:
  if(s.state!=='pending'){await unknown();return}
  if(process.env.ATLAS_LOCAL_TEXT_ENABLED!=='true'){await human('LOCAL_TEXT_DISABLED');return}
  if(!['local_review','cloud_task','cloud_review'].includes(String(s.stage))){await human('INVALID_STAGE');return}
+ if(s.reviewMode==='human'){await human(s.stage==='cloud_task'?'HUMAN_MODE_NO_CLOUD_TASK':'HUMAN_REVIEW_REQUIRED');return}
  const profile=readCloudTextProfile()
  if(!profile||Date.parse(profile.expiresAt)<=now.getTime()){await human('REVIEW_QUALIFICATION_REQUIRED');return}
  const price=MODEL_PRICING[profile.deployment]

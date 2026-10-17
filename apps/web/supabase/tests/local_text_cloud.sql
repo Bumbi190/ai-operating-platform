@@ -28,6 +28,30 @@ begin
   v=public.local_text_cloud_operation(rid,claim,'human',jsonb_build_object('reasonCode','BUDGET_UNVERIFIED'));if v->>'kind'<>'applied' then raise exception 'human stage %',v;end if;
   update public.runs set status='awaiting_approval' where id=rid;
   v=public.local_text_cloud_operation(rid,claim,'apply','{}');if v#>>'{value,state}'<>'needs_input' or v#>'{value,result}'<>'null'::jsonb then raise exception 'human path released unreviewed output %',v;end if;
+  select approval_id into next_stage from public.local_text_human_reviews where job_id=job;
+  if next_stage is null or exists(select 1 from public.approvals where id=next_stage and (content like '%Behöver hjälp%' or content like '%support%')) then raise exception 'human review missing or contains raw copy';end if;
+  if public.local_text_read_review('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',next_stage) is not null then raise exception 'foreign reviewer read raw source';end if;
+  v=public.local_text_read_review('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',next_stage);if v->'task' is distinct from req->'task' or v#>>'{result,label}'<>'support' then raise exception 'exact review source unavailable %',v;end if;
+  begin update public.local_text_human_reviews set input_hash=repeat('a',64) where approval_id=next_stage;raise exception 'human review hash mutable';exception when check_violation then null;end;
+  begin update public.local_text_human_reviews set expires_at=expires_at+interval '1 second' where approval_id=next_stage;raise exception 'human review expiry extended';exception when check_violation then null;end;
+  v=public.local_text_resolve_approval('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',next_stage,'approve',2);if v->>'reason'<>'STALE_VERSION' then raise exception 'stale review version won %',v;end if;
+  begin
+   v=public.local_text_set_retention('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','11111111-1111-4111-8111-111111111111',1,1);perform pg_sleep(1.1);
+   if public.local_text_read_review('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',next_stage) is not null or (public.local_text_read_receipt('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',job)->'task')<>'null'::jsonb then raise exception 'shorter project retention leaked source before maintenance';end if;
+   v=public.local_text_resolve_approval('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',next_stage,'approve',1);if v->>'reason'<>'PAYLOAD_EXPIRED' then raise exception 'shorter retention did not revoke approval %',v;end if;
+   raise exception using errcode='P0999',message='fixture rollback';exception when sqlstate 'P0999' then null;
+  end;
+  begin
+   update public.local_text_jobs set payload_expires_at=clock_timestamp()-interval '1 second' where id=job;
+   v=public.local_text_resolve_approval('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',next_stage,'approve',1);if v->>'reason'<>'PAYLOAD_EXPIRED' then raise exception 'expired approval resurrected text %',v;end if;
+   v=public.local_text_purge(1);if v->>'payloadsDeleted'<>'1' or exists(select 1 from public.local_text_jobs where id=job and (task is not null or result is not null)) or exists(select 1 from public.local_text_attempts where job_id=job and result is not null) or public.local_text_read_review('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',next_stage) is not null then raise exception 'raw purge missed copy %',v;end if;
+   update public.local_text_jobs set metadata_expires_at=clock_timestamp()-interval '1 second' where id=job;
+   v=public.local_text_purge(1);if v->>'metadataDeleted'<>'1' or exists(select 1 from public.local_text_jobs where id=job) then raise exception 'metadata purge missed lineage %',v;end if;
+   raise exception using errcode='P0999',message='fixture rollback';exception when sqlstate 'P0999' then null;
+  end;
+  v=public.local_text_resolve_approval('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',next_stage,'approve',1);if v#>>'{value,receipt,state}'<>'succeeded' or v#>>'{value,receipt,result,label}'<>'support' then raise exception 'exact human approval failed %',v;end if;
+  v=public.local_text_resolve_approval('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',next_stage,'approve',1);if v->>'kind'<>'duplicate' or (select count(*) from public.local_text_reviews where job_id=job)<>1 then raise exception 'human approval duplicated %',v;end if;
+  v=public.local_text_advance(job);if (select count(*) from public.local_text_cloud_stages where job_id=job)<>1 then raise exception 'human approval authorized later paid work';end if;
   raise exception using errcode='P0999',message='fixture rollback';exception when sqlstate 'P0999' then null;
  end;
  v=public.local_text_cloud_operation(rid,claim,'dispatch',jsonb_build_object('deployment','gpt-5.4-mini-2026-03-17','qualificationHash',repeat('a',64)));if v->>'reason'<>'BUDGET_UNVERIFIED' then raise exception 'caps alone authorized spend %',v;end if;

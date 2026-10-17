@@ -61,6 +61,7 @@ interface ActivityEntryBase {
 }
 
 export interface ActivityRunEntry extends ActivityEntryBase {
+  localIncidentOpen?:boolean
   kind: 'run'
   status: string
   workflowName: string | null
@@ -227,14 +228,15 @@ export function assembleActivity(input: AssembleInput): ActivityModel {
       const wf = one(row?.workflows)
       runEntries.push({
         kind: 'run',
+        ...(row.kind==='local_text_incident'?{localIncidentOpen:(row.context as any)?.localText?.incidentState==='open'}:{}),
         id,
         occurredAt: at,
         timeSource: source,
         project,
         href: runHref(project.slug, id),
-        tone: runStateTone(status),
+        tone: row.kind==='local_text_incident'&&(row.context as any)?.localText?.incidentState==='open'?'attention':runStateTone(status),
         status,
-        workflowName: text(wf?.name),
+        workflowName: row.kind==='local_text_incident'?((row.context as any)?.localText?.incidentKind==='offline'?'Lokal AI: ingen kontakt med datorn':'Lokal AI: behöver åtgärd'):text(wf?.name),
         detail: truncate(text(newestLog.get(id)?.content)),
         error: truncate(text(row?.error) ?? text(row?.last_error)),
         cancelReason: truncate(text(row?.cancel_reason)),
@@ -282,7 +284,7 @@ export function assembleActivity(input: AssembleInput): ActivityModel {
   const running = runEntries.filter((e) => e.status === 'running')
   const attention: ActivityEntry[] = entries.filter((e) =>
     e.kind === 'run'
-      ? e.status === 'failed' || e.status === 'stalled' || e.cancelReason !== null
+      ? e.localIncidentOpen===true || e.status === 'failed' || e.status === 'stalled' || e.cancelReason !== null
       : e.actionable,
   )
 
@@ -311,7 +313,7 @@ export function assembleActivity(input: AssembleInput): ActivityModel {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const RUN_SELECT =
-  'id, status, created_at, started_at, finished_at, error, last_error, attempts, cancel_reason, steps_snapshot, workflows(name), projects!inner(name, slug, color)'
+  'id, kind, context, status, created_at, started_at, finished_at, error, last_error, attempts, cancel_reason, steps_snapshot, workflows(name), projects!inner(name, slug, color)'
 
 // Scoped through the run: `approvals.project_id` is unreliable, `runs` is not.
 const REVIEW_SELECT =

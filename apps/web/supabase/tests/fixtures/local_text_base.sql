@@ -139,3 +139,101 @@ end
 $fn$;
 revoke all on function public.request_run_cancel(uuid,uuid,text,text) from public,anon,authenticated;
 grant execute on function public.request_run_cancel(uuid,uuid,text,text) to service_role;
+alter table public.approvals add column kind text,add column output_key text,add column content text not null default '',add column reviewer_notes text,add column created_at timestamptz not null default now();
+create or replace function public.resolve_approval(
+  p_approval_id uuid,
+  p_run_id      uuid,
+  p_project_id  uuid,
+  p_action      text,
+  -- Optional, and last: review notes are semantically optional, and the
+  -- checked-in type marks `p_notes?`. The default is what makes that true.
+  p_notes       text default null
+)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $fn$
+declare
+  v_appr_status text;
+  v_now         timestamptz := now();
+begin
+  if p_action not in ('approved', 'rejected', 'revised') then
+    raise exception 'resolve_approval: unsupported action %', p_action
+      using errcode = 'invalid_parameter_value';
+  end if;
+
+  -- ── RUN FIRST. ALWAYS. ───────────────────────────────────────────────────
+  -- Cancellation locks the run row too, in this same order, so the two
+  -- operations serialise on one row instead of interleaving. `revised` takes the
+  -- lock as well even though it leaves the run alone: without it, a cancel could
+  -- win the run while a revision independently overwrote the `returned` approval
+  -- the cancel had just written.
+  perform 1 from public.runs r
+   where r.id = p_run_id
+     and r.project_id = p_project_id
+     and r.status = 'awaiting_approval'
+   for update;
+
+  if not found then
+    -- The run is no longer awaiting review — cancelled, or already resolved by
+    -- someone else. This caller LOST. It must write nothing, and above all it
+    -- must not go on to publish.
+    return 'LOST';
+  end if;
+
+  -- ── THEN THE APPROVAL ────────────────────────────────────────────────────
+  -- Lineage rule. The RUN is authoritative — it was already matched on
+  -- id + project_id + awaiting_approval above, so tenancy is established there.
+  -- The approval must belong to that run, and may carry either NULL (the
+  -- historical shape: 12 of 13 production rows have project_id NULL, and the
+  -- generic creation endpoint still inserts without it) or the SAME project.
+  -- An explicitly DIFFERENT project is refused: legacy lineage support must not
+  -- become cross-project permission.
+  select a.status into v_appr_status
+    from public.approvals a
+   where a.id = p_approval_id
+     and a.run_id = p_run_id
+     and (a.project_id is null or a.project_id = p_project_id)
+   for update;
+
+  if not found then
+    return 'NOT_FOUND';               -- wrong approval, wrong run, or wrong tenant
+  end if;
+
+  if v_appr_status not in ('pending', 'revised', 'needs_input') then
+    -- Already decided. Not our decision to overwrite — the previous defect was
+    -- an UPDATE with no status predicate at all, which happily turned a
+    -- `returned` approval back into `approved`.
+    return 'ALREADY_RESOLVED';
+  end if;
+
+  if p_action = 'revised' then
+    -- The run deliberately STAYS awaiting_approval: a revision asks for another
+    -- pass, it does not conclude the run.
+    update public.approvals set
+      status = 'revised', reviewer_notes = p_notes, reviewed_at = v_now
+    where id = p_approval_id;
+    return 'REVISED';
+  end if;
+
+  if p_action = 'approved' then
+    update public.runs set status = 'done' where id = p_run_id;
+    update public.approvals set
+      status = 'approved', reviewer_notes = p_notes, reviewed_at = v_now
+    where id = p_approval_id;
+    return 'APPROVED';
+  end if;
+
+  update public.runs set
+    status = 'rejected',
+    error  = left('approval_rejected: ' || coalesce(p_notes, ''), 500)
+  where id = p_run_id;
+  update public.approvals set
+    status = 'rejected', reviewer_notes = p_notes, reviewed_at = v_now
+  where id = p_approval_id;
+  return 'REJECTED';
+end
+$fn$;
+revoke all on function public.resolve_approval(uuid,uuid,uuid,text,text) from public,anon,authenticated;
+grant execute on function public.resolve_approval(uuid,uuid,uuid,text,text) to service_role;

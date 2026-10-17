@@ -44,3 +44,10 @@ it('drift_revokes_start',async()=>{
  expect(await api.revalidateSelection(db({kind:'refused',reason:'EVIDENCE_DRIFT'}),claim,now)).toEqual({kind:'refused',reason:'EVIDENCE_DRIFT'})
  expect((await api.revalidateSelection(db({kind:'applied',value:{...s.decision,modelDigest:'sha256:'+'b'.repeat(64)}}),claim,now)).kind).toBe('unknown')
 })
+it('explicit human-only source admission needs no paid review grant and never grants cloud fallback',()=>{
+ const c=candidate();(c.admission as any).reviewMode='human'
+ const context={...ctx,cloud:undefined,humanReview:{authorized:true,ownerId:id}} as SelectionContext
+ const out=select([c],context);expect(out.kind).toBe('selected');if(out.kind==='selected')expect(out.decision.fallback).toBe('human')
+ expect(select([candidate()],context).kind).toBe('needs_input')
+ expect(select([c],{...context,humanReview:{authorized:false,ownerId:id}} as SelectionContext).kind).toBe('needs_input')
+})

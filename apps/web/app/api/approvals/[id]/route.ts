@@ -22,6 +22,15 @@ export async function GET(
   if (!access.ok) return access.response
 
   const db = createAdminClient()
+  // Local reviews do not depend on legacy run/agent relationships. Authorize
+  // the owned approval before loading its separately hash-bound raw payload.
+  const {data:localHeader,error:headerError}=await db.from('approvals').select('*').eq('id',params.id).single()
+  if(headerError)return NextResponse.json({error:'APPROVAL_UNAVAILABLE'},{status:404})
+  if(!assertProjectAllowed(localHeader.project_id,access.allowedProjectIds))return projectForbidden()
+  if(localHeader.kind==='local_text_review'||localHeader.kind==='local_text_incident'){
+    try{return NextResponse.json({approval:localHeader,...(localHeader.kind==='local_text_review'?{localTextReview:await readLocalTextReview(db,access.userId,params.id)}:{localTextIncident:await readLocalTextIncident(db,access.userId,params.id)})},{headers:{'Cache-Control':'private, no-store'}})}
+    catch{return NextResponse.json({error:'LOCAL_TEXT_REVIEW_UNAVAILABLE'},{status:503,headers:{'Cache-Control':'private, no-store'}})}
+  }
   const { data, error } = await db
     .from('approvals')
     .select(`
@@ -37,10 +46,6 @@ export async function GET(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 404 })
   if (!assertProjectAllowed(data.project_id, access.allowedProjectIds)) return projectForbidden()
-  if(data.kind==='local_text_review'||data.kind==='local_text_incident'){
-    try{return NextResponse.json({approval:data,...(data.kind==='local_text_review'?{localTextReview:await readLocalTextReview(db,access.userId,params.id)}:{localTextIncident:await readLocalTextIncident(db,access.userId,params.id)})},{headers:{'Cache-Control':'private, no-store'}})}
-    catch{return NextResponse.json({error:'LOCAL_TEXT_REVIEW_UNAVAILABLE'},{status:503,headers:{'Cache-Control':'private, no-store'}})}
-  }
   return NextResponse.json({ approval: data })
 }
 

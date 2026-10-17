@@ -38,12 +38,12 @@ button{cursor:pointer}#play{background:#51f1c7;color:#04111d;border:0;border-rad
 @media(max-height:600px){.stage{max-height:58vh}.subtitle{display:none}}
 </style></head><body>
 <h1>The Prompt · Private Review</h1><p class="subtitle">Victoria · English voiceover · timed captions</p>
-<div class="tabs"><button class="tab" data-story="codex" aria-pressed="true">Codex</button><button class="tab" data-story="recruiter" aria-pressed="false">AI recruiter</button></div>
+<div class="tabs">__REPLIT_TAB__<button class="tab" data-story="codex" aria-pressed="false">Codex</button><button class="tab" data-story="recruiter" aria-pressed="false">AI recruiter</button></div>
 <div class="stage notranslate" lang="en" translate="no"><img id="photo" class="bg" alt="Illustrative editorial image">
 <div class="shade"></div><div class="logo">THE <em>PROMPT</em></div><div class="label" id="label"></div>
 <div class="timeline"><div id="progress"></div></div><div id="kicker" class="kicker"></div>
 <div class="headline"><div class="scene-label" id="scene-label"></div><div class="scene-title" id="scene-title"></div><div class="line"></div></div>
-<div class="captions" aria-live="off" lang="en" translate="no"><div id="caption-text"></div></div><div class="footer"><span>WIRED / ILLUSTRATIVE</span><span>PRIVATE REVIEW · NO POSTING</span></div><div id="outro" class="outro" aria-hidden="true"><div class="outro-content"><div class="outro-lead">STAY AHEAD OF THE SIGNAL</div><div class="outro-headline">FOLLOW<br><em>THE PROMPT.</em></div><div class="outro-rule"></div><div class="outro-tagline">AI news. Daily. No fluff.</div></div></div></div>
+<div class="captions" aria-live="off" lang="en" translate="no"><div id="caption-text"></div></div><div class="footer"><span id="source-credit">EDITORIAL ILLUSTRATIONS</span><span>PRIVATE REVIEW · NO POSTING</span></div><div id="outro" class="outro" aria-hidden="true"><div class="outro-content"><div class="outro-lead">STAY AHEAD OF THE SIGNAL</div><div class="outro-headline">FOLLOW<br><em>THE PROMPT.</em></div><div class="outro-rule"></div><div class="outro-tagline">AI news. Daily. No fluff.</div></div></div></div>
 <div class="controls"><button type="button" id="play">Play</button><input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek narration"><span id="time">0:00</span></div>
 <audio id="sound" playsinline preload="metadata"></audio>
 <p class="notice">Local read-only preview. Your phone and Windows computer must be on the same Wi-Fi. This is a synchronized review player, not an exported final MP4.</p>
@@ -57,7 +57,7 @@ button{cursor:pointer}#play{background:#51f1c7;color:#04111d;border:0;border-rad
  function refresh(){
   const s=data.stories[selected],ms=sound.currentTime*1000;
   const next=Math.max(0,Math.min(3,s.starts.filter(v=>ms>=v).length-1));
-  if(next!==phase){phase=next;image.src=data.base+'/asset/'+selected+'-'+[0,1,2,0][next]+'.png';get('scene-label').textContent=s.beats[next][0];get('scene-title').textContent=s.beats[next][1]}
+  if(next!==phase){phase=next;image.src=data.base+'/asset/'+selected+'-'+[0,1,2,0][next]+(selected==='replit'?'.svg':'.png');get('scene-label').textContent=s.beats[next][0];get('scene-title').textContent=s.beats[next][1]}
   get('progress').style.width=100*Math.min(1,ms/(s.duration*1000))+'%';
   seek.value=Math.round(1000*Math.min(1,ms/(s.duration*1000)));
   get('time').textContent=stamp(sound.currentTime)+' / '+stamp(s.duration);
@@ -80,7 +80,7 @@ button{cursor:pointer}#play{background:#51f1c7;color:#04111d;border:0;border-rad
   selected=story;phase=-1;groupIndex=-1;captions.replaceChildren();outro.classList.remove('show');
   const s=data.stories[story];
   sound.src=data.base+'/asset/'+story+'.mp3';
-  get('label').textContent=s.label;get('kicker').textContent=s.kicker;
+  get('label').textContent=s.label;get('kicker').textContent=s.kicker;get('source-credit').textContent=selected==='replit'?'TECHCRUNCH / ORIGINAL ILLUSTRATIONS':'WIRED / ILLUSTRATIVE';
   for(const button of document.querySelectorAll('.tab'))button.setAttribute('aria-pressed',String(button.dataset.story===story));
   play.textContent='Play';refresh();
  }
@@ -92,6 +92,6 @@ button{cursor:pointer}#play{background:#51f1c7;color:#04111d;border:0;border-rad
  seek.addEventListener('input',()=>{outro.classList.remove('show');sound.currentTime=Number(seek.value)/1000*data.stories[selected].duration;refresh()});
  sound.addEventListener('ended',()=>{play.textContent='Replay';cancelAnimationFrame(animation);refresh();outro.classList.add('show')});
  sound.addEventListener('error',()=>{play.textContent='Audio unavailable'});
- choose('codex');
+ choose('__DEFAULT_STORY__');
 })();
 </script></body></html>

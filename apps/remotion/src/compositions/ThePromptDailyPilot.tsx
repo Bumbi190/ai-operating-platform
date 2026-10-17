@@ -76,7 +76,7 @@ export function ThePromptDailyPilot({
       <div style={{position:'absolute',bottom:91,left:65,right:65,
         display:'flex',justifyContent:'space-between',gap:20,
         fontSize:17,fontWeight:800,color:'#BDD7E1',letterSpacing:1.2}}>
-        <span>SOURCE-BASED / APPROVED VISUALS ONLY</span><span style={{color:TEAL}}>PILOT REVIEW</span>
+        <span>SOURCE-BASED / EDITORIAL VISUALS</span><span style={{color:TEAL}}>PILOT REVIEW</span>
       </div>
     </>}
     {outro&&<AbsoluteFill style={{background:'radial-gradient(ellipse at 50% 35%,#17484E,#04111D 76%)',

@@ -63,6 +63,26 @@ const scenes={
     ],
   },
 }
+// A new, private, genuinely dated article – not a replay of old demos.
+if(process.env.THE_PROMPT_REPLIT_REVIEW_ENABLED==='true'){
+const replit=JSON.parse(readFileSync(join(MEDIA,'replit-timing.json'),'utf8'))
+if(replit.voiceId!=='qSeXEcewz7tA0Q0qk9fH'||replit.modelId!=='eleven_turbo_v2_5' ||
+   replit.sourcePublishedAt!=='2026-10-16T12:55:00Z' ||
+   !Array.isArray(replit.words)||replit.words.length<30)
+   throw Error('Unverified Replit preview metadata')
+scenes.replit={
+  label:'AI / WORK',kicker:'REPLIT / OCT 16',
+  starts:[0,5846,13328,17050],
+  beats:[
+    ['01 / THE HOOK','A SELF-DRIVING COMPANY?'],
+    ['02 / THE AGENTS','AGENTS DO THE GROUNDWORK.'],
+    ['03 / THE LIMIT','HUMANS STILL DECIDE.'],
+    ['04 / YOUR TAKE','YOUR WORKPLACE NEXT?'],
+  ],
+  duration:replit.durationMs/1000,
+  captions:captionGroups(replit.words.map(w=>({text:w.word,startMs:w.startMs,endMs:w.endMs}))),
+}
+}
 for(const name of ['codex','recruiter']){
   const m=JSON.parse(readFileSync(join(DATA,name+'-captions.json'),'utf8'))
   if(m.voiceId!=='qSeXEcewz7tA0Q0qk9fH'||m.modelId!=='eleven_turbo_v2_5')
@@ -72,6 +92,7 @@ for(const name of ['codex','recruiter']){
   scenes[name].captions=captionGroups(m.words)
 }
 const files=new Set(['codex.mp3','recruiter.mp3',
+  ...(scenes.replit?['replit.mp3',...[0,1,2].map(n=>'replit-'+n+'.svg')]:[]),
   ...['codex','recruiter'].flatMap(x=>[0,1,2].map(n=>x+'-'+n+'.png'))])
 for(const file of files)if(statSync(join(MEDIA,file)).size===0)throw Error('Missing media: '+file)
 const host=process.env.THE_PROMPT_PREVIEW_HOST
@@ -87,6 +108,8 @@ function viewer(){
   const payload=JSON.stringify({base:prefix,stories:scenes}).replaceAll('<','\\u003c')
   const html=rawHtml
     .replace('__PAYLOAD__',payload)
+    .replace('__REPLIT_TAB__',scenes.replit?'<button class="tab" data-story="replit" aria-pressed="true">New: Replit</button>':'')
+    .replace('__DEFAULT_STORY__',scenes.replit?'replit':'codex')
     .replace('<style>','<style nonce="'+nonce+'">')
     .replace('<script>\n(function','<script nonce="'+nonce+'">\n(function')
   return {html,nonce}
@@ -116,7 +139,7 @@ const server=createServer((req,res)=>{
     const filename=pathname.slice((prefix+'/asset/').length)
     if(!files.has(filename)){res.writeHead(404,responseHeaders).end();return}
     const stat=statSync(join(MEDIA,filename))
-    const mime=filename.endsWith('.mp3')?'audio/mpeg':'image/png'
+    const mime=filename.endsWith('.mp3')?'audio/mpeg':filename.endsWith('.svg')?'image/svg+xml':'image/png'
     const headers={...responseHeaders,'content-type':mime,'accept-ranges':'bytes'}
     let start=0,end=stat.size-1,status=200
     if(req.headers.range){

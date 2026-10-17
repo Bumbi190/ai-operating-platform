@@ -17,6 +17,7 @@ export const THE_PROMPT_GROWTH_GUIDANCE = [
   '- Let every following spoken beat have a corresponding real visual or movement. Prefer sources and proof to decorative stock.',
   '- Generate several distinct candidate hook angles internally (result-first, problem-first, surprising verified fact). Pick one grounded in the source; do not copy a competitor hook.',
   '- One honest end CTA only. Never promise a DM, download or material unless an approved delivery workflow actually exists.',
+  '- The Prompt voiceover must remain the pinned Victoria voice from lib/voice/config.ts; never choose another voice by display name.',
   '- Preserve the existing JSON response shape. This is creative direction, not a render, publish or analytics command.',
 ].join('\n')
 
@@ -28,6 +29,7 @@ export const FAMILJE_STUNDEN_GROWTH_GUIDANCE = [
   '- Prefer warm, age-appropriate curiosity and practical usefulness over clickbait, fear, pressure, child exploitation or false developmental promises.',
   '- Vary hook angles between result, familiar parent situation and playful curiosity. Use only the supplied brief, brand canon, approved characters and asset references.',
   '- Preserve one brief-approved CTA; never imply an automated DM, freebie or link delivery that is not actually configured.',
+  '- Nova and Pling must use the already-approved exact character ElevenLabs voices; if the role-level voice mapping is unverified, BLOCK generation instead of falling back to Sanna/Victoria.',
   '- Keep the existing response JSON and existing reel_spec.scenes fields unchanged. This does not authorize rendering or publishing.',
 ].join('\n')
 

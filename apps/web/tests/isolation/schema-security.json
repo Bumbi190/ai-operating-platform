@@ -5,7 +5,7 @@
     "captured_at": "2026-09-25",
     "handlarborsen_review_p2_migration_note": "Operator-approved, project-locked, immutable human review decision events. RLS + FORCE RLS, zero policies, no anon/auth grants; service role SELECT/INSERT only, REVIEW RPC only service role. Fully isolated PG17.6 security tests passed. Live production catalog must be checked after application.",
     "handlarborsen_candidates_migration_note": "Additional candidate memory table to be verified against the scoped live production catalog after operator-approved application: project-locked, RLS and FORCE RLS, zero policies and client grants, service_role SELECT/INSERT only. Earlier table classifications remain unchanged.",
-    "total_tables": 134,
+    "total_tables": 135,
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
     "platform_tokens_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090000_platform_tokens_client_revoke.sql (Settings S0): client grants revoked, RLS on, no policy.",
     "platform_credential_events_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090100_platform_credential_events.sql (Settings S0), applied to production before this row was merged: created with RLS on and no policy, every client grant revoked, service_role holding SELECT and INSERT only, UPDATE/DELETE/TRUNCATE refused by triggers.",
@@ -75,7 +75,7 @@
     "atlas_sales_pilot_note": "Scoped production observation 2026-10-17 after exact reviewed atlas_sales_pilot migration (ledger20261017130254, canonical20261017100633, SHA2567ea3de34909ac582d2534b291b448fb9ba3781c196167c0475fc4e1f2c301ca9). All seven tables RLS ON. Six TENANT_RLS tables have one owner-rooted authenticated SELECT policy, no anon SELECT, authenticated SELECT only and service-role reachability. Worker registrations SERVER_ONLY, zero policies and no anon/authenticated SELECT. All27 sales functions SECURITY INVOKER, empty search_path, anon/authenticated EXECUTE revoked and service EXECUTE present. Owner-scoped workspace empty: zero contacts/offers/jobs/workers/drafts, sendingEnabled false. Advisor WARN counts20/7/8/1 unchanged. Only seven table rows refreshed; earlier capture dates remain unchanged.",
     "sales_managed_host_note": "Scoped live observation2026-10-17 after exact reviewed migration SHA256a258d7fc159632564747c9a49c5b48037c8c75726b26859892301127dfbf832a, ledger20261017151718. RLS ON, zero policy/client grants, service SELECT/INSERT only; append-only guard. All host functions empty search_path, INVOKER, service-only. No job created.",
     "sales_strato_connection_note": "Scoped live observation2026-10-17 after exact reviewed migration SHA2562e3301eb992694901c15904899c586093632dfb2acf91db2474c8447c6243b1e, ledger20261017151722. Connection RLS owner SELECT only; encrypted setup RLS/server-only. Service SELECT/INSERT/UPDATE, no DELETE/TRUNCATE. All mailbox functions empty search_path/service-only, only narrow cleanup-ready predicate DEFINER. Exact own five-minute cron active; direct cleanup returned0. WARN advisor counts unchanged (security20/7/8/1, performance40). No inbox/send.",
-    "sales_scoped_capture_note": "Registry now classifies134 rows. Live public catalog count135: unrelated handlarborsen_candidate_inbox exists outside this branch migration corpus and was observed RLS ON, zero policy/client grant, service reachability. Its unrelated migration/classification is not imported into this scoped change. Older registry rows and capture date are unchanged."
+    "sales_scoped_capture_note": "Scoped additions now classify135 rows, matching observed public catalog135. Candidate inbox canonical SQL is byte-identical to already-applied ledger20261017151021 (SHA256e7f3efe782086aa8f818ab071dab7c96ccadde95ec58320e30048bd487fe663c); it differs from the main reviewed proposal only in its first comment. Added after the actual protected build correctly refused its unknown ledger name. No SQL reapplied, no legacy/frozen allowlist changed, no candidate UI flag activated. Older capture dates unchanged."
   },
   "tables": {
     "handlarborsen_competitor_review_decisions": {
@@ -1385,6 +1385,14 @@
       "service_role": true
     },
     "sales_mailbox_setups": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "handlarborsen_candidate_inbox": {
       "class": "SERVER_ONLY",
       "rls": true,
       "policies": 0,

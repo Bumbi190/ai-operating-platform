@@ -6,8 +6,9 @@ import { createServer } from 'vite'
 import { WebSocketServer } from 'ws'
 const root = process.cwd(), boundary = resolve(root, 'e2e/atlas-voice-pilot-boundaries.ts')
 const vite = await createServer({ configFile: false, root, appType: 'custom', esbuild: { jsx: 'automatic' }, resolve: { alias: [
-  { find: '@/lib/atlas/runtime', replacement: boundary },
   { find: '@/lib/supabase/client', replacement: boundary },
+  { find: 'next/navigation', replacement: resolve(root, 'e2e/atlas-overview-messenger-navigation.ts') },
+  { find: 'next/image', replacement: resolve(root, 'e2e/atlas-entry-image.tsx') },
   { find: 'next/link', replacement: resolve(root, 'e2e/atlas-entry-next.tsx') },
   { find: '@', replacement: root },
 ] }, server: { middlewareMode: true, host: '127.0.0.1' } })

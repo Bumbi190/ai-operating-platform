@@ -341,3 +341,33 @@ it.each(["existing","new"] as const)("allows a compact turn in a %s thread while
  wire.enqueue(new TextEncoder().encode('data: {"event":"text","text":"Gammalt svar"}\n\ndata: {"event":"done"}\n\n'));wire.close();await old
  expect(c.snapshot().history.map(m=>m.content)).toEqual(["Ny fråga","Nytt"])
 })
+
+describe("shared turn settlement", () => {
+  it.each([
+    ["success", () => events({event:"text",text:"Svar"},{event:"done"}), true],
+    ["incomplete", () => events({event:"text",text:"Halvt svar"}), false],
+    ["http failure", () => new Response("{}",{status:503}), false],
+    ["stream failure after done", () => new Response(new ReadableStream({start(wire){wire.enqueue(new TextEncoder().encode('data: {"event":"done"}\n\n'));queueMicrotask(()=>wire.error(new Error("broken")))}})), false],
+  ] as const)("settles %s after pending clears with the actual outcome", async (_name, response, ok) => {
+    const controller=new AtlasConversationController(async()=>response())
+    controller.activateConversation({id:C,saved:[],state:"ok"})
+    const settled:any[]=[]
+    controller.subscribeSettled(event=>settled.push({...event,pending:controller.snapshot().pending}))
+    const result=await controller.sendTurn({conversationId:C,text:"Fråga",inputSource:"text"})
+    expect(result.ok).toBe(ok)
+    expect(settled).toEqual([{conversationId:C,generation:1,current:true,ok,pending:false}])
+  })
+  it("marks late settlement from a replaced conversation as stale", async () => {
+    let wire!:ReadableStreamDefaultController<Uint8Array>
+    const controller=new AtlasConversationController(async()=>new Response(new ReadableStream({start(value){wire=value}})))
+    controller.activateConversation({id:C,saved:[],state:"ok"})
+    const settled:any[]=[]
+    controller.subscribeSettled(event=>settled.push(event))
+    const turn=controller.sendTurn({conversationId:C,text:"Gammal fråga",inputSource:"voice"})
+    await Promise.resolve()
+    controller.activateConversation({id:D,saved:[],state:"ok"})
+    wire.enqueue(new TextEncoder().encode('data: {"event":"done"}\n\n'));wire.close()
+    await turn
+    expect(settled).toEqual([{conversationId:C,generation:1,current:false,ok:true}])
+  })
+})

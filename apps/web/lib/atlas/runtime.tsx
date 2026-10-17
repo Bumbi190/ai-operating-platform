@@ -20,6 +20,9 @@ import {
   useRef,
   useSyncExternalStore,
 } from 'react'
+import { useAtlasVoiceSession } from './voice-pilot/use-voice-session'
+import { AtlasVoicePanel } from '@/components/platform/os/AtlasVoicePanel'
+import type { StreamEvent } from '@/lib/os/chat-shared'
 import { useRouter, usePathname } from 'next/navigation'
 import { createClient }           from '@/lib/supabase/client'
 import {useAtlasConversation} from '@/lib/atlas/conversation/provider'
@@ -97,6 +100,8 @@ export interface AtlasValue {
   completionEvent: AtlasOrbCompletionEvent | null
 
   // ── Session ───────────────────────────────────────────────────────────
+  voiceConversationAvailable?: boolean
+  voicePanelOpen?: boolean
   isSessionActive: boolean
   lastActiveAt:    Date | null
 
@@ -174,7 +179,6 @@ export function AtlasRuntimeProvider({
   // ── Röstfas ──────────────────────────────────────────────────────────────
   const [voicePhase, setVoicePhase] = useState<VoicePhase>('idle')
   const phaseRef = useRef<VoicePhase>('idle')
-  useEffect(() => { phaseRef.current = voicePhase }, [voicePhase])
 
   // ── Executive state ──────────────────────────────────────────────────────
   const [executiveState, setExecutiveState] = useState<ExecutiveState>('idle')
@@ -191,10 +195,11 @@ export function AtlasRuntimeProvider({
   const [perf, setPerf]             = useState<string | null>(null)
 
   // ── Session ──────────────────────────────────────────────────────────────
+  const [voicePanel, setVoicePanel] = useState<'closed' | 'open' | 'minimized'>('closed')
+  const voiceTrigger = useRef<HTMLElement | null>(null)
   const [isSessionActive, setIsSessionActive] = useState(false)
   const [lastActiveAt, setLastActiveAt]       = useState<Date | null>(null)
   const isSessionActiveRef = useRef(false)
-  useEffect(() => { isSessionActiveRef.current = isSessionActive }, [isSessionActive])
 
   // ── Konversation ─────────────────────────────────────────────────────────
   const {controller:conversation,snapshot:sharedConversation}=useAtlasConversation()
@@ -529,8 +534,10 @@ export function AtlasRuntimeProvider({
   function activate() {
     if (voiceReadOnly) { deactivate(); return }
     if (voiceConversationEnabled) {
-      deactivate()
-      router.push('/atlas/rost')
+      deactivateLegacy()
+      voiceTrigger.current = typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null
+      setVoicePanel('open')
+      voiceSession.startMic()
       return
     }
     captureDriverRef.current?.stop()
@@ -545,12 +552,16 @@ export function AtlasRuntimeProvider({
   }
 
   function deactivate() {
+    voiceSession.stopAll(); setVoicePanel('closed'); deactivateLegacy()
+  }
+
+  function deactivateLegacy() {
     captureDriverRef.current?.stop()
     closedRef.current    = true
     cancelRef.current    = true
     listeningRef.current = false
     stopListening()
-    stopAudio()
+    stopLegacyAudio()
     setVoicePhase('idle')
     setTranscript('')
     setIsSessionActive(false)
@@ -564,6 +575,11 @@ export function AtlasRuntimeProvider({
   }
 
   function stopAudio() {
+    if (voiceConversationEnabled && !voiceReadOnly) { voiceSession.interruptForCorrection(); return }
+    stopLegacyAudio()
+  }
+
+  function stopLegacyAudio() {
     buildSpeechGeneration.current++
     buildSpeakingRef.current = false
     cancelRef.current = true
@@ -585,6 +601,7 @@ export function AtlasRuntimeProvider({
 
   // ── Streaming + TTS-pipeline ──────────────────────────────────────────────
   async function sendMessage(text: string) {
+    if (voiceConversationEnabled && !voiceReadOnly) return voiceSession.submitText(text)
     const currentConversation=conversation.snapshot()
     if(currentConversation.pending||currentConversation.state==='error'){setWarning({active:true,detail:'Vänta på svaret eller läs in konversationen igen innan du skickar nästa meddelande.'});return}
     // A delayed native start/result must not overtake this new chat request.
@@ -751,6 +768,8 @@ export function AtlasRuntimeProvider({
 
 
   function captureUtterance(onTranscript: (text: string) => void): () => void {
+    if (voiceConversationEnabled && !voiceReadOnly) { setVoicePanel('open'); return voiceSession.captureDraft(onTranscript) }
+    if (voiceReadOnly) return () => {}
     deactivate()
     setCaptureError(null)
     setVoicePhase('listening')
@@ -763,6 +782,8 @@ export function AtlasRuntimeProvider({
   }
 
   async function speakText(text: string): Promise<void> {
+    if (voiceConversationEnabled && !voiceReadOnly) return voiceSession.sample(text)
+    if (voiceReadOnly) return
     // Close auto-chat listening first; optional build narration never auto-sends.
     deactivate()
     const generation = ++buildSpeechGeneration.current
@@ -776,6 +797,45 @@ export function AtlasRuntimeProvider({
     } finally { if (generation === buildSpeechGeneration.current) { buildSpeakingRef.current = false; setVoicePhase('idle') } }
   }
 
+  function handleVoiceEvent(event: StreamEvent, id: string) {
+    if (event.event === 'navigate' && typeof event.href === 'string') {
+      setExecutiveState('delegating')
+      if (event.href.split('?')[0] !== pathnameRef.current) openWorkspace(event.href)
+    } else if (event.event === 'tool_call' && typeof event.tool === 'string' && ATLAS_ACTION_TOOL_NAMES.has(event.tool)) {
+      beginExecution(event.tool)
+    } else if (event.event === 'tool_result' && typeof event.tool === 'string' && ATLAS_ACTION_TOOL_NAMES.has(event.tool)) {
+      finishExecution(event.tool, event.result && typeof event.result === 'object' ? event.result as Record<string, unknown> : null)
+    } else if (event.event === 'error') {
+      executionRef.current = null; setExecution(null); setWarning(resolveAtlasServiceWarning(event.code))
+    } else if (event.event === 'done' && executionRef.current) {
+      executionRef.current = null; setExecution(null)
+    } else if ((event.event === 'website_plan' || event.event === 'website_workspace') &&
+        (conversation.snapshot().plan || conversation.snapshot().session)) {
+      router.push('/chat/' + id + '?build=1')
+    }
+  }
+  const voiceSession = useAtlasVoiceSession({
+    enabled: voiceConversationEnabled && !voiceReadOnly,
+    streamingAvailable: true, live: true, conversation,
+    projectId: activeProject?.id ?? null,
+    beforeStart: deactivateLegacy, onEvent: handleVoiceEvent, onDraftCaptureEnd: setCaptureError,
+  })
+  const managedVoice = voiceConversationEnabled && !voiceReadOnly
+  const currentVoicePhase = managedVoice ? voiceSession.phase : voicePhase
+  const currentSessionActive = managedVoice ? voiceSession.active : isSessionActive
+  useEffect(() => { phaseRef.current = currentVoicePhase; isSessionActiveRef.current = currentSessionActive }, [currentVoicePhase, currentSessionActive])
+  async function openVoiceBuild() {
+    const current = conversation.snapshot()
+    if (current.id) { router.push('/chat/' + current.id + '?build=1'); return }
+    if (current.pending) return
+    const id = await conversation.ensureConversation({ firstText: 'Bygg med Atlas', inputSource: 'text', projectId: activeProject?.id ?? null })
+    if (id) router.push('/chat/' + id + '?build=1')
+  }
+  function endVoiceConversation() {
+    deactivate()
+    requestAnimationFrame(() => { if (voiceTrigger.current?.isConnected) voiceTrigger.current.focus() })
+  }
+
   // Håll function-refs à jour med senaste definitions (undviker stale closures)
   startListeningRef.current = startListening
   activateRef.current       = activate
@@ -784,16 +844,18 @@ export function AtlasRuntimeProvider({
 
   // ── Context-värde ─────────────────────────────────────────────────────────
   const value: AtlasValue = {
-    voicePhase,
-    transcript,
-    response,
-    perf,
+    voicePhase: currentVoicePhase,
+    transcript: managedVoice ? voiceSession.draft : transcript,
+    response: managedVoice ? voiceSession.reply : response,
+    perf: managedVoice ? null : perf,
     executiveState,
     execution,
     awaitingApproval,
     warning,
     completionEvent,
-    isSessionActive,
+    voiceConversationAvailable: managedVoice,
+    voicePanelOpen: managedVoice && voicePanel !== 'closed',
+    isSessionActive: currentSessionActive,
     lastActiveAt,
     history,
     conversationId,
@@ -813,6 +875,7 @@ export function AtlasRuntimeProvider({
     <AtlasAudioLevelContext.Provider value={audioLevelStoreRef.current}>
       <AtlasContext.Provider value={value}>
         {children}
+        {managedVoice && voicePanel !== 'closed' && <AtlasVoicePanel session={voiceSession} minimized={voicePanel === 'minimized'} onMinimize={() => setVoicePanel('minimized')} onShow={() => setVoicePanel('open')} onClose={endVoiceConversation} onBuild={() => void openVoiceBuild()} runtimeNotice={awaitingApproval?.detail ?? warning?.detail} projects={projects} projectName={projects.find(p => p.id === sharedConversation.projectId)?.name ?? null} />}
       </AtlasContext.Provider>
     </AtlasAudioLevelContext.Provider>
   )

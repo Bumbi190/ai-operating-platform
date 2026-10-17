@@ -70,7 +70,7 @@ export function HandlarborsenCompetitorDiscovery({
                   {reviewEnabled && stored?.some(row => row.host === candidate.host) ? (
                     reviews?.status === 'ok'
                       ? (reviews.entries.find(row => row.host === candidate.host)
-                        ? <HandlarborsenCandidateReviewControls review={reviews.entries.find(row => row.host === candidate.host)!} />
+                        ? <HandlarborsenCandidateReviewControls review={reviews.entries.find(row => row.host === candidate.host)!} mode={mode} />
                         : <p role="alert">Kandidaten saknas i beslutsregistret. Ingen åtgärd kan utföras.</p>)
                       : <p role="alert">Granskningshistoriken kan inte verifieras. Inga beslut kan sparas just nu.</p>
                   ) : null}

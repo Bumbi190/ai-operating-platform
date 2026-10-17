@@ -52,6 +52,19 @@ describe('collaborator middleware HTTP isolation', () => {
     expect((await middleware(req('/api/organization/projects/familje-stunden/workflows/' + workflowId, 'PATCH'))).status).toBe(403)
     expect((await middleware(req('/api/projects/handlarborsen/workflows', 'POST'))).status).toBe(403)
   })
+  it('allows only the four audited Handlarbörsen competitor POST routes', async () => {
+    const base = '/api/organization/projects/handlarborsen/competitors/'
+    for (const suffix of ['candidates', 'history', 'reviews', 'inbox']) {
+      expect((await middleware(req(base + suffix, 'POST'))).status).toBe(200)
+      expect((await middleware(req(base + suffix, 'GET'))).status).toBe(403)
+      expect((await middleware(req(base + suffix, 'PUT'))).status).toBe(403)
+      expect((await middleware(req(base + suffix + '/extra', 'POST'))).status).toBe(403)
+      expect((await middleware(req('/api/organization/projects/another/competitors/' + suffix, 'POST'))).status).toBe(403)
+      expect((await middleware(req('/api/projects/handlarborsen/competitors/' + suffix, 'POST'))).status).toBe(403)
+    }
+    state.member = { role: 'collaborator', revoked_at: '2026-10-17T10:00:00Z' }
+    expect((await middleware(req(base + 'reviews', 'POST'))).status).toBe(403)
+  })
   it('admits only the collaborator tool-free Atlas POST endpoint', async () => {
     expect((await middleware(req('/organization/atlas'))).status).toBe(200)
     expect((await middleware(req('/api/organization/atlas', 'POST'))).status).toBe(200)

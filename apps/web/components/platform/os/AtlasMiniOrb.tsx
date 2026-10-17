@@ -19,6 +19,7 @@ export function AtlasMiniOrb({
     launcher = useRef<HTMLDivElement>(null)
   // Keep this shell component mounted while a full Atlas surface hides it.
   const hidden =
+    atlas.voicePanelOpen ||
     pathname === '/atlas' ||
     pathname === '/atlas/rost' ||
     pathname === '/chat' ||
@@ -28,6 +29,13 @@ export function AtlasMiniOrb({
     requestAnimationFrame(() =>
       launcher.current?.querySelector('button')?.focus()
     )
+  }
+  // Full chat keeps its text surface; the shared voice call still needs a mobile entry.
+  if (atlas.voiceConversationAvailable && (pathname === '/chat' || pathname.startsWith('/chat/'))) {
+    return <div hidden={!!atlas.voicePanelOpen} className={styles.launcherDock}>
+      <AtlasLauncherOrb phase={atlas.voicePhase} onClick={atlas.activate} size={40}
+        label="Starta röstsamtal med Atlas" stateDescription="Prata med Atlas medan du arbetar" />
+    </div>
   }
   return (
     <div hidden={hidden}>

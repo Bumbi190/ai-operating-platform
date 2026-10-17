@@ -4,7 +4,7 @@ This worker prepares Swedish drafts for an explicitly selected Omnira project. A
 
 ## Current activation state
 
-The feature defaults off. Building this branch does not install an automatic background service, connect Strato, enroll a worker or run Claude. `doctor` verifies the installed CLI version and required flags, **not** an authenticated inference or subscription entitlement. The 2026-10-17 standalone synthetic inference passed after two compatibility fixes; sanitized qualification receipts are committed under docs/superpowers/verification. Production worker enrollment and a real authenticated queue execution remain unverified. Parts B (Strato and durable inbox) and C (version-bound sending) require separate implementation plans.
+The feature defaults off. Building this branch does not install an automatic background service, connect Strato, enroll a worker or run Claude. `doctor` verifies the installed CLI version and required flags, **not** an authenticated inference or subscription entitlement. The 2026-10-17 standalone synthetic inference passed after two compatibility fixes; sanitized qualification receipts are committed under docs/superpowers/verification. A one-time assistant-managed host is now installed and enrolled for the protected branch preview; real idle polling and the live workspace connected state were verified. This pilot stops after23hours and has no autostart or automatic credential renewal. A real contact queue execution and normal production activation remain unverified. See docs/superpowers/verification/2026-10-17-sales-host/README.md. Parts B (Strato and durable inbox) and C (version-bound sending) require separate implementation plans.
 
 ## Requirements and setup
 

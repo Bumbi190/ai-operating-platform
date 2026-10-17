@@ -21,6 +21,8 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   'claude-3-5-sonnet-20241022':   { inputPer1M: 3.00,  outputPer1M: 15.00, label: 'Claude Sonnet 3.5',  provider: 'anthropic' },
   // OpenAI text — standard API rates verified 2026-10-15 (developers.openai.com).
   'gpt-5.4-mini': { inputPer1M: 0.75, outputPer1M: 4.50, label: 'GPT-5.4 Mini', provider: 'openai' },
+  // Pinned local-text role; same published text pricing (official model page, 2026-10-17).
+  'gpt-5.4-mini-2026-03-17': { inputPer1M: 0.75, outputPer1M: 4.50, label: 'GPT-5.4 Mini (2026-03-17)', provider: 'openai' },
   'gpt-4o':                       { inputPer1M: 2.50,  outputPer1M: 10.00, label: 'GPT-4o',            provider: 'openai' },
   'gpt-4o-mini':                  { inputPer1M: 0.15,  outputPer1M: 0.60,  label: 'GPT-4o Mini',       provider: 'openai' },
   // OpenAI image (dall-e-3 retired 2026-03-04)

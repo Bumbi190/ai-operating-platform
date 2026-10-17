@@ -32,7 +32,10 @@ const GRANDFATHERED_PRESENT_IN_VERIFIED_LEDGER = [
 // an entry is removed in the same change that records its real, operator-approved apply.
 // Empty: `handlarborsen_marketplace_snapshots` (P1B, file 20261010100000) was APPLIED to
 // production on 2026-10-10 as ledger version 20261010080307.
-const ENFORCED_NOT_YET_APPLIED: string[] = []
+// This branch adds two enforced migrations; neither has been applied. The
+// fixture below is explicitly hypothetical, and exact missing-name tests gate
+// deployment until an independently approved real apply.
+const LOCAL_TEXT_MIGRATIONS: string[] = ['atlas_local_text','atlas_local_text_lifecycle']
 const P1B_MIGRATION = 'handlarborsen_marketplace_snapshots'
 // P1E (guarded snapshot store). Like every enforced migration on its branch it is NOT applied
 // to production yet, so the real guard is RED on the branch until the operator-approved apply.
@@ -42,7 +45,7 @@ const P1E_MIGRATION = 'handlarborsen_guarded_snapshot_store'
 // The verified production history once P1E is applied: 135 rows = every enforced migration (all
 // applied) plus the grandfathered and legacy-only names. Perturbation tests start from it.
 const hypotheticalPostApplyLedger = [
-  ...repositoryState.enforcedNames.filter((name) => !ENFORCED_NOT_YET_APPLIED.includes(name)),
+  ...repositoryState.enforcedNames,
   ...GRANDFATHERED_PRESENT_IN_VERIFIED_LEDGER,
   ...LEGACY_ONLY_PRODUCTION_LEDGER_NAMES,
 ]
@@ -425,5 +428,6 @@ it('requires the builder v2 migration exactly once',()=>{
  expect(()=>evaluateAppliedMigrationLedger([...hypotheticalPostApplyLedger,name],repositoryState)).toThrow(/duplicate/)
 })
 
+it('local text migrations remain enforced and real pre-apply ledgers fail closed',()=>{for(const name of LOCAL_TEXT_MIGRATIONS){expect(repositoryState.enforcedNames).toContain(name);expect(()=>evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger.filter(n=>n!==name),repositoryState)).toThrow(new RegExp(name))}})
 // Synthetic missing-migration proof; production was separately observed at ledger 20261017130254.
 it("rejects a synthetic ledger missing the reconciled sales migration",()=>{expect(()=>evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger.filter(n=>n!=="atlas_sales_pilot"),repositoryState)).toThrow(/atlas_sales_pilot/)})

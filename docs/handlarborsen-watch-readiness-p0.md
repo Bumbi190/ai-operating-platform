@@ -21,15 +21,17 @@ The displayed weekly/10-HTTP/zero-auto-retry/zero-paid-call proposal is not runt
 
 ## Already-applied parallel migration reconciliation
 
-The same release records `atlas_local_text_lifecycle` already applied independently by PR387. It copies only the exact frozen migration from commit `cff355230fe4250fa5ecd6ab4733cd99cab9a43b` to its original canonical filename `apps/web/supabase/migrations/20261017115403_atlas_local_text_lifecycle.sql`.
+During branch preparation we reconciled `atlas_local_text_lifecycle` already applied independently by PR387. PR387 subsequently merged into main; the branch now preserves that published implementation and exact migration without altering parallel work. The initial reconciliation copied the exact frozen migration from commit `cff355230fe4250fa5ecd6ab4733cd99cab9a43b` to its original canonical filename `apps/web/supabase/migrations/20261017115403_atlas_local_text_lifecycle.sql`.
 
 Live ledger version: `20261017180713`. One 59,067-character statement, SHA256 `d5c1ca9aba0c993a6be27625cfa9852d0eb719be5ccc5eb826bfa95acfd0aba3`. Guard becomes 135 canonical / 121 enforced / 158 known ledger names. Frozen 14 grandfathered and 30 legacy-only names remain unchanged; missing and duplicate lifecycle names are rejected.
 
 Independent read-only catalog review: 150 public tables. Three added lifecycle tables are SERVER_ONLY with RLS enabled, FORCE disabled, zero policies/client table or column grants; service ALL includes DELETE/TRUNCATE. Of 44 local_text routines, 43 are INVOKER and one is the scoped conversation-delete DEFINER trigger, all with empty search_path and no client EXECUTE. The trigger also denies service EXECUTE. Jobs metadata_expires_at is not client-selectable. Inventory records these observed privileges rather than inferring narrower ones.
 
-No SQL application, rollback, migration-guard bypass, local-model application code, worker or activation is included.
+This PR adds no SQL application, rollback, migration-guard bypass, local-model code, worker or activation. The merged main implementation is preserved; the remaining PR diff adds only the read-only watch panel, tests, documentation and an independent catalog evidence note.
 
 ## Verification
+
+After syncing main 643649b4f732ef48cebfb132c9d0ea77ec33bef5: 587 targeted tests passed in 42 suites; 51 fixture-gated PostgreSQL tests skipped. TypeScript and the isolated five-viewport Chromium fixture are verified separately. No database fixture was configured by this UI release.
 
 Readiness/core/service/UI, owner and organization page suites cover exact project authorization, membership revocation, live-owner changes, malformed budget data, failed stop reads, private DTOs and permanently disabled execution. Migration tests pin exact source hash and enforce missing/duplicate rejection. Existing inbox, competitor, organization, canonical stop/budget and migration/security suites are included in the targeted run.
 

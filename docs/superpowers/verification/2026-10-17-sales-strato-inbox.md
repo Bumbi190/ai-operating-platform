@@ -1,0 +1,9 @@
+# Strato B2 inbox verification — 2026-10-17
+
+Plan approved at 21:16 Europe/Stockholm. Increment base 2da7859bd834785c4aa0b5386dba90e4b404a70b; inline implementation. B1 login remains authenticated on the existing installed host. Inbox has not been activated and no actual mailbox messages were read for this increment.
+
+Task1: 18 input/repository contract tests; real disposable PostgreSQL/service_role assertions cover scope, disabled configuration, atomic data+checkpoint, lost receipt replay, parallel claim exclusion, explicit old-message text selection, UIDVALIDITY dedup, delayed-text canonical aliasing, expired error reports and mailbox replacement fencing. The expired-report case was RED (late mutation wrongly accepted); delayed text was RED (unique-content constraint conflict); both were fixed and reverified.
+
+Scoped tests:381/381 plus3 DB integration fixtures reserved for the full integration runner; security gate133/133. New SQL has four RLS tables, zero client table grants/policies, service-only named RPCs, empty search_path and no SECURITY DEFINER. Staged classification is explicitly live=false; classified139 includes4 proposed rows, last observed production table count remains135. Migration source134/enforced120, frozen14 grandfathered/30 legacy unchanged. No production DDL has been applied.
+
+Vanished messages carry nullable metadata; stable content aliases preserve previous public references and contact decisions. Content hashing binds the header digest and length-prefixed exact UTF8 body, without fetching attachments. Implementation rulings and per-task evidence remain in the owned plan ledger until final verification.

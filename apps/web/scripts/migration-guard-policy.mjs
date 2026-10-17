@@ -70,8 +70,9 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // + website_saved_draft_worker_protocol: no-paid recovery compatibility.
 // + website_mockup_review: immutable operator design selection and compatible worker fence.
 // Applied sales/managed/Strato plus exact already-applied candidate inbox reconciliation:133/119.
-export const EXPECTED_CANONICAL_SQL_COUNT = 133
-export const EXPECTED_ENFORCED_COUNT = 119
+// B2 inbox adds one enforced migration:134/120; not yet applied.
+export const EXPECTED_CANONICAL_SQL_COUNT = 134
+export const EXPECTED_ENFORCED_COUNT = 120
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

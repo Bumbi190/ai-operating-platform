@@ -60,13 +60,13 @@ Skapa sammanhållna `apps/web/lib/sales/inbox/{types,validate,store,api,host-api
 
 **Interfaces:** konsumerar SalesPrincipal, HostPrincipal, mailboxgeneration och sales_stop. Producerar `readInbox(db,p,input)`, `readInboxMessage(db,p,input)`, `configureInbox(db,p,input)` samt service-only RPC:er `sales_inbox_<operation>` för operationsnamnen ovan.
 
-- [ ] Skriv RED-tester för annan ägare/projekt, inaktuell config/mailbox/host, paus/revoke, fel folder/startdatum och innehåll i ej tillåtna fält. Ett tomt kontaktregister får inte skapa kopplade kontakter.
-- [ ] Kör `npx vitest run lib/qa/sales-inbox-store.test.ts --maxWorkers=1 --minWorkers=1` från apps/web; bekräfta avsedd RED.
-- [ ] Skapa fyra RLS-tabeller: `sales_inbox_configs` (scope, cursor, claim), `sales_inbox_messages` (kanonisk text/metadata), `sales_inbox_occurrences` (unik mailbox/folder/UIDVALIDITY/UID) och `sales_inbox_batches` (claim/idempotens/receipt). Ingen direkt klientmutation; ägarläsning kontrolleras även i RPC, service-only mutation med tom search_path.
-- [ ] Implementera commit som en transaktion: lås config, validera hela ref och expectedCursor, infoga/deduplicera meddelanden/förekomster och terminala textstatusar, spara batchkvitto, flytta därefter cursor. Samma batch-ID med samma payloadhash ger samma kvitto; annan payload ger konflikt. Motsägande innehåll för samma förekomst får inte skriva över.
-- [ ] Vid ny UIDVALIDITY: öka epoch, starta begränsad omläsning inom vald historik, bevara tidigare kanoniska meddelanden/förekomster och använd samma commitregler. Generera inga kontakt-/kampanjjobb.
-- [ ] Kör SQL som faktisk service_role i den ägarmärkta lokala PostgreSQL-fixturen. Assert: avbrott före commit ändrar ingen cursor; efter commit finns både data och cursor; dubbelt kvitto ger en förekomst; lika Message-ID med olika innehåll bevarar båda. Header-only-poster får inte kollapsa mellan epoker. Utökning från ej vald till vald text är en versionskontrollerad uppdatering av samma förekomst, inte ett nytt mejl.
-- [ ] Kör GREEN och commit `feat(sales): persist scoped inbox batches before checkpoints`.
+- [x] Skriv RED-tester för annan ägare/projekt, inaktuell config/mailbox/host, paus/revoke, fel folder/startdatum och innehåll i ej tillåtna fält. Ett tomt kontaktregister får inte skapa kopplade kontakter.
+- [x] Kör `npx vitest run lib/qa/sales-inbox-store.test.ts --maxWorkers=1 --minWorkers=1` från apps/web; bekräfta avsedd RED.
+- [x] Skapa fyra RLS-tabeller: `sales_inbox_configs` (scope, cursor, claim), `sales_inbox_messages` (kanonisk text/metadata), `sales_inbox_occurrences` (unik mailbox/folder/UIDVALIDITY/UID) och `sales_inbox_batches` (claim/idempotens/receipt). Ingen direkt klientmutation; ägarläsning kontrolleras även i RPC, service-only mutation med tom search_path.
+- [x] Implementera commit som en transaktion: lås config, validera hela ref och expectedCursor, infoga/deduplicera meddelanden/förekomster och terminala textstatusar, spara batchkvitto, flytta därefter cursor. Samma batch-ID med samma payloadhash ger samma kvitto; annan payload ger konflikt. Motsägande innehåll för samma förekomst får inte skriva över.
+- [x] Vid ny UIDVALIDITY: öka epoch, starta begränsad omläsning inom vald historik, bevara tidigare kanoniska meddelanden/förekomster och använd samma commitregler. Generera inga kontakt-/kampanjjobb.
+- [x] Kör SQL som faktisk service_role i den ägarmärkta lokala PostgreSQL-fixturen. Assert: avbrott före commit ändrar ingen cursor; efter commit finns både data och cursor; dubbelt kvitto ger en förekomst; lika Message-ID med olika innehåll bevarar båda. Header-only-poster får inte kollapsa mellan epoker. Utökning från ej vald till vald text är en versionskontrollerad uppdatering av samma förekomst, inte ett nytt mejl.
+- [x] Kör GREEN och commit `feat(sales): persist scoped inbox batches before checkpoints`.
 
 ### Task2: Riktig IMAP-läsare och begränsad texttolkning
 

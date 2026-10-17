@@ -18,6 +18,8 @@ export function createOllamaClient(request=requestLoopback) {
       if(!show.capabilities?.includes('thinking'))throw new LocalError('NO_THINK_UNSUPPORTED');
       if(show.details?.quantization_level!=='Q4_K_M'||show.details?.format!=='gguf')throw new LocalError('MODEL_FORMAT_UNSUPPORTED');
       if(typeof version.version!=='string'||!version.version)throw new LocalError('INVALID_SERVER_VERSION');
+      const confirmed=(await get('/api/tags')).models?.find(m=>m.name===id);
+      if(confirmed?.digest!==model.digest||confirmed.remote_host||confirmed.remote_model)throw new LocalError('IDENTITY_CHANGED');
       return {candidateId:id,modelDigest:model.digest,serverVersion:version.version,supportsNoThink:true,quantization:'Q4_K_M'};
     },
     async infer(job,snapshot,{signal,timeoutMs=90000}={}) {

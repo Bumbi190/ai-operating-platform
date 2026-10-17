@@ -1,4 +1,23 @@
 $ErrorActionPreference = 'Stop'
+function Get-ArchiveExecutableSha {
+  param([string]$Archive)
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  $zip=[IO.Compression.ZipFile]::OpenRead($Archive)
+  try {
+    $entry=@($zip.Entries | Where-Object { $_.FullName -eq 'ollama.exe' })
+    if ($entry.Count -ne 1) { throw 'ARCHIVE_EXECUTABLE_MISSING' }
+    $stream=$entry[0].Open(); $sha=[Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-','').ToLowerInvariant() } finally { $sha.Dispose(); $stream.Dispose() }
+  } finally { $zip.Dispose() }
+}
+function Assert-RecoveryCanProceed {
+  param([bool]$ParentAlive,[bool]$HasLock,[int]$RemainingRunners)
+  if (($HasLock -and !$ParentAlive) -or $RemainingRunners -ne 0) { throw 'OWNED_RUNNER_UNCONFIRMED' }
+}
+function Assert-OwnedListeners {
+  param($Listeners,[int]$ExpectedProcessId)
+  if (@($Listeners).Count -eq 0 -or @($Listeners | Where-Object { $_.LocalAddress -ne '127.0.0.1' -or $_.OwningProcess -ne $ExpectedProcessId }).Count -ne 0) { throw 'UNEXPECTED_LISTENER' }
+}
 function Invoke-CheckedDownload {
   param([string]$Source,[string]$Destination)
   try { & curl.exe --silent --show-error --fail --location --retry 0 --output $Destination $Source; if ($LASTEXITCODE -ne 0) { throw 'RUNTIME_DOWNLOAD_FAILED' } } catch { throw 'RUNTIME_DOWNLOAD_FAILED' }

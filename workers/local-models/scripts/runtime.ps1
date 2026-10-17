@@ -23,9 +23,10 @@ if ($Action -eq 'Prepare') {
     Move-Item -LiteralPath $partial -Destination $zip
   }
   Assert-ArtifactHash $zip $expectedSha
+  $binarySha=Get-ArchiveExecutableSha $zip
   if (!(Test-Path $exe)) { Expand-Archive -LiteralPath $zip -DestinationPath $installDir }
   if (!(Test-Path $exe)) { throw 'RUNTIME_EXECUTABLE_MISSING' }
-  $binarySha=(Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+  Assert-ArtifactHash $exe $binarySha
   @{version=$version; archiveSha256=$expectedSha; executableSha256=$binarySha} | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $RuntimeRoot 'installation.json')
   @{status='prepared';version=$version;archiveSha256=$expectedSha} | ConvertTo-Json -Compress
   exit 0
@@ -46,13 +47,14 @@ if ($Action -eq 'Start') {
   while (!(Test-LocalListener) -and [DateTime]::UtcNow -lt $until) { if ($proc.HasExited) { throw 'SERVER_EXITED' }; Start-Sleep -Milliseconds 100 }
   if (!(Test-LocalListener)) { throw 'SERVER_START_TIMEOUT' }
   $listeners=Get-NetTCPConnection -State Listen -LocalPort 11434
-  if (@($listeners | Where-Object { $_.LocalAddress -ne '127.0.0.1' -or $_.OwningProcess -ne $proc.Id }).Count -ne 0) { throw 'UNEXPECTED_LISTENER' }
+  Assert-OwnedListeners $listeners $proc.Id
   @{status='started';processId=$proc.Id;bind='127.0.0.1:11434';version=$version} | ConvertTo-Json -Compress
   exit 0
 }
 if ($Action -eq 'Status') {
   $alive=$false
   if (Test-Path $journalPath) { $journal=Get-Content $journalPath -Raw | ConvertFrom-Json; $alive=$null -ne (Get-OwnedProcess $journal $exe) }
+  if ($alive -and (Test-LocalListener)) { Assert-OwnedListeners (Get-NetTCPConnection -State Listen -LocalPort 11434) $journal.processId }
   @{ownedServerAlive=$alive;portListening=(Test-LocalListener);version=$version} | ConvertTo-Json -Compress
   exit 0
 }
@@ -61,14 +63,18 @@ if ($Action -eq 'Stop') {
   $journal=Get-Content $journalPath -Raw | ConvertFrom-Json
   $proc=Get-OwnedProcess $journal $exe
   $lock=Join-Path $RuntimeRoot 'job.lock'
+  Assert-RecoveryCanProceed -ParentAlive ($null -ne $proc) -HasLock (Test-Path $lock) -RemainingRunners 0
   if (Test-Path $lock) { $job=Get-Content $lock -Raw | ConvertFrom-Json; if ($job.state -eq 'in_flight' -and (Get-Process -Id $job.pid -ErrorAction SilentlyContinue)) { throw 'LOCAL_JOB_ACTIVE' } }
   if ($proc) {
     $children=Get-CimInstance Win32_Process -Filter ('ParentProcessId='+$proc.Id)
-    foreach ($child in $children) { if ($child.ExecutablePath -and $child.ExecutablePath.StartsWith($installDir+'\',[StringComparison]::OrdinalIgnoreCase)) { Stop-Process -Id $child.ProcessId -ErrorAction Stop } }
+    $ownedChildren=@($children | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($installDir+'\',[StringComparison]::OrdinalIgnoreCase) })
+    foreach ($child in $ownedChildren) { $runner=Get-Process -Id $child.ProcessId -ErrorAction SilentlyContinue; if ($runner -and $runner.Path -eq $child.ExecutablePath) { Stop-Process -Id $runner.Id -ErrorAction Stop; if (!$runner.WaitForExit(5000)) { throw 'OWNED_RUNNER_UNCONFIRMED' } } }
     Stop-Process -Id $proc.Id -ErrorAction Stop
     $proc.WaitForExit(5000) | Out-Null
   }
   if (Test-LocalListener) { throw 'PORT_STILL_LISTENING' }
+  $remaining=@(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($installDir+'\',[StringComparison]::OrdinalIgnoreCase) })
+  Assert-RecoveryCanProceed -ParentAlive ($null -ne $proc) -HasLock (Test-Path $lock) -RemainingRunners $remaining.Count
   Remove-Item -LiteralPath $journalPath
   if (Test-Path $lock) { Remove-Item -LiteralPath $lock }
   @{status='stopped';version=$version} | ConvertTo-Json -Compress

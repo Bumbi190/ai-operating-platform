@@ -18,11 +18,10 @@ export function createLoopbackTransport(port=11434) {
       const bytes=body===undefined?undefined:Buffer.from(JSON.stringify(body),'utf8');
       req=http.request({host:'127.0.0.1',port,path,method,agent:false,headers:bytes?{'Content-Type':'application/json','Content-Length':bytes.length}:{}},res=>{
         let total=0;const chunks=[];
-        if(res.statusCode!==200){res.resume();fail('HTTP_STATUS',{status:res.statusCode,complete:true,definite:res.statusCode>=400&&res.statusCode<500});return;}
         res.on('data',c=>{total+=c.length;if(total>maxBytes){fail('RESPONSE_TOO_LARGE');res.destroy();}else chunks.push(c);});
         res.on('aborted',()=>fail('INCOMPLETE_RESPONSE'));
         res.on('error',()=>fail('LOCAL_NETWORK'));
-        res.on('end',()=>{if(settled)return;complete=true;try{finish(null,JSON.parse(Buffer.concat(chunks).toString('utf8')));}catch{fail('INVALID_JSON');}});
+        res.on('end',()=>{if(settled)return;complete=true;if(res.statusCode!==200){fail('HTTP_STATUS',{status:res.statusCode});return;}try{finish(null,JSON.parse(Buffer.concat(chunks).toString('utf8')));}catch{fail('INVALID_JSON');}});
       });
       req.on('finish',()=>{dispatched=true;});req.on('error',()=>fail('LOCAL_NETWORK'));req.end(bytes);
     });

@@ -10,8 +10,10 @@ export function qualifyCandidate({report,reportBytes,review,provenance,currentId
     if(report?.version!==1||report.scope!=='local_evaluation_only'||!CANDIDATES.includes(report.identity?.candidateId)||!isDeepStrictEqual(report.identity,currentIdentity)||report.identity.suiteHash!==sha256(fixtureBytes))throw Error('STALE_IDENTITY');
     if(!isDeepStrictEqual(JSON.parse(Buffer.from(reportBytes).toString('utf8')),report))throw Error('EVIDENCE_MISMATCH');
     const hash=sha256(reportBytes);
+    const identities=[review?.reviewerAgentId,review?.reviewerModelId,review?.reviewerRunId,provenance?.implementationAgentId,provenance?.reviewerModelId];
+    if(identities.some(x=>typeof x!=='string'||!x.trim())||review.reviewerModelId!==provenance.reviewerModelId)throw Error('INDEPENDENT_REVIEW_REQUIRED');
     if(!review||review.version!==1||review.reportSha256!==hash||!provenance||provenance.source!=='collaboration'||provenance.runStatus!=='completed'||provenance.reportSha256!==hash||review.reviewerAgentId!==provenance.reviewerAgentId||review.reviewerRunId!==provenance.reviewerRunId||!review.reviewerAgentId||!review.reviewerRunId||review.reviewerAgentId===provenance.implementationAgentId||review.reviewerModelId===report.identity.candidateId)throw Error('INDEPENDENT_REVIEW_REQUIRED');
-    if(report.gpu?.fullyOnGpu!==true||report.gpu.modelDigest!==report.identity.modelDigest||!report.gpu.ollamaPs?.includes('100% GPU')||!report.gpu.nvidiaSmi)throw Error('GPU_NOT_VERIFIED');
+    if(report.gpu?.fullyOnGpu!==true||report.gpu.duringInference!==true||!report.gpu.ownedRunner?.processId||report.gpu.modelDigest!==report.identity.modelDigest||!report.gpu.ollamaPs?.includes('100% GPU')||!report.gpu.nvidiaSmi)throw Error('GPU_NOT_VERIFIED');
     if(!Array.isArray(report.cases)||report.cases.length!==25||new Set(report.cases.map(c=>c.caseId)).size!==25||report.cases.some(c=>!fixtures.some(f=>f.caseId===c.caseId&&f.job.taskType===c.taskType)))throw Error('INCOMPLETE_EVIDENCE');
     qualification.metrics=scoreEvaluation(report,fixtures);
   }catch(e){globalReason=['STALE_IDENTITY','EVIDENCE_MISMATCH','INDEPENDENT_REVIEW_REQUIRED','GPU_NOT_VERIFIED','INCOMPLETE_EVIDENCE'].includes(e.message)?e.message:'INVALID_EVIDENCE';}

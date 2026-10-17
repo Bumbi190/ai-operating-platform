@@ -19,3 +19,17 @@ test('timeout after dispatch preserves uncertain lock and blocks next job',async
   const options={candidateId:'qwen3:8b',runtimeDir:dir,client:ol.createOllamaClient(tr.createLoopbackTransport(port)),expectedSnapshot:SNAPSHOT,timeoutMs:80};
   const out=await mod.runJob(JOB,options);assert.equal(out.reasonCode,'LOCAL_TIMEOUT');assert.equal(JSON.parse(await readFile(path.join(dir,'job.lock'),'utf8')).state,'uncertain');assert.equal((await mod.runJob(JOB,options)).reasonCode,'LOCAL_BUSY');
 });
+test('unfinished HTTP 500 preserves uncertainty and prevents a second dispatch',async t=>{
+  const dir=await temp(t);let chats=0;const port=await fixture(t,(req,res)=>{if(req.url==='/api/chat'){chats++;res.writeHead(500);res.write('{');return;}return ollamaFixture()(req,res);});
+  const options={candidateId:'qwen3:8b',runtimeDir:dir,client:ol.createOllamaClient(tr.createLoopbackTransport(port)),expectedSnapshot:SNAPSHOT,timeoutMs:100};
+  assert.equal((await mod.runJob(JOB,options)).reasonCode,'LOCAL_TIMEOUT');assert.equal(JSON.parse(await readFile(path.join(dir,'job.lock'),'utf8')).state,'uncertain');assert.equal((await mod.runJob(JOB,options)).reasonCode,'LOCAL_BUSY');assert.equal(chats,1);
+});
+test('digest drift during show cannot produce a success attributed to the old digest',async t=>{
+  let changed=false;const port=await fixture(t,ollamaFixture(()=>({label:'bil'}),(p,v)=>{if(p==='/api/show')changed=true;if(p==='/api/tags'&&changed)v.models[0].digest='b'.repeat(64);}));
+  const out=await mod.runJob(JOB,{candidateId:'qwen3:8b',runtimeDir:await temp(t),client:ol.createOllamaClient(tr.createLoopbackTransport(port)),expectedSnapshot:SNAPSHOT});assert.equal(out.reasonCode,'IDENTITY_CHANGED');assert.notEqual(out.status,'succeeded');
+});
+test('lifecycle lease blocks competing jobs throughout setup and between jobs',async t=>{
+  assert.equal(typeof mod.withRuntimeLease,'function');const dir=await temp(t);let release,entered;const wait=new Promise(r=>release=r);const ready=new Promise(r=>entered=r);
+  const lease=mod.withRuntimeLease(dir,async()=>{entered();await wait;});await ready;
+  const out=await mod.runJob(JOB,{candidateId:'qwen3:8b',runtimeDir:dir,expectedSnapshot:SNAPSHOT});assert.equal(out.reasonCode,'LOCAL_BUSY');release();await lease;
+});

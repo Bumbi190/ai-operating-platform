@@ -4,12 +4,12 @@ This worker prepares Swedish drafts for an explicitly selected Omnira project. A
 
 ## Current activation state
 
-The feature defaults off. Building this branch does not install an automatic background service, connect Strato, enroll a worker or run Claude. `doctor` verifies the installed CLI version and required flags, **not** an authenticated inference or subscription entitlement. The 2026-10-17 standalone synthetic inference passed after two compatibility fixes; sanitized qualification receipts are committed under docs/superpowers/verification. A one-time assistant-managed host is now installed and enrolled for the protected branch preview; real idle polling and the live workspace connected state were verified. This pilot stops after23hours and has no autostart or automatic credential renewal. A real contact queue execution and normal production activation remain unverified. See docs/superpowers/verification/2026-10-17-sales-host/README.md. Parts B (Strato and durable inbox) and C (version-bound sending) require separate implementation plans.
+The feature defaults off. Building this branch does not install an automatic background service, connect Strato, enroll a worker or run Claude. `doctor` verifies the installed CLI version and required flags, **not** an authenticated inference or subscription entitlement. A synthetic inference must pass before using real businesses. Parts B (Strato and durable inbox) and C (version-bound sending) require separate implementation plans.
 
 ## Requirements and setup
 
 - Windows, Python 3.12+, this repository and a licensed/signed-in native Claude Code installation. The verified version is pinned in `claude_runtime.py` (2.1.296); updates require requalification. No additional Python packages are required.
-- The reviewed migration `apps/web/supabase/migrations/20261017100633_atlas_sales_pilot.sql` was applied to Omnira production on 2026-10-17 as ledger `20261017130254 atlas_sales_pilot`; do not reapply it. Other environments need their normal migration process.
+- Apply `apps/web/supabase/migrations/20261017100633_atlas_sales_pilot.sql` through the project's normal migration process. Deploying or applying a production migration is a separate operator action.
 - Set `ATLAS_SALES_ENABLED=true` and `ATLAS_SALES_PROJECT_ID=<verified-project-uuid>` only for the chosen pilot project after verification. No first-project fallback exists. Keep the flag false until then.
 - From the repository root, run `python -m workers.sales.cli doctor`. A refusal is a blocked prerequisite, not permission to bypass isolation.
 - Open the chosen project's **Säljförberedelse** page and create an explicit worker connection. It expires after 24 hours. Use the displayed `connect` command and enter the token into the terminal's hidden prompt. Never put the token in a command argument, chat, environment file or Git.
@@ -31,7 +31,7 @@ Initially exclude Bilenia and Cartrade Europe AB as required by the approved des
 
 ## Runtime limits and failure handling
 
-Claude runs once per contact from a temporary empty directory with tools, MCP servers, hooks, installed/custom plugins, slash commands, Chrome, session persistence and normal settings sources disabled. CLI2.1.296 still advertises two pinned bundled plugin identities, permitted only with exact builtin path/source. Thinking/redacted-thinking blocks are discarded in memory; only final text reaches the adapter. A stream advertising tools, custom plugins, tool calls, images or unknown content is refused. Exactly one enclosing json code fence may be removed before unchanged strict JSON validation. Custom API-provider environments and detected managed policies are blocked. There is no paid API fallback. Runtime stderr and raw CLI output are not persisted as job diagnostics.
+Claude runs once per contact from a temporary empty directory with tools, MCP servers, hooks, slash commands, Chrome, session persistence and normal settings sources disabled. A stream advertising tools or non-text output is refused. Custom API-provider environments and detected managed policies are blocked. There is no paid API fallback. Runtime stderr and raw CLI output are not persisted as job diagnostics.
 
 Each job has at most ten reserved attempts; the first implementation makes one call per selected contact and never automatically regenerates on timeout. Heartbeats renew a 90-second lease. Uncertain execution, lost claims and failures require reconciliation. The server rechecks stop state before dispatch permits and result commits. Cancellation cannot undo a model request already accepted by its provider. Revoke any connection whose token may have been exposed.
 
@@ -58,3 +58,12 @@ Playwright separately mounts the production React component with synthetic API r
 ## Upstream
 
 `upstream-manifest.json` pins `ethanplusai/harvey@e114e95471b1bf155454fca108f0730b66a47a01`, records vendored file hashes and the deliberately small prompt subset. Preserve `vendor/LICENSE`. Unverified outreach legal claims, invented benchmarks, AI-identity concealment instructions and automatic sequences from upstream are excluded.
+
+Managed lifecycle: the owner authorizes the existing worker once through the project.
+The local host adopts a separately stored management identity and renews its 24-hour
+worker credential before it has 12 hours left. Journal files contain references only.
+A lost renewal response replays the same operation. It never retries a model job.
+`host --project UUID` verifies the pinned installation and holds a process lock.
+Windows startup scripts preview by default; `-Apply` affects only the exact owned
+`\Omnira\Omnira-Sales-{workerId}` task for the current interactive user.
+A dispatch interrupted by process termination stays blocked for reconciliation.

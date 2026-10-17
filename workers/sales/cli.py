@@ -17,11 +17,15 @@ def main(argv=None):
     parser=argparse.ArgumentParser(description='Atlas sales drafting worker; sending disabled')
     sub=parser.add_subparsers(dest='command',required=True)
     sub.add_parser('doctor')
+    host=sub.add_parser('host');host.add_argument('--project',required=True)
     connect=sub.add_parser('connect');connect.add_argument('--origin',required=True);connect.add_argument('--project',required=True);connect.add_argument('--worker',required=True)
     run=sub.add_parser('run');run.add_argument('--project',required=True);run.add_argument('--once',action='store_true');run.add_argument('--model',default='')
     args=parser.parse_args(argv)
     if args.command=='doctor':print(json.dumps(doctor()));return 0
     project=str(uuid.UUID(args.project))
+    if args.command=='host':
+        from .host import main as host_main
+        return host_main(project)
     base=Path(os.environ.get('LOCALAPPDATA',str(Path.home()/'.local/share')))/'OmniraSales/connections'
     config_path=base/(project+'.json')
     if args.command=='connect':

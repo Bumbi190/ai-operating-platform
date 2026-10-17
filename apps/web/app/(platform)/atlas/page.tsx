@@ -19,6 +19,7 @@ import { collectAttentionItems } from '@/lib/os/attention'
 import { formatEta } from '@/lib/os/priority'
 import type { Project } from '@/lib/supabase/types'
 import { AtlasVoiceHome } from './AtlasVoiceHome'
+import { atlasVoiceConversationEnabled } from '@/lib/atlas/voice-pilot/deployment'
 import { NightlyFindings } from '@/components/platform/os/NightlyFindings'
 import { AgenticButton } from '@/components/platform/os'
 import { getMorningBugDigest } from '@/lib/bugs/digest'
@@ -51,7 +52,7 @@ export default async function AtlasHome({ searchParams }: AtlasHomeProps) {
   if (isVNext(generation)) {
     const model = await loadAtlasHomeViewModel()
     if (!model) redirect('/login')
-    return <AtlasHomeVNext model={model} />
+    return <AtlasHomeVNext model={model} voiceHref={atlasVoiceConversationEnabled() ? '/atlas/rost' : undefined} />
   }
 
   const supabase = await createClient()
@@ -103,7 +104,7 @@ export default async function AtlasHome({ searchParams }: AtlasHomeProps) {
     <div className="min-h-screen">
 
       {/* ══ VOICE HERO — above the fold ═══════════════════════════════════ */}
-      <AtlasVoiceHome operatorName={OPERATOR_NAME} />
+      <AtlasVoiceHome operatorName={OPERATOR_NAME} voiceHref={atlasVoiceConversationEnabled() ? '/atlas/rost' : undefined} />
 
       {/* ══ SECONDARY DATA — scroll to see ═══════════════════════════════ */}
       <div className="relative z-10 px-4 lg:px-8 pb-16 space-y-6 max-w-3xl mx-auto">

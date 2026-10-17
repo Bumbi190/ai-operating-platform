@@ -72,7 +72,7 @@ def main(project):
    client=current.mailbox_client()
    if not (mailbox_journal.load() or {}).get('pending'):
     public=crypto.public_key();status=current.poll_status();client.post('publish_key',generation=status['generation'],**public)
-   process_mailbox_setup(client,crypto,store,mailbox_journal)
+   process_mailbox_setup(client,crypto,store,mailbox_journal,diagnostic=lambda value:Journal(state/'mailbox-diagnostic.json').save(value))
  stop=threading.Event()
  with SingleInstance(state/'host.lock'):
   host_loop(connection,lambda token:factory(config['origin'],token,'worker'),lambda:HarveyDraftAdapter(SafeClaudeTextRuntime('')),doctor,Journal(state/'dispatch.json'),stop,verify_fn=verify,mailbox_cycle=mailbox_cycle)

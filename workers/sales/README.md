@@ -76,3 +76,11 @@ with bounded timeouts; it never selects an IMAP folder or sends an SMTP message.
 A staged credential becomes active only after the matching current server receipt.
 Lost receipts replay without another login; uncertain auth requires reconciliation.
 Inbox history/UID checkpoints and sending authorizations remain separate work.
+
+Strato SMTP authentication uses one two-step AUTH PLAIN exchange (334 challenge,
+then one UTF-8/base64 response) so the initial command stays within the SMTP
+line limit. Rejected credentials are never retried automatically. The local
+connections/<project>/mailbox-diagnostic.json journal records only setup ID,
+fixed phase/reason code, numeric SMTP reply and timestamp; it never records raw
+server replies or credentials. A failed password is discarded and must be
+submitted again through the encrypted owner form after the issue is corrected.

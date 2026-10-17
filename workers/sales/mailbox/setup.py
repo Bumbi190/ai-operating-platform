@@ -28,7 +28,7 @@ def _resolve(client,store,journal,state):
   store.delete(state['cleanupRef']);state.pop('cleanupRef');journal.save(state)
  return True
 
-def process_mailbox_setup(client,crypto,store,journal,probe_fn=probe_strato):
+def process_mailbox_setup(client,crypto,store,journal,probe_fn=probe_strato,diagnostic=None):
  state=journal.load() or {'pending':None}
  if state.get('cleanupRef'):
   store.delete(state['cleanupRef']);state.pop('cleanupRef');journal.save(state)
@@ -43,7 +43,9 @@ def process_mailbox_setup(client,crypto,store,journal,probe_fn=probe_strato):
  except Exception:
   pending['receipt']=_failed('CRYPTO_REFUSED');journal.save(state);return _resolve(client,store,journal,state)
  pending['phase']='auth_started';journal.save(state)
- result=probe_fn(credential['email'],credential['password']);pending['receipt']=result
+ if diagnostic is None:result=probe_fn(credential['email'],credential['password'])
+ else:result=probe_fn(credential['email'],credential['password'],diagnostic=lambda value:diagnostic({**value,'setupId':context['setupId']}))
+ pending['receipt']=result
  if result.get('smtpAuthenticatedAt') and result.get('imapAuthenticatedAt') and result.get('reasonCode') is None:
   try:
    store.write(reference,credential['password'])

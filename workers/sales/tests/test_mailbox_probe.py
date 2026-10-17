@@ -1,4 +1,4 @@
-import ssl,tempfile,unittest
+import base64,ssl,tempfile,unittest
 from pathlib import Path
 from workers.sales.mailbox.probe import probe_strato
 from workers.sales.mailbox.setup import process_mailbox_setup
@@ -9,7 +9,7 @@ class SMTP:
  def __init__(self,*a,**k):self.calls=[];self.sock=Socket();self.esmtp_features={'auth':'PLAIN LOGIN'};self.arguments=(a,k)
  def set_debuglevel(self,v):self.calls.append(('debug',v))
  def ehlo(self):self.calls.append(('EHLO',));return (250,b'ok')
- def docmd(self,command,value):self.calls.append((command,value));return (235,b'ok')
+ def docmd(self,command,value=''):self.calls.append((command,value));return (334,b'') if command=='AUTH' and value=='PLAIN' else (235,b'ok')
  def quit(self):self.calls.append(('QUIT',))
  def close(self):self.calls.append(('CLOSE',))
 class IMAP:
@@ -31,7 +31,7 @@ class MailboxTests(unittest.TestCase):
  def test_only_fixed_verified_tls_plain_auth_and_logout(self):
   r,s,i,args=self.probe();self.assertIsNotNone(r['smtpAuthenticatedAt']);self.assertIsNotNone(r['imapAuthenticatedAt']);self.assertIsNone(r['reasonCode']);self.assertFalse(r['localStored']);self.assertEqual(args[0][1],('smtp.strato.de',465));self.assertEqual(args[1][1],('imap.strato.de',993))
   for _,_,kw in args:self.assertTrue(kw['ssl_context'].check_hostname);self.assertEqual(kw['ssl_context'].verify_mode,ssl.CERT_REQUIRED);self.assertGreaterEqual(kw['ssl_context'].minimum_version,ssl.TLSVersion.TLSv1_2);self.assertEqual(kw['timeout'],10)
-  self.assertEqual([x[0] for x in s.calls],['debug','EHLO','AUTH','QUIT']);self.assertEqual(i.calls,[('AUTHENTICATE','PLAIN'),('LOGOUT',)]);self.assertIn('unicode🔐å'.encode(),i.credential)
+  self.assertEqual(len(s.calls),5);self.assertEqual([x[0] for x in s.calls[:3]],['debug','EHLO','AUTH']);self.assertEqual(s.calls[2],('AUTH','PLAIN'));self.assertEqual(base64.b64decode(s.calls[3][0]),b'\0info@example.se\0'+'unicode🔐å'.encode());self.assertEqual(s.calls[-1],('QUIT',));self.assertEqual(i.calls,[('AUTHENTICATE','PLAIN'),('LOGOUT',)]);self.assertIn('unicode🔐å'.encode(),i.credential)
  def test_unsupported_plain_has_no_fallback_or_mail_action(self):
   s=SMTP();s.esmtp_features={'auth':'CRAM-MD5'};r,s,i,_=self.probe(smtp=s);self.assertEqual(r['reasonCode'],'UNSUPPORTED_AUTH');self.assertNotIn('AUTH',[x[0] for x in s.calls]);self.assertEqual(i.calls,[])
  def test_partial_success_is_not_authenticated(self):

@@ -28,8 +28,10 @@ class SMTP:
  def __init__(self,*a,**kw):self.sock=Socket();self.esmtp_features={'auth':'PLAIN'};assert a==('smtp.strato.de',465);assert kw['ssl_context'].check_hostname
  def set_debuglevel(self,v):assert v==0
  def ehlo(self):calls.append('EHLO');return 250,b'ok'
- def docmd(self,command,value):
-  assert command=='AUTH';assert base64.b64decode(value.split(' ')[1]).endswith(initial['canary'].encode());calls.append('SMTP_AUTH');return 235,b'ok'
+ def docmd(self,command,value=''):
+  if command=='AUTH':
+   assert value=='PLAIN';return 334,b''
+  assert value=='';assert base64.b64decode(command).endswith(initial['canary'].encode());calls.append('SMTP_AUTH');return 235,b'ok'
  def quit(self):calls.append('QUIT')
  def close(self):pass
 class IMAP:

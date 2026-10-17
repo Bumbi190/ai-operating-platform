@@ -47,3 +47,9 @@ The fix compares 'AUTH=PLAIN' as text. Both test doubles now match imaplib. Two 
 The prior tests were insufficient proof of this external-library boundary; the new characterization tests explicitly cover that assumption. The remaining qualification is a new owner-submitted login after installation, because the failed credential was correctly discarded. No automatic retry or credential recovery is introduced.
 
 Follow-up integration verification: all three real PostgreSQL/API/Python integrations pass with corrected string capability doubles (29.10 seconds). Full Windows Python worker suite: 68/68, 1.455 seconds. Only production change in this follow-up is the IMAP capability comparison; no web component, schema, credential scope or permissions change.
+
+### IMAP correction installation
+
+Installed source aebefd539970eecf1c6fcc900a2846f70848b492 in immutable handlarborsen-aebefd539970; all 47 pinned files verified with complete coverage, manifest SHA-256 3b4e4be4efe439da153074e422a9f08e96b26975dcc559f7b6fb02a80b8fc965. No active auth setup or local in-flight dispatch was present before the controlled upgrade. The old owned process exited before the config switched. The new owned task started at 19:04:28Z, PID 5208, one instance, current user and least privilege. Generation 2, current secret references, private key and exact protected origin were preserved. The test-only Docker fixture was removed after its ownership check.
+
+Connection is still unqualified until a new explicit encrypted owner submission produces both authentication timestamps and localStored=true. No failed credential was retained, recovered or retried during installation.

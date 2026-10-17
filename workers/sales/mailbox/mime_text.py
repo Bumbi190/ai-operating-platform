@@ -40,10 +40,10 @@ def decode_text_part(mime_headers,encoded_bytes):
 def select_text_part(structure):
  count=[0];choices=[]
  def attached(params,disposition):
-  if isinstance(params,list) and any(isinstance(p,bytes) and p.upper() in (b'NAME',b'FILENAME') for p in params[::2]):return True
+  if isinstance(params,list) and any(isinstance(p,bytes) and p.upper().split(b'*',1)[0] in (b'NAME',b'FILENAME') for p in params[::2]):return True
   if isinstance(disposition,list) and disposition:
    if isinstance(disposition[0],bytes) and disposition[0].upper()==b'ATTACHMENT':return True
-   if len(disposition)>1 and isinstance(disposition[1],list) and any(isinstance(p,bytes) and p.upper() in (b'NAME',b'FILENAME') for p in disposition[1][::2]):return True
+   if len(disposition)>1 and isinstance(disposition[1],list) and any(isinstance(p,bytes) and p.upper().split(b'*',1)[0] in (b'NAME',b'FILENAME') for p in disposition[1][::2]):return True
   return False
  def walk(node,path,depth):
   count[0]+=1

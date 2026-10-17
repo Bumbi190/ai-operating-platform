@@ -11,9 +11,18 @@ begin
  perform pg_temp.inbox_refused(format('select sales_inbox_configure_inbox(%L::jsonb,%L::jsonb)',p,jsonb_set(v,'{folder}','"Sent"')),'22023');
  perform pg_temp.inbox_refused(format('select sales_inbox_configure_inbox(%L::jsonb,%L::jsonb)',jsonb_set(p,'{userId}','"20000000-0000-4000-8000-000000000002"'),v),'P0002');
  perform pg_temp.inbox_assert(sales_inbox_claim_sync(repeat('d',64),'{}')->'sync'='null'::jsonb,'disabled never reads');
+ perform pg_temp.inbox_refused(format('select sales_mailbox_begin_setup(%L::jsonb,%L::jsonb)',p,jsonb_build_object('projectId',v->>'projectId','workerId','60000000-0000-4000-8000-000000000081','email','different@example.se')),'P0I01');
+ perform pg_temp.inbox_assert((select email='info@example.se' and generation=6 from sales_mailbox_connections where id=(v->>'mailboxId')::uuid),'address replacement leaves original namespace untouched');
+ perform pg_temp.inbox_assert((select count(*)=0 from sales_mailbox_setups where mailbox_id=(v->>'mailboxId')::uuid),'refused replacement creates no setup');
+
  perform pg_temp.inbox_assert(sales_mailbox_read_status(p,jsonb_build_object('projectId',v->>'projectId','mailboxId',v->>'mailboxId'))->>'inboxEnabled'='false','B1 proof alone is not inbox permission');
  c:=sales_inbox_set_inbox_state(p,jsonb_build_object('projectId',v->>'projectId','mailboxId',v->>'mailboxId','expectedVersion',1,'state','enabled'));
  perform pg_temp.inbox_assert(sales_mailbox_read_status(p,jsonb_build_object('projectId',v->>'projectId','mailboxId',v->>'mailboxId'))->>'inboxEnabled'='true','B2 explicit permission projects as enabled');
+ update sales_worker_registrations set last_seen_at=clock_timestamp(),cli_state='blocked' where id='60000000-0000-4000-8000-000000000081';
+ perform pg_temp.inbox_assert(sales_inbox_read_inbox(p,jsonb_build_object('projectId',v->>'projectId','mailboxId',v->>'mailboxId')) @> '{"inboxEnabled":true,"readingEnabled":true,"scopeCurrent":true,"reasonCode":null}'::jsonb,'CLI blocked does not gate current inbox reading');
+ update sales_worker_registrations set desired_state='paused' where id='60000000-0000-4000-8000-000000000081';
+ perform pg_temp.inbox_assert(sales_inbox_read_inbox(p,jsonb_build_object('projectId',v->>'projectId','mailboxId',v->>'mailboxId')) @> '{"inboxEnabled":true,"readingEnabled":false,"reasonCode":"HOST_PAUSED"}'::jsonb,'host pause distinguishes grant from reading');
+ update sales_worker_registrations set desired_state='running' where id='60000000-0000-4000-8000-000000000081';
  s:=sales_inbox_claim_sync(repeat('d',64),'{}')->'sync';perform pg_temp.inbox_assert(s->'ref' is not null,'enabled claim');
  perform pg_temp.inbox_assert(sales_inbox_claim_sync(repeat('d',64),'{}')->'sync'='null'::jsonb,'parallel claim refused');
  r:=jsonb_build_object('uid',12,'internalDate','2026-10-08T10:00:00Z','size',100,'headerSha256',repeat('a',64),'header',h,'text',null,'textState','not_selected','contentSha256',null);
@@ -65,12 +74,18 @@ begin
  update public.sales_inbox_batches set lease_until=clock_timestamp()-interval '1 second' where id=(s->'ref'->>'batchId')::uuid;
  perform pg_temp.inbox_refused(format('select sales_inbox_report_sync_failure(%L,%L::jsonb)',repeat('d',64),jsonb_build_object('ref',s->'ref','reasonCode','AUTH_FAILED')),'40001');
  perform pg_temp.inbox_assert((select state='enabled' from sales_inbox_configs where mailbox_id=(v->>'mailboxId')::uuid),'late failure preserved live config');
+ -- Same-account credential replacement fences a previously enabled scope.
  -- Mailbox replacement fences an already claimed batch.
  s:=sales_inbox_claim_sync(repeat('d',64),'{}')->'sync';update sales_mailbox_connections set generation=7 where id=(v->>'mailboxId')::uuid;
  perform pg_temp.inbox_assert(sales_mailbox_read_status(p,jsonb_build_object('projectId',v->>'projectId','mailboxId',v->>'mailboxId'))->>'inboxEnabled'='false','old B2 generation cannot grant replaced mailbox');
+ perform pg_temp.inbox_assert(sales_inbox_read_inbox(p,jsonb_build_object('projectId',v->>'projectId','mailboxId',v->>'mailboxId','cursor',null)) @> '{"inboxEnabled":false,"readingEnabled":false,"scopeCurrent":false,"reasonCode":"SCOPE_RECONFIRMATION_REQUIRED"}'::jsonb,'owner and Atlas projection exposes fenced permission');
+
  b:=jsonb_build_object('ref',s->'ref','mode','scan','expectedCursor',s->'cursor','uidValidity','11','throughUid',15,'rangeEnd',20,'records','[]'::jsonb);
  perform pg_temp.inbox_refused(format('select sales_inbox_commit_batch(%L,%L::jsonb)',repeat('d',64),b),'40001');
  perform pg_temp.inbox_assert((select scanned_through_uid=14 from sales_inbox_configs where mailbox_id=(v->>'mailboxId')::uuid),'fenced cursor preserved');
+ -- A password renewal for the same address is supported and retains account identity.
+ receipt:=sales_mailbox_begin_setup(p,jsonb_build_object('projectId',v->>'projectId','workerId','60000000-0000-4000-8000-000000000081','email','info@example.se'));
+ perform pg_temp.inbox_assert(receipt->'context'->>'email'='info@example.se' and receipt->'context'->>'mailboxId'=v->>'mailboxId','same-address renewal keeps mailbox identity');
  update sales_mailbox_connections set generation=6 where id=(v->>'mailboxId')::uuid;
  update sales_worker_registrations set revoked_at=clock_timestamp() where id='60000000-0000-4000-8000-000000000081';
  perform pg_temp.inbox_assert(sales_mailbox_read_status(p,jsonb_build_object('projectId',v->>'projectId','mailboxId',v->>'mailboxId'))->>'inboxEnabled'='false','revoked host has no effective inbox permission');

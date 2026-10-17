@@ -8,3 +8,8 @@ describe('Atlas durable inbox evidence only',()=>{
  it('foreign conversation never reads body',async()=>{const rpc=vi.fn().mockResolvedValue({data:null,error:{code:'P0002'}});expect(await handleSalesTool('get_sales_inbox_message',{projectId,messageId},p,conversationId,{rpc} as never,()=>true)).toMatchObject({code:'NOT_FOUND'});expect(rpc).toHaveBeenCalledTimes(1)})
  it('rejects injected operation alongside read arguments',async()=>{const rpc=vi.fn();expect(await handleSalesTool('get_sales_inbox',{projectId,mailboxId,operation:'select_text'},p,conversationId,{rpc} as never,()=>true)).toMatchObject({code:'INVALID_BODY'});expect(rpc).not.toHaveBeenCalled()})
 })
+it('distinguishes saved enabled config from fenced current reading permission',async()=>{
+ const rpc=vi.fn().mockResolvedValueOnce({data:true,error:null}).mockResolvedValueOnce({data:{config:{state:'enabled',mailboxGeneration:6},messages:[],nextCursor:null,inboxEnabled:false,readingEnabled:false,scopeCurrent:false,reasonCode:'SCOPE_RECONFIRMATION_REQUIRED',sendingEnabled:false},error:null})
+ expect(await handleSalesTool('get_sales_inbox',{projectId,mailboxId},p,conversationId,{rpc} as never,()=>true)).toMatchObject({inboxEnabled:false,readingEnabled:false,scopeCurrent:false,reasonCode:'SCOPE_RECONFIRMATION_REQUIRED'})
+ expect(SALES_GUIDE).toContain('scope reconfirmation')
+})

@@ -39,6 +39,20 @@ alter table public.sales_inbox_batches enable row level security;
 revoke all on public.sales_inbox_configs,public.sales_inbox_messages,public.sales_inbox_occurrences,public.sales_inbox_batches from public,anon,authenticated,service_role;
 grant select,insert,update on public.sales_inbox_configs,public.sales_inbox_messages,public.sales_inbox_occurrences,public.sales_inbox_batches to service_role;
 
+-- Once inbox history exists, UIDVALIDITY/UID must stay bound to one account.
+-- A different email address requires a distinct mailbox identity; same-address
+-- password renewal still increments generation and requires scope reconfirmation.
+create function public.sales_inbox_guard_mailbox_identity() returns trigger language plpgsql security invoker set search_path='' as $$
+begin
+ if new.email is distinct from old.email and exists(select from public.sales_inbox_configs where mailbox_id=old.id) then
+  raise exception 'MAILBOX_IDENTITY_REQUIRED' using errcode='P0I01';
+ end if;
+ return new;
+end $$;
+revoke all on function public.sales_inbox_guard_mailbox_identity() from public,anon,authenticated;
+grant execute on function public.sales_inbox_guard_mailbox_identity() to service_role;
+create trigger sales_inbox_mailbox_identity before update of email on public.sales_mailbox_connections for each row execute function public.sales_inbox_guard_mailbox_identity();
+
 -- Preserve the B1 status contract while projecting the actual current B2 grant.
 create or replace function public.sales_mailbox_status(c public.sales_mailbox_connections) returns jsonb language sql security invoker set search_path='' as $$
  select jsonb_build_object('mailboxId',c.id,'email',c.email,'status',c.status,'smtpAuthenticatedAt',c.smtp_authenticated_at,'imapAuthenticatedAt',c.imap_authenticated_at,'reasonCode',c.reason_code,
@@ -98,14 +112,19 @@ declare m public.sales_inbox_messages;
 begin perform public.sales_owner(p_principal,(p_input->>'projectId')::uuid);perform public.sales_mailbox_fields(p_input,array['projectId','messageId']);select * into m from public.sales_inbox_messages where id=(p_input->>'messageId')::uuid and project_id=(p_input->>'projectId')::uuid and owner_id=(p_principal->>'userId')::uuid;
  if not found then raise exception 'NOT_FOUND' using errcode='P0002';end if;return public.sales_inbox_public_message(m,true);end $$;
 create function public.sales_inbox_read_inbox(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
-declare mb public.sales_mailbox_connections;c public.sales_inbox_configs;m public.sales_inbox_messages;after_time timestamptz;after_id uuid;rows jsonb:='[]';n integer:=0;last_id uuid;
+declare mb public.sales_mailbox_connections;c public.sales_inbox_configs;w public.sales_worker_registrations;h jsonb;effective boolean;reading boolean;reason text;m public.sales_inbox_messages;after_time timestamptz;after_id uuid;rows jsonb:='[]';n integer:=0;last_id uuid;
 begin mb:=public.sales_inbox_owner(p_principal,(p_input->>'projectId')::uuid,(p_input->>'mailboxId')::uuid);perform public.sales_mailbox_fields(p_input,array['projectId','mailboxId','cursor']);
  select * into c from public.sales_inbox_configs where mailbox_id=mb.id and owner_id=mb.owner_id;
+ select * into w from public.sales_worker_registrations where id=mb.worker_id and project_id=mb.project_id and owner_id=mb.owner_id;
+ h:=public.sales_host_status(w);effective:=coalesce((public.sales_mailbox_status(mb)->>'inboxEnabled')::boolean,false);
+ reading:=coalesce(effective and h->>'connectionState'='online' and h->>'desiredState'='running' and (h->>'executionPaused')::boolean=false,false);
+ reason:=case when c.mailbox_id is null then 'NOT_CONFIGURED' when c.mailbox_generation is distinct from mb.generation then 'SCOPE_RECONFIRMATION_REQUIRED' when mb.status<>'authenticated' then 'MAILBOX_REQUIRED' when c.state<>'enabled' then coalesce(c.reason_code,'INBOX_'||upper(c.state)) when not effective then 'HOST_UNAVAILABLE' when (h->>'executionPaused')::boolean then 'EXECUTION_PAUSED' when h->>'desiredState'<>'running' then 'HOST_PAUSED' when h->>'connectionState'<>'online' then 'HOST_OFFLINE' else null end;
+
  if p_input->>'cursor' is not null then select created_at,id into after_time,after_id from public.sales_inbox_messages where id=(p_input->>'cursor')::uuid and mailbox_id=mb.id and owner_id=mb.owner_id;if not found then raise exception 'NOT_FOUND' using errcode='P0002';end if;end if;
  for m in select * from public.sales_inbox_messages where mailbox_id=mb.id and owner_id=mb.owner_id and (canonical_id is null or contact_id is not null) and (after_id is null or (created_at,id)<(after_time,after_id)) order by created_at desc,id desc limit 50 loop
   rows:=rows||jsonb_build_array(public.sales_inbox_public_message(m,false));n:=n+1;last_id:=m.id;
  end loop;
- return jsonb_build_object('config',case when c.mailbox_id is null then null else public.sales_inbox_config_json(c) end,'messages',rows,'nextCursor',case when n=50 then last_id else null end,'sendingEnabled',false);
+ return jsonb_build_object('config',case when c.mailbox_id is null then null else public.sales_inbox_config_json(c) end,'messages',rows,'nextCursor',case when n=50 then last_id else null end,'inboxEnabled',effective,'readingEnabled',reading,'scopeCurrent',coalesce(c.mailbox_generation=mb.generation,false),'reasonCode',reason,'sendingEnabled',false);
 end $$;
 create function public.sales_inbox_select_message_text(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
 declare m public.sales_inbox_messages;c public.sales_inbox_configs;

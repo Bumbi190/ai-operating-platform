@@ -62,3 +62,8 @@ class InboxReaderTests(unittest.TestCase):
   with inbox_server({12:{'structure':structure}}) as (state,factory):
    r=self.read(factory,{**CONFIG,'selectedAddresses':['dealer@example.se']})['records'][0]
    self.assertEqual(r['textState'],'unsupported');self.assertIsNone(r['text']);self.assertNotIn('.MIME',str(state['commands']));self.assertNotIn('BODY.PEEK[1]',str(state['commands']))
+ def test_encoded_parent_filename_never_fetches_child_mime_or_body(self):
+  structure=b'(("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "8BIT" 12 1) "MIXED" NIL ("INLINE" ("FILENAME*0*" "utf-8\'\'private.mime")))'
+  with inbox_server({12:{'structure':structure}}) as (state,factory):
+   r=self.read(factory,{**CONFIG,'selectedAddresses':['dealer@example.se']})['records'][0]
+   self.assertEqual(r['textState'],'unsupported');self.assertIsNone(r['text']);self.assertNotIn('.MIME',str(state['commands']));self.assertNotIn('BODY.PEEK[1]',str(state['commands']))

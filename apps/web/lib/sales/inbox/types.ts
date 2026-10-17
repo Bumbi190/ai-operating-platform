@@ -8,4 +8,4 @@ export type InboxRecord={uid:number;internalDate:string|null;size:number|null;he
 export type InboxBatch={ref:InboxRef;mode:'scan'|'selected_text';expectedCursor:InboxCursor;uidValidity:string;throughUid:number;rangeEnd:number;records:InboxRecord[]}
 export type InboxConfig={projectId:string;mailboxId:string;folder:'INBOX';since:string;selectedContactIds:string[];version:number;mailboxGeneration:number;state:InboxState;cursor:InboxCursor;lastSyncedAt:string|null;reasonCode:string|null}
 export type InboxMessage={id:string;canonicalMessageId:string;possibleDuplicate:boolean;mailboxId:string;header:InboxHeader|null;text:string|null;textState:InboxTextState;textSelected:boolean;contactId:string|null;contactState:'unlinked'|'ambiguous'|'linked';version:number;internalDate:string|null;occurrences:{uid:number;uidValidity:string}[]}
-export type InboxPage={config:InboxConfig|null;messages:InboxMessage[];nextCursor:string|null;sendingEnabled:false}
+export type InboxPage={config:InboxConfig|null;messages:InboxMessage[];nextCursor:string|null;inboxEnabled:boolean;readingEnabled:boolean;scopeCurrent:boolean;reasonCode:string|null;sendingEnabled:false}

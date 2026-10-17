@@ -28,3 +28,9 @@ class AttachmentContainerTests(unittest.TestCase):
   text=[b'TEXT',b'PLAIN',[b'CHARSET',b'UTF-8'],None,None,b'8BIT',12,1]
   named=[text,b'MIXED',[b'NAME',b'private.mime'],[b'INLINE',[b'FILENAME',b'private.mime']]]
   self.assertIsNone(select_text_part(named))
+ def test_rfc2231_filename_families_exclude_entire_multipart_subtree(self):
+  text=[b'TEXT',b'PLAIN',[b'CHARSET',b'UTF-8'],None,None,b'8BIT',12,1]
+  for name in (b'NAME*',b'NAME*0*',b'FILENAME*',b'FILENAME*0*',b'filename*1'):
+   with self.subTest(name=name):
+    for container in ([text,b'MIXED',[name,b"utf-8''private.mime"],None],[text,b'MIXED',None,[b'INLINE',[name,b"utf-8''private.mime"]]]):
+     self.assertIsNone(select_text_part(container))

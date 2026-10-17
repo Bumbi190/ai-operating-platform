@@ -19,3 +19,11 @@ it('B1 login proof alone never grants inbox permission, explicit B2 permission p
  expect(publicStatus({...status,inboxEnabled:false}).inboxEnabled).toBe(false)
  expect(publicStatus({...status,inboxEnabled:true} as never).inboxEnabled).toBe(true)
 })
+
+import {createMailboxApi} from '@/lib/sales/mailbox/api'
+it('returns an explicit mailbox-identity refusal without starting another address setup',async()=>{
+ const rpc=vi.fn().mockResolvedValue({data:null,error:{code:'P0I01'}})
+ const api=createMailboxApi({access:async()=>p as never,db:()=>({rpc} as never),enabled:()=>true})
+ const r=await api(new Request('https://omnira.example/api/sales/mailbox',{method:'POST',headers:{origin:'https://omnira.example'},body:JSON.stringify({operation:'begin_setup',projectId,workerId:contactId,email:'different@example.se'})}))
+ expect(r.status).toBe(409);expect(await r.json()).toEqual({code:'MAILBOX_IDENTITY_REQUIRED'})
+})

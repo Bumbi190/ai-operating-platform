@@ -4,7 +4,7 @@ import {
   THE_PROMPT_GROWTH_GUIDANCE,
   FAMILJE_STUNDEN_GROWTH_GUIDANCE,
   CONTENT_GROWTH_QA_GUIDANCE,
-} from './guidance'
+} from '../content-growth/guidance'
 import { buildScriptSystem } from '../media/script-prompt'
 import { buildDrafterUserMessage } from '../marketing/drafter'
 

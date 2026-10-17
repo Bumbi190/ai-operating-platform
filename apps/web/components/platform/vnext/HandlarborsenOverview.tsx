@@ -11,6 +11,7 @@ import styles from './HandlarborsenExecutiveSummary.module.css'
 import { AnalysisDraftHistoryLink } from './AnalysisDraftHistoryLink'
 import type { HandlarborsenTraffic } from '@/lib/atlas/project-analytics/handlarborsen-posthog-traffic'
 import type { CandidateMemoryLoad } from '@/lib/atlas/project-analytics/handlarborsen-competitor-memory-service'
+import type { CandidateReviewLoad } from '@/lib/atlas/project-analytics/handlarborsen-candidate-review-service'
 import { HandlarborsenCandidateReviewNotice } from './HandlarborsenCandidateReviewNotice'
 
 /**
@@ -28,6 +29,8 @@ export function HandlarborsenOverview({
   analysisSelectors,
   candidateMemory = null,
   candidateMemoryEnabled = false,
+  candidateReviews = null,
+  candidateReviewEnabled = false,
   candidateAudience = 'owner',
   now = new Date(),
 }: {
@@ -37,6 +40,8 @@ export function HandlarborsenOverview({
   analysisSelectors?: Partial<Record<AnalysisRuleId, SaveSelector>>
   candidateMemory?: CandidateMemoryLoad | null
   candidateMemoryEnabled?: boolean
+  candidateReviews?: CandidateReviewLoad | null
+  candidateReviewEnabled?: boolean
   candidateAudience?: 'owner' | 'collaborator'
   traffic?: HandlarborsenTraffic | null
   now?: Date
@@ -53,7 +58,7 @@ export function HandlarborsenOverview({
   if (model.kind === 'note') {
     return (
       <>
-        <HandlarborsenCandidateReviewNotice memory={candidateMemory} enabled={candidateMemoryEnabled} audience={candidateAudience} />
+        <HandlarborsenCandidateReviewNotice memory={candidateMemory} enabled={candidateMemoryEnabled} audience={candidateAudience} reviews={candidateReviews} reviewEnabled={candidateReviewEnabled} />
         <KpiOverviewNote {...common} title={model.title} text={model.text} tone={model.tone} />
         {traffic && <HandlarborsenPosthogTraffic traffic={traffic} />}
         {projectSlug && <AnalysisDraftHistoryLink projectSlug={projectSlug} />}
@@ -62,7 +67,7 @@ export function HandlarborsenOverview({
   }
   return (
     <>
-      <HandlarborsenCandidateReviewNotice memory={candidateMemory} enabled={candidateMemoryEnabled} audience={candidateAudience} />
+      <HandlarborsenCandidateReviewNotice memory={candidateMemory} enabled={candidateMemoryEnabled} audience={candidateAudience} reviews={candidateReviews} reviewEnabled={candidateReviewEnabled} />
       <HandlarborsenExecutiveSummary report={report} model={model} traffic={traffic} now={now} />
       <HandlarborsenTrends report={report} />
       {traffic && <HandlarborsenPosthogTraffic traffic={traffic} />}

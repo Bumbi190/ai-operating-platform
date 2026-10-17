@@ -1,6 +1,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import type { CandidateMemoryLoad } from '@/lib/atlas/project-analytics/handlarborsen-competitor-memory-service'
+import type { CandidateReviewLoad } from '@/lib/atlas/project-analytics/handlarborsen-candidate-review-service'
 import { deriveCandidateReviewNotice } from '@/lib/atlas/project-analytics/handlarborsen-candidate-review-notice'
 
 type Role = 'owner' | 'collaborator'
@@ -17,12 +18,16 @@ export function HandlarborsenCandidateReviewNotice({
   memory,
   enabled,
   audience,
+  reviews = null,
+  reviewEnabled = false,
 }: {
   memory: CandidateMemoryLoad | null
   enabled: boolean
   audience: Role
+  reviews?: CandidateReviewLoad | null
+  reviewEnabled?: boolean
 }) {
-  const cue = deriveCandidateReviewNotice(enabled, memory)
+  const cue = deriveCandidateReviewNotice(enabled, memory, reviews, reviewEnabled)
   if (cue.state === 'hidden') return null
   const headingId = 'hb-candidate-review-notice'
   return <section

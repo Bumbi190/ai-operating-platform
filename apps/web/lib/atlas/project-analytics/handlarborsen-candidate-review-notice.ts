@@ -1,4 +1,5 @@
 import type { CandidateMemoryLoad } from './handlarborsen-competitor-memory-service'
+import type { CandidateReviewLoad } from './handlarborsen-candidate-review-service'
 
 type NoticeState =
   | { state: 'hidden' }
@@ -22,6 +23,8 @@ const validHost = /^[a-z0-9][a-z0-9.-]{2,159}$/
 export function deriveCandidateReviewNotice(
   enabled: boolean,
   memory: CandidateMemoryLoad | null,
+  reviews: CandidateReviewLoad | null = null,
+  reviewEnabled = false,
 ): NoticeState {
   if (!enabled) return { state: 'hidden' }
   if (!memory || memory.status !== 'ok') return { state: 'unavailable' }
@@ -46,11 +49,26 @@ export function deriveCandidateReviewNotice(
       || seen.has(candidate.host)) return { state: 'unavailable' }
     seen.add(candidate.host)
   }
-  const [latest] = [...candidates].sort((a, b) =>
+  let active = [...candidates]
+  if (reviewEnabled) {
+    if (reviews?.status !== 'ok' || !Array.isArray(reviews.entries)
+      || reviews.entries.length !== candidates.length
+      || reviews.awaitingReview < 0) return { state: 'unavailable' }
+    const known = new Map(reviews.entries.map(entry => [entry.host, entry]))
+    if (known.size !== candidates.length || candidates.some(c => !known.has(c.host)))
+      return { state: 'unavailable' }
+    active = active.filter(c => {
+      const status = known.get(c.host)?.status
+      return status === 'pending' || status === 'interesting'
+    })
+    if (active.length !== reviews.awaitingReview) return { state: 'unavailable' }
+    if (active.length === 0) return { state: 'hidden' }
+  }
+  const [latest] = active.sort((a, b) =>
     b.firstSeenAt.localeCompare(a.firstSeenAt) || a.host.localeCompare(b.host))
   return {
     state: 'pending',
-    count: candidates.length,
+    count: active.length,
     latest: { name: latest.name, host: latest.host, firstSeenAt: latest.firstSeenAt },
   }
 }

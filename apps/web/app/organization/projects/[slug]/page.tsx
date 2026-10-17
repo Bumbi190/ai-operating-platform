@@ -7,6 +7,7 @@ import { loadHandlarborsenMarketplaceReport } from '@/lib/atlas/project-analytic
 import { loadHandlarborsenTraffic } from '@/lib/atlas/project-analytics/handlarborsen-posthog-traffic'
 import { HandlarborsenOverview } from '@/components/platform/vnext/HandlarborsenOverview'
 import { candidateMemoryEnabled, loadOrganizationCandidateMemory } from '@/lib/atlas/project-analytics/handlarborsen-competitor-memory-service'
+import { candidateReviewEnabled, loadCandidateReviews } from '@/lib/atlas/project-analytics/handlarborsen-candidate-review-service'
 import { ProjectCommandCenter } from '@/components/platform/vnext/ProjectCommandCenter'
 import { HandlarborsenCollaboratorWorkflows } from '../HandlarborsenCollaboratorWorkflows'
 import { createClient } from '@/lib/supabase/server'
@@ -51,6 +52,8 @@ export default async function OrganizationProjectPage({ params }: { params: { sl
     if (report.status === 'ok') {
       const memoryEnabled = mayViewCompetitors && candidateMemoryEnabled()
       const memory = memoryEnabled ? await loadOrganizationCandidateMemory() : null
+      const reviewEnabled = memoryEnabled && candidateReviewEnabled()
+      const reviews = reviewEnabled ? await loadCandidateReviews() : null
       const traffic = await loadHandlarborsenTraffic(model.project, {
         allowedProjectIds: [model.project.id],
       })
@@ -60,6 +63,8 @@ export default async function OrganizationProjectPage({ params }: { params: { sl
         traffic={traffic}
         candidateMemory={memory}
         candidateMemoryEnabled={memoryEnabled}
+        candidateReviews={reviews}
+        candidateReviewEnabled={reviewEnabled}
         candidateAudience="collaborator"
       />
     }

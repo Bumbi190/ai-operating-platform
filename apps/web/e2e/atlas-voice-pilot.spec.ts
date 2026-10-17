@@ -606,3 +606,16 @@ test('review regression: a failed external turn never later replays queued speec
   await expect(editor).toBeEditable()
   expect(await page.evaluate(() => (window as any).fixtureChatBodies.map((b:any)=>b.inputSource))).toEqual(['text','text'])
 })
+
+test('full-chat voice launcher starts the persistent conversation on mobile with one tap', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/atlas/rosttest?shell=1&live=1')
+  await openFullChat(page)
+  await page.getByRole('button', { name: 'Starta röstsamtal med Atlas', exact: true }).click()
+  await expect(page.getByRole('status').filter({ hasText: /^Atlas lyssnar$/ })).toBeVisible()
+  expect(await page.evaluate(() => (window as any).microphoneStarts)).toBe(1)
+  expect(await page.evaluate(() => (window as any).legacyStarts)).toBe(0)
+  await page.getByRole('button', { name: 'Minimera röstsamtalet' }).click()
+  await page.getByRole('navigation', { name: 'Sidnavigation' }).getByRole('button', { name: '/costs', exact: true }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Aktiva mikrofonspår: 1' })).toBeVisible()
+})

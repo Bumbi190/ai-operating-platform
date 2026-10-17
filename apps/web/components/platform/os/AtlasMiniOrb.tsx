@@ -30,6 +30,13 @@ export function AtlasMiniOrb({
       launcher.current?.querySelector('button')?.focus()
     )
   }
+  // Full chat keeps its text surface; the shared voice call still needs a mobile entry.
+  if (atlas.voiceConversationAvailable && (pathname === '/chat' || pathname.startsWith('/chat/'))) {
+    return <div hidden={!!atlas.voicePanelOpen} className={styles.launcherDock}>
+      <AtlasLauncherOrb phase={atlas.voicePhase} onClick={atlas.activate} size={40}
+        label="Starta röstsamtal med Atlas" stateDescription="Prata med Atlas medan du arbetar" />
+    </div>
+  }
   return (
     <div hidden={hidden}>
       {state.isOpen && !hidden && (

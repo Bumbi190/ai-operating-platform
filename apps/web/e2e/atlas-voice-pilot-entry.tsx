@@ -6,6 +6,7 @@ import { AtlasVoiceTrial } from '../app/(platform)/atlas/rosttest/voice-trial'
 import { AtlasRuntimeProvider, useAtlas } from '../lib/atlas/runtime'
 import { AtlasConversationProvider, useAtlasConversation } from '../lib/atlas/conversation/provider'
 import { AtlasChatConversation } from '../components/platform/vnext/AtlasChatConversation'
+import { AtlasMiniOrb } from '../components/platform/os/AtlasMiniOrb'
 import { AtlasHomeVNext } from '../components/platform/vnext/AtlasHomeVNext'
 import { usePathname, useRouter } from './atlas-overview-messenger-navigation'
 import { simulateSignout } from './atlas-voice-pilot-boundaries'
@@ -115,7 +116,7 @@ function ShellWorkspace() {
   const chatId=path.split('/')[2]??'50000000-0000-4000-8000-000000000002'
   const chatModel=useMemo(()=>({id:chatId,title:'Fixture full chat',projectName:'Testprojekt',projectId:controller.snapshot().id===chatId?controller.snapshot().projectId:'project-b',state:'ok' as const,saved:[],chatBase:'/chat'}),[chatId])
   const model={projects:[],activity:[],generatedAt:'2026-10-17T10:00:00Z',totals:{projects:0,runningRuns:0,pendingApprovals:0,failedRuns24h:0},availability:{projects:true,runs:true,approvals:true}}
-  return <><nav aria-label="Sidnavigation">{['/atlas/rosttest','/atlas/rost','/dashboard','/projects/test-project','/costs','/chat/50000000-0000-4000-8000-000000000002'].map(p=><button key={p} onClick={()=>router.push(p)}>{p}</button>)}<button onClick={()=>controller.activateConversation({id:'50000000-0000-4000-8000-000000000002',saved:[],state:'ok',projectId:'project-b'})}>Byt samtal</button><button onClick={atlas.activate}>Starta globalt samtal</button><button onClick={atlas.deactivate}>Avsluta globalt samtal</button></nav>{path==='/atlas/rosttest'?<AtlasHomeVNext model={model} collaboratorReadOnly={initialParams.has('readonly')} voiceHref="/atlas/rost" />:path==='/atlas/rost'?<AtlasVoiceTrial live streamingAvailable />:path.startsWith('/chat/')?<AtlasChatConversation model={chatModel}/>:<p>Aktuell vy: {path}</p>}</>
+  return <><nav aria-label="Sidnavigation">{['/atlas/rosttest','/atlas/rost','/dashboard','/projects/test-project','/costs','/chat/50000000-0000-4000-8000-000000000002'].map(p=><button key={p} onClick={()=>router.push(p)}>{p}</button>)}<button onClick={()=>controller.activateConversation({id:'50000000-0000-4000-8000-000000000002',saved:[],state:'ok',projectId:'project-b'})}>Byt samtal</button><button onClick={atlas.activate}>Starta globalt samtal</button><button onClick={atlas.deactivate}>Avsluta globalt samtal</button></nav>{path==='/atlas/rosttest'?<AtlasHomeVNext model={model} collaboratorReadOnly={initialParams.has('readonly')} voiceHref="/atlas/rost" />:path==='/atlas/rost'?<AtlasVoiceTrial live streamingAvailable />:path.startsWith('/chat/')?<><AtlasChatConversation model={chatModel}/><AtlasMiniOrb uiGeneration="vnext" /></>:<p>Aktuell vy: {path}</p>}</>
 }
 function Shell() { return <AtlasConversationProvider><AtlasRuntimeProvider projects={[{id:'project-a',slug:'test-project',name:'Testprojekt',color:'#69c'}]} voiceConversationEnabled={!new URLSearchParams(location.search).has('readonly')} voiceReadOnly={new URLSearchParams(location.search).has('readonly')}><ShellWorkspace /></AtlasRuntimeProvider></AtlasConversationProvider> }
 function Fixture() {

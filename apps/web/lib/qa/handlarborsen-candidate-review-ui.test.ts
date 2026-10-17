@@ -43,6 +43,9 @@ describe('candidate human review status and project cue', () => {
     expect(html).toContain('Visa beslutshistorik (1 beslut)')
     expect(html).toContain('2026-10-17 07:01 UTC')
     expect(html).toContain('Sparad kandidatsignal')
+    expect(html).toContain('Projektbundet kandidatminne: 1 kandidat(er)')
+    expect(display(reviews('reviewed'))).toContain('Projektbundet kandidatminne: 0 kandidat(er)')
+    expect(display(reviews('ignored'))).toContain('Projektbundet kandidatminne: 0 kandidat(er)')
     expect(html).not.toContain('Godkänn publicering')
   })
 

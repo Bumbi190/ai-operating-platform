@@ -44,8 +44,10 @@ export function HandlarborsenCompetitorDiscovery({
         <>
           {stored ? (
             <p role="status">
-              Projektbundet kandidatminne: {memory?.status === 'ok' ? memory.awaitingReview : 0} kandidat(er)
-              inväntar manuell granskning. Ingen notis har skickats och inga bevakningskällor har ändrats.
+              Projektbundet kandidatminne: {reviewEnabled
+                ? reviews?.status === 'ok' ? reviews.awaitingReview : 'okänt'
+                : memory?.status === 'ok' ? memory.awaitingReview : 'okänt'} kandidat(er)
+              inväntar manuell granskning eller vidare undersökning. Ingen notis har skickats och inga bevakningskällor har ändrats.
             </p>
           ) : null}
           {entries.length === 0 ? <p>Inga granskade kandidater finns i denna version.</p> : (

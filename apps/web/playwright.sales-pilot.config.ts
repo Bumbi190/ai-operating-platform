@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test'
+export default defineConfig({testDir:'./e2e',testMatch:['sales-pilot.spec.ts','sales-strato.spec.ts'],workers:1,retries:0,timeout:30000,use:{baseURL:'http://127.0.0.1:54417',browserName:'chromium',screenshot:'only-on-failure'},outputDir:'../../.superpowers/sdd/2026-10-17-sales-managed-host/browser/results',webServer:{command:'node e2e/sales-pilot-server.mjs',url:'http://127.0.0.1:54417/sales',reuseExistingServer:false,timeout:30000}})

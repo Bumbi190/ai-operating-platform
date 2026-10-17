@@ -1,3 +1,5 @@
+import {SALES_TOOLS,SALES_TOOL_NAMES,SALES_GUIDE,handleSalesTool} from '@/lib/sales/atlas-tools'
+import {salesEnabled} from '@/lib/sales/feature'
 import {studioSystemPrompt} from '@/lib/website-build/studio/chat-context'
 import {resolveStudioTurnContext,type StudioTurnContext} from '@/lib/website-build/studio/turn-context'
 /**
@@ -336,6 +338,7 @@ const STUDIO_TOOL_NAMES = new Set([
 ])
 
 const TOOLS: Anthropic.Tool[] = [
+  ...(salesEnabled()?SALES_TOOLS:[]),
   ...DESIGN_SKILL_TOOLS,
   ...WEBSITE_BUILD_TOOLS,
   ...SOCIAL_LAUNCH_TOOLS,
@@ -820,7 +823,7 @@ export async function POST(request: Request) {
     systemPrompt+=renderCurrentInstant(new Date())
     if(voice)systemPrompt+=VOICE_DIRECTIVE
   } else {
-    systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE + DESIGN_SKILL_GUIDE + WEBSITE_BUILD_GUIDE + SOCIAL_LAUNCH_GUIDE + SOCIAL_PROFILE_GUIDE + SOCIAL_CONTENT_GUIDE
+    systemPrompt = buildAtlasSystemPrompt() + (salesEnabled()?SALES_GUIDE:'') + '\n\n' + TOOL_GUIDE + DESIGN_SKILL_GUIDE + WEBSITE_BUILD_GUIDE + SOCIAL_LAUNCH_GUIDE + SOCIAL_PROFILE_GUIDE + SOCIAL_CONTENT_GUIDE
     if(visiblePlan)systemPrompt+='\nCURRENT REVIEWED PLAN REFERENCES: '+JSON.stringify(visiblePlan)+'; read get_website_build_plan before revising.\n'
     if(verifiedBuildContext)systemPrompt+='\nCURRENT BUILD (verified for this conversation): '+JSON.stringify(verifiedBuildContext)+'; user change requests go to submit_website_build_feedback in this session, using the actually rendered revision. Questions about status go to get_website_build. Never start a second build for a feedback request.\n'
     // UNCONDITIONAL, AND DELIBERATELY BEFORE EVERYTHING THAT CAN FAIL. The bug
@@ -1255,6 +1258,8 @@ async function executeTool(
   if (name === 'list_design_skills' || name === 'read_design_skill') {
     return executeDesignSkillTool(name, input)
   }
+
+  if (SALES_TOOL_NAMES.includes(name)) return handleSalesTool(name,input,{userId,allowedProjectIds},ownedConversationId,db)
 
   if (SOCIAL_PUBLICATION_TOOL_NAMES.includes(name)) {
     return handleSocialPublicationTool(name,input,{userId,allowedProjectIds},ownedConversationId,db)

@@ -18,3 +18,14 @@ describe('already-applied sales schema reconciliation', () => {
     expect(() => evaluateAppliedMigrationLedger([...state.repositoryNames, 'unreviewed_future_schema'], state)).toThrow(/unknown/)
   })
 })
+
+it('reconciles the exact already-applied inbox SQL without a grandfathered bypass',()=>{
+ const path=resolve(process.cwd(),'supabase/migrations/20261017151021_handlarborsen_candidate_inbox_v1.sql')
+ const sql=readFileSync(path,'utf8').replace(/\r\n/g,'\n')
+ expect(createHash('sha256').update(sql).digest('hex')).toBe('e7f3efe782086aa8f818ab071dab7c96ccadde95ec58320e30048bd487fe663c')
+ const proposal=readFileSync(resolve(process.cwd(),'../../docs/sql/handlarborsen_candidate_inbox_p0_proposed.sql'),'utf8').replace(/\r\n/g,'\n')
+ expect(sql.split('\n').slice(1)).toEqual(proposal.split('\n').slice(1))
+ const state=inspectCanonicalMigrationFiles(readdirSync(resolve(process.cwd(),'supabase/migrations')))
+ expect(state.enforcedNames).toContain('handlarborsen_candidate_inbox_v1')
+ expect(state.grandfatheredNames).not.toContain('handlarborsen_candidate_inbox_v1')
+})

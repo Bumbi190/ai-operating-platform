@@ -7,7 +7,7 @@ import { AbsoluteFill, Img, interpolate, staticFile, useCurrentFrame } from 'rem
  * can be provided as optional imageUrls.
  */
 export interface ContentGrowthReelProps {
-  brand: 'familje-stunden' | 'the-prompt'
+  brand?: 'familje-stunden' | 'the-prompt'
   imageUrls?: string[]
 }
 const PRESETS = {
@@ -35,6 +35,7 @@ const tween = (frame: number, a: number, b: number, x: number, y: number) =>
   interpolate(frame, [a, b], [x, y], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
 
 export function ContentGrowthReel({ brand, imageUrls = [] }: ContentGrowthReelProps) {
+  if (!brand) throw new Error('Content Growth Lab requires an explicit project brand')
   const frame = useCurrentFrame()
   const p = PRESETS[brand]
   const family = brand === 'familje-stunden'

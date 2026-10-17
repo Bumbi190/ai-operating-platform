@@ -20,6 +20,7 @@ export function AtlasMiniOrb({
   // Keep this shell component mounted while a full Atlas surface hides it.
   const hidden =
     pathname === '/atlas' ||
+    pathname === '/atlas/rost' ||
     pathname === '/chat' ||
     pathname.startsWith('/chat/')
   function minimize() {

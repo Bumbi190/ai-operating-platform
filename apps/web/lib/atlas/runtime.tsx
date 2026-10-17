@@ -147,12 +147,17 @@ const INACTIVITY_MS = 5 * 60 * 1000     // 5 min → monitoring-tillstånd
 
 interface AtlasRuntimeProviderProps {
   children: React.ReactNode
+  /** Server-selected conversation release; never inferred from URL or storage. */
+  voiceConversationEnabled?: boolean
+  voiceReadOnly?: boolean
   projects?: { id: string; slug: string; name: string; color: string }[]
 }
 
 export function AtlasRuntimeProvider({
   children,
   projects = [],
+  voiceConversationEnabled = false,
+  voiceReadOnly = false,
 }: AtlasRuntimeProviderProps) {
 
   const router   = useRouter()
@@ -522,6 +527,12 @@ export function AtlasRuntimeProvider({
   // ── Publika kontroller ────────────────────────────────────────────────────
 
   function activate() {
+    if (voiceReadOnly) { deactivate(); return }
+    if (voiceConversationEnabled) {
+      deactivate()
+      router.push('/atlas/rost')
+      return
+    }
     captureDriverRef.current?.stop()
     closedRef.current    = false
     cancelRef.current    = false

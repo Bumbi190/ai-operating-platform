@@ -12,6 +12,7 @@ import {
 import { resolveDestination, type DestinationId } from '@/lib/nav/registry'
 import { AtlasConversationProvider } from '@/lib/atlas/conversation/provider'
 import { AtlasRuntimeProvider } from '@/lib/atlas/runtime'
+import { atlasVoiceConversationEntryEnabled } from '@/lib/atlas/voice-pilot/entry'
 import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { resolveOrganizationReadScope } from '@/lib/auth/organization-project-read'
 import { OPERATOR_DISPLAY_NAME } from '@/lib/atlas/identity'
@@ -231,7 +232,9 @@ export default async function PlatformLayout({
 
   return (
     <AtlasConversationProvider>
-    <AtlasRuntimeProvider projects={isCollaborator ? [] : projects}>
+    <AtlasRuntimeProvider projects={isCollaborator ? [] : projects}
+      voiceConversationEnabled={atlasVoiceConversationEntryEnabled(user.email, Boolean(isCollaborator))}
+      voiceReadOnly={Boolean(isCollaborator)}>
     <OperatorModeProvider uiGeneration={uiGeneration}>
       {/* Presentation preferences are applied before first paint.
           Without this the provider would only reach the DOM after hydration, so

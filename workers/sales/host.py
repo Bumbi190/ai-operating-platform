@@ -15,6 +15,9 @@ def safe_path(path):
   if part.is_symlink() or (hasattr(part,'is_junction') and part.is_junction()):raise HostBlocked('REPARSE_POINT_REFUSED')
  return path
 
+def verify_launch_root(configured):
+ if Path(configured).resolve()!=Path(__file__).resolve().parents[2]:raise HostBlocked('LAUNCH_ROOT_MISMATCH')
+
 def verify_installation(root,manifest_hash):
  root=safe_path(Path(root).absolute());path=safe_path(root/'installation-manifest.json')
  if not re.fullmatch(r'[a-f0-9]{64}',manifest_hash):raise HostBlocked('INVALID_MANIFEST_PIN')
@@ -39,8 +42,9 @@ def host_loop(connection,client_factory,adapter_factory,doctor_fn,dispatch_journ
    connection.report_status('ready' if ready else 'blocked')
    if mailbox_cycle is not None:mailbox_cycle(connection)
    if ready and status.get('desiredState')=='running' and status.get('executionPaused') is False:
-    dispatch_journal.save({'inFlight':True})
-    run_once_fn(client_factory(token),adapter_factory())
+    def mark_dispatch(ref,attempt_id):
+     dispatch_journal.save({'inFlight':True,'phase':'model',**{k:ref[k] for k in ['projectId','workerId','jobId','claimId','generation']},'attemptId':attempt_id})
+    run_once_fn(client_factory(token),adapter_factory(),before_dispatch=mark_dispatch)
     dispatch_journal.save({'inFlight':False})
   except Exception:
    # Fixed metadata only; no exception/payload/credential in logs.
@@ -50,7 +54,7 @@ def host_loop(connection,client_factory,adapter_factory,doctor_fn,dispatch_journ
 def main(project):
  base=safe_path(Path(os.environ['LOCALAPPDATA'])/'OmniraSales'/'connections');config=json.loads(safe_path(base/(project+'.json')).read_text(encoding='utf-8'))
  if config.get('projectId')!=project:raise HostBlocked('PROJECT_MISMATCH')
- root=Path(config['installationRoot']);verify=lambda:verify_installation(root,config['manifestSha256'])
+ root=Path(config['installationRoot']);verify_launch_root(root);verify=lambda:verify_installation(root,config['manifestSha256'])
  verify()
  state=base/project;state.mkdir(parents=True,exist_ok=True);safe_path(state)
  if config.get('transport')=='vercel_preview':

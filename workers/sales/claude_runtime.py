@@ -64,6 +64,12 @@ def doctor():
         if not version.startswith(EXPECTED_VERSION+' '):raise RuntimeRefused('CLI_VERSION_UNVERIFIED')
         for flag in ['--safe-mode','--tools','--strict-mcp-config','--no-session-persistence','--permission-prompts']:
             if flag not in helptext:raise RuntimeRefused('CLI_SURFACE_UNVERIFIED')
+        # Non-inference account preflight: retain only booleans/provider identity.
+        with tempfile.TemporaryDirectory(prefix='omnira-sales-auth-') as directory:
+            auth=subprocess.run([executable,'auth','status','--json'],cwd=directory,env=env,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True,timeout=15)
+        if auth.returncode!=0 or len(auth.stdout.encode('utf-8'))>16384:raise RuntimeRefused('CLAUDE_AUTH_UNAVAILABLE')
+        account=json.loads(auth.stdout)
+        if account.get('loggedIn') is not True or account.get('authMethod')!='claude.ai' or account.get('apiProvider')!='firstParty':raise RuntimeRefused('CLAUDE_AUTH_REQUIRED')
         return {'ready':True,'version':EXPECTED_VERSION,'executable':executable,'sendingEnabled':False}
     except Exception as e:return {'ready':False,'reason':str(e) if isinstance(e,RuntimeRefused) else 'CLI_UNAVAILABLE'}
 class SafeClaudeTextRuntime:

@@ -59,7 +59,7 @@ class ManagedConnection:
   try:
    with self.journal.lock():return self._ensure(now)
   except JournalError:raise ConnectionUnavailable('ALREADY_RUNNING') from None
- def _ensure(self,now):
+ def _ensure(self,now,recovered_expired=False):
   s=self._state();manager=self._adopt(s)
   status=self._post(manager,'poll')
   if s.get('cleanupRef'):
@@ -75,10 +75,14 @@ class ManagedConnection:
    pending={'rotationId':str(uuid.uuid4()),'newTokenHash':digest(token),'expectedGeneration':s['generation'],'credentialRef':ref}
    s['pending']=pending;self.journal.save(s)
   receipt=self._post(manager,'rotate',**{k:pending[k] for k in ['rotationId','newTokenHash','expectedGeneration']})
-  if receipt.get('generation')!=pending['expectedGeneration']+1 or timestamp(receipt.get('expiresAt'))<=now:raise ConnectionUnavailable('INVALID_RECEIPT')
+  if receipt.get('generation')!=pending['expectedGeneration']+1:raise ConnectionUnavailable('INVALID_RECEIPT')
+  expiry=timestamp(receipt.get('expiresAt'))
   previous=s['activeRef'];s.update(activeRef=pending['credentialRef'],generation=receipt['generation'],expiresAt=receipt['expiresAt'],pending=None,cleanupRef=previous)
   self.journal.save(s)
   self.store.delete(previous);s.pop('cleanupRef');self.journal.save(s)
+  if expiry<=now:
+   if recovered_expired:raise ConnectionUnavailable('HOST_CLOCK_MISMATCH')
+   return self._ensure(now,recovered_expired=True)
   return token
  def poll_status(self):
   try:

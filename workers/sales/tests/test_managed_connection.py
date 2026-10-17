@@ -13,7 +13,7 @@ class Store:
   return self.values[name]
  def delete(self,name):self.deleted.append(name);self.values.pop(name,None)
 class Server:
- def __init__(self):self.manager=None;self.generation=1;self.receipts={};self.dispatched=[];self.expiry=(NOW+timedelta(hours=1)).isoformat();self.lost=0;self.revoked=False;self.paused=False
+ def __init__(self):self.now=NOW;self.manager=None;self.generation=1;self.receipts={};self.dispatched=[];self.expiry=(NOW+timedelta(hours=1)).isoformat();self.lost=0;self.revoked=False;self.paused=False
  def factory(self,origin,token,purpose):
   parent=self
   class Client:
@@ -32,7 +32,7 @@ class Server:
    rid=v['rotationId']
    if rid not in self.receipts:
     if v['expectedGeneration']!=self.generation:raise ConnectionUnavailable('FENCED')
-    self.generation+=1;self.expiry=(NOW+timedelta(hours=24)).isoformat();self.receipts[rid]={'generation':self.generation,'expiresAt':self.expiry}
+    self.generation+=1;self.expiry=(self.now+timedelta(hours=24)).isoformat();self.receipts[rid]={'generation':self.generation,'expiresAt':self.expiry}
    if self.lost:self.lost-=1;raise OSError('LOST_REPLY')
    return self.receipts[rid]
 class ManagedTests(unittest.TestCase):
@@ -57,6 +57,12 @@ class ManagedTests(unittest.TestCase):
   real.save=crash
   with self.assertRaises(OSError):ManagedConnection(self.config,self.store,real,self.server.factory).ensure_worker_token(NOW)
   self.assertEqual(self.server.generation,2);self.connection().ensure_worker_token(NOW);self.assertEqual(self.server.generation,2)
+ def test_expired_lost_receipt_is_acknowledged_then_renewed(self):
+  self.server.lost=3
+  with self.assertRaises(ConnectionUnavailable):self.connection().ensure_worker_token(NOW)
+  previous=json.loads(self.path.read_text())['pending']['credentialRef'];late=NOW+timedelta(hours=25);self.server.now=late
+  token=self.connection().ensure_worker_token(late)
+  self.assertEqual(self.server.generation,3);self.assertNotIn(previous,self.store.values);self.assertIsNone(json.loads(self.path.read_text())['pending']);self.assertEqual(token,self.store.read(json.loads(self.path.read_text())['activeRef']))
  def test_missing_staged_secret_stops_without_new_rotation(self):
   self.server.lost=3
   with self.assertRaises(ConnectionUnavailable):self.connection().ensure_worker_token(NOW)

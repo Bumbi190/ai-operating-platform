@@ -2,7 +2,7 @@ import threading
 import uuid
 from datetime import datetime,timezone
 from .research import fetch_contact_homepage,ResearchError
-def run_once(client,adapter):
+def run_once(client,adapter,before_dispatch=None):
     claim=client.post('claim');ref=claim.get('ref')
     if not ref:return False
     stop=threading.Event();heartbeat_done=threading.Event()
@@ -25,6 +25,7 @@ def run_once(client,adapter):
             sources=[{'id':receipt['evidenceId'],**receipt['evidence']}] if receipt.get('evidenceId') and receipt.get('evidence') else []
             permit=client.post('reserve_attempt',**ref,contactId=contact['id'],attemptId=str(uuid.uuid4()))
             if datetime.fromisoformat(permit['dispatchBefore'].replace('Z','+00:00'))<=datetime.now(timezone.utc):raise ValueError('PERMIT_EXPIRED')
+            if before_dispatch is not None:before_dispatch(ref,permit['attemptId'])
             draft=adapter.prepare(contact,offer,sources,permit,stop)
             if receipt.get('question') and receipt['question'] not in draft['questions']:draft['questions'].append(receipt['question'])
             drafts.append(draft)

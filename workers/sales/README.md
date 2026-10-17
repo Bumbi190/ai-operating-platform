@@ -4,7 +4,7 @@ This worker prepares Swedish drafts for an explicitly selected Omnira project. A
 
 ## Current activation state
 
-The feature defaults off. Building this branch does not install an automatic background service, connect Strato, enroll a worker or run Claude. `doctor` verifies the installed CLI version and required flags, **not** an authenticated inference or subscription entitlement. A synthetic inference must pass before using real businesses. Parts B (Strato and durable inbox) and C (version-bound sending) require separate implementation plans.
+The feature defaults off. Building this branch does not install an automatic background service, connect Strato, enroll a worker or run Claude. `doctor` verifies the installed CLI version/flags and a bounded, non-inference first-party authentication status. It does not prove current model quota or subscription entitlement. A synthetic inference must pass before using real businesses. Parts B (Strato and durable inbox) and C (version-bound sending) require separate implementation plans.
 
 ## Requirements and setup
 

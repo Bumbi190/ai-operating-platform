@@ -1,7 +1,7 @@
 # Atlas: verifierad testdata i Handlarbörsen
 
 Datum: 2026-10-17
-Status: Förslag för ägarens granskning. Ingen produktkod, aktivering eller datarensning ingår i denna dokumentändring.
+Status: Godkänd av André 2026-10-17 med förtydligandet nedan om två riktiga bolag. Genomförandeplanen granskas separat före kodning. Ingen produktkod, aktivering eller datarensning ingår i denna dokumentändring.
 
 ## Avsikt och första leverans
 
@@ -31,9 +31,20 @@ Undersökta referenser: Omnira `origin/main` f6f016c631d56ba6fce23afdc20e85f3930
 
 ”Ta bort” betyder i första versionen att verifierade testorganisationer och deras verifierade testobjekt tas ur aktiva produktflöden och produktionsstatistik, medan originaldata och revision finns kvar för återställning. UI och Atlas ska säga ”testdata undanlagd”, inte ”permanent raderad”. Fysisk radering av data, Auth-användare eller Storage-objekt är en senare, separat beslutad funktion.
 
+## Bekräftat riktiga bolag som ska skyddas
+
+André bekräftade den 17 oktober kl. 17:07 svensk tid att följande är riktiga bolag och ska behållas:
+
+| Organisation i Handlarbörsen | Exakt organisations-ID | Ägarens uppgift |
+|---|---|---|
+| familje-stunden AB | `23b45965-71f8-4e95-a4eb-32872234664d` | Andrés bolag |
+| Bromölla kylteknik | `d679116a-fc8f-4f80-85c5-1dbecfff8257` | Oscars bolag |
+
+Dessa ID:n ska ha skyddet `real` före någon rensning och ska avvisas även om ett testpaket eller en felaktig registerklassning anger dem. Skyddet följer ID:t även om företagsnamnet ändras. Deras konton, medlemskap och data ingår inte i denna rensning. Eventuella specifika testannonser inom ett riktigt bolag kräver ett eget, separat avgränsat uppdrag. Övriga åtta poster är fortsatt oklassade tills de verifierats; detta godkännande gör dem inte automatiskt till testdata.
+
 ## Klassificering och mandat
 
-Handlarbörsen äger ett privat register med organisationens exakta ID, klassning `unknown | real | verified_test`, underlag, klassande plattformsadministratör, tidpunkt och revision. `unknown` är standard för alla befintliga poster; inga tio poster förklassas. `real` och `unknown` är blockerade för rensning. Användarredigerad profilmetadata, namn, e-postmönster och språkmodellens slutsats ger ingen behörighet.
+Handlarbörsen äger ett privat register med organisationens exakta ID, klassning `unknown | real | verified_test`, underlag, klassande plattformsadministratör, tidpunkt och revision. `unknown` är standard för övriga befintliga poster; de två uttryckligen skyddade bolagen får `real`, och ingen post förklassas till testdata. `real` och `unknown` är blockerade för rensning. Användarredigerad profilmetadata, namn, e-postmönster och språkmodellens slutsats ger ingen behörighet.
 
 Ägaren granskar och klassar exakta poster i ett separat administratörssteg. En verklig organisation som bara använts vid test ska vara `real`; dess specifika testannonser kräver ett separat avgränsat flöde och ingår inte i organisationsrensningen. Atlas får inte ändra klassningen som ett led i sin egen rensning. Gemensamma användare, verkliga motparter och plattformsadministratörens identitet ska behållas.
 

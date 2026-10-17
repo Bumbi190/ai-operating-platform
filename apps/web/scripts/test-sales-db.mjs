@@ -6,6 +6,7 @@ function docker(args,input){const r=spawnSync('docker',args,{input,encoding:'utf
 const context=docker(['context','inspect','--format','{{.Endpoints.docker.Host}}']).trim()
 if(!/^(npipe:\/\/|unix:\/\/)/.test(context))throw Error('Remote Docker refused')
 if(docker(['inspect','--format','{{.Config.Image}}',container]).trim()!=='postgres:16')throw Error('Unexpected fixture container')
+if(docker(['inspect','--format','{{index .Config.Labels "com.omnira.testplan"}}',container]).trim()!=='atlas-sales-pilot-20261017')throw Error('Fixture ownership label missing')
 const db='sales_'+Date.now();docker(['exec',container,'createdb','-U','postgres',db])
 const sql=s=>docker(['exec','-i',container,'psql','-X','-q','-v','ON_ERROR_STOP=1','-U','postgres','-d',db],s)
 try{
@@ -21,6 +22,12 @@ try{
  insert into projects values('10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001','handlarborsen',false),('10000000-0000-4000-8000-000000000002','20000000-0000-4000-8000-000000000002','other',false);
  insert into conversations values('50000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001');`)
  const source=readFileSync(resolve(root,'apps/web/supabase/migrations/20260903120000_durable_cancellation_reaper.sql'),'utf8'),start=source.indexOf('create or replace function public.resolve_approval('),end=source.indexOf('$fn$;',start)+6
+ sql('alter table runs add column idempotency_key text unique, add column workflow_instance_id uuid, add column workflow_def_hash text, add column workflow_from_state text, add column action_kind text, add column action_class text, add column target_version_hash text, add column authorization_id uuid, add column attempt_group uuid, add column authorized_at timestamptz;')
+ for(const [file,name] of [['20260830_workflow_action_binding.sql','runs_idempotency_key_sha256'],['20260830_readonly_action_authorization.sql','runs_action_binding_complete']]){
+  const canonical=readFileSync(resolve(root,'apps/web/supabase/migrations',file),'utf8'),from=canonical.indexOf('alter table public.runs add constraint '+name+' check ('),until=canonical.indexOf(');',from)+2
+  if(from<0||until<from)throw Error('Canonical constraint missing: '+name)
+  sql(canonical.slice(from,until))
+ }
  sql(source.slice(start,end))
  const migrations=resolve(root,'apps/web/supabase/migrations'),file=readdirSync(migrations).find(x=>x.endsWith('_atlas_sales_pilot.sql'))
  if(file)sql(readFileSync(resolve(migrations,file),'utf8'))
@@ -29,4 +36,6 @@ try{
  const claim=()=>new Promise((resolve,reject)=>{const p=spawn('docker',['exec','-i',container,'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-U','postgres','-d',db]);let out='',err='';p.stdout.on('data',x=>out+=x);p.stderr.on('data',x=>err+=x);p.on('error',reject);p.on('close',code=>code===0?resolve(JSON.parse(out.trim())):reject(Error(err)));p.stdin.end("select sales_claim_job(repeat('b',64),'{}');")})
  const claims=await Promise.all([claim(),claim()]);if(claims.filter(c=>c.ref!==null).length!==1)throw Error('TEST FAILED: concurrent claims did not produce one owner')
  console.log('PASS: real PostgreSQL sales transactions, concurrent claim and canonical approval integration')
+ const integration=spawnSync(process.execPath,[resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/qa/sales-integration.test.ts','--maxWorkers=1','--minWorkers=1'],{cwd:resolve(root,'apps/web'),env:{...process.env,SALES_FIXTURE_DATABASE:db},encoding:'utf8',maxBuffer:2e6})
+ console.log(integration.stdout);if(integration.status!==0)throw Error(integration.stderr||'Sales slice integration failed')
 }finally{docker(['exec',container,'dropdb','-U','postgres',db])}

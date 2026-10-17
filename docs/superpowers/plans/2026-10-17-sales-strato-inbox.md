@@ -74,13 +74,13 @@ Skapa sammanhållna `apps/web/lib/sales/inbox/{types,validate,store,api,host-api
 
 **Interfaces:** `read_inbox_batch(config,cursor,selected_messages,password,*,client_factory=None)->InboxBatchData`; `decode_text_part(mime_headers,encoded_bytes)->{text,textState}`. Credentials används bara i minnet. Returnera innehåll till anroparen, aldrig stdout.
 
-- [ ] Skriv RED för Seen/telefonläsning, UID-luckor, expunge mellan search/fetch, fel UIDVALIDITY-typ, capability str, IMAP-serverns faktiska bytes/tuple-svar och N:* som innehåller för låg UID. Använd riktig imaplib över en syntetisk lokal server, inte bara en dubbel av bibliotekets objekt.
-- [ ] Kör `python -m unittest workers.sales.tests.test_inbox_reader workers.sales.tests.test_inbox_mime -v`; verifiera RED.
-- [ ] Implementera verifierad TLS/PLAIN och read-only INBOX. Ett claim innehåller cursor och serverns uttryckliga textbegäranden. En synk har IMAP-totaldeadline 30 s, connect/auth högst 10 s vardera. UIDNEXT avgränsar ett stabilt övre tak; UID-search i fönster om högst 500 UID och explicit numerisk filtrering mot intervallet. Processa högst 20 träffar per batch.
-- [ ] Sök från kalenderdagen före since och filtrera INTERNALDATE mot exakt UTC-gräns. Flytta throughUid endast över täckta resultat/intervall; bevara återstående backlog för nästa batch. Okända mejl får endast bounded headers. Utelämnade/försvunna objekt får en beständig terminal status, inte ett påhittat tomt mejl.
-- [ ] Hämta BODYSTRUCTURE och endast uttryckligen vald text/plain-del, annars vald text/html-del som omvandlas till ren text med HTMLParser. Hämta aldrig bilagedelar. MIME-djup högst 8, högst 50 delar, högst 64 KiB kodad textdel, högst 8 KiB dekodad UTF-8. Överskridande/misslyckad tolkning ger truncated/too_large/unsupported och synlig granskningsfråga.
-- [ ] Sätt total JSON-payloadgräns 50 KiB före överföring. Dela batchen tidigare om fler texter inte ryms; trunkera inte tyst. HTML/script/remote image/länk körs eller hämtas aldrig.
-- [ ] Kör GREEN inklusive exakt kommandojournal från socketfixturen: ingen STORE/APPEND/EXPUNGE/SMTP och ingen ändring av Seen. Commit `feat(sales): read bounded IMAP inbox data without changing flags`.
+- [x] Skriv RED för Seen/telefonläsning, UID-luckor, expunge mellan search/fetch, fel UIDVALIDITY-typ, capability str, IMAP-serverns faktiska bytes/tuple-svar och N:* som innehåller för låg UID. Använd riktig imaplib över en syntetisk lokal server, inte bara en dubbel av bibliotekets objekt.
+- [x] Kör `python -m unittest workers.sales.tests.test_inbox_reader workers.sales.tests.test_inbox_mime -v`; verifiera RED.
+- [x] Implementera verifierad TLS/PLAIN och read-only INBOX. Ett claim innehåller cursor och serverns uttryckliga textbegäranden. En synk har IMAP-totaldeadline 30 s, connect/auth högst 10 s vardera. UIDNEXT avgränsar ett stabilt övre tak; UID-search i fönster om högst 500 UID och explicit numerisk filtrering mot intervallet. Processa högst 20 träffar per batch.
+- [x] Sök från kalenderdagen före since och filtrera INTERNALDATE mot exakt UTC-gräns. Flytta throughUid endast över täckta resultat/intervall; bevara återstående backlog för nästa batch. Okända mejl får endast bounded headers. Utelämnade/försvunna objekt får en beständig terminal status, inte ett påhittat tomt mejl.
+- [x] Hämta BODYSTRUCTURE och endast uttryckligen vald text/plain-del, annars vald text/html-del som omvandlas till ren text med HTMLParser. Hämta aldrig bilagedelar. MIME-djup högst 8, högst 50 delar, högst 64 KiB kodad textdel, högst 8 KiB dekodad UTF-8. Överskridande/misslyckad tolkning ger truncated/too_large/unsupported och synlig granskningsfråga.
+- [x] Sätt total JSON-payloadgräns 50 KiB före överföring. Dela batchen tidigare om fler texter inte ryms; trunkera inte tyst. HTML/script/remote image/länk körs eller hämtas aldrig.
+- [x] Kör GREEN inklusive exakt kommandojournal från socketfixturen: ingen STORE/APPEND/EXPUNGE/SMTP och ingen ändring av Seen. Commit `feat(sales): read bounded IMAP inbox data without changing flags`.
 
 ### Task3: Hostcykel, återhämtning och smal transport
 

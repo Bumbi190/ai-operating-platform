@@ -2,9 +2,12 @@
 import fs from 'node:fs';import cp from 'node:child_process';import path from 'node:path';import crypto from 'node:crypto';import {fileURLToPath} from 'node:url';import assert from 'node:assert/strict';
 const root=fileURLToPath(new URL('../../../',import.meta.url));
 const name='omnira-hb-watch-runs-test-'+process.pid+'-'+Date.now(),image='public.ecr.aws/supabase/postgres:17.6.1.095';
-const sourcePath=path.join(root,'docs/sql/handlarborsen_watch_runs_p1_proposed.sql');
+const canonicalDir=path.join(root,'apps/web/supabase/migrations');
+const canonicalFiles=fs.readdirSync(canonicalDir).filter(name=>name.endsWith('_handlarborsen_watch_runs_v1.sql'));
+assert(canonicalFiles.length<=1,'duplicate canonical journal migration');
+const sourcePath=canonicalFiles.length?path.join(canonicalDir,canonicalFiles[0]):path.join(root,'docs/sql/handlarborsen_watch_runs_p1_proposed.sql');
 const source=fs.existsSync(sourcePath)?fs.readFileSync(sourcePath,'utf8'):null;
-const receipt={image,productionAccess:false,providerCalls:0,checks:[],sourceSha256:source?crypto.createHash('sha256').update(source.replace(/\r\n/g,'\n')).digest('hex'):null};
+const receipt={image,sourcePath:path.relative(root,sourcePath).split(path.sep).join('/'),productionAccess:false,providerCalls:0,checks:[],sourceSha256:source?crypto.createHash('sha256').update(source.replace(/\r\n/g,'\n')).digest('hex'):null};
 function docker(args,input,allowFailure=false){const result=cp.spawnSync('docker',args,{input,encoding:'utf8',timeout:30000,windowsHide:true});if(result.status!==0&&!allowFailure)throw Error((result.stderr||result.error?.message||result.stdout||'docker failed').slice(-3500));return result;}
 const args=['exec','-i',name,'psql','-h','/tmp','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-Atq'];
 const sql=(query,allowFailure=false)=>docker(args,query,allowFailure);

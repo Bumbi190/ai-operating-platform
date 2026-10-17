@@ -1,5 +1,8 @@
 # Handlarbörsen weekly watch journal P1 — schema approval package
 
+## Later schema status
+The reviewed journal schema was installed as ledger20261017200436 after continuation of the concrete schema step. Canonical SQL SHA256687d8cb87f8edf04f15618ed446d14fcae9dd9ebbf979f46b171429b7f7e9691; only its first comment differs from this proposal. See docs/handlarborsen-watch-journal-schema-20261017.md and the scoped production receipt for current evidence. The original approval package below is historical. Execution remains disabled.
+
 ## Scope and state
 Code is disabled unless HANDLARBORSEN_WATCH_RUN_JOURNAL_ENABLED is exactly true. No route, executor, schedule, provider call or notification is added. This package does not approve activation or source access.
 

@@ -25,6 +25,17 @@ export interface PinnedContentVoice {
   readonly processingProfile?: string
 }
 
+/**
+ * Rejected by the owner on 2026-10-17 after listening to the preview.
+ * Despite the ElevenLabs display name and metadata, this is NOT Nova.
+ * Keep this denylist explicit even if a future pin is accidentally added.
+ */
+export const REJECTED_NOVA_VOICE_IDS = Object.freeze(['I0uKCr8dyBq1Ouru7CWl'] as const)
+
+export function isRejectedNovaVoiceId(voiceId: string): boolean {
+  return REJECTED_NOVA_VOICE_IDS.some((id) => id === voiceId)
+}
+
 const PINS: Readonly<Record<string, PinnedContentVoice>> = Object.freeze({
   'the-prompt:news-narrator': {
     project: 'the-prompt', role: 'news-narrator', name: 'Victoria',
@@ -77,6 +88,9 @@ export function assertPinnedContentVoice(
   project: ContentVoiceProject, role: ContentVoiceRole,
   voiceId: string, modelId: string,
 ): PinnedContentVoice {
+  if (project === 'familje-stunden' && role === 'nova-dialogue' && isRejectedNovaVoiceId(voiceId)) {
+    throw new Error('VOICE_ID_REJECTED_BY_OWNER: This preview was explicitly rejected as NOT Nova')
+  }
   const pin = requirePinnedContentVoice(project, role)
   if (pin.voiceId !== voiceId || pin.modelId !== modelId) {
     throw new Error('VOICE_LOCK_MISMATCH: ' + project + '/' + role)

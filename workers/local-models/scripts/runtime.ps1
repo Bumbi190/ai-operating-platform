@@ -17,8 +17,10 @@ if ($Action -eq 'Prepare') {
   $checksums=Invoke-RestMethod -Uri ('https://github.com/ollama/ollama/releases/download/v'+$version+'/sha256sum.txt') -TimeoutSec 30
   Assert-ReleaseChecksumText -Text $checksums -ExpectedSha256 $expectedSha
   if (!(Test-Path $zip)) {
-    & curl.exe --fail --location --retry 0 --output $zip ('https://github.com/ollama/ollama/releases/download/v'+$version+'/ollama-windows-amd64.zip')
-    if ($LASTEXITCODE -ne 0) { throw 'RUNTIME_DOWNLOAD_FAILED' }
+    $partial=$zip+'.part'
+    Invoke-CheckedDownload -Destination $partial -Source ('https://github.com/ollama/ollama/releases/download/v'+$version+'/ollama-windows-amd64.zip')
+    Assert-ArtifactHash $partial $expectedSha
+    Move-Item -LiteralPath $partial -Destination $zip
   }
   Assert-ArtifactHash $zip $expectedSha
   if (!(Test-Path $exe)) { Expand-Archive -LiteralPath $zip -DestinationPath $installDir }

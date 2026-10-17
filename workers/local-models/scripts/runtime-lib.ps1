@@ -1,4 +1,8 @@
 $ErrorActionPreference = 'Stop'
+function Invoke-CheckedDownload {
+  param([string]$Source,[string]$Destination)
+  try { & curl.exe --silent --show-error --fail --location --retry 0 --output $Destination $Source; if ($LASTEXITCODE -ne 0) { throw 'RUNTIME_DOWNLOAD_FAILED' } } catch { throw 'RUNTIME_DOWNLOAD_FAILED' }
+}
 function Assert-ReleaseChecksumText {
   param([string]$Text,[string]$ExpectedSha256)
   $pattern='(?m)^'+[regex]::Escape($ExpectedSha256)+'\s+\*?(?:\./)?ollama-windows-amd64\.zip\s*$'

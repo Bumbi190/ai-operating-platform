@@ -1,5 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {execFileSync,spawnSync} from 'node:child_process';import {fileURLToPath} from 'node:url';import {writeFile,readFile} from 'node:fs/promises';import path from 'node:path';
 import {temp,fixture} from '../test-utils.mjs';
+import {promisify} from 'node:util';import {execFile} from 'node:child_process';
 const windows=process.platform==='win32';const dir=path.dirname(fileURLToPath(import.meta.url));
 const ps=(script)=>spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{encoding:'utf8'});
 const quote=s=>"'"+s.replaceAll("'","''")+"'";
@@ -12,6 +13,10 @@ test('wrong artifact SHA is rejected without executing or modifying artifact',{s
 test('official checksum parser accepts ./ prefix but rejects a changed artifact hash',{skip:!windows},()=>{
   const good='5134ce7e3bc8e94d0494721c799ec293b429450d0c52461b0ee3647dd3bb4bb7';
   const r=ps(`. ${quote(path.join(dir,'runtime-lib.ps1'))}; Assert-ReleaseChecksumText -Text '${good}  ./ollama-windows-amd64.zip' -ExpectedSha256 '${good}'; try { Assert-ReleaseChecksumText -Text '${'0'.repeat(64)}  ./ollama-windows-amd64.zip' -ExpectedSha256 '${good}'; exit 2 } catch { if ($_.Exception.Message -eq 'RELEASE_CHECKSUM_CHANGED') { exit 0 }; exit 3 }`);assert.equal(r.status,0,r.stderr);
+});
+test('artifact download succeeds under Stop error policy without progress stderr',{skip:!windows},async t=>{
+  const d=await temp(t);const file=path.join(d,'download.part');const port=await fixture(t,(_,res)=>res.end('download-fixture'));
+  await promisify(execFile)('powershell.exe',['-NoProfile','-NonInteractive','-Command',`. ${quote(path.join(dir,'runtime-lib.ps1'))}; Invoke-CheckedDownload -Source 'http://127.0.0.1:${port}/artifact' -Destination ${quote(file)}`],{timeout:10000});assert.equal(await readFile(file,'utf8'),'download-fixture');
 });
 test('Start refuses an occupied local port before launching a process',{skip:!windows},async t=>{
   // Independent listener on the real fixed port is created only if the port is free.

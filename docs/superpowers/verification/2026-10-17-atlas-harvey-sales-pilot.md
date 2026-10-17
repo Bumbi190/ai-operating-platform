@@ -78,3 +78,9 @@ The exact-base full run found 401 failed, 13,066 passed and 1,326 skipped tests 
 - Job summary is not recalculated when an operator revision adds/resolves the final question; the exact current draft and approval are still shown.
 - Newly enrolled worker metadata requires a manual refresh before appearing in the revoke list.
 - Some modules/functions need conventional formatting for easier future maintenance.
+
+## Reviewable delivery
+
+Draft PR: https://github.com/Bumbi190/ai-operating-platform/pull/386 . GitHub reports it conflict-free against current main. Main advanced separately with persistent-voice changes after this branch's test base; the committed baseline comparison names the exact tested base.
+
+The automatic Vercel preview build `dpl_6imHEAHGj4KvTzbeFC28yoLLeUXn` failed at the existing migration guard because `atlas_sales_pilot` is absent from the production migration ledger. The guard was not bypassed, no production migration was applied and no successful preview/production activation is claimed. This is an explicit release prerequisite. The disposable labeled Docker fixture and baseline checkout were removed; the implementation worktree remains available for PR feedback.

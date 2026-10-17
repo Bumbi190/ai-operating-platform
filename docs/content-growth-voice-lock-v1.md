@@ -20,9 +20,24 @@ Pin: `familje-stunden:pling-dialogue` → `vhPZICLLz0UIRNLnUe0u` + `eleven_v4`. 
 
 The December instruction audio receipt also includes a documented brightening audio-processing chain (rubberband tempo/pitch/formant, EQ and limiter). Code records a required profile identifier `pling-alternative-b-december-2026`. Do not assume matching raw TTS without applying and verifying the original processing settings, or merely passing a matching profile name. The profile check is **metadata-only today** and must be paired with verified DSP execution before production rollout.
 
+## Nova — owner-approved audio reference (2026-10-17)
+
+The owner has **personally listened to and approved** the exact existing file `nova_final.wav` from the *Känslomånaden V2* September 2026 social-video production. This file is now the **canonical reference for the audible character Nova**.
+
+- Relative workspace path (display-normalized): `Månads Teman 2026/Känslomånaden-V2/Social-content/Final/källfiler-ljud/nova_final.wav`
+- SHA-256 (measured on the original WAV, not inferred): `17326af9e0ae82fab4749b5dcd52f59457ae069b8f1044c9659776af0e42b66d`
+- Original size: `483918` bytes
+- Measured duration: 5.040 seconds, mono 48,000 Hz, PCM signed 16-bit
+- Also located in the approved social production build under `Final/FINAL-v3-bygge/audio/nova_final.wav`, but byte equality of that copy has not been asserted here
+- The September social master file was marked editor-approved on 2026-09-17; the owner confirmed this **specific voice sample** again on 2026-10-17
+
+**Strict distinction:** WAV identity and audible approval do **not** reveal the source ElevenLabs voice ID or original voice model/settings. The MP3 named `Nova-röst-1.mp3` in the same social folder has a matching reported duration of 5.04s, but its exact relationship to the approved WAV has not yet been proven. We must not ascribe a provider identity to that MP3 by filename alone.
+
+The previously suggested ElevenLabs ID `I0uKCr8dyBq1Ouru7CWl` was **rejected** by the owner as the wrong, English-sounding voice. Do not use it. `nova-dialogue` TTS **remains blocked** until a trustworthy original generation receipt (voice ID, model, settings) is matched to the approved reference. Record the source audio hash without uploading or changing the approved WAV.
+
 ## Saved ElevenLabs workspace identities: Nova still NOT proven as canonical dialogue voice
 
-- **REJECTED BY OWNER 2026-10-17 — DO NOT USE:** `I0uKCr8dyBq1Ouru7CWl`, shown under the name Nova. The user listened and confirmed that the sample was not Nova and was in English. Metadata saying Swedish/cloned is not evidence of correct character identity. This ID is now denied for Nova even if renamed or surfaced again. The true approved Nova dialogue voice ID remains **unknown** pending a verifiable audio or generation receipt.
+- **REJECTED BY OWNER 2026-10-17 — DO NOT USE (different from approved WAV):** `I0uKCr8dyBq1Ouru7CWl`, shown under the name Nova. The user listened and confirmed that the sample was not Nova and was in English. Metadata saying Swedish/cloned is not evidence of correct character identity. This ID is now denied for Nova even if renamed or surfaced again. The true approved Nova dialogue voice ID remains **unknown** pending a verifiable audio or generation receipt.
 - Pling: cloned Swedish voice iS3S91gyCtjX6pvnxlEc also exists but is NOT the approved Alternative B. Do not use it as a backup. The confirmed official Pling dialogue ID is vhPZICLLz0UIRNLnUe0u.
 - Many unrelated public voices are named Victoria, Nova and Pling. Names alone cannot establish identity.
 - Sanna is an approved November/December narrator, not the Nova or Pling character voice.

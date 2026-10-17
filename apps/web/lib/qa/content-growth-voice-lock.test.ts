@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BRAND_MODEL, VICTORIA_VOICE_ID } from '../voice/config'
-import { assertPinnedContentVoice, assertPinnedContentVoiceForRender, isRejectedNovaVoiceId, requirePinnedContentVoice } from '../content-growth/voice-lock'
+import { assertApprovedNovaAudioSha256, NOVA_APPROVED_AUDIO_REFERENCE, assertPinnedContentVoice, assertPinnedContentVoiceForRender, isRejectedNovaVoiceId, requirePinnedContentVoice } from '../content-growth/voice-lock'
 
 describe('Content Growth pinned ElevenLabs voices', () => {
   it('uses The Prompt existing Victoria config', () => {
@@ -54,6 +54,18 @@ describe('Content Growth pinned ElevenLabs voices', () => {
     expect(isRejectedNovaVoiceId('vhPZICLLz0UIRNLnUe0u')).toBe(false)
     expect(() => assertPinnedContentVoice('familje-stunden','nova-dialogue','I0uKCr8dyBq1Ouru7CWl','eleven_v4')).toThrow('VOICE_ID_REJECTED_BY_OWNER')
     expect(() => requirePinnedContentVoice('familje-stunden','nova-dialogue')).toThrow('VOICE_LOCK_UNVERIFIED')
+  })
+
+  it('pins the owner-approved Nova WAV hash while keeping ElevenLabs dialogue blocked', () => {
+    expect(NOVA_APPROVED_AUDIO_REFERENCE.ownerApprovedOn).toBe('2026-10-17')
+    expect(NOVA_APPROVED_AUDIO_REFERENCE.sha256).toBe('17326af9e0ae82fab4749b5dcd52f59457ae069b8f1044c9659776af0e42b66d')
+    expect(NOVA_APPROVED_AUDIO_REFERENCE.bytes).toBe(483918)
+    expect(NOVA_APPROVED_AUDIO_REFERENCE.durationMs).toBe(5040)
+    expect(NOVA_APPROVED_AUDIO_REFERENCE.elevenLabsVoiceId).toBeNull()
+    expect(assertApprovedNovaAudioSha256(NOVA_APPROVED_AUDIO_REFERENCE.sha256)).toEqual(NOVA_APPROVED_AUDIO_REFERENCE)
+    expect(() => assertApprovedNovaAudioSha256('0'.repeat(64))).toThrow('NOVA_REFERENCE_MISMATCH')
+    expect(() => requirePinnedContentVoice('familje-stunden','nova-dialogue')).toThrow('VOICE_LOCK_UNVERIFIED')
+    expect(isRejectedNovaVoiceId('I0uKCr8dyBq1Ouru7CWl')).toBe(true)
   })
 
   it('accepts a correctly pinned pair', () => {

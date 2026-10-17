@@ -14,7 +14,7 @@ const durationMs=12000
 const audio=Buffer.from(Array.from({length:800},(_,i)=>i%256))
 const receipt=buildPilotVoiceReceipt(transcript,audio,words,durationMs)
 const timing=Buffer.from(JSON.stringify({words,durationMs}))
-function fixture(){
+function fixture(originUrl=origin){
   let reads=0
   let fromBucket=''
   const blobs:Record<string,Blob>={
@@ -26,7 +26,7 @@ function fixture(){
       from(bucket:string){
         fromBucket=bucket
         return{
-          getPublicUrl(path:string){return {data:{publicUrl:origin+path}}},
+          getPublicUrl(path:string){return {data:{publicUrl:originUrl+path}}},
           async download(path:string){
             reads++
             return{data:blobs[path]??null,error:blobs[path]?null:{message:'not found'}}
@@ -37,7 +37,7 @@ function fixture(){
   }
   const run=(args:{url?:string;timingUrl?:string;receipt?:unknown;projectId?:string;scriptId?:string;text?:string}={})=>
     verifyPilotStoredVoice(db,args.projectId??projectId,args.scriptId??scriptId,
-      args.url??origin+audioPath,args.timingUrl??origin+timingPath,args.text??transcript,
+      args.url??originUrl+audioPath,args.timingUrl??originUrl+timingPath,args.text??transcript,
       args.receipt===undefined?receipt:args.receipt)
   return {db,blobs,run,get reads(){return reads},get fromBucket(){return fromBucket}}
 }
@@ -91,4 +91,22 @@ test('unavailable/missing stored object fails closed',async()=>{
   const f=fixture()
   delete f.blobs[audioPath]
   assert.equal((await f.run()).reason,'storage_unavailable')
+})
+
+test('HTTP only allowed on a specifically opted-in isolated loopback, never a remote host',async()=>{
+  const loop='http://127.0.0.1:56421/storage/v1/object/public/media-assets/'
+  const local=fixture(loop)
+  const prior=process.env.PILOT_STORAGE_TEST_MODE
+  try{
+    delete process.env.PILOT_STORAGE_TEST_MODE
+    assert.equal((await local.run()).reason,'invalid_locator')
+    process.env.PILOT_STORAGE_TEST_MODE='isolated-local'
+    assert.deepEqual(await local.run(),{verified:true,reason:null})
+    const remote=fixture('http://remote.example.net/storage/v1/object/public/media-assets/')
+    assert.equal((await remote.run()).reason,'invalid_locator')
+    assert.equal(remote.reads,0)
+  }finally{
+    if(prior===undefined)delete process.env.PILOT_STORAGE_TEST_MODE
+    else process.env.PILOT_STORAGE_TEST_MODE=prior
+  }
 })

@@ -25,7 +25,11 @@ const denied=(reason:NonNullable<PilotVoiceVerification['reason']>):PilotVoiceVe
 function canonicalUrl(url:string):string|null {
   try{
     const p=new URL(url)
-    if(p.protocol!=='https:'||p.username||p.password||p.hash)return null
+    // Local CLI Storage is HTTP; only explicitly opted-in isolated loopback
+    // tests may use it. Hosted/remote Storage URLs still require HTTPS.
+    const isolatedLoopback=process.env.PILOT_STORAGE_TEST_MODE==='isolated-local' &&
+      p.protocol==='http:'&&['127.0.0.1','localhost'].includes(p.hostname)&&!!p.port
+    if((p.protocol!=='https:'&&!isolatedLoopback)||p.username||p.password||p.hash)return null
     return p.href
   }catch{return null}
 }

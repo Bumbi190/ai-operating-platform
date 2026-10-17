@@ -38,14 +38,42 @@
       "tables": [
         "agent_decisions",
         "ai_cost_snapshots",
-        "memory_refs"
+        "memory_refs",
+        "local_text_cloud_stages",
+        "local_text_cloud_authorizations",
+        "local_text_cloud_reservations",
+        "local_text_incidents",
+        "local_text_human_reviews",
+        "local_text_retention",
+        "local_text_devices",
+        "local_text_admissions",
+        "local_text_jobs",
+        "local_text_selections",
+        "local_text_attempts",
+        "local_text_reviews",
+        "local_text_events",
+        "local_text_request_nonces"
       ],
       "meaning": "Created by a migration but absent from the production catalog at capture time — never applied there, or dropped out-of-band. They are NOT a fresh-deploy hazard: each declares RLS in its own migration, so a rebuild creates them protected. Listed so their absence from the table map is a recorded fact rather than a silent gap, and so the fail-closed rule can distinguish them from a genuinely new unprotected table.",
       "requirement": "Every entry must have RLS declared in the migration corpus.",
       "classes": {
         "agent_decisions": "SERVER_ONLY",
         "ai_cost_snapshots": "SERVER_ONLY",
-        "memory_refs": "SERVER_ONLY"
+        "memory_refs": "SERVER_ONLY",
+        "local_text_cloud_stages": "SERVER_ONLY",
+        "local_text_cloud_authorizations": "SERVER_ONLY",
+        "local_text_cloud_reservations": "SERVER_ONLY",
+        "local_text_incidents": "SERVER_ONLY",
+        "local_text_human_reviews": "SERVER_ONLY",
+        "local_text_retention": "SERVER_ONLY",
+        "local_text_devices": "SERVER_ONLY",
+        "local_text_admissions": "SERVER_ONLY",
+        "local_text_jobs": "TENANT_RLS",
+        "local_text_selections": "SERVER_ONLY",
+        "local_text_attempts": "SERVER_ONLY",
+        "local_text_reviews": "SERVER_ONLY",
+        "local_text_events": "SERVER_ONLY",
+        "local_text_request_nonces": "SERVER_ONLY"
       },
       "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class."
     },
@@ -70,7 +98,8 @@
     "social_launch_note": "The three social_launch rows were observed in production iboepohjwrhtgshrqaol at 2026-10-16T05:45:43Z after applying social_launch_plans_v1 (ledger version 20261016054513; canonical SQL file20261016052226). RLS on, zero policies, no public/anon/authenticated grants. service_role SELECT/INSERT on immutable revisions/decisions and SELECT/INSERT/UPDATE on roots; all six RPC/trigger functions SECURITY INVOKER, client EXECUTE revoked. Empty owned plan read verified, no seeded plan or decision.",
     "social_connections_note": "Observed in production iboepohjwrhtgshrqaol at2026-10-16T07:10:48Z after reviewed social_project_connections_v1 (ledger20261016071026; canonical20261016061728). RLS on, zero policies, no public/anon/authenticated grants; service_role SELECT/INSERT/UPDATE only. All12 social_connection functions SECURITY INVOKER with empty search_path, client EXECUTE revoked and service EXECUTE enabled. Zero intents; existing three legacy bindings retained. Safe owned Familje-Stunden metadata read verified without credentials or provider calls.",
     "social_content_note": "Three social_content tables observed in production iboepohjwrhtgshrqaol after social_content_preparation_v1 was applied on 2026-10-16 (ledger 20261016103411; canonical SQL SHA256 638305f235bc453729bc3fd414faf602a536854342220d8e5ade9e34ce40d967). RLS enabled, zero policies, no anon/authenticated reads and service_role reachability. All six new functions SECURITY INVOKER with empty search_path and client EXECUTE revoked. Scoped three-table observation; older classifications retain their earlier capture dates.",
-    "social_profile_publication_note": "Scoped production observation 2026-10-16 after exact reviewed social_project_profiles_v1 (ledger20261016123853, SHA25632ba235a7a7e3d8ec40fe4e552af84b30441c2048312a883b528b666a7371d74,8764chars) and social_manual_publication_v1 (ledger20261016123902,SHA2567e90994492f3c62493e68cef41f9b515b782204f7beb63ae874a6ba1ee938bf2,16760chars). All four tables RLS ON/zero policies/no anon or authenticated privilege/service SELECT reachability. All nine new functions SECURITY INVOKER, empty search_path, client EXECUTE revoked, service EXECUTE present. Four tables empty; no synthetic approvals or publication evidence seeded. Ledger150/public tables122 observed. Existing The Prompt binding fingerprint unchanged; advisor WARN counts20/7/8/1 unchanged (four expected no-policy INFO entries added). Older classifications/capture date retain their prior scope."
+    "social_profile_publication_note": "Scoped production observation 2026-10-16 after exact reviewed social_project_profiles_v1 (ledger20261016123853, SHA25632ba235a7a7e3d8ec40fe4e552af84b30441c2048312a883b528b666a7371d74,8764chars) and social_manual_publication_v1 (ledger20261016123902,SHA2567e90994492f3c62493e68cef41f9b515b782204f7beb63ae874a6ba1ee938bf2,16760chars). All four tables RLS ON/zero policies/no anon or authenticated privilege/service SELECT reachability. All nine new functions SECURITY INVOKER, empty search_path, client EXECUTE revoked, service EXECUTE present. Four tables empty; no synthetic approvals or publication evidence seeded. Ledger150/public tables122 observed. Existing The Prompt binding fingerprint unchanged; advisor WARN counts20/7/8/1 unchanged (four expected no-policy INFO entries added). Older classifications/capture date retain their prior scope.",
+    "local_text_not_live_note": "Development branch only: atlas_local_text and atlas_local_text_lifecycle have NOT been applied to production. These14 tables are classified under created_not_live from reviewed migration intent and disposable PostgreSQL evidence, not a live catalog claim. All declare RLS; local_text_jobs exposes owner-scoped safe metadata columns under one authenticated SELECT policy (no raw text), other13 tables have no client grant or policy. Private SECURITY INVOKER RPCs use empty search_path and service_role EXECUTE only. Production apply and scoped introspection remain an explicit operator gate."
   },
   "tables": {
     "handlarborsen_competitor_candidates": {

@@ -73,3 +73,18 @@ Startuppgiften använder inloggad nuvarande användare, lägsta privilegier, AtL
 Återställning: återkalla först exakt enhet med normal ägarinloggning i Omnira (`PATCH /api/local-text/devices/<deviceId>`, aktuell projekt/version och action revoke). Detta stoppar ej startade jobb och behåller osäkra försök. Förhandsgranska sedan borttagning och använd `remove-startup.ps1 -Apply` för exakt egen uppgift. Skriptet rapporterar ärligt att serveråterkallelse krävs; det har inga ägarcredentials. Windows-jobbet avslutar bara sina egna processer. Osäkra journaler/lås rensas aldrig automatiskt, och en kvarvarande `stop.request` kräver operatörens bedömning före ny start. Lokal kernel-empty-metadata är bevis för lokal processavslutning, inte ett godkännande att frigöra ett serverjobb.
 
 Loggar är tre filer om högst64KiB med fasta livscykelkoder; råtext och barnprocessernas stdout/stderr sparas inte. Fem krascher på tio minuter pausar och kräver åtgärd. Processägande är inte ett OS-sandbox.
+
+
+### Ny kvalificering för Atlas textflöde
+
+Den äldre `cli.mjs --help` svarar `INVALID_COMMAND_OR_INPUT`; dess enkla `run --candidate` kör inte det nya kvalificeringspaketet. Använd den separata, operatörsstyrda kommandoraden med absoluta sökvägar:
+
+```powershell
+node workers/local-models/qualify-atlas.mjs --config C:\Users\Andre\Projects\Omnira\.worktrees\atlas-local-text-integration-20261017\workers\local-models\.local-runtime\atlas-text-qualification\config.json --output C:\Users\Andre\Projects\Omnira\.worktrees\atlas-local-text-integration-20261017\workers\local-models\.local-runtime\atlas-text-qualification\evidence
+```
+
+Konfigurationen innehåller verifierade runtime-/modell-/drivrutins-/adapterhashar och lokala artefaktsökvägar, inga API-nycklar. Programmet startar/hämtar inga modeller och skriver inga projektadmissioner. Starta först en verifierad egen Ollama-runtime. Hela modellserien håller exklusiv resurslease, verifierar ägande/artefakter vid båda gränser och full GPU-residens före/efter varje generering. Varje svar använder exakt samma bounded infer-adapter som workern. Okänt utfall stoppar serien och bevarar spärr; `seriesStatus` måste vara completed innan något granskas som godkänt.
+
+`sv-atlas-v2.json` har25 syntetiska fall per uppgift. Alla75 källa/svar-par för var och en av tre modeller ska granskas av en separat agent mot exakt rapporthash. Felaktiga/fabricerade/injicerade svar ger aldrig admission. Resultatet gäller bara exakt adapter, modell, mall, schema och konfiguration; gamla pilotgodkännanden överförs inte. Den jämförda ChatML-varianten förbättrade vissa nullvärden men underkändes för alla tillåtna kombinationer; klassificering på9B var bättre med den ursprungliga råmallen. Slutprovet använder den uppmätta råmallen och escapeskydd även för schemaetiketter. Ingen kvalitetsgräns har sänkts. Rapporter i `.local-runtime` är lokala syntetiska prov, inte betalda API-anrop eller produktionsadmission.
+
+Komponentprovet körs separat: `npx playwright test e2e/local-text.spec.ts --config playwright.local-text.config.ts` från `apps/web`. Det använder verkliga komponenter i en isolerad HTTP-fixture med kontrollerade ägarsvar, inte produktionsinloggning. Faktisk CNG/HTTPS/SQL/RTX3060-väg är ett separat opt-in integrationsprov och dokumenteras med sin verkliga status. Ny betald molnroll, installation, projektadmission och omstart kräver den konkreta driftgranskningen; dessa kontroller aktiverar inget.

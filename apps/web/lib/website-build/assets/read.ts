@@ -49,8 +49,8 @@ export async function listStoredReferences(db:Db,p:ProjectAccessOk,ref:Reference
     .map((row:any)=>({ticketId:row.id,assetId:row.asset_id,issuedAt:row.issued_at}))
 }
 
-export async function readStoredReference(db:Db,p:ProjectAccessOk,ref:ReferenceImageRef):
-  Promise<Uint8Array>{
+export async function readVerifiedReference(db:Db,p:ProjectAccessOk,ref:ReferenceImageRef):
+  Promise<{assetId:string;bytes:Uint8Array;mimeType:'image/webp'}>{
   assertIdentifiers(ref)
   await ownerRef(db,p,ref)
   const {data:t,error:tError}=await query(db,'website_build_reference_tickets')
@@ -92,5 +92,11 @@ export async function readStoredReference(db:Db,p:ProjectAccessOk,ref:ReferenceI
     throw new WebsiteBuildError('BUILD_UNAVAILABLE',503)
   // Ownership may have changed while the private object was being downloaded.
   await ownerRef(db,p,ref)
-  return bytes
+  return {assetId:a.id,bytes,mimeType:'image/webp'}
+}
+
+/** Byte-only legacy contract; all checks belong to readVerifiedReference. */
+export async function readStoredReference(db:Db,p:ProjectAccessOk,ref:ReferenceImageRef):Promise<Uint8Array>{
+  const result=await readVerifiedReference(db,p,ref)
+  return result.bytes
 }

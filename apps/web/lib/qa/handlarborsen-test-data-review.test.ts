@@ -29,3 +29,40 @@ it('receipt button reconciles the same existing job without dispatching',async()
 
 it('tool status never labels an unverified mutation as done',async()=>{const {toolOutcome}=await import('@/lib/os/chat-shared');const entry={kind:'tool' as const,tool:'execute_handlarborsen_test_cleanup',input:{packageId:id},resolved:true,result:{status:'ok',message:'Testdata undanlagd'}};expect(toolOutcome(entry)).toBe('unknown');expect(toolOutcome({...entry,result:{status:'unknown'} as never})).toBe('unknown')})
 it('an empty selection has its own honest outcome',async()=>{const {toolOutcome}=await import('@/lib/os/chat-shared');expect(toolOutcome({kind:'tool',tool:'prepare_handlarborsen_test_cleanup',input:{organisationIds:[]},resolved:true,result:{status:'ok',action:'prepare',data:{status:'nothing_to_do'}}})).toBe('nothing_to_do')})
+
+it('saved review arriving while another thread is active rehydrates the cached thread',()=>{
+ const ctl=new AtlasConversationController()
+ ctl.activateConversation({id:c,state:'ok',saved:[]})
+ ctl.activateConversation({id:ref,state:'ok',saved:[]})
+ const saved=[{role:'assistant',content:null,created_at:null,tool_data:{kind:'handlarborsen_test_data_review',conversationId:c,review:view}}]
+ ctl.activateConversation({id:c,state:'ok',saved})
+ expect(ctl.snapshot().testDataReviews).toEqual([view])
+ ctl.updateTestDataReview(c,{...view,decisionState:'approved',executionId:ref})
+ ctl.activateConversation({id:c,state:'ok',saved})
+ expect(ctl.snapshot().testDataReviews[0].decisionState).toBe('approved')
+})
+it.each(['needs_new_review','denied','disabled'] as const)('definitive %s is honest after reload and never a success receipt',rejectionStatus=>{
+ const decoded=decodeReviewView({...view,decisionState:'approved',executionId:ref,rejectionStatus})
+ expect(decoded).not.toBeNull()
+ expect(cleanupOutcome(decoded!)).not.toBe('Utfallet kontrolleras')
+ expect(decoded!.receipt).toBeNull()
+})
+
+it('a delayed review stream is recovered once in its original cached thread',async()=>{
+ let release!:(response:Response)=>void
+ const ctl=new AtlasConversationController(async()=>new Promise<Response>(resolve=>{release=resolve}))
+ ctl.activateConversation({id:c,state:'ok',saved:[]})
+ const turn=ctl.sendTurn({conversationId:c,text:'Förbered testdata',inputSource:'voice'})
+ ctl.activateConversation({id:ref,state:'ok',saved:[]})
+ release(new Response([{event:'handlarborsen_test_data_review',conversationId:c,review:view},{event:'done'}].map(f=>'data: '+JSON.stringify(f)+'\n\n').join('')))
+ await turn
+ expect(ctl.snapshot().testDataReviews).toEqual([])
+ const saved=[{role:'assistant',content:null,created_at:null,tool_data:{kind:'handlarborsen_test_data_review',conversationId:c,review:view}}]
+ ctl.activateConversation({id:c,state:'ok',saved})
+ expect(ctl.snapshot().testDataReviews).toEqual([view])
+ const receipt={packageId:id,executionId:ref,operation:'quarantine',outcome:'applied',beforeSha256:'a'.repeat(64),afterSha256:'b'.repeat(64),counts:{organizations:1},committedAt:'2026-10-17T12:00:00Z'}
+ ctl.updateTestDataReview(c,{...view,decisionState:'approved',executionId:ref,receipt})
+ ctl.activateConversation({id:c,state:'ok',saved})
+ expect(ctl.snapshot().testDataReviews).toHaveLength(1)
+ expect(ctl.snapshot().testDataReviews[0].receipt).toEqual(receipt)
+})

@@ -2,6 +2,8 @@ begin;
 create function public.handlarborsen_test_data_review_view(p_package_id uuid) returns jsonb
 language sql stable security definer set search_path='' as $fn$
  select jsonb_build_object('packageView',r.package_view,'reviewRef',r.review_ref,'decisionState',r.state,'executionId',e.execution_id,'receipt',e.receipt)
+ || case when e.rejection_status is not null then jsonb_build_object('rejectionStatus',e.rejection_status)
+ when e.state='pending' and r.expires_at<=clock_timestamp() then jsonb_build_object('rejectionStatus','needs_new_review') else '{}'::jsonb end
  from public.handlarborsen_test_data_reviews r left join public.handlarborsen_test_data_executions e using(package_id) where r.package_id=p_package_id
 $fn$;
 revoke all on function public.handlarborsen_test_data_review_view(uuid) from public,anon,authenticated,service_role;
@@ -66,7 +68,8 @@ begin
  if not found or r.state<>'approved' or r.operator_binding_id::text<>a->>'operatorBindingId' then return null;end if;
  select * into e from public.handlarborsen_test_data_executions where package_id=p_package_id;
  if not found then return null;end if;
- return jsonb_build_object('packageId',r.package_id,'approvalRef',r.review_ref,'executionId',e.execution_id,'idempotencyKey',e.idempotency_key,'packageView',r.package_view,'state',e.state,'dispatch',false,'receipt',e.receipt);
+ return jsonb_build_object('packageId',r.package_id,'approvalRef',r.review_ref,'executionId',e.execution_id,'idempotencyKey',e.idempotency_key,'packageView',r.package_view,'state',e.state,'dispatch',false,'receipt',e.receipt)
+ || case when e.rejection_status is not null then jsonb_build_object('rejectionStatus',e.rejection_status) else '{}'::jsonb end;
 end $fn$;
 revoke all on function public.handlarborsen_test_data_save_review(uuid,uuid,uuid,jsonb,text),public.handlarborsen_test_data_read_review(uuid,uuid,uuid,uuid),public.handlarborsen_test_data_decide_review(uuid,uuid,uuid,uuid,uuid,text),public.handlarborsen_test_data_read_job(uuid,uuid,uuid,uuid) from public,anon,authenticated,service_role;
 grant execute on function public.handlarborsen_test_data_save_review(uuid,uuid,uuid,jsonb,text),public.handlarborsen_test_data_read_review(uuid,uuid,uuid,uuid),public.handlarborsen_test_data_decide_review(uuid,uuid,uuid,uuid,uuid,text),public.handlarborsen_test_data_read_job(uuid,uuid,uuid,uuid) to service_role;
@@ -77,7 +80,7 @@ begin
  select * into r from public.handlarborsen_test_data_reviews where package_id=p_package_id and user_id=p_user_id and conversation_id=p_conversation_id for update;
  if not found or r.state<>'approved' then return false;end if;
  select * into e from public.handlarborsen_test_data_executions where execution_id=p_execution_id and package_id=p_package_id for update;
- if not found or e.state='pending' then return false;end if;
+ if not found or e.state in('pending','not_applied') then return false;end if;
  if p_claim_token is null then
   perform public.handlarborsen_resolve_test_data_operator(p_user_id,r.project_id,p_conversation_id,null);
  else
@@ -101,5 +104,23 @@ begin
  update public.handlarborsen_test_data_executions set state=p_receipt->>'outcome',receipt=p_receipt where execution_id=e.execution_id;
  return true;
 end $fn$;
+
+
+-- A definitive pre-execution refusal is audit evidence, never an invented H receipt.
+create function public.handlarborsen_test_data_reject_execution(p_package_id uuid,p_execution_id uuid,p_user_id uuid,p_conversation_id uuid,p_claim_token uuid,p_status text)
+returns boolean language plpgsql security definer set search_path='' as $fn$
+declare r public.handlarborsen_test_data_reviews%rowtype;e public.handlarborsen_test_data_executions%rowtype;
+begin
+ if p_status is null or p_status not in('needs_new_review','denied','disabled') or p_claim_token is null then return false;end if;
+ select * into r from public.handlarborsen_test_data_reviews where package_id=p_package_id and user_id=p_user_id and conversation_id=p_conversation_id for update;
+ if not found or r.state<>'approved' then return false;end if;
+ select * into e from public.handlarborsen_test_data_executions where execution_id=p_execution_id and package_id=p_package_id for update;
+ if not found or e.claim_token is distinct from p_claim_token or e.receipt is not null or e.state not in('dispatching','unknown','not_applied') then return false;end if;
+ if e.state='not_applied' then return e.rejection_status=p_status;end if;
+ update public.handlarborsen_test_data_executions set state='not_applied',rejection_status=p_status where execution_id=e.execution_id;
+ return true;
+end $fn$;
+revoke all on function public.handlarborsen_test_data_reject_execution(uuid,uuid,uuid,uuid,uuid,text) from public,anon,authenticated,service_role;
+grant execute on function public.handlarborsen_test_data_reject_execution(uuid,uuid,uuid,uuid,uuid,text) to service_role;
 
 commit;

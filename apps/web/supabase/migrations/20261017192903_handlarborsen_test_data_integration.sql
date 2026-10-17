@@ -11,7 +11,9 @@ create table public.handlarborsen_test_data_operator_grants(
 );
 create table public.handlarborsen_test_data_reviews(
  package_id uuid primary key,review_ref uuid not null unique default gen_random_uuid(),
- user_id uuid not null,project_id uuid not null references public.projects(id),conversation_id uuid not null references public.conversations(id),
+ user_id uuid not null,project_id uuid not null references public.projects(id),
+ -- Immutable audit identity; live ownership is checked by every authority RPC.
+ conversation_id uuid not null,
  operator_binding_id uuid not null,operation text not null check(operation in('quarantine','restore')),
  package_view jsonb not null,package_fingerprint text not null check(package_fingerprint ~ '^[0-9a-f]{64}$'),
  expires_at timestamptz not null,state text not null default 'pending' check(state in('pending','approved','rejected')),decided_at timestamptz,
@@ -21,8 +23,10 @@ create table public.handlarborsen_test_data_reviews(
 create table public.handlarborsen_test_data_executions(
  execution_id uuid primary key default gen_random_uuid(),package_id uuid not null unique references public.handlarborsen_test_data_reviews(package_id),
  idempotency_key uuid not null unique default gen_random_uuid(),
- state text not null default 'pending' check(state in('pending','dispatching','unknown','applied','needs_new_review')),
+ state text not null default 'pending' check(state in('pending','dispatching','unknown','applied','needs_new_review','not_applied')),
  claim_token uuid unique,claimed_at timestamptz,receipt jsonb,
+ rejection_status text check(rejection_status in('needs_new_review','denied','disabled')),
+ check((state='not_applied')=(rejection_status is not null)),
  check((state='pending')=(claim_token is null)),check((claim_token is null)=(claimed_at is null)),
  check((state in('applied','needs_new_review'))=(receipt is not null))
 );
@@ -79,7 +83,8 @@ begin
   update public.handlarborsen_test_data_executions set state='dispatching',claim_token=p_claim_token,claimed_at=clock_timestamp() where execution_id=e.execution_id returning * into e;
   dispatch:=true;
  end if;
- return jsonb_build_object('packageId',r.package_id,'approvalRef',r.review_ref,'executionId',e.execution_id,'idempotencyKey',e.idempotency_key,'packageView',r.package_view,'state',e.state,'dispatch',dispatch,'receipt',e.receipt);
+ return jsonb_build_object('packageId',r.package_id,'approvalRef',r.review_ref,'executionId',e.execution_id,'idempotencyKey',e.idempotency_key,'packageView',r.package_view,'state',e.state,'dispatch',dispatch,'receipt',e.receipt)
+ || case when e.rejection_status is not null then jsonb_build_object('rejectionStatus',e.rejection_status) else '{}'::jsonb end;
 end $fn$;
 
 -- A held one-use claim may acknowledge after revocation. A read-only reconciliation

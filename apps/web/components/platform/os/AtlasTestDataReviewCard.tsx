@@ -38,6 +38,6 @@ export function AtlasTestDataReviewCard({review,conversationId,onUpdate}:{review
   <p role="status">{cleanupOutcome(review)}</p>
   {notice&&<p role="alert">{notice}</p>}
   {review.decisionState==='pending'&&<div className={styles.actions}><button disabled={busy||expired||foreign} onClick={()=>void update('approve')}>{p.operation==='restore'?'Godkänn och återställ testdata':'Godkänn och lägg undan testdata'}</button><button disabled={busy||expired||foreign} onClick={()=>void update('reject')}>Avböj</button></div>}
-  {review.decisionState==='approved'&&!review.receipt&&<div className={styles.actions}><button disabled={busy||foreign} onClick={()=>void update()}>Kontrollera kvittot</button><button disabled={busy||expired||foreign} onClick={()=>void update('approve')}>Fortsätt godkänd körning</button></div>}
+  {review.decisionState==='approved'&&!review.receipt&&!review.rejectionStatus&&<div className={styles.actions}><button disabled={busy||foreign} onClick={()=>void update()}>Kontrollera kvittot</button><button disabled={busy||expired||foreign} onClick={()=>void update('approve')}>Fortsätt godkänd körning</button></div>}
  </section>
 }

@@ -39,3 +39,30 @@ test('global voice panel and full chat share a review across minimize and naviga
  await page.getByRole('button',{name:'/chat/'+C,exact:true}).click()
  await expect(page.getByRole('region',{name:'Granska testdata'})).toBeVisible()
 })
+
+test('a definitive expiry refusal asks for a new review without a fake receipt',async({page})=>{
+ let current:any=view
+ const posts:any[]=[]
+ await page.route('**/*',async route=>{
+  const u=new URL(route.request().url())
+  if(u.hostname!=='127.0.0.1')return route.abort()
+  if(!u.pathname.startsWith('/api/'))return route.continue()
+  if(u.pathname==='/api/conversations')return route.fulfill({json:{id:C}})
+  if(u.pathname==='/api/chat')return route.fulfill({contentType:'text/event-stream',body:'data: '+JSON.stringify({event:'handlarborsen_test_data_review',conversationId:C,review:current})+'\n\ndata: {"event":"done"}\n\n'})
+  if(u.pathname.endsWith('/review')){
+   if(route.request().method()==='POST'){posts.push(route.request().postDataJSON());current={...view,decisionState:'approved',executionId:R,rejectionStatus:'needs_new_review'}}
+   return route.fulfill({json:current})
+  }
+  return route.fulfill({json:{}})
+ })
+ await page.goto('/chat/'+C)
+ await page.getByLabel('Meddelande till Atlas').fill('Förbered testdata')
+ await page.getByRole('button',{name:'Skicka',exact:true}).click()
+ const card=page.getByRole('region',{name:'Granska testdata'})
+ await card.getByRole('button',{name:'Godkänn och lägg undan testdata'}).click()
+ await expect(card).toContainText('Ny granskning behövs')
+ await expect(card).not.toContainText('Utfallet kontrolleras')
+ await expect(card).not.toContainText('Testdata undanlagd')
+ await expect(card.getByRole('button',{name:'Fortsätt godkänd körning'})).toHaveCount(0)
+ expect(posts).toHaveLength(1)
+})

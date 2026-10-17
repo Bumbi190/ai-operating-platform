@@ -168,6 +168,15 @@ export class AtlasConversationController {
     }
     return [...views.values()];
   }
+  private mergeSavedTestDataReviews(current:CleanupReviewView[],saved:SavedMessage[],id:string):CleanupReviewView[]{
+    const views=new Map(current.map(view=>[view.packageView.packageId,view]));
+    const rank=(view:CleanupReviewView)=>view.receipt||view.rejectionStatus?2:view.decisionState==='pending'?0:1;
+    for(const view of this.savedTestDataReviews(saved,id)){
+      const prior=views.get(view.packageView.packageId);
+      if(!prior||(prior.reviewRef===view.reviewRef&&rank(view)>rank(prior)))views.set(view.packageView.packageId,view);
+    }
+    return [...views.values()];
+  }
   activateConversation(input: Activate) {
     this.activateSnapshot(input, false);
   }
@@ -207,6 +216,7 @@ export class AtlasConversationController {
       s = {
         ...s,
         studio: input.studio===true,
+        testDataReviews: this.mergeSavedTestDataReviews(s.testDataReviews,input.saved,input.id),
         state: input.state,
         projectId: s.projectId ?? input.projectId ?? null,
         ...(rehydrate ? {

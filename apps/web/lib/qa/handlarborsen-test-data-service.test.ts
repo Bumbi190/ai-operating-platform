@@ -28,3 +28,15 @@ it('only reports success after persisting an exact durable receipt',async()=>{co
 it('read-only receipt lookup never claims an undispatched job',async()=>{const {reconcileCleanup}=await import('@/lib/atlas/handlarborsen-test-data/service');m.rpc.mockResolvedValue({data:{...job,state:'pending',dispatch:false},error:null});expect(await reconcileCleanup(packageId,{projectId,conversationId})).toEqual({status:'unavailable'});expect(m.rpc.mock.calls[0][0]).toBe('handlarborsen_test_data_read_job');expect(m.client).not.toHaveBeenCalled()})
 
 it('a database acknowledgement failure after dispatch remains unknown',async()=>{m.client.mockResolvedValue({status:'ok',action:'execute',data:{packageId,executionId,operation:'quarantine',outcome:'applied',beforeSha256:'a'.repeat(64),afterSha256:'b'.repeat(64),counts:{organizations:1},committedAt:'2026-10-17T12:00:00Z'}});m.rpc.mockImplementation((name:string)=>name.endsWith('_claim')?Promise.resolve({data:job,error:null}):Promise.reject(Error('private database detail')));expect(await dispatchApprovedCleanup(packageId,{projectId,conversationId})).toEqual({status:'unknown',executionId})})
+
+it.each(['needs_new_review','denied','disabled'] as const)('persists definitive execute rejection %s without inventing a receipt',async status=>{
+ m.client.mockResolvedValue({status})
+ expect(await dispatchApprovedCleanup(packageId,{projectId,conversationId})).toEqual({status})
+ expect(m.rpc).toHaveBeenCalledWith('handlarborsen_test_data_reject_execution',expect.objectContaining({p_execution_id:executionId,p_claim_token:expect.any(String),p_status:status}))
+ expect(m.rpc.mock.calls.some(c=>c[0]==='handlarborsen_test_data_finish')).toBe(false)
+})
+it('stored rejection never re-dispatches or fabricates success',async()=>{
+ m.rpc.mockResolvedValue({data:{...job,state:'not_applied',dispatch:false,rejectionStatus:'needs_new_review'},error:null})
+ expect(await dispatchApprovedCleanup(packageId,{projectId,conversationId})).toEqual({status:'needs_new_review'})
+ expect(m.client).not.toHaveBeenCalled()
+})

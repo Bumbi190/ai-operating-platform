@@ -22,6 +22,8 @@ async function runCleanup(packageId:string,scope:CleanupScope,dispatch:boolean):
   if(!pkg||pkg.status!=='prepared'||pkg.packageId!==packageId||pkg.projectId!==scope.projectId||pkg.conversationId!==scope.conversationId||pkg.operatorBindingId!==principal.operatorBindingId)return {status:'unavailable'}
   observedExecutionId=job.executionId
   const unknown:IntegrationResponse={status:'unknown',executionId:job.executionId}
+  if(job.state==='not_applied')return ['needs_new_review','denied','disabled'].includes(String(job.rejectionStatus))?{status:job.rejectionStatus as 'needs_new_review'|'denied'|'disabled'}:unknown
+  if(job.state==='pending'&&!dispatch&&Date.parse(pkg.expiresAt)<=Date.now())return {status:'needs_new_review'}
   if(job.state==='applied'||job.state==='needs_new_review'){
    const stored=decodeReceiptView(job.receipt)
    if(stored?.executionId===job.executionId&&stored.packageId===packageId&&stored.operation===pkg.operation)return {status:'ok',action:'receipt',data:stored}
@@ -32,6 +34,10 @@ async function runCleanup(packageId:string,scope:CleanupScope,dispatch:boolean):
   if(result.status==='ok'&&(result.action==='execute'||result.action==='receipt')&&result.data&&result.data.executionId===job.executionId&&result.data.packageId===packageId&&result.data.operation===pkg.operation){
    const saved=await db.rpc('handlarborsen_test_data_finish',{p_package_id:packageId,p_execution_id:job.executionId,p_user_id:principal.userId,p_conversation_id:scope.conversationId,p_claim_token:job.dispatch?claimToken:null,p_receipt:result.data})
    return !saved.error&&saved.data===true?result:unknown
+  }
+  if(job.dispatch&&['needs_new_review','denied','disabled'].includes(result.status)){
+   const rejected=await db.rpc('handlarborsen_test_data_reject_execution',{p_package_id:packageId,p_execution_id:job.executionId,p_user_id:principal.userId,p_conversation_id:scope.conversationId,p_claim_token:claimToken,p_status:result.status})
+   return !rejected.error&&rejected.data===true?result:unknown
   }
   if(job.dispatch)await db.rpc('handlarborsen_test_data_finish',{p_package_id:packageId,p_execution_id:job.executionId,p_user_id:principal.userId,p_conversation_id:scope.conversationId,p_claim_token:claimToken,p_receipt:null})
   return unknown

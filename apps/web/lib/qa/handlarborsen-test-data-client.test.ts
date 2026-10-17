@@ -80,3 +80,15 @@ it('a ten-second deadline returns unknown once and never retries a mutation',asy
 })
 
 it.each([executeVector,receiptVector])('matches the independent nested $body.action signing fixture',vector=>{const signed=signCleanupEnvelope(vector.body,vector.keyId,vector.key,vector.signedAt);expect(signed.body).toBe(vector.canonicalBody);expect(signed.headers['x-atlas-signature']).toBe(vector.signature)})
+
+it.each([
+ [409,'needs_new_review','needs_new_review'],
+ [503,'mutations_disabled','disabled'],
+ [403,'forbidden','denied'],
+ [401,'unauthorized','denied'],
+] as const)('keeps definitive H refusal %s/%s separate from uncertain sends',async(code,status,expected)=>{
+ vi.stubEnv('ATLAS_TEST_DATA_MUTATIONS_ENABLED','true')
+ m.fetch.mockResolvedValue(Response.json({status},{status:code}))
+ expect(await callHandlarborsenTestData(command,await principal())).toEqual({status:expected})
+ expect(m.fetch).toHaveBeenCalledTimes(1)
+})

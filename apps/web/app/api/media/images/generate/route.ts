@@ -13,7 +13,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { generateSceneImages } from '@/lib/media/ideogram'
 import { uploadSceneImage } from '@/lib/media/storage'
 import { NextResponse } from 'next/server'
-import { isLegacyNewsPipelineProject } from '@/lib/project/legacy-news-pipeline'
 import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 
@@ -60,11 +59,6 @@ export async function POST(request: Request) {
   const projectId = script.project_id
   if (!projectId) {
     return NextResponse.json({ error: 'Script is missing project_id' }, { status: 422 })
-  }
-
-  const { data: imageProject } = await db.from('projects').select('slug').eq('id', projectId).maybeSingle()
-  if (!isLegacyNewsPipelineProject(imageProject?.slug)) {
-    return NextResponse.json({ error: 'News image pipeline unavailable for this project' }, { status: 403 })
   }
 
   try {

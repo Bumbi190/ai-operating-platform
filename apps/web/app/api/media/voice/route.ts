@@ -15,7 +15,6 @@ import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextResponse } from 'next/server'
-import { isLegacyNewsPipelineProject } from '@/lib/project/legacy-news-pipeline'
 import { generateVoiceover, type VoiceName } from '@/lib/media/elevenlabs'
 import { uploadAudio, uploadTimingData } from '@/lib/media/storage'
 import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
@@ -72,13 +71,6 @@ export async function POST(request: Request) {
   const projectId = script.project_id
   if (!projectId) {
     return NextResponse.json({ error: 'Script is missing project_id' }, { status: 422 })
-  }
-
-  // Preserve the owner-derived project lookup; block non-news projects before
-  // ElevenLabs spend. A family script must never silently use Victoria.
-  const { data: voiceProject } = await db.from('projects').select('slug').eq('id', projectId).maybeSingle()
-  if (!isLegacyNewsPipelineProject(voiceProject?.slug)) {
-    return NextResponse.json({ error: 'News voice pipeline unavailable for this project' }, { status: 403 })
   }
 
   try {

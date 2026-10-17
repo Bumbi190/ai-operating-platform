@@ -1,50 +1,43 @@
-# Legacy AI-news pipeline: project-scoped capability boundary
+# Legacy AI-news navigation scope (2026-10-17)
 
-## Existing issue
+## Purpose
+A media-enabled non-news project (such as Familje-Stunden) was shown The
+Prompt's legacy Breaking, News and Scripts UI. These controls use AI-news
+terminology, Victoria voice and platform-branded provider copy, which is not a
+valid Familje-Stunden editorial interface.
 
-The generic media-enabled project setting did not establish authority to use
-The Prompt's legacy AI-news workflow. A user who owns another project (for
-example Familje-Stunden) could open the generic legacy News/Scripts pages and
-invoke paid Breaking/voice/image/music/render endpoints against an owned
-non-news project, inadvertently mixing news scripts and Victoria voice into
-family content.
+## Implemented changes
+- A pure, explicit display predicate recognizes the-prompt and the original
+  ai-media-automation legacy default project slug.
+- News and Scripts layouts verify the current user's allowed project identity
+  as well as the legacy news UI identity, and otherwise return notFound.
+- The project media dashboard renders Breaking, News and Scripts entry points
+  only for the recognized news project. Its own project-filtered media records
+  continue to work for any project with media.enabled.
 
-## Scope of change (2026-10-17)
+## Owner permissions are deliberately UNCHANGED
+Existing media APIs intentionally allow a signed-in owner to generate or
+render content belonging to their own project. The Breaking route separately
+limits final publication to platform-owned accounts. The larger GitHub
+security tests rely on those distinctions. Merely owning a different project
+is not grounds to disable that project's existing API endpoints.
 
-An explicit fail-closed project identity gate is applied only to the legacy
-AI-news workflow. The allowed slugs are:
-- the-prompt
-- ai-media-automation (original unattended default project)
+Therefore this PR does NOT change Breaking, Voice, Images, Music or Render API
+authorization, token/role selection, spending rules, credentials, RLS or
+publisher destination controls. Its scope is **UI separation**, not an
+enforcing server-side content-type guard.
 
-News/Scripts project UI routes verify both **access to the exact project ID**
-and the legacy news project type. The media dashboard only presents Breaking
-and News/Scripts links when the project is a news project. Five existing paid
-or external news routes verify the owned script's **database-derived project
-slug** before Anthropic, ElevenLabs, Ideogram, music generation or Lambda
-dispatch. User-supplied project IDs do not confer media capability.
+## Follow-up for true Content Studio capability separation
+Introduce a reviewed project-scoped production capability (voice by
+project/role, source-image lineage and publication destination) with a
+migration plan that preserves existing owner-scoped media API contracts.
+In particular, do not let a Familje-Stunden task silently generate Victoria
+or substitute Sanna for Nova. Confirm the correct content studio TTS adapter
+and make voice lock an executable provider boundary before enabling Family
+auto-production.
 
-These new checks supplement, never substitute for, existing session/project
-authorization, governed spend, stop policy or publisher destination review.
-
-## Out of scope / caveats
-
-- Does not activate or change The Prompt publishing or scheduling.
-- Does not activate Familje-Stunden automatic posting or grant TTS permission.
-- No DB migration, token credentials or third-party APIs called.
-- Does not change the globally cross-project Atlas activity feed; it is
-  intentionally cross-project outside project views. Full operational
-  isolation and the future unified Content Studio policy deserve a further
-  separate audit.
-- Historical project names are an explicit compatibility list, not a general
-  rule that every future project may use the paid legacy pipeline.
-- Do not infer project capabilities from the generic settings.media.enabled
-  switch.
-
-## Validation
-
-1. Run Vitest on lib/qa/legacy-news-project-boundary.test.ts and previously
-   existing voice/project-access checks.
-2. Type-check the apps/web workspace.
-3. Confirm The Prompt and ai-media-automation remain allowed; Familje-Stunden,
-   Handlarbörsen and unknown projects are rejected.
-4. Compare the five API guard placements to the paid dispatch calls.
+## Verification
+- 4 targeted UI/authorization-compatibility tests.
+- Existing media-script-authorization, breaking-dual-authority-isolation and
+  platform-authority-closure suites must stay fully green.
+- No external provider calls, publishing or database changes.

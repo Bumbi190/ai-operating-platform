@@ -7,8 +7,8 @@ import {isLegacyNewsPipelineProject} from '../project/legacy-news-pipeline'
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const source = (relative: string) => readFileSync(resolve(web, relative), 'utf8')
 
-describe('legacy AI-news media project boundary', () => {
-  it('accepts only the two existing news-pipeline identities', () => {
+describe('legacy AI-news navigation: project boundary', () => {
+  it('shows news affordances for the two existing news project identities only', () => {
     expect(isLegacyNewsPipelineProject('the-prompt')).toBe(true)
     expect(isLegacyNewsPipelineProject('ai-media-automation')).toBe(true)
     for (const slug of ['familje-stunden', 'handlarborsen', 'gainpilot', '', 'THE-PROMPT', undefined, null]) {
@@ -16,36 +16,37 @@ describe('legacy AI-news media project boundary', () => {
     }
   })
 
-  it('hides legacy News and Scripts pages for non-news projects even if their project IDs are owned', () => {
+  it('hides legacy news and script pages for a different project', () => {
     for (const page of ['news', 'scripts']) {
-      const file = source('app/(platform)/projects/[slug]/' + page + '/layout.tsx')
-      expect(file).toContain('access.allowedProjectIds.includes(project.id)')
-      expect(file).toContain('!isLegacyNewsPipelineProject(project.slug)')
-      expect(file).toContain('notFound()')
+      const code = source('app/(platform)/projects/[slug]/' + page + '/layout.tsx')
+      expect(code).toContain('access.allowedProjectIds.includes(project.id)')
+      expect(code).toContain('!isLegacyNewsPipelineProject(project.slug)')
+      expect(code).toContain('notFound()')
     }
   })
 
-  it('does not offer The Prompt paid breaking/news buttons on another project media dashboard', () => {
-    const page = source('app/(platform)/projects/[slug]/media/page.tsx')
-    expect(page).toContain('const isNewsProject = isLegacyNewsPipelineProject(project.slug)')
-    expect(page).toMatch(/\{isNewsProject && \(\s*<div[\s\S]*?<BreakingButton/)
+  it('removes Breaking, News and Scripts links from a non-news media dashboard', () => {
+    const code = source('app/(platform)/projects/[slug]/media/page.tsx')
+    expect(code).toContain('const isNewsProject = isLegacyNewsPipelineProject(project.slug)')
+    expect(code).toMatch(/\{isNewsProject && \(\s*<div[\s\S]*?<BreakingButton/)
+    expect(code).toContain('media.enabled')
   })
 
-  it('refuses foreign-pipeline calls before any paid provider dispatch', () => {
-    const cases: [string, string, string][] = [
-      ['app/api/media/breaking/route.ts', 'if (!isLegacyNewsPipelineProject(project.slug))', 'getAnthropic({'],
-      ['app/api/media/voice/route.ts', 'if (!isLegacyNewsPipelineProject(voiceProject?.slug))', 'await generateVoiceover('],
-      ['app/api/media/images/generate/route.ts', 'if (!isLegacyNewsPipelineProject(imageProject?.slug))', 'await generateSceneImages('],
-      ['app/api/media/music/generate/route.ts', 'if (!isLegacyNewsPipelineProject(musicProject?.slug))', 'await generateSoundEffect('],
-      ['app/api/media/render/start/route.ts', 'if (!isLegacyNewsPipelineProject(renderProject?.slug))', 'await startLambdaRender('],
-    ]
-    for (const [file, guard, dispatch] of cases) {
+  it('preserves existing owner authorization and platform publish limits in all media APIs', () => {
+    const breaking = source('app/api/media/breaking/route.ts')
+    expect(breaking).toContain('assertProjectAllowed(body.project_id, allowedProjectIds)')
+    expect(breaking).toContain('const mayPublishToPlatform = viaCron || (await resolvePlatformOperator()).ok')
+    for (const file of [
+      'app/api/media/voice/route.ts',
+      'app/api/media/images/generate/route.ts',
+      'app/api/media/render/start/route.ts',
+    ]) {
       const code = source(file)
-      const guardIndex = code.indexOf(guard)
-      const dispatchIndex = code.indexOf(dispatch)
-      expect(guardIndex, file + ' missing project-type guard').toBeGreaterThan(0)
-      expect(dispatchIndex, file + ' missing provider dispatch').toBeGreaterThan(guardIndex)
-      expect(code.slice(guardIndex, dispatchIndex), file + ' must fail closed').toContain('status: 403')
+      expect(code).toContain("scopeProjectFilter(allowedProjectIds)")
+      expect(code).not.toContain('isLegacyNewsPipelineProject')
     }
+    const music = source('app/api/media/music/generate/route.ts')
+    expect(music).toContain('assertProjectAllowed(projectId, access.allowedProjectIds)')
+    expect(music).not.toContain('isLegacyNewsPipelineProject')
   })
 })

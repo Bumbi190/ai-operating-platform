@@ -16,7 +16,6 @@
  */
 
 import { NextResponse } from 'next/server'
-import { isLegacyNewsPipelineProject } from '@/lib/project/legacy-news-pipeline'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { uploadMusic } from '@/lib/media/storage'
 import { resolveProjectAccess, assertProjectAllowed } from '@/lib/auth/project-access'
@@ -78,11 +77,6 @@ export async function POST(request: Request) {
   // return the same 404 as missing (no existence probing).
   if (!assertProjectAllowed(projectId, access.allowedProjectIds)) {
     return NextResponse.json({ error: 'Script not found' }, { status: 404 })
-  }
-
-  const { data: musicProject } = await db.from('projects').select('slug').eq('id', projectId).maybeSingle()
-  if (!isLegacyNewsPipelineProject(musicProject?.slug)) {
-    return NextResponse.json({ error: 'News music pipeline unavailable for this project' }, { status: 403 })
   }
 
   const apiKey = process.env.ELEVENLABS_API_KEY

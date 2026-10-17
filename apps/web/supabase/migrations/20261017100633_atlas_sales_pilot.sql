@@ -46,6 +46,9 @@ begin
  if g is distinct from false or p is distinct from false then raise exception 'SALES_STOPPED' using errcode='55000';end if;
 end $$;
 create or replace function public.sales_job_json(j public.sales_jobs) returns jsonb language sql security invoker set search_path='' as $$ select jsonb_build_object('id',j.id,'projectId',j.project_id,'status',j.status,'createdAt',j.created_at,'attempts',j.attempts,'detail',j.detail) $$;
+create or replace function public.sales_validate_conversation(p_principal jsonb,p_input jsonb) returns boolean language plpgsql security invoker set search_path='' as $$
+begin perform public.sales_owner(p_principal,(p_input->>'projectId')::uuid);
+ if not exists(select from public.conversations where id=(p_input->>'conversationId')::uuid and user_id=(p_principal->>'userId')::uuid and project_id=(p_input->>'projectId')::uuid) then raise exception 'NOT_FOUND' using errcode='P0002';end if;return true;end $$;
 create or replace function public.sales_save_contact(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
 declare pid uuid:=(p_input->>'projectId')::uuid;cid uuid:=(p_input->>'id')::uuid;c public.sales_contacts;d jsonb;
 begin
@@ -80,6 +83,7 @@ begin
  if coalesce(jsonb_array_length(contacts),0)<>expected then raise exception 'CONTACT_REVIEW_REQUIRED' using errcode='55000';end if;
  select data into o from public.sales_offer_revisions where project_id=pid and id=(p_input->>'offerRevisionId')::uuid;
  if not found then raise exception 'NOT_FOUND' using errcode='P0002';end if;
+ if exists(select from jsonb_array_elements(contacts) c where c->>'pilotMonths' is distinct from o->>'freeMonths') then raise exception 'PILOT_TIER_MISMATCH' using errcode='55000';end if;
  insert into public.sales_jobs(project_id,owner_id,request_key,request,snapshot) values(pid,(p_principal->>'userId')::uuid,p_input->>'idempotencyKey',p_input,jsonb_build_object('contacts',contacts,'offer',o)) returning * into j;
  return public.sales_job_json(j);
 end $$;
@@ -215,6 +219,8 @@ declare pid uuid:=(p_input->>'projectId')::uuid;slug text;
 begin perform public.sales_owner(p_principal,pid);select p.slug into slug from public.projects p where id=pid;
  return jsonb_build_object('projectId',pid,'state','ok','sendingEnabled',false,'workspaceUrl','/projects/'||slug||'/sales',
  'workerState',case when exists(select from public.sales_worker_registrations where project_id=pid and revoked_at is null and expires_at>now() and last_seen_at>now()-interval '90 seconds') then 'connected' else 'not_connected' end,
+ 'evidence',coalesce((select jsonb_agg(jsonb_build_object('id',e.id,'contactId',e.contact_id,'source',e.data,'question',e.question,'provenance',e.provenance)) from public.sales_evidence e where e.project_id=pid),'[]'),
+ 'workers',coalesce((select jsonb_agg(jsonb_build_object('id',id,'expiresAt',expires_at,'lastSeenAt',last_seen_at,'revoked',revoked_at is not null)) from public.sales_worker_registrations where project_id=pid),'[]'),
  'contacts',coalesce((select jsonb_agg(data order by created_at) from public.sales_contacts where project_id=pid),'[]'),
  'offers',coalesce((select jsonb_agg(data order by created_at desc) from public.sales_offer_revisions where project_id=pid),'[]'),
  'jobs',coalesce((select jsonb_agg(public.sales_job_json(j) order by created_at desc) from (select * from public.sales_jobs where project_id=pid order by created_at desc limit 20) j),'[]'),

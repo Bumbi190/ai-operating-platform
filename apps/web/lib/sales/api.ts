@@ -21,14 +21,14 @@ export function createSalesApi(deps:Dependencies){return async(request:Request):
    const result=url.searchParams.has('jobId')?await readSalesJob(deps.db(),p,{projectId,jobId:salesId(url.searchParams.get('jobId'))}):await readSalesWorkspace(deps.db(),p,projectId)
    return Response.json(result,{headers:salesHeaders})
   }
-  const v=await readBody(request);fields(v,['operation','projectId','id','companyName','branchName','email','websiteUrl','history','historySource','confirmed','excluded','suppressed','expectedVersion','senderEmail','offerText','productFacts','freeMonths','conversationId','contactIds','offerRevisionId','idempotencyKey','revisionId','draft','jobId','workerId'])
+  const v=await readBody(request);fields(v,['operation','projectId','id','companyName','branchName','email','websiteUrl','history','historySource','pilotMonths','confirmed','excluded','suppressed','expectedVersion','senderEmail','offerText','productFacts','freeMonths','conversationId','contactIds','offerRevisionId','idempotencyKey','revisionId','draft','jobId','workerId'])
   const projectId=salesId(v.projectId);scoped(p,projectId);if(!deps.enabled(projectId))throw new SalesError('NOT_FOUND',404)
   const {operation,...input}=v;const db=deps.db();let result:unknown
   const call=(name:string,value:unknown)=>salesRpc(db,name,{p_principal:p,p_input:value})
   if(operation==='save_contact'){
-   fields(input,['projectId','id','companyName','branchName','email','websiteUrl','history','historySource','confirmed','excluded','suppressed','expectedVersion'])
-   if(!['not_contacted','contacted','unknown'].includes(String(input.history))||!Number.isSafeInteger(input.expectedVersion)||Number(input.expectedVersion)<0)throw new SalesError('INVALID_BODY')
-   result=await call('sales_save_contact',{projectId,id:salesId(input.id),companyName:text(input.companyName,200),branchName:text(input.branchName,200,0),email:normalizeSalesEmail(text(input.email,254)),websiteUrl:website(input.websiteUrl),history:input.history,historySource:text(input.historySource,2000),confirmed:bool(input.confirmed),excluded:bool(input.excluded),suppressed:bool(input.suppressed),expectedVersion:input.expectedVersion})
+   fields(input,['projectId','id','companyName','branchName','email','websiteUrl','history','historySource','pilotMonths','confirmed','excluded','suppressed','expectedVersion'])
+   if(!['not_contacted','contacted','unknown'].includes(String(input.history))||![2,6,12].includes(Number(input.pilotMonths))||!Number.isSafeInteger(input.expectedVersion)||Number(input.expectedVersion)<0)throw new SalesError('INVALID_BODY')
+   result=await call('sales_save_contact',{projectId,id:salesId(input.id),companyName:text(input.companyName,200),branchName:text(input.branchName,200,0),email:normalizeSalesEmail(text(input.email,254)),websiteUrl:website(input.websiteUrl),history:input.history,historySource:text(input.historySource,2000),pilotMonths:Number(input.pilotMonths),confirmed:bool(input.confirmed),excluded:bool(input.excluded),suppressed:bool(input.suppressed),expectedVersion:input.expectedVersion})
   }else if(operation==='save_offer'){
    fields(input,['projectId','id','senderEmail','offerText','productFacts','freeMonths','confirmed'])
    if(![2,6,12].includes(Number(input.freeMonths))||!Array.isArray(input.productFacts)||input.productFacts.length<1||input.productFacts.length>10||input.confirmed!==true)throw new SalesError('INVALID_BODY')

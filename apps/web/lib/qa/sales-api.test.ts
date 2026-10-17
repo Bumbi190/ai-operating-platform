@@ -1,7 +1,7 @@
 import {describe,it,expect,vi} from 'vitest'
 import {createSalesApi} from '@/lib/sales/api'
 const id='10000000-0000-4000-8000-000000000001',other='10000000-0000-4000-8000-000000000002'
-const contact={operation:'save_contact',projectId:id,id:'30000000-0000-4000-8000-000000000001',companyName:'Testbil',branchName:'Hässleholm',email:'info@example.se',websiteUrl:null,history:'not_contacted',historySource:'Manuellt kontrollerad',confirmed:true,excluded:false,suppressed:false,expectedVersion:0}
+const contact={operation:'save_contact',projectId:id,id:'30000000-0000-4000-8000-000000000001',companyName:'Testbil',branchName:'Hässleholm',email:'info@example.se',websiteUrl:null,history:'not_contacted',historySource:'Manuellt kontrollerad',pilotMonths:12,confirmed:true,excluded:false,suppressed:false,expectedVersion:0}
 function setup(){const rpc=vi.fn().mockResolvedValue({data:{ok:true},error:null});const api=createSalesApi({access:async()=>({ok:true as const,userId:'20000000-0000-4000-8000-000000000001',allowedProjectIds:[id]}),db:()=>({rpc} as never),enabled:p=>p===id});return {rpc,api}}
 function req(value:unknown,origin='https://omnira.example'){return new Request('https://omnira.example/api/sales',{method:'POST',headers:{origin,'content-type':'application/json'},body:JSON.stringify(value)})}
 describe('operator sales API',()=>{

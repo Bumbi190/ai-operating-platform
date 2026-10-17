@@ -15,8 +15,15 @@ const sample={projectId:randomUUID(),conversationId:randomUUID(),ticketId:random
 function request(value:unknown,origin='http://localhost'){
   return new Request('http://localhost/api/website-build/references/finish',{method:'POST',headers:{host:'localhost',origin,'content-type':'application/json'},body:JSON.stringify(value)})
 }
-beforeEach(()=>{state.authenticated=true;state.dbCalls=0;state.finalized=0})
+beforeEach(()=>{vi.stubEnv('ATLAS_REFERENCE_UPLOAD_ENABLED','true');state.authenticated=true;state.dbCalls=0;state.finalized=0})
 describe('private reference completion route',()=>{
+  it('does not touch the database when uploading is disabled',async()=>{
+    vi.stubEnv('ATLAS_REFERENCE_UPLOAD_ENABLED','false')
+    const response=await POST(request(sample))
+    expect(response.status).toBe(503)
+    expect(state.dbCalls).toBe(0)
+    expect(state.finalized).toBe(0)
+  })
   it('denies unauthenticated requests before any privileged work',async()=>{
     state.authenticated=false
     const response=await POST(request(sample))

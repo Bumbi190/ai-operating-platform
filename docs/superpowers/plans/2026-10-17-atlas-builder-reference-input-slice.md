@@ -58,3 +58,21 @@ Granskningsbar [PR #368](https://github.com/Bumbi190/ai-operating-platform/pull/
 **Testbevis:** 85/85 riktade lokala Vitest-testfall godkända inklusive tidigare bild-asset-behörigheter, återhämtning och HTTP. Full TypeScript körs på denna ändring. Ny disposable nätverksisolerad PostgreSQL 16-körning applicerade förslagets DDL och bekräftade tvingad RLS, nekad authenticated-läsning samt 30/timgränsen (31:a INSERT stoppades); testcontainern borttagen. Ingen produktionsmigration, cron, betalt modelljobb eller ny ägarbudget.
 
 **Återstående risk/krav:** En recoverysweep gör ännu inte ordinarie jobb själv; verklig Supabase-integrationsverifiering, autentiserad worker-aktivering, cleanup vid externa fel, samtidig finalizer-kraschtest mot real DB, front-end bildväljare, privat läsning, multimodal chattur och licenskontroll återstår. Det här är inte en levererad produktfunktion förrän de är verifierade och granskade.
+
+
+## 2026-10-17 – nästa etapp: UI för referensbilder i Atlas Byggstudio
+
+**Status: implementerad i isolerad arbetsgren, lokal test, avstängd som standard. EJ mergad, EJ produktionsaktiverad.**
+
+Följande kod har tillkommit ovanpå tidigare draft PR #368:
+
+- `components/website-build/StudioReferenceUploads.tsx` och CSS: en ren bildpanel i arbetsytans **Filer-flik**. Mobil/dator får filväljare för PNG/JPEG/WebP (max 4 bilder och 10 MiB/st), lokal bildförhandsvisning, uppladdningsstatus och användarstyrd rensning av urvalet. En sparad bild beskrivs uttryckligen som *privat sparad, inte skickad till Atlas AI*.
+- Panelen använder serverns projektspecifika tidsbegränsade biljett, överför filen direkt från **Supabase browser client** med `uploadToSignedUrl` och begär en separat serververifierad finalize som returnerar AssetId. Service-role-nyckeln finns aldrig i klienten. Inga betalda modell-, publicerings- eller bildgenereringsanrop.
+- Serverns `/api/website-build/references/tickets` kan GET-rapportera tillgänglighet för vald konversation. Båda POST-rutterna och statusen använder `referenceUploadEnabled()`; `ATLAS_REFERENCE_UPLOAD_ENABLED` är **false** utan explicit aktivering. Därmed kan UI-funktionen finnas i kod utan att gissa att databas/bucket är färdig.
+- Bildpanelen mountas bara när rätt `studioProject.id` matchar chattens projekt. File-subträdet hålls monterat i `StudioLayout` när man byter till Chatt/Preview så lokalt urval och pågående uppladdning inte tappas vid ett normalt flikbyte. Full navigation/unmount avbryter lokal begäran och återkallar blob:preview-URL:er; servern står för slutlig cleanup.
+- UI tillåter användaren att rensa urvalet och starta ett nytt draftId för nya försök, utan att radera redan sparade privata Assets. Ingen dold automatisk omkörning.
+- Lokala SSR-/server-HTTP-tester bekräftar att uppladdning är blockerad före aktivering, att GET avrapporterar disabled, att otillåtna POST avvisas utan privilegierad DB-kontakt och att filpanelen förblir monterad vid flikbyte.
+
+**Samlad verifiering denna etapp:** 90/90 riktade Vitest-tester (inklusive canonical media admission, tidigare ticket/finalize/recovery och tre nya UI-fall) och `tsc --noEmit -p tsconfig.json` PASS på Windows. Det är **inte** en fysisk Android-testning, server-rendering endast för UI-testet, och ingen signerad uppladdning har körts mot ett verkligt Supabase-projekt.
+
+**Aktiveringsblockerare:** Supabase-kontot har inget separat isolerat Omnira-testprojekt; produktion används därför inte för provuppladdning och inga schemamigreringar appliceras. Före release: granska SQL, skapa isolerad testmiljö och validera Storage+RLS+multi-device/telefon, säkra privat bildhämtning över omstarter, skapa en exakt konversations-/chattur-referenskoppling och ett kontrollerat multimodalt modelltest. Filpanelen är en första preview, **inte** en färdig bildbilaga i Atlas-chatten. `ATLAS_REFERENCE_UPLOAD_ENABLED` ska förbli off fram till godkänd och verifierad miljö.

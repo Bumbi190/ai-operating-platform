@@ -20,7 +20,7 @@ vi.mock('@/lib/website-build/assets/tickets',async importOriginal=>{
     return {ticketId:randomUUID(),bucket:'atlas-reference-staging',path:'incoming/private',token:'private-test-token',mimeType:'image/png',expiresAt:new Date().toISOString()}
   }}
 })
-import { POST } from '@/app/api/website-build/references/tickets/route'
+import { POST, GET } from '@/app/api/website-build/references/tickets/route'
 
 const projectId=randomUUID(),conversationId=randomUUID(),draftId=randomUUID()
 const body={projectId,conversationId,draftId,slot:0,mimeType:'image/png'}
@@ -30,11 +30,21 @@ function post(value:unknown,origin='http://localhost'){
     body:JSON.stringify(value),
   })
 }
-beforeEach(()=>{
+beforeEach(()=>{vi.stubEnv('ATLAS_REFERENCE_UPLOAD_ENABLED','true');
   state.user={ok:true,userId:randomUUID(),allowedProjectIds:[projectId]}
   state.issued=0;state.adminCalls=0;state.lastInput=null
 })
 describe('website reference ticket HTTP boundary',()=>{
+  it('is off by default and does not touch storage before activation',async()=>{
+    vi.stubEnv('ATLAS_REFERENCE_UPLOAD_ENABLED','false')
+    const status=await GET(new Request('http://localhost/api/website-build/references/tickets'))
+    expect(status.status).toBe(200)
+    expect(await status.json()).toEqual({available:false,reason:'not_activated'})
+    const posted=await POST(post(body))
+    expect(posted.status).toBe(503)
+    expect(state.adminCalls).toBe(0)
+    expect(state.issued).toBe(0)
+  })
   it('denies before reading privileged data when the session is missing',async()=>{
     state.user=null
     const response=await POST(post(body))

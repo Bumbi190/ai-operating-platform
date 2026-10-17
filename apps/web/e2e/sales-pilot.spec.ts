@@ -9,6 +9,7 @@ test('five exact drafts survive reload; edit, editorial approval and mobile layo
  const writes:any[]=[]
  const host:any={workerId:'60000000-0000-4000-8000-000000000009',managed:true,generation:1,desiredState:'running',connectionState:'online',cliState:'ready',lastSeenAt:'2026-10-17T14:00:00Z',workerExpiresAt:'2026-10-18T14:00:00Z',executionPaused:false,reconnectRequested:false}
  await page.route('**/api/sales?*',r=>r.fulfill({json:new URL(r.request().url()).searchParams.has('connection')?{connections:[host],sendingEnabled:false}:model}))
+ await page.route('**/api/sales/mailbox?*',r=>r.fulfill({json:null}))
  await page.route('**/api/sales',async route=>{const v=route.request().postDataJSON();writes.push(v);if(v.operation==='revise'){const i=model.drafts.findIndex((d:any)=>d.id===v.revisionId);model.drafts[i]={...model.drafts[i],...v.draft,id:'80000000-0000-4000-8000-000000000001',sha256:'b'.repeat(64),approvalId:'90000000-0000-4000-8000-000000000001',status:'pending'}}else if(v.operation==='set_worker_desired')host.desiredState=v.action==='pause'?'paused':'running';else if(v.operation==='cancel')model.jobs[0].status='cancelled';else throw Error(`Unexpected operation ${v.operation}`);await route.fulfill({json:{ok:true}})})
  await page.route('**/api/approvals/*',async route=>{writes.push(route.request().postDataJSON());model.drafts[0].status='approved';await route.fulfill({json:{ok:true}})})
  await page.setViewportSize({width:1440,height:1000});await page.goto('/sales')
@@ -24,7 +25,7 @@ test('five exact drafts survive reload; edit, editorial approval and mobile layo
  await expect(page.getByRole('article').first().getByRole('heading',{level:3})).toContainText('Nord');await expect(page.getByRole('article').nth(1).getByRole('heading',{level:3})).toContainText('Syd')
  await page.getByRole('button',{name:'Redigera och granska på nytt'}).first().click();await page.getByRole('textbox',{name:'Mejltext',exact:true}).fill('En ändrad fråga om 12 månader gratis.');await page.getByRole('button',{name:'Spara ny version'}).click()
  await expect(page.getByRole('article').first()).toContainText('En ändrad fråga om 12 månader gratis.')
- await page.getByRole('button',{name:'Godkänn utkast'}).first().click();await expect(page.getByRole('status')).toHaveText('Utkastet är godkänt. Inget mejl har skickats.')
+ await page.getByRole('button',{name:'Godkänn utkast'}).first().click();await expect(page.getByText('Utkastet är godkänt. Inget mejl har skickats.',{exact:true})).toBeVisible()
  expect(writes.map(x=>x.operation??x.action)).toEqual(['revise','approved'])
  await expect(page.getByText('Redo att förbereda utkast',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Pausa förberedelsen',exact:true}).click();await expect(page.getByText('Förberedelsen är pausad',{exact:true})).toBeVisible();await expect(page.getByText('Worker token',{exact:true})).toHaveCount(0)
  const folder='../../.superpowers/sdd/2026-10-17-sales-managed-host/browser';mkdirSync(folder,{recursive:true});await page.screenshot({path:`${folder}/sales-desktop.png`,fullPage:true})

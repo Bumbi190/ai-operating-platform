@@ -99,7 +99,7 @@ begin
   insert into public.sales_mailbox_setups(project_id,worker_id,mailbox_id,owner_id,host_generation,mailbox_generation,kid,email) values(w.project_id,w.id,c.id,w.owner_id,w.host_generation,c.generation+1,c.kid,e) returning * into s;
   update public.sales_mailbox_connections set generation=s.mailbox_generation,head_setup_id=s.id,email=e,status='waiting_for_host',smtp_authenticated_at=null,imap_authenticated_at=null,reason_code=null where id=c.id;
  end if;
- return jsonb_build_object('context',public.sales_mailbox_context(s),'publicJwk',c.public_jwk);
+ return jsonb_build_object('context',public.sales_mailbox_context(s),'publicJwk',c.public_jwk,'alreadySubmitted',s.sealed_hash is not null);
 end $$;
 create function public.sales_mailbox_submit_sealed(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
 declare s public.sales_mailbox_setups;e jsonb:=p_input->'envelope';h text;wid uuid;
@@ -163,6 +163,15 @@ begin
  perform public.sales_mailbox_fields(p_input,array['projectId','mailboxId']);perform public.sales_owner(p_principal,(p_input->>'projectId')::uuid);
  select * into c from public.sales_mailbox_connections where id=(p_input->>'mailboxId')::uuid and project_id=(p_input->>'projectId')::uuid and owner_id=(p_principal->>'userId')::uuid;
  if not found then raise exception 'NOT_FOUND' using errcode='P0002';end if;return public.sales_mailbox_status(c);
+end $$;
+create function public.sales_mailbox_reference(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
+declare c public.sales_mailbox_connections;h jsonb;
+begin
+ perform public.sales_mailbox_fields(p_input,array['projectId','workerId']);
+ h:=public.sales_host_read_status(p_principal,p_input);
+ if h->>'managed'<>'true' or h->>'connectionState'='revoked' then raise exception 'NOT_FOUND' using errcode='P0002';end if;
+ select * into c from public.sales_mailbox_connections where project_id=(p_input->>'projectId')::uuid and worker_id=(p_input->>'workerId')::uuid and owner_id=(p_principal->>'userId')::uuid;
+ return jsonb_build_object('connection',case when c.id is null then null else public.sales_mailbox_status(c) end);
 end $$;
 do $$ declare f regprocedure;begin
  for f in select oid::regprocedure from pg_proc where pronamespace='public'::regnamespace and proname like 'sales_mailbox_%' loop

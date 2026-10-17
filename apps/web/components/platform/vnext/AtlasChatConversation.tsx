@@ -68,6 +68,7 @@ import {
   type ToolEntry,
   type TranscriptEntry,
 } from '@/lib/os/chat-shared'
+import {AtlasTestDataReviewCard} from '../os/AtlasTestDataReviewCard'
 import styles from './AtlasChat.module.css'
 import type {PlanView} from '@/lib/website-build/planning/types'
 import type {BuildSessionView} from '@/lib/website-build/types'
@@ -222,6 +223,7 @@ export function AtlasChatConversation({ model, asking = false,plan=null,initialS
 
         <div className={embedded?styles.embeddedScroll:styles.plainBody} data-embedded-scroll={embedded||undefined}>
         {children}
+        {snapshot.id===model.id&&snapshot.testDataReviews.map(review=><AtlasTestDataReviewCard key={review.packageView.packageId} review={review} conversationId={model.id} onUpdate={value=>controller.updateTestDataReview(model.id,value)} />)}
         {historyUnreadable ? (
           <p className={styles.blocked} role="note">{TRANSCRIPT_UNREADABLE}</p>
         ) : (

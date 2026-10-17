@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test'
+export default defineConfig({testDir:'./e2e',testMatch:'atlas-test-data-review.spec.ts',workers:1,retries:0,timeout:45000,expect:{timeout:8000},use:{baseURL:'http://127.0.0.1:59139',browserName:'chromium',viewport:{width:390,height:844},screenshot:'only-on-failure'},outputDir:'../../.superpowers/sdd/2026-10-17-atlas-handlarborsen-test-data/review-browser',webServer:{command:'node e2e/atlas-test-data-review-server.mjs',url:'http://127.0.0.1:59139',reuseExistingServer:false,timeout:45000}})

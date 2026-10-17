@@ -21,7 +21,9 @@ import type {
 } from "@/lib/website-build/planning/types";
 import type { BuildSessionView } from "@/lib/website-build/types";
 import { decodeWebsiteEffect, type BuildContext } from "./stream-effects";
+import {decodeCleanupEffect,decodeReviewView,type CleanupReviewView} from "@/lib/atlas/handlarborsen-test-data/stream-effect";
 export type ConversationSnapshot = {
+  testDataReviews: CleanupReviewView[];
   studio: boolean;
   id: string | null;
   projectId: string | null;
@@ -36,6 +38,7 @@ export type ConversationSnapshot = {
   speechDraft: string | null;
 };
 const empty = (): ConversationSnapshot => ({
+  testDataReviews: [],
   studio: false,
   id: null,
   projectId: null,
@@ -154,6 +157,17 @@ export class AtlasConversationController {
       this.listeners.forEach((f) => f());
     }
   }
+  private savedTestDataReviews(saved:SavedMessage[],id:string):CleanupReviewView[]{
+    const views=new Map<string,CleanupReviewView>();
+    for(const row of saved){
+      if(row.role!=='assistant'||!row.tool_data||typeof row.tool_data!=='object')continue;
+      const td=row.tool_data as Record<string,unknown>;
+      if(td.kind!=='handlarborsen_test_data_review')continue;
+      const view=decodeCleanupEffect({event:td.kind,conversationId:td.conversationId,review:td.review},id);
+      if(view)views.set(view.packageView.packageId,view);
+    }
+    return [...views.values()];
+  }
   activateConversation(input: Activate) {
     this.activateSnapshot(input, false);
   }
@@ -166,6 +180,7 @@ export class AtlasConversationController {
     if (!s)
       s = {
         ...empty(),
+        testDataReviews:this.savedTestDataReviews(input.saved,input.id),
         studio: input.studio===true,
         id: input.id,
         projectId: input.projectId ?? null,
@@ -206,6 +221,13 @@ export class AtlasConversationController {
     this.conversations.set(input.id, s);
     this.active = s;
     this.listeners.forEach((f) => f());
+  }
+  updateTestDataReview(conversationId:string,value:unknown) {
+    const view=decodeReviewView(value),current=this.conversations.get(conversationId);
+    if(!view||!current||this.active.id!==conversationId||view.packageView.conversationId!==conversationId)return;
+    const prior=current.testDataReviews.find(r=>r.packageView.packageId===view.packageView.packageId);
+    if(prior&&prior.reviewRef!==view.reviewRef)return;
+    this.update(conversationId,{testDataReviews:[...current.testDataReviews.filter(r=>r.packageView.packageId!==view.packageView.packageId),view]});
   }
   clearOnSignout() {
     this.creating = null;
@@ -368,6 +390,8 @@ export class AtlasConversationController {
           }
           if (event.event === "error") settled = true;
           if (isCurrent()) {
+            const cleanup=decodeCleanupEffect(event,id);
+            if(cleanup)this.updateTestDataReview(id,cleanup);
             const now = this.snapshot(),
               effect = decodeWebsiteEffect(event, {
                 conversationId: id,

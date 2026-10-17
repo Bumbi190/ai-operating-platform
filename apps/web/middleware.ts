@@ -128,9 +128,13 @@ export async function middleware(request: NextRequest) {
       const handlWorkflowEdit =
         request.method === 'PATCH' &&
         /^\/api\/organization\/projects\/handlarborsen\/workflows\/[0-9a-f-]{36}$/i.test(pathname)
+      // Only the three audited Handlarbörsen evidence/review endpoints.
+      // Never open owner-only /api/projects routes or any other project/method.
+      const handlCompetitorEvidenceWrite = request.method === 'POST' &&
+        /^\/api\/organization\/projects\/handlarborsen\/competitors\/(?:candidates|history|reviews)$/.test(pathname)
       // The Owner's old API remains blocked for every collaborator.
       if (pathname.startsWith('/api') &&
-          (denied || !(collaboratorDirectoryRead || collaboratorAtlasRead || collaboratorProposals || collaboratorWorkflowRead || handlWorkflowCreate || handlWorkflowEdit))) {
+          (denied || !(collaboratorDirectoryRead || collaboratorAtlasRead || collaboratorProposals || collaboratorWorkflowRead || handlWorkflowCreate || handlWorkflowEdit || handlCompetitorEvidenceWrite))) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
       const allowedPage = !denied && (

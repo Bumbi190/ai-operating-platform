@@ -5,7 +5,7 @@ import {inspectCanonicalMigrationFiles,evaluateAppliedMigrationLedger} from '../
 describe('sales migration enforcement',()=>{
  it('advances the canonical source count without pretending the migration was applied',()=>{
   const state=inspectCanonicalMigrationFiles(readdirSync(resolve(process.cwd(),'supabase/migrations')))
-  expect(state.sqlFiles).toHaveLength(130);expect(state.enforcedNames).toHaveLength(116)
+  expect(state.sqlFiles).toHaveLength(131);expect(state.enforcedNames).toHaveLength(117)
   expect(state.enforcedNames).toContain('atlas_sales_pilot');expect(state.grandfatheredNames).not.toContain('atlas_sales_pilot')
   expect(()=>evaluateAppliedMigrationLedger(state.repositoryNames.filter(n=>n!=='atlas_sales_pilot'),state)).toThrow(/atlas_sales_pilot/)
  })

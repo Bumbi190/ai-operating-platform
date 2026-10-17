@@ -39,14 +39,16 @@
       "tables": [
         "agent_decisions",
         "ai_cost_snapshots",
-        "memory_refs"
+        "memory_refs",
+        "sales_host_events"
       ],
       "meaning": "Created by a migration but absent from the production catalog at capture time — never applied there, or dropped out-of-band. They are NOT a fresh-deploy hazard: each declares RLS in its own migration, so a rebuild creates them protected. Listed so their absence from the table map is a recorded fact rather than a silent gap, and so the fail-closed rule can distinguish them from a genuinely new unprotected table.",
       "requirement": "Every entry must have RLS declared in the migration corpus.",
       "classes": {
         "agent_decisions": "SERVER_ONLY",
         "ai_cost_snapshots": "SERVER_ONLY",
-        "memory_refs": "SERVER_ONLY"
+        "memory_refs": "SERVER_ONLY",
+        "sales_host_events": "SERVER_ONLY"
       },
       "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class."
     },
@@ -72,7 +74,8 @@
     "social_connections_note": "Observed in production iboepohjwrhtgshrqaol at2026-10-16T07:10:48Z after reviewed social_project_connections_v1 (ledger20261016071026; canonical20261016061728). RLS on, zero policies, no public/anon/authenticated grants; service_role SELECT/INSERT/UPDATE only. All12 social_connection functions SECURITY INVOKER with empty search_path, client EXECUTE revoked and service EXECUTE enabled. Zero intents; existing three legacy bindings retained. Safe owned Familje-Stunden metadata read verified without credentials or provider calls.",
     "social_content_note": "Three social_content tables observed in production iboepohjwrhtgshrqaol after social_content_preparation_v1 was applied on 2026-10-16 (ledger 20261016103411; canonical SQL SHA256 638305f235bc453729bc3fd414faf602a536854342220d8e5ade9e34ce40d967). RLS enabled, zero policies, no anon/authenticated reads and service_role reachability. All six new functions SECURITY INVOKER with empty search_path and client EXECUTE revoked. Scoped three-table observation; older classifications retain their earlier capture dates.",
     "social_profile_publication_note": "Scoped production observation 2026-10-16 after exact reviewed social_project_profiles_v1 (ledger20261016123853, SHA25632ba235a7a7e3d8ec40fe4e552af84b30441c2048312a883b528b666a7371d74,8764chars) and social_manual_publication_v1 (ledger20261016123902,SHA2567e90994492f3c62493e68cef41f9b515b782204f7beb63ae874a6ba1ee938bf2,16760chars). All four tables RLS ON/zero policies/no anon or authenticated privilege/service SELECT reachability. All nine new functions SECURITY INVOKER, empty search_path, client EXECUTE revoked, service EXECUTE present. Four tables empty; no synthetic approvals or publication evidence seeded. Ledger150/public tables122 observed. Existing The Prompt binding fingerprint unchanged; advisor WARN counts20/7/8/1 unchanged (four expected no-policy INFO entries added). Older classifications/capture date retain their prior scope.",
-    "atlas_sales_pilot_note": "Scoped production observation 2026-10-17 after exact reviewed atlas_sales_pilot migration (ledger20261017130254, canonical20261017100633, SHA2567ea3de34909ac582d2534b291b448fb9ba3781c196167c0475fc4e1f2c301ca9). All seven tables RLS ON. Six TENANT_RLS tables have one owner-rooted authenticated SELECT policy, no anon SELECT, authenticated SELECT only and service-role reachability. Worker registrations SERVER_ONLY, zero policies and no anon/authenticated SELECT. All27 sales functions SECURITY INVOKER, empty search_path, anon/authenticated EXECUTE revoked and service EXECUTE present. Owner-scoped workspace empty: zero contacts/offers/jobs/workers/drafts, sendingEnabled false. Advisor WARN counts20/7/8/1 unchanged. Only seven table rows refreshed; earlier capture dates remain unchanged."
+    "atlas_sales_pilot_note": "Scoped production observation 2026-10-17 after exact reviewed atlas_sales_pilot migration (ledger20261017130254, canonical20261017100633, SHA2567ea3de34909ac582d2534b291b448fb9ba3781c196167c0475fc4e1f2c301ca9). All seven tables RLS ON. Six TENANT_RLS tables have one owner-rooted authenticated SELECT policy, no anon SELECT, authenticated SELECT only and service-role reachability. Worker registrations SERVER_ONLY, zero policies and no anon/authenticated SELECT. All27 sales functions SECURITY INVOKER, empty search_path, anon/authenticated EXECUTE revoked and service EXECUTE present. Owner-scoped workspace empty: zero contacts/offers/jobs/workers/drafts, sendingEnabled false. Advisor WARN counts20/7/8/1 unchanged. Only seven table rows refreshed; earlier capture dates remain unchanged.",
+    "sales_managed_host_note": "Pending reviewed apply: sales_host_events append-only, RLS, no client access, service SELECT/INSERT only."
   },
   "tables": {
     "handlarborsen_competitor_review_decisions": {

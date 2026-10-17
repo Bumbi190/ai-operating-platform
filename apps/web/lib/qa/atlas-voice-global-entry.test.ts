@@ -13,9 +13,9 @@ function Consumer(){state.value=useAtlas();return null}
 beforeEach(()=>{vi.clearAllMocks();vi.useFakeTimers();state.controller=new AtlasConversationController();vi.stubGlobal('React',React);vi.stubGlobal('requestAnimationFrame',vi.fn());vi.stubGlobal('cancelAnimationFrame',vi.fn());vi.stubGlobal('window',{SpeechRecognition:state.recognition})})
 afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();vi.unstubAllEnvs()})
 function mount(props:Record<string,unknown>){renderToStaticMarkup(React.createElement(AtlasRuntimeProvider,{...props,children:React.createElement(Consumer)} as any))}
-it('routes global activation to the approved voice page before any legacy microphone starts',()=>{
+it('does not navigate or start legacy recognition when voice is requested before hydration',()=>{
  mount({voiceConversationEnabled:true});state.value.activate()
- expect(state.push).toHaveBeenCalledWith('/atlas/rost');expect(state.recognition).not.toHaveBeenCalled()
+ expect(state.push).not.toHaveBeenCalled();expect(state.recognition).not.toHaveBeenCalled()
 })
 it('blocks read-only global activation even when the conversation gate is enabled',()=>{
  mount({voiceConversationEnabled:true,voiceReadOnly:true});state.value.activate()

@@ -19,6 +19,7 @@ export function AtlasMiniOrb({
     launcher = useRef<HTMLDivElement>(null)
   // Keep this shell component mounted while a full Atlas surface hides it.
   const hidden =
+    atlas.voicePanelOpen ||
     pathname === '/atlas' ||
     pathname === '/atlas/rost' ||
     pathname === '/chat' ||

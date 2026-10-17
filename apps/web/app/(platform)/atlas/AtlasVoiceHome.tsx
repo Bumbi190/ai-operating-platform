@@ -33,7 +33,6 @@ export function AtlasVoiceHome({ operatorName, voiceHref }: Props) {
 
   // ── Orb-klick: mappa UI-intention till runtime-åtgärder ──────────────────
   function handleOrbClick() {
-    if (voiceHref) { atlas.deactivate(); atlas.openWorkspace(voiceHref); return }
     if (!atlas.isSessionActive) {
       atlas.activate()
       return

@@ -1,3 +1,5 @@
+import { THE_PROMPT_GROWTH_GUIDANCE } from '@/lib/content-growth/guidance'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Delade prompts för "The Prompt"-manusgenerering.
 // Single source of truth för cron/step1 (dagligt) och api/media/breaking (newsjacking).
@@ -47,6 +49,8 @@ RETENTION: every sentence must earn the next. Make the final line loop back towa
 CAPTIONS: 2–4 punchy on-screen lines (few words each, from frame 0). Make the LAST caption a follow-promise that gives scrollers a reason to follow: "Follow for daily AI news in 30s 🤖".
 
 CTA = a discussion-trigger question that drives comments: "Hype or game-changer?" | "Would you trust this?"${competitorBlock}
+
+${THE_PROMPT_GROWTH_GUIDANCE}
 
 Return ONLY valid JSON (no markdown fences):
 {

@@ -9,6 +9,7 @@
  * (workflows/channel-drafter.ts) gör LLM-anropet och DB-skrivningen.
  * ⛔ The Prompt berörs aldrig.
  */
+import { FAMILJE_STUNDEN_GROWTH_GUIDANCE } from '@/lib/content-growth/guidance'
 import {
   BRAND, CORE_MESSAGE, PROOF_POINTS, APPROVED_ANGLE_TAGS, FORBIDDEN_ANGLE_TAGS,
   CHARACTER_ROLES, CTA, type ThemeCanon,
@@ -78,6 +79,7 @@ export function buildDrafterUserMessage(brief: Record<string, any>, theme: Theme
   return [
     formatRule,
     `HOOK denna post: ${hookDirective}.`,
+    ...(fmt === 'reel' ? [FAMILJE_STUNDEN_GROWTH_GUIDANCE] : []),
     '',
     'BRIEF:',
     JSON.stringify({

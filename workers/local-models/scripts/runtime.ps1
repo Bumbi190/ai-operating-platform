@@ -15,7 +15,7 @@ if ($Action -eq 'Prepare') {
   Assert-FreeSpace $RuntimeRoot
   New-Item -ItemType Directory -Force -Path $RuntimeRoot | Out-Null
   $checksums=Invoke-RestMethod -Uri ('https://github.com/ollama/ollama/releases/download/v'+$version+'/sha256sum.txt') -TimeoutSec 30
-  if ($checksums -notmatch ($expectedSha+'\s+\*?ollama-windows-amd64.zip')) { throw 'RELEASE_CHECKSUM_CHANGED' }
+  Assert-ReleaseChecksumText -Text $checksums -ExpectedSha256 $expectedSha
   if (!(Test-Path $zip)) {
     & curl.exe --fail --location --retry 0 --output $zip ('https://github.com/ollama/ollama/releases/download/v'+$version+'/ollama-windows-amd64.zip')
     if ($LASTEXITCODE -ne 0) { throw 'RUNTIME_DOWNLOAD_FAILED' }

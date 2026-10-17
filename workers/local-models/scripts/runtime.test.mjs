@@ -9,6 +9,10 @@ test('PowerShell runtime scripts have valid AST',{skip:!windows},()=>{
 test('wrong artifact SHA is rejected without executing or modifying artifact',{skip:!windows},async t=>{
   const d=await temp(t);const f=path.join(d,'artifact.zip');await writeFile(f,'tiny-test');const r=ps(`. ${quote(path.join(dir,'runtime-lib.ps1'))}; try { Assert-ArtifactHash -Artifact ${quote(f)} -ExpectedSha256 '${'0'.repeat(64)}'; exit 2 } catch { if ($_.Exception.Message -eq 'ARTIFACT_HASH_MISMATCH') { exit 0 }; exit 3 }`);assert.equal(r.status,0,r.stderr);assert.equal(await readFile(f,'utf8'),'tiny-test');
 });
+test('official checksum parser accepts ./ prefix but rejects a changed artifact hash',{skip:!windows},()=>{
+  const good='5134ce7e3bc8e94d0494721c799ec293b429450d0c52461b0ee3647dd3bb4bb7';
+  const r=ps(`. ${quote(path.join(dir,'runtime-lib.ps1'))}; Assert-ReleaseChecksumText -Text '${good}  ./ollama-windows-amd64.zip' -ExpectedSha256 '${good}'; try { Assert-ReleaseChecksumText -Text '${'0'.repeat(64)}  ./ollama-windows-amd64.zip' -ExpectedSha256 '${good}'; exit 2 } catch { if ($_.Exception.Message -eq 'RELEASE_CHECKSUM_CHANGED') { exit 0 }; exit 3 }`);assert.equal(r.status,0,r.stderr);
+});
 test('Start refuses an occupied local port before launching a process',{skip:!windows},async t=>{
   // Independent listener on the real fixed port is created only if the port is free.
   const http=await import('node:http');const server=http.createServer((_,res)=>res.end('{}'));

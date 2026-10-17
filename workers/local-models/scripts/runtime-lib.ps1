@@ -1,4 +1,9 @@
 $ErrorActionPreference = 'Stop'
+function Assert-ReleaseChecksumText {
+  param([string]$Text,[string]$ExpectedSha256)
+  $pattern='(?m)^'+[regex]::Escape($ExpectedSha256)+'\s+\*?(?:\./)?ollama-windows-amd64\.zip\s*$'
+  if ($Text -notmatch $pattern) { throw 'RELEASE_CHECKSUM_CHANGED' }
+}
 function Assert-ArtifactHash {
   param([string]$Artifact,[string]$ExpectedSha256)
   if (!(Test-Path -LiteralPath $Artifact) -or (Get-FileHash -LiteralPath $Artifact -Algorithm SHA256).Hash.ToLowerInvariant() -ne $ExpectedSha256.ToLowerInvariant()) { throw 'ARTIFACT_HASH_MISMATCH' }

@@ -1,0 +1,41 @@
+{
+  "purpose": "Public test-only signing vector; never a deployed credential",
+  "keyId": "execute-v1",
+  "key": "local-fixture-execute-key-not-a-real-credential-000000000000",
+  "signedAt": "1792238400000",
+  "body": {
+    "schemaVersion": 1,
+    "requestId": "c2000000-0000-4000-8000-000000000001",
+    "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+    "operatorBindingId": "b1000000-0000-4000-8000-000000000001",
+    "omniraUserId": "c1000000-0000-4000-8000-000000000001",
+    "conversationId": "d1000000-0000-4000-8000-000000000001",
+    "action": "execute",
+    "payload": {
+      "packageId": "e1000000-0000-4000-8000-000000000001",
+      "approvalRef": "a2000000-0000-4000-8000-000000000001",
+      "executionId": "f1000000-0000-4000-8000-000000000001",
+      "idempotencyKey": "f1000000-0000-4000-8000-000000000001",
+      "approvedPackage": {
+        "packageId": "e1000000-0000-4000-8000-000000000001",
+        "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+        "conversationId": "d1000000-0000-4000-8000-000000000001",
+        "operatorBindingId": "b1000000-0000-4000-8000-000000000001",
+        "operation": "quarantine",
+        "organisationIds": [
+          "61000000-0000-4000-8000-000000000001"
+        ],
+        "classificationRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "graphSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "expiresAt": "2026-10-17T12:09:00.000Z",
+        "counts": {
+          "organizations": 1
+        },
+        "blockers": [],
+        "status": "prepared"
+      }
+    }
+  },
+  "canonicalBody": "{\"action\":\"execute\",\"conversationId\":\"d1000000-0000-4000-8000-000000000001\",\"omniraUserId\":\"c1000000-0000-4000-8000-000000000001\",\"operatorBindingId\":\"b1000000-0000-4000-8000-000000000001\",\"payload\":{\"approvalRef\":\"a2000000-0000-4000-8000-000000000001\",\"approvedPackage\":{\"blockers\":[],\"classificationRevision\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"conversationId\":\"d1000000-0000-4000-8000-000000000001\",\"counts\":{\"organizations\":1},\"expiresAt\":\"2026-10-17T12:09:00.000Z\",\"graphSha256\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"operation\":\"quarantine\",\"operatorBindingId\":\"b1000000-0000-4000-8000-000000000001\",\"organisationIds\":[\"61000000-0000-4000-8000-000000000001\"],\"packageId\":\"e1000000-0000-4000-8000-000000000001\",\"projectId\":\"8f673c09-1c8f-4d78-876e-4c14bf1c89b3\",\"status\":\"prepared\"},\"executionId\":\"f1000000-0000-4000-8000-000000000001\",\"idempotencyKey\":\"f1000000-0000-4000-8000-000000000001\",\"packageId\":\"e1000000-0000-4000-8000-000000000001\"},\"projectId\":\"8f673c09-1c8f-4d78-876e-4c14bf1c89b3\",\"requestId\":\"c2000000-0000-4000-8000-000000000001\",\"schemaVersion\":1}",
+  "signature": "0f7b194b8b090e572586e0ef8623f1a2f63125f27f446c7e0f2989b7f2ec7b0b"
+}

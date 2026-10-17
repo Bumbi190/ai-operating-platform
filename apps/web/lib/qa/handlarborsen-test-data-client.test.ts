@@ -1,3 +1,5 @@
+import executeVector from './fixtures/handlarborsen-test-data/signed-execute.json'
+import receiptVector from './fixtures/handlarborsen-test-data/signed-receipt.json'
 import {beforeEach,afterEach,expect,it,vi} from 'vitest'
 import fixture from './fixtures/handlarborsen-test-data/signed-inventory.json'
 const m=vi.hoisted(()=>({operator:vi.fn(),access:vi.fn(),rpc:vi.fn(),fetch:vi.fn()}))
@@ -76,3 +78,5 @@ it('a ten-second deadline returns unknown once and never retries a mutation',asy
  const p=await principal(),result=callHandlarborsenTestData(command as never,p);await vi.advanceTimersByTimeAsync(10001);
  expect(await result).toEqual({status:'unknown',executionId});expect(m.fetch).toHaveBeenCalledTimes(1)
 })
+
+it.each([executeVector,receiptVector])('matches the independent nested $body.action signing fixture',vector=>{const signed=signCleanupEnvelope(vector.body,vector.keyId,vector.key,vector.signedAt);expect(signed.body).toBe(vector.canonicalBody);expect(signed.headers['x-atlas-signature']).toBe(vector.signature)})

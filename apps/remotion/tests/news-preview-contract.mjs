@@ -24,6 +24,11 @@ for(const x of ['codex','recruiter']){
 }
 assert(preview.includes('groupNarrationWords'))
 assert(preview.includes('activeWordIndex'))
+assert(preview.includes('STAY AHEAD OF THE SIGNAL'))
+assert(preview.includes('FOLLOW<br/>'))
+assert(preview.includes('AI news. Daily. No fluff.'))
+assert(preview.includes('OUTRO_FRAMES = 90'))
+assert(preview.includes('Math.ceil(STORIES[story].narration.durationSecs*30)+OUTRO_FRAMES'))
 assert(preview.includes('PRIVATE REVIEW / NOT FOR POSTING'))
 assert(preview.includes('NOT A PRODUCT SCREENSHOT'))
 for(const x of ['fetch(', 'uploadToSignedUrl(', 'startLambdaRender(', 'publishReel(', 'process.env.CRON_SECRET'])

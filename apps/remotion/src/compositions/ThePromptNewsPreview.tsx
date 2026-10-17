@@ -15,6 +15,7 @@ import {activeWordIndex, captionAtTime, groupNarrationWords, type NarrationWord}
 type Story = 'codex' | 'recruiter'
 const TEAL = '#51F1C7'
 const WHITE = '#F7FDFF'
+const OUTRO_FRAMES = 90 // 3 seconds after Victoria finishes speaking
 const clamp = {extrapolateLeft:'clamp',extrapolateRight:'clamp'} as const
 const ease = Easing.bezier(.18,.9,.24,1)
 const anim = (f:number,a:number,b:number,x:number,y:number) =>
@@ -83,6 +84,10 @@ export function ThePromptNewsPreview({story}:{story:Story}){
   const startFrame=Math.ceil(p.starts[segment]/1000*fps)
   const local=Math.max(0,frame-startFrame)
   const opening=anim(local,0,13,0,1)
+  const voiceFrames=Math.ceil(p.narration.durationSecs*fps)
+  const isOutro=frame>=voiceFrames
+  const outroLocal=Math.max(0,frame-voiceFrames)
+  const outroOpacity=isOutro?anim(outroLocal,0,12,0,1):0
   const disappearing=interpolate(frame,[durationInFrames-7,durationInFrames],[1,0],clamp)
   const sceneImage=staticFile('the-prompt-qa/'+story+'-'+[0,1,2,0][segment]+'.png')
   return <AbsoluteFill style={{fontFamily:'Arial,sans-serif',color:WHITE,background:'#04111D',overflow:'hidden'}}>
@@ -133,8 +138,21 @@ export function ThePromptNewsPreview({story}:{story:Story}){
       <div>WIRED / ILLUSTRATIVE VISUALS — NOT A PRODUCT SCREENSHOT</div>
       <div style={{color:TEAL,textAlign:'right'}}>PRIVATE REVIEW / NOT FOR POSTING</div>
     </div>
+    {/* A final three-second brand signoff, AFTER Victoria has finished. */}
+    {isOutro&&<AbsoluteFill style={{
+      background:'radial-gradient(circle at 50% 38%,#17535B 0%,#0A2935 32%,#051622 72%,#04111D 100%)',
+      opacity:outroOpacity,display:'flex',alignItems:'center',justifyContent:'center',
+    }}>
+      <div style={{textAlign:'center',padding:'0 62px',transform:`translateY(${anim(outroLocal,0,20,65,0)}px)`}}>
+        <div style={{color:TEAL,fontSize:30,letterSpacing:5,fontWeight:850,marginBottom:43}}>STAY AHEAD OF THE SIGNAL</div>
+        <div style={{fontSize:111,fontWeight:950,lineHeight:1.06,letterSpacing:-4}}>FOLLOW<br/><span style={{color:TEAL}}>THE PROMPT.</span></div>
+        <div style={{width:245,height:8,background:TEAL,borderRadius:12,margin:'65px auto 43px'}}/>
+        <div style={{fontSize:39,color:'#BDE9F5',fontWeight:750}}>AI news. Daily. No fluff.</div>
+      </div>
+      <div style={{position:'absolute',bottom:90,left:62,right:62,textAlign:'center',fontSize:18,color:'#BADAE0',letterSpacing:2}}>PRIVATE REVIEW / NOT FOR POSTING</div>
+    </AbsoluteFill>}
     <AbsoluteFill style={{opacity:1-disappearing,background:'#04111D',pointerEvents:'none'}}/>
     <Audio src={staticFile(p.audio)}/>
   </AbsoluteFill>
 }
-export const previewDuration=(story:Story)=>Math.ceil(STORIES[story].narration.durationSecs*30)
+export const previewDuration=(story:Story)=>Math.ceil(STORIES[story].narration.durationSecs*30)+OUTRO_FRAMES

@@ -1,5 +1,5 @@
 import React from 'react'
-import { AbsoluteFill, Img, interpolate, useCurrentFrame } from 'remotion'
+import { AbsoluteFill, Img, interpolate, staticFile, useCurrentFrame } from 'remotion'
 
 /**
  * Creative previews only. No outbound calls, credentials, analytics,
@@ -67,7 +67,7 @@ export function ContentGrowthReel({ brand, imageUrls = [] }: ContentGrowthReelPr
         {family && imageUrls.length > 0 ? (
           <div style={{ position: 'absolute', top: 385, width: 1080, height: 650 }}>
             {imageUrls.slice(0, 2).map((src, i) => (
-              <Img key={src} src={src} style={{
+              <Img key={src} src={src.startsWith('/') ? staticFile(src) : src} style={{
                 position: 'absolute', objectFit: 'contain',
                 left: i === 0 ? 80 : 520, top: i === 0 ? 0 : 60,
                 width: i === 0 ? 475 : 420, height: 620,

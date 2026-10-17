@@ -21,6 +21,8 @@
  *                   prompt is rejected unbilled) and output ≤ the request's
  *                   own output cap. Heuristic input estimates are NOT used —
  *                   characters-per-token is a guess, the window is a limit.
+ *                   A smaller qualified plain-text ceiling requires a private,
+ *                   payload-bound verified grant; raw JSON/numbers cannot lower it.
  *   fixed_units     the provider bills a unit count fixed by the request
  *                   (images, characters, an execution), priced exactly as the
  *                   metering prices it.
@@ -30,6 +32,7 @@
  * A request this module cannot bound is REFUSED — never reserved at a guess.
  */
 
+import {readVerifiedInputCeiling,type VerifiedInputCeiling} from './qualified-text-budget'
 import { MODEL_PRICING, type ModelPricing } from '@/lib/ai/pricing'
 
 export type CeilingBasis = 'token_window' | 'fixed_units' | 'internal_fixed'
@@ -109,6 +112,7 @@ export const CONTEXT_WINDOW_TOKENS: Readonly<Record<string, number>> = Object.fr
   'claude-3-5-haiku-20241022': 200_000,
   'claude-3-5-sonnet-20241022': 200_000,
   'gpt-5.4-mini': 400_000,
+  'gpt-5.4-mini-2026-03-17': 400_000,
   'gpt-4o': 128_000,
   'gpt-4o-mini': 128_000,
 })
@@ -134,14 +138,16 @@ function tokenModel(model: string): { pricing: ModelPricing; window: number } | 
 const isPositiveInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v > 0
 
 /** Token-window ceiling: window × input price + output cap × output price. */
-export function tokenWindowCeiling(model: string, outputCap: number, rates: RateSnapshot): Ceiling {
+export function tokenWindowCeiling(model: string, outputCap: number, rates: RateSnapshot, verifiedInput?:VerifiedInputCeiling): Ceiling {
   const m = tokenModel(model)
   if (!m) return refuse(`model "${model}" has no price-book entry with a documented context window`)
   if (!isPositiveInt(outputCap)) return refuse('the request carries no positive integer output cap')
   const rate = fx(rates)
   if (rate === null) return refuse('the rate snapshot has no usable usd_sek')
-  const usd = (m.window / 1_000_000) * m.pricing.inputPer1M + (outputCap / 1_000_000) * m.pricing.outputPer1M
-  return { ok: true, sek: usd * rate, basis: 'token_window', detail: `${model}:in<=${m.window},out<=${outputCap}` }
+  let inputWindow=m.window
+  if(verifiedInput){try{inputWindow=Math.min(m.window,readVerifiedInputCeiling(verifiedInput))}catch{return refuse('input ceiling lacks qualified request evidence')}}
+  const usd = (inputWindow / 1_000_000) * m.pricing.inputPer1M + (outputCap / 1_000_000) * m.pricing.outputPer1M
+  return { ok: true, sek: usd * rate, basis: 'token_window', detail: `${model}:in<=${inputWindow},out<=${outputCap}` }
 }
 
 /** Fixed-unit ceiling: units × the per-unit USD price the metering also uses. */

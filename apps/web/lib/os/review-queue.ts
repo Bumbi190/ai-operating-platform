@@ -184,7 +184,7 @@ function toItem(row: RawReviewApproval): ReviewItem {
     statusClass,
     statusLabel: statusLabel(status),
     kind: text(row.kind),
-    outputKey: text(row.output_key),
+    outputKey: row.kind==='local_text_review'?'Lokal AI: jämför källa och förslag':row.kind==='local_text_incident'?'Lokal AI: driftåtgärd':text(row.output_key),
     content: typeof row.content === 'string' ? row.content : '',
     reviewerNotes: text(row.reviewer_notes),
     createdAt: row.created_at ?? null,

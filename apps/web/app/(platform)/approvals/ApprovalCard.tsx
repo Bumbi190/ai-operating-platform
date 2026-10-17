@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import {LocalTextApprovalCard} from '@/components/platform/vnext/LocalTextApprovalCard'
 import {
   CheckCircle2, XCircle, Clock, RefreshCw, ChevronDown, ChevronUp, Loader2,
   ShieldAlert, Sparkles, Eye, Brain, Activity,
@@ -11,6 +12,7 @@ import { ScoreBar, ReasoningTrace, type ReasoningStep, RadialDial, PulseDot } fr
 import { setViewSelection } from '@/lib/atlas/view-client'
 
 interface Approval {
+  kind?:string
   id: string
   output_key: string
   content: string
@@ -53,7 +55,11 @@ const STATUS_META = {
 // dereferencing undefined.
 const UNKNOWN_META = { label: 'Okänd', tone: 'amber', color: '#a1a1aa', icon: Clock, glow: '' } as const
 
-export function ApprovalCard({ approval, delay = 0 }: { approval: Approval; delay?: number }) {
+export function ApprovalCard(props:{approval:Approval;delay?:number}){
+  if(props.approval.kind==='local_text_review'||props.approval.kind==='local_text_incident')return <LocalTextApprovalCard key={props.approval.id} approvalId={props.approval.id} kind={props.approval.kind} status={props.approval.status}/>
+  return <StandardApprovalCard {...props}/>
+}
+function StandardApprovalCard({ approval, delay = 0 }: { approval: Approval; delay?: number }) {
   const [expanded, setExpanded] = useState(approval.status === 'pending')
   const [notes, setNotes] = useState(approval.reviewer_notes ?? '')
   const [loading, setLoading] = useState<string | null>(null)

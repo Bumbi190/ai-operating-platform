@@ -1,6 +1,6 @@
 # Atlas / Handlarbörsen test-data verification and release receipt
 
-Verified candidate after one independent whole-branch review and one coordinator fix pass. No feature deployment, production schema change, credential provisioning, grant activation, classification of the remaining eight companies or production cleanup has occurred.
+Verified candidate after one independent whole-branch review and one coordinator fix pass. No production deployment, production schema change, credential provisioning, grant activation, classification of the remaining eight companies or production cleanup has occurred.
 
 The implementation lets Atlas inspect, prepare and execute an exact human-reviewed package of verified test data, with separate restore. Real and unknown organisations remain protected. The accepted voice engine, voice selection, streaming and microphone lifetime are preserved; ordinary questions make no cleanup/inventory calls. Web search and code work remain separate deliveries.
 
@@ -293,3 +293,5 @@ The final read-only main check found H still at ec1cdbf. O main advanced from f0
 - O consumer draft: [ai-operating-platform#399](https://github.com/Bumbi190/ai-operating-platform/pull/399), initially publishedf3db0273e792db38b1207e379ab5540fba444edc.
 
 Product-source pins above remain authoritative; this PR-link documentation update does not alter product code. Both remain drafts, not merged or activated. Worktrees and raw evidence are retained for review feedback. New mutation flags remain false/unset; the next release operation follows the producer-first sequence above.
+
+Publishing the draft branches triggered automatic Vercel preview checks. At the first PR-status read, H preview was successful and O preview plus three repository CI checks were pending. These are automated preview/CI operations, not a production rollout or activation; no production schema, new credentials/grants or targets were changed. Both PRs were OPEN/DRAFT/MERGEABLE at that read. Final local product source is unchanged from the verified pins above.

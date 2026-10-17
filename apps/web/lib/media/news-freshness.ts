@@ -33,10 +33,15 @@ const VERIFIED_RSS_SOURCES = new Set([
   'rss_openai','rss_anthropic','rss_deepmind',
   'rss_theverge','rss_wired','rss_techcrunch','rss_mit',
 ])
-const QUALIFIED_DOMAINS = new Set([
-  'openai.com','anthropic.com','deepmind.google','blog.google',
-  'theverge.com','wired.com','techcrunch.com','technologyreview.com',
-])
+const SOURCE_DOMAINS:Record<string,readonly string[]>={
+  rss_openai:['openai.com'],
+  rss_anthropic:['anthropic.com'],
+  rss_deepmind:['deepmind.google','blog.google'],
+  rss_theverge:['theverge.com'],
+  rss_wired:['wired.com'],
+  rss_techcrunch:['techcrunch.com'],
+  rss_mit:['technologyreview.com'],
+}
 const AI_WORDS = /\b(ai|artificial intelligence|machine learning|llm|chatgpt|openai|anthropic|claude|codex|gemini|deepmind|neural|large language model|foundation model|agentic|ai agents?|gpt-\d|llama|mistral|copilot|inference)\b/i
 const NON_NEWS = /\b(opinion|roundup|weekly digest|the best \d+|top \d+|buying guide|how to|beginner.s guide|explained:|what is ai\??)\b/i
 
@@ -59,8 +64,11 @@ export function checkFreshRelevantNews(
       return reject('unsafe_url',ageHours)
     domain = url.hostname.toLowerCase().replace(/^www\./,'')
   } catch { return reject('unsafe_url',ageHours) }
+  // A trusted domain is not enough: the article must match its claimed RSS
+  // issuer, or a mismatched source could appear independently verified.
+  const domains=SOURCE_DOMAINS[lead.source]??[]
   if (!VERIFIED_RSS_SOURCES.has(lead.source) ||
-      ![...QUALIFIED_DOMAINS].some(d=>domain===d || domain.endsWith('.'+d)))
+      !domains.some(d=>domain===d || domain.endsWith('.'+d)))
     return reject('unverified_source',ageHours)
   if (!AI_WORDS.test(lead.title+' '+lead.summary))
     return reject('not_ai_news',ageHours)

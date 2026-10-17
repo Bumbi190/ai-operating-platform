@@ -45,6 +45,17 @@ test('refuses lookalike hostnames, http, credentials and unrelated sources',()=>
     x.url.startsWith('https://openai.com.evil.net')?'unverified_source':'unsafe_url')
   assert.equal(checkFreshRelevantNews(story({title:'The latest football scores',summary:'A great match'}),NOW).reason,'not_ai_news')
 })
+test('an OpenAI RSS label cannot be used for an unrelated trusted newsroom URL',()=>{
+  assert.equal(checkFreshRelevantNews(story({
+    source:'rss_openai',url:'https://wired.com/story/openai-tested-codex',
+  }),NOW).reason,'unverified_source')
+  assert.equal(checkFreshRelevantNews(story({
+    source:'rss_wired',url:'https://openai.com/index/agent-update',
+  }),NOW).reason,'unverified_source')
+  assert.equal(checkFreshRelevantNews(story({
+    source:'rss_wired',url:'https://www.wired.com/story/openai-test',
+  }),NOW).eligible,true)
+})
 test('roundups and evergreen listicles cannot masquerade as fresh news',()=>{
   assert.equal(checkFreshRelevantNews(story({title:'Top 10 AI tools for beginners'}),NOW).reason,'low_news_value')
   assert.equal(checkFreshRelevantNews(story({title:'Weekly digest: AI headlines'}),NOW).reason,'low_news_value')

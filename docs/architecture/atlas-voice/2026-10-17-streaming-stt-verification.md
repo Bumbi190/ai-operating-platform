@@ -21,3 +21,12 @@ Accepted baseline: 09a32df71772473794ffdeea0ac335d15b267baf. Separate pilot bran
 
 ## Pending gates
 Real deployed authenticated WebSocket, verified realtime billing ceiling, governed provider lifecycle, native/mobile conversation acceptance. No new response-time benefit has been measured.
+
+## Task 2: bounded protocol
+- Pure browser/server protocol implemented; it is not wired to microphone or a provider.
+- RED: missing codec round-trip assertion failed; after codec implementation13 control/segment tests failed while12 codec tests passed.
+- GREEN:25 protocol tests and47 access/probe tests =72/72. TypeScript passed.
+- 6400-byte PCM blocks +4-byte sequence, strict512-byte controls, 2,880,000 actual-byte ceiling, explicit finish boundary and <=12000-character stable transcript.
+- Internal20s checkpoints acknowledge one segment at a time, retain repeated phrases and wait for the user's endpoint before yielding a complete question. Empty tail reuses last acknowledged checkpoint. Tests cover a multi-segment thought,1.4s question, cap and unexpected/duplicate events.
+- No audio, transcript, cost-rate or provider configuration changed. Actual provider acknowledgement semantics remain a later gated proof.
+- Task1 browser verifier is a credential-free static test artifact; it uses only the normal same-origin application session. Its result is not a microphone or Atlas latency benchmark.

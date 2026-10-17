@@ -5,7 +5,7 @@ const name='omnira-hb-inbox-test-'+process.pid+'-'+Date.now();const image='publi
 function docker(args,input,allowFailure=false){const r=cp.spawnSync('docker',args,{input,encoding:'utf8',timeout:30000,windowsHide:true});if(r.status!==0&&!allowFailure)throw new Error((r.stderr||r.stdout||r.error?.message||'docker failed').slice(0,4000));return r;}
 function sql(q,fail=false){return docker(['exec','-i',name,'psql','-h','/tmp','-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-At'],q,fail);}
 const read=p=>fs.readFileSync(path.join(root,p),'utf8');
-const source=read('apps/web/supabase/migrations/20261017150717_handlarborsen_candidate_inbox_v1.sql');
+const source=read('apps/web/supabase/migrations/20261017151021_handlarborsen_candidate_inbox_v1.sql');
 const receipt={image,sqlSha256:crypto.createHash('sha256').update(source.replace(/\r\n/g,'\n')).digest('hex'),checks:[],productionAccess:false};
 (async()=>{let created=false;try{
  const existing=docker(['ps','-a','--filter','name=^/'+name+'$','--format','{{.Names}}']).stdout.trim();if(existing)throw new Error('test container already exists, refusing to reuse');

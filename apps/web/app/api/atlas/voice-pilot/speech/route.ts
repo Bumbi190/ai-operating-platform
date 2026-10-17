@@ -7,9 +7,6 @@ import { GLOBAL_ONLY } from '@/lib/governance/execution-stop'
 import { transcribeAtlasSwedishPcm } from '@/lib/media/elevenlabs'
 import { PCM_MAX_BYTES } from '@/lib/atlas/voice-pilot/pcm'
 
-// Supabase is eu-west-1: avoid transatlantic auth/context/budget round trips.
-export const preferredRegion = 'dub1'
-
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
 const previewUnavailable = () => Response.json({ error: 'Rösttestet är inte tillgängligt här.' }, { status: 404 })

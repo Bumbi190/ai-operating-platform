@@ -50,3 +50,9 @@ The first deployment of `1beb458` (`dpl_FvzgJytNfW9QduPyUQBUiuSZrZRv`) stopped a
 Synced the exact canonical SQL, guard policy/count tests, DDL equivalence test and schema-security fixture from main `a129f9460102a4de1d564385ee011ec843d05f30` (registration originated in `feabd726dc1eaa1843d4b3a47be39294ec2dc0d1`). The fixture also carries main's existing social profile/publication classifications, which this preview had not yet copied. No application code from those tracks was merged and no SQL was applied, repaired or reordered; no guard exception was added.
 
 Follow-up verification: **162/162** migration guard, migration security and canonical candidate-DDL tests passed. The canonical corpus is now 128 SQL / 114 enforced names; expected ledger is 151 known names. Voice runtime source is byte-for-byte unchanged from the tested `1beb458`.
+
+## Region acceptance correction
+
+Deployment `dpl_6j6N9cUAtr5F9GeRHYJAEti1Nfcw` on `31758f9` built successfully (114/114, ledger151, READY and correct alias), but a fresh unauthorized speech request produced a runtime record in **iad1**. The Next.js `preferredRegion` exports were therefore ineffective for this Node deployment; the earlier configuration intent must not be described as a completed move.
+
+Removed those ineffective exports and set exact per-function `regions: ["dub1"]` entries in `apps/web/vercel.json` for speech, chat and conversations. The project-wide default and cron schedules are unchanged. This follows Vercel's [per-function region configuration](https://vercel.com/docs/functions/configuring-functions/region#per-function-configuration). Acceptance requires a runtime record in dub1 after redeployment, not just a successful build.

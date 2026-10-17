@@ -75,9 +75,6 @@ import { openAIAtlasStream } from '@/lib/atlas/openai-chat'
 import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
 import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
 
-// Supabase is eu-west-1: avoid transatlantic auth/context/budget round trips.
-export const preferredRegion = 'dub1'
-
 // ── Fas 5: cachad live-snapshot (Atlas Brain + Content/Opportunity/Agent) ──────
 // Multi-turn röstsamtal hämtade om ~12 DB-frågor PER tur → stor latens. Vi cachar
 // den sammansatta kontext-strängen kort så turer 2+ blir nära momentana.

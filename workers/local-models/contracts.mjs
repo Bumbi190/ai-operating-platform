@@ -29,3 +29,5 @@ export function resultSchema(job) {
   if(job.taskType==='extract') return {...base,required:['company','city','registrationNumber'],properties:Object.fromEntries(['company','city','registrationNumber'].map(k=>[k,{type:['string','null'],maxLength:300}]))};
   return {...base,required:['bullets'],properties:{bullets:{type:'array',minItems:1,maxItems:3,items:{type:'string',minLength:1,maxLength:300}}}};
 }
+
+export function decodeUtf8(bytes) { try { return new TextDecoder('utf-8',{fatal:true}).decode(bytes); } catch { throw new ContractError('INVALID_UTF8'); } }

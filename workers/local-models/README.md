@@ -49,3 +49,9 @@ Hela provserien, avlastning och GPU-observation delar samma exklusiva spärr. GP
 Gränsen 3 000 Unicode-tecken är ett kontraktstak, inte ett bevis att varje tillåten text ryms i modellens 4 096-tokenkontext. Denna leverans kvalificerar endast det fasta provpaketet. Tokenbudget och detektion av eventuell kontexttrunkering återstår före produktionsrouting för godtyckliga texter.
 
 Den råa `cli.mjs run` är ett operatörsverktyg för ett enskilt lokalt testjobb. Den gör ingen modellkvalificering och får inte kopplas direkt till produktions-Atlas. Varje framtida Atlas-dispatch ska kräva aktuell uppgiftskvalificering och ordinarie åtkomst-/budgetkontroll.
+
+## Atlas-adapter under implementation
+
+`createOllamaClient().inferBounded()` is the only intended Atlas inference path. It requires operator-qualified tokenizer and raw-runtime evidence bound to exact model/runtime artifacts. `runJob(...,{requirePromptBudget:true,tokenizerEvidence})` preserves the same lifecycle lease. Missing proof returns `TOKEN_BUDGET_UNVERIFIED`; oversized full raw prompt/schema plus 384 output reserve returns `INPUT_TOO_LARGE` before generation. The raw operator CLI retains its previous fixed-fixture behavior and is not a production Atlas route.
+
+`gguf-evidence.mjs` reads only an operator-selected allowlisted model blob, checks its complete SHA-256 and GPT-2 byte coverage, and refuses unknown tokenizers/pretokenizers. This is artifact evidence, not project admission, remote attestation or a semantic quality certificate. The new raw prompt needs requalification and independent review before any project pilot. See the separate integration verification record.

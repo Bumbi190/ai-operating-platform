@@ -1,3 +1,4 @@
+import {decodeUtf8} from './contracts.mjs';
 import http from 'node:http';
 const PATHS=new Set(['/api/version','/api/tags','/api/show','/api/chat','/api/ps','/api/generate']);
 export class LocalError extends Error {
@@ -21,7 +22,7 @@ export function createLoopbackTransport(port=11434) {
         res.on('data',c=>{total+=c.length;if(total>maxBytes){fail('RESPONSE_TOO_LARGE');res.destroy();}else chunks.push(c);});
         res.on('aborted',()=>fail('INCOMPLETE_RESPONSE'));
         res.on('error',()=>fail('LOCAL_NETWORK'));
-        res.on('end',()=>{if(settled)return;complete=true;if(res.statusCode!==200){fail('HTTP_STATUS',{status:res.statusCode});return;}try{finish(null,JSON.parse(Buffer.concat(chunks).toString('utf8')));}catch{fail('INVALID_JSON');}});
+        res.on('end',()=>{if(settled)return;complete=true;if(res.statusCode!==200){fail('HTTP_STATUS',{status:res.statusCode});return;}try{finish(null,JSON.parse(decodeUtf8(Buffer.concat(chunks))));}catch(e){fail(e.code==='INVALID_UTF8'?'INVALID_UTF8':'INVALID_JSON');}});
       });
       req.on('finish',()=>{dispatched=true;});req.on('error',()=>fail('LOCAL_NETWORK'));req.end(bytes);
     });

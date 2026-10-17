@@ -1,3 +1,4 @@
+import {provePromptBudget} from './token-budget.mjs';
 import {candidate,OPTIONS} from './candidates.mjs';
 import {validateResult,resultSchema} from './contracts.mjs';
 import {requestLoopback,LocalError} from './transport.mjs';
@@ -30,6 +31,22 @@ export function createOllamaClient(request=requestLoopback) {
       const result=validateResult(job.taskType,v,job.labels);
       const usage={};for(const k of ['eval_count','prompt_eval_count','total_duration','load_duration','eval_duration','prompt_eval_duration'])if(Number.isFinite(response[k])&&response[k]>=0)usage[k]=response[k];
       return {result,usage};
+    },
+    async inferBounded(job,snapshot,{signal,timeoutMs=90000,tokenizerEvidence}={}) {
+      candidate(snapshot.candidateId);
+      const digest=snapshot.modelDigest?.startsWith('sha256:')?snapshot.modelDigest:'sha256:'+snapshot.modelDigest;
+      if(!tokenizerEvidence||tokenizerEvidence.modelDigest!==digest||tokenizerEvidence.serverVersion!==snapshot.serverVersion)throw new LocalError('TOKEN_BUDGET_UNVERIFIED',{dispatched:false});
+      const format=resultSchema(job),schemaJson=JSON.stringify(format);
+      const source=JSON.stringify({sourceText:job.text,...(job.labels?{allowedLabels:job.labels}:{})}).replaceAll('<','\\u003c').replaceAll('>','\\u003e');
+      const prompt=PROMPTS[job.taskType]+'\nKälltext som JSON-data:\n'+source+'\nSvara enbart med JSON enligt detta schema:\n'+schemaJson+'\nSvar:\n';
+      const {taskType:kind,text,labels}=job;
+      const proof=provePromptBudget({task:{kind,text,...(labels?{labels}:{})},renderedPrompt:prompt,schemaJson,tokenizerEvidence});
+      if(proof.status!=='verified')throw new LocalError(proof.reason,{dispatched:false});
+      const response=await request({path:'/api/generate',method:'POST',timeoutMs,signal,body:{model:snapshot.candidateId,prompt,raw:true,format,stream:false,think:false,truncate:false,shift:false,options:OPTIONS,keep_alive:'2m'}});
+      if(response.model!==snapshot.candidateId||response.done!==true||response.done_reason!=='stop'||typeof response.response!=='string'||!Number.isInteger(response.prompt_eval_count)||response.prompt_eval_count<0||response.prompt_eval_count>proof.promptUpperBound||!Number.isInteger(response.eval_count)||response.eval_count<0||response.eval_count>384||response.prompt_eval_count+response.eval_count>4096)throw new LocalError('INVALID_MODEL_RESPONSE',{complete:true});
+      let v;try{v=JSON.parse(response.response);}catch{throw new LocalError('INVALID_MODEL_RESPONSE',{complete:true});}
+      const result=validateResult(job.taskType,v,job.labels);const usage={};for(const k of ['eval_count','prompt_eval_count','total_duration','load_duration','eval_duration','prompt_eval_duration'])if(Number.isFinite(response[k])&&response[k]>=0)usage[k]=response[k];
+      return {result,usage,budgetProof:proof};
     },
     ps:({signal}={})=>health('/api/ps',undefined,signal),
     unload:async(id)=>{candidate(id);await request({path:'/api/generate',method:'POST',timeoutMs:3000,body:{model:id,keep_alive:0,stream:false}});}

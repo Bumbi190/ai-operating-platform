@@ -21,8 +21,8 @@ Use as editorial knowledge for existing Omnira pipelines; do not install or exec
 
 ## ElevenLabs voice identity (required)
 - The Prompt retains Victoria as pinned in apps/web/lib/voice/config.ts, not any similarly named library voice.
-- Nova and Pling require a verified exact voice ID and approved historical usage. Sanna is story narrator, not either character.
-- Read docs/content-growth-voice-lock-v1.md and apps/web/lib/content-growth/voice-lock.ts; the unverified general dialogue voice mappings must block before any future synthesis.
+- Pling's official dialogue voice is the owner-approved Alternative B (vhPZICLLz0UIRNLnUe0u / eleven_v4) with the recorded December brightening profile. Nova still needs a verified exact voice-to-dialogue mapping. Sanna is story narrator, not either character.
+- Read docs/content-growth-voice-lock-v1.md and apps/web/lib/content-growth/voice-lock.ts; Nova dialogue must remain blocked; Pling requires the exact pinned model and its approved processing, verified before any future synthesis.
 - No automatic fallback or paid voice-generation experiment is permitted.
 
 ## Render and learn

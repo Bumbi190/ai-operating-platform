@@ -289,4 +289,7 @@ The physically committed cross-app scenario and H owner-access mobile browser pa
 
 The final read-only main check found H still at ec1cdbf. O main advanced from f0b52e1 to0711d4a only in six isolated Remotion/content paths (no apps/web, schema or lockfile changes). That later Remotion commit is not part of this candidate; the exact tested web source remains4959a28, and the PR must preserve upstream changes when integrated.
 
-Draft PR URLs will be appended after publication. Product-source pins above remain authoritative; later delivery documentation commits do not alter product code. New mutation flags remain false/unset; the next release operation follows the producer-first sequence above.
+- H producer draft: [handlarborsen#141](https://github.com/Bumbi190/handlarborsen/pull/141), initially published03dfb1cd2adb7c92a05ae603ee089ff2616f7116.
+- O consumer draft: [ai-operating-platform#399](https://github.com/Bumbi190/ai-operating-platform/pull/399), initially publishedf3db0273e792db38b1207e379ab5540fba444edc.
+
+Product-source pins above remain authoritative; this PR-link documentation update does not alter product code. Both remain drafts, not merged or activated. Worktrees and raw evidence are retained for review feedback. New mutation flags remain false/unset; the next release operation follows the producer-first sequence above.

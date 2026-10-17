@@ -5,7 +5,7 @@
     "captured_at": "2026-09-25",
     "handlarborsen_review_p2_migration_note": "Operator-approved, project-locked, immutable human review decision events. RLS + FORCE RLS, zero policies, no anon/auth grants; service role SELECT/INSERT only, REVIEW RPC only service role. Fully isolated PG17.6 security tests passed. Live production catalog must be checked after application.",
     "handlarborsen_candidates_migration_note": "Additional candidate memory table to be verified against the scoped live production catalog after operator-approved application: project-locked, RLS and FORCE RLS, zero policies and client grants, service_role SELECT/INSERT only. Earlier table classifications remain unchanged.",
-    "total_tables": 135,
+    "total_tables": 147,
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
     "platform_tokens_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090000_platform_tokens_client_revoke.sql (Settings S0): client grants revoked, RLS on, no policy.",
     "platform_credential_events_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090100_platform_credential_events.sql (Settings S0), applied to production before this row was merged: created with RLS on and no policy, every client grant revoked, service_role holding SELECT and INSERT only, UPDATE/DELETE/TRUNCATE refused by triggers.",
@@ -76,7 +76,8 @@
     "handlarborsen_inbox_note": "Scoped live observation 2026-10-17 after operator-approved handlarborsen_candidate_inbox_v1, ledger20261017151021, canonical20261017151021, SQL SHA256 e7f3efe782086aa8f818ab071dab7c96ccadde95ec58320e30048bd487fe663c. Exact Handlarborsen project. RLS/FORCE RLS ON, zero policies and anon/authenticated privileges; service SELECT/INSERT and column-only UPDATE(read_at), no full UPDATE/evidence UPDATE/DELETE. Both routines SECURITY INVOKER, fixed search_path, client EXECUTE revoked, service EXECUTE allowed. AFTER INSERT trigger enabled. No historical backfill: inbox0, candidate1, reviews0, observations6, ledger154. No accounts or source evidence changed. Signed-in owner Preview passed against live156-ledger state; production UI flag remains off pending reconciled CI/Preview release.",
     "sales_managed_host_note": "Scoped live observation2026-10-17 after exact reviewed migration SHA256a258d7fc159632564747c9a49c5b48037c8c75726b26859892301127dfbf832a, ledger20261017151718. RLS ON, zero policy/client grants, service SELECT/INSERT only; append-only guard. All host functions empty search_path, INVOKER, service-only. No job created.",
     "sales_strato_connection_note": "Scoped live observation2026-10-17 after exact reviewed migration SHA2562e3301eb992694901c15904899c586093632dfb2acf91db2474c8447c6243b1e, ledger20261017151722. Connection RLS owner SELECT only; encrypted setup RLS/server-only. Service SELECT/INSERT/UPDATE, no DELETE/TRUNCATE. All mailbox functions empty search_path/service-only, only narrow cleanup-ready predicate DEFINER. Exact own five-minute cron active; direct cleanup returned0. WARN advisor counts unchanged (security20/7/8/1, performance40). No inbox/send.",
-    "parallel_sales_reconciliation_note": "Read-only reconciliation2026-10-17 of already-applied sales_managed_host(20261017151718) and sales_strato_connection(20261017151722), exact source hashes pinned in tests. No SQL reapplied and no sales app code or flags changed. Public table count135, known ledger156. Inbox canonical path aligned to existing sales ledger-derived copy to avoid a duplicate migration name; SQL bytes unchanged."
+    "parallel_sales_reconciliation_note": "Read-only reconciliation2026-10-17 of already-applied sales_managed_host(20261017151718) and sales_strato_connection(20261017151722), exact source hashes pinned in tests. No SQL reapplied and no sales app code or flags changed. Public table count135, known ledger156. Inbox canonical path aligned to existing sales ledger-derived copy to avoid a duplicate migration name; SQL bytes unchanged.",
+    "local_text_live_reconciliation_note": "Source-only reconciliation2026-10-17 of atlas_local_text already applied by parallel PR387 as ledger20261017174301. Exact95490-character source from frozen cff355230fe4250fa5ecd6ab4733cd99cab9a43b, SHA2565024a72db523f63ce7f42f4a5e0f774d50b34cda9a3f6e6f1c3f698610eba180. Twelve tables observed read-only with RLS enabled; eleven server-only with no client privilege/policy, jobs has one owner SELECT policy and authenticated column-only safe metadata reads, no client writes or raw payload read. Service has ALL table privileges including DELETE/TRUNCATE; all30 routines are SECURITY INVOKER with empty search_path, client EXECUTE denied and service EXECUTE allowed. No SQL reapplication, local-model application code, feature flags, admissions or worker installation included. Lifecycle migration remains outside this reconciliation until separately present in the live ledger. Earlier classifications retain their capture scope."
   },
   "tables": {
     "handlarborsen_competitor_review_decisions": {
@@ -1402,6 +1403,126 @@
       "anon_grants": false,
       "authenticated_grants": false,
       "service_role": true
+    },
+    "local_text_devices": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_authority_tombstones": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_admissions": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_jobs": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": false,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_selections": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_attempts": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_reviews": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_events": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_request_nonces": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_cloud_stages": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_cloud_authorizations": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_cloud_reservations": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     }
   },
   "views": {

@@ -116,3 +116,6 @@ Recommended execution: Native, with the same agent implementing sequentially and
 
 ## Task6 execution checkpoint2026-10-17
 Tasks1/2 complete;3 implementation and applicable Starter rate verified, live provider gate pending;4/5 implemented and locally verified. Task6 provider-only page prepared and reviewed:3sessions/85.6s, no mic/chat/TTS, modeverify keeps pilot selector hidden. 286selected tests/TypeScript/native2pass; actual provider/mobile acceptance pending. See verification note for exact evidence and inherited native/full-suite limits. No Notion write retry.
+
+## Phone3133 execution adjustment
+First real provider connection failed at local ws frame decoding before any PCM provider send. Packaging fix reproduced RED/GREEN using real Next production compilation. Follow-up protocol probe uses remaining2connections (3.2+42.4=45.6s); including prior attempt total3connections/48.8s conservative. No expansion of approved cap, retries or activation. Empty-checkpoint-tail remains local-only evidence; real provider/mobile gates still pending. See latest verification section.

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-test('actual probe page paces85.6s through three real local WebSockets with no microphone/chat', async ({ page }) => {
+test('actual probe page paces45.6s through two real local WebSockets with no microphone/chat', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
   await page.request.get('/atlas/rosttest')
@@ -7,9 +7,9 @@ test('actual probe page paces85.6s through three real local WebSockets with no m
   await page.goto('/atlas-voice-provider-probe.html')
   await page.getByRole('button', { name: 'Starta röstprovet' }).click()
   await expect(page.getByRole('status')).toContainText('lyckades', { timeout: 105000 })
-  await expect(page.getByRole('status')).toContainText('85,6 sekunder')
+  await expect(page.getByRole('status')).toContainText('45,6 sekunder')
   const stats = await (await page.request.get('/__voice-stream-fixture')).json()
-  expect(stats).toMatchObject({ connections: 3, bytes: 2739200, finals: 3, segments: 4, limits: 0 })
+  expect(stats).toMatchObject({ connections: 2, bytes: 1459200, finals: 2, segments: 2, limits: 0 })
   expect(errors).toEqual([])
   await page.screenshot({ path: '../../.superpowers/sdd/2026-10-17-atlas-streaming-stt/provider-probe-mobile.png', fullPage: true })
 })

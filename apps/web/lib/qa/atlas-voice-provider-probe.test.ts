@@ -50,11 +50,11 @@ it('provides the self-contained preview probe', () => { expect(source).not.toBe(
 it('opens nothing and sends no audio until the user starts the probe', () => {
   load(); expect(requests).toEqual([]); expect(Socket.all).toHaveLength(0)
 })
-it('bounds three real-time paced sessions to85.6s and one final each without chat or mic', async () => {
+it('bounds the two remaining real-time paced sessions to45.6s and one final each without chat or mic', async () => {
   load(); const done = elements.test.onclick()
   await vi.advanceTimersByTimeAsync(100000); await done
-  expect(Socket.all).toHaveLength(3)
-  expect(Socket.all.map(s => frames(s).reduce((n, raw) => n + decodeVoicePcm(raw).pcm.length, 0))).toEqual([102400, 1280000, 1356800])
+  expect(Socket.all).toHaveLength(2)
+  expect(Socket.all.map(s => frames(s).reduce((n, raw) => n + decodeVoicePcm(raw).pcm.length, 0))).toEqual([102400, 1356800])
   for (const socket of Socket.all) {
     frames(socket).forEach((raw, seq) => expect(decodeVoicePcm(raw).seq).toBe(seq))
     expect(socket.sent.filter(x => typeof x === 'string')).toHaveLength(1)
@@ -64,7 +64,7 @@ it('bounds three real-time paced sessions to85.6s and one final each without cha
   }
   expect(requests.sort()).toEqual(['/atlas-voice-probe/atlas.pcm', '/atlas-voice-probe/omnira.pcm', '/atlas-voice-probe/prompt.pcm'])
   expect(elements.status.textContent).toContain('lyckades')
-  expect(elements.status.textContent).toContain('85,6')
+  expect(elements.status.textContent).toContain('45,6')
   expect(vi.getTimerCount()).toBe(0)
 })
 it.each(['stalled_ready', 'stalled_final', 'bad_text', 'pressure', 'bad_fixture'])('stops on %s without retry or later probe dispatch', async value => {

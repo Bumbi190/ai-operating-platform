@@ -4,12 +4,12 @@ This worker prepares Swedish drafts for an explicitly selected Omnira project. A
 
 ## Current activation state
 
-The feature defaults off. Building this branch does not install an automatic background service, connect Strato, enroll a worker or run Claude. `doctor` verifies the installed CLI version and required flags, **not** an authenticated inference or subscription entitlement. A synthetic inference must pass before using real businesses. Parts B (Strato and durable inbox) and C (version-bound sending) require separate implementation plans.
+The feature defaults off. Building this branch does not install an automatic background service, connect Strato, enroll a worker or run Claude. `doctor` verifies the installed CLI version and required flags, **not** an authenticated inference or subscription entitlement. The 2026-10-17 standalone synthetic inference passed after two compatibility fixes; sanitized qualification receipts are committed under docs/superpowers/verification. Production worker enrollment and a real authenticated queue execution remain unverified. Parts B (Strato and durable inbox) and C (version-bound sending) require separate implementation plans.
 
 ## Requirements and setup
 
 - Windows, Python 3.12+, this repository and a licensed/signed-in native Claude Code installation. The verified version is pinned in `claude_runtime.py` (2.1.296); updates require requalification. No additional Python packages are required.
-- Apply `apps/web/supabase/migrations/20261017100633_atlas_sales_pilot.sql` through the project's normal migration process. Deploying or applying a production migration is a separate operator action.
+- The reviewed migration `apps/web/supabase/migrations/20261017100633_atlas_sales_pilot.sql` was applied to Omnira production on 2026-10-17 as ledger `20261017130254 atlas_sales_pilot`; do not reapply it. Other environments need their normal migration process.
 - Set `ATLAS_SALES_ENABLED=true` and `ATLAS_SALES_PROJECT_ID=<verified-project-uuid>` only for the chosen pilot project after verification. No first-project fallback exists. Keep the flag false until then.
 - From the repository root, run `python -m workers.sales.cli doctor`. A refusal is a blocked prerequisite, not permission to bypass isolation.
 - Open the chosen project's **Säljförberedelse** page and create an explicit worker connection. It expires after 24 hours. Use the displayed `connect` command and enter the token into the terminal's hidden prompt. Never put the token in a command argument, chat, environment file or Git.
@@ -31,7 +31,7 @@ Initially exclude Bilenia and Cartrade Europe AB as required by the approved des
 
 ## Runtime limits and failure handling
 
-Claude runs once per contact from a temporary empty directory with tools, MCP servers, hooks, slash commands, Chrome, session persistence and normal settings sources disabled. A stream advertising tools or non-text output is refused. Custom API-provider environments and detected managed policies are blocked. There is no paid API fallback. Runtime stderr and raw CLI output are not persisted as job diagnostics.
+Claude runs once per contact from a temporary empty directory with tools, MCP servers, hooks, installed/custom plugins, slash commands, Chrome, session persistence and normal settings sources disabled. CLI2.1.296 still advertises two pinned bundled plugin identities, permitted only with exact builtin path/source. Thinking/redacted-thinking blocks are discarded in memory; only final text reaches the adapter. A stream advertising tools, custom plugins, tool calls, images or unknown content is refused. Exactly one enclosing json code fence may be removed before unchanged strict JSON validation. Custom API-provider environments and detected managed policies are blocked. There is no paid API fallback. Runtime stderr and raw CLI output are not persisted as job diagnostics.
 
 Each job has at most ten reserved attempts; the first implementation makes one call per selected contact and never automatically regenerates on timeout. Heartbeats renew a 90-second lease. Uncertain execution, lost claims and failures require reconciliation. The server rechecks stop state before dispatch permits and result commits. Cancellation cannot undo a model request already accepted by its provider. Revoke any connection whose token may have been exposed.
 

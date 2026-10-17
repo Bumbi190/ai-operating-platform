@@ -57,6 +57,38 @@ class SalesWorkerTests(unittest.TestCase):
         with self.assertRaises(RuntimeRefused): parse_stream(json.dumps({'type':'system','subtype':'init','tools':['Bash'],'mcp_servers':[]})+'\n'+json.dumps({'type':'result','result':'text'}))
     def test_runtime_accepts_only_text_result(self):
         self.assertEqual(parse_stream(json.dumps({'type':'system','subtype':'init','tools':[],'mcp_servers':[]})+'\n'+json.dumps({'type':'result','result':'text','is_error':False})),'text')
+    def test_runtime_discards_reasoning_without_exposing_it_as_draft(self):
+        events=[
+            {"type":"system","subtype":"init","tools":[],"mcp_servers":[],"plugins":[{"name":"cc-plugin-agents-md","path":"builtin","source":"cc-plugin-agents-md@builtin"}]},
+            {"type":"assistant","message":{"content":[{"type":"thinking","thinking":"private internal material","signature":"signature"}]}},
+            {"type":"assistant","message":{"content":[{"type":"redacted_thinking","data":"opaque"}]}},
+            {"type":"assistant","message":{"content":[{"type":"text","text":"draft"}]}},
+            {"type":"result","result":"draft","is_error":False}
+        ]
+        self.assertEqual(parse_stream("\n".join(json.dumps(x) for x in events)),"draft")
+    def test_runtime_refuses_tools_images_unknown_blocks_and_custom_plugins(self):
+        init={"type":"system","subtype":"init","tools":[],"mcp_servers":[]}
+        result={"type":"result","result":"draft","is_error":False}
+        for kind in ["tool_use","server_tool_use","image","future_unknown"]:
+            with self.subTest(kind=kind),self.assertRaises(RuntimeRefused):
+                parse_stream("\n".join(json.dumps(x) for x in [init,{"type":"assistant","message":{"content":[{"type":kind}]}},result]))
+        for plugin in [{"name":"custom","path":"C:/custom","source":"custom@user"},{"name":"cc-plugin-agents-md","path":"C:/custom","source":"cc-plugin-agents-md@builtin"}]:
+            with self.subTest(plugin=plugin),self.assertRaises(RuntimeRefused):
+                parse_stream("\n".join(json.dumps(x) for x in [{**init,"plugins":[plugin]},result]))
+    def test_adapter_accepts_exact_json_code_fence_without_relaxing_schema(self):
+        class Fenced(Runtime):
+            def generate(self,*args,**kwargs):
+                return '```json\n'+json.dumps({"subject":"Hej","body":"En fråga","evidenceIds":[],"questions":[]})+'\n```'
+        draft=HarveyDraftAdapter(Fenced()).prepare(CONTACT,OF,[],{"attemptId":"fixture"})
+        self.assertEqual(draft["subject"],"Hej")
+    def test_adapter_rejects_prose_multiple_fences_and_foreign_fields(self):
+        valid=json.dumps({"subject":"Hej","body":"En fråga","evidenceIds":[],"questions":[]})
+        class Text(Runtime):
+            def generate(self,*args,**kwargs):return self.value
+        for value in ['Here is a draft: '+valid,'```json\n'+valid+'\n```\nextra','```json\n'+valid+'\n```\n```json\n'+valid+'\n```', '```json\n'+json.dumps({"subject":"Hej","body":"En fråga","evidenceIds":[],"questions":[],"toEmail":"other@example.invalid"})+'\n```']:
+            runtime=Text();runtime.value=value
+            with self.subTest(value=value),self.assertRaises(ValueError):
+                HarveyDraftAdapter(runtime).prepare(CONTACT,OF,[],{"attemptId":"fixture"})
     def test_protocol_rejects_non_https_and_token_in_url(self):
         for origin in ['http://example.se','https://example.se/?token=abc','https://user:secret@example.se']:
             with self.assertRaises(ProtocolError): SalesProtocolClient(origin,'a'*43)

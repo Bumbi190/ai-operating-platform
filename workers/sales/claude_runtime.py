@@ -20,9 +20,19 @@ def parse_stream(output):
         except ValueError:raise RuntimeRefused('INVALID_RUNTIME_OUTPUT') from None
         if v.get('type')=='system' and v.get('subtype')=='init':
             if v.get('tools')!=[] or v.get('mcp_servers') not in ([],None):raise RuntimeRefused('TOOLS_NOT_DISABLED')
+            # CLI 2.1.296 reports these two bundled components even in safe mode.
+            # Installed/custom plugins are never admitted, including builtin-name spoofing.
+            allowed={'cc-plugin-agents-md','cc-plugin-plugin-authoring'}
+            for plugin in v.get('plugins',[]):
+                if (not isinstance(plugin,dict) or plugin.get('name') not in allowed
+                    or plugin.get('path')!='builtin'
+                    or plugin.get('source')!=plugin['name']+'@builtin'):
+                    raise RuntimeRefused('CUSTOM_PLUGIN_LOADED')
             init=True
         if v.get('type')=='assistant':
-            if any(c.get('type')!='text' for c in v.get('message',{}).get('content',[])):raise RuntimeRefused('NON_TEXT_RESULT')
+            # Adaptive-reasoning models emit thinking even with every tool disabled.
+            # Discard reasoning in memory; only the final result text reaches the adapter.
+            if any(c.get('type') not in ('text','thinking','redacted_thinking') for c in v.get('message',{}).get('content',[])):raise RuntimeRefused('NON_TEXT_RESULT')
         if v.get('type')=='result':
             if v.get('is_error') or not isinstance(v.get('result'),str):raise RuntimeRefused('MODEL_UNAVAILABLE')
             result=v['result']

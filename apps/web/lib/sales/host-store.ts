@@ -20,3 +20,5 @@ export async function manageHost(db:SalesDb,p:SalesPrincipal,projectId:string,wo
  scoped(p,projectId);salesId(workerId)
  return publicHostStatus(await salesRpc(db,'sales_host_set_desired',{p_principal:p,p_input:{projectId,workerId,action}}))
 }
+
+export async function listHostStatus(db:SalesDb,p:SalesPrincipal,projectId:string):Promise<HostStatus[]>{scoped(p,projectId);const rows=await salesRpc<HostStatus[]>(db,'sales_host_list_status',{p_principal:p,p_input:{projectId}});return rows.map(publicHostStatus)}

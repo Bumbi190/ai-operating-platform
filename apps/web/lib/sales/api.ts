@@ -6,6 +6,7 @@ import {SalesError} from './types'
 import {fields,salesId,text,normalizeSalesEmail,parseSalesDraft} from './validate'
 import {readSalesWorkspace,prepareSalesDrafts,readSalesJob,salesRpc,scoped,type SalesDb} from './store'
 import {salesHeaders,failure,readBody} from './http'
+import {listHostStatus} from './host-store'
 import {salesEnabled} from './feature'
 type Dependencies={access:()=>Promise<ProjectAccess>;db:()=>SalesDb;enabled:(projectId:string)=>boolean}
 function bool(v:unknown):boolean{if(typeof v!=='boolean')throw new SalesError('INVALID_BODY');return v}
@@ -16,8 +17,9 @@ export function createSalesApi(deps:Dependencies){return async(request:Request):
   if(!['GET','POST'].includes(request.method))return Response.json({code:'INVALID_BODY'},{status:405,headers:salesHeaders})
   if(request.method==='POST'&&request.headers.get('origin')!==new URL(request.url).origin)return Response.json({code:'ORIGIN_REQUIRED'},{status:403,headers:salesHeaders})
   if(request.method==='GET'){
-   const url=new URL(request.url);if([...url.searchParams.keys()].some(k=>!['projectId','jobId'].includes(k))||url.searchParams.getAll('projectId').length!==1)throw new SalesError('INVALID_BODY')
+   const url=new URL(request.url);if([...url.searchParams.keys()].some(k=>!['projectId','jobId','connection'].includes(k))||url.searchParams.getAll('projectId').length!==1)throw new SalesError('INVALID_BODY')
    const projectId=salesId(url.searchParams.get('projectId'));scoped(p,projectId);if(!deps.enabled(projectId))throw new SalesError('NOT_FOUND',404)
+   if(url.searchParams.has('connection')){if(url.searchParams.get('connection')!=='1'||url.searchParams.getAll('connection').length!==1||url.searchParams.has('jobId'))throw new SalesError('INVALID_BODY');return Response.json({connections:await listHostStatus(deps.db(),p,projectId),sendingEnabled:false},{headers:salesHeaders})}
    const result=url.searchParams.has('jobId')?await readSalesJob(deps.db(),p,{projectId,jobId:salesId(url.searchParams.get('jobId'))}):await readSalesWorkspace(deps.db(),p,projectId)
    return Response.json(result,{headers:salesHeaders})
   }

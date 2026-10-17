@@ -13,7 +13,7 @@ alter table public.sales_worker_registrations
 create table public.sales_host_events (
  id bigint generated always as identity primary key,
  project_id uuid not null, worker_id uuid not null,
- action text not null check(action in('authorize','adopt','rotate','pause','resume','reconnect')),
+ action text not null check(action in('authorize','adopt','rotate','pause','resume','reconnect','revoke')),
  generation integer not null check(generation>0),created_at timestamptz not null default now(),
  foreign key(project_id,worker_id) references public.sales_worker_registrations(project_id,id)
 );
@@ -112,6 +112,23 @@ begin
  perform public.sales_owner(p_principal,(p_input->>'projectId')::uuid);
  select * into w from public.sales_worker_registrations where id=(p_input->>'workerId')::uuid and project_id=(p_input->>'projectId')::uuid and owner_id=(p_principal->>'userId')::uuid;
  if not found then raise exception 'NOT_FOUND' using errcode='P0002';end if;return public.sales_host_status(w);
+end $$;
+create or replace function public.sales_revoke_worker(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
+declare w public.sales_worker_registrations;
+begin
+ perform public.sales_owner(p_principal,(p_input->>'projectId')::uuid);
+ select * into w from public.sales_worker_registrations where id=(p_input->>'workerId')::uuid and project_id=(p_input->>'projectId')::uuid and owner_id=(p_principal->>'userId')::uuid for update;
+ if not found then raise exception 'NOT_FOUND' using errcode='P0002';end if;
+ if w.revoked_at is null then
+  update public.sales_worker_registrations set revoked_at=now() where id=w.id;
+  insert into public.sales_host_events(project_id,worker_id,action,generation) values(w.project_id,w.id,'revoke',w.host_generation);
+ end if;
+ return jsonb_build_object('ok',true);
+end $$;
+create function public.sales_host_list_status(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
+begin
+ perform public.sales_owner(p_principal,(p_input->>'projectId')::uuid);
+ return coalesce((select jsonb_agg(public.sales_host_status(w) order by w.id) from public.sales_worker_registrations w where w.project_id=(p_input->>'projectId')::uuid and w.owner_id=(p_principal->>'userId')::uuid),'[]'::jsonb);
 end $$;
 -- Stop managed dispatch without changing job generation or extending any lease.
 create or replace function public.sales_claim_job(p_token_hash text,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$

@@ -32,9 +32,10 @@ class Socket extends EventEmitter {
   readyState = 1
   bufferedAmount = 0
   sent: Buffer[] = []
+  closeCodes: number[] = []
   send(bytes: Uint8Array, options?: unknown, callback?: (error?: Error) => void) { this.sent.push(Buffer.from(bytes)); callback?.() }
   terminate() { this.readyState = 3; this.emit('close') }
-  close() { this.terminate() }
+  close(code?: number) { this.closeCodes.push(code ?? 1005); this.terminate() }
 }
 const request = (origin: string | null = 'https://preview.test', signal?: AbortSignal) => new Request('https://preview.test/api/atlas/voice-pilot/stream', {
   headers: { ...(origin === null ? {} : { origin }), upgrade: 'websocket', connection: 'Upgrade' }, signal,
@@ -99,7 +100,33 @@ describe('bounded no-provider echo probe', () => {
     expect(state.socket.sent).toEqual([input])
     await vi.advanceTimersByTimeAsync(5000)
     expect(state.socket.readyState).toBe(3)
+    expect(state.socket.closeCodes).toEqual([1000])
     expect(state.socket.listenerCount('message')).toBe(0)
+  })
+  it('bounds a peer that never acknowledges the normal close and ignores late frames', async () => {
+    vi.useFakeTimers()
+    await (await route()).GET(request())
+    state.socket.close = (code: number) => { state.socket.closeCodes.push(code); state.socket.readyState = 2 }
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(state.socket.readyState).toBe(2)
+    state.socket.emit('message', Buffer.alloc(4), true)
+    expect(state.socket.sent).toEqual([])
+    await vi.advanceTimersByTimeAsync(250)
+    expect(state.socket.readyState).toBe(3)
+    expect(state.socket.listenerCount('message')).toBe(0)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+  it('logs only bounded lifecycle metadata and no socket error text or payload', async () => {
+    const log = vi.spyOn(console, 'info').mockImplementation(() => {})
+    try {
+      await (await route()).GET(request())
+      state.socket.emit('message', Buffer.from('SYNTHETIC_PRIVATE_PAYLOAD'), true)
+      state.socket.emit('error', new Error('SYNTHETIC_PRIVATE_ERROR'))
+      const calls = log.mock.calls.filter(call => call[0] === '[atlas-voice-stream-probe]')
+      expect(calls.map(call => (call[1] as any).event)).toEqual(['opened', 'first_frame', 'closed'])
+      expect(calls[2][1]).toMatchObject({ reason: 'socket_error', frames: 1, sentBytes: 25 })
+      expect(JSON.stringify(calls)).not.toContain('SYNTHETIC_PRIVATE')
+    } finally { log.mockRestore() }
   })
   it.each(['text', 'oversize', 'backpressure', 'error', 'abort'])('terminates safely on %s', async scenario => {
     const abort = new AbortController()

@@ -14,6 +14,7 @@
  */
 
 import { Anthropic } from '@anthropic-ai/sdk'
+import { filterFreshRelevantNews } from '@/lib/media/news-freshness'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getMediaTextClient } from '@/lib/media/text-client'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
@@ -191,6 +192,9 @@ function parseRssFeed(xml: string, key: string, label: string): RawStory[] {
     const pubDate = extractXmlValue(block, 'pubDate') || extractXmlValue(block, 'dc:date') || extractXmlValue(block, 'published')
 
     if (!title || !link || !link.startsWith('http')) continue
+    // Pilot only: an absent/invalid RSS timestamp is NOT proof of same-day news.
+    if (process.env.THE_PROMPT_FRESH_NEWS_PILOT === 'true' &&
+        (!pubDate || !Number.isFinite(new Date(pubDate).getTime()))) continue
 
     // Basic AI keyword filter for general feeds (Wired, MIT, TechCrunch publish non-AI too)
     const AI_KEYWORDS = /\b(AI|LLM|GPT|Claude|Gemini|llama|machine learning|neural|model|AGI|deepmind|anthropic|openai|chatgpt|mistral|groq|inference|foundation model|diffusion|multimodal|autonomous|agentic)\b/i
@@ -525,8 +529,17 @@ export async function runNewsHunter(
   // 2. Dedup against DB
   const fresh = await deduplicateAgainstDB(allStories, db, projectId)
 
+  // Pilot guard: fail closed on stale/undated/unverified news *before* AI spend.
+  // Existing daily publishing keeps its old behavior until a reviewed release.
+  const strict = process.env.THE_PROMPT_FRESH_NEWS_PILOT === 'true'
+  const screened = strict ? filterFreshRelevantNews(fresh).eligible : fresh
+  if (strict && screened.length === 0) return {
+    fetchedAt, totalFetched: allStories.length, afterDedup: 0,
+    candidates: [], claudeSummary: 'No verifiably fresh, relevant news. Do not publish old stories.',
+  }
+
   // 3. Score and rank
-  const scored = scoreAndRank(fresh)
+  const scored = scoreAndRank(screened)
 
   // 4. Claude picks the best — with optional trend context
   const { candidates, summary } = await claudeEditorialPick(execution, scored, maxCandidates, trendingTopics)
@@ -534,7 +547,7 @@ export async function runNewsHunter(
   return {
     fetchedAt,
     totalFetched: allStories.length,
-    afterDedup: fresh.length,
+    afterDedup: screened.length,
     candidates,
     claudeSummary: summary,
   }

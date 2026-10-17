@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en" translate="no" class="notranslate"><head><meta charset="utf-8">
+<meta name="google" content="notranslate"><meta http-equiv="Content-Language" content="en">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<title>The Prompt — Private Mobile Preview</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;font-family:Arial,system-ui,sans-serif;background:#04111d;color:#e8faff}
+body{display:flex;align-items:center;flex-direction:column;padding:14px 12px calc(25px + env(safe-area-inset-bottom))}
+h1{font-size:17px;font-weight:850;margin:0 0 5px}.subtitle{font-size:12px;color:#acc8d5;text-align:center;margin:0 0 12px}
+.tabs{display:flex;gap:8px;margin-bottom:11px}
+.tab{border:1px solid #447180;background:#132a38;color:#e7fcff;padding:10px 19px;border-radius:26px;font-weight:850;min-height:44px}
+.tab[aria-pressed="true"]{background:#51f1c7;color:#001c24}
+.stage{position:relative;overflow:hidden;background:#0b2939;aspect-ratio:9/16;width:min(94vw,40vh,420px);min-width:min(300px,92vw);max-height:72vh;box-shadow:0 10px 39px #0009;border-radius:8px;container-type:inline-size}
+.bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scale(1.08)}
+.shade{position:absolute;inset:0;background:linear-gradient(180deg,#04121cc4 0%,#04121d5c 30%,#04121e9f 48%,#04121ee8 72%,#04121efb 100%)}
+.logo{position:absolute;left:6%;top:5%;font-size:5.1cqw;letter-spacing:-.05em;font-weight:950}.logo em{font-style:normal;color:#51f1c7}
+.label{position:absolute;top:5.9%;right:6%;font-size:2.5cqw;font-weight:800;letter-spacing:.08em;color:#d5edf5}
+.timeline{position:absolute;top:9.2%;left:6%;right:6%;background:#cde6f37a;height:3px}
+.timeline div{background:#51f1c7;height:100%;width:0}
+.kicker{position:absolute;top:11.8%;left:6%;right:6%;color:#c7eaf5;letter-spacing:.1em;font-weight:800;font-size:2.6cqw}
+.headline{position:absolute;top:42.5%;left:6%;right:6%;text-shadow:0 6px 13px #000e,0 12px 28px #000}
+.scene-label{font-size:3.2cqw;color:#51f1c7;font-weight:900;letter-spacing:.1em;margin-bottom:10px}
+.scene-title{font-size:8.7cqw;line-height:1.06;letter-spacing:-.045em;font-weight:950;overflow-wrap:break-word}
+.line{margin-top:18px;background:#51f1c7;height:5px;width:38%;border-radius:9px}
+.captions{position:absolute;bottom:15%;left:7%;right:7%;min-height:16%;display:flex;align-items:center;justify-content:center;text-align:center;font-size:5.3cqw;font-weight:850;line-height:1.26;color:#f7fdff;text-shadow:0 4px 9px #000,0 8px 18px #000;overflow-wrap:break-word}
+#caption-text{width:100%;white-space:normal;overflow-wrap:break-word}.captions .active{color:#51f1c7}
+.footer{position:absolute;bottom:5%;left:6%;right:6%;display:flex;justify-content:space-between;gap:9px;font-size:1.85cqw;font-weight:850;letter-spacing:.06em}
+.footer span:last-child{color:#51f1c7;text-align:right}
+.outro{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;background:radial-gradient(circle at 50% 35%,#17535b,#072534 55%,#04111d);opacity:0;visibility:hidden;transition:opacity .3s ease;pointer-events:none}
+.outro.show{opacity:1;visibility:visible}.outro-content{width:100%;padding:0 5%;transform:translateY(10px);transition:transform .35s ease}.outro.show .outro-content{transform:translateY(0)}
+.outro-lead{font-size:3.3cqw;font-weight:900;letter-spacing:.14em;color:#51f1c7;margin-bottom:12%}.outro-headline{font-size:10.4cqw;line-height:1.1;font-weight:950;letter-spacing:-.04em}.outro-headline em{font-style:normal;color:#51f1c7}.outro-rule{width:28%;height:5px;background:#51f1c7;border-radius:20px;margin:12% auto 9%}.outro-tagline{font-size:4.1cqw;font-weight:700;color:#bde9f5}
+.controls{display:flex;gap:11px;align-items:center;margin-top:13px;width:min(420px,94vw)}
+button{cursor:pointer}#play{background:#51f1c7;color:#04111d;border:0;border-radius:25px;padding:10px 20px;min-height:44px;font-weight:900}
+#seek{flex:1;min-width:0;accent-color:#51f1c7}#time{font-size:12px;white-space:nowrap;color:#acc9d5}
+.notice{margin:15px auto 0;text-align:center;font-size:11px;color:#99b0be;line-height:1.5;max-width:425px}
+@media(max-height:600px){.stage{max-height:58vh}.subtitle{display:none}}
+</style></head><body>
+<h1>The Prompt · Private Review</h1><p class="subtitle">Victoria · English voiceover · timed captions</p>
+<div class="tabs">__REPLIT_TAB__<button class="tab" data-story="codex" aria-pressed="false">Codex</button><button class="tab" data-story="recruiter" aria-pressed="false">AI recruiter</button></div>
+<div class="stage notranslate" lang="en" translate="no"><img id="photo" class="bg" alt="Illustrative editorial image">
+<div class="shade"></div><div class="logo">THE <em>PROMPT</em></div><div class="label" id="label"></div>
+<div class="timeline"><div id="progress"></div></div><div id="kicker" class="kicker"></div>
+<div class="headline"><div class="scene-label" id="scene-label"></div><div class="scene-title" id="scene-title"></div><div class="line"></div></div>
+<div class="captions" aria-live="off" lang="en" translate="no"><div id="caption-text"></div></div><div class="footer"><span id="source-credit">EDITORIAL ILLUSTRATIONS</span><span>PRIVATE REVIEW · NO POSTING</span></div><div id="outro" class="outro" aria-hidden="true"><div class="outro-content"><div class="outro-lead">STAY AHEAD OF THE SIGNAL</div><div class="outro-headline">FOLLOW<br><em>THE PROMPT.</em></div><div class="outro-rule"></div><div class="outro-tagline">AI news. Daily. No fluff.</div></div></div></div>
+<div class="controls"><button type="button" id="play">Play</button><input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek narration"><span id="time">0:00</span></div>
+<audio id="sound" playsinline preload="metadata"></audio>
+<p class="notice">Local read-only preview. Your phone and Windows computer must be on the same Wi-Fi. This is a synchronized review player, not an exported final MP4.</p>
+<script id="payload" type="application/json">__PAYLOAD__</script>
+<script>
+(function(){
+ const data=JSON.parse(document.getElementById('payload').textContent);
+ const get=id=>document.getElementById(id), sound=get('sound'),image=get('photo'),captions=get('caption-text'),outro=get('outro'),play=get('play'),seek=get('seek');
+ let selected='codex',phase=-1,groupIndex=-1,animation=0;
+ const stamp=n=>Math.floor(n/60)+':'+String(Math.floor(n%60)).padStart(2,'0');
+ function refresh(){
+  const s=data.stories[selected],ms=sound.currentTime*1000;
+  const next=Math.max(0,Math.min(3,s.starts.filter(v=>ms>=v).length-1));
+  if(next!==phase){phase=next;image.src=data.base+'/asset/'+selected+'-'+[0,1,2,0][next]+(selected==='replit'?'.svg':'.png');get('scene-label').textContent=s.beats[next][0];get('scene-title').textContent=s.beats[next][1]}
+  get('progress').style.width=100*Math.min(1,ms/(s.duration*1000))+'%';
+  seek.value=Math.round(1000*Math.min(1,ms/(s.duration*1000)));
+  get('time').textContent=stamp(sound.currentTime)+' / '+stamp(s.duration);
+  const ix=s.captions.findIndex(c=>c.startMs<=ms&&ms<c.endMs);
+  if(ix!==groupIndex){
+   groupIndex=ix; captions.replaceChildren();
+   if(ix>=0)for(const [i,w] of s.captions[ix].words.entries()){
+    const span=document.createElement('span');if(i)captions.appendChild(document.createTextNode(' '));span.textContent=w.text;
+    captions.appendChild(span);
+   }
+  }
+  if(ix>=0){let active=-1;for(let i=0;i<s.captions[ix].words.length;i++){
+    if(ms>=s.captions[ix].words[i].startMs)active=i;else break;
+   }for(const [i,span] of Array.from(captions.children).entries())span.classList.toggle('active',i===active);
+  }
+ }
+ function loop(){refresh();if(!sound.paused)animation=requestAnimationFrame(loop)}
+ function choose(story){
+  sound.pause();cancelAnimationFrame(animation);
+  selected=story;phase=-1;groupIndex=-1;captions.replaceChildren();outro.classList.remove('show');
+  const s=data.stories[story];
+  sound.src=data.base+'/asset/'+story+'.mp3';
+  get('label').textContent=s.label;get('kicker').textContent=s.kicker;get('source-credit').textContent=selected==='replit'?'TECHCRUNCH / ORIGINAL ILLUSTRATIONS':'WIRED / ILLUSTRATIVE';
+  for(const button of document.querySelectorAll('.tab'))button.setAttribute('aria-pressed',String(button.dataset.story===story));
+  play.textContent='Play';refresh();
+ }
+ for(const button of document.querySelectorAll('.tab'))button.addEventListener('click',()=>choose(button.dataset.story));
+ play.addEventListener('click',async()=>{
+  if(sound.paused){if(sound.ended){sound.currentTime=0;outro.classList.remove('show')}try{await sound.play();play.textContent='Pause';loop()}catch(e){play.textContent='Audio blocked'}}
+  else{sound.pause();play.textContent='Play';cancelAnimationFrame(animation)}
+ });
+ seek.addEventListener('input',()=>{outro.classList.remove('show');sound.currentTime=Number(seek.value)/1000*data.stories[selected].duration;refresh()});
+ sound.addEventListener('ended',()=>{play.textContent='Replay';cancelAnimationFrame(animation);refresh();outro.classList.add('show')});
+ sound.addEventListener('error',()=>{play.textContent='Audio unavailable'});
+ choose('__DEFAULT_STORY__');
+})();
+</script></body></html>

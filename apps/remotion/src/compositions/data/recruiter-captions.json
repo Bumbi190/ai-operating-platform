@@ -1,0 +1,304 @@
+{
+  "story": "recruiter",
+  "voiceId": "qSeXEcewz7tA0Q0qk9fH",
+  "modelId": "eleven_turbo_v2_5",
+  "text": "A job seeker got tired of AI recruiters going silent. So he let ChatGPT Voice take a call with an AI recruiter. According to WIRED, the bots talked for ten minutes. The recruiter promised a human follow-up, but none came. Nobody was confirmed hired. If machines are screening applicants and applicants answer with machines, who's actually evaluating the person?",
+  "durationSecs": 23.5,
+  "words": [
+    {
+      "text": "A",
+      "startMs": 0,
+      "endMs": 93
+    },
+    {
+      "text": "job",
+      "startMs": 174,
+      "endMs": 383
+    },
+    {
+      "text": "seeker",
+      "startMs": 441,
+      "endMs": 720
+    },
+    {
+      "text": "got",
+      "startMs": 789,
+      "endMs": 940
+    },
+    {
+      "text": "tired",
+      "startMs": 975,
+      "endMs": 1265
+    },
+    {
+      "text": "of",
+      "startMs": 1289,
+      "endMs": 1347
+    },
+    {
+      "text": "AI",
+      "startMs": 1416,
+      "endMs": 1649
+    },
+    {
+      "text": "recruiters",
+      "startMs": 1718,
+      "endMs": 2241
+    },
+    {
+      "text": "going",
+      "startMs": 2461,
+      "endMs": 2728
+    },
+    {
+      "text": "silent.",
+      "startMs": 2798,
+      "endMs": 3320
+    },
+    {
+      "text": "So",
+      "startMs": 3541,
+      "endMs": 3680
+    },
+    {
+      "text": "he",
+      "startMs": 3738,
+      "endMs": 3808
+    },
+    {
+      "text": "let",
+      "startMs": 3878,
+      "endMs": 4052
+    },
+    {
+      "text": "ChatGPT",
+      "startMs": 4110,
+      "endMs": 4783
+    },
+    {
+      "text": "Voice",
+      "startMs": 4923,
+      "endMs": 5224
+    },
+    {
+      "text": "take",
+      "startMs": 5271,
+      "endMs": 5480
+    },
+    {
+      "text": "a",
+      "startMs": 5515,
+      "endMs": 5538
+    },
+    {
+      "text": "call",
+      "startMs": 5596,
+      "endMs": 5840
+    },
+    {
+      "text": "with",
+      "startMs": 5898,
+      "endMs": 6026
+    },
+    {
+      "text": "an",
+      "startMs": 6060,
+      "endMs": 6118
+    },
+    {
+      "text": "AI",
+      "startMs": 6188,
+      "endMs": 6478
+    },
+    {
+      "text": "recruiter.",
+      "startMs": 6560,
+      "endMs": 7163
+    },
+    {
+      "text": "According",
+      "startMs": 7570,
+      "endMs": 7953
+    },
+    {
+      "text": "to",
+      "startMs": 7999,
+      "endMs": 8057
+    },
+    {
+      "text": "WIRED,",
+      "startMs": 8127,
+      "endMs": 8591
+    },
+    {
+      "text": "the",
+      "startMs": 8754,
+      "endMs": 8858
+    },
+    {
+      "text": "bots",
+      "startMs": 8916,
+      "endMs": 9195
+    },
+    {
+      "text": "talked",
+      "startMs": 9253,
+      "endMs": 9532
+    },
+    {
+      "text": "for",
+      "startMs": 9590,
+      "endMs": 9706
+    },
+    {
+      "text": "ten",
+      "startMs": 9776,
+      "endMs": 9973
+    },
+    {
+      "text": "minutes.",
+      "startMs": 10031,
+      "endMs": 10519
+    },
+    {
+      "text": "The",
+      "startMs": 10716,
+      "endMs": 10833
+    },
+    {
+      "text": "recruiter",
+      "startMs": 10902,
+      "endMs": 11320
+    },
+    {
+      "text": "promised",
+      "startMs": 11390,
+      "endMs": 11796
+    },
+    {
+      "text": "a",
+      "startMs": 11854,
+      "endMs": 11901
+    },
+    {
+      "text": "human",
+      "startMs": 11970,
+      "endMs": 12237
+    },
+    {
+      "text": "follow-up,",
+      "startMs": 12307,
+      "endMs": 12934
+    },
+    {
+      "text": "but",
+      "startMs": 13073,
+      "endMs": 13259
+    },
+    {
+      "text": "none",
+      "startMs": 13329,
+      "endMs": 13561
+    },
+    {
+      "text": "came.",
+      "startMs": 13607,
+      "endMs": 14049
+    },
+    {
+      "text": "Nobody",
+      "startMs": 14455,
+      "endMs": 14792
+    },
+    {
+      "text": "was",
+      "startMs": 14838,
+      "endMs": 14954
+    },
+    {
+      "text": "confirmed",
+      "startMs": 15012,
+      "endMs": 15465
+    },
+    {
+      "text": "hired.",
+      "startMs": 15511,
+      "endMs": 15999
+    },
+    {
+      "text": "If",
+      "startMs": 17206,
+      "endMs": 17381
+    },
+    {
+      "text": "machines",
+      "startMs": 17450,
+      "endMs": 17845
+    },
+    {
+      "text": "are",
+      "startMs": 17880,
+      "endMs": 17984
+    },
+    {
+      "text": "screening",
+      "startMs": 18019,
+      "endMs": 18379
+    },
+    {
+      "text": "applicants",
+      "startMs": 18437,
+      "endMs": 18971
+    },
+    {
+      "text": "and",
+      "startMs": 19041,
+      "endMs": 19273
+    },
+    {
+      "text": "applicants",
+      "startMs": 19354,
+      "endMs": 19912
+    },
+    {
+      "text": "answer",
+      "startMs": 19981,
+      "endMs": 20271
+    },
+    {
+      "text": "with",
+      "startMs": 20329,
+      "endMs": 20457
+    },
+    {
+      "text": "machines,",
+      "startMs": 20515,
+      "endMs": 21142
+    },
+    {
+      "text": "who's",
+      "startMs": 21305,
+      "endMs": 21560
+    },
+    {
+      "text": "actually",
+      "startMs": 21630,
+      "endMs": 22036
+    },
+    {
+      "text": "evaluating",
+      "startMs": 22094,
+      "endMs": 22628
+    },
+    {
+      "text": "the",
+      "startMs": 22675,
+      "endMs": 22744
+    },
+    {
+      "text": "person?",
+      "startMs": 22779,
+      "endMs": 23499
+    }
+  ]
+}

@@ -14,6 +14,8 @@ import { dispatchedGenerationIsNotRetryable } from '@/lib/media/orchestrator/ret
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateVoiceover } from '@/lib/media/elevenlabs'
+import { buildPilotVoiceReceipt } from '@/lib/media/pilot-voice-receipt'
+import type { Json } from '@/lib/supabase/database.types'
 import { uploadAudio, uploadTimingData, uploadSceneImage } from '@/lib/media/storage'
 import { generateNewsImages } from '@/lib/media/ideogram'
 import { logRun } from '@/lib/media/run-log'
@@ -40,7 +42,7 @@ export async function GET(request: Request) {
 
   let query = db
     .from('media_scripts')
-    .select('id, project_id, hook, script, voice_attempts, media_news_items(title)')
+    .select('id, project_id, hook, script, voice_attempts, raw_output, media_news_items(title)')
     .eq('status', 'approved')
     .order('generated_at', { ascending: false })
     .limit(1)
@@ -110,14 +112,31 @@ export async function GET(request: Request) {
       ...rawImageUrls.map((url, i) => uploadSceneImage(projectId, script.id, i, url)),
     ])
 
-    await db.from('media_scripts').update({
+    const strictPilot=process.env.THE_PROMPT_FRESH_NEWS_PILOT === 'true'
+    const oldRaw=script.raw_output && typeof script.raw_output==='object' &&
+      !Array.isArray(script.raw_output)?script.raw_output as {[key:string]:Json|undefined}:{}
+    const update={
       audio_url:    audioUrl,
       timing_url:   timingUrl,
       duration_ms:  voiceResult.durationMs,
       images:       storedImageUrls,
       composition:  'SimpleNewsReel',
       voice_status: 'ready',
-    }).eq('id', script.id)
+      ...(strictPilot?{raw_output:{
+        ...oldRaw,
+        pilot_voice_receipt:{...buildPilotVoiceReceipt(
+          scriptText,voiceResult.audioBuffer,voiceResult.words,voiceResult.durationMs)},
+      }}:{}),
+    }
+    const updateQuery=db.from('media_scripts').update(update)
+      .eq('id',script.id).eq('project_id',projectId)
+    if(strictPilot){
+      // No "voice ready" success unless the exact provenance receipt was saved.
+      const {data:receiptRow,error:receiptError}=await updateQuery.select('id').maybeSingle()
+      if(receiptError||!receiptRow)throw new Error('PILOT_VOICE_RECEIPT_NOT_PERSISTED')
+    }else{
+      await updateQuery // Legacy path remains unchanged while pilot is OFF.
+    }
 
     console.log(`[cron/step2] Done — ${(voiceResult.durationMs / 1000).toFixed(1)}s voice + ${storedImageUrls.length} images for script ${script.id}`)
 

@@ -5,6 +5,7 @@ import { SimpleNewsReel } from './compositions/SimpleNewsReel'
 import { ContentGrowthReel } from './compositions/ContentGrowthReel'
 import { ThePromptEditorialLab } from './compositions/ThePromptEditorialLab'
 import { ThePromptNewsPreview, previewDuration } from './compositions/ThePromptNewsPreview'
+import { ThePromptDailyPilot, pilotDurationFrames } from './compositions/ThePromptDailyPilot'
 import type { VideoInputProps } from './lib/types'
 
 // Default props for Remotion Studio preview
@@ -64,6 +65,15 @@ export function RemotionRoot() {
       <Composition id="ThePromptRecruiterReview" component={ThePromptNewsPreview}
         durationInFrames={previewDuration('recruiter')} fps={30} width={1080} height={1920}
         defaultProps={{story:'recruiter' as const}}/>
+
+      {/* Private dynamic trial template: placeholder data, NOT a real news episode. */}
+      <Composition id="ThePromptDailyPilotTemplate" component={ThePromptDailyPilot}
+        durationInFrames={pilotDurationFrames(10000)} fps={30} width={1080} height={1920}
+        defaultProps={{
+          hook:'TEMPLATE ONLY — VERIFIED NEWS REQUIRED',audioUrl:'',durationMs:10000,
+          words:[],captions:[],images:[],sourceLabel:'REVIEW TEMPLATE',sourceUrl:'',
+          sourcePublishedAt:'',creativeVersion:'the-prompt-editorial-v1' as const,
+        }}/>
 
       {/* Lite version — single static image, same audio + captions. ~5× cheaper. */}
       <Composition

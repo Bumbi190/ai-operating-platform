@@ -22,7 +22,7 @@ alter table public.sales_mailbox_setups enable row level security;
 revoke all on public.sales_mailbox_connections,public.sales_mailbox_setups from public,anon,authenticated,service_role;
 grant select on public.sales_mailbox_connections to authenticated;
 grant select,insert,update on public.sales_mailbox_connections,public.sales_mailbox_setups to service_role;
-create policy sales_mailbox_owner_read on public.sales_mailbox_connections for select to authenticated using(owner_id=auth.uid() and exists(select from public.projects p where p.id=project_id and p.owner_id=auth.uid()));
+create policy sales_mailbox_owner_read on public.sales_mailbox_connections for select to authenticated using(owner_id=(select auth.uid()) and exists(select from public.projects p where p.id=project_id and p.owner_id=(select auth.uid())));
 
 create function public.sales_mailbox_fields(v jsonb,allowed text[]) returns void language plpgsql security invoker set search_path='' as $$
 begin if jsonb_typeof(v) is distinct from 'object' or exists(select from jsonb_object_keys(v) k where not k=any(allowed)) then raise exception 'INVALID_BODY' using errcode='22023';end if;end $$;

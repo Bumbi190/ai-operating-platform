@@ -33,6 +33,10 @@ begin
  if public.sales_mailbox_commit_probe(repeat('8',64),c)<>replayed then raise exception 'TEST FAILED: changed receipt';end if;
  if exists(select from public.sales_mailbox_setups where id=(context->>'setupId')::uuid and sealed is not null) then raise exception 'TEST FAILED: ciphertext retained';end if;
  perform pg_temp.mailbox_expect_error(format('select public.sales_mailbox_commit_probe(%L,%L)',repeat('8',64),c||jsonb_build_object('receipt',receipt||'{"localStored":false}')),'23505');
+ -- Accepted receipts survive routine worker-token rotation for the same manager/head.
+ perform public.sales_host_rotate(repeat('8',64),jsonb_build_object('rotationId','90000000-0000-4000-8000-000000000078','newTokenHash',repeat('5',64),'expectedGeneration',1));
+ if public.sales_mailbox_commit_probe(repeat('8',64),c)<>replayed then raise exception 'TEST FAILED: accepted receipt lost after routine rotation';end if;
+ perform public.sales_mailbox_publish_key(repeat('8',64),key||'{"generation":2}');
  perform public.sales_mailbox_begin_setup(p,v||'{"email":"other@example.se"}');
  if public.sales_mailbox_commit_probe(repeat('8',64),c)->>'current'<>'false' then raise exception 'TEST FAILED: stale local activation accepted';end if;
  other:=v||'{"workerId":"60000000-0000-4000-8000-000000000076"}';

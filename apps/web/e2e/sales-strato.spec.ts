@@ -22,7 +22,38 @@ test('real browser encrypts a private Strato form and reports login-only proof o
  await page.getByRole('checkbox',{name:'Jag bekräftar att detta är rätt postfack.'}).check()
  await page.getByRole('button',{name:'Anslut Strato',exact:true}).click()
  await beginStarted;try{await expect(page.getByRole('textbox',{name:'Fullständig postfacksadress',exact:true})).toBeDisabled()}finally{releaseBegin()}
- await expect(page.getByText('Strato-inloggningen är verifierad.',{exact:true})).toBeVisible({timeout:15000});expect(submitted).toBe(true);expect(bodies.join('\n')).not.toContain(password);expect(logs.join('\n')).not.toContain(password);await expect(page.getByLabel('Postfackslösenord',{exact:true})).toHaveValue('')
+ await expect(page.getByText(`Strato-inloggningen är verifierad för ${context.email}.`,{exact:true})).toBeVisible({timeout:15000});expect(submitted).toBe(true);expect(bodies.join('\n')).not.toContain(password);expect(logs.join('\n')).not.toContain(password);await expect(page.getByLabel('Postfackslösenord',{exact:true})).toHaveValue('')
  await expect(page.getByText('Inkorgsinläsning är inte aktiverad.',{exact:true})).toBeVisible();await expect(page.getByText('Provar inloggningen – inga mejl skickas',{exact:true})).toBeVisible()
  const dir='../../.superpowers/sdd/2026-10-17-sales-strato-connection/browser';mkdirSync(dir,{recursive:true});await page.screenshot({path:dir+'/strato-desktop.png',fullPage:true});await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:dir+'/strato-mobile.png',fullPage:true})
+})
+
+test('saved authentication identifies its exact mailbox while another address is edited',async({page})=>{
+ const saved='verified@example.se',edited='unverified@example.se'
+ await page.route('**/api/sales?*',r=>r.fulfill({json:new URL(r.request().url()).searchParams.has('connection')?{connections:[{workerId,managed:true,connectionState:'online'}]}:{projectId,state:'ok',workerState:'connected',contacts:[],offers:[],jobs:[],drafts:[],workers:[],workspaceUrl:'/projects/handlarborsen/sales',sendingEnabled:false}}))
+ await page.route('**/api/sales/mailbox?*',r=>r.fulfill({json:{mailboxId,email:saved,status:'authenticated',inboxEnabled:false,sendingEnabled:false}}))
+ await page.goto('/sales?stratoWorker='+workerId)
+ const input=page.getByRole('textbox',{name:'Fullständig postfacksadress',exact:true})
+ await expect(input).toHaveValue(saved)
+ await expect(page.getByText(`Strato-inloggningen är verifierad för ${saved}.`,{exact:true})).toBeVisible()
+ await input.fill(edited);await page.waitForTimeout(5200)
+ await expect(input).toHaveValue(edited)
+ await expect(page.getByText(`Strato-inloggningen är verifierad för ${saved}.`,{exact:true})).toBeVisible()
+ await expect(page.getByText(`Strato-inloggningen är verifierad för ${edited}.`,{exact:true})).toHaveCount(0)
+})
+test('oversize Unicode and JSON expansion are refused before a setup exists',async({page})=>{
+ const bodies:string[]=[],logs:string[]=[]
+ page.on('request',r=>{if(r.postData())bodies.push(r.postData()!)});page.on('console',m=>logs.push(m.text()))
+ await page.route('**/api/sales?*',r=>r.fulfill({json:new URL(r.request().url()).searchParams.has('connection')?{connections:[{workerId,managed:true,connectionState:'online'}]}:{projectId,state:'ok',workerState:'connected',contacts:[],offers:[],jobs:[],drafts:[],workers:[],workspaceUrl:'/projects/handlarborsen/sales',sendingEnabled:false}}))
+ await page.route('**/api/sales/mailbox?*',r=>r.fulfill({json:null}))
+ await page.route('**/api/sales/mailbox',r=>r.fulfill({status:400,json:{error:'BLOCKED'}}))
+ await page.goto('/sales?stratoWorker='+workerId)
+ await expect(page.getByRole('button',{name:'Anslut Strato',exact:true})).toBeEnabled()
+ await page.getByRole('checkbox',{name:'Jag bekräftar att detta är rätt postfack.'}).check()
+ for(const secret of ['å'.repeat(1025),'\u0001'.repeat(700)]){
+  await page.getByLabel('Postfackslösenord',{exact:true}).fill(secret)
+  await page.getByRole('button',{name:'Anslut Strato',exact:true}).click()
+  await expect(page.getByRole('status')).toHaveText('Lösenordet är för stort för säker lagring. Gränsen är 2048 UTF-8-byte och 4096 byte för den krypterade kontoinformationen.')
+  await expect(page.getByLabel('Postfackslösenord',{exact:true})).toHaveValue('')
+  expect(bodies).toHaveLength(0);expect(logs.join('\n')).not.toContain(secret)
+ }
 })

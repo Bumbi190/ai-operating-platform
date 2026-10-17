@@ -1,5 +1,8 @@
 # Strato B1 independent review and rulings — 2026-10-17
 
+Current release state and subsequent measured gates are recorded in [2026-10-17-sales-release.md](2026-10-17-sales-release.md). This file preserves evidence at its increment/review checkpoint.
+
+
 Fresh reviewer reviewed exact4a66ea6f558cf4975180dc0f232ec7468fcd7f40..aafa3b9ef9c48fc243b391ca26dee8e6d6e3abe3, read-only. No Critical finding, two Important findings accepted, no Minor findings. One regression fix pass; no re-review.
 
 Important1: generic authenticated proof appeared beside an unverified candidate/edited address. Fixed: proof names the exact saved status.email; initial saved address fills the form, while polling preserves an owner's ongoing edits. Browser regression loads a noncandidate authenticated mailbox, edits to another, waits across polling, and verifies only the saved mailbox is described as authenticated.

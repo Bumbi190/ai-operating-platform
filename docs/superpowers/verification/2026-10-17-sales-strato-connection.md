@@ -1,5 +1,8 @@
 # Strato B1 verification — 2026-10-17
 
+Current release state and subsequent measured gates are recorded in [2026-10-17-sales-release.md](2026-10-17-sales-release.md). This file preserves evidence at its increment/review checkpoint.
+
+
 Increment base4a66ea6f558cf4975180dc0f232ec7468fcd7f40, after the independently reviewed managed-host fixes.
 
 Implemented and measured:

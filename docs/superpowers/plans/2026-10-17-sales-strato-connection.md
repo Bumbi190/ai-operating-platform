@@ -50,10 +50,10 @@ Nya moduler: `apps/web/lib/sales/mailbox/{types,api,host-api,store,seal}.ts`, `w
 
 **Consumes:** managed host-identitet och CredentialStore. **Produces:** `sealMailboxCredentials(context:MailboxContext,publicJwk:JsonWebKey,password:string):Promise<SealedMailboxEnvelope>`, `MailboxCrypto.public_key()->{kid,jwk}`, `MailboxCrypto.open(context,envelope)->{email,password}`.
 
-- [ ] Skriv tester för verklig browser-WebCrypto→Node-roundtrip med syntetiska secrets; fel OAEP-hash/label, ändrat AAD/tag/kid/email/projekt, översize och >2560bytes nyckel nekas. Assert att servertyperna saknar klartextcredential-fält.
-- [ ] Kör Vitest, Node `--test` och Python crypto-fixturen. Expected: RED på saknade moduler, inte nät-/paketfel.
-- [ ] Implementera RSA3072/65537 och exakt hybridformat ovan med standard-API:er. Python läser/lagrar privatnyckeln i Credential Manager; Node-helpern får endast stdin och fasta actionnamn, inga secrets i argv. Node-stdout med decryptresultat fångas enbart i hostminnet; stderr kastas. Ingen rå helperoutput förs till tool-/hostlogg. Fail-closed om WebCrypto saknas.
-- [ ] Kör samma tester. Expected: GREEN, syntetisk secret bevarad och varje context-swap nekad. Commit `feat(sales): seal mailbox credentials to the authorized host`.
+- [x] Skriv tester för verklig browser-WebCrypto→Node-roundtrip med syntetiska secrets; fel OAEP-hash/label, ändrat AAD/tag/kid/email/projekt, översize och >2560bytes nyckel nekas. Assert att servertyperna saknar klartextcredential-fält.
+- [x] Kör Vitest, Node `--test` och Python crypto-fixturen. Expected: RED på saknade moduler, inte nät-/paketfel.
+- [x] Implementera RSA3072/65537 och exakt hybridformat ovan med standard-API:er. Python läser/lagrar privatnyckeln i Credential Manager; Node-helpern får endast stdin och fasta actionnamn, inga secrets i argv. Node-stdout med decryptresultat fångas enbart i hostminnet; stderr kastas. Ingen rå helperoutput förs till tool-/hostlogg. Fail-closed om WebCrypto saknas.
+- [x] Kör samma tester. Expected: GREEN, syntetisk secret bevarad och varje context-swap nekad. Commit `feat(sales): seal mailbox credentials to the authorized host`.
 
 ### Task2: Ägarbunden engångskö, key-publicering och hemlighetsfri status
 
@@ -61,13 +61,13 @@ Nya moduler: `apps/web/lib/sales/mailbox/{types,api,host-api,store,seal}.ts`, `w
 
 **Consumes:** Task1 format och `authenticateSalesHost` från föregående plan. **Produces:** `createMailboxApi(deps)`, `createMailboxHostApi(deps)` samt RPC:erna `sales_mailbox_publish_key`, `_begin_setup`, `_submit_sealed`, `_claim_setup`, `_commit_probe`, `_read_status`, `_expire_setups`.
 
-- [ ] Skriv SQL/API-tester för fel ägare/projekt/worker/kid, nyckelbyte med pågående setup, dubbel submit/replay med ändrad ciphertext, två aktiva setups, gammal claim/generation, expiry och revoke under auth. Samma receipt är idempotent; annan receipt för samma ID nekas. Password/privateKey/plaintext som JSON-fält nekas innan RPC.
-- [ ] Kör lokal verklig SQL och nya API-tester. Expected: RED på saknade objekt.
-- [ ] Skapa `sales_mailbox_connections` (ägarläsbar TENANT_RLS, inga klientmutationer) och `sales_mailbox_setups` (SERVER_ONLY). Setup innehåller bara context, begränsat sealed-format, status/lease/generation och tider. Spara inga plaintextsecrets eller råa exceptions. Samma mailbox-email måste finnas i förseglad payload och betrodd context; worker verifierar efter decrypt.
-- [ ] Key-publicering kräver giltig managementprincipal; servern härleder host/projekt och versionsbinder nyckeln. Ägarroute kräver session/same-origin och tillåtet projekt. Inget Atlasverktyg får submittera credentials eller ersätta hostnyckel. Terminala receipts rensar ciphertext atomiskt; metadata skiljer authbevis från varaktigt local-store-kvitto.
-- [ ] Schemalägg enbart `sales_expire_mailbox_setups()` i befintlig pg_cron var5:e minut med ett eget unikt jobnamn. Rutinen får inte röra annat än utgångna mailbox-setups. Verifiera jobbet efter apply; ingen credential-UI aktiveras utan fungerande cleanup. Lokala SQL-fixturen använder anrop direkt, ingen riktig extern cron.
-- [ ] Uppdatera132/118 migrationer efter föregående plans131/117; bevara frysta listor. Dessa två tabeller är created-not-live tills riktig efterkontroll.
-- [ ] Kör SQL, API, migrationssäkerhet och schema-invariant. Expected: GREEN; inga authgrants på setupdata eller privata RPC:er. Commit `feat(sales): queue encrypted Strato setup for one authorized host`.
+- [x] Skriv SQL/API-tester för fel ägare/projekt/worker/kid, nyckelbyte med pågående setup, dubbel submit/replay med ändrad ciphertext, två aktiva setups, gammal claim/generation, expiry och revoke under auth. Samma receipt är idempotent; annan receipt för samma ID nekas. Password/privateKey/plaintext som JSON-fält nekas innan RPC.
+- [x] Kör lokal verklig SQL och nya API-tester. Expected: RED på saknade objekt.
+- [x] Skapa `sales_mailbox_connections` (ägarläsbar TENANT_RLS, inga klientmutationer) och `sales_mailbox_setups` (SERVER_ONLY). Setup innehåller bara context, begränsat sealed-format, status/lease/generation och tider. Spara inga plaintextsecrets eller råa exceptions. Samma mailbox-email måste finnas i förseglad payload och betrodd context; worker verifierar efter decrypt.
+- [x] Key-publicering kräver giltig managementprincipal; servern härleder host/projekt och versionsbinder nyckeln. Ägarroute kräver session/same-origin och tillåtet projekt. Inget Atlasverktyg får submittera credentials eller ersätta hostnyckel. Terminala receipts rensar ciphertext atomiskt; metadata skiljer authbevis från varaktigt local-store-kvitto.
+- [x] Schemalägg enbart `sales_expire_mailbox_setups()` i befintlig pg_cron var5:e minut med ett eget unikt jobnamn. Rutinen får inte röra annat än utgångna mailbox-setups. Verifiera jobbet efter apply; ingen credential-UI aktiveras utan fungerande cleanup. Lokala SQL-fixturen använder anrop direkt, ingen riktig extern cron.
+- [x] Uppdatera132/118 migrationer efter föregående plans131/117; bevara frysta listor. Dessa två tabeller är created-not-live tills riktig efterkontroll.
+- [x] Kör SQL, API, migrationssäkerhet och schema-invariant. Expected: GREEN; inga authgrants på setupdata eller privata RPC:er. Commit `feat(sales): queue encrypted Strato setup for one authorized host`.
 
 ### Task3: Lokal Strato-auth utan mejlåtgärder
 
@@ -75,11 +75,11 @@ Nya moduler: `apps/web/lib/sales/mailbox/{types,api,host-api,store,seal}.ts`, `w
 
 **Consumes:** Tasks1–2 och hostens single-instance-lås. **Produces:** `probe_strato(email,password,clients)->ProbeReceipt`, `process_mailbox_setup(client,crypto,store,journal)->bool`.
 
-- [ ] Skriv fake-SMTP/IMAP-tester med exakta tillåtna metodanrop: SSL-anslutning, normal lösenordsautentisering och logout. Assert att MAIL/RCPT/DATA/SELECT/SEARCH/FETCH/STORE/APPEND aldrig kan anropas. Testa certfel, timeout, Unicode, fel lösenord, bara en lyckad sida, revoke, nätavbrott efter lokal lagring och sen gammal receipt.
-- [ ] Kör `python -m unittest discover -s workers/sales/tests -p test_mailbox_probe.py -v`. Expected: RED.
-- [ ] Implementera fasta verifierade Strato-endpoints och PLAIN över SSL/TLS när servern stöder detta; ingen CRAM-MD5 eller authfallback till okrypterat. Unsupported auth ger fast needs_input-kod, ingen gissning/loop. `debuglevel=0`, råa exceptions loggas aldrig.
-- [ ] Spara bekräftad mailboxcredential som versionsbunden staged nyckel i Credential Manager med read-back och journal. Flytta aktiv-referensen först efter bekräftad aktuell serverreceipt; misslyckat prov lämnar tidigare fungerande credential orörd. Gör ingen serverterminal ”authenticated”-receipt innan lokal varaktig lagring lyckats. Efter omstart löses journalens osäkra setup före nästa poll: återställ samma setup/generation utan nytt authförsök, aktivera bara om serverns aktuella mailboxgeneration fortfarande matchar, annars rensa staged credential. Båda authsidorna måste ha lyckats för authenticated.
-- [ ] Kör hela worker-sviten. Expected: GREEN, inga riktiga nät-/modell-/mejloperationer. Commit `feat(sales): verify Strato login without reading or sending mail`.
+- [x] Skriv fake-SMTP/IMAP-tester med exakta tillåtna metodanrop: SSL-anslutning, normal lösenordsautentisering och logout. Assert att MAIL/RCPT/DATA/SELECT/SEARCH/FETCH/STORE/APPEND aldrig kan anropas. Testa certfel, timeout, Unicode, fel lösenord, bara en lyckad sida, revoke, nätavbrott efter lokal lagring och sen gammal receipt.
+- [x] Kör `python -m unittest discover -s workers/sales/tests -p test_mailbox_probe.py -v`. Expected: RED.
+- [x] Implementera fasta verifierade Strato-endpoints och PLAIN över SSL/TLS när servern stöder detta; ingen CRAM-MD5 eller authfallback till okrypterat. Unsupported auth ger fast needs_input-kod, ingen gissning/loop. `debuglevel=0`, råa exceptions loggas aldrig.
+- [x] Spara bekräftad mailboxcredential som versionsbunden staged nyckel i Credential Manager med read-back och journal. Flytta aktiv-referensen först efter bekräftad aktuell serverreceipt; misslyckat prov lämnar tidigare fungerande credential orörd. Gör ingen serverterminal ”authenticated”-receipt innan lokal varaktig lagring lyckats. Efter omstart löses journalens osäkra setup före nästa poll: återställ samma setup/generation utan nytt authförsök, aktivera bara om serverns aktuella mailboxgeneration fortfarande matchar, annars rensa staged credential. Båda authsidorna måste ha lyckats för authenticated.
+- [x] Kör hela worker-sviten. Expected: GREEN, inga riktiga nät-/modell-/mejloperationer. Commit `feat(sales): verify Strato login without reading or sending mail`.
 
 ### Task4: Säker inloggning i Atlas och begripliga kvitton
 
@@ -87,22 +87,22 @@ Nya moduler: `apps/web/lib/sales/mailbox/{types,api,host-api,store,seal}.ts`, `w
 
 **Consumes:** MailboxContext/Status och seal-funktionen. **Produces:** Atlasverktygen `prepare_strato_connection({projectId,workerId})` och `get_strato_connection_status({projectId,mailboxId})`, som endast returnerar den sparade ägarbundna formreferensen/statusen.
 
-- [ ] Skriv tester för konversationsbindning, fel projekt/host, oauktoriserad managementhost, feature-off, fel public key och nekad plaintextsubmit. I riktig browser ska en syntetisk canarysecret saknas i samtliga HTTP-body/logg/verktygsresultat; endast sealed-format får lämna sidan. Testa mobil390px och desktop.
-- [ ] Kör nya tester. Expected: RED för saknat formulär/verktyg.
-- [ ] Lägg formuläret i befintlig projektvy med exakt information: ”Anslut Strato”, ”Provar inloggningen – inga mejl skickas”, och ”Inkorgsinläsning är inte aktiverad”. Adress bekräftas av ägaren, lösenord via password-input; rensa efter kryptering/unmount. Ingen URL-, chat-, minnes-, console-, analytics- eller session-replay-kopia. Fält märks som privata/no-capture och testas mot befintlig telemetri.
-- [ ] Atlas kan öppna formreferensen och följa kvittot medan användaren pratar. Modellen får aldrig lösenordsfält eller verktyg som lämnar in credentials. Erbjud ingen generell ”aktivera säljautopilot”.
-- [ ] Kör nya och befintliga sales-/Studio-gränstester, typecheck och browserfixturer. Expected: GREEN. Commit `feat(sales): connect Strato through an encrypted owner form`.
+- [x] Skriv tester för konversationsbindning, fel projekt/host, oauktoriserad managementhost, feature-off, fel public key och nekad plaintextsubmit. I riktig browser ska en syntetisk canarysecret saknas i samtliga HTTP-body/logg/verktygsresultat; endast sealed-format får lämna sidan. Testa mobil390px och desktop.
+- [x] Kör nya tester. Expected: RED för saknat formulär/verktyg.
+- [x] Lägg formuläret i befintlig projektvy med exakt information: ”Anslut Strato”, ”Provar inloggningen – inga mejl skickas”, och ”Inkorgsinläsning är inte aktiverad”. Adress bekräftas av ägaren, lösenord via password-input; rensa efter kryptering/unmount. Ingen URL-, chat-, minnes-, console-, analytics- eller session-replay-kopia. Fält märks som privata/no-capture och testas mot befintlig telemetri.
+- [x] Atlas kan öppna formreferensen och följa kvittot medan användaren pratar. Modellen får aldrig lösenordsfält eller verktyg som lämnar in credentials. Erbjud ingen generell ”aktivera säljautopilot”.
+- [x] Kör nya och befintliga sales-/Studio-gränstester, typecheck och browserfixturer. Expected: GREEN. Commit `feat(sales): connect Strato through an encrypted owner form`.
 
 ### Task5: Verkligt flödesbevis och korrekt avgränsad leverans
 
 **Files:** lägg lokal SQL/API→host-fixture i `apps/web/scripts/test-sales-db.mjs`; skapa `docs/superpowers/verification/2026-10-17-sales-strato-connection.md` och uppdatera worker-README.
 
-- [ ] Kör verklig lokal DB→serverhandler→förseglad fixture→fake-auth→OS-store-fake→terminal receipt, inklusive omstart, dubblerad request, nyckelswap, utgången setup, revoke och crash före/efter lagring. Testa cleanupens exakta avgränsning.
-- [ ] Kör samtliga mailbox/sales/host-tester, Node-kryptotester, SQL, migrationssäkerhet, typecheck och desktop/mobil. Lägg canarychecks på felvägar och loggar. Historiska401 baselinefel dokumenteras oförändrat; nya fel blockerar.
-- [ ] En färsk oberoende granskning av detta increments diff; högst en regressionstestad fixomgång. Spara risker/avgränsningar.
-- [ ] Först när säker form, host, cleanup och faktiskt releaseflöde är verifierade: be ägaren logga in i formuläret om Credential Manager saknar ett uttryckligen tidigare anslutet postfack. Sök inte igenom Chrome-profiler, andra appar eller generella hemlighetslager efter lösenord. Begär aldrig lösenord i chatten och återställ inte Strato-lösenord på eget initiativ.
+- [x] Kör verklig lokal DB→serverhandler→förseglad fixture→fake-auth→OS-store-fake→terminal receipt, inklusive omstart, dubblerad request, nyckelswap, utgången setup, revoke och crash före/efter lagring. Testa cleanupens exakta avgränsning.
+- [x] Kör samtliga mailbox/sales/host-tester, Node-kryptotester, SQL, migrationssäkerhet, typecheck och desktop/mobil. Lägg canarychecks på felvägar och loggar. Historiska401 baselinefel dokumenteras oförändrat; nya fel blockerar.
+- [x] En färsk oberoende granskning av detta increments diff; högst en regressionstestad fixomgång. Spara risker/avgränsningar.
+- [x] Först när säker form, host, cleanup och faktiskt releaseflöde är verifierade: be ägaren logga in i formuläret om Credential Manager saknar ett uttryckligen tidigare anslutet postfack. Sök inte igenom Chrome-profiler, andra appar eller generella hemlighetslager efter lösenord. Begär aldrig lösenord i chatten och återställ inte Strato-lösenord på eget initiativ.
 - [ ] Verkligt prov gör exakt en SMTP-/IMAP-auth med ägarens anslutna konto. Spara bara fixed-code receipts, tider, server/port, TLS-resultat, host/projekt och lokal storebekräftelse. Om inloggning saknas: märk korrekt blocked, inte ansluten. Ett lyckat prov är inte inboximport, leverans eller svarshantering.
-- [ ] Inga kund- eller testmejl skickas i B1. B2 kräver egen plan för UIDVALIDITY+UID/PEEK, persistence före checkpoint, dedupe och vald kontakthistorik/startgräns. C kräver ett separat exakt sändningsbeslut. Commit/pusha ett reviewbart resultat och håll broad outreach pausad.
+- [x] Inga kund- eller testmejl skickas i B1. B2 kräver egen plan för UIDVALIDITY+UID/PEEK, persistence före checkpoint, dedupe och vald kontakthistorik/startgräns. C kräver ett separat exakt sändningsbeslut. Commit/pusha ett reviewbart resultat och håll broad outreach pausad.
 
 ## Verifierade planförutsättningar och källor
 
@@ -117,3 +117,5 @@ Nya moduler: `apps/web/lib/sales/mailbox/{types,api,host-api,store,seal}.ts`, `w
 Kontraktmatchning: samma context/AAD/kid i browser, server och host; samma principal från föregående plan; inga raw secrets i servertyper; krångliga crash/replayfall har namngivna tester. Inloggning, varaktig credentiallagring, inkorgsinläsning och utskick är separata verifierbara tillstånd. Kontohistorik från Founding5 får inte återskapas som nya initialkontakter. Ingen produktkod, mailboxåtkomst eller ny behörighet skapades när planen skrevs.
 
 Granska planen före implementation; inline-metoden är bevarad. Efter implementationen återstår endast ägarens verkliga säkra inloggning om den inte redan finns ansluten, inte manuella portar/token/terminalkommandon.
+
+Actual release evidence: docs/superpowers/verification/2026-10-17-sales-release.md. Approved2026-10-17; current main integrated, reviewed migrations applied, protected preview and owned managed task verified. Actual Windows logoff/reboot was not performed: configured logon trigger and controlled scheduled restart/generation persistence were verified. Strato actual SMTP/IMAP authentication remains pending secure owner input; no inbox import or sending.

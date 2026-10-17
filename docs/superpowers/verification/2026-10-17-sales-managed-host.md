@@ -1,5 +1,8 @@
 # Managed sales host verification — 2026-10-17
 
+Current release state and subsequent measured gates are recorded in [2026-10-17-sales-release.md](2026-10-17-sales-release.md). This file preserves evidence at its increment/review checkpoint.
+
+
 Implementation base: 08b3e0c544fabb5009e501d2527fc9ae10297489. Production release is separate.
 
 Verified before independent review:

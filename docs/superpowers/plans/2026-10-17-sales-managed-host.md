@@ -50,12 +50,12 @@ Host-API accepterar endast `adopt`, `rotate`, `poll`, `report_status`. `adopt` a
 
 **Consumes:** befintliga `sales_owner`, `sales_worker`, workerregistrering och återkallning. **Produces:** service-only invoker-RPC:erna `sales_host_authorize`, `sales_host_set_desired`, `sales_host_adopt`, `sales_host_identity`, `sales_host_rotate`, `sales_host_poll`, `sales_host_report_status` med tom search_path.
 
-- [ ] Skriv SQL-regressioner: förnyelse utan ägargrant nekas; främmande projekt/ägare nekas; återkallning/ägarbyte nekar samtliga hostoperationer; samma rotationId/hash ger samma receipt utan förlängd expiry; annan hash på samma ID eller gammal generation nekas; samtidiga rotationer ger en vinnare.
-- [ ] Kör Task1-fixturen i den planägda lokala Postgres-containern. Expected: RED för saknade objekt, inte anslutnings-/syntaxfel.
-- [ ] Lägg managementgrant, manager_token_hash, host_generation, desired_state, senaste rotations-ID/receipt och hälsofälten på registreringen. `sales_host_authorize` är endast ägaroperation, aldrig Atlasverktyg. `adopt` får bara sätta första managerhashen; samma hash är idempotent, ersättning nekas. Alla anrop kontrollerar aktuell ägarbindning och revoked_at. Poll förnyar endast hälsa, aldrig jobbclaim.
-- [ ] Skapa `sales_host_events` som server-only append-only-tabell med project/worker-FK, action, generation och icke-hemlig receiptmetadata. Inga råa headers, payloads eller credentialhashar i event. RLS på, noll klientgrants/policies; service SELECT/INSERT endast, UPDATE/DELETE/TRUNCATE nekas.
-- [ ] Uppdatera kanoniska migrationsantal130/116 till131/117; ändra inte frysta grandfathered-listor. Ny tabell är created-not-live tills faktisk katalogkontroll efter godkänd apply.
-- [ ] Kör SQL samt migration/security/schema-sviterna. Expected: GREEN med ovanstående förnyelse-/revokeringsegenskaper. Commit `feat(sales): add owner-bound managed host lifecycle`.
+- [x] Skriv SQL-regressioner: förnyelse utan ägargrant nekas; främmande projekt/ägare nekas; återkallning/ägarbyte nekar samtliga hostoperationer; samma rotationId/hash ger samma receipt utan förlängd expiry; annan hash på samma ID eller gammal generation nekas; samtidiga rotationer ger en vinnare.
+- [x] Kör Task1-fixturen i den planägda lokala Postgres-containern. Expected: RED för saknade objekt, inte anslutnings-/syntaxfel.
+- [x] Lägg managementgrant, manager_token_hash, host_generation, desired_state, senaste rotations-ID/receipt och hälsofälten på registreringen. `sales_host_authorize` är endast ägaroperation, aldrig Atlasverktyg. `adopt` får bara sätta första managerhashen; samma hash är idempotent, ersättning nekas. Alla anrop kontrollerar aktuell ägarbindning och revoked_at. Poll förnyar endast hälsa, aldrig jobbclaim.
+- [x] Skapa `sales_host_events` som server-only append-only-tabell med project/worker-FK, action, generation och icke-hemlig receiptmetadata. Inga råa headers, payloads eller credentialhashar i event. RLS på, noll klientgrants/policies; service SELECT/INSERT endast, UPDATE/DELETE/TRUNCATE nekas.
+- [x] Uppdatera kanoniska migrationsantal130/116 till131/117; ändra inte frysta grandfathered-listor. Ny tabell är created-not-live tills faktisk katalogkontroll efter godkänd apply.
+- [x] Kör SQL samt migration/security/schema-sviterna. Expected: GREEN med ovanstående förnyelse-/revokeringsegenskaper. Commit `feat(sales): add owner-bound managed host lifecycle`.
 
 ### Task2: Smal host-API och säker ägarstyrning
 
@@ -63,10 +63,10 @@ Host-API accepterar endast `adopt`, `rotate`, `poll`, `report_status`. `adopt` a
 
 **Consumes:** Task1 RPC/typer samt befintliga scope-/HTTP-gränser. **Produces:** `authenticateSalesHost(db,tokenHash):Promise<HostPrincipal>`, `createSalesHostApi(deps):(request:Request)=>Promise<Response>`, ägaroperationerna `authorize_managed_worker` och `set_worker_desired`.
 
-- [ ] Skriv testfall för fel authsyfte, modifierat projekt/worker-ID, extra fält, >64KiB, trasig UTF8, feature-off, återkallad principal, ägarbyte och hash/credential i publika svar. Owner-mutation kräver verklig ägarsession/same-origin; hostanrop använder endast bearer.
-- [ ] Kör `npx vitest run lib/qa/sales-host-api.test.ts --maxWorkers=2 --minWorkers=1`. Expected: RED på saknad handler.
-- [ ] Implementera fasta operationer och strikt fältvalidering. Managementhash måste vara64 hextecken; raw management-/worker-bearer är43 base64urltecken. Privata svar har befintliga no-store/no-referrer-headers. Ingen handler tar emot URL, filväg, shell, lösenord eller modellval. Returfel är fasta koder utan rå exception.
-- [ ] Kör samma tester och befintliga sales-api-/worker-protocol-tester. Expected: GREEN, befintliga jobbstopp/fences oförändrade. Commit `feat(sales): expose bounded host connection operations`.
+- [x] Skriv testfall för fel authsyfte, modifierat projekt/worker-ID, extra fält, >64KiB, trasig UTF8, feature-off, återkallad principal, ägarbyte och hash/credential i publika svar. Owner-mutation kräver verklig ägarsession/same-origin; hostanrop använder endast bearer.
+- [x] Kör `npx vitest run lib/qa/sales-host-api.test.ts --maxWorkers=2 --minWorkers=1`. Expected: RED på saknad handler.
+- [x] Implementera fasta operationer och strikt fältvalidering. Managementhash måste vara64 hextecken; raw management-/worker-bearer är43 base64urltecken. Privata svar har befintliga no-store/no-referrer-headers. Ingen handler tar emot URL, filväg, shell, lösenord eller modellval. Returfel är fasta koder utan rå exception.
+- [x] Kör samma tester och befintliga sales-api-/worker-protocol-tester. Expected: GREEN, befintliga jobbstopp/fences oförändrade. Commit `feat(sales): expose bounded host connection operations`.
 
 ### Task3: Lokal Credential Manager-journal och återställbar förnyelse
 
@@ -74,10 +74,10 @@ Host-API accepterar endast `adopt`, `rotate`, `poll`, `report_status`. `adopt` a
 
 **Consumes:** Task2 HTTPS-kontrakt. **Produces:** `ManagedConnection.ensure_worker_token(now)->str`, `ManagedConnection.poll_status()->dict`, `CredentialStore.delete(name)`, atomisk lokal journal med endast referenser/hashar/generationer.
 
-- [ ] Skriv fake-transport/OS-store-tester: avbrott efter staged credential, efter servercommit och före lokal active-pointer; replay av samma rotationId; saknad staged secret; två parallella starter; revoked/owner-changed. Assert att inga secretsträngar når argv, journal eller loggar och att inga modellförsök görs.
-- [ ] Kör `python -m unittest discover -s workers/sales/tests -p test_managed_connection.py -v`. Expected: RED.
-- [ ] Generera managerhemligheten lokalt, lagra/read-back före `adopt`, skicka endast hash som indata. Staga ny workerhemlighet i Credential Manager före rotation; fsync journal med stabilt rotationId före dispatch. Efter bekräftad receipt byts active-referens atomiskt och föråldrad credential rensas. Okänt svar återställs med samma ID/hash; efter tre transportfel visas unavailable och inget modelljobb dispatchas. Ingen plaintext-fallback.
-- [ ] Kör hela worker-unittest-sviten. Expected: GREEN och befintligt test för ingen modellretry fortsatt godkänt. Commit `feat(sales): recover managed credentials without secret handoff`.
+- [x] Skriv fake-transport/OS-store-tester: avbrott efter staged credential, efter servercommit och före lokal active-pointer; replay av samma rotationId; saknad staged secret; två parallella starter; revoked/owner-changed. Assert att inga secretsträngar når argv, journal eller loggar och att inga modellförsök görs.
+- [x] Kör `python -m unittest discover -s workers/sales/tests -p test_managed_connection.py -v`. Expected: RED.
+- [x] Generera managerhemligheten lokalt, lagra/read-back före `adopt`, skicka endast hash som indata. Staga ny workerhemlighet i Credential Manager före rotation; fsync journal med stabilt rotationId före dispatch. Efter bekräftad receipt byts active-referens atomiskt och föråldrad credential rensas. Okänt svar återställs med samma ID/hash; efter tre transportfel visas unavailable och inget modelljobb dispatchas. Ingen plaintext-fallback.
+- [x] Kör hela worker-unittest-sviten. Expected: GREEN och befintligt test för ingen modellretry fortsatt godkänt. Commit `feat(sales): recover managed credentials without secret handoff`.
 
 ### Task4: Ägd Windows-livscykel och pinnad installation
 
@@ -85,10 +85,10 @@ Host-API accepterar endast `adopt`, `rotate`, `poll`, `report_status`. `adopt` a
 
 **Consumes:** Task3 och befintliga `run_once`/doctor. **Produces:** `python -m workers.sales.cli host --project UUID`, `New-SalesStartupPlan(...)`, ägarskapskontrollerad preview/apply-installation och borttagning av exakt egen task.
 
-- [ ] Skriv tester för single-instance-lås, fel manifesthash, annan taskägare/action, spaces/XML-tecken/reparse points, pausad/återkallad host och omstart efter osäker modellcall. Assert noll automatisk återköning av gamla jobb.
-- [ ] Kör unittest samt PowerShell-plan/ägarfixture utan att registrera en riktig task. Expected: RED.
-- [ ] Använd pinnad installation under LocalAppData; verifiera manifest före jobbkörning. Håll ett Windows-filkörningslås. Task `\Omnira\Omnira-Sales-{workerId}` använder exakt användar-SID, InteractiveToken, LeastPrivilege, LogonTrigger, IgnoreNew och fasta python/entrypoint/config-vägar. Befintlig främmande task nekas; identisk ägd task är no-op. Begränsa crashrestart till3 försök med1min mellanrum; journal/fences gäller även efter restart. Ingen automatisk source-/Claudeuppdatering.
-- [ ] Kör samma tester. Expected: GREEN. Installera inte autostart eller ny långvarig grant förrän releasekontrollerna är uppfyllda. Commit `feat(sales): supervise the owned Windows draft worker`.
+- [x] Skriv tester för single-instance-lås, fel manifesthash, annan taskägare/action, spaces/XML-tecken/reparse points, pausad/återkallad host och omstart efter osäker modellcall. Assert noll automatisk återköning av gamla jobb.
+- [x] Kör unittest samt PowerShell-plan/ägarfixture utan att registrera en riktig task. Expected: RED.
+- [x] Använd pinnad installation under LocalAppData; verifiera manifest före jobbkörning. Håll ett Windows-filkörningslås. Task `\Omnira\Omnira-Sales-{workerId}` använder exakt användar-SID, InteractiveToken, LeastPrivilege, LogonTrigger, IgnoreNew och fasta python/entrypoint/config-vägar. Befintlig främmande task nekas; identisk ägd task är no-op. Begränsa crashrestart till3 försök med1min mellanrum; journal/fences gäller även efter restart. Ingen automatisk source-/Claudeuppdatering.
+- [x] Kör samma tester. Expected: GREEN. Installera inte autostart eller ny långvarig grant förrän releasekontrollerna är uppfyllda. Commit `feat(sales): supervise the owned Windows draft worker`.
 
 ### Task5: Atlas sköter vardagsdriften
 
@@ -96,24 +96,26 @@ Host-API accepterar endast `adopt`, `rotate`, `poll`, `report_status`. `adopt` a
 
 **Consumes:** Task2 HostStatus/ägarkontroll och Task4 host. **Produces:** `get_sales_connection_status(projectId)` och `manage_sales_connection({projectId,workerId,action:'pause'|'resume'|'reconnect'})`. Verktygen kan endast påverka redan ägarauktoriserad anslutning.
 
-- [ ] Skriv tester: verklig konversationsbindning, feature-off, annan host/projekt, oauktoriserad grant, inga godtyckliga kommandon/token i modellinput/output, korrekt online/paused/CLI-blocked-status. Webbsidan får ingen nödvändig kopiera-token-/terminalsekvens för normal användning.
-- [ ] Kör nya tester. Expected: RED på saknade verktyg/status.
-- [ ] Implementera serverhärledd status och små kontrolloperationer. Reconnect begär avstämning/förnyelse, inte ny behörighet eller självåteraktivering efter revoke. Vanliga instruktioner förklarar affärsläget, inte kommandon. Studio får inga hostverktyg. Grant/revoke visas som behörighetsåtgärder, inte som utkastgodkännande.
-- [ ] Kör nya/befintliga sales- och berörda chattregistrerings-/Studio-gränstester samt `npm run typecheck`. Expected: GREEN. Commit `feat(sales): let Atlas manage the authorized draft connection`.
+- [x] Skriv tester: verklig konversationsbindning, feature-off, annan host/projekt, oauktoriserad grant, inga godtyckliga kommandon/token i modellinput/output, korrekt online/paused/CLI-blocked-status. Webbsidan får ingen nödvändig kopiera-token-/terminalsekvens för normal användning.
+- [x] Kör nya tester. Expected: RED på saknade verktyg/status.
+- [x] Implementera serverhärledd status och små kontrolloperationer. Reconnect begär avstämning/förnyelse, inte ny behörighet eller självåteraktivering efter revoke. Vanliga instruktioner förklarar affärsläget, inte kommandon. Studio får inga hostverktyg. Grant/revoke visas som behörighetsåtgärder, inte som utkastgodkännande.
+- [x] Kör nya/befintliga sales- och berörda chattregistrerings-/Studio-gränstester samt `npm run typecheck`. Expected: GREEN. Commit `feat(sales): let Atlas manage the authorized draft connection`.
 
 ### Task6: Verifiering, driftsättning och rollback
 
 **Files:** utöka `apps/web/scripts/test-sales-db.mjs` med den nya lokala SQL-fixturen; skapa `docs/superpowers/verification/2026-10-17-sales-managed-host.md`.
 
-- [ ] Lägg tvärlagerscenario: ägargrant → lokal adopt → serverrotation → krasch/återställning → Atlas pause/resume → revoke → gamla credentials nekas. Verifiera noll SMTP/IMAP/modellanrop i livscykelfixturen och oförändrade jobbfences.
-- [ ] Kör samtliga sales-/host-unittester, verklig lokal SQL-integration, migrationssäkerhet, typecheck och desktop/mobil-kontroller. Befintlig full-suite-baseline401 fel är dokumenterad, aldrig skäl att kalla releasen helgrön; nya fel blockerar leverans.
-- [ ] Utför en färsk oberoende granskning av just detta increments diff mot planens bas. Gradera före en regressionstestad fixomgång; ingen upprepad re-review av samma fixar.
-- [ ] Efter godkänd plan/release: applicera exakt granskad migration, kontrollera RLS/grants/funktioner och advisor-delta, ge enbart den valda hosten ägargrant, prova riktig förnyelse och revoke innan autostart installeras. Om ny preview används måste den pinnade origin flyttas uttryckligt; ingen credential skickas till godtycklig alias/redirect.
-- [ ] Kontrollera task ownership/XML, verklig process, upprepad serverheartbeat och att återstart efter inloggning behåller generation/journal. Rollback: revoke exakt worker/grant, stoppa/borttag endast ägd task/process; inga andra Python/Claude/Ollama-processer berörs.
-- [ ] Spara faktiska kvitton och limitations. Den gamla23h-hostens STOP markeras först när ersättaren verifierats; parallella claimers ska aldrig lämnas av misstag. Commit/pusha granskningsbart resultat. Inga kundjobb eller kundutskick aktiveras som installationsprov.
+- [x] Lägg tvärlagerscenario: ägargrant → lokal adopt → serverrotation → krasch/återställning → Atlas pause/resume → revoke → gamla credentials nekas. Verifiera noll SMTP/IMAP/modellanrop i livscykelfixturen och oförändrade jobbfences.
+- [x] Kör samtliga sales-/host-unittester, verklig lokal SQL-integration, migrationssäkerhet, typecheck och desktop/mobil-kontroller. Befintlig full-suite-baseline401 fel är dokumenterad, aldrig skäl att kalla releasen helgrön; nya fel blockerar leverans.
+- [x] Utför en färsk oberoende granskning av just detta increments diff mot planens bas. Gradera före en regressionstestad fixomgång; ingen upprepad re-review av samma fixar.
+- [x] Efter godkänd plan/release: applicera exakt granskad migration, kontrollera RLS/grants/funktioner och advisor-delta, ge enbart den valda hosten ägargrant, prova riktig förnyelse och revoke innan autostart installeras. Om ny preview används måste den pinnade origin flyttas uttryckligt; ingen credential skickas till godtycklig alias/redirect.
+- [x] Kontrollera task ownership/XML, verklig process, upprepad serverheartbeat och att återstart efter inloggning behåller generation/journal. Rollback: revoke exakt worker/grant, stoppa/borttag endast ägd task/process; inga andra Python/Claude/Ollama-processer berörs.
+- [x] Spara faktiska kvitton och limitations. Den gamla23h-hostens STOP markeras först när ersättaren verifierats; parallella claimers ska aldrig lämnas av misstag. Commit/pusha granskningsbart resultat. Inga kundjobb eller kundutskick aktiveras som installationsprov.
 
 ## Självgranskning och handoff
 
 Kravtäckning: ägar-/projektidentitet och secretisolering Tasks1–3; återställning/Windows Tasks3–4; Atlasstyrning Task5; verklig drift/rollback Task6. Arkitekturmönster för ägd Windows-task har lästs från det publicerade lokala textspåret, men inga av dess filer, credentials eller aktiva processer importeras/ändras. Nyckel-/mailbox-handoff är separat nästa plan. Ingen produktkod eller ny behörighet skapades när planen skrevs.
 
 Planen ska granskas före implementation enligt det bevarade inline-flödet. Efter godkännande följer `2026-10-17-sales-strato-connection.md`; då behövs som mest en säker postfacksinloggning i formuläret, inga tekniska ägarsteg.
+
+Actual release evidence: docs/superpowers/verification/2026-10-17-sales-release.md. Approved2026-10-17; current main integrated, reviewed migrations applied, protected preview and owned managed task verified. Actual Windows logoff/reboot was not performed: configured logon trigger and controlled scheduled restart/generation persistence were verified. Strato actual SMTP/IMAP authentication remains pending secure owner input; no inbox import or sending.

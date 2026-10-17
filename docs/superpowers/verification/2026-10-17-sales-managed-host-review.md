@@ -1,5 +1,8 @@
 # Independent review and single regression fix pass
 
+Current release state and subsequent measured gates are recorded in [2026-10-17-sales-release.md](2026-10-17-sales-release.md). This file preserves evidence at its increment/review checkpoint.
+
+
 Reviewed 08b3e0c..ee745b3 by fresh GPT6-astra reviewer. No Critical findings.
 The three Important findings were accepted at their effect-based grade:
 1. Claim transport failure permanently blocked all work: dispatch journal now starts immediately before actual model work, includes job/claim/attempt identifiers, and does not treat a failed claim as uncertain model execution. Claim failure and interrupted-model regressions observed RED→GREEN.

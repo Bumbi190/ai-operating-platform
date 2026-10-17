@@ -25,9 +25,9 @@ const STORIES = {
     label:'AI / CODING',kicker:'THE CODEX EXPERIMENT',
     starts:[0,5329,10089,17519],
     beats:[
-      'OPENAI TESTED\nA PERSISTENT\nCODEX MODE.',
-      'AN AGENT THAT\nKEEPS WORKING\nBETWEEN TASKS.',
-      'IMPORTANT: THIS\nWAS NOT A\nPRODUCT LAUNCH.',
+      'AN AI THAT\nNEVER SLEEPS?',
+      'CODEX COULD\nKEEP WORKING.',
+      'A TEST.\nNOT A LAUNCH.',
       'WOULD YOU\nTRUST IT?',
     ],
     micro:['01 / THE SIGNAL','02 / THE IDEA','03 / THE FACTS','04 / YOUR TAKE'],
@@ -37,10 +37,10 @@ const STORIES = {
     label:'AI / WORK',kicker:'THE AI-TO-AI INTERVIEW',
     starts:[0,3541,10716,17206],
     beats:[
-      'AI RECRUITERS\nWERE GOING\nSILENT.',
-      'TWO BOTS\nTALKED FOR\nTEN MINUTES.',
-      'NO HUMAN\nFOLLOW-UP.\nNO CONFIRMED HIRE.',
-      'WHO IS\nEVALUATING\nTHE PERSON?',
+      'AI INTERVIEWED\nANOTHER AI.',
+      'TWO BOTS.\nTEN MINUTES.',
+      'NO HUMAN\nFOLLOW-UP.',
+      'WHO IS\nREALLY HIRING?',
     ],
     micro:['01 / THE SETUP','02 / THE CALL','03 / THE OUTCOME','04 / THE QUESTION'],
   },
@@ -110,18 +110,18 @@ export function ThePromptNewsPreview({story}:{story:Story}){
       fontSize:22,letterSpacing:3.6,fontWeight:850,color:'#D2E8F0'}}>{p.kicker}</div>
 
     {/* Image first. A small scene label + headline replace every central box. */}
-    <div style={{position:'absolute',top:700,left:65,right:65,
+    <div style={{position:'absolute',top:805,left:65,right:65,
       opacity:opening,transform:`translateY(${anim(local,0,17,65,0)}px)`}}>
-      <div style={{fontSize:28,fontWeight:900,letterSpacing:4,color:TEAL,marginBottom:33}}>
+      <div style={{fontSize:26,fontWeight:900,letterSpacing:4,color:TEAL,marginBottom:26}}>
         {p.micro[segment]}
       </div>
       <div style={{
-        fontSize:segment===3?97:86,lineHeight:1.07,fontWeight:950,
+        fontSize:segment===3?90:87,lineHeight:1.07,fontWeight:950,
         letterSpacing:-3.5,whiteSpace:'pre-line',overflowWrap:'break-word',
         textShadow:'0 6px 15px #000E,0 13px 45px #00131FE6',
       }}>{p.beats[segment]}</div>
       <div style={{
-        marginTop:37,height:8,width:anim(local,8,35,0,330),
+        marginTop:27,height:7,width:anim(local,8,35,0,330),
         borderRadius:20,background:TEAL,boxShadow:'0 0 21px #51F1C77A',
       }}/>
     </div>

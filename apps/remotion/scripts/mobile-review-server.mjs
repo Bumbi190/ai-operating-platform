@@ -46,9 +46,9 @@ const scenes={
     label:'AI / CODING',kicker:'THE CODEX EXPERIMENT',
     starts:[0,5329,10089,17519],
     beats:[
-      ['01 / THE SIGNAL','OPENAI TESTED A PERSISTENT CODEX MODE.'],
-      ['02 / THE IDEA','AN AGENT THAT KEEPS WORKING BETWEEN TASKS.'],
-      ['03 / THE FACTS','IMPORTANT: THIS WAS NOT A PRODUCT LAUNCH.'],
+      ['01 / THE SIGNAL','AN AI THAT NEVER SLEEPS?'],
+      ['02 / THE IDEA','CODEX COULD KEEP WORKING.'],
+      ['03 / THE FACTS','A TEST. NOT A LAUNCH.'],
       ['04 / YOUR TAKE','WOULD YOU TRUST IT?'],
     ],
   },
@@ -56,10 +56,10 @@ const scenes={
     label:'AI / WORK',kicker:'THE AI-TO-AI INTERVIEW',
     starts:[0,3541,10716,17206],
     beats:[
-      ['01 / THE SETUP','AI RECRUITERS WERE GOING SILENT.'],
-      ['02 / THE CALL','TWO BOTS TALKED FOR TEN MINUTES.'],
-      ['03 / THE OUTCOME','NO HUMAN FOLLOW-UP. NO CONFIRMED HIRE.'],
-      ['04 / THE QUESTION','WHO IS EVALUATING THE PERSON?'],
+      ['01 / THE SETUP','AI INTERVIEWED ANOTHER AI.'],
+      ['02 / THE CALL','TWO BOTS. TEN MINUTES.'],
+      ['03 / THE OUTCOME','NO HUMAN FOLLOW-UP.'],
+      ['04 / THE QUESTION','WHO IS REALLY HIRING?'],
     ],
   },
 }
@@ -93,6 +93,7 @@ function viewer(){
 }
 const responseHeaders={
   'cache-control':'private, no-store, max-age=0',
+  'content-language':'en',
   'x-content-type-options':'nosniff',
   'referrer-policy':'no-referrer',
   'cross-origin-resource-policy':'same-origin',

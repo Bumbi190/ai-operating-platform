@@ -18,6 +18,9 @@ test('new Remotion layouts reject central explainer cards while preserving narra
   assert.match(remotion,/p\.starts/)
   assert.match(remotion,/p\.audio/)
   assert.match(remotion,/THE <span/)
+  for(const hook of ['AN AI THAT','AI INTERVIEWED','TWO BOTS.','A TEST.'])assert(remotion.includes(hook))
+  assert(!remotion.includes('OPENAI TESTED\\nA PERSISTENT\\nCODEX MODE.'))
+  assert(!remotion.includes('IMPORTANT: THIS\\nWAS NOT A\\nPRODUCT LAUNCH.'))
 })
 
 test('read-only mobile review uses the actual Victoria manifests and story cut times',()=>{
@@ -42,6 +45,11 @@ test('mobile controls are word-wrapped, not separate flex children that overflow
   assert(html.includes('width:100%;white-space:normal;overflow-wrap:break-word'))
   assert(!html.includes('EXPLAINER VISUAL'))
   assert(!html.includes('editorial diagram'))
+  assert.match(html,/<html lang="en" translate="no" class="notranslate">/)
+  assert.match(html,/<meta name="google" content="notranslate">/)
+  assert.match(html,/<div class="stage notranslate" lang="en" translate="no">/)
+  assert.match(html,/<div class="captions" aria-live="off" lang="en" translate="no">/)
+  assert.match(service,/'content-language':'en'/)
   assert(html.includes('aria-label="Seek narration"'))
   const inline=html.match(/<script>\s*([\s\S]*?)<\/script>/)?.[1]
   assert(inline)
@@ -55,6 +63,7 @@ test('private mobile server rejects public binds, limits its endpoints, and neve
   assert(service.includes("if(!files.has(filename))"))
   assert(service.includes("createReadStream(join(MEDIA,filename)"))
   assert(service.includes("randomBytes(24)"))
+  for(const hook of ['AN AI THAT NEVER SLEEPS?','AI INTERVIEWED ANOTHER AI.','TWO BOTS. TEN MINUTES.','A TEST. NOT A LAUNCH.'])assert(service.includes(hook))
   assert(service.includes("if(!/^[a-f0-9]{48}$/.test(token))"))
   assert(service.includes("'content-range'"))
   assert(!service.includes('service_role'))

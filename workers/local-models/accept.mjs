@@ -25,13 +25,16 @@ export async function collectGpuEvidence(snapshot,client,runtime,window,execProb
   const quote=s=>"'"+s.replaceAll("'","''")+"'";
   const ownership=`$root=${quote(path.dirname(runtime.exe)+path.sep)}; Get-CimInstance Win32_Process -Filter 'ParentProcessId=${runtime.journal.processId}' | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($root,[StringComparison]::OrdinalIgnoreCase) } | Select-Object ProcessId,ParentProcessId,ExecutablePath,CreationDate | ConvertTo-Json -Compress`;
   const ownershipResult=execProbe('powershell.exe',['-NoProfile','-NonInteractive','-Command',ownership],{timeout:5000,maxBuffer:65536}).then(value=>({value}),()=>({error:true}));
-  const [cli,gpu]=await Promise.all([execProbe(runtime.exe,['ps'],{env,timeout:5000,maxBuffer:65536}),execProbe('nvidia-smi',['--query-gpu=name,memory.used,utilization.gpu','--format=csv,noheader'],{timeout:5000,maxBuffer:65536})]);
+  const [cli,firstGpu]=await Promise.all([execProbe(runtime.exe,['ps'],{env,timeout:5000,maxBuffer:65536}),execProbe('nvidia-smi',['--query-gpu=name,memory.used,utilization.gpu','--format=csv,noheader'],{timeout:5000,maxBuffer:65536})]);
+  let gpu=firstGpu;const utilization=sample=>{const lines=sample.stdout.trim().split(/\r?\n/);return lines.length===1?Number(lines[0].split(',').at(-1).replace('%','').trim()):NaN;};
+  let gpuUtilizationPercent=utilization(gpu);let sampleCount=1;
+  while(!(gpuUtilizationPercent>0)&&window.isInFlight()&&performance.now()<deadline&&sampleCount<64){await delay(100);gpu=await execProbe('nvidia-smi',['--query-gpu=name,memory.used,utilization.gpu','--format=csv,noheader'],{timeout:5000,maxBuffer:65536});sampleCount++;gpuUtilizationPercent=utilization(gpu);}
   const duringInference=window.isInFlight();const sampledAt=new Date().toISOString();
   // Ownership lookup verifies the same resident runner; its slower completion is not the sample time.
   const ownershipResponse=await ownershipResult;if(ownershipResponse.error)throw Error('RUNNER_LOOKUP_FAILED');const runners=ownershipResponse.value;
   const model=ps.models?.find(m=>m.name===snapshot.candidateId&&m.digest===snapshot.modelDigest);const row=cli.stdout.split(/\r?\n/).find(line=>line.includes(snapshot.candidateId));
   const owned=[parseJSON(Buffer.from(runners.stdout||'null'))].flat().filter(Boolean);const runner=owned[0];
-  return {inferenceStartedAt:window.startedAt,sampledAt,ownershipVerifiedAt:new Date().toISOString(),duringInference,ownedRunner:runner?{processId:runner.ProcessId,parentProcessId:runner.ParentProcessId,executablePath:runner.ExecutablePath,createdAt:runner.CreationDate}:null,fullyOnGpu:duringInference&&!!runner&&ps.models?.length===1&&!!model&&model.size>0&&model.size_vram>=model.size&&!!row?.includes('100% GPU'),modelDigest:model?.digest??null,ollamaPs:cli.stdout.trim(),nvidiaSmi:gpu.stdout.trim(),sizeBytes:model?.size??null,sizeVramBytes:model?.size_vram??null};
+  return {inferenceStartedAt:window.startedAt,sampledAt,ownershipVerifiedAt:new Date().toISOString(),duringInference,gpuUtilizationPercent,sampleCount,ownedRunner:runner?{processId:runner.ProcessId,parentProcessId:runner.ParentProcessId,executablePath:runner.ExecutablePath,createdAt:runner.CreationDate}:null,fullyOnGpu:duringInference&&gpuUtilizationPercent>0&&!!runner&&ps.models?.length===1&&!!model&&model.size>0&&model.size_vram>=model.size&&!!row?.includes('100% GPU'),modelDigest:model?.digest??null,ollamaPs:cli.stdout.trim(),nvidiaSmi:gpu.stdout.trim(),sizeBytes:model?.size??null,sizeVramBytes:model?.size_vram??null};
 }
 async function ensureIdle(client){
   const ps=await client.ps();for(const m of ps.models??[]){candidate(m.name);await client.unload(m.name);}

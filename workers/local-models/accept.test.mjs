@@ -15,3 +15,9 @@ test('GPU sample timing is independent of a slower ownership lookup',async()=>{
   const evidence=await mod.collectGpuEvidence(snapshot,{ps:async()=>({models:[{name:snapshot.candidateId,digest:snapshot.modelDigest,size:100,size_vram:100}]})},{exe:'/owned/ollama.exe',journal:{processId:44}},{isInFlight:()=>active,startedAt:new Date().toISOString()},execProbe);
   assert.equal(evidence.duringInference,true);assert.equal(evidence.fullyOnGpu,true);assert.equal(evidence.ownedRunner.processId,55);
 });
+test('GPU evidence waits past an idle sample for observed activity during inference',async()=>{
+  let samples=0;const snapshot={candidateId:'qwen3:8b',modelDigest:'a'.repeat(64)};
+  const execProbe=async(file)=>({stdout:file==='powershell.exe'?JSON.stringify({ProcessId:55,ParentProcessId:44}):file==='nvidia-smi'?`RTX 3060, 6000 MiB, ${samples++===0?0:90} %`:'qwen3:8b 100% GPU'});
+  const evidence=await mod.collectGpuEvidence(snapshot,{ps:async()=>({models:[{name:snapshot.candidateId,digest:snapshot.modelDigest,size:100,size_vram:100}]})},{exe:'/owned/ollama.exe',journal:{processId:44}},{isInFlight:()=>true,startedAt:new Date().toISOString()},execProbe);
+  assert.equal(samples,2);assert.equal(evidence.gpuUtilizationPercent,90);assert.equal(evidence.fullyOnGpu,true);
+});

@@ -30,3 +30,112 @@ create table public.runs(id uuid primary key default gen_random_uuid(),project_i
 create table public.cost_events(id uuid primary key default gen_random_uuid(),run_id uuid references runs,project_id uuid references projects,provider text,model text,operation text,tokens_in integer,tokens_out integer,cost_usd numeric,metadata jsonb default '{}',created_at timestamptz default now());
 alter table public.runs enable row level security;alter table public.cost_events enable row level security;
 grant all on public.runs,public.cost_events to service_role;
+-- Exact canonical cancellation body from pinned main; minimal required parent columns.
+alter table public.runs add column cancel_reason text,add column cancelled_by text;
+create table public.approvals(id uuid primary key default gen_random_uuid(),run_id uuid references public.runs,project_id uuid references public.projects,status text,reviewed_at timestamptz);
+grant all on public.approvals to service_role;
+create or replace function public.request_run_cancel(
+  p_run_id     uuid,
+  p_project_id uuid,
+  -- DEFAULT NULL on both trailing arguments is part of the practical ABI even
+  -- though Postgres excludes defaults from function IDENTITY. The deployed
+  -- function carries them (pronargdefaults = 2) and database.types.ts marks both
+  -- optional; dropping them here would make a two-argument call fail at runtime
+  -- while every static signal still said it was fine.
+  p_actor      text default null,
+  p_reason     text default null
+)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $fn$
+declare
+  v_status text;
+  v_now    timestamptz := now();
+begin
+  -- ── THE LINEARIZATION POINT ──────────────────────────────────────────────
+  -- Lock the run row BEFORE branching. Everything this function decides depends
+  -- on the state that exists here, at the write — never on a status a caller
+  -- read a moment ago. If `claim_runs` holds this row we block, and when it
+  -- commits we re-read `pending → running` and record intent instead of
+  -- terminalizing. If we hold it first, claim_runs' own `status = 'pending'`
+  -- re-check drops the row from its batch.
+  --
+  -- The status filter is in the WHERE so a terminal run returns 0 rather than
+  -- taking a lock we would only release again.
+  select r.status into v_status
+    from public.runs r
+   where r.id = p_run_id
+     and r.project_id = p_project_id
+     and r.status in ('pending', 'running', 'awaiting_approval')
+   for update;
+
+  if not found then
+    -- Terminal, or not this tenant's run. Report the truth: nothing was
+    -- mutated. The caller must not translate this into success.
+    return 0;
+  end if;
+
+  if v_status = 'running' then
+    -- ── DURABLE INTENT ONLY ────────────────────────────────────────────────
+    -- An executor owns this row and only that executor may write its terminal
+    -- state, fenced on claim_id. Writing status/claim_id/lease_until/attempts
+    -- here would race the owner and could resurrect work it had finished.
+    -- G3C-3A's checkpoint reads this flag before every execution-bearing unit,
+    -- and `release_stopped_run` and the reaper resolve it if the worker dies.
+    update public.runs set
+      cancel_requested = true,
+      cancel_reason    = coalesce(p_reason, cancel_reason),
+      cancelled_by     = coalesce(p_actor,  cancelled_by)
+    where id = p_run_id;
+    return 1;
+  end if;
+
+  if v_status = 'pending' then
+    -- Never ran. Terminalize under the lock taken above, so no worker can admit
+    -- it afterwards. `cancelled` is one of the two statuses excluded from
+    -- runs_action_identity_uniq, so this also RELEASES the action identity for a
+    -- legitimate replacement — which `failed` would not.
+    update public.runs set
+      status           = 'cancelled',
+      finished_at      = v_now,
+      cancel_requested = true,
+      cancel_reason    = coalesce(p_reason, cancel_reason),
+      cancelled_by     = coalesce(p_actor,  cancelled_by),
+      claimed_at       = null,
+      lease_until      = null,
+      claim_id         = null       -- canonical for a row that never ran
+    where id = p_run_id;
+  else
+    -- awaiting_approval. Terminalize, but KEEP claim_id: it is the provenance of
+    -- the executor that produced the output under review, and G3C-3A's
+    -- terminalizeCancelledRun preserves it for the same reason.
+    update public.runs set
+      status           = 'cancelled',
+      finished_at      = v_now,
+      cancel_requested = true,
+      cancel_reason    = coalesce(p_reason, cancel_reason),
+      cancelled_by     = coalesce(p_actor,  cancelled_by),
+      claimed_at       = null,
+      lease_until      = null
+    where id = p_run_id;
+  end if;
+
+  -- ── UNRESOLVED REVIEW, SAME TRANSACTION ──────────────────────────────────
+  -- A cancelled run must not leave a live review in the operator queue. Only
+  -- UNRESOLVED states are closed; approved/rejected/returned are historical
+  -- decisions and are deliberately NOT rewritten. If this raises, the whole
+  -- function rolls back — a cancelled run with an orphaned pending approval is
+  -- exactly the torn state this migration exists to prevent.
+  update public.approvals set
+    status      = 'returned',
+    reviewed_at = v_now
+  where run_id = p_run_id
+    and status in ('pending', 'revised', 'needs_input');
+
+  return 1;
+end
+$fn$;
+revoke all on function public.request_run_cancel(uuid,uuid,text,text) from public,anon,authenticated;
+grant execute on function public.request_run_cancel(uuid,uuid,text,text) to service_role;

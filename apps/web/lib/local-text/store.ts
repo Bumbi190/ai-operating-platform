@@ -74,3 +74,6 @@ export async function writeOwnerAdmission(db:Db,ownerId:string,projectId:string,
   })
  }catch{return {kind:'unknown',reconcileId:deviceId}}
 }
+
+// Private server consumers share the same strict result/expiry suppression.
+export {receipt as parseStoredReceipt}

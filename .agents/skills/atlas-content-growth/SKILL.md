@@ -19,6 +19,12 @@ Use as editorial knowledge for existing Omnira pipelines; do not install or exec
 - Respect supplied family marketing canon, monthly theme, asset slots and one CTA. No unapproved discounts, freebies, offers or links.
 - All family data and brand context stay within the active Familje-Stunden project.
 
+## ElevenLabs voice identity (required)
+- The Prompt retains Victoria as pinned in apps/web/lib/voice/config.ts, not any similarly named library voice.
+- Nova and Pling require a verified exact voice ID and approved historical usage. Sanna is story narrator, not either character.
+- Read docs/content-growth-voice-lock-v1.md and apps/web/lib/content-growth/voice-lock.ts; the unverified general dialogue voice mappings must block before any future synthesis.
+- No automatic fallback or paid voice-generation experiment is permitted.
+
 ## Render and learn
 - Use the existing Remotion project and its installed remotion-best-practices skill. Do not add a second video engine.
 - Inspect actual rendered video at 0, 0.5, 1, 2 and 3 seconds; a prompt-only quality check is not visual validation.

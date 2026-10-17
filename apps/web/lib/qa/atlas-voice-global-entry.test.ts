@@ -11,7 +11,7 @@ import { AtlasConversationController } from '@/lib/atlas/conversation/controller
 import { AtlasRuntimeProvider, useAtlas } from '@/lib/atlas/runtime'
 function Consumer(){state.value=useAtlas();return null}
 beforeEach(()=>{vi.clearAllMocks();vi.useFakeTimers();state.controller=new AtlasConversationController();vi.stubGlobal('React',React);vi.stubGlobal('requestAnimationFrame',vi.fn());vi.stubGlobal('cancelAnimationFrame',vi.fn());vi.stubGlobal('window',{SpeechRecognition:state.recognition})})
-afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals()})
+afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();vi.unstubAllEnvs()})
 function mount(props:Record<string,unknown>){renderToStaticMarkup(React.createElement(AtlasRuntimeProvider,{...props,children:React.createElement(Consumer)} as any))}
 it('routes global activation to the approved voice page before any legacy microphone starts',()=>{
  mount({voiceConversationEnabled:true});state.value.activate()
@@ -30,7 +30,20 @@ it('retains explicit legacy fallback without live conversation availability',()=
 })
 it('passes the server release gate and collaborator restriction into the persistent provider',()=>{
  const layout=readFileSync(resolve('app/(platform)/layout.tsx'),'utf8')
- expect(layout).toContain("from '@/lib/atlas/voice-pilot/deployment'")
- expect(layout).toMatch(/voiceConversationEnabled=\{!isCollaborator && atlasVoiceConversationEnabled\(\)\}/)
+ expect(layout).toContain("from '@/lib/atlas/voice-pilot/entry'")
+ expect(layout).toMatch(/voiceConversationEnabled=\{atlasVoiceConversationEntryEnabled\(user\.email, Boolean\(isCollaborator\)\)\}/)
  expect(layout).toMatch(/voiceReadOnly=\{Boolean\(isCollaborator\)\}/)
+})
+
+it.each([
+ ['operator', 'operator@example.test', false, 'live', true],
+ ['ordinary owner', 'owner@example.test', false, 'live', false],
+ ['collaborator', 'operator@example.test', true, 'live', false],
+ ['unknown identity', undefined, false, 'live', false],
+ ['disabled release', 'operator@example.test', false, '', false],
+] as const)('only offers the authorized conversation entry for %s',async(_name,email,readOnly,mode,expected)=>{
+ vi.stubEnv('VERCEL_ENV','production');vi.stubEnv('ATLAS_VOICE_STREAM_MODE',mode);vi.stubEnv('PLATFORM_OPERATOR_EMAILS','operator@example.test')
+ const module=await import('@/lib/atlas/voice-pilot/entry').catch(()=>null)
+ expect(module?.atlasVoiceConversationEntryEnabled).toBeTypeOf('function')
+ expect(module!.atlasVoiceConversationEntryEnabled(email,readOnly)).toBe(expected)
 })

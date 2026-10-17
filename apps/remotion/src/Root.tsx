@@ -4,6 +4,7 @@ import { ShortFormVideo } from './compositions/ShortFormVideo'
 import { SimpleNewsReel } from './compositions/SimpleNewsReel'
 import { ContentGrowthReel } from './compositions/ContentGrowthReel'
 import { ThePromptEditorialLab } from './compositions/ThePromptEditorialLab'
+import { ThePromptNewsPreview, previewDuration } from './compositions/ThePromptNewsPreview'
 import type { VideoInputProps } from './lib/types'
 
 // Default props for Remotion Studio preview
@@ -55,6 +56,14 @@ export function RemotionRoot() {
         height={1920}
         defaultProps={{headline:'AI is changing the rules.',context:'A sharper look at the technology behind the headlines.',takeaway:'The important question is what changes next.',sourceName:'EDITORIAL CONCEPT',imageUrls:[]}}
       />
+
+      {/* Private quality review only. Not used by any automatic publishing endpoint. */}
+      <Composition id="ThePromptCodexReview" component={ThePromptNewsPreview}
+        durationInFrames={previewDuration('codex')} fps={30} width={1080} height={1920}
+        defaultProps={{story:'codex' as const}}/>
+      <Composition id="ThePromptRecruiterReview" component={ThePromptNewsPreview}
+        durationInFrames={previewDuration('recruiter')} fps={30} width={1080} height={1920}
+        defaultProps={{story:'recruiter' as const}}/>
 
       {/* Lite version — single static image, same audio + captions. ~5× cheaper. */}
       <Composition

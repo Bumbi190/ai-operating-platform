@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useId, useRef, useState } from 'react'
 import { Bell, LogOut, Search, Settings } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { AtlasInboxNotice } from './AtlasInboxNotice'
 import { useDismissOnOutside } from './useDismissOnOutside'
 import { useAtlas } from '@/lib/atlas/runtime'
 import { ATLAS_ORB_STATE_CHIP_LABELS, resolveAtlasOrbState } from '@/lib/atlas/orb-state'
@@ -87,6 +88,7 @@ export function ShellTopBar({ pendingApprovals }: ShellTopBarProps) {
             <Bell size={19} aria-hidden="true" />
             {pendingApprovals ? <span className={styles.topNoticeDot} aria-hidden="true" /> : null}
           </Link>
+          <AtlasInboxNotice />
           <div ref={menuRef} className={styles.avatarMenuRoot}>
             <button
               type="button"

@@ -8,7 +8,7 @@ import {MODEL_PRICING} from '@/lib/ai/pricing'
 import type {Db,RequestLocalText,JobReceipt,TransitionResult} from './types'
 /** Derive placement, exact-source consent and candidate facts from owned records.
  * Neither model/tool input nor request JSON supplies authority or a price. */
-export async function requestLocalTextJob(db:Db,principal:{userId:string;allowedProjectIds:string[]},input:RequestLocalText,now:Date):Promise<TransitionResult<JobReceipt>>{
+export async function requestLocalTextJob(db:Db,principal:{userId:string;allowedProjectIds:string[]},input:RequestLocalText,now:Date,constraints?:{humanReviewOnly?:boolean}):Promise<TransitionResult<JobReceipt>>{
  let request:RequestLocalText;try{request=parseRequest(input)}catch{return {kind:'refused',reason:'INVALID_REQUEST'}}
  if(!principal.allowedProjectIds.includes(request.projectId))return {kind:'refused',reason:'SCOPE_REFUSED'}
  const jobId=randomUUID()
@@ -31,6 +31,7 @@ export async function requestLocalTextJob(db:Db,principal:{userId:string;allowed
    return enqueueJob(db,{userId:c.userId,projectId:c.projectId,conversationId:c.conversationId,dataClass:c.dataClass,placement:c.placement,policyVersion:c.policyVersion,admissionId:selected.decision.admissionId,deadlineAt:c.deadlineAt,jobCostCapUsd:c.jobCostCapUsd,dailyCostCapUsd:c.dailyCostCapUsd},request,selected.decision)
   }
   if(h.kind!=='absent')return {kind:'refused',reason:'SCOPE_REFUSED'}
+  if(constraints?.humanReviewOnly)return {kind:'refused',reason:'HUMAN_REVIEW_REQUIRED'}
  const profile=readCloudTextProfile(),price=profile?MODEL_PRICING[profile.deployment]:null
  if(!profile||!isSha256(profile.qualificationHash)||Date.parse(profile.expiresAt)<=now.getTime()+5*60000||!profile.textEnvelopeEvidence||!price||price.inputPer1M!==0.75||price.outputPer1M!==4.5)return {kind:'refused',reason:'CLOUD_REVIEW_UNVERIFIED'}
   const r=await call('local_text_selection_context',{p_owner_id:principal.userId,p_project_id:request.projectId,p_conversation_id:request.conversationId,p_input_hash:hashTask(request.task),p_kind:request.task.kind,p_profile_hash:profile.qualificationHash,p_profile_expires_at:profile.expiresAt})

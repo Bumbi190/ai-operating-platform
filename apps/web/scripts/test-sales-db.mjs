@@ -1,6 +1,7 @@
 import {spawnSync,spawn} from 'node:child_process'
 import {readFileSync,readdirSync} from 'node:fs'
 import {resolve} from 'node:path'
+import {generateKeyPairSync,createHash} from 'node:crypto'
 const root=resolve(import.meta.dirname,'../../..'),container='omnira-sales-pilot-20261017'
 function docker(args,input){const r=spawnSync('docker',args,{input,encoding:'utf8',maxBuffer:2e6});if(r.status!==0)throw Error((r.stderr||r.stdout||String(r.error)).slice(-8000));return r.stdout}
 const context=docker(['context','inspect','--format','{{.Endpoints.docker.Host}}']).trim()
@@ -17,7 +18,7 @@ try{
  create table platform_config(id integer primary key,automation_paused boolean); insert into platform_config values(1,false);
  create table runs(id uuid primary key default gen_random_uuid(),project_id uuid not null,workflow_id uuid,kind text,status text not null,input jsonb default '{}',context jsonb default '{}',policy_class text,error text,created_at timestamptz default now());
  create table approvals(id uuid primary key default gen_random_uuid(),project_id uuid,run_id uuid,status text,kind text,output_key text,content text,reviewer_notes text,reviewed_at timestamptz,created_at timestamptz default now());
- grant usage on schema public,auth to authenticated,service_role; grant select on projects to authenticated; grant all on all tables in schema public to service_role;
+ grant usage on schema extensions to service_role; grant usage on schema public,auth to authenticated,service_role; grant select on projects to authenticated; grant all on all tables in schema public to service_role;
  insert into auth.users values('20000000-0000-4000-8000-000000000001'),('20000000-0000-4000-8000-000000000002');
  insert into projects values('10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001','handlarborsen',false),('10000000-0000-4000-8000-000000000002','20000000-0000-4000-8000-000000000002','other',false);
  insert into conversations values('50000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001');`)
@@ -35,6 +36,12 @@ try{
  console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_pilot_regressions.sql'),'utf8')))
  const hostMigration=resolve(migrations,'20261017141000_sales_managed_host.sql');if(readdirSync(migrations).includes('20261017141000_sales_managed_host.sql'))sql(readFileSync(hostMigration,'utf8'))
  console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_managed_host.sql'),'utf8')))
+ // Local cron fixture records only our cleanup registration; no scheduler/network exists.
+ sql(`create schema cron; create table cron.job(jobid bigserial primary key,jobname text unique,schedule text,command text,active boolean default true,database text default current_database(),username text default current_user); create function cron.schedule(text,text,text) returns bigint language sql as $$ insert into cron.job(jobname,schedule,command) values($1,$2,$3) on conflict(jobname) do update set schedule=excluded.schedule,command=excluded.command returning jobid $$;`)
+ const mailboxMigration='20261017142000_sales_strato_connection.sql';if(readdirSync(migrations).includes(mailboxMigration))sql(readFileSync(resolve(migrations,mailboxMigration),'utf8'))
+ const {publicKey}=generateKeyPairSync('rsa',{modulusLength:3072,publicExponent:65537}),pub={jwk:publicKey.export({format:'jwk'}),kid:createHash('sha256').update(publicKey.export({format:'der',type:'spki'})).digest('hex')};
+ console.log(sql(`select set_config('sales.mailbox_public_key','${JSON.stringify(pub).replaceAll("'","''")}',false);`+readFileSync(resolve(root,'apps/web/supabase/tests/sales_strato_connection.sql'),'utf8')))
+
  sql(`select sales_enroll_worker('{"userId":"20000000-0000-4000-8000-000000000001","allowedProjectIds":["10000000-0000-4000-8000-000000000001"]}','{"projectId":"10000000-0000-4000-8000-000000000001","workerId":"60000000-0000-4000-8000-000000000098","tokenHash":"${'1'.repeat(64)}"}'); select sales_host_authorize('{"userId":"20000000-0000-4000-8000-000000000001","allowedProjectIds":["10000000-0000-4000-8000-000000000001"]}','{"projectId":"10000000-0000-4000-8000-000000000001","workerId":"60000000-0000-4000-8000-000000000098"}'); select sales_host_adopt(repeat('1',64),jsonb_build_object('managerTokenHash',repeat('2',64)));`)
  const rotateRace=(id,hash)=>new Promise((done,reject)=>{const p=spawn('docker',['exec','-i',container,'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-U','postgres','-d',db]);let out='',err='';p.stdout.on('data',x=>out+=x);p.stderr.on('data',x=>err+=x);p.on('error',reject);p.on('close',code=>done({code,out,err}));p.stdin.end(`select sales_host_rotate(repeat('2',64),jsonb_build_object('rotationId','${id}','newTokenHash',repeat('${hash}',64),'expectedGeneration',1));`)})
  const rotations=await Promise.all([rotateRace('70000000-0000-4000-8000-000000000098','3'),rotateRace('70000000-0000-4000-8000-000000000099','4')]);

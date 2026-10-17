@@ -69,9 +69,9 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Builder output allowance v2: 119/105 -> 120/106 (enforced).
 // + website_saved_draft_worker_protocol: no-paid recovery compatibility.
 // + website_mockup_review: immutable operator design selection and compatible worker fence.
-// Atlas sales pilot applied. Managed host: 131/117, pending reviewed application.
-export const EXPECTED_CANONICAL_SQL_COUNT = 131
-export const EXPECTED_ENFORCED_COUNT = 117
+// Atlas sales pilot applied. Managed host and Strato: 132/118, pending reviewed application.
+export const EXPECTED_CANONICAL_SQL_COUNT = 132
+export const EXPECTED_ENFORCED_COUNT = 118
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

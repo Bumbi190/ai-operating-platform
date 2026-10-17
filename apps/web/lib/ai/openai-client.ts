@@ -24,6 +24,7 @@ import 'server-only'
 
 import OpenAI from 'openai'
 
+import {verifyQualifiedTextBudget,type QualifiedTextInputBudget,type VerifiedInputCeiling} from '@/lib/cost/qualified-text-budget'
 import { logImageCost, logLlmCost, type CostContext } from '@/lib/cost/track'
 import { getRates } from '@/lib/cost/rates'
 import { currentSpendMeter } from '@/lib/cost/spend-meter'
@@ -55,6 +56,8 @@ import type { ExecutionContract } from '@/lib/governance/execution-stop'
 const OPENAI_SPEECH_URL = 'https://api.openai.com/v1/audio/speech'
 
 export interface OpenAIGovernanceContext {
+  /** In-memory qualified plain-text grant; JSON/model fields cannot construct it. */
+  textInputBudget?:QualifiedTextInputBudget
   /**
    * REQUIRED execution classification — why this work runs and which stop
    * authorities bind it. Propagated to the governed boundary, never defaulted
@@ -315,6 +318,7 @@ export async function estimateOpenAIChatSek(
     messages?: unknown[]; tools?: unknown; modalities?: unknown; prediction?: unknown; web_search_options?: unknown
   },
   rates?: RateSnapshot,
+  verifiedInput?:VerifiedInputCeiling,
 ): Promise<number> {
   const unbounded = (reason: string) => new SpendRefusedError({
     reason: 'unbounded_spend', provider: 'openai', operation: 'chat.completions', detail: reason,
@@ -332,7 +336,7 @@ export async function estimateOpenAIChatSek(
   if (tools.some(t => !t || typeof t !== 'object' || (t as { type?: unknown }).type !== 'function')) {
     throw unbounded('only function tools are boundable')
   }
-  const ceiling = tokenWindowCeiling(params.model, n * (cap as number), rates ?? await getRates())
+  const ceiling = tokenWindowCeiling(params.model, n * (cap as number), rates ?? await getRates(), verifiedInput)
   if (!ceiling.ok) throw unbounded(ceiling.reason)
   return ceiling.sek
 }
@@ -397,9 +401,19 @@ export async function openAIChatCompletion(
   /** Narrow by design — never an arbitrary SDK RequestOptions passthrough. */
   init?: { signal?: AbortSignal },
 ): Promise<any> {
+  let verifiedInput:VerifiedInputCeiling|undefined
+  if(ctx.textInputBudget){
+    // Isolate the qualified body from caller mutation across asynchronous rate,
+    // stop and spend checks. All ordinary request behavior is unchanged.
+    try{
+      params=structuredClone(params)
+      if(ctx.authority?.kind!=='RUN_BOUND'||ctx.runId!==ctx.authority.runId)throw Error('unowned')
+      verifiedInput=verifyQualifiedTextBudget(params as unknown as Record<string,unknown>,ctx.textInputBudget,{runId:ctx.runId,claimId:ctx.authority.claimId,operation:ctx.operation})
+    }catch{throw new SpendRefusedError({reason:'unbounded_spend',provider:'openai',operation:ctx.operation,detail:'qualified text input evidence is absent or does not match this request'})}
+  }
   // M0: ONE rate snapshot prices both the hard ceiling and the metering.
   const rates = await getRates()
-  const estimatedSek = await estimateOpenAIChatSek(params as any, rates)
+  const estimatedSek = await estimateOpenAIChatSek(params as any, rates,verifiedInput)
   return withGovernedSpend(
     { project: ctx.project, execution: ctx.execution, provider: 'openai', operation: ctx.operation, estimatedSek,
       ceilingBasis: 'token_window', rates },

@@ -139,7 +139,7 @@ describe('LEGACY INVARIANT — the bar itself is untouched', () => {
       'sticky top-0 z-bar',      // the bar itself
       'OperatorModeSwitcher',    // mode switcher
       'Search · jump · command', // ⌘K trigger
-      'Notifications',           // bell
+      'AtlasInboxNotice',        // real personal inbox replaces the decorative bell
       '/projects/new',           // deploy
       'Omnira OS',               // breadcrumb root
     ]) {

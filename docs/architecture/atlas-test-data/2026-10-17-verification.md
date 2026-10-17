@@ -44,7 +44,7 @@ O, in canonical order:
 - 20261017192903_handlarborsen_test_data_integration.sql
 - 20261017193411_handlarborsen_test_data_reviews.sql
 
-O migration guard: 133 canonical / 119 enforced / 14 frozen grandfathered. The hypothetical complete ledger has 156 names; the actual pre-apply fixture remains 153 and is deliberately rejected. No override, wildcard, grandfathering or fabricated production apply is used. The three O control tables are classified created-not-live DB_INTERNAL, with FORCE RLS, zero policies and no direct privilege for any API role. Existing live-catalog counts remain unchanged.
+O migration guard after upstream integration: 139 canonical / 125 enforced / 14 frozen grandfathered. The hypothetical complete ledger has 162 names; the actual pre-apply omission fixture has 159 and is deliberately rejected. No override, wildcard, grandfathering or fabricated production apply is used. The three O control tables are classified created-not-live DB_INTERNAL, with FORCE RLS, zero policies and no direct privilege for any API role. Existing live-catalog counts retain the upstream capture of 152 live tables; our three pending tables are not added to that live count.
 
 ## Verified behavior
 
@@ -81,6 +81,14 @@ Whole-O historical suite is not green: an earlier whole run recorded 402 failure
 O has no configured ESLint setup; next lint prompts for initial configuration and exits 1. No unrelated global lint configuration was introduced. Typecheck, owning tests, security/migration gates, native regressions and build provide the recorded checks. H's four earlier lint warnings are unrelated; report final error/warning totals.
 
 The O local replay is focused on canonical snapshot and new integration/review migrations with the actual relevant projects/conversations columns. It is not a complete production-schema replay. No production data or service credentials are used in local evidence.
+
+## Current-main integration
+
+O origin/main advanced during execution. The final private-branch integration retains upstream f0b52e16e424658993624194f0155bee83ad3c82, including inbox/local-text tools, conversation receipts, schema-security metadata and its exact internal workspace package1.0.0. The package manager linked one local workspace offline/ignore-scripts; the upstream lockfile and dependency versions did not change.
+
+Five content conflicts were resolved by retaining both capabilities. The migration guard was observed RED at canonical139 vs expected133, then reconciled to the actual139/125 set without growing grandfathering. Both local-text omission proofs and our three pending-cleanup omission proofs remain fail-closed. Upstream's existing worker-file CRLF whitespace was preserved. Only our plan/spec Markdown line endings were normalized.
+
+After integration: owning/overlap/security/voice units PASS469/469 in22 files, review SQL20/20, nonincremental tsc0, dedicated review browser2/2 and existing messenger/voice browser32/32. O production build is being repeated on this exact integrated source. The earlier whole-O baseline figures describe the pre-integration baseline, not a new complete run of upstream's enlarged suite. No complete-O green claim is made.
 
 ## Exact command families
 
@@ -127,7 +135,7 @@ Rollback disables the two mutation flags/grants and reconciles in-flight executi
 
 ## Rulings I made
 
-The following section is populated verbatim, in chronological order, from every Ruling line in the implementation ledger, including the cost if wrong. Final reviewer dispositions and deferred minors are appended after the one permitted fix pass.
+Every chronological ruling is retained from the ledger, including its rationale and cost if wrong.
 
 1. Ruling: Protect both real-company IDs even if DB registry is stale; hardcoded capability guard plus DB invariant are authoritative — per approved owner correction — wrong implementation could affect real accounts, so both layers are tested.
 
@@ -226,6 +234,10 @@ The following section is populated verbatim, in chronological order, from every 
 48. Task 7 Ruling: expose read-only receipt lookup separately from dispatch; a committed approval with an undispatched outbox can be resumed deliberately with its same review reference, while dispatching/unknown always reconcile the same execution — this covers server interruption between approval commit and HTTP dispatch without a blind resend — cost if wrong: a stranded undispatched job needs a new review after TTL, not an automatic mutation.
 
 49. Task8 Ruling: a real physical commit is necessary for lost-response evidence, so the opt-in contract probe commits synthetic data only to the owned H test cluster and creates a fresh tagged O fixture database for concurrent sessions; after the probe an explicit owned reset restores empty local fixtures and O is bootstrapped again before SQL checks — transaction rollback alone would not prove receipt visibility after commit — cost if wrong: owned local fixture rerun, never a production reset or broad cleanup.
+
+50. Final: Ruling: merge freshly fetched O origin/main into this private implementation branch before its one independent review, retaining both upstream inbox/local-text behavior and cleanup authority; derive migration counts from the actual merged set rather than taking either branch's counts — avoids shipping against stale shared chat/security contracts — cost if wrong: reversible private-branch merge resolution and affected re-verification, no shared/main mutation or production apply.
+
+51. Final: Ruling: retain upstream @omnira/local-text-contract workspace1.0.0 and its lockfile, installing the missing local workspace link with the package manager offline/ignore-scripts rather than dropping upstream code or inventing another dependency version — required by the merged local-text tool imports — cost if wrong: reify the owned worktree dependencies again, no package upgrade or production install.
 
 ## Independent review
 

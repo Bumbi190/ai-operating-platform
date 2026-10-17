@@ -1,6 +1,6 @@
 # Atlas / Handlarbörsen test-data verification and release receipt
 
-Verified candidate, awaiting independent whole-branch review. No feature deployment, production schema change, credential provisioning, grant activation, classification of the remaining eight companies or production cleanup has occurred.
+Verified candidate after one independent whole-branch review and one coordinator fix pass. No feature deployment, production schema change, credential provisioning, grant activation, classification of the remaining eight companies or production cleanup has occurred.
 
 The implementation lets Atlas inspect, prepare and execute an exact human-reviewed package of verified test data, with separate restore. Real and unknown organisations remain protected. The accepted voice engine, voice selection, streaming and microphone lifetime are preserved; ordinary questions make no cleanup/inventory calls. Web search and code work remain separate deliveries.
 
@@ -56,7 +56,7 @@ Independent SQL suites additionally cover stale packages/classifications, bindin
 
 Shared byte-identical public inventory/execute/receipt signing vectors are checked independently in both repositories, including nested approvedPackage content and the execution ID in receipt signatures. Their keys are deliberately public local fixtures and are never deployed credentials.
 
-## Verification results
+## Task8 verification before final review
 
 | Check | Actual result |
 | --- | --- |
@@ -88,7 +88,7 @@ O origin/main advanced during execution. The final private-branch integration re
 
 Five content conflicts were resolved by retaining both capabilities. The migration guard was observed RED at canonical139 vs expected133, then reconciled to the actual139/125 set without growing grandfathering. Both local-text omission proofs and our three pending-cleanup omission proofs remain fail-closed. Upstream's existing worker-file CRLF whitespace was preserved. Only our plan/spec Markdown line endings were normalized.
 
-After integration: owning/overlap/security/voice units PASS469/469 in22 files, review SQL20/20, nonincremental tsc0, dedicated review browser2/2 and existing messenger/voice browser32/32. O production build is being repeated on this exact integrated source. The earlier whole-O baseline figures describe the pre-integration baseline, not a new complete run of upstream's enlarged suite. No complete-O green claim is made.
+After integration: owning/overlap/security/voice units PASS469/469 in22 files, review SQL20/20, nonincremental tsc0, dedicated review browser2/2 and existing messenger/voice browser32/32. O normal production build PASS exit0 in105.80seconds on integrated ec97db4 before the independent review. The earlier whole-O baseline figures describe the pre-integration baseline, not a new complete run of upstream's enlarged suite. No complete-O green claim is made.
 
 ## Exact command families
 
@@ -239,6 +239,54 @@ Every chronological ruling is retained from the ledger, including its rationale 
 
 51. Final: Ruling: retain upstream @omnira/local-text-contract workspace1.0.0 and its lockfile, installing the missing local workspace link with the package manager offline/ignore-scripts rather than dropping upstream code or inventing another dependency version — required by the merged local-text tool imports — cost if wrong: reify the owned worktree dependencies again, no package upgrade or production install.
 
-## Independent review
+52. Final: Ruling: use resolved owning-organisation overlap for metadata/parent-owned notifications, push and email graph selection, and derive processing-delivery blockers from those exact graph objects — a real null-org admin notification producer otherwise escapes package/lease/retention checks — cost if wrong: safe fail-closed larger package/blockers; never add the recipient admin identity itself to quarantine.
 
-Pending one fresh whole-branch review after the Task8 verification commit. No implementation subagents were used. Critical/Important findings get one TDD fix pass; deferred minors and explicit declined-to-judge rulings will be appended here.
+53. Final: Ruling: preserve immutable conversation UUID as audit identity without a live conversations foreign key; every authority RPC still verifies the current owned live conversation — the existing delete endpoint otherwise fails forever after preparation — cost if wrong: retained audit references can outlive the user-visible thread; they cannot approve or transfer authority after deletion.
+
+54. Final: Ruling: persist only the bounded definitive no-execution refusals needs_new_review/denied/disabled as not_applied with the existing held one-use claim, separately from real H receipts; derive pending-outbox expiry from its never-dispatched state — timeout/invalid/ack-failure uncertainty remains receipt-only under the same execution ID — cost if wrong: an unrecognised refusal stays unknown, never falsely successful or replayed. Add one service-only rejection acknowledgement RPC, no browser grant or new mutation ID.
+
+55. Final: Ruling: merge validated saved review effects into cached threads by package/review/conversation binding and monotonic decision/receipt rank — navigation can drop a late typed effect while the durable saved message still exists — cost if wrong: retain a newer local decision rather than downgrade it from an older saved pending message; server authority always revalidates.
+
+56. Final: Ruling: finish the approved Task8 reviewable draft PRs while disclosing reproduced whole-O baseline failures and focused SQL limitations — the approved plan explicitly requires separating unchanged baseline failures from scoped checks — cost if wrong: drafts remain unsuitable for automatic merge or production activation; no claim of a green complete O suite.
+
+## Independent review and single fix pass
+
+The sole independent whole-branch reviewer reported four Important findings, no Critical or Minor findings, and **Declined to judge: none**. The unchanged [independent report](2026-10-17-independent-review.md) identifies the original frozen H bdf3f4e / O ec97db4 source and concrete triggers. All four were accepted on user impact and addressed in one coordinator TDD fix pass. No second review is claimed.
+
+| Finding | Reproducing RED | Fix and verification |
+| --- | --- | --- |
+| I1: metadata-owned admin push escaped graph/lease/retention | H graph assertions11/12 and lease/execute14/15 failed; old code returned applied with processing admin push | Resolved owning-org graph selection for notification/push/email, graph-derived processing blockers; full fresh H SQL5047 passes, including queued/claimed metadata-owned push and post-restore no-resend |
+| I2: review FK blocked normal chat deletion forever | Real SQL deletion failed23503 | Immutable UUID audit retained without live conversation FK; deletion with pending/rejected/expired/unknown/applied audit states, retained evidence and deleted-thread denial pass |
+| I3: definitive non-execution became endless checking | Service and review decoding assertions failed among eight new failing unit cases | Bounded not_applied refusal acknowledged with the original held claim; never invent a H receipt. Pending-outbox expiry gives a new-review outcome. Invalid/timeouts/ack failure retain same-ID receipt-only reconciliation. SQL and real phone-card harness pass |
+| I4: cached thread lost late review | Cached saved-review activation assertion failed | Merge validated bound saved effects without downgrading local decisions/receipts; delayed-stream navigation and stale-refresh tests pass; chat/voice native regressions pass |
+
+The initial H RED fixture also used an invalid push-completion error class after its meaningful source failures; it was corrected to the existing provider_transient/null retry-after contract. It calls no provider.
+
+No deferred minors. Every declined-to-judge entry has been ruled: the list is empty. Deployment, physical-phone audio behavior and target classification were outside the read-only reviewer scope and remain explicitly separate operations.
+
+## Final source pins and checks
+
+- H reviewed-fix source: cebf0fec09cc4d7f06349c2364254e1244cf4609.
+- O reviewed-fix source: 4959a285973c4bffddc4f416a0eb7158027b04ef (includes upstream f0b52e1).
+- Later delivery documentation commits do not alter these product-source pins. Deploy only the actual approved final branch HEADs after checking their diff, not by assuming a branch name identifies reviewed code.
+
+| Post-fix check | Actual result |
+| --- | --- |
+| H fresh full pgTAP | PASS118 files /5047 assertions |
+| H full units | PASS1298, one opt-in committed fixture skipped by default |
+| H generated types | Verified |
+| O owning/overlap/authority/chat/voice/controller/security units | PASS482/482 in22 files |
+| O focused canonical SQL | PASS55: metrics10, authority11, review/outbox/lifecycle34; not full production replay |
+| O nonincremental tsc | PASS0 |
+| O dedicated phone-card/global-voice browser | PASS3/3 workers1/retries0 |
+| O existing messenger/voice browser | PASS32/32 workers1/retries0 |
+| Final H typecheck/lint/build | PASS0; lint0 errors/4 existing warnings; webpack build0; post-restore tsc0 |
+| Final O normal production build | PASS exit0,110.01seconds,63/63 static pages; actual fonts, no source workaround |
+
+The physically committed cross-app scenario and H owner-access mobile browser passed before the independent fix pass, as recorded above. They are not represented as repeated after that pass; changed dispatch graph behavior is covered by the new real SQL claim/restore regression and full H suite. Existing complete-O baseline failures and lint/focused-replay limitations still apply. No production apply, deployment, activation, credential/grant provisioning or target cleanup has occurred.
+
+## Reviewable delivery
+
+The final read-only main check found H still at ec1cdbf. O main advanced from f0b52e1 to0711d4a only in six isolated Remotion/content paths (no apps/web, schema or lockfile changes). That later Remotion commit is not part of this candidate; the exact tested web source remains4959a28, and the PR must preserve upstream changes when integrated.
+
+Draft PR URLs will be appended after publication. Product-source pins above remain authoritative; later delivery documentation commits do not alter product code. New mutation flags remain false/unset; the next release operation follows the producer-first sequence above.

@@ -132,9 +132,12 @@ export async function middleware(request: NextRequest) {
       // Never open owner-only /api/projects routes or any other project/method.
       const handlCompetitorEvidenceWrite = request.method === 'POST' &&
         /^\/api\/organization\/projects\/handlarborsen\/competitors\/(?:candidates|history|reviews|inbox)$/.test(pathname)
+      // Counts-only GET; the service rechecks live membership, project and recipient.
+      const handlCompetitorInboxRead = request.method === 'GET' &&
+        pathname === '/api/organization/projects/handlarborsen/competitors/inbox'
       // The Owner's old API remains blocked for every collaborator.
       if (pathname.startsWith('/api') &&
-          (denied || !(collaboratorDirectoryRead || collaboratorAtlasRead || collaboratorProposals || collaboratorWorkflowRead || handlWorkflowCreate || handlWorkflowEdit || handlCompetitorEvidenceWrite))) {
+          (denied || !(collaboratorDirectoryRead || collaboratorAtlasRead || collaboratorProposals || collaboratorWorkflowRead || handlWorkflowCreate || handlWorkflowEdit || handlCompetitorEvidenceWrite || handlCompetitorInboxRead))) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
       }
       const allowedPage = !denied && (

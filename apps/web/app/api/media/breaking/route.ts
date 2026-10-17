@@ -22,6 +22,7 @@
  * project and stops there.
  */
 import { NextResponse } from 'next/server'
+import { isLegacyNewsPipelineProject } from '@/lib/project/legacy-news-pipeline'
 import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -115,9 +116,6 @@ export async function POST(request: Request) {
   // platform authority; a session must be the platform operator.
   const mayPublishToPlatform = viaCron || (await resolvePlatformOperator()).ok
 
-  const claude = getAnthropic({
-    project: MEDIA_PIPELINE_PROJECT, execution, agent: 'Breaking News', operation: 'Breaking News',
-  })
   const steps: Record<string, unknown> = {}
 
   // ── Projekt ─────────────────────────────────────────────────────────────────
@@ -127,7 +125,15 @@ export async function POST(request: Request) {
   projectQuery = body.project_id ? projectQuery.eq('id', body.project_id) : projectQuery.eq('slug', DEFAULT_PROJECT_SLUG)
   const { data: project } = await projectQuery.limit(1).single()
   if (!project) return NextResponse.json({ error: 'Projekt saknas' }, { status: 404 })
+  // This endpoint dispatches The Prompt's news Hunter, Victoria and paid
+  // news-render chain. Owning a project does not authorise using it for news.
+  if (!isLegacyNewsPipelineProject(project.slug)) {
+    return NextResponse.json({ error: 'News pipeline unavailable for this project' }, { status: 403 })
+  }
 
+  const claude = getAnthropic({
+    project: MEDIA_PIPELINE_PROJECT, execution, agent: 'Breaking News', operation: 'Breaking News',
+  })
   try {
     // ── 1. Hämta källtext (text → url-skrap → auto-hunt) ──────────────────────
     let articleText: string | null = body.text?.trim() || null

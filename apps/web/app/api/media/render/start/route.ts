@@ -14,6 +14,7 @@
 
 import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { NextResponse } from 'next/server'
+import { isLegacyNewsPipelineProject } from '@/lib/project/legacy-news-pipeline'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buildVideoInputProps } from '@/lib/media/video-props'
@@ -69,6 +70,11 @@ export async function POST(request: Request) {
     console.error('[render/start] script lookup failed:', scriptError?.message)
     return NextResponse.json({ error: 'Script not found' }, { status: 404 })
   }
+  const { data: renderProject } = await db.from('projects').select('slug').eq('id', script.project_id).maybeSingle()
+  if (!isLegacyNewsPipelineProject(renderProject?.slug)) {
+    return NextResponse.json({ error: 'News render pipeline unavailable for this project' }, { status: 403 })
+  }
+
   if (!script.audio_url || !script.timing_url) {
     return NextResponse.json({ error: 'Voice not ready yet' }, { status: 400 })
   }

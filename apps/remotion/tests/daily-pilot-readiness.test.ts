@@ -47,6 +47,23 @@ test('future strict pipeline: date+verified source allow audit, NOT automatic pu
   assert.ok(a.blockers.includes('owner_approval_missing'))
   assert.equal(a.sourcePublishedAt,'2026-10-17T13:00:00.000Z')
 })
+test('voice generation receipt is shown, but never substituted for storage verification',()=>{
+  const s=script()
+  const sha='a'.repeat(64)
+  s.raw_output={pilot_voice_receipt:{
+    kind:'the-prompt-voice-v1',voiceId:'qSeXEcewz7tA0Q0qk9fH',
+    modelId:'eleven_turbo_v2_5',audioSha256:sha,timingsSha256:sha,
+    transcriptSha256:sha,durationMs:18000,audioByteSize:10000,
+  }}
+  const result=assessPersistedDailyPilot(projectId,s,news(),now)
+  assert.equal(result.media.voiceReceiptRecorded,true)
+  assert.ok(result.blockers.includes('voice_identity_unproven'))
+  assert.equal(result.canPublish,false)
+  const broken=script();broken.raw_output={pilot_voice_receipt:{
+    ...(s.raw_output as any).pilot_voice_receipt,voiceId:'Megan',
+  }}
+  assert.equal(assessPersistedDailyPilot(projectId,broken,news(),now).media.voiceReceiptRecorded,false)
+})
 test('missing source key and stale claims must refuse first-stage freshness',()=>{
   const missing=news();missing.raw_output={source_published_at:'2026-10-17T13:00:00Z'}
   assert.ok(assessPersistedDailyPilot(projectId,script(),missing,now).blockers.includes('source_key_missing'))

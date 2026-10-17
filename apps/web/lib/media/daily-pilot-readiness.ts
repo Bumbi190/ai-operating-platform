@@ -31,7 +31,7 @@ export type PilotReadiness={
   hasAuditableFreshStory:boolean
   canPublish:boolean
   blockers:PilotReadinessBlocker[]
-  media:{audioPresent:boolean;timingUrlPresent:boolean;imageCount:number}
+  media:{audioPresent:boolean;timingUrlPresent:boolean;imageCount:number;voiceReceiptRecorded:boolean}
 }
 const obj=(x:unknown):Record<string,unknown> =>
   x!==null&&typeof x==='object'&&!Array.isArray(x)?x as Record<string,unknown>:{}
@@ -45,13 +45,22 @@ export function assessPersistedDailyPilot(
   const blockers:PilotReadinessBlocker[]=[]
   const add=(b:PilotReadinessBlocker)=>{if(!blockers.includes(b))blockers.push(b)}
   const imageCount=Array.isArray(script?.images)?script.images.length:0
+  const voiceReceipt=obj(obj(script?.raw_output).pilot_voice_receipt)
+  const validSha=(x:unknown)=>typeof x==='string'&&/^[a-f0-9]{64}$/.test(x)
+  const voiceReceiptRecorded=voiceReceipt.kind==='the-prompt-voice-v1' &&
+    voiceReceipt.voiceId==='qSeXEcewz7tA0Q0qk9fH' &&
+    voiceReceipt.modelId==='eleven_turbo_v2_5' &&
+    validSha(voiceReceipt.audioSha256)&&validSha(voiceReceipt.timingsSha256)&&
+    validSha(voiceReceipt.transcriptSha256) &&
+    voiceReceipt.durationMs===script?.duration_ms &&
+    Number.isInteger(voiceReceipt.audioByteSize)&&Number(voiceReceipt.audioByteSize)>200
   const audioPresent=nonEmptyString(script?.audio_url)
   const timingUrlPresent=nonEmptyString(script?.timing_url)
   const base={
     scriptId:script?.id??'',projectId,
     sourcePublishedAt:null as string|null,hasVerifiedSourceDate:false,
     hasAuditableFreshStory:false,canPublish:false,
-    blockers,media:{audioPresent,timingUrlPresent,imageCount},
+    blockers,media:{audioPresent,timingUrlPresent,imageCount,voiceReceiptRecorded},
   }
   if(!script){add('missing_script');return base}
   if(script.project_id!==projectId)add('wrong_project')
@@ -65,6 +74,8 @@ export function assessPersistedDailyPilot(
   if(imageCount<2||imageCount>5)add('images_missing')
   // Stored images are legacy URLs, not rights-verified canonical Asset receipts.
   add('image_rights_unverified')
+  // A voice receipt proves generation intent, not independent Storage readback.
+  // Do not clear this blocker until actual stored MP3 and timing hashes match.
   // A voice_status row alone cannot prove voiceId/model was actually used.
   add('voice_identity_unproven')
   // A source manuscript row is not a durable human approval of a final video.

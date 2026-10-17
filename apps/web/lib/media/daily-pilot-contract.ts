@@ -77,7 +77,7 @@ export function evaluateDailyPilotEvidence(
        Number.isFinite(w.startMs)&&Number.isFinite(w.endMs)&&
        w.startMs>=0&&w.endMs>w.startMs&&
        (i===0||w.startMs>=words[i-1].startMs))||
-     words.at(-1)?.endMs>e.audio.durationMs+500)
+     words.at(-1)!.endMs>e.audio.durationMs+500)
     reasons.push('missing_captions')
   return {eligible:reasons.length===0,reasons}
 }

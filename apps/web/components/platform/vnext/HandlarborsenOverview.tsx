@@ -10,6 +10,8 @@ import { HandlarborsenExecutiveSummary } from './HandlarborsenExecutiveSummary'
 import styles from './HandlarborsenExecutiveSummary.module.css'
 import { AnalysisDraftHistoryLink } from './AnalysisDraftHistoryLink'
 import type { HandlarborsenTraffic } from '@/lib/atlas/project-analytics/handlarborsen-posthog-traffic'
+import type { CandidateMemoryLoad } from '@/lib/atlas/project-analytics/handlarborsen-competitor-memory-service'
+import { HandlarborsenCandidateReviewNotice } from './HandlarborsenCandidateReviewNotice'
 
 /**
  * Handlarbörsen-specific composition on the project Command Center.
@@ -24,12 +26,18 @@ export function HandlarborsenOverview({
   traffic,
   projectSlug,
   analysisSelectors,
+  candidateMemory = null,
+  candidateMemoryEnabled = false,
+  candidateAudience = 'owner',
   now = new Date(),
 }: {
   report: MarketplaceReport
   reportHref: string | null
   projectSlug?: string
   analysisSelectors?: Partial<Record<AnalysisRuleId, SaveSelector>>
+  candidateMemory?: CandidateMemoryLoad | null
+  candidateMemoryEnabled?: boolean
+  candidateAudience?: 'owner' | 'collaborator'
   traffic?: HandlarborsenTraffic | null
   now?: Date
 }) {
@@ -45,6 +53,7 @@ export function HandlarborsenOverview({
   if (model.kind === 'note') {
     return (
       <>
+        <HandlarborsenCandidateReviewNotice memory={candidateMemory} enabled={candidateMemoryEnabled} audience={candidateAudience} />
         <KpiOverviewNote {...common} title={model.title} text={model.text} tone={model.tone} />
         {traffic && <HandlarborsenPosthogTraffic traffic={traffic} />}
         {projectSlug && <AnalysisDraftHistoryLink projectSlug={projectSlug} />}
@@ -53,6 +62,7 @@ export function HandlarborsenOverview({
   }
   return (
     <>
+      <HandlarborsenCandidateReviewNotice memory={candidateMemory} enabled={candidateMemoryEnabled} audience={candidateAudience} />
       <HandlarborsenExecutiveSummary report={report} model={model} traffic={traffic} now={now} />
       <HandlarborsenTrends report={report} />
       {traffic && <HandlarborsenPosthogTraffic traffic={traffic} />}

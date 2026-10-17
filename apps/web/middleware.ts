@@ -32,6 +32,23 @@ function withUiGenerationCookie(
 }
 
 export async function middleware(request: NextRequest) {
+  const path = request.nextUrl.pathname
+  // Diagnostics are preview-only, including when live streaming is enabled.
+  if (process.env.VERCEL_ENV === 'production' &&
+      (path === '/atlas-voice-provider-probe.html' || path === '/atlas-voice-connection-probe.html')) {
+    return new NextResponse(null, { status: 404 })
+  }
+  // Public, credential-free executable asset: microphone startup must not wait
+  // for session refresh or membership reads.
+  if ((path === '/atlas-voice-recorder.js' || /^\/atlas-vad\/(?:silero_vad_v5\.onnx|ort\.wasm\.min\.mjs|ort-wasm-simd-threaded\.(?:wasm|mjs))$/.test(path)) && (request.method === 'GET' || request.method === 'HEAD')) {
+    return NextResponse.next({ request })
+  }
+  // This exact route performs fresh identity + operator + legacy containment
+  // itself, before body parsing or any provider call. Avoid verifying twice.
+  if ((path === '/api/atlas/voice-pilot/speech' && (request.method === 'GET' || request.method === 'POST'))
+    || (path === '/api/atlas/voice-pilot/stream' && request.method === 'GET')) {
+    return NextResponse.next({ request })
+  }
   // UI generation is resolved before anything else so the *current* render
   // already sees the choice. Writing it onto the request (not just the
   // response) is what lets /atlas?ui=vnext render vNext immediately without a
@@ -181,6 +198,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|txt|ico)$).*)',
+    '/((?!_next/static|_next/image|atlas-voice-recorder\\.js$|atlas-vad/(?:silero_vad_v5\\.onnx|ort\\.wasm\\.min\\.mjs|ort-wasm-simd-threaded\\.(?:wasm|mjs))$|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|txt|ico)$).*)',
   ],
 }

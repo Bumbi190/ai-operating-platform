@@ -59,6 +59,7 @@ type Activate = {
   session?: BuildSessionView | null;
 };
 export type TurnResult = { ok: boolean; notice?: string };
+export type AtlasTurnSettlement = { conversationId: string; generation: number; current: boolean; ok: boolean };
 type Turn = {
   conversationId: string;
   text: string;
@@ -75,6 +76,11 @@ export class AtlasConversationController {
   constructor(private request: typeof fetch = (...args) => fetch(...args)) {}
   private creating: {generation: number; promise: Promise<string | null>} | null = null;
   private compactPending: symbol | null = null;
+  private settledListeners = new Set<(event: AtlasTurnSettlement) => void>();
+  subscribeSettled = (listener: (event: AtlasTurnSettlement) => void) => {
+    this.settledListeners.add(listener);
+    return () => { this.settledListeners.delete(listener); };
+  };
   private createdListeners = new Set<(id: string) => void>();
   subscribeCreated = (listener: (id: string) => void) => {
     this.createdListeners.add(listener);
@@ -295,6 +301,7 @@ export class AtlasConversationController {
       pending: true,
       speechDraft: null,
     });
+    let result: TurnResult = {ok: false};
     const fail = (notice: string) => {
       this.update(id, {
         entries: [
@@ -302,7 +309,7 @@ export class AtlasConversationController {
           { kind: "notice", tone: "error", text: notice },
         ],
       });
-      return { ok: false, notice };
+      return result = { ok: false, notice };
     };
     try {
       const response = await this.request("/api/chat", {
@@ -390,11 +397,13 @@ export class AtlasConversationController {
         this.update(id, { entries: reply.entries });
       }
       if (!settled) return fail(INCOMPLETE_NOTICE);
-      return { ok: completed };
+      return result = { ok: completed };
     } catch {
       return fail(streaming ? INTERRUPTED_NOTICE : CONNECTION_FAILED_NOTICE);
     } finally {
       this.update(id, { pending: false });
+      const event = {conversationId: id, generation, current: isCurrent(), ok: result.ok};
+      this.settledListeners.forEach(listener => listener(event));
     }
   }
 }

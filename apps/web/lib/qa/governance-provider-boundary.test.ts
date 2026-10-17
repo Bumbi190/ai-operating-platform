@@ -9,8 +9,8 @@
  * the one a future change is most likely to break by accident — someone adds a
  * feature, copies the nearest example, and a 34th ungoverned spend path exists.
  * A guard that could be satisfied by a broad exclusion would be worse than no
- * guard, so the allowlist is exactly four files and is asserted to be exactly
- * those four.
+ * guard, so the allowlist is exactly five files and is asserted to be exactly
+ * those five.
  *
  * The LIFECYCLE tests drive `withGovernedSpend` against a fake reservation layer
  * and assert the ordering properties that make the boundary meaningful: nothing
@@ -39,6 +39,7 @@ const SANCTIONED = new Set([
   'lib/ai/openai-client.ts',
   'lib/media/image-client.ts',
   'lib/media/elevenlabs.ts',
+    'lib/media/elevenlabs-realtime.ts',
 ])
 
 /** Runtime source only — tests and fixtures are not billable paths. */
@@ -84,10 +85,11 @@ describe('provider escape guard', () => {
     expect(files.length).toBeGreaterThan(200)
   })
 
-  it('the allowlist is exactly the four sanctioned adapters', () => {
+  it('the allowlist is exactly the five sanctioned adapters', () => {
     expect([...SANCTIONED].sort()).toEqual([
       'lib/ai/anthropic.ts',
       'lib/ai/openai-client.ts',
+      'lib/media/elevenlabs-realtime.ts',
       'lib/media/elevenlabs.ts',
       'lib/media/image-client.ts',
     ])

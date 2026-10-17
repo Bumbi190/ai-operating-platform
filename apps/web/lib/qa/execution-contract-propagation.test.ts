@@ -140,6 +140,7 @@ describe('OPERATOR_INTERACTIVE is the only stop bypass, so its construction is a
    * one exemption had been handed to execution.
    */
   const ALLOWLIST = [
+    'app/api/atlas/voice-pilot/speech/route.ts', // preview/operator-only personal Atlas read-aloud trial
     'app/api/chat/route.ts',        // Atlas chat
     'app/api/chat/tts/route.ts',    // Atlas TTS
     // The stop-authority READ MODEL. It asks the resolver in the interactive
@@ -329,6 +330,9 @@ describe('every runtime GLOBAL_ONLY is reviewed and justified', () => {
    * each entry stating WHY no project binds.
    */
   const REVIEWED: Record<string, string> = {
+    'app/api/atlas/voice-pilot/speech/route.ts':
+      'Operator-only preview of personal Atlas speech; reads submitted assistance aloud '
+      + 'and has no project execution or tool dispatch. Chat tools retain their own project authority.',
     // Ordinary Atlas assistance. Serves every project at once, belongs to none.
     'app/api/chat/route.ts':
       'Atlas chat + the manager chat it delegates to: assistance ABOUT a project '

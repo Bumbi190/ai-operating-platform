@@ -45,7 +45,7 @@ describe('atlas home · is the vNext landing surface', () => {
   it('/atlas renders AtlasHomeVNext for the vNext generation', () => {
     expect(ATLAS_PAGE).toContain('AtlasHomeVNext')
     expect(ATLAS_PAGE).toMatch(/isVNext\(generation\)/)
-    expect(ATLAS_PAGE).toMatch(/<AtlasHomeVNext\s+model=\{model\}\s*\/>/)
+    expect(ATLAS_PAGE).toMatch(/<AtlasHomeVNext\s+model=\{model\}\s+voiceHref=\{atlasVoiceConversationEntryEnabled\(user\.email\) \? '\/atlas\/rost' : undefined\}\s*\/>/)
   })
 
   it('resolves the generation through the one canonical resolver', () => {

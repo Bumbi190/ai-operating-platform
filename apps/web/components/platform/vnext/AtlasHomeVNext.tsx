@@ -19,7 +19,7 @@ import styles from './AtlasHomeVNext.module.css'
  * proportions from a laptop to a 49" ultrawide. The backdrop fills whatever is
  * left around it.
  */
-export function AtlasHomeVNext({ model, collaboratorReadOnly = false }: { model: AtlasHomeViewModel; collaboratorReadOnly?: boolean }) {
+export function AtlasHomeVNext({ model, collaboratorReadOnly = false, voiceHref }: { model: AtlasHomeViewModel; collaboratorReadOnly?: boolean; voiceHref?: string }) {
   return (
     <div className={styles.page}>
       <div className={styles.backdropNebula} aria-hidden="true" />
@@ -28,7 +28,7 @@ export function AtlasHomeVNext({ model, collaboratorReadOnly = false }: { model:
       <AtlasMobileNav />
       <div className={styles.stageFrame}>
         <div className={styles.stage}>
-          <AtlasCommandCore readOnly={collaboratorReadOnly} />
+          <AtlasCommandCore readOnly={collaboratorReadOnly} voiceHref={voiceHref} />
 
           <blockquote className={styles.quote}>
             <p>”Större förståelse.<br />Större möjligheter.”</p>

@@ -87,6 +87,10 @@ export async function finalizeReferenceTicket(db:Db,p:ProjectAccessOk,ref:Ref):
   }).eq('id',row.id).eq('state','processing').eq('owner_id',p.userId).select('id').maybeSingle()
   if(saved.error||!saved.data)throw new WebsiteBuildError('BUILD_UNAVAILABLE',503)
   // Cleanup is best effort and never changes the canonical Asset result.
-  await staging.remove([row.object_path]).catch(()=>null)
+  const cleanup=await staging.remove([row.object_path]).catch(()=>null)
+  if(cleanup && !cleanup.error){
+    await tickets.update({staging_cleaned_at:new Date().toISOString()})
+      .eq('id',row.id).eq('state','ready').is('staging_cleaned_at',null)
+  }
   return {status:'ready',ticketId:row.id,assetId:admitted.asset.id}
 }

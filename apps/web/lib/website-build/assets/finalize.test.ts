@@ -32,6 +32,11 @@ function fixture() {
     const builder:any={
       select:()=>builder,
       eq:(k:string,v:unknown)=>{where[k]=v;return builder},
+      is:(k:string,v:unknown)=>{where[k]=v;return builder},
+      then:(resolve:(v:any)=>any,reject:(v:unknown)=>any)=>{
+        if(name==='website_build_reference_tickets'&&updating){Object.assign(ticket,updating)}
+        return Promise.resolve({data:null,error:null}).then(resolve,reject)
+      },
       maybeSingle:async()=>{
         if(name==='projects')return{data:!paused&&allowed&&where.id===projectId&&where.owner_id===projectOwner&&where.execution_paused===false?{id:projectId}:null,error:null}
         if(name==='conversations')return{data:allowed&&where.id===conversationId&&where.project_id===projectId&&where.user_id===ownerId?{id:conversationId}:null,error:null}

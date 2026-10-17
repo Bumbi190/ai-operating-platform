@@ -84,8 +84,11 @@ export async function issueReferenceTicket(db: Db, p: ProjectAccessOk, input: Ti
       expires_at:new Date(issuedAt.getTime()+SIGNED_UPLOAD_LIFETIME_SECONDS*1000).toISOString(),
     }
     const inserted = await table.insert(row).select(ticketFields).single()
-    if (inserted.error && inserted.error.code !== '23505')
+    if (inserted.error && inserted.error.code !== '23505') {
+      if(inserted.error.code==='P0001' && inserted.error.message?.includes('ATLAS_REFERENCE_RATE_LIMIT'))
+        throw new WebsiteBuildError('REFERENCE_RATE_LIMIT',429)
       throw new WebsiteBuildError('BUILD_UNAVAILABLE',503)
+    }
     ticket = inserted.data as TicketRow|null
     if (!ticket) ticket = await lookup()
   }

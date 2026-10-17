@@ -36,6 +36,7 @@ create table public.website_build_reference_tickets (
  issued_at timestamptz not null default now(),
  expires_at timestamptz not null default (now() + interval '2 hours'),
  updated_at timestamptz not null default now(),
+ staging_cleaned_at timestamptz,
  unique (owner_id, conversation_id, draft_id, slot),
  constraint website_reference_state_asset_check
    check ((state='ready') = (asset_id is not null)),
@@ -44,6 +45,24 @@ create table public.website_build_reference_tickets (
 );
 create index website_reference_tickets_project on public.website_build_reference_tickets
  (project_id,conversation_id,issued_at desc);
+-- Per-owner quota, serialized across concurrent server requests. Slots limit a
+-- single draft; without this guard a caller could mint unlimited draft UUIDs.
+create function public.website_build_reference_ticket_quota() returns trigger
+language plpgsql security definer set search_path='' as $$
+begin
+ perform pg_catalog.pg_advisory_xact_lock(
+   pg_catalog.hashtextextended('atlas-reference-ticket:'||new.owner_id::text,0));
+ if (select count(*) from public.website_build_reference_tickets
+      where owner_id=new.owner_id and issued_at >= now()-interval '1 hour') >= 30
+    or (select count(*) from public.website_build_reference_tickets
+      where owner_id=new.owner_id and issued_at >= now()-interval '1 day') >= 200
+ then raise exception 'ATLAS_REFERENCE_RATE_LIMIT' using errcode='P0001'; end if;
+ return new;
+end $$;
+revoke all on function public.website_build_reference_ticket_quota() from public,anon,authenticated;
+create trigger website_reference_ticket_quota before insert on public.website_build_reference_tickets
+for each row execute function public.website_build_reference_ticket_quota();
+
 alter table public.website_build_reference_tickets enable row level security;
 alter table public.website_build_reference_tickets force row level security;
 revoke all on public.website_build_reference_tickets from public,anon,authenticated,service_role;

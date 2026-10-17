@@ -44,3 +44,17 @@ Denna arbetsgren innehåller nu också ett **utkast till hela serverflödet** f�
 **Kvar före release:** (1) SQL-säkerhetsgranskning, kostnad/rate limit och ett kanoniskt migrationsbeslut, (2) korrekt hantering/återställning av `processing`-jobb efter serverkrasch samt tidsstyrd rensning av utgångna/orphanade staging-filer, (3) riktiga signerade upload-tester på isolerad Supabase-miljö med 10 MiB och minst ett feltest, (4) UI filväljare/thumbnails och uppladdning utan service-role i klienten, (5) bind AssetId till exakt chattur, säker behörig bildläsning och verkligt bildinput i modellen, (6) budgeterad separat GPT Image 2 och riktig app-preview i senare leveranser. En testad backend betyder inte att Atlas nu kan se bilder i chatten.
 
 Granskningsbar [PR #368](https://github.com/Bumbi190/ai-operating-platform/pull/368).
+
+## 2026-10-17 – crash- och stagingåterhämtning i samma draft (slice 2C)
+
+**Leverans i isolerad branch, INTE aktiverad som driftjobb.** `lib/website-build/assets/reconcile.ts` är en server-only, projektavgränsad underhållsprimitiv. Den har inga HTTP-rutter eller schemaläggare. Framtida anrop måste komma från en explicit behörig worker/operatör och omfattas av samma projekt-/stopp- och kostnadsregler.
+
+- En `processing`-biljett får inte överges eller automatiskt starta ett nytt bildjobb utan bevis. Först efter 15 minuter kontrolleras faktisk biljettversion, korrekt projekt och exakt privat Asset-lagringsväg.
+- Finns ett kanoniskt Asset med exakt samma projekt, skyddad bucket, path och `asset_provenance` (`purpose=atlas-website-reference`, samma `ticketId`), återkopplas det tidigare AssetId. En möjlig kanonisk orphan i lagringen eller felaktig proveniens kräver **manuell granskning** — filen tas inte bort och inga extra Assets skapas.
+- Bara när både Asset-rad och exakt kanonisk fil saknas avvisas en gammal `processing`-biljett. Utgångna `issued`-biljetter städas **först en timme efter den två timmar giltiga uppladdningstoken**. Tombstones och deras bevisrader bevaras.
+- `staging_cleaned_at` i SQL-propositionen hindrar en permanent omstädningsloop. Sweep läser högst 20 rader, i ett explicit projekt, åt gången. Inga globala oavgränsade lagringsrensningar.
+- Förslaget har också en DB-kvot som med serialiserat rådgivande transaktionslås spärrar biljett nr 31/timme eller nr 201/dygn per ägare även vid samtidiga skapandeförsök. API mappas till 429 utan att exponera innehåll.
+
+**Testbevis:** 85/85 riktade lokala Vitest-testfall godkända inklusive tidigare bild-asset-behörigheter, återhämtning och HTTP. Full TypeScript körs på denna ändring. Ny disposable nätverksisolerad PostgreSQL 16-körning applicerade förslagets DDL och bekräftade tvingad RLS, nekad authenticated-läsning samt 30/timgränsen (31:a INSERT stoppades); testcontainern borttagen. Ingen produktionsmigration, cron, betalt modelljobb eller ny ägarbudget.
+
+**Återstående risk/krav:** En recoverysweep gör ännu inte ordinarie jobb själv; verklig Supabase-integrationsverifiering, autentiserad worker-aktivering, cleanup vid externa fel, samtidig finalizer-kraschtest mot real DB, front-end bildväljare, privat läsning, multimodal chattur och licenskontroll återstår. Det här är inte en levererad produktfunktion förrän de är verifierade och granskade.

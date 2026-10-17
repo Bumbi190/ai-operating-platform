@@ -13,7 +13,7 @@ const input={projectId,conversationId,draftId,slot:0,mimeType:'image/jpeg' as co
 function fixture() {
   const rows:Array<Record<string,any>>=[]
   let projectPaused=false, projectOwner=principalId, conversationOwner=principalId
-  let lifecycle='active', signed=0
+  let lifecycle='active', signed=0, overQuota=false
   const from=(name:string)=>{
     const filters:Record<string,unknown>={}
     const builder:any={
@@ -29,6 +29,7 @@ function fixture() {
       },
       insert:(record:Record<string,unknown>)=>({
         select:()=>({single:async()=>{
+          if(overQuota)return {data:null,error:{code:'P0001',message:'ATLAS_REFERENCE_RATE_LIMIT'}}
           if(rows.some(r=>r.owner_id===record.owner_id && r.conversation_id===record.conversation_id && r.draft_id===record.draft_id && r.slot===record.slot))
             return {data:null,error:{code:'23505'}}
           const row={...record,state:'issued'}
@@ -50,6 +51,7 @@ function fixture() {
     revokeProject:()=>{projectOwner=randomUUID()},
     revokeConversation:()=>{conversationOwner=randomUUID()},
     archive:()=>{lifecycle='archived'},
+    rateLimit:()=>{overQuota=true},
   }
 }
 describe('private website reference tickets',()=>{
@@ -96,6 +98,15 @@ describe('private website reference tickets',()=>{
     await expect(issueReferenceTicket(f.db,owner,{...input,mimeType:'image/png'}))
       .rejects.toMatchObject({code:'CONFLICT'})
     expect(f.rows).toHaveLength(4)
+  })
+  it('uses a bounded 429 when the database rejects ticket volume',async()=>{
+    const f=fixture()
+    f.rateLimit()
+    await expect(issueReferenceTicket(f.db,owner,input)).rejects.toMatchObject({
+      code:'REFERENCE_RATE_LIMIT',status:429,
+    })
+    expect(f.rows).toHaveLength(0)
+    expect(f.signed).toBe(0)
   })
   it('refuses to reissue an expired or completed upload token',async()=>{
     const f=fixture()

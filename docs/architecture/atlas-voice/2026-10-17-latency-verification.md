@@ -56,3 +56,9 @@ Follow-up verification: **162/162** migration guard, migration security and cano
 Deployment `dpl_6j6N9cUAtr5F9GeRHYJAEti1Nfcw` on `31758f9` built successfully (114/114, ledger151, READY and correct alias), but a fresh unauthorized speech request produced a runtime record in **iad1**. The Next.js `preferredRegion` exports were therefore ineffective for this Node deployment; the earlier configuration intent must not be described as a completed move.
 
 Removed those ineffective exports and set exact per-function `regions: ["dub1"]` entries in `apps/web/vercel.json` for speech, chat and conversations. The project-wide default and cron schedules are unchanged. This follows Vercel's [per-function region configuration](https://vercel.com/docs/functions/configuring-functions/region#per-function-configuration). Acceptance requires a runtime record in dub1 after redeployment, not just a successful build.
+
+## Preview-wide region fallback
+
+The per-function attempt on `2d00c12` also became READY, but the fresh speech runtime records still reported iad1. No region improvement is claimed for it. The precise reason this deployment did not honor those per-function entries is not established.
+
+Use the documented deployment-wide `regions: ["dub1"]` in this isolated preview branch instead, removing ineffective per-function entries. This relocates all Node functions in this preview deployment, not just the three conversation routes. It changes no shared dashboard/project settings and does not change the production deployment; the PR remains draft and must explicitly disclose this scope before any future merge. All those functions use the same Irish database. Cron schedules remain byte-for-byte unchanged. Acceptance still requires actual dub1 metadata and runtime evidence.

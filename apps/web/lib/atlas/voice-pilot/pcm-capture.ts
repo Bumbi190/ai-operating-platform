@@ -1,4 +1,5 @@
 import { createPcmResampler, pcm16, PCM_MAX_BYTES, PCM_RATE } from './pcm'
+import type { RealtimeTurn } from './stream-protocol'
 import { voiceResponseError, isVoiceAccessFailure, VOICE_ACCESS_NOTICE } from './failure'
 
 function microphoneStartNotice(error: unknown): string {
@@ -26,6 +27,7 @@ type EndReason = 'pause' | 'manual' | 'limit'
 type Dependencies = {
   open(frame: (samples: Float32Array, speechProbability: number) => void, signal: AbortSignal, failed: (error: Error) => void): Promise<Source>
   transcribe(pcm: Uint8Array, signal: AbortSignal, reason: EndReason): Promise<string>
+  streamTurn?(signal: AbortSignal): RealtimeTurn
   now?(): number
 }
 
@@ -35,6 +37,7 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
   const now = deps.now ?? (() => performance.now())
   let live = false, generation = 0, revision = 0, source: Source | null = null
   let output = false, recovering = false, recovery: ReturnType<typeof setTimeout> | undefined
+  let stream: { controller: AbortController; turn: RealtimeTurn } | null = null
   let upload: AbortController | null = null, capped = false
   let device: AbortController | null = null, idleOverflow = false
   let receivedFrame = false, health: ReturnType<typeof setTimeout> | undefined
@@ -42,10 +45,11 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
   let voiced = false, candidateMs = 0, quietMs = 0
   const blocked = () => options.playbackMode === 'speakers' && (output || recovering)
   const ready = () => options.listening?.(live && !!source && receivedFrame && !blocked() && !upload && !capped)
+  function abortStream() { const owned = stream; stream = null; owned?.controller.abort(); owned?.turn.abort() }
   function clearAudio() { samples = []; count = 0; idle = []; idleCount = 0; idleOverflow = false; voiced = false; candidateMs = quietMs = 0; source?.reset?.() }
   function discard() {
     if (capped && live) { stop(); return }
-    revision++; upload?.abort(); upload = null; options.processing?.(false); clearAudio(); ready()
+    revision++; upload?.abort(); upload = null; abortStream(); options.processing?.(false); clearAudio(); ready()
   }
   function stop() {
     generation++; live = false; clearTimeout(recovery); clearTimeout(health); receivedFrame = false; recovering = false
@@ -54,21 +58,25 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
   }
   async function finish(reviewOnly = false, reason: EndReason = 'manual') {
     if (!live || !source || blocked() || upload || capped) return
+    const activeStream = stream
+    if (deps.streamTurn && (!voiced || !activeStream)) { options.notice('Ingen aktiv fråga har spelats in. Börja prata innan du avslutar.'); return }
     if (idleOverflow) reviewOnly = true
     const began = now(), parts = voiced ? samples : idle
     let length = voiced ? count : idleCount
-    if (voiced && !reviewOnly) length -= Math.max(0, Math.round((quietMs - 200) * PCM_RATE / 1000))
+    if (voiced && !reviewOnly && !activeStream) length -= Math.max(0, Math.round((quietMs - 200) * PCM_RATE / 1000))
     length = Math.min(maxSamples, length)
     if (length < 1600) { options.notice('Prata lite till innan du avslutar inspelningen.'); return }
-    const audio = new Float32Array(length)
-    let offset = 0
-    for (const part of parts) { const chunk = part.subarray(0, length - offset); audio.set(chunk, offset); offset += chunk.length; if (offset === length) break }
-    const wait = quietMs, token = generation, turn = revision, abort = new AbortController()
+    const audio = activeStream ? null : new Float32Array(length)
+    if (audio) {
+      let offset = 0
+      for (const part of parts) { const chunk = part.subarray(0, length - offset); audio.set(chunk, offset); offset += chunk.length; if (offset === length) break }
+    }
+    const wait = quietMs, token = generation, turn = revision, abort = activeStream?.controller ?? new AbortController()
     clearAudio(); upload = abort; capped = reviewOnly
     if (reviewOnly) { clearTimeout(health); source.stop(); source = null }
     ready(); options.processing?.(true)
     try {
-      const text = (await deps.transcribe(pcm16(audio), abort.signal, reviewOnly ? 'limit' : reason)).trim()
+      const text = (await (activeStream ? activeStream.turn.finish(reviewOnly ? 'limit' : reason) : deps.transcribe(pcm16(audio!), abort.signal, reviewOnly ? 'limit' : reason))).trim()
       if (!live || token !== generation || turn !== revision || abort.signal.aborted) return
       if (!text) options.notice('Jag kunde inte urskilja några ord. Prova igen eller skriv din fråga.')
       else {
@@ -77,14 +85,22 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
         else { options.endpoint?.(wait + Math.max(0, now() - began)); options.receive(text) }
       }
     } catch (error) {
-      if (live && token === generation && turn === revision && !abort.signal.aborted) options.notice(isVoiceAccessFailure(error) ? VOICE_ACCESS_NOTICE : 'Talet kunde inte tolkas. Prova att säga frågan igen eller skriv den. Kontrollera åtkomst och budget om felet återkommer.')
+      if (live && token === generation && turn === revision && !abort.signal.aborted) {
+        options.notice(isVoiceAccessFailure(error) ? VOICE_ACCESS_NOTICE : 'Talet kunde inte tolkas. Prova att säga frågan igen eller skriv den. Kontrollera åtkomst och budget om felet återkommer.')
+        if (activeStream) stop()
+      }
     } finally {
       if (upload === abort) {
-        upload = null; options.processing?.(false)
+        upload = null; if (activeStream && stream === activeStream) abortStream(); options.processing?.(false)
         if (reviewOnly) stop()
         else ready()
       }
     }
+  }
+  function sendStream(audio: Float32Array) {
+    if (!stream) throw new Error('stream_missing')
+    const bytes = pcm16(audio)
+    for (let offset = 0; offset < bytes.length; offset += 6400) stream.turn.send(bytes.subarray(offset, offset + 6400))
   }
   async function start() {
     if (live) return
@@ -114,7 +130,7 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
         const speech = probability >= (voiced ? 0.25 : 0.3)
         if (!voiced) {
           idle.push(pcm); idleCount += pcm.length
-          while (idleCount > maxSamples && idle.length > 1) { idleCount -= idle.shift()!.length; idleOverflow = true }
+          while (idleCount > (deps.streamTurn ? PCM_RATE : maxSamples) && idle.length > 1) { idleCount -= idle.shift()!.length; if (!deps.streamTurn) idleOverflow = true }
           candidateMs = speech ? candidateMs + ms : 0
           if (candidateMs < 80) return
           voiced = true
@@ -126,11 +142,23 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
             if (skip >= part.length) { skip -= part.length; continue }
             const kept = part.subarray(skip); joined.set(kept, i); i += kept.length; skip = 0
           }
-          samples = [joined]; count = length; idle = []; idleCount = 0; idleOverflow = false
+          samples = deps.streamTurn ? [] : [joined]; count = length; idle = []; idleCount = 0; idleOverflow = false
           // Speaker mode uses the explicit Avbryt button. Input arriving while
           // a reply is still preparing must not silently cancel its speech epoch.
           if (options.playbackMode === 'headphones') options.interrupt()
-        } else { samples.push(pcm); count += pcm.length }
+          if (deps.streamTurn) {
+            try {
+              const controller = new AbortController()
+              stream = { controller, turn: deps.streamTurn(controller.signal) }
+              sendStream(joined)
+            } catch { stop(); options.notice('Anslutningen för frågan bröts. Starta mikrofonen igen och säg hela frågan på nytt.'); return }
+          }
+        } else {
+          if (deps.streamTurn) {
+            const kept = pcm.subarray(0, Math.max(0, maxSamples - count)); count += kept.length
+            try { sendStream(kept) } catch { stop(); options.notice('Anslutningen för frågan bröts. Starta mikrofonen igen och säg hela frågan på nytt.'); return }
+          } else { samples.push(pcm); count += pcm.length }
+        }
         quietMs = speech ? 0 : quietMs + ms
         if (count >= maxSamples) { void finish(true); return }
         if (quietMs >= pause) void finish(false, 'pause')

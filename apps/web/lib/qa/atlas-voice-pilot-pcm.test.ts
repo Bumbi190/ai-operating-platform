@@ -248,3 +248,100 @@ describe('microphone stream health', () => {
     expect(f.notice).toHaveBeenCalledTimes(1)
   })
 })
+
+function streamingFixture(pauseMs = 1200, playbackMode: 'speakers' | 'headphones' = 'speakers') {
+  let frame!: (value: Float32Array, probability: number) => void
+  const receive = vi.fn(), draft = vi.fn(), notice = vi.fn(), active = vi.fn(), processing = vi.fn(), interrupt = vi.fn(), stop = vi.fn(), transcribe = vi.fn()
+  const turns: { send: ReturnType<typeof vi.fn>; finish: ReturnType<typeof vi.fn>; abort: ReturnType<typeof vi.fn>; signal: AbortSignal; resolve(text: string): void; reject(error: Error): void }[] = []
+  let failSend = false
+  const streamTurn = vi.fn((signal: AbortSignal) => {
+    let resolve!: (text: string) => void, reject!: (error: Error) => void
+    const result = new Promise<string>((yes, no) => { resolve = yes; reject = no })
+    void result.catch(() => {})
+    const turn = { signal, resolve, reject, send: vi.fn((_bytes: Uint8Array) => { if (failSend) throw new Error('stream_failed') }), finish: vi.fn(() => result), abort: vi.fn() }
+    turns.push(turn); return turn
+  })
+  const capture = createPcmVoiceCapture({ pauseMs, playbackMode, receive, draft, notice, active, processing, interrupt }, {
+    open: async callback => { frame = callback; return { sampleRate: 16000, stop } },
+    transcribe, streamTurn,
+  })
+  return { capture, receive, draft, notice, active, processing, interrupt, stop, transcribe, streamTurn, turns,
+    failSend: () => { failSend = true },
+    frames(ms: number, speech = false) { for (let i = 0; i < ms; i += 20) frame(new Float32Array(320).fill(speech ? 0.02 : 0), speech ? 0.95 : 0.01) },
+    async resolve(text: string) { turns.at(-1)!.resolve(text); await Promise.resolve(); await Promise.resolve() },
+  }
+}
+describe('optional streaming microphone turns', () => {
+  it('opens only after80ms speech and sends the retained first sound exactly once', async () => {
+    const f = streamingFixture(); await f.capture.start()
+    f.frames(1200); f.frames(60, true); expect(f.streamTurn).not.toHaveBeenCalled()
+    f.frames(140, true); expect(f.streamTurn).toHaveBeenCalledTimes(1)
+    f.frames(1200)
+    const turn = f.turns[0], raw = turn.send.mock.calls.flatMap(([bytes]) => Array.from(new Int16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2)))
+    expect(raw.filter(x => x > 0)).toHaveLength(3200)
+    expect(raw.length).toBe(37120) //1s onset window +120ms remainder +1.2s selected silence
+    expect(turn.send.mock.calls.every(([bytes]) => bytes.length <= 6400)).toBe(true)
+    expect(turn.finish).toHaveBeenCalledWith('pause'); expect(f.transcribe).not.toHaveBeenCalled()
+    await f.resolve('Hela fragan'); expect(f.receive).toHaveBeenCalledTimes(1)
+    expect(f.draft.mock.invocationCallOrder[0]).toBeLessThan(f.receive.mock.invocationCallOrder[0])
+    f.capture.stop()
+  })
+  it.each([1200, 2000, 3500, 5000])('keeps the selected%s ms local pause and counts its streamed silence', async pause => {
+    const f = streamingFixture(pause); await f.capture.start(); f.frames(200, true); f.frames(pause - 20)
+    expect(f.turns[0].finish).not.toHaveBeenCalled()
+    f.frames(20); expect(f.turns[0].finish).toHaveBeenCalledTimes(1)
+    await f.resolve('Hej'); expect(f.receive).toHaveBeenCalledWith('Hej'); f.capture.stop()
+  })
+  it('does not open a paid turn or use batch for manual finish without an onset', async () => {
+    const f = streamingFixture(); await f.capture.start(); f.frames(4000); f.capture.finish()
+    expect(f.streamTurn).not.toHaveBeenCalled(); expect(f.transcribe).not.toHaveBeenCalled(); expect(f.notice).toHaveBeenCalledTimes(1)
+    f.capture.stop()
+  })
+  it.each(['stop', 'discard', 'output'] as const)('aborts%s and discards a delayed final', async action => {
+    const f = streamingFixture(); await f.capture.start(); f.frames(200, true); f.capture.finish()
+    const turn = f.turns[0]
+    if (action === 'output') f.capture.setOutputActive(true); else f.capture[action]()
+    expect(turn.signal.aborted).toBe(true); expect(turn.abort).toHaveBeenCalledTimes(1)
+    await f.resolve('late text'); expect(f.receive).not.toHaveBeenCalled(); expect(f.draft).not.toHaveBeenCalled()
+    f.capture.stop()
+  })
+  it('retains the speaker tail gate and opens a fresh headphone interruption', async () => {
+    vi.useFakeTimers()
+    const f = streamingFixture(); await f.capture.start()
+    f.capture.setOutputActive(true); f.frames(4000, true); f.capture.setOutputActive(false)
+    await vi.advanceTimersByTimeAsync(399); f.frames(200, true); expect(f.streamTurn).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1); f.frames(200, true); expect(f.streamTurn).toHaveBeenCalledTimes(1); f.capture.stop()
+    const h = streamingFixture(1200, 'headphones'); await h.capture.start(); h.frames(200, true)
+    expect(h.interrupt).toHaveBeenCalledTimes(1); h.capture.stop()
+  })
+  it('caps forwarded PCM at90s and keeps the result for manual review only', async () => {
+    const f = streamingFixture(); await f.capture.start(); f.frames(92000, true)
+    const turn = f.turns[0]
+    expect(turn.send.mock.calls.reduce((n, [bytes]) => n + bytes.length, 0)).toBe(2880000)
+    expect(turn.finish).toHaveBeenCalledWith('limit'); expect(f.stop).toHaveBeenCalledTimes(1)
+    await f.resolve('Lang fraga'); expect(f.draft).toHaveBeenCalledWith('Lang fraga'); expect(f.receive).not.toHaveBeenCalled()
+    expect(f.active).toHaveBeenLastCalledWith(false)
+  })
+  it('stops a failed stream instead of reopening on continued speech or replaying through batch', async () => {
+    const f = streamingFixture(); await f.capture.start(); f.frames(200, true); f.failSend(); f.frames(2000, true)
+    expect(f.streamTurn).toHaveBeenCalledTimes(1); expect(f.transcribe).not.toHaveBeenCalled()
+    expect(f.active).toHaveBeenLastCalledWith(false); expect(f.notice).toHaveBeenCalledTimes(1)
+    f.capture.stop()
+  })
+  it('continues checking microphone health during a pending final and fences late text', async () => {
+    vi.useFakeTimers()
+    const f = streamingFixture(); await f.capture.start(); f.frames(200, true); f.capture.finish()
+    for (let i = 0; i < 6; i++) { f.frames(20); await vi.advanceTimersByTimeAsync(1000) }
+    expect(f.stop).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(4000); expect(f.stop).toHaveBeenCalledTimes(1)
+    await f.resolve('late'); expect(f.receive).not.toHaveBeenCalled(); expect(vi.getTimerCount()).toBe(0)
+  })
+  it('handles three independent start/stop cycles with a single final submission per turn', async () => {
+    const f = streamingFixture()
+    for (let i = 0; i < 3; i++) {
+      await f.capture.start(); f.frames(200, true); f.capture.finish(); f.capture.finish(); await f.resolve('turn' + i); f.capture.stop()
+    }
+    expect(f.streamTurn).toHaveBeenCalledTimes(3); expect(f.receive.mock.calls).toEqual([['turn0'], ['turn1'], ['turn2']])
+    expect(f.turns.every(turn => turn.finish.mock.calls.length === 1 && turn.signal.aborted)).toBe(true)
+  })
+})

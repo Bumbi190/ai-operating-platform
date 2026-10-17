@@ -1,3 +1,5 @@
+**Aktuellt driftläge efter godkänd pilot: PAUSAD.** PR #387 och #393 är publicerade. Första GPU-provet passerade, men slutprovet fick osäkert utfall under modellinläsning. Enheten är återkallad, autostarten borttagen och inga modellprocesser lyssnar. Inga betalda anrop. Verifierad återställning av osäkra utfall blockerar daglig drift. Se sista avsnittet i 2026-10-17-owner-pilot-bridge.md. Tidigare förslag och godkännanden nedan är historik.
+
 # Förslag till begränsad driftpilot — inte aktiverad
 
 Utvecklingsgrenen kopplar endast Atlas texthjälpuppgifter till den stationära. Den är inte mergad/driftsatt. Befintliga röst-, studio-, kod- och andra Omnira-arbeten fortsätter separat. Granskning, full verifiering och begränsningar finns i `2026-10-17-atlas-integration-verification.md`.

@@ -40,7 +40,8 @@ export async function middleware(request: NextRequest) {
   }
   // This exact route performs fresh identity + operator + legacy containment
   // itself, before body parsing or any provider call. Avoid verifying twice.
-  if (path === '/api/atlas/voice-pilot/speech' && (request.method === 'GET' || request.method === 'POST')) {
+  if ((path === '/api/atlas/voice-pilot/speech' && (request.method === 'GET' || request.method === 'POST'))
+    || (path === '/api/atlas/voice-pilot/stream' && request.method === 'GET')) {
     return NextResponse.next({ request })
   }
   // UI generation is resolved before anything else so the *current* render

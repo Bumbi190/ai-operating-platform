@@ -1,0 +1,19 @@
+{
+  "description": "Public test-only signing vector; contains no live credential",
+  "body": {
+    "schemaVersion": 1,
+    "requestId": "a1000000-0000-4000-8000-000000000001",
+    "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+    "operatorBindingId": "b1000000-0000-4000-8000-000000000001",
+    "omniraUserId": "c1000000-0000-4000-8000-000000000001",
+    "conversationId": "d1000000-0000-4000-8000-000000000001",
+    "action": "inventory",
+    "payload": {}
+  },
+  "canonicalBody": "{\"action\":\"inventory\",\"conversationId\":\"d1000000-0000-4000-8000-000000000001\",\"omniraUserId\":\"c1000000-0000-4000-8000-000000000001\",\"operatorBindingId\":\"b1000000-0000-4000-8000-000000000001\",\"payload\":{},\"projectId\":\"8f673c09-1c8f-4d78-876e-4c14bf1c89b3\",\"requestId\":\"a1000000-0000-4000-8000-000000000001\",\"schemaVersion\":1}",
+  "key": "local-fixture-read-key-not-a-real-credential-0000000000000000",
+  "keyId": "read-v1",
+  "signedAt": "1792238400000",
+  "message": "POST\n/api/internal/atlas-test-data\n9ba7ee0cc39100a90aa600297bc91889d254cf7f197ae08fda61c3ed9f48359e\nread-v1\nb1000000-0000-4000-8000-000000000001\na1000000-0000-4000-8000-000000000001\n\n1792238400000",
+  "signature": "08b4a330a8171fffae14fb85e1f8a6f18749ad8bf2a211627deaed9a00c3e859"
+}

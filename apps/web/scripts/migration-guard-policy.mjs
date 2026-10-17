@@ -71,8 +71,8 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // + website_mockup_review: immutable operator design selection and compatible worker fence.
 // Atlas sales draft pilot: 130/116; applied ledger 20261017130254, reconciled 2026-10-17.
 // Atlas metrics definitions: enforced candidate, NOT applied to production on this branch.
-export const EXPECTED_CANONICAL_SQL_COUNT = 131
-export const EXPECTED_ENFORCED_COUNT = 117
+export const EXPECTED_CANONICAL_SQL_COUNT = 132
+export const EXPECTED_ENFORCED_COUNT = 118
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

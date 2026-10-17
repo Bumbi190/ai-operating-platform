@@ -10,5 +10,5 @@ export default async function AtlasSwedishVoiceTrial() {
     if (operator.reason === 'unauthenticated') redirect('/login')
     notFound()
   }
-  return <AtlasVoiceTrial />
+  return <AtlasVoiceTrial streamingAvailable={process.env.VERCEL_ENV === 'preview' && process.env.ATLAS_VOICE_STREAM_MODE === 'pilot'} />
 }

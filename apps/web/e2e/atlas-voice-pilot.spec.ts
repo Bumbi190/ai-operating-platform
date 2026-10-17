@@ -218,3 +218,121 @@ test('slow speech-model loading does not replay old microphone frames or overflo
   await expect(page.getByRole('status').filter({ hasText: 'Transkriberingar: 1' })).toBeVisible()
   await expect(page.getByRole('alert')).not.toBeVisible()
 })
+
+type PilotPage = import('@playwright/test').Page
+async function streamStats(page: PilotPage) {
+  return page.evaluate(async () => (await fetch('/__voice-stream-fixture')).json())
+}
+async function openStreaming(page: PilotPage, suffix = '') {
+  await page.goto('/atlas/rosttest?streaming=1' + suffix)
+  await expect(page.getByLabel('Taligenkänning')).toHaveValue('batch')
+  await page.getByLabel('Taligenkänning').selectOption('streaming')
+  await page.getByRole('button', { name: 'Starta mikrofonen' }).click()
+  await expect(page.getByRole('status').filter({ hasText: /^Atlas lyssnar$/ })).toBeVisible()
+}
+
+test('available pilot still starts with batch and no websocket', async ({ page }) => {
+  await page.goto('/atlas/rosttest?streaming=1')
+  await expect(page.getByLabel('Taligenkänning')).toHaveValue('batch')
+  await page.getByRole('button', { name: 'Starta mikrofonen' }).click()
+  await expect(page.getByRole('status').filter({ hasText: /^Atlas lyssnar$/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Säg första frågan' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Transkriberingar: 1' })).toBeVisible()
+  expect((await streamStats(page)).connections).toBe(0)
+})
+
+test('streaming sends three automatic questions once each and returns to listening', async ({ page }) => {
+  await openStreaming(page)
+  await page.getByRole('button', { name: 'Håll chattsvar: på' }).click()
+  for (let i = 1; i <= 3; i++) {
+    await page.getByRole('button', { name: 'Säg första frågan' }).click()
+    await expect(page.getByRole('status').filter({ hasText: 'Chattbegäranden: ' + i })).toBeVisible()
+    await expect(page.getByRole('status').filter({ hasText: 'Atlas pratar' })).toBeVisible()
+    await expect(page.getByRole('status').filter({ hasText: /^Atlas lyssnar$/ })).toBeVisible()
+    expect((await streamStats(page)).finals).toBe(i)
+  }
+  await expect(page.getByRole('status').filter({ hasText: 'Transkriberingar: 0' })).toBeVisible()
+  await page.getByText('Svarstider under detta besök (3/40)', { exact: true }).click()
+  await expect(page.getByText('Från sista tal till schemalagd ljudstart.', { exact: false })).toBeVisible()
+})
+
+for (const action of ['correction', 'mode', 'signout', 'pagehide'] as const) {
+  test('streaming waiting final is suppressed by ' + action, async ({ page }) => {
+    await openStreaming(page)
+    await page.getByRole('button', { name: 'Fördröj tolkning: av' }).click()
+    await page.getByRole('button', { name: 'Säg första frågan' }).click()
+    await expect(page.getByRole('status').filter({ hasText: 'Atlas tolkar' })).toBeVisible()
+    if (action === 'correction') await page.getByRole('button', { name: 'Avbryt och rätta', exact: true }).click()
+    if (action === 'mode') await page.getByLabel('Taligenkänning').selectOption('batch')
+    if (action === 'signout') await page.getByRole('button', { name: 'Simulera utloggning' }).click()
+    if (action === 'pagehide') await page.evaluate(() => window.dispatchEvent(new Event('pagehide')))
+    await page.getByRole('button', { name: 'Släpp tolkning' }).click()
+    // Negative window after a real delayed local socket response.
+    await page.waitForTimeout(400)
+    await expect(page.getByRole('status').filter({ hasText: 'Chattbegäranden: 0' })).toBeVisible()
+    await expect(page.getByLabel('Det du vill säga')).toHaveValue('')
+    if (action === 'correction') {
+      await expect(page.getByRole('status').filter({ hasText: /^Atlas lyssnar$/ })).toBeVisible()
+      await page.getByRole('button', { name: 'Fördröj tolkning: på' }).click()
+      await page.getByRole('button', { name: 'Säg första avbrottet' }).click()
+      await expect(page.getByRole('status').filter({ hasText: 'Chattbegäranden: 1' })).toBeVisible()
+      await expect(page.getByText('Lägg till en blå knapp.', { exact: true })).toBeVisible()
+    } else await expect(page.getByRole('status').filter({ hasText: 'Aktiva mikrofonspår: 0' })).toBeVisible()
+  })
+}
+
+test('streaming connection failure requires explicit retry and can switch back to batch', async ({ page }) => {
+  await openStreaming(page, '&stream=fail-once')
+  await page.getByRole('button', { name: 'Säg första frågan' }).click()
+  await expect(page.getByRole('alert')).toContainText('Starta mikrofonen igen')
+  await expect(page.getByRole('status').filter({ hasText: 'Aktiva mikrofonspår: 0' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'Transkriberingar: 0' })).toBeVisible()
+  expect((await streamStats(page)).connections).toBe(1)
+  await page.getByRole('button', { name: 'Håll chattsvar: på' }).click()
+  await page.getByRole('button', { name: 'Starta mikrofonen' }).click()
+  await expect(page.getByRole('status').filter({ hasText: /^Atlas lyssnar$/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Säg första frågan' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Chattbegäranden: 1' })).toBeVisible()
+  await page.getByLabel('Taligenkänning').selectOption('batch')
+  await expect(page.getByRole('status').filter({ hasText: 'Aktiva mikrofonspår: 0' })).toBeVisible()
+  await page.getByRole('button', { name: 'Starta mikrofonen' }).click()
+  await expect(page.getByRole('status').filter({ hasText: /^Atlas lyssnar$/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Säg första frågan' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Transkriberingar: 1' })).toBeVisible()
+  await expect(page.getByRole('status').filter({ hasText: 'Chattbegäranden: 2' })).toBeVisible()
+  expect((await streamStats(page)).connections).toBe(2)
+})
+
+test('streaming speaker output blocks echo from starting another turn', async ({ page }) => {
+  await openStreaming(page)
+  await page.getByRole('button', { name: 'Håll chattsvar: på' }).click()
+  await page.getByRole('button', { name: 'Säg första frågan' }).click()
+  await expect(page.getByRole('status').filter({ hasText: 'Atlas pratar' })).toBeVisible()
+  await page.getByRole('button', { name: 'Säg första avbrottet' }).click()
+  await expect(page.getByRole('status').filter({ hasText: /^Atlas lyssnar$/ })).toBeVisible()
+  expect((await streamStats(page)).connections).toBe(1)
+  await expect(page.getByRole('status').filter({ hasText: 'Chattbegäranden: 1' })).toBeVisible()
+})
+
+test('streaming a thought across a checkpoint still submits one whole question', async ({ page }) => {
+  test.setTimeout(60000)
+  await openStreaming(page)
+  await page.getByRole('button', { name: 'Säg lång fråga' }).click()
+  await expect.poll(async () => (await streamStats(page)).segments, { timeout: 26000 }).toBe(1)
+  await expect(page.getByRole('status').filter({ hasText: 'Chattbegäranden: 1' })).toBeVisible()
+  const stats = await streamStats(page)
+  expect(stats.connections).toBe(1); expect(stats.finals).toBe(1)
+  await expect(page.getByText('En sammanhängande längre fråga.', { exact: true })).toBeVisible()
+})
+
+test('streaming ninety-second cap stops capture and leaves final text for manual review', async ({ page }) => {
+  test.setTimeout(125000)
+  await openStreaming(page)
+  await page.getByRole('button', { name: 'Säg överlång fråga' }).click()
+  await expect(page.getByRole('alert')).toContainText('90 sekunder', { timeout: 100000 })
+  await expect(page.getByRole('status').filter({ hasText: 'Aktiva mikrofonspår: 0' })).toBeVisible()
+  await expect(page.getByLabel('Det du vill säga')).toHaveValue('En fråga för manuell granskning.')
+  await expect(page.getByRole('status').filter({ hasText: 'Chattbegäranden: 0' })).toBeVisible()
+  const stats = await streamStats(page)
+  expect(stats.bytes).toBe(2880000); expect(stats.limits).toBe(1); expect(stats.finals).toBe(1)
+})

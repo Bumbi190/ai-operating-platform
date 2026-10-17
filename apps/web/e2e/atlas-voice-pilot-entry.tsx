@@ -47,6 +47,7 @@ Object.defineProperty(navigator.mediaDevices, 'getUserMedia', { value: async () 
 
 window.fetch = async (input, init) => {
   const url = String(input)
+  if (url === '/__voice-stream-fixture') return nativeFetch(input, init)
   if (url.startsWith('/atlas-vad/') || url.includes('/atlas-vad/')) return nativeFetch(input, init)
   if (url === '/api/atlas/voice-pilot/speech' && !init?.method) return Response.json({ voices: [
     { key: 'anders', label: 'Anders · varm rikssvenska' }, { key: 'peter', label: 'Peter · naturlig skånska' },
@@ -79,12 +80,13 @@ window.fetch = async (input, init) => {
   throw new Error('Fixture refused unexpected network request: ' + url)
 }
 
-async function say(text: string, quiet = false) {
+async function say(text: string, quiet = false, seconds?: number) {
   if (!tracks || !gain || !mediaContext || !speechBuffer) throw new Error('Start the fixture microphone first')
   transcription = text
+  await nativeFetch('/__voice-stream-fixture', { method: 'POST', body: JSON.stringify({ text, delay: delayTranscription }) })
   gain.gain.value = quiet ? 0.015 : 0.4
   if (background) background.gain.value = quiet ? 0.0001 : 0.002
-  const source = mediaContext.createBufferSource(); source.buffer = speechBuffer; source.connect(gain); source.start()
+  const source = mediaContext.createBufferSource(); source.buffer = speechBuffer; source.connect(gain); source.loop = !!seconds; source.start(); if (seconds) source.stop(mediaContext.currentTime + seconds)
   await new Promise<void>(resolve => { source.onended = () => { source.disconnect(); resolve() } })
 }
 function Fixture() {
@@ -99,16 +101,18 @@ function Fixture() {
       <button style={style} onClick={() => { holdChat = !holdChat; update() }}>Håll chattsvar: {holdChat ? 'på' : 'av'}</button>
       <button style={style} onClick={() => { chat?.enqueue(event({ event: 'done' })); chat?.close(); chat = null }}>Släpp chattsvar</button>
       <button style={style} onClick={() => void say('Testa en vanlig fråga.')}>Säg första frågan</button>
+      <button style={style} onClick={() => void say('En sammanhängande längre fråga.', false, 22)}>Säg lång fråga</button>
+      <button style={style} onClick={() => void say('En fråga för manuell granskning.', false, 92)}>Säg överlång fråga</button>
       <button style={style} onClick={() => void say('En lågmäld fråga.', true)}>Säg lågmäld fråga</button>
       <button style={style} onClick={() => void say('Lägg till en blå knapp.')}>Säg första avbrottet</button>
       <button style={style} onClick={() => void say('Och gör den stor.')}>Säg andra avbrottet</button>
       <button style={style} onClick={() => { delayTranscription = !delayTranscription; update() }}>Fördröj tolkning: {delayTranscription ? 'på' : 'av'}</button>
-      <button style={style} onClick={() => { releaseTranscription?.(); releaseTranscription = undefined }}>Släpp tolkning</button>
+      <button style={style} onClick={() => { releaseTranscription?.(); releaseTranscription = undefined; void nativeFetch('/__voice-stream-fixture', { method: 'POST', body: JSON.stringify({ release: true }) }) }}>Släpp tolkning</button>
       <button style={style} onClick={() => { chat?.enqueue(event({ event: 'error', message: 'Testfel' })); chat?.close(); chat = null }}>Avsluta med fel</button>
       <button style={style} onClick={simulateSignout}>Simulera utloggning</button>
       <p role="status">Aktiva mikrofonspår: {tracks}. Talbegäranden: {speechRequests}. Chattbegäranden: {chatRequests}. Transkriberingar: {transcriptionRequests}.</p>
     </details>
-    <AtlasVoiceTrial />
+    <AtlasVoiceTrial streamingAvailable={new URLSearchParams(location.search).get('streaming') === '1'} />
   </>
 }
 createRoot(document.getElementById('root')!).render(<Fixture />)

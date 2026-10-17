@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { Mic, MicOff, Play, Send, Square, ArrowLeft, Headphones } from 'lucide-react'
 import { AtlasConversationController } from '@/lib/atlas/conversation/controller'
-import { createPcmVoiceCapture } from '@/lib/atlas/voice-pilot/pcm-capture'
+import { browserDependencies, createPcmVoiceCapture } from '@/lib/atlas/voice-pilot/pcm-capture'
 import { createPcmSpeechPlayer } from '@/lib/atlas/voice-pilot/player'
 import { takeSpeechChunk } from '@/lib/atlas/voice-pilot/reply'
 import { isAtlasSwedishVoice, type AtlasSwedishVoice } from '@/lib/atlas/voice-pilot/voices'
@@ -15,12 +15,14 @@ const SAMPLE = 'Hej André! Det är Atlas. Vi tar det lugnt, du får tänka fär
 const SAMPLE_NAMES = 'I dag är det fredag den sextonde oktober. Vi ses i Hässleholm klockan halv tre. Jag har tittat på Handlarbörsen och Familje-Stunden. Vad vill du börja med?'
 type Timing = { quietMs: number | null; textMs: number | null; audioMs: number | null }
 
-export function AtlasVoiceTrial() {
+export function AtlasVoiceTrial({ streamingAvailable = false }: { streamingAvailable?: boolean } = {}) {
   const atlas = useOptionalAtlas()
   const [conversation] = useState(() => new AtlasConversationController())
   const snapshot = useSyncExternalStore(conversation.subscribe, conversation.snapshot, conversation.snapshot)
   const [voices, setVoices] = useState<{ key: AtlasSwedishVoice; label: string }[]>([])
   const [voice, setVoice] = useState<AtlasSwedishVoice>('anders')
+  const [inputMode, setInputMode] = useState<'batch' | 'streaming'>('batch')
+  const [measurements, setMeasurements] = useState<{ mode: 'batch' | 'streaming'; endToPlaybackMs: number }[]>([])
   const [pauseMs, setPauseMs] = useState(1200)
   const [playbackMode, setPlaybackMode] = useState<'speakers' | 'headphones'>('speakers')
   const [outputBusy, setOutputBusy] = useState(false)
@@ -34,9 +36,9 @@ export function AtlasVoiceTrial() {
   const player = useRef<ReturnType<typeof createPcmSpeechPlayer> | null>(null)
   const capture = useRef<ReturnType<typeof createPcmVoiceCapture> | null>(null)
   const heldDraft = useRef(''), draftRevision = useRef(0), draftSource = useRef<'text' | 'voice'>('text')
-  const queuedVoice = useRef<{ text: string; revision: number; lifetime: number; quietMs: number } | null>(null)
+  const queuedVoice = useRef<{ text: string; revision: number; lifetime: number; endpointAt: number } | null>(null)
   const outputActive = useRef(false), lastQuietMs = useRef(0)
-  const timedReply = useRef<(Timing & { startedAt: number; audioToken: number }) | null>(null)
+  const timedReply = useRef<(Timing & { startedAt: number; audioToken: number; mode: 'batch' | 'streaming' }) | null>(null)
   const writeDraft = (text: string, source: 'text' | 'voice') => { draftRevision.current++; draftSource.current = source; setDraft(text) }
   const submitRef = useRef<(text: string, source: 'text' | 'voice', quietMs?: number) => Promise<void>>(async () => {})
   const speak = () => player.current ??= createPcmSpeechPlayer({
@@ -52,6 +54,7 @@ export function AtlasVoiceTrial() {
       const current = timedReply.current
       if (value && current && current.audioToken === speechEpoch.current && current.audioMs === null) {
         current.audioMs = performance.now() - current.startedAt; setTiming({ ...current })
+        if (current.quietMs !== null) setMeasurements(previous => [...previous, { mode: current.mode, endToPlaybackMs: current.quietMs! + current.audioMs! }].slice(-40))
       }
     },
   })
@@ -112,6 +115,13 @@ export function AtlasVoiceTrial() {
     if (mic || opening) { stopAll(); return }
     atlas?.deactivate(); setNotice(''); setOpening(true)
     const token = lifetime.current
+    try {
+    // Resume in the tap before awaiting the lazy transport module.
+    const prepared = speak().prepare()
+    void prepared.catch(() => {})
+    const streamTurn = streamingAvailable && inputMode === 'streaming'
+      ? (await import('@/lib/atlas/voice-pilot/stream-client')).beginVoiceStream : undefined
+    if (!mounted.current || token !== lifetime.current) return
     const next = createPcmVoiceCapture({ pauseMs, playbackMode,
       endpoint: quietMs => { lastQuietMs.current = quietMs },
       listening: value => { if (mounted.current && token === lifetime.current) setListening(value) },
@@ -126,15 +136,14 @@ export function AtlasVoiceTrial() {
         writeDraft(combined, 'voice')
         if (sendingRef.current || conversation.snapshot().pending) {
           heldDraft.current = combined
-          queuedVoice.current = { text: combined, revision: draftRevision.current, lifetime: token, quietMs: lastQuietMs.current }
+          queuedVoice.current = { text: combined, revision: draftRevision.current, lifetime: token, endpointAt: performance.now() - lastQuietMs.current }
           setNotice('Jag hörde dig. Din fortsättning skickas när det pågående svaret är klart. Redigera texten om du vill ändra den först.')
         } else void submitRef.current(combined, 'voice', lastQuietMs.current)
       },
-    })
+    }, streamTurn ? { ...browserDependencies(), streamTurn } : undefined)
     capture.current = next
     next.setOutputActive(outputActive.current)
-    try {
-      await speak().prepare()
+      await prepared
       if (mounted.current && token === lifetime.current) await next.start()
     } catch { if (mounted.current && token === lifetime.current) { stopAll(); setNotice('Ljudet kunde inte starta. Prova att klicka på provlyssna först.') } }
   }
@@ -147,7 +156,7 @@ export function AtlasVoiceTrial() {
         queued.lifetime === token && queued.revision === draftRevision.current &&
         !capture.current?.hasPendingInput()) {
       queuedVoice.current = null
-      void submitRef.current(queued.text, 'voice', queued.quietMs)
+      void submitRef.current(queued.text, 'voice', performance.now() - queued.endpointAt)
     }
   }
 
@@ -158,7 +167,7 @@ export function AtlasVoiceTrial() {
     queuedVoice.current = null; heldDraft.current = ''; capture.current?.discard()
     atlas?.deactivate(); stopSpeech(); setNotice(''); setReply('')
     const token = lifetime.current, audioToken = speechEpoch.current, selectedVoice = voice
-    const record = { quietMs: quietMs ?? null, textMs: null as number | null, audioMs: null as number | null, startedAt: performance.now(), audioToken }
+    const record = { quietMs: quietMs ?? null, textMs: null as number | null, audioMs: null as number | null, startedAt: performance.now(), audioToken, mode: inputMode }
     timedReply.current = record; setTiming({ ...record })
     let responseText = '', spoken = 0, completed = false
     const current = () => mounted.current && token === lifetime.current
@@ -213,6 +222,7 @@ export function AtlasVoiceTrial() {
     <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">Prova två svenska ElevenLabs-röster. Välj ljudläge och hur lång tankepaus du vill ha.</p>
     <section className="mt-7 rounded-2xl border border-white/10 bg-slate-900/70 p-5" aria-label="Röstinställningar">
       <div className="grid gap-4 sm:grid-cols-2">
+        {streamingAvailable && <label className="text-sm text-slate-300">Taligenkänning<select value={inputMode} onChange={e => { stopAll(); setInputMode(e.target.value === 'streaming' ? 'streaming' : 'batch') }} className="mt-2 block w-full rounded-lg border border-white/15 bg-slate-950 p-3 text-white"><option value="batch">Vanlig taligenkänning</option><option value="streaming">Strömmande tal · test</option></select></label>}
         <label className="text-sm text-slate-300">Röst<select value={voice} disabled={!voices.length} onChange={e => { stopAll(); if (isAtlasSwedishVoice(e.target.value)) setVoice(e.target.value) }} className="mt-2 block w-full rounded-lg border border-white/15 bg-slate-950 p-3 text-white">{!voices.length && <option>Hämtar svenska röster…</option>}{voices.map(v => <option key={v.key} value={v.key}>{v.label}</option>)}</select></label>
         <label className="text-sm text-slate-300">Tid att tänka<select value={pauseMs} onChange={e => { stopAll(); setPauseMs(Number(e.target.value)) }} className="mt-2 block w-full rounded-lg border border-white/15 bg-slate-950 p-3 text-white"><option value={1200}>1,2 sekunder · snabbare turer</option><option value={2000}>2 sekunders tystnad</option><option value={3500}>3,5 sekunder · gott om tid</option><option value={5000}>5 sekunder · längre tankepauser</option></select></label>
         <label className="text-sm text-slate-300">Ljud<select value={playbackMode} onChange={e => { stopAll(); setPlaybackMode(e.target.value === 'headphones' ? 'headphones' : 'speakers') }} className="mt-2 block w-full rounded-lg border border-white/15 bg-slate-950 p-3 text-white"><option value="speakers">Högtalare</option><option value="headphones">Hörlurar</option></select></label>
@@ -240,6 +250,7 @@ export function AtlasVoiceTrial() {
         <button className={button + ' mt-3 bg-teal-300 text-slate-950 hover:bg-teal-200'} disabled={sending || snapshot.pending || !draft.trim()}><Send size={16} />{sending ? 'Atlas arbetar…' : 'Skicka'}</button>
       </form>
       {timing && <details className="mt-4 text-xs leading-6 text-slate-400"><summary className="cursor-pointer">Svarstid i senaste frågan</summary><p>{timing.quietMs !== null && <>Väntan före skickat: {(timing.quietMs / 1000).toFixed(1)} s. </>}Till första text: {timing.textMs === null ? '—' : (timing.textMs / 1000).toFixed(1) + ' s'}. Till ljudstart: {timing.audioMs === null ? '—' : (timing.audioMs / 1000).toFixed(1) + ' s'}.</p></details>}
+      {measurements.length > 0 && <details className="mt-3 text-xs leading-6 text-slate-400"><summary>Svarstider under detta besök ({measurements.length}/40)</summary><p>Från sista tal till schemalagd ljudstart. Bekräfta själv att ljudet hörs.</p><ol>{measurements.map((sample, index) => <li key={index}>{sample.mode === 'streaming' ? 'Strömmande' : 'Vanlig'}: {(sample.endToPlaybackMs / 1000).toFixed(2)} s</li>)}</ol></details>}
       {snapshot.id && <Link href={'/chat/' + snapshot.id} onClick={stopAll} className="mt-4 inline-block text-sm text-teal-200 underline underline-offset-4">Öppna samtalet för projektjobb och godkännanden</Link>}
     </section>
     <p className="mt-5 text-xs leading-5 text-slate-400">Taligenkänning debiteras efter inspelad ljudtid och rösten per uppläst tecken inom Omniras kostnadskontroll. Atlas chattkostnad tillkommer. Avbryter du talet fortsätter ett redan påbörjat jobb; din talade fortsättning väntar i textrutan och skickas när svaret är klart. Redigering eller Stoppa allt ljud avbryter automatisk skickning.</p>

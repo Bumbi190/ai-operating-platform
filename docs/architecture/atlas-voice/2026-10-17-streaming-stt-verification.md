@@ -3,6 +3,8 @@ Plan: docs/superpowers/plans/2026-10-17-atlas-streaming-stt.md
 Approved by André 2026-10-17 07:40 Europe/Stockholm; Native.
 Accepted baseline: 09a32df71772473794ffdeea0ac335d15b267baf. Separate pilot branch; no production merge.
 
+**Current checkpoint2026-10-17:** deployed normal-session transport passed; inactive relay/client/capture/explicit pilot selection built and independently reviewed, two authority findings fixed and re-reviewed. Selected257/257 and TypeScript pass. Native18 existing cases pass; new9/10 plus unchanged failed-initialization case1/1 rerun pass (details below). Account billing applicability, bounded real-provider protocol proof and actual mobile latency remain pending. No paid session; frozen billing gate and mode=probe keep streaming unavailable. Earlier sections below preserve chronological evidence, not current activation status.
+
 ## Task 1: provider-free transport
 - Existing linked worktree verified, no AGENTS.md found. Baseline access suite 24/24 passed.
 - RED: missing stream handler assertion failed; after minimal 404 scaffold, behavioral suite had19 failures/4 passes.
@@ -121,3 +123,20 @@ The required independent whole-branch review covered relay, protocol, client, ca
 
 The observer polls serially after2s, bounds each combined read at5s and stays owned through browser transport closure, with immediate caller/socket cancellation and no late-read reopening. Normal polling detection is therefore bounded by2s plus at most5s service wait. Provider cancellation flows through the existing ambiguous-cost lifecycle. This strengthens and supersedes the earlier Task3 latch-only assurance; the provider watcher itself still ends at provider termination.
 RED:9 failed/1 passed against the old wrapper. GREEN:12 observer/real-resolver/access-composition tests plus strict route cases; final selected257/257 across14 files, TypeScript exit0 and diffcheck. Actual resolver behavior is exercised with mocked DB/provider, rather than supplying a fabricated authorityUnavailable latch. Re-review was read-only, not a second execution of tests.
+
+## Task5: explicit selection and native regression
+The server offers selection only in preview with mode=pilot. UI defaults to batch; only explicit selection lazily imports the cookie-authenticated stream client. Changing transport stops mic/audio and clears queued input. Anders, existing chat/TTS and conversation authority are retained. A local list keeps at most40 anonymous mode/end-to-scheduled-playback timing samples, no user text or persistent analytics. Queued voice timing includes its wait behind a running answer. This is a playback-scheduling proxy, not proof of physical audibility.
+
+Selection RED3failed/2passed, GREEN5/5. Final selected unit result257/257 across14 files; TypeScript exit0 and diffcheck. Native source was frozen, one worker, no automatic retries:
+- All18 existing native browser scenarios passed on the final client implementation.
+- New selection/streaming run:9/10 passed; the pagehide case failed before Atlas mounted (blank screenshot and missing selection field), not during cancellation. Exact cause is unproven. The unchanged case then passed1/1 with tracing enabled. These are separate runs, not a claimed clean28-test single run.
+- New successful cases cover batch default/no socket, three automatic streaming questions, late-final suppression by correction/mode/signout/pagehide, failed connection with explicit retry and return to batch, speaker echo gate, a22s thought crossing one20s boundary that still sends one question, and a90s cap that sends exactly2880000 PCM bytes then keeps final text for manual review with zero chat dispatch.
+- Harness corrections allowed its local fixture control endpoint through the fetch mock and fixed an overly exact label locator. Neither was a production transport fix.
+
+Native AudioContext/AudioWorklet, local WASM and Silero are real; speech/noise PCM, STT final, chat and TTS service responses are synthetic. The local WebSocket boundary counts checkpoint crossings; adapter checkpoint acknowledgement/aggregation is covered separately by relay tests. No real-provider segment protocol, Swedish quality, locked-screen behavior or mobile latency claim follows from these tests.
+
+## Remaining Task3/6 gates and rollback
+Task1 transport and Task2 protocol are complete; Tasks4/5 are implemented and locally verified, with the native initialization failure/rerun limitation above. Task3's live account billing and provider protocol evidence, and Task6's actual mobile comparison remain pending. No actual mobile sample JSON was created.
+Read-only Notion search found no verified account subscription tier. Public pricing alone remains insufficient under the approved design. Frozen billing floor=null, no canonical rate fallback/DB rate write, branch mode=probe and default batch remain in place. No provider credential was extracted and no paid session/probe was started.
+After applicable account terms/minimums and canonical rate are verified, follow the written max3-session/120s provider-audio probe and20 paired mobile comparison. Keep batch default unless actual >=300ms median gain, p90 no more than200ms worse and no missing/duplicated turns are evidenced. Rollback remains disabled server mode plus batch selection; existing socket/authority cleanup tests cover termination.
+The Notion write restriction was not retried or worked around; detailed recovery state is committed here and in the draft PR. Other Omnira workstreams and the accepted09a32df branch were not changed.

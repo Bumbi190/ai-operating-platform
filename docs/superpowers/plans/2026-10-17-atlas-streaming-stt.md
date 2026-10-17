@@ -6,7 +6,7 @@
 **Architecture:** One authenticated browser WebSocket owns one governed, byte-bounded Scribe session per question. Local Silero owns the question boundary; provider transcript segments are collected internally and only one final question reaches the existing conversation controller. Prove the deployed transport without ElevenLabs before implementing paid dispatch.
 **Tech Stack:** Next.js 14.2.29, React 18, Node 22, @vercel/functions 3.10.0, ws 8.21.0, Vitest, native Chromium/Playwright, existing PCM/Silero and governed spend.
 **Spec:** `docs/superpowers/specs/2026-10-17-atlas-streaming-stt-design.md`
-**Status:** Written after André approved the design on 2026-10-17 at 07:34 Europe/Stockholm. Awaiting written-plan review and execution-method selection; no implementation performed.
+**Status:** Native execution authorized2026-10-17. Tasks1/2 complete; Tasks4/5 implemented and locally verified. Task3 unactivated code is built, with account billing/live-provider evidence pending; Task6 physical mobile benefit remains unproven. See current verification note for the native initialization failure and unchanged-code rerun. Billing floor stays unverified, mode stays probe and batch stays default.
 **Base:** `09a32df71772473794ffdeea0ac335d15b267baf`; documentation branch `codex/atlas-streaming-stt-design-20261017`.
 
 ## Global Constraints

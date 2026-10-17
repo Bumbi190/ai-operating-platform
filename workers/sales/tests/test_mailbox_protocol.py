@@ -63,6 +63,27 @@ class ProtocolTests(unittest.TestCase):
   def fail(_):raise OSError('PRIVATE_PASSWORD_CANARY')
   r,i=self.run_probe(ChallengeSMTP(),diagnostic=fail);self.assertIsNone(r['reasonCode']);self.assertIsNotNone(r['imapAuthenticatedAt'])
 
+class ImapContractTests(unittest.TestCase):
+ def parsed_client(self,response):
+  import imaplib
+  client=IMAP();client._encoding='ascii'
+  client.capability=lambda:('OK',[response])
+  imaplib.IMAP4._get_capabilities(client)
+  return client
+ def run_probe(self,client):
+  return probe_strato('info@example.se','PRIVATE_PASSWORD_CANARY',{'smtp':lambda *a,**k:ChallengeSMTP(),'imap':lambda *a,**k:client})
+ def test_real_imaplib_parser_capabilities_allow_plain_authentication(self):
+  client=self.parsed_client(b'IMAP4rev1 AUTH=PLAIN SASL-IR')
+  self.assertEqual(client.capabilities,('IMAP4REV1','AUTH=PLAIN','SASL-IR'))
+  result=self.run_probe(client)
+  self.assertIsNone(result['reasonCode']);self.assertIsNotNone(result['imapAuthenticatedAt'])
+  self.assertEqual(client.calls,[('AUTHENTICATE','PLAIN'),('LOGOUT',)])
+ def test_real_imaplib_parser_without_plain_still_refuses_authentication(self):
+  client=self.parsed_client(b'IMAP4rev1 AUTH=CRAM-MD5')
+  result=self.run_probe(client)
+  self.assertEqual(result['reasonCode'],'UNSUPPORTED_AUTH')
+  self.assertIsNone(result['imapAuthenticatedAt']);self.assertEqual(client.calls,[('LOGOUT',)])
+
 class DiagnosticSetupTests(unittest.TestCase):
  def test_diagnostic_is_tied_to_setup_and_excluded_from_server_receipt(self):
   fixture=fixtures.MailboxTests();fixture.setUp();self.addCleanup(fixture.doCleanups)

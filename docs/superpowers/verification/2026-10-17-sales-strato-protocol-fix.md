@@ -35,3 +35,15 @@ The exact owned task was previewed, paused, stopped and removed. The old Python 
 At 18:45:28Z the server reported CLI ready, online, desired running and last heartbeat 18:45:21Z, after the new task start at 18:45:04Z. The failed mailbox receipt remains needs_input and is not represented as connected. No automatic retry of its discarded password occurred.
 
 The disposable test container was removed after verifying its exact name, image and ownership label. No production merge or flag activation occurred. The next required proof is one new owner-submitted encrypted credential envelope and actual SMTP+IMAP success plus confirmed local storage.
+
+## Follow-up: actual SMTP success and IMAP capability contract
+
+At 19:00:40Z actual owner-submitted setup fa7161dc-a093-4b14-a073-fbdde2634608 received SMTP 235 (authenticated), then stopped at imap_connect with UNSUPPORTED_AUTH. The failed setup's sealed credential was cleared and localStored remained false. This is partial success, not a connected mailbox.
+
+Root cause is now confirmed for the IMAP failure: Python 3.12 imaplib.IMAP4._get_capabilities decodes the response to str and stores a tuple of strings, while our probe compared against b'AUTH=PLAIN'. Both existing test doubles incorrectly returned bytes, so their green results missed the real library contract. A verified TLS/993, CAPABILITY/logout-only check against actual Strato confirmed AUTH=PLAIN and that every capability is str. It attempted no authentication and read no mailbox content.
+
+The fix compares 'AUTH=PLAIN' as text. Both test doubles now match imaplib. Two regression tests call the actual standard-library capability parser before running the production probe: advertised PLAIN must reach authentication, absent PLAIN must still refuse it without a fallback. The success case failed with UNSUPPORTED_AUTH before the one-line production correction. All 68 Python worker tests now pass.
+
+The prior tests were insufficient proof of this external-library boundary; the new characterization tests explicitly cover that assumption. The remaining qualification is a new owner-submitted login after installation, because the failed credential was correctly discarded. No automatic retry or credential recovery is introduced.
+
+Follow-up integration verification: all three real PostgreSQL/API/Python integrations pass with corrected string capability doubles (29.10 seconds). Full Windows Python worker suite: 68/68, 1.455 seconds. Only production change in this follow-up is the IMAP capability comparison; no web component, schema, credential scope or permissions change.

@@ -13,7 +13,7 @@ class SMTP:
  def quit(self):self.calls.append(('QUIT',))
  def close(self):self.calls.append(('CLOSE',))
 class IMAP:
- def __init__(self,*a,**k):self.calls=[];self.sock=Socket();self.capabilities=(b'IMAP4REV1',b'AUTH=PLAIN');self.arguments=(a,k)
+ def __init__(self,*a,**k):self.calls=[];self.sock=Socket();self.capabilities=('IMAP4REV1','AUTH=PLAIN');self.arguments=(a,k)
  def authenticate(self,mechanism,callback):self.calls.append(('AUTHENTICATE',mechanism));self.credential=callback(b'');return ('OK',[])
  def logout(self):self.calls.append(('LOGOUT',))
  def shutdown(self):self.calls.append(('CLOSE',))

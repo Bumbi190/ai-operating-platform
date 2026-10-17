@@ -35,7 +35,7 @@ class SMTP:
  def quit(self):calls.append('QUIT')
  def close(self):pass
 class IMAP:
- def __init__(self,*a,**kw):self.sock=Socket();self.capabilities=(b'AUTH=PLAIN',);assert a==('imap.strato.de',993)
+ def __init__(self,*a,**kw):self.sock=Socket();self.capabilities=('AUTH=PLAIN',);assert a==('imap.strato.de',993)
  def authenticate(self,mechanism,callback):assert mechanism=='PLAIN';assert callback(b'').endswith(initial['canary'].encode());calls.append('IMAP_AUTH');return 'OK',[]
  def logout(self):calls.append('LOGOUT')
  def shutdown(self):pass

@@ -29,7 +29,7 @@ def probe_strato(email,password,clients=None,*,diagnostic=None):
   if code!=235:result['reasonCode']='SMTP_AUTH_FAILED';return result
   result['smtpAuthenticatedAt']=stamp();phase='imap';stage='imap_connect';deadline=time.monotonic()+10
   imap=clients['imap']('imap.strato.de',993,ssl_context=context,timeout=10);imap.debug=0
-  if b'AUTH=PLAIN' not in tuple(c.upper() for c in imap.capabilities):result['reasonCode']='UNSUPPORTED_AUTH';return result
+  if 'AUTH=PLAIN' not in tuple(c.upper() for c in imap.capabilities):result['reasonCode']='UNSUPPORTED_AUTH';return result
   stage='imap_auth';_remaining(imap,deadline);status,_=imap.authenticate('PLAIN',lambda _:credential)
   if status!='OK':result['reasonCode']='IMAP_AUTH_FAILED';return result
   result['imapAuthenticatedAt']=stamp();stage='complete';return result

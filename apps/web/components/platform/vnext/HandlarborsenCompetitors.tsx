@@ -5,6 +5,7 @@ import { HandlarborsenCompetitorDiscovery } from './HandlarborsenCompetitorDisco
 import { HandlarborsenSaveCompetitorScan } from './HandlarborsenSaveCompetitorScan'
 import type { HistoryAnalysis } from '@/lib/atlas/project-analytics/handlarborsen-competitor-history-core'
 import type { CandidateMemoryLoad } from '@/lib/atlas/project-analytics/handlarborsen-competitor-memory-service'
+import type { CandidateReviewLoad } from '@/lib/atlas/project-analytics/handlarborsen-candidate-review-service'
 import { latestSavedCompetitorObservation, savedCompetitorDay } from '@/lib/atlas/project-analytics/handlarborsen-competitor-latest'
 import type { LandscapeScan } from '@/lib/atlas/project-analytics/handlarborsen-competitor-landscape'
 import styles from './HandlarborsenCompetitors.module.css'
@@ -13,7 +14,7 @@ function CheckedTime({ value }: { value: string }) {
   return <time dateTime={value}>{new Date(value).toLocaleString('sv-SE', { timeZone: 'Europe/Stockholm' })} (Stockholm)</time>
 }
 
-export function HandlarborsenCompetitors({ scan, landscape = null, history = null, historyEnabled = false, canSaveHistory = false, memory = null, memoryEnabled = false, mode = 'owner' }: { scan: PublicScan | null; landscape?: LandscapeScan | null; history?: HistoryAnalysis | null; historyEnabled?: boolean; canSaveHistory?: boolean; memory?: CandidateMemoryLoad | null; memoryEnabled?: boolean; mode?: 'owner' | 'collaborator' }) {
+export function HandlarborsenCompetitors({ scan, landscape = null, history = null, historyEnabled = false, canSaveHistory = false, memory = null, memoryEnabled = false, reviewEnabled = false, reviews = null, mode = 'owner' }: { scan: PublicScan | null; landscape?: LandscapeScan | null; history?: HistoryAnalysis | null; historyEnabled?: boolean; canSaveHistory?: boolean; memory?: CandidateMemoryLoad | null; memoryEnabled?: boolean; reviewEnabled?: boolean; reviews?: CandidateReviewLoad | null; mode?: 'owner' | 'collaborator' }) {
   const summary = scan ? summarizeScan(scan) : null
   return (
     <div className={styles.page}>
@@ -43,7 +44,7 @@ export function HandlarborsenCompetitors({ scan, landscape = null, history = nul
       </section>
       <HandlarborsenLandscape scan={landscape} history={history} />
       <HandlarborsenCompetitorHistory history={history} historyEnabled={historyEnabled} />
-      <HandlarborsenCompetitorDiscovery memory={memory} memoryEnabled={memoryEnabled} mode={mode} />
+      <HandlarborsenCompetitorDiscovery memory={memory} memoryEnabled={memoryEnabled} reviewEnabled={reviewEnabled} reviews={reviews} mode={mode} />
       {historyEnabled && canSaveHistory ? <HandlarborsenSaveCompetitorScan mode={mode} /> : null}
       <section aria-labelledby="competitor-evidence">
         <h2 id="competitor-evidence">Handlarbudet · daterade observationer</h2>

@@ -1,0 +1,18 @@
+import {describe,it,expect} from 'vitest'
+import {webcrypto,generateKeyPairSync,createHash,privateDecrypt,constants,createDecipheriv} from 'node:crypto'
+import {sealMailboxCredentials,mailboxContextLabel} from '@/lib/sales/mailbox/seal'
+const {publicKey,privateKey}=generateKeyPairSync('rsa',{modulusLength:3072,publicExponent:65537})
+const jwk=publicKey.export({format:'jwk'}),kid=createHash('sha256').update(publicKey.export({format:'der',type:'spki'})).digest('hex')
+const context={projectId:'10000000-0000-4000-8000-000000000001',workerId:'60000000-0000-4000-8000-000000000001',mailboxId:'80000000-0000-4000-8000-000000000001',setupId:'70000000-0000-4000-8000-000000000001',kid,email:'info@example.se',expiresAt:'2099-10-17T13:00:00Z'}
+Object.defineProperty(globalThis,'crypto',{value:webcrypto,configurable:true})
+function open(envelope:Awaited<ReturnType<typeof sealMailboxCredentials>>,c=context){const label=Buffer.from(mailboxContextLabel(c));const key=privateDecrypt({key:privateKey,oaepHash:'sha256',oaepLabel:label,padding:constants.RSA_PKCS1_OAEP_PADDING},Buffer.from(envelope.wrappedKey,'base64url'));const raw=Buffer.from(envelope.ciphertext,'base64url'),decipher=createDecipheriv('aes-256-gcm',key,Buffer.from(envelope.iv,'base64url'));decipher.setAAD(label);decipher.setAuthTag(raw.subarray(-16));return JSON.parse(Buffer.concat([decipher.update(raw.subarray(0,-16)),decipher.final()]).toString('utf8'))}
+describe('browser to Node mailbox envelope',()=>{
+ it('round-trips Unicode through real WebCrypto and Node OAEP-SHA256/GCM',async()=>{const password='Syntetisk🔐å-secret';const e=await sealMailboxCredentials(context,jwk,password);expect(open(e)).toEqual({email:context.email,password});expect(JSON.stringify(e)).not.toContain(password);expect(e.format).toBe('sales-strato-envelope-v1');for(const k of ['wrappedKey','iv','ciphertext'] as const)expect(e[k]).toMatch(/^[A-Za-z0-9_-]+$/)})
+ it('uses a new AES key and IV each time',async()=>{const a=await sealMailboxCredentials(context,jwk,'x'),b=await sealMailboxCredentials(context,jwk,'x');expect(a).not.toEqual(b)})
+ it.each(['projectId','workerId','setupId','kid'])('binds %s through both label and AAD',async field=>{const e=await sealMailboxCredentials(context,jwk,'canary');expect(()=>open(e,{...context,[field]:field==='kid'?'0'.repeat(64):'90000000-0000-4000-8000-000000000001'})).toThrow()})
+ it('rejects changed ciphertext tag',async()=>{const e=await sealMailboxCredentials(context,jwk,'canary');const bytes=Buffer.from(e.ciphertext,'base64url');bytes[bytes.length-1]^=1;expect(()=>open({...e,ciphertext:bytes.toString('base64url')})).toThrow()})
+ it.each(['','\0secret','å'.repeat(1025)])('rejects invalid password without truncation',async password=>expect(sealMailboxCredentials(context,jwk,password)).rejects.toThrow('INVALID_CREDENTIAL'))
+ it('accepts maximum UTF8 password within credential JSON bound',async()=>expect(open(await sealMailboxCredentials(context,jwk,'å'.repeat(1024)))).toEqual({email:context.email,password:'å'.repeat(1024)}))
+ it('rejects private or wrong-strength public keys and a swapped kid',async()=>{for(const key of [{...jwk,d:'PRIVATE'},{...jwk,e:'Aw'},{...jwk,n:'AQAB'}])await expect(sealMailboxCredentials(context,key,'x')).rejects.toThrow();await expect(sealMailboxCredentials({...context,kid:'0'.repeat(64)},jwk,'x')).rejects.toThrow('INVALID_HOST_KEY')})
+ it('refuses expired or invalid context',async()=>{await expect(sealMailboxCredentials({...context,expiresAt:'2000-01-01T00:00:00Z'},jwk,'x')).rejects.toThrow('SETUP_EXPIRED');await expect(sealMailboxCredentials({...context,email:'a\nb@example.se'},jwk,'x')).rejects.toThrow('INVALID_CONTEXT')})
+})

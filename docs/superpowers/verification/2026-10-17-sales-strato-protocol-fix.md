@@ -25,3 +25,13 @@ Persist only fixed phase, numeric SMTP reply, fixed reason code, timestamp and s
 Primary protocol references: https://www.rfc-editor.org/rfc/rfc4954.html and https://docs.python.org/3.12/library/smtplib.html.
 
 Integration GREEN: disposable PostgreSQL 16 SQL checks and all three actual API/Python integrations pass (27.33 seconds). The mailbox integration exercised encrypted browser-compatible crypto, the new two-step fake SMTP exchange, lost-receipt recovery without reauthentication, stale activation fencing and revocation during the probe. The disposable container had no published ports, mounts or network.
+
+## Installed-runtime evidence
+
+Installed immutable client source 48ebc7948813be2384fe4c37df1e97f3b047aaa8 from git archive into the current user's OmniraSales/pilots/handlarborsen-48ebc7948813. All 47 files and the full manifest coverage were verified; manifest SHA-256 e8b99d50f70d62e7d5746292a6b562c8b6bf6df75bbc21b8e76e37ee2dfb9d29.
+
+The exact owned task was previewed, paused, stopped and removed. The old Python process was confirmed absent before configuration changed. The same task was installed from the new pin, ownership checked, and started once: PID 23096, one instance, interactive current-user / least privilege. Generation 2 and the existing management/worker credential references and journal were preserved. No credentials were extracted or re-entered. The origin remains the previously qualified protected pylml26ek preview, whose API is unchanged by this client-only correction.
+
+At 18:45:28Z the server reported CLI ready, online, desired running and last heartbeat 18:45:21Z, after the new task start at 18:45:04Z. The failed mailbox receipt remains needs_input and is not represented as connected. No automatic retry of its discarded password occurred.
+
+The disposable test container was removed after verifying its exact name, image and ownership label. No production merge or flag activation occurred. The next required proof is one new owner-submitted encrypted credential envelope and actual SMTP+IMAP success plus confirmed local storage.

@@ -4,7 +4,7 @@ import urllib.request
 import urllib.error
 from urllib.parse import urlsplit
 SERVER_CODES={'NOT_FOUND','FENCED','STOPPED','INVALID_BODY','UNAUTHORIZED','REVISION_CONFLICT','UNAVAILABLE'}
-SALES_ENDPOINTS={'worker':'/api/sales/worker','host':'/api/sales/host','mailbox':'/api/sales/mailbox/host'}
+SALES_ENDPOINTS={'worker':'/api/sales/worker','host':'/api/sales/host','mailbox':'/api/sales/mailbox/host','inbox':'/api/sales/inbox/host'}
 class ProtocolError(Exception):
     def __init__(self,code):
         super().__init__(code);self.code=code if code in SERVER_CODES else None

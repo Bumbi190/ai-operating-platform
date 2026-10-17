@@ -86,3 +86,12 @@ class ManagedTests(unittest.TestCase):
  def test_journal_refuses_cross_project_or_corruption(self):
   self.path.write_text('{"projectId":"other"}')
   with self.assertRaises(ConnectionUnavailable):self.connection().ensure_worker_token(NOW)
+
+class InboxIdentityTests(unittest.TestCase):
+ setUp=ManagedTests.setUp
+ connection=ManagedTests.connection
+ def test_inbox_client_reuses_manager_identity_and_fixed_purpose(self):
+  self.connection().ensure_worker_token(NOW);seen=[]
+  def factory(origin,token,purpose):seen.append((origin,token,purpose));return object()
+  c=ManagedConnection(self.config,self.store,Journal(self.path),factory);c.inbox_client()
+  state=Journal(self.path).load();self.assertEqual(seen,[(self.config['origin'],self.store.read(state['managerRef']),'inbox')])

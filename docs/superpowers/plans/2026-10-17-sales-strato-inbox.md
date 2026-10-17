@@ -88,12 +88,12 @@ Skapa sammanhållna `apps/web/lib/sales/inbox/{types,validate,store,api,host-api
 
 **Interfaces:** `ManagedConnection.inbox_client()` använder samma manageridentitet med fast purpose inbox -> `/api/sales/inbox/host`. `sync_inbox_once(client,store,mailbox_journal,sync_journal,reader)->SyncResult`; en stoppbar bakgrundscykel per SingleInstance-host.
 
-- [ ] Skriv RED för avbrott före/efter commit, förlorat kvitto, ny mailbox/config under läsning, parallell host, hostpaus samt utgången claim. Checkpointjournalen får inte innehålla mejltext eller lösenord.
-- [ ] Kör Python-/host-API-tester för avsedd RED.
-- [ ] Kör synk högst var 60:e sekund i en egen begränsad hosttråd så befintliga host-heartbeats inte blockeras av IMAP. Ingen synk före serverauktoriserad enabled config. Läsning fungerar även om Claude doctor är blocked; projekt/hostpaus stoppar läsningen.
-- [ ] Textbegäranden för UID som redan ligger bakom cursor hanteras i selected_text-batcher med oförändrad scannedThroughUid. Servern verifierar att varje text UID är vald av ägaren eller omfattas av konfigurationens valda kontaktadresser; okänd text nekas. Ändrat kontakturval eller tidigare since höjer configversionen och startar begränsad omläsning med befintlig deduplicering. Journalför enbart pending batch-ID/ref/range/hash. Efter omstart: fråga read_batch_receipt innan annan läsning. Accepterat kvitto avslutar pending; ej accepterad batch kan läsas om eftersom servercursor ännu inte flyttats. Vid motstridigt kvitto: reconciling, inget blindt framflyttande.
-- [ ] Använd endast aktiv lokal credential-ref när mailboxgeneration matchar. Ett faktiskt AUTH-fel sätter needs_input och stoppar nya authförsök tills ägaren återupptar; tillfälliga transportfel får begränsad backoff 60/120/300 s. Fel är fasta koder utan råa exception-/serversvar.
-- [ ] Kör GREEN, befintliga lifecycle-/fencing-/transporttester och hela Python-sviten. Commit `feat(sales): synchronize authorized inbox batches with crash recovery`.
+- [x] Skriv RED för avbrott före/efter commit, förlorat kvitto, ny mailbox/config under läsning, parallell host, hostpaus samt utgången claim. Checkpointjournalen får inte innehålla mejltext eller lösenord.
+- [x] Kör Python-/host-API-tester för avsedd RED.
+- [x] Kör synk högst var 60:e sekund i en egen begränsad hosttråd så befintliga host-heartbeats inte blockeras av IMAP. Ingen synk före serverauktoriserad enabled config. Läsning fungerar även om Claude doctor är blocked; projekt/hostpaus stoppar läsningen.
+- [x] Textbegäranden för UID som redan ligger bakom cursor hanteras i selected_text-batcher med oförändrad scannedThroughUid. Servern verifierar att varje text UID är vald av ägaren eller omfattas av konfigurationens valda kontaktadresser; okänd text nekas. Ändrat kontakturval eller tidigare since höjer configversionen och startar begränsad omläsning med befintlig deduplicering. Journalför enbart pending batch-ID/ref/range/hash. Efter omstart: fråga read_batch_receipt innan annan läsning. Accepterat kvitto avslutar pending; ej accepterad batch kan läsas om eftersom servercursor ännu inte flyttats. Vid motstridigt kvitto: reconciling, inget blindt framflyttande.
+- [x] Använd endast aktiv lokal credential-ref när mailboxgeneration matchar. Ett faktiskt AUTH-fel sätter needs_input och stoppar nya authförsök tills ägaren återupptar; tillfälliga transportfel får begränsad backoff 60/120/300 s. Fel är fasta koder utan råa exception-/serversvar.
+- [x] Kör GREEN, befintliga lifecycle-/fencing-/transporttester och hela Python-sviten. Commit `feat(sales): synchronize authorized inbox batches with crash recovery`.
 
 ### Task4: Ägarvy och Atlas läser sparat underlag
 

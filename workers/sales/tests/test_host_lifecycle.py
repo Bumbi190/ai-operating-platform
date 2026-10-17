@@ -1,7 +1,7 @@
 import hashlib,json,tempfile,threading,unittest
 from pathlib import Path
 from unittest.mock import Mock
-from workers.sales.host import verify_installation,verify_launch_root,host_loop,HostBlocked
+from workers.sales.host import verify_installation,verify_launch_root,host_loop,inbox_background,HostBlocked
 from workers.sales.journal import Journal,SingleInstance
 class HostTests(unittest.TestCase):
  def setUp(self):
@@ -65,3 +65,18 @@ class HostTests(unittest.TestCase):
   with SingleInstance(self.root/'host.lock'):
    with self.assertRaises(Exception):
     with SingleInstance(self.root/'host.lock'):pass
+
+class InboxBackgroundTests(unittest.TestCase):
+ def test_slow_imap_does_not_block_cli_blocked_host_heartbeat(self):
+  entered=threading.Event();release=threading.Event();stop=threading.Event();done=threading.Event()
+  def sync():
+   entered.set();release.wait(2)
+   from workers.sales.mailbox.inbox_sync import SyncResult
+   return SyncResult('IDLE')
+  connection=Mock();connection.poll_status.return_value={'desiredState':'running','executionPaused':False}
+  with tempfile.TemporaryDirectory() as directory:
+   with inbox_background(sync,stop):
+    self.assertTrue(entered.wait(1))
+    host_loop(connection,lambda _:Mock(),lambda:Mock(),lambda:{'ready':False},Journal(Path(directory)/'dispatch.json'),stop,wait_fn=lambda _:stop.set())
+    connection.report_status.assert_called_with('blocked');release.set()
+  self.assertTrue(stop.is_set())

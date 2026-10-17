@@ -1,5 +1,6 @@
 """Pinned, single-user worker lifecycle. Never resume an uncertain model dispatch."""
 import hashlib,json,os,re,threading
+from contextlib import contextmanager
 from pathlib import Path,PurePosixPath
 from .journal import Journal,SingleInstance
 from .managed_connection import ManagedConnection
@@ -51,6 +52,16 @@ def host_loop(connection,client_factory,adapter_factory,doctor_fn,dispatch_journ
    pass
   wait_fn(15)
 
+@contextmanager
+def inbox_background(cycle,stop):
+ from .mailbox.inbox_sync import run_inbox_loop
+ thread=threading.Thread(target=run_inbox_loop,args=(cycle,stop),name='sales-inbox',daemon=True)
+ thread.start()
+ try:yield thread
+ finally:
+  stop.set();thread.join(180)
+  if thread.is_alive():raise HostBlocked('INBOX_SHUTDOWN_TIMEOUT')
+
 def main(project):
  base=safe_path(Path(os.environ['LOCALAPPDATA'])/'OmniraSales'/'connections');config=json.loads(safe_path(base/(project+'.json')).read_text(encoding='utf-8'))
  if config.get('projectId')!=project:raise HostBlocked('PROJECT_MISMATCH')
@@ -63,11 +74,15 @@ def main(project):
  else:
   factory=lambda origin,token,purpose:SalesProtocolClient(origin,token,purpose)
  store=CredentialStore();connection=ManagedConnection(config,store,Journal(state/'connection.json'),factory)
- mailbox_cycle=None
+ mailbox_cycle=None;inbox_cycle=None
  if config.get('mailboxEnabled') is True:
   from .mailbox.crypto import MailboxCrypto
   from .mailbox.setup import process_mailbox_setup
-  crypto=MailboxCrypto(store,connection_key(config['origin'],project)+'/strato-key',config['node']);mailbox_journal=Journal(state/'mailbox.json')
+  crypto=MailboxCrypto(store,config.get('mailboxKeyRef') or connection_key(config['origin'],project)+'/strato-key',config['node']);mailbox_journal=Journal(state/'mailbox.json')
+  from .mailbox.inbox_sync import sync_inbox_once
+  def inbox_cycle():
+   verify()
+   return sync_inbox_once(connection.inbox_client(),store,mailbox_journal,Journal(state/'inbox.json'))
   def mailbox_cycle(current):
    client=current.mailbox_client()
    if not (mailbox_journal.load() or {}).get('pending'):
@@ -75,4 +90,8 @@ def main(project):
    process_mailbox_setup(client,crypto,store,mailbox_journal,diagnostic=lambda value:Journal(state/'mailbox-diagnostic.json').save(value))
  stop=threading.Event()
  with SingleInstance(state/'host.lock'):
-  host_loop(connection,lambda token:factory(config['origin'],token,'worker'),lambda:HarveyDraftAdapter(SafeClaudeTextRuntime('')),doctor,Journal(state/'dispatch.json'),stop,verify_fn=verify,mailbox_cycle=mailbox_cycle)
+  def run_host():
+   host_loop(connection,lambda token:factory(config['origin'],token,'worker'),lambda:HarveyDraftAdapter(SafeClaudeTextRuntime('')),doctor,Journal(state/'dispatch.json'),stop,verify_fn=verify,mailbox_cycle=mailbox_cycle)
+  if inbox_cycle is None:run_host()
+  else:
+   with inbox_background(inbox_cycle,stop):run_host()

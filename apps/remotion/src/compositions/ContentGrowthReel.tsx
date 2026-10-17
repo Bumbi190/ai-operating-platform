@@ -35,8 +35,8 @@ const tween = (frame: number, a: number, b: number, x: number, y: number) =>
   interpolate(frame, [a, b], [x, y], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
 
 export function ContentGrowthReel({ brand, imageUrls = [] }: ContentGrowthReelProps) {
-  if (!brand) throw new Error('Content Growth Lab requires an explicit project brand')
   const frame = useCurrentFrame()
+  if (!brand) throw new Error('Content Growth Lab requires an explicit project brand')
   const p = PRESETS[brand]
   const family = brand === 'familje-stunden'
   // Crisp scene cuts: each of the three sequences owns the full frame.

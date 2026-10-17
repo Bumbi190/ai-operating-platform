@@ -2,6 +2,7 @@
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
+import { INBOX_RECEIPT_EVENT } from '@/lib/atlas/project-analytics/handlarborsen-inbox-summary-client'
 import type { CompetitorInboxLoad, InboxAudience } from '@/lib/atlas/project-analytics/handlarborsen-candidate-inbox-service'
 
 const links: Record<InboxAudience,string> = {
@@ -56,6 +57,7 @@ function ActiveInbox({ inbox,mode }: {
       setNotice(status==='updated' ? 'Din läskvittens sparades.'
         : status==='unchanged' ? 'Lässtatusen var redan sparad.'
         : 'Resultatet kunde inte verifieras.')
+      if (status==='updated' || status==='unchanged') window.dispatchEvent(new Event(INBOX_RECEIPT_EVENT))
       router.refresh()
     } catch {
       setNotice('Nätverksfel. Kontrollera inkorgen innan du försöker igen.')

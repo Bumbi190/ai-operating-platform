@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { AtlasInboxNotice } from './AtlasInboxNotice'
 import { Menu } from 'lucide-react'
 import { OmniraMark } from '@/components/platform/OmniraLogo'
 import { vnextNavItemsFor } from '@/lib/nav/vnext-nav'
@@ -28,6 +29,8 @@ export function AtlasMobileNav() {
         <OmniraMark size={28} />
         <span>OMNIRA</span>
       </Link>
+      <div style={{display:'flex',alignItems:'center',gap:8}}>
+      <AtlasInboxNotice />
       <details className={styles.mobileMenu}>
         <summary aria-label="Öppna huvudnavigation">
           <Menu size={19} />
@@ -37,6 +40,7 @@ export function AtlasMobileNav() {
           {PRIMARY_LINKS.map((item) => <Link key={item.id} href={item.href}>{item.label}</Link>)}
         </nav>
       </details>
+      </div>
     </header>
   )
 }

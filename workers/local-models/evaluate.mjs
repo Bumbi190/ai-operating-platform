@@ -31,7 +31,7 @@ export async function runEvaluation({candidateId,snapshot,runtimeDir,client=crea
     return outcome;
   };
   // Cold result and per-task warmups are explicitly excluded from quality/latency samples.
-  report.overhead.push({kind:'cold_start',outcome:await run(fixtures[0],'cold_start')});
+  report.overhead.push({kind:'cold_start',caseId:'s04',outcome:await run(fixtures.find(f=>f.caseId==='s04'),'cold_start')});
   for(const type of ['classify','extract','summarize']) {
     const fs=fixtures.filter(f=>f.job.taskType===type);
     if(!stopped)report.overhead.push({kind:'warmup_'+type,outcome:await run(fs[0],'warmup')});

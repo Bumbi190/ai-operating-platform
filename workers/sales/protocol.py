@@ -7,10 +7,11 @@ class ProtocolError(Exception):pass
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self,*args,**kwargs):raise ProtocolError('REDIRECT_REFUSED')
 class SalesProtocolClient:
-    def __init__(self,origin,token):
+    def __init__(self,origin,token,purpose="worker"):
         u=urlsplit(origin)
         if u.scheme!='https' or not u.hostname or u.username or u.password or u.query or u.fragment or u.path not in ('','/') or not re.fullmatch(r'[A-Za-z0-9_-]{43}',token):raise ProtocolError('INVALID_CONNECTION')
-        self.url=origin.rstrip('/')+'/api/sales/worker';self._token=token
+        if purpose not in ('worker','host'):raise ProtocolError('INVALID_PURPOSE')
+        self.url=origin.rstrip('/')+'/api/sales/'+purpose;self._token=token
         self.opener=urllib.request.build_opener(urllib.request.ProxyHandler({}),_NoRedirect())
     def post(self,operation,**values):
         data=json.dumps({'operation':operation,**values},ensure_ascii=False).encode('utf-8')

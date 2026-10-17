@@ -1,0 +1,4 @@
+// Real components, isolated HTTP fixture; no auth bypass in production routes.
+import {createServer} from 'vite';import {resolve} from 'node:path';
+const root=process.cwd(),server=await createServer({root,configFile:false,appType:'custom',esbuild:{jsx:'automatic'},resolve:{alias:[{find:'next/navigation',replacement:resolve(root,'e2e/local-text-navigation.ts')},{find:'@',replacement:root}]},server:{host:'127.0.0.1',port:54402,strictPort:true}});
+server.middlewares.use(async(req,res,next)=>{if(req.method==='GET'&&['/receipt','/review'].includes(new URL(req.url,'http://localhost').pathname)){res.setHeader('content-type','text/html');res.end(await server.transformIndexHtml(req.url,'<!doctype html><html lang="sv"><head><meta charset="utf-8"></head><body><main id="root"></main><script type="module" src="/e2e/local-text-entry.tsx"></script></body></html>'));return}next()});await server.listen();console.log('Local text component fixture127.0.0.1:54402');

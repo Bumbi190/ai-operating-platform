@@ -1,0 +1,66 @@
+{
+  "scope": "isolated_synthetic_full_continuation",
+  "evidence": {
+    "scope": "isolated_synthetic_full_continuation",
+    "database": "local_text_task12_e2e_reviewed",
+    "jobId": "1086beb6-3ada-4525-989d-a340978506de",
+    "state": "needs_input",
+    "attemptId": "79d4e9a5-0cb2-4b36-a985-a13e3e9630cd",
+    "inputHash": "a6f833ad996f48f0ac1cf3a09c19b58a5ace540152486097e66e49f1f108c339",
+    "resultHash": "65b58ac43939ff6ec3bfc6e2e92f545a42c80e45651cc8d2b0ec14137f22738d",
+    "ownerId": "c534e96e-e887-41e6-99db-4a51293d2ea2",
+    "projectId": "2aaaf433-68cd-4d25-8492-02d10faced1e",
+    "conversationId": "5ce55925-b088-4bf4-937e-3f0cd5982791",
+    "approvalId": "b9b423bc-4b8e-4e86-adeb-fa0c7af418c9",
+    "task": {
+      "kind": "classify",
+      "text": "Jag behöver hjälp att återställa mitt lösenord.",
+      "labels": [
+        "support",
+        "annat"
+      ]
+    },
+    "result": {
+      "label": "support"
+    },
+    "deviceId": "1f138bc6-5002-4906-8c0c-d36ecc832f7b",
+    "modelDigest": "sha256:56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+    "adapterHash": "d3147751141553a3227e3aed020e015d9621938185e9a3786b53aaec463346e3",
+    "configurationHash": "264e1208374160a233aa9126a8d175e640ff0b2e209283da7b7499efbe1384e4",
+    "cloudCalls": 0,
+    "stdout": "{\"kind\":\"completed\",\"reasonCode\":null,\"jobId\":\"1086beb6-3ada-4525-989d-a340978506de\",\"attemptId\":\"79d4e9a5-0cb2-4b36-a985-a13e3e9630cd\"}\n{\"status\":\"stopped\",\"version\":1}\n"
+  },
+  "independentReview": {
+    "version": 1,
+    "scope": "isolated_synthetic_exact_pair_semantic_review",
+    "jobId": "1086beb6-3ada-4525-989d-a340978506de",
+    "inputHash": "a6f833ad996f48f0ac1cf3a09c19b58a5ace540152486097e66e49f1f108c339",
+    "resultHash": "65b58ac43939ff6ec3bfc6e2e92f545a42c80e45651cc8d2b0ec14137f22738d",
+    "status": "approved",
+    "reviewerAgentId": "/root/local_model_evidence_review",
+    "reviewerModelId": "session_model_unspecified",
+    "reviewRunId": "fc6e595e-dfa1-4bcf-bcb9-7bc18763fff4",
+    "reviewedAt": "2026-10-17T13:33:18.172Z",
+    "reason": "The source asks for help resetting a password. The result label support is allowed and correctly classifies this assistance request. Independently recomputed canonical task-envelope and validated-result SHA-256 hashes both match this new job evidence. This is a fresh exact-pair semantic decision bound to the current adapter, not a transferred prior approval. Review does not independently certify the entire execution pipeline, authorize production admission, or approve owner state transitions.",
+    "evidenceSha256": "3a679cc8933bb5c3fd8ac32fb8d9aa426e196248284ac1940956bbcd4871b41a",
+    "evidenceScope": "isolated_synthetic_full_continuation",
+    "attemptId": "79d4e9a5-0cb2-4b36-a985-a13e3e9630cd",
+    "modelDigest": "sha256:56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+    "adapterHash": "d3147751141553a3227e3aed020e015d9621938185e9a3786b53aaec463346e3",
+    "configurationHash": "264e1208374160a233aa9126a8d175e640ff0b2e209283da7b7499efbe1384e4",
+    "provenance": {
+      "source": "collaboration",
+      "implementationAgentId": "/root",
+      "previousExactPairApprovalReused": false,
+      "productDatabaseOrProviderMutationsPerformed": false
+    }
+  },
+  "phase2": {
+    "ownerApproval": "passed",
+    "durableReceipt": "passed",
+    "sourceExpiry": "passed",
+    "physicalLocalAttempts": 1,
+    "cloudCalls": 0,
+    "costEvents": 0
+  }
+}

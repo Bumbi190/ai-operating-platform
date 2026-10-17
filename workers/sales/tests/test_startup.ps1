@@ -15,6 +15,8 @@ try {
  if($xml.Task.Settings.MultipleInstancesPolicy -ne 'IgnoreNew' -or $xml.Task.Settings.RestartOnFailure.Count -ne '3'){throw 'Wrong restart policy'}
  if($xml.Task.Actions.Exec.WorkingDirectory -ne $root){throw 'XML escaping broke path'}
  Assert-SalesStartupOwnership -ExistingXml $plan.Xml -Plan $plan
+ $scheduler=New-Object -ComObject 'Schedule.Service';$scheduler.Connect();$definition=$scheduler.NewTask(0);$definition.XmlText=$plan.Xml
+ Assert-SalesStartupOwnership -ExistingXml $definition.XmlText -Plan $plan
  $foreign=$plan.Xml.Replace('python.exe','other.exe');$rejected=$false
  try{Assert-SalesStartupOwnership -ExistingXml $foreign -Plan $plan}catch{$rejected=$true}
  if(-not $rejected){throw 'Foreign action accepted'}

@@ -47,6 +47,10 @@ begin
  perform pg_temp.host_expect_error(format('select public.sales_worker_identity(%L)',repeat('e',64)),'P0002');
  update public.projects set owner_id=(p->>'userId')::uuid where id=(v->>'projectId')::uuid;
  perform public.sales_revoke_worker(p,v);
+ if (select count(*) from public.sales_host_events where worker_id=(v->>'workerId')::uuid and action='revoke')<>1 then raise exception 'TEST FAILED: revocation audit missing';end if;
+ perform pg_temp.host_expect_error('update public.sales_host_events set action=action','42501');
+ perform pg_temp.host_expect_error('delete from public.sales_host_events','42501');
+ perform pg_temp.host_expect_error('truncate public.sales_host_events','42501');
  perform pg_temp.host_expect_error(format('select public.sales_host_identity(%L)',repeat('d',64)),'P0002');
  perform pg_temp.host_expect_error(format('select public.sales_host_poll(%L,%L)',repeat('d',64),'{}'),'P0002');
  perform pg_temp.host_expect_error(format('select public.sales_host_authorize(%L,%L)',p,v),'P0002');

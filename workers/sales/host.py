@@ -53,7 +53,12 @@ def main(project):
  root=Path(config['installationRoot']);verify=lambda:verify_installation(root,config['manifestSha256'])
  verify()
  state=base/project;state.mkdir(parents=True,exist_ok=True);safe_path(state)
- connection=ManagedConnection(config,CredentialStore(),Journal(state/'connection.json'))
+ if config.get('transport')=='vercel_preview':
+  from .preview_transport import ProtectedPreviewClient
+  factory=lambda origin,token,purpose:ProtectedPreviewClient(config,token,purpose)
+ else:
+  factory=lambda origin,token,purpose:SalesProtocolClient(origin,token,purpose)
+ connection=ManagedConnection(config,CredentialStore(),Journal(state/'connection.json'),factory)
  stop=threading.Event()
  with SingleInstance(state/'host.lock'):
-  host_loop(connection,lambda token:SalesProtocolClient(config['origin'],token),lambda:HarveyDraftAdapter(SafeClaudeTextRuntime('')),doctor,Journal(state/'dispatch.json'),stop,verify_fn=verify)
+  host_loop(connection,lambda token:factory(config['origin'],token,'worker'),lambda:HarveyDraftAdapter(SafeClaudeTextRuntime('')),doctor,Journal(state/'dispatch.json'),stop,verify_fn=verify)

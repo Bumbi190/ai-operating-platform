@@ -50,6 +50,6 @@ try{
  const requests=await Promise.all([enqueue('race-a'),enqueue('race-b')]);if(requests.filter(x=>x.code===0).length!==1||requests.filter(x=>x.err.includes('INITIAL_JOB_ALREADY_EXISTS')).length!==1)throw Error('TEST FAILED: concurrent initial requests both accepted')
  console.log('PASS: concurrent different-key requests produce exactly one initial mailbox job')
  console.log('PASS: real PostgreSQL sales transactions, concurrent claim and canonical approval integration')
- const integration=spawnSync(process.execPath,[resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/qa/sales-integration.test.ts','--maxWorkers=1','--minWorkers=1'],{cwd:resolve(root,'apps/web'),env:{...process.env,SALES_FIXTURE_DATABASE:db},encoding:'utf8',maxBuffer:2e6})
+ const integration=spawnSync(process.execPath,[resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/qa/sales-integration.test.ts','lib/qa/sales-host-integration.test.ts','--maxWorkers=1','--minWorkers=1'],{cwd:resolve(root,'apps/web'),env:{...process.env,SALES_FIXTURE_DATABASE:db},encoding:'utf8',maxBuffer:2e6})
  console.log(integration.stdout);if(integration.status!==0)throw Error(integration.stderr||'Sales slice integration failed')
 }finally{docker(['exec',container,'dropdb','-U','postgres',db])}

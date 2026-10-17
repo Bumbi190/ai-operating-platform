@@ -38,9 +38,11 @@ export function ContentGrowthReel({ brand, imageUrls = [] }: ContentGrowthReelPr
   const frame = useCurrentFrame()
   const p = PRESETS[brand]
   const family = brand === 'familje-stunden'
-  const start = tween(frame, 75, 100, 1, 0)
-  const middle = tween(frame, 90, 110, 0, 1) * tween(frame, 245, 265, 1, 0)
-  const finish = tween(frame, 255, 278, 0, 1)
+  // Crisp scene cuts: each of the three sequences owns the full frame.
+  // Cross-fading both layers down at once created an empty-looking 3s seam.
+  const start = frame < 90 ? 1 : 0
+  const middle = frame >= 90 && frame < 255 ? 1 : 0
+  const finish = frame >= 255 ? 1 : 0
   const float = Math.sin(frame / 12) * 17
   const outer = tween(frame, 0, 360, 0.96, 1.28)
   return (

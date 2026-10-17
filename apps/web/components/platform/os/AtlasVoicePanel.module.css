@@ -33,3 +33,12 @@
 @media (max-width: 767px) { .panel, .dock { right: 12px; bottom: max(16px, env(safe-area-inset-bottom)); } .panel { max-height: min(640px, calc(100dvh - 32px)); } }
 
 @media (max-height: 420px) { .panel { max-height: calc(100dvh - 24px); bottom: 12px; } .header { padding: 6px 12px; } .links, .hint, .settings { display: none; } .body { min-height: 0; } .messages { max-height: 80px; } }
+
+@media (max-height: 420px) {
+  .controls { display: none; }
+  .body { padding: 8px 12px; }
+  .composer { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .composer label { display: none; }
+  .composer textarea { height: 44px; min-height: 44px; resize: none; margin: 0; }
+  .composer button { min-height: 36px; font-size: 12px; padding: 4px 10px; }
+}

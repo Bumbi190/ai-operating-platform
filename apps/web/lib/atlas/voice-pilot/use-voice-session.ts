@@ -11,16 +11,17 @@ import { createClient } from '@/lib/supabase/client'
 
 type Timing = { quietMs: number | null; textMs: number | null; audioMs: number | null }
 
-export function useAtlasVoiceSession({ enabled = true, streamingAvailable = false, live = false, conversation: shared, beforeStart, onEvent, projectId = null }: {
+export function useAtlasVoiceSession({ enabled = true, streamingAvailable = false, live = false, conversation: shared, beforeStart, onEvent, onDraftCaptureEnd, projectId = null }: {
   enabled?: boolean; streamingAvailable?: boolean; live?: boolean
   conversation?: AtlasConversationController; beforeStart?(): void
   onEvent?(event: StreamEvent, conversationId: string): void
+  onDraftCaptureEnd?(notice: string | null): void
   projectId?: string | null
 } = {}) {
   const [local] = useState(() => new AtlasConversationController())
   const conversation = shared ?? local
-  const latest = useRef({ beforeStart, onEvent, projectId })
-  latest.current = { beforeStart, onEvent, projectId }
+  const latest = useRef({ beforeStart, onEvent, onDraftCaptureEnd, projectId })
+  latest.current = { beforeStart, onEvent, onDraftCaptureEnd, projectId }
   const openingRef = useRef(false), micRef = useRef(false), draftReceiver = useRef<((text: string) => void) | null>(null), voicesReady = useRef<Promise<boolean>>(Promise.resolve(false))
   const snapshot = useSyncExternalStore(conversation.subscribe, conversation.snapshot, conversation.snapshot)
   const [voices, setVoices] = useState<{ key: AtlasSwedishVoice; label: string }[]>([])
@@ -71,6 +72,7 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
   }
   function stopAll() {
     queuedVoice.current = null
+    if (draftReceiver.current) latest.current.onDraftCaptureEnd?.('Mikrofoninspelningen avslutades. Du kan starta den igen.')
     lifetime.current++; openingRef.current = false; micRef.current = false; draftReceiver.current = null; stopSpeech(); capture.current?.stop(); capture.current = null
     if (mounted.current) { setMic(false); setOpening(false); setListening(false); setTranscribing(false) }
   }
@@ -103,14 +105,27 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversation, enabled])
 
-  const previousConversation = useRef<string | null>(null)
+  const previousConversation = useRef(snapshot.id), createdConversation = useRef<string | null>(null)
+  useEffect(() => conversation.subscribeCreated(id => { createdConversation.current = id }), [conversation])
   useEffect(() => {
-    if (previousConversation.current && previousConversation.current !== snapshot.id) {
+    if (!enabled) return
+    return conversation.subscribeSettled(event => {
+      if (!event.current || event.conversationId !== conversation.snapshot().id) return
+      if (!event.ok) { queuedVoice.current = null; return }
+      // A hook-owned turn drains in its own finally. Full-chat/build producers settle here.
+      if (!sendingRef.current) resumeQueuedVoice(lifetime.current, true)
+    })
+    // refs guard the current device lifetime and draft revision.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversation, enabled])
+  useEffect(() => {
+    const createdHere = previousConversation.current === null && createdConversation.current === snapshot.id
+    if (previousConversation.current !== snapshot.id && !createdHere) {
       turnGeneration.current++; sendingRef.current = false; setSending(false)
       stopAll(); heldDraft.current = ''; writeDraft('', 'text'); setReply(''); setNotice('')
     }
-    previousConversation.current = snapshot.id
-    // Switching threads retires input rather than sending it into another project.
+    previousConversation.current = snapshot.id; createdConversation.current = null
+    // Explicit thread selection retires input, including null-to-existing activation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot.id])
 
@@ -146,14 +161,14 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
       endpoint: quietMs => { lastQuietMs.current = quietMs },
       listening: value => { if (mounted.current && token === lifetime.current) setListening(value) },
       processing: value => { if (mounted.current && token === lifetime.current) setTranscribing(value) },
-      active: value => { if (mounted.current && token === lifetime.current) { setMic(value); micRef.current = value; openingRef.current = false; setOpening(false) } },
-      notice: message => { if (mounted.current && token === lifetime.current) { openingRef.current = false; setOpening(false); setNotice(message) } },
+      active: value => { if (mounted.current && token === lifetime.current) { setMic(value); micRef.current = value; openingRef.current = false; setOpening(false); if (!value && draftReceiver.current) latest.current.onDraftCaptureEnd?.('Mikrofoninspelningen avslutades. Du kan starta den igen.') } },
+      notice: message => { if (mounted.current && token === lifetime.current) { if (draftReceiver.current) { draftReceiver.current = null; latest.current.onDraftCaptureEnd?.(message); stopAll() } openingRef.current = false; setOpening(false); setNotice(message) } },
       draft: text => { if (mounted.current && token === lifetime.current) writeDraft([heldDraft.current, text].filter(Boolean).join(' '), 'voice') },
       interrupt: () => { if (mounted.current && token === lifetime.current) stopSpeech() },
       receive: text => {
         if (!mounted.current || token !== lifetime.current) return
         const receiver = draftReceiver.current
-        if (receiver) { stopAll(); receiver(text); return }
+        if (receiver) { draftReceiver.current = null; stopAll(); receiver(text); return }
         const combined = [heldDraft.current, text].filter(Boolean).join(' ')
         writeDraft(combined, 'voice')
         if (sendingRef.current || conversation.snapshot().pending) {
@@ -238,8 +253,8 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
   return { snapshot, voices, voice, setVoice, inputMode, setInputMode, measurements, pauseMs, setPauseMs, playbackMode, setPlaybackMode,
     outputBusy, listening, transcribing, timing, mic, opening, speaking, draft, reply, notice, sending, phase,
     active: mic || opening || outputBusy, sample,
-    toggleMic: () => { if (micRef.current || openingRef.current) stopAll(); else void startMic() }, startMic: () => { draftReceiver.current = null; void startMic() },
-    captureDraft: (receive: (text: string) => void) => { stopAll(); draftReceiver.current = receive; void startMic(); return stopAll },
+    toggleMic: () => { if (micRef.current || openingRef.current) stopAll(); else void startMic() }, startMic: () => { if (draftReceiver.current) stopAll(); void startMic() },
+    captureDraft: (receive: (text: string) => void) => { stopAll(); latest.current.onDraftCaptureEnd?.(null); const token = lifetime.current; draftReceiver.current = receive; void startMic(); return () => { if (token === lifetime.current) stopAll() } },
     stopAll, interruptForCorrection, finish: () => capture.current?.finish(),
     editDraft: (text: string) => { queuedVoice.current = null; heldDraft.current = text; capture.current?.discard(); writeDraft(text, 'text') },
     submitDraft: () => submit(draft, draftSource.current), submitText: (text: string) => submit(text, 'text'),

@@ -108,14 +108,14 @@ vi.mock('@anthropic-ai/sdk', () => {
   return { default: FakeAnthropic }
 })
 
-async function ask(name = 'list_workflows', input: Record<string, unknown> = {}, conversationId?: string) {
+async function ask(name = 'list_workflows', input: Record<string, unknown> = {}, conversationId?: string,inputSource?:'voice') {
   TOOL_NAME = name; TOOL_INPUT = input
   streamCall = 0; TOOL_RESULTS = []; WORKFLOW_OPS = []
   vi.resetModules()
   const { POST } = await import('@/app/api/chat/route')
   const res: any = await POST(new Request('http://localhost/api/chat', {
     method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ messages: [{ role: 'user', content: 'lista mina workflows' }], conversation_id: conversationId }),
+    body: JSON.stringify({ messages: [{ role: 'user', content: 'lista mina workflows' }], conversation_id: conversationId,...(inputSource?{inputSource,voice:true}:{}) }),
   }) as any)
   if (res?.body) await new Response(res.body).text()
   await new Promise(r => setTimeout(r, 30))
@@ -306,4 +306,12 @@ describe('Atlas design knowledge through authenticated chat', () => {
     expect(streamCall).toBe(0)
     expect(TOOL_RESULTS).toEqual([])
   })
+})
+
+it('an ordinary voice question makes zero test-data integration calls',async()=>{
+ const integration=vi.fn()
+ vi.doMock('@/lib/atlas/handlarborsen-test-data/atlas-tools',async()=>({...await vi.importActual('@/lib/atlas/handlarborsen-test-data/atlas-tools'),handleCleanupTool:integration}))
+ await ask('get_current_time',{},undefined,'voice')
+ expect(integration).not.toHaveBeenCalled()
+ vi.doUnmock('@/lib/atlas/handlarborsen-test-data/atlas-tools')
 })

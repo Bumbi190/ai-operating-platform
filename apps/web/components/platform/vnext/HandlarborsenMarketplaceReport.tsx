@@ -114,7 +114,7 @@ export function HandlarborsenMarketplaceReport({
               </p>
             ) : (
               <p className={styles.noteQuiet} role="note">
-                Det finns bara en rapport. Ingen ökning eller minskning kan bedömas förrän fler rapporter har sparats.
+                {report.history.comparison.reason==='definition_changed'?'Definitionen har ändrats. Ingen ökning eller minskning beräknas över definitionsbytet.':report.history.comparison.reason==='exclusion_changed'?'Urvalet av testdata har ändrats eller kunde inte verifieras. Ingen ökning eller minskning beräknas över ändringen.':"Det finns bara en rapport. Ingen ökning eller minskning kan bedömas förrän fler rapporter har sparats."}
               </p>
             )}
             <p className={styles.noteQuiet}>
@@ -124,7 +124,7 @@ export function HandlarborsenMarketplaceReport({
             {report.history.series.length > 1 ? (
               <ol className={styles.history} aria-label="Sparade rapporter, senaste först">
                 {report.history.series.slice(0, HISTORY_ROWS).map((snapshot) => (
-                  <HistoryRow key={snapshot.snapshotDate} snapshot={snapshot} />
+                  <HistoryRow key={snapshot.snapshotDate+':'+snapshot.definitionId} snapshot={snapshot} />
                 ))}
               </ol>
             ) : null}
@@ -172,6 +172,7 @@ function HistoryRow({ snapshot }: { snapshot: ReportSnapshot }) {
     <li className={styles.historyRow}>
       <span className={styles.historyDate}>
         {snapshot.snapshotDate}
+        <span className={styles.detail}>{snapshot.definitionId==='handlarborsen-production-v2'?' · Produktion utan undanlagd testdata':' · Äldre definition'}</span>
         <span className={styles.detail}> · {COMPLETENESS_LABELS[snapshot.completeness]}</span>
       </span>
       <span className={styles.historyValues}>

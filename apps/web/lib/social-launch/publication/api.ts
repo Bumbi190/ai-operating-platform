@@ -11,7 +11,7 @@ import {publicationMediaLookup} from './store'
 import {verifyPublicationImage} from './media'
 import {PublicationError,type PublicationRequest} from './types'
 const headers={'cache-control':'private, no-store','x-content-type-options':'nosniff','referrer-policy':'no-referrer'}
-async function boundedBody(request:Request):Promise<unknown>{
+export async function boundedPublicationBody(request:Request):Promise<unknown>{
  const max=32768
  if(Number(request.headers.get('content-length'))>max)throw new PublicationError('INVALID_BODY')
  const reader=request.body?.getReader();if(!reader)throw new PublicationError('INVALID_BODY')
@@ -34,7 +34,7 @@ export async function socialPublicationsApi(request:Request):Promise<Response>{
    if(!isOperator){result.canRequest=false;result.blockers.push('operator_required')}
   }else{
    if(!isOperator)return Response.json({code:'OPERATOR_REQUIRED'},{status:403,headers})
-   const value=await boundedBody(request)
+   const value=await boundedPublicationBody(request)
    try{contentFields(value,['operation','projectId','postId','revisionId','sha256','decisionId','bindingId','idempotencyKey','confirmed','publicationId'])}catch{throw new PublicationError('INVALID_BODY')}
    const {operation,...input}=value
    if(operation==='publish')result=await dispatchPublication(db,a,input as PublicationRequest)

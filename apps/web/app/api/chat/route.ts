@@ -54,6 +54,7 @@ import {WebsiteBuildError} from '@/lib/website-build/store'
 import {assertSameOrigin} from '@/lib/atlas/executive/http'
 import type {PlanRevisionRef} from '@/lib/website-build/planning/types'
 import { WEBSITE_BUILD_TOOLS, WEBSITE_BUILD_GUIDE, WEBSITE_BUILD_TOOL_NAMES, handleWebsiteBuildTool } from '@/lib/website-build/atlas-tools'
+import {SOCIAL_SCHEDULE_TOOLS,SOCIAL_SCHEDULE_TOOL_NAMES,handleSocialScheduleTool} from '@/lib/social-launch/scheduling/atlas-tools'
 import {SOCIAL_PUBLICATION_TOOLS,SOCIAL_PUBLICATION_TOOL_NAMES,handleSocialPublicationTool} from '@/lib/social-launch/publication/atlas-tools'
 import {SOCIAL_PROFILE_TOOLS,SOCIAL_PROFILE_TOOL_NAMES,SOCIAL_PROFILE_GUIDE,handleSocialProfileTool} from '@/lib/social-launch/profile/atlas-tools'
 import {SOCIAL_CONTENT_TOOLS,SOCIAL_CONTENT_TOOL_NAMES,SOCIAL_CONTENT_GUIDE,handleSocialContentTool} from '@/lib/social-launch/content/atlas-tools'
@@ -67,6 +68,8 @@ import { recordAction, buildActionMemory } from '@/lib/atlas/action-memory'
 // CL Commit 5 (Stage 0, shadow): assembler-vs-legacy diff instrumentation.
 // Flag-gated (ATLAS_CTX_ASSEMBLER=shadow), fire-and-forget, never in the live path.
 import { isContextShadowEnabled, runContextShadow } from '@/lib/atlas/context/shadow'
+import {CLEANUP_TOOLS,CLEANUP_TOOL_NAMES,CLEANUP_GUIDE,handleCleanupTool} from '@/lib/atlas/handlarborsen-test-data/atlas-tools'
+import {decodeReviewView} from '@/lib/atlas/handlarborsen-test-data/stream-effect'
 import { buildHandlarborsenChatFacts } from '@/lib/atlas/project-analytics/handlarborsen-chat'
 import { isExplicitlyAuthorizedInternalPrincipal } from '@/lib/architecture-knowledge/policy'
 import { resolveDestination, resolveLinks, resolveProjectSlug, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
@@ -332,17 +335,20 @@ const STUDIO_TOOL_NAMES = new Set([
   ...SOCIAL_LAUNCH_TOOL_NAMES,
   ...SOCIAL_PROFILE_TOOL_NAMES,
   ...SOCIAL_PUBLICATION_TOOL_NAMES,
+  ...SOCIAL_SCHEDULE_TOOL_NAMES,
   ...SOCIAL_CONTENT_TOOL_NAMES,
   'get_current_time', 'present_links', 'navigate',
 ])
 
 const TOOLS: Anthropic.Tool[] = [
+  ...CLEANUP_TOOLS,
   ...LOCAL_TEXT_TOOLS,
   ...DESIGN_SKILL_TOOLS,
   ...WEBSITE_BUILD_TOOLS,
   ...SOCIAL_LAUNCH_TOOLS,
   ...SOCIAL_PROFILE_TOOLS,
   ...SOCIAL_PUBLICATION_TOOLS,
+  ...SOCIAL_SCHEDULE_TOOLS,
   ...SOCIAL_CONTENT_TOOLS,
   {
     // Read-only, side-effect free, and the ONLY source of a clock value. Atlas
@@ -822,7 +828,7 @@ export async function POST(request: Request) {
     systemPrompt+=renderCurrentInstant(new Date())
     if(voice)systemPrompt+=VOICE_DIRECTIVE
   } else {
-    systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE + DESIGN_SKILL_GUIDE + WEBSITE_BUILD_GUIDE + SOCIAL_LAUNCH_GUIDE + SOCIAL_PROFILE_GUIDE + SOCIAL_CONTENT_GUIDE
+    systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE + DESIGN_SKILL_GUIDE + CLEANUP_GUIDE + WEBSITE_BUILD_GUIDE + SOCIAL_LAUNCH_GUIDE + SOCIAL_PROFILE_GUIDE + SOCIAL_CONTENT_GUIDE
     if(visiblePlan)systemPrompt+='\nCURRENT REVIEWED PLAN REFERENCES: '+JSON.stringify(visiblePlan)+'; read get_website_build_plan before revising.\n'
     if(verifiedBuildContext)systemPrompt+='\nCURRENT BUILD (verified for this conversation): '+JSON.stringify(verifiedBuildContext)+'; user change requests go to submit_website_build_feedback in this session, using the actually rendered revision. Questions about status go to get_website_build. Never start a second build for a feedback request.\n'
     // UNCONDITIONAL, AND DELIBERATELY BEFORE EVERYTHING THAT CAN FAIL. The bug
@@ -1165,6 +1171,13 @@ export async function POST(request: Request) {
             }
 
             send('tool_result', { tool: toolUse.name, result })
+            if(CLEANUP_TOOL_NAMES.includes(toolUse.name)){
+              const review=decodeReviewView((result as {review?:unknown}|null)?.review),owned=await resolveOwnedConversationId();
+              if(review&&owned===review.packageView.conversationId){
+                send('handlarborsen_test_data_review',{conversationId:owned,review});
+                await saveMessage('assistant',null,{kind:'handlarborsen_test_data_review',conversationId:owned,review});
+              }
+            }
             // Typed effects come only from these authorized server tool outcomes.
             const ownedWebsiteConversation=WEBSITE_BUILD_TOOL_NAMES.includes(toolUse.name)?await resolveOwnedConversationId():null
             if(ownedWebsiteConversation&&r&&!(r as any).error&&(r as any).conversationId===ownedWebsiteConversation){
@@ -1248,6 +1261,7 @@ async function executeTool(
     return { error: 'Verktyget är inte tillgängligt i byggstudion.', denied: 'studio_tool_not_allowed' }
   }
 
+  if(CLEANUP_TOOL_NAMES.includes(name))return handleCleanupTool(name,input,ownedConversationId)
   if(LOCAL_TEXT_TOOL_NAMES.includes(name))return handleLocalTextTool(name,input,{userId,allowedProjectIds},ownedConversationId,db,inputSource)
 
   // Deterministic, read-only, no database and no network. Placed first because
@@ -1270,6 +1284,9 @@ async function executeTool(
     return handleSocialProfileTool(name,input,{userId,allowedProjectIds},ownedConversationId,db)
   }
 
+  if (SOCIAL_SCHEDULE_TOOL_NAMES.includes(name)) {
+    return handleSocialScheduleTool(name,input,{userId,allowedProjectIds},ownedConversationId,db)
+  }
   if (SOCIAL_CONTENT_TOOL_NAMES.includes(name)) {
     return handleSocialContentTool(name,input,{userId,allowedProjectIds},ownedConversationId,db)
   }

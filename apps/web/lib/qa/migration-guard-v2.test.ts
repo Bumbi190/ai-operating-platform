@@ -27,14 +27,14 @@ const GRANDFATHERED_PRESENT_IN_VERIFIED_LEDGER = [
   'migration_guard_fn',
 ]
 
-// Enforced canonical migrations that exist in the repository but are NOT yet applied to
-// production. This list is the only place a migration may be declared "not yet applied";
-// an entry is removed in the same change that records its real, operator-approved apply.
+// Historical October18 pre-apply fixture: these three migrations are now applied to
+// production under the owner-approved release; this constant only constructs historical missing-name tests.
+// Runtime checks always read the actual production ledger.
 // Empty: `handlarborsen_marketplace_snapshots` (P1B, file 20261010100000) was APPLIED to
 // production on 2026-10-10 as ledger version 20261010080307.
-// This branch adds two enforced migrations; neither has been applied. The
-// fixture below is explicitly hypothetical, and exact missing-name tests gate
-// deployment until an independently approved real apply.
+const TEST_DATA_RELEASE_MIGRATIONS: string[] = ['handlarborsen_metrics_definition','handlarborsen_test_data_integration','handlarborsen_test_data_reviews']
+// Upstream local-text migrations are already reconciled. These exact-name
+// perturbation tests still reject a synthetic ledger that omits either one.
 const LOCAL_TEXT_MIGRATIONS: string[] = ['atlas_local_text','atlas_local_text_lifecycle']
 const P1B_MIGRATION = 'handlarborsen_marketplace_snapshots'
 // P1E (guarded snapshot store). Like every enforced migration on its branch it is NOT applied
@@ -45,7 +45,7 @@ const P1E_MIGRATION = 'handlarborsen_guarded_snapshot_store'
 // The verified production history once P1E is applied: 135 rows = every enforced migration (all
 // applied) plus the grandfathered and legacy-only names. Perturbation tests start from it.
 const hypotheticalPostApplyLedger = [
-  ...repositoryState.enforcedNames,
+  ...repositoryState.enforcedNames, // Hypothetical post-apply fixture only; pending production is tested separately.
   ...GRANDFATHERED_PRESENT_IN_VERIFIED_LEDGER,
   ...LEGACY_ONLY_PRODUCTION_LEDGER_NAMES,
 ]
@@ -97,14 +97,14 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
   // NOTE ON 3B1A: these two counts describe the CANONICAL CORPUS, so they move as soon
   // as the file exists. The production APPLY is a separate fact, and it has NOT happened
   // for 3B1A — see the ledger assertion below, which is deliberately left RED.
-  it('pins policy v2 and the current 137/123/14/30 counts', () => {
+  it('pins policy v2 and the current 145/131/14/30 counts', () => {
     expect(MIGRATION_GUARD_POLICY_VERSION).toBe(2)
-    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(137)
-    expect(EXPECTED_ENFORCED_COUNT).toBe(123)
+    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(145)
+    expect(EXPECTED_ENFORCED_COUNT).toBe(131)
     expect(GRANDFATHERED_MIGRATION_NAMES).toHaveLength(14)
     expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).toHaveLength(30)
-    expect(repositoryState.sqlFiles).toHaveLength(137)
-    expect(repositoryState.enforcedNames).toHaveLength(123)
+    expect(repositoryState.sqlFiles).toHaveLength(145)
+    expect(repositoryState.enforcedNames).toHaveLength(131)
   })
 
   it('uses exact explicit names with no wildcard policy entries', () => {
@@ -143,7 +143,7 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
 describe('Migration Guard v2 — production ledger set integrity', () => {
   it('REJECTS the pre-apply synthetic history that lacks the P1B migration (drift is still caught)', () => {
     const preApply = hypotheticalPostApplyLedger.filter((name) => name !== P1B_MIGRATION && name !== P1E_MIGRATION)
-    expect(preApply).toHaveLength(158)
+    expect(preApply).toHaveLength(hypotheticalPostApplyLedger.length - 2)
     expect(repositoryState.enforcedNames).toContain(P1B_MIGRATION)
     let message = ''
     try {
@@ -157,7 +157,7 @@ describe('Migration Guard v2 — production ledger set integrity', () => {
 
   it('REJECTS the synthetic history that lacks the P1E migration until it is applied', () => {
     const preApply = hypotheticalPostApplyLedger.filter((name) => name !== P1E_MIGRATION)
-    expect(preApply).toHaveLength(159)
+    expect(preApply).toHaveLength(hypotheticalPostApplyLedger.length - 1)
     expect(repositoryState.enforcedNames).toContain(P1E_MIGRATION)
     let message = ''
     try {
@@ -265,7 +265,7 @@ describe('Migration Guard v2 — production ledger set integrity', () => {
     // P1E (`handlarborsen_guarded_snapshot_store`, file 20261010130000) takes the enforced set
     // from 97 to 98 and this fixture from 134 to 135. Not applied yet: this line records the
     // post-apply state and is true only after the operator-approved apply.
-    expect(result.appliedLedgerCount).toBe(160)
+    expect(result.appliedLedgerCount).toBe(168)
     expect(result.unknownLedgerNames).toEqual([])
     expect(result.duplicateLedgerNames).toEqual([])
   })
@@ -403,9 +403,9 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
     expect(result).toMatchObject({
       skipped: false,
       policyVersion: 2,
-      canonicalSqlCount: 137,
-      enforcedCount: 123,
-      appliedLedgerCount: 160,
+      canonicalSqlCount: 145,
+      enforcedCount: 131,
+      appliedLedgerCount: 168,
     })
   })
 })
@@ -431,3 +431,28 @@ it('requires the builder v2 migration exactly once',()=>{
 it('local text migrations remain enforced and real pre-apply ledgers fail closed',()=>{for(const name of LOCAL_TEXT_MIGRATIONS){expect(repositoryState.enforcedNames).toContain(name);expect(()=>evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger.filter(n=>n!==name),repositoryState)).toThrow(new RegExp(name))}})
 // Synthetic missing-migration proof; production was separately observed at ledger 20261017130254.
 it("rejects a synthetic ledger missing the reconciled sales migration",()=>{expect(()=>evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger.filter(n=>n!=="atlas_sales_pilot"),repositoryState)).toThrow(/atlas_sales_pilot/)})
+
+it('refuses the pre-apply ledger while Atlas metrics definition migration is pending',()=>{
+  const preApply=hypotheticalPostApplyLedger.filter(n=>!TEST_DATA_RELEASE_MIGRATIONS.includes(n))
+  expect(preApply).toHaveLength(165)
+  expect(()=>evaluateAppliedMigrationLedger(preApply,repositoryState)).toThrow(/handlarborsen_metrics_definition/)
+})
+
+it('reconciles the captured October18 ledger only after exact enforced canonical source and the three real applies',async()=>{
+ const {default:captured}=await import('./fixtures/handlarborsen-test-data/production-ledger-20261018.json')
+ expect(captured).toHaveLength(160)
+ const beforeOwnApply=[...captured,'sales_reply_preparation',...["social_publication_reconciliation","social_schedule_batches","social_schedule_checkpoint_recovery","social_schedule_review_snapshots"]]
+ const afterOwnApply=[...beforeOwnApply,...TEST_DATA_RELEASE_MIGRATIONS]
+ expect(()=>evaluateAppliedMigrationLedger(afterOwnApply,repositoryState)).not.toThrow()
+ expect(()=>evaluateAppliedMigrationLedger(beforeOwnApply,repositoryState)).toThrow(/handlarborsen_metrics_definition/)
+ expect(()=>evaluateAppliedMigrationLedger(afterOwnApply.filter(n=>n!=='sales_strato_inbox'),repositoryState)).toThrow(/sales_strato_inbox/)
+ expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain('sales_strato_inbox')
+ expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).not.toContain('sales_strato_inbox')
+})
+
+it('requires each new social scheduling and receipt migration by its exact name',()=>{
+ for(const name of ['social_publication_reconciliation','social_schedule_batches','social_schedule_checkpoint_recovery','social_schedule_review_snapshots','sales_reply_preparation']){
+  expect(repositoryState.enforcedNames).toContain(name)
+  expect(()=>evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger.filter(n=>n!==name),repositoryState)).toThrow(new RegExp(name))
+ }
+})

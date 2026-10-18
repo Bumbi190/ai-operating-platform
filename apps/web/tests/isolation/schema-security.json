@@ -39,14 +39,16 @@
       "tables": [
         "agent_decisions",
         "ai_cost_snapshots",
-        "memory_refs"
+        "memory_refs",
+        "media_news_review_evidence"
       ],
       "meaning": "Created by a migration but absent from the production catalog at capture time — never applied there, or dropped out-of-band. They are NOT a fresh-deploy hazard: each declares RLS in its own migration, so a rebuild creates them protected. Listed so their absence from the table map is a recorded fact rather than a silent gap, and so the fail-closed rule can distinguish them from a genuinely new unprotected table.",
       "requirement": "Every entry must have RLS declared in the migration corpus.",
       "classes": {
         "agent_decisions": "SERVER_ONLY",
         "ai_cost_snapshots": "SERVER_ONLY",
-        "memory_refs": "SERVER_ONLY"
+        "memory_refs": "SERVER_ONLY",
+        "media_news_review_evidence": "SERVER_ONLY"
       },
       "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class."
     },
@@ -85,7 +87,8 @@
     "handlarborsen_test_data_note": "Observed live2026-10-18 after nine owner-approved migrations: three DB_INTERNAL tables RLS/FORCE ON, zero policies, no direct API role privileges. No business classification or package seeded. Last migration SQL committed before MCP ledger timestamp collision; seven exact function bodies and owner/client privileges verified, real applied SQL recorded at canonical source version20261017193411 without replay.",
     "atlas_cleanup_release_reconciliation_20261018": "Scoped read-only production catalog confirms four already-live inbox tables: RLS enabled, zero policies/anon/auth grants, service-role select/insert/update only. Exact already-applied SQL hash1013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1 copied from PR386 canonical source only. No mail application code or production DDL imported/applied by this continuation. Public table count156; own three cleanup control tables remain created-not-live and are not included. Older capture metadata unchanged.",
     "sales_reply_source_reconciliation_note": "Scoped read-only production observation2026-10-18: three already-live sales_reply tables have RLS ON, zero policies, no anon/authenticated grants and service SELECT. Exact source from PR386 frozen8da379d2c376472e4e2470bc5e150ce85d8559c0 matches live ledger20261018040242:36146characters,SHA2567516d8566ae7776086452ff8fdd51058ce34a10ab70973bcdbf4ee14f655a3cc. Source-only reconciliation to unblock the strict migration guard; no SQL reapplied and no sales application code, flag, worker, inbox or sender changed. Existing capture scopes retained.",
-    "social_schedule_live_note": "Scoped hosted observation2026-10-18 after user-authorized application of four exact reviewed migrations from fab47854. Ledger versions20261018085701/20261018085707/20261018085708/20261018085733. All seven tables RLS ON, zero policies and no anon/authenticated grants; service SELECT/INSERT, UPDATE only on jobs/rules. All28 scoped scheduling/monthly/reconciliation routines SECURITY INVOKER with empty search_path and zero client EXECUTE. Batches/jobs/decisions/rules empty. Source-only reconciliation after apply; no account, provider publication or dispatch activation. Existing catalog entries retain their capture scopes."
+    "social_schedule_live_note": "Scoped hosted observation2026-10-18 after user-authorized application of four exact reviewed migrations from fab47854. Ledger versions20261018085701/20261018085707/20261018085708/20261018085733. All seven tables RLS ON, zero policies and no anon/authenticated grants; service SELECT/INSERT, UPDATE only on jobs/rules. All28 scoped scheduling/monthly/reconciliation routines SECURITY INVOKER with empty search_path and zero client EXECUTE. Batches/jobs/decisions/rules empty. Source-only reconciliation after apply; no account, provider publication or dispatch activation. Existing catalog entries retain their capture scopes.",
+    "media_news_review_evidence_note": "Proposed 20261018083917 migration, not applied by this work: immutable project/revision-bound news review evidence, RLS enabled, no client policies or grants, service_role SELECT/INSERT only. Classified created-not-live pending separately approved application and target catalog verification; no production introspection claimed."
   },
   "tables": {
     "handlarborsen_competitor_review_decisions": {

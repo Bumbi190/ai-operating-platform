@@ -25,16 +25,9 @@ export function planIllustratedNewsShots(words:Word[],durationMs:number,imageCou
  const shots:IllustratedNewsShot[]=[]
  for(let i=0;i<imageCount;i++){
   const start=i===0?0:words[anchors[i]].startMs
-  const end=i===imageCount-1?durationMs:words[anchors[i+1]].startMs
-  shots.push({startMs:start,imageIndex:i,scaleFrom:1.02,scaleTo:1.13,focusX:50,focusY:50})
-  let after=start
-  for(let desired=start+2700;desired<end-800;desired+=2700){
-   const word=words.find(w=>w.startMs>=desired&&w.startMs<end-800&&w.startMs>after+1000)
-   if(!word)break
-   shots.push({startMs:word.startMs,imageIndex:i,scaleFrom:1.25,scaleTo:1.4,
-    focusX:i%2?60:42,focusY:i%2?56:48})
-   after=word.startMs
-  }
+  // One slow move for the entire image. Restart only when its image changes.
+  // Repeated close-crop shots used to rewind the same image every ~3 seconds.
+  shots.push({startMs:start,imageIndex:i,scaleFrom:1.02,scaleTo:1.10,focusX:50,focusY:50})
  }
  return shots
 }

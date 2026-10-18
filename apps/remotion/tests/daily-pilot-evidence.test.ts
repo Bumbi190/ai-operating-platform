@@ -81,7 +81,7 @@ test('trusted daily preview derives illustrated shots from its own words and ima
  assert.equal(r.ok,true)
  if(r.ok){
   assert.ok(r.props.illustratedShots)
-  assert.ok(r.props.illustratedShots.length>e.images.length)
+  assert.equal(r.props.illustratedShots.length,e.images.length)
   assert.equal(r.props.illustratedShots[0].startMs,0)
   assert.deepEqual([...new Set(r.props.illustratedShots.map(s=>s.imageIndex))],[0,1])
   assert.deepEqual(r.props.words,e.audio.words)

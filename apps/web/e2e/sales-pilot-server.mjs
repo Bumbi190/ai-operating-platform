@@ -1,6 +1,6 @@
 import {createServer} from 'vite'
 const root=process.cwd()
-const server=await createServer({root,configFile:false,appType:'custom',define:{'process.env':{}},esbuild:{jsx:'automatic'},resolve:{alias:{'@':root}},server:{host:'127.0.0.1',port:54417}})
+const server=await createServer({root,configFile:false,appType:'custom',define:{'process.env':{}},esbuild:{jsx:'automatic'},resolve:{alias:{'@':root,'next/navigation':root+'/e2e/sales-review-navigation.ts'}},server:{host:'127.0.0.1',port:54417}})
 server.middlewares.use(async(req,res,next)=>{
  if(req.method==='GET'&&req.url?.split('?')[0]==='/api/sales/replies'){res.setHeader('content-type','application/json');res.end(JSON.stringify({jobs:[],drafts:[],sendingEnabled:false}));return}
  if(req.method==='GET'&&req.url?.split('?')[0]==='/sales'){

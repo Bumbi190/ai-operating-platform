@@ -56,3 +56,28 @@ test('ordinary selected reply needs no customer or offer and mode changes reset 
  await inbox.getByLabel('Typ av svar').selectOption('general');await expect(button).toBeDisabled()
  expect(f.calls.some(x=>/prepare|send/.test(x.operation))).toBe(false)
 })
+
+test('global review shows exact private email preview and uses only version-bound decisions',async({page})=>{
+ const f=await fixture(page)
+ const approval={id:revisionId,kind:'sales_reply_review',outputKey:'sales_reply_draft',content:'PRIVATE_METADATA_CANARY',status:'pending',statusClass:'actionable',statusLabel:'Väntar på granskning',reviewerNotes:null,createdAt:f.job.createdAt,reviewedAt:null,decidedAt:null,runId:jobId,runStatus:'awaiting_approval',runHref:null,runActionKind:null,workflowName:null,project:{id:projectId,name:'Handlarbörsen',slug:'handlarborsen',color:'#abc',href:'/projects/handlarborsen',paused:false,pausedReason:null},decidable:true,blockedReason:null}
+ await page.route('**/fixture-review',r=>r.fulfill({json:{state:'ok',queue:[approval],archive:[],total:1,truncated:false,filter:null,links:{approvals:'/approvals'}}}))
+ await page.goto('/sales?review=1')
+ const detail=page.getByRole('complementary',{name:'Granskningsdetaljer'})
+ await expect(detail.getByText(f.draft.body,{exact:true})).toBeVisible()
+ await expect(detail.getByText('PRIVATE_METADATA_CANARY')).toHaveCount(0)
+ const dir=process.env.SALES_BROWSER_ARTIFACT_DIR!;await page.screenshot({path:dir+'/global-reply-preview-desktop.png',fullPage:true})
+ await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+ await page.screenshot({path:dir+'/global-reply-preview-mobile.png',fullPage:true})
+ await page.setViewportSize({width:1440,height:1000})
+ // An obsolete approval must never show or decide a different current revision.
+ f.draft.approvalId='b0000000-0000-4000-8000-000000000099'
+ await detail.getByRole('button',{name:'Uppdatera svarsförslag'}).click()
+ await expect(detail.getByText(/saknar en aktuell mejlversion/)).toBeVisible()
+ await expect(detail.getByText(f.draft.body,{exact:true})).toHaveCount(0)
+ await expect(detail.getByRole('button',{name:'Godkänn svarsförslag',exact:true})).toHaveCount(0)
+ f.draft.approvalId=revisionId;await detail.getByRole('button',{name:'Uppdatera svarsförslag'}).click()
+ await expect(detail.getByRole('button',{name:'Godkänn',exact:true})).toHaveCount(0)
+ await detail.getByRole('button',{name:'Godkänn svarsförslag',exact:true}).click()
+ expect(f.calls.find(x=>x.operation==='review')).toMatchObject({revisionId,expectedHash:'a'.repeat(64)})
+ await expect(detail.getByText(/redaktionellt godkänt/)).toBeVisible()
+})

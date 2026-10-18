@@ -1,3 +1,4 @@
+import {resolveIllustratedNewsProfile,assertIllustratedNewsSource} from '@/lib/media/illustrated-news-profile'
 /**
  * GET /api/media/cron/step2
  *
@@ -42,7 +43,7 @@ export async function GET(request: Request) {
 
   let query = db
     .from('media_scripts')
-    .select('id, project_id, hook, script, voice_attempts, raw_output, media_news_items(title)')
+    .select('id, project_id, hook, script, voice_attempts, raw_output, media_news_items(title,summary,url,project_id,raw_output)')
     .eq('status', 'approved')
     .order('generated_at', { ascending: false })
     .limit(1)
@@ -62,6 +63,16 @@ export async function GET(request: Request) {
 
   if (!script) {
     return NextResponse.json({ status: 'nothing_to_do', reason: 'No script waiting for voice in last 15 min' })
+  }
+
+  // Editorial rejection is not a provider failure: do this before claims,
+  // retries, failure accounting, image spend or voice synthesis.
+  const imageProfile=resolveIllustratedNewsProfile(script.project_id)
+  if(imageProfile){
+    const sourceNews=Array.isArray(script.media_news_items)?script.media_news_items[0]:script.media_news_items
+    try{assertIllustratedNewsSource(script.project_id,sourceNews)}
+    catch{return NextResponse.json({status:'editorial_review_required',
+      reason:'ILLUSTRATED_SOURCE_NOT_VERIFIED',scriptId:script.id})}
   }
 
   console.log(`[cron/step2] Generating voice for script ${script.id}`)
@@ -99,7 +110,7 @@ export async function GET(request: Request) {
         // Only a failure that PROVES nothing was synthesised may repeat it.
         { attempts: 2, label: 'ElevenLabs voice',
           isPermanent: dispatchedGenerationIsNotRetryable() }),
-      withRetry(() => generateNewsImages(newsTitle, scriptText, 3, { context: 'AUTONOMOUS' as const, scope: projectScope({ projectId }) }, MEDIA_PIPELINE_PROJECT),
+      withRetry(() => generateNewsImages(newsTitle, scriptText, 3, { context: 'AUTONOMOUS' as const, scope: projectScope({ projectId }) }, MEDIA_PIPELINE_PROJECT, undefined, imageProfile),
         // Three renders per call, so a blind retry buys three more.
         { attempts: 2, label: 'Ideogram images',
           isPermanent: dispatchedGenerationIsNotRetryable() }),
@@ -124,6 +135,7 @@ export async function GET(request: Request) {
       voice_status: 'ready',
       ...(strictPilot?{raw_output:{
         ...oldRaw,
+        ...(imageProfile?{pilot_image_profile:imageProfile}:{}),
         pilot_voice_receipt:{...buildPilotVoiceReceipt(
           scriptText,voiceResult.audioBuffer,voiceResult.words,voiceResult.durationMs)},
       }}:{}),

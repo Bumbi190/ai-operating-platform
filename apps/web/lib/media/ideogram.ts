@@ -1,3 +1,4 @@
+import {runIllustratedImagePlan,ILLUSTRATED_NEWS_PROFILE,type IllustratedNewsProfile} from './illustrated-news-profile'
 /**
  * Ideogram v3 image generation service for AI Media Automation.
  *
@@ -280,10 +281,32 @@ export async function generateNewsImages(
    * change, not a refactor.
    */
   spendSubject?: string,
+  profile?: IllustratedNewsProfile,
 ): Promise<string[]> {
   const client = getMediaTextClient({
     project, execution, agent: 'Image Director', operation: 'Plan Scenes',
   })
+
+
+  // New style only when the caller resolved the exact project opt-in.
+  // Uses the SAME governed text/image clients and fixed three-image tier.
+  if(profile!==undefined){
+    if(profile!==ILLUSTRATED_NEWS_PROFILE)throw new Error('Invalid illustrated image profile')
+    return runIllustratedImagePlan(headline,script,count,
+      async prompt=>{
+        const result=await client.messages.create({
+          model:'claude-haiku-4-5-20251001',max_tokens:1500,
+          messages:[{role:'user',content:prompt}],
+        })
+        return result.content[0]?.type==='text'?result.content[0].text:''
+      },
+      (body,i)=>generateIdeogramV3({
+        project,execution,operation:'Scene Image',agent:'Image Director',
+        idempotencyKey:spendSubject?spendIdempotencyKey({
+          project,provider:'ideogram',operation:'Scene Image',subject:spendSubject+'#'+i,
+        }):undefined,
+      },body))
+  }
 
   // ── Step 1: Scene planning ──────────────────────────────────────────────────
   const planRes = await client.messages.create({

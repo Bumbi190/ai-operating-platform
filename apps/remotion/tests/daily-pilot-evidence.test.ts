@@ -74,3 +74,26 @@ test('wrong narrator, broken audio or missing word timing reject entire episode'
   const overflow=valid();overflow.audio.words.at(-1)!.endMs=30000
   assert.ok(evaluateDailyPilotEvidence(overflow,NOW).reasons.includes('missing_captions'))
 })
+
+test('trusted daily preview derives illustrated shots from its own words and images',()=>{
+ const e=valid()
+ const r=prepareDailyPilotPreview(e,NOW,'ai_illustrated')
+ assert.equal(r.ok,true)
+ if(r.ok){
+  assert.ok(r.props.illustratedShots)
+  assert.ok(r.props.illustratedShots.length>e.images.length)
+  assert.equal(r.props.illustratedShots[0].startMs,0)
+  assert.deepEqual([...new Set(r.props.illustratedShots.map(s=>s.imageIndex))],[0,1])
+  assert.deepEqual(r.props.words,e.audio.words)
+ }
+ const invalid=valid();invalid.audio.words[10].startMs=invalid.audio.words[9].startMs
+ const bad=prepareDailyPilotPreview(invalid,NOW,'ai_illustrated')
+ assert.equal(bad.ok,false)
+ if(!bad.ok)assert.ok(bad.reasons.includes('missing_captions'))
+})
+
+test('ordinary approved photographs are not silently relabelled as AI illustrations',()=>{
+ const r=prepareDailyPilotPreview(valid(),NOW)
+ assert.equal(r.ok,true)
+ if(r.ok)assert.equal(r.props.illustratedShots,undefined)
+})

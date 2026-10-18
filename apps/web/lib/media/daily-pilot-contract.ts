@@ -1,3 +1,4 @@
+import {planIllustratedNewsShots,type IllustratedNewsShot} from './illustrated-news-shots'
 import {checkFreshRelevantNews,type FreshNewsLead} from './news-freshness'
 
 /**
@@ -90,21 +91,28 @@ export function evaluateDailyPilotEvidence(
  * Actual release still needs a durably approved exact output, credentials,
  * cost reservation, idempotency and a controlled two-slot schedule.
  */
-export function prepareDailyPilotPreview(e:DailyPilotEvidence,nowMs=Date.now()):
+export function prepareDailyPilotPreview(
+  e:DailyPilotEvidence,nowMs=Date.now(),visualTreatment:'editorial'|'ai_illustrated'='editorial',
+):
   | {ok:true;props:{
     hook:string;audioUrl:string;durationMs:number
     words:DailyPilotEvidence['audio']['words'];images:string[]
     captions:[];sourceLabel:string;sourcePublishedAt:string;sourceUrl:string
-    creativeVersion:'the-prompt-editorial-v1'
+    creativeVersion:'the-prompt-editorial-v1';illustratedShots?:IllustratedNewsShot[]
   }}
   | {ok:false;reasons:PilotReason[]} {
   const result=evaluateDailyPilotEvidence(e,nowMs,'private_preview')
   if(!result.eligible)return {ok:false,reasons:result.reasons}
+  let illustratedShots:IllustratedNewsShot[]|undefined
+  if(visualTreatment==='ai_illustrated'){
+    try{illustratedShots=planIllustratedNewsShots(e.audio.words,e.audio.durationMs,e.images.length)}
+    catch{return {ok:false,reasons:['missing_captions']}}
+  }
   return {ok:true,props:{
     hook:e.hook.trim(),audioUrl:e.audio.url,durationMs:e.audio.durationMs,
     words:e.audio.words,images:e.images.map(x=>x.url),captions:[],
     sourceLabel:e.story.sourceLabel,sourceUrl:e.story.url,
     sourcePublishedAt:e.story.publishedAt.toISOString(),
-    creativeVersion:'the-prompt-editorial-v1',
+    creativeVersion:'the-prompt-editorial-v1',...(illustratedShots?{illustratedShots}:{}),
   }}
 }

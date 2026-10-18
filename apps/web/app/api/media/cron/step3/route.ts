@@ -1,3 +1,4 @@
+import {resolveIllustratedNewsProfile,assertIllustratedNewsSource,requiresIllustratedPreview} from '@/lib/media/illustrated-news-profile'
 /**
  * GET /api/media/cron/step3
  *
@@ -60,7 +61,7 @@ export async function GET(request: Request) {
 
   let query = db
     .from('media_scripts')
-    .select('id, project_id, video_status, hook, audio_url, timing_url, duration_ms, images, script, composition, render_attempts, media_news_items(title)')
+    .select('id, project_id, video_status, hook, audio_url, timing_url, duration_ms, images, script, composition, render_attempts, raw_output, media_news_items(title,summary,url,project_id,raw_output)')
     .eq('voice_status', 'ready')
     .eq('status', 'approved')
     .order('generated_at', { ascending: false })
@@ -81,6 +82,24 @@ export async function GET(request: Request) {
 
   if (!script) {
     return NextResponse.json({ status: 'nothing_to_do', reason: 'No script waiting for images in last 30 min' })
+  }
+
+  // Editorial rejection is not a provider failure: do this before claims,
+  // retries, failure accounting, image spend or voice synthesis.
+  const imageProfile=resolveIllustratedNewsProfile(script.project_id)
+  if(imageProfile){
+    const sourceNews=Array.isArray(script.media_news_items)?script.media_news_items[0]:script.media_news_items
+    try{assertIllustratedNewsSource(script.project_id,sourceNews)}
+    catch{return NextResponse.json({status:'editorial_review_required',
+      reason:'ILLUSTRATED_SOURCE_NOT_VERIFIED',scriptId:script.id})}
+  }
+
+  // This profile belongs to the disclosed private preview path. In particular,
+  // switching the flag OFF must not send already-generated illustrations into
+  // SimpleNewsReel, which has no illustration disclosure or pilot release gate.
+  if(imageProfile||requiresIllustratedPreview(script.raw_output)){
+    return NextResponse.json({status:'illustrated_preview_required',
+      reason:'ILLUSTRATED_PREVIEW_REQUIRED',scriptId:script.id})
   }
 
   console.log(`[cron/step3] Generating images + starting render for script ${script.id}`)
@@ -126,7 +145,7 @@ export async function GET(request: Request) {
       // it withRetry would sleep and ask again, turning the operator's own pause
       // into an exhausted Ideogram call.
       const rawImageUrls = await withRetry(
-        () => generateNewsImages(newsTitle, scriptText, 8, execution),
+        () => generateNewsImages(newsTitle, scriptText, 8, execution, MEDIA_PIPELINE_PROJECT),
         // Eight renders per call. The stop rule already ended the loop on an
         // operator pause; this adds the other case a loop must not repeat — a
         // render that may already have happened.

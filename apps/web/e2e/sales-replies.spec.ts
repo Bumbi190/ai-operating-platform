@@ -66,7 +66,7 @@ test('global review shows exact private email preview and uses only version-boun
  await expect(detail.getByText(f.draft.body,{exact:true})).toBeVisible()
  await expect(detail.getByText('PRIVATE_METADATA_CANARY')).toHaveCount(0)
  const dir=process.env.SALES_BROWSER_ARTIFACT_DIR!;await page.screenshot({path:dir+'/global-reply-preview-desktop.png',fullPage:true})
- await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+ await page.setViewportSize({width:390,height:844});await page.getByRole('list',{name:'Granskningsobjekt'}).getByRole('button').click();await expect(detail.getByText(f.draft.body,{exact:true})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
  await page.screenshot({path:dir+'/global-reply-preview-mobile.png',fullPage:true})
  await page.setViewportSize({width:1440,height:1000})
  // An obsolete approval must never show or decide a different current revision.

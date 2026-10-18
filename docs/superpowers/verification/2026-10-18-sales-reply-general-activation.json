@@ -95,5 +95,15 @@
     "browser login at new immutable origin",
     "private real UI review and real natural-language Atlas request verification",
     "separate C sending implementation"
-  ]
+  ],
+  "reviewUi": {
+    "sourceSha": "2d5790f82254338e8ee0eb0eec83970c81e3fbce",
+    "deploymentId": "dpl_7x9Q5y7zB5v5XfdeB5Atf5ytCYLx",
+    "stableUrl": "https://ai-operating-platform-web-git-codex-a-fa6a7c-bumbi190s-projects.vercel.app/approvals",
+    "state": "READY_owner_login_pending",
+    "exactApprovalPreview": true,
+    "browserTests": 13,
+    "fullComparison": "running",
+    "activeWorkerUnchanged": true
+  }
 }

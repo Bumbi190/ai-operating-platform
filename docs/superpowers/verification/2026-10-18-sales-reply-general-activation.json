@@ -55,7 +55,7 @@
     "currentRevisionId": "91736c50-3db6-4d68-86f8-1660672fed0f",
     "currentRevisionSha256": "2cbea93b7c7bb3e1c04190d954ed857cc9a2a72ad74c7841cfd78c8384dc6b4a",
     "questionCount": 0,
-    "approvalStatus": "pending",
+    "approvalStatus": "approved",
     "sourceCurrent": true,
     "postRestartSameRevisionAndAttemptCount": true,
     "contactsCreated": 0,
@@ -64,7 +64,8 @@
     "stratoDraftsCreated": 0,
     "provider": "existing first-party Claude CLI2.1.296",
     "cost": "subscription usage not independently metered",
-    "questionResolution": "two model questions resolved from prior owner receipt confirmation and verified sender metadata; immutable editorial revision, no extra model call, no approval"
+    "questionResolution": "two model questions resolved from prior owner receipt confirmation and verified sender metadata; immutable editorial revision, no extra model call, no approval",
+    "approvedAt": "2026-10-18T07:30:15.474844Z"
   },
   "sender": {
     "displayName": "Andre",
@@ -92,18 +93,34 @@
     "historicalFailureReport": "2026-10-18-sales-reply-general-regressions.json"
   },
   "pending": [
-    "browser login at new immutable origin",
-    "private real UI review and real natural-language Atlas request verification",
-    "separate C sending implementation"
+    "separate reviewed C sending implementation",
+    "live natural-language prepare tool dispatch not observed; live read tool succeeded"
   ],
   "reviewUi": {
     "sourceSha": "2d5790f82254338e8ee0eb0eec83970c81e3fbce",
     "deploymentId": "dpl_7x9Q5y7zB5v5XfdeB5Atf5ytCYLx",
     "stableUrl": "https://ai-operating-platform-web-git-codex-a-fa6a7c-bumbi190s-projects.vercel.app/approvals",
-    "state": "READY_owner_login_pending",
+    "state": "owner_authenticated_preview_approved",
     "exactApprovalPreview": true,
     "browserTests": 13,
-    "fullComparison": "running",
-    "activeWorkerUnchanged": true
+    "fullComparison": {
+      "numTotalTests": 15052,
+      "numPassedTests": 13316,
+      "numFailedTests": 401,
+      "numPendingTests": 1331
+    },
+    "activeWorkerUnchanged": true,
+    "newFailingIdentities": 0
+  },
+  "atlasLiveCheck": {
+    "conversationId": "7d960974-b5ba-48f7-8e87-bd93443b9fd5",
+    "readTool": "get_sales_reply_job",
+    "readToolExecuted": true,
+    "jobId": "9ff8cf88-41e6-4951-8bf1-4c1af09d6901",
+    "sourceCurrent": true,
+    "prepareReplayPrompt": "Atlas answered the known existing job ID without an observed new tool card; not claimed as actual prepare tool execution",
+    "jobCountAfter": 1,
+    "providerAttemptsAfter": 1,
+    "senderStatusGap": "preparation status awaiting_review is separate from current approved editorial status; next plan makes this explicit"
   }
 }

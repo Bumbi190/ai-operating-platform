@@ -11,3 +11,6 @@
 apps/web/supabase/migrations/20261017191904_sales_strato_inbox.sql -text
 
 apps/web/supabase/migrations/20261018040242_sales_reply_preparation.sql -text
+
+# Preserve the exact proposed review-evidence migration bytes for release review.
+apps/web/supabase/migrations/20261018083917_media_news_review_evidence.sql -text

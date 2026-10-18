@@ -17,3 +17,10 @@ export type NewsEvidenceSnapshot={video:AssetIdentity;receipt:RenderReceipt;rece
 export type NewsReviewView={projectId:string;postId:string|null;revisionId:string|null;evidenceSha256:string|null;review_packet_ready:boolean;blockers:string[];publicationBlockers:string[];canPublish:false;dispatchEnabled:false}
 export type NewsReviewCode='NOT_FOUND'|'INVALID_BODY'|'MISSING_SOURCE'|'SOURCE_EXPIRED'|'MISSING_RENDER_EVIDENCE'|'MISSING_USAGE_EVIDENCE'|'MISSING_COST_PROVENANCE'|'MEDIA_CHANGED'|'PLAN_REQUIRED'|'STOPPED'|'UNAVAILABLE'|'REVISION_CONFLICT'
 export class NewsReviewError extends Error{constructor(public readonly code:NewsReviewCode){super(code);this.name='NewsReviewError'}}
+
+// Scoped contract for this proposed migration. The global Database bridge remains generated.
+export type NewsReviewRpc={
+ media_news_review_prepare:{Args:{p_principal:import('../content/types').SocialContentPrincipal;p_input:PrepareNewsReviewInput;p_snapshot:NewsEvidenceSnapshot};Returns:NewsReviewView[]}
+ media_news_review_read:{Args:{p_principal:import('../content/types').SocialContentPrincipal;p_input:{projectId:string;postId:string}};Returns:NewsReviewView}
+}
+export type NewsReviewRpcClient={rpc<N extends keyof NewsReviewRpc>(name:N,args:NewsReviewRpc[N]['Args']):Promise<{data:NewsReviewRpc[N]['Returns']|null;error:{message?:string;code?:string}|null}>}

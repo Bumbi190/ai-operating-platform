@@ -203,7 +203,7 @@ begin
  if old.run_id is not null then perform 1 from public.runs where id=old.run_id for update;perform 1 from public.approvals where id=old.approval_id for update;end if;
  select * into j from public.sales_reply_jobs where id=old.job_id and project_id=old.project_id;
  perform public.sales_reply_source_current(j);
- perform 1 from public.sales_reply_jobs where id=j.id for update;
+ select * into j from public.sales_reply_jobs where id=j.id for update;
  select * into old from public.sales_reply_draft_revisions where id=old.id for update;
  if not old.is_current or old.sha256 is distinct from p_input->>'expectedHash' then raise exception 'REVISION_CONFLICT' using errcode='23505';end if;
  perform public.sales_reply_assert_source(j);if j.status='cancelled' then raise exception 'FENCED' using errcode='40001';end if;
@@ -213,15 +213,19 @@ begin
  r:=public.sales_reply_insert_draft(j,d);update public.sales_reply_jobs set status=case when r.approval_id is null then 'needs_input' else 'awaiting_review' end where id=j.id;
  return public.sales_reply_draft_json(r);end $$;
 create function public.sales_reply_cancel_job(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
-declare j public.sales_reply_jobs;d public.sales_reply_draft_revisions;
+declare j public.sales_reply_jobs;d public.sales_reply_draft_revisions;observed_revision uuid;
 begin
  perform public.sales_owner(p_principal,(p_input->>'projectId')::uuid);perform public.sales_mailbox_fields(p_input,array['projectId','jobId']);
  select * into j from public.sales_reply_jobs where id=(p_input->>'jobId')::uuid and project_id=(p_input->>'projectId')::uuid and owner_id=(p_principal->>'userId')::uuid;
  if not found then raise exception 'NOT_FOUND' using errcode='P0002';end if;
- select * into d from public.sales_reply_draft_revisions where job_id=j.id and is_current;
+ select * into d from public.sales_reply_draft_revisions where job_id=j.id and is_current;observed_revision:=d.id;
  if d.run_id is not null then perform 1 from public.runs where id=d.run_id for update;perform 1 from public.approvals where id=d.approval_id for update;end if;
  perform public.sales_reply_source_current(j);
- perform 1 from public.sales_reply_jobs where id=j.id for update;
+ select * into j from public.sales_reply_jobs where id=j.id for update;
+ select * into d from public.sales_reply_draft_revisions where job_id=j.id and is_current for update;
+ -- A questions-only edit can create a run while cancellation waits. Retry from
+ -- the new revision rather than acquire its run lock after the job lock.
+ if d.id is distinct from observed_revision then raise exception 'FENCED' using errcode='40001';end if;
  if d.run_id is not null then update public.runs set status='cancelled' where id=d.run_id;update public.approvals set status='returned' where id=d.approval_id;end if;
  update public.sales_reply_jobs set status='cancelled',detail='CANCELLED_BY_OWNER' where id=j.id returning * into j;return public.sales_reply_job_json(j);end $$;
 create function public.sales_reply_immutable_revision() returns trigger language plpgsql security invoker set search_path='' as $$

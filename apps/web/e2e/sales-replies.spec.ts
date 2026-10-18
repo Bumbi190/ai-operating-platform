@@ -34,3 +34,12 @@ test('private reply review shows stale evidence, plain text, exact revision and 
  f.job.newerIncoming=true;await replies.getByRole('button',{name:'Uppdatera svarsförslag'}).click();await expect(replies.getByText(/Nyare mejl från samma adress/)).toBeVisible();await expect(replies.getByRole('button',{name:'Godkänn svarsförslag'})).toBeDisabled()
  const dir=process.env.SALES_BROWSER_ARTIFACT_DIR!;mkdirSync(dir,{recursive:true});await page.screenshot({path:dir+'/reply-desktop.png',fullPage:true});await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:dir+'/reply-mobile.png',fullPage:true});expect(await replies.getAttribute('data-private')).toBe('true')
 })
+
+test('switching from dirty reply A to branch B resets all editor fields before saving B',async({page})=>{
+ const f=await fixture(page),jobB={...f.job,id:'a0000000-0000-4000-8000-000000000002',source:{...f.job.source,branchName:'Malmö'}},draftB={...f.draft,id:'b0000000-0000-4000-8000-000000000003',jobId:jobB.id,sha256:'c'.repeat(64),subject:'Only branch B subject',body:'Only branch B body',questions:['Only branch B question']}
+ await page.route('**/api/sales/replies?*',(r:any)=>r.fulfill({json:{jobs:[f.job,jobB],drafts:[f.draft,draftB],sendingEnabled:false}}))
+ await page.goto('/sales?stratoWorker='+workerId);const replies=page.getByRole('region',{name:'Svarsförslag',exact:true}),edit=replies.getByRole('button',{name:'Redigera svarsförslag'})
+ await edit.nth(0).click();await replies.getByLabel('Svarstext').fill('Dirty private text for A only');await replies.getByLabel('Ämne för svaret').fill('Dirty A subject');await edit.nth(1).click()
+ await expect(replies.getByRole('heading',{name:'Ny svarsversion · Exempelbil · Malmö'})).toBeVisible();await expect(replies.getByLabel('Svarstext')).toHaveValue('Only branch B body');await expect(replies.getByLabel('Ämne för svaret')).toHaveValue('Only branch B subject');await expect(replies.getByLabel('Kvarstående frågor')).toHaveValue('Only branch B question')
+ await replies.getByRole('button',{name:'Spara ny svarsversion'}).click();expect(f.calls.find(x=>x.operation==='edit')).toMatchObject({revisionId:draftB.id,expectedHash:draftB.sha256,body:'Only branch B body',subject:'Only branch B subject',questions:['Only branch B question']})
+})

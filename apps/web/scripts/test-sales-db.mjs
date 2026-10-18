@@ -1,3 +1,4 @@
+import {replyReviewRaces} from './test-sales-reply-races.mjs'
 import {spawnSync,spawn} from 'node:child_process'
 import {readFileSync,readdirSync} from 'node:fs'
 import {resolve} from 'node:path'
@@ -76,6 +77,7 @@ try{
  if(attempts.filter(x=>x.code===0).length!==10||attempts.filter(x=>x.err.includes('ATTEMPT_LIMIT')).length!==5)throw Error('REPLY_ATOMIC_ATTEMPT_RACE_FAILED');
  console.log('PASS: concurrent duplicate requests -> one job; fifteen parallel reservations -> ten accepted/five refused');
 
+ await replyReviewRaces({container,db,run:concurrent,principal,input,claimed});
  const integration=spawnSync(process.execPath,[resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/qa/sales-integration.test.ts','lib/qa/sales-host-integration.test.ts','lib/qa/sales-mailbox-integration.test.ts','lib/qa/sales-inbox-integration.test.ts','lib/qa/sales-reply-integration.test.ts','--maxWorkers=1','--minWorkers=1'],{cwd:resolve(root,'apps/web'),env:{...process.env,SALES_FIXTURE_DATABASE:db,SALES_FIXTURE_CONTAINER:container},encoding:'utf8',maxBuffer:2e6})
  console.log(integration.stdout);if(integration.status!==0)throw Error(integration.stderr||'Sales slice integration failed')
 }finally{docker(['exec',container,'dropdb','-U','postgres',db])}

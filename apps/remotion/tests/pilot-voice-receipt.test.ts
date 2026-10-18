@@ -27,3 +27,17 @@ test('rejects malformed timings or implausible payloads rather than fabricating 
   assert.throws(()=>buildPilotVoiceReceipt('script',audio,words,2000))
   assert.throws(()=>buildPilotVoiceReceipt('script',audio,[...words,{word:'wrong',startMs:300,endMs:310}],10000))
 })
+
+test('timing evidence survives jsonb object-key reordering and still binds every word/time/order',()=>{
+ const normal=buildPilotVoiceReceipt('script',audio,words,10000)
+ assert.throws(()=>buildPilotVoiceReceipt('script',audio,[...words].reverse(),10000),/PILOT_VOICE_INVALID/)
+ const reordered=words.map(w=>({endMs:w.endMs,word:w.word,startMs:w.startMs}))
+ assert.equal(buildPilotVoiceReceipt('script',audio,reordered,10000).timingsSha256,normal.timingsSha256)
+ for(const changed of [
+  words.map((w,i)=>i===0?{...w,word:'Different'}:w),
+  words.map((w,i)=>i===0?{...w,startMs:w.startMs+1}:w),
+  words.map((w,i)=>i===0?{...w,endMs:w.endMs+1}:w),
+ ]){
+  assert.notEqual(buildPilotVoiceReceipt('script',audio,changed,10000).timingsSha256,normal.timingsSha256)
+ }
+})

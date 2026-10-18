@@ -110,3 +110,11 @@ test('HTTP only allowed on a specifically opted-in isolated loopback, never a re
     else process.env.PILOT_STORAGE_TEST_MODE=prior
   }
 })
+
+test('readback accepts identical word/timing values after JSON object keys reorder',async()=>{
+ const f=fixture()
+ f.blobs[timingPath]=new Blob([JSON.stringify({
+  durationMs,words:words.map(w=>({endMs:w.endMs,word:w.word,startMs:w.startMs})),
+ })])
+ assert.deepEqual(await f.run(),{verified:true,reason:null})
+})

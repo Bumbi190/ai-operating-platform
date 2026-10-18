@@ -16,6 +16,7 @@ import {admitAssetBytes,admitAssetFromUrl} from './asset/admission'
 import {getAsset,signedAssetUrl} from './asset/store'
 import {asAssetId} from './asset/types'
 import {createProviderPreviewStore} from './provider-preview-store'
+import {pilotVoiceTimingsSha256} from './pilot-voice-receipt'
 import {createProviderPreview,PREVIEW_ID,PREVIEW_PROJECT_ID,PREVIEW_CANDIDATE as candidate,type PreviewAttempt} from './provider-preview'
 import {ILLUSTRATED_NEWS_PROFILE} from './illustrated-news-profile'
 import {planIllustratedNewsShots} from './illustrated-news-shots'
@@ -83,7 +84,7 @@ export function createRuntimeProviderPreview(access:ProjectAccessOk){
    const audio=await resolve(state.audioId,'audio'),receipt=state.voiceReceipt
    if(receipt.voiceId!=='qSeXEcewz7tA0Q0qk9fH'||receipt.modelId!=='eleven_turbo_v2_5'||
       receipt.audioSha256!==audio.sha256||receipt.durationMs!==state.durationMs||
-      receipt.transcriptSha256!==sha(candidate.script)||receipt.timingsSha256!==sha(JSON.stringify(state.words)))
+      receipt.transcriptSha256!==sha(candidate.script)||receipt.timingsSha256!==pilotVoiceTimingsSha256(state.words))
     throw Error('PREVIEW_VOICE_NOT_VERIFIED')
    return{
     assets:{images,audio},voiceReceipt:receipt,signedLinksExpireAfterSeconds:1800,releaseApproved:false,

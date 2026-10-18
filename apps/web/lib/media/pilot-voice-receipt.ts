@@ -16,6 +16,14 @@ export interface PilotVoiceReceipt {
   wordCount:number
 }
 const hash=(b:Uint8Array|string)=>createHash('sha256').update(b).digest('hex')
+/** Bind the semantic timing sequence, independent of JSON/JSONB object key order.
+ * Array order and each word/start/end value remain part of the digest. */
+export function pilotVoiceTimingsSha256(
+ words:readonly {word:string;startMs:number;endMs:number}[],
+):string{
+ return hash(JSON.stringify(words.map(w=>({word:w.word,startMs:w.startMs,endMs:w.endMs}))))
+}
+
 export function buildPilotVoiceReceipt(
   transcript:string,audio:Uint8Array,words:readonly {word:string;startMs:number;endMs:number}[],
   durationMs:number,
@@ -31,7 +39,7 @@ export function buildPilotVoiceReceipt(
   return {
     kind:'the-prompt-voice-v1',voiceId:VICTORIA_VOICE_ID,modelId:BRAND_MODEL,
     transcriptSha256:hash(transcript),audioSha256:hash(audio),
-    timingsSha256:hash(JSON.stringify(words)),audioByteSize:audio.length,
+    timingsSha256:pilotVoiceTimingsSha256(words),audioByteSize:audio.length,
     durationMs,wordCount:words.length,
   }
 }

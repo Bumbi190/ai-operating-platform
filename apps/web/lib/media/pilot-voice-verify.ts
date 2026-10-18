@@ -1,6 +1,6 @@
 import {createHash} from 'node:crypto'
 import {BRAND_MODEL,VICTORIA_VOICE_ID} from '../voice/config'
-import type {PilotVoiceReceipt} from './pilot-voice-receipt'
+import {pilotVoiceTimingsSha256,type PilotVoiceReceipt} from './pilot-voice-receipt'
 
 const UUID=/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i
 const BUCKET='media-assets'
@@ -92,7 +92,7 @@ export async function verifyPilotStoredVoice(
     if(!Array.isArray(timingJson.words)||
        timingJson.words.length!==receipt.wordCount||
        timingJson.durationMs!==receipt.durationMs||
-       hash(JSON.stringify(timingJson.words))!==receipt.timingsSha256)
+       pilotVoiceTimingsSha256(timingJson.words)!==receipt.timingsSha256)
        return denied('timing_mismatch')
   }catch{return denied('timing_mismatch')}
   return {verified:true,reason:null}

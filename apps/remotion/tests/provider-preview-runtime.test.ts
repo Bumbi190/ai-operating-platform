@@ -5,9 +5,17 @@ import {createRequire} from 'node:module'
 import {createHash} from 'node:crypto'
 import * as core from '../../web/lib/media/provider-preview'
 import * as store from '../../web/lib/media/provider-preview-store'
+import * as voiceReceipt from '../../web/lib/media/pilot-voice-receipt'
 import {planIllustratedNewsShots} from '../../web/lib/media/illustrated-news-shots'
 const require=createRequire(import.meta.url),ts=require('typescript') as typeof import('typescript')
 const sha=(b:Uint8Array)=>createHash('sha256').update(b).digest('hex')
+// PostgreSQL jsonb preserves array order but not object property insertion order.
+function jsonbRoundtrip(value:any):any{
+ if(Array.isArray(value))return value.map(jsonbRoundtrip)
+ if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value)
+  .sort(([a],[b])=>a.length-b.length||a.localeCompare(b)).map(([key,v])=>[key,jsonbRoundtrip(v)]))
+ return value
+}
 test('real runtime uses governed generators, internal admission and verified signed delivery; reload never regenerates',async()=>{
  const old={...process.env},oldNow=Date.now,oldFetch=globalThis.fetch
  process.env.VERCEL_ENV='preview';process.env.H1_SPEND_GATE='1'
@@ -19,7 +27,7 @@ test('real runtime uses governed generators, internal admission and verified sig
   const db={from:(table:string)=>{assert.equal(table,'media_scripts');let mode='',value:any
    const q:any={select:()=>q,eq:()=>q,insert:(v:any)=>{mode='insert';value=v;return q},update:(v:any)=>{mode='update';value=v;return q},
     maybeSingle:async()=>{if(mode==='insert'){if(row)return{data:null,error:{code:'23505'}};row=value}
-     if(mode==='update')row={...row,...value};return{data:row,error:null}}};return q}}
+     if(mode==='update')row={...row,...value};return{data:jsonbRoundtrip(row),error:null}}};return q}}
   const audio=Buffer.alloc(300,1)
   const voice={audioBuffer:audio,words:Array.from({length:20},(_,i)=>({word:'word',startMs:i*1000,endMs:i*1000+800})),durationMs:21000}
   const admit=async(input:any)=>{
@@ -48,7 +56,7 @@ test('real runtime uses governed generators, internal admission and verified sig
    './asset/store':{getAsset:async(id:string)=>{const a=assets.get(id);return {...a,
     projectId:foreign?'foreign':a.projectId,checksumSha256:badAudioHash&&a.kind==='audio'?'bad':a.checksumSha256}},
     signedAssetUrl:async(s:any,ttl:number)=>{assert.equal(s.bucket,'media-assets-private');assert.ok(ttl<=1800);return'https://private.invalid/'+s.path}},
-   './asset/types':{asAssetId:(s:string)=>s},'./provider-preview-store':store,'./provider-preview':core,
+   './asset/types':{asAssetId:(s:string)=>s},'./pilot-voice-receipt':voiceReceipt,'./provider-preview-store':store,'./provider-preview':core,
    './illustrated-news-shots':{planIllustratedNewsShots},'./illustrated-news-profile':{ILLUSTRATED_NEWS_PROFILE:'the-prompt-illustrated-v2'},
   }
   const source=readFileSync(new URL('../../web/lib/media/provider-preview-runtime.ts',import.meta.url),'utf8')
@@ -63,6 +71,9 @@ test('real runtime uses governed generators, internal admission and verified sig
   assert.equal((await s.inspect()).status,'ready');assert.equal(generated,1);assert.equal(voiced,1)
   foreign=true;await assert.rejects(s.inspect(),/PREVIEW_ASSET_NOT_VERIFIED/)
   foreign=false;badAudioHash=true;await assert.rejects(s.inspect(),/PREVIEW_VOICE_NOT_VERIFIED/)
+  badAudioHash=false
+  row.raw_output.private_provider_preview.words[0].endMs+=1
+  await assert.rejects(s.inspect(),/PREVIEW_VOICE_NOT_VERIFIED/)
   assert.equal(generated,1);assert.equal(voiced,1)
  }finally{Date.now=oldNow;globalThis.fetch=oldFetch
   for(const k of ['VERCEL_ENV','H1_SPEND_GATE','ANTHROPIC_API_KEY','IDEOGRAM_API_KEY','ELEVENLABS_API_KEY']){

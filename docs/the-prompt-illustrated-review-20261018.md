@@ -19,7 +19,7 @@ It is 1080 x 1920 and 31,436,487 bytes. A mobile review copy was encoded at 720 
 - SHA-256: d9c9466f72f6fa16167e575144098c465a9c3d52f94dffe0f8d6ad2f6a8585be.
 - Encoded audio-packet SHA-256 is identical to v1: 099f0980f10affa2e76e1814287734682414674530701c4c0bdc361d3ceb0533.
 - Full local audio/video decode passes; contact sheet sampled from the encoded film inspected for subject visibility, readable English captions, title, AI-illustration label and outro.
-- Human viewing/listening and aesthetic acceptance remain pending.
+- Owner reviewed the delivered encoded v2 and explicitly accepted the visual direction on 18 October at 06:23:39 Europe/Stockholm: "Mycket b?ttre, exakt det jag e ute efter :D". This records aesthetic acceptance of SHA-256 d9c9466f72f6fa16167e575144098c465a9c3d52f94dffe0f8d6ad2f6a8585be; it is not an independent listening certification or a server publishing receipt.
 
 Source JPEGs are local ignored review assets. Their SHA-256:
 - replit-illustration-0.jpg: 51c3cde57b097d15bcc6ab4d964e377b1b5a53467b34cc950f2468bff9fe26be.
@@ -36,4 +36,4 @@ Only the private preview component, pure shot helper, targeted tests and review 
 
 ## Next
 
-Owner reviews this actual illustrated MP4. Keep draft PR #377 and the seven-day live trial OFF until aesthetics, fresh source/visual provenance, exact-output approval, budget/release/rollback, DST-safe schedule and prospective metrics are ready. The same Replit source is a 16 October article and becomes older than 48 hours at 18 October 12:55 UTC; it is being reused as a private visual comparison, not as a new published story.
+Owner has accepted this actual illustrated MP4 as the preferred visual direction: story-led images, frequent full/close cuts, unchanged Victoria, English captions and the same outro. Each future story needs its own relevant visuals; do not reuse the Replit artwork as generic daily material. Keep draft PR #377 and the seven-day live trial OFF until aesthetics, fresh source/visual provenance, exact-output approval, budget/release/rollback, DST-safe schedule and prospective metrics are ready. The same Replit source is a 16 October article and becomes older than 48 hours at 18 October 12:55 UTC; it is being reused as a private visual comparison, not as a new published story.

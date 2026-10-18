@@ -20,13 +20,21 @@
     "review": "pending_complete_increment"
   },
   "task2": {
-    "state": "partial",
+    "state": "implemented_pending_cross_runtime_qualification",
     "transportAndRecoveryUnitTests": {
       "passed": 14,
       "failed": 0
     },
-    "workerApiAndHostWiring": "pending",
-    "fullIntegration": "pending"
+    "workerApiAndHostWiring": "implemented_default_disabled",
+    "fullIntegration": "pending",
+    "fullPythonSuite": {
+      "passed": 142,
+      "failed": 0
+    },
+    "sendingTypeScriptSuite": {
+      "passed": 35,
+      "failed": 0
+    }
   },
   "task3": {
     "state": "pending",
@@ -56,6 +64,7 @@
   "limitations": [
     "No SMTP acceptance or delivery claim for the approved reply.",
     "Task1 source race matrix needs qualification alongside complete increment.",
-    "No user-visible send button deployed yet."
+    "No user-visible send button deployed yet.",
+    "Task2 whole-increment independent review, SMTP/Next/SQL synthetic cross-runtime integration and stronger interruption matrix remain before rollout."
   ]
 }

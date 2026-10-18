@@ -1,6 +1,6 @@
 """Pinned, single-user worker lifecycle. Never resume an uncertain model dispatch."""
 import hashlib,json,os,re,threading
-from contextlib import contextmanager
+from contextlib import contextmanager,ExitStack
 from pathlib import Path,PurePosixPath
 from .journal import Journal,SingleInstance
 from .managed_connection import ManagedConnection
@@ -63,6 +63,19 @@ def inbox_background(cycle,stop):
   stop.set();thread.join(180)
   if thread.is_alive():raise HostBlocked('INBOX_SHUTDOWN_TIMEOUT')
 
+@contextmanager
+def send_background(cycle,stop):
+ def loop():
+  while not stop.is_set():
+   try:cycle()
+   except Exception:pass
+   stop.wait(15)
+ thread=threading.Thread(target=loop,name='sales-send',daemon=True);thread.start()
+ try:yield thread
+ finally:
+  stop.set();thread.join(180)
+  if thread.is_alive():raise HostBlocked('SEND_SHUTDOWN_TIMEOUT')
+
 def main(project):
  base=safe_path(Path(os.environ['LOCALAPPDATA'])/'OmniraSales'/'connections');config=json.loads(safe_path(base/(project+'.json')).read_text(encoding='utf-8'))
  if config.get('projectId')!=project:raise HostBlocked('PROJECT_MISMATCH')
@@ -96,10 +109,20 @@ def main(project):
   from .replies.adapter import HarveyReplyAdapter
   def reply_cycle(current,allowed):return run_reply_once(current.reply_client(),lambda:HarveyReplyAdapter(SafeClaudeTextRuntime('')),reply_journal,can_dispatch=allowed)
  def reply_uncertain():return bool((reply_journal.load() or {}).get('pending'))
+ send_cycle=None
+ if config.get('sendEnabled') is True and config.get('mailboxEnabled') is True:
+  from .sending.worker import run_send_once
+  from .sending.transport import send_once
+  send_journal=Journal(state/'send-dispatch.json');envelope_journal=Journal(state/'send-envelope.json')
+  def send_cycle():
+   verify();status=connection.poll_status()
+   allowed=status.get('desiredState')=='running' and status.get('executionPaused') is False
+   return run_send_once(connection.send_client(),send_journal,lambda:lambda snapshot,begin:send_once(snapshot,store,mailbox_journal,envelope_journal,begin_dispatch=begin),can_dispatch=allowed)
  stop=threading.Event()
  with SingleInstance(state/'host.lock'):
   def run_host():
    host_loop(connection,lambda token:factory(config['origin'],token,'worker'),lambda:HarveyDraftAdapter(SafeClaudeTextRuntime('')),doctor,Journal(state/'dispatch.json'),stop,verify_fn=verify,mailbox_cycle=mailbox_cycle,reply_cycle=reply_cycle,reply_uncertain=reply_uncertain)
-  if inbox_cycle is None:run_host()
-  else:
-   with inbox_background(inbox_cycle,stop):run_host()
+  with ExitStack() as background:
+   if inbox_cycle is not None:background.enter_context(inbox_background(inbox_cycle,stop))
+   if send_cycle is not None:background.enter_context(send_background(send_cycle,stop))
+   run_host()

@@ -103,6 +103,13 @@ class ManagedConnection:
     if not s.get('adopted') or s.get('pending'):raise ConnectionUnavailable('HOST_UNAVAILABLE')
     return self.factory(s['origin'],self._secret(s['activeRef']),'reply')
   except (JournalError,KeyError):raise ConnectionUnavailable('HOST_UNAVAILABLE') from None
+ def send_client(self):
+  try:
+   with self.journal.lock():
+    s=self._state()
+    if not s.get('adopted') or s.get('pending'):raise ConnectionUnavailable('HOST_UNAVAILABLE')
+    return self.factory(s['origin'],self._secret(s['activeRef']),'send')
+  except (JournalError,KeyError):raise ConnectionUnavailable('HOST_UNAVAILABLE') from None
 
  def inbox_client(self):return self._manager_client('inbox')
 

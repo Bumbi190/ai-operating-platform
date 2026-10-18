@@ -1,7 +1,7 @@
 # Omnira Kalender — designförslag
 
 Datum: 2026-10-18
-Status: **Förslag för ägargranskning. Ingen produktkod, migration eller driftsändring ingår i denna leverans.**
+Status: **Grunddesign godkänd av André 2026-10-18. Riktningen mot ett senare Gantt-läge är också godkänd. Ingen produktkod, migration eller driftsändring ingår i denna leverans.**
 Kontrollerad bas: `34d21cde97aa1c25a6d34a613657d8aee91f8591`.
 
 ## 1. Beställningen och avsedd användning
@@ -47,7 +47,7 @@ Första alternativet väljs som förslag. Extern synk kan byggas senare med samm
 
 ## 5. Sparade poster och källornas ansvar
 
-En ny tabell, `user_calendar_events`, sparar manuella poster. Datakontraktet innehåller id, owner_user_id, titel, valfri beskrivning/plats, typ privat eller egen arbetsbokning, valfri behörighetskontrollerad projekt-/uppgiftsreferens, tidsuppgifter, version, status scheduled/cancelled och skapad/ändrad-tid. Endast användaren äger dessa poster även när en arbetsbokning pekar på ett projekt. En separat användarägd tabell, `user_calendar_mutations`, håller idempotensnyckel, operation, postreferens och sparat resultat för säkra återförsök; den får inte bli en gemensam aktivitetslogg.
+En ny tabell, `user_calendar_events`, sparar manuella poster. Datakontraktet innehåller id, owner_user_id, titel, valfri beskrivning/plats, typ privat eller egen arbetsbokning, valfri behörighetskontrollerad projekt-/uppgiftsreferens, tidsuppgifter, version, status scheduled/cancelled och skapad/ändrad-tid. Arbetsbokningar har dessutom work_status planned/in_progress/done; privata möten har inget work_status. Detta beskriver användarens planerade arbete och är inte en separat status för ett underliggande agentjobb. Endast användaren äger dessa poster även när en arbetsbokning pekar på ett projekt. En separat användarägd tabell, `user_calendar_mutations`, håller idempotensnyckel, operation, postreferens och sparat resultat för säkra återförsök; den får inte bli en gemensam aktivitetslogg.
 
 Tidsbestämda poster sparar UTC-start, eventuell UTC-sluttid och ursprunglig tidszon. Heldagsposter använder lokala kalenderdatum och exklusivt slutdatum så att de inte flyttar dag vid tidszonskonvertering. För kalenderlistning hämtas bara valt tidsintervall, högst 31 dagar per anrop. API och Atlas använder samma validerade läs- och mutationskontrakt. Titel eller känsliga anteckningar ska inte kopieras till projektminne eller gemensamma agentloggar.
 
@@ -115,8 +115,16 @@ Verifieringen måste täcka:
 9. Befintliga sex godkända Familje-Stunden-publiceringar ändras inte av införandet.
 10. Projektets nödvändiga typ-, isolerings-, migrations- och säkerhetskontroller körs för den faktiska kodändringen.
 
-## 9. Granskningsläge och nästa steg
+## 9. Godkänd riktning: Gantt för veckoplanering
+
+André preciserade 2026-10-18 att kalendern sedan ska användas som Gantt-schema när han och Atlas planerar veckan och godkände riktningen. Kalender och Gantt ska använda samma stabila post-id, verkliga start/sluttider, projektkoppling och status. En ändring i ena vyn ska därför slå igenom i den andra.
+
+Första leveransen bygger veckokalendern och den gemensamma datagrunden. Ett separat efterföljande Gantt-läge visar arbetsbokningar över tid i rader och använder samma läs-/skrivfunktioner. En post utan angiven sluttid visas som en punkt eller som att sluttid saknas; ingen arbetslängd uppfinns. Projektens källstatus fortsätter komma från respektive källa.
+
+Detta utökar inte första leveransen med en separat beroendemotor, automatisk resursfördelning, kritisk linje eller automatisk agentexekvering. Sådana funktioner är inte beställda. Den exakta Gantt-interaktionen får en egen kort plan när veckokalendern är verifierad.
+
+## 10. Granskningsläge och nästa steg
 
 Det här dokumentet är ett konkret förslag baserat på beställningen och läst kod. Det är inte ett besked om att kalendern är byggd eller att Atlas redan har dessa verktyg.
 
-Efter ägargranskning tas en exakt implementationsplan fram med datakontrakt, migration, filgränser, testfall och driftsättning. Produktkod och driftsändringar börjar först efter de återstående Superpowers-granskningarna. Testerna ovan är krav för senare implementation; de har inte körts för detta dokument.
+Efter den genomförda ägargranskningen tas en exakt implementationsplan fram med datakontrakt, migration, filgränser, testfall och driftsättning. Produktkod och driftsändringar börjar först efter de återstående Superpowers-granskningarna. Testerna ovan är krav för senare implementation; de har inte körts för detta dokument.

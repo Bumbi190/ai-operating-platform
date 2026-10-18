@@ -107,3 +107,14 @@ it('retains_eight_seconds_for_instagram_and_reads',async()=>{
   }
  } finally { vi.restoreAllMocks();vi.useRealTimers() }
 })
+
+it('cancels a pending write when the worker budget expires without retry',async()=>{
+ useAbortClock()
+ try{
+  const controller=new AbortController();let calls=0,settled=false
+  const provider=new MetaManualProvider(async(_url,init)=>{calls++;return new Promise<Response>((_resolve,reject)=>{init.signal!.addEventListener('abort',()=>reject(Error('aborted')),{once:true})})},{signal:controller.signal})
+  const result=provider.facebook(facebook,{text:'x',linkUrl:null,imageUrl:media}).then(value=>({value}),error=>({error})).finally(()=>{settled=true})
+  controller.abort();await vi.advanceTimersByTimeAsync(1)
+  expect(settled).toBe(true);expect(await result).toMatchObject({error:{outcome:'unknown'}});expect(calls).toBe(1)
+ }finally{vi.restoreAllMocks();vi.useRealTimers()}
+})

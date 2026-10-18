@@ -1,11 +1,13 @@
-import {beforeAll,it,expect} from 'vitest'
+import {beforeAll,it,expect,vi} from 'vitest'
 import {initializePublicationDb} from './test-db'
 import {publicationFixture,JPEG} from './fixtures.test-utils'
 import {testSql} from '../../website-build/test-db'
 import {dispatchPublication,checkPublication,publicationPreview} from './dispatch'
 import {MetaManualProvider} from './provider'
+const adminState=vi.hoisted(()=>({db:null as any}))
+vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>adminState.db}))
 let db:ReturnType<typeof initializePublicationDb>
-beforeAll(()=>{db=initializePublicationDb()})
+beforeAll(()=>{db=initializePublicationDb();adminState.db=db})
 type Fixture=Awaited<ReturnType<typeof publicationFixture>>
 function deps(f:Fixture,fetcher:(url:string,init:RequestInit)=>Promise<Response>){return {provider:new MetaManualProvider(fetcher),resolveCredential:async()=>({projectId:f.projectId,bindingId:f.bindingId,channel:f.post.revision.draft.channel as 'facebook'|'instagram',accountId:f.accountId,token:'fixture-token',apiBase:'https://graph.facebook.com/v21.0'}),verifyImage:async()=>({bytes:new Uint8Array(JPEG),width:320,height:400})}}
 const check=(f:Fixture,id:string)=>({projectId:f.projectId,postId:f.postId,publicationId:id})

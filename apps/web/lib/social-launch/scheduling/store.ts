@@ -74,3 +74,5 @@ export function readScheduleReceipt(db:Db,claim:Pick<ScheduleClaim,'jobId'>){id(
 export function peekScheduleJobs(db:Db,projectIds=enabledScheduleProjects()){
  projectIds.forEach(id);return rpc<{jobId:string|null;result:string}>(db,'social_schedule_peek',{p_input:{projectIds}})
 }
+
+export function recoverScheduleCheckpoint(db:Db,claim:ScheduleClaim){return rpc<ScheduleStepResult>(db,'social_schedule_recover_checkpoint',{p_claim:claimInput(claim)})}

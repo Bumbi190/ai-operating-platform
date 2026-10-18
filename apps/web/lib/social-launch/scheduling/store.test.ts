@@ -1,5 +1,5 @@
 
-import {beforeAll,afterAll,it,expect} from 'vitest'
+import {beforeAll,afterAll,it,expect,vi} from 'vitest'
 import {initializeSchedulingDb} from './test-db'
 import {scheduleFixture,setScheduleClock,appendScheduleFixtureItem} from './fixtures.test-utils'
 import {approveSchedule,claimScheduleJob,checkScheduleWrite,revokeSchedule,recordReleaseEvidence,recordScheduleStep,saveMonthlyRule,readSchedules,proposeSchedule} from './store'
@@ -8,7 +8,7 @@ import {publicationAssert,publicationStep} from '../publication/store'
 import {manifestHash} from './manifest'
 let db:ReturnType<typeof initializeSchedulingDb>
 beforeAll(()=>{db=initializeSchedulingDb()})
-afterAll(()=>setScheduleClock(null))
+afterAll(()=>{setScheduleClock(null);vi.unstubAllEnvs()})
 it('two_claimers_share_only_one_intent',async()=>{
  const f=await scheduleFixture(db)
  expect(f.batch.sha256).toBe(manifestHash(f.manifest))

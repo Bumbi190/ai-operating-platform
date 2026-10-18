@@ -9,6 +9,7 @@ export function initializeSchedulingDb(){
   const dir=resolve(process.cwd(),'supabase/migrations'),file=readdirSync(dir).find(f=>f.endsWith('_social_schedule_batches.sql'))!
   testSql('begin;'+readFileSync(resolve(dir,file),'utf8')+'commit;')
  }
+ if(testSql("select to_regprocedure('public.social_schedule_recover_checkpoint(jsonb)') is null;")==='t'){const dir=resolve(process.cwd(),'supabase/migrations'),file=readdirSync(dir).find(f=>f.endsWith('_social_schedule_checkpoint_recovery.sql'))!;testSql('begin;'+readFileSync(resolve(dir,file),'utf8')+'commit;')}
  // Separate psql processes, so Promise.all exercises real concurrent transactions.
  const original=db.rpc.bind(db)
  ;(db as any).rpc=(name:string,args:Record<string,unknown>)=>{

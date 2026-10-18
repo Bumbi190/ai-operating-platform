@@ -4,14 +4,15 @@ export class ManualProviderError extends Error{
  constructor(public code:'provider_denied'|'provider_unavailable'|'invalid_response',public outcome:'rejected'|'unknown'='unknown'){super(code)}
 }
 export class MetaManualProvider{
- constructor(private fetcher:(url:string,init:RequestInit)=>Promise<Response>=fetch){}
+ constructor(private fetcher:(url:string,init:RequestInit)=>Promise<Response>=fetch,private options:{signal?:AbortSignal}={}){}
+ withSignal(signal:AbortSignal){return new MetaManualProvider(this.fetcher,{signal:this.options.signal?AbortSignal.any([this.options.signal,signal]):signal})}
  private base(c:ManualCredential){
   try{const u=new URL(c.apiBase);if(u.protocol!=='https:'||!['graph.facebook.com','graph.instagram.com'].includes(u.hostname)||u.port||u.username||u.password||u.search||u.hash||!/^\/v[0-9]{1,2}[.][0-9]+$/.test(u.pathname)||!(/^[0-9]{1,80}$/).test(c.accountId)||!c.token||c.token.length>16384||/[\u0000-\u0020\u007f]/.test(c.token))throw Error();if(c.channel==='facebook'&&u.hostname!=='graph.facebook.com')throw Error();return u.origin+u.pathname}catch{throw new ManualProviderError('invalid_response')}
  }
  private async json(c:ManualCredential,path:string,body?:URLSearchParams,timeoutMs=8000):Promise<Record<string,unknown>>{
   const url=this.base(c)+'/'+path
   try{
-   const response=await this.fetcher(url,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+c.token,...(body?{'content-type':'application/x-www-form-urlencoded'}:{})},body,redirect:'error',cache:'no-store',signal:AbortSignal.timeout(timeoutMs)})
+   const response=await this.fetcher(url,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+c.token,...(body?{'content-type':'application/x-www-form-urlencoded'}:{})},body,redirect:'error',cache:'no-store',signal:this.options.signal?AbortSignal.any([this.options.signal,AbortSignal.timeout(timeoutMs)]):AbortSignal.timeout(timeoutMs)})
    const reader=response.body?.getReader();if(!reader)throw new ManualProviderError('invalid_response')
    let size=0;const chunks:Uint8Array[]=[]
    try{for(;;){const {value,done}=await reader.read();if(done)break;size+=value.length;if(size>65536){await reader.cancel();throw new ManualProviderError('invalid_response')}chunks.push(value)}}finally{reader.releaseLock()}

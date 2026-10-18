@@ -1,3 +1,4 @@
+import {vi} from 'vitest'
 import {randomUUID} from 'node:crypto'
 import {publicationFixture} from '../publication/fixtures.test-utils'
 import {proposeSocialContent,decideSocialContent} from '../content/store'
@@ -10,10 +11,10 @@ export function setScheduleClock(value:string|null){
  if(value!==null&&!Number.isFinite(Date.parse(value)))throw Error('Invalid test clock')
  testSql("create or replace function public.social_schedule_now() returns timestamptz language sql volatile security invoker set search_path='' as $$select "+(value?"'"+new Date(value).toISOString()+"'::timestamptz":"clock_timestamp()")+"$$;")
 }
-export async function scheduleFixture(db:ReturnType<typeof initializeSchedulingDb>,options:{kind?:'ordinary'|'month_release';releaseMonth?:string;items?:ScheduleItem[]}={}){
+export async function scheduleFixture(db:ReturnType<typeof initializeSchedulingDb>,options:{channel?:'facebook'|'instagram';kind?:'ordinary'|'month_release';releaseMonth?:string;items?:ScheduleItem[]}={}){
  setScheduleClock(null)
  testSql("update platform_config set automation_paused=false;update social_schedule_jobs set state='cancelled',lease_expires_at=null where state in ('queued','claimed','waiting','blocked','missed');insert into auth.users(id) values('20000000-0000-4000-8000-000000000002') on conflict do nothing;")
- const source=await publicationFixture(db,'facebook',true),kind=options.kind??'ordinary'
+ const source=await publicationFixture(db,options.channel??'facebook',true),kind=options.kind??'ordinary'
  let localMinute:string,scheduledAt:string
  if(kind==='month_release'){const slot=monthlyReleaseSlot(options.releaseMonth??'2026-11');localMinute=slot.localMinute;scheduledAt=slot.scheduledAt}
  else {
@@ -23,9 +24,9 @@ export async function scheduleFixture(db:ReturnType<typeof initializeSchedulingD
  const content=await proposeSocialContent(db,source.p,{projectId:source.projectId,postId:source.postId,expectedRevisionId:source.post.revision.id,planRevisionId:source.post.revision.planRevisionId,idempotencyKey:randomUUID(),draft:{...source.post.revision.draft,scheduledAt}})
  const revision=content.posts[0].revision,approved=await decideSocialContent(db,source.p,{projectId:source.projectId,postId:source.postId,revisionId:revision.id,sha256:revision.sha256,decision:'approve',idempotencyKey:randomUUID()})
  const decision=approved.posts[0].decision!
- const item:ScheduleItem={postId:source.postId,revisionId:revision.id,sha256:revision.sha256,decisionId:decision.id,planRevisionId:revision.planRevisionId,bindingId:source.bindingId,accountId:source.accountId,channel:'facebook',asset:{id:source.assetId,sha256:source.assetSha},localMinute,scheduledAt,expiresAt:new Date(Date.parse(scheduledAt)+600000).toISOString(),occasionId:randomUUID(),kind,releaseCondition:kind==='month_release'?{releaseMonth:options.releaseMonth??'2026-11',catalogSha256:'e'.repeat(64)}:null}
+ const item:ScheduleItem={postId:source.postId,revisionId:revision.id,sha256:revision.sha256,decisionId:decision.id,planRevisionId:revision.planRevisionId,bindingId:source.bindingId,accountId:source.accountId,channel:source.post.revision.draft.channel as 'facebook'|'instagram',asset:{id:source.assetId,sha256:source.assetSha},localMinute,scheduledAt,expiresAt:new Date(Date.parse(scheduledAt)+600000).toISOString(),occasionId:randomUUID(),kind,releaseCondition:kind==='month_release'?{releaseMonth:options.releaseMonth??'2026-11',catalogSha256:'e'.repeat(64)}:null}
  const manifest={projectId:source.projectId,items:options.items??[item]},principal=source.p
- process.env.SOCIAL_SCHEDULE_DISPATCH_ENABLED='true';process.env.SOCIAL_SCHEDULE_PROJECT_IDS=source.projectId
+ vi.stubEnv('SOCIAL_SCHEDULE_DISPATCH_ENABLED','true');vi.stubEnv('SOCIAL_SCHEDULE_PROJECT_IDS',source.projectId)
  const batch=await proposeSchedule(db,principal,{projectId:source.projectId,manifest,expectedRevisionId:null,idempotencyKey:randomUUID()})
  return {principal,manifest,batch,approval:{projectId:source.projectId,batchId:batch.batchId,revisionId:batch.revisionId,sha256:batch.sha256,confirmed:true as const,idempotencyKey:randomUUID()},dueAt:scheduledAt,source:{...source,input:{...source.input,revisionId:revision.id,sha256:revision.sha256,decisionId:decision.id}}}
 }

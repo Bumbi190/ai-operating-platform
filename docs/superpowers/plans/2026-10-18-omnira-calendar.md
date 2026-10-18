@@ -177,7 +177,7 @@ Alla paths nedan är relativa till `apps/web/` om inget annat anges.
 
 **Interfaces:** En förhandslänk till /calendar och dokumenterade användartester. Ingen kalender får beskrivas som live utan faktisk migrerad databas, färdig produktionsdeploy och verifierad sida.
 
-- [ ] Skapa draft-PR med det faktiska slutbeteendet, datamodell/åtkomst och utförda kontroller. Behåll hela denna plan och godkänd spec i PR:en.
+- [x] Skapa draft-PR med det faktiska slutbeteendet, datamodell/åtkomst och utförda kontroller. Behåll hela denna plan och godkänd spec i PR:en.
 - [ ] Verifiera förhandsversionen med inloggad operatör och tillfälliga kalenderposter som är tydligt märkta test. Visa sparande och flytt genom text. Genomför faktiskt mötesskapande och flytt under röstsamtal när mikrofon finns; text med inputSource=voice räcker inte som ljudbevis.
 - [ ] Låt André granska den konkreta förhandsversionen före sammanslagning/driftsättning. Ingen generell ”godkänd plan” ersätter denna resultatgranskning.
 - [ ] Efter resultatgodkännande: kontrollera aktuell main/SQL-ledger, tillämpa exakt granskad migration, verifiera RLS/grants, mergat commit och READY-produktionsdeploy. Läs endast metadata för de sex befintliga socialjobben och bekräfta att kalenderinförandet inte ändrat dem.

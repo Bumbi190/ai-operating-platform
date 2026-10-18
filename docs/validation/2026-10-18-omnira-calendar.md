@@ -6,7 +6,7 @@ Status: granskningsbar lokal förhandsversion, inte driftsatt. Kalenderns egna k
 
 Godkänd spec: `docs/superpowers/specs/2026-10-18-omnira-calendar-design.md`.
 Godkänd plan och Native-metod: André, 2026-10-18T18:14:09Z.
-Main vid start: `34d21cde97aa1c25a6d34a613657d8aee91f8591`.
+Main vid start: `34d21cde97aa1c25a6d34a613657d8aee91f8591`. Integrerad aktuell main: `d3f9fcc1045026042f6bb9c0cd302ed0b7283127` genom egen branchmerge `019e6e9a36695014e8888cd000354aebd17006d7`; ingen kalendermerge till main.
 Separat granskning: fryst `39c5c32e081c1401a39b164d9329bda03c484d91` mot main.
 Verifierad produktcommit efter den enda TDD-fixomgången: `ff8d5e7a807e54d92bcfff469637991b7e8c6f6d`.
 Fortsatt arbete ligger på `codex/omnira-calendar-implementation-20261018`; den ursprungliga arbetskopians produktkod hålls fryst för den långa helhetskörningen.
@@ -22,7 +22,7 @@ Kalendern har en gemensam användarägd lagring för privat möte/arbetsblock oc
 | `tsc --noEmit --pretty false` | **PASS**, exit0 efter återanvändning av projektets redan installerade @remotion-beroende. |
 | `vitest run lib/qa/navigation-closure.test.ts lib/qa/vnext-nav-model.test.ts --no-file-parallelism` | **56/56 PASS**. Exakta menyförväntningar uppdaterade för den godkända Kalender-posten på dator/mobil. |
 | 33 obligatoriska QA-filer från `.github/workflows/atlas-project-isolation.yml` samt `lib/atlas/conversation` | **1095/1099 PASS**, 36 filer, 4 Windows-baselinefel nedan, inga överhoppade. De två tidigare 5s-timeouterna passerar med uttryckliga30s/60s-gränser. |
-| Schema/migrationskontroller från Task2 | **250/250 PASS**, inklusive SQL-lagring och migration-guard-v2, schema-security-invariant och migration-security-gate. Samma kalender-SQL oförändrad efter detta. |
+| Schema/migrationskontroller efter integration av aktuell main | **252/252 PASS**, inklusive35 guard-,76 schema-,133 säkerhets- och8 riktiga privata SQL-fall. Även ny hel TypeScript-körning PASS. Samma kalender-SQL oförändrad. |
 
 Fulla loggar och JSON-resultat finns i planens lokala arbetsjournal `.superpowers/sdd/2026-10-18-omnira-calendar/`. De trettiotre filerna listas exakt i `review-isolation-selection.json`; samtliga fel finns i `review-isolation-failures.json`.
 
@@ -53,11 +53,15 @@ Dessa fyra fel är oförändrade Windows-baselinefel, inte PASS:
 - Samma fil — **the search_path follow-up pins the append-only function's search_path, and does nothing else**.
 - `lib/qa/youtube-project-oauth.test.ts` — youtube connection · the codebase, read — **the state is touched only by the OAuth module; the start route records it, the callback consumes it and alone exchanges a code**.
 
-De tre första orsakas av att äldre kommentarstrippning inte hanterar arbetskopians CRLF. Samma parser över main:s kanoniska Git/LF-text innehåller inte det felaktigt matchade platform_tokens. Det sista jämför Windows `lib\\media\\youtube-oauth.ts` med POSIX `lib/media/youtube-oauth.ts`. De berörda gamla test-/SQL-filerna är oförändrade mot main. Inga äldre migrationer, säkerhetsundantag eller orelaterade produkttester har skrivits om för att få grönt.
+De tre första orsakas av att äldre kommentarstrippning inte hanterar arbetskopians CRLF. Samma parser över main:s kanoniska Git/LF-text innehåller inte det felaktigt matchade platform_tokens. Det sista jämför Windows `lib\\media\\youtube-oauth.ts` med POSIX `lib/media/youtube-oauth.ts`. De berörda gamla test-/SQL-filerna är oförändrade även mot aktuell maind3f9fcc. Inga äldre migrationer, säkerhetsundantag eller orelaterade produkttester har skrivits om för att få grönt.
 
 Den separata hela projektkörningen startade på fryst39c5c32 med30s-test/60s-hookgränser, egen lokal testdatabas och SQL-opt-in avstängt där projektets andra fixturer kräver det. **Resultatet kompletteras när processen avslutats; den får inte beskrivas som grön.** Kalenderintroducerade gamla menyassertioner som hittades där är redan rättade och56/56-omkörda påff8d5e7.
 
 ## Förhandsversion och manuellt prov
+
+Draft-PR: https://github.com/Bumbi190/ai-operating-platform/pull/405.
+
+![Lokal kalender med tydligt märkta exempelposter](assets/2026-10-18-omnira-calendar-preview.png)
 
 Lokal förhandslänk på Andrés dator: `http://127.0.0.1:54413/calendar?week=2026-10-19&preview=1`.
 
@@ -73,7 +77,7 @@ Ny CLI-genererad migration: `apps/web/supabase/migrations/20261018182213_user_ca
 Kanonisk Git/LF SHA256: `6bb10d31b39c3733e1646138cda08fc432135abdcfd00cfda6283b9e0d082c4e`.
 Två användarägda tabeller: user_calendar_events och user_calendar_mutations, RLS, ingen anon/PUBLIC-åtkomst och inga privata service_role-grants.
 
-**Ingen produktionsmigration, merge eller produktionsdeploy har utförts.** Kalendern är inte live. De sex befintliga Familje-Stunden-jobben och deras godkännanden lämnas orörda. Migrationsgrinden kan vägra en preview-build mot ledgern utan den nya migrationen; den ska inte kringgås.
+**Ingen produktionsmigration, merge eller produktionsdeploy har utförts.** Kalendern är inte live. De sex befintliga Familje-Stunden-jobben och deras godkännanden lämnas orörda. Det automatiska Vercel-förhandsbygget för91940d5, dpl_8aNraNKiGLcU3SBdHYXA1qnAtPrk, **misslyckades faktiskt** före Next build vid migrationsgrinden: user_calendar_v1 saknas i produktionsledgern (fail-closed). Den ska inte kringgås. Ingen READY-förhandsdeploy eller DB-ansluten förhandslänk finns. GitHub Actions-obligatoriska gränskontroller har inte visat några körningar för detta draft-HEAD och får inte beskrivas som passerade.
 
 Före drift kräver Task7 Andrés granskning av denna konkreta version, sedan exakt granskad migration, aktuell main/SQL-ledger, RLS/grants, merge och READY-deploy, samt metadatajämförelse för de sex ursprungliga socialjobben.
 
@@ -82,3 +86,7 @@ Före drift kräver Task7 Andrés granskning av denna konkreta version, sedan ex
 Den gemensamma text-/voice-transkriptvägen är verifierad med riktiga lokala SQL-funktioner. **Ett faktiskt röstsamtal med mikrofon är inte genomfört.** InputSource=voice är inget ljudbevis. Även det autentiserade Atlas-provet via den driftsatta/DB-anslutna förhandsversionens textgränssnitt återstår; lokala formulärprov är inte samma sak.
 
 Nästa användarprov: granska veckovyn och ett privat möte, därefter be Atlas skapa och flytta ett tydligt testmöte genom text och riktigt röstsamtal i DB-ansluten miljö. Gantt-gränssnittet planeras separat över samma modell.
+
+## Integration med samtidig main-ändring
+
+PR404 lade till den redan applicerade news-review-migrationens exakta källkod. Konflikter löstes endast i policy/fixture/registry: canonical148/enforced134, oförändrade frysta14/30-listor och175 registrerade tabellklassificeringar inklusive de två pending kalendertabellerna. Den verkliga170-namnsledgern innehåller news review men avvisas fortfarande för saknad user_calendar_v1; bara en tydligt hypotetisk171-namnsledger passerar i test. Inga gamla migreringsbytes ändrades. Kalenderns nya SQL är -text-pinnad med oförändrad SHA.

@@ -62,3 +62,62 @@ test('updates the current-time marker as the minute changes',async({page})=>{
  const marker=page.locator('[aria-label="Aktuell tid"]');await expect(marker).toHaveCSS('top','840px');
  await page.clock.runFor(60000);await expect(marker).toHaveCSS('top','841px');
 });
+
+test('clears private state on auth notifications without replacing the server owner prop',async({page,request})=>{
+ await request.post('/_test/reset',{data:{demo:true}});await open(page);
+ await expect(page.getByRole('button',{name:/Möte med Oscar/})).toBeVisible();await fillMeeting(page,'A:s privata utkast');
+ let release!:()=>void,seen!:()=>void;const gate=new Promise<void>(resolve=>release=resolve),reached=new Promise<void>(resolve=>seen=resolve);
+ await page.route('**/api/calendar?**',async route=>{const response=await route.fetch();seen();await gate;await route.fulfill({response}).catch(()=>{});});
+ await page.getByRole('button',{name:'Nästa vecka'}).click();await reached;
+ await page.getByRole('button',{name:'Logga ut i testsession',exact:true}).click();
+ await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('button',{name:/Möte med Oscar/})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Fortsätt utkast'})).toHaveCount(0);
+ await page.getByRole('button',{name:'Logga in som B utan sidbyte',exact:true}).click();release();await page.waitForTimeout(150);
+ await expect(page.getByRole('button',{name:'Ny händelse',exact:true})).toBeDisabled();
+ await expect(page.getByRole('status')).toContainText('Sessionen har ändrats');
+ await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('button',{name:/Möte med Oscar/})).toHaveCount(0);
+});
+test('ignores a saved A receipt after the authenticated session has changed to B',async({page})=>{
+ await open(page);await fillMeeting(page,'Sparades för A');
+ let release!:()=>void,seen!:()=>void;const gate=new Promise<void>(resolve=>release=resolve),reached=new Promise<void>(resolve=>seen=resolve);
+ await page.route('**/api/calendar',async route=>{const response=await route.fetch();seen();await gate;await route.fulfill({response}).catch(()=>{});});
+ await page.getByRole('button',{name:'Spara',exact:true}).click();await reached;
+ await page.getByRole('button',{name:'Logga ut i testsession',exact:true}).click();await page.getByRole('button',{name:'Logga in som B utan sidbyte',exact:true}).click();release();
+ await page.waitForTimeout(150);await expect(page.getByRole('button',{name:/Sparades för A/})).toHaveCount(0);
+ await expect(page.getByRole('status')).not.toContainText('Händelsen är sparad');
+ await expect(page.getByRole('button',{name:'Ny händelse',exact:true})).toBeDisabled();
+});
+test('refreshes the visible week after a delayed save and preserves its events',async({page,request})=>{
+ await request.post('/api/calendar',{data:{operation:'create',eventId:crypto.randomUUID(),idempotencyKey:crypto.randomUUID(),draft:{kind:'private',title:'Vecka B ligger kvar',description:'',location:'',projectId:null,taskId:null,time:{kind:'timed',startUtc:'2026-10-29T12:00:00.000Z',endUtc:null,timeZone:'Europe/Stockholm'},workStatus:null}}});
+ await open(page);await fillMeeting(page,'Sparning i vecka A');
+ let release!:()=>void,seen!:()=>void;const gate=new Promise<void>(resolve=>release=resolve),reached=new Promise<void>(resolve=>seen=resolve);
+ await page.route('**/api/calendar',async route=>{const response=await route.fetch();seen();await gate;await route.fulfill({response});});
+ await page.getByRole('button',{name:'Spara',exact:true}).click();await reached;await page.getByRole('button',{name:'Nästa vecka'}).click();
+ await expect(page.getByRole('button',{name:/Vecka B ligger kvar/})).toBeVisible();release();
+ await expect(page.getByRole('dialog')).toHaveCount(0);await expect(page.getByRole('status')).toContainText('Händelsen är sparad');
+ await page.waitForTimeout(150);await expect(page.locator('[data-week]')).toHaveAttribute('data-week','2026-10-26');
+ await expect(page.getByRole('button',{name:/Vecka B ligger kvar/})).toBeVisible();await expect(page.getByRole('button',{name:/Sparning i vecka A/})).toHaveCount(0);
+});
+test('a delayed receipt preserves a later editor and its unsaved fields',async({page,request})=>{
+ await request.post('/_test/reset',{data:{demo:true}});await open(page);await fillMeeting(page,'Första sparningen');
+ let release!:()=>void,seen!:()=>void;const gate=new Promise<void>(resolve=>release=resolve),reached=new Promise<void>(resolve=>seen=resolve);
+ await page.route('**/api/calendar',async route=>{const response=await route.fetch();seen();await gate;await route.fulfill({response});});
+ await page.getByRole('button',{name:'Spara',exact:true}).click();await reached;await page.getByRole('button',{name:'Stäng panel'}).click();
+ await page.getByRole('button',{name:/Möte med Oscar/}).click();await page.getByLabel('Anteckning').fill('Nytt osparat innehåll');
+ release();await expect(page.getByRole('status')).toContainText('Händelsen är sparad');
+ await expect(page.getByRole('dialog')).toBeVisible();await expect(page.getByLabel('Anteckning')).toHaveValue('Nytt osparat innehåll');
+ await expect(page.getByLabel('Titel',{exact:true})).toHaveValue('Möte med Oscar');
+});
+for(const [label,start,end] of [
+ ['sekunder','2026-10-22T12:00:30.000Z','2026-10-22T13:00:45.000Z'],
+ ['första 02:30','2026-10-25T00:30:15.000Z','2026-10-25T00:45:30.000Z'],
+ ['andra 02:30','2026-10-25T01:30:15.000Z','2026-10-25T01:45:30.000Z'],
+])test('preserves exact UTC times when only text is edited: '+label,async({page,request})=>{
+ const id=crypto.randomUUID();await request.post('/api/calendar',{data:{operation:'create',eventId:id,idempotencyKey:crypto.randomUUID(),draft:{kind:'private',title:'Exakt '+label,description:'',location:'',projectId:null,taskId:null,time:{kind:'timed',startUtc:start,endUtc:end,timeZone:'Europe/Stockholm'},workStatus:null}}});
+ await open(page);await page.locator('[data-event-id="manual:'+id+'"]').click();await page.getByLabel('Titel',{exact:true}).fill('Ändrad '+label);await page.getByLabel('Anteckning').fill('Bara text ändrades');await page.getByRole('button',{name:'Spara',exact:true}).click();
+ const event=page.locator('[data-event-id="manual:'+id+'"]');await expect(event).toContainText('Ändrad');await expect(event).toHaveAttribute('data-start-utc',start);await expect(event).toHaveAttribute('data-end-utc',end);
+});
+test('rejects a newly entered ambiguous autumn wall time',async({page})=>{
+ await open(page);await fillMeeting(page,'Tvetydig tid');await page.getByLabel('Datum',{exact:true}).fill('2026-10-25');await page.getByLabel('Starttid',{exact:true}).fill('02:30');await page.getByLabel('Ingen sluttid').check();await page.getByRole('button',{name:'Spara',exact:true}).click();
+ await expect(page.getByRole('alert')).toContainText('tider');await expect(page.getByLabel('Titel',{exact:true})).toHaveValue('Tvetydig tid');
+});

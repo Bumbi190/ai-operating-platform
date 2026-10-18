@@ -79,7 +79,7 @@ describe('sidebar · Organisation joins the approved IA', () => {
     const byGroup = Object.fromEntries(VNEXT_NAV.map((g) => [g.id, g.items.map((i) => i.label)]))
     expect(VNEXT_NAV.map((g) => g.id)).toEqual(['atlas', 'arbete', 'intelligens', 'system'])
     expect(byGroup.arbete).toEqual([
-      'Granskningar', 'Aktivitet', 'Planering', 'Marknadsgranskning', 'Content Center',
+      'Granskningar', 'Aktivitet', 'Kalender', 'Planering', 'Marknadsgranskning', 'Content Center',
     ])
     expect(byGroup.intelligens).toEqual(['Minne', 'Intelligence Graph', 'Pengar'])
     expect(byGroup.system).toEqual(['System', 'Inställningar'])

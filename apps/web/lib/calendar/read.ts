@@ -7,15 +7,16 @@ import {readCalendarWorkflows} from './source-workflows';
 import {parseCalendarRange} from './validate';
 export async function readCalendarWeek(deps:CalendarReadDeps,actor:CalendarActor,input:CalendarRange):Promise<CalendarWeekModel>{
  const range=parseCalendarRange(input);
+ const projectRead=<T>(load:()=>Promise<T>):Promise<T>=>actor.projectScopeAvailable===false?Promise.reject(Error('Calendar project scope unavailable')):load();
  const [manual,social,workflows,tasks,projects]=await Promise.allSettled([
-  listCalendarEvents(deps.sessionDb,range),readCalendarSocial(deps.adminDb,actor,range),
-  readCalendarWorkflows(deps.adminDb,actor,range),readCalendarTasks(deps.adminDb,actor),
-  (async()=>{
+  listCalendarEvents(deps.sessionDb,range),projectRead(()=>readCalendarSocial(deps.adminDb,actor,range)),
+  projectRead(()=>readCalendarWorkflows(deps.adminDb,actor,range)),projectRead(()=>readCalendarTasks(deps.adminDb,actor)),
+  projectRead(async()=>{
    if(!actor.allowedProjectIds.length)return [];
    const {data,error}=await deps.adminDb.from('projects').select('id,name,color').in('id',actor.allowedProjectIds).eq('owner_id',actor.userId).order('id',{ascending:true});
    if(error)throw Error('Calendar project labels unavailable');
    return (data??[]) as {id:string;name:string;color:string|null}[];
-  })()
+  })
  ]);
  const manualEntries:CalendarEntry[]=manual.status==='fulfilled'?manual.value.events.map(event=>({
   id:'manual:'+event.id,source:{kind:'manual',eventId:event.id,version:event.version},title:event.title,time:event.time,projectId:event.projectId,status:event.status,editable:true,href:null,pendingChange:null,manualEvent:event

@@ -1,3 +1,4 @@
+import {resolveCalendarProjectScope} from '@/lib/calendar/access';
 import {CALENDAR_TOOLS,CALENDAR_TOOL_NAMES,CALENDAR_GUIDE,handleCalendarTool,persistCalendarToolData,isCalendarIntent} from '@/lib/calendar/atlas-tools';
 import {calendarChangedForResult} from '@/lib/calendar/stream-effect';
 import type {CalendarDb} from '@/lib/calendar/types';
@@ -1274,7 +1275,8 @@ async function executeTool(
 
   if(CALENDAR_TOOL_NAMES.includes(name)){
     if(!calendarContext?.sameOrigin)return {ok:false,code:'UNAUTHORIZED'};
-    return handleCalendarTool(name,input,{actor:{userId,allowedProjectIds},conversationId:ownedConversationId,inputSource},{sessionDb:calendarContext.sessionDb,adminDb:db});
+    const projectScope=await resolveCalendarProjectScope(db,userId);
+    return handleCalendarTool(name,input,{actor:{userId,...projectScope},conversationId:ownedConversationId,inputSource},{sessionDb:calendarContext.sessionDb,adminDb:db});
   }
   if(CLEANUP_TOOL_NAMES.includes(name))return handleCleanupTool(name,input,ownedConversationId)
   if(LOCAL_TEXT_TOOL_NAMES.includes(name))return handleLocalTextTool(name,input,{userId,allowedProjectIds},ownedConversationId,db,inputSource)

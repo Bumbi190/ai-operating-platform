@@ -1,4 +1,5 @@
 import React,{useState} from 'react';
+import {emitCalendarAuth} from './calendar-auth-fixture';
 import {createRoot} from 'react-dom/client';
 import {CalendarWorkspace} from '../components/calendar/CalendarWorkspace';
 import type {CalendarWeekModel} from '../lib/calendar/types';
@@ -9,6 +10,6 @@ const initial=await fetch(url).then(r=>r.json()) as CalendarWeekModel;
 const preview=new URLSearchParams(location.search).get('preview')==='1';
 function Fixture(){
  const [user,setUser]=useState(/calendar_test_user=([a-f0-9-]+)/.exec(document.cookie)?.[1]??A),[model,setModel]=useState(initial);
- return <><div style={{padding:'6px 20px',background:'#112235'}}>{preview?<span style={{fontSize:12,color:'#b8cddc'}}>Förhandsvisning med exempelposter · inget ändras i din riktiga kalender</span>:<button onClick={()=>{const next=user===A?B:A;document.cookie='calendar_test_user='+next+'; Path=/';setModel({...model,entries:[],unscheduledTasks:[]});setUser(next);}}>Byt testkonto</button>}</div><CalendarWorkspace initialWeek={model} userId={user}/></>;
+ return <><div style={{padding:'6px 20px',background:'#112235'}}>{preview?<span style={{fontSize:12,color:'#b8cddc'}}>Förhandsvisning med exempelposter · inget ändras i din riktiga kalender</span>:<button onClick={()=>{const next=user===A?B:A;emitCalendarAuth(next);setModel({...model,entries:[],unscheduledTasks:[]});setUser(next);}}>Byt testkonto</button>}{!preview&&<><button onClick={()=>emitCalendarAuth(null)}>Logga ut i testsession</button><button onClick={()=>emitCalendarAuth(B)}>Logga in som B utan sidbyte</button></>}</div><CalendarWorkspace initialWeek={model} userId={user}/></>;
 }
 createRoot(document.getElementById('root')!).render(<Fixture/>);

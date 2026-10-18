@@ -14,6 +14,7 @@ export async function readFilteredCalendar(deps:CalendarReadDeps,actor:CalendarA
  const range=parseCalendarRange({fromDate:input.fromDate,toDateExclusive:input.toDateExclusive,timeZone:input.timeZone});
  let scoped=actor;
  if(input.projectId!==undefined){
+  if(actor.projectScopeAvailable===false)throw new CalendarError('UNAVAILABLE');
   calendarId(input.projectId);
   if(!actor.allowedProjectIds.includes(input.projectId))throw new CalendarError('NOT_FOUND');
   scoped={...actor,allowedProjectIds:[input.projectId]};

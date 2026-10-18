@@ -24,6 +24,7 @@ export function CalendarEventPanel({state:s}:{state:CalendarWorkspaceState}){
   </div>}
   {social&&<p className={styles.help}>Den godkända tiden gäller tills det nya tidsförslaget har granskats.</p>}
   {f&&(manual||social)&&<form className={styles.form} onSubmit={e=>{e.preventDefault();void s.save();}}>
+   <fieldset disabled={s.editorSaving} style={{display:'contents'}}>
    {manual&&<>
     <label>Titel<input aria-label="Titel" maxLength={150} required value={f.title} onChange={e=>field('title',e.target.value)}/></label>
     <label>Typ<select value={f.kind} onChange={e=>field('kind',e.target.value)}><option value="private">Privat möte</option><option value="work_block">Arbetsblock</option></select></label>
@@ -38,6 +39,7 @@ export function CalendarEventPanel({state:s}:{state:CalendarWorkspaceState}){
     <label>Plats<input maxLength={500} value={f.location} onChange={e=>field('location',e.target.value)}/></label>
     <label>Anteckning<textarea rows={4} maxLength={5000} value={f.description} onChange={e=>field('description',e.target.value)}/></label>
    </>}
+   </fieldset>
    {s.saveError&&<p className={styles.error} role="alert">{s.saveError}</p>}
    <button type="submit" className={styles.primaryButton} disabled={s.saving}>{s.saving?'Sparar…':social?'Föreslå ny tid':'Spara'}</button>
    {s.selected?.source.kind==='manual'&&<button type="button" className={styles.secondaryButton} disabled={s.saving} onClick={()=>void s.changeStatus(s.selected?.status==='cancelled'?'restore':'cancel')}>{s.selected.status==='cancelled'?'Återställ händelse':'Avboka händelse'}</button>}

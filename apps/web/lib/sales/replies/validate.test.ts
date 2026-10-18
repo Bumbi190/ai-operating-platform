@@ -11,3 +11,9 @@ describe('reply version and text boundaries',()=>{
  it('requires a current exact revision/hash for editorial review',()=>{expect(parseReplyReview({projectId:id(1),revisionId:id(7),expectedHash:'a'.repeat(64),decision:'approved'})).toMatchObject({decision:'approved'});expect(()=>parseReplyReview({projectId:id(1),revisionId:id(7),expectedHash:'a'.repeat(64),decision:'send'})).toThrow()})
  it('rejects incomplete or foreign worker refs',()=>{expect(parseReplyRef({projectId:id(1),jobId:id(7),workerId:id(8),claimId:id(9),generation:2})).toMatchObject({generation:2});expect(()=>parseReplyRef({projectId:id(1),generation:2})).toThrow()})
 })
+
+describe('general replies',()=>{
+ const general={projectId:id(1),conversationId:id(2),messageId:id(3),messageVersion:2,idempotencyKey:id(6),replyMode:'general'}
+ it('accepts an explicit general reply without inventing a contact or offer',()=>expect(parsePrepareReply(general)).toEqual(general))
+ it.each([{...general,contactId:id(4)},{...general,offerRevisionId:id(5)},{...general,senderName:'Atlas'},{...general,replyMode:'other'},{...general,replyMode:undefined}])('refuses mixed modes or caller sender authority %j',v=>expect(()=>parsePrepareReply(v)).toThrow())
+})

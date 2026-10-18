@@ -20,16 +20,16 @@ suite('reply real SQL / Next API / fresh Python isolated runtime',()=>{
   const source=readFileSync(resolve(process.cwd(),'supabase/tests/sales_replies.sql'),'utf8').split('set local role service_role;')[0]
   const enabled=()=>true,worker=createReplyWorkerApi({db:()=>db,enabled})
   const post=async(api:(r:Request)=>Promise<Response>,body:unknown,token?:string)=>{const r=await api(new Request('https://fixture.invalid/api/sales/replies',{method:'POST',headers:token?{authorization:'Bearer '+token}:{origin:'https://fixture.invalid'},body:JSON.stringify(body)}));return {code:r.status,body:await r.json()}}
-  for(const mode of ['acceptedLostReceipt','crashBeforeComplete','crashAfterComplete','pause','revoke','offer','selection','rotation']){
+  for(const mode of ['acceptedLostReceipt','crashBeforeComplete','crashAfterComplete','pause','revoke','offer','selection','rotation','general']){
    const ids=new Map<string,string>(),id=(old:string)=>{if(!ids.has(old))ids.set(old,randomUUID());return ids.get(old)!}
    ids.set(userId,userId);const projectId=id('10000000-0000-4000-8000-000000000001'),conversationId=id('50000000-0000-4000-8000-000000000001'),workerId=id('60000000-0000-4000-8000-000000000091'),messageId=id('90000000-0000-4000-8000-000000000091'),contactId=id('30000000-0000-4000-8000-000000000092'),offerRevisionId=id('40000000-0000-4000-8000-000000000091')
    const token=randomBytes(32).toString('base64url'),managerHash=createHash('sha256').update(randomUUID()).digest('hex'),hash=createHash('sha256').update(token).digest('hex'),stateDirectory=mkdtempSync(join(tmpdir(),'omnira-reply-fixture-'))
    sql(`insert into projects values('${projectId}','${userId}','reply-fixture',false);insert into conversations values('${conversationId}','${userId}','${projectId}');`)
    sql(source.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g,id).replace("repeat('8',64)",quote(hash)).replace("repeat('9',64)",quote(managerHash))+'commit;')
    const p={userId,allowedProjectIds:[projectId]},owner=createReplyApi({db:()=>db,enabled,access:async()=>({ok:true as const,...p})}),foreign=createReplyApi({db:()=>db,enabled,access:async()=>({ok:true as const,userId:other,allowedProjectIds:[projectId]})})
-   const input={projectId,messageId,messageVersion:1,contactId,contactVersion:1,offerRevisionId,idempotencyKey:randomUUID()}
+   const input=mode==='general'?{projectId,messageId,messageVersion:1,replyMode:'general',idempotencyKey:randomUUID()}:{projectId,messageId,messageVersion:1,contactId,contactVersion:1,offerRevisionId,idempotencyKey:randomUUID()}
    expect((await post(foreign,{operation:'prepare',...input,conversationId})).code).toBe(404)
-   expect(await handleSalesTool('prepare_sales_reply',{...input,contactId:id('30000000-0000-4000-8000-000000000091')},p,conversationId,db,enabled)).toMatchObject({code:'STOPPED'})
+   if(mode!=='general')expect(await handleSalesTool('prepare_sales_reply',{...input,contactId:id('30000000-0000-4000-8000-000000000091')},p,conversationId,db,enabled)).toMatchObject({code:'STOPPED'})
    const job:any=await handleSalesTool('prepare_sales_reply',input,p,conversationId,db,enabled);expect(job).toMatchObject({status:'queued',sendingEnabled:false});expect(await handleSalesTool('prepare_sales_reply',input,p,conversationId,db,enabled)).toMatchObject({id:job.id})
    async function cycle(options:Record<string,unknown>={}){
     const child=spawn(process.platform==='win32'?'C:\\Python312\\python.exe':'python3',['-u','-m','workers.sales.tests.reply_cross_fixture'],{cwd:resolve(process.cwd(),'../..'),stdio:['pipe','pipe','pipe']});let result:any=null,failure:unknown,chain=Promise.resolve(),stderr=''
@@ -53,14 +53,14 @@ suite('reply real SQL / Next API / fresh Python isolated runtime',()=>{
     expect(stderr,'fresh subprocess stderr').toBe('');expect(exit).toBe(options.crashBeforeComplete?24:options.crashAfterComplete?25:0);if(exit===0)expect(result).toMatchObject({externalCalls:0,smtpCalls:0,imapCalls:0});return result
    }
    try{
-    const options=mode==='acceptedLostReceipt'?{loseReceipt:true}:mode==='crashBeforeComplete'?{crashBeforeComplete:true}:mode==='crashAfterComplete'?{crashAfterComplete:true}:{changeDuringRuntime:true}
+    const options=mode==='general'?{}:mode==='acceptedLostReceipt'?{loseReceipt:true}:mode==='crashBeforeComplete'?{crashBeforeComplete:true}:mode==='crashAfterComplete'?{crashAfterComplete:true}:{changeDuringRuntime:true}
     const first=await cycle(options);if(first)expect(first.modelCalls).toBe(1)
-    const accepted=['acceptedLostReceipt','crashAfterComplete'].includes(mode)
+    const accepted=['acceptedLostReceipt','crashAfterComplete','general'].includes(mode)
     if(mode==='crashBeforeComplete')sql(`update sales_reply_jobs set lease_until=clock_timestamp()-interval '1 second' where id='${job.id}';`)
     const recovered=await cycle();expect(recovered.modelCalls).toBe(0);expect(recovered.pending).toBe(!accepted&&mode!=='offer')
     expect(sql(`select count(*) from sales_reply_draft_revisions where job_id='${job.id}';`)).toBe(accepted?'1':'0')
     expect(sql(`select attempts from sales_reply_jobs where id='${job.id}';`)).toBe('1')
-    if(accepted){const r=await owner(new Request(`https://fixture.invalid/api/sales/replies?projectId=${projectId}`));expect(r.status).toBe(200);const w=await r.json();expect(w.drafts[0]).toMatchObject({body:'Tack för din fråga. Vi återkommer med bekräftat pris.',evidenceIds:[messageId]});expect(w.jobs[0].source.branchName).toBe('Lund');expect(await handleSalesTool('get_sales_reply_job',{projectId,jobId:job.id},p,conversationId,db,enabled)).toMatchObject({status:'awaiting_review',attempts:1,sendingEnabled:false});expect(sql(`select content from approvals where id='${w.drafts[0].approvalId}';`)).not.toContain('Tack för din fråga')}
+    if(accepted){const r=await owner(new Request(`https://fixture.invalid/api/sales/replies?projectId=${projectId}`));expect(r.status).toBe(200);const w=await r.json();expect(w.drafts[0]).toMatchObject({body:'Tack för din fråga. Vi återkommer med bekräftat pris.',evidenceIds:[messageId]});expect(w.jobs[0].source.branchName).toBe(mode==='general'?null:'Lund');if(mode==='general')expect(w.jobs[0]).toMatchObject({replyMode:'general',source:{toEmail:'dealer@example.se',offerText:'Inget erbjudande'}});expect(await handleSalesTool('get_sales_reply_job',{projectId,jobId:job.id},p,conversationId,db,enabled)).toMatchObject({status:'awaiting_review',attempts:1,sendingEnabled:false});expect(sql(`select content from approvals where id='${w.drafts[0].approvalId}';`)).not.toContain('Tack för din fråga')}
     expect(sql(`select count(*) from sales_jobs where project_id='${projectId}';`)).toBe('0')
    }finally{rmSync(stateDirectory,{recursive:true,force:true})}
   }

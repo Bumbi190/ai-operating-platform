@@ -58,6 +58,39 @@ begin
  perform pg_temp.reply_refused(format('select resolve_approval(%L::uuid,%L::uuid,%L::uuid,%L,null)',x->>'approvalId',x->>'runId',v->>'projectId','approved'),'55000');
  perform pg_temp.reply_assert(sales_reply_cancel_job(p,jsonb_build_object('projectId',v->>'projectId','jobId',j->>'id'))->>'status'='cancelled','explicit cancel never requeues model');
 end $$;
+
+-- General replies retain the same source, conversation, suppression and durable revision fences.
+do $$
+declare p jsonb:='{"userId":"20000000-0000-4000-8000-000000000001","allowedProjectIds":["10000000-0000-4000-8000-000000000001"]}';
+ v jsonb:='{"projectId":"10000000-0000-4000-8000-000000000001","conversationId":"50000000-0000-4000-8000-000000000001","messageId":"90000000-0000-4000-8000-000000000091","messageVersion":1,"replyMode":"general","idempotencyKey":"a0000000-0000-4000-8000-000000000093"}';
+ j jsonb;c jsonb;a jsonb;d jsonb;x jsonb;nc integer;noffers integer;
+begin
+ select count(*) into nc from sales_contacts;select count(*) into noffers from sales_offer_revisions;
+ update sales_inbox_messages set contact_id=null,contact_version=null where id=(v->>'messageId')::uuid;
+ update sales_inbox_messages set header=jsonb_set(header,'{from}','"owner@example.se"') where id=(v->>'messageId')::uuid;
+ j:=sales_reply_prepare(p,v);
+ perform pg_temp.reply_assert(j->>'status'='queued' and j->'source'->>'toEmail'='owner@example.se' and j->>'replyMode'='general','general reply derives recipient from selected message');
+ perform pg_temp.reply_assert(sales_reply_prepare(p,v)->>'id'=j->>'id','general idempotent preparation');
+ perform pg_temp.reply_refused(format('select sales_reply_prepare(%L::jsonb,%L::jsonb)',p,v||'{"senderName":"Atlas"}'),'22023');
+ perform pg_temp.reply_refused(format('select sales_reply_prepare(%L::jsonb,%L::jsonb)',p,v||'{"contactId":"30000000-0000-4000-8000-000000000092"}'),'22023');
+ c:=sales_reply_claim(repeat('8',64),'{}');
+ perform pg_temp.reply_assert(c->'snapshot'->'offer'='{}'::jsonb and c->'snapshot'->'contact'='{}'::jsonb,'general reply has no invented offer/contact');
+ a:=sales_reply_reserve_attempt(repeat('8',64),c->'ref'||jsonb_build_object('attemptId',gen_random_uuid()));
+ d:=jsonb_build_object('subject','Svar','body','Tack för ditt test.','evidenceIds',jsonb_build_array(v->>'messageId'),'questions','[]'::jsonb);
+ update sales_inbox_messages set text_selected=false where id=(v->>'messageId')::uuid;
+ perform pg_temp.reply_refused(format('select sales_reply_complete(%L,%L::jsonb)',repeat('8',64),c->'ref'||jsonb_build_object('attemptId',a->>'attemptId','draft',d)),'40001');
+ update sales_inbox_messages set text_selected=true where id=(v->>'messageId')::uuid;
+ x:=sales_reply_complete(repeat('8',64),c->'ref'||jsonb_build_object('attemptId',a->>'attemptId','draft',d));
+ perform pg_temp.reply_assert(x->>'status'='awaiting_review','general reply persists draft for editorial review');
+ perform pg_temp.reply_assert(sales_reply_complete(repeat('8',64),c->'ref'||jsonb_build_object('attemptId',a->>'attemptId','draft',d))=x,'general replay creates no extra draft');
+ perform pg_temp.reply_assert((select count(*)=nc from sales_contacts) and (select count(*)=noffers from sales_offer_revisions),'general reply creates no commercial records');
+ perform sales_reply_cancel_job(p,jsonb_build_object('projectId',v->>'projectId','jobId',j->>'id'));
+ update sales_contacts set data=jsonb_set(data,'{suppressed}','true') where id='30000000-0000-4000-8000-000000000092';
+ update sales_inbox_messages set header=jsonb_set(header,'{from}','"dealer@example.se"') where id=(v->>'messageId')::uuid;
+ v:=jsonb_set(v,'{idempotencyKey}',to_jsonb(gen_random_uuid()::text));
+ perform pg_temp.reply_refused(format('select sales_reply_prepare(%L::jsonb,%L::jsonb)',p,v),'55000');
+end $$;
+
 reset role;
 do $$ declare t text;f record;begin
  foreach t in array array['sales_reply_jobs','sales_reply_attempts','sales_reply_draft_revisions'] loop

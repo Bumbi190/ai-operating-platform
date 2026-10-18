@@ -18,7 +18,7 @@ export function createReplyApi(deps:{access:()=>Promise<ProjectAccess>;db:()=>Sa
    const projectId=salesId(q.get('projectId'));scoped(p,projectId);if(!deps.enabled(projectId))throw new SalesError('NOT_FOUND',404)
    return Response.json(q.has('jobId')?await readReplyJob(deps.db(),p,{projectId,jobId:q.get('jobId')}):await readReplyDrafts(deps.db(),p,{projectId}),{headers:salesHeaders})
   }
-  const v=await readBody(request);fields(v,['operation','projectId','conversationId','messageId','messageVersion','contactId','contactVersion','offerRevisionId','idempotencyKey','jobId','revisionId','expectedHash','subject','body','questions','decision'])
+  const v=await readBody(request);fields(v,['operation','projectId','conversationId','messageId','messageVersion','contactId','contactVersion','offerRevisionId','idempotencyKey','replyMode','jobId','revisionId','expectedHash','subject','body','questions','decision'])
   const projectId=salesId(v.projectId);scoped(p,projectId);if(!deps.enabled(projectId))throw new SalesError('NOT_FOUND',404)
   const {operation,...input}=v;let result:unknown
   if(operation==='prepare')result=await prepareReply(deps.db(),p,input)

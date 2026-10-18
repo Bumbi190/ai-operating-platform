@@ -45,13 +45,25 @@ begin
  select * into c from public.sales_contacts where project_id=pid and id=(v->>'contactId')::uuid for share;
  select * into o from public.sales_offer_revisions where project_id=pid and id=(v->>'offerRevisionId')::uuid for share;
  select * into b from public.sales_inbox_messages where project_id=pid and mailbox_id=m.mailbox_id and owner_id=uid and id=coalesce(m.canonical_id,m.id) for share;
- if i.mailbox_id is null or mb.id is null or c.id is null or o.id is null or b.id is null or m.version is distinct from (v->>'messageVersion')::integer or c.version is distinct from (v->>'contactVersion')::integer or m.contact_id is distinct from c.id or m.contact_version is distinct from c.version
+
+ if i.mailbox_id is null or mb.id is null or b.id is null or m.version is distinct from (v->>'messageVersion')::integer
  or i.state<>'enabled' or i.mailbox_generation<>mb.generation or mb.status<>'authenticated' or not m.text_selected or b.text_state<>'complete' or b.body_text is null or b.content_sha256 is null
  or not exists(select from public.sales_inbox_occurrences where mailbox_id=m.mailbox_id and uid_validity=i.uid_validity and message_id=b.id)
+ then raise exception 'REPLY_INPUT_REQUIRED' using errcode='55000';end if;
+ if v->>'replyMode'='general' then
+  if m.header->>'from' is null or m.header->>'from' !~ '^[^[:space:]<>@,;]+@[^[:space:]<>@,;]+[.][^[:space:]<>@,;]+$'
+  or exists(select from public.sales_contacts x where x.project_id=pid and lower(x.data->>'email')=lower(m.header->>'from') and (x.data->>'suppressed'='true' or x.data->>'excluded'='true'))
+  then raise exception 'REPLY_INPUT_REQUIRED' using errcode='55000';end if;
+  return jsonb_build_object('replyMode','general','mailboxId',m.mailbox_id,'mailboxGeneration',mb.generation,'inboxConfigVersion',i.version,'messageId',m.id,'messageVersion',m.version,'canonicalMessageId',b.id,'canonicalVersion',b.version,'contentSha256',b.content_sha256,'header',m.header,'text',b.body_text,'contact','{}'::jsonb,'offer','{}'::jsonb,
+   'correspondent',jsonb_build_object('email',m.header->>'from'),
+   'sender',jsonb_build_object('email',mb.email,'displayName',case when pid='8f673c09-1c8f-4d78-876e-4c14bf1c89b3' and uid='d63a09fb-448e-41b8-9fb2-9a608f5f1800' and lower(mb.email)='info@handlarborsen.se' then 'Andre' end,'signatureName',case when pid='8f673c09-1c8f-4d78-876e-4c14bf1c89b3' and uid='d63a09fb-448e-41b8-9fb2-9a608f5f1800' and lower(mb.email)='info@handlarborsen.se' then 'Andre' end));
+ end if;
+ if c.id is null or o.id is null or c.version is distinct from (v->>'contactVersion')::integer or m.contact_id is distinct from c.id or m.contact_version is distinct from c.version
  or c.data->>'confirmed' is distinct from 'true' or c.data->>'excluded' is distinct from 'false' or c.data->>'suppressed' is distinct from 'false' or c.data->>'history' not in('contacted','not_contacted')
  or c.data->>'history' is null or lower(c.data->>'email') is distinct from lower(m.header->>'from') or lower(o.data->>'senderEmail') is distinct from lower(mb.email) or o.data->>'confirmed' is distinct from 'true' or c.data->>'pilotMonths' is distinct from o.data->>'freeMonths'
  or exists(select from public.sales_contacts x where x.project_id=pid and lower(x.data->>'email')=lower(c.data->>'email') and x.data->>'suppressed'='true') then raise exception 'REPLY_INPUT_REQUIRED' using errcode='55000';end if;
  return jsonb_build_object('mailboxId',m.mailbox_id,'mailboxGeneration',mb.generation,'inboxConfigVersion',i.version,'messageId',m.id,'messageVersion',m.version,'canonicalMessageId',b.id,'canonicalVersion',b.version,'contentSha256',b.content_sha256,'header',m.header,'text',b.body_text,'contact',c.data||jsonb_build_object('id',c.id,'version',c.version),'offer',o.data||jsonb_build_object('id',o.id));
+
 end $$;
 create function public.sales_reply_source_current(j public.sales_reply_jobs) returns boolean language plpgsql security invoker set search_path='' as $$
 begin return public.sales_reply_snapshot(j.project_id,j.owner_id,j.request)=j.snapshot;exception when sqlstate '55000' or sqlstate 'P0002' then return false;end $$;
@@ -61,14 +73,17 @@ create function public.sales_reply_newer(j public.sales_reply_jobs) returns bool
  select exists(select from public.sales_inbox_messages n where n.project_id=j.project_id and n.owner_id=j.owner_id and n.mailbox_id=(j.snapshot->>'mailboxId')::uuid and n.id<>j.message_id and n.created_at>j.created_at and lower(n.header->>'from')=lower(j.snapshot->'header'->>'from'))
 $$;
 create function public.sales_reply_job_json(j public.sales_reply_jobs) returns jsonb language sql security invoker set search_path='' as $$
- select jsonb_build_object('id',j.id,'projectId',j.project_id,'messageId',j.message_id,'status',case when j.status='running' and j.lease_until<=clock_timestamp() then 'reconciling' else j.status end,'attempts',j.attempts,'detail',j.detail,'createdAt',j.created_at,'sourceCurrent',public.sales_reply_source_current(j),'newerIncoming',public.sales_reply_newer(j),'sendingEnabled',false,'source',jsonb_build_object('subject',j.snapshot->'header'->>'subject','companyName',j.snapshot->'contact'->>'companyName','branchName',j.snapshot->'contact'->>'branchName','senderEmail',j.snapshot->'offer'->>'senderEmail','toEmail',j.snapshot->'contact'->>'email','offerText',j.snapshot->'offer'->>'offerText'))
+ select jsonb_build_object('replyMode',coalesce(j.snapshot->>'replyMode','commercial'),'id',j.id,'projectId',j.project_id,'messageId',j.message_id,'status',case when j.status='running' and j.lease_until<=clock_timestamp() then 'reconciling' else j.status end,'attempts',j.attempts,'detail',j.detail,'createdAt',j.created_at,'sourceCurrent',public.sales_reply_source_current(j),'newerIncoming',public.sales_reply_newer(j),'sendingEnabled',false,'source',jsonb_build_object('subject',j.snapshot->'header'->>'subject','companyName',coalesce(j.snapshot->'contact'->>'companyName','Mejlsvar'),'branchName',j.snapshot->'contact'->>'branchName','senderEmail',coalesce(j.snapshot->'sender'->>'email',j.snapshot->'offer'->>'senderEmail'),'senderName',j.snapshot->'sender'->>'displayName','toEmail',coalesce(j.snapshot->'correspondent'->>'email',j.snapshot->'contact'->>'email'),'offerText',coalesce(j.snapshot->'offer'->>'offerText','Inget erbjudande')))
 $$;
 create function public.sales_reply_prepare(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
 declare pid uuid:=(p_input->>'projectId')::uuid;j public.sales_reply_jobs;s jsonb;k text;
 begin
- perform public.sales_owner(p_principal,pid);perform public.sales_mailbox_fields(p_input,array['projectId','conversationId','messageId','messageVersion','contactId','contactVersion','offerRevisionId','idempotencyKey']);
- foreach k in array array['projectId','conversationId','messageId','contactId','offerRevisionId','idempotencyKey'] loop if p_input->>k is null or p_input->>k !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then raise exception 'INVALID_BODY' using errcode='22023';end if;end loop;
- if (p_input->>'messageVersion')::integer is null or (p_input->>'contactVersion')::integer is null or (p_input->>'messageVersion')::integer<1 or (p_input->>'contactVersion')::integer<1 then raise exception 'INVALID_BODY' using errcode='22023';end if;
+ perform public.sales_owner(p_principal,pid);perform public.sales_mailbox_fields(p_input,array['projectId','conversationId','messageId','messageVersion','contactId','contactVersion','offerRevisionId','idempotencyKey','replyMode']);
+ foreach k in array (case when p_input->>'replyMode'='general' then array['projectId','conversationId','messageId','idempotencyKey'] else array['projectId','conversationId','messageId','contactId','offerRevisionId','idempotencyKey'] end) loop if p_input->>k is null or p_input->>k !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then raise exception 'INVALID_BODY' using errcode='22023';end if;end loop;
+ if p_input ? 'replyMode' and (p_input->>'replyMode' is null or p_input->>'replyMode' not in('general','commercial')) then raise exception 'INVALID_BODY' using errcode='22023';end if;
+ if p_input->>'replyMode'='general' and p_input ?| array['contactId','contactVersion','offerRevisionId'] then raise exception 'INVALID_BODY' using errcode='22023';end if;
+ if (p_input->>'messageVersion')::integer is null or (p_input->>'messageVersion')::integer<1
+ or (coalesce(p_input->>'replyMode','commercial')='commercial' and ((p_input->>'contactVersion')::integer is null or (p_input->>'contactVersion')::integer<1)) then raise exception 'INVALID_BODY' using errcode='22023';end if;
  perform public.sales_validate_conversation(p_principal,jsonb_build_object('projectId',pid,'conversationId',p_input->>'conversationId'));
  perform pg_advisory_xact_lock(hashtextextended(pid::text||':reply:'||(p_input->>'idempotencyKey'),0));
  select * into j from public.sales_reply_jobs where project_id=pid and request_key=(p_input->>'idempotencyKey')::uuid;

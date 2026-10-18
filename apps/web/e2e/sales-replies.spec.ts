@@ -43,3 +43,16 @@ test('switching from dirty reply A to branch B resets all editor fields before s
  await expect(replies.getByRole('heading',{name:'Ny svarsversion · Exempelbil · Malmö'})).toBeVisible();await expect(replies.getByLabel('Svarstext')).toHaveValue('Only branch B body');await expect(replies.getByLabel('Ämne för svaret')).toHaveValue('Only branch B subject');await expect(replies.getByLabel('Kvarstående frågor')).toHaveValue('Only branch B question')
  await replies.getByRole('button',{name:'Spara ny svarsversion'}).click();expect(f.calls.find(x=>x.operation==='edit')).toMatchObject({revisionId:draftB.id,expectedHash:draftB.sha256,body:'Only branch B body',subject:'Only branch B subject',questions:['Only branch B question']})
 })
+
+test('ordinary selected reply needs no customer or offer and mode changes reset consent',async({page,context})=>{
+ const f=await fixture(page);Object.assign(f.message,{text:'Tack för testet.',textSelected:true,textState:'complete',version:2,contactId:null,contactState:'unknown'})
+ await context.grantPermissions(['clipboard-read','clipboard-write']);await page.goto('/sales?stratoWorker='+workerId)
+ const inbox=page.getByRole('region',{name:'Inkorg',exact:true});await inbox.getByRole('button',{name:'Svar om pilot',exact:true}).click()
+ await inbox.getByLabel('Typ av svar').selectOption('general')
+ const button=inbox.getByRole('button',{name:'Kopiera svarsuppdrag till Atlas'});await expect(button).toBeDisabled()
+ await inbox.getByRole('checkbox',{name:/Jag vill förbereda ett svar med detta valda underlag/}).check();await button.click()
+ const copied=await page.evaluate(()=>navigator.clipboard.readText());expect(copied).toContain('"replyMode":"general"');expect(copied).not.toContain('contactId');expect(copied).not.toContain('offerRevisionId');expect(copied).not.toContain('senderName')
+ await inbox.getByLabel('Typ av svar').selectOption('commercial');await expect(inbox.getByText(/Koppla en bekräftad kontakt/)).toBeVisible()
+ await inbox.getByLabel('Typ av svar').selectOption('general');await expect(button).toBeDisabled()
+ expect(f.calls.some(x=>/prepare|send/.test(x.operation))).toBe(false)
+})

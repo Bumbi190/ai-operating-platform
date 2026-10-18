@@ -2,7 +2,16 @@ import {fields,salesId,text,ids} from '../validate'
 import {integer} from '../inbox/validate'
 import {SalesError} from '../types'
 import type {PrepareReplyInput,ReplyRef,ReplyDraft} from './types'
-export function parsePrepareReply(v:unknown):PrepareReplyInput{fields(v,['projectId','conversationId','messageId','messageVersion','contactId','contactVersion','offerRevisionId','idempotencyKey']);return {projectId:salesId(v.projectId),conversationId:salesId(v.conversationId),messageId:salesId(v.messageId),messageVersion:integer(v.messageVersion,1),contactId:salesId(v.contactId),contactVersion:integer(v.contactVersion,1),offerRevisionId:salesId(v.offerRevisionId),idempotencyKey:salesId(v.idempotencyKey)}}
+export function parsePrepareReply(v:unknown):PrepareReplyInput{
+ fields(v,['projectId','conversationId','messageId','messageVersion','contactId','contactVersion','offerRevisionId','idempotencyKey','replyMode'])
+ const base={projectId:salesId(v.projectId),conversationId:salesId(v.conversationId),messageId:salesId(v.messageId),messageVersion:integer(v.messageVersion,1),idempotencyKey:salesId(v.idempotencyKey)}
+ if(v.replyMode==='general'){
+  if(['contactId','contactVersion','offerRevisionId'].some(k=>k in v))throw new SalesError('INVALID_BODY')
+  return {...base,replyMode:'general'}
+ }
+ if('replyMode' in v&&v.replyMode!=='commercial')throw new SalesError('INVALID_BODY')
+ return {...base,...(v.replyMode==='commercial'?{replyMode:'commercial' as const}:{}),contactId:salesId(v.contactId),contactVersion:integer(v.contactVersion,1),offerRevisionId:salesId(v.offerRevisionId)}
+}
 export function parseReplyRef(v:unknown):ReplyRef{fields(v,['projectId','jobId','workerId','claimId','generation']);return {projectId:salesId(v.projectId),jobId:salesId(v.jobId),workerId:salesId(v.workerId),claimId:salesId(v.claimId),generation:integer(v.generation,1)}}
 export function parseReplyDraft(v:unknown,messageId?:string):ReplyDraft{
  fields(v,['subject','body','evidenceIds','questions']);const subject=text(v.subject,90),body=text(v.body,2000),evidenceIds=ids(v.evidenceIds,1)

@@ -27,7 +27,7 @@ export function SalesWorkspace({initial,projectName}:{initial:Workspace;projectN
  const request=offer&&selected.length?`Förbered ett svenskt första mejlutkast till ${model.contacts.filter(c=>selected.includes(c.id)).map(c=>`${c.companyName}, ${c.branchName||'huvudkontor'} (${c.email})`).join('; ')} för ${projectName}. Använd det sparade erbjudandet ”${offer.offerText}”, skapat ${new Date(offer.createdAt).toLocaleString('sv-SE')}. Läs aktuellt säljunderlag först och be om förtydligande om kontakten eller erbjudandet inte kan matchas exakt. Skicka inget.`:''
  return <main className={styles.page}>
   <header className={styles.header}><div><p className={styles.eyebrow}>{projectName} / Atlas</p><h1>Säljförberedelse</h1><p>Från verifierad kontakt till ett personligt mejlutkast.</p></div><button disabled={busy} onClick={()=>void action(load)}>Uppdatera</button></header>
-  <div className={styles.notice}><strong>Utskick är inte aktiverat.</strong> Här förbereder och granskar du. Ett godkänt utkast är inte ett skickat mejl.</div>
+  <div className={styles.notice}><strong>Kundutskick är inte aktiverade.</strong> Här förbereder och granskar du. Testsvar kräver ett separat sändningsbeslut vid den godkända mejltexten.</div>
   {message&&<p className={styles.message} role="status">{message}</p>}
   <div className={styles.grid}>
    <section className={styles.panel}><div className={styles.sectionHead}><h2>Kontakter</h2><span>{model.contacts.length} sparade</span></div><p>Välj högst fem handlare med samma pilotnivå. Kontrollera historiken innan ett nytt första mejl förbereds.</p>

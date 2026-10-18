@@ -30,6 +30,8 @@ begin
  request:=jsonb_build_object('projectId',v->>'projectId','revisionId',x->>'id','expectedRevisionHash',x->>'sha256','expectedMailboxGeneration',6,'idempotencyKey',gen_random_uuid());
  perform pg_temp.reply_refused(format('select sales_send_confirm(%L::jsonb,%L::jsonb)',p,request),'55000');
  perform sales_reply_review_draft(p,jsonb_build_object('projectId',v->>'projectId','revisionId',x->>'id','expectedHash',x->>'sha256','decision','approved'));
+ perform pg_temp.reply_assert(sales_reply_read_job(p,jsonb_build_object('projectId',v->>'projectId','jobId',j->>'id'))->>'editorialStatus'='approved','editorial_status_distinct_from_preparation');
+ perform pg_temp.reply_assert(sales_send_preview(p,jsonb_build_object('projectId',v->>'projectId','revisionId',x->>'id'))->>'canConfirm'='true','preview_can_confirm_exact_approved_version');
  perform pg_temp.reply_refused(format('select sales_send_confirm(%L::jsonb,%L::jsonb)',p,request||'{"toEmail":"other@example.se"}'),'22023');
  perform pg_temp.reply_refused(format('select sales_send_confirm(%L::jsonb,%L::jsonb)',jsonb_set(p,'{userId}','"20000000-0000-4000-8000-000000000002"'),request),'P0002');
  q:=sales_send_confirm(p,request);perform pg_temp.reply_assert(q->>'status'='queued','approved_current_revision_can_queue');

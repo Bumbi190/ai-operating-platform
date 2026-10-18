@@ -1,3 +1,4 @@
+import {sendSourceRaces} from './test-sales-send-source-races.mjs'
 import {sendDispatchRaces} from './test-sales-send-races.mjs'
 import {replyReviewRaces} from './test-sales-reply-races.mjs'
 import {spawnSync,spawn} from 'node:child_process'
@@ -83,7 +84,8 @@ try{
  console.log('PASS: concurrent duplicate requests -> one job; fifteen parallel reservations -> ten accepted/five refused');
 
  await sendDispatchRaces({root,sql,run:concurrent});
+ await sendSourceRaces({container,db,sql,run:concurrent});
  await replyReviewRaces({container,db,run:concurrent,principal,input,claimed});
- const integration=spawnSync(process.execPath,[resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/qa/sales-integration.test.ts','lib/qa/sales-host-integration.test.ts','lib/qa/sales-mailbox-integration.test.ts','lib/qa/sales-inbox-integration.test.ts','lib/qa/sales-reply-integration.test.ts','--maxWorkers=1','--minWorkers=1'],{cwd:resolve(root,'apps/web'),env:{...process.env,SALES_FIXTURE_DATABASE:db,SALES_FIXTURE_CONTAINER:container},encoding:'utf8',maxBuffer:2e6})
+ const integration=spawnSync(process.execPath,[resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/qa/sales-integration.test.ts','lib/qa/sales-host-integration.test.ts','lib/qa/sales-mailbox-integration.test.ts','lib/qa/sales-inbox-integration.test.ts','lib/qa/sales-reply-integration.test.ts',...(container==='omnira-sales-sending-20261018'?['lib/qa/sales-send-integration.test.ts']:[]),'--maxWorkers=1','--minWorkers=1'],{cwd:resolve(root,'apps/web'),env:{...process.env,SALES_FIXTURE_DATABASE:db,SALES_FIXTURE_CONTAINER:container},encoding:'utf8',maxBuffer:2e6})
  console.log(integration.stdout);if(integration.status!==0)throw Error(integration.stderr||'Sales slice integration failed')
 }finally{docker(['exec',container,'dropdb','-U','postgres',db])}

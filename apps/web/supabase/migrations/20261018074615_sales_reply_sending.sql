@@ -205,3 +205,25 @@ do $$ declare f record;begin
  execute format('revoke all on function %s from public,anon,authenticated',f.signature);
  execute format('grant execute on function %s to service_role',f.signature);end loop;
 end $$;
+
+create or replace function public.sales_reply_job_json(j public.sales_reply_jobs) returns jsonb language sql security invoker set search_path='' as $$
+ select jsonb_build_object('editorialStatus',coalesce((select a.status from public.sales_reply_draft_revisions d left join public.approvals a on a.id=d.approval_id where d.job_id=j.id and d.is_current),'not_ready'),'replyMode',coalesce(j.snapshot->>'replyMode','commercial'),'id',j.id,'projectId',j.project_id,'messageId',j.message_id,'status',case when j.status='running' and j.lease_until<=clock_timestamp() then 'reconciling' else j.status end,'attempts',j.attempts,'detail',j.detail,'createdAt',j.created_at,'sourceCurrent',public.sales_reply_source_current(j),'newerIncoming',public.sales_reply_newer(j),'sendingEnabled',false,'source',jsonb_build_object('subject',j.snapshot->'header'->>'subject','companyName',coalesce(j.snapshot->'contact'->>'companyName','Mejlsvar'),'branchName',j.snapshot->'contact'->>'branchName','senderEmail',coalesce(j.snapshot->'sender'->>'email',j.snapshot->'offer'->>'senderEmail'),'senderName',j.snapshot->'sender'->>'displayName','toEmail',coalesce(j.snapshot->'correspondent'->>'email',j.snapshot->'contact'->>'email'),'offerText',coalesce(j.snapshot->'offer'->>'offerText','Inget erbjudande')))
+$$;
+create function public.sales_send_preview(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
+declare d public.sales_reply_draft_revisions;r public.sales_reply_jobs;j public.sales_send_jobs;p public.sales_send_policies;reason text;can_confirm boolean:=false;
+begin
+ perform public.sales_owner(p_principal,(p_input->>'projectId')::uuid);
+ perform public.sales_mailbox_fields(p_input,array['projectId','revisionId']);
+ select d0.* into d from public.sales_reply_draft_revisions d0 join public.sales_reply_jobs r0 on r0.id=d0.job_id and r0.owner_id=(p_principal->>'userId')::uuid where d0.id=(p_input->>'revisionId')::uuid and d0.project_id=(p_input->>'projectId')::uuid;
+ if not found then raise exception 'NOT_FOUND' using errcode='P0002';end if;
+ select * into r from public.sales_reply_jobs where id=d.job_id;
+ select * into j from public.sales_send_jobs where revision_id=d.id and owner_id=r.owner_id and project_id=r.project_id;
+ if j.id is null then
+  begin
+   p:=public.sales_send_authority(r.project_id,r.owner_id,d.id,d.sha256,(r.snapshot->>'mailboxGeneration')::integer);can_confirm:=true;
+  exception when sqlstate '55000' then reason:='TEXT_APPROVAL_OR_PROJECT_REQUIRED';when sqlstate '40001' then reason:='SOURCE_OR_SEND_POLICY_CHANGED';when sqlstate 'P0002' then reason:='SOURCE_UNAVAILABLE';end;
+ end if;
+ return jsonb_build_object('revisionId',d.id,'revisionHash',d.sha256,'mailboxGeneration',(r.snapshot->>'mailboxGeneration')::integer,'canConfirm',can_confirm,'blockedReason',reason,'job',case when j.id is null then null else public.sales_send_json(j) end);
+end $$;
+revoke all on function public.sales_send_preview(jsonb,jsonb) from public,anon,authenticated;
+grant execute on function public.sales_send_preview(jsonb,jsonb) to service_role;

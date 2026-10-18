@@ -1,6 +1,6 @@
 # B2 implementation rulings and deferred minor
 
-This is the complete decision record at the preactivation scope gate. Actual Task5 deployment and real mailbox read are still pending explicit scope approval. The plan ledger remains in place so execution can resume after approval.
+Chronological decisions include the historical preactivation gate and actual2026-10-18 rollout. Automated activation is verified; the plan ledger remains pending the explicit owner check of a real incoming message.
 
 ## Rulings in chronological order
 
@@ -27,6 +27,12 @@ This is the complete decision record at the preactivation scope gate. Actual Tas
 11. Final: Ruling: reviewer did not rerun broad suites — parent independently ran exact-base/current and isolated54/54 recheck, retains all identities/raw counts — cost if wrong: historical401 repository failures remain outside this increment.
 
 12. Final: Ruling: reviewer left B3/C outside scope — preserve separate reply-preparation/sending implementation gates — cost if wrong: automatic replies/sending remain unavailable.
+
+13. Task5 Ruling: MCP assigned apply-time version; preserve approved source version with a one-row exact version/name/cardinality/SHA256-guarded history correction. SQL unchanged and ordinary guard retained — cost if wrong: migration bookkeeping identifies the wrong source; stored hash and live catalog were independently verified.
+
+14. Task5 Ruling: reconcile three independently installed local-text/watch migrations only from existing Git SQL blobs equal to live ledger hashes and17 observed table classifications; retain frozen14/30 and local_text_jobs column-level owner policy — cost if wrong: source bookkeeping could disagree with independently owned features; no unrelated runtime or DDL changed.
+
+15. Task5 Ruling: keep the reviewed B2 SQL unchanged after informational performance advisors for seven missing FK indexes and two unused indexes; current pilot has6 messages and bounded batches — cost if wrong: larger mailboxes may need a separately reviewed index migration.
 
 ## Deferred minors
 

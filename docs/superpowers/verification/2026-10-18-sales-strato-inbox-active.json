@@ -1,0 +1,167 @@
+{
+  "state": "active_metadata_verified_owner_message_check_pending",
+  "activatedAt": "2026-10-18T03:53Z",
+  "scope": {
+    "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+    "workerId": "49d30271-cf0b-47c9-a70d-2bce5b9b09ba",
+    "mailboxId": "5964032c-aad9-47c5-b986-71dc7339d775",
+    "email": "info@handlarborsen.se",
+    "folder": "INBOX",
+    "since": "2026-10-07T22:00:00Z",
+    "selectedContactIds": [],
+    "configVersion": 2,
+    "mailboxGeneration": 6
+  },
+  "client": {
+    "sourceSha": "7acf719ae34f8d45230539c9735a458bcbf5847d",
+    "manifestSha256": "849135da5819f9cb4e1b69d93aedebe56d9d61b763b45817353faebac9a77287",
+    "fileCount": 49,
+    "oldPidAbsent": 5208,
+    "firstPid": 41292,
+    "restartPid": 42904,
+    "hostGeneration": 3,
+    "credentialRefsPreserved": true,
+    "keyKidPreserved": "7bb25e12adf84b458ef919b83e5af3319aefaea0eb63cbb31ccaaca67f8f5a21"
+  },
+  "server": {
+    "sourceSha": "b2a5ef227f60648d92531621f12e6aaf23f64db1",
+    "origin": "https://ai-operating-platform-lc074jvu6-bumbi190s-projects.vercel.app",
+    "deploymentId": "dpl_J12MNKMNf8Eu4pXGQZpYY2BBdb5K",
+    "ready": true,
+    "managerContract": "passed",
+    "disabledInboxContract": "passed",
+    "migrationGuard": {
+      "canonical": 137,
+      "enforced": 123,
+      "ledger": 160,
+      "grandfathered": 14,
+      "legacyOnly": 30
+    }
+  },
+  "migration": {
+    "version": "20261017191904",
+    "name": "sales_strato_inbox",
+    "sha256": "1013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1",
+    "mcpAssignedVersion": "20261018034640",
+    "historyCorrection": "single row, exact name/version/cardinality/hash guarded",
+    "rlsTables": 4,
+    "serviceOnlyInvokerFunctions": 16
+  },
+  "firstBatch": {
+    "jobs": 0,
+    "config": {
+      "since": "2026-10-07T22:00:00+00:00",
+      "state": "enabled",
+      "cursor": {
+        "epoch": 1,
+        "uidValidity": "1791301212",
+        "scannedThroughUid": 20
+      },
+      "folder": "INBOX",
+      "version": 2,
+      "mailboxId": "5964032c-aad9-47c5-b986-71dc7339d775",
+      "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+      "reasonCode": null,
+      "lastSyncedAt": "2026-10-18T03:53:27.059097+00:00",
+      "mailboxGeneration": 6,
+      "selectedContactIds": []
+    },
+    "contacts": 0,
+    "messages": 6,
+    "receipts": [
+      {
+        "cursor": {
+          "epoch": 1,
+          "uidValidity": "1791301212",
+          "scannedThroughUid": 20
+        },
+        "batchId": "71960328-aeb4-4d02-a739-d49b9a083a4d",
+        "records": 6,
+        "accepted": true,
+        "inserted": 6
+      }
+    ],
+    "capturedAt": "2026-10-18T03:53:46.674801+00:00",
+    "textBodies": 0,
+    "occurrences": 6,
+    "duplicateOccurrenceGroups": 0
+  },
+  "afterRestart": {
+    "config": {
+      "since": "2026-10-07T22:00:00+00:00",
+      "state": "enabled",
+      "cursor": {
+        "epoch": 1,
+        "uidValidity": "1791301212",
+        "scannedThroughUid": 20
+      },
+      "folder": "INBOX",
+      "version": 2,
+      "mailboxId": "5964032c-aad9-47c5-b986-71dc7339d775",
+      "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+      "reasonCode": null,
+      "lastSyncedAt": "2026-10-18T03:54:14.069901+00:00",
+      "mailboxGeneration": 6,
+      "selectedContactIds": []
+    },
+    "messages": 6,
+    "receipts": [
+      {
+        "cursor": {
+          "epoch": 1,
+          "uidValidity": "1791301212",
+          "scannedThroughUid": 20
+        },
+        "batchId": "71960328-aeb4-4d02-a739-d49b9a083a4d",
+        "records": 6,
+        "accepted": true,
+        "inserted": 6
+      },
+      {
+        "cursor": {
+          "epoch": 1,
+          "uidValidity": "1791301212",
+          "scannedThroughUid": 20
+        },
+        "batchId": "1c8acb41-eb95-45ef-b566-5fc4de1d45f0",
+        "records": 0,
+        "accepted": true,
+        "inserted": 0
+      }
+    ],
+    "heartbeat": {
+      "cliState": "ready",
+      "lastSeenAt": "2026-10-18T03:54:25.95062+00:00",
+      "hostGeneration": 3
+    },
+    "capturedAt": "2026-10-18T03:54:27.642618+00:00",
+    "textBodies": 0,
+    "occurrences": 6,
+    "duplicateOccurrenceGroups": 0
+  },
+  "seen": {
+    "compared": 6,
+    "changed": 0,
+    "uidValidity": "1791301212"
+  },
+  "ownerRead": {
+    "visibleMessages": 6,
+    "inboxEnabled": true,
+    "readingEnabled": true,
+    "scopeCurrent": true,
+    "sendingEnabled": false
+  },
+  "limits": {
+    "textBodiesFetched": 0,
+    "contacts": 0,
+    "jobs": 0,
+    "relevantCustomerReplyVerified": false,
+    "ownerActualMessageCheck": "pending",
+    "fullRepositoryGreen": false,
+    "historicalFailedTests": 401
+  },
+  "advisors": {
+    "security": "four intentional RLS/no-policy INFO; no new inbox WARN",
+    "performance": "seven unindexed FK INFO and two new unused-index INFO; no inbox WARN"
+  }
+}

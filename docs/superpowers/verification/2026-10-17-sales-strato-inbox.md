@@ -30,3 +30,24 @@ All three Important independent-review findings were fixed in one RED/GREEN pass
 Final immutable staged client source 7acf719ae34f8d45230539c9735a458bcbf5847d;49 files; manifest 849135da5819f9cb4e1b69d93aedebe56d9d61b763b45817353faebac9a77287; migration SHA256 1013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1. All108 tests pass from the staged folder. Priorba735c5 staging is superseded. Exact existing task ownership verified and new task plan validated without applying it; task/config/credential references unchanged. Existing B1 remains active; B2 has not been deployed or activated. New protected preview, live RLS/catalog/advisors, explicit origin/key-ref migration, owned task upgrade and bounded real read remain behind the concrete scope gate in the approved Task5.
 
 One deferred Minor: the20second refresh replaces appended older message pages with page1; durable records/open detail remain and pages can be reloaded. Complete rulings/costs are in 2026-10-17-sales-strato-inbox-rulings.md. No B3 reply preparation or C sending is implemented or claimed. Broad outreach remains paused.
+
+
+## Actual activation 2026-10-18
+
+Supersedes the earlier preactivation status. André requested continuation after the concrete INBOX scope proposal; activated exactly that scope, since2026-10-07T22:00Z, selectedContactIds=[], configversion2/mailboxgeneration6. No body selection, model job or send.
+
+Reviewed SQL1013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1 applied through MCP. Its automatic history version20261018034640 was corrected to approved source20261017191904 by one-row DML guarded on exact generated version/name/statement cardinality/SHA256; no SQL change. Four live RLS tables/zero client grants or policies,16 invoker routines/empty search_path/service-only EXECUTE verified. Security advisor adds only intentional no-policy INFO. Performance advisor reports seven missing FK indexes and two unused indexes at pilot size; no inbox WARN. Existing unrelated warnings remain outside scope.
+
+Three other independently applied migrations were reconciled byte-for-byte from existing git4b4336a after live ledger hash comparison; no extra DDL applied. Their17 table classifications were captured read-only; local_text_jobs retains column-only authenticated owner SELECT and TENANT_RLS, verified separately from table grants. Canonical137/enforced123, ledger160, frozen14/30. Guard/security tests103/103 pass; actual Vercel build guard123/123 and160 known ledger names passes.
+
+Protected preview READY dpl_J12MNKMNf8Eu4pXGQZpYY2BBdb5K, serverSHA b2a5ef227f60648d92531621f12e6aaf23f64db1:
+https://ai-operating-platform-lc074jvu6-bumbi190s-projects.vercel.app/projects/handlarborsen/sales
+Initial probe while build was unfinished refused; after READY, existing manager poll and disabled inbox contract both passed. Actual origin migration preserves manager/active mailbox credential references and exact existing RSA kid. Host rotated independently overnight to generation3 before rollout; current journal state was preserved rather than overwritten with old generation2 metadata.
+
+Installed client source7acf719ae34f8d45230539c9735a458bcbf5847d,49 files, manifest849135da5819f9cb4e1b69d93aedebe56d9d61b763b45817353faebac9a77287. Verified owned task, stopped oldPID5208 and proved absence before newtask registration/startPID41292. Restarted only that owned task, proved41292 absent before newPID42904; exactly one host and OS lock verified. Manifest reverified after restart. Current host heartbeat/CLI ready and generation3 observed.
+
+Real batch71960328-aeb4-4d02-a739-d49b9a083a4d accepted6/inserted6 at03:53:27Z; cursor UIDVALIDITY1791301212/UID20/epoch1. Six saved messages and occurrences, zero bodies, zero duplicate occurrence groups. Bounded read-only Seen comparison covered all6 in-scope messages and changed0. After actual host restart, batch1c8acb41-eb95-45ef-b566-5fc4de1d45f0 accepted0/inserted0, same cursor and6 occurrences. Owner read contract returns6 visible messages, effective inbox/reading true, current scope true, sending false.
+
+Limits: relevance/customer-reply identity has not been established; contacts0/jobs0 and body text0. Do not describe this as an actual prepared customer reply or successful customer contact. André still needs to recognize one real incoming message in the private owner view; that explicit manual acceptance item remains open. This is not a mobile/browser-session login proof. Full repository remains baseline-equivalent with401 historical failures, not all green.
+
+All automated rollout checks completed. Task5 retains the manual owner-message verification item; its own workspace is retained pending that check. B3 concrete reply-preparation plan is prepared separately, awaiting review; C sending and broad outreach remain inactive.

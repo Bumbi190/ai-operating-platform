@@ -1,64 +1,84 @@
 # Omnira Kalender — verifiering 2026-10-18
 
-Status: produktkoden är byggd lokalt. Slutkontroll och separat granskning pågår. Inte driftsatt.
+Status: granskningsbar lokal förhandsversion, inte driftsatt. Kalenderns egna kontroller passerar. Den bredare Windows-körningen är inte grön; fullständig körning av det frysta granskningsunderlaget pågår fortfarande.
 
-## Underlag
+## Underlag och avgränsning
 
 Godkänd spec: `docs/superpowers/specs/2026-10-18-omnira-calendar-design.md`.
 Godkänd plan och Native-metod: André, 2026-10-18T18:14:09Z.
-Kontrollerad main: `34d21cde97aa1c25a6d34a613657d8aee91f8591` (fortfarande aktuell vid läsning 2026-10-18).
-Produktcommit före sista integrationsprovet: `a964036`.
+Main vid start: `34d21cde97aa1c25a6d34a613657d8aee91f8591`.
+Separat granskning: fryst `39c5c32e081c1401a39b164d9329bda03c484d91` mot main.
+Verifierad produktcommit efter den enda TDD-fixomgången: `ff8d5e7a807e54d92bcfff469637991b7e8c6f6d`.
+Fortsatt arbete ligger på `codex/omnira-calendar-implementation-20261018`; den ursprungliga arbetskopians produktkod hålls fryst för den långa helhetskörningen.
 
-## Verifierat
+Kalendern har en gemensam användarägd lagring för privat möte/arbetsblock och läsprojektioner av verkliga projektkällor. Kalendern skapar ingen ny publiceringskö eller körningsrätt. Gantt kan senare läsa samma id, start/slut, projekt och workStatus; dess gränssnitt ingår inte.
 
-- Kalenderns 77 tester: PASS i samlad körning, inklusive riktig lokal SQL, båda inputSource-värdena, ägarisolering och före/efter-snapshots av sociala köer/godkännanden.
-- `node <vitest>/vitest.mjs run lib/calendar lib/atlas/conversation lib/qa/calendar-navigation.test.ts lib/qa/migration-guard-v2.test.ts <33 CI-isoleringsfiler> --no-file-parallelism --reporter=default --reporter=json`: 1200/1206 passerade, 6 fel. Detta är inte ett helt grönt projektresultat.
-- `node <playwright>/cli.js test --config playwright.calendar.config.ts`: 9/9 PASS (task6-browser.log).
-- `node <typescript>/lib/tsc.js --noEmit --pretty false`: PASS, exit0 (task6-typecheck.log).
-- Schema/migrationskontroller i Task2: 250/250 PASS inklusive riktiga privata SQL-tester och tre relevanta QA-sviter.
-- Separat integrationsprov: 4/4 PASS (HTTP + Atlas text/voice och socialt utkast/godkänt jobb).
-- Desktop1440px och mobil390px visuellt granskade. Lokal förhandsvisning visar tydligt märkta exempelposter; inga riktiga privata möten skapas där.
+## Slutkontroller efter granskning
 
-## Fel i den bredare riktade körningen
+| Kontroll | Faktiskt resultat |
+|---|---|
+| `vitest run lib/calendar lib/atlas/conversation/calendar-effects.test.ts lib/qa/calendar-navigation.test.ts --no-file-parallelism --testTimeout=30000 --hookTimeout=60000` | **80/80 PASS**, 14 filer, inga överhoppade. Riktiga lokala SQL-funktioner, ägarisolering, idempotens, samtidighet, båda inputSource-värden och oförändrade sociala köer/godkännanden. |
+| `playwright test --config playwright.calendar.config.ts` | **17/17 PASS**, dator och mobil390px, datum/tider, auth-notifieringar, sena svar, utkast, återställning och källfel. |
+| `tsc --noEmit --pretty false` | **PASS**, exit0 efter återanvändning av projektets redan installerade @remotion-beroende. |
+| `vitest run lib/qa/navigation-closure.test.ts lib/qa/vnext-nav-model.test.ts --no-file-parallelism` | **56/56 PASS**. Exakta menyförväntningar uppdaterade för den godkända Kalender-posten på dator/mobil. |
+| 33 obligatoriska QA-filer från `.github/workflows/atlas-project-isolation.yml` samt `lib/atlas/conversation` | **1095/1099 PASS**, 36 filer, 4 Windows-baselinefel nedan, inga överhoppade. De två tidigare 5s-timeouterna passerar med uttryckliga30s/60s-gränser. |
+| Schema/migrationskontroller från Task2 | **250/250 PASS**, inklusive SQL-lagring och migration-guard-v2, schema-security-invariant och migration-security-gate. Samma kalender-SQL oförändrad efter detta. |
 
-Alla sex faktiska fel listas här; inga har dolts eller räknats som PASS. Två är 5s-tidsgränser; fyra är Windows-specifika sökvägs-/CRLF-tolkningar i oförändrade äldre tester. Fulla projektkörningen pågår separat med 30s testgräns och 60s hookgräns.
+Fulla loggar och JSON-resultat finns i planens lokala arbetsjournal `.superpowers/sdd/2026-10-18-omnira-calendar/`. De trettiotre filerna listas exakt i `review-isolation-selection.json`; samtliga fel finns i `review-isolation-failures.json`.
 
-- `lib/qa/chat-conversation-ownership.test.ts` — 9E · reads — a foreign conversation cannot reach the prompt an OWNED conversation supplies its prior tool memory — 5s timeout.
-- `lib/qa/platform-authority-closure.test.ts` — A6-2 · the legacy Atlas bug digest is operator diagnostics 1 · unauthenticated → sent to login, and no digest is read — 5s timeout.
-- `lib/qa/platform-credential-events.test.ts` — Settings S0 · platform_credential_events migration — append-only and server-only RLS on, no policy, every client grant revoked, and the service role holds SELECT and INSERT only — CRLF gör att äldre kommentarstrippning missar SQL-kommentarer.
-- `lib/qa/platform-credential-events.test.ts` — Settings S0 · platform_credential_events migration — append-only and server-only touches no other object and carries no data statement — CRLF gör att äldre kommentarstrippning missar SQL-kommentarer.
-- `lib/qa/platform-credential-events.test.ts` — Settings S0 · platform_credential_events — the search_path follow-up pins the append-only function's search_path, and does nothing else — CRLF gör att äldre kommentarstrippning missar SQL-kommentarer.
-- `lib/qa/youtube-project-oauth.test.ts` — youtube connection · the codebase, read the state is touched only by the OAuth module; the start route records it, the callback consumes it and alone exchanges a code — Windows \ jämförs med /.
+## Separat granskning och rättningar
 
-Bevis: de berörda äldre test-/migrationsfilerna är oförändrade mot main. För credential-testet innehåller den lokala CRLF-parsningen ordet platform_tokens, medan exakt samma parser över main:s kanoniska Git/LF-text inte gör det. Inga äldre SQL-filer eller säkerhetsundantag har ändrats.
+En färsk granskare läste hela ändringen, källornas faktiska SQL, spec, plan och beslut. Inga Critical-fynd. Fyra Important-fynd accepterades och rättades i **en** TDD-omgång; ingen andra granskare eller omgranskningsloop användes.
+
+1. **Auth utan ny serverprop:** prenumerera på riktiga Supabase-auth-notifieringar. Vid utloggning/kontobyte töms privata poster, formulär och projekt direkt; ägargenerationen ogiltigförklaras, läsningar avbryts och sena läs-/skrivsvar ignoreras. Skrivning spärras tills aktuell session och serverägare överensstämmer.
+2. **Fördröjd sparning:** kvittot kan bara stänga den redigerare som initierade sparningen och läser om aktuell vecka. En senare redigerares osparade text behålls. Den sparande redigerarens fält är låsta medan dess skrivning pågår.
+3. **Fel vid projektupptäckt:** en strikt ägarskapsfråga skiljer verkligt tom projektlista från fel. Privat kalender fortsätter fungera; projektkällor stängs och märks otillgängliga. Samma kontroll används i HTTP och interaktiv Atlas-dispatch.
+4. **Exakta lagrade tider:** oförändrade tidskontroller behåller kända UTC-värden inklusive sekunder och båda förekomsterna av höstens upprepade timme. Ny tvetydig lokal inmatning avvisas fortsatt.
+
+RED: 7/8 nya webbläsarfall och 2/3 accessfall misslyckades på de faktiska beteendefelen före rättning. GREEN: alla ingår i ovanstående godkända slutkörningar.
+
+Två **Minor**-fynd skjuts upp, utan att sparade tider eller publiceringsrätt ändras:
+
+- Utan köjobb visas redaktionellt approved/needs_review som generellt tidsförslag; etiketten bör senare skilja redaktionsstatus från kögodkännande.
+- Vid höstens upprepade timme kan kollisionsgeometrin bli för smal för ett UTC-intervall som korsar klockans tillbakagång. Originalets UTC-tid och text bevaras; specialvisning för den timmen återstår.
+
+Ägarens egna råa tabellskrivningar omfattas av RLS men kan kringgå den stödda klientens RPC-journal. Det bedöms som självmanipulation utanför det stödda API-kontraktet, inte åtkomst till andra ägares data. SECURITY INVOKER och ägargrants behålls enligt godkänd plan.
+
+## Återstående bredare testfel
+
+Dessa fyra fel är oförändrade Windows-baselinefel, inte PASS:
+
+- `lib/qa/platform-credential-events.test.ts` — Settings S0 · platform_credential_events migration — append-only and server-only **RLS on, no policy, every client grant revoked, and the service role holds SELECT and INSERT only**.
+- Samma fil — **touches no other object and carries no data statement**.
+- Samma fil — **the search_path follow-up pins the append-only function's search_path, and does nothing else**.
+- `lib/qa/youtube-project-oauth.test.ts` — youtube connection · the codebase, read — **the state is touched only by the OAuth module; the start route records it, the callback consumes it and alone exchanges a code**.
+
+De tre första orsakas av att äldre kommentarstrippning inte hanterar arbetskopians CRLF. Samma parser över main:s kanoniska Git/LF-text innehåller inte det felaktigt matchade platform_tokens. Det sista jämför Windows `lib\\media\\youtube-oauth.ts` med POSIX `lib/media/youtube-oauth.ts`. De berörda gamla test-/SQL-filerna är oförändrade mot main. Inga äldre migrationer, säkerhetsundantag eller orelaterade produkttester har skrivits om för att få grönt.
+
+Den separata hela projektkörningen startade på fryst39c5c32 med30s-test/60s-hookgränser, egen lokal testdatabas och SQL-opt-in avstängt där projektets andra fixturer kräver det. **Resultatet kompletteras när processen avslutats; den får inte beskrivas som grön.** Kalenderintroducerade gamla menyassertioner som hittades där är redan rättade och56/56-omkörda påff8d5e7.
+
+## Förhandsversion och manuellt prov
+
+Lokal förhandslänk på Andrés dator: `http://127.0.0.1:54413/calendar?week=2026-10-19&preview=1`.
+
+Bannern anger tydligt exempelposter; detta är minnesbaserad testdata med det riktiga kalendergränssnittet. Den är ingen produktionsinloggning eller varaktig produktionskalender.
+
+Brave: TEST · Kalenderprov skapades, laddades om, flyttades från måndag19okt09:00 till fredag23okt10:15 och laddades om igen med rätt tid. Titel och anteckning behölls. Vanliga tangentbordshändelser verifierade datum/tid; browserverktygets fill för date/time ändrade enbart DOM-värdet tills tangentbordshändelsen utlöste Reacts förändring. Det var en verktygsbegränsning; inget produktbeteende ändrades för den.
+
+Produktionssessionen har endast lästs: André är inloggad och de befintliga Facebook-/Instagramkopplingarna finns kvar. Inga riktiga kalenderposter eller sociala scheman har ändrats där.
 
 ## Databas och driftsgrind
 
 Ny CLI-genererad migration: `apps/web/supabase/migrations/20261018182213_user_calendar_v1.sql`.
-SHA256 för granskning: `6bb10d31b39c3733e1646138cda08fc432135abdcfd00cfda6283b9e0d082c4e`.
-Nya tabeller: user_calendar_events och user_calendar_mutations, användarägda med RLS. JSONB-draft delar modell med veckovy och senare Gantt; version/status/ägare/tidsstämplar är relationella.
-Produktionsdatabasen har inte ändrats. Inga sociala scheman, godkännanden eller publiceringsrättigheter har ändrats under kalenderarbetet.
-Migrationsgrinden förväntas vägra produktion/förhandsbygge mot en ledger som ännu saknar user_calendar_v1. Grinden ska inte kringgås.
-Före drift: konkret resultatgranskning, exakt migration, ägar-/grantkontroll, merge och READY-deploy samt läsning av metadata för ursprungliga sex socialjobb.
+Kanonisk Git/LF SHA256: `6bb10d31b39c3733e1646138cda08fc432135abdcfd00cfda6283b9e0d082c4e`.
+Två användarägda tabeller: user_calendar_events och user_calendar_mutations, RLS, ingen anon/PUBLIC-åtkomst och inga privata service_role-grants.
 
-## Röst och Gantt
+**Ingen produktionsmigration, merge eller produktionsdeploy har utförts.** Kalendern är inte live. De sex befintliga Familje-Stunden-jobben och deras godkännanden lämnas orörda. Migrationsgrinden kan vägra en preview-build mot ledgern utan den nya migrationen; den ska inte kringgås.
 
-Gemensamma text-/voice-transkriptvägen är verifierad med riktiga SQL-funktioner. Ett faktiskt röstsamtal med mikrofon är ännu inte genomfört och röststödet är därför inte markerat som end-to-end-verifierat.
-Gantt kan använda samma event-id, UTC-start/slut eller lokala heldagsdatum, projektkoppling och workStatus. Ingen andra planeringslagring finns. Själva Gantt-vyn är kommande.
+Före drift kräver Task7 Andrés granskning av denna konkreta version, sedan exakt granskad migration, aktuell main/SQL-ledger, RLS/grants, merge och READY-deploy, samt metadatajämförelse för de sex ursprungliga socialjobben.
 
-## Tekniska beslut
+## Röst och kvarstående användarprov
 
+Den gemensamma text-/voice-transkriptvägen är verifierad med riktiga lokala SQL-funktioner. **Ett faktiskt röstsamtal med mikrofon är inte genomfört.** InputSource=voice är inget ljudbevis. Även det autentiserade Atlas-provet via den driftsatta/DB-anslutna förhandsversionens textgränssnitt återstår; lokala formulärprov är inte samma sak.
 
-- Ruling: Skill helper resources (sdd-workspace, task-start, task-done and writing-good-tests.md) are unavailable through skills.read after exact returned resource paths and the plugin skills-prefix fallback both failed. Use equivalent plan-owned Node lifecycle: extract exact task briefs, record BASE, redirect test logs and append completion only after passing exit status — preserves the required evidence; cost if wrong is helper-format divergence, no product behavior change.
-- Ruling: Plan global constraints require scoped checks during implementation and a single full-suite gate at Task6. Follow that approved scope instead of rerunning the entire repository per task — avoids unrelated fixture contention; cost if wrong is later detection of cross-domain regressions.
-- Ruling: Store the validated serializable event draft as checked JSONB in user_calendar_events, with owner/id/version/status/timestamps as relational columns — preserves the exact shared model and atomic validation without dual time representations; cost if wrong is later index work for large-scale Gantt queries.
-- Ruling: Add readonly monthly source references instead of fabricating post/revision IDs for empty monthly slots — required by approved monthly planning behavior; cost if wrong is one extra source variant for consumers.
-- Ruling: Add optional manualEvent details to owner-scoped week entries — form editing and Gantt status require the saved description/location/task/workStatus omitted by the plan entry shape; cost if wrong is larger private response payload, still session-only.
-- Ruling: Reuse bounded listInstancesForProjects with 501 rows and explicitly report source truncation even when filtering the selected week leaves fewer — avoids inventing a second workflow reader; cost if wrong is older matching wakes may require the existing workflow view until range filtering is extended.
-- Ruling: Extend source-move success with saved revision-based change metadata so Atlas can refresh pending social proposals through the same typed effect — no new publishing authority; cost if wrong is an extra refresh, not a queue write.
-- Ruling: Require same-origin proof for calendar tools on the existing chat route and pass its already-authenticated session client explicitly — protects the new private write path without changing other chat tools; cost if wrong is refusing a calendar call from a client that omits Origin.
-- Ruling: Do not regenerate the entire stale shared database.types.ts from production for one pending migration — narrow calendar adapters retain typed envelopes while local SQL tests prove the schema; cost if wrong is manual type maintenance until generated schema catches up.
-
-## Separat granskning
-
-En färsk helhetsgranskare används enligt godkänd Native-metod. Resultat/fynd kompletteras före leverans.
+Nästa användarprov: granska veckovyn och ett privat möte, därefter be Atlas skapa och flytta ett tydligt testmöte genom text och riktigt röstsamtal i DB-ansluten miljö. Gantt-gränssnittet planeras separat över samma modell.

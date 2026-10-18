@@ -1,0 +1,44 @@
+{
+  "state": "qualified_pending_protected_preview_retest",
+  "base": "e86e8a2cadfffd0df3cbc533920e45b2f6cb64d5",
+  "observedBug": "Actual saved-project summary questions took the pure writing fast path, losing context/tools and denying memory access. Status phrasing recalled all nine project memories.",
+  "fix": "Stored-evidence references veto the pure writing path before both automatic detection and explicit content mode. Existing project authorization, context assembly and tools handle the request.",
+  "tests": {
+    "newRouteRegressionRed": 12,
+    "newRouteRegressionGreen": 12,
+    "pureWritingCompatibility": 3,
+    "targetedPass": 108,
+    "typecheck": "passed",
+    "fullWeb": {
+      "numTotalTests": 15119,
+      "numPassedTests": 13381,
+      "numFailedTests": 402,
+      "numPendingTests": 1332
+    },
+    "novelFailureIdentities": [],
+    "historicalIdentityDeltaFile": "2026-10-18-atlas-memory-summary-regressions.json"
+  },
+  "scope": {
+    "sourceFiles": [
+      "apps/web/app/api/chat/route.ts"
+    ],
+    "schemaChange": false,
+    "permissionChange": false,
+    "providerChange": false,
+    "newResendConnection": false,
+    "newMail": false,
+    "productionPromotion": false
+  },
+  "existingKnowledge": {
+    "handlarborsenProjectMemories": 9,
+    "founding5AndTiersStored": true,
+    "resendSnapshotStored": true,
+    "stratoHistoryMarkedIncomplete": true
+  },
+  "resendBoundary": "ChatGPT has a connected read capability. This Atlas version has Strato and saved Resend snapshots, not direct Resend tools or a live list/history sync.",
+  "limitations": [
+    "Full web retains historical failures; exact identities are referenced with any resolved delta.",
+    "This protects explicit stored-evidence references; it does not implement a general semantic intent parser or new integration.",
+    "All existing sending decisions and customer-send restrictions remain."
+  ]
+}

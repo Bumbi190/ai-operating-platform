@@ -229,6 +229,13 @@ const FAST_PATH_SYSTEM = `Du är en skicklig copywriter för Omnira. Skriv det s
 // ── INTENT CLASSIFIER ─────────────────────────────────────────────────────────
 // Avgör FAST PATH (ren skriv-/text-uppgift → direkt LLM) vs EXECUTIVE (verksamhet
 // → Executive Brain + verktyg). FAST PATH vinner bara om inget "systemy" finns med.
+// A request about saved evidence needs the existing authorized context even when
+// it also asks for copy or a summary. Explicit content mode cannot drop that data.
+// Unicode boundaries keep "minnesträning" distinct from "minne".
+function needsStoredContext(text: string): boolean {
+  return /(?<![\p{L}\p{N}_])(?:projekt(?:et|ets|en|ens|minne(?:t)?)?|projects?|minne(?:t|n|na)?|memory|memories|historik(?:en)?|kontakthistorik(?:en)?|kontaktregist(?:er|ret)|sparad(?:e)?|sparat|saved|stored|tidigare|previous|earlier|föregående|bestäm(?:t|de)|beslut(?:en)?|pilotprogram(?:met)?|pilotbeslut(?:en)?|founding(?:\s+5)?|resend|strato|get_records|get_sales_[a-z_]+)(?![\p{L}\p{N}_])/iu.test(text.normalize('NFC'))
+}
+
 function isFastPathContent(text: string): boolean {
   const t = (text || '').toLowerCase().trim()
   if (t.length > 800) return false   // långa/komplexa briefs → executive
@@ -731,7 +738,7 @@ export async function POST(request: Request) {
     const m = messages[messages.length - 1]
     return m?.role === 'user' && typeof m.content === 'string' ? m.content : ''
   })()
-  const fastPath = !studioContext && !websitePlanRef && !rawBuildContext && (mode === 'content' || isFastPathContent(lastUserText))
+  const fastPath = !studioContext && !websitePlanRef && !rawBuildContext && !needsStoredContext(lastUserText) && (mode === 'content' || isFastPathContent(lastUserText))
   // Statisk konversation (hej/tack/vem är du) — besvaras ur Atlas identitet ensam.
   // Allow-list, aldrig gissning: allt som inte bevisligen klarar sig utan live-
   // data, projekt, Memory, klocka och verktyg går full path.

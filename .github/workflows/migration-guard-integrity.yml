@@ -49,6 +49,7 @@ jobs:
         run: |
           npx --no vitest run lib/qa/migration-guard-v2.test.ts \
             lib/qa/handlarborsen-watch-runs-migration.test.ts \
+            lib/qa/sales-inbox-ledger-reconciliation.test.ts \
             --reporter=default --reporter=json \
             --outputFile="$RUNNER_TEMP/migration-guard-integrity.json"
 
@@ -69,6 +70,13 @@ jobs:
           const testFile = files.find((file) => String(file.name).endsWith('migration-guard-v2.test.ts'))
           if (!testFile) {
             console.error('::error::migration-guard-v2.test.ts is absent from the results')
+            process.exit(1)
+          }
+
+          const sales = files.find(file => String(file.name).endsWith('/sales-inbox-ledger-reconciliation.test.ts'))
+          const salesAssertions = sales?.assertionResults ?? []
+          if (salesAssertions.length < 3 || salesAssertions.some(assertion => assertion.status !== 'passed')) {
+            console.error('::error::all three exact sales inbox source/ledger/registry checks must pass')
             process.exit(1)
           }
 

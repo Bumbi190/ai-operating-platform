@@ -5,7 +5,7 @@ const zone='Europe/Stockholm',A='20000000-0000-4000-8000-000000000001';
 const seedEvent=(id,title,time,extra={})=>({id,kind:'private',title,description:'',location:'',projectId:null,taskId:null,time,workStatus:null,version:1,status:'scheduled',createdAt:'2026-10-18T12:00:00.000Z',updatedAt:'2026-10-18T12:00:00.000Z',...extra});
 const point=(start,end=null)=>({kind:'timed',startUtc:start,endUtc:end,timeZone:zone});
 const empty=()=>new Map();
-const calendarModel=(user,fromDate,toDateExclusive)=>({range:{fromDate,toDateExclusive,timeZone:zone},entries:[...(users.get(user)??empty()).values()].map(event=>({id:'manual:'+event.id,source:{kind:'manual',eventId:event.id,version:event.version},title:event.title,time:event.time,projectId:event.projectId,status:event.status,editable:true,href:null,pendingChange:null,manualEvent:event})).concat(pending?[{id:'social:family:post',source:{kind:'social',projectId:'10000000-0000-4000-8000-000000000001',postId:'10000000-0000-4000-8000-000000000006',revisionId:'10000000-0000-4000-8000-000000000007',sha256:'a'.repeat(64),jobId:'10000000-0000-4000-8000-000000000008'},title:'Familjeinlägg',time:point('2026-10-22T15:00:00.000Z'),projectId:'10000000-0000-4000-8000-000000000001',status:'queued',editable:true,href:'/projects/familje-stunden/social#content',pendingChange:{time:point('2026-10-23T15:00:00.000Z'),reviewHref:'/projects/familje-stunden/social#content'}}]:[]),unscheduledTasks:[],projects:[],availability:{manual:true,social,workflows:true,tasks:true},truncated:{manual:false,social:false,workflows:false,tasks:false}});
+const calendarModel=(user,fromDate,toDateExclusive)=>({range:{fromDate,toDateExclusive,timeZone:zone},entries:[...(users.get(user)??empty()).values()].map(event=>({id:'manual:'+event.id,source:{kind:'manual',eventId:event.id,version:event.version},title:event.title,time:event.time,projectId:event.projectId,status:event.status,editable:true,href:null,pendingChange:null,manualEvent:event})).concat(pending?[{id:'social:family:post',source:{kind:'social',projectId:'10000000-0000-4000-8000-000000000001',postId:'10000000-0000-4000-8000-000000000006',revisionId:'10000000-0000-4000-8000-000000000007',sha256:'a'.repeat(64),jobId:'10000000-0000-4000-8000-000000000008'},title:'Familjeinlägg',time:point('2026-10-22T15:00:00.000Z'),projectId:'10000000-0000-4000-8000-000000000001',status:'queued',editable:true,href:'/projects/familje-stunden/social#content',pendingChange:{time:point('2026-10-23T15:00:00.000Z'),reviewHref:'/projects/familje-stunden/social#content'}}]:[]),unscheduledTasks:[],projects:pending?[{id:'10000000-0000-4000-8000-000000000001',name:'Familje-Stunden',color:'#d5b185'}]:[],availability:{manual:true,social,workflows:true,tasks:true},truncated:{manual:false,social:false,workflows:false,tasks:false}});
 const server=await createServer({root,configFile:false,appType:'custom',esbuild:{jsx:'automatic'},css:{postcss:{}},resolve:{alias:{'@':root}},server:{host:'127.0.0.1',port:54413}});
 const json=(res,body,status=200)=>{res.statusCode=status;res.setHeader('content-type','application/json');res.end(JSON.stringify(body));};
 const body=async req=>{let text='';for await(const part of req)text+=part;return JSON.parse(text||'{}');};
@@ -20,7 +20,12 @@ server.middlewares.use(async(req,res,next)=>{
    seedEvent('10000000-0000-4000-8000-000000000004','Överlapp A',point('2026-10-22T13:00:00.000Z','2026-10-22T14:00:00.000Z')),
    seedEvent('10000000-0000-4000-8000-000000000005','Överlapp B',point('2026-10-22T13:30:00.000Z','2026-10-22T14:30:00.000Z'))
   ])events.set(event.id,event);users.set(A,events);}}
-  if(url.pathname==='/_test/errors'){social=input.social!==false;saveError=input.save===true;readError=input.read===true;}
+ if(url.pathname==='/_test/reset'&&input.demo){const events=empty();for(const event of [
+ seedEvent('10000000-0000-4000-8000-000000000011','Veckoplanering med Atlas',point('2026-10-19T07:00:00.000Z','2026-10-19T08:00:00.000Z'),{kind:'work_block',workStatus:'planned',projectId:'10000000-0000-4000-8000-000000000001'}),
+ seedEvent('10000000-0000-4000-8000-000000000012','Möte med Oscar',point('2026-10-22T12:00:00.000Z','2026-10-22T13:00:00.000Z')),
+ seedEvent('10000000-0000-4000-8000-000000000013','Ledig dag',{kind:'all_day',startDate:'2026-10-25',endDateExclusive:'2026-10-26',timeZone:zone})
+ ])events.set(event.id,event);users.set(A,events);}
+ if(url.pathname==='/_test/errors'){social=input.social!==false;saveError=input.save===true;readError=input.read===true;}
   if(url.pathname==='/_test/delay'){delayDate=input.date;delayMs=input.ms??400;}
   return json(res,{ok:true});
  }
@@ -40,7 +45,7 @@ server.middlewares.use(async(req,res,next)=>{
    const receipt={ok:true,mutationId:randomUUID(),event,calendarHref:'/calendar?week='+d.toISOString().slice(0,10)};receipts.set(key,receipt);return json(res,receipt);
   }
  }
- if(req.method==='GET'&&url.pathname==='/calendar'){res.setHeader('content-type','text/html');res.end(await server.transformIndexHtml(req.url,'<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;background:#07111b;color:#edf5fa;font-family:system-ui}*{box-sizing:border-box}button,input,select,textarea{font:inherit}</style></head><body><div id="root"></div><script type="module" src="/e2e/calendar-entry.tsx"></script></body></html>'));return;}
+ if(req.method==='GET'&&url.pathname==='/calendar'){res.setHeader('content-type','text/html');res.end(await server.transformIndexHtml(req.url,'<!doctype html><html lang="sv"><head><meta charset="utf-8"><title>Omnira Kalender · förhandsvisning</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;background:#07111b;color:#edf5fa;font-family:system-ui}*{box-sizing:border-box}button,input,select,textarea{font:inherit}</style></head><body><div id="root"></div><script type="module" src="/e2e/calendar-entry.tsx"></script></body></html>'));return;}
  next();
 });
 await server.listen();

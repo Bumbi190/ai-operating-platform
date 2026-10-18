@@ -68,3 +68,35 @@ it('SQL refuses worker review submission and final without preliminary despite s
  expect(()=>db.sql(sql(finalCommand,actor,f.reviewerHash,final),'service_role')).toThrow()
 })
 import {canonicalTargetVersionHash as canonical} from '@/lib/atlas/authorization/build'
+
+function roleRead(f:ReturnType<typeof frozen>,role:'worker'|'reviewer'='reviewer',hash=f.reviewerHash){
+ const actor=storageActor(f.job,role);return 'select public.atlas_code_review_read_for_role('+[q(f.job.workId)+'::uuid',q(role),q(actor.sessionId),q(hash)].join(',')+');'
+}
+describe('stored role reads and credential recovery',()=>{
+ it('enforces initial reviewer context isolation and directed-only discussion in SQL',()=>{
+  const f=frozen();let j=f.job
+  db.sql(db.applySql(j,messageCommand(j,1,'atlas'),storageActor(j,'worker'),f.roles[1].tokenHash),'service_role');j=db.read(j.workId)
+  const initial=JSON.parse(db.sql(roleRead({...f,job:j}),'service_role'))
+  expect(initial.candidate.snapshot.artifacts.length).toBeGreaterThan(0);expect(initial.messages).toEqual([]);expect(JSON.stringify(initial)).not.toMatch(/tokenHash|brokerTokenHash|commands/)
+  db.sql(db.applySql(j,reportCommand(j),storageActor(j,'reviewer'),f.reviewerHash),'service_role');j=db.read(j.workId)
+  db.sql(db.applySql(j,messageCommand(j,2,'reviewer'),storageActor(j),f.roles[0].tokenHash),'service_role');j=db.read(j.workId)
+  const discussion=JSON.parse(db.sql(roleRead({...f,job:j}),'service_role'));expect(discussion.messages.map((m:any)=>m.id)).toEqual(['message-2'])
+  const worker=JSON.parse(db.sql(roleRead({...f,job:j},'worker',f.roles[1].tokenHash),'service_role'));expect(worker.candidate.preliminary).toBeNull();expect(worker.messages.map((m:any)=>m.id)).toEqual(['message-1'])
+  expect(()=>db.sql(roleRead({...f,job:j},'reviewer',f.roles[1].tokenHash),'service_role')).toThrow()
+ },30000)
+ it('recovers a role key without mutating history and invalidates old token immediately',async()=>{
+  const f=frozen(),reviewer=storageActor(f.job,'reviewer'),hashes=['7'.repeat(64),'8'.repeat(64)]
+  const rotate=(h:string)=>'select public.atlas_code_review_rotate_credential('+[q(f.job.workId)+'::uuid',q(f.proof),q('reviewer'),q(reviewer.sessionId),q(h)].join(',')+');'
+  const race=await db.parallel(hashes.map(rotate));expect(race.every(r=>r.status==='fulfilled')).toBe(true)
+  expect(db.read(f.job.workId)).toEqual(f.job);expect(()=>db.sql(roleRead(f),'service_role')).toThrow()
+  const accepted=hashes.map(h=>{try{db.sql(roleRead(f,'reviewer',h),'service_role');return true}catch{return false}})
+  expect(accepted.filter(Boolean)).toHaveLength(1)
+  expect(()=>db.sql(rotate('9'.repeat(64)).replace(q(f.proof),q({...f.proof,fence:f.proof.fence+1})),'service_role')).toThrow()
+ },30000)
+ it('observes a stopped parent without granting live reads or key recovery',()=>{
+  const f=frozen(),j=f.job;db.sql('select public.atlas_code_work_cancel('+[q(j.workId)+'::uuid',q(j.projectId)+'::uuid',q(f.owner)+'::uuid',q('stop')].join(',')+');','service_role')
+  const observation=JSON.parse(db.sql('select public.atlas_code_review_observe('+q(j.workId)+'::uuid);','service_role'));expect(observation.parentLive).toBe(false);expect(observation.job).toEqual(j)
+  expect(()=>db.sql(roleRead(f),'service_role')).toThrow()
+  expect(()=>db.sql('select public.atlas_code_review_rotate_credential('+[q(j.workId)+'::uuid',q(f.proof),q('reviewer'),q(storageActor(j,'reviewer').sessionId),q('7'.repeat(64))].join(',')+');','service_role')).toThrow()
+ })
+})

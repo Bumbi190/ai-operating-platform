@@ -95,15 +95,16 @@ declare r public.atlas_code_work_runs;j public.atlas_code_review_jobs;data jsonb
 begin
  r:=atlas_code_review_private.lock_parent(p_work_id);perform atlas_code_review_private.proof(r,p_parent_proof);
  perform atlas_code_review_private.config(r,p_config);perform atlas_code_review_private.live(r,p_config);
- perform atlas_code_review_private.must(jsonb_typeof(p_roles)='array' and jsonb_array_length(p_roles)=2);
+ perform atlas_code_review_private.must(p_roles is null or (jsonb_typeof(p_roles)='array' and jsonb_array_length(p_roles)=2));
  select * into j from public.atlas_code_review_jobs where work_id=p_work_id for update;
  if found then
   perform atlas_code_review_private.must(j.data->'config'=p_config);
-  for a in select value from jsonb_array_elements(p_roles)loop
+  for a in select value from jsonb_array_elements(coalesce(p_roles,'[]'::jsonb))loop
    perform atlas_code_review_private.must(exists(select 1 from atlas_code_review_private.credentials where work_id=p_work_id and role=a->>'role' and actor_id=a->>'actorId' and session_id=a->>'sessionId' and token_hash=a->>'tokenHash' and not revoked));
   end loop;
   return j.data;
  end if;
+ perform atlas_code_review_private.must(p_roles is not null);
  data:=jsonb_build_object('workId',p_work_id::text,'projectId',r.project_id::text,'version',0,'config',p_config,'candidates','[]'::jsonb,'messages',jsonb_build_object('workId',p_work_id::text,'projectId',r.project_id::text,'entries','[]'::jsonb),'commands','[]'::jsonb);
  insert into public.atlas_code_review_jobs values(p_work_id,r.project_id,0,data);
  for a in select value from jsonb_array_elements(p_roles)loop
@@ -184,7 +185,7 @@ begin
   perform atlas_code_review_private.must(p_new_reviewer->>'role'='reviewer' and (p_new_reviewer->>'candidateVersion')::integer=cv);
   s:=new_candidate->'snapshot';perform atlas_code_review_private.snapshot(c,s,jsonb_build_object('actorId',p_new_reviewer->'actorId','sessionId',p_new_reviewer->'sessionId'),cv);
   if cv=2 then
-   perform atlas_code_review_private.must((s-array['binding','assignment','snapshotHash','candidateVersion']) is distinct from (expected_candidates#>'{0,snapshot}'-array['binding','assignment','snapshotHash','candidateVersion']));
+   perform atlas_code_review_private.must((s-array['binding','assignment','snapshotHash','candidateVersion']) is distinct from ((expected_candidates#>'{0,snapshot}')-array['binding','assignment','snapshotHash','candidateVersion']));
    perform atlas_code_review_private.must(s#>>'{assignment,claim,id}'<>expected_candidates#>>'{0,snapshot,assignment,claim,id}');
   end if;
   select coalesce(jsonb_agg(a-array['sha256','byteLength'] order by a->>'id' collate "C"),'[]'::jsonb) into ref from jsonb_array_elements(s->'artifacts')a;
@@ -250,3 +251,50 @@ create trigger atlas_review_no_truncate before truncate on public.atlas_code_rev
 revoke all on all functions in schema atlas_code_review_private from public,anon,authenticated,service_role;
 revoke all on function public.atlas_code_review_initialize(uuid,jsonb,jsonb,jsonb),public.atlas_code_review_read(uuid),public.atlas_code_review_apply(uuid,text,text,text,bigint,jsonb,text,jsonb,jsonb) from public,anon,authenticated,service_role;
 grant execute on function public.atlas_code_review_initialize(uuid,jsonb,jsonb,jsonb),public.atlas_code_review_read(uuid),public.atlas_code_review_apply(uuid,text,text,text,bigint,jsonb,text,jsonb,jsonb) to service_role;
+
+-- Internal service probes: role possession and current observations are separate from authority.
+create function public.atlas_code_review_authenticate_role(p_work_id uuid,p_role text,p_session_id text,p_token_hash text) returns jsonb language plpgsql security definer set search_path='' as $$
+declare k atlas_code_review_private.credentials;
+begin
+ select * into strict k from atlas_code_review_private.credentials where work_id=p_work_id and role=p_role and session_id=p_session_id and token_hash=p_token_hash and not revoked;
+ return jsonb_build_object('role',k.role,'actorId',k.actor_id,'sessionId',k.session_id,'candidateVersion',k.candidate_version);
+end $$;
+create function public.atlas_code_review_observe(p_work_id uuid) returns jsonb language plpgsql security definer set search_path='' as $$
+declare parent public.atlas_code_work_runs;j public.atlas_code_review_jobs;live boolean:=true;
+begin
+ parent:=atlas_code_review_private.lock_parent(p_work_id);
+ select * into strict j from public.atlas_code_review_jobs where work_id=p_work_id for share;
+ begin perform atlas_code_review_private.live(parent,j.data->'config');exception when others then live:=false;end;
+ return jsonb_build_object('job',j.data,'parentLive',live,'nowMs',floor(extract(epoch from clock_timestamp())*1000));
+end $$;
+create function public.atlas_code_review_read_for_role(p_work_id uuid,p_role text,p_session_id text,p_token_hash text) returns jsonb language plpgsql security definer set search_path='' as $$
+declare parent public.atlas_code_work_runs;j public.atlas_code_review_jobs;k atlas_code_review_private.credentials;cv integer;candidate jsonb;view jsonb;messages jsonb;
+begin
+ parent:=atlas_code_review_private.lock_parent(p_work_id);
+ select * into strict j from public.atlas_code_review_jobs where work_id=p_work_id for share;
+ perform atlas_code_review_private.live(parent,j.data->'config');
+ select * into strict k from atlas_code_review_private.credentials where work_id=p_work_id and role=p_role and session_id=p_session_id and token_hash=p_token_hash and not revoked for share;
+ cv:=jsonb_array_length(j.data->'candidates');
+ if k.role='reviewer' then perform atlas_code_review_private.must(cv=k.candidate_version);end if;
+ if cv=0 then view:='null'::jsonb;messages:='[]'::jsonb;
+ else
+  candidate:=j.data->'candidates'->(cv-1);
+  view:=jsonb_build_object('version',cv,'snapshot',candidate->'snapshot','preliminary',case when k.role='worker' then 'null'::jsonb else candidate->'preliminary' end,'final',case when k.role='worker' then 'null'::jsonb else candidate->'final' end);
+  select coalesce(jsonb_agg(m order by (m->>'sequence')::integer),'[]'::jsonb) into messages from jsonb_array_elements(j.data#>'{messages,entries}')m where m->>'snapshotHash'=candidate#>>'{snapshot,snapshotHash}' and (k.role='atlas' or m#>>'{from,sessionId}'=k.session_id or m#>>'{to,sessionId}'=k.session_id) and (k.role<>'reviewer' or candidate->'preliminary'<>'null'::jsonb);
+ end if;
+ return jsonb_build_object('workId',j.work_id::text,'projectId',j.project_id::text,'role',k.role,'candidate',view,'messages',messages);
+end $$;
+create function public.atlas_code_review_rotate_credential(p_work_id uuid,p_parent_proof jsonb,p_role text,p_session_id text,p_new_hash text) returns jsonb language plpgsql security definer set search_path='' as $$
+declare parent public.atlas_code_work_runs;j public.atlas_code_review_jobs;k atlas_code_review_private.credentials;
+begin
+ parent:=atlas_code_review_private.lock_parent(p_work_id);perform atlas_code_review_private.proof(parent,p_parent_proof);
+ select * into strict j from public.atlas_code_review_jobs where work_id=p_work_id for update;
+ perform atlas_code_review_private.live(parent,j.data->'config');
+ select * into strict k from atlas_code_review_private.credentials where work_id=p_work_id and role=p_role and session_id=p_session_id and not revoked for update;
+ perform atlas_code_review_private.must(p_new_hash~'^[a-f0-9]{64}$');
+ if k.role='reviewer' then perform atlas_code_review_private.must(k.candidate_version=jsonb_array_length(j.data->'candidates') and j.data->'candidates'->(k.candidate_version-1)->'final'='null'::jsonb);end if;
+ update atlas_code_review_private.credentials set token_hash=p_new_hash where work_id=p_work_id and session_id=p_session_id;
+ return jsonb_build_object('rotated',true);
+end $$;
+revoke all on function public.atlas_code_review_authenticate_role(uuid,text,text,text),public.atlas_code_review_observe(uuid),public.atlas_code_review_read_for_role(uuid,text,text,text),public.atlas_code_review_rotate_credential(uuid,jsonb,text,text,text) from public,anon,authenticated,service_role;
+grant execute on function public.atlas_code_review_authenticate_role(uuid,text,text,text),public.atlas_code_review_observe(uuid),public.atlas_code_review_read_for_role(uuid,text,text,text),public.atlas_code_review_rotate_credential(uuid,jsonb,text,text,text) to service_role;

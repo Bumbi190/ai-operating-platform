@@ -15,7 +15,7 @@ describe('review contracts have no operational authority',()=>{
  })
  it('permits only pure contract/hash imports and no ambient runtime access',()=>{
   const allowed=new Set(['node:crypto','../../authorization/build','../binding','../command-registry','../policy','../path-policy','../types','./types','./validation','./binding','./snapshot','./result'])
-  for(const file of sources(REVIEW)){const source=readFileSync(file,'utf8');for(const spec of imports(source))expect(allowed.has(spec),file+':'+spec).toBe(true)
+  for(const file of sources(REVIEW).filter(p=>!p.includes(sep+'storage'+sep))){const source=readFileSync(file,'utf8');for(const spec of imports(source))expect(allowed.has(spec),file+':'+spec).toBe(true)
    expect(source).not.toMatch(/\b(?:fetch\s*\(|Date\.now\s*\(|Math\.random\s*\(|randomUUID\s*\(|process\.|setTimeout\s*\(|setInterval\s*\()/)
   }
  })

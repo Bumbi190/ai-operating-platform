@@ -22,3 +22,17 @@ export interface CommandResult {outcome:'appended'|'replayed';jobVersion:number;
 export interface PrepareResult {expectedVersion:number;commandId:string;commandHash:string;next:StoredReviewJobV1;outcome:'appended'|'replayed'}
 export type StorageStatus='ok'|'replayed'|'conflict'|'not_live'|'not_permitted'|'unavailable'
 export interface ReviewCredentialRow extends StorageActor {tokenHash:string;candidateVersion:0|1|2}
+
+export interface ReviewRoleView {workId:string;projectId:string;role:import('../types').ReviewRole;candidate:StoredReviewCandidate|null;messages:readonly import('../types').AgentMessageV1[]}
+export interface ReviewOperatorView {workId:string;projectId:string;jobVersion:number;candidates:readonly StoredReviewCandidate[];messages:readonly import('../types').AgentMessageV1[]}
+export type ReviewServiceCommand=Exclude<ReviewStorageCommand,{kind:'freeze'}>|{id:string;kind:'freeze';snapshotInput:Omit<ReviewSnapshotInputV1,'binding'|'assignment'>}
+export interface ReviewApplyInput {workId:string;role:ReviewRole;sessionId:string;tokenHash:string;expectedVersion:number;command:ReviewStorageCommand;commandHash:string;next:StoredReviewJobV1;newReviewer:ReviewCredentialRow|null}
+export interface ReviewStorageStore {
+ read(workId:string):Promise<StoredReviewJobV1|null>
+ initialize(proof:ParentReviewProof,config:ReviewStorageConfig,roles:ReviewCredentialRow[]|null):Promise<StoredReviewJobV1>
+ authenticate(workId:string,role:ReviewRole,sessionId:string,tokenHash:string):Promise<StorageActor & {candidateVersion:0|1|2}>
+ observe(workId:string):Promise<{job:StoredReviewJobV1;nowMs:number;parentLive:boolean}>
+ apply(input:ReviewApplyInput):Promise<CommandResult>
+ readForRole(workId:string,role:ReviewRole,sessionId:string,tokenHash:string):Promise<ReviewRoleView>
+ rotate(workId:string,proof:ParentReviewProof,role:ReviewRole,sessionId:string,newHash:string):Promise<void>
+}

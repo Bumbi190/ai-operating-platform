@@ -57,7 +57,7 @@ export class ReviewPostgres {
  applySql(job:StoredReviewJobV1,command:ReviewStorageCommand,actor:StorageActor,tokenHash:string,newReviewer:unknown=null){
   const prepared=prepareReviewAppend(job,command,actor,{nowMs:Number(this.sql('select floor(extract(epoch from clock_timestamp())*1000)::bigint;')),parentLive:true})
   if(!prepared.ok)throw Error('fixture_prepare:'+prepared.violations.map(v=>v.code))
-  if(command.kind==='freeze')command={...command,snapshotInput:snapshotInputOf(prepared.value.next.candidates.find(c=>c.version===command.snapshotInput.candidateVersion).snapshot)}
+  if(command.kind==='freeze'){const cv=command.snapshotInput.candidateVersion;const candidate=prepared.value.next.candidates.find(c=>c.version===cv);if(!candidate)throw Error('fixture_candidate_missing');command={...command,snapshotInput:snapshotInputOf(candidate.snapshot)}}
   return 'select public.atlas_code_review_apply('+[q(job.workId)+'::uuid',q(actor.role),q(actor.sessionId),q(tokenHash),String(job.version),q(command),q(prepared.value.commandHash),q(prepared.value.next),q(newReviewer)].join(',')+');'
  }
 }

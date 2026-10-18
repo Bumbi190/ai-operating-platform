@@ -43,7 +43,7 @@ function Panel({projectId,post,disabled}:Props){
   {disabled&&<p>Spara och läs den senaste versionen innan du publicerar.</p>}
   {model&&<>{r?<div className={styles.receipt} role="status"><strong>{labels[r.state]}</strong><p>Konto: {r.accountLabel??r.accountId}</p>{r.revisionId!==post.revision.id&&<p>Kvittot gäller en tidigare version, inte den visade texten.</p>}
    {r.state==='published'&&<><p>{r.confirmation==='container_status'?'Instagram har bekräftat att behållaren publicerats. Inläggslänk saknas.':'Kanalen har bekräftat publiceringen.'}</p>{permalink&&<a href={permalink} target="_blank" rel="noreferrer">Öppna publicerat inlägg</a>}</>}
-   {r.state==='uncertain'&&<p>Utfallet är osäkert. Kontrollera kontot innan du gör något mer.</p>}
+   {r.state==='uncertain'&&<p>Kanalen kan redan ha publicerat inlägget. Kontrollera kontot innan du gör något mer.</p>}
    {r.state==='failed'&&<p>Kanalen avvisade försöket eller bilden kunde inte färdigställas. Detta utkast skickas inte igen.</p>}
    {r.state==='processing'&&<p>Kontrollera och slutför kan publicera samma godkända version när bilden är klar.</p>}
   </div>:<p>Mottagare: {account} · {channel}</p>}

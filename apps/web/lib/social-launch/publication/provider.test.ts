@@ -1,4 +1,4 @@
-import {it,expect} from 'vitest'
+import {it,expect,vi} from 'vitest'
 import {MetaManualProvider} from './provider'
 const facebook={channel:'facebook' as const,accountId:'12345',token:'fixture-token',apiBase:'https://graph.facebook.com/v21.0'}
 const instagram={...facebook,channel:'instagram' as const,apiBase:'https://graph.instagram.com/v21.0'}
@@ -37,4 +37,73 @@ it('missing permalink never discards a successful provider id or returns an unsa
  for(const value of [{permalink:'javascript:alert(1)'},{permalink:'https://evil.invalid/post'},{}]){
   const provider=new MetaManualProvider(async()=>Response.json(value));expect(await provider.permalink(instagram,'222')).toBeNull()
  }
+})
+
+function timedProvider(delay: number | null) {
+ const calls: RequestInit[] = []
+ const provider = new MetaManualProvider(async (_url, init) => {
+  calls.push(init)
+  return new Promise<Response>((resolve,reject) => {
+   const signal=init.signal!
+   const abort=()=>reject(new DOMException('Aborted','AbortError'))
+   if(signal.aborted) return abort()
+   signal.addEventListener('abort',abort,{once:true})
+   if(delay!==null) setTimeout(()=>{
+    signal.removeEventListener('abort',abort)
+    resolve(Response.json({id:'12345_67890'}))
+   },delay)
+  })
+ })
+ return {provider,calls}
+}
+function useAbortClock() {
+ vi.useFakeTimers()
+ vi.spyOn(AbortSignal,'timeout').mockImplementation(ms=>{
+  const controller=new AbortController()
+  setTimeout(()=>controller.abort(new DOMException('Timeout','TimeoutError')),ms)
+  return controller.signal
+ })
+}
+it('accepts_a_facebook_receipt_after_nine_seconds',async()=>{
+ useAbortClock()
+ try {
+  const {provider,calls}=timedProvider(9000)
+  const result=provider.facebook(facebook,{text:'Exakt text',linkUrl:null,imageUrl:media})
+  const outcome=result.then(value=>({value}),error=>({error}))
+  await vi.advanceTimersByTimeAsync(9000)
+  expect(await outcome).toEqual({value:{providerId:'12345_67890',permalink:'https://www.facebook.com/12345_67890'}})
+  expect(calls).toHaveLength(1)
+  expect(calls[0].signal!.aborted).toBe(false)
+ } finally { vi.restoreAllMocks();vi.useRealTimers() }
+})
+it('stops_waiting_after_thirty_seconds_without_retry',async()=>{
+ useAbortClock()
+ try {
+  const {provider,calls}=timedProvider(null)
+  let settled=false
+  const outcome=provider.facebook(facebook,{text:'x',linkUrl:null,imageUrl:media})
+   .then(value=>({value}),error=>({error})).finally(()=>{settled=true})
+  await vi.advanceTimersByTimeAsync(29999)
+  expect(settled).toBe(false)
+  await vi.advanceTimersByTimeAsync(1)
+  expect(await outcome).toMatchObject({error:{code:'provider_unavailable',outcome:'unknown'}})
+  expect(calls).toHaveLength(1)
+  expect(calls[0].signal!.aborted).toBe(true)
+ } finally { vi.restoreAllMocks();vi.useRealTimers() }
+})
+it('retains_eight_seconds_for_instagram_and_reads',async()=>{
+ useAbortClock()
+ try {
+  for(const action of ['create','status'] as const) {
+   const {provider,calls}=timedProvider(null)
+   let settled=false
+   const outcome=(action==='create'?provider.createImage(instagram,media,'x'):provider.status(instagram,'111'))
+    .then(value=>({value}),error=>({error})).finally(()=>{settled=true})
+   await vi.advanceTimersByTimeAsync(7999)
+   expect(settled).toBe(false)
+   await vi.advanceTimersByTimeAsync(1)
+   expect(await outcome).toMatchObject({error:{code:'provider_unavailable',outcome:'unknown'}})
+   expect(calls).toHaveLength(1)
+  }
+ } finally { vi.restoreAllMocks();vi.useRealTimers() }
 })

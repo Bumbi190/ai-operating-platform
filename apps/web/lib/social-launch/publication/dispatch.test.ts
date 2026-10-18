@@ -26,7 +26,7 @@ it('guards project stops and a mismatched resolved account before any provider w
 it('a lost Facebook response becomes uncertain and the same intent never POSTs again',async()=>{
  const f=await publicationFixture(db);let calls=0;const d=deps(f,async()=>{calls++;throw Error('lost response secret-token')})
  const v=await dispatchPublication(db,f.p,f.input,d);expect(v.publication!.state).toBe('uncertain');expect(JSON.stringify(v)).not.toContain('secret-token')
- await dispatchPublication(db,f.p,f.input,d);await checkPublication(db,f.p,check(f,v.publication!.id),d);expect(calls).toBe(1)
+ await dispatchPublication(db,f.p,f.input,d);const saved=await checkPublication(db,f.p,check(f,v.publication!.id),d);expect(saved.publication!.id).toBe(v.publication!.id);expect(saved.publication!.state).toBe('uncertain');expect(saved.canRequest).toBe(false);expect(calls).toBe(1)
 })
 it('explicit Meta rejection is recorded as failed without automatic retry',async()=>{
  const f=await publicationFixture(db);let calls=0;const d=deps(f,async()=>{calls++;return Response.json({error:{code:190,message:'private'}},{status:401})})
@@ -36,7 +36,7 @@ it('two simultaneous requests admit only one Facebook write',async()=>{
  const f=await publicationFixture(db);let started!:()=>void,release!:()=>void;const start=new Promise<void>(r=>started=r),hold=new Promise<void>(r=>release=r);let calls=0
  const d=deps(f,async()=>{calls++;started();await hold;return Response.json({id:'123_456'})})
  const first=dispatchPublication(db,f.p,f.input,d);await start
- const duplicate=await dispatchPublication(db,f.p,f.input,d);expect(duplicate.publication!.state).toBe('publishing');release();expect((await first).publication!.state).toBe('published');expect(calls).toBe(1)
+ const duplicate=await dispatchPublication(db,f.p,f.input,d);expect(duplicate.publication!.state).toBe('publishing');release();const finished=await first;expect(finished.publication!.state).toBe('published');expect(finished.publication!.id).toBe(duplicate.publication!.id);expect(calls).toBe(1)
 },15000)
 it('persists Instagram processing then explicitly completes the same container once ready',async()=>{
  const f=await publicationFixture(db,'instagram',true);let status='IN_PROGRESS',posts=0

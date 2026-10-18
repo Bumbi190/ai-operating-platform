@@ -17,6 +17,8 @@ it('strict_auth_origin_and_prepare_fields',async()=>{
  expect((await newsReviewApi(req(state.f.input,'https://evil.invalid'))).status).toBe(403)
  for(const extra of [{rightsVerified:true},{dispatchEnabled:true},{document:'a'.repeat(40000)}])expect((await newsReviewApi(req({...state.f.input,...extra}))).status).toBe(400)
  expect((await newsReviewApi(new Request(req().url+'&postId='+randomUUID()))).status).toBe(400)
+ const malformedRead=await newsReviewApi(new Request('http://localhost/api/media/news-review?'+new URLSearchParams({projectId:state.f.input.projectId,postId:'-'.repeat(36)})))
+ expect(malformedRead.status).toBe(400)
  expect(testSql("select count(*) from social_content_posts where project_id="+literal(state.f.input.projectId))).toBe('0')
 })
 it('get_never_writes_or_dispatches',async()=>{

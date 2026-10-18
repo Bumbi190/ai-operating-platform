@@ -72,8 +72,8 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Atlas sales draft pilot: 130/116; applied ledger 20261017130254, reconciled 2026-10-17.
 // Weekly watch journal: 136/122; applied ledger20261017200436. Flag remains absent.
 // Atlas metrics and test-data control migrations applied by the owner-approved October18 release.
-export const EXPECTED_CANONICAL_SQL_COUNT = 145
-export const EXPECTED_ENFORCED_COUNT = 131
+export const EXPECTED_CANONICAL_SQL_COUNT = 146
+export const EXPECTED_ENFORCED_COUNT = 132
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([
@@ -304,3 +304,4 @@ export function evaluateAppliedMigrationLedger(appliedNames, repositoryState) {
 // sales_reply_preparation is exact already-live source from PR386, hash verified 2026-10-18; no apply and no runtime import. Canonical141/enforced127.
 
 // Integrated main8d91af9: four already-live social scheduling migrations; sales reply source included once. Counts145/131; frozen14/30 unchanged.
+// The Prompt review evidence adds one enforced migration (146/132), pending separate reviewed application; frozen 14/30 unchanged.

@@ -5,7 +5,7 @@ import {newsEvidenceSha256} from './contract'
 import {reviewDatabaseError} from './store'
 import {NewsReviewError,type NewsReviewDetails,type NewsReviewRpcClient} from './types'
 export async function readNewsReview(db:ReviewDb,p:SocialContentPrincipal,input:{projectId:string;postId:string},nowMs:number):Promise<NewsReviewDetails>{
- if(!input||Object.keys(input).length!==2||Object.keys(input).some(k=>!['projectId','postId'].includes(k))||[input.projectId,input.postId].some(v=>typeof v!=='string'||!/^[-a-f0-9]{36}$/i.test(v)))throw new NewsReviewError('INVALID_BODY')
+ if(!input||Object.keys(input).length!==2||Object.keys(input).some(k=>!['projectId','postId'].includes(k))||[input.projectId,input.postId].some(v=>typeof v!=='string'||!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(v)))throw new NewsReviewError('INVALID_BODY')
  if(!p.allowedProjectIds.includes(input.projectId))throw new NewsReviewError('NOT_FOUND')
  const {data,error}=await (db as unknown as NewsReviewRpcClient).rpc('media_news_review_read',{p_principal:p,p_input:input})
  if(error)throw reviewDatabaseError(error)

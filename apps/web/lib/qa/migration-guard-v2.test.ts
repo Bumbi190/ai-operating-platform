@@ -97,14 +97,14 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
   // NOTE ON 3B1A: these two counts describe the CANONICAL CORPUS, so they move as soon
   // as the file exists. The production APPLY is a separate fact, and it has NOT happened
   // for 3B1A — see the ledger assertion below, which is deliberately left RED.
-  it('pins policy v2 and the current 147/133/14/30 counts', () => {
+  it('pins policy v2 and the current 148/134/14/30 counts', () => {
     expect(MIGRATION_GUARD_POLICY_VERSION).toBe(2)
-    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(147)
-    expect(EXPECTED_ENFORCED_COUNT).toBe(133)
+    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(148)
+    expect(EXPECTED_ENFORCED_COUNT).toBe(134)
     expect(GRANDFATHERED_MIGRATION_NAMES).toHaveLength(14)
     expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).toHaveLength(30)
-    expect(repositoryState.sqlFiles).toHaveLength(147)
-    expect(repositoryState.enforcedNames).toHaveLength(133)
+    expect(repositoryState.sqlFiles).toHaveLength(148)
+    expect(repositoryState.enforcedNames).toHaveLength(134)
   })
 
   it('uses exact explicit names with no wildcard policy entries', () => {
@@ -265,7 +265,7 @@ describe('Migration Guard v2 — production ledger set integrity', () => {
     // P1E (`handlarborsen_guarded_snapshot_store`, file 20261010130000) takes the enforced set
     // from 97 to 98 and this fixture from 134 to 135. Not applied yet: this line records the
     // post-apply state and is true only after the operator-approved apply.
-    expect(result.appliedLedgerCount).toBe(170)
+    expect(result.appliedLedgerCount).toBe(171)
     expect(result.unknownLedgerNames).toEqual([])
     expect(result.duplicateLedgerNames).toEqual([])
   })
@@ -403,9 +403,9 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
     expect(result).toMatchObject({
       skipped: false,
       policyVersion: 2,
-      canonicalSqlCount: 147,
-      enforcedCount: 133,
-      appliedLedgerCount: 170,
+      canonicalSqlCount: 148,
+      enforcedCount: 134,
+      appliedLedgerCount: 171,
     })
   })
 })
@@ -434,18 +434,20 @@ it("rejects a synthetic ledger missing the reconciled sales migration",()=>{expe
 
 it('refuses the pre-apply ledger while Atlas metrics definition migration is pending',()=>{
   const preApply=hypotheticalPostApplyLedger.filter(n=>!TEST_DATA_RELEASE_MIGRATIONS.includes(n))
-  expect(preApply).toHaveLength(167)
+  expect(preApply).toHaveLength(168)
   expect(()=>evaluateAppliedMigrationLedger(preApply,repositoryState)).toThrow(/handlarborsen_metrics_definition/)
 })
 
-it('reconciles the captured October18 ledger only after exact enforced canonical source and the three real applies',async()=>{
+it('captured October18 ledger remains blocked until the separate news review migration is applied',async()=>{
  const {default:captured}=await import('./fixtures/handlarborsen-test-data/production-ledger-20261018.json')
  expect(captured).toHaveLength(160)
  const beforeOwnApply=[...captured,'sales_reply_preparation','sales_reply_sending',...["social_publication_reconciliation","social_schedule_batches","social_schedule_checkpoint_recovery","social_schedule_review_snapshots"]]
  const afterOwnApply=[...beforeOwnApply,...TEST_DATA_RELEASE_MIGRATIONS]
- expect(()=>evaluateAppliedMigrationLedger(afterOwnApply,repositoryState)).toThrow(/user_calendar_v1/)
- // Calendar is pending: only a hypothetical extra apply satisfies this branch.
- expect(()=>evaluateAppliedMigrationLedger([...afterOwnApply,'user_calendar_v1'],repositoryState)).not.toThrow()
+ expect(()=>evaluateAppliedMigrationLedger(afterOwnApply,repositoryState)).toThrow(/media_news_review_evidence/)
+ // Historical pre-apply capture stays unchanged; the separate capture below records the later actual apply.
+ const afterHypotheticalNewsApply=[...afterOwnApply,'media_news_review_evidence']
+ expect(()=>evaluateAppliedMigrationLedger(afterHypotheticalNewsApply,repositoryState)).toThrow(/user_calendar_v1/)
+ expect(()=>evaluateAppliedMigrationLedger([...afterHypotheticalNewsApply,'user_calendar_v1'],repositoryState)).not.toThrow()
  expect(()=>evaluateAppliedMigrationLedger(beforeOwnApply,repositoryState)).toThrow(/handlarborsen_metrics_definition/)
  expect(()=>evaluateAppliedMigrationLedger(afterOwnApply.filter(n=>n!=='sales_strato_inbox'),repositoryState)).toThrow(/sales_strato_inbox/)
  expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain('sales_strato_inbox')
@@ -458,7 +460,13 @@ it('requires each new social scheduling and receipt migration by its exact name'
   expect(()=>evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger.filter(n=>n!==name),repositoryState)).toThrow(new RegExp(name))
  }
 })
-
+it('news review evidence is enforced and source-only commits cannot authorize its release',()=>{
+ const name='media_news_review_evidence'
+ expect(repositoryState.enforcedNames).toContain(name)
+ expect(repositoryState.grandfatheredNames).not.toContain(name)
+ expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).not.toContain(name)
+ expect(()=>evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger.filter(n=>n!==name),repositoryState)).toThrow(/media_news_review_evidence/)
+})
 
 describe('already-applied source reconciliation', () => {
   it('recognizes the verified sales_reply_sending ledger name in canonical history', () => {
@@ -468,6 +476,17 @@ describe('already-applied source reconciliation', () => {
     expect(() => evaluateAppliedMigrationLedger(applied, repositoryState)).not.toThrow()
     expect(repositoryState.enforcedNames).toContain('sales_reply_sending')
   })
+})
+
+
+it('accepts the actual news-review post-apply ledger without weakening the missing-migration check',async()=>{
+ const {default:captured}=await import('./fixtures/the-prompt/production-ledger-news-review-20261018.json')
+ expect(captured).toHaveLength(170)
+ expect(captured.filter(name=>name==='media_news_review_evidence')).toHaveLength(1)
+ expect(()=>evaluateAppliedMigrationLedger(captured,repositoryState)).toThrow(/user_calendar_v1/)
+ const afterHypotheticalCalendarApply=[...captured,'user_calendar_v1']
+ expect(()=>evaluateAppliedMigrationLedger(afterHypotheticalCalendarApply,repositoryState)).not.toThrow()
+ expect(()=>evaluateAppliedMigrationLedger(afterHypotheticalCalendarApply.filter(name=>name!=='media_news_review_evidence'),repositoryState)).toThrow(/media_news_review_evidence/)
 })
 
 it('requires the pending calendar migration exactly once without pretending it is applied',()=>{

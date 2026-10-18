@@ -100,3 +100,21 @@ describe('stored role reads and credential recovery',()=>{
   expect(()=>db.sql('select public.atlas_code_review_rotate_credential('+[q(j.workId)+'::uuid',q(f.proof),q('reviewer'),q(storageActor(j,'reviewer').sessionId),q('7'.repeat(64))].join(',')+');','service_role')).toThrow()
  })
 })
+
+describe('SQL snapshot admission ceilings',()=>{
+ it.each(['files','diffBytes'] as const)('rejects self-consistent over-limit %s without persisting a candidate or credential',field=>{
+  const f=initialized(),command=freezeCommand(f.job),actor=storageActor(f.job)
+  const prepared=unwrap(prepareReviewAppend(f.job,command,actor,{nowMs:Number(db.sql('select floor(extract(epoch from clock_timestamp())*1000)::bigint;')),parentLive:true}))
+  const next=structuredClone(prepared.next),snapshot=next.candidates[0].snapshot
+  if(field==='files')snapshot.files=Array.from({length:f.job.config.admission.limits.maxChangedFiles+1},(_,i)=>({...snapshot.files[0],path:'apps/web/lib/atlas/code-work/over-limit-'+i+'.ts'}))
+  else snapshot.diffBytes=f.job.config.admission.limits.maxDiffBytes+1
+  const {snapshotHash:_,...packet}=snapshot;snapshot.snapshotHash=canonical({domain:'atlas.code_review_snapshot.v1',packet})
+  const forged={...command,snapshotInput:snapshotInputOf(snapshot)},hash=reviewStorageCommandHash(forged,actor)
+  Object.assign(next.commands[0],{commandHash:hash,payloadRef:snapshot.snapshotHash})
+  const reviewer={role:'reviewer',...snapshot.assignment.reviewer,tokenHash:'7'.repeat(64),candidateVersion:1}
+  const sql='select public.atlas_code_review_apply('+[q(f.job.workId)+'::uuid',q(actor.role),q(actor.sessionId),q(f.roles[0].tokenHash),'0',q(forged),q(hash),q(next),q(reviewer)].join(',')+');'
+  expect(()=>db.sql(sql,'service_role')).toThrow()
+  expect(db.read(f.job.workId)).toEqual(f.job)
+  expect(db.sql('select count(*) from atlas_code_review_private.credentials where work_id='+q(f.job.workId)+'::uuid;')).toBe('2')
+ })
+})

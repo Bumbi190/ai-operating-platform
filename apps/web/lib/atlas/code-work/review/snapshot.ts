@@ -16,7 +16,7 @@ function build(input:unknown,context:ExpectedReviewContext,live:boolean):ReviewS
  list(x.artifacts,64,1);unique(x.artifacts.map((a:any)=>a.id))
  const artifacts:BuiltReviewArtifactV1[]=x.artifacts.map((a:any)=>{
   exact(a,ARTIFACT);id(a.id);ensure(['brief','source_before','source_after','diff','stdout','stderr'].includes(a.kind),'artifact_kind_invalid');text(a.body,131072,true)
-  return{...a,sha256:createHash('sha256').update(a.body,'utf8').digest('hex'),byteLength:bytes(a.body)}
+  return{id:a.id,kind:a.kind as BuiltReviewArtifactV1['kind'],body:a.body,sha256:createHash('sha256').update(a.body,'utf8').digest('hex'),byteLength:bytes(a.body)}
  })
  const used=new Set<string>()
  const artifact=(ref:unknown,kind:string)=>{

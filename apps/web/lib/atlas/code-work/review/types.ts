@@ -4,7 +4,7 @@ export interface ReviewBindingV1 {schema:'atlas.code_review_binding.v1';workId:s
 export type ReviewRole='atlas'|'worker'|'reviewer'
 export interface ReviewActor {actorId:string;sessionId:string}
 export interface ReviewAssignmentV1 {workId:string;projectId:string;coordinator:ReviewActor;worker:ReviewActor;reviewer:ReviewActor;claim:{id:string;fence:number;expiresAt:string};policyHash:string}
-export type ReviewLimits={ [K in keyof typeof REVIEW_CONTRACT_LIMITS]:number }
+export type ReviewLimits={ -readonly [K in keyof typeof REVIEW_CONTRACT_LIMITS]:number }
 /** Supplied observations only: future authenticated server boundaries must derive these, never trust a client projection. */
 export interface ExpectedReviewContext {
  admission:CodeWorkAdmissionV1;assignment:ReviewAssignmentV1;policyHash:string;targetHeadSha:string;nowMs:number;cancelled:boolean;claimValid:boolean;

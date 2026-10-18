@@ -1,5 +1,5 @@
 {
-  "state": "implementation_in_progress_not_activated",
+  "state": "reviewed_qualified_pending_migration_history_reconciliation",
   "task1": {
     "contractsAndDatabase": "implemented",
     "typescriptAndSchema": {
@@ -20,15 +20,19 @@
     "review": "pending_complete_increment"
   },
   "task2": {
-    "state": "implemented_pending_cross_runtime_qualification",
+    "state": "qualified",
     "transportAndRecoveryUnitTests": {
       "passed": 14,
       "failed": 0
     },
     "workerApiAndHostWiring": "implemented_default_disabled",
-    "fullIntegration": "pending",
+    "fullIntegration": {
+      "passed": 6,
+      "failed": 0,
+      "smtpModes": 13
+    },
     "fullPythonSuite": {
-      "passed": 142,
+      "passed": 144,
       "failed": 0
     },
     "sendingTypeScriptSuite": {
@@ -37,8 +41,17 @@
     }
   },
   "task3": {
-    "state": "pending",
-    "editorialStatusGap": "actual editorial approval approved; preparation status awaiting_review"
+    "state": "qualified",
+    "typescript": {
+      "passed": 88,
+      "failed": 0
+    },
+    "desktopMobileBrowser": {
+      "passed": 16,
+      "failed": 0
+    },
+    "typecheck": "passed",
+    "editorialStatus": "separate current approval from preparation state"
   },
   "rollout": {
     "databaseApplied": false,
@@ -62,9 +75,35 @@
     "comparison": "exact identities saved; historical/timing reconciliation pending"
   },
   "limitations": [
-    "No SMTP acceptance or delivery claim for the approved reply.",
-    "Task1 source race matrix needs qualification alongside complete increment.",
-    "No user-visible send button deployed yet.",
-    "Task2 whole-increment independent review, SMTP/Next/SQL synthetic cross-runtime integration and stronger interruption matrix remain before rollout."
-  ]
+    "No live migration/policy or actual reply send yet.",
+    "Production schema history advanced in parallel; reconcile source first.",
+    "Browser connection currently times out on focus emulation; synthetic browser tests are qualified."
+  ],
+  "review": {
+    "model": "gpt-6-astra",
+    "base": "8da379d",
+    "reviewedHead": "de4fc4bcc509d372783c1890b27fdd03e4d9740a",
+    "important": 3,
+    "critical": 0,
+    "minor": 0,
+    "fixPass": "one",
+    "fixed": [
+      "durable local SMTP receipt recovery",
+      "explicit sequence client revoke",
+      "all successful confirmation keys saved and bound"
+    ],
+    "verification": "RED to GREEN and complete scoped/synthetic/full regression suites"
+  },
+  "fullWeb": {
+    "numTotalTests": 15096,
+    "numPassedTests": 13358,
+    "numFailedTests": 402,
+    "numPendingTests": 1332,
+    "novelFailureIdentities": []
+  },
+  "parallelDrift": {
+    "appliedMigrationsMissingInBranch": 7,
+    "source": "current origin/main",
+    "action": "verify exact applied SQL hashes, import only migration sources and classification before build"
+  }
 }

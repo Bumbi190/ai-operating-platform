@@ -13,13 +13,16 @@ create table public.sales_send_jobs(
  status text not null default 'queued' check(status in('queued','claimed','dispatching','smtp_accepted','failed_before_send','delivery_unknown','cancelled')),
  worker_id uuid,claim_id uuid,generation integer not null default 0,host_generation integer,lease_until timestamptz,dispatch_before timestamptz,
  receipt jsonb,accepted_at timestamptz,detail text,created_at timestamptz not null default clock_timestamp(),
- unique(project_id,request_key),unique(revision_id)
+ unique(project_id,request_key),unique(revision_id),unique(project_id,id)
 );
 create index sales_send_queue on public.sales_send_jobs(project_id,status,created_at);
 create index sales_send_policy on public.sales_send_jobs(policy_id);
 create table public.sales_send_events(
- id bigint generated always as identity primary key,send_job_id uuid not null references public.sales_send_jobs(id),
+ id bigint generated always as identity primary key,project_id uuid not null,send_job_id uuid not null,request_key uuid,request jsonb,
+ foreign key(project_id,send_job_id) references public.sales_send_jobs(project_id,id),unique(project_id,request_key),
+ check((request_key is null)=(request is null)),
  kind text not null check(kind in('confirmed','claimed','dispatching','smtp_accepted','failed_before_send','delivery_unknown','cancelled')),
+ check((kind='confirmed')=(request_key is not null)),
  created_at timestamptz not null default clock_timestamp()
 );
 create index sales_send_event_job on public.sales_send_events(send_job_id);
@@ -29,6 +32,7 @@ alter table public.sales_send_events enable row level security;
 revoke all on public.sales_send_policies,public.sales_send_jobs,public.sales_send_events from public,anon,authenticated,service_role;
 grant select,insert,update on public.sales_send_policies,public.sales_send_jobs to service_role;
 grant select,insert on public.sales_send_events to service_role;
+revoke all on sequence public.sales_send_events_id_seq from public,anon,authenticated,service_role;
 grant usage,select on sequence public.sales_send_events_id_seq to service_role;
 
 create function public.sales_send_json(j public.sales_send_jobs) returns jsonb language sql security invoker set search_path='' as $$
@@ -70,19 +74,22 @@ begin
 end $$;
 create function public.sales_send_confirm(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
 declare pid uuid:=(p_input->>'projectId')::uuid;uid uuid:=(p_principal->>'userId')::uuid;
-j public.sales_send_jobs;p public.sales_send_policies;d public.sales_reply_draft_revisions;r public.sales_reply_jobs;s text;mid uuid:=gen_random_uuid();k text;
+j public.sales_send_jobs;p public.sales_send_policies;d public.sales_reply_draft_revisions;r public.sales_reply_jobs;e public.sales_send_events;s text;mid uuid:=gen_random_uuid();k text;
 begin
  perform public.sales_owner(p_principal,pid);
  perform public.sales_mailbox_fields(p_input,array['projectId','revisionId','expectedRevisionHash','expectedMailboxGeneration','idempotencyKey']);
  foreach k in array array['projectId','revisionId','idempotencyKey'] loop if p_input->>k is null or p_input->>k !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then raise exception 'INVALID_BODY' using errcode='22023';end if;end loop;
  if p_input->>'expectedRevisionHash' is null or p_input->>'expectedRevisionHash' !~ '^[a-f0-9]{64}$' or jsonb_typeof(p_input->'expectedMailboxGeneration') is distinct from 'number' or p_input->>'expectedMailboxGeneration' !~ '^[1-9][0-9]*$' then raise exception 'INVALID_BODY' using errcode='22023';end if;
  perform pg_advisory_xact_lock(hashtextextended(pid::text||':send-key:'||(p_input->>'idempotencyKey'),0));
- select * into j from public.sales_send_jobs where project_id=pid and request_key=(p_input->>'idempotencyKey')::uuid;
- if found then if j.request is distinct from p_input then raise exception 'REVISION_CONFLICT' using errcode='23505';end if;return public.sales_send_json(j);end if;
+ select * into e from public.sales_send_events where project_id=pid and request_key=(p_input->>'idempotencyKey')::uuid;
+ if found then
+ if e.request is distinct from p_input then raise exception 'REVISION_CONFLICT' using errcode='23505';end if;
+ select * into j from public.sales_send_jobs where id=e.send_job_id and project_id=pid;return public.sales_send_json(j);end if;
  perform pg_advisory_xact_lock(hashtextextended(pid::text||':send-revision:'||(p_input->>'revisionId'),0));
  select * into j from public.sales_send_jobs where project_id=pid and revision_id=(p_input->>'revisionId')::uuid;
  if found then
  if (j.request-'idempotencyKey') is distinct from (p_input-'idempotencyKey') then raise exception 'REVISION_CONFLICT' using errcode='23505';end if;
+ insert into public.sales_send_events(project_id,send_job_id,kind,request_key,request) values(pid,j.id,'confirmed',(p_input->>'idempotencyKey')::uuid,p_input);
  return public.sales_send_json(j);end if;
  p:=public.sales_send_authority(pid,uid,(p_input->>'revisionId')::uuid,p_input->>'expectedRevisionHash',(p_input->>'expectedMailboxGeneration')::integer);
  select * into d from public.sales_reply_draft_revisions where id=(p_input->>'revisionId')::uuid;
@@ -94,7 +101,7 @@ begin
  'inReplyTo',r.snapshot->'header'->'messageId','references',coalesce(r.snapshot->'header'->'references','[]'::jsonb))::text;
  insert into public.sales_send_jobs(id,project_id,owner_id,revision_id,revision_hash,request_key,request,policy_id,policy_version,sealed_json,snapshot_sha256)
  values(mid,pid,uid,d.id,d.sha256,(p_input->>'idempotencyKey')::uuid,p_input,p.id,p.version,s,encode(extensions.digest(convert_to(s,'UTF8'),'sha256'),'hex')) returning * into j;
- insert into public.sales_send_events(send_job_id,kind) values(j.id,'confirmed');
+ insert into public.sales_send_events(project_id,send_job_id,kind,request_key,request) values(pid,j.id,'confirmed',(p_input->>'idempotencyKey')::uuid,p_input);
  return public.sales_send_json(j);
 end $$;
 create function public.sales_send_read(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
@@ -114,7 +121,7 @@ begin
  if j.status='cancelled' then return public.sales_send_json(j);end if;
  if j.status not in('queued','claimed') or j.dispatch_before is not null then raise exception 'DISPATCH_ALREADY_RESERVED' using errcode='55000';end if;
  update public.sales_send_jobs set status='cancelled',detail='CANCELLED_BY_OWNER' where id=j.id returning * into j;
- insert into public.sales_send_events(send_job_id,kind) values(j.id,'cancelled');return public.sales_send_json(j);
+ insert into public.sales_send_events(project_id,send_job_id,kind) values(j.project_id,j.id,'cancelled');return public.sales_send_json(j);
 end $$;
 create function public.sales_send_access(w public.sales_worker_registrations,v jsonb) returns public.sales_send_jobs language plpgsql security invoker set search_path='' as $$
 declare j public.sales_send_jobs;
@@ -134,7 +141,7 @@ begin
  where j0.project_id=w.project_id and j0.owner_id=w.owner_id and j0.status='queued' order by j0.created_at,j0.id for update of j0 skip locked limit 1;
  if not found then return jsonb_build_object('ref',null);end if;
  update public.sales_send_jobs set status='claimed',worker_id=w.id,claim_id=gen_random_uuid(),generation=generation+1,host_generation=w.host_generation,lease_until=clock_timestamp()+interval '180 seconds' where id=j.id returning * into j;
- insert into public.sales_send_events(send_job_id,kind) values(j.id,'claimed');
+ insert into public.sales_send_events(project_id,send_job_id,kind) values(j.project_id,j.id,'claimed');
  return jsonb_build_object('ref',jsonb_build_object('projectId',j.project_id,'sendJobId',j.id,'workerId',w.id,'claimId',j.claim_id,'generation',j.generation),'snapshot',jsonb_build_object('sealedJson',j.sealed_json,'snapshotSha256',j.snapshot_sha256));
 end $$;
 create function public.sales_send_heartbeat(p_token_hash text,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
@@ -161,7 +168,7 @@ begin
  or w.desired_state<>'running' or w.managed_authorized_at is null or p.id<>j.policy_id or p.version<>j.policy_version or p.worker_id<>w.id
  then raise exception 'FENCED' using errcode='40001';end if;
  update public.sales_send_jobs set status='dispatching',dispatch_before=clock_timestamp()+interval '5 seconds' where id=j.id returning * into j;
- insert into public.sales_send_events(send_job_id,kind) values(j.id,'dispatching');
+ insert into public.sales_send_events(project_id,send_job_id,kind) values(j.project_id,j.id,'dispatching');
  return jsonb_build_object('dispatchBefore',j.dispatch_before,'snapshotSha256',j.snapshot_sha256);
 end $$;
 create function public.sales_send_complete(p_token_hash text,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
@@ -176,13 +183,13 @@ begin
  or (s in('smtp_accepted','delivery_unknown') and (j.dispatch_before is null or j.status not in('dispatching','delivery_unknown')))
  then raise exception 'FENCED' using errcode='40001';end if;
  update public.sales_send_jobs set status=s,receipt=r,accepted_at=case when s='smtp_accepted' then clock_timestamp() end,detail=case when s='delivery_unknown' then 'DISPATCH_UNCERTAIN' end where id=j.id returning * into j;
- insert into public.sales_send_events(send_job_id,kind) values(j.id,s);return public.sales_send_json(j);
+ insert into public.sales_send_events(project_id,send_job_id,kind) values(j.project_id,j.id,s);return public.sales_send_json(j);
 end $$;
 create function public.sales_send_read_receipt(p_token_hash text,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
 declare w public.sales_worker_registrations;j public.sales_send_jobs;
 begin
  w:=public.sales_worker(p_token_hash);perform public.sales_mailbox_fields(p_input,array['projectId','sendJobId','workerId','claimId','generation']);j:=public.sales_send_access(w,p_input);
- return jsonb_build_object('receipt',j.receipt,'summary',public.sales_send_json(j),'dispatchReserved',j.dispatch_before is not null,'expired',j.lease_until<=clock_timestamp());
+ return jsonb_build_object('receipt',j.receipt,'summary',public.sales_send_json(j),'snapshotSha256',j.snapshot_sha256,'dispatchReserved',j.dispatch_before is not null,'expired',j.lease_until<=clock_timestamp());
 end $$;
 create function public.sales_send_report_uncertain(p_token_hash text,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
 declare w public.sales_worker_registrations;j public.sales_send_jobs;
@@ -190,7 +197,7 @@ begin
  w:=public.sales_worker(p_token_hash);perform public.sales_mailbox_fields(p_input,array['projectId','sendJobId','workerId','claimId','generation']);j:=public.sales_send_access(w,p_input);
  if j.receipt is null and j.status in('claimed','dispatching') then
  update public.sales_send_jobs set status=case when dispatch_before is null then 'failed_before_send' else 'delivery_unknown' end,detail='RECOVERY_NO_RETRY' where id=j.id returning * into j;
- insert into public.sales_send_events(send_job_id,kind) values(j.id,j.status);end if;
+ insert into public.sales_send_events(project_id,send_job_id,kind) values(j.project_id,j.id,j.status);end if;
  return public.sales_send_json(j);
 end $$;
 create function public.sales_send_immutable() returns trigger language plpgsql security invoker set search_path='' as $$

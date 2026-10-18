@@ -6,7 +6,7 @@ def _ref(value):
  if not isinstance(value,dict) or set(value)!={'projectId','sendJobId','workerId','claimId','generation'} or type(value['generation']) is not int or value['generation']<1:raise ValueError('INVALID_SEND_CLAIM')
  for k in ['projectId','sendJobId','workerId','claimId']:uuid.UUID(value[k])
  return value
-def _run(client,journal,transport_factory,can_dispatch):
+def _run(client,journal,transport_factory,can_dispatch,envelope_journal):
  state=journal.load() or {'pending':None};pending=state.get('pending')
  if pending:
   ref=_ref(pending['ref'])
@@ -15,6 +15,13 @@ def _run(client,journal,transport_factory,can_dispatch):
    if summary.get('id')!=ref['sendJobId']:return False
    if summary.get('status') in TERMINAL:
     state['pending']=None;journal.save(state);return False
+   if not pending.get('receipt') and envelope_journal is not None:
+    with envelope_journal.lock():saved=envelope_journal.load() or {}
+    h=pending.get('snapshotSha256')
+    if h and saved.get('snapshotSha256')==h and remote.get('snapshotSha256')==h and saved.get('phase')=='complete':
+     candidate=saved.get('receipt') or {}
+     if candidate.get('status')=='smtp_accepted' and candidate.get('mimeSha256')==saved.get('mimeSha256'):
+      pending['receipt']=candidate;pending['phase']='committing';journal.save(state)
    if pending.get('receipt') and pending['receipt']['status']!='delivery_unknown':
     receipt=client.post('complete',**ref,receipt=pending['receipt'])
     if receipt.get('id')==ref['sendJobId'] and receipt.get('status') in TERMINAL:state['pending']=None;journal.save(state)
@@ -26,7 +33,7 @@ def _run(client,journal,transport_factory,can_dispatch):
  if not can_dispatch:return False
  claim=client.post('claim')
  if claim.get('ref') is None:return False
- ref=_ref(claim['ref']);state['pending']={'ref':ref,'phase':'claimed'};journal.save(state)
+ ref=_ref(claim['ref']);state['pending']={'ref':ref,'phase':'claimed','snapshotSha256':claim['snapshot']['snapshotSha256']};journal.save(state)
  finished=threading.Event();cancelled=threading.Event()
  def heartbeat():
   while not finished.wait(HEARTBEAT_SECONDS):
@@ -53,7 +60,7 @@ def _run(client,journal,transport_factory,can_dispatch):
   except Exception:pass
   return False
  finally:finished.set();thread.join(21)
-def run_send_once(client,journal,transport_factory,can_dispatch=True):
+def run_send_once(client,journal,transport_factory,can_dispatch=True,*,envelope_journal=None):
  try:
-  with journal.lock():return _run(client,journal,transport_factory,can_dispatch)
+  with journal.lock():return _run(client,journal,transport_factory,can_dispatch,envelope_journal)
  except Exception:return False

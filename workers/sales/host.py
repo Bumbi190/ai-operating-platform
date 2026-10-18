@@ -117,7 +117,7 @@ def main(project):
   def send_cycle():
    verify();status=connection.poll_status()
    allowed=status.get('desiredState')=='running' and status.get('executionPaused') is False
-   return run_send_once(connection.send_client(),send_journal,lambda:lambda snapshot,begin:send_once(snapshot,store,mailbox_journal,envelope_journal,begin_dispatch=begin),can_dispatch=allowed)
+   return run_send_once(connection.send_client(),send_journal,lambda:lambda snapshot,begin:send_once(snapshot,store,mailbox_journal,envelope_journal,begin_dispatch=begin),can_dispatch=allowed,envelope_journal=envelope_journal)
  stop=threading.Event()
  with SingleInstance(state/'host.lock'):
   def run_host():

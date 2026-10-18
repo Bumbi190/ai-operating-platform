@@ -19,7 +19,7 @@ set local role service_role;
 do $$
 declare p jsonb:='{"userId":"d63a09fb-448e-41b8-9fb2-9a608f5f1800","allowedProjectIds":["8f673c09-1c8f-4d78-876e-4c14bf1c89b3"]}';
 v jsonb:='{"projectId":"8f673c09-1c8f-4d78-876e-4c14bf1c89b3","conversationId":"50000000-0000-4000-8000-000000000091","messageId":"90000000-0000-4000-8000-000000000091","messageVersion":1,"replyMode":"general","idempotencyKey":"a0000000-0000-4000-8000-000000000091"}';
-j jsonb;c jsonb;a jsonb;d jsonb;x jsonb;q jsonb;request jsonb;ref jsonb;permit jsonb;sealed jsonb;
+j jsonb;c jsonb;a jsonb;d jsonb;x jsonb;q jsonb;request jsonb;ref jsonb;permit jsonb;sealed jsonb;alias_key uuid:=gen_random_uuid();
 begin
  j:=sales_reply_prepare(p,v);c:=sales_reply_claim(repeat('8',64),'{}');
  perform pg_temp.reply_assert(c->'snapshot'->'offer'='{}'::jsonb,'general_test_has_no_offer');
@@ -36,7 +36,7 @@ begin
  perform pg_temp.reply_refused(format('select sales_send_confirm(%L::jsonb,%L::jsonb)',jsonb_set(p,'{userId}','"20000000-0000-4000-8000-000000000002"'),request),'P0002');
  q:=sales_send_confirm(p,request);perform pg_temp.reply_assert(q->>'status'='queued','approved_current_revision_can_queue');
  perform pg_temp.reply_assert(sales_send_confirm(p,request)=q,'same_key_same_receipt');
- perform pg_temp.reply_assert(sales_send_confirm(p,request||jsonb_build_object('idempotencyKey',gen_random_uuid()))->>'id'=q->>'id','different_key_one_revision_one_job');
+ perform pg_temp.reply_assert(sales_send_confirm(p,request||jsonb_build_object('idempotencyKey',alias_key))->>'id'=q->>'id','different_key_one_revision_one_job');
  perform pg_temp.reply_refused(format('select sales_send_confirm(%L::jsonb,%L::jsonb)',p,request||'{"expectedMailboxGeneration":7}'),'23505');
  c:=sales_send_claim(repeat('8',64),'{}');ref:=c->'ref';sealed:=(c->'snapshot'->>'sealedJson')::jsonb;
  perform pg_temp.reply_assert(sealed->>'body'=d->>'body' and sealed->>'toEmail'='andrehultgren190@gmail.com' and sealed->>'senderName'='Andre','sealed_exact_envelope');
@@ -73,6 +73,7 @@ begin
  perform pg_temp.reply_assert(sales_send_confirm(p,request)->>'id'=q->>'id','accepted_never_reenqueued');
  x:=sales_reply_edit_draft(p,jsonb_build_object('projectId',v->>'projectId','revisionId',x->>'id','expectedHash',x->>'sha256','subject','Nytt test','body','Ett nytt syntetiskt test.','questions','[]'::jsonb));
  perform sales_reply_review_draft(p,jsonb_build_object('projectId',v->>'projectId','revisionId',x->>'id','expectedHash',x->>'sha256','decision','approved'));
+ perform pg_temp.reply_refused(format('select sales_send_confirm(%L::jsonb,%L::jsonb)',p,request||jsonb_build_object('revisionId',x->>'id','expectedRevisionHash',x->>'sha256','idempotencyKey',alias_key)),'23505');
  request:=request||jsonb_build_object('revisionId',x->>'id','expectedRevisionHash',x->>'sha256','idempotencyKey',gen_random_uuid());
  q:=sales_send_confirm(p,request);
  perform pg_temp.reply_assert(sales_send_cancel(p,jsonb_build_object('projectId',v->>'projectId','sendJobId',q->>'id','expectedRevisionHash',x->>'sha256'))->>'status'='cancelled','owner_can_cancel_before_dispatch');
@@ -84,6 +85,7 @@ do $$ declare t text;f record;begin
  foreach t in array array['sales_send_jobs','sales_send_policies','sales_send_events'] loop
  perform pg_temp.reply_assert((select relrowsecurity from pg_class where oid=('public.'||t)::regclass),'send RLS');
  perform pg_temp.reply_assert(not has_table_privilege('anon','public.'||t,'SELECT,INSERT,UPDATE,DELETE') and not has_table_privilege('authenticated','public.'||t,'SELECT,INSERT,UPDATE,DELETE'),'send no client access');end loop;
+ perform pg_temp.reply_assert(not has_sequence_privilege('anon','public.sales_send_events_id_seq','USAGE,SELECT,UPDATE') and not has_sequence_privilege('authenticated','public.sales_send_events_id_seq','USAGE,SELECT,UPDATE'),'no inherited client sequence privileges');
  for f in select oid,prosecdef from pg_proc where pronamespace='public'::regnamespace and proname like 'sales_send_%' loop
  perform pg_temp.reply_assert(not f.prosecdef and not has_function_privilege('anon',f.oid,'EXECUTE') and not has_function_privilege('authenticated',f.oid,'EXECUTE'),'service-only send invoker');end loop;
 end $$;

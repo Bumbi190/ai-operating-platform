@@ -52,6 +52,7 @@ try{
  console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_strato_inbox.sql'),'utf8')))
  const replyMigration=readdirSync(migrations).filter(x=>x.endsWith('_sales_reply_preparation.sql'));if(replyMigration.length!==1)throw Error('Expected one reply migration');sql(readFileSync(resolve(migrations,replyMigration[0]),'utf8'));console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_replies.sql'),'utf8')))
 
+ if(container==='omnira-sales-sending-20261018')sql('alter default privileges for role postgres in schema public grant usage,select,update on sequences to anon,authenticated;');
  const sendFiles=readdirSync(migrations).filter(x=>x.endsWith('_sales_reply_sending.sql'));
  for(const file of sendFiles)sql(readFileSync(resolve(migrations,file),'utf8'));
  console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_sending.sql'),'utf8')));

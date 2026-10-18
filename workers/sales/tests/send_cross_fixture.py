@@ -19,6 +19,7 @@ class Client:
  def post(self,op,**v):
   if op=='begin_dispatch' and initial.get('mode')=='crashBeforePermit':os._exit(24)
   result=ask({'token':initial['token'],'body':{'operation':op,**v}})
+  if op=='complete' and initial.get('mode')=='rotateAccepted':ask({'control':'change'});raise ProtocolError('UNAVAILABLE')
   if op=='complete' and initial.get('mode')=='lostHttpReceipt':raise ProtocolError('UNAVAILABLE')
   return result
 class Store:
@@ -46,11 +47,15 @@ class SMTP:
   if initial.get('mode')=='lost250':raise TimeoutError('secret arbitrary transcript')
   return 250,b'accepted arbitrary transcript'
  def close(self):pass
+class EnvelopeJournal(Journal):
+ def save(self,value):
+  super().save(value)
+  if initial.get('mode')=='crashAfterLocalReceipt' and (value.get('receipt') or {}).get('status')=='smtp_accepted':os._exit(26)
 try:
  mb=Journal(root/'mailbox.json')
  if mb.load() is None:mb.save({'active':{'mailboxId':initial['mailboxId'],'generation':6,'email':initial['senderEmail'],'credentialRef':'synthetic-key'}})
  journal=Journal(root/'send-dispatch.json')
- result=run_send_once(Client(),journal,lambda:lambda snapshot,begin:send_once(snapshot,Store(),mb,Journal(root/'send-envelope.json'),SMTP,begin_dispatch=begin))
+ result=run_send_once(Client(),journal,lambda:lambda snapshot,begin:send_once(snapshot,Store(),mb,EnvelopeJournal(root/'send-envelope.json'),SMTP,begin_dispatch=begin),envelope_journal=EnvelopeJournal(root/'send-envelope.json'))
  for file in root.glob('*.json'):
   raw=file.read_text(encoding='utf-8');assert 'Syntetiskt svar' not in raw and initial['token'] not in raw and 'not-a-real-password' not in raw
  print(json.dumps({'event':'complete','smtp':counts['smtp'],'data':counts['data'],'network':counts['network'],'pending':bool((journal.load() or {}).get('pending')),'result':result}),flush=True)

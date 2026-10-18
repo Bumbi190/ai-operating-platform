@@ -16,8 +16,9 @@ suite('send real SQL / Next / fresh Python',()=>{it('binds exact SMTP payload an
  const projectId='8f673c09-1c8f-4d78-876e-4c14bf1c89b3',userId='d63a09fb-448e-41b8-9fb2-9a608f5f1800',mailboxId='80000000-0000-4000-8000-000000000191',workerId='60000000-0000-4000-8000-000000000191'
  const principal={userId,allowedProjectIds:[projectId]},senderEmail='info@handlarborsen.se',recipient='andrehultgren190@gmail.com'
  const worker=createSendWorkerApi({db:()=>db,enabled:()=>true})
- for(const mode of ['accepted','lost250','lostHttpReceipt','crashBeforePermit','crashAfterData','pause','revoke','rotate','suppression','newMail','mailbox']){
+ for(const mode of ['accepted','lost250','lostHttpReceipt','crashAfterLocalReceipt','rotateAccepted','crashBeforePermit','crashAfterData','pause','revoke','rotate','suppression','newMail','mailbox']){
   const token=randomBytes(32).toString('base64url'),hash=createHash('sha256').update(token).digest('hex'),messageId=randomUUID(),stateDirectory=mkdtempSync(join(tmpdir(),'omnira-send-fixture-'))
+  let activeToken=token
   sql("update projects set execution_paused=false where id='"+projectId+"';update sales_worker_registrations set token_hash='"+hash+"',revoked_at=null,desired_state='running' where id='"+workerId+"';update sales_mailbox_connections set generation=6 where id='"+mailboxId+"';update sales_send_policies set enabled=true,version=1,expires_at=clock_timestamp()+interval '1 hour' where project_id='"+projectId+"';update sales_contacts set data=jsonb_set(data,'{suppressed}','false') where project_id='"+projectId+"';")
   sql("insert into sales_inbox_messages(id,project_id,mailbox_id,owner_id,header,header_sha256,content_sha256,body_text,text_state,text_selected,internal_date) values('"+messageId+"','"+projectId+"','"+mailboxId+"','"+userId+"',"+quote(JSON.stringify({from:recipient,to:senderEmail,subject:'Syntetiskt källmejl',messageId:'<synthetic-send-source@example.se>',inReplyTo:null,references:[]}))+",repeat('a',64),encode(extensions.digest('"+messageId+"','sha256'),'hex'),'Syntetisk inkommande fråga','complete',true,now());insert into sales_inbox_occurrences values('"+projectId+"','"+mailboxId+"','INBOX',10,coalesce((select max(uid)+1 from sales_inbox_occurrences where mailbox_id='"+mailboxId+"'),1),'"+messageId+"',false);")
   const rpc=async(name:string,input:unknown)=>{const r:any=await (db as any).rpc(name,{p_principal:principal,p_input:input});if(r.error)throw Error(JSON.stringify(r.error));return r.data}
@@ -40,6 +41,7 @@ suite('send real SQL / Next / fresh Python',()=>{it('binds exact SMTP payload an
     if(v.control){
      if(mode==='pause')sql("update projects set execution_paused=true where id='"+projectId+"';")
      if(mode==='revoke')sql("update sales_worker_registrations set revoked_at=now() where id='"+workerId+"';")
+     if(mode==='rotateAccepted'){activeToken=randomBytes(32).toString('base64url');const nextHash=createHash('sha256').update(activeToken).digest('hex');sql("update sales_worker_registrations set token_hash='"+nextHash+"',host_generation=host_generation+1 where id='"+workerId+"';")}
      if(mode==='rotate')sql("update sales_worker_registrations set token_hash=repeat('ef',32),host_generation=host_generation+1 where id='"+workerId+"';")
      if(mode==='suppression')sql("update sales_contacts set data=jsonb_set(data,'{suppressed}','true') where project_id='"+projectId+"';")
      if(mode==='newMail')sql("insert into sales_inbox_messages(project_id,mailbox_id,owner_id,header,text_state,text_selected) select project_id,mailbox_id,owner_id,header,'not_selected',false from sales_inbox_messages where id='"+messageId+"';")
@@ -49,18 +51,18 @@ suite('send real SQL / Next / fresh Python',()=>{it('binds exact SMTP payload an
     const response=await worker(new Request('https://fixture.invalid/api/sales/sending/worker',{method:'POST',headers:{authorization:'Bearer '+v.token},body:JSON.stringify(v.body)}))
     const answer=await response.json();child.stdin.write(JSON.stringify(response.ok?answer:{error:answer.code})+'\n')
    }).catch(e=>{fail=e;child.kill()})})
-   child.stdin.write(JSON.stringify({token,stateDirectory,mailboxId,senderEmail,recipient,mode:recovery?'recovery':mode})+'\n')
+   child.stdin.write(JSON.stringify({token:recovery?activeToken:token,stateDirectory,mailboxId,senderEmail,recipient,mode:recovery?'recovery':mode})+'\n')
    const exit=await new Promise((done,reject)=>{child.on('error',reject);child.on('close',done)});await chain;if(fail)throw fail
-   expect(stderr).toBe('');expect(exit).toBe(!recovery&&mode==='crashBeforePermit'?24:!recovery&&mode==='crashAfterData'?25:0)
+   expect(stderr).toBe('');expect(exit).toBe(!recovery&&mode==='crashBeforePermit'?24:!recovery&&mode==='crashAfterData'?25:!recovery&&mode==='crashAfterLocalReceipt'?26:0)
    if(result)expect(result.network).toBe(0)
    return result
   }
   try{
    await cycle();const recovered=await cycle(true);expect(recovered.smtp).toBe(0);expect(recovered.data).toBe(0)
    const dataPath=join(stateDirectory,'data-count.json');let count=0;try{count=JSON.parse(readFileSync(dataPath,'utf8')).count}catch{}
-   expect(count).toBe(['accepted','lost250','lostHttpReceipt','crashAfterData'].includes(mode)?1:0)
+   expect(count).toBe(['accepted','lost250','lostHttpReceipt','crashAfterData','crashAfterLocalReceipt','rotateAccepted'].includes(mode)?1:0)
    const status=sql("select status from sales_send_jobs where id='"+send.id+"';")
-   expect(status).toBe(['accepted','lostHttpReceipt'].includes(mode)?'smtp_accepted':['lost250','crashAfterData'].includes(mode)?'delivery_unknown':['revoke','rotate'].includes(mode)?'claimed':'failed_before_send')
+   expect(status).toBe(['accepted','lostHttpReceipt','crashAfterLocalReceipt','rotateAccepted'].includes(mode)?'smtp_accepted':['lost250','crashAfterData'].includes(mode)?'delivery_unknown':['revoke','rotate'].includes(mode)?'claimed':'failed_before_send')
   }finally{rmSync(stateDirectory,{recursive:true,force:true})}
  }
 },240000)})

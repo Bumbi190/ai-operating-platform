@@ -1,4 +1,4 @@
-import {resolveIllustratedNewsProfile,assertIllustratedNewsSource} from '@/lib/media/illustrated-news-profile'
+import {resolveIllustratedNewsProfile,assertIllustratedNewsSource,missingIllustratedNewsProviders} from '@/lib/media/illustrated-news-profile'
 /**
  * GET /api/media/cron/step2
  *
@@ -73,6 +73,11 @@ export async function GET(request: Request) {
     try{assertIllustratedNewsSource(script.project_id,sourceNews)}
     catch{return NextResponse.json({status:'editorial_review_required',
       reason:'ILLUSTRATED_SOURCE_NOT_VERIFIED',scriptId:script.id})}
+    const missingProviders=missingIllustratedNewsProviders()
+    if(missingProviders.length)return NextResponse.json({
+      status:'provider_configuration_required',reason:'ILLUSTRATED_PROVIDER_NOT_CONFIGURED',
+      missingProviders,scriptId:script.id,
+    })
   }
 
   console.log(`[cron/step2] Generating voice for script ${script.id}`)

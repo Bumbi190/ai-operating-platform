@@ -106,3 +106,16 @@ export function requiresIllustratedPreview(rawOutput:unknown):boolean {
  return !!rawOutput && typeof rawOutput==='object' && !Array.isArray(rawOutput) &&
   (rawOutput as Record<string,unknown>).pilot_image_profile===ILLUSTRATED_NEWS_PROFILE
 }
+
+/** Configuration only, never a claim about balance, budget, rights or release. */
+export function missingIllustratedNewsProviders(
+ env:Record<string,string|undefined>=process.env,
+):Array<'scene_planner'|'images'|'voice'> {
+ const missing:Array<'scene_planner'|'images'|'voice'>=[]
+ // The existing text gateway needs its primary credential even when its
+ // explicit credit-refusal fallback is configured.
+ if(!env.ANTHROPIC_API_KEY?.trim())missing.push('scene_planner')
+ if(!env.IDEOGRAM_API_KEY?.trim())missing.push('images')
+ if(!env.ELEVENLABS_API_KEY?.trim())missing.push('voice')
+ return missing
+}

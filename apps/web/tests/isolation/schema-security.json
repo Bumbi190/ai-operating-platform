@@ -5,7 +5,7 @@
     "captured_at": "2026-09-25",
     "handlarborsen_review_p2_migration_note": "Operator-approved, project-locked, immutable human review decision events. RLS + FORCE RLS, zero policies, no anon/auth grants; service role SELECT/INSERT only, REVIEW RPC only service role. Fully isolated PG17.6 security tests passed. Live production catalog must be checked after application.",
     "handlarborsen_candidates_migration_note": "Additional candidate memory table to be verified against the scoped live production catalog after operator-approved application: project-locked, RLS and FORCE RLS, zero policies and client grants, service_role SELECT/INSERT only. Earlier table classifications remain unchanged.",
-    "total_tables": 156,
+    "total_tables": 159,
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
     "platform_tokens_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090000_platform_tokens_client_revoke.sql (Settings S0): client grants revoked, RLS on, no policy.",
     "platform_credential_events_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090100_platform_credential_events.sql (Settings S0), applied to production before this row was merged: created with RLS on and no policy, every client grant revoked, service_role holding SELECT and INSERT only, UPDATE/DELETE/TRUNCATE refused by triggers.",
@@ -89,7 +89,8 @@
     "handlarborsen_watch_journal_note": "Scoped live production observation2026-10-17 after handlarborsen_watch_runs_v1 ledger20261017200436; canonical20261017200038, exact SQL SHA256687d8cb87f8edf04f15618ed446d14fcae9dd9ebbf979f46b171429b7f7e9691,16520chars. Both tables RLS/FORCE ON, zero policies and anon/authenticated table or column privileges; service SELECT only, no direct mutation. Nine postgres-owned routines have empty search_path and zero client EXECUTE: three fixed-project DEFINER writers allow service EXECUTE, six INVOKER helpers allow no API-role EXECUTE. Five enabled guards/audit triggers; both tables empty, cron count38 unchanged. Ledger159/public tables152. Journal flag remains absent; no executor, schedule or source calls added. Only these two classifications refreshed; other capture scopes preserved.",
     "sales_inbox_source_reconciliation_note": "Scoped read-only production observation2026-10-18: four sales_inbox tables RLS on, FORCE off, zero policies, zero anon/authenticated table or column privileges, service SELECT. Exact already-applied source20261017191904 from gitf28f83f1f49831fff3315f154f96df4af9da0bdd matches production ledger SHA2561013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1,36094characters. Public tables156/ledger160. Source-only reconciliation: no SQL apply, history correction, account, sales app, flags or sender changes. All earlier entries/capture scopes preserved.",
     "handlarborsen_test_data_note": "Unapplied candidate only. Three DB_INTERNAL tables: FORCE RLS, zero policies and no direct privileges for any API role. Narrow service-only RPCs; no default principal, human approval or execution is seeded. Local focused PostgreSQL evidence only; inspect production catalog after reviewed apply.",
-    "atlas_cleanup_release_reconciliation_20261018": "Scoped read-only production catalog confirms four already-live inbox tables: RLS enabled, zero policies/anon/auth grants, service-role select/insert/update only. Exact already-applied SQL hash1013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1 copied from PR386 canonical source only. No mail application code or production DDL imported/applied by this continuation. Public table count156; own three cleanup control tables remain created-not-live and are not included. Older capture metadata unchanged."
+    "atlas_cleanup_release_reconciliation_20261018": "Scoped read-only production catalog confirms four already-live inbox tables: RLS enabled, zero policies/anon/auth grants, service-role select/insert/update only. Exact already-applied SQL hash1013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1 copied from PR386 canonical source only. No mail application code or production DDL imported/applied by this continuation. Public table count156; own three cleanup control tables remain created-not-live and are not included. Older capture metadata unchanged.",
+    "sales_reply_source_reconciliation_note": "Only three SERVER_ONLY rows observed live 2026-10-18: RLS true, FORCE false, zero policies; service SELECT/INSERT/UPDATE, no DELETE, no client SELECT. Exact already-applied source SHA2567516d8566ae7776086452ff8fdd51058ce34a10ab70973bcdbf4ee14f655a3cc; no mail runtime imported or SQL reapplied."
   },
   "tables": {
     "handlarborsen_competitor_review_decisions": {
@@ -1622,6 +1623,30 @@
       "rls_declared_in_migration": true,
       "created_by_migration": true,
       "live": true
+    },
+    "sales_reply_jobs": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "sales_reply_attempts": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "sales_reply_draft_revisions": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
     }
   },
   "views": {

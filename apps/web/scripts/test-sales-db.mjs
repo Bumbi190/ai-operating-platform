@@ -2,12 +2,14 @@ import {spawnSync,spawn} from 'node:child_process'
 import {readFileSync,readdirSync} from 'node:fs'
 import {resolve} from 'node:path'
 import {generateKeyPairSync,createHash} from 'node:crypto'
-const root=resolve(import.meta.dirname,'../../..'),container='omnira-sales-pilot-20261017'
+const root=resolve(import.meta.dirname,'../../..'),container=process.env.SALES_FIXTURE_CONTAINER??'omnira-sales-pilot-20261017'
+const owned={'omnira-sales-pilot-20261017':'atlas-sales-pilot-20261017','omnira-sales-reply-20261018':'atlas-sales-reply-20261018'}
+if(!Object.hasOwn(owned,container))throw Error('Unowned fixture container refused')
 function docker(args,input){const r=spawnSync('docker',args,{input,encoding:'utf8',maxBuffer:2e6});if(r.status!==0)throw Error((r.stderr||r.stdout||String(r.error)).slice(-8000));return r.stdout}
 const context=docker(['context','inspect','--format','{{.Endpoints.docker.Host}}']).trim()
 if(!/^(npipe:\/\/|unix:\/\/)/.test(context))throw Error('Remote Docker refused')
 if(docker(['inspect','--format','{{.Config.Image}}',container]).trim()!=='postgres:16')throw Error('Unexpected fixture container')
-if(docker(['inspect','--format','{{index .Config.Labels "com.omnira.testplan"}}',container]).trim()!=='atlas-sales-pilot-20261017')throw Error('Fixture ownership label missing')
+if(docker(['inspect','--format','{{index .Config.Labels "com.omnira.testplan"}}',container]).trim()!==owned[container])throw Error('Fixture ownership label missing')
 const db='sales_'+Date.now();docker(['exec',container,'createdb','-U','postgres',db])
 const sql=s=>docker(['exec','-i',container,'psql','-X','-q','-v','ON_ERROR_STOP=1','-U','postgres','-d',db],s)
 try{
@@ -45,6 +47,7 @@ try{
 
  const inboxMigration='20261017191904_sales_strato_inbox.sql';sql(readFileSync(resolve(migrations,inboxMigration),'utf8'))
  console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_strato_inbox.sql'),'utf8')))
+ const replyMigration=readdirSync(migrations).filter(x=>x.endsWith('_sales_reply_preparation.sql'));if(replyMigration.length!==1)throw Error('Expected one reply migration');sql(readFileSync(resolve(migrations,replyMigration[0]),'utf8'));console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_replies.sql'),'utf8')))
 
  sql(`select sales_enroll_worker('{"userId":"20000000-0000-4000-8000-000000000001","allowedProjectIds":["10000000-0000-4000-8000-000000000001"]}','{"projectId":"10000000-0000-4000-8000-000000000001","workerId":"60000000-0000-4000-8000-000000000098","tokenHash":"${'1'.repeat(64)}"}'); select sales_host_authorize('{"userId":"20000000-0000-4000-8000-000000000001","allowedProjectIds":["10000000-0000-4000-8000-000000000001"]}','{"projectId":"10000000-0000-4000-8000-000000000001","workerId":"60000000-0000-4000-8000-000000000098"}'); select sales_host_adopt(repeat('1',64),jsonb_build_object('managerTokenHash',repeat('2',64)));`)
  const rotateRace=(id,hash)=>new Promise((done,reject)=>{const p=spawn('docker',['exec','-i',container,'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-U','postgres','-d',db]);let out='',err='';p.stdout.on('data',x=>out+=x);p.stderr.on('data',x=>err+=x);p.on('error',reject);p.on('close',code=>done({code,out,err}));p.stdin.end(`select sales_host_rotate(repeat('2',64),jsonb_build_object('rotationId','${id}','newTokenHash',repeat('${hash}',64),'expectedGeneration',1));`)})
@@ -61,6 +64,18 @@ try{
  const requests=await Promise.all([enqueue('race-a'),enqueue('race-b')]);if(requests.filter(x=>x.code===0).length!==1||requests.filter(x=>x.err.includes('INITIAL_JOB_ALREADY_EXISTS')).length!==1)throw Error('TEST FAILED: concurrent initial requests both accepted')
  console.log('PASS: concurrent different-key requests produce exactly one initial mailbox job')
  console.log('PASS: real PostgreSQL sales transactions, concurrent claim and canonical approval integration')
- const integration=spawnSync(process.execPath,[resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/qa/sales-integration.test.ts','lib/qa/sales-host-integration.test.ts','lib/qa/sales-mailbox-integration.test.ts','lib/qa/sales-inbox-integration.test.ts','--maxWorkers=1','--minWorkers=1'],{cwd:resolve(root,'apps/web'),env:{...process.env,SALES_FIXTURE_DATABASE:db},encoding:'utf8',maxBuffer:2e6})
+ const tests=readFileSync(resolve(root,'apps/web/supabase/tests/sales_replies.sql'),'utf8');
+ sql(tests.split('set local role service_role;')[0]+'commit;');
+ const principal=JSON.parse(tests.match(/declare p jsonb:='([^']+)'/)[1]),input=JSON.parse(tests.match(/;v jsonb:='([^']+)'/)[1]);
+ const quote=v=>"'"+JSON.stringify(v).replaceAll("'","''")+"'::jsonb";
+ const concurrent=statement=>new Promise((done,reject)=>{const child=spawn('docker',['exec','-i',container,'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-U','postgres','-d',db]);let out='',err='';child.stdout.on('data',x=>out+=x);child.stderr.on('data',x=>err+=x);child.on('error',reject);child.on('close',code=>done({code,out,err}));child.stdin.end('set role service_role;'+statement);});
+ const results=await Promise.all(Array.from({length:3},()=>concurrent('select sales_reply_prepare('+quote(principal)+','+quote(input)+');')));
+ if(results.some(x=>x.code!==0)||new Set(results.map(x=>JSON.parse(x.out).id)).size!==1)throw Error('REPLY_DUPLICATE_REQUEST_RACE_FAILED');
+ const claimResult=await concurrent("select sales_reply_claim(repeat('8',64),'{}');");if(claimResult.code!==0)throw Error(claimResult.err);const claimed=JSON.parse(claimResult.out);
+ const attempts=await Promise.all(Array.from({length:15},()=>concurrent("select sales_reply_reserve_attempt(repeat('8',64),"+quote({...claimed.ref,attemptId:crypto.randomUUID()})+');')));
+ if(attempts.filter(x=>x.code===0).length!==10||attempts.filter(x=>x.err.includes('ATTEMPT_LIMIT')).length!==5)throw Error('REPLY_ATOMIC_ATTEMPT_RACE_FAILED');
+ console.log('PASS: concurrent duplicate requests -> one job; fifteen parallel reservations -> ten accepted/five refused');
+
+ const integration=spawnSync(process.execPath,[resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/qa/sales-integration.test.ts','lib/qa/sales-host-integration.test.ts','lib/qa/sales-mailbox-integration.test.ts','lib/qa/sales-inbox-integration.test.ts','lib/qa/sales-reply-integration.test.ts','--maxWorkers=1','--minWorkers=1'],{cwd:resolve(root,'apps/web'),env:{...process.env,SALES_FIXTURE_DATABASE:db,SALES_FIXTURE_CONTAINER:container},encoding:'utf8',maxBuffer:2e6})
  console.log(integration.stdout);if(integration.status!==0)throw Error(integration.stderr||'Sales slice integration failed')
 }finally{docker(['exec',container,'dropdb','-U','postgres',db])}

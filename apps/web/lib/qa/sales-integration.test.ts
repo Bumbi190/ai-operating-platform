@@ -6,11 +6,12 @@ import {createSalesWorkerApi} from '@/lib/sales/worker-protocol'
 import {handleSalesTool} from '@/lib/sales/atlas-tools'
 
 // Only the disposable database runner supplies this generated name. Never a URL.
+if(process.env.SALES_FIXTURE_CONTAINER&&!['omnira-sales-pilot-20261017','omnira-sales-reply-20261018'].includes(process.env.SALES_FIXTURE_CONTAINER))throw Error('UNOWNED_FIXTURE_CONTAINER')
 const database=process.env.SALES_FIXTURE_DATABASE??''
 const suite=/^sales_[0-9]+$/.test(database)?describe:describe.skip
 suite('sales slice against real PostgreSQL',()=>{
  it('persists five Atlas drafts across sessions, binds revisions and fences cancellation without mail',async()=>{
-  const sql=(statement:string)=>{const r=spawnSync('docker',['exec','-i','omnira-sales-pilot-20261017','psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-v','VERBOSITY=sqlstate','-U','postgres','-d',database],{input:statement,encoding:'utf8'});if(r.status!==0)throw Error(r.stderr);return r.stdout.trim()}
+  const sql=(statement:string)=>{const r=spawnSync('docker',['exec','-i',(process.env.SALES_FIXTURE_CONTAINER??'omnira-sales-pilot-20261017'),'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-v','VERBOSITY=sqlstate','-U','postgres','-d',database],{input:statement,encoding:'utf8'});if(r.status!==0)throw Error(r.stderr);return r.stdout.trim()}
   const projectId=randomUUID(),conversationId=randomUUID(),userId='20000000-0000-4000-8000-000000000001',offerId=randomUUID(),contactIds=Array.from({length:5},()=>randomUUID()),principal={userId,allowedProjectIds:[projectId]}
   sql(`insert into projects values('${projectId}','${userId}','sales-fixture',false);insert into conversations values('${conversationId}','${userId}','${projectId}');`)
   const quote=(x:unknown)=>`'${String(x).replaceAll("'","''")}'`

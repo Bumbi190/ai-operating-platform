@@ -8,11 +8,12 @@ import {createSalesHostApi} from '@/lib/sales/host-api'
 import {createMailboxApi} from '@/lib/sales/mailbox/api'
 import {createMailboxHostApi} from '@/lib/sales/mailbox/host-api'
 import {sealMailboxCredentials} from '@/lib/sales/mailbox/seal'
+if(process.env.SALES_FIXTURE_CONTAINER&&!['omnira-sales-pilot-20261017','omnira-sales-reply-20261018'].includes(process.env.SALES_FIXTURE_CONTAINER))throw Error('UNOWNED_FIXTURE_CONTAINER')
 const database=process.env.SALES_FIXTURE_DATABASE??'',suite=/^sales_[0-9]+$/.test(database)?describe:describe.skip
 suite('Strato real SQL/API/crypto/Python integration',()=>{
  it('persists only ciphertext, recovers a lost receipt without login retry, fences stale activation, expires only its setup and rejects revoke during probe',async()=>{
   Object.defineProperty(globalThis,'crypto',{value:webcrypto,configurable:true})
-  const sql=(s:string)=>{const r=spawnSync('docker',['exec','-i','omnira-sales-pilot-20261017','psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-v','VERBOSITY=sqlstate','-U','postgres','-d',database],{input:s,encoding:'utf8'});if(r.status!==0)throw Error(r.stderr);return r.stdout.trim()}
+  const sql=(s:string)=>{const r=spawnSync('docker',['exec','-i',(process.env.SALES_FIXTURE_CONTAINER??'omnira-sales-pilot-20261017'),'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-v','VERBOSITY=sqlstate','-U','postgres','-d',database],{input:s,encoding:'utf8'});if(r.status!==0)throw Error(r.stderr);return r.stdout.trim()}
   const projectId=randomUUID(),userId='20000000-0000-4000-8000-000000000001',p={userId,allowedProjectIds:[projectId]},canary='PRIVATE_STRATO_INTEGRATION_å🔑'
   sql(`insert into projects values('${projectId}','${userId}','mailbox-fixture',false);`)
   const quote=(x:unknown)=>`'${String(x).replaceAll("'","''")}'`,db={rpc:async(name:string,args:Record<string,unknown>)=>{

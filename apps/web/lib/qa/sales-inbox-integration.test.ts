@@ -9,10 +9,11 @@ import {createSalesApi} from '@/lib/sales/api'
 import {createInboxApi} from '@/lib/sales/inbox/api'
 import {createInboxHostApi} from '@/lib/sales/inbox/host-api'
 import {handleSalesTool} from '@/lib/sales/atlas-tools'
+if(process.env.SALES_FIXTURE_CONTAINER&&!['omnira-sales-pilot-20261017','omnira-sales-reply-20261018'].includes(process.env.SALES_FIXTURE_CONTAINER))throw Error('UNOWNED_FIXTURE_CONTAINER')
 const database=process.env.SALES_FIXTURE_DATABASE??'',suite=/^sales_[0-9]+$/.test(database)?describe:describe.skip
 suite('durable inbox real SQL/API/Python/IMAP wire integration',()=>{
  it('recovers process crashes and lost receipts, reads selected old UID, deduplicates epochs, bounds MIME and fences pause during fetch',async()=>{
-  const sql=(s:string)=>{const r=spawnSync('docker',['exec','-i','omnira-sales-pilot-20261017','psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-v','VERBOSITY=sqlstate','-U','postgres','-d',database],{input:s,encoding:'utf8'});if(r.status!==0)throw Error(r.stderr);return r.stdout.trim()}
+  const sql=(s:string)=>{const r=spawnSync('docker',['exec','-i',(process.env.SALES_FIXTURE_CONTAINER??'omnira-sales-pilot-20261017'),'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-v','VERBOSITY=sqlstate','-U','postgres','-d',database],{input:s,encoding:'utf8'});if(r.status!==0)throw Error(r.stderr);return r.stdout.trim()}
   const projectId=randomUUID(),mailboxId=randomUUID(),workerId=randomUUID(),conversationId=randomUUID(),contactId=randomUUID(),userId='20000000-0000-4000-8000-000000000001',token='I'.repeat(43),p={userId,allowedProjectIds:[projectId]},canary='SYNTHETIC_INBOX_PASSWORD_å🔑',stateDirectory=mkdtempSync(join(tmpdir(),'omnira-inbox-fixture-'))
   sql(`insert into projects values('${projectId}','${userId}','inbox-fixture',false);insert into conversations values('${conversationId}','${userId}','${projectId}');insert into sales_worker_registrations(id,project_id,owner_id,token_hash,managed_authorized_at,manager_token_hash) values('${workerId}','${projectId}','${userId}',repeat('e',64),now(),'${createHash('sha256').update(token).digest('hex')}');insert into sales_mailbox_connections(id,project_id,worker_id,owner_id,public_jwk,kid,key_generation,generation,email,status,smtp_authenticated_at,imap_authenticated_at) values('${mailboxId}','${projectId}','${workerId}','${userId}','{}',repeat('a',64),1,6,'info@example.se','authenticated',now(),now());`)
   const quote=(v:unknown)=>`'${String(v).replaceAll("'","''")}'`,db={rpc:async(name:string,args:Record<string,unknown>)=>{

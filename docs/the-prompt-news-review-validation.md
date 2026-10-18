@@ -1,5 +1,7 @@
 # The Prompt video review packet: validation and release boundary
 
+Latest targeted follow-up: [sampled baseline triage, real dispatch-boundary proof and hosted read-only migration preflight](the-prompt-news-review-release-preflight-20261018.md). [Schema-only approval request](the-prompt-news-review-production-migration-request.md) is prepared, not applied.
+
 Continuation after main advanced: [canonical-source integration and fresh 256-test validation](the-prompt-news-review-continuation-20261018.md). The results below describe the original implementation run; the follow-up does not claim a new green broad run.
 
 Owner approved the spec at 09:40 and continuation of the plan/Native execution at 10:23 Stockholm on 18 October 2026. The approved smooth illustrated direction stays unchanged. This implementation prepares review evidence; it grants no publication authority.

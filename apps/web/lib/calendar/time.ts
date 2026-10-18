@@ -37,3 +37,9 @@ export function resolveCalendarLocal(local:string):string {
  if(matches.length!==1)throw new CalendarError('INVALID_INPUT');
  return matches[0];
 }
+
+export function calendarWeekFromParam(value:unknown,now:string):CalendarRange{
+ if(value===undefined)return weekRange(stockholmDate(now));
+ if(typeof value!=='string')throw new CalendarError('INVALID_INPUT');
+ const range=weekRange(value);if(range.fromDate!==value)throw new CalendarError('INVALID_INPUT');return range;
+}

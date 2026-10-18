@@ -5,6 +5,9 @@ import {calendarFields,calendarId} from './validate';
 import {resolveCalendarLocal,stockholmDate,weekRange} from './time';
 import {readSocialContent,proposeSocialContent} from '../social-launch/content/store';
 import type {SocialContentInput} from '../social-launch/content/types';
+type HistoricalRevision={id:string;sha256:string;plan_revision_id:string;draft:SocialContentInput};
+type RevisionQuery={eq(field:'project_id'|'post_id'|'id',value:string):RevisionQuery;maybeSingle():Promise<{data:HistoricalRevision|null;error:unknown}>};
+type HistoryDb={from(name:'social_content_revisions'):{select(columns:string):RevisionQuery}};
 export async function requestCalendarSourceMove(db:AdminDb,actor:CalendarActor,input:{source:CalendarSourceRef;localMinute:string;idempotencyKey:string}):Promise<{ok:true;reviewRequired:true;reviewHref:string;change:{mutationId:string;eventId:string;version:number;calendarHref:string}}|CalendarFailure>{
  try {
   calendarFields(input,['source','localMinute','idempotencyKey']);calendarId(input.idempotencyKey);
@@ -22,7 +25,7 @@ export async function requestCalendarSourceMove(db:AdminDb,actor:CalendarActor,i
   if(!current)return {ok:false,code:'NOT_FOUND'};
   let revision:{id:string;sha256:string;planRevisionId:string;draft:SocialContentInput}|null=current.revision;
   if(revision.id!==source.revisionId){
-   const {data,error}=await db.from('social_content_revisions').select('id,sha256,plan_revision_id,draft').eq('project_id',source.projectId).eq('post_id',source.postId).eq('id',source.revisionId).maybeSingle();
+   const {data,error}=await (db as unknown as HistoryDb).from('social_content_revisions').select('id,sha256,plan_revision_id,draft').eq('project_id',source.projectId).eq('post_id',source.postId).eq('id',source.revisionId).maybeSingle();
    if(error)throw new CalendarError('UNAVAILABLE');
    const old=data as {id:string;sha256:string;plan_revision_id:string;draft:SocialContentInput}|null;
    revision=old?{...old,planRevisionId:old.plan_revision_id}:null;

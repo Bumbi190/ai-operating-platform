@@ -33,7 +33,7 @@ it('rejects malformed direct RPC payloads before mutation even when SQL fields a
   {operation:'update',eventId:created.event.id,idempotencyKey:randomUUID(),draft:fixtureDraft({title:'Unversioned overwrite'})}
  ];
  for(const body of malformed){
-  const response=await db.rpc('calendar_event_apply',{p_input:body});
+  const response=await (db as unknown as {rpc(name:string,input:Record<string,unknown>):Promise<{data:unknown}>}).rpc('calendar_event_apply',{p_input:body});
   expect(response.data).toMatchObject({ok:false,code:'INVALID_INPUT'});
  }
  expect((await listCalendarEvents(db,fixtureRange)).events.find(e=>e.id===created.event.id)?.version).toBe(1);

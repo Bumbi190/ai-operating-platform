@@ -1,5 +1,5 @@
 {
-  "state": "active_metadata_verified_owner_message_check_pending",
+  "state": "active_verified",
   "sourceSha": "7acf719ae34f8d45230539c9735a458bcbf5847d",
   "manifestSha256": "849135da5819f9cb4e1b69d93aedebe56d9d61b763b45817353faebac9a77287",
   "fileCount": 49,
@@ -12,5 +12,6 @@
   "deploymentId": "dpl_J12MNKMNf8Eu4pXGQZpYY2BBdb5K",
   "credentialRefsPreserved": true,
   "hostGeneration": 3,
-  "mailboxGeneration": 6
+  "mailboxGeneration": 6,
+  "ownerViewConfirmedAt": "2026-10-18T06:01:13+02:00"
 }

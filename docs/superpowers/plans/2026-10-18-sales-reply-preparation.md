@@ -1,6 +1,6 @@
 # B3: svarsförslag från vald Strato-evidens — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans task-by-task. Preserve the selected inline execution method and one fresh whole-increment review. This plan is prepared for André's review; it does not authorize implementation or a model job by itself.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans task-by-task. Preserve the selected inline execution method and one fresh whole-increment review. Approved for implementation by André2026-10-18 06:01 Europe/Stockholm. A concrete first model trial remains separately gated on selected message/contact/offer.
 
 **Goal:** André kan välja ett verifierat inkommande mejl och be Atlas ta fram ett svenskt, versionsbundet svarsförslag för granskning.
 **Architecture:** En separat beständig svarskö använder redan sparad och uttryckligen vald B2-text, bekräftad filialkontakt och erbjudandeversion. Windows-specialisten använder den befintliga isolerade Claude-textkörningen; Atlas begär och visar arbetet. Första-kontaktkön behåller sitt kontrakt.
@@ -50,11 +50,11 @@ Nu finns sex inkommande rubrikrader, men ingen mejltext är vald och kontaktregi
 - ReplyDraft={subject,body,evidenceIds,questions}; subject1..90 chars without CR/LF, body1..2000 chars plain text, evidenceIds only the supplied message identity, questions<=10 each<=500.
 - prepareReply(db,p,input):Promise<ReplyJobSummary>; readReplyJob(db,p,{projectId,jobId}):Promise<ReplyJobSummary>; separate tables sales_reply_jobs, sales_reply_attempts, sales_reply_draft_revisions; RLS and no API-role direct writes, only reviewed service-only invoker RPCs.
 
-- [ ] Write named SQL/TS tests: reply_accepts_confirmed_contacted_branch; reply_rejects_unselected_incomplete_foreign_or_unlinked_message; same_key_same_snapshot_one_job_changed_hash_conflict; changed_scope_or_source_fences_commit; shared_address_keeps_exact_branch; reply_attempt_limit_is_atomic_ten; newer_mail_marks_review_stale. Assert missing/foreign/stale inputs refuse and no first-contact row is created.
-- [ ] Run named tests and observe missing reply contracts FAIL.
-- [ ] Implement owner RPCs sales_reply_prepare/read_job/read_drafts/edit_draft/review_draft and worker RPCs sales_reply_claim/heartbeat/reserve_attempt/complete/report_failure with p_principal or p_token_hash plus p_input. Exact input fields above; expected draft revision/hash required for edit/review. New edit creates immutable revision and invalidates previous editorial approval. Store the job snapshot hash and model evidence binding.
-- [ ] Verify SQL on disposable PostgreSQL, owner/foreign/service grants, parallel duplicate requests and stale generation/offer/selection fences; run Vitest reply store/validation tests, expect all PASS.
-- [ ] Commit only these contracts and qualification evidence.
+- [x] Write named SQL/TS tests: reply_accepts_confirmed_contacted_branch; reply_rejects_unselected_incomplete_foreign_or_unlinked_message; same_key_same_snapshot_one_job_changed_hash_conflict; changed_scope_or_source_fences_commit; shared_address_keeps_exact_branch; reply_attempt_limit_is_atomic_ten; newer_mail_marks_review_stale. Assert missing/foreign/stale inputs refuse and no first-contact row is created.
+- [x] Run named tests and observe missing reply contracts FAIL.
+- [x] Implement owner RPCs sales_reply_prepare/read_job/read_drafts/edit_draft/review_draft and worker RPCs sales_reply_claim/heartbeat/reserve_attempt/complete/report_failure with p_principal or p_token_hash plus p_input. Exact input fields above; expected draft revision/hash required for edit/review. New edit creates immutable revision and invalidates previous editorial approval. Store the job snapshot hash and model evidence binding.
+- [x] Verify SQL on disposable PostgreSQL, owner/foreign/service grants, parallel duplicate requests and stale generation/offer/selection fences; run Vitest reply store/validation tests, expect all PASS.
+- [x] Commit only these contracts and qualification evidence.
 
 ### Task2: fixed worker API and isolated reply adapter
 

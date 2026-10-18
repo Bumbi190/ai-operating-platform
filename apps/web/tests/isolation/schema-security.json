@@ -5,7 +5,7 @@
     "captured_at": "2026-09-25",
     "handlarborsen_review_p2_migration_note": "Operator-approved, project-locked, immutable human review decision events. RLS + FORCE RLS, zero policies, no anon/auth grants; service role SELECT/INSERT only, REVIEW RPC only service role. Fully isolated PG17.6 security tests passed. Live production catalog must be checked after application.",
     "handlarborsen_candidates_migration_note": "Additional candidate memory table to be verified against the scoped live production catalog after operator-approved application: project-locked, RLS and FORCE RLS, zero policies and client grants, service_role SELECT/INSERT only. Earlier table classifications remain unchanged.",
-    "total_tables": 156,
+    "total_tables": 159,
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
     "platform_tokens_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090000_platform_tokens_client_revoke.sql (Settings S0): client grants revoked, RLS on, no policy.",
     "platform_credential_events_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090100_platform_credential_events.sql (Settings S0), applied to production before this row was merged: created with RLS on and no policy, every client grant revoked, service_role holding SELECT and INSERT only, UPDATE/DELETE/TRUNCATE refused by triggers.",
@@ -78,7 +78,8 @@
     "sales_scoped_capture_note": "Scoped additions now classify135 rows, matching observed public catalog135. Candidate inbox canonical SQL is byte-identical to already-applied ledger20261017151021 (SHA256e7f3efe782086aa8f818ab071dab7c96ccadde95ec58320e30048bd487fe663c); it differs from the main reviewed proposal only in its first comment. Added after the actual protected build correctly refused its unknown ledger name. No SQL reapplied, no legacy/frozen allowlist changed, no candidate UI flag activated. Older capture dates unchanged.",
     "sales_inbox_staged_note": "Superseded by sales_inbox_live_20261018: B2 applied and four entries observed live; historical full-catalog timestamp unchanged.",
     "sales_inbox_live_20261018": "2026-10-18 scoped catalog: four inbox tables RLS on, zero policies/client grants, service-role only;16 invoker routines empty search_path and no client EXECUTE. Reviewed SQL hash1013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1. Source version20261017191904 preserved by hash-guarded one-row history correction after MCP assigned20261018034640.",
-    "release_reconciliation_20261018": "17 already-live local-text/watch tables reconciled with scoped catalog and existing reviewed classifications from git4b4336a. local_text_jobs retains TENANT_RLS with column-only authenticated SELECT and one owner policy; other16 SERVER_ONLY. Three exact SQL blobs match live ledger hashes. No additional DDL applied. Public catalog156, registry156; older entries not re-audited."
+    "release_reconciliation_20261018": "17 already-live local-text/watch tables reconciled with scoped catalog and existing reviewed classifications from git4b4336a. local_text_jobs retains TENANT_RLS with column-only authenticated SELECT and one owner policy; other16 SERVER_ONLY. Three exact SQL blobs match live ledger hashes. No additional DDL applied. Public catalog156, registry156; older entries not re-audited.",
+    "sales_reply_staged_note": "B3 reply preparation adds three proposed service-only RLS tables, verified in disposable PostgreSQL only; live=false until reviewed authorized rollout. Registry159 includes three staged entries; last observed production public catalog156. Historical rows/timestamps unchanged."
   },
   "tables": {
     "handlarborsen_competitor_review_decisions": {
@@ -1618,6 +1619,33 @@
       "rls_declared_in_migration": true,
       "created_by_migration": true,
       "live": true
+    },
+    "sales_reply_jobs": {
+      "class": "SERVER_ONLY",
+      "live": false,
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "sales_reply_attempts": {
+      "class": "SERVER_ONLY",
+      "live": false,
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "sales_reply_draft_revisions": {
+      "class": "SERVER_ONLY",
+      "live": false,
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
     }
   },
   "views": {

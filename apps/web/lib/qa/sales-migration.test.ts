@@ -5,9 +5,10 @@ import {inspectCanonicalMigrationFiles,evaluateAppliedMigrationLedger} from '../
 describe('sales migration enforcement',()=>{
  it('advances the canonical source count without pretending the migration was applied',()=>{
   const state=inspectCanonicalMigrationFiles(readdirSync(resolve(process.cwd(),'supabase/migrations')))
-  expect(state.sqlFiles).toHaveLength(134);expect(state.enforcedNames).toHaveLength(120)
-  expect(state.enforcedNames).toContain('sales_strato_inbox');expect(()=>evaluateAppliedMigrationLedger(state.repositoryNames.filter(n=>n!=='sales_strato_inbox'),state)).toThrow(/sales_strato_inbox/)
-  expect(state.enforcedNames).toContain('atlas_sales_pilot');expect(state.grandfatheredNames).not.toContain('atlas_sales_pilot')
-  expect(()=>evaluateAppliedMigrationLedger(state.repositoryNames.filter(n=>n!=='atlas_sales_pilot'),state)).toThrow(/atlas_sales_pilot/)
+  expect(state.sqlFiles).toHaveLength(138);expect(state.enforcedNames).toHaveLength(124)
+  for(const name of ['sales_strato_inbox','sales_reply_preparation','atlas_sales_pilot']){
+   expect(state.enforcedNames).toContain(name);expect(state.grandfatheredNames).not.toContain(name)
+   expect(()=>evaluateAppliedMigrationLedger(state.repositoryNames.filter(n=>n!==name),state)).toThrow(new RegExp(name))
+  }
  })
 })

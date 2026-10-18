@@ -20,7 +20,7 @@ Kalendern har en gemensam användarägd lagring för privat möte/arbetsblock oc
 | `vitest run lib/calendar lib/atlas/conversation/calendar-effects.test.ts lib/qa/calendar-navigation.test.ts --no-file-parallelism --testTimeout=30000 --hookTimeout=60000` | **80/80 PASS**, 14 filer, inga överhoppade. Riktiga lokala SQL-funktioner, ägarisolering, idempotens, samtidighet, båda inputSource-värden och oförändrade sociala köer/godkännanden. |
 | `playwright test --config playwright.calendar.config.ts` | **17/17 PASS**, dator och mobil390px, datum/tider, auth-notifieringar, sena svar, utkast, återställning och källfel. |
 | `tsc --noEmit --pretty false` | **PASS**, exit0 efter återanvändning av projektets redan installerade @remotion-beroende. |
-| `vitest run lib/qa/navigation-closure.test.ts lib/qa/vnext-nav-model.test.ts --no-file-parallelism` | **56/56 PASS**. Exakta menyförväntningar uppdaterade för den godkända Kalender-posten på dator/mobil. |
+| `vitest run lib/qa/{calendar-navigation,navigation-closure,vnext-nav-model,mobile-nav-contract,vnext-mobile-shell-nav,sidebar-project-visibility}.test.ts --no-file-parallelism` | **129/129 PASS** i sex navsviter (inklusive de två kalenderfallen). Exakta menyförväntningar uppdaterade för den godkända Kalender-posten på dator/mobil. |
 | 33 obligatoriska QA-filer från `.github/workflows/atlas-project-isolation.yml` samt `lib/atlas/conversation` | **1095/1099 PASS**, 36 filer, 4 Windows-baselinefel nedan, inga överhoppade. De två tidigare 5s-timeouterna passerar med uttryckliga30s/60s-gränser. |
 | Schema/migrationskontroller efter integration av aktuell main | **252/252 PASS**, inklusive35 guard-,76 schema-,133 säkerhets- och8 riktiga privata SQL-fall. Även ny hel TypeScript-körning PASS. Samma kalender-SQL oförändrad. |
 
@@ -55,7 +55,7 @@ Dessa fyra fel är oförändrade Windows-baselinefel, inte PASS:
 
 De tre första orsakas av att äldre kommentarstrippning inte hanterar arbetskopians CRLF. Samma parser över main:s kanoniska Git/LF-text innehåller inte det felaktigt matchade platform_tokens. Det sista jämför Windows `lib\\media\\youtube-oauth.ts` med POSIX `lib/media/youtube-oauth.ts`. De berörda gamla test-/SQL-filerna är oförändrade även mot aktuell maind3f9fcc. Inga äldre migrationer, säkerhetsundantag eller orelaterade produkttester har skrivits om för att få grönt.
 
-Den separata hela projektkörningen startade på fryst39c5c32 med30s-test/60s-hookgränser, egen lokal testdatabas och SQL-opt-in avstängt där projektets andra fixturer kräver det. **Resultatet kompletteras när processen avslutats; den får inte beskrivas som grön.** Kalenderintroducerade gamla menyassertioner som hittades där är redan rättade och56/56-omkörda påff8d5e7.
+Den separata hela projektkörningen startade på fryst39c5c32 med30s-test/60s-hookgränser, egen lokal testdatabas och SQL-opt-in avstängt där projektets andra fixturer kräver det. **Resultatet kompletteras när processen avslutats; den får inte beskrivas som grön.** Kalenderintroducerade gamla menyassertioner som hittades där är rättade: elva förväntningar över fem gamla navfiler, utan ändring i deras övriga kontrakt. Samlad omkörning av sex navsviter129/129 PASS.
 
 ## Förhandsversion och manuellt prov
 
@@ -77,7 +77,7 @@ Ny CLI-genererad migration: `apps/web/supabase/migrations/20261018182213_user_ca
 Kanonisk Git/LF SHA256: `6bb10d31b39c3733e1646138cda08fc432135abdcfd00cfda6283b9e0d082c4e`.
 Två användarägda tabeller: user_calendar_events och user_calendar_mutations, RLS, ingen anon/PUBLIC-åtkomst och inga privata service_role-grants.
 
-**Ingen produktionsmigration, merge eller produktionsdeploy har utförts.** Kalendern är inte live. De sex befintliga Familje-Stunden-jobben och deras godkännanden lämnas orörda. Det automatiska Vercel-förhandsbygget för91940d5, dpl_8aNraNKiGLcU3SBdHYXA1qnAtPrk, **misslyckades faktiskt** före Next build vid migrationsgrinden: user_calendar_v1 saknas i produktionsledgern (fail-closed). Den ska inte kringgås. Ingen READY-förhandsdeploy eller DB-ansluten förhandslänk finns. GitHub Actions-obligatoriska gränskontroller har inte visat några körningar för detta draft-HEAD och får inte beskrivas som passerade.
+**Ingen produktionsmigration, merge eller produktionsdeploy har utförts.** Kalendern är inte live. De sex befintliga Familje-Stunden-jobben och deras godkännanden lämnas orörda. Ny read-only produktionsobservation19:37Z visar de sex ursprungliga id:na queued/version1: två20okt15:00Z, två23okt18:30Z och två1dec19:30Z. Båda kalendertabellerna saknas och kalenderledgern har0rader. Metadata finns i planens production-preflight.json för senare jämförelse. Det automatiska Vercel-förhandsbygget för91940d5, dpl_8aNraNKiGLcU3SBdHYXA1qnAtPrk, **misslyckades faktiskt** före Next build vid migrationsgrinden: user_calendar_v1 saknas i produktionsledgern (fail-closed). Den ska inte kringgås. Ingen READY-förhandsdeploy eller DB-ansluten förhandslänk finns. GitHub Actions-obligatoriska gränskontroller har inte visat några körningar för detta draft-HEAD och får inte beskrivas som passerade.
 
 Före drift kräver Task7 Andrés granskning av denna konkreta version, sedan exakt granskad migration, aktuell main/SQL-ledger, RLS/grants, merge och READY-deploy, samt metadatajämförelse för de sex ursprungliga socialjobben.
 

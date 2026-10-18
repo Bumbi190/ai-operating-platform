@@ -5,7 +5,7 @@ import {createRequire} from 'node:module'
 import * as profile from '../../web/lib/media/illustrated-news-profile'
 const require=createRequire(import.meta.url),ts=require('typescript') as typeof import('typescript')
 const ID='a8a1b1f6-c222-4893-9399-b1fb3bc2fa52'
-for(const [step, saved, missingConfig, configured] of [['step2',false,false],['step3',false,false],['step3',true,false],['step2',false,true,false],['step2',false,'images',false],['step2',false,'voice',false],['step2',false,'scene_planner',false],['step2',false,false,true]] as const)test(step+(configured?' accepts present provider configuration':missingConfig?' refuses missing provider configuration '+missingConfig:saved?' holds persisted illustration with flags OFF':' refuses stale source')+' before row claims, failure counters or paid work',async()=>{
+for(const [step, saved, missingConfig, configured] of [['step2',false,false],['step3',false,false],['step3',true,false],['step2',true,false],['step2',false,true,false],['step2',false,'images',false],['step2',false,'voice',false],['step2',false,'scene_planner',false],['step2',false,false,true]] as const)test(step+(configured?' accepts present provider configuration':missingConfig?' refuses missing provider configuration '+missingConfig:saved?' holds persisted illustration with flags OFF':' refuses stale source')+' before row claims, failure counters or paid work',async()=>{
  const old={...process.env}
  process.env.CRON_SECRET='unit-only'
  process.env.THE_PROMPT_PILOT_PROJECT_ID=ID

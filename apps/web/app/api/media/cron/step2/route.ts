@@ -1,4 +1,4 @@
-import {resolveIllustratedNewsProfile,assertIllustratedNewsSource,missingIllustratedNewsProviders} from '@/lib/media/illustrated-news-profile'
+import {resolveIllustratedNewsProfile,assertIllustratedNewsSource,missingIllustratedNewsProviders,requiresIllustratedPreview} from '@/lib/media/illustrated-news-profile'
 /**
  * GET /api/media/cron/step2
  *
@@ -67,6 +67,10 @@ export async function GET(request: Request) {
 
   // Editorial rejection is not a provider failure: do this before claims,
   // retries, failure accounting, image spend or voice synthesis.
+  if(requiresIllustratedPreview(script.raw_output)){
+    return NextResponse.json({status:'illustrated_preview_required',
+      reason:'ILLUSTRATED_PREVIEW_REQUIRED',scriptId:script.id})
+  }
   const imageProfile=resolveIllustratedNewsProfile(script.project_id)
   if(imageProfile){
     const sourceNews=Array.isArray(script.media_news_items)?script.media_news_items[0]:script.media_news_items

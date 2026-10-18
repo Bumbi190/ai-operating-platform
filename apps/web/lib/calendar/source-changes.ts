@@ -2,10 +2,10 @@ import 'server-only';
 import type {AdminDb,CalendarActor,CalendarSourceRef,CalendarFailure} from './types';
 import {CalendarError} from './types';
 import {calendarFields,calendarId} from './validate';
-import {resolveCalendarLocal} from './time';
+import {resolveCalendarLocal,stockholmDate,weekRange} from './time';
 import {readSocialContent,proposeSocialContent} from '../social-launch/content/store';
 import type {SocialContentInput} from '../social-launch/content/types';
-export async function requestCalendarSourceMove(db:AdminDb,actor:CalendarActor,input:{source:CalendarSourceRef;localMinute:string;idempotencyKey:string}):Promise<{ok:true;reviewRequired:true;reviewHref:string}|CalendarFailure>{
+export async function requestCalendarSourceMove(db:AdminDb,actor:CalendarActor,input:{source:CalendarSourceRef;localMinute:string;idempotencyKey:string}):Promise<{ok:true;reviewRequired:true;reviewHref:string;change:{mutationId:string;eventId:string;version:number;calendarHref:string}}|CalendarFailure>{
  try {
   calendarFields(input,['source','localMinute','idempotencyKey']);calendarId(input.idempotencyKey);
   const source=input.source;
@@ -30,7 +30,9 @@ export async function requestCalendarSourceMove(db:AdminDb,actor:CalendarActor,i
   if(!revision||revision.sha256!==source.sha256)return {ok:false,code:'CONFLICT'};
   // Existing SQL checks exact revision, ownership and retry payload atomically.
   const changed=await proposeSocialContent(db,actor,{projectId:source.projectId,postId:source.postId,expectedRevisionId:source.revisionId,planRevisionId:revision.planRevisionId,idempotencyKey:'calendar_'+input.idempotencyKey,draft:{...revision.draft,scheduledAt}});
-  return {ok:true,reviewRequired:true,reviewHref:changed.workspaceUrl};
+  const saved=changed.posts.find(post=>post.id===source.postId)?.revision;
+  if(!saved||saved.draft.scheduledAt!==scheduledAt)return {ok:false,code:'CONFLICT'};
+  return {ok:true,reviewRequired:true,reviewHref:changed.workspaceUrl,change:{mutationId:saved.id,eventId:source.postId,version:saved.sequence,calendarHref:'/calendar?week='+weekRange(stockholmDate(scheduledAt)).fromDate}};
  }catch(error){
   const code=(error as {code?:string}).code;
   return {ok:false,code:code==='NOT_FOUND'?'NOT_FOUND':code==='REVISION_CONFLICT'?'CONFLICT':code==='INVALID_BODY'||code==='INVALID_INPUT'?'INVALID_INPUT':'UNAVAILABLE'};

@@ -1,3 +1,4 @@
+import {decodeCalendarEffect,type CalendarChangedEffect} from '@/lib/calendar/stream-effect';
 import { buildChatRequestBody } from "@/lib/atlas/view-client";
 import {
   applyStreamEvent,
@@ -79,6 +80,11 @@ export class AtlasConversationController {
   constructor(private request: typeof fetch = (...args) => fetch(...args)) {}
   private creating: {generation: number; promise: Promise<string | null>} | null = null;
   private compactPending: symbol | null = null;
+  private calendarListeners = new Set<(effect:CalendarChangedEffect)=>void>();
+  subscribeCalendarChanged = (listener:(effect:CalendarChangedEffect)=>void) => {
+    this.calendarListeners.add(listener);
+    return () => {this.calendarListeners.delete(listener);};
+  };
   private settledListeners = new Set<(event: AtlasTurnSettlement) => void>();
   subscribeSettled = (listener: (event: AtlasTurnSettlement) => void) => {
     this.settledListeners.add(listener);
@@ -400,6 +406,8 @@ export class AtlasConversationController {
           }
           if (event.event === "error") settled = true;
           if (isCurrent()) {
+            const calendarEffect=decodeCalendarEffect(event,id);
+            if(calendarEffect)this.calendarListeners.forEach(listener=>listener(calendarEffect));
             const cleanup=decodeCleanupEffect(event,id);
             if(cleanup)this.updateTestDataReview(id,cleanup);
             const now = this.snapshot(),

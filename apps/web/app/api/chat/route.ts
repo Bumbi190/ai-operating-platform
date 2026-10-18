@@ -1,3 +1,6 @@
+import {CALENDAR_TOOLS,CALENDAR_TOOL_NAMES,CALENDAR_GUIDE,handleCalendarTool,persistCalendarToolData,isCalendarIntent} from '@/lib/calendar/atlas-tools';
+import {calendarChangedForResult} from '@/lib/calendar/stream-effect';
+import type {CalendarDb} from '@/lib/calendar/types';
 import {LOCAL_TEXT_TOOLS,LOCAL_TEXT_TOOL_NAMES,availableLocalTextTools,handleLocalTextTool,persistLocalTextToolData} from '@/lib/local-text/atlas-tools'
 import {studioSystemPrompt} from '@/lib/website-build/studio/chat-context'
 import {resolveStudioTurnContext,type StudioTurnContext} from '@/lib/website-build/studio/turn-context'
@@ -341,6 +344,7 @@ const STUDIO_TOOL_NAMES = new Set([
 ])
 
 const TOOLS: Anthropic.Tool[] = [
+  ...CALENDAR_TOOLS,
   ...CLEANUP_TOOLS,
   ...LOCAL_TEXT_TOOLS,
   ...DESIGN_SKILL_TOOLS,
@@ -736,7 +740,7 @@ export async function POST(request: Request) {
     const m = messages[messages.length - 1]
     return m?.role === 'user' && typeof m.content === 'string' ? m.content : ''
   })()
-  const fastPath = !studioContext && !websitePlanRef && !rawBuildContext && (mode === 'content' || isFastPathContent(lastUserText))
+  const fastPath = !isCalendarIntent(lastUserText) && !studioContext && !websitePlanRef && !rawBuildContext && (mode === 'content' || isFastPathContent(lastUserText))
   // Statisk konversation (hej/tack/vem är du) — besvaras ur Atlas identitet ensam.
   // Allow-list, aldrig gissning: allt som inte bevisligen klarar sig utan live-
   // data, projekt, Memory, klocka och verktyg går full path.
@@ -828,7 +832,7 @@ export async function POST(request: Request) {
     systemPrompt+=renderCurrentInstant(new Date())
     if(voice)systemPrompt+=VOICE_DIRECTIVE
   } else {
-    systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE + DESIGN_SKILL_GUIDE + CLEANUP_GUIDE + WEBSITE_BUILD_GUIDE + SOCIAL_LAUNCH_GUIDE + SOCIAL_PROFILE_GUIDE + SOCIAL_CONTENT_GUIDE
+    systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE + DESIGN_SKILL_GUIDE + CLEANUP_GUIDE + WEBSITE_BUILD_GUIDE + SOCIAL_LAUNCH_GUIDE + SOCIAL_PROFILE_GUIDE + SOCIAL_CONTENT_GUIDE + CALENDAR_GUIDE
     if(visiblePlan)systemPrompt+='\nCURRENT REVIEWED PLAN REFERENCES: '+JSON.stringify(visiblePlan)+'; read get_website_build_plan before revising.\n'
     if(verifiedBuildContext)systemPrompt+='\nCURRENT BUILD (verified for this conversation): '+JSON.stringify(verifiedBuildContext)+'; user change requests go to submit_website_build_feedback in this session, using the actually rendered revision. Questions about status go to get_website_build. Never start a second build for a feedback request.\n'
     // UNCONDITIONAL, AND DELIBERATELY BEFORE EVERYTHING THAT CAN FAIL. The bug
@@ -1103,7 +1107,7 @@ export async function POST(request: Request) {
 
             let result: unknown
             try {
-              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds, toolUse.id, await resolveOwnedConversationId(), verifiedBuildContext, voice||inputSource==='voice'?'voice':'text',studioContext?.projectId??null)
+              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds, toolUse.id, await resolveOwnedConversationId(), verifiedBuildContext, voice||inputSource==='voice'?'voice':'text',studioContext?.projectId??null,{sessionDb:supabase,sameOrigin:assertSameOrigin(request)===null})
             } catch (err) {
               result = { error: err instanceof Error ? err.message : 'Okänt fel' }
             }
@@ -1118,6 +1122,7 @@ export async function POST(request: Request) {
             if (toolUse.name === 'run_media_step') took = !!r && r.ok === true
             // save_workflow: bara om det FAKTISKT sparades.
             if (toolUse.name === 'save_workflow') took = !!r && (r as { saved?: boolean }).saved === true
+            if(CALENDAR_TOOL_NAMES.includes(toolUse.name)&&toolUse.name!=='get_calendar'&&r?.ok===true)took=true
             if (took) actionToolUsed = true
 
             // Delegerings-spärr: en delegering räknas som utförd bara om verktyget LYCKADES.
@@ -1171,6 +1176,11 @@ export async function POST(request: Request) {
             }
 
             send('tool_result', { tool: toolUse.name, result })
+            if(CALENDAR_TOOL_NAMES.includes(toolUse.name)){
+              const owned=await resolveOwnedConversationId();
+              const effect=owned?calendarChangedForResult(toolUse.name,result,owned):null;
+              if(effect){const {event,...payload}=effect;send(event,payload);}
+            }
             if(CLEANUP_TOOL_NAMES.includes(toolUse.name)){
               const review=decodeReviewView((result as {review?:unknown}|null)?.review),owned=await resolveOwnedConversationId();
               if(review&&owned===review.packageView.conversationId){
@@ -1188,7 +1198,7 @@ export async function POST(request: Request) {
             // PERSISTENS: spara verktygsanrop + resultat som en 'tool'-rad så att
             // utdata (särskilt Dream issue_id) överlever mellan turer och vid reload.
             // Visas inte i UI (klientens filter behåller bara user/assistant).
-            const persistedTool=LOCAL_TEXT_TOOL_NAMES.includes(toolUse.name)?persistLocalTextToolData(toolUse.input as Record<string,unknown>,result):{input:toolUse.input,result}
+            const persistedTool=CALENDAR_TOOL_NAMES.includes(toolUse.name)?persistCalendarToolData(toolUse.input as Record<string,unknown>,result):LOCAL_TEXT_TOOL_NAMES.includes(toolUse.name)?persistLocalTextToolData(toolUse.input as Record<string,unknown>,result):{input:toolUse.input,result}
             void saveMessage('tool', null, { kind: 'tool_result', tool: toolUse.name, ...persistedTool })
 
             toolResults.push({
@@ -1256,11 +1266,16 @@ async function executeTool(
   verifiedBuildContext:BuildContext|null=null,
   inputSource:'text'|'voice'='text',
   studioProjectId:string|null=null,
+  calendarContext?:{sessionDb:CalendarDb;sameOrigin:boolean},
 ): Promise<unknown> {
   if (studioProjectId && !STUDIO_TOOL_NAMES.has(name)) {
     return { error: 'Verktyget är inte tillgängligt i byggstudion.', denied: 'studio_tool_not_allowed' }
   }
 
+  if(CALENDAR_TOOL_NAMES.includes(name)){
+    if(!calendarContext?.sameOrigin)return {ok:false,code:'UNAUTHORIZED'};
+    return handleCalendarTool(name,input,{actor:{userId,allowedProjectIds},conversationId:ownedConversationId,inputSource},{sessionDb:calendarContext.sessionDb,adminDb:db});
+  }
   if(CLEANUP_TOOL_NAMES.includes(name))return handleCleanupTool(name,input,ownedConversationId)
   if(LOCAL_TEXT_TOOL_NAMES.includes(name))return handleLocalTextTool(name,input,{userId,allowedProjectIds},ownedConversationId,db,inputSource)
 

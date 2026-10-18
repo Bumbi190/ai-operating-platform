@@ -5,7 +5,7 @@
     "captured_at": "2026-09-25",
     "handlarborsen_review_p2_migration_note": "Operator-approved, project-locked, immutable human review decision events. RLS + FORCE RLS, zero policies, no anon/auth grants; service role SELECT/INSERT only, REVIEW RPC only service role. Fully isolated PG17.6 security tests passed. Live production catalog must be checked after application.",
     "handlarborsen_candidates_migration_note": "Additional candidate memory table to be verified against the scoped live production catalog after operator-approved application: project-locked, RLS and FORCE RLS, zero policies and client grants, service_role SELECT/INSERT only. Earlier table classifications remain unchanged.",
-    "total_tables": 162,
+    "total_tables": 172,
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
     "platform_tokens_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090000_platform_tokens_client_revoke.sql (Settings S0): client grants revoked, RLS on, no policy.",
     "platform_credential_events_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090100_platform_credential_events.sql (Settings S0), applied to production before this row was merged: created with RLS on and no policy, every client grant revoked, service_role holding SELECT and INSERT only, UPDATE/DELETE/TRUNCATE refused by triggers.",
@@ -80,7 +80,8 @@
     "sales_inbox_live_20261018": "2026-10-18 scoped catalog: four inbox tables RLS on, zero policies/client grants, service-role only;16 invoker routines empty search_path and no client EXECUTE. Reviewed SQL hash1013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1. Source version20261017191904 preserved by hash-guarded one-row history correction after MCP assigned20261018034640.",
     "release_reconciliation_20261018": "17 already-live local-text/watch tables reconciled with scoped catalog and existing reviewed classifications from git4b4336a. local_text_jobs retains TENANT_RLS with column-only authenticated SELECT and one owner policy; other16 SERVER_ONLY. Three exact SQL blobs match live ledger hashes. No additional DDL applied. Public catalog156, registry156; older entries not re-audited.",
     "sales_reply_staged_note": "B3 reply preparation adds three proposed service-only RLS tables, verified in disposable PostgreSQL only; live=false until reviewed authorized rollout. Registry159 includes three staged entries; last observed production public catalog156. Historical rows/timestamps unchanged.",
-    "sales_send_staged_note": "Three proposed service-only RLS tables. Disposable PostgreSQL only; NOT applied live. No policy row is installed by migration."
+    "sales_send_staged_note": "Three proposed service-only RLS tables. Disposable PostgreSQL only; NOT applied live. No policy row is installed by migration.",
+    "parallel_applied_source_note": "Seven origin/main migration files imported byte-identically to already-applied SQL hashes before owner-test sending rollout. No migration reapplied; frozen14/30 unchanged. Classification of their10 tables copied from origin/main."
   },
   "tables": {
     "handlarborsen_competitor_review_decisions": {
@@ -1671,6 +1672,112 @@
       "anon_grants": false,
       "authenticated_grants": false,
       "service_role": true
+    },
+    "social_publication_reconciliation_proofs": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "social_schedule_batches": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "social_schedule_decisions": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "social_schedule_jobs": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "social_schedule_events": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "social_monthly_release_rules": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "social_monthly_release_evidence": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "handlarborsen_test_data_operator_grants": {
+      "class": "DB_INTERNAL",
+      "rls": true,
+      "force_rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": false,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true,
+      "live": true
+    },
+    "handlarborsen_test_data_reviews": {
+      "class": "DB_INTERNAL",
+      "rls": true,
+      "force_rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": false,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true,
+      "live": true
+    },
+    "handlarborsen_test_data_executions": {
+      "class": "DB_INTERNAL",
+      "rls": true,
+      "force_rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": false,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true,
+      "live": true
     }
   },
   "views": {

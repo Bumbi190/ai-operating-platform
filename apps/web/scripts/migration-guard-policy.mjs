@@ -71,9 +71,9 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // + website_mockup_review: immutable operator design selection and compatible worker fence.
 // Applied sales/managed/Strato plus exact already-applied candidate inbox reconciliation:133/119.
 // B2 inbox applied; three exact already-applied local-text/watch migrations reconciled:137/123. Frozen14/30 unchanged.
-// B3 reply preparation applied; reply sending adds one enforced migration, NOT applied.139/125.
-export const EXPECTED_CANONICAL_SQL_COUNT = 139
-export const EXPECTED_ENFORCED_COUNT = 125
+// Seven independently applied origin/main migrations reconciled by exact SQL hashes; reply sending pending.146/132.
+export const EXPECTED_CANONICAL_SQL_COUNT = 146
+export const EXPECTED_ENFORCED_COUNT = 132
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

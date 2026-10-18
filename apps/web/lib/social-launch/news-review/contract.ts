@@ -15,8 +15,8 @@ function integer(v:unknown,min:number,max:number){if(!Number.isSafeInteger(v)||(
 function date(v:unknown){text(v,50);if(!/^\d{4}-\d\d-\d\dT.+(?:Z|[+-]\d\d:\d\d)$/.test(v)||!Number.isFinite(Date.parse(v)))fail()}
 function url(v:unknown){text(v,2048);try{const u=new URL(v);if(u.protocol!=='https:'||u.username||u.password||u.port||u.search||u.hash)fail()}catch{fail()}}
 function asset(v:unknown){const a=object(v,['id','sha256','byteSize']);uuid(a.id);hash(a.sha256);integer(a.byteSize,1,50*1024*1024)}
-function ids(v:unknown,max=20){if(!Array.isArray(v)||!v.length||v.length>max||new Set(v).size!==v.length)fail();v.forEach(uuid)}
-function list(v:unknown,n:number):any[]{if(!Array.isArray(v)||v.length!==n)fail();return v}
+function ids(v:unknown,max=20){if(!Array.isArray(v)||!v.length||v.length>max||new Set(v).size!==v.length)fail();(v as unknown[]).forEach(uuid)}
+function list(v:unknown,n:number):any[]{if(!Array.isArray(v)||v.length!==n)fail();return v as any[]}
 export function parsePrepareNewsReview(v:unknown):PrepareNewsReviewInput{
  const x=object(v,['projectId','scriptId','videoAssetId','idempotencyKey']);uuid(x.projectId);uuid(x.scriptId);uuid(x.videoAssetId)
  if(typeof x.idempotencyKey!=='string'||!/^[A-Za-z0-9_-]{1,100}$/.test(x.idempotencyKey))fail()

@@ -35,6 +35,7 @@ import {
 import { generateIdeogramLegacy, IdeogramHttpError } from '@/lib/media/image-client'
 import { generationMayAlreadyHaveDispatched } from '@/lib/media/orchestrator/retry-authority'
 import { PLATFORM_COMPAT_PROJECT, type ProjectRef } from '@/lib/cost/governed-spend'
+import type {QualifiedTextInputBudget} from '@/lib/cost/qualified-text-budget'
 import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
 // ── Juni-referensbilder för konsekvent karaktärsstil ─────────────────────────
@@ -511,6 +512,8 @@ async function runVisionQa(
 }
 
 export interface RunStepInput {
+  /** Qualified local-text slice only; ordinary callers retain the full-window ceiling. */
+  textInputBudget?:QualifiedTextInputBudget
   /** REQUIRED execution classification, propagated to the paid boundary. */
   execution: ExecutionContract
   systemPrompt: string
@@ -730,10 +733,10 @@ async function runOpenAIStep(
     const stream = await openAIChatCompletion(
       { project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'chat.completions',
         agent: input.cost?.agent, runId: input.runId, authority: input.authority,
-        onFlight: flights.onFlight },
+        onFlight: flights.onFlight, ...(input.textInputBudget?{textInputBudget:input.textInputBudget}:{}) },
       {
         model,
-        ...openAITextOptions(model,maxTokens,temperature),
+        ...(input.textInputBudget&&model==='gpt-5.4-mini-2026-03-17'?{max_completion_tokens:maxTokens,reasoning_effort:'none' as const}:openAITextOptions(model,maxTokens,temperature)),
         stream: true,
         messages: [
           { role: 'system', content: systemPrompt },
@@ -757,10 +760,10 @@ async function runOpenAIStep(
     const response = await openAIChatCompletion(
       { project: runProject(input.cost), execution: input.execution, operation: input.cost?.operation ?? 'chat.completions',
         agent: input.cost?.agent, runId: input.runId, authority: input.authority,
-        onFlight: flights.onFlight },
+        onFlight: flights.onFlight, ...(input.textInputBudget?{textInputBudget:input.textInputBudget}:{}) },
       {
         model,
-        ...openAITextOptions(model,maxTokens,temperature),
+        ...(input.textInputBudget&&model==='gpt-5.4-mini-2026-03-17'?{max_completion_tokens:maxTokens,reasoning_effort:'none' as const}:openAITextOptions(model,maxTokens,temperature)),
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMessage },

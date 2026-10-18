@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { formatDistanceToNow } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
+import {LocalTextApprovalCard} from './LocalTextApprovalCard'
 import type { ReviewItem, ReviewQueueModel } from '@/lib/os/review-queue'
 import {
   BLOCKED_REASONS,
@@ -230,6 +231,7 @@ function StatusChip({ item }: { item: ReviewItem }) {
 }
 
 function Inspector({ item, onClose }: { item: ReviewItem; onClose: () => void }) {
+  if(item.kind==='local_text_review'||item.kind==='local_text_incident')return <section><button onClick={onClose}>Stäng</button><LocalTextApprovalCard key={item.id} approvalId={item.id} kind={item.kind} status={item.status}/></section>
   return (
     <div className={styles.detail}>
       <div className={styles.detailHead}>

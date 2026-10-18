@@ -12,7 +12,7 @@ import { POST, maxDuration } from '@/app/api/projects/[slug]/competitors/reviews
 
 const url = 'https://omniraos.se/api/projects/handlarborsen/competitors/reviews'
 const data = { host: 'tradingsolutions.se', status: 'interesting',
-  requestId: '33333333-3333-4333-8333-333333333333' }
+  requestId: '33333333-3333-4333-8333-333333333333', expectedRevision: 0 }
 const headers = { origin: 'https://omniraos.se', host: 'omniraos.se', 'content-type': 'application/json' }
 const invoke = (payload: unknown = data, urlValue = url, h: Record<string,string> = headers, slug = 'handlarborsen') =>
   POST(new Request(urlValue, {

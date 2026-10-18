@@ -1,3 +1,4 @@
+import {LOCAL_TEXT_TOOLS,LOCAL_TEXT_TOOL_NAMES,availableLocalTextTools,handleLocalTextTool,persistLocalTextToolData} from '@/lib/local-text/atlas-tools'
 import {studioSystemPrompt} from '@/lib/website-build/studio/chat-context'
 import {resolveStudioTurnContext,type StudioTurnContext} from '@/lib/website-build/studio/turn-context'
 /**
@@ -336,6 +337,7 @@ const STUDIO_TOOL_NAMES = new Set([
 ])
 
 const TOOLS: Anthropic.Tool[] = [
+  ...LOCAL_TEXT_TOOLS,
   ...DESIGN_SKILL_TOOLS,
   ...WEBSITE_BUILD_TOOLS,
   ...SOCIAL_LAUNCH_TOOLS,
@@ -839,23 +841,33 @@ export async function POST(request: Request) {
     // CL Commit 5: legacy segments captured verbatim for the shadow diff only —
     // the exact strings appended below, nothing recomputed, zero behavior change.
     let shadowLive = '', shadowAction = '', shadowView = ''
-    try {
-      const live = await buildLiveContext(db, allowedProjectIds)
-      shadowLive = live
-      systemPrompt += live
-    } catch { /* icke-kritiskt */ }
-    // Cross-turn tool memory: surface prior tool outputs (esp. Dream issue_ids) so
-    // delegation across turns doesn't require re-fetching (kills the fetch loop).
-    try { systemPrompt += await buildToolMemory(db, conversation_id, userId) } catch { /* icke-kritiskt */ }
-    // Action memory (atlas_actions): PROJECT-scoped so "what did you do?" works
-    // across chats/sessions. Also reports whether a delegation is on record, used
-    // to suppress a false-claim correction on truthful recall.
-    try {
-      const am = await buildActionMemory(db, allowedProjectIds)
-      shadowAction = am.text
-      systemPrompt += am.text
-      recentDelegationKnown = am.hasRecentDelegation
-    } catch { /* icke-kritiskt */ }
+    // These reads depend only on the verified principal/project scope above,
+    // not on one another. Preserve append order and each source's fallback.
+    const contextReadMs = { live: 0, tools: 0, actions: 0 }
+    async function measureContext<T>(stage: keyof typeof contextReadMs, read: () => Promise<T>): Promise<T> {
+      const started = Date.now()
+      try { return await read() }
+      finally { contextReadMs[stage] = Date.now() - started }
+    }
+    const [liveResult, toolResult, actionResult] = await Promise.allSettled([
+      measureContext('live', () => buildLiveContext(db, allowedProjectIds)),
+      measureContext('tools', () => buildToolMemory(db, conversation_id, userId)),
+      measureContext('actions', () => buildActionMemory(db, allowedProjectIds)),
+    ])
+    // Numeric durations only; never log memory contents or principal identifiers.
+    console.info('[atlas-context-latency]', contextReadMs)
+    if (liveResult.status === 'fulfilled') {
+      shadowLive = liveResult.value
+      systemPrompt += liveResult.value
+    }
+    // Cross-turn tool memory keeps Dream identities available without re-fetching.
+    if (toolResult.status === 'fulfilled') systemPrompt += toolResult.value
+    // Project-scoped action memory still corroborates truthful delegation recall.
+    if (actionResult.status === 'fulfilled') {
+      shadowAction = actionResult.value.text
+      systemPrompt += actionResult.value.text
+      recentDelegationKnown = actionResult.value.hasRecentDelegation
+    }
     // View Awareness (Foundation 1, flag-gated): tell Atlas what the operator is
     // currently looking at. Hint-only — route/project re-resolved via the registry.
     if (isViewAwarenessEnabled()) {
@@ -909,7 +921,8 @@ export async function POST(request: Request) {
   // read safe: with no tool schema the model cannot emit a tool_use block, so
   // executeTool is unreachable on this path. Every other class keeps TOOLS
   // exactly as before — this is not general per-class schema pruning.
-  const activeTools = (fastPath || staticConversation) ? [] : studioContext ? TOOLS.filter(tool=>STUDIO_TOOL_NAMES.has(tool.name)) : TOOLS
+  const localTextEnabled=availableLocalTextTools({inputSource:voice||inputSource==='voice'?'voice':'text',studio:!!studioContext,fast:fastPath,staticConversation}).length>0
+  const activeTools = (fastPath || staticConversation) ? [] : studioContext ? TOOLS.filter(tool=>STUDIO_TOOL_NAMES.has(tool.name)) : TOOLS.filter(tool=>!LOCAL_TEXT_TOOL_NAMES.includes(tool.name)||localTextEnabled)
   const forceToolFirstTurn = actionIntent && activeTools.length > 0
   const forceResolutionFirstTurn = resolutionIntent && activeTools.length > 0
   // Direkt navigeringskommando → tvinga specifikt navigate-verktyget på turn 0.
@@ -1084,7 +1097,7 @@ export async function POST(request: Request) {
 
             let result: unknown
             try {
-              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds, toolUse.id, await resolveOwnedConversationId(), verifiedBuildContext, inputSource==='voice'?'voice':'text',studioContext?.projectId??null)
+              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds, toolUse.id, await resolveOwnedConversationId(), verifiedBuildContext, voice||inputSource==='voice'?'voice':'text',studioContext?.projectId??null)
             } catch (err) {
               result = { error: err instanceof Error ? err.message : 'Okänt fel' }
             }
@@ -1162,12 +1175,13 @@ export async function POST(request: Request) {
             // PERSISTENS: spara verktygsanrop + resultat som en 'tool'-rad så att
             // utdata (särskilt Dream issue_id) överlever mellan turer och vid reload.
             // Visas inte i UI (klientens filter behåller bara user/assistant).
-            void saveMessage('tool', null, { kind: 'tool_result', tool: toolUse.name, input: toolUse.input, result })
+            const persistedTool=LOCAL_TEXT_TOOL_NAMES.includes(toolUse.name)?persistLocalTextToolData(toolUse.input as Record<string,unknown>,result):{input:toolUse.input,result}
+            void saveMessage('tool', null, { kind: 'tool_result', tool: toolUse.name, ...persistedTool })
 
             toolResults.push({
               type: 'tool_result',
               tool_use_id: toolUse.id,
-              content: JSON.stringify(result),
+              content: JSON.stringify(LOCAL_TEXT_TOOL_NAMES.includes(toolUse.name)?persistedTool.result:result),
             })
           }
 
@@ -1233,6 +1247,8 @@ async function executeTool(
   if (studioProjectId && !STUDIO_TOOL_NAMES.has(name)) {
     return { error: 'Verktyget är inte tillgängligt i byggstudion.', denied: 'studio_tool_not_allowed' }
   }
+
+  if(LOCAL_TEXT_TOOL_NAMES.includes(name))return handleLocalTextTool(name,input,{userId,allowedProjectIds},ownedConversationId,db,inputSource)
 
   // Deterministic, read-only, no database and no network. Placed first because
   // it is the cheapest branch and touches nothing else in the system.

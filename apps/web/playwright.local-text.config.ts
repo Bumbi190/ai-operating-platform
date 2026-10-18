@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test'
+export default defineConfig({testDir:'./e2e',testMatch:'local-text.spec.ts',fullyParallel:false,workers:1,timeout:15000,outputDir:'../../.superpowers/sdd/2026-10-17-atlas-local-text-integration/playwright-results',use:{baseURL:'http://127.0.0.1:54402',headless:true},webServer:{command:'node e2e/local-text-server.mjs',url:'http://127.0.0.1:54402/receipt',reuseExistingServer:false,timeout:60000}})

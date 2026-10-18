@@ -18,7 +18,7 @@ describe('Owner and Collaborator use the same Omnira visual shell', () => {
     expect(shell).toContain('const organizationScope = ownedProjectIds.length === 0')
     expect(shell).toContain('resolveOrganizationReadScope(supabase, db, user.id)')
     expect(shell).toContain('displayProjectIds')
-    expect(shell).toContain('<AtlasRuntimeProvider projects={isCollaborator ? [] : projects}>')
+    expect(shell).toMatch(/<AtlasRuntimeProvider\s+projects=\{isCollaborator \? \[\] : projects\}(?:\s|>)/)
   })
   it('keeps all collaborator service-role reads constrained to a scoped allowlist', () => {
     expect(shell).toContain(".in('id', scopedProjectIds)")

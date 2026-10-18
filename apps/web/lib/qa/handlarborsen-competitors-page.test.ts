@@ -4,11 +4,13 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-const { resolveProject, denyAdmin, denyDb } = vi.hoisted(() => ({
+const { resolveProject, denyAdmin, denyDb, readiness } = vi.hoisted(() => ({
   resolveProject: vi.fn(),
+  readiness: vi.fn(async()=>({status:'unavailable'})),
   denyAdmin: vi.fn(() => { throw new Error('service role forbidden') }),
   denyDb: vi.fn(() => { throw new Error('unexpected database access') }),
 }))
+vi.mock('@/lib/atlas/project-analytics/handlarborsen-watch-readiness-service',()=>({loadWatchReadiness:readiness}))
 vi.mock('@/lib/project/get-project', () => ({ getProjectBySlug: resolveProject }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: denyAdmin }))
 vi.mock('@/lib/supabase/server', () => ({ createClient: denyDb }))
@@ -40,6 +42,7 @@ describe('project-authorized manual competitors page', () => {
       resolveProject.mockResolvedValue(project)
       await expect(Page({ params: { slug: 'handlarborsen' }, searchParams: { scan: '1' } })).rejects.toThrow('404')
       expect(fetcher).not.toHaveBeenCalled()
+      expect(readiness).not.toHaveBeenCalled()
       expect(denyAdmin).not.toHaveBeenCalled()
       expect(denyDb).not.toHaveBeenCalled()
     },
@@ -49,6 +52,7 @@ describe('project-authorized manual competitors page', () => {
       const element = await Page({ params: { slug: 'handlarborsen' }, searchParams })
       const html = renderToStaticMarkup(element)
       expect(resolveProject).toHaveBeenCalledWith('handlarborsen')
+      expect(readiness).toHaveBeenCalledWith('owner')
       expect(fetcher).not.toHaveBeenCalled()
       expect(html).toContain('Inte kontrollerad i denna vy')
       expect(html).toContain('manuell läsning')

@@ -12,11 +12,15 @@ import {
 import { resolveDestination, type DestinationId } from '@/lib/nav/registry'
 import { AtlasConversationProvider } from '@/lib/atlas/conversation/provider'
 import { AtlasRuntimeProvider } from '@/lib/atlas/runtime'
+import { atlasVoiceConversationEntryEnabled } from '@/lib/atlas/voice-pilot/entry'
 import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { resolveOrganizationReadScope } from '@/lib/auth/organization-project-read'
 import { OPERATOR_DISPLAY_NAME } from '@/lib/atlas/identity'
 import { AtlasProjectReturnShortcut } from '@/components/platform/vnext/AtlasProjectReturnShortcut'
 import { AtlasMobileNav } from '@/components/platform/vnext/AtlasMobileNav'
+import { AtlasInboxProvider } from '@/components/platform/vnext/AtlasInboxProvider'
+import { competitorInboxEnabled } from '@/lib/atlas/project-analytics/handlarborsen-candidate-inbox-service'
+import { HANDLARBORSEN_PROJECT_ID } from '@/lib/atlas/collectors/handlarborsen-marketplace'
 import { ShellTopBar } from '@/components/platform/vnext/ShellTopBar'
 import { OMNIRA_UI_COOKIE, resolveUiGeneration, isVNext } from '@/lib/ui/generation'
 import {
@@ -230,8 +234,12 @@ export default async function PlatformLayout({
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
+    <AtlasInboxProvider key={user.id} audience={competitorInboxEnabled() && allowedProjects.has(HANDLARBORSEN_PROJECT_ID)
+      ? (isCollaborator ? 'collaborator' : 'owner') : null}>
     <AtlasConversationProvider>
-    <AtlasRuntimeProvider projects={isCollaborator ? [] : projects}>
+    <AtlasRuntimeProvider projects={isCollaborator ? [] : projects}
+      voiceConversationEnabled={atlasVoiceConversationEntryEnabled(user.email, Boolean(isCollaborator))}
+      voiceReadOnly={Boolean(isCollaborator)}>
     <OperatorModeProvider uiGeneration={uiGeneration}>
       {/* Presentation preferences are applied before first paint.
           Without this the provider would only reach the DOM after hydration, so
@@ -394,5 +402,6 @@ export default async function PlatformLayout({
     </OperatorModeProvider>
     </AtlasRuntimeProvider>
     </AtlasConversationProvider>
+    </AtlasInboxProvider>
   )
 }

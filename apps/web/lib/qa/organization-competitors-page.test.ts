@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 const mock = vi.hoisted(() => ({
   gate: vi.fn(),
+  readiness:vi.fn(async()=>({status:'unavailable'})),
   history: vi.fn(async (): Promise<any> => ({ status: 'ok', history: { status: 'ok' } })),
   candidates: vi.fn(async (): Promise<any> => ({
     status: 'ok', candidates: [], awaitingReview: 0,
@@ -12,6 +13,7 @@ const mock = vi.hoisted(() => ({
   landscape: vi.fn(async (): Promise<any> => ({ checkedAt: '', observations: [] })),
   render: vi.fn((_props: any) => null as any),
 }))
+vi.mock('@/lib/atlas/project-analytics/handlarborsen-watch-readiness-service',()=>({loadWatchReadiness:mock.readiness}))
 vi.mock('next/navigation', () => ({ notFound: () => { throw new Error('404') } }))
 vi.mock('@/lib/auth/organization-competitor-access', () => ({
   authorizeOrganizationCompetitorAction: mock.gate,
@@ -55,6 +57,7 @@ describe('collaborator competitors page is separately scoped', () => {
       await expect(Page({ params: { slug }, searchParams: { scan: '1' } })).rejects.toThrow('404')
       expect(mock.publicScan).not.toHaveBeenCalled()
       expect(mock.landscape).not.toHaveBeenCalled()
+      expect(mock.readiness).not.toHaveBeenCalled()
       expect(mock.history).not.toHaveBeenCalled()
       expect(mock.candidates).not.toHaveBeenCalled()
     }
@@ -63,6 +66,7 @@ describe('collaborator competitors page is separately scoped', () => {
     const page = await Page({ params: { slug: 'handlarborsen' } })
     expect(renderToStaticMarkup(page)).toContain('authorized-competing-page')
     expect(mock.gate).toHaveBeenCalledWith('view_competitors')
+    expect(mock.readiness).toHaveBeenCalledWith('collaborator')
     expect(mock.history).toHaveBeenCalledTimes(1)
     expect(mock.candidates).toHaveBeenCalledTimes(1)
     expect(mock.publicScan).not.toHaveBeenCalled()

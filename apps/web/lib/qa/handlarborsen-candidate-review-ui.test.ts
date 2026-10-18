@@ -2,6 +2,7 @@ import * as React from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { HandlarborsenCompetitorDiscovery } from '@/components/platform/vnext/HandlarborsenCompetitorDiscovery'
+import { reviewEndpointForMode } from '@/components/platform/vnext/HandlarborsenCandidateReviewControls'
 import { deriveCandidateReviewNotice } from '@/lib/atlas/project-analytics/handlarborsen-candidate-review-notice'
 import type { CandidateMemoryLoad } from '@/lib/atlas/project-analytics/handlarborsen-competitor-memory-service'
 import type { CandidateReviewLoad } from '@/lib/atlas/project-analytics/handlarborsen-candidate-review-service'
@@ -34,6 +35,10 @@ const display = (data: CandidateReviewLoad|null, enabled = true) =>
   }))
 
 describe('candidate human review status and project cue', () => {
+  it('never routes a collaborator through the Owner-only review API', () => {
+    expect(reviewEndpointForMode('owner')).toBe('/api/projects/handlarborsen/competitors/reviews')
+    expect(reviewEndpointForMode('collaborator')).toBe('/api/organization/projects/handlarborsen/competitors/reviews')
+  })
   it('shows limited, explicit human choices and preserved audit history for authorized reviewer', () => {
     const html = display(reviews('interesting'))
     expect(html).toContain('Intressant – undersök vidare')

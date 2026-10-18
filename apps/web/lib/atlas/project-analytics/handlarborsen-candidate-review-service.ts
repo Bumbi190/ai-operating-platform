@@ -35,6 +35,7 @@ export type CandidateReviewCommand = Readonly<{
   host: string
   status: CandidateReviewStatus
   requestId: string
+  expectedRevision: number
 }>
 
 type Db = ReturnType<typeof createAdminClient>
@@ -65,14 +66,18 @@ export function candidateReviewEnabled(env: NodeJS.ProcessEnv = process.env) {
 export function safeCandidateReviewCommand(input: unknown): CandidateReviewCommand | null {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return null
   const row = input as Record<string, unknown>
-  if (Object.keys(row).length !== 3 || !Object.hasOwn(row, 'host')
-    || !Object.hasOwn(row, 'status') || !Object.hasOwn(row, 'requestId')) return null
+  if (Object.keys(row).length !== 4 || !Object.hasOwn(row, 'host')
+    || !Object.hasOwn(row, 'status') || !Object.hasOwn(row, 'requestId')
+    || !Object.hasOwn(row, 'expectedRevision')) return null
   if (typeof row.host !== 'string'
     || officialHost('https://' + row.host + '/') !== row.host
     || typeof row.status !== 'string'
     || !validStatuses.includes(row.status as CandidateReviewStatus)
-    || typeof row.requestId !== 'string' || !uuid4.test(row.requestId)) return null
-  return { host: row.host, status: row.status as CandidateReviewStatus, requestId: row.requestId.toLowerCase() }
+    || typeof row.requestId !== 'string' || !uuid4.test(row.requestId)
+    || typeof row.expectedRevision !== 'number' || !Number.isInteger(row.expectedRevision)
+    || row.expectedRevision < 0 || row.expectedRevision > MAX_DECISIONS) return null
+  return { host: row.host, status: row.status as CandidateReviewStatus,
+    requestId: row.requestId.toLowerCase(), expectedRevision: row.expectedRevision }
 }
 
 function parseTime(value: unknown, now: Date): string | null {
@@ -194,6 +199,7 @@ export function createCandidateReviewService(deps: CandidateReviewDependencies =
           p_project_id: HANDLARBORSEN_PROJECT_ID,
           p_host: request.host, p_actor_id: auth.actorId,
           p_status: request.status, p_request_id: request.requestId,
+          p_expected_revision: request.expectedRevision,
         })
         if (error || !Array.isArray(data) || data.length !== 1) return { status: 'unavailable' }
         const row = data[0] as Record<string, unknown>

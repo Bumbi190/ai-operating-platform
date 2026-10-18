@@ -8,14 +8,22 @@ const proposal = readFileSync(resolve(__dirname,
 describe('Candidate review P2 proposed schema requires an explicit new operator gate', () => {
   it('is not an applied canonical migration or a change to candidate evidence', () => {
     expect(proposal).toContain('NOT APPLIED')
-    expect(existsSync(resolve(__dirname,'../../supabase/migrations/20261017170000_handlarborsen_candidate_review_p2.sql'))).toBe(false)
+    expect(existsSync(resolve(__dirname,'../../supabase/migrations/20261017080000_handlarborsen_competitor_review_decisions_v1.sql'))).toBe(true)
     expect(proposal).toContain('CREATE TABLE public.handlarborsen_competitor_review_decisions')
     expect(proposal).toContain('REFERENCES public.handlarborsen_competitor_candidates(project_id,host)')
+  })
+  it('canonical SQL body is exactly the reviewed operator proposal', () => {
+    const canonical=readFileSync(resolve(__dirname,'../../supabase/migrations/20261017080000_handlarborsen_competitor_review_decisions_v1.sql'),'utf8')
+    const body=(s: string)=>s.slice(s.indexOf('CREATE TABLE public.handlarborsen_competitor_review_decisions')).replace(/\r\n/g,'\n')
+    expect(body(canonical)).toBe(body(proposal))
   })
   it('is a serial, auditable, append-only decision history with no client writes', () => {
     expect(proposal).toContain('GENERATED ALWAYS AS IDENTITY')
     expect(proposal).toContain('request_id uuid NOT NULL UNIQUE')
     expect(proposal).toContain('pg_advisory_xact_lock')
+    expect(proposal).toContain('p_expected_revision integer')
+    expect(proposal).toContain('actual_revision <> p_expected_revision')
+    expect(proposal).toContain('count(*)::integer INTO actual_revision')
     expect(proposal).toContain('already_applied')
     expect(proposal).toContain('unchanged')
     expect(proposal).toContain('CREATE FUNCTION public.handlarborsen_decide_candidate_review_v1')

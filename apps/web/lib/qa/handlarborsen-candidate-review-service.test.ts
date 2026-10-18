@@ -22,7 +22,7 @@ const owner = '22222222-2222-4222-8222-222222222222'
 const host = 'tradingsolutions.se'
 const now = new Date('2026-10-17T08:00:00.000Z')
 const requestId = '33333333-3333-4333-8333-333333333333'
-const command = { host, status: 'interesting' as const, requestId }
+const command = { host, status: 'interesting' as const, requestId, expectedRevision: 0 }
 const evidence = {
   project_id: HANDLARBORSEN_PROJECT_ID,
   host,
@@ -59,7 +59,7 @@ function setup(opts: {
     data: opts.decisions ?? [],
     error: opts.decisionError ? { message: 'fail' } : null,
   }))
-  const rpc = vi.fn(async () => ({ data: [{ outcome: 'saved', current_status: 'interesting', decision_id: 1 }], error: null }))
+  const rpc = vi.fn(async () => ({ data: [{ outcome: 'saved', current_status: 'interesting' as string | null, decision_id: 1 as number | null }], error: null }))
   const from = vi.fn((table: string) => {
     if (table === 'projects') return {
       select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: projectRead }) }) }),
@@ -103,6 +103,10 @@ describe('Handlarbörsen P2 human review decisions (offline)', () => {
       { ...command, host: 'https://tradingsolutions.se/' },
       { ...command, host: 'example.se/?x=1' },
       { ...command, requestId: 'not-a-uuid' },
+      { ...command, expectedRevision: -1 },
+      { ...command, expectedRevision: 301 },
+      { ...command, expectedRevision: 1.5 },
+      { host, status: 'interesting', requestId },
       { ...command, projectId: HANDLARBORSEN_PROJECT_ID },
       { ...command, userId: actor },
       { ...command, html: '<script>' },
@@ -130,9 +134,20 @@ describe('Handlarbörsen P2 human review decisions (offline)', () => {
       expect(h.rpc).toHaveBeenCalledWith('handlarborsen_decide_candidate_review_v1', {
         p_project_id: HANDLARBORSEN_PROJECT_ID,
         p_host: host, p_status: 'interesting', p_request_id: requestId,
+        p_expected_revision: 0,
         p_actor_id: role.role === 'owner' ? owner : actor,
       })
     }
+  })
+
+  it('forwards optimistic revision 2 unchanged to DB RPC, never choosing a revision server-side', async () => {
+    const h = setup()
+    const updated = { ...command, status: 'ignored' as const, expectedRevision: 2 }
+    h.rpc.mockResolvedValueOnce({ data: [{ outcome: 'conflict', current_status: null, decision_id: null }], error: null })
+    expect(await h.service.decide(updated)).toEqual({ status: 'conflict' })
+    expect(h.rpc).toHaveBeenCalledWith('handlarborsen_decide_candidate_review_v1', expect.objectContaining({
+      p_expected_revision: 2, p_actor_id: actor, p_host: host, p_status: 'ignored',
+    }))
   })
 
   it('denies even the organization owner when live projects.owner_id does not match them', async () => {

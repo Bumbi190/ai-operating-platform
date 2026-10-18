@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, generateKeyPairSync } from 'node:crypto'
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -54,6 +54,8 @@ describe.runIf(required && process.platform === 'win32')('real Windows CNG and h
     const signature=await signer.signCanonicalPayload(fixture.identityId,text)
     expect(verifyEs256(fixture.publicJwk,text,signature)).toBe(true)
     expect(verifyEs256(fixture.publicJwk,text+'x',signature)).toBe(false)
+    const foreign=generateKeyPairSync('ec',{namedCurve:'prime256v1'}).publicKey.export({format:'jwk'})
+    expect(verifyEs256({kty:'EC',crv:'P-256',x:foreign.x!,y:foreign.y!},text,signature)).toBe(false)
   })
   it('refuses duplicate generation and keeps the existing key',async()=>{
     await expect(signer.generateIdentity(fixture.identityId)).rejects.toThrow()

@@ -54,6 +54,7 @@ import {WebsiteBuildError} from '@/lib/website-build/store'
 import {assertSameOrigin} from '@/lib/atlas/executive/http'
 import type {PlanRevisionRef} from '@/lib/website-build/planning/types'
 import { WEBSITE_BUILD_TOOLS, WEBSITE_BUILD_GUIDE, WEBSITE_BUILD_TOOL_NAMES, handleWebsiteBuildTool } from '@/lib/website-build/atlas-tools'
+import {SOCIAL_SCHEDULE_TOOLS,SOCIAL_SCHEDULE_TOOL_NAMES,handleSocialScheduleTool} from '@/lib/social-launch/scheduling/atlas-tools'
 import {SOCIAL_PUBLICATION_TOOLS,SOCIAL_PUBLICATION_TOOL_NAMES,handleSocialPublicationTool} from '@/lib/social-launch/publication/atlas-tools'
 import {SOCIAL_PROFILE_TOOLS,SOCIAL_PROFILE_TOOL_NAMES,SOCIAL_PROFILE_GUIDE,handleSocialProfileTool} from '@/lib/social-launch/profile/atlas-tools'
 import {SOCIAL_CONTENT_TOOLS,SOCIAL_CONTENT_TOOL_NAMES,SOCIAL_CONTENT_GUIDE,handleSocialContentTool} from '@/lib/social-launch/content/atlas-tools'
@@ -334,6 +335,7 @@ const STUDIO_TOOL_NAMES = new Set([
   ...SOCIAL_LAUNCH_TOOL_NAMES,
   ...SOCIAL_PROFILE_TOOL_NAMES,
   ...SOCIAL_PUBLICATION_TOOL_NAMES,
+  ...SOCIAL_SCHEDULE_TOOL_NAMES,
   ...SOCIAL_CONTENT_TOOL_NAMES,
   'get_current_time', 'present_links', 'navigate',
 ])
@@ -346,6 +348,7 @@ const TOOLS: Anthropic.Tool[] = [
   ...SOCIAL_LAUNCH_TOOLS,
   ...SOCIAL_PROFILE_TOOLS,
   ...SOCIAL_PUBLICATION_TOOLS,
+  ...SOCIAL_SCHEDULE_TOOLS,
   ...SOCIAL_CONTENT_TOOLS,
   {
     // Read-only, side-effect free, and the ONLY source of a clock value. Atlas
@@ -1281,6 +1284,9 @@ async function executeTool(
     return handleSocialProfileTool(name,input,{userId,allowedProjectIds},ownedConversationId,db)
   }
 
+  if (SOCIAL_SCHEDULE_TOOL_NAMES.includes(name)) {
+    return handleSocialScheduleTool(name,input,{userId,allowedProjectIds},ownedConversationId,db)
+  }
   if (SOCIAL_CONTENT_TOOL_NAMES.includes(name)) {
     return handleSocialContentTool(name,input,{userId,allowedProjectIds},ownedConversationId,db)
   }

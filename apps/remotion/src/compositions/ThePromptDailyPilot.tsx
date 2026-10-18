@@ -1,6 +1,7 @@
 import React from 'react'
 import {AbsoluteFill,Audio,Img,interpolate,useCurrentFrame,useVideoConfig} from 'remotion'
 import type {VideoInputProps} from '../lib/types'
+import {getIllustratedShotAt,type IllustratedShot} from '../lib/illustrated-shots'
 
 /**
  * The Prompt — dynamic daily news renderer, in a PREVIEW-ONLY draft.
@@ -9,6 +10,8 @@ import type {VideoInputProps} from '../lib/types'
  * This module does not authorize news or publish anything.
  */
 export interface DailyPilotProps extends VideoInputProps {
+  /** Private illustrated review only; not documentary imagery or publish authority. */
+  illustratedShots?:IllustratedShot[]
   sourceLabel:string
   sourceUrl:string
   sourcePublishedAt:string
@@ -20,7 +23,7 @@ const lerp=(frame:number,start:number,end:number,a:number,b:number)=>
   interpolate(frame,[start,end],[a,b],clamp)
 
 export function ThePromptDailyPilot({
-  hook,audioUrl,durationMs,words,images,sourceLabel,sourcePublishedAt,
+  hook,audioUrl,durationMs,words,images,sourceLabel,sourcePublishedAt,illustratedShots,
 }:DailyPilotProps){
   const frame=useCurrentFrame()
   const {fps,durationInFrames}=useVideoConfig()
@@ -28,6 +31,8 @@ export function ThePromptDailyPilot({
   const outro=frame>=voiceFrames
   const segmentDuration=Math.max(1,voiceFrames/Math.max(1,images.length))
   const elapsedMs=frame*1000/fps
+  const illustrated=Boolean(illustratedShots?.length)
+  const shot=illustrated?getIllustratedShotAt(illustratedShots!,elapsedMs,images.length,durationMs):null
   const currentWord=words.findLastIndex(w=>w.startMs<=elapsedMs&&elapsedMs<w.endMs+150)
   const groupStart=currentWord<0?0:Math.floor(currentWord/4)*4
   const captionWords=currentWord<0?[]:words.slice(groupStart,groupStart+4)
@@ -37,7 +42,11 @@ export function ThePromptDailyPilot({
   return <AbsoluteFill style={{fontFamily:'Arial,sans-serif',background:'#04111D',color:WHITE,overflow:'hidden'}}>
     {!outro&&<>
       <AbsoluteFill>
-        {images.length===0?<AbsoluteFill style={{background:'#0A2434'}}/>:
+        {shot?<AbsoluteFill key={'shot-'+shot.index}>
+          <Img src={images[shot.imageIndex]} style={{width:'100%',height:'100%',objectFit:'cover',
+            transformOrigin:shot.focusX+'% '+shot.focusY+'%',
+            transform:'scale('+shot.scale+')'}}/>
+        </AbsoluteFill>:images.length===0?<AbsoluteFill style={{background:'#0A2434'}}/>:
           images.map((src,i)=>{
             const start=i*segmentDuration,end=(i+1)*segmentDuration
             const fadeIn=i===0?1:lerp(frame,start-8,start+8,0,1)
@@ -47,7 +56,7 @@ export function ThePromptDailyPilot({
                 transform:'scale('+lerp(frame,start,end,1.03,1.14)+')'}}/>
             </AbsoluteFill>
           })}
-        <AbsoluteFill style={{background:'linear-gradient(180deg,#04111DBA 0%,#04111D49 27%,#04111DB5 56%,#04111DF8 96%)'}}/>
+        <AbsoluteFill style={{background:illustrated?'linear-gradient(180deg,#04111DC9 0%,#04111D08 22%,#04111D00 56%,#04111D88 85%,#04111DDB 100%)':'linear-gradient(180deg,#04111DBA 0%,#04111D49 27%,#04111DB5 56%,#04111DF8 96%)'}}/>
       </AbsoluteFill>
       <div style={{position:'absolute',top:92,left:65,right:65,display:'flex',justifyContent:'space-between'}}>
         <div style={{fontSize:43,fontWeight:950,letterSpacing:-1}}>THE <span style={{color:TEAL}}>PROMPT</span></div>
@@ -60,7 +69,9 @@ export function ThePromptDailyPilot({
         fontSize:22,fontWeight:850,letterSpacing:2}}>
         {sourceLabel.toUpperCase().slice(0,40)} / {sourcePublishedAt.slice(0,10)}
       </div>
-      {showHook&&<div style={{position:'absolute',top:775,left:65,right:65,
+      {illustrated&&<div style={{position:'absolute',top:258,left:65,padding:'9px 14px',
+        borderRadius:6,background:'#04111DBF',fontSize:18,fontWeight:800,letterSpacing:1.4}}>AI ILLUSTRATIONS</div>}
+      {showHook&&<div style={{position:'absolute',top:illustrated?340:775,left:65,right:65,
         opacity:lerp(frame,hookEnds-9,hookEnds,1,0)}}>
         <div style={{fontSize:83,fontWeight:950,lineHeight:1.08,letterSpacing:-3.1,
           textShadow:'0 6px 20px #000E,0 15px 45px #000'}}>{hook.trim().slice(0,110)}</div>
@@ -76,7 +87,7 @@ export function ThePromptDailyPilot({
       <div style={{position:'absolute',bottom:91,left:65,right:65,
         display:'flex',justifyContent:'space-between',gap:20,
         fontSize:17,fontWeight:800,color:'#BDD7E1',letterSpacing:1.2}}>
-        <span>SOURCE-BASED / EDITORIAL VISUALS</span><span style={{color:TEAL}}>PILOT REVIEW</span>
+        <span>{illustrated?'AI-GENERATED / EDITORIAL ILLUSTRATIONS':'SOURCE-BASED / EDITORIAL VISUALS'}</span><span style={{color:TEAL}}>PILOT REVIEW</span>
       </div>
     </>}
     {outro&&<AbsoluteFill style={{background:'radial-gradient(ellipse at 50% 35%,#17484E,#04111D 76%)',

@@ -1,0 +1,34 @@
+import {beforeAll,afterAll,it,expect,vi} from 'vitest';
+import {randomUUID} from 'node:crypto';
+import {initializeCalendarSocialDb} from './social-fixtures.test-utils';
+import {scheduleFixture} from '../social-launch/scheduling/fixtures.test-utils';
+import {approveSchedule,readSchedules} from '../social-launch/scheduling/store';
+import {readSocialContent} from '../social-launch/content/store';
+import {requestCalendarSourceMove} from './source-changes';
+import {readCalendarSocial} from './source-social';
+import {stockholmDate,stockholmMinute,weekRange} from './time';
+let fixture:ReturnType<typeof initializeCalendarSocialDb>;
+beforeAll(()=>{fixture=initializeCalendarSocialDb()},60000);afterAll(()=>{fixture?.close();vi.unstubAllEnvs()});
+it('keeps the approved time and queue unchanged while creating a reviewable time proposal',async()=>{
+ const f=await scheduleFixture(fixture.adminDb),approved=await approveSchedule(fixture.adminDb,f.principal,f.approval);
+ const snapshot=()=>fixture.testSql("select jsonb_build_object('jobs',(select jsonb_agg(to_jsonb(j) order by id) from social_schedule_jobs j),'approvals',(select jsonb_agg(to_jsonb(a) order by id) from social_schedule_decisions a));");
+ const before=snapshot(),range=weekRange(stockholmDate(f.dueAt));
+ const original=(await readCalendarSocial(fixture.adminDb,f.principal,range)).entries.find(e=>e.source.kind==='social'&&e.source.jobId===approved.jobs[0].id)!;
+ const newTime=new Date(Date.parse(f.dueAt)+86400000).toISOString(),input={source:original.source,localMinute:stockholmMinute(newTime),idempotencyKey:randomUUID()};
+ const receipt=await requestCalendarSourceMove(fixture.adminDb,f.principal,input);
+ expect(receipt).toMatchObject({ok:true,reviewRequired:true});expect(snapshot()).toBe(before);
+ const current=(await readSocialContent(fixture.adminDb,f.principal,{projectId:f.manifest.projectId})).posts.find(p=>p.id===f.source.postId)!;
+ expect(current.revision.draft.scheduledAt).toBe(newTime);
+ const entries=(await readCalendarSocial(fixture.adminDb,f.principal,range)).entries.filter(e=>e.source.kind==='social'&&e.source.postId===f.source.postId);
+ expect(entries).toHaveLength(1);
+ expect(entries[0].time).toMatchObject({startUtc:new Date(f.dueAt).toISOString()});
+ expect(entries[0].pendingChange?.time).toMatchObject({startUtc:newTime});
+ expect(await requestCalendarSourceMove(fixture.adminDb,f.principal,input)).toEqual(receipt);
+ expect((await readSchedules(fixture.adminDb,f.principal,{projectId:f.manifest.projectId})).batches[0].jobs[0].scheduledAt).toBe(approved.jobs[0].scheduledAt);
+},30000);
+it('rejects foreign projects, stale content and unsupported workflow moves',async()=>{
+ const f=await scheduleFixture(fixture.adminDb),source={kind:'social' as const,projectId:f.manifest.projectId,postId:f.source.postId,revisionId:randomUUID(),sha256:'a'.repeat(64),jobId:null};
+ expect(await requestCalendarSourceMove(fixture.adminDb,{...f.principal,allowedProjectIds:[]},{source,localMinute:'2026-12-01T20:30',idempotencyKey:randomUUID()})).toMatchObject({ok:false,code:'NOT_FOUND'});
+ expect(await requestCalendarSourceMove(fixture.adminDb,f.principal,{source,localMinute:'2026-12-01T20:30',idempotencyKey:randomUUID()})).toMatchObject({ok:false,code:'CONFLICT'});
+ expect(await requestCalendarSourceMove(fixture.adminDb,f.principal,{source:{kind:'workflow',projectId:f.manifest.projectId,instanceId:randomUUID()},localMinute:'2026-12-01T20:30',idempotencyKey:randomUUID()})).toMatchObject({ok:false,code:'INVALID_INPUT'});
+});

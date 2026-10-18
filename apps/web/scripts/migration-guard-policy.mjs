@@ -72,8 +72,8 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Atlas sales draft pilot: 130/116; applied ledger 20261017130254, reconciled 2026-10-17.
 // Weekly watch journal: 136/122; applied ledger20261017200436. Flag remains absent.
 // Atlas metrics definitions: enforced candidate, NOT applied to production on this branch.
-export const EXPECTED_CANONICAL_SQL_COUNT = 139
-export const EXPECTED_ENFORCED_COUNT = 125
+export const EXPECTED_CANONICAL_SQL_COUNT = 140
+export const EXPECTED_ENFORCED_COUNT = 126
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([
@@ -295,3 +295,6 @@ export function evaluateAppliedMigrationLedger(appliedNames, repositoryState) {
     ]),
   }
 }
+
+// sales_strato_inbox is enforced canonical source, already live at20261017191904.
+// Its exact SQL hash is verified in the2026-10-18 release preflight; no allowlist expansion.

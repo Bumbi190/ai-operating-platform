@@ -224,11 +224,11 @@ describe('SDF-1C1B migration and structural boundary', () => {
         if (['node_modules', '.next', 'qa'].includes(name)) continue
         const path = join(directory, name)
         if (statSync(path).isDirectory()) walk(path)
-        else if (/\.(?:ts|tsx)$/.test(name) && /claim-credential\//.test(readFileSync(path, 'utf8')) && !path.includes('/code-work/claim-credential/')) importers.push(path)
+        else if (/\.(?:ts|tsx)$/.test(name) && /claim-credential\//.test(readFileSync(path, 'utf8')) && !path.replaceAll('\\', '/').includes('/code-work/claim-credential/')) importers.push(path)
       }
     }
     for (const part of ['app', 'lib', 'components']) walk(resolve(ROOT, 'apps/web', part))
-    expect(importers.map(path => path.slice(ROOT.length + 1)).sort()).toEqual([
+    expect(importers.map(path => path.slice(ROOT.length + 1).replaceAll('\\', '/')).sort()).toEqual([
       'apps/web/lib/atlas/code-broker/control-channel/dto.ts',
       'apps/web/lib/atlas/code-broker/control-channel/operations.ts',
     ])

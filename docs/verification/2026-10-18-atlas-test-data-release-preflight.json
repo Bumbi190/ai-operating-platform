@@ -1,0 +1,166 @@
+{
+  "capturedAt": "2026-10-18T04:08:52.614Z",
+  "readOnly": true,
+  "h": {
+    "ledgerCount": 62,
+    "canonicalCount": 68,
+    "pending": [
+      "atlas_test_data_registry",
+      "atlas_test_data_packages",
+      "atlas_test_data_execution",
+      "atlas_test_data_activity_guards",
+      "atlas_test_data_metrics_v2",
+      "atlas_test_data_integration_principals"
+    ],
+    "extraNames": [],
+    "businessSchemaSha256": "45290090ef97d70f787f76bdd73cd6c107088141addba5c01f4d22e21da45cda",
+    "liveOrganisationCount": 10,
+    "protectedIdsPresent": 2
+  },
+  "o": {
+    "ledgerCount": 160,
+    "canonicalCount": 140,
+    "enforcedCount": 126,
+    "pending": [
+      "handlarborsen_metrics_definition",
+      "handlarborsen_test_data_integration",
+      "handlarborsen_test_data_reviews"
+    ],
+    "unknown": [],
+    "before": "repo migration(s) are not applied to the production ledger:\n   • handlarborsen_metrics_definition\n   • handlarborsen_test_data_integration\n   • handlarborsen_test_data_reviews",
+    "afterHypotheticalOnly": {
+      "passes": true,
+      "result": {
+        "policyVersion": 2,
+        "canonicalSqlCount": 140,
+        "enforcedCount": 126,
+        "grandfatheredCount": 14,
+        "legacyOnlyAllowlistCount": 30,
+        "appliedLedgerCount": 163,
+        "unknownLedgerNames": [],
+        "duplicateLedgerNames": [],
+        "verifies": {
+          "canonicalSetIntegrity": true,
+          "enforcedPresence": true,
+          "knownLedgerNamesOnly": true,
+          "uniqueRepositoryLedgerNames": true,
+          "uniqueProductionLedgerNames": true
+        },
+        "doesNotVerify": [
+          "application order",
+          "ledger version values",
+          "migration SQL content hashes",
+          "full-schema replayability"
+        ]
+      }
+    }
+  },
+  "migrations": [
+    {
+      "repo": "H",
+      "projectRef": "smgjzmxbutksllxbjlez",
+      "file": "supabase/migrations/20261017160539_atlas_test_data_registry.sql",
+      "ledgerName": "atlas_test_data_registry",
+      "version": "20261017160539",
+      "bytes": 6662,
+      "sha256": "821dcecc9205e1eaae19d859d941095d2347e450a8ba90281a82f85be8cc9afd",
+      "gitBlobSha256": "821dcecc9205e1eaae19d859d941095d2347e450a8ba90281a82f85be8cc9afd"
+    },
+    {
+      "repo": "H",
+      "projectRef": "smgjzmxbutksllxbjlez",
+      "file": "supabase/migrations/20261017163317_atlas_test_data_packages.sql",
+      "ledgerName": "atlas_test_data_packages",
+      "version": "20261017163317",
+      "bytes": 34806,
+      "sha256": "749ae29668175d51a661f40b3c4bd872360c2ae3a508c48776d4dea7c62dd1e2",
+      "gitBlobSha256": "749ae29668175d51a661f40b3c4bd872360c2ae3a508c48776d4dea7c62dd1e2"
+    },
+    {
+      "repo": "H",
+      "projectRef": "smgjzmxbutksllxbjlez",
+      "file": "supabase/migrations/20261017165156_atlas_test_data_execution.sql",
+      "ledgerName": "atlas_test_data_execution",
+      "version": "20261017165156",
+      "bytes": 12507,
+      "sha256": "da4fef4d78b76469c30f4512d28303cc39b433129027678495af62c49327dbef",
+      "gitBlobSha256": "da4fef4d78b76469c30f4512d28303cc39b433129027678495af62c49327dbef"
+    },
+    {
+      "repo": "H",
+      "projectRef": "smgjzmxbutksllxbjlez",
+      "file": "supabase/migrations/20261017171220_atlas_test_data_activity_guards.sql",
+      "ledgerName": "atlas_test_data_activity_guards",
+      "version": "20261017171220",
+      "bytes": 95727,
+      "sha256": "b9fa9c478e28b5a15aca157d3e5cd8126fd5dd195dfc7cc8fc82808f0f4d52c1",
+      "gitBlobSha256": "b9fa9c478e28b5a15aca157d3e5cd8126fd5dd195dfc7cc8fc82808f0f4d52c1"
+    },
+    {
+      "repo": "H",
+      "projectRef": "smgjzmxbutksllxbjlez",
+      "file": "supabase/migrations/20261017183724_atlas_test_data_metrics_v2.sql",
+      "ledgerName": "atlas_test_data_metrics_v2",
+      "version": "20261017183724",
+      "bytes": 3329,
+      "sha256": "2d4976672e3256e6758e205a8a050a7e78a7481f07876da4c716d40290ed87c7",
+      "gitBlobSha256": "2d4976672e3256e6758e205a8a050a7e78a7481f07876da4c716d40290ed87c7"
+    },
+    {
+      "repo": "H",
+      "projectRef": "smgjzmxbutksllxbjlez",
+      "file": "supabase/migrations/20261017190929_atlas_test_data_integration_principals.sql",
+      "ledgerName": "atlas_test_data_integration_principals",
+      "version": "20261017190929",
+      "bytes": 8068,
+      "sha256": "326498adfa6dfe072ca2755390c752a80428c5160ae0159f128a19bdf5383649",
+      "gitBlobSha256": "326498adfa6dfe072ca2755390c752a80428c5160ae0159f128a19bdf5383649"
+    },
+    {
+      "repo": "O",
+      "projectRef": "iboepohjwrhtgshrqaol",
+      "file": "apps/web/supabase/migrations/20261017184015_handlarborsen_metrics_definition.sql",
+      "ledgerName": "handlarborsen_metrics_definition",
+      "version": "20261017184015",
+      "bytes": 21161,
+      "sha256": "1bf12413b39227d13f3a3088ce79411f204b69c8c82d5be6b456cdc7c95ad7fc",
+      "gitBlobSha256": "1bf12413b39227d13f3a3088ce79411f204b69c8c82d5be6b456cdc7c95ad7fc"
+    },
+    {
+      "repo": "O",
+      "projectRef": "iboepohjwrhtgshrqaol",
+      "file": "apps/web/supabase/migrations/20261017192903_handlarborsen_test_data_integration.sql",
+      "ledgerName": "handlarborsen_test_data_integration",
+      "version": "20261017192903",
+      "bytes": 10228,
+      "sha256": "05ecd416f91ab653a044166e495d7f6bc5e001eac7faea3761a0558476656e2f",
+      "gitBlobSha256": "05ecd416f91ab653a044166e495d7f6bc5e001eac7faea3761a0558476656e2f"
+    },
+    {
+      "repo": "O",
+      "projectRef": "iboepohjwrhtgshrqaol",
+      "file": "apps/web/supabase/migrations/20261017193411_handlarborsen_test_data_reviews.sql",
+      "ledgerName": "handlarborsen_test_data_reviews",
+      "version": "20261017193411",
+      "bytes": 11656,
+      "sha256": "b71a8deed4b8467f2ee5b995dd6e4329f31ccf8b69dccf4f340c79910846806c",
+      "gitBlobSha256": "b71a8deed4b8467f2ee5b995dd6e4329f31ccf8b69dccf4f340c79910846806c"
+    }
+  ],
+  "proposedInventoryBinding": {
+    "operatorBindingId": "bf1f981c-2beb-48ef-9003-6ff8d410b4eb",
+    "userId": "d63a09fb-448e-41b8-9fb2-9a608f5f1800",
+    "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+    "scope": "inventory only",
+    "proposedOnly": true
+  },
+  "alreadyAppliedCanonicalSource": {
+    "file": "apps/web/supabase/migrations/20261017191904_sales_strato_inbox.sql",
+    "liveVersion": "20261017191904",
+    "bytes": 36094,
+    "sha256": "1013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1",
+    "sourcePr": 386,
+    "productionApplyRequired": false
+  },
+  "productionWritesPerformed": false
+}

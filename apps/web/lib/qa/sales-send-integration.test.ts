@@ -6,6 +6,7 @@ import {readFileSync,mkdtempSync,rmSync} from 'node:fs'
 import {resolve,join} from 'node:path'
 import {tmpdir} from 'node:os'
 import {createSendWorkerApi} from '@/lib/sales/sending/worker-api'
+import {handleSalesTool} from '@/lib/sales/atlas-tools'
 const database=process.env.SALES_FIXTURE_DATABASE??'',suite=/^sales_[0-9]+$/.test(database)?describe:describe.skip
 suite('send real SQL / Next / fresh Python',()=>{it('binds exact SMTP payload and recovers crashes or uncertainty without another DATA',async()=>{
  const container=process.env.SALES_FIXTURE_CONTAINER??''
@@ -63,6 +64,11 @@ suite('send real SQL / Next / fresh Python',()=>{it('binds exact SMTP payload an
    expect(count).toBe(['accepted','lost250','lostHttpReceipt','crashAfterData','crashAfterLocalReceipt','rotateAccepted'].includes(mode)?1:0)
    const status=sql("select status from sales_send_jobs where id='"+send.id+"';")
    expect(status).toBe(['accepted','lostHttpReceipt','crashAfterLocalReceipt','rotateAccepted'].includes(mode)?'smtp_accepted':['lost250','crashAfterData'].includes(mode)?'delivery_unknown':['revoke','rotate'].includes(mode)?'claimed':'failed_before_send')
+   if(mode==='accepted'){
+    const atlas=await handleSalesTool('get_sales_reply_job',{projectId,jobId:claimed.ref.jobId},principal,request.conversationId,db,()=>true)
+    expect(atlas).toMatchObject({id:claimed.ref.jobId,editorialStatus:'approved',draft:{id:revision.id,sha256:revision.sha256,current:true},sendStatus:{known:true,job:{id:send.id,status:'smtp_accepted',revisionId:revision.id,revisionHash:revision.sha256,deliveryConfirmed:false}},sendingEnabled:false})
+    expect(send.id).not.toBe(claimed.ref.jobId)
+   }
   }finally{rmSync(stateDirectory,{recursive:true,force:true})}
  }
 },240000)})

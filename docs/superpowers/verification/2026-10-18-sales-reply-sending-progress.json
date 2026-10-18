@@ -1,5 +1,5 @@
 {
-  "state": "reviewed_qualified_pending_migration_history_reconciliation",
+  "state": "ready_for_owner_dedicated_send_confirmation",
   "task1": {
     "contractsAndDatabase": "implemented",
     "typescriptAndSchema": {
@@ -54,11 +54,49 @@
     "editorialStatus": "separate current approval from preparation state"
   },
   "rollout": {
-    "databaseApplied": false,
-    "sendPolicyInstalled": false,
-    "sendEnabled": false,
+    "sourceSha": "5efc3d7910ade5f8ff727aa3cd06e2aaa2aa6d56",
+    "deploymentId": "dpl_4MncXrWT334uoyC9qhcgD6LwwD9D",
+    "deploymentState": "READY",
+    "origin": "https://ai-operating-platform-d1a6yxvmk-bumbi190s-projects.vercel.app",
+    "stableOwnerUrl": "https://ai-operating-platform-web-git-codex-a-fa6a7c-bumbi190s-projects.vercel.app/projects/handlarborsen/sales",
+    "productionPromotion": false,
+    "databaseApplied": true,
+    "migrationVersion": "20261018074615",
+    "migrationSha256": "80158d54a4cc5d7f15901f0ed8e67dc7fa04a8738054e14fb1c7be1cf484e49e",
+    "serviceOnlyInvokerFunctions": 14,
+    "clientFunctionGrants": 0,
+    "clientTableGrants": 0,
+    "clientSequenceGrants": 0,
+    "ordinaryGuard": {
+      "enforced": 132,
+      "applied": 132,
+      "knownLedgerNames": 169,
+      "override": false
+    },
+    "client": {
+      "sourceSha": "5efc3d7910ade5f8ff727aa3cd06e2aaa2aa6d56",
+      "installationRoot": "C:\\Users\\Andre\\AppData\\Local\\OmniraSales\\pilots\\handlarborsen-send-5efc3d7910ad-complete",
+      "manifestSha256": "70eed90cdb60cf03b317ba38da75ca0f7de452f30ed1443a29728b38920a42b2",
+      "fileCount": 61
+    },
+    "stagedPython": {
+      "passed": 144,
+      "failed": 0
+    },
+    "credentialReferencesPreserved": true,
+    "credentialReferenceIdentitySha256": "a0216afdf17dc38cc961d687b32b430b98ab4196f0edb88e8018a51d9221d3c2",
+    "mailboxGeneration": 6,
+    "hostGeneration": 3,
+    "sendPolicyInstalled": true,
+    "policyVersion": 1,
+    "allowedRecipient": "andrehultgren190@gmail.com",
+    "sender": "Andre <info@handlarborsen.se>",
+    "scope": "general owner-test replies only, expiry two hours after installation",
+    "sendEnabled": true,
     "customerSending": false,
-    "actualReplySent": false
+    "actualReplySent": false,
+    "queueJobsAtHandoff": 0,
+    "ownerPreviewCanConfirm": true
   },
   "liveReadback": {
     "revisionId": "91736c50-3db6-4d68-86f8-1660672fed0f",
@@ -75,9 +113,10 @@
     "comparison": "exact identities saved; historical/timing reconciliation pending"
   },
   "limitations": [
-    "No live migration/policy or actual reply send yet.",
-    "Production schema history advanced in parallel; reconcile source first.",
-    "Browser connection currently times out on focus emulation; synthetic browser tests are qualified."
+    "Actual send awaits the owner dedicated button; previous text approval did not authorize SMTP.",
+    "No SMTP acceptance or Gmail delivery claim yet.",
+    "Browser extension currently times out when inspecting the existing user tab; protected deployment and owner-preview eligibility independently verified, desktop/mobile UI verified in browser fixtures.",
+    "Draft PR remains unmerged; no production alias promotion."
   ],
   "review": {
     "model": "gpt-6-astra",
@@ -105,5 +144,21 @@
     "appliedMigrationsMissingInBranch": 7,
     "source": "current origin/main",
     "action": "verify exact applied SQL hashes, import only migration sources and classification before build"
+  },
+  "postReviewQualification": {
+    "python": 144,
+    "desktopMobileBrowser": 16,
+    "realSqlNextFreshPython": 6,
+    "smtpModes": 13,
+    "reconciledSecuritySchemaReplySendingTests": 318,
+    "typecheck": "passed",
+    "fullWeb": {
+      "numTotalTests": 15096,
+      "numPassedTests": 13358,
+      "numFailedTests": 402,
+      "numPendingTests": 1332
+    },
+    "novelFailureIdentities": [],
+    "knownUnrelatedFailureIdentitiesFile": "2026-10-18-sales-reply-sending-regressions.json"
   }
 }

@@ -20,16 +20,18 @@ export function same(a:unknown,b:unknown):boolean{return JSON.stringify(a)===JSO
 export function freeze<T>(v:T):T{if(v&&typeof v==='object'){for(const child of Object.values(v))freeze(child);Object.freeze(v)}return v}
 /** Bounded parsed-JSON clone. No authenticity or hostile JS object/proxy boundary. */
 export function jsonCopy(v:unknown,maxBytes=262144):any {
- let nodes=0
+ let nodes=0,totalBytes=0
+ const charge=(amount:number)=>{totalBytes+=amount;ensure(totalBytes<=maxBytes,'input_too_large')}
  const walk=(x:unknown,depth:number):any=>{
   ensure(++nodes<=20000&&depth<=24,'input_complexity_exceeded')
-  if(x===null||typeof x==='boolean')return x
-  if(typeof x==='string'){ensure(bytes(x)<=maxBytes&&new TextDecoder().decode(new TextEncoder().encode(x))===x,'text_encoding_invalid');return x}
-  if(typeof x==='number'){ensure(Number.isFinite(x)&&!Object.is(x,-0),'number_invalid');return x}
+  if(x===null||typeof x==='boolean'){charge(JSON.stringify(x).length);return x}
+  if(typeof x==='string'){charge(bytes(JSON.stringify(x)));ensure(bytes(x)<=maxBytes&&new TextDecoder().decode(new TextEncoder().encode(x))===x,'text_encoding_invalid');return x}
+  if(typeof x==='number'){ensure(Number.isFinite(x)&&!Object.is(x,-0),'number_invalid');charge(JSON.stringify(x).length);return x}
   ensure(!!x&&typeof x==='object','json_value_required')
-  if(Array.isArray(x)){ensure(x.length<=4096&&Object.keys(x).length===x.length,'array_invalid');return x.map(c=>walk(c,depth+1))}
+  if(Array.isArray(x)){ensure(x.length<=4096&&Object.keys(x).length===x.length,'array_invalid');charge(2+Math.max(0,x.length-1));return x.map(c=>walk(c,depth+1))}
   const proto=Object.getPrototypeOf(x);ensure(proto===null||proto===Object.prototype,'plain_object_required')
   const entries=Object.entries(Object.getOwnPropertyDescriptors(x));ensure(entries.length<=256,'object_too_large')
+  charge(2+Math.max(0,entries.length-1)+entries.reduce((sum,[key])=>sum+bytes(JSON.stringify(key))+1,0))
   const out:Record<string,unknown>=Object.create(null)
   for(const[k,d]of entries){ensure(d.enumerable&&'value'in d&&!['__proto__','constructor','prototype'].includes(k),'json_property_invalid');out[k]=walk(d.value,depth+1)}
   return out

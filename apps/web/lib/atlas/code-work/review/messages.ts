@@ -26,7 +26,7 @@ function historyShape(input:unknown,c:AgentMessageContext):AgentMessageLedgerV1 
   for(const person of[from,to]){exact(person,['role','actorId','sessionId']);role(person.role);id(person.actorId);id(person.sessionId)}
   ensure(from.role!==to.role&&from.actorId!==to.actorId&&from.sessionId!==to.sessionId,'message_self_address')
   hash(assignmentHash);iso(observedAt);hash(pin)
-  const{messageHash:_,...projection}=entry;ensure(pin===messageHash(projection),'message_hash_mismatch')
+  const{messageHash:_,...projection}=entry;ensure(pin===messageHash(projection as Omit<AgentMessageV1,'messageHash'>),'message_hash_mismatch')
   if(body.replyTo!==null)ensure(h.entries.slice(0,i).some((prior:any)=>prior.id===body.replyTo&&prior.snapshotHash===body.snapshotHash),'message_reply_invalid')
  }
  return h as AgentMessageLedgerV1

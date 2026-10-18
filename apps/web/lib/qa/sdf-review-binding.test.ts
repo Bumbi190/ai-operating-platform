@@ -15,3 +15,5 @@ describe('independent review binding',()=>{
  for(const change of [(c:any)=>c.extra=true,(c:any)=>delete c.claimValid,(c:any)=>c.assignment.claim.extra=true,(c:any)=>c.assignment.worker.actorId='bad/id',(c:any)=>c.assignment.claim.expiresAt='2026-02-30T18:15:00.000Z',(c:any)=>c.requiredChecks[0].arguments.extra='x',(c:any)=>c.admission.extra=true])it('rejects unknown or malformed nested input '+change,()=>{const c=makeReviewContext();change(c);expect(validateReviewContext(c).ok).toBe(false)})
  it('copies and freezes rather than lending mutable authority pins',()=>{const c=makeReviewContext(),v=validateReviewContext(c);expect(v.ok).toBe(true);if(v.ok){c.assignment.worker.actorId='changed';expect(v.value.assignment.worker.actorId).toBe('worker');expect(Object.isFrozen(v.value.assignment.worker)).toBe(true)}})
 })
+
+it('bounds oversized input before inspecting later invalid content',()=>{const c:any={...makeReviewContext(),padding:'x'.repeat(262144),later:undefined};const result=validateReviewContext(c);expect(result.ok).toBe(false);if(!result.ok)expect(result.violations[0].code).toBe('input_too_large')})

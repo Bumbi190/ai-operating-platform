@@ -1,0 +1,134 @@
+{
+  "schemaVersion": "research.trading_pattern_gates.v0.1",
+  "status": "NON_CANONICAL_RESEARCH",
+  "reviewedAt": "2026-10-18",
+  "canProduceStrategySignals": false,
+  "canAuthorizeExecution": false,
+  "activeStrategyVersion": "Omnira Liquidity Manipulation Canonical v1.0",
+  "doc": "docs/trading-system/research/FAS3_GATE01-04_OCH_HISTORIK_READINESS_2026-10-18.md",
+  "rules": [
+    {
+      "gate": "GATE-01",
+      "name": "iFVG",
+      "status": "OPEN",
+      "approvedDetectionVersion": null,
+      "inputs": [
+        "completed 1m bars",
+        "post-manipulation state",
+        "FVG candidates"
+      ],
+      "decisions": {
+        "fvgFormationBoundary": null,
+        "originalFvgDirectionByTradeSide": null,
+        "inversionCrossingRule": null,
+        "confirmationBarPolicy": null,
+        "creationVsManipulationOrder": null,
+        "multipleCandidateTieBreak": null,
+        "expiryOrInvalidation": null
+      },
+      "fixtures": [
+        "IFVG-01",
+        "IFVG-02",
+        "IFVG-03",
+        "IFVG-04",
+        "PARITY-01",
+        "PARITY-02"
+      ]
+    },
+    {
+      "gate": "GATE-02",
+      "name": "CISD",
+      "status": "OPEN",
+      "approvedDetectionVersion": null,
+      "inputs": [
+        "completed 1m bars",
+        "post-manipulation state"
+      ],
+      "decisions": {
+        "referenceCandleSelection": null,
+        "triggerLevel": null,
+        "closeOrWickRequirement": null,
+        "displacementRequirement": null,
+        "dojiAndTieHandling": null,
+        "eventTimingAndExpiry": null,
+        "multipleCandidateTieBreak": null
+      },
+      "fixtures": [
+        "CISD-01",
+        "CISD-02",
+        "CISD-03",
+        "PARITY-01",
+        "PARITY-02"
+      ]
+    },
+    {
+      "gate": "GATE-03",
+      "name": "Equal High/Low",
+      "status": "OPEN",
+      "approvedDetectionVersion": null,
+      "inputs": [
+        "confirmed 5m/15m swing pivots",
+        "verified tick metadata",
+        "contract identity"
+      ],
+      "decisions": {
+        "toleranceUnit": null,
+        "toleranceValue": null,
+        "comparisonInclusive": null,
+        "matchingTimeframes": null,
+        "maxLookback": null,
+        "groupValidityAndSweepPolicy": null
+      },
+      "fixtures": [
+        "EQUAL-01",
+        "EQUAL-02",
+        "EQUAL-03"
+      ]
+    },
+    {
+      "gate": "GATE-04",
+      "name": "SMT NQ/ES",
+      "status": "OPEN",
+      "approvedDetectionVersion": null,
+      "inputs": [
+        "completed comparable NQ and ES bars",
+        "contract identity",
+        "session calendar"
+      ],
+      "decisions": {
+        "liquidityCorrespondence": null,
+        "timeframePairPolicy": null,
+        "maxTimeSeparation": null,
+        "sweepPriceAndCloseRules": null,
+        "missingDataUnknownRules": null,
+        "expiryAndUpgradeCutoff": null
+      },
+      "fixtures": [
+        "SMT-01",
+        "SMT-02",
+        "SMT-03",
+        "SMT-04"
+      ]
+    }
+  ],
+  "historicalData": {
+    "gate": "GATE-08",
+    "status": "PARTIALLY_CLOSED",
+    "operationalProvider": null,
+    "cmeLicenseVerified": false,
+    "contractCalendarReady": false,
+    "sessionCalendarReady": false,
+    "canonicalHistoricalSourceC3CRuntimeVerified": false,
+    "validationDataVersion": null,
+    "sourceState": "UNKNOWN"
+  },
+  "promotion": {
+    "requiresHumanReview": true,
+    "requiresIndependentReview": true,
+    "requiresGoldenTests": true,
+    "requiresCanonicalAmendment": true,
+    "requiresVersionBump": true,
+    "requiresReproducibleData": true,
+    "automatedApprovalAllowed": false
+  }
+}

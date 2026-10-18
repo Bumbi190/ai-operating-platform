@@ -53,3 +53,10 @@ After a real run, inspect the three illustrations and Victoria audio, download t
 Current deployment URL, sign-in state and any real provider attempt belong in the latest Notion/PR handoff. Never put signed asset links, tokens or provider keys in Git/Notion.
 
 Source freshness, real image quality, usage rights, exact encoded-output release, production composition/release, DST-safe schedule, metric snapshots and rollback must still be satisfied before the seven-day live trial. The trial is not activated by this feature.
+
+
+## Main reconciliation before deployment
+
+The first Vercel build refused an unknown already-applied sales_strato_inbox migration. Merged origin/main f0a5232 (including PR #401 source-only reconciliation) without conflicts. No migration was applied and no guard override was used. The canonical registry remains fail-closed.
+
+On the merged tree: 129/129 Remotion tests and both isolation contracts PASS; 334/334 web tests across 12 files PASS (including migration guard/reconciliation and newly merged weekly-report tests); full web TypeScript PASS. Build/runtime status is recorded separately after deployment, not inferred from these checks.

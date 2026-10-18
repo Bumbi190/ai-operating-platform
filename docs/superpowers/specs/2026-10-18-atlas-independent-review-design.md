@@ -1,6 +1,6 @@
 # Atlas: oberoende kodgranskare och kommunikation mellan agenter
 Datum: 2026-10-18
-Status: Skriftlig specifikation för ägargranskning. André godkände inriktningen i samtalet 2026-10-18; detta dokument aktiverar ingen funktion.
+Status: Skriftlig specifikation godkänd av André 2026-10-18 19:57 Europe/Stockholm. Dokumentet aktiverar ingen funktion.
 Bas: codex/atlas-code-worker-design-20261018, 3dfa1573f19e36aaec9bbfe651cf04674ecb5eee.
 
 ## Avsikt och relation till tidigare design

@@ -1,6 +1,6 @@
 # Atlas / Handlarbörsen test-data verification and release receipt
 
-Latest continuation2026-10-18: [concrete production release and inventory-only proposal](2026-10-18-release-preflight.md). Current checks and rulings57–60 are appended below; earlier measurements remain historical.
+Latest continuation2026-10-18: [concrete production release and inventory-only proposal](2026-10-18-release-preflight.md). Current checks and rulings57–61 are appended below; earlier measurements remain historical.
 
 Verified candidate after one independent whole-branch review and one coordinator fix pass. No production deployment, production schema change, credential provisioning, grant activation, classification of the remaining eight companies or production cleanup has occurred.
 
@@ -325,3 +325,15 @@ Inventory-only grant proposals pass6/6 checks on the owned local H/O databases, 
 60. Continuation Ruling: stage the first production activation as inventory-only for the freshly verified project owner, using one bound30-day H/O principal with empty operation lists, read-key capability only, mutation flags false and execute keys unset — the approved first-live step is authenticated inventory and the eight remaining companies still need individual classification/review — cost if wrong: Atlas can inspect but cannot prepare/execute quarantine or restore until the owner explicitly authorises that later scope. No account mode, metrics collector version or business data changes. Proposed grant SQL tested6/6 against owned local databases with rollback, including exact idempotency, changed owner and revoked binding refusal.
 
 No deferred minors. No new declined-to-judge items. The sole original independent review and its one fix pass remain recorded above. Shared-main merge, production schema apply and production activation are the remaining explicit-approval boundary.
+
+## Final integration with concurrent releases
+
+Shared main advanced tof0a52321361b7f1a03d5336cbd7a5c8c4d769ac5 through PR400 (weekly competitor report) and PR401 (the identical already-applied inbox source). Integrated privately at3dbc9b6150d624b872519a3648fba6dfa127f934. Exactly three guard/schema files conflicted. The actual combined corpus remains140/126, not a sum that double-counts the inbox migration. All own omission proofs/captured-ledger tests and all upstream tests are retained. Incoming table-source annotations were merged with the separately observed live inbox facts, and the three own DB_INTERNAL created-not-live classifications were preserved.
+
+Final expanded verification:520/520 tests in26 files PASS, including weekly report/model/UI, exact inbox-source reconciliation, own cleanup/operator/chat/voice/controller/security/migration gates and legacy-news project boundary. Local review/outbox/lifecycle SQL34/34 PASS; nonincremental tsc0. Final integrated normal production build exit0 (approximately80seconds),63/63 static pages. Generated design bundle restored. Only later documentation changes follow this verified product-source pin.
+
+No full-O green/full-production-replay claim; earlier baseline/lint limits still apply. The original independent review remains the sole reviewer pass; subsequent main integration and exact already-live source reconciliation are explicitly supported by the expanded local checks, not a second review claim. Both new read/execute credential prefixes were absent in read-only Vercel metadata for H/O; values were not decrypted and nothing was configured.
+
+61. Continuation Ruling: preserve newly landed shared mainf0a5232 (PR400 weekly report + PR401 identical applied-inbox source) in the private branch and resolve only the three conflicting guard/schema files — the same SQL blob appears once, so total remains140/126, own-three pending proofs remain, and incoming source annotations/four live inbox facts plus own3 DB_INTERNAL created-not-live entries are merged rather than dropped — cost if wrong: no shared-main merge until expanded weekly/source-reconciliation/security/type/build checks pass. No mail application feature is imported; PR386 stays separate. This latest integration supersedes the earlier37ffd-only source boundary.
+
+The [production proposal](2026-10-18-release-preflight.md) and its exact pending SQL hashes are ready for owner approval. Scope is both releases, nine actual pending migrations, a production-only read key and inventory-only30-day bindings with empty operation lists. Mutation flags stay false and execute keys unset. Metrics collector stays v1, account mode observer. No target class/cleanup/restore or paid/provider smoke.

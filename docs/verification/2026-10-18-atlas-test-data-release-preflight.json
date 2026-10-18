@@ -162,5 +162,19 @@
     "sourcePr": 386,
     "productionApplyRequired": false
   },
-  "productionWritesPerformed": false
+  "productionWritesPerformed": false,
+  "finalIntegratedSource": {
+    "omnira": "3dbc9b6150d624b872519a3648fba6dfa127f934",
+    "omniraMain": "f0a52321361b7f1a03d5336cbd7a5c8c4d769ac5",
+    "handlarborsen": "03dfb1cd2adb7c92a05ae603ee089ff2616f7116",
+    "tests": {
+      "unit": 520,
+      "files": 26,
+      "reviewSql": 34,
+      "typecheck": 0,
+      "normalBuild": 0,
+      "inventoryProposals": 6
+    },
+    "ownEnvPrefixesPresent": false
+  }
 }

@@ -1,0 +1,99 @@
+{
+  "state": "qualified_needs_input",
+  "client": {
+    "sourceSha": "24e2fd1fe574eb771f72f112591e9436cf2c2076",
+    "path": "C:\\Users\\Andre\\AppData\\Local\\OmniraSales\\pilots\\handlarborsen-reply-24e2fd1fe574",
+    "fileCount": 55,
+    "manifestSha256": "c123de5a8edffb42b728e9266b76e782cba7bcef32309e539537a8030ddceebd",
+    "pythonExit": 0,
+    "verifiedAgainstServerSourceSha": "a254381fae32fbe9a6f641a693a76090f190ef69"
+  },
+  "migration": {
+    "path": "apps/web/supabase/migrations/20261018040242_sales_reply_preparation.sql",
+    "sha256": "c5eee2c3487f75c11cf5fa621e06845b86cf10c0c87b0a5907d484c652ee4b94",
+    "applied": false
+  },
+  "activeB2Changed": false,
+  "replyEnabled": false,
+  "sendingEnabled": false,
+  "realTrial": "needs_input",
+  "missing": [
+    "owner-selected complete message",
+    "confirmed exact branch/contact/address/history",
+    "confirmed immutable offer revision"
+  ],
+  "provider": "existing first-party Claude CLI2.1.296",
+  "inputBoundaries": {
+    "selectedMessageBytes": 8192,
+    "totalPromptBytes": 32768,
+    "oneContact": true,
+    "oneOffer": true,
+    "attemptCeiling": 10,
+    "cost": "subscription usage not independently metered"
+  },
+  "server": {
+    "candidateSourceSha": "a254381fae32fbe9a6f641a693a76090f190ef69",
+    "deployed": false,
+    "reason": "reviewed DDL and concrete trial prerequisites pending; ordinary guard remains enforced"
+  },
+  "qualification": {
+    "python": 125,
+    "browser": 11,
+    "realSqlIntegrations": 5,
+    "cancelEditRaces": 2,
+    "salesSchemaTests": 312,
+    "typecheckExit": 0,
+    "freshReview": {
+      "critical": 0,
+      "importantFixed": 2,
+      "minorDeferred": 1,
+      "passes": 1
+    },
+    "finalBroadComparison": {
+      "sourceSha": "a254381fae32fbe9a6f641a693a76090f190ef69",
+      "numTotalTests": 15045,
+      "numPassedTests": 13309,
+      "numFailedTests": 401,
+      "numPendingTests": 1331,
+      "newFailureIdentities": 0,
+      "remainingFailures": "exact historical401",
+      "platformAuthorityFinalPass": 53
+    }
+  },
+  "activeB2": {
+    "clientSourceSha": "7acf719ae34f8d45230539c9735a458bcbf5847d",
+    "serverSourceSha": "b2a5ef227f60648d92531621f12e6aaf23f64db1",
+    "origin": "https://ai-operating-platform-lc074jvu6-bumbi190s-projects.vercel.app",
+    "deploymentId": "dpl_J12MNKMNf8Eu4pXGQZpYY2BBdb5K",
+    "hostGeneration": 3,
+    "mailboxGeneration": 6
+  },
+  "liveRefresh": {
+    "checkedAt": "2026-10-18T04:59:01.202714Z",
+    "savedHeaders": 6,
+    "selectedCompleteMessages": 0,
+    "contacts": 0,
+    "offers": 0,
+    "initialJobs": 0,
+    "replySchemaLive": false,
+    "worker": {
+      "hostGeneration": 3,
+      "desiredState": "running",
+      "cliState": "ready",
+      "revoked": false,
+      "lastSeenAt": "2026-10-18T04:58:51.382242Z"
+    },
+    "mailbox": {
+      "generation": 6,
+      "status": "authenticated"
+    },
+    "scope": {
+      "state": "enabled",
+      "version": 2,
+      "uidValidity": "1791301212"
+    }
+  },
+  "realProviderCalls": 0,
+  "stratoDraftsCreated": 0,
+  "emailsSent": 0
+}

@@ -7,3 +7,5 @@ Both fixed in one TDD pass; no re-review. Full post-fix real SQL/races/5 integra
 Minor deferred: private source/revision details disclosure.
 Reviewer strengths: exact branch bindings, strict model output and tool isolation, receipt-first uncertainty recovery, metadata-only canonical approvals.
 Declined behaviors and root decisions/costs are preserved exhaustively in the rulings record. Real provider quality/entitlement/rollout remain a concrete-trial gate. Historical B2/unrelated baseline failures are outside this increment.
+
+Final root assessment: both Important findings fixed; local candidate qualified with the named deferred Minor and live needs_input gate. Final full401 historical failures, zero new identities; platform53/53 pass. No second review was dispatched.

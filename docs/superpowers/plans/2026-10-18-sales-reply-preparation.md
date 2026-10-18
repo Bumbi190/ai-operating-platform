@@ -86,10 +86,10 @@ Nu finns sex inkommande rubrikrader, men ingen mejltext är vald och kontaktregi
 **Consumes:** Tasks1–3, current active B2 install/server pins from actual activation receipt (refresh them; do not assume generation3 after later rotation).
 **Produces:** reviewed independent qualification and separately authorized concrete single reply trial; no sending capability.
 
-- [ ] Write integration assertions: SQL->Next->fresh Python subprocess->fake text runtime->durable draft->owner/Atlas read; kill before/after result commit, wrong owner/branch, pause/revoke/offer change during runtime, duplicated request and uncertain-dispatch recovery. Assert no second model call on an accepted replay, no send operation.
-- [ ] Run and observe new integration FAIL; complete only the minimal seams and verify all cases PASS.
-- [ ] Run full Python, scoped sales/security/schema, typecheck and browser; compare full web failures by exact identity against a fresh approved base. Historical401 is earlier evidence, not permission to absorb new failures. Record any changed identities.
-- [ ] One fresh whole-increment review, one regression-tested Important/Critical fix pass. No re-review loop; report all rulings and deferred minors.
+- [x] Write integration assertions: SQL->Next->fresh Python subprocess->fake text runtime->durable draft->owner/Atlas read; kill before/after result commit, wrong owner/branch, pause/revoke/offer change during runtime, duplicated request and uncertain-dispatch recovery. Assert no second model call on an accepted replay, no send operation.
+- [x] Run and observe new integration FAIL; complete only the minimal seams and verify all cases PASS.
+- [x] Run full Python, scoped sales/security/schema, typecheck and browser; compare full web failures by exact identity against a fresh approved base. Historical401 is earlier evidence, not permission to absorb new failures. Record any changed identities.
+- [x] One fresh whole-increment review, one regression-tested Important/Critical fix pass. No re-review loop; report all rulings and deferred minors.
 - [ ] Prepare migration hash, protected preview and distinct hashed client without changing current B2 host. Show concrete trial: one message already selected by owner, verified branch/email/history, sender, offer revision, exact input boundaries, Claude provider and ten-attempt job ceiling. With no complete relevant message or confirmed contact/offer, stop at needs_input and report limitation.
 - [ ] After plan review and concrete trial authorization, apply only reviewed DDL with ordinary guard/RLS/catalog/advisors checks, qualify preview contract, preserve manager/mailbox/key refs through controlled origin migration, upgrade only owned task after its old process is gone.
 - [ ] Observe one real authorized reply preparation. Show the draft privately in Atlas and actual status/cost uncertainty; persist evidence and restart/replay proof. No test email is sent and no Strato draft is saved.
@@ -100,3 +100,6 @@ Nu finns sex inkommande rubrikrader, men ingen mejltext är vald och kontaktregi
 Spec §§4–9 maps to confirmed branch/offer/history and no initial recontact (Task1), isolated bounded provider and recovery (Task2), bound Atlas/human revision review (Task3), and real qualification with separate sending boundary (Task4). All five Review Focus cases have named tests. No implementation or extra mailbox/model permission is implied by creating this plan.
 
 Inline execution is already selected. André reviews this concrete B3 plan before implementation, then the exact first model trial before any selected private message is sent to that provider.
+
+
+B3 local qualification2026-10-18: source/client candidate and reviewed fixes are ready; actual trial/DDL/protected-preview/host rollout remain needs_input. See verification/2026-10-18-sales-reply-candidate.json and verification/2026-10-18-sales-reply-preparation.md. Do not mark Task4 complete until the real selected-message trial and actual rollout receipt exist.

@@ -307,4 +307,4 @@ export function evaluateAppliedMigrationLedger(appliedNames, repositoryState) {
 
 // Integrated main8d91af9: four already-live social scheduling migrations; sales reply source included once. Counts145/131; frozen14/30 unchanged.
 
-// The Prompt news review remains one additional enforced, unapplied migration; frozen 14/30 unchanged.
+// The Prompt news review is enforced and applied as ledger 20261018182224; frozen 14/30 unchanged.

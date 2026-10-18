@@ -24,7 +24,11 @@ const lerp=(frame:number,start:number,end:number,a:number,b:number)=>
 
 type NewsFrameProps=Omit<DailyPilotProps,'creativeVersion'> & {presentation:'private_review'|'production'}
 
-export function ThePromptDailyPilot(props:DailyPilotProps){
+// A mapped object type lets Remotion infer its required props record without
+// adding an index signature to DailyPilotProps (which would erase Omit keys).
+type DailyPilotRenderProps = {[Key in keyof DailyPilotProps]:DailyPilotProps[Key]}
+
+export function ThePromptDailyPilot(props:DailyPilotRenderProps){
   return <ThePromptNewsFrame {...props} presentation="private_review"/>
 }
 

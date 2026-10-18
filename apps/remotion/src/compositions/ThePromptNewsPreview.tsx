@@ -79,7 +79,7 @@ export function ThePromptNewsPreview({story}:{story:Story}){
   const {fps,durationInFrames}=useVideoConfig()
   const timeMs=frame/fps*1000
   const p=STORIES[story]
-  const phase=p.starts.reduce((count,start)=>timeMs>=start?count+1:count,0)-1
+  const phase=p.starts.reduce<number>((count,start)=>timeMs>=start?count+1:count,0)-1
   const segment=Math.max(0,Math.min(3,phase))
   const startFrame=Math.ceil(p.starts[segment]/1000*fps)
   const local=Math.max(0,frame-startFrame)

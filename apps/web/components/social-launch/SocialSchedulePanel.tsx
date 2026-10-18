@@ -5,6 +5,7 @@ import {stockholmLocal} from '@/lib/social-launch/content/validate'
 import type {ScheduleBatchView,ScheduleManifest,ScheduleItem,MonthlyRule} from '@/lib/social-launch/scheduling/types'
 import type {ScheduleWorkspaceView} from '@/lib/social-launch/scheduling/store'
 import type {monthlyPlanningSlots} from '@/lib/social-launch/scheduling/planning'
+import type {ScheduleReadiness} from '@/lib/social-launch/scheduling/readiness'
 import styles from './SocialSchedulePanel.module.css'
 type View=ScheduleWorkspaceView&{canManage:boolean;dispatchEnabled:boolean;monthlySlots:ReturnType<typeof monthlyPlanningSlots>}
 type Props={projectId:string;posts:SocialContentPost[];disabled:boolean}
@@ -14,6 +15,11 @@ function channel(value:string){return value==='instagram'?'Instagram':'Facebook'
 function date(value:string){return new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Stockholm',weekday:'long',year:'numeric',month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(value))}
 function month(value:string){return new Intl.DateTimeFormat('sv-SE',{timeZone:'UTC',year:'numeric',month:'long'}).format(new Date(value+'-01T12:00:00Z'))}
 function link(value:string|null|undefined){try{const u=new URL(value??'');return u.protocol==='https:'&&!u.username&&!u.password&&!u.port&&['www.facebook.com','www.instagram.com'].includes(u.hostname)?u.href:null}catch{return null}}
+function readinessLabel(code:string){
+ const [key,value]=code.split(':')
+ const labels:Record<string,string>={runner_unverified:'Schemakörningen behöver verifieras.',dispatch_disabled:'Automatiken är avstängd.',no_approved_batch:'Nästa publiceringsomgång behöver granskas och godkännas.',review_required:'Innehållet har ändrats och behöver granskas igen.',receipt_recovery_required:'Ett tidigare publiceringsutfall behöver bekräftas.',binding_changed:'Kontot har ändrats sedan godkännandet.',binding_unverified:'Kontot kunde inte verifieras just nu.',monthly_content_missing:'Månadens smygtitt behöver förberedas och godkännas.',release_evidence_missing:'Månadens kundåtkomst behöver bekräftas inom ett dygn före publiceringen.',queue_stopped:'Publiceringen är pausad.',queue_expired:'En publiceringstid har passerat.',queue_review_required:'Nästa inlägg behöver granskas igen.',queue_release_required:'Nästa smygtitt väntar på bekräftad kundåtkomst.'}
+ return (labels[key]??'Schemat behöver kontrolleras igen.')+(value?' ('+(['facebook','instagram'].includes(value)?channel(value):value)+')':'')
+}
 function buildManifest(projectId:string,posts:SocialContentPost[]):ScheduleManifest{
  const occasions=new Map<string,string>(),seen=new Set<string>()
  const items=[...posts].sort((a,b)=>(a.revision.draft.scheduledAt??'').localeCompare(b.revision.draft.scheduledAt??'')||a.revision.draft.channel.localeCompare(b.revision.draft.channel)).map(post=>{
@@ -29,15 +35,16 @@ function buildManifest(projectId:string,posts:SocialContentPost[]):ScheduleManif
 function Workspace({projectId,posts,disabled}:Props){
  const [model,setModel]=useState<View|null>(null),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(''),[needsRefresh,setNeedsRefresh]=useState(false)
  const [selected,setSelected]=useState<string[]>([]),[confirmed,setConfirmed]=useState<Record<string,boolean>>({}),[loaded,setLoaded]=useState<Record<string,boolean>>({}),[generation,setGeneration]=useState(0)
+ const [readiness,setReadiness]=useState<ScheduleReadiness|null>(null)
  const [releaseUrls,setReleaseUrls]=useState<Record<string,string>>({}),[releaseChecks,setReleaseChecks]=useState<Record<string,boolean>>({})
  const live=useRef(true),flight=useRef(false),controllers=useRef(new Set<AbortController>()),sequence=useRef(0),pending=useRef<{key:string;body:Record<string,unknown>}|null>(null)
  const sourceSignature=posts.map(p=>p.id+':'+p.revision.id+':'+p.revision.sha256+':'+(p.decision?.id??'')).join('|')
- useEffect(()=>{setConfirmed({});setSelected([]);pending.current=null},[sourceSignature,disabled])
+ useEffect(()=>{setConfirmed({});setSelected([]);setReadiness(null);pending.current=null},[sourceSignature,disabled])
  const accept=useCallback(async(signal:AbortSignal,n:number)=>{
   const r=await fetch('/api/social-schedules?'+new URLSearchParams({projectId}),{cache:'no-store',signal}),v=await r.json()
   if(!r.ok||v.projectId!==projectId)throw Error('Schemat kunde inte läsas. Försök läsa igen.')
   if(!live.current||signal.aborted||n!==sequence.current)return
-  setModel(v);setNeedsRefresh(false);setLoaded({});setConfirmed({});setGeneration(g=>g+1)
+  setReadiness(null);setModel(v);setNeedsRefresh(false);setLoaded({});setConfirmed({});setGeneration(g=>g+1)
  },[projectId])
  const load=useCallback(async()=>{
   if(flight.current)return
@@ -47,7 +54,7 @@ function Workspace({projectId,posts,disabled}:Props){
  },[accept])
  useEffect(()=>{live.current=true;void load();const active=controllers.current;return()=>{live.current=false;sequence.current++;active.forEach(c=>c.abort())}},[load])
  async function act(operation:string,input:Record<string,unknown>,intentKey?:string){
-  if(flight.current||loading||!model?.canManage||needsRefresh||operation!=='revoke'&&disabled)return
+  if(flight.current||loading||!model?.canManage||needsRefresh||!['revoke','readiness'].includes(operation)&&disabled)return
   const key=intentKey??JSON.stringify({operation,...input})
   if(pending.current?.key!==key)pending.current={key,body:{operation,...input,...(['propose','approve'].includes(operation)?{idempotencyKey:crypto.randomUUID()}:{})}}
   const body=pending.current.body,c=new AbortController(),n=++sequence.current
@@ -56,6 +63,7 @@ function Workspace({projectId,posts,disabled}:Props){
    const r=await fetch('/api/social-schedules',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body),signal:c.signal}),value=await r.json()
    if(!live.current||c.signal.aborted||n!==sequence.current)return
    if(!r.ok)throw Error(r.status===409?'Innehållet, tiden eller kontot har ändrats. Läs schemat och granska den senaste versionen igen.':'Ändringen kunde inte bekräftas. Läs sparat schema innan du fortsätter.')
+   if(operation==='readiness'){pending.current=null;setReadiness(value);return}
    pending.current=null;setSelected([]);setReleaseChecks({});await accept(c.signal,n)
   }catch(e){if(live.current&&!c.signal.aborted&&n===sequence.current){setNeedsRefresh(true);setConfirmed({});setError((e as Error).message)}}
   finally{controllers.current.delete(c);if(n===sequence.current){flight.current=false;if(live.current)setBusy(false)}}
@@ -81,6 +89,10 @@ function Workspace({projectId,posts,disabled}:Props){
   {disabled&&<p className={styles.notice}>Ändringen behöver sparas och granskas igen innan schemat kan godkännas.</p>}
   {model&&!model.dispatchEnabled&&<p className={styles.notice}>Automatiken är avstängd. Godkända inlägg väntar tills aktiveringen är klar.</p>}
   {model&&!model.canManage&&<p>Du kan läsa schemat. Godkännande kräver projektets operatör.</p>}
+  {model?.canManage&&<div className={styles.notice}><button disabled={busy||loading||needsRefresh} onClick={()=>void act('readiness',{projectId})}>Kontrollera schemat utan publicering</button>
+   {readiness&&<div role="status"><p><strong>{readiness.ready?'Kontrollen är godkänd just nu.':'Detta återstår före automatisk publicering:'}</strong></p><ul>{readiness.blockers.map(code=><li key={code}>{readinessLabel(code)}</li>)}</ul><p>Kontrollerat {date(readiness.checkedAt)}. Inga inlägg skickades och inga publiceringsjobb startades.</p></div>}
+  </div>}
+
   {model&&<><details className={styles.prepare}><summary>Förbered en vecka från granskade utkast</summary>
    <p>Välj inlägg som har en godkänd bild, text och önskad tid. Ett sparat förslag publicerar inget.</p>
    {!eligible.length&&<p>Sätt önskad tid i utkastet och granska innehållet. Då kan det väljas här.</p>}

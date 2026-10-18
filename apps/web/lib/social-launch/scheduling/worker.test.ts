@@ -3,8 +3,8 @@ import {beforeAll,afterAll,it,expect,vi} from 'vitest'
 const admin=vi.hoisted(()=>({db:null as any}))
 vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>admin.db}))
 import {initializeSchedulingDb} from './test-db'
-import {scheduleFixture,setScheduleClock} from './fixtures.test-utils'
-import {approveSchedule,claimScheduleJob,readScheduleReceipt,revokeSchedule} from './store'
+import {scheduleFixture,setScheduleClock,appendScheduleFixtureItem} from './fixtures.test-utils'
+import {proposeSchedule,approveSchedule,claimScheduleJob,readScheduleReceipt,revokeSchedule} from './store'
 import {runScheduleTick,runScheduledPublication} from './worker'
 import {MetaManualProvider} from '../publication/provider'
 import {testSql} from '../../website-build/test-db'
@@ -95,3 +95,21 @@ it('Instagram final publish is refused if image verification crosses the ten-min
  expect(d.calls.filter(c=>c.init.method==='POST')).toHaveLength(1)
  expect(testSql("select state from social_schedule_jobs where project_id='"+f.manifest.projectId+"';")).toBe('missed')
 },20000)
+
+it('processing Instagram containers yield to other jobs and remain eligible on later ticks',async()=>{
+ const f=await scheduleFixture(db,{channel:'instagram'})
+ const second=await appendScheduleFixtureItem(db,f)
+ const b=await proposeSchedule(db,f.principal,{projectId:f.manifest.projectId,manifest:{projectId:f.manifest.projectId,items:[second]},expectedRevisionId:null,idempotencyKey:crypto.randomUUID()})
+ await approveSchedule(db,f.principal,f.approval)
+ await approveSchedule(db,f.principal,{...f.approval,batchId:b.batchId,revisionId:b.revisionId,sha256:b.sha256,idempotencyKey:crypto.randomUUID()})
+ let created=0
+ const d=dependencies(f,async(url,init)=>Response.json(init.method==='POST'?{id:String(++created)}:url.includes('status_code')?{status_code:'IN_PROGRESS'}:{permalink:'https://www.instagram.com/p/fixture/'}))
+ for(let minute=0;minute<4;minute++){
+  const now=new Date(Date.parse(f.dueAt)+minute*60000).toISOString();setScheduleClock(now)
+  const result=await runScheduleTick(db,{workerId:'fair_'+minute,now,dryRun:false},{...d.deps,now:()=>Date.parse(now)})
+  expect(result.result).toBe('waiting')
+ }
+ expect(d.calls.filter(c=>c.init.method==='POST')).toHaveLength(2)
+ expect(d.calls.filter(c=>c.url.includes('/1?')&&c.url.includes('status_code')).length).toBeGreaterThan(1)
+ expect(d.calls.filter(c=>c.url.includes('/2?')&&c.url.includes('status_code')).length).toBeGreaterThan(1)
+},35000)

@@ -23,6 +23,7 @@ window.fetch=async(input,init)=>{
  if(typeof input==='string'&&input.startsWith('/api/social-schedules')){
   if(init?.method==='POST'){
    const body=JSON.parse(String(init.body))
+   if(body.operation==='readiness')return Response.json({ready:false,blockers:['dispatch_disabled','no_approved_batch'],nextJobs:[],dryRun:{jobId:null,result:'no_jobs'},checkedAt:new Date().toISOString()})
    if(body.operation==='approve')state.status='approved'
    else if(body.operation==='revoke')state.status='revoked'
    else if(body.operation==='monthly_rule_save')state.monthlyEnabled=body.rule.enabled

@@ -39,14 +39,28 @@
       "tables": [
         "agent_decisions",
         "ai_cost_snapshots",
-        "memory_refs"
+        "memory_refs",
+        "social_schedule_batches",
+        "social_schedule_decisions",
+        "social_schedule_jobs",
+        "social_schedule_events",
+        "social_monthly_release_rules",
+        "social_monthly_release_evidence",
+        "social_publication_reconciliation_proofs"
       ],
       "meaning": "Created by a migration but absent from the production catalog at capture time — never applied there, or dropped out-of-band. They are NOT a fresh-deploy hazard: each declares RLS in its own migration, so a rebuild creates them protected. Listed so their absence from the table map is a recorded fact rather than a silent gap, and so the fail-closed rule can distinguish them from a genuinely new unprotected table.",
       "requirement": "Every entry must have RLS declared in the migration corpus.",
       "classes": {
         "agent_decisions": "SERVER_ONLY",
         "ai_cost_snapshots": "SERVER_ONLY",
-        "memory_refs": "SERVER_ONLY"
+        "memory_refs": "SERVER_ONLY",
+        "social_schedule_batches": "SERVER_ONLY",
+        "social_schedule_decisions": "SERVER_ONLY",
+        "social_schedule_jobs": "SERVER_ONLY",
+        "social_schedule_events": "SERVER_ONLY",
+        "social_monthly_release_rules": "SERVER_ONLY",
+        "social_monthly_release_evidence": "SERVER_ONLY",
+        "social_publication_reconciliation_proofs": "SERVER_ONLY"
       },
       "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class."
     },
@@ -81,7 +95,8 @@
     "local_text_live_note": "Scoped actual production observation2026-10-17 after owner-approved atlas_local_text(ledger20261017174301,SHA5024a72db523f63ce7f42f4a5e0f774d50b34cda9a3f6e6f1c3f698610eba180) and atlas_local_text_lifecycle(ledger20261017180713,SHAd5c1ca9aba0c993a6be27625cfa9852d0eb719be5ccc5eb826bfa95acfd0aba3). All15tables RLS ON,14SERVER_ONLY/no policies/client grants; jobs1owner policy+safe column-only authenticated SELECT. Zero anon/authenticated function EXECUTE. Security98INFO/36WARN; WARN20/7/8/1 unchanged. Ledger158/publictables150. Zero devices/jobs at observation; release/enrollment remain separate.",
     "local_text_lifecycle_live_reconciliation_note": "Source-only reconciliation 2026-10-17: already-applied atlas_local_text_lifecycle ledger 20261017180713 matches frozen cff355230fe4250fa5ecd6ab4733cd99cab9a43b, 59067 characters, SHA256 d5c1ca9aba0c993a6be27625cfa9852d0eb719be5ccc5eb826bfa95acfd0aba3. Read-only live catalog: incidents/human_reviews/retention SERVER_ONLY, RLS on, FORCE off, zero policies/client table or column grants, service ALL including DELETE/TRUNCATE. All 44 local_text routines have empty search_path and client EXECUTE denied: 43 INVOKER plus local_text_conversation_deleted DEFINER trigger (also no service EXECUTE), scoped by auth.uid/old.user_id and old.id. Jobs metadata_expires_at is not authenticated-selectable. The earlier base migration note records its initial capture; lifecycle is now live. No apply, rollback, application/model code or activation included; other table capture scope unchanged.",
     "handlarborsen_watch_journal_note": "Scoped live production observation2026-10-17 after handlarborsen_watch_runs_v1 ledger20261017200436; canonical20261017200038, exact SQL SHA256687d8cb87f8edf04f15618ed446d14fcae9dd9ebbf979f46b171429b7f7e9691,16520chars. Both tables RLS/FORCE ON, zero policies and anon/authenticated table or column privileges; service SELECT only, no direct mutation. Nine postgres-owned routines have empty search_path and zero client EXECUTE: three fixed-project DEFINER writers allow service EXECUTE, six INVOKER helpers allow no API-role EXECUTE. Five enabled guards/audit triggers; both tables empty, cron count38 unchanged. Ledger159/public tables152. Journal flag remains absent; no executor, schedule or source calls added. Only these two classifications refreshed; other capture scopes preserved.",
-    "sales_inbox_source_reconciliation_note": "Scoped read-only production observation2026-10-18: four sales_inbox tables RLS on, FORCE off, zero policies, zero anon/authenticated table or column privileges, service SELECT. Exact already-applied source20261017191904 from gitf28f83f1f49831fff3315f154f96df4af9da0bdd matches production ledger SHA2561013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1,36094characters. Public tables156/ledger160. Source-only reconciliation: no SQL apply, history correction, account, sales app, flags or sender changes. All earlier entries/capture scopes preserved."
+    "sales_inbox_source_reconciliation_note": "Scoped read-only production observation2026-10-18: four sales_inbox tables RLS on, FORCE off, zero policies, zero anon/authenticated table or column privileges, service SELECT. Exact already-applied source20261017191904 from gitf28f83f1f49831fff3315f154f96df4af9da0bdd matches production ledger SHA2561013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1,36094characters. Public tables156/ledger160. Source-only reconciliation: no SQL apply, history correction, account, sales app, flags or sender changes. All earlier entries/capture scopes preserved.",
+    "social_schedule_pending_note": "Seven reviewed new SERVER_ONLY tables are not live yet. Explicit migration RLS/client revocations were replayed in a task-owned local fixture. Move into the live table map only after hosted application and catalog verification."
   },
   "tables": {
     "handlarborsen_competitor_review_decisions": {

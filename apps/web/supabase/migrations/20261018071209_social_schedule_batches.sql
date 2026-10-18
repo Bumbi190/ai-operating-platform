@@ -78,18 +78,34 @@ alter table public.social_publication_events alter column actor drop not null,
  add column actor_kind text not null default 'user' check(actor_kind in ('user','worker')),add column job_id uuid,
  add foreign key(job_id,project_id) references public.social_schedule_jobs(id,project_id),
  add constraint social_publication_actor check((actor_kind='user' and actor is not null and job_id is null) or (actor_kind='worker' and actor is null and job_id is not null));
-do $tables$ declare t text;begin
- foreach t in array array['social_schedule_batches','social_schedule_decisions','social_schedule_jobs','social_schedule_events','social_monthly_release_rules','social_monthly_release_evidence'] loop
-  execute format('alter table public.%I enable row level security',t);
-  execute format('revoke all on public.%I from public,anon,authenticated,service_role',t);
-  execute format('grant select,insert on public.%I to service_role',t);
- end loop;
- foreach t in array array['social_schedule_jobs','social_monthly_release_rules'] loop execute format('grant update on public.%I to service_role',t);end loop;
- foreach t in array array['social_schedule_batches','social_schedule_decisions','social_schedule_events','social_monthly_release_evidence'] loop
-  execute format('create trigger %I before update or delete on public.%I for each row execute function public.social_launch_immutable()',t||'_immutable',t);
-  execute format('create trigger %I before truncate on public.%I for each statement execute function public.social_launch_immutable()',t||'_no_truncate',t);
- end loop;
-end $tables$;
+alter table public.social_schedule_batches enable row level security;
+revoke all on public.social_schedule_batches from public,anon,authenticated,service_role;
+grant select,insert on public.social_schedule_batches to service_role;
+alter table public.social_schedule_decisions enable row level security;
+revoke all on public.social_schedule_decisions from public,anon,authenticated,service_role;
+grant select,insert on public.social_schedule_decisions to service_role;
+alter table public.social_schedule_jobs enable row level security;
+revoke all on public.social_schedule_jobs from public,anon,authenticated,service_role;
+grant select,insert on public.social_schedule_jobs to service_role;
+alter table public.social_schedule_events enable row level security;
+revoke all on public.social_schedule_events from public,anon,authenticated,service_role;
+grant select,insert on public.social_schedule_events to service_role;
+alter table public.social_monthly_release_rules enable row level security;
+revoke all on public.social_monthly_release_rules from public,anon,authenticated,service_role;
+grant select,insert on public.social_monthly_release_rules to service_role;
+alter table public.social_monthly_release_evidence enable row level security;
+revoke all on public.social_monthly_release_evidence from public,anon,authenticated,service_role;
+grant select,insert on public.social_monthly_release_evidence to service_role;
+grant update on public.social_schedule_jobs to service_role;
+grant update on public.social_monthly_release_rules to service_role;
+create trigger social_schedule_batches_immutable before update or delete on public.social_schedule_batches for each row execute function public.social_launch_immutable();
+create trigger social_schedule_batches_no_truncate before truncate on public.social_schedule_batches for each statement execute function public.social_launch_immutable();
+create trigger social_schedule_decisions_immutable before update or delete on public.social_schedule_decisions for each row execute function public.social_launch_immutable();
+create trigger social_schedule_decisions_no_truncate before truncate on public.social_schedule_decisions for each statement execute function public.social_launch_immutable();
+create trigger social_schedule_events_immutable before update or delete on public.social_schedule_events for each row execute function public.social_launch_immutable();
+create trigger social_schedule_events_no_truncate before truncate on public.social_schedule_events for each statement execute function public.social_launch_immutable();
+create trigger social_monthly_release_evidence_immutable before update or delete on public.social_monthly_release_evidence for each row execute function public.social_launch_immutable();
+create trigger social_monthly_release_evidence_no_truncate before truncate on public.social_monthly_release_evidence for each statement execute function public.social_launch_immutable();
 create or replace function public.social_publication_record(r public.social_publications) returns jsonb language sql immutable security invoker set search_path='' as $fn$
  select jsonb_build_object('id',r.id,'projectId',r.project_id,'postId',r.post_id,'revisionId',r.revision_id,'sha256',r.sha256,'decisionId',r.decision_id,'bindingId',r.binding_id,'channel',r.channel,'accountId',r.account_id,'accountLabel',r.account_label,'state',r.state,'version',r.version,'containerId',r.container_id,'providerId',r.provider_id,'permalink',r.permalink,'failureCode',r.failure_code,'confirmation',r.confirmation,'requestedAt',r.requested_at,'updatedAt',r.updated_at,'reconciledAt',r.reconciled_at,'authoritySource',r.authority_source,'jobId',r.job_id);
 $fn$;
@@ -224,6 +240,11 @@ begin
  if a.id is not null then if a.input_data is distinct from p_input then raise exception 'SOCIAL_SCHEDULE_CONFLICT';end if;return public.social_schedule_batch_view(b);end if;
  if exists(select 1 from public.social_schedule_decisions where batch_revision_id=b.id) then raise exception 'SOCIAL_SCHEDULE_CONFLICT';end if;
  perform public.social_schedule_validate_manifest(project,b.manifest);
+ -- An occasion has one immutable identity across all approved batches.
+ if exists(select 1 from (
+  select j.occasion_id::text occasion_id,j.channel,j.scheduled_at,j.item->>'kind' kind,(j.item->'releaseCondition')::text condition from public.social_schedule_jobs j where j.project_id=project and j.state<>'cancelled'
+  union all select mi.value->>'occasionId',mi.value->>'channel',(mi.value->>'scheduledAt')::timestamptz,mi.value->>'kind',(mi.value->'releaseCondition')::text from jsonb_array_elements(b.manifest->'items') mi(value)
+ ) combined group by occasion_id having count(*)>2 or count(*)>count(distinct channel) or count(distinct scheduled_at)>1 or count(distinct kind)>1 or count(distinct condition)>1) then raise exception 'SOCIAL_SCHEDULE_CONFLICT';end if;
  if exists(select 1 from (
   select j.occasion_id::text occasion_id,j.scheduled_at from public.social_schedule_jobs j where j.project_id=project and j.state<>'cancelled'
   union all select mi.value->>'occasionId',(mi.value->>'scheduledAt')::timestamptz from jsonb_array_elements(b.manifest->'items') mi(value)
@@ -316,7 +337,9 @@ begin
  perform public.social_schedule_fields(p_input,array['workerId','now','dryRun','projectIds']);
  if coalesce(p_input->>'workerId','') !~ '^[A-Za-z0-9_-]{1,100}$' or jsonb_typeof(p_input->'dryRun') is distinct from 'boolean' or jsonb_typeof(p_input->'projectIds') is distinct from 'array' or jsonb_array_length(p_input->'projectIds')>100 or abs(extract(epoch from ((p_input->>'now')::timestamptz-t)))>5 then raise exception 'SOCIAL_SCHEDULE_INVALID_BODY';end if;
  if p_input->'dryRun'='true'::jsonb then return null;end if;
- for candidate in select id,project_id from public.social_schedule_jobs where project_id::text in(select jsonb_array_elements_text(p_input->'projectIds')) and scheduled_at<=t and (state in ('queued','waiting') or state='claimed' and lease_expires_at<=t) order by scheduled_at,id limit 50 loop
+ for candidate in select id,project_id from public.social_schedule_jobs where project_id::text in(select jsonb_array_elements_text(p_input->'projectIds')) and scheduled_at<=t and (state in ('queued','waiting') or state='claimed' and lease_expires_at<=t)
+ and not(state='waiting' and coalesce(reason,'')='release_required' and t<=expires_at and not exists(select 1 from public.social_monthly_release_evidence e join public.social_schedule_decisions a on a.id=public.social_schedule_jobs.approval_id where e.project_id=public.social_schedule_jobs.project_id and e.release_month=public.social_schedule_jobs.release_month and e.catalog_sha256=item->'releaseCondition'->>'catalogSha256' and e.kind='owner_verified_access' and e.verified_by=a.actor and e.verified_at between t-interval '24 hours' and t))
+ order by scheduled_at,case when state='waiting' then 1 else 0 end,updated_at,id limit 50 loop
   -- Same lock order as owner mutations: project, then job. A busy project is skipped.
   perform 1 from public.projects where id=candidate.project_id for update skip locked;if not found then continue;end if;
   select * into j from public.social_schedule_jobs where id=candidate.id and (state in ('queued','waiting') or state='claimed' and lease_expires_at<=t) for update skip locked;
@@ -362,7 +385,7 @@ declare j public.social_schedule_jobs;reason text;
 begin
  perform public.social_schedule_fields(p_input,array['projectIds']);
  if jsonb_typeof(p_input->'projectIds') is distinct from 'array' or jsonb_array_length(p_input->'projectIds')>100 then raise exception 'SOCIAL_SCHEDULE_INVALID_BODY';end if;
- select * into j from public.social_schedule_jobs where project_id::text in(select jsonb_array_elements_text(p_input->'projectIds')) and state in ('queued','waiting','claimed') order by scheduled_at,id limit 1;
+ select * into j from public.social_schedule_jobs where project_id::text in(select jsonb_array_elements_text(p_input->'projectIds')) and state in ('queued','waiting','claimed') order by scheduled_at,case when state='waiting' then 1 else 0 end,updated_at,id limit 1;
  if j.id is null then return jsonb_build_object('jobId',null,'result','no_jobs');end if;
  if j.state='claimed' and j.lease_expires_at>public.social_schedule_now() then return jsonb_build_object('jobId',j.id,'result','claimed');end if;
  begin perform public.social_schedule_authority(j,true);reason='eligible';

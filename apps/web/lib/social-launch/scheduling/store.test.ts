@@ -108,3 +108,32 @@ it('invalidates the native review when an exact saved draft changes',async()=>{
  await proposeSocialContent(db,f.principal,{projectId:f.manifest.projectId,postId:item.postId,expectedRevisionId:item.revisionId,planRevisionId:item.planRevisionId,idempotencyKey:crypto.randomUUID(),draft:{...f.source.post.revision.draft,text:'Ny text som inte har granskats',scheduledAt:item.scheduledAt}})
  expect((await readSchedules(db,f.principal,{projectId:f.manifest.projectId})).batches[0].reviewCurrent).toBe(false)
 },15000)
+
+it('rejects a reused occasion identity across batches',async()=>{
+ const f=await scheduleFixture(db);await approveSchedule(db,f.principal,f.approval)
+ const original=f.manifest.items[0]
+ for(const changes of [{occasionId:original.occasionId},{occasionId:original.occasionId,localMinute:original.localMinute.slice(0,-5)+'23:00'}]){
+  const item=await appendScheduleFixtureItem(db,f,changes)
+  const batch=await proposeSchedule(db,f.principal,{projectId:f.manifest.projectId,manifest:{projectId:f.manifest.projectId,items:[item]},expectedRevisionId:null,idempotencyKey:crypto.randomUUID()})
+  await expect(approveSchedule(db,f.principal,{...f.approval,batchId:batch.batchId,revisionId:batch.revisionId,sha256:batch.sha256,idempotencyKey:crypto.randomUUID()})).rejects.toMatchObject({code:'CONFLICT'})
+ }
+},35000)
+it('does not repeatedly claim a release waiting without evidence ahead of an ordinary occasion',async()=>{
+ const f=await scheduleFixture(db,{kind:'month_release'});await approveSchedule(db,f.principal,f.approval)
+ const ordinary=await appendScheduleFixtureItem(db,f,{kind:'ordinary',releaseCondition:null})
+ const b=await proposeSchedule(db,f.principal,{projectId:f.manifest.projectId,manifest:{projectId:f.manifest.projectId,items:[ordinary]},expectedRevisionId:null,idempotencyKey:crypto.randomUUID()})
+ await approveSchedule(db,f.principal,{...f.approval,batchId:b.batchId,revisionId:b.revisionId,sha256:b.sha256,idempotencyKey:crypto.randomUUID()})
+ // Force deterministic order using immutable schedule times, then use the real worker checkpoint.
+ const suffix=f.manifest.projectId.replaceAll('-','').slice(-12)
+ testSql("update social_schedule_jobs set id=case when post_id='"+f.manifest.items[0].postId+"' then '00000000-0000-4000-8000-"+suffix+"'::uuid else 'ffffffff-ffff-4fff-8fff-"+suffix+"'::uuid end where project_id='"+f.manifest.projectId+"';")
+ setScheduleClock(f.dueAt)
+ let first=(await claimScheduleJob(db,{workerId:'monthly',now:f.dueAt,dryRun:false}))!
+ expect(first.snapshot.item.kind).toBe('month_release')
+ await recordScheduleStep(db,first,{action:'checkpoint',reason:'release_required'})
+ const next=(await claimScheduleJob(db,{workerId:'ordinary',now:f.dueAt,dryRun:false}))!
+ expect(next.snapshot.item.postId).toBe(ordinary.postId)
+ // Release evidence can still arrive and make the waiting monthly intent runnable.
+ await recordReleaseEvidence(db,f.principal,{projectId:f.manifest.projectId,...f.manifest.items[0].releaseCondition!,customerViewUrl:'https://familje-stunden.se/aktiviteter',confirmed:true})
+ const monthly=(await claimScheduleJob(db,{workerId:'monthly_again',now:f.dueAt,dryRun:false}))!
+ expect(monthly.snapshot.item.kind).toBe('month_release')
+},35000)

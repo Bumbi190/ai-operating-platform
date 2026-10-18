@@ -16,7 +16,7 @@ import {digest,canonicalNewsJson,parseRenderReceipt,renderReceiptSha256} from '.
 import {NewsReviewError,type RenderReceipt} from './types'
 const execute=promisify(execFile)
 function binary(name:'ffmpeg'|'ffprobe'){
- const configured=process.env[name==='ffmpeg'?'FFMPEG_PATH':'FFPROBE_PATH']
+ const configured=name==='ffmpeg'?process.env.FFMPEG_PATH:process.env.FFPROBE_PATH
  if(configured)return configured
  const bundled=resolve(process.cwd(),'../remotion/node_modules/@remotion/compositor-win32-x64-msvc',name+'.exe')
  return process.platform==='win32'&&existsSync(bundled)?bundled:name

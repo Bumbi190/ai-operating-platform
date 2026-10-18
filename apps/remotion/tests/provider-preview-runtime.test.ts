@@ -49,9 +49,9 @@ test('real runtime uses governed generators, internal admission and verified sig
    '@/lib/ai/anthropic':{estimateAnthropicSek:async()=>1.75},'@/lib/ai/openai-client':{estimateOpenAIChatSek:async()=>3.23},
    '@/lib/governance/execution-stop':{projectScope:(p:any)=>p},
    '@/lib/governance/execution-dispatch':{assertExecutionDispatchAllowed:async(e:any)=>assert.equal(e.context,'OPERATOR_EXECUTION')},
-   './ideogram':{generateNewsImages:async(...a:any[])=>{generated++;assert.equal(a[2],3);assert.equal(a[3].scope.projectId,core.PREVIEW_PROJECT_ID)
+   './ideogram':{generateNewsImages:async(...a:any[])=>{generated++;assert.equal(row?.id,core.PREVIEW_ID);assert.equal(row?.raw_output?.private_provider_preview?.state,'claimed');assert.equal(a[2],3);assert.equal(a[3].scope.projectId,core.PREVIEW_PROJECT_ID)
     assert.deepEqual(a[4],{projectId:core.PREVIEW_PROJECT_ID});assert.equal(a[5],core.PREVIEW_ID);assert.equal(a[6],'the-prompt-illustrated-v2');return['https://provider.invalid/0','https://provider.invalid/1','https://provider.invalid/2']}},
-   './elevenlabs':{generateVoiceover:async(...a:any[])=>{voiced++;assert.equal(a[2],'victoria');assert.equal(a[1].scope.projectId,core.PREVIEW_PROJECT_ID);assert.deepEqual(a[3],{projectId:core.PREVIEW_PROJECT_ID});assert.equal(a[4],'canonical-voice-key');return voice}},
+   './elevenlabs':{generateVoiceover:async(...a:any[])=>{voiced++;assert.equal(row?.id,core.PREVIEW_ID);assert.equal(row?.raw_output?.private_provider_preview?.state,'claimed');assert.equal(row?.raw_output?.private_provider_preview?.imageIds.length,3);assert.equal(a[2],'victoria');assert.equal(a[1].scope.projectId,core.PREVIEW_PROJECT_ID);assert.deepEqual(a[3],{projectId:core.PREVIEW_PROJECT_ID});assert.equal(a[4],'canonical-voice-key');return voice}},
    './asset/admission':{admitAssetFromUrl:admit,admitAssetBytes:admit},
    './asset/store':{getAsset:async(id:string)=>{const a=assets.get(id);return {...a,
     projectId:foreign?'foreign':a.projectId,checksumSha256:badAudioHash&&a.kind==='audio'?'bad':a.checksumSha256}},

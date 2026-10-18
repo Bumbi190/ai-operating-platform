@@ -88,3 +88,16 @@ test('source expiry during the network cross-check refuses before the claim',asy
  await assert.rejects(x.service.generate({quoteHash:q.quoteHash,maximumSek:12}))
  assert.equal(x.counters().claims,0);assert.equal(x.counters().images,0)
 })
+
+test('ambiguous voice failure is terminal after the durable claim and cannot enter a keyed retry',async()=>{
+ let voiceCalls=0
+ const x=setup({voice:async()=>{voiceCalls++;throw Error('provider may already have billed')}})
+ const q=await x.service.inspect(),input={quoteHash:q.quoteHash,maximumSek:12}
+ assert.equal((await x.service.generate(input)).status,'review_required')
+ assert.equal(x.state().state,'review_required')
+ assert.equal((await x.service.generate(input)).status,'review_required')
+ assert.equal((await x.service.generate(input)).status,'review_required')
+ assert.equal(x.counters().claims,1)
+ assert.equal(x.counters().images,1)
+ assert.equal(voiceCalls,1)
+})

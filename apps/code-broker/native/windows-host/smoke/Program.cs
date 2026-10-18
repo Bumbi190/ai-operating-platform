@@ -58,4 +58,5 @@ try {
   }
 } finally { Directory.Delete(folder,true); }
 Check("fixture_removed",!Directory.Exists(folder));
+await Omnira.CodeBroker.Host.Smoke.DockerSmokeTests.Run(Check);
 Console.WriteLine(JsonSerializer.Serialize(new{passed=names.Count,names}));

@@ -101,3 +101,10 @@ it('counts ordinary and monthly occasions independently with a global weekly cap
  const finalBatch=await proposeSchedule(db,f.principal,{projectId:f.manifest.projectId,manifest:{projectId:f.manifest.projectId,items:[fourth]},expectedRevisionId:null,idempotencyKey:crypto.randomUUID()})
  await expect(approveSchedule(db,f.principal,{...f.approval,batchId:finalBatch.batchId,revisionId:finalBatch.revisionId,sha256:finalBatch.sha256,idempotencyKey:crypto.randomUUID()})).rejects.toMatchObject({code:'CONFLICT'})
 },35000)
+
+it('invalidates the native review when an exact saved draft changes',async()=>{
+ const f=await scheduleFixture(db),item=f.manifest.items[0]
+ const {proposeSocialContent}=await import('../content/store')
+ await proposeSocialContent(db,f.principal,{projectId:f.manifest.projectId,postId:item.postId,expectedRevisionId:item.revisionId,planRevisionId:item.planRevisionId,idempotencyKey:crypto.randomUUID(),draft:{...f.source.post.revision.draft,text:'Ny text som inte har granskats',scheduledAt:item.scheduledAt}})
+ expect((await readSchedules(db,f.principal,{projectId:f.manifest.projectId})).batches[0].reviewCurrent).toBe(false)
+},15000)

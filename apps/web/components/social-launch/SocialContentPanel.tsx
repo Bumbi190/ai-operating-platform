@@ -3,11 +3,13 @@ import {useCallback,useEffect,useRef,useState} from 'react'
 import {SOCIAL_LAUNCH_CHANNELS} from '@/lib/social-launch/catalog'
 import {parseSocialContent,stockholmToUtc,stockholmLocal} from '@/lib/social-launch/content/validate'
 import type {SocialContentInput,SocialContentView,SocialContentPost} from '@/lib/social-launch/content/types'
+import {SocialSchedulePanel} from './SocialSchedulePanel'
+import {FAMILY_SOCIAL_PROJECT_ID} from '@/lib/social-launch/scheduling/policy'
 import {SocialPublicationPanel} from './SocialPublicationPanel'
 import styles from './SocialContentPanel.module.css'
 const formats={text:'Text',image:'Bild',video:'Video',link:'Länk'}
 const statuses={proposal:'Förslag att granska',approved:'Innehållet godkänt',rejected:'Avvisat innehåll',needs_review:'Behöver granskas igen'}
-const reasons:Record<string,string>={activation_required:'Kalendern skickar inget automatiskt',account_required:'Väntar på kontokoppling',plan_changed:'Kanalplanen har ändrats',destination_changed:'Mottagarkontot har ändrats eller blockerats',media_changed:'Bifogat material har ändrats',time_passed:'Önskad tid har passerat – inget skickades',media_required:'Bifoga projektets bild eller video före granskning.'}
+const reasons:Record<string,string>={activation_required:'Separat publiceringsgodkännande krävs',account_required:'Väntar på kontokoppling',plan_changed:'Kanalplanen har ändrats',destination_changed:'Mottagarkontot har ändrats eller blockerats',media_changed:'Bifogat material har ändrats',time_passed:'Önskad tid har passerat – inget skickades',media_required:'Bifoga projektets bild eller video före granskning.'}
 type Editor={postId:string;expectedRevisionId:string|null;draft:SocialContentInput;localTime:string}
 function empty(channel:SocialContentInput['channel']='facebook',format:SocialContentInput['format']='text'):SocialContentInput{return {channel,format,title:'',text:'',linkUrl:null,mediaIds:[],mediaBrief:'',scheduledAt:null}}
 function mediaUrl(projectId:string,id:string,sha:string){return '/api/social-content/media?'+new URLSearchParams({projectId,assetId:id,sha256:sha})}
@@ -83,7 +85,7 @@ function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{project
      <label>Länk (HTTPS)<input type="url" value={editor.draft.linkUrl??''} maxLength={2048} onChange={e=>change({linkUrl:e.target.value||null})}/></label>
      {['image','video'].includes(editor.draft.format)&&<><label>Bild- eller videoidé<textarea aria-label="Bild- eller videoidé" value={editor.draft.mediaBrief} maxLength={1000} rows={3} onChange={e=>change({mediaBrief:e.target.value})}/></label><p>En idé skapar ingen bild. Välj redan sparat projektmaterial för att kunna granska inlägget.</p><div className={styles.assets}>{model.assets.filter(a=>a.kind===editor.draft.format).map(a=><label key={a.id}><input type="checkbox" checked={editor.draft.mediaIds.includes(a.id)} onChange={e=>change({mediaIds:e.target.checked?(editor.draft.format==='video'?[a.id]:[...editor.draft.mediaIds,a.id]):editor.draft.mediaIds.filter(id=>id!==a.id)})}/>{a.kind==='image'?'Bild':'Video'} {a.width&&a.height?a.width+' × '+a.height+' · ':''}{a.id.slice(0,8)}</label>)}{!model.assets.some(a=>a.kind===editor.draft.format)&&<p>Inget matchande material finns i projektet ännu.</p>}{model.hasMoreAssets&&<p>Visar de 100 senaste filerna.</p>}</div></>}
      <label>Önskad publiceringstid (Stockholm)<input type="datetime-local" value={editor.localTime} onChange={e=>{setEditor({...editor,localTime:e.target.value});setDirty(true);pending.current=null}}/></label>
-     <small>Europe/Stockholm. Tiden används för planering; inget skickas automatiskt.</small>
+     <small>Europe/Stockholm. Spara och granska tiden. Publicering godkänns separat.</small>
     </fieldset><div className={styles.actions}><button disabled={busy||loading||!dirty||stale||!model.planApproved} type="submit">Spara innehållsförslag</button><button type="button" disabled={busy||loading} onClick={()=>{setEditor(null);setDirty(false);setError('')}}>Avbryt redigering</button></div></form>}
     {selected&&<article className={styles.preview} aria-label="Granska sparat innehåll"><div className={styles.previewHead}><span>{SOCIAL_LAUNCH_CHANNELS.find(c=>c.id===selected.revision.draft.channel)?.label} · Version {selected.revision.sequence}</span><strong>{statuses[selected.status]}</strong></div><h3>{selected.revision.draft.title}</h3><p className={styles.caption}>{selected.revision.draft.text}</p>
      {selected.revision.draft.linkUrl&&<a href={selected.revision.draft.linkUrl} target="_blank" rel="noreferrer">{selected.revision.draft.linkUrl}</a>}
@@ -99,7 +101,8 @@ function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{project
     </article>}
    </div>
   </div>}
-  {model&&<section className={styles.calendar} aria-label="Planerad innehållskalender"><h3>Kalender</h3><p>Önskade tider i Stockholm. Inga inlägg skickas.</p>{calendar.length===0?<p>Inga daterade förberedelser ännu.</p>:<ol>{calendar.map(p=><li key={p.id}><time dateTime={p.revision.draft.scheduledAt!}>{stockholmLocal(p.revision.draft.scheduledAt!).replace('T',' ')}</time><button type="button" disabled={busy||loading} onClick={()=>{if(dirty&&!window.confirm('Ersätt dina osparade ändringar?'))return;setSelectedId(p.id);setEditor(null);setDirty(false)}}>{p.revision.draft.title}</button><span>{statuses[p.status]} · Väntar på aktivering</span></li>)}</ol>}</section>}
+  {model&&<section className={styles.calendar} aria-label="Planerad innehållskalender"><h3>Kalender</h3><p>Önskade tider i Stockholm. Utkast behöver ett separat publiceringsgodkännande.</p>{calendar.length===0?<p>Inga daterade förberedelser ännu.</p>:<ol>{calendar.map(p=><li key={p.id}><time dateTime={p.revision.draft.scheduledAt!}>{stockholmLocal(p.revision.draft.scheduledAt!).replace('T',' ')}</time><button type="button" disabled={busy||loading} onClick={()=>{if(dirty&&!window.confirm('Ersätt dina osparade ändringar?'))return;setSelectedId(p.id);setEditor(null);setDirty(false)}}>{p.revision.draft.title}</button><span>{statuses[p.status]} · Väntar på aktivering</span></li>)}</ol>}</section>}
+  {model&&projectId===FAMILY_SOCIAL_PROJECT_ID&&<SocialSchedulePanel projectId={projectId} posts={model.posts} disabled={busy||loading||dirty||stale}/>}
  </section>
 }
 export function SocialContentPanel(props:{projectId:string;projectName:string;onPlanRequested?:()=>void;planStateKey?:string}){return <Workspace key={props.projectId} {...props}/>}

@@ -67,3 +67,13 @@ it('Atlas can read only the owned conversation receipt and cannot publish or inj
  expect(await handleSocialPublicationTool('get_social_publication',{projectId:f.projectId,postId:f.postId},f.p,f.postId,base)).toMatchObject({code:'NOT_FOUND'})
  expect(state.calls).toHaveLength(0)
 })
+
+import {readFileSync} from 'node:fs'
+import {resolve} from 'node:path'
+it('registers schedule preparation in the actual chat registry without an approval tool',()=>{
+ const source=readFileSync(resolve(process.cwd(),'app/api/chat/route.ts'),'utf8')
+ expect(source).toContain('...SOCIAL_SCHEDULE_TOOL_NAMES')
+ expect(source).toContain('...SOCIAL_SCHEDULE_TOOLS')
+ expect(source).toContain('return handleSocialScheduleTool(name,input,{userId,allowedProjectIds},ownedConversationId,db)')
+ expect(source).not.toContain('approve_social_schedule')
+})

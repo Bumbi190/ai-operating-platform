@@ -25,7 +25,7 @@ function Panel({projectId,post,disabled}:Props){
  async function send(operation:'publish'|'check'){
   if(disabled||loading||busy||needsRefresh||formatError||inFlight.current||!model)return
   if(operation==='publish'&&(!confirmed||!model.canRequest||!post.decision||!post.revision.binding))return
-  if(operation==='check'&&(!model.publication||model.blockers.includes('operator_required')))return
+  if(operation==='check'&&(!model.publication||model.publication.authoritySource==='scheduled'||model.blockers.includes('operator_required')))return
   const body=operation==='check'?{operation,projectId,postId:post.id,publicationId:model.publication!.id}:intent.current??{operation,projectId,postId:post.id,revisionId:post.revision.id,sha256:post.revision.sha256,decisionId:post.decision!.id,bindingId:post.revision.binding!.id,idempotencyKey:crypto.randomUUID(),confirmed:true}
   if(operation==='publish')intent.current=body
   inFlight.current=true;const c=new AbortController(),n=++sequence.current;controllers.current.add(c);setBusy(true);setError('')
@@ -35,9 +35,9 @@ function Panel({projectId,post,disabled}:Props){
  }
  const r=model?.publication,channel=model?.target?.channel==='instagram'?'Instagram':'Facebook',account=model?.target?.accountLabel??post.revision.binding?.label??post.revision.binding?.accountId??'det anslutna kontot'
  const blocked=disabled||loading||busy||needsRefresh||formatError,permalink=safeLink(r?.permalink)
- const mayCheck=r&&['processing','creating','publishing','uncertain'].includes(r.state)&&!model?.blockers.includes('operator_required')
+ const mayCheck=r&&r.authoritySource!=='scheduled'&&['processing','creating','publishing','uncertain'].includes(r.state)&&!model?.blockers.includes('operator_required')
  return <section className={styles.panel} aria-label="Manuell publicering" aria-busy={busy||loading}>
-  <h3>Publicera granskad version</h3><p>Facebook-text/länk eller en JPEG-bild på Facebook och Instagram. Du bekräftar varje publicering här. Kalendern skickar inget automatiskt.</p>
+  <h3>{r?.authoritySource==='scheduled'?'Publiceringskvitto för schemat':'Publicera granskad version'}</h3><p>Facebook-text/länk eller en JPEG-bild på Facebook och Instagram. Du bekräftar publicering nu här. En önskad tid i utkastet är inget publiceringsgodkännande.</p>
   {loading&&<p role="status">Läser sparad publiceringsstatus…</p>}
   {formatError&&<p className={styles.error} role="status">Bilden eller formatet kan inte publiceras. Välj en giltig JPEG-bild eller ett format som stöds, spara en ny version och granska den igen.</p>}
   {error&&<p className={styles.error} role="status">{error}</p>}
@@ -49,7 +49,7 @@ function Panel({projectId,post,disabled}:Props){
    {r.state==='processing'&&<p>Kontrollera och slutför kan publicera samma godkända version när bilden är klar.</p>}
   </div>:<p>Mottagare: {account} · {channel}</p>}
   {model.blockers.filter(b=>b!=='already_requested').map(b=><p key={b}>{reasons[b]??'Inlägget behöver kontrolleras igen.'}</p>)}
-  {model.canRequest&&<><label className={styles.confirm}><input type="checkbox" disabled={blocked} checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>Jag vill publicera den granskade versionen på {account} nu.</label><button type="button" disabled={blocked||!confirmed} onClick={()=>void send('publish')}>Publicera nu på {channel}</button></>}
+  {model.canRequest&&r?.authoritySource!=='scheduled'&&<><label className={styles.confirm}><input type="checkbox" disabled={blocked} checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>Jag vill publicera den granskade versionen på {account} nu.</label><button type="button" disabled={blocked||!confirmed} onClick={()=>void send('publish')}>Publicera nu på {channel}</button></>}
   {r?.state==='uncertain'&&r.channel==='facebook'&&!model?.blockers.includes('operator_required')&&<SocialReconciliationPanel key={r.id+':'+r.version} projectId={projectId} postId={post.id} receipt={r} disabled={blocked} onComplete={()=>void load()}/>}
   {mayCheck&&<button type="button" disabled={blocked} onClick={()=>void send('check')}>{r.state==='processing'?'Kontrollera och slutför':'Kontrollera status'}</button>}
   </>}

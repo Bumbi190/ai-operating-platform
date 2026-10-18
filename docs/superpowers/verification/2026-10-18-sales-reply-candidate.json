@@ -1,90 +1,96 @@
 {
-  "state": "qualified_needs_input",
+  "state": "active_reply_queue_owner_draft_awaiting_review",
   "client": {
-    "sourceSha": "101d4e30f82db9be4e3e1b8ee5b5af3e225f0efc",
-    "path": "C:\\Users\\Andre\\AppData\\Local\\OmniraSales\\pilots\\handlarborsen-reply-101d4e30f82d",
+    "sourceSha": "453daaae73a3f329f7e313a17592bf49f20bee9f",
+    "path": "C:\\Users\\Andre\\AppData\\Local\\OmniraSales\\pilots\\handlarborsen-reply-453daaae73a3",
     "fileCount": 55,
-    "manifestSha256": "d8b4f4a2d28c855d52d7726e1242a0c28fe242f8a560d5566c30023bdc84a49e",
+    "manifestSha256": "e67863cd73283aded4ef894cc7759fcf59ebed5f2ada9a0a11d372f79a7d0f0d",
     "pythonExit": 0
   },
   "migration": {
     "path": "apps/web/supabase/migrations/20261018040242_sales_reply_preparation.sql",
-    "sha256": "c5eee2c3487f75c11cf5fa621e06845b86cf10c0c87b0a5907d484c652ee4b94",
-    "applied": false
+    "sha256": "7516d8566ae7776086452ff8fdd51058ce34a10ab70973bcdbf4ee14f655a3cc",
+    "applied": true,
+    "version": "20261018040242",
+    "rlsTables": 3,
+    "serviceOnlyInvokerRoutines": 23,
+    "clientGrants": 0,
+    "newSecurityWarnings": 0,
+    "newAdvisorInfo": "3 intentional service-only RLS tables without client policies"
   },
-  "activeB2Changed": false,
-  "replyEnabled": false,
+  "activeB2Changed": true,
+  "replyEnabled": true,
   "sendingEnabled": false,
-  "realTrial": "needs_input",
-  "missing": [
-    "owner-selected complete message",
-    "confirmed exact branch/contact/address/history",
-    "confirmed immutable offer revision"
-  ],
+  "realTrial": "durable_owner_general_reply_awaiting_review",
+  "missing": [],
   "provider": "existing first-party Claude CLI2.1.296",
   "inputBoundaries": {
     "selectedMessageBytes": 8192,
     "totalPromptBytes": 32768,
-    "oneContact": true,
-    "oneOffer": true,
+    "oneContact": "commercial mode only",
+    "oneOffer": "commercial mode only",
     "attemptCeiling": 10,
-    "cost": "subscription usage not independently metered"
+    "cost": "subscription usage not independently metered",
+    "general": "one explicitly selected message; no contact or offer; server sender and saved From"
   },
   "server": {
-    "candidateSourceSha": "a254381fae32fbe9a6f641a693a76090f190ef69",
-    "deployed": false,
-    "reason": "reviewed DDL and concrete trial prerequisites pending; ordinary guard remains enforced"
+    "sourceSha": "453daaae73a3f329f7e313a17592bf49f20bee9f",
+    "deploymentId": "dpl_7oz6EBiFPwqkE5mZSYo1cK8E7VV1",
+    "origin": "https://ai-operating-platform-9rs0j257n-bumbi190s-projects.vercel.app",
+    "state": "READY",
+    "migrationGuard": "124/124 enforced;161 known ledger names;no override"
   },
+  "liveTrial": {
+    "mode": "general",
+    "conversationId": "7d960974-b5ba-48f7-8e87-bd93443b9fd5",
+    "conversationCreation": "operator-created real project-bound test conversation; existing global chats left untouched",
+    "requestPath": "operator invoked canonical owner RPC; live natural-language Atlas tool invocation awaits browser login",
+    "messageId": "846ed8ed-f3e5-4356-8608-8dafc9046f40",
+    "messageVersion": 3,
+    "contentSha256": "c2542e00f4dd110b03fdd41efdb13406e2897ebd3d553b2845f822515cd2678a",
+    "jobId": "9ff8cf88-41e6-4951-8bf1-4c1af09d6901",
+    "idempotencyKey": "b1131538-9775-4f03-bede-9cb86d49f789",
+    "status": "awaiting_review",
+    "attempts": 1,
+    "revisionCount": 2,
+    "currentRevisionId": "91736c50-3db6-4d68-86f8-1660672fed0f",
+    "currentRevisionSha256": "2cbea93b7c7bb3e1c04190d954ed857cc9a2a72ad74c7841cfd78c8384dc6b4a",
+    "questionCount": 0,
+    "approvalStatus": "pending",
+    "sourceCurrent": true,
+    "postRestartSameRevisionAndAttemptCount": true,
+    "contactsCreated": 0,
+    "offersCreated": 0,
+    "emailsSent": 0,
+    "stratoDraftsCreated": 0,
+    "provider": "existing first-party Claude CLI2.1.296",
+    "cost": "subscription usage not independently metered",
+    "questionResolution": "two model questions resolved from prior owner receipt confirmation and verified sender metadata; immutable editorial revision, no extra model call, no approval"
+  },
+  "realProviderCalls": 3,
+  "persistentB3QueueProviderCalls": 1,
   "qualification": {
-    "python": 125,
-    "browser": 11,
-    "realSqlIntegrations": 5,
-    "cancelEditRaces": 2,
-    "salesSchemaTests": 312,
+    "python": 126,
+    "stagedPython": 126,
+    "browser": 12,
+    "salesAndSchemaUnit": 452,
+    "unitSkipped": 31,
     "typecheckExit": 0,
-    "freshReview": {
-      "critical": 0,
-      "importantFixed": 2,
-      "minorDeferred": 1,
-      "passes": 1
+    "realSqlAndRaces": "PASS",
+    "fiveCrossProcessIntegrations": "four PASS in complete run; reply fixture commercial-only assertion corrected, nine reply modes PASS in final dedicated run",
+    "broad": {
+      "numTotalTests": 15052,
+      "numPassedTests": 13315,
+      "numFailedTests": 402,
+      "numPendingTests": 1331
     },
-    "finalBroadComparison": {
-      "sourceSha": "a254381fae32fbe9a6f641a693a76090f190ef69",
-      "numTotalTests": 15045,
-      "numPassedTests": 13309,
-      "numFailedTests": 401,
-      "numPendingTests": 1331,
-      "newFailureIdentities": 0,
-      "remainingFailures": "exact historical401",
-      "platformAuthorityFinalPass": 53
-    },
-    "clientPromptSourceSha": "101d4e30f82db9be4e3e1b8ee5b5af3e225f0efc",
-    "webSourceUnchangedSince": "a254381fae32fbe9a6f641a693a76090f190ef69"
+    "newFailuresAgainstFreshApprovedBase403": 0,
+    "transientA6TimeoutRecheck": "53/53 PASS",
+    "historicalFailureReport": "2026-10-18-sales-reply-general-regressions.json"
   },
-  "activeB2": {
-    "clientSourceSha": "7acf719ae34f8d45230539c9735a458bcbf5847d",
-    "serverSourceSha": "b2a5ef227f60648d92531621f12e6aaf23f64db1",
-    "origin": "https://ai-operating-platform-lc074jvu6-bumbi190s-projects.vercel.app",
-    "deploymentId": "dpl_J12MNKMNf8Eu4pXGQZpYY2BBdb5K",
-    "hostGeneration": 3,
-    "mailboxGeneration": 6
-  },
-  "liveRefresh": {
-    "checkedAt": "2026-10-18T06:34:29.578527Z",
-    "savedHeaders": 7,
-    "selectedCompleteMessages": 1,
-    "contacts": 0,
-    "offers": 0,
-    "initialJobs": 0,
-    "replySchemaLive": false
-  },
-  "realProviderCalls": 2,
-  "stratoDraftsCreated": 0,
-  "emailsSent": 0,
-  "persistentB3QueueProviderCalls": 0,
-  "ownerNeutralProviderQualification": {
-    "receipt": "docs/superpowers/verification/2026-10-18-owner-reply-provider-test.json",
-    "state": "neutral_owner_draft_needs_review",
-    "sourceRechecked": true
-  }
+  "pending": [
+    "browser login at new immutable origin",
+    "private real UI review and real natural-language Atlas request verification",
+    "separate C sending implementation"
+  ]
 }

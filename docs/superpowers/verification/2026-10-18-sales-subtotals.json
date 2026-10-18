@@ -1,0 +1,148 @@
+{
+  "date": "2026-10-18",
+  "sourceHead": "64e3bb10a0cadb0cbea8ee6cc5924d98472e64ed",
+  "problem": "Atlas prose swapped history subtotals32/25 and treated25 sent messages as25 delivered despite correct saved rows and evidence.",
+  "change": {
+    "runtimeFile": "apps/web/lib/sales/atlas-tools.ts",
+    "computedFromSameAuthorizedRead": [
+      "contactCount",
+      "contactSummary.historyCounts",
+      "contactSummary.pilotMonthCounts",
+      "contactSummary.suppressedCount",
+      "contactSummary.initialOutreachEligibleCount"
+    ],
+    "eligibilityHelper": "existing canPrepareContact",
+    "malformedRows": "failure without partial subtotals",
+    "missingOrUnknownFieldValues": "explicit unclassified bucket; never recast as valid history/tier",
+    "separateBranchesRetained": true,
+    "proseParsedForCounts": false,
+    "deliveryDerivedFromContacts": false
+  },
+  "projectMemory": {
+    "existingKeysUpdated": [
+      "handlarborsen.resend.batch1",
+      "handlarborsen.resend.batch2"
+    ],
+    "guards": [
+      "exact current prior values",
+      "same project owner",
+      "both current rows present",
+      "source incident-verification"
+    ],
+    "format": "compact JSON snapshots, explicit source and asOf date",
+    "snapshotChars": [
+      139,
+      164
+    ],
+    "memoryCount": 12,
+    "batch1": {
+      "contacts": 25,
+      "sent": 25,
+      "delivered": 23,
+      "bounced": 2,
+      "unsubscribed": 1,
+      "sentOn": "2026-10-13",
+      "asOf": "2026-10-18"
+    },
+    "batch2": {
+      "contacts": 25,
+      "status": "draft",
+      "matchingSendsFound": 0,
+      "priorContact": "unknown",
+      "absenceProvesNeverContacted": false
+    },
+    "liveIntegrationAdded": false,
+    "existingStopsMemoryUnchanged": true
+  },
+  "tests": {
+    "red": {
+      "failed": 7,
+      "existingUnavailableCasePassed": 1
+    },
+    "greenNewTests": 8,
+    "focusedTestsPassed": 24,
+    "typecheckExit": 0,
+    "full": {
+      "total": 15137,
+      "passed": 13399,
+      "failed": 402,
+      "pending": 1332,
+      "newFailureIdentities": 0,
+      "resolvedFailureIdentities": 0,
+      "reference": "2026-10-18-sales-subtotal-regressions.json"
+    },
+    "fullGreen": false
+  },
+  "preview": {
+    "id": "dpl_CCQxuNftoK5nLHxrHSxGV7FRX7Zx",
+    "url": "https://ai-operating-platform-oluolz2h5-bumbi190s-projects.vercel.app",
+    "state": "READY",
+    "source": "64e3bb10a0cadb0cbea8ee6cc5924d98472e64ed",
+    "target": null,
+    "migrationGuard": {
+      "enforcedApplied": 133,
+      "enforcedTotal": 133,
+      "knownLedgerNames": 170,
+      "override": false
+    }
+  },
+  "actualAtlasTest": {
+    "conversationId": "e947e607-ca33-402d-a588-510d2d484531",
+    "setup": "UI-created empty conversation, exact owner/no prior project/no messages guard bound it to the already owned Handlarborsen project; no populated conversation rebound.",
+    "promptContainedCounts": false,
+    "promptContainedProjectUUID": false,
+    "promptContainedCompanyNames": false,
+    "priorMessages": 0,
+    "readTool": "get_sales_workspace",
+    "persistedToolResult": {
+      "contactCount": 57,
+      "contactSummary": {
+        "historyCounts": {
+          "contacted": 32,
+          "unknown": 25,
+          "not_contacted": 0,
+          "unclassified": 0
+        },
+        "pilotMonthCounts": {
+          "2": 0,
+          "6": 50,
+          "12": 7,
+          "unclassified": 0
+        },
+        "suppressedCount": 57,
+        "initialOutreachEligibleCount": 0
+      }
+    },
+    "answerCorrect": [
+      "total57",
+      "history32contacted/25unknown",
+      "pilot50six-month/7twelve-month",
+      "25sent/23delivered/2bounced;1unsubscribe separate",
+      "batch2draft with unknown previous contact; absence not proof",
+      "savedResendSnapshot versus current contact register",
+      "no initial outreach"
+    ],
+    "manualCorrectionNeeded": false,
+    "observedPresentationLimit": "Answer used technical field names. This verification establishes the requested arithmetic and evidence distinctions, not general language quality or universal model correctness."
+  },
+  "unchanged": {
+    "contacts": 57,
+    "maximumContactVersion": 1,
+    "offers": 0,
+    "initialJobs": 0,
+    "replyJobs": 1,
+    "sendJobs": 1,
+    "allSendEvents": 4,
+    "newEmails": 0,
+    "sendingPolicyChanged": false,
+    "workerChanged": false,
+    "schemaChanged": false,
+    "mergePerformed": false,
+    "productionPromoted": false
+  },
+  "limits": [
+    "Resend is a dated saved snapshot, not live Atlas access.",
+    "No guarantee against all future model errors.",
+    "No full139-row import or complete reply-history audit claimed."
+  ]
+}

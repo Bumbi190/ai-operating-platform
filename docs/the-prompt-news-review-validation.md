@@ -1,5 +1,7 @@
 # The Prompt video review packet: validation and release boundary
 
+Continuation after main advanced: [canonical-source integration and fresh 256-test validation](the-prompt-news-review-continuation-20261018.md). The results below describe the original implementation run; the follow-up does not claim a new green broad run.
+
 Owner approved the spec at 09:40 and continuation of the plan/Native execution at 10:23 Stockholm on 18 October 2026. The approved smooth illustrated direction stays unchanged. This implementation prepares review evidence; it grants no publication authority.
 
 ## Resulting behavior

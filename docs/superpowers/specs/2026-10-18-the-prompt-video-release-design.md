@@ -1,6 +1,6 @@
 # The Prompt – granskad film till publicering
 
-Status: **förslag för ägargranskning**, inte implementerad releasebehörighet.
+Status: **approved architecture specification** by Andre on 18 October 2026 at 09:40 Stockholm; implementation plan review is next. No installed release authority.
 Datum: 18 oktober 2026. Utgångspunkt: draft PR #377, kod de9f0ea och dokumentation 193342c.
 
 ## Mål och avgränsning

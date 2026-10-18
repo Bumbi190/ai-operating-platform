@@ -31,7 +31,6 @@ export const OPERATIONAL_PATHS = Object.freeze({
 } as const)
 export type OperationalOperation = keyof typeof OPERATIONAL_PATHS
 
-const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1'])
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
 /** https: always; http: only for an explicit loopback development origin. Returns the parsed origin. */

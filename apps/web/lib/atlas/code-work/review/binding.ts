@@ -7,7 +7,7 @@ import {REVIEW_CONTRACT_LIMITS} from './types'
 import type {ExpectedReviewContext,ReviewAssignmentV1,ReviewBindingV1} from './types'
 import {attempt,ensure,exact,freeze,gitHash,hash,id,integer,iso,jsonCopy,list,requireValid,unique} from './validation'
 export function reviewPolicyHash():string{return canonicalTargetVersionHash({schema:'atlas.code_review_policy.v1',limits:REVIEW_CONTRACT_LIMITS})}
-export function reviewSettingsHash(c:ExpectedReviewContext):string{return canonicalTargetVersionHash({limits:c.limits,totalMicrousd:c.budget.totalMicrousd,reviewerAllocationMicrousd:c.budget.reviewerAllocationMicrousd})}
+export function reviewSettingsHash(c:ExpectedReviewContext):string{return canonicalTargetVersionHash({limits:c.limits,totalMicrousd:c.budget.totalMicrousd,reviewerAllocationMicrousd:c.budget.reviewerAllocationMicrousd,deadlineMs:c.deadlineMs})}
 function assignmentShape(a:any):void {
  exact(a,['workId','projectId','coordinator','worker','reviewer','claim','policyHash']);id(a.workId);id(a.projectId);hash(a.policyHash)
  for(const actor of[a.coordinator,a.worker,a.reviewer]){exact(actor,['actorId','sessionId']);id(actor.actorId);id(actor.sessionId)}

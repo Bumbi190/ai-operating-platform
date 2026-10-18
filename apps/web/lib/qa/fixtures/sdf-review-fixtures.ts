@@ -24,3 +24,10 @@ export function makeReviewContext():ExpectedReviewContext{const registryHash=cod
 }}
 export function makeReviewBinding(context=makeReviewContext()){const a=context.admission;return{schema:'atlas.code_review_binding.v1' as const,workId:a.workId,projectId:a.projectId,repositoryId:a.repository.repositoryId,missionId:a.governance.mission.id,missionVersion:a.governance.mission.version,missionHash:a.governance.mission.hash,admissionHash:codeWorkAdmissionHash(a),delegationHash:a.governance.delegation.hash,workPackageHash:a.governance.workPackage.hash,baseSha:a.repository.pinnedBaseSha,targetRef:a.repository.approvedBaseRef,targetHeadSha:context.targetHeadSha,policyHash:context.policyHash,reviewSettingsHash:reviewSettingsHash(context)}}
 export function unwrap<T>(r:T|{ok:boolean;value?:unknown;violations?:unknown}):any{if(!(r as any).ok)throw Error(JSON.stringify(r));return(r as any).value}
+
+export function makeSnapshotInput(context=makeReviewContext()):import('@/lib/atlas/code-work/review/types').ReviewSnapshotInputV1{
+ const diff='--- a/file\n+++ b/file\n-old\n+new\n',check=context.requiredChecks[0]
+ return{schema:'atlas.code_review_snapshot.v1',binding:makeReviewBinding(context),assignment:structuredClone(context.assignment),candidateVersion:1,briefArtifactId:'brief',files:[{path:'apps/web/lib/atlas/code-work/example.ts',beforeArtifactId:'before',afterArtifactId:'after'}],diffArtifactId:'diff',diffBytes:new TextEncoder().encode(diff).byteLength,
+ checks:[{commandId:check.commandId,registryHash:check.registryHash,argvHash:check.argvHash,exitCode:0,outcome:'passed',passedTestCount:2,durationMs:100,stdoutArtifactId:'stdout',stderrArtifactId:'stderr'}],
+ artifacts:[{id:'brief',kind:'brief',body:'Fix the specified bug.'},{id:'before',kind:'source_before',body:'old'},{id:'after',kind:'source_after',body:'new'},{id:'diff',kind:'diff',body:diff},{id:'stdout',kind:'stdout',body:'2 tests passed'},{id:'stderr',kind:'stderr',body:''}]}
+}

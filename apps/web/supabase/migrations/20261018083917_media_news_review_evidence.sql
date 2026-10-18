@@ -94,12 +94,12 @@ begin
  or (r->'voiceReceipt'->>'audioByteSize')::bigint is distinct from (r->'audio'->>'byteSize')::bigint
  then return array['news_evidence_changed'];end if;
  select * into news from public.media_news_items where id=script.news_item_id and project_id=p_project;
- if news.id is null or news.url is distinct from r->'source'->>'url' or news.raw_output->>'source_key' is distinct from r->'source'->>'key'
- or (news.raw_output->>'source_published_at')::timestamptz is distinct from (r->'source'->>'publishedAt')::timestamptz
- then return array['news_evidence_changed'];end if;
  if (news.raw_output->>'source_published_at')::timestamptz < now()-interval '48 hours'
  or (news.raw_output->>'source_published_at')::timestamptz > now()+interval '15 minutes'
  then return array['news_source_expired'];end if;
+ if news.id is null or news.url is distinct from r->'source'->>'url' or news.raw_output->>'source_key' is distinct from r->'source'->>'key'
+ or (news.raw_output->>'source_published_at')::timestamptz is distinct from (r->'source'->>'publishedAt')::timestamptz
+ then return array['news_evidence_changed'];end if;
  if jsonb_array_length(r->'images')<>3 or (select count(distinct value->>'id') from jsonb_array_elements(r->'images'))<>3
  or jsonb_array_length(r->'usage')<>3 or coalesce(r->'qa'->>'reportText','')=''
  or encode(sha256(convert_to(r->'qa'->>'reportText','UTF8')),'hex') is distinct from r->'qa'->>'reportSha256'
@@ -288,7 +288,9 @@ begin
  select coalesce(jsonb_agg(entry order by created_at desc),'[]') into result from (
  select posts.created_at,jsonb_build_object('id',posts.id,'revision',jsonb_build_object('id',r.id,'sequence',r.sequence,'sha256',r.sha256,'planRevisionId',r.plan_revision_id,'draft',r.draft,'media',r.media,'binding',r.binding,'createdAt',r.created_at),
  'decision',case when d.id is null then null else jsonb_build_object('id',d.id,'decision',d.decision,'revisionId',d.revision_id,'sha256',d.sha256,'decidedAt',d.decided_at) end,
- 'status',case when reasons && array['plan_changed','destination_changed','media_changed','time_passed','news_evidence_required','news_evidence_invalid','news_evidence_changed','news_source_expired','news_project_stopped'] then 'needs_review' when d.decision='approve' then 'approved' when d.decision='reject' then 'rejected' else 'proposal' end,'requirements',to_jsonb(reasons)) entry
+ 'status',case when reasons && array['plan_changed','destination_changed','media_changed','time_passed','news_evidence_required','news_evidence_invalid','news_evidence_changed','news_source_expired','news_project_stopped'] then 'needs_review' when d.decision='approve' then 'approved' when d.decision='reject' then 'rejected' else 'proposal' end,'requirements',to_jsonb(reasons)) || case when exists(select 1 from public.media_news_review_evidence e where e.project_id=posts.project_id and e.post_id=posts.id)
+ or exists(select 1 from jsonb_array_elements(r.media) m join public.asset_provenance ap on ap.asset_id=(m->>'id')::uuid where ap.adapter_version='the-prompt-review-admission-v1')
+ then jsonb_build_object('newsReview',public.media_news_review_read(p_principal,jsonb_build_object('projectId',p.id,'postId',posts.id))) else '{}'::jsonb end entry
  from public.social_content_posts posts join public.social_content_revisions r on r.id=posts.current_revision_id and r.project_id=posts.project_id and r.post_id=posts.id
  left join public.social_content_decisions d on d.revision_id=r.id cross join lateral (select public.social_content_requirements(r.id) reasons) checks where posts.project_id=p.id) entries;
  select coalesce(jsonb_agg(jsonb_build_object('id',a.id,'kind',a.kind,'sha256',a.checksum_sha256,'mimeType',a.mime_type,'width',a.width,'height',a.height)),'[]') into asset_list

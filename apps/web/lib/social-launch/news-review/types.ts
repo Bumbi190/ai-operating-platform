@@ -15,6 +15,7 @@ export type RenderReceipt={
 }
 export type NewsEvidenceSnapshot={video:AssetIdentity;receipt:RenderReceipt;receiptSha256:string;provenanceId:string;planRevisionId:string;destinations:{channel:'facebook'|'instagram'|'youtube';bindingId:string|null;accountId:string|null}[]}
 export type NewsReviewView={projectId:string;postId:string|null;revisionId:string|null;evidenceSha256:string|null;review_packet_ready:boolean;blockers:string[];publicationBlockers:string[];canPublish:false;dispatchEnabled:false}
+export type NewsReviewDetails=NewsReviewView & {source:{url:string;publishedAt:string}|null;creativeVersion:string|null;video:AssetIdentity|null;imageCount:3;voiceLabel:'Victoria';aiDisclosure:string;channel?:string;destinationLabel?:string|null}
 export type NewsReviewCode='NOT_FOUND'|'INVALID_BODY'|'MISSING_SOURCE'|'SOURCE_EXPIRED'|'MISSING_RENDER_EVIDENCE'|'MISSING_USAGE_EVIDENCE'|'MISSING_COST_PROVENANCE'|'MEDIA_CHANGED'|'PLAN_REQUIRED'|'STOPPED'|'UNAVAILABLE'|'REVISION_CONFLICT'
 export class NewsReviewError extends Error{constructor(public readonly code:NewsReviewCode){super(code);this.name='NewsReviewError'}}
 

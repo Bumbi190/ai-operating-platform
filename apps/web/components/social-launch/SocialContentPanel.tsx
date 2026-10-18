@@ -3,6 +3,7 @@ import {useCallback,useEffect,useRef,useState} from 'react'
 import {SOCIAL_LAUNCH_CHANNELS} from '@/lib/social-launch/catalog'
 import {parseSocialContent,stockholmToUtc,stockholmLocal} from '@/lib/social-launch/content/validate'
 import type {SocialContentInput,SocialContentView,SocialContentPost} from '@/lib/social-launch/content/types'
+import {NewsReviewEvidence} from './NewsReviewEvidence'
 import {SocialPublicationPanel} from './SocialPublicationPanel'
 import styles from './SocialContentPanel.module.css'
 const formats={text:'Text',image:'Bild',video:'Video',link:'Länk'}
@@ -63,7 +64,7 @@ function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{project
  }
  const media=selected?.revision.media??[]
  const mediaMissing=!!selected&&['image','video'].includes(selected.revision.draft.format)&&media.length===0
- const reviewDisabled=busy||loading||dirty||stale||mediaMissing||selected?.status==='needs_review'||media.some(m=>!loaded[m.id+':'+m.sha256])
+ const reviewDisabled=!!selected?.newsReview&&!selected.newsReview.review_packet_ready||busy||loading||dirty||stale||mediaMissing||selected?.status==='needs_review'||media.some(m=>!loaded[m.id+':'+m.sha256])
  const calendar=[...(model?.posts??[])].filter(p=>p.revision.draft.scheduledAt).sort((a,b)=>a.revision.draft.scheduledAt!.localeCompare(b.revision.draft.scheduledAt!))
  return <section className={styles.panel} aria-label={'Innehåll för '+projectName} aria-busy={busy||loading}>
   <header className={styles.header}><div><span className={styles.eyebrow}>Förbered lanseringen</span><h2>Innehåll – {projectName}</h2><p>Samla utkast, återanvänd material och granska innehållet tillsammans med Atlas.</p></div>
@@ -90,12 +91,13 @@ function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{project
      {media.map(m=><div key={m.id+':'+m.sha256} className={styles.media}>{m.kind==='image'?<img alt={'Bifogad bild '+m.id.slice(0,8)} src={mediaUrl(projectId,m.id,m.sha256)} onLoad={()=>setLoaded(s=>({...s,[m.id+':'+m.sha256]:true}))} onError={()=>setLoaded(s=>({...s,[m.id+':'+m.sha256]:false}))}/>:<video controls preload="metadata" src={mediaUrl(projectId,m.id,m.sha256)} onLoadedMetadata={()=>setLoaded(s=>({...s,[m.id+':'+m.sha256]:true}))} onError={()=>setLoaded(s=>({...s,[m.id+':'+m.sha256]:false}))}/>}</div>)}
      {mediaMissing&&<p className={styles.notice}>Bifoga projektets bild eller video före granskning.</p>}
      {media.some(m=>!loaded[m.id+':'+m.sha256])&&<p role="status">Materialet måste kunna visas före godkännande.</p>}
+     {selected.newsReview&&<NewsReviewEvidence review={selected.newsReview}/>}
      {selected.revision.binding&&<p>Konto vid granskning: {selected.revision.binding.label??selected.revision.binding.accountId}</p>}
      {selected.requirements.filter(r=>r!=='media_required').map(r=><p className={styles.requirement} key={r}>{reasons[r]??'Kräver ny kontroll'}</p>)}
      <div className={styles.actions}><button type="button" disabled={busy||loading} onClick={()=>edit(selected)}>Redigera utkast</button>{!selected.decision&&<><button type="button" disabled={reviewDisabled} onClick={()=>void send('decide','approve')}>Godkänn innehållet</button><button type="button" disabled={busy||loading||dirty||stale} onClick={()=>void send('decide','reject')}>Avvisa innehållet</button></>}</div>
      {dirty&&<p className={styles.notice}>Spara den nya versionen innan du granskar den.</p>}
      <details><summary>Granskningskvitto</summary><p>SHA256: {selected.revision.sha256}</p><p>Godkännandet gäller innehållet. Publicering kräver separat aktivering och kontroll av kanalens krav.</p></details>
-     <SocialPublicationPanel projectId={projectId} post={selected} disabled={busy||loading||dirty||stale}/>
+     {!selected.newsReview&&<SocialPublicationPanel projectId={projectId} post={selected} disabled={busy||loading||dirty||stale}/>}
     </article>}
    </div>
   </div>}

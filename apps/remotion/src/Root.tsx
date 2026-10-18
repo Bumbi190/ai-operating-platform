@@ -6,6 +6,7 @@ import { ContentGrowthReel } from './compositions/ContentGrowthReel'
 import { ThePromptEditorialLab } from './compositions/ThePromptEditorialLab'
 import { ThePromptNewsPreview, previewDuration } from './compositions/ThePromptNewsPreview'
 import { ThePromptDailyPilot, pilotDurationFrames } from './compositions/ThePromptDailyPilot'
+import {ThePromptIllustratedNews,THE_PROMPT_ILLUSTRATED_VERSION} from './compositions/ThePromptIllustratedNews'
 import { FamilyNovemberTeaser } from './compositions/FamilyNovemberTeaser'
 import type { VideoInputProps } from './lib/types'
 
@@ -91,6 +92,16 @@ export function RemotionRoot() {
           words:[],captions:[],images:[],sourceLabel:'REVIEW TEMPLATE',sourceUrl:'',
           sourcePublishedAt:'',creativeVersion:'the-prompt-editorial-v1' as const,
         }}/>
+
+      {/* Registered for verified local renders; legacy Lambda handoff stays closed. */}
+      <Composition id="ThePromptIllustratedNews" component={ThePromptIllustratedNews}
+        durationInFrames={pilotDurationFrames(10000)} fps={30} width={1080} height={1920}
+        defaultProps={{
+          hook:'VERIFIED INPUT REQUIRED',audioUrl:'',durationMs:10000,
+          words:[],captions:[],images:[],sourceLabel:'INPUT REQUIRED',sourceUrl:'',
+          sourcePublishedAt:'',creativeVersion:THE_PROMPT_ILLUSTRATED_VERSION,
+        }}
+        calculateMetadata={async ({props})=>({durationInFrames:pilotDurationFrames(props.durationMs),props})}/>
 
       {/* Lite version — single static image, same audio + captions. ~5× cheaper. */}
       <Composition

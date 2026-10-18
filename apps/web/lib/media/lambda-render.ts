@@ -42,6 +42,11 @@ export async function startLambdaRender(
   inputProps: VideoInputProps,
   composition: 'ShortFormVideo' | 'SimpleNewsReel' = 'SimpleNewsReel',
 ): Promise<{ renderId: string; bucketName: string }> {
+  // Runtime callers may bypass the TypeScript union. Registering a composition
+  // must never grant the unreleased illustrated path access to public Lambda output.
+  if(composition!=='ShortFormVideo'&&composition!=='SimpleNewsReel'){
+    throw new Error('RENDER_COMPOSITION_NOT_AUTHORIZED')
+  }
   // All legacy render callers (manual, cron, autonomous and retries) converge
   // here. Re-read persisted provenance, independent of current pilot flags.
   // No Lambda import or paid dispatch is allowed if that evidence is unavailable.

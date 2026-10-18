@@ -4,7 +4,7 @@ import type {VideoInputProps} from '../lib/types'
 import {getIllustratedShotAt,type IllustratedShot} from '../lib/illustrated-shots'
 
 /**
- * The Prompt — dynamic daily news renderer, in a PREVIEW-ONLY draft.
+ * The Prompt — shared daily news frames and the private review wrapper.
  * Unlike the old Codex/recruiter demos, every story field, approved image,
  * the real Victoria audio and word timestamps must come from that day's job.
  * This module does not authorize news or publish anything.
@@ -22,9 +22,15 @@ const clamp={extrapolateLeft:'clamp',extrapolateRight:'clamp'} as const
 const lerp=(frame:number,start:number,end:number,a:number,b:number)=>
   interpolate(frame,[start,end],[a,b],clamp)
 
-export function ThePromptDailyPilot({
-  hook,audioUrl,durationMs,words,images,sourceLabel,sourcePublishedAt,illustratedShots,
-}:DailyPilotProps){
+type NewsFrameProps=Omit<DailyPilotProps,'creativeVersion'> & {presentation:'private_review'|'production'}
+
+export function ThePromptDailyPilot(props:DailyPilotProps){
+  return <ThePromptNewsFrame {...props} presentation="private_review"/>
+}
+
+export function ThePromptNewsFrame({
+  hook,audioUrl,durationMs,words,images,sourceLabel,sourcePublishedAt,illustratedShots,presentation,
+}:NewsFrameProps){
   const frame=useCurrentFrame()
   const {fps,durationInFrames}=useVideoConfig()
   const voiceFrames=Math.ceil(durationMs/1000*fps)
@@ -87,7 +93,7 @@ export function ThePromptDailyPilot({
       <div style={{position:'absolute',bottom:91,left:65,right:65,
         display:'flex',justifyContent:'space-between',gap:20,
         fontSize:17,fontWeight:800,color:'#BDD7E1',letterSpacing:1.2}}>
-        <span>{illustrated?'AI-GENERATED / EDITORIAL ILLUSTRATIONS':'SOURCE-BASED / EDITORIAL VISUALS'}</span><span style={{color:TEAL}}>PILOT REVIEW</span>
+        <span>{illustrated?'AI-GENERATED / EDITORIAL ILLUSTRATIONS':'SOURCE-BASED / EDITORIAL VISUALS'}</span><span style={{color:TEAL}}>{presentation==='private_review'?'PILOT REVIEW':'THE PROMPT'}</span>
       </div>
     </>}
     {outro&&<AbsoluteFill style={{background:'radial-gradient(ellipse at 50% 35%,#17484E,#04111D 76%)',
@@ -101,7 +107,7 @@ export function ThePromptDailyPilot({
         <div style={{fontSize:41,fontWeight:800,color:'#C0E9F1'}}>AI news. Daily. No fluff.</div>
       </div>
       <div style={{position:'absolute',bottom:96,fontSize:19,letterSpacing:1.6,color:'#BDD6E2'}}>
-        PRIVATE PILOT REVIEW / NOT FOR POSTING
+        {presentation==='private_review'?'PRIVATE PILOT REVIEW / NOT FOR POSTING':'AI-GENERATED / EDITORIAL ILLUSTRATIONS'}
       </div>
     </AbsoluteFill>}
     {audioUrl&&<Audio src={audioUrl}/>}

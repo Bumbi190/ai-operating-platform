@@ -127,3 +127,7 @@ https://docs.docker.com/desktop/features/wsl/
 https://docs.docker.com/desktop/features/vmm/
 
 Dessa beskriver plattformsfunktioner. De är inte bevis för att Omniras implementation eller denna dator uppfyller kraven; det måste testerna ovan visa.
+
+## Tillägg om oberoende AI-granskning, 2026-10-18
+
+André har godkänt inriktningen med Atlas, en kodagent och en separat granskningsagent samt uppdragsbunden kommunikation. Den skriftliga specifikationen finns i docs/superpowers/specs/2026-10-18-atlas-independent-review-design.md och väntar på ägargranskning. Den preciserar och ersätter den tidigare ordningsföljden som sköt AI-granskaren till efter första flödet: AI-granskning ska vara bevisad före någon framtida förmåga att föra in ändringar i ordinarie projektkod. Första kodjobbet arbetar fortfarande enbart i en separat kopia och ger inget merge-/deploymandat. Detta är en designuppdatering, inte en aktiverad funktion.

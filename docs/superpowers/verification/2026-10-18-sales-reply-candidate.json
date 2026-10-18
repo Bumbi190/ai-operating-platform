@@ -1,12 +1,11 @@
 {
   "state": "qualified_needs_input",
   "client": {
-    "sourceSha": "24e2fd1fe574eb771f72f112591e9436cf2c2076",
-    "path": "C:\\Users\\Andre\\AppData\\Local\\OmniraSales\\pilots\\handlarborsen-reply-24e2fd1fe574",
+    "sourceSha": "101d4e30f82db9be4e3e1b8ee5b5af3e225f0efc",
+    "path": "C:\\Users\\Andre\\AppData\\Local\\OmniraSales\\pilots\\handlarborsen-reply-101d4e30f82d",
     "fileCount": 55,
-    "manifestSha256": "c123de5a8edffb42b728e9266b76e782cba7bcef32309e539537a8030ddceebd",
-    "pythonExit": 0,
-    "verifiedAgainstServerSourceSha": "a254381fae32fbe9a6f641a693a76090f190ef69"
+    "manifestSha256": "d8b4f4a2d28c855d52d7726e1242a0c28fe242f8a560d5566c30023bdc84a49e",
+    "pythonExit": 0
   },
   "migration": {
     "path": "apps/web/supabase/migrations/20261018040242_sales_reply_preparation.sql",
@@ -58,7 +57,9 @@
       "newFailureIdentities": 0,
       "remainingFailures": "exact historical401",
       "platformAuthorityFinalPass": 53
-    }
+    },
+    "clientPromptSourceSha": "101d4e30f82db9be4e3e1b8ee5b5af3e225f0efc",
+    "webSourceUnchangedSince": "a254381fae32fbe9a6f641a693a76090f190ef69"
   },
   "activeB2": {
     "clientSourceSha": "7acf719ae34f8d45230539c9735a458bcbf5847d",
@@ -69,31 +70,21 @@
     "mailboxGeneration": 6
   },
   "liveRefresh": {
-    "checkedAt": "2026-10-18T04:59:01.202714Z",
-    "savedHeaders": 6,
-    "selectedCompleteMessages": 0,
+    "checkedAt": "2026-10-18T06:34:29.578527Z",
+    "savedHeaders": 7,
+    "selectedCompleteMessages": 1,
     "contacts": 0,
     "offers": 0,
     "initialJobs": 0,
-    "replySchemaLive": false,
-    "worker": {
-      "hostGeneration": 3,
-      "desiredState": "running",
-      "cliState": "ready",
-      "revoked": false,
-      "lastSeenAt": "2026-10-18T04:58:51.382242Z"
-    },
-    "mailbox": {
-      "generation": 6,
-      "status": "authenticated"
-    },
-    "scope": {
-      "state": "enabled",
-      "version": 2,
-      "uidValidity": "1791301212"
-    }
+    "replySchemaLive": false
   },
-  "realProviderCalls": 0,
+  "realProviderCalls": 2,
   "stratoDraftsCreated": 0,
-  "emailsSent": 0
+  "emailsSent": 0,
+  "persistentB3QueueProviderCalls": 0,
+  "ownerNeutralProviderQualification": {
+    "receipt": "docs/superpowers/verification/2026-10-18-owner-reply-provider-test.json",
+    "state": "neutral_owner_draft_needs_review",
+    "sourceRechecked": true
+  }
 }

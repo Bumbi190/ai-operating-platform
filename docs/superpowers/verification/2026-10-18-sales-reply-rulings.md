@@ -47,3 +47,7 @@ Final: Ruling: formatting density and broader refactoring are not behavior fixes
 Task4 Ruling: an ordinary protected build cannot qualify B3 before its pending migration passes the existing enforced guard; stage reviewed source/client/hash first and keep protected B2 active, rather than bypassing that guard to manufacture a B3 preview — cost if wrong: the B3 UI preview waits for reviewed DDL and concrete trial prerequisites.
 
 Task4 Ruling: final candidate keeps client24e2fd1 separately pinned because the fix changes web/SQL only; compare every staged client byte with the fixed server source rather than repack identical client code — cost if wrong: provenance has two source pins and must be read explicitly during rollout.
+
+Task4 Ruling: the owner selected a neutral self-test rather than a customer reply; qualify selected-text import and the isolated adapter/runtime with verified owner context and no offer via a standalone operator test, not fake a pilot contact/tier to satisfy the commercial queue — cost if wrong: this proves transport/provider separately and does not complete the B3 durable-queue rollout.
+
+Task4 Ruling: actual completed provider output exposed overbroad identity wording; correct only recipient-text guidance and retain inbound identity-control fences. One intentional second trial followed the completed first; uncertain results never retry — cost if wrong: billing for two CLI dispatches is not independently metered and sender/signature preferences still require owner review.

@@ -18,3 +18,7 @@ Validation:
 The social content was approved by the owner after reviewing the final current-character images and captions. Native approval created batch `72ebfb22-537a-4fcc-bcf0-691f7449f3b4`, revision `e1fa082b-2d06-4bb5-8cc6-eda5d60bfc13`, manifest SHA-256 `056e7d2e404a4061e90bc332511cd2e3bb0d68ccb88d7b0a10c25d9224db302e`.
 
 The four queued items are Facebook and Instagram for 20 October 2026 at 17:00 and 23 October 2026 at 20:30, Europe/Stockholm. All retain the exact approved revisions, media, account bindings and times. Production dispatch configuration authorizes only project `77cda551-57c9-4dc0-b019-1bb6438777f7`. Runtime activation verification follows the corrected deployment; no immediate publication is requested.
+
+The first CI replay correctly rejected the imported SQL until its three existing tables were classified. Only the three sales_send_events / sales_send_jobs / sales_send_policies registry entries were imported from the same source commit, after live-catalog checks confirmed SERVER_ONLY, RLS enabled, zero policies, no anon/authenticated SELECT grants, and service-role access. No exception or widened access was added.
+
+After the scoped registry reconciliation, all241 tests across migration-guard-v2, schema-security-invariant and migration-security-gate pass. The live catalog exposes no client table grants on these three tables; service grants are INSERT/SELECT for events and INSERT/SELECT/UPDATE for jobs/policies.

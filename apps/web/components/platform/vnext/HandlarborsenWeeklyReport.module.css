@@ -1,0 +1,17 @@
+.report { display:grid; gap:1rem; overflow-wrap:anywhere; }
+.header { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; flex-wrap:wrap; }
+.header p,.header h2,.report p { margin:0; }
+.badge { justify-self:start; display:inline-block; color:#9deaf5; border:1px solid #47566e; border-radius:99px; padding:.25rem .7rem; font-size:.8rem; }
+.note { color:#c0cddd; border-left:3px solid #9deaf5; padding-left:1rem; }
+.metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr)); gap:.8rem; margin:0; }
+.metrics div { background:#101c31; padding:1rem; border-radius:.6rem; min-width:0; }
+.metrics dt { color:#c0cddd; font-size:.85rem; }
+.metrics dd { margin:.35rem 0 0; color:#f2f6fc; font-size:1.3rem; font-weight:650; }
+.list { display:grid; gap:.8rem; margin:0; padding:0; list-style:none; min-width:0; }
+.card { display:grid; gap:.6rem; min-width:0; padding:1rem; border:1px solid #47566e; border-radius:.6rem; background:#101c31; }
+.card h4 { margin:0; font-size:1rem; }
+.coverage { border-top:1px solid #47566e; padding-top:.8rem; }
+.coverage[open] summary { margin-bottom:.8rem; }
+.report summary { cursor:pointer; min-height:44px; padding:.6rem 0; color:#9deaf5; }
+.report summary:focus-visible { outline:3px solid white; outline-offset:3px; }
+.card details ul { padding-left:1.25rem; }

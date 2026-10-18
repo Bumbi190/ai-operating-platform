@@ -79,7 +79,6 @@
     "social_content_note": "Three social_content tables observed in production iboepohjwrhtgshrqaol after social_content_preparation_v1 was applied on 2026-10-16 (ledger 20261016103411; canonical SQL SHA256 638305f235bc453729bc3fd414faf602a536854342220d8e5ade9e34ce40d967). RLS enabled, zero policies, no anon/authenticated reads and service_role reachability. All six new functions SECURITY INVOKER with empty search_path and client EXECUTE revoked. Scoped three-table observation; older classifications retain their earlier capture dates.",
     "social_profile_publication_note": "Scoped production observation 2026-10-16 after exact reviewed social_project_profiles_v1 (ledger20261016123853, SHA25632ba235a7a7e3d8ec40fe4e552af84b30441c2048312a883b528b666a7371d74,8764chars) and social_manual_publication_v1 (ledger20261016123902,SHA2567e90994492f3c62493e68cef41f9b515b782204f7beb63ae874a6ba1ee938bf2,16760chars). All four tables RLS ON/zero policies/no anon or authenticated privilege/service SELECT reachability. All nine new functions SECURITY INVOKER, empty search_path, client EXECUTE revoked, service EXECUTE present. Four tables empty; no synthetic approvals or publication evidence seeded. Ledger150/public tables122 observed. Existing The Prompt binding fingerprint unchanged; advisor WARN counts20/7/8/1 unchanged (four expected no-policy INFO entries added). Older classifications/capture date retain their prior scope.",
     "atlas_sales_pilot_note": "Scoped production observation 2026-10-17 after exact reviewed atlas_sales_pilot migration (ledger20261017130254, canonical20261017100633, SHA2567ea3de34909ac582d2534b291b448fb9ba3781c196167c0475fc4e1f2c301ca9). All seven tables RLS ON. Six TENANT_RLS tables have one owner-rooted authenticated SELECT policy, no anon SELECT, authenticated SELECT only and service-role reachability. Worker registrations SERVER_ONLY, zero policies and no anon/authenticated SELECT. All27 sales functions SECURITY INVOKER, empty search_path, anon/authenticated EXECUTE revoked and service EXECUTE present. Owner-scoped workspace empty: zero contacts/offers/jobs/workers/drafts, sendingEnabled false. Advisor WARN counts20/7/8/1 unchanged. Only seven table rows refreshed; earlier capture dates remain unchanged.",
-    "handlarborsen_test_data_note": "Unapplied candidate only. Three DB_INTERNAL tables: FORCE RLS, zero policies and no direct privileges for any API role. Narrow service-only RPCs; no default principal, human approval or execution is seeded. Local focused PostgreSQL evidence only; inspect production catalog after reviewed apply.",
     "handlarborsen_inbox_note": "Scoped live observation 2026-10-17 after operator-approved handlarborsen_candidate_inbox_v1, ledger20261017151021, canonical20261017151021, SQL SHA256 e7f3efe782086aa8f818ab071dab7c96ccadde95ec58320e30048bd487fe663c. Exact Handlarborsen project. RLS/FORCE RLS ON, zero policies and anon/authenticated privileges; service SELECT/INSERT and column-only UPDATE(read_at), no full UPDATE/evidence UPDATE/DELETE. Both routines SECURITY INVOKER, fixed search_path, client EXECUTE revoked, service EXECUTE allowed. AFTER INSERT trigger enabled. No historical backfill: inbox0, candidate1, reviews0, observations6, ledger154. No accounts or source evidence changed. Signed-in owner Preview passed against live156-ledger state; production UI flag remains off pending reconciled CI/Preview release.",
     "sales_managed_host_note": "Scoped live observation2026-10-17 after exact reviewed migration SHA256a258d7fc159632564747c9a49c5b48037c8c75726b26859892301127dfbf832a, ledger20261017151718. RLS ON, zero policy/client grants, service SELECT/INSERT only; append-only guard. All host functions empty search_path, INVOKER, service-only. No job created.",
     "sales_strato_connection_note": "Scoped live observation2026-10-17 after exact reviewed migration SHA2562e3301eb992694901c15904899c586093632dfb2acf91db2474c8447c6243b1e, ledger20261017151722. Connection RLS owner SELECT only; encrypted setup RLS/server-only. Service SELECT/INSERT/UPDATE, no DELETE/TRUNCATE. All mailbox functions empty search_path/service-only, only narrow cleanup-ready predicate DEFINER. Exact own five-minute cron active; direct cleanup returned0. WARN advisor counts unchanged (security20/7/8/1, performance40). No inbox/send.",
@@ -88,6 +87,8 @@
     "local_text_live_note": "Scoped actual production observation2026-10-17 after owner-approved atlas_local_text(ledger20261017174301,SHA5024a72db523f63ce7f42f4a5e0f774d50b34cda9a3f6e6f1c3f698610eba180) and atlas_local_text_lifecycle(ledger20261017180713,SHAd5c1ca9aba0c993a6be27625cfa9852d0eb719be5ccc5eb826bfa95acfd0aba3). All15tables RLS ON,14SERVER_ONLY/no policies/client grants; jobs1owner policy+safe column-only authenticated SELECT. Zero anon/authenticated function EXECUTE. Security98INFO/36WARN; WARN20/7/8/1 unchanged. Ledger158/publictables150. Zero devices/jobs at observation; release/enrollment remain separate.",
     "local_text_lifecycle_live_reconciliation_note": "Source-only reconciliation 2026-10-17: already-applied atlas_local_text_lifecycle ledger 20261017180713 matches frozen cff355230fe4250fa5ecd6ab4733cd99cab9a43b, 59067 characters, SHA256 d5c1ca9aba0c993a6be27625cfa9852d0eb719be5ccc5eb826bfa95acfd0aba3. Read-only live catalog: incidents/human_reviews/retention SERVER_ONLY, RLS on, FORCE off, zero policies/client table or column grants, service ALL including DELETE/TRUNCATE. All 44 local_text routines have empty search_path and client EXECUTE denied: 43 INVOKER plus local_text_conversation_deleted DEFINER trigger (also no service EXECUTE), scoped by auth.uid/old.user_id and old.id. Jobs metadata_expires_at is not authenticated-selectable. The earlier base migration note records its initial capture; lifecycle is now live. No apply, rollback, application/model code or activation included; other table capture scope unchanged.",
     "handlarborsen_watch_journal_note": "Scoped live production observation2026-10-17 after handlarborsen_watch_runs_v1 ledger20261017200436; canonical20261017200038, exact SQL SHA256687d8cb87f8edf04f15618ed446d14fcae9dd9ebbf979f46b171429b7f7e9691,16520chars. Both tables RLS/FORCE ON, zero policies and anon/authenticated table or column privileges; service SELECT only, no direct mutation. Nine postgres-owned routines have empty search_path and zero client EXECUTE: three fixed-project DEFINER writers allow service EXECUTE, six INVOKER helpers allow no API-role EXECUTE. Five enabled guards/audit triggers; both tables empty, cron count38 unchanged. Ledger159/public tables152. Journal flag remains absent; no executor, schedule or source calls added. Only these two classifications refreshed; other capture scopes preserved.",
+    "sales_inbox_source_reconciliation_note": "Scoped read-only production observation2026-10-18: four sales_inbox tables RLS on, FORCE off, zero policies, zero anon/authenticated table or column privileges, service SELECT. Exact already-applied source20261017191904 from gitf28f83f1f49831fff3315f154f96df4af9da0bdd matches production ledger SHA2561013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1,36094characters. Public tables156/ledger160. Source-only reconciliation: no SQL apply, history correction, account, sales app, flags or sender changes. All earlier entries/capture scopes preserved.",
+    "handlarborsen_test_data_note": "Unapplied candidate only. Three DB_INTERNAL tables: FORCE RLS, zero policies and no direct privileges for any API role. Narrow service-only RPCs; no default principal, human approval or execution is seeded. Local focused PostgreSQL evidence only; inspect production catalog after reviewed apply.",
     "atlas_cleanup_release_reconciliation_20261018": "Scoped read-only production catalog confirms four already-live inbox tables: RLS enabled, zero policies/anon/auth grants, service-role select/insert/update only. Exact already-applied SQL hash1013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1 copied from PR386 canonical source only. No mail application code or production DDL imported/applied by this continuation. Public table count156; own three cleanup control tables remain created-not-live and are not included. Older capture metadata unchanged."
   },
   "tables": {
@@ -1580,39 +1581,47 @@
     },
     "sales_inbox_configs": {
       "class": "SERVER_ONLY",
-      "live": true,
       "rls": true,
       "policies": 0,
       "anon_grants": false,
       "authenticated_grants": false,
-      "service_role": true
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true,
+      "live": true
     },
     "sales_inbox_messages": {
       "class": "SERVER_ONLY",
-      "live": true,
       "rls": true,
       "policies": 0,
       "anon_grants": false,
       "authenticated_grants": false,
-      "service_role": true
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true,
+      "live": true
     },
     "sales_inbox_occurrences": {
       "class": "SERVER_ONLY",
-      "live": true,
       "rls": true,
       "policies": 0,
       "anon_grants": false,
       "authenticated_grants": false,
-      "service_role": true
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true,
+      "live": true
     },
     "sales_inbox_batches": {
       "class": "SERVER_ONLY",
-      "live": true,
       "rls": true,
       "policies": 0,
       "anon_grants": false,
       "authenticated_grants": false,
-      "service_role": true
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true,
+      "live": true
     }
   },
   "views": {

@@ -298,3 +298,5 @@ export function evaluateAppliedMigrationLedger(appliedNames, repositoryState) {
 
 // sales_strato_inbox is enforced canonical source, already live at20261017191904.
 // Its exact SQL hash is verified in the2026-10-18 release preflight; no allowlist expansion.
+
+// Shared main401 now records the same already-applied inbox blob; count140 includes it once plus our three pending migrations.

@@ -31,3 +31,6 @@ export function makeSnapshotInput(context=makeReviewContext()):import('@/lib/atl
  checks:[{commandId:check.commandId,registryHash:check.registryHash,argvHash:check.argvHash,exitCode:0,outcome:'passed',passedTestCount:2,durationMs:100,stdoutArtifactId:'stdout',stderrArtifactId:'stderr'}],
  artifacts:[{id:'brief',kind:'brief',body:'Fix the specified bug.'},{id:'before',kind:'source_before',body:'old'},{id:'after',kind:'source_after',body:'new'},{id:'diff',kind:'diff',body:diff},{id:'stdout',kind:'stdout',body:'2 tests passed'},{id:'stderr',kind:'stderr',body:''}]}
 }
+
+export function makeModelResult(snapshotHash:string):import('@/lib/atlas/code-work/review/types').ReviewModelResultV1{return{schema:'atlas.code_review_result.v1',snapshotHash,phase:'final',decision:'passed',findings:[],gaps:[],pendingQuestionIds:[]}}
+export function makeFinding():import('@/lib/atlas/code-work/review/types').ReviewFindingV1{return{id:'finding-1',severity:'minor',artifactId:'after',path:'apps/web/lib/atlas/code-work/example.ts',line:1,trigger:'Specific input',impact:'Concrete effect',evidence:'Observed source',suggestedCorrection:'Proposed fix'}}

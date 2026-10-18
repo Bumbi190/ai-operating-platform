@@ -470,3 +470,400 @@ The following are all failing suites/case names observed in the log at this chec
 - × G3C-2A · run admission has exactly one door > the drain is the only caller, and it goes through the canonical RPC 26ms
 - × G3C-2A · run admission has exactly one door > no runtime module claims a due workflow instance outside the RPC 23ms
 - × G3C-2A · run admission has exactly one door > queueing a run remains open — it is control-plane state, not execution 25ms
+
+## Completed earlier broad run
+88 failed/528 passed/35 skipped files;392 failed/13616 passed/1114 skipped tests. This run started before final SQL/copy fixes and is not current-tree validation. Additional exact failure labels not in the earlier snapshot follow; baseline attribution is not claimed for all of them.
+
+- FAIL  lib/qa/migration-guard-v2.test.ts [ lib/qa/migration-guard-v2.test.ts ]
+- FAIL  lib/website-build/api.test.ts > website build API authorization and durable results > unknown_artifact_is_404_and_export_is_private_verified_utf8
+- FAIL  lib/website-build/chat-tools.test.ts > Website build through actual authenticated chat tool loop > foreign project and conversation never create a session
+- FAIL  lib/website-build/chat-tools.test.ts > Website build through actual authenticated chat tool loop > compact approval without a visible reference does not dispatch a build
+- FAIL  lib/website-build/chat-tools.test.ts > Website build through actual authenticated chat tool loop > model-supplied confirmation cannot approve or start
+- FAIL  lib/qa/platform-authority-closure.test.ts > A6-2 · the legacy Atlas bug digest is operator diagnostics > 1 · unauthenticated → sent to login, and no digest is read
+- FAIL  lib/website-build/migration-policy.test.ts > website build canonical migration enforcement > registers the website migration as enforced in the complete source set
+- FAIL  lib/website-build/migration-policy.test.ts > website build canonical migration enforcement > refuses a ledger missing only the website migration
+- FAIL  lib/website-build/migration-policy.test.ts > website build canonical migration enforcement > accepts the complete set and still refuses a duplicate website entry
+- FAIL  lib/website-build/migration-policy.test.ts > planning v1 is enforced and neither a missing nor duplicate planning ledger entry is accepted
+- FAIL  lib/website-build/migration-policy.test.ts > enforces the studio migration and rejects missing or duplicate ledger entries
+- FAIL  lib/website-build/migration-policy.test.ts > requires exactly one mockup review migration in the production ledger
+- FAIL  lib/website-build/studio/api.test.ts > studio HTTP boundary > creates a private real owner workspace and recovers a repeated response
+- FAIL  lib/website-build/studio/budget.test.ts > explicit studio budgets and billable project identity > requires a budget for the exact owned studio conversation and keeps replay idempotent
+- FAIL  lib/website-build/studio/loader.test.ts > studio project and conversation identity > loads a selected studio conversation with its missing budget and no invented desktop
+- FAIL  lib/website-build/studio/store.test.ts > owner-bound studio creation in real PostgreSQL > recovers a lost creation response without another project, agent or conversation
+- FAIL  lib/website-build/studio/store.test.ts > owner-bound studio creation in real PostgreSQL > gives authenticated users owner-only SELECT and no mutation or RPC bypass
+- FAIL  lib/project/lifecycle/store.test.ts > owner lifecycle and real static worker fences > atomically pauses, versions and replays transitions while restore preserves an unrelated pause
+- FAIL  lib/project/lifecycle/store.test.ts > owner lifecycle and real static worker fences > refuses foreign, observer, stale and malformed commands and keeps history and folder requests
+- FAIL  lib/project/lifecycle/store.test.ts > owner lifecycle and real static worker fences > archive winning the project lock fences snapshot and commit even with allow_pause
+- FAIL  lib/project/lifecycle/store.test.ts > owner lifecycle and real static worker fences > commit winning the project lock finishes before archive and its verified artifact stays readable
+- FAIL  lib/project/lifecycle/store.test.ts > owner lifecycle and real static worker fences > serializes actual claim and archive in both orders without claiming paused work
+- FAIL  lib/project/lifecycle/store.test.ts > owner lifecycle and real static worker fences > never revives a skipped locked writer after restore and explicit project resume
+- FAIL  lib/project/lifecycle/store.test.ts > owner lifecycle and real static worker fences > a project-first writer refuses a busy run without deadlocking canonical claim
+- FAIL  lib/project/lifecycle/store.test.ts > owner lifecycle and real static worker fences > a project-first control refuses a busy run without deadlocking canonical claim
+- FAIL  lib/project/lifecycle/store.test.ts > owner lifecycle and real static worker fences > retries a transient writer lock on the same artifact, but never retries an actual fence
+- FAIL  lib/website-build/studio/store.test.ts > owner-bound studio creation in real PostgreSQL > rolls back project creation when agent insertion fails
+- FAIL  lib/social-launch/scheduling/store.test.ts > rejects a reused occasion identity across batches
+- FAIL  lib/social-launch/scheduling/store.test.ts > does not repeatedly claim a release waiting without evidence ahead of an ordinary occasion
+- FAIL  lib/social-launch/scheduling/worker.test.ts > processing Instagram containers yield to other jobs and remain eligible on later ticks
+- FAIL  lib/qa/activity-stream.test.ts > aktivitet · the rollback body is the body it replaced > is pinned by hash
+- FAIL  lib/qa/admission-inventory.test.ts > G3C-2A · run admission has exactly one door > no runtime module writes runs.status = running directly
+- FAIL  lib/qa/admission-inventory.test.ts > G3C-2A · run admission has exactly one door > the drain is the only caller, and it goes through the canonical RPC
+- FAIL  lib/qa/admission-inventory.test.ts > G3C-2A · run admission has exactly one door > no runtime module claims a due workflow instance outside the RPC
+- FAIL  lib/qa/admission-inventory.test.ts > G3C-2A · run admission has exactly one door > queueing a run remains open — it is control-plane state, not execution
+- FAIL  lib/qa/atlas-chat.test.ts > atlas chat · the route contract it speaks > does not observe a client abort — which is why there is no stop control
+- FAIL  lib/qa/atlas-knowledge-boundary.test.ts > NO PRODUCTION CONSUMER — Phase 1 wires nothing > the only importers are the operator harness and these QA tests
+- FAIL  lib/qa/atlas-knowledge-boundary.test.ts > PROJECTION SOURCE — a local boundary, never an Atlas one > the only importers are the operator script and its QA suite
+- FAIL  lib/qa/atlas-knowledge-snapshot.test.ts > golden artifacts — independently derived bytes > documents.jsonl matches the golden byte for byte
+- FAIL  lib/qa/atlas-knowledge-snapshot.test.ts > golden artifacts — independently derived bytes > knowledge-manifest.json matches the golden byte for byte
+- FAIL  lib/qa/atlas-knowledge-snapshot.test.ts > golden artifacts — independently derived bytes > the identity preimage matches the golden byte for byte, with no trailing LF
+- FAIL  lib/qa/atlas-latency.test.ts > Atlas latency · timing never becomes visible content > keeps the visible reply fed only by text events
+- FAIL  lib/qa/atlas-latency.test.ts > Atlas latency · timing never becomes visible content > does not touch the reply from the timing branch
+- FAIL  lib/qa/atlas-memory-dream-producers.test.ts > 2B-2 · placement and boundaries > no M4 recall can feed Dream — the producer closure has no recall seam
+- FAIL  lib/qa/atlas-memory-emit-durability.test.ts > Slice 2A — no memory emit is ever detached > every recordMemoryEvent call in production code is awaited, at exactly the known sites
+- FAIL  lib/qa/atlas-memory-emit-durability.test.ts > Slice 2A — no memory emit is ever detached > the drain helper that emits workflow-action outcomes is itself awaited
+- FAIL  lib/qa/atlas-memory-emit-durability.test.ts > Slice 2A — no memory emit is ever detached > the Slice 2B-1 emit helpers are awaited at exactly their known call sites
+- FAIL  lib/qa/atlas-memory-terminal-outcomes.test.ts > 2B-1 · placement and boundaries > in the workflow runtime only advance-completed.ts writes memory, and nothing reads it back
+- FAIL  lib/qa/atlas-static-conversation-route.test.ts > website studio context economy > keeps project references and conversation without building the global executive snapshot
+- FAIL  lib/qa/autonomy-bind-guards.test.ts > the atomic bind migration > is the only EXEMPT bind migration after Phase 3B1A (M0, 3B1B2 M1, M2, M3, M4-A and M4-B are the reviewed successors)
+- FAIL  lib/qa/autonomy-license.test.ts > Phase 2C — the migration does not collide with the chain it joins > names itself so it sorts last in the current canonical set
+- FAIL  lib/qa/autonomy-license.test.ts > Phase 2C — hardening > H7. the machine write seam is closed at the code level
+- FAIL  lib/qa/autonomy-license.test.ts > Phase 2C — review #2 proofs > §9. no production runtime outside this module calls the RPC or drives the store
+- FAIL  lib/qa/autonomy-license.test.ts > Phase 2C — inertness > 52. no other atlas subsystem consumes the licence MACHINERY
+- FAIL  lib/qa/autonomy-runtime-foundation.test.ts > the Chapter 18 scale has exactly ONE declaration > the scan actually reaches middleware.ts
+- FAIL  lib/qa/autonomy-trace-guards.test.ts > migration discipline > Phase 2C is byte-identical to its merged form — no historical edit
+- FAIL  lib/qa/autonomy-trace-guards.test.ts > migration discipline > the new migration sorts after every pre-existing migration
+- FAIL  lib/qa/autonomy-trace-guards.test.ts > Phase 3B1A remains INERT > no execution module consumes the trace or its writer
+- FAIL  lib/qa/budget-scopes.test.ts > canonical comments describe the FINAL code > states the invariant it actually implements, in the TOP-LEVEL header
+- FAIL  lib/qa/budget-scopes.test.ts > canonical comments describe the FINAL code > gives the stale-open reason wherever stale replay is described
+- FAIL  lib/qa/canonical-evidence-pin.test.ts > B — every workflow evidence reader, pinned > the inventory is COMPLETE — no sixth reader exists
+- FAIL  lib/qa/canonical-evidence-pin.test.ts > B — every workflow evidence reader, pinned > the shared helper is the only place the pin is computed
+- FAIL  lib/qa/cl-shadow.test.ts > runContextShadow — fire-and-forget containment > delivers a diff to the sink and resolves void (assembled context never escapes)
+- FAIL  lib/qa/content-center.test.ts > content center · the rollback body is the body it replaced > is pinned by hash, its own doc comment included
+- FAIL  lib/qa/delegation-mission-activation.test.ts > Mission activation through an accepted Delegation > ACTIVATES with an accepted current delegation plus a separate activate authorization
+- FAIL  lib/qa/delegation-mission-activation.test.ts > Mission activation through an accepted Delegation > the activate authorization is SEPARATE — acceptance does not substitute for it
+- FAIL  lib/qa/delegation-mission-activation.test.ts > accepted-delegation availability is Mission- and version-specific > a proof for Mission A does not answer for Mission B in the same project
+- FAIL  lib/qa/delegation-mission-activation.test.ts > accepted-delegation availability is Mission- and version-specific > a version-1 acceptance does not answer for version 2
+- FAIL  lib/qa/delegation-mission-activation.test.ts > coverage: a narrowed envelope proves only what it covers (§21.13) > an envelope carrying one tool does not prove the mission other tool
+- FAIL  lib/qa/delegation-mission-activation.test.ts > the underlying availability source still has to say yes > a throwing source fails closed rather than propagating
+- FAIL  lib/qa/delegation-mission-activation.test.ts > the underlying availability source still has to say yes > caches nothing — a revocation between two evaluations changes the answer
+- FAIL  lib/qa/delegation-mission-activation.test.ts > live Mission invalidation collapses the proof (§21.14) > a revoked APPROVE authorization invalidates the proof
+- FAIL  lib/qa/delegation-mission-activation.test.ts > live Mission invalidation collapses the proof (§21.14) > a governing Decision that stops governing invalidates the proof
+- FAIL  lib/qa/delegation-mission-activation.test.ts > live Mission invalidation collapses the proof (§21.14) > a non-operational project mode invalidates the proof
+- FAIL  lib/qa/delegation-mission-activation.test.ts > R2 — a terminal Mission ends the handoff (§21.27) > a failed Mission makes the accepted delegation unusable
+- FAIL  lib/qa/desktop-commander-unlicensed.test.ts > nothing in production can reach the host > the scan can actually fail — it finds the production tree
+- FAIL  lib/qa/desktop-commander-unlicensed.test.ts > nothing in production can reach the host > no module imports the Desktop Commander MCP package
+- FAIL  lib/qa/desktop-commander-unlicensed.test.ts > nothing in production can reach the host > no module spawns the Desktop Commander server
+- FAIL  lib/qa/desktop-commander-unlicensed.test.ts > nothing in production can reach the host > no module opens an MCP client or transport at all
+- FAIL  lib/qa/desktop-commander-unlicensed.test.ts > nothing in production can reach the host > the declaration is imported by no production module
+- FAIL  lib/qa/execution-contract-propagation.test.ts > every governed spend supplies an explicit execution contract > all runtime withGovernedSpend calls pass `execution`
+- FAIL  lib/qa/execution-contract-propagation.test.ts > every governed spend supplies an explicit execution contract > only the sanctioned provider modules call the boundary at all
+- FAIL  lib/qa/execution-contract-propagation.test.ts > every governed spend supplies an explicit execution contract > nothing defaults, coalesces or invents an execution contract
+- FAIL  lib/qa/execution-contract-propagation.test.ts > every governed spend supplies an explicit execution contract > test-only fixtures never leak into runtime code
+- FAIL  lib/qa/execution-contract-propagation.test.ts > OPERATOR_INTERACTIVE is the only stop bypass, so its construction is allowlisted > only the allowlisted files construct it
+- FAIL  lib/qa/execution-contract-propagation.test.ts > classification follows authentication, not filenames > cron-only execution paths declare AUTONOMOUS
+- FAIL  lib/qa/execution-contract-propagation.test.ts > every runtime GLOBAL_ONLY is reviewed and justified > no unreviewed file constructs GLOBAL_ONLY
+- FAIL  lib/qa/execution-contract-propagation.test.ts > ExecutionStoppedError does not leak operator-authored text > nothing reads a StopDecision’s observed prose outside the authority
+- FAIL  lib/qa/executive-brief-apex.test.ts > EI-S1.5A — no shared-secret Executive Brief read surface exists > no Executive Intelligence READ route authorizes on the shared secret
+- FAIL  lib/qa/executive-brief-apex.test.ts > EI-S1.5A — no shared-secret Executive Brief read surface exists > leaves CRON_SECRET intact for unrelated scheduler routes
+- FAIL  lib/qa/executive-intelligence-schema-activation.test.ts > EI-S1.6A — Executive Intelligence schema activation bundle > keeps the legacy EI companion count at exactly 83 enforced migrations
+- FAIL  lib/qa/external-dispatch-guards.test.ts > G1 · every external write in the tree has a canonical dispatch boundary > every external write CALL SITE has its own authorization
+- FAIL  lib/qa/external-dispatch-guards.test.ts > G1 · every external write in the tree has a canonical dispatch boundary > the inventory itself is non-empty and finds the known callers
+- FAIL  lib/qa/external-dispatch-guards.test.ts > G1 · every external write in the tree has a canonical dispatch boundary > no governance assertion is parked behind an unreachable branch
+- FAIL  lib/qa/external-dispatch-guards.test.ts > G4 · the legacy global-only helper is no longer an authority > no runtime module calls checkAutomationPaused
+- FAIL  lib/qa/global-auth-retired.test.ts > the global key verifier is gone > no PRODUCTION module defines the helpers
+- FAIL  lib/qa/global-auth-retired.test.ts > the global key verifier is gone > no production module reads the global key from the environment
+- FAIL  lib/qa/global-auth-retired.test.ts > no route can reach a global key path > finds route files at all — the scan must be able to fail
+- FAIL  lib/qa/global-auth-retired.test.ts > no route can reach a global key path > zero routes call the helpers, directly or via one hop
+- FAIL  lib/qa/global-auth-retired.test.ts > no route can reach a global key path > zero route files import from api-auth for anything but cron
+- FAIL  lib/qa/global-auth-retired.test.ts > the cron class survived the deletion > cron routes still use CRON_SECRET directly
+- FAIL  lib/qa/global-design-tokens.test.ts > global design · every token a stylesheet needs exists > scans the real stylesheets, including the surfaces that carried the defect
+- FAIL  lib/qa/global-design-tokens.test.ts > global design · every token a stylesheet needs exists > no CSS module uses a shadcn HSL triple bare as a colour
+- FAIL  lib/qa/handlarborsen-inbox-migration.test.ts > approved Handlarborsen inbox schema promotion > enforces the new schema rather than grandfathering or ignoring its ledger name
+- FAIL  lib/qa/handlarborsen-visual-pulse.test.ts > Handlarborsen overview hierarchy > places charts after KPI and before secondary pulse, collapsing only the breakdown
+- FAIL  lib/qa/handlarborsen-watch-runs-migration.test.ts > reviewed weekly watch journal schema promotion > fails closed on a missing or duplicated journal ledger name
+- FAIL  lib/qa/leads-dual-accept.test.ts > containment > no other route imports the leads auth resolver
+- FAIL  lib/qa/leads-dual-accept.test.ts > containment > no other route imports the credential primitive
+- FAIL  lib/qa/leads-legacy-auth-removed.test.ts > global legacy HTTP surface > finds route files at all — the scan must be able to fail
+- FAIL  lib/qa/leads-legacy-auth-removed.test.ts > global legacy HTTP surface > no route reaches requireApiKey or requireUserOrApiKey, directly or via one hop
+- FAIL  lib/qa/leads-legacy-auth-removed.test.ts > global legacy HTTP surface > no route file reads AIOPS_API_KEY
+- FAIL  lib/qa/leads-legacy-auth-removed.test.ts > global legacy HTTP surface > leaves cron auth untouched and still reachable
+- FAIL  lib/qa/legacy-v1-api-removed.test.ts > drift-guard — manifest ↔ filsystem > varje manifestpost har en route-fil
+- FAIL  lib/qa/legacy-v1-api-removed.test.ts > auth-kärnan behålls — Familje-Stunden är beroende av den > /business/leads är fortfarande registrerad
+- FAIL  lib/qa/legacy-v1-api-removed.test.ts > auth-kärnan behålls — Familje-Stunden är beroende av den > /business/campaigns är fortfarande registrerad
+- FAIL  lib/qa/legacy-v1-api-removed.test.ts > auth-kärnan behålls — Familje-Stunden är beroende av den > /business/revenue är fortfarande registrerad
+- FAIL  lib/qa/legacy-v1-api-removed.test.ts > auth-kärnan behålls — Familje-Stunden är beroende av den > /chat/tts är fortfarande registrerad
+- FAIL  lib/qa/licensed-bind-m4b-guards.test.ts > M4-B is the last migration and leaves the exempt bind untouched > no migration after M4-B, and M4-B does not redefine the exempt bind
+- FAIL  lib/qa/local-text-ledger-reconciliation.test.ts > source-only reconciliation of already-applied local text authority > requires that exact enforced name once and rejects missing or duplicate entries
+- FAIL  lib/qa/local-text-lifecycle-reconciliation.test.ts > exact source of already-applied local-text lifecycle > requires the lifecycle ledger name once without changing frozen allowlists
+- FAIL  lib/qa/marketing-review.test.ts > marketing review · the rollback body is the body it replaced > is pinned by hash, its own doc comment included
+- FAIL  lib/qa/marketing-review.test.ts > marketing review · the rollback body is the body it replaced > the client component it renders is untouched
+- FAIL  lib/qa/marketing-review.test.ts > marketing review · rendered surface and layout > the controls stay visible without the shared foreground token
+- FAIL  lib/qa/media-orchestration-retry-authority.test.ts > the article hero call site carries the authority > every production withRetry around the orchestrator carries it
+- FAIL  lib/qa/memory-vnext.test.ts > Minne vNext · generation and frozen legacy > pins the mechanically moved legacy body
+- FAIL  lib/qa/memory-vnext.test.ts > Minne vNext · generation and frozen legacy > keeps the existing API and Memory helpers byte-identical
+- FAIL  lib/qa/migration-security-gate.test.ts > Phase 9AA — the real corpus passes, and only by exact review > replays every migration and the bootstrap without an unparsed security statement
+- FAIL  lib/qa/migration-security-gate.test.ts > Phase 9AA — the real corpus passes, and only by exact review > every blocking finding is matched by a reviewed exception
+- FAIL  lib/qa/migration-security-gate.test.ts > Phase 9AA — the real corpus passes, and only by exact review > the corpus holds exactly the historical findings this programme already closed
+- FAIL  lib/qa/mission-brief-v1.test.ts > Canonical vocabulary (§20.11, §20.98) > supports all sixteen §20.98 statuses in the public type
+- FAIL  lib/qa/money-overview.test.ts > pengar · the rollback body is the body it replaced > is pinned by hash
+- FAIL  lib/qa/monthly-release-v2.test.ts > v1 is registered in production and must not move > MUTATION — the v1 YAML still hashes to the pinned upstream value
+- FAIL  lib/qa/monthly-release-v2.test.ts > v2 is vendored, never authored here > the vendored YAML matches the pinned upstream hash
+- FAIL  lib/qa/monthly-release-v2.test.ts > v2 is vendored, never authored here > the committed JSON is the generated form of the vendored YAML
+- FAIL  lib/qa/muapi-media-provider.test.ts > no credential and no live default reaches the repository > no tracked file assigns a non-placeholder MuAPI key
+- FAIL  lib/qa/muapi-media-provider.test.ts > no credential and no live default reaches the repository > no production module writes MuAPI config at runtime
+- FAIL  lib/qa/muapi-media-provider.test.ts > no credential and no live default reaches the repository > no production module hands out a credential outside config.ts
+- FAIL  lib/qa/muapi-media-provider.test.ts > no credential and no live default reaches the repository > the committed env template contains only empty placeholders
+- FAIL  lib/qa/muapi-media-provider.test.ts > no credential and no live default reaches the repository > nothing outside the provider directory imports the MuAPI adapter directly
+- FAIL  lib/qa/muapi-media-provider.test.ts > nothing generates media on its own > exactly ONE governed module calls a generation method
+- FAIL  lib/qa/muapi-media-provider.test.ts > nothing generates media on its own > no route, cron or workflow calls a generation method
+- FAIL  lib/qa/muapi-media-provider.test.ts > nothing generates media on its own > the provider layer is not imported by any route or cron
+- FAIL  lib/qa/platform-credential-events.test.ts > Settings S0 · platform_credential_events migration — append-only and server-only > RLS on, no policy, every client grant revoked, and the service role holds SELECT and INSERT only
+- FAIL  lib/qa/platform-credential-events.test.ts > Settings S0 · platform_credential_events migration — append-only and server-only > touches no other object and carries no data statement
+- FAIL  lib/qa/platform-credential-events.test.ts > Settings S0 · platform_credential_events — the search_path follow-up > pins the append-only function's search_path, and does nothing else
+- FAIL  lib/qa/project-api-credentials.test.ts > inertness — Phase 1 changes no existing auth > is imported by no route directly — only via the leads-scoped resolver
+- FAIL  lib/qa/project-command-center.test.ts > project command center · legacy rollback > keeps the legacy body byte-identical to the page it replaced
+- FAIL  lib/qa/project-command-center.test.ts > project command center · Marknadsplatsstatistik link > the view renders it as a plain link, with no project name of its own
+- FAIL  lib/qa/project-workspace-vnext.test.ts > project workspace B1 · generation and legacy rollback > keeps the six legacy route bodies byte-for-byte from the reviewed base
+- FAIL  lib/qa/project-workspace-vnext.test.ts > project workspace B1 · generation and legacy rollback > moves the exact workflow editor behind /edit without changing its implementation
+- FAIL  lib/qa/project-workspace-vnext.test.ts > project workspace B1 · generation and legacy rollback > keeps the previous output component and deletion endpoint untouched while stating whole-run deletion
+- FAIL  lib/qa/provider-dispatch-certainty.test.ts > no consumer of ProviderDispatchUnknownError weakens it > none converts the ambiguity into a not-dispatched claim
+- FAIL  lib/qa/release-gate-proof-workflow.test.ts > the proof definition is vendored, minimal and read-only > the vendored file matches its pinned source hash
+- FAIL  lib/qa/release-gate-proof-workflow.test.ts > single-remote-read authority > the ONLY writer of AUTOMATED evidence is the executor
+- FAIL  lib/qa/review-queue.test.ts > phase 11 · scope, authority and boundaries > adds no endpoint, no migration and no schema change
+- FAIL  lib/qa/review-queue.test.ts > phase 11 · the legacy rollback is the page that shipped > the legacy body is the previous page verbatim — pinned by hash
+- FAIL  lib/qa/sales-inbox-ledger-reconciliation.test.ts > already-applied sales inbox source reconciliation > keeps missing, duplicate and unknown ledger entries fail-closed
+- FAIL  lib/qa/sales-ledger-reconciliation.test.ts > already-applied sales schema reconciliation > enforces the migration and still rejects missing, duplicate and unknown ledger names
+- FAIL  lib/qa/schema-security-invariant.test.ts > Phase 9Y — schema-security invariant: migration text, forward-looking > every public table CREATED by a migration is present in the registry, or recorded as not-live
+- FAIL  lib/qa/schema-security-invariant.test.ts > Phase 9Y — schema-security invariant: migration text, forward-looking > every public table CREATED by a migration has RLS declared there, or a reviewed out-of-band entry
+- FAIL  lib/qa/scoped-read-isolation.test.ts > 9A · every caller supplies scope canonically > has exactly one production caller, and it passes a resolved allow-list
+- FAIL  lib/qa/sdf1b2-code-work-operator-plane.test.ts > SDF-1B2 read isolation and no-execution boundary > keeps migration 80 byte-identical
+- FAIL  lib/qa/sdf1c-broker-claim-credential.test.ts > SDF-1C1B migration and structural boundary > adds no route, no broker CLI command and no execution/model code
+- FAIL  lib/qa/sdf1c-trusted-broker.test.ts > SDF-1C1 repository, secret and no-execution boundary > exposes only enrollment and identity diagnostics, never execution capability
+- FAIL  lib/qa/sdf1c2-broker-control-channel.test.ts > SDF-1C2 structural boundary > exposes exactly the six purpose-specific broker routes and no generic boundary
+- FAIL  lib/qa/sdf1c3-isolation-integration.test.ts > SDF-1C3A real Git: the preparation substrate against a synthetic repository, with the real toolchain > prepares an isolated worktree at the pinned commit and stays inside the approved parent
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A trusted toolchain: git and docker are never chosen by a caller > resolves only from fixed absolute candidates and issues an unforgeable-by-shape tool
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A trusted toolchain: git and docker are never chosen by a caller > refuses relative, missing, non-regular, non-executable, group/other-writable, foreign-owned and unsafe-ancestor candidates
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A trusted toolchain: git and docker are never chosen by a caller > follows a symlink to its real target and judges the target (a link cannot launder trust)
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A trusted toolchain: git and docker are never chosen by a caller > the runner refuses a tool object that did not come from the resolver
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment > only a broker-made command can run, and run() takes nothing but the command (no env, args or executable)
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment > never enables a shell and runs exactly the trusted executable with direct argv
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment > does not inherit the parent environment: secrets in process.env never reach a child
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment > bounds stdout/stderr before returning
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment > a timeout kills the child (TERM, then KILL) and reports timedOut
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment > logs nothing and never puts a command line or secret in a result or thrown message
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment > a planted user gitconfig, hooks, filters and credential helper are unreachable (real git)
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > prepares a worktree at exactly the pinned commit with a closed, path-free result
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > is deterministic: same work → same branch, directory and hashes
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > accepts only trusted structured input; the caller cannot choose branch, directory, parent or arguments
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > requires a full lowercase SHA pin (uppercase)
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > requires a full lowercase SHA pin (39 chars)
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > requires a full lowercase SHA pin (41 chars)
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > requires a full lowercase SHA pin (abbreviated)
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > requires a full lowercase SHA pin (a ref name)
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > requires a full lowercase SHA pin (non-hex)
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > requires a full lowercase SHA pin (option-like)
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > requires a full lowercase SHA pin (empty)
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses a pin that is not a commit object present locally (missing, blob, tree, annotated tag) and never fetches
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > returns STALE_BASE, exactly and without fetching, when the approved base ref moved
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > needs no network at all (an unreachable origin cannot matter)
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses wrong remote
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses wrong host
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses file remote
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses plain path remote
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses credentials in URL
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses sub-path
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > accepts SCP, ssh and case-different forms of the SAME identity, and refuses a second identity or a missing remote
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses a repository whose own config launches programs (filter driver) before creating anything
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses a repository whose own config launches programs (fsmonitor) before creating anything
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses a repository whose own config launches programs (hooksPath) before creating anything
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses a repository whose own config launches programs (credential helper) before creating anything
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses a repository whose own config launches programs (include) before creating anything
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses a repository whose own config launches programs (ssh command) before creating anything
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses a repository whose own config launches programs (shell alias) before creating anything
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses a missing, symlinked, non-directory, non-canonical or non-repository root, and a linked worktree used as root
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses a missing, symlinked or non-canonical worktree parent and never creates it
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses every collision without touching the existing state (path, dangling link, file, branch, worktree)
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > a worktree elsewhere already holding the branch or the path is a conflict
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > does not follow a symlink planted in the future target path
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > verifies after creation and, on any failed check, keeps the workspace (explicit_cleanup_only) and says so
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > verifies canonical roots only
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > reads existing files only when no segment is a symlink and the realpath is the lexical path
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > a write-intent check additionally refuses hardlinks and non-regular files
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > verifies a prospective create against its deepest existing ancestor
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses NUL
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses newline
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses tab
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses DEL
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses parent traversal
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses embedded traversal
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses absolute
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses windows drive
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses double slash
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses dot segment
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses trailing slash
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses backslash
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses empty
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses surrounding space
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses non-NFC (NFD é)
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses .git
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses nested .git
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses .GIT case
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses .env
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses .env.local
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses .ENV.production
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses .ssh
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses .aws
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses secrets dir
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses pem
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses key
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses service account
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > refuses not a string
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > accepts ordinary NFC unicode names
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem containment primitives > opens for reading with O_NOFOLLOW and refuses a final component that became a symlink
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A SandboxSpec and Docker command construction > refuses every docker verb outside the closed set and every malformed target
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A Docker host proof (VM-backed Docker Desktop required for production) > derives the daemon socket only from a fixed host-side list (no DOCKER_HOST, no remote, no other socket)
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A boundary: no production caller, no route, no CLI command, no migration, no execution > adds no broker route, and the route set is exactly the 1C2 control channel
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A boundary: no production caller, no route, no CLI command, no migration, no execution > only the approved isolation modules can ISSUE an InfraCommand: brokerCommand is not reachable from any other production module
+- FAIL  lib/qa/session-only-routes.test.ts > source invariants > no route imports requireUserOrApiKey any more
+- FAIL  lib/qa/session-only-routes.test.ts > source invariants > exactly ONE route surface still accepts the global key
+- FAIL  lib/qa/spend-financial-decoupling.test.ts > §14 · each flag has exactly ONE production reader > H1_SPEND_GATE is read only in spend-gate-flag.ts
+- FAIL  lib/qa/spend-financial-decoupling.test.ts > §14 · each flag has exactly ONE production reader > H1_FINANCIAL_EXECUTION is read only in financial-execution-flag.ts
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the declaration and its reader semantics > starts UNDECLARED — NULL is the absence of a declaration, with no default
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the declaration and its reader semantics > a positive declaration is stored exactly, and audits one SET
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the declaration and its reader semantics > ZERO is a KNOWN declaration, never a clear
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the declaration and its reader semantics > NEGATIVE is a KNOWN declaration — the sign is not this schema's policy
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the declaration and its reader semantics > CLEAR persists NULL, and is distinguishable from a zero declaration
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the declaration and its reader semantics > re-setting the SAME value writes nothing — no audit trail of non-events
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the declaration and its reader semantics > the RESPONSE equals current truth and the audit row, exactly
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · invalid input is refused at the boundary > refuses NaN and both infinities
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · invalid input is refused at the boundary > refuses an absent actor — the ledger cannot record an anonymous change
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · invalid input is refused at the boundary > none of those probes changed the declaration or wrote an audit row
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the declaration is persisted EXACTLY, never rounded > ACCEPTS every exactly-representable shape
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the declaration is persisted EXACTLY, never rounded > REFUSES anything that would be silently rounded
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the declaration is persisted EXACTLY, never rounded > REFUSES anything outside the numeric(12,4) range
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the declaration is persisted EXACTLY, never rounded > ACCEPTS trailing zeros, which is not precision loss
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the declaration is persisted EXACTLY, never rounded > the no-op comparison uses the CANONICAL stored value
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the actor must be a canonical authenticated human > ACCEPTS the canonical user:<uuid> shape
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the actor must be a canonical authenticated human > REFUSES machine-shaped and malformed actors through the RPC
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the actor must be a canonical authenticated human > REFUSES the same shapes at the TABLE, not only at the RPC
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the actor must be a canonical authenticated human > a refused actor leaves the declaration and the ledger untouched
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · current truth is a SERVER-ONLY singleton > exists, and holds exactly the singleton row
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · current truth is a SERVER-ONLY singleton > is the ONLY place the declaration lives — platform_config does not carry it
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · current truth is a SERVER-ONLY singleton > has RLS on and ZERO policies, so no client can read it through a policy
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · current truth is a SERVER-ONLY singleton > grants anon and authenticated NOTHING
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · current truth is a SERVER-ONLY singleton > grants service_role SELECT and nothing else
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · current truth is a SERVER-ONLY singleton > refuses every direct write by service_role
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · current truth is a SERVER-ONLY singleton > refuses every direct write by anon and authenticated
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · current truth is a SERVER-ONLY singleton > the canonical RPC is the ONLY writer that can exist — and it works
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · current truth is a SERVER-ONLY singleton > the singleton constraint refuses a second row even from the owner
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the change and its evidence are atomic > every change writes EXACTLY ONE audit row, and every audit row has a change
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the change and its evidence are atomic > the ledger is NOT the current truth — clearing it would not change the declaration
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the change and its evidence are atomic > concurrent setters serialise: the predecessor each records is the real one
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the audit ledger cannot be rewritten > refuses UPDATE
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the audit ledger cannot be rewritten > refuses DELETE
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the audit ledger cannot be rewritten > refuses TRUNCATE
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the audit ledger cannot be rewritten > refuses a direct INSERT by service_role, and by anon
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · the audit ledger cannot be rewritten > closes the event vocabulary, so a row cannot name an event no reader interprets
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · exactly one current source, and history is never it > the setter reads and writes the singleton, and never platform_config
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · exactly one current source, and history is never it > the setter never reads the ledger to decide what is declared now
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · exactly one current source, and history is never it > no function anywhere reads the ledger as current funding truth
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · exactly one current source, and history is never it > the declaration column exists on exactly ONE table in the schema
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · least privilege > anon and authenticated can neither read the ledger nor call the setter
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · least privilege > service_role reads the ledger and executes the boundary, and writes neither table
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · least privilege > the setter is SECURITY DEFINER with a fixed empty search_path
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · least privilege > the ledger sequence is revoked from every role
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · scope completeness, answered without exposing anything > is TRUE only when the set contains every project
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · scope completeness, answered without exposing anything > is FALSE for a subset — a single project is never the platform
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · scope completeness, answered without exposing anything > is FALSE for the empty set and for NULL
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · scope completeness, answered without exposing anything > returns ONE BOOLEAN — never a row, an id or a count
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · scope completeness, answered without exposing anything > is unmoved by a project added outside the caller set
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · a declaration moves nothing else > reserves no spend, changes no stop, and issues no authorization
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · a declaration moves nothing else > does not clear a pause that is already set
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding · a declaration moves nothing else > Phase 2A history is untouched by a funding change
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · contract > creates exactly one table, and grants write to nobody
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · contract > denies INSERT to every role while letting the boundary INSERT
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · the recording boundary is hardened > is SECURITY DEFINER with an empty, fixed search_path
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · the recording boundary is hardened > PUBLIC, anon and authenticated cannot execute it
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · the recording boundary is hardened > service_role holds EXECUTE and nothing broader
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · the recording boundary is hardened > has no autonomy, actor or provenance parameter at all
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · the recording boundary is hardened > refuses a human or arbitrary actor, even on a direct INSERT
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · the recording boundary is hardened > the RPC writes the canonical machine identity, whatever the observer
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · the recording boundary is hardened > derives provenance from the version, and refuses every mismatched pair
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · the recording boundary is hardened > the RPC takes no provenance argument at all
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · the recording boundary is hardened > refuses an impossible state/ceiling pair on a direct INSERT
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · the recording boundary is hardened > refuses a policy identity no derivation implements
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · the recording boundary is hardened > service_role cannot write the table or the sequence directly
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · the recording boundary is hardened > a real anon session is refused, and the boundary is reachable as itself
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · records transitions, not polling noise > records exactly one baseline for the first observation
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · records transitions, not polling noise > records nothing when the same state is observed again
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · records transitions, not polling noise > records exactly one transition when the state really changes
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · records transitions, not polling noise > keeps event_seq as the chain order and goes back to NORMAL
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · records transitions, not polling noise > answers `unchanged` for a no-op rather than inserting
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · from_state is never the caller’s > refuses a direct INSERT whose from_state does not follow the ledger
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · from_state is never the caller’s > refuses a second baseline for a project that already has history
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · from_state is never the caller’s > refuses a transition that does not change the state
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · append-only, enforced by the database > refuses UPDATE
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · append-only, enforced by the database > refuses DELETE
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · append-only, enforced by the database > refuses TRUNCATE
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · closed vocabularies > closes the event, state, ceiling, funding and policy-identity vocabularies
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · closed vocabularies > seeds a project with history so the CHECKs, not the guard, are under test
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · closed vocabularies > refuses a value outside each closed set, by CHECK
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · closed vocabularies > refuses an unsupported to_state at the boundary, before anything is written
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · closed vocabularies > the declared amount is biconditional with KNOWN — all four cases
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · closed vocabularies > ACCEPTS negative remaining headroom — an overspent scope is valid evidence
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · closed vocabularies > refuses a negative limit, burn rate or runway
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · closed vocabularies > refuses an unknown event type, which can only arrive by direct INSERT
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · closed vocabularies > refuses an unknown project, fail-closed
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · the observation survives the round trip > preserves reasons, gaps, ceiling, funding and the distinct funding states
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · the observation survives the round trip > keeps UNAVAILABLE distinct from UNDECLARED
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · the observation survives the round trip > stores declared funding when KNOWN, and only then
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · the observation survives the round trip > keeps MRR a SIGNAL — it never becomes runway, and runway stays unknown without funding
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · the observation survives the round trip > records the observation instant separately from the write instant
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · the observation survives the round trip > refuses an occurred_at in the future
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · concurrency cannot duplicate a logical transition > two concurrent FIRST observations produce ONE baseline
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · concurrency cannot duplicate a logical transition > two concurrent observers of the SAME change produce ONE transition
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · concurrency cannot duplicate a logical transition > a retry of the same observation is idempotent
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history · recording changes neither spend nor the stop > leaves the automation pause and the spend ledger untouched
+- FAIL  lib/qa/system-health.test.ts > phase 12 · authority is preserved, never re-created > adds no endpoint, migration or schema change
+- FAIL  lib/qa/system-health.test.ts > phase 12 · the legacy rollback is the page that shipped > the legacy body is the previous page verbatim — pinned by hash
+- FAIL  lib/qa/vnext-intelligence-graph.test.ts > phase 18 · the legacy rollback is the page that shipped > renders the legacy canvas byte-identically to origin/main 430259e
+- FAIL  lib/qa/vnext-intelligence-graph.test.ts > phase 18 · the legacy rollback is the page that shipped > keeps the legacy client markup byte-identical
+- FAIL  lib/qa/vnext-intelligence-graph.test.ts > phase 18 · the legacy rollback is the page that shipped > moves the previous page body verbatim into IntelligenceGraphLegacy
+- FAIL  lib/qa/vnext-intelligence-graph.test.ts > phase 18 · the legacy rollback is the page that shipped > leaves the legacy inspector file untouched
+- FAIL  lib/qa/vnext-intelligence-graph.test.ts > phase 18 · layout, scale and motion > is exactly as tall as the vNext shell leaves it, not the legacy CommandBar height
+- FAIL  lib/qa/vnext-intelligence-graph.test.ts > phase 18 T2a · shell geometry > measures the floating corner from the activity peek and the Atlas launcher
+- FAIL  lib/qa/vnext-intelligence-graph.test.ts > phase 18 T2a · shell geometry > goes fullscreen with the header, where the shell chrome is gone
+- FAIL  lib/qa/vnext-intelligence-graph.test.ts > phase 18 T3b · release hardening > opts only Live Operations into the G-27 last-safe guard
+- FAIL  lib/qa/vnext-intelligence-graph.test.ts > phase 18 T3b · release hardening > keeps mobile list-first, System Map, Replay and legacy rollback contracts intact
+- FAIL  lib/qa/website-build-drain.test.ts > website build dispatch through actual drain route and SQL > requires_cron_auth_before_any_build
+- FAIL  lib/qa/website-build-drain.test.ts > website build dispatch through actual drain route and SQL > dispatches_website_kind_without_touching_legacy_handlers
+- FAIL  lib/qa/website-build-drain.test.ts > website build dispatch through actual drain route and SQL > invalid_artifact_is_terminal_without_automatic_paid_retry
+- FAIL  lib/qa/website-build-drain.test.ts > website build dispatch through actual drain route and SQL > in_flight_unknown_waits_for_reconciliation_and_never_looks_like_an_active_build
+- FAIL  lib/qa/workflows-definition-familje-stunden.test.ts > vendored definition — provenance > the vendored YAML matches the pinned upstream hash
+- FAIL  lib/qa/workflows-definition-familje-stunden.test.ts > vendored definition — provenance > the committed JSON is the generated form of the vendored YAML
+- FAIL  lib/qa/youtube-project-oauth.test.ts > youtube connection · the codebase, read > the state is touched only by the OAuth module; the start route records it, the callback consumes it and alone exchanges a code
+- FAIL  lib/architecture-knowledge/architecture-knowledge.test.ts > Immutable artifact and runtime loader > loads and verifies the committed artifact read-only
+- FAIL  lib/architecture-knowledge/architecture-knowledge.test.ts > Golden lexical retrieval and server citations > routes How are Agents, Tools and Execution Resources registered? to Intelligence Fabric canonical material
+- FAIL  lib/architecture-knowledge/architecture-knowledge.test.ts > Golden lexical retrieval and server citations > routes How are Credentials separated from Agent authority? to Intelligence Fabric canonical material
+- FAIL  lib/architecture-knowledge/architecture-knowledge.test.ts > Golden lexical retrieval and server citations > routes How does multimodal production work? to Intelligence Fabric canonical material
+- FAIL  lib/architecture-knowledge/architecture-knowledge.test.ts > Golden lexical retrieval and server citations > reaches provider-selection material in every canonical book that covers it
+- FAIL  lib/architecture-knowledge/architecture-knowledge.test.ts > Golden lexical retrieval and server citations > supports exact section, chapter, book-title and requirement identifiers
+- FAIL  lib/architecture-knowledge/architecture-knowledge.test.ts > Golden lexical retrieval and server citations > excludes wrong/old versions and returns explicit unavailability
+- FAIL  lib/architecture-knowledge/architecture-knowledge.test.ts > Golden lexical retrieval and server citations > mints exact citations and rejects fabricated, stale or mismatched citations
+- FAIL  lib/architecture-knowledge/executive-knowledge.test.ts > Generic artifact eligibility invariant > accepts the committed artifact while Executive is active and approved
+- FAIL  lib/architecture-knowledge/executive-knowledge.test.ts > Generic artifact eligibility invariant > rejects an inactive source that reached the artifact
+- FAIL  lib/architecture-knowledge/executive-knowledge.test.ts > Generic artifact eligibility invariant > rejects an artifact source row that diverged from the registry
+- FAIL  lib/architecture-knowledge/executive-knowledge.test.ts > Generic artifact eligibility invariant > rejects an artifact source that is not registered at all
+- FAIL  lib/architecture-knowledge/executive-knowledge.test.ts > Executive retrieval, citations and policy > is an active knowledge source in the committed artifact
+- FAIL  lib/architecture-knowledge/executive-knowledge.test.ts > Executive retrieval, citations and policy > resolves FM.2 by exact front-matter identifier
+- FAIL  lib/architecture-knowledge/executive-knowledge.test.ts > Executive retrieval, citations and policy > resolves FM.2 from an implementation-scope query and a canonical Stage 1 query
+- FAIL  lib/architecture-knowledge/executive-knowledge.test.ts > Executive retrieval, citations and policy > resolves exact Executive chapter and section identifiers
+- FAIL  lib/architecture-knowledge/executive-knowledge.test.ts > Executive retrieval, citations and policy > answers a governance and authority query from Executive doctrine
+- FAIL  lib/architecture-knowledge/executive-knowledge.test.ts > Executive retrieval, citations and policy > mints a valid Executive citation and rejects every tampered variant
+- FAIL  lib/architecture-knowledge/executive-knowledge.test.ts > Executive retrieval, citations and policy > denies internal Executive knowledge to an unauthorized principal and allows an authorized one
+- FAIL  lib/architecture-knowledge/executive-knowledge.test.ts > Executive retrieval, citations and policy > excludes an inactive, superseded or wrong-version Executive source before ranking
+- FAIL  lib/trading/market-data/import-discipline.test.ts > the contract boundary is identity, never a provider symbol > the domain definitions each still exist exactly once
+- FAIL  lib/trading/market-view/import-discipline.test.ts > no Node builtin is reachable at runtime from the market-view package > proves it across the whole transitive value-import closure
+- FAIL  lib/trading/provider-normalization/recorded-adapter.test.ts > a transcript gap fails closed > never branches on a provider message anywhere in the package
+- FAIL  lib/trading/replay/import-discipline.test.ts > no Node builtin is reachable at runtime from the replay package > proves it across the whole transitive value-import closure
+- FAIL  lib/trading/replay/import-discipline.test.ts > Stage 1.5 boundaries > reads no wall clock on a trading-state path
+- FAIL  lib/trading/session-calendar/import-discipline.test.ts > AD. an answer cannot depend on where or when it runs > names an explicit timeZone on every formatter it builds

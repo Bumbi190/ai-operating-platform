@@ -5,7 +5,7 @@
     "captured_at": "2026-09-25",
     "handlarborsen_review_p2_migration_note": "Operator-approved, project-locked, immutable human review decision events. RLS + FORCE RLS, zero policies, no anon/auth grants; service role SELECT/INSERT only, REVIEW RPC only service role. Fully isolated PG17.6 security tests passed. Live production catalog must be checked after application.",
     "handlarborsen_candidates_migration_note": "Additional candidate memory table to be verified against the scoped live production catalog after operator-approved application: project-locked, RLS and FORCE RLS, zero policies and client grants, service_role SELECT/INSERT only. Earlier table classifications remain unchanged.",
-    "total_tables": 163,
+    "total_tables": 166,
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
     "platform_tokens_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090000_platform_tokens_client_revoke.sql (Settings S0): client grants revoked, RLS on, no policy.",
     "platform_credential_events_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090100_platform_credential_events.sql (Settings S0), applied to production before this row was merged: created with RLS on and no policy, every client grant revoked, service_role holding SELECT and INSERT only, UPDATE/DELETE/TRUNCATE refused by triggers.",
@@ -82,7 +82,8 @@
     "local_text_lifecycle_live_reconciliation_note": "Source-only reconciliation 2026-10-17: already-applied atlas_local_text_lifecycle ledger 20261017180713 matches frozen cff355230fe4250fa5ecd6ab4733cd99cab9a43b, 59067 characters, SHA256 d5c1ca9aba0c993a6be27625cfa9852d0eb719be5ccc5eb826bfa95acfd0aba3. Read-only live catalog: incidents/human_reviews/retention SERVER_ONLY, RLS on, FORCE off, zero policies/client table or column grants, service ALL including DELETE/TRUNCATE. All 44 local_text routines have empty search_path and client EXECUTE denied: 43 INVOKER plus local_text_conversation_deleted DEFINER trigger (also no service EXECUTE), scoped by auth.uid/old.user_id and old.id. Jobs metadata_expires_at is not authenticated-selectable. The earlier base migration note records its initial capture; lifecycle is now live. No apply, rollback, application/model code or activation included; other table capture scope unchanged.",
     "handlarborsen_watch_journal_note": "Scoped live production observation2026-10-17 after handlarborsen_watch_runs_v1 ledger20261017200436; canonical20261017200038, exact SQL SHA256687d8cb87f8edf04f15618ed446d14fcae9dd9ebbf979f46b171429b7f7e9691,16520chars. Both tables RLS/FORCE ON, zero policies and anon/authenticated table or column privileges; service SELECT only, no direct mutation. Nine postgres-owned routines have empty search_path and zero client EXECUTE: three fixed-project DEFINER writers allow service EXECUTE, six INVOKER helpers allow no API-role EXECUTE. Five enabled guards/audit triggers; both tables empty, cron count38 unchanged. Ledger159/public tables152. Journal flag remains absent; no executor, schedule or source calls added. Only these two classifications refreshed; other capture scopes preserved.",
     "sales_inbox_source_reconciliation_note": "Scoped read-only production observation2026-10-18: four sales_inbox tables RLS on, FORCE off, zero policies, zero anon/authenticated table or column privileges, service SELECT. Exact already-applied source20261017191904 from gitf28f83f1f49831fff3315f154f96df4af9da0bdd matches production ledger SHA2561013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1,36094characters. Public tables156/ledger160. Source-only reconciliation: no SQL apply, history correction, account, sales app, flags or sender changes. All earlier entries/capture scopes preserved.",
-    "social_schedule_live_note": "Scoped hosted observation2026-10-18 after user-authorized application of four exact reviewed migrations from fab47854. Ledger versions20261018085701/20261018085707/20261018085708/20261018085733. All seven tables RLS ON, zero policies and no anon/authenticated grants; service SELECT/INSERT, UPDATE only on jobs/rules. All28 scoped scheduling/monthly/reconciliation routines SECURITY INVOKER with empty search_path and zero client EXECUTE. Batches/jobs/decisions/rules empty. Source-only reconciliation after apply; no account, provider publication or dispatch activation. Existing catalog entries retain their capture scopes."
+    "social_schedule_live_note": "Scoped hosted observation2026-10-18 after user-authorized application of four exact reviewed migrations from fab47854. Ledger versions20261018085701/20261018085707/20261018085708/20261018085733. All seven tables RLS ON, zero policies and no anon/authenticated grants; service SELECT/INSERT, UPDATE only on jobs/rules. All28 scoped scheduling/monthly/reconciliation routines SECURITY INVOKER with empty search_path and zero client EXECUTE. Batches/jobs/decisions/rules empty. Source-only reconciliation after apply; no account, provider publication or dispatch activation. Existing catalog entries retain their capture scopes.",
+    "sales_reply_source_reconciliation_note": "Scoped read-only production observation2026-10-18: three already-live sales_reply tables have RLS ON, zero policies, no anon/authenticated grants and service SELECT. Exact source from PR386 frozen8da379d2c376472e4e2470bc5e150ce85d8559c0 matches live ledger20261018040242:36146characters,SHA2567516d8566ae7776086452ff8fdd51058ce34a10ab70973bcdbf4ee14f655a3cc. Source-only reconciliation to unblock the strict migration guard; no SQL reapplied and no sales application code, flag, worker, inbox or sender changed. Existing capture scopes retained."
   },
   "tables": {
     "handlarborsen_competitor_review_decisions": {
@@ -1673,6 +1674,36 @@
       "created_by_migration": true
     },
     "social_monthly_release_evidence": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "sales_reply_jobs": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "sales_reply_attempts": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "sales_reply_draft_revisions": {
       "class": "SERVER_ONLY",
       "rls": true,
       "policies": 0,

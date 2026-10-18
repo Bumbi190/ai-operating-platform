@@ -82,3 +82,7 @@ User explicitly authorized going live. Final fab47854 Linux workflows passed8/8.
 The earlier broad run completed with88 failing/528 passing/35 skipped files and392 failing/13616 passing/1114 skipped tests. It began before final SQL and copy fixes and is not a final-tree result. Earlier baseline reproduction identified305 legacy failures across49 files; remaining observed cases are not all baseline-classified. Focused final evidence and required Linux CI are reported separately above.
 
 Post-apply registry security gates passed209/209 (live-registry-gates, code0).
+
+Preview exposed unknown already-live sales_reply_preparation (ledger20261018040242). Exact36146-character source from PR386 frozen8da379d2 was compared to hosted ledger SHA2567516d8566ae7776086452ff8fdd51058ce34a10ab70973bcdbf4ee14f655a3cc, then copied without SQL edits. Three actual live server-only classifications observed and added. Canonical/enforced142/128; frozen14/30 unchanged. Existing source-hash test extended and watched fail on the missing file before restoration. No sales SQL apply, application code or activation. Four new social ledger statement hashes separately match exact GitHub source bytes.
+
+Source reconciliation gates passed241/241 (security133, schema76, guard29, source-hash3), code0. The real freshly-read165-row hosted ledger passes the actual repository evaluator at142canonical/128enforced.

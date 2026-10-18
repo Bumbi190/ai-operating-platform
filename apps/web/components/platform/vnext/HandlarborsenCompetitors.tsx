@@ -1,3 +1,4 @@
+import { HandlarborsenWeeklyReport } from './HandlarborsenWeeklyReport'
 import { HandlarborsenWatchReadiness } from './HandlarborsenWatchReadiness'
 import type { WatchReadinessLoad } from '@/lib/atlas/project-analytics/handlarborsen-watch-readiness-service'
 import { DOSSIER_DATE, EVIDENCE, STATUS_LABELS, summarizeScan, type PublicScan } from '@/lib/atlas/project-analytics/handlarborsen-competitors'
@@ -30,6 +31,7 @@ export function HandlarborsenCompetitors({ scan, landscape = null, history = nul
       </header>
       <HandlarborsenCandidateInbox enabled={inboxEnabled} inbox={inbox} mode={mode} />
       <HandlarborsenWatchReadiness result={watchReadiness} />
+      <HandlarborsenWeeklyReport history={history} enabled={historyEnabled} />
       <section className={styles.panel} aria-labelledby="competitor-mode">
         <h2 id="competitor-mode">Manuell kontroll</h2>
         <dl className={styles.facts}>

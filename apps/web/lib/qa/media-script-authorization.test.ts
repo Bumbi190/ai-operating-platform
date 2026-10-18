@@ -66,14 +66,16 @@ function fakeDb(tables: Record<string, any[]>) {
     const rec: Seen = { table, ops: [] }
     seen.push(rec)
     let rows: any[] = (tables[table] ?? []).map(r => ({ ...r }))
+    let columns=''
+    const first=()=>{const row=rows[0]?{...rows[0]}:null;if(row&&!columns.includes('raw_output'))delete row.raw_output;return row}
     const q: any = {
-      select: () => q,
+      select: (value:string) => {columns=value;return q},
       update: (patch: any) => { rec.ops.push(['update', table, patch]); return q },
       insert: (row: any) => { rec.ops.push(['insert', table, row]); return q },
       eq: (c: string, v: unknown) => { rec.ops.push(['eq', c, v]); rows = rows.filter(r => get(r, c) === v); return q },
       in: (c: string, v: unknown[]) => { rec.ops.push(['in', c, v]); rows = rows.filter(r => v.includes(get(r, c) as never)); return q },
       order: () => q, limit: () => q,
-      maybeSingle: async () => ({ data: rows[0] ?? null, error: null }),
+      maybeSingle: async () => ({ data: first(), error: null }),
       single: async () => ({ data: rows[0] ?? null, error: rows[0] ? null : { message: 'no rows' } }),
       then: (ok: any, err?: any) => Promise.resolve({ data: rows, error: null }).then(ok, err),
     }
@@ -285,4 +287,21 @@ describe('9V-3a · regenerate — one guard dominates BOTH side-effect branches'
     const { calls } = await run(() => call(OWNED, 'image'))
     expect(calls).toContain('ideogram')
   })
+})
+
+describe('manual publication retains the private preview hold after render',()=>{
+ for(const raw of [{pilot_image_profile:'the-prompt-illustrated-v2'},{private_provider_preview:{kind:'the-prompt-private-provider-qa-v1'}}]){
+  it('refuses an owned ready preview without providers or writes '+JSON.stringify(raw),async()=>{
+   vi.resetModules()
+   const tables=seed();Object.assign(tables.media_scripts[0],{raw_output:raw})
+   CURRENT=fakeDb(tables);CALLS=[]
+   const response=await ROUTES.find(r=>r.name==='media/publish/instagram')!.call(OWNED)
+   // Drain any erroneous SSE publication before counting side effects.
+   const text=await response.text()
+   expect(response.status).toBe(409)
+   expect(JSON.parse(text).status).toBe('illustrated_preview_required')
+   expect(CALLS).toEqual([])
+   expect(writes(CURRENT.seen)).toEqual([])
+  })
+ }
 })

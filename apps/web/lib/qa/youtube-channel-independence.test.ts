@@ -90,7 +90,8 @@ function makeChain(table: string) {
               }).then(onOk)
             }
             captured.filters = calls
-            return Promise.resolve({ data: dbState.rows, error: null }).then(onOk)
+            const rows=dbState.rows.map(r=>{const row={...r};if(!selectedColumns.includes('raw_output'))delete row.raw_output;return row})
+            return Promise.resolve({ data: rows, error: null }).then(onOk)
           }
           return Promise.resolve({ data: null, error: null }).then(onOk)
         }
@@ -413,4 +414,23 @@ describe("YouTube — the channel is the project's own binding, never a platform
     expect(body.failed[0].error).toBe('youtube_upload_channel_not_confirmed')
     expect(sendPipelineAlert.mock.calls.at(-1)?.[0]).toMatchObject({ step: 'youtube_channel_mismatch', severity: 'error' })
   })
+})
+
+describe('private illustrated previews are never YouTube candidates',()=>{
+ for(const raw of [{pilot_image_profile:'the-prompt-illustrated-v2'},{private_provider_preview:{kind:'the-prompt-private-provider-qa-v1'}}]){
+  for(const qs of ['', '?scriptId=private-preview']){
+   it('holds private media even with a ready URL and flags off '+JSON.stringify(raw)+' '+qs,async()=>{
+    const old=process.env.THE_PROMPT_ILLUSTRATED_PILOT
+    process.env.THE_PROMPT_ILLUSTRATED_PILOT='false'
+    try{
+     dbState.rows=[{id:'private-preview',project_id:TEST_PROJECT,hook:'Private preview',video_url:'https://cdn/private.mp4',youtube_video_id:null,raw_output:raw}]
+     const body=await (await call(qs)).json()
+     expect(body.skipped).toContainEqual({scriptId:'private-preview',refusal:'illustrated_preview_required'})
+     expect(uploadShort).not.toHaveBeenCalled()
+     expect(dbState.updates).toEqual([])
+     expect(youtubeCredentials.confirmCalls).toEqual([])
+    }finally{if(old===undefined)delete process.env.THE_PROMPT_ILLUSTRATED_PILOT;else process.env.THE_PROMPT_ILLUSTRATED_PILOT=old}
+   })
+  }
+ }
 })

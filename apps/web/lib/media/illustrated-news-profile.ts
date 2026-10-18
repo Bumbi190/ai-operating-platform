@@ -103,9 +103,16 @@ export function assertIllustratedNewsSource(projectId:string,news:unknown,nowMs=
 
 /** Saved provenance survives feature-flag changes; legacy compositions cannot consume it. */
 export function requiresIllustratedPreview(rawOutput:unknown):boolean {
- return !!rawOutput && typeof rawOutput==='object' && !Array.isArray(rawOutput) &&
-  (rawOutput as Record<string,unknown>).pilot_image_profile===ILLUSTRATED_NEWS_PROFILE
+ if(!rawOutput||typeof rawOutput!=='object'||Array.isArray(rawOutput))return false
+ const raw=rawOutput as Record<string,unknown>
+ return raw.pilot_image_profile===ILLUSTRATED_NEWS_PROFILE||
+  raw.private_provider_preview!==undefined&&raw.private_provider_preview!==null
 }
+
+/** PostgREST queue filter; keep held previews from consuming ordinary FIFO slots. */
+export const LEGACY_NEWS_QUEUE_FILTER=
+ 'raw_output->>pilot_image_profile.is.null,raw_output->>pilot_image_profile.neq.'+ILLUSTRATED_NEWS_PROFILE
+
 
 /** Configuration only, never a claim about balance, budget, rights or release. */
 export function missingIllustratedNewsProviders(

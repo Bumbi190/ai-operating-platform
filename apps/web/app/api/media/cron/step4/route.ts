@@ -25,6 +25,7 @@
  */
 
 import { NextResponse } from 'next/server'
+import {requiresIllustratedPreview,LEGACY_NEWS_QUEUE_FILTER} from '@/lib/media/illustrated-news-profile'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getLambdaRenderProgress, startLambdaRender } from '@/lib/media/lambda-render'
 import { createReelContainer, buildInstagramCaption } from '@/lib/media/instagram'
@@ -65,6 +66,7 @@ export async function GET(request: Request) {
     .select(`
       id,
       project_id,
+      raw_output,
       hook,
       cta,
       hashtags,
@@ -83,6 +85,8 @@ export async function GET(request: Request) {
       projects!inner ( slug )
     `)
     .eq('status', 'approved')
+    .is('raw_output->>private_provider_preview', null)
+    .or(LEGACY_NEWS_QUEUE_FILTER)
     .is('published_at', null)
     .is('instagram_creation_id', null)
     .order('generated_at', { ascending: false })
@@ -106,6 +110,10 @@ export async function GET(request: Request) {
   if (!script) {
     log('Nothing to do — no pending renders without IG container')
     return NextResponse.json({ status: 'nothing_to_do' })
+  }
+
+  if(requiresIllustratedPreview(script.raw_output)){
+    return NextResponse.json({status:'illustrated_preview_required',scriptId:script.id})
   }
 
   // The script's OWN project is the execution authority. Not

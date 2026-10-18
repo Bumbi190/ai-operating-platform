@@ -186,7 +186,7 @@ function operatorWorld(): Record<string, Row[]> {
 interface Logged { table: string; op: string; columns: string; filters: string[] }
 
 const getPath = (row: any, path: string): unknown =>
-  path.split('.').reduce((acc: any, key) => (acc == null ? acc : acc[key]), row)
+  path.replace(/->>?/g,'.').split('.').reduce((acc: any, key) => (acc == null ? acc : acc[key]), row)
 
 /** `name!inner ( … )` / `name ( … )` → embed name → inner join? */
 function embedsOf(columns: string): Map<string, boolean> {
@@ -202,7 +202,7 @@ function compare(a: unknown, b: unknown): number {
 
 /** One `col.op.value` term of a PostgREST `or=(…)`. NULL never equals, and `neq` on NULL is not true. */
 function orTerm(row: Row, term: string): boolean {
-  const m = term.match(/^([A-Za-z0-9_.]+?)\.(eq|neq|is|lt|lte|gt|gte|in)\.(.*)$/)
+  const m = term.match(/^([A-Za-z0-9_.>\-]+?)\.(eq|neq|is|lt|lte|gt|gte|in)\.(.*)$/)
   if (!m) throw new Error(`fake db: unsupported or() term ${term}`)
   const [, col, op, raw] = m
   const v = getPath(row, col)
@@ -1390,4 +1390,22 @@ describe('A6-3 · the machine publishers post only the platform social project�
     await publishInstagram('script-a')
     expect(publishCalls()).toEqual([])
   })
+  for(const raw of [{pilot_image_profile:'the-prompt-illustrated-v2'},{private_provider_preview:{kind:'the-prompt-private-provider-qa-v1'}}]){
+    for(const route of ['publish','youtube','step4'] as const){
+      it(route+' excludes private rows before its limit and processes ordinary content '+JSON.stringify(raw),async()=>{
+        DB.tables.media_scripts=[
+          ...[0,1,2].map(i=>mediaScript('private-'+i,SOCIAL,{raw_output:raw,generated_at:minutesAgo(60+i)})),
+          mediaScript('ordinary',SOCIAL,{raw_output:{},generated_at:minutesAgo(route==='step4'?90:40)}),
+        ]
+        const result=await cron(route),body=await result.json()
+        expect(result.status).toBe(200)
+        if(route==='youtube')expect(body.uploaded.map((v:{scriptId:string})=>v.scriptId)).toEqual(['ordinary'])
+        else expect(body.scriptId).toBe('ordinary')
+        expect(EXTERNAL.some(e=>e.includes('ordinary.mp4'))).toBe(true)
+        expect(EXTERNAL.some(e=>e.includes('private-'))).toBe(false)
+        expect(DB.mutations('media_scripts').filter(m=>m.filters.some(f=>f.includes('private-')))).toEqual([])
+      })
+    }
+  }
+
 })

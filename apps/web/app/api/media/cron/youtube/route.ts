@@ -41,6 +41,7 @@
  */
 
 import { NextResponse } from 'next/server'
+import {requiresIllustratedPreview,LEGACY_NEWS_QUEUE_FILTER} from '@/lib/media/illustrated-news-profile'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { uploadShort, buildYouTubeMeta } from '@/lib/media/youtube'
 import { sendPipelineAlert } from '@/lib/media/alert'
@@ -69,6 +70,7 @@ type ScriptRow = {
   hashtags: unknown
   video_url: string | null
   youtube_video_id: string | null
+  raw_output: unknown
   media_news_items: unknown
 }
 
@@ -141,9 +143,11 @@ export async function GET(request: Request) {
   // ── Hämta kandidater ──────────────────────────────────────────────────────
   let query = db
     .from('media_scripts')
-    .select('id, project_id, hook, cta, hashtags, video_url, youtube_video_id, media_news_items ( url, source_name ), projects!inner ( slug )')
+    .select('id, project_id, hook, cta, hashtags, video_url, youtube_video_id, raw_output, media_news_items ( url, source_name ), projects!inner ( slug )')
     .not('video_url', 'is', null)
     .is('youtube_video_id', null)
+    .is('raw_output->>private_provider_preview', null)
+    .or(LEGACY_NEWS_QUEUE_FILTER)
     // DESTINATION (Phase 9AC, A6-3): the platform's channel posts only the
     // platform social project's videos — for a named ?scriptId (the breaking
     // chain, pipeline-retry) exactly as for the schedule. `!inner` makes the
@@ -184,6 +188,10 @@ export async function GET(request: Request) {
   const credentials = createCredentialResolver()
 
   for (const script of scripts as ScriptRow[]) {
+    if(requiresIllustratedPreview(script.raw_output)){
+      skipped.push({scriptId:script.id,refusal:'illustrated_preview_required'})
+      continue
+    }
     if (!script.video_url) continue
     // Idempotens: gäller även ?scriptId-vägen, som annars kringgår filtret ovan.
     if (script.youtube_video_id) {
@@ -269,7 +277,7 @@ export async function GET(request: Request) {
   const status = deferred.length > 0 && uploaded.length === 0 && failed.length === 0
     ? 'deferred_by_stop'
     : skipped.length > 0 && uploaded.length === 0 && failed.length === 0
-      ? 'youtube_not_configured'
+      ? skipped.every(s=>s.refusal==='illustrated_preview_required')?'illustrated_preview_required':'youtube_not_configured'
       : failed.length === 0 ? 'uploaded' : (uploaded.length === 0 ? 'youtube_failed' : 'partial')
   return NextResponse.json(
     { status, uploadedCount: uploaded.length, failedCount: failed.length,

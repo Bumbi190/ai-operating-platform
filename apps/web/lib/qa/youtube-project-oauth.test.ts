@@ -740,7 +740,7 @@ describe('youtube connection · the codebase, read', () => {
     return out
   }
   const FILES = () => ['app', 'components', 'lib'].flatMap((d) => sourceFiles(resolve(APP, d)))
-  const rel = (f: string) => relative(APP, f)
+  const rel = (f: string) => relative(APP, f).replaceAll('\\', '/')
   const code = (f: string) => readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/[^\n]*/g, '$1')
   const callers = (name: string, definedIn: string) => FILES()
     .filter((f) => rel(f) !== definedIn && new RegExp(`\\b${name}\\s*\\(`).test(code(f)))

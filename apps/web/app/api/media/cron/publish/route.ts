@@ -55,6 +55,7 @@
  */
 
 import { NextResponse } from 'next/server'
+import {requiresIllustratedPreview,LEGACY_NEWS_QUEUE_FILTER} from '@/lib/media/illustrated-news-profile'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { handlePublishFailure } from '@/lib/media/safeguards'
 import {
@@ -248,6 +249,7 @@ export async function GET(request: Request) {
     .select(`
       id,
       project_id,
+      raw_output,
       hook,
       script,
       cta,
@@ -277,6 +279,8 @@ export async function GET(request: Request) {
     // machine principal. `projects!inner` makes it a join the filter can bind;
     // a plain embed would still return every tenant's rows.
     .eq('projects.slug', PLATFORM_SOCIAL_PROJECT_SLUG)
+    .is('raw_output->>private_provider_preview', null)
+    .or(LEGACY_NEWS_QUEUE_FILTER)
   if (scriptIdParam) queue = queue.eq('id', scriptIdParam)
   const { data: scripts } = await queue
     .order('generated_at', { ascending: true })
@@ -292,6 +296,9 @@ export async function GET(request: Request) {
   }
 
   const script = scripts[0]
+  if(requiresIllustratedPreview(script.raw_output)){
+    return NextResponse.json({status:'illustrated_preview_required',scriptId:script.id,dryRun})
+  }
 
   // The script's OWN project is the execution authority. MEDIA_PIPELINE_PROJECT
   // is billing attribution; that every script happens to sit in that project

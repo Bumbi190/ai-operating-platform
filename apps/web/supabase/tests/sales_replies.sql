@@ -27,6 +27,7 @@ begin
  perform pg_temp.reply_refused(format('select sales_reply_prepare(%L::jsonb,%L::jsonb)',p,jsonb_set(v,'{messageVersion}','2')),'23505');
  perform pg_temp.reply_assert((select count(*)=old_count from sales_jobs),'reply never creates first-contact job');
  s:=sales_reply_claim(repeat('8',64),'{}');r:=s->'ref';perform pg_temp.reply_assert(r->>'jobId'=j->>'id' and s->'snapshot'->'contact'->>'branchName'='Lund','shared_address_keeps_exact_branch');
+ perform sales_reply_heartbeat(repeat('8',64),r);perform pg_temp.reply_assert((select last_seen_at>clock_timestamp()-interval '10 seconds' from sales_worker_registrations where id='60000000-0000-4000-8000-000000000091'),'reply heartbeat keeps managed host online during model');
  perform pg_temp.reply_assert(sales_reply_claim(repeat('8',64),'{}')->'ref'='null'::jsonb,'one active claim');
  for n in 1..10 loop a:=sales_reply_reserve_attempt(repeat('8',64),r||jsonb_build_object('attemptId',gen_random_uuid()));end loop;
  perform pg_temp.reply_refused(format('select sales_reply_reserve_attempt(%L,%L::jsonb)',repeat('8',64),r||jsonb_build_object('attemptId',gen_random_uuid())),'55000');

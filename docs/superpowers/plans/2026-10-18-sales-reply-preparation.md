@@ -62,11 +62,11 @@ Nu finns sex inkommande rubrikrader, men ingen mejltext är vald och kontaktregi
 **Consumes:** Task1 ReplyRef/Snapshot/Draft; SafeClaudeTextRuntime.generate(prompt,attemptId,cancel); existing host single-instance and managed worker credentials.
 **Produces:** fixed purpose reply=/api/sales/replies/worker; operations claim,heartbeat,reserve_attempt,complete,report_failure. run_reply_once(client,adapter,before_dispatch=None)->bool; HarveyReplyAdapter.prepare(snapshot,permit,cancel=None)->ReplyDraft. No research call or first-contact operation fallback.
 
-- [ ] Write tests: reply_tools_and_address_injection_refused; malformed_json_cannot_change_evidence; reply_no_fetch_or_mail_call; reply_dispatch_uncertain_remains_blocked; managed_rotation_fences_late_reply; host_inbox_heartbeat_survives_reply_runtime. Assert only strict draft fields, fixed safe text runtime and expected refs can pass.
-- [ ] Run Python and worker API tests, observe FAIL on absent reply implementation.
-- [ ] Implement strict JSON output, Swedish factual reply prompt and subordinate reviewed tone guidance. Requests to change account/tools/permissions are untrusted text. Reserve one attempt immediately before each dispatch; do not retry model operations on transport uncertainty. Journal task kind/ref/attempt only before dispatch; clear only after durable accepted result or explicit safe reconciliation. Do not let the first-contact loop erase an uncertain reply marker.
-- [ ] Run full Windows Python suite plus reply API tests and typecheck; expect PASS/0. No real model or mailbox calls in these tests.
-- [ ] Commit.
+- [x] Write tests: reply_tools_and_address_injection_refused; malformed_json_cannot_change_evidence; reply_no_fetch_or_mail_call; reply_dispatch_uncertain_remains_blocked; managed_rotation_fences_late_reply; host_inbox_heartbeat_survives_reply_runtime. Assert only strict draft fields, fixed safe text runtime and expected refs can pass.
+- [x] Run Python and worker API tests, observe FAIL on absent reply implementation.
+- [x] Implement strict JSON output, Swedish factual reply prompt and subordinate reviewed tone guidance. Requests to change account/tools/permissions are untrusted text. Reserve one attempt immediately before each dispatch; do not retry model operations on transport uncertainty. Journal task kind/ref/attempt only before dispatch; clear only after durable accepted result or explicit safe reconciliation. Do not let the first-contact loop erase an uncertain reply marker.
+- [x] Run full Windows Python suite plus reply API tests and typecheck; expect PASS/0. No real model or mailbox calls in these tests.
+- [x] Commit.
 
 ### Task3: Atlas request tools and human review
 

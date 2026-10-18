@@ -33,16 +33,17 @@ def verify_installation(root,manifest_hash):
   if not item.is_file() or hashlib.sha256(item.read_bytes()).hexdigest()!=digest:raise HostBlocked('SOURCE_MISMATCH')
  return manifest
 
-def host_loop(connection,client_factory,adapter_factory,doctor_fn,dispatch_journal,stop,run_once_fn=run_once,wait_fn=None,verify_fn=lambda:None,mailbox_cycle=None):
+def host_loop(connection,client_factory,adapter_factory,doctor_fn,dispatch_journal,stop,run_once_fn=run_once,wait_fn=None,verify_fn=lambda:None,mailbox_cycle=None,reply_cycle=None,reply_uncertain=lambda:False):
  wait_fn=wait_fn or stop.wait
  while not stop.is_set():
   try:
    verify_fn();token=connection.ensure_worker_token();status=connection.poll_status()
-   readiness=doctor_fn();uncertain=bool((dispatch_journal.load() or {}).get('inFlight'))
+   readiness=doctor_fn();uncertain=bool((dispatch_journal.load() or {}).get('inFlight')) or reply_uncertain()
    ready=readiness.get('ready') is True and not uncertain
    connection.report_status('ready' if ready else 'blocked')
    if mailbox_cycle is not None:mailbox_cycle(connection)
-   if ready and status.get('desiredState')=='running' and status.get('executionPaused') is False:
+   if reply_cycle is not None:reply_cycle(connection,ready and status.get('desiredState')=='running' and status.get('executionPaused') is False)
+   if ready and not reply_uncertain() and status.get('desiredState')=='running' and status.get('executionPaused') is False:
     def mark_dispatch(ref,attempt_id):
      dispatch_journal.save({'inFlight':True,'phase':'model',**{k:ref[k] for k in ['projectId','workerId','jobId','claimId','generation']},'attemptId':attempt_id})
     run_once_fn(client_factory(token),adapter_factory(),before_dispatch=mark_dispatch)
@@ -88,10 +89,17 @@ def main(project):
    if not (mailbox_journal.load() or {}).get('pending'):
     public=crypto.public_key();status=current.poll_status();client.post('publish_key',generation=status['generation'],**public)
    process_mailbox_setup(client,crypto,store,mailbox_journal,diagnostic=lambda value:Journal(state/'mailbox-diagnostic.json').save(value))
+ reply_journal=Journal(state/'reply-dispatch.json')
+ reply_cycle=None
+ if config.get('replyEnabled') is True:
+  from .replies.worker import run_reply_once
+  from .replies.adapter import HarveyReplyAdapter
+  def reply_cycle(current,allowed):return run_reply_once(current.reply_client(),lambda:HarveyReplyAdapter(SafeClaudeTextRuntime('')),reply_journal,can_dispatch=allowed)
+ def reply_uncertain():return bool((reply_journal.load() or {}).get('pending'))
  stop=threading.Event()
  with SingleInstance(state/'host.lock'):
   def run_host():
-   host_loop(connection,lambda token:factory(config['origin'],token,'worker'),lambda:HarveyDraftAdapter(SafeClaudeTextRuntime('')),doctor,Journal(state/'dispatch.json'),stop,verify_fn=verify,mailbox_cycle=mailbox_cycle)
+   host_loop(connection,lambda token:factory(config['origin'],token,'worker'),lambda:HarveyDraftAdapter(SafeClaudeTextRuntime('')),doctor,Journal(state/'dispatch.json'),stop,verify_fn=verify,mailbox_cycle=mailbox_cycle,reply_cycle=reply_cycle,reply_uncertain=reply_uncertain)
   if inbox_cycle is None:run_host()
   else:
    with inbox_background(inbox_cycle,stop):run_host()

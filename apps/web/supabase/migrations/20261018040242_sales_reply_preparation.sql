@@ -105,7 +105,7 @@ end $$;
 create function public.sales_reply_heartbeat(p_token_hash text,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
 declare w public.sales_worker_registrations;j public.sales_reply_jobs;
 begin w:=public.sales_worker(p_token_hash);perform public.sales_mailbox_fields(p_input,array['projectId','jobId','workerId','claimId','generation']);j:=public.sales_reply_access(w,p_input);
- update public.sales_reply_jobs set lease_until=clock_timestamp()+interval '180 seconds' where id=j.id;return jsonb_build_object('ok',true);end $$;
+ update public.sales_reply_jobs set lease_until=clock_timestamp()+interval '180 seconds' where id=j.id;update public.sales_worker_registrations set last_seen_at=clock_timestamp() where id=w.id;return jsonb_build_object('ok',true);end $$;
 create function public.sales_reply_reserve_attempt(p_token_hash text,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
 declare w public.sales_worker_registrations;j public.sales_reply_jobs;a public.sales_reply_attempts;aid uuid:=(p_input->>'attemptId')::uuid;
 begin w:=public.sales_worker(p_token_hash);perform public.sales_mailbox_fields(p_input,array['projectId','jobId','workerId','claimId','generation','attemptId']);j:=public.sales_reply_access(w,p_input);

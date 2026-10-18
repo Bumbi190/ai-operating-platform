@@ -1,7 +1,7 @@
 # Familje-Stunden: granskade veckobatcher och verifierbara publiceringskvitton
 
 Datum: 2026-10-18
-Status: tekniskt designförslag för ägarens granskning. Ingen implementation eller aktivering ingår i denna commit.
+Status: godkänd av André 2026-10-18. Kravet på smygtitt den 1:a varje månad är preciserat enligt samma godkännande. Ingen implementation eller aktivering ingår i dokumentationscommiten.
 Baslinje: Bumbi190/ai-operating-platform, main f0a52321361b7f1a03d5336cbd7a5c8c4d769ac5.
 
 ## 1. Avsikt och avgränsning
@@ -32,7 +32,7 @@ Två ordinarie innehållstillfällen per vecka, på både Facebook och Instagram
 | 1 och 3 | 17.00 | 20.30 |
 | 2 och 4 | 20.30 | 17.00 |
 
-Startdatum läggs efter verifierad aktivering. Förslaget 20 oktober–13 november flyttas fram om systemet inte är klart; missade tider ska inte köras ikapp. Månadssläpp är ett extra tillfälle kl. 20.30 efter verifierad öppning och räknas separat i tidsjämförelsen. Högst tre innehållstillfällen per vecka och högst två kanaler per tillfälle.
+Startdatum läggs efter verifierad aktivering. Förslaget 20 oktober–13 november flyttas fram om systemet inte är klart; missade tider ska inte köras ikapp. Den 1:a varje månad kl. 20.30 planeras ett extra släppinlägg på Facebook och Instagram med en kort smygtitt på den då aktiva månaden. Regeln återkommer varje månad och räknas separat i tidsjämförelsen. Inlägget får skickas först efter verifierad kundåtkomst. Högst tre innehållstillfällen per vecka och högst två kanaler per tillfälle.
 
 Fyra veckor ger bara tidiga signaler om tiderna. Utvärdering ska skilja på kanal, innehållstyp och inläggets ålder. Det är ingen utlovad optimal publiceringstid.
 
@@ -64,7 +64,7 @@ Varje manifestpost binder:
 - konto-binding_id, account_id och channel;
 - materialets ID och SHA-256;
 - önskad lokal tid, tidszon och entydig UTC-tid;
-- eventuell month_release_evidence_id;
+- för månadssläpp: release_month och catalog_sha256 samt ett villkor om aktuellt kundåtkomstbevis; eventuellt redan känt month_release_evidence_id sparas också;
 - sista tillåtna publiceringstid och manifestets hash.
 
 Ägaren ser exakt text, bild, konto och datum/tid för varje jobb. Knappen heter Godkänn och schemalägg veckans inlägg och anger antal inlägg samt båda kontona. Detta är ett separat, uttryckligt publiceringsbeslut. Ett tidigare innehållsgodkännande eller ett allmänt ja i en chatt räcker inte som maskinläsbar batchbehörighet.
@@ -107,9 +107,15 @@ Instagram använder samma sparade container vid senare kontroll. Ett nytt tick f
 
 ## 9. Månadssläpp
 
+En projektbunden månadsregel skapar planeringsslots den 1:a i varje månad kl. 20.30 Europe/Stockholm på båda kontona. En slot är inte en färdig text eller publiceringsrätt. Identiteten är projekt + år/månad + kanal; flera veckobatcher får inte skapa två släppjobb för samma månad och kanal.
+
+Släppinlägget ska säga att den nya månaden är aktiv och visa en kort smygtitt från rätt månads faktiska saga eller aktiviteter med godkänt bildmaterial. Ingen tidigare månads text eller bild får återanvändas som om den gällde den nya månaden.
+
 Släppinlägg kräver ett projektbundet bevis för rätt månad, aktuell katalogversion och faktisk kundåtkomst. Ett datum, en källkodsfil eller en lyckad driftsättning räcker inte.
 
-I första versionen bekräftar ägaren kundåtkomsten efter kontroll i produktens kundvy. Beviset märks owner_verified_access, gäller en specificerad månad och katalogversion och är högst 24 timmar gammalt när jobbet ska börja. Detta är inte en automatisk mätning av kundåtkomst.
+Batchmanifestet binder i förväg rätt år/månad, katalogversion, text, bild och tid samt villkoret om kundåtkomst. Ett matchande, färskt bevis kan tillkomma efter innehållsgranskningen utan att text eller tid ändras. Det ger ingen utökad rätt att publicera en annan version.
+
+I första versionen bekräftar ägaren kundåtkomsten efter kontroll i produktens kundvy. Beviset märks owner_verified_access, gäller en specificerad månad och katalogversion och är högst 24 timmar gammalt vid varje provider-skrivning. Jobbhändelsen binder det faktiskt använda bevisets ID. Detta är inte en automatisk mätning av kundåtkomst.
 
 Saknat eller ändrat bevis blockerar släppjobbet. Systemet sparar ett nytt förslag om tid efter bekräftad öppning; ingen senare tid väljs och godkänns automatiskt. En framtida direktintegration med produktens släppsignal behöver separat design.
 
@@ -140,7 +146,7 @@ Nödvändiga tester:
 6. Samtidiga arbetare medger endast en första skrivning per jobb.
 7. Partiell framgång mellan kanaler leder inte till dubbletter.
 8. Tidzonstester täcker 25 oktober, för tidigt tick, tio minuters försening och missad tid.
-9. Månadssläpp kan inte ske enbart på datum; saknat/utgånget kundåtkomstbevis blockerar.
+9. Månadssläpp planeras den 1:a varje månad kl. 20.30, även över årsskiftet, men kan inte skickas enbart på datum; fel månad, fel katalog, saknat/utgånget kundåtkomstbevis och dubbla månadsjobb blockerar.
 10. UI visar exakta mottagare och tider före godkännande, sparad status efter omladdning samt tydlig osäkerhet.
 11. Tester för behörighet och projektisolering verifierar att ett annat projekt, en läsare eller en självkonstruerad worker-principal inte får verkställa.
 12. Logg-/svarstester visar att inga tokens eller bildcapabilities läcker.

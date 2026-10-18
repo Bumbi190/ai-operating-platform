@@ -1,0 +1,472 @@
+# Broad project run — observed failures
+
+Captured 2026-10-18T08:46:31.819Z. The project-wide run began before the final SQL changes, remains red, and is not a final-tree green claim. Its existing task-owned database has the pre-fix scheduling SQL; new late scheduling regression failures in this run are superseded by the clean fixture store12/12 and worker9/9 checks. Many legacy failures were reproduced on exact production main in two separate baseline reruns (49 failing files/305 failing tests). Windows path/hash/environment failures are reported, not silently excused.
+
+The following are all failing suites/case names observed in the log at this checkpoint. No raw provider replies or credentials are included.
+
+- ❯ lib/qa/mission-brief-v1.test.ts (225 tests | 1 failed) 437ms
+- × Canonical vocabulary (§20.11, §20.98) > supports all sixteen §20.98 statuses in the public type 26ms
+- ❯ lib/qa/vnext-intelligence-graph.test.ts (124 tests | 9 failed) 1088ms
+- × phase 18 · the legacy rollback is the page that shipped > renders the legacy canvas byte-identically to origin/main 430259e 66ms
+- × phase 18 · the legacy rollback is the page that shipped > keeps the legacy client markup byte-identical 4ms
+- × phase 18 · the legacy rollback is the page that shipped > moves the previous page body verbatim into IntelligenceGraphLegacy 3ms
+- × phase 18 · the legacy rollback is the page that shipped > leaves the legacy inspector file untouched 2ms
+- × phase 18 · layout, scale and motion > is exactly as tall as the vNext shell leaves it, not the legacy CommandBar height 2ms
+- × phase 18 T2a · shell geometry > measures the floating corner from the activity peek and the Atlas launcher 8ms
+- × phase 18 T2a · shell geometry > goes fullscreen with the header, where the shell chrome is gone 1ms
+- × phase 18 T3b · release hardening > opts only Live Operations into the G-27 last-safe guard 18ms
+- × phase 18 T3b · release hardening > keeps mobile list-first, System Map, Replay and legacy rollback contracts intact 13ms
+- ❯ lib/qa/sdf1c3-isolation-substrate.test.ts (195 tests | 83 failed) 2810ms
+- × SDF-1C3A trusted toolchain: git and docker are never chosen by a caller > resolves only from fixed absolute candidates and issues an unforgeable-by-shape tool 12ms
+- × SDF-1C3A trusted toolchain: git and docker are never chosen by a caller > refuses relative, missing, non-regular, non-executable, group/other-writable, foreign-owned and unsafe-ancestor candidates 9ms
+- × SDF-1C3A trusted toolchain: git and docker are never chosen by a caller > follows a symlink to its real target and judges the target (a link cannot launder trust) 4ms
+- × SDF-1C3A trusted toolchain: git and docker are never chosen by a caller > the runner refuses a tool object that did not come from the resolver 4ms
+- × SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment > only a broker-made command can run, and run() takes nothing but the command (no env, args or executable) 1ms
+- × SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment > never enables a shell and runs exactly the trusted executable with direct argv 1ms
+- × SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment > does not inherit the parent environment: secrets in process.env never reach a child 1ms
+- × SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment > bounds stdout/stderr before returning 1ms
+- × SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment > a timeout kills the child (TERM, then KILL) and reports timedOut 2ms
+- × SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment > logs nothing and never puts a command line or secret in a result or thrown message 2ms
+- × SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment > a planted user gitconfig, hooks, filters and credential helper are unreachable (real git) 6ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > prepares a worktree at exactly the pinned commit with a closed, path-free result 4ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > is deterministic: same work → same branch, directory and hashes 2ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > accepts only trusted structured input; the caller cannot choose branch, directory, parent or arguments 2ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > requires a full lowercase SHA pin (uppercase) 3ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > requires a full lowercase SHA pin (39 chars) 2ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > requires a full lowercase SHA pin (41 chars) 2ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > requires a full lowercase SHA pin (abbreviated) 3ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > requires a full lowercase SHA pin (a ref name) 2ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > requires a full lowercase SHA pin (non-hex) 2ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > requires a full lowercase SHA pin (option-like) 2ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > requires a full lowercase SHA pin (empty) 2ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses a pin that is not a commit object present locally (missing, blob, tree, annotated tag) and never fetches 2ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > returns STALE_BASE, exactly and without fetching, when the approved base ref moved 2ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > needs no network at all (an unreachable origin cannot matter) 3ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses wrong remote 3ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses wrong host 2ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses file remote 2ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses plain path remote 3ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses credentials in URL 2ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses sub-path 2ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > accepts SCP, ssh and case-different forms of the SAME identity, and refuses a second identity or a missing remote 3ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses a repository whose own config launches programs (filter driver) before creating anything 3ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses a repository whose own config launches programs (fsmonitor) before creating anything 2ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses a repository whose own config launches programs (hooksPath) before creating anything 2ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses a repository whose own config launches programs (credential helper) before creating anything 3ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses a repository whose own config launches programs (include) before creating anything 3ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses a repository whose own config launches programs (ssh command) before creating anything 2ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses a repository whose own config launches programs (shell alias) before creating anything 3ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses a missing, symlinked, non-directory, non-canonical or non-repository root, and a linked worktree used as root 3ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses a missing, symlinked or non-canonical worktree parent and never creates it 2ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > refuses every collision without touching the existing state (path, dangling link, file, branch, worktree) 3ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > a worktree elsewhere already holding the branch or the path is a conflict 2ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > does not follow a symlink planted in the future target path 3ms
+- × SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) > verifies after creation and, on any failed check, keeps the workspace (explicit_cleanup_only) and says so 3ms
+- × SDF-1C3A real-filesystem containment primitives > verifies canonical roots only 11ms
+- × SDF-1C3A real-filesystem containment primitives > reads existing files only when no segment is a symlink and the realpath is the lexical path 9ms
+- × SDF-1C3A real-filesystem containment primitives > a write-intent check additionally refuses hardlinks and non-regular files 9ms
+- × SDF-1C3A real-filesystem containment primitives > verifies a prospective create against its deepest existing ancestor 9ms
+- × SDF-1C3A real-filesystem containment primitives > refuses NUL 10ms
+- × SDF-1C3A real-filesystem containment primitives > refuses newline 9ms
+- × SDF-1C3A real-filesystem containment primitives > refuses tab 8ms
+- × SDF-1C3A real-filesystem containment primitives > refuses DEL 12ms
+- × SDF-1C3A real-filesystem containment primitives > refuses parent traversal 11ms
+- × SDF-1C3A real-filesystem containment primitives > refuses embedded traversal 10ms
+- × SDF-1C3A real-filesystem containment primitives > refuses absolute 11ms
+- × SDF-1C3A real-filesystem containment primitives > refuses double slash 12ms
+- × SDF-1C3A real-filesystem containment primitives > refuses dot segment 10ms
+- × SDF-1C3A real-filesystem containment primitives > refuses trailing slash 9ms
+- × SDF-1C3A real-filesystem containment primitives > refuses backslash 10ms
+- × SDF-1C3A real-filesystem containment primitives > refuses windows drive 10ms
+- × SDF-1C3A real-filesystem containment primitives > refuses empty 10ms
+- × SDF-1C3A real-filesystem containment primitives > refuses surrounding space 10ms
+- × SDF-1C3A real-filesystem containment primitives > refuses non-NFC (NFD é) 10ms
+- × SDF-1C3A real-filesystem containment primitives > refuses .git 9ms
+- × SDF-1C3A real-filesystem containment primitives > refuses nested .git 8ms
+- × SDF-1C3A real-filesystem containment primitives > refuses .GIT case 9ms
+- × SDF-1C3A real-filesystem containment primitives > refuses .env 9ms
+- × SDF-1C3A real-filesystem containment primitives > refuses .env.local 9ms
+- × SDF-1C3A real-filesystem containment primitives > refuses .ENV.production 9ms
+- × SDF-1C3A real-filesystem containment primitives > refuses .ssh 9ms
+- × SDF-1C3A real-filesystem containment primitives > refuses .aws 14ms
+- × SDF-1C3A real-filesystem containment primitives > refuses secrets dir 14ms
+- × SDF-1C3A real-filesystem containment primitives > refuses pem 10ms
+- × SDF-1C3A real-filesystem containment primitives > refuses key 11ms
+- × SDF-1C3A real-filesystem containment primitives > refuses service account 10ms
+- × SDF-1C3A real-filesystem containment primitives > refuses not a string 10ms
+- × SDF-1C3A real-filesystem containment primitives > accepts ordinary NFC unicode names 14ms
+- × SDF-1C3A real-filesystem containment primitives > opens for reading with O_NOFOLLOW and refuses a final component that became a symlink 11ms
+- × SDF-1C3A SandboxSpec and Docker command construction > refuses every docker verb outside the closed set and every malformed target 6ms
+- × SDF-1C3A Docker host proof (VM-backed Docker Desktop required for production) > derives the daemon socket only from a fixed host-side list (no DOCKER_HOST, no remote, no other socket) 3ms
+- × SDF-1C3A boundary: no production caller, no route, no CLI command, no migration, no execution > adds no broker route, and the route set is exactly the 1C2 control channel 2ms
+- × SDF-1C3A boundary: no production caller, no route, no CLI command, no migration, no execution > only the approved isolation modules can ISSUE an InfraCommand: brokerCommand is not reachable from any other production module 1387ms
+- ❯ lib/qa/autonomy-license.test.ts (135 tests | 4 failed) 3486ms
+- × Phase 2C — the migration does not collide with the chain it joins > names itself so it sorts last in the current canonical set 19ms
+- × Phase 2C — hardening > H7. the machine write seam is closed at the code level 15ms
+- × Phase 2C — review #2 proofs > §9. no production runtime outside this module calls the RPC or drives the store 1176ms
+- × Phase 2C — inertness > 52. no other atlas subsystem consumes the licence MACHINERY 192ms
+- ❯ lib/qa/platform-authority-closure.test.ts (53 tests | 1 failed) 18519ms
+- × A6-2 · the legacy Atlas bug digest is operator diagnostics > 1 · unauthenticated → sent to login, and no digest is read 6978ms
+- ❯ lib/qa/marketing-review.test.ts (81 tests | 3 failed) 422ms
+- × marketing review · the rollback body is the body it replaced > is pinned by hash, its own doc comment included 10ms
+- × marketing review · the rollback body is the body it replaced > the client component it renders is untouched 3ms
+- × marketing review · rendered surface and layout > the controls stay visible without the shared foreground token 1ms
+- ❯ lib/qa/atlas-chat.test.ts (99 tests | 1 failed) 1211ms
+- × atlas chat · the route contract it speaks > does not observe a client abort — which is why there is no stop control 10ms
+- ❯ lib/qa/survival-history-sql.test.ts (50 tests | 44 failed | 5 skipped) 40ms
+- × survival history · contract > creates exactly one table, and grants write to nobody 9ms
+- × survival history · contract > denies INSERT to every role while letting the boundary INSERT 4ms
+- × survival history · the recording boundary is hardened > is SECURITY DEFINER with an empty, fixed search_path 2ms
+- × survival history · the recording boundary is hardened > PUBLIC, anon and authenticated cannot execute it 1ms
+- × survival history · the recording boundary is hardened > service_role holds EXECUTE and nothing broader 0ms
+- × survival history · the recording boundary is hardened > has no autonomy, actor or provenance parameter at all 0ms
+- × survival history · the recording boundary is hardened > refuses a human or arbitrary actor, even on a direct INSERT 0ms
+- × survival history · the recording boundary is hardened > the RPC writes the canonical machine identity, whatever the observer 0ms
+- × survival history · the recording boundary is hardened > derives provenance from the version, and refuses every mismatched pair 1ms
+- × survival history · the recording boundary is hardened > the RPC takes no provenance argument at all 0ms
+- × survival history · the recording boundary is hardened > refuses an impossible state/ceiling pair on a direct INSERT 1ms
+- × survival history · the recording boundary is hardened > refuses a policy identity no derivation implements 1ms
+- × survival history · the recording boundary is hardened > service_role cannot write the table or the sequence directly 0ms
+- × survival history · the recording boundary is hardened > a real anon session is refused, and the boundary is reachable as itself 1ms
+- × survival history · records transitions, not polling noise > records exactly one baseline for the first observation 0ms
+- × survival history · records transitions, not polling noise > records nothing when the same state is observed again 0ms
+- × survival history · records transitions, not polling noise > records exactly one transition when the state really changes 0ms
+- × survival history · records transitions, not polling noise > keeps event_seq as the chain order and goes back to NORMAL 0ms
+- × survival history · records transitions, not polling noise > answers `unchanged` for a no-op rather than inserting 0ms
+- × survival history · from_state is never the caller’s > refuses a direct INSERT whose from_state does not follow the ledger 0ms
+- × survival history · from_state is never the caller’s > refuses a second baseline for a project that already has history 1ms
+- × survival history · from_state is never the caller’s > refuses a transition that does not change the state 0ms
+- × survival history · append-only, enforced by the database > refuses UPDATE 0ms
+- × survival history · append-only, enforced by the database > refuses DELETE 2ms
+- × survival history · append-only, enforced by the database > refuses TRUNCATE 1ms
+- × survival history · closed vocabularies > closes the event, state, ceiling, funding and policy-identity vocabularies 0ms
+- × survival history · closed vocabularies > seeds a project with history so the CHECKs, not the guard, are under test 0ms
+- × survival history · closed vocabularies > refuses a value outside each closed set, by CHECK 1ms
+- × survival history · closed vocabularies > refuses an unsupported to_state at the boundary, before anything is written 0ms
+- × survival history · closed vocabularies > the declared amount is biconditional with KNOWN — all four cases 0ms
+- × survival history · closed vocabularies > ACCEPTS negative remaining headroom — an overspent scope is valid evidence 0ms
+- × survival history · closed vocabularies > refuses a negative limit, burn rate or runway 0ms
+- × survival history · closed vocabularies > refuses an unknown event type, which can only arrive by direct INSERT 0ms
+- × survival history · closed vocabularies > refuses an unknown project, fail-closed 0ms
+- × survival history · the observation survives the round trip > preserves reasons, gaps, ceiling, funding and the distinct funding states 0ms
+- × survival history · the observation survives the round trip > keeps UNAVAILABLE distinct from UNDECLARED 1ms
+- × survival history · the observation survives the round trip > stores declared funding when KNOWN, and only then 1ms
+- × survival history · the observation survives the round trip > keeps MRR a SIGNAL — it never becomes runway, and runway stays unknown without funding 1ms
+- × survival history · the observation survives the round trip > records the observation instant separately from the write instant 1ms
+- × survival history · the observation survives the round trip > refuses an occurred_at in the future 1ms
+- × survival history · concurrency cannot duplicate a logical transition > two concurrent FIRST observations produce ONE baseline 0ms
+- × survival history · concurrency cannot duplicate a logical transition > two concurrent observers of the SAME change produce ONE transition 0ms
+- × survival history · concurrency cannot duplicate a logical transition > a retry of the same observation is idempotent 0ms
+- × survival history · recording changes neither spend nor the stop > leaves the automation pause and the spend ledger untouched 0ms
+- ❯ lib/qa/atlas-knowledge-snapshot.test.ts (77 tests | 3 failed) 101ms
+- × golden artifacts — independently derived bytes > documents.jsonl matches the golden byte for byte 12ms
+- × golden artifacts — independently derived bytes > knowledge-manifest.json matches the golden byte for byte 3ms
+- × golden artifacts — independently derived bytes > the identity preimage matches the golden byte for byte, with no trailing LF 7ms
+- ❯ lib/qa/project-command-center.test.ts (77 tests | 2 failed) 3525ms
+- × project command center · legacy rollback > keeps the legacy body byte-identical to the page it replaced 15ms
+- × project command center · Marknadsplatsstatistik link > the view renders it as a plain link, with no project name of its own 2ms
+- ❯ lib/qa/money-overview.test.ts (90 tests | 1 failed) 710ms
+- × pengar · the rollback body is the body it replaced > is pinned by hash 14ms
+- ❯ lib/qa/sdf1c2-broker-control-channel.test.ts (49 tests | 1 failed) 240ms
+- × SDF-1C2 structural boundary > exposes exactly the six purpose-specific broker routes and no generic boundary 15ms
+- ❯ lib/qa/migration-security-gate.test.ts (133 tests | 3 failed) 15993ms
+- × Phase 9AA — the real corpus passes, and only by exact review > replays every migration and the bootstrap without an unparsed security statement 12ms
+- × Phase 9AA — the real corpus passes, and only by exact review > every blocking finding is matched by a reviewed exception 1ms
+- × Phase 9AA — the real corpus passes, and only by exact review > the corpus holds exactly the historical findings this programme already closed 1ms
+- ❯ lib/qa/youtube-project-oauth.test.ts (30 tests | 1 failed) 2052ms
+- × youtube connection · the codebase, read > the state is touched only by the OAuth module; the start route records it, the callback consumes it and alone exchanges a code 1275ms
+- ❯ lib/qa/autonomy-runtime-foundation.test.ts (68 tests | 1 failed) 2827ms
+- × the Chapter 18 scale has exactly ONE declaration > the scan actually reaches middleware.ts 125ms
+- ❯ lib/qa/executive-brief-apex.test.ts (54 tests | 2 failed) 4384ms
+- × EI-S1.5A — no shared-secret Executive Brief read surface exists > no Executive Intelligence READ route authorizes on the shared secret 12ms
+- × EI-S1.5A — no shared-secret Executive Brief read surface exists > leaves CRON_SECRET intact for unrelated scheduler routes 154ms
+- ❯ lib/qa/atlas-memory-emit-durability.test.ts (48 tests | 3 failed) 7904ms
+- × Slice 2A — no memory emit is ever detached > every recordMemoryEvent call in production code is awaited, at exactly the known sites 1357ms
+- × Slice 2A — no memory emit is ever detached > the drain helper that emits workflow-action outcomes is itself awaited 1109ms
+- × Slice 2A — no memory emit is ever detached > the Slice 2B-1 emit helpers are awaited at exactly their known call sites 1165ms
+- ❯ lib/qa/atlas-memory-terminal-outcomes.test.ts (39 tests | 1 failed) 8426ms
+- × 2B-1 · placement and boundaries > in the workflow runtime only advance-completed.ts writes memory, and nothing reads it back 242ms
+- ❯ lib/qa/delegation-mission-activation.test.ts (32 tests | 11 failed) 137ms
+- × Mission activation through an accepted Delegation > ACTIVATES with an accepted current delegation plus a separate activate authorization 38ms
+- × Mission activation through an accepted Delegation > the activate authorization is SEPARATE — acceptance does not substitute for it 4ms
+- × accepted-delegation availability is Mission- and version-specific > a proof for Mission A does not answer for Mission B in the same project 4ms
+- × accepted-delegation availability is Mission- and version-specific > a version-1 acceptance does not answer for version 2 10ms
+- × coverage: a narrowed envelope proves only what it covers (§21.13) > an envelope carrying one tool does not prove the mission other tool 3ms
+- × the underlying availability source still has to say yes > a throwing source fails closed rather than propagating 3ms
+- × the underlying availability source still has to say yes > caches nothing — a revocation between two evaluations changes the answer 3ms
+- × live Mission invalidation collapses the proof (§21.14) > a revoked APPROVE authorization invalidates the proof 3ms
+- × live Mission invalidation collapses the proof (§21.14) > a governing Decision that stops governing invalidates the proof 3ms
+- × live Mission invalidation collapses the proof (§21.14) > a non-operational project mode invalidates the proof 3ms
+- × R2 — a terminal Mission ends the handoff (§21.27) > a failed Mission makes the accepted delegation unusable 2ms
+- ❯ lib/qa/content-center.test.ts (64 tests | 1 failed) 3821ms
+- × content center · the rollback body is the body it replaced > is pinned by hash, its own doc comment included 13ms
+- ❯ lib/qa/muapi-media-provider.test.ts (70 tests | 8 failed) 87ms
+- × no credential and no live default reaches the repository > no tracked file assigns a non-placeholder MuAPI key 13ms
+- × no credential and no live default reaches the repository > no production module writes MuAPI config at runtime 4ms
+- × no credential and no live default reaches the repository > no production module hands out a credential outside config.ts 4ms
+- × no credential and no live default reaches the repository > the committed env template contains only empty placeholders 8ms
+- × no credential and no live default reaches the repository > nothing outside the provider directory imports the MuAPI adapter directly 5ms
+- × nothing generates media on its own > exactly ONE governed module calls a generation method 5ms
+- × nothing generates media on its own > no route, cron or workflow calls a generation method 5ms
+- × nothing generates media on its own > the provider layer is not imported by any route or cron 3ms
+- ❯ lib/qa/activity-stream.test.ts (69 tests | 1 failed) 1619ms
+- × aktivitet · the rollback body is the body it replaced > is pinned by hash 12ms
+- ❯ lib/qa/survival-funding-sql.test.ts (52 tests | 52 failed) 47ms
+- × funding · the declaration and its reader semantics > starts UNDECLARED — NULL is the absence of a declaration, with no default 9ms
+- × funding · the declaration and its reader semantics > a positive declaration is stored exactly, and audits one SET 1ms
+- × funding · the declaration and its reader semantics > ZERO is a KNOWN declaration, never a clear 0ms
+- × funding · the declaration and its reader semantics > NEGATIVE is a KNOWN declaration — the sign is not this schema's policy 1ms
+- × funding · the declaration and its reader semantics > CLEAR persists NULL, and is distinguishable from a zero declaration 1ms
+- × funding · the declaration and its reader semantics > re-setting the SAME value writes nothing — no audit trail of non-events 2ms
+- × funding · the declaration and its reader semantics > the RESPONSE equals current truth and the audit row, exactly 1ms
+- × funding · invalid input is refused at the boundary > refuses NaN and both infinities 3ms
+- × funding · invalid input is refused at the boundary > refuses an absent actor — the ledger cannot record an anonymous change 1ms
+- × funding · invalid input is refused at the boundary > none of those probes changed the declaration or wrote an audit row 1ms
+- × funding · the declaration is persisted EXACTLY, never rounded > ACCEPTS every exactly-representable shape 1ms
+- × funding · the declaration is persisted EXACTLY, never rounded > REFUSES anything that would be silently rounded 1ms
+- × funding · the declaration is persisted EXACTLY, never rounded > REFUSES anything outside the numeric(12,4) range 1ms
+- × funding · the declaration is persisted EXACTLY, never rounded > ACCEPTS trailing zeros, which is not precision loss 1ms
+- × funding · the declaration is persisted EXACTLY, never rounded > the no-op comparison uses the CANONICAL stored value 1ms
+- × funding · the actor must be a canonical authenticated human > ACCEPTS the canonical user:<uuid> shape 1ms
+- × funding · the actor must be a canonical authenticated human > REFUSES machine-shaped and malformed actors through the RPC 1ms
+- × funding · the actor must be a canonical authenticated human > REFUSES the same shapes at the TABLE, not only at the RPC 1ms
+- × funding · the actor must be a canonical authenticated human > a refused actor leaves the declaration and the ledger untouched 1ms
+- × funding · current truth is a SERVER-ONLY singleton > exists, and holds exactly the singleton row 0ms
+- × funding · current truth is a SERVER-ONLY singleton > is the ONLY place the declaration lives — platform_config does not carry it 0ms
+- × funding · current truth is a SERVER-ONLY singleton > has RLS on and ZERO policies, so no client can read it through a policy 0ms
+- × funding · current truth is a SERVER-ONLY singleton > grants anon and authenticated NOTHING 1ms
+- × funding · current truth is a SERVER-ONLY singleton > grants service_role SELECT and nothing else 0ms
+- × funding · current truth is a SERVER-ONLY singleton > refuses every direct write by service_role 1ms
+- × funding · current truth is a SERVER-ONLY singleton > refuses every direct write by anon and authenticated 1ms
+- × funding · current truth is a SERVER-ONLY singleton > the canonical RPC is the ONLY writer that can exist — and it works 1ms
+- × funding · current truth is a SERVER-ONLY singleton > the singleton constraint refuses a second row even from the owner 1ms
+- × funding · the change and its evidence are atomic > every change writes EXACTLY ONE audit row, and every audit row has a change 3ms
+- × funding · the change and its evidence are atomic > the ledger is NOT the current truth — clearing it would not change the declaration 0ms
+- × funding · the change and its evidence are atomic > concurrent setters serialise: the predecessor each records is the real one 0ms
+- × funding · the audit ledger cannot be rewritten > refuses UPDATE 1ms
+- × funding · the audit ledger cannot be rewritten > refuses DELETE 1ms
+- × funding · the audit ledger cannot be rewritten > refuses TRUNCATE 1ms
+- × funding · the audit ledger cannot be rewritten > refuses a direct INSERT by service_role, and by anon 1ms
+- × funding · the audit ledger cannot be rewritten > closes the event vocabulary, so a row cannot name an event no reader interprets 1ms
+- × funding · exactly one current source, and history is never it > the setter reads and writes the singleton, and never platform_config 0ms
+- × funding · exactly one current source, and history is never it > the setter never reads the ledger to decide what is declared now 0ms
+- × funding · exactly one current source, and history is never it > no function anywhere reads the ledger as current funding truth 0ms
+- × funding · exactly one current source, and history is never it > the declaration column exists on exactly ONE table in the schema 0ms
+- × funding · least privilege > anon and authenticated can neither read the ledger nor call the setter 0ms
+- × funding · least privilege > service_role reads the ledger and executes the boundary, and writes neither table 0ms
+- × funding · least privilege > the setter is SECURITY DEFINER with a fixed empty search_path 0ms
+- × funding · least privilege > the ledger sequence is revoked from every role 0ms
+- × funding · scope completeness, answered without exposing anything > is TRUE only when the set contains every project 0ms
+- × funding · scope completeness, answered without exposing anything > is FALSE for a subset — a single project is never the platform 0ms
+- × funding · scope completeness, answered without exposing anything > is FALSE for the empty set and for NULL 0ms
+- × funding · scope completeness, answered without exposing anything > returns ONE BOOLEAN — never a row, an id or a count 0ms
+- × funding · scope completeness, answered without exposing anything > is unmoved by a project added outside the caller set 0ms
+- × funding · a declaration moves nothing else > reserves no spend, changes no stop, and issues no authorization 1ms
+- × funding · a declaration moves nothing else > does not clear a pause that is already set 0ms
+- × funding · a declaration moves nothing else > Phase 2A history is untouched by a funding change 0ms
+- ❯ lib/qa/atlas-memory-dream-producers.test.ts (40 tests | 1 failed) 2845ms
+- × 2B-2 · placement and boundaries > no M4 recall can feed Dream — the producer closure has no recall seam 40ms
+- ❯ lib/qa/system-health.test.ts (57 tests | 2 failed) 2473ms
+- × phase 12 · authority is preserved, never re-created > adds no endpoint, migration or schema change 100ms
+- × phase 12 · the legacy rollback is the page that shipped > the legacy body is the previous page verbatim — pinned by hash 6ms
+- ❯ lib/qa/project-api-credentials.test.ts (116 tests | 1 failed) 84ms
+- × inertness — Phase 1 changes no existing auth > is imported by no route directly — only via the leads-scoped resolver 13ms
+- ❯ lib/qa/schema-security-invariant.test.ts (76 tests | 2 failed) 358ms
+- × Phase 9Y — schema-security invariant: migration text, forward-looking > every public table CREATED by a migration is present in the registry, or recorded as not-live 20ms
+- × Phase 9Y — schema-security invariant: migration text, forward-looking > every public table CREATED by a migration has RLS declared there, or a reviewed out-of-band entry 204ms
+- ❯ lib/qa/leads-dual-accept.test.ts (74 tests | 2 failed) 82ms
+- × containment > no other route imports the leads auth resolver 12ms
+- × containment > no other route imports the credential primitive 4ms
+- ❯ lib/architecture-knowledge/executive-knowledge.test.ts (39 tests | 12 failed) 17848ms
+- × Generic artifact eligibility invariant > accepts the committed artifact while Executive is active and approved 1240ms
+- × Generic artifact eligibility invariant > rejects an inactive source that reached the artifact 1369ms
+- × Generic artifact eligibility invariant > rejects an artifact source row that diverged from the registry 1215ms
+- × Generic artifact eligibility invariant > rejects an artifact source that is not registered at all 1295ms
+- × Executive retrieval, citations and policy > is an active knowledge source in the committed artifact 1081ms
+- × Executive retrieval, citations and policy > resolves FM.2 by exact front-matter identifier 1215ms
+- × Executive retrieval, citations and policy > resolves FM.2 from an implementation-scope query and a canonical Stage 1 query 1124ms
+- × Executive retrieval, citations and policy > resolves exact Executive chapter and section identifiers 993ms
+- × Executive retrieval, citations and policy > answers a governance and authority query from Executive doctrine 980ms
+- × Executive retrieval, citations and policy > mints a valid Executive citation and rejects every tampered variant 1798ms
+- × Executive retrieval, citations and policy > denies internal Executive knowledge to an unauthorized principal and allows an authorized one 1012ms
+- × Executive retrieval, citations and policy > excludes an inactive, superseded or wrong-version Executive source before ranking 845ms
+- ❯ lib/qa/review-queue.test.ts (62 tests | 2 failed) 1807ms
+- × phase 11 · scope, authority and boundaries > adds no endpoint, no migration and no schema change 78ms
+- × phase 11 · the legacy rollback is the page that shipped > the legacy body is the previous page verbatim — pinned by hash 5ms
+- ❯ lib/qa/execution-contract-propagation.test.ts (28 tests | 8 failed) 10673ms
+- × every governed spend supplies an explicit execution contract > all runtime withGovernedSpend calls pass `execution` 1336ms
+- × every governed spend supplies an explicit execution contract > only the sanctioned provider modules call the boundary at all 1370ms
+- × every governed spend supplies an explicit execution contract > nothing defaults, coalesces or invents an execution contract 1750ms
+- × every governed spend supplies an explicit execution contract > test-only fixtures never leak into runtime code 1375ms
+- × OPERATOR_INTERACTIVE is the only stop bypass, so its construction is allowlisted > only the allowlisted files construct it 1467ms
+- × classification follows authentication, not filenames > cron-only execution paths declare AUTONOMOUS 131ms
+- × every runtime GLOBAL_ONLY is reviewed and justified > no unreviewed file constructs GLOBAL_ONLY 1336ms
+- × ExecutionStoppedError does not leak operator-authored text > nothing reads a StopDecision’s observed prose outside the authority 1479ms
+- ❯ lib/qa/executive-intelligence-schema-activation.test.ts (19 tests | 1 failed) 91ms
+- × EI-S1.6A — Executive Intelligence schema activation bundle > keeps the legacy EI companion count at exactly 83 enforced migrations 10ms
+- ❯ lib/qa/spend-financial-decoupling.test.ts (27 tests | 2 failed) 579ms
+- × §14 · each flag has exactly ONE production reader > H1_SPEND_GATE is read only in spend-gate-flag.ts 36ms
+- × §14 · each flag has exactly ONE production reader > H1_FINANCIAL_EXECUTION is read only in financial-execution-flag.ts 20ms
+- ❯ lib/qa/sdf1b2-code-work-operator-plane.test.ts (26 tests | 1 failed) 98ms
+- × SDF-1B2 read isolation and no-execution boundary > keeps migration 80 byte-identical 14ms
+- ❯ lib/qa/media-orchestration-retry-authority.test.ts (22 tests | 1 failed) 4366ms
+- × the article hero call site carries the authority > every production withRetry around the orchestrator carries it 13ms
+- ❯ lib/qa/external-dispatch-guards.test.ts (40 tests | 4 failed) 212ms
+- × G1 · every external write in the tree has a canonical dispatch boundary > every external write CALL SITE has its own authorization 49ms
+- × G1 · every external write in the tree has a canonical dispatch boundary > the inventory itself is non-empty and finds the known callers 27ms
+- × G1 · every external write in the tree has a canonical dispatch boundary > no governance assertion is parked behind an unreachable branch 31ms
+- × G4 · the legacy global-only helper is no longer an authority > no runtime module calls checkAutomationPaused 31ms
+- ❯ lib/qa/autonomy-bind-guards.test.ts (31 tests | 1 failed) 275ms
+- × the atomic bind migration > is the only EXEMPT bind migration after Phase 3B1A (M0, 3B1B2 M1, M2, M3, M4-A and M4-B are the reviewed successors) 9ms
+- ❯ lib/qa/session-only-routes.test.ts (49 tests | 2 failed) 110ms
+- × source invariants > no route imports requireUserOrApiKey any more 12ms
+- × source invariants > exactly ONE route surface still accepts the global key 14ms
+- ❯ lib/qa/release-gate-proof-workflow.test.ts (41 tests | 2 failed) 78ms
+- × the proof definition is vendored, minimal and read-only > the vendored file matches its pinned source hash 15ms
+- × single-remote-read authority > the ONLY writer of AUTOMATED evidence is the executor 16ms
+- ❯ lib/qa/migration-guard-v2.test.ts (0 test)
+- ❯ lib/qa/atlas-static-conversation-route.test.ts (31 tests | 1 failed) 15601ms
+- × website studio context economy > keeps project references and conversation without building the global executive snapshot 338ms
+- ❯ lib/qa/leads-legacy-auth-removed.test.ts (53 tests | 4 failed) 101ms
+- × global legacy HTTP surface > finds route files at all — the scan must be able to fail 19ms
+- × global legacy HTTP surface > no route reaches requireApiKey or requireUserOrApiKey, directly or via one hop 11ms
+- × global legacy HTTP surface > no route file reads AIOPS_API_KEY 11ms
+- × global legacy HTTP surface > leaves cron auth untouched and still reachable 11ms
+- ❯ lib/qa/licensed-bind-m4b-guards.test.ts (31 tests | 1 failed) 40ms
+- × M4-B is the last migration and leaves the exempt bind untouched > no migration after M4-B, and M4-B does not redefine the exempt bind 12ms
+- ❯ lib/qa/sdf1c-trusted-broker.test.ts (16 tests | 1 failed) 152ms
+- × SDF-1C1 repository, secret and no-execution boundary > exposes only enrollment and identity diagnostics, never execution capability 99ms
+- ❯ lib/qa/autonomy-trace-guards.test.ts (24 tests | 3 failed) 3283ms
+- × migration discipline > Phase 2C is byte-identical to its merged form — no historical edit 12ms
+- × migration discipline > the new migration sorts after every pre-existing migration 4ms
+- × Phase 3B1A remains INERT > no execution module consumes the trace or its writer 1431ms
+- ❯ lib/qa/platform-credential-events.test.ts (25 tests | 3 failed) 39ms
+- × Settings S0 · platform_credential_events migration — append-only and server-only > RLS on, no policy, every client grant revoked, and the service role holds SELECT and INSERT only 13ms
+- × Settings S0 · platform_credential_events migration — append-only and server-only > touches no other object and carries no data statement 3ms
+- × Settings S0 · platform_credential_events — the search_path follow-up > pins the append-only function's search_path, and does nothing else 4ms
+- ❯ lib/qa/atlas-knowledge-boundary.test.ts (23 tests | 2 failed) 6652ms
+- × NO PRODUCTION CONSUMER — Phase 1 wires nothing > the only importers are the operator harness and these QA tests 1670ms
+- × PROJECTION SOURCE — a local boundary, never an Atlas one > the only importers are the operator script and its QA suite 1416ms
+- ❯ lib/qa/scoped-read-isolation.test.ts (27 tests | 1 failed) 61ms
+- × 9A · every caller supplies scope canonically > has exactly one production caller, and it passes a resolved allow-list 43ms
+- ❯ lib/trading/session-calendar/import-discipline.test.ts (30 tests | 1 failed) 124ms
+- × AD. an answer cannot depend on where or when it runs > names an explicit timeZone on every formatter it builds 6ms
+- ❯ lib/qa/budget-scopes.test.ts (54 tests | 2 failed) 64ms
+- × canonical comments describe the FINAL code > states the invariant it actually implements, in the TOP-LEVEL header 13ms
+- × canonical comments describe the FINAL code > gives the stale-open reason wherever stale replay is described 2ms
+- ❯ lib/architecture-knowledge/architecture-knowledge.test.ts (17 tests | 8 failed) 13702ms
+- × Immutable artifact and runtime loader > loads and verifies the committed artifact read-only 1144ms
+- × Golden lexical retrieval and server citations > routes How are Agents, Tools and Execution Resources registered? to Intelligence Fabric canonical material 1475ms
+- × Golden lexical retrieval and server citations > routes How are Credentials separated from Agent authority? to Intelligence Fabric canonical material 1160ms
+- × Golden lexical retrieval and server citations > routes How does multimodal production work? to Intelligence Fabric canonical material 1414ms
+- × Golden lexical retrieval and server citations > reaches provider-selection material in every canonical book that covers it 1299ms
+- × Golden lexical retrieval and server citations > supports exact section, chapter, book-title and requirement identifiers 1302ms
+- × Golden lexical retrieval and server citations > excludes wrong/old versions and returns explicit unavailability 1226ms
+- × Golden lexical retrieval and server citations > mints exact citations and rejects fabricated, stale or mismatched citations 2254ms
+- ❯ lib/qa/canonical-evidence-pin.test.ts (24 tests | 2 failed) 107ms
+- × B — every workflow evidence reader, pinned > the inventory is COMPLETE — no sixth reader exists 47ms
+- × B — every workflow evidence reader, pinned > the shared helper is the only place the pin is computed 27ms
+- ❯ lib/trading/market-data/import-discipline.test.ts (28 tests | 1 failed) 850ms
+- × the contract boundary is identity, never a provider symbol > the domain definitions each still exist exactly once 435ms
+- ❯ lib/qa/sdf1c-broker-claim-credential.test.ts (16 tests | 1 failed) 1451ms
+- × SDF-1C1B migration and structural boundary > adds no route, no broker CLI command and no execution/model code 1413ms
+- ❯ lib/website-build/chat-tools.test.ts (9 tests | 3 failed) 209912ms
+- × Website build through actual authenticated chat tool loop > foreign project and conversation never create a session 40846ms
+- × Website build through actual authenticated chat tool loop > compact approval without a visible reference does not dispatch a build 47166ms
+- × Website build through actual authenticated chat tool loop > model-supplied confirmation cannot approve or start 20265ms
+- ❯ lib/qa/sdf1c3-isolation-integration.test.ts (10 tests | 1 failed | 9 skipped) 28ms
+- × SDF-1C3A real Git: the preparation substrate against a synthetic repository, with the real toolchain > prepares an isolated worktree at the pinned commit and stays inside the approved parent 25ms
+- ❯ lib/project/lifecycle/store.test.ts (9 tests | 9 failed) 38600ms
+- × owner lifecycle and real static worker fences > atomically pauses, versions and replays transitions while restore preserves an unrelated pause 3822ms
+- × owner lifecycle and real static worker fences > refuses foreign, observer, stale and malformed commands and keeps history and folder requests 4592ms
+- × owner lifecycle and real static worker fences > archive winning the project lock fences snapshot and commit even with allow_pause 4791ms
+- × owner lifecycle and real static worker fences > commit winning the project lock finishes before archive and its verified artifact stays readable 4496ms
+- × owner lifecycle and real static worker fences > serializes actual claim and archive in both orders without claiming paused work 4701ms
+- × owner lifecycle and real static worker fences > never revives a skipped locked writer after restore and explicit project resume 3926ms
+- × owner lifecycle and real static worker fences > a project-first writer refuses a busy run without deadlocking canonical claim 4504ms
+- × owner lifecycle and real static worker fences > a project-first control refuses a busy run without deadlocking canonical claim 3924ms
+- × owner lifecycle and real static worker fences > retries a transient writer lock on the same artifact, but never retries an actual fence 3843ms
+- ❯ lib/qa/monthly-release-v2.test.ts (31 tests | 3 failed) 77ms
+- × v1 is registered in production and must not move > MUTATION — the v1 YAML still hashes to the pinned upstream value 19ms
+- × v2 is vendored, never authored here > the vendored YAML matches the pinned upstream hash 7ms
+- × v2 is vendored, never authored here > the committed JSON is the generated form of the vendored YAML 26ms
+- ❯ lib/qa/provider-dispatch-certainty.test.ts (15 tests | 1 failed) 2187ms
+- × no consumer of ProviderDispatchUnknownError weakens it > none converts the ambiguity into a not-dispatched claim 12ms
+- ❯ lib/qa/memory-vnext.test.ts (16 tests | 2 failed) 44ms
+- × Minne vNext · generation and frozen legacy > pins the mechanically moved legacy body 10ms
+- × Minne vNext · generation and frozen legacy > keeps the existing API and Memory helpers byte-identical 2ms
+- ❯ lib/qa/project-workspace-vnext.test.ts (19 tests | 3 failed) 40ms
+- × project workspace B1 · generation and legacy rollback > keeps the six legacy route bodies byte-for-byte from the reviewed base 9ms
+- × project workspace B1 · generation and legacy rollback > moves the exact workflow editor behind /edit without changing its implementation 1ms
+- × project workspace B1 · generation and legacy rollback > keeps the previous output component and deletion endpoint untouched while stating whole-run deletion 1ms
+- ❯ lib/trading/provider-normalization/recorded-adapter.test.ts (17 tests | 1 failed) 15ms
+- × a transcript gap fails closed > never branches on a provider message anywhere in the package 5ms
+- ❯ lib/qa/global-design-tokens.test.ts (12 tests | 2 failed) 4475ms
+- × global design · every token a stylesheet needs exists > scans the real stylesheets, including the surfaces that carried the defect 18ms
+- × global design · every token a stylesheet needs exists > no CSS module uses a shadcn HSL triple bare as a colour 39ms
+- ❯ lib/qa/workflows-definition-familje-stunden.test.ts (18 tests | 2 failed) 60ms
+- × vendored definition — provenance > the vendored YAML matches the pinned upstream hash 14ms
+- × vendored definition — provenance > the committed JSON is the generated form of the vendored YAML 23ms
+- ❯ lib/qa/atlas-latency.test.ts (22 tests | 2 failed) 20ms
+- × Atlas latency · timing never becomes visible content > keeps the visible reply fed only by text events 10ms
+- × Atlas latency · timing never becomes visible content > does not touch the reply from the timing branch 1ms
+- ❯ lib/social-launch/scheduling/store.test.ts (12 tests | 2 failed) 52430ms
+- × rejects a reused occasion identity across batches 2668ms
+- × does not repeatedly claim a release waiting without evidence ahead of an ordinary occasion 3770ms
+- ❯ lib/trading/market-view/import-discipline.test.ts (7 tests | 1 failed) 53ms
+- × no Node builtin is reachable at runtime from the market-view package > proves it across the whole transitive value-import closure 23ms
+- ❯ lib/website-build/studio/store.test.ts (7 tests | 3 failed) 28380ms
+- × owner-bound studio creation in real PostgreSQL > recovers a lost creation response without another project, agent or conversation 3809ms
+- × owner-bound studio creation in real PostgreSQL > rolls back project creation when agent insertion fails 3740ms
+- × owner-bound studio creation in real PostgreSQL > gives authenticated users owner-only SELECT and no mutation or RPC bypass 3704ms
+- ❯ lib/qa/legacy-v1-api-removed.test.ts (16 tests | 5 failed) 250ms
+- × drift-guard — manifest ↔ filsystem > varje manifestpost har en route-fil 11ms
+- × auth-kärnan behålls — Familje-Stunden är beroende av den > /business/leads är fortfarande registrerad 2ms
+- × auth-kärnan behålls — Familje-Stunden är beroende av den > /business/campaigns är fortfarande registrerad 1ms
+- × auth-kärnan behålls — Familje-Stunden är beroende av den > /business/revenue är fortfarande registrerad 1ms
+- × auth-kärnan behålls — Familje-Stunden är beroende av den > /chat/tts är fortfarande registrerad 1ms
+- ❯ lib/qa/handlarborsen-visual-pulse.test.ts (7 tests | 1 failed) 144ms
+- × Handlarborsen overview hierarchy > places charts after KPI and before secondary pulse, collapsing only the breakdown 18ms
+- ❯ lib/qa/global-auth-retired.test.ts (14 tests | 6 failed) 68ms
+- × the global key verifier is gone > no PRODUCTION module defines the helpers 8ms
+- × the global key verifier is gone > no production module reads the global key from the environment 3ms
+- × no route can reach a global key path > finds route files at all — the scan must be able to fail 16ms
+- × no route can reach a global key path > zero routes call the helpers, directly or via one hop 9ms
+- × no route can reach a global key path > zero route files import from api-auth for anything but cron 9ms
+- × the cron class survived the deletion > cron routes still use CRON_SECRET directly 9ms
+- ❯ lib/trading/replay/import-discipline.test.ts (12 tests | 2 failed) 193ms
+- × no Node builtin is reachable at runtime from the replay package > proves it across the whole transitive value-import closure 65ms
+- × Stage 1.5 boundaries > reads no wall clock on a trading-state path 9ms
+- ❯ lib/website-build/studio/loader.test.ts (10 tests | 1 failed) 37535ms
+- × studio project and conversation identity > loads a selected studio conversation with its missing budget and no invented desktop 3141ms
+- ❯ lib/social-launch/scheduling/worker.test.ts (9 tests | 1 failed) 50451ms
+- × processing Instagram containers yield to other jobs and remain eligible on later ticks 6808ms
+- ❯ lib/qa/desktop-commander-unlicensed.test.ts (16 tests | 5 failed) 34ms
+- × nothing in production can reach the host > the scan can actually fail — it finds the production tree 9ms
+- × nothing in production can reach the host > no module imports the Desktop Commander MCP package 5ms
+- × nothing in production can reach the host > no module spawns the Desktop Commander server 4ms
+- × nothing in production can reach the host > no module opens an MCP client or transport at all 3ms
+- × nothing in production can reach the host > the declaration is imported by no production module 5ms
+- ❯ lib/qa/cl-shadow.test.ts (12 tests | 1 failed) 1095ms
+- × runContextShadow — fire-and-forget containment > delivers a diff to the sink and resolves void (assembled context never escapes) 1085ms
+- ❯ lib/website-build/api.test.ts (7 tests | 1 failed) 19041ms
+- × website build API authorization and durable results > unknown_artifact_is_404_and_export_is_private_verified_utf8 2455ms
+- ❯ lib/qa/website-build-drain.test.ts (5 tests | 4 failed) 5676ms
+- × website build dispatch through actual drain route and SQL > requires_cron_auth_before_any_build 176ms
+- × website build dispatch through actual drain route and SQL > dispatches_website_kind_without_touching_legacy_handlers 165ms
+- × website build dispatch through actual drain route and SQL > invalid_artifact_is_terminal_without_automatic_paid_retry 155ms
+- × website build dispatch through actual drain route and SQL > in_flight_unknown_waits_for_reconciliation_and_never_looks_like_an_active_build 177ms
+- ❯ lib/website-build/studio/budget.test.ts (5 tests | 1 failed) 19146ms
+- × explicit studio budgets and billable project identity > requires a budget for the exact owned studio conversation and keeps replay idempotent 3256ms
+- ❯ lib/website-build/migration-policy.test.ts (6 tests | 6 failed) 12ms
+- × website build canonical migration enforcement > registers the website migration as enforced in the complete source set 7ms
+- × website build canonical migration enforcement > refuses a ledger missing only the website migration 2ms
+- × website build canonical migration enforcement > accepts the complete set and still refuses a duplicate website entry 0ms
+- × planning v1 is enforced and neither a missing nor duplicate planning ledger entry is accepted 0ms
+- × enforces the studio migration and rejects missing or duplicate ledger entries 1ms
+- × requires exactly one mockup review migration in the production ledger 0ms
+- ❯ lib/qa/admission-inventory.test.ts (4 tests | 4 failed) 116ms
+- × G3C-2A · run admission has exactly one door > no runtime module writes runs.status = running directly 40ms
+- × G3C-2A · run admission has exactly one door > the drain is the only caller, and it goes through the canonical RPC 26ms
+- × G3C-2A · run admission has exactly one door > no runtime module claims a due workflow instance outside the RPC 23ms
+- × G3C-2A · run admission has exactly one door > queueing a run remains open — it is control-plane state, not execution 25ms

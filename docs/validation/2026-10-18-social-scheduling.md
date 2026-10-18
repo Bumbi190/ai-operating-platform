@@ -70,3 +70,8 @@ At0888761 six of eight Linux workflows passed. Studio failed because the added s
 The Vercel preview stopped before Next build on the canonical count tripwire. Once the source count is reconciled it must still refuse the four unapplied production migrations. This is not a completed preview/build claim.
 
 Baseline follow-up: another22 initially failing files were rerun on exact production main;21failed/1passed,44failed/610passed tests. atlas-static-conversation-route passed on baseline and was the guide regression fixed above. The broad project run began before the final SQL fixes and therefore has pre-fix fixture schema; its late new regression cases must not be mistaken for the current clean fixture evidence. The latest scoped SQL store and worker runs above prove the final SQL.
+
+## Final publication UI check
+At b022e6a seven of eight Linux workflows passed. The remaining UI job reached publication fixtures:6/8passed; the two failures were exact locators for the retired warning sentence. Only those two text locators were updated to the current warning. Their no-resend/no-published-link/provider-call-count assertions remain unchanged. A task-owned Playwright fixture run passed2/2 using the already-installed test browser and existing fixture server; this is not a signed-in production/native readiness check. All observed broad-suite failing suite/case names are recorded in docs/validation/2026-10-18-social-broad-test-observations.md.
+
+Production delivery stays pending. Current branch/PR is the resume point; do not reconnect accounts, republish the first post, or rebuild completed scheduling tasks. Browser access to the actual Brave session is still unavailable; no alternate signed-in session was probed.

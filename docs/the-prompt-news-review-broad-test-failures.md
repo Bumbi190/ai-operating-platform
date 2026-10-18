@@ -1,5 +1,7 @@
 # The Prompt review packet: broad web regression results
 
+Latest completed continuation: [full failed-case baseline comparison, final affected regressions and explicit remaining release limits](the-prompt-news-review-release-verification-20261018.md). The older observations below remain historical.
+
 This records the actual complete broad Vitest run on Windows after the main synchronization. It is not a clean-suite or production-release claim. The final narrow input and repeatable-account fixture fixes are separately verified by the final scoped rerun.
 
 Command from apps/web:

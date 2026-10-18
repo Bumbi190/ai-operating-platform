@@ -55,7 +55,7 @@ create trigger media_news_review_reserved_provenance before insert on public.ass
 create or replace function public.media_news_snapshot_requirements(p_project uuid,s jsonb) returns text[]
 language plpgsql security invoker set search_path='' as $fn$
 declare r jsonb=s->'receipt';script public.media_scripts;news public.media_news_items;video public.assets;prov public.asset_provenance;
- a public.assets;ap public.asset_provenance;identity jsonb;plan public.social_launch_plan_revisions;expected jsonb;refs jsonb;used_costs jsonb;
+ a public.assets;ap public.asset_provenance;identity jsonb;plan public.social_launch_plan_revisions;expected jsonb;refs jsonb;used_costs jsonb;review_now timestamptz=clock_timestamp();
 begin
  if jsonb_typeof(s)<>'object' or (select count(*) from jsonb_object_keys(s))<>6
  or exists(select 1 from jsonb_object_keys(s) k where k not in ('video','receipt','receiptSha256','provenanceId','planRevisionId','destinations'))
@@ -94,8 +94,8 @@ begin
  or (r->'voiceReceipt'->>'audioByteSize')::bigint is distinct from (r->'audio'->>'byteSize')::bigint
  then return array['news_evidence_changed'];end if;
  select * into news from public.media_news_items where id=script.news_item_id and project_id=p_project;
- if (news.raw_output->>'source_published_at')::timestamptz < now()-interval '48 hours'
- or (news.raw_output->>'source_published_at')::timestamptz > now()+interval '15 minutes'
+ if (news.raw_output->>'source_published_at')::timestamptz < review_now-interval '48 hours'
+ or (news.raw_output->>'source_published_at')::timestamptz > review_now+interval '15 minutes'
  then return array['news_source_expired'];end if;
  if news.id is null or news.url is distinct from r->'source'->>'url' or news.raw_output->>'source_key' is distinct from r->'source'->>'key'
  or (news.raw_output->>'source_published_at')::timestamptz is distinct from (r->'source'->>'publishedAt')::timestamptz
@@ -104,10 +104,10 @@ begin
  or jsonb_array_length(r->'usage')<>3 or coalesce(r->'qa'->>'reportText','')=''
  or encode(sha256(convert_to(r->'qa'->>'reportText','UTF8')),'hex') is distinct from r->'qa'->>'reportSha256'
  or r->'qa'->>'reviewedBy' is distinct from (select owner_id::text from public.projects where id=p_project)
- or (r->'qa'->>'reviewedAt')::timestamptz>now()
+ or (r->'qa'->>'reviewedAt')::timestamptz>review_now
  or exists(select 1 from jsonb_array_elements(r->'usage') u where u->>'scope' is distinct from 'public_social_editorial'
  or coalesce(u->>'documentText','')='' or encode(sha256(convert_to(u->>'documentText','UTF8')),'hex') is distinct from u->>'documentSha256'
- or u->>'reviewedBy' is distinct from (select owner_id::text from public.projects where id=p_project) or (u->>'reviewedAt')::timestamptz>now())
+ or u->>'reviewedBy' is distinct from (select owner_id::text from public.projects where id=p_project) or (u->>'reviewedAt')::timestamptz>review_now)
  then return array['news_evidence_invalid'];end if;
  refs=(r->'images')||jsonb_build_array(r->'audio');
  if r->'assetProvenanceIds' is distinct from (select jsonb_agg(value->'id' order by ord) from jsonb_array_elements(refs) with ordinality a(value,ord))
@@ -210,6 +210,22 @@ begin
  'video',e.snapshot->'video','imageCount',3,'voiceLabel','Victoria','aiDisclosure','AI-GENERATED / EDITORIAL ILLUSTRATIONS');
 end $fn$;
 
+-- Call only while holding projects FOR UPDATE. Its FK conflict with KEY SHARE also
+-- serializes insertion of a previously absent binding/plan/lifecycle row.
+create or replace function public.media_news_review_lock_inputs(p_project uuid,s jsonb) returns void
+language plpgsql security invoker set search_path='' as $fn$
+begin
+ perform 1 from public.media_scripts where id=(s->'receipt'->>'scriptId')::uuid and project_id=p_project for update;
+ perform 1 from public.media_news_items where id=(s->'receipt'->'source'->>'newsItemId')::uuid and project_id=p_project for update;
+ perform 1 from public.assets where project_id=p_project and id in (select (value->>'id')::uuid from jsonb_array_elements((s->'receipt'->'images')||jsonb_build_array(s->'receipt'->'audio',s->'video'))) order by id for update;
+ perform 1 from public.asset_provenance where asset_id in (select (value->>'id')::uuid from jsonb_array_elements((s->'receipt'->'images')||jsonb_build_array(s->'receipt'->'audio',s->'video'))) order by asset_id for share;
+ perform 1 from public.cost_events where project_id=p_project and id in (select value::uuid from jsonb_array_elements_text(s->'receipt'->'costEventIds')) order by id for share;
+ perform 1 from public.social_account_bindings where project_id=p_project and superseded_at is null order by binding_id for share;
+ perform 1 from public.social_launch_plans where project_id=p_project for update;
+ -- Lifecycle writes already require projects FOR UPDATE through project_lifecycle_change.
+ perform 1 from public.platform_config order by id for share;
+end $fn$;
+
 create or replace function public.media_news_review_prepare(p_principal jsonb,p_input jsonb,p_snapshot jsonb) returns jsonb
 language plpgsql security invoker set search_path='' as $fn$
 declare project uuid=(p_input->>'projectId')::uuid;actor uuid=(p_principal->>'userId')::uuid;v_script_id uuid=(p_input->>'scriptId')::uuid;video uuid=(p_input->>'videoAssetId')::uuid;
@@ -221,12 +237,7 @@ begin
  or p_snapshot->'receipt'->>'projectId' is distinct from project::text or p_snapshot->'receipt'->>'scriptId' is distinct from v_script_id::text
  or p_snapshot->'video'->>'id' is distinct from video::text then raise exception 'NEWS_REVIEW_INVALID_BODY';end if;
  perform 1 from public.projects where id=project for update;perform public.social_launch_assert_owner(p_principal,jsonb_build_object('projectId',project));perform public.social_content_active(project);
- perform 1 from public.media_scripts where id=v_script_id and project_id=project for update;
- perform 1 from public.media_news_items where id=(p_snapshot->'receipt'->'source'->>'newsItemId')::uuid and project_id=project for update;
- perform 1 from public.assets where project_id=project and id in (select (value->>'id')::uuid from jsonb_array_elements((p_snapshot->'receipt'->'images')||jsonb_build_array(p_snapshot->'receipt'->'audio',p_snapshot->'video'))) order by id for update;
- perform 1 from public.asset_provenance where asset_id in (select (value->>'id')::uuid from jsonb_array_elements((p_snapshot->'receipt'->'images')||jsonb_build_array(p_snapshot->'receipt'->'audio',p_snapshot->'video'))) order by asset_id for share;
- perform 1 from public.cost_events where project_id=project and id in (select value::uuid from jsonb_array_elements_text(p_snapshot->'receipt'->'costEventIds')) order by id for share;
- perform 1 from public.social_account_bindings where project_id=project and superseded_at is null order by binding_id for share;
+ perform public.media_news_review_lock_inputs(project,p_snapshot);
  fingerprint=encode(sha256(convert_to(public.media_news_canonical_json(p_snapshot),'UTF8')),'hex');
  select e.* into previous from public.media_news_review_evidence e where e.project_id=project and e.root_idempotency_key=p_input->>'idempotencyKey' order by e.channel limit 1;
  if previous.id is not null and (previous.request is distinct from p_input or previous.snapshot_sha256 is distinct from fingerprint or previous.created_by<>actor) then raise exception 'NEWS_REVIEW_REVISION_CONFLICT';end if;
@@ -257,8 +268,8 @@ begin
  return result;
 end $fn$;
 
-revoke all on function public.media_news_canonical_json(jsonb),public.media_news_review_caption(public.media_scripts),public.media_news_review_guard_provenance(),public.media_news_snapshot_requirements(uuid,jsonb),public.media_news_review_requirements(uuid),public.media_news_review_guard_evidence(),public.media_news_review_reject_mutation(),public.media_news_review_read(jsonb,jsonb),public.media_news_review_prepare(jsonb,jsonb,jsonb) from public,anon,authenticated;
-grant execute on function public.media_news_canonical_json(jsonb),public.media_news_review_caption(public.media_scripts),public.media_news_review_guard_provenance(),public.media_news_snapshot_requirements(uuid,jsonb),public.media_news_review_requirements(uuid),public.media_news_review_guard_evidence(),public.media_news_review_reject_mutation(),public.media_news_review_read(jsonb,jsonb),public.media_news_review_prepare(jsonb,jsonb,jsonb) to service_role;
+revoke all on function public.media_news_review_lock_inputs(uuid,jsonb),public.media_news_canonical_json(jsonb),public.media_news_review_caption(public.media_scripts),public.media_news_review_guard_provenance(),public.media_news_snapshot_requirements(uuid,jsonb),public.media_news_review_requirements(uuid),public.media_news_review_guard_evidence(),public.media_news_review_reject_mutation(),public.media_news_review_read(jsonb,jsonb),public.media_news_review_prepare(jsonb,jsonb,jsonb) from public,anon,authenticated;
+grant execute on function public.media_news_review_lock_inputs(uuid,jsonb),public.media_news_canonical_json(jsonb),public.media_news_review_caption(public.media_scripts),public.media_news_review_guard_provenance(),public.media_news_snapshot_requirements(uuid,jsonb),public.media_news_review_requirements(uuid),public.media_news_review_guard_evidence(),public.media_news_review_reject_mutation(),public.media_news_review_read(jsonb,jsonb),public.media_news_review_prepare(jsonb,jsonb,jsonb) to service_role;
 comment on table public.media_news_review_evidence is 'Immutable source/voice/usage/render evidence bound to exact social content revision. Grants no publication, scheduling or spend authority.';
 
 
@@ -300,7 +311,7 @@ begin
 end $fn$;
 
 create or replace function public.social_content_decide(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $fn$
-declare project uuid=(p_input->>'projectId')::uuid;actor uuid=(p_principal->>'userId')::uuid;r public.social_content_revisions;d public.social_content_decisions;reasons text[];
+declare project uuid=(p_input->>'projectId')::uuid;actor uuid=(p_principal->>'userId')::uuid;r public.social_content_revisions;d public.social_content_decisions;reasons text[];news_snapshot jsonb;
 begin
  perform public.social_launch_assert_owner(p_principal,p_input);
  if exists(select 1 from jsonb_object_keys(p_input) k where k not in ('projectId','postId','revisionId','sha256','decision','idempotencyKey'))
@@ -313,6 +324,8 @@ begin
  select r0.* into r from public.social_content_posts p join public.social_content_revisions r0 on r0.id=p.current_revision_id and r0.post_id=p.id and r0.project_id=p.project_id where p.id=(p_input->>'postId')::uuid and p.project_id=project for update of p;
  if r.id is null or r.id is distinct from (p_input->>'revisionId')::uuid or r.sha256 is distinct from p_input->>'sha256' then raise exception 'SOCIAL_CONTENT_REVISION_CONFLICT';end if;
  if p_input->>'decision'='approve' then
+ select snapshot into news_snapshot from public.media_news_review_evidence where revision_id=r.id and project_id=project;
+ if news_snapshot is not null then perform public.media_news_review_lock_inputs(project,news_snapshot);perform public.social_content_active(project);end if;
  reasons=public.social_content_requirements(r.id);if 'media_required'=any(reasons) then raise exception 'SOCIAL_CONTENT_MEDIA_REQUIRED';end if;
  if reasons && array['plan_changed','destination_changed','media_changed','time_passed','news_evidence_required','news_evidence_invalid','news_evidence_changed','news_source_expired','news_project_stopped'] then raise exception 'SOCIAL_CONTENT_REVIEW_REQUIRED';end if;end if;
  select * into d from public.social_content_decisions where revision_id=r.id;

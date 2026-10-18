@@ -6,9 +6,13 @@ import {spawnSync} from 'node:child_process'
 import {boundaryFixture} from './boundary.test-utils'
 import {id,sha} from './fixtures.test-utils'
 import {admitReviewVideo,measureReviewVideo} from './admission'
-const state=vi.hoisted(()=>({db:null as any,admitted:[] as any[]}))
+const state=vi.hoisted(()=>({db:null as any,admitted:[] as any[],afterRead:null as null|((path:unknown)=>void)}))
 vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>state.db}))
 vi.mock('@/lib/media/asset/admission',()=>({admitAssetBytes:async(input:any)=>{state.admitted.push(input);return {asset:{id:'10000000-0000-4000-8000-000000000099'}}}}))
+vi.mock('node:fs/promises',async original=>{
+ const fs=await original<typeof import('node:fs/promises')>()
+ return {...fs,readFile:async(...args:any[])=>{const bytes=await (fs.readFile as any)(...args);state.afterRead?.(args[0]);return bytes}}
+})
 let dir='',videoPath=''
 beforeAll(()=>{
  vi.spyOn(Date,'now').mockReturnValue(Date.parse('2026-10-18T08:00:00Z'))
@@ -51,3 +55,15 @@ it('operator_identity_comes_from_verified_auth_not_local_claims',async()=>{
  f.db.auth.getUser=async()=>({data:{user:null},error:{message:'Invalid token'}})
  await expect(authenticateReviewOperator(f.db,'unverified-token')).rejects.toMatchObject({code:'NOT_FOUND'})
 })
+it('replacement_of_original_path_cannot_certify_unmeasured_bytes',async()=>{
+ const f=boundaryFixture();state.db=f.db;state.admitted=[]
+ const original=readFileSync(videoPath),invalid=Buffer.alloc(original.length);original.copy(invalid,0,0,12)
+ const receipt=structuredClone(f.snapshot.receipt);receipt.video={sha256:sha(invalid),byteSize:invalid.length}
+ const path=join(dir,'replaced.mp4'),manifestPath=join(dir,'replacement-receipt.json')
+ writeFileSync(path,invalid);writeFileSync(manifestPath,JSON.stringify(receipt))
+ state.afterRead=p=>{if(String(p)===path)writeFileSync(path,original)}
+ try{
+  await expect(admitReviewVideo(f.principal,{projectId:id(1),scriptId:id(3),videoPath:path,manifestPath,apply:true})).rejects.toMatchObject({code:'MISSING_RENDER_EVIDENCE'})
+  expect(state.admitted).toHaveLength(0)
+ }finally{state.afterRead=null}
+},30000)

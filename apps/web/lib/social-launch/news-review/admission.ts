@@ -1,7 +1,8 @@
 import 'server-only'
-import {readFile,stat} from 'node:fs/promises'
+import {readFile,stat,mkdtemp,writeFile,chmod,rm} from 'node:fs/promises'
 import {existsSync} from 'node:fs'
-import {resolve} from 'node:path'
+import {resolve,join} from 'node:path'
+import {tmpdir} from 'node:os'
 import {execFile} from 'node:child_process'
 import {promisify} from 'node:util'
 import {randomUUID} from 'node:crypto'
@@ -31,6 +32,15 @@ export async function measureReviewVideo(path:string):Promise<RenderReceipt['pro
   return profile
  }catch(e){if(e instanceof NewsReviewError)throw e;throw new NewsReviewError('MISSING_RENDER_EVIDENCE')}
 }
+async function measureSnapshot(bytes:Uint8Array):Promise<RenderReceipt['profile']>{
+ const dir=await mkdtemp(join(tmpdir(),'omnira-news-review-'))
+ try{
+  await chmod(dir,0o700)
+  const path=join(dir,'snapshot.mp4')
+  await writeFile(path,bytes,{flag:'wx',mode:0o600})
+  return await measureReviewVideo(path)
+ }finally{await rm(dir,{recursive:true,force:true})}
+}
 export async function authenticateReviewOperator(db:ReviewDb,token:string):Promise<SocialContentPrincipal>{
  const {data,error}=await db.auth.getUser(token)
  if(error||!data.user)throw new NewsReviewError('NOT_FOUND')
@@ -45,7 +55,7 @@ export async function admitReviewVideo(p:SocialContentPrincipal,input:{projectId
  const receipt=parseRenderReceipt(raw),bytes=await readFile(input.videoPath)
  if(receipt.projectId!==input.projectId||receipt.scriptId!==input.scriptId)throw new NewsReviewError('NOT_FOUND')
  if(digest(bytes)!==receipt.video.sha256||bytes.length!==receipt.video.byteSize)throw new NewsReviewError('MEDIA_CHANGED')
- const profile=await measureReviewVideo(input.videoPath)
+ const profile=await measureSnapshot(bytes)
  if(canonicalNewsJson(profile)!==canonicalNewsJson(receipt.profile))throw new NewsReviewError('MEDIA_CHANGED')
  await verifyReceiptReferences(db,p,receipt,Date.now())
  const receiptSha256=renderReceiptSha256(receipt)

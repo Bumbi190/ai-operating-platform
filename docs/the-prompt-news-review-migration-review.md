@@ -4,11 +4,13 @@ Status: proposed, local SQL only. No production schema change or release authori
 ## Exact forward artifact
 `apps/web/supabase/migrations/20261018083917_media_news_review_evidence.sql`, allocated by installed Supabase CLI 2.81.3 using `migration new`.
 
-Canonical committed bytes: 34,141 bytes, SHA256 `ca7a24d698689039fb99c94a9d8f036130b0ee43bbc535d24b2331f3d23f71f9`. Git attributes preserve these bytes on Windows. Recalculate from the final committed artifact before an approved application.
+Canonical committed bytes: 35,199 bytes, SHA256 `9cfd8807817878d492814cc29240114c3e3101ac8504651f377f375089b63e52`. Git attributes preserve these bytes on Windows. Recalculate from the final committed artifact before an approved application.
 
 - Adds server-only RLS-protected immutable `media_news_review_evidence` bound by composite revision/post/project/SHA FK.
 - Adds server-only prepare/read/verification helpers with explicit empty search paths. Existing social-content requirements/read/decide retain their canonical behavior with additional news guards; public news metadata is appended only to protected news posts.
 - Reserves `the-prompt-review-admission-v1` provenance inserts to service_role. If that name existed before the guard, first installation refuses and requires provenance reconciliation; it never retroactively certifies old metadata.
+- Prepare and approval share ordered row locks for the script, source, canonical media, provenance, costs, active bindings, current plan and platform stop row. The project FOR UPDATE lock conflicts with the existing binding FK's KEY SHARE, including a previously absent binding. Lifecycle changes already take that project lock through their existing narrow RPC; lifecycle write privileges remain unchanged.
+- Authoritative age checks capture clock_timestamp() after the caller acquires its locks, so a transaction that waited across source expiration cannot approve or prepare using its old start time.
 - Other asset producers, existing JPEG publication and ordinary projects retain their interfaces.
 - Does not create publication requests, grant transport/spend authority, edit scripts, reclassify private previews, change CRON or activate the trial.
 

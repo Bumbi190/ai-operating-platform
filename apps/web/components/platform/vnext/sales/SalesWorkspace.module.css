@@ -6,3 +6,17 @@
 @media(max-width:850px){.grid{grid-template-columns:1fr}.header{align-items:flex-start}.panel{padding:20px}.sectionHead{flex-wrap:wrap;gap:6px}.contacts li{flex-wrap:wrap}}
 
 .inboxGrid{display:grid;grid-template-columns:minmax(220px,1fr) minmax(0,1.4fr);gap:24px}.inboxDetail{min-width:0;border-left:1px solid var(--border,#334155);padding-left:24px}.inboxText{font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65;background:rgba(109,151,185,.06);padding:16px;border-radius:10px}.inboxGrid button{text-align:left;overflow-wrap:anywhere;max-width:100%}@media(max-width:850px){.inboxGrid{grid-template-columns:1fr}.inboxDetail{border-left:0;border-top:1px solid var(--border,#334155);padding:20px 0 0}}
+
+.disclosure{background:var(--surface,#111925);border:1px solid var(--border,rgba(170,188,212,.16));border-radius:14px;margin:12px 0;min-width:0}
+.page .disclosure>summary{display:flex;align-items:center;gap:12px;padding:18px 22px;list-style:none;border-radius:14px}
+.disclosure>summary::-webkit-details-marker{display:none}
+.disclosure>summary::before{content:'›';font-size:24px;line-height:1;color:#9ccae3;flex:none;transition:transform .15s}
+.disclosure[open]>summary::before{transform:rotate(90deg)}
+.disclosure>summary h2{font-size:17px;line-height:1.4;margin:0;min-width:0;overflow-wrap:anywhere}
+.disclosure>summary span{margin-left:auto;color:var(--text-secondary,#a3afc0);font-size:12px;text-align:right}
+.disclosure>summary:hover{background:rgba(109,151,185,.08)}
+.page summary:focus-visible{outline:2px solid #9bc9e6;outline-offset:4px}
+.disclosureBody{padding:0 22px 22px;border-top:1px solid var(--border,rgba(170,188,212,.12))}
+.disclosureBody>section.panel{margin:0;padding:20px 0 0;border:0;border-radius:0;background:transparent}
+@media(max-width:600px){.page .disclosure>summary{padding:16px;gap:10px;flex-wrap:wrap}.disclosure>summary h2{font-size:16px;flex:1}.disclosure>summary span{flex-basis:100%;text-align:left;margin-left:24px}.disclosureBody{padding:0 16px 16px}}
+@media(prefers-reduced-motion:reduce){.disclosure>summary::before{transition:none}}

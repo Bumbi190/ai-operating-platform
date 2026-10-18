@@ -2,6 +2,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Omnira.CodeBroker;
+if (args.Length == 1 && args[0] == "--fixture") { await Omnira.CodeBroker.Smoke.FixtureLease.Run(); return; }
+if (args.Length != 0) throw new ArgumentException("invalid smoke mode");
 var names = new List<string>();
 void Check(string name, bool value) { if (!value) throw new Exception(name); names.Add(name); }
 void Refuses(string name, Action action) {

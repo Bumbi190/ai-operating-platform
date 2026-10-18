@@ -1,0 +1,19 @@
+{
+  "sourceCommit": "c973e3648e9b8adf6357e253491f46bc2aef673f",
+  "path": "apps/web/supabase/migrations/20261018083917_media_news_review_evidence.sql",
+  "sourceSha256": "9cfd8807817878d492814cc29240114c3e3101ac8504651f377f375089b63e52",
+  "liveLedgerVersion": "20261018182224",
+  "liveLedgerName": "media_news_review_evidence",
+  "liveSha256": "9cfd8807817878d492814cc29240114c3e3101ac8504651f377f375089b63e52",
+  "exactMatch": true,
+  "reapplied": false,
+  "runtimeCodeImported": false,
+  "canonical": 147,
+  "enforced": 133,
+  "frozenGrandfathered": 14,
+  "frozenLegacyOnly": 30,
+  "classificationCopied": [
+    "media_news_review_evidence"
+  ],
+  "guardOverride": false
+}

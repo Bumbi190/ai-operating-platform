@@ -9,3 +9,6 @@
 .agents/skills/break-ui/** -text
 .agents/skills/ui-ux-pro-max/** -text
 workers/sales/vendor/** text eol=lf
+
+# Preserve exact bytes of the already-applied parallel migration.
+apps/web/supabase/migrations/20261018083917_media_news_review_evidence.sql -text

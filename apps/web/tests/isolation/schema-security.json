@@ -5,7 +5,7 @@
     "captured_at": "2026-09-25",
     "handlarborsen_review_p2_migration_note": "Operator-approved, project-locked, immutable human review decision events. RLS + FORCE RLS, zero policies, no anon/auth grants; service role SELECT/INSERT only, REVIEW RPC only service role. Fully isolated PG17.6 security tests passed. Live production catalog must be checked after application.",
     "handlarborsen_candidates_migration_note": "Additional candidate memory table to be verified against the scoped live production catalog after operator-approved application: project-locked, RLS and FORCE RLS, zero policies and client grants, service_role SELECT/INSERT only. Earlier table classifications remain unchanged.",
-    "total_tables": 172,
+    "total_tables": 173,
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
     "platform_tokens_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090000_platform_tokens_client_revoke.sql (Settings S0): client grants revoked, RLS on, no policy.",
     "platform_credential_events_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090100_platform_credential_events.sql (Settings S0), applied to production before this row was merged: created with RLS on and no policy, every client grant revoked, service_role holding SELECT and INSERT only, UPDATE/DELETE/TRUNCATE refused by triggers.",
@@ -81,7 +81,8 @@
     "release_reconciliation_20261018": "17 already-live local-text/watch tables reconciled with scoped catalog and existing reviewed classifications from git4b4336a. local_text_jobs retains TENANT_RLS with column-only authenticated SELECT and one owner policy; other16 SERVER_ONLY. Three exact SQL blobs match live ledger hashes. No additional DDL applied. Public catalog156, registry156; older entries not re-audited.",
     "sales_reply_staged_note": "B3 reply preparation adds three proposed service-only RLS tables, verified in disposable PostgreSQL only; live=false until reviewed authorized rollout. Registry159 includes three staged entries; last observed production public catalog156. Historical rows/timestamps unchanged.",
     "sales_send_staged_note": "Three proposed service-only RLS tables. Disposable PostgreSQL only; NOT applied live. No policy row is installed by migration.",
-    "parallel_applied_source_note": "Seven origin/main migration files imported byte-identically to already-applied SQL hashes before owner-test sending rollout. No migration reapplied; frozen14/30 unchanged. Classification of their10 tables copied from origin/main."
+    "parallel_applied_source_note": "Seven origin/main migration files imported byte-identically to already-applied SQL hashes before owner-test sending rollout. No migration reapplied; frozen14/30 unchanged. Classification of their10 tables copied from origin/main.",
+    "news_review_already_applied_source_note": "Exact source from c973e36 matches live ledger20261018182224 SHA2569cfd8807; source-only reconciliation, not applied again."
   },
   "tables": {
     "handlarborsen_competitor_review_decisions": {
@@ -1778,6 +1779,14 @@
       "rls_declared_in_migration": true,
       "created_by_migration": true,
       "live": true
+    },
+    "media_news_review_evidence": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
     }
   },
   "views": {

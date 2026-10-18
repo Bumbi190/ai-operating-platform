@@ -75,6 +75,12 @@ export async function PATCH(
   // Ownership gate BEFORE any mutation or publish side effect.
   if (!projectId || !assertProjectAllowed(projectId, access.allowedProjectIds)) return projectForbidden()
 
+  // Selected private replies are reviewed against the displayed revision/hash.
+  // Keep them out of generic feedback/memory and article workflows.
+  if (existing.kind === 'sales_reply_review') {
+    return NextResponse.json({ code: 'PRIVATE_REPLY_REVIEW_REQUIRED', error: 'Granska svarsförslaget i projektets privata svarsvy.' }, { status: 409 })
+  }
+
   // ── G3C-3B · RUN FIRST, THEN APPROVAL — ONE ATOMIC TRANSITION ────────────
   // This route used to write the APPROVAL first, unconditionally (no status
   // predicate at all), and only afterwards attempt the run flip — whose row

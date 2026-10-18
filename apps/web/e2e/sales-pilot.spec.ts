@@ -28,6 +28,6 @@ test('five exact drafts survive reload; edit, editorial approval and mobile layo
  await page.getByRole('button',{name:'Godkänn utkast'}).first().click();await expect(page.getByText('Utkastet är godkänt. Inget mejl har skickats.',{exact:true})).toBeVisible()
  expect(writes.map(x=>x.operation??x.action)).toEqual(['revise','approved'])
  await expect(page.getByText('Redo att förbereda utkast',{exact:true})).toBeVisible();await page.getByRole('button',{name:'Pausa förberedelsen',exact:true}).click();await expect(page.getByText('Förberedelsen är pausad',{exact:true})).toBeVisible();await expect(page.getByText('Worker token',{exact:true})).toHaveCount(0)
- const folder='../../.superpowers/sdd/2026-10-17-sales-strato-inbox/browser';mkdirSync(folder,{recursive:true});await page.screenshot({path:`${folder}/sales-desktop.png`,fullPage:true})
+ const folder=process.env.SALES_BROWSER_ARTIFACT_DIR??'../../.superpowers/sdd/2026-10-17-sales-strato-inbox/browser';mkdirSync(folder,{recursive:true});await page.screenshot({path:`${folder}/sales-desktop.png`,fullPage:true})
  await page.setViewportSize({width:390,height:844});await expect(page.getByRole('heading',{name:'Säljförberedelse'})).toBeVisible();expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);await page.screenshot({path:`${folder}/sales-mobile.png`,fullPage:true})
 })

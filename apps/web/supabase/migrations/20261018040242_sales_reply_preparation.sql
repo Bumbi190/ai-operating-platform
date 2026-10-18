@@ -131,7 +131,7 @@ begin
  perform public.sales_reply_validate_draft(d,j.message_id);h:=encode(extensions.digest(convert_to(jsonb_build_array(j.snapshot,d)::text,'UTF8'),'sha256'),'hex');
  if jsonb_array_length(d->'questions')=0 then
  insert into public.runs(id,project_id,workflow_id,kind,status,input,context,policy_class) values(rid,j.project_id,null,'sales.email.reply.v1','awaiting_approval',jsonb_build_object('salesReplyDraftId',did),'{}','non_destructive');
- insert into public.approvals(id,project_id,run_id,status,kind,output_key,content) values(aid,j.project_id,rid,'pending','sales_reply_review','sales_reply_draft',jsonb_build_object('draft',d,'sha256',h,'sendingEnabled',false)::text);
+ insert into public.approvals(id,project_id,run_id,status,kind,output_key,content) values(aid,j.project_id,rid,'pending','sales_reply_review','sales_reply_draft',jsonb_build_object('replyRevisionId',did,'sha256',h,'review','Granska i projektets privata svarsvy','sendingEnabled',false)::text);
  else rid:=null;aid:=null;end if;
  insert into public.sales_reply_draft_revisions(id,project_id,job_id,data,sha256,run_id,approval_id) values(did,j.project_id,j.id,d,h,rid,aid) returning * into r;return r;
 end $$;

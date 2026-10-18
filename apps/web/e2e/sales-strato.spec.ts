@@ -24,7 +24,7 @@ test('real browser encrypts a private Strato form and reports login-only proof o
  await beginStarted;try{await expect(page.getByRole('textbox',{name:'Fullständig postfacksadress',exact:true})).toBeDisabled()}finally{releaseBegin()}
  await expect(page.getByText(`Strato-inloggningen är verifierad för ${context.email}.`,{exact:true})).toBeVisible({timeout:15000});expect(submitted).toBe(true);expect(bodies.join('\n')).not.toContain(password);expect(logs.join('\n')).not.toContain(password);await expect(page.getByLabel('Postfackslösenord',{exact:true})).toHaveValue('')
  await expect(page.getByText('Inkorgsinläsning är inte aktiverad.',{exact:true})).toBeVisible();await expect(page.getByText('Provar inloggningen – inga mejl skickas',{exact:true})).toBeVisible()
- const dir='../../.superpowers/sdd/2026-10-17-sales-strato-inbox/browser';mkdirSync(dir,{recursive:true});await page.screenshot({path:dir+'/strato-desktop.png',fullPage:true});await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:dir+'/strato-mobile.png',fullPage:true})
+ const dir=process.env.SALES_BROWSER_ARTIFACT_DIR??'../../.superpowers/sdd/2026-10-17-sales-strato-inbox/browser';mkdirSync(dir,{recursive:true});await page.screenshot({path:dir+'/strato-desktop.png',fullPage:true});await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:dir+'/strato-mobile.png',fullPage:true})
 })
 
 test('saved authentication identifies its exact mailbox while another address is edited',async({page})=>{

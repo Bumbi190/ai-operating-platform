@@ -46,6 +46,7 @@ begin
  perform pg_temp.reply_refused(format('select sales_reply_review_draft(%L::jsonb,%L::jsonb)',p,jsonb_build_object('projectId',v->>'projectId','revisionId',rev->>'id','expectedHash',rev->>'sha256','decision','approved')),'55000');
  x:=sales_reply_edit_draft(p,jsonb_build_object('projectId',v->>'projectId','revisionId',rev->>'id','expectedHash',rev->>'sha256','subject','Svar om pilot','body','Vi återkommer med ett bekräftat pris.','questions','[]'::jsonb));
  perform pg_temp.reply_refused(format('select sales_reply_review_draft(%L::jsonb,%L::jsonb)',p,jsonb_build_object('projectId',v->>'projectId','revisionId',rev->>'id','expectedHash',rev->>'sha256','decision','approved')),'23505');
+ perform pg_temp.reply_assert((select content not like '%Vi återkommer%' and content not like '%Svar om pilot%' from approvals where id=(x->>'approvalId')::uuid),'private reply text never copied to generic approval or feedback');
  perform pg_temp.reply_assert(x->>'id'<>rev->>'id' and x->>'sha256'<>rev->>'sha256','edit creates exact new immutable revision');
  perform pg_temp.reply_assert(sales_reply_review_draft(p,jsonb_build_object('projectId',v->>'projectId','revisionId',x->>'id','expectedHash',x->>'sha256','decision','approved'))->>'status'='approved','canonical review approves exact current revision');
  rev:=x;x:=sales_reply_edit_draft(p,jsonb_build_object('projectId',v->>'projectId','revisionId',rev->>'id','expectedHash',rev->>'sha256','subject','Reviderat svar','body','Vi återkommer med ett bekräftat pris.','questions','[]'::jsonb));

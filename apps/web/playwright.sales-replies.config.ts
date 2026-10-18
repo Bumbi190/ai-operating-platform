@@ -1,0 +1,3 @@
+import {defineConfig} from '@playwright/test'
+process.env.SALES_BROWSER_ARTIFACT_DIR='../../.superpowers/sdd/2026-10-18-sales-reply-preparation/browser'
+export default defineConfig({testDir:'./e2e',testMatch:['sales-pilot.spec.ts','sales-strato.spec.ts','sales-inbox.spec.ts','sales-replies.spec.ts'],workers:1,retries:0,timeout:30000,use:{baseURL:'http://127.0.0.1:54417',browserName:'chromium',screenshot:'only-on-failure'},outputDir:'../../.superpowers/sdd/2026-10-18-sales-reply-preparation/browser/results',webServer:{command:'node e2e/sales-pilot-server.mjs',url:'http://127.0.0.1:54417/sales',reuseExistingServer:false,timeout:30000}})

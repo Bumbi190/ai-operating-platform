@@ -74,11 +74,11 @@ Nu finns sex inkommande rubrikrader, men ingen mejltext är vald och kontaktregi
 **Consumes:** Task1 owner contracts; existing validated conversation-to-project binding; B2 selection/link APIs remain owner operations.
 **Produces:** prepare_sales_reply(input:PrepareReplyInput), get_sales_reply_job({projectId,jobId}); both conversation/project-bound, neither selects text/contacts, approves, sends or changes scope. UI displays source metadata, exact branch and offer, revision and staleness with explicit editorial actions.
 
-- [ ] Write tests: atlas_cannot_prepare_without_bound_conversation; two_branches_same_address_require_choice; unselected_text_cannot_silently_start_model; stale_revision_cannot_approve; incoming_html_is_plain_text_and_cannot_trigger_fetch; no_send_action_exposed. Assert visible blocking reason and immutable old evidence.
-- [ ] Observe tests FAIL.
-- [ ] Implement owner UI actions and private/no-capture markup; unknown/ambiguous contacts show needs_input. Display "Svarsförslag för granskning — inget skickas". A new message is shown as newer evidence, never appended to the model input or promoted to reply intent automatically. Owner chooses whether to prepare another job.
-- [ ] Run scoped sales/security tests, typecheck and desktop/mobile Playwright; inspect screenshots. Expect PASS and no external content request.
-- [ ] Commit.
+- [x] Write tests: atlas_cannot_prepare_without_bound_conversation; two_branches_same_address_require_choice; unselected_text_cannot_silently_start_model; stale_revision_cannot_approve; incoming_html_is_plain_text_and_cannot_trigger_fetch; no_send_action_exposed. Assert visible blocking reason and immutable old evidence.
+- [x] Observe tests FAIL.
+- [x] Implement owner UI actions and private/no-capture markup; unknown/ambiguous contacts show needs_input. Display "Svarsförslag för granskning — inget skickas". A new message is shown as newer evidence, never appended to the model input or promoted to reply intent automatically. Owner chooses whether to prepare another job.
+- [x] Run scoped sales/security tests, typecheck and desktop/mobile Playwright; inspect screenshots. Expect PASS and no external content request.
+- [x] Commit.
 
 ### Task4: qualification, concrete model trial and pinned rollout
 

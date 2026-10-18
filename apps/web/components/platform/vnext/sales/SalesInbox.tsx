@@ -1,13 +1,14 @@
 'use client'
 import {useEffect,useState} from 'react'
-import type {SalesContact} from '@/lib/sales/types'
+import type {SalesContact,SalesOfferRevision} from '@/lib/sales/types'
+import {SalesReplyRequest} from './SalesReplyRequest'
 import type {HostStatus} from '@/lib/sales/host-types'
 import type {MailboxStatus} from '@/lib/sales/mailbox/types'
 import type {InboxMessage,InboxPage} from '@/lib/sales/inbox/types'
 import styles from './SalesWorkspace.module.css'
 const DEFAULT_SINCE='2026-10-07T22:00:00Z'
 function localTime(value:string){const d=new Date(value);return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16)}
-export function SalesInbox({projectId,contacts}:{projectId:string;contacts:SalesContact[]}){
+export function SalesInbox({projectId,contacts,offers=[]}:{projectId:string;contacts:SalesContact[];offers?:SalesOfferRevision[]}){
  const [hosts,setHosts]=useState<HostStatus[]>([]),[workerId,setWorkerId]=useState(''),[mailbox,setMailbox]=useState<MailboxStatus|null>(null),[page,setPage]=useState<InboxPage|null>(null),[detail,setDetail]=useState<InboxMessage|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[since,setSince]=useState(localTime(DEFAULT_SINCE)),[contactIds,setContactIds]=useState<string[]>([]),[linkId,setLinkId]=useState(''),[approved,setApproved]=useState(false),[statusKnown,setStatusKnown]=useState(false)
  const host=hosts.find(h=>h.workerId===workerId),config=page?.config,confirmed=contacts.filter(c=>c.confirmed),matches=detail?.header?confirmed.filter(c=>c.email.toLowerCase()===detail.header!.from.toLowerCase()):[]
  async function get(url:string,signal?:AbortSignal){const r=await fetch(url,{cache:'no-store',signal});if(!r.ok)throw Error('Inkorgens status kunde inte hämtas.');return r.json()}
@@ -48,6 +49,7 @@ export function SalesInbox({projectId,contacts}:{projectId:string;contacts:Sales
      {!detail.textSelected&&<button disabled={busy} onClick={()=>void action(async()=>{await post('select_text',{messageId:detail.id,expectedVersion:detail.version});await load();await open(detail.id)})}>Läs texten i detta mejl</button>}
      {(detail.contactState==='ambiguous'||matches.length>1)&&<p>Flera filialer använder adressen. Välj exakt bekräftad kontakt.</p>}{detail.contactState==='linked'&&<p>Kopplad till {contacts.find(c=>c.id===detail.contactId)?.companyName} · {contacts.find(c=>c.id===detail.contactId)?.branchName||'Huvudkontor'}.</p>}
      <label className={styles.form}>Bekräftad kontakt och filial<select disabled={busy} value={linkId} onChange={e=>setLinkId(e.target.value)}><option value="">Välj exakt kontakt</option>{confirmed.map(c=><option key={c.id} value={c.id}>{c.companyName} · {c.branchName||'Huvudkontor'} · {c.email}{matches.includes(c)?' (adressförslag)':''}</option>)}</select></label><button disabled={busy||!linkId} onClick={()=>void action(async()=>{await post('link_message',{messageId:detail.id,expectedVersion:detail.version,contactId:linkId});await load();await open(detail.id)})}>Koppla vald kontakt</button>
+     <SalesReplyRequest projectId={projectId} message={detail} contacts={contacts} offers={offers} mailboxEmail={mailbox.email}/>
     </article>}
    </div>
   </>}

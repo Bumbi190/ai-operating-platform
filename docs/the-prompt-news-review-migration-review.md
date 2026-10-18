@@ -1,5 +1,5 @@
 # The Prompt review evidence: migration and rollback review
-Status: proposed, local SQL only. No production schema change or release authority.
+Status: owner-approved production schema apply completed18 October2026, ledger20261018182224. [Actual verification and remaining limits](the-prompt-news-review-production-apply-20261018.md). Application release authority remains separate.
 
 ## Exact forward artifact
 `apps/web/supabase/migrations/20261018083917_media_news_review_evidence.sql`, allocated by installed Supabase CLI 2.81.3 using `migration new`.
@@ -18,7 +18,7 @@ Canonical committed bytes: 35,199 bytes, SHA256 `9cfd8807817878d492814cc29240114
 1. Review the exact committed SQL and checksum, grants, trigger semantics, FK/index coverage and backup/rollback strategy.
 2. The owning workstream reconciled exact `sales_reply_preparation` and current social scheduling source in main `e2316f1`. This feature incorporated that main revision in merge `507cf80`; no candidate SQL was copied and no live migration was applied here.
 3. Verify there are no unattributable pre-existing reserved admission records. A failed preseed check requires provenance reconciliation; it never permits deleting rows or falsifying provenance.
-4. Approve the concrete migration and deployment separately. The implementation approval does not authorize live SQL. Migration Guard keeps the new migration enforced: 146 canonical / 132 enforced, with frozen 14 grandfathered / 30 legacy names unchanged. An actual ledger without `media_news_review_evidence` must fail.
+4. Approve the concrete migration and deployment separately. The implementation approval does not authorize live SQL. Migration Guard keeps the new migration enforced: 147 canonical / 133 enforced, with frozen 14 grandfathered / 30 legacy names unchanged. An actual ledger without `media_news_review_evidence` must fail.
 5. Apply through the normal canonical process once approved; rerun advisors and schema parity on the actual target, then deploy/retest authenticated HTTP. Deploy the feature application only after its SQL guards are installed. Operator intake must not precede this coordinated release.
 
 ## Local verification

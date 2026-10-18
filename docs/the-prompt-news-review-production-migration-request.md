@@ -1,6 +1,6 @@
 # The Prompt: production migration approval request
 
-Status: prepared for owner review; **not approved or applied** by the20:05 continuation. Broader application/PR release remains blocked and separate.
+Status: owner approved20:20:51 Europe/Stockholm on18 October2026. Exact SQL **applied and verified** as ledger20261018182224; see [the installation record](the-prompt-news-review-production-apply-20261018.md). Broader application/PR release remains blocked and separate.
 
 ## Concrete requested action
 

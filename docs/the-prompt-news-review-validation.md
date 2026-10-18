@@ -1,5 +1,7 @@
 # The Prompt video review packet: validation and release boundary
 
+Production schema follow-up: [owner-approved exact migration installed and verified](the-prompt-news-review-production-apply-20261018.md), ledger20261018182224. Earlier pending/local-only statements below describe their original observation time; application release and trial remain separate.
+
 Latest targeted follow-up: [sampled baseline triage, real dispatch-boundary proof and hosted read-only migration preflight](the-prompt-news-review-release-preflight-20261018.md). [Schema-only approval request](the-prompt-news-review-production-migration-request.md) is prepared, not applied.
 
 Continuation after main advanced: [canonical-source integration and fresh 256-test validation](the-prompt-news-review-continuation-20261018.md). The results below describe the original implementation run; the follow-up does not claim a new green broad run.

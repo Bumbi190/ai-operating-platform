@@ -444,7 +444,7 @@ it('captured October18 ledger remains blocked until the separate news review mig
  const beforeOwnApply=[...captured,'sales_reply_preparation','sales_reply_sending',...["social_publication_reconciliation","social_schedule_batches","social_schedule_checkpoint_recovery","social_schedule_review_snapshots"]]
  const afterOwnApply=[...beforeOwnApply,...TEST_DATA_RELEASE_MIGRATIONS]
  expect(()=>evaluateAppliedMigrationLedger(afterOwnApply,repositoryState)).toThrow(/media_news_review_evidence/)
- // Hypothetical only: the captured fixture is unchanged and no real news migration was applied.
+ // Historical pre-apply capture stays unchanged; the separate capture below records the later actual apply.
  const afterHypotheticalNewsApply=[...afterOwnApply,'media_news_review_evidence']
  expect(()=>evaluateAppliedMigrationLedger(afterHypotheticalNewsApply,repositoryState)).not.toThrow()
  expect(()=>evaluateAppliedMigrationLedger(beforeOwnApply,repositoryState)).toThrow(/handlarborsen_metrics_definition/)
@@ -475,4 +475,13 @@ describe('already-applied source reconciliation', () => {
     expect(() => evaluateAppliedMigrationLedger(applied, repositoryState)).not.toThrow()
     expect(repositoryState.enforcedNames).toContain('sales_reply_sending')
   })
+})
+
+
+it('accepts the actual news-review post-apply ledger without weakening the missing-migration check',async()=>{
+ const {default:captured}=await import('./fixtures/the-prompt/production-ledger-news-review-20261018.json')
+ expect(captured).toHaveLength(170)
+ expect(captured.filter(name=>name==='media_news_review_evidence')).toHaveLength(1)
+ expect(()=>evaluateAppliedMigrationLedger(captured,repositoryState)).not.toThrow()
+ expect(()=>evaluateAppliedMigrationLedger(captured.filter(name=>name!=='media_news_review_evidence'),repositoryState)).toThrow(/media_news_review_evidence/)
 })

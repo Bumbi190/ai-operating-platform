@@ -71,11 +71,9 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // + website_mockup_review: immutable operator design selection and compatible worker fence.
 // Atlas sales draft pilot: 130/116; applied ledger 20261017130254, reconciled 2026-10-17.
 // Weekly watch journal: 136/122; applied ledger20261017200436. Flag remains absent.
-// Source-only reconciliation of already-applied sales_strato_inbox (ledger20261017191904); frozen14/30 unchanged.
-// Family receipt recovery and scheduling: four enforced migrations, applied2026-10-18.
-// Exact source-only reconciliation of already-applied sales_reply_preparation ledger20261018040242; frozen14/30 unchanged.
-export const EXPECTED_CANONICAL_SQL_COUNT = 142
-export const EXPECTED_ENFORCED_COUNT = 128
+// Atlas metrics and test-data control migrations applied by the owner-approved October18 release.
+export const EXPECTED_CANONICAL_SQL_COUNT = 145
+export const EXPECTED_ENFORCED_COUNT = 131
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([
@@ -297,3 +295,12 @@ export function evaluateAppliedMigrationLedger(appliedNames, repositoryState) {
     ]),
   }
 }
+
+// sales_strato_inbox is enforced canonical source, already live at20261017191904.
+// Its exact SQL hash is verified in the2026-10-18 release preflight; no allowlist expansion.
+
+// Shared main401 now records the same already-applied inbox blob; count140 includes it once plus our three pending migrations.
+
+// sales_reply_preparation is exact already-live source from PR386, hash verified 2026-10-18; no apply and no runtime import. Canonical141/enforced127.
+
+// Integrated main8d91af9: four already-live social scheduling migrations; sales reply source included once. Counts145/131; frozen14/30 unchanged.

@@ -8,3 +8,6 @@
 .agents/skills/improve-animations/** -text
 .agents/skills/break-ui/** -text
 .agents/skills/ui-ux-pro-max/** -text
+apps/web/supabase/migrations/20261017191904_sales_strato_inbox.sql -text
+
+apps/web/supabase/migrations/20261018040242_sales_reply_preparation.sql -text

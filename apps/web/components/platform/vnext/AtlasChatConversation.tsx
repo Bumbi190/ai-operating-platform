@@ -68,6 +68,7 @@ import {
   type ToolEntry,
   type TranscriptEntry,
 } from '@/lib/os/chat-shared'
+import {AtlasTestDataReviewCard} from '../os/AtlasTestDataReviewCard'
 import {LocalTextJobReceipt} from './LocalTextJobReceipt'
 import {localTextReceiptLink} from '@/lib/local-text/receipt'
 import styles from './AtlasChat.module.css'
@@ -224,6 +225,7 @@ export function AtlasChatConversation({ model, asking = false,plan=null,initialS
 
         <div className={embedded?styles.embeddedScroll:styles.plainBody} data-embedded-scroll={embedded||undefined}>
         {children}
+        {snapshot.id===model.id&&snapshot.testDataReviews.map(review=><AtlasTestDataReviewCard key={review.packageView.packageId} review={review} conversationId={model.id} onUpdate={value=>controller.updateTestDataReview(model.id,value)} />)}
         {historyUnreadable ? (
           <p className={styles.blocked} role="note">{TRANSCRIPT_UNREADABLE}</p>
         ) : (

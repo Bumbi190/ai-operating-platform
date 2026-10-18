@@ -83,7 +83,7 @@ export const COLLECTION_RUN_SELECT = 'status, ran_at, snapshot_date, storage_out
 
 export const SNAPSHOT_SELECT_COLUMNS = [
   'project_id', 'snapshot_date', 'observed_at', 'captured_at', 'schema_version',
-  'window_hours', 'completeness', 'unavailable', ...MARKETPLACE_METRIC_KEYS,
+  'window_hours', 'completeness', 'unavailable','definition_id','data_scope','excluded_test_organisations', ...MARKETPLACE_METRIC_KEYS,
 ].join(', ')
 
 export type SnapshotRow = {
@@ -111,6 +111,9 @@ export interface MetricView {
 }
 
 export interface ReportSnapshot {
+  definitionId?: string
+  dataScope?: string
+  excludedTestOrganisations?: number|null
   snapshotDate: string
   observedAt: string
   capturedAt: string
@@ -123,7 +126,7 @@ export interface ReportSnapshot {
 }
 
 export type Comparison =
-  | { available: false; reason: 'no_previous_snapshot' }
+  | { available: false; reason: 'no_previous_snapshot' | 'definition_changed' | 'exclusion_changed' }
   | {
       available: true
       previousDate: string
@@ -185,6 +188,8 @@ export interface MarketplaceReport {
     /** Rows skipped because they failed validation. */
     skippedInvalid: number
     previous: ReportSnapshot | null
+    /** Change in registered-company count only within the same definition; unavailable is null. */
+    growthDelta: number|null
     comparison: Comparison
   }
 }
@@ -199,6 +204,7 @@ export function emptyReport(state: Exclude<ReportState, 'ok'>): MarketplaceRepor
       snapshotCount: 0,
       skippedInvalid: 0,
       previous: null,
+      growthDelta:null,
       comparison: { available: false, reason: 'no_previous_snapshot' },
     },
   }
@@ -226,6 +232,9 @@ export function validateSnapshotRow(row: unknown): {
   snapshotDate: string
   observedAt: string
   capturedAt: string
+  definitionId: string
+  dataScope: string
+  excludedTestOrganisations: number | null
   completeness: MarketplaceCompleteness
   metrics: Record<MarketplaceMetricKey, number | null>
   reasons: Partial<Record<MarketplaceMetricKey, string>>
@@ -234,17 +243,37 @@ export function validateSnapshotRow(row: unknown): {
   const r = row as Record<string, unknown>
 
   if (r.project_id !== HANDLARBORSEN_PROJECT_ID) return null
-  if (r.schema_version !== 1 || r.window_hours !== 24) return null
+  if (![1, 2].includes(r.schema_version as number) || r.window_hours !== 24) return null
+  const v2 = r.schema_version === 2
+  const definitionId = v2 ? 'handlarborsen-production-v2' : 'handlarborsen-legacy-v1'
+  const dataScope = v2 ? 'production_excluding_quarantined_test' : 'legacy_all_organisations'
+  if (
+    v2 &&
+    (r.definition_id !== definitionId ||
+      r.data_scope !== dataScope ||
+      (r.excluded_test_organisations !== null && !isStoredCount(r.excluded_test_organisations)))
+  )
+    return null
+  if (
+    !v2 &&
+    ((r.definition_id !== undefined && r.definition_id !== definitionId) ||
+      (r.data_scope !== undefined && r.data_scope !== dataScope) ||
+      (r.excluded_test_organisations !== undefined && r.excluded_test_organisations !== null))
+  )
+    return null
   if (typeof r.snapshot_date !== 'string' || !ISO_DATE.test(r.snapshot_date)) return null
   if (!isValidTimestamp(r.observed_at) || !isValidTimestamp(r.captured_at)) return null
-  if (typeof r.completeness !== 'string' || !COMPLETENESS_VALUES.includes(r.completeness)) return null
+  if (typeof r.completeness !== 'string' || !COMPLETENESS_VALUES.includes(r.completeness))
+    return null
 
   const metrics = {} as Record<MarketplaceMetricKey, number | null>
   let nullCount = 0
   for (const key of MARKETPLACE_METRIC_KEYS) {
     const value = r[key]
-    if (value === null) { metrics[key] = null; nullCount += 1 }
-    else if (isStoredCount(value)) metrics[key] = value
+    if (value === null) {
+      metrics[key] = null
+      nullCount += 1
+    } else if (isStoredCount(value)) metrics[key] = value
     else return null
   }
 
@@ -264,6 +293,9 @@ export function validateSnapshotRow(row: unknown): {
   }
 
   return {
+    definitionId,
+    dataScope,
+    excludedTestOrganisations: v2 ? (r.excluded_test_organisations as number | null) : null,
     snapshotDate: r.snapshot_date,
     observedAt: r.observed_at as string,
     capturedAt: r.captured_at as string,
@@ -275,7 +307,10 @@ export function validateSnapshotRow(row: unknown): {
 
 // ── Building ──────────────────────────────────────────────────────────────────
 
-function toSnapshot(valid: NonNullable<ReturnType<typeof validateSnapshotRow>>, nowMs: number): ReportSnapshot {
+function toSnapshot(
+  valid: NonNullable<ReturnType<typeof validateSnapshotRow>>,
+  nowMs: number,
+): ReportSnapshot {
   const metrics: MetricView[] = MARKETPLACE_METRIC_DEFINITIONS.map((def) => {
     const value = valid.metrics[def.key]
     const reason = valid.reasons[def.key]
@@ -285,12 +320,20 @@ function toSnapshot(valid: NonNullable<ReturnType<typeof validateSnapshotRow>>, 
       group: def.group,
       kind: def.kind,
       value,
-      reasonLabel: value === null ? (reason ? UNAVAILABLE_REASON_LABELS[reason] ?? UNKNOWN_REASON_LABEL : UNKNOWN_REASON_LABEL) : null,
+      reasonLabel:
+        value === null
+          ? reason
+            ? (UNAVAILABLE_REASON_LABELS[reason] ?? UNKNOWN_REASON_LABEL)
+            : UNKNOWN_REASON_LABEL
+          : null,
     }
   })
   const availableCount = metrics.filter((m) => m.value !== null).length
   const ageHours = Math.max(0, (nowMs - new Date(valid.observedAt).getTime()) / 3_600_000)
   return {
+    definitionId: valid.definitionId,
+    dataScope: valid.dataScope,
+    excludedTestOrganisations: valid.excludedTestOrganisations,
     snapshotDate: valid.snapshotDate,
     observedAt: valid.observedAt,
     capturedAt: valid.capturedAt,
@@ -308,7 +351,24 @@ function daysBetween(earlier: string, later: string): number {
 }
 
 /** Deltas for stock-type metrics only; both sides must hold a real value. */
-export function compareSnapshots(latest: ReportSnapshot, previous: ReportSnapshot | null): Comparison {
+export function compareSnapshots(
+  latest: ReportSnapshot,
+  previous: ReportSnapshot | null,
+): Comparison {
+  if (
+    previous &&
+    (latest.definitionId ?? 'handlarborsen-legacy-v1') !==
+      (previous.definitionId ?? 'handlarborsen-legacy-v1')
+  )
+    return { available: false, reason: 'definition_changed' }
+  if (
+    previous &&
+    latest.definitionId === 'handlarborsen-production-v2' &&
+    (typeof latest.excludedTestOrganisations !== 'number' ||
+      typeof previous.excludedTestOrganisations !== 'number' ||
+      latest.excludedTestOrganisations !== previous.excludedTestOrganisations)
+  )
+    return { available: false, reason: 'exclusion_changed' }
   if (!previous || previous.snapshotDate >= latest.snapshotDate) {
     return { available: false, reason: 'no_previous_snapshot' }
   }
@@ -399,16 +459,31 @@ function buildSnapshotReport(rows: readonly unknown[], now: Date): MarketplaceRe
     if (parsed) valid.push(parsed)
     else skippedInvalid += 1
   }
-  valid.sort((a, b) => (a.snapshotDate < b.snapshotDate ? 1 : a.snapshotDate > b.snapshotDate ? -1 : 0))
+  valid.sort((a, b) =>
+    a.snapshotDate < b.snapshotDate
+      ? 1
+      : a.snapshotDate > b.snapshotDate
+        ? -1
+        : a.definitionId !== b.definitionId
+          ? a.definitionId === 'handlarborsen-production-v2'
+            ? -1
+            : 1
+          : b.observedAt.localeCompare(a.observedAt),
+  )
 
   // The newest STORED row decides. If it is corrupt we do not quietly fall back to an
   // older one and present it as the latest report.
   const newestStored = rows
-    .map((r) => (typeof r === 'object' && r !== null ? (r as Record<string, unknown>).snapshot_date : null))
+    .map((r) =>
+      typeof r === 'object' && r !== null ? (r as Record<string, unknown>).snapshot_date : null,
+    )
     .filter((d): d is string => typeof d === 'string')
     .sort()
     .pop()
-  if (valid.length === 0 || (newestStored !== undefined && valid[0].snapshotDate !== newestStored)) {
+  if (
+    valid.length === 0 ||
+    (newestStored !== undefined && valid[0].snapshotDate !== newestStored)
+  ) {
     const report = emptyReport('invalid_snapshot')
     report.history.skippedInvalid = skippedInvalid
     return report
@@ -426,6 +501,10 @@ function buildSnapshotReport(rows: readonly unknown[], now: Date): MarketplaceRe
       snapshotCount: valid.length,
       skippedInvalid,
       previous,
+      growthDelta: (() => {
+        const c = compareSnapshots(latest, previous)
+        return c.available ? (c.deltas.companies_registered_total ?? null) : null
+      })(),
       comparison: compareSnapshots(latest, previous),
     },
   }
@@ -487,7 +566,11 @@ export function renderHandlarborsenFactBlock(report: MarketplaceReport): string 
   }
 
   const { comparison } = history
-  if (!comparison.available) {
+  if (!comparison.available && comparison.reason==='exclusion_changed'){
+    lines.push('Urvalet av testdata har ändrats eller kunde inte verifieras. Ingen ökning eller minskning beräknas över ändringen.')
+  } else if (!comparison.available && comparison.reason==='definition_changed') {
+    lines.push('Definitionen har ändrats. Testdata räknas bort i den nya definitionen. Ingen ökning eller minskning kan beräknas över definitionsbytet.')
+  } else if (!comparison.available) {
     lines.push(
       'Historik: Ingen tidigare rapport finns. Du får INTE påstå att något har ökat, minskat eller utvecklats — det finns inget underlag för jämförelse.',
     )

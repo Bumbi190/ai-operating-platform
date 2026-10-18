@@ -68,6 +68,10 @@ const UNAVAILABLE_REASONS: readonly string[] = ['query_failed', 'invalid_count']
 export type MarketplaceCompleteness = 'complete' | 'partial' | 'unavailable'
 
 export interface ParsedMarketplaceMetrics {
+  schemaVersion?: 2
+  definitionId?: 'handlarborsen-production-v2'
+  dataScope?: 'production_excluding_quarantined_test'
+  excludedTestOrganisations?: number | null
   observedAt: string
   /** null = unavailable at the source. Never 0 by substitution. */
   metrics: Record<MarketplaceMetricKey, number | null>
@@ -123,17 +127,43 @@ function exactKeys(obj: Record<string, unknown>, keys: readonly string[], code: 
 }
 
 /** Throws on any deviation from the schema_version 1 contract. */
-export function parseMarketplaceMetrics(raw: unknown, nowMs: number = Date.now()): ParsedMarketplaceMetrics {
+export function parseMarketplaceMetrics(
+  raw: unknown,
+  nowMs: number = Date.now(),
+): ParsedMarketplaceMetrics {
   if (!isPlainObject(raw)) fail('body_not_object')
-  exactKeys(raw, ['status', 'schema_version', 'observed_at', 'window_hours', 'metrics'], 'envelope_keys')
+  const v2 = raw.schema_version === 2
+  exactKeys(
+    raw,
+    [
+      'status',
+      'schema_version',
+      'observed_at',
+      'window_hours',
+      'metrics',
+      ...(v2 ? ['definition_id', 'data_scope', 'excluded_test_organisations'] : []),
+    ],
+    'envelope_keys',
+  )
+  if (
+    v2 &&
+    (raw.definition_id !== 'handlarborsen-production-v2' ||
+      raw.data_scope !== 'production_excluding_quarantined_test' ||
+      (raw.excluded_test_organisations !== null &&
+        (typeof raw.excluded_test_organisations !== 'number' ||
+          !Number.isSafeInteger(raw.excluded_test_organisations) ||
+          raw.excluded_test_organisations < 0)))
+  )
+    fail('definition')
   if (raw.status !== 'ok') fail('status')
-  if (raw.schema_version !== 1) fail('schema_version')
+  if (raw.schema_version !== 1 && !v2) fail('schema_version')
   if (raw.window_hours !== 24) fail('window_hours')
 
   const observedAt = raw.observed_at
   if (typeof observedAt !== 'string') fail('observed_at_type')
   const parsed = new Date(observedAt)
-  if (Number.isNaN(parsed.getTime()) || parsed.toISOString() !== observedAt) fail('observed_at_format')
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString() !== observedAt)
+    fail('observed_at_format')
   if (Math.abs(nowMs - parsed.getTime()) > MAX_OBSERVATION_SKEW_MS) fail('observed_at_skew')
 
   const rawMetrics = raw.metrics
@@ -149,7 +179,8 @@ export function parseMarketplaceMetrics(raw: unknown, nowMs: number = Date.now()
     if (metric.status === 'ok') {
       exactKeys(metric, ['status', 'value'], 'metric_ok_keys')
       const value = metric.value
-      if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) fail('metric_value')
+      if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0)
+        fail('metric_value')
       metrics[key] = value
     } else if (metric.status === 'unavailable') {
       exactKeys(metric, ['status', 'value', 'reason'], 'metric_unavailable_keys')
@@ -164,7 +195,19 @@ export function parseMarketplaceMetrics(raw: unknown, nowMs: number = Date.now()
     }
   }
 
-  return { observedAt, metrics, unavailable }
+  return {
+    observedAt,
+    metrics,
+    unavailable,
+    ...(v2
+      ? {
+          schemaVersion: 2 as const,
+          definitionId: 'handlarborsen-production-v2' as const,
+          dataScope: 'production_excluding_quarantined_test' as const,
+          excludedTestOrganisations: raw.excluded_test_organisations as number | null,
+        }
+      : {}),
+  }
 }
 
 export function completenessOf(metrics: Record<MarketplaceMetricKey, number | null>): MarketplaceCompleteness {
@@ -251,7 +294,7 @@ export class HandlarborsenMarketplaceCollector extends BaseCollector {
     try {
       let response: Response
       try {
-        response = await fetch(HANDLARBORSEN_METRICS_URL, {
+        response = await fetch(process.env.HANDLARBORSEN_METRICS_SCHEMA_VERSION==='2'?HANDLARBORSEN_METRICS_URL+'?schema_version=2':HANDLARBORSEN_METRICS_URL, {
           method: 'GET',
           headers: { authorization: `Bearer ${credential.token}`, accept: 'application/json' },
           redirect: 'error', // never follow a redirect with the bearer attached
@@ -289,7 +332,8 @@ export class HandlarborsenMarketplaceCollector extends BaseCollector {
     const completeness = completenessOf(m.metrics)
     const unavailableKeys = Object.keys(m.unavailable)
     return {
-      source_schema_version: 1,
+      source_schema_version: m.schemaVersion ?? 1,
+      ...(m.schemaVersion===2?{definition_id:m.definitionId,data_scope:m.dataScope,excluded_test_organisations:m.excludedTestOrganisations}:{}),
       observed_at:           m.observedAt,
       window_hours:          24,
       completeness,
@@ -313,7 +357,8 @@ export class HandlarborsenMarketplaceCollector extends BaseCollector {
     const metrics = payload.metrics as Record<MarketplaceMetricKey, number | null>
     // The function is not in generated types — established cast. Completeness is derived
     // by the database from the metrics; only the values and the reasons are sent.
-    const { data, error } = await (ctx.db as any).rpc('handlarborsen_store_marketplace_snapshot', {
+    const { data, error } = await (ctx.db as any).rpc(payload.source_schema_version===2?'handlarborsen_store_marketplace_snapshot_v2':'handlarborsen_store_marketplace_snapshot', {
+      ...(payload.source_schema_version===2?{p_excluded_test_organisations:payload.excluded_test_organisations}:{}),
       p_snapshot_date: ctx.snapshotDate,
       p_observed_at:   payload.observed_at,
       p_unavailable:   payload.unavailable,

@@ -4,6 +4,8 @@ import { useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { Mic, MicOff, Minus, PhoneOff } from 'lucide-react'
 import type { AtlasVoiceSession } from '@/lib/atlas/voice-pilot/use-voice-session'
+import {AtlasTestDataReviewCard} from './AtlasTestDataReviewCard'
+import {useAtlasConversation} from '@/lib/atlas/conversation/provider'
 import styles from './AtlasVoicePanel.module.css'
 
 export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onClose, onBuild, runtimeNotice, projects, projectName }: {
@@ -11,6 +13,7 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
   runtimeNotice?: string
   projects: { id: string; slug: string; name: string }[]; projectName: string | null
 }) {
+  const {controller}=useAtlasConversation()
   const panel = useRef<HTMLElement>(null), messages = useRef<HTMLDivElement>(null)
   useEffect(() => { if (!minimized) panel.current?.focus() }, [minimized])
   useEffect(() => { if (messages.current) messages.current.scrollTop = messages.current.scrollHeight }, [s.snapshot.entries, s.reply, minimized])
@@ -42,6 +45,7 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
         {s.snapshot.history.map((message, i) => <div key={i} data-role={message.role}><small>{message.role === 'user' ? 'Du' : 'Atlas'}</small><p>{message.content}</p></div>)}
         {s.snapshot.pending && <p>{s.reply || 'Atlas tänker…'}</p>}
       </div>
+      {s.snapshot.testDataReviews.map(review=><AtlasTestDataReviewCard key={review.packageView.packageId} review={review} conversationId={s.snapshot.id} onUpdate={value=>controller.updateTestDataReview(review.packageView.conversationId,value)} />)}
       <form onSubmit={e => { e.preventDefault(); void s.submitDraft() }} className={styles.composer}>
         <label htmlFor="atlas-shared-voice-draft">Prata eller skriv till Atlas</label>
         <textarea id="atlas-shared-voice-draft" value={s.draft} onChange={e => s.editDraft(e.target.value)} rows={2} />

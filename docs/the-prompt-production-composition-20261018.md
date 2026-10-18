@@ -58,3 +58,13 @@ Keep PR #377 draft. Step3 and the central starter continue holding illustrated r
 DST-safe 10:00/20:00 Stockholm schedule (#378) and prospective equal-age 24h/72h platform observations (#383) remain separate open prerequisites. No scheduler, SQL migration, schema, social account or live trial flag changed here. Original article expires at 18 October 16:26 UTC / 18:26 Stockholm, before the evening slot; this saved technical sample cannot be silently reused as fresh news later.
 
 No main merge, production deployment, AWS render/site deployment, public media release or social posting. Media, signed props and credentials stay outside Git.
+
+## Automatic web preview blocker after push
+
+Source commit `de9f0eabf1a5be00fc461a263a546df66d1fdcda` was pushed to draft PR #377. Its automatic Vercel preview `dpl_GRc6CRhAXrfNgDuA3HDybBATWSPn` failed **before Next compilation**, at the existing read-only migration guard: production ledger contains unknown migration name `sales_reply_preparation`.
+
+A fresh `git fetch origin main` still resolves canonical main to `f0a52321361b7f1a03d5336cbd7a5c8c4d769ac5`; it contains no such migration. A candidate source exists only on separate `codex/atlas-harvey-sales-20261017`, commit `7c857f7fb210247d0c54eff28e1d6dd6d155b437`, file `20261018040242_sales_reply_preparation.sql`. Merely matching its name does not prove that its SQL equals the already-applied DB statements. No source from that unrelated, unmerged feature was copied into this branch.
+
+The guard, migration policy and ledger were not bypassed or changed; no migration was applied/reapplied. Canonical reconciliation of the already-applied sales migration is a separate shared-repository dependency. The new code is pushed and the actual local movie verified, but **the current web preview is not READY**. The prior READY branch deployment remains at `1564765`; do not present that older web code as the newly pushed version. No authenticated HTTP retest of the new code is claimed.
+
+Issues #378 and #383 were re-read during this follow-up and remain open.

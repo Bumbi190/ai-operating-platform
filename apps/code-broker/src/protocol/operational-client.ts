@@ -19,6 +19,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { assertBrokerOrigin } from './origin.js'
 import type { BrokerSigner } from '../identity/types.js'
 import { canonicalRequestPayload, sha256Hex } from './canonical-request.js'
 
@@ -34,18 +35,7 @@ const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '::1'])
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
 /** https: always; http: only for an explicit loopback development origin. Returns the parsed origin. */
-export function assertOperationalOrigin(origin: string): URL {
-  let url: URL
-  try { url = new URL(origin) } catch { throw new Error('invalid operational origin') }
-  const loopback = LOOPBACK_HOSTS.has(url.hostname)
-  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
-    throw new Error('operational origin must be https (http is allowed only for loopback development)')
-  }
-  if (url.username || url.password || url.search || url.hash || (url.pathname !== '/' && url.pathname !== '')) {
-    throw new Error('operational origin must be a bare origin')
-  }
-  return url
-}
+export function assertOperationalOrigin(origin: string): URL { return assertBrokerOrigin(origin) }
 
 export interface OperationalContext {
   origin: string

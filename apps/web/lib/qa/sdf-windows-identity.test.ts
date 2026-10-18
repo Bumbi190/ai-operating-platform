@@ -90,3 +90,51 @@ describe('Windows broker identity adapter', () => {
     await expect(new WindowsCngBrokerSigner().signCanonicalPayload(ID,'another')).rejects.toThrow()
   })
 })
+
+import { afterEach } from 'vitest'
+import { postEnrollment, postSignedDiagnostic } from '../../../code-broker/src/protocol/http-client'
+import { canonicalRequestPayload, sha256Hex } from '../../../code-broker/src/protocol/canonical-request'
+import { verifyEs256 } from '@/lib/atlas/code-broker/crypto'
+afterEach(() => vi.unstubAllGlobals())
+describe('signed diagnostic transport', () => {
+  let fetcher: ReturnType<typeof vi.fn>
+  beforeEach(() => {
+    fetcher = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }))
+    vi.stubGlobal('fetch', fetcher)
+  })
+  for (const origin of ['https://example.invalid','http://localhost:3000','http://127.0.0.1:3000','http://[::1]:3000']) {
+    it('permits explicit HTTPS or loopback: '+origin, async () => {
+      await expect(postEnrollment(origin, {})).resolves.toEqual({ok:true})
+      expect(fetcher).toHaveBeenCalledTimes(1)
+    })
+  }
+  for (const origin of ['http://example.invalid','https://user:pass@example.invalid','https://example.invalid/subpath','https://example.invalid?x=1','https://example.invalid#x','file:///tmp/x','ftp://example.invalid']) {
+    it('refuses unsafe origin before sending: '+origin, async () => {
+      await expect(postEnrollment(origin, {})).rejects.toThrow()
+      expect(fetcher).not.toHaveBeenCalled()
+    })
+  }
+  it('refuses automatic redirects for enrollment', async () => {
+    await postEnrollment('https://example.invalid', {})
+    expect(fetcher.mock.calls[0][1].redirect).toBe('error')
+  })
+  it('signs the exact diagnostic body with server-compatible DER', async () => {
+    const signer:any = { signCanonicalPayload: async (_id:string, text:string) => sign('sha256', Buffer.from(text), {key:pair.privateKey,dsaEncoding:'der'}).toString('base64url') }
+    await postSignedDiagnostic({origin:'https://example.invalid', brokerId:ID,hostId:ID,protocolVersion:1,
+      brokerVersion:'0.1.0',buildSha256:'a'.repeat(64),counter:1,identityId:ID,signer})
+    const [url, options]=fetcher.mock.calls[0], h=options.headers
+    expect(url.pathname).toBe('/api/atlas/code-work/broker/identity')
+    expect(options.body).toBe('{}')
+    expect(options.redirect).toBe('error')
+    const canonical=canonicalRequestPayload({brokerId:ID,hostId:ID,protocolVersion:1,brokerVersion:'0.1.0',
+      buildSha256:'a'.repeat(64),counter:1,jti:h['x-omnira-broker-jti'],timestamp:h['x-omnira-broker-timestamp'],
+      method:'POST',path:url.pathname,bodySha256:sha256Hex(options.body)})
+    expect(verifyEs256(publicJwk as any,canonical,h['x-omnira-broker-signature'])).toBe(true)
+    expect(verifyEs256(publicJwk as any,canonical+'x',h['x-omnira-broker-signature'])).toBe(false)
+  })
+  it('redacts network errors and never retries a signed request', async () => {
+    fetcher.mockRejectedValue(new Error('secret pairing request'))
+    await expect(postEnrollment('https://example.invalid',{})).rejects.toThrow('broker protocol unavailable')
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+})

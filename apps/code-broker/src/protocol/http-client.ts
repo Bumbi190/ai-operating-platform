@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { assertBrokerOrigin } from './origin.js'
 import type { BrokerSigner } from '../identity/types.js'
 import { canonicalRequestPayload, sha256Hex } from './canonical-request.js'
 

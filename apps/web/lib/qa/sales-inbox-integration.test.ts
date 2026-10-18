@@ -9,7 +9,7 @@ import {createSalesApi} from '@/lib/sales/api'
 import {createInboxApi} from '@/lib/sales/inbox/api'
 import {createInboxHostApi} from '@/lib/sales/inbox/host-api'
 import {handleSalesTool} from '@/lib/sales/atlas-tools'
-if(process.env.SALES_FIXTURE_CONTAINER&&!['omnira-sales-pilot-20261017','omnira-sales-reply-20261018'].includes(process.env.SALES_FIXTURE_CONTAINER))throw Error('UNOWNED_FIXTURE_CONTAINER')
+if(process.env.SALES_FIXTURE_CONTAINER&&!['omnira-sales-pilot-20261017','omnira-sales-reply-20261018','omnira-sales-sending-20261018'].includes(process.env.SALES_FIXTURE_CONTAINER))throw Error('UNOWNED_FIXTURE_CONTAINER')
 const database=process.env.SALES_FIXTURE_DATABASE??'',suite=/^sales_[0-9]+$/.test(database)?describe:describe.skip
 suite('durable inbox real SQL/API/Python/IMAP wire integration',()=>{
  it('recovers process crashes and lost receipts, reads selected old UID, deduplicates epochs, bounds MIME and fences pause during fetch',async()=>{

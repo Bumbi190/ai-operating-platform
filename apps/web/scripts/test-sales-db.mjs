@@ -1,10 +1,11 @@
+import {sendDispatchRaces} from './test-sales-send-races.mjs'
 import {replyReviewRaces} from './test-sales-reply-races.mjs'
 import {spawnSync,spawn} from 'node:child_process'
 import {readFileSync,readdirSync} from 'node:fs'
 import {resolve} from 'node:path'
 import {generateKeyPairSync,createHash} from 'node:crypto'
 const root=resolve(import.meta.dirname,'../../..'),container=process.env.SALES_FIXTURE_CONTAINER??'omnira-sales-pilot-20261017'
-const owned={'omnira-sales-pilot-20261017':'atlas-sales-pilot-20261017','omnira-sales-reply-20261018':'atlas-sales-reply-20261018'}
+const owned={'omnira-sales-pilot-20261017':'atlas-sales-pilot-20261017','omnira-sales-reply-20261018':'atlas-sales-reply-20261018','omnira-sales-sending-20261018':'atlas-sales-sending-20261018'}
 if(!Object.hasOwn(owned,container))throw Error('Unowned fixture container refused')
 function docker(args,input){const r=spawnSync('docker',args,{input,encoding:'utf8',maxBuffer:2e6});if(r.status!==0)throw Error((r.stderr||r.stdout||String(r.error)).slice(-8000));return r.stdout}
 const context=docker(['context','inspect','--format','{{.Endpoints.docker.Host}}']).trim()
@@ -50,6 +51,10 @@ try{
  console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_strato_inbox.sql'),'utf8')))
  const replyMigration=readdirSync(migrations).filter(x=>x.endsWith('_sales_reply_preparation.sql'));if(replyMigration.length!==1)throw Error('Expected one reply migration');sql(readFileSync(resolve(migrations,replyMigration[0]),'utf8'));console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_replies.sql'),'utf8')))
 
+ const sendFiles=readdirSync(migrations).filter(x=>x.endsWith('_sales_reply_sending.sql'));
+ for(const file of sendFiles)sql(readFileSync(resolve(migrations,file),'utf8'));
+ console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_sending.sql'),'utf8')));
+
  sql(`select sales_enroll_worker('{"userId":"20000000-0000-4000-8000-000000000001","allowedProjectIds":["10000000-0000-4000-8000-000000000001"]}','{"projectId":"10000000-0000-4000-8000-000000000001","workerId":"60000000-0000-4000-8000-000000000098","tokenHash":"${'1'.repeat(64)}"}'); select sales_host_authorize('{"userId":"20000000-0000-4000-8000-000000000001","allowedProjectIds":["10000000-0000-4000-8000-000000000001"]}','{"projectId":"10000000-0000-4000-8000-000000000001","workerId":"60000000-0000-4000-8000-000000000098"}'); select sales_host_adopt(repeat('1',64),jsonb_build_object('managerTokenHash',repeat('2',64)));`)
  const rotateRace=(id,hash)=>new Promise((done,reject)=>{const p=spawn('docker',['exec','-i',container,'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-U','postgres','-d',db]);let out='',err='';p.stdout.on('data',x=>out+=x);p.stderr.on('data',x=>err+=x);p.on('error',reject);p.on('close',code=>done({code,out,err}));p.stdin.end(`select sales_host_rotate(repeat('2',64),jsonb_build_object('rotationId','${id}','newTokenHash',repeat('${hash}',64),'expectedGeneration',1));`)})
  const rotations=await Promise.all([rotateRace('70000000-0000-4000-8000-000000000098','3'),rotateRace('70000000-0000-4000-8000-000000000099','4')]);
@@ -77,6 +82,7 @@ try{
  if(attempts.filter(x=>x.code===0).length!==10||attempts.filter(x=>x.err.includes('ATTEMPT_LIMIT')).length!==5)throw Error('REPLY_ATOMIC_ATTEMPT_RACE_FAILED');
  console.log('PASS: concurrent duplicate requests -> one job; fifteen parallel reservations -> ten accepted/five refused');
 
+ await sendDispatchRaces({root,sql,run:concurrent});
  await replyReviewRaces({container,db,run:concurrent,principal,input,claimed});
  const integration=spawnSync(process.execPath,[resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/qa/sales-integration.test.ts','lib/qa/sales-host-integration.test.ts','lib/qa/sales-mailbox-integration.test.ts','lib/qa/sales-inbox-integration.test.ts','lib/qa/sales-reply-integration.test.ts','--maxWorkers=1','--minWorkers=1'],{cwd:resolve(root,'apps/web'),env:{...process.env,SALES_FIXTURE_DATABASE:db,SALES_FIXTURE_CONTAINER:container},encoding:'utf8',maxBuffer:2e6})
  console.log(integration.stdout);if(integration.status!==0)throw Error(integration.stderr||'Sales slice integration failed')

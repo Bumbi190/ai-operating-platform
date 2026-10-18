@@ -1,0 +1,61 @@
+{
+  "state": "implementation_in_progress_not_activated",
+  "task1": {
+    "contractsAndDatabase": "implemented",
+    "typescriptAndSchema": {
+      "passed": 266,
+      "failed": 0
+    },
+    "typecheck": "passed",
+    "realSql": "passed",
+    "parallelBeginDispatch": {
+      "requests": 10,
+      "permits": 1,
+      "fenced": 9
+    },
+    "existingRealSqlNextPythonIntegrations": {
+      "passed": 5,
+      "failed": 0
+    },
+    "review": "pending_complete_increment"
+  },
+  "task2": {
+    "state": "partial",
+    "transportAndRecoveryUnitTests": {
+      "passed": 14,
+      "failed": 0
+    },
+    "workerApiAndHostWiring": "pending",
+    "fullIntegration": "pending"
+  },
+  "task3": {
+    "state": "pending",
+    "editorialStatusGap": "actual editorial approval approved; preparation status awaiting_review"
+  },
+  "rollout": {
+    "databaseApplied": false,
+    "sendPolicyInstalled": false,
+    "sendEnabled": false,
+    "customerSending": false,
+    "actualReplySent": false
+  },
+  "liveReadback": {
+    "revisionId": "91736c50-3db6-4d68-86f8-1660672fed0f",
+    "editorialStatus": "approved",
+    "sourceCurrent": true,
+    "newerIncoming": false,
+    "attempts": 1
+  },
+  "baseline": {
+    "total": 15052,
+    "passed": 13313,
+    "failed": 404,
+    "pending": 1331,
+    "comparison": "exact identities saved; historical/timing reconciliation pending"
+  },
+  "limitations": [
+    "No SMTP acceptance or delivery claim for the approved reply.",
+    "Task1 source race matrix needs qualification alongside complete increment.",
+    "No user-visible send button deployed yet."
+  ]
+}

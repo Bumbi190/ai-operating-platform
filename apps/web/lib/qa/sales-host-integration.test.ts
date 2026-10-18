@@ -6,7 +6,7 @@ import {resolve} from 'node:path'
 import {createSalesApi} from '@/lib/sales/api'
 import {createSalesHostApi} from '@/lib/sales/host-api'
 import {handleSalesTool} from '@/lib/sales/atlas-tools'
-if(process.env.SALES_FIXTURE_CONTAINER&&!['omnira-sales-pilot-20261017','omnira-sales-reply-20261018'].includes(process.env.SALES_FIXTURE_CONTAINER))throw Error('UNOWNED_FIXTURE_CONTAINER')
+if(process.env.SALES_FIXTURE_CONTAINER&&!['omnira-sales-pilot-20261017','omnira-sales-reply-20261018','omnira-sales-sending-20261018'].includes(process.env.SALES_FIXTURE_CONTAINER))throw Error('UNOWNED_FIXTURE_CONTAINER')
 const database=process.env.SALES_FIXTURE_DATABASE??''
 const suite=/^sales_[0-9]+$/.test(database)?describe:describe.skip
 suite('managed host real PostgreSQL/API/Python recovery',()=>{

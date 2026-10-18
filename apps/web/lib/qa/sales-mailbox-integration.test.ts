@@ -8,7 +8,7 @@ import {createSalesHostApi} from '@/lib/sales/host-api'
 import {createMailboxApi} from '@/lib/sales/mailbox/api'
 import {createMailboxHostApi} from '@/lib/sales/mailbox/host-api'
 import {sealMailboxCredentials} from '@/lib/sales/mailbox/seal'
-if(process.env.SALES_FIXTURE_CONTAINER&&!['omnira-sales-pilot-20261017','omnira-sales-reply-20261018'].includes(process.env.SALES_FIXTURE_CONTAINER))throw Error('UNOWNED_FIXTURE_CONTAINER')
+if(process.env.SALES_FIXTURE_CONTAINER&&!['omnira-sales-pilot-20261017','omnira-sales-reply-20261018','omnira-sales-sending-20261018'].includes(process.env.SALES_FIXTURE_CONTAINER))throw Error('UNOWNED_FIXTURE_CONTAINER')
 const database=process.env.SALES_FIXTURE_DATABASE??'',suite=/^sales_[0-9]+$/.test(database)?describe:describe.skip
 suite('Strato real SQL/API/crypto/Python integration',()=>{
  it('persists only ciphertext, recovers a lost receipt without login retry, fences stale activation, expires only its setup and rejects revoke during probe',async()=>{

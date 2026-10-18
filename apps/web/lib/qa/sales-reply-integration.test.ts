@@ -12,7 +12,7 @@ const database=process.env.SALES_FIXTURE_DATABASE??'',suite=/^sales_[0-9]+$/.tes
 suite('reply real SQL / Next API / fresh Python isolated runtime',()=>{
  it('persists one exact branch; recovers accepted results and refuses late or uncertain redispatch',async()=>{
   const container=process.env.SALES_FIXTURE_CONTAINER??'omnira-sales-pilot-20261017'
-  if(!['omnira-sales-pilot-20261017','omnira-sales-reply-20261018'].includes(container))throw Error('UNOWNED_FIXTURE_CONTAINER')
+  if(!['omnira-sales-pilot-20261017','omnira-sales-reply-20261018','omnira-sales-sending-20261018'].includes(container))throw Error('UNOWNED_FIXTURE_CONTAINER')
   const sql=(s:string)=>{const r=spawnSync('docker',['exec','-i',container,'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-v','VERBOSITY=sqlstate','-U','postgres','-d',database],{input:s,encoding:'utf8'});if(r.status!==0)throw Error(r.stderr);return r.stdout.trim()}
   const quote=(v:unknown)=>`'${String(v).replaceAll("'","''")}'`
   const db={rpc:async(name:string,args:Record<string,unknown>)=>{if(!/^sales_[a-z_]+$/.test(name))throw Error('RPC_REFUSED');try{const a=Object.entries(args).map(([k,v])=>`${k}=>${quote(typeof v==='string'?v:JSON.stringify(v))}${typeof v==='string'?'::text':'::jsonb'}`).join(',');return {data:JSON.parse(sql(`set role service_role;select to_jsonb(${name}(${a}));`)),error:null}}catch(e){return {data:null,error:{code:String(e).match(/ERROR:\s+([A-Z0-9]{5})/)?.[1]??'XX000'}}}}} as never

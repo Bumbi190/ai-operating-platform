@@ -39,3 +39,13 @@ describe('frozen review packets',()=>{
  it('does not lend mutable packet contents',()=>{const c=makeReviewContext(),x=makeSnapshotInput(c),s=unwrap(buildReviewSnapshot(x,c));x.artifacts[0].body='changed';expect(s.artifacts.find((a:any)=>a.id==='brief').body).toBe('Fix the specified bug.');expect(Object.isFrozen(s.artifacts)).toBe(true);expect(verifyReviewSnapshot(s,c).ok).toBe(true)})
  for(const change of [(x:any)=>x.artifacts[0].body=undefined,(x:any)=>delete x.artifacts[1],(x:any)=>x.checks[0].durationMs=NaN,(x:any)=>x.artifacts[0].body='\ud800',(x:any)=>x.artifacts[0].body='nul\0'])it('rejects non-JSON/nontext content '+change,()=>{const c=makeReviewContext(),x=makeSnapshotInput(c);change(x);expect(buildReviewSnapshot(x,c).ok).toBe(false)})
 })
+
+it.each([
+ ['private','Private/a.ts'],['private','PRIVATE'],['PRIVATE','private/a.ts'],['prívate','PRI\u0301VATE/a.ts'],
+])('rejects a single denied Windows case alias %s / %s',(denied,path)=>{
+ const c=makeReviewContext();c.admission.files.deniedScopes=['apps/web/lib/atlas/code-work/'+denied]
+ const input=makeSnapshotInput(c);input.files[0].path='apps/web/lib/atlas/code-work/'+path
+ const result=buildReviewSnapshot(input,c)
+ expect(result.ok).toBe(false)
+ if(!result.ok)expect(result.violations[0].code).toBe('path_explicitly_denied')
+})

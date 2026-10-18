@@ -29,6 +29,8 @@ function build(input:unknown,context:ExpectedReviewContext,live:boolean):ReviewS
  const files:ReviewFileV1[]=x.files.map((f:any)=>{
   exact(f,['path','beforeArtifactId','afterArtifactId']);text(f.path,4096)
   ensure(!f.path.includes(':')&&f.path.split('/').every((p:string)=>!p.endsWith('.')&&!p.endsWith(' ')&&!p.includes('~')),'path_alias')
+  // Additional lexical Windows denial check; retain exact stored path spelling below.
+  requireValid(evaluateRepoPath({path:f.path.normalize('NFC').toLowerCase(),allowedScopes:c.admission.files.writeScopes.map(scope=>scope.normalize('NFC').toLowerCase()),deniedScopes:c.admission.files.deniedScopes.map(scope=>scope.normalize('NFC').toLowerCase())}))
   const path=requireValid(evaluateRepoPath({path:f.path,allowedScopes:c.admission.files.writeScopes,deniedScopes:c.admission.files.deniedScopes}))
   ensure(f.beforeArtifactId!==null||f.afterArtifactId!==null,'empty_file_pair')
   if(f.beforeArtifactId!==null)requireValid(evaluateRepoPath({path,allowedScopes:c.admission.files.readScopes,deniedScopes:c.admission.files.deniedScopes}))

@@ -23,3 +23,12 @@ describe('review contract composition without execution',()=>{
   c.cancelled=true;expect(evaluateReviewEligibility(s,r,c).eligible).toBe(false)
  })
 })
+
+it.each([[1,2],[2,1]])('a changed required test floor %i -> %i invalidates old review even if both pass',(before,after)=>{
+ const c=makeReviewContext();c.requiredChecks[0].minPassedTests=before
+ const old=unwrap(buildReviewSnapshot(makeSnapshotInput(c),c)),review=unwrap(bindReviewResult(makeModelResult(old.snapshotHash),old,c))
+ c.requiredChecks[0].minPassedTests=after
+ const rebuilt=unwrap(buildReviewSnapshot(makeSnapshotInput(c),c))
+ expect(rebuilt.snapshotHash).not.toBe(old.snapshotHash)
+ expect(evaluateReviewEligibility(old,review,c).eligible).toBe(false)
+})

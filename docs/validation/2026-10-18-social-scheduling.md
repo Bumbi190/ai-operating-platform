@@ -1,0 +1,88 @@
+# Familje-Stunden social scheduling validation — 2026-10-18
+
+## Delivery state
+Implementation branch: codex/family-social-execution-20261018. Production remains f0a52321361b7f1a03d5336cbd7a5c8c4d769ac5. No production schema delivery, receipt mutation, new provider publication or feature activation has occurred in this execution.
+
+## Existing public posts
+Instagram has its saved successful receipt: https://www.instagram.com/p/DeoBu_ZETNS/
+Facebook is already public: https://www.facebook.com/122154596379150002/posts/122154593805150002
+Its historical uncertain receipt must be reconciled by the native exact comparison. Never resend this post.
+
+## Verification
+- Shared executor / immutable SQL queue / guards: 90/90 focused tests passed before UI completion.
+- Native review: real served fixture covered images/captions/accounts/times, explicit approval, saved reload, revocation, stale versions/time, missing images, waiting/uncertain/missed, and January's own month/catalog.
+- Task 4 owner / Atlas / planning: 5/5; actual chat registry 1/1; real-SQL stale review 1/1. TypeScript passed.
+- Readiness service and owner endpoint: 7/7. No claim, media capability or provider POST is part of readiness. Credentials are verified in server memory and are absent from its response.
+- Task 5 TypeScript passed code0 before final regression-test additions; the fresh final check also passed code0. The broad project suite is not green and is still running. A detached baseline at exact production f0a5232 reran31 initially failing files:28 failed,3 passed;261 failed/2140 passed/5 skipped tests. The feature-only differences were the migration security gate, the schema-registry invariant, and one5000ms timeout in platform-authority-closure. The two schema gates have since passed209/209 after static RLS/grants and pending-table classification were corrected. The timeout is not an authorization failure.
+- All SQL tests use only the labeled task-owned local database website_test_1792309015341, never hosted Supabase.
+- Native Browser plugin became unavailable after the Task 4 fixture checks. The new readiness button and production comparison have not yet been exercised through the native browser. No substitute browser session was started.
+
+## Runner and cost
+The actual Vercel team settings showed Pro on 2026-10-18. Pro supports a one-minute cron cadence. Existing plan was not changed.
+Sources: https://vercel.com/docs/cron-jobs/usage-and-pricing and https://vercel.com/docs/functions/usage-and-pricing
+A minute invocation is a normal Function invocation and consumes plan resources. No claim of free execution is made.
+The route authenticates the existing cron bearer, defaults disabled, claims at most one job and has a 45-second internal budget / 60-second route / 90-second lease.
+Reconfirm entitlement before activation. No secret or feature flag was changed.
+
+## Remaining production gates
+1. Fresh whole-branch review and assessment of complete project test failures.
+2. Apply the reviewed migrations and verify service-only grants/RLS/advisors.
+3. Deliver disabled and verify the actual production SHA.
+4. Native read-only readiness check with before/after SQL evidence; reconcile the existing Facebook receipt with exact owner comparison.
+5. Prepare actual next-week captions/images and November 1 20:30 Stockholm sneak peek using the real active month. Obtain exact native content/batch/activation approval; implementation approval is not publication authority.
+6. Enable only Family after that approval, then verify real receipts/links. No catch-up publication outside a newly approved exact time.
+
+## Scope
+Atlas can read and propose only. The Prompt's connections/tokens/publishing pipeline were not changed.
+Automatic recurring content generation, engagement collection and statistics-driven editorial decisions remain separate work.
+
+## Whole-branch review
+Fresh reviewer: gpt-6-astra; read-only static review. No Critical finding; two Important findings accepted. Cross-batch occasion identity reuse is now rejected under the project lock. Waiting release evidence no longer monopolizes selection, and processing Instagram containers yield while remaining eligible on later ticks. Three regressions were watched fail against the earlier SQL. Worker tests passed9/9 including the processing/fairness regression. The complete store rerun passed12/12 after a test-fixture UUID collision was corrected; that collision was not a provider or product failure.
+
+## Environment metadata verification
+Vercel encrypted metadata showed the existing CRON_SECRET for production/preview. SOCIAL_SCHEDULE_DISPATCH_ENABLED and SOCIAL_SCHEDULE_PROJECT_IDS are absent. No values were decrypted, printed or changed. Default dispatch is therefore disabled with an empty allowlist.
+
+## Deferred minor
+Repeated Facebook reconciliation inspection can reset original-image load state without firing another onLoad. Reloading the page restores first inspection. Reviewer graded this Minor; no extra change was included in this fix pass.
+
+## Rulings I made
+- Ruling: Bundled sdd-workspace/task-start/task-done and writing-good-tests auxiliary resources are unavailable from the skill provider after canonical-package lookup. Use equivalent plan-owned briefs, BASE capture, logs and completion records manually, follow the test-quality rules present in the available TDD skill, and never claim the missing scripts ran — preserves execution while keeping evidence — cost if wrong: manual bookkeeping can drift, mitigated by persisted briefs/results/commits.
+- Ruling: Plan commands name pnpm but the repository uses npm workspaces and package-lock.json. Execute the same Vitest/TypeScript entry points with the installed Node runtime and matching locked dependencies — no package changes — cost if wrong: CLI wrapper behavior could differ; recorded exact arguments and native npm full-suite command at finish catch this.
+- Ruling: Deployment/activation steps in receipt Task 3 and scheduler Task 5 wait until the combined code branch has its required fresh review — resolves the plan ordering against Native's pre-merge review requirement — cost if wrong: receipt production correction is delayed until shared review; no extra publication is attempted.
+- Ruling: Provisioned task-owned website_test_1792306627152 by a read-only template clone of the labeled disposable local fixture; no writes to the source database. All test commands explicitly select this owned database — prevents cross-chat state mutation — cost if wrong: inherited fixture state can affect tests, mitigated by canonical initializers and unique fixture identities.
+- Ruling: Full publication run exposed pre-existing shared-fixture bootstrap races (tuple concurrently updated / duplicate stop trigger) under Vitest file parallelism. Run all real-SQL suites with --fileParallelism=false, preserving concurrency inside the actual claim/CAS tests — isolates schema setup without weakening race coverage — cost if wrong: slower suite, with explicit per-test parallel claim assertions retained. task2-all-publication.log retains the failed attempt.
+- Ruling: Candidate hash pins photo ID and CDN origin/path but excludes its rotating query; exact caption/account/time/permalink remain pinned — transport signatures can change on reread without changing the photo — cost if wrong: a provider changing bytes under one photo ID needs the operator image attestation, and production reread still checks immutable photo identity.
+- Ruling: reconciledAt is optional nullable in the TS compatibility shape while the new SQL projection always returns null or a timestamp — existing saved/manual fixture records stay readable — cost if wrong: old callers might omit the badge, never authority.
+- Ruling: The schedule clock is a service-only SQL function returning clock_timestamp(); tests replace its body only inside the task-owned disposable database and restore it afterward — allows real SQL boundary/DST/lease tests without trusting caller time — cost if wrong: an un-restored fixture clock skews later local tests, covered by explicit reset hooks; production has no configurable clock.
+- Ruling: Read workspace returns latest revisions for multiple independent batches plus rule/evidence; Atlas get will select a requested/current batch from that read model — weekly batches need history without a singleton overwrite — cost if wrong: callers must handle an empty/multiple batch workspace explicitly.
+- Ruling: The monthly uniqueness reservation excludes cancelled pre-send jobs, and retains published/uncertain/missed reservations; cancellation cannot erase uncertain writes — allows newly reviewed replacements without enabling duplicates — cost if wrong: reservation state transitions could allow a repeat, guarded by permanent publication post identity and uncertainty tests.
+- Ruling: Add two service-only read RPCs, peek and receipt, for zero-mutation dry run and lost-checkpoint readback; neither takes a human principal or grants send rights — avoids fabricated worker identity and fake read-only claims — cost if wrong: privileged read surface grows, mitigated by fixed scope, RLS/grants and no credentials in responses.
+- Ruling: The base local RPC transport is synchronous, so Promise.all alone did not overlap SQL sessions. Scheduler test transport now starts independent psql processes (with a 150 ms transaction hold on claim) — tests actual row-lock contention — cost if wrong: fixture transport errors could mask product errors, checked against explicit null/JSON response handling and the canonical real RPCs.
+- Ruling: Add a fenced, service-only history-recovery RPC and CLI-generated migration for a lost checkpoint after lease expiry. It checks the original claim/version, only records known receipts or uncertain/waiting/missed state, and never grants another send — expired workers need truthful history without regaining write authority — cost if wrong: a bad recovery transition could hide ambiguity, covered by committed/uncommitted checkpoint cases and zero second-POST assertions.
+
+## Final scoped result
+105 publication/scheduling tests are covered:104 passed in the19-file combined run, and the sole test-fixture UUID collision was corrected, followed by a complete12/12 store run. The processing-container regression passed within the9/9 worker run. TypeScript --noEmit --incremental false passed code0. Migration security and schema invariants passed209/209. This is not a claim that the entire project suite is green.
+
+Next content draft: docs/validation/2026-10-18-family-next-batch-draft.md. It reuses saved draft facts and existing media, but grants no authority. The existing browser connection was searched through Plugin Management and is not callable in this session; no new provider or cloud browser was installed or substituted. Production/native readiness and receipt comparison are still pending.
+
+## CI integration follow-up
+At0888761 six of eight Linux workflows passed. Studio failed because the added scheduling guide took its existing system-context budget to9072characters versus the9000limit; only the new guide was shortened, and the exact existing route suite then passed31/31 locally. Migration Guard Integrity exposed the omitted four-migration count reconciliation; canonical/enforced counts are now141/127, frozen grandfathered/legacy lists remain14/30, and29/29 integrity tests pass including exact missing-name refusal for every new social migration. No override was used.
+The Vercel preview stopped before Next build on the canonical count tripwire. Once the source count is reconciled it must still refuse the four unapplied production migrations. This is not a completed preview/build claim.
+
+Baseline follow-up: another22 initially failing files were rerun on exact production main;21failed/1passed,44failed/610passed tests. atlas-static-conversation-route passed on baseline and was the guide regression fixed above. The broad project run began before the final SQL fixes and therefore has pre-fix fixture schema; its late new regression cases must not be mistaken for the current clean fixture evidence. The latest scoped SQL store and worker runs above prove the final SQL.
+
+## Final publication UI check
+At b022e6a seven of eight Linux workflows passed. The remaining UI job reached publication fixtures:6/8passed; the two failures were exact locators for the retired warning sentence. Only those two text locators were updated to the current warning. Their no-resend/no-published-link/provider-call-count assertions remain unchanged. A task-owned Playwright fixture run passed2/2 using the already-installed test browser and existing fixture server; this is not a signed-in production/native readiness check. All observed broad-suite failing suite/case names are recorded in docs/validation/2026-10-18-social-broad-test-observations.md.
+
+Production delivery stays pending. Current branch/PR is the resume point; do not reconnect accounts, republish the first post, or rebuild completed scheduling tasks. Browser access to the actual Brave session is still unavailable; no alternate signed-in session was probed.
+
+## Authorized production rollout, 2026-10-18
+User explicitly authorized going live. Final fab47854 Linux workflows passed8/8. Four exact GitHub source migrations applied to hosted iboepohjwrhtgshrqaol, ledger20261018085701/20261018085707/20261018085708/20261018085733. The fourth call initially collided with the preceding MCP-generated same-second ledger version; the transaction rolled back (review_current absent), then a later exact retry succeeded. Read-only catalog verification confirmed all7 new tables protected,28 invoker/empty-search-path routines without client EXECUTE, and zero scheduling batches/jobs/decisions/rules. The seven rows are now accurately moved from created_not_live into the live registry. Dispatch remains disabled; no new provider send or batch authority created. Browser Brave connection is available again; signed-in production page loaded. Deployment and native final verification follow this checkpoint.
+
+The earlier broad run completed with88 failing/528 passing/35 skipped files and392 failing/13616 passing/1114 skipped tests. It began before final SQL and copy fixes and is not a final-tree result. Earlier baseline reproduction identified305 legacy failures across49 files; remaining observed cases are not all baseline-classified. Focused final evidence and required Linux CI are reported separately above.
+
+Post-apply registry security gates passed209/209 (live-registry-gates, code0).
+
+Preview exposed unknown already-live sales_reply_preparation (ledger20261018040242). Exact36146-character source from PR386 frozen8da379d2 was compared to hosted ledger SHA2567516d8566ae7776086452ff8fdd51058ce34a10ab70973bcdbf4ee14f655a3cc, then copied without SQL edits. Three actual live server-only classifications observed and added. Canonical/enforced142/128; frozen14/30 unchanged. Existing source-hash test extended and watched fail on the missing file before restoration. No sales SQL apply, application code or activation. Four new social ledger statement hashes separately match exact GitHub source bytes.
+
+Source reconciliation gates passed241/241 (security133, schema76, guard29, source-hash3), code0. The real freshly-read165-row hosted ledger passes the actual repository evaluator at142canonical/128enforced.

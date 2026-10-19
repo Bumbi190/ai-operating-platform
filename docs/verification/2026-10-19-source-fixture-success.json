@@ -1,6 +1,6 @@
 {
   "schema": "sdf.windows_source_fixture_final_evidence.v1",
-  "status": "verified_pending_independent_review",
+  "status": "verified_local_review_fixed_minor_deferred",
   "observedAt": "2026-10-19T09:57:22.507Z",
   "executionBase": "e38f297dca9af3323313878fb4dc9069e24f5024",
   "sourceProof": {
@@ -2501,7 +2501,629 @@
     "Recovery: Ruling: Derive each recovery image directly from the already frozen original local image rather than rerun the dependency Dockerfile — this structurally excludes package installation even on a cache miss. Bind an owned localhost-only tag to the exact immutable parent ID, verify before/after, retain tag with the approved image; runtime still enrolls only observed immutable image ID. Cost if wrong: local metadata resolution could fail and consume a bounded build attempt; no fallback pull/install. All original RootFS layers must remain the exact prefix plus one COPY layer, and dependency inventory pin stays unchanged.",
     "Recovery: Ruling: Preserve historical cleanup receipts under their original profile and recheck actual absence with a test-only closed observer bound to their persisted original backend/daemon — changing the enrolled image intentionally changes profile hash, so invoking current runtime cleanup on an old profile would conservatively refuse. The observer never creates/starts/removes Docker resources; missing original records/changed peer/present resources fail. Cost if wrong: an old absence check fails, never execution authority or a claim of current-profile cleanup. Unknown-observer-mode RED observed before helper implementation.",
     "Recovery: Ruling: Reuse one1MiB buffer for sequential synchronous file hashing — before-check took~100s and allocating1MiB for each of86893 files would threaten two checks inside150s work budget. Same byte hashes/inventory, no budget increase; owned12000-file hash performance regression observed RED. Cost if wrong: wrong byte-range reuse would fail unchanged inventory/content comparisons rather than grant success.",
-    "Recovery: Ruling: The author's speculative50% Windows hashing microbenchmark target is not a product requirement and was NOT met (6929ms→6383ms for12000 identical516-byte reads); preserve both logs and do not claim halved execution time. Retain the single-buffer implementation as a byte-equivalent allocation refactor; actual Linux before/after inventory and fixed native deadlines decide acceptance. Add chunk-boundary/empty-file hash characterization; no runtime timeout changes. Cost if wrong: the final actual fixture fails within its unchanged deadline and Task4 cannot be marked complete. This corrects the prior performance expectation, not a failing production guard."
+    "Recovery: Ruling: The author's speculative50% Windows hashing microbenchmark target is not a product requirement and was NOT met (6929ms→6383ms for12000 identical516-byte reads); preserve both logs and do not claim halved execution time. Retain the single-buffer implementation as a byte-equivalent allocation refactor; actual Linux before/after inventory and fixed native deadlines decide acceptance. Add chunk-boundary/empty-file hash characterization; no runtime timeout changes. Cost if wrong: the final actual fixture fails within its unchanged deadline and Task4 cannot be marked complete. This corrects the prior performance expectation, not a failing production guard.",
+    "Final review F1: Ruling: Accept the escaped/opposite-quote assignment gap as Important and fix it in the trusted native source/publication boundaries, leaving the enrolled frozen runner/image byte-identical. Decode quoted escapes and count decoded UTF16 units for the bounded assignment family; source rejection must precede archive/HTTP, returned DTO and persisted JSON-string diagnostics are rescanned. Malformed diagnostic JSON is withheld. No new image build or source execution is authorized or claimed. Cost if wrong: recognizable secret text could escape; regression cases cover both delimiters, escaped quotes, hex/Unicode escapes and19/20 boundaries, while historical42/42 remains tied to its exact image/profile.",
+    "Final review declined1: Ruling: Live admission/claim/fence, real cancellation, model/provider dispatch, patch writes, AI orchestration and UI/CLI/publication remain future unimplemented boundaries; this increment only proves the isolated fixture and absence of activation. Cost if wrong: treating the internal facade as a live authority would permit unreviewed jobs, so no such readiness is claimed.",
+    "Final review declined2: Ruling: Arbitrary repositories/commands, multi-host setup and general Node compatibility are outside this deliberately fixed workstation/22-file/one-fixture profile. Existing provisioning artifact remains judged as M1. Cost if wrong: a broader project fails qualification; it must not fall back or select a command.",
+    "Final review declined3: Ruling: Exhaustive custom/dynamic credentials and every language encoding are outside bounded detector families; ordinary opposite quotes, escaped delimiters and supported hex/Unicode escapes in the named assignment family are in scope and fixed under F1. Cost if wrong: an unrecognized custom secret could be exported, so no exhaustive secrecy guarantee or general model-context export is claimed.",
+    "Final review declined4: Ruling: Trusted owner/admin, kernel, Docker backend and pinned distribution compromise remain underlying trust assumptions; identity/drift enforcement is reviewed, not those implementations. Cost if wrong: compromised trusted infrastructure can invalidate isolation/evidence; qualification is not protection from that threat.",
+    "Final review declined5: Ruling: Unrelated whole-repository failures and POSIX behavior beyond preserved boundary/probe regressions are not adjudicated by this Windows17-file gate. Cost if wrong: unrelated functionality may remain broken; all-green product or POSIX claims are forbidden.",
+    "Final review declined6: Ruling: No fresh build/source execution/daemon fault experiment is added during final review; read-only review and consumed allowances require retained actual evidence, code tests and fresh absence/source checks instead. Cost if wrong: an untested environmental change can block a later attempt; prior42/42 is historical, not newly reproduced.",
+    "Final integration: Ruling: Apply the already approved keep-branch/retained-proof/no-push/no-merge/no-deploy choice instead of asking the generic finishing menu again. Cost if wrong: the verified changes remain local and unintegrated; no live benefit is implied."
   ],
-  "productionAuthority": false
+  "productionAuthority": false,
+  "finalizedAt": "2026-10-19T10:22:22.641Z",
+  "verifiedSourceCommit": "752fba987db8318d7fe824fb73adb8d3cd7f9705",
+  "postCommitGate": {
+    "at": "2026-10-19T10:01:35.312Z",
+    "checks": [
+      {
+        "label": "vitest",
+        "exit": 0,
+        "error": null,
+        "durationMs": 125768
+      },
+      {
+        "label": "broker-tsc",
+        "exit": 0,
+        "error": null,
+        "durationMs": 3096
+      },
+      {
+        "label": "web-tsc",
+        "exit": 0,
+        "error": null,
+        "durationMs": 58211
+      },
+      {
+        "label": "diff-check",
+        "exit": 0,
+        "error": null,
+        "durationMs": 89
+      }
+    ],
+    "vitest": {
+      "total": 352,
+      "passed": 352,
+      "failed": 0,
+      "pending": 0,
+      "todo": 0,
+      "files": 17,
+      "failures": []
+    }
+  },
+  "postReviewGate": {
+    "at": "2026-10-19T10:16:10.190Z",
+    "checks": [
+      {
+        "label": "vitest",
+        "exit": 0,
+        "error": null,
+        "durationMs": 154891
+      },
+      {
+        "label": "broker-tsc",
+        "exit": 0,
+        "error": null,
+        "durationMs": 4657
+      },
+      {
+        "label": "web-tsc",
+        "exit": 0,
+        "error": null,
+        "durationMs": 90226
+      },
+      {
+        "label": "diff-check",
+        "exit": 0,
+        "error": null,
+        "durationMs": 104
+      }
+    ],
+    "vitest": {
+      "total": 355,
+      "passed": 355,
+      "failed": 0,
+      "pending": 0,
+      "todo": 0,
+      "files": 17,
+      "failures": []
+    }
+  },
+  "independentReview": {
+    "schema": "sdf.windows_source_review.v1",
+    "reviewer": "fresh gpt-6-astra high /root/review_windows_source_final",
+    "base": "e38f297dca9af3323313878fb4dc9069e24f5024",
+    "head": "86cfc2f6dbb34d7e466d0fb315266eac2511c87a",
+    "readOnly": true,
+    "secondReview": false,
+    "strengths": [
+      "Immutable Git reads disable replacements, verify blob SHA1/content SHA256 and preserve leases before archive publication.",
+      "Closed actual-peer Docker grammar and daemon-bound presence/absence; mutation reconciliation without replay.",
+      "Persistent reservations/tombstones/original-peer records prevent concurrent or late starts and false cleanup.",
+      "Negative mount/ownership/image/environment/runtime coverage and before/after inventories.",
+      "Historical failed and successful evidence are distinguished;42/42 actual tests and352/352 postcommit tests.",
+      "No operational consumer outside the internal facade/helper."
+    ],
+    "critical": [],
+    "important": [
+      {
+        "id": "F1",
+        "locations": [
+          "apps/code-broker/native/windows-workspace/SourceFixturePolicy.cs:25",
+          "apps/code-broker/toolchain/windows-fixture/fixture-runner.mjs:41"
+        ],
+        "finding": "Assignment detector excludes both quotes regardless of delimiter; opposite quotes and escaped delimiters can split an otherwise qualifying20-character literal and bypass source rejection/log redaction.",
+        "effect": "Selected source could publish a recognizable secret; emitted logs could retain the assignment.",
+        "savedFixtureLeakObserved": false,
+        "recommendation": "Bounded delimiter/escape-aware scanning, decoded-length boundary tests, rejection before archive/HTTP and equivalent trusted output-publication protection; preserve honest frozen-image identity.",
+        "rootGrade": "Important",
+        "disposition": "Fixed in trusted native SourceFixturePolicy, MaterializationContracts output publication and decoded-JSON journal persistence using shared SecretTextPolicy. Frozen runner/image/profile unchanged; three native regression modes observed RED then GREEN.",
+        "fixCommit": "752fba987db8318d7fe824fb73adb8d3cd7f9705"
+      }
+    ],
+    "minor": [
+      {
+        "id": "M1",
+        "location": "apps/code-broker/toolchain/windows-fixture/Dockerfile:15-18",
+        "finding": "Original executable Dockerfile/provisioner still reproduces known dependency root-mode mismatch; correction exists separately in recovery recipe.",
+        "effect": "Future operator may prepare an image which later fails dependency-before. Enrolled corrected image remains valid.",
+        "recommendation": "Mark/disable historical path or maintain corrected current recipe while retaining original bytes/receipt.",
+        "rootGrade": "Minor",
+        "disposition": "Deferred under approved material-only final fix policy; no new image build implied."
+      }
+    ],
+    "declined": [
+      {
+        "item": 1,
+        "behavior": "Live admission/claim/fence,cancellation,model/provider access,patches,AI-review orchestration,UI/CLI activation,integration/publication",
+        "reason": "Unimplemented future authority boundaries; absence of activation was reviewed."
+      },
+      {
+        "item": 2,
+        "behavior": "Arbitrary repositories/commands,multi-host provisioning,general Node compatibility",
+        "reason": "Fixed workstation,source allowlist and fixture; provisioning artifact still assessed asM1."
+      },
+      {
+        "item": 3,
+        "behavior": "Exhaustive custom/dynamic secrets and all language encodings",
+        "reason": "Bounded detector families promised;F1 is inside the promised family."
+      },
+      {
+        "item": 4,
+        "behavior": "Compromise of trusted owner/admin,OS/kernel,Docker backend,pinned distribution",
+        "reason": "Underlying trust assumptions;identity/drift enforcement assessed."
+      },
+      {
+        "item": 5,
+        "behavior": "Unrelated whole-repository failures and POSIX beyond boundary/regression evidence",
+        "reason": "Named17-file Windows gate cannot establish whole-product health."
+      },
+      {
+        "item": 6,
+        "behavior": "Fresh builds,source execution or daemon fault experiments",
+        "reason": "Read-only review and consumed allowances;code/test definitions/retained evidence assessed."
+      }
+    ],
+    "reviewerAssessment": "With fixes: secrecy-boundary F1 should be fixed before technical acceptance; saved42/42 is valid for recorded inputs but does not cover missing literal cases.",
+    "rootAssessment": "F1 repaired and verified in one material fix pass;M1 deferred explicitly. Technical completion applies only to bounded local fixture infrastructure. No reviewer rerun or integration/live approval is claimed.",
+    "productionAuthority": false
+  },
+  "materialFix": {
+    "redGreen": [
+      {
+        "mode": "source-secret-literals",
+        "redLog": "dotnet.exe : {\"failed\":\"secret_literal_before_archive_or_docker_0\",\"passed\":[]}\r\nAt line:5 char:104\r\n+ ... terals')) { & 'C:\\Program Files\\dotnet\\dotnet.exe' apps/code-broker/n ...\r\n+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : NotSpecified: ({\"failed\":\"secr...0\",\"passed\":[]}:String) [], RemoteException\r\n    + FullyQualifiedErrorId : NativeCommandError\r\n \r\nUnhandled exception. System.Exception: secret_literal_before_archive_or_docker_0\r\n   at Program.<>c__DisplayClass0_0.<<Main>$>g__Check|0(String name, Boolean value) in C:\\Users\\Andre\\Projects\\Omnira\\.w\r\norktrees\\atlas-voice-recovery-20261016\\apps\\code-broker\\native\\windows-workspace\\smoke\\Program.cs:line 40\r\n   at Omnira.CodeBroker.Workspace.Smoke.SecretLiteralSmoke.Source(Action`2 check)\r\n   at Program.<Main>$(String[] args) in C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-voice-recovery-20261016\\apps\\co\r\nde-broker\\native\\windows-workspace\\smoke\\Program.cs:line 50\r\n   at Program.<Main>(String[] args)\r\n",
+        "green": {
+          "passed": 11,
+          "names": [
+            "secret_literal_before_archive_or_docker_0",
+            "secret_literal_before_archive_or_docker_1",
+            "secret_literal_before_archive_or_docker_2",
+            "secret_literal_before_archive_or_docker_3",
+            "secret_literal_before_archive_or_docker_4",
+            "secret_literal_before_archive_or_docker_5",
+            "secret_literal_before_archive_or_docker_6",
+            "below_threshold_or_unrelated_0",
+            "below_threshold_or_unrelated_1",
+            "below_threshold_or_unrelated_2",
+            "below_threshold_or_unrelated_3"
+          ]
+        }
+      },
+      {
+        "mode": "output-secret-literals",
+        "redLog": "dotnet.exe : {\"failed\":\"published_fixture_redacts_literal_0\",\"passed\":[]}\r\nAt line:5 char:104\r\n+ ... terals')) { & 'C:\\Program Files\\dotnet\\dotnet.exe' apps/code-broker/n ...\r\n+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : NotSpecified: ({\"failed\":\"publ...0\",\"passed\":[]}:String) [], RemoteException\r\n    + FullyQualifiedErrorId : NativeCommandError\r\n \r\nUnhandled exception. System.Exception: published_fixture_redacts_literal_0\r\n   at Program.<>c__DisplayClass0_0.<<Main>$>g__Check|0(String name, Boolean value) in C:\\Users\\Andre\\Projects\\Omnira\\.w\r\norktrees\\atlas-voice-recovery-20261016\\apps\\code-broker\\native\\windows-workspace\\smoke\\Program.cs:line 40\r\n   at Omnira.CodeBroker.Workspace.Smoke.SecretLiteralSmoke.Output(Action`2 check) in C:\\Users\\Andre\\Projects\\Omnira\\.wo\r\nrktrees\\atlas-voice-recovery-20261016\\apps\\code-broker\\native\\windows-workspace\\smoke\\SecretLiteralSmoke.cs:line 38\r\n   at Program.<Main>$(String[] args) in C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-voice-recovery-20261016\\apps\\co\r\nde-broker\\native\\windows-workspace\\smoke\\Program.cs:line 51\r\n   at Program.<Main>(String[] args)\r\n",
+        "green": {
+          "passed": 11,
+          "names": [
+            "published_fixture_redacts_literal_0",
+            "published_fixture_redacts_literal_1",
+            "published_fixture_redacts_literal_2",
+            "published_fixture_redacts_literal_3",
+            "published_fixture_redacts_literal_4",
+            "published_fixture_redacts_literal_5",
+            "published_fixture_redacts_literal_6",
+            "published_fixture_retains_safe",
+            "published_fixture_retains_safe",
+            "published_fixture_retains_safe",
+            "published_fixture_retains_safe"
+          ]
+        }
+      },
+      {
+        "mode": "diagnostic-secret-literals",
+        "redLog": "dotnet.exe : {\"failed\":\"persisted_diagnostic_redacts_decoded_literal_0\",\"passed\":[]}\r\nAt line:5 char:104\r\n+ ... terals')) { & 'C:\\Program Files\\dotnet\\dotnet.exe' apps/code-broker/n ...\r\n+                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\r\n    + CategoryInfo          : NotSpecified: ({\"failed\":\"pers...0\",\"passed\":[]}:String) [], RemoteException\r\n    + FullyQualifiedErrorId : NativeCommandError\r\n \r\nUnhandled exception. System.Exception: persisted_diagnostic_redacts_decoded_literal_0\r\n   at Program.<>c__DisplayClass0_0.<<Main>$>g__Check|0(String name, Boolean value) in C:\\Users\\Andre\\Projects\\Omnira\\.w\r\norktrees\\atlas-voice-recovery-20261016\\apps\\code-broker\\native\\windows-workspace\\smoke\\Program.cs:line 40\r\n   at Omnira.CodeBroker.Workspace.Smoke.SecretLiteralSmoke.Diagnostic(Action`2 check) in C:\\Users\\Andre\\Projects\\Omnira\r\n\\.worktrees\\atlas-voice-recovery-20261016\\apps\\code-broker\\native\\windows-workspace\\smoke\\SecretLiteralSmoke.cs:line 49\r\n   at Program.<Main>$(String[] args) in C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-voice-recovery-20261016\\apps\\co\r\nde-broker\\native\\windows-workspace\\smoke\\Program.cs:line 52\r\n   at Program.<Main>(String[] args)\r\n",
+        "green": {
+          "passed": 7,
+          "names": [
+            "persisted_diagnostic_redacts_decoded_literal_0",
+            "persisted_diagnostic_redacts_decoded_literal_1",
+            "persisted_diagnostic_redacts_decoded_literal_2",
+            "persisted_diagnostic_redacts_decoded_literal_3",
+            "persisted_diagnostic_redacts_decoded_literal_4",
+            "persisted_diagnostic_redacts_decoded_literal_5",
+            "persisted_diagnostic_redacts_decoded_literal_6"
+          ]
+        }
+      }
+    ],
+    "builds": [
+      {
+        "name": "review-f1-red-build.log",
+        "log": "MSBuild version 17.9.8+b34f75857 for .NET\r\n  OmniraBrokerHost -> C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-voice-recovery-20261016\\apps\\code-broker\\native\\windows-host\\bin\\Release\\net8.0-windows\\OmniraBrokerHost.dll\r\n  OmniraBrokerWorkspace -> C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-voice-recovery-20261016\\apps\\code-broker\\native\\windows-workspace\\bin\\Release\\net8.0-windows\\OmniraBrokerWorkspace.dll\r\n  Smoke -> C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-voice-recovery-20261016\\apps\\code-broker\\native\\windows-workspace\\smoke\\bin\\Release\\net8.0-windows\\WorkspaceSmoke.dll\r\n\r\nBuild succeeded.\r\n    0 Warning(s)\r\n    0 Error(s)\r\n\r\nTime Elapsed 00:00:05.62\r\n"
+      },
+      {
+        "name": "review-f1-production-build.log",
+        "log": "MSBuild version 17.9.8+b34f75857 for .NET\r\n  OmniraBrokerHost -> C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-voice-recovery-20261016\\apps\\code-broker\\.native\\windows-workspace\\OmniraBrokerHost.dll\r\n  OmniraBrokerWorkspace -> C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-voice-recovery-20261016\\apps\\code-broker\\.native\\windows-workspace\\OmniraBrokerWorkspace.dll\r\n\r\nBuild succeeded.\r\n    0 Warning(s)\r\n    0 Error(s)\r\n\r\nTime Elapsed 00:00:01.22\r\n\n"
+      },
+      {
+        "name": "review-f1-final-smoke-build.log",
+        "log": "MSBuild version 17.9.8+b34f75857 for .NET\r\n  OmniraBrokerHost -> C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-voice-recovery-20261016\\apps\\code-broker\\native\\windows-host\\bin\\Release\\net8.0-windows\\OmniraBrokerHost.dll\r\n  OmniraBrokerWorkspace -> C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-voice-recovery-20261016\\apps\\code-broker\\native\\windows-workspace\\bin\\Release\\net8.0-windows\\OmniraBrokerWorkspace.dll\r\n  Smoke -> C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-voice-recovery-20261016\\apps\\code-broker\\native\\windows-workspace\\smoke\\bin\\Release\\net8.0-windows\\WorkspaceSmoke.dll\r\n\r\nBuild succeeded.\r\n    0 Warning(s)\r\n    0 Error(s)\r\n\r\nTime Elapsed 00:00:01.49\r\n\n"
+      }
+    ],
+    "nativeGateLog": "{\"label\":\"vitest\",\"exit\":0,\"error\":null,\"durationMs\":154891}\n{\"total\":355,\"passed\":355,\"failed\":0,\"pending\":0,\"todo\":0,\"files\":17,\"failures\":[]}\n{\"label\":\"broker-tsc\",\"exit\":0,\"error\":null,\"durationMs\":4657}\n{\"label\":\"web-tsc\",\"exit\":0,\"error\":null,\"durationMs\":90226}\n{\"label\":\"diff-check\",\"exit\":0,\"error\":null,\"durationMs\":104}\nTask4 gate PASS: seventeen files, required native proofs, both typechecks\n\n",
+    "frozenRunnerSourceSha256": "09ae7bd0ce9eb212590114471c596b2fc4bbd11054865f963ca5ca5f3ad7dfd4",
+    "newContainerExecution": false
+  },
+  "handoff": {
+    "snapshot": {
+      "observedAt": "2026-10-19T10:22:19.460Z",
+      "host": {
+        "backendIdentityHash": "f5d2496af79d13ad924797355ddb026f13928873d1739f9286f6199fbad7bd56",
+        "daemonIdentityHash": "097b04099237066832a5574e26cb1708df26ff5007ae0165f7135bea76df3601",
+        "osType": "linux",
+        "provider": "docker_desktop_wsl2",
+        "kernelFamily": "microsoft_wsl2"
+      },
+      "main": {
+        "head": "29c88f0d1448a3be17a26ebd1179781e664bcff0",
+        "status": " M apps/web/lib/qa/autonomy-license.test.ts\u0000 M apps/web/lib/qa/autonomy-trace-guards.test.ts\u0000 M apps/web/lib/qa/executive-intelligence-schema-activation.test.ts\u0000 M apps/web/lib/qa/migration-guard-v2.test.ts\u0000 M apps/web/scripts/migration-guard-policy.mjs\u0000?? apps/web/lib/atlas/autonomy-runtime/bind.ts\u0000?? apps/web/lib/qa/autonomy-bind-encoder.test.ts\u0000?? apps/web/lib/qa/autonomy-bind-sql.test.ts\u0000?? apps/web/supabase/migrations/20260926120000_autonomy_trace_atomic_bind.sql\u0000",
+        "branch": "refs/heads/feat/phase3b1b-atomic-bind-provenance"
+      },
+      "retained": {
+        "head": "d3f9fcc1045026042f6bb9c0cd302ed0b7283127",
+        "status": "",
+        "branch": "refs/heads/sdf1/c435e423-d964-428b-b5c0-4060d89ce3c6"
+      },
+      "approvedBase": "d3f9fcc1045026042f6bb9c0cd302ed0b7283127",
+      "refsSha256": "872b0ea2d7e223273485140a4fb173123fc22c0ec1022838cefb864fd8bdd004",
+      "sharedConfigSha256": "b2e80f4c91bfc6082e7fed2111981576d1ac04a2ab4ffc7f000bc056289367b5",
+      "mainWorktreeConfigSha256": null,
+      "worktrees": "worktree C:/Users/Andre/Projects/Omnira/Code/ai-operating-platform\u0000HEAD 29c88f0d1448a3be17a26ebd1179781e664bcff0\u0000branch refs/heads/feat/phase3b1b-atomic-bind-provenance\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-budget-routing-20261018\u0000HEAD baa76f473004b4710862d96dfca0554756788045\u0000branch refs/heads/codex/atlas-budget-routing-20261018\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-builder-references-20261017\u0000HEAD 4bf8843d5f53705ce2b41b849234c00bed8d0ab8\u0000branch refs/heads/codex/atlas-builder-references-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-harvey-sales-20261017\u0000HEAD 2173430cc6a102176efeb8687b58278e6bcaa20a\u0000branch refs/heads/codex/atlas-harvey-sales-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-local-models-20261017\u0000HEAD d1fd17928087c20295bdbaeae88672b9995894e5\u0000branch refs/heads/codex/atlas-local-models-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-local-text-integration-20261017\u0000HEAD e3e5c78d82126c461a128880d550cd66f98a8426\u0000branch refs/heads/codex/atlas-local-text-integration-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-openviking-integration-20261015\u0000HEAD b87b97aa707344b5f8f4804abfa8f33dcd2df1e2\u0000branch refs/heads/codex/atlas-openviking-integration-20261015\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-overview-messenger-20261015\u0000HEAD ea36ec3e6c0f3cd59d50ff1b4dfb4fbfa82f4c55\u0000branch refs/heads/codex/atlas-overview-messenger-20261015\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-social-content-20261016\u0000HEAD f701b252e73a16c2357d952ab744438caa9efc48\u0000branch refs/heads/codex/atlas-social-start-20261016\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-test-data-baseline-20261017\u0000HEAD 534cd138c3b509dc6c9ce1394c33048f0169f1c8\u0000detached\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-voice-recovery-20261016\u0000HEAD 752fba987db8318d7fe824fb73adb8d3cd7f9705\u0000branch refs/heads/codex/atlas-code-worker-design-20261018\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-voice-recovery-20261016/.superpowers/sdd/2026-10-17-atlas-streaming-stt/base-entry-check\u0000HEAD 461c92a0d6c396eed5a38384d048b40cf5bf0edd\u0000detached\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/c435e423-d964-428b-b5c0-4060d89ce3c6\u0000HEAD d3f9fcc1045026042f6bb9c0cd302ed0b7283127\u0000branch refs/heads/sdf1/c435e423-d964-428b-b5c0-4060d89ce3c6\u0000locked omnira-sdf explicit-cleanup-only\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/calendar-time-recurrence-20261019\u0000HEAD 91a2f5dfe477680bfb943e01266b90ae5b92a6e3\u0000branch refs/heads/codex/calendar-time-recurrence-20261019\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/content-project-isolation-20261017\u0000HEAD 81c13b6969de79069230024dd5e5fcae37f9cb0b\u0000branch refs/heads/codex/content-news-pipeline-isolation-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/content-studio-familje-stunden-20261017\u0000HEAD c518c3091cd3793b1f5bae115760aab1adbe12ed\u0000branch refs/heads/feat/content-studio-familje-stunden-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/content-studio-the-prompt-20261017\u0000HEAD c518c3091cd3793b1f5bae115760aab1adbe12ed\u0000branch refs/heads/feat/content-studio-the-prompt-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/family-social-baseline-20261018\u0000HEAD f0a52321361b7f1a03d5336cbd7a5c8c4d769ac5\u0000detached\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/family-social-scheduling-design-20261018\u0000HEAD 39c5c32e081c1401a39b164d9329bda03c484d91\u0000branch refs/heads/codex/omnira-calendar-design-20261018\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/fs-november-teaser-v3-20261017\u0000HEAD 403481a018a554ffda7c734c860188e312b2cc60\u0000branch refs/heads/codex/fs-content-studio-november-preview-v3-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-candidate-review-notice-20261017\u0000HEAD 6bc6346743de77cae9912d8ec497631a8f518ad3\u0000branch refs/heads/codex/hb-candidate-review-notice-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-candidate-schema-20261016\u0000HEAD feabd726dc1eaa1843d4b3a47be39294ec2dc0d1\u0000branch refs/heads/codex/hb-candidate-schema-20261016\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-collab-competitors-20261016\u0000HEAD 2f21af70f6185ba119fb5d4edc31b1030abc33a9\u0000branch refs/heads/codex/hb-collab-competitors-20261016\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-collab-review-middleware-20261017\u0000HEAD 17d957ea6cd0ae9842413845c46ecc35dbc466e7\u0000branch refs/heads/codex/hb-collab-review-middleware-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-competitor-discovery-p0-20261015\u0000HEAD 0b935a45fd8eaacbaa17bd60d4d5b7fc3daa3d44\u0000branch refs/heads/codex/hb-competitor-discovery-p0-20261015\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-competitor-manual-smoke-20261014\u0000HEAD 5e8aecc09389e0ea9e3898d7c67fc56974dab952\u0000branch refs/heads/codex/hb-competitor-history-live-smoke-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-competitor-memory-p1-20261015\u0000HEAD 6ee3a6d680aba7acfe00ea7c8d99ae97400678ec\u0000branch refs/heads/codex/hb-competitor-memory-p1-20261015\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-competitor-review-p2-20261017\u0000HEAD 22a28dbd673f82c810378ebfff54767a03baba1d\u0000branch refs/heads/codex/hb-competitor-review-p2-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-inbox-activation-20261017\u0000HEAD fee18a74e54e08db96a6b8c9f924a05c67fd085a\u0000branch refs/heads/codex/hb-inbox-activation-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-inbox-shell-20261017\u0000HEAD 86b798c690bcb6a43c147d1328ae7893fae08fda\u0000branch refs/heads/codex/hb-inbox-shell-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-notifications-p0-20261017\u0000HEAD e3d3a0e61f9e13ea79278e0da32ce4beb60b12bf\u0000branch refs/heads/codex/hb-notifications-p0-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-review-cas-p21-20261017\u0000HEAD 3f7ab3537b4990eff335bdaeda29f2bd36aec000\u0000branch refs/heads/codex/hb-review-cas-p21-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-review-db-activation-20261017\u0000HEAD 8573567b27e7ccedbb7f93adbe2c453ab88bbe43\u0000branch refs/heads/codex/hb-review-db-activation-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-review-p2-consolidated-20261017\u0000HEAD 18bc37f45fa173baa528ff08e153f24262815c95\u0000branch refs/heads/codex/hb-review-p2-consolidated-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-watch-readiness-20261017\u0000HEAD 1512921dcaa527a5d845484485c4978ff8521aa9\u0000branch refs/heads/codex/hb-weekly-report-p0-20261018\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-analytics-p0-20261012\u0000HEAD 4106c7400485125ae0505c2dc4a3b64ec226c50b\u0000branch refs/heads/codex/omnira-atlas-analytics-p0-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-insights-ui-v2-20261012\u0000HEAD e7c62f13c3130bb7106160e4ff68d9d417ea28df\u0000branch refs/heads/codex/omnira-atlas-insights-ui-v2-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-intelligence-p1-integrated-20261012\u0000HEAD 0c312c28860ca06c413bfa585184ef266e9793bc\u0000branch refs/heads/codex/omnira-atlas-intelligence-p1-integrated-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-intelligence-ui-20261012\u0000HEAD 8aed54816912a341c6cf908ae774d9d59e3b60d0\u0000branch refs/heads/codex/omnira-atlas-intelligence-ui-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-intelligence-ui-p1-20261012\u0000HEAD a9a718af77f01321df2950ec57f918833e70ddad\u0000branch refs/heads/codex/omnira-atlas-intelligence-ui-p1-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-p1-implementation-20261012\u0000HEAD 2dd5c0fd50fc18a203f1866a4b1cc5f21816b740\u0000branch refs/heads/codex/omnira-atlas-p1-implementation-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-p1-plan-20261012\u0000HEAD 22923263a09500ebb601a6c38a53e7f91ce808d8\u0000branch refs/heads/codex/omnira-atlas-p1-plan-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-p1-preflight-20261012\u0000HEAD 9383827792ce28eece9ede8603798c32efac07e8\u0000branch refs/heads/codex/omnira-atlas-p1-preflight-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-p1-replay-repair-20261013\u0000HEAD eae067ded151c9f321860bb1fb283e2174c46469\u0000branch refs/heads/codex/omnira-atlas-p1-replay-repair-20261013\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-p1-save-readiness-20261013\u0000HEAD 3d416b7169cc3ea4b01bf44e5f832099e7c4a262\u0000branch refs/heads/codex/omnira-atlas-p1-save-readiness-20261013\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-realtime-voice-r1\u0000HEAD 9de4c5030794b46644163b602bbb4094ad294122\u0000branch refs/heads/feat/omnira-atlas-realtime-voice-r1\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-stats-workflows-plan-20261012\u0000HEAD d77bdecc8af144d84e77eb18e364ae2e151adda1\u0000branch refs/heads/codex/omnira-atlas-stats-workflows-plan-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-voice-latency\u0000HEAD 6e553075349c7fffecd61f49a556b8ce0bb10b11\u0000branch refs/heads/feat/omnira-atlas-voice-latency\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-workflow-catalog-baseline-20261013\u0000HEAD 1d455ff1ab0bfd7ba2e92753d99fa5eec6fd5067\u0000detached\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-workflow-drafts-p1-20261012\u0000HEAD bc3cc285f5e553f31d31c6c3e6115d176a401dbe\u0000branch refs/heads/codex/omnira-atlas-workflow-drafts-p1-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-workflow-registry-p1-20261013\u0000HEAD 4fcbfd5124064fb258e4fa1ad90ce556be9efd97\u0000branch refs/heads/codex/omnira-atlas-workflow-registry-p1-20261013\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-autonomy-broker-claim-credential-1c1b\u0000HEAD 5c104d12b1a76e2279f74c10b606ecc0c543c756\u0000detached\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-autonomy-broker-control-channel-1c2\u0000HEAD a9814118935be001a0aaf55a2e5b013b7dc995dc\u0000branch refs/heads/feat/omnira-autonomy-broker-control-channel-1c2\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-autonomy-broker-identity-1c1a\u0000HEAD 1200da02469fbe2e024aed74254004c186deecb5\u0000branch refs/heads/feat/omnira-autonomy-broker-identity-1c1a\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-autonomy-workspace-materialization-1c3b\u0000HEAD 3be90edd486da1034969fc546e013487be66f6cc\u0000branch refs/heads/feat/omnira-autonomy-workspace-materialization-1c3b\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-build-cost-baseline-20261015\u0000HEAD 474bbddb6da67f3ecc5c17480a4c3786900bb53b\u0000detached\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-build-preview-plan-20261014\u0000HEAD 14086c9784b1cb1f21d2239ce9e82486a1603d4e\u0000branch refs/heads/codex/atlas-social-connections-20261016\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-calendar-implementation-20261018\u0000HEAD b053687c2aa47e9de3964a38aeda74d66ac3ba28\u0000branch refs/heads/codex/omnira-calendar-implementation-20261018\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-collaborator-full-roadmap-20261014\u0000HEAD aaf3b436a79acba128ff232536f94d302761e509\u0000branch refs/heads/codex/omnira-collaborator-full-roadmap-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-collaborator-hb-workflows-20261014\u0000HEAD b6c6126f686c4513be64d7ae3e5fe71df5b24105\u0000branch refs/heads/codex/omnira-collaborator-hb-workflows-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-collaborator-project-ui-20261014\u0000HEAD 8e142cfed453f783dd98d1f12d389345ad7484bf\u0000branch refs/heads/codex/omnira-collaborator-project-ui-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-collaborator-roles-plan-20261013\u0000HEAD 19a43b8b77745abc211faed13594b6eea2a613e9\u0000branch refs/heads/codex/omnira-collaborator-roles-plan-20261013\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-dashboard-login-integration-20261012\u0000HEAD 76888441fc9d88f635855d3eb70980e02af80f97\u0000branch refs/heads/codex/omnira-dashboard-login-integration-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-design-skills-20261014\u0000HEAD 687b8ea81da02ac8c7f0b0bf1987267abf00122b\u0000branch refs/heads/codex/omnira-design-skills-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-handlarborsen-competitor-watch-p1\u0000HEAD 54e9b8b383c6ead8922d6d7a17ef17281715174f\u0000branch refs/heads/feat/omnira-handlarborsen-competitor-watch-p1\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-handlarborsen-owner-brief\u0000HEAD 261a60e1c64bf4909bc0d8f378e2e24bfdbac1ab\u0000branch refs/heads/feat/omnira-handlarborsen-owner-brief\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-handlarborsen-trends-speed-v1b\u0000HEAD 0382c36309be2dcf3df7b41e6aba114fd6d64d2b\u0000branch refs/heads/codex/handlarborsen-trends-speed-v1b\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-handlarborsen-visual-pulse-v1a\u0000HEAD 06cecc9a9283bfadf8e25f2864b71b51f990c9d0\u0000branch refs/heads/codex/handlarborsen-visual-pulse-v1a\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-competitor-history-core-20261014\u0000HEAD 853b9ddeaa95c755e6bd0f88583ebd6e58c55b7f\u0000branch refs/heads/codex/hb-competitor-history-core-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-competitor-history-p2\u0000HEAD 1c9e091407fd56a75b84dca37bcf360bcd69159e\u0000branch refs/heads/feat/omnira-hb-competitor-history-p2\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-competitor-join-rehearsal-20261014\u0000HEAD cc0f05bf37fe653c29c615a5738ba805cb981d1f\u0000branch refs/heads/codex/hb-competitor-join-rehearsal-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-competitor-manual-preview-20261014\u0000HEAD 3cc039723cf67e5d3fe5a4fd968bee9b2465c9ea\u0000branch refs/heads/codex/hb-competitor-manual-preview-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-competitor-migration-review-20261014\u0000HEAD 5fc6a4e36f2d71d9e8d3ce77458b72f907a8f931\u0000branch refs/heads/codex/hb-competitor-migration-review-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-competitor-sources-20261014\u0000HEAD fd595f4a26298933cf70ef61683e98bee10b31e9\u0000branch refs/heads/codex/hb-competitor-sources-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-daily-collection-p1e\u0000HEAD 21a7dfbacba6d11454b01bdfb10f75019935e124\u0000branch refs/heads/feat/handlarborsen-daily-collection-p1e\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-dashboard-visual-v2-20261012\u0000HEAD 7beadd89ca1128403a83f869bd8794b8e3fa373e\u0000branch refs/heads/codex/omnira-hb-dashboard-visual-v2-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-kpi-overview-p1d3\u0000HEAD e79162d48072c7da9d4908f303e7c3fbac568325\u0000branch refs/heads/feat/handlarborsen-kpi-overview-p1d3\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-posthog-traffic-p1\u0000HEAD 419533f852f23247180d92c99b8bc768b86d25bc\u0000branch refs/heads/feat/omnira-hb-posthog-traffic-p1\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-visual-competitor-20261014\u0000HEAD 881d2504fc75818a3f7048c2c2f81546b64fb392\u0000branch refs/heads/codex/hb-visual-competitor-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-login-polish-20261012\u0000HEAD 0c26bc8b750241e963cd43560ecb1149d62e1f5f\u0000branch refs/heads/codex/omnira-login-polish-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-main-857471b-sttcheck\u0000HEAD 857471b7df9567b34a95345e4b0c63267974067b\u0000detached\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-n8n-execution-adapter\u0000HEAD 30d5d75a2449f6ac4c24816ba9fb3289833364b2\u0000branch refs/heads/feat/omnira-n8n-execution-adapter\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-orb-charts-integration-20261012\u0000HEAD e91ece6c9c7c03a2529a6b8b5952a30e6ac8871e\u0000branch refs/heads/codex/omnira-orb-charts-integration-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-orb-integration-v2-20261012\u0000HEAD 05bd8e67ba8d5b01027f145e629b5379af574354\u0000branch refs/heads/codex/omnira-orb-integration-v2-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-org-membership-foundation-20261013\u0000HEAD d2f108301fbd2258356894c8baaab123d3dd312c\u0000branch refs/heads/codex/omnira-org-membership-foundation-20261013\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-org-owner-atlas-empty-state-20261014\u0000HEAD 679ba3d821f74e5b46bf4fe69bfd8ba53b0476c2\u0000branch refs/heads/codex/omnira-org-owner-atlas-empty-state-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-phase3b1b2-licensed-authority-proof\u0000HEAD ff3037f7730e2f7c644caa19a76d0e449770d4cb\u0000branch refs/heads/feat/phase3b1b2-licensed-authority-proof\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-project-spiral-spine-prototype\u0000HEAD f85e19eb25871c1e4c3d1ecb7626e8c86b5dd215\u0000branch refs/heads/feat/omnira-project-spiral-spine-prototype\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-project-ui-integration-20261011\u0000HEAD d502e94ecd3b2a7aa0f08ee77eb58939defef0ff\u0000branch refs/heads/codex/omnira-project-ui-integration-20261011\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-project-viewer-membership-p1-20261013\u0000HEAD efca359b89238d43962c646bb1d6aef5a685153b\u0000branch refs/heads/codex/omnira-project-viewer-membership-p1-20261013\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-project-viewer-preflight-20261013\u0000HEAD 59ad3200600ba72773c6a838f743709d306bef4b\u0000branch refs/heads/codex/omnira-project-viewer-preflight-20261013\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-proposal-audit-20261014\u0000HEAD e931bacf886c20eda565d6353922a46ea43f2558\u0000branch refs/heads/codex/omnira-proposal-audit-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-real-charts-v2-20261012\u0000HEAD b3b8a44c4bba1fac7105b72e1056e9d6155cc1b7\u0000branch refs/heads/codex/omnira-real-charts-v2-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-sdf1b1-code-work-persistence\u0000HEAD 1c00ebf88a0d0cd974aeec5788881a9be106f471\u0000branch refs/heads/feat/omnira-sdf1b1-code-work-persistence\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-sdf1b2-code-work-operator-plane\u0000HEAD f1c0a0291c6e5adfa676803468be777e0603019f\u0000branch refs/heads/feat/omnira-sdf1b2-code-work-operator-plane\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-sdf1c1-broker-identity\u0000HEAD 98a4f000fa6152c0298a42f181050f51e05d8093\u0000branch refs/heads/feat/omnira-sdf1c1-broker-identity\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-stt-local-acceptance\u0000HEAD 678bb05ade5c91f2a5bb1dd7d026d76aab88be21\u0000detached\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-ui-vnext\u0000HEAD 9f397e63bd2e7d945aef457fc4ee7c68d49e9f91\u0000branch refs/heads/feat/omnira-ui-vnext\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-ui-vnext-atlas-home\u0000HEAD ff7b202c9effbb0394986ecbe89cdb77c5f56028\u0000branch refs/heads/feat/ui-vnext-atlas-home\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-ui-vnext-atlas-voice-latency\u0000HEAD 678bb05ade5c91f2a5bb1dd7d026d76aab88be21\u0000branch refs/heads/feat/ui-vnext-atlas-voice-latency\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-vnext-memory-readonly\u0000HEAD b734243aa424f5d98c48c5c4c97e00e876657c4d\u0000branch refs/heads/feat/omnira-vnext-memory-readonly\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/overview-growth-atlas-20261016\u0000HEAD 6d2a641e5d67c4cf94e527b5aec941e62178d16b\u0000branch refs/heads/codex/overview-growth-atlas-20261016\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/schema-ledger-reconcile-20261017\u0000HEAD 31680478494c113ebe86ff53c1d1aee64e873157\u0000branch refs/heads/codex/schema-ledger-reconcile-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/the-prompt-creative-v2-20261017\u0000HEAD fa6a2f55bcdc7dbb8375f47082b8d4b3c8d61a5e\u0000branch refs/heads/codex/the-prompt-creative-v2-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/the-prompt-text-fallback-20261016\u0000HEAD 20a2322e931bd2871c5c945638da0b311927dfe8\u0000branch refs/heads/codex/the-prompt-text-fallback-20261016\u0000\u0000",
+      "containers": [
+        "00839eda91e3e6bb08040960238cb02e87b8fcb75a92a70e93feede9f26c7bd8",
+        "01c0911cadce7caa369843ab1766ce408e6f5d1610bf493701d53b764379e921",
+        "156ca5835ca03fa689db5148fb140dc26009609661b16eb76e398a6d4875991f",
+        "19235ae79602a4aab2871166000c4ca09a619d10e6e3face94fe4a9159088216",
+        "1ddfd23844a2e745aa45a224047c834cc5dcd4e4fc2440b0f4d76af78d66beb5",
+        "20013e149e63f7dcbf0cc2fbad3b6766fbd73ac34442ee33f2ea1903ca9322b9",
+        "26f54fcab5b72f1c9c7f0515fa058b8ef1303236f3064c1da839704221e6b526",
+        "2bc195b9f1d2ce88c9286078de13d0c612c36fc5dd6873b9b9b5aedfd7947cc8",
+        "2d607fabc7a967e7303b78971b11745779732e8adae55bd7023326457c35f4a2",
+        "3949ec8c333a3398a573d8a00ed27819f567b87c03b21a26b63bf9bdcd06a186",
+        "452b860aaef9b80dbb2e7263156a4813ecd5f66e0286b0d7bae28ce861e7162f",
+        "49efc21389599e12f8b1e1cdcd67a5240dce6c2ab91a881b0fb09a2e137a5792",
+        "4d9914d590d319d493e4491cf94b11a9343390e25cb59088e8e39cdf514a94b8",
+        "56dd9297cdccb61c0d6294e65b6bff7ab58314b246be43758d5f34ba242125aa",
+        "57299eb3e8cb7bac1c967fff1aac945db2d978a4ce304b23663cf26f2e8d7267",
+        "5bcefa9048b0be6c1915342299a3902020d4acc107b56f4f42ec10c23d46345d",
+        "64cbc6f8663d2c801852eb874a315f8392f5f6c1619861dc34d8646979be2dee",
+        "6673a09d2da99d0982d0e7d1a9bc5164caaf182e62b9c1cea645bb6b4965f377",
+        "7c2698da13168fbdd358df8063336a77eaa02d1df0c22dc184076b78fb682a5b",
+        "7ee8e0c3c3ba92045124c10eb3db8e28799bc1c4a9b7424b9453ae250ef08045",
+        "83128523e56634b5fa732f252c8b17ee3f7522d8dbf748034abc201d24ceee76",
+        "833ed5818fb7ffaec222288aa422f00bada5a920e93113d0a4e34d690aa925eb",
+        "8bc1a7e73be34c898f92f70187665d18bbac625a272ac36ed4aaf4e9b507e35c",
+        "8c471fa77daac344677372ee75f6f63b3068827b87c2df75f23c34ffde9fb593",
+        "8cf11d4c0ec94ad7b8ec024de518ac0e38d0b4e944299f9eceb6f99bec50e9bb",
+        "9a5a42807fbcde3705162424d79fee39947a257127daf5a10cd09469904a4a49",
+        "a0ecd3953e3d24c5814f566558d088d16b61d5490ba183f8f35ba64023b2508f",
+        "ac5761b6700e603b13c5ff02d4406117672ef317202dca715fd4c0eb9d7f8e38",
+        "ad1e32968aa4ca641055a799a730d55647bd76725c028e25dea292693180d23b",
+        "ae0eb2e6466a805ac57d1b27863e2948d603e19bdd0464261422cf7575592026",
+        "b6203adda2cf8aefd0593f255d64018e945efc89473ef7820d4a042101cd4544",
+        "b6d075368fb6342d47fdd85824eaa46186cacb5f699e210f3aa80cecc4187a07",
+        "ca69e235d4a542d203eaf2f666b371884d2ea93df74db3895aaa19c802753a90",
+        "d33b6d9485fbc86b16c4fc30057e6a22f805e80c005357d0791231291c0d6d84",
+        "db1fbeadad578c2da01d260333d207e4e1286fbed27e9b7d6a8bbde1e218b0e1",
+        "db6c6643377a2004bc265314f769bf08c993b72a8cbb64b08a98b13deb5ed2b5",
+        "e5139cf27d09c3105c4cb13f3c4732b5a557fffe1de90cec0fef4095c6e9896e",
+        "e6630949c81aef258a34f5129e11b9f9be83fe3178e7f9b55ed76538f31707d8",
+        "ea053631a41fb0f70e08f74fe0743eea6ccb6ced043322a62c586a5552ceea17",
+        "fa60f68a6334e832669a1f429b67689b53f4f89b3511ae225bc3b1f05aa5a458"
+      ],
+      "volumes": [
+        "0ee0dcb53c0cbf185b8aac5834d21ace6d96fefad707e10a969dc606c6552ff1",
+        "11ecc40dc1e7eafadc63b88c9f22155e7d621b08c5923861ad685d5b951e9c3f",
+        "16499eef08eedb0c8b648252527ca980cff2c1ffd741046feb96876b4bbee16d",
+        "20f7360752a36bc3da79a90f1122c91aec50cf893fff9ea021ecd58888773902",
+        "23e6dde6740a6ac029afcbddf9fd193b180084a82ba0d92d0ea11d33a474a78a",
+        "429a1e461baad703d78a1379108abc9a7bfc90f0ba3a7f9fcf4b3c7b0de8780a",
+        "4b83689c5a4d989a868ad84820acba1b0f3d0ea2e4b3929cfef4d1bfe434b2f5",
+        "5e57b694f25de259d047b75c1c27a97aa904ead64855116752c6d8523ca6f7a7",
+        "5ea54d276b5c97daedfcde6db2e4d09c4140532ed7d3efd9244345b533c5183c",
+        "6145d00cf41afa2343698ff7a1b24fc9bfd2831d44a8fa1ca9893cd606992b58",
+        "790d252ad63b70c0cdc7006fb5f870438b33a4a8945ea5625849a4ee81e9397d",
+        "79c8f116ba369a3e10d1ae243ece337df187f5ec9547b14212e7d5de0c7f3e35",
+        "7c1bded3d4e8464af6724adf5b9c0fe04c80670875e46f7f8e5007fda2f03eba",
+        "80e69105619a60f8bd7160c02c6403fbc992dd33703f225b49c757a88230e10c",
+        "89beac618e3ccfe5c0e66497bdfd9dabb836b1e1d6f180ae3acd229941ed7bd7",
+        "8a48ff654fe599188506ca5eb683fde64496174d22ee19bd1681b88cf1e76f62",
+        "934686eca099120485f9b95f3329a285a9bc62602da36379b8239deede27af42",
+        "9624994e4417ca68b7b1083ffe3db8240b82a74b0e79383e520f099cdde35cf7",
+        "a440541f6a106800079241ce1a5116fd161ff451983b8555327a1f7683e0a2e2",
+        "b4fac80f008d956e0efee057983c4586974e2c0097436ccd598af5dc05c8873a",
+        "b8d71a8039a7392ad085d4b5c48527e661ece121298082714b61f1f2afa4d9de",
+        "b942f56d3e2d32a540c1b2ac028ef4fd7489fb0a3605a5c561b400c5933b20b7",
+        "bb47924bf91ff413fb80eab3a6c5c5b97aabf1dab73452ab3eea2f1acbf7988d",
+        "bb8116793e60fb60deedd02c115f1c0d36b185aedd60ce9805447ab46c0b754f",
+        "bf2ee9fd0ceeda17dcc2339ebcbc3ff7b4534d8b3c7a76a15c2f2aeb229797dc",
+        "c2fcee06b068e0203813a680cba0397d9679cb93975cc88aa1e27a95fbb60017",
+        "e884afc4cf2879b31a89470a34634afe5ca38bfc8ca0e1b50fc72a0c8e5a9ecd",
+        "handlarborsen-auth-ci-node-modules",
+        "omnira-openviking-pilot-20261015_models",
+        "omnira-openviking-pilot-20261015_state",
+        "omnira-openviking-pilot-20261015_state_lifecycle_20261015",
+        "omnira-openviking-pilot-20261015_state_semantic",
+        "omnira-openviking-pilot-20261015_state_vectors",
+        "omnira-openviking-probe-deps-20261015",
+        "supabase_db_Handlarborsen",
+        "supabase_db_Handlarborsen-auth-ci",
+        "supabase_db_Handlarborsen-pilot-e2e",
+        "supabase_db_handlarborsen-atlas-test-data-local",
+        "supabase_db_hb-posthog-readiness-20261013",
+        "supabase_db_omnira-stt-local",
+        "supabase_edge_runtime_Handlarborsen",
+        "supabase_edge_runtime_omnira-stt-local",
+        "supabase_storage_Handlarborsen",
+        "supabase_storage_Handlarborsen-auth-ci",
+        "supabase_storage_Handlarborsen-pilot-e2e",
+        "supabase_storage_handlarborsen-atlas-test-data-local",
+        "supabase_storage_hb-posthog-readiness-20261013",
+        "supabase_storage_omnira-stt-local"
+      ],
+      "images": [
+        "sha256:002193c9ff840a4946918641901bb6aa9e2036dc9ff7590e2b11e91d1e06bf86",
+        "sha256:06ddc7962e11ab0f4f0334fd05671e97c30ea202f6e6a7113800bd3d6e416108",
+        "sha256:0e5f906573693feaa1e21057ebdcfdb5bd5021f050b2dc7c9deceb629c7da2a8",
+        "sha256:105a2584129c9600aebed6f5ac49ca4371c92b996ecd1af7179750333e9e2120",
+        "sha256:145325b7e39f8ef4931d6e8cfd3f6f4d655de09d72a2ccc96d9513542c2202bd",
+        "sha256:1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b",
+        "sha256:1b53405d8680a09d6f44494b7990bf7da2ea43f84a258c59717d4539abf09f6d",
+        "sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6",
+        "sha256:354e46f6c5d5e046a2002b78f2d43931824b67110df42a40ab4204e269d1acd0",
+        "sha256:37a38e48e9338cd7e89dfeb487f37b02ebfcd9cb23111bed2d345e79d37d6dd6",
+        "sha256:3c16f0769a58c732a92dc1e7badcf327c86a24eec4bcd559801ba6b9783a3c54",
+        "sha256:4905784b715cb22b265d26405067649544b40faffff89fd8dc7a28736f42afb0",
+        "sha256:4ae1890ba0c6fd24d975c34f3aa201a01d410171c8ba6eddeb675ef92341a62d",
+        "sha256:5dcf67db0ee378caa87f3395cb9484ebe3e97bb0334d119f2ac33116e00c5773",
+        "sha256:645d0e45446181f3e9d87efeef637b494615f32365befff00e2d2b0fe8535fef",
+        "sha256:6942962433a569e87f228b4d4ab7e11db5deca64e43babb3a038443ad6c4f1bb",
+        "sha256:6a32896ae2d1ae2ea2d05ecaf6ed6c8a6b091739b469a8cf860ee89b2604d28f",
+        "sha256:85258123312dc496ad4c2ed832154a65e9746f84df0d6d09b44229ff9230c08e",
+        "sha256:8720d206683918b18341010107264993a07910cc80f9bcff1f7f5ab3e9bdf1c7",
+        "sha256:8b0b3f68d9a8667e183b481ff74f5d72eedc1e8b70f6bde2aab1e5d79d16df62",
+        "sha256:8c6f4c7c155d7fd2bc2781987eeeaf5d4072c1913542b32ec34dad7267f13842",
+        "sha256:926d40fd6eeeebd346b5c358a63de2a10ec995371cd93dd22f1843200694b1a6",
+        "sha256:965e2dfb5a23a0d6541b6106541e777b303656ebabd4e878746b189d550c0a66",
+        "sha256:9a079ac1c94d89629262822a4bd1902d5b1be4adb464e5a0a8fd078aaed72158",
+        "sha256:a82f96c8845c1bcab128cfe17b4e325943ab949b657e9629a0bcc66f1d363179",
+        "sha256:ad45164b7548bf5820ed7be714789c17ac2865edce79a09cfb4c3756c3d365a8",
+        "sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667",
+        "sha256:b3bfedb107413abb3b8cb0d0874b0414a1dceb3d55bc0c778de6ad22d1f7dc86",
+        "sha256:b574528fe109c8343c1247155734d03df8c34b462f342dca0ccc20244fc36ef9",
+        "sha256:ba88b97954573852eb18524d07507724000be02dbc94e22ee32c186ea006f1b6",
+        "sha256:bb596a0d169b85ddd81d8b6d3a2ff6d5baf5fca10b97f575ebc647c3dff62b3d",
+        "sha256:c0c25187a6b835e65a6f6e6c6b39d090e832d40e6de5186f2c038e0411944232",
+        "sha256:c52405002a890ca9fcf77978671c57f3a988e03174afb277f84ac65bc917013c",
+        "sha256:c60a83cd79cfce80db5266acb8bdd0908eee8abe8ff559a5f786aa504c251ccf",
+        "sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d",
+        "sha256:ca92d617e905953c3f852e7e88061f7039460e733522e3f0c21bc6ae946b2558",
+        "sha256:d155c6718ed9a9f990d159a2ab7c0a3f16944dbb6d0a0344557421042acfe0df",
+        "sha256:d878dcd9dba73b66d1c2c19aeaf53d07704e71604d93013225be1d1c51475237",
+        "sha256:d954ab82c949c1135e554437143f148dc8d10d155b8c16b36f50af0d2a11c4d9",
+        "sha256:e43d86f81570b58e2a5d048d32694635f467cfd34348ede6fd7ceeb89825d842",
+        "sha256:e4b6110f496ddcd3b3ceb8a23caf59016586a23b5cd363099fbc7b224152ebbc",
+        "sha256:ed9b00c609e77e99c79b93f1178255ebc271868920f2c69a8d166bd5634ed10d",
+        "sha256:eda7c5e68719e9c8287e78c017118407b48df904a51c935f5ab6098b8c0bc6bc",
+        "sha256:efd0ab5780c2d9ab1f0f869571a00d5edb17793bff4cce4a2792e3eb0ffc7562",
+        "sha256:f66c721c71b576f5854c78f86df0c78a98368d900dcf62e4ddd96c6913139999",
+        "sha256:f704b3222e3c772610865e016153d606a3f94f0a55a7548a903b3f6d7f3f8270"
+      ],
+      "buildCacheObservation": "{\"Active\":\"30\",\"Reclaimable\":\"7.263GB (17%)\",\"Size\":\"41.15GB\",\"TotalCount\":\"46\",\"Type\":\"Images\"}\n{\"Active\":\"30\",\"Reclaimable\":\"6.204GB (98%)\",\"Size\":\"6.27GB\",\"TotalCount\":\"40\",\"Type\":\"Containers\"}\n{\"Active\":\"13\",\"Reclaimable\":\"2.16GB (19%)\",\"Size\":\"11.1GB\",\"TotalCount\":\"48\",\"Type\":\"Local Volumes\"}\n{\"Active\":\"0\",\"Reclaimable\":\"737.4kB\",\"Size\":\"4.916GB\",\"TotalCount\":\"31\",\"Type\":\"Build Cache\"}\n",
+      "productionAuthority": false
+    },
+    "initialHandoffSnapshot": {
+      "observedAt": "2026-10-19T10:20:49.615Z",
+      "host": {
+        "backendIdentityHash": "f5d2496af79d13ad924797355ddb026f13928873d1739f9286f6199fbad7bd56",
+        "daemonIdentityHash": "097b04099237066832a5574e26cb1708df26ff5007ae0165f7135bea76df3601",
+        "osType": "linux",
+        "provider": "docker_desktop_wsl2",
+        "kernelFamily": "microsoft_wsl2"
+      },
+      "main": {
+        "head": "29c88f0d1448a3be17a26ebd1179781e664bcff0",
+        "status": " M apps/web/lib/qa/autonomy-license.test.ts\u0000 M apps/web/lib/qa/autonomy-trace-guards.test.ts\u0000 M apps/web/lib/qa/executive-intelligence-schema-activation.test.ts\u0000 M apps/web/lib/qa/migration-guard-v2.test.ts\u0000 M apps/web/scripts/migration-guard-policy.mjs\u0000?? apps/web/lib/atlas/autonomy-runtime/bind.ts\u0000?? apps/web/lib/qa/autonomy-bind-encoder.test.ts\u0000?? apps/web/lib/qa/autonomy-bind-sql.test.ts\u0000?? apps/web/supabase/migrations/20260926120000_autonomy_trace_atomic_bind.sql\u0000",
+        "branch": "refs/heads/feat/phase3b1b-atomic-bind-provenance"
+      },
+      "retained": {
+        "head": "d3f9fcc1045026042f6bb9c0cd302ed0b7283127",
+        "status": "",
+        "branch": "refs/heads/sdf1/c435e423-d964-428b-b5c0-4060d89ce3c6"
+      },
+      "approvedBase": "d3f9fcc1045026042f6bb9c0cd302ed0b7283127",
+      "refsSha256": "872b0ea2d7e223273485140a4fb173123fc22c0ec1022838cefb864fd8bdd004",
+      "sharedConfigSha256": "b2e80f4c91bfc6082e7fed2111981576d1ac04a2ab4ffc7f000bc056289367b5",
+      "mainWorktreeConfigSha256": null,
+      "worktrees": "worktree C:/Users/Andre/Projects/Omnira/Code/ai-operating-platform\u0000HEAD 29c88f0d1448a3be17a26ebd1179781e664bcff0\u0000branch refs/heads/feat/phase3b1b-atomic-bind-provenance\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-budget-routing-20261018\u0000HEAD baa76f473004b4710862d96dfca0554756788045\u0000branch refs/heads/codex/atlas-budget-routing-20261018\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-builder-references-20261017\u0000HEAD 4bf8843d5f53705ce2b41b849234c00bed8d0ab8\u0000branch refs/heads/codex/atlas-builder-references-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-harvey-sales-20261017\u0000HEAD 2173430cc6a102176efeb8687b58278e6bcaa20a\u0000branch refs/heads/codex/atlas-harvey-sales-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-local-models-20261017\u0000HEAD d1fd17928087c20295bdbaeae88672b9995894e5\u0000branch refs/heads/codex/atlas-local-models-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-local-text-integration-20261017\u0000HEAD e3e5c78d82126c461a128880d550cd66f98a8426\u0000branch refs/heads/codex/atlas-local-text-integration-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-openviking-integration-20261015\u0000HEAD b87b97aa707344b5f8f4804abfa8f33dcd2df1e2\u0000branch refs/heads/codex/atlas-openviking-integration-20261015\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-overview-messenger-20261015\u0000HEAD ea36ec3e6c0f3cd59d50ff1b4dfb4fbfa82f4c55\u0000branch refs/heads/codex/atlas-overview-messenger-20261015\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-social-content-20261016\u0000HEAD f701b252e73a16c2357d952ab744438caa9efc48\u0000branch refs/heads/codex/atlas-social-start-20261016\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-test-data-baseline-20261017\u0000HEAD 534cd138c3b509dc6c9ce1394c33048f0169f1c8\u0000detached\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-voice-recovery-20261016\u0000HEAD 752fba987db8318d7fe824fb73adb8d3cd7f9705\u0000branch refs/heads/codex/atlas-code-worker-design-20261018\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/atlas-voice-recovery-20261016/.superpowers/sdd/2026-10-17-atlas-streaming-stt/base-entry-check\u0000HEAD 461c92a0d6c396eed5a38384d048b40cf5bf0edd\u0000detached\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/c435e423-d964-428b-b5c0-4060d89ce3c6\u0000HEAD d3f9fcc1045026042f6bb9c0cd302ed0b7283127\u0000branch refs/heads/sdf1/c435e423-d964-428b-b5c0-4060d89ce3c6\u0000locked omnira-sdf explicit-cleanup-only\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/calendar-time-recurrence-20261019\u0000HEAD 91a2f5dfe477680bfb943e01266b90ae5b92a6e3\u0000branch refs/heads/codex/calendar-time-recurrence-20261019\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/content-project-isolation-20261017\u0000HEAD 81c13b6969de79069230024dd5e5fcae37f9cb0b\u0000branch refs/heads/codex/content-news-pipeline-isolation-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/content-studio-familje-stunden-20261017\u0000HEAD c518c3091cd3793b1f5bae115760aab1adbe12ed\u0000branch refs/heads/feat/content-studio-familje-stunden-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/content-studio-the-prompt-20261017\u0000HEAD c518c3091cd3793b1f5bae115760aab1adbe12ed\u0000branch refs/heads/feat/content-studio-the-prompt-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/family-social-baseline-20261018\u0000HEAD f0a52321361b7f1a03d5336cbd7a5c8c4d769ac5\u0000detached\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/family-social-scheduling-design-20261018\u0000HEAD 39c5c32e081c1401a39b164d9329bda03c484d91\u0000branch refs/heads/codex/omnira-calendar-design-20261018\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/fs-november-teaser-v3-20261017\u0000HEAD 403481a018a554ffda7c734c860188e312b2cc60\u0000branch refs/heads/codex/fs-content-studio-november-preview-v3-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-candidate-review-notice-20261017\u0000HEAD 6bc6346743de77cae9912d8ec497631a8f518ad3\u0000branch refs/heads/codex/hb-candidate-review-notice-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-candidate-schema-20261016\u0000HEAD feabd726dc1eaa1843d4b3a47be39294ec2dc0d1\u0000branch refs/heads/codex/hb-candidate-schema-20261016\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-collab-competitors-20261016\u0000HEAD 2f21af70f6185ba119fb5d4edc31b1030abc33a9\u0000branch refs/heads/codex/hb-collab-competitors-20261016\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-collab-review-middleware-20261017\u0000HEAD 17d957ea6cd0ae9842413845c46ecc35dbc466e7\u0000branch refs/heads/codex/hb-collab-review-middleware-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-competitor-discovery-p0-20261015\u0000HEAD 0b935a45fd8eaacbaa17bd60d4d5b7fc3daa3d44\u0000branch refs/heads/codex/hb-competitor-discovery-p0-20261015\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-competitor-manual-smoke-20261014\u0000HEAD 5e8aecc09389e0ea9e3898d7c67fc56974dab952\u0000branch refs/heads/codex/hb-competitor-history-live-smoke-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-competitor-memory-p1-20261015\u0000HEAD 6ee3a6d680aba7acfe00ea7c8d99ae97400678ec\u0000branch refs/heads/codex/hb-competitor-memory-p1-20261015\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-competitor-review-p2-20261017\u0000HEAD 22a28dbd673f82c810378ebfff54767a03baba1d\u0000branch refs/heads/codex/hb-competitor-review-p2-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-inbox-activation-20261017\u0000HEAD fee18a74e54e08db96a6b8c9f924a05c67fd085a\u0000branch refs/heads/codex/hb-inbox-activation-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-inbox-shell-20261017\u0000HEAD 86b798c690bcb6a43c147d1328ae7893fae08fda\u0000branch refs/heads/codex/hb-inbox-shell-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-notifications-p0-20261017\u0000HEAD e3d3a0e61f9e13ea79278e0da32ce4beb60b12bf\u0000branch refs/heads/codex/hb-notifications-p0-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-review-cas-p21-20261017\u0000HEAD 3f7ab3537b4990eff335bdaeda29f2bd36aec000\u0000branch refs/heads/codex/hb-review-cas-p21-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-review-db-activation-20261017\u0000HEAD 8573567b27e7ccedbb7f93adbe2c453ab88bbe43\u0000branch refs/heads/codex/hb-review-db-activation-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-review-p2-consolidated-20261017\u0000HEAD 18bc37f45fa173baa528ff08e153f24262815c95\u0000branch refs/heads/codex/hb-review-p2-consolidated-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/hb-watch-readiness-20261017\u0000HEAD 1512921dcaa527a5d845484485c4978ff8521aa9\u0000branch refs/heads/codex/hb-weekly-report-p0-20261018\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-analytics-p0-20261012\u0000HEAD 4106c7400485125ae0505c2dc4a3b64ec226c50b\u0000branch refs/heads/codex/omnira-atlas-analytics-p0-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-insights-ui-v2-20261012\u0000HEAD e7c62f13c3130bb7106160e4ff68d9d417ea28df\u0000branch refs/heads/codex/omnira-atlas-insights-ui-v2-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-intelligence-p1-integrated-20261012\u0000HEAD 0c312c28860ca06c413bfa585184ef266e9793bc\u0000branch refs/heads/codex/omnira-atlas-intelligence-p1-integrated-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-intelligence-ui-20261012\u0000HEAD 8aed54816912a341c6cf908ae774d9d59e3b60d0\u0000branch refs/heads/codex/omnira-atlas-intelligence-ui-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-intelligence-ui-p1-20261012\u0000HEAD a9a718af77f01321df2950ec57f918833e70ddad\u0000branch refs/heads/codex/omnira-atlas-intelligence-ui-p1-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-p1-implementation-20261012\u0000HEAD 2dd5c0fd50fc18a203f1866a4b1cc5f21816b740\u0000branch refs/heads/codex/omnira-atlas-p1-implementation-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-p1-plan-20261012\u0000HEAD 22923263a09500ebb601a6c38a53e7f91ce808d8\u0000branch refs/heads/codex/omnira-atlas-p1-plan-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-p1-preflight-20261012\u0000HEAD 9383827792ce28eece9ede8603798c32efac07e8\u0000branch refs/heads/codex/omnira-atlas-p1-preflight-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-p1-replay-repair-20261013\u0000HEAD eae067ded151c9f321860bb1fb283e2174c46469\u0000branch refs/heads/codex/omnira-atlas-p1-replay-repair-20261013\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-p1-save-readiness-20261013\u0000HEAD 3d416b7169cc3ea4b01bf44e5f832099e7c4a262\u0000branch refs/heads/codex/omnira-atlas-p1-save-readiness-20261013\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-realtime-voice-r1\u0000HEAD 9de4c5030794b46644163b602bbb4094ad294122\u0000branch refs/heads/feat/omnira-atlas-realtime-voice-r1\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-stats-workflows-plan-20261012\u0000HEAD d77bdecc8af144d84e77eb18e364ae2e151adda1\u0000branch refs/heads/codex/omnira-atlas-stats-workflows-plan-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-voice-latency\u0000HEAD 6e553075349c7fffecd61f49a556b8ce0bb10b11\u0000branch refs/heads/feat/omnira-atlas-voice-latency\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-workflow-catalog-baseline-20261013\u0000HEAD 1d455ff1ab0bfd7ba2e92753d99fa5eec6fd5067\u0000detached\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-workflow-drafts-p1-20261012\u0000HEAD bc3cc285f5e553f31d31c6c3e6115d176a401dbe\u0000branch refs/heads/codex/omnira-atlas-workflow-drafts-p1-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-atlas-workflow-registry-p1-20261013\u0000HEAD 4fcbfd5124064fb258e4fa1ad90ce556be9efd97\u0000branch refs/heads/codex/omnira-atlas-workflow-registry-p1-20261013\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-autonomy-broker-claim-credential-1c1b\u0000HEAD 5c104d12b1a76e2279f74c10b606ecc0c543c756\u0000detached\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-autonomy-broker-control-channel-1c2\u0000HEAD a9814118935be001a0aaf55a2e5b013b7dc995dc\u0000branch refs/heads/feat/omnira-autonomy-broker-control-channel-1c2\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-autonomy-broker-identity-1c1a\u0000HEAD 1200da02469fbe2e024aed74254004c186deecb5\u0000branch refs/heads/feat/omnira-autonomy-broker-identity-1c1a\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-autonomy-workspace-materialization-1c3b\u0000HEAD 3be90edd486da1034969fc546e013487be66f6cc\u0000branch refs/heads/feat/omnira-autonomy-workspace-materialization-1c3b\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-build-cost-baseline-20261015\u0000HEAD 474bbddb6da67f3ecc5c17480a4c3786900bb53b\u0000detached\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-build-preview-plan-20261014\u0000HEAD 14086c9784b1cb1f21d2239ce9e82486a1603d4e\u0000branch refs/heads/codex/atlas-social-connections-20261016\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-calendar-implementation-20261018\u0000HEAD b053687c2aa47e9de3964a38aeda74d66ac3ba28\u0000branch refs/heads/codex/omnira-calendar-implementation-20261018\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-collaborator-full-roadmap-20261014\u0000HEAD aaf3b436a79acba128ff232536f94d302761e509\u0000branch refs/heads/codex/omnira-collaborator-full-roadmap-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-collaborator-hb-workflows-20261014\u0000HEAD b6c6126f686c4513be64d7ae3e5fe71df5b24105\u0000branch refs/heads/codex/omnira-collaborator-hb-workflows-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-collaborator-project-ui-20261014\u0000HEAD 8e142cfed453f783dd98d1f12d389345ad7484bf\u0000branch refs/heads/codex/omnira-collaborator-project-ui-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-collaborator-roles-plan-20261013\u0000HEAD 19a43b8b77745abc211faed13594b6eea2a613e9\u0000branch refs/heads/codex/omnira-collaborator-roles-plan-20261013\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-dashboard-login-integration-20261012\u0000HEAD 76888441fc9d88f635855d3eb70980e02af80f97\u0000branch refs/heads/codex/omnira-dashboard-login-integration-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-design-skills-20261014\u0000HEAD 687b8ea81da02ac8c7f0b0bf1987267abf00122b\u0000branch refs/heads/codex/omnira-design-skills-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-handlarborsen-competitor-watch-p1\u0000HEAD 54e9b8b383c6ead8922d6d7a17ef17281715174f\u0000branch refs/heads/feat/omnira-handlarborsen-competitor-watch-p1\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-handlarborsen-owner-brief\u0000HEAD 261a60e1c64bf4909bc0d8f378e2e24bfdbac1ab\u0000branch refs/heads/feat/omnira-handlarborsen-owner-brief\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-handlarborsen-trends-speed-v1b\u0000HEAD 0382c36309be2dcf3df7b41e6aba114fd6d64d2b\u0000branch refs/heads/codex/handlarborsen-trends-speed-v1b\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-handlarborsen-visual-pulse-v1a\u0000HEAD 06cecc9a9283bfadf8e25f2864b71b51f990c9d0\u0000branch refs/heads/codex/handlarborsen-visual-pulse-v1a\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-competitor-history-core-20261014\u0000HEAD 853b9ddeaa95c755e6bd0f88583ebd6e58c55b7f\u0000branch refs/heads/codex/hb-competitor-history-core-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-competitor-history-p2\u0000HEAD 1c9e091407fd56a75b84dca37bcf360bcd69159e\u0000branch refs/heads/feat/omnira-hb-competitor-history-p2\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-competitor-join-rehearsal-20261014\u0000HEAD cc0f05bf37fe653c29c615a5738ba805cb981d1f\u0000branch refs/heads/codex/hb-competitor-join-rehearsal-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-competitor-manual-preview-20261014\u0000HEAD 3cc039723cf67e5d3fe5a4fd968bee9b2465c9ea\u0000branch refs/heads/codex/hb-competitor-manual-preview-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-competitor-migration-review-20261014\u0000HEAD 5fc6a4e36f2d71d9e8d3ce77458b72f907a8f931\u0000branch refs/heads/codex/hb-competitor-migration-review-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-competitor-sources-20261014\u0000HEAD fd595f4a26298933cf70ef61683e98bee10b31e9\u0000branch refs/heads/codex/hb-competitor-sources-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-daily-collection-p1e\u0000HEAD 21a7dfbacba6d11454b01bdfb10f75019935e124\u0000branch refs/heads/feat/handlarborsen-daily-collection-p1e\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-dashboard-visual-v2-20261012\u0000HEAD 7beadd89ca1128403a83f869bd8794b8e3fa373e\u0000branch refs/heads/codex/omnira-hb-dashboard-visual-v2-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-kpi-overview-p1d3\u0000HEAD e79162d48072c7da9d4908f303e7c3fbac568325\u0000branch refs/heads/feat/handlarborsen-kpi-overview-p1d3\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-posthog-traffic-p1\u0000HEAD 419533f852f23247180d92c99b8bc768b86d25bc\u0000branch refs/heads/feat/omnira-hb-posthog-traffic-p1\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-hb-visual-competitor-20261014\u0000HEAD 881d2504fc75818a3f7048c2c2f81546b64fb392\u0000branch refs/heads/codex/hb-visual-competitor-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-login-polish-20261012\u0000HEAD 0c26bc8b750241e963cd43560ecb1149d62e1f5f\u0000branch refs/heads/codex/omnira-login-polish-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-main-857471b-sttcheck\u0000HEAD 857471b7df9567b34a95345e4b0c63267974067b\u0000detached\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-n8n-execution-adapter\u0000HEAD 30d5d75a2449f6ac4c24816ba9fb3289833364b2\u0000branch refs/heads/feat/omnira-n8n-execution-adapter\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-orb-charts-integration-20261012\u0000HEAD e91ece6c9c7c03a2529a6b8b5952a30e6ac8871e\u0000branch refs/heads/codex/omnira-orb-charts-integration-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-orb-integration-v2-20261012\u0000HEAD 05bd8e67ba8d5b01027f145e629b5379af574354\u0000branch refs/heads/codex/omnira-orb-integration-v2-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-org-membership-foundation-20261013\u0000HEAD d2f108301fbd2258356894c8baaab123d3dd312c\u0000branch refs/heads/codex/omnira-org-membership-foundation-20261013\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-org-owner-atlas-empty-state-20261014\u0000HEAD 679ba3d821f74e5b46bf4fe69bfd8ba53b0476c2\u0000branch refs/heads/codex/omnira-org-owner-atlas-empty-state-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-phase3b1b2-licensed-authority-proof\u0000HEAD ff3037f7730e2f7c644caa19a76d0e449770d4cb\u0000branch refs/heads/feat/phase3b1b2-licensed-authority-proof\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-project-spiral-spine-prototype\u0000HEAD f85e19eb25871c1e4c3d1ecb7626e8c86b5dd215\u0000branch refs/heads/feat/omnira-project-spiral-spine-prototype\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-project-ui-integration-20261011\u0000HEAD d502e94ecd3b2a7aa0f08ee77eb58939defef0ff\u0000branch refs/heads/codex/omnira-project-ui-integration-20261011\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-project-viewer-membership-p1-20261013\u0000HEAD efca359b89238d43962c646bb1d6aef5a685153b\u0000branch refs/heads/codex/omnira-project-viewer-membership-p1-20261013\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-project-viewer-preflight-20261013\u0000HEAD 59ad3200600ba72773c6a838f743709d306bef4b\u0000branch refs/heads/codex/omnira-project-viewer-preflight-20261013\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-proposal-audit-20261014\u0000HEAD e931bacf886c20eda565d6353922a46ea43f2558\u0000branch refs/heads/codex/omnira-proposal-audit-20261014\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-real-charts-v2-20261012\u0000HEAD b3b8a44c4bba1fac7105b72e1056e9d6155cc1b7\u0000branch refs/heads/codex/omnira-real-charts-v2-20261012\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-sdf1b1-code-work-persistence\u0000HEAD 1c00ebf88a0d0cd974aeec5788881a9be106f471\u0000branch refs/heads/feat/omnira-sdf1b1-code-work-persistence\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-sdf1b2-code-work-operator-plane\u0000HEAD f1c0a0291c6e5adfa676803468be777e0603019f\u0000branch refs/heads/feat/omnira-sdf1b2-code-work-operator-plane\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-sdf1c1-broker-identity\u0000HEAD 98a4f000fa6152c0298a42f181050f51e05d8093\u0000branch refs/heads/feat/omnira-sdf1c1-broker-identity\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-stt-local-acceptance\u0000HEAD 678bb05ade5c91f2a5bb1dd7d026d76aab88be21\u0000detached\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-ui-vnext\u0000HEAD 9f397e63bd2e7d945aef457fc4ee7c68d49e9f91\u0000branch refs/heads/feat/omnira-ui-vnext\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-ui-vnext-atlas-home\u0000HEAD ff7b202c9effbb0394986ecbe89cdb77c5f56028\u0000branch refs/heads/feat/ui-vnext-atlas-home\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-ui-vnext-atlas-voice-latency\u0000HEAD 678bb05ade5c91f2a5bb1dd7d026d76aab88be21\u0000branch refs/heads/feat/ui-vnext-atlas-voice-latency\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/omnira-vnext-memory-readonly\u0000HEAD b734243aa424f5d98c48c5c4c97e00e876657c4d\u0000branch refs/heads/feat/omnira-vnext-memory-readonly\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/overview-growth-atlas-20261016\u0000HEAD 6d2a641e5d67c4cf94e527b5aec941e62178d16b\u0000branch refs/heads/codex/overview-growth-atlas-20261016\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/schema-ledger-reconcile-20261017\u0000HEAD 31680478494c113ebe86ff53c1d1aee64e873157\u0000branch refs/heads/codex/schema-ledger-reconcile-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/the-prompt-creative-v2-20261017\u0000HEAD fa6a2f55bcdc7dbb8375f47082b8d4b3c8d61a5e\u0000branch refs/heads/codex/the-prompt-creative-v2-20261017\u0000\u0000worktree C:/Users/Andre/Projects/Omnira/.worktrees/the-prompt-text-fallback-20261016\u0000HEAD 20a2322e931bd2871c5c945638da0b311927dfe8\u0000branch refs/heads/codex/the-prompt-text-fallback-20261016\u0000\u0000",
+      "containers": [
+        "00839eda91e3e6bb08040960238cb02e87b8fcb75a92a70e93feede9f26c7bd8",
+        "01c0911cadce7caa369843ab1766ce408e6f5d1610bf493701d53b764379e921",
+        "0c2fee12a59070b9f72dfae4855a9e9bc327db58571cc30e3f2a98738b9fcd89",
+        "156ca5835ca03fa689db5148fb140dc26009609661b16eb76e398a6d4875991f",
+        "19235ae79602a4aab2871166000c4ca09a619d10e6e3face94fe4a9159088216",
+        "1ddfd23844a2e745aa45a224047c834cc5dcd4e4fc2440b0f4d76af78d66beb5",
+        "20013e149e63f7dcbf0cc2fbad3b6766fbd73ac34442ee33f2ea1903ca9322b9",
+        "26f54fcab5b72f1c9c7f0515fa058b8ef1303236f3064c1da839704221e6b526",
+        "2bc195b9f1d2ce88c9286078de13d0c612c36fc5dd6873b9b9b5aedfd7947cc8",
+        "2d607fabc7a967e7303b78971b11745779732e8adae55bd7023326457c35f4a2",
+        "3949ec8c333a3398a573d8a00ed27819f567b87c03b21a26b63bf9bdcd06a186",
+        "452b860aaef9b80dbb2e7263156a4813ecd5f66e0286b0d7bae28ce861e7162f",
+        "49efc21389599e12f8b1e1cdcd67a5240dce6c2ab91a881b0fb09a2e137a5792",
+        "4d9914d590d319d493e4491cf94b11a9343390e25cb59088e8e39cdf514a94b8",
+        "56dd9297cdccb61c0d6294e65b6bff7ab58314b246be43758d5f34ba242125aa",
+        "57299eb3e8cb7bac1c967fff1aac945db2d978a4ce304b23663cf26f2e8d7267",
+        "5bcefa9048b0be6c1915342299a3902020d4acc107b56f4f42ec10c23d46345d",
+        "64cbc6f8663d2c801852eb874a315f8392f5f6c1619861dc34d8646979be2dee",
+        "6673a09d2da99d0982d0e7d1a9bc5164caaf182e62b9c1cea645bb6b4965f377",
+        "7c2698da13168fbdd358df8063336a77eaa02d1df0c22dc184076b78fb682a5b",
+        "7ee8e0c3c3ba92045124c10eb3db8e28799bc1c4a9b7424b9453ae250ef08045",
+        "83128523e56634b5fa732f252c8b17ee3f7522d8dbf748034abc201d24ceee76",
+        "833ed5818fb7ffaec222288aa422f00bada5a920e93113d0a4e34d690aa925eb",
+        "8bc1a7e73be34c898f92f70187665d18bbac625a272ac36ed4aaf4e9b507e35c",
+        "8c471fa77daac344677372ee75f6f63b3068827b87c2df75f23c34ffde9fb593",
+        "8cf11d4c0ec94ad7b8ec024de518ac0e38d0b4e944299f9eceb6f99bec50e9bb",
+        "9a5a42807fbcde3705162424d79fee39947a257127daf5a10cd09469904a4a49",
+        "a0ecd3953e3d24c5814f566558d088d16b61d5490ba183f8f35ba64023b2508f",
+        "ac5761b6700e603b13c5ff02d4406117672ef317202dca715fd4c0eb9d7f8e38",
+        "ad1e32968aa4ca641055a799a730d55647bd76725c028e25dea292693180d23b",
+        "ae0eb2e6466a805ac57d1b27863e2948d603e19bdd0464261422cf7575592026",
+        "b6203adda2cf8aefd0593f255d64018e945efc89473ef7820d4a042101cd4544",
+        "b6d075368fb6342d47fdd85824eaa46186cacb5f699e210f3aa80cecc4187a07",
+        "ca69e235d4a542d203eaf2f666b371884d2ea93df74db3895aaa19c802753a90",
+        "d33b6d9485fbc86b16c4fc30057e6a22f805e80c005357d0791231291c0d6d84",
+        "db1fbeadad578c2da01d260333d207e4e1286fbed27e9b7d6a8bbde1e218b0e1",
+        "db6c6643377a2004bc265314f769bf08c993b72a8cbb64b08a98b13deb5ed2b5",
+        "e5139cf27d09c3105c4cb13f3c4732b5a557fffe1de90cec0fef4095c6e9896e",
+        "e6630949c81aef258a34f5129e11b9f9be83fe3178e7f9b55ed76538f31707d8",
+        "ea053631a41fb0f70e08f74fe0743eea6ccb6ced043322a62c586a5552ceea17",
+        "fa60f68a6334e832669a1f429b67689b53f4f89b3511ae225bc3b1f05aa5a458"
+      ],
+      "volumes": [
+        "0ee0dcb53c0cbf185b8aac5834d21ace6d96fefad707e10a969dc606c6552ff1",
+        "11ecc40dc1e7eafadc63b88c9f22155e7d621b08c5923861ad685d5b951e9c3f",
+        "16499eef08eedb0c8b648252527ca980cff2c1ffd741046feb96876b4bbee16d",
+        "20f7360752a36bc3da79a90f1122c91aec50cf893fff9ea021ecd58888773902",
+        "23e6dde6740a6ac029afcbddf9fd193b180084a82ba0d92d0ea11d33a474a78a",
+        "429a1e461baad703d78a1379108abc9a7bfc90f0ba3a7f9fcf4b3c7b0de8780a",
+        "4b83689c5a4d989a868ad84820acba1b0f3d0ea2e4b3929cfef4d1bfe434b2f5",
+        "5e57b694f25de259d047b75c1c27a97aa904ead64855116752c6d8523ca6f7a7",
+        "5ea54d276b5c97daedfcde6db2e4d09c4140532ed7d3efd9244345b533c5183c",
+        "6145d00cf41afa2343698ff7a1b24fc9bfd2831d44a8fa1ca9893cd606992b58",
+        "790d252ad63b70c0cdc7006fb5f870438b33a4a8945ea5625849a4ee81e9397d",
+        "79c8f116ba369a3e10d1ae243ece337df187f5ec9547b14212e7d5de0c7f3e35",
+        "7c1bded3d4e8464af6724adf5b9c0fe04c80670875e46f7f8e5007fda2f03eba",
+        "80e69105619a60f8bd7160c02c6403fbc992dd33703f225b49c757a88230e10c",
+        "89beac618e3ccfe5c0e66497bdfd9dabb836b1e1d6f180ae3acd229941ed7bd7",
+        "8a48ff654fe599188506ca5eb683fde64496174d22ee19bd1681b88cf1e76f62",
+        "934686eca099120485f9b95f3329a285a9bc62602da36379b8239deede27af42",
+        "9624994e4417ca68b7b1083ffe3db8240b82a74b0e79383e520f099cdde35cf7",
+        "a440541f6a106800079241ce1a5116fd161ff451983b8555327a1f7683e0a2e2",
+        "b4fac80f008d956e0efee057983c4586974e2c0097436ccd598af5dc05c8873a",
+        "b8d71a8039a7392ad085d4b5c48527e661ece121298082714b61f1f2afa4d9de",
+        "b942f56d3e2d32a540c1b2ac028ef4fd7489fb0a3605a5c561b400c5933b20b7",
+        "bb47924bf91ff413fb80eab3a6c5c5b97aabf1dab73452ab3eea2f1acbf7988d",
+        "bb8116793e60fb60deedd02c115f1c0d36b185aedd60ce9805447ab46c0b754f",
+        "bf2ee9fd0ceeda17dcc2339ebcbc3ff7b4534d8b3c7a76a15c2f2aeb229797dc",
+        "c2fcee06b068e0203813a680cba0397d9679cb93975cc88aa1e27a95fbb60017",
+        "e884afc4cf2879b31a89470a34634afe5ca38bfc8ca0e1b50fc72a0c8e5a9ecd",
+        "handlarborsen-auth-ci-node-modules",
+        "omnira-openviking-pilot-20261015_models",
+        "omnira-openviking-pilot-20261015_state",
+        "omnira-openviking-pilot-20261015_state_lifecycle_20261015",
+        "omnira-openviking-pilot-20261015_state_semantic",
+        "omnira-openviking-pilot-20261015_state_vectors",
+        "omnira-openviking-probe-deps-20261015",
+        "supabase_db_Handlarborsen",
+        "supabase_db_Handlarborsen-auth-ci",
+        "supabase_db_Handlarborsen-pilot-e2e",
+        "supabase_db_handlarborsen-atlas-test-data-local",
+        "supabase_db_hb-posthog-readiness-20261013",
+        "supabase_db_omnira-stt-local",
+        "supabase_edge_runtime_Handlarborsen",
+        "supabase_edge_runtime_omnira-stt-local",
+        "supabase_storage_Handlarborsen",
+        "supabase_storage_Handlarborsen-auth-ci",
+        "supabase_storage_Handlarborsen-pilot-e2e",
+        "supabase_storage_handlarborsen-atlas-test-data-local",
+        "supabase_storage_hb-posthog-readiness-20261013",
+        "supabase_storage_omnira-stt-local"
+      ],
+      "images": [
+        "sha256:002193c9ff840a4946918641901bb6aa9e2036dc9ff7590e2b11e91d1e06bf86",
+        "sha256:06ddc7962e11ab0f4f0334fd05671e97c30ea202f6e6a7113800bd3d6e416108",
+        "sha256:0e5f906573693feaa1e21057ebdcfdb5bd5021f050b2dc7c9deceb629c7da2a8",
+        "sha256:105a2584129c9600aebed6f5ac49ca4371c92b996ecd1af7179750333e9e2120",
+        "sha256:145325b7e39f8ef4931d6e8cfd3f6f4d655de09d72a2ccc96d9513542c2202bd",
+        "sha256:1736a63078f5922b198c4cbe50f80ab9a2d3b54fe8b7b6cfb2e9dc5dbbc12c6b",
+        "sha256:1b53405d8680a09d6f44494b7990bf7da2ea43f84a258c59717d4539abf09f6d",
+        "sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6",
+        "sha256:354e46f6c5d5e046a2002b78f2d43931824b67110df42a40ab4204e269d1acd0",
+        "sha256:37a38e48e9338cd7e89dfeb487f37b02ebfcd9cb23111bed2d345e79d37d6dd6",
+        "sha256:3c16f0769a58c732a92dc1e7badcf327c86a24eec4bcd559801ba6b9783a3c54",
+        "sha256:4905784b715cb22b265d26405067649544b40faffff89fd8dc7a28736f42afb0",
+        "sha256:4ae1890ba0c6fd24d975c34f3aa201a01d410171c8ba6eddeb675ef92341a62d",
+        "sha256:5dcf67db0ee378caa87f3395cb9484ebe3e97bb0334d119f2ac33116e00c5773",
+        "sha256:645d0e45446181f3e9d87efeef637b494615f32365befff00e2d2b0fe8535fef",
+        "sha256:6942962433a569e87f228b4d4ab7e11db5deca64e43babb3a038443ad6c4f1bb",
+        "sha256:6a32896ae2d1ae2ea2d05ecaf6ed6c8a6b091739b469a8cf860ee89b2604d28f",
+        "sha256:85258123312dc496ad4c2ed832154a65e9746f84df0d6d09b44229ff9230c08e",
+        "sha256:8720d206683918b18341010107264993a07910cc80f9bcff1f7f5ab3e9bdf1c7",
+        "sha256:8b0b3f68d9a8667e183b481ff74f5d72eedc1e8b70f6bde2aab1e5d79d16df62",
+        "sha256:8c6f4c7c155d7fd2bc2781987eeeaf5d4072c1913542b32ec34dad7267f13842",
+        "sha256:926d40fd6eeeebd346b5c358a63de2a10ec995371cd93dd22f1843200694b1a6",
+        "sha256:965e2dfb5a23a0d6541b6106541e777b303656ebabd4e878746b189d550c0a66",
+        "sha256:9a079ac1c94d89629262822a4bd1902d5b1be4adb464e5a0a8fd078aaed72158",
+        "sha256:a82f96c8845c1bcab128cfe17b4e325943ab949b657e9629a0bcc66f1d363179",
+        "sha256:ad45164b7548bf5820ed7be714789c17ac2865edce79a09cfb4c3756c3d365a8",
+        "sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667",
+        "sha256:b3bfedb107413abb3b8cb0d0874b0414a1dceb3d55bc0c778de6ad22d1f7dc86",
+        "sha256:b574528fe109c8343c1247155734d03df8c34b462f342dca0ccc20244fc36ef9",
+        "sha256:ba88b97954573852eb18524d07507724000be02dbc94e22ee32c186ea006f1b6",
+        "sha256:bb596a0d169b85ddd81d8b6d3a2ff6d5baf5fca10b97f575ebc647c3dff62b3d",
+        "sha256:c0c25187a6b835e65a6f6e6c6b39d090e832d40e6de5186f2c038e0411944232",
+        "sha256:c52405002a890ca9fcf77978671c57f3a988e03174afb277f84ac65bc917013c",
+        "sha256:c60a83cd79cfce80db5266acb8bdd0908eee8abe8ff559a5f786aa504c251ccf",
+        "sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d",
+        "sha256:ca92d617e905953c3f852e7e88061f7039460e733522e3f0c21bc6ae946b2558",
+        "sha256:d155c6718ed9a9f990d159a2ab7c0a3f16944dbb6d0a0344557421042acfe0df",
+        "sha256:d878dcd9dba73b66d1c2c19aeaf53d07704e71604d93013225be1d1c51475237",
+        "sha256:d954ab82c949c1135e554437143f148dc8d10d155b8c16b36f50af0d2a11c4d9",
+        "sha256:e43d86f81570b58e2a5d048d32694635f467cfd34348ede6fd7ceeb89825d842",
+        "sha256:e4b6110f496ddcd3b3ceb8a23caf59016586a23b5cd363099fbc7b224152ebbc",
+        "sha256:ed9b00c609e77e99c79b93f1178255ebc271868920f2c69a8d166bd5634ed10d",
+        "sha256:eda7c5e68719e9c8287e78c017118407b48df904a51c935f5ab6098b8c0bc6bc",
+        "sha256:efd0ab5780c2d9ab1f0f869571a00d5edb17793bff4cce4a2792e3eb0ffc7562",
+        "sha256:f66c721c71b576f5854c78f86df0c78a98368d900dcf62e4ddd96c6913139999",
+        "sha256:f704b3222e3c772610865e016153d606a3f94f0a55a7548a903b3f6d7f3f8270"
+      ],
+      "buildCacheObservation": "{\"Active\":\"30\",\"Reclaimable\":\"7.263GB (17%)\",\"Size\":\"41.15GB\",\"TotalCount\":\"46\",\"Type\":\"Images\"}\n{\"Active\":\"31\",\"Reclaimable\":\"6.204GB (98%)\",\"Size\":\"6.312GB\",\"TotalCount\":\"41\",\"Type\":\"Containers\"}\n{\"Active\":\"13\",\"Reclaimable\":\"2.16GB (19%)\",\"Size\":\"11.1GB\",\"TotalCount\":\"48\",\"Type\":\"Local Volumes\"}\n{\"Active\":\"0\",\"Reclaimable\":\"737.4kB\",\"Size\":\"4.916GB\",\"TotalCount\":\"31\",\"Type\":\"Build Cache\"}\n",
+      "productionAuthority": false
+    },
+    "transientContainerRead": {
+      "observedAt": "2026-10-19T10:21:48.583Z",
+      "containerId": "0c2fee12a59070b9f72dfae4855a9e9bc327db58571cc30e3f2a98738b9fcd89",
+      "exit": 1,
+      "output": "\n",
+      "stderr": "error: no such object: 0c2fee12a59070b9f72dfae4855a9e9bc327db58571cc30e3f2a98738b9fcd89\n",
+      "readOnly": true
+    },
+    "comparisons": {
+      "main": true,
+      "retained": true,
+      "approvedBase": true,
+      "sharedConfigSha256": true,
+      "mainWorktreeConfigSha256": true,
+      "refsSha256": false,
+      "worktrees": false
+    },
+    "deltas": {
+      "images": {
+        "beforeCount": 44,
+        "afterCount": 46,
+        "added": [
+          "sha256:354e46f6c5d5e046a2002b78f2d43931824b67110df42a40ab4204e269d1acd0",
+          "sha256:d954ab82c949c1135e554437143f148dc8d10d155b8c16b36f50af0d2a11c4d9"
+        ],
+        "removed": []
+      },
+      "containers": {
+        "beforeCount": 40,
+        "afterCount": 40,
+        "added": [],
+        "removed": []
+      },
+      "volumes": {
+        "beforeCount": 48,
+        "afterCount": 48,
+        "added": [],
+        "removed": []
+      }
+    },
+    "priorSiblingScratchAbsent": true,
+    "retainedSourceBranch": "codex/atlas-code-worker-design-20261018",
+    "nativeAttemptTombstonesRetained": true
+  }
 }

@@ -79,7 +79,10 @@ def parse_quote(path: Path, now: datetime | None = None) -> dict:
         sym, instrument_id = CONTRACTS[root]
         if record.get("rawSymbol") != sym or str(record.get("instrumentId")) != instrument_id:
             raise blocked("VENDOR_CONTRACT_MAPPING_CHANGED")
-        if record.get("mappingStart") > DAY or record.get("mappingEnd") < END[:10]:
+        mapping_start, mapping_end = record.get("mappingStart"), record.get("mappingEnd")
+        if not isinstance(mapping_start, str) or not isinstance(mapping_end, str) or (
+            mapping_start > DAY or mapping_end < END[:10]
+        ):
             raise blocked("MAPPING_NOT_DAY_VALID")
     if seen != set(CONTRACTS):
         raise blocked("MISSING_CONTRACT")
@@ -160,17 +163,23 @@ def verify_dbn_store(path: Path, sym: str, expected_id: int, start: str, end: st
        (df["volume"] >= 0)).all()):
         raise blocked("DBN_INVALID_OHLCV")
     ix = df.index
-    if ix.tz is None or not ix.is_monotonic_increasing or ix.has_duplicates:
+    if not hasattr(ix, "tz") or ix.tz is None or not ix.is_monotonic_increasing or ix.has_duplicates:
         raise blocked("DBN_BAD_TIMESTAMPS")
+    # Index must contain finished minute bucket starts; preserve exchange gaps
+    # rather than interpolating missing intervals.
+    if any(t.second != 0 or t.microsecond != 0 for t in ix):
+        raise blocked("DBN_NOT_MINUTE_ALIGNED")
     if ix[0].isoformat() < start.replace("Z", "+00:00") or ix[-1].isoformat() >= end.replace("Z", "+00:00"):
         raise blocked("DBN_OUT_OF_REQUEST_WINDOW")
+    missing_intervals = sum(max(0, int((ix[i] - ix[i - 1]).total_seconds() // 60) - 1)
+                            for i in range(1, len(ix)))
     return {
         "rootSymbol": sym,
         "vendorInstrumentId": expected_id,
         "recordCount": int(len(df)),
         "firstBarUtc": ix[0].isoformat(),
         "lastBarUtc": ix[-1].isoformat(),
-        "missingOneMinuteIntervals": int(((ix[1:] - ix[:-1]).total_seconds() / 60 - 1).clip(0).sum()),
+        "missingOneMinuteIntervals": missing_intervals,
         "noInterpolationPerformed": True,
         "sourceSettled": False,
         "canonicalBacktestReady": False,

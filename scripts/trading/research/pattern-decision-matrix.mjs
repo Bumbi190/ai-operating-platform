@@ -77,10 +77,14 @@ const compareSummary=x=>Object.freeze({
  tradePermitted:false,
  distanceTicks:x.distanceTicks??null,side:x.side??null
 })
-const record=(gate,id,title,question,variants,notes)=>Object.freeze({
+const record=(gate,id,title,question,variants,notes,operatorSelectedVariant=null)=>Object.freeze({
  gate,id,title,question,variants:Object.freeze(variants),
- notes,approvedVariant:null,humanApprovalRequired:true,
- status:'UNDECIDED',eligibleForStrategy:false
+ notes,operatorSelectedVariant,
+ // An operator may approve an isolated interpretation without approving the
+ // complete canonical detector. Never treat this as gate-level promotion.
+ approvedVariant:null,humanApprovalRequired:true,
+ status:operatorSelectedVariant===null?'UNDECIDED':'OPERATOR_CHOICE_CONFIRMED_AWAITING_CANONICAL',
+ eligibleForStrategy:false
 })
 
 /** Returns only an immutable, nonauthoritative review matrix. */
@@ -105,7 +109,8 @@ export function buildPatternDecisionMatrix(){
   record('GATE-01','IFVG_CROSSING','Inverterad FVG – wick eller stängningskurs?',
     'Ska en iFVG bekräftas först när en färdig candle stänger strikt bortom zonen, eller räcker en wick?',
     {CLOSE_BEYOND_FAR_EDGE:signalSummary(ifvgClose),WICK_BEYOND_FAR_EDGE:signalSummary(ifvgWick)},
-    'Samma syntetiska gap; olika bekräftelsecandle. Avgör även termen inversion kontra implied FVG.'),
+    'Inversion FVG-begreppet är bekräftat. Operatören valde färdig 1m CLOSE strikt förbi bortre zonkanten; formation/expiry/övriga kriterier kvarstår.',
+    'CLOSE_BEYOND_FAR_EDGE'),
   record('GATE-01','IFVG_FORMATION','FVG bildad före manipulation?',
     'Får gapet ha bildats innan manipulationen avslutas, eller enbart efteråt?',
     {ANY:signalSummary(orderAny),AFTER_MANIPULATION:signalSummary(orderAfter)},
@@ -145,6 +150,18 @@ export function buildPatternDecisionMatrix(){
       userConfirmed:true,
       detectionRulesApproved:false,
       evidence:'Operator confirmation in trading review conversation, 2026-10-19'
+    })
+  }),
+  // OPERATOR SUBDECISION ONLY. No approvedDetectionVersion or trade signal.
+  confirmedSubdecisions:Object.freeze({
+    'GATE-01':Object.freeze({
+      iFvgCrossing:'CLOSE_BEYOND_FAR_EDGE',
+      barPolicy:'COMPLETED_1M_CANDLE_ONLY',
+      comparison:'STRICT_GREATER_THAN_FAR_EDGE_FOR_LONG_OR_STRICT_LESS_FOR_SHORT',
+      alternativeRejected:'WICK_BEYOND_FAR_EDGE',
+      operatorConfirmed:true,
+      canonicalDetectorApproved:false,
+      source:'Operator selected option B in trading review, 2026-10-19'
     })
   }),
   canonicalRulesChanged:false,

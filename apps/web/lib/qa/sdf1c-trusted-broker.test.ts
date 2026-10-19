@@ -217,11 +217,11 @@ describe('SDF-1C1 repository, secret and no-execution boundary', () => {
     const source = roots.flatMap(sourceFiles).map(file => readFileSync(file, 'utf8')).join('\n')
     expect(source).not.toMatch(/git\s+(?:fetch|worktree|commit|push|merge|rebase|reset)|gh\s+pr|vercel\s+(?:deploy|promote)/i)
     expect(source).not.toMatch(/@anthropic-ai\/sdk|from ['"]openai['"]|apply[_-]?patch|command[_-]?runner|worker[_-]?invoke/i)
-    // SDF-1C3A: exactly FOUR modules may import child_process — the identity signer's native helper
-    // client and the isolation substrate's single infrastructure runner and the fixed read-only Windows host helper.
-    expect(source.match(/from ['"]node:child_process['"]/g) ?? []).toHaveLength(4)
+    // Exactly five source-owned infrastructure transports may import child_process.
+    // The Windows workspace/probe transport separately has no operational callers.
+    expect(source.match(/from ['"]node:child_process['"]/g) ?? []).toHaveLength(5)
     const importers = roots.flatMap(sourceFiles).filter(file => /from ['"]node:child_process['"]/.test(readFileSync(file, 'utf8'))).map(file => file.slice(ROOT.length + 1).replaceAll('\\', '/')).sort()
-    expect(importers).toEqual(['apps/code-broker/src/identity/keychain.ts', 'apps/code-broker/src/identity/windows-cng.ts', 'apps/code-broker/src/isolation/process-runner.ts', 'apps/code-broker/src/isolation/windows/host-qualification.ts'])
+    expect(importers).toEqual(['apps/code-broker/src/identity/keychain.ts', 'apps/code-broker/src/identity/windows-cng.ts', 'apps/code-broker/src/isolation/process-runner.ts', 'apps/code-broker/src/isolation/windows/host-qualification.ts', 'apps/code-broker/src/isolation/windows/workspace-helper.ts'])
     expect(readFileSync(resolve(ROOT, 'apps/code-broker/src/identity/keychain.ts'), 'utf8')).toContain("execFileAsync(this.helperPath, args")
     expect(existsSync(resolve(ROOT, 'apps/web/app/api/atlas/code-work/claim'))).toBe(false)
     expect(existsSync(resolve(ROOT, 'apps/web/app/api/atlas/code-work/preflight'))).toBe(false)

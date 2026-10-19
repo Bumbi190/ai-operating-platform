@@ -84,6 +84,8 @@ internal static class ProbeSmoke {
   }
   var absent=new FakeDocker{Attempt=Guid.NewGuid()};var cleanup=await Engine(absent).CleanupAsync(absent.Attempt,CancellationToken.None);
   check("cleanup_success_is_not_probe_success",cleanup.Status=="cleaned"&&cleanup.ContainerRemoved&&cleanup.Uid==null&&cleanup.Gid==null&&cleanup.Inspected.Length==0&&absent.Creates==0&&absent.Starts==0);
+  var blocked=new FakeDocker{Attempt=Guid.NewGuid()};var blockedResult=await new WindowsSandboxProbe(blocked,new BlockedHost()).RunAsync(blocked.Attempt,CancellationToken.None);
+  check("blocked_host_has_zero_http_mutations",blockedResult.Status=="blocked"&&blockedResult.Reason=="host_unqualified"&&blocked.Requests.Count==0&&blocked.Creates==0&&blocked.Starts==0);
   var slow=new FakeDocker{Attempt=Guid.NewGuid(),DelayMs=2000};var clock=System.Diagnostics.Stopwatch.StartNew();
   var timed=await Engine(slow).RunAsync(slow.Attempt,CancellationToken.None);clock.Stop();
   check("overall_probe_deadline_includes_cleanup",clock.ElapsedMilliseconds<31000&&timed.Status!="ok");
@@ -100,4 +102,28 @@ internal static class ProbeSmoke {
   using var doc=JsonDocument.Parse(output);var r=doc.RootElement;
   check("actual_cleanup_of_absent_attempt_has_no_probe_claim",r.GetProperty("status").GetString()=="cleaned"&&r.GetProperty("containerRemoved").GetBoolean()&&r.GetProperty("uid").ValueKind==JsonValueKind.Null&&!r.GetProperty("productionAuthority").GetBoolean());
  }
+
+ internal static void DumpSpec()=>Console.WriteLine(JsonSerializer.Serialize(ProbeSpecification.Create(Guid.Parse("33333333-3333-4333-8333-333333333333"),"sha256:"+new string('d',64))));
+ internal static async Task CreateRealFixture(){
+  using var input=WorkspaceJson.Document(await Console.In.ReadToEndAsync());WorkspaceJson.Keys(input.RootElement,"attemptId");
+  var text=WorkspaceJson.String(input.RootElement,"attemptId");if(!WorkspaceJson.Uuid(text,true))throw new Exception("invalid fixture attempt");var attempt=Guid.Parse(text);
+  using var deadline=new CancellationTokenSource(30000);
+  if(!await new NativeHostPreflight().IsQualifiedAsync(deadline.Token))throw new Exception("real fixture host unqualified");
+  var session=new DockerProbeSession(new NativeDockerPeerConnector());await session.InitializeAsync(deadline.Token);var image=await session.ImageAsync(deadline.Token);
+  string? id=null;bool retain=false;
+  try{
+   id=await session.CreateAsync(attempt,image,deadline.Token);
+   using var inspect=await session.InspectAsync(id,deadline.Token);if(inspect==null)throw new Exception("real fixture missing");
+   var root=inspect.RootElement;ProbeSpecification.Verify(root,attempt,image,id,beforeStart:true);
+   var config=root.GetProperty("Config");var host=root.GetProperty("HostConfig");
+   var projected=new{
+    attemptId=text,containerId=id,imageId=image,retained=true,
+    config=new{user=config.GetProperty("User"),env=config.GetProperty("Env"),entrypoint=config.GetProperty("Entrypoint"),cmd=config.GetProperty("Cmd"),workingDir=config.GetProperty("WorkingDir"),tty=config.GetProperty("Tty")},
+    host=new{network=host.GetProperty("NetworkMode"),readonlyRootfs=host.GetProperty("ReadonlyRootfs"),privileged=host.GetProperty("Privileged"),capDrop=host.GetProperty("CapDrop"),securityOpt=host.GetProperty("SecurityOpt"),pids=host.GetProperty("PidsLimit"),memory=host.GetProperty("Memory"),swap=host.GetProperty("MemorySwap"),cpus=host.GetProperty("NanoCpus"),tmpfs=host.GetProperty("Tmpfs")},
+    mounts=root.GetProperty("Mounts"),state=root.GetProperty("State").GetProperty("Status"),productionAuthority=false
+   };
+   Console.WriteLine(JsonSerializer.Serialize(projected));retain=true;
+  }finally{if(!retain&&id!=null)await new WindowsSandboxProbe().CleanupAsync(attempt,CancellationToken.None);}
+ }
+ sealed class BlockedHost:IHostPreflight{public Task<bool> IsQualifiedAsync(CancellationToken cancellation)=>Task.FromResult(false);}
 }

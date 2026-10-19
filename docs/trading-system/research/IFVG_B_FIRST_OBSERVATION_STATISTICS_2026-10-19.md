@@ -44,7 +44,7 @@ Samtliga dessa mätfält är `null` eller explicit `false` i JSON eftersom rikti
 - `scripts/trading/research/ifvg-observation-report.mjs` – offline-rapport i **HTML, JSON och CSV**; den innehåller inga exekveringsknappar, fjärrscripts, nätverksanrop eller autentisering.
 - `scripts/trading/research/ifvg-observation-report.test.mjs` – ytterligare 7 tester som hindrar rapporten från att felaktigt presentera finansiell strategi-prestanda.
 
-**De 19 nya statistikkontrollerna passerade på användarens stationära Windows-dator, Node 22.22.3.** En riktad GUI-kontroll av den genererade HTML-rapporten gjordes även i headless Chrome. Inga API-anrop till Databento, börsen, brokers eller externa AI-modeller har körts.
+**Slutlig samlad testkörning: 83/83 PASS, 0 FAIL**, Windows Node 22.22.3, inklusive 64 befintliga forskningstester och 19 nya statistikkontroller. Alla testfiler hämtades från en och samma pinned GitHub-commit till en isolerad testmapp på stationära. En riktad GUI-kontroll av den genererade HTML-rapporten gjordes även i headless Chrome. Inga API-anrop till Databento, börsen, brokers eller externa AI-modeller har körts.
 
 **Rapporter skapade lokalt på stationära:**
 

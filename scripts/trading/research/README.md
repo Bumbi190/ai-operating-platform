@@ -17,3 +17,17 @@ The OHLCV inspector accepts a self-authored **normalized** representation (`ts_e
 Read the complete provider evaluation and official source links at `docs/trading-system/research/HISTORICAL_DATA_PROVIDER_EVALUATION_2026-10-19.md`.
 
 Do not move this module to `apps/web/lib/trading` or allow it to drive a trading signal: GATE-08 and GATE-01–04 remain open.
+
+## Offline normalized-batch audit (2026-10-19)
+
+The earlier 20-test preflight now rejects Databento's `UNDEF_PRICE` sentinel and constrains `instrument_id` to unsigned 32-bit, `publisher_id` to unsigned 16-bit. Added `databento-normalized-batch-audit.mjs` with **16 additional** tests. It accepts self-supplied **normalized synthetic records** only, checks order, duplicates, contract identity and requested-window containment, and reports a deterministic digest of normalized field-tuples plus candidate unobserved minutes. None of this proves raw-provider authenticity, a market-data entitlement, an actual exchange session or source `SETTLED` state.
+
+Run both suites locally with Node (no npm packages, API keys or data downloads):
+
+```bash
+node --test scripts/trading/research/databento-historical-preflight.test.mjs scripts/trading/research/databento-normalized-batch-audit.test.mjs
+```
+
+Recorded result: **36/36 PASS** on Windows Node 22.22.3. This is not a true historical backtest or provider integration. In particular, Databento's CSV/JSON pretty-price output must never be passed as raw 1e-9 integer fields without a separately reviewed format decoder.
+
+See `docs/trading-system/research/DATABENTO_OFFLINE_INTAKE_AUDIT_2026-10-19.md`.

@@ -137,13 +137,13 @@ All paths nedan är relativa till `apps/web`, utom dokumentation.
 **Consumes:** Tasks 1–5; approved design and this plan. Preserves existing private test and all contact holds.
 **Produces:** tested preparation control, migration evidence, protected preview and actual Atlas read evidence. No customer send activation.
 
-- [ ] Run owned PostgreSQL suite with timing races, scoped timing/sales/approval/schema tests and `node ../../node_modules/typescript/bin/tsc --noEmit`. Run new and existing affected browser cases. Expected no novel failures; skipped integration is not proof. Use prior recorded full-suite failure identities as baseline and broaden only for unresolved concerns.
-- [ ] Perform one independent complete-increment review of contracts, SQL security/locking, UI and Atlas. Resolve Critical/Important findings with named RED→GREEN regressions; no repeated reviewer loop. Preserve source of review and concrete rulings.
-- [ ] Verify new migration against current Supabase changelog/docs and current ledger, RLS/ACL/advisors, immutable empty-table state and ordinary migration guard. Apply only the reviewed additive/replacement migration for this deliverable when qualified; no seed rule/history rows and no approval bypass flags. Record exact ledger delta.
-- [ ] Pin/inspect protected Vercel preview with ordinary build checks. No merge or production alias promotion; no local worker upgrade required for this server/UI change.
-- [ ] On real project, read timing status through API/UI/Atlas without saving rules/history or starting jobs. Expected 139held, missing timing/history reported honestly, zero enabled initial selectors; preserved contact/memory hashes, offers2/initialjobs0/reply1/send1/events4 unless an independently authorized concurrent change is identified.
-- [ ] Save metadata-only proof and a safe collapsed/status screenshot. Mark actual results separately from synthetic success; do not claim verified82addresses, continuous Sent/Resend sync or enforced customer dispatch.
-- [ ] Update plan checkboxes, PR body and ledger with exact remaining limits. Commit `docs: verify contact timing preparation with customer sending disabled`.
+- [x] Run owned PostgreSQL suite with timing races, scoped timing/sales/approval/schema tests and `node ../../node_modules/typescript/bin/tsc --noEmit`. Run new and existing affected browser cases. Expected no novel failures; skipped integration is not proof. Use prior recorded full-suite failure identities as baseline and broaden only for unresolved concerns.
+- [x] Perform one independent complete-increment review of contracts, SQL security/locking, UI and Atlas. Resolve Critical/Important findings with named RED→GREEN regressions; no repeated reviewer loop. Preserve source of review and concrete rulings.
+- [x] Verify new migration against current Supabase changelog/docs and current ledger, RLS/ACL/advisors, immutable empty-table state and ordinary migration guard. Apply only the reviewed additive/replacement migration for this deliverable when qualified; no seed rule/history rows and no approval bypass flags. Record exact ledger delta.
+- [x] Pin/inspect protected Vercel preview with ordinary build checks. No merge or production alias promotion; no local worker upgrade required for this server/UI change.
+- [x] On real project, read timing status through API/UI/Atlas without saving rules/history or starting jobs. Expected 139held, missing timing/history reported honestly, zero enabled initial selectors; preserved contact/memory hashes, offers2/initialjobs0/reply1/send1/events4 unless an independently authorized concurrent change is identified.
+- [x] Save metadata-only proof and a safe collapsed/status screenshot. Mark actual results separately from synthetic success; do not claim verified82addresses, continuous Sent/Resend sync or enforced customer dispatch.
+- [x] Update plan checkboxes, PR body and ledger with exact remaining limits. Commit `docs: verify contact timing preparation with customer sending disabled`.
 
 ## Self-review and handoff
 

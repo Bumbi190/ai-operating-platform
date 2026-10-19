@@ -205,7 +205,8 @@
       ],
       "histories": 0,
       "ledgerCount": 171
-    }
+    },
+    "ledgerSqlHashMatchesCanonical": true
   },
   "review": {
     "source": "/root/timing_final_review",
@@ -272,7 +273,7 @@
       "historicalFailureIdentitiesUnchanged": 402,
       "newFailure": "Registry metadata total173 did not include two new entries; corrected to175 and schema suite76/76 passed",
       "newReproducibleFailuresAfterScopedFix": 0,
-      "note": "Full suite is not green; one full run before review fixes, affected SQL/browser/type/schema/guard suites rerun after fixes. 26 unrelated existing load-error suites remain."
+      "note": "Full suite is not green; one full run before review fixes, affected SQL/browser/type/schema/guard suites rerun after fixes. 26 unrelated load-error suites remain."
     }
   },
   "actualRead": {
@@ -289,7 +290,19 @@
     "allUnknownReminderCount": true
   },
   "preview": {
-    "status": "pending"
+    "status": "READY",
+    "deploymentId": "dpl_56tD3hqeYWGnyQ3MhyFoNZRjSwoG",
+    "sourceSha": "63fc9db139ba783a04f5685f47a93940e1003789",
+    "url": "https://ai-operating-platform-brfxgmuq9-bumbi190s-projects.vercel.app/projects/handlarborsen/sales",
+    "target": null,
+    "guard": {
+      "enforced": 134,
+      "applied": 134,
+      "knownLedgerNames": 171,
+      "override": false
+    },
+    "productionPromotion": false,
+    "merged": false
   },
   "remainingLimits": [
     "No owner rule or history revisions saved live; both tables empty.",
@@ -324,5 +337,80 @@
       "cost": "Less granular rollback"
     }
   ],
-  "deferredMinorFindings": []
+  "deferredMinorFindings": [],
+  "final": {
+    "held": 139,
+    "rules": 0,
+    "offers": 2,
+    "memories": 17,
+    "sendJobs": 1,
+    "histories": 0,
+    "replyJobs": 1,
+    "memoryHash": "2e08254138637bb150769e67c58cffbe",
+    "sendEvents": 4,
+    "contactHash": "8f4453f74cf90dfbbee077d26937229a",
+    "initialJobs": 0
+  },
+  "actualUI": {
+    "initialSectionsClosed": 8,
+    "contactSelectors": 139,
+    "enabled": 0,
+    "mobile": {
+      "viewport": 390,
+      "documentWidth": 390
+    },
+    "actualApiReadClicked": true,
+    "rulesMissing": true,
+    "historyMissing": true,
+    "unknownNotZero": true,
+    "screenshot": "2026-10-19-sales-contact-timing.png"
+  },
+  "actualAtlas": {
+    "conversationId": "d3c6648d-df65-4aed-bedc-341e34ff2993",
+    "toolMessageId": "4184d71f-7a23-4001-ab2f-c5cd41e3f4f0",
+    "assistantMessageId": "bbb81ee4-a483-407b-8265-06101a12023b",
+    "tool": "get_sales_contact_timing",
+    "contactCount": 139,
+    "allowed": 0,
+    "rules": null,
+    "sending": false,
+    "correctReviewLink": true,
+    "note": "One real project-bound read verified; free-form wording is not universally deterministic."
+  },
+  "advisors": {
+    "security": [
+      {
+        "name": "rls_enabled_no_policy",
+        "level": "INFO",
+        "count": 123
+      },
+      {
+        "name": "function_search_path_mutable",
+        "level": "WARN",
+        "count": 20
+      },
+      {
+        "name": "anon_security_definer_function_executable",
+        "level": "WARN",
+        "count": 7
+      },
+      {
+        "name": "authenticated_security_definer_function_executable",
+        "level": "WARN",
+        "count": 8
+      },
+      {
+        "name": "auth_leaked_password_protection",
+        "level": "WARN",
+        "count": 1
+      }
+    ],
+    "performance": {
+      "newInfo": 2,
+      "reason": "Self-referencing project/previous revision foreign keys lack referencing indexes. Revisions are immutable and parent revision update/delete are prohibited; parent lookup uses unique(project,id). Accepted INFO for bounded append-only metadata; reconsider indexes if maintenance/delete workload is introduced.",
+      "remediation": "https://supabase.com/docs/guides/database/database-linter?lint=0001_unindexed_foreign_keys",
+      "warningCount": 40
+    },
+    "newWarn": 0
+  }
 }

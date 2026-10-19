@@ -74,8 +74,8 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Atlas metrics and test-data control migrations applied by the owner-approved October18 release.
 // Source-only reconciliation: sales_reply_sending already applied as ledger20261018074615.
 // Exact SQL SHA256 80158d54a4cc5d7f15901f0ed8e67dc7fa04a8738054e14fb1c7be1cf484e49e.
-export const EXPECTED_CANONICAL_SQL_COUNT = 147
-export const EXPECTED_ENFORCED_COUNT = 133
+export const EXPECTED_CANONICAL_SQL_COUNT = 148
+export const EXPECTED_ENFORCED_COUNT = 134
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([
@@ -308,3 +308,5 @@ export function evaluateAppliedMigrationLedger(appliedNames, repositoryState) {
 // Integrated main8d91af9: four already-live social scheduling migrations; sales reply source included once. Counts145/131; frozen14/30 unchanged.
 
 // The Prompt news review is enforced and applied as ledger 20261018182224; frozen 14/30 unchanged.
+
+// Exact already-applied sales_contact_timing source (ledger20261019073559), SHA2568c651b4962445328991f837ff509b7146139921f8437ac2bfd7afbff0af27476. Frozen14/30 unchanged.

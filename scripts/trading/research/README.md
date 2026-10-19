@@ -73,3 +73,10 @@ node --input-type=module -e "import {buildPatternDecisionMatrix} from './scripts
 
 Actual recorded run on Windows Node v22.22.3: **45 PASS, 0 FAIL** (34 prior + 11 new). Read `docs/trading-system/research/PATTERN_GATE_DECISION_REVIEW_2026-10-19.md` before asking for a human decision. Do not copy a candidate variant into the Strategy Engine merely because the synthetic case produced an observation.
 
+
+## iFVG formation feedback – user-relayed contact reply (2026-10-19)
+
+The user shared a reply saying **both** FVG creation before and after manipulation can occur, but **after-manipulation formation (B) is usually more common**. This is qualitative feedback, not verified market frequency or authorization to reject A. The research matrix and pending-gate register now capture the remark separately, while `creationVsManipulationOrder` remains `null`, GATE-01 remains `OPEN`, and no numerical frequency, eligibility age, automatic tie-break or version promotion is invented.
+
+Run all four GATE-01–04 research suites: **52/52 tests passed** on the Windows desktop after adding three formation-feedback guards. This includes the previous 49 tests. No live market data, CI, broker, API or order operations.
+

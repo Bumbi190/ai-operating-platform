@@ -1638,5 +1638,38 @@
       "lib/trading/session-calendar/import-discipline.test.ts",
       "AD. an answer cannot depend on where or when it runs names an explicit timeZone on every formatter it builds"
     ]
-  ]
+  ],
+  "timingReruns": [
+    {
+      "identity": [
+        "lib/qa/project-command-center.test.ts",
+        "project command center · renders from canonical project data names the project the route resolved, with its slug and stored stop state"
+      ],
+      "status": "passed"
+    },
+    {
+      "identity": [
+        "lib/qa/vnext-settings.test.ts",
+        "settings · Project → Platform → Verified External Account → Credential the rendered surface states the project on every form, and each form sends its own project id"
+      ],
+      "status": "passed"
+    }
+  ],
+  "rerunHistoricalFailures": [
+    [
+      "lib/qa/project-command-center.test.ts",
+      "project command center · legacy rollback keeps the legacy body byte-identical to the page it replaced"
+    ],
+    [
+      "lib/qa/project-command-center.test.ts",
+      "project command center · Marknadsplatsstatistik link the view renders it as a plain link, with no project name of its own"
+    ]
+  ],
+  "newReproducibleFailures": [],
+  "fullRunNote": "Initial full run collected15172tests before four extra classifier regression cases were added. All four additions and final parser are covered by the final64-test scoped run; no full-green claim.",
+  "finalFocused": {
+    "total": 64,
+    "passed": 64,
+    "failed": 0
+  }
 }

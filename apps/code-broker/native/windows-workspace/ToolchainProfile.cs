@@ -13,7 +13,7 @@ internal static class ToolchainProfile {
   ["packages/local-text-contract/package.json"]="662e5cee1fd9e5bb13002f31793f54b50ea0a1eb67ab34a2931977f583c27cb3"
  };
  // Explicit operator setup output is enrolled in source; runtime never discovers or enrolls.
- internal static NodeToolchainProfile? Current=>new("sha256:3c16f0769a58c732a92dc1e7badcf327c86a24eec4bcd559801ba6b9783a3c54","e6ef6c4447bcc35f1868ca253e6114c5ef21dbe5aee62068bf3fecc780119f54","3e7cb7974f1c3ce261ca9f698937a633d8062cc4f763b9fcf9d319e547a9c77e","0aeb2cd8a20c5b57c5e2a57283860e0b7d21e07831c90c3ec4b6b923a95d1ed3","10.9.9",new[]{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin","NODE_VERSION=22.23.3","YARN_VERSION=1.22.22","HOME=/tmp","LANG=C.UTF-8","NODE_ENV=test"});
+ internal static NodeToolchainProfile? Current=>new("sha256:354e46f6c5d5e046a2002b78f2d43931824b67110df42a40ab4204e269d1acd0","b8b302e97dfafcadc65df8c92936f05ff8bb78ec5c6a84f611cf568c8a40113e","09ae7bd0ce9eb212590114471c596b2fc4bbd11054865f963ca5ca5f3ad7dfd4","0aeb2cd8a20c5b57c5e2a57283860e0b7d21e07831c90c3ec4b6b923a95d1ed3","10.9.9",new[]{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin","NODE_VERSION=22.23.3","YARN_VERSION=1.22.22","HOME=/tmp","LANG=C.UTF-8","NODE_ENV=test"});
  internal static NodeToolchainProfile RequireReady(NodeToolchainProfile? p){
   if(p==null)throw new WorkspaceException("toolchain_unprovisioned");
   if(!ProbeSpecification.ImageId(p.ImageId)||!ProbeSpecification.Hash(p.RecipeSha256)||!ProbeSpecification.Hash(p.RunnerSha256)||!ProbeSpecification.Hash(p.InventorySha256)||!Regex.IsMatch(p.NpmVersion,@"^[0-9]+\.[0-9]+\.[0-9]+$"))throw new WorkspaceException("toolchain_mismatch");

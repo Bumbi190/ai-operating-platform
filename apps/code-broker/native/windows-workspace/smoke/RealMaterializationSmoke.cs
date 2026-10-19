@@ -21,4 +21,17 @@ internal static class RealMaterializationSmoke {
   await lease.ValidateUnchangedAsync(deadline.Token);
   Console.WriteLine(JsonSerializer.Serialize(new{attemptId=a.ToString(),containerId=id,volumeName=MaterializationSpecification.VolumeName(a),manifestSha256=i.ManifestSha256,imageId=p.ImageId,toolchainProfileHash=i.ProfileHash,backendIdentityHash=session.BackendIdentityHash,daemonIdentityHash=session.DaemonIdentityHash,state="created",inspect=inspect.RootElement,productionAuthority=false}));
  }
+
+ internal static async Task CheckAbsence(){
+  var input=await Console.In.ReadToEndAsync();if(System.Text.Encoding.UTF8.GetByteCount(input)>4096)throw new Exception("input bound");
+  var (r,a)=MaterializationContracts.Parse(input,false);using var deadline=new CancellationTokenSource(30000);
+  if(!await new NativeHostPreflight().IsQualifiedAsync(deadline.Token))throw new Exception("host unqualified");
+  var journal=new MaterializationAttemptJournal(Path.Combine(Environment.CurrentDirectory,"apps/code-broker/.native/windows-workspace/attempts"));
+  using var guard=new MaterializationAttemptGuard(a);using var record=journal.Begin(r,a,true);var prior=journal.ReadPeer(r,a)??throw new Exception("original peer missing");
+  var session=new DockerMaterializationSession(new NativeDockerPeerConnector());await session.InitializeAsync(deadline.Token);
+  if(prior.BackendIdentityHash!=session.BackendIdentityHash||prior.DaemonIdentityHash!=session.DaemonIdentityHash)throw new Exception("original peer changed");
+  using var volume=await session.VolumeAsync(a,deadline.Token);using var container=await session.ContainerAsync(MaterializationSpecification.ContainerName(a),deadline.Token);
+  if(volume!=null||container!=null||journal.ReadPeer(r,a)!=prior)throw new Exception("original resources not proven absent");
+  Console.WriteLine(JsonSerializer.Serialize(new{schema="sdf.windows_materialization_absence_observation.v1",attemptId=a.ToString(),absent=true,toolchainProfileHash=prior.ToolchainProfileHash,backendIdentityHash=session.BackendIdentityHash,daemonIdentityHash=session.DaemonIdentityHash,productionAuthority=false}));
+ }
 }

@@ -24,7 +24,7 @@ import {runWindowsSourceFixture,cleanupWindowsSourceFixture} from '../../../code
 import {parseMaterializationReport} from '../../../code-broker/src/isolation/windows/source-contracts'
 
 describe.runIf(required&&process.platform==='win32')('actual offline source fixture',()=>{
- const proofPath=join(WS,'real-source-fixture-proof.json'),cleanupPath=join(WS,'real-materialization-cleanup-proof.json')
+ const cleanupPath=join(WS,'real-materialization-cleanup-proof.json')
  const request=()=>JSON.parse(readFileSync(join(ROOT,'docs/verification/2026-10-19-materialization-planning-evidence.json'),'utf8')).retainedWorkspace.request
  async function smoke(mode:string,input:unknown){
   const child=execFile('C:\\Program Files\\dotnet\\dotnet.exe',[SMOKE,mode],{cwd:ROOT,shell:false,windowsHide:true,timeout:180000,maxBuffer:262144,env:{...process.env,SDF_WINDOWS_FIXTURE_ROOT:WS}})
@@ -52,16 +52,19 @@ describe.runIf(required&&process.platform==='win32')('actual offline source fixt
    writeFileSync(cleanupPath,JSON.stringify({request:r,attemptId,created,outcome},null,2))
   }
   const p=JSON.parse(readFileSync(cleanupPath,'utf8'));expect(p.outcome.status).toBe('observed');expect(p.outcome.report.status).toBe('cleaned');expect(p.outcome.report.fixture).toBeNull();expect(p.outcome.report.manifest).toBeNull()
-  const again=await cleanupWindowsSourceFixture(r,p.attemptId);expect(again.status).toBe('observed');if(again.status==='observed'){expect(again.report.status).toBe('cleaned');expect(again.report.containerRemoved&&again.report.volumeRemoved).toBe(true)}
+  const again=await smoke('check-materialization-absence',{...r,schema:'sdf.windows_materialization_request.v1',attemptId:p.attemptId});expect(again.absent).toBe(true);expect(again.productionAuthority).toBe(false)
  },210000)
  it('executes the pinned Git snapshot once offline and rechecks retained proof and absence',async()=>{
-  const r=request()
+  const r=request(),active=JSON.parse(readFileSync(join(WS,'recovery-current.json'),'utf8'))
+  if(![1,2].includes(active.number)||active.status!=='operator_authorized')throw Error('No bounded operator recovery selection')
+  const image=JSON.parse(readFileSync(join(WS,'recovery-build-'+active.number+'.json'),'utf8'));if(image.status!=='ready'||image.imageId!==active.imageId)throw Error('Recovery image correlation failed')
+  const proofPath=join(WS,'recovery-source-proof-'+active.number+'.json'),intentPath=join(WS,'recovery-source-intent-'+active.number+'.json')
   if(!existsSync(proofPath)){
-   const intent=join(WS,'real-source-fixture-intent.json')
-   if(existsSync(intent))throw Error('Source fixture intent exists; reconcile before any further invocation')
-   writeFileSync(intent,JSON.stringify({request:r,phase:'invoking-once',at:new Date().toISOString()},null,2))
+   const intent=JSON.parse(readFileSync(intentPath,'utf8'))
+   if(intent.phase!=='prepared'||intent.imageId!==image.imageId||JSON.stringify(intent.request)!==JSON.stringify(r))throw Error('Attempt already dispatched or unapproved')
+   writeFileSync(intentPath,JSON.stringify({...intent,phase:'dispatched-once',at:new Date().toISOString()},null,2))
    const outcome=await runWindowsSourceFixture(r)
-   writeFileSync(proofPath,JSON.stringify({request:r,outcome,recordedAt:new Date().toISOString()},null,2))
+   writeFileSync(proofPath,JSON.stringify({request:r,outcome,imageId:image.imageId,number:active.number,recordedAt:new Date().toISOString()},null,2),{flag:'wx'})
   }
   const p=JSON.parse(readFileSync(proofPath,'utf8'));expect(p.outcome.status,JSON.stringify(p.outcome)).toBe('observed')
   if(p.outcome.status!=='observed')throw Error('No native report')

@@ -38,22 +38,33 @@ function source(expected){
  function walk(relative){for(const name of fs.readdirSync(ROOT+(relative?'/'+relative:''))){const r=relative?relative+'/'+name:name;if(!allowed.has(r))throw Error('unexpected source');const s=fs.lstatSync(ROOT+'/'+r);if(s.isDirectory())walk(r);else if(r!=='node_modules'&&!s.isFile())throw Error('source type')}}
  walk('');return m
 }
-const redact=s=>s.replace(/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g,'[redacted-key]').replace(/(?:sk-proj-|sk-ant-|sk-)[A-Za-z0-9_-]{20,}/g,'[redacted-token]').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'')
+const redact=s=>s.replace(/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|$)/g,'[redacted-key]').replace(/(?:sk-proj-|sk-ant-|sk-)[A-Za-z0-9_-]{20,}/g,'[redacted-token]').replace(/(?:AKIA|ASIA)[A-Z0-9]{16}/g,'[redacted-access-key]').replace(/["']?(?:api_key|apiKey|secret_access_key|password|private_key)["']?\s*[:=]\s*(["'])[^"'\r\n]{20,}\1/gi,'[redacted-assignment]').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f]/g,'')
+const STAGES=['entry','dependency-before','source-before','writable-owned-volume','fixture-launch','fixture-result','source-after','dependency-after','versions']
+let stage='entry',failureOut=Buffer.alloc(0),failureErr=Buffer.alloc(0)
+export function failureDiagnostic(phase,out,error){
+ if(!STAGES.includes(phase)||!Buffer.isBuffer(out)||!Buffer.isBuffer(error)||out.length+error.length>262144)throw Error('diagnostic scope')
+ const clipped=b=>{let text=redact(b.toString('utf8'));while(Buffer.byteLength(text)>32768)text=text.slice(0,Math.floor(text.length*.95));return text}
+ return {schema:'sdf.node_fixture_failure.v1',stage:phase,code:'fixed_fixture_failed',stdoutSha256:sha(out),stderrSha256:sha(error),redactedStdout:clipped(out),redactedStderr:clipped(error)}
+}
 async function run(){
  if(process.argv.length!==2||process.getuid()!==10001||process.getgid()!==10001)throw Error('fixed nonroot entrypoint only')
  const inventoryHash=process.env.OMNIRA_DEPENDENCY_INVENTORY_SHA256,manifestHash=process.env.OMNIRA_SOURCE_MANIFEST_SHA256
- verifyDependencyInventory(inventoryHash);source(manifestHash)
+ stage='dependency-before';verifyDependencyInventory(inventoryHash);stage='source-before';source(manifestHash)
+ stage='writable-owned-volume'
  const probe=ROOT+'/.omnira-write-probe';const fd=fs.openSync(probe,'wx',0o600);fs.writeSync(fd,'owned');fs.closeSync(fd);fs.unlinkSync(probe)
  fs.copyFileSync('/opt/omnira/vitest-fixture.config.mjs','/tmp/omnira-vitest.config.mjs',fs.constants.COPYFILE_EXCL)
  const start=Date.now();let stdout=Buffer.alloc(0),stderr=Buffer.alloc(0),overflow=false
+ stage='fixture-launch'
  const child=spawn('/usr/local/bin/node',['--max-old-space-size=192','/opt/omnira/deps/node_modules/vitest/vitest.mjs','run','--config','/tmp/omnira-vitest.config.mjs','--reporter=json','--outputFile=/tmp/omnira-fixture-result.json'],{cwd:ROOT+'/apps/web',shell:false,env:{PATH:'/usr/local/bin:/usr/bin:/bin',HOME:'/tmp',TMPDIR:'/tmp',LANG:'C.UTF-8',NODE_ENV:'test',NODE_OPTIONS:'--max-old-space-size=192'},stdio:['ignore','pipe','pipe']})
  for(const [stream,name] of [[child.stdout,'out'],[child.stderr,'err']])stream.on('data',b=>{if(stdout.length+stderr.length+b.length>65536){overflow=true;child.kill('SIGKILL');return}if(name==='out')stdout=Buffer.concat([stdout,b]);else stderr=Buffer.concat([stderr,b])})
  const timer=setTimeout(()=>child.kill('SIGKILL'),90000);const exit=await new Promise((resolve,reject)=>{child.on('error',reject);child.on('close',(code,signal)=>resolve(signal?null:code))});clearTimeout(timer)
+ failureOut=stdout;failureErr=stderr;stage='fixture-result'
  if(exit!==0||overflow)throw Error('fixture process failed')
  const resultBytes=fs.readFileSync('/tmp/omnira-fixture-result.json');if(resultBytes.length>262144)throw Error('fixture result too large');const counts=validateVitestReport(resultBytes.toString('utf8'))
- source(manifestHash);verifyDependencyInventory(inventoryHash)
+ stage='source-after';source(manifestHash);stage='dependency-after';verifyDependencyInventory(inventoryHash)
+ stage='versions'
  const versions={nodeVersion:process.versions.node,typeScriptVersion:JSON.parse(fs.readFileSync('/opt/omnira/deps/node_modules/typescript/package.json','utf8')).version,vitestVersion:JSON.parse(fs.readFileSync('/opt/omnira/deps/node_modules/vitest/package.json','utf8')).version}
  if(versions.nodeVersion!=='22.23.3'||versions.typeScriptVersion!=='5.9.3'||versions.vitestVersion!=='2.1.9')throw Error('runtime version mismatch')
  console.log(JSON.stringify({schema:'sdf.node_fixture_result.v1',uid:process.getuid(),gid:process.getgid(),...versions,...counts,exitCode:exit,durationMs:Date.now()-start,sourceManifestSha256:manifestHash,beforeAfterSourceEqual:true,stdoutSha256:sha(stdout),stderrSha256:sha(stderr),redactedStdout:redact(stdout.toString('utf8')),redactedStderr:redact(stderr.toString('utf8'))}))
 }
-if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))run().catch(()=>{console.error('omnira_fixed_fixture_failed');process.exitCode=1})
+if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))run().catch(()=>{console.error(JSON.stringify(failureDiagnostic(stage,failureOut,failureErr)));process.exitCode=1})

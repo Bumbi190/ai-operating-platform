@@ -32,6 +32,7 @@ if(args.Length==1&&args[0]=="toolchain-image"){
  using var image=JsonDocument.Parse(bytes.ToArray(),new JsonDocumentOptions{MaxDepth=16});WorkspaceJson.Unique(image.RootElement);var profile=ToolchainProfile.RequireReady(ToolchainProfile.Current);
  var id=ToolchainProfile.VerifyImage(profile,image.RootElement);Console.WriteLine(JsonSerializer.Serialize(new{verifiedForFixturePreparation=true,imageId=id,toolchainProfileHash=ToolchainProfile.Hash(profile),productionAuthority=false}));return 0;
 }
+if(args.Length==1&&args[0]=="check-materialization-absence"){await RealMaterializationSmoke.CheckAbsence();return 0;}
 if(args.Length==1&&args[0] is "create-materialization" or "check-real-source"){await RealMaterializationSmoke.Run(args[0]=="create-materialization");return 0;}
 if(args.Length==1&&args[0]=="probe-spec"){ProbeSmoke.DumpSpec();return 0;}
 if(args.Length==1&&args[0]=="create-probe"){await ProbeSmoke.CreateRealFixture();return 0;}

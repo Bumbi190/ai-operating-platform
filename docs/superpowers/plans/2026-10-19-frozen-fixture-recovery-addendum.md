@@ -1,6 +1,6 @@
 # Atlas frozen fixture recovery — bounded proposal
 
-Status: written for André's review; NOT approved or executed.
+Status: approved by André's continue instruction2026-10-19 11:29:55 Europe/Stockholm; executing within the existing parent Task4. Original failed evidence is retained.
 Parent: docs/superpowers/plans/2026-10-19-windows-source-materialization.md.
 Existing one-shot setup completed. Actual attempt42dcda59-6d77-4514-a6cf-25356e1f0f86 returned fixture_failed; both original-daemon removals confirmed. Its image-owned runner emitted only omnira_fixed_fixture_failed, so the failing internal phase is not yet established. Do not invent a diagnosis.
 

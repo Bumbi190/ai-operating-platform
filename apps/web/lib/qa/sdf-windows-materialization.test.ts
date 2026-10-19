@@ -4,7 +4,7 @@ import {describe,it,expect} from 'vitest'
 // Operator-only ESM validators are tested directly without launching setup.
 import {validateLock,verifyDescriptor,validateRecipe,validateContextPaths} from '../../../code-broker/scripts/provision-windows-toolchain.mjs'
 // Image-owned ESM runner is imported without invoking its fixed entrypoint.
-import {validateVitestReport} from '../../../code-broker/toolchain/windows-fixture/fixture-runner.mjs'
+import {validateVitestReport,failureDiagnostic} from '../../../code-broker/toolchain/windows-fixture/fixture-runner.mjs'
 // Image-owned inventory validator has no host runtime consumer.
 import {validateInventoryRecords} from '../../../code-broker/toolchain/windows-fixture/dependency-inventory.mjs'
 // Operator-only reconciliation guard has no runtime caller.
@@ -67,4 +67,46 @@ describe('source-owned fixture facade',()=>{
  it('rejects another binding or attempt',async()=>{for(const mutate of [(r:any)=>r.attemptId='44444444-4444-4444-8444-444444444444',(r:any)=>r.binding.fence++]){const r=makeMaterializationReport();mutate(r);const f=setup({response:{status:'decoded',value:r}});expect((await f.runner.run(request())).status).toBe('unavailable')}})
  it('never substitutes cleanup and execution outcomes',async()=>{const f=setup({response:{status:'decoded',value:makeMaterializationCleanup()}});expect((await f.runner.run(request())).status).toBe('unavailable');const g=setup();expect((await g.runner.cleanup(request(),ATTEMPT)).status).toBe('unavailable')})
  it('cleanup reuses the identifier without reserving or creating a new attempt',async()=>{const f=setup({response:{status:'decoded',value:makeMaterializationCleanup()}});expect((await f.runner.cleanup(request(),ATTEMPT)).status).toBe('observed');expect(f.events).toEqual([['invoke','cleanup-materialization',{...request(),schema:'sdf.windows_materialization_cleanup.v1',attemptId:ATTEMPT}]])})
+})
+
+describe('bounded fixed-runner failure evidence',()=>{
+ it('identifies the failed fixed phase without publishing an exception or source',()=>{
+  const raw='password="'+('p'.repeat(24))+'" sk-proj-'+('x'.repeat(24))+' AKIAABCDEFGHIJKLMNOP'
+  const r=failureDiagnostic('fixture-result',Buffer.from(raw),Buffer.from('child failed'))
+  expect(r.schema).toBe('sdf.node_fixture_failure.v1');expect(r.stage).toBe('fixture-result');expect(r.code).toBe('fixed_fixture_failed');expect(r.stdoutSha256).toMatch(/^[a-f0-9]{64}$/);expect(r.redactedStdout).not.toContain('p'.repeat(24));expect(r.redactedStdout).not.toContain('x'.repeat(24));expect(r.redactedStdout).not.toContain('AKIAABCDEFGHIJKLMNOP');expect(r.redactedStderr).toBe('child failed')
+ })
+ it('bounds diagnostics and rejects invented phase identifiers',()=>{
+  const r=failureDiagnostic('dependency-before',Buffer.alloc(131072,120),Buffer.alloc(131072,121))
+  expect(Buffer.byteLength(r.redactedStdout)+Buffer.byteLength(r.redactedStderr)).toBeLessThanOrEqual(65536)
+  expect(()=>failureDiagnostic('caller-command',Buffer.alloc(0),Buffer.alloc(0))).toThrow()
+ })
+})
+
+import {recoveryRecipe,authorizeRecoveryBuild} from '../../../code-broker/scripts/recover-windows-fixture.mjs'
+describe('bounded offline recovery setup',()=>{
+ it('uses only the frozen local parent and reviewed fixture files with no install or RUN',()=>{
+  const r=recoveryRecipe();expect(r).toContain('FROM localhost/omnira-sdf-frozen:3c16f0769a58c732a92dc1e7badcf327c86a24eec4bcd559801ba6b9783a3c54');expect(r).not.toMatch(/RUN|https:|npm|ADD|COPY \. \./);expect(r).toContain('COPY --chmod=0444 fixture-runner.mjs vitest-fixture.config.mjs /opt/omnira/')
+ })
+ it('cannot replay a build or authorize a correction without a diagnostic failure',()=>{
+  expect(authorizeRecoveryBuild('diagnostic',false,null)).toBe(1);expect(()=>authorizeRecoveryBuild('diagnostic',true,null)).toThrow();expect(()=>authorizeRecoveryBuild('other',false,null)).toThrow()
+  expect(()=>authorizeRecoveryBuild('corrective',false,null)).toThrow()
+  expect(()=>authorizeRecoveryBuild('corrective',false,{status:'failed',reason:'fixture_failed',containerRemoved:true,volumeRemoved:true,diagnosticStage:'fixture-result',rootCause:'fixed evidence'})).toThrow()
+  expect(()=>authorizeRecoveryBuild('corrective',true,{status:'failed'})).toThrow();expect(()=>authorizeRecoveryBuild('corrective',false,{status:'failed',reason:'cleanup_retained'})).toThrow()
+ })
+})
+
+describe('frozen root metadata correction',()=>{
+ it('repairs only the observed top-level mode and restores the nonroot image user',()=>{
+  const recipe=recoveryRecipe('corrective')
+  expect(recipe).toContain('USER 0:0\nRUN [\"/bin/chmod\",\"0555\",\"/opt/omnira/deps\"]\nUSER 10001:10001')
+  expect(recipe.split('\n').filter((l:string)=>l.startsWith('RUN '))).toEqual(['RUN ["/bin/chmod","0555","/opt/omnira/deps"]'])
+  expect(recipe).toContain('dependency-inventory.mjs')
+ })
+})
+describe('evidence-bound corrective build',()=>{
+ it('refuses to repair a different root or any changed dependency bytes',()=>{
+  const row={status:'failed',reason:'fixture_failed',containerRemoved:true,volumeRemoved:true,diagnosticStage:'dependency-before',rootCause:'final-copy-root-mode',archiveVerification:{expectedEntries:86893,actualEntries:86893,receiptSha256:'0aeb2cd8a20c5b57c5e2a57283860e0b7d21e07831c90c3ec4b6b923a95d1ed3',deltas:[{path:'.',expected:{type:'directory',mode:365,uid:0,gid:0},actual:{type:'directory',mode:493,uid:0,gid:0}}],extra:[]}}
+  expect(authorizeRecoveryBuild('corrective',false,row)).toBe(2)
+  expect(()=>authorizeRecoveryBuild('corrective',false,{...row,archiveVerification:{...row.archiveVerification,deltas:[{...row.archiveVerification.deltas[0],path:'node_modules/file.js'}]}})).toThrow()
+ })
 })

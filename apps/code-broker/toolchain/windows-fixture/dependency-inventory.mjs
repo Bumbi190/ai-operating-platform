@@ -19,7 +19,8 @@ export function validateInventoryRecords(entries){
  if(bytes>4294967296)throw Error('inventory bytes')
  return sha(Buffer.from(JSON.stringify(entries)))
 }
-function fileHash(p){const h=createHash('sha256'),fd=fs.openSync(p,'r'),buffer=Buffer.alloc(1048576);try{for(;;){const n=fs.readSync(fd,buffer,0,buffer.length,null);if(n===0)break;h.update(buffer.subarray(0,n))}}finally{fs.closeSync(fd)}return h.digest('hex')}
+const HASH_BUFFER=Buffer.alloc(1048576)
+function fileHash(p){const h=createHash('sha256'),fd=fs.openSync(p,'r'),buffer=HASH_BUFFER;try{for(;;){const n=fs.readSync(fd,buffer,0,buffer.length,null);if(n===0)break;h.update(buffer.subarray(0,n))}}finally{fs.closeSync(fd)}return h.digest('hex')}
 export function snapshotDependencyInventory(root=ROOT){
  const entries=[]
  function walk(relative){

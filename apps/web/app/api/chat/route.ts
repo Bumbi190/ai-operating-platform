@@ -1,3 +1,4 @@
+import {classifyInboxReportRequest,buildInboxReport} from '@/lib/sales/inbox/report'
 import {SALES_TOOLS,SALES_TOOL_NAMES,SALES_GUIDE,handleSalesTool} from '@/lib/sales/atlas-tools'
 import {salesEnabled} from '@/lib/sales/feature'
 import {studioSystemPrompt} from '@/lib/website-build/studio/chat-context'
@@ -806,6 +807,26 @@ export async function POST(request: Request) {
       if(plan.conversationId!==owned)throw new WebsiteBuildError('NOT_FOUND',404)
       if(plan.currentRevision.revisionId!==visiblePlan.revisionId||plan.currentRevision.sha256!==visiblePlan.sha256)throw new WebsiteBuildError('PLAN_STALE',409)
     }catch(error){return buildErrorResponse(error)}
+  }
+
+  // Exact saved inbox reports are rendered by the server, not re-counted or
+  // timezone-labelled by the model. Every turn re-reads through the existing
+  // owner/project/conversation RPC boundary; client prose is only an intent hint.
+  const inboxReportKind = !studioContext && !websitePlanRef && !rawBuildContext
+    ? classifyInboxReportRequest(lastUserText, messages.slice(0,-1).filter(m=>m.role==='user'&&typeof m.content==='string').map(m=>m.content as string))
+    : null
+  if(inboxReportKind){
+    const report=await buildInboxReport(db,{userId,allowedProjectIds},await resolveOwnedConversationId(),inboxReportKind,new Date())
+    await saveMessage('user',lastUserText)
+    const frames:Record<string,unknown>[]=[]
+    for(const evidence of report.evidence){
+      frames.push({event:'tool_call',tool:evidence.tool,input:evidence.input},{event:'tool_result',tool:evidence.tool,result:evidence.result})
+      await saveMessage('tool',null,{kind:'tool_result',...evidence})
+    }
+    await saveMessage('assistant',report.text)
+    const totalMs=Date.now()-tStart
+    frames.push({event:'text',text:report.text},{event:'timing',reqType:'sales_inbox_report',contextMs:totalMs,firstTokenMs:totalMs,serverTotalMs:totalMs},{event:'done'})
+    return new Response(frames.map(frame=>'data: '+JSON.stringify(frame)+'\n\n').join(''),{headers:{'content-type':'text/event-stream','cache-control':'private, no-store'}})
   }
 
   // True when the action ledger already shows a delegation — corroborates truthful

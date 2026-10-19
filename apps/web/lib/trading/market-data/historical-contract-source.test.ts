@@ -31,6 +31,53 @@ const report = (extra: Record<string, unknown> = {}) => ({
 })
 
 describe('C3C source boundary: deterministic acceptance', () => {
+  it('REVIEW: async source receives an immutable, validated original request', async () => {
+    const mutable = {
+      contract: {root: 'NQ' as const, cycle: {year: 2026, quarterMonth: 3 as const}},
+      timeframe: '1m' as const, from: FROM, to: TO,
+    }
+    const source = {
+      read: async (arg: typeof REQUEST) => {
+        expect(Object.isFrozen(arg)).toBe(true)
+        expect(Object.isFrozen(arg.contract)).toBe(true)
+        expect(Object.isFrozen(arg.contract.cycle)).toBe(true)
+        expect(arg).not.toBe(mutable)
+        return {kind:'OBSERVATIONS' as const, contract:arg.contract, sourceState:'SETTLED' as const,
+          coverage:{from:arg.from,to:arg.to}, candles:[candle()]}
+      },
+    }
+    const result = await readHistoricalContractChunk(source, mutable)
+    expect(result.kind).toBe('ACCEPTED')
+    if (result.kind === 'ACCEPTED') expect(result.coverage.from).toBe(FROM)
+  })
+
+  it('REVIEW: modifying caller window during await cannot redefine accepted coverage', async () => {
+    const mutable = {
+      contract: {root: 'NQ' as const, cycle: {year: 2026, quarterMonth: 3 as const}},
+      timeframe: '1m' as const, from: FROM, to: TO,
+    }
+    let release!: () => void
+    const delay = new Promise<void>((resolve) => {release = resolve})
+    const source = {
+      read: async (original: typeof REQUEST) => {
+        expect(original.from).toBe(FROM)
+        await delay
+        return {
+          kind: 'OBSERVATIONS' as const,
+          contract: original.contract,
+          sourceState: 'SETTLED' as const,
+          coverage:{from:asTimestamp('2026-01-15T07:02:00Z'),to:TO},
+          candles:[candle('2026-01-15T07:02:00Z')],
+        }
+      },
+    }
+    const promise = readHistoricalContractChunk(source, mutable)
+    mutable.from = asTimestamp('2026-01-15T07:02:00Z')
+    release()
+    const result = await promise
+    expect(result).toMatchObject({kind:'INVARIANT_VIOLATION',problem:'INVALID_COVERAGE'})
+  })
+
   it('REVIEW: provider-owned OHLCV cannot mutate after validation', () => {
     const mutable = {...candle()}
     const accepted = inspectHistoricalContractResult(REQUEST, report({candles:[mutable]}))

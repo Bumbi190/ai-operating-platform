@@ -94,6 +94,67 @@ test('REVIEW-03: iFVG formation-before-manipulation creates a decision fork',()=
  assert.equal(r.variants.AFTER_MANIPULATION.observationCount,0)
  assert.equal(r.approvedVariant,null)
 })
+test('REVIEW-16: contact says BOTH original-FVG formation orders may be valid, with B more common',()=>{
+ const feedback=matrix.formationReviewFeedback
+ assert.equal(feedback.gate,'GATE-01')
+ assert.equal(feedback.reportedFrom,'USER_SHARED_CONTACT_FEEDBACK')
+ assert.equal(feedback.bothFormationOrdersPlausible,true)
+ assert.equal(feedback.beforeManipulationAllowedInPrinciple,true)
+ assert.equal(feedback.afterManipulationAllowedInPrinciple,true)
+ assert.equal(feedback.qualitativelyMoreCommon,'AFTER_MANIPULATION')
+ assert.equal(feedback.numericalFrequencyEvidence,null)
+ assert.equal(feedback.olderGapAgeLimitApproved,null)
+ assert.equal(feedback.prioritizationAlgorithmApproved,false)
+ assert.equal(feedback.fullRuleApproved,false)
+ assert.equal(feedback.operatorSelectedVariant,null)
+ const formation=at('IFVG_FORMATION')
+ assert.equal(formation.status,'UNDECIDED')
+ assert.equal(formation.approvedVariant,null)
+ assert.equal(formation.operatorSelectedVariant,null)
+ assert.equal(formation.eligibleForStrategy,false)
+ assert.equal(matrix.approvals['GATE-01'],null)
+ assert.equal(matrix.gateStatus['GATE-01'],'OPEN')
+})
+test('REVIEW-17: a confirmed post-manipulation gap remains valid in BOTH offline research variants',()=>{
+ const start=Date.parse('2026-10-15T14:00:00.000Z')
+ const rows=[
+  ['105','106','104','104.5'],['102','103','100','101'],
+  ['99','100','98','99'],['99','106','99','105']
+ ]
+ const candles=rows.map(([open,high,low,close],i)=>({
+  openTime:new Date(start+i*60000).toISOString(),
+  open,high,low,close,complete:true
+ }))
+ const data={source:'SYNTHETIC',calendar:'SYNTHETIC_CONTIGUOUS',settled:true,candles}
+ const manipulationCompleteAt=new Date(start+60000).toISOString()
+ const a=inspectIfvg(data,{manipulationCompleteAt,formation:'ANY',crossing:'CLOSE_BEYOND_FAR_EDGE'})
+ const b=inspectIfvg(data,{manipulationCompleteAt,formation:'AFTER_MANIPULATION',crossing:'CLOSE_BEYOND_FAR_EDGE'})
+ assert.equal(a.status,'RESEARCH_OBSERVATIONS_ONLY')
+ assert.equal(b.status,'RESEARCH_OBSERVATIONS_ONLY')
+ assert.equal(a.observations.filter(x=>x.side==='LONG').length,1)
+ assert.equal(b.observations.filter(x=>x.side==='LONG').length,1)
+ assert.equal(a.observations[0].entryPermitted,false)
+ assert.equal(b.observations[0].entryPermitted,false)
+})
+test('REVIEW-18: pending registry contains feedback without silently converting it to canonical B-only',()=>{
+ const raw=readFileSync(new URL('../../../docs/trading-system/research/pattern-gates-pending-v0.1.json',import.meta.url),'utf8')
+ const registry=JSON.parse(raw)
+ const g=registry.rules.find(rule=>rule.gate==='GATE-01')
+ assert.equal(g.decisions.creationVsManipulationOrder,null)
+ assert.equal(g.decisions.fvgFormationBoundary,null)
+ assert.equal(g.humanRelayedExpertFeedback.bothFormationOrdersPotentiallyValid,true)
+ assert.equal(g.humanRelayedExpertFeedback.qualitativePrevalence,'B_REPORTED_MORE_COMMON')
+ assert.equal(g.humanRelayedExpertFeedback.actualNumericalPrevalence,null)
+ assert.equal(g.humanRelayedExpertFeedback.BOnlyRequirementApproved,false)
+ assert.equal(g.humanRelayedExpertFeedback.automaticPriorityOrTieBreakApproved,false)
+ assert.equal(g.humanRelayedExpertFeedback.preManipulationFvgAgeLimitApproved,null)
+ assert.equal(g.humanRelayedExpertFeedback.gapMitigationPolicyApproved,null)
+ assert.equal(g.status,'OPEN')
+ assert.equal(g.approvedDetectionVersion,null)
+ assert.equal(registry.canProduceStrategySignals,false)
+ assert.equal(registry.canAuthorizeExecution,false)
+ assert.equal(registry.promotion.automatedApprovalAllowed,false)
+})
 test('REVIEW-04: CISD competing anchors change outcome time',()=>{
  const row=at('CISD_ANCHOR')
  assert.equal(row.variants.FIRST_RUN_OPEN.firstIndex,3)

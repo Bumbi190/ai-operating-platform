@@ -12,9 +12,10 @@ if(args.Length>0&&args[0]=="child") {
  await Task.Delay(Timeout.Infinite);return 0;
 }
 var names=new List<string>();
-void Check(string name,bool value){if(!value)throw new Exception(name);names.Add(name);}
+void Check(string name,bool value){if(!value){Console.Error.WriteLine(JsonSerializer.Serialize(new{failed=name,passed=names}));throw new Exception(name);}names.Add(name);}
 if(args.Length!=1)throw new Exception("unknown smoke mode");
 if(args[0]=="path-process")await PathProcessSmoke.Run(Check);
+else if(args[0]=="worktree")await WorktreeSmoke.Run(Check);
 else throw new Exception("unknown smoke mode");
 Console.WriteLine(JsonSerializer.Serialize(new{passed=names.Count,names}));
 return 0;

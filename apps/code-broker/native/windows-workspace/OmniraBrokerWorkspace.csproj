@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
- <PropertyGroup><TargetFramework>net8.0-windows</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+ <PropertyGroup><OutputType>Exe</OutputType><UseAppHost>false</UseAppHost><TargetFramework>net8.0-windows</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
  <ItemGroup><Compile Remove="smoke/**/*.cs"/><ProjectReference Include="../windows-host/OmniraBrokerHost.csproj"/></ItemGroup>
  <ItemGroup><InternalsVisibleTo Include="WorkspaceSmoke"/></ItemGroup>
 </Project>

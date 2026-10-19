@@ -8,7 +8,7 @@ import { asTimestamp, toEpochMs, type Timestamp } from '../time'
 import { contractCycle, resolvedContract } from '../contract-identity'
 import { priceText } from '../market-price'
 import {
-  bucketAt, buildSessionCalendar,
+  bucketAt, buildSessionCalendar, fourHourStrategyStanding,
   type NominalBucket, type SessionCalendar,
 } from '../session-calendar'
 import type { HistoricalContractCandleSource, HistoricalContractSourceResult } from './historical-contract-source'
@@ -250,7 +250,41 @@ describe('C3C -> canonical SessionCalendar evidence, synthetic only',()=>{
     expect(result).not.toHaveProperty('evidence')
   })
 
-  it('E2E-19: repeated observations deterministically produce identical evidence',async()=>{
+  it('E2E-19: a complete 02:00 winter data bucket is eligible DATA, not a trade',async()=>{
+    const four=bucket('4H',WINTER_START)
+    const src=fullSource(Array.from({length:240},(_,i)=>minuteAt(WINTER_START,i)))
+    const result=await read(src,four,winterFull)
+    expect(result.kind).toBe('EVIDENCE')
+    if(result.kind!=='EVIDENCE')return
+    expect(fourHourStrategyStanding(four,result.evidence)).toBe('ELIGIBLE')
+    expect(result).not.toHaveProperty('approval')
+    expect(result).not.toHaveProperty('executionIntent')
+  })
+
+  it('E2E-20: early-close COMPLETE data is ineligible for 4H strategy evidence',async()=>{
+    const four=bucket('4H',WINTER_START)
+    const close=minuteAt(WINTER_START,180)
+    const early=calendar(WINTER_START,WINTER_END,[[WINTER_START,close]])
+    const result=await read(fullSource(Array.from({length:180},(_,i)=>minuteAt(WINTER_START,i))),four,early)
+    expect(result.kind).toBe('EVIDENCE')
+    if(result.kind!=='EVIDENCE')return
+    expect(result.evidence).toMatchObject({kind:'ASSESSED',completeness:'COMPLETE',sessionTruncated:true})
+    expect(fourHourStrategyStanding(four,result.evidence)).toBe('INELIGIBLE')
+  })
+
+  it('E2E-21: a completed 14:00 NY data bucket is not a strategy 4H open',async()=>{
+    const laterFrom=T('2026-01-15T19:00:00Z')
+    const laterTo=T('2026-01-15T23:00:00Z')
+    const four=bucket('4H',laterFrom)
+    const cal=calendar(laterFrom,laterTo,[[laterFrom,laterTo]])
+    const result=await read(fullSource(Array.from({length:240},(_,i)=>minuteAt(laterFrom,i))),four,cal)
+    expect(result.kind).toBe('EVIDENCE')
+    if(result.kind!=='EVIDENCE')return
+    expect(result.evidence).toMatchObject({kind:'ASSESSED',completeness:'COMPLETE'})
+    expect(fourHourStrategyStanding(four,result.evidence)).toBe('NOT_STRATEGY_RELEVANT')
+  })
+
+  it('E2E-22: repeated observations deterministically produce identical evidence',async()=>{
     const src=fullSource(Array.from({length:5},(_,i)=>minuteAt(WINTER_START,i)))
     const a=await read(src,five,fiveCalendar)
     const b=await read(src,five,fiveCalendar)

@@ -10,10 +10,19 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from databento_first_snapshot import (
-    parse_quote, download, CONFIRMATION, MAX_ESTIMATE, CONTRACTS,
-    blocked,
+import importlib.util
+_spec = importlib.util.spec_from_file_location(
+    "databento_first_snapshot",
+    Path(__file__).resolve().with_name("databento-first-snapshot.py"),
 )
+_module = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_module)
+parse_quote = _module.parse_quote
+download = _module.download
+CONFIRMATION = _module.CONFIRMATION
+MAX_ESTIMATE = _module.MAX_ESTIMATE
+CONTRACTS = _module.CONTRACTS
+blocked = _module.blocked
 
 NOW = datetime(2026, 10, 19, 14, 50, tzinfo=timezone.utc)
 QUOTE = {

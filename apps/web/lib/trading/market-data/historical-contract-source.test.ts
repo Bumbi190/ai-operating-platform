@@ -31,6 +31,31 @@ const report = (extra: Record<string, unknown> = {}) => ({
 })
 
 describe('C3C source boundary: deterministic acceptance', () => {
+  it('REVIEW: provider-owned OHLCV cannot mutate after validation', () => {
+    const mutable = {...candle()}
+    const accepted = inspectHistoricalContractResult(REQUEST, report({candles:[mutable]}))
+    expect(accepted.kind).toBe('ACCEPTED')
+    if (accepted.kind !== 'ACCEPTED') return
+    mutable.high = priceText('999')
+    mutable.close = priceText('998')
+    mutable.openTime = asTimestamp('2026-01-15T07:03:00Z')
+    expect(accepted.segment.candles[0].high).toBe('101')
+    expect(accepted.segment.candles[0].close).toBe('100.25')
+    expect(accepted.segment.candles[0].openTime).toBe(FROM)
+    expect(accepted.observed.minuteOpenTimes).toEqual([FROM])
+    expect(Object.isFrozen(accepted.segment.candles[0])).toBe(true)
+  })
+
+  it('REVIEW: accepted candles do not retain mutable provider object identity', () => {
+    const original = {...candle()}
+    const accepted = inspectHistoricalContractResult(REQUEST, report({candles:[original]}))
+    expect(accepted.kind).toBe('ACCEPTED')
+    if (accepted.kind !== 'ACCEPTED') return
+    expect(accepted.segment.candles[0]).not.toBe(original)
+    expect(accepted.segment.candles[0]).toEqual(original)
+    expect(Object.isFrozen(accepted.segment.candles[0])).toBe(true)
+  })
+
   it('REVIEW: refuses OHLC prices with a high below its low', () => {
     const result = inspectHistoricalContractResult(REQUEST, report({
       candles: [{...candle(), high: priceText('98')}],

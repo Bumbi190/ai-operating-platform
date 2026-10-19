@@ -108,4 +108,4 @@ Uppskjutna mindre fynd:
 - SQL Promise.allSettled races do not force each competing lock interleaving; later harden broker/WorkPackage race barriers. New expiry regression WILL use an explicit held WorkPackage lock.
 - Dense guard/handler formatting makes audit harder; later formatting-only cleanup.
 
-Maskinunderlag: `2026-10-19-live-execution-lease-evidence.json`. Efter denna beständiga överlämning återläses Notion och enbart planens identitetskontrollerade scratch tas bort; separat cleanup-kvitto redovisar utfallet.
+Maskinunderlag: `2026-10-19-live-execution-lease-evidence.json`. Notion uppdaterades och återlästes efter lyckad asynkron skrivning. Endast denna plans identitetskontrollerade scratch togs bort efter beständig överlämning. Arbetsgren, övriga arbetskopior, verkligt source-proof och native-tombstones bevaras. Ursprunglig Docker-peer bekräftades och inga planmärkta testcontainrar återstod. Utfallet finns i 2026-10-19-live-execution-lease-cleanup.json.

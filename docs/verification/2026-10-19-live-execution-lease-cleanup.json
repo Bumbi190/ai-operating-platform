@@ -1,0 +1,100 @@
+{
+  "schema": "atlas.execution_lease_handoff_cleanup.v1",
+  "observedAt": "2026-10-19T11:47:18.065Z",
+  "sourceHead": "07e6aef4158b4b0a02331147c286da06a31adc07",
+  "handoffCommit": "c98236781ebbb4c29e162b4b389f760168b24883",
+  "plan": "docs/superpowers/plans/2026-10-19-live-execution-lease.md",
+  "deletedScratch": "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-voice-recovery-20261016\\.superpowers\\sdd\\2026-10-19-live-execution-lease",
+  "ledgerSha256": "f6c15cee4375404fe31791772b70176f811e336d7085bcf52daa09833e50b62f",
+  "rulings": 18,
+  "deferredMinors": 2,
+  "postgresInstances": [
+    {
+      "id": "ca11ce55d8f49e7d305d44672d9986b49ba0499a2a95de8e59935545653a91af",
+      "attempt": "010c008a-6903-4152-b444-5fcf9493b7c2",
+      "status": "removed"
+    },
+    {
+      "id": "a0a7ee3d2164155acbf479a61bc7fb915b627f5bd460f2af2e06e2fdf459065c",
+      "attempt": "016ad95c-a838-47e6-afed-322e9bd120c5",
+      "status": "removed"
+    },
+    {
+      "id": "e0b29baf6bc1d7eecdeedb1123b0925789ec7f08947f9953f0157bcb7c771496",
+      "attempt": "02fa0422-2e67-4362-978f-e55fff91198a",
+      "status": "removed"
+    },
+    {
+      "id": "9e43ee1fc27d04600ab445ef91d39096be67b45b674aa2e77dd223dd9845c20f",
+      "attempt": "0949d475-c837-468f-92ad-e9262a3ab905",
+      "status": "removed"
+    },
+    {
+      "id": "b10d9288a1341f6b1b3afe7dd49cdcf4e40ba0c33175f0ed3131e2a6efa58933",
+      "attempt": "3524c1a4-40c7-47ce-b232-e3544369fbcd",
+      "status": "removed"
+    },
+    {
+      "id": "0c252625142175c5a887fbc33a6123d6ddf75d3e307d6d7f34bad4507b64753f",
+      "attempt": "83943794-ec88-4f4f-a5d2-a492e6c131fc",
+      "status": "removed"
+    },
+    {
+      "id": "fd66e7722cc83743665f7f5939e91a2318567ef08f859e213d36aff6e546fdbb",
+      "attempt": "92a1266d-3ed4-4e6c-ba3b-6893eeb4797a",
+      "status": "removed"
+    },
+    {
+      "id": "36ff2d8736b957582f83d6321b713a4e5739867b3265f2e1d2073b3a62f08507",
+      "attempt": "92b54709-72b6-467a-9041-015c5a13fbd1",
+      "status": "removed"
+    },
+    {
+      "id": "c49cec91bd1f1d1ce954aff2935d188a11a1ce966d086e95faaac94a8339ed6f",
+      "attempt": "d0e6c516-7f15-4fd0-953d-b637ecf470d3",
+      "status": "removed"
+    },
+    {
+      "id": "9073b919e82ac320ca9c30426ed49a825f69426cb506195b5e355a2680c27753",
+      "attempt": "d3194b51-74e5-4c2b-b7d5-60c93c4ed113",
+      "status": "removed"
+    },
+    {
+      "id": "18b95b723764c43b75c73605a758182cc2df39798092aed3c60f8f03a1023be6",
+      "attempt": "df52f938-46cb-401b-af29-248d1316f970",
+      "status": "removed"
+    },
+    {
+      "id": "50b0d404f282e0a9ff2883ee173ea981e1771fc533a8e966dd25bf90afc31340",
+      "attempt": "e19653ec-c689-4da2-97b3-44fedba0ccd2",
+      "status": "removed"
+    }
+  ],
+  "testContainersRemaining": 0,
+  "originalPeerConfirmed": true,
+  "notion": {
+    "asyncSucceeded": true,
+    "taskId": "task_eefcebf30b1847e98440a7a7400b6f0b",
+    "freshFetchVerified": true,
+    "pageId": "3fb7b977-c5b8-81c6-a15f-e02795261137",
+    "lastEdited": "2026-10-19T11:46:26.385Z",
+    "expectedFinalTests": 304,
+    "onlyOwnAtlasTrackUpdated": true
+  },
+  "artifactCopies": {
+    "verified": true,
+    "reportSha256": "ffe61383b9a57f6c7d8f1e0ff7f8f9d2a6193d545b26c3c05d347dfbd1fdf41f",
+    "evidenceSha256": "10b9dabb0e4699a872daf64e181fe8342ade0d22bf06dda6328ff7b551bc213c",
+    "report": "atlas-live-execution-lease-verification-2026-10-19.md",
+    "evidence": "atlas-live-execution-lease-evidence-2026-10-19.json",
+    "observedAt": "2026-10-19T11:47:14.295Z"
+  },
+  "preservedProof": {
+    "path": "C:/Users/Andre/Projects/Omnira/.worktrees/c435e423-d964-428b-b5c0-4060d89ce3c6",
+    "head": "d3f9fcc1045026042f6bb9c0cd302ed0b7283127",
+    "clean": true
+  },
+  "sharedConfigSha256": "b2e80f4c91bfc6082e7fed2111981576d1ac04a2ab4ffc7f000bc056289367b5",
+  "productionAuthority": false,
+  "planScratchRemoved": true
+}

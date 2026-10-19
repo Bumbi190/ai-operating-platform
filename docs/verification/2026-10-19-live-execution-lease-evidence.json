@@ -4891,5 +4891,10 @@
     "Final: minor (deferred): SQL Promise.allSettled races do not force each competing lock interleaving; later harden broker/WorkPackage race barriers. New expiry regression WILL use an explicit held WorkPackage lock.",
     "Final: minor (deferred): Dense guard/handler formatting makes audit harder; later formatting-only cleanup."
   ],
-  "commandReceiptNote": "commandExitCounts represent successful driver calls only; expected negative SQL exits are evaluated by the actual Vitest assertions."
+  "commandReceiptNote": "commandExitCounts represent successful driver calls only; expected negative SQL exits are evaluated by the actual Vitest assertions.",
+  "handoff": {
+    "notionVerified": true,
+    "scratchCleanupReceipt": "2026-10-19-live-execution-lease-cleanup.json",
+    "sourceUnchanged": true
+  }
 }

@@ -146,3 +146,20 @@ test('rejects a newly entered ambiguous autumn wall time',async({page})=>{
  await open(page);await fillMeeting(page,'Tvetydig tid');await page.getByLabel('Datum',{exact:true}).fill('2026-10-25');await setClock(page,'Starttid','02:30');await page.getByLabel('Ingen sluttid').check();await page.getByRole('button',{name:'Spara',exact:true}).click();
  await expect(page.getByRole('alert')).toContainText('tider');await expect(page.getByLabel('Titel',{exact:true})).toHaveValue('Tvetydig tid');
 });
+
+test('shows an authorized Atlas decision and its actual outcome on mobile',async({page})=>{
+ await page.setViewportSize({width:390,height:844});
+ await page.route('**/api/calendar/decisions?**',async route=>{
+  const url=new URL(route.request().url());
+  if(url.searchParams.has('decisionId')){
+   await route.fulfill({json:{ok:true,decision:{decisionId:'decision-demo',title:'Lansering beslutad',status:'completed',statement:'Starta pilot',rationale:'Redo efter granskning',expectedImpact:'Få återkoppling',outcome:{summary:'Fem handlare svarade'},review:null,decidedAt:'2026-10-20T09:00:00Z',lastRecordAt:'2026-10-20T09:00:00Z'}}});
+  }else{
+   await route.fulfill({json:{decisions:[{id:'atlas-decision:decision-demo:1',sourceSystem:'atlas_decision_ledger',sourceId:'decision-demo',projectId:'project-demo',title:'Lansering beslutad',status:'completed',occurredAt:'2026-10-20T09:00:00Z',decisionAt:'2026-10-20T09:00:00Z',reviewAt:null,hasOutcome:true,detailKey:'decision-demo'}],available:true,truncated:false}});
+  }
+ });
+ await open(page);
+ await page.getByRole('button',{name:/Lansering beslutad/}).click();
+ await expect(page.getByRole('dialog',{name:'Beslutsdetaljer'})).toContainText('Redo efter granskning');
+ await expect(page.getByRole('dialog',{name:'Beslutsdetaljer'})).toContainText('Fem handlare svarade');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});

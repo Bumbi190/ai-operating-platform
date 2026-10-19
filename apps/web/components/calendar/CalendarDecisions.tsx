@@ -41,7 +41,7 @@ export function CalendarDecisions({week,projectId,userId}:{week:string;projectId
   {selected&&<aside className={styles.decisionDetail} role="dialog" aria-label="Beslutsdetaljer"><div className={styles.decisionHeader}><strong>Atlas beslutsunderlag</strong><button type="button" className={styles.iconButton} aria-label="Stäng beslutsdetaljer" onClick={()=>setSelected(null)}><X size={18}/></button></div>
    {detailError&&<p role="alert">Det här beslutet kunde inte hämtas eller är inte tillgängligt för dig.</p>}
    {!detail&&!detailError&&<p>Läser beslutsunderlag…</p>}
-   {detail&&<div className={styles.decisionBody}><h3>{detail.title}</h3><p><b>Status:</b> {detail.status}</p><p><b>Beslut:</b> {detail.statement}</p><p><b>Motivering:</b> {detail.rationale||'Ingen motivering registrerad'}</p><p><b>Förväntad effekt:</b> {detail.expectedImpact||'Ej registrerad'}</p><p><b>Observerat utfall:</b> {detail.outcome?'Registrerat i Atlas beslutsledger':'Inget utfall registrerat ännu'}</p>{detail.review&&<p><b>Uppföljning:</b> {detail.review.description}</p>}<small>Besluts-ID: {detail.decisionId}</small></div>}
+   {detail&&<div className={styles.decisionBody}><h3>{detail.title}</h3><p><b>Status:</b> {detail.status}</p><p><b>Beslut:</b> {detail.statement}</p><p><b>Motivering:</b> {detail.rationale||'Ingen motivering registrerad'}</p><p><b>Förväntad effekt:</b> {detail.expectedImpact||'Ej registrerad'}</p><p><b>Observerat utfall:</b> {detail.outcome&&typeof detail.outcome==='object'&&'summary' in detail.outcome?String(detail.outcome.summary):'Inget utfall registrerat ännu'}</p>{detail.review&&<p><b>Uppföljning:</b> {detail.review.description}</p>}<small>Besluts-ID: {detail.decisionId}</small></div>}
   </aside>}
  </section>;
 }

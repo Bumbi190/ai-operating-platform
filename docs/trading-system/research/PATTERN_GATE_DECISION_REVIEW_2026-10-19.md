@@ -25,7 +25,7 @@ Detta **bekräftar begreppets innebörd men inte dess fullständiga detektion el
 
 **OPERATÖRBESLUT: B GODKÄND (2026-10-19).** Inverterad FVG (iFVG) bekräftas när en **helt färdig 1-minutscandle STÄNGER strikt förbi ursprungs-FVG:ns bortre gräns**. Long: close > övre gränsen; short: close < undre gränsen. En wick räcker inte, och likhet med gränsen räcker inte. Bekräftelsen får tidsstämplas först vid den färdiga candlens stängning, aldrig vid dess öppning. Valet registreras som GATE-01:s `inversionCrossingRule = CLOSE_BEYOND_FAR_EDGE` i pending-registret. **GATE-01 är fortfarande OPEN**, utan komplett godkänd detector/version eller handelsautorisering.
 
-**Nästa öppna fråga:** Får ursprungs-FVG:n bildas före manipulationen, eller måste själva gapet bildas efteråt? Dessutom återstår bl.a. invalidation, expiry, prioritet och resterande bekräftelsekriterier.
+**Nästa öppna fråga (efter kontaktens återkoppling att både A och B kan gälla, vanligen B):** När får ett äldre A-gap fortsätta vara giltigt – behöver det vara helt orört, och hur långt tillbaka får det ligga? Detta får inte gissas fram. Invalidation, expiry, prioritet och resterande bekräftelsekriterier är också fortfarande öppna.
 
 ### GATE-01: iFVG
 
@@ -43,7 +43,9 @@ Samma författade exempel, med avslutad manipulation vid en explicit cutoff:
 - `ANY`: **1** syntetisk kandidathändelse.
 - `AFTER_MANIPULATION`: **0** kandidathändelser.
 
-**Mänskligt beslut:** Får ursprungsgapet vara äldre än manipulationen? Även expiry, invalidation, kandidatprioritet och lämplig grad av displacement förblir öppna.
+**Vidarebefordrat svar från strategikontakt, 2026-10-19:** Både **A** (ursprungs-FVG bildad före manipulationen) och **B** (ursprungs-FVG bildad efter manipulationen) kan stämma. **B uppges vara vanligast.** Detta är en kvalitativ bedömning från en kontakt, **inte en uppmätt frekvens eller en komplett mekanisk regel**. Vi använder B som första fall att analysera och bevarar A som möjligt fall för senare granskning. **Vi har inte valt en automatisk B-only-grind eller prioriteringsalgoritm.**
+
+**Fortfarande öppet:** Vilka äldre A-gap får beaktas, hur långt bakåt, hur mitigation/återtest/invalidation hanteras, hur flera kandidater paras/prioriteras och exakt när ett gap förfaller. `GATE-01.decisions.creationVsManipulationOrder` förblir `null` tills detta definierats och godkänts. Båda forskningsvarianterna är illustrativa, inte tradebehörighet.
 
 ### GATE-02: CISD
 
@@ -78,6 +80,13 @@ Samma explicita referenspar har **1 minuts** skillnad i bekräftelsetid:
 **Negativt säkerhetsfall:** Om ES-serien inte är `SETTLED` blir SMT **`UNKNOWN`**. Den blir inte en bekräftad divergence eller ett säkert "ingen SMT".
 
 **Viktig canonical begränsning:** SMT får endast vara en *kompletterande bekräftelse* som eventuellt uppgraderar en i övrigt giltig A-setup till A+. Den får **inte** skapa egna trades, användas som primär entrytrigger eller påhittas när ES saknas. Automatisk faktisk pivotkorrespondens, tidsfönstrets varaktighet och matching över verkliga kontrakts- och kalendersessioner saknas fortfarande.
+
+
+## Sammanfattad beslutstatus efter extern återkoppling (2026-10-19)
+
+- **Bekräftat av användaren:** iFVG betyder **Inversion Fair Value Gap**; inversion genom strikt färdig **1m candle-close** förbi bortre kant (inte wick-only).
+- **Kontaktens kvalitativa återkoppling, inte ett användargodkänt algoritmval:** både ursprungs-FVG före och efter manipulation kan förekomma; B (gap bildat efter manipulation) anges vara vanligast. Ingen statistisk frekvens, ingen tidsgräns och ingen prioriteringsalgoritm är verifierad.
+- **Implementationsgrind:** ändra INTE `creationVsManipulationOrder` från `null`, och markera inte `GATE-01` som godkänd förrän fullständig rulebook, golden-fixtures, anti-lookahead och separat review finns. Inget resultat får bli en `StrategySignal`, order eller vinstprognos.
 
 ## 2. Vad som inte får väljas automatiskt
 

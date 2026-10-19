@@ -6,6 +6,10 @@ import {stockholmDate,stockholmMinute} from '@/lib/calendar/time';
 import styles from './Calendar.module.css';
 const dateLabel=(date:string,options:Intl.DateTimeFormatOptions)=>new Intl.DateTimeFormat('sv-SE',{...options,timeZone:'UTC'}).format(new Date(date+'T12:00:00Z'));
 export function calendarStatus(entry:CalendarEntry):string {
+ if(entry.source.kind==='social'&&entry.source.jobId===null){
+  if(entry.status==='rejected')return 'Innehåll avvisat';
+  return 'Innehållsförslag · inte schemalagt';
+ }
  if(entry.status==='cancelled')return 'Avbokat';
  if(entry.manualEvent?.kind==='work_block')return {planned:'Planerat',in_progress:'Pågår',done:'Klart'}[entry.manualEvent.workStatus??'planned'];
  return ({scheduled:'Planerat',queued:'Schemalagt',proposal:'Tidsförslag',needs_review:'Behöver granskas',approved:'Godkänt',rejected:'Avvisat',claimed:'Bearbetas',waiting:'Väntar',published:'Publicerat',failed:'Misslyckades',uncertain:'Utfallet är oklart',blocked:'Spärrat',missed:'Missat',content_missing:'Innehåll saknas',active:'Fortsättning',complete:'Klart',abandoned:'Avslutat'} as Record<string,string>)[entry.status]??entry.status;

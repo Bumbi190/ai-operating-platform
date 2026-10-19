@@ -1,6 +1,6 @@
-# Windows Worktree Configuration Compatibility — proposed addendum
+# Windows Worktree Configuration Compatibility — approved addendum
 
-Status: PROPOSED, not executed or approved. Written 2026-10-19. Extends docs/superpowers/plans/2026-10-18-windows-workspace-sandbox.md only where its blanket worktreeConfig refusal blocks the actual registered repository. Preserve the selected Native method and its single fresh whole-range review after all required proofs pass.
+Status: APPROVED by André 2026-10-19 08:04 Europe/Stockholm; execution authorized by “Bästa jag godkänner :)”. Written 2026-10-19. Extends docs/superpowers/plans/2026-10-18-windows-workspace-sandbox.md only where its blanket worktreeConfig refusal blocks the actual registered repository. Preserve the selected Native method and its single fresh whole-range review after all required proofs pass.
 
 ## Observed blocker
 
@@ -20,8 +20,8 @@ Support the Windows repository's per-worktree configuration by auditing and reta
 
 No edit to shared Git config, other worktrees, tool pins, ACLs, Docker context or installed dependencies. No live code jobs, models, routes, enrollment, UI, push, merge or deployment. No further image pull. Required real proof may not pass by skip, cached refusal or substituted synthetic fixture. If the installed Git behavior cannot meet the retained-config and no-helper guarantees, stop with a concrete finding; do not bypass the audit.
 
-## Why approval is requested
+## Approval boundary
 
-This changes an explicit security refusal in the previously approved plan. Its Global Constraints require rejection of ambiguous Git identity, and its implementation rejects extensions.worktreeConfig=true. The executing-plans skill says a security-sensitive action is a stop. Current policy stays in force until this bounded extension is approved.
+This changes an explicit security refusal in the previously approved plan. Its Global Constraints require rejection of ambiguous Git identity, and its implementation rejects extensions.worktreeConfig=true. The executing-plans skill says a security-sensitive action is a stop. Approval is now recorded above; no further confirmation is needed for the extension or remaining original plan steps.
 
 Primary references checked: https://git-scm.com/docs/git-worktree and https://git-scm.com/docs/git-config (per-worktree config is read after common config when enabled). Documentation alone is not sufficient proof; native fixtures above must establish installed-tool behavior.

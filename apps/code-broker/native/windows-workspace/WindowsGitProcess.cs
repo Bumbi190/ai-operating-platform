@@ -1,8 +1,8 @@
 using System.Security.Principal;
 using Omnira.CodeBroker.Host;
 namespace Omnira.CodeBroker.Workspace;
-internal enum GitOperation {Layout,LocalConfig,ObjectType,ResolvePin,ResolveApprovedBase,RefExists,WorktreeList,WorktreeAdd,Head,SymbolicHead,Status}
-internal sealed record GitOperationValues(WorkspaceRequest Request,ProtectedPathLease Repository,ProtectedPathLease Parent,ProtectedPathLease? Target=null);
+internal enum GitOperation {Layout,LocalConfig,MainWorktreeConfig,TargetWorktreeConfig,ObjectType,ResolvePin,ResolveApprovedBase,RefExists,WorktreeList,WorktreeAdd,Head,SymbolicHead,Status}
+internal sealed record GitOperationValues(WorkspaceRequest Request,ProtectedPathLease Repository,ProtectedPathLease Parent,ProtectedPathLease? Target=null,ProtectedPathLease? Registration=null);
 internal interface IWindowsGit{Task<GitProcessResult> RunAsync(GitOperation operation,GitOperationValues values,CancellationToken cancellation);}
 internal sealed class WindowsGitProcess:IWindowsGit {
  internal const string LockReason="omnira-sdf explicit-cleanup-only";
@@ -11,6 +11,8 @@ internal sealed class WindowsGitProcess:IWindowsGit {
   return operation switch{
    GitOperation.Layout=>new[]{"rev-parse","--show-toplevel","--absolute-git-dir","--git-common-dir","--is-inside-work-tree"},
    GitOperation.LocalConfig=>new[]{"config","--local","--no-includes","--list","-z"},
+   GitOperation.MainWorktreeConfig=>new[]{"config","--file",".git/config.worktree","--no-includes","--list","-z"},
+   GitOperation.TargetWorktreeConfig=>new[]{"config","--file","config.worktree","--no-includes","--list","-z"},
    GitOperation.ObjectType=>new[]{"cat-file","-t",sha},
    GitOperation.ResolvePin=>new[]{"rev-parse","--verify","--quiet",sha+"^{commit}"},
    GitOperation.ResolveApprovedBase=>new[]{"rev-parse","--verify","--quiet","refs/remotes/origin/main^{commit}"},
@@ -24,11 +26,11 @@ internal sealed class WindowsGitProcess:IWindowsGit {
   };
  }
  public async Task<GitProcessResult> RunAsync(GitOperation operation,GitOperationValues values,CancellationToken cancellation){
-  values.Request.Validate();values.Repository.ValidateUnchanged();values.Parent.ValidateUnchanged();values.Target?.ValidateUnchanged();
+  values.Request.Validate();values.Repository.ValidateUnchanged();values.Parent.ValidateUnchanged();values.Target?.ValidateUnchanged();values.Registration?.ValidateUnchanged();
   var user=WindowsIdentity.GetCurrent().User!.Value;using var executable=ProtectedPathLease.Acquire(HostProfile.Targets.Single(t=>t.Id=="git"),user);
   var target=Path.Combine(values.Parent.PathValue,values.Request.WorkId);
   var args=OperationArguments(operation,values.Request.WorkId,values.Request.PinnedBaseSha,target);
-  var cwd=operation is GitOperation.Head or GitOperation.SymbolicHead or GitOperation.Status?values.Target?.PathValue??throw new WorkspaceException("unsafe_path"):values.Repository.PathValue;
+  var cwd=operation==GitOperation.TargetWorktreeConfig?values.Registration?.PathValue??throw new WorkspaceException("unsafe_path"):operation is GitOperation.Head or GitOperation.SymbolicHead or GitOperation.Status?values.Target?.PathValue??throw new WorkspaceException("unsafe_path"):values.Repository.PathValue;
   var home=Path.Combine(values.Parent.PathValue,".infra-win-"+Guid.NewGuid().ToString("N"));ProtectedPathLease? homeLease=null;
   if(Directory.Exists(home)||File.Exists(home))throw new WorkspaceException("unsafe_path");
   try{
@@ -42,7 +44,7 @@ internal sealed class WindowsGitProcess:IWindowsGit {
     ["GIT_TERMINAL_PROMPT"]="0",["GIT_NO_LAZY_FETCH"]="1",["GIT_OPTIONAL_LOCKS"]="0",["GIT_ALLOW_PROTOCOL"]="none"
    };
    var result=await NativeProcess.RunAsync(executable,prefix.Concat(args).ToArray(),cwd,environment,60000,262144,cancellation);
-   homeLease.ValidateUnchanged();values.Repository.ValidateUnchanged();values.Parent.ValidateUnchanged();values.Target?.ValidateUnchanged();
+   homeLease.ValidateUnchanged();values.Repository.ValidateUnchanged();values.Parent.ValidateUnchanged();values.Target?.ValidateUnchanged();values.Registration?.ValidateUnchanged();
    return result;
   }finally{
    if(homeLease!=null){homeLease.ValidateUnchanged();homeLease.Dispose();homeLease=null;}

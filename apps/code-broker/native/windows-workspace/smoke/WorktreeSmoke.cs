@@ -64,7 +64,7 @@ internal static class WorktreeSmoke {
    check("stale_base_exact_ref_refused",(await engine.PrepareAsync(stale,CancellationToken.None)).Status=="stale_base");
   }
   using(var f=new RepoFixture()){f.Git("config","remote.origin.url","https://github.com/other/repository.git");check("wrong_remote_refused",(await f.Engine().PrepareAsync(f.Request(),CancellationToken.None)).Reason=="remote_identity_mismatch");}
-  foreach(var key in new[]{"filter.fixture.smudge","core.hooksPath","include.path","credential.helper","core.fsmonitor","core.worktree","extensions.worktreeConfig"}){
+  foreach(var key in new[]{"filter.fixture.smudge","core.hooksPath","include.path","credential.helper","core.fsmonitor","core.worktree"}){
    using var f=new RepoFixture();f.Git("config",key,key=="extensions.worktreeConfig"?"true":"fixture-untrusted");
    check("unsafe_filter_hook_include_refused_"+key,(await f.Engine().PrepareAsync(f.Request(),CancellationToken.None)).Status=="refused");
   }

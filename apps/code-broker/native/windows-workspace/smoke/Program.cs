@@ -34,6 +34,7 @@ void Check(string name,bool value){if(!value){Console.Error.WriteLine(JsonSerial
 if(args.Length!=1)throw new Exception("unknown smoke mode");
 if(args[0]=="path-process")await PathProcessSmoke.Run(Check);
 else if(args[0]=="worktree")await WorktreeSmoke.Run(Check);
+else if(args[0]=="worktree-config")await WorktreeConfigSmoke.Run(Check);
 else if(args[0]=="probe")await ProbeSmoke.Run(Check);
 else throw new Exception("unknown smoke mode");
 Console.WriteLine(JsonSerializer.Serialize(new{passed=names.Count,names}));

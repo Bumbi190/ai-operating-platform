@@ -29,15 +29,26 @@ export default function TradingPage() {
     <OSPage density="comfortable">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-700/70 bg-slate-900/70 px-4 py-3">
         <div>
-          <p className="text-sm font-semibold text-slate-100">Backtest Lab</p>
-          <p className="text-xs text-slate-400">Syntetisk replay för att granska design och testflöde – inte riktiga tradingresultat.</p>
+          <p className="text-sm font-semibold text-slate-100">Trading · Live & Paper-workspace</p>
+          <p className="text-xs text-slate-400">
+            Atlas Market View är fortfarande utvecklings-/observationsläge med syntetiska fixtures.
+            Ingen broker, paperorder eller liveorder är aktiv.
+          </p>
         </div>
-        <Link
-          href="/trading/backtest-lab"
-          className="rounded-lg border border-teal-500/50 px-3 py-2 text-sm font-semibold text-teal-200 hover:bg-teal-500/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-400"
-        >
-          Öppna testmiljön →
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/trading/backtest-data"
+            className="rounded-lg border border-teal-500/60 bg-teal-500/10 px-3 py-2 text-sm font-semibold text-teal-200 hover:bg-teal-500/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-400"
+          >
+            Backtest · Riktiga historiska candles →
+          </Link>
+          <Link
+            href="/trading/backtest-lab"
+            className="rounded-lg border border-slate-600 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-400"
+          >
+            Syntetisk design-demo
+          </Link>
+        </div>
       </div>
       <AtlasMarketView />
     </OSPage>

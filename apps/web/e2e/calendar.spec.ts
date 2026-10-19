@@ -46,7 +46,7 @@ test('shows one readable day at 390px and supports keyboard opening',async({page
 test('keeps the draft through Escape and a failed save',async({page,request})=>{
  await open(page);await fillMeeting(page,'Mitt osparade möte');await page.keyboard.press('Escape');await expect(page.getByRole('dialog')).not.toBeVisible();
  await page.getByRole('button',{name:'Fortsätt utkast'}).click();await expect(page.getByLabel('Titel',{exact:true})).toHaveValue('Mitt osparade möte');
- await request.post('/_test/errors',{data:{save:true}});await page.getByRole('button',{name:'Spara',exact:true}).click();await expect(page.getByRole('alert')).toContainText('sparas');await expect(page.getByLabel('Titel',{exact:true})).toHaveValue('Mitt osparade möte');
+ await request.post('/_test/errors',{data:{save:true}});await page.getByRole('button',{name:'Spara',exact:true}).click();await expect(page.getByRole('alert').filter({hasText:'sparas'})).toContainText('sparas');await expect(page.getByLabel('Titel',{exact:true})).toHaveValue('Mitt osparade möte');
  await request.post('/_test/errors',{data:{save:false}});await page.getByRole('button',{name:'Spara',exact:true}).click();await expect(page.getByRole('button',{name:/Mitt osparade möte/})).toBeVisible();
 });
 test('clears private entries on account change and ignores an old delayed week response',async({page,request})=>{
@@ -68,7 +68,7 @@ test('keeps original IDs and times for all-day, overnight, overlapping and point
 test('keeps private entries when social reads fail and reports a failed week read',async({page,request})=>{
  await open(page);await fillMeeting(page,'Privat finns kvar');await page.getByRole('button',{name:'Spara',exact:true}).click();await request.post('/_test/errors',{data:{social:false}});await page.reload();
  await expect(page.getByRole('button',{name:/Privat finns kvar/})).toBeVisible();await expect(page.getByRole('status')).toContainText('sociala');
- await request.post('/_test/errors',{data:{read:true}});await page.getByRole('button',{name:'Nästa vecka'}).click();await expect(page.getByRole('alert')).toContainText('läsas');
+ await request.post('/_test/errors',{data:{read:true}});await page.getByRole('button',{name:'Nästa vecka'}).click();await expect(page.getByRole('alert').filter({hasText:'Veckan kunde inte läsas'})).toContainText('läsas');
 });
 test('captures the desktop and mobile calendar layouts',async({page,request})=>{
  await request.post('/_test/reset',{data:{geometry:true}});await page.setViewportSize({width:1440,height:1000});await open(page);await page.screenshot({path:'../../.superpowers/sdd/2026-10-18-omnira-calendar/calendar-desktop.png',fullPage:true});
@@ -144,7 +144,7 @@ for(const [label,start,end] of [
 });
 test('rejects a newly entered ambiguous autumn wall time',async({page})=>{
  await open(page);await fillMeeting(page,'Tvetydig tid');await page.getByLabel('Datum',{exact:true}).fill('2026-10-25');await setClock(page,'Starttid','02:30');await page.getByLabel('Ingen sluttid').check();await page.getByRole('button',{name:'Spara',exact:true}).click();
- await expect(page.getByRole('alert')).toContainText('tider');await expect(page.getByLabel('Titel',{exact:true})).toHaveValue('Tvetydig tid');
+ await expect(page.getByRole('alert').filter({hasText:'tider'})).toContainText('tider');await expect(page.getByLabel('Titel',{exact:true})).toHaveValue('Tvetydig tid');
 });
 
 test('shows an authorized Atlas decision and its actual outcome on mobile',async({page})=>{

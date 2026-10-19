@@ -38,7 +38,11 @@ export async function generateIntakePlan({quotePath,outDir}){
  const target=resolve(outDir)
  // Refuse writing into a repo checkout by convention. Keep real snapshots,
  // quotes and review plans in the model-runner's local Previews directory.
- if(!target.toLowerCase().includes('previews')&&!target.toLowerCase().includes('temp'))
+ // Check exact path *segments*; a TEMP parent or strings containing
+ // "previews" must not accidentally authorize a repo checkout.
+ const segments=target.toLowerCase().split(/[\\/]/).filter(Boolean)
+ if(!segments.includes('previews')||segments.includes('ai-operating-platform')||
+  segments.includes('.git')||segments.includes('src'))
   throw Error('OUTPUT_MUST_BE_A_NONREPO_PREVIEW_OR_TEMP_DIRECTORY')
  await mkdir(target,{recursive:true})
  const name='First_NQ_ES_Historical_Import_Plan.json'

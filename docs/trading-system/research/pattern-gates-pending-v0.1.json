@@ -130,5 +130,40 @@
     "requiresVersionBump": true,
     "requiresReproducibleData": true,
     "automatedApprovalAllowed": false
+  },
+  "researchEvidence": {
+    "status": "SYNTHETIC_ONLY_NOT_PROMOTED",
+    "verifiedAt": "2026-10-19",
+    "testRunner": "node --test",
+    "testScope": "synthetic offline unit and ambiguity tests, no real market data/backtest/live",
+    "lastCombinedTestRun": {
+      "total": 34,
+      "passed": 34,
+      "failed": 0,
+      "os": "Windows",
+      "sourceCommit": "4870d0a92ec44c0597bf4374c37e7c6d392f43ec"
+    },
+    "suites": [
+      {
+        "gates": [
+          "GATE-01",
+          "GATE-02"
+        ],
+        "tests": 16,
+        "source": "scripts/trading/research/pattern-candidates.mjs",
+        "report": "docs/trading-system/research/GATE01-02_VARIANT_REVIEW_2026-10-19.md"
+      },
+      {
+        "gates": [
+          "GATE-03",
+          "GATE-04"
+        ],
+        "tests": 18,
+        "source": "scripts/trading/research/equal-smt-candidates.mjs",
+        "report": "docs/trading-system/research/GATE03-04_VARIANT_REVIEW_2026-10-19.md"
+      }
+    ],
+    "versionDecisionsApproved": 0,
+    "remainingAction": "Human review and canonical machine-readable detection versions for every gate; historical data source remains unverified"
   }
 }

@@ -34,6 +34,22 @@ På Windows ligger en **separat, utcheckad testkopia** bredvid den vanliga repoa
 
 **Ingen PR, merge, Vercel-preview eller GitHub Actions-körning startades.** Ingen betald börsdata laddades ned. Hela projektets övriga tradingstrategigates förblir OPEN.
 
+## UX-beslut – användaren godkänner v2 som nuvarande design (2026-10-19)
+
+**Beslut:** Användaren har sett v2 i Chrome på stationära och bekräftat att den är *mycket bättre* samt att vi **behåller denna version för nu**. Mer UI-polish skjuts uttryckligen till en senare förbättringsomgång.
+
+**Vad detta beslut betyder:** v2 är **accepterad som visuell referens/designbas**, inklusive entry/exit-markörer, risk-/målzoner, uppspelning och förklarande statuspanel. Prioritera nu **funktionell backtest-readiness** i stället för ytterligare kosmetik.
+
+**Vad beslutet INTE betyder:** ingen godkänd PR/merge eller production deployment; inga riktiga tradingresultat, dataavtal, köp, livehandel eller autonom orderexekvering; ingen ändring av de öppna GATE-01–04/08-reglerna. Den lokala förhandsvisningens autentiseringsfria shims ska aldrig checkas in eller deployas.
+
+**Funktionella nästa steg, i prioriterad ordning:**
+1. Oberoende kodgranskning av Backtest Lab och C3C; förbered granskbar integration med begränsad GitHub Actions-budget.
+2. Slutför explicit versionerade **och av användaren godkända** definitioner av iFVG, CISD, equal highs/lows och SMT i strategin med golden-fixtures och anti-lookahead-kontroller.
+3. Verifiera licens, faktisk kostnad, exakt NQ/ES-kontraktsmappning, rådataformat och kalender innan riktig historik hämtas.
+4. Anslut därefter auktoritativ historisk data till read-only C3C och en separat backtestmotor med realistiska kostnader och osäkerhetsklassning.
+
+Äldre text nedan beskriver det ursprungliga testuppdraget före detta UX-godkännande.
+
 ## Vad användaren testar nu
 
 Öppna Chrome på **stationära**: `http://127.0.0.1:3107/trading/backtest-lab`. Tryck F5 om den gamla vyn ligger kvar. Testa Play, spola till bar **10–11** för LONG/TP, **22–23** för LONG/SL och **34–35** för den tvetydiga affären. Bekräfta att entry/exit och trade-zonerna känns begripliga.

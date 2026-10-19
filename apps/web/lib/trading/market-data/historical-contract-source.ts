@@ -208,8 +208,26 @@ export function inspectHistoricalContractResult(
 
   // The segment constructor already owns authoritative instant/ordering/grid
   // checks. We do not duplicate or weaken any of those rules.
+  // Take an immutable VALUE snapshot at the TRUST BOUNDARY.
+  // ContractCandleSegment intentionally copies only its array (it does not
+  // own or mutate caller's candle objects). Passing provider-held objects
+  // would let an external caller change prices AFTER validation, producing
+  // mismatched ObservedMinutes and an irreproducible accepted segment.
+  // This is a local in-memory defense, NOT a durable raw-market-data replay
+  // snapshot or a claim about provider authenticity.
   const candles: readonly MarketCandle[] =
-    raw.kind === 'NO_DATA' ? [] : raw.candles as readonly MarketCandle[]
+    raw.kind === 'NO_DATA'
+      ? []
+      : (raw.candles as readonly MarketCandle[]).map((candle) =>
+          Object.freeze({
+            openTime: candle.openTime,
+            open: candle.open,
+            high: candle.high,
+            low: candle.low,
+            close: candle.close,
+            volume: candle.volume,
+          }),
+        )
   const built = buildContractCandleSegment({
     contract: returnedContract,
     timeframe: req.timeframe,

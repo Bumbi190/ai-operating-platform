@@ -1,0 +1,122 @@
+{
+  "schema": "sdf.windows_materialization_planning.v1",
+  "observedAt": "2026-10-19T06:48:52.016Z",
+  "planningBase": "08471634c418b8fcfcd895d6d419b1e25473377d",
+  "approvedDesign": "docs/superpowers/specs/2026-10-18-atlas-first-code-job-design.md",
+  "retainedWorkspace": {
+    "request": {
+      "schema": "sdf.windows_workspace_request.v1",
+      "workId": "c435e423-d964-428b-b5c0-4060d89ce3c6",
+      "repositoryId": "github.com/bumbi190/ai-operating-platform",
+      "pinnedBaseSha": "d3f9fcc1045026042f6bb9c0cd302ed0b7283127",
+      "admissionHash": "662d9af499e4d6fbc0c7e97b276d8526559a0658b6899eab63cc9a04880cec1d",
+      "claimId": "2e0f09eb-cf7e-4619-834b-d78aa0ca5a7a",
+      "fence": 1
+    },
+    "report": {
+      "status": "prepared",
+      "workspaceRetained": true,
+      "binding": {
+        "workId": "c435e423-d964-428b-b5c0-4060d89ce3c6",
+        "repositoryId": "github.com/bumbi190/ai-operating-platform",
+        "pinnedBaseSha": "d3f9fcc1045026042f6bb9c0cd302ed0b7283127",
+        "admissionHash": "662d9af499e4d6fbc0c7e97b276d8526559a0658b6899eab63cc9a04880cec1d",
+        "claimId": "2e0f09eb-cf7e-4619-834b-d78aa0ca5a7a",
+        "fence": 1
+      },
+      "observedBaseSha": "d3f9fcc1045026042f6bb9c0cd302ed0b7283127",
+      "headSha": "d3f9fcc1045026042f6bb9c0cd302ed0b7283127",
+      "branchName": "sdf1/c435e423-d964-428b-b5c0-4060d89ce3c6",
+      "worktreePathHash": "6424cf891f985f63b74901b872963ceee454e9b8709616b9b51a9ced2f89a8b0",
+      "remoteIdentityHash": "3ed25b9cbea2dd066b6eceaff673f4962f906c90ff5333dcf251357bae26b9da",
+      "workspaceIdentityHash": "08ae118b05fb2f7ec725dae945d8f2ed507807d815ca101f4242b003da512272",
+      "observedAt": "2026-10-19T06:10:55.156Z",
+      "schema": "sdf.windows_workspace_report.v1",
+      "productionAuthority": false
+    },
+    "localPath": "C:/Users/Andre/Projects/Omnira/.worktrees/c435e423-d964-428b-b5c0-4060d89ce3c6",
+    "createdAt": "2026-10-19T06:10:55.432Z",
+    "mainCheckout": {
+      "head": "29c88f0d1448a3be17a26ebd1179781e664bcff0",
+      "base": "d3f9fcc1045026042f6bb9c0cd302ed0b7283127",
+      "porcelainBeforeSha256": "438cd01fcf6543443a45d00514a86b70094ee32268cfae1d435ee65c9af3b260",
+      "porcelainAfterSha256": "438cd01fcf6543443a45d00514a86b70094ee32268cfae1d435ee65c9af3b260",
+      "sameBeforeAfter": true,
+      "sharedConfigSha256": "b2e80f4c91bfc6082e7fed2111981576d1ac04a2ab4ffc7f000bc056289367b5",
+      "mainWorktreeConfigSha256": null
+    },
+    "syntheticBinding": true,
+    "explicitCleanupOnly": true,
+    "productionAuthority": false
+  },
+  "sourcePolicy": {
+    "id": "sdf.windows_source_fixture.v1",
+    "paths": [
+      "apps/web/lib/atlas/authorization/build.ts",
+      "apps/web/lib/atlas/authorization/derive.ts",
+      "apps/web/lib/atlas/authorization/types.ts",
+      "apps/web/lib/atlas/code-work/binding.ts",
+      "apps/web/lib/atlas/code-work/capability.ts",
+      "apps/web/lib/atlas/code-work/command-registry.ts",
+      "apps/web/lib/atlas/code-work/evidence.ts",
+      "apps/web/lib/atlas/code-work/lifecycle.ts",
+      "apps/web/lib/atlas/code-work/patch-protocol.ts",
+      "apps/web/lib/atlas/code-work/path-policy.ts",
+      "apps/web/lib/atlas/code-work/policy.ts",
+      "apps/web/lib/atlas/code-work/repository-registry.ts",
+      "apps/web/lib/atlas/code-work/terminal-evidence.ts",
+      "apps/web/lib/atlas/code-work/types.ts",
+      "apps/web/lib/atlas/code-work/worker-registry.ts",
+      "apps/web/lib/qa/__stubs__/server-only.ts",
+      "apps/web/lib/qa/sdf1a-code-work-contracts.test.ts",
+      "apps/web/package.json",
+      "apps/web/tsconfig.json",
+      "package-lock.json",
+      "package.json",
+      "packages/local-text-contract/package.json"
+    ],
+    "maxFiles": 128,
+    "maxFileBytes": 1048576,
+    "maxTotalBytes": 16777216,
+    "maxPathBytes": 200
+  },
+  "dependencyInputs": {
+    "pinnedBaseSha": "d3f9fcc1045026042f6bb9c0cd302ed0b7283127",
+    "lockVersion": 3,
+    "packageEntries": 1067,
+    "descriptors": [
+      {
+        "path": "package.json",
+        "sha256": "d04f1e73243bd9d023a352fdc42b1892474d76f8c0519acd08819b926d500fdd"
+      },
+      {
+        "path": "package-lock.json",
+        "sha256": "17ba6aedc7139835f0de6c62fc13c727682b737fe142ee7e99d452673625de80"
+      },
+      {
+        "path": "apps/web/package.json",
+        "sha256": "def6e3795da9eb4250e703446080ddb824d2128a6e6869949c09efd374944313"
+      },
+      {
+        "path": "packages/local-text-contract/package.json",
+        "sha256": "662e5cee1fd9e5bb13002f31793f54b50ea0a1eb67ab34a2931977f583c27cb3"
+      }
+    ],
+    "versions": {
+      "typescript": "5.9.3",
+      "vitest": "2.1.9",
+      "vite": "5.4.21",
+      "esbuild": "0.28.0"
+    }
+  },
+  "nodeBase": {
+    "reference": "docker.io/library/node@sha256:efd0ab5780c2d9ab1f0f869571a00d5edb17793bff4cce4a2792e3eb0ffc7562",
+    "version": "22.23.3",
+    "os": "linux",
+    "architecture": "amd64",
+    "metadataOnly": true,
+    "imagePulled": false
+  },
+  "implementationStarted": false,
+  "productionAuthority": false
+}

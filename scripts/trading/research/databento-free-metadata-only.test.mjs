@@ -15,8 +15,18 @@ const mock=(fn)=>(url,opts)=>{
  const u=new URL(url)
  assert.equal(u.protocol,'https:')
  assert.equal(u.hostname,'hist.databento.com')
- assert.equal(opts.method,'GET')
+ const isResolve=u.pathname==='/v0/symbology.resolve'
+ assert.equal(opts.method,isResolve?'POST':'GET')
  assert.equal(opts.redirect,'error')
+ if(isResolve){
+  assert.equal(u.search,'')
+  assert.equal(opts.headers['Content-Type'],'application/x-www-form-urlencoded')
+  assert.equal(typeof opts.body,'string')
+  u.search=opts.body // unify form-POST/query-GET parameters for mock assertions only
+ }else{
+  assert.equal(opts.body,undefined)
+ }
+
  assert.ok(opts.headers.Authorization.startsWith('Basic '))
  assert.ok(!url.includes('db-'))
  return fn(u,opts)
@@ -39,8 +49,8 @@ test('META-02 no configured key returns blocked before any request',async()=>{
 })
 test('META-03 strictly four free metadata calls for NQ and ES, no paid path',async()=>{
  const calls=[]
- const fetchFn=mock((u)=>{
-  calls.push(u)
+ const fetchFn=mock((u,opts)=>{
+  calls.push({url:u,method:opts.method})
   const s=u.searchParams.get('symbols')
   assert.ok(['NQZ6','ESZ6'].includes(s))
   assert.equal(u.searchParams.get('dataset'),'GLBX.MDP3')
@@ -68,10 +78,11 @@ test('META-03 strictly four free metadata calls for NQ and ES, no paid path',asy
  assert.equal(r.billableEndpointsCalled,0)
  assert.equal(r.combinedEstimatedUSD,0.2)
  assert.deepEqual(r.instruments.map(x=>x.instrumentId),['301','302'])
- assert.deepEqual(calls.map(x=>x.pathname),[
+ assert.deepEqual(calls.map(x=>x.url.pathname),[
   '/v0/symbology.resolve','/v0/symbology.resolve',
   '/v0/metadata.get_cost','/v0/metadata.get_cost'
  ])
+ assert.deepEqual(calls.map(x=>x.method),['POST','POST','GET','GET'])
  assert.equal(r.historicalUsageTermsReviewed,false)
 })
 test('META-04 unresolved symbol stops before quote, never guesses a future contract',async()=>{

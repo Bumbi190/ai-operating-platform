@@ -1,0 +1,328 @@
+{
+  "approvedAtStockholm": "2026-10-19T08:44:06+02:00",
+  "scope": "Preparation only. No customer sends, scheduling, retries, source import or new credentials.",
+  "baseline": {
+    "contacts": {
+      "hash": "8f4453f74cf90dfbbee077d26937229a",
+      "held": 139,
+      "count": 139
+    },
+    "memories": {
+      "hash": "2e08254138637bb150769e67c58cffbe",
+      "count": 17
+    },
+    "offers": 2,
+    "initialJobs": 0,
+    "replyJobs": 1,
+    "sendJobs": 1,
+    "sendEvents": 4,
+    "ledgerCount": 170
+  },
+  "migration": {
+    "canonical": "20261019065056_sales_contact_timing.sql",
+    "sha256": "8c651b4962445328991f837ff509b7146139921f8437ac2bfd7afbff0af27476",
+    "ledgerVersion": "20261019073559",
+    "ledgerCountBefore": 170,
+    "ledgerCountAfter": 171,
+    "applied": true,
+    "seededRows": 0,
+    "catalog": {
+      "rules": 0,
+      "ledger": [
+        {
+          "name": "sales_contact_timing",
+          "version": "20261019073559"
+        }
+      ],
+      "tables": [
+        {
+          "rls": true,
+          "name": "sales_contact_history_revisions",
+          "policies": 0,
+          "anonSelect": false,
+          "authInsert": false,
+          "serviceDelete": false,
+          "serviceInsert": true,
+          "serviceSelect": true,
+          "serviceUpdate": false
+        },
+        {
+          "rls": true,
+          "name": "sales_contact_timing_rules",
+          "policies": 0,
+          "anonSelect": false,
+          "authInsert": false,
+          "serviceDelete": false,
+          "serviceInsert": true,
+          "serviceSelect": true,
+          "serviceUpdate": false
+        }
+      ],
+      "functions": [
+        {
+          "name": "sales_timing_assert_snapshot",
+          "invoker": true,
+          "searchPath": [
+            "search_path=\"\""
+          ],
+          "volatility": "v",
+          "anonExecute": false,
+          "authExecute": false,
+          "serviceExecute": true
+        },
+        {
+          "name": "sales_timing_context",
+          "invoker": true,
+          "searchPath": [
+            "search_path=\"\""
+          ],
+          "volatility": "s",
+          "anonExecute": false,
+          "authExecute": false,
+          "serviceExecute": true
+        },
+        {
+          "name": "sales_timing_evaluate",
+          "invoker": true,
+          "searchPath": [
+            "search_path=\"\""
+          ],
+          "volatility": "s",
+          "anonExecute": false,
+          "authExecute": false,
+          "serviceExecute": true
+        },
+        {
+          "name": "sales_timing_fields",
+          "invoker": true,
+          "searchPath": [
+            "search_path=\"\""
+          ],
+          "volatility": "v",
+          "anonExecute": false,
+          "authExecute": false,
+          "serviceExecute": true
+        },
+        {
+          "name": "sales_timing_history_json",
+          "invoker": true,
+          "searchPath": [
+            "search_path=\"\""
+          ],
+          "volatility": "s",
+          "anonExecute": false,
+          "authExecute": false,
+          "serviceExecute": true
+        },
+        {
+          "name": "sales_timing_instant",
+          "invoker": true,
+          "searchPath": [
+            "search_path=\"\""
+          ],
+          "volatility": "v",
+          "anonExecute": false,
+          "authExecute": false,
+          "serviceExecute": true
+        },
+        {
+          "name": "sales_timing_read",
+          "invoker": true,
+          "searchPath": [
+            "search_path=\"\""
+          ],
+          "volatility": "s",
+          "anonExecute": false,
+          "authExecute": false,
+          "serviceExecute": true
+        },
+        {
+          "name": "sales_timing_rules_json",
+          "invoker": true,
+          "searchPath": [
+            "search_path=\"\""
+          ],
+          "volatility": "s",
+          "anonExecute": false,
+          "authExecute": false,
+          "serviceExecute": true
+        },
+        {
+          "name": "sales_timing_save_history",
+          "invoker": true,
+          "searchPath": [
+            "search_path=\"\""
+          ],
+          "volatility": "v",
+          "anonExecute": false,
+          "authExecute": false,
+          "serviceExecute": true
+        },
+        {
+          "name": "sales_timing_save_rules",
+          "invoker": true,
+          "searchPath": [
+            "search_path=\"\""
+          ],
+          "volatility": "v",
+          "anonExecute": false,
+          "authExecute": false,
+          "serviceExecute": true
+        },
+        {
+          "name": "sales_timing_text",
+          "invoker": true,
+          "searchPath": [
+            "search_path=\"\""
+          ],
+          "volatility": "v",
+          "anonExecute": false,
+          "authExecute": false,
+          "serviceExecute": true
+        },
+        {
+          "name": "sales_timing_uuid",
+          "invoker": true,
+          "searchPath": [
+            "search_path=\"\""
+          ],
+          "volatility": "v",
+          "anonExecute": false,
+          "authExecute": false,
+          "serviceExecute": true
+        },
+        {
+          "name": "sales_timing_validate_history",
+          "invoker": true,
+          "searchPath": [
+            "search_path=\"\""
+          ],
+          "volatility": "v",
+          "anonExecute": false,
+          "authExecute": false,
+          "serviceExecute": true
+        }
+      ],
+      "histories": 0,
+      "ledgerCount": 171
+    }
+  },
+  "review": {
+    "source": "/root/timing_final_review",
+    "base": "b58dd0dde46eb2aeb098b6fba8bc32adde54ad7c",
+    "head": "bae1d59df61766c5204b562a4dedb28884b1fa88",
+    "critical": 0,
+    "important": 2,
+    "minor": 1,
+    "findings": [
+      {
+        "severity": "Important",
+        "issue": "Asymmetric source windows could yield known counts/floor without continuous channel coverage",
+        "fix": "Require every channel complete window to cover earliest declared source/event through shared through; SOURCE_GAP and null counts/floor otherwise",
+        "red": "task6-review-window-red.log",
+        "green": "task6-final-db.log"
+      },
+      {
+        "severity": "Important",
+        "issue": "VOLATILE report/evaluation could mix committed revisions in a single read",
+        "fix": "STABLE report/evaluate tree; action boundaries still evaluate after lifecycle locks",
+        "red": "task6-review-read-red.log",
+        "green": "task6-final-db.log",
+        "test": "real two-session context gate with concurrent rule commit"
+      },
+      {
+        "severity": "Minor",
+        "issue": "Workspace refresh remounted review editor",
+        "fix": "stable component identity + reconcile canonical report with useEffect preserving active form/base",
+        "red": "task6-review-ui-red.log",
+        "green": "task6-review-browser-green.log"
+      }
+    ],
+    "deferred": []
+  },
+  "tests": {
+    "scoped": {
+      "passed": 417,
+      "dbSkippedInUnitRun": 7,
+      "actuallyExecutedDbIntegrations": 7
+    },
+    "postReviewTimingSchemaGuard": {
+      "passed": 165
+    },
+    "sql": {
+      "timingCases": 22,
+      "existingFinalSchemaNegatives": 6,
+      "realTimingRaces": 5
+    },
+    "browser": {
+      "passed": 10,
+      "viewports": [
+        1440,
+        390
+      ]
+    },
+    "typecheck": {
+      "exit": 0
+    },
+    "fullWeb": {
+      "total": 15238,
+      "passed": 13498,
+      "failed": 403,
+      "pending": 1333,
+      "historicalFailureIdentitiesUnchanged": 402,
+      "newFailure": "Registry metadata total173 did not include two new entries; corrected to175 and schema suite76/76 passed",
+      "newReproducibleFailuresAfterScopedFix": 0,
+      "note": "Full suite is not green; one full run before review fixes, affected SQL/browser/type/schema/guard suites rerun after fixes. 26 unrelated existing load-error suites remain."
+    }
+  },
+  "actualRead": {
+    "rules": null,
+    "allHeld": true,
+    "sending": false,
+    "histories": 0,
+    "projectId": "8f673c09-1c8f-4d78-876e-4c14bf1c89b3",
+    "evaluatedAt": "2026-10-19T07:36:28.894946+00:00",
+    "allowedCount": 0,
+    "contactCount": 139,
+    "workspaceUrl": "/projects/handlarborsen/sales#contact-timing",
+    "allMissingHistory": true,
+    "allUnknownReminderCount": true
+  },
+  "preview": {
+    "status": "pending"
+  },
+  "remainingLimits": [
+    "No owner rule or history revisions saved live; both tables empty.",
+    "14 whole days, maximum one reminder, source age15min are review defaults, not an activated customer campaign.",
+    "Manual Strato Sent/Resend history needs explicit bounded owner review; no continuous synchronization implemented.",
+    "All139 contacts remain held; no live-address or consent validation claim.",
+    "Customer transport remains disabled; existing owner-test path unchanged."
+  ],
+  "rulings": [
+    {
+      "decision": "Used equivalent Windows task briefs/logs because cloud task-start script resource was unreadable",
+      "cost": "Recovery relies on ledger plus git inspection"
+    },
+    {
+      "decision": "Added timing test folder explicitly to Vitest collection",
+      "cost": "Discovery-only configuration change"
+    },
+    {
+      "decision": "Lifecycle assertion moved from task2 to task3 with snapshot producer",
+      "cost": "Must be defined before wiring"
+    },
+    {
+      "decision": "SQL_ONLY test feedback flag skips broad integration tail only when explicitly set",
+      "cost": "Full default runner separately executed and reported"
+    },
+    {
+      "decision": "Report includes canonical owner historyRevisions metadata for safe corrections",
+      "cost": "Larger owner-scoped read payload, no write authority"
+    },
+    {
+      "decision": "Tasks3–5 committed as coherent shared projection/API/UI increment",
+      "cost": "Less granular rollback"
+    }
+  ],
+  "deferredMinorFindings": []
+}

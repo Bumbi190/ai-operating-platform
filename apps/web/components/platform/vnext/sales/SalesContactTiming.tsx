@@ -1,15 +1,19 @@
 'use client'
-import {useState,type FormEvent} from 'react'
+import {useEffect,useState,type FormEvent} from 'react'
 import type {SalesContact} from '@/lib/sales/types'
 import type {TimingReport,HistoryData,HistorySource,HistoryEvent} from '@/lib/sales/timing/types'
 import {parseHistoryRevision,parseTimingRules} from '@/lib/sales/timing/validate'
 import {formatTimingInstant,timingBlockerLabel} from '@/lib/sales/timing/view-model'
 import styles from './SalesWorkspace.module.css'
 const emptyHistory=():HistoryData=>({schemaVersion:1,contactVersions:[],history:'unknown',olderHistoryAttestation:null,sources:[],events:[],correctionOf:null,reviewNote:''})
+const sourceLabels:Record<string,string>={strato_sent:'Skickat i Strato',strato_inbox:'Inkorg i Strato',resend:'Resend',operator:'Manuell avstämning'}
+const outcomeLabels:Record<string,string>={accepted:'Godtaget av mejlservern',delivery_unknown:'Oklart om mejlet skickades',failed_before_send:'Misslyckades före sändning',received:'Mottaget',bounced:'Studsat',unsubscribed:'Avregistrerat'}
+const eventLabels:Record<string,string>={unclassified:'Behöver klassificeras',initial:'Första inbjudan',reminder:'Påminnelse',requested_reply:'Begärt svar'}
 const instant=(v:string|null|undefined)=>v?formatTimingInstant(v):'Okänt'
 export function SalesContactTiming({projectId,contacts,initialTiming,onSaved}:{projectId:string;contacts:SalesContact[];initialTiming:TimingReport|undefined;onSaved:()=>Promise<void>}){
  const [report,setReport]=useState(initialTiming),[selected,setSelected]=useState(contacts[0]?.id??''),[editing,setEditing]=useState(false),[rulesOpen,setRulesOpen]=useState(false),[data,setData]=useState<HistoryData>(emptyHistory),[base,setBase]=useState<string|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState(''),[conflict,setConflict]=useState(false)
  const [days,setDays]=useState(String((initialTiming?.rules?.minWaitSeconds??1209600)/86400)),[maxReminders,setMaxReminders]=useState(String(initialTiming?.rules?.maxReminders??1)),[age,setAge]=useState(String((initialTiming?.rules?.maxSourceAgeSeconds??900)/60)),[ruleBase,setRuleBase]=useState<string|null>(initialTiming?.rules?.id??null)
+ useEffect(()=>{setReport(initialTiming)},[initialTiming])
  const c=contacts.find(x=>x.id===selected),t=report?.contacts.find(x=>x.contactId===selected)
  const history=report?.historyRevisions?.find(x=>x.id===t?.historyRevisionId)
  async function refresh(){setBusy(true);setError('');try{const r=await fetch('/api/sales/timing?projectId='+projectId,{cache:'no-store'});if(!r.ok)throw Error('Kontrollen kunde inte läsas. Historiken är okänd.');setReport(await r.json())}catch(e){setReport(undefined);setError(String(e instanceof Error?e.message:e))}finally{setBusy(false)}}
@@ -32,7 +36,7 @@ export function SalesContactTiming({projectId,contacts,initialTiming,onSaved}:{p
  <h3>{c.companyName} {c.branchName}</h3><p>{t.recipient} · Kontaktversion {t.contactVersion}</p>
  <ul>{t.blockers.length?t.blockers.map(b=><li key={b}>{timingBlockerLabel(b)}</li>):<li>Underlaget tillåter förberedelse för granskning.</li>}</ul>
  <dl className={styles.metadata}><dt>Senast observerade utgående</dt><dd>{instant(t.latestObservedOutboundAt)}</dd><dt>Registrerade påminnelser</dt><dd>{t.reminderCount===null?'Okänt':t.reminderCount}</dd><dt>Tidigaste tidsgräns enligt underlaget</dt><dd>{t.intervalFloorAt?instant(t.intervalFloorAt):'Kan inte bestämmas'}</dd><dt>Källorna kontrollerade till</dt><dd>{instant(t.sourceThrough)}</dd><dt>Historikversion</dt><dd>{history?.version??'Saknas'}</dd><dt>Regelversion</dt><dd>{report.rules?.version??'Saknas'}</dd></dl>
- {history?.data.sources.map(s=><p key={s.sourceKey}>{s.channel} · {s.state} · {instant(s.since)} – {instant(s.through)}<br/>{s.reference}</p>)}
+ {history?.data.sources.map(s=><p key={s.sourceKey}>{sourceLabels[s.channel]} · {s.state==='complete'?'Kontrollerat':s.state==='gap'?'Lucka':'Misslyckad kontroll'} · {instant(s.since)} – {instant(s.through)}<br/>{s.reference}</p>)}
  <button type="button" disabled={busy||editing||rulesOpen} onClick={beginHistory}>Granska historik</button>
  {editing&&<form className={styles.form} onSubmit={submitHistory}>
  <label>Mottagare<input readOnly value={c.email}/></label>
@@ -42,7 +46,7 @@ export function SalesContactTiming({projectId,contacts,initialTiming,onSaved}:{p
  <h4>Källor och faktiskt kontrollerade tidsfönster</h4>
  {data.sources.map((s,i)=><fieldset key={i}><legend>Källa {i+1}</legend>
  <label>Källnyckel<input required value={s.sourceKey} onChange={e=>source(i,'sourceKey',e.target.value)}/></label>
- <label>Kanal<select value={s.channel} onChange={e=>source(i,'channel',e.target.value)}>{['strato_sent','strato_inbox','resend','operator'].map(v=><option key={v}>{v}</option>)}</select></label>
+ <label>Kanal<select value={s.channel} onChange={e=>source(i,'channel',e.target.value)}>{['strato_sent','strato_inbox','resend','operator'].map(v=><option key={v} value={v}>{sourceLabels[v]}</option>)}</select></label>
  <label>Källstatus<select value={s.state} onChange={e=>source(i,'state',e.target.value)}><option value="gap">Lucka</option><option value="failed">Kontrollen misslyckades</option><option value="complete">Hela angivna fönstret kontrollerat</option></select></label>
  {([['identityRef','Konto eller källidentitet'],['scopeRef','Kontrollerat urval'],['since','Från, RFC3339 med Z/offset'],['through','Till, RFC3339 med Z/offset'],['observedAt','Avstämt, RFC3339 med Z/offset'],['reference','Referens till underlag']] as const).map(([k,label])=><label key={k}>{label}<input required maxLength={500} value={s[k]} onChange={e=>source(i,k,e.target.value)}/></label>)}
  <button type="button" onClick={()=>setData({...data,sources:data.sources.filter((_,n)=>n!==i)})}>Ta bort källa {i+1}</button></fieldset>)}
@@ -51,8 +55,8 @@ export function SalesContactTiming({projectId,contacts,initialTiming,onSaved}:{p
  {data.events.map((v,i)=><fieldset key={v.id}><legend>Händelse {i+1}</legend><small>{v.id}</small>
  <label>Tidpunkt med Z/offset<input required value={v.occurredAt} onChange={e=>event(i,{occurredAt:e.target.value})}/></label>
  <label>Riktning<select value={v.direction} onChange={e=>event(i,{direction:e.target.value as HistoryEvent['direction']})}><option value="outbound">Utgående</option><option value="inbound">Inkommande</option></select></label>
- <label>Utfall<select value={v.outcome} onChange={e=>event(i,{outcome:e.target.value as HistoryEvent['outcome']})}>{['accepted','delivery_unknown','failed_before_send','received','bounced','unsubscribed'].map(k=><option key={k}>{k}</option>)}</select></label>
- <label>Typ<select value={v.kind} onChange={e=>event(i,{kind:e.target.value as HistoryEvent['kind']})}>{['unclassified','initial','reminder','requested_reply'].map(k=><option key={k}>{k}</option>)}</select></label>
+ <label>Utfall<select value={v.outcome} onChange={e=>event(i,{outcome:e.target.value as HistoryEvent['outcome']})}>{['accepted','delivery_unknown','failed_before_send','received','bounced','unsubscribed'].map(k=><option key={k} value={k}>{outcomeLabels[k]}</option>)}</select></label>
+ <label>Typ<select value={v.kind} onChange={e=>event(i,{kind:e.target.value as HistoryEvent['kind']})}>{['unclassified','initial','reminder','requested_reply'].map(k=><option key={k} value={k}>{eventLabels[k]}</option>)}</select></label>
  <label>Källnycklar, separera med komma<input required value={v.sourceRefs.join(',')} onChange={e=>event(i,{sourceRefs:e.target.value.split(',').map(x=>x.trim()).filter(Boolean)})}/></label>
  {v.providerRefs.map((p,n)=><div key={n}><label>Leverantörens källnyckel<input required value={p.sourceKey} onChange={e=>event(i,{providerRefs:v.providerRefs.map((x,j)=>j===n?{...x,sourceKey:e.target.value}:x)})}/></label><label>Leverantörens mejl-ID<input required value={p.id} onChange={e=>event(i,{providerRefs:v.providerRefs.map((x,j)=>j===n?{...x,id:e.target.value}:x)})}/></label></div>)}
  <button type="button" disabled={v.providerRefs.length>=8} onClick={()=>event(i,{providerRefs:[...v.providerRefs,{sourceKey:'',id:''}]})}>Lägg till leverantörsreferens</button>

@@ -169,6 +169,13 @@ select pg_temp.timing_case('rule revision fences result and address edit fences 
  end loop;
 end$$;$case$);
 
+select pg_temp.timing_case('asymmetric windows cannot establish reminder history',$case$do $$declare f jsonb:=sales_regression_fixture('timing-window-gap');at timestamptz:=clock_timestamp()-interval '1 second';d jsonb;x jsonb;begin
+ perform pg_temp.save_rules(f);d:=pg_temp.timing_data((f->>'contactId')::uuid,at,jsonb_build_array(pg_temp.timing_event(at-interval '20 days')),'contacted');
+ d:=jsonb_set(d,'{sources,1,since}',to_jsonb(to_char(at-interval '1 hour','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')));d:=jsonb_set(d,'{sources,2,since}',d->'sources'->1->'since');
+ perform pg_temp.save_timing(f,d);x:=sales_timing_evaluate((f->>'projectId')::uuid,(f->>'contactId')::uuid,at);
+ perform sales_test_assert(x->'blockers' ? 'SOURCE_GAP' and x->'reminderCount'='null' and x->'intervalFloorAt'='null','unreviewed channel history stays unknown');
+end$$;$case$);
+
 do $$declare failures text;begin select string_agg(label||': '||error,E'\n') into failures from timing_failures;if failures is not null then raise exception E'Timing FAILED:\n%',failures;end if;end$$;
 select 'PASS contact timing contracts';
 rollback;

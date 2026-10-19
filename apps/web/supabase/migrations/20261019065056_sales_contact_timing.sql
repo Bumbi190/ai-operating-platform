@@ -142,8 +142,8 @@ declare pid uuid;c public.sales_contacts;h public.sales_contact_history_revision
  values(pid,(p_principal->>'userId')::uuid,address,coalesce(old.version,0)+1,old.id,(p_input->>'idempotencyKey')::uuid,p_input,p_input->'data',public.sales_timing_context(pid,address)) returning * into h;
  return public.sales_timing_history_json(h);
 end$$;
-create function public.sales_timing_evaluate(pid uuid,cid uuid,at timestamptz) returns jsonb language plpgsql security invoker set search_path='' as $$
-declare c public.sales_contacts;r public.sales_contact_timing_rules;h public.sales_contact_history_revisions;address text;b text[]:='{}';e jsonb;s jsonb;cv jsonb;latest timestamptz;floor_at timestamptz;through_at timestamptz;reminders integer;uncertain boolean:=false;channel text;accepted timestamptz;begin
+create function public.sales_timing_evaluate(pid uuid,cid uuid,at timestamptz) returns jsonb language plpgsql stable security invoker set search_path='' as $$
+declare c public.sales_contacts;r public.sales_contact_timing_rules;h public.sales_contact_history_revisions;address text;b text[]:='{}';e jsonb;s jsonb;cv jsonb;latest timestamptz;floor_at timestamptz;through_at timestamptz;reminders integer;uncertain boolean:=false;channel text;accepted timestamptz;required_from timestamptz;begin
  select * into c from public.sales_contacts where project_id=pid and id=cid;
  if not found then raise exception 'NOT_FOUND' using errcode='P0002';end if;
  address:=lower(btrim(c.data->>'email'));
@@ -172,6 +172,10 @@ declare c public.sales_contacts;r public.sales_contact_timing_rules;h public.sal
    if (s->>'through')::timestamptz>at then b:=array_append(b,'SOURCE_CHANGED');end if;
    through_at:=least(through_at,(s->>'through')::timestamptz);
    if r.id is not null and at-(s->>'through')::timestamptz>make_interval(secs=>r.max_source_age_seconds) then b:=array_append(b,'SOURCE_STALE');end if;
+  end loop;
+  select least((select min((v->>'since')::timestamptz) from jsonb_array_elements(h.data->'sources') v),(select min((v->>'occurredAt')::timestamptz) from jsonb_array_elements(h.data->'events') v)) into required_from;
+  foreach channel in array array['strato_sent','strato_inbox','resend'] loop
+   if not exists(select from jsonb_array_elements(h.data->'sources') coverage where coverage->>'channel'=channel and coverage->>'state'='complete' and (coverage->>'since')::timestamptz<=required_from and (coverage->>'through')::timestamptz>=through_at) then b:=array_append(b,'SOURCE_GAP');end if;
   end loop;
   reminders:=0;
   for e in select value from jsonb_array_elements(h.data->'events') loop
@@ -202,7 +206,7 @@ declare c public.sales_contacts;r public.sales_contact_timing_rules;h public.sal
  select coalesce(array_agg(distinct value order by value),'{}') into b from unnest(b) value;
  return jsonb_build_object('contactId',cid,'recipient',address,'contactVersion',c.version,'historyRevisionId',h.id,'ruleRevisionId',r.id,'latestObservedOutboundAt',latest,'reminderCount',reminders,'intervalFloorAt',floor_at,'sourceThrough',through_at,'blockers',to_jsonb(b),'initialPreparationAllowed',cardinality(b)=0);
 end$$;
-create function public.sales_timing_read(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql security invoker set search_path='' as $$
+create function public.sales_timing_read(p_principal jsonb,p_input jsonb) returns jsonb language plpgsql stable security invoker set search_path='' as $$
 declare pid uuid;at timestamptz:=clock_timestamp();rows jsonb;r public.sales_contact_timing_rules;ids jsonb:=p_input->'contactIds';n integer;slug text;begin
  pid:=public.sales_timing_uuid(p_input->'projectId');perform public.sales_owner(p_principal,pid);
  if jsonb_typeof(p_input) is distinct from 'object' or exists(select from jsonb_object_keys(p_input) k where k not in('projectId','contactIds')) then raise exception 'INVALID_BODY' using errcode='22023';end if;

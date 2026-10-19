@@ -39,11 +39,43 @@ async function verifyOriginalSource(){
 }
 export function createRuntimeProviderPreview(access:ProjectAccessOk){
  const project:ProjectRef={projectId:PREVIEW_PROJECT_ID}
+ const db=createAdminClient()
+ // Resolve only the measured settlement of this exact claimed provider flight.
+ // Never infer attribution from a latest row, amount or approximate timestamp.
+ type LedgerRead={select:(columns:string)=>LedgerRead;eq:(column:string,value:string)=>LedgerRead;
+  maybeSingle:()=>Promise<{data:Record<string,unknown>|null;error:unknown}>}
+ const ledger=db as unknown as {from:(table:'spend_reservations'|'cost_events')=>LedgerRead}
+ const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(v)
+ const decimal=(v:unknown)=>typeof v==='number'?v:
+  typeof v==='string'&&/^-?\d+(?:\.\d+)?$/.test(v)?Number(v):NaN
+ const costEvent=async(provider:'ideogram'|'elevenlabs',index?:number):Promise<string>=>{
+  const image=provider==='ideogram',operation=image?'Scene Image':'generateVoiceover'
+  if(image&&(typeof index!=='number'||!Number.isInteger(index)||index<0||index>2))throw Error('PREVIEW_COST_NOT_VERIFIED')
+  const key=spendIdempotencyKey({project,provider,operation,subject:image?PREVIEW_ID+'#'+index:PREVIEW_ID})
+  const {data:r,error:re}=await ledger.from('spend_reservations')
+   .select('id,project_id,provider,operation,idempotency_key,status,settlement_kind,ceiling_exceeded,dispatched_at')
+   .eq('project_id',PREVIEW_PROJECT_ID).eq('provider',provider).eq('operation',operation)
+   .eq('idempotency_key',key).maybeSingle()
+  if(re||!r||!uuid(r.id)||r.project_id!==PREVIEW_PROJECT_ID||r.provider!==provider||r.operation!==operation||
+   r.idempotency_key!==key||r.status!=='settled'||r.settlement_kind!=='metered'||r.ceiling_exceeded!==false||
+   typeof r.dispatched_at!=='string'||!Number.isFinite(Date.parse(r.dispatched_at)))throw Error('PREVIEW_COST_NOT_VERIFIED')
+  const {data:c,error:ce}=await ledger.from('cost_events')
+   .select('id,reservation_id,project_id,provider,operation,model,unit_type,units,settlement_kind,cost_sek,metadata')
+   .eq('project_id',PREVIEW_PROJECT_ID).eq('provider',provider).eq('reservation_id',r.id).maybeSingle()
+  const metadata=c?.metadata as Record<string,unknown>|null|undefined
+  if(ce||!c||!uuid(c.id)||c.project_id!==PREVIEW_PROJECT_ID||c.provider!==provider||c.reservation_id!==r.id||
+   c.settlement_kind!=='metered'||c.operation!==(image?'Scene Image':'Generate Voiceover')||
+   c.model!==(image?'ideogram-v3':'tts')||c.unit_type!==(image?'images':'characters')||
+   decimal(c.units)!==(image?1:candidate.script.length)||!Number.isFinite(decimal(c.cost_sek))||decimal(c.cost_sek)<0||
+   (!image&&(!metadata||metadata.voice!=='victoria'||metadata.model!=='eleven_turbo_v2_5')))
+   throw Error('PREVIEW_COST_NOT_VERIFIED')
+  return c.id
+ }
  const execution:ExecutionContract={context:'OPERATOR_EXECUTION',scope:projectScope({projectId:PREVIEW_PROJECT_ID})}
  const provenance={source:'generated' as const,adapterVersion:ILLUSTRATED_NEWS_PROFILE,brief:candidate,
   providerMetadata:{privateProviderQa:true,releaseApproved:false}}
  return createProviderPreview({
-  access,env:process.env,now:Date.now,...createProviderPreviewStore(createAdminClient()),
+  access,env:process.env,now:Date.now,...createProviderPreviewStore(db),
   verifySource:verifyOriginalSource,
   async estimate(){
    const rates=await getRates()
@@ -57,17 +89,19 @@ export function createRuntimeProviderPreview(access:ProjectAccessOk){
   assertExecution:()=>assertExecutionDispatchAllowed(execution,{system:'the-prompt-private-preview',operation:'generate_preview'}),
   images:()=>generateNewsImages(candidate.title,candidate.script,3,execution,project,PREVIEW_ID,ILLUSTRATED_NEWS_PROFILE),
   async admitImage(url,index){
+   const costEventId=await costEvent('ideogram',index)
    const result=await admitAssetFromUrl({projectId:PREVIEW_PROJECT_ID,kind:'image',visibility:'internal',
     storage:{path:'the-prompt-private-qa/'+PREVIEW_ID+'/scene-'+index},sourceUrl:url,
-    provenance:{...provenance,provider:'ideogram',model:'ideogram-v3',providerMetadata:{...provenance.providerMetadata,scene:index}}})
+    provenance:{...provenance,provider:'ideogram',model:'ideogram-v3',costEventId,providerMetadata:{...provenance.providerMetadata,scene:index}}})
    return result.asset.id
   },
   voice:()=>generateVoiceover(candidate.script,execution,'victoria',project,spendIdempotencyKey({project,provider:'elevenlabs',operation:'generateVoiceover',subject:PREVIEW_ID})),
   async admitVoice(voice){
+   const costEventId=await costEvent('elevenlabs')
    const result=await admitAssetBytes({projectId:PREVIEW_PROJECT_ID,kind:'audio',visibility:'internal',
     storage:{path:'the-prompt-private-qa/'+PREVIEW_ID+'/victoria'},bytes:voice.audioBuffer,
     mimeType:'audio/mpeg',durationMs:voice.durationMs,
-    provenance:{...provenance,provider:'elevenlabs',model:'eleven_turbo_v2_5',durationMs:voice.durationMs}})
+    provenance:{...provenance,provider:'elevenlabs',model:'eleven_turbo_v2_5',costEventId,durationMs:voice.durationMs}})
    return result.asset.id
   },
   async deliver(state:PreviewAttempt){

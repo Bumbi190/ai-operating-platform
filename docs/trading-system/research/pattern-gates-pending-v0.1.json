@@ -1,7 +1,7 @@
 {
   "schemaVersion": "research.trading_pattern_gates.v0.1",
   "status": "NON_CANONICAL_RESEARCH",
-  "reviewedAt": "2026-10-18",
+  "reviewedAt": "2026-10-19",
   "canProduceStrategySignals": false,
   "canAuthorizeExecution": false,
   "activeStrategyVersion": "Omnira Liquidity Manipulation Canonical v1.0",
@@ -20,7 +20,7 @@
       "decisions": {
         "fvgFormationBoundary": null,
         "originalFvgDirectionByTradeSide": null,
-        "inversionCrossingRule": null,
+        "inversionCrossingRule": "CLOSE_BEYOND_FAR_EDGE",
         "confirmationBarPolicy": null,
         "creationVsManipulationOrder": null,
         "multipleCandidateTieBreak": null,
@@ -33,7 +33,18 @@
         "IFVG-04",
         "PARITY-01",
         "PARITY-02"
-      ]
+      ],
+      "operatorConfirmedSubdecisions": {
+        "iFvgTerminology": "INVERSION_FAIR_VALUE_GAP",
+        "crossingRule": "CLOSE_BEYOND_FAR_EDGE",
+        "timing": "AFTER_COMPLETED_1M_CANDLE",
+        "strictness": "STRICTLY_BEYOND_FAR_EDGE",
+        "wickAloneCounts": false,
+        "evidence": "Explicit user confirmations in conversation, 2026-10-19",
+        "humanChoiceRecorded": true,
+        "approvedDetectionVersion": null,
+        "remainingMandatoryDecisionsOpen": true
+      }
     },
     {
       "gate": "GATE-02",
@@ -164,6 +175,6 @@
       }
     ],
     "versionDecisionsApproved": 0,
-    "remainingAction": "Human review and canonical machine-readable detection versions for every gate; historical data source remains unverified"
+    "remainingAction": "Operator-confirmed iFVG inversion + completed 1m close crossing, but GATE-01 still OPEN pending other criteria; GATE-02/03/04 OPEN; historical source unverified"
   }
 }

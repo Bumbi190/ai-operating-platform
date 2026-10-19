@@ -6,12 +6,14 @@ import {fileURLToPath} from 'node:url'
 import type {TransportReason} from './workspace-contracts.js'
 export type HelperMode='prepare'|'probe'|'cleanup-probe'|'materialize-fixture'|'cleanup-materialization'
 type Decoded={status:'decoded';value:unknown}|{status:'unavailable';reason:TransportReason}
-const RUNTIME='C:\\Program Files\\dotnet\\dotnet.exe'
+export const RUNTIME='C:\\Program Files\\dotnet\\dotnet.exe'
 const RUNTIME_SHA256='7967467e8bad9c686de2ab2c1994112d5331a7c3d20f0b8a4fff7480221a1c37'
-const HELPER=fileURLToPath(new URL('../../../.native/windows-workspace/OmniraBrokerWorkspace.dll',import.meta.url))
+export const HELPER=fileURLToPath(new URL('../../../.native/windows-workspace/OmniraBrokerWorkspace.dll',import.meta.url))
+/** Fixed helper environment: no caller PATH, profile, Docker or credential variables reach the native process. */
+export const HELPER_ENV=Object.freeze({NODE_ENV:'production',SystemRoot:'C:\\Windows',WINDIR:'C:\\Windows',PATH:'C:\\Windows\\System32',DOTNET_MULTILEVEL_LOOKUP:'0',DOTNET_CLI_TELEMETRY_OPTOUT:'1',DOTNET_NOLOGO:'1'})
 /** Bounded syntax pass rejects duplicate decoded keys before JSON.parse can erase them. */
-export function decodeWorkspaceHelperJson(text:string):unknown{
- if(typeof text!=='string'||Buffer.byteLength(text,'utf8')>262144)throw Error('invalid native JSON')
+export function decodeWorkspaceHelperJson(text:string,maxBytes=262144):unknown{
+ if(typeof text!=='string'||Buffer.byteLength(text,'utf8')>maxBytes)throw Error('invalid native JSON')
  let at=0
  const bad=():never=>{throw Error('invalid native JSON')}
  const ws=()=>{while(at<text.length&&/[ \t\r\n]/.test(text[at]))at++}
@@ -37,7 +39,7 @@ function checkFile(path:string):void{
  if(realpathSync(path).toLowerCase()!==path.toLowerCase()||!lstatSync(path).isFile()||lstatSync(path).size>16777216)throw Error()
  for(let current=path;;){if(lstatSync(current).isSymbolicLink())throw Error();const parent=dirname(current);if(parent===current||parent==='.')break;current=parent}
 }
-function checkBootstrap(){
+export function checkBootstrap(){
  for(const path of [RUNTIME,HELPER,HELPER.replace(/\.dll$/,'.deps.json'),HELPER.replace(/\.dll$/,'.runtimeconfig.json'),fileURLToPath(new URL('../../../.native/windows-workspace/OmniraBrokerHost.dll',import.meta.url))])checkFile(path)
  const bytes=readFileSync(RUNTIME);if(bytes.length>16777216||createHash('sha256').update(bytes).digest('hex')!==RUNTIME_SHA256)throw Error()
 }
@@ -55,7 +57,7 @@ export function createWorkspaceInvoker(deps:HelperDeps):(mode:HelperMode,payload
    try{
     const child=deps.launch(RUNTIME,[HELPER,mode],{
      shell:false,windowsHide:true,encoding:'utf8',timeout:mode==='materialize-fixture'?185000:mode==='cleanup-materialization'?35000:mode==='prepare'?125000:mode==='probe'?35000:20000,maxBuffer:262144,
-     env:{NODE_ENV:'production',SystemRoot:'C:\\Windows',WINDIR:'C:\\Windows',PATH:'C:\\Windows\\System32',DOTNET_MULTILEVEL_LOOKUP:'0',DOTNET_CLI_TELEMETRY_OPTOUT:'1',DOTNET_NOLOGO:'1'},
+     env:{...HELPER_ENV},
     },(error,stdout,stderr)=>{
      if(error){const e=error as NodeJS.ErrnoException&{killed?:boolean};unavailable(e.code==='ERR_CHILD_PROCESS_STDIO_MAXBUFFER'?'response_too_large':e.killed?'deadline_exceeded':e.code==='ENOENT'?'helper_unavailable':'helper_failed');return}
      if(Buffer.byteLength(stdout,'utf8')>262144||Buffer.byteLength(stderr,'utf8')>262144){unavailable('response_too_large');return}

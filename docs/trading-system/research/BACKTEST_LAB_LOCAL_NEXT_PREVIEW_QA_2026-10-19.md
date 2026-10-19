@@ -64,3 +64,11 @@ Detta verifierar återuppspelning, progressiva demodata och layout i en äkta Ne
 5. Ingen faktiskt historisk backtest; `+0.50 R` och `50%` är endast **illustrativa fixture-mätvärden**.
 
 **Rekommendation:** använd nu den lokala URL:en på Macen för UX-godkännande; fortsätt sedan med separat auth/production-CSP-granskning och uttryckligt godkänd CI-budget innan PR och merge. Inga deployment- eller dataköp görs här.
+
+## Sista QA med originalets autentiseringslayout
+
+Vi körde även den vanliga `lib/qa/trading-backtest-lab-fixture.test.ts`-sviten direkt i den temporära visuella förhandsvisningen. Där blev **6/7 gröna och 1/7 röd**, eftersom förhandsvisningens tillfälliga `(platform)/layout.tsx` medvetet ersatte Supabase-login. Detta är en **förväntad konsekvens av en separat designshim**, inte ett accepterat autentiseringsresultat.
+
+En andra **separat isolerad QA-kopia** använde den **orörda verkliga** `apps/web/app/(platform)/layout.tsx` från Omnira tillsammans med Backtest Lab-featurebranchens sida och fixture. Där blev **7/7 PASS** (Vitest 2.1.9), inklusive testet som kräver `supabase.auth.getUser()` och `redirect('/login')` samt iframe-sandboxgrinden. Detta är fortfarande en statisk/testbaserad auth-kontroll; en autentiserad session i produktion har inte provats.
+
+**Slutstatus:** visuell körbar Next.js-preview: lokal HTTP 200 och Chrome mobil/desktop-CDP-kontroller godkända. Normal QA med riktig layout: 7/7 PASS. Inga produktionsanrop eller deployment.

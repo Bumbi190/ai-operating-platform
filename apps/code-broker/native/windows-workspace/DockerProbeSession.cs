@@ -41,7 +41,11 @@ internal sealed class DockerProbeSession {
  }
  internal async Task<JsonDocument?> InspectAsync(string owned,CancellationToken cancellation){
   if(!ProbeSpecification.ContainerId(owned)&&!ProbeSpecification.IsName(owned))throw new WorkspaceException("protocol_invalid");
-  var response=await RequestAsync(HttpMethod.Get,"/v1.51/containers/"+owned+"/json",null,5000,cancellation);return response.Status==404?null:Json(response,200);
+  // Container presence AND absence are evidence only from the initialized daemon.
+  await EnsureLiveAsync(cancellation);
+  var response=await RequestAsync(HttpMethod.Get,"/v1.51/containers/"+owned+"/json",null,5000,cancellation);
+  await EnsureLiveAsync(cancellation);
+  return response.Status==404?null:Json(response,200);
  }
  internal async Task StartAsync(string id,CancellationToken cancellation){RequireId(id);await EnsureLiveAsync(cancellation);var r=await RequestAsync(HttpMethod.Post,"/v1.51/containers/"+id+"/start",null,5000,cancellation);if(r.Status!=204)throw new WorkspaceException("probe_failed");}
  internal async Task WaitAsync(string id,CancellationToken cancellation){
@@ -67,7 +71,7 @@ internal sealed class DockerProbeSession {
    using var handler=new SocketsHttpHandler{
     AllowAutoRedirect=false,UseProxy=false,UseCookies=false,Credentials=null,MaxResponseHeadersLength=16,MaxConnectionsPerServer=1,
     ConnectCallback=async(_,token)=>{
-     if(Interlocked.Increment(ref connections)!=1)throw new WorkspaceException("peer_changed");
+     if(Interlocked.Increment(ref connections)!=1)throw new WorkspaceException("protocol_invalid"); // Transport retry refused before a second pipe is opened; not observed identity drift.
      owned=await connector.ConnectAsync(token);owned.ValidatePeer();var p=owned.Peer;var expected=HostProfile.Targets.Single(t=>t.Id=="backend");
      if(p.ProcessId<=0||!ProbeSpecification.Hash(p.ProcessIdentityHash)||p.ImageHash!=expected.PinnedSha256||p.UserSid!=WindowsIdentity.GetCurrent().User!.Value||
         !string.Equals(NativeFileEvidence.CanonicalInput(p.ImagePath),NativeFileEvidence.CanonicalInput(expected.Path),StringComparison.OrdinalIgnoreCase)||

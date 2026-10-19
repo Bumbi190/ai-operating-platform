@@ -44,6 +44,6 @@ describe.runIf(required&&process.platform==='win32')('real fixed Windows sandbox
  it('runs all required native lost-response/peer/timeout/protection cases',async()=>{
   const{stdout}=await exec(DOTNET,[SMOKE,'probe'],{cwd:ROOT,shell:false,windowsHide:true,timeout:60000,maxBuffer:262144});const result=JSON.parse(stdout)
   expect(result.passed).toBe(result.names.length)
-  for(const name of ['wrong_peer_receives_zero_http','blocked_host_has_zero_http_mutations','changed_peer_before_mutation_refused','lost_create_reply_owned_cleanup','foreign_same_name_never_removed','lost_delete_reply_verified_absent','cleanup_failure_not_ok','overall_probe_deadline_includes_cleanup','actual_cleanup_of_absent_attempt_has_no_probe_claim'])expect(result.names).toContain(name)
+  for(const name of ['wrong_peer_receives_zero_http','blocked_host_has_zero_http_mutations','changed_peer_before_mutation_refused','lost_create_reply_owned_cleanup','foreign_same_name_never_removed','lost_delete_reply_verified_absent','cleanup_failure_not_ok','overall_probe_deadline_includes_cleanup','actual_cleanup_of_absent_attempt_has_no_probe_claim','late_daemon_before-delete_never_confirms_cleanup','late_daemon_cleanup-absence_never_confirms_cleanup','late_daemon_lost-delete-drift_never_confirms_cleanup','cleanup_only_changed_daemon_absence_not_cleaned'])expect(result.names).toContain(name)
  },65000)
 })

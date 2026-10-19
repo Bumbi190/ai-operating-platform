@@ -56,7 +56,7 @@ public sealed class WindowsSandboxProbe {
    if(inspect==null)return(true,id);
    id=ProbeSpecification.Verify(inspect.RootElement,attempt,image,id);
   }
-  try{await session.DeleteAsync(id,cancellation);}catch(WorkspaceException){/* A lost delete reply is reconciled once; DELETE is never retried. */}
+  try{await session.DeleteAsync(id,cancellation);}catch(WorkspaceException e) when(e.Reason is "protocol_invalid" or "deadline_exceeded" or "cleanup_retained"){/* Reconcile an uncertain reply once on the original daemon; identity drift is never swallowed. */}
   using var after=await session.InspectAsync(id,cancellation);return(after==null,id);
  }
 }

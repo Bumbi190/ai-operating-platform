@@ -9,6 +9,8 @@ namespace Omnira.CodeBroker.Workspace.Smoke;
 internal sealed class FakeDocker:IDockerPeerConnector {
  internal bool WrongPeer,ChangePeer,MissingImage,WeakInspect,ForeignContainer,LostCreate,LostDelete,FailDelete,ChunkedLogs,MalformedLogs,DaemonDrift;
  internal int DelayMs;
+ internal bool DriftBeforeDelete,DriftOnCleanupAbsence,DriftOnDeleteReply,DriftOnFirstAbsence;
+ bool daemonChanged,logsServed,cleanupInspected;internal int DeletesOnChangedDaemon;
  internal int Creates,Starts,Deletes,Connections,WrongPeerBytes;internal JsonObject? Container;internal readonly List<string> Requests=new();
  internal string Id=new('d',64),Image="sha256:"+new string('a',64);internal Guid Attempt;
  public async Task<OwnedPipeObservation> ConnectAsync(CancellationToken cancellation){
@@ -22,19 +24,20 @@ internal sealed class FakeDocker:IDockerPeerConnector {
  byte[] Reply(string request){
   var line=request.Split("\r\n")[0];Requests.Add(line);var parts=line.Split(' ');var method=parts[0];var path=parts[1];var body=request[(request.IndexOf("\r\n\r\n",StringComparison.Ordinal)+4)..];
   if(path=="/version")return Http(200,new{Os="linux",ApiVersion="1.56",MinAPIVersion="1.44"});
-  if(path.EndsWith("/info"))return Http(200,new{OSType="linux",OperatingSystem="Docker Desktop",Name="docker-desktop",KernelVersion="6.6.87.2-microsoft-standard-WSL2",ID=DaemonDrift&&Requests.Count>=4?"other":"fixture-daemon",SwapLimit=true});
+  if(path.EndsWith("/info")){if(DriftBeforeDelete&&cleanupInspected)daemonChanged=true;return Http(200,new{OSType="linux",OperatingSystem="Docker Desktop",Name="docker-desktop",KernelVersion="6.6.87.2-microsoft-standard-WSL2",ID=daemonChanged||(DaemonDrift&&Requests.Count>=4)?"other":"fixture-daemon",SwapLimit=true});}
   if(path.Contains("/images/"))return MissingImage?Http(404,new{message="missing"}):Http(200,new{Id=Image,RepoDigests=new[]{"alpine@"+WindowsSandboxProbe.ImageDigest},Os="linux",Architecture="amd64"});
   if(method=="POST"&&path.Contains("/containers/create")){
    Creates++;Container=MakeContainer(JsonNode.Parse(body)!.AsObject());
    if(ForeignContainer){Container["Config"]!["Labels"]!["omnira.sdf.windows.attempt"]=Guid.NewGuid().ToString();return Http(409,new{message="conflict"});}
    if(LostCreate)return Array.Empty<byte>();return Http(201,new{Id,Warnings=Array.Empty<string>()});
   }
-  if(method=="DELETE"){Deletes++;if(FailDelete)return Http(500,new{message="fixture failure"});Container=null;return LostDelete?Array.Empty<byte>():Http(204,null);}
-  if(Container==null)return Http(404,new{message="not found"});
-  if(path.EndsWith("/json")){var inspect=Container.DeepClone().AsObject();if(WeakInspect)inspect["HostConfig"]!["NetworkMode"]="bridge";return Http(200,inspect);}
+  if(method=="DELETE"){Deletes++;if(daemonChanged)DeletesOnChangedDaemon++;if(DriftOnDeleteReply){daemonChanged=true;return Array.Empty<byte>();}if(FailDelete)return Http(500,new{message="fixture failure"});Container=null;return LostDelete?Array.Empty<byte>():Http(204,null);}
+  if(path.EndsWith("/json")&&(DriftOnFirstAbsence||(logsServed&&DriftOnCleanupAbsence))){daemonChanged=true;return Http(404,new{message="not found on changed daemon"});}
+  if(daemonChanged||Container==null)return Http(404,new{message="not found"});
+  if(path.EndsWith("/json")){if(logsServed)cleanupInspected=true;var inspect=Container.DeepClone().AsObject();if(WeakInspect)inspect["HostConfig"]!["NetworkMode"]="bridge";return Http(200,inspect);}
   if(path.EndsWith("/start")){Starts++;Container["State"]=new JsonObject{{"Running",false},{"Status","exited"},{"ExitCode",0}};return Http(204,null);}
   if(path.Contains("/wait?"))return Http(200,new{StatusCode=0,Error=(object?)null});
-  if(path.Contains("/logs?")){
+  if(path.Contains("/logs?")){logsServed=true;
    var text=Encoding.UTF8.GetBytes("uid=10001 gid=10001 groups=10001\n");var frame=new byte[text.Length+8];frame[0]=1;BinaryPrimitives.WriteUInt32BigEndian(frame.AsSpan(4),checked((uint)text.Length));text.CopyTo(frame,8);if(MalformedLogs)frame[1]=1;
    return HttpBytes(200,frame,ChunkedLogs);
   }
@@ -82,6 +85,14 @@ internal static class ProbeSmoke {
    else if(mode=="daemon-drift")check("daemon_drift_refuses_mutation",result.Status!="ok"&&fake.Creates==0);
    check("mutation_never_retried_"+mode,fake.Creates<=1&&fake.Deletes<=1);
   }
+  foreach(var mode in new[]{"before-delete","cleanup-absence","lost-delete-drift"}){
+   var fake=new FakeDocker{Attempt=Guid.NewGuid(),DriftBeforeDelete=mode=="before-delete",DriftOnCleanupAbsence=mode=="cleanup-absence",DriftOnDeleteReply=mode=="lost-delete-drift"};
+   var result=await Engine(fake).RunAsync(fake.Attempt,CancellationToken.None);
+   check("late_daemon_"+mode+"_never_confirms_cleanup",result.Status=="failed"&&result.Reason=="cleanup_retained"&&!result.ContainerRemoved&&result.Uid==null&&fake.Container!=null&&fake.DeletesOnChangedDaemon==0&&fake.Creates==1&&fake.Deletes==(mode=="lost-delete-drift"?1:0));
+  }
+  var absentDrift=new FakeDocker{Attempt=Guid.NewGuid(),DriftOnFirstAbsence=true,Container=new JsonObject{{"Id",new string('d',64)}}};
+  var absentDriftResult=await Engine(absentDrift).CleanupAsync(absentDrift.Attempt,CancellationToken.None);
+  check("cleanup_only_changed_daemon_absence_not_cleaned",absentDriftResult.Status=="failed"&&!absentDriftResult.ContainerRemoved&&absentDrift.Container!=null&&absentDrift.Creates==0&&absentDrift.Starts==0&&absentDrift.Deletes==0);
   var absent=new FakeDocker{Attempt=Guid.NewGuid()};var cleanup=await Engine(absent).CleanupAsync(absent.Attempt,CancellationToken.None);
   check("cleanup_success_is_not_probe_success",cleanup.Status=="cleaned"&&cleanup.ContainerRemoved&&cleanup.Uid==null&&cleanup.Gid==null&&cleanup.Inspected.Length==0&&absent.Creates==0&&absent.Starts==0);
   var blocked=new FakeDocker{Attempt=Guid.NewGuid()};var blockedResult=await new WindowsSandboxProbe(blocked,new BlockedHost()).RunAsync(blocked.Attempt,CancellationToken.None);

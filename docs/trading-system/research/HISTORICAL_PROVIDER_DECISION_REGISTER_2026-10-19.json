@@ -1,0 +1,74 @@
+{
+  "schemaVersion": "research.historical_provider_evaluation.v0.1",
+  "date": "2026-10-19",
+  "status": "NON_CANONICAL_RESEARCH",
+  "selectedOperationalProvider": null,
+  "actualQuoteUSD": null,
+  "brokerConnection": false,
+  "paidRequestsMade": false,
+  "dataDownloaded": false,
+  "historicalDataLicenseApproved": false,
+  "purchasedDataReadyForBacktest": false,
+  "pendingHumanApproval": true,
+  "firstCandidate": {
+    "provider": "Databento",
+    "plan": "Historical usage-based",
+    "dataset": "GLBX.MDP3",
+    "schema": "ohlcv-1m",
+    "symbology": "raw_symbol",
+    "currency": "USD",
+    "unitPricing": "BYTES_UNQUOTED",
+    "newAccountCredits": "UP_TO_125_USD_IF_ELIGIBLE",
+    "entitlement": "UNVERIFIED",
+    "priceLimitUSD": null,
+    "quoteMethod": "metadata.get_cost",
+    "requestPermitted": false,
+    "storageRightsVerified": false,
+    "nonDisplayClassificationVerified": false
+  },
+  "alternatives": [
+    {
+      "provider": "Rithmic",
+      "role": "EXECUTION_TARGET_AND_POTENTIAL_HISTORICAL_SOURCE",
+      "historicalPriceUSD": null,
+      "accessConfirmed": false
+    },
+    {
+      "provider": "CME DataMine",
+      "role": "DIRECT_HISTORICAL_SOURCE_ALTERNATIVE",
+      "historicalPriceUSD": null,
+      "accessConfirmed": false
+    }
+  ],
+  "evidenceLinks": [
+    "https://databento.com/pricing",
+    "https://databento.com/docs/api-reference-historical",
+    "https://databento.com/docs/schemas-and-data-formats/ohlcv",
+    "https://databento.com/docs/standards-and-conventions/symbology",
+    "https://databento.com/docs/portal",
+    "https://www.rithmic.com/apis",
+    "https://www.cmegroup.com/market-data/license-data/market-data-policy-education-center.html"
+  ],
+  "localResearch": {
+    "source": "scripts/trading/research/databento-historical-preflight.mjs",
+    "tests": "scripts/trading/research/databento-historical-preflight.test.mjs",
+    "nodeCasesPassed": 20,
+    "nodeCasesFailed": 0,
+    "testEnvironment": "Windows Node 22.22.3, offline synthetic"
+  },
+  "remainingGates": [
+    "GATE-01",
+    "GATE-02",
+    "GATE-03",
+    "GATE-04",
+    "GATE-08"
+  ],
+  "restrictions": [
+    "NEVER_AUTO_FETCH",
+    "NEVER_AUTO_PURCHASE",
+    "NO_REALTIME_SUBSCRIPTION",
+    "NO_ORDER_ROUTE",
+    "NO_ASSUMED_SOURCE_SETTLED",
+    "NO_CANONICAL_PROMOTION"
+  ]
+}

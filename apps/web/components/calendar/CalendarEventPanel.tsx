@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useRef} from 'react';
 import {X} from 'lucide-react';
+import {CalendarTimePicker} from './CalendarTimePicker';
 import {stockholmMinute} from '@/lib/calendar/time';
 import {calendarStatus} from './CalendarWeek';
 import type {CalendarWorkspaceState} from './use-calendar';
@@ -32,10 +33,10 @@ export function CalendarEventPanel({state:s}:{state:CalendarWorkspaceState}){
     {f.kind==='work_block'&&<label>Arbetsstatus<select value={f.workStatus} onChange={e=>field('workStatus',e.target.value)}><option value="planned">Planerat</option><option value="in_progress">Pågår</option><option value="done">Klart</option></select></label>}
     <label className={styles.checkbox}><input type="checkbox" checked={f.allDay} onChange={e=>field('allDay',e.target.checked)}/>Heldag</label>
    </>}
-   <div className={styles.formRow}><label>Datum<input aria-label="Datum" type="date" required value={f.startDate} onChange={e=>field('startDate',e.target.value)}/></label>{!f.allDay&&<label>Starttid<input aria-label="Starttid" type="time" required value={f.startTime} onChange={e=>field('startTime',e.target.value)}/></label>}</div>
+   <div className={styles.formRow}><label>Datum<input aria-label="Datum" type="date" required value={f.startDate} onChange={e=>field('startDate',e.target.value)}/></label>{!f.allDay&&<CalendarTimePicker label="Starttid" value={f.startTime} onChange={value=>field('startTime',value)} disabled={s.editorSaving}/>}</div>
    {manual&&<>
     {!f.allDay&&<label className={styles.checkbox}><input type="checkbox" checked={f.noEnd} onChange={e=>field('noEnd',e.target.checked)}/>Ingen sluttid</label>}
-    {(f.allDay||!f.noEnd)&&<div className={styles.formRow}><label>{f.allDay?'Sista dag':'Slutdatum'}<input aria-label={f.allDay?'Sista dag':'Slutdatum'} type="date" required value={f.endDate} onChange={e=>field('endDate',e.target.value)}/></label>{!f.allDay&&<label>Sluttid<input aria-label="Sluttid" type="time" required value={f.endTime} onChange={e=>field('endTime',e.target.value)}/></label>}</div>}
+    {(f.allDay||!f.noEnd)&&<div className={styles.formRow}><label>{f.allDay?'Sista dag':'Slutdatum'}<input aria-label={f.allDay?'Sista dag':'Slutdatum'} type="date" required value={f.endDate} onChange={e=>field('endDate',e.target.value)}/></label>{!f.allDay&&<CalendarTimePicker label="Sluttid" value={f.endTime} onChange={value=>field('endTime',value)} disabled={s.editorSaving}/>}</div>}
     <label>Plats<input maxLength={500} value={f.location} onChange={e=>field('location',e.target.value)}/></label>
     <label>Anteckning<textarea rows={4} maxLength={5000} value={f.description} onChange={e=>field('description',e.target.value)}/></label>
    </>}

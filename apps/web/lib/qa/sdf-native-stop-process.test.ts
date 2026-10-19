@@ -20,7 +20,7 @@ const required=process.env.ATLAS_NATIVE_STOP_REQUIRED==='1'
 if(required&&process.platform!=='win32')throw Error('Native stop proof requires Windows')
 const DISPATCH=process.env.ATLAS_NATIVE_STOP_DISPATCH??null
 const ROOT=resolve(__dirname,'../../../..'),PLAN='docs/superpowers/plans/2026-10-19-cooperative-native-stop.md',WS=join(ROOT,'.superpowers/sdd/2026-10-19-cooperative-native-stop')
-const DOTNET='C:\\Program Files\\dotnet\\dotnet.exe',DOCKER='C:/Users/Andre/AppData/Local/Programs/DockerDesktop/resources/bin/docker.exe'
+const DOTNET='C:\\Program Files\\dotnet\\dotnet.exe',DOCKER='C:/Program Files/Docker/Docker/resources/bin/docker.exe'
 const HELPER=join(ROOT,'apps/code-broker/.native/windows-workspace/OmniraBrokerWorkspace.dll'),SMOKE=join(ROOT,'apps/code-broker/native/windows-workspace/smoke/bin/Release/net8.0-windows/WorkspaceSmoke.dll')
 const ATTEMPTS=['A','B','C','D'] as const
 type Attempt=typeof ATTEMPTS[number]

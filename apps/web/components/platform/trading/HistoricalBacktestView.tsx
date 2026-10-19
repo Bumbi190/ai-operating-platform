@@ -89,9 +89,9 @@ export function HistoricalBacktestView({dataset}:{dataset:HistoricalDay}){
   const rawLo=Math.min(...lows),rawHi=Math.max(...highs)
   const floor=rawLo-Math.max(0.5,(rawHi-rawLo)*.08)
   const ceil=rawHi+Math.max(0.5,(rawHi-rawLo)*.08)
-  const y=p=>pad.top+(ceil-p)/(ceil-floor)*(priceHeight-10)
+  const y=(p:number)=>pad.top+(ceil-p)/(ceil-floor)*(priceHeight-10)
   const barStep=chartWidth/windowBars
-  const x=i=>pad.left+(i+0.5)*barStep+(windowBars-count)*barStep
+  const x=(i:number)=>pad.left+(i+0.5)*barStep+(windowBars-count)*barStep
   g.strokeStyle=GRID;g.lineWidth=1;g.font='11px ui-monospace,monospace'
   g.textBaseline='middle'
   for(let j=0;j<=6;j++){

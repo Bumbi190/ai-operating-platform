@@ -68,6 +68,6 @@ describe('Backtest Lab v2 – trade explanations, chronology and sandbox', () =>
     expect(html).toContain('1. SIGNAL')
     expect(html).toContain('2. ENTRY')
     expect(html).toContain('3. EXIT')
-    expect(html).toContain('LIVE')
+    expect(html).toContain('Vad händer just nu?')
   })
 })

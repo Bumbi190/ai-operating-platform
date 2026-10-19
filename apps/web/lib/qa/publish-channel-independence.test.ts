@@ -23,6 +23,7 @@ type ChainState = { table: string; op?: string; payload?: unknown; calls: [strin
 
 const dbState = {
   script:   null as Record<string, unknown> | null,
+  queuedScripts: null as Record<string,unknown>[]|null,
   updates:  [] as Record<string, unknown>[],
   approvals: [] as Record<string, unknown>[],
   retryCount: 0,
@@ -93,7 +94,20 @@ function resolveQuery(s: ChainState): { data: unknown; error: null } {
     if (cols.trim() === 'retry_count') return { data: { retry_count: dbState.retryCount }, error: null }
     // Publiceringskön
     if (cols.includes('instagram_creation_id')) {
-      return { data: dbState.script ? [dbState.script] : [], error: null }
+      // Model the database selection before LIMIT; the handler must not let a
+      // private head row consume the one ordinary publishing slot.
+      let rows=dbState.queuedScripts??(dbState.script?[dbState.script]:[])
+      for(const [method,args] of dbState.queuedScripts?s.calls:[]){
+        if(method==='is'&&args[0]==='raw_output->>private_provider_preview'){
+          rows=rows.filter(r=>(r.raw_output as any)?.private_provider_preview==null)
+        }
+        if(method==='or'&&String(args[0]).includes('raw_output->>pilot_image_profile')){
+          rows=rows.filter(r=>(r.raw_output as any)?.pilot_image_profile!=='the-prompt-illustrated-v2')
+        }
+      }
+      const limit=s.calls.find(([m])=>m==='limit')?.[1][0]
+      if(typeof limit==='number')rows=rows.slice(0,limit)
+      return {data:rows.map(r=>{const row={...r};if(!cols.includes('raw_output'))delete row.raw_output;return row}),error:null}
     }
   }
 
@@ -270,6 +284,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.useFakeTimers()
   dbState.script = null
+  dbState.queuedScripts = null
   dbState.updates = []
   dbState.approvals = []
   dbState.retryCount = 0
@@ -1033,4 +1048,40 @@ describe("project-scoped social credentials · every channel uses the script pro
     expect(dispatched).not.toContain(ENV_SENTINEL)
     expect(dispatched).not.toContain('ENV-PAGE-MUST-NEVER-BE-USED')
   })
+})
+
+describe('private illustrated previews never enter legacy publication',()=>{
+ for(const raw of [{pilot_image_profile:'the-prompt-illustrated-v2'},{private_provider_preview:{kind:'the-prompt-private-provider-qa-v1'}}]){
+  for(const qs of ['', '?scriptId='+SCRIPT_ID, '?dryRun=1']){
+   it('holds persisted private metadata before channel access '+JSON.stringify(raw)+' '+qs,async()=>{
+    const old=process.env.THE_PROMPT_ILLUSTRATED_PILOT
+    process.env.THE_PROMPT_ILLUSTRATED_PILOT='false'
+    try{
+     dbState.script=script({raw_output:raw})
+     const response=await call(qs),body=await response.json()
+     expect(body.status).toBe('illustrated_preview_required')
+     expect(credentialState.resolved).toEqual([])
+     expect(getContainerStatus).not.toHaveBeenCalled()
+     expect(createReelContainer).not.toHaveBeenCalled()
+     expect(publishContainer).not.toHaveBeenCalled()
+     expect(postReelToFacebook).not.toHaveBeenCalled()
+     expect(dbState.updates).toEqual([])
+    }finally{if(old===undefined)delete process.env.THE_PROMPT_ILLUSTRATED_PILOT;else process.env.THE_PROMPT_ILLUSTRATED_PILOT=old}
+   })
+  }
+ }
+})
+
+it('private oldest row does not starve the ordinary one-row publication slot',async()=>{
+ const ordinary=script({raw_output:{}})
+ dbState.script=ordinary
+ dbState.queuedScripts=[script({id:'private-preview',raw_output:{pilot_image_profile:'the-prompt-illustrated-v2'}}),ordinary]
+ createReelContainer.mockResolvedValue('ORDINARY_CONTAINER')
+ publishContainer.mockResolvedValue({mediaId:'IG_ORDINARY',permalink:'https://ig/ordinary'})
+ postReelToFacebook.mockResolvedValue({postId:'FB_ORDINARY',url:'https://fb/ordinary'})
+ const body=await (await call()).json()
+ expect(body.status).toBe('published')
+ expect(body.scriptId).toBe(SCRIPT_ID)
+ expect(createReelContainer).toHaveBeenCalledTimes(1)
+ expect(dbState.updates.some(u=>u.instagram_media_id==='IG_ORDINARY')).toBe(true)
 })

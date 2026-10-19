@@ -208,7 +208,7 @@ describe('reservation lifecycle per failure class (no key — shipped behaviour)
   })
 })
 
-describe('THE MEASURED REASON KEYS STAY DORMANT', () => {
+describe('STABLE SPEND IDENTITIES REQUIRE A CLAIMED PRODUCER', () => {
   it('a settling 5xx now takes exactly ONE reservation — replay is unreachable here', async () => {
     // CHANGED BY PHASE 5B-1, and the change is the point. This used to assert
     // `['ok', 'replay_settled']`, which required a second attempt after a failure
@@ -259,7 +259,7 @@ describe('THE MEASURED REASON KEYS STAY DORMANT', () => {
     expect(err?.name).toBe('SpendRefusedError')
   })
 
-  it('GUARD — no shipped call site passes an idempotency key', async () => {
+  it('GUARD — only the claimed private preview activates stable spend identity', async () => {
     const { readFileSync, readdirSync, statSync } = await import('node:fs')
     const { join } = await import('node:path')
     const root = process.cwd()
@@ -279,8 +279,10 @@ describe('THE MEASURED REASON KEYS STAY DORMANT', () => {
       }
     }
     walk('app'); walk('lib')
-    // ideogram.ts holds the dormant plumbing; no CALLER supplies its subject.
-    expect(offenders).toEqual(['lib/media/ideogram.ts'])
+    // The fixed owner-only preview persists its unique claim before provider work
+    // and terminally retains ambiguous failures. Actual runtime/mutation coverage
+    // lives in provider-preview tests; ordinary retrying cron callers stay unkeyed.
+    expect(offenders).toEqual(['lib/media/ideogram.ts', 'lib/media/provider-preview-runtime.ts'])
     const ideogram = readFileSync(join(root, 'lib/media/ideogram.ts'), 'utf8')
     expect(ideogram).toMatch(/spendSubject\?: string/)
     const callers = ['app/api/media/cron/step2/route.ts', 'app/api/media/cron/step3/route.ts']

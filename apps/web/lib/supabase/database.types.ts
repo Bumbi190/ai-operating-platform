@@ -14,6 +14,86 @@ export type Database = {
   }
   public: {
     Tables: {
+      media_news_review_evidence: {
+        Row: {
+          channel: string
+          created_at: string
+          created_by: string
+          id: string
+          post_id: string
+          project_id: string
+          request: Json
+          revision_id: string
+          revision_sha256: string
+          root_idempotency_key: string
+          script_id: string
+          snapshot: Json
+          snapshot_sha256: string
+          video_asset_id: string
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          created_by: string
+          id?: string
+          post_id: string
+          project_id: string
+          request: Json
+          revision_id: string
+          revision_sha256: string
+          root_idempotency_key: string
+          script_id: string
+          snapshot: Json
+          snapshot_sha256: string
+          video_asset_id: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          post_id?: string
+          project_id?: string
+          request?: Json
+          revision_id?: string
+          revision_sha256?: string
+          root_idempotency_key?: string
+          script_id?: string
+          snapshot?: Json
+          snapshot_sha256?: string
+          video_asset_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "media_news_review_evidence_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "media_news_review_evidence_revision_id_post_id_project_id__fkey"
+            columns: ["revision_id", "post_id", "project_id", "revision_sha256"]
+            isOneToOne: false
+            referencedRelation: "social_content_revisions"
+            referencedColumns: ["id", "post_id", "project_id", "sha256"]
+          },
+          {
+            foreignKeyName: "media_news_review_evidence_script_id_fkey"
+            columns: ["script_id"]
+            isOneToOne: false
+            referencedRelation: "media_scripts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "media_news_review_evidence_video_asset_id_fkey"
+            columns: ["video_asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
 "website_build_feedback": {
                   Row: {
                     "applied_revision_id": string | null,"author_id": string,"change_key": string | null,"created_at": string,"disposition": string | null,"id": string,"idempotency_key": string,"input_source": string,"interpretation": string | null,"project_id": string,"sequence": number,"session_id": string,"status": string,"superseded_by": string | null,"text": string,"viewed_revision_id": string | null
@@ -5290,6 +5370,31 @@ isOneToOne: false
       [_ in never]: never
     }
     Functions: {
+      media_news_canonical_json: { Args: { v: Json }; Returns: string }
+      media_news_review_caption: {
+        Args: { s: Database["public"]["Tables"]["media_scripts"]["Row"] }
+        Returns: string
+      }
+      media_news_review_lock_inputs: {
+        Args: { p_project: string; s: Json }
+        Returns: undefined
+      }
+      media_news_review_prepare: {
+        Args: { p_input: Json; p_principal: Json; p_snapshot: Json }
+        Returns: Json
+      }
+      media_news_review_read: {
+        Args: { p_input: Json; p_principal: Json }
+        Returns: Json
+      }
+      media_news_review_requirements: {
+        Args: { p_revision: string }
+        Returns: string[]
+      }
+      media_news_snapshot_requirements: {
+        Args: { p_project: string; s: Json }
+        Returns: string[]
+      }
 "website_build_set_stage":
 { Args: { "p_status": string,"p_writer": Json }; Returns: Json
                            },

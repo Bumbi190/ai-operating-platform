@@ -1,0 +1,324 @@
+{
+  "story": "codex",
+  "voiceId": "qSeXEcewz7tA0Q0qk9fH",
+  "modelId": "eleven_turbo_v2_5",
+  "text": "WIRED reported that OpenAI was testing a persistent mode for its Codex coding agent. The idea: an assistant that can keep working proactively until you put it to sleep. But here's the important detail: OpenAI said there were no immediate plans to launch it. This was an experiment, not an announced product. Would you trust an AI to decide its own next task?",
+  "durationSecs": 20.67,
+  "words": [
+    {
+      "text": "WIRED",
+      "startMs": 0,
+      "endMs": 372
+    },
+    {
+      "text": "reported",
+      "startMs": 430,
+      "endMs": 813
+    },
+    {
+      "text": "that",
+      "startMs": 848,
+      "endMs": 975
+    },
+    {
+      "text": "OpenAI",
+      "startMs": 1045,
+      "endMs": 1695
+    },
+    {
+      "text": "was",
+      "startMs": 1765,
+      "endMs": 1892
+    },
+    {
+      "text": "testing",
+      "startMs": 1950,
+      "endMs": 2322
+    },
+    {
+      "text": "a",
+      "startMs": 2392,
+      "endMs": 2438
+    },
+    {
+      "text": "persistent",
+      "startMs": 2508,
+      "endMs": 3042
+    },
+    {
+      "text": "mode",
+      "startMs": 3100,
+      "endMs": 3355
+    },
+    {
+      "text": "for",
+      "startMs": 3413,
+      "endMs": 3541
+    },
+    {
+      "text": "its",
+      "startMs": 3599,
+      "endMs": 3715
+    },
+    {
+      "text": "Codex",
+      "startMs": 3785,
+      "endMs": 4156
+    },
+    {
+      "text": "coding",
+      "startMs": 4226,
+      "endMs": 4528
+    },
+    {
+      "text": "agent.",
+      "startMs": 4574,
+      "endMs": 4969
+    },
+    {
+      "text": "The",
+      "startMs": 5329,
+      "endMs": 5468
+    },
+    {
+      "text": "idea:",
+      "startMs": 5526,
+      "endMs": 5991
+    },
+    {
+      "text": "an",
+      "startMs": 6211,
+      "endMs": 6339
+    },
+    {
+      "text": "assistant",
+      "startMs": 6385,
+      "endMs": 6815
+    },
+    {
+      "text": "that",
+      "startMs": 6850,
+      "endMs": 6966
+    },
+    {
+      "text": "can",
+      "startMs": 7001,
+      "endMs": 7117
+    },
+    {
+      "text": "keep",
+      "startMs": 7175,
+      "endMs": 7372
+    },
+    {
+      "text": "working",
+      "startMs": 7430,
+      "endMs": 7732
+    },
+    {
+      "text": "proactively",
+      "startMs": 7802,
+      "endMs": 8452
+    },
+    {
+      "text": "until",
+      "startMs": 8522,
+      "endMs": 8765
+    },
+    {
+      "text": "you",
+      "startMs": 8812,
+      "endMs": 8882
+    },
+    {
+      "text": "put",
+      "startMs": 8940,
+      "endMs": 9079
+    },
+    {
+      "text": "it",
+      "startMs": 9114,
+      "endMs": 9183
+    },
+    {
+      "text": "to",
+      "startMs": 9218,
+      "endMs": 9276
+    },
+    {
+      "text": "sleep.",
+      "startMs": 9323,
+      "endMs": 9729
+    },
+    {
+      "text": "But",
+      "startMs": 10089,
+      "endMs": 10252
+    },
+    {
+      "text": "here's",
+      "startMs": 10310,
+      "endMs": 10553
+    },
+    {
+      "text": "the",
+      "startMs": 10588,
+      "endMs": 10658
+    },
+    {
+      "text": "important",
+      "startMs": 10704,
+      "endMs": 11087
+    },
+    {
+      "text": "detail:",
+      "startMs": 11134,
+      "endMs": 11621
+    },
+    {
+      "text": "OpenAI",
+      "startMs": 11784,
+      "endMs": 12365
+    },
+    {
+      "text": "said",
+      "startMs": 12434,
+      "endMs": 12620
+    },
+    {
+      "text": "there",
+      "startMs": 12655,
+      "endMs": 12782
+    },
+    {
+      "text": "were",
+      "startMs": 12817,
+      "endMs": 12945
+    },
+    {
+      "text": "no",
+      "startMs": 13015,
+      "endMs": 13177
+    },
+    {
+      "text": "immediate",
+      "startMs": 13259,
+      "endMs": 13700
+    },
+    {
+      "text": "plans",
+      "startMs": 13723,
+      "endMs": 14002
+    },
+    {
+      "text": "to",
+      "startMs": 14048,
+      "endMs": 14106
+    },
+    {
+      "text": "launch",
+      "startMs": 14176,
+      "endMs": 14408
+    },
+    {
+      "text": "it.",
+      "startMs": 14454,
+      "endMs": 14628
+    },
+    {
+      "text": "This",
+      "startMs": 14849,
+      "endMs": 15023
+    },
+    {
+      "text": "was",
+      "startMs": 15058,
+      "endMs": 15163
+    },
+    {
+      "text": "an",
+      "startMs": 15209,
+      "endMs": 15267
+    },
+    {
+      "text": "experiment,",
+      "startMs": 15313,
+      "endMs": 16010
+    },
+    {
+      "text": "not",
+      "startMs": 16115,
+      "endMs": 16300
+    },
+    {
+      "text": "an",
+      "startMs": 16347,
+      "endMs": 16393
+    },
+    {
+      "text": "announced",
+      "startMs": 16440,
+      "endMs": 16788
+    },
+    {
+      "text": "product.",
+      "startMs": 16834,
+      "endMs": 17299
+    },
+    {
+      "text": "Would",
+      "startMs": 17519,
+      "endMs": 17682
+    },
+    {
+      "text": "you",
+      "startMs": 17717,
+      "endMs": 17786
+    },
+    {
+      "text": "trust",
+      "startMs": 17833,
+      "endMs": 18100
+    },
+    {
+      "text": "an",
+      "startMs": 18146,
+      "endMs": 18204
+    },
+    {
+      "text": "AI",
+      "startMs": 18274,
+      "endMs": 18622
+    },
+    {
+      "text": "to",
+      "startMs": 18692,
+      "endMs": 18750
+    },
+    {
+      "text": "decide",
+      "startMs": 18820,
+      "endMs": 19203
+    },
+    {
+      "text": "its",
+      "startMs": 19261,
+      "endMs": 19412
+    },
+    {
+      "text": "own",
+      "startMs": 19481,
+      "endMs": 19702
+    },
+    {
+      "text": "next",
+      "startMs": 19772,
+      "endMs": 20004
+    },
+    {
+      "text": "task?",
+      "startMs": 20027,
+      "endMs": 20666
+    }
+  ]
+}

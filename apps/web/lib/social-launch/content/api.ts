@@ -53,8 +53,23 @@ export async function socialContentMedia(request:Request):Promise<Response>{
   if(downloaded.error||!downloaded.data||downloaded.data.size!==Number(asset.byte_size))throw new SocialContentError('UNAVAILABLE')
   const bytes=await downloaded.data.arrayBuffer()
   if(createHash('sha256').update(Buffer.from(bytes)).digest('hex')!==sha256)throw new SocialContentError('UNAVAILABLE')
-  const verified=new Uint8Array(bytes);let offset=0
-  const stream=new ReadableStream<Uint8Array>({pull(controller){if(offset>=verified.byteLength){controller.close();return}const end=Math.min(offset+65536,verified.byteLength);controller.enqueue(verified.subarray(offset,end));offset=end}})
-  return new Response(stream,{headers:{...headers,'content-type':asset.mime_type}})
+  const verified=new Uint8Array(bytes);let offset=0,endExclusive=verified.byteLength,status=200
+  const responseHeaders:Record<string,string>={...headers,'content-type':asset.mime_type}
+  if(asset.kind==='video'){
+   responseHeaders['accept-ranges']='bytes'
+   const range=request.headers.get('range')
+   if(range!==null){
+    const match=/^bytes=(\d*)-(\d*)$/.exec(range)
+    let start=0,end=verified.byteLength-1,valid=!!match&&(match[1]!==''||match[2]!=='')
+    if(match&&valid){
+     if(match[1]===''){const suffix=Number(match[2]);valid=Number.isSafeInteger(suffix)&&suffix>0;start=Math.max(0,verified.byteLength-suffix)}
+     else{start=Number(match[1]);end=match[2]===''?end:Number(match[2]);valid=Number.isSafeInteger(start)&&Number.isSafeInteger(end)&&start>=0&&start<verified.byteLength&&end>=start;end=Math.min(end,verified.byteLength-1)}
+    }
+    if(!valid)return new Response(null,{status:416,headers:{...responseHeaders,'content-range':'bytes */'+verified.byteLength}})
+    offset=start;endExclusive=end+1;status=206;responseHeaders['content-range']='bytes '+start+'-'+end+'/'+verified.byteLength;responseHeaders['content-length']=String(end-start+1)
+   }
+  }
+  const stream=new ReadableStream<Uint8Array>({pull(controller){if(offset>=endExclusive){controller.close();return}const end=Math.min(offset+65536,endExclusive);controller.enqueue(verified.subarray(offset,end));offset=end}})
+  return new Response(stream,{status,headers:responseHeaders})
  }catch(e){return failure(e)}
 }

@@ -1,0 +1,79 @@
+{
+  "reviewedCodeHead": "4c6bcc4a1eea69360e52dc495dd57b6754e90554",
+  "base": "97f1c158ca5a403f7d89faccaa006ad6b9a9b51f",
+  "webTests": {
+    "passed": 161,
+    "failed": 0,
+    "skipped": 0
+  },
+  "browserTests": {
+    "passed": 18,
+    "failed": 0,
+    "skipped": 0
+  },
+  "webTypecheck": 0,
+  "review": {
+    "critical": 0,
+    "important": 0,
+    "minor": 1,
+    "minorAddressedBy": "clock-driven successful-result expiry browser case"
+  },
+  "liveAuthenticatedRequest": "not established by local fixtures; see PR/Notion after preview deployment",
+  "files": [
+    {
+      "name": "red.json",
+      "bytes": 1030,
+      "sha256": "f2c3cd6a13ac643754e12a420c1f9d1d06e39b6b014201e91c09d67c832f56ae"
+    },
+    {
+      "name": "red.log",
+      "bytes": 1345,
+      "sha256": "dad75eee11bbae1306cbe3c0b775b09e8644064ba49c1dec2fbbe59bd8460add"
+    },
+    {
+      "name": "api-green.json",
+      "bytes": 12462,
+      "sha256": "7986ca5c9980a1911a3ede9b250dae49f5f8770987f113b25199137e0d9ace23"
+    },
+    {
+      "name": "affected.json",
+      "bytes": 64180,
+      "sha256": "be86cf280c87bff83259659c8c782e67e7aede3434fb3d8d2b54d20d35270463"
+    },
+    {
+      "name": "affected.log",
+      "bytes": 4817,
+      "sha256": "8611c4f2cef965d4662d21ec84aaa84ba520e37dea217bd3363b5767f3a4e008"
+    },
+    {
+      "name": "ui-red.log",
+      "bytes": 2815,
+      "sha256": "e4d0da7fb5be4521ebfcb2099beb87a01b167bcdfaa54cbb63a2633b9c9f7159"
+    },
+    {
+      "name": "ui-final.log",
+      "bytes": 2168,
+      "sha256": "67dfbc810f0a0f795c5cb5800387574c90ca1c7dcc2f6b1e27d1c9d2bab424ca"
+    },
+    {
+      "name": "ui-reviewed.log",
+      "bytes": 2273,
+      "sha256": "0bf2f3b59bc98b7c0d1cf3ba06435a85e99d3be82f7530582fa58f45b1e217d2"
+    },
+    {
+      "name": "typecheck.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "mobile-film.png",
+      "bytes": 282542,
+      "sha256": "9b942d45e8294bf824f037feb562a59fc25677cb21f94c3722ee2a4245edc7f8"
+    },
+    {
+      "name": "desktop-film.png",
+      "bytes": 470634,
+      "sha256": "5e302e4c98e96f2a6b6e356598b88a2a4c3008f31fc6f2f2cba3462843a39065"
+    }
+  ]
+}

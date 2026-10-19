@@ -1,0 +1,29 @@
+{
+  "kind": "the-prompt-film-brief-v1",
+  "source": {
+    "title": "Investing in the public benefit",
+    "url": "https://www.anthropic.com/news/public-benefit-fund",
+    "key": "rss_anthropic",
+    "publishedAt": "2026-10-18T16:49:35.513Z",
+    "summary": "Anthropic proposes a Public Benefit Fund backed by five percent of its shares, subject to stockholder approval. Potential support for nonprofits or people affected by AI is still to be detailed."
+  },
+  "editorial": {
+    "language": "en",
+    "hook": "ANTHROPIC’S 5% PLEDGE",
+    "script": "Anthropic has announced a new Public Benefit Fund. The plan would commit five percent of its shares, subject to stockholder approval. Anthropic says the fund could support nonprofits or people affected by AI’s impact on work. Extra shares could be added as the company grows, at the board’s discretion. Details of the fund’s structure and governance are due in the coming months. Our question: how will that commitment translate into help for people? Follow The Prompt for AI news.",
+    "creativeVersion": "the-prompt-illustrated-smooth-v1",
+    "compositionId": "ThePromptIllustratedNews",
+    "voice": "victoria"
+  },
+  "scenes": [
+    {
+      "brief": "Cinematic close-up of a tangible equity diorama: five orange glass tiles separated from a larger neutral grid. Warm orange/cyan light, rich tactile materials, bright midtones. No cash payout, logos, branded UI or real-person likeness. The exact 5% statement comes from the edited caption, not generated image text."
+    },
+    {
+      "brief": "A human hand reviews a proposed allocation document beside five highlighted tokens behind a transparent approval gate. Conceptual governance scene, no claim to depict Anthropic's real board, no signatures, invented documents or readable generated text."
+    },
+    {
+      "brief": "A detailed contemporary learning workshop with adults exploring new digital skills. Human-focused, optimistic yet grounded. Portray a possible area of support as conceptual artwork, no branded charity, beneficiary identity or claim that grants or assistance have occurred."
+    }
+  ]
+}

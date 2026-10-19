@@ -123,7 +123,14 @@ ${sourceContext.slice(0, 600)}`,
   try {
     return JSON.parse(clean) as QualityScore
   } catch {
-    // Fallback if JSON parse fails — don't block the pipeline
+    // The strict pilot must never convert a failed factuality check into approval.
+    if (process.env.THE_PROMPT_FRESH_NEWS_PILOT === 'true') return {
+      hook_strength: 0, retention_score: 0, visual_relevance: 0, shareability: 0,
+      discussion_potential: 0, hallucination_risk: 0, overall: 0, passed: false,
+      verdict: 'Quality parser failed — needs human editorial review.',
+      weak_spots: ['Factual review unavailable; do not publish'],
+    }
+    // Legacy fallback unchanged until separate production approval.
     return {
       hook_strength: 8, retention_score: 8, visual_relevance: 8, shareability: 8,
       discussion_potential: 8, hallucination_risk: 8, overall: 8.0, passed: true,

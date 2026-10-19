@@ -14,6 +14,8 @@
  */
 
 import type { VideoInputProps } from './video-props'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { requiresIllustratedPreview } from './illustrated-news-profile'
 
 // Lazy-load @remotion/lambda/client to avoid import errors if not installed
 async function getLambdaClient() {
@@ -40,6 +42,19 @@ export async function startLambdaRender(
   inputProps: VideoInputProps,
   composition: 'ShortFormVideo' | 'SimpleNewsReel' = 'SimpleNewsReel',
 ): Promise<{ renderId: string; bucketName: string }> {
+  // Runtime callers may bypass the TypeScript union. Registering a composition
+  // must never grant the unreleased illustrated path access to public Lambda output.
+  if(composition!=='ShortFormVideo'&&composition!=='SimpleNewsReel'){
+    throw new Error('RENDER_COMPOSITION_NOT_AUTHORIZED')
+  }
+  // All legacy render callers (manual, cron, autonomous and retries) converge
+  // here. Re-read persisted provenance, independent of current pilot flags.
+  // No Lambda import or paid dispatch is allowed if that evidence is unavailable.
+  const { data: script, error } = await createAdminClient()
+    .from('media_scripts').select('raw_output').eq('id', scriptId).maybeSingle()
+  if(error||!script)throw new Error('RENDER_SCRIPT_NOT_VERIFIED')
+  if(requiresIllustratedPreview(script.raw_output))throw new Error('ILLUSTRATED_PREVIEW_REQUIRED')
+
   const { renderMediaOnLambda } = await getLambdaClient()
 
   const region     = requireEnv('AWS_REGION')

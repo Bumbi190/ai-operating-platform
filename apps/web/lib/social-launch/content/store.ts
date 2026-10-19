@@ -1,4 +1,5 @@
 import 'server-only'
+import {enrichNewsContent,readNewsReview} from '../news-review/readiness'
 import type {createAdminClient} from '@/lib/supabase/admin'
 import type {SocialContentPrincipal,SocialContentProposal,SocialContentDecision,SocialContentView} from './types'
 import {SocialContentError} from './types'
@@ -9,7 +10,7 @@ function key(v:unknown){if(typeof v!=='string'||!/^[A-Za-z0-9_-]{1,100}$/.test(v
 async function call(db:Db,p:SocialContentPrincipal,name:'social_content_read'|'social_content_save'|'social_content_decide',input:unknown):Promise<SocialContentView>{
  const {data,error}=await (db as unknown as {rpc:(name:string,args:Record<string,unknown>)=>Promise<{data:unknown;error:{message?:string;code?:string}|null}>}).rpc(name,{p_principal:p,p_input:input})
  if(error){const message=error.message??'',code=error.code==='P0002'||error.code==='42501'?'NOT_FOUND':error.code==='23505'?'REVISION_CONFLICT':(['INVALID_BODY','REVISION_CONFLICT','REVIEW_REQUIRED','MEDIA_REQUIRED','STOPPED','LIMIT_REACHED'] as const).find(k=>message.includes('SOCIAL_CONTENT_'+k))??'UNAVAILABLE';throw new SocialContentError(code)}
- if(!data)throw new SocialContentError('UNAVAILABLE');return data as SocialContentView
+ if(!data)throw new SocialContentError('UNAVAILABLE');return enrichNewsContent(db,p,data as SocialContentView)
 }
 export async function readSocialContent(db:Db,p:SocialContentPrincipal,input:{projectId:string;conversationId?:string|null}):Promise<SocialContentView>{contentFields(input,['projectId','conversationId']);scoped(p,input.projectId);if(input.conversationId!=null)contentId(input.conversationId);return call(db,p,'social_content_read',input)}
 export async function proposeSocialContent(db:Db,p:SocialContentPrincipal,input:SocialContentProposal):Promise<SocialContentView>{
@@ -19,5 +20,13 @@ export async function proposeSocialContent(db:Db,p:SocialContentPrincipal,input:
 export async function decideSocialContent(db:Db,p:SocialContentPrincipal,input:SocialContentDecision):Promise<SocialContentView>{
  contentFields(input,['projectId','postId','revisionId','sha256','decision','idempotencyKey']);scoped(p,input.projectId);contentId(input.postId);contentId(input.revisionId);key(input.idempotencyKey)
  if(!['approve','reject'].includes(input.decision)||typeof input.sha256!=='string'||!/^[a-f0-9]{64}$/.test(input.sha256))throw new SocialContentError('INVALID_BODY')
+ if(input.decision==='approve'){
+  const current=await readSocialContent(db,p,{projectId:input.projectId}),post=current.posts.find(v=>v.id===input.postId)
+  if(post?.newsReview){
+   if(post.revision.id!==input.revisionId||post.revision.sha256!==input.sha256)throw new SocialContentError('REVISION_CONFLICT')
+   const review=await readNewsReview(db,p,{projectId:input.projectId,postId:input.postId},Date.now())
+   if(!review.review_packet_ready)throw new SocialContentError('REVIEW_REQUIRED')
+  }
+ }
  return call(db,p,'social_content_decide',input)
 }

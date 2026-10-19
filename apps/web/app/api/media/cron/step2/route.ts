@@ -1,3 +1,4 @@
+import {resolveIllustratedNewsProfile,assertIllustratedNewsSource,missingIllustratedNewsProviders,requiresIllustratedPreview} from '@/lib/media/illustrated-news-profile'
 /**
  * GET /api/media/cron/step2
  *
@@ -14,6 +15,8 @@ import { dispatchedGenerationIsNotRetryable } from '@/lib/media/orchestrator/ret
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { generateVoiceover } from '@/lib/media/elevenlabs'
+import { buildPilotVoiceReceipt } from '@/lib/media/pilot-voice-receipt'
+import type { Json } from '@/lib/supabase/database.types'
 import { uploadAudio, uploadTimingData, uploadSceneImage } from '@/lib/media/storage'
 import { generateNewsImages } from '@/lib/media/ideogram'
 import { logRun } from '@/lib/media/run-log'
@@ -40,7 +43,7 @@ export async function GET(request: Request) {
 
   let query = db
     .from('media_scripts')
-    .select('id, project_id, hook, script, voice_attempts, media_news_items(title)')
+    .select('id, project_id, hook, script, voice_attempts, raw_output, media_news_items(title,summary,url,project_id,raw_output)')
     .eq('status', 'approved')
     .order('generated_at', { ascending: false })
     .limit(1)
@@ -60,6 +63,25 @@ export async function GET(request: Request) {
 
   if (!script) {
     return NextResponse.json({ status: 'nothing_to_do', reason: 'No script waiting for voice in last 15 min' })
+  }
+
+  // Editorial rejection is not a provider failure: do this before claims,
+  // retries, failure accounting, image spend or voice synthesis.
+  if(requiresIllustratedPreview(script.raw_output)){
+    return NextResponse.json({status:'illustrated_preview_required',
+      reason:'ILLUSTRATED_PREVIEW_REQUIRED',scriptId:script.id})
+  }
+  const imageProfile=resolveIllustratedNewsProfile(script.project_id)
+  if(imageProfile){
+    const sourceNews=Array.isArray(script.media_news_items)?script.media_news_items[0]:script.media_news_items
+    try{assertIllustratedNewsSource(script.project_id,sourceNews)}
+    catch{return NextResponse.json({status:'editorial_review_required',
+      reason:'ILLUSTRATED_SOURCE_NOT_VERIFIED',scriptId:script.id})}
+    const missingProviders=missingIllustratedNewsProviders()
+    if(missingProviders.length)return NextResponse.json({
+      status:'provider_configuration_required',reason:'ILLUSTRATED_PROVIDER_NOT_CONFIGURED',
+      missingProviders,scriptId:script.id,
+    })
   }
 
   console.log(`[cron/step2] Generating voice for script ${script.id}`)
@@ -97,7 +119,7 @@ export async function GET(request: Request) {
         // Only a failure that PROVES nothing was synthesised may repeat it.
         { attempts: 2, label: 'ElevenLabs voice',
           isPermanent: dispatchedGenerationIsNotRetryable() }),
-      withRetry(() => generateNewsImages(newsTitle, scriptText, 3, { context: 'AUTONOMOUS' as const, scope: projectScope({ projectId }) }, MEDIA_PIPELINE_PROJECT),
+      withRetry(() => generateNewsImages(newsTitle, scriptText, 3, { context: 'AUTONOMOUS' as const, scope: projectScope({ projectId }) }, MEDIA_PIPELINE_PROJECT, undefined, imageProfile),
         // Three renders per call, so a blind retry buys three more.
         { attempts: 2, label: 'Ideogram images',
           isPermanent: dispatchedGenerationIsNotRetryable() }),
@@ -110,14 +132,32 @@ export async function GET(request: Request) {
       ...rawImageUrls.map((url, i) => uploadSceneImage(projectId, script.id, i, url)),
     ])
 
-    await db.from('media_scripts').update({
+    const strictPilot=process.env.THE_PROMPT_FRESH_NEWS_PILOT === 'true'
+    const oldRaw=script.raw_output && typeof script.raw_output==='object' &&
+      !Array.isArray(script.raw_output)?script.raw_output as {[key:string]:Json|undefined}:{}
+    const update={
       audio_url:    audioUrl,
       timing_url:   timingUrl,
       duration_ms:  voiceResult.durationMs,
       images:       storedImageUrls,
       composition:  'SimpleNewsReel',
       voice_status: 'ready',
-    }).eq('id', script.id)
+      ...(strictPilot?{raw_output:{
+        ...oldRaw,
+        ...(imageProfile?{pilot_image_profile:imageProfile}:{}),
+        pilot_voice_receipt:{...buildPilotVoiceReceipt(
+          scriptText,voiceResult.audioBuffer,voiceResult.words,voiceResult.durationMs)},
+      }}:{}),
+    }
+    const updateQuery=db.from('media_scripts').update(update)
+      .eq('id',script.id).eq('project_id',projectId)
+    if(strictPilot){
+      // No "voice ready" success unless the exact provenance receipt was saved.
+      const {data:receiptRow,error:receiptError}=await updateQuery.select('id').maybeSingle()
+      if(receiptError||!receiptRow)throw new Error('PILOT_VOICE_RECEIPT_NOT_PERSISTED')
+    }else{
+      await updateQuery // Legacy path remains unchanged while pilot is OFF.
+    }
 
     console.log(`[cron/step2] Done — ${(voiceResult.durationMs / 1000).toFixed(1)}s voice + ${storedImageUrls.length} images for script ${script.id}`)
 

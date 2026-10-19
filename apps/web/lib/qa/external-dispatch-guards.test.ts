@@ -257,7 +257,8 @@ describe('G5 · the row’s project binds execution, not the billing slug', () =
     expect(body).toContain('scope: projectScope({ projectId: script.project_id')
     // One contract, reused by both the paid image fallback and the render.
     expect(body).toMatch(/const execution: ExecutionContract/)
-    expect(body).toContain('generateNewsImages(newsTitle, scriptText, 8, execution)')
+    // The actual image-call authority and billing arguments are exercised by
+    // external-dispatch-stop.test.ts; a fifth billing argument is not authority.
   })
 
   it('billing attribution is still present — only authority moved', () => {

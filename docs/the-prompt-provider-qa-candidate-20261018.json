@@ -1,0 +1,33 @@
+{
+  "kind": "private-provider-qa-only",
+  "checkedAt": "2026-10-18T05:29:36.149Z",
+  "projectId": "a8a1b1f6-c222-4893-9399-b1fb3bc2fa52",
+  "headline": "Anthropic AI workplace report: human attention becomes the bottleneck",
+  "script": "AI did the work. Now who checks it? Anthropic's new workplace report says AI agents are producing so much output that human attention has become a bottleneck. Even non-technical staff would need half their week to read everything their agents produce. Employees are building monitoring tools, while human judgment still matters. This is Anthropic studying its own fast-growing company, not proof about every workplace. Faster output still needs someone who can review it.",
+  "hook": "AI DID THE WORK. WHO CHECKS IT?",
+  "sourceUrl": "https://www.anthropic.com/research/employment-at-anthropic",
+  "sourcePublishedAt": "2026-10-16T16:26:00.000Z",
+  "sourceCaptureSha256": "f9e00782cebf64ee2fa6918c576de5507eeefbe4982dfe556693b30cb0428473",
+  "coverageUrl": "https://techcrunch.com/2026/10/17/anthropic-says-its-workforce-has-become-less-junior-and-is-spending-more-time-in-meetings/",
+  "coveragePublishedAt": "2026-10-17T20:21:19+00:00",
+  "profile": "the-prompt-illustrated-v2",
+  "estimates": {
+    "images": 2.52,
+    "voice": 1.18692,
+    "primaryPlanner": 1.7430000000000003,
+    "possibleCreditFallbackPlanner": 3.2208750000000004
+  },
+  "maximumConservativeSek": 8.670795000000002,
+  "absoluteProbeCapSek": 12,
+  "providerAttemptRequested": false,
+  "paidCallsEnabled": false,
+  "missingProviders": [
+    "images",
+    "voice"
+  ],
+  "publicationAuthorized": false,
+  "rightsReleaseVerified": false,
+  "freshnessExpiresAt": "2026-10-18T16:26:00.000Z",
+  "duplicateCheck": "Read-only project-scoped query found no prior media_news_items/media_scripts for the report or its coverage.",
+  "status": "blocked_before_provider_dispatch"
+}

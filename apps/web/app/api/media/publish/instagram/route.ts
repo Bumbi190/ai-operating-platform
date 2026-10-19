@@ -23,6 +23,7 @@
  *   { step: 'error',       message: '...' }
  */
 
+import {requiresIllustratedPreview} from '@/lib/media/illustrated-news-profile'
 import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -87,13 +88,16 @@ export async function POST(request: Request) {
 
   const { data: script, error: scriptError } = await db
     .from('media_scripts')
-    .select('id, project_id, hook, script, cta, hashtags, video_url, video_status, status, instagram_media_id, instagram_url, facebook_post_id, facebook_url, published_at, media_news_items(url, source_name)')
+    .select('id, project_id, hook, script, cta, hashtags, video_url, video_status, status, raw_output, instagram_media_id, instagram_url, facebook_post_id, facebook_url, published_at, media_news_items(url, source_name)')
     .eq('id', scriptId)
     .in('project_id', scopeProjectFilter(allowedProjectIds))
     .maybeSingle()
 
   if (scriptError || !script) {
     return new Response('Script not found', { status: 404 })
+  }
+  if(requiresIllustratedPreview(script.raw_output)){
+    return Response.json({status:'illustrated_preview_required'},{status:409})
   }
   if (script.video_status !== 'ready' || !script.video_url) {
     return new Response('Video not rendered yet', { status: 400 })

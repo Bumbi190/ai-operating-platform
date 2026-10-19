@@ -3,6 +3,10 @@ import { Composition } from 'remotion'
 import { ShortFormVideo } from './compositions/ShortFormVideo'
 import { SimpleNewsReel } from './compositions/SimpleNewsReel'
 import { ContentGrowthReel } from './compositions/ContentGrowthReel'
+import { ThePromptEditorialLab } from './compositions/ThePromptEditorialLab'
+import { ThePromptNewsPreview, previewDuration } from './compositions/ThePromptNewsPreview'
+import { ThePromptDailyPilot, pilotDurationFrames } from './compositions/ThePromptDailyPilot'
+import {ThePromptIllustratedNews,THE_PROMPT_ILLUSTRATED_VERSION} from './compositions/ThePromptIllustratedNews'
 import { FamilyNovemberTeaser } from './compositions/FamilyNovemberTeaser'
 import type { VideoInputProps } from './lib/types'
 
@@ -64,13 +68,40 @@ export function RemotionRoot() {
       />
       <Composition
         id="ThePromptContentLab"
-        component={ContentGrowthReel}
+        component={ThePromptEditorialLab}
         durationInFrames={360}
         fps={30}
         width={1080}
         height={1920}
-        defaultProps={{ brand: 'the-prompt' as const, imageUrls: [] }}
+        defaultProps={{headline:'AI is changing the rules.',context:'A sharper look at the technology behind the headlines.',takeaway:'The important question is what changes next.',sourceName:'EDITORIAL CONCEPT',imageUrls:[]}}
       />
+
+      {/* Private quality review only. Not used by any automatic publishing endpoint. */}
+      <Composition id="ThePromptCodexReview" component={ThePromptNewsPreview}
+        durationInFrames={previewDuration('codex')} fps={30} width={1080} height={1920}
+        defaultProps={{story:'codex' as const}}/>
+      <Composition id="ThePromptRecruiterReview" component={ThePromptNewsPreview}
+        durationInFrames={previewDuration('recruiter')} fps={30} width={1080} height={1920}
+        defaultProps={{story:'recruiter' as const}}/>
+
+      {/* Private dynamic trial template: placeholder data, NOT a real news episode. */}
+      <Composition id="ThePromptDailyPilotTemplate" component={ThePromptDailyPilot}
+        durationInFrames={pilotDurationFrames(10000)} fps={30} width={1080} height={1920}
+        defaultProps={{
+          hook:'TEMPLATE ONLY — VERIFIED NEWS REQUIRED',audioUrl:'',durationMs:10000,
+          words:[],captions:[],images:[],sourceLabel:'REVIEW TEMPLATE',sourceUrl:'',
+          sourcePublishedAt:'',creativeVersion:'the-prompt-editorial-v1' as const,
+        }}/>
+
+      {/* Registered for verified local renders; legacy Lambda handoff stays closed. */}
+      <Composition id="ThePromptIllustratedNews" component={ThePromptIllustratedNews}
+        durationInFrames={pilotDurationFrames(10000)} fps={30} width={1080} height={1920}
+        defaultProps={{
+          hook:'VERIFIED INPUT REQUIRED',audioUrl:'',durationMs:10000,
+          words:[],captions:[],images:[],sourceLabel:'INPUT REQUIRED',sourceUrl:'',
+          sourcePublishedAt:'',creativeVersion:THE_PROMPT_ILLUSTRATED_VERSION,
+        }}
+        calculateMetadata={async ({props})=>({durationInFrames:pilotDurationFrames(props.durationMs),props})}/>
 
       {/* Lite version — single static image, same audio + captions. ~5× cheaper. */}
       <Composition

@@ -35,6 +35,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { listActiveBindings } from './social-bindings'
 import { createCredentialResolver, type CredentialRefusal } from './social-credentials'
 import { fetchVideoRetention } from './youtube'
+import { recordTrialMetricSnapshot } from './the-prompt-trial-snapshot'
 
 /** Posts refreshed per platform per project (YouTube: across projects), newest first. */
 export const INSIGHTS_LIMIT = 80
@@ -382,7 +383,7 @@ export async function refreshAllInsights(options: RefreshOptions = {}): Promise<
       else {
         const token = ig.credential.token
         const { data: scripts, error: readError } = await (db.from('media_scripts') as any)
-          .select('id, project_id, instagram_media_id, published_at')
+          .select('id, project_id, instagram_media_id, published_at, raw_output')
           .eq('status', 'published').eq('project_id', projectId)
           .not('instagram_media_id', 'is', null)
           .order('published_at', { ascending: false })
@@ -394,6 +395,7 @@ export async function refreshAllInsights(options: RefreshOptions = {}): Promise<
               const result = await fetchMediaInsights(s.instagram_media_id, token)
               if (!result.ok || !result.metrics) return bump('instagram', false, result.error)
               const m = result.metrics
+              const sampledAt = new Date().toISOString()
               const { error } = await (db.from('media_insights') as any).upsert({
                 script_id: s.id,
                 project_id: s.project_id,
@@ -407,8 +409,15 @@ export async function refreshAllInsights(options: RefreshOptions = {}): Promise<
                 shares: m.shares ?? null,
                 total_interactions: m.total_interactions ?? null,
                 published_at: s.published_at,
-                fetched_at: new Date().toISOString(),
+                fetched_at: sampledAt,
               }, { onConflict: 'script_id,platform' })
+              if(!error) await recordTrialMetricSnapshot(db as never,{
+                scriptId:s.id,projectId:s.project_id,platform:'instagram',
+                creativeVersion:s.raw_output?.pilot_creative_version ?? null,
+                publishedAt:s.published_at,fetchedAt:sampledAt,
+                views:m.views ?? null,likes:m.likes ?? null,comments:m.comments ?? null,
+                saved:m.saved ?? null,shares:m.shares ?? null,
+              })
               return bump('instagram', !error, error?.message)
             } catch (e) {
               return bump('instagram', false, e instanceof Error ? e.message : 'okänt fel')
@@ -428,7 +437,7 @@ export async function refreshAllInsights(options: RefreshOptions = {}): Promise<
       else {
         const { pageToken, pageId } = fb.credential
         const { data: fbScripts, error: readError } = await (db.from('media_scripts') as any)
-          .select('id, project_id, facebook_post_id, published_at')
+          .select('id, project_id, facebook_post_id, published_at, raw_output')
           .eq('status', 'published').eq('project_id', projectId)
           .not('facebook_post_id', 'is', null)
           .order('published_at', { ascending: false })
@@ -440,6 +449,7 @@ export async function refreshAllInsights(options: RefreshOptions = {}): Promise<
               const result = await fetchFacebookInsights(s.facebook_post_id, pageToken, pageId)
               if (!result.ok || !result.metrics) return bump('facebook', false, result.error)
               const m = result.metrics
+              const sampledAt = new Date().toISOString()
               const { error } = await (db.from('media_insights') as any).upsert({
                 script_id: s.id,
                 project_id: s.project_id,
@@ -454,8 +464,15 @@ export async function refreshAllInsights(options: RefreshOptions = {}): Promise<
                 shares: m.shares ?? null,
                 total_interactions: m.total_interactions ?? null,
                 published_at: s.published_at,
-                fetched_at: new Date().toISOString(),
+                fetched_at: sampledAt,
               }, { onConflict: 'script_id,platform' })
+              if(!error) await recordTrialMetricSnapshot(db as never,{
+                scriptId:s.id,projectId:s.project_id,platform:'facebook',
+                creativeVersion:s.raw_output?.pilot_creative_version ?? null,
+                publishedAt:s.published_at,fetchedAt:sampledAt,
+                views:m.views ?? null,likes:m.likes ?? null,comments:m.comments ?? null,
+                shares:m.shares ?? null,
+              })
               return bump('facebook', !error, error?.message)
             } catch (e) {
               return bump('facebook', false, e instanceof Error ? e.message : 'okänt fel')
@@ -473,7 +490,7 @@ export async function refreshAllInsights(options: RefreshOptions = {}): Promise<
   else if (expired()) ended('youtube', null, 'time_budget_exhausted')
   else {
     const { data: ytScripts, error: readError } = await (db.from('media_scripts') as any)
-      .select('id, project_id, youtube_video_id, published_at')
+      .select('id, project_id, youtube_video_id, published_at, raw_output')
       .eq('status', 'published')
       .not('youtube_video_id', 'is', null)
       .order('published_at', { ascending: false })
@@ -488,6 +505,7 @@ export async function refreshAllInsights(options: RefreshOptions = {}): Promise<
           // Genomtittning kräver en kanal-credential: bara videons EGET projekts, via dess bindning.
           const yt = await credentials.youtube(s.project_id)
           const retention = yt.ok ? await fetchVideoRetention(yt.credential, s.youtube_video_id) : null
+          const sampledAt = new Date().toISOString()
           const { error } = await (db.from('media_insights') as any).upsert({
             script_id: s.id,
             project_id: s.project_id,
@@ -502,8 +520,15 @@ export async function refreshAllInsights(options: RefreshOptions = {}): Promise<
             total_interactions: m.total_interactions ?? null,
             avg_view_pct: retention,
             published_at: s.published_at,
-            fetched_at: new Date().toISOString(),
+            fetched_at: sampledAt,
           }, { onConflict: 'script_id,platform' })
+          if(!error) await recordTrialMetricSnapshot(db as never,{
+            scriptId:s.id,projectId:s.project_id,platform:'youtube',
+            creativeVersion:s.raw_output?.pilot_creative_version ?? null,
+            publishedAt:s.published_at,fetchedAt:sampledAt,
+            views:m.views ?? null,likes:m.likes ?? null,comments:m.comments ?? null,
+            avgViewPct:retention,
+          })
           return bump('youtube', !error, error?.message)
         } catch (e) {
           return bump('youtube', false, e instanceof Error ? e.message : 'okänt fel')

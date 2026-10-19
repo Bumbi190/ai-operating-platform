@@ -476,6 +476,21 @@ describe('step3 · the INITIAL Lambda render is external compute too', () => {
     expect(body.status).toBe('step3_done')
   })
 
+  it('image fallback binds the row project separately from billing', async () => {
+    dbState.scripts = [s3({ images: [] })]
+    generateNewsImages.mockResolvedValueOnce(['https://cdn/fallback.jpg'])
+
+    const body = await (await call()).json()
+
+    expect(body.status).toBe('step3_done')
+    expect(generateNewsImages).toHaveBeenCalledTimes(1)
+    expect(generateNewsImages).toHaveBeenCalledWith(
+      'a headline', 'a script', 8,
+      { context: 'AUTONOMOUS', scope: { kind: 'PROJECT', project: { projectId: PROJECT_A } } },
+      { projectSlug: 'ai-media-automation' },
+    )
+  })
+
   it('PROJECT paused → no Lambda call at all', async () => {
     stop.project = true
     const body = await (await call()).json()

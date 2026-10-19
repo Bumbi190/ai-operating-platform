@@ -116,6 +116,10 @@ async function saveFirstHunterCandidate(
         content_angle: top.suggestedAngle,
         source_url: top.story.url,
         source_name: top.story.sourceLabel,
+        // Preserve verified publisher time for downstream editorial audits.
+        source_key: process.env.THE_PROMPT_FRESH_NEWS_PILOT === 'true' ? top.story.source : null,
+        source_published_at: process.env.THE_PROMPT_FRESH_NEWS_PILOT === 'true' ? top.story.publishedAt.toISOString() : null,
+        freshness_checked_at: process.env.THE_PROMPT_FRESH_NEWS_PILOT === 'true' ? new Date().toISOString() : null,
       },
     })
 
@@ -228,7 +232,9 @@ export async function GET(request: Request) {
   // Hermes is optional — gracefully skipped if HERMES_URL is not set.
   const VIRALITY_THRESHOLD = 60
   const topCandidate       = hunterResult.candidates[0]
-  const shouldUseHermes    = isHermesConfigured() && (
+  // The strict freshness pilot must not use a Hermes result without a
+  // verifiable publisher timestamp. The regular pipeline remains unchanged.
+  const shouldUseHermes    = process.env.THE_PROMPT_FRESH_NEWS_PILOT !== 'true' && isHermesConfigured() && (
     !hunterResult.candidates.length ||
     (topCandidate && topCandidate.estimatedViralityScore < VIRALITY_THRESHOLD)
   )
@@ -375,12 +381,23 @@ export async function GET(request: Request) {
 
   // Skip the (expensive) regenerate pass if we're low on budget — better to ship a
   // slightly weaker hook than to 504 and save nothing.
-  if (shouldRegenerate(qualityScore) && Date.now() - t0 < 40_000) {
+  if (shouldRegenerate(qualityScore) &&
+      process.env.THE_PROMPT_FRESH_NEWS_PILOT !== 'true' && Date.now() - t0 < 40_000) {
     const rewriteRes = await withRetry(() => scriptRewriter.messages.create({
       model: 'claude-sonnet-4-6', max_tokens: 2000, system: SCRIPT_SYSTEM,
       messages: [{ role: 'user', content: `Rewrite — previous rejected.\nSTORY:\n${scriptContext}\nREJECTED HOOK: "${script.hook}"\nVERDICT: ${qualityScore.verdict}\nWEAK SPOTS: ${qualityScore.weak_spots.join(', ')}\nFix everything. Hook must score 8+.` }],
     }))
     script = JSON.parse((rewriteRes.content[0].type === 'text' ? rewriteRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as ScriptWriterOutput
+  }
+
+  // Strict pilot: no auto-approval for uncertain facts, weak hooks or broken QA.
+  // On an uneventful day a skipped post is safer than invented or stale news.
+  if (process.env.THE_PROMPT_FRESH_NEWS_PILOT === 'true' &&
+      (shouldRegenerate(qualityScore) || !qualityScore.passed)) {
+    return NextResponse.json({
+      status: 'editorial_review_required',
+      reason: 'fresh_news_script_failed_quality',
+    })
   }
 
   // Save script — voice_status='none' signals step2 to pick it up

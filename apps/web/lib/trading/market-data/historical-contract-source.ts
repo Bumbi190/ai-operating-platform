@@ -18,6 +18,7 @@ import { parseResolvedContract, sameContract, type ResolvedContract } from '../c
 import { isTimestamp, toEpochMs, type Timestamp } from '../time'
 import type { MarketCandle } from '../market-candle'
 import { parsePriceText } from '../market-price'
+import { compareDecimal, parseDecimal } from '../decimal'
 import { buildHistoricalContractRequest, type HistoricalContractRequest } from './contract-window'
 import { buildContractCandleSegment, type ContractCandleSegment, type SegmentProblem } from './contract-segment'
 
@@ -111,6 +112,30 @@ function sourceStateOf(value: unknown): HistoricalSourceState | null {
 }
 
 /**
+ * The source cannot mark impossible OHLCV as acceptable observations.
+ * Prices are parsed using the SAME exact decimal primitives as Trading Core,
+ * not binary floats. This checks only OHLC geometry and nonnegative volume;
+ * contract-specific tick/market conventions remain separate quality gates.
+ */
+function validOhlcvGeometry(value: Record<string, unknown>): boolean {
+  const open = parseDecimal(value.open)
+  const high = parseDecimal(value.high)
+  const low = parseDecimal(value.low)
+  const close = parseDecimal(value.close)
+  if (open === null || high === null || low === null || close === null) return false
+
+  if (compareDecimal(low, high) > 0 ||
+      compareDecimal(open, low) < 0 || compareDecimal(open, high) > 0 ||
+      compareDecimal(close, low) < 0 || compareDecimal(close, high) > 0) return false
+
+  if (value.volume !== null) {
+    const volume = parseDecimal(value.volume)
+    if (volume === null || volume.units < BigInt(0)) return false
+  }
+  return true
+}
+
+/**
  * Verify untrusted provider output BEFORE passing any candle to canonical
  * segment, completeness, aggregation or strategy code.
  *
@@ -177,7 +202,8 @@ export function inspectHistoricalContractResult(
     parsePriceText(candle.high) === null ||
     parsePriceText(candle.low) === null ||
     parsePriceText(candle.close) === null ||
-    (candle.volume !== null && parsePriceText(candle.volume) === null)
+    (candle.volume !== null && parsePriceText(candle.volume) === null) ||
+    !validOhlcvGeometry(candle)
   )) return violation('MALFORMED_SOURCE_RESULT')
 
   // The segment constructor already owns authoritative instant/ordering/grid

@@ -5,9 +5,9 @@
     "total": 15319,
     "passed": 13808,
     "failed": 393,
-    "pending": 1114,
-    "todo": 0,
-    "files": 671
+    "pending": 4,
+    "files": 671,
+    "skipped": 1114
   },
   "assertionStatuses": {
     "passed": 13808,

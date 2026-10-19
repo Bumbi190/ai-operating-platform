@@ -51,11 +51,21 @@ internal static class MaterializationSpecification {
   foreach(var key in new[]{"Binds","Devices","DeviceRequests","PortBindings","Links","VolumesFrom","ExtraHosts","GroupAdd","Sysctls"})Need(Empty(host,key));
   if(host.TryGetProperty("Init",out var init))Need(init.ValueKind is JsonValueKind.False or JsonValueKind.Null);
   var hm=Get(host,"Mounts");Need(hm.ValueKind==JsonValueKind.Array&&hm.GetArrayLength()==1);var h=hm[0];
-  Need(Text(h,"Type")=="volume"&&Text(h,"Source")==VolumeName(i.Attempt)&&Text(h,"Target")=="/workspace/repo"&&Bool(h,"ReadOnly",false)&&Bool(Get(h,"VolumeOptions"),"NoCopy",false));
+  Need(Text(h,"Type")=="volume"&&Text(h,"Source")==VolumeName(i.Attempt)&&Text(h,"Target")=="/workspace/repo"&&DefaultFalse(h,"ReadOnly")&&VolumeOptions(h));
   var mounts=Get(r,"Mounts");Need(mounts.ValueKind==JsonValueKind.Array&&mounts.GetArrayLength()==1);var m=mounts[0];
   Need(Text(m,"Type")=="volume"&&Text(m,"Name")==VolumeName(i.Attempt)&&Text(m,"Driver")=="local"&&Text(m,"Destination")=="/workspace/repo"&&Text(m,"Source")==mount&&Bool(m,"RW",true));
   var state=Get(r,"State");if(beforeStart)Need(Bool(state,"Running",false)&&Text(state,"Status")=="created");
   if(finished)Need(Bool(state,"Running",false)&&Text(state,"Status")=="exited"&&Number(state,"ExitCode",0)&&Bool(state,"OOMKilled",false));return id;
+ }
+ static bool DefaultFalse(JsonElement r,string key)=>!r.TryGetProperty(key,out var v)||v.ValueKind==JsonValueKind.False;
+ static bool VolumeOptions(JsonElement h){
+  foreach(var key in new[]{"BindOptions","ImageOptions","TmpfsOptions","ClusterOptions"})Need(Empty(h,key));
+  if(h.TryGetProperty("Consistency",out var c))Need(c.ValueKind==JsonValueKind.String&&c.GetString()=="");
+  if(!h.TryGetProperty("VolumeOptions",out var v)||v.ValueKind==JsonValueKind.Null)return true;
+  Need(v.ValueKind==JsonValueKind.Object&&v.EnumerateObject().All(p=>new[]{"NoCopy","Labels","Subpath","DriverConfig"}.Contains(p.Name)));
+  Need(DefaultFalse(v,"NoCopy")&&Empty(v,"Labels")&&Empty(v,"DriverConfig"));
+  if(v.TryGetProperty("Subpath",out var s))Need(s.ValueKind==JsonValueKind.String&&s.GetString()=="");
+  return true;
  }
  internal static JsonElement Get(JsonElement r,string key){if(r.ValueKind!=JsonValueKind.Object||!r.TryGetProperty(key,out var v))throw new WorkspaceException("materialization_unverified");return v;}
  internal static string Text(JsonElement r,string key){var v=Get(r,key);if(v.ValueKind!=JsonValueKind.String)throw new WorkspaceException("materialization_unverified");return v.GetString()!;}

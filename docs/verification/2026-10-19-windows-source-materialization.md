@@ -1,7 +1,7 @@
 # Windows source materialization — execution record
 Plan: docs/superpowers/plans/2026-10-19-windows-source-materialization.md
 Execution BASE: e38f297dca9af3323313878fb4dc9069e24f5024
-Status 2026-10-19: Tasks1–2 verified locally; Task3 has a pure protection specification only; runtime transfer/fixture, full17-file gate and independent review remain. No live authority, push, merge or deployment.
+Status 2026-10-19: Tasks1–3 verified locally; actual offline transfer/fixture, full17-file gate and independent review remain. No live authority, push, merge or deployment.
 
 ## Completed source increment
 Commit a535d0717546570159aac69f4459e6a67069c8ad.
@@ -35,7 +35,13 @@ Vite emits its existing CJS API deprecation warning in developer contract runs.
 8. Accept omitted/null/empty Cmd with the exact fixed entrypoint — observed Docker serialization omits empty Cmd; the new regression failed before the narrow decoder fix. Nonempty/nonarray commands remain refused. Cost if wrong: an unintended command could be accepted.
 The pure Node resource specification was prepared while the single operator build was pending. No runtime volume/container mutation was introduced by that preparation.
 
+## Completed lifecycle increment
+Closed opaque request grammar and shared verified transport; original health protections/F1 regressions retained. Owned volume/container transfer, bounded USTAR upload, fixed runner DTO, no mutation replay, and original-peer/daemon-bound cleanup.
+Persisted reserved/started/peer records prevent reuse and late start; cleanup never creates or starts Docker resources. A replacement daemon cannot prove absence for a prior attempt. Named semaphore is the nonblocking current-user attempt mutex across asynchronous continuations.
+Task3 gate: materialization62, resource specification25, persistent attempt journal7 and predecessor probe33 native assertions; native build0warnings/0errors. Explicit RED regressions: unattempted same-name container deletion, cleanup tombstone/late start, omitted default fields, and replacement-daemon false absence. Real runtime fixture remains for Task4.
+Additional decisions: durable source-owned attempt bookkeeping is infrastructure, not a job-file write API (cost: conservative reconciliation if records are unavailable); semaphore avoids Win32 Mutex thread affinity (cost: contention blocks); omitted false ReadOnly/NoCopy defaults follow Moby's API while nonempty hidden options are refused (cost: wrong normalization could accept hidden mount behavior); persisted original peer/profile/manifest tuple blocks cleanup after identity change (cost: legitimate restarts may need manual reconciliation).
+Primary reference: https://github.com/moby/moby/blob/master/api/types/mount/mount.go
+
 ## Remaining
-Task3: closed verified transport, volume/container lifecycle, bounded archive upload, fixed fixture and cleanup/reconciliation; preserve original F1 before/after-daemon absence checks.
 Task4: strict DTO/facade, durable attempt bookkeeping before helper launch, reused real proof fixture, actual offline chain, all17 named files/six required Windows flags, both typechecks, one independent gpt-6-astra high whole-range review and one material RED→GREEN fix pass.
 Keep the branch and c435e423 proof worktree. Keep this plan's scratch until the final verified durable handoff; predecessor scratch stays untouched.

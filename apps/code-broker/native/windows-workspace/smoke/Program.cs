@@ -40,6 +40,8 @@ if(args.Length!=1)throw new Exception("unknown smoke mode");
 if(args[0]=="path-process")await PathProcessSmoke.Run(Check);
 else if(args[0]=="worktree")await WorktreeSmoke.Run(Check);
 else if(args[0]=="worktree-config")await WorktreeConfigSmoke.Run(Check);
+else if(args[0]=="attempt-journal")await AttemptJournalSmoke.Run(Check);
+else if(args[0]=="materialization")await MaterializationProtocolSmoke.Run(Check);
 else if(args[0]=="materialization-spec")MaterializationSmoke.RunSpec(Check);
 else if(args[0]=="toolchain")ToolchainSmoke.Run(Check);
 else if(args[0]=="source")await SourceSmoke.Run(Check);

@@ -121,7 +121,7 @@ test('both research functions refuse invalid time, binary floating point and unk
   const data=series(inverseBearGap)
   assert.equal(inspectIfvg(data,{manipulationCompleteAt:'2026-13-01T00:00:00.000Z'}).status,'INDETERMINATE')
   assert.equal(inspectCisd(data,{manipulationCompleteAt:cutoff,anchor:'GUESS'}).status,'INDETERMINATE')
-  assert.equal(inspectIfvg(series([['100','101','99',100.25]]),{manipulationCompleteAt:cutoff}).status,'INDETERMINATE')
+  assert.equal(inspectIfvg({...data,candles:data.candles.map((e,i)=>i===3?{...e,close:100.25}:e)},{manipulationCompleteAt:cutoff}).reason,'INVALID_EXACT_OHLC')
   assert.equal(inspectIfvg({...data,candles:data.candles.map((e,i)=>i===3?{...e,close:'1.00e3'}:e)},{manipulationCompleteAt:cutoff}).reason,'INVALID_EXACT_OHLC')
 })
 

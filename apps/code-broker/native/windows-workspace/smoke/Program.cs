@@ -27,6 +27,11 @@ if(args.Length==2&&args[0]=="verify-pids"){
  }
  Console.WriteLine(JsonSerializer.Serialize(new{alive}));return 0;
 }
+if(args.Length==1&&args[0]=="toolchain-image"){
+ using var input=Console.OpenStandardInput();using var bytes=new MemoryStream();var buffer=new byte[8192];while(true){int n=await input.ReadAsync(buffer);if(n==0)break;if(bytes.Length+n>262144)throw new Exception("image bound");bytes.Write(buffer,0,n);}
+ using var image=JsonDocument.Parse(bytes.ToArray(),new JsonDocumentOptions{MaxDepth=16});WorkspaceJson.Unique(image.RootElement);var profile=ToolchainProfile.RequireReady(ToolchainProfile.Current);
+ var id=ToolchainProfile.VerifyImage(profile,image.RootElement);Console.WriteLine(JsonSerializer.Serialize(new{verifiedForFixturePreparation=true,imageId=id,toolchainProfileHash=ToolchainProfile.Hash(profile),productionAuthority=false}));return 0;
+}
 if(args.Length==1&&args[0]=="probe-spec"){ProbeSmoke.DumpSpec();return 0;}
 if(args.Length==1&&args[0]=="create-probe"){await ProbeSmoke.CreateRealFixture();return 0;}
 var names=new List<string>();
@@ -35,6 +40,8 @@ if(args.Length!=1)throw new Exception("unknown smoke mode");
 if(args[0]=="path-process")await PathProcessSmoke.Run(Check);
 else if(args[0]=="worktree")await WorktreeSmoke.Run(Check);
 else if(args[0]=="worktree-config")await WorktreeConfigSmoke.Run(Check);
+else if(args[0]=="materialization-spec")MaterializationSmoke.RunSpec(Check);
+else if(args[0]=="toolchain")ToolchainSmoke.Run(Check);
 else if(args[0]=="source")await SourceSmoke.Run(Check);
 else if(args[0]=="probe")await ProbeSmoke.Run(Check);
 else throw new Exception("unknown smoke mode");

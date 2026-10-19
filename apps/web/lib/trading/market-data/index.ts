@@ -65,14 +65,11 @@ export type { HistoryAction, HistoryModel, HistorySubject } from './history-cont
  * Root resolution happens before either exists (§13), so neither type has a
  * root field and neither can be built from a bare instrument.
  *
- * NOT HERE, DELIBERATELY — GATE-08C-3A SOURCE-RESULT-SHAPE GAP
- * There is no `HistoricalContractCandleSource` interface. Canonical v1.0 §24
- * says historical and live sources differ in pagination, exhaustion,
- * subscription lifecycle and backpressure, and it does not settle any of them
- * for a contract-scoped interval request — the existing root-scoped source is
- * count-and-cursor paged, which is a different shape again. Inventing a result
- * type would be manufacturing those semantics. The request DTO is the whole of
- * what C3A can honestly define.
+ * BESLUT N — C3C HISTORICAL SOURCE SHAPE
+ * The contract-scoped source has a separate interval coverage/result contract,
+ * not the root-based chart pagination API. Source assertions are never in
+ * themselves strategy-authoritative. The returning segment must still pass
+ * SessionCalendar/completeness and later strategy gates. No live source here.
  */
 export {
   CANONICAL_OBSERVATION_TIMEFRAME,
@@ -103,6 +100,19 @@ export type {
   SegmentSequenceCheck,
   SegmentSequenceProblem,
 } from './contract-segment'
+
+// ─── C3C concrete-contract historical source and acceptance boundary ───────────
+export {
+  inspectHistoricalContractResult,
+  readHistoricalContractChunk,
+} from './historical-contract-source'
+export type {
+  HistoricalBoundaryProblem,
+  HistoricalContractCandleSource,
+  HistoricalContractSourceResult,
+  HistoricalCoverage,
+  HistoricalSourceInspection,
+} from './historical-contract-source'
 
 // ─── The fixture reference source ─────────────────────────────────────────────
 export {

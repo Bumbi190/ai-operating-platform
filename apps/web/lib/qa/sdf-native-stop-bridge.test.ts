@@ -96,14 +96,16 @@ async function bridgeModule(){const m=await import('../../../code-broker/src/run
 async function guardFactory():Promise<any>{return(await import('../../../code-broker/src/runtime/execution-lease-guard')).createExecutionLeaseGuard}
 const ATTEMPT='33333333-3333-4333-8333-333333333333'
 const bridgeRequest=()=>({schema:'sdf.windows_workspace_request.v1',...makeSourceManifest().binding})
-const live=(c:number)=>({requestCounter:c,httpStatus:200,body:{status:'live',lease:leaseFixture()}})
+/** The guard is bound to the same job binding as the native request, as an operational caller must arrange. */
+const boundLease=()=>{const l=leaseFixture();l.binding={...makeSourceManifest().binding};return l}
+const live=(c:number)=>({requestCounter:c,httpStatus:200,body:{status:'live',lease:boundLease()}})
 const refused=(c:number)=>({requestCounter:c,httpStatus:409,body:{status:'unavailable',reason:'lease_not_live'}})
 /** Real irreversible guard with fake clock/read; reads decide liveness per call number. */
 async function realGuard(decide:(call:number)=>'live'|'refuse'|'hang'='live' as any){
  const make=await guardFactory();let mono=0,wall=1800000000000,counter=1,calls=0,seq=0
  const timers=new Map<number,{at:number;fn:()=>void}>()
- const lease=leaseFixture()
- const guard=make({claim:{...claimFixture(),requestCounter:1,leaseUntil:new Date(lease.leaseUntilMs).toISOString()},expected:{projectId:lease.projectId,binding:structuredClone(lease.binding),authorityPins:structuredClone(lease.authorityPins)}},
+ const lease=boundLease()
+ const guard=make({claim:{...claimFixture(),workId:lease.binding.workId,claimId:lease.binding.claimId,fence:lease.binding.fence,requestCounter:1,leaseUntil:new Date(lease.leaseUntilMs).toISOString()},expected:{projectId:lease.projectId,binding:structuredClone(lease.binding),authorityPins:structuredClone(lease.authorityPins)}},
   {monotonicNow:()=>mono,wallNow:()=>wall,nextCounter:()=>++counter,schedule:(fn:()=>void,d:number)=>{const id=++seq;timers.set(id,{at:mono+d,fn});return()=>timers.delete(id)},
    read:async(c:number)=>{const n=++calls,d=typeof decide==='function'?decide(n):'live';if(d==='hang')return new Promise(()=>{});return d==='live'?live(c):refused(c)}})
  return{guard,get calls(){return calls},async advance(ms:number){mono+=ms;wall+=ms;for(let n=0;n<20;n++){const due=[...timers.entries()].filter(([,t])=>t.at<=mono).sort((a,b)=>a[1].at-b[1].at);if(!due.length)break;timers.delete(due[0][0]);due[0][1].fn();await flush()}await flush()}}
@@ -127,6 +129,12 @@ describe('guard-driven native stop bridge',()=>{
   expect(await a.bridge(bridgeRequest(),refusedGuard.guard)).toEqual({status:'not_started',reason:'lease_not_live'});expect(a.s.reserved).toHaveLength(0);expect(a.s.launched).toBe(0)
   const aborted=await realGuard(),b=fakeBridge(m);aborted.guard.stop()
   expect(await b.bridge(bridgeRequest(),aborted.guard)).toEqual({status:'not_started',reason:'lease_not_live'});expect(b.s.reserved).toHaveLength(0);expect(aborted.calls).toBe(0)
+ })
+ it('refuses a request for another job than the guard is bound to, before any read or reservation',async()=>{
+  const m=await bridgeModule(),g=await realGuard()
+  for(const key of ['workId','claimId','pinnedBaseSha','admissionHash','fence'] as const){const f=fakeBridge(m),other:any={...bridgeRequest()};other[key]=key==='fence'?2:key==='pinnedBaseSha'?'f'.repeat(40):key==='admissionHash'?'f'.repeat(64):'44444444-4444-4444-8444-444444444444'
+   expect(await f.bridge(other,g.guard)).toEqual({status:'not_started',reason:'binding_mismatch'});expect(f.s.reserved).toHaveLength(0);expect(f.s.launched).toBe(0)}
+  expect(g.calls).toBe(0);g.guard.stop()
  })
  it('refuses invalid input and other platforms before touching the guard',async()=>{
   const m=await bridgeModule(),g=await realGuard()

@@ -9,7 +9,8 @@ export interface ExecutionLeaseGuardDeps {
  nextCounter:()=>number
  schedule:(callback:()=>void,delayMs:number)=>()=>void
 }
-export interface ExecutionLeaseGuard{readonly signal:AbortSignal;checkpoint():Promise<'live'|'stopped'>;stop():void}
+/** binding is a frozen snapshot of the job this guard was created for; consumers must refuse any other job. */
+export interface ExecutionLeaseGuard{readonly signal:AbortSignal;readonly binding:Readonly<ExecutionLeaseV1['binding']>;checkpoint():Promise<'live'|'stopped'>;stop():void}
 interface GuardInput{claim:ClaimHandle;expected:{projectId:string;binding:ExecutionLeaseV1['binding'];authorityPins:ExecutionLeaseV1['authorityPins']}}
 export function createExecutionLeaseGuard(input:GuardInput,deps:ExecutionLeaseGuardDeps):ExecutionLeaseGuard{
  const controller=new AbortController(),expected=structuredClone(input.expected),initialCounter=input.claim.requestCounter
@@ -53,5 +54,5 @@ export function createExecutionLeaseGuard(input:GuardInput,deps:ExecutionLeaseGu
  }
  if(!Number.isFinite(anchorMono)||!Number.isFinite(anchorWall)||!Number.isSafeInteger(initialCounter)||initialCounter<1
  ||input.claim.workId!==expected.binding.workId||input.claim.claimId!==expected.binding.claimId||input.claim.fence!==expected.binding.fence)stop()
- return{signal:controller.signal,checkpoint,stop}
+ return{signal:controller.signal,binding:Object.freeze({...expected.binding}),checkpoint,stop}
 }

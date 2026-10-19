@@ -6,7 +6,7 @@ import {parseWindowsWorkspaceRequest,type WorkspaceRequest} from '../isolation/w
 import {reserveWindowsSourceAttempt} from '../isolation/windows/source-attempts.js'
 import {cleanupWindowsSourceFixture} from '../isolation/windows/source-fixture.js'
 export type GuardedMaterialization=
- |{status:'not_started';reason:'lease_not_live'|'input_invalid'|'unsupported_platform'|'helper_unavailable'}
+ |{status:'not_started';reason:'lease_not_live'|'binding_mismatch'|'input_invalid'|'unsupported_platform'|'helper_unavailable'}
  |{status:'observed';attemptId:string;report:MaterializationReport}
  |{status:'stopped';attemptId:string;reason:'stop_requested'|'control_lost'|'lease_lost';cleanup:'confirmed'|'retained'|'unknown';containerRemoved:boolean|null;volumeRemoved:boolean|null}
 export interface BridgeDeps{
@@ -30,6 +30,8 @@ export function createNativeStopBridge(deps:BridgeDeps):(input:unknown,guard:Exe
   let request:WorkspaceRequest
   try{request=parseWindowsWorkspaceRequest(input)}catch{return{status:'not_started',reason:'input_invalid'}}
   if(deps.platform!=='win32')return{status:'not_started',reason:'unsupported_platform'}
+  // A live mandate authorizes only its own job: the native request must be exactly the guard's bound job.
+  if(!guard.binding||KEYS.some(k=>guard.binding[k]!==request[k]))return{status:'not_started',reason:'binding_mismatch'}
   if(guard.signal.aborted||await guard.checkpoint()!=='live'||guard.signal.aborted)return{status:'not_started',reason:'lease_not_live'}
   const attemptId=deps.nextAttempt()
   try{deps.reserve(request,attemptId)}catch{return{status:'not_started',reason:'helper_unavailable'}}

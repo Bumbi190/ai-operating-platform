@@ -237,7 +237,8 @@ describe('C3C -> canonical SessionCalendar evidence, synthetic only',()=>{
     const four=bucket('4H',WINTER_START)
     const src=source(async req=>{
       count++
-      const advanced=minuteAt(WINTER_START,count)
+      // Thirty-second settled NO_DATA prefixes: 256 chunks cover only 128m of this 240m bucket.
+      const advanced=T(new Date(toEpochMs(req.from)+30000).toISOString())
       return {
         kind:'NO_DATA' as const,contract:req.contract,sourceState:'SETTLED' as const,
         coverage:{from:req.from,to:advanced},

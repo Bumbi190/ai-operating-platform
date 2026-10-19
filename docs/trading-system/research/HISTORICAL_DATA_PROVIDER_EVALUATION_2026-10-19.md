@@ -55,7 +55,7 @@ En enskild syntetiskt avkodad OHLCV-bar får aldrig automatiskt ge `SETTLED`; k�
 2. `reviewHistoricalQuote`: kräver en explicit kostnadsoffert, budgetgräns, matchande evidence-ID och licensbedömning. Även när alla är uppfyllda blir resultatet endast **`READY_FOR_HUMAN_REVIEW_ONLY`, med `downloadAllowed:false` och `purchaseAllowed:false`**.
 3. `inspectNormalizedOhlcv1m`: granskar en redan **normaliserad, konstruerad**, inte faktisk vendor-payload. Validerar dataset/schema/rtype=33, nanosekunds-timestamp som minutöppning, instrument/publisher-ID, exakta skalade int64-priser, uint64-volume och OHLC-struktur. Returnerar kandidatobjekt med **`sourceState:'UNKNOWN'` och `canBecomeStrategyEvidence:false`**. Detta är inte en komplett DBN- eller JSON-avkodare; den separationen är avsiktlig.
 
-Dessutom: `scripts/trading/research/databento-historical-preflight.test.mjs`. **19 av 19 offline-testfall godkända** i en isolerad Windows Node v22.22.3-testkörning. Ingen npm-installation, API-nyckel, Databento-anrop, exchange-data, kodändring i aktivt Omnira-arbetsträd eller debitering. Detta är **kodfunktionstester**, inte trading-backtests.
+Dessutom: `scripts/trading/research/databento-historical-preflight.test.mjs`. **20 av 20 offline-testfall godkända** i en isolerad Windows Node v22.22.3-testkörning. Ingen npm-installation, API-nyckel, Databento-anrop, exchange-data, kodändring i aktivt Omnira-arbetsträd eller debitering. Detta är **kodfunktionstester**, inte trading-backtests. Ett av testerna granskar även forskningskoden för nätverksanrop, credentials och orderfunktioner.
 
 ## Prisgrindar innan första verkliga hämtning
 

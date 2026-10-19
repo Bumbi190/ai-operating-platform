@@ -31,6 +31,47 @@ const report = (extra: Record<string, unknown> = {}) => ({
 })
 
 describe('C3C source boundary: deterministic acceptance', () => {
+  it('REVIEW: refuses OHLC prices with a high below its low', () => {
+    const result = inspectHistoricalContractResult(REQUEST, report({
+      candles: [{...candle(), high: priceText('98')}],
+    }))
+    expect(result).toMatchObject({kind: 'INVARIANT_VIOLATION', problem: 'MALFORMED_SOURCE_RESULT'})
+  })
+
+  it('REVIEW: refuses open or close outside the recorded high-low bounds', () => {
+    for (const invalid of [
+      {open: priceText('102')},
+      {open: priceText('98')},
+      {close: priceText('102')},
+      {close: priceText('98')},
+    ]) {
+      const result = inspectHistoricalContractResult(REQUEST, report({
+        candles: [{...candle(), ...invalid}],
+      }))
+      expect(result).toMatchObject({kind: 'INVARIANT_VIOLATION', problem: 'MALFORMED_SOURCE_RESULT'})
+    }
+  })
+
+  it('REVIEW: refuses negative reported volume, keeps zero/null distinct', () => {
+    const negative = inspectHistoricalContractResult(REQUEST, report({
+      candles: [{...candle(), volume: priceText('-1')}],
+    }))
+    expect(negative).toMatchObject({kind: 'INVARIANT_VIOLATION', problem: 'MALFORMED_SOURCE_RESULT'})
+    for (const volume of [priceText('0'), null]) {
+      const result = inspectHistoricalContractResult(REQUEST, report({
+        candles: [{...candle(), volume}],
+      }))
+      expect(result.kind).toBe('ACCEPTED')
+    }
+  })
+
+  it('REVIEW: compares numerically equal OHLC values regardless of exact string scale', () => {
+    const result = inspectHistoricalContractResult(REQUEST, report({
+      candles: [{...candle(), open: priceText('100.000'), high: priceText('100.0000'), low: priceText('100.0'), close: priceText('100'), volume: priceText('0.000')}],
+    }))
+    expect(result.kind).toBe('ACCEPTED')
+  })
+
   it('uses exactly the canonical ObservationSourceState vocabulary and ObservedMinutes shape', () => {
     expect(OBSERVATION_SOURCE_STATES).toEqual(['SETTLED', 'UNKNOWN'])
     const inspected = inspectHistoricalContractResult(REQUEST, report())

@@ -13,6 +13,18 @@ test('REVIEW-01: all four gates remain OPEN and unapproved',()=>{
  assert.equal(matrix.historicalBacktestPerformed,false)
  assert.equal(matrix.canonicalRulesChanged,false)
 })
+test('REVIEW-12: operator confirms iFVG = Inversion FVG, not Implied; both detection variants remain unapproved',()=>{
+ const concept=matrix.confirmedTerminology['GATE-01']
+ assert.equal(concept.abbreviation,'iFVG')
+ assert.equal(concept.concept,'INVERSION_FAIR_VALUE_GAP')
+ assert.equal(concept.notConcept,'IMPLIED_FAIR_VALUE_GAP')
+ assert.equal(concept.userConfirmed,true)
+ assert.equal(concept.detectionRulesApproved,false)
+ assert.equal(matrix.gateStatus['GATE-01'],'OPEN')
+ assert.equal(matrix.approvals['GATE-01'],null)
+ assert.equal(at('IFVG_CROSSING').approvedVariant,null)
+ assert.equal(at('IFVG_FORMATION').approvedVariant,null)
+})
 test('REVIEW-02: iFVG crossing variant moves synthetic confirmation time',()=>{
  const row=at('IFVG_CROSSING')
  assert.equal(row.variants.WICK_BEYOND_FAR_EDGE.firstIndex,3)

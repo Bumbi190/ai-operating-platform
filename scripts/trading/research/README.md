@@ -29,3 +29,26 @@ The implementation accepts only `source: 'SYNTHETIC'`, `calendar: 'SYNTHETIC_CON
 5. Never import this code into `apps/web/lib/trading/` as if it were a reviewed detection rule. No claim of backtest/live parity is made until BOTH paths run the SAME promoted implementation with actual data.
 
 See `docs/trading-system/research/GATE01-02_VARIANT_REVIEW_2026-10-19.md`, `docs/trading-system/reviews/Open Implementation Gates v1.0.md`, and `docs/trading-system/SOURCE_OF_TRUTH.md`.
+
+
+## GATE-03 and GATE-04 synthetic comparison experiments (2026-10-19)
+
+`equal-smt-candidates.mjs` compares explicit **research variants** for tick-distance-matched confirmed swing highs/lows and NQ/ES SMT. This is not a provider adapter or canonical detector. It accepts only complete, synthetic candles and explicit reference pairs; no automatic swing correspondence or live chart connection is claimed.
+
+Run the new suite:
+
+```bash
+node --test scripts/trading/research/equal-smt-candidates.test.mjs
+```
+
+Run **all offline research suites** without npm, brokers or billable services:
+
+```bash
+node --test scripts/trading/research/*.test.mjs
+```
+
+Test outcomes: GATE-01/02 16 synthetic tests, GATE-03/04 18 synthetic tests; **34 research-unit tests total** on the first recorded runs. This is neither a backtest nor a measure of profit. The number is only valid after re-running the exact code being assessed.
+
+Key unapproved choices demonstrated in tests: 1 tick inclusive vs exclusive gives a different equal-high answer; wick vs close gives different SMT observations; a 0-minute vs 1-minute matching allowance changes whether a reference pair may be considered. `UNKNOWN` must be preserved for missing/unsettled/misaligned candles or references. Outputs cannot grant any order or upgrade a setup grade.
+
+For unresolved decisions, assumptions and limitations read `docs/trading-system/research/GATE03-04_VARIANT_REVIEW_2026-10-19.md`. All GATE-01/02/03/04 remain **OPEN** and the pending-gate JSON remains intentionally unapproved.

@@ -26,15 +26,13 @@ describe('isolated trading Backtest Lab – authenticated, fixture-only', () => 
   it('inherits the real platform auth layout', () => {
     expect(layout).toContain('supabase.auth.getUser()')
     expect(layout).toContain("redirect('/login')")
-    expect(page).toContain('SYNTHETISK TESTMILJÖ')
+    expect(page).toContain('SYNTETISK TESTMILJÖ')
   })
 
   it('isolates the iframe script without same-origin, popups, forms or navigation', () => {
-    expect(page).toContain('sandbox="allow-scripts"')
-    expect(page).not.toContain('allow-same-origin')
-    expect(page).not.toContain('allow-top-navigation')
-    expect(page).not.toContain('allow-popups')
-    expect(page).not.toContain('allow-forms')
+    const attributes = /<iframe[\s\S]*?sandbox="([^"]+)"/.exec(page)
+    expect(attributes?.[1]).toBe('allow-scripts')
+    expect(attributes?.[1]).not.toMatch(/allow-same-origin|allow-top-navigation|allow-popups|allow-forms/)
     expect(page).toContain('referrerPolicy="no-referrer"')
   })
 

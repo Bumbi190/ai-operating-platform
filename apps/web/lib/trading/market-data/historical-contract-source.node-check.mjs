@@ -234,3 +234,43 @@ test('REVIEW: accepted canonical candle snapshot cannot be mutated by a later co
   assert.equal(Object.isFrozen(accepted.segment.candles[0]),true)
   assert.equal(Object.isFrozen(accepted.segment.candles),true)
 })
+
+
+test('REVIEW: async source cannot rewrite the request window used by post-read validation',async()=>{
+  const mutable={contract:{root:'NQ',cycle:{year:2026,quarterMonth:3}},
+    timeframe:'1m',from,to}
+  const src={
+    async read(input) {
+      // A source is an untrusted adapter and cannot mutate a request argument.
+      assert.equal(Object.isFrozen(input),true)
+      assert.equal(Object.isFrozen(input.contract),true)
+      assert.equal(Object.isFrozen(input.contract.cycle),true)
+      return chunk()
+    }
+  }
+  const r=await readHistoricalContractChunk(src,mutable)
+  assert.equal(r.kind,'ACCEPTED')
+  assert.equal(r.coverage.from,from)
+  assert.equal(r.coverage.to,to)
+})
+
+test('REVIEW: changing caller request DURING await cannot redefine accepted coverage',async()=>{
+  const mutable={contract:{root:'NQ',cycle:{year:2026,quarterMonth:3}},
+    timeframe:'1m',from,to}
+  let release
+  const pending=new Promise(resolve => { release=resolve })
+  const src={
+    async read(input) {
+      const original=JSON.parse(JSON.stringify(input))
+      await pending
+      return chunk({coverage:{from:'2026-01-15T07:02:00Z',to},candles:[candle('2026-01-15T07:02:00Z')]})
+    }
+  }
+  const operation=readHistoricalContractChunk(src,mutable)
+  // Emulate unrelated mutable code altering the original caller-owned object.
+  mutable.from='2026-01-15T07:02:00Z'
+  release()
+  const r=await operation
+  assert.equal(r.kind,'INVARIANT_VIOLATION')
+  assert.equal(r.problem,'INVALID_COVERAGE')
+})

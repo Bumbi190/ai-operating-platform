@@ -114,7 +114,7 @@ export function buildPatternDecisionMatrix(){
   record('GATE-01','IFVG_FORMATION','FVG bildad före manipulation?',
     'Får gapet ha bildats innan manipulationen avslutas, eller enbart efteråt?',
     {ANY:signalSummary(orderAny),AFTER_MANIPULATION:signalSummary(orderAfter)},
-    'Ett redan färdigbildat gap får olika observationsantal i de två alternativen.'),
+    'Extern feedback: båda bildningsordningar kan förekomma, oftast bildas gapet efter manipulationen (B). Frekvens ej uppmätt. Ingen B-only filtrering, åldersgräns eller tie-break godkänd.'),
   record('GATE-02','CISD_ANCHOR','CISD – första eller sista motriktade candles open?',
     'Vilken candle i den föregående motriktade runnen definierar CISD-nivån?',
     {FIRST_RUN_OPEN:signalSummary(cisdFirst),LAST_RUN_OPEN:signalSummary(cisdLast)},
@@ -163,6 +163,29 @@ export function buildPatternDecisionMatrix(){
       canonicalDetectorApproved:false,
       source:'Operator selected option B in trading review, 2026-10-19'
     })
+  }),
+  // Human-relayed feedback from strategy reviewer, not a signed rule or
+  // empirical distribution. BOTH formation orders may be valid; B is said to
+  // be more common, but a frequency or B-only filter is NOT established.
+  formationReviewFeedback:Object.freeze({
+    gate:'GATE-01',
+    topic:'ORIGINAL_FVG_CREATION_RELATIVE_TO_MANIPULATION',
+    reportedFrom:'USER_SHARED_CONTACT_FEEDBACK',
+    bothFormationOrdersPlausible:true,
+    beforeManipulationAllowedInPrinciple:true,
+    afterManipulationAllowedInPrinciple:true,
+    qualitativelyMoreCommon:'AFTER_MANIPULATION',
+    numericalFrequencyEvidence:null,
+    olderGapAgeLimitApproved:null,
+    prioritizationAlgorithmApproved:false,
+    fullRuleApproved:false,
+    operatorSelectedVariant:null,
+    pendingDecisions:Object.freeze([
+      'MAX_ORIGINAL_FVG_AGE',
+      'GAP_UNTOUCHED_OR_MITIGATED_POLICY',
+      'CANDIDATE_TIE_BREAK',
+      'GAP_EXPIRY_AND_INVALIDATION'
+    ])
   }),
   canonicalRulesChanged:false,
   historicalBacktestPerformed:false,

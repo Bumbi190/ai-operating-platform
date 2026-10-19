@@ -176,6 +176,32 @@ describe('C3C -> canonical SessionCalendar evidence, synthetic only',()=>{
     expect(result).toMatchObject({kind:'BLOCKED',problem:'SOURCE_SEGMENT_REFUSED',sourceProblem:'DUPLICATE_CANDLE_INSTANT'})
   })
 
+  it('REVIEW: impossible OHLC cannot be elevated to COMPLETE bucket evidence', async () => {
+    const src=source(async req=>({
+      kind: 'OBSERVATIONS', contract: req.contract, sourceState: 'SETTLED',
+      coverage: {from:req.from,to:req.to},
+      candles: [c(WINTER_START), {...c(minuteAt(WINTER_START,1)), high:priceText('98')}],
+    }))
+    const result=await read(src,five,fiveCalendar)
+    expect(result).toMatchObject({
+      kind:'BLOCKED',problem:'SOURCE_INVARIANT',sourceProblem:'MALFORMED_SOURCE_RESULT',
+    })
+    expect(result).not.toHaveProperty('evidence')
+  })
+
+  it('REVIEW: negative volume cannot become COMPLETE bucket evidence', async () => {
+    const src=source(async req=>({
+      kind: 'OBSERVATIONS', contract:req.contract, sourceState:'SETTLED',
+      coverage:{from:req.from,to:req.to},
+      candles:[{...c(WINTER_START),volume:priceText('-1')}],
+    }))
+    const result=await read(src,five,fiveCalendar)
+    expect(result).toMatchObject({
+      kind:'BLOCKED',problem:'SOURCE_INVARIANT',sourceProblem:'MALFORMED_SOURCE_RESULT',
+    })
+    expect(result).not.toHaveProperty('evidence')
+  })
+
   it('E2E-12: technical source failures remain rejected Promises',async()=>{
     const src=source(async()=>{throw new Error('synthetic transport failure')})
     await expect(read(src,five,fiveCalendar)).rejects.toThrow('synthetic transport failure')

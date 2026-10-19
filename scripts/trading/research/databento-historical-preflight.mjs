@@ -19,6 +19,10 @@ const NANO_PRICE=BigInt('1000000000')
 const I64_MIN=-(BigInt(1)<<BigInt(63))
 const I64_MAX=(BigInt(1)<<BigInt(63))-BigInt(1)
 const U64_MAX=(BigInt(1)<<BigInt(64))-BigInt(1)
+const UINT32_MAX=4294967295
+const UINT16_MAX=65535
+// Databento's UNDEF_PRICE sentinel is INT64_MAX, not a tradable market price.
+const UNDEF_PRICE=I64_MAX
 const STOP=(reason)=>Object.freeze({status:'BLOCKED',reason,downloadAllowed:false})
 const sameContract=(a,b)=>a?.root===b?.root && a?.cycle?.year===b?.cycle?.year && a?.cycle?.quarterMonth===b?.cycle?.quarterMonth
 const validContract=(c)=>c && INSTRUMENTS.has(c.root) && Number.isInteger(c.cycle?.year) && QUARTERS.has(c.cycle?.quarterMonth)
@@ -38,7 +42,7 @@ function inRange(value,low,high){
 function priceNano(value) {
   if(typeof value!=='string'||!/^(-?)(0|[1-9]\d*)$/.test(value))return null
   const n=BigInt(value)
-  return n>=I64_MIN && n<=I64_MAX?n:null
+  return n>=I64_MIN && n<I64_MAX && n!==UNDEF_PRICE?n:null
 }
 function priceText(n) {
   const sign=n<0n?'-':''
@@ -52,8 +56,8 @@ function isExplicitMapping(mapping,contract,from,to) {
      mapping.stypeIn!=='raw_symbol' || typeof mapping.rawSymbol!=='string' ||
      !/^[A-Z0-9]{3,12}$/.test(mapping.rawSymbol) ||
      typeof mapping.evidenceId!=='string' || !/^VERIFIED-[A-Z0-9-]{6,}$/.test(mapping.evidenceId) ||
-     !Number.isSafeInteger(mapping.instrumentId)||mapping.instrumentId<=0||
-     !Number.isSafeInteger(mapping.publisherId)||mapping.publisherId<=0||
+     !Number.isInteger(mapping.instrumentId)||mapping.instrumentId<=0||mapping.instrumentId>UINT32_MAX||
+     !Number.isInteger(mapping.publisherId)||mapping.publisherId<=0||mapping.publisherId>UINT16_MAX||
      !sameContract(mapping.contract,contract))return false
   const validFrom=instant(mapping.validFrom),validTo=instant(mapping.validTo)
   return validFrom!==null && validTo!==null && validFrom<=from&&validTo>=to&&validFrom<validTo

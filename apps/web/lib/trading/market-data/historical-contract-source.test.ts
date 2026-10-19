@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest'
 import { asTimestamp } from '../time'
 import { resolvedContract, contractCycle } from '../contract-identity'
 import { priceText } from '../market-price'
+import { OBSERVATION_SOURCE_STATES, type ObservedMinutes } from '../session-calendar'
 import { buildHistoricalContractRequest } from './contract-window'
 import { inspectHistoricalContractResult, readHistoricalContractChunk } from './historical-contract-source'
 
@@ -30,6 +31,16 @@ const report = (extra: Record<string, unknown> = {}) => ({
 })
 
 describe('C3C source boundary: deterministic acceptance', () => {
+  it('uses exactly the canonical ObservationSourceState vocabulary and ObservedMinutes shape', () => {
+    expect(OBSERVATION_SOURCE_STATES).toEqual(['SETTLED', 'UNKNOWN'])
+    const inspected = inspectHistoricalContractResult(REQUEST, report())
+    expect(inspected.kind).toBe('ACCEPTED')
+    if (inspected.kind !== 'ACCEPTED') return
+    const canonical: ObservedMinutes = inspected.observed
+    expect(canonical.sourceState).toBe('SETTLED')
+    expect(canonical.minuteOpenTimes).toEqual([FROM])
+  })
+
   it('accepts a settled report without claiming a complete candle or permission', () => {
     const result = inspectHistoricalContractResult(REQUEST, report())
     expect(result.kind).toBe('ACCEPTED')

@@ -2,7 +2,7 @@
  * Databento HISTORICAL metadata-only preflight — research, no billed endpoints.
  *
  * Endpoints on strict allowlist:
- *   GET hist.databento.com/v0/symbology.resolve   (free metadata)
+ *   POST hist.databento.com/v0/symbology.resolve  (free metadata, form data)
  *   GET hist.databento.com/v0/metadata.get_cost   (free estimate)
  *
  * NEVER requests timeseries.get_range, batch.submit_job, live data, or data.
@@ -59,10 +59,18 @@ export async function probeHistoricalMetadata({
   if(!APPROVED_ENDPOINTS.includes(path))throw Error('UNAPPROVED_ENDPOINT')
   const u=new URL(path,BASE)
   if(u.protocol!=='https:'||u.hostname!=='hist.databento.com')throw Error('INVALID_HOST')
-  u.search=params(query).toString()
+  // Databento historical API: symbology.resolve is POST form encoded;
+  // metadata.get_cost is GET with querystring. BOTH are free metadata.
+  const isResolve=path==='/v0/symbology.resolve'
+  const encoded=params(query).toString()
+  if(!isResolve)u.search=encoded
   const response=await fetchFn(u.toString(),{
-   method:'GET',redirect:'error',
-   headers:{Authorization:authorized,Accept:'application/json'},
+   method:isResolve?'POST':'GET',redirect:'error',
+   headers:{
+    Authorization:authorized,Accept:'application/json',
+    ...(isResolve?{'Content-Type':'application/x-www-form-urlencoded'}:{})
+   },
+   ...(isResolve?{body:encoded}:{}),
    signal:AbortSignal.timeout(20000)
   })
   if(!response.ok)throw Error('METADATA_ENDPOINT_HTTP_'+response.status)

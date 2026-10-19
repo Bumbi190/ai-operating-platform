@@ -3,6 +3,7 @@ import {useCallback,useEffect,useRef,useState} from 'react'
 import {SOCIAL_LAUNCH_CHANNELS} from '@/lib/social-launch/catalog'
 import {parseSocialContent,stockholmToUtc,stockholmLocal} from '@/lib/social-launch/content/validate'
 import type {SocialContentInput,SocialContentView,SocialContentPost} from '@/lib/social-launch/content/types'
+import {FilmPreparationPanel} from './FilmPreparationPanel'
 import {NewsReviewEvidence} from './NewsReviewEvidence'
 import {SocialSchedulePanel} from './SocialSchedulePanel'
 import {FAMILY_SOCIAL_PROJECT_ID} from '@/lib/social-launch/scheduling/policy'
@@ -94,6 +95,7 @@ function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{project
      {mediaMissing&&<p className={styles.notice}>Bifoga projektets bild eller video före granskning.</p>}
      {media.some(m=>!loaded[m.id+':'+m.sha256])&&<p role="status">Materialet måste kunna visas före godkännande.</p>}
      {selected.newsReview&&<NewsReviewEvidence review={selected.newsReview}/>}
+     <FilmPreparationPanel projectId={projectId} post={selected} planRevisionId={model.currentPlanRevisionId} planStateKey={planStateKey} disabled={busy||loading||dirty||stale||!!editor||!model.planApproved}/>
      {selected.revision.binding&&<p>Konto vid granskning: {selected.revision.binding.label??selected.revision.binding.accountId}</p>}
      {selected.requirements.filter(r=>r!=='media_required').map(r=><p className={styles.requirement} key={r}>{reasons[r]??'Kräver ny kontroll'}</p>)}
      <div className={styles.actions}><button type="button" disabled={busy||loading} onClick={()=>edit(selected)}>Redigera utkast</button>{!selected.decision&&<><button type="button" disabled={reviewDisabled} onClick={()=>void send('decide','approve')}>Godkänn innehållet</button><button type="button" disabled={busy||loading||dirty||stale} onClick={()=>void send('decide','reject')}>Avvisa innehållet</button></>}</div>

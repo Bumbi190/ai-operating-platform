@@ -2,7 +2,7 @@
 import {useEffect,useRef} from 'react';
 import {X} from 'lucide-react';
 import {CalendarTimePicker} from './CalendarTimePicker';
-import {stockholmMinute} from '@/lib/calendar/time';
+import {stockholmMinute,stockholmDate} from '@/lib/calendar/time';
 import {calendarStatus} from './CalendarWeek';
 import type {CalendarWorkspaceState} from './use-calendar';
 import styles from './Calendar.module.css';
@@ -38,7 +38,7 @@ export function CalendarEventPanel({state:s}:{state:CalendarWorkspaceState}){
     {!f.allDay&&<label className={styles.checkbox}><input type="checkbox" checked={f.noEnd} onChange={e=>field('noEnd',e.target.checked)}/>Ingen sluttid</label>}
     {(f.allDay||!f.noEnd)&&<div className={styles.formRow}><label>{f.allDay?'Sista dag':'Slutdatum'}<input aria-label={f.allDay?'Sista dag':'Slutdatum'} type="date" required value={f.endDate} onChange={e=>field('endDate',e.target.value)}/></label>{!f.allDay&&<CalendarTimePicker label="Sluttid" value={f.endTime} onChange={value=>field('endTime',value)} disabled={s.editorSaving}/>}</div>}
     <label>Upprepning<select aria-label="Upprepning" value={f.repeat} onChange={e=>field('repeat',e.target.value)}><option value="none">Ingen</option><option value="daily">Varje dag</option><option value="weekly">Varje vecka</option></select></label>
-    {f.repeat!=='none'&&<label>Upprepa till (valfritt)<input aria-label="Upprepa till" type="date" min={f.startDate} value={f.repeatUntil} onChange={e=>field('repeatUntil',e.target.value)}/></label>}
+    {f.repeat!=='none'&&<><label>Upprepa till (valfritt)<input aria-label="Upprepa till" type="date" min={f.startDate} value={f.repeatUntil} onChange={e=>field('repeatUntil',e.target.value)}/></label><button type="button" className={styles.secondaryButton} disabled={s.editorSaving||stockholmDate(new Date().toISOString())<f.startDate} onClick={()=>field('repeatUntil',stockholmDate(new Date().toISOString()))}>Avsluta upprepning efter idag</button><p className={styles.help}>Tidigare tillfällen behålls. Spara för att avsluta serien. Välj Ingen om du vill göra om den till ett engångsmöte.</p></>}
     <label>Plats<input maxLength={500} value={f.location} onChange={e=>field('location',e.target.value)}/></label>
     <label>Anteckning<textarea rows={4} maxLength={5000} value={f.description} onChange={e=>field('description',e.target.value)}/></label>
    </>}

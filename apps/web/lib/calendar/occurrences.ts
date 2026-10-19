@@ -1,6 +1,7 @@
 import type {CalendarEvent,CalendarEntry,CalendarRange} from './types';
 import {repeatDates,moveRepeatedTime} from './repeat';
 import {stockholmDate} from './time';
+import {CalendarError} from './types';
 
 /** Generate bounded projections. Every occurrence retains the series source ID and original version. */
 export function projectManualOccurrences(events:CalendarEvent[],range:CalendarRange):CalendarEntry[] {
@@ -10,7 +11,15 @@ export function projectManualOccurrences(events:CalendarEvent[],range:CalendarRa
   const initial=event.time.kind==='all_day'?event.time.startDate:stockholmDate(event.time.startUtc);
   const dates=repeat?repeatDates(initial,repeat,range.fromDate,range.toDateExclusive):[initial];
   for(const date of dates){
-   const time=repeat?moveRepeatedTime(event.time,date):event.time;
+   let time=event.time;
+   if(repeat){
+    try{time=moveRepeatedTime(event.time,date);}
+    catch(error){
+     // An impossible Swedish wall-clock occurrence must not break the rest of the calendar.
+     if(error instanceof CalendarError&&error.code==='INVALID_INPUT')continue;
+     throw error;
+    }
+   }
    entries.push({id:'manual:'+event.id+(repeat?':'+date:''),source:{kind:'manual',eventId:event.id,version:event.version},
     title:event.title,time,projectId:event.projectId,status:event.status,editable:true,href:null,pendingChange:null,manualEvent:event});
   }

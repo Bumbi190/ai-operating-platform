@@ -40,6 +40,12 @@ export class ExecutionLeasePostgres {
  }
  owned(a:any){if(a.Name!=='/'+this.name||a.Image!==IMAGE||a.Config.Labels['omnira.plan']!=='live-execution-lease'||a.Config.Labels['omnira.attempt']!==this.attempt)throw Error('foreign_test_pg')}
  stop(){if(!this.started)return;this.qualify();const a=JSON.parse(this.run(['inspect',this.id??this.name]))[0];this.owned(a);this.run(['rm','-f',a.Id]);this.qualify();let absent=false;try{this.run(['inspect',a.Id])}catch(e){absent=String((e as any).stderr).includes('No such object')||String((e as any).stderr).includes('no such object')}if(!absent)throw Error('pg_cleanup_unverified');this.started=false;writeFileSync(join(this.dir,'after.json'),JSON.stringify(this.snapshot(),null,2));this.receipt('removed',{removedId:a.Id,absenceConfirmed:true})}
+ async hold(sql:string){
+  const c=execute(DOCKER,this.args(['exec','-i',this.name,'psql','-X','-q','-t','-A','-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres']),{env:this.env(),encoding:'utf8',timeout:15000,maxBuffer:1048576})
+  const ready=new Promise<void>((resolve,reject)=>{let out='';c.child.stdout!.on('data',b=>{out+=b.toString();if(out.includes('LEASE_LOCK_READY'))resolve()});c.catch(reject)})
+  c.child.stdin!.write('begin;'+sql+";select 'LEASE_LOCK_READY';\n");await ready
+  return async()=>{c.child.stdin!.end('rollback;\n');await c}
+ }
  createParent(){
   const j=makeStorageJob(),a=j.config.admission,workId=randomUUID(),projectId=randomUUID(),owner=randomUUID(),agent=randomUUID(),mission=randomUUID(),envelope=randomUUID(),wp=randomUUID(),auth=randomUUID(),broker=randomUUID(),host=randomUUID(),enrollment=randomUUID()
   Object.assign(a,{workId,projectId});a.governance.mission.id=mission;a.governance.delegation.envelopeId=envelope;a.governance.workPackage.id=wp;a.governance.authorizationTarget.targetId=workId

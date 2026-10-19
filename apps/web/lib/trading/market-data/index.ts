@@ -114,10 +114,6 @@ export type {
   HistoricalSourceInspection,
 } from './historical-contract-source'
 
-// ─── Read-only historical bucket evidence bridge (C3C + SessionCalendar) ─────
-export { MAX_HISTORICAL_CHUNKS_PER_BUCKET, readHistoricalBucketEvidence } from './historical-bucket-evidence'
-export type { HistoricalBucketRead } from './historical-bucket-evidence'
-
 // ─── The fixture reference source ─────────────────────────────────────────────
 export {
   FIXTURE_HISTORY_END,

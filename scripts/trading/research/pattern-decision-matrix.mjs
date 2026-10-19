@@ -136,6 +136,17 @@ export function buildPatternDecisionMatrix(){
   schemaVersion:'research.trading_pattern_decision_matrix.v0.1',
   data:'SYNTHETIC_FIXTURES_ONLY',
   policy:'NON_CANONICAL_RESEARCH',
+  // Operator-confirmed terminology, NOT a detection rule or gate promotion.
+  confirmedTerminology:Object.freeze({
+    'GATE-01':Object.freeze({
+      abbreviation:'iFVG',
+      concept:'INVERSION_FAIR_VALUE_GAP',
+      notConcept:'IMPLIED_FAIR_VALUE_GAP',
+      userConfirmed:true,
+      detectionRulesApproved:false,
+      evidence:'Operator confirmation in trading review conversation, 2026-10-19'
+    })
+  }),
   canonicalRulesChanged:false,
   historicalBacktestPerformed:false,
   providerConnected:false,

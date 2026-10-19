@@ -1,6 +1,6 @@
 import type {CalendarEvent,CalendarEntry,CalendarRange} from './types';
 import {repeatDates,moveRepeatedTime} from './repeat';
-import {stockholmDate} from './time';
+import {stockholmDate,addCalendarDays} from './time';
 import {CalendarError} from './types';
 
 /** Generate bounded projections. Every occurrence retains the series source ID and original version. */
@@ -9,7 +9,9 @@ export function projectManualOccurrences(events:CalendarEvent[],range:CalendarRa
  for(const event of events){
   const repeat=event.repeat??null;
   const initial=event.time.kind==='all_day'?event.time.startDate:stockholmDate(event.time.startUtc);
-  const dates=repeat?repeatDates(initial,repeat,range.fromDate,range.toDateExclusive):[initial];
+  const durationDays=event.time.kind==='all_day'?Math.ceil((Date.parse(event.time.endDateExclusive+'T00:00Z')-Date.parse(initial+'T00:00Z'))/86400000)-1:event.time.endUtc?Math.ceil((Date.parse(stockholmDate(event.time.endUtc)+'T00:00Z')-Date.parse(initial+'T00:00Z'))/86400000):0;
+  const from=repeat?addCalendarDays(range.fromDate,-Math.min(31,Math.max(0,durationDays))):range.fromDate;
+  const dates=repeat?repeatDates(initial,repeat,from,range.toDateExclusive):[initial];
   for(const date of dates){
    let time=event.time;
    if(repeat){

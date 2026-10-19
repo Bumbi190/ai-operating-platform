@@ -31,3 +31,12 @@ it('persists an earlier recurring series, projects future weeks, updates and can
 it('rejects invalid recurrence dates in real SQL',async()=>{
  await expect(mutateCalendarEvent(fixture.forUser(USER_A),fixtureCreate({repeat:{frequency:'daily',until:'2026-10-01'}}))).rejects.toMatchObject({code:'INVALID_INPUT'});
 });
+
+it('includes an ended overnight series that still overlaps the selected week',async()=>{
+ const db=fixture.forUser(USER_A);
+ const created=await mutateCalendarEvent(db,fixtureCreate({time:{kind:'timed',startUtc:'2026-10-18T20:00:00.000Z',endUtc:'2026-10-19T01:00:00.000Z',timeZone:'Europe/Stockholm'},repeat:{frequency:'weekly',until:'2026-10-18'}}));
+ const range={fromDate:'2026-10-19',toDateExclusive:'2026-10-26',timeZone:'Europe/Stockholm'} as const;
+ const page=await listCalendarEvents(db,range);
+ expect(page.events.some(e=>e.id===created.event.id)).toBe(true);
+ expect(projectManualOccurrences(page.events,range).some(e=>e.id==='manual:'+created.event.id+':2026-10-18')).toBe(true);
+});

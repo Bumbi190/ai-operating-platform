@@ -70,7 +70,7 @@ begin
    (draft->'repeat'->>'frequency' in ('daily','weekly')
     and (case when draft->'time'->>'kind'='all_day' then (draft->'time'->>'startDate')::date
      else ((draft->'time'->>'startUtc')::timestamptz at time zone 'Europe/Stockholm')::date end) < last_date
-    and (draft->'repeat'->>'until' is null or (draft->'repeat'->>'until')::date >= first_date))
+    and (draft->'repeat'->>'until' is null or (draft->'repeat'->>'until')::date + (case when draft->'time'->>'kind'='all_day' then greatest(0,(draft->'time'->>'endDateExclusive')::date-(draft->'time'->>'startDate')::date-1) when draft->'time'->>'endUtc' is not null then greatest(0,((draft->'time'->>'endUtc')::timestamptz at time zone 'Europe/Stockholm')::date-((draft->'time'->>'startUtc')::timestamptz at time zone 'Europe/Stockholm')::date) else 0 end) >= first_date))
    or
    (draft->'time'->>'kind'='all_day' and (draft->'time'->>'startDate')::date<last_date and (draft->'time'->>'endDateExclusive')::date>first_date)
    or (draft->'time'->>'kind'='timed'

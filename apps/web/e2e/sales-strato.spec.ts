@@ -15,7 +15,7 @@ test('real browser encrypts a private Strato form and reports login-only proof o
  await page.route('**/api/sales/mailbox',async route=>{const body=route.request().postDataJSON();if(body.operation==='begin_setup'){beginReady();await beginGate;expect(body.email).toBe(context.email);await route.fulfill({json:{context,publicJwk,alreadySubmitted:false}});return}
   expect(body.operation).toBe('submit_sealed');expect(Object.keys(body).sort()).toEqual(['envelope','operation','projectId','setupId']);const e=body.envelope,label=Buffer.from(`OmniraSales/strato/v1\n${projectId}\n${workerId}\n${setupId}\n${kid}`),aes=privateDecrypt({key:privateKey,oaepHash:'sha256',oaepLabel:label,padding:constants.RSA_PKCS1_OAEP_PADDING},Buffer.from(e.wrappedKey,'base64url')),raw=Buffer.from(e.ciphertext,'base64url'),decipher=createDecipheriv('aes-256-gcm',aes,Buffer.from(e.iv,'base64url'));decipher.setAAD(label);decipher.setAuthTag(raw.subarray(-16));expect(JSON.parse(Buffer.concat([decipher.update(raw.subarray(0,-16)),decipher.final()]).toString())).toEqual({email:context.email,password});submitted=true;status.status='authenticated';status.smtpAuthenticatedAt=new Date().toISOString();status.imapAuthenticatedAt=new Date().toISOString();await route.fulfill({json:{accepted:true,setupId}})
  })
- await page.setViewportSize({width:1440,height:1000});await page.goto('/sales?stratoWorker='+workerId)
+ await page.setViewportSize({width:1440,height:1000});await page.goto('/sales?stratoWorker='+workerId);await page.locator('summary').filter({hasText:'Stratoanslutning'}).first().click()
  await expect(page.getByRole('heading',{name:'Anslut Strato',exact:true})).toBeVisible()
  await page.getByRole('textbox',{name:'Fullständig postfacksadress',exact:true}).fill(context.email)
  await page.getByLabel('Postfackslösenord',{exact:true}).fill(password)
@@ -31,7 +31,7 @@ test('saved authentication identifies its exact mailbox while another address is
  const saved='verified@example.se',edited='unverified@example.se'
  await page.route('**/api/sales?*',r=>r.fulfill({json:new URL(r.request().url()).searchParams.has('connection')?{connections:[{workerId,managed:true,connectionState:'online'}]}:{projectId,state:'ok',workerState:'connected',contacts:[],offers:[],jobs:[],drafts:[],workers:[],workspaceUrl:'/projects/handlarborsen/sales',sendingEnabled:false}}))
  await page.route('**/api/sales/mailbox?*',r=>r.fulfill({json:{mailboxId,email:saved,status:'authenticated',inboxEnabled:false,sendingEnabled:false}}))
- await page.goto('/sales?stratoWorker='+workerId)
+ await page.goto('/sales?stratoWorker='+workerId);await page.locator('summary').filter({hasText:'Stratoanslutning'}).first().click()
  const input=page.getByRole('textbox',{name:'Fullständig postfacksadress',exact:true})
  await expect(input).toHaveValue(saved)
  await expect(page.getByText(`Strato-inloggningen är verifierad för ${saved}.`,{exact:true})).toBeVisible()
@@ -46,7 +46,7 @@ test('oversize Unicode and JSON expansion are refused before a setup exists',asy
  await page.route('**/api/sales?*',r=>r.fulfill({json:new URL(r.request().url()).searchParams.has('connection')?{connections:[{workerId,managed:true,connectionState:'online'}]}:{projectId,state:'ok',workerState:'connected',contacts:[],offers:[],jobs:[],drafts:[],workers:[],workspaceUrl:'/projects/handlarborsen/sales',sendingEnabled:false}}))
  await page.route('**/api/sales/mailbox?*',r=>r.fulfill({json:null}))
  await page.route('**/api/sales/mailbox',r=>r.fulfill({status:400,json:{error:'BLOCKED'}}))
- await page.goto('/sales?stratoWorker='+workerId)
+ await page.goto('/sales?stratoWorker='+workerId);await page.locator('summary').filter({hasText:'Stratoanslutning'}).first().click()
  await expect(page.getByRole('button',{name:'Anslut Strato',exact:true})).toBeEnabled()
  await page.getByRole('checkbox',{name:'Jag bekräftar att detta är rätt postfack.'}).check()
  for(const secret of ['å'.repeat(1025),'\u0001'.repeat(700)]){

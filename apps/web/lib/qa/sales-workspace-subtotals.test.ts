@@ -3,8 +3,8 @@ import {handleSalesTool} from '@/lib/sales/atlas-tools'
 const projectId='10000000-0000-4000-8000-000000000001'
 const conversation='50000000-0000-4000-8000-000000000001'
 const principal={userId:'20000000-0000-4000-8000-000000000001',allowedProjectIds:[projectId]}
-const contact=(extra:Record<string,unknown>={})=>({history:'contacted',pilotMonths:6,confirmed:true,excluded:false,suppressed:true,email:'shared@example.se',...extra})
-const workspace=(contacts:unknown)=>({projectId,state:'ok',contacts,offers:[],jobs:[],drafts:[],workspaceUrl:'/projects/handlarborsen/sales',sendingEnabled:false})
+const contact=(extra:Record<string,unknown>={})=>({id:'30000000-0000-4000-8000-000000000001',version:1,history:'contacted',pilotMonths:6,confirmed:true,excluded:false,suppressed:true,email:'shared@example.se',...extra})
+const workspace=(contacts:any)=>({timing:{contacts:Array.isArray(contacts)?contacts.filter(Boolean).map((c:any)=>({contactId:c.id,contactVersion:c.version,initialPreparationAllowed:true})):[]},projectId,state:'ok',contacts,offers:[],jobs:[],drafts:[],workspaceUrl:'/projects/handlarborsen/sales',sendingEnabled:false})
 async function read(data:unknown){
  const rpc=vi.fn(async(name:string)=>({data:name==='sales_validate_conversation'?true:data,error:null}))
  return handleSalesTool('get_sales_workspace',{projectId},principal,conversation,{rpc} as never,()=>true)

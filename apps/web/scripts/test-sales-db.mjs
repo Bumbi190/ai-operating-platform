@@ -1,3 +1,4 @@
+import {timingRaces} from './test-sales-timing-races.mjs'
 import {sendSourceRaces} from './test-sales-send-source-races.mjs'
 import {sendDispatchRaces} from './test-sales-send-races.mjs'
 import {replyReviewRaces} from './test-sales-reply-races.mjs'
@@ -60,6 +61,17 @@ try{
  if(timingFiles.length>1)throw Error('Expected one timing migration');
  for(const file of timingFiles)sql(readFileSync(resolve(migrations,file),'utf8'));
  console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_contact_timing.sql'),'utf8')));
+ sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_timing_fixture.sql'),'utf8'));
+ // Re-run existing negative cases under final schema, each explicitly reviewed before preparation.
+ let regression=readFileSync(resolve(root,'apps/web/supabase/tests/sales_pilot_regressions.sql'),'utf8');
+ regression=regression.slice(regression.indexOf('create temp table sales_review_failures'))
+  .replace('create temp table sales_review_failures','drop table if exists sales_review_failures;create temp table sales_review_failures')
+  .replace('create function pg_temp.sales_case','create or replace function pg_temp.sales_case')
+  .replaceAll("j:=sales_prepare_job(f->'principal',f->'input');","perform sales_fixture_review_timing((f->>'projectId')::uuid);j:=sales_prepare_job(f->'principal',f->'input');")
+  .replaceAll("perform sales_prepare_job(f->'principal',f->'input');","perform sales_fixture_review_timing((f->>'projectId')::uuid);perform sales_prepare_job(f->'principal',f->'input');");
+ console.log(sql(regression));
+ await timingRaces({container,db,sql:s=>docker(['exec','-i',container,'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-U','postgres','-d',db],s)});
+
 
 
  if(process.env.SALES_TIMING_SQL_ONLY!=='1'){
@@ -69,11 +81,11 @@ try{
  if(rotations.filter(x=>x.code===0).length!==1||rotations.filter(x=>x.err.includes('FENCED')).length!==1)throw Error('TEST FAILED: concurrent rotation must have one winner');
  console.log('PASS: concurrent rotations have exactly one winner; stale generation fenced')
 
- sql(`insert into sales_contacts select '30000000-0000-4000-8000-000000000004',project_id,1,data||'{"id":"30000000-0000-4000-8000-000000000004","email":"race@example.se"}',now() from sales_contacts where id='30000000-0000-4000-8000-000000000001'; select sales_enroll_worker('{"userId":"20000000-0000-4000-8000-000000000001","allowedProjectIds":["10000000-0000-4000-8000-000000000001"]}',jsonb_build_object('projectId','10000000-0000-4000-8000-000000000001','workerId',gen_random_uuid(),'tokenHash',repeat('b',64))); select sales_prepare_job('{"userId":"20000000-0000-4000-8000-000000000001","allowedProjectIds":["10000000-0000-4000-8000-000000000001"]}','{"projectId":"10000000-0000-4000-8000-000000000001","conversationId":"50000000-0000-4000-8000-000000000001","contactIds":["30000000-0000-4000-8000-000000000004"],"offerRevisionId":"40000000-0000-4000-8000-000000000001","idempotencyKey":"race"}');`)
+ sql(`insert into sales_contacts select '30000000-0000-4000-8000-000000000004',project_id,1,data||'{"id":"30000000-0000-4000-8000-000000000004","email":"race@example.se"}',now() from sales_contacts where id='30000000-0000-4000-8000-000000000001'; select sales_enroll_worker('{"userId":"20000000-0000-4000-8000-000000000001","allowedProjectIds":["10000000-0000-4000-8000-000000000001"]}',jsonb_build_object('projectId','10000000-0000-4000-8000-000000000001','workerId',gen_random_uuid(),'tokenHash',repeat('b',64))); select sales_fixture_review_timing('10000000-0000-4000-8000-000000000001'); select sales_prepare_job('{"userId":"20000000-0000-4000-8000-000000000001","allowedProjectIds":["10000000-0000-4000-8000-000000000001"]}','{"projectId":"10000000-0000-4000-8000-000000000001","conversationId":"50000000-0000-4000-8000-000000000001","contactIds":["30000000-0000-4000-8000-000000000004"],"offerRevisionId":"40000000-0000-4000-8000-000000000001","idempotencyKey":"race"}');`)
  const claim=()=>new Promise((resolve,reject)=>{const p=spawn('docker',['exec','-i',container,'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-U','postgres','-d',db]);let out='',err='';p.stdout.on('data',x=>out+=x);p.stderr.on('data',x=>err+=x);p.on('error',reject);p.on('close',code=>code===0?resolve(JSON.parse(out.trim())):reject(Error(err)));p.stdin.end("select sales_claim_job(repeat('b',64),'{}');")})
  const claims=await Promise.all([claim(),claim()]);if(claims.filter(c=>c.ref!==null).length!==1)throw Error('TEST FAILED: concurrent claims did not produce one owner')
  const psql=['exec','-i',container,'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-U','postgres','-d',db]
- const fixture=JSON.parse(docker(psql,"select sales_regression_fixture('concurrent-prepare');"))
+ const fixture=JSON.parse(docker(psql,"select sales_regression_fixture('concurrent-prepare');"));sql("select sales_fixture_review_timing('"+fixture.projectId+"');")
  const enqueue=key=>new Promise((resolveRace,reject)=>{const child=spawn('docker',psql);let out='',err='';child.stdout.on('data',x=>out+=x);child.stderr.on('data',x=>err+=x);child.on('error',reject);child.on('close',code=>resolveRace({code,out,err}));const principal=JSON.stringify(fixture.principal).replaceAll("'","''"),input=JSON.stringify({...fixture.input,idempotencyKey:key}).replaceAll("'","''");child.stdin.end(`select sales_prepare_job('${principal}','${input}');`)})
  const requests=await Promise.all([enqueue('race-a'),enqueue('race-b')]);if(requests.filter(x=>x.code===0).length!==1||requests.filter(x=>x.err.includes('INITIAL_JOB_ALREADY_EXISTS')).length!==1)throw Error('TEST FAILED: concurrent initial requests both accepted')
  console.log('PASS: concurrent different-key requests produce exactly one initial mailbox job')
@@ -93,7 +105,7 @@ try{
  await sendDispatchRaces({root,sql,run:concurrent});
  await sendSourceRaces({container,db,sql,run:concurrent});
  await replyReviewRaces({container,db,run:concurrent,principal,input,claimed});
- const integration=spawnSync(process.execPath,[resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/qa/sales-integration.test.ts','lib/qa/sales-host-integration.test.ts','lib/qa/sales-mailbox-integration.test.ts','lib/qa/sales-inbox-integration.test.ts','lib/qa/sales-reply-integration.test.ts',...(container==='omnira-sales-sending-20261018'?['lib/qa/sales-send-integration.test.ts']:[]),'--maxWorkers=1','--minWorkers=1'],{cwd:resolve(root,'apps/web'),env:{...process.env,SALES_FIXTURE_DATABASE:db,SALES_FIXTURE_CONTAINER:container},encoding:'utf8',maxBuffer:2e6})
+ const integration=spawnSync(process.execPath,[resolve(root,'node_modules/vitest/vitest.mjs'),'run','lib/qa/sales-integration.test.ts','lib/qa/sales-timing-integration.test.ts','lib/qa/sales-host-integration.test.ts','lib/qa/sales-mailbox-integration.test.ts','lib/qa/sales-inbox-integration.test.ts','lib/qa/sales-reply-integration.test.ts',...(container==='omnira-sales-sending-20261018'?['lib/qa/sales-send-integration.test.ts']:[]),'--maxWorkers=1','--minWorkers=1'],{cwd:resolve(root,'apps/web'),env:{...process.env,SALES_FIXTURE_DATABASE:db,SALES_FIXTURE_CONTAINER:container},encoding:'utf8',maxBuffer:2e6})
  console.log(integration.stdout);if(integration.status!==0)throw Error(integration.stderr||'Sales slice integration failed')
  }
 }finally{docker(['exec',container,'dropdb','-U','postgres',db])}

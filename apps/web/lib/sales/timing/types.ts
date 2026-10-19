@@ -7,4 +7,4 @@ export type HistoryRevision={id:string;projectId:string;recipient:string;version
 export type TimingRulesRevision={id:string;projectId:string;version:number;previousId:string|null;minWaitSeconds:number;maxReminders:number;maxSourceAgeSeconds:number;reviewedBy:string;createdAt:string}
 export type TimingReadInput={projectId:string;contactIds?:string[]}
 export type ContactTiming={contactId:string;recipient:string;contactVersion:number;historyRevisionId:string|null;ruleRevisionId:string|null;latestObservedOutboundAt:string|null;reminderCount:number|null;intervalFloorAt:string|null;sourceThrough:string|null;blockers:string[];initialPreparationAllowed:boolean}
-export type TimingReport={projectId:string;evaluatedAt:string;contacts:ContactTiming[];rules:TimingRulesRevision|null;customerSendingEnabled:false;workspaceUrl:string}
+export type TimingReport={projectId:string;evaluatedAt:string;contacts:ContactTiming[];historyRevisions:HistoryRevision[];rules:TimingRulesRevision|null;customerSendingEnabled:false;workspaceUrl:string}

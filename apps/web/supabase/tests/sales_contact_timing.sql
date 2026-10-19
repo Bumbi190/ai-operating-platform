@@ -26,6 +26,7 @@ select pg_temp.timing_case('reviewed initial history and immutable CAS',$case$do
  perform pg_temp.save_rules(f);d:=pg_temp.timing_data((f->>'contactId')::uuid,clock_timestamp()-interval '1 second');h:=pg_temp.save_timing(f,d);
  x:=sales_timing_read(f->'principal',jsonb_build_object('projectId',f->>'projectId'));
  perform sales_test_assert(x->'contacts'->0->>'initialPreparationAllowed'='true','complete known initial may prepare');
+ perform sales_test_assert(x->'historyRevisions'->0->>'id'=h->>'id','canonical metadata available for owner correction');
  begin perform pg_temp.save_timing(f,d);raise exception 'TEST FAILED: stale CAS allowed';exception when unique_violation then null;end;
  begin update sales_contact_history_revisions set data=data where id=(h->>'id')::uuid;raise exception 'TEST FAILED: mutable history';exception when object_not_in_prerequisite_state then null;end;
  perform sales_test_assert((select count(*)=0 from sales_jobs where project_id=(f->>'projectId')::uuid),'save never queues');
@@ -115,6 +116,57 @@ select pg_temp.timing_case('zero reminders still allows a reviewed first invitat
  perform sales_timing_save_rules(f->'principal',req);perform pg_temp.save_timing(f,pg_temp.timing_data((f->>'contactId')::uuid,clock_timestamp()-interval '1 second'));
  x:=sales_timing_read(f->'principal',jsonb_build_object('projectId',f->>'projectId'))->'contacts'->0;
  perform sales_test_assert(x->>'initialPreparationAllowed'='true','no reminder permission required for first invitation');
+end$$;$case$);
+
+
+select pg_temp.timing_case('initial job requires timing even for confirmed contact',$case$do $$declare f jsonb:=sales_regression_fixture('timing-missing-job');begin
+ begin perform sales_prepare_job(f->'principal',f->'input');raise exception 'TEST FAILED: missing timing allowed preparation';exception when object_not_in_prerequisite_state then null;end;
+end$$;$case$);
+select pg_temp.timing_case('new history fences claim and model attempt',$case$do $$declare f jsonb;d jsonb;h jsonb;j jsonb;r jsonb;stage text;begin
+ foreach stage in array array['claim','attempt'] loop
+ f:=sales_regression_fixture('timing-fence-'||stage);perform pg_temp.save_rules(f);d:=pg_temp.timing_data((f->>'contactId')::uuid,clock_timestamp()-interval '1 second');h:=pg_temp.save_timing(f,d);j:=sales_prepare_job(f->'principal',f->'input');
+ if stage='attempt' then r:=sales_claim_job(f->>'token','{}')->'ref';end if;
+ perform pg_temp.save_timing(f,d,(h->>'id')::uuid);
+ begin
+  if stage='claim' then perform sales_claim_job(f->>'token','{}');else perform sales_reserve_attempt(f->>'token',r||jsonb_build_object('contactId',f->>'contactId','attemptId',gen_random_uuid()));end if;
+  raise exception 'TEST FAILED: stale timing permit';
+ exception when serialization_failure then null;end;
+ perform sales_test_assert((select count(*)=0 from sales_model_attempts where project_id=(f->>'projectId')::uuid),'no model attempt for stale timing');
+ end loop;
+end$$;$case$);
+select pg_temp.timing_case('workspace carries authoritative timing',$case$do $$declare f jsonb:=sales_regression_fixture('timing-workspace');w jsonb;begin
+ w:=sales_read_workspace(f->'principal',jsonb_build_object('projectId',f->>'projectId'));
+ perform sales_test_assert(w->'timing'->'customerSendingEnabled'='false','workspace has timing');
+ perform sales_test_assert(w->'timing'->'contacts'->0->>'initialPreparationAllowed'='false','workspace no missing-data fallback');
+end$$;$case$);
+
+select pg_temp.timing_case('new same-address branch invalidates complete binding',$case$do $$declare f jsonb:=sales_regression_fixture('timing-new-branch');d jsonb;x jsonb;begin
+ perform pg_temp.save_rules(f);d:=pg_temp.timing_data((f->>'contactId')::uuid,clock_timestamp()-interval '1 second');perform pg_temp.save_timing(f,d);
+ insert into sales_contacts select gen_random_uuid(),project_id,1,data||jsonb_build_object('id',gen_random_uuid(),'history','unknown'),now() from sales_contacts where id=(f->>'contactId')::uuid;
+ x:=sales_timing_evaluate((f->>'projectId')::uuid,(f->>'contactId')::uuid,clock_timestamp());
+ perform sales_test_assert(x->'blockers' ? 'SOURCE_CHANGED','every same-address row must be bound');
+end$$;$case$);
+
+select pg_temp.timing_case('ambiguous cross-channel duplicate stays unknown',$case$do $$declare f jsonb:=sales_regression_fixture('timing-duplicate');at timestamptz:=clock_timestamp()-interval '1 second';e jsonb;n jsonb;d jsonb;x jsonb;begin
+ perform pg_temp.save_rules(f);e:=pg_temp.timing_event(at-interval '20 days');n:=e||jsonb_build_object('id',gen_random_uuid(),'sourceRefs',jsonb_build_array('resend'),'providerRefs',jsonb_build_array(jsonb_build_object('sourceKey','resend','id',gen_random_uuid())));
+ d:=pg_temp.timing_data((f->>'contactId')::uuid,at,jsonb_build_array(e,n),'contacted');perform pg_temp.save_timing(f,d);x:=sales_timing_evaluate((f->>'projectId')::uuid,(f->>'contactId')::uuid,at);
+ perform sales_test_assert(x->'blockers' ? 'DUPLICATE_UNRESOLVED' and x->'intervalFloorAt'='null','cross-channel ambiguity cannot produce floor');
+end$$;$case$);
+select pg_temp.timing_case('rule revision fences result and address edit fences attempt',$case$do $$declare f jsonb;j jsonb;ref jsonb;rule jsonb;stage text;d jsonb;begin
+ foreach stage in array array['result','address'] loop
+ f:=sales_regression_fixture('timing-late-'||stage);rule:=pg_temp.save_rules(f);perform pg_temp.save_timing(f,pg_temp.timing_data((f->>'contactId')::uuid,clock_timestamp()-interval '1 second'));j:=sales_prepare_job(f->'principal',f->'input');
+ perform sales_test_assert(sales_prepare_job(f->'principal',f->'input')=j,'same initial job on replay');ref:=sales_claim_job(f->>'token','{}')->'ref';
+ if stage='result' then
+ perform sales_commit_research(f->>'token',ref||jsonb_build_object('contactId',f->>'contactId','evidence',null,'question',null));
+ perform sales_reserve_attempt(f->>'token',ref||jsonb_build_object('contactId',f->>'contactId','attemptId',gen_random_uuid()));
+ perform sales_timing_save_rules(f->'principal',jsonb_build_object('projectId',f->>'projectId','idempotencyKey',gen_random_uuid(),'expectedPreviousId',rule->>'id','minWaitSeconds',1209601,'maxReminders',1,'maxSourceAgeSeconds',900,'confirmed',true));
+ begin perform sales_commit_drafts(f->>'token',ref||jsonb_build_object('drafts',jsonb_build_array(f->'draft')));raise exception 'TEST FAILED: stale completion';exception when serialization_failure then null;end;
+ else
+ select data into d from sales_contacts where id=(f->>'contactId')::uuid;perform sales_save_contact(f->'principal',(d-'version')||jsonb_build_object('expectedVersion',1,'email','changed@example.se'));
+ begin perform sales_reserve_attempt(f->>'token',ref||jsonb_build_object('contactId',f->>'contactId','attemptId',gen_random_uuid()));raise exception 'TEST FAILED: changed address attempt';exception when serialization_failure then null;end;
+ end if;
+ perform sales_test_assert(not exists(select from sales_draft_revisions where project_id=(f->>'projectId')::uuid),'stale result never saved');
+ end loop;
 end$$;$case$);
 
 do $$declare failures text;begin select string_agg(label||': '||error,E'\n') into failures from timing_failures;if failures is not null then raise exception E'Timing FAILED:\n%',failures;end if;end$$;

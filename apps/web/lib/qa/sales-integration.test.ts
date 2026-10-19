@@ -26,6 +26,7 @@ suite('sales slice against real PostgreSQL',()=>{
   const operator=async(value:Record<string,unknown>)=>{const r=await api(new Request('https://fixture.invalid/api/sales',{method:'POST',headers:{origin:'https://fixture.invalid','content-type':'application/json'},body:JSON.stringify({projectId,...value})}));expect(r.status).toBe(200);return r.json()}
   for(const [i,id] of contactIds.entries())await operator({operation:'save_contact',id,expectedVersion:0,companyName:`Testbil ${i+1}`,branchName:i<2?['Nord','Syd'][i]:'',email:i<2?'shared@example.se':`branch${i}@example.se`,websiteUrl:null,history:'not_contacted',historySource:'Synthetic operator-confirmed fixture',pilotMonths:12,confirmed:true,excluded:false,suppressed:false})
   await operator({operation:'save_offer',id:offerId,senderEmail:'info@handlarborsen.se',freeMonths:12,offerText:'12 månader gratis',productFacts:['Stängd B2B-marknadsplats'],confirmed:true})
+  sql(`select sales_fixture_review_timing('${projectId}');`)
   const queued:any=await handleSalesTool('prepare_sales_drafts',{projectId,contactIds,offerRevisionId:offerId,idempotencyKey:'five-fixture'},principal,conversationId,db,()=>true)
   expect(queued.status).toBe('queued')
   // A new read/tool invocation simulates reopening the conversation; no chat memory required.
@@ -44,6 +45,7 @@ suite('sales slice against real PostgreSQL',()=>{
   const revised=await workspace();expect(revised.drafts).toHaveLength(5);expect(revised.drafts.find((d:any)=>d.contactId===old.contactId).sha256).not.toBe(sha256)
   const sixth=randomUUID()
   await operator({operation:'save_contact',id:sixth,expectedVersion:0,companyName:'Cancel fixture',branchName:'',email:'cancel@example.se',websiteUrl:null,history:'not_contacted',historySource:'Synthetic fixture',pilotMonths:12,confirmed:true,excluded:false,suppressed:false})
+  sql(`select sales_fixture_review_timing('${projectId}');`)
   const second:any=await handleSalesTool('prepare_sales_drafts',{projectId,contactIds:[sixth],offerRevisionId:offerId,idempotencyKey:'cancel-fixture'},principal,conversationId,db,()=>true)
   const late=await workerCall('claim');await operator({operation:'cancel',jobId:second.id});await workerCall('complete',{...late.ref,drafts:[{...drafts[0],contactId:sixth,toEmail:'cancel@example.se'}]},409)
   expect((await workspace()).drafts).toHaveLength(5)

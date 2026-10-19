@@ -1,7 +1,7 @@
 import {SalesError} from '../types'
 import {salesId} from '../validate'
 import type {HistoryRevisionInput,TimingReadInput,TimingRulesInput} from './types'
-const bad=():never=>{throw new SalesError('INVALID_BODY')}
+function bad():never{throw new SalesError('INVALID_BODY')}
 function object(v:unknown,keys:string[]):Record<string,unknown>{if(!v||typeof v!=='object'||Array.isArray(v)||Object.keys(v).some(k=>!keys.includes(k))||keys.some(k=>!(k in v)))bad();return v as Record<string,unknown>}
 function str(v:unknown,max=500):string{if(typeof v!=='string'||!v.trim()||v.length>max||/[\u0000\r\n]/.test(v))bad();return v}
 function int(v:unknown,min=1,max=2147483647):number{if(typeof v!=='number'||!Number.isSafeInteger(v)||v<min||v>max)bad();return v}

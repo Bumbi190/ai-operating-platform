@@ -44,6 +44,19 @@
         "humanChoiceRecorded": true,
         "approvedDetectionVersion": null,
         "remainingMandatoryDecisionsOpen": true
+      },
+      "humanRelayedExpertFeedback": {
+        "sourceType": "USER_FORWARDED_CONTACT_REPLY",
+        "recordedAt": "2026-10-19",
+        "statementSummary": "Both A (base FVG before manipulation) and B (base FVG after manipulation) can be valid; B is usually more common.",
+        "qualitativePrevalence": "B_REPORTED_MORE_COMMON",
+        "actualNumericalPrevalence": null,
+        "bothFormationOrdersPotentiallyValid": true,
+        "BOnlyRequirementApproved": false,
+        "automaticPriorityOrTieBreakApproved": false,
+        "preManipulationFvgAgeLimitApproved": null,
+        "gapMitigationPolicyApproved": null,
+        "fullGateApproval": false
       }
     },
     {
@@ -175,6 +188,6 @@
       }
     ],
     "versionDecisionsApproved": 0,
-    "remainingAction": "Operator-confirmed iFVG inversion + completed 1m close crossing, but GATE-01 still OPEN pending other criteria; GATE-02/03/04 OPEN; historical source unverified"
+    "remainingAction": "Human-relayed feedback: both A/B iFVG formation orders plausible, B more common (not quantified). Exact eligibility/age/mitigation/tie-break remains undecided. All gates OPEN and no trading permissions."
   }
 }

@@ -43,10 +43,7 @@ begin
    or coalesce(d->'repeat'->>'frequency','') not in ('daily','weekly')
    or (d->'repeat'->'until' <> 'null'::jsonb and (
        jsonb_typeof(d->'repeat'->'until') <> 'string'
-       or (d->'repeat'->>'until') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2} when others then return false;
-end $fn$;
-
-
+       or (d->'repeat'->>'until') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
        or to_char((d->'repeat'->>'until')::date,'YYYY-MM-DD') <> d->'repeat'->>'until'
        or (d->'repeat'->>'until')::date < (case when t->>'kind'='all_day' then (t->>'startDate')::date else ((t->>'startUtc')::timestamptz at time zone 'Europe/Stockholm')::date end)
    )) then return false; end if;

@@ -17,7 +17,7 @@
 import { parseResolvedContract, sameContract, type ResolvedContract } from '../contract-identity'
 import { isTimestamp, toEpochMs, type Timestamp } from '../time'
 import type { MarketCandle } from '../market-candle'
-import type { ObservationSourceState, ObservedMinutes } from '../session-calendar/completeness'
+import type { ObservationSourceState, ObservedMinutes } from '../session-calendar'
 import { buildHistoricalContractRequest, type HistoricalContractRequest } from './contract-window'
 import { buildContractCandleSegment, type ContractCandleSegment, type SegmentProblem } from './contract-segment'
 
@@ -153,6 +153,10 @@ export function inspectHistoricalContractResult(
   if (raw.kind === 'OBSERVATIONS' && (!Array.isArray(raw.candles) || raw.candles.length === 0)) {
     return violation('MALFORMED_SOURCE_RESULT')
   }
+
+  if (raw.kind === 'OBSERVATIONS' && (raw.candles as unknown[]).some((candle) =>
+    !isRecord(candle) || !isTimestamp(candle.openTime)
+  )) return violation('MALFORMED_SOURCE_RESULT')
 
   // The segment constructor already owns authoritative instant/ordering/grid
   // checks. We do not duplicate or weaken any of those rules.

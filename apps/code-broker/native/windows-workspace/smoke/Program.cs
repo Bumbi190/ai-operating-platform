@@ -47,6 +47,9 @@ else if(args[0]=="materialization")await MaterializationProtocolSmoke.Run(Check)
 else if(args[0]=="materialization-spec")MaterializationSmoke.RunSpec(Check);
 else if(args[0]=="toolchain")ToolchainSmoke.Run(Check);
 else if(args[0]=="source")await SourceSmoke.Run(Check);
+else if(args[0]=="source-secret-literals")await SecretLiteralSmoke.Source(Check);
+else if(args[0]=="output-secret-literals")SecretLiteralSmoke.Output(Check);
+else if(args[0]=="diagnostic-secret-literals")SecretLiteralSmoke.Diagnostic(Check);
 else if(args[0]=="probe")await ProbeSmoke.Run(Check);
 else throw new Exception("unknown smoke mode");
 Console.WriteLine(JsonSerializer.Serialize(new{passed=names.Count,names}));

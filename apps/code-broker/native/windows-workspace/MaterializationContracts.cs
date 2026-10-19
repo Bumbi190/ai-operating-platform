@@ -28,7 +28,7 @@ internal static class MaterializationContracts {
   string S(string key)=>WorkspaceJson.String(r,key);
   var total=N("totalTests");var output=S("redactedStdout");var error=S("redactedStderr");
   if(S("schema")!="sdf.node_fixture_result.v1"||N("uid")!=10001||N("gid")!=10001||S("nodeVersion")!="22.23.3"||S("typeScriptVersion")!="5.9.3"||S("vitestVersion")!="2.1.9"||total<1||N("passedTests")!=total||N("failedTests")!=0||N("skippedTests")!=0||N("exitCode")!=0||!r.GetProperty("durationMs").TryGetInt64(out var duration)||duration<0||duration>90000||S("sourceManifestSha256")!=manifest||r.GetProperty("beforeAfterSourceEqual").ValueKind!=JsonValueKind.True||!ProbeSpecification.Hash(S("stdoutSha256"))||!ProbeSpecification.Hash(S("stderrSha256"))||Encoding.UTF8.GetByteCount(output)+Encoding.UTF8.GetByteCount(error)>65536)throw new WorkspaceException("fixture_failed");
-  return new("sdf.node_fixture_result.v1",10001,10001,"22.23.3","5.9.3","2.1.9",total,total,0,0,0,duration,manifest,true,S("stdoutSha256"),S("stderrSha256"),output,error);
+  return new("sdf.node_fixture_result.v1",10001,10001,"22.23.3","5.9.3","2.1.9",total,total,0,0,0,duration,manifest,true,S("stdoutSha256"),S("stderrSha256"),SecretTextPolicy.Redact(output),SecretTextPolicy.Redact(error));
  }
  internal static string Map(string reason)=>Reasons.Contains(reason)?reason:reason is "git_timeout"?"deadline_exceeded":reason is "git_output_limit"?"source_limit":reason is "base_unavailable" or "git_unavailable"?"blob_unavailable":"workspace_unverified";
 }

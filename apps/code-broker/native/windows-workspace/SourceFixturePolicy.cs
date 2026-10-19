@@ -18,12 +18,6 @@ internal static class SourceFixturePolicy {
   if(bytes.Length>MaxFileBytes)throw new WorkspaceException("source_limit");
   string text;try{text=new UTF8Encoding(false,true).GetString(bytes);}catch{throw new WorkspaceException("source_policy_denied");}
   if(text.Any(c=>c=='\0'||(c<' '&&c is not ('\t' or '\r' or '\n')))||text.StartsWith("version https://git-lfs.github.com/spec/v1",StringComparison.Ordinal))throw new WorkspaceException("source_policy_denied");
-  var patterns=new[]{
-   @"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----",
-   @"(?:sk-proj-|sk-ant-|sk-)[A-Za-z0-9_-]{20,}",
-   @"(?:AKIA|ASIA)[A-Z0-9]{16}",
-   """(?i:["']?(?:api_key|apiKey|secret_access_key|password|private_key)["']?)\s*[:=]\s*["'][^"'\r\n]{20,}["']"""
-  };
-  foreach(var pattern in patterns)if(Regex.IsMatch(text,pattern,RegexOptions.CultureInvariant,TimeSpan.FromSeconds(1)))throw new WorkspaceException("secret_pattern_found");
+  if(SecretTextPolicy.Contains(text))throw new WorkspaceException("secret_pattern_found");
  }
 }

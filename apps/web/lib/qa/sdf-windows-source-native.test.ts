@@ -12,4 +12,8 @@ describe.runIf(required&&process.platform==='win32')('native immutable source pr
   expect(stderr).toBe('');const r=JSON.parse(stdout);expect(r.passed).toBe(r.names.length)
   for(const name of ['exact_selected_files','wrong_blob_hash','real_git_snapshot22','retained_target_blocks_replace','retained_registration_blocks_replace','dirty_source_refused','untracked_source_refused','replace_refs_do_not_substitute','legacy_graft_refused','missing_source_does_not_prepare','deterministic_archive','total_limit'])expect(r.names).toContain(name)
  },125000)
+ for(const mode of ['source-secret-literals','output-secret-literals','diagnostic-secret-literals'])it('protects quoted credentials at '+mode,async()=>{
+  const {stdout,stderr}=await promisify(execFile)('C:\\Program Files\\dotnet\\dotnet.exe',[SMOKE,mode],{cwd:ROOT,windowsHide:true,shell:false,timeout:30000,maxBuffer:262144,env:{...process.env,SDF_WINDOWS_FIXTURE_ROOT:WS}})
+  expect(stderr).toBe('');const r=JSON.parse(stdout);expect(r.passed).toBeGreaterThanOrEqual(7)
+ },35000)
 })

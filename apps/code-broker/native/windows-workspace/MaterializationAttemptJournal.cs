@@ -1,7 +1,6 @@
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 namespace Omnira.CodeBroker.Workspace;
 internal sealed record MaterializationPeer(string BackendIdentityHash,string DaemonIdentityHash,string ToolchainProfileHash,string SourceManifestSha256);
 internal interface IMaterializationAttemptJournal {
@@ -51,8 +50,7 @@ internal sealed class MaterializationAttemptJournal:IMaterializationAttemptJourn
  }
  public void Diagnostic(WorkspaceRequest r,Guid a,string text){
   // This is scoped infrastructure bookkeeping; no job/model chooses a path or gets a file-write API.
-  var safe=Regex.Replace(text,@"(?:sk-proj-|sk-ant-|sk-)[A-Za-z0-9_-]{20,}","[redacted-token]",RegexOptions.CultureInvariant,TimeSpan.FromSeconds(1));
-  safe=Regex.Replace(safe,@"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*PRIVATE KEY-----","[redacted-key]",RegexOptions.Singleline|RegexOptions.CultureInvariant,TimeSpan.FromSeconds(1));
+  var safe=SecretTextPolicy.Diagnostic(text);
   var bytes=Encoding.UTF8.GetBytes(safe);if(bytes.Length>65536)bytes=bytes[..65536];var target=Path.Combine(root,a.ToString()+".diagnostic.txt");
   using var file=new FileStream(target,FileMode.CreateNew,FileAccess.Write,FileShare.Read);file.Write(bytes);file.Flush(true);
  }

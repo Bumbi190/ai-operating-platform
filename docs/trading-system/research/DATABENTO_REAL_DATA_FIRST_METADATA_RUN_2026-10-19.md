@@ -20,7 +20,7 @@ Källor:
 ## Säker källkoppling – två kostnadsfria anropstyper
 
 `scripts/trading/research/databento-free-metadata-only.mjs` använder ENDAST:
-- `GET https://hist.databento.com/v0/symbology.resolve` med en explicit råsymbol och historisk dag (metadata, gratis).
+- `POST https://hist.databento.com/v0/symbology.resolve` (URL-encoded form body) med en explicit råsymbol och historisk dag (metadata, gratis).
 - `GET https://hist.databento.com/v0/metadata.get_cost` för `GLBX.MDP3` / `ohlcv-1m` och samma dag och symbol (prisförfrågan, gratis).
 
 Följande finns uttryckligen **inte**: `timeseries.get_range`, `batch.submit_job`, datahämtning, kontoköp, brokerorder eller aktivering av liveflöde.

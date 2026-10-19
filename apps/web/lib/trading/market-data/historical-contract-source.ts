@@ -267,6 +267,20 @@ export async function readHistoricalContractChunk(
   source: HistoricalContractCandleSource,
   request: HistoricalContractRequest,
 ): Promise<HistoricalSourceInspection> {
-  const raw = await source.read(request)
-  return inspectHistoricalContractResult(request, raw)
+  // A caller's HistoricalContractRequest can be structurally typed readonly
+  // while the actual runtime object remains mutable. Capture the ORIGINAL
+  // concrete contract + half-open interval before invoking an untrusted async
+  // source, and pass ONLY the validated/frozen request across that boundary.
+  // Otherwise a caller or provider can change request.from during await and
+  // make coverage appear valid against a window we never intended to query.
+  const built = buildHistoricalContractRequest({
+    contract: request?.contract,
+    timeframe: request?.timeframe,
+    from: request?.from,
+    to: request?.to,
+  })
+  if (!built.ok) return violation('INVALID_REQUEST')
+  const original = built.request
+  const raw = await source.read(original)
+  return inspectHistoricalContractResult(original, raw)
 }

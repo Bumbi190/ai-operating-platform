@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
- <PropertyGroup><OutputType>Exe</OutputType><UseAppHost>false</UseAppHost><TargetFramework>net8.0-windows</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion></PropertyGroup>
+ <PropertyGroup><OutputType>Exe</OutputType><UseAppHost>false</UseAppHost><TargetFramework>net8.0-windows</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion><EnableSourceControlManagerQueries>false</EnableSourceControlManagerQueries></PropertyGroup>
  <ItemGroup><Compile Remove="smoke/**/*.cs"/><Compile Include="../windows-host/BorrowedPipeStream.cs" Link="BorrowedPipeStream.cs"/><ProjectReference Include="../windows-host/OmniraBrokerHost.csproj"/></ItemGroup>
  <ItemGroup><InternalsVisibleTo Include="WorkspaceSmoke"/></ItemGroup>
 </Project>

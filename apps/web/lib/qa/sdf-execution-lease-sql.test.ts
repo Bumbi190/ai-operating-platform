@@ -7,7 +7,7 @@ import {executionLeaseForBroker} from '@/lib/atlas/code-broker/execution-lease/s
 import {projectExecutionLease} from '@/lib/atlas/code-broker/execution-lease/projection'
 import {signedLeaseHarness,TOKEN} from './fixtures/sdf-execution-lease-fixtures'
 const db=new ExecutionLeasePostgres(),observations:any[]=[]
-beforeAll(()=>db.start(),120000);afterAll(()=>{writeFileSync(join(db.dir,'sql-observations.json'),JSON.stringify(observations,null,2));db.stop()},60000)
+beforeAll(async()=>{await db.start();observations.push({kind:'server_version',value:db.sql('select version();')})},120000);afterAll(()=>{writeFileSync(join(db.dir,'sql-observations.json'),JSON.stringify(observations,null,2));db.stop()},60000)
 type Parent=ReturnType<ExecutionLeasePostgres['createParent']>
 const readSql=(f:Parent,over:Partial<Parent['proof']>={})=>{const p={...f.proof,...over};return'select public.atlas_code_work_execution_lease('+[q(p.workId)+'::uuid',q(p.claimId)+'::uuid',p.fence,q(p.brokerId),q(p.brokerHostId),q(p.brokerTokenHash)].join(',')+');'}
 const raw=(f:Parent)=>JSON.parse(db.sql(readSql(f),'service_role'))
@@ -45,4 +45,44 @@ describe('actual PostgreSQL execution lease',()=>{
  const result=await db.parallel([mutation,readSql(f)]);expect(result[0].status).toBe('fulfilled');if(result[1].status==='fulfilled')expect(projectExecutionLease(JSON.parse(result[1].value))).not.toBeNull();expect(await observe(f)).toEqual({status:'not_live'});observations.push({kind:'race_'+kind,outcomes:result.map(r=>r.status)})
  },30000)
  it('bounds lock contention without renewing or replaying the request',async()=>{const f=db.createParent(),release=await db.hold('lock table public.atlas_authorizations in row exclusive mode'),start=performance.now();try{expect(await observe(f)).toEqual({status:'not_live'});const elapsed=performance.now()-start;expect(elapsed).toBeGreaterThan(2500);expect(elapsed).toBeLessThan(7000);expect(count(f)).toBe(0);observations.push({kind:'lock_timeout',elapsedMs:elapsed})}finally{await release()}},15000)
+ it('caps outward validity at the locked brokers known expiry',()=>{
+  const f=db.createParent()
+  corrupt("update public.atlas_code_brokers set expires_at=clock_timestamp()+interval '30 seconds' where broker_id="+q(f.proof.brokerId)+'::uuid')
+  const expiry=Number(db.sql("select floor(extract(epoch from expires_at)*1000)::bigint from public.atlas_code_brokers where broker_id="+q(f.proof.brokerId)+'::uuid'))
+  const lease=projectExecutionLease(raw(f))
+  expect(lease).not.toBeNull()
+  expect(lease!.leaseUntilMs).toBe(expiry)
+  expect(count(f)).toBe(1)
+  observations.push({kind:'broker_expiry_cap',expiresAtMs:expiry,leaseUntilMs:lease!.leaseUntilMs})
+ })
+ it('refuses broker expiry across an explicitly held WorkPackage lock with no renewal',async()=>{
+  const f=db.createParent(),marker='lease_broker_expiry_barrier',id=q(f.job.config.admission.governance.workPackage.id)+'::uuid'
+  const release=await db.hold('select id from public.manager_tasks where work_package_id='+id+' for update')
+  let released=false,pending:Promise<unknown>|undefined
+  const started=performance.now()
+  try{
+   corrupt("update public.atlas_code_brokers set expires_at=clock_timestamp()+interval '1200 milliseconds' where broker_id="+q(f.proof.brokerId)+'::uuid')
+   const broker={...signedLeaseHarness().broker,brokerId:f.proof.brokerId,hostId:f.proof.brokerHostId}
+   pending=executionLeaseForBroker(broker,{workId:f.proof.workId,claimId:f.proof.claimId,fence:f.proof.fence,claimToken:TOKEN},{store:{read:async()=>{
+    const [result]=await db.parallel(['/* '+marker+' */'+readSql(f)])
+    if(result.status==='rejected')throw result.reason
+    return JSON.parse(result.value)
+   }}})
+   let blocked=false
+   for(let n=0;n<10;n++){
+    const status=JSON.parse(db.sql("select json_build_object('blocked',exists(select 1 from pg_stat_activity where wait_event_type='Lock' and query like '%"+marker+"%'),'brokerLive',expires_at>clock_timestamp()) from public.atlas_code_brokers where broker_id="+q(f.proof.brokerId)+'::uuid'))
+    if(status.blocked){expect(status.brokerLive).toBe(true);blocked=true;break}
+    await new Promise(resolve=>setTimeout(resolve,20))
+   }
+   expect(blocked).toBe(true)
+   db.sql("select pg_sleep(greatest(0,extract(epoch from (expires_at-clock_timestamp()))+0.05)) from public.atlas_code_brokers where broker_id="+q(f.proof.brokerId)+'::uuid')
+   expect(db.sql("select expires_at<=clock_timestamp() from public.atlas_code_brokers where broker_id="+q(f.proof.brokerId)+'::uuid')).toBe('t')
+   await release();released=true
+   const result=await pending,elapsed=performance.now()-started
+   expect(elapsed).toBeLessThan(2900)
+   expect(result).toEqual({status:'not_live'})
+   expect(count(f)).toBe(0)
+   observations.push({kind:'broker_expiry_after_workpackage_barrier',elapsedMs:elapsed,blockedBeforeExpiry:true,releasedAfterExpiry:true,result,renewalReceipts:count(f)})
+  }finally{if(!released)await release();await pending}
+ },15000)
 })

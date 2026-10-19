@@ -13,7 +13,7 @@ async function rawBody(request:Request):Promise<string|null>{
  const chunks:Uint8Array[]=[];let total=0
  try{
   for(;;){const next=await reader.read();if(next.done)break;total+=next.value.byteLength;if(total>1024){void reader.cancel().catch(()=>{});return null}chunks.push(next.value)}
-  return new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks))
+  return new TextDecoder('utf-8',{fatal:true,ignoreBOM:true}).decode(Buffer.concat(chunks))
  }finally{reader.releaseLock()}
 }
 function parse(raw:string):HeartbeatBody|null{

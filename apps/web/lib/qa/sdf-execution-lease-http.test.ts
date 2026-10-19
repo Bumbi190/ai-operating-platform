@@ -12,4 +12,13 @@ describe('signed execution lease HTTP boundary',()=>{
  it('rejects oversized and invalid-UTF8 bytes before authentication',async()=>{const fn=await handler();for(const bytes of [Buffer.alloc(1025,120),Buffer.from([0xff,0xfe])]){const h=signedLeaseHarness(),req=new Request('https://omnira.test/api/atlas/code-work/broker/execution-lease',{method:'POST',body:bytes});const r=await fn(req,{enabled:()=>true,auth:h.auth});expect(r.status).toBe(bytes.length>1024?413:400);expect(h.reads).toBe(0)}})
  it('rejects method and query variants',async()=>{const fn=await handler();for(const options of [{method:'GET'},{path:'/api/atlas/code-work/broker/execution-lease?workId=x'}]){const h=signedLeaseHarness();expect((await fn(h.request(undefined,options),{enabled:()=>true,auth:h.auth})).status).toBe(400);expect(h.reads).toBe(0)}})
  it('returns a generic conflict or availability error without echoing data',async()=>{const fn=await handler();for(const crashed of [false,true]){const h=signedLeaseHarness(),r=await fn(h.request(),{enabled:()=>true,auth:h.auth,service:async()=>{if(crashed)throw Error(TOKEN);return{status:'not_live'}}});expect(r.status).toBe(crashed?503:409);const text=await r.text();expect(text).not.toContain(TOKEN);expect(JSON.parse(text)).toEqual({ok:false,error:crashed?'unavailable':'lease_not_live'});expect(r.headers.get('cache-control')).toBe('no-store')}})
+ it('rejects an unsigned UTF-8 BOM prefix on an otherwise valid signed body',async()=>{
+  const fn=await handler(),h=signedLeaseHarness(),signed=h.request()
+  const tampered=new Request(signed.url,{method:'POST',headers:signed.headers,body:Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),Buffer.from(await signed.text())])})
+  let calls=0
+  const result=await fn(tampered,{enabled:()=>true,auth:h.auth,service:async()=>{calls++;return{status:'live',lease:leaseFixture()}}})
+  expect(result.status).toBe(401)
+  expect(await result.json()).toEqual({ok:false,error:'broker_auth_rejected'})
+  expect(calls).toBe(0)
+ })
 })

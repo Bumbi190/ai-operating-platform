@@ -79,6 +79,7 @@ begin
  r:=public.atlas_code_work_heartbeat(p_work_id,p_claim_id,p_fence,p_broker_id,p_broker_host_id,p_broker_token_hash);
  now_at:=clock_timestamp();expiry:=public.atlas_code_work_authorization_expiry(r);
  if now_at>=deadline or expiry is null or r.state not in('claimed','preparing','working','testing')
+ or (b.expires_at is not null and b.expires_at<=now_at)
  or r.cancel_requested or r.lease_until<=now_at or expiry<=now_at or cap<=now_at
  then raise exception 'lease unavailable' using errcode='object_not_in_prerequisite_state';end if;
  return jsonb_build_object(
@@ -92,7 +93,7 @@ begin
  'workPackageId',r.admission#>>'{governance,workPackage,id}','workPackageHash',r.admission#>>'{governance,workPackage,hash}'),
  'state',r.state,'stateVersion',r.state_version,
  'serverNowMs',floor(extract(epoch from now_at)*1000)::bigint,
- 'leaseUntilMs',floor(extract(epoch from r.lease_until)*1000)::bigint,
+ 'leaseUntilMs',floor(extract(epoch from least(r.lease_until,coalesce(b.expires_at,r.lease_until)))*1000)::bigint,
  'authorizationExpiresAtMs',floor(extract(epoch from expiry)*1000)::bigint,
  'runtimeExpiresAtMs',floor(extract(epoch from cap)*1000)::bigint,'productionAuthority',false);
 end $fn$;

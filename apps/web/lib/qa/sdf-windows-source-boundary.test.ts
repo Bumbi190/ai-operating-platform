@@ -14,16 +14,17 @@ describe('source fixture has no operational consumer',()=>{
     let spec:string|undefined
     if((ts.isImportDeclaration(n)||ts.isExportDeclaration(n))&&n.moduleSpecifier&&ts.isStringLiteral(n.moduleSpecifier))spec=n.moduleSpecifier.text
     if(ts.isCallExpression(n)&&(n.expression.kind===ts.SyntaxKind.ImportKeyword||ts.isIdentifier(n.expression)&&n.expression.text==='require')&&n.arguments[0]&&ts.isStringLiteral(n.arguments[0]))spec=n.arguments[0].text
-    if(spec&&/(?:^|\/)source-(?:fixture|attempts|contracts)(?:\.js)?$/.test(spec)){consumers.push(path);expect(path.startsWith('apps/web/lib/qa/')||/^apps\/code-broker\/src\/isolation\/windows\/(source-|workspace)/.test(path),path).toBe(true)}
+    if(spec&&/(?:^|\/)source-(?:fixture|attempts|contracts)(?:\.js)?$/.test(spec)){consumers.push(path);expect(path.startsWith('apps/web/lib/qa/')||/^apps\/code-broker\/src\/isolation\/windows\/(source-|workspace)/.test(path)||path==='apps/code-broker/src/runtime/native-stop-bridge.ts',path).toBe(true)}
     ts.forEachChild(n,visit)
    };visit(ts.createSourceFile(path,text(path),ts.ScriptTarget.Latest,true))
   }
   expect(consumers).toContain('apps/code-broker/src/isolation/windows/source-fixture.ts')
  })
+ // Re-based by docs/superpowers/plans/2026-10-19-cooperative-native-stop.md: materialization left the one-shot invoker.
  it('keeps exactly five native modes and fixed helper deadlines',()=>{
-  const program=text('apps/code-broker/native/windows-workspace/Program.cs'),helper=text('apps/code-broker/src/isolation/windows/workspace-helper.ts')
+  const program=text('apps/code-broker/native/windows-workspace/Program.cs'),helper=text('apps/code-broker/src/isolation/windows/workspace-helper.ts'),bridge=text('apps/code-broker/src/runtime/native-stop-bridge.ts')
   expect(program).toContain('"prepare" or "probe" or "cleanup-probe" or "materialize-fixture" or "cleanup-materialization"')
-  expect(helper).toContain('185000');expect(helper).toContain('35000')
+  expect(helper).not.toContain('185000');expect(helper).toContain('35000');expect(program).toContain('args[0]=="materialize-fixture"?180000');expect(bridge).toContain('STOP_GRACE_MS=35000')
   for(const f of ['source-fixture.ts','source-contracts.ts','source-attempts.ts'])expect(text('apps/code-broker/src/isolation/windows/'+f)).not.toMatch(/['"]use client['"]|process\.env|createAdminClient|\.rpc\(|\/api\/|anthropic|openai|fetch\(/)
   expect(text('apps/code-broker/src/cli.ts')).not.toMatch(/source-fixture|materialize-fixture|cleanup-materialization/)
  })

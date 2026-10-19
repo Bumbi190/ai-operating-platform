@@ -16,7 +16,7 @@ describe('Windows infrastructure remains internally bounded',()=>{
     if((ts.isImportDeclaration(node)||ts.isExportDeclaration(node))&&node.moduleSpecifier&&ts.isStringLiteral(node.moduleSpecifier))spec=node.moduleSpecifier.text
     if(ts.isCallExpression(node)&&node.expression.kind===ts.SyntaxKind.ImportKeyword&&node.arguments[0]&&ts.isStringLiteral(node.arguments[0]))spec=node.arguments[0].text
     if(spec&&/(?:\/|^)workspace(?:-contracts|-helper)?(?:\.js)?$/.test(spec)&&spec.includes('windows')||spec&&/^\.\/workspace(?:-contracts|-helper)?\.js$/.test(spec)){
-     consumers.push(path);expect(path.startsWith('apps/web/lib/qa/')||/^apps\/code-broker\/src\/isolation\/windows\/(workspace|source-)/.test(path),path).toBe(true)
+     consumers.push(path);expect(path.startsWith('apps/web/lib/qa/')||/^apps\/code-broker\/src\/isolation\/windows\/(workspace|source-)/.test(path)||path==='apps/code-broker/src/isolation/windows/controlled-helper.ts'||path==='apps/code-broker/src/runtime/native-stop-bridge.ts',path).toBe(true)
     }
     ts.forEachChild(node,visit)
    };visit(source)

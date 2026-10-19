@@ -27,14 +27,16 @@ async function main(){
   values.set(key,value)
  }
  if(values.size!==options.length)throw Error('INVALID_BODY')
- const brief=JSON.parse(await limitedFile(values.get('--brief')!,64*1024))
+ const {parseFilmPreparationRef,parseFilmBrief,prepareFilm}=await import('../lib/social-launch/news-review/film-preparation')
+ const input=parseFilmPreparationRef({projectId:values.get('--project'),postId:values.get('--post'),revisionId:values.get('--revision'),sha256:values.get('--sha256')})
+ const brief=parseFilmBrief(JSON.parse(await limitedFile(values.get('--brief')!,64*1024)))
  const token=(await limitedFile(values.get('--operator-jwt-file')!,16*1024)).trim()
  if(!token)throw Error('INVALID_BODY')
  // Import server wiring only after local argument/file checks; --help needs no environment.
- const [{createAdminClient},{authenticateReviewOperator},{prepareFilm}]=await Promise.all([
-  import('../lib/supabase/admin'),import('../lib/social-launch/news-review/admission'),import('../lib/social-launch/news-review/film-preparation')])
+ const [{createAdminClient},{authenticateReviewOperator}]=await Promise.all([
+  import('../lib/supabase/admin'),import('../lib/social-launch/news-review/admission')])
  const db=createAdminClient(),principal=await authenticateReviewOperator(db,token)
- const result=await prepareFilm(db,principal,{projectId:values.get('--project'),postId:values.get('--post'),revisionId:values.get('--revision'),sha256:values.get('--sha256')},brief)
+ const result=await prepareFilm(db,principal,input,brief)
  console.log(JSON.stringify(result))
 }
 main().catch(error=>{

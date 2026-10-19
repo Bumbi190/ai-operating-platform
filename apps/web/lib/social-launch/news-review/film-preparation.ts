@@ -33,11 +33,11 @@ function text(value:unknown,max:number):string{
 }
 function id(value:unknown):string{if(typeof value!=='string'||!UUID.test(value))fail('INVALID_BODY');return value}
 function checksum(value:unknown):string{if(typeof value!=='string'||!SHA.test(value))fail('INVALID_BODY');return value}
-function parseRef(value:unknown):Ref{
+export function parseFilmPreparationRef(value:unknown):Ref{
  const x=fields(value,['projectId','postId','revisionId','sha256'])
  return{projectId:id(x.projectId),postId:id(x.postId),revisionId:id(x.revisionId),sha256:checksum(x.sha256)}
 }
-function parseBrief(value:unknown):FilmBrief{
+export function parseFilmBrief(value:unknown):FilmBrief{
  const x=fields(value,['kind','source','editorial','scenes'])
  if(x.kind!=='the-prompt-film-brief-v1')fail('INVALID_BODY')
  const s=fields(x.source,['title','summary','url','key','publishedAt'])
@@ -86,7 +86,7 @@ function selected(content:SocialContentView,plan:SocialLaunchView,x:Ref,brief:Fi
  */
 export async function prepareFilm(db:ReviewDb,p:SocialContentPrincipal,input:unknown,rawBrief:unknown,clock:()=>number=Date.now){
  try{
-  const x=parseRef(input),brief=parseBrief(rawBrief)
+  const x=parseFilmPreparationRef(input),brief=parseFilmBrief(rawBrief)
   await authorizeNewsProject(db,p,x.projectId)
   fresh(brief,clock())
   const read=async()=>selected(await readSocialContent(db,p,{projectId:x.projectId}),

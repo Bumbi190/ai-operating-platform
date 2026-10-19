@@ -16,7 +16,7 @@ describe('Windows infrastructure remains internally bounded',()=>{
     if((ts.isImportDeclaration(node)||ts.isExportDeclaration(node))&&node.moduleSpecifier&&ts.isStringLiteral(node.moduleSpecifier))spec=node.moduleSpecifier.text
     if(ts.isCallExpression(node)&&node.expression.kind===ts.SyntaxKind.ImportKeyword&&node.arguments[0]&&ts.isStringLiteral(node.arguments[0]))spec=node.arguments[0].text
     if(spec&&/(?:\/|^)workspace(?:-contracts|-helper)?(?:\.js)?$/.test(spec)&&spec.includes('windows')||spec&&/^\.\/workspace(?:-contracts|-helper)?\.js$/.test(spec)){
-     consumers.push(path);expect(path.startsWith('apps/web/lib/qa/')||path.startsWith('apps/code-broker/src/isolation/windows/workspace'),path).toBe(true)
+     consumers.push(path);expect(path.startsWith('apps/web/lib/qa/')||/^apps\/code-broker\/src\/isolation\/windows\/(workspace|source-)/.test(path),path).toBe(true)
     }
     ts.forEachChild(node,visit)
    };visit(source)
@@ -30,10 +30,10 @@ describe('Windows infrastructure remains internally bounded',()=>{
   }
   expect(text('apps/code-broker/src/cli.ts')).not.toMatch(/workspace|sandbox|qualify/)
  })
- it('retains observation-only host modes and the three closed new native modes',()=>{
+ it('retains observation-only host modes and the five closed new native modes',()=>{
   const host=text('apps/code-broker/native/windows-host/Program.cs'),program=text('apps/code-broker/native/windows-workspace/Program.cs')
   expect(host).toContain('args.Length!=1||args[0]!="qualify"')
-  expect(program).toContain('args[0] is not ("prepare" or "probe" or "cleanup-probe")')
+  expect(program).toContain('args[0] is not ("prepare" or "probe" or "cleanup-probe" or "materialize-fixture" or "cleanup-materialization")')
   for(const file of ['DockerProbeSession.cs','WindowsSandboxProbe.cs','ProbeSpecification.cs'])expect(text('apps/code-broker/native/windows-workspace/'+file)).not.toMatch(/Process\.Start|GetEnvironmentVariable|\/images\/create|\/exec|\/archive|\/volumes|docker\.sock|\.Pull\(|\.Build\(/)
  })
  it('leaves existing POSIX execution guards and immutable sandbox specification byte-identical',()=>{

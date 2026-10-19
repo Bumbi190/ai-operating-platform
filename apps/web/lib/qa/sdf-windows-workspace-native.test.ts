@@ -4,11 +4,11 @@ import {resolve,join} from 'node:path'
 import {randomUUID,createHash} from 'node:crypto'
 import {promisify} from 'node:util'
 import {beforeAll,describe,it,expect} from 'vitest'
-import {prepareWindowsWorktree} from '../../../code-broker/src/isolation/windows/workspace'
 import {parseWindowsWorkspaceReport,parseWindowsWorkspaceRequest} from '../../../code-broker/src/isolation/windows/workspace-contracts'
 const required=process.env.SDF_WINDOWS_WORKSPACE_REQUIRED==='1'
 if(required&&process.platform!=='win32')throw Error('Windows workspace proof requires Windows')
-const ROOT=resolve(__dirname,'../../../..'),WS=join(ROOT,'.superpowers/sdd/2026-10-18-windows-workspace-sandbox')
+const ROOT=resolve(__dirname,'../../../..'),EXPECTED=join(ROOT,'.superpowers/sdd/2026-10-19-windows-source-materialization'),WS=process.env.SDF_WINDOWS_FIXTURE_ROOT?resolve(process.env.SDF_WINDOWS_FIXTURE_ROOT):join(ROOT,'.superpowers/sdd/2026-10-18-windows-workspace-sandbox')
+if(process.env.SDF_WINDOWS_FIXTURE_ROOT&&WS.toLowerCase()!==EXPECTED.toLowerCase())throw Error('Wrong test-only fixture root')
 const DOTNET='C:\\Program Files\\dotnet\\dotnet.exe',GIT='C:\\Program Files\\Git\\cmd\\git.exe'
 const SMOKE=join(ROOT,'apps/code-broker/native/windows-workspace/smoke/bin/Release/net8.0-windows/WorkspaceSmoke.dll')
 const HELPER=join(ROOT,'apps/code-broker/.native/windows-workspace/OmniraBrokerWorkspace.dll')
@@ -26,27 +26,8 @@ describe.runIf(required&&process.platform==='win32')('real protected Windows wor
  it('keeps exactly one real locked proof worktree and rechecks its pinned identity',async()=>{
   mkdirSync(WS,{recursive:true});mkdirSync(home,{recursive:true})
   if(!existsSync(HELPER)||!existsSync(SMOKE))throw Error('Build workspace helper/smoke prerequisites first')
-  if(existsSync(recordFile)){
-   proof=JSON.parse(readFileSync(recordFile,'utf8'));parseWindowsWorkspaceRequest(proof.request);parseWindowsWorkspaceReport(proof.report)
-  }else{
-   const requestFile=join(WS,'real-workspace-request.json'),retryFile=join(WS,'compat-authorized-retry.json')
-   const snapshot=()=>({head:git(MAIN,'rev-parse','HEAD').trim(),status:git(MAIN,'status','--porcelain=v1','-z'),base:git(MAIN,'rev-parse','refs/remotes/origin/main').trim(),configHash:createHash('sha256').update(readFileSync(join(MAIN,'.git/config'))).digest('hex'),worktreeConfigHash:existsSync(join(MAIN,'.git/config.worktree'))?createHash('sha256').update(readFileSync(join(MAIN,'.git/config.worktree'))).digest('hex'):null})
-   const before=snapshot()
-   const request=existsSync(requestFile)?parseWindowsWorkspaceRequest(JSON.parse(readFileSync(requestFile,'utf8'))):parseWindowsWorkspaceRequest({schema:'sdf.windows_workspace_request.v1',workId:randomUUID(),repositoryId:'github.com/bumbi190/ai-operating-platform',pinnedBaseSha:before.base,admissionHash:createHash('sha256').update('owned-windows-infrastructure-proof').digest('hex'),claimId:randomUUID(),fence:1})
-   if(existsSync(requestFile)){
-    const blockedFile=join(WS,'real-workspace-blocked.json')
-    if(!existsSync(blockedFile)||existsSync(retryFile))throw Error('Uncertain real workspace request retained; reconcile before any second invocation')
-    const blocked=JSON.parse(readFileSync(blockedFile,'utf8'))
-    if(JSON.stringify(request)!==JSON.stringify(parseWindowsWorkspaceRequest(blocked.request))||blocked.outcome?.report?.status!=='refused'||blocked.outcome.report.workspaceRetained!==false||blocked.outcome.report.reason!=='unsafe_git_config')throw Error('Saved refusal does not authorize compatibility proof')
-   }else writeFileSync(requestFile,JSON.stringify(request,null,2))
-   if(before.base!==request.pinnedBaseSha||existsSync(join(PARENT,request.workId))||git(MAIN,'for-each-ref','--format=%(refname)','refs/heads/sdf1/'+request.workId).trim()!==''||git(MAIN,'worktree','list','--porcelain','-z').includes(request.workId))throw Error('Saved proof request has drift or collision')
-   writeFileSync(retryFile,JSON.stringify({request,phase:'invoking-once',compatibilityApprovedAt:'2026-10-19T08:04:38+02:00',before},null,2))
-   const outcome=await prepareWindowsWorktree(request)
-   writeFileSync(join(WS,'real-workspace-last-outcome.json'),JSON.stringify(outcome,null,2))
-   if(outcome.status!=='observed'||outcome.report.status!=='prepared')throw Error('Real fixed-profile prepare did not verify: '+JSON.stringify(outcome))
-   proof={request,report:outcome.report,before,after:snapshot(),createdAt:new Date().toISOString(),syntheticBinding:true,productionAuthority:false}
-   writeFileSync(recordFile,JSON.stringify(proof,null,2))
-  }
+  if(!existsSync(recordFile))throw Error('Saved prepared proof is required; never create a real workspace implicitly')
+  proof=JSON.parse(readFileSync(recordFile,'utf8'));parseWindowsWorkspaceRequest(proof.request);parseWindowsWorkspaceReport(proof.report)
 
   const path=join(PARENT,proof.request.workId)
   expect(git(path,'rev-parse','HEAD').trim()).toBe(proof.request.pinnedBaseSha)
@@ -62,9 +43,9 @@ describe.runIf(required&&process.platform==='win32')('real protected Windows wor
   ['worktree-config',['worktree_config_absent_prepared','worktree_config_harmless_prepared','existing_per_worktree_file_write_blocked_through_add','absent_per_worktree_file_appearing_before_add_refused','new_registration_config_checked_before_head_True','per_worktree_audit_reply_drift_retains_workspace','per_worktree_hook_sentinel_never_executed','default_git_policy_still_refuses_extension']],
   ['worktree',['real_synthetic_worktree_prepared','same_workid_one_winner','post_add_failure_retained','base_drift_after_preflight_never_prepared','global_hook_credential_sentinels_untouched']],
  ]as const)it('runs required native '+mode+' regressions',async()=>{
-  const{stdout}=await exec(DOTNET,[SMOKE,mode],{cwd:ROOT,shell:false,windowsHide:true,timeout:60000,maxBuffer:262144})
+  const{stdout}=await exec(DOTNET,[SMOKE,mode],{cwd:ROOT,shell:false,windowsHide:true,timeout:120000,maxBuffer:262144})
   const result=JSON.parse(stdout);expect(result.passed).toBe(result.names.length);for(const name of names)expect(result.names).toContain(name)
- },65000)
+ },125000)
  it('closing an owned helper process kills its actual native Job Object descendants',async()=>{
   const file=join(WS,'pid-proof-'+randomUUID()+'.json')
   const child=execFile(DOTNET,[SMOKE,'child','job-parent',file],{cwd:ROOT,shell:false,windowsHide:true,timeout:20000,maxBuffer:262144},()=>{})

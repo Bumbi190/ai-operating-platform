@@ -1,4 +1,5 @@
-import {parseWindowsWorkspaceRequest,type WorkspaceBinding} from './workspace-contracts.js'
+import {createHash} from 'node:crypto'
+import {isWorkspaceUuid,parseWindowsWorkspaceRequest,type WorkspaceBinding} from './workspace-contracts.js'
 export const SOURCE_FIXTURE_PATHS=Object.freeze([
  "apps/web/lib/atlas/authorization/build.ts",
  "apps/web/lib/atlas/authorization/derive.ts",
@@ -45,3 +46,39 @@ export function parseSourceManifest(input:unknown):SourceManifest{
  return {schema:'sdf.windows_source_manifest.v1',binding,policyId:'sdf.windows_source_fixture.v1',baseSha:request.pinnedBaseSha,files}
 }
 export function canonicalSourceManifest(input:unknown):string{return JSON.stringify(parseSourceManifest(input))}
+
+export const MATERIALIZATION_REASONS=['input_invalid','host_unqualified','workspace_unverified','stale_base','source_policy_denied','secret_pattern_found','source_limit','blob_unavailable','toolchain_unprovisioned','toolchain_mismatch','attempt_in_progress','resource_conflict','peer_changed','protocol_invalid','archive_invalid','materialization_unverified','fixture_failed','deadline_exceeded','cleanup_retained'] as const
+export interface NodeFixtureResult{schema:'sdf.node_fixture_result.v1';uid:10001;gid:10001;nodeVersion:'22.23.3';typeScriptVersion:'5.9.3';vitestVersion:'2.1.9';totalTests:number;passedTests:number;failedTests:0;skippedTests:0;exitCode:0;durationMs:number;sourceManifestSha256:string;beforeAfterSourceEqual:true;stdoutSha256:string;stderrSha256:string;redactedStdout:string;redactedStderr:string}
+export interface MaterializationReport{
+ schema:'sdf.windows_materialization_report.v1';status:'verified_for_fixture'|'blocked'|'failed'|'cleaned';attemptId:string;binding:WorkspaceBinding;reason:typeof MATERIALIZATION_REASONS[number]|null;sourcePolicyId:'sdf.windows_source_fixture.v1';
+ manifest:SourceManifest|null;manifestSha256:string|null;toolchainProfileHash:string|null;imageId:string|null;backendIdentityHash:string|null;daemonIdentityHash:string|null;fixture:NodeFixtureResult|null;containerRemoved:boolean;volumeRemoved:boolean;observedAt:string;productionAuthority:false
+}
+export type MaterializationReadResult={status:'observed';report:MaterializationReport}|{status:'unavailable';reason:import('./workspace-contracts.js').TransportReason;attemptId:string|null}
+function parseFixture(input:unknown,manifestHash:unknown):NodeFixtureResult{
+ const x=obj(input);keys(x,['schema','uid','gid','nodeVersion','typeScriptVersion','vitestVersion','totalTests','passedTests','failedTests','skippedTests','exitCode','durationMs','sourceManifestSha256','beforeAfterSourceEqual','stdoutSha256','stderrSha256','redactedStdout','redactedStderr'])
+ ensure(x.schema==='sdf.node_fixture_result.v1'&&x.uid===10001&&x.gid===10001&&x.nodeVersion==='22.23.3'&&x.typeScriptVersion==='5.9.3'&&x.vitestVersion==='2.1.9')
+ ensure(Number.isSafeInteger(x.totalTests)&&Number(x.totalTests)>0&&x.passedTests===x.totalTests&&x.failedTests===0&&x.skippedTests===0&&x.exitCode===0&&Number.isSafeInteger(x.durationMs)&&Number(x.durationMs)>=0&&Number(x.durationMs)<=90000)
+ ensure(x.sourceManifestSha256===manifestHash&&x.beforeAfterSourceEqual===true&&hex(x.stdoutSha256,64)&&hex(x.stderrSha256,64))
+ ensure(typeof x.redactedStdout==='string'&&typeof x.redactedStderr==='string'&&Buffer.byteLength(x.redactedStdout,'utf8')+Buffer.byteLength(x.redactedStderr,'utf8')<=65536)
+ return JSON.parse(JSON.stringify(x))
+}
+export function parseMaterializationReport(input:unknown):MaterializationReport{
+ const x=obj(input);keys(x,['schema','status','attemptId','binding','reason','sourcePolicyId','manifest','manifestSha256','toolchainProfileHash','imageId','backendIdentityHash','daemonIdentityHash','fixture','containerRemoved','volumeRemoved','observedAt','productionAuthority'])
+ ensure(x.schema==='sdf.windows_materialization_report.v1'&&x.sourcePolicyId==='sdf.windows_source_fixture.v1'&&x.productionAuthority===false&&isWorkspaceUuid(x.attemptId,true))
+ const b=obj(x.binding);keys(b,['workId','repositoryId','pinnedBaseSha','admissionHash','claimId','fence']);const request=parseWindowsWorkspaceRequest({...b,schema:'sdf.windows_workspace_request.v1'});ensure(request.repositoryId==='github.com/bumbi190/ai-operating-platform')
+ for(const k of ['manifestSha256','toolchainProfileHash','backendIdentityHash','daemonIdentityHash'])ensure(x[k]===null||hex(x[k],64))
+ ensure(x.imageId===null||(typeof x.imageId==='string'&&/^sha256:[a-f0-9]{64}$/.test(x.imageId)))
+ ensure(typeof x.containerRemoved==='boolean'&&typeof x.volumeRemoved==='boolean'&&(!x.volumeRemoved||x.containerRemoved))
+ if(x.daemonIdentityHash!==null)ensure(x.backendIdentityHash!==null)
+ if(x.imageId!==null)ensure(x.backendIdentityHash!==null&&x.daemonIdentityHash!==null&&x.toolchainProfileHash!==null)
+ ensure(typeof x.observedAt==='string'&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(x.observedAt)&&Number.isFinite(Date.parse(x.observedAt))&&new Date(x.observedAt).toISOString()===x.observedAt)
+ if(x.manifest!==null){const m=parseSourceManifest(x.manifest);ensure(Object.keys(b).every(k=>b[k]===(m.binding as unknown as Record<string,unknown>)[k]));ensure(createHash('sha256').update(canonicalSourceManifest(m)).digest('hex')===x.manifestSha256)}else ensure(x.manifestSha256===null)
+ if(x.status==='verified_for_fixture'){
+  ensure(x.reason===null&&x.manifest!==null&&x.manifestSha256!==null&&x.toolchainProfileHash!==null&&x.imageId!==null&&x.backendIdentityHash!==null&&x.daemonIdentityHash!==null&&x.containerRemoved===true&&x.volumeRemoved===true);parseFixture(x.fixture,x.manifestSha256)
+ }else{
+  ensure(x.fixture===null)
+  if(x.status==='cleaned')ensure(x.reason===null&&x.manifest===null&&x.manifestSha256===null&&x.containerRemoved===true&&x.volumeRemoved===true&&x.backendIdentityHash!==null&&x.daemonIdentityHash!==null)
+  else ensure((x.status==='blocked'||x.status==='failed')&&(MATERIALIZATION_REASONS as readonly unknown[]).includes(x.reason))
+ }
+ return JSON.parse(JSON.stringify(x))
+}

@@ -9,7 +9,8 @@ import {WINDOWS_PROBE_PROTECTIONS} from '../../../code-broker/src/isolation/wind
 import {SANDBOX_SPEC} from '../../../code-broker/src/isolation/sandbox-spec'
 const required=process.env.SDF_WINDOWS_PROBE_REQUIRED==='1'
 if(required&&process.platform!=='win32')throw Error('Windows sandbox proof requires Windows')
-const ROOT=resolve(__dirname,'../../../..'),WS=join(ROOT,'.superpowers/sdd/2026-10-18-windows-workspace-sandbox')
+const ROOT=resolve(__dirname,'../../../..'),EXPECTED=join(ROOT,'.superpowers/sdd/2026-10-19-windows-source-materialization'),WS=process.env.SDF_WINDOWS_FIXTURE_ROOT?resolve(process.env.SDF_WINDOWS_FIXTURE_ROOT):join(ROOT,'.superpowers/sdd/2026-10-18-windows-workspace-sandbox')
+if(process.env.SDF_WINDOWS_FIXTURE_ROOT&&WS.toLowerCase()!==EXPECTED.toLowerCase())throw Error('Wrong test-only fixture root')
 const DOTNET='C:\\Program Files\\dotnet\\dotnet.exe',SMOKE=join(ROOT,'apps/code-broker/native/windows-workspace/smoke/bin/Release/net8.0-windows/WorkspaceSmoke.dll')
 const exec=promisify(execFile)
 describe.runIf(required&&process.platform==='win32')('real fixed Windows sandbox',()=>{

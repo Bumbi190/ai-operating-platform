@@ -4,7 +4,7 @@ import {lstatSync,readFileSync,realpathSync} from 'node:fs'
 import {dirname} from 'node:path'
 import {fileURLToPath} from 'node:url'
 import type {TransportReason} from './workspace-contracts.js'
-export type HelperMode='prepare'|'probe'|'cleanup-probe'
+export type HelperMode='prepare'|'probe'|'cleanup-probe'|'materialize-fixture'|'cleanup-materialization'
 type Decoded={status:'decoded';value:unknown}|{status:'unavailable';reason:TransportReason}
 const RUNTIME='C:\\Program Files\\dotnet\\dotnet.exe'
 const RUNTIME_SHA256='7967467e8bad9c686de2ab2c1994112d5331a7c3d20f0b8a4fff7480221a1c37'
@@ -46,7 +46,7 @@ interface HelperDeps {platform:NodeJS.Platform;checkBootstrap:()=>void;launch:ty
 export function createWorkspaceInvoker(deps:HelperDeps):(mode:HelperMode,payload:unknown)=>Promise<Decoded>{
  return async(mode,payload)=>{
   if(deps.platform!=='win32')return{status:'unavailable',reason:'unsupported_platform'}
-  if(!['prepare','probe','cleanup-probe'].includes(mode))return{status:'unavailable',reason:'input_invalid'}
+  if(!['prepare','probe','cleanup-probe','materialize-fixture','cleanup-materialization'].includes(mode))return{status:'unavailable',reason:'input_invalid'}
   let input:string
   try{input=JSON.stringify(payload);if(Buffer.byteLength(input,'utf8')>4096)throw Error()}catch{return{status:'unavailable',reason:'input_invalid'}}
   try{deps.checkBootstrap()}catch{return{status:'unavailable',reason:'helper_unavailable'}}
@@ -54,7 +54,7 @@ export function createWorkspaceInvoker(deps:HelperDeps):(mode:HelperMode,payload
    const unavailable=(reason:TransportReason)=>resolve({status:'unavailable',reason})
    try{
     const child=deps.launch(RUNTIME,[HELPER,mode],{
-     shell:false,windowsHide:true,encoding:'utf8',timeout:mode==='prepare'?125000:mode==='probe'?35000:20000,maxBuffer:262144,
+     shell:false,windowsHide:true,encoding:'utf8',timeout:mode==='materialize-fixture'?185000:mode==='cleanup-materialization'?35000:mode==='prepare'?125000:mode==='probe'?35000:20000,maxBuffer:262144,
      env:{NODE_ENV:'production',SystemRoot:'C:\\Windows',WINDIR:'C:\\Windows',PATH:'C:\\Windows\\System32',DOTNET_MULTILEVEL_LOOKUP:'0',DOTNET_CLI_TELEMETRY_OPTOUT:'1',DOTNET_NOLOGO:'1'},
     },(error,stdout,stderr)=>{
      if(error){const e=error as NodeJS.ErrnoException&{killed?:boolean};unavailable(e.code==='ERR_CHILD_PROCESS_STDIO_MAXBUFFER'?'response_too_large':e.killed?'deadline_exceeded':e.code==='ENOENT'?'helper_unavailable':'helper_failed');return}

@@ -52,9 +52,9 @@
   "localResearch": {
     "source": "scripts/trading/research/databento-historical-preflight.mjs",
     "tests": "scripts/trading/research/databento-historical-preflight.test.mjs",
-    "nodeCasesPassed": 20,
+    "nodeCasesPassed": 36,
     "nodeCasesFailed": 0,
-    "testEnvironment": "Windows Node 22.22.3, offline synthetic"
+    "testEnvironment": "Windows Node 22.22.3, offline synthetic, combined 20+16 test run"
   },
   "remainingGates": [
     "GATE-01",
@@ -70,5 +70,32 @@
     "NO_ORDER_ROUTE",
     "NO_ASSUMED_SOURCE_SETTLED",
     "NO_CANONICAL_PROMOTION"
-  ]
+  ],
+  "offlineIntakeAudit": {
+    "status": "RESEARCH_ONLY_NOT_PRODUCTION",
+    "completedAt": "2026-10-19",
+    "inheritedPreflightSuiteCases": 20,
+    "newBatchAuditSuiteCases": 16,
+    "lastCombinedTest": {
+      "passed": 36,
+      "failed": 0,
+      "platform": "Windows Node 22.22.3"
+    },
+    "sourcePaths": [
+      "scripts/trading/research/databento-historical-preflight.mjs",
+      "scripts/trading/research/databento-normalized-batch-audit.mjs"
+    ],
+    "report": "docs/trading-system/research/DATABENTO_OFFLINE_INTAKE_AUDIT_2026-10-19.md",
+    "knownVendorSentinelRejected": "9223372036854775807",
+    "instrumentIdMax": 4294967295,
+    "publisherIdMax": 65535,
+    "digestIsProviderRawBytes": false,
+    "rawPayloadDecoderImplemented": false,
+    "actualInstrumentDefinitionVerified": false,
+    "exchangeCalendarVerified": false,
+    "vendorAccountConnected": false,
+    "sourceCanBeSettled": false,
+    "paidCallsMade": 0,
+    "canAuthorizeTrading": false
+  }
 }

@@ -3,7 +3,7 @@ export type CalendarRange = {fromDate:string;toDateExclusive:string;timeZone:typ
 export type CalendarTime =
  | {kind:'timed';startUtc:string;endUtc:string|null;timeZone:typeof CALENDAR_TIME_ZONE}
  | {kind:'all_day';startDate:string;endDateExclusive:string;timeZone:typeof CALENDAR_TIME_ZONE};
-export type CalendarEventDraft = {kind:'private'|'work_block';title:string;description:string;location:string;projectId:string|null;taskId:string|null;time:CalendarTime;workStatus:'planned'|'in_progress'|'done'|null};
+export type CalendarEventDraft = {kind:'private'|'work_block';title:string;description:string;location:string;projectId:string|null;taskId:string|null;time:CalendarTime;workStatus:'planned'|'in_progress'|'done'|null;repeat?:{frequency:'daily'|'weekly';until:string|null}|null};
 export type CalendarEvent = CalendarEventDraft & {id:string;version:number;status:'scheduled'|'cancelled';createdAt:string;updatedAt:string};
 export type CalendarActor = {userId:string;allowedProjectIds:string[];projectScopeAvailable?:boolean};
 export type CalendarSourceRef = {kind:'manual';eventId:string;version:number}|{kind:'social';projectId:string;postId:string;revisionId:string;sha256:string;jobId:string|null}|{kind:'workflow';projectId:string;instanceId:string}|{kind:'monthly';projectId:string;releaseMonth:string};

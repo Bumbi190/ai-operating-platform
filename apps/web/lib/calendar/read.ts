@@ -5,6 +5,7 @@ import {readCalendarSocial} from './source-social';
 import {readCalendarTasks} from './source-tasks';
 import {readCalendarWorkflows} from './source-workflows';
 import {parseCalendarRange} from './validate';
+import {projectManualOccurrences} from './occurrences';
 export async function readCalendarWeek(deps:CalendarReadDeps,actor:CalendarActor,input:CalendarRange):Promise<CalendarWeekModel>{
  const range=parseCalendarRange(input);
  const projectRead=<T>(load:()=>Promise<T>):Promise<T>=>actor.projectScopeAvailable===false?Promise.reject(Error('Calendar project scope unavailable')):load();
@@ -18,9 +19,7 @@ export async function readCalendarWeek(deps:CalendarReadDeps,actor:CalendarActor
    return (data??[]) as {id:string;name:string;color:string|null}[];
   })
  ]);
- const manualEntries:CalendarEntry[]=manual.status==='fulfilled'?manual.value.events.map(event=>({
-  id:'manual:'+event.id,source:{kind:'manual',eventId:event.id,version:event.version},title:event.title,time:event.time,projectId:event.projectId,status:event.status,editable:true,href:null,pendingChange:null,manualEvent:event
- })):[];
+ const manualEntries:CalendarEntry[]=manual.status==='fulfilled'?projectManualOccurrences(manual.value.events,range):[];
  return {range,entries:[...manualEntries,...(social.status==='fulfilled'?social.value.entries:[]),...(workflows.status==='fulfilled'?workflows.value.entries:[])],
   unscheduledTasks:tasks.status==='fulfilled'?tasks.value.tasks:[],
   projects:projects.status==='fulfilled'?projects.value.map(p=>({id:p.id,name:p.name,color:p.color??'#5a72db'})):[],

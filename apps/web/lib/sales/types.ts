@@ -1,3 +1,4 @@
+import type {EmailCopyRevision} from './email-copy'
 import type {TimingReport} from './timing/types'
 export class SalesError extends Error {
   constructor(public code:string,public status=400){super(code)}
@@ -13,4 +14,4 @@ export type SalesJobStatus='queued'|'running'|'needs_input'|'awaiting_review'|'f
 export type SalesJobSummary={id:string;projectId:string;status:SalesJobStatus;createdAt:string;attempts:number;detail:string|null}
 export type SalesDraftRevision=SalesDraft&{id:string;projectId:string;jobId:string;sha256:string;approvalId:string|null;runId:string|null;status:string;current:boolean;createdAt:string}
 export type SalesEvidence={id:string;contactId:string;source:{sourceUrl:string;text:string;observedAt:string}|null;question:string|null;provenance:string}
-export type SalesWorkspace={projectId:string;state:'ok'|'unavailable';workerState:'connected'|'not_connected';timing:TimingReport;contacts:SalesContact[];offers:SalesOfferRevision[];jobs:SalesJobSummary[];drafts:SalesDraftRevision[];evidence?:SalesEvidence[];workers?:{id:string;expiresAt:string;lastSeenAt:string|null;revoked:boolean}[];workspaceUrl:string;sendingEnabled:false}
+export type SalesWorkspace={emailTemplates?:EmailCopyRevision[];projectId:string;state:'ok'|'unavailable';workerState:'connected'|'not_connected';timing:TimingReport;contacts:SalesContact[];offers:SalesOfferRevision[];jobs:SalesJobSummary[];drafts:SalesDraftRevision[];evidence?:SalesEvidence[];workers?:{id:string;expiresAt:string;lastSeenAt:string|null;revoked:boolean}[];workspaceUrl:string;sendingEnabled:false}

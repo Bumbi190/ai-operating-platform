@@ -1,3 +1,4 @@
+import {emailCopyRaces} from './test-sales-email-copy-races.mjs'
 import {timingRaces} from './test-sales-timing-races.mjs'
 import {sendSourceRaces} from './test-sales-send-source-races.mjs'
 import {sendDispatchRaces} from './test-sales-send-races.mjs'
@@ -62,6 +63,11 @@ try{
  for(const file of timingFiles)sql(readFileSync(resolve(migrations,file),'utf8'));
  console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_contact_timing.sql'),'utf8')));
  sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_timing_fixture.sql'),'utf8'));
+ const copyFiles=readdirSync(migrations).filter(x=>x.endsWith('_sales_email_copy_versions.sql'));
+ if(copyFiles.length!==1)throw Error('Expected one email copy migration');
+ sql(readFileSync(resolve(migrations,copyFiles[0]),'utf8'));
+ console.log(sql(readFileSync(resolve(root,'apps/web/supabase/tests/sales_email_copy.sql'),'utf8')));
+
  // Re-run existing negative cases under final schema, each explicitly reviewed before preparation.
  let regression=readFileSync(resolve(root,'apps/web/supabase/tests/sales_pilot_regressions.sql'),'utf8');
  regression=regression.slice(regression.indexOf('create temp table sales_review_failures'))
@@ -70,6 +76,7 @@ try{
   .replaceAll("j:=sales_prepare_job(f->'principal',f->'input');","perform sales_fixture_review_timing((f->>'projectId')::uuid);j:=sales_prepare_job(f->'principal',f->'input');")
   .replaceAll("perform sales_prepare_job(f->'principal',f->'input');","perform sales_fixture_review_timing((f->>'projectId')::uuid);perform sales_prepare_job(f->'principal',f->'input');");
  console.log(sql(regression));
+ await emailCopyRaces({container,db,sql:s=>docker(['exec','-i',container,'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-U','postgres','-d',db],s)});
  await timingRaces({container,db,sql:s=>docker(['exec','-i',container,'psql','-X','-q','-A','-t','-v','ON_ERROR_STOP=1','-U','postgres','-d',db],s)});
 
 

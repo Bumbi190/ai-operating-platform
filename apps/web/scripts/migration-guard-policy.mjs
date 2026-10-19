@@ -72,8 +72,8 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Applied sales/managed/Strato plus exact already-applied candidate inbox reconciliation:133/119.
 // B2 inbox applied; three exact already-applied local-text/watch migrations reconciled:137/123. Frozen14/30 unchanged.
 // Seven independently applied origin/main migrations reconciled by exact SQL hashes; reply sending pending.146/132.
-export const EXPECTED_CANONICAL_SQL_COUNT = 148
-export const EXPECTED_ENFORCED_COUNT = 134
+export const EXPECTED_CANONICAL_SQL_COUNT = 149
+export const EXPECTED_ENFORCED_COUNT = 135
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

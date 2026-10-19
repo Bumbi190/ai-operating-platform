@@ -5,7 +5,7 @@
     "captured_at": "2026-09-25",
     "handlarborsen_review_p2_migration_note": "Operator-approved, project-locked, immutable human review decision events. RLS + FORCE RLS, zero policies, no anon/auth grants; service role SELECT/INSERT only, REVIEW RPC only service role. Fully isolated PG17.6 security tests passed. Live production catalog must be checked after application.",
     "handlarborsen_candidates_migration_note": "Additional candidate memory table to be verified against the scoped live production catalog after operator-approved application: project-locked, RLS and FORCE RLS, zero policies and client grants, service_role SELECT/INSERT only. Earlier table classifications remain unchanged.",
-    "total_tables": 175,
+    "total_tables": 176,
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
     "platform_tokens_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090000_platform_tokens_client_revoke.sql (Settings S0): client grants revoked, RLS on, no policy.",
     "platform_credential_events_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090100_platform_credential_events.sql (Settings S0), applied to production before this row was merged: created with RLS on and no policy, every client grant revoked, service_role holding SELECT and INSERT only, UPDATE/DELETE/TRUNCATE refused by triggers.",
@@ -83,7 +83,8 @@
     "sales_send_staged_note": "Three proposed service-only RLS tables. Disposable PostgreSQL only; NOT applied live. No policy row is installed by migration.",
     "parallel_applied_source_note": "Seven origin/main migration files imported byte-identically to already-applied SQL hashes before owner-test sending rollout. No migration reapplied; frozen14/30 unchanged. Classification of their10 tables copied from origin/main.",
     "news_review_already_applied_source_note": "Exact source from c973e36 matches live ledger20261018182224 SHA2569cfd8807; source-only reconciliation, not applied again.",
-    "sales_contact_timing_staged_note": "Superseded by scoped live observation2026-10-19 after reviewed migration SHA2568c651b4962445328991f837ff509b7146139921f8437ac2bfd7afbff0af27476, canonical20261019065056, MCP ledger20261019073559. Two tables RLS ON, zero policies/client grants; service SELECT/INSERT only, immutable update/delete triggers. All13 timing functions INVOKER, empty search_path, service-only EXECUTE. Read/evaluate/context STABLE for consistent reports; action checks remain after locks. Tables empty: zero seeded rules/history. Ledger170->171. Broader unrelated advisor warnings unchanged; two no-policy INFO entries are deliberate service-only default-deny."
+    "sales_contact_timing_staged_note": "Superseded by scoped live observation2026-10-19 after reviewed migration SHA2568c651b4962445328991f837ff509b7146139921f8437ac2bfd7afbff0af27476, canonical20261019065056, MCP ledger20261019073559. Two tables RLS ON, zero policies/client grants; service SELECT/INSERT only, immutable update/delete triggers. All13 timing functions INVOKER, empty search_path, service-only EXECUTE. Read/evaluate/context STABLE for consistent reports; action checks remain after locks. Tables empty: zero seeded rules/history. Ledger170->171. Broader unrelated advisor warnings unchanged; two no-policy INFO entries are deliberate service-only default-deny.",
+    "sales_email_copy_review": "2026-10-19 catalog verified: RLS, no client grants/policies; service SELECT/INSERT only. Ledger20261019102356. Other recorded table entries retained."
   },
   "tables": {
     "handlarborsen_competitor_review_decisions": {
@@ -1798,6 +1799,14 @@
       "service_role": true
     },
     "sales_contact_history_revisions": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "sales_email_copy_revisions": {
       "class": "SERVER_ONLY",
       "rls": true,
       "policies": 0,

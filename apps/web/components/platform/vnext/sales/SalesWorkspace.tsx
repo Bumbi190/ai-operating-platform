@@ -6,6 +6,7 @@ import {canPrepareContact,salesStatusLabel} from '@/lib/sales/view-model'
 import {StratoConnection} from './StratoConnection'
 import {SalesConnection} from './SalesConnection'
 import {SalesInbox} from './SalesInbox'
+import {SalesEmailTemplates} from './SalesEmailTemplates'
 import {SalesContactTiming} from './SalesContactTiming'
 import {SalesReplies} from './SalesReplies'
 import styles from './SalesWorkspace.module.css'
@@ -31,6 +32,7 @@ export function SalesWorkspace({initial,projectName}:{initial:Workspace;projectN
   <div className={styles.notice}><strong>Kundutskick är inte aktiverade.</strong> Här förbereder och granskar du. Testsvar kräver ett separat sändningsbeslut vid den godkända mejltexten.</div>
   {message&&<p className={styles.message} role="status">{message}</p>}
   <p className={styles.empty}>Atlas sköter förberedelserna. Öppna bara den del du vill granska eller ändra.</p>
+   <SalesEmailTemplates projectId={model.projectId} revisions={model.emailTemplates} onSaved={load}/>
    <SalesContactTiming projectId={model.projectId} contacts={model.contacts} initialTiming={model.timing} onSaved={load}/>
    <details className={styles.disclosure}><summary><h2>Kontakter</h2><span>{model.contacts.length} sparade</span></summary><div className={styles.disclosureBody}><p>Välj högst fem handlare med samma pilotnivå. Kontrollera historiken innan ett nytt första mejl förbereds.</p>
     {model.contacts.length===0?<p className={styles.empty}>Inga kontakter är importerade. Lägg in bekräftat underlag för de första handlarna.</p>:<ul className={styles.contacts}>{model.contacts.map(c=><li key={c.id}><label><input type="checkbox" checked={selected.includes(c.id)} disabled={!canPrepareContact(c,model.timing?.contacts.find(t=>t.contactId===c.id))||busy||(!selected.includes(c.id)&&selected.length>=5)} onChange={e=>setSelected(e.target.checked?[...selected,c.id]:selected.filter(id=>id!==c.id))}/><span><strong>{c.companyName}</strong> {c.branchName}<small>{c.email} · {c.pilotMonths} månaders pilot</small><small>{c.history==='not_contacted'?'Ingen tidigare kontakt bekräftad':c.history==='contacted'?'Tidigare kontakt registrerad':'Kontakthistorik behöver granskas'}{c.excluded?' · Exkluderad':''}{c.suppressed?' · Kontaktspärr':''}</small></span></label><button disabled={busy} onClick={()=>setEditing(c)}>Redigera</button></li>)}</ul>}

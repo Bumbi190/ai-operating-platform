@@ -1,4 +1,5 @@
 import 'server-only'
+import {parseEmailCopyEdit} from './email-copy'
 import {createHash,randomBytes,randomUUID} from 'node:crypto'
 import {resolveProjectAccess,type ProjectAccess} from '@/lib/auth/project-access'
 import {createAdminClient} from '@/lib/supabase/admin'
@@ -23,11 +24,13 @@ export function createSalesApi(deps:Dependencies){return async(request:Request):
    const result=url.searchParams.has('jobId')?await readSalesJob(deps.db(),p,{projectId,jobId:salesId(url.searchParams.get('jobId'))}):await readSalesWorkspace(deps.db(),p,projectId)
    return Response.json(result,{headers:salesHeaders})
   }
-  const v=await readBody(request);fields(v,['operation','projectId','id','companyName','branchName','email','websiteUrl','history','historySource','pilotMonths','confirmed','excluded','suppressed','expectedVersion','senderEmail','offerText','productFacts','freeMonths','conversationId','contactIds','offerRevisionId','idempotencyKey','revisionId','draft','jobId','workerId','action'])
+  const v=await readBody(request);fields(v,['operation','projectId','id','companyName','branchName','email','websiteUrl','history','historySource','pilotMonths','confirmed','excluded','suppressed','expectedVersion','senderEmail','offerText','productFacts','freeMonths','conversationId','contactIds','offerRevisionId','idempotencyKey','revisionId','draft','jobId','workerId','action','templateKey','expectedPreviousId','subject','body'])
   const projectId=salesId(v.projectId);scoped(p,projectId);if(!deps.enabled(projectId))throw new SalesError('NOT_FOUND',404)
   const {operation,...input}=v;const db=deps.db();let result:unknown
   const call=(name:string,value:unknown)=>salesRpc(db,name,{p_principal:p,p_input:value})
-  if(operation==='save_contact'){
+  if(operation==='save_email_copy'){
+   result=await call('sales_email_copy_save',parseEmailCopyEdit(input))
+  }else if(operation==='save_contact'){
    fields(input,['projectId','id','companyName','branchName','email','websiteUrl','history','historySource','pilotMonths','confirmed','excluded','suppressed','expectedVersion'])
    if(!['not_contacted','contacted','unknown'].includes(String(input.history))||![2,6,12].includes(Number(input.pilotMonths))||!Number.isSafeInteger(input.expectedVersion)||Number(input.expectedVersion)<0)throw new SalesError('INVALID_BODY')
    result=await call('sales_save_contact',{projectId,id:salesId(input.id),companyName:text(input.companyName,200),branchName:text(input.branchName,200,0),email:normalizeSalesEmail(text(input.email,254)),websiteUrl:website(input.websiteUrl),history:input.history,historySource:text(input.historySource,2000),pilotMonths:Number(input.pilotMonths),confirmed:bool(input.confirmed),excluded:bool(input.excluded),suppressed:bool(input.suppressed),expectedVersion:input.expectedVersion})

@@ -52,7 +52,7 @@ const profile=(formation)=>Object.freeze({
  canTrade:false,
  canonicalApproved:false
 })
-const frozenRow=(id,manipulationCompleteAt,bOnly,aPlusB,firstGapOpen,firstGapComplete)=>{
+const frozenRow=(id,manipulationCompleteAt,firstGapOpen,firstGapComplete)=>{
  const outcomeB=view(inspectIfvg(makeData(4),{manipulationCompleteAt,
    crossing:'CLOSE_BEYOND_FAR_EDGE',formation:'AFTER_MANIPULATION'}))
  const outcomeAB=view(inspectIfvg(makeData(4),{manipulationCompleteAt,
@@ -81,11 +81,11 @@ const frozenRow=(id,manipulationCompleteAt,bOnly,aPlusB,firstGapOpen,firstGapCom
  */
 export function runIfvgBOnlyStudy(){
  const caseA=frozenRow('BASE_GAP_CONFIRMED_BEFORE_OR_AT_MANIPULATION',
-   time(3),null,null,time(0),time(3))
+   time(3),time(0),time(3))
  const caseB=frozenRow('BASE_GAP_CONFIRMED_AFTER_MANIPULATION',
-   time(1),null,null,time(0),time(3))
+   time(1),time(0),time(3))
  const straddle=frozenRow('GAP_THREE_CANDLES_STRADDLE_MANIPULATION',
-   time(2),null,null,time(0),time(3))
+   time(2),time(0),time(3))
  const caseRows=Object.freeze([caseA,caseB,straddle])
  return Object.freeze({
   schemaVersion:'research.ifvg_b_only_study.v0.1',
@@ -115,6 +115,3 @@ export function runIfvgBOnlyStudy(){
  })
 }
 
-if (process.argv[1] && import.meta.url===new URL('file://'+process.argv[1]).href) {
- console.log(JSON.stringify(runIfvgBOnlyStudy(),null,2))
-}

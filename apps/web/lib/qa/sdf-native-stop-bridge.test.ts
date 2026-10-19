@@ -28,7 +28,7 @@ describe('controlled helper framing and spawn',()=>{
  it('refuses before spawning on platform, bootstrap or payload problems',async()=>{
   const m=await launcherModule()
   for(const [over,reason,body] of [[{platform:'linux'},'unsupported_platform',payload],[{checkBootstrap:()=>{throw Error('hash')}},'helper_unavailable',payload],[{},'input_invalid',{pad:'x'.repeat(4100)}],[{},'input_invalid',undefined]] as const){
-   const spawns:any[]=[];const launch=m.createControlledLauncher({platform:'win32',checkBootstrap:()=>{},spawn:(...a:any[])=>{spawns.push(a);return new FakeChild()},...over})
+   const spawns:any[]=[];const launch=m.createControlledLauncher({platform:'win32',checkBootstrap:()=>{},spawn:(...a:any[])=>{spawns.push(a);return new FakeChild()},...(over as any)})
    expect(launch(body,{checkpoint:()=>{}})).toEqual({status:'unavailable',reason});expect(spawns).toHaveLength(0)
   }
  })
@@ -88,4 +88,122 @@ describe('controlled helper framing and spawn',()=>{
   p.kill();p.kill();expect(h.child.kills).toBe(1);h.child.close(null);await p.done;p.kill();expect(h.child.kills).toBe(1)
  })
  it('never writes after the child stdin errors',async()=>{const m=await launcherModule(),h=harness(m),p=h.launched.process;h.child.stdin.destroy(Object.assign(Error('EPIPE'),{code:'EPIPE'}));await flush();expect(()=>{p.continue(1);p.stop()}).not.toThrow();h.child.close(null);expect((await p.done).kind).toBe('violation')})
+})
+
+import {leaseFixture,claimFixture} from './fixtures/sdf-execution-lease-fixtures'
+import {makeMaterializationReport,makeMaterializationCleanup,makeSourceManifest} from './fixtures/sdf-windows-source-fixtures'
+async function bridgeModule(){const m=await import('../../../code-broker/src/runtime/native-stop-bridge').catch(()=>({})) as any;expect(m.createNativeStopBridge).toBeTypeOf('function');return m}
+async function guardFactory():Promise<any>{return(await import('../../../code-broker/src/runtime/execution-lease-guard')).createExecutionLeaseGuard}
+const ATTEMPT='33333333-3333-4333-8333-333333333333'
+const bridgeRequest=()=>({schema:'sdf.windows_workspace_request.v1',...makeSourceManifest().binding})
+const live=(c:number)=>({requestCounter:c,httpStatus:200,body:{status:'live',lease:leaseFixture()}})
+const refused=(c:number)=>({requestCounter:c,httpStatus:409,body:{status:'unavailable',reason:'lease_not_live'}})
+/** Real irreversible guard with fake clock/read; reads decide liveness per call number. */
+async function realGuard(decide:(call:number)=>'live'|'refuse'|'hang'='live' as any){
+ const make=await guardFactory();let mono=0,wall=1800000000000,counter=1,calls=0,seq=0
+ const timers=new Map<number,{at:number;fn:()=>void}>()
+ const lease=leaseFixture()
+ const guard=make({claim:{...claimFixture(),requestCounter:1,leaseUntil:new Date(lease.leaseUntilMs).toISOString()},expected:{projectId:lease.projectId,binding:structuredClone(lease.binding),authorityPins:structuredClone(lease.authorityPins)}},
+  {monotonicNow:()=>mono,wallNow:()=>wall,nextCounter:()=>++counter,schedule:(fn:()=>void,d:number)=>{const id=++seq;timers.set(id,{at:mono+d,fn});return()=>timers.delete(id)},
+   read:async(c:number)=>{const n=++calls,d=typeof decide==='function'?decide(n):'live';if(d==='hang')return new Promise(()=>{});return d==='live'?live(c):refused(c)}})
+ return{guard,get calls(){return calls},async advance(ms:number){mono+=ms;wall+=ms;for(let n=0;n<20;n++){const due=[...timers.entries()].filter(([,t])=>t.at<=mono).sort((a,b)=>a[1].at-b[1].at);if(!due.length)break;timers.delete(due[0][0]);due[0][1].fn();await flush()}await flush()}}
+}
+function fakeBridge(m:any,over:any={}){
+ const s={launched:0,reserved:[] as any[],continues:[] as number[],stops:0,kills:0,cleanups:[] as any[],payload:null as any,handlers:null as any,resolve:null as any,timers:[] as {ms:number;fn:()=>void;cancelled:boolean}[],cleanupResult:{status:'observed',report:makeMaterializationCleanup()} as any}
+ const bridge=m.createNativeStopBridge({platform:'win32',nextAttempt:()=>ATTEMPT,
+  reserve:(r:any,a:string)=>{s.reserved.push([r,a]);if(over.reserveFailure)throw Error('private')},
+  launch:(payload:any,handlers:any)=>{s.launched++;s.payload=payload;s.handlers=handlers;if(over.launchUnavailable)return{status:'unavailable',reason:'helper_unavailable'};const done=new Promise(r=>{s.resolve=r});return{status:'launched',process:{pid:7,continue:(n:number)=>s.continues.push(n),stop:()=>{s.stops++},kill:()=>{s.kills++},done}}},
+  cleanup:async(input:any,attempt:string)=>{s.cleanups.push([input,attempt]);return s.cleanupResult},
+  schedule:(fn:()=>void,ms:number)=>{const t={ms,fn,cancelled:false};s.timers.push(t);return()=>{t.cancelled=true}},...over.deps})
+ return{bridge,s,async checkpoint(seq:number){await s.handlers.checkpoint(seq,PHASES[seq-1]);await flush()}}
+}
+const stoppedReport=(reason='stop_requested')=>{const r:any=makeMaterializationReport();r.status='stopped';r.reason=reason;r.fixture=null;r.containerRemoved=true;r.volumeRemoved=true;r.attemptId=ATTEMPT;return r}
+const verifiedReport=()=>{const r:any=makeMaterializationReport();r.attemptId=ATTEMPT;return r}
+
+describe('guard-driven native stop bridge',()=>{
+ it('makes no reservation or launch unless the guard is live first',async()=>{
+  const m=await bridgeModule()
+  const refusedGuard=await realGuard(()=>'refuse'),a=fakeBridge(m)
+  expect(await a.bridge(bridgeRequest(),refusedGuard.guard)).toEqual({status:'not_started',reason:'lease_not_live'});expect(a.s.reserved).toHaveLength(0);expect(a.s.launched).toBe(0)
+  const aborted=await realGuard(),b=fakeBridge(m);aborted.guard.stop()
+  expect(await b.bridge(bridgeRequest(),aborted.guard)).toEqual({status:'not_started',reason:'lease_not_live'});expect(b.s.reserved).toHaveLength(0);expect(aborted.calls).toBe(0)
+ })
+ it('refuses invalid input and other platforms before touching the guard',async()=>{
+  const m=await bridgeModule(),g=await realGuard()
+  const a=fakeBridge(m);expect(await a.bridge({...bridgeRequest(),root:'C:/'},g.guard)).toEqual({status:'not_started',reason:'input_invalid'})
+  const b=fakeBridge(m,{deps:{platform:'linux'}});expect(await b.bridge(bridgeRequest(),g.guard)).toEqual({status:'not_started',reason:'unsupported_platform'})
+  expect(g.calls).toBe(0);expect(a.s.launched+b.s.launched).toBe(0);g.guard.stop()
+ })
+ it('reserves durably before one launch and refuses to launch after a failed reservation',async()=>{
+  const m=await bridgeModule(),g=await realGuard(),f=fakeBridge(m,{reserveFailure:true})
+  expect(await f.bridge(bridgeRequest(),g.guard)).toEqual({status:'not_started',reason:'helper_unavailable'});expect(f.s.launched).toBe(0)
+  const h=fakeBridge(m,{launchUnavailable:true});expect(await h.bridge(bridgeRequest(),g.guard)).toEqual({status:'not_started',reason:'helper_unavailable'});expect(h.s.reserved).toHaveLength(1)
+  g.guard.stop()
+ })
+ it('continues each checkpoint only after a live guard read and returns the observed report',async()=>{
+  const m=await bridgeModule(),g=await realGuard(),f=fakeBridge(m),run=f.bridge(bridgeRequest(),g.guard);await flush()
+  expect(f.s.reserved).toEqual([[{...bridgeRequest()},ATTEMPT]].map(([r,a])=>[expect.objectContaining({workId:(r as any).workId}),a]))
+  expect(f.s.payload).toEqual({...bridgeRequest(),schema:'sdf.windows_materialization_request.v1',attemptId:ATTEMPT})
+  for(let n=1;n<=6;n++){const before=g.calls;await f.checkpoint(n);expect(g.calls).toBe(before+1)}
+  expect(f.s.continues).toEqual([1,2,3,4,5,6]);f.s.resolve({kind:'report',value:verifiedReport()})
+  const r=await run;expect(r.status).toBe('observed');expect(r.report.status).toBe('verified_for_fixture');expect(f.s.stops).toBe(0);expect(f.s.cleanups).toHaveLength(0);expect(f.s.launched).toBe(1);g.guard.stop()
+ })
+ for(const at of [1,2,3,4,5,6])it('stops instead of continuing when the guard refuses at checkpoint '+at,async()=>{
+  const m=await bridgeModule(),g=await realGuard(n=>n<=at?'live':'refuse'),f=fakeBridge(m),run=f.bridge(bridgeRequest(),g.guard);await flush()
+  for(let n=1;n<=at;n++)await f.checkpoint(n)
+  expect(f.s.continues).toEqual(Array.from({length:at-1},(_,i)=>i+1));expect(f.s.stops).toBeGreaterThanOrEqual(1);expect(g.guard.signal.aborted).toBe(true)
+  f.s.resolve({kind:'report',value:stoppedReport()})
+  expect(await run).toEqual({status:'stopped',attemptId:ATTEMPT,reason:'lease_lost',cleanup:'confirmed',containerRemoved:true,volumeRemoved:true});expect(f.s.cleanups).toHaveLength(0)
+  expect(await g.guard.checkpoint()).toBe('stopped')
+ })
+ it('sends stop immediately when the guard aborts mid-phase',async()=>{
+  const m=await bridgeModule(),g=await realGuard(),f=fakeBridge(m),run=f.bridge(bridgeRequest(),g.guard);await flush();await f.checkpoint(1);await f.checkpoint(2)
+  expect(f.s.stops).toBe(0);g.guard.stop();await flush();expect(f.s.stops).toBe(1);expect(f.s.timers.filter(t=>!t.cancelled).map(t=>t.ms)).toEqual([35000])
+  f.s.resolve({kind:'report',value:stoppedReport()});const r=await run;expect(r).toMatchObject({status:'stopped',reason:'lease_lost',cleanup:'confirmed'});expect(f.s.timers.every(t=>t.cancelled)).toBe(true)
+ })
+ it('stops when the guard window expires during a long phase without a refresh',async()=>{
+  const m=await bridgeModule(),g=await realGuard(n=>n===1||n===2?'live':'hang'),f=fakeBridge(m),run=f.bridge(bridgeRequest(),g.guard);await flush();await f.checkpoint(1)
+  await g.advance(5000);await g.advance(4000);expect(g.guard.signal.aborted).toBe(true);expect(f.s.stops).toBe(1)
+  f.s.resolve({kind:'report',value:stoppedReport()});expect(await run).toMatchObject({status:'stopped',reason:'lease_lost'})
+ })
+ it('discards a verified report that arrives after stop and keeps the guard aborted',async()=>{
+  const m=await bridgeModule(),g=await realGuard(),f=fakeBridge(m),run=f.bridge(bridgeRequest(),g.guard);await flush();for(let n=1;n<=6;n++)await f.checkpoint(n)
+  g.guard.stop();await flush();f.s.resolve({kind:'report',value:verifiedReport()})
+  const r=await run;expect(r).toEqual({status:'stopped',attemptId:ATTEMPT,reason:'lease_lost',cleanup:'confirmed',containerRemoved:true,volumeRemoved:true});expect(JSON.stringify(r)).not.toContain('fixture');expect(await g.guard.checkpoint()).toBe('stopped')
+ })
+ it('treats a report observed after guard expiry as stopped',async()=>{
+  const m=await bridgeModule(),g=await realGuard(n=>n<=7?'live':'refuse'),f=fakeBridge(m),run=f.bridge(bridgeRequest(),g.guard);await flush();for(let n=1;n<=6;n++)await f.checkpoint(n)
+  f.s.resolve({kind:'report',value:verifiedReport()});const r=await run;expect(r).toMatchObject({status:'stopped',reason:'lease_lost'});expect(r.report).toBeUndefined()
+ })
+ it('kills a helper that does not report within 35000ms of stop, then cleans exactly once',async()=>{
+  const m=await bridgeModule(),g=await realGuard(),f=fakeBridge(m),run=f.bridge(bridgeRequest(),g.guard);await flush();await f.checkpoint(1);g.guard.stop();await flush()
+  const grace=f.s.timers.find(t=>!t.cancelled)!;expect(grace.ms).toBe(35000);expect(f.s.kills).toBe(0);grace.fn();expect(f.s.kills).toBe(1)
+  f.s.resolve({kind:'violation',reason:'exited_without_report'});const r=await run
+  expect(r).toEqual({status:'stopped',attemptId:ATTEMPT,reason:'lease_lost',cleanup:'confirmed',containerRemoved:true,volumeRemoved:true});expect(f.s.cleanups).toEqual([[expect.objectContaining({workId:bridgeRequest().workId}),ATTEMPT]]);expect(f.s.launched).toBe(1)
+ })
+ const failedCleanup=()=>{const r:any=makeMaterializationCleanup();r.status='failed';r.reason='cleanup_retained';r.containerRemoved=false;r.volumeRemoved=false;return r}
+ for(const [result,cleanup] of [[{status:'observed',report:makeMaterializationCleanup()},'confirmed'],[{status:'observed',report:failedCleanup()},'retained'],[{status:'unavailable',reason:'deadline_exceeded',attemptId:ATTEMPT},'unknown']] as const)it('maps a protocol violation to one cleanup with outcome '+cleanup,async()=>{
+  const m=await bridgeModule(),g=await realGuard(),f=fakeBridge(m);f.s.cleanupResult=result;const run=f.bridge(bridgeRequest(),g.guard);await flush();await f.checkpoint(1)
+  f.s.resolve({kind:'violation',reason:'frame_invalid'});const r=await run
+  expect(r).toMatchObject({status:'stopped',attemptId:ATTEMPT,reason:'control_lost',cleanup});expect(f.s.kills).toBe(1);expect(f.s.cleanups).toHaveLength(1);expect(f.s.launched).toBe(1)
+  if(cleanup==='unknown')expect(r).toMatchObject({containerRemoved:null,volumeRemoved:null});g.guard.stop()
+ })
+ it('reports a native control_lost stop while the guard is live as stopped, not observed',async()=>{
+  const m=await bridgeModule(),g=await realGuard(),f=fakeBridge(m),run=f.bridge(bridgeRequest(),g.guard);await flush();await f.checkpoint(1)
+  f.s.resolve({kind:'report',value:stoppedReport('control_lost')});expect(await run).toMatchObject({status:'stopped',reason:'control_lost',cleanup:'confirmed'});expect(f.s.cleanups).toHaveLength(0);g.guard.stop()
+ })
+ it('confirms absence with one cleanup when a stopped attempt reports an ambiguous failure',async()=>{
+  const m=await bridgeModule(),g=await realGuard(),f=fakeBridge(m),run=f.bridge(bridgeRequest(),g.guard);await flush();await f.checkpoint(1);g.guard.stop();await flush()
+  const failed:any=makeMaterializationReport();failed.status='failed';failed.reason='deadline_exceeded';failed.fixture=null;failed.containerRemoved=false;failed.volumeRemoved=false;failed.attemptId=ATTEMPT
+  f.s.resolve({kind:'report',value:failed});expect(await run).toMatchObject({status:'stopped',reason:'lease_lost',cleanup:'confirmed'});expect(f.s.cleanups).toHaveLength(1)
+ })
+ it('rejects a report for another attempt or binding as a violation',async()=>{
+  const m=await bridgeModule(),g=await realGuard(),f=fakeBridge(m),run=f.bridge(bridgeRequest(),g.guard);await flush();for(let n=1;n<=6;n++)await f.checkpoint(n)
+  const other=verifiedReport();other.attemptId='44444444-4444-4444-8444-444444444444';f.s.resolve({kind:'report',value:other})
+  expect(await run).toMatchObject({status:'stopped',reason:'control_lost'});expect(f.s.cleanups).toHaveLength(1);g.guard.stop()
+ })
+ it('never carries the claim token or a publication field in any result',async()=>{
+  const m=await bridgeModule(),g=await realGuard(),f=fakeBridge(m),run=f.bridge(bridgeRequest(),g.guard);await flush();await f.checkpoint(1);g.guard.stop();await flush();f.s.resolve({kind:'report',value:stoppedReport()})
+  const text=JSON.stringify(await run)+JSON.stringify(f.s.payload);expect(text).not.toContain(claimFixture().claimToken);expect(text).not.toMatch(/publish|ready|merge|productionAuthority":true/)
+ })
 })

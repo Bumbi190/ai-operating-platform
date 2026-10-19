@@ -20,7 +20,7 @@ describe.runIf(required&&process.platform==='win32')('native owned materializati
   const {stdout,stderr}=await promisify(execFile)('C:\\Program Files\\dotnet\\dotnet.exe',[SMOKE,mode],{cwd:ROOT,shell:false,windowsHide:true,timeout:30000,maxBuffer:262144,env:{...process.env,SDF_WINDOWS_FIXTURE_ROOT:WS}});expect(stderr).toBe('');const r=JSON.parse(stdout);expect(r.passed).toBe(r.names.length);expect(r.passed).toBeGreaterThan(0)
  },35000)
 })
-import {runWindowsSourceFixture,cleanupWindowsSourceFixture} from '../../../code-broker/src/isolation/windows/source-fixture'
+import {cleanupWindowsSourceFixture} from '../../../code-broker/src/isolation/windows/source-fixture'
 import {parseMaterializationReport} from '../../../code-broker/src/isolation/windows/source-contracts'
 
 describe.runIf(required&&process.platform==='win32')('actual offline source fixture',()=>{
@@ -63,7 +63,7 @@ describe.runIf(required&&process.platform==='win32')('actual offline source fixt
    const intent=JSON.parse(readFileSync(intentPath,'utf8'))
    if(intent.phase!=='prepared'||intent.imageId!==image.imageId||JSON.stringify(intent.request)!==JSON.stringify(r))throw Error('Attempt already dispatched or unapproved')
    writeFileSync(intentPath,JSON.stringify({...intent,phase:'dispatched-once',at:new Date().toISOString()},null,2))
-   const outcome=await runWindowsSourceFixture(r)
+   const outcome:any=(()=>{throw Error('Historical one-shot dispatch was removed by the cooperative native stop bridge; see sdf-native-stop-process.test.ts')})()
    writeFileSync(proofPath,JSON.stringify({request:r,outcome,imageId:image.imageId,number:active.number,recordedAt:new Date().toISOString()},null,2),{flag:'wx'})
   }
   const p=JSON.parse(readFileSync(proofPath,'utf8'));expect(p.outcome.status,JSON.stringify(p.outcome)).toBe('observed')

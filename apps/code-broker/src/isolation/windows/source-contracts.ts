@@ -48,9 +48,11 @@ export function parseSourceManifest(input:unknown):SourceManifest{
 export function canonicalSourceManifest(input:unknown):string{return JSON.stringify(parseSourceManifest(input))}
 
 export const MATERIALIZATION_REASONS=['input_invalid','host_unqualified','workspace_unverified','stale_base','source_policy_denied','secret_pattern_found','source_limit','blob_unavailable','toolchain_unprovisioned','toolchain_mismatch','attempt_in_progress','resource_conflict','peer_changed','protocol_invalid','archive_invalid','materialization_unverified','fixture_failed','deadline_exceeded','cleanup_retained'] as const
+/** A cooperative stop: no fixture, and both flags mean the attempt's resources are confirmed absent. */
+export const STOP_REASONS=['stop_requested','control_lost'] as const
 export interface NodeFixtureResult{schema:'sdf.node_fixture_result.v1';uid:10001;gid:10001;nodeVersion:'22.23.3';typeScriptVersion:'5.9.3';vitestVersion:'2.1.9';totalTests:number;passedTests:number;failedTests:0;skippedTests:0;exitCode:0;durationMs:number;sourceManifestSha256:string;beforeAfterSourceEqual:true;stdoutSha256:string;stderrSha256:string;redactedStdout:string;redactedStderr:string}
 export interface MaterializationReport{
- schema:'sdf.windows_materialization_report.v1';status:'verified_for_fixture'|'blocked'|'failed'|'cleaned';attemptId:string;binding:WorkspaceBinding;reason:typeof MATERIALIZATION_REASONS[number]|null;sourcePolicyId:'sdf.windows_source_fixture.v1';
+ schema:'sdf.windows_materialization_report.v1';status:'verified_for_fixture'|'blocked'|'failed'|'cleaned'|'stopped';attemptId:string;binding:WorkspaceBinding;reason:typeof MATERIALIZATION_REASONS[number]|typeof STOP_REASONS[number]|null;sourcePolicyId:'sdf.windows_source_fixture.v1';
  manifest:SourceManifest|null;manifestSha256:string|null;toolchainProfileHash:string|null;imageId:string|null;backendIdentityHash:string|null;daemonIdentityHash:string|null;fixture:NodeFixtureResult|null;containerRemoved:boolean;volumeRemoved:boolean;observedAt:string;productionAuthority:false
 }
 export type MaterializationReadResult={status:'observed';report:MaterializationReport}|{status:'unavailable';reason:import('./workspace-contracts.js').TransportReason;attemptId:string|null}
@@ -77,7 +79,8 @@ export function parseMaterializationReport(input:unknown):MaterializationReport{
   ensure(x.reason===null&&x.manifest!==null&&x.manifestSha256!==null&&x.toolchainProfileHash!==null&&x.imageId!==null&&x.backendIdentityHash!==null&&x.daemonIdentityHash!==null&&x.containerRemoved===true&&x.volumeRemoved===true);parseFixture(x.fixture,x.manifestSha256)
  }else{
   ensure(x.fixture===null)
-  if(x.status==='cleaned')ensure(x.reason===null&&x.manifest===null&&x.manifestSha256===null&&x.containerRemoved===true&&x.volumeRemoved===true&&x.backendIdentityHash!==null&&x.daemonIdentityHash!==null)
+  if(x.status==='stopped')ensure((STOP_REASONS as readonly unknown[]).includes(x.reason)&&x.containerRemoved===true&&x.volumeRemoved===true)
+  else if(x.status==='cleaned')ensure(x.reason===null&&x.manifest===null&&x.manifestSha256===null&&x.containerRemoved===true&&x.volumeRemoved===true&&x.backendIdentityHash!==null&&x.daemonIdentityHash!==null)
   else ensure((x.status==='blocked'||x.status==='failed')&&(MATERIALIZATION_REASONS as readonly unknown[]).includes(x.reason))
  }
  return JSON.parse(JSON.stringify(x))

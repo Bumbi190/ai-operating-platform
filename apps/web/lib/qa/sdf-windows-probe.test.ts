@@ -59,7 +59,7 @@ describe('internal bounded native transport',()=>{
  it('uses separate probe and cleanup deadlines',async()=>{
   const f=setup();await f.invoke('probe',{schema:'sdf.windows_probe_request.v1',attemptId:ATTEMPT});await f.invoke('cleanup-probe',{schema:'sdf.windows_probe_request.v1',attemptId:ATTEMPT});expect(f.seen.map(v=>v.opts.timeout)).toEqual([35000,20000])
  })
- it('uses closed materialization and cleanup modes with separate bounded deadlines',async()=>{const f=setup();await f.invoke('materialize-fixture',{attemptId:ATTEMPT});await f.invoke('cleanup-materialization',{attemptId:ATTEMPT});expect(f.seen.map(v=>v.opts.timeout)).toEqual([185000,35000]);expect(f.seen.map(v=>v.args[1])).toEqual(['materialize-fixture','cleanup-materialization']);expect((await f.invoke('shell' as any,{})).status).toBe('unavailable');expect(f.seen).toHaveLength(2)})
+ it('refuses one-shot materialization and keeps the bounded cleanup deadline',async()=>{const f=setup();expect(await f.invoke('materialize-fixture' as any,{attemptId:ATTEMPT})).toEqual({status:'unavailable',reason:'input_invalid'});await f.invoke('cleanup-materialization',{attemptId:ATTEMPT});expect(f.seen.map(v=>v.opts.timeout)).toEqual([35000]);expect(f.seen.map(v=>v.args[1])).toEqual(['cleanup-materialization']);expect((await f.invoke('shell' as any,{})).status).toBe('unavailable');expect(f.seen).toHaveLength(1)})
  it('does not launch on unsupported platform or invalid bootstrap',async()=>{
   for(const options of [{platform:'linux' as const},{bootstrapError:true}]){const f=setup(options);expect((await f.invoke('prepare',makeWorkspaceRequest())).status).toBe('unavailable');expect(f.seen).toEqual([])}
  })

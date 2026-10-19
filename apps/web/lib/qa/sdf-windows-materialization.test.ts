@@ -55,20 +55,18 @@ describe('strict materialization evidence',()=>{
  it('cannot promote cleanup to execution proof',()=>{const r=makeMaterializationCleanup();r.status='verified_for_fixture';expect(()=>parseMaterializationReport(r)).toThrow()})
 })
 describe('source-owned fixture facade',()=>{
- function setup(options:{platform?:NodeJS.Platform;reserveFailure?:boolean;response?:any}={}){
+ // Execution moved to the guarded native stop bridge (cooperative-native-stop); this facade only cleans a reserved attempt.
+ function setup(options:{platform?:NodeJS.Platform;response?:any}={}){
   const events:any[]=[]
-  const runner=createSourceFixtureRunner({platform:options.platform??'win32',nextAttempt:()=>ATTEMPT,reserve:(r:any,a:string)=>{events.push(['reserve',r,a]);if(options.reserveFailure)throw Error('private')},invoke:async(mode:string,payload:unknown)=>{events.push(['invoke',mode,payload]);return options.response??{status:'decoded',value:makeMaterializationReport()}}})
+  const runner=createSourceFixtureRunner({platform:options.platform??'win32',invoke:async(mode:string,payload:unknown)=>{events.push(['invoke',mode,payload]);return options.response??{status:'decoded',value:makeMaterializationCleanup()}}})
   return {runner,events}
  }
- it('durably reserves the attempt before invoking a fixed mode',async()=>{const f=setup();expect((await f.runner.run(request())).status).toBe('observed');expect(f.events.map(e=>e[0])).toEqual(['reserve','invoke']);expect(f.events[1][1]).toBe('materialize-fixture');expect(f.events[1][2]).toEqual({...request(),schema:'sdf.windows_materialization_request.v1',attemptId:ATTEMPT})})
- it('makes no launch on unsupported platform or invalid binding',async()=>{const f=setup({platform:'linux'});expect(await f.runner.run(request())).toEqual({status:'unavailable',reason:'unsupported_platform',attemptId:null});expect(f.events).toEqual([]);const g=setup();expect((await g.runner.run({...request(),root:'private'})).status).toBe('unavailable');expect(g.events).toEqual([])})
- it('does not launch after failed reservation',async()=>{const f=setup({reserveFailure:true});expect(await f.runner.run(request())).toEqual({status:'unavailable',reason:'helper_failed',attemptId:ATTEMPT});expect(f.events).toHaveLength(1)})
- it('keeps a lost reply attempt without automatic replay',async()=>{const f=setup({response:{status:'unavailable',reason:'deadline_exceeded'}});expect(await f.runner.run(request())).toEqual({status:'unavailable',reason:'deadline_exceeded',attemptId:ATTEMPT});expect(f.events.filter(e=>e[0]==='invoke')).toHaveLength(1)})
- it('rejects another binding or attempt',async()=>{for(const mutate of [(r:any)=>r.attemptId='44444444-4444-4444-8444-444444444444',(r:any)=>r.binding.fence++]){const r=makeMaterializationReport();mutate(r);const f=setup({response:{status:'decoded',value:r}});expect((await f.runner.run(request())).status).toBe('unavailable')}})
- it('never substitutes cleanup and execution outcomes',async()=>{const f=setup({response:{status:'decoded',value:makeMaterializationCleanup()}});expect((await f.runner.run(request())).status).toBe('unavailable');const g=setup();expect((await g.runner.cleanup(request(),ATTEMPT)).status).toBe('unavailable')})
- it('cleanup reuses the identifier without reserving or creating a new attempt',async()=>{const f=setup({response:{status:'decoded',value:makeMaterializationCleanup()}});expect((await f.runner.cleanup(request(),ATTEMPT)).status).toBe('observed');expect(f.events).toEqual([['invoke','cleanup-materialization',{...request(),schema:'sdf.windows_materialization_cleanup.v1',attemptId:ATTEMPT}]])})
+ it('offers no uncontrolled materialization run',()=>{const f=setup();expect(Object.keys(f.runner)).toEqual(['cleanup']);expect((f.runner as any).run).toBeUndefined()})
+ it('makes no cleanup launch on unsupported platform or invalid binding',async()=>{const f=setup({platform:'linux'});expect(await f.runner.cleanup(request(),ATTEMPT)).toEqual({status:'unavailable',reason:'unsupported_platform',attemptId:null});expect(f.events).toEqual([]);const g=setup();expect((await g.runner.cleanup({...request(),root:'private'},ATTEMPT)).status).toBe('unavailable');expect(g.events).toEqual([])})
+ it('rejects another binding or attempt',async()=>{for(const mutate of [(r:any)=>r.attemptId='44444444-4444-4444-8444-444444444444',(r:any)=>r.binding.fence++]){const r=makeMaterializationCleanup();mutate(r);const f=setup({response:{status:'decoded',value:r}});expect((await f.runner.cleanup(request(),ATTEMPT)).status).toBe('unavailable')}})
+ it('never substitutes an execution or stop outcome for cleanup',async()=>{const f=setup({response:{status:'decoded',value:makeMaterializationReport()}});expect((await f.runner.cleanup(request(),ATTEMPT)).status).toBe('unavailable')})
+ it('cleanup reuses the identifier without reserving or creating a new attempt',async()=>{const f=setup();expect((await f.runner.cleanup(request(),ATTEMPT)).status).toBe('observed');expect(f.events).toEqual([['invoke','cleanup-materialization',{...request(),schema:'sdf.windows_materialization_cleanup.v1',attemptId:ATTEMPT}]])})
 })
-
 describe('bounded fixed-runner failure evidence',()=>{
  it('identifies the failed fixed phase without publishing an exception or source',()=>{
   const raw='password="'+('p'.repeat(24))+'" sk-proj-'+('x'.repeat(24))+' AKIAABCDEFGHIJKLMNOP'

@@ -1,0 +1,31 @@
+# Offline pattern-candidate harness — NOT production trading
+
+**Scope:** Research only. No Strategy Engine import, no API, no market feed, no Risk Engine, no broker connection, no proposal, no order execution.
+
+These scripts investigate unresolved **GATE-01 (iFVG)** and **GATE-02 (CISD)**. Every returned object is marked `NON_CANONICAL_RESEARCH`; any candidate explicitly carries `entryPermitted:false`. A passing test means that a specific **interpretation** is consistent on synthetic examples. It does **not** mean the interpretation is correct, profitable, or permitted for live strategy code.
+
+## Run locally (no npm install or billable providers)
+
+```bash
+node --test scripts/trading/research/pattern-candidates.test.mjs scripts/trading/research/pattern-candidates-mirror.test.mjs
+```
+
+The implementation accepts only `source: 'SYNTHETIC'`, `calendar: 'SYNTHETIC_CONTIGUOUS'`, `settled:true`, fully complete minute candles and exact decimal *strings*. Real exchange gaps must not be shoehorned into this synthetic-contiguity assumption: production data needs the canonical ContractCalendar, SessionCalendar and actual 1m observation-source contract.
+
+## Explicit alternatives; neither is approved
+
+- **Inversion FVG:** a standard three-closed-candle gap (wick boundaries); a *later* candle either CLOSES strictly beyond the opposite far edge (`CLOSE_BEYOND_FAR_EDGE`) or merely WICKS past it (`WICK_BEYOND_FAR_EDGE`). The two can disagree by a bar or more. Whether the base gap may predate the manipulation is separately tested with `ANY` vs `AFTER_MANIPULATION`.
+- **CISD:** the last opposing-color candle run uses either its FIRST or LAST candle open as the crossing reference. The first reference is not interchangeable with the last. This harness does **not** prove that the selected run is the correct swing/leg entering the manipulated extreme.
+- Inversions from more than one active FVG on the same candle are **ambiguous**; the harness does not choose whichever yields a better trade.
+- Unresolved doji interpretation blocks CISD synthetic evaluation rather than guessing.
+- Research-only lookahead resistance: a candle contributes only when marked complete, events receive its close timestamp, and prefix tests ensure that future events cannot appear in an earlier replay prefix.
+
+## Strong limitations before ANY promotion
+
+1. Decide whether *iFVG* here means **inversion** FVG (assumed for comparison) or *implied* FVG. These are different concepts which sometimes share the same abbreviation.
+2. Canonicalize formation/invalidation, cross boundary, zone selection/expiry, manipulation ordering, and explicit tie-breaks.
+3. Canonicalize CISD reference run based on market structure, wick versus close, handling of doji/gaps, expiry and event identity.
+4. Implement independent review + separate canonical spec versions; then real session/calendar/contract data verification and golden cases.
+5. Never import this code into `apps/web/lib/trading/` as if it were a reviewed detection rule. No claim of backtest/live parity is made until BOTH paths run the SAME promoted implementation with actual data.
+
+See `docs/trading-system/research/GATE01-02_VARIANT_REVIEW_2026-10-19.md`, `docs/trading-system/reviews/Open Implementation Gates v1.0.md`, and `docs/trading-system/SOURCE_OF_TRUTH.md`.

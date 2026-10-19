@@ -194,3 +194,23 @@ test('C3C-24: exact timestamp text and price text survive boundary unchanged',()
   assert.equal(v.segment.candles[0].openTime,'2026-01-15T07:00:00.000Z')
   assert.equal(v.coverage.from,'2026-01-15T07:00:00.000Z')
 })
+
+
+test('C3C-25 REVIEW: impossible OHLC geometry is rejected before settled evidence',()=>{
+  for (const changes of [
+    {high:'98'}, {open:'102'}, {open:'98'}, {close:'102'}, {close:'98'},
+  ]) {
+    assertRejected(chunk({candles:[candle(from,changes)]}),'MALFORMED_SOURCE_RESULT')
+  }
+})
+test('C3C-26 REVIEW: negative reported volume rejected; zero and null remain valid',()=>{
+  assertRejected(chunk({candles:[candle(from,{volume:'-1'})]}),'MALFORMED_SOURCE_RESULT')
+  assert.equal(inspect(chunk({candles:[candle(from,{volume:'0'})]})).kind,'ACCEPTED')
+  assert.equal(inspect(chunk({candles:[candle(from,{volume:null})]})).kind,'ACCEPTED')
+})
+test('C3C-27 REVIEW: price comparison is exact across decimal scales',()=>{
+  const r=inspect(chunk({candles:[candle(from,{
+    open:'100.000',high:'100.0000',low:'100.0',close:'100',volume:'0.000'
+  })]}))
+  assert.equal(r.kind,'ACCEPTED')
+})

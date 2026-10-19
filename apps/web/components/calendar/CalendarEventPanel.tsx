@@ -38,7 +38,6 @@ export function CalendarEventPanel({state:s}:{state:CalendarWorkspaceState}){
     {!f.allDay&&<label className={styles.checkbox}><input type="checkbox" checked={f.noEnd} onChange={e=>field('noEnd',e.target.checked)}/>Ingen sluttid</label>}
     {(f.allDay||!f.noEnd)&&<div className={styles.formRow}><label>{f.allDay?'Sista dag':'Slutdatum'}<input aria-label={f.allDay?'Sista dag':'Slutdatum'} type="date" required value={f.endDate} onChange={e=>field('endDate',e.target.value)}/></label>{!f.allDay&&<CalendarTimePicker label="Sluttid" value={f.endTime} onChange={value=>field('endTime',value)} disabled={s.editorSaving}/>}</div>}
     <label>Upprepning<select aria-label="Upprepning" value={f.repeat} onChange={e=>field('repeat',e.target.value)}><option value="none">Ingen</option><option value="daily">Varje dag</option><option value="weekly">Varje vecka</option></select></label>
-    {f.repeat!=='none'&&<p className={styles.help}>Förhandsval: upprepning kan sparas först när kalenderns databasstöd är färdigt.</p>}
     {f.repeat!=='none'&&<label>Upprepa till (valfritt)<input aria-label="Upprepa till" type="date" min={f.startDate} value={f.repeatUntil} onChange={e=>field('repeatUntil',e.target.value)}/></label>}
     <label>Plats<input maxLength={500} value={f.location} onChange={e=>field('location',e.target.value)}/></label>
     <label>Anteckning<textarea rows={4} maxLength={5000} value={f.description} onChange={e=>field('description',e.target.value)}/></label>

@@ -1,13 +1,13 @@
 import {addCalendarDays,calendarDate,resolveCalendarLocal,stockholmMinute} from './time';
-import type {CalendarTime} from './types';
+import {CalendarError,type CalendarTime} from './types';
 export type CalendarRepeat={frequency:'daily'|'weekly';until:string|null};
 export function validateCalendarRepeat(input:unknown,startDate:string):CalendarRepeat|null {
  if(input===null)return null;
- if(!input||typeof input!=='object'||Array.isArray(input))throw Error('INVALID_REPEAT');
+ if(!input||typeof input!=='object'||Array.isArray(input))throw new CalendarError('INVALID_INPUT');
  const repeat=input as Record<string,unknown>;
- if(Object.keys(repeat).some(k=>!['frequency','until'].includes(k))||!(repeat.frequency==='daily'||repeat.frequency==='weekly')||!(repeat.until===null||typeof repeat.until==='string'))throw Error('INVALID_REPEAT');
+ if(Object.keys(repeat).some(k=>!['frequency','until'].includes(k))||!(repeat.frequency==='daily'||repeat.frequency==='weekly')||!(repeat.until===null||typeof repeat.until==='string'))throw new CalendarError('INVALID_INPUT');
  const until=repeat.until===null?null:calendarDate(repeat.until as string);
- if(until!==null&&until<startDate)throw Error('INVALID_REPEAT');
+ if(until!==null&&until<startDate)throw new CalendarError('INVALID_INPUT');
  return {frequency:repeat.frequency as 'daily'|'weekly',until};
 }
 /** Calendar dates, not elapsed UTC hours, keep weekly and daily events at Swedish wall time across DST. */
@@ -35,6 +35,6 @@ export function moveRepeatedTime(original:CalendarTime,date:string):CalendarTime
  const offsetDays=Math.round((Date.parse(endLocal.slice(0,10)+'T00:00Z')-Date.parse(startLocalDate+'T00:00Z'))/86400000);
  const targetEndDate=addCalendarDays(date,offsetDays);
  const endUtc=resolveCalendarLocal(targetEndDate+endLocal.slice(10));
- if(Date.parse(endUtc)<=Date.parse(startUtc)||endMs<=startMs)throw Error('INVALID_REPEAT');
+ if(Date.parse(endUtc)<=Date.parse(startUtc)||endMs<=startMs)throw new CalendarError('INVALID_INPUT');
  return {...original,startUtc,endUtc};
 }

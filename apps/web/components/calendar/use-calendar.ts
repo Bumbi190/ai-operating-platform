@@ -13,14 +13,14 @@ function formForEvent(event:CalendarEvent):CalendarForm {
  const t=event.time;
  const local=t.kind==='timed'?stockholmMinute(t.startUtc):t.startDate+'T09:00';
  const end=t.kind==='timed'&&t.endUtc?stockholmMinute(t.endUtc):null;
- return {...blankForm(local.slice(0,10)),title:event.title,description:event.description,location:event.location,kind:event.kind,projectId:event.projectId??'',taskId:event.taskId??'',workStatus:event.workStatus??'planned',allDay:t.kind==='all_day',noEnd:t.kind==='timed'&&t.endUtc===null,startTime:local.slice(11,16),endDate:t.kind==='all_day'?addCalendarDays(t.endDateExclusive,-1):end?.slice(0,10)??local.slice(0,10),endTime:end?.slice(11,16)??''};
+ return {...blankForm(local.slice(0,10)),title:event.title,description:event.description,location:event.location,kind:event.kind,projectId:event.projectId??'',taskId:event.taskId??'',workStatus:event.workStatus??'planned',allDay:t.kind==='all_day',noEnd:t.kind==='timed'&&t.endUtc===null,startTime:local.slice(11,16),endDate:t.kind==='all_day'?addCalendarDays(t.endDateExclusive,-1):end?.slice(0,10)??local.slice(0,10),endTime:end?.slice(11,16)??'',repeat:event.repeat?.frequency??'none',repeatUntil:event.repeat?.until??''};
 }
 function draftForForm(form:CalendarForm,original?:CalendarEvent):CalendarEventDraft {
  const saved=original?.time.kind==='timed'?original.time:null;
  // Unchanged wall-minute controls retain the known instant, including seconds and DST-fold identity.
  const instant=(local:string,previous:string|null|undefined)=>previous&&stockholmMinute(previous)===local?previous:resolveCalendarLocal(local);
  const time=form.allDay?{kind:'all_day' as const,startDate:form.startDate,endDateExclusive:addCalendarDays(form.endDate,1),timeZone:'Europe/Stockholm' as const}:{kind:'timed' as const,startUtc:instant(form.startDate+'T'+form.startTime,saved?.startUtc),endUtc:form.noEnd?null:instant(form.endDate+'T'+form.endTime,saved?.endUtc),timeZone:'Europe/Stockholm' as const};
- return {kind:form.kind,title:form.title,description:form.description,location:form.location,projectId:form.projectId||null,taskId:form.taskId||null,time,workStatus:form.kind==='work_block'?form.workStatus:null};
+ return {kind:form.kind,title:form.title,description:form.description,location:form.location,projectId:form.projectId||null,taskId:form.taskId||null,time,workStatus:form.kind==='work_block'?form.workStatus:null,repeat:form.repeat==='none'?null:{frequency:form.repeat,until:form.repeatUntil||null}};
 }
 function emptyWeek(range:CalendarRange,projects:CalendarWeekModel['projects']):CalendarWeekModel{return {range,entries:[],unscheduledTasks:[],projects,availability:{manual:false,social:false,workflows:false,tasks:false},truncated:{manual:false,social:false,workflows:false,tasks:false}};}
 function failure(code:string,read=false):string {
@@ -120,10 +120,6 @@ export function useCalendarWorkspace(initialWeek:CalendarWeekModel,userId:string
  };
  const save=async()=>{
   if(!active()||savingGate.current||!form)return;
-  if(selected?.source.kind!=='social'&&form.repeat!=='none'){
-   setSaveError('Återkommande bokningar är inte aktiverade i databasen ännu. Välj Ingen för att spara ett engångsmöte.');
-   return;
-  }
   const attempt={ownerGeneration:ownerGeneration.current,editorGeneration:editorGeneration.current};
   savingGate.current=true;savingEditor.current=attempt.editorGeneration;setSaving(true);setSaveError('');
   try{

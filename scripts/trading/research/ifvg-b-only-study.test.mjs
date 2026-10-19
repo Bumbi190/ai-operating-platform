@@ -112,3 +112,34 @@ test('BONLY-10: study is deterministic and never reaches live provider, strategy
   /process\.env/,/submitOrder\s*\(/,/RiskClearance/,/ApprovalGrant/,
   /Math\.random\s*\(/])assert.doesNotMatch(src,pat)
 })
+
+test('BONLY-11: short-side inverted bullish FVG respects the same post-manipulation B rule',()=>{
+ const shortRows=[
+  ['98','100','97','99'], ['101','104','100','103'],
+  ['105','106','104','105'], ['105','106','98','99']
+ ]
+ const fixture={source:'SYNTHETIC',calendar:'SYNTHETIC_CONTIGUOUS',settled:true,
+  candles:shortRows.map(([open,high,low,close],i)=>({openTime:t(i),open,high,low,close,complete:true}))}
+ const after=inspectIfvg(fixture,{manipulationCompleteAt:t(1),
+  formation:'AFTER_MANIPULATION',crossing:'CLOSE_BEYOND_FAR_EDGE'})
+ const beforeOrAt=inspectIfvg(fixture,{manipulationCompleteAt:t(3),
+  formation:'AFTER_MANIPULATION',crossing:'CLOSE_BEYOND_FAR_EDGE'})
+ assert.equal(after.observations.filter(x=>x.side==='SHORT').length,1)
+ assert.equal(after.observations[0].at,t(4))
+ assert.equal(after.observations[0].entryPermitted,false)
+ assert.equal(beforeOrAt.observations.length,0)
+})
+test('BONLY-12: a short inverted gap needs strict full close BELOW edge, not equality or wick',()=>{
+ const fixture=data(4)
+ fixture.candles[0]={...fixture.candles[0],open:'98',high:'100',low:'97',close:'99'}
+ fixture.candles[1]={...fixture.candles[1],open:'101',high:'104',low:'100',close:'103'}
+ fixture.candles[2]={...fixture.candles[2],open:'105',high:'106',low:'104',close:'105'}
+ fixture.candles[3]={...fixture.candles[3],open:'105',high:'106',low:'98',close:'100'}
+ const result=inspectIfvg(fixture,{manipulationCompleteAt:t(1),
+  formation:'AFTER_MANIPULATION',crossing:'CLOSE_BEYOND_FAR_EDGE'})
+ assert.equal(result.observations.length,0)
+ fixture.candles[3]={...fixture.candles[3],close:'99'}
+ const below=inspectIfvg(fixture,{manipulationCompleteAt:t(1),
+  formation:'AFTER_MANIPULATION',crossing:'CLOSE_BEYOND_FAR_EDGE'})
+ assert.equal(below.observations[0]?.side,'SHORT')
+})

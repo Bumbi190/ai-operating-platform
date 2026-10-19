@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import {
   prepareHistoricalQuote,
   reviewHistoricalQuote,
@@ -139,4 +140,21 @@ test('B-11: results have no API or execution grant',()=>{
  for(const f of ['approval','ExecutionIntent','riskDecision','order','providerCall','canFetch','canExecute']){
   assert.equal(Object.hasOwn(r,f),false)
  }
+})
+
+test('S-01: research module cannot reach network, credentials or orders',()=>{
+ const code=readFileSync(new URL('./databento-historical-preflight.mjs',import.meta.url),'utf8')
+   .replace(/\/\*[\s\S]*?\*\//g,'')
+   .replace(/(^|[^:])\/\/.*$/gm,'$1')
+ for(const pattern of [
+  /from\s+['"]node:(?:http|https|net|fs|child_process)/,
+  /\brequire\s*\(/, /\bfetch\s*\(/, /\baxios\b/,
+  /XMLHttpRequest/, /WebSocket/, /process\.env/,
+  /\bsubmitOrder\b/, /\bplaceOrder\b/, /\bcheckout\b/,
+  /new\s+URL\s*\(/,
+ ]){
+  assert.doesNotMatch(code,pattern)
+ }
+ assert.match(code,/downloadAllowed:false/)
+ assert.match(code,/canBecomeStrategyEvidence:false/)
 })

@@ -148,3 +148,44 @@ test('META-10 importer has no API key persistence and CLI defaults to offline',(
   '/v0/symbology.resolve','/v0/metadata.get_cost'
  ])
 })
+
+test('META-11 a single transient network timeout is retried only on free metadata path',async()=>{
+ let count=0
+ const fn=mock((url)=>{
+  count++
+  if(count===1){
+   const err=new Error('The operation was aborted due to timeout')
+   err.name='TimeoutError'
+   throw err
+  }
+  if(url.pathname==='/v0/symbology.resolve')
+   return asResponse(entry(url.searchParams.get('symbols')))
+  return asResponse(0.003)
+ })
+ const result=await probeHistoricalMetadata({apiKey:key,fetchFn:fn})
+ assert.equal(result.status,'FREE_METADATA_ONLY_COMPLETE')
+ assert.equal(result.billableEndpointsCalled,0)
+ assert.equal(count,5) // 1 retry + 4 standard free metadata calls
+ assert.equal(result.combinedEstimatedUSD,0.006)
+})
+test('META-12 transient timeouts after one safe retry remain blocked, never $0',async()=>{
+ let count=0
+ const fn=mock(()=>{
+  count++
+  const err=new Error('The operation was aborted due to timeout')
+  err.name='TimeoutError'
+  throw err
+ })
+ const result=await probeHistoricalMetadata({apiKey:key,fetchFn:fn})
+ assert.equal(result.status,'BLOCKED')
+ assert.equal(result.reason,'METADATA_PROBE_FAILED_METADATA_NETWORK_TIMEOUT_OR_CONNECTION_FAILURE')
+ assert.equal(count,2)
+})
+test('META-13 explicit API key rejection 401 is not retried',async()=>{
+ let count=0
+ const fn=mock(()=>{count++;return asResponse({message:'unauthorized'},401)})
+ const result=await probeHistoricalMetadata({apiKey:key,fetchFn:fn})
+ assert.equal(result.status,'BLOCKED')
+ assert.equal(result.reason,'METADATA_PROBE_FAILED_METADATA_ENDPOINT_HTTP_401')
+ assert.equal(count,1)
+})

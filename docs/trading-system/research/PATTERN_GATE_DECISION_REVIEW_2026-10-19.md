@@ -3,7 +3,7 @@
 **Datum:** 2026-10-19  
 **Status:** 100 % offline, syntetisk research – inga regler godkända, ingen riktig backtest  
 **Branch:** `research/trading-pattern-decision-matrix-20261019` (bas `codex/trading-phase3-gates-review-20261018`)  
-**Beräkning:** `scripts/trading/research/pattern-decision-matrix.mjs`, resultat från redan existerande kandidatfunktioner. **45/45 Node-tester PASS** på den stationära Windows-datorn (34 gamla + 11 nya). Ingen npm-installation, externa API:n, CI, PR eller orders.
+**Beräkning:** `scripts/trading/research/pattern-decision-matrix.mjs`, resultat från redan existerande kandidatfunktioner. **52/52 Node-tester PASS** på den stationära Windows-datorn (34 ursprungliga + 18 beslutsmatristester). Ingen npm-installation, externa API:n, CI, PR eller orders.
 
 ## 1. Så här används beslutsunderlaget
 

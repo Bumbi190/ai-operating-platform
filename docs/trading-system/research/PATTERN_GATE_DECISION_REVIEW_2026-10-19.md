@@ -17,6 +17,14 @@ GATE-03 Equal levels  OPEN – approval null
 GATE-04 SMT NQ/ES     OPEN – approval null
 ```
 
+### Bekräftat terminologival – iFVG (2026-10-19)
+
+**Användaren bekräftade uttryckligen att Omniras iFVG betyder _Inversion Fair Value Gap_, inte _Implied Fair Value Gap_.** Vi använder därför inversion-begreppet genom hela kommande strategispecifikationen.
+
+Detta **bekräftar begreppets innebörd men inte dess fullständiga detektion eller entrylogik**. GATE-01 står fortfarande **OPEN**, med `approvedDetectionVersion:null`. Särskilt `CLOSE_BEYOND_FAR_EDGE` kontra `WICK_BEYOND_FAR_EDGE`, fönstret för skapande relativt manipulation, väntetid, FVG-urval, invalidation och expiry kräver separata beslut och tester.
+
+**Nästa direkta fråga:** ska den inverterade FVG:n räknas först när en **färdig 1-minutscandle stänger strikt förbi zonens bortre kant**, eller räcker det att **wick** går förbi? Rekommendationen att pröva close-bekräftelse är en forskningsrekommendation, inte ett godkänt handelsbeslut. Undvik att markera någon signal/permission utifrån detta förrän användaren har valt och den canonical regeln har genomgått promotion.
+
 ### GATE-01: iFVG
 
 **Val A – wick kontra bekräftad close genom den inverterade FVG-zonen.**
@@ -25,7 +33,7 @@ Syntetisk bearish ursprungs-FVG övergår till long-observation:
 - `WICK_BEYOND_FAR_EDGE`: den första författade observationen vid **candle-index 3**, dvs efter bar 4:s färdigställande.
 - `CLOSE_BEYOND_FAR_EDGE`: observationen vid **index 4**, efter bar 5:s färdigställande.
 
-**Mänskligt beslut:** Kräver modellen en *färdig candle-close strikt genom zonens bortre kant*, eller räcker en wick? Slutlig definition måste även skilja **inversion** FVG från **implied** FVG – förkortningen iFVG kan syfta på olika koncept.
+**Mänskligt beslut:** Kräver modellen en *färdig candle-close strikt genom zonens bortre kant*, eller räcker en wick? Begreppet **inversion (inte implied) är bekräftat av användaren**; crossing-regeln och alla övriga kriterier återstår.
 
 **Val B – gap bildat före eller efter manipulation.**
 

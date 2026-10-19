@@ -8,7 +8,8 @@ import captured from './fixtures/the-prompt/production-ledger-sales-timing-20261
 const dir=resolve(process.cwd(),'supabase/migrations'),name='sales_contact_timing'
 it('retains the exact already-applied reviewed SQL as one enforced canonical file',()=>{
  const files=readdirSync(dir).filter(f=>f.endsWith('_'+name+'.sql'));expect(files).toEqual(['20261019065056_sales_contact_timing.sql'])
- const bytes=readFileSync(resolve(dir,files[0]));expect(bytes.length).toBe(36997)
+ // Git's canonical LF bytes must match even when Windows checks out CRLF.
+ const bytes=Buffer.from(readFileSync(resolve(dir,files[0]),'utf8').replace(/\r\n/g,'\n'));expect(bytes.length).toBe(36997)
  expect(createHash('sha256').update(bytes).digest('hex')).toBe('8c651b4962445328991f837ff509b7146139921f8437ac2bfd7afbff0af27476')
  const state=inspectCanonicalMigrationFiles(readdirSync(dir));expect(state.enforcedNames).toContain(name);expect(state.grandfatheredNames).not.toContain(name)
 })

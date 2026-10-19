@@ -214,3 +214,23 @@ test('C3C-27 REVIEW: price comparison is exact across decimal scales',()=>{
   })]}))
   assert.equal(r.kind,'ACCEPTED')
 })
+
+
+test('REVIEW: provider mutation AFTER validation cannot rewrite accepted OHLCV',()=>{
+  const rawCandle=candle(from)
+  const accepted=inspect(chunk({candles:[rawCandle]}))
+  assert.equal(accepted.kind,'ACCEPTED')
+  rawCandle.high='999'
+  rawCandle.close='999'
+  rawCandle.openTime='2026-01-15T07:04:00Z'
+  assert.equal(accepted.segment.candles[0].high,'101')
+  assert.equal(accepted.segment.candles[0].close,'100.25')
+  assert.equal(accepted.segment.candles[0].openTime,from)
+  assert.deepEqual(accepted.observed.minuteOpenTimes,[from])
+})
+test('REVIEW: accepted canonical candle snapshot cannot be mutated by a later consumer',()=>{
+  const accepted=inspect(chunk())
+  assert.equal(accepted.kind,'ACCEPTED')
+  assert.equal(Object.isFrozen(accepted.segment.candles[0]),true)
+  assert.equal(Object.isFrozen(accepted.segment.candles),true)
+})

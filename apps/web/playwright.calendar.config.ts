@@ -1,2 +1,3 @@
 import {defineConfig} from '@playwright/test';
-export default defineConfig({testDir:'./e2e',testMatch:'calendar.spec.ts',workers:1,retries:0,timeout:20000,use:{baseURL:'http://127.0.0.1:54413',browserName:'chromium',screenshot:'only-on-failure'},outputDir:'../../.superpowers/sdd/2026-10-18-omnira-calendar/browser',webServer:{command:'node e2e/calendar-server.mjs',url:'http://127.0.0.1:54413/calendar',reuseExistingServer:false,timeout:30000}});
+const port=Number(process.env.CALENDAR_TEST_PORT||54413);
+export default defineConfig({testDir:'./e2e',testMatch:'calendar.spec.ts',workers:1,retries:0,timeout:20000,use:{baseURL:'http://127.0.0.1:'+port,browserName:'chromium',screenshot:'only-on-failure'},outputDir:'../../.superpowers/sdd/2026-10-18-omnira-calendar/browser',webServer:{command:'node e2e/calendar-server.mjs',env:{CALENDAR_TEST_PORT:String(port)},url:'http://127.0.0.1:'+port+'/calendar',reuseExistingServer:false,timeout:30000}});

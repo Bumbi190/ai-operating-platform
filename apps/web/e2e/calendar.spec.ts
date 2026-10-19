@@ -1,15 +1,40 @@
 import {test,expect} from '@playwright/test';
 test.beforeEach(async({request})=>{await request.post('/_test/reset')});
-async function open(page:any){await page.goto('/calendar?week=2026-10-19');await expect(page.getByRole('heading',{name:'Kalender',exact:true})).toBeVisible()}
+async function open(page:any){await page.goto('/calendar?week=2026-10-19');await expect(page.getByRole('heading',{name:'Kalender',exact:true})).toBeVisible({timeout:20000})}
+async function setClock(page:any,label:string,time:string){
+ await page.getByRole('button',{name:label,exact:true}).click();
+ const quick=page.getByRole('group',{name:'Välj '+label.toLowerCase()}).getByRole('button',{name:time,exact:true});
+ if(await quick.count()){await quick.click();return;}
+ await page.getByRole('button',{name:'09:00',exact:true}).click();
+ await page.getByRole('button',{name:label,exact:true}).click();
+ const [h,m]=time.split(':').map(Number);
+ await page.getByRole('button',{name:String((h%12)||12),exact:true}).click();
+ await page.getByLabel('Välj minut').getByRole('button',{name:String(m).padStart(2,'0'),exact:true}).click();
+ if(h>=12){await page.getByRole('button',{name:label,exact:true}).click();await page.getByRole('button',{name:'Eftermiddag'}).click();await page.getByLabel('Välj minut').getByRole('button',{name:String(m).padStart(2,'0'),exact:true}).click();}
+}
 async function fillMeeting(page:any,title='Möte med Oscar'){
  await page.getByRole('button',{name:'Ny händelse',exact:true}).click();
- await page.getByLabel('Titel',{exact:true}).fill(title);await page.getByLabel('Datum',{exact:true}).fill('2026-10-22');await page.getByLabel('Starttid',{exact:true}).fill('14:00');
- await page.getByLabel('Ingen sluttid').uncheck();await page.getByLabel('Slutdatum',{exact:true}).fill('2026-10-22');await page.getByLabel('Sluttid',{exact:true}).fill('15:00');
+ await page.getByLabel('Titel',{exact:true}).fill(title);await page.getByLabel('Datum',{exact:true}).fill('2026-10-22');await setClock(page,'Starttid','14:00');
+ await page.getByLabel('Ingen sluttid').uncheck();await page.getByLabel('Slutdatum',{exact:true}).fill('2026-10-22');await setClock(page,'Sluttid','15:00');
 }
+test('mobile clock and recurrence controls are usable without horizontal overflow',async({page})=>{
+ await page.setViewportSize({width:390,height:844});await open(page);
+ await page.getByRole('button',{name:'Ny händelse',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Starttid'})).toBeVisible();
+ await page.getByRole('button',{name:'Starttid'}).click();
+ await expect(page.getByRole('group',{name:'Välj starttid'})).toBeVisible();
+ await page.getByRole('button',{name:'15:00',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Starttid'})).toContainText('15:00');
+ await page.getByLabel('Upprepning').selectOption('weekly');
+ await expect(page.getByLabel('Upprepa till')).toBeVisible();
+ await page.getByLabel('Titel',{exact:true}).fill('Gym varje vecka');
+ await expect(page.getByRole('button',{name:'Avsluta upprepning efter idag'})).toBeVisible();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+});
 test('creates, reloads, moves, cancels and restores a meeting',async({page})=>{
  await open(page);await fillMeeting(page);await page.getByRole('button',{name:'Spara',exact:true}).click();
  await expect(page.getByRole('button',{name:/Möte med Oscar/})).toBeVisible();await page.reload();
- await page.getByRole('button',{name:/Möte med Oscar/}).click();await page.getByLabel('Datum',{exact:true}).fill('2026-10-23');await page.getByLabel('Starttid',{exact:true}).fill('10:00');await page.getByLabel('Slutdatum',{exact:true}).fill('2026-10-23');await page.getByLabel('Sluttid',{exact:true}).fill('11:00');await page.getByRole('button',{name:'Spara',exact:true}).click();
+ await page.getByRole('button',{name:/Möte med Oscar/}).click();await page.getByLabel('Datum',{exact:true}).fill('2026-10-23');await setClock(page,'Starttid','10:00');await page.getByLabel('Slutdatum',{exact:true}).fill('2026-10-23');await setClock(page,'Sluttid','11:00');await page.getByRole('button',{name:'Spara',exact:true}).click();
  const event=page.getByRole('button',{name:/Möte med Oscar/});await expect(event).toHaveAttribute('data-start-utc','2026-10-23T08:00:00.000Z');await event.click();await page.getByRole('button',{name:'Avboka händelse'}).click();
  await expect(event).toHaveAttribute('data-status','cancelled');await event.click();await page.getByRole('button',{name:'Återställ händelse'}).click();await expect(event).toHaveAttribute('data-status','scheduled');
 });
@@ -118,6 +143,6 @@ for(const [label,start,end] of [
  const event=page.locator('[data-event-id="manual:'+id+'"]');await expect(event).toContainText('Ändrad');await expect(event).toHaveAttribute('data-start-utc',start);await expect(event).toHaveAttribute('data-end-utc',end);
 });
 test('rejects a newly entered ambiguous autumn wall time',async({page})=>{
- await open(page);await fillMeeting(page,'Tvetydig tid');await page.getByLabel('Datum',{exact:true}).fill('2026-10-25');await page.getByLabel('Starttid',{exact:true}).fill('02:30');await page.getByLabel('Ingen sluttid').check();await page.getByRole('button',{name:'Spara',exact:true}).click();
+ await open(page);await fillMeeting(page,'Tvetydig tid');await page.getByLabel('Datum',{exact:true}).fill('2026-10-25');await setClock(page,'Starttid','02:30');await page.getByLabel('Ingen sluttid').check();await page.getByRole('button',{name:'Spara',exact:true}).click();
  await expect(page.getByRole('alert')).toContainText('tider');await expect(page.getByLabel('Titel',{exact:true})).toHaveValue('Tvetydig tid');
 });

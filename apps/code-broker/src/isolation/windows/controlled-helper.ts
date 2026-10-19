@@ -5,7 +5,8 @@ export const CONTROL_PHASES=Object.freeze(['before_resources','before_volume_cre
 export type ControlPhase=typeof CONTROL_PHASES[number]
 export type ControlViolation='frame_invalid'|'stderr_output'|'output_too_large'|'exited_without_report'|'spawn_failed'
 export type ControlledOutcome={kind:'report';value:unknown}|{kind:'violation';reason:ControlViolation}
-export interface ControlledHandlers{checkpoint(seq:number,phase:ControlPhase):void}
+/** stopped() fires exactly once, when a stop is first sent for any reason (caller request or detected violation). */
+export interface ControlledHandlers{checkpoint(seq:number,phase:ControlPhase):void;stopped?():void}
 export interface ControlledProcess{readonly pid:number|null;continue(seq:number):void;stop():void;kill():void;readonly done:Promise<ControlledOutcome>}
 export type LaunchResult={status:'launched';process:ControlledProcess}|{status:'unavailable';reason:'unsupported_platform'|'input_invalid'|'helper_unavailable'}
 interface ChildLike{pid?:number;stdin:NodeJS.WritableStream|null;stdout:NodeJS.ReadableStream|null;stderr:NodeJS.ReadableStream|null;kill():boolean;on(event:string,listener:(...a:any[])=>void):unknown}
@@ -28,7 +29,7 @@ export function createControlledLauncher(deps:ControlledDeps):(payload:unknown,h
   let pending=Buffer.alloc(0)
   let resolve!:(o:ControlledOutcome)=>void;const done=new Promise<ControlledOutcome>(r=>{resolve=r})
   const write=(line:string)=>{if(!stdinOpen||!child.stdin)return;try{child.stdin.write(line+'\n')}catch{stdinOpen=false}}
-  const stop=()=>{if(stopped)return;stopped=true;write('{"t":"stop"}');if(stdinOpen&&child.stdin){stdinOpen=false;try{child.stdin.end()}catch{}}}
+  const stop=()=>{if(stopped)return;stopped=true;write('{"t":"stop"}');if(stdinOpen&&child.stdin){stdinOpen=false;try{child.stdin.end()}catch{}};try{handlers.stopped?.()}catch{}}
   const fail=(reason:ControlViolation)=>{if(violation===null)violation=reason;stop()}
   const frame=(bytes:Buffer)=>{
    if(violation!==null)return

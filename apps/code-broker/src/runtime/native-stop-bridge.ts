@@ -19,6 +19,8 @@ export interface BridgeDeps{
 }
 /** cleanup 30000 ms + 5000 ms transport margin; after that the helper is forcibly terminated. */
 export const STOP_GRACE_MS=35000
+/** Hard bound from launch (helper's own deadline, ruling 8): then stop, and the grace kill follows. */
+export const HELPER_DEADLINE_MS=185000
 const KEYS=['workId','repositoryId','pinnedBaseSha','admissionHash','claimId','fence'] as const
 /**
  * Internal construction seam. The guard is owned by the caller and never re-armed here; this bridge only consumes it.
@@ -35,15 +37,18 @@ export function createNativeStopBridge(deps:BridgeDeps):(input:unknown,guard:Exe
   if(guard.signal.aborted||await guard.checkpoint()!=='live'||guard.signal.aborted)return{status:'not_started',reason:'lease_not_live'}
   const attemptId=deps.nextAttempt()
   try{deps.reserve(request,attemptId)}catch{return{status:'not_started',reason:'helper_unavailable'}}
-  let stopReason:'lease_lost'|null=null,launched:LaunchResult
+  let stopReason:'lease_lost'|'control_lost'|null=null,launched:LaunchResult
   let killNow=()=>{}
-  const grace:{cancel:(()=>void)|null}={cancel:null}
-  const requestStop=()=>{
-   if(stopReason!==null)return;stopReason='lease_lost';proc?.stop()
-   grace.cancel=deps.schedule(()=>{grace.cancel=null;killNow()},STOP_GRACE_MS)
+  const grace:{armed:boolean;cancel:(()=>void)|null;deadline:(()=>void)|null}={armed:false,cancel:null,deadline:null}
+  // Any stop, from any source, starts exactly one grace period that ends in a forced kill.
+  const armGrace=()=>{if(grace.armed)return;grace.armed=true;grace.cancel=deps.schedule(()=>{grace.cancel=null;killNow()},STOP_GRACE_MS)}
+  const sendStop=(reason:'lease_lost'|'control_lost')=>{
+   if(stopReason===null){stopReason=reason;proc?.stop()}
+   armGrace()
   }
+  const requestStop=()=>sendStop('lease_lost')
   let proc:{continue(n:number):void;stop():void;kill():void;done:Promise<ControlledOutcome>}|null=null
-  const handlers:ControlledHandlers={checkpoint(seq){
+  const handlers:ControlledHandlers={stopped:armGrace,checkpoint(seq){
    void(async()=>{
     if(stopReason!==null)return
     const state=await guard.checkpoint()
@@ -54,11 +59,12 @@ export function createNativeStopBridge(deps:BridgeDeps):(input:unknown,guard:Exe
   try{launched=deps.launch(payload,handlers)}catch{return{status:'not_started',reason:'helper_unavailable'}}
   if(launched.status!=='launched')return{status:'not_started',reason:'helper_unavailable'}
   proc=launched.process;const own=launched.process;let killed=false;killNow=()=>{if(!killed){killed=true;own.kill()}}
+  grace.deadline=deps.schedule(()=>{grace.deadline=null;sendStop('control_lost')},HELPER_DEADLINE_MS)
   const onAbort=()=>requestStop()
   if(guard.signal.aborted)requestStop();else guard.signal.addEventListener('abort',onAbort,{once:true})
   let outcome:ControlledOutcome
   try{outcome=await own.done}finally{guard.signal.removeEventListener('abort',onAbort)}
-  grace.cancel?.();grace.cancel=null
+  grace.cancel?.();grace.cancel=null;grace.deadline?.();grace.deadline=null
   let report:MaterializationReport|null=null
   if(outcome.kind==='report'){
    try{

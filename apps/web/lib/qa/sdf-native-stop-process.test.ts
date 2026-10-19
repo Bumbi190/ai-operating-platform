@@ -40,6 +40,15 @@ function smoke(mode:string,input:unknown):Promise<any>{
  return new Promise((res,rej)=>{const c=spawn(DOTNET,[SMOKE,mode],{cwd:ROOT,shell:false,windowsHide:true});let out='',err=''
   c.stdout.on('data',b=>out+=b);c.stderr.on('data',b=>err+=b);c.on('error',rej);c.on('close',code=>code===0&&err===''?res(JSON.parse(out)):rej(Error('smoke '+mode+' '+code+' '+err+' '+out)));c.stdin.end(JSON.stringify(input))})
 }
+/** Pinned environment for proof reuse (plan: Proof binding for reuse). Backend identity is per Docker process and deliberately excluded. */
+const DAEMON_IDENTITY='097b04099237066832a5574e26cb1708df26ff5007ae0165f7135bea76df3601',SOURCE_IMAGE='sha256:354e46f6c5d5e046a2002b78f2d43931824b67110df42a40ab4204e269d1acd0'
+function checkEnvironment(x:string,proof:any,again:any){
+ const saved=proof?.observedAbsence??{}
+ if(saved.daemonIdentityHash!==DAEMON_IDENTITY||again?.daemonIdentityHash!==DAEMON_IDENTITY)throw Error('stale_real_evidence:'+x+':daemonIdentityHash')
+ if(typeof saved.toolchainProfileHash!=='string'||!/^[a-f0-9]{64}$/.test(saved.toolchainProfileHash)||again?.toolchainProfileHash!==saved.toolchainProfileHash)throw Error('stale_real_evidence:'+x+':toolchainProfileHash')
+ const native=proof?.run?.native
+ if(native?.kind==='report'&&native.value?.imageId!==SOURCE_IMAGE)throw Error('stale_real_evidence:'+x+':imageId')
+}
 const absence=(attemptId:string)=>smoke('check-materialization-absence',{...request(),schema:'sdf.windows_materialization_request.v1',attemptId})
 /** Lease template bound to the retained request's binding; fresh server times are stamped per read. */
 function template(){const l:any=leaseFixture();l.binding={workId:request().workId,repositoryId:request().repositoryId,pinnedBaseSha:request().pinnedBaseSha,admissionHash:request().admissionHash,claimId:request().claimId,fence:request().fence};return l}
@@ -93,6 +102,17 @@ async function parentKill(attemptId:string){
  return{events,helperPid,helperAliveAfterParentKill,helperExitedAt:exitedAfterMs,parentStderr:err,elapsedMs:at()}
 }
 describe.runIf(required&&process.platform==='win32')('cooperative native stop: real process evidence',()=>{
+ it('class V: environment drift (daemon, toolchain profile, image) makes saved real evidence stale',async()=>{
+  expect(typeof checkEnvironment).toBe('function')
+  const proof={attempt:'A',observedAbsence:{daemonIdentityHash:DAEMON_IDENTITY,toolchainProfileHash:'d'.repeat(64)},run:{native:{kind:'report',value:{imageId:SOURCE_IMAGE}}}}
+  const again={daemonIdentityHash:DAEMON_IDENTITY,toolchainProfileHash:'d'.repeat(64)}
+  expect(()=>checkEnvironment('A',proof,again)).not.toThrow()
+  expect(()=>checkEnvironment('A',proof,{...again,daemonIdentityHash:'e'.repeat(64)})).toThrow('stale_real_evidence:A:daemonIdentityHash')
+  expect(()=>checkEnvironment('A',{...proof,observedAbsence:{...proof.observedAbsence,daemonIdentityHash:'e'.repeat(64)}},{...again,daemonIdentityHash:'e'.repeat(64)})).toThrow('stale_real_evidence:A:daemonIdentityHash')
+  expect(()=>checkEnvironment('A',proof,{...again,toolchainProfileHash:'f'.repeat(64)})).toThrow('stale_real_evidence:A:toolchainProfileHash')
+  expect(()=>checkEnvironment('B',{...proof,run:{native:{kind:'report',value:{imageId:'sha256:'+'0'.repeat(64)}}}},again)).toThrow('stale_real_evidence:B:imageId')
+  expect(()=>checkEnvironment('C',{...proof,run:{}},again)).not.toThrow()
+ })
  it('class V: the real helper refuses malformed first control lines before any reservation, source read or Docker call',async()=>{
   const attempts=()=>readdirSync(join(ROOT,'apps/code-broker/.native/windows-workspace/attempts')).length,before=attempts()
   for(const input of ['{bad\n',' '.repeat(4097)+'\n','{"schema":"bad"}\n',JSON.stringify({...request(),schema:'sdf.windows_materialization_request.v1',attemptId:'../x'})+'\n','no newline at all']){
@@ -127,6 +147,6 @@ describe.runIf(required&&process.platform==='win32')('cooperative native stop: r
   if(x==='C'){expect(phases).toContain('before_start');expect(proof.run.helperAliveAfterParentKill).toBe(true);expect(proof.run.helperExitedAt).not.toBeNull();expect(proof.run.events.some((e:any)=>e.event==='result')).toBe(false)}
   if(x==='D'){expect(phases).toContain('before_start');expect(proof.run.events.some((e:any)=>e.event==='forced_terminate')).toBe(true);expect(proof.run.native.kind).toBe('violation');expect(proof.run.cleanups).toBe(1);expect(proof.run.result).toMatchObject({status:'stopped',reason:'control_lost',cleanup:'confirmed',containerRemoved:true,volumeRemoved:true})}
   // Recheck absence now on the original peer; the observer never creates, starts or removes anything.
-  const again=await absence(proof.attemptId);expect(again.absent).toBe(true);expect(again.productionAuthority).toBe(false)
+  const again=await absence(proof.attemptId);expect(again.absent).toBe(true);expect(again.productionAuthority).toBe(false);checkEnvironment(x,proof,again)
  },300000)
 })

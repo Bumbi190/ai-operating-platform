@@ -52,3 +52,24 @@ Test outcomes: GATE-01/02 16 synthetic tests, GATE-03/04 18 synthetic tests; **3
 Key unapproved choices demonstrated in tests: 1 tick inclusive vs exclusive gives a different equal-high answer; wick vs close gives different SMT observations; a 0-minute vs 1-minute matching allowance changes whether a reference pair may be considered. `UNKNOWN` must be preserved for missing/unsettled/misaligned candles or references. Outputs cannot grant any order or upgrade a setup grade.
 
 For unresolved decisions, assumptions and limitations read `docs/trading-system/research/GATE03-04_VARIANT_REVIEW_2026-10-19.md`. All GATE-01/02/03/04 remain **OPEN** and the pending-gate JSON remains intentionally unapproved.
+
+## Joint decision matrix for GATE-01–04 (2026-10-19)
+
+`pattern-decision-matrix.mjs` uses the actual pure research functions above to compare **seven different synthetic choice points** across all four OPEN gates: iFVG inversion crossing / formation order, CISD opposing-candle anchor, equal-high inclusive/exclusive tick boundary, SMT wick/close, SMT allowed pair confirmation delta, and missing ES data.
+
+Each decision is `UNDECIDED`, `approvedVariant:null`, `eligibleForStrategy:false`; all four `gateStatus` fields remain `OPEN`, `approvals` are null, and `tradingEnabled:false`. This is an **operator review aid**, not a strategy, grade, provider or trade backtest. `pattern-gates-pending-v0.1.json` and canonical detection specs have **not** been changed.
+
+To re-run all four research suites including the 11 decision-matrix regressions (45 tests total):
+
+```bash
+node --test scripts/trading/research/pattern-candidates.test.mjs scripts/trading/research/pattern-candidates-mirror.test.mjs scripts/trading/research/equal-smt-candidates.test.mjs scripts/trading/research/pattern-decision-matrix.test.mjs
+```
+
+To inspect the machine-readable review matrix entirely offline (no provider/API dependencies):
+
+```bash
+node --input-type=module -e "import {buildPatternDecisionMatrix} from './scripts/trading/research/pattern-decision-matrix.mjs'; console.log(JSON.stringify(buildPatternDecisionMatrix(),null,2))"
+```
+
+Actual recorded run on Windows Node v22.22.3: **45 PASS, 0 FAIL** (34 prior + 11 new). Read `docs/trading-system/research/PATTERN_GATE_DECISION_REVIEW_2026-10-19.md` before asking for a human decision. Do not copy a candidate variant into the Strategy Engine merely because the synthetic case produced an observation.
+

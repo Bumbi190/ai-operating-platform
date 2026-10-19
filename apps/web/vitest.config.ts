@@ -21,6 +21,7 @@ export default defineConfig({
       'lib/social-connections/**/*.test.ts',
       'lib/sales/replies/**/*.test.ts',
       'lib/sales/sending/**/*.test.ts',
+      'lib/sales/timing/**/*.test.ts',
       'lib/project/lifecycle/**/*.test.ts',
       'lib/atlas/voice-capture.test.ts',
       'lib/atlas/conversation/**/*.test.ts',

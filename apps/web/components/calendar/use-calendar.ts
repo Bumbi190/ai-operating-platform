@@ -6,9 +6,9 @@ import type {CalendarEntry,CalendarEvent,CalendarEventDraft,CalendarMutation,Cal
 import {addCalendarDays,resolveCalendarLocal,stockholmDate,stockholmMinute,weekRange} from '@/lib/calendar/time';
 import {parseCalendarMutation} from '@/lib/calendar/validate';
 
-export type CalendarForm={title:string;description:string;location:string;kind:'private'|'work_block';projectId:string;taskId:string;workStatus:'planned'|'in_progress'|'done';allDay:boolean;noEnd:boolean;startDate:string;startTime:string;endDate:string;endTime:string};
+export type CalendarForm={title:string;description:string;location:string;kind:'private'|'work_block';projectId:string;taskId:string;workStatus:'planned'|'in_progress'|'done';allDay:boolean;noEnd:boolean;startDate:string;startTime:string;endDate:string;endTime:string;repeat:'none'|'daily'|'weekly';repeatUntil:string};
 const hhmm=(minute:number)=>String(Math.floor(minute/60)).padStart(2,'0')+':'+String(minute%60).padStart(2,'0');
-function blankForm(date:string,minute=9*60):CalendarForm{return {title:'',description:'',location:'',kind:'private',projectId:'',taskId:'',workStatus:'planned',allDay:false,noEnd:true,startDate:date,startTime:hhmm(minute),endDate:date,endTime:''};}
+function blankForm(date:string,minute=9*60):CalendarForm{return {title:'',description:'',location:'',kind:'private',projectId:'',taskId:'',workStatus:'planned',allDay:false,noEnd:true,startDate:date,startTime:hhmm(minute),endDate:date,endTime:'',repeat:'none',repeatUntil:''};}
 function formForEvent(event:CalendarEvent):CalendarForm {
  const t=event.time;
  const local=t.kind==='timed'?stockholmMinute(t.startUtc):t.startDate+'T09:00';
@@ -120,6 +120,10 @@ export function useCalendarWorkspace(initialWeek:CalendarWeekModel,userId:string
  };
  const save=async()=>{
   if(!active()||savingGate.current||!form)return;
+  if(selected?.source.kind!=='social'&&form.repeat!=='none'){
+   setSaveError('Återkommande bokningar är inte aktiverade i databasen ännu. Välj Ingen för att spara ett engångsmöte.');
+   return;
+  }
   const attempt={ownerGeneration:ownerGeneration.current,editorGeneration:editorGeneration.current};
   savingGate.current=true;savingEditor.current=attempt.editorGeneration;setSaving(true);setSaveError('');
   try{

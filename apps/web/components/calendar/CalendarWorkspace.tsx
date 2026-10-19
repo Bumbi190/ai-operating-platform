@@ -24,7 +24,7 @@ function CalendarWorkspaceBody({initialWeek,userId}:{initialWeek:CalendarWeekMod
   {(s.notice||(!s.loading&&!s.readError&&(unavailable.length>0||truncated)))&&<div className={styles.notices} role="status">{s.notice&&<p>{s.notice}</p>}{!s.loading&&!s.readError&&unavailable.length>0&&<p>Kunde inte läsa {unavailable.join(', ')}. Dina övriga händelser visas.</p>}{truncated&&<p>Alla poster ryms inte i den här hämtningen. Öppna källan för hela listan.</p>}</div>}
   {s.readError&&<div className={styles.error} role="alert">{s.readError} <button type="button" onClick={s.reload}>Försök igen</button></div>}
   <div className={styles.calendarWrap} aria-busy={s.loading}>{s.loading&&<span className={styles.loading}>Läser veckan…</span>}<CalendarWeek entries={entries} range={s.range} projects={s.model.projects} selectedDay={s.selectedDay} onDay={s.setSelectedDay} onSelect={s.selectEntry} onCreate={s.newEvent}/></div>
-  <CalendarDecisions week={s.week} projectId={s.filter} userId={userId}/>
+  {s.sessionReady&&<CalendarDecisions week={s.week} projectId={s.filter} userId={userId}/>}
   <footer className={styles.footer}><span><i/> Privat</span>{s.model.projects.map(project=><span key={project.id}><i style={{background:project.color}}/>{project.name}</span>)}<small>Privata bokningar och projektens scheman.</small></footer>
   {s.model.unscheduledTasks.length>0&&<details className={styles.unscheduled}><summary>Uppgifter utan bestämd tid ({s.model.unscheduledTasks.length})</summary>{s.model.unscheduledTasks.slice(0,8).map(task=><div key={task.id}><span>{task.title}</span><button type="button" onClick={()=>s.newEvent(s.selectedDay,9*60,task)}>Boka tid</button></div>)}</details>}
   {s.panelOpen&&<CalendarEventPanel state={s}/>}

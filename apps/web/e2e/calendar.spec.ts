@@ -163,3 +163,12 @@ test('shows an authorized Atlas decision and its actual outcome on mobile',async
  await expect(page.getByRole('dialog',{name:'Beslutsdetaljer'})).toContainText('Fem handlare svarade');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
+
+test('hides decision summaries immediately after logout',async({page})=>{
+ await page.route('**/api/calendar/decisions?**',async route=>route.fulfill({json:{decisions:[{id:'atlas-decision:demo:1',sourceSystem:'atlas_decision_ledger',sourceId:'demo',projectId:'demo-project',title:'Privat ledningsbeslut',status:'active',occurredAt:'2026-10-20T09:00:00Z',decisionAt:null,reviewAt:null,hasOutcome:false,detailKey:'demo'}],available:true,truncated:false}}));
+ await open(page);
+ await expect(page.getByRole('button',{name:/Privat ledningsbeslut/})).toBeVisible();
+ await page.getByRole('button',{name:'Logga ut i testsession',exact:true}).click();
+ await expect(page.getByRole('button',{name:/Privat ledningsbeslut/})).toHaveCount(0);
+ await expect(page.getByRole('dialog',{name:'Beslutsdetaljer'})).toHaveCount(0);
+});

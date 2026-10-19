@@ -17,6 +17,7 @@
 import { parseResolvedContract, sameContract, type ResolvedContract } from '../contract-identity'
 import { isTimestamp, toEpochMs, type Timestamp } from '../time'
 import type { MarketCandle } from '../market-candle'
+import { parsePriceText } from '../market-price'
 import type { ObservationSourceState, ObservedMinutes } from '../session-calendar'
 import { buildHistoricalContractRequest, type HistoricalContractRequest } from './contract-window'
 import { buildContractCandleSegment, type ContractCandleSegment, type SegmentProblem } from './contract-segment'
@@ -155,7 +156,15 @@ export function inspectHistoricalContractResult(
   }
 
   if (raw.kind === 'OBSERVATIONS' && (raw.candles as unknown[]).some((candle) =>
-    !isRecord(candle) || !isTimestamp(candle.openTime)
+    !isRecord(candle) ||
+    Object.keys(candle).length !== 6 ||
+    !['openTime', 'open', 'high', 'low', 'close', 'volume'].every((field) => own(candle, field)) ||
+    !isTimestamp(candle.openTime) ||
+    parsePriceText(candle.open) === null ||
+    parsePriceText(candle.high) === null ||
+    parsePriceText(candle.low) === null ||
+    parsePriceText(candle.close) === null ||
+    (candle.volume !== null && parsePriceText(candle.volume) === null)
   )) return violation('MALFORMED_SOURCE_RESULT')
 
   // The segment constructor already owns authoritative instant/ordering/grid

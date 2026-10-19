@@ -18,8 +18,11 @@ import { parseResolvedContract, sameContract, type ResolvedContract } from '../c
 import { isTimestamp, toEpochMs, type Timestamp } from '../time'
 import type { MarketCandle } from '../market-candle'
 import { parsePriceText } from '../market-price'
+import { buildHistoricalContractRequest, type HistoricalContractRequest } from './contract-window'
+import { buildContractCandleSegment, type ContractCandleSegment, type SegmentProblem } from './contract-segment'
+
 /*
- * Canonical HistoricalObservedMinutes is structurally { sourceState, minuteOpenTimes }.
+ * Canonical ObservedMinutes is structurally { sourceState, minuteOpenTimes }.
  * C3C echoes this SHAPE but must not import SessionCalendar: the market-data
  * package is intentionally allowed only the grid predicate as a VALUE import.
  * This local type introduces NO new states or semantics; it is contract-tested
@@ -31,8 +34,6 @@ interface HistoricalObservedMinutes {
   readonly sourceState: HistoricalSourceState
   readonly minuteOpenTimes: readonly Timestamp[]
 }
-import { buildHistoricalContractRequest, type HistoricalContractRequest } from './contract-window'
-import { buildContractCandleSegment, type ContractCandleSegment, type SegmentProblem } from './contract-segment'
 
 export interface HistoricalCoverage {
   /** Inclusive instant, and must equal request.from as an instant. */

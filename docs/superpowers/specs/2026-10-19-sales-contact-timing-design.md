@@ -1,7 +1,7 @@
 # Handlarbörsen – kontaktlogg och datumkontroll före säljförberedelse
 
 Datum: 2026-10-19
-Status: Skriven design för Andrés granskning. Inte godkänd för implementation genom detta dokument.
+Status: Design godkänd av André 2026-10-19 kl. 08:27:20 Europe/Stockholm. Genomförandeplanen granskas separat; inget utskick eller schema är godkänt.
 Bas: `2121206e0dd041d3fb894315d8a7797dc7e72f09`
 Gren: `codex/atlas-harvey-sales-20261017`
 Projekt: Handlarbörsen, `8f673c09-1c8f-4d78-876e-4c14bf1c89b3`.

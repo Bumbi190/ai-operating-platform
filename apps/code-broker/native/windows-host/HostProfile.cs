@@ -13,8 +13,8 @@ public static class HostProfile {
     public const string Schema="sdf.windows_host_qualification.v1";
     public static readonly IReadOnlyList<TargetDefinition> Targets=Array.AsReadOnly(new[]{
         new TargetDefinition("git","C:/Program Files/Git/cmd/git.exe",false,"bd1bf0469426e2e67a27300176303b5e43e1dda81babc1c24c9c2ce627b97960"),
-        new TargetDefinition("docker","C:/Users/Andre/AppData/Local/Programs/DockerDesktop/resources/bin/docker.exe",false,"6c699720bb9523dedb9eb5d22a49951ea9210dbdb1314a3554029eee9be76896"),
-        new TargetDefinition("backend","C:/Users/Andre/AppData/Local/Programs/DockerDesktop/resources/com.docker.backend.exe",false,"37deeeae5bf632014b22fc6487cb9a531072f8d32d062acf6982a914fa6e8585"),
+        new TargetDefinition("docker","C:/Program Files/Docker/Docker/resources/bin/docker.exe",false,"6c699720bb9523dedb9eb5d22a49951ea9210dbdb1314a3554029eee9be76896"),
+        new TargetDefinition("backend","C:/Program Files/Docker/Docker/resources/com.docker.backend.exe",false,"37deeeae5bf632014b22fc6487cb9a531072f8d32d062acf6982a914fa6e8585"),
         new TargetDefinition("dotnet","C:/Program Files/dotnet/dotnet.exe",false,"7967467e8bad9c686de2ab2c1994112d5331a7c3d20f0b8a4fff7480221a1c37"),
         new TargetDefinition("checkout","C:/Users/Andre/Projects/Omnira/Code/ai-operating-platform",true,null),
         new TargetDefinition("worktree_parent","C:/Users/Andre/Projects/Omnira/.worktrees",true,null),

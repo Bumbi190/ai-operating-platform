@@ -104,3 +104,11 @@ test('expired source shows a concrete blocker without a successful receipt',asyn
  await page.getByRole('button',{name:'Kontrollera filmunderlag',exact:true}).click();await expect(page.getByRole('alert')).toContainText('Källan är för gammal')
  await expect(page.getByText('Kontrollerad version 1',{exact:true})).toHaveCount(0)
 })
+
+test('a successful film result disappears when its source expires',async({page})=>{
+ const r=filmResult();r.sourceExpiresAt='2026-10-19T07:00:01.000Z'
+ await page.route('**/api/media/film-preparation',route=>route.fulfill({json:r}));await openFilm(page)
+ await page.getByRole('button',{name:'Kontrollera filmunderlag',exact:true}).click();await expect(page.getByText('Kontrollerad version 1',{exact:true})).toBeVisible()
+ await page.clock.runFor(1001);await expect(page.getByText('Kontrollerad version 1',{exact:true})).toHaveCount(0)
+ await expect(page.getByRole('alert')).toContainText('Källan är för gammal')
+})

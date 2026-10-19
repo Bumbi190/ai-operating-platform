@@ -11,7 +11,9 @@ import {makeStorageJob} from './sdf-review-storage-fixture'
 import {TOKEN} from './sdf-execution-lease-fixtures'
 export const migration='20261019110000_atlas_code_work_execution_lease.sql'
 export const q=(v:unknown)=>typeof v==='number'?String(v):v===null?'null':"'"+(typeof v==='string'?v:JSON.stringify(v)).replaceAll("'","''")+"'"+(typeof v==='object'?'::jsonb':'')
-const ROOT=resolve(__dirname,'../../../../..'),WS=join(ROOT,'.superpowers/sdd/2026-10-19-live-execution-lease')
+const ROOT=resolve(__dirname,'../../../../..'),PLAN='docs/superpowers/plans/2026-10-19-cooperative-native-stop.md',WS=join(ROOT,'.superpowers/sdd/2026-10-19-cooperative-native-stop'),LABEL='cooperative-native-stop'
+/** Owned plan workspace must already exist with matching identity; fixtures never create or recreate it. */
+function ownedWorkspace(){if(!existsSync(join(WS,'plan-path'))||readFileSync(join(WS,'plan-path'),'utf8').trim()!==PLAN||!existsSync(join(ROOT,PLAN)))throw Error('owned_plan_workspace_missing');return WS}
 const DOCKER='C:/Users/Andre/AppData/Local/Programs/DockerDesktop/resources/bin/docker.exe',DOTNET='C:/Program Files/dotnet/dotnet.exe',IMAGE='sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d'
 const execute=promisify(execFile)
 export class ExecutionLeasePostgres {
@@ -25,11 +27,11 @@ export class ExecutionLeasePostgres {
  sql(sql:string,role:string|null=null){return this.run(['exec','-i',this.name,'psql','-X','-q','-t','-A','-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres'],(role?'set role '+role+';\n':'')+sql)}
  async parallel(sqls:string[]){return Promise.allSettled(sqls.map(async sql=>{const c=execute(DOCKER,this.args(['exec','-i',this.name,'psql','-X','-q','-t','-A','-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres']),{env:this.env(),encoding:'utf8',timeout:30000,maxBuffer:8*1024*1024});c.child.stdin!.end('set role service_role;\n'+sql);return(await c).stdout.trim()}))}
  async start(includeMigration=true){
-  if(process.platform!=='win32'||existsSync(this.dir))throw Error('owned_pg_environment');mkdirSync(this.dir);writeFileSync(join(this.dir,'config.json'),'{}');writeFileSync(join(this.dir,'intent.json'),JSON.stringify({name:this.name,attempt:this.attempt,imageId:IMAGE}),{flag:'wx'})
+  ownedWorkspace();if(process.platform!=='win32'||existsSync(this.dir))throw Error('owned_pg_environment');mkdirSync(this.dir);writeFileSync(join(this.dir,'config.json'),'{}');writeFileSync(join(this.dir,'intent.json'),JSON.stringify({name:this.name,attempt:this.attempt,imageId:IMAGE}),{flag:'wx'})
   if(createHash('sha256').update(readFileSync(DOCKER)).digest('hex')!=='6c699720bb9523dedb9eb5d22a49951ea9210dbdb1314a3554029eee9be76896')throw Error('docker_binary_changed')
   this.qualify();if(JSON.parse(this.run(['image','inspect',IMAGE]))[0].Id!==IMAGE)throw Error('cached_pg_image_missing')
   writeFileSync(join(this.dir,'before.json'),JSON.stringify(this.snapshot(),null,2));this.started=true;this.receipt('dispatching_once')
-  this.id=this.run(['run','-d','--pull=never','--network=none','--read-only','--memory=536870912','--cpus=1','--name',this.name,'--label','omnira.plan=live-execution-lease','--label','omnira.attempt='+this.attempt,'--tmpfs','/var/lib/postgresql/data:rw,nosuid,nodev,size=268435456','--tmpfs','/var/run/postgresql:rw,nosuid,nodev,size=16777216','--tmpfs','/tmp:rw,nosuid,nodev,size=16777216','-e','POSTGRES_HOST_AUTH_METHOD=trust',IMAGE]);if(!/^[a-f0-9]{64}$/.test(this.id))throw Error('unknown_pg_create')
+  this.id=this.run(['run','-d','--pull=never','--network=none','--read-only','--memory=536870912','--cpus=1','--name',this.name,'--label','omnira.plan='+LABEL,'--label','omnira.attempt='+this.attempt,'--tmpfs','/var/lib/postgresql/data:rw,nosuid,nodev,size=268435456','--tmpfs','/var/run/postgresql:rw,nosuid,nodev,size=16777216','--tmpfs','/tmp:rw,nosuid,nodev,size=16777216','-e','POSTGRES_HOST_AUTH_METHOD=trust',IMAGE]);if(!/^[a-f0-9]{64}$/.test(this.id))throw Error('unknown_pg_create')
   const actual=JSON.parse(this.run(['inspect',this.id]))[0];this.owned(actual)
   if(actual.HostConfig.NetworkMode!=='none'||actual.HostConfig.ReadonlyRootfs!==true||actual.HostConfig.Binds?.length||actual.HostConfig.PortBindings&&Object.keys(actual.HostConfig.PortBindings).length||actual.Mounts.some((m:any)=>m.Type!=='tmpfs'))throw Error('unsafe_pg_test_spec')
   this.receipt('created',{inspect:{image:actual.Image,mounts:actual.Mounts}})
@@ -38,7 +40,7 @@ export class ExecutionLeasePostgres {
   for(const f of ['20260819_atlas_authorizations.sql','20260820_manager_tasks_work_packages.sql','20260918095827_sdf1b1_code_work_control_plane.sql','20260923150000_sdf1c1_trusted_broker_identity.sql','20260924080000_sdf1c1b_broker_claim_credentials.sql','20260924140000_sdf1c2_broker_control_channel.sql',...(includeMigration?[migration]:[])])this.sql(readFileSync(join(ROOT,'apps/web/supabase/migrations',f),'utf8'))
   this.receipt('ready',{version:this.sql('select version();')})
  }
- owned(a:any){if(a.Name!=='/'+this.name||a.Image!==IMAGE||a.Config.Labels['omnira.plan']!=='live-execution-lease'||a.Config.Labels['omnira.attempt']!==this.attempt)throw Error('foreign_test_pg')}
+ owned(a:any){if(a.Name!=='/'+this.name||a.Image!==IMAGE||a.Config.Labels['omnira.plan']!==LABEL||a.Config.Labels['omnira.attempt']!==this.attempt)throw Error('foreign_test_pg')}
  stop(){if(!this.started)return;this.qualify();const a=JSON.parse(this.run(['inspect',this.id??this.name]))[0];this.owned(a);this.run(['rm','-f',a.Id]);this.qualify();let absent=false;try{this.run(['inspect',a.Id])}catch(e){absent=String((e as any).stderr).includes('No such object')||String((e as any).stderr).includes('no such object')}if(!absent)throw Error('pg_cleanup_unverified');this.started=false;writeFileSync(join(this.dir,'after.json'),JSON.stringify(this.snapshot(),null,2));this.receipt('removed',{removedId:a.Id,absenceConfirmed:true})}
  async hold(sql:string){
   const c=execute(DOCKER,this.args(['exec','-i',this.name,'psql','-X','-q','-t','-A','-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres']),{env:this.env(),encoding:'utf8',timeout:15000,maxBuffer:1048576})

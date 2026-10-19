@@ -1787,6 +1787,22 @@
       "anon_grants": false,
       "authenticated_grants": false,
       "service_role": true
+    },
+    "sales_contact_timing_rules": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "sales_contact_history_revisions": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
     }
   },
   "views": {

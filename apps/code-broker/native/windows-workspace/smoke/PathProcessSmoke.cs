@@ -12,7 +12,15 @@ namespace Omnira.CodeBroker.Workspace.Smoke;
 internal static class PathProcessSmoke {
  [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern SafeFileHandle CreateFileW(string path,uint access,uint share,IntPtr security,uint create,uint flags,IntPtr template);
  static bool ReparseWriteBlocked(string path){using var handle=CreateFileW(path,0x40000000,0,IntPtr.Zero,3,0x02200000,IntPtr.Zero);return handle.IsInvalid&&Marshal.GetLastWin32Error()==32;}
- internal static string Fixture()=>Path.Combine(Environment.CurrentDirectory,".superpowers","sdd","2026-10-18-windows-workspace-sandbox","fixture-"+Guid.NewGuid().ToString("N"));
+ internal static string FixtureRoot(){
+  var requested=Environment.GetEnvironmentVariable("SDF_WINDOWS_FIXTURE_ROOT");var expected=Path.GetFullPath(Path.Combine(Environment.CurrentDirectory,".superpowers/sdd/2026-10-19-windows-source-materialization"));
+  if(requested==null)return Path.GetFullPath(Path.Combine(Environment.CurrentDirectory,".superpowers/sdd/2026-10-18-windows-workspace-sandbox"));
+  var owner=File.ReadAllText(Path.Combine(expected,"plan-path")).Trim();var relative="docs/superpowers/plans/2026-10-19-windows-source-materialization.md";
+  var repo=Path.GetFullPath(Environment.CurrentDirectory).Replace('\\','/');var msys="/"+char.ToLowerInvariant(repo[0])+repo[2..]+"/"+relative;
+  if(!string.Equals(Path.GetFullPath(requested),expected,StringComparison.OrdinalIgnoreCase)||(owner!=relative&&owner!=msys))throw new Exception("fixture path escaped");
+  return expected;
+ }
+ internal static string Fixture()=>Path.Combine(FixtureRoot(),"f-"+Convert.ToBase64String(Guid.NewGuid().ToByteArray()).TrimEnd('=').Replace('+','-').Replace('/','_'));
  internal static bool Refused(Action action){try{action();return false;}catch(HostCheckException){return true;}catch(WorkspaceException){return true;}}
  internal static bool IoRefused(Action action){try{action();return false;}catch(IOException){return true;}catch(UnauthorizedAccessException){return true;}}
  public static async Task Run(Action<string,bool> check) {

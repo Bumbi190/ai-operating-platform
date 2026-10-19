@@ -5,7 +5,7 @@ using Omnira.CodeBroker.Workspace.Smoke;
 using Omnira.CodeBroker.Workspace;
 if(args.Length>0&&args[0]=="child") {
  if(args[1]=="job-parent"){
-  var pidFile=Path.GetFullPath(args[2]);var owned=Path.GetFullPath(Path.Combine(Environment.CurrentDirectory,".superpowers/sdd/2026-10-18-windows-workspace-sandbox"))+Path.DirectorySeparatorChar;
+  var pidFile=Path.GetFullPath(args[2]);var owned=PathProcessSmoke.FixtureRoot()+Path.DirectorySeparatorChar;
   if(!pidFile.StartsWith(owned,StringComparison.OrdinalIgnoreCase))throw new Exception("fixture path escaped");
   using var tool=ProtectedPathLease.Acquire(Omnira.CodeBroker.Host.HostProfile.Targets.Single(t=>t.Id=="dotnet"),System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value);
   await NativeProcess.RunAsync(tool,new[]{Assembly.GetExecutingAssembly().Location,"child","tree-file",pidFile},Path.GetDirectoryName(pidFile)!,new Dictionary<string,string>{{"SystemRoot",@"C:\Windows"}},60000,262144,CancellationToken.None);return 0;
@@ -19,7 +19,7 @@ if(args.Length>0&&args[0]=="child") {
  await Task.Delay(Timeout.Infinite);return 0;
 }
 if(args.Length==2&&args[0]=="verify-pids"){
- var owned=Path.GetFullPath(Path.Combine(Environment.CurrentDirectory,".superpowers/sdd/2026-10-18-windows-workspace-sandbox"))+Path.DirectorySeparatorChar;
+ var owned=PathProcessSmoke.FixtureRoot()+Path.DirectorySeparatorChar;
  var path=Path.GetFullPath(args[1]);if(!path.StartsWith(owned,StringComparison.OrdinalIgnoreCase))throw new Exception("fixture path escaped");
  using var doc=JsonDocument.Parse(File.ReadAllText(path));var alive=new List<int>();
  foreach(var item in doc.RootElement.EnumerateArray()){
@@ -35,6 +35,7 @@ if(args.Length!=1)throw new Exception("unknown smoke mode");
 if(args[0]=="path-process")await PathProcessSmoke.Run(Check);
 else if(args[0]=="worktree")await WorktreeSmoke.Run(Check);
 else if(args[0]=="worktree-config")await WorktreeConfigSmoke.Run(Check);
+else if(args[0]=="source")await SourceSmoke.Run(Check);
 else if(args[0]=="probe")await ProbeSmoke.Run(Check);
 else throw new Exception("unknown smoke mode");
 Console.WriteLine(JsonSerializer.Serialize(new{passed=names.Count,names}));

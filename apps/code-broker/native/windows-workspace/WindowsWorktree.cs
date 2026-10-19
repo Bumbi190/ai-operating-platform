@@ -34,7 +34,7 @@ public sealed class WindowsWorktree {
    foreach(var relative in new[]{"objects","refs","worktrees","objects/info","refs/heads","refs/remotes","refs/remotes/origin"}){
     var path=Path.Combine(dotGit,relative.Replace('/',Path.DirectorySeparatorChar));if(Directory.Exists(path)||File.Exists(path))Hold(new("git_metadata",path,true,null));
    }
-   foreach(var relative in new[]{"commondir","gitdir","objects/info/alternates","objects/info/http-alternates"})if(File.Exists(Path.Combine(dotGit,relative.Replace('/',Path.DirectorySeparatorChar))))throw new WorkspaceException("unsafe_path");
+   foreach(var relative in new[]{"commondir","gitdir","objects/info/alternates","objects/info/http-alternates","info/grafts"})if(File.Exists(Path.Combine(dotGit,relative.Replace('/',Path.DirectorySeparatorChar))))throw new WorkspaceException("unsafe_path");
    foreach(var relative in new[]{"packed-refs","refs/remotes/origin/main"}){var path=Path.Combine(dotGit,relative.Replace('/',Path.DirectorySeparatorChar));if(File.Exists(path))Hold(new("git_ref",path,false,null));}
    var values=new GitOperationValues(input,root,parent);
    async Task<GitProcessResult> Run(GitOperation op,GitOperationValues? v=null){ConfigsUnchanged();var result=await git.RunAsync(op,v??values,cancellation);ConfigsUnchanged();if(result.TimedOut)throw new WorkspaceException("git_timeout");if(result.OutputLimit)throw new WorkspaceException("git_output_limit");if(result.ExitCode==null)throw new WorkspaceException("git_unavailable");return result;}
@@ -80,6 +80,7 @@ public sealed class WindowsWorktree {
    if(mainConfigExists&&Need(await Run(GitOperation.MainWorktreeConfig),"unsafe_git_config")!=mainConfig||targetConfigExists&&Need(await Run(GitOperation.TargetWorktreeConfig,targetValues),"unsafe_git_config")!=targetConfig)throw new WorkspaceException("evidence_changed");
    if(Need(await Run(GitOperation.ResolveApprovedBase),"base_unavailable").Trim()!=input.PinnedBaseSha||Need(await Run(GitOperation.LocalConfig),"unsafe_git_config")!=config)throw new WorkspaceException("evidence_changed");
    foreach(var lease in held)lease.ValidateUnchanged();
+   using var existing=await WindowsWorkspaceLease.OpenExistingAsync(input,location,git,host,cancellation);
    return new("prepared",true,Binding:new(input.WorkId,input.RepositoryId,input.PinnedBaseSha,input.AdmissionHash,input.ClaimId,input.Fence),ObservedBaseSha:observed,HeadSha:head,BranchName:branch,WorktreePathHash:NativeFileEvidence.Hash("worktree-path:"+targetLease.PathValue),RemoteIdentityHash:remoteHash,WorkspaceIdentityHash:NativeFileEvidence.Hash("workspace-v1:"+JsonSerializer.Serialize(targetLease.Evidence)),ObservedAt:WorkspaceJson.Now());
   }catch(WorkspaceException e){return new(mutation?"failed":"refused",mutation,e.Reason);}
   catch(HostCheckException){return new(mutation?"failed":"refused",mutation,"unsafe_path");}

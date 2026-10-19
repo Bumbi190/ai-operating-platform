@@ -46,7 +46,7 @@ internal static class WorktreeConfigSmoke {
   foreach(bool unsafeConfig in new[]{false,true}){
    using var f=new RepoFixture();Enable(f);var runner=new ConfigRecordingGit{After=(op,v)=>{if(op==GitOperation.WorktreeAdd)File.WriteAllText(Path.Combine(Registration(v),"config.worktree"),unsafeConfig?"[core]\n worktree=../redirected\n":"[core]\n autocrlf=false\n");}};
    var result=await f.Engine(runner).PrepareAsync(f.Request(),CancellationToken.None);
-   check("new_registration_config_checked_before_head_"+unsafeConfig,unsafeConfig?result.Status=="failed"&&result.WorkspaceRetained&&runner.Heads==0:result.Status=="prepared"&&runner.Heads==1);
+   check("new_registration_config_checked_before_head_"+unsafeConfig,unsafeConfig?result.Status=="failed"&&result.WorkspaceRetained&&runner.Heads==0:result.Status=="prepared"&&result.HeadSha==f.Head&&runner.Heads>=1);
   }
   using(var f=new RepoFixture()){
    Enable(f,"[core]\n autocrlf=false\n");var runner=new ConfigRecordingGit{ChangeConfigReply=true};

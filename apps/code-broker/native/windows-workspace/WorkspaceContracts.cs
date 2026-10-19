@@ -7,6 +7,7 @@ public sealed class WorkspaceException:Exception {
  public string Reason{get;}
  public WorkspaceException(string reason):base("Windows workspace operation refused"){Reason=reason;}
 }
+internal sealed record NativeBytesResult(int? ExitCode,byte[] Stdout,bool TimedOut,bool OutputLimit);
 internal sealed record GitProcessResult(int? ExitCode,string Stdout,bool TimedOut,bool OutputLimit);
 internal static class WorkspaceJson {
  internal static readonly JsonSerializerOptions Options=new(){PropertyNamingPolicy=JsonNamingPolicy.CamelCase,DefaultIgnoreCondition=JsonIgnoreCondition.WhenWritingNull};

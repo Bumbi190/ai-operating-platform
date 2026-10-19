@@ -1,14 +1,16 @@
 using System.Security.Principal;
 using Omnira.CodeBroker.Host;
 namespace Omnira.CodeBroker.Workspace;
-internal enum GitOperation {Layout,LocalConfig,MainWorktreeConfig,TargetWorktreeConfig,ObjectType,ResolvePin,ResolveApprovedBase,RefExists,WorktreeList,WorktreeAdd,Head,SymbolicHead,Status}
+internal enum GitOperation {Layout,LocalConfig,MainWorktreeConfig,TargetWorktreeConfig,ObjectType,ResolvePin,ResolveApprovedBase,RefExists,WorktreeList,WorktreeAdd,Head,SymbolicHead,Status,SourceTree,SourceBlob}
 internal sealed record GitOperationValues(WorkspaceRequest Request,ProtectedPathLease Repository,ProtectedPathLease Parent,ProtectedPathLease? Target=null,ProtectedPathLease? Registration=null);
 internal interface IWindowsGit{Task<GitProcessResult> RunAsync(GitOperation operation,GitOperationValues values,CancellationToken cancellation);}
-internal sealed class WindowsGitProcess:IWindowsGit {
+internal interface IWindowsSourceGit{Task<NativeBytesResult> ReadBlobAsync(GitOperationValues values,GitBlobReference blob,CancellationToken token);}
+internal sealed class WindowsGitProcess:IWindowsGit,IWindowsSourceGit {
  internal const string LockReason="omnira-sdf explicit-cleanup-only";
  internal static string[] OperationArguments(GitOperation operation,string workId,string sha,string target){
   if(!WorkspaceJson.Uuid(workId,true)||!System.Text.RegularExpressions.Regex.IsMatch(sha,@"^[0-9a-f]{40}$"))throw new WorkspaceException("input_invalid");
   return operation switch{
+   GitOperation.SourceTree=>new[]{"ls-tree","-r","-z","--full-tree","--long",sha,"--"}.Concat(SourceFixturePolicy.Paths).ToArray(),
    GitOperation.Layout=>new[]{"rev-parse","--show-toplevel","--absolute-git-dir","--git-common-dir","--is-inside-work-tree"},
    GitOperation.LocalConfig=>new[]{"config","--local","--no-includes","--list","-z"},
    GitOperation.MainWorktreeConfig=>new[]{"config","--file",".git/config.worktree","--no-includes","--list","-z"},
@@ -26,24 +28,32 @@ internal sealed class WindowsGitProcess:IWindowsGit {
   };
  }
  public async Task<GitProcessResult> RunAsync(GitOperation operation,GitOperationValues values,CancellationToken cancellation){
+  if(operation==GitOperation.SourceBlob)throw new WorkspaceException("input_invalid");
+  var r=await RunCoreAsync(operation,values,null,cancellation);
+  return new(r.ExitCode,new System.Text.UTF8Encoding(false,true).GetString(r.Stdout),r.TimedOut,r.OutputLimit);
+ }
+ public Task<NativeBytesResult> ReadBlobAsync(GitOperationValues values,GitBlobReference blob,CancellationToken token)=>RunCoreAsync(GitOperation.SourceBlob,values,blob,token);
+ async Task<NativeBytesResult> RunCoreAsync(GitOperation operation,GitOperationValues values,GitBlobReference? blob,CancellationToken cancellation){
   values.Request.Validate();values.Repository.ValidateUnchanged();values.Parent.ValidateUnchanged();values.Target?.ValidateUnchanged();values.Registration?.ValidateUnchanged();
   var user=WindowsIdentity.GetCurrent().User!.Value;using var executable=ProtectedPathLease.Acquire(HostProfile.Targets.Single(t=>t.Id=="git"),user);
   var target=Path.Combine(values.Parent.PathValue,values.Request.WorkId);
-  var args=OperationArguments(operation,values.Request.WorkId,values.Request.PinnedBaseSha,target);
+  var args=operation==GitOperation.SourceBlob&&blob!=null?new[]{"cat-file","blob",blob.Oid}:OperationArguments(operation,values.Request.WorkId,values.Request.PinnedBaseSha,target);
   var cwd=operation==GitOperation.TargetWorktreeConfig?values.Registration?.PathValue??throw new WorkspaceException("unsafe_path"):operation is GitOperation.Head or GitOperation.SymbolicHead or GitOperation.Status?values.Target?.PathValue??throw new WorkspaceException("unsafe_path"):values.Repository.PathValue;
   var home=Path.Combine(values.Parent.PathValue,".infra-win-"+Guid.NewGuid().ToString("N"));ProtectedPathLease? homeLease=null;
   if(Directory.Exists(home)||File.Exists(home))throw new WorkspaceException("unsafe_path");
   try{
    Directory.CreateDirectory(home);homeLease=ProtectedPathLease.Acquire(new("neutral_home",home,true,null),user);
    var hooks=Path.Combine(home,"hooks");Directory.CreateDirectory(hooks);var empty=Path.Combine(home,"empty.config");File.WriteAllText(empty,"");
-   var prefix=new[]{"--no-pager","--no-optional-locks","-c","core.hooksPath="+hooks,"-c","core.fsmonitor=false","-c","credential.helper=","-c","protocol.allow=never","-c","gc.auto=0","-c","maintenance.auto=false","-c","core.untrackedCache=false","-c","advice.detachedHead=false","-c","submodule.recurse=false","-c","core.protectNTFS=true","-c","core.symlinks=false"};
+   var prefix=new[]{"--no-pager","--no-optional-locks","--no-replace-objects","-c","core.hooksPath="+hooks,"-c","core.fsmonitor=false","-c","credential.helper=","-c","protocol.allow=never","-c","gc.auto=0","-c","maintenance.auto=false","-c","core.untrackedCache=false","-c","advice.detachedHead=false","-c","submodule.recurse=false","-c","core.protectNTFS=true","-c","core.symlinks=false"};
    var environment=new Dictionary<string,string>{
     ["SystemRoot"]=@"C:\Windows",["WINDIR"]=@"C:\Windows",["PATH"]=@"C:\Program Files\Git\cmd;C:\Program Files\Git\mingw64\bin;C:\Windows\System32",
     ["HOME"]=home,["USERPROFILE"]=home,["XDG_CONFIG_HOME"]=home,["TEMP"]=home,["TMP"]=home,
     ["LANG"]="C",["LC_ALL"]="C",["TZ"]="UTC",["GIT_CONFIG_NOSYSTEM"]="1",["GIT_CONFIG_GLOBAL"]=empty,["GIT_CONFIG_SYSTEM"]=empty,
-    ["GIT_TERMINAL_PROMPT"]="0",["GIT_NO_LAZY_FETCH"]="1",["GIT_OPTIONAL_LOCKS"]="0",["GIT_ALLOW_PROTOCOL"]="none"
+    ["GIT_TERMINAL_PROMPT"]="0",["GIT_NO_LAZY_FETCH"]="1",["GIT_NO_REPLACE_OBJECTS"]="1",["GIT_OPTIONAL_LOCKS"]="0",["GIT_ALLOW_PROTOCOL"]="none"
    };
-   var result=await NativeProcess.RunAsync(executable,prefix.Concat(args).ToArray(),cwd,environment,60000,262144,cancellation);
+   NativeBytesResult result;
+   if(operation==GitOperation.SourceBlob)result=await NativeProcess.RunBytesAsync(executable,prefix.Concat(args).ToArray(),cwd,environment,60000,cancellation);
+   else{var text=await NativeProcess.RunAsync(executable,prefix.Concat(args).ToArray(),cwd,environment,60000,262144,cancellation);result=new(text.ExitCode,System.Text.Encoding.UTF8.GetBytes(text.Stdout),text.TimedOut,text.OutputLimit);}
    homeLease.ValidateUnchanged();values.Repository.ValidateUnchanged();values.Parent.ValidateUnchanged();values.Target?.ValidateUnchanged();values.Registration?.ValidateUnchanged();
    return result;
   }finally{

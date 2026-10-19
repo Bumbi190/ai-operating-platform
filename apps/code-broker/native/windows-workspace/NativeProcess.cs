@@ -39,7 +39,13 @@ internal static class NativeProcess {
   return result.Append('\\',slash*2).Append('"').ToString();
  }
  internal static async Task<GitProcessResult> RunAsync(ProtectedPathLease executable,IReadOnlyList<string> arguments,string cwd,IReadOnlyDictionary<string,string> environment,int timeoutMs,int maxBytes,CancellationToken cancellation){
-  if(!OperatingSystem.IsWindows()||timeoutMs<1||timeoutMs>60000||maxBytes<1||maxBytes>262144||arguments.Count>96)throw new WorkspaceException("input_invalid");
+  if(maxBytes>262144)throw new WorkspaceException("input_invalid");
+  var r=await RunCoreAsync(executable,arguments,cwd,environment,timeoutMs,maxBytes,cancellation);
+  return new(r.ExitCode,new UTF8Encoding(false,true).GetString(r.Stdout),r.TimedOut,r.OutputLimit);
+ }
+ internal static Task<NativeBytesResult> RunBytesAsync(ProtectedPathLease executable,IReadOnlyList<string> arguments,string cwd,IReadOnlyDictionary<string,string> environment,int timeoutMs,CancellationToken cancellation)=>RunCoreAsync(executable,arguments,cwd,environment,timeoutMs,1048576,cancellation);
+ static async Task<NativeBytesResult> RunCoreAsync(ProtectedPathLease executable,IReadOnlyList<string> arguments,string cwd,IReadOnlyDictionary<string,string> environment,int timeoutMs,int maxBytes,CancellationToken cancellation){
+  if(!OperatingSystem.IsWindows()||timeoutMs<1||timeoutMs>60000||maxBytes<1||maxBytes>1048576||arguments.Count>96)throw new WorkspaceException("input_invalid");
   executable.ValidateUnchanged();using var directory=ProtectedPathLease.Acquire(new("process_directory",cwd,true,null),WindowsIdentity.GetCurrent().User!.Value);
   var env=new SortedDictionary<string,string>(StringComparer.OrdinalIgnoreCase);
   foreach(var pair in environment){if(pair.Key.Length==0||pair.Key.Contains('=')||pair.Key.Contains('\0')||pair.Value.Contains('\0')||!env.TryAdd(pair.Key,pair.Value))throw new WorkspaceException("input_invalid");}
@@ -74,7 +80,7 @@ internal static class NativeProcess {
    Kill(); // Includes any descendant which outlived its parent, even after an otherwise normal exit.
    var output=await stdout;await stderr;
    directory.ValidateUnchanged();executable.ValidateUnchanged();
-   return new(Volatile.Read(ref stopped)!=0||Volatile.Read(ref overflow)!=0?null:checked((int)exit),new UTF8Encoding(false,true).GetString(output),Volatile.Read(ref stopped)!=0,Volatile.Read(ref overflow)!=0);
+   return new(Volatile.Read(ref stopped)!=0||Volatile.Read(ref overflow)!=0?null:checked((int)exit),output,Volatile.Read(ref stopped)!=0,Volatile.Read(ref overflow)!=0);
   }finally{
    Kill();if(process.Process!=IntPtr.Zero){if(!assigned)TerminateProcess(process.Process,1);CloseHandle(process.Process);}if(process.Thread!=IntPtr.Zero)CloseHandle(process.Thread);
    outRead?.Dispose();outWrite?.Dispose();errRead?.Dispose();errWrite?.Dispose();input?.Dispose();

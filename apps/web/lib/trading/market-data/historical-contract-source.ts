@@ -5,7 +5,7 @@
  * This file does not select contracts, contact a provider, invent calendar
  * expectations, or mint Strategy/Execution authority. It is a deterministic
  * boundary between a future provider's observation report and existing
- * ContractCandleSegment / ObservedMinutes validators.
+ * ContractCandleSegment / HistoricalObservedMinutes validators.
  *
  * Contrasts with the older root-scoped HistoricalCandleSource, which is for
  * chart navigation only and whose hasMoreBefore is NOT a data-coverage proof.
@@ -18,7 +18,19 @@ import { parseResolvedContract, sameContract, type ResolvedContract } from '../c
 import { isTimestamp, toEpochMs, type Timestamp } from '../time'
 import type { MarketCandle } from '../market-candle'
 import { parsePriceText } from '../market-price'
-import type { ObservationSourceState, ObservedMinutes } from '../session-calendar'
+/*
+ * Canonical HistoricalObservedMinutes is structurally { sourceState, minuteOpenTimes }.
+ * C3C echoes this SHAPE but must not import SessionCalendar: the market-data
+ * package is intentionally allowed only the grid predicate as a VALUE import.
+ * This local type introduces NO new states or semantics; it is contract-tested
+ * against the existing SessionCalendar interface. Calendar and completeness
+ * remain owned by their original modules.
+ */
+type HistoricalSourceState = 'SETTLED' | 'UNKNOWN'
+interface HistoricalObservedMinutes {
+  readonly sourceState: HistoricalSourceState
+  readonly minuteOpenTimes: readonly Timestamp[]
+}
 import { buildHistoricalContractRequest, type HistoricalContractRequest } from './contract-window'
 import { buildContractCandleSegment, type ContractCandleSegment, type SegmentProblem } from './contract-segment'
 
@@ -34,14 +46,14 @@ export type HistoricalContractSourceResult =
       readonly kind: 'OBSERVATIONS'
       readonly contract: ResolvedContract
       readonly coverage: HistoricalCoverage
-      readonly sourceState: ObservationSourceState
+      readonly sourceState: HistoricalSourceState
       readonly candles: readonly MarketCandle[]
     }
   | {
       readonly kind: 'NO_DATA'
       readonly contract: ResolvedContract
       readonly coverage: HistoricalCoverage
-      readonly sourceState: ObservationSourceState
+      readonly sourceState: HistoricalSourceState
     }
   | { readonly kind: 'REFUSED'; readonly reason: 'SOURCE_REQUEST_UNAVAILABLE' }
   | {
@@ -71,10 +83,10 @@ export type HistoricalSourceInspection =
       readonly kind: 'ACCEPTED'
       readonly sourceKind: 'OBSERVATIONS' | 'NO_DATA'
       readonly coverage: HistoricalCoverage
-      readonly sourceState: ObservationSourceState
+      readonly sourceState: HistoricalSourceState
       /** Still NOT sufficient to prove BarCompleteness. */
       readonly segment: ContractCandleSegment
-      readonly observed: ObservedMinutes
+      readonly observed: HistoricalObservedMinutes
       /** Null means the interval endpoint was reached, NOT that sourceState is SETTLED. */
       readonly nextRequest: HistoricalContractRequest | null
     }
@@ -93,7 +105,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function sourceStateOf(value: unknown): ObservationSourceState | null {
+function sourceStateOf(value: unknown): HistoricalSourceState | null {
   return value === 'SETTLED' || value === 'UNKNOWN' ? value : null
 }
 
@@ -182,7 +194,7 @@ export function inspectHistoricalContractResult(
     return Object.freeze({ kind: 'SEGMENT_REFUSED' as const, problem: built.problem, detail: built.detail })
   }
 
-  const observed: ObservedMinutes = Object.freeze({
+  const observed: HistoricalObservedMinutes = Object.freeze({
     sourceState,
     minuteOpenTimes: Object.freeze(built.segment.candles.map((candle) => candle.openTime)),
   })

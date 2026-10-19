@@ -1,0 +1,1593 @@
+{
+  "snapshot": "39c5c32e081c1401a39b164d9329bda03c484d91",
+  "finishedAt": "2026-10-18T19:46:16.959Z",
+  "reported": {
+    "total": 15319,
+    "passed": 13808,
+    "failed": 393,
+    "pending": 1114,
+    "todo": 0,
+    "files": 671
+  },
+  "assertionStatuses": {
+    "passed": 13808,
+    "skipped": 1114,
+    "failed": 393,
+    "pending": 4
+  },
+  "knownCalendarNavigationFailuresFixedLater": 11,
+  "failures": [
+    {
+      "file": "lib/website-build/api.test.ts",
+      "test": "website build API authorization and durable results unknown_artifact_is_404_and_export_is_private_verified_utf8"
+    },
+    {
+      "file": "lib/website-build/studio/api.test.ts",
+      "test": "studio HTTP boundary creates a private real owner workspace and recovers a repeated response"
+    },
+    {
+      "file": "lib/website-build/studio/budget.test.ts",
+      "test": "explicit studio budgets and billable project identity requires a budget for the exact owned studio conversation and keeps replay idempotent"
+    },
+    {
+      "file": "lib/website-build/studio/loader.test.ts",
+      "test": "studio project and conversation identity loads a selected studio conversation with its missing budget and no invented desktop"
+    },
+    {
+      "file": "lib/website-build/studio/store.test.ts",
+      "test": "owner-bound studio creation in real PostgreSQL recovers a lost creation response without another project, agent or conversation"
+    },
+    {
+      "file": "lib/website-build/studio/store.test.ts",
+      "test": "owner-bound studio creation in real PostgreSQL rolls back project creation when agent insertion fails"
+    },
+    {
+      "file": "lib/website-build/studio/store.test.ts",
+      "test": "owner-bound studio creation in real PostgreSQL gives authenticated users owner-only SELECT and no mutation or RPC bypass"
+    },
+    {
+      "file": "lib/project/lifecycle/store.test.ts",
+      "test": "owner lifecycle and real static worker fences atomically pauses, versions and replays transitions while restore preserves an unrelated pause"
+    },
+    {
+      "file": "lib/project/lifecycle/store.test.ts",
+      "test": "owner lifecycle and real static worker fences refuses foreign, observer, stale and malformed commands and keeps history and folder requests"
+    },
+    {
+      "file": "lib/project/lifecycle/store.test.ts",
+      "test": "owner lifecycle and real static worker fences archive winning the project lock fences snapshot and commit even with allow_pause"
+    },
+    {
+      "file": "lib/project/lifecycle/store.test.ts",
+      "test": "owner lifecycle and real static worker fences commit winning the project lock finishes before archive and its verified artifact stays readable"
+    },
+    {
+      "file": "lib/project/lifecycle/store.test.ts",
+      "test": "owner lifecycle and real static worker fences serializes actual claim and archive in both orders without claiming paused work"
+    },
+    {
+      "file": "lib/project/lifecycle/store.test.ts",
+      "test": "owner lifecycle and real static worker fences never revives a skipped locked writer after restore and explicit project resume"
+    },
+    {
+      "file": "lib/project/lifecycle/store.test.ts",
+      "test": "owner lifecycle and real static worker fences a project-first writer refuses a busy run without deadlocking canonical claim"
+    },
+    {
+      "file": "lib/project/lifecycle/store.test.ts",
+      "test": "owner lifecycle and real static worker fences a project-first control refuses a busy run without deadlocking canonical claim"
+    },
+    {
+      "file": "lib/project/lifecycle/store.test.ts",
+      "test": "owner lifecycle and real static worker fences retries a transient writer lock on the same artifact, but never retries an actual fence"
+    },
+    {
+      "file": "lib/qa/activity-stream.test.ts",
+      "test": "aktivitet · the rollback body is the body it replaced is pinned by hash"
+    },
+    {
+      "file": "lib/qa/admission-inventory.test.ts",
+      "test": "G3C-2A · run admission has exactly one door no runtime module writes runs.status = running directly"
+    },
+    {
+      "file": "lib/qa/admission-inventory.test.ts",
+      "test": "G3C-2A · run admission has exactly one door the drain is the only caller, and it goes through the canonical RPC"
+    },
+    {
+      "file": "lib/qa/admission-inventory.test.ts",
+      "test": "G3C-2A · run admission has exactly one door no runtime module claims a due workflow instance outside the RPC"
+    },
+    {
+      "file": "lib/qa/admission-inventory.test.ts",
+      "test": "G3C-2A · run admission has exactly one door queueing a run remains open — it is control-plane state, not execution"
+    },
+    {
+      "file": "lib/qa/article-hero-ideogram-brief.test.ts",
+      "test": "generateArticleHeroImage — Phase 2A brief-driven renderer calls Ideogram with aspect_ratio=16x10, style_type=REALISTIC, rendering_speed=DEFAULT"
+    },
+    {
+      "file": "lib/qa/article-hero-ideogram-brief.test.ts",
+      "test": "generateArticleHeroImage — Phase 2A brief-driven renderer prompt contains brief.shot verbatim and the STYLE_REFERENCE_MAP entry"
+    },
+    {
+      "file": "lib/qa/article-hero-ideogram-brief.test.ts",
+      "test": "generateArticleHeroImage — Phase 2A brief-driven renderer negative_prompt contains every ANTI_STOCK_BANLIST term + brief.avoid"
+    },
+    {
+      "file": "lib/qa/article-hero-ideogram-brief.test.ts",
+      "test": "generateArticleHeroImage — Phase 2A brief-driven renderer returned input mirrors the request body for downstream persistence"
+    },
+    {
+      "file": "lib/qa/article-hero-ideogram-brief.test.ts",
+      "test": "generateArticleHeroImage — Phase 2A brief-driven renderer renders correctly for editorial_style=Bloomberg"
+    },
+    {
+      "file": "lib/qa/article-hero-ideogram-brief.test.ts",
+      "test": "generateArticleHeroImage — Phase 2A brief-driven renderer renders correctly for editorial_style=Financial Times"
+    },
+    {
+      "file": "lib/qa/article-hero-ideogram-brief.test.ts",
+      "test": "generateArticleHeroImage — Phase 2A brief-driven renderer renders correctly for editorial_style=Economist"
+    },
+    {
+      "file": "lib/qa/article-hero-ideogram-brief.test.ts",
+      "test": "generateArticleHeroImage — Phase 2A brief-driven renderer renders correctly for editorial_style=MIT Technology Review"
+    },
+    {
+      "file": "lib/qa/article-hero-ideogram-brief.test.ts",
+      "test": "generateArticleHeroImage — Phase 2A brief-driven renderer renders correctly for editorial_style=Wired"
+    },
+    {
+      "file": "lib/qa/article-hero-ideogram-brief.test.ts",
+      "test": "generateArticleHeroImage — Phase 2A brief-driven renderer renders correctly for editorial_style=Reuters"
+    },
+    {
+      "file": "lib/qa/atlas-chat.test.ts",
+      "test": "atlas chat · the route contract it speaks emits the transcript events and the two typed website effects"
+    },
+    {
+      "file": "lib/qa/atlas-chat.test.ts",
+      "test": "atlas chat · the route contract it speaks does not observe a client abort — which is why there is no stop control"
+    },
+    {
+      "file": "lib/qa/atlas-chat.test.ts",
+      "test": "atlas chat · the route contract it speaks has one label here for every tool it offers, and none for a tool it does not"
+    },
+    {
+      "file": "lib/qa/atlas-knowledge-boundary.test.ts",
+      "test": "NO PRODUCTION CONSUMER — Phase 1 wires nothing the only importers are the operator harness and these QA tests"
+    },
+    {
+      "file": "lib/qa/atlas-knowledge-boundary.test.ts",
+      "test": "PROJECTION SOURCE — a local boundary, never an Atlas one the only importers are the operator script and its QA suite"
+    },
+    {
+      "file": "lib/qa/atlas-knowledge-snapshot.test.ts",
+      "test": "golden artifacts — independently derived bytes documents.jsonl matches the golden byte for byte"
+    },
+    {
+      "file": "lib/qa/atlas-knowledge-snapshot.test.ts",
+      "test": "golden artifacts — independently derived bytes knowledge-manifest.json matches the golden byte for byte"
+    },
+    {
+      "file": "lib/qa/atlas-knowledge-snapshot.test.ts",
+      "test": "golden artifacts — independently derived bytes the identity preimage matches the golden byte for byte, with no trailing LF"
+    },
+    {
+      "file": "lib/qa/atlas-latency.test.ts",
+      "test": "Atlas latency · timing never becomes visible content keeps the visible reply fed only by text events"
+    },
+    {
+      "file": "lib/qa/atlas-latency.test.ts",
+      "test": "Atlas latency · timing never becomes visible content does not touch the reply from the timing branch"
+    },
+    {
+      "file": "lib/qa/atlas-memory-dream-producers.test.ts",
+      "test": "2B-2 · placement and boundaries no M4 recall can feed Dream — the producer closure has no recall seam"
+    },
+    {
+      "file": "lib/qa/atlas-memory-emit-durability.test.ts",
+      "test": "Slice 2A — no memory emit is ever detached every recordMemoryEvent call in production code is awaited, at exactly the known sites"
+    },
+    {
+      "file": "lib/qa/atlas-memory-emit-durability.test.ts",
+      "test": "Slice 2A — no memory emit is ever detached the drain helper that emits workflow-action outcomes is itself awaited"
+    },
+    {
+      "file": "lib/qa/atlas-memory-emit-durability.test.ts",
+      "test": "Slice 2A — no memory emit is ever detached the Slice 2B-1 emit helpers are awaited at exactly their known call sites"
+    },
+    {
+      "file": "lib/qa/atlas-memory-terminal-outcomes.test.ts",
+      "test": "2B-1 · placement and boundaries in the workflow runtime only advance-completed.ts writes memory, and nothing reads it back"
+    },
+    {
+      "file": "lib/qa/autonomy-bind-guards.test.ts",
+      "test": "the atomic bind migration is the only EXEMPT bind migration after Phase 3B1A (M0, 3B1B2 M1, M2, M3, M4-A and M4-B are the reviewed successors)"
+    },
+    {
+      "file": "lib/qa/autonomy-license.test.ts",
+      "test": "Phase 2C — the migration does not collide with the chain it joins names itself so it sorts last in the current canonical set"
+    },
+    {
+      "file": "lib/qa/autonomy-license.test.ts",
+      "test": "Phase 2C — hardening H7. the machine write seam is closed at the code level"
+    },
+    {
+      "file": "lib/qa/autonomy-license.test.ts",
+      "test": "Phase 2C — review #2 proofs §9. no production runtime outside this module calls the RPC or drives the store"
+    },
+    {
+      "file": "lib/qa/autonomy-license.test.ts",
+      "test": "Phase 2C — inertness 52. no other atlas subsystem consumes the licence MACHINERY"
+    },
+    {
+      "file": "lib/qa/autonomy-runtime-foundation.test.ts",
+      "test": "the Chapter 18 scale has exactly ONE declaration the scan actually reaches middleware.ts"
+    },
+    {
+      "file": "lib/qa/autonomy-trace-guards.test.ts",
+      "test": "migration discipline Phase 2C is byte-identical to its merged form — no historical edit"
+    },
+    {
+      "file": "lib/qa/autonomy-trace-guards.test.ts",
+      "test": "migration discipline the new migration sorts after every pre-existing migration"
+    },
+    {
+      "file": "lib/qa/autonomy-trace-guards.test.ts",
+      "test": "Phase 3B1A remains INERT no execution module consumes the trace or its writer"
+    },
+    {
+      "file": "lib/qa/budget-scopes.test.ts",
+      "test": "canonical comments describe the FINAL code states the invariant it actually implements, in the TOP-LEVEL header"
+    },
+    {
+      "file": "lib/qa/budget-scopes.test.ts",
+      "test": "canonical comments describe the FINAL code gives the stale-open reason wherever stale replay is described"
+    },
+    {
+      "file": "lib/qa/canonical-evidence-pin.test.ts",
+      "test": "B — every workflow evidence reader, pinned the inventory is COMPLETE — no sixth reader exists"
+    },
+    {
+      "file": "lib/qa/canonical-evidence-pin.test.ts",
+      "test": "B — every workflow evidence reader, pinned the shared helper is the only place the pin is computed"
+    },
+    {
+      "file": "lib/qa/cl-shadow.test.ts",
+      "test": "runContextShadow — fire-and-forget containment delivers a diff to the sink and resolves void (assembled context never escapes)"
+    },
+    {
+      "file": "lib/qa/content-center.test.ts",
+      "test": "content center · the rollback body is the body it replaced is pinned by hash, its own doc comment included"
+    },
+    {
+      "file": "lib/qa/delegation-mission-activation.test.ts",
+      "test": "Mission activation through an accepted Delegation ACTIVATES with an accepted current delegation plus a separate activate authorization"
+    },
+    {
+      "file": "lib/qa/delegation-mission-activation.test.ts",
+      "test": "Mission activation through an accepted Delegation the activate authorization is SEPARATE — acceptance does not substitute for it"
+    },
+    {
+      "file": "lib/qa/delegation-mission-activation.test.ts",
+      "test": "accepted-delegation availability is Mission- and version-specific a proof for Mission A does not answer for Mission B in the same project"
+    },
+    {
+      "file": "lib/qa/delegation-mission-activation.test.ts",
+      "test": "accepted-delegation availability is Mission- and version-specific a version-1 acceptance does not answer for version 2"
+    },
+    {
+      "file": "lib/qa/delegation-mission-activation.test.ts",
+      "test": "coverage: a narrowed envelope proves only what it covers (§21.13) an envelope carrying one tool does not prove the mission other tool"
+    },
+    {
+      "file": "lib/qa/delegation-mission-activation.test.ts",
+      "test": "the underlying availability source still has to say yes a throwing source fails closed rather than propagating"
+    },
+    {
+      "file": "lib/qa/delegation-mission-activation.test.ts",
+      "test": "the underlying availability source still has to say yes caches nothing — a revocation between two evaluations changes the answer"
+    },
+    {
+      "file": "lib/qa/delegation-mission-activation.test.ts",
+      "test": "live Mission invalidation collapses the proof (§21.14) a revoked APPROVE authorization invalidates the proof"
+    },
+    {
+      "file": "lib/qa/delegation-mission-activation.test.ts",
+      "test": "live Mission invalidation collapses the proof (§21.14) a governing Decision that stops governing invalidates the proof"
+    },
+    {
+      "file": "lib/qa/delegation-mission-activation.test.ts",
+      "test": "live Mission invalidation collapses the proof (§21.14) a non-operational project mode invalidates the proof"
+    },
+    {
+      "file": "lib/qa/delegation-mission-activation.test.ts",
+      "test": "R2 — a terminal Mission ends the handoff (§21.27) a failed Mission makes the accepted delegation unusable"
+    },
+    {
+      "file": "lib/qa/desktop-commander-unlicensed.test.ts",
+      "test": "nothing in production can reach the host the scan can actually fail — it finds the production tree"
+    },
+    {
+      "file": "lib/qa/desktop-commander-unlicensed.test.ts",
+      "test": "nothing in production can reach the host no module imports the Desktop Commander MCP package"
+    },
+    {
+      "file": "lib/qa/desktop-commander-unlicensed.test.ts",
+      "test": "nothing in production can reach the host no module spawns the Desktop Commander server"
+    },
+    {
+      "file": "lib/qa/desktop-commander-unlicensed.test.ts",
+      "test": "nothing in production can reach the host no module opens an MCP client or transport at all"
+    },
+    {
+      "file": "lib/qa/desktop-commander-unlicensed.test.ts",
+      "test": "nothing in production can reach the host the declaration is imported by no production module"
+    },
+    {
+      "file": "lib/qa/execution-contract-propagation.test.ts",
+      "test": "every governed spend supplies an explicit execution contract all runtime withGovernedSpend calls pass `execution`"
+    },
+    {
+      "file": "lib/qa/execution-contract-propagation.test.ts",
+      "test": "every governed spend supplies an explicit execution contract only the sanctioned provider modules call the boundary at all"
+    },
+    {
+      "file": "lib/qa/execution-contract-propagation.test.ts",
+      "test": "every governed spend supplies an explicit execution contract nothing defaults, coalesces or invents an execution contract"
+    },
+    {
+      "file": "lib/qa/execution-contract-propagation.test.ts",
+      "test": "every governed spend supplies an explicit execution contract test-only fixtures never leak into runtime code"
+    },
+    {
+      "file": "lib/qa/execution-contract-propagation.test.ts",
+      "test": "OPERATOR_INTERACTIVE is the only stop bypass, so its construction is allowlisted only the allowlisted files construct it"
+    },
+    {
+      "file": "lib/qa/execution-contract-propagation.test.ts",
+      "test": "classification follows authentication, not filenames cron-only execution paths declare AUTONOMOUS"
+    },
+    {
+      "file": "lib/qa/execution-contract-propagation.test.ts",
+      "test": "every runtime GLOBAL_ONLY is reviewed and justified no unreviewed file constructs GLOBAL_ONLY"
+    },
+    {
+      "file": "lib/qa/execution-contract-propagation.test.ts",
+      "test": "ExecutionStoppedError does not leak operator-authored text nothing reads a StopDecision’s observed prose outside the authority"
+    },
+    {
+      "file": "lib/qa/executive-brief-apex.test.ts",
+      "test": "EI-S1.5A — no shared-secret Executive Brief read surface exists no Executive Intelligence READ route authorizes on the shared secret"
+    },
+    {
+      "file": "lib/qa/executive-brief-apex.test.ts",
+      "test": "EI-S1.5A — no shared-secret Executive Brief read surface exists leaves CRON_SECRET intact for unrelated scheduler routes"
+    },
+    {
+      "file": "lib/qa/executive-intelligence-schema-activation.test.ts",
+      "test": "EI-S1.6A — Executive Intelligence schema activation bundle keeps the legacy EI companion count at exactly 83 enforced migrations"
+    },
+    {
+      "file": "lib/qa/external-dispatch-guards.test.ts",
+      "test": "G1 · every external write in the tree has a canonical dispatch boundary every external write CALL SITE has its own authorization"
+    },
+    {
+      "file": "lib/qa/external-dispatch-guards.test.ts",
+      "test": "G1 · every external write in the tree has a canonical dispatch boundary the inventory itself is non-empty and finds the known callers"
+    },
+    {
+      "file": "lib/qa/external-dispatch-guards.test.ts",
+      "test": "G1 · every external write in the tree has a canonical dispatch boundary no governance assertion is parked behind an unreachable branch"
+    },
+    {
+      "file": "lib/qa/external-dispatch-guards.test.ts",
+      "test": "G4 · the legacy global-only helper is no longer an authority no runtime module calls checkAutomationPaused"
+    },
+    {
+      "file": "lib/qa/global-auth-retired.test.ts",
+      "test": "the global key verifier is gone no PRODUCTION module defines the helpers"
+    },
+    {
+      "file": "lib/qa/global-auth-retired.test.ts",
+      "test": "the global key verifier is gone no production module reads the global key from the environment"
+    },
+    {
+      "file": "lib/qa/global-auth-retired.test.ts",
+      "test": "no route can reach a global key path finds route files at all — the scan must be able to fail"
+    },
+    {
+      "file": "lib/qa/global-auth-retired.test.ts",
+      "test": "no route can reach a global key path zero routes call the helpers, directly or via one hop"
+    },
+    {
+      "file": "lib/qa/global-auth-retired.test.ts",
+      "test": "no route can reach a global key path zero route files import from api-auth for anything but cron"
+    },
+    {
+      "file": "lib/qa/global-auth-retired.test.ts",
+      "test": "the cron class survived the deletion cron routes still use CRON_SECRET directly"
+    },
+    {
+      "file": "lib/qa/global-design-tokens.test.ts",
+      "test": "global design · every token a stylesheet needs exists scans the real stylesheets, including the surfaces that carried the defect"
+    },
+    {
+      "file": "lib/qa/global-design-tokens.test.ts",
+      "test": "global design · every token a stylesheet needs exists no CSS module uses a shadcn HSL triple bare as a colour"
+    },
+    {
+      "file": "lib/qa/handlarborsen-visual-pulse.test.ts",
+      "test": "Handlarborsen overview hierarchy places charts after KPI and before secondary pulse, collapsing only the breakdown"
+    },
+    {
+      "file": "lib/qa/leads-dual-accept.test.ts",
+      "test": "containment no other route imports the leads auth resolver"
+    },
+    {
+      "file": "lib/qa/leads-dual-accept.test.ts",
+      "test": "containment no other route imports the credential primitive"
+    },
+    {
+      "file": "lib/qa/leads-legacy-auth-removed.test.ts",
+      "test": "global legacy HTTP surface finds route files at all — the scan must be able to fail"
+    },
+    {
+      "file": "lib/qa/leads-legacy-auth-removed.test.ts",
+      "test": "global legacy HTTP surface no route reaches requireApiKey or requireUserOrApiKey, directly or via one hop"
+    },
+    {
+      "file": "lib/qa/leads-legacy-auth-removed.test.ts",
+      "test": "global legacy HTTP surface no route file reads AIOPS_API_KEY"
+    },
+    {
+      "file": "lib/qa/leads-legacy-auth-removed.test.ts",
+      "test": "global legacy HTTP surface leaves cron auth untouched and still reachable"
+    },
+    {
+      "file": "lib/qa/legacy-v1-api-removed.test.ts",
+      "test": "drift-guard — manifest ↔ filsystem varje manifestpost har en route-fil"
+    },
+    {
+      "file": "lib/qa/legacy-v1-api-removed.test.ts",
+      "test": "auth-kärnan behålls — Familje-Stunden är beroende av den /business/leads är fortfarande registrerad"
+    },
+    {
+      "file": "lib/qa/legacy-v1-api-removed.test.ts",
+      "test": "auth-kärnan behålls — Familje-Stunden är beroende av den /business/campaigns är fortfarande registrerad"
+    },
+    {
+      "file": "lib/qa/legacy-v1-api-removed.test.ts",
+      "test": "auth-kärnan behålls — Familje-Stunden är beroende av den /business/revenue är fortfarande registrerad"
+    },
+    {
+      "file": "lib/qa/legacy-v1-api-removed.test.ts",
+      "test": "auth-kärnan behålls — Familje-Stunden är beroende av den /chat/tts är fortfarande registrerad"
+    },
+    {
+      "file": "lib/qa/licensed-bind-m4b-guards.test.ts",
+      "test": "M4-B is the last migration and leaves the exempt bind untouched no migration after M4-B, and M4-B does not redefine the exempt bind"
+    },
+    {
+      "file": "lib/qa/marketing-review.test.ts",
+      "test": "marketing review · the rollback body is the body it replaced is pinned by hash, its own doc comment included"
+    },
+    {
+      "file": "lib/qa/marketing-review.test.ts",
+      "test": "marketing review · the rollback body is the body it replaced the client component it renders is untouched"
+    },
+    {
+      "file": "lib/qa/marketing-review.test.ts",
+      "test": "marketing review · rendered surface and layout the controls stay visible without the shared foreground token"
+    },
+    {
+      "file": "lib/qa/media-orchestration-retry-authority.test.ts",
+      "test": "the article hero call site carries the authority every production withRetry around the orchestrator carries it"
+    },
+    {
+      "file": "lib/qa/media-orchestrator.test.ts",
+      "test": "candidates are described, not invented includes the provider-layer family from the real router, gated off"
+    },
+    {
+      "file": "lib/qa/memory-vnext.test.ts",
+      "test": "Minne vNext · generation and frozen legacy pins the mechanically moved legacy body"
+    },
+    {
+      "file": "lib/qa/memory-vnext.test.ts",
+      "test": "Minne vNext · generation and frozen legacy keeps the existing API and Memory helpers byte-identical"
+    },
+    {
+      "file": "lib/qa/mission-brief-v1.test.ts",
+      "test": "Canonical vocabulary (§20.11, §20.98) supports all sixteen §20.98 statuses in the public type"
+    },
+    {
+      "file": "lib/qa/mobile-nav-contract.test.ts",
+      "test": "mobile nav · portfolio quick jump keeps the same five original destinations, in the same order"
+    },
+    {
+      "file": "lib/qa/mobile-nav-contract.test.ts",
+      "test": "mobile nav · portfolio quick jump includes the builder and portfolio index, never an individual project"
+    },
+    {
+      "file": "lib/qa/mobile-nav-contract.test.ts",
+      "test": "mobile nav · identity is now canonical uses the desktop labels, including the portfolio quick jump"
+    },
+    {
+      "file": "lib/qa/money-overview.test.ts",
+      "test": "pengar · the rollback body is the body it replaced is pinned by hash"
+    },
+    {
+      "file": "lib/qa/monthly-release-v2.test.ts",
+      "test": "v1 is registered in production and must not move MUTATION — the v1 YAML still hashes to the pinned upstream value"
+    },
+    {
+      "file": "lib/qa/monthly-release-v2.test.ts",
+      "test": "v2 is vendored, never authored here the vendored YAML matches the pinned upstream hash"
+    },
+    {
+      "file": "lib/qa/monthly-release-v2.test.ts",
+      "test": "v2 is vendored, never authored here the committed JSON is the generated form of the vendored YAML"
+    },
+    {
+      "file": "lib/qa/muapi-media-provider.test.ts",
+      "test": "the router routes by capability, never by vendor name resolves nothing while every provider is gated off"
+    },
+    {
+      "file": "lib/qa/muapi-media-provider.test.ts",
+      "test": "the router routes by capability, never by vendor name an implemented-but-blocked capability reports WHY, not \"unsupported\""
+    },
+    {
+      "file": "lib/qa/muapi-media-provider.test.ts",
+      "test": "no credential and no live default reaches the repository no tracked file assigns a non-placeholder MuAPI key"
+    },
+    {
+      "file": "lib/qa/muapi-media-provider.test.ts",
+      "test": "no credential and no live default reaches the repository no production module writes MuAPI config at runtime"
+    },
+    {
+      "file": "lib/qa/muapi-media-provider.test.ts",
+      "test": "no credential and no live default reaches the repository no production module hands out a credential outside config.ts"
+    },
+    {
+      "file": "lib/qa/muapi-media-provider.test.ts",
+      "test": "no credential and no live default reaches the repository the committed env template contains only empty placeholders"
+    },
+    {
+      "file": "lib/qa/muapi-media-provider.test.ts",
+      "test": "no credential and no live default reaches the repository nothing outside the provider directory imports the MuAPI adapter directly"
+    },
+    {
+      "file": "lib/qa/muapi-media-provider.test.ts",
+      "test": "nothing generates media on its own exactly ONE governed module calls a generation method"
+    },
+    {
+      "file": "lib/qa/muapi-media-provider.test.ts",
+      "test": "nothing generates media on its own no route, cron or workflow calls a generation method"
+    },
+    {
+      "file": "lib/qa/muapi-media-provider.test.ts",
+      "test": "nothing generates media on its own the provider layer is not imported by any route or cron"
+    },
+    {
+      "file": "lib/qa/navigation-closure.test.ts",
+      "test": "sidebar · Organisation joins the approved IA reorders nothing else"
+    },
+    {
+      "file": "lib/qa/platform-credential-events.test.ts",
+      "test": "Settings S0 · platform_credential_events migration — append-only and server-only RLS on, no policy, every client grant revoked, and the service role holds SELECT and INSERT only"
+    },
+    {
+      "file": "lib/qa/platform-credential-events.test.ts",
+      "test": "Settings S0 · platform_credential_events migration — append-only and server-only touches no other object and carries no data statement"
+    },
+    {
+      "file": "lib/qa/platform-credential-events.test.ts",
+      "test": "Settings S0 · platform_credential_events — the search_path follow-up pins the append-only function's search_path, and does nothing else"
+    },
+    {
+      "file": "lib/qa/project-api-credentials.test.ts",
+      "test": "inertness — Phase 1 changes no existing auth is imported by no route directly — only via the leads-scoped resolver"
+    },
+    {
+      "file": "lib/qa/project-command-center.test.ts",
+      "test": "project command center · legacy rollback keeps the legacy body byte-identical to the page it replaced"
+    },
+    {
+      "file": "lib/qa/project-command-center.test.ts",
+      "test": "project command center · Marknadsplatsstatistik link the view renders it as a plain link, with no project name of its own"
+    },
+    {
+      "file": "lib/qa/project-workspace-vnext.test.ts",
+      "test": "project workspace B1 · generation and legacy rollback keeps the six legacy route bodies byte-for-byte from the reviewed base"
+    },
+    {
+      "file": "lib/qa/project-workspace-vnext.test.ts",
+      "test": "project workspace B1 · generation and legacy rollback moves the exact workflow editor behind /edit without changing its implementation"
+    },
+    {
+      "file": "lib/qa/project-workspace-vnext.test.ts",
+      "test": "project workspace B1 · generation and legacy rollback keeps the previous output component and deletion endpoint untouched while stating whole-run deletion"
+    },
+    {
+      "file": "lib/qa/provider-dispatch-certainty.test.ts",
+      "test": "no consumer of ProviderDispatchUnknownError weakens it none converts the ambiguity into a not-dispatched claim"
+    },
+    {
+      "file": "lib/qa/release-gate-proof-workflow.test.ts",
+      "test": "the proof definition is vendored, minimal and read-only the vendored file matches its pinned source hash"
+    },
+    {
+      "file": "lib/qa/release-gate-proof-workflow.test.ts",
+      "test": "single-remote-read authority the ONLY writer of AUTOMATED evidence is the executor"
+    },
+    {
+      "file": "lib/qa/review-queue.test.ts",
+      "test": "phase 11 · scope, authority and boundaries adds no endpoint, no migration and no schema change"
+    },
+    {
+      "file": "lib/qa/review-queue.test.ts",
+      "test": "phase 11 · the legacy rollback is the page that shipped the legacy body is the previous page verbatim — pinned by hash"
+    },
+    {
+      "file": "lib/qa/scoped-read-isolation.test.ts",
+      "test": "9A · every caller supplies scope canonically has exactly one production caller, and it passes a resolved allow-list"
+    },
+    {
+      "file": "lib/qa/sdf1b2-code-work-operator-plane.test.ts",
+      "test": "SDF-1B2 read isolation and no-execution boundary keeps migration 80 byte-identical"
+    },
+    {
+      "file": "lib/qa/sdf1c-broker-claim-credential.test.ts",
+      "test": "SDF-1C1B migration and structural boundary adds no route, no broker CLI command and no execution/model code"
+    },
+    {
+      "file": "lib/qa/sdf1c-trusted-broker.test.ts",
+      "test": "SDF-1C1 repository, secret and no-execution boundary exposes only enrollment and identity diagnostics, never execution capability"
+    },
+    {
+      "file": "lib/qa/sdf1c2-broker-control-channel.test.ts",
+      "test": "SDF-1C2 structural boundary exposes exactly the six purpose-specific broker routes and no generic boundary"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-integration.test.ts",
+      "test": "SDF-1C3A real Git: the preparation substrate against a synthetic repository, with the real toolchain prepares an isolated worktree at the pinned commit and stays inside the approved parent"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A trusted toolchain: git and docker are never chosen by a caller resolves only from fixed absolute candidates and issues an unforgeable-by-shape tool"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A trusted toolchain: git and docker are never chosen by a caller refuses relative, missing, non-regular, non-executable, group/other-writable, foreign-owned and unsafe-ancestor candidates"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A trusted toolchain: git and docker are never chosen by a caller follows a symlink to its real target and judges the target (a link cannot launder trust)"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A trusted toolchain: git and docker are never chosen by a caller the runner refuses a tool object that did not come from the resolver"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment only a broker-made command can run, and run() takes nothing but the command (no env, args or executable)"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment never enables a shell and runs exactly the trusted executable with direct argv"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment does not inherit the parent environment: secrets in process.env never reach a child"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment bounds stdout/stderr before returning"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment a timeout kills the child (TERM, then KILL) and reports timedOut"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment logs nothing and never puts a command line or secret in a result or thrown message"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment a planted user gitconfig, hooks, filters and credential helper are unreachable (real git)"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) prepares a worktree at exactly the pinned commit with a closed, path-free result"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) is deterministic: same work → same branch, directory and hashes"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) accepts only trusted structured input; the caller cannot choose branch, directory, parent or arguments"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) requires a full lowercase SHA pin (uppercase)"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) requires a full lowercase SHA pin (39 chars)"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) requires a full lowercase SHA pin (41 chars)"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) requires a full lowercase SHA pin (abbreviated)"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) requires a full lowercase SHA pin (a ref name)"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) requires a full lowercase SHA pin (non-hex)"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) requires a full lowercase SHA pin (option-like)"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) requires a full lowercase SHA pin (empty)"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses a pin that is not a commit object present locally (missing, blob, tree, annotated tag) and never fetches"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) returns STALE_BASE, exactly and without fetching, when the approved base ref moved"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) needs no network at all (an unreachable origin cannot matter)"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses wrong remote"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses wrong host"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses file remote"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses plain path remote"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses credentials in URL"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses sub-path"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) accepts SCP, ssh and case-different forms of the SAME identity, and refuses a second identity or a missing remote"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses a repository whose own config launches programs (filter driver) before creating anything"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses a repository whose own config launches programs (fsmonitor) before creating anything"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses a repository whose own config launches programs (hooksPath) before creating anything"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses a repository whose own config launches programs (credential helper) before creating anything"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses a repository whose own config launches programs (include) before creating anything"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses a repository whose own config launches programs (ssh command) before creating anything"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses a repository whose own config launches programs (shell alias) before creating anything"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses a missing, symlinked, non-directory, non-canonical or non-repository root, and a linked worktree used as root"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses a missing, symlinked or non-canonical worktree parent and never creates it"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses every collision without touching the existing state (path, dangling link, file, branch, worktree)"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) a worktree elsewhere already holding the branch or the path is a conflict"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) does not follow a symlink planted in the future target path"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) verifies after creation and, on any failed check, keeps the workspace (explicit_cleanup_only) and says so"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives verifies canonical roots only"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives reads existing files only when no segment is a symlink and the realpath is the lexical path"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives a write-intent check additionally refuses hardlinks and non-regular files"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives verifies a prospective create against its deepest existing ancestor"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses NUL"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses newline"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses tab"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses DEL"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses parent traversal"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses embedded traversal"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses absolute"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses double slash"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses dot segment"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses trailing slash"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses backslash"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses windows drive"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses empty"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses surrounding space"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses non-NFC (NFD é)"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses .git"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses nested .git"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses .GIT case"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses .env"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses .env.local"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses .ENV.production"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses .ssh"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses .aws"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses secrets dir"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses pem"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses key"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses service account"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses not a string"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives accepts ordinary NFC unicode names"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives opens for reading with O_NOFOLLOW and refuses a final component that became a symlink"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A SandboxSpec and Docker command construction refuses every docker verb outside the closed set and every malformed target"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A Docker host proof (VM-backed Docker Desktop required for production) derives the daemon socket only from a fixed host-side list (no DOCKER_HOST, no remote, no other socket)"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A boundary: no production caller, no route, no CLI command, no migration, no execution adds no broker route, and the route set is exactly the 1C2 control channel"
+    },
+    {
+      "file": "lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A boundary: no production caller, no route, no CLI command, no migration, no execution only the approved isolation modules can ISSUE an InfraCommand: brokerCommand is not reachable from any other production module"
+    },
+    {
+      "file": "lib/qa/session-only-routes.test.ts",
+      "test": "source invariants no route imports requireUserOrApiKey any more"
+    },
+    {
+      "file": "lib/qa/session-only-routes.test.ts",
+      "test": "source invariants exactly ONE route surface still accepts the global key"
+    },
+    {
+      "file": "lib/qa/sidebar-project-visibility.test.ts",
+      "test": "sidebar · which nav list each generation renders vNext renders the canonical model in its approved order"
+    },
+    {
+      "file": "lib/qa/sidebar-project-visibility.test.ts",
+      "test": "sidebar · which nav list each generation renders adds exactly the approved destinations"
+    },
+    {
+      "file": "lib/qa/spend-financial-decoupling.test.ts",
+      "test": "§14 · each flag has exactly ONE production reader H1_SPEND_GATE is read only in spend-gate-flag.ts"
+    },
+    {
+      "file": "lib/qa/spend-financial-decoupling.test.ts",
+      "test": "§14 · each flag has exactly ONE production reader H1_FINANCIAL_EXECUTION is read only in financial-execution-flag.ts"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration and its reader semantics starts UNDECLARED — NULL is the absence of a declaration, with no default"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration and its reader semantics a positive declaration is stored exactly, and audits one SET"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration and its reader semantics ZERO is a KNOWN declaration, never a clear"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration and its reader semantics NEGATIVE is a KNOWN declaration — the sign is not this schema's policy"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration and its reader semantics CLEAR persists NULL, and is distinguishable from a zero declaration"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration and its reader semantics re-setting the SAME value writes nothing — no audit trail of non-events"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration and its reader semantics the RESPONSE equals current truth and the audit row, exactly"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · invalid input is refused at the boundary refuses NaN and both infinities"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · invalid input is refused at the boundary refuses an absent actor — the ledger cannot record an anonymous change"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · invalid input is refused at the boundary none of those probes changed the declaration or wrote an audit row"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration is persisted EXACTLY, never rounded ACCEPTS every exactly-representable shape"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration is persisted EXACTLY, never rounded REFUSES anything that would be silently rounded"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration is persisted EXACTLY, never rounded REFUSES anything outside the numeric(12,4) range"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration is persisted EXACTLY, never rounded ACCEPTS trailing zeros, which is not precision loss"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration is persisted EXACTLY, never rounded the no-op comparison uses the CANONICAL stored value"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the actor must be a canonical authenticated human ACCEPTS the canonical user:<uuid> shape"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the actor must be a canonical authenticated human REFUSES machine-shaped and malformed actors through the RPC"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the actor must be a canonical authenticated human REFUSES the same shapes at the TABLE, not only at the RPC"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the actor must be a canonical authenticated human a refused actor leaves the declaration and the ledger untouched"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · current truth is a SERVER-ONLY singleton exists, and holds exactly the singleton row"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · current truth is a SERVER-ONLY singleton is the ONLY place the declaration lives — platform_config does not carry it"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · current truth is a SERVER-ONLY singleton has RLS on and ZERO policies, so no client can read it through a policy"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · current truth is a SERVER-ONLY singleton grants anon and authenticated NOTHING"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · current truth is a SERVER-ONLY singleton grants service_role SELECT and nothing else"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · current truth is a SERVER-ONLY singleton refuses every direct write by service_role"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · current truth is a SERVER-ONLY singleton refuses every direct write by anon and authenticated"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · current truth is a SERVER-ONLY singleton the canonical RPC is the ONLY writer that can exist — and it works"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · current truth is a SERVER-ONLY singleton the singleton constraint refuses a second row even from the owner"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the change and its evidence are atomic every change writes EXACTLY ONE audit row, and every audit row has a change"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the change and its evidence are atomic the ledger is NOT the current truth — clearing it would not change the declaration"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the change and its evidence are atomic concurrent setters serialise: the predecessor each records is the real one"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the audit ledger cannot be rewritten refuses UPDATE"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the audit ledger cannot be rewritten refuses DELETE"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the audit ledger cannot be rewritten refuses TRUNCATE"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the audit ledger cannot be rewritten refuses a direct INSERT by service_role, and by anon"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the audit ledger cannot be rewritten closes the event vocabulary, so a row cannot name an event no reader interprets"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · exactly one current source, and history is never it the setter reads and writes the singleton, and never platform_config"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · exactly one current source, and history is never it the setter never reads the ledger to decide what is declared now"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · exactly one current source, and history is never it no function anywhere reads the ledger as current funding truth"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · exactly one current source, and history is never it the declaration column exists on exactly ONE table in the schema"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · least privilege anon and authenticated can neither read the ledger nor call the setter"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · least privilege service_role reads the ledger and executes the boundary, and writes neither table"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · least privilege the setter is SECURITY DEFINER with a fixed empty search_path"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · least privilege the ledger sequence is revoked from every role"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · scope completeness, answered without exposing anything is TRUE only when the set contains every project"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · scope completeness, answered without exposing anything is FALSE for a subset — a single project is never the platform"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · scope completeness, answered without exposing anything is FALSE for the empty set and for NULL"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · scope completeness, answered without exposing anything returns ONE BOOLEAN — never a row, an id or a count"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · scope completeness, answered without exposing anything is unmoved by a project added outside the caller set"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · a declaration moves nothing else reserves no spend, changes no stop, and issues no authorization"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · a declaration moves nothing else does not clear a pause that is already set"
+    },
+    {
+      "file": "lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · a declaration moves nothing else Phase 2A history is untouched by a funding change"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · contract creates exactly one table, and grants write to nobody"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · contract denies INSERT to every role while letting the boundary INSERT"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened is SECURITY DEFINER with an empty, fixed search_path"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened PUBLIC, anon and authenticated cannot execute it"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened service_role holds EXECUTE and nothing broader"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened has no autonomy, actor or provenance parameter at all"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened refuses a human or arbitrary actor, even on a direct INSERT"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened the RPC writes the canonical machine identity, whatever the observer"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened derives provenance from the version, and refuses every mismatched pair"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened the RPC takes no provenance argument at all"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened refuses an impossible state/ceiling pair on a direct INSERT"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened refuses a policy identity no derivation implements"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened service_role cannot write the table or the sequence directly"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened a real anon session is refused, and the boundary is reachable as itself"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · records transitions, not polling noise records exactly one baseline for the first observation"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · records transitions, not polling noise records nothing when the same state is observed again"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · records transitions, not polling noise records exactly one transition when the state really changes"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · records transitions, not polling noise keeps event_seq as the chain order and goes back to NORMAL"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · records transitions, not polling noise answers `unchanged` for a no-op rather than inserting"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · from_state is never the caller’s refuses a direct INSERT whose from_state does not follow the ledger"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · from_state is never the caller’s refuses a second baseline for a project that already has history"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · from_state is never the caller’s refuses a transition that does not change the state"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · append-only, enforced by the database refuses UPDATE"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · append-only, enforced by the database refuses DELETE"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · append-only, enforced by the database refuses TRUNCATE"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · closed vocabularies closes the event, state, ceiling, funding and policy-identity vocabularies"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · closed vocabularies seeds a project with history so the CHECKs, not the guard, are under test"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · closed vocabularies refuses a value outside each closed set, by CHECK"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · closed vocabularies refuses an unsupported to_state at the boundary, before anything is written"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · closed vocabularies the declared amount is biconditional with KNOWN — all four cases"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · closed vocabularies ACCEPTS negative remaining headroom — an overspent scope is valid evidence"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · closed vocabularies refuses a negative limit, burn rate or runway"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · closed vocabularies refuses an unknown event type, which can only arrive by direct INSERT"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · closed vocabularies refuses an unknown project, fail-closed"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the observation survives the round trip preserves reasons, gaps, ceiling, funding and the distinct funding states"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the observation survives the round trip keeps UNAVAILABLE distinct from UNDECLARED"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the observation survives the round trip stores declared funding when KNOWN, and only then"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the observation survives the round trip keeps MRR a SIGNAL — it never becomes runway, and runway stays unknown without funding"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the observation survives the round trip records the observation instant separately from the write instant"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the observation survives the round trip refuses an occurred_at in the future"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · concurrency cannot duplicate a logical transition two concurrent FIRST observations produce ONE baseline"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · concurrency cannot duplicate a logical transition two concurrent observers of the SAME change produce ONE transition"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · concurrency cannot duplicate a logical transition a retry of the same observation is idempotent"
+    },
+    {
+      "file": "lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · recording changes neither spend nor the stop leaves the automation pause and the spend ledger untouched"
+    },
+    {
+      "file": "lib/qa/system-health.test.ts",
+      "test": "phase 12 · authority is preserved, never re-created adds no endpoint, migration or schema change"
+    },
+    {
+      "file": "lib/qa/system-health.test.ts",
+      "test": "phase 12 · the legacy rollback is the page that shipped the legacy body is the previous page verbatim — pinned by hash"
+    },
+    {
+      "file": "lib/qa/vnext-intelligence-graph.test.ts",
+      "test": "phase 18 · the legacy rollback is the page that shipped renders the legacy canvas byte-identically to origin/main 430259e"
+    },
+    {
+      "file": "lib/qa/vnext-intelligence-graph.test.ts",
+      "test": "phase 18 · the legacy rollback is the page that shipped keeps the legacy client markup byte-identical"
+    },
+    {
+      "file": "lib/qa/vnext-intelligence-graph.test.ts",
+      "test": "phase 18 · the legacy rollback is the page that shipped moves the previous page body verbatim into IntelligenceGraphLegacy"
+    },
+    {
+      "file": "lib/qa/vnext-intelligence-graph.test.ts",
+      "test": "phase 18 · the legacy rollback is the page that shipped leaves the legacy inspector file untouched"
+    },
+    {
+      "file": "lib/qa/vnext-intelligence-graph.test.ts",
+      "test": "phase 18 · layout, scale and motion is exactly as tall as the vNext shell leaves it, not the legacy CommandBar height"
+    },
+    {
+      "file": "lib/qa/vnext-intelligence-graph.test.ts",
+      "test": "phase 18 T2a · shell geometry measures the floating corner from the activity peek and the Atlas launcher"
+    },
+    {
+      "file": "lib/qa/vnext-intelligence-graph.test.ts",
+      "test": "phase 18 T2a · shell geometry goes fullscreen with the header, where the shell chrome is gone"
+    },
+    {
+      "file": "lib/qa/vnext-intelligence-graph.test.ts",
+      "test": "phase 18 T3b · release hardening opts only Live Operations into the G-27 last-safe guard"
+    },
+    {
+      "file": "lib/qa/vnext-intelligence-graph.test.ts",
+      "test": "phase 18 T3b · release hardening keeps mobile list-first, System Map, Replay and legacy rollback contracts intact"
+    },
+    {
+      "file": "lib/qa/vnext-mobile-shell-nav.test.ts",
+      "test": "NAVIGATION CONTRACT — the canonical model is the only source adds the builder and portfolio index to the original mobile IA"
+    },
+    {
+      "file": "lib/qa/vnext-nav-model.test.ts",
+      "test": "vnext nav · approved information architecture places every approved destination in its approved group"
+    },
+    {
+      "file": "lib/qa/vnext-nav-model.test.ts",
+      "test": "vnext nav · approved information architecture adds exactly the destinations legacy could not reach"
+    },
+    {
+      "file": "lib/qa/vnext-nav-model.test.ts",
+      "test": "vnext nav · surface filtering is layout, not authorization mobile is a deliberate subset, not a copy"
+    },
+    {
+      "file": "lib/qa/vnext-nav-model.test.ts",
+      "test": "vnext nav · surface filtering is layout, not authorization desktop renders all four groups, each with its approved items"
+    },
+    {
+      "file": "lib/qa/website-build-drain.test.ts",
+      "test": "website build dispatch through actual drain route and SQL requires_cron_auth_before_any_build"
+    },
+    {
+      "file": "lib/qa/website-build-drain.test.ts",
+      "test": "website build dispatch through actual drain route and SQL dispatches_website_kind_without_touching_legacy_handlers"
+    },
+    {
+      "file": "lib/qa/website-build-drain.test.ts",
+      "test": "website build dispatch through actual drain route and SQL invalid_artifact_is_terminal_without_automatic_paid_retry"
+    },
+    {
+      "file": "lib/qa/website-build-drain.test.ts",
+      "test": "website build dispatch through actual drain route and SQL in_flight_unknown_waits_for_reconciliation_and_never_looks_like_an_active_build"
+    },
+    {
+      "file": "lib/qa/workflows-definition-familje-stunden.test.ts",
+      "test": "vendored definition — provenance the vendored YAML matches the pinned upstream hash"
+    },
+    {
+      "file": "lib/qa/workflows-definition-familje-stunden.test.ts",
+      "test": "vendored definition — provenance the committed JSON is the generated form of the vendored YAML"
+    },
+    {
+      "file": "lib/qa/youtube-project-oauth.test.ts",
+      "test": "youtube connection · the codebase, read the state is touched only by the OAuth module; the start route records it, the callback consumes it and alone exchanges a code"
+    },
+    {
+      "file": "lib/architecture-knowledge/architecture-knowledge.test.ts",
+      "test": "Immutable artifact and runtime loader loads and verifies the committed artifact read-only"
+    },
+    {
+      "file": "lib/architecture-knowledge/architecture-knowledge.test.ts",
+      "test": "Golden lexical retrieval and server citations routes How are Agents, Tools and Execution Resources registered? to Intelligence Fabric canonical material"
+    },
+    {
+      "file": "lib/architecture-knowledge/architecture-knowledge.test.ts",
+      "test": "Golden lexical retrieval and server citations routes How are Credentials separated from Agent authority? to Intelligence Fabric canonical material"
+    },
+    {
+      "file": "lib/architecture-knowledge/architecture-knowledge.test.ts",
+      "test": "Golden lexical retrieval and server citations routes How does multimodal production work? to Intelligence Fabric canonical material"
+    },
+    {
+      "file": "lib/architecture-knowledge/architecture-knowledge.test.ts",
+      "test": "Golden lexical retrieval and server citations reaches provider-selection material in every canonical book that covers it"
+    },
+    {
+      "file": "lib/architecture-knowledge/architecture-knowledge.test.ts",
+      "test": "Golden lexical retrieval and server citations supports exact section, chapter, book-title and requirement identifiers"
+    },
+    {
+      "file": "lib/architecture-knowledge/architecture-knowledge.test.ts",
+      "test": "Golden lexical retrieval and server citations excludes wrong/old versions and returns explicit unavailability"
+    },
+    {
+      "file": "lib/architecture-knowledge/architecture-knowledge.test.ts",
+      "test": "Golden lexical retrieval and server citations mints exact citations and rejects fabricated, stale or mismatched citations"
+    },
+    {
+      "file": "lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Generic artifact eligibility invariant accepts the committed artifact while Executive is active and approved"
+    },
+    {
+      "file": "lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Generic artifact eligibility invariant rejects an inactive source that reached the artifact"
+    },
+    {
+      "file": "lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Generic artifact eligibility invariant rejects an artifact source row that diverged from the registry"
+    },
+    {
+      "file": "lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Generic artifact eligibility invariant rejects an artifact source that is not registered at all"
+    },
+    {
+      "file": "lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Executive retrieval, citations and policy is an active knowledge source in the committed artifact"
+    },
+    {
+      "file": "lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Executive retrieval, citations and policy resolves FM.2 by exact front-matter identifier"
+    },
+    {
+      "file": "lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Executive retrieval, citations and policy resolves FM.2 from an implementation-scope query and a canonical Stage 1 query"
+    },
+    {
+      "file": "lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Executive retrieval, citations and policy resolves exact Executive chapter and section identifiers"
+    },
+    {
+      "file": "lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Executive retrieval, citations and policy answers a governance and authority query from Executive doctrine"
+    },
+    {
+      "file": "lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Executive retrieval, citations and policy mints a valid Executive citation and rejects every tampered variant"
+    },
+    {
+      "file": "lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Executive retrieval, citations and policy denies internal Executive knowledge to an unauthorized principal and allows an authorized one"
+    },
+    {
+      "file": "lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Executive retrieval, citations and policy excludes an inactive, superseded or wrong-version Executive source before ranking"
+    },
+    {
+      "file": "lib/trading/market-data/import-discipline.test.ts",
+      "test": "the contract boundary is identity, never a provider symbol the domain definitions each still exist exactly once"
+    },
+    {
+      "file": "lib/trading/market-view/import-discipline.test.ts",
+      "test": "no Node builtin is reachable at runtime from the market-view package proves it across the whole transitive value-import closure"
+    },
+    {
+      "file": "lib/trading/provider-normalization/recorded-adapter.test.ts",
+      "test": "a transcript gap fails closed never branches on a provider message anywhere in the package"
+    },
+    {
+      "file": "lib/trading/replay/import-discipline.test.ts",
+      "test": "no Node builtin is reachable at runtime from the replay package proves it across the whole transitive value-import closure"
+    },
+    {
+      "file": "lib/trading/replay/import-discipline.test.ts",
+      "test": "Stage 1.5 boundaries reads no wall clock on a trading-state path"
+    },
+    {
+      "file": "lib/trading/session-calendar/import-discipline.test.ts",
+      "test": "AD. an answer cannot depend on where or when it runs names an explicit timeZone on every formatter it builds"
+    }
+  ]
+}

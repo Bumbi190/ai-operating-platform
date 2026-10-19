@@ -1,6 +1,6 @@
 # Omnira Kalender — verifiering 2026-10-18
 
-Status: granskningsbar lokal förhandsversion, inte driftsatt. Kalenderns egna kontroller passerar. Den bredare Windows-körningen är inte grön; fullständig körning av det frysta granskningsunderlaget pågår fortfarande.
+Status: granskningsbar lokal förhandsversion, inte driftsatt. Kalenderns egna kontroller passerar. Den bredare Windows-körningen är inte grön; helhetskörningen av det frysta granskningsunderlaget är avslutad och kräver fortsatt felbedömning.
 
 ## Underlag och avgränsning
 
@@ -55,7 +55,7 @@ Dessa fyra fel är oförändrade Windows-baselinefel, inte PASS:
 
 De tre första orsakas av att äldre kommentarstrippning inte hanterar arbetskopians CRLF. Samma parser över main:s kanoniska Git/LF-text innehåller inte det felaktigt matchade platform_tokens. Det sista jämför Windows `lib\\media\\youtube-oauth.ts` med POSIX `lib/media/youtube-oauth.ts`. De berörda gamla test-/SQL-filerna är oförändrade även mot aktuell maind3f9fcc. Inga äldre migrationer, säkerhetsundantag eller orelaterade produkttester har skrivits om för att få grönt.
 
-Den separata hela projektkörningen startade på fryst39c5c32 med30s-test/60s-hookgränser, egen lokal testdatabas och SQL-opt-in avstängt där projektets andra fixturer kräver det. **Resultatet kompletteras när processen avslutats; den får inte beskrivas som grön.** Kalenderintroducerade gamla menyassertioner som hittades där är rättade: elva förväntningar över fem gamla navfiler, utan ändring i deras övriga kontrakt. Samlad omkörning av sex navsviter129/129 PASS.
+Den separata hela projektkörningen startade på fryst39c5c32 med30s-test/60s-hookgränser, egen lokal testdatabas och SQL-opt-in avstängt där projektets andra fixturer kräver det. **Avslutad2026-10-18T19:46:16Z, exit1:**15319 totalt,13808 passerade,393 misslyckade,1114 pending/överhoppade och0todo i671 filer. Ingen kalenderfil hade ett misslyckat test. Elva fel gäller kalenderns gamla menyförväntningar och är senare rättade/omkörda. Övriga helhetsfel är inte samlat frikända som baseline; de kräver fortsatt bedömning före drift. Alla393 fel är namngivna i [full-suite-resultatet](2026-10-18-omnira-calendar-full-suite.json). Kalenderintroducerade gamla menyassertioner som hittades där är rättade: elva förväntningar över fem gamla navfiler, utan ändring i deras övriga kontrakt. Samlad omkörning av sex navsviter129/129 PASS.
 
 ## Förhandsversion och manuellt prov
 
@@ -90,3 +90,7 @@ Nästa användarprov: granska veckovyn och ett privat möte, därefter be Atlas 
 ## Integration med samtidig main-ändring
 
 PR404 lade till den redan applicerade news-review-migrationens exakta källkod. Konflikter löstes endast i policy/fixture/registry: canonical148/enforced134, oförändrade frysta14/30-listor och175 registrerade tabellklassificeringar inklusive de två pending kalendertabellerna. Den verkliga170-namnsledgern innehåller news review men avvisas fortfarande för saknad user_calendar_v1; bara en tydligt hypotetisk171-namnsledger passerar i test. Inga gamla migreringsbytes ändrades. Kalenderns nya SQL är -text-pinnad med oförändrad SHA.
+
+## Statuskontroll2026-10-19
+
+PR405 är fortfarande öppen som draft, inte mergad, HEADb053687. Senaste commit gör etiketten för socialt innehåll utan köjobb tydligare; de ovan dokumenterade testkörningarna föregår den etikettändringen. Ny read-only produktionskontroll bekräftar att båda kalendertabellerna saknas och user_calendar_v1 har0ledger-rader. Ingen live-kalender eller godkänt faktiskt mikrofonprov påstås.

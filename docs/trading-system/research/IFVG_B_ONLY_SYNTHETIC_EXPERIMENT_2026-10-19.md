@@ -32,6 +32,8 @@ Detta är ett isolerat **filterjämförelsetest**, inte ett motorbygge som uppt�
 | Ursprunglig FVG färdig **efter** manipulationens avslut | 1 | 1 | B behåller den nyligen färdiga zonen |
 | FVG:s tre candles **sträcker sig över** manipulationen, men sista candlen stänger efteråt | 1 | 1 | Viktig ännu öppen gränsregel: nuvarande B-kandidat räknar **gapets slutförande**, inte att alla tre candles måste komma efter |
 
+**LONG och SHORT:** Extra regressioner verifierar att samma B-only-krav gäller för en inverterad bullish FVG i short-riktning; stängning exakt på nedre gränsen räcker inte och för tidig formation stoppas även där.
+
 **En observation är INTE en trade.** Testfunktionen returnerar `entryPermitted:false`, saknar risk/SL/TP/exekvering och kan inte räkna lönsamhet. Ingen skillnad i hit rate, expectancy, PnL eller profit factor går att beräkna av dessa fyra syntetiska bars.
 
 ### Nytt identifierat tolkningsbehov
@@ -45,10 +47,10 @@ Vi får inte omärkligt ersätta (1) med (2). Den skillnaden behöver ett separa
 
 ## Verifiering
 
-**62/62 PASS**, Node 22.22.3 på användarens anslutna Windows-stationära dator, i en separat temporär mapp med exakt researchkod från commit `20d84b50f53632f7333e132281100c33eb9a5fd9`.
+**64/64 PASS**, Node 22.22.3 på användarens anslutna Windows-stationära dator, i en separat temporär mapp med exakt researchkod från commit `20d84b50f53632f7333e132281100c33eb9a5fd9`.
 
 - 52 befintliga pattern gate unit- och reviewtester passerade igen.
-- 10 nya B-only-tester: åldersfilter, bekräftelse efter manipulation, gräns vid cutoff, tre-candle-spanning, anti-lookahead, wick-avvisning, fail closed för unsettled/real data, ingen trading authority, oförändrat OPEN-registry och deterministisk offline-kod.
+- 12 nya B-only-tester: åldersfilter, bekräftelse efter manipulation, gräns vid cutoff, tre-candle-spanning, anti-lookahead, wick-avvisning, fail closed för unsettled/real data, ingen trading authority, oförändrat OPEN-registry och deterministisk offline-kod.
 
 Kör igen från repo-roten med:
 

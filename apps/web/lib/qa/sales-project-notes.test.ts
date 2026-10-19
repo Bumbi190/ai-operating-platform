@@ -13,21 +13,42 @@ function setup(rows:Record<string,unknown>[]=[row],options:{foreignConversation?
  let reads=0
  const rpc=vi.fn(async(name:string)=>name==='sales_validate_conversation'
   ? {data:options.foreignConversation?null:true,error:options.foreignConversation?{code:'P0002'}:null}
-  : {data:null,error:{code:'P0002'}})
+  : name==='sales_read_workspace'?{data:{state:'ok',contacts:[],workspaceUrl:'/projects/dealer/sales',sendingEnabled:false},error:null}:{data:null,error:{code:'P0002'}})
  const db={rpc,from(table:string){
   if(table!=='memories')throw Error('Unexpected table')
   reads++
   let filtered=rows
-  const query={select(columns:string){if(columns!=='id,key,value,source,updated_at')throw Error('Unexpected columns');return query},
+  const query={select(columns:string){if(!['id,key,value,source,updated_at','key,updated_at'].includes(columns))throw Error('Unexpected columns');return query},
    eq(key:string,value:unknown){filtered=filtered.filter(r=>r[key]===value);return query},
+   like(_key:string,_pattern:string){filtered=filtered.filter(r=>typeof r.key==='string'&&r.key.includes('.sales.'));return query},
+   order(_key:string,_options:unknown){return query},
+   async limit(n:number){return {data:filtered.slice(0,n).map(r=>({key:r.key,updated_at:r.updated_at})),error:options.readError?{code:'unavailable'}:null}},
    async maybeSingle(){return {data:filtered[0]??null,error:options.readError?{code:'unavailable'}:null}}}
   return query
  }}
  const run=(input:Record<string,unknown>={projectId,noteKey},p=principal,c:string|null=conversation,enabled=true)=>handleSalesTool('get_sales_project_note',input,p,c,db as never,()=>enabled)
- return {run,rpc,reads:()=>reads}
+ const workspace=()=>handleSalesTool('get_sales_workspace',{projectId},principal,conversation,db as never,()=>true)
+ return {run,rpc,workspace,reads:()=>reads}
 }
 
 describe('complete read-only sales project notes',()=>{
+ it('discovers exact sales note keys in the workspace without leaking values or foreign notes',async()=>{
+  const review={...row,key:'dealer.sales.text_review'},secret={...row,key:'platform.secret'}
+  const {workspace}=setup([{...row,project_id:other},row,review,secret])
+  const result=await workspace() as {salesNoteIndex:{state:string;notes:{key:string;updatedAt:string}[];hasMore:boolean}}
+  expect(result.salesNoteIndex).toEqual({state:'ok',notes:[{key:noteKey,updatedAt:row.updated_at},{key:review.key,updatedAt:row.updated_at}],hasMore:false})
+  expect(JSON.stringify(result.salesNoteIndex)).not.toContain(body)
+ })
+ it('does not turn a failed note index into an empty successful sales-note list',async()=>{
+  const {workspace}=setup([row],{readError:true})
+  expect(await workspace()).toMatchObject({contactCount:0,salesNoteIndex:{state:'unavailable',notes:[],hasMore:null}})
+ })
+ it('bounds the note index and reports remaining notes',async()=>{
+  const {workspace}=setup(Array.from({length:28},(_,i)=>({...row,key:'dealer.sales.note_'+i})))
+  const result=await workspace() as {salesNoteIndex:{notes:unknown[];hasMore:boolean}}
+  expect(result.salesNoteIndex?.notes).toHaveLength(25);expect(result.salesNoteIndex.hasMore).toBe(true)
+ })
+
  it('returns the entire saved reply beyond the list-preview limit with its provenance',async()=>{
   const {run}=setup();const result=await run() as {note:{value:string;key:string;source:string};contentTruncated:boolean;customerSendingEnabled:boolean}
   expect(result.note?.value).toBe(row.value)

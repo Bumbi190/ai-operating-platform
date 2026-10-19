@@ -64,15 +64,28 @@ export async function probeHistoricalMetadata({
   const isResolve=path==='/v0/symbology.resolve'
   const encoded=params(query).toString()
   if(!isResolve)u.search=encoded
-  const response=await fetchFn(u.toString(),{
-   method:isResolve?'POST':'GET',redirect:'error',
-   headers:{
-    Authorization:authorized,Accept:'application/json',
-    ...(isResolve?{'Content-Type':'application/x-www-form-urlencoded'}:{})
-   },
-   ...(isResolve?{body:encoded}:{}),
-   signal:AbortSignal.timeout(20000)
-  })
+  // Only GET/POST free metadata. Retry once ONLY for transient network
+  // timeouts/connection failures; never retry 401/403 or paid endpoints.
+  let response
+  for(let attempt=0;attempt<2;attempt++){
+   try{
+    response=await fetchFn(u.toString(),{
+     method:isResolve?'POST':'GET',redirect:'error',
+     headers:{
+      Authorization:authorized,Accept:'application/json',
+      ...(isResolve?{'Content-Type':'application/x-www-form-urlencoded'}:{})
+     },
+     ...(isResolve?{body:encoded}:{}),
+     signal:AbortSignal.timeout(12000)
+    })
+    break
+   }catch(err){
+    const transient=err?.name==='TimeoutError'||err?.name==='AbortError'||
+      err?.name==='TypeError'
+    if(!transient)throw Error('UNEXPECTED_METADATA_TRANSPORT_ERROR')
+    if(attempt===1)throw Error('METADATA_NETWORK_TIMEOUT_OR_CONNECTION_FAILURE')
+   }
+  }
   if(!response.ok)throw Error('METADATA_ENDPOINT_HTTP_'+response.status)
   const size=response.headers?.get?.('content-length')
   if(size&&Number(size)>100000)return no('METADATA_RESULT_TOO_LARGE')

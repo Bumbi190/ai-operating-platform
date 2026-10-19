@@ -115,6 +115,7 @@ describe('authority and order boundaries', () => {
     }
     expect([...siblings].sort()).toEqual([
       '../contract-identity',
+      '../decimal',
       '../market-candle',
       '../market-price',
       '../market-timeframe',

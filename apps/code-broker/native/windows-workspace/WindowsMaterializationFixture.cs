@@ -10,9 +10,10 @@ public sealed class WindowsMaterializationFixture {
  readonly bool useRealSource;
  static WorkspaceBinding Binding(WorkspaceRequest r)=>new(r.WorkId,r.RepositoryId,r.PinnedBaseSha,r.AdmissionHash,r.ClaimId,r.Fence);
  static void Validate(WorkspaceRequest r,Guid a){r.Validate();if(r.RepositoryId!=RepositoryLocation.RepositoryId||!WorkspaceJson.Uuid(a.ToString(),true))throw new WorkspaceException("input_invalid");}
- public async Task<MaterializationReport> RunAsync(WorkspaceRequest request,Guid attempt,CancellationToken cancellation){
-  Validate(request,attempt);var clock=Stopwatch.StartNew();var session=new DockerMaterializationSession(connector);SourceSnapshot? snapshot=null;MaterializationIdentity? identity=null;NodeFixtureResult? fixture=null;string? image=null,reason=null,id=null;bool volumeMayExist=false,containerMayExist=false,containerRemoved=false,volumeRemoved=false;IDisposable? guard=null,record=null;WindowsWorkspaceLease? workspace=null;
-  using var work=CancellationTokenSource.CreateLinkedTokenSource(cancellation);work.CancelAfter(workMs);
+ /** The parent-owned control is mandatory: every Docker mutation is preceded by a checkpoint, and its stop cancels work but never cleanup. */
+ internal async Task<MaterializationReport> RunAsync(WorkspaceRequest request,Guid attempt,IStopCheckpoint control,CancellationToken cancellation){
+  Validate(request,attempt);var clock=Stopwatch.StartNew();var session=new DockerMaterializationSession(connector);SourceSnapshot? snapshot=null;MaterializationIdentity? identity=null;NodeFixtureResult? fixture=null;string? image=null,reason=null,id=null,stopReason=null;bool volumeMayExist=false,containerMayExist=false,containerRemoved=false,volumeRemoved=false;IDisposable? guard=null,record=null;WindowsWorkspaceLease? workspace=null;
+  using var work=CancellationTokenSource.CreateLinkedTokenSource(cancellation,control.Stopped);work.CancelAfter(workMs);
   try{
    guard=new MaterializationAttemptGuard(attempt);record=journal.Begin(request,attempt,false);
    if(!await host.IsQualifiedAsync(work.Token))throw new WorkspaceException("host_unqualified");var p=ToolchainProfile.RequireReady(profile);
@@ -23,24 +24,33 @@ public sealed class WindowsMaterializationFixture {
    await session.InitializeAsync(work.Token);image=await session.ImageAsync(p,work.Token);
    using(var existing=await session.VolumeAsync(attempt,work.Token))if(existing!=null)throw new WorkspaceException("resource_conflict");
    using(var existing=await session.ContainerAsync(MaterializationSpecification.ContainerName(attempt),work.Token))if(existing!=null)throw new WorkspaceException("resource_conflict");
+   await control.CheckpointAsync("before_resources",work.Token);
    journal.BindPeer(request,attempt,new(session.BackendIdentityHash!,session.DaemonIdentityHash!,identity.ProfileHash,identity.ManifestSha256));
+   await control.CheckpointAsync("before_volume_create",work.Token);
    volumeMayExist=true;await session.CreateVolumeAsync(identity,work.Token);string mount;
    using(var volume=await session.VolumeAsync(attempt,work.Token)){if(volume==null)throw new WorkspaceException("materialization_unverified");mount=MaterializationSpecification.VerifyVolume(volume.RootElement,identity);}
+   await control.CheckpointAsync("before_container_create",work.Token);
    containerMayExist=true;id=await session.CreateContainerAsync(identity,work.Token);
    using(var inspect=await session.ContainerAsync(id,work.Token)){if(inspect==null)throw new WorkspaceException("materialization_unverified");MaterializationSpecification.VerifyContainer(inspect.RootElement,identity,mount,id,true);}
    if(workspace!=null)await workspace.ValidateUnchangedAsync(work.Token);
-   await session.UploadAsync(id,tar,work.Token);await session.StartAsync(id,work.Token);var exit=await session.WaitAsync(id,work.Token);
+   await control.CheckpointAsync("before_upload",work.Token);
+   await session.UploadAsync(id,tar,work.Token);
+   await control.CheckpointAsync("before_start",work.Token);
+   await session.StartAsync(id,work.Token);var exit=await session.WaitAsync(id,work.Token);
    using(var inspect=await session.ContainerAsync(id,work.Token)){if(inspect==null)throw new WorkspaceException("materialization_unverified");MaterializationSpecification.VerifyContainer(inspect.RootElement,identity,mount,id,finished:exit==0);}
    var logs=MaterializationContracts.Frames(await session.LogsAsync(id,work.Token));
    try{journal.Diagnostic(request,attempt,new UTF8Encoding(false,true).GetString(logs.Out)+"\n"+new UTF8Encoding(false,true).GetString(logs.Error));}catch{/* Evidence is returned in the success DTO; failed diagnostics never confer execution authority. */}
    if(exit!=0||logs.Error.Length!=0)throw new WorkspaceException("fixture_failed");
    fixture=MaterializationContracts.Fixture(logs.Out,snapshot.ManifestSha256);
    if(workspace!=null)await workspace.ValidateUnchangedAsync(work.Token);
+   await control.CheckpointAsync("before_report",work.Token);
   }catch(WorkspaceException e){reason=MaterializationContracts.Map(e.Reason);fixture=null;}
   catch(OperationCanceledException){reason="deadline_exceeded";fixture=null;}
   catch(HostCheckException){reason="host_unqualified";fixture=null;}
   catch{reason="protocol_invalid";fixture=null;}
   finally{
+   // A stop observed at any point before cleanup makes the whole attempt a stop: no fixture result survives it.
+   stopReason=control.Reason;if(stopReason!=null)fixture=null;
    if(identity!=null&&volumeMayExist){
     var left=Math.Min(cleanupMs,workMs+cleanupMs-(int)Math.Min(int.MaxValue,clock.ElapsedMilliseconds));
     if(left>0){using var cleanup=new CancellationTokenSource(left);try{(containerRemoved,volumeRemoved)=await RemoveAsync(session,identity,containerMayExist,id,cleanup.Token);}catch{containerRemoved=false;volumeRemoved=false;}}
@@ -49,6 +59,12 @@ public sealed class WindowsMaterializationFixture {
    workspace?.Dispose();record?.Dispose();guard?.Dispose();
   }
   JsonElement? manifest=snapshot==null?null:JsonSerializer.Deserialize<JsonElement>(snapshot.ManifestBytes);
+  if(stopReason!=null){
+   // For a stop, the removal flags mean "confirmed absent": nothing was created, or both owned resources were removed.
+   if(!volumeMayExist){containerRemoved=true;volumeRemoved=true;}
+   var absent=containerRemoved&&volumeRemoved;
+   return new(absent?"stopped":"failed",attempt.ToString(),Binding(request),absent?stopReason:"cleanup_retained",SourceFixturePolicy.Id,manifest,snapshot?.ManifestSha256,identity?.ProfileHash,image,session.BackendIdentityHash,session.DaemonIdentityHash,null,containerRemoved,volumeRemoved,WorkspaceJson.Now());
+  }
   var status=fixture!=null&&containerRemoved&&volumeRemoved?"verified_for_fixture":reason is "host_unqualified" or "toolchain_unprovisioned" or "toolchain_mismatch" or "workspace_unverified" or "stale_base" or "source_policy_denied" or "secret_pattern_found" or "source_limit" or "blob_unavailable"?"blocked":"failed";
   return new(status,attempt.ToString(),Binding(request),fixture!=null?null:reason??"fixture_failed",SourceFixturePolicy.Id,manifest,snapshot?.ManifestSha256,identity?.ProfileHash,image,session.BackendIdentityHash,session.DaemonIdentityHash,fixture,containerRemoved,volumeRemoved,WorkspaceJson.Now());
  }

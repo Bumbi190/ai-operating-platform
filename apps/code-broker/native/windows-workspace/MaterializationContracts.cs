@@ -7,7 +7,7 @@ public sealed record MaterializationReport(string Status,string AttemptId,Worksp
  public string Schema=>"sdf.windows_materialization_report.v1";public bool ProductionAuthority=>false;
 }
 internal static class MaterializationContracts {
- internal static readonly string[] Reasons={"input_invalid","host_unqualified","workspace_unverified","stale_base","source_policy_denied","secret_pattern_found","source_limit","blob_unavailable","toolchain_unprovisioned","toolchain_mismatch","attempt_in_progress","resource_conflict","peer_changed","protocol_invalid","archive_invalid","materialization_unverified","fixture_failed","deadline_exceeded","cleanup_retained"};
+ internal static readonly string[] Reasons={"input_invalid","host_unqualified","workspace_unverified","stale_base","source_policy_denied","secret_pattern_found","source_limit","blob_unavailable","toolchain_unprovisioned","toolchain_mismatch","attempt_in_progress","resource_conflict","peer_changed","protocol_invalid","archive_invalid","materialization_unverified","fixture_failed","deadline_exceeded","cleanup_retained","stop_requested","control_lost"};
  internal static (WorkspaceRequest Request,Guid Attempt) Parse(string json,bool cleanup){
   using var doc=WorkspaceJson.Document(json);var r=doc.RootElement;WorkspaceJson.Keys(r,"schema","workId","repositoryId","pinnedBaseSha","admissionHash","claimId","fence","attemptId");
   if(WorkspaceJson.String(r,"schema")!=(cleanup?"sdf.windows_materialization_cleanup.v1":"sdf.windows_materialization_request.v1")||!r.GetProperty("fence").TryGetInt64(out var fence))throw new WorkspaceException("input_invalid");

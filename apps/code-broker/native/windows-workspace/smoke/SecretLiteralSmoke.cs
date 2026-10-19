@@ -27,7 +27,7 @@ internal static class SecretLiteralSmoke {
     var tree=string.Join("",files.Select(p=>"100644 blob "+Oid(p.Value)+" "+p.Value.Length+"\t"+p.Key+"\0"));
     return await SourceSnapshot.FromGitAsync(request,tree,(b,_)=>Task.FromResult(files[b.Path]),CancellationToken.None);
    }
-   var report=await new WindowsMaterializationFixture(fake,new PassHost(),Snapshot,identity.Profile,new MemoryAttempts()).RunAsync(request,identity.Attempt,CancellationToken.None);
+   var report=await new WindowsMaterializationFixture(fake,new PassHost(),Snapshot,identity.Profile,new MemoryAttempts()).RunAsync(request,identity.Attempt,ContinueAll.Instance,CancellationToken.None);
    check("secret_literal_before_archive_or_docker_"+n,report.Reason=="secret_pattern_found"&&report.Manifest==null&&fake.Requests.Count==0&&fake.Uploads==0&&fake.VolumeCreates==0&&fake.ContainerCreates==0);
   }
   for(int n=0;n<Safe.Length;n++){SourceFixturePolicy.ValidateText(Encoding.UTF8.GetBytes(Safe[n]));check("below_threshold_or_unrelated_"+n,true);}

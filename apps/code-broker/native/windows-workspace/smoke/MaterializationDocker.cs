@@ -16,7 +16,7 @@ internal sealed class MaterializationDocker:IDockerPeerConnector {
   if(SlowPending){SlowPending=false;await Task.Delay(3000,token);}
   Connections++;bool wrong=Fault=="wrong-peer";var expected=HostProfile.Targets.Single(t=>t.Id=="backend");
   var peer=new PeerEvidence(17,new string('b',64),wrong?"C:/wrong/backend.exe":expected.Path,expected.PinnedSha256!,WindowsIdentity.GetCurrent().User!.Value);
-  return new Observation(new Duplex(Reply,n=>{if(wrong)WrongPeerBytes+=n;}),peer);
+  return new Observation(new Duplex(Reply,n=>{if(wrong)WrongPeerBytes+=n;},sent=>Fault=="hold-wait"&&Encoding.ASCII.GetString(sent).Contains("/wait?")),peer);
  }
  sealed class Observation:OwnedPipeObservation{internal Observation(Stream s,PeerEvidence p):base(s,p){}public override void ValidatePeer(){}public override void Dispose()=>Stream.Dispose();}
  byte[] Reply(byte[] request){
@@ -63,12 +63,14 @@ internal sealed class MaterializationDocker:IDockerPeerConnector {
  static byte[] Http(int code,object? body)=>HttpBytes(code,body==null?Array.Empty<byte>():JsonSerializer.SerializeToUtf8Bytes(body));
  static byte[] HttpBytes(int code,byte[] bytes)=>Encoding.ASCII.GetBytes("HTTP/1.1 "+code+" Fixture\r\nConnection: close\r\nContent-Length: "+bytes.Length+"\r\n\r\n").Concat(bytes).ToArray();
  sealed class Duplex:Stream{
-  readonly MemoryStream sent=new();MemoryStream? reply;readonly Func<byte[],byte[]> create;readonly Action<int> written;
-  internal Duplex(Func<byte[],byte[]> create,Action<int> written){this.create=create;this.written=written;}
+  readonly MemoryStream sent=new();MemoryStream? reply;readonly Func<byte[],byte[]> create;readonly Action<int> written;readonly Func<byte[],bool> hold;readonly TaskCompletionSource disposed=new(TaskCreationOptions.RunContinuationsAsynchronously);
+  internal Duplex(Func<byte[],byte[]> create,Action<int> written,Func<byte[],bool>? hold=null){this.create=create;this.written=written;this.hold=hold??(_=>false);}
+  // A held container wait never answers; it ends only when the caller cancels or disposes the connection.
+  async ValueTask<int> HeldAsync(CancellationToken c){await Task.WhenAny(Task.Delay(Timeout.Infinite,c),disposed.Task);c.ThrowIfCancellationRequested();throw new IOException("held wait connection disposed");}
   public override bool CanRead=>true;public override bool CanWrite=>true;public override bool CanSeek=>false;public override long Length=>throw new NotSupportedException();public override long Position{get=>throw new NotSupportedException();set=>throw new NotSupportedException();}
   public override void Flush(){}public override Task FlushAsync(CancellationToken c)=>Task.CompletedTask;
   public override void Write(byte[] b,int o,int n){sent.Write(b,o,n);written(n);}public override ValueTask WriteAsync(ReadOnlyMemory<byte> b,CancellationToken c=default){sent.Write(b.Span);written(b.Length);return ValueTask.CompletedTask;}
-  public override int Read(byte[] b,int o,int n){reply??=new(create(sent.ToArray()));return reply.Read(b,o,n);}public override ValueTask<int> ReadAsync(Memory<byte> b,CancellationToken c=default){c.ThrowIfCancellationRequested();reply??=new(create(sent.ToArray()));return ValueTask.FromResult(reply.Read(b.Span));}
-  public override long Seek(long o,SeekOrigin s)=>throw new NotSupportedException();public override void SetLength(long n)=>throw new NotSupportedException();protected override void Dispose(bool d){if(d){sent.Dispose();reply?.Dispose();}base.Dispose(d);}
+  public override int Read(byte[] b,int o,int n){if(reply==null&&hold(sent.ToArray())){disposed.Task.Wait();throw new IOException("held wait connection disposed");}reply??=new(create(sent.ToArray()));return reply.Read(b,o,n);}public override ValueTask<int> ReadAsync(Memory<byte> b,CancellationToken c=default){c.ThrowIfCancellationRequested();if(reply==null&&hold(sent.ToArray()))return HeldAsync(c);reply??=new(create(sent.ToArray()));return ValueTask.FromResult(reply.Read(b.Span));}
+  public override long Seek(long o,SeekOrigin s)=>throw new NotSupportedException();public override void SetLength(long n)=>throw new NotSupportedException();protected override void Dispose(bool d){if(d){disposed.TrySetResult();sent.Dispose();reply?.Dispose();}base.Dispose(d);}
  }
 }

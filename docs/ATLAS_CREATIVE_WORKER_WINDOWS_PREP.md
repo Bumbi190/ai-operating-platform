@@ -11,11 +11,15 @@ Branch: `feat/atlas-creative-tools-p0`
 - The non-elevated Desktop Commander session independently confirmed that
   local account `omnira-media-worker` **exists**, is **disabled**, and does
   not belong to local Administrators.
-- `C:\ProgramData\OmniraCreativeWorker` exists, but its NTFS ACL and child
-  folder ACLs **cannot be inspected in the non-elevated session**. The
-  read-only verifier therefore reports `restrictedAclsVerified=false`.
-  Access-denied folder results are recorded with `exists=null` (unknown),
-  never falsely described as absent or as verified isolation.
+- The ordinary non-elevated session could not inspect the protected NTFS ACLs;
+  it correctly returned `restrictedAclsVerified=false` and null existence for
+  unreadable subfolders. **Operator-reported elevated, read-only verification
+  on 2026-10-20 subsequently returned `restrictedAclsVerified=true`.** All seven
+  folders (`root`, `bin`, `queue`, `input`, `output`, `temp`, `receipts`) were
+  reported present, ACL-readable, inheritance-disabled, with approved worker
+  rights and no unexpected Allow ACEs. This result is supported by the full
+  PowerShell JSON transcript supplied by the operator; it is not yet a separate
+  independent security audit of effective Windows process isolation.
 - PhotoCraft 0.10.0 and FilmCraft 0.9.0 are present in the original ArtCraft
   location; the portable program binaries **and both ZIP archives** match
   their separately pinned SHA-256 hashes.
@@ -36,25 +40,20 @@ Branch: `feat/atlas-creative-tools-p0`
 
 These scripts do not grant approval to Atlas and do not run autonomously.
 
-### Next operator action: elevated READ-ONLY ACL inspection
+### Elevated ACL inspection: operator-reported PASS; next gate is staged binaries
 
-The provisioning step has **already been performed**. Never rerun
-`worker-provision.ps1 -Apply`: it deliberately refuses existing accounts
-and must not be used to repair an uncertain partial state.
+The provisioning step and elevated read-only `worker-verify.ps1` inspection
+have **already been performed**. Never rerun `worker-provision.ps1 -Apply`.
+The submitted JSON reported `restrictedAclsVerified=true`, a disabled
+non-administrator account and seven individually passing folder ACL checks.
+Do not mistake that result for network/process sandbox verification.
 
-The next action requires an operator at the Windows machine to open
-**Administrator: Windows PowerShell** and run **only**:
-
-`& 'C:\Users\Andre\Projects\Omnira\.worktrees\atlas-creative-tools-p0\scripts\creative-tools\worker-verify.ps1'`
-
-This command has no `-Apply`, and does not change the account, files or ACLs.
-Review all seven folder results. Require `accountDisabled=true`,
-`accountNotAdministrator=true`, `groupCheckAvailable=true`,
-`restrictedAclsVerified=true`, and each folder's
-`aclReadable=true`, `inheritanceDisabled=true`,
-`workerRightsOk=true`, and `noUnexpectedAllow=true`.
-A single false/unreadable result blocks the next step. Do not relax ACLs
-on your own to force a green check.
+**No further command is authorized by this report.** Before any elevated
+`worker-stage-binaries.ps1 -Apply`, obtain a separate owner decision and an
+independent review of archive extraction, staging destinations and signatures.
+The staging script is designed to refuse changed release hashes, inaccessible
+or occupied targets, and any elevated ACL audit that fails. The worker must
+remain disabled; do not relax ACLs to force a passing result.
 
 **Do not stage programs or enable the account yet.** Binary staging `-Apply`
 also enforces this elevated read-only ACL audit and refuses inaccessible or

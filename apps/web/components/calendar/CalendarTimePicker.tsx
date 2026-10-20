@@ -10,6 +10,7 @@ export function CalendarTimePicker({label,value,onChange,disabled}:Props){
  const [open,setOpen]=useState(false);
  const [part,setPart]=useState<'hour'|'minute'>('hour');
  const root=useRef<HTMLDivElement>(null);
+ const popover=useRef<HTMLDivElement>(null);
  const hour=valid(value)?Number(value.slice(0,2)):9;
  const minute=valid(value)?Number(value.slice(3,5)):0;
  useEffect(()=>{
@@ -19,15 +20,17 @@ export function CalendarTimePicker({label,value,onChange,disabled}:Props){
   document.addEventListener('mousedown',close);document.addEventListener('keydown',escape);
   return()=>{document.removeEventListener('mousedown',close);document.removeEventListener('keydown',escape);};
  },[open]);
+ // Keep the expanded in-panel clock reachable in shorter scrolling dialogs.
+ useEffect(()=>{if(open)popover.current?.scrollIntoView({block:'nearest',inline:'nearest'});},[open]);
  const pickHour=(next:number)=>{onChange(pad(next)+':'+pad(minute));setPart('minute');};
  const pickMinute=(next:number)=>{onChange(pad(hour)+':'+pad(next));setOpen(false);setPart('hour');};
  const options=part==='hour'?Array.from({length:12},(_,i)=>i+1):Array.from({length:12},(_,i)=>i*5);
- return <div ref={root} className={styles.timePicker}>
+ return <div ref={root} className={styles.timePicker} data-open={open?'true':undefined}>
   <span className={styles.timePickerLabel}>{label}</span>
   <button type="button" className={styles.timePickerTrigger} aria-label={label} aria-expanded={open} disabled={disabled} onClick={()=>{setOpen(!open);setPart('hour');}}>
    <strong>{value||'Välj tid'}</strong><Clock3 size={16} aria-hidden="true"/>
   </button>
-  {open&&<div className={styles.timePickerPopover} role="group" aria-label={'Välj '+label.toLowerCase()}>
+  {open&&<div ref={popover} className={styles.timePickerPopover} role="group" aria-label={'Välj '+label.toLowerCase()}>
    <div className={styles.timePickerDigits}>
     <button type="button" aria-pressed={part==='hour'} onClick={()=>setPart('hour')}>{pad(hour)}</button><span>:</span>
     <button type="button" aria-pressed={part==='minute'} onClick={()=>setPart('minute')}>{pad(minute)}</button>

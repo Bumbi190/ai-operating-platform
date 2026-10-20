@@ -47,12 +47,32 @@ increment's new GitHub CI run has not yet completed.
   caller supplies trusted repository, Git SHA and qualified-model context from
   the server. Without that, its distinct `binding_required` status stops the
   proposal. It has no I/O or permission to start jobs.
-- Eight new tests pass locally; SDF-1B CI now requires this test file with an
-  eight-test anti-skip floor. No API handler or chat UI has been wired yet.
+- Eight instruction-parser tests passed locally and in SDF-1B CI at `4f55b6c`
+  with an eight-test anti-skip floor. The separate authenticated draft route
+  is described in the next section; live chat/voice streaming is not wired yet.
+
+## Authenticated draft preview in Granskningar (this increment)
+
+- A separate `POST /api/atlas/code-work/intake-draft` route verifies same-origin,
+  the signed-in platform operator, an exact two-field body and a bounded text
+  instruction before producing any output. It reuses the shared explicit
+  text/voice instruction parser; the route does not accept a client-supplied
+  repository ID, SHA, model choice, budget, principal or approval.
+- The endpoint has no database, provider, filesystem, action or control-plane
+  write. Without a trusted server Git-base resolver it returns the parsed
+  objective, type and files with `binding_required`, `executionEnabled=false`
+  and `approvalAvailable=false`. It never returns an authorized job or a fake
+  pinned SHA. Missing details and non-code conversations are differentiated.
+- `CodeWorkIntakeDraft` in the existing Granskningar panel sends a **typed text**
+  instruction to this route and displays the parsing result without an approve,
+  run or deployment action. A live voice-transcript hookup is not yet present.
+- Eight new endpoint security tests and the four pre-existing operator UI
+  tests passed locally. SDF-1B Linux CI now requires eight endpoint tests.
 
 ## Explicitly not implemented
 
-- No chat or voice command routes to this module yet.
+- The live chat stream and voice service are not yet wired to the new draft route.
+  The Granskningar panel can use typed text only for now.
 - No validated local Qwen *coding* qualification is claimed. Test data uses
   a synthetic model ID and digest; the eventual trusted server context must
   validate the real qualification record.

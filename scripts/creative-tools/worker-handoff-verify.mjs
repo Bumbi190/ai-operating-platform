@@ -112,19 +112,24 @@ async function hashFile(path){
  for await(const chunk of createReadStream(path))hash.update(chunk);
  return hash.digest('hex');
 }
+/** Only a data-binding check against a separately supplied manifest digest.
+ * A matching digest does not authenticate the reviewer or grant approval.
+ */
+export function assertReviewedHandoffManifest(manifest,reviewedManifestSha256){
+ if(typeof reviewedManifestSha256!=='string'||!HEX.test(reviewedManifestSha256)){
+  throw Error('external_manifest_digest_required');
+ }
+ const encoded=JSON.stringify(manifest);
+ if(digest(encoded)!==reviewedManifestSha256)throw Error('reviewed_manifest_digest_mismatch');
+ checkManifest(manifest);
+ return true;
+}
 /**
  * Pure file read. An external ACL/ownership checker is separately mandatory.
  * This function never considers any files safe for execution or publication.
  */
 export async function verifyProposedHandoffCopy({root,manifest,reviewedManifestSha256}){
- if(typeof reviewedManifestSha256!=='string'||!HEX.test(reviewedManifestSha256)){
-  throw Error('external_manifest_digest_required');
- }
- // The reviewed digest pins EXACT serialized JSON, not merely the untrusted
- // manifest's self-referential fingerprint.
- const encoded=JSON.stringify(manifest);
- if(digest(encoded)!==reviewedManifestSha256)throw Error('reviewed_manifest_digest_mismatch');
- checkManifest(manifest);
+ assertReviewedHandoffManifest(manifest,reviewedManifestSha256);
  const base=inspectRoot(root);
  const expected=manifest.entries.map(x=>x.destination).sort();
  if(expected.some((name,i)=>i&&name.toLowerCase()===expected[i-1].toLowerCase()))throw Error('duplicate_handoff_destination');

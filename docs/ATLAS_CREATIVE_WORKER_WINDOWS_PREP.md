@@ -283,6 +283,36 @@ approved exact source revision and digest distributed out of band, a separately
 reviewed privileged copy-only bootstrap, post-copy comparisons against the
 approved digest, and Windows ACL proof. The bootstrap itself is **not built**.
 
+## Synthetic protected-copy transaction tests (in-memory only)
+
+`worker-handoff-copy-simulator.mjs` is a **pure in-memory** model, not a
+privileged copier. It deliberately imports no filesystem, Windows, process,
+network or execution facilities, exposes no CLI, and refuses real executable
+sizes (maximum 64 KiB per synthetic input). The caller provides twelve
+synthetic Buffers and the separately pinned manifest digest.
+
+The simulator models a full transfer transaction:
+1. Verify the exact reviewed manifest digest and the strict release lock,
+   check all twelve source names and bytes, and refuse occupied targets.
+2. Inject a simulated source mutation or target race between review and copy;
+   fail closed without changing the external destination Map.
+3. Stage cloned test buffers in a separate Map, then independently compare
+   every staged byte length and SHA-256; refuse missing, extra or changed
+   entries before producing a mock candidate.
+4. Always report zero **actual files copied**, no ACL/signature attestation,
+   no reviewer approval, no account enablement, and no production readiness.
+
+**13 new adversarial tests** check success, source/target collision, changes
+between verification and staging, tampering after staged copy, missing/extra
+files, forged manifest or release pins, oversized input and race injection.
+Together with the previous 19 manifest/post-copy tests, Linux CI now
+requires **32/32 passing with zero skipped**. This simulates transaction logic
+only; it does not establish atomic Windows filesystem writes, trust in a
+user-writable bootstrap, real NTFS ACLs, or independent reviewer approval.
+
+**The actual protected copy-only bootstrap remains unimplemented and must
+not be executed, inferred from this simulator, or treated as authorized.**
+
 **No step above was authorized or executed by this planning change.**
 
 ## Whole-archive integrity update

@@ -68,6 +68,11 @@ test('Familje-Stunden imports November editorial drafts only after an explicit o
   }})
  })
  await page.goto('/content?family-november=1')
+ await expect(page.getByRole('region',{name:'Atlas innehålls?versikt'})).toBeVisible()
+ await expect(page.getByRole('link',{name:'Öppna Atlas'})).toHaveAttribute('href','/atlas')
+ await expect(page.getByRole('button',{name:'Hämta novembertext för Facebook'})).toBeHidden()
+ await page.getByRole('button',{name:'Visa manuella verktyg'}).click()
+
  const facebook=page.getByRole('button',{name:'Hämta novembertext för Facebook'})
  const instagram=page.getByRole('button',{name:'Hämta novemberbildförslag för Instagram'})
  await expect(facebook).toBeVisible()
@@ -113,6 +118,11 @@ test('Familje-Stunden November import disappears if channel plan changed or is n
  ]
  await page.route('**/api/social-content?*',async route=>route.fulfill({json:model}))
  await page.goto('/content?family-november=1')
+ await expect(page.getByRole('region',{name:'Atlas innehålls?versikt'})).toBeVisible()
+ await expect(page.getByRole('link',{name:'Öppna Atlas'})).toHaveAttribute('href','/atlas')
+ await expect(page.getByRole('button',{name:'Hämta novembertext för Facebook'})).toBeHidden()
+ await page.getByRole('button',{name:'Visa manuella verktyg'}).click()
+
  await expect(page.getByRole('button',{name:'Hämta novembertext för Facebook'})).toHaveCount(0)
  await expect(page.getByRole('button',{name:'Hämta novemberbildförslag för Instagram'})).toHaveCount(0)
 })

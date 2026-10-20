@@ -56,3 +56,27 @@ AI provider calls. PR and deployment require independent code review.
 The development worktree for the offline 15-second video is unchanged.
 It can be presented for owner review separately; production video posts
 still require a new social plan revision and distribution approvals.
+
+## Atlas-first UI refinement (2026-10-20)
+
+The approved Familje-Stunden project now opens the compact Atlas and
+content view by default. The primary surface shows only the number of
+drafts needing review, upcoming dated drafts, a link to Atlas, and a
+shortcut to the next pending review. Detailed lists, manual editors,
+calendar and schedule administration are behind "Visa manuella verktyg".
+Channel plan editing and company profile remain reachable in secondary
+tabs. Other projects keep their existing default workflow.
+
+This is presentation and navigation only: no auto-save, schedule changes,
+new provider calls or publication actions. Native approval gates, RLS,
+idempotent proposal saves and explicit release decisions remain intact.
+
+Evidence: Playwright Social Content 10/10, Social Launch 6/6,
+focused Vitest 42/42 and TypeScript clean.
+
+IMPORTANT: Atlas can already READ project content and propose a draft
+when asked, but autonomous recurring weekly draft creation and engagement
+collection are not implemented. This UI must not imply those services
+are already running. Build autonomous planning and generation only after
+a distinct review of schedule ownership, cost caps, stale source
+detection and owner approval policy.

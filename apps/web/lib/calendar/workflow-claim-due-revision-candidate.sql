@@ -2,6 +2,10 @@
 -- Derived from 20260902081500_stop_atomic_execution_admission.sql, not the earlier PR3 definition.
 -- Missing source version blocks the claim; locked source versions are skipped.
 -- Source/project stop/transition lock ordering still requires full integration proof.
+-- TEST FIXTURE ONLY: fair-share ordering metadata on project revisions.
+alter table public.calendar_source_revision_probe
+add column if not exists last_workflow_claim_at timestamptz;
+
 
 create or replace function public.workflow_claim_due(
   p_limit integer default 20,
@@ -16,44 +20,57 @@ declare
   v_ids      uuid[];
   v_projects uuid[];
   v_source_projects uuid[] := '{}';
-  v_due_project uuid;
-  v_locked_project uuid;
   v_allowed  uuid[] := '{}';
   v_pid      uuid;
   v_gpaused  boolean;
   v_ppaused  boolean;
 begin
-  -- CANDIDATE ONLY: acquire source-revision rows before workflow-instance locks.
-  -- SKIP LOCKED preserves non-blocking behavior when another writer owns a project.
-  -- No platform/project stop authority is granted by this read; the existing
-  -- instance-first stop checks below are still mandatory after row selection.
-  for v_due_project in
-    select distinct d.project_id
-    from public.workflow_instances d
-    where d.status = 'active'
-      and d.wake_at is not null
-      and d.wake_at <= now()
+  -- TEST-ONLY: bound the number of source rows locked per claim invocation.
+  -- Prefer projects that have NEVER been claimed; then the least recently served.
+  -- Earliest due time breaks ties, avoiding perpetual domination by one backlog.
+  -- SKIP LOCKED walks past busy projects; this is finite-backlog fair-share,
+  -- not a formally starvation-free guarantee under continuous new projects.
+  -- The existing instance -> platform -> project authority order remains below.
+  if p_limit is null or p_limit < 1 then
+    raise exception 'INVALID_CLAIM_LIMIT' using errcode='23514';
+  end if;
+
+  -- Reject an untracked or owner-mismatched due project rather than silently
+  -- omitting it. This is a read-only completeness check, not authorization.
+  if exists (
+    select 1 from public.workflow_instances d
+    join public.projects p on p.id=d.project_id
+    where d.status='active' and d.wake_at is not null and d.wake_at<=now()
+      and p.execution_paused is not true
       and not exists (
-        select 1 from public.projects p
-        where p.id = d.project_id and p.execution_paused = true
+        select 1 from public.calendar_source_revision_probe r
+        where r.project_id=p.id and r.owner_user_id=p.owner_id
       )
-    order by d.project_id
+  ) then
+    raise exception 'MISSING_SOURCE_REVISION' using errcode='23514';
+  end if;
+
+  -- FOR UPDATE OF r applies only to source revisions, not to workflow rows.
+  -- LIMIT caps source lock footprint at min(requested jobs, 16 projects).
+  for v_pid in
+    select r.project_id
+    from public.calendar_source_revision_probe r
+    join public.projects p on p.id=r.project_id and p.owner_id=r.owner_user_id
+    join (
+      select d.project_id,min(d.wake_at) oldest_wake
+      from public.workflow_instances d
+      where d.status='active' and d.wake_at is not null and d.wake_at<=now()
+        and not exists (
+          select 1 from public.projects q
+          where q.id=d.project_id and q.execution_paused=true
+        )
+      group by d.project_id
+    ) due on due.project_id=r.project_id
+    order by r.last_workflow_claim_at nulls first,due.oldest_wake,r.project_id
+    limit least(p_limit,16)
+    for update of r skip locked
   loop
-    v_locked_project := null;
-    select r.project_id into v_locked_project
-      from public.calendar_source_revision_probe r
-      join public.projects p on p.id=r.project_id and p.owner_id=r.owner_user_id
-      where r.project_id=v_due_project
-      for update of r skip locked;
-    if v_locked_project is not null then
-      v_source_projects := array_append(v_source_projects,v_due_project);
-    elsif not exists (
-      select 1 from public.calendar_source_revision_probe r
-      join public.projects p on p.id=r.project_id and p.owner_id=r.owner_user_id
-      where r.project_id=v_due_project
-    ) then
-      raise exception 'MISSING_SOURCE_REVISION' using errcode='23514';
-    end if;
+    v_source_projects:=array_append(v_source_projects,v_pid);
   end loop;
 
   if cardinality(v_source_projects) = 0 then
@@ -125,6 +142,16 @@ begin
   where w.id = any(v_ids)
     and w.project_id = any(v_allowed)
   returning w.*;
+
+  -- RETURN QUERY does not exit the function. Mark projects actually claimed;
+  -- no fairness token is consumed by a paused, skipped or empty claim.
+  update public.calendar_source_revision_probe r
+    set last_workflow_claim_at=clock_timestamp()
+    where r.project_id=any(v_allowed)
+      and exists (
+        select 1 from public.workflow_instances w
+        where w.id=any(v_ids) and w.project_id=r.project_id
+      );
 end;
 $$;
 revoke all on function public.workflow_claim_due(integer,integer) from public,anon,authenticated,service_role;

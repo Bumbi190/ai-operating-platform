@@ -6,6 +6,7 @@ import type {SocialContentInput,SocialContentView,SocialContentPost} from '@/lib
 import {SocialSchedulePanel} from './SocialSchedulePanel'
 import {FAMILY_SOCIAL_PROJECT_ID} from '@/lib/social-launch/scheduling/policy'
 import {SocialPublicationPanel} from './SocialPublicationPanel'
+import {familyNovemberSuggestions,type FamilyNovemberSuggestion} from '@/lib/social-launch/content/family-november-suggestions'
 import styles from './SocialContentPanel.module.css'
 const formats={text:'Text',image:'Bild',video:'Video',link:'Länk'}
 const statuses={proposal:'Förslag att granska',approved:'Innehållet godkänt',rejected:'Avvisat innehåll',needs_review:'Behöver granskas igen'}
@@ -63,6 +64,20 @@ function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{project
   }catch(e){if(live.current&&!c.signal.aborted&&sequence===responseSequence.current)setError(e instanceof Error?e.message:'Ändringen kunde inte sparas. Ditt utkast finns kvar.')}
   finally{controllers.current.delete(c);if(sequence===responseSequence.current){writeInFlight.current=false;if(live.current)setBusy(false)}}
  }
+ const novemberSuggestions=model?familyNovemberSuggestions({
+  projectId,projectSlug:model.project.slug,projectName:model.project.name,
+  planApproved:model.planApproved,planRevisionId:model.currentPlanRevisionId,
+  plannedChannels:model.plannedChannels,
+ }):[]
+ function loadNovemberSuggestion(value:FamilyNovemberSuggestion){
+  if(!model||busy||loading||writeInFlight.current||!novemberSuggestions.some(s=>s.id===value.id))return
+  if(dirty&&!window.confirm('Ersätt dina osparade ändringar?'))return
+  // Prefill locally only; the existing Save action does the ONLY write.
+  setSelectedId(null)
+  setEditor({postId:crypto.randomUUID(),expectedRevisionId:null,
+    draft:{...value.draft,mediaIds:[]},localTime:''})
+  setDirty(true);setError('');setStale(false);pending.current=null
+ }
  const media=selected?.revision.media??[]
  const mediaMissing=!!selected&&['image','video'].includes(selected.revision.draft.format)&&media.length===0
  const reviewDisabled=busy||loading||dirty||stale||mediaMissing||selected?.status==='needs_review'||media.some(m=>!loaded[m.id+':'+m.sha256])
@@ -72,6 +87,13 @@ function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{project
    <p className={styles.notice}>Börja med utkast och granskning. När rätt konto är anslutet kan du bekräfta ett enskilt Facebook- eller Instagram-inlägg nedan. Inga inlägg skickas från kalendern.</p>
   </header>
   <div className={styles.actions}><button type="button" disabled={busy||loading||(!model?.planApproved||!model.plannedChannels.length)} onClick={()=>edit()}>Nytt utkast</button><button type="button" disabled={busy||loading} onClick={()=>{if(!dirty||window.confirm('Ersätt ditt osparade utkast med senaste sparade versionen?')){setEditor(null);setDirty(false);void load()}}}>Läs senaste innehållet</button></div>
+  {novemberSuggestions.length>0&&<section className={styles.notice} aria-label="Novemberförslag för Familje-Stunden">
+   <strong>November med Nova och Pling – utkast att granska</strong>
+   <p>Förifyll text eller bildidé enligt den godkända kanalplanen. Ingen video, fil, tid eller publicering kopplas automatiskt.</p>
+   <div className={styles.actions}>{novemberSuggestions.map(s=><button
+    key={s.id} type="button" disabled={busy||loading} onClick={()=>loadNovemberSuggestion(s)}
+    >{s.label}</button>)}</div>
+  </section>}
   {error&&<p className={styles.error} role="alert">{error}</p>}
   {loading&&<p role="status">Läser projektets innehåll…</p>}
   {model&&!model.planApproved&&<div className={styles.notice}><p>Godkänn projektets kanalplan innan du sparar innehållsförslag. Du behöver inte ansluta några konton för att förbereda ett utkast.</p>{onPlanRequested?<button type="button" onClick={onPlanRequested}>Gå till kanalplanen</button>:<a href={'/projects/'+model.project.slug+'/social'}>Gå till kanalplanen</a>}</div>}

@@ -43,3 +43,76 @@ test('refresh disables review until its snapshot is resolved and cannot undo a l
  release();await expect(page.getByRole('button',{name:'Godkänn innehållet',exact:true})).toBeEnabled();await page.getByRole('button',{name:'Godkänn innehållet',exact:true}).click()
  await expect(page.getByRole('article',{name:'Granska sparat innehåll'}).getByText('Innehållet godkänt',{exact:true})).toBeVisible()
 })
+
+
+test('Familje-Stunden imports November editorial drafts only after an explicit owner click',async({page})=>{
+ const projectId='77cda551-57c9-4dc0-b019-1bb6438777f7'
+ let payloads:any[]=[]
+ const model=contentFixture(projectId)
+ model.project={id:projectId,name:'Familje-Stunden',slug:'familje-stunden'}
+ model.currentPlanRevisionId='e745041f-ad3a-493f-bd3b-025525d561b2'
+ model.plannedChannels=[
+  {channel:'facebook',format:'text',cadence:'manual',purpose:'Vardagstips'},
+  {channel:'instagram',format:'image',cadence:'manual',purpose:'Familjebilder'},
+ ]
+ await page.route('**/api/social-content?*',async route=>route.fulfill({json:model}))
+ await page.route('**/api/social-content',async route=>{
+  const body=route.request().postDataJSON()
+  payloads.push(body)
+  await route.fulfill({json:{
+   ...model,posts:[{id:body.postId,revision:{
+    id:'40000000-0000-4000-8000-000000000001',sequence:1,
+    sha256:'a'.repeat(64),planRevisionId:body.planRevisionId,
+    draft:body.draft,media:[],binding:null,createdAt:'2026-10-16T10:00:00Z',
+   },decision:null,status:'proposal',requirements:['media_required']}],
+  }})
+ })
+ await page.goto('/content?family-november=1')
+ const facebook=page.getByRole('button',{name:'Hämta novembertext för Facebook'})
+ const instagram=page.getByRole('button',{name:'Hämta novemberbildförslag för Instagram'})
+ await expect(facebook).toBeVisible()
+ await expect(instagram).toBeVisible()
+ expect(payloads).toHaveLength(0)
+ await facebook.click()
+ await expect(page.getByLabel('Kanal',{exact:true})).toHaveValue('facebook')
+ await expect(page.getByLabel('Format',{exact:true})).toHaveValue('text')
+ await expect(page.getByLabel('Inläggstext',{exact:true})).toContainText('Nova och Pling')
+ await expect(page.getByLabel('Önskad publiceringstid (Stockholm)')).toHaveValue('')
+ expect(payloads).toHaveLength(0)
+ await page.getByRole('button',{name:'Spara innehållsförslag',exact:true}).click()
+ expect(payloads).toHaveLength(1)
+ expect(payloads[0].operation).toBe('propose')
+ expect(payloads[0].projectId).toBe(projectId)
+ expect(payloads[0].planRevisionId).toBe(model.currentPlanRevisionId)
+ expect(payloads[0].draft.mediaIds).toEqual([])
+ expect(payloads[0].draft.scheduledAt).toBeNull()
+ expect(payloads[0].draft.format).toBe('text')
+ await instagram.click()
+ await expect(page.getByLabel('Kanal',{exact:true})).toHaveValue('instagram')
+ await expect(page.getByLabel('Format',{exact:true})).toHaveValue('image')
+ await expect(page.getByLabel('Bild- eller videoidé')).toContainText('projektbundet')
+ await expect(page.getByLabel('Önskad publiceringstid (Stockholm)')).toHaveValue('')
+ expect(payloads).toHaveLength(1)
+ await page.getByRole('button',{name:'Spara innehållsförslag',exact:true}).click()
+ expect(payloads).toHaveLength(2)
+ expect(payloads[1].draft.mediaIds).toEqual([])
+ expect(payloads[1].draft.scheduledAt).toBeNull()
+ expect(payloads[1].draft.format).toBe('image')
+ await expect(page.getByRole('button',{name:'Godkänn innehållet',exact:true})).toBeDisabled()
+ await expect(page.getByRole('heading',{name:'Kalender',exact:true})).toBeVisible()
+})
+
+test('Familje-Stunden November import disappears if channel plan changed or is not approved',async({page})=>{
+ const projectId='77cda551-57c9-4dc0-b019-1bb6438777f7'
+ const model=contentFixture(projectId)
+ model.project={id:projectId,name:'Familje-Stunden',slug:'familje-stunden'}
+ model.currentPlanRevisionId='e745041f-ad3a-493f-bd3b-025525d561b2'
+ model.plannedChannels=[
+  {channel:'facebook',format:'video',cadence:'manual',purpose:'Video'},
+  {channel:'instagram',format:'image',cadence:'manual',purpose:'Image'}
+ ]
+ await page.route('**/api/social-content?*',async route=>route.fulfill({json:model}))
+ await page.goto('/content?family-november=1')
+ await expect(page.getByRole('button',{name:'Hämta novembertext för Facebook'})).toHaveCount(0)
+ await expect(page.getByRole('button',{name:'Hämta novemberbildförslag för Instagram'})).toHaveCount(0)
+})

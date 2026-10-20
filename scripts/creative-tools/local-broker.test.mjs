@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateJob, runPilotJob, PILOT_OPERATIONS } from './local-broker.mjs';
+import { validateJob, runPilotJob, PILOT_OPERATIONS, AUTONOMOUS_CREATIVE_EXECUTION_ENABLED } from './local-broker.mjs';
 
 test('only named pilot recipes are offered', () => {
   assert.deepEqual(PILOT_OPERATIONS, ['photocraft.convert-webp', 'filmcraft.demo-export-mp4']);
@@ -19,6 +19,14 @@ test('cannot inject paths, shell strings or unknown commands', () => {
     {id:'bad', operation:'photocraft.convert-webp', inputName:'safe.png',
       quality:80, output:'C:\\production'},
   ]) assert.throws(() => validateJob(bad));
+});
+
+test('a CLI pilot flag cannot bypass the not-ready local worker', async () => {
+  assert.equal(AUTONOMOUS_CREATIVE_EXECUTION_ENABLED, false);
+  await assert.rejects(
+    runPilotJob({id:'notready123',operation:'filmcraft.demo-export-mp4'}, true),
+    /creative execution disabled/,
+  );
 });
 
 test('no execution without an explicit local pilot switch', async () => {

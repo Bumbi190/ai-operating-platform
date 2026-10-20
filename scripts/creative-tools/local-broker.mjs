@@ -26,6 +26,9 @@ const outputDir = join(pilot, 'output');
 const auditDir = join(pilot, 'audit');
 const requestDir = join(pilot, 'requests');
 export const PILOT_OPERATIONS = Object.freeze(['photocraft.convert-webp', 'filmcraft.demo-export-mp4']);
+// Neither a command-line flag nor an environment variable can grant execution.
+// A trusted, isolated host adapter must be implemented and reviewed first.
+export const AUTONOMOUS_CREATIVE_EXECUTION_ENABLED = false;
 
 /** Exclusively claim a job identifier once, even across concurrent processes. */
 export function claimPilotJob(folder, id) {
@@ -104,6 +107,7 @@ function hasExpectedMediaHeader(path, kind) {
 export async function runPilotJob(rawJob, approve = false) {
   const job = validateJob(rawJob);
   if (approve !== true) throw new Error('local pilot execution requires explicit operator approval');
+  if (!AUTONOMOUS_CREATIVE_EXECUTION_ENABLED) throw new Error('creative execution disabled until trusted isolated worker is verified');
   for (const dir of [pilot, inputDir, outputDir, auditDir, requestDir]) ensureDirectory(dir);
   const outputName = job.id + (job.operation === 'photocraft.convert-webp' ? '.webp' : '.mp4');
   const outputPath = join(outputDir, outputName);

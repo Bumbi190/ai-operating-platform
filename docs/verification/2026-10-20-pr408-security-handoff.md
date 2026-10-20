@@ -43,6 +43,18 @@ independent reviewer sign-off.
    physical RAM fell below 1 GiB after the three passing tests; do not present
    these other SQL suites as passing or start them without resource checks.
 
+## Additional nonproduction CI gate (pending first run)
+
+The `SDF-1C Trusted Broker Boundary` workflow now runs the isolated PostgreSQL
+suites `sdf-review-storage-sql.test.ts` (17 cases) and
+`sdf-review-storage-flow.test.ts` (3 cases) on a Linux Actions runner, with a
+single Vitest worker and separate exact per-file anti-skip checks. The fixture
+uses an ephemeral `postgres:16` image with Docker network disabled. No
+Supabase project is contacted. This entry documents the intended CI coverage;
+the new job is **not verified green** until GitHub reports its first result.
+The separate native-Windows execution-lease SQL suite is still not included,
+because it requires the approved Windows host identity pins and fixtures.
+
 ## Independent reviewer checklist (not completed)
 
 - Review SECURITY DEFINER authority and the exact call path for all eight RPCs.

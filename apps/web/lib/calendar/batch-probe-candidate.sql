@@ -17,6 +17,9 @@ begin
   if prior.request_hash<>digest then raise exception 'IDEMPOTENCY_CONFLICT' using errcode='23505'; end if;
   return prior.result;
  end if;
+ -- FAIL-CLOSED: recurrence expansion is not yet reproduced in this SQL prototype.
+ -- Any active repeating event for this owner blocks batch writes until canonical occurrence checking is implemented.
+ if exists(select 1 from public.user_calendar_events e where e.owner_user_id=who and e.status='scheduled' and e.draft->'repeat' is not null and e.draft->'repeat'<>'null'::jsonb) then raise exception 'RECURRING_SOURCE_NOT_SUPPORTED' using errcode='23514'; end if;
  for row in select value from jsonb_array_elements(p_input) loop
   if jsonb_typeof(row)<>'object' or not(row ?& array['title','startUtc','endUtc']) then raise exception 'INVALID_INPUT' using errcode='23514'; end if;
   title:=row->>'title';starts:=(row->>'startUtc')::timestamptz;ends:=(row->>'endUtc')::timestamptz;

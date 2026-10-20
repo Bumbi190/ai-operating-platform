@@ -26,6 +26,21 @@ begin
   if previous.request_hash<>fingerprint then return jsonb_build_object('ok',false,'code','CONFLICT'); end if;
   return previous.result;
  end if;
+ -- TEST-ONLY: ordinary writes must refuse overlaps while holding the shared owner lock.
+ if op in ('create','update','restore') then
+  if op='restore' then
+   select * into e from public.user_calendar_events where id=eid and owner_user_id=who;
+   if not found then return jsonb_build_object('ok',false,'code','NOT_FOUND'); end if;
+  end if;
+  if coalesce((case when op='restore' then e.draft else p_input->'draft' end)->'time'->>'kind','')='timed' then
+   if exists(select 1 from public.user_calendar_events existing
+     where existing.owner_user_id=who and existing.status='scheduled' and existing.id<>eid
+       and ((existing.draft->'time'->>'kind')='timed'
+         and (existing.draft->'time'->>'startUtc')::timestamptz < ((case when op='restore' then e.draft else p_input->'draft' end)->'time'->>'endUtc')::timestamptz
+         and coalesce((existing.draft->'time'->>'endUtc')::timestamptz,(existing.draft->'time'->>'startUtc')::timestamptz+interval '15 minutes') > ((case when op='restore' then e.draft else p_input->'draft' end)->'time'->>'startUtc')::timestamptz)
+       ) then return jsonb_build_object('ok',false,'code','CONFLICT'); end if;
+  end if;
+ end if;
  if op='create' then
   insert into public.user_calendar_events(id,owner_user_id,draft) values(eid,who,p_input->'draft') returning * into e;
  else

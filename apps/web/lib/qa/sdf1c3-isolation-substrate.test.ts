@@ -46,6 +46,10 @@ const hg = (...rest: string[]) => [...GIT_HARDENING_PREFIX, ...rest]
 const HEAD_ARGV = hg('rev-parse', '--verify', '--quiet', 'HEAD^{commit}')
 const LETTERED = 'abcdef00-0000-4000-8000-00000000000a'      // has hex letters, so upper-casing really changes it
 const ISO = resolve(ROOT, 'apps/code-broker/src/isolation')
+const walk = (dir: string): string[] => readdirSync(dir).flatMap(name => {
+  const path = join(dir, name)
+  return statSync(path).isDirectory() ? (name === 'node_modules' || name === '.next' ? [] : walk(path)) : /\.(?:ts|tsx|mjs)$/.test(name) ? [path] : []
+})
 const WORK = '50000000-0000-4000-8000-000000000001'
 const WORK_2 = '50000000-0000-4000-8000-000000000002'
 const REPO_ID = OMNIRA_LOCAL_REPOSITORY.repositoryId
@@ -336,8 +340,8 @@ describe('SDF-1C3A infrastructure process runner: closed commands, no shell, scr
   })
 
   it('has no way to read the parent environment at all', () => {
-    for (const file of readdirSync(ISO)) {
-      const source = code(join(ISO, file))
+    for (const file of walk(ISO)) {
+      const source = code(file)
       expect(source, file).not.toMatch(/process\.env|import\.meta\.env|\benv:\s*process/)
     }
   })
@@ -387,7 +391,7 @@ describe('SDF-1C3A infrastructure process runner: closed commands, no shell, scr
     try { brokerCommand({ tool: 'git', argv: hg('fetch', secret) }) } catch (error) { thrown = String(error) }
     expect(JSON.stringify(result) + thrown).not.toContain(secret)
     for (const spy of spies) { expect(spy).not.toHaveBeenCalled(); spy.mockRestore() }
-    for (const file of readdirSync(ISO)) expect(code(join(ISO, file)), file).not.toMatch(/\bconsole\.|\blogger\b/)
+    for (const file of walk(ISO)) expect(code(file), file).not.toMatch(/\bconsole\.|\blogger\b/)
   })
 
   it('a planted user gitconfig, hooks, filters and credential helper are unreachable (real git)', async () => {
@@ -913,9 +917,17 @@ describe('SDF-1C3A repository proof, pinned base and isolated worktree (syntheti
   })
 
   it('production code never deletes a worktree, prunes, removes or fetches (retention is explicit-cleanup-only)', () => {
-    for (const file of readdirSync(ISO)) {
-      const source = code(join(ISO, file))
-      if (file === 'process-runner.ts') { expect(source).toMatch(/rmSync\(home/); continue }      // only the broker's own isolated HOME
+    for (const file of walk(ISO)) {
+      const source = code(file)
+      if (file === join(ISO, 'process-runner.ts')) { expect(source).toMatch(/rmSync\(home/); continue }      // only the broker's own isolated HOME
+      if (file === join(ISO, 'windows/source-attempts.ts')) {
+        // A reviewed, append-only reservation writer, confined to the native attempts directory.
+        expect(source).toMatch(/const ROOT=fileURLToPath\(new URL\('\.\.\/\.\.\/\.\.\/\.native\/windows-workspace\/attempts'/)
+        expect(source).toMatch(/O_WRONLY\|constants\.O_CREAT\|constants\.O_EXCL/)
+        expect(source).toMatch(/checkDirectory\(ROOT\)/)
+        expect(source).not.toMatch(/\brmSync\b|\bunlinkSync\b|\brmdirSync\b|\brenameSync\b|\bcopyFileSync\b/)
+        continue
+      }
       expect(source, file).not.toMatch(/\brmSync\b|\brmdirSync\b|\bunlinkSync\b|\brenameSync\b|\bwriteFileSync\b|\bmkdirSync\b|\bcopyFileSync\b|['"]prune['"]|worktree remove|['"]remove['"]/)
     }
     expect(Object.keys(containment).filter(name => name !== 'FILESYSTEM_WRITES_ENABLED' && /write|unlink|remove|delete|mkdir|rename|copy|create(?!Path)/i.test(name))).toEqual([])
@@ -1120,10 +1132,10 @@ describe('SDF-1C3A SandboxSpec and Docker command construction', () => {
   })
 
   it('there is no way to smuggle a shell, host bind, docker socket or arbitrary argument anywhere in the isolation sources', () => {
-    for (const file of readdirSync(ISO)) {
-      const source = code(join(ISO, file))
+    for (const file of walk(ISO)) {
+      const source = code(file)
       expect(source, file).not.toMatch(/shell:\s*true|['"`]\/bin\/(?:ba|z|da|k|c|tc)?sh['"`]|\bsh\s+-c\b|\bbash\s+-c\b|\bzsh\s+-c\b/)
-      if (file !== 'process-runner.ts') expect(source, file).not.toMatch(/type=bind|['"]-v['"]\s*,|['"]--volume['"]\s*,|['"]--mount['"]\s*,/)     // process-runner.ts only NAMES them, in its refusal list
+      if (file !== join(ISO, 'process-runner.ts')) expect(source, file).not.toMatch(/type=bind|['"]-v['"]\s*,|['"]--volume['"]\s*,|['"]--mount['"]\s*,/)     // process-runner.ts only NAMES them, in its refusal list
     }
     const spec = code(join(ISO, 'sandbox-spec.ts'))
     expect(spec).not.toMatch(/['"]--privileged['"]|['"]--cap-add['"]|['"]--device['"]|['"]--pid['"]|['"]-p['"]|['"]--publish['"]/)
@@ -1319,10 +1331,6 @@ describe('SDF-1C3A health-probe orchestration (fake Docker; the real daemon is e
 })
 
 describe('SDF-1C3A boundary: no production caller, no route, no CLI command, no migration, no execution', () => {
-  const walk = (dir: string): string[] => readdirSync(dir).flatMap(name => {
-    const path = join(dir, name)
-    return statSync(path).isDirectory() ? (name === 'node_modules' || name === '.next' ? [] : walk(path)) : /\.(?:ts|tsx|mjs)$/.test(name) ? [path] : []
-  })
 
   it('nothing outside the isolation directory (and tests) imports the substrate', () => {
     const importers = [...walk(resolve(ROOT, 'apps/code-broker/src')), ...walk(resolve(ROOT, 'apps/web/app')), ...walk(resolve(ROOT, 'apps/web/lib/atlas')), ...walk(resolve(ROOT, 'apps/web/components'))]

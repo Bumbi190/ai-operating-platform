@@ -1339,7 +1339,7 @@ describe('SDF-1C3A boundary: no production caller, no route, no CLI command, no 
 
   it('adds no broker route, and the route set is exactly the 1C2 control channel', () => {
     const api = resolve(ROOT, 'apps/web/app/api/atlas/code-work/broker')
-    expect(walk(api).map(file => file.slice(api.length + 1)).sort()).toEqual(['claim/recover/route.ts', 'claim/route.ts', 'discover/route.ts', 'enroll/route.ts', 'heartbeat/route.ts', 'identity/route.ts'])
+    expect(walk(api).map(file => file.slice(api.length + 1).replace(/\\/g, '/')).sort()).toEqual(['claim/recover/route.ts', 'claim/route.ts', 'discover/route.ts', 'enroll/route.ts', 'execution-lease/route.ts', 'heartbeat/route.ts', 'identity/route.ts'])
     for (const name of ['context', 'evidence', 'transition', 'execute', 'command', 'patch', 'prepare', 'worktree', 'sandbox']) expect(existsSync(join(api, name)), name).toBe(false)
   })
 
@@ -1373,8 +1373,8 @@ describe('SDF-1C3A boundary: no production caller, no route, no CLI command, no 
   })
 
   it('contains no model/provider, HTTP, database, credential or repository-content code', () => {
-    for (const file of readdirSync(ISO)) {
-      const source = code(join(ISO, file))
+    for (const file of walk(ISO)) {
+      const source = code(file)
       expect(source, file).not.toMatch(/@anthropic|from ['"]openai['"]|\banthropic\b|claude-|supabase|service[_-]?role|createAdminClient|\bfetch\(|node:https?|node:net|node:tls|XMLHttpRequest|WebSocket/i)
       expect(source, file).not.toMatch(/docker cp|docker exec|docker run\b|\btar\b.*-[cx]|type=bind/)
       expect(source, file).not.toMatch(/readFileSync\([^)]*(?:worktree|workspace)/)
@@ -1384,12 +1384,12 @@ describe('SDF-1C3A boundary: no production caller, no route, no CLI command, no 
   it('only the approved isolation modules can ISSUE an InfraCommand: brokerCommand is not reachable from any other production module', () => {
     const production = [...walk(resolve(ROOT, 'apps/code-broker/src')), ...walk(resolve(ROOT, 'apps/web/app')), ...walk(resolve(ROOT, 'apps/web/lib')), ...walk(resolve(ROOT, 'apps/web/components')), ...walk(resolve(ROOT, 'apps/web/scripts'))]
       .filter(file => !file.includes('/lib/qa/') && !/\.test\.tsx?$/.test(file))
-    const users = production.filter(file => /\bbrokerCommand\b/.test(code(file))).map(file => file.slice(ROOT.length + 1)).sort()
+    const users = production.filter(file => /\bbrokerCommand\b/.test(code(file))).map(file => file.slice(ROOT.length + 1).replace(/\\/g, '/')).sort()
     expect(users).toEqual([
       'apps/code-broker/src/isolation/docker-host.ts', 'apps/code-broker/src/isolation/git-commands.ts', 'apps/code-broker/src/isolation/process-runner.ts', 'apps/code-broker/src/isolation/sandbox-spec.ts',
     ])
     // …and nothing outside the isolation directory imports the runner module at all (protocol, CLI, HTTP, routes, model, WorkPackage code).
-    const importers = production.filter(file => !file.includes('/code-broker/src/isolation/') && /process-runner|git-grammar|git-commands|sandbox-spec|docker-host/.test(code(file)))
+    const importers = production.filter(file => !file.replace(/\\/g, '/').includes('/code-broker/src/isolation/') && /process-runner|git-grammar|git-commands|sandbox-spec|docker-host/.test(code(file)))
     expect(importers.map(file => file.slice(ROOT.length + 1))).toEqual([])
     // Git commands can only be made through the grammar: the runner takes its rules from git-grammar and has no second Git validator.
     const runner = code(join(ISO, 'process-runner.ts'))
@@ -1399,15 +1399,28 @@ describe('SDF-1C3A boundary: no production caller, no route, no CLI command, no 
     expect(code(join(ISO, 'git-commands.ts'))).not.toMatch(/GIT_ALLOWED_CONFIG_OVERRIDES\)\.flatMap/)   // the prefix has ONE definition (git-grammar), not a second copy in the builders
   })
 
-  it('confines child_process to the single runner module', () => {
-    for (const file of readdirSync(ISO)) {
-      const uses = /child_process/.test(readFileSync(join(ISO, file), 'utf8'))
-      expect(uses, file).toBe(file === 'process-runner.ts')
+  it('confines child_process to specifically reviewed runner and Windows helper modules', () => {
+    const allowed = new Set([
+      'process-runner.ts',
+      'windows/controlled-helper.ts',
+      'windows/workspace-helper.ts',
+      'windows/host-qualification.ts',
+    ])
+    const actual = walk(ISO)
+      .filter(file => /(?:node:)?child_process/.test(code(file)))
+      .map(file => file.slice(ISO.length + 1).replace(/\\/g, '/'))
+      .sort()
+    expect(actual).toEqual([...allowed].sort())
+    for (const name of [...allowed].filter(name => name.startsWith('windows/'))) {
+      const source = code(join(ISO, name))
+      expect(source, name).toMatch(/shell:\s*false/)
+      expect(source, name).toMatch(/\bRUNTIME\b/)
+      expect(source, name).toMatch(/\bHELPER\b/)
     }
   })
 
   it('imports nothing from apps/web (the broker stays a separate trust domain)', () => {
-    for (const file of readdirSync(ISO)) expect(readFileSync(join(ISO, file), 'utf8'), file).not.toMatch(/from ['"](?:@\/|\.\.\/\.\.\/\.\.\/web|.*apps\/web)/)
+    for (const file of walk(ISO)) expect(readFileSync(file, 'utf8'), file).not.toMatch(/from ['"](?:@\/|\.\.\/\.\.\/\.\.\/web|.*apps\/web)/)
   })
 
   it('lists every workflow file so the suite cannot silently disappear from CI', () => {

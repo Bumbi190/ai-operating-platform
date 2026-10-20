@@ -18,6 +18,17 @@ $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIde
 $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 $account = Get-LocalUser -Name 'omnira-media-worker' -ErrorAction SilentlyContinue
 
+function Inspect-Target([string]$Path) {
+  try {
+    $found = [bool](Test-Path -LiteralPath $Path -ErrorAction Stop)
+    return [pscustomobject]@{ inspected = $true; exists = $found; status = $(if ($found) { 'present' } else { 'absent' }) }
+  } catch [System.UnauthorizedAccessException] {
+    return [pscustomobject]@{ inspected = $false; exists = $null; status = 'access_denied' }
+  } catch {
+    return [pscustomobject]@{ inspected = $false; exists = $null; status = 'unreadable' }
+  }
+}
+$rootCheck = Inspect-Target $root
 $results = @()
 foreach ($name in @('photocraft','filmcraft')) {
   $entry = $lock.$name
@@ -29,6 +40,7 @@ foreach ($name in @('photocraft','filmcraft')) {
   $archiveMatches = $archiveExists -and $archiveDigest -eq ([string]$entry.archiveSha256).ToLowerInvariant()
   $relativeDir = Split-Path ($entry.binaryRelativePath -replace '/', '\') -Parent
   $dest = Join-Path $binRoot $relativeDir
+  $targetCheck = Inspect-Target $dest
   $present = Test-Path -LiteralPath $binary -PathType Leaf
   $digest = if ($present) { (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash.ToLowerInvariant() } else { $null }
   $expected = [string]$entry.sha256
@@ -43,7 +55,8 @@ foreach ($name in @('photocraft','filmcraft')) {
     archiveFile = $archive
     sourceDir = $source
     targetDir = $dest
-    targetExists = (Test-Path -LiteralPath $dest)
+    targetExists = $targetCheck.exists
+    targetInspection = $(if ($targetCheck.inspected) { 'verified' } else { $targetCheck.status })
   }
 }
 if (-not $Apply) {
@@ -53,7 +66,8 @@ if (-not $Apply) {
     elevated = [bool]$isAdmin
     workerAccountExists = ($null -ne $account)
     workerAccountDisabled = ($null -ne $account -and -not $account.Enabled)
-    targetRootExists = (Test-Path -LiteralPath $root)
+    targetRootExists = $rootCheck.exists
+    targetRootInspection = $(if ($rootCheck.inspected) { 'verified' } else { $rootCheck.status })
     programs = $results
     productionReady = $false
   } | ConvertTo-Json -Depth 5
@@ -61,10 +75,20 @@ if (-not $Apply) {
 }
 if (-not $isAdmin) { throw 'Requires elevated PowerShell; no changes applied.' }
 if ($null -eq $account -or $account.Enabled) { throw 'Worker account must exist and remain DISABLED.' }
-if (-not (Test-Path -LiteralPath $binRoot -PathType Container)) {
-  throw 'Provision worker directory and ACLs before staging binaries.'
+# Re-read the actual Windows ACLs from the elevated session. The operator's
+# earlier screenshot, account name and staging plan are not adequate proof.
+$verification = & (Join-Path $PSScriptRoot 'worker-verify.ps1') | ConvertFrom-Json
+if (-not $verification.accountExists -or -not $verification.accountDisabled -or
+    -not $verification.groupCheckAvailable -or -not $verification.accountNotAdministrator -or
+    -not $verification.restrictedAclsVerified) {
+  throw 'Independent Windows ACL audit did not pass. Staging remains prohibited.'
 }
-if (@($results | Where-Object { -not $_.sourceHashMatchesLock -or -not $_.archiveHashMatchesLock -or $_.targetExists }).Count -gt 0) {
+$binCheck = Inspect-Target $binRoot
+if (-not $rootCheck.inspected -or -not $rootCheck.exists -or
+    -not $binCheck.inspected -or -not $binCheck.exists) {
+  throw 'Worker root/bin must be verifiably present; refusing staging on unknown access.'
+}
+if (@($results | Where-Object { -not $_.sourceHashMatchesLock -or -not $_.archiveHashMatchesLock -or $_.targetInspection -ne 'verified' -or $null -eq $_.targetExists -or $_.targetExists }).Count -gt 0) {
   throw 'Source hash mismatch or existing targets: refusing copy.'
 }
 foreach ($program in $results) {

@@ -3,18 +3,30 @@
 Date: 2026-10-20 · Machine: HULTGREN · Repo: ai-operating-platform
 Branch: `feat/atlas-creative-tools-p0`
 
-## Verified state
+## Verified state after operator provisioning
 
-- This remote Desktop Commander session is **not elevated** as administrator.
-- Account `omnira-media-worker` does not exist.
-- `C:\ProgramData\OmniraCreativeWorker` does not exist.
-- PhotoCraft 0.10.0 and FilmCraft 0.9.0 portable binaries are present under
-  `C:\Users\Andre\Projects\Omnira\External\ArtCraft`.
-- The binary staging plan independently verified both SHA-256 digests against
-  `scripts/creative-tools/artcraft-lock.json`.
-- Neither a Windows account nor NTFS ACLs nor firewall rules were changed.
-- The production creative execution gate remains `false`.
-- 30/30 local Node tests passed, including 3 Windows provisioning tests.
+- The operator executed `worker-provision.ps1 -Apply` manually in an elevated
+  Windows PowerShell window; the creation receipt reported success and
+  `productionReady=false`. Do not rerun this creation step.
+- The non-elevated Desktop Commander session independently confirmed that
+  local account `omnira-media-worker` **exists**, is **disabled**, and does
+  not belong to local Administrators.
+- `C:\ProgramData\OmniraCreativeWorker` exists, but its NTFS ACL and child
+  folder ACLs **cannot be inspected in the non-elevated session**. The
+  read-only verifier therefore reports `restrictedAclsVerified=false`.
+  Access-denied folder results are recorded with `exists=null` (unknown),
+  never falsely described as absent or as verified isolation.
+- PhotoCraft 0.10.0 and FilmCraft 0.9.0 are present in the original ArtCraft
+  location; the portable program binaries **and both ZIP archives** match
+  their separately pinned SHA-256 hashes.
+- The pinned staging plan did not copy any files: `changesApplied=false`.
+  Its two destinations are inaccessible to this session, so each is marked
+  `targetInspection=access_denied` and `targetExists=null`.
+- No NTFS permissions, local user state or firewall configuration were changed
+  by the follow-up. The worker remains disabled and no creative execution or
+  network isolation has been authorized.
+- Five Windows provision/staging tests plus 14 synthetic ACL-policy cases
+  passed in the updated test harness. These **do not replace an elevated audit**.
 
 ## Implemented operator-controlled scripts
 
@@ -24,19 +36,30 @@ Branch: `feat/atlas-creative-tools-p0`
 
 These scripts do not grant approval to Atlas and do not run autonomously.
 
-### Optional future manual provisioning
+### Next operator action: elevated READ-ONLY ACL inspection
 
-**Not performed here.** After independent code review, an operator physically at
-the computer can open an **elevated Windows PowerShell** window and run:
+The provisioning step has **already been performed**. Never rerun
+`worker-provision.ps1 -Apply`: it deliberately refuses existing accounts
+and must not be used to repair an uncertain partial state.
 
-1. `& 'C:\Users\Andre\Projects\Omnira\.worktrees\atlas-creative-tools-p0\scripts\creative-tools\worker-provision.ps1' -Apply`
-2. Provide a unique strong password interactively, **never in ChatGPT, GitHub,
-   or a shell command line**. The script creates a **disabled** non-admin account.
-3. Run the read-only `worker-verify.ps1` and inspect every ACL result.
-4. If all checks pass, manually run
-   `worker-stage-binaries.ps1 -Apply` from the same elevated session.
-5. Run `worker-stage-binaries.ps1` without arguments again and verify that
-   staged executable hashes still match. No account activation is implied.
+The next action requires an operator at the Windows machine to open
+**Administrator: Windows PowerShell** and run **only**:
+
+`& 'C:\Users\Andre\Projects\Omnira\.worktrees\atlas-creative-tools-p0\scripts\creative-tools\worker-verify.ps1'`
+
+This command has no `-Apply`, and does not change the account, files or ACLs.
+Review all seven folder results. Require `accountDisabled=true`,
+`accountNotAdministrator=true`, `groupCheckAvailable=true`,
+`restrictedAclsVerified=true`, and each folder's
+`aclReadable=true`, `inheritanceDisabled=true`,
+`workerRightsOk=true`, and `noUnexpectedAllow=true`.
+A single false/unreadable result blocks the next step. Do not relax ACLs
+on your own to force a green check.
+
+**Do not stage programs or enable the account yet.** Binary staging `-Apply`
+also enforces this elevated read-only ACL audit and refuses inaccessible or
+preexisting destinations; a separate owner approval and independent review
+are still needed before staging. Passwords are never shared in chat or logs.
 
 **No automatic enabling** is provided. Do not use `Enable-LocalUser` until
 separate application-level authentication, queue, network restrictions,
@@ -55,11 +78,12 @@ independent file-boundary tests and human approval have been implemented.
 | temp | modify |
 | receipts | read |
 
-SYSTEM and local Administrators retain full control. Inheritance is disabled
-on each folder. No program binaries are placed under an unrestricted write
-location for the future worker. The worker is intentionally **disabled**
-after provisioning. If the scripts fail halfway, stop and review the
-partial account/folders; do not rerun blindly or relax ACLs.
+SYSTEM and local Administrators are intended to retain full control, with
+inheritance disabled and narrowly scoped worker ACEs. **These effective ACLs
+have not yet been independently observed from an elevated session.** No
+binaries have been staged and the worker is intentionally **disabled**.
+If provisioning was incomplete, stop and review; do not rerun it blindly
+or relax ACLs.
 
 ## Security caveats
 
@@ -75,7 +99,8 @@ their general-purpose MCP command channels directly to an autonomous agent.
 
 ## Remaining before a first autonomous media job
 
-1. Provision + independently audit a restricted worker.
+1. Independently audit the provisioned disabled worker's actual NTFS ACLs
+   from an elevated read-only session; get external security sign-off.
 2. Separate authenticated creative queue with explicit signed, one-time
    operator approval and non-replayable storage.
 3. Low-privilege local worker that has a **fixed recipe** command allowlist,

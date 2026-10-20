@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
+import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname,join} from 'node:path';
 
@@ -25,6 +26,35 @@ test('worker security inspection remains read-only and fail closed',()=>{
   assert.equal(r.mode,'read-only-verification');
   assert.equal(r.productionReady,false);
   assert.equal(r.signedQueueConfigured,false);
+  assert.equal(r.workerExecutionEnabled,false);
+  assert.equal(r.folderChecks.length,7);
+  for(const folder of r.folderChecks) {
+    if(folder.visibility!=='present') {
+      assert.equal(folder.aclReadable,false,folder.folder);
+      assert.equal(folder.noUnexpectedAllow,false,folder.folder);
+      if(folder.visibility!=='absent') assert.equal(folder.exists,null,folder.folder);
+    }
+  }
+  if(r.folderChecks.some(folder=>folder.visibility!=='present'||!folder.aclReadable)) {
+    assert.equal(r.restrictedAclsVerified,false,'unreadable ACL can never count as verified');
+  }
+});
+test('pure Windows worker ACL policy rejects Write-only and high privileges',()=>{
+  if(process.platform!=='win32') return;
+  const r=inspect('worker-acl-policy.test.ps1');
+  assert.equal(r.mode,'synthetic-acl-policy-test');
+  assert.equal(r.allPassed,true);
+  assert.ok(r.cases>=14);
+  assert.equal(r.changesApplied,false);
+});
+test('staging Apply cannot bypass elevated ACL verification or copy to an unreadable target',()=>{
+  const source=readFileSync(join(here,'worker-stage-binaries.ps1'),'utf8');
+  assert.match(source,/worker-verify\.ps1/);
+  assert.match(source,/restrictedAclsVerified/);
+  assert.match(source,/accountNotAdministrator/);
+  assert.match(source,/groupCheckAvailable/);
+  assert.match(source,/targetInspection -ne 'verified'/);
+  assert.match(source,/workerAccountStillDisabled/);
 });
 test('binary staging checks both vendor hashes without copying anything',()=>{
   if(process.platform!=='win32') return;
@@ -38,5 +68,7 @@ test('binary staging checks both vendor hashes without copying anything',()=>{
     assert.equal(p.sourceHashMatchesLock,true,p.program);
     assert.equal(p.archiveExists,true,p.program);
     assert.equal(p.archiveHashMatchesLock,true,p.program);
+    if(p.targetInspection!=='verified') assert.equal(p.targetExists,null,p.program);
+    else assert.equal(typeof p.targetExists,'boolean',p.program);
   }
 });

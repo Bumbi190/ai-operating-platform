@@ -187,6 +187,57 @@ Do not enable the account, open network access or use PhotoCraft/FilmCraft
 through Atlas until separate approval, signed one-use job admission, sandbox
 review and a controlled end-to-end test.
 
+## Proposed protected handoff inventory (read-only; pending review)
+
+`node scripts/creative-tools/worker-handoff-manifest.mjs` performs a streaming
+SHA-256 inventory without copying files, changing ACLs, enabling the worker,
+opening a network connection or invoking any editing executable. It accepts
+**no runtime arguments** in CLI mode.
+
+The fixed `omnira.creative.proposed_handoff.v1` inventory contains exactly:
+
+- Six `control/` files: `worker-stage-binaries.ps1`, `worker-verify.ps1`,
+  `worker-acl-policy.ps1`, `worker-archive-audit.ps1`,
+  `worker-archive-policy.ps1` and `artcraft-lock.json`.
+- Six `imports/` files: the pinned PhotoCraft/FilmCraft release ZIP,
+  pinned CLI and observed signed GUI executable for each program.
+- Paths are relative to the future protected
+  `C:\\ProgramData\\OmniraCreativeWorker` destination. Each file has a
+  measured length and SHA-256 digest, and a canonical inventory fingerprint.
+  The ZIP/CLI digests must equal the four existing immutable release pins.
+
+This inventory **is not signed by an independent reviewer**. Its control/GUI
+digests reflect what is currently in user-writable source locations, so they
+can change until the source is sealed. A matching fingerprint never grants
+permission to install or run software; the handoff explicitly reports
+`approvalGranted=false`, `copyPerformed=false`, and `productionReady=false`.
+
+Ten isolated tests require a fixed file manifest, reject a changed locked ZIP
+or CLI, detect changed control/GUI content via fingerprint drift, and reject
+malicious lockfile paths, missing files, oversized files, relative roots and
+symlink/reparse substitutions. The synthetic tests create only temporary test
+fixtures and remove them. Linux SDF-1B CI now runs these tests with no skip
+or fallback to a writable production path.
+
+**Remaining trust ceremony, not implemented here:**
+
+1. Independently review a particular committed source revision; approve its
+   manifest and GUI signer identity out-of-band, with exact SHA-256 pins.
+2. Design and review a privileged *copy-only* bootstrap whose own bytes are
+   trusted out-of-band. An elevated PowerShell launched from the writable
+   worktree cannot safely bootstrap itself.
+3. Transfer the exact allowlisted files into new admin-only `control/` and
+   `imports/` directories, ensuring parent ACLs, ownership, and reparse
+   boundaries are correct before every write. Do not overwrite existing
+   destinations, and do not run a transferred script during copying.
+4. Independently compare every post-copy digest with the separately pinned
+   review manifest and effective ACLs. Abort with no staging authorization on
+   any mismatch or unexplained extra file.
+5. Reconsider whether a separate VM/container is needed before editor process
+   launch and network egress; Windows ACL hardening alone is insufficient.
+
+**No step above was authorized or executed by this planning change.**
+
 ## Whole-archive integrity update
 
 The staging planner additionally checks SHA-256 of the original PhotoCraft and

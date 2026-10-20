@@ -35,6 +35,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Verify proposed creative handoff is bounded and fail-closed
+        run: node --test scripts/creative-tools/worker-handoff-manifest.test.mjs
       - name: Schema, concurrency, authority, isolation, lifecycle and receipt chain
         working-directory: apps/web
         run: >-

@@ -52,7 +52,7 @@ describe('SDF-1B2 rendered operator surfaces', () => {
     expect(html).toContain('Ingen worker startas i denna fas')
     expect(html).toContain('Koduppdrag från text')
     expect(html).toContain('Granska instruktion (ingen körning)')
-    expect(html).toContain('kan ännu inte knyta den till en verifierad Git-bas')
+    expect(html).toContain('Projektbindning och körbehörighet saknas fortfarande')
     expect(html).toContain('Syntetiskt projekt')
     expect(html).toContain('Bumbi190/ai-operating-platform')
     expect(html).toContain(BASE.slice(0, 10))

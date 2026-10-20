@@ -3,11 +3,17 @@
 import React,{useRef,useState,type FormEvent} from 'react'
 import styles from './CodeWorkReviewCard.module.css'
 
+type Draft={objective:string;kind:string;writePaths:string[]}
 type DraftReply=
  | {status:'not_code_work_intent';executionEnabled:false}
  | {status:'needs_details';missing:string[];example:string;executionEnabled:false}
  | {status:'binding_required';reason:string;executionEnabled:false;approvalAvailable:false;
-    draft:{objective:string;kind:string;writePaths:string[]};nextStep:string}
+    draft:Draft;nextStep:string}
+ | {status:'project_binding_required';projectBindingVerified:false;executionEnabled:false;approvalAvailable:false;
+    draft:Draft;nextStep:string;verifiedGit:{repositoryId:string;baseRef:string;pinnedBaseSha:string};
+    proposed:{risk:'low'|'medium'|'high';authorProfile:string;reviewerProfile:string;
+     authorCapSek:number;reviewerCapSek:number;totalCapSek:number;requiresOwnerChoice:boolean;
+     requiresIndependentReview:true;previewFingerprint:string}}
 type View={kind:'idle'|'working'|'error'|'result';message?:string;reply?:DraftReply}
 const SAMPLE='Atlas, planera kodjobb: Rätta etiketterna | typ: ui_fix | filer: apps/web/lib/ui/display-preferences.ts'
 
@@ -33,7 +39,7 @@ export function CodeWorkIntakeDraft(){
      :'Instruktionen kunde inte granskas.'})
     return
    }
-   if(!['needs_details','binding_required','not_code_work_intent'].includes(result.status)){
+   if(!['needs_details','binding_required','project_binding_required','not_code_work_intent'].includes(result.status)){
     setView({kind:'error',message:'Okänt svar från servern.'});return
    }
    setView({kind:'result',reply:result as DraftReply})
@@ -46,7 +52,7 @@ export function CodeWorkIntakeDraft(){
   <section className={styles.proposal} aria-labelledby="code-work-intake-heading">
    <div>
     <h3 id="code-work-intake-heading" className={styles.groupTitle}>Koduppdrag från text – utkast</h3>
-    <p className={styles.copy}>Skriv en tydlig instruktion. Atlas kan tolka den, men kan ännu inte knyta den till en verifierad Git-bas eller starta kodagenten.</p>
+    <p className={styles.copy}>Skriv en tydlig instruktion. Atlas läser den registrerade GitHub-basen och föreslår risk, modell och kostnad. Projektbindning och körbehörighet saknas fortfarande.</p>
    </div>
    <form className={styles.draftForm} onSubmit={submit}>
     <label htmlFor="code-work-intake-text">Instruktion</label>
@@ -70,6 +76,23 @@ export function CodeWorkIntakeDraft(){
       <ul>{response.draft.writePaths.map(path=><li key={path}><code>{path}</code></li>)}</ul>
       <p>{response.nextStep}</p>
       <p>Ingen körning, ingen beställning och ingen kostnad har skapats.</p>
+     </div>:null}
+    {response?.status==='project_binding_required'?<div>
+      <p><strong>GitHub-bas verifierad – projektbindning saknas.</strong></p>
+      <p>Uppdrag: {response.draft.objective}</p>
+      <p>Typ: {response.draft.kind}</p>
+      <ul>{response.draft.writePaths.map(path=><li key={path}><code>{path}</code></li>)}</ul>
+      <p>Repository: <code>{response.verifiedGit.repositoryId}</code></p>
+      <p>Git-bas: <code>{response.verifiedGit.baseRef}</code> / <code>{response.verifiedGit.pinnedBaseSha}</code></p>
+      <p>Risk: <strong>{response.proposed.risk}</strong></p>
+      <p>Preliminär kodmodell: {response.proposed.authorProfile}</p>
+      <p>Separat granskare: {response.proposed.reviewerProfile}</p>
+      <p>Föreslagna API-tak: kod {response.proposed.authorCapSek} kr,
+       granskning {response.proposed.reviewerCapSek} kr,
+       totalt {response.proposed.totalCapSek} kr.</p>
+      <p>Fingeravtryck: <code>{response.proposed.previewFingerprint}</code></p>
+      <p>{response.nextStep}</p>
+      <p>Inget godkännande kan ges här. Inga anrop till kodmodeller har gjorts och inga kostnader har uppstått.</p>
      </div>:null}
    </div>
   </section>

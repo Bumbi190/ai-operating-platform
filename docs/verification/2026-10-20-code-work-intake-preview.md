@@ -59,15 +59,40 @@ increment's new GitHub CI run has not yet completed.
   text/voice instruction parser; the route does not accept a client-supplied
   repository ID, SHA, model choice, budget, principal or approval.
 - The endpoint has no database, provider, filesystem, action or control-plane
-  write. Without a trusted server Git-base resolver it returns the parsed
-  objective, type and files with `binding_required`, `executionEnabled=false`
-  and `approvalAvailable=false`. It never returns an authorized job or a fake
-  pinned SHA. Missing details and non-code conversations are differentiated.
+  write. It distinguishes missing instruction details and non-code conversation.
+  Git observation and the still-missing project-to-repository authorization
+  mapping are covered below; it never returns an authorized job.
 - `CodeWorkIntakeDraft` in the existing Granskningar panel sends a **typed text**
   instruction to this route and displays the parsing result without an approve,
   run or deployment action. A live voice-transcript hookup is not yet present.
-- Eight new endpoint security tests and the four pre-existing operator UI
-  tests passed locally. SDF-1B Linux CI now requires eight endpoint tests.
+- The original eight endpoint security tests and four operator UI tests passed
+  locally and in GitHub CI at `77e7555`. The expanded eleven-test HTTP suite,
+  updated UI and six Git observer tests pass locally; the new CI run is pending.
+
+## Verified GitHub base, still unbound project (this increment)
+
+- `observeTrustedOmniraMain` fetches **only** the registry-pinned public
+  `Bumbi190/ai-operating-platform` `refs/heads/main` through GitHub's HTTPS API,
+  without credentials. It requires a 200 response, exact ref, commit object and
+  lowercase 40-digit SHA. Requests have no cache, redirect is denied, timeout
+  is bounded, and malformed or oversized responses fail closed. The base is
+  re-observed for each explicit authenticated draft request.
+- After a good observation, the authenticated intake route derives a
+  preliminary risk, author model, independent reviewer and per-role SEK caps
+  from the existing deterministic model router, with `localQualified:null`
+  until real local coding qualification exists. The immutable preview hash is
+  shown solely as evidence, **not** as authorization.
+- The live Omnira database's project listing has no distinct `omnira` project
+  record; `omnira-selftest` is a test project, not an approved authority mapping.
+  Therefore the response is `project_binding_required` with
+  `projectBindingVerified:false`, `approvalAvailable:false` and
+  `executionEnabled:false`. A GitHub SHA alone is never an approved project
+  or a trusted broker worktree proof.
+- Six new resolver tests cover exact ref, hostile payloads, fail-closed
+  network behavior and changing branch SHA. The authenticated HTTP suite
+  now contains eleven tests and the UI displays verified base and provisional
+  risk/cost, without any start or approval action. The Linux CI gates require
+  six resolver tests and eleven HTTP tests, with no skipped tests permitted.
 
 ## Explicitly not implemented
 

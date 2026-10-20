@@ -23,7 +23,7 @@ Avvägning: att förbruka redan vid första anropet kostar ett nytt körunderlag
 
 1. Klart: RED-testerna (8 st) i `sdf-native-stop-guard-consumption.test.ts`, observerade röda av rätt skäl.
 2. Efter godkännande: implementera punkt 1 i `apps/code-broker/src/runtime/execution-lease-guard.ts` och 2–5 i `apps/code-broker/src/runtime/native-stop-bridge.ts`. Inga nativeändringar.
-3. GREEN: den nya filen 8/8; befintliga `sdf-execution-lease-guard.test.ts` och `sdf-native-stop-bridge.test.ts` oförändrade gröna; brokerns typkontroll.
+3. GREEN: den nya filen (8 tester, därefter 9 med ett extra samtidighetstest); befintliga `sdf-execution-lease-guard.test.ts` och `sdf-native-stop-bridge.test.ts` gröna. Fyra brotester som återanvände en guard ändrades likvärdigt till en ny guard per anrop; brokerns typkontroll.
 4. Lägg den nya filen till slutkontrollen (19 filer). Uppdatera boundary-testernas kommentarer, inte deras allow-list.
 5. Konsekvens för riktiga bevis: båda filerna ingår i A–D:s källbindningar. A–D blir därför inaktuella och kräver ett nytt godkännande för en körning vardera (cirka 3 minuter, klass N). Ingen automatisk omkörning.
 6. Full slutkontroll, kort verifieringsnotis, oberoende granskning av ändringen.

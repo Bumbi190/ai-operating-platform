@@ -38,7 +38,7 @@ export function initializeCalendarDb(){
  create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
  create table auth.users(id uuid primary key);
  create table public.projects(id uuid primary key,owner_id uuid not null references auth.users,name text not null default 'Testprojekt',slug text not null default 'test-project');
- create table public.manager_tasks(id uuid primary key,project_id uuid not null references projects,title text not null default 'Testuppgift',status text not null default 'pending');
+ create table public.manager_tasks(id uuid primary key,project_id uuid not null references projects,title text not null default 'Testuppgift',status text not null default 'pending',source text,created_at timestamptz not null default now());
  alter table public.projects enable row level security;
  create policy owner_read on public.projects for select to authenticated using(owner_id=auth.uid());
  alter table public.manager_tasks enable row level security;

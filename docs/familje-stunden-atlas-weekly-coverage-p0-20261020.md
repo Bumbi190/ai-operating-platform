@@ -221,3 +221,50 @@ Final focused Vitest:
 
 This implementation is stored only in the isolated local development
 branch; no new GitHub CI jobs or production deploy were triggered.
+
+## P4 — Monthly source-review card and exact-hash owner decision contract
+
+New:
+- apps/web/lib/social-launch/content/family-month-source-review.ts
+- apps/web/lib/social-launch/content/family-month-source-review.test.ts
+- The existing Atlas Social Content tool registry now exposes one small
+  READ-ONLY get_family_month_source_status(projectId, month) operation.
+
+The tool checks the existing owned conversation through the established
+readSocialContent authorization boundary; it refuses other projects,
+invalid months, missing conversation scope and unapproved project plans.
+It does not create or approve any source, call providers or change DB rows.
+
+From an untrusted proposed public source manifest,
+prepareFamilyMonthSourceReview creates a SHORT human review card:
+- project and month, heading and public summary,
+- bounded evidence count and proposed public posting dates,
+- the exact SHA-256 for the full canonical proposed manifest, evidence,
+  copy, plan revision and public/private declarations,
+- explicit warnings that hashes/ownership still require independent
+  source verification and that no subscription access or publication
+  can be approved this way.
+
+A pure decision-shape validator detects a wrong owner, foreign project,
+changed SHA-256 or wrong exact version. It ALWAYS returns
+activationAllowed=false, even for a structurally valid owner approval.
+It is not a persisted or authenticated owner decision.
+
+For the current source registry, the read-only status reports that
+November has pinned PUBLIC marketing preview material. December returns
+owner_source_material_needed until its own reviewed public source pack
+is collected. This never means November subscriber content is released,
+or that the owner has approved new captions or a live publication.
+
+**Not yet implemented**:
+- A persistent project-scoped source proposal/decision store.
+- A live authenticated owner action tied to an exact source SHA.
+- Atomic activation of an approved source pack after a stored decision.
+- Any recurring autonomous monthly source discovery or publication.
+
+No new tables/RLS/policies, spending, media uploads, cron activations,
+GitHub pushes or production deployments were executed.
+
+Verification: 42/42 relevant unit tests passed. TypeScript still reports
+only 3 unrelated errors in unchanged lib/media/lambda-render.ts
+(Remtion Lambda missing module and dependent typing).

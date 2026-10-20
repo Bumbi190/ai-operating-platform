@@ -78,6 +78,41 @@ describe('Atlas weekly planning tool permission and side-effect boundary',()=>{
   expect(value.code).toBe('UNAVAILABLE')
   expect(readSchedules).not.toHaveBeenCalled()
  })
+ it('reads current and future month source status inside the existing scoped conversation',async()=>{
+  const tool=SOCIAL_CONTENT_TOOLS.find(x=>x.name==='get_family_month_source_status')
+  expect(tool?.description).toContain('Read-only')
+  const november=await handleSocialContentTool('get_family_month_source_status',
+   {projectId:FAMILY_WEEKLY_PROJECT_ID,month:'2026-11'},
+   principal,ownerConversation,fakeDb) as any
+  expect(november).toMatchObject({sourceStatus:'pinned_public_preview',
+   canPublish:false,canActivateNewSource:false})
+  const december=await handleSocialContentTool('get_family_month_source_status',
+   {projectId:FAMILY_WEEKLY_PROJECT_ID,month:'2026-12'},
+   principal,ownerConversation,fakeDb) as any
+  expect(december).toMatchObject({sourceStatus:'owner_source_material_needed',
+   publicPreviewDates:[],canPublish:false})
+  expect(readSocialContent).toHaveBeenCalledTimes(2)
+  expect(readSchedules).not.toHaveBeenCalled()
+  expect(proposeSocialContent).not.toHaveBeenCalled()
+ })
+ it('rejects unscoped month reviews and malformed months before any source read',async()=>{
+  const denied=[
+   {projectId:'20000000-0000-4000-8000-000000000002',month:'2026-12'},
+   {projectId:FAMILY_WEEKLY_PROJECT_ID,month:'2026-13'},
+   {projectId:FAMILY_WEEKLY_PROJECT_ID,month:'2026-12',approve:true},
+   {projectId:FAMILY_WEEKLY_PROJECT_ID},
+  ]
+  for(const value of denied){
+   const response=await handleSocialContentTool('get_family_month_source_status',
+    value,principal,ownerConversation,fakeDb) as any
+   expect(['NOT_FOUND','INVALID_BODY']).toContain(response.code)
+  }
+  expect(readSocialContent).not.toHaveBeenCalled()
+  expect(await handleSocialContentTool('get_family_month_source_status',
+   {projectId:FAMILY_WEEKLY_PROJECT_ID,month:'2026-12'},principal,null,fakeDb))
+   .toMatchObject({code:'NOT_FOUND'})
+  expect(proposeSocialContent).not.toHaveBeenCalled()
+ })
  it('stages at most 4 October source-pinned review proposals in user conversation only',async()=>{
   const date=new Date('2026-10-20T18:00:00.000Z')
   vi.useFakeTimers()

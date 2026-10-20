@@ -1127,7 +1127,7 @@ describe('SDF-1C3A SandboxSpec and Docker command construction', () => {
     expect(() => dockerCommands.remove('x; rm -rf /')).toThrow()
     expect(() => buildProbeCreateCommand('evil-name')).toThrow(/broker-generated/)
     expect(newProbeName(() => Buffer.from('0123456789ab', 'hex'))).toBe('omnira-sdf1c3-probe-0123456789ab')
-    const builder = readFileSync(join(ISO, 'sandbox-spec.ts'), 'utf8').match(/export function buildProbeCreateCommand[\s\S]*?\n}\n/)![0]
+    const builder = readFileSync(join(ISO, 'sandbox-spec.ts'), 'utf8').replace(/\r\n/g, '\n').match(/export function buildProbeCreateCommand[\s\S]*?\n}\n/)![0]
     expect(builder).toMatch(/function buildProbeCreateCommand\(name: string\)/)          // the ONLY parameter is the generated name
   })
 

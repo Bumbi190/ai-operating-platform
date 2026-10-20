@@ -111,6 +111,9 @@ export const CONTEXT_WINDOW_TOKENS: Readonly<Record<string, number>> = Object.fr
   'claude-haiku-4-5-20251001': 200_000,
   'claude-3-5-haiku-20241022': 200_000,
   'claude-3-5-sonnet-20241022': 200_000,
+  // Claude 5.5 models: 1M is the documented default window (models overview, verified 2026-10-20), not a beta.
+  'claude-sonnet-5-5': 1_000_000,
+  'claude-haiku-5-5': 1_000_000,
   'gpt-5.4-mini': 400_000,
   'gpt-5.4-mini-2026-03-17': 400_000,
   'gpt-4o': 128_000,

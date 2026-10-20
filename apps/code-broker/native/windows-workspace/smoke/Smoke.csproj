@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework><UseAppHost>false</UseAppHost><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><AssemblyName>WorkspaceSmoke</AssemblyName></PropertyGroup>
+ <ItemGroup><ProjectReference Include="../OmniraBrokerWorkspace.csproj"/><Compile Include="../../windows-host/smoke/FixtureJunction.cs" Link="FixtureJunction.cs"/></ItemGroup>
+</Project>

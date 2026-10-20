@@ -1,0 +1,24 @@
+import {describe,it,expect,vi,afterEach} from 'vitest'
+import {leaseFixture,claimFixture,signedLeaseHarness,TOKEN} from './fixtures/sdf-execution-lease-fixtures'
+vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>{throw Error('HTTP tests must not reach a database')}}))
+async function handler(){const m=await import('@/lib/atlas/code-broker/execution-lease/handler').catch(()=>({})) as any;expect(m.handleExecutionLeaseRequest).toBeTypeOf('function');return m.handleExecutionLeaseRequest}
+afterEach(()=>vi.unstubAllEnvs())
+describe('signed execution lease HTTP boundary',()=>{
+ it('returns only the exact lease envelope and no-store',async()=>{const fn=await handler(),h=signedLeaseHarness(),r=await fn(h.request(),{enabled:()=>true,auth:h.auth,service:async()=>({status:'live',lease:leaseFixture()})});expect(r.status).toBe(200);expect(r.headers.get('cache-control')).toBe('no-store');expect(await r.json()).toEqual({ok:true,lease:leaseFixture()})})
+ it('is disabled by default and touches no principal or SQL store',async()=>{const fn=await handler();for(const value of ['', '1','TRUE','false']){vi.stubEnv('ATLAS_CODE_WORK_EXECUTION_LEASE_ENABLED',value);const h=signedLeaseHarness();let calls=0;const r=await fn(h.request(),{auth:h.auth,service:async()=>{calls++;throw Error('must not run')}});expect(r.status).toBe(503);expect(h.reads).toBe(0);expect(calls).toBe(0)}})
+ it('authenticates exact raw bytes before parsing semantic fields',async()=>{const fn=await handler(),h=signedLeaseHarness(),req=h.request('not JSON');req.headers.set('x-omnira-broker-signature','bad');const r=await fn(req,{enabled:()=>true,auth:h.auth});expect(r.status).toBe(401);expect(await r.json()).toEqual({ok:false,error:'broker_auth_rejected'})})
+ for(const raw of ['{}','{"workId":"x"}',JSON.stringify({...claimFixture(),brokerId:'forged'}),JSON.stringify({...claimFixture(),root:'C:/private'}),JSON.stringify({...claimFixture(),fence:0}),JSON.stringify({...claimFixture(),claimToken:'bad'}),'{"workId":"'+claimFixture().workId+'","work\\u0049d":"'+claimFixture().workId+'","claimId":"'+claimFixture().claimId+'","fence":1,"claimToken":"'+TOKEN+'"}'])it('refuses a signed malformed/duplicate body '+raw.slice(0,35),async()=>{const fn=await handler(),h=signedLeaseHarness();let calls=0;const r=await fn(h.request(raw),{enabled:()=>true,auth:h.auth,service:async()=>{calls++;return{status:'live',lease:leaseFixture()}}});expect(r.status).toBe(400);expect(calls).toBe(0)})
+ it('withholds a revoked broker and a tampered signed body',async()=>{const fn=await handler();for(const revoked of [true,false]){const h=signedLeaseHarness();if(revoked)h.revoke();const r=h.request();if(!revoked)r.headers.set('x-omnira-broker-signature','a'.repeat(40));expect((await fn(r,{enabled:()=>true,auth:h.auth})).status).toBe(401)}})
+ it('rejects oversized and invalid-UTF8 bytes before authentication',async()=>{const fn=await handler();for(const bytes of [Buffer.alloc(1025,120),Buffer.from([0xff,0xfe])]){const h=signedLeaseHarness(),req=new Request('https://omnira.test/api/atlas/code-work/broker/execution-lease',{method:'POST',body:bytes});const r=await fn(req,{enabled:()=>true,auth:h.auth});expect(r.status).toBe(bytes.length>1024?413:400);expect(h.reads).toBe(0)}})
+ it('rejects method and query variants',async()=>{const fn=await handler();for(const options of [{method:'GET'},{path:'/api/atlas/code-work/broker/execution-lease?workId=x'}]){const h=signedLeaseHarness();expect((await fn(h.request(undefined,options),{enabled:()=>true,auth:h.auth})).status).toBe(400);expect(h.reads).toBe(0)}})
+ it('returns a generic conflict or availability error without echoing data',async()=>{const fn=await handler();for(const crashed of [false,true]){const h=signedLeaseHarness(),r=await fn(h.request(),{enabled:()=>true,auth:h.auth,service:async()=>{if(crashed)throw Error(TOKEN);return{status:'not_live'}}});expect(r.status).toBe(crashed?503:409);const text=await r.text();expect(text).not.toContain(TOKEN);expect(JSON.parse(text)).toEqual({ok:false,error:crashed?'unavailable':'lease_not_live'});expect(r.headers.get('cache-control')).toBe('no-store')}})
+ it('rejects an unsigned UTF-8 BOM prefix on an otherwise valid signed body',async()=>{
+  const fn=await handler(),h=signedLeaseHarness(),signed=h.request()
+  const tampered=new Request(signed.url,{method:'POST',headers:signed.headers,body:Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),Buffer.from(await signed.text())])})
+  let calls=0
+  const result=await fn(tampered,{enabled:()=>true,auth:h.auth,service:async()=>{calls++;return{status:'live',lease:leaseFixture()}}})
+  expect(result.status).toBe(401)
+  expect(await result.json()).toEqual({ok:false,error:'broker_auth_rejected'})
+  expect(calls).toBe(0)
+ })
+})

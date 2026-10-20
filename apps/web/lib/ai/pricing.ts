@@ -19,6 +19,11 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   'claude-haiku-4-5-20251001':    { inputPer1M: 0.80,  outputPer1M: 4.00,  label: 'Claude Haiku 4.5',   provider: 'anthropic' },
   'claude-3-5-haiku-20241022':    { inputPer1M: 0.80,  outputPer1M: 4.00,  label: 'Claude Haiku 3.5',   provider: 'anthropic' },
   'claude-3-5-sonnet-20241022':   { inputPer1M: 3.00,  outputPer1M: 15.00, label: 'Claude Sonnet 3.5',  provider: 'anthropic' },
+  // Verified 2026-10-20 at platform.claude.com/docs/en/about-claude/pricing. Sonnet 5.5 has no long-context surcharge.
+  'claude-sonnet-5-5':            { inputPer1M: 2.00,  outputPer1M: 10.00, label: 'Claude Sonnet 5.5',  provider: 'anthropic' },
+  // Haiku 5.5 bills 0.10/0.50 up to 100K input tokens and 0.50/2.50 above. The book holds the HIGHER tier so a
+  // hard ceiling over the full window is never below the bill; metering over-counts short prompts (safe direction).
+  'claude-haiku-5-5':             { inputPer1M: 0.50,  outputPer1M: 2.50,  label: 'Claude Haiku 5.5',   provider: 'anthropic' },
   // OpenAI text — standard API rates verified 2026-10-15 (developers.openai.com).
   'gpt-5.4-mini': { inputPer1M: 0.75, outputPer1M: 4.50, label: 'GPT-5.4 Mini', provider: 'openai' },
   // Pinned local-text role; same published text pricing (official model page, 2026-10-17).

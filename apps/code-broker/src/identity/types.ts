@@ -9,7 +9,7 @@ export interface PublicBrokerIdentity {
   identityId: string
   publicJwk: BrokerPublicJwk
   keyThumbprint: string
-  storage: 'secure_enclave' | 'keychain'
+  storage: 'secure_enclave' | 'keychain' | 'windows_cng'
 }
 
 export interface BrokerSigner {

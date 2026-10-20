@@ -1,0 +1,20 @@
+using System.Text.Json;
+using Omnira.CodeBroker.Host;
+namespace Omnira.CodeBroker.Workspace;
+internal sealed class DockerMaterializationSession {
+ readonly VerifiedDockerSession transport;
+ internal DockerMaterializationSession(IDockerPeerConnector connector){transport=new(connector);}
+ internal string? BackendIdentityHash=>transport.BackendIdentityHash;internal string? DaemonIdentityHash=>transport.DaemonIdentityHash;
+ internal Task InitializeAsync(CancellationToken t)=>transport.InitializeAsync(t);
+ internal async Task<string> ImageAsync(NodeToolchainProfile p,CancellationToken t){await transport.EnsureLiveAsync(t);var reply=await transport.SendAsync(VerifiedDockerRequest.NodeImage(p),t);await transport.EnsureLiveAsync(t);using var doc=VerifiedDockerSession.Json(reply,200);return ToolchainProfile.VerifyImage(p,doc.RootElement);}
+ internal async Task<JsonDocument?> VolumeAsync(Guid a,CancellationToken t){await transport.EnsureLiveAsync(t);var r=await transport.SendAsync(VerifiedDockerRequest.VolumeInspect(a),t);await transport.EnsureLiveAsync(t);return r.Status==404?null:VerifiedDockerSession.Json(r,200);}
+ internal async Task<JsonDocument?> ContainerAsync(string owned,CancellationToken t){await transport.EnsureLiveAsync(t);var r=await transport.SendAsync(VerifiedDockerRequest.ContainerInspect(owned),t);await transport.EnsureLiveAsync(t);return r.Status==404?null:VerifiedDockerSession.Json(r,200);}
+ internal async Task CreateVolumeAsync(MaterializationIdentity i,CancellationToken t){await transport.EnsureLiveAsync(t);using var doc=VerifiedDockerSession.Json(await transport.SendAsync(VerifiedDockerRequest.VolumeCreate(i),t),201);MaterializationSpecification.VerifyVolume(doc.RootElement,i);await transport.EnsureLiveAsync(t);}
+ internal async Task<string> CreateContainerAsync(MaterializationIdentity i,CancellationToken t){await transport.EnsureLiveAsync(t);using var doc=VerifiedDockerSession.Json(await transport.SendAsync(VerifiedDockerRequest.NodeCreate(i),t),201);var id=MaterializationSpecification.Text(doc.RootElement,"Id");if(!ProbeSpecification.ContainerId(id))throw new WorkspaceException("protocol_invalid");await transport.EnsureLiveAsync(t);return id;}
+ internal async Task UploadAsync(string id,byte[] tar,CancellationToken t){await transport.EnsureLiveAsync(t);var r=await transport.SendAsync(VerifiedDockerRequest.Archive(id,tar),t);if(r.Status!=200)throw new WorkspaceException("archive_invalid");await transport.EnsureLiveAsync(t);}
+ internal async Task StartAsync(string id,CancellationToken t){await transport.EnsureLiveAsync(t);var r=await transport.SendAsync(VerifiedDockerRequest.Start(id),t);if(r.Status!=204)throw new WorkspaceException("fixture_failed");await transport.EnsureLiveAsync(t);}
+ internal async Task<int> WaitAsync(string id,CancellationToken t){using var doc=VerifiedDockerSession.Json(await transport.SendAsync(VerifiedDockerRequest.Wait(id,true),t),200);var root=doc.RootElement;if(!root.TryGetProperty("StatusCode",out var status)||!status.TryGetInt32(out var code)||code<0||code>255||(root.TryGetProperty("Error",out var e)&&e.ValueKind!=JsonValueKind.Null))throw new WorkspaceException("fixture_failed");return code;}
+ internal async Task<byte[]> LogsAsync(string id,CancellationToken t){await transport.EnsureLiveAsync(t);var r=await transport.SendAsync(VerifiedDockerRequest.Logs(id),t);await transport.EnsureLiveAsync(t);if(r.Status!=200)throw new WorkspaceException("fixture_failed");return r.Body;}
+ internal async Task DeleteContainerAsync(string id,CancellationToken t){await transport.EnsureLiveAsync(t);var r=await transport.SendAsync(VerifiedDockerRequest.DeleteContainer(id),t);if(r.Status is not (204 or 404))throw new WorkspaceException("cleanup_retained");}
+ internal async Task DeleteVolumeAsync(Guid a,CancellationToken t){await transport.EnsureLiveAsync(t);var r=await transport.SendAsync(VerifiedDockerRequest.DeleteVolume(a),t);if(r.Status is not (204 or 404))throw new WorkspaceException("cleanup_retained");}
+}

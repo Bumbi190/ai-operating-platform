@@ -38,22 +38,30 @@ independent reviewer sign-off.
    The three cases covered two independent review candidates and roles,
    replay/recovery after lost RPC responses, and rejection after cancellation.
    The fixture-owned container was removed; no application database was used.
-6. The larger `sdf-review-storage-sql.test.ts` suite and the Windows-native
-   `sdf-execution-lease-sql.test.ts` were NOT rerun in this handoff. Available
-   physical RAM fell below 1 GiB after the three passing tests; do not present
-   these other SQL suites as passing or start them without resource checks.
+6. The larger `sdf-review-storage-sql.test.ts` suite passed 17/17 in
+   isolated PostgreSQL on GitHub Actions at `62dbc4a`. The Windows-native
+   `sdf-execution-lease-sql.test.ts` has NOT been rerun in this handoff.
+   Available physical RAM was below 1 GiB; do not start that fixture without
+   a new resource and host-identity preflight.
 
-## Additional nonproduction CI gate (pending first run)
+## Additional nonproduction CI gates
 
 The `SDF-1C Trusted Broker Boundary` workflow now runs the isolated PostgreSQL
 suites `sdf-review-storage-sql.test.ts` (17 cases) and
 `sdf-review-storage-flow.test.ts` (3 cases) on a Linux Actions runner, with a
 single Vitest worker and separate exact per-file anti-skip checks. The fixture
 uses an ephemeral `postgres:16` image with Docker network disabled. No
-Supabase project is contacted. This entry documents the intended CI coverage;
-the new job is **not verified green** until GitHub reports its first result.
-The separate native-Windows execution-lease SQL suite is still not included,
+Supabase project is contacted. The two PostgreSQL suites and their anti-skip
+checks passed on PR #408 in GitHub Actions at commit `62dbc4a`.
+The six host-identity lock and timing-window regression tests from that
+Windows fixture have additionally been duplicated in the database-free
+`sdf-execution-lease-peer-identity.test.ts` suite and enrolled in SDF-1C CI
+with an explicit six-test anti-skip floor. The copied tests exercise mock
+qualification and process changes without launching Docker. They passed 6/6
+on Windows and are pending their first GitHub Linux CI result.
+The full native-Windows execution-lease SQL suite is still not included,
 because it requires the approved Windows host identity pins and fixtures.
+Passing the six mock tests must not be mistaken for that full native proof.
 
 ## Independent reviewer checklist (not completed)
 

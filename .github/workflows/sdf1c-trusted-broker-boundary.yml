@@ -55,6 +55,7 @@ jobs:
           lib/qa/sql-test-role-bootstrap-race.test.ts
           lib/qa/sdf1c3-isolation-substrate.test.ts
           lib/qa/sdf1c3-isolation-integration.test.ts
+          lib/qa/sdf-execution-lease-peer-identity.test.ts
           --reporter=default --reporter=json
           --outputFile.json="$RUNNER_TEMP/sdf1c.json"
       - name: Enforce per-file anti-skip floors
@@ -79,6 +80,7 @@ jobs:
             ['sql-test-role-bootstrap-race.test.ts', 4],
             ['sdf1c3-isolation-substrate.test.ts', 195],
             ['sdf1c3-isolation-integration.test.ts', 10],
+            ['sdf-execution-lease-peer-identity.test.ts', 6],
           ])
           const byFile = new Map((report.testResults ?? []).map(result => [path.basename(result.name), result]))
           for (const [file, floor] of required) {

@@ -15,6 +15,10 @@ export interface ExecutionLeaseGuardDeps {
  */
 export type GuardUse='native_materialization'
 export interface ExecutionLeaseGuard{readonly signal:AbortSignal;readonly binding:Readonly<ExecutionLeaseV1['binding']>;checkpoint():Promise<'live'|'stopped'>;stop():void;claimSingleUse(purpose:GuardUse):boolean}
+/** Claims of guards this module created. A copied or hand-built object is not in here and can never be claimed. */
+const claims=new WeakMap<object,(purpose:GuardUse)=>boolean>()
+/** The only claim path consumers may use: refuses any object this factory did not create, and any second claim. */
+export function claimGuardUse(guard:unknown,purpose:GuardUse):boolean{const claim=typeof guard==='object'&&guard!==null?claims.get(guard):undefined;return claim?claim(purpose):false}
 interface GuardInput{claim:ClaimHandle;expected:{projectId:string;binding:ExecutionLeaseV1['binding'];authorityPins:ExecutionLeaseV1['authorityPins']}}
 export function createExecutionLeaseGuard(input:GuardInput,deps:ExecutionLeaseGuardDeps):ExecutionLeaseGuard{
  const controller=new AbortController(),expected=structuredClone(input.expected),initialCounter=input.claim.requestCounter
@@ -60,5 +64,7 @@ export function createExecutionLeaseGuard(input:GuardInput,deps:ExecutionLeaseGu
  if(!Number.isFinite(anchorMono)||!Number.isFinite(anchorWall)||!Number.isSafeInteger(initialCounter)||initialCounter<1
  ||input.claim.workId!==expected.binding.workId||input.claim.claimId!==expected.binding.claimId||input.claim.fence!==expected.binding.fence)stop()
  function claimSingleUse(purpose:GuardUse):boolean{if(used||stopped||purpose!=='native_materialization'){used=true;return false}used=true;return true}
- return{signal:controller.signal,binding:Object.freeze({...expected.binding}),checkpoint,stop,claimSingleUse}
+ const guard:ExecutionLeaseGuard=Object.freeze({signal:controller.signal,binding:Object.freeze({...expected.binding}),checkpoint,stop,claimSingleUse})
+ claims.set(guard,claimSingleUse)
+ return guard
 }

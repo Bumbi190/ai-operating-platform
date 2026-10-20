@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto'
-import type {ExecutionLeaseGuard} from './execution-lease-guard.js'
+import {claimGuardUse,type ExecutionLeaseGuard} from './execution-lease-guard.js'
 import {launchControlledMaterialization,type ControlledHandlers,type ControlledOutcome,type LaunchResult} from '../isolation/windows/controlled-helper.js'
 import {parseMaterializationReport,type MaterializationReport,type MaterializationReadResult} from '../isolation/windows/source-contracts.js'
 import {parseWindowsWorkspaceRequest,type WorkspaceRequest} from '../isolation/windows/workspace-contracts.js'
@@ -33,7 +33,7 @@ export function createNativeStopBridge(deps:BridgeDeps):(input:unknown,guard:Exe
  const attempt=attemptOnce(deps)
  return async(input,guard)=>{
   // One guard authorizes one attempt, ever: consumed before any validation, read, reservation or launch.
-  if(typeof guard?.claimSingleUse!=='function'||!guard.claimSingleUse('native_materialization'))return{status:'not_started',reason:'guard_consumed'}
+  if(!claimGuardUse(guard,'native_materialization'))return{status:'not_started',reason:'guard_consumed'}
   let result:GuardedMaterialization
   try{result=await attempt(input,guard)}catch(error){guard.stop();throw error}
   // Every outcome except a live observation ends the mandate, so no other consumer can treat it as live.
@@ -81,9 +81,17 @@ function attemptOnce(deps:BridgeDeps):(input:unknown,guard:ExecutionLeaseGuard)=
   if(launched.status!=='launched')return{status:'not_started',reason:'helper_unavailable'}
   proc=launched.process;const own=launched.process;let killed=false
   killNow=()=>{if(killed)return;killed=true;own.kill();if(!finished)grace.killWait=deps.schedule(()=>{grace.killWait=null;unresponsive()},KILL_WAIT_MS)}
-  grace.deadline=deps.schedule(()=>{grace.deadline=null;sendStop('control_lost')},HELPER_DEADLINE_MS)
   const onAbort=()=>requestStop()
-  if(guard.signal.aborted)requestStop();else guard.signal.addEventListener('abort',onAbort,{once:true})
+  try{
+   grace.deadline=deps.schedule(()=>{grace.deadline=null;sendStop('control_lost')},HELPER_DEADLINE_MS)
+   if(guard.signal.aborted)requestStop();else guard.signal.addEventListener('abort',onAbort,{once:true})
+  }catch{
+   // Setup failed with a live helper: stop and kill it; absence cannot be known, so nothing is cleaned over it.
+   finished=true;guard.signal.removeEventListener('abort',onAbort)
+   grace.cancel?.();grace.deadline?.();grace.killWait?.();grace.cancel=grace.deadline=grace.killWait=null
+   try{own.stop()}catch{};try{if(!killed){killed=true;own.kill()}}catch{}
+   return{status:'stopped',attemptId,reason:stopReason??'control_lost',cleanup:'unknown',containerRemoved:null,volumeRemoved:null}
+  }
   let settled:ControlledOutcome|'unresponsive'
   try{settled=await Promise.race([own.done,killTimeout])}finally{
    finished=true;guard.signal.removeEventListener('abort',onAbort)
@@ -102,6 +110,8 @@ function attemptOnce(deps:BridgeDeps):(input:unknown,guard:ExecutionLeaseGuard)=
   }
   const stopped=(reason:'stop_requested'|'control_lost'|'lease_lost',cleanup:'confirmed'|'retained'|'unknown',c:boolean|null,v:boolean|null):GuardedMaterialization=>({status:'stopped',attemptId,reason,cleanup,containerRemoved:c,volumeRemoved:v})
   const cleanOnce=async(reason:'stop_requested'|'control_lost'|'lease_lost'):Promise<GuardedMaterialization>=>{
+   // The outcome is decided as not observed: end the mandate before cleanup, which never needs it.
+   guard.stop()
    let result:MaterializationReadResult
    try{result=await deps.cleanup(input,attemptId)}catch{return stopped(reason,'unknown',null,null)}
    if(result.status==='observed'&&result.report.status==='cleaned')return stopped(reason,'confirmed',true,true)

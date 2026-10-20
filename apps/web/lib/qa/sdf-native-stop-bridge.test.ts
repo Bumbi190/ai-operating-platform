@@ -237,6 +237,16 @@ describe('guard-driven native stop bridge',()=>{
   expect(m.KILL_WAIT_MS).toBe(10000);const wait=f.s.timers.find(t=>!t.cancelled&&t.ms===10000);expect(wait).toBeDefined();wait!.fn()
   expect(await run).toEqual({status:'stopped',attemptId:ATTEMPT,reason:'lease_lost',cleanup:'unknown',containerRemoved:null,volumeRemoved:null});expect(f.s.cleanups).toHaveLength(0)
  })
+ it('cancels the bounded kill wait when the killed helper closes in time',async()=>{
+  const m=await bridgeModule(),g=await realGuard(),f=fakeBridge(m),run=f.bridge(bridgeRequest(),g.guard);await flush();await f.checkpoint(1);g.guard.stop();await flush()
+  f.s.timers.find(t=>!t.cancelled&&t.ms===35000)!.fn();const wait=f.s.timers.find(t=>t.ms===10000)!;expect(wait.cancelled).toBe(false)
+  f.s.resolve({kind:'violation',reason:'exited_without_report'});expect(await run).toMatchObject({status:'stopped',reason:'lease_lost',cleanup:'confirmed'});expect(wait.cancelled).toBe(true)
+ })
+ it('keeps lease_lost when the guard stops first and the launcher reports that stop synchronously',async()=>{
+  const m=await bridgeModule(),g=await realGuard(),f=fakeBridge(m),run=f.bridge(bridgeRequest(),g.guard);await flush();await f.checkpoint(1)
+  const stop=f.s.handlers;const original=f.s.stops;g.guard.stop();await flush();stop.stopped();expect(f.s.stops).toBe(original+1)
+  f.s.resolve({kind:'report',value:stoppedReport('stop_requested')});expect(await run).toMatchObject({status:'stopped',reason:'lease_lost'})
+ })
  const failedCleanup=()=>{const r:any=makeMaterializationCleanup();r.status='failed';r.reason='cleanup_retained';r.containerRemoved=false;r.volumeRemoved=false;return r}
  for(const [result,cleanup] of [[{status:'observed',report:makeMaterializationCleanup()},'confirmed'],[{status:'observed',report:failedCleanup()},'retained'],[{status:'unavailable',reason:'deadline_exceeded',attemptId:ATTEMPT},'unknown']] as const)it('maps a protocol violation to one cleanup with outcome '+cleanup,async()=>{
   const m=await bridgeModule(),g=await realGuard(),f=fakeBridge(m);f.s.cleanupResult=result;const run=f.bridge(bridgeRequest(),g.guard);await flush();await f.checkpoint(1)

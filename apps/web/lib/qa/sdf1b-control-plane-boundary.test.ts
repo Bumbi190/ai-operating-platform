@@ -41,7 +41,7 @@ describe('SDF-1B control plane boundary', () => {
     // SDF-1C2 adds the purpose-specific control channel (discover/claim/claim-recovery/heartbeat)
     // beside the C1 identity leaves. Everything else — preflight, execution, context, evidence,
     // transition, patching, commands, and any generic RPC/tool/action boundary — stays denied.
-    expect(readdirSync(resolve(ROOT, 'apps/web/app/api/atlas/code-work/broker')).sort()).toEqual(['claim', 'discover', 'enroll', 'heartbeat', 'identity'])
+    expect(readdirSync(resolve(ROOT, 'apps/web/app/api/atlas/code-work/broker')).sort()).toEqual(['claim', 'discover', 'enroll', 'execution-lease', 'heartbeat', 'identity'])
     expect(readdirSync(resolve(ROOT, 'apps/web/app/api/atlas/code-work/broker/claim')).sort()).toEqual(['recover', 'route.ts'])
     for (const denied of ['preflight', 'execute', 'context', 'evidence', 'transition', 'patch', 'command', 'rpc', 'tool', 'action', 'run']) {
       expect(existsSync(resolve(ROOT, `apps/web/app/api/atlas/code-work/broker/${denied}`)), denied).toBe(false)

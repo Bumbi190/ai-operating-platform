@@ -74,8 +74,8 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Atlas metrics and test-data control migrations applied by the owner-approved October18 release.
 // Source-only reconciliation: sales_reply_sending already applied as ledger20261018074615.
 // Exact SQL SHA256 80158d54a4cc5d7f15901f0ed8e67dc7fa04a8738054e14fb1c7be1cf484e49e.
-export const EXPECTED_CANONICAL_SQL_COUNT = 149
-export const EXPECTED_ENFORCED_COUNT = 135
+export const EXPECTED_CANONICAL_SQL_COUNT = 151
+export const EXPECTED_ENFORCED_COUNT = 137
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

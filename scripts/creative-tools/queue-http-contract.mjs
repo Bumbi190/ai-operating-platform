@@ -37,7 +37,9 @@ export async function readCreativeBody(request,limit=CREATIVE_BODY_LIMIT) {
       }
       chunks.push(value);
     }
-    const raw=Buffer.concat(chunks).toString('utf8');
+    // Reject malformed UTF-8 rather than silently replacing invalid bytes:
+    // the creative signature must authenticate the exact received JSON bytes.
+    const raw=new TextDecoder('utf-8',{fatal:true}).decode(Buffer.concat(chunks));
     return {kind:'ok',raw};
   } catch {
     return {kind:'invalid'};

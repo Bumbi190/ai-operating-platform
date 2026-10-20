@@ -198,9 +198,10 @@ describe('SDF-1C1B migration and structural boundary', () => {
 
   it('adds no route, no broker CLI command and no execution/model code', () => {
     const api = resolve(ROOT, 'apps/web/app/api/atlas/code-work')
-    // SDF-1C2 later added the authenticated control channel under broker/; the operational surface
-    // that must still not exist is everything BEYOND it (and any unauthenticated claim/heartbeat).
-    expect(readdirSync(join(api, 'broker')).sort()).toEqual(['claim', 'discover', 'enroll', 'heartbeat', 'identity'])
+    // SDF-1C2 later added the authenticated control channel under broker/. The
+    // separately approved execution-lease route is disabled by default; the operational
+    // surface that must still not exist is everything BEYOND these fixed routes.
+    expect(readdirSync(join(api, 'broker')).sort()).toEqual(['claim', 'discover', 'enroll', 'execution-lease', 'heartbeat', 'identity'])
     for (const name of ['claim', 'heartbeat', 'discover', 'context', 'evidence', 'transition', 'execute', 'preflight']) {
       expect(existsSync(join(api, name)), name).toBe(false)
     }
@@ -217,7 +218,8 @@ describe('SDF-1C1B migration and structural boundary', () => {
     expect(source).not.toMatch(/child_process|\b(?:spawn|exec|execFile|fork)\s*\(|from ['"](?:node:)?fs['"]|\bfetch\s*\(|@anthropic-ai|from ['"]openai['"]/)
     expect(source).not.toMatch(/git\s+(?:worktree|commit|push|merge)|gh\s+pr|vercel\s+(?:deploy|promote)|apply[_-]?patch|command[_-]?runner/i)
     expect(source).not.toMatch(/console\.|logger|process\.env/)
-    // Only the SDF-1C2 broker control channel imports the helper, from its own directory.
+    // The approved SDF-1C2 control channel and disabled execution-lease handlers
+    // may import the bounded token validator; no other production modules may.
     const importers: string[] = []
     const walk = (directory: string) => {
       for (const name of readdirSync(directory)) {
@@ -231,6 +233,8 @@ describe('SDF-1C1B migration and structural boundary', () => {
     expect(importers.map(path => path.slice(ROOT.length + 1).replaceAll('\\', '/')).sort()).toEqual([
       'apps/web/lib/atlas/code-broker/control-channel/dto.ts',
       'apps/web/lib/atlas/code-broker/control-channel/operations.ts',
+      'apps/web/lib/atlas/code-broker/execution-lease/handler.ts',
+      'apps/web/lib/atlas/code-broker/execution-lease/service.ts',
     ])
   })
 

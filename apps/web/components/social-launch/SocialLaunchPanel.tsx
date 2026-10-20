@@ -6,6 +6,7 @@ import styles from './SocialLaunchPanel.module.css'
 import {SocialProfilePanel} from './SocialProfilePanel'
 import {SocialStartGuide} from './SocialStartGuide'
 import {SocialContentPanel} from './SocialContentPanel'
+import {FAMILY_SOCIAL_PROJECT_ID} from '@/lib/social-launch/scheduling/policy'
 import {SocialConnectionControls} from './SocialConnectionControls'
 const formats={text:'Text',image:'Bild',video:'Video',link:'Länk'}
 const cadences={manual:'Vid behov',weekly:'En gång i veckan',twice_weekly:'Två gånger i veckan',daily:'Dagligen'}
@@ -14,13 +15,25 @@ export function SocialLaunchPanel({initial}:{initial:SocialLaunchPageModel}){
  return <ProjectPanel key={initial.plan.project.id} initial={initial}/>
 }
 function ProjectPanel({initial}:{initial:SocialLaunchPageModel}){
+ const initialFamilyReady=initial.plan.project.id===FAMILY_SOCIAL_PROJECT_ID&&
+  !!initial.plan.currentRevision&&
+  initial.plan.decision?.decision==='approve'&&
+  initial.plan.decision.revisionId===initial.plan.currentRevision.id&&
+  initial.plan.decision.sha256===initial.plan.currentRevision.sha256
+
  const [model,setModel]=useState(initial),[choices,setChoices]=useState(initial.plan.currentRevision?.choices??[])
+ const familyReady=model.plan.project.id===FAMILY_SOCIAL_PROJECT_ID&&
+  !!model.plan.currentRevision&&
+  model.plan.decision?.decision==='approve'&&
+  model.plan.decision.revisionId===model.plan.currentRevision.id&&
+  model.plan.decision.sha256===model.plan.currentRevision.sha256
+
  const [dirty,setDirty]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[stale,setStale]=useState(false)
  const [profileOpen,setProfileOpen]=useState(false),[profileEverOpened,setProfileEverOpened]=useState(false)
  function openPlan(){setContentOpen(false);setProfileOpen(false)}
  function openContent(){setProfileOpen(false);setContentOpen(true)}
  function openProfile(){setContentOpen(false);setProfileOpen(true);setProfileEverOpened(true)}
- const [contentOpen,setContentOpen]=useState(false),[contentEverOpened,setContentEverOpened]=useState(false)
+ const [contentOpen,setContentOpen]=useState(initialFamilyReady),[contentEverOpened,setContentEverOpened]=useState(initialFamilyReady)
  useEffect(()=>{if(contentOpen)setContentEverOpened(true)},[contentOpen])
  useEffect(()=>{const open=()=>{if(window.location.hash==='#content')openContent();else if(window.location.hash==='#profile')openProfile()};open();window.addEventListener('hashchange',open);return()=>window.removeEventListener('hashchange',open)},[])
  const live=useRef(true),pending=useRef<{fingerprint:string;key:string}|null>(null),controller=useRef<AbortController|null>(null)
@@ -47,8 +60,10 @@ function ProjectPanel({initial}:{initial:SocialLaunchPageModel}){
   finally{if(live.current)setBusy(false)}
  }
  return <section className={styles.panel} aria-label="Projektets sociala medier" aria-busy={busy}>
-  <header><h1>Sociala medier · {model.plan.project.name}</h1><p>Bestäm kanaler och innehåll med Atlas. Spara ett förslag och godkänn sedan exakt version.</p><p className={styles.note}>Kanalplanen ansluter inga konton och ger ingen publiceringsrätt. Inga betalda anrop görs här.</p></header>
-  <div className={styles.actions} role="group" aria-label="Social arbetsyta"><button aria-pressed={!contentOpen&&!profileOpen} onClick={openPlan}>Kanaler och konton</button><button aria-pressed={contentOpen&&!profileOpen} onClick={openContent}>Innehåll och kalender</button><button aria-pressed={profileOpen} onClick={openProfile}>Företagsunderlag</button></div>
+  <header><h1>Sociala medier · {model.plan.project.name}</h1>
+   {!familyReady&&<><p>Bestäm kanaler och innehåll med Atlas. Spara ett förslag och godkänn sedan exakt version.</p><p className={styles.note}>Kanalplanen ansluter inga konton och ger ingen publiceringsrätt. Inga betalda anrop görs här.</p></>}
+  </header>
+  <div className={styles.actions} role="group" aria-label="Social arbetsyta"><button aria-pressed={!contentOpen&&!profileOpen} onClick={openPlan}>{familyReady?'Kanalinställningar':'Kanaler och konton'}</button><button aria-pressed={contentOpen&&!profileOpen} onClick={openContent}>{familyReady?'Atlas & innehåll':'Innehåll och kalender'}</button><button aria-pressed={profileOpen} onClick={openProfile}>Företagsunderlag</button></div>
   <details className={styles.startGuide} open={!contentOpen&&!profileOpen}><summary>Visa startguiden</summary><SocialStartGuide model={model} onPlan={openPlan} onContent={openContent} onProfile={openProfile}/></details>
   <div hidden={contentOpen||profileOpen}>
   <div className={styles.review}>

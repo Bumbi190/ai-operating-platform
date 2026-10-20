@@ -45,3 +45,36 @@ test('mobile controls fit and unavailable adapters never claim connection or pub
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
  await page.screenshot({path:'../../.superpowers/sdd/2026-10-16-atlas-social-launch/mobile.png',fullPage:true})
 })
+
+
+test('approved Familje-Stunden opens the concise Atlas view, manual settings remain reachable',async({page})=>{
+ const projectId='77cda551-57c9-4dc0-b019-1bb6438777f7'
+ await page.route('**/api/social-content?*',async route=>{
+  await route.fulfill({json:{
+   project:{id:projectId,name:'Familje-Stunden',slug:'familje-stunden'},
+   plannedChannels:[
+    {channel:'facebook',format:'text',cadence:'manual',purpose:'Familjeaktiviteter'},
+    {channel:'instagram',format:'image',cadence:'manual',purpose:'Familjetips'},
+   ],
+   posts:[],assets:[],hasMoreAssets:false,
+   currentPlanRevisionId:'e745041f-ad3a-493f-bd3b-025525d561b2',
+   planApproved:true,workspaceUrl:'/projects/familje-stunden/social#content',
+   dispatchEnabled:false,publicationReady:false,
+  }})
+ })
+ await page.goto('/social?atlas-family=1')
+ await expect(page.getByRole('region',{name:'Atlas innehållsöversikt'})).toBeVisible()
+ await expect(page.getByText('0 förslag att granska · 0 kommande inlägg')).toBeVisible()
+ await expect(page.getByRole('link',{name:'Öppna Atlas'})).toHaveAttribute('href','/atlas')
+ await expect(page.getByRole('button',{name:'Kanalinställningar'})).toBeVisible()
+ await expect(page.getByRole('checkbox',{name:'Planera Facebook'})).toBeHidden()
+ await expect(page.getByRole('button',{name:'Nytt utkast'})).toBeHidden()
+ await page.getByRole('button',{name:'Visa manuella verktyg'}).click()
+ await expect(page.getByRole('button',{name:'Nytt utkast'})).toBeVisible()
+ await page.getByRole('button',{name:'Dölj manuella verktyg'}).click()
+ await expect(page.getByRole('button',{name:'Nytt utkast'})).toBeHidden()
+ await page.getByRole('button',{name:'Kanalinställningar'}).click()
+ await expect(page.getByRole('checkbox',{name:'Planera Facebook'})).toBeVisible()
+ await expect(page.getByRole('button',{name:'Spara förslag'})).toBeDisabled()
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+})

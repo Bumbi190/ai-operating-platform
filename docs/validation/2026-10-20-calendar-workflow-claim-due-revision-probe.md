@@ -1,38 +1,47 @@
-# Calendar source revision / workflow_claim_due candidate: isolation proof
+# Calendar source revision / workflow_claim_due — bounded and fair-share prototype
 
-**Status:** test-only SQL; no production migration, no API activation, no calendar approval.
+**Status:** Isolated SQL prototype and tests only. No production migration, no enabled calendar approval API, and no autonomous booking.
 
 ## Source of truth
 
-- Latest relevant workflow claim writer: `apps/web/supabase/migrations/20260902081500_stop_atomic_execution_admission.sql`.
-- Earlier definition in `20260829_workflow_scheduled_continuation.sql` was replaced and MUST NOT be used for the migration plan.
-- Existing workflow pause contract: acquire instance rows with `FOR UPDATE SKIP LOCKED`, then global platform stop `FOR SHARE`, then project stop checks in project-ID order, then advance due `wake_at`. Changing the instance/platform order can reopen known stop-barrier deadlocks.
+The latest workflow_claim_due function originates in apps/web/supabase/migrations/20260902081500_stop_atomic_execution_admission.sql. Its earlier August definition was superseded. This function deliberately locks workflow instances with FOR UPDATE SKIP LOCKED before checking platform and project stop authority; changing that stop/transition ordering without proof can introduce a new deadlock.
 
 ## Isolated candidate
 
-`apps/web/lib/calendar/workflow-claim-due-revision-candidate.sql` derives from the latest definition and adds a preliminary, deterministic **project-ID ordered** `FOR UPDATE OF r SKIP LOCKED` pass on owner/project revision rows before acquiring workflow instance row locks. Busy projects are skipped, while missing/mismatched owner revisions fail closed. Only projects with acquired revisions qualify for phase-1 due instance selection.
+The test-only workflow-claim-due-revision-candidate.sql does the following:
 
-The original instance -> platform -> project stop authority order is unchanged after the added revision phase. The existing wake-at test trigger increments the source revision in the same transaction as the claim update. Service-role-only execution is preserved.
+1. Refuses null, zero or negative requested claim limits.
+2. Read-only completeness scan rejects due projects without an owner-matched source revision row, including mismatched owners.
+3. Adds a **test-only** last_workflow_claim_at column to the calendar source revision fixture table, independent of its numeric source revision.
+4. Selects eligible projects by least recently served (unserved first), oldest due wake time and project ID. It locks at most min(p_limit, 16) source-revision rows per invocation with FOR UPDATE OF r SKIP LOCKED. Projects whose revisions are already locked are skipped rather than blocking the worker.
+5. Continues to use the existing instance FOR UPDATE SKIP LOCKED, platform_config FOR SHARE, deterministic project FOR SHARE, and wake-update phases; it does not grant authority through the new source-selection step.
+6. The existing fixture trigger increments a project's source revision only on a real wake_at change in the same transaction. Fair-share metadata advances after a successful claim, not for unavailable, empty or paused work.
 
-## Verified in an isolated PostgreSQL database
+The source-revision lock footprint is bounded, but **the completeness check and due-project grouping still read all due workflows**. This does not prove bounded CPU cost or SQL query latency. Fair-share timestamps improve service rotation under a finite backlog, but do not provide a formal starvation guarantee under continuous project arrivals or changing priorities.
 
-- Correct service-role execution permissions, rejection of authenticated clients.
-- Missing and wrong-owner revisions refuse to claim.
-- Global/project paused claims do not alter wake time or revision.
-- Due claim advances wake, increments exactly its project's source version; an already-future wake cannot be reclaimed.
-- Source version locked for project A -> worker skips A and claims due project B (another owner).
-- Workflow instance row locked by another worker -> claim uses `FOR UPDATE SKIP LOCKED` and does not wait.
-- Concurrent global or project pause blocks the claim's authority check, then prevents admission after the pause commits.
-- Actual isolated weekly batch holds A revision row through commit; claim skips A, advances B; after batch commit A has one calendar block, A wake is untouched.
+## Real PostgreSQL verification in the isolated fixture
 
-## Release blockers
+- Service-role-only execution; authenticated users cannot call the claim RPC.
+- Missing and owner-mismatched source revisions fail closed.
+- Global and project pauses prevent admission; a concurrent pause blocks the authority check and prevents any wake/version update.
+- Claimed wakes move into the future with atomic source revision updates; an already claimed wake is not reclaimed.
+- Locked workflow instance rows and locked source revision rows are skipped.
+- During an actual isolated calendar batch transaction for project A, its revision remains locked while the worker claims an independent project B.
+- A twenty-project / twenty-three-workflow fixture proves that project version locks are limited to sixteen per invocation, while a project beyond that selection remains available for another writer.
+- A large older backlog does not automatically monopolize every invocation: previously unserved projects receive subsequent turns.
+- Remaining due work is processed in a later invocation, without duplicate claims.
+- Paused or invalid claims never consume the fair-share marker.
 
-1. **Not the full migrated schema:** tests use a minimal workflow table and candidate trigger, not the live triggers, full project configuration, membership rules or deployed workload.
-2. **Unbounded preliminary scan:** all due project IDs are enumerated and eligible revision rows locked before applying p_limit to instances. This could affect latency and fairness. A fair bounded project strategy with no starvation needs design and load tests.
-3. **Stop and transition lock graph:** verify current append_transition, pause setter, stop authority, workflow claim, source revision, tick/clear/schedule, and actual weekly batch with a shared lock-order model and deterministic multi-session race tests. These tests demonstrate specific paths, not absence of all deadlocks.
-4. **Source coverage:** social schedule writers, direct workflow row writes, other cron/job handlers and project ownership mutations still lack an audited common version protocol. A calendar batch must fail closed while any relevant writer bypasses it.
-5. **Privileges and owner scope:** production `SECURITY DEFINER`, role grants, RLS, stable owner identity, fail-closed revision initialization and direct modification/deletion restrictions require separate audit.
-6. **Availability:** a missing source version deliberately rejects a claim; busy revisions are skipped. Add operational monitoring, bounded retries and a recovery process before enabling this on a live scheduler.
-7. **No human approval yet:** an atomic source consistency guard is not a substitute for explicit approval of an exact weekly plan.
+All of these cases are **candidate and fixture results**, not end-to-end confirmation against Omnira's real workflow schema, project permissions, cron runtime or release environment.
 
-**Do not merge or deploy this candidate** until these blockers are addressed and a reviewed release plan is approved.
+## Remaining blockers before migration
+
+1. **Complete schema fidelity:** test the final function and trigger against the fully migrated PostgreSQL schema, all deployed RPC overlays, role grants, triggers and constraints.
+2. **Production-scale performance:** benchmark the unbounded read-only due scan, add suitable indexes and a bounded candidate-discovery strategy. Validate multi-tenant fairness and worst-case latency under many projects and continuously arriving jobs.
+3. **Complete lock graph:** prove no deadlock involving source revision rows, workflow instance rows, platform_config, project stop state, append_transition, pause setters and calendar batch commits, including multiple project owners.
+4. **Source consistency coverage:** integrate every social_schedule writer, workflow wake/tick/claim/direct writer, cron worker and membership/ownership mutation. Any uninstrumented calendar-visible schedule change defeats atomic source consistency.
+5. **Privileges and ownership:** independently audit SECURITY DEFINER, RLS, strict owner/project scope and direct revision row access. Fairness metadata must not grant calendar authority.
+6. **Operational recovery:** initialize source revisions safely, monitor missing rows and repeated skips, and bound retries so that an individual project is not permanently denied service.
+7. **Human approval:** only an explicitly approved, exact week plan may ever reach the production write boundary. This prototype does not implement that approval.
+
+**Do not merge, deploy or activate this candidate yet.** The real calendar and production database remain unchanged.

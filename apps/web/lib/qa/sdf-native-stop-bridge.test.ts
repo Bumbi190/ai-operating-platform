@@ -137,26 +137,26 @@ describe('guard-driven native stop bridge',()=>{
   const m=await bridgeModule()
   const refusedGuard=await realGuard(()=>'refuse'),a=fakeBridge(m)
   expect(await a.bridge(bridgeRequest(),refusedGuard.guard)).toEqual({status:'not_started',reason:'lease_not_live'});expect(a.s.reserved).toHaveLength(0);expect(a.s.launched).toBe(0)
+  // A guard stopped before first use can never be claimed (single-use plan): refused before any read or reservation.
   const aborted=await realGuard(),b=fakeBridge(m);aborted.guard.stop()
-  expect(await b.bridge(bridgeRequest(),aborted.guard)).toEqual({status:'not_started',reason:'lease_not_live'});expect(b.s.reserved).toHaveLength(0);expect(aborted.calls).toBe(0)
+  expect(await b.bridge(bridgeRequest(),aborted.guard)).toEqual({status:'not_started',reason:'guard_consumed'});expect(b.s.reserved).toHaveLength(0);expect(aborted.calls).toBe(0)
  })
  it('refuses a request for another job than the guard is bound to, before any read or reservation',async()=>{
-  const m=await bridgeModule(),g=await realGuard()
-  for(const key of ['workId','claimId','pinnedBaseSha','admissionHash','fence'] as const){const f=fakeBridge(m),other:any={...bridgeRequest()};other[key]=key==='fence'?2:key==='pinnedBaseSha'?'f'.repeat(40):key==='admissionHash'?'f'.repeat(64):'44444444-4444-4444-8444-444444444444'
-   expect(await f.bridge(other,g.guard)).toEqual({status:'not_started',reason:'binding_mismatch'});expect(f.s.reserved).toHaveLength(0);expect(f.s.launched).toBe(0)}
-  expect(g.calls).toBe(0);g.guard.stop()
+  const m=await bridgeModule()
+  // One fresh guard per call: a guard authorizes one attempt (single-use plan).
+  for(const key of ['workId','claimId','pinnedBaseSha','admissionHash','fence'] as const){const g=await realGuard(),f=fakeBridge(m),other:any={...bridgeRequest()};other[key]=key==='fence'?2:key==='pinnedBaseSha'?'f'.repeat(40):key==='admissionHash'?'f'.repeat(64):'44444444-4444-4444-8444-444444444444'
+   expect(await f.bridge(other,g.guard)).toEqual({status:'not_started',reason:'binding_mismatch'});expect(f.s.reserved).toHaveLength(0);expect(f.s.launched).toBe(0);expect(g.calls).toBe(0)}
  })
  it('refuses invalid input and other platforms before touching the guard',async()=>{
-  const m=await bridgeModule(),g=await realGuard()
+  const m=await bridgeModule(),g=await realGuard(),h=await realGuard()
   const a=fakeBridge(m);expect(await a.bridge({...bridgeRequest(),root:'C:/'},g.guard)).toEqual({status:'not_started',reason:'input_invalid'})
-  const b=fakeBridge(m,{deps:{platform:'linux'}});expect(await b.bridge(bridgeRequest(),g.guard)).toEqual({status:'not_started',reason:'unsupported_platform'})
-  expect(g.calls).toBe(0);expect(a.s.launched+b.s.launched).toBe(0);g.guard.stop()
+  const b=fakeBridge(m,{deps:{platform:'linux'}});expect(await b.bridge(bridgeRequest(),h.guard)).toEqual({status:'not_started',reason:'unsupported_platform'})
+  expect(g.calls+h.calls).toBe(0);expect(a.s.launched+b.s.launched).toBe(0)
  })
  it('reserves durably before one launch and refuses to launch after a failed reservation',async()=>{
-  const m=await bridgeModule(),g=await realGuard(),f=fakeBridge(m,{reserveFailure:true})
+  const m=await bridgeModule(),g=await realGuard(),g2=await realGuard(),f=fakeBridge(m,{reserveFailure:true})
   expect(await f.bridge(bridgeRequest(),g.guard)).toEqual({status:'not_started',reason:'helper_unavailable'});expect(f.s.launched).toBe(0)
-  const h=fakeBridge(m,{launchUnavailable:true});expect(await h.bridge(bridgeRequest(),g.guard)).toEqual({status:'not_started',reason:'helper_unavailable'});expect(h.s.reserved).toHaveLength(1)
-  g.guard.stop()
+  const h=fakeBridge(m,{launchUnavailable:true});expect(await h.bridge(bridgeRequest(),g2.guard)).toEqual({status:'not_started',reason:'helper_unavailable'});expect(h.s.reserved).toHaveLength(1)
  })
  it('continues each checkpoint only after a live guard read and returns the observed report',async()=>{
   const m=await bridgeModule(),g=await realGuard(),f=fakeBridge(m),run=f.bridge(bridgeRequest(),g.guard);await flush()
@@ -218,6 +218,24 @@ describe('guard-driven native stop bridge',()=>{
   const m=await bridgeModule(),g=await realGuard(),f=fakeBridge(m),run=f.bridge(bridgeRequest(),g.guard);await flush();for(let n=1;n<=6;n++)await f.checkpoint(n)
   f.s.timers.find(t=>!t.cancelled&&t.ms===185000)!.fn();f.s.resolve({kind:'report',value:verifiedReport()})
   const r=await run;expect(r).toMatchObject({status:'stopped',reason:'control_lost'});expect(JSON.stringify(r)).not.toContain('fixture');g.guard.stop()
+ })
+ it('arms no timer, sends no continue and changes no reason once the outcome is decided',async()=>{
+  const m=await bridgeModule(),g=await realGuard(),f=fakeBridge(m),run=f.bridge(bridgeRequest(),g.guard);await flush();await f.checkpoint(1)
+  f.s.resolve({kind:'report',value:stoppedReport('control_lost')});const r=await run;expect(r).toMatchObject({status:'stopped',reason:'control_lost'})
+  const timers=f.s.timers.length,continues=f.s.continues.length,stops=f.s.stops
+  f.s.handlers.stopped?.();await f.checkpoint(2)
+  expect(f.s.timers.length).toBe(timers);expect(f.s.continues.length).toBe(continues);expect(f.s.stops).toBe(stops);expect(f.s.timers.every(t=>t.cancelled)).toBe(true)
+ })
+ it('keeps control_lost as the reason when the launcher stopped first and the guard aborts afterwards',async()=>{
+  const m=await bridgeModule(),g=await realGuard(),f=fakeBridge(m),run=f.bridge(bridgeRequest(),g.guard);await flush();await f.checkpoint(1)
+  f.s.handlers.stopped();g.guard.stop();await flush();f.s.resolve({kind:'violation',reason:'stderr_output'})
+  expect(await run).toMatchObject({status:'stopped',reason:'control_lost'})
+ })
+ it('gives up after a bounded wait when a killed helper never closes, and never cleans over a possibly live process',async()=>{
+  const m=await bridgeModule(),g=await realGuard(),f=fakeBridge(m),run=f.bridge(bridgeRequest(),g.guard);await flush();await f.checkpoint(1);g.guard.stop();await flush()
+  f.s.timers.find(t=>!t.cancelled&&t.ms===35000)!.fn();expect(f.s.kills).toBe(1)
+  expect(m.KILL_WAIT_MS).toBe(10000);const wait=f.s.timers.find(t=>!t.cancelled&&t.ms===10000);expect(wait).toBeDefined();wait!.fn()
+  expect(await run).toEqual({status:'stopped',attemptId:ATTEMPT,reason:'lease_lost',cleanup:'unknown',containerRemoved:null,volumeRemoved:null});expect(f.s.cleanups).toHaveLength(0)
  })
  const failedCleanup=()=>{const r:any=makeMaterializationCleanup();r.status='failed';r.reason='cleanup_retained';r.containerRemoved=false;r.volumeRemoved=false;return r}
  for(const [result,cleanup] of [[{status:'observed',report:makeMaterializationCleanup()},'confirmed'],[{status:'observed',report:failedCleanup()},'retained'],[{status:'unavailable',reason:'deadline_exceeded',attemptId:ATTEMPT},'unknown']] as const)it('maps a protocol violation to one cleanup with outcome '+cleanup,async()=>{

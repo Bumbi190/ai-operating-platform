@@ -71,6 +71,14 @@ describe('a lease guard authorizes exactly one native materialization',()=>{
   expect(await f.bridge({...bridgeRequest(),workId:'44444444-4444-4444-8444-444444444444'},g.guard)).toEqual({status:'not_started',reason:'binding_mismatch'})
   expect(g.guard.signal.aborted).toBe(true)
  })
+ it('lets exactly one of ten simultaneous calls through ten bridge instances start, with one reservation and one launch in total',async()=>{
+  const m=await bridgeModule(),g=await realGuard(),bridges=Array.from({length:10},()=>fakeBridge(m))
+  const runs=bridges.map(b=>b.bridge(bridgeRequest(),g.guard));await flush()
+  const settled=await Promise.all(runs.map(settle)),refused=settled.filter(r=>JSON.stringify(r)===JSON.stringify(consumed)).length
+  expect(refused).toBe(9);expect(bridges.reduce((n,b)=>n+b.s.reserved,0)).toBe(1);expect(bridges.reduce((n,b)=>n+b.s.launched,0)).toBe(1)
+  const live=bridges.find(b=>b.s.launched===1)!;live.s.resolve({kind:'violation',reason:'frame_invalid'});await Promise.all(runs)
+  expect(g.guard.signal.aborted).toBe(true);expect(bridges.reduce((n,b)=>n+b.s.cleanups,0)).toBe(1)
+ })
  it('lets the guard hand out its single-use claim exactly once',async()=>{
   const g=await realGuard();expect(typeof g.guard.claimSingleUse).toBe('function')
   expect(g.guard.claimSingleUse('native_materialization')).toBe(true);expect(g.guard.claimSingleUse('native_materialization')).toBe(false);expect(g.guard.claimSingleUse('other')).toBe(false)

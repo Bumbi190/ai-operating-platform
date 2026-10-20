@@ -31,7 +31,7 @@ const textHash=(p:string)=>createHash('sha256').update(readFileSync(join(ROOT,p)
 /** Exact code/binary bindings a saved real proof depends on. Environment identity is rechecked by the absence observer. */
 function bindings(){
  const helper=['apps/code-broker/.native/windows-workspace/OmniraBrokerWorkspace.dll','apps/code-broker/.native/windows-workspace/OmniraBrokerWorkspace.deps.json','apps/code-broker/.native/windows-workspace/OmniraBrokerWorkspace.runtimeconfig.json','apps/code-broker/.native/windows-workspace/OmniraBrokerHost.dll']
- const sources=['apps/code-broker/native/windows-workspace/Program.cs','apps/code-broker/native/windows-workspace/NativeControlChannel.cs','apps/code-broker/native/windows-workspace/WindowsMaterializationFixture.cs','apps/code-broker/native/windows-workspace/MaterializationContracts.cs','apps/code-broker/src/isolation/windows/controlled-helper.ts','apps/code-broker/src/runtime/native-stop-bridge.ts','apps/code-broker/src/isolation/windows/source-fixture.ts','apps/code-broker/src/isolation/windows/source-contracts.ts','apps/code-broker/src/runtime/execution-lease-guard.ts']
+ const sources=['apps/code-broker/native/windows-workspace/Program.cs','apps/code-broker/native/windows-workspace/NativeControlChannel.cs','apps/code-broker/native/windows-workspace/WindowsMaterializationFixture.cs','apps/code-broker/native/windows-workspace/MaterializationContracts.cs','apps/code-broker/src/isolation/windows/controlled-helper.ts','apps/code-broker/src/runtime/native-stop-bridge.ts','apps/code-broker/src/isolation/windows/source-fixture.ts','apps/code-broker/src/isolation/windows/source-contracts.ts','apps/code-broker/src/runtime/execution-lease-guard.ts','apps/code-broker/src/isolation/windows/workspace-helper.ts']
  return{...Object.fromEntries(helper.map(p=>[p,raw(p)])),...Object.fromEntries(sources.map(p=>[p,textHash(p)])),request:JSON.stringify(request())}
 }
 function docker(args:string[]){return execFileSync(DOCKER,['--config',join(workspace(),'docker-config'),'--host','npipe:////./pipe/dockerDesktopLinuxEngine',...args],{env:{NODE_ENV:'test',SystemRoot:'C:\\Windows',WINDIR:'C:\\Windows',PATH:'C:\\Windows\\System32'},encoding:'utf8',timeout:60000}).trim()}
@@ -104,6 +104,8 @@ async function parentKill(attemptId:string){
 describe.runIf(required&&process.platform==='win32')('cooperative native stop: real process evidence',()=>{
  it('class V: environment drift (daemon, toolchain profile, image) makes saved real evidence stale',async()=>{
   expect(typeof checkEnvironment).toBe('function')
+  // The controlled spawn uses workspace-helper's fixed runtime, environment and bootstrap check: it is part of what a proof proves.
+  expect(Object.keys(bindings())).toContain('apps/code-broker/src/isolation/windows/workspace-helper.ts')
   const proof={attempt:'A',observedAbsence:{daemonIdentityHash:DAEMON_IDENTITY,toolchainProfileHash:'d'.repeat(64)},run:{native:{kind:'report',value:{imageId:SOURCE_IMAGE}}}}
   const again={daemonIdentityHash:DAEMON_IDENTITY,toolchainProfileHash:'d'.repeat(64)}
   expect(()=>checkEnvironment('A',proof,again)).not.toThrow()

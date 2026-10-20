@@ -9,13 +9,18 @@ export interface ExecutionLeaseGuardDeps {
  nextCounter:()=>number
  schedule:(callback:()=>void,delayMs:number)=>()=>void
 }
-/** binding is a frozen snapshot of the job this guard was created for; consumers must refuse any other job. */
-export interface ExecutionLeaseGuard{readonly signal:AbortSignal;readonly binding:Readonly<ExecutionLeaseV1['binding']>;checkpoint():Promise<'live'|'stopped'>;stop():void}
+/**
+ * binding is a frozen snapshot of the job this guard was created for; consumers must refuse any other job.
+ * claimSingleUse returns true exactly once in the guard's lifetime (never after stop): one guard authorizes one native attempt.
+ */
+export type GuardUse='native_materialization'
+export interface ExecutionLeaseGuard{readonly signal:AbortSignal;readonly binding:Readonly<ExecutionLeaseV1['binding']>;checkpoint():Promise<'live'|'stopped'>;stop():void;claimSingleUse(purpose:GuardUse):boolean}
 interface GuardInput{claim:ClaimHandle;expected:{projectId:string;binding:ExecutionLeaseV1['binding'];authorityPins:ExecutionLeaseV1['authorityPins']}}
 export function createExecutionLeaseGuard(input:GuardInput,deps:ExecutionLeaseGuardDeps):ExecutionLeaseGuard{
  const controller=new AbortController(),expected=structuredClone(input.expected),initialCounter=input.claim.requestCounter
  const anchorMono=deps.monotonicNow(),anchorWall=deps.wallNow()
  let lastMono=anchorMono,stopped=false,until:number|null=null,counter=initialCounter,version:number|null=null,state:ExecutionLeaseV1['state']|null=null
+ let used=false
  let inflight:Promise<'live'|'stopped'>|null=null,cancelExpiry:(()=>void)|null=null,cancelRefresh:(()=>void)|null=null
  function stop(){if(stopped)return;stopped=true;controller.abort();cancelExpiry?.();cancelRefresh?.();cancelExpiry=cancelRefresh=null}
  function current():number|null{
@@ -54,5 +59,6 @@ export function createExecutionLeaseGuard(input:GuardInput,deps:ExecutionLeaseGu
  }
  if(!Number.isFinite(anchorMono)||!Number.isFinite(anchorWall)||!Number.isSafeInteger(initialCounter)||initialCounter<1
  ||input.claim.workId!==expected.binding.workId||input.claim.claimId!==expected.binding.claimId||input.claim.fence!==expected.binding.fence)stop()
- return{signal:controller.signal,binding:Object.freeze({...expected.binding}),checkpoint,stop}
+ function claimSingleUse(purpose:GuardUse):boolean{if(used||stopped||purpose!=='native_materialization'){used=true;return false}used=true;return true}
+ return{signal:controller.signal,binding:Object.freeze({...expected.binding}),checkpoint,stop,claimSingleUse}
 }

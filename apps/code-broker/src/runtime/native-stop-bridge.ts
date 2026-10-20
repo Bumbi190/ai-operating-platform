@@ -6,7 +6,7 @@ import {parseWindowsWorkspaceRequest,type WorkspaceRequest} from '../isolation/w
 import {reserveWindowsSourceAttempt} from '../isolation/windows/source-attempts.js'
 import {cleanupWindowsSourceFixture} from '../isolation/windows/source-fixture.js'
 export type GuardedMaterialization=
- |{status:'not_started';reason:'lease_not_live'|'binding_mismatch'|'input_invalid'|'unsupported_platform'|'helper_unavailable'}
+ |{status:'not_started';reason:'guard_consumed'|'lease_not_live'|'binding_mismatch'|'input_invalid'|'unsupported_platform'|'helper_unavailable'}
  |{status:'observed';attemptId:string;report:MaterializationReport}
  |{status:'stopped';attemptId:string;reason:'stop_requested'|'control_lost'|'lease_lost';cleanup:'confirmed'|'retained'|'unknown';containerRemoved:boolean|null;volumeRemoved:boolean|null}
 export interface BridgeDeps{
@@ -21,6 +21,8 @@ export interface BridgeDeps{
 export const STOP_GRACE_MS=35000
 /** Hard bound from launch (helper's own deadline, ruling 8): then stop, and the grace kill follows. */
 export const HELPER_DEADLINE_MS=185000
+/** After a forced kill, wait at most this long for the process to close; then report unknown and never clean over it. */
+export const KILL_WAIT_MS=10000
 const KEYS=['workId','repositoryId','pinnedBaseSha','admissionHash','claimId','fence'] as const
 /**
  * Internal construction seam. The guard is owned by the caller and never re-armed here; this bridge only consumes it.
@@ -28,6 +30,18 @@ const KEYS=['workId','repositoryId','pinnedBaseSha','admissionHash','claimId','f
  * Nothing in any result grants publication, readiness or further authority.
  */
 export function createNativeStopBridge(deps:BridgeDeps):(input:unknown,guard:ExecutionLeaseGuard)=>Promise<GuardedMaterialization>{
+ const attempt=attemptOnce(deps)
+ return async(input,guard)=>{
+  // One guard authorizes one attempt, ever: consumed before any validation, read, reservation or launch.
+  if(typeof guard?.claimSingleUse!=='function'||!guard.claimSingleUse('native_materialization'))return{status:'not_started',reason:'guard_consumed'}
+  let result:GuardedMaterialization
+  try{result=await attempt(input,guard)}catch(error){guard.stop();throw error}
+  // Every outcome except a live observation ends the mandate, so no other consumer can treat it as live.
+  if(result.status!=='observed')guard.stop()
+  return result
+ }
+}
+function attemptOnce(deps:BridgeDeps):(input:unknown,guard:ExecutionLeaseGuard)=>Promise<GuardedMaterialization>{
  return async(input,guard)=>{
   let request:WorkspaceRequest
   try{request=parseWindowsWorkspaceRequest(input)}catch{return{status:'not_started',reason:'input_invalid'}}
@@ -39,32 +53,45 @@ export function createNativeStopBridge(deps:BridgeDeps):(input:unknown,guard:Exe
   try{deps.reserve(request,attemptId)}catch{return{status:'not_started',reason:'helper_unavailable'}}
   let stopReason:'lease_lost'|'control_lost'|null=null,launched:LaunchResult
   let killNow=()=>{}
-  const grace:{armed:boolean;cancel:(()=>void)|null;deadline:(()=>void)|null}={armed:false,cancel:null,deadline:null}
+  const grace:{armed:boolean;cancel:(()=>void)|null;deadline:(()=>void)|null;killWait:(()=>void)|null}={armed:false,cancel:null,deadline:null,killWait:null}
+  // Once the outcome is decided nothing may arm a timer, send a frame or change the stop reason.
+  let finished=false
   // Any stop, from any source, starts exactly one grace period that ends in a forced kill.
-  const armGrace=()=>{if(grace.armed)return;grace.armed=true;grace.cancel=deps.schedule(()=>{grace.cancel=null;killNow()},STOP_GRACE_MS)}
+  const armGrace=()=>{if(finished||grace.armed)return;grace.armed=true;grace.cancel=deps.schedule(()=>{grace.cancel=null;killNow()},STOP_GRACE_MS)}
   const sendStop=(reason:'lease_lost'|'control_lost')=>{
+   if(finished)return
    if(stopReason===null){stopReason=reason;proc?.stop()}
    armGrace()
   }
+  let unresponsive!:()=>void
+  const killTimeout=new Promise<'unresponsive'>(resolve=>{unresponsive=()=>resolve('unresponsive')})
   const requestStop=()=>sendStop('lease_lost')
   let proc:{continue(n:number):void;stop():void;kill():void;done:Promise<ControlledOutcome>}|null=null
-  const handlers:ControlledHandlers={stopped:armGrace,checkpoint(seq){
+  // A stop the launcher sent itself (frame/stderr violation) is control_lost, even if the guard aborts later.
+  const handlers:ControlledHandlers={stopped:()=>{if(finished)return;stopReason??='control_lost';armGrace()},checkpoint(seq){
    void(async()=>{
-    if(stopReason!==null)return
+    if(finished||stopReason!==null)return
     const state=await guard.checkpoint()
+    if(finished)return
     if(state==='live'&&stopReason===null&&!guard.signal.aborted)proc?.continue(seq);else requestStop()
    })()
   }}
   const payload={...request,schema:'sdf.windows_materialization_request.v1',attemptId}
   try{launched=deps.launch(payload,handlers)}catch{return{status:'not_started',reason:'helper_unavailable'}}
   if(launched.status!=='launched')return{status:'not_started',reason:'helper_unavailable'}
-  proc=launched.process;const own=launched.process;let killed=false;killNow=()=>{if(!killed){killed=true;own.kill()}}
+  proc=launched.process;const own=launched.process;let killed=false
+  killNow=()=>{if(killed)return;killed=true;own.kill();if(!finished)grace.killWait=deps.schedule(()=>{grace.killWait=null;unresponsive()},KILL_WAIT_MS)}
   grace.deadline=deps.schedule(()=>{grace.deadline=null;sendStop('control_lost')},HELPER_DEADLINE_MS)
   const onAbort=()=>requestStop()
   if(guard.signal.aborted)requestStop();else guard.signal.addEventListener('abort',onAbort,{once:true})
-  let outcome:ControlledOutcome
-  try{outcome=await own.done}finally{guard.signal.removeEventListener('abort',onAbort)}
-  grace.cancel?.();grace.cancel=null;grace.deadline?.();grace.deadline=null
+  let settled:ControlledOutcome|'unresponsive'
+  try{settled=await Promise.race([own.done,killTimeout])}finally{
+   finished=true;guard.signal.removeEventListener('abort',onAbort)
+   grace.cancel?.();grace.cancel=null;grace.deadline?.();grace.deadline=null;grace.killWait?.();grace.killWait=null
+  }
+  // A killed helper that never closed may still hold resources: absence is unknown and no cleanup may overlap it.
+  if(settled==='unresponsive')return{status:'stopped',attemptId,reason:stopReason??'control_lost',cleanup:'unknown',containerRemoved:null,volumeRemoved:null}
+  const outcome=settled
   let report:MaterializationReport|null=null
   if(outcome.kind==='report'){
    try{

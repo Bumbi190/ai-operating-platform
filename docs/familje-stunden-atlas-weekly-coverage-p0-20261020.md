@@ -58,3 +58,61 @@ approval gates and publication authorizations stay intact.
    release and human approval in existing independent gates.
 
 The older Familje-Stunden November teaser and PR #448 were not touched.
+
+## P1 — Protected read-only weekly heartbeat, installed but not activated
+
+New files:
+- apps/web/app/api/family-content-weekly-tick/route.ts
+- apps/web/lib/social-launch/content/family-weekly-cron.ts
+- apps/web/lib/social-launch/content/family-weekly-cron.test.ts
+
+The new GET route uses the existing requireCronAuth(CRON_SECRET)
+boundary. An exact private flag FAMILY_WEEKLY_PLANNING_CRON_ENABLED=true
+is required or it returns disabled with ZERO database calls.
+The route accepts no project query, mode override or extra parameters.
+
+When both checks pass it makes at most:
+1. One read of the canonical fixed Familje-Stunden project ID, slug
+   and owner_id from the private projects table.
+2. One owner-scoped Social Content RPC read.
+3. One owner-scoped Social Schedule RPC read.
+
+Only after validating project ID, slug and owner identity does the
+server construct the fixed project owner principal. Failures return
+generic errors rather than private data. The report contains bounded
+counters and next-action labels only; no captions, files, provider
+tokens or account IDs are returned.
+
+Mode is STRICTLY read_only. A repeated invocation performs the same
+reads and returns the same report for unchanged inputs, with no writes.
+No AI API, no model routing, media generation, post proposals, cron
+dispatch or publication can be called from this handler.
+The route is NOT registered in vercel.json and the flag is NOT
+configured or enabled. No scheduled traffic starts from this code.
+
+Tests include missing/wrong CRON_SECRET, wrong HTTP method, query and
+project injection, default-disabled fast exit, canonical owner scope,
+no write operations, read failures and repeated read-only checks.
+6/6 cron-specific tests pass; 19/19 related planner/schedule tests pass.
+
+A read-only production query confirmed the expected project ID, slug
+and an owner ID exist in the live Omnira database. No records were
+modified during verification.
+
+Full TypeScript validation is blocked on the unrelated pre-existing
+lib/media/lambda-render.ts errors (missing @remotion/lambda/client and
+two region type errors). No new TypeScript diagnostics were raised in
+this route or planner.
+
+### Remaining autonomous workflow (not yet running)
+
+- Decide the bounded weekly trigger cadence and review its expected
+  Vercel usage. Then register and enable the read-only cron.
+- Add a securely scoped, replay-safe proposal writer (still separate
+  from scheduling and publishing) that uses actual approved month facts
+  and project-owned assets. Do not invent captions from sparse metadata.
+- Save and surface a concise Atlas review card, and allow the operator
+  to approve exact revisions through the existing native gates.
+- Activation and any additional provider/API budget must be explicitly
+  reviewed. Keep live dispatch, release evidence and content approval
+  independent of the planning heartbeat.

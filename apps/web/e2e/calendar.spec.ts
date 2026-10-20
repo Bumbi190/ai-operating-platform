@@ -17,6 +17,26 @@ async function fillMeeting(page:any,title='Möte med Oscar'){
  await page.getByLabel('Titel',{exact:true}).fill(title);await page.getByLabel('Datum',{exact:true}).fill('2026-10-22');await setClock(page,'Starttid','14:00');
  await page.getByLabel('Ingen sluttid').uncheck();await page.getByLabel('Slutdatum',{exact:true}).fill('2026-10-22');await setClock(page,'Sluttid','15:00');
 }
+test('expanded clock stays inside event panel at desktop and narrow widths',async({page})=>{
+ for(const width of [1024,525,390]){
+  await page.setViewportSize({width,height:800});
+  await open(page);
+  await page.getByRole('button',{name:'Ny h\u00e4ndelse',exact:true}).click();
+  await page.getByRole('button',{name:'Starttid',exact:true}).click();
+  const picker=page.getByRole('group',{name:'V\u00e4lj starttid'});
+  await expect(picker).toBeVisible();
+  const geometry=await picker.evaluate(element=>{
+   const panel=element.closest('[role=dialog]') as HTMLElement;
+   const box=element.getBoundingClientRect(),panelBox=panel.getBoundingClientRect(),panelStyle=getComputedStyle(panel);
+   return {left:box.left,right:box.right,allowedLeft:panelBox.left+parseFloat(panelStyle.paddingLeft),allowedRight:panelBox.right-parseFloat(panelStyle.paddingRight),horizontalOverflow:panel.scrollWidth>panel.clientWidth+2};
+  });
+  expect(geometry.left).toBeGreaterThanOrEqual(geometry.allowedLeft-2);
+  expect(geometry.right).toBeLessThanOrEqual(geometry.allowedRight+2);
+  expect(geometry.horizontalOverflow).toBe(false);
+  await picker.getByRole('button',{name:'Klar'}).click();
+  await expect(picker).toHaveCount(0);
+ }
+});
 test('mobile clock and recurrence controls are usable without horizontal overflow',async({page})=>{
  await page.setViewportSize({width:390,height:844});await open(page);
  await page.getByRole('button',{name:'Ny händelse',exact:true}).click();

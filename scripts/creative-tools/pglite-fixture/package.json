@@ -1,0 +1,16 @@
+{
+  "name": "pglite-fixture",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test creative-db.test.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.10"
+  },
+  "private": true
+}

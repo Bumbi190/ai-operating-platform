@@ -6,6 +6,7 @@ import type {SocialContentInput,SocialContentView,SocialContentPost} from '@/lib
 import {SocialSchedulePanel} from './SocialSchedulePanel'
 import {FAMILY_SOCIAL_PROJECT_ID} from '@/lib/social-launch/scheduling/policy'
 import {SocialPublicationPanel} from './SocialPublicationPanel'
+import {FamilyMonthSourceReviewPanel} from './FamilyMonthSourceReviewPanel'
 import styles from './SocialContentPanel.module.css'
 const formats={text:'Text',image:'Bild',video:'Video',link:'Länk'}
 const statuses={proposal:'Förslag att granska',approved:'Innehållet godkänt',rejected:'Avvisat innehåll',needs_review:'Behöver granskas igen'}
@@ -71,6 +72,7 @@ function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{project
   <header className={styles.header}><div><span className={styles.eyebrow}>Förbered lanseringen</span><h2>Innehåll – {projectName}</h2><p>Samla utkast, återanvänd material och granska innehållet tillsammans med Atlas.</p></div>
    <p className={styles.notice}>Börja med utkast och granskning. När rätt konto är anslutet kan du bekräfta ett enskilt Facebook- eller Instagram-inlägg nedan. Inga inlägg skickas från kalendern.</p>
   </header>
+  {projectId===FAMILY_SOCIAL_PROJECT_ID&&<FamilyMonthSourceReviewPanel key={projectId} projectId={projectId}/>}
   <div className={styles.actions}><button type="button" disabled={busy||loading||(!model?.planApproved||!model.plannedChannels.length)} onClick={()=>edit()}>Nytt utkast</button><button type="button" disabled={busy||loading} onClick={()=>{if(!dirty||window.confirm('Ersätt ditt osparade utkast med senaste sparade versionen?')){setEditor(null);setDirty(false);void load()}}}>Läs senaste innehållet</button></div>
   {error&&<p className={styles.error} role="alert">{error}</p>}
   {loading&&<p role="status">Läser projektets innehåll…</p>}

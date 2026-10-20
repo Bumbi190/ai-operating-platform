@@ -64,3 +64,73 @@ authenticated server path. No chat tool can decide, activate or publish.
 
 No production schema changes, no GitHub push or PR merge, no scheduled
 traffic, no AI/media provider charges.
+
+## P6 – compact owner review card and real isolated PostgreSQL 17 verification
+
+Date: 2026-10-20 / 2026-10-21 local development.
+
+### Owner experience
+
+- New FamilyMonthSourceReviewPanel in existing Social Content view for
+  Familje-Stunden ONLY.
+- When the feature flag remains off, the API returns 503 and the panel
+  hides itself; no manual UI clutter, no new production traffic.
+- The panel automatically targets the next Stockholm calendar month,
+  shows the latest pending source card, a short summary/evidence count,
+  and one "Granska underlag" entry.
+- Full owner-only candidate read reveals each public reference ID,
+  reference SHA-256, descriptions, complete proposed captions and the
+  immutable candidate SHA-256. Decision buttons remain disabled until
+  the human explicitly checks an exact-review acknowledgement.
+- Both Approve and Reject call the existing owner-authenticated POST API,
+  with the exact candidate ID+hash and confirmed:true.
+- Server success alone is NOT considered a verified decision. After POST,
+  the browser reads the current owner-only list again and requires a
+  persisted, matching candidate, SHA-256, and identical decision.
+- Changed candidates, stale snapshots, missing readback, foreign project,
+  and disabled feature fail closed. The UI never grants source activation,
+  public month access, scheduling or social publication.
+
+### Verified local tests
+
+- Focused unit/integration/migration-contract suites: 63/63 passed.
+- Full Social Content Playwright suite: 12/12 passed including four
+  tests of actual review UI, disabled feature, stale candidate and
+  missing persisted-decision readback.
+- TypeScript: only three preexisting failures in unchanged
+  lib/media/lambda-render.ts due to missing @remotion/lambda/client and
+  derived region typings. The new UI/API emitted no TypeScript diagnostics.
+
+### Real PostgreSQL 17 test (isolated, no production access)
+
+- Docker image postgres:17-alpine was already cached on the developer's
+  Windows desktop. Started disposable container with --network none,
+  NO mapped host ports, scratch projects table and fixture auth roles.
+- Executed the exact local migration file with ON_ERROR_STOP=1.
+  Tables, indexes, foreign keys, RLS, grants and revokes created without
+  SQL errors.
+- Verified RLS enabled and no permissive policies; anon/authenticated
+  have no SELECT/INSERT/UPDATE/DELETE, service_role only SELECT+INSERT.
+- A real authenticated role SELECT was denied.
+- A real service_role UPDATE was denied.
+- Inserting conflicting approve/reject for the same candidate hit the
+  unique(candidate_id) constraint.
+- A wrong source hash on a second candidate hit the composite FK
+  (candidate_id, project_id, candidate_sha256).
+- Checked that the one earlier decision remained unchanged.
+- Stopped and automatically removed the disposable PG container.
+
+### Outstanding before production
+
+- Have a separate reviewer inspect the final code and source evidence.
+- Deploy the verified schema through the normal change-management flow
+  ONLY after human approval; do not apply from development.
+- Authenticate a real owner in a protected preview of this feature and
+  validate exactly one candidate decision with no production data writes.
+- Source activation remains intentionally UNIMPLEMENTED, including
+  independent confirmation of source ownership/rights and new-month
+  readiness. Operator approval of source review is not publication
+  authority. Recurring planner cron and public dispatch remain disabled.
+
+No Supabase production migrations, scheduled social sends, AI provider
+spending or GitHub PR merges occurred.

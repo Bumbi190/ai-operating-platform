@@ -43,3 +43,132 @@ test('refresh disables review until its snapshot is resolved and cannot undo a l
  release();await expect(page.getByRole('button',{name:'Godkänn innehållet',exact:true})).toBeEnabled();await page.getByRole('button',{name:'Godkänn innehållet',exact:true}).click()
  await expect(page.getByRole('article',{name:'Granska sparat innehåll'}).getByText('Innehållet godkänt',{exact:true})).toBeVisible()
 })
+
+
+test('owner reviews complete month evidence then expressly decides exact version; no publication',async({page})=>{
+ const month='2026-12',candidateId='30000000-0000-4000-8000-000000000003'
+ const hash='a'.repeat(64)
+ let posted:any=null,viewed=0,decided=false
+ const card={candidateId,month,candidateSha256:hash,createdAt:'2026-10-20T20:00:00Z',
+  card:{heading:'December public preview',summary:'A short private source review',
+   evidenceCount:1,dates:['2026-11-27'],decisionPrompt:'Review exact copy and evidence',
+   concerns:['Source rights still require verification']},
+  decision:null,canActivate:false,canPublish:false}
+ const proposal={projectId:'77cda551-57c9-4dc0-b019-1bb6438777f7',month,
+  planRevisionId:'e745041f-ad3a-493f-bd3b-025525d561b2',title:'December public preview',
+  publicSummary:'A short private source review',campaignPurpose:'Preview',
+  proof:[{kind:'owner-project-public-evidence',referenceId:'public-december-hero',
+   sha256:'b'.repeat(64),description:'Owner source original',privateSubscriberAsset:false}],
+  proposedCopy:[{date:'2026-11-27',variant:'winter',
+   title:'Winter with Nova and Pling',text:'Public teaser needs independent review.'}]}
+ await page.route('**/api/family-month-source-review**',async route=>{
+  const u=new URL(route.request().url())
+  if(route.request().method()==='POST'){
+   posted=route.request().postDataJSON();decided=true
+   await route.fulfill({json:{candidateId,candidateSha256:hash,
+    stored:true,decision:posted.decision,activationAllowed:false,canPublish:false}})
+  }else if(u.searchParams.has('candidateId')){
+   viewed++
+   await route.fulfill({json:{kind:'family-month-source-owner-review-v1',
+    month,candidate:card,proposal,latest:true,canActivate:false,canPublish:false}})
+  }else{
+   await route.fulfill({json:{kind:'family-month-source-owner-review-list-v1',month,
+    records:[decided?{...card,decision:{kind:'approve',
+     decidedAt:'2026-10-20T21:00:00Z',candidateSha256:hash}}:card],
+    canActivate:false,canPublish:false}})
+  }
+ })
+ await page.goto('/content?family-source-review=1')
+ await expect(page.getByRole('region',{name:'Månadskällor'})).toBeVisible()
+ const approve=page.getByRole('button',{name:'Godkänn källan'})
+ await expect(approve).toHaveCount(0)
+ await expect(page.getByText('December public preview')).toBeVisible()
+ await page.getByRole('button',{name:'Granska underlag'}).click()
+ await expect(page.getByText('Owner source original')).toBeVisible()
+ await expect(page.getByText('Public teaser needs independent review.')).toBeVisible()
+ await expect(approve).toBeDisabled()
+ expect(viewed).toBe(1)
+ expect(posted).toBeNull()
+ await page.getByRole('checkbox',{name:/Jag har granskat/}).check()
+ await expect(approve).toBeEnabled()
+ await approve.click()
+ await expect(page.getByText(/Beslutet aktiverar inte källan/)).toBeVisible()
+ expect(posted).toEqual({operation:'decide',month,candidateId,
+  candidateSha256:hash,decision:'approve',confirmed:true})
+ await expect(approve).toHaveCount(0)
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+})
+
+test('disabled month-source feature and cross-project context show no controls',async({page})=>{
+ let calls=0
+ await page.route('**/api/family-month-source-review**',async route=>{
+  calls++;await route.fulfill({status:503,json:{code:'UNAVAILABLE'}})
+ })
+ await page.goto('/content?family-source-review=1')
+ await expect(page.getByRole('region',{name:'Månadskällor'})).toHaveCount(0)
+ expect(calls).toBe(1)
+ await page.goto('/content?family-source-review=1&foreign-source=1')
+ await expect(page.getByRole('region',{name:'Månadskällor'})).toHaveCount(0)
+ expect(calls).toBe(1)
+})
+
+test('changed month review never exposes decision buttons',async({page})=>{
+ const hash='a'.repeat(64)
+ await page.route('**/api/family-month-source-review**',async route=>{
+  const u=new URL(route.request().url())
+  if(u.searchParams.has('candidateId')){
+   await route.fulfill({json:{kind:'family-month-source-owner-review-v1',
+    month:'2026-12',latest:false,canActivate:false,canPublish:false,
+    candidate:{candidateId:'30000000-0000-4000-8000-000000000003',
+     month:'2026-12',candidateSha256:hash,decision:null,canActivate:false,canPublish:false},
+    proposal:{}}})
+  }else await route.fulfill({json:{kind:'family-month-source-owner-review-list-v1',
+   month:'2026-12',canActivate:false,canPublish:false,
+   records:[{candidateId:'30000000-0000-4000-8000-000000000003',
+    month:'2026-12',candidateSha256:hash,decision:null,
+    canActivate:false,canPublish:false,
+    card:{heading:'Public preview',summary:'A source to review',
+     evidenceCount:1,dates:['2026-11-27'],concerns:[],decisionPrompt:'Check'}}]}})
+ })
+ await page.goto('/content?family-source-review=1')
+ await page.getByRole('button',{name:'Granska underlag'}).click()
+ await expect(page.getByRole('alert')).toContainText('Underlaget har ändrats')
+ await expect(page.getByRole('button',{name:'Godkänn källan'})).toHaveCount(0)
+})
+
+
+test('a successful decision HTTP response alone cannot claim success before persisted readback',async({page})=>{
+ const month='2026-12',candidateId='30000000-0000-4000-8000-000000000003',sha='a'.repeat(64)
+ const card={candidateId,month,candidateSha256:sha,createdAt:'2026-10-20T20:00:00Z',
+  card:{heading:'December review',summary:'A source requiring owner review',
+   evidenceCount:1,dates:['2026-11-27'],decisionPrompt:'Review the source',
+   concerns:[]},decision:null,canActivate:false,canPublish:false}
+ const proposal={projectId:'77cda551-57c9-4dc0-b019-1bb6438777f7',
+  month,proof:[{kind:'owner-project-public-evidence',referenceId:'public-image',
+   sha256:'b'.repeat(64),description:'Owner original image',privateSubscriberAsset:false}],
+  proposedCopy:[{date:'2026-11-27',variant:'winter',title:'December',
+   text:'Preview requires editorial approval.'}]}
+ let posted=0
+ await page.route('**/api/family-month-source-review**',async route=>{
+  const u=new URL(route.request().url())
+  if(route.request().method()==='POST'){
+   posted++
+   await route.fulfill({json:{stored:true,candidateId,candidateSha256:sha,
+    decision:'approve',activationAllowed:false,canPublish:false}})
+  }else if(u.searchParams.has('candidateId')){
+   await route.fulfill({json:{kind:'family-month-source-owner-review-v1',
+    month,candidate:card,proposal,latest:true,canActivate:false,canPublish:false}})
+  }else{
+   // A readback that cannot prove the decision MUST NOT authorize success.
+   await route.fulfill({json:{kind:'family-month-source-owner-review-list-v1',
+    month,records:[card],canActivate:false,canPublish:false}})
+  }
+ })
+ await page.goto('/content?family-source-review=1')
+ await page.getByRole('button',{name:'Granska underlag'}).click()
+ await page.getByRole('checkbox',{name:/Jag har granskat/}).check()
+ await page.getByRole('button',{name:'Godkänn källan'}).click()
+ await expect(page.getByRole('alert')).toContainText('Underlaget har ändrats')
+ await expect(page.getByText(/Beslutet aktiverar inte källan/)).toHaveCount(0)
+ expect(posted).toBe(1)
+})

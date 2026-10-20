@@ -62,7 +62,7 @@ $params = @{
   Name = $WorkerName
   Password = $secure
   Disabled = $true
-  Description = 'Omnira Creative: isolated media pilot identity, disabled until validated'
+  Description = 'Omnira media pilot (disabled)'
   UserMayNotChangePassword = $true
 }
 $created = New-LocalUser @params

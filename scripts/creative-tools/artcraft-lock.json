@@ -1,0 +1,12 @@
+{
+  "photocraft": {
+    "version": "0.10.0",
+    "binaryRelativePath": "photocraft/portable/photocraft-0.10.0-windows-x64-portable/photocraft-cli.exe",
+    "sha256": "109a13782578b03f56d7f3180b3729d9555ece5e936baeb5672ec2dcb28fbf51"
+  },
+  "filmcraft": {
+    "version": "0.9.0",
+    "binaryRelativePath": "filmcraft/portable/filmcraft-0.9.0-windows-x64-portable/filmcraft-cli.exe",
+    "sha256": "02ed0dc5a6414cb666516594cec2c92d56600fa5a8e2a64ab9d5b5f42e69de2f"
+  }
+}

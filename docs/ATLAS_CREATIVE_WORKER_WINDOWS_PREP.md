@@ -109,6 +109,49 @@ their general-purpose MCP command channels directly to an autonomous agent.
 6. Independent QC and canonical derived Asset admission; preview and
    separate human publication approval in Omnira.
 
+## Read-only staging review – 2026-10-20
+
+The operator authorized a **review only**, not `worker-stage-binaries.ps1 -Apply`.
+The staging has **not** been carried out; the worker remains disabled.
+
+The new `worker-archive-audit.ps1` independently inspected both original
+locked release archives without extracting or executing any code:
+
+- PhotoCraft 0.10.0: 9 expected files, 182,054,025 uncompressed bytes.
+- FilmCraft 0.9.0: 9 expected files, 153,542,694 uncompressed bytes.
+- Both ZIP SHA-256 digests matched `artcraft-lock.json`.
+- Exact archive entries, no duplicate/extra or unsafe ZIP paths, zero external
+  attributes and bounded compression/total sizes passed.
+- The CLI executable **inside each ZIP** matched the pinned SHA-256.
+- Original unpacked CLI and desktop executable Authenticode signatures were
+  `Valid`, with certificate subject Learning Machines Inc, pinned signer
+  thumbprint `54A063654E51CD00D5620C36616F9A6AA30EDD15`.
+  An Authenticode result verifies a signer; it does not independently prove
+  that the release is safe software or that a Windows sandbox exists.
+
+`worker-stage-binaries.ps1 -Apply` now **requires** the read-only archive
+audit after checking the account and folder ACLs in the elevated session. It
+rejects an existing/unknown installation parent and reparse points at worker
+root/bin, verifies archive and CLI hashes, verifies *both staged executable*
+signatures, rehashes the ZIP after extraction, and checks the account is still
+disabled. If any proof fails, stop and inspect a possibly partial staging
+tree; never blindly retry or loosen permissions.
+
+8/8 targeted Windows Node tests passed, including the live read-only archive
+audit and 17 synthetic ZIP-policy cases (traversal, unsafe aliases, metadata,
+compression bombs and oversize entries). The **actual staging Apply path has not
+been exercised**, and
+independent review of privilege transitions, source-file immutability, ACL
+inheritance for staged children, extraction behavior and process/network
+isolation is still required. An administrator running scripts from a
+user-writable worktree remains a distinct trust risk; confirm the reviewed
+commit and script contents before any future elevated `-Apply`.
+
+**Decision state: REVIEW COMPLETE / STAGING NOT APPROVED / WORKER DISABLED.**
+Do not enable the account, open network access or use PhotoCraft/FilmCraft
+through Atlas until separate approval, signed one-use job admission, sandbox
+review and a controlled end-to-end test.
+
 ## Whole-archive integrity update
 
 The staging planner additionally checks SHA-256 of the original PhotoCraft and

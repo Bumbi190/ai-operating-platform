@@ -56,6 +56,43 @@ test('staging Apply cannot bypass elevated ACL verification or copy to an unread
   assert.match(source,/targetInspection -ne 'verified'/);
   assert.match(source,/workerAccountStillDisabled/);
 });
+test('pure ZIP allowlist rejects seventeen unsafe synthetic archive variants',()=>{
+  if(process.platform!=='win32')return;
+  const audit=inspect('worker-archive-policy.test.ps1');
+  assert.equal(audit.mode,'synthetic-zip-policy-test');
+  assert.equal(audit.cases,17);
+  assert.equal(audit.allPassed,true);
+  assert.equal(audit.changesApplied,false);
+});
+test('ZIP preflight validates exact files, archive CLI hash and both executable signers without extracting',()=>{
+  if(process.platform!=='win32') return;
+  const result=spawnSync('powershell.exe',['-NoProfile','-File',join(here,'worker-archive-audit.ps1')],{
+    encoding:'utf8',timeout:30000,maxBuffer:100000,
+  });
+  assert.equal(result.status,0,result.stderr);
+  const audit=JSON.parse(result.stdout);
+  assert.equal(audit.mode,'read-only-artcraft-archive-audit');
+  assert.equal(audit.allVerified,true);
+  assert.equal(audit.changesApplied,false);
+  assert.equal(audit.workerExecutionEnabled,false);
+  assert.equal(audit.productionReady,false);
+  assert.deepEqual(audit.programs.map(p=>p.program),['photocraft','filmcraft']);
+  for(const program of audit.programs){
+    assert.equal(program.entryCount,9,program.program);
+    for(const flag of ['archiveHashMatchesLock','entryNamesVerified','noUnsafeZipEntries',
+      'boundsVerified','archiveCliHashMatchesLock','sourceCliSignatureVerified',
+      'sourceGuiSignatureVerified','programReadyForStaging']){
+      assert.equal(program[flag],true,program.program+':'+flag);
+    }
+  }
+});
+test('staging Apply requires exact archive audit and validates executable signatures again',()=>{
+  const source=readFileSync(join(here,'worker-stage-binaries.ps1'),'utf8');
+  for(const proof of ['worker-archive-audit.ps1','allVerified','Get-AuthenticodeSignature',
+    'archiveRecheck','ReparsePoint','workerFinal.Enabled']){
+    assert.ok(source.includes(proof),proof);
+  }
+});
 test('binary staging checks both vendor hashes without copying anything',()=>{
   if(process.platform!=='win32') return;
   const r=inspect('worker-stage-binaries.ps1');

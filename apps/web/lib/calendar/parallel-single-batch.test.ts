@@ -20,4 +20,18 @@ describe('truly concurrent ordinary and batch write candidates',()=>{
   expect(succeeded).toHaveLength(1);
   expect(db.sql(`select count(*) from public.user_calendar_events where owner_user_id='${USER_A}'`)).toBe('1');
  });
+ it('serializes repeated parallel pairs on distinct slots without duplicates',async()=>{
+  for(let i=0;i<6;i++){
+   const day=String(29+i).padStart(2,'0');
+   const date=i<3?'2026-10-'+day:'2026-11-0'+String(i-2);
+   const from=date+'T08:00:00.000Z',to=date+'T09:00:00.000Z';
+   const payload={...draft,time:{...draft.time,startUtc:from,endUtc:to}};
+   const single=`${pre}select public.calendar_event_apply('${JSON.stringify({operation:'create',eventId:randomUUID(),idempotencyKey:randomUUID(),draft:payload})}'::jsonb);commit;`;
+   const weekly=`${pre}select public.calendar_week_batch_probe('${JSON.stringify([{title:'Batch',startUtc:from,endUtc:to}])}'::jsonb,'${randomUUID()}'::uuid);commit;`;
+   const [a,b]=await Promise.all([run(i%2?weekly:single),run(i%2?single:weekly)]);
+   const wins=[a,b].filter(x=>x.code===0&&!x.output.includes('"ok": false'));
+   expect(wins,`pair ${i}`).toHaveLength(1);
+  }
+  expect(db.sql(`select count(*) from public.user_calendar_events where owner_user_id='${USER_A}'`)).toBe('7');
+ });
 });

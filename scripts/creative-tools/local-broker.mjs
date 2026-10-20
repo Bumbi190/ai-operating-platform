@@ -15,6 +15,7 @@ import {
 import { join, resolve, sep } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { inspectCreativeMedia } from './media-verify.mjs';
 
 const lock = JSON.parse(readFileSync(new URL('./artcraft-lock.json', import.meta.url), 'utf8'));
 const extRoot = process.env.OMNIRA_ARTCRAFT_ROOT ??
@@ -25,6 +26,16 @@ const outputDir = join(pilot, 'output');
 const auditDir = join(pilot, 'audit');
 const requestDir = join(pilot, 'requests');
 export const PILOT_OPERATIONS = Object.freeze(['photocraft.convert-webp', 'filmcraft.demo-export-mp4']);
+
+/** Exclusively claim a job identifier once, even across concurrent processes. */
+export function claimPilotJob(folder, id) {
+  if (typeof id !== 'string' || !/^[a-zA-Z][a-zA-Z0-9_-]{2,39}$/.test(id)) {
+    throw new Error('invalid job claim identifier');
+  }
+  const claimPath = join(folder, id + '.claimed.json');
+  writeFileSync(claimPath, JSON.stringify({jobId:id,status:'claimed'}) + '\n', {flag:'wx'});
+  return claimPath;
+}
 
 export function validateJob(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('job must be an object');
@@ -99,13 +110,18 @@ export async function runPilotJob(rawJob, approve = false) {
   if (existsSync(outputPath)) throw new Error('output exists; refusing overwrite');
   const auditPath = join(auditDir, job.id + '.json');
   if (existsSync(auditPath)) throw new Error('job already audited');
+  // Atomic one-use claim: two simultaneous workers cannot execute one job ID.
+  // This is concurrency safety, NOT protection against the Windows account owner.
+  claimPilotJob(auditDir, job.id);
   const started = Date.now();
   const name = job.operation.startsWith('photocraft.') ? 'photocraft' : 'filmcraft';
   const bin = pinnedBinary(name);
   let inputHash = null;
+  let originalInfo = null;
   let args;
   if (name === 'photocraft') {
     const src = insideReadRoot(join(inputDir, job.inputName), inputDir, 20 * 1024 * 1024);
+    originalInfo = inspectCreativeMedia(src, 'png');
     inputHash = sha256File(src);
     args = ['convert', src, outputPath, '--quality', String(job.quality)];
   } else {
@@ -120,12 +136,15 @@ export async function runPilotJob(rawJob, approve = false) {
     const stat = lstatSync(outputPath);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.size < 50 ||
       stat.size > 40 * 1024 * 1024) throw new Error('invalid output size');
-    if (!hasExpectedMediaHeader(outputPath, name)) throw new Error('invalid output file header');
+    const mediaInfo = inspectCreativeMedia(outputPath, name === 'photocraft' ? 'webp' : 'mp4');
+    if (name === 'photocraft' && (mediaInfo.width !== originalInfo.width || mediaInfo.height !== originalInfo.height)) {
+      throw new Error('image dimensions changed unexpectedly');
+    }
     const record = {
       jobId: job.id, operation: job.operation, status: 'staged-not-published',
       toolVersion: lock[name].version, binaryHash: lock[name].sha256,
       inputHash, outputName, outputHash: sha256File(outputPath),
-      outputBytes: stat.size, durationMs: Date.now() - started,
+      outputBytes: stat.size, mediaInfo, durationMs: Date.now() - started,
       previewOnly: true, requiresHumanReview: true,
       stderrNote: result.stderr,
     };

@@ -10,7 +10,7 @@ export type CalendarSourceRef = {kind:'manual';eventId:string;version:number}|{k
 export type CalendarEntry = {id:string;source:CalendarSourceRef;title:string;time:CalendarTime;projectId:string|null;status:string;editable:boolean;href:string|null;manualEvent?:CalendarEvent;pendingChange:{time:CalendarTime;reviewHref:string}|null};
 export type CalendarEventPage = {events:CalendarEvent[];truncated:boolean};
 export type CalendarLayout = {days:{date:string;allDay:CalendarEntry[];timed:{entryId:string;startMinute:number;endMinute:number;column:number;columnCount:number;isPoint:boolean}[]}[]};
-export type CalendarWeekModel = {range:CalendarRange;entries:CalendarEntry[];unscheduledTasks:{id:string;projectId:string;title:string;status:string}[];projects:{id:string;name:string;color:string}[];availability:{manual:boolean;social:boolean;workflows:boolean;tasks:boolean};truncated:{manual:boolean;social:boolean;workflows:boolean;tasks:boolean}};
+export type CalendarWeekModel = {range:CalendarRange;entries:CalendarEntry[];unscheduledTasks:{id:string;projectId:string;title:string;status:string;source:string|null;createdAt:string|null}[];projects:{id:string;name:string;color:string}[];availability:{manual:boolean;social:boolean;workflows:boolean;tasks:boolean};truncated:{manual:boolean;social:boolean;workflows:boolean;tasks:boolean}};
 export type CalendarMutation =
  | {operation:'create';eventId:string;idempotencyKey:string;draft:CalendarEventDraft}
  | {operation:'update';eventId:string;expectedVersion:number;idempotencyKey:string;draft:CalendarEventDraft}

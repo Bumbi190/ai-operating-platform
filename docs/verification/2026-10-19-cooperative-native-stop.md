@@ -52,7 +52,7 @@ Nativebyggena stämplade tidigare commit-SHA:n i versionssträngen och via Sourc
 | OmniraBrokerWorkspace.runtimeconfig.json | `28329cf08f6505e73806b17558b187c02f0c1c516fe47ebfb7a013d082aaa306` |
 | OmniraBrokerHost.dll (hjälparens kopia) | `f703110916c28b6f14c76d78311064bd1938edd602da20ca9b287a0cf2ddefb9` |
 
-Varje bevis binder dessa binärer, normaliserade SHA-256 för nio native- och brokerkällor samt den bevarade förfrågan. Klass V kräver dessutom daemon `097b0409…`, samma verktygskedjeprofil som i beviset (`d7c99370…`) och image `sha256:354e46f6…` (A/B). Backend-identiteten binds inte eftersom den byts vid varje Docker-omstart.
+Varje bevis binder dessa binärer, normaliserade SHA-256 för nio native- och brokerkällor samt den bevarade förfrågan. Klass V kräver dessutom daemon `097b0409…` och samma verktygskedjeprofil som i beviset (`d7c99370…`), och att bevisets image för A/B är `sha256:354e46f6…`. Imagen jämförs inte mot nuvarande miljö, och daemon-identiteten överlevde en full ominstallation av Docker Desktop; en utbytt installation med samma motor upptäcks därför inte. Backend-identiteten binds inte eftersom den byts vid varje Docker-omstart. Se `2026-10-20-fix-pass-review.md`.
 
 ## Slutkontroll
 
@@ -75,7 +75,7 @@ En oberoende, endast läsande granskare granskade `53683a4..0fb66f3` med båda s
 Materiella fynd, åtgärdade och verifierade:
 
 1. Boundary-listan saknade godkända `HostProfile.cs` → `b3b86f2` (även `controlled-helper.ts` som sjätte tillåtna `child_process`-import); grön i slutkontrollen.
-2. Ett stopp som startaren själv skickade vid protokollbrott startade ingen tvångsavslutning, och en tyst hjälpare saknade yttre gräns → `065d5e3`: grace-kill vid varje stopp och hård gräns 185 000 ms. RED 4/4 → GREEN; riktiga försöken B och D gröna på den rättade koden.
+2. Ett stopp som startaren själv skickade vid protokollbrott startade ingen tvångsavslutning, och en tyst hjälpare saknade yttre gräns → `065d5e3`: grace-kill vid varje stopp och hård gräns 185 000 ms. RED 4/4 → GREEN med fakes. De riktiga försöken A–D är gröna på den rättade koden som regressionsbevis; de nya vägarna (grace-kill efter startarens eget stopp och 185 s-gränsen) har ännu inget riktigt prov.
 3. Klass V kontrollerade inte om miljön → `065d5e3`: daemon, verktygskedjeprofil och image. RED → GREEN; används i slutkontrollen.
 4. Eget fynd från slutkontrollen: commitberoende nativebinärer → `065d5e3` och `7c16110`; verifierat enligt ovan.
 
@@ -85,7 +85,7 @@ Rättningsomgången (`b3b86f2..7c16110`) har inte granskats av en ny oberoende g
 
 | # | Fynd | Risk | Rekommenderad åtgärd |
 | --- | --- | --- | --- |
-| 1 | Bryggan anropar inte `guard.stop()` efter ett stoppat eller tvetydigt resultat; samma guard kan återanvändas av en framtida anropare. | Medel (latent; ingen konsument finns) | Gör guarden förbrukad vid varje icke-`observed`-resultat och testa att en andra körning ger `not_started`, före första operativa konsument. |
+| 1 | Bryggan förbrukar inte guarden: samma guard kan starta ett andra försök (bekräftat med RED 8/8, även samtidigt och via en annan bryggninstans). | Medel–hög inför första konsument | Gör guarden förbrukad vid varje icke-`observed`-resultat och testa att en andra körning ger `not_started`, före första operativa konsument. |
 | 2 | Händelsen `'error'` i startaren kan lösa `done` medan processen fortfarande lever, så städningen kan överlappa. | Låg (journal-låset ger `unknown`, felar stängt) | Vänta på `close` eller tvångsavsluta med begränsad väntan före städning. |
 | 3 | Nativefixturen rapporterar båda borttagningsflaggor som sanna vid stopp när `!volumeMayExist`, utan observation. | Låg–medel (falskt frånvaropåstående endast vid kapplöpning med `resource_conflict`; inget raderas) | Rapportera `null` eller observera faktisk frånvaro. |
 | 4 | PG-fixturens kvittostatus är alltid `cleanup_withheld_backend_changed`, även vid andra förseglingsorsaker eller efter bekräftad frånvaro. | Låg (felar stängt) | Särskild status per orsak; `containerMayRemain:false` när frånvaron redan bekräftats. |
@@ -97,7 +97,7 @@ Rättningsomgången (`b3b86f2..7c16110`) har inte granskats av en ny oberoende g
 | 10 | Planens radgräns 8192 stämmer inte med rapportgränsen 262144; skrivaren nekar de sista cirka 24 byten. | Låg | Rätta plantexten. |
 | 11 | Planens `--outputFile` är relativ till `apps/web`. | Låg | Rätta plantexten (absolut sökväg). |
 | 12 | Verktygskedjans provisioneringsskript (`provision-windows-toolchain.mjs`, `recover-…`, `resume-…`) pekar fortfarande på AppData-Docker. | Medel för framtida imagebyggen; körs inte i detta inkrement | Uppdatera sökvägar och hashar under separat godkännande innan nästa imagebygge. |
-| 13 | Rättningsomgången saknar ny oberoende granskning. | Medel inför merge | Låt en ny oberoende granskare granska `b3b86f2..7c16110` före PR/merge. |
+| 13 | Rättningsomgången saknade ny oberoende granskning. | Åtgärdat 2026-10-20 | Granskad: APPROVE WITH MINORS, se `2026-10-20-fix-pass-review.md`. |
 | 14 | Granskarens svar på tillägget om `b3b86f2` hade inte kommit in när rapporten skrevs. | Information | Redovisas separat om det kommer. |
 | 15 | Huvudcheckouten har nio befintliga ändringar som fanns före detta arbete. | Information | Orörda; ägaren avgör. |
 

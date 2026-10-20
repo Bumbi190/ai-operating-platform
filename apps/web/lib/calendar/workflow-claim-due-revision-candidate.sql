@@ -6,6 +6,14 @@
 alter table public.calendar_source_revision_probe
 add column if not exists last_workflow_claim_at timestamptz;
 
+-- Test-only indexes. The index supports a single earliest due wake lookup per
+-- project instead of aggregating every active due workflow instance.
+create index if not exists calendar_workflow_due_probe_idx
+  on public.workflow_instances(project_id,wake_at,id)
+  where status='active' and wake_at is not null;
+create index if not exists calendar_source_fair_probe_idx
+  on public.calendar_source_revision_probe(last_workflow_claim_at asc nulls first,project_id);
+
 
 create or replace function public.workflow_claim_due(
   p_limit integer default 20,
@@ -35,16 +43,20 @@ begin
     raise exception 'INVALID_CLAIM_LIMIT' using errcode='23514';
   end if;
 
-  -- Reject an untracked or owner-mismatched due project rather than silently
-  -- omitting it. This is a read-only completeness check, not authorization.
+  -- Fail closed for an untracked/owner-mismatched due project. Probe existence
+  -- using the per-project due index; do not aggregate all due workflow rows.
+  -- This still visits projects and is NOT a bounded discovery proof.
   if exists (
-    select 1 from public.workflow_instances d
-    join public.projects p on p.id=d.project_id
-    where d.status='active' and d.wake_at is not null and d.wake_at<=now()
-      and p.execution_paused is not true
+    select 1 from public.projects p
+    where p.execution_paused is not true
       and not exists (
         select 1 from public.calendar_source_revision_probe r
         where r.project_id=p.id and r.owner_user_id=p.owner_id
+      )
+      and exists (
+        select 1 from public.workflow_instances d
+        where d.project_id=p.id and d.status='active'
+          and d.wake_at is not null and d.wake_at<=now()
       )
   ) then
     raise exception 'MISSING_SOURCE_REVISION' using errcode='23514';
@@ -56,16 +68,16 @@ begin
     select r.project_id
     from public.calendar_source_revision_probe r
     join public.projects p on p.id=r.project_id and p.owner_id=r.owner_user_id
-    join (
-      select d.project_id,min(d.wake_at) oldest_wake
+    join lateral (
+      select d.wake_at as oldest_wake
       from public.workflow_instances d
-      where d.status='active' and d.wake_at is not null and d.wake_at<=now()
-        and not exists (
-          select 1 from public.projects q
-          where q.id=d.project_id and q.execution_paused=true
-        )
-      group by d.project_id
-    ) due on due.project_id=r.project_id
+      where d.project_id=r.project_id
+        and d.status='active' and d.wake_at is not null
+        and d.wake_at<=now()
+      order by d.wake_at
+      limit 1
+    ) due on true
+    where p.execution_paused is not true
     order by r.last_workflow_claim_at nulls first,due.oldest_wake,r.project_id
     limit least(p_limit,16)
     for update of r skip locked

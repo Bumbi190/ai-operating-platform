@@ -86,11 +86,48 @@ test('ZIP preflight validates exact files, archive CLI hash and both executable 
     }
   }
 });
+test('archive audit accepts an explicit absolute read-only source but not a relative path',()=>{
+  if(process.platform!=='win32')return;
+  const source=join(process.env.USERPROFILE,'Projects','Omnira','External','ArtCraft');
+  const approved=spawnSync('powershell.exe',['-NoProfile','-File',
+    join(here,'worker-archive-audit.ps1'),'-SourceRoot',source],{
+      encoding:'utf8',timeout:30000,maxBuffer:100000,
+    });
+  assert.equal(approved.status,0,approved.stderr);
+  const status=JSON.parse(approved.stdout);
+  assert.equal(status.allVerified,true);
+  assert.equal(status.changesApplied,false);
+  const rejected=spawnSync('powershell.exe',['-NoProfile','-File',
+    join(here,'worker-archive-audit.ps1'),'-SourceRoot','not/absolute'],{
+      encoding:'utf8',timeout:10000,maxBuffer:100000,
+    });
+  assert.notEqual(rejected.status,0);
+});
 test('staging Apply requires exact archive audit and validates executable signatures again',()=>{
   const source=readFileSync(join(here,'worker-stage-binaries.ps1'),'utf8');
   for(const proof of ['worker-archive-audit.ps1','allVerified','Get-AuthenticodeSignature',
     'archiveRecheck','ReparsePoint','workerFinal.Enabled']){
     assert.ok(source.includes(proof),proof);
+  }
+});
+test('privileged staging rejects user-writable worktree scripts and archive inputs',()=>{
+  const source=readFileSync(join(here,'worker-stage-binaries.ps1'),'utf8');
+  const earlyGuard=source.indexOf('Refusing elevated staging from a user-writable source');
+  const lockRead=source.indexOf('$lock = Get-Content');
+  assert.ok(earlyGuard>0&&lockRead>earlyGuard,'source location must be enforced before lock file is read');
+  for(const required of ["$trustedControl = Join-Path $root 'control'",
+    "$trustedImports = Join-Path $root 'imports'",
+    'Assert-ProtectedCreativeSource',
+    '[Security.Principal.SecurityIdentifier]',
+    "'S-1-5-18','S-1-5-32-544'",
+    "'worker-stage-binaries.ps1'","'worker-verify.ps1'","'worker-acl-policy.ps1'",
+    "'worker-archive-audit.ps1'","'worker-archive-policy.ps1'","'artcraft-lock.json'",
+    '$artcraftRoot = if ($Apply) { $trustedImports }',
+    '-SourceRoot $trustedImports',
+    'archiveRelativePath -cne',
+    'binaryRelativePath -cne',
+    'Get-Acl -LiteralPath $Path']){
+    assert.ok(source.includes(required),'missing privileged source protection: '+required);
   }
 });
 test('binary staging checks both vendor hashes without copying anything',()=>{

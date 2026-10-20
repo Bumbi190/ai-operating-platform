@@ -137,7 +137,7 @@ signatures, rehashes the ZIP after extraction, and checks the account is still
 disabled. If any proof fails, stop and inspect a possibly partial staging
 tree; never blindly retry or loosen permissions.
 
-8/8 targeted Windows Node tests passed, including the live read-only archive
+10/10 targeted Windows Node tests passed, including the live read-only archive
 audit and 17 synthetic ZIP-policy cases (traversal, unsafe aliases, metadata,
 compression bombs and oversize entries). The **actual staging Apply path has not
 been exercised**, and
@@ -146,6 +146,41 @@ inheritance for staged children, extraction behavior and process/network
 isolation is still required. An administrator running scripts from a
 user-writable worktree remains a distinct trust risk; confirm the reviewed
 commit and script contents before any future elevated `-Apply`.
+
+## Privileged source trust review — protected handoff still required
+
+A further read-only ACL inspection demonstrated that the original staging
+script, lockfile and ZIPs are owned by the ordinary Windows user, with writable
+inherited permissions. **An elevated PowerShell window must not launch
+`worker-stage-binaries.ps1 -Apply` from this Git worktree** even though its
+archive hashes and signatures are correct: an editable script or source archive
+can be changed after review.
+
+The Apply path is now blocked unless:
+
+1. The invoked script lives at exactly
+   `C:\ProgramData\OmniraCreativeWorker\control\worker-stage-binaries.ps1`,
+   NOT under the ordinary user profile, Downloads or a git worktree.
+2. Both `control` and `imports` exist as protected directories, and all
+   required control scripts, lockfile, two release ZIPs, CLI/GUI binaries and
+   source subdirectories have no reparse points, inheritance disabled, owner
+   `SYSTEM` or `BUILTIN\Administrators`, and Allow ACEs exclusively for
+   those trusted principals.
+3. Import paths and versions match the exact allowlisted patterns. Apply
+   rechecks the protected ZIPs with the full nine-entry archive audit and
+   Authenticode; it does **not** consume the user's editable ArtCraft source.
+4. All previous account/NTFS, destination, hash, signature and disabled-user
+   checks still pass.
+
+**The protected control/imports handoff has NOT been built or independently
+reviewed.** Its design needs an out-of-band reviewer-pinned commit and SHA-256
+manifest, privileged copying into protected folders, independent post-copy
+hash/ACL inspection, and no unattended agent authority. Running the current
+script from the user profile with `-Apply` must remain disallowed. Even a
+correctly gated script is not a substitute for that separate trust ceremony.
+
+No privileged script, staging artifact or worker account was changed as part
+of this review; local read-only checks remain available with no `-Apply`.
 
 **Decision state: REVIEW COMPLETE / STAGING NOT APPROVED / WORKER DISABLED.**
 Do not enable the account, open network access or use PhotoCraft/FilmCraft

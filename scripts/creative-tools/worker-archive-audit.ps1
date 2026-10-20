@@ -8,14 +8,19 @@ Fails closed for unexpected archive entries, traversal, duplicate names,
 reparse metadata, size bombs, digest/signature mismatches or read errors.
 #>
 [CmdletBinding()]
-param()
+param([string]$SourceRoot = '')
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 . (Join-Path $PSScriptRoot 'worker-archive-policy.ps1')
 
 $lock=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'artcraft-lock.json') -Raw | ConvertFrom-Json
-$artcraftRoot=Join-Path $env:USERPROFILE 'Projects\Omnira\External\ArtCraft'
+$artcraftRoot=if ([string]::IsNullOrWhiteSpace($SourceRoot)) {
+  Join-Path $env:USERPROFILE 'Projects\Omnira\External\ArtCraft'
+} else {
+  if (-not [IO.Path]::IsPathRooted($SourceRoot)) { throw 'Archive source root must be absolute.' }
+  [IO.Path]::GetFullPath($SourceRoot)
+}
 $signerThumbprint='54A063654E51CD00D5620C36616F9A6AA30EDD15'
 $results=@()
 foreach ($app in @('photocraft','filmcraft')) {

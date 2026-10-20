@@ -9,10 +9,76 @@ param([switch]$Apply)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$root = Join-Path $env:ProgramData 'OmniraCreativeWorker'
+$trustedControl = Join-Path $root 'control'
+$trustedImports = Join-Path $root 'imports'
+# A privileged shell MUST NEVER execute the writable development worktree
+# or unpack the writable user's original archives directly. This gate runs
+# before any lockfile or archive source is read.
+if ($Apply) {
+  $realScriptDir=[IO.Path]::GetFullPath($PSScriptRoot).TrimEnd('\')
+  $allowedScriptDir=[IO.Path]::GetFullPath($trustedControl).TrimEnd('\')
+  if (-not [string]::Equals($realScriptDir,$allowedScriptDir,[StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Refusing elevated staging from a user-writable source. Protected control handoff required.'
+  }
+}
+function Assert-ProtectedCreativeSource([string]$Path) {
+  $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+  if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+    throw 'Privileged creative source contains a reparse point.'
+  }
+  $acl = Get-Acl -LiteralPath $Path -ErrorAction Stop
+  $owner = $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
+  $trusted = @('S-1-5-18','S-1-5-32-544')  # SYSTEM / BUILTIN Administrators
+  if ($owner -notin $trusted -or -not $acl.AreAccessRulesProtected) {
+    throw 'Privileged creative source is not owned by SYSTEM/Administrators with protected ACL.'
+  }
+  $rules = @($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))
+  $allow = @($rules | Where-Object { $_.AccessControlType -eq 'Allow' })
+  if ($allow.Count -eq 0 -or @($allow | Where-Object {
+    $_.IdentityReference.Value -notin $trusted
+  }).Count -ne 0) {
+    throw 'Privileged creative source includes untrusted Allow ACE.'
+  }
+}
+if ($Apply) {
+  # This trust proof MUST run before loading ANY script/JSON from the protected
+  # control folder or any ZIP/binary from the protected import tree.
+  foreach ($required in @(
+    $trustedControl,$trustedImports,
+    (Join-Path $trustedControl 'worker-stage-binaries.ps1'),
+    (Join-Path $trustedControl 'worker-verify.ps1'),
+    (Join-Path $trustedControl 'worker-acl-policy.ps1'),
+    (Join-Path $trustedControl 'worker-archive-audit.ps1'),
+    (Join-Path $trustedControl 'worker-archive-policy.ps1'),
+    (Join-Path $trustedControl 'artcraft-lock.json')
+  )) { Assert-ProtectedCreativeSource $required }
+}
 $repoRoot = Join-Path $PSScriptRoot 'artcraft-lock.json'
 $lock = Get-Content -LiteralPath $repoRoot -Raw | ConvertFrom-Json
-$artcraftRoot = Join-Path $env:USERPROFILE 'Projects\Omnira\External\ArtCraft'
-$root = Join-Path $env:ProgramData 'OmniraCreativeWorker'
+if ($Apply) {
+  foreach ($name in @('photocraft','filmcraft')) {
+    $e = $lock.$name
+    $release = "$name-$($e.version)-windows-x64-portable"
+    if ($e.version -notmatch '^\d+\.\d+\.\d+$' -or
+        $e.binaryRelativePath -cne "$name/portable/$release/$name-cli.exe" -or
+        $e.archiveRelativePath -cne "$name/$release.zip" -or
+        $e.sha256 -cnotmatch '^[0-9a-f]{64}$' -or
+        $e.archiveSha256 -cnotmatch '^[0-9a-f]{64}$') {
+      throw 'Unexpected program lock path or unpinned digest.'
+    }
+    $part = Join-Path $trustedImports $name
+    $portable = Join-Path $part 'portable'
+    $releaseDir = Join-Path $portable $release
+    foreach ($required in @(
+      $part,$portable,$releaseDir,
+      (Join-Path $part "$release.zip"),
+      (Join-Path $releaseDir "$name-cli.exe"),
+      (Join-Path $releaseDir "$name.exe")
+    )) { Assert-ProtectedCreativeSource $required }
+  }
+}
+$artcraftRoot = if ($Apply) { $trustedImports } else { Join-Path $env:USERPROFILE 'Projects\Omnira\External\ArtCraft' }
 $binRoot = Join-Path $root 'bin'
 $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
 $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -85,7 +151,7 @@ if (-not $verification.accountExists -or -not $verification.accountDisabled -or
 }
 # The read-only, exact-nine-file ZIP/Authenticode audit must also pass IN THIS
 # elevated session before any program directory is created.
-$archiveAudit = & (Join-Path $PSScriptRoot 'worker-archive-audit.ps1') | ConvertFrom-Json
+$archiveAudit = & (Join-Path $PSScriptRoot 'worker-archive-audit.ps1') -SourceRoot $trustedImports | ConvertFrom-Json
 if (-not $archiveAudit.allVerified -or @($archiveAudit.programs).Count -ne 2 -or
     @($archiveAudit.programs | Where-Object { -not $_.programReadyForStaging }).Count -ne 0) {
   throw 'Pinned release content/signature verification failed. Staging prohibited.'

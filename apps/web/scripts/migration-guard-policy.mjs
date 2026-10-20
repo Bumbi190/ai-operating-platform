@@ -72,8 +72,8 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Atlas sales draft pilot: 130/116; applied ledger 20261017130254, reconciled 2026-10-17.
 // Weekly watch journal: 136/122; applied ledger20261017200436. Flag remains absent.
 // Atlas metrics and test-data control migrations applied by the owner-approved October18 release.
-export const EXPECTED_CANONICAL_SQL_COUNT = 145
-export const EXPECTED_ENFORCED_COUNT = 131
+export const EXPECTED_CANONICAL_SQL_COUNT = 147
+export const EXPECTED_ENFORCED_COUNT = 133
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

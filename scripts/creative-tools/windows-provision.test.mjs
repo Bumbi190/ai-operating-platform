@@ -110,6 +110,20 @@ test('staging Apply requires exact archive audit and validates executable signat
     assert.ok(source.includes(proof),proof);
   }
 });
+test('read-only post-copy ACL audit never approves missing handoff folders or execution',()=>{
+  if(process.platform!=='win32')return;
+  const audit=inspect('worker-handoff-acl-audit.ps1');
+  assert.equal(audit.mode,'read-only-protected-handoff-acl-audit');
+  assert.equal(audit.expectedFiles,12);
+  assert.equal(audit.expectedDirectories,8);
+  assert.equal(audit.checks.length,20);
+  assert.equal(audit.sourceHandoffApproved,false);
+  assert.equal(audit.postCopyDigestsVerified,false);
+  assert.equal(audit.workerExecutionEnabled,false);
+  assert.equal(audit.productionReady,false);
+  assert.equal(audit.changesApplied,false);
+  if(audit.checks.some(c=>!c.verified))assert.equal(audit.aclVerified,false);
+});
 test('privileged staging rejects user-writable worktree scripts and archive inputs',()=>{
   const source=readFileSync(join(here,'worker-stage-binaries.ps1'),'utf8');
   const earlyGuard=source.indexOf('Refusing elevated staging from a user-writable source');

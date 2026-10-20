@@ -212,12 +212,30 @@ can change until the source is sealed. A matching fingerprint never grants
 permission to install or run software; the handoff explicitly reports
 `approvalGranted=false`, `copyPerformed=false`, and `productionReady=false`.
 
-Ten isolated tests require a fixed file manifest, reject a changed locked ZIP
-or CLI, detect changed control/GUI content via fingerprint drift, and reject
-malicious lockfile paths, missing files, oversized files, relative roots and
-symlink/reparse substitutions. The synthetic tests create only temporary test
-fixtures and remove them. Linux SDF-1B CI now runs these tests with no skip
-or fallback to a writable production path.
+Nineteen isolated Linux-compatible tests now cover both the proposed
+manifest and a separately implemented **post-copy byte verifier**. They require
+the 12 exact files, deny changed ZIP/CLI/GUI or control scripts, missing or
+extra files, unexpected manifest fields, substituted symlinks and malicious
+relative paths. The verifier accepts only an exact reviewer-supplied SHA-256
+of the serialized manifest; a self-computed manifest fingerprint alone is not
+an independent approval. The return value is deliberately
+`bytes_verified_not_acl_verified` and always reports
+`aclVerified=false`, `reviewerApproved=false` and
+`executionEnabled=false`.
+
+A separate read-only Windows script, `worker-handoff-acl-audit.ps1`, inventories
+all 12 required files and eight expected `control`/`imports` directories.
+It requires protected ACL inheritance, SYSTEM/Administrators ownership and
+exclusive trusted Allow ACEs, checks for unexpected files and symlinks, and
+never reports activation or installation readiness. Before the protected
+handoff exists, it correctly returns `aclVerified=false` with 12 expected
+files and eight expected directories. Its first targeted Windows test passed;
+**actual protected-copy ACLs have not been verified**.
+
+All synthetic file tests operate on automatically removed temporary fixtures.
+SDF-1B Linux CI requires **19/19** successful tests with zero failures or
+skips. A Linux copy-byte result cannot establish the Windows ACL result or
+Authenticode trust, and neither result authorizes a privileged copy.
 
 **Remaining trust ceremony, not implemented here:**
 
@@ -235,6 +253,35 @@ or fallback to a writable production path.
    any mismatch or unexplained extra file.
 5. Reconsider whether a separate VM/container is needed before editor process
    launch and network egress; Windows ACL hardening alone is insufficient.
+
+## Read-only post-copy verification (additional planning increment)
+
+New validation-only modules are included:
+
+- `worker-handoff-verify.mjs` compares the complete 12-file tree with an
+  **independently supplied exact manifest JSON digest**, rejecting file
+  changes, missing/extra copies, unreviewed entries and symlinks. It checks
+  post-copy file sizes and pinned release SHA-256 hashes. It intentionally
+  provides **no privileged CLI**, performs no copy, and always returns
+  `bytes_verified_not_acl_verified`, `aclVerified=false`,
+  `reviewerApproved=false` and `executionEnabled=false`.
+- `worker-handoff-acl-audit.ps1` is a separate read-only Windows NTFS audit.
+  It examines the protected root plus **eight expected directories and twelve
+  exact files**, requires protected ACL inheritance, SYSTEM/Administrators
+  ownership and no nontrusted Allow ACEs; unexpected files/symlinks fail
+  closed. It cannot grant permission to execute or install. It currently
+  reports `aclVerified=false`, because the protected handoff has not
+  been created. The regular worker's seven-folder ACL audit is distinct.
+- SDF-1B Linux CI requires exactly **19/19 handoff tests, zero skips**;
+  Windows tests also require an inert result from the post-copy ACL audit.
+  This does not replace full elevated ACL and signature verification after
+  an explicitly approved transfer.
+
+A digest handed in by the *same* user-writable source is not independent
+reviewer approval. Before a real admin-controlled handoff we still need an
+approved exact source revision and digest distributed out of band, a separately
+reviewed privileged copy-only bootstrap, post-copy comparisons against the
+approved digest, and Windows ACL proof. The bootstrap itself is **not built**.
 
 **No step above was authorized or executed by this planning change.**
 

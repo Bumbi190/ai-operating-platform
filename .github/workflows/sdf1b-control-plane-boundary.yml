@@ -35,8 +35,28 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Verify proposed creative handoff is bounded and fail-closed
-        run: node --test scripts/creative-tools/worker-handoff-manifest.test.mjs
+      - name: Verify creative handoff and post-copy checks are fail-closed
+        run: |
+          set -euo pipefail
+          node --test \
+            scripts/creative-tools/worker-handoff-manifest.test.mjs \
+            scripts/creative-tools/worker-handoff-verify.test.mjs \
+            | tee "$RUNNER_TEMP/creative-handoff.tap"
+          node - "$RUNNER_TEMP/creative-handoff.tap" <<'NODE'
+          const fs=require('node:fs')
+          const text=fs.readFileSync(process.argv[2],'utf8')
+          const count=key=>{
+            const match=text.match(new RegExp('^# '+key+' (\\d+)$','m'))
+            if(!match)throw new Error('Creative handoff missing TAP total: '+key)
+            return Number(match[1])
+          }
+          if(count('tests')!==19 || count('pass')!==19 ||
+             count('fail')!==0 || count('skipped')!==0 ||
+             count('cancelled')!==0 || count('todo')!==0) {
+            throw new Error('Creative handoff tests incomplete')
+          }
+          console.log('Creative handoff: exactly 19/19 pass and zero skips')
+          NODE
       - name: Schema, concurrency, authority, isolation, lifecycle and receipt chain
         working-directory: apps/web
         run: >-

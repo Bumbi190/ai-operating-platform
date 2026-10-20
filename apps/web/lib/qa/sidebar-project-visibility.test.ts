@@ -127,7 +127,7 @@ describe('sidebar · which nav list each generation renders', () => {
       // Organisation joined the Atlas group in Phase 6.5.
       // Projekt (the Project Spiral) joined with Atlas Home vNext.
       'Översikt', 'Atlas', 'Chat', 'Bygg med Atlas', 'Organisation', 'Projekt',
-      'Granskningar', 'Aktivitet', 'Planering', 'Marknadsgranskning', 'Content Center',
+      'Granskningar', 'Aktivitet', 'Kalender', 'Planering', 'Marknadsgranskning', 'Content Center',
       'Minne', 'Intelligence Graph', 'Pengar',
       'System', 'Inställningar',
     ])
@@ -136,7 +136,7 @@ describe('sidebar · which nav list each generation renders', () => {
   it('adds exactly the approved destinations', () => {
     const legacy = new Set(LEGACY_GLOBAL_NAV.map((i) => i.href))
     const added = vnextNavItemsFor('desktop').map((i) => i.href).filter((h) => !legacy.has(h))
-    expect(added.sort()).toEqual(['/organisation', '/planning', '/projects', '/settings', '/system'])
+    expect(added.sort()).toEqual(['/calendar', '/organisation', '/planning', '/projects', '/settings', '/system'])
   })
 
   it('drops nothing that legacy carried', () => {

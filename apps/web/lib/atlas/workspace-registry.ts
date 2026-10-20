@@ -74,6 +74,7 @@ export function resolveWorkspace(
   if (pathname === '/manager') {
     return { href: pathname, label: 'Manager', icon: 'layers' }
   }
+  if (pathname === '/calendar')return {href:pathname,label:'Kalender',icon:'calendar'}
   if (pathname === '/planning') {
     return { href: pathname, label: 'Planering', icon: 'calendar' }
   }

@@ -5,7 +5,7 @@
     "captured_at": "2026-09-25",
     "handlarborsen_review_p2_migration_note": "Operator-approved, project-locked, immutable human review decision events. RLS + FORCE RLS, zero policies, no anon/auth grants; service role SELECT/INSERT only, REVIEW RPC only service role. Fully isolated PG17.6 security tests passed. Live production catalog must be checked after application.",
     "handlarborsen_candidates_migration_note": "Additional candidate memory table to be verified against the scoped live production catalog after operator-approved application: project-locked, RLS and FORCE RLS, zero policies and client grants, service_role SELECT/INSERT only. Earlier table classifications remain unchanged.",
-    "total_tables": 173,
+    "total_tables": 178,
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
     "platform_tokens_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090000_platform_tokens_client_revoke.sql (Settings S0): client grants revoked, RLS on, no policy.",
     "platform_credential_events_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090100_platform_credential_events.sql (Settings S0), applied to production before this row was merged: created with RLS on and no policy, every client grant revoked, service_role holding SELECT and INSERT only, UPDATE/DELETE/TRUNCATE refused by triggers.",
@@ -87,7 +87,8 @@
     "sales_reply_source_reconciliation_note": "Scoped read-only production observation2026-10-18: three already-live sales_reply tables have RLS ON, zero policies, no anon/authenticated grants and service SELECT. Exact source from PR386 frozen8da379d2c376472e4e2470bc5e150ce85d8559c0 matches live ledger20261018040242:36146characters,SHA2567516d8566ae7776086452ff8fdd51058ce34a10ab70973bcdbf4ee14f655a3cc. Source-only reconciliation to unblock the strict migration guard; no SQL reapplied and no sales application code, flag, worker, inbox or sender changed. Existing capture scopes retained.",
     "social_schedule_live_note": "Scoped hosted observation2026-10-18 after user-authorized application of four exact reviewed migrations from fab47854. Ledger versions20261018085701/20261018085707/20261018085708/20261018085733. All seven tables RLS ON, zero policies and no anon/authenticated grants; service SELECT/INSERT, UPDATE only on jobs/rules. All28 scoped scheduling/monthly/reconciliation routines SECURITY INVOKER with empty search_path and zero client EXECUTE. Batches/jobs/decisions/rules empty. Source-only reconciliation after apply; no account, provider publication or dispatch activation. Existing catalog entries retain their capture scopes.",
     "sales_reply_sending_source_reconciliation_note": "Read-only scoped production observation2026-10-18: sales_send_events, sales_send_jobs and sales_send_policies have RLS enabled, zero policies, no anon/authenticated grants and service_role SELECT reachability. Exact canonical SQL20261018074615 from PR386 commit1b31d1fe23d8e9e36edaeda4b593bd5f044960c7 matches applied ledger SHA25680158d54a4cc5d7f15901f0ed8e67dc7fa04a8738054e14fb1c7be1cf484e49e (25411bytes). Source-only reconciliation; no SQL apply, application code, mail sending activation or privilege change. Older catalog entries retain their earlier capture scope.",
-    "media_news_review_evidence_note": "Owner approved production apply2026-10-18T20:20:51 Europe/Stockholm. Exact35199-byte source SQL SHA2569cfd8807817878d492814cc29240114c3e3101ac8504651f377f375089b63e52 applied as ledger20261018182224. Read-only catalogue confirms RLS ON, zero policies/client grants, service SELECT/INSERT only, no UPDATE/DELETE/TRUNCATE; four enabled guards and13 routine bodies/ACL/search_path match the exact source. Observed live after apply; older table entries retain their capture scopes. No movie admission, publication or app deployment."
+    "media_news_review_evidence_note": "Owner approved production apply2026-10-18T20:20:51 Europe/Stockholm. Exact35199-byte source SQL SHA2569cfd8807817878d492814cc29240114c3e3101ac8504651f377f375089b63e52 applied as ledger20261018182224. Read-only catalogue confirms RLS ON, zero policies/client grants, service SELECT/INSERT only, no UPDATE/DELETE/TRUNCATE; four enabled guards and13 routine bodies/ACL/search_path match the exact source. Observed live after apply; older table entries retain their capture scopes. No movie admission, publication or app deployment.",
+    "user_calendar_v1_note": "Pending reviewed apply. Owner-scoped session-client tables; real local SQL RLS/grants verified. No production-catalog claim before deployment."
   },
   "tables": {
     "handlarborsen_competitor_review_decisions": {
@@ -1332,6 +1333,30 @@
       "authenticated_grants": true,
       "service_role": true
     },
+    "sales_contact_timing_rules": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "sales_contact_history_revisions": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "sales_email_copy_revisions": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
     "sales_draft_revisions": {
       "class": "TENANT_RLS",
       "rls": true,
@@ -1784,6 +1809,26 @@
       "anon_grants": false,
       "authenticated_grants": false,
       "service_role": true
+    },
+    "user_calendar_events": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 3,
+      "anon_grants": false,
+      "authenticated_grants": true,
+      "service_role": false,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "user_calendar_mutations": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 2,
+      "anon_grants": false,
+      "authenticated_grants": true,
+      "service_role": false,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     }
   },
   "views": {

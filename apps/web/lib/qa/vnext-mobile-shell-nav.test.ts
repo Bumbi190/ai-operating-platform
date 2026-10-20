@@ -192,7 +192,7 @@ describe('NAVIGATION CONTRACT — the canonical model is the only source', () =>
     // portfolio destination, not a list of user-specific projects. Other
     // desktop-only destinations like /revenue and /planning stay hidden.
     expect(mobile.map((i) => i.href)).toEqual([
-      '/dashboard', '/atlas', '/chat', '/build', '/projects', '/approvals', '/agent-activity', '/memory',
+      '/dashboard', '/atlas', '/chat', '/build', '/projects', '/approvals', '/agent-activity', '/calendar', '/memory',
     ])
     expect(mobile.map((i) => i.href)).not.toContain('/revenue')
     expect(mobile.map((i) => i.href)).not.toContain('/planning')

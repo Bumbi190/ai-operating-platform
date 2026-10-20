@@ -36,6 +36,7 @@ export type DestinationId =
   | 'content_queue'
   | 'marketing_queue'
   | 'actions'
+  | 'calendar'
   | 'planning'
   | 'settings'
   | 'intelligence_graph'
@@ -89,6 +90,7 @@ const ROUTE_MAP: Record<DestinationId, string> = {
   content_queue: '/atlas/content',
   marketing_queue: '/atlas/marketing',
   actions: '/atlas',
+  calendar: '/calendar',
   planning: '/planning',
   settings: '/settings',
   intelligence_graph: '/intelligence/graph',
@@ -155,6 +157,7 @@ const DESTINATIONS: Record<DestinationId, Destination> = {
     keywords: ['actions', 'action center', 'att göra', 'priorities', 'next'],
     projectMode: 'none',
   },
+  calendar: {id:'calendar',label:'Kalender',keywords:['kalender','calendar','möten','möte','veckokalender','boka tid'],projectMode:'none'},
   planning: { id: 'planning', label: 'Planning', keywords: ['planning', 'planering', 'plan', 'week'], projectMode: 'none' },
   settings: { id: 'settings', label: 'Settings', keywords: ['settings', 'inställningar', 'config'], projectMode: 'none' },
   intelligence_graph: {

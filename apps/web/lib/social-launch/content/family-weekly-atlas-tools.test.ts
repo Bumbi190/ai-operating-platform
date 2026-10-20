@@ -1,13 +1,15 @@
-﻿import {beforeEach,describe,expect,it,vi} from 'vitest'
+﻿import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest'
 import {handleSocialContentTool,SOCIAL_CONTENT_TOOL_NAMES,SOCIAL_CONTENT_TOOLS} from './atlas-tools'
 import {readSocialContent,proposeSocialContent} from './store'
 import {readSchedules} from '../scheduling/store'
 import {FAMILY_WEEKLY_PROJECT_ID} from './family-weekly-coverage'
+import {FamilySourceStoreError,listFamilyMonthSourceReviews,proposeFamilyMonthSource} from './family-month-source-store'
 
 vi.mock('./store',()=>({
  readSocialContent:vi.fn(),proposeSocialContent:vi.fn(),
 }))
 vi.mock('../scheduling/store',()=>({readSchedules:vi.fn()}))
+vi.mock('./family-month-source-store',async(importOriginal)=>({...await importOriginal<typeof import('./family-month-source-store')>(),listFamilyMonthSourceReviews:vi.fn(),proposeFamilyMonthSource:vi.fn()}))
 const principal={userId:'10000000-0000-4000-8000-000000000001',
  allowedProjectIds:[FAMILY_WEEKLY_PROJECT_ID]}
 const ownerConversation='20000000-0000-4000-8000-000000000002'
@@ -16,6 +18,7 @@ const planId='e745041f-ad3a-493f-bd3b-025525d561b2'
 
 beforeEach(()=>{
  vi.clearAllMocks()
+ vi.stubEnv('FAMILY_MONTH_SOURCE_REVIEW_ENABLED','false')
  vi.mocked(readSocialContent).mockResolvedValue({
   project:{id:FAMILY_WEEKLY_PROJECT_ID,name:'Familje-Stunden',slug:'familje-stunden'},
   posts:[],assets:[],hasMoreAssets:false,planApproved:true,dispatchEnabled:false,
@@ -32,6 +35,7 @@ beforeEach(()=>{
     channels:['facebook','instagram'],enabled:true},
  })
 })
+afterEach(()=>vi.unstubAllEnvs())
 describe('Atlas weekly planning tool permission and side-effect boundary',()=>{
  it('exposes read-only weekly plan under existing owned conversation and tenant',async()=>{
   expect(SOCIAL_CONTENT_TOOL_NAMES).toContain('get_family_weekly_content_plan')
@@ -112,6 +116,65 @@ describe('Atlas weekly planning tool permission and side-effect boundary',()=>{
    {projectId:FAMILY_WEEKLY_PROJECT_ID,month:'2026-12'},principal,null,fakeDb))
    .toMatchObject({code:'NOT_FOUND'})
   expect(proposeSocialContent).not.toHaveBeenCalled()
+ })
+ it('Atlas cannot approve month sources and disabled tools do not read the private DB',async()=>{
+  expect(SOCIAL_CONTENT_TOOL_NAMES).toContain('get_family_month_source_reviews')
+  expect(SOCIAL_CONTENT_TOOL_NAMES).toContain('propose_family_month_source_review')
+  expect(SOCIAL_CONTENT_TOOL_NAMES).not.toContain('approve_family_month_source_review')
+  const result=await handleSocialContentTool('propose_family_month_source_review',
+   {projectId:FAMILY_WEEKLY_PROJECT_ID,proposal:{}},
+   principal,ownerConversation,fakeDb) as any
+  expect(result.code).toBe('UNAVAILABLE')
+  expect(readSocialContent).not.toHaveBeenCalled()
+  expect(proposeFamilyMonthSource).not.toHaveBeenCalled()
+ })
+ it('authorized conversation stores a private unapproved source, never a decision',async()=>{
+  vi.stubEnv('FAMILY_MONTH_SOURCE_REVIEW_ENABLED','true')
+  const proposal={projectId:FAMILY_WEEKLY_PROJECT_ID,month:'2026-12',
+   planRevisionId:planId,title:'December public preview'}
+  vi.mocked(proposeFamilyMonthSource).mockResolvedValue({
+   candidateId:'candidate',canActivate:false,canPublish:false,
+  } as any)
+  const result=await handleSocialContentTool('propose_family_month_source_review',
+   {projectId:FAMILY_WEEKLY_PROJECT_ID,proposal},
+   principal,ownerConversation,fakeDb) as any
+  expect(result).toMatchObject({candidateId:'candidate',canActivate:false,canPublish:false})
+  expect(readSocialContent).toHaveBeenCalledWith(fakeDb,principal,
+   {projectId:FAMILY_WEEKLY_PROJECT_ID,conversationId:ownerConversation})
+  expect(proposeFamilyMonthSource).toHaveBeenCalledWith(fakeDb,principal,proposal)
+  const blocked=await handleSocialContentTool('propose_family_month_source_review',
+   {projectId:FAMILY_WEEKLY_PROJECT_ID,proposal,decision:'approve'},
+   principal,ownerConversation,fakeDb) as any
+  expect(blocked.code).toBe('INVALID_BODY')
+  expect(proposeFamilyMonthSource).toHaveBeenCalledTimes(1)
+ })
+ it('read-only source-review cards are tenant-scoped and reject extra decision fields',async()=>{
+  vi.stubEnv('FAMILY_MONTH_SOURCE_REVIEW_ENABLED','true')
+  vi.mocked(listFamilyMonthSourceReviews).mockResolvedValue({
+   records:[],canActivate:false,canPublish:false,
+  } as any)
+  const input={projectId:FAMILY_WEEKLY_PROJECT_ID,month:'2026-12'}
+  const result=await handleSocialContentTool('get_family_month_source_reviews',
+   input,principal,ownerConversation,fakeDb) as any
+  expect(result.canActivate).toBe(false)
+  expect(listFamilyMonthSourceReviews).toHaveBeenCalledWith(fakeDb,principal,
+   {month:'2026-12'})
+  expect((await handleSocialContentTool('get_family_month_source_reviews',
+   {...input,decision:'approve'},principal,ownerConversation,fakeDb) as any).code).toBe('INVALID_BODY')
+  expect((await handleSocialContentTool('get_family_month_source_reviews',
+   input,principal,null,fakeDb) as any).code).toBe('NOT_FOUND')
+  expect((await handleSocialContentTool('get_family_month_source_reviews',
+   {...input,projectId:'30000000-0000-4000-8000-000000000003'},
+   principal,ownerConversation,fakeDb) as any).code).toBe('NOT_FOUND')
+ })
+ it('private store conflicts are surfaced as review conflicts, not permissions',async()=>{
+  vi.stubEnv('FAMILY_MONTH_SOURCE_REVIEW_ENABLED','true')
+  vi.mocked(proposeFamilyMonthSource).mockRejectedValue(new FamilySourceStoreError('CONFLICT'))
+  const input={projectId:FAMILY_WEEKLY_PROJECT_ID,
+   proposal:{projectId:FAMILY_WEEKLY_PROJECT_ID}}
+  const result=await handleSocialContentTool('propose_family_month_source_review',
+   input,principal,ownerConversation,fakeDb) as any
+  expect(result.code).toBe('REVISION_CONFLICT')
  })
  it('stages at most 4 October source-pinned review proposals in user conversation only',async()=>{
   const date=new Date('2026-10-20T18:00:00.000Z')

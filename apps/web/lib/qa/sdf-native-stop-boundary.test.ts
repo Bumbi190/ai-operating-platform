@@ -72,6 +72,9 @@ describe('cooperative native stop stays an internal, non-publishing boundary',()
   expect(execFileSync(GIT,['diff','--no-ext-diff',PLAN_BASE,'--','apps/code-broker/native/windows-host/HostPolicy.cs','apps/code-broker/native/windows-host/NativeFileEvidence.cs','apps/code-broker/native/windows-host/NativePipeEvidence.cs','apps/code-broker/native/windows-host/DockerObservation.cs','apps/code-broker/native/windows-host/HostQualification.cs'],{cwd:ROOT,encoding:'utf8'})).toBe('')
  })
  it('leaves the predecessor proof, frozen runner and command registry unchanged since the plan base',()=>{
-  expect(execFileSync(GIT,['diff','--no-ext-diff','--no-textconv',PLAN_BASE,'--','apps/code-broker/toolchain','apps/web/lib/atlas/code-work/command-registry.ts','docs/verification/2026-10-19-source-fixture-success.json','apps/code-broker/src/cli.ts','apps/web/supabase/migrations'],{cwd:ROOT,encoding:'utf8',maxBuffer:8*1024*1024})).toBe('')
+  expect(execFileSync(GIT,['diff','--no-ext-diff','--no-textconv',PLAN_BASE,'--','apps/code-broker/toolchain','apps/web/lib/atlas/code-work/command-registry.ts','docs/verification/2026-10-19-source-fixture-success.json','apps/code-broker/src/cli.ts'],{cwd:ROOT,encoding:'utf8',maxBuffer:8*1024*1024})).toBe('')
+  // Existing SQL remains byte-identical; later phases may introduce new migrations,
+  // which are independently checked by the canonical migration and schema guards.
+  expect(execFileSync(GIT,['diff','--name-only','--no-ext-diff','--diff-filter=DMRTUXB',PLAN_BASE,'--','apps/web/supabase/migrations'],{cwd:ROOT,encoding:'utf8',maxBuffer:8*1024*1024})).toBe('')
  })
 })

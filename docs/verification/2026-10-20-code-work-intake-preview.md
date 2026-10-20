@@ -27,9 +27,28 @@ Date: 2026-10-20. **Planning only; not enabled in conversation or voice.**
 
 ## Verified
 
-9 new focused tests and the router's 14 existing tests pass locally
-(23/23). SDF-1B Linux-CI now requires both test files and enforces 9/14
-anti-skip floors. The first GitHub CI run for this change is pending.
+The initial preview's 9 focused tests and model router's 14 tests passed
+locally and in GitHub CI at `15c88de` (23/23). The new shared instruction
+adapter adds 8 tests: all three suites now pass locally (31/31). SDF-1B CI
+requires each file and enforces 9/14/8 per-file anti-skip floors. This
+increment's new GitHub CI run has not yet completed.
+
+## Shared text/voice instruction contract (this increment)
+
+- `parseCodeWorkInstruction` recognizes a deliberately explicit Swedish or English
+  code-work planning instruction, from either typed chat text or a voice transcript.
+  The voice path also recognizes `Atlas, planera kodjobb att ...` without relying
+  on punctuation from speech recognition. General chat and vague "fix my code"
+  messages are not interpreted as work authorization.
+- It returns structured missing fields if an objective, kind, or exact file list
+  is not provided. It never infers absent paths, invents repository context,
+  accepts model-proposed approval fields or dispatches work.
+- `prepareInstructionPreview` only returns a version-bound preview after the
+  caller supplies trusted repository, Git SHA and qualified-model context from
+  the server. Without that, its distinct `binding_required` status stops the
+  proposal. It has no I/O or permission to start jobs.
+- Eight new tests pass locally; SDF-1B CI now requires this test file with an
+  eight-test anti-skip floor. No API handler or chat UI has been wired yet.
 
 ## Explicitly not implemented
 

@@ -101,7 +101,7 @@ describe('a lease guard authorizes exactly one native materialization',()=>{
   const f=fakeBridge(m,{schedule:()=>{n++;throw Error('scheduler failed')}})
   const r=await settle(f.bridge(bridgeRequest(),g.guard))
   expect(r).toEqual({status:'stopped',attemptId:ATTEMPT,reason:'control_lost',cleanup:'unknown',containerRemoved:null,volumeRemoved:null})
-  expect(f.s.stops).toBe(1);expect(f.s.kills).toBe(1);expect(f.s.cleanups).toBe(0);expect(g.guard.signal.aborted).toBe(true);expect(n).toBeGreaterThan(0)
+  expect(f.s.stops).toBe(1);expect(f.s.kills).toBe(1);expect(f.s.cleanups).toBe(0);expect(g.guard.signal.aborted).toBe(true);expect(n).toBe(1)
  })
  it('consumes the guard when the first claim names another purpose',async()=>{
   const g=await realGuard();expect(g.guard.claimSingleUse('other' as any)).toBe(false);expect(g.guard.claimSingleUse('native_materialization')).toBe(false)

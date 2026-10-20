@@ -124,7 +124,7 @@ function fakeBridge(m:any,over:any={}){
  const s={launched:0,reserved:[] as any[],continues:[] as number[],stops:0,kills:0,cleanups:[] as any[],payload:null as any,handlers:null as any,resolve:null as any,timers:[] as {ms:number;fn:()=>void;cancelled:boolean}[],cleanupResult:{status:'observed',report:makeMaterializationCleanup()} as any}
  const bridge=m.createNativeStopBridge({platform:'win32',nextAttempt:()=>ATTEMPT,
   reserve:(r:any,a:string)=>{s.reserved.push([r,a]);if(over.reserveFailure)throw Error('private')},
-  launch:(payload:any,handlers:any)=>{s.launched++;s.payload=payload;s.handlers=handlers;if(over.launchUnavailable)return{status:'unavailable',reason:'helper_unavailable'};const done=new Promise(r=>{s.resolve=r});return{status:'launched',process:{pid:7,continue:(n:number)=>s.continues.push(n),stop:()=>{s.stops++},kill:()=>{s.kills++},done}}},
+  launch:(payload:any,handlers:any)=>{s.launched++;s.payload=payload;s.handlers=handlers;if(over.launchUnavailable)return{status:'unavailable',reason:'helper_unavailable'};const done=new Promise(r=>{s.resolve=r});return{status:'launched',process:{pid:7,continue:(n:number)=>s.continues.push(n),stop:()=>{s.stops++;if(over.syncStopped)handlers.stopped?.()},kill:()=>{s.kills++},done}}},
   cleanup:async(input:any,attempt:string)=>{s.cleanups.push([input,attempt]);return s.cleanupResult},
   schedule:(fn:()=>void,ms:number)=>{const t={ms,fn,cancelled:false};s.timers.push(t);return()=>{t.cancelled=true}},...over.deps})
  return{bridge,s,async checkpoint(seq:number){await s.handlers.checkpoint(seq,PHASES[seq-1]);await flush()}}
@@ -243,8 +243,9 @@ describe('guard-driven native stop bridge',()=>{
   f.s.resolve({kind:'violation',reason:'exited_without_report'});expect(await run).toMatchObject({status:'stopped',reason:'lease_lost',cleanup:'confirmed'});expect(wait.cancelled).toBe(true)
  })
  it('keeps lease_lost when the guard stops first and the launcher reports that stop synchronously',async()=>{
-  const m=await bridgeModule(),g=await realGuard(),f=fakeBridge(m),run=f.bridge(bridgeRequest(),g.guard);await flush();await f.checkpoint(1)
-  const stop=f.s.handlers;const original=f.s.stops;g.guard.stop();await flush();stop.stopped();expect(f.s.stops).toBe(original+1)
+  // Like the real launcher, the fake calls handlers.stopped() synchronously inside stop().
+  const m=await bridgeModule(),g=await realGuard(),f=fakeBridge(m,{syncStopped:true}),run=f.bridge(bridgeRequest(),g.guard);await flush();await f.checkpoint(1)
+  const original=f.s.stops;g.guard.stop();await flush();expect(f.s.stops).toBe(original+1)
   f.s.resolve({kind:'report',value:stoppedReport('stop_requested')});expect(await run).toMatchObject({status:'stopped',reason:'lease_lost'})
  })
  const failedCleanup=()=>{const r:any=makeMaterializationCleanup();r.status='failed';r.reason='cleanup_retained';r.containerRemoved=false;r.volumeRemoved=false;return r}

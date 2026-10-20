@@ -51,3 +51,30 @@ Granskaren bekräftade följande:
 Raden `no such object` i kontrollens logg är Dockers stderr från PG-fixturens frånvarokontroll efter borttagning. Den är väntad, och testet bekräftar den uttryckligen.
 
 Fynd 1–4 rör samma två säkerhetsbundna filer. Att rätta dem gör A–D inaktuella, så de bör tas samlat i ett eget godkänt steg och inte smygas in.
+
+## Uppföljning: granskningsfynd 1–4 åtgärdade (`700cdaa`, godkänt av André 08:38)
+
+| Fynd | Åtgärd | RED → GREEN |
+| --- | --- | --- |
+| 1. Förfalskat anspråk | Anspråk går bara via `claimGuardUse(guard, purpose)`, som bygger på en modulprivat `WeakMap` över guards som fabriken skapat. Guards fryses med `Object.freeze`. | RED: en förfalskad guard startade ett försök. GREEN: den nekas utan läsning eller reservation. |
+| 2. Guarden levde under städningen | `cleanOnce` stoppar guarden innan städningen börjar. I det riktiga försöket D syns `guard_aborted` före `cleanup_called`. | RED → GREEN |
+| 3. Kastande uppsättning efter launch | Hjälparen stoppas och tvångsavslutas, timers avbryts och utfallet blir `stopped/unknown` utan städning. | RED → GREEN |
+| 4. Testluckor | Tester för att kill-wait avbryts, fel syfte vid första anspråket, guard som saknar anspråk och oväntat kastat fel. | Grönt direkt: beteendet var redan rätt, testerna ligger kvar som regressionsskydd |
+
+**Verifiering vid `700cdaa`:**
+- Riktat: 135/135.
+- A–D en gång vardera: alla gröna, resurser frånvarande, gravstenar 51 → 63.
+- Binärerna: oförändrade (`b018302f…` / `f7031109…`).
+- Slutkontroll: 393/393 i 19 filer, typkontroll och `git diff --check` utan fel.
+
+**Oberoende granskning av `700cdaa`:** APPROVE WITH MINORS, inga materiella fynd.
+- M1 och M4 gällde bara testerna och är rättade i nästa commit:
+  - Bryggtestets falska `stop` anropar nu `stopped` synkront, som den riktiga startaren gör. En mutation som kastar om ordningen i `sendStop` fångas av testet.
+  - Testet för kastande uppsättning kräver exakt ett anrop till schemaläggaren.
+- M5: den här rapporten uppdaterad. Implementationen använder `WeakMap`, inte `WeakSet`.
+- M2 och M3 (låg risk) är kvar. De gäller bara en injicerad schemaläggare som kastar, medan produktion använder `setTimeout`:
+  - Ett misslyckat `armGrace` kan blockera senare grace.
+  - En kastande avbrytsfunktion kan hoppa över kill.
+
+  De åtgärdas i nästa ändring av bryggan, så att A–D bara behöver köras om en gång.
+- Information: guardens abort kommer nu före städningens slut. Ingen produktionskonsument finns än. Den första konsumenten får inte tolka abort som att försöket är avslutat.

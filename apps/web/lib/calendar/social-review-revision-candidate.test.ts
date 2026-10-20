@@ -34,7 +34,7 @@ const count=(table:string)=>Number(f.sql('select count(*) from public.'+table));
 const events=(name:string)=>Number(f.sql(
  "select count(*) from public.social_schedule_events where event='"+name+"'"));
 const state=()=>f.sql("select state from public.social_schedule_jobs where post_id='"+post+"'");
-let batch:{batchId:string;revisionId:string;sha256:string;version:number};
+let batch:{batchId:string;revisionId:string;sha256:string;version:number;status:string};
 
 beforeAll(()=>{
  f=initializeCalendarDb();

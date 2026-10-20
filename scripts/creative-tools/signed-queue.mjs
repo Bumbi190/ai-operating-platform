@@ -9,7 +9,7 @@ import { join } from 'node:path';
 
 export const CREATIVE_QUEUE_SCHEMA='omnira.creative.queue-ticket.v1';
 const FIELDS=[
-  'schema','workId','projectId','sourceAssetId','sourceSha256',
+  'schema','workId','workerId','projectId','sourceAssetId','sourceSha256',
   'operation','binarySha256','approvalReceiptSha256','outputMaxBytes',
   'issuedAt','expiresAt','claimNonce',
 ];
@@ -29,7 +29,7 @@ export function validateCreativeQueueClaims(raw) {
      Object.keys(raw).length!==FIELDS.length ||
      Object.keys(raw).some(k=>!FIELDS.includes(k))) throw new Error('invalid ticket fields');
   if(raw.schema!==CREATIVE_QUEUE_SCHEMA ||
-     !ID.test(raw.workId) || !ID.test(raw.projectId) ||
+     !ID.test(raw.workId) || !ID.test(raw.workerId) || !ID.test(raw.projectId) ||
      !UUID.test(raw.sourceAssetId) || !HASH.test(raw.sourceSha256) ||
      !OPS.has(raw.operation) || !HASH.test(raw.binarySha256) ||
      !HASH.test(raw.approvalReceiptSha256) || !NONCE.test(raw.claimNonce) ||
@@ -45,7 +45,7 @@ export function canonicalCreativeQueueClaims(raw) {
   return Buffer.from(FIELDS.map(k=>k+':'+String(c[k])).join('\n'),'utf8');
 }
 const MATCH=[
-  'workId','projectId','sourceAssetId','sourceSha256','operation',
+  'workId','workerId','projectId','sourceAssetId','sourceSha256','operation',
   'binarySha256','approvalReceiptSha256','outputMaxBytes',
 ];
 export function verifySignedCreativeTicket(ticket,trustedServerKey,expected,now=new Date()) {

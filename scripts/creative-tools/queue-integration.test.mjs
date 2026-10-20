@@ -45,7 +45,7 @@ test('offline signed approval -> signed queue ticket -> one-use non-executing cl
     assert.equal(receipt.executionAuthorized,false);
     const receiptPath=join(approvals,receipt.nonceHash+'.json');
     const ticketClaims={
-      schema:CREATIVE_QUEUE_SCHEMA,...Object.fromEntries(
+      schema:CREATIVE_QUEUE_SCHEMA,workerId:'HultgrenCreative01',...Object.fromEntries(
         Object.entries(scope).filter(([k])=>k!=='approverId')),
       approvalReceiptSha256:sha(readFileSync(receiptPath)),
       issuedAt,expiresAt,claimNonce:randomBytes(24).toString('base64url'),

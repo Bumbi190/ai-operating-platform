@@ -29,6 +29,14 @@ foreach ($name in @('photocraft','filmcraft')) {
   $archiveMatches = $archiveExists -and $archiveDigest -eq ([string]$entry.archiveSha256).ToLowerInvariant()
   $relativeDir = Split-Path ($entry.binaryRelativePath -replace '/', '\') -Parent
   $dest = Join-Path $binRoot $relativeDir
+  $targetExists = $null
+  $targetVisibility = 'unreadable'
+  try {
+    $targetExists = [bool](Test-Path -LiteralPath $dest -ErrorAction Stop)
+    $targetVisibility = if ($targetExists) { 'present' } else { 'absent' }
+  } catch {
+    $targetVisibility = 'access_denied'
+  }
   $present = Test-Path -LiteralPath $binary -PathType Leaf
   $digest = if ($present) { (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash.ToLowerInvariant() } else { $null }
   $expected = [string]$entry.sha256
@@ -43,7 +51,8 @@ foreach ($name in @('photocraft','filmcraft')) {
     archiveFile = $archive
     sourceDir = $source
     targetDir = $dest
-    targetExists = (Test-Path -LiteralPath $dest)
+    targetExists = $targetExists
+    targetVisibility = $targetVisibility
   }
 }
 if (-not $Apply) {
@@ -64,7 +73,7 @@ if ($null -eq $account -or $account.Enabled) { throw 'Worker account must exist 
 if (-not (Test-Path -LiteralPath $binRoot -PathType Container)) {
   throw 'Provision worker directory and ACLs before staging binaries.'
 }
-if (@($results | Where-Object { -not $_.sourceHashMatchesLock -or -not $_.archiveHashMatchesLock -or $_.targetExists }).Count -gt 0) {
+if (@($results | Where-Object { -not $_.sourceHashMatchesLock -or -not $_.archiveHashMatchesLock -or $_.targetExists -ne $false }).Count -gt 0) {
   throw 'Source hash mismatch or existing targets: refusing copy.'
 }
 foreach ($program in $results) {

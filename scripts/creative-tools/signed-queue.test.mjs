@@ -12,7 +12,7 @@ const keyPair=generateKeyPairSync('ec',{namedCurve:'prime256v1'});
 const otherKey=generateKeyPairSync('ec',{namedCurve:'prime256v1'});
 const now=new Date('2026-10-20T19:00:00.000Z');
 const claims={
-  schema:CREATIVE_QUEUE_SCHEMA,workId:'mediajob001',projectId:'familje-stunden',
+  schema:CREATIVE_QUEUE_SCHEMA,workId:'mediajob001',workerId:'HultgrenCreative01',projectId:'familje-stunden',
   sourceAssetId:'00000000-0000-4000-8000-000000000001',
   sourceSha256:'a'.repeat(64),operation:'photocraft.convert-webp',
   binarySha256:'b'.repeat(64),approvalReceiptSha256:'c'.repeat(64),
@@ -21,7 +21,7 @@ const claims={
   claimNonce:'0123456789abcdefghij0123456789',
 };
 const expected=Object.fromEntries([
- 'workId','projectId','sourceAssetId','sourceSha256','operation',
+ 'workId','workerId','projectId','sourceAssetId','sourceSha256','operation',
  'binarySha256','approvalReceiptSha256','outputMaxBytes',
 ].map(key=>[key,claims[key]]));
 const ticketFor=c=>({

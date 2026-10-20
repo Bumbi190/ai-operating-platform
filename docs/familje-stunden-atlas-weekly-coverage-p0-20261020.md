@@ -176,3 +176,48 @@ only after canonical new-month material, media registrations, and editorial
 review rules have been supplied and verified. Then add an independent
 approved, cost-capped recurring trigger. The existing read-only cron stays
 disabled; the approved release gate and live social sending remain separate.
+
+## P3 — Verified editorial source registry, reusable for future months
+
+New immutable in-code source registry:
+- apps/web/lib/social-launch/content/family-editorial-packs.ts
+- apps/web/lib/social-launch/content/family-editorial-packs.test.ts
+
+The current pack contains only owner-grounded PUBLIC promotional
+November preview facts, based on the already inspected hero and
+activity evidence. It permits exactly 2026-10-23, 27 and 30 in
+ordinary (non-month-release) slots. Draft captions in the pack have
+not been approved as social publications; they are proposals.
+
+The generic resolver now owns eligible days, captions, formats,
+provenance hashes and eligibility. Weekly preparation no longer needs
+hardcoded October date switches. Future months can be added via
+distinct reviewed packs (source proof, dates and text), but are
+intentionally blocked when absent. No reused older-month copy and
+no private member images, stories, MP3s or signed URLs.
+
+Safety improvements:
+- Rejects foreign projects, unsupported channels, changed plan
+  revision, month-release use and unsupported dates.
+- Source SHA-256 changes when cited facts or campaign copy change.
+- Stable post UUID is scoped to project, approved plan, channel and
+  calendar slot; source revisions cannot create a duplicate post ID.
+- Idempotency keys additionally pin the exact source SHA-256, so
+  edited copy cannot silently reuse an earlier accepted payload.
+- An existing Facebook image post in a plan that currently allows
+  only Facebook text is marked needs_review, not prepared.
+- Atlas read-only week planning and protected disabled cron expose
+  only safe source-ready versus source-missing counts.
+- No auto image generation, no API model spending, no content
+  upload, no publication, no calendar execution.
+- The owner's social plan and customer month entitlement are
+  independent release gates.
+
+Final focused Vitest:
+- 34/34 tests passed across 7 suites.
+- TypeScript reported ONLY 3 pre-existing errors in
+  lib/media/lambda-render.ts (Remotion Lambda module/region typing).
+  No new planner/editorial diagnostics.
+
+This implementation is stored only in the isolated local development
+branch; no new GitHub CI jobs or production deploy were triggered.

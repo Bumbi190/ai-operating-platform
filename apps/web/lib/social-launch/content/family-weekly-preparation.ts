@@ -2,23 +2,14 @@
 import type {SocialContentInput,SocialContentView,SocialContentPrincipal} from './types'
 import type {ScheduleWorkspaceView} from '../scheduling/store'
 import {buildFamilyWeekCoverage,FAMILY_WEEKLY_PROJECT_ID} from './family-weekly-coverage'
+import {FAMILY_PUBLIC_PREVIEW_EVIDENCE,getFamilyPublicEditorialSlot} from './family-editorial-packs'
 
 /**
- * Pinned public editorial facts from Familje-Stunden's verified November
- * teaser artwork and story/activities. These are *review facts*, NOT an
- * assertion that November subscription content has been released.
+ * Project-owned, vetted public evidence only. Captions still need human review.
+ * Subscriber audio and protected November images are NOT sources for public posts.
  */
-export const FAMILY_NOVEMBER_PREVIEW_SOURCE=Object.freeze({
- projectId:FAMILY_WEEKLY_PROJECT_ID,
- month:'2026-11',
- source:'november-teaser-owner-canonical-v1',
- heroSha256:'5789a09f28ad95334d5d1a3a08af3cc3d3201468d28f66f310da860db0815a76',
- activitySha256:'ffd12c414aba2b71e2c39965c22e5c71f1028905eb5ed64217c054893604b31b',
- factualTheme:'Löv- och Skuggmånaden',
- characters:'Nova och Pling',
- })
+export const FAMILY_NOVEMBER_PREVIEW_SOURCE=FAMILY_PUBLIC_PREVIEW_EVIDENCE
 const PLAN_REVISION='e745041f-ad3a-493f-bd3b-025525d561b2'
-const PLAN_SOURCE_VERSION='family-november-2026-editorial-prep-v1'
 const hash=(s:string)=>createHash('sha256').update(s).digest('hex')
 function idempotentId(raw:string){
  const h=hash(raw)
@@ -32,7 +23,8 @@ export type FamilyReviewProposal={
  planRevisionId:string
  expectedRevisionId:null
  projectId:typeof FAMILY_WEEKLY_PROJECT_ID
- sourceId:typeof PLAN_SOURCE_VERSION
+ sourceId:string
+ sourceSha256:string
  draft:SocialContentInput
  requiresMediaReview:boolean
 }
@@ -56,36 +48,32 @@ export function prepareFamilyReviewCandidates(input:{
  const coverage=buildFamilyWeekCoverage({content,schedule,now,daysAhead:14})
  const candidates:FamilyReviewProposal[]=[]
  for(const slot of coverage.slots){
-  if(slot.status!=='needs_content'||slot.kind!=='ordinary'||
-    slot.localMinute.slice(0,10)<'2026-10-21'||
-    slot.localMinute.slice(0,10)>'2026-10-30')continue
-  // We only have specific sourced copy for the October preview dates.
-  // Ordinary content after October is intentionally blocked.
-  const date=slot.localMinute.slice(0,10)
-  if(!['2026-10-23','2026-10-27','2026-10-30'].includes(date))continue
+  if(slot.status!=='needs_content'||slot.kind!=='ordinary')continue
+  // The source registry is the ONLY authority for eligible dates and claims.
+  // Unknown months/dates return null. Never reuse a previous month's template.
+  const source=getFamilyPublicEditorialSlot({
+   projectId:FAMILY_WEEKLY_PROJECT_ID,
+   planRevisionId:content.currentPlanRevisionId,kind:slot.kind,
+   channel:slot.channel,date:slot.localMinute.slice(0,10),
+  })
+  if(!source)continue
   const channel=slot.channel
-  const variant=date==='2026-10-23'?'forest':date==='2026-10-27'?'shadows':'leaves'
-  const title=variant==='forest'?'En smygtitt på november':
-   variant==='shadows'?'Följ skuggorna med Nova och Pling':'Snart väntar Löv- och Skuggmånaden'
-  const text=variant==='forest'?
-   'Vi förbereder Löv- och Skuggmånaden med Nova och Pling. Snart väntar nya skogsäventyr och aktiviteter att upptäcka tillsammans. Vad hoppas ni få utforska?':
-   variant==='shadows'?
-   'Vilka former kan en skugga gömma? I november bjuder Nova och Pling in till Löv- och Skuggmånaden. En liten smygtitt på ett äventyr som snart väntar.':
-   'Bland löv och skuggor väntar nya stunder med Nova och Pling. Vi förbereder november tillsammans – med fantasi, lek och tid för varandra.'
-  const mediaBrief=channel==='instagram'?
-   'Välj en redan godkänd, projektägd November-illustration med Nova och Pling. Registrera bilden i Omnira och granska hash och bild innan godkännande. Inga privata sagosidor eller filer får publiceras.':''
   const draft:SocialContentInput={
-   channel,format:channel==='facebook'?'text':'image',
-   title,text,linkUrl:null,mediaIds:[],mediaBrief,scheduledAt:slot.scheduledAt,
+   ...source.draft,scheduledAt:slot.scheduledAt,
   }
-  const identity=PLAN_SOURCE_VERSION+'|'+FAMILY_WEEKLY_PROJECT_ID+'|'+PLAN_REVISION+
-   '|'+channel+'|'+slot.scheduledAt+'|'+variant
+  // One stable post per calendar slot. A later source/copy revision may change
+  // the idempotency key but NEVER create another post for the same slot.
+  // expectedRevisionId=null then fails closed if the existing post changed.
+  const slotIdentity=FAMILY_WEEKLY_PROJECT_ID+'|'+PLAN_REVISION+
+   '|'+channel+'|'+slot.scheduledAt
+  const sourceIdentity=slotIdentity+'|'+source.sourceId+'|'+source.sourceSha256
   const proposal:FamilyReviewProposal={
    projectId:FAMILY_WEEKLY_PROJECT_ID,
-   postId:idempotentId(identity),
-   idempotencyKey:'fmn'+hash(identity).slice(0,45),
+   postId:idempotentId(slotIdentity),
+   idempotencyKey:'fmn'+hash(sourceIdentity).slice(0,45),
    planRevisionId:PLAN_REVISION,
-   expectedRevisionId:null,sourceId:PLAN_SOURCE_VERSION,
+   expectedRevisionId:null,sourceId:source.sourceId,
+   sourceSha256:source.sourceSha256,
    draft,requiresMediaReview:channel==='instagram',
   }
   // Stable deterministic key avoids repeated new draft IDs on retries.

@@ -45,6 +45,9 @@ describe('Atlas weekly planning tool permission and side-effect boundary',()=>{
   expect(value.autonomousDraftingEnabled).toBe(false)
   expect(value.automaticPublishingEnabled).toBe(false)
   expect(value.costsIncurredByPlan).toBe(0)
+  expect(value.sourceReadiness.aiSourceGuessingAllowed).toBe(false)
+  expect(value.sourceReadiness.sourceReady+value.sourceReadiness.sourceMissing)
+   .toBe(value.summary.missing)
   expect(readSocialContent).toHaveBeenCalledWith(fakeDb,principal,
    {projectId:FAMILY_WEEKLY_PROJECT_ID,conversationId:ownerConversation})
   expect(readSchedules).toHaveBeenCalledWith(fakeDb,principal,

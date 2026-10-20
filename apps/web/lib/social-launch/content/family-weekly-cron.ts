@@ -4,6 +4,7 @@ import {createAdminClient} from '@/lib/supabase/admin'
 import {readSocialContent} from '@/lib/social-launch/content/store'
 import {readSchedules} from '@/lib/social-launch/scheduling/store'
 import {buildFamilyWeekCoverage,FAMILY_WEEKLY_PROJECT_ID} from '@/lib/social-launch/content/family-weekly-coverage'
+import {getFamilyEditorialReadiness} from '@/lib/social-launch/content/family-editorial-packs'
 
 const headers={'cache-control':'private, no-store','x-content-type-options':'nosniff'}
 const json=(body:unknown,status=200)=>Response.json(body,{status,headers})
@@ -44,11 +45,16 @@ export async function familyWeeklyPlanningTickApi(request:Request){
   const content=await readSocialContent(db,principal,{projectId:FAMILY_WEEKLY_PROJECT_ID})
   const schedule=await readSchedules(db,principal,{projectId:FAMILY_WEEKLY_PROJECT_ID})
   const report=buildFamilyWeekCoverage({content,schedule,now:new Date().toISOString(),daysAhead:14})
+  const sources=getFamilyEditorialReadiness({
+   projectId:FAMILY_WEEKLY_PROJECT_ID,planRevisionId:report.planRevisionId,
+   slots:report.slots,
+  })
   // Do not put private captions, tokens, media, account IDs or URLs in a cron
   // response, alert, log, or auto-triggered follow-up action.
   return json({mode:'read_only',result:'checked',asOf:report.asOf,
    projectId:FAMILY_WEEKLY_PROJECT_ID,daysAhead:14,
    summary:report.summary,nextAction:report.nextAction,
+   sourceReady:sources.sourceReady,sourceMissing:sources.sourceMissing,
    actionRequired:report.summary.missing+report.summary.needsReview>0,
    draftsCreated:0,schedulesChanged:0,publicationsSent:0,aiCalls:0})
  }catch{

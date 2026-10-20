@@ -103,6 +103,17 @@ describe('Atlas read-only Familje-Stunden weekly coverage audit',()=>{
   expect(report.slots.find(s=>s.channel==='facebook'&&s.scheduledAt===fri)?.status).toBe('needs_review')
   expect(report.summary.queued).toBe(0)
  })
+ it('wrong-format Facebook image under current TEXT plan is review-needed, never duplicate or ready',()=>{
+  const x=data(),date=resolveStockholmSchedule('2026-10-23T20:30')
+  const saved=post('facebook',date)
+  saved.revision.draft.format='image'
+  saved.revision.media=[{id:'image',kind:'image',sha256:'a'.repeat(64),
+   mimeType:'image/jpeg',width:1080,height:1080}]
+  x.content.posts.push(saved)
+  const receipt=buildFamilyWeekCoverage(x)
+  const slot=receipt.slots.find(s=>s.channel==='facebook'&&s.scheduledAt===date)
+  expect(slot).toMatchObject({status:'needs_review',postId:saved.id})
+ })
  it('never claims a November release is ready just because a matching editorial post is approved',()=>{
   const x=data(),monthly=resolveStockholmSchedule('2026-11-01T20:30')
   x.content.posts.push(post('facebook',monthly))

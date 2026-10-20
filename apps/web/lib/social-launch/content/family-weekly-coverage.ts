@@ -75,8 +75,10 @@ export function buildFamilyWeekCoverage({content,schedule,now,daysAhead}:Input){
    let status:FamilyWeekGap['status']='needs_content'
    if(queue){status=!queue.reviewCurrent?'needs_review':queue.state==='published'?'published':'in_queue'}
    else if(post){
-    const mediaOk=channel==='facebook'||post.revision.media.some(m=>m.kind==='image')
-    status=post.status==='approved'&&mediaOk&&
+    const correctFormat=post.revision.draft.format===choices.get(channel)?.format
+    const mediaOk=post.revision.draft.format==='text'||
+      post.revision.media.some(m=>m.kind==='image')
+    status=post.status==='approved'&&correctFormat&&mediaOk&&
       !post.requirements.includes('media_required')?'prepared':'needs_review'
    }
    if(pendingMonthDraft)status='needs_review'

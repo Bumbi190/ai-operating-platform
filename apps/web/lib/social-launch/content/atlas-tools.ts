@@ -8,6 +8,7 @@ import {readSocialContent,proposeSocialContent} from './store'
 import {readSchedules} from '../scheduling/store'
 import {buildFamilyWeekCoverage,FAMILY_WEEKLY_PROJECT_ID} from './family-weekly-coverage'
 import {stageFamilyReviewCandidates} from './family-weekly-preparation'
+import {getFamilyEditorialReadiness} from './family-editorial-packs'
 const project={projectId:{type:'string' as const,description:'Existing project UUID belonging to this conversation.'}}
 export const SOCIAL_CONTENT_TOOLS:Anthropic.Tool[]=[
  {name:'prepare_family_weekly_review_drafts',description:'Prepare at most 4 deterministic, grounded October 2026 Familje-Stunden preview review proposals in the existing owner conversation for missing calendar slots only. Use ONLY when the operator explicitly asks Atlas to prepare weekly content. Saves unapproved drafts for owner review, never uploads files, runs TTS, schedules executable jobs, approves or publishes.',input_schema:{type:'object',additionalProperties:false,properties:{...project},required:['projectId']}},
@@ -41,7 +42,12 @@ export async function handleSocialContentTool(name:string,input:Record<string,un
    if(daysAhead!==7&&daysAhead!==14)throw new SocialContentError('INVALID_BODY')
    const content=await readSocialContent(db,p,{projectId:FAMILY_WEEKLY_PROJECT_ID,conversationId})
    const schedule=await readSchedules(db,p,{projectId:FAMILY_WEEKLY_PROJECT_ID})
-   return buildFamilyWeekCoverage({content,schedule,now:new Date().toISOString(),daysAhead})
+   const coverage=buildFamilyWeekCoverage({content,schedule,now:new Date().toISOString(),daysAhead})
+   return {...coverage,sourceReadiness:getFamilyEditorialReadiness({
+    projectId:FAMILY_WEEKLY_PROJECT_ID,
+    planRevisionId:coverage.planRevisionId,
+    slots:coverage.slots,
+   })}
   }
   return name==='get_social_content'?await readSocialContent(db,p,{projectId:input.projectId as string,conversationId}):await proposeSocialContent(db,p,{...input,conversationId} as SocialContentProposal)
  }catch(error){const code=error instanceof SocialContentError?error.code:'UNAVAILABLE';return {code,error:'Innehållet kunde inte behandlas. Läs aktuell projektstatus och granska exakt version innan du fortsätter.'}}

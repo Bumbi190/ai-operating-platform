@@ -101,6 +101,7 @@ describe('Familje-Stunden read-only cron planner (not registered in vercel.json)
    asOf:'2026-10-20T18:00:00.000Z',projectId:FAMILY_WEEKLY_PROJECT_ID,
    daysAhead:14,draftsCreated:0,schedulesChanged:0,publicationsSent:0,aiCalls:0,
    summary:{slots:8,missing:8},
+   sourceReady:6,sourceMissing:2,
   })
   expect(state.selectCalls).toEqual(['id,slug,owner_id'])
   expect(state.contentCalls).toHaveLength(1)

@@ -54,10 +54,21 @@ export function buildFamilyWeekCoverage({content,schedule,now,daysAhead}:Input){
   for(const channel of ['facebook','instagram'] as const){
    // Always inspect only current revision: stale or rejected content cannot
    // silently satisfy a planning slot.
-   const post=content.posts.find(p=>p.revision.draft.channel===channel&&
+   const scheduledPost=content.posts.find(p=>p.revision.draft.channel===channel&&
       p.revision.draft.scheduledAt===scheduledAt&&
       p.revision.planRevisionId===content.currentPlanRevisionId&&
       p.status!=='rejected')
+   // An existing unscheduled month-release draft must be sent for review,
+   // not silently duplicated or treated as an approved release.
+   const pendingMonthDraft=monthly&&!scheduledPost?
+     content.posts.find(p=>p.revision.draft.channel===channel&&
+       p.revision.planRevisionId===content.currentPlanRevisionId&&
+       p.revision.draft.scheduledAt===null&&
+       p.status!=='rejected'&&
+       p.revision.draft.title.toLocaleLowerCase('sv-SE').startsWith(
+         ['januari','februari','mars','april','maj','juni','juli','augusti',
+          'september','oktober','november','december'][d.getUTCMonth()]+' ')):null
+   const post=scheduledPost??pendingMonthDraft
    const queue=scheduledJobs.find(j=>j.channel===channel&&j.kind===kind&&
       j.scheduledAt===scheduledAt&&
       !['cancelled','failed','blocked','missed'].includes(j.state))
@@ -68,6 +79,7 @@ export function buildFamilyWeekCoverage({content,schedule,now,daysAhead}:Input){
     status=post.status==='approved'&&mediaOk&&
       !post.requirements.includes('media_required')?'prepared':'needs_review'
    }
+   if(pendingMonthDraft)status='needs_review'
    // A monthly release without catalog/access evidence must never be
    // represented as ready or as scheduled only from a matching post.
    if(monthly && !queue && status==='prepared')status='needs_review'

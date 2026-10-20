@@ -75,6 +75,47 @@ describe('Atlas weekly planning tool permission and side-effect boundary',()=>{
   expect(value.code).toBe('UNAVAILABLE')
   expect(readSchedules).not.toHaveBeenCalled()
  })
+ it('stages at most 4 October source-pinned review proposals in user conversation only',async()=>{
+  const date=new Date('2026-10-20T18:00:00.000Z')
+  vi.useFakeTimers()
+  try{
+   vi.setSystemTime(date)
+   vi.mocked(proposeSocialContent).mockResolvedValue({} as any)
+   const tool=SOCIAL_CONTENT_TOOLS.find(t=>t.name==='prepare_family_weekly_review_drafts')
+   expect(tool?.description).toContain('operator explicitly asks')
+   const output=await handleSocialContentTool('prepare_family_weekly_review_drafts',
+    {projectId:FAMILY_WEEKLY_PROJECT_ID},principal,ownerConversation,fakeDb) as any
+   expect(output.kind).toBe('family_weekly_review_staging_v1')
+   expect(output.created).toBe(4)
+   expect(output.canPublish).toBe(false)
+   expect(output.aiGenerationCalls).toBe(0)
+   expect(output.workspaceUrl).toBe('/projects/familje-stunden/social#content')
+   expect(proposeSocialContent).toHaveBeenCalledTimes(4)
+   const first=vi.mocked(proposeSocialContent).mock.calls[0]
+   expect(first[0]).toBe(fakeDb)
+   expect(first[1]).toBe(principal)
+   expect(first[2]).toMatchObject({projectId:FAMILY_WEEKLY_PROJECT_ID,
+    conversationId:ownerConversation,expectedRevisionId:null})
+   expect(first[2].draft.mediaIds).toEqual([])
+   expect(first[2].draft.scheduledAt).not.toBe(null)
+  }finally{vi.useRealTimers()}
+ })
+ it('refuses changed tenant, unsolicited extra settings, or missing owner conversation',async()=>{
+  for(const wrong of [
+   {projectId:'30000000-0000-4000-8000-000000000003'},
+   {projectId:FAMILY_WEEKLY_PROJECT_ID,publish:true},
+   {projectId:FAMILY_WEEKLY_PROJECT_ID,budgetUsd:50},
+  ]){
+   const value=await handleSocialContentTool('prepare_family_weekly_review_drafts',
+    wrong,principal,ownerConversation,fakeDb) as any
+   expect(['NOT_FOUND','INVALID_BODY']).toContain(value.code)
+  }
+  expect(await handleSocialContentTool('prepare_family_weekly_review_drafts',
+   {projectId:FAMILY_WEEKLY_PROJECT_ID},principal,null,fakeDb))
+   .toMatchObject({code:'NOT_FOUND'})
+  expect(proposeSocialContent).not.toHaveBeenCalled()
+  expect(readSocialContent).not.toHaveBeenCalled()
+ })
  it('fails closed when schedule read is unavailable instead of inventing gaps',async()=>{
   vi.mocked(readSchedules).mockRejectedValue(new Error('storage unavailable'))
   const value=await handleSocialContentTool('get_family_weekly_content_plan',

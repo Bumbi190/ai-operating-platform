@@ -70,6 +70,18 @@ describe('Atlas read-only Familje-Stunden weekly coverage audit',()=>{
   expect(result.summary.missing).toBe(6)
   expect(result.summary.queued).toBe(1)
  })
+ it('recognizes an existing unscheduled November month draft and prevents duplicates',()=>{
+  const x=data()
+  const existing=post('facebook',resolveStockholmSchedule('2026-10-23T20:30'),'needs_review')
+  existing.id='real-unscheduled-november'
+  existing.revision.draft.title='November ? sl?pputkast efter bekr?ftad ?ppning'
+  existing.revision.draft.scheduledAt=null
+  x.content.posts.push(existing)
+  const report=buildFamilyWeekCoverage(x)
+  const month=report.slots.find(s=>s.localMinute==='2026-11-01T20:30'&&s.channel==='facebook')
+  expect(month).toMatchObject({status:'needs_review',postId:'real-unscheduled-november',requiresReleaseEvidence:true})
+  expect(report.summary.missing).toBe(7)
+ })
  it('stale schedule batch with obsolete plan cannot hide a real review gap',()=>{
   const x=data(),fri=resolveStockholmSchedule('2026-10-23T20:30')
   x.schedule.batches=[{

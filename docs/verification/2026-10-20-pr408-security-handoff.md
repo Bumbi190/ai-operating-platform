@@ -31,9 +31,17 @@ independent reviewer sign-off.
 4. The private `atlas_code_review_private` schema and its credentials table
    have explicit REVOKEs in source and the tables enable RLS. A separate
    migration-security test rejects unauthorized grants on this schema.
-5. The ordinary review/lease contract tests: 310 PASS. Three PostgreSQL-backed
-   review flow tests were NOT run successfully on Windows because the fixture
-   could not find `docker.exe`; they must NOT be treated as passing.
+5. The ordinary review/lease contract tests: 310 PASS in the initial run.
+   After adding Docker's installed binary directory to the test process PATH,
+   all three `sdf-review-storage-flow.test.ts` tests PASS against a newly
+   created, network-disabled, ephemeral `postgres:16` container on Windows.
+   The three cases covered two independent review candidates and roles,
+   replay/recovery after lost RPC responses, and rejection after cancellation.
+   The fixture-owned container was removed; no application database was used.
+6. The larger `sdf-review-storage-sql.test.ts` suite and the Windows-native
+   `sdf-execution-lease-sql.test.ts` were NOT rerun in this handoff. Available
+   physical RAM fell below 1 GiB after the three passing tests; do not present
+   these other SQL suites as passing or start them without resource checks.
 
 ## Independent reviewer checklist (not completed)
 

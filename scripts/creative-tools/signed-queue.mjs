@@ -15,6 +15,9 @@ const FIELDS=[
 ];
 const ID=/^[A-Za-z][A-Za-z0-9_-]{2,63}$/;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Legacy P5 fixtures used slugs; production Atlas project IDs are UUIDs.
+// Preserve signed legacy fixtures, but the SQL adapter admits UUIDs only.
+const PROJECT=/^[A-Za-z][A-Za-z0-9_-]{2,63}$/;
 const HASH=/^[0-9a-f]{64}$/;
 const NONCE=/^[A-Za-z0-9_-]{20,64}$/;
 const OPS=new Set(['photocraft.convert-webp','filmcraft.demo-export-mp4']);
@@ -29,7 +32,8 @@ export function validateCreativeQueueClaims(raw) {
      Object.keys(raw).length!==FIELDS.length ||
      Object.keys(raw).some(k=>!FIELDS.includes(k))) throw new Error('invalid ticket fields');
   if(raw.schema!==CREATIVE_QUEUE_SCHEMA ||
-     !ID.test(raw.workId) || !ID.test(raw.workerId) || !ID.test(raw.projectId) ||
+     !ID.test(raw.workId) || !ID.test(raw.workerId) ||
+     !(PROJECT.test(raw.projectId) || UUID.test(raw.projectId)) ||
      !UUID.test(raw.sourceAssetId) || !HASH.test(raw.sourceSha256) ||
      !OPS.has(raw.operation) || !HASH.test(raw.binarySha256) ||
      !HASH.test(raw.approvalReceiptSha256) || !NONCE.test(raw.claimNonce) ||

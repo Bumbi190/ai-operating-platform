@@ -40,8 +40,8 @@ it('unknown_write_never_reclaimed',async()=>{
  expect(d.calls.filter(c=>c.init.method==='POST')).toHaveLength(1)
  expect(testSql("select state from social_schedule_jobs where project_id='"+f.manifest.projectId+"';")).toBe('uncertain')
 },20000)
-it('malformed Facebook provider reply never reaches completion or retries',async()=>{
- const f=await approved(),d=dependencies(f,async()=>Response.json({id:'wrong-page_post'}))
+it('cross-page Facebook provider receipt never reaches completion or retries',async()=>{
+ const f=await approved(),d=dependencies(f,async()=>Response.json({id:'99999_222'}))
  const completions:unknown[]=[]
  const original=db.rpc.bind(db)
  const observed={...db,rpc:async(name:string,args:any)=>{

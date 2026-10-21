@@ -6,8 +6,46 @@ namespace Omnira.Creative.Synthetic {
   internal static void Run(){
    System.Reflection.Assembly production=System.Reflection.Assembly.LoadFile(Path.Combine(Path.GetDirectoryName(typeof(CleanupTests).Assembly.Location),"SyntheticLauncher.exe"));
    foreach(string name in new[]{"CleanupTestHooks","CrashTestHooks","GuardedHost","CrashHarness"})Assert.True(production.GetType("Omnira.Creative.Synthetic."+name)==null,"production excludes "+name);
+   CleanupDiagnosticFailurePreservesRefusal();
    PartialSetupFailures();UnknownFixtureEntryPreserved();FixtureIdentityReplacementRefusesDeletion();
    ProfileDeleteCorroboration();UnverifiedChildKeepsCleanupFalse();UnrelatedCanaryUnchanged();RootDisposalKeepsReadAlive();CaptureMutationIsolation();
+  }
+  sealed class ThrowingCleanupWriter:TextWriter {
+   readonly TextWriter original;
+   internal int Attempts;
+   internal ThrowingCleanupWriter(TextWriter writer){original=writer;}
+   public override Encoding Encoding{get{return original.Encoding;}}
+   public override void Write(char value){original.Write(value);}
+   public override void WriteLine(string value){
+    if(value!=null&&value.StartsWith("CLEANUP ")){Attempts++;throw new IOException("TEST cleanup diagnostic writer failure");}
+    original.WriteLine(value);
+   }
+  }
+  static void CleanupDiagnosticFailurePreservesRefusal(){
+   foreach(bool setupFailure in new[]{true,false}){
+    TextWriter original=Console.Out;ThrowingCleanupWriter throwing=new ThrowingCleanupWriter(original);
+    RunObservation observation=null;Exception escaped=null;
+    try{
+     CleanupTestHooks.Failure=setupFailure?"profile":null;
+     Console.SetOut(throwing);
+     try{observation=SyntheticRunner.RunSynthetic();}catch(Exception ex){escaped=ex;}
+    }finally{Console.SetOut(original);CleanupTestHooks.Failure=null;}
+    Assert.Equal(1,throwing.Attempts);
+    Assert.True(escaped==null,"cleanup output must not escape runner finalization");
+    Assert.True(observation!=null&&!observation.Passed,"diagnostic failure is a refused observation");
+    Assert.Equal(setupFailure?"test-partial-profile":"cleanup-unverified",observation.RefusalCode);
+    Assert.Equal(setupFailure?"Prepared":"ResultVerified",observation.FailedStage);
+    Assert.True(observation.Cleanup.CleanupFailed&&!observation.Cleanup.Complete,"diagnostic failure independently recorded");
+    Assert.True(observation.Cleanup.InputFixtureAbsent&&observation.Cleanup.FixtureAbsent&&observation.Cleanup.ProfileDeleteApiSucceeded&&observation.Cleanup.ProfileStorageAbsent&&observation.Cleanup.ProfileMappingAbsent,"actual cleanup evidence retained");
+    OwnedFixture fixture=BoundaryTestHooks.LastFixture;
+    Assert.True(fixture.Disposed&&fixture.Sid==IntPtr.Zero&&fixture.RuntimePin==null,"native resources released");
+    Assert.True(object.ReferenceEquals(observation.Cleanup,WindowsProcessBoundary.LastCleanup),"cleanup publication retained");
+    Assert.True(observation.ElapsedMs>0&&observation.ElapsedMs<observation.TotalLimitMs,"final timing check completed");
+    Assert.Equal(0,PipeSession.LivePumps);
+    RunObservation next=SyntheticRunner.RunSynthetic();
+    Assert.True(next.Passed&&next.Cleanup.Complete,"operation and spawn gates released after throwing diagnostic");
+    Console.WriteLine("PASS CleanupDiagnosticFailurePreservesRefusal setupFailure="+setupFailure+" primary="+observation.RefusalCode+" stage="+observation.FailedStage+" diagnosticAttempts="+throwing.Attempts+" cleanupFailed=true actualAbsence=true SIDReleased=true runtimePinReleased=true gateReleased=true");
+   }
   }
   static void PartialSetupFailures(){
    foreach(string stage in new[]{"profile","runtime","pipes","process","token"}){
@@ -15,6 +53,7 @@ namespace Omnira.Creative.Synthetic {
     RunObservation o;
     try{o=SyntheticRunner.RunSynthetic();}finally{CleanupTestHooks.Failure=null;}
     Assert.Equal("test-partial-"+stage,o.RefusalCode);Assert.Equal(false,o.Passed);
+    Assert.Equal(stage=="profile"||stage=="runtime"?"Prepared":stage=="token"?"ProcessSuspended":"InputPinned",o.FailedStage);
     Assert.True(o.Cleanup.Complete,"partial setup cleanup "+stage);
     Assert.Equal(0,PipeSession.LivePumps);
     Console.WriteLine("PASS PartialSetupFailures stage="+stage+" primary="+o.RefusalCode+" cleanupComplete=true");

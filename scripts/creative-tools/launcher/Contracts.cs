@@ -56,7 +56,9 @@ namespace Omnira.Creative.Synthetic {
     if(RuntimePin!=null){try{RuntimePin.Dispose();}catch{Cleanup.CleanupFailed=true;}RuntimePin=null;}
     if(Sid!=IntPtr.Zero){NativeMethods.FreeSid(Sid);Sid=IntPtr.Zero;}
     WindowsProcessBoundary.LastCleanup=Cleanup;
-    Console.WriteLine("CLEANUP profile="+ProfileName+" api="+Cleanup.ProfileDeleteApiSucceeded+" storageAbsent="+Cleanup.ProfileStorageAbsent+" mappingAbsent="+Cleanup.ProfileMappingAbsent+" stopped="+Cleanup.ProcessesStopped+" cleanupFailed="+Cleanup.CleanupFailed+" inputAbsent="+Cleanup.InputFixtureAbsent);
+    // Diagnostics must never replace a setup refusal or escape runner finalization.
+    try{Console.WriteLine("CLEANUP profile="+ProfileName+" api="+Cleanup.ProfileDeleteApiSucceeded+" storageAbsent="+Cleanup.ProfileStorageAbsent+" mappingAbsent="+Cleanup.ProfileMappingAbsent+" stopped="+Cleanup.ProcessesStopped+" cleanupFailed="+Cleanup.CleanupFailed+" inputAbsent="+Cleanup.InputFixtureAbsent);}
+    catch{Cleanup.CleanupFailed=true;}
    }
   }
  }

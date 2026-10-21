@@ -64,12 +64,12 @@ The authoritative provider fetch and its credential boundary must be bound to
 the writer before treating such rows as trustworthy. SQL shape checks alone
 cannot close this gap.
 
-A second pending regression exercises the original reconciliation migration
+A second regression exercises the original reconciliation migration
 through its service-role RPC in the publication fixture. It supplies a distinct
 invented candidate and asserts that the proof is stored without any provider
 GET or POST. This covers more of the effective social publication schema than
-the calendar projection, but it is still a local fixture and has not been run
-in this environment. The normal app service does perform provider reads; the
+the calendar projection, but it is still a local fixture rather than a
+production provider read. The normal app service does perform provider reads; the
 test isolates the authority of the underlying RPC when called directly.
 
 ## Permission candidate: isolated verification

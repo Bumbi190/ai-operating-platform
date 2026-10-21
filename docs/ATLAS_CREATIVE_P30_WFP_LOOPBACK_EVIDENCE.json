@@ -1,0 +1,98 @@
+{
+    "mode":  "filtered-WFP-loopback-evidence",
+    "captureXmlSha256":  "a442e5ad3d3e9a2f73020af5e1ef57109e5d2373237b39f937b11deb1f4bcb51",
+    "testedProfileName":  "omnira.artcraft.probe.bac836cd49c145828be285f78bc1aa14",
+    "testedProfileSid":  "S-1-15-2-3286662069-825413920-103490062-2737920952-719476671-3007851805-531132024",
+    "sourceSidMatched":  false,
+    "attribution":  "Receiver-side AppContainerLoopback drop events correlate with exact fresh probe listener ports and timing; cause inferred for these trials only.",
+    "scope":  "IPv4/IPv6 loopback TCP only; not general egress isolation or worker-token validation",
+    "probeStandaloneResult":  "timeout-inconclusive",
+    "captureStopped":  true,
+    "watchdogValidated":  false,
+    "workerActivated":  false,
+    "productionReady":  false,
+    "events":  [
+                   {
+                       "timeUtc":  "2026-10-21T12:56:29.137Z",
+                       "family":  "FWP_IP_VERSION_V4",
+                       "listenerPort":  63581,
+                       "peerPort":  63583,
+                       "receiverApplication":  "\\device\\harddiskvolume3\\windows\\system32\\windowspowershell\\v1.0\\powershell.exe",
+                       "receiverPid":  24076,
+                       "receiverPackageSid":  "S-1-0-0",
+                       "eventType":  "FWPM_NET_EVENT_TYPE_PUBLIC_CLASSIFY_DROP",
+                       "filterId":  "2227524",
+                       "layerId":  44,
+                       "direction":  "MS_FWP_DIRECTION_IN",
+                       "isLoopback":  true,
+                       "filterOrigin":  "AppContainer Loopback"
+                   },
+                   {
+                       "timeUtc":  "2026-10-21T12:56:30.147Z",
+                       "family":  "FWP_IP_VERSION_V4",
+                       "listenerPort":  63581,
+                       "peerPort":  63583,
+                       "receiverApplication":  "\\device\\harddiskvolume3\\windows\\system32\\windowspowershell\\v1.0\\powershell.exe",
+                       "receiverPid":  24076,
+                       "receiverPackageSid":  "S-1-0-0",
+                       "eventType":  "FWPM_NET_EVENT_TYPE_PUBLIC_CLASSIFY_DROP",
+                       "filterId":  "2227524",
+                       "layerId":  44,
+                       "direction":  "MS_FWP_DIRECTION_IN",
+                       "isLoopback":  true,
+                       "filterOrigin":  "AppContainer Loopback"
+                   },
+                   {
+                       "timeUtc":  "2026-10-21T12:56:30.594Z",
+                       "family":  "FWP_IP_VERSION_V6",
+                       "listenerPort":  63586,
+                       "peerPort":  63588,
+                       "receiverApplication":  "\\device\\harddiskvolume3\\windows\\system32\\windowspowershell\\v1.0\\powershell.exe",
+                       "receiverPid":  24076,
+                       "receiverPackageSid":  "S-1-0-0",
+                       "eventType":  "FWPM_NET_EVENT_TYPE_PUBLIC_CLASSIFY_DROP",
+                       "filterId":  "2227525",
+                       "layerId":  46,
+                       "direction":  "MS_FWP_DIRECTION_IN",
+                       "isLoopback":  true,
+                       "filterOrigin":  "AppContainer Loopback"
+                   },
+                   {
+                       "timeUtc":  "2026-10-21T12:56:31.604Z",
+                       "family":  "FWP_IP_VERSION_V6",
+                       "listenerPort":  63586,
+                       "peerPort":  63588,
+                       "receiverApplication":  "\\device\\harddiskvolume3\\windows\\system32\\windowspowershell\\v1.0\\powershell.exe",
+                       "receiverPid":  24076,
+                       "receiverPackageSid":  "S-1-0-0",
+                       "eventType":  "FWPM_NET_EVENT_TYPE_PUBLIC_CLASSIFY_DROP",
+                       "filterId":  "2227525",
+                       "layerId":  46,
+                       "direction":  "MS_FWP_DIRECTION_IN",
+                       "isLoopback":  true,
+                       "filterOrigin":  "AppContainer Loopback"
+                   }
+               ],
+    "filters":  [
+                    {
+                        "id":  "2227524",
+                        "key":  "{2fdc2b5b-3390-496a-8591-854898bfec98}",
+                        "name":  "AppContainerLoopback",
+                        "description":  "This filter blocks AppContainer loopback traffic",
+                        "layer":  "FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4",
+                        "subLayer":  "FWPM_SUBLAYER_MPSSVC_APP_ISOLATION",
+                        "provider":  "FWPM_PROVIDER_MPSSVC_WF",
+                        "action":  "FWP_ACTION_BLOCK"
+                    },
+                    {
+                        "id":  "2227525",
+                        "key":  "{8aa59822-4382-4704-a538-a16d717ac948}",
+                        "name":  "AppContainerLoopback",
+                        "description":  "This filter blocks AppContainer loopback traffic",
+                        "layer":  "FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6",
+                        "subLayer":  "FWPM_SUBLAYER_MPSSVC_APP_ISOLATION",
+                        "provider":  "FWPM_PROVIDER_MPSSVC_WF",
+                        "action":  "FWP_ACTION_BLOCK"
+                    }
+                ]
+}

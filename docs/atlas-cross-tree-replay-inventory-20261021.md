@@ -15,17 +15,18 @@ provenance, not an endorsement to execute every file.
 | web `20260520_media_tables.sql` | web `20260520_media_images.sql` | The named files sort in the wrong dependency order; hash-pinned local exception already tested. |
 | root `20260601_media_insights.sql` | web `20260602_atlas_bi_foundation.sql` | PostgreSQL first reported missing `media_insights`; the pinned root file let the isolated replay advance. |
 | root `20260528_pg_cron_setup.sql` | web `20260614091000_h1p5_runs_claim_id.sql` | PostgreSQL next reported missing `omnira_cron`; the pinned root file let the isolated replay advance. This root file schedules jobs and needs the runner's isolated cron bootstrap. |
-| root `20260609_dream_issues_ledger.sql` | web `20260617160200_backfill_dream_issues.sql` | PostgreSQL next reported missing `public.dream_issues`. The root file creates it, but this edge has **not yet been executed**. It also backfills from `public.memories` and references `public.manager_tasks`, both declared in the base schema. |
+| root `20260609_dream_issues_ledger.sql` | web `20260617160200_backfill_dream_issues.sql` | PostgreSQL had reported missing `public.dream_issues`. The pinned root file and the web backfill both passed in the offline fixture. It also backfills from `public.memories` and references `public.manager_tasks`, both declared in the base schema. |
+| root `20260603_cron_heartbeat.sql` | web `20260623_150300_atlas_collector_cron.sql` | Next observed failure: `relation "public.cron_heartbeat" does not exist` at the web migration's seed `INSERT`. The root file creates the table **and schedules a heartbeat job**. This edge is not yet exercised; any test must retain disabled cron launching and network isolation. |
 
-Only the first three edges have passed in the isolated container. The fourth
-is a reviewed candidate for the next local test. The root `manager_task_dream_link`
+The first four edges have passed in the isolated container. The fifth
+is a candidate for separate review and test. The root `manager_task_dream_link`
 file adds optional manager task columns; the observed web backfill reads only
 `dream_issues`. It is therefore not automatically pulled into this fixture.
 
 ## Root file inventory
 
 `fixture` means already exercised in the isolated runner; `candidate` means
-reviewed for the next diagnostic; `hold` means **not selected for replay**.
+identified for review before a possible next diagnostic; `hold` means **not selected for replay**.
 Flags are a static text scan for cron registration, network calls, destructive
 DML/DDL, or secret/role text; absence of a flag is no safety guarantee.
 
@@ -51,7 +52,7 @@ DML/DDL, or secret/role text; absence of a flag is no safety guarantee.
 | `20260602_atlas_growth_script_topic_format.sql` | `0eb5d380aba51e0ecabbe9fa8e2c846c5fd4d553fa634cd973e077bc69504e51` | hold | — |
 | `20260602_g1_multitenant_platform_tokens.sql` | `88a3f8e1f95cf3334dbedc11edb924a316d630ea52f7d47458665766db712d98` | hold | — |
 | `20260602_stripe_intelligence_revenue_snapshots.sql` | `941d578548f895e5087c201502bcc34c8cf9e8b90f422d7b35dbcffc764e833e` | hold | — |
-| `20260603_cron_heartbeat.sql` | `f3c28dcd9bd031098bed10f86817f7e4bb55d5b03193199e102ffeae9bcbd831` | hold | cron, secret/role |
+| `20260603_cron_heartbeat.sql` | `f3c28dcd9bd031098bed10f86817f7e4bb55d5b03193199e102ffeae9bcbd831` | candidate | cron, secret/role |
 | `20260603_durable_runs.sql` | `a189659945447189022e96bb8a26a5cb4e0e26fb321c9f56a02d0b6e44da7ee4` | hold | cron, secret/role |
 | `20260603_marketing_engine_foundation.sql` | `90ab8c043371e706db0c304dcee1085f184d3779572dc5b94518b2bb16371b60` | hold | — |
 | `20260603_pipeline_retry.sql` | `ac9a45ed5fd058d16d9b501822bd4d7b95125dfdcd810bb1db3120f9f6008283` | hold | cron |
@@ -60,7 +61,7 @@ DML/DDL, or secret/role text; absence of a flag is no safety guarantee.
 | `20260606_killswitch_cancel.sql` | `e8c7a7bb9fb1594f612c4077eb80d6113050d5487f91d56c2b18d921f7f3a111` | hold | secret/role |
 | `20260606_pr2_route_webhook_isolation.sql` | `5b6368cb8545e089094540e2d3809de495f54daccb4ff2820a2ef289679cff70` | hold | — |
 | `20260608_project_media_settings.sql` | `32f6ed9d38aa58f7768d37d42b15ebfcfaea57ee7f82c3f166ade34467452bb5` | hold | — |
-| `20260609_dream_issues_ledger.sql` | `efc2b09e75c60fb8d14bcafdf4bcf2712e7d28e2107336634487d18fb9510089` | candidate | — |
+| `20260609_dream_issues_ledger.sql` | `efc2b09e75c60fb8d14bcafdf4bcf2712e7d28e2107336634487d18fb9510089` | fixture | — |
 | `20260609_manager_task_dream_link.sql` | `c1fb7723f386343e61f9f81297f6e0eb2622dde1d703d348298e7c57b22a767a` | hold | — |
 | `20260611_atlas_actions.sql` | `c2ef6b952f5b84f169fa5ce8836e1ce7382f85553758daaf6fc84758ae7fb7f5` | hold | — |
 | `20260614_cron_guardian.sql` | `7e0d85d872c0ac4c94f8c0e88577adf92d54c49d9141bf17c6c4e2f518e4161f` | hold | cron |
@@ -81,9 +82,15 @@ execution dependency: conditional SQL and schema-qualified names require a
 PostgreSQL result and object-by-object review. Do not merge all 38 histories
 by filename or infer production completeness from this inventory.
 
-The next fixture change can add only the hash-pinned dream ledger before the
-June 17 backfill, then repeat the offline replay and record the first real SQL
-error. A full replay claim requires the remaining ordering and overlap decisions,
+The `--mode=legacy-dream-replay` run on Hultgren passed 10/10 ordering tests,
+applied the pinned Dream ledger and all canonical SQL through the June 17
+backfill, then stopped in `20260623_150300_atlas_collector_cron.sql` at the
+missing `public.cron_heartbeat` table. The runner removed its owned container.
+This is a real PostgreSQL result, **not a full replay pass**. The next fixture
+change needs a review of the heartbeat root's scheduled job and the later
+root objects referenced by web migrations before another offline run.
+
+A full replay claim requires the remaining ordering and overlap decisions,
 all canonical SQL applied exactly once, and a passing result. Separately,
 production's missing May baseline still prevents a fresh Supabase branch from
 reconstructing the installed schema. None of these local experiments alters

@@ -60,6 +60,18 @@ beforeEach(()=>{
 afterAll(()=>f?.close(),60000);
 
 describe('real inspector candidate validation with signed source gate',()=>{
+ it('documents that a shaped but unverified provider candidate is accepted',()=>{
+  // No provider reader is called by this SQL fixture. This input is invented by
+  // the caller and demonstrates the boundary the database cannot authenticate.
+  const fabricated={...candidate(),providerId:'12345_99999',
+   permalink:'https://www.facebook.com/12345/posts/99999',
+   candidateHash:'e'.repeat(64)};
+  const proof=inspect([fabricated]).proofs[0];
+  expect(proof.providerId).toBe(fabricated.providerId);
+  expect(proof.candidateHash).toBe(fabricated.candidateHash);
+  expect(count()).toBe('1');
+  expect(source()).toBe('2');
+ });
  it('inserts a valid candidate once and keeps replay source-stable',()=>{
   const c=candidate();
   expect(inspect([c]).proofs).toHaveLength(1);

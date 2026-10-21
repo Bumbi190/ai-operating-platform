@@ -185,6 +185,18 @@ proof for a fabricated candidate of the expected shape. These SQL checks
 cannot authenticate a Facebook response. The server worker must establish
 provider origin and keep its writer identity isolated before any cutover.
 
+Code review of the current server path found that scheduled `complete` follows
+`MetaManualProvider.facebook()`/`publish()`: those calls use a fixed HTTPS
+Graph host, reject redirects, bound and parse the response, and check the
+Facebook composite Page ID. The reconciliation API requires the resolved
+operator; its service lists candidates via the Page credential and re-reads
+the selected post from Graph before `reconciliation_complete`. The SQL
+functions cannot distinguish those server-controlled calls from a direct
+invocation by the same broad `service_role`. The fabricated candidate above
+demonstrates that precise database trust gap, not a failure of the normal
+provider-response parser. It also cannot prove a live Meta response or the
+production credential path.
+
 This replay connects the SQL claim and recovery path inside one transaction,
 but does **not** execute the application worker, load media bytes, contact
 Meta, or establish a deployable identity. It does not cover the other 28 root
@@ -194,7 +206,8 @@ current worker still uses one `service_role` client for claim, guard, step,
 and recovery, whereas the proposed NOLOGIN role is only a transaction-local
 fixture. Applying the candidate revokes on their own would interrupt the
 worker. The next gate is coordinated worker identity and credential wiring,
-authentic provider receipt handling, and an application-level worker replay. Separately,
+an enforceable boundary around the existing provider receipt handling, and
+an application-level worker replay. Separately,
 production's missing May baseline still prevents a fresh Supabase branch from
 reconstructing the installed schema. None of these local experiments alters
 production, the production migration ledger, or its guard.

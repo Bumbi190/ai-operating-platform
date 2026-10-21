@@ -259,10 +259,18 @@ ID returned by the photo endpoint. The scheduled integration fixture now
 returns the approved job's Page ID instead of a hard-coded unrelated Page; its
 negative case uses a syntactically valid composite ID from another Page.
 Isolated run 39591054864 passed **23/23 inspector, 13/13 SQL worker,
-11/11 provider and 10/10 application worker tests, 0 skipped**. The
-full-fixture worker recovery test had one `INVALID_BODY` failure in the prior
-run and passed unchanged in this run; its cause was not established. The
-database and labeled container were removed. This check rejects an inconsistent
+11/11 provider and 10/10 application worker tests, 0 skipped**. The earlier full-fixture recovery failure was caused by the old hard-coded
+wrong-Page success receipt. The provider rejected it before the test advanced
+its fake SQL clock; the next claim carried a timestamp 91 seconds ahead while
+the canonical claim function allows only five seconds of drift. The fixture
+now derives the receipt from the approved Page, and the recovery test asserts
+that its completion hook was reached. Run 39593256359 passed **23/23
+inspector, 13/13 SQL worker, 11/11 provider and 11/11 application worker
+tests, 0 skipped**. The full SQL fixture's catalog regression confirms the
+shared role still has direct publication UPDATE, job UPDATE, proof INSERT and
+EXECUTE on manual step, scheduled step, reconciliation inspect and completion;
+the browser role cannot execute the inspected completion function. The
+test database and labeled container were removed. This check rejects an inconsistent
 provider response; it is not a cryptographic receipt or a defense against a
 caller with direct SQL writer privileges.
 

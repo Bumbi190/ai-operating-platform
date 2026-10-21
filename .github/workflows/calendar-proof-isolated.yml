@@ -156,8 +156,8 @@ jobs:
       - name: Run Facebook reconciliation project boundary regression
         working-directory: apps/web
         run: |
-          npx --no vitest run lib/social-launch/publication/reconciliation/service.test.ts \\
-            --reporter=default --reporter=json \\
+          npx --no vitest run lib/social-launch/publication/reconciliation/service.test.ts \
+            --reporter=default --reporter=json \
             --outputFile.json="$RUNNER_TEMP/calendar-reconciliation.json"
       - name: Enforce reconciliation anti-skip floor
         if: always()

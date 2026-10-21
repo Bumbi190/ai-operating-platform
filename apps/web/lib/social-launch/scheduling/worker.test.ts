@@ -39,6 +39,54 @@ it('records the canonical shared-role writer surface in the full SQL fixture',()
   browser_complete:false
  })
 })
+it('exercises the optional news-review grant branch in an owned SQL projection',()=>{
+ // The older worker fixture omits the October news-review migration. These
+ // objects activate the candidate's conditional grants, not its production SQL.
+ const candidate=readFileSync(resolve(process.cwd(),
+  'lib/calendar/direct-write-gate-scheduled-full-role-candidate.sql'),'utf8')
+ const output=testSql(`begin;
+  create table public.media_scripts(id uuid);
+  create table public.media_news_items(id uuid);
+  create table public.asset_provenance(id uuid);
+  create table public.cost_events(id uuid);
+  create table public.media_news_review_evidence(id uuid);
+  create function public.media_news_canonical_json(jsonb) returns text
+   language sql security invoker set search_path='' as $news$ select $1::text $news$;
+  create function public.media_news_review_caption(public.media_scripts) returns text
+   language sql security invoker set search_path='' as $news$ select ''::text $news$;
+  create function public.media_news_snapshot_requirements(uuid,jsonb) returns text[]
+   language sql security invoker set search_path='' as $news$ select array[]::text[] $news$;
+  create function public.media_news_review_requirements(uuid) returns text[]
+   language sql security invoker set search_path='' as $news$
+   select array[
+    (select count(*)::text from public.media_news_review_evidence),
+    (select count(*)::text from public.media_scripts),
+    (select count(*)::text from public.media_news_items),
+    (select count(*)::text from public.asset_provenance),
+    (select count(*)::text from public.cost_events)
+   ] $news$;
+  revoke all on public.media_news_review_evidence,public.media_scripts,
+   public.media_news_items,public.asset_provenance,public.cost_events from public;
+  revoke all on function public.media_news_canonical_json(jsonb),
+   public.media_news_review_caption(public.media_scripts),
+   public.media_news_snapshot_requirements(uuid,jsonb),
+   public.media_news_review_requirements(uuid) from public;
+  ${candidate}
+  set local role social_schedule_full_publisher_fixture;
+  select jsonb_build_object(
+   'reads',public.media_news_review_requirements(null::uuid),
+   'snapshot',public.media_news_snapshot_requirements(null::uuid,'{}'::jsonb),
+   'canonical',public.media_news_canonical_json('{}'::jsonb),
+   'caption',public.media_news_review_caption(null::public.media_scripts),
+   'evidence_select',has_table_privilege(current_user,'public.media_news_review_evidence','SELECT')
+  );
+  rollback;`)
+ expect(JSON.parse(output)).toEqual({
+  reads:['0','0','0','0','0'],snapshot:[],canonical:'{}',caption:'',evidence_select:true
+ })
+ expect(testSql("select to_regclass('public.media_news_review_evidence') is null")).toBe('t')
+ expect(testSql("select to_regrole('social_schedule_full_publisher_fixture') is null")).toBe('t')
+},20000)
 it('prepares an approved claim through the rollback-only scheduled role',async()=>{
  const f=await approved()
  const claim=(await claimScheduleJob(db,{workerId:'prepare_role_probe',now:f.dueAt,dryRun:false}))!

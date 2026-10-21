@@ -318,6 +318,38 @@ web process. Before any activation, run parity and rollback against the
 manual and scheduled workers, confirm the exact queued jobs remain
 processable, then schedule the operational change with the owner.
 
+## Cutover inventory and staging availability
+
+On 2026-10-21 a read-only Supabase branch listing for the AI Operating Platform
+project showed one separate branch, `h1p5-staging`, with
+`MIGRATIONS_FAILED` status. Its recorded migration list ends in June 2026;
+the main project has the October social schedule, reconciliation, news-review
+and user-calendar migrations. That branch cannot validate this cutover.
+No branch was created, rebased or changed. The existing owned Docker fixture
+loads a subset of the schema and omits the later news-review objects. A fresh
+fully migrated isolated database is required for the complete effective-grant
+and worker-parity test. The test-only SQL candidates must not be applied to
+main to substitute for that test.
+
+The current cron entry `scheduling/api.ts` calls `runScheduleTick` with
+`createAdminClient()`. `scheduling/worker.ts` resolves the credential
+through `publication/credentials.ts`; the Facebook and Instagram resolvers
+in `media/social-credentials.ts` use `readStoredCredential`, which opens
+the same general admin client in `media/token-store.ts` and selects
+`platform_tokens.access_token`. Thus replacing the scheduled worker's
+database client alone would leave token read access in the general web
+deployment; replacing only the credential resolver would leave the shared
+service-role writer path.
+
+The token-store's other production consumers include account connection
+and token replacement (`app/api/media/token/route.ts`), Instagram refresh
+(`app/api/media/cron/refresh-tokens/route.ts`), YouTube OAuth callback,
+credential health, webhook subscription, media publishing and reconciliation.
+Before revoking generic token access, each of these needs an explicit owner
+identity and parity test. A credential isolation cutover must move the token
+read and write paths and the publication/reconciliation writer paths together.
+Keep existing queued jobs enabled until that cutover has a verified rollback.
+
 ## Target boundary
 
 1. Keep the user's authenticated operator decision and the exact publication

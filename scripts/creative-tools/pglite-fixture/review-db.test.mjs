@@ -5,7 +5,7 @@ import {resolve} from 'node:path';
 import {PGlite} from '@electric-sql/pglite';
 const db=new PGlite();
 const fixture=(file)=>readFileSync(resolve(import.meta.dirname,
- '../../../apps/web/supabase/migrations/'+file),'utf8');
+ '../../../apps/web/supabase/creative-drafts/'+file),'utf8');
 const enrollment='00000000-0000-4000-8000-000000000090';
 const user='00000000-0000-4000-8000-000000000001';
 const project='00000000-0000-4000-8000-000000000011';

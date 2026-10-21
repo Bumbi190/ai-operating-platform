@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 
 const db = new PGlite();
 const migration = readFileSync(resolve(import.meta.dirname,
-  '../../../apps/web/supabase/migrations/20261020230500_atlas_creative_queue_staging_p7.sql'), 'utf8');
+  '../../../apps/web/supabase/creative-drafts/20261020230500_atlas_creative_queue_staging_p7.sql'), 'utf8');
 const project='00000000-0000-4000-8000-000000000011';
 const foreignProject='00000000-0000-4000-8000-000000000012';
 const image='00000000-0000-4000-8000-000000000021';

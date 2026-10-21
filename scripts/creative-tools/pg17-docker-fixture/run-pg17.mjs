@@ -14,7 +14,7 @@ const docker=process.env.DOCKER_BIN ||
 const image='postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24';
 const container='omnira-creative-pg17-p9-'+process.pid;
 const migration=readFileSync(resolve(import.meta.dirname,
-  '../../../apps/web/supabase/migrations/20261020230500_atlas_creative_queue_staging_p7.sql'),'utf8');
+  '../../../apps/web/supabase/creative-drafts/20261020230500_atlas_creative_queue_staging_p7.sql'),'utf8');
 const pgArgs=['exec','-i',container,'psql','-X','-A','-t','-v','ON_ERROR_STOP=1',
   '-U','postgres','-d','postgres'];
 const project='00000000-0000-4000-8000-000000000011';

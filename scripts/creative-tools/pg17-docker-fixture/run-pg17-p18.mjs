@@ -14,7 +14,7 @@ const docker=process.env.DOCKER_BIN ||
 const image='postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24';
 const container='omnira-creative-pg17-p18-'+process.pid;
 const migration=readFileSync(resolve(import.meta.dirname,
-  '../../../apps/web/supabase/migrations/20261020230500_atlas_creative_queue_staging_p7.sql'),'utf8');
+  '../../../apps/web/supabase/creative-drafts/20261020230500_atlas_creative_queue_staging_p7.sql'),'utf8');
 const pgArgs=['exec','-i',container,'psql','-X','-A','-t','-v','ON_ERROR_STOP=1',
   '-U','postgres','-d','postgres'];
 const project='00000000-0000-4000-8000-000000000011';
@@ -169,7 +169,7 @@ try {
     assert.equal(ok("select claim_fence from public.atlas_creative_queue_staging where work_id='raceJobP94';",'fence'),'1');
   });
   const proofMigration=readFileSync(resolve(import.meta.dirname,
-    '../../../apps/web/supabase/migrations/20261020235500_atlas_creative_worker_identity_p10.sql'),'utf8');
+    '../../../apps/web/supabase/creative-drafts/20261020235500_atlas_creative_worker_identity_p10.sql'),'utf8');
   ok(proofMigration,'execute P10 identity migration in PostgreSQL 17');
   pass('P10 migration creates private, empty identity and nonce tables',()=>{
     assert.equal(ok("select count(*) from public.atlas_creative_worker_identities;",'worker count'),'0');
@@ -245,7 +245,7 @@ try {
     assert.equal(proofResult(proof(12,h('8')),'revocation'),'f');
   });
   const p13Migration=readFileSync(resolve(import.meta.dirname,
-    '../../../apps/web/supabase/migrations/20261021080000_atlas_creative_worker_enrollment_staging_p13.sql'),'utf8');
+    '../../../apps/web/supabase/creative-drafts/20261021080000_atlas_creative_worker_enrollment_staging_p13.sql'),'utf8');
   ok(p13Migration,'execute exact P13 enrollment migration');
   pass('P13 empty private registry and service-only functions',()=>{
     assert.equal(ok("select count(*) from public.atlas_creative_enrollment_staging;",'rows'),'0');
@@ -318,7 +318,7 @@ try {
       "state='pending_review';",'pending jobs'),'2');
   });
   const reviewMigration=readFileSync(resolve(import.meta.dirname,
-    '../../../apps/web/supabase/migrations/20261021100000_atlas_creative_enrollment_review_p15.sql'),'utf8');
+    '../../../apps/web/supabase/creative-drafts/20261021100000_atlas_creative_enrollment_review_p15.sql'),'utf8');
   ok(reviewMigration,'execute exact unapplied P15 review migration');
   pass('P15 review ledger private, empty, append-only via privileged function',()=>{
     assert.equal(ok("select count(*) from public.atlas_creative_enrollment_review_decisions;",'empty ledger'),'0');
@@ -364,7 +364,7 @@ try {
       "where state='active' and key_id='creativeKeyP13';",'active workers'),'0');
   });
   const ownerGuardSql=readFileSync(resolve(import.meta.dirname,
-    '../../../apps/web/supabase/migrations/20261021120000_atlas_creative_review_owner_guard_p18.sql'),'utf8');
+    '../../../apps/web/supabase/creative-drafts/20261021120000_atlas_creative_review_owner_guard_p18.sql'),'utf8');
   ok("alter table public.projects add column owner_id uuid;",'P18 owner fixture column');
   ok("update public.projects set owner_id='"+operatorP13+"'::uuid;",'test owner baseline');
   ok(ownerGuardSql,'execute exact P18 owner-guard migration on PG17');

@@ -11,7 +11,7 @@ inspector does not make either request. In the owned PostgreSQL fixtures a
 service-role caller can pass a well-shaped invented candidate directly to the
 inspector, and it stores a proof. A separate permission candidate blocks direct
 INSERT while preserving the legitimate RPC, but that does not stop invented
-RPC input. The 20 calendar inspector and five publication reconciliation tests
+RPC input. The 20 calendar inspector and six publication reconciliation tests
 passed in a labeled, disposable local Docker fixture. They are not full
 Supabase-schema, live Meta or production tests.
 
@@ -19,8 +19,12 @@ The web app's shared admin client uses SUPABASE_SERVICE_ROLE_KEY for many
 routes. The same server process currently resolves Facebook credentials.
 A new TypeScript wrapper or a signature generated in that process would not
 separate this authority from the broad service key. The key bypasses RLS.
-The current service-role path can also update publication state and call other
-privileged RPCs; proof-table containment alone is not an end-to-end barrier.
+The production migration grants direct UPDATE on social_publications to
+service_role. A regression against the original reconciliation migration
+successfully marked an uncertain attempt published with a direct UPDATE and
+zero provider reads. The receipt constraint accepts provider_id and
+confirmation='provider_id'; it does not authenticate them. Thus proof-table
+containment alone is not an end-to-end barrier.
 
 ## Target boundary
 

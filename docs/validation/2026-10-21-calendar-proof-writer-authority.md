@@ -223,6 +223,20 @@ is under `lib/calendar`, not `supabase/migrations`; applying it as-is would
 break other manual/scheduled writers and would leave reconciliation, scheduled
 step and direct job paths accessible through the shared role. It does not
 isolate the Facebook token or create a production credential.
+A separate rollback-only scheduled publisher candidate exercises an approved,
+claimed Facebook job with a real fixture claim ID, lease and job version.
+Within a savepoint the generic role loses publication/job INSERT and UPDATE,
+event INSERT and scheduled step EXECUTE; its direct scheduled step call is
+denied. The fixture publisher completes the claimed job, then rollback
+restores grants, role, publication/job state and source revision. Isolated run
+39588629251 passed **23/23 inspector and 13/13 worker tests, 0 skipped** and
+removed its container. This tests the completion slice in a reduced schema;
+it does not cover prepare, recovery, the full queue, provider verification or
+other generic-role RPCs. The isolated publisher itself can still submit an
+invented provider ID, so a production boundary also needs provider credential
+separation and an authenticated receipt path. The file is a test candidate,
+not a migration, and must not be applied to the live schedule.
+
 A full-schema test must show that the generic identity cannot submit a fake
 provider receipt through manual or scheduled RPCs, while the dedicated
 publish worker still completes approved real posts and the queued jobs.

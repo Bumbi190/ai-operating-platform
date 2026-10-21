@@ -124,6 +124,24 @@ describe('signed source guard + triggered social step and checkpoint recovery',(
   expect(()=>service('social_schedule_step',fx.claim(3),{action:'checkpoint'})).toThrow(/SOCIAL_SCHEDULE_CONFLICT/);
   expect(revision()).toBe('7');
  });
+ it('accepts a caller-supplied provider receipt on an approved claimed job',()=>{
+  // The test retains the real claim ID, lease, job version and approval chain.
+  // There is no provider client in this disposable SQL fixture.
+  const fx=seed();
+  const prepared=service('social_schedule_step',fx.claim(1),{action:'prepare'});
+  service('social_schedule_step',fx.claim(2),{
+   action:'claim_create',expectedVersion:1,capabilityHash:'c'.repeat(64)
+  });
+  const receipt=service('social_schedule_step',fx.claim(3),{
+   action:'complete',expectedVersion:2,providerId:'12345_99999',
+   permalink:'https://www.facebook.com/12345/posts/99999'
+  });
+  expect(receipt.jobState).toBe('published');
+  expect(pubState(prepared.publication.id)).toBe('published');
+  expect(f.sql('select provider_id from public.social_publications where id='+q(prepared.publication.id)))
+   .toBe('12345_99999');
+  expect(count('social_publication_events')).toBe(3);
+ });
  it('recovers an in-flight publishing receipt as uncertain without any provider retry',()=>{
   const fx=seed('publishing');
   const receipt=service('social_schedule_recover_checkpoint',fx.claim(1));

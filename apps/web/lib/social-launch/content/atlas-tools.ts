@@ -35,7 +35,7 @@ export const SOCIAL_CONTENT_TOOLS:Anthropic.Tool[]=[
    date:{type:'string'},variant:{type:'string'},title:{type:'string'},text:{type:'string'},
   },required:['date','variant','title','text']}},
  },required:['projectId','month','planRevisionId','title','publicSummary','campaignPurpose','proof','proposedCopy']}},required:['projectId','proposal']}},
- {name:'get_family_month_source_status',description:'Check whether Familje-Stunden has a pinned public month preview source or needs new public evidence. Read-only, does not approve, activate, unlock subscriber content or publish. Requires an authorized existing project conversation.',input_schema:{type:'object',additionalProperties:false,properties:{...project,month:{type:'string',pattern:'^20[0-9]{2}-(0[1-9]|1[0-2])$',description:'Campaign month YYYY-MM'}},required:['projectId','month']}},
+ {name:'get_family_month_source_status',description:'Read-only month-source status for Familje-Stunden, including persisted owner review state only when the private review feature is enabled. A saved approval never proves image integrity, subscriber access or publication authority. Requires an authorized conversation.',input_schema:{type:'object',additionalProperties:false,properties:{...project,month:{type:'string',pattern:'^20[0-9]{2}-(0[1-9]|1[0-2])$',description:'Campaign month YYYY-MM'}},required:['projectId','month']}},
  {name:'get_family_weekly_content_plan',description:'Read-only deterministic 7- or 14-day Familje-Stunden content gap audit in Europe/Stockholm, comparing existing posts and approved scheduling jobs. No generating, scheduling, spending, approving or publishing.',input_schema:{type:'object',additionalProperties:false,properties:{...project,daysAhead:{type:'integer',enum:[7,14],description:'Upcoming days, default 14.'}},required:['projectId']}},
  {name:'get_social_content',description:'Read project content drafts, exact editorial decisions, owned media metadata and intended calendar. Does not publish.',input_schema:{type:'object',additionalProperties:false,properties:project,required:['projectId']}},
  {name:'propose_social_content',description:'Save one content proposal discussed with the operator. Reuse owned canonical assets; the operator reviews at workspaceUrl. Cannot approve, connect, generate paid media, dispatch or publish.',input_schema:{type:'object',additionalProperties:false,properties:{...project,postId:{type:'string'},planRevisionId:{type:'string'},expectedRevisionId:{type:['string','null']},idempotencyKey:{type:'string',maxLength:100},draft:{type:'object',additionalProperties:false,properties:{channel:{type:'string',enum:['youtube','facebook','instagram','linkedin','x','pinterest']},format:{type:'string',enum:['text','image','video','link']},title:{type:'string',minLength:1,maxLength:150},text:{type:'string',minLength:1,maxLength:5000},linkUrl:{type:['string','null'],maxLength:2048},mediaIds:{type:'array',maxItems:10,items:{type:'string'}},mediaBrief:{type:'string',maxLength:1000},scheduledAt:{type:['string','null'],description:'Intended UTC instant as YYYY-MM-DDTHH:mm:ss.sssZ, future and within 366 days. Preparation only, not an executable schedule.'}},required:['channel','format','title','text','linkUrl','mediaIds','mediaBrief','scheduledAt']}},required:['projectId','postId','planRevisionId','expectedRevisionId','idempotencyKey','draft']}}
@@ -76,7 +76,28 @@ export async function handleSocialContentTool(name:string,input:Record<string,un
    const content=await readSocialContent(db,p,{projectId:FAMILY_WEEKLY_PROJECT_ID,conversationId})
    if(!content.planApproved||!content.currentPlanRevisionId)
     throw new SocialContentError('REVIEW_REQUIRED')
-   return familyMonthSourceStatus(input.month)
+   const catalog=familyMonthSourceStatus(input.month)
+   if(process.env.FAMILY_MONTH_SOURCE_REVIEW_ENABLED!=='true')
+    return {...catalog,ownerReviewStatus:'review_feature_disabled' as const}
+   // A persisted owner decision is separate from public-media verification
+   // and separate again from social post/release authority.
+   const history=await listFamilyMonthSourceReviews(db,p,{month:input.month})
+   if(history.kind!=='family-month-source-owner-review-list-v1'||
+      history.month!==input.month||history.canActivate!==false||
+      history.canPublish!==false||!Array.isArray(history.records))
+    throw new SocialContentError('UNAVAILABLE')
+   const latest=history.records[0]
+   const ownerReviewStatus=latest?
+    latest.decision?.kind==='approve'?'approved_pending_media_verification':
+    latest.decision?.kind==='reject'?'rejected':'needs_owner_review'
+    :'no_candidate'
+   const sourceStatus=catalog.sourceStatus==='pinned_public_preview'?
+    catalog.sourceStatus:ownerReviewStatus==='approved_pending_media_verification'?
+    'owner_approved_pending_media_verification':ownerReviewStatus==='needs_owner_review'?
+    'owner_review_pending':'owner_source_material_needed'
+   return {...catalog,sourceStatus,ownerReviewStatus,
+    canActivateNewSource:false as const,canPublish:false as const,
+    mediaIntegrityVerified:false as const}
   }
   if(name==='prepare_family_weekly_review_drafts'){
    if(input.projectId!==FAMILY_WEEKLY_PROJECT_ID)throw new SocialContentError('NOT_FOUND')

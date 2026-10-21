@@ -100,6 +100,65 @@ describe('Atlas weekly planning tool permission and side-effect boundary',()=>{
    publicPreviewDates:[],canPublish:false})
   expect(readSocialContent).toHaveBeenCalledTimes(2)
   expect(readSchedules).not.toHaveBeenCalled()
+  expect(listFamilyMonthSourceReviews).not.toHaveBeenCalled()
+  expect(proposeSocialContent).not.toHaveBeenCalled()
+ })
+ it('month status reflects stored owner review and never treats approval as activated or published',async()=>{
+  vi.stubEnv('FAMILY_MONTH_SOURCE_REVIEW_ENABLED','true')
+  const input={projectId:FAMILY_WEEKLY_PROJECT_ID,month:'2026-12'}
+  const cases=[
+   {decision:null,sourceStatus:'owner_review_pending',ownerReviewStatus:'needs_owner_review'},
+   {decision:{kind:'approve'},sourceStatus:'owner_approved_pending_media_verification',
+    ownerReviewStatus:'approved_pending_media_verification'},
+   {decision:{kind:'reject'},sourceStatus:'owner_source_material_needed',ownerReviewStatus:'rejected'},
+  ]
+  for(const item of cases){
+   vi.mocked(listFamilyMonthSourceReviews).mockResolvedValue({
+    kind:'family-month-source-owner-review-list-v1',month:'2026-12',
+    records:[{candidateId:'30000000-0000-4000-8000-000000000003',
+     decision:item.decision}],canActivate:false,canPublish:false,
+   } as any)
+   const result=await handleSocialContentTool('get_family_month_source_status',
+    input,principal,ownerConversation,fakeDb) as any
+   expect(result).toMatchObject({sourceStatus:item.sourceStatus,
+    ownerReviewStatus:item.ownerReviewStatus,canActivateNewSource:false,
+    canPublish:false,mediaIntegrityVerified:false})
+  }
+  expect(readSocialContent).toHaveBeenCalledTimes(3)
+  expect(listFamilyMonthSourceReviews).toHaveBeenCalledTimes(3)
+  expect(proposeFamilyMonthSource).not.toHaveBeenCalled()
+  expect(proposeSocialContent).not.toHaveBeenCalled()
+ })
+ it('existing pinned preview never implies month release even with an owner decision',async()=>{
+  vi.stubEnv('FAMILY_MONTH_SOURCE_REVIEW_ENABLED','true')
+  vi.mocked(listFamilyMonthSourceReviews).mockResolvedValue({
+   kind:'family-month-source-owner-review-list-v1',month:'2026-11',
+   canActivate:false,canPublish:false,records:[{
+    candidateId:'30000000-0000-4000-8000-000000000003',
+    decision:{kind:'approve'},
+   }],
+  } as any)
+  const result=await handleSocialContentTool('get_family_month_source_status',
+   {projectId:FAMILY_WEEKLY_PROJECT_ID,month:'2026-11'},
+   principal,ownerConversation,fakeDb) as any
+  expect(result).toMatchObject({
+   sourceStatus:'pinned_public_preview',
+   ownerReviewStatus:'approved_pending_media_verification',
+   canActivateNewSource:false,canPublish:false,mediaIntegrityVerified:false,
+  })
+  expect(listFamilyMonthSourceReviews).toHaveBeenCalledTimes(1)
+ })
+ it('month-source status fails closed if private history is unreadable or malformed',async()=>{
+  vi.stubEnv('FAMILY_MONTH_SOURCE_REVIEW_ENABLED','true')
+  vi.mocked(listFamilyMonthSourceReviews).mockRejectedValueOnce(new Error('db unavailable'))
+  const request={projectId:FAMILY_WEEKLY_PROJECT_ID,month:'2026-12'}
+  expect((await handleSocialContentTool('get_family_month_source_status',
+   request,principal,ownerConversation,fakeDb) as any).code).toBe('UNAVAILABLE')
+  vi.mocked(listFamilyMonthSourceReviews).mockResolvedValue({
+   kind:'wrong',month:'2026-12',records:[],canActivate:false,canPublish:false,
+  } as any)
+  expect((await handleSocialContentTool('get_family_month_source_status',
+   request,principal,ownerConversation,fakeDb) as any).code).toBe('UNAVAILABLE')
   expect(proposeSocialContent).not.toHaveBeenCalled()
  })
  it('rejects unscoped month reviews and malformed months before any source read',async()=>{

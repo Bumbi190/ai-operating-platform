@@ -249,3 +249,31 @@ PR #472 remains Draft, no new owner approval, no feature flags enabled,
 no scheduled generation, public publication or customer-month unlock.
 The new version/race semantics need to be reviewed before any migration
 or release authorization.
+
+## P11 ? reflect durable owner review in Atlas month status (2026-10-21)
+
+The read-only get_family_month_source_status tool previously relied on
+the static public editorial source registry. After a new-month proposal
+was approved in the protected owner review system, the status tool could
+still report owner_source_material_needed and unnecessarily ask for
+the same source again.
+
+The existing conversation-scoped current Social Content plan read
+remains required. When FAMILY_MONTH_SOURCE_REVIEW_ENABLED is OFF, status
+stays read-only on the pinned public preview registry, with no new DB
+queries. When enabled, the tool reads the exact owner-proven private
+source-review history through the existing owner-scoped store and
+distinguishes awaiting owner review, rejected, and approved-pending-
+media-verification sources. It DOES NOT verify image bytes, activate a
+new source, schedule, publish or unlock subscriber material.
+
+Errors reading the private review store fail closed with UNAVAILABLE,
+rather than falsely reporting missing sources. Both feature flags,
+the periodic cron and public dispatch remain disabled.
+
+New positive, rejected and negative/error tests passed; 102/102
+targeted family tests green. Latest authenticated branch preview was
+visually inspected read-only and showed the Atlas-first content view,
+current counters and manual tools hidden by default. The source-review
+card is hidden as intended while its deployment flag is OFF. No
+approve/publish/save actions were performed.

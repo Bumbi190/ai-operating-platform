@@ -1,0 +1,171 @@
+{
+  "Mode": "throwaway-system-AppContainer-child-job-probe",
+  "Error": null,
+  "ProfileName": "omnira.p33.system.960bb0c01b984fb9b9c79c738a074a51",
+  "ProfileSid": "S-1-15-2-4143746358-1421052291-393347116-3044154446-3478669939-3955196751-2899438735",
+  "ObservedAtUtc": "2026-10-21T13:59:53.7235194Z",
+  "ProfileCreated": true,
+  "ProfileDeleteApiSucceeded": true,
+  "ProfileStorageAbsenceCorroborated": true,
+  "ProfileMappingAbsent": true,
+  "AllProcessesStopped": true,
+  "WorkerAccountUsed": false,
+  "EditorStarted": false,
+  "NetworkRequested": false,
+  "ProjectAclChanged": false,
+  "ProductionReady": false,
+  "BreakawayTestExecuted": false,
+  "ArbitraryBrokerContainmentVerified": false,
+  "ActualWorkerTokenVerified": false,
+  "SupervisorCrashScenarioVerified": false,
+  "ChildApplicationReadyVerified": false,
+  "Trials": [
+    {
+      "Kind": "ordinary-before",
+      "ParentPid": 29068,
+      "ChildPid": 54124,
+      "ConsolePid": 50268,
+      "ParentToken": {
+        "IsAppContainer": false,
+        "ExpectedPackageSid": false,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": false,
+        "CapabilityCount": 0,
+        "IntegrityRid": 0
+      },
+      "ChildToken": {
+        "IsAppContainer": false,
+        "ExpectedPackageSid": false,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": false,
+        "CapabilityCount": 0,
+        "IntegrityRid": 0
+      },
+      "ConsoleToken": {
+        "IsAppContainer": false,
+        "ExpectedPackageSid": false,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": false,
+        "CapabilityCount": 0,
+        "IntegrityRid": 0
+      },
+      "ConsoleObserved": true,
+      "ConsoleExitedOnClose": true,
+      "ConsoleTokenMatchesAppContainer": false,
+      "JobMemberImages": [
+        "C:\\Windows\\System32\\cmd.exe",
+        "C:\\Windows\\System32\\conhost.exe",
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      ],
+      "ExactJobPolicyReadBack": true,
+      "ParentAssignedBeforeResume": true,
+      "ChildMembershipVerified": true,
+      "ChildImageVerified": true,
+      "TwoLiveProcessesObserved": true,
+      "ParentExitedOnClose": true,
+      "ChildExitedOnClose": true,
+      "Passed": true
+    },
+    {
+      "Kind": "AppContainer",
+      "ParentPid": 27740,
+      "ChildPid": 2216,
+      "ConsolePid": 44796,
+      "ParentToken": {
+        "IsAppContainer": true,
+        "ExpectedPackageSid": true,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": true,
+        "CapabilityCount": 0,
+        "IntegrityRid": 4096
+      },
+      "ChildToken": {
+        "IsAppContainer": true,
+        "ExpectedPackageSid": true,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": true,
+        "CapabilityCount": 0,
+        "IntegrityRid": 4096
+      },
+      "ConsoleToken": {
+        "IsAppContainer": true,
+        "ExpectedPackageSid": true,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": true,
+        "CapabilityCount": 0,
+        "IntegrityRid": 4096
+      },
+      "ConsoleObserved": true,
+      "ConsoleExitedOnClose": true,
+      "ConsoleTokenMatchesAppContainer": true,
+      "JobMemberImages": [
+        "C:\\Windows\\System32\\cmd.exe",
+        "C:\\Windows\\System32\\conhost.exe",
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      ],
+      "ExactJobPolicyReadBack": true,
+      "ParentAssignedBeforeResume": true,
+      "ChildMembershipVerified": true,
+      "ChildImageVerified": true,
+      "TwoLiveProcessesObserved": true,
+      "ParentExitedOnClose": true,
+      "ChildExitedOnClose": true,
+      "Passed": true
+    },
+    {
+      "Kind": "ordinary-after",
+      "ParentPid": 40888,
+      "ChildPid": 54232,
+      "ConsolePid": 33416,
+      "ParentToken": {
+        "IsAppContainer": false,
+        "ExpectedPackageSid": false,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": false,
+        "CapabilityCount": 0,
+        "IntegrityRid": 0
+      },
+      "ChildToken": {
+        "IsAppContainer": false,
+        "ExpectedPackageSid": false,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": false,
+        "CapabilityCount": 0,
+        "IntegrityRid": 0
+      },
+      "ConsoleToken": {
+        "IsAppContainer": false,
+        "ExpectedPackageSid": false,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": false,
+        "CapabilityCount": 0,
+        "IntegrityRid": 0
+      },
+      "ConsoleObserved": true,
+      "ConsoleExitedOnClose": true,
+      "ConsoleTokenMatchesAppContainer": false,
+      "JobMemberImages": [
+        "C:\\Windows\\System32\\cmd.exe",
+        "C:\\Windows\\System32\\conhost.exe",
+        "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      ],
+      "ExactJobPolicyReadBack": true,
+      "ParentAssignedBeforeResume": true,
+      "ChildMembershipVerified": true,
+      "ChildImageVerified": true,
+      "TwoLiveProcessesObserved": true,
+      "ParentExitedOnClose": true,
+      "ChildExitedOnClose": true,
+      "Passed": true
+    }
+  ]
+}

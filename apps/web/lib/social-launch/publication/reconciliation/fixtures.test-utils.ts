@@ -27,5 +27,7 @@ export async function reconciliationFixture(db:ReturnType<typeof initializeRecon
  vi.stubGlobal('fetch',async(url:string,init:RequestInit)=>{calls.push(init);const raw={id:candidate.providerId,from:{id:candidate.accountId},message:candidate.text,created_time:candidate.createdAt,permalink_url:candidate.permalink,attachments:{data:[{type:'photo',target:{id:candidate.photoId},media:{image:{src:candidate.imageUrl}}}]}};return Response.json(url.includes('/published_posts?')?{data:[raw]}:raw)})
  const deps:ReconciliationDependencies={provider:{list:listFacebookCandidates,read:readFacebookCandidate},resolveCredential:async()=>credential,now:()=>Date.now()}
  const scope={projectId:f.projectId,postId:f.postId,publicationId:record.id}
- return {principal:f.p,scope,completeInput:{...scope,candidateId:'',expectedVersion:record.version,imageConfirmed:true as const},deps,candidate,credential,get providerPosts(){return calls.filter(c=>c.method==='POST').length}}
+ return {principal:f.p,scope,completeInput:{...scope,candidateId:'',expectedVersion:record.version,imageConfirmed:true as const},deps,candidate,credential,
+  get providerPosts(){return calls.filter(c=>c.method==='POST').length},
+  get providerReads(){return calls.filter(c=>!c.method||c.method==='GET').length}}
 }

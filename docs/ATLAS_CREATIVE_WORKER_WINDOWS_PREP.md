@@ -346,6 +346,47 @@ administrator-only bootstrap is still required. A self-provided SHA-256 does
 not count as independent signature or owner approval. No production copy or
 worker activation is allowed by this result.
 
+## Independently signed handoff review protocol (2026-10-21)
+
+The review-only cryptographic contract in
+`worker-handoff-review-proof.mjs` requires a fresh **P-256 signature**
+bound to all of: the fixed Omnira repository, exact 40-digit Git commit,
+serialized 12-file manifest SHA-256, author ID, a DIFFERENT reviewer ID,
+host `HULTGREN`, issued/expiry timestamps and nonce.
+It uses a purpose-separated canonical encoding (`review_only`) and
+`noCopyAuthority=true`. Its public verification key is not accepted from
+the untrusted proof. A caller must separately pin a trusted P-256 reviewer's
+SPKI SHA-256 fingerprint through a controlled out-of-band registry.
+
+`worker-handoff-review-bundle.mjs` composes this signature verification
+with exact-byte validation of the proposed manifest. It rejects an old
+signed review after even one manifest entry changes, a different commit,
+an unknown reviewer key, unsupported extra fields or an invented
+`approvalGranted=true` flag. **Cryptographic scope binding alone cannot
+prove the human reviewer was authorized**, that the source files remain
+immutable, or that a signed nonce has been durably consumed.
+The result deliberately reports
+`reviewerPolicyApproved=false`, `nonceConsumed=false`,
+`copyAuthorized=false`, `privilegedBootstrapAuthorized=false`,
+`workerExecutionEnabled=false` and `productionReady=false`.
+
+19 deterministic tests use **throwaway P-256 keys created inside tests only**.
+They cover scope forgery, self-review ID, canonical encoding, replay,
+bad/expired timestamps, wrong P-256 key, incompatible key type, altered
+commit/manifest, tampered signatures and forged approval metadata.
+The previous 43 Creative Handoff tests plus these 19 are protected by the
+SDF-1B Linux CI anti-skip floor of **62/62 passing, zero skipped**.
+No real reviewer certificate/private key has been generated, registered
+or approved, and no protected copy was performed.
+
+**Further prerequisites** before ANY elevated copy attempt:
+a true out-of-band reviewer identity and key registry, human decision on
+the specific Git revision and manifest digest, durable one-time approval
+record with withdrawal/expiry enforcement, an independently reviewed
+copy-only bootstrap with protected ownership/ACLs, plus post-copy
+hash, signer and ACL verification. The current modules are solely
+planning and verification primitives, **not an installer**.
+
 ## Whole-archive integrity update
 
 The staging planner additionally checks SHA-256 of the original PhotoCraft and

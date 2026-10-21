@@ -401,7 +401,19 @@ news-review dependencies when that migration exists. Isolated run
 [39598334233](https://github.com/Bumbi190/ai-operating-platform/actions/runs/39598334233)
 passed the existing 51 targeted tests in the older owned PostgreSQL fixture;
 that run exercises the branch where the news-review objects are absent.
-No production role, token or queued job was changed.
+A later owned SQL projection now creates disposable news-review relation and
+function signatures before loading the candidate. This activates its
+conditional grant block and verifies that the fixture publisher can read the
+five named tables and execute the four helper signatures. GitHub Actions run
+[39602058849](https://github.com/Bumbi190/ai-operating-platform/actions/runs/39602058849)
+passed **23 inspector, 13 SQL recovery, 11 provider and 15 scheduled worker
+tests (62 total), 0 failed/skipped**; the owned test database and container
+were removed. The projection uses tiny synthetic functions rather than the
+canonical `20261018083917_media_news_review_evidence.sql` body, so it
+confirms SQL syntax and the optional grant path only. It does not establish
+that actual news-backed scheduled preparation, completion or recovery works
+under the isolated role in a fully migrated schema. The historical replay
+blockers above still apply. No production role, token or queued job was changed.
 
 The current cron entry `scheduling/api.ts` calls `runScheduleTick` with
 `createAdminClient()`. `scheduling/worker.ts` resolves the credential

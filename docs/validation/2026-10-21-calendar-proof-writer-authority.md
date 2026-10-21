@@ -60,6 +60,73 @@ path. Only after parity tests cover the other token consumers should the Page
 token leave the broad web process. No extra background service should be
 introduced merely to make the proof-table candidate look complete.
 
+
+## Full-schema grant audit before changing roles
+
+The source inventory above describes migrations. Run the following read-only
+queries against a fully migrated staging database as the migration operator
+before writing a permission migration. Record the actual role memberships,
+object owners, inherited/default grants and function ACLs. The rows are the
+review input; the migration files alone do not establish effective permissions.
+
+```sql
+select c.oid::regclass as relation,
+       pg_get_userbyid(c.relowner) as owner,
+       c.relrowsecurity as rls_enabled,
+       has_table_privilege('service_role', c.oid, 'SELECT') as service_select,
+       has_table_privilege('service_role', c.oid, 'INSERT') as service_insert,
+       has_table_privilege('service_role', c.oid, 'UPDATE') as service_update,
+       has_table_privilege('service_role', c.oid, 'DELETE') as service_delete,
+       c.relacl
+from pg_class c join pg_namespace n on n.oid=c.relnamespace
+where n.nspname='public'
+  and c.relname in (
+    'social_publications', 'social_publication_events',
+    'social_publication_reconciliation_proofs',
+    'social_schedule_batches', 'social_schedule_decisions',
+    'social_schedule_jobs', 'social_schedule_events',
+    'social_monthly_release_rules', 'social_monthly_release_evidence'
+  )
+order by c.relname;
+
+select p.oid::regprocedure as function,
+       pg_get_userbyid(p.proowner) as owner,
+       p.prosecdef as security_definer,
+       has_function_privilege('service_role', p.oid, 'EXECUTE') as service_execute,
+       p.proacl
+from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+where n.nspname='public'
+  and (p.proname like 'social_publication_%'
+       or p.proname like 'social_schedule_%')
+order by p.proname, p.oid::regprocedure::text;
+
+select r.rolname as role, r.rolsuper, r.rolbypassrls,
+       parent.rolname as inherited_role
+from pg_roles r
+left join pg_auth_members m on m.member=r.oid
+left join pg_roles parent on parent.oid=m.roleid
+where r.rolname in ('service_role', 'authenticator')
+   or parent.rolname in ('service_role', 'authenticator')
+order by r.rolname, parent.rolname;
+
+select n.nspname, d.defaclrole::regrole as grantor, d.defaclobjtype,
+       d.defaclacl
+from pg_default_acl d join pg_namespace n on n.oid=d.defaclnamespace
+where n.nspname='public';
+```
+
+Current source grants include direct publication INSERT/UPDATE, proof INSERT,
+job INSERT/UPDATE and event INSERT for `service_role`. The scheduled migration
+replaces the completion function and writes a job/event in the same
+transaction. A cutover must preserve normal manual and scheduled writers
+through reviewed function ownership, while removing the generic role's
+ability to forge a receipt. Test both direct DML and every function entry
+point with the effective grants after migration. Recheck the catalog output
+after rollback as well.
+
+This audit query has not been run against a fully migrated staging database;
+it is a review artifact, not evidence that a new role boundary already works.
+
 ## Target boundary
 
 1. Keep the user's authenticated operator decision and the exact publication

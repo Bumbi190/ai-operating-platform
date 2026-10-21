@@ -187,7 +187,12 @@ can move to `published` through `social_publication_step` with a
 syntactically valid caller-supplied `providerId`. The function verifies the
 owner-shaped `p_principal` against project rows but does not authenticate that
 JSON against the database caller, and its `complete` branch does not GET the
-provider. This is a source-level inference, not a live exploit test. The
+provider. The canonical manual step function was then exercised in an owned disposable
+PostgreSQL fixture: after seeding an already claimed `publishing` state, the
+service-role call marked it `published` with a fabricated provider ID and
+zero provider reads. The targeted GitHub Actions run 39584762802 passed
+**22/22, 0 skipped** and removed its container. This is reduced-schema
+verification, not a live exploit test or full Supabase-schema proof. The
 application dispatch normally obtains the provider receipt before calling
 this RPC, but a holder of the service key can bypass that application path.
 The scheduled step also accepts caller-supplied `providerId` on `complete`

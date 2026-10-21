@@ -22,7 +22,7 @@ export async function reconciliationFixture(db:ReturnType<typeof initializeRecon
  record=(await publicationStep(db,f.p,{projectId:f.projectId,postId:f.postId,publicationId:record.id,expectedVersion:record.version,action:'claim_create',capabilityHash:'a'.repeat(64)})).record
  record=(await publicationStep(db,f.p,{projectId:f.projectId,postId:f.postId,publicationId:record.id,expectedVersion:record.version,action:'uncertain',failureCode:'provider_unavailable'})).record
  const candidate:ReconciliationCandidate={id:f.accountId+'_123',providerId:f.accountId+'_123',accountId:f.accountId,createdAt:new Date(record.requestedAt).toISOString(),text:f.post.revision.draft.text,permalink:'https://www.facebook.com/'+f.accountId+'/posts/123',photoId:'888',imageUrl:'https://scontent.fna.fbcdn.net/fixture.jpg'}
- const credential={channel:'facebook' as const,bindingId:f.bindingId,accountId:f.accountId,token:'fixture-token',apiBase:'https://graph.facebook.com/v21.0'}
+ const credential={channel:'facebook' as const,projectId:f.projectId,bindingId:f.bindingId,accountId:f.accountId,token:'fixture-token',apiBase:'https://graph.facebook.com/v21.0'}
  const calls:RequestInit[]=[]
  vi.stubGlobal('fetch',async(url:string,init:RequestInit)=>{calls.push(init);const raw={id:candidate.providerId,from:{id:candidate.accountId},message:candidate.text,created_time:candidate.createdAt,permalink_url:candidate.permalink,attachments:{data:[{type:'photo',target:{id:candidate.photoId},media:{image:{src:candidate.imageUrl}}}]}};return Response.json(url.includes('/published_posts?')?{data:[raw]}:raw)})
  const deps:ReconciliationDependencies={provider:{list:listFacebookCandidates,read:readFacebookCandidate},resolveCredential:async()=>credential,now:()=>Date.now()}

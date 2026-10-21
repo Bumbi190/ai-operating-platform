@@ -32,6 +32,17 @@ it('rejects expired proofs changed posts and current account mismatch',async()=>
   expect(f.providerPosts).toBe(0)
  }
 },30000)
+it('rejects a cross-project credential before inspecting or completing a Facebook proof',async()=>{
+ const f=await reconciliationFixture(db)
+ const wrong={...f.deps,resolveCredential:async()=>({...f.credential,projectId:crypto.randomUUID()})}
+ await expect(inspectReconciliation(db,f.principal,f.scope,wrong)).rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+ expect(f.providerReads).toBe(0)
+ const view=await inspectReconciliation(db,f.principal,f.scope,f.deps)
+ const reads=f.providerReads
+ await expect(completeReconciliation(db,f.principal,{...f.completeInput,candidateId:view.candidates[0].id},wrong)).rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+ expect(f.providerReads).toBe(reads)
+ expect(f.providerPosts).toBe(0)
+},20000)
 it('denies public roles and rejects unknown RPC fields',async()=>{
  const f=await reconciliationFixture(db)
  expect(()=>testSql("set role authenticated;select social_publication_reconciliation_inspect('{}','{}');")).toThrow()

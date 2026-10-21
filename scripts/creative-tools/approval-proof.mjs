@@ -12,6 +12,10 @@ const FIELDS=[
 ];
 const ID=/^[A-Za-z][A-Za-z0-9_-]{2,63}$/;
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Existing P0 pilot signatures bind to slugs. Production Supabase actor and
+// project identities are UUIDs. Both validate without altering signed bytes.
+const CANONICAL_OR_PILOT_ID=(value)=>typeof value==='string' &&
+  (UUID.test(value) || ID.test(value));
 const SHA=/^[0-9a-f]{64}$/;
 const NONCE=/^[A-Za-z0-9_-]{20,64}$/;
 const OPERATIONS=new Set(['photocraft.convert-webp','filmcraft.demo-export-mp4']);
@@ -21,8 +25,8 @@ function requireFields(claims) {
   if(!claims || typeof claims!=='object' || Array.isArray(claims)) throw new Error('invalid claims');
   const keys=Object.keys(claims);
   if(keys.length!==FIELDS.length || keys.some(k=>!FIELDS.includes(k))) throw new Error('unexpected approval fields');
-  if(claims.schema!==SCHEMA || !ID.test(claims.approverId) ||
-     !ID.test(claims.workId) || !ID.test(claims.projectId) ||
+  if(claims.schema!==SCHEMA || !CANONICAL_OR_PILOT_ID(claims.approverId) ||
+     !ID.test(claims.workId) || !CANONICAL_OR_PILOT_ID(claims.projectId) ||
      !UUID.test(claims.sourceAssetId) || !SHA.test(claims.sourceSha256) ||
      !OPERATIONS.has(claims.operation) || !SHA.test(claims.binarySha256) ||
      !Number.isSafeInteger(claims.outputMaxBytes) ||

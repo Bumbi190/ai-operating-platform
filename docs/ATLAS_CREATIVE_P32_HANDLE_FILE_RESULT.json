@@ -1,0 +1,90 @@
+{
+    "Mode":  "synthetic-native-handle-read-prototype",
+    "Error":  null,
+    "FixturePath":  "C:\\Users\\Andre\\AppData\\Local\\Temp\\omnira-p32-handles-b7273eb6f9bd42e4bb3d64e80e2e35d4",
+    "ElevatedContext":  false,
+    "FixtureCreated":  true,
+    "FixtureRemoved":  true,
+    "AllTestsPassed":  true,
+    "RootAclTrustVerified":  false,
+    "WorkerTokenVerified":  false,
+    "GeneralReparseRaceProtectionVerified":  false,
+    "ProductionReady":  false,
+    "WorkerActivated":  false,
+    "NetworkRequested":  false,
+    "ProjectAclChanged":  false,
+    "Tests":  [
+                  {
+                      "Name":  "unpinned mutation controls succeed",
+                      "Passed":  true
+                  },
+                  {
+                      "Name":  "junction and hardlink fixtures verified",
+                      "Passed":  true
+                  },
+                  {
+                      "Name":  "nested same-handle canary read",
+                      "Passed":  true
+                  },
+                  {
+                      "Name":  "root rename blocked while pinned",
+                      "Passed":  true
+                  },
+                  {
+                      "Name":  "parent rename blocked while pinned",
+                      "Passed":  true
+                  },
+                  {
+                      "Name":  "leaf delete blocked while pinned",
+                      "Passed":  true
+                  },
+                  {
+                      "Name":  "leaf write blocked while pinned",
+                      "Passed":  true
+                  },
+                  {
+                      "Name":  "directory junction rejected",
+                      "Passed":  true
+                  },
+                  {
+                      "Name":  "hardlink leaf rejected",
+                      "Passed":  true
+                  },
+                  {
+                      "Name":  "unsafe relative name rejected 1",
+                      "Passed":  true
+                  },
+                  {
+                      "Name":  "unsafe relative name rejected 2",
+                      "Passed":  true
+                  },
+                  {
+                      "Name":  "unsafe relative name rejected 3",
+                      "Passed":  true
+                  },
+                  {
+                      "Name":  "unsafe relative name rejected 4",
+                      "Passed":  true
+                  },
+                  {
+                      "Name":  "unsafe relative name rejected 5",
+                      "Passed":  true
+                  },
+                  {
+                      "Name":  "unsafe relative name rejected 6",
+                      "Passed":  true
+                  },
+                  {
+                      "Name":  "oversized read rejected",
+                      "Passed":  true
+                  },
+                  {
+                      "Name":  "renames work after handle disposal",
+                      "Passed":  true
+                  },
+                  {
+                      "Name":  "synthetic canaries unchanged",
+                      "Passed":  true
+                  }
+              ]
+}

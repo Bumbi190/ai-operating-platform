@@ -189,6 +189,26 @@ describe('private, durable source review store on isolated append-only tables',(
    .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
   expect(db.tables.family_month_source_decisions).toHaveLength(1)
  })
+ it('read model fails closed on altered persisted decision checksum or reviewer',async()=>{
+  for(const patch of [{candidate_sha256:'b'.repeat(64)},{decided_by:OTHER}]){
+   const db=new MemoryDb()
+   const item=await proposeFamilyMonthSource(db as any,actor,candidate())
+   await decideFamilyMonthSource(db as any,actor,{
+    month:'2026-12',candidateId:item.candidateId,
+    candidateSha256:item.candidateSha256,decision:'approve',confirmed:true,
+   })
+   Object.assign(db.tables.family_month_source_decisions[0],patch)
+   await expect(listFamilyMonthSourceReviews(db as any,actor,{month:'2026-12'}))
+    .rejects.toMatchObject({code:'UNAVAILABLE'})
+  }
+ })
+ it('read model fails closed on changed plan revision stored on candidate',async()=>{
+  const db=new MemoryDb()
+  await proposeFamilyMonthSource(db as any,actor,candidate())
+  db.tables.family_month_source_candidates[0].plan_revision_id='50000000-0000-4000-8000-000000000005'
+  await expect(listFamilyMonthSourceReviews(db as any,actor,{month:'2026-12'}))
+   .rejects.toMatchObject({code:'UNAVAILABLE'})
+ })
  it('approved candidate with tampered stored decision hash is not an activatable source',async()=>{
   const db=new MemoryDb()
   const proposed=await proposeFamilyMonthSource(db as any,actor,candidate())

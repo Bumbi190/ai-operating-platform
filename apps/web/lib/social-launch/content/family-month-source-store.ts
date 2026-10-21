@@ -78,8 +78,18 @@ function shape(candidate:Row,decision:DecisionRow|undefined){
  const review=prepareFamilyMonthSourceReview(candidate.payload)
  if(review.candidateSha256!==candidate.candidate_sha256 ||
   candidate.project_id!==FAMILY_WEEKLY_PROJECT_ID ||
+  candidate.payload.projectId!==FAMILY_WEEKLY_PROJECT_ID ||
   candidate.source_month!==candidate.payload.month ||
-  candidate.created_by.length<1)
+  candidate.plan_revision_id!==candidate.payload.planRevisionId ||
+  candidate.plan_revision_id!==PLAN ||
+  !UUID.test(candidate.id)||!UUID.test(candidate.created_by)||
+  (decision!==undefined&&(
+   !UUID.test(decision.id)||
+   decision.candidate_id!==candidate.id||
+   decision.project_id!==candidate.project_id||
+   decision.candidate_sha256!==candidate.candidate_sha256||
+   decision.decided_by!==candidate.created_by||
+   !['approve','reject'].includes(decision.decision))))
   fail('UNAVAILABLE')
  return {
   candidateId:candidate.id,month:candidate.source_month,

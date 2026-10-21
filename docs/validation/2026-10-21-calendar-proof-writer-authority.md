@@ -432,6 +432,20 @@ credential health, webhook subscription, media publishing and reconciliation.
 Before revoking generic token access, each of these needs an explicit owner
 identity and parity test. A credential isolation cutover must move the token
 read and write paths and the publication/reconciliation writer paths together.
+Two further direct `platform_tokens` readers must be included in the
+cutover inventory. `lib/social-connections/credentials.ts` uses the general
+admin client to select `access_token` for LinkedIn/Pinterest binding health
+and performs destination attestation. `lib/os/settings.ts` reads token
+metadata (project/platform/type/account/expiry/refresh time) for the
+authenticated settings view, while
+`app/(platform)/projects/[slug]/media/page.tsx` reads expiry/refresh
+metadata. The latter two do not select the secret value, but a blanket table
+SELECT revoke would still break their pages. Split sensitive token reads
+from metadata reads and preserve LinkedIn/Pinterest health checks if the
+shared role loses access. The existing Facebook reconciliation GET already
+requires both a Page-prefixed composite post ID and matching `from.id`;
+the next boundary is the shared credential and SQL writer identity, not a
+missing Page check in that parser.
 Keep existing queued jobs enabled until that cutover has a verified rollback.
 
 ## Target boundary

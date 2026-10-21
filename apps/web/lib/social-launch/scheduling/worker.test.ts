@@ -1,10 +1,12 @@
 
 import {beforeAll,afterAll,it,expect,vi} from 'vitest'
+import {readFileSync} from 'node:fs'
+import {resolve} from 'node:path'
 const admin=vi.hoisted(()=>({db:null as any}))
 vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>admin.db}))
 import {initializeSchedulingDb} from './test-db'
 import {scheduleFixture,setScheduleClock,appendScheduleFixtureItem} from './fixtures.test-utils'
-import {proposeSchedule,approveSchedule,claimScheduleJob,readScheduleReceipt,revokeSchedule} from './store'
+import {proposeSchedule,approveSchedule,claimScheduleJob,recordScheduleStep,readScheduleReceipt,revokeSchedule} from './store'
 import {runScheduleTick,runScheduledPublication} from './worker'
 import {MetaManualProvider} from '../publication/provider'
 import {testSql} from '../../website-build/test-db'
@@ -37,6 +39,42 @@ it('records the canonical shared-role writer surface in the full SQL fixture',()
   browser_complete:false
  })
 })
+it('rolls back a separated publisher role against the canonical scheduled step',async()=>{
+ const f=await approved()
+ const claimed=(await claimScheduleJob(db,{workerId:'role_probe',now:f.dueAt,dryRun:false}))!
+ const prepared=await recordScheduleStep(db,claimed,{action:'prepare'})
+ const publishing=await recordScheduleStep(db,prepared.claim,{
+  action:'claim_create',expectedVersion:prepared.publication!.version,capabilityHash:'c'.repeat(64)
+ })
+ expect(publishing.publication!.state).toBe('publishing')
+ const claim=publishing.claim,publication=publishing.publication!
+ const literal=(v:unknown)=>"'"+JSON.stringify(v).replaceAll("'","''")+"'::jsonb"
+ const complete=`public.social_schedule_step(${literal({jobId:claim.jobId,claimId:claim.claimId,version:claim.version})},
+  ${literal({action:'complete',expectedVersion:publication.version,providerId:f.manifest.items[0].accountId+'_999',
+   permalink:'https://www.facebook.com/'+f.manifest.items[0].accountId+'_999'})})`
+ const candidate=readFileSync(resolve(process.cwd(),
+  'lib/calendar/direct-write-gate-scheduled-full-role-candidate.sql'),'utf8')
+ const output=testSql(`begin; ${candidate}
+  select has_table_privilege('service_role','public.social_publications','UPDATE')::text||
+   has_table_privilege('service_role','public.social_schedule_jobs','UPDATE')::text||
+   has_function_privilege('service_role','public.social_schedule_step(jsonb,jsonb)','EXECUTE')::text;
+  set local role service_role;
+  do $probe$ begin perform ${complete};
+   raise exception 'UNEXPECTED_SHARED_STEP';
+   exception when insufficient_privilege then null; end $probe$;
+  set local role social_schedule_full_publisher_fixture;
+  select ${complete};
+  rollback;`).split('\\n')
+ expect(output[0]).toBe('falsefalsefalse')
+ const receipt=JSON.parse(output.at(-1)!)
+ expect(receipt.jobState).toBe('published')
+ expect(receipt.publication.providerId).toBe(f.manifest.items[0].accountId+'_999')
+ const restored=await readScheduleReceipt(db,claim)
+ expect(restored.jobState).toBe('claimed')
+ expect(restored.publication!.state).toBe('publishing')
+ expect(restored.claim.version).toBe(claim.version)
+ expect(testSql("select to_regrole('social_schedule_full_publisher_fixture') is null")).toBe('t')
+},20000)
 it('one_post_for_two_workers',async()=>{
  const f=await approved(),d=dependencies(f)
  const results=await Promise.all(['a','b'].map(workerId=>runScheduleTick(db,{workerId,now:f.dueAt,dryRun:false},d.deps)))

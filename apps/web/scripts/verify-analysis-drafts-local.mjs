@@ -263,6 +263,85 @@ try {
         assert.equal(candidate[key], false, 'unexpected candidate grant: ' + key)
       assert.equal(sql("SELECT count(*) FROM pg_roles WHERE rolname='social_schedule_full_publisher_fixture'"), '0', 'candidate role escaped rollback')
       console.log('CROSS-TREE ROLE CANDIDATE ' + JSON.stringify(candidate) + ' (rolled back)')
+      // The source-gate SQL is a test candidate. Adapt only its pgcrypto schema
+      // qualifiers to this replay's upstream extension install, then discard it.
+      const gateFile = reviewedBytes(resolve(web, 'lib/calendar/direct-write-gate-probe.sql')).toString('utf8')
+      assert.equal((gateFile.match(/public\.gen_random_bytes/g) ?? []).length, 1)
+      assert.equal((gateFile.match(/public\.hmac/g) ?? []).length, 2)
+      const gate = gateFile.replaceAll('public.gen_random_bytes', 'extensions.gen_random_bytes')
+        .replaceAll('public.hmac', 'extensions.hmac')
+      const recoveryFile = reviewedBytes(resolve(web, 'lib/calendar/direct-write-gate-worker-recovery-integration-probe.sql')).toString('utf8')
+      const lockedClaim = recoveryFile.split('create or replace function public.social_schedule_step')[0]
+      assert.equal((lockedClaim.match(/create or replace function public\.social_schedule_locked_claim/g) ?? []).length, 1)
+      const id = {
+        plan: '20000000-0000-4000-8000-000000000011',
+        post: '20000000-0000-4000-8000-000000000012',
+        revision: '20000000-0000-4000-8000-000000000013',
+        batch: '20000000-0000-4000-8000-000000000014',
+        approval: '20000000-0000-4000-8000-000000000015',
+        job: '20000000-0000-4000-8000-000000000016',
+        claim: '20000000-0000-4000-8000-000000000017',
+      }
+      const roleResult = JSON.parse(sql(`
+        BEGIN;
+        INSERT INTO auth.users(id) VALUES (${quote(actor)});
+        INSERT INTO public.projects(id,owner_id,name,slug)
+          VALUES (${quote(project)},${quote(actor)},'Isolated calendar probe','calendar-probe-only');
+        INSERT INTO public.social_launch_plans(project_id,created_by) VALUES (${quote(project)},${quote(actor)});
+        INSERT INTO public.social_launch_plan_revisions(id,project_id,sequence,sha256,choices,idempotency_key,created_by)
+          VALUES (${quote(id.plan)},${quote(project)},1,${quote('a'.repeat(64))},'[]','probe-plan',${quote(actor)});
+        INSERT INTO public.social_content_posts(id,project_id,created_by)
+          VALUES (${quote(id.post)},${quote(project)},${quote(actor)});
+        INSERT INTO public.social_content_revisions(id,post_id,project_id,sequence,plan_revision_id,sha256,draft,media,input_data,idempotency_key,created_by)
+          VALUES (${quote(id.revision)},${quote(id.post)},${quote(project)},1,${quote(id.plan)},${quote('b'.repeat(64))},'{}','[]','{}','probe-revision',${quote(actor)});
+        INSERT INTO public.social_schedule_batches(id,batch_id,project_id,sequence,manifest,sha256,created_by,idempotency_key,input_data)
+          VALUES (${quote(id.batch)},gen_random_uuid(),${quote(project)},1,'{}',${quote('c'.repeat(64))},${quote(actor)},'probe-batch','{}');
+        INSERT INTO public.social_schedule_decisions(id,project_id,batch_revision_id,action,actor,idempotency_key,input_data)
+          VALUES (${quote(id.approval)},${quote(project)},${quote(id.batch)},'approve',${quote(actor)},'probe-approval','{}');
+        INSERT INTO public.social_schedule_jobs(id,project_id,batch_revision_id,approval_id,post_id,revision_id,revision_sha256,channel,occasion_id,scheduled_at,expires_at,item,state,claim_id,worker_id,lease_expires_at)
+          VALUES (${quote(id.job)},${quote(project)},${quote(id.batch)},${quote(id.approval)},${quote(id.post)},${quote(id.revision)},${quote('b'.repeat(64))},'facebook',gen_random_uuid(),now()-interval '1 minute',now()+interval '9 minutes','{}','claimed',${quote(id.claim)},'probe-worker',now()+interval '90 seconds');
+        ${reviewedBytes(resolve(web, 'lib/calendar/source-revision-probe.sql')).toString('utf8')}
+        INSERT INTO public.calendar_source_revision_probe(owner_user_id,project_id,revision)
+          VALUES (${quote(actor)},${quote(project)},1);
+        ${gate}
+        ${lockedClaim}
+        ${roleCandidate.toString('utf8')}
+        GRANT EXECUTE ON FUNCTION public.calendar_source_gate_begin_probe(uuid)
+          TO social_schedule_full_publisher_fixture;
+        SET LOCAL ROLE service_role;
+        DO $deny_service$ BEGIN
+          UPDATE public.social_schedule_jobs SET reason='forbidden' WHERE id=${quote(id.job)}::uuid;
+          RAISE EXCEPTION 'DIRECT_SERVICE_WRITE_ACCEPTED';
+        EXCEPTION WHEN insufficient_privilege THEN
+          IF SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+        END $deny_service$;
+        RESET ROLE;
+        SET LOCAL ROLE social_schedule_full_publisher_fixture;
+        DO $deny_fixture$ BEGIN
+          UPDATE public.social_schedule_jobs SET reason='forbidden' WHERE id=${quote(id.job)}::uuid;
+          RAISE EXCEPTION 'DIRECT_FIXTURE_WRITE_ACCEPTED';
+        EXCEPTION WHEN insufficient_privilege THEN
+          IF SQLERRM <> 'CALENDAR_WRITE_GATE_REQUIRED' THEN RAISE; END IF;
+        END $deny_fixture$;
+        DO $checkpoint$ BEGIN
+          PERFORM public.social_schedule_step(
+            jsonb_build_object('jobId',${quote(id.job)},'claimId',${quote(id.claim)},'version',1),
+            '{"action":"checkpoint","reason":"stopped"}'::jsonb
+          );
+        END $checkpoint$;
+        RESET ROLE;
+        SELECT jsonb_build_object(
+          'state',(SELECT state FROM public.social_schedule_jobs WHERE id=${quote(id.job)}),
+          'version',(SELECT version FROM public.social_schedule_jobs WHERE id=${quote(id.job)}),
+          'source_revision',(SELECT revision FROM public.calendar_source_revision_probe WHERE project_id=${quote(project)}),
+          'checkpoint_events',(SELECT count(*) FROM public.social_schedule_events WHERE job_id=${quote(id.job)} AND event='checkpoint'),
+          'publications',(SELECT count(*) FROM public.social_publications WHERE project_id=${quote(project)})
+        );
+        ROLLBACK;
+      `))
+      assert.deepEqual(roleResult, { state:'blocked', version:2, source_revision:2, checkpoint_events:1, publications:0 })
+      assert.equal(sql("SELECT count(*) FROM public.projects WHERE id=" + quote(project)), '0', 'synthetic project escaped rollback')
+      console.log('CROSS-TREE CHECKPOINT GATE ' + JSON.stringify(roleResult) + ' (rolled back; no provider call)')
     }
     console.log(crossTreeReplay ? 'CROSS-TREE REPLAY PASS' : legacyDreamReplay ? 'LEGACY DREAM REPLAY PASS' : legacyCronReplay ? 'LEGACY CRON REPLAY PASS' : legacyMediaReplay ? 'LEGACY MEDIA REPLAY PASS' : dependencyReplay ? 'DEPENDENCY REPLAY PASS' : 'CANONICAL REPLAY PASS')
     process.exitCode = 0

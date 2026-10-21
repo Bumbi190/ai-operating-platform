@@ -200,6 +200,45 @@ try {
       )
       sql(bytes.toString('utf8'))
     }
+    if (crossTreeReplay) {
+      // A catalog snapshot of the replayed migration history, not a production cutover.
+      // Keep the same target list as the read-only live catalog audit.
+      const acl = JSON.parse(sql(`
+        WITH targets(kind,obj,priv) AS (VALUES
+          ('table','public.social_publications','INSERT'),
+          ('table','public.social_publications','UPDATE'),
+          ('table','public.social_schedule_jobs','INSERT'),
+          ('table','public.social_schedule_jobs','UPDATE'),
+          ('table','public.social_publication_events','INSERT'),
+          ('table','public.social_schedule_events','INSERT'),
+          ('table','public.social_publication_reconciliation_proofs','INSERT'),
+          ('table','public.platform_tokens','SELECT'),
+          ('function','public.social_schedule_step(jsonb,jsonb)','EXECUTE'),
+          ('function','public.social_publication_step(jsonb,jsonb)','EXECUTE'),
+          ('function','public.social_publication_reconciliation_inspect(jsonb,jsonb)','EXECUTE'),
+          ('function','public.social_publication_reconciliation_complete(jsonb,jsonb)','EXECUTE')
+        ), grants AS (
+          SELECT kind,obj,priv,
+            CASE WHEN kind='table' THEN to_regclass(obj)::text ELSE to_regprocedure(obj)::text END AS exists_as,
+            CASE WHEN kind='table' THEN has_table_privilege('service_role',obj,priv)
+              ELSE has_function_privilege('service_role',obj,priv) END AS service_role,
+            CASE WHEN kind='table' THEN has_table_privilege('anon',obj,priv)
+              ELSE has_function_privilege('anon',obj,priv) END AS anon,
+            CASE WHEN kind='table' THEN has_table_privilege('authenticated',obj,priv)
+              ELSE has_function_privilege('authenticated',obj,priv) END AS authenticated
+          FROM targets
+        )
+        SELECT jsonb_agg(to_jsonb(grants) ORDER BY kind,obj,priv) FROM grants;
+      `))
+      assert.equal(acl.length, 12)
+      for (const entry of acl) {
+        assert.ok(entry.exists_as, 'missing ACL target: ' + entry.obj)
+        assert.equal(entry.service_role, true, 'expected historical service_role grant: ' + entry.obj)
+        assert.equal(entry.anon, false, 'unexpected anon grant: ' + entry.obj)
+        assert.equal(entry.authenticated, false, 'unexpected authenticated grant: ' + entry.obj)
+      }
+      console.log('CROSS-TREE ACL BASELINE ' + JSON.stringify(acl))
+    }
     console.log(crossTreeReplay ? 'CROSS-TREE REPLAY PASS' : legacyDreamReplay ? 'LEGACY DREAM REPLAY PASS' : legacyCronReplay ? 'LEGACY CRON REPLAY PASS' : legacyMediaReplay ? 'LEGACY MEDIA REPLAY PASS' : dependencyReplay ? 'DEPENDENCY REPLAY PASS' : 'CANONICAL REPLAY PASS')
     process.exitCode = 0
   } else {

@@ -15,6 +15,27 @@ had no network, no published ports, and cron job launching disabled. Its owned
 container was removed after the run. This establishes local SQL execution on
 an empty synthetic database, not production data migration or role parity.
 
+## Calendar ACL baseline — read-only comparison
+
+On 21 October, the isolated cross-tree replay queried PostgreSQL's
+`has_table_privilege` and `has_function_privilege` for 12 selected calendar
+and credential operations. A separate read-only query of production project
+`iboepohjwrhtgshrqaol` returned the same result for all 12: `service_role`
+has the privilege, while `anon` and `authenticated` do not. All 12 objects
+exist in both catalogs. The targets are publication and schedule INSERT/UPDATE,
+their event INSERTs, reconciliation-proof INSERT, platform-token SELECT, and
+EXECUTE on schedule step, manual publication step, reconciliation inspect,
+and reconciliation complete. Production's four inspected functions are
+`SECURITY INVOKER`, owned by `postgres`.
+
+This matches the **current broad grant baseline**. It does not establish
+that a proposed `social_schedule_publisher_fixture` role can perform the
+approved schedule path or that revoking `service_role` is safe. In particular,
+the draft role candidate references `calendar_source_gate_begin_probe(uuid)`,
+which is not part of this canonical replay. The next isolated test must
+install the explicitly reviewed gate candidate, then exercise allowed and
+denied paths in a rollback-only fixture before any production proposal.
+
 ## Observed dependency edges
 
 | Producer | Consumer | Evidence/status |
@@ -97,11 +118,11 @@ PostgreSQL result and object-by-object review. Do not merge all 38 histories
 by filename or infer production completeness from this inventory.
 
 The local replay now passes 13/13 ordering tests and the whole selected SQL
-sequence. It does **not** replay the other 28 root files, test existing
-production rows, verify authentic Supabase migration ledger entries, or prove
-calendar writer grants and role parity. The next gate is the isolated calendar
-writer permission test against this schema, followed by read-only comparison
-with the installed target and review of any differences. Separately,
+sequence. The 12-operation calendar ACL baseline matches the read-only
+production catalog snapshot. It does **not** replay the other 28 root files,
+test existing production rows, verify authentic Supabase migration ledger
+entries, or prove the proposed calendar writer role. The next gate is the
+isolated calendar writer permission test against this schema. Separately,
 production's missing May baseline still prevents a fresh Supabase branch from
 reconstructing the installed schema. None of these local experiments alters
 production, the production migration ledger, or its guard.

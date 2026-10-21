@@ -1,0 +1,190 @@
+# Isolated calendar proof SQL regression. Uses a uniquely named, labeled
+# disposable PostgreSQL container required by lib/calendar/test-db.ts.
+name: Calendar Proof Isolated
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/calendar-proof-isolated.yml'
+      - 'apps/web/lib/calendar/direct-write-gate-proof-*'
+      - 'apps/web/lib/calendar/direct-write-gate-worker-recovery.test.ts'
+      - 'apps/web/lib/social-launch/scheduling/worker.test.ts'
+      - 'apps/web/lib/social-launch/publication/provider.ts'
+      - 'apps/web/lib/social-launch/publication/provider.test.ts'
+      - 'apps/web/lib/social-launch/publication/reconciliation/**'
+      - 'apps/web/lib/social-launch/scheduling/worker.ts'
+      - 'apps/web/lib/calendar/direct-write-gate-scheduled-publisher-role-candidate.sql'
+      - 'apps/web/lib/calendar/direct-write-gate-scheduled-full-role-candidate.sql'
+      - 'apps/web/lib/calendar/direct-write-gate-worker-recovery-integration-probe.sql'
+      - 'apps/web/lib/calendar/social-*-fixture.sql'
+      - 'apps/web/lib/calendar/test-db.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: calendar-proof-isolated-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  inspector:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Start owned PostgreSQL fixture
+        run: |
+          set -euo pipefail
+          docker run -d --name omnira-website-build-test-20261014 \
+            --label com.omnira.testplan=atlas-live-build-20261014 \
+            -e POSTGRES_PASSWORD=postgres postgres:16
+          for attempt in {1..30}; do
+            if docker exec omnira-website-build-test-20261014 pg_isready -U postgres; then
+              docker exec omnira-website-build-test-20261014 psql -U postgres -v ON_ERROR_STOP=1 \
+                -c 'create role anon nologin' \
+                -c 'create role authenticated nologin' \
+                -c 'create role service_role nologin bypassrls'
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs omnira-website-build-test-20261014
+          exit 1
+      - name: Run proof and worker receipt regressions
+        working-directory: apps/web
+        run: |
+          npx --no vitest run lib/calendar/direct-write-gate-proof-real-inspector.test.ts \
+            lib/calendar/direct-write-gate-worker-recovery.test.ts \
+            --reporter=default --reporter=json \
+            --outputFile.json="$RUNNER_TEMP/calendar-proof-inspector.json"
+      - name: Enforce proof and worker anti-skip floor
+        if: always()
+        env:
+          REPORT: ${{ runner.temp }}/calendar-proof-inspector.json
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs')
+          const path = require('node:path')
+          if (!fs.existsSync(process.env.REPORT)) throw new Error('Inspector report missing')
+          const report = JSON.parse(fs.readFileSync(process.env.REPORT, 'utf8'))
+          for (const [file, floor] of [
+            ['direct-write-gate-proof-real-inspector.test.ts', 23],
+            ['direct-write-gate-worker-recovery.test.ts', 13],
+          ]) {
+            const result = (report.testResults ?? []).find(r => path.basename(r.name) === file)
+            if (!result) throw new Error(`${file} absent`)
+            const assertions = result.assertionResults ?? []
+            const passed = assertions.filter(a => a.status === 'passed').length
+            const failed = assertions.filter(a => a.status === 'failed').length
+            const skipped = assertions.filter(a => ['pending','skipped','todo','disabled'].includes(a.status)).length
+            if (result.status !== 'passed' || passed < floor || failed || skipped ||
+                report.numFailedTests || report.numPendingTests || report.numTodoTests) {
+              throw new Error(`${file}: status=${result.status} passed=${passed} failed=${failed} skipped=${skipped}`)
+            }
+            console.log(`${file}: ${passed} passed, 0 failed/skipped`)
+          }
+          NODE
+      - name: Run Facebook provider receipt regression
+        working-directory: apps/web
+        run: |
+          npx --no vitest run lib/social-launch/publication/provider.test.ts \
+            --reporter=default --reporter=json \
+            --outputFile.json="$RUNNER_TEMP/calendar-provider.json"
+      - name: Enforce provider anti-skip floor
+        if: always()
+        env:
+          REPORT: ${{ runner.temp }}/calendar-provider.json
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs')
+          if (!fs.existsSync(process.env.REPORT)) throw new Error('Provider report missing')
+          const report = JSON.parse(fs.readFileSync(process.env.REPORT, 'utf8'))
+          const assertions = report.testResults?.[0]?.assertionResults ?? []
+          const passed = assertions.filter(a => a.status === 'passed').length
+          if (report.testResults?.length !== 1 || passed < 11 ||
+              report.numFailedTests || report.numPendingTests || report.numTodoTests) {
+            throw new Error(`Provider: passed=${passed}, failed=${report.numFailedTests}, skipped=${report.numPendingTests}`)
+          }
+          console.log(`Provider: ${passed} passed, 0 failed/skipped`)
+          NODE
+      - name: Prepare owned scheduled worker SQL fixture
+        run: |
+          set -euo pipefail
+          fixture_output=$(WEBSITE_BUILD_TEST_DATABASE_URL='postgresql://postgres:local-fixture@127.0.0.1:54389/omnira_website_test' \
+            WEBSITE_BUILD_TEST_KEEP_DATABASE=1 node apps/web/scripts/test-website-build-db.mjs)
+          fixture_db=$(printf '%s\n' "$fixture_output" | sed -n 's/^KEEP_DB=\(website_test_[0-9]*\)$/\1/p' | tail -n 1)
+          if [[ ! "$fixture_db" =~ ^website_test_[0-9]+$ ]]; then
+            echo 'Owned fixture name missing'
+            exit 1
+          fi
+          echo "WEBSITE_BUILD_TEST_DATABASE_NAME=$fixture_db" >> "$GITHUB_ENV"
+      - name: Run scheduled provider boundary regression
+        working-directory: apps/web
+        run: |
+          npx --no vitest run lib/social-launch/scheduling/worker.test.ts \
+            --reporter=default --reporter=json \
+            --outputFile.json="$RUNNER_TEMP/calendar-scheduled-worker.json"
+      - name: Enforce scheduled worker anti-skip floor
+        if: always()
+        env:
+          REPORT: ${{ runner.temp }}/calendar-scheduled-worker.json
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs')
+          const path = require('node:path')
+          if (!fs.existsSync(process.env.REPORT)) throw new Error('Scheduled worker report missing')
+          const report = JSON.parse(fs.readFileSync(process.env.REPORT, 'utf8'))
+          const result = (report.testResults ?? []).find(r => path.basename(r.name) === 'worker.test.ts')
+          if (!result) throw new Error('Scheduled worker suite absent')
+          const assertions = result.assertionResults ?? []
+          const passed = assertions.filter(a => a.status === 'passed').length
+          const failed = assertions.filter(a => a.status === 'failed').length
+          const skipped = assertions.filter(a => ['pending','skipped','todo','disabled'].includes(a.status)).length
+          if (result.status !== 'passed' || passed < 14 || failed || skipped ||
+              report.numFailedTests || report.numPendingTests || report.numTodoTests) {
+            throw new Error(`Scheduled worker: status=${result.status} passed=${passed} failed=${failed} skipped=${skipped}`)
+          }
+          console.log(`Scheduled worker: ${passed} passed, 0 failed/skipped`)
+          NODE
+      - name: Run Facebook reconciliation project boundary regression
+        working-directory: apps/web
+        run: |
+          npx --no vitest run lib/social-launch/publication/reconciliation/service.test.ts \
+            --reporter=default --reporter=json \
+            --outputFile.json="$RUNNER_TEMP/calendar-reconciliation.json"
+      - name: Enforce reconciliation anti-skip floor
+        if: always()
+        env:
+          REPORT: ${{ runner.temp }}/calendar-reconciliation.json
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs')
+          const path = require('node:path')
+          if (!fs.existsSync(process.env.REPORT)) throw new Error('Reconciliation report missing')
+          const report = JSON.parse(fs.readFileSync(process.env.REPORT, 'utf8'))
+          const result = (report.testResults ?? []).find(r => path.basename(r.name) === 'service.test.ts')
+          if (!result) throw new Error('Reconciliation suite absent')
+          const assertions = result.assertionResults ?? []
+          const passed = assertions.filter(a => a.status === 'passed').length
+          const failed = assertions.filter(a => a.status === 'failed').length
+          const skipped = assertions.filter(a => ['pending','skipped','todo','disabled'].includes(a.status)).length
+          if (result.status !== 'passed' || passed < 7 || failed || skipped ||
+              report.numFailedTests || report.numPendingTests || report.numTodoTests) {
+            throw new Error(`Reconciliation: status=${result.status} passed=${passed} failed=${failed} skipped=${skipped}`)
+          }
+          console.log(`Reconciliation: ${passed} passed, 0 failed/skipped`)
+          NODE
+      - name: Remove owned fixture
+        if: always()
+        run: |
+          if [[ "${WEBSITE_BUILD_TEST_DATABASE_NAME:-}" =~ ^website_test_[0-9]+$ ]]; then
+            docker exec omnira-website-build-test-20261014 dropdb -U postgres --force "$WEBSITE_BUILD_TEST_DATABASE_NAME" || true
+          fi
+          docker rm -f omnira-website-build-test-20261014 || true

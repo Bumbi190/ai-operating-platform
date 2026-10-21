@@ -64,13 +64,38 @@ The authoritative provider fetch and its credential boundary must be bound to
 the writer before treating such rows as trustworthy. SQL shape checks alone
 cannot close this gap.
 
-A second pending regression exercises the original reconciliation migration
+A second regression exercises the original reconciliation migration
 through its service-role RPC in the publication fixture. It supplies a distinct
 invented candidate and asserts that the proof is stored without any provider
 GET or POST. This covers more of the effective social publication schema than
-the calendar projection, but it is still a local fixture and has not been run
-in this environment. The normal app service does perform provider reads; the
+the calendar projection, but it is still a local fixture rather than a
+production provider read. The normal app service does perform provider reads; the
 test isolates the authority of the underlying RPC when called directly.
+
+## Permission candidate: isolated verification
+
+`direct-write-gate-proof-permission-candidate.sql` is an isolated review file,
+not a migration. It revokes direct `service_role` INSERT on the proof table and
+runs the existing inspector as a definer owned by the trusted migration role.
+The real-inspector fixture now checks that direct INSERT is denied while its
+legitimate RPC still writes and bumps the source version. Existing owner,
+candidate, media and source checks remain in the hardened function body.
+
+This is only table privilege containment. A service-role caller still has
+EXECUTE on that RPC and can submit invented candidates; the two negative
+provenance tests remain relevant. Before considering a migration, verify
+function ownership, search path, nested helper permissions, RLS behavior,
+trigger execution, full-schema role grants and transaction lock order. Do not
+promote this candidate solely on fixture results.
+
+On the connected Windows development machine, an isolated detached worktree at
+commit 413d18c used the labeled local Docker fixture. The calendar real-inspector
+suite passed 20/20 tests, including direct INSERT refusal, legitimate RPC write,
+null rejection and fabricated-candidate acceptance. The separate publication
+reconciliation suite passed 5/5 tests against a fresh owned database, including
+the direct service-role RPC bypass with zero provider GET/POST calls. The owned
+temporary database was dropped after the run. This is not full migrated Supabase
+schema/RLS verification or a provider authenticity guarantee.
 
 ## Verification scope
 

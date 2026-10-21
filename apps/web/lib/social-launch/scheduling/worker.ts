@@ -9,7 +9,7 @@ import {verifyPublicationImage} from '../publication/media'
 import {ScheduleError,type ScheduleClaim} from './types'
 import {enabledScheduleProjects,checkScheduleWrite,recordScheduleStep,readScheduleReceipt,recoverScheduleCheckpoint,claimScheduleJob,peekScheduleJobs,type ScheduleStepResult} from './store'
 type Db=ReturnType<typeof createAdminClient>
-export type ScheduledPublicationDependencies={provider:MetaManualProvider;resolveCredential:(projectId:string,channel:'facebook'|'instagram')=>Promise<ManualCredential&{bindingId:string}>;verifyImage:typeof verifyPublicationImage;now:()=>number}
+export type ScheduledPublicationDependencies={provider:MetaManualProvider;resolveCredential:(projectId:string,channel:'facebook'|'instagram')=>Promise<ManualCredential&{projectId:string;bindingId:string}>;verifyImage:typeof verifyPublicationImage;now:()=>number}
 const defaults=():ScheduledPublicationDependencies=>({provider:new MetaManualProvider(),resolveCredential:resolvePublicationCredential,verifyImage:verifyPublicationImage,now:()=>Date.now()})
 const terminal=['published','failed','uncertain','blocked','cancelled','missed']
 function refusal(error:unknown):'release_required'|'stopped'|'review_required'|'disabled'|'budget_exhausted'{
@@ -25,7 +25,7 @@ export async function runScheduledPublication(db:Db,claim:ScheduleClaim,deps:Sch
   const snapshot=await checkScheduleWrite(db,current);current={...current,snapshot}
   if(signal.aborted)throw new PublicationBudgetError()
   const credential=await deps.resolveCredential(snapshot.projectId,snapshot.item.channel)
-  if(credential.channel!==snapshot.item.channel||credential.bindingId!==snapshot.item.bindingId||credential.accountId!==snapshot.item.accountId)throw new ScheduleError('REVIEW_REQUIRED')
+  if(credential.projectId!==snapshot.projectId||credential.channel!==snapshot.item.channel||credential.bindingId!==snapshot.item.bindingId||credential.accountId!==snapshot.item.accountId)throw new ScheduleError('REVIEW_REQUIRED')
   const journal:PublicationJournal={
    prepare:async()=>{const result=await recordScheduleStep(db,current,{action:'prepare'});current=result.claim;jobState=result.jobState;if(!result.publication)throw new ScheduleError('UNAVAILABLE');return result.publication},
    step:async(record,action,extra={})=>{

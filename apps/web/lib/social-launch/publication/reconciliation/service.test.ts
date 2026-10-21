@@ -32,6 +32,17 @@ it('rejects expired proofs changed posts and current account mismatch',async()=>
   expect(f.providerPosts).toBe(0)
  }
 },30000)
+it('rejects a cross-project credential before inspecting or completing a Facebook proof',async()=>{
+ const f=await reconciliationFixture(db)
+ const wrong={...f.deps,resolveCredential:async()=>({...f.credential,projectId:crypto.randomUUID()})}
+ await expect(inspectReconciliation(db,f.principal,f.scope,wrong)).rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+ expect(f.providerReads).toBe(0)
+ const view=await inspectReconciliation(db,f.principal,f.scope,f.deps)
+ const reads=f.providerReads
+ await expect(completeReconciliation(db,f.principal,{...f.completeInput,candidateId:view.candidates[0].id},wrong)).rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+ expect(f.providerReads).toBe(reads)
+ expect(f.providerPosts).toBe(0)
+},20000)
 it('denies public roles and rejects unknown RPC fields',async()=>{
  const f=await reconciliationFixture(db)
  expect(()=>testSql("set role authenticated;select social_publication_reconciliation_inspect('{}','{}');")).toThrow()
@@ -51,6 +62,16 @@ it('documents that direct service-role RPC can register a fabricated provider ca
  expect(error).toBeNull()
  expect(data.proofs).toHaveLength(1)
  expect(data.proofs[0].providerId).toBe(invented.providerId)
+ expect(f.providerReads).toBe(0)
+ expect(f.providerPosts).toBe(0)
+},15000)
+
+it('documents that direct service-role UPDATE can forge published state',async()=>{
+ const f=await reconciliationFixture(db)
+ testSql("set role service_role; update public.social_publications set state='published',"+
+  "provider_id='"+f.candidate.providerId+"',permalink='"+f.candidate.permalink+"',"+
+  "confirmation='provider_id',version=version+1 where id='"+f.scope.publicationId+"';")
+ expect(testSql("select state from public.social_publications where id='"+f.scope.publicationId+"';")).toBe('published')
  expect(f.providerReads).toBe(0)
  expect(f.providerPosts).toBe(0)
 },15000)

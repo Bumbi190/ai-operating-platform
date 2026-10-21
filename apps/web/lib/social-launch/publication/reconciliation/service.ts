@@ -10,7 +10,7 @@ import type {CompleteReconciliation,ReconciliationCandidate,ReconciliationDepend
 type Db=ReturnType<typeof createAdminClient>
 const defaults:ReconciliationDependencies={provider:{list:listFacebookCandidates,read:readFacebookCandidate},now:()=>Date.now(),resolveCredential:async projectId=>{
  const r=await resolveFacebookCredential(projectId);if(!r.ok)throw new PublicationError('REVIEW_REQUIRED')
- return {channel:'facebook',bindingId:r.credential.bindingId,accountId:r.credential.pageId,token:r.credential.pageToken,apiBase:'https://graph.facebook.com/v21.0'}
+ return {channel:'facebook',projectId:r.credential.projectId,bindingId:r.credential.bindingId,accountId:r.credential.pageId,token:r.credential.pageToken,apiBase:'https://graph.facebook.com/v21.0'}
 }}
 export function candidateHash(c:ReconciliationCandidate){
  // A CDN query can rotate independently of the photo. Pin the photo id and URL
@@ -20,7 +20,7 @@ export function candidateHash(c:ReconciliationCandidate){
 }
 async function credential(s:AttemptSnapshot,deps:ReconciliationDependencies){
  const c=await deps.resolveCredential(s.publication.projectId)
- if(s.publication.channel!=='facebook'||c.channel!=='facebook'||c.bindingId!==s.publication.bindingId||c.accountId!==s.publication.accountId)throw new PublicationError('REVIEW_REQUIRED')
+ if(s.publication.channel!=='facebook'||c.projectId!==s.publication.projectId||c.channel!=='facebook'||c.bindingId!==s.publication.bindingId||c.accountId!==s.publication.accountId)throw new PublicationError('REVIEW_REQUIRED')
  return c
 }
 export async function inspectReconciliation(db:Db,p:PublicationPrincipal,input:ReconciliationScope,deps=defaults){

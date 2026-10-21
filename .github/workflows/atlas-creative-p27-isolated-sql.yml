@@ -8,6 +8,7 @@ on:
       - feat/atlas-creative-p26-main-reconciliation
     paths:
       - '.github/workflows/atlas-creative-p27-isolated-sql.yml'
+      - 'scripts/creative-tools/draft-migration-isolation.test.mjs'
 
 permissions:
   contents: read

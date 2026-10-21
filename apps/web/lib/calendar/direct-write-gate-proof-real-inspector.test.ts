@@ -68,6 +68,17 @@ describe('real inspector candidate validation with signed source gate',()=>{
   expect(inspect([candidate()]).proofs).toHaveLength(1);
   expect(source()).toBe('2');
  });
+ it('shows that the source gate and proof INSERT revoke do not authorize publication UPDATE',()=>{
+  // The source token enforces lock order and revision consistency. The shared
+  // service role can mint it, then still write a forged published receipt.
+  f.sql('set local role service_role;select public.calendar_source_gate_begin_probe('+q(PROJECT_A)+');'+
+   'update public.social_publications set state='+q('published')+
+   ',provider_id='+q('12345_99999')+',permalink='+q('https://www.facebook.com/12345/posts/99999')+
+   ',confirmation='+q('provider_id')+',version=version+1 where id='+q(publication));
+  expect(f.sql('select state||\'|\'||provider_id from social_publications where id='+q(publication)))
+   .toBe('published|12345_99999');
+  expect(count()).toBe('0');expect(source()).toBe('2');
+ });
  it('documents that a shaped but unverified provider candidate is accepted',()=>{
   // No provider reader is called by this SQL fixture. This input is invented by
   // the caller and demonstrates the boundary the database cannot authenticate.

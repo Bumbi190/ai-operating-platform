@@ -273,6 +273,10 @@ try {
       const recoveryFile = reviewedBytes(resolve(web, 'lib/calendar/direct-write-gate-worker-recovery-integration-probe.sql')).toString('utf8')
       const lockedClaim = recoveryFile.split('create or replace function public.social_schedule_step')[0]
       assert.equal((lockedClaim.match(/create or replace function public\.social_schedule_locked_claim/g) ?? []).length, 1)
+      const claimFile = reviewedBytes(resolve(web, 'lib/calendar/direct-write-gate-worker-integration-probe.sql')).toString('utf8')
+      const recoveryCheckpoint = recoveryFile.slice(recoveryFile.indexOf('create or replace function public.social_schedule_recover_checkpoint'))
+      assert.equal((claimFile.match(/create or replace function public\.social_schedule_claim\(/g) ?? []).length, 1)
+      assert.ok(recoveryCheckpoint.startsWith('create or replace function public.social_schedule_recover_checkpoint'))
       const id = {
         plan: '20000000-0000-4000-8000-000000000011',
         post: '20000000-0000-4000-8000-000000000012',
@@ -332,12 +336,44 @@ try {
           VALUES (${quote(actor)},${quote(project)},1);
         ${gate}
         ${lockedClaim}
+        ${claimFile}
+        ${recoveryCheckpoint}
         ${roleCandidate.toString('utf8')}
         ${reviewedBytes(resolve(web, 'lib/calendar/direct-write-gate-proof-trigger-probe.sql')).toString('utf8')}
         ${reviewedBytes(resolve(web, 'lib/calendar/direct-write-gate-proof-inspect-hardened-candidate.sql')).toString('utf8')}
         ${reviewedBytes(resolve(web, 'lib/calendar/direct-write-gate-proof-permission-candidate.sql')).toString('utf8')}
         GRANT EXECUTE ON FUNCTION public.calendar_source_gate_begin_probe(uuid)
           TO social_schedule_full_publisher_fixture;
+        GRANT EXECUTE ON FUNCTION public.social_schedule_recover_checkpoint(jsonb)
+          TO social_schedule_full_publisher_fixture;
+        SAVEPOINT synthetic_claim_probe;
+        DO $seed_claim$ BEGIN
+          PERFORM public.calendar_source_gate_begin_probe(${quote(project)}::uuid);
+        END $seed_claim$;
+        UPDATE public.social_schedule_jobs SET state='queued',claim_id=null,worker_id=null,lease_expires_at=null
+          WHERE id=${quote(id.job)}::uuid;
+        SET LOCAL ROLE social_schedule_full_publisher_fixture;
+        DO $claim_missing_gate$ BEGIN
+          PERFORM public.social_schedule_claim(jsonb_build_object(
+            'workerId','probe-worker','now',to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+            'dryRun',false,'projectIds',jsonb_build_array(${quote(project)})));
+          RAISE EXCEPTION 'CLAIM_WITHOUT_GATE_GRANT_ACCEPTED';
+        EXCEPTION WHEN insufficient_privilege THEN
+          IF SQLERRM NOT LIKE '%permission denied for function calendar_source_gate_try_begin_probe%' THEN RAISE; END IF;
+        END $claim_missing_gate$;
+        RESET ROLE;
+        GRANT EXECUTE ON FUNCTION public.calendar_source_gate_try_begin_probe(uuid)
+          TO social_schedule_full_publisher_fixture;
+        SET LOCAL ROLE social_schedule_full_publisher_fixture;
+        DO $claim$ DECLARE result jsonb; BEGIN
+          result=public.social_schedule_claim(jsonb_build_object(
+            'workerId','probe-worker','now',to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+            'dryRun',false,'projectIds',jsonb_build_array(${quote(project)})));
+          IF result->>'jobId' IS DISTINCT FROM ${quote(id.job)} OR result->>'version' IS DISTINCT FROM '2'
+            THEN RAISE EXCEPTION 'SYNTHETIC_CLAIM_NOT_RECORDED: %',result; END IF;
+        END $claim$;
+        RESET ROLE;
+        ROLLBACK TO SAVEPOINT synthetic_claim_probe;
         SET LOCAL ROLE service_role;
         DO $deny_service$ BEGIN
           UPDATE public.social_schedule_jobs SET reason='forbidden' WHERE id=${quote(id.job)}::uuid;
@@ -403,6 +439,22 @@ try {
           ) THEN RAISE EXCEPTION 'SYNTHETIC_RECEIPT_NOT_RECORDED'; END IF;
         END $receipt$;
         ROLLBACK TO SAVEPOINT synthetic_receipt_probe;
+        SAVEPOINT synthetic_recovery_probe;
+        DO $recover$ BEGIN
+          PERFORM public.social_schedule_step(
+            jsonb_build_object('jobId',${quote(id.job)},'claimId',${quote(id.claim)},'version',2),
+            jsonb_build_object('action','claim_create','expectedVersion',1,'capabilityHash',${quote('e'.repeat(64))})
+          );
+          PERFORM public.social_schedule_recover_checkpoint(
+            jsonb_build_object('jobId',${quote(id.job)},'claimId',${quote(id.claim)},'version',3)
+          );
+          IF NOT EXISTS (
+            SELECT 1 FROM public.social_schedule_jobs j JOIN public.social_publications p ON p.id=j.publication_id
+            WHERE j.id=${quote(id.job)}::uuid AND j.state='uncertain' AND j.version=4
+              AND p.state='uncertain' AND p.failure_code='receipt_unavailable' AND p.version=3
+          ) THEN RAISE EXCEPTION 'SYNTHETIC_RECOVERY_NOT_RECORDED'; END IF;
+        END $recover$;
+        ROLLBACK TO SAVEPOINT synthetic_recovery_probe;
         SAVEPOINT synthetic_reconciliation_probe;
         DO $uncertain$ BEGIN
           PERFORM public.social_schedule_step(
@@ -465,7 +517,7 @@ try {
       `))
       assert.deepEqual(roleResult, { state:'blocked', version:3, source_revision:4, prepare_events:1, checkpoint_events:1, publications:1 })
       assert.equal(sql("SELECT count(*) FROM public.projects WHERE id=" + quote(project)), '0', 'synthetic project escaped rollback')
-      console.log('CROSS-TREE SCHEDULE GATE ' + JSON.stringify(roleResult) + ' (revocation, synthetic receipt and fabricated reconciliation proof branches rolled back; no provider call)')
+      console.log('CROSS-TREE SCHEDULE GATE ' + JSON.stringify(roleResult) + ' (claim, revocation, receipt, recovery and fabricated reconciliation proof branches rolled back; no provider call)')
     }
     console.log(crossTreeReplay ? 'CROSS-TREE REPLAY PASS' : legacyDreamReplay ? 'LEGACY DREAM REPLAY PASS' : legacyCronReplay ? 'LEGACY CRON REPLAY PASS' : legacyMediaReplay ? 'LEGACY MEDIA REPLAY PASS' : dependencyReplay ? 'DEPENDENCY REPLAY PASS' : 'CANONICAL REPLAY PASS')
     process.exitCode = 0

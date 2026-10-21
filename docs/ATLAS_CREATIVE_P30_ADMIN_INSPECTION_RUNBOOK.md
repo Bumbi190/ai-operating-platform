@@ -228,3 +228,37 @@ Sources checked 2026-10-21:
 - [WaitForSingleObject](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitforsingleobject): WAIT_TIMEOUT = 0x102.
 - [Launch an AppContainer](https://learn.microsoft.com/en-us/windows/win32/secauthz/implementing-an-appcontainer): capability-based token and network boundary; requires actual feasibility evidence here.
 - [Experimental Create Process In Sandbox](https://learn.microsoft.com/en-us/windows/win32/secauthz/createprocessinsandbox): experimental processmodel.dll APIs, not a proven backend selection.
+
+## AppContainer token/loopback spike - blocked on operator-session launch, not network acceptance
+
+The operator asked to continue the explicitly proposed inert AppContainer token/network test. Only unique temporary own-user AppContainer profiles, fixed system curl, transient process jobs and loopback HTTP listeners were used; no worker/editor activation, existing profile reuse, firewall exception or project ACL change. The probe was separately reviewed and compile-checked before profile creation. Each created process was checked while suspended and failed token assertions prevented resume.
+
+Observed investigation, in order:
+
+1. Elevated ordinary curl positive control reached the IPv4 test listener (exit 0, one accepted connection). The AppContainer launch failed with Win32 203 before token inspection. The deliberately minimal environment omitted LOCALAPPDATA, which Windows requires for this launch. Retaining this known-folder path resolved that specific creation failure without inheriting proxies, configuration or secrets.
+2. Actual suspended AppContainer token: IsAppContainer=true, expected profile SID matched, capability count=0, integrity RID=4096. However Elevated=true and the Administrators group was enabled. The guard refused resume. Thus AppContainer identity and low integrity alone were insufficient for this project's nonadmin-token requirement.
+3. Same user's linked limited token was inspected without creating a profile/process: token type=2 (impersonation), level=1 (identification), elevation=0. CreateProcessAsUser and DuplicateTokenEx-to-primary were refused with Win32 1346. No other-process token, password, privilege escalation or token-level bypass was used.
+4. Documented CreateRestrictedToken(DISABLE_MAX_PRIVILEGE | LUA_TOKEN, flags=5; not SANDBOX_INERT) produced an own-user primary token, type=1, elevation=false, administrator group disabled. Baselines and AppContainer trials were changed to share this single narrowed primary for a fair comparison. The ordinary baseline then exited with 0xC0000142 (DLL initialization failure) before accepting a network connection. This failure's deeper cause remains unproven; it must not be attributed to network blocking. No desktop/window-station permission change was attempted to work around it.
+
+At that point administrative-origin launch variants were stopped. Final throwaway probe source requires a genuinely standard unelevated operator session before creating a profile and uses the same current user context for both normal controls and AppContainer trials. It does not synthesize linked or alternate primary tokens. All real AppContainer assertions remain in place; no elevated fallback.
+
+Operator handoff:
+
+```powershell
+powershell.exe -NoProfile -File "C:\Users\Andre\Projects\Omnira\.worktrees\atlas-creative-p30-admin-inspection-runbook\scripts\creative-tools\worker-appcontainer-loopback-spike.ps1"
+```
+
+Run from a fresh ordinary PowerShell window, without Run as administrator. The 22-line wrapper rejects administrator context before imports or source-file reads. It then imports only pinned Windows Utility, compiles the known reference source and runs the bounded diagnostic. No execution-policy bypass or automatic elevation. The C# entry point independently verifies nonadmin/unelevated context before profile creation. Fresh standard-session execution remains outstanding; the network probe is NOT approved by any passing result yet.
+
+Final verification in the current elevated session used the reviewed literal (not worktree execution): source compiled, Run returned requires_unelevated_operator_session, ProfileCreated=false, no trials/processes/listeners created. The guard regression passed. Wrapper parser reported zero syntax errors; it was not executed from the elevated worktree. Fresh review found no remaining handoff blockers; the earlier baseline-call signature mismatch was corrected before compiling this final source.
+
+Cleanup evidence: five unique temporary profiles were actually created across the earlier attempts. Every API deletion succeeded and every created process was observed stopped. Independent targeted own-profile package-root and registry-mapping checks corroborate cleanup; no global profile search/delete was used. The initial native-folder cleanup check targeted its AC subfolder after the whole profile parent had been deleted, causing a false unverified report; corrected to inspect the exact own package root and mapping. Final standard-session probe includes both checks and records its own unique profile name/SID for recovery diagnostics.
+
+Current result: real AppContainer identity/capability/low-integrity observation exists, but no successful nonadmin AppContainer execution or IPv4/IPv6 loopback comparison has completed. Do not claim network denial, worker token isolation, editor compatibility, filesystem secrecy or production readiness. DNS, UDP, LAN, Internet, proxies, breakaway and private/project file tests remain outstanding. Worker stays disabled; previous protected ledger ACL success is unaffected.
+
+Sources checked:
+
+- [Launch an AppContainer](https://learn.microsoft.com/en-us/windows/win32/secauthz/implementing-an-appcontainer): capabilities and LOCALAPPDATA.
+- [CreateAppContainerProfile](https://learn.microsoft.com/en-us/windows/win32/api/userenv/nf-userenv-createappcontainerprofile) and [DeleteAppContainerProfile](https://learn.microsoft.com/en-us/windows/win32/api/userenv/nf-userenv-deleteappcontainerprofile): own-user temporary profile lifecycle.
+- [DuplicateTokenEx](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-duplicatetokenex): primary versus impersonation token requirements.
+- [CreateRestrictedToken](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-createrestrictedtoken): documented narrowing flags and own-primary process creation.

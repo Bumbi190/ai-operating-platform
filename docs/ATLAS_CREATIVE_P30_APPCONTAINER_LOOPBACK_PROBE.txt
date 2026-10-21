@@ -79,7 +79,7 @@ public static class CreativeAppContainerLoopbackProbe {
  public sealed class Trial {
   public string Family;public uint BaselineBefore,RestrictedExit,BaselineAfter;
   public int BaselineAccepts,RestrictedAccepts,AfterAccepts;
-  public bool LoopbackDenied;public TokenObservation RestrictedToken;
+  public bool LoopbackDenied;public string RestrictedOutcome;public TokenObservation RestrictedToken;
  }
  public sealed class Result {
   public string Mode="throwaway-AppContainer-loopback-probe",Error,ProfileName,ProfileSid;
@@ -134,9 +134,10 @@ public static class CreativeAppContainerLoopbackProbe {
      start=server.Accepted;t.BaselineAfter=Curl(server,IntPtr.Zero,result,out ignored);t.AfterAccepts=server.Accepted-start;
      Check(t.BaselineAfter==0&&t.AfterAccepts==1,"reachable positive control after");
      t.LoopbackDenied=t.RestrictedExit==7&&t.RestrictedAccepts==0;
-     Check(t.LoopbackDenied,"restricted loopback path denied");
+     t.RestrictedOutcome=t.LoopbackDenied?"connection-failed-no-accept":t.RestrictedExit==28&&t.RestrictedAccepts==0?"timeout-no-accept-inconclusive":t.RestrictedAccepts>0?"connection-observed-failed":"unexpected-exit-inconclusive";
     }
    }
+   foreach(Trial t in result.Trials)if(!t.LoopbackDenied){result.Error="loopback isolation not verified; inspect RestrictedOutcome and RestrictedExit for both address families";break;}
   }catch(Exception e){result.Error=e.Message;}
   finally{
    if(folder!=IntPtr.Zero)Marshal.FreeCoTaskMem(folder);

@@ -72,6 +72,22 @@ the calendar projection, but it is still a local fixture and has not been run
 in this environment. The normal app service does perform provider reads; the
 test isolates the authority of the underlying RPC when called directly.
 
+## Permission candidate awaiting execution
+
+`direct-write-gate-proof-permission-candidate.sql` is an isolated review file,
+not a migration. It revokes direct `service_role` INSERT on the proof table and
+runs the existing inspector as a definer owned by the trusted migration role.
+The real-inspector fixture now checks that direct INSERT is denied while its
+legitimate RPC still writes and bumps the source version. Existing owner,
+candidate, media and source checks remain in the hardened function body.
+
+This is only table privilege containment. A service-role caller still has
+EXECUTE on that RPC and can submit invented candidates; the two negative
+provenance tests remain relevant. Before considering a migration, verify
+function ownership, search path, nested helper permissions, RLS behavior,
+trigger execution, full-schema role grants and transaction lock order. Do not
+promote this candidate solely on fixture results.
+
 ## Verification scope
 
 New real-inspector behavioral tests cover valid insertion, replay, null refusal,

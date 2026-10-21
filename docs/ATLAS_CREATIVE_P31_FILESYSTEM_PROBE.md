@@ -92,6 +92,16 @@ No worker activation is authorized by this diagnostic.
   ATLAS_CREATIVE_P31_FILESYSTEM_HELPER_TEST.txt.
 - Independent actual-source review caught and corrected partial-copy
   acceptance; the result now requires no output or verified zero bytes.
-- Actual standard-user AppContainer filesystem result: NOT YET RUN.
+- Initial preparation ended before the actual standard-user run; its passing result is recorded below.
 
 Keep this PR Draft, stacked on P30. No merge/deployment/activation.
+
+## Actual standard-user result — 2026-10-21
+
+Operator supplied profile `omnira.artcraft.fsprobe.9016ed7fe3c94cd1adad0671f4cee887`, SID `S-1-15-2-2349076279-3826305153-2558988396-3829418612-3504389118-2961244330-4054682537`, fixture suffix `110d936c3e30430e9f721f3afe073be2`.
+
+All three trials passed with Error=null. Own-profile control exit0 with exact60-byte contents; external synthetic read exit37 with output absent; external synthetic write exit23 with output absent. All six ordinary before/after controls exited0 with exact contents. Each restricted token was AppContainer, exact expected SID, zero capabilities, low IL4096, unelevated and administrator group disabled. All process/profile/fixture cleanup observations true; no worker/editor/network/firewall/project ACL use.
+
+A separate fresh administrator read-only metadata check at `2026-10-21T13:12:19.0797448Z` corroborated zero matching profile package entries, zero matching synthetic fixture entries and absent exact profile registry mapping. It did not load or execute the probe or any worktree code.
+
+Conclusion: bounded synthetic filesystem observations PASSED for these exact curl file-protocol operations. This is not a complete filesystem security attestation: dedicated worker token, reparse races, other projects/protected ledger, alternate APIs and general isolation remain unverified. ProductionReady stays false. No further unchanged retry is required.

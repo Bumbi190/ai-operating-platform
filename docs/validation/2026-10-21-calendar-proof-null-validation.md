@@ -72,7 +72,7 @@ the calendar projection, but it is still a local fixture and has not been run
 in this environment. The normal app service does perform provider reads; the
 test isolates the authority of the underlying RPC when called directly.
 
-## Permission candidate awaiting execution
+## Permission candidate: isolated verification
 
 `direct-write-gate-proof-permission-candidate.sql` is an isolated review file,
 not a migration. It revokes direct `service_role` INSERT on the proof table and
@@ -87,6 +87,15 @@ provenance tests remain relevant. Before considering a migration, verify
 function ownership, search path, nested helper permissions, RLS behavior,
 trigger execution, full-schema role grants and transaction lock order. Do not
 promote this candidate solely on fixture results.
+
+On the connected Windows development machine, an isolated detached worktree at
+commit 413d18c used the labeled local Docker fixture. The calendar real-inspector
+suite passed 20/20 tests, including direct INSERT refusal, legitimate RPC write,
+null rejection and fabricated-candidate acceptance. The separate publication
+reconciliation suite passed 5/5 tests against a fresh owned database, including
+the direct service-role RPC bypass with zero provider GET/POST calls. The owned
+temporary database was dropped after the run. This is not full migrated Supabase
+schema/RLS verification or a provider authenticity guarantee.
 
 ## Verification scope
 

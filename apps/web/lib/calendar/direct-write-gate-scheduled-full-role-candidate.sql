@@ -26,3 +26,26 @@ revoke insert on public.social_schedule_events,
  public.social_publication_events from service_role;
 revoke execute on function public.social_schedule_step(jsonb,jsonb)
  from public,service_role;
+
+-- Prepare and authority checks on an already approved claim. Read grants
+-- below are for canonical invoker helpers; review against migrated ACLs.
+grant select on public.social_schedule_decisions,
+ public.social_monthly_release_evidence,
+ public.social_content_posts,
+ public.social_content_decisions,
+ public.social_launch_plans,
+ public.social_launch_plan_revisions,
+ public.social_launch_plan_decisions,
+ public.social_account_bindings,
+ public.assets,
+ public.project_lifecycle,
+ public.platform_config,
+ public.media_news_review_evidence,
+ public.asset_provenance to social_schedule_full_publisher_fixture;
+grant insert on public.social_publications to social_schedule_full_publisher_fixture;
+grant execute on function public.social_schedule_authority(public.social_schedule_jobs,boolean),
+ public.social_schedule_item_guard(uuid,jsonb),
+ public.social_content_active(uuid),
+ public.social_content_requirements(uuid),
+ public.media_news_review_requirements(uuid)
+ to social_schedule_full_publisher_fixture;

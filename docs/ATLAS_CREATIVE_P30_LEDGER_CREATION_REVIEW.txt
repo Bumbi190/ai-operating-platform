@@ -1,0 +1,127 @@
+# Reviewed one-shot operator procedure. No worktree imports.
+# User authorization: create ONLY approvals and approvals\nonces with final protected ACLs.
+# Stop concurrent privileged changes during this short operation.
+$ErrorActionPreference='Stop'
+Set-StrictMode -Version Latest
+$apply=$false
+$systemHome='C:\Windows\System32\WindowsPowerShell\v1.0'
+$env:PSModulePath=$systemHome+'\Modules'
+$PSModuleAutoLoadingPreference='None'
+foreach($name in @('Microsoft.PowerShell.Management','Microsoft.PowerShell.Security','Microsoft.PowerShell.Utility','Microsoft.PowerShell.LocalAccounts')){
+ $manifest=$systemHome+'\Modules\'+$name+'\'+$name+'.psd1'
+ if($name -eq 'Microsoft.PowerShell.LocalAccounts'){$manifest=$systemHome+'\Modules\Microsoft.PowerShell.LocalAccounts\1.0.0.0\Microsoft.PowerShell.LocalAccounts.psd1'}
+ $m=Microsoft.PowerShell.Core\Import-Module -Name $manifest -Force -PassThru -ErrorAction Stop
+ if($m.Name -ne $name -or -not $m.Path.StartsWith($systemHome+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'untrusted module'}
+}
+$principal=[Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
+if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'administrator context required'}
+$worker=Microsoft.PowerShell.LocalAccounts\Get-LocalUser -Name 'omnira-media-worker' -ErrorAction Stop
+if($worker.Enabled){throw 'worker must remain disabled'}
+$root='C:\ProgramData\OmniraCreativeWorker'
+$targets=@(($root+'\approvals'),($root+'\approvals\nonces'))
+$trusted=@('S-1-5-18','S-1-5-32-544')
+function Read-Directory([string]$path){
+ $item=Microsoft.PowerShell.Management\Get-Item -LiteralPath $path -Force -ErrorAction Stop
+ if(-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'unexpected directory type or reparse point'}
+ return Microsoft.PowerShell.Security\Get-Acl -LiteralPath $path -ErrorAction Stop
+}
+function Assert-Root{
+ $parent=Read-Directory 'C:\ProgramData'
+ if($null -eq ([Security.AccessControl.RawSecurityDescriptor]::new($parent.GetSecurityDescriptorBinaryForm(),0)).DiscretionaryAcl){throw 'missing ProgramData DACL'}
+ if($parent.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin $trusted){throw 'untrusted ProgramData owner'}
+ $parentRules=@($parent.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))
+ foreach($r in $parentRules){
+  if($r.AccessControlType -eq 'Allow' -and $r.IdentityReference.Value -notin $trusted -and
+   -not ($r.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly) -and
+   (([long]$r.FileSystemRights -band 0x100D0040) -ne 0)){throw 'unsafe ProgramData replacement rights'}
+ }
+ $acl=Read-Directory $root
+ if($null -eq ([Security.AccessControl.RawSecurityDescriptor]::new($acl.GetSecurityDescriptorBinaryForm(),0)).DiscretionaryAcl){throw 'missing root DACL'}
+ if(-not $acl.AreAccessRulesProtected -or $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin $trusted){throw 'untrusted root owner/inheritance'}
+ foreach($r in @($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))){
+  if($r.AccessControlType -eq 'Allow' -and $r.IdentityReference.Value -notin $trusted -and
+    (([long]$r.FileSystemRights -band 0x500D0156) -ne 0)){throw 'untrusted root write permissions'}
+ }
+}
+function Assert-Private([string]$path){
+ $acl=Read-Directory $path
+ if($acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne 'S-1-5-32-544' -or -not $acl.AreAccessRulesProtected){throw 'private owner/inheritance mismatch'}
+ $rules=@($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))
+ if($rules.Count -ne 2){throw 'unexpected private ACE count'}
+ foreach($sid in $trusted){
+  $matches=@($rules | Microsoft.PowerShell.Core\Where-Object {$_.IdentityReference.Value -eq $sid})
+  if($matches.Count -ne 1){throw 'private principal mismatch'}
+  $r=$matches[0]
+  if($r.AccessControlType -ne 'Allow' -or $r.IsInherited -or
+   [long]$r.FileSystemRights -ne 2032127 -or
+   $r.InheritanceFlags -ne ([Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit) -or
+   $r.PropagationFlags -ne [Security.AccessControl.PropagationFlags]::None){throw 'private ACE mismatch'}
+ }
+}
+Assert-Root
+# Corroborate absence from a readable parent; never use Exists=false as proof.
+if(@([IO.Directory]::EnumerateFileSystemEntries($root,'approvals',[IO.SearchOption]::TopDirectoryOnly)).Count -ne 0){throw 'target already exists; no reuse or repair'}
+$security=[Security.AccessControl.DirectorySecurity]::new()
+$security.SetSecurityDescriptorSddlForm('O:BAG:BAD:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)')
+# In-memory acceptance of the descriptor before any filesystem write.
+if(-not $security.AreAccessRulesProtected -or $security.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne 'S-1-5-32-544'){throw 'descriptor owner/inheritance rejected'}
+$descriptorRules=@($security.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))
+if($descriptorRules.Count -ne 2){throw 'descriptor ACE count rejected'}
+foreach($sid in $trusted){
+ $r=@($descriptorRules | Microsoft.PowerShell.Core\Where-Object {$_.IdentityReference.Value -eq $sid})
+ if($r.Count -ne 1 -or [long]$r[0].FileSystemRights -ne 2032127 -or $r[0].IsInherited -or
+  $r[0].AccessControlType -ne 'Allow' -or
+  $r[0].InheritanceFlags -ne ([Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit) -or
+  $r[0].PropagationFlags -ne [Security.AccessControl.PropagationFlags]::None){throw 'descriptor ACE rejected'}
+}
+# Native CreateDirectoryW fails if a target appears between preflight and create.
+# The binary security descriptor is attached at creation; no inherited-ACL interval.
+Microsoft.PowerShell.Utility\Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class OmniraLedgerCreateOnce {
+ [StructLayout(LayoutKind.Sequential)]
+ public struct SECURITY_ATTRIBUTES { public int Length; public IntPtr Descriptor; [MarshalAs(UnmanagedType.Bool)] public bool Inherit; }
+ [DllImport(@"C:\Windows\System32\kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true, ExactSpelling=true)]
+ [return:MarshalAs(UnmanagedType.Bool)]
+ public static extern bool CreateDirectoryW(string path, ref SECURITY_ATTRIBUTES attributes);
+}
+'@
+if($targets.Count -ne 2 -or $targets[0] -cne 'C:\ProgramData\OmniraCreativeWorker\approvals' -or $targets[1] -cne 'C:\ProgramData\OmniraCreativeWorker\approvals\nonces'){throw 'target scope mismatch'}
+if([Runtime.InteropServices.Marshal]::SizeOf([OmniraLedgerCreateOnce+SECURITY_ATTRIBUTES]::new()) -ne 24 -or -not [Environment]::Is64BitProcess){throw 'expected x64 SECURITY_ATTRIBUTES layout'}
+if(-not $apply){
+ [pscustomobject]@{Mode='creation-preflight-only';ParentAccepted=$true;ApprovalsAbsent=$true;DescriptorAccepted=$true;ChangesApplied=$false;WorkerEnabled=$false} | Microsoft.PowerShell.Utility\ConvertTo-Json
+ exit 0
+}
+$bytes=$security.GetSecurityDescriptorBinaryForm()
+$memory=[Runtime.InteropServices.Marshal]::AllocHGlobal($bytes.Length)
+$created=0
+try{
+ [Runtime.InteropServices.Marshal]::Copy($bytes,0,$memory,$bytes.Length)
+ $attributes=[OmniraLedgerCreateOnce+SECURITY_ATTRIBUTES]::new()
+ $attributes.Length=[Runtime.InteropServices.Marshal]::SizeOf($attributes)
+ $attributes.Descriptor=$memory
+ $attributes.Inherit=$false
+ foreach($path in $targets){
+  Assert-Root
+  if($created -eq 1){Assert-Private $targets[0]}
+  if(-not [OmniraLedgerCreateOnce]::CreateDirectoryW($path,[ref]$attributes)){
+   $errorCode=[Runtime.InteropServices.Marshal]::GetLastWin32Error()
+   throw ('CreateDirectoryW failed, no existing target changed; code='+$errorCode)
+  }
+  $created++
+  Assert-Private $path
+ }
+ $entries=@([IO.Directory]::EnumerateFileSystemEntries($targets[0]))
+ if($entries.Count -ne 1 -or -not [string]::Equals($entries[0],$targets[1],[StringComparison]::OrdinalIgnoreCase)){throw 'unexpected approvals tree'}
+ if(@([IO.Directory]::EnumerateFileSystemEntries($targets[1])).Count -ne 0){throw 'nonces not empty'}
+ $workerAfter=Microsoft.PowerShell.LocalAccounts\Get-LocalUser -Name 'omnira-media-worker' -ErrorAction Stop
+ if($workerAfter.Enabled){throw 'worker state changed unexpectedly'}
+ [pscustomobject]@{Mode='authorized-two-directory-creation';CreatedDirectories=$created;ExactPrivateAclsVerified=$true;EmptyNonceDirectory=$true;ChangesApplied=$true;WorkerEnabled=$false;ExecutionAuthorized=$false;PublishAuthorized=$false} | Microsoft.PowerShell.Utility\ConvertTo-Json
+} catch {
+ # Preserve any partially created tree. Never remove data/receipts or repair ACLs automatically.
+ [pscustomobject]@{Mode='creation-stopped';CreatedDirectories=$created;ChangesApplied=($created -gt 0);ExecutionAuthorized=$false;PublishAuthorized=$false;Error=$_.Exception.Message} | Microsoft.PowerShell.Utility\ConvertTo-Json
+ exit 2
+} finally {
+ [Runtime.InteropServices.Marshal]::FreeHGlobal($memory)
+}

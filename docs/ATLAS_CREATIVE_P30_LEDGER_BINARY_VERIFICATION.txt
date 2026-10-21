@@ -1,0 +1,30 @@
+$ErrorActionPreference='Stop'
+$systemHome='C:\Windows\System32\WindowsPowerShell\v1.0'
+$env:PSModulePath=$systemHome+'\Modules'
+$PSModuleAutoLoadingPreference='None'
+foreach($name in @('Microsoft.PowerShell.Management','Microsoft.PowerShell.Security','Microsoft.PowerShell.Utility')){
+ $m=Microsoft.PowerShell.Core\Import-Module -Name ($systemHome+'\Modules\'+$name+'\'+$name+'.psd1') -Force -PassThru -ErrorAction Stop
+ if($m.Name -ne $name -or -not $m.Path.StartsWith($systemHome+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'untrusted module'}
+}
+$paths=@('C:\ProgramData\OmniraCreativeWorker\approvals','C:\ProgramData\OmniraCreativeWorker\approvals\nonces')
+foreach($path in $paths){
+ $i=[IO.DirectoryInfo]::new($path)
+ if(-not $i.Exists -or ($i.Attributes -band [IO.FileAttributes]::ReparsePoint)){throw 'directory/reparse mismatch'}
+ $acl=$i.GetAccessControl([Security.AccessControl.AccessControlSections]::Access -bor [Security.AccessControl.AccessControlSections]::Owner)
+ $raw=[Security.AccessControl.RawSecurityDescriptor]::new($acl.GetSecurityDescriptorBinaryForm(),0)
+ if($null -eq $raw.DiscretionaryAcl -or $raw.DiscretionaryAcl.Count -ne 2 -or $raw.Owner.Value -ne 'S-1-5-32-544' -or -not ($raw.ControlFlags -band [Security.AccessControl.ControlFlags]::DiscretionaryAclProtected)){throw 'raw descriptor mismatch'}
+ $sids=@()
+ foreach($ace in $raw.DiscretionaryAcl){
+  if($ace.AceType -ne [Security.AccessControl.AceType]::AccessAllowed -or [long]$ace.AccessMask -ne 2032127 -or [int]$ace.AceFlags -ne 3){throw 'raw ACE mismatch'}
+  $sids+=$ace.SecurityIdentifier.Value
+ }
+ if($sids.Count -ne 2 -or 'S-1-5-18' -notin $sids -or 'S-1-5-32-544' -notin $sids){throw 'principal mismatch'}
+}
+$children=@([IO.Directory]::GetFileSystemEntries($paths[0]))
+if($children.Count -ne 1 -or -not [string]::Equals($children[0],$paths[1],[StringComparison]::OrdinalIgnoreCase)){throw 'tree mismatch'}
+if(@([IO.Directory]::GetFileSystemEntries($paths[1])).Count -ne 0){throw 'nonce directory not empty'}
+$m=Microsoft.PowerShell.Core\Import-Module -Name ($systemHome+'\Modules\Microsoft.PowerShell.LocalAccounts\1.0.0.0\Microsoft.PowerShell.LocalAccounts.psd1') -Force -PassThru -ErrorAction Stop
+if($m.Name -ne 'Microsoft.PowerShell.LocalAccounts' -or -not $m.Path.StartsWith($systemHome+'\',[StringComparison]::OrdinalIgnoreCase)){throw 'untrusted account module'}
+$worker=Microsoft.PowerShell.LocalAccounts\Get-LocalUser -Name 'omnira-media-worker' -ErrorAction Stop
+if($worker.Enabled){throw 'unexpected enabled worker'}
+[pscustomobject]@{Mode='independent-read-only-binary-acl-verification';DirectoriesVerified=2;OwnerAdministrators=$true;ProtectedInheritance=$true;ExplicitSystemAndAdministratorsOnly=$true;FullControlObjectAndContainerInheritance=$true;ExactEmptyLedgerTreeVerified=$true;WorkerEnabled=$false;ObservationTimeUtc=[DateTime]::UtcNow.ToString('o');ChangesApplied=$false;ExecutionAuthorized=$false;PublishAuthorized=$false} | Microsoft.PowerShell.Utility\ConvertTo-Json

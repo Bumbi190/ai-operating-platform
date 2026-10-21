@@ -1,0 +1,41 @@
+$ErrorActionPreference='Stop'
+$trusted=@('S-1-5-18','S-1-5-32-544')
+$root='C:\ProgramData\OmniraCreativeWorker'
+$parent=[Security.AccessControl.DirectorySecurity]::new()
+$parent.SetSecurityDescriptorSddlForm('O:S-1-5-21-123-456-789-1001G:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)')
+$rootAcl=[Security.AccessControl.DirectorySecurity]::new()
+$rootAcl.SetSecurityDescriptorSddlForm('O:BAG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)')
+function Read-Directory([string]$path){if($path -eq 'C:\ProgramData'){return $parent};return $rootAcl}
+function Assert-Root{
+ $parent=Read-Directory 'C:\ProgramData'
+ if($null -eq ([Security.AccessControl.RawSecurityDescriptor]::new($parent.GetSecurityDescriptorBinaryForm(),0)).DiscretionaryAcl){throw 'missing ProgramData DACL'}
+ if($parent.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin $trusted){throw 'untrusted ProgramData owner'}
+ $parentRules=@($parent.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))
+ foreach($r in $parentRules){
+  if($r.AccessControlType -eq 'Allow' -and $r.IdentityReference.Value -notin $trusted -and
+   -not ($r.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly) -and
+   (([long]$r.FileSystemRights -band 0x100D0040) -ne 0)){throw 'unsafe ProgramData replacement rights'}
+ }
+ $acl=Read-Directory $root
+ if($null -eq ([Security.AccessControl.RawSecurityDescriptor]::new($acl.GetSecurityDescriptorBinaryForm(),0)).DiscretionaryAcl){throw 'missing root DACL'}
+ if(-not $acl.AreAccessRulesProtected -or $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value -notin $trusted){throw 'untrusted root owner/inheritance'}
+ foreach($r in @($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))){
+  if($r.AccessControlType -eq 'Allow' -and $r.IdentityReference.Value -notin $trusted -and
+    (([long]$r.FileSystemRights -band 0x500D0156) -ne 0)){throw 'untrusted root write permissions'}
+ }
+}
+
+$rejected=$false
+try{Assert-Root}catch{if($_.Exception.Message -eq 'untrusted ProgramData owner'){$rejected=$true}else{throw}}
+if(-not $rejected){throw 'REGRESSION: unsafe ProgramData owner was accepted'}
+'PASS: unsafe ProgramData owner rejected'
+$parent.SetSecurityDescriptorSddlForm('O:SYG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)')
+Assert-Root
+'PASS: trusted parent and root accepted'
+$parent.SetSecurityDescriptorSddlForm('O:SYG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;0x40;;;BU)')
+try{Assert-Root;throw 'test failed'}catch{if($_.Exception.Message -ne 'unsafe ProgramData replacement rights'){throw}}
+'PASS: unsafe parent delete-child rights rejected'
+$parent.SetSecurityDescriptorSddlForm('O:SYG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)')
+$rootAcl.SetSecurityDescriptorSddlForm('O:BAG:BAD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;GW;;;BU)')
+try{Assert-Root;throw 'test failed'}catch{if($_.Exception.Message -ne 'untrusted root write permissions'){throw}}
+'PASS: root generic-write grant rejected'

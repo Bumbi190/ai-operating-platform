@@ -253,6 +253,20 @@ tick does not send another POST. GitHub Actions run 39589718860 passed
 0 skipped**. Its separately created `website_test_*` database and labeled
 PostgreSQL container were removed. This validates the ordinary application
 path for this failure mode, not the trustworthiness of a direct SQL caller.
+The subsequent provider hardening binds a composite Facebook post ID to
+the Page ID addressed by the POST. It still accepts a standalone numeric photo
+ID returned by the photo endpoint. The scheduled integration fixture now
+returns the approved job's Page ID instead of a hard-coded unrelated Page; its
+negative case uses a syntactically valid composite ID from another Page.
+Isolated run 39591054864 passed **23/23 inspector, 13/13 SQL worker,
+11/11 provider and 10/10 application worker tests, 0 skipped**. The
+full-fixture worker recovery test had one `INVALID_BODY` failure in the prior
+run and passed unchanged in this run; its cause was not established. The
+database and labeled container were removed. This check rejects an inconsistent
+provider response; it is not a cryptographic receipt or a defense against a
+caller with direct SQL writer privileges.
+
+
 Anyone retaining the broad `service_role` permission can still bypass the
 provider client and submit a syntactically valid fake receipt. The dedicated
 role and credential boundary remains the required production work.

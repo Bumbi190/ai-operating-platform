@@ -11,6 +11,14 @@ const post=randomUUID(),revision=randomUUID(),publication=randomUUID(),binding=r
 const q=(v:string)=>"'"+v.replaceAll("'","''")+"'";
 const j=(v:unknown)=>q(JSON.stringify(v))+'::jsonb';
 const read=(name:string)=>readFileSync(resolve(process.cwd(),'lib/calendar/'+name),'utf8');
+const manualStepSql=()=>{
+ const sql=readFileSync(resolve(process.cwd(),'supabase/migrations/20261018071209_social_schedule_batches.sql'),'utf8');
+ const start=sql.indexOf('create or replace function public.social_publication_step(');
+ if(start<0)throw Error('Canonical manual step missing');
+ const end=sql.indexOf('end $fn$;',start);
+ if(end<0)throw Error('Canonical manual step terminator missing');
+ return sql.slice(start,end+'end $fn$;'.length);
+};
 const source=()=>f.sql('select revision from calendar_source_revision_probe where project_id='+q(PROJECT_A));
 const count=()=>f.sql('select count(*) from social_publication_reconciliation_proofs');
 const candidate=()=>({id:'12345_67890',providerId:'12345_67890',accountId:'12345',
@@ -38,6 +46,9 @@ beforeAll(()=>{
  f.sql(read('direct-write-gate-proof-trigger-probe.sql'));
  f.sql(read('direct-write-gate-proof-inspect-hardened-candidate.sql'));
  f.sql(read('direct-write-gate-proof-permission-candidate.sql'));
+ // Load the exact manual step function into the reduced SQL fixture. Only
+ // its completion branch runs here; provider and application code are absent.
+ f.sql(manualStepSql()+\n  'revoke all on function public.social_publication_step(jsonb,jsonb) from public,anon,authenticated;'+\n  'grant execute on function public.social_publication_step(jsonb,jsonb) to service_role;');
 },60000);
 beforeEach(()=>{
  // Owner-only seeding in the uniquely named disposable database.
@@ -79,6 +90,24 @@ describe('real inspector candidate validation with signed source gate',()=>{
   expect(f.sql('select state||\'|\'||provider_id from social_publications where id='+q(publication)))
    .toBe('published|12345_99999');
   expect(count()).toBe('0');expect(source()).toBe('2');
+ });
+ it('shows manual step accepts a fabricated provider receipt under the shared role',()=>{
+  // Fixture seeding represents an already claimed provider write. No Meta
+  // client exists in this test. The canonical SQL completion branch accepts
+  // only the caller's providerId and version, even after proof INSERT revoke.
+  f.sql('alter table social_publications disable trigger user;'+
+   'update social_publications set state='+q('publishing')+' where id='+q(publication)+';'+
+   'alter table social_publications enable trigger user;');
+  const input={projectId:PROJECT_A,postId:post,publicationId:publication,
+   expectedVersion:1,action:'complete',providerId:'12345_99999',
+   permalink:'https://www.facebook.com/12345/posts/99999'};
+  const result=JSON.parse(f.sql('set local role service_role;'+
+   'select public.calendar_source_gate_begin_probe('+q(PROJECT_A)+');'+
+   'select public.social_publication_step('+j({userId:USER_A,allowedProjectIds:[PROJECT_A]})+','+j(input)+');'));
+  expect(result.changed).toBe(true);
+  expect(result.record.state).toBe('published');
+  expect(result.record.providerId).toBe('12345_99999');
+  expect(count()).toBe('0');
  });
  it('documents that a shaped but unverified provider candidate is accepted',()=>{
   // No provider reader is called by this SQL fixture. This input is invented by

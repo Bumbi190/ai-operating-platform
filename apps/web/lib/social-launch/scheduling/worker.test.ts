@@ -14,7 +14,7 @@ afterAll(()=>{setScheduleClock(null);vi.unstubAllEnvs()})
 type Fixture=Awaited<ReturnType<typeof scheduleFixture>>
 function dependencies(f:Fixture,handler?:(url:string,init:RequestInit)=>Promise<Response>){
  const calls:{url:string;init:RequestInit}[]=[]
- const provider=new MetaManualProvider(async(url,init)=>{calls.push({url,init});return handler?handler(url,init):Response.json(init.method==='POST'?{id:'222',post_id:'12345_222'}:{permalink:'https://www.instagram.com/p/fixture/'})})
+ const provider=new MetaManualProvider(async(url,init)=>{calls.push({url,init});return handler?handler(url,init):Response.json(init.method==='POST'?{id:'222',post_id:f.manifest.items[0].accountId+'_222'}:{permalink:'https://www.instagram.com/p/fixture/'})})
  return {calls,deps:{provider,resolveCredential:async(_project:string,channel:'facebook'|'instagram')=>({channel,bindingId:f.manifest.items[0].bindingId,accountId:f.manifest.items[0].accountId,token:'fixture-token',apiBase:'https://graph.facebook.com/v21.0'}),verifyImage:async()=>({bytes:new Uint8Array(),width:320,height:400}),now:()=>Date.parse(f.dueAt)}}
 }
 async function approved(options:Parameters<typeof scheduleFixture>[1]={}){

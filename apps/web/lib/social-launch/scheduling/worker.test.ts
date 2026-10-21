@@ -50,8 +50,7 @@ it('exercises the optional news-review grant branch in an owned SQL projection',
   create table public.asset_provenance(id uuid);
   create table public.cost_events(id uuid);
   create table public.media_news_review_evidence(id uuid);
-  create table public.platform_tokens(project_id uuid,access_token text);
-  insert into public.platform_tokens values(gen_random_uuid(),'synthetic-token');
+  -- The larger owned fixture already has platform_tokens. Never insert a real token.
   revoke all on public.platform_tokens from public,anon,authenticated;
   grant select on public.platform_tokens to service_role;
   create function public.media_news_canonical_json(jsonb) returns text

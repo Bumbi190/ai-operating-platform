@@ -1,0 +1,366 @@
+﻿import {beforeEach,describe,expect,it,vi} from 'vitest'
+import {
+ listFamilyMonthSourceReviews,proposeFamilyMonthSource,
+ decideFamilyMonthSource,readLatestOwnerApprovedFamilyMonthSource,assertFamilyOwnerSourceCurrentBeforeDraft,FamilySourceStoreError,
+} from './family-month-source-store'
+import type {FamilyMonthSourceProposal} from './family-month-source-review'
+import {FAMILY_WEEKLY_PROJECT_ID} from './family-weekly-coverage'
+import {readSocialContent} from './store'
+const state=vi.hoisted(()=>({planApproved:true,planId:'e745041f-ad3a-493f-bd3b-025525d561b2'}))
+vi.mock('./store',()=>({readSocialContent:vi.fn(async()=>({
+ planApproved:state.planApproved,currentPlanRevisionId:state.planId,
+}))}))
+const OWNER='10000000-0000-4000-8000-000000000001'
+const OTHER='20000000-0000-4000-8000-000000000002'
+const actor={userId:OWNER,allowedProjectIds:[FAMILY_WEEKLY_PROJECT_ID]}
+const plan=state.planId
+type Table='projects'|'assets'|'family_month_source_candidates'|'family_month_source_decisions'
+class MemoryDb{
+ tables:Record<Table,any[]>={projects:[{id:FAMILY_WEEKLY_PROJECT_ID,
+  slug:'familje-stunden',owner_id:OWNER}],assets:[{
+   id:'20000000-0000-4000-8000-000000000002',
+   project_id:FAMILY_WEEKLY_PROJECT_ID,status:'active',kind:'image',
+   visibility:'internal',mime_type:'image/jpeg',byte_size:1024,
+   checksum_sha256:'a'.repeat(64),storage_bucket:'media-assets-private',
+   storage_path:FAMILY_WEEKLY_PROJECT_ID+'/social/month-sources/hero.jpg',
+  }],family_month_source_candidates:[],family_month_source_decisions:[]}
+ forceInsertError:Partial<Record<Table,string>>={}
+ sequence=0
+ from(name:string){
+  if(!(name in this.tables))throw Error('unknown table '+name)
+  return new MemoryQuery(this,name as Table)
+ }
+}
+class MemoryQuery{
+ filters:Array<(row:any)=>boolean>=[]
+ sortFields:{key:string;ascending:boolean}[]=[]
+ take=100
+ newValue:any=null
+ constructor(private db:MemoryDb,private table:Table){}
+ select(_:string){return this}
+ eq(key:string,value:any){this.filters.push(r=>r[key]===value);return this}
+ in(key:string,values:string[]){this.filters.push(r=>values.includes(r[key]));return this}
+ order(key:string,{ascending}:{ascending:boolean}){this.sortFields.push({key,ascending});return this}
+ limit(n:number){this.take=n;return this}
+ insert(row:any){this.newValue=row;return this}
+ private execute(){
+  if(this.newValue){
+   const forced=this.db.forceInsertError[this.table]
+   if(forced)return {data:null,error:{code:forced}}
+   const row=this.newValue
+   if(this.table==='family_month_source_candidates'&&
+    this.db.tables[this.table].some(r=>r.project_id===row.project_id&&
+     r.source_month===row.source_month&&r.candidate_sha256===row.candidate_sha256))
+    return {data:null,error:{code:'23505'}}
+   if(this.table==='family_month_source_decisions'&&
+    this.db.tables[this.table].some(r=>r.candidate_id===row.candidate_id))
+    return {data:null,error:{code:'23505'}}
+   this.db.sequence++
+   const newRow={...row,id:'30000000-0000-4000-8000-'+String(this.db.sequence).padStart(12,'0'),
+    created_at:new Date(1000000000+this.db.sequence*1000).toISOString(),
+    decided_at:new Date(1000000000+this.db.sequence*1000).toISOString()}
+   this.db.tables[this.table].push(newRow)
+   return {data:newRow,error:null}
+  }
+  let rows=this.db.tables[this.table].filter(r=>this.filters.every(f=>f(r)))
+  rows=rows.sort((a,b)=>{
+   for(const {key,ascending} of this.sortFields){
+    const v=String(a[key]).localeCompare(String(b[key]))
+    if(v)return ascending?v:-v
+   }
+   return 0
+  }).slice(0,this.take)
+  return {data:rows,error:null}
+ }
+ async single(){
+  const x=this.execute()
+  return x.error?x:{data:Array.isArray(x.data)?x.data[0]??null:x.data,error:x.data?null:{code:'PGRST116'}}
+ }
+ async maybeSingle(){
+  const x=this.execute()
+  return x.error?x:{data:Array.isArray(x.data)?x.data[0]??null:x.data,error:null}
+ }
+ then(resolve:(value:any)=>any,reject?:any){return Promise.resolve(this.execute()).then(resolve,reject)}
+}
+function candidate():FamilyMonthSourceProposal{
+ return {
+  projectId:FAMILY_WEEKLY_PROJECT_ID,month:'2026-12',planRevisionId:plan,
+  title:'December family preview',publicSummary:'A December preview with public content.',
+  campaignPurpose:'Introduce verified family activities',
+  proof:[{kind:'owner-project-public-evidence',referenceId:'20000000-0000-4000-8000-000000000002',
+   sha256:'a'.repeat(64),description:'Owner supplied public image',
+   privateSubscriberAsset:false}],
+  proposedCopy:[{date:'2026-11-27',variant:'winter',
+   title:'December is approaching',
+   text:'A public teaser to review with families.'}],
+ }
+}
+beforeEach(()=>{state.planApproved=true;state.planId=plan;vi.clearAllMocks()})
+describe('private, durable source review store on isolated append-only tables',()=>{
+ it('saves candidate with exact digest and returns short owner card, not authority',async()=>{
+  const db=new MemoryDb() as any
+  const r=await proposeFamilyMonthSource(db,actor,candidate())
+  expect(r).toMatchObject({stored:true,replayed:false,canActivate:false,
+   canPublish:false,month:'2026-12'})
+  expect(r.candidateSha256).toMatch(/^[a-f0-9]{64}$/)
+  const list=await listFamilyMonthSourceReviews(db,actor,{month:'2026-12'})
+  expect(list.kind).toBe('family-month-source-owner-review-list-v1')
+  expect(list.records).toHaveLength(1)
+  const full=await listFamilyMonthSourceReviews(db,actor,{
+   month:'2026-12',candidateId:r.candidateId,
+  })
+  expect(full.proposal).toEqual(candidate())
+  expect(full.latest).toBe(true)
+ })
+ it('retrying identical candidate returns the same persisted receipt, no extra row',async()=>{
+  const db=new MemoryDb()
+  const first=await proposeFamilyMonthSource(db as any,actor,candidate())
+  const second=await proposeFamilyMonthSource(db as any,actor,candidate())
+  expect(second).toMatchObject({candidateId:first.candidateId,replayed:true})
+  expect(db.tables.family_month_source_candidates).toHaveLength(1)
+ })
+ it('transient trigger latest-version conflicts surface as explicit CONFLICT, not 503',async()=>{
+  const db=new MemoryDb()
+  db.forceInsertError.family_month_source_candidates='23514'
+  await expect(proposeFamilyMonthSource(db as any,actor,candidate()))
+   .rejects.toMatchObject({code:'CONFLICT'})
+  db.forceInsertError={}
+  const existing=await proposeFamilyMonthSource(db as any,actor,candidate())
+  db.forceInsertError.family_month_source_decisions='23514'
+  await expect(decideFamilyMonthSource(db as any,actor,{
+   month:'2026-12',candidateId:existing.candidateId,
+   candidateSha256:existing.candidateSha256,decision:'approve',confirmed:true,
+  })).rejects.toMatchObject({code:'CONFLICT'})
+  expect(db.tables.family_month_source_decisions).toHaveLength(0)
+ })
+ it('two simultaneous decisions produce exactly one immutable decision row',async()=>{
+  const db=new MemoryDb()
+  const proposal=await proposeFamilyMonthSource(db as any,actor,candidate())
+  const payload={month:'2026-12',candidateId:proposal.candidateId,
+   candidateSha256:proposal.candidateSha256,decision:'approve' as const,confirmed:true as const}
+  const results=await Promise.allSettled([
+   decideFamilyMonthSource(db as any,actor,payload),
+   decideFamilyMonthSource(db as any,actor,{...payload,decision:'reject'}),
+  ])
+  expect(results.filter(x=>x.status==='fulfilled')).toHaveLength(1)
+  expect(results.filter(x=>x.status==='rejected')).toHaveLength(1)
+  expect(db.tables.family_month_source_decisions).toHaveLength(1)
+  expect(results.find(x=>x.status==='fulfilled')?.value).toMatchObject({
+   stored:true,activationAllowed:false,canPublish:false,
+  })
+ })
+ it('rejects source approval if an image was archived or its checksum changed after proposing',async()=>{
+  for(const patch of [{status:'archived'},{checksum_sha256:'b'.repeat(64)}]){
+   const db=new MemoryDb()
+   const original=await proposeFamilyMonthSource(db as any,actor,candidate())
+   Object.assign(db.tables.assets[0],patch)
+   await expect(decideFamilyMonthSource(db as any,actor,{
+    month:'2026-12',candidateId:original.candidateId,
+    candidateSha256:original.candidateSha256,decision:'approve',confirmed:true,
+   })).rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+   expect(db.tables.family_month_source_decisions).toHaveLength(0)
+  }
+ })
+ it('can reject a broken source even when the media can no longer be read',async()=>{
+  const db=new MemoryDb()
+  const original=await proposeFamilyMonthSource(db as any,actor,candidate())
+  db.tables.assets=[]
+  const result=await decideFamilyMonthSource(db as any,actor,{
+   month:'2026-12',candidateId:original.candidateId,
+   candidateSha256:original.candidateSha256,decision:'reject',confirmed:true,
+  })
+  expect(result).toMatchObject({decision:'reject',stored:true,canPublish:false})
+  expect(db.tables.family_month_source_decisions).toHaveLength(1)
+ })
+ it('a newer candidate makes an older exact-hash proposal undecidable',async()=>{
+  const db=new MemoryDb()
+  const first=await proposeFamilyMonthSource(db as any,actor,candidate())
+  const newer=candidate();newer.proposedCopy[0].text+=' Revision two.'
+  const second=await proposeFamilyMonthSource(db as any,actor,newer)
+  expect(second.candidateId).not.toBe(first.candidateId)
+  await expect(decideFamilyMonthSource(db as any,actor,{
+   month:'2026-12',candidateId:first.candidateId,
+   candidateSha256:first.candidateSha256,decision:'approve',confirmed:true,
+  })).rejects.toMatchObject({code:'CONFLICT'})
+  expect(db.tables.family_month_source_decisions).toHaveLength(0)
+ })
+ it('invalid or private evidence never persists and reports invalid input',async()=>{
+  const db=new MemoryDb()
+  const value=candidate();value.proof[0].privateSubscriberAsset=true as false
+  await expect(proposeFamilyMonthSource(db as any,actor,value))
+   .rejects.toMatchObject({code:'INVALID_INPUT'})
+  expect(db.tables.family_month_source_candidates).toHaveLength(0)
+ })
+ it('does not store unusable evidence that is absent, foreign, archived, or mismatched',async()=>{
+  for(const change of [
+   (db:MemoryDb)=>{db.tables.assets=[]},
+   (db:MemoryDb)=>{db.tables.assets[0].project_id=OTHER},
+   (db:MemoryDb)=>{db.tables.assets[0].status='archived'},
+   (db:MemoryDb)=>{db.tables.assets[0].kind='audio'},
+   (db:MemoryDb)=>{db.tables.assets[0].visibility='private'},
+   (db:MemoryDb)=>{db.tables.assets[0].checksum_sha256='b'.repeat(64)},
+   (db:MemoryDb)=>{db.tables.assets[0].mime_type='image/svg+xml'},
+   (db:MemoryDb)=>{db.tables.assets[0].byte_size=6*1024*1024},
+   (db:MemoryDb)=>{db.tables.assets[0].storage_bucket='protected'},
+   (db:MemoryDb)=>{db.tables.assets[0].storage_path='../other/image.jpg'},
+  ]){
+   const db=new MemoryDb();change(db)
+   await expect(proposeFamilyMonthSource(db as any,actor,candidate()))
+    .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+   expect(db.tables.family_month_source_candidates).toHaveLength(0)
+  }
+ })
+ it('unrelated project asset cannot qualify even if SHA and ID otherwise match',async()=>{
+  const db=new MemoryDb()
+  db.tables.assets[0].project_id=OTHER
+  await expect(proposeFamilyMonthSource(db as any,actor,candidate()))
+   .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+  expect(db.tables.family_month_source_candidates).toHaveLength(0)
+ })
+ it('reads only a persisted approved latest candidate for later public source verification',async()=>{
+  const db=new MemoryDb()
+  const proposed=await proposeFamilyMonthSource(db as any,actor,candidate())
+  await expect(readLatestOwnerApprovedFamilyMonthSource(db as any,actor,'2026-12'))
+   .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+  await decideFamilyMonthSource(db as any,actor,{
+   month:'2026-12',candidateId:proposed.candidateId,
+   candidateSha256:proposed.candidateSha256,decision:'approve',confirmed:true,
+  })
+  const result=await readLatestOwnerApprovedFamilyMonthSource(db as any,actor,'2026-12')
+  expect(result).toMatchObject({
+   month:'2026-12',candidateId:proposed.candidateId,
+   candidateSha256:proposed.candidateSha256,proposal:candidate(),
+  })
+  expect(result.decisionId).toMatch(/^30000000-/)
+ })
+ it('pre-save image gate denies archived, cross-project or checksum-changed assets after owner approval',async()=>{
+  for(const patch of [
+   {status:'archived'},
+   {project_id:OTHER},
+   {checksum_sha256:'b'.repeat(64)},
+   {storage_bucket:'protected'},
+  ]){
+   const db=new MemoryDb()
+   const proposed=await proposeFamilyMonthSource(db as any,actor,candidate())
+   await decideFamilyMonthSource(db as any,actor,{
+    month:'2026-12',candidateId:proposed.candidateId,
+    candidateSha256:proposed.candidateSha256,decision:'approve',confirmed:true,
+   })
+   const current=await readLatestOwnerApprovedFamilyMonthSource(db as any,actor,'2026-12')
+   const approved={
+    month:'2026-12',candidateId:current.candidateId,
+    candidateSha256:current.candidateSha256,decisionId:current.decisionId,
+    verifiedImageAssetIds:[candidate().proof[0].referenceId],
+   }
+   await expect(assertFamilyOwnerSourceCurrentBeforeDraft(db as any,actor,approved))
+    .resolves.toBeUndefined()
+   Object.assign(db.tables.assets[0],patch)
+   await expect(assertFamilyOwnerSourceCurrentBeforeDraft(db as any,actor,approved))
+    .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+  }
+ })
+ it('pre-save image gate refuses replaced decision or untrusted image array',async()=>{
+  const db=new MemoryDb()
+  const proposed=await proposeFamilyMonthSource(db as any,actor,candidate())
+  await decideFamilyMonthSource(db as any,actor,{
+   month:'2026-12',candidateId:proposed.candidateId,
+   candidateSha256:proposed.candidateSha256,decision:'approve',confirmed:true,
+  })
+  const current=await readLatestOwnerApprovedFamilyMonthSource(db as any,actor,'2026-12')
+  const approved={
+   month:'2026-12',candidateId:current.candidateId,
+   candidateSha256:current.candidateSha256,decisionId:current.decisionId,
+   verifiedImageAssetIds:[candidate().proof[0].referenceId],
+  }
+  await expect(assertFamilyOwnerSourceCurrentBeforeDraft(db as any,actor,{
+   ...approved,verifiedImageAssetIds:['50000000-0000-4000-8000-000000000005'],
+  })).rejects.toMatchObject({code:'CONFLICT'})
+  await expect(assertFamilyOwnerSourceCurrentBeforeDraft(db as any,actor,{
+   ...approved,decisionId:'70000000-0000-4000-8000-000000000007',
+  })).rejects.toMatchObject({code:'CONFLICT'})
+  const newSource=candidate()
+  newSource.proposedCopy[0].text+=' Different and newer.'
+  await proposeFamilyMonthSource(db as any,actor,newSource)
+  await expect(assertFamilyOwnerSourceCurrentBeforeDraft(db as any,actor,approved))
+   .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+ })
+ it('rejects an owner decision and newer unapproved source block activation',async()=>{
+  const db=new MemoryDb()
+  const old=await proposeFamilyMonthSource(db as any,actor,candidate())
+  await decideFamilyMonthSource(db as any,actor,{
+   month:'2026-12',candidateId:old.candidateId,
+   candidateSha256:old.candidateSha256,decision:'reject',confirmed:true,
+  })
+  await expect(readLatestOwnerApprovedFamilyMonthSource(db as any,actor,'2026-12'))
+   .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+  const newer=candidate();newer.proposedCopy[0].text+=' Different caption.'
+  await proposeFamilyMonthSource(db as any,actor,newer)
+  await expect(readLatestOwnerApprovedFamilyMonthSource(db as any,actor,'2026-12'))
+   .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+ })
+ it('a newer unapproved revision also blocks an older approved candidate',async()=>{
+  const db=new MemoryDb()
+  const older=await proposeFamilyMonthSource(db as any,actor,candidate())
+  await decideFamilyMonthSource(db as any,actor,{
+   month:'2026-12',candidateId:older.candidateId,
+   candidateSha256:older.candidateSha256,decision:'approve',confirmed:true,
+  })
+  const newer=candidate();newer.proposedCopy[0].text+=' More text.'
+  await proposeFamilyMonthSource(db as any,actor,newer)
+  await expect(readLatestOwnerApprovedFamilyMonthSource(db as any,actor,'2026-12'))
+   .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+  expect(db.tables.family_month_source_decisions).toHaveLength(1)
+ })
+ it('read model fails closed on altered persisted decision checksum or reviewer',async()=>{
+  for(const patch of [{candidate_sha256:'b'.repeat(64)},{decided_by:OTHER}]){
+   const db=new MemoryDb()
+   const item=await proposeFamilyMonthSource(db as any,actor,candidate())
+   await decideFamilyMonthSource(db as any,actor,{
+    month:'2026-12',candidateId:item.candidateId,
+    candidateSha256:item.candidateSha256,decision:'approve',confirmed:true,
+   })
+   Object.assign(db.tables.family_month_source_decisions[0],patch)
+   await expect(listFamilyMonthSourceReviews(db as any,actor,{month:'2026-12'}))
+    .rejects.toMatchObject({code:'UNAVAILABLE'})
+  }
+ })
+ it('read model fails closed on changed plan revision stored on candidate',async()=>{
+  const db=new MemoryDb()
+  await proposeFamilyMonthSource(db as any,actor,candidate())
+  db.tables.family_month_source_candidates[0].plan_revision_id='50000000-0000-4000-8000-000000000005'
+  await expect(listFamilyMonthSourceReviews(db as any,actor,{month:'2026-12'}))
+   .rejects.toMatchObject({code:'UNAVAILABLE'})
+ })
+ it('approved candidate with tampered stored decision hash is not an activatable source',async()=>{
+  const db=new MemoryDb()
+  const proposed=await proposeFamilyMonthSource(db as any,actor,candidate())
+  await decideFamilyMonthSource(db as any,actor,{
+   month:'2026-12',candidateId:proposed.candidateId,
+   candidateSha256:proposed.candidateSha256,decision:'approve',confirmed:true,
+  })
+  db.tables.family_month_source_decisions[0].candidate_sha256='b'.repeat(64)
+  await expect(readLatestOwnerApprovedFamilyMonthSource(db as any,actor,'2026-12'))
+   .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+ })
+ it('owner scope and current plan are mandatory for every store operation',async()=>{
+  const db=new MemoryDb()
+  const fake={userId:OTHER,allowedProjectIds:[FAMILY_WEEKLY_PROJECT_ID]}
+  await expect(proposeFamilyMonthSource(db as any,fake,candidate()))
+   .rejects.toMatchObject({code:'NOT_FOUND'})
+  await expect(listFamilyMonthSourceReviews(db as any,fake,{month:'2026-12'}))
+   .rejects.toMatchObject({code:'NOT_FOUND'})
+  state.planApproved=false
+  await expect(proposeFamilyMonthSource(db as any,actor,candidate()))
+   .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+  expect(db.tables.family_month_source_candidates).toHaveLength(0)
+ })
+ it('cross-project tampering or changed digest is denied before decision insert',async()=>{
+  const db=new MemoryDb()
+  const stored=await proposeFamilyMonthSource(db as any,actor,candidate())
+  await expect(decideFamilyMonthSource(db as any,actor,{
+   month:'2026-12',candidateId:stored.candidateId,
+   candidateSha256:'b'.repeat(64),decision:'approve',confirmed:true,
+  })).rejects.toMatchObject({code:'CONFLICT'})
+  expect(db.tables.family_month_source_decisions).toHaveLength(0)
+ })
+})

@@ -142,6 +142,40 @@ describe('signed source guard + triggered social step and checkpoint recovery',(
    .toBe('12345_99999');
   expect(count('social_publication_events')).toBe(3);
  });
+ it('isolates a scheduled publisher for a valid claim and rolls the candidate back',()=>{
+  const fx=seed();
+  const prepared=service('social_schedule_step',fx.claim(1),{action:'prepare'});
+  service('social_schedule_step',fx.claim(2),{
+   action:'claim_create',expectedVersion:1,capabilityHash:'c'.repeat(64)
+  });
+  const before=revision();
+  const complete={action:'complete',expectedVersion:2,providerId:'12345_99999',
+   permalink:'https://www.facebook.com/12345/posts/99999'};
+  const denied='do $probe$ begin '+
+   sql('social_schedule_step',fx.claim(3),complete).replace(/^select /,'perform ')+
+   "raise exception 'UNEXPECTED_STEP_ALLOWED';"+
+   'exception when insufficient_privilege then null; end $probe$;';
+  const out=f.sql('savepoint scheduled_role_probe;'+
+   readFileSync(resolve(process.cwd(),
+    'lib/calendar/direct-write-gate-scheduled-publisher-role-candidate.sql'),'utf8')+
+   "select has_table_privilege('service_role','public.social_publications','UPDATE')::text||"+
+   "has_table_privilege('service_role','public.social_schedule_jobs','UPDATE')::text||"+
+   "has_function_privilege('service_role','public.social_schedule_step(jsonb,jsonb)','EXECUTE')::text;"+
+   'set local role service_role;'+denied+
+   'set local role social_schedule_publisher_fixture;'+
+   sql('social_schedule_step',fx.claim(3),complete)+
+   'rollback to savepoint scheduled_role_probe;').split('\\n');
+  expect(out[0]).toBe('falsefalsefalse');
+  const receipt=JSON.parse(out.at(-1)!);
+  expect(receipt.jobState).toBe('published');
+  expect(receipt.publication.providerId).toBe('12345_99999');
+  expect(jobState(fx.jobId)).toBe('claimed');
+  expect(jobVersion(fx.jobId)).toBe(3);
+  expect(pubState(prepared.publication.id)).toBe('publishing');
+  expect(pubVersion(prepared.publication.id)).toBe(2);
+  expect(revision()).toBe(before);
+  expect(f.sql("select to_regrole('social_schedule_publisher_fixture') is null")).toBe('t');
+ });
  it('recovers an in-flight publishing receipt as uncertain without any provider retry',()=>{
   const fx=seed('publishing');
   const receipt=service('social_schedule_recover_checkpoint',fx.claim(1));

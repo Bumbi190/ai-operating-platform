@@ -531,6 +531,64 @@ anchored monotonic revision/nonce floor, post-crash verification,
 signer+ACL evidence, and separate human approval for every privileged
 copy/install action. The worker remains disabled.
 
+## Planned admin-owned approval ledger: read-only ACL preflight (2026-10-21)
+
+The handoff, signature, nonce and lifecycle tests above remain synthetic.
+This increment introduces a **separate** proposed Windows ledger, which is
+not the `receipts` directory used by the media worker:
+
+```text
+C:\ProgramData\OmniraCreativeWorker\
+  approvals\
+    nonces\
+      <64-lowercase-hex-SHA256>.json
+```
+
+No approval directories or receipt files were provisioned or copied.
+`worker-approval-ledger-acl-audit.ps1` reads Windows NTFS metadata only;
+there is **no `-Apply` mode**. It reports unknown/missing or unreadable
+folders as **not verified**. It checks the proposed `approvals` and
+`approvals/nonces` folders and at most 32 test-phase receipt names:
+- Parent root is an existing, trusted-owned, non-reparse directory with protected ACL and **no write/ownership/ACL-changing Allow rights** for any untrusted principal (the existing media worker's read-only rights do not automatically qualify it for the private ledger).
+- Every proposed ledger directory/receipt has disabled ACL inheritance,
+  an owner of SYSTEM or BUILTIN Administrators, and only explicit,
+  full-control Allow ACEs for **both** of those SIDs.
+- No ACE whatsoever may grant access to `omnira-media-worker`,
+  standard users, `Everyone`, `Authenticated Users`, or other groups.
+- Paths must be ordinary directories/files, not links/reparse points.
+  Additional folders, unrecognized filenames, unreadable ACLs or
+  unexpected objects fail closed.
+
+The separately testable `worker-approval-ledger-acl-policy.ps1`
+has **17 passing synthetic Windows ACL cases** (both valid owner types,
+unexpected users, inherited ACEs, Deny ACEs, wrong rights, wrong file type,
+missing trusted principals and links).
+The read-only audit has two Windows integration tests. Linux CI runs
+three structural anti-regression tests and raises the Creative Handoff
+anti-skip floor from 121 to **124/124**, with zero skips. Structural CI
+checks are **not** an equivalent of inspecting real Windows ACLs.
+
+The initial ordinary-user audit reported `aclVerified=false` and
+`productionReady=false`, because the future ledger is not installed/
+readable. A future admin inspection must confirm these ACLs after an
+owner-approved setup; the currently disabled worker must never receive
+access to the ledger. Even a successful ACL audit reports
+`receiptContentsVerified=false`, `externalAnchorVerified=false`,
+`realReviewerIdentityVerified=false`, `installationAuthorized=false`
+and `workerExecutionEnabled=false`.
+
+**Do not put the externally pinned current history head inside this ledger
+or elsewhere under the same writable trust domain and call it independent.**
+It must be held by a separately administered, authenticated monotonic
+authority with revocation and protected durable write semantics. Windows
+ACL tests alone cannot prove backup rollback prevention, effective token
+isolation, trusted operator identity, or crash-safe append-only storage.
+The bounded 32-receipt layout is **only a P0 audit design**; a production
+storage/retention/fencing plan remains unbuilt.
+
+No system ACLs or account settings changed; no editor process ran and no
+production approval authority was created.
+
 ## Whole-archive integrity update
 
 The staging planner additionally checks SHA-256 of the original PhotoCraft and

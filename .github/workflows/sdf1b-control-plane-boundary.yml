@@ -49,6 +49,7 @@ jobs:
             scripts/creative-tools/worker-handoff-nonce-fixture.test.mjs \
             scripts/creative-tools/worker-handoff-reviewer-lifecycle.test.mjs \
             scripts/creative-tools/worker-handoff-nonce-ledger-audit.test.mjs \
+            scripts/creative-tools/worker-approval-ledger-contract.test.mjs \
             | tee "$RUNNER_TEMP/creative-handoff.tap"
           node - "$RUNNER_TEMP/creative-handoff.tap" <<'NODE'
           const fs=require('node:fs')
@@ -58,12 +59,12 @@ jobs:
             if(!match)throw new Error('Creative handoff missing TAP total: '+key)
             return Number(match[1])
           }
-          if(count('tests')!==121 || count('pass')!==121 ||
+          if(count('tests')!==124 || count('pass')!==124 ||
              count('fail')!==0 || count('skipped')!==0 ||
              count('cancelled')!==0 || count('todo')!==0) {
             throw new Error('Creative handoff tests incomplete')
           }
-          console.log('Creative handoff: exactly 121/121 pass and zero skips')
+          console.log('Creative handoff: exactly 124/124 pass and zero skips')
           NODE
       - name: Schema, concurrency, authority, isolation, lifecycle and receipt chain
         working-directory: apps/web

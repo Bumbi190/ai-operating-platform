@@ -124,6 +124,31 @@ test('read-only post-copy ACL audit never approves missing handoff folders or ex
   assert.equal(audit.changesApplied,false);
   if(audit.checks.some(c=>!c.verified))assert.equal(audit.aclVerified,false);
 });
+test('proposed approval ledger NTFS rules refuse non-admin and inherited access',()=>{
+  if(process.platform!=='win32')return;
+  const r=inspect('worker-approval-ledger-acl-policy.test.ps1');
+  assert.equal(r.mode,'synthetic-approval-ledger-acl-policy');
+  assert.equal(r.cases,17);
+  assert.equal(r.allPassed,true);
+  assert.equal(r.changesApplied,false);
+  assert.equal(r.productionReady,false);
+});
+test('proposed approval ledger audit is strictly read-only and cannot authorize',()=>{
+  if(process.platform!=='win32')return;
+  const audit=inspect('worker-approval-ledger-acl-audit.ps1');
+  assert.equal(audit.mode,'read-only-proposed-creative-approval-ledger-ntfs-audit');
+  assert.equal(audit.expectedDirectories,2);
+  for(const flag of [
+    'workerAccessAuthorized','effectiveTokenIsolationVerified',
+    'receiptContentsVerified','externalAnchorVerified',
+    'realReviewerIdentityVerified','installationAuthorized',
+    'changesApplied','workerExecutionEnabled','productionReady']){
+    assert.equal(audit[flag],false,flag);
+  }
+  if(!audit.approvalsFolder.verified||!audit.nonceFolder.verified){
+    assert.equal(audit.aclVerified,false);
+  }
+});
 test('privileged staging rejects user-writable worktree scripts and archive inputs',()=>{
   const source=readFileSync(join(here,'worker-stage-binaries.ps1'),'utf8');
   const earlyGuard=source.indexOf('Refusing elevated staging from a user-writable source');

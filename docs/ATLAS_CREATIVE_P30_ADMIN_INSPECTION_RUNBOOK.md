@@ -1,9 +1,9 @@
 # Atlas Creative P30 - independent administrator inspection and isolation evidence
 
 Date: 2026-10-21. Parent: P29 Draft PR #499, commit `1fe83e973564d8085eb5467164a8aa93856e4472`.
-Scope: reviewable operator instructions only. No installer, launcher, migration or runtime change.
+Scope: operator runbook and reference text; explicitly authorized two-directory OS creation and independent verification are recorded in the final dated section. No installed service, Atlas launcher, application runtime change or migration.
 
-## Current evidence, independently rechecked in this session
+## Initial P29 baseline (before the authorized directory creation)
 
 - P29 checkout was clean; commit and Draft PR #499 already existed despite the handoff saying they were unfinished.
 - `node --test --test-concurrency=1 scripts/creative-tools/*.test.mjs`: 303 passed, 0 failed, 0 skipped; exit 0.
@@ -171,3 +171,22 @@ Before implementation: prepare and independently review a protected-system-only 
 After separately approved creation: read back owner, protected inheritance, all ACE rights/flags and allowed empty tree structure independently. Only that observation can support the proposed ACL check; execution stays denied. If the second creation fails, keep execution denied and report partial state. Rollback may remove only directories newly created by this operation, only after proving they are unchanged and empty; never recursive-delete, reset permissions or remove nonce/revocation evidence. If anything has written data or state is uncertain, preserve it and stop for operator review.
 
 Explicit authorization for this creation/ACL change is still outstanding. The earlier approval covered reading only. Existing worker activation, process/network and real-human-approval gates remain unchanged.
+
+## Authorized creation completed - 2026-10-21 14:02 Europe/Stockholm
+
+The operator separately and explicitly approved preparation and execution of the exact two-directory creation with SYSTEM/Administrators-only protected ACLs. That authorization supersedes the earlier pending-approval status for this change alone.
+
+Procedure and validation:
+
+- Reference text: `ATLAS_CREATIVE_P30_LEDGER_CREATION_REVIEW.txt`, default apply=false. This is a review record, not an installed script, service or Atlas capability. No worktree code was loaded or elevated. The reviewed literal was supplied directly to the fixed system PowerShell executable; the only apply-mode difference was setting the literal apply flag to true.
+- Fixed protected-system manifests, disabled module autoload, administrator/disabled-worker checks, trusted ancestor owner/ACL and explicit non-null DACL checks, fixed two-path assertions and in-memory final security descriptor acceptance.
+- Native helper compiled successfully during no-write preflight; x64 SECURITY_ATTRIBUTES size 24 confirmed. Native CreateDirectoryW uses a full protected system DLL path, explicit Unicode/exact entrypoint and a binary security descriptor at creation. Existing targets cause an error rather than reuse or ACL repair.
+- Fresh independent review found a missing ProgramData owner guard. The in-memory regression first demonstrated unsafe owner acceptance, then passed with the guard. Four synthetic scenarios passed: untrusted parent owner rejected, trusted parents accepted, parent delete-child right rejected, root generic-write rejected. Tests create no filesystem objects. An initial test fixture used directory-service DC instead of filesystem delete-child 0x40; that fixture was corrected before the passing run.
+- Earlier preparation failures (nested launcher here-string quoting and the LocalAccounts versioned manifest location) occurred before any protected write. Corrected launcher uses encoded literal text and the exact observed system manifest version 1.0.0.0. Final no-write preflight passed.
+- Creation returned CreatedDirectories=2, ExactPrivateAclsVerified=true, EmptyNonceDirectory=true, WorkerEnabled=false, ExecutionAuthorized=false, PublishAuthorized=false; exit 0. No automatic rollback or other changes were necessary.
+- A separate fresh process then read the directories via .NET and checked raw binary owner/DACL/ACE flags independently of the creation checker: both directories exist without reparse points; owner Administrators, protected DACL, exactly SYSTEM/Administrators FullControl Allow entries, explicit object/container inheritance, no other ACEs. approvals has exactly the nonces child; nonces is empty. Worker remained disabled.
+- Independent verification timestamp: 2026-10-21T12:02:08.2757924Z. Read-only binary verifier reference: `ATLAS_CREATIVE_P30_LEDGER_BINARY_VERIFICATION.txt`. Four in-memory guard cases: `ATLAS_CREATIVE_P30_LEDGER_CREATION_GUARD_TESTS.txt`. These text records are not installed or automatically executed. Raw host-specific ACL metadata is omitted.
+
+The previous ambiguous private-directory presence/ACL blocker is resolved at the observation time. This empty directory scaffold contains no signing keys, operator approvals, nonce/revocation history or protected service. Real reviewer identity and effective worker access/isolation have not been proved. No editor, worker account, network/firewall rule, production migration, publication or merge was enabled/performed. No root/ProgramData ACL was changed.
+
+The existing creative Node baseline remains the earlier fresh 303/303 run; no application/runtime implementation changed. This operation was verified by the four in-memory guard cases, real no-write preflight, native creation readback and independent binary ACL/tree audit. No claim is made that the old composite P29 diagnostic was re-run: elevated worktree auditors were deliberately avoided. Next development scope is the existing process/network and real-human-approval acceptance work, while execution remains disabled.

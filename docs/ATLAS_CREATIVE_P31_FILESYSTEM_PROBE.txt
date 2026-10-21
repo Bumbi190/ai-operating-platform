@@ -1,0 +1,233 @@
+using System;
+using System.Diagnostics;
+using System.Collections.Generic;
+using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
+using System.Security.Principal;
+using System.Text;
+using System.Threading;
+// THROWAWAY SYNTHETIC DIAGNOSTIC ONLY. Hostless local file URLs; no editor/worker launch.
+public static class CreativeAppContainerFilesystemProbe {
+ const string K=@"C:\Windows\System32\kernel32.dll",A=@"C:\Windows\System32\advapi32.dll",U=@"C:\Windows\System32\userenv.dll";
+ const uint WAIT_TIMEOUT=0x102;
+ [StructLayout(LayoutKind.Sequential)] struct BASIC {public long P,J;public uint Flags;public UIntPtr Min,Max;public uint Count;public UIntPtr Affinity;public uint Priority,Scheduling;}
+ [StructLayout(LayoutKind.Sequential)] struct IO {public ulong A,B,C,D,E,F;}
+ [StructLayout(LayoutKind.Sequential)] struct LIMITS {public BASIC Basic;public IO Io;public UIntPtr P,J,PP,PJ;}
+ [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)] struct STARTUP {public uint Size;public string Reserved,Desktop,Title;public uint X,Y,W,H,XC,YC,Fill,Flags;public ushort Show,ExtraSize;public IntPtr Extra,In,Out,Err;}
+ [StructLayout(LayoutKind.Sequential)] struct EX {public STARTUP Startup;public IntPtr Attributes;}
+ [StructLayout(LayoutKind.Sequential)] struct PROCESS {public IntPtr Process,Thread;public uint Pid,Tid;}
+ [StructLayout(LayoutKind.Sequential)] struct CAPS {public IntPtr Sid,Capabilities;public uint Count,Reserved;}
+ [DllImport(K,CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool CreateDirectoryW(string path,IntPtr attributes);
+ [DllImport(K,CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)] static extern IntPtr CreateJobObjectW(IntPtr a,string n);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool SetInformationJobObject(IntPtr j,int k,IntPtr p,uint n);
+ [DllImport(K,CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool CreateProcessW(string app,StringBuilder cmd,IntPtr pa,IntPtr ta,[MarshalAs(UnmanagedType.Bool)]bool inherit,uint flags,IntPtr env,string cwd,ref EX startup,out PROCESS process);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool AssignProcessToJobObject(IntPtr j,IntPtr p);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] static extern uint ResumeThread(IntPtr t);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] static extern uint WaitForSingleObject(IntPtr p,uint ms);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool GetExitCodeProcess(IntPtr p,out uint code);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool TerminateProcess(IntPtr p,uint code);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool CloseHandle(IntPtr h);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool InitializeProcThreadAttributeList(IntPtr p,int count,uint flags,ref IntPtr bytes);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool UpdateProcThreadAttribute(IntPtr p,uint flags,IntPtr attribute,IntPtr value,IntPtr bytes,IntPtr old,IntPtr returned);
+ [DllImport(K,ExactSpelling=true)] static extern void DeleteProcThreadAttributeList(IntPtr p);
+ [DllImport(A,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool OpenProcessToken(IntPtr p,uint rights,out IntPtr token);
+ [DllImport(A,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool GetTokenInformation(IntPtr t,int kind,IntPtr info,int size,out int need);
+ [DllImport(A,ExactSpelling=true)] static extern IntPtr FreeSid(IntPtr sid);
+ [DllImport(U,CharSet=CharSet.Unicode,ExactSpelling=true)] static extern int CreateAppContainerProfile(string name,string display,string description,IntPtr caps,uint count,out IntPtr sid);
+ [DllImport(U,CharSet=CharSet.Unicode,ExactSpelling=true)] static extern int DeleteAppContainerProfile(string name);
+ [DllImport(U,CharSet=CharSet.Unicode,ExactSpelling=true)] static extern int GetAppContainerFolderPath(string sid,out IntPtr path);
+ static void Hr(int code,string stage){if(code!=0)throw new InvalidOperationException(stage+"; HRESULT=0x"+code.ToString("X8"));}
+ static void Check(bool ok,string stage){if(!ok)throw new InvalidOperationException(stage+"; win32="+Marshal.GetLastWin32Error());}
+ static IntPtr TokenData(IntPtr token,int kind){
+  int need;GetTokenInformation(token,kind,IntPtr.Zero,0,out need);
+  if(need<1||need>65536)throw new InvalidOperationException("token buffer bound");
+  IntPtr b=Marshal.AllocHGlobal(need);
+  try{Check(GetTokenInformation(token,kind,b,need,out need),"token read "+kind);return b;}catch{Marshal.FreeHGlobal(b);throw;}
+ }
+ public sealed class TokenObservation {
+  public bool IsAppContainer,ExpectedPackageSid,AdministratorGroupEnabled,Elevated;
+  public int CapabilityCount,IntegrityRid;
+ }
+ static TokenObservation InspectToken(IntPtr process,IntPtr expectedSid){
+  IntPtr token=IntPtr.Zero,b=IntPtr.Zero;TokenObservation r=new TokenObservation();
+  try{
+   Check(OpenProcessToken(process,8,out token),"open process token");
+   b=TokenData(token,29);r.IsAppContainer=Marshal.ReadInt32(b)!=0;Marshal.FreeHGlobal(b);b=IntPtr.Zero;
+   b=TokenData(token,20);r.Elevated=Marshal.ReadInt32(b)!=0;Marshal.FreeHGlobal(b);b=IntPtr.Zero;
+   if(expectedSid==IntPtr.Zero){Check(!r.IsAppContainer&&!r.Elevated,"baseline must be unelevated and not AppContainer");return r;}
+   b=TokenData(token,31);IntPtr sid=Marshal.ReadIntPtr(b);r.ExpectedPackageSid=sid!=IntPtr.Zero&&new SecurityIdentifier(sid).Value==new SecurityIdentifier(expectedSid).Value;Marshal.FreeHGlobal(b);b=IntPtr.Zero;
+   b=TokenData(token,30);r.CapabilityCount=Marshal.ReadInt32(b);Marshal.FreeHGlobal(b);b=IntPtr.Zero;
+   b=TokenData(token,25);string il=new SecurityIdentifier(Marshal.ReadIntPtr(b)).Value;r.IntegrityRid=int.Parse(il.Substring(il.LastIndexOf('-')+1));Marshal.FreeHGlobal(b);b=IntPtr.Zero;
+   b=TokenData(token,2);int n=Marshal.ReadInt32(b);if(n<0||n>512)throw new InvalidOperationException("group bound");
+   for(int i=0;i<n;i++){IntPtr gs=Marshal.ReadIntPtr(b,8+i*16);uint attributes=(uint)Marshal.ReadInt32(b,16+i*16);if(new SecurityIdentifier(gs).Value=="S-1-5-32-544"&&(attributes&4)!=0&&(attributes&16)==0)r.AdministratorGroupEnabled=true;}
+   if(!(r.IsAppContainer&&r.ExpectedPackageSid&&r.CapabilityCount==0&&r.IntegrityRid==4096&&!r.Elevated&&!r.AdministratorGroupEnabled))throw new InvalidOperationException("token conditions: AppContainer="+r.IsAppContainer+",PackageSidMatches="+r.ExpectedPackageSid+",Capabilities="+r.CapabilityCount+",IntegrityRid="+r.IntegrityRid+",Elevated="+r.Elevated+",AdminGroupEnabled="+r.AdministratorGroupEnabled);
+   return r;
+  }finally{if(b!=IntPtr.Zero)Marshal.FreeHGlobal(b);if(token!=IntPtr.Zero)CloseHandle(token);}
+ }
+ public sealed class Trial {
+  public string Kind,RestrictedDiagnostic;
+  public uint BeforeExit,RestrictedExit,AfterExit;
+  public bool BeforeContentMatches,RestrictedContentMatches,AfterContentMatches,RestrictedOutputAbsent,RestrictedOutputEmpty,Passed;
+  public TokenObservation RestrictedToken;
+ }
+ public sealed class Result {
+  public string Mode="throwaway-AppContainer-synthetic-filesystem-probe",Error,ProfileName,ProfileSid,FixturePath;
+  public bool ProfileCreated,FixtureCreated,ProfileReadWriteControlPassed,SyntheticFilesystemObservationPassed;
+  public bool ProfileDeleteApiSucceeded,ProfileStorageAbsenceCorroborated,ProfileMappingAbsent,FixtureRemoved,AllProcessesStopped=true;
+  public bool WorkerAccountUsed=false,EditorStarted=false,FirewallChanged=false,ProjectAclChanged=false,NetworkRequested=false;
+  public bool WorkerTokenVerified=false,ReparseRaceProtectionVerified=false,GeneralFilesystemIsolationVerified=false,ProductionReady=false;
+  public List<Trial> Trials=new List<Trial>();
+ }
+ static void Assert(bool ok,string message){if(!ok)throw new InvalidOperationException(message);}
+ static void RequireLocalDirectory(string path){
+  string full=Path.GetFullPath(path);
+  Assert(full.Length>=3&&char.IsLetter(full[0])&&full[1]==':'&&full[2]=='\\'&&!full.StartsWith(@"\\")&&full.IndexOf(':',2)<0,"local drive path required");
+  Assert(new DriveInfo(Path.GetPathRoot(full)).DriveType==DriveType.Fixed,"fixed local drive required");
+  DirectoryInfo current=new DirectoryInfo(full);
+  while(current!=null){Assert(current.Exists&&(current.Attributes&FileAttributes.ReparsePoint)==0,"directory absent or reparse point");current=current.Parent;}
+ }
+ static void RequireLocalFile(string path){
+  RequireLocalDirectory(Path.GetDirectoryName(Path.GetFullPath(path)));
+  FileAttributes a=File.GetAttributes(path);
+  Assert((a&(FileAttributes.Directory|FileAttributes.ReparsePoint))==0,"regular local file required");
+ }
+ static bool Absent(string path){
+  RequireLocalDirectory(Path.GetDirectoryName(path));
+  string name=Path.GetFileName(path);
+  Assert(name.Length>0&&name.IndexOfAny(new char[]{'*','?'})<0,"exact filename required");
+  return Directory.GetFileSystemEntries(Path.GetDirectoryName(path),name,SearchOption.TopDirectoryOnly).Length==0;
+ }
+ static void RequireAbsent(string path){Assert(Absent(path),"synthetic output already exists");}
+ static bool EmptyRegular(string path){
+  if(Absent(path))return false;RequireLocalFile(path);
+  using(FileStream stream=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read)){return stream.Length==0;}
+ }
+ static string LocalFileUri(string path){
+  RequireLocalFile(path);Uri uri=new Uri(Path.GetFullPath(path));
+  Assert(uri.IsFile&&!uri.IsUnc&&uri.Host.Length==0,"hostless local file URL required");return uri.AbsoluteUri;
+ }
+ static void CreateCanary(string path,byte[] value){
+  RequireAbsent(path);using(FileStream stream=new FileStream(path,FileMode.CreateNew,FileAccess.Write,FileShare.None)){stream.Write(value,0,value.Length);}
+ }
+ static bool Matches(string path,byte[] expected){
+  if(Absent(path))return false;RequireLocalFile(path);
+  using(FileStream stream=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read)){
+   if(stream.Length!=expected.Length||stream.Length>256)return false;
+   for(int i=0;i<expected.Length;i++)if(stream.ReadByte()!=expected[i])return false;return stream.ReadByte()==-1;
+  }
+ }
+ static void NoteError(Result result,string error){result.Error=result.Error==null?error:result.Error+"; "+error;}
+ static uint Curl(string input,string output,IntPtr sid,string storage,Result all,out TokenObservation token,out string diagnostic){
+  string diagnosticPath=null;diagnostic=null;
+  IntPtr job=IntPtr.Zero,buf=IntPtr.Zero,list=IntPtr.Zero,cap=IntPtr.Zero,env=IntPtr.Zero;bool initialized=false;PROCESS p=new PROCESS();token=null;
+  try{
+   job=CreateJobObjectW(IntPtr.Zero,null);Check(job!=IntPtr.Zero,"create job");
+   LIMITS limits=new LIMITS();limits.Basic.Flags=0x2008;limits.Basic.Count=1;buf=Marshal.AllocHGlobal(144);Marshal.StructureToPtr(limits,buf,false);Check(SetInformationJobObject(job,9,buf,144),"job kill-on-close and limit1");
+   EX startup=new EX();startup.Startup.Size=112;
+   if(sid!=IntPtr.Zero){
+    IntPtr bytes=IntPtr.Zero;InitializeProcThreadAttributeList(IntPtr.Zero,1,0,ref bytes);Check(bytes.ToInt64()>0&&bytes.ToInt64()<65536,"attribute bytes");list=Marshal.AllocHGlobal(bytes);Check(InitializeProcThreadAttributeList(list,1,0,ref bytes),"initialize attributes");initialized=true;
+    CAPS c=new CAPS();c.Sid=sid;cap=Marshal.AllocHGlobal(24);Marshal.StructureToPtr(c,cap,false);
+    Check(UpdateProcThreadAttribute(list,0,new IntPtr(0x20009),cap,new IntPtr(24),IntPtr.Zero,IntPtr.Zero),"zero-capability attribute");startup.Attributes=list;
+   }
+   // No inherited proxy, config, credential or application environment.
+   env=Marshal.StringToHGlobalUni("LOCALAPPDATA="+Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)+"\0PATH=C:\\Windows\\System32\0SystemRoot=C:\\Windows\0WINDIR=C:\\Windows\0\0");
+   string app=@"C:\Windows\System32\curl.exe";
+   RequireLocalFile(input);RequireAbsent(output);
+   string args="\""+app+"\" -q --proto =file --noproxy \"*\" --proxy \"\" --max-time 2 --retry 0 --silent --output \""+output+"\" \""+LocalFileUri(input)+"\"";
+   {
+    if(string.IsNullOrEmpty(storage)||!Directory.Exists(storage))throw new InvalidOperationException("test profile diagnostic directory unavailable");
+    diagnosticPath=Path.Combine(storage,"curl-diagnostic-"+Guid.NewGuid().ToString("N")+".txt");
+    args+=" --verbose --show-error --stderr \""+diagnosticPath+"\"";
+   }
+   Check(CreateProcessW(app,new StringBuilder(args),IntPtr.Zero,IntPtr.Zero,false,0x08080404,env,@"C:\Windows\System32",ref startup,out p),"create suspended local-file curl from standard user session");
+   Check(AssignProcessToJobObject(job,p.Process),"assign before resume");
+   token=InspectToken(p.Process,sid);
+   Check(ResumeThread(p.Thread)!=0xffffffff,"resume curl");CloseHandle(p.Thread);p.Thread=IntPtr.Zero;
+   Check(WaitForSingleObject(p.Process,5000)==0,"bounded curl completion");
+   uint exit;Check(GetExitCodeProcess(p.Process,out exit),"curl exit");
+   if(diagnosticPath!=null){
+    try{using(FileStream log=new FileStream(diagnosticPath,FileMode.Open,FileAccess.Read,FileShare.Read)){if(log.Length>16384)diagnostic="diagnostic exceeded 16 KiB bound";else using(StreamReader reader=new StreamReader(log,Encoding.UTF8,true,1024)){diagnostic=reader.ReadToEnd();}}}catch(Exception e){diagnostic="diagnostic unavailable: "+e.GetType().Name;}
+   }
+   return exit;
+  }finally{
+   if(job!=IntPtr.Zero)CloseHandle(job);
+   if(p.Process!=IntPtr.Zero){if(WaitForSingleObject(p.Process,0)==WAIT_TIMEOUT)TerminateProcess(p.Process,2);if(WaitForSingleObject(p.Process,5000)!=0)all.AllProcessesStopped=false;CloseHandle(p.Process);}
+   if(p.Thread!=IntPtr.Zero)CloseHandle(p.Thread);
+   if(initialized)DeleteProcThreadAttributeList(list);if(list!=IntPtr.Zero)Marshal.FreeHGlobal(list);
+   if(cap!=IntPtr.Zero)Marshal.FreeHGlobal(cap);if(buf!=IntPtr.Zero)Marshal.FreeHGlobal(buf);if(env!=IntPtr.Zero)Marshal.FreeHGlobal(env);
+  }
+ }
+ public static Result Run(){
+  Result result=new Result();string profile="omnira.artcraft.fsprobe."+Guid.NewGuid().ToString("N"),storage=null,fixture=null;
+  string[] fixtureNames=new string[]{"outside-canary.txt","write-before.txt","write-after.txt","write-denied.txt"};
+  IntPtr sid=IntPtr.Zero,folder=IntPtr.Zero;result.ProfileName=profile;
+  byte[] canary=Encoding.ASCII.GetBytes("OMNIRA_SYNTHETIC_FILE_ONLY_"+Guid.NewGuid().ToString("N")+"\n");
+  try{
+   Assert(IntPtr.Size==8&&Marshal.SizeOf(typeof(LIMITS))==144&&Marshal.SizeOf(typeof(EX))==112&&Marshal.SizeOf(typeof(CAPS))==24,"unsupported ABI");
+   Assert(!new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator),"requires standard user session");
+   InspectToken(new IntPtr(-1),IntPtr.Zero);
+   string parent=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Temp");RequireLocalDirectory(parent);
+   fixture=Path.Combine(parent,"omnira-artcraft-fsprobe-"+Guid.NewGuid().ToString("N"));
+   Check(CreateDirectoryW(fixture,IntPtr.Zero),"create fresh synthetic fixture");result.FixtureCreated=true;result.FixturePath=fixture;RequireLocalDirectory(fixture);
+   Hr(CreateAppContainerProfile(profile,"Omnira inert file test","Temporary synthetic local file diagnostic",IntPtr.Zero,0,out sid),"create unique test profile");result.ProfileCreated=true;result.ProfileSid=new SecurityIdentifier(sid).Value;
+   Hr(GetAppContainerFolderPath(result.ProfileSid,out folder),"query test profile storage");storage=Marshal.PtrToStringUni(folder);Marshal.FreeCoTaskMem(folder);folder=IntPtr.Zero;RequireLocalDirectory(storage);
+   string inside=Path.Combine(storage,"inside-canary.txt"),outside=Path.Combine(fixture,fixtureNames[0]);
+   CreateCanary(inside,canary);CreateCanary(outside,canary);
+   foreach(string kind in new string[]{"profile-read-write-control","external-synthetic-read","external-synthetic-write"}){
+    Trial t=new Trial();t.Kind=kind;result.Trials.Add(t);
+    string input=kind=="external-synthetic-read"?outside:inside;
+    string beforeOutput=kind=="external-synthetic-write"?Path.Combine(fixture,fixtureNames[1]):Path.Combine(storage,kind+"-before.txt");
+    string afterOutput=kind=="external-synthetic-write"?Path.Combine(fixture,fixtureNames[2]):Path.Combine(storage,kind+"-after.txt");
+    string restrictedOutput=kind=="external-synthetic-write"?Path.Combine(fixture,fixtureNames[3]):Path.Combine(storage,kind+"-restricted.txt");
+    TokenObservation ignored;string ignoredDiagnostic;
+    t.BeforeExit=Curl(input,beforeOutput,IntPtr.Zero,storage,result,out ignored,out ignoredDiagnostic);t.BeforeContentMatches=Matches(beforeOutput,canary);
+    Assert(t.BeforeExit==0&&t.BeforeContentMatches,"positive file control before failed; kind="+kind+",exit="+t.BeforeExit);
+    t.RestrictedExit=Curl(input,restrictedOutput,sid,storage,result,out t.RestrictedToken,out t.RestrictedDiagnostic);
+    t.RestrictedOutputAbsent=Absent(restrictedOutput);t.RestrictedOutputEmpty=EmptyRegular(restrictedOutput);t.RestrictedContentMatches=Matches(restrictedOutput,canary);
+    t.AfterExit=Curl(input,afterOutput,IntPtr.Zero,storage,result,out ignored,out ignoredDiagnostic);t.AfterContentMatches=Matches(afterOutput,canary);
+    Assert(t.AfterExit==0&&t.AfterContentMatches,"positive file control after failed; kind="+kind+",exit="+t.AfterExit);
+    if(kind=="profile-read-write-control"){
+     t.Passed=t.RestrictedExit==0&&t.RestrictedContentMatches;result.ProfileReadWriteControlPassed=t.Passed;
+     Assert(t.Passed,"restricted own-profile read/write positive control failed");
+    }else if(kind=="external-synthetic-read"){
+     t.Passed=t.RestrictedExit==37&&(t.RestrictedOutputAbsent||t.RestrictedOutputEmpty);
+    }else{
+     t.Passed=t.RestrictedExit==23&&t.RestrictedOutputAbsent;
+    }
+    Assert(Matches(inside,canary)&&Matches(outside,canary),"source canary changed");
+   }
+   bool passed=result.Trials.Count==3&&result.ProfileReadWriteControlPassed;
+   foreach(Trial t in result.Trials)passed&=t.Passed;
+   result.SyntheticFilesystemObservationPassed=passed;
+   if(!passed)NoteError(result,"synthetic filesystem expectations not met; no isolation grant");
+  }catch(Exception e){NoteError(result,e.Message);}
+  finally{
+   if(folder!=IntPtr.Zero)Marshal.FreeCoTaskMem(folder);
+   if(result.ProfileCreated&&result.AllProcessesStopped){
+    for(int i=0;i<3;i++){if(DeleteAppContainerProfile(profile)==0){result.ProfileDeleteApiSucceeded=true;break;}Thread.Sleep(200);}
+    if(result.ProfileDeleteApiSucceeded&&storage!=null){
+     try{string parent=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Packages");
+      result.ProfileStorageAbsenceCorroborated=Directory.GetFileSystemEntries(parent,profile,SearchOption.TopDirectoryOnly).Length==0;
+      using(Microsoft.Win32.RegistryKey key=Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppContainer\Mappings\"+result.ProfileSid)){result.ProfileMappingAbsent=key==null;}
+     }catch{result.ProfileStorageAbsenceCorroborated=false;}
+    }
+   }
+   if(result.FixtureCreated&&result.AllProcessesStopped){
+    try{
+     RequireLocalDirectory(fixture);
+     foreach(string name in fixtureNames){string path=Path.Combine(fixture,name);if(!Absent(path)){RequireLocalFile(path);File.Delete(path);}}
+     Directory.Delete(fixture,false);
+     string parent=Path.GetDirectoryName(fixture);RequireLocalDirectory(parent);
+     result.FixtureRemoved=Directory.GetFileSystemEntries(parent,Path.GetFileName(fixture),SearchOption.TopDirectoryOnly).Length==0;
+    }catch{result.FixtureRemoved=false;}
+   }
+   if(sid!=IntPtr.Zero)FreeSid(sid);
+  }
+  if(!result.AllProcessesStopped||(result.ProfileCreated&&(!result.ProfileDeleteApiSucceeded||!result.ProfileStorageAbsenceCorroborated||!result.ProfileMappingAbsent))||(result.FixtureCreated&&!result.FixtureRemoved)){
+   result.SyntheticFilesystemObservationPassed=false;NoteError(result,"cleanup unverified");
+  }
+  return result;
+ }
+}

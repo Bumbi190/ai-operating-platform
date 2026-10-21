@@ -39,6 +39,33 @@ it('records the canonical shared-role writer surface in the full SQL fixture',()
   browser_complete:false
  })
 })
+it('prepares an approved claim through the rollback-only scheduled role',async()=>{
+ const f=await approved()
+ const claim=(await claimScheduleJob(db,{workerId:'prepare_role_probe',now:f.dueAt,dryRun:false}))!
+ const literal=(v:unknown)=>"'"+JSON.stringify(v).replaceAll("'","''")+"'::jsonb"
+ const prepare=`public.social_schedule_step(${literal({jobId:claim.jobId,claimId:claim.claimId,version:claim.version})},
+  '{"action":"prepare"}'::jsonb)`
+ const candidate=readFileSync(resolve(process.cwd(),
+  'lib/calendar/direct-write-gate-scheduled-full-role-candidate.sql'),'utf8')
+ const output=testSql(`begin; ${candidate}
+  select has_table_privilege('service_role','public.social_publications','INSERT')::text||
+   has_function_privilege('service_role','public.social_schedule_step(jsonb,jsonb)','EXECUTE')::text;
+  set local role service_role;
+  do $probe$ begin perform ${prepare};
+   raise exception 'UNEXPECTED_SHARED_PREPARE';
+   exception when insufficient_privilege then null; end $probe$;
+  set local role social_schedule_full_publisher_fixture;
+  select ${prepare};
+  rollback;`).split('\n')
+ expect(output[0]).toBe('falsefalse')
+ const receipt=JSON.parse(output.at(-1)!)
+ expect(receipt.jobState).toBe('claimed')
+ expect(receipt.publication.state).toBe('requested')
+ const restored=await readScheduleReceipt(db,claim)
+ expect(restored.jobState).toBe('claimed')
+ expect(restored.publication).toBeNull()
+ expect(testSql("select to_regrole('social_schedule_full_publisher_fixture') is null")).toBe('t')
+},20000)
 it('rolls back a separated publisher role against the canonical scheduled step',async()=>{
  const f=await approved()
  const claimed=(await claimScheduleJob(db,{workerId:'role_probe',now:f.dueAt,dryRun:false}))!

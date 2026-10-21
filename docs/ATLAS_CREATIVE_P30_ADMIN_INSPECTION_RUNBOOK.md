@@ -190,3 +190,41 @@ Procedure and validation:
 The previous ambiguous private-directory presence/ACL blocker is resolved at the observation time. This empty directory scaffold contains no signing keys, operator approvals, nonce/revocation history or protected service. Real reviewer identity and effective worker access/isolation have not been proved. No editor, worker account, network/firewall rule, production migration, publication or merge was enabled/performed. No root/ProgramData ACL was changed.
 
 The existing creative Node baseline remains the earlier fresh 303/303 run; no application/runtime implementation changed. This operation was verified by the four in-memory guard cases, real no-write preflight, native creation readback and independent binary ACL/tree audit. No claim is made that the old composite P29 diagnostic was re-run: elevated worktree auditors were deliberately avoided. Next development scope is the existing process/network and real-human-approval acceptance work, while execution remains disabled.
+
+## Synthetic process lifecycle probe completed - 2026-10-21
+
+Continued the already described process/network acceptance work with a bounded throwaway diagnostic, not a product launcher. Repository exploration found no implemented creative AppContainer/Job Object launcher: existing safety reports correctly keep these properties false. Windows system processmodel.dll is present, but file presence does not prove API availability or supported experimental semantics. No experimental sandbox API was called.
+
+The independently reviewed C# reference text `ATLAS_CREATIVE_P30_JOB_LIFECYCLE_PROBE.txt` was compiled and supplied as a literal to fixed system PowerShell, not loaded from a worktree. Fixed Windows system PowerShell parent/child commands only sleep; no editor or worker account was used. The unnamed, noninherited Job Object was transient, with KillOnJobClose and an active process limit of 2. Parent was created suspended, assigned before resume, then spawned one ordinary child. Membership and both live process handles were checked before closing the last job handle.
+
+Actual result on Hultgren, exit 0, duration 1.36 seconds:
+
+```text
+ParentAssignedBeforeResume=true
+TwoLiveProcessesObserved=true
+ChildMembershipVerified=true
+KillOnCloseReadBack=true
+ParentExitedOnClose=true
+ChildExitedOnClose=true
+JobProcessLimit=2
+ProbeRunsUnderOperatorToken=true
+WorkerAccountUsed=false
+MediaEditorStarted=false
+NetworkIsolationProven=false
+ProductionReady=false
+```
+
+Both exact process handles were observed signaled after job close; this successful run left neither test process running. No global process-name cleanup, worker activation, AppContainer profile, firewall/ACL change, installation or persistent OS containment setting was introduced. The test's child/parent inherit the operator context: it is not an unprivileged worker security test.
+
+Fresh review caught a wrong WAIT_TIMEOUT constant in the first draft (259, which belongs to STILL_ACTIVE); corrected to 0x102 before any probe process ran. x64 structure layouts were checked at runtime. Known minor in this throwaway diagnostic: failure cleanup does not promote every termination/wait error into a separate cleanup report; a failed future run must therefore be labeled cleanup-unverified unless handle-signaled checks confirm exit. The observed successful run explicitly confirmed both exits. This reference text must not become a production launcher.
+
+What is established: ordinary CreateProcess child membership and last-handle job cleanup work in this bounded operator-token test on this host. What remains unverified: actual restricted worker/AppContainer token, filesystem/project/credential isolation, breakaway/broker/WMI/helper escape, crash/timeout behavior of a production supervisor, every network path and editor compatibility. Do not set childProcessIsolationVerified/networkEgressVerified or any execution gate true based on this diagnostic.
+
+Next feasibility target: an inert AppContainer helper with no network capabilities, controlled reachable positive endpoints, token evidence and explicit cleanup; test files only. Creating a temporary AppContainer profile or changing any ACL/firewall must be separately reviewed and explicitly scoped before execution. Prefer the established AppContainer/Job APIs for the first spike; Microsoft's newer processmodel.dll APIs are documented as experimental and do not by themselves resolve these requirements. No paid OS upgrade is needed merely to research this path; host feasibility must still be tested.
+
+Sources checked 2026-10-21:
+
+- [Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects): ordinary child inheritance, breakaway exceptions and separate process security.
+- [WaitForSingleObject](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitforsingleobject): WAIT_TIMEOUT = 0x102.
+- [Launch an AppContainer](https://learn.microsoft.com/en-us/windows/win32/secauthz/implementing-an-appcontainer): capability-based token and network boundary; requires actual feasibility evidence here.
+- [Experimental Create Process In Sandbox](https://learn.microsoft.com/en-us/windows/win32/secauthz/createprocessinsandbox): experimental processmodel.dll APIs, not a proven backend selection.

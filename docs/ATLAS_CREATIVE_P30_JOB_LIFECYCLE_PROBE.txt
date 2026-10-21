@@ -1,0 +1,95 @@
+using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+public static class CreativeJobLifecycleProbe {
+ const string K = @"C:\Windows\System32\kernel32.dll";
+ const uint KILL_ON_CLOSE=0x2000, ACTIVE_LIMIT=8, WAIT_OBJECT_0=0, WAIT_TIMEOUT=0x102;
+ [StructLayout(LayoutKind.Sequential)] struct BASIC {
+  public long ProcessTime, JobTime; public uint Flags; public UIntPtr Minimum, Maximum;
+  public uint ActiveProcesses; public UIntPtr Affinity; public uint Priority, Scheduling;
+ }
+ [StructLayout(LayoutKind.Sequential)] struct IO { public ulong A,B,C,D,E,F; }
+ [StructLayout(LayoutKind.Sequential)] struct LIMITS {
+  public BASIC Basic; public IO Io; public UIntPtr ProcessMemory,JobMemory,PeakProcessMemory,PeakJobMemory;
+ }
+ [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] struct STARTUP {
+  public uint Size; public string Reserved,Desktop,Title; public uint X,Y,Width,Height,XChars,YChars,Fill,Flags;
+  public ushort Show,ReservedSize; public IntPtr ReservedPointer,Input,Output,Error;
+ }
+ [StructLayout(LayoutKind.Sequential)] struct PROCESS { public IntPtr Process,Thread; public uint Pid,Tid; }
+ [DllImport(K,CharSet=CharSet.Unicode,SetLastError=true,ExactSpelling=true)] static extern IntPtr CreateJobObjectW(IntPtr attributes,string name);
+ [DllImport(K,SetLastError=true,ExactSpelling=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool SetInformationJobObject(IntPtr job,int kind,IntPtr info,uint size);
+ [DllImport(K,SetLastError=true,ExactSpelling=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool QueryInformationJobObject(IntPtr job,int kind,IntPtr info,uint size,IntPtr returned);
+ [DllImport(K,CharSet=CharSet.Unicode,SetLastError=true,ExactSpelling=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool CreateProcessW(string application,StringBuilder command,IntPtr processAttributes,IntPtr threadAttributes,[MarshalAs(UnmanagedType.Bool)]bool inherit,uint flags,IntPtr environment,string directory,ref STARTUP startup,out PROCESS process);
+ [DllImport(K,SetLastError=true,ExactSpelling=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool AssignProcessToJobObject(IntPtr job,IntPtr process);
+ [DllImport(K,SetLastError=true,ExactSpelling=true)] static extern uint ResumeThread(IntPtr thread);
+ [DllImport(K,SetLastError=true,ExactSpelling=true)] static extern uint WaitForSingleObject(IntPtr handle,uint milliseconds);
+ [DllImport(K,SetLastError=true,ExactSpelling=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool CloseHandle(IntPtr handle);
+ [DllImport(K,SetLastError=true,ExactSpelling=true)] static extern IntPtr OpenProcess(uint access,[MarshalAs(UnmanagedType.Bool)]bool inherit,uint pid);
+ [DllImport(K,SetLastError=true,ExactSpelling=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool IsProcessInJob(IntPtr process,IntPtr job,[MarshalAs(UnmanagedType.Bool)]out bool member);
+ [DllImport(K,SetLastError=true,ExactSpelling=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool TerminateProcess(IntPtr process,uint code);
+ static void Check(bool ok,string step){if(!ok)throw new InvalidOperationException(step+" win32="+Marshal.GetLastWin32Error());}
+ static string Encode(string s){return Convert.ToBase64String(Encoding.Unicode.GetBytes(s));}
+ public sealed class Result {
+  public string Mode="throwaway-synthetic-job-lifecycle-probe";
+  public bool ParentAssignedBeforeResume,TwoLiveProcessesObserved,ChildMembershipVerified,KillOnCloseReadBack,ParentExitedOnClose,ChildExitedOnClose;
+  public int JobProcessLimit=2; public bool ProbeRunsUnderOperatorToken=true,WorkerAccountUsed=false,MediaEditorStarted=false,NetworkIsolationProven=false,ProductionReady=false;
+ }
+ public static Result Run(){
+  if(IntPtr.Size!=8 || Marshal.SizeOf(typeof(LIMITS))!=144 || Marshal.SizeOf(typeof(STARTUP))!=104)throw new InvalidOperationException("unsupported ABI");
+  string ps=@"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe";
+  // Fixed system-only scripts: one parent and exactly one sleeping child. No file or network requests.
+  string child=Encode("[Threading.Thread]::Sleep(30000)");
+  string parent="$p=[Diagnostics.ProcessStartInfo]::new();$p.FileName='"+ps+"';$p.Arguments='-NoProfile -NonInteractive -EncodedCommand "+child+"';$p.UseShellExecute=$false;$p.CreateNoWindow=$true;$c=[Diagnostics.Process]::Start($p);[Threading.Thread]::Sleep(30000)";
+  IntPtr job=IntPtr.Zero,childHandle=IntPtr.Zero,buffer=IntPtr.Zero;
+  PROCESS pi=new PROCESS(); Result result=new Result();
+  try{
+   job=CreateJobObjectW(IntPtr.Zero,null);Check(job!=IntPtr.Zero,"CreateJobObject");
+   LIMITS limits=new LIMITS();limits.Basic.Flags=KILL_ON_CLOSE|ACTIVE_LIMIT;limits.Basic.ActiveProcesses=2;
+   buffer=Marshal.AllocHGlobal(144);Marshal.StructureToPtr(limits,buffer,false);
+   Check(SetInformationJobObject(job,9,buffer,144),"set job limits");
+   Check(QueryInformationJobObject(job,9,buffer,144,IntPtr.Zero),"read job limits");
+   LIMITS observed=(LIMITS)Marshal.PtrToStructure(buffer,typeof(LIMITS));
+   Check(observed.Basic.Flags==(KILL_ON_CLOSE|ACTIVE_LIMIT)&&observed.Basic.ActiveProcesses==2,"exact job policy");
+   result.KillOnCloseReadBack=true;
+   Marshal.FreeHGlobal(buffer);buffer=IntPtr.Zero;
+   STARTUP startup=new STARTUP();startup.Size=(uint)Marshal.SizeOf(typeof(STARTUP));
+   Check(CreateProcessW(ps,new StringBuilder("\""+ps+"\" -NoProfile -NonInteractive -EncodedCommand "+Encode(parent)),IntPtr.Zero,IntPtr.Zero,false,0x08000004,IntPtr.Zero,@"C:\Windows\System32",ref startup,out pi),"create suspended parent");
+   Check(AssignProcessToJobObject(job,pi.Process),"assign suspended parent");result.ParentAssignedBeforeResume=true;
+   Check(ResumeThread(pi.Thread)!=0xffffffff,"resume parent");CloseHandle(pi.Thread);pi.Thread=IntPtr.Zero;
+   buffer=Marshal.AllocHGlobal(40);
+   uint childPid=0; Stopwatch timer=Stopwatch.StartNew();
+   while(timer.ElapsedMilliseconds<10000){
+    Check(QueryInformationJobObject(job,3,buffer,40,IntPtr.Zero),"query process membership");
+    int count=Marshal.ReadInt32(buffer,4);
+    if(count==2){
+     uint a=(uint)Marshal.ReadInt64(buffer,8),b=(uint)Marshal.ReadInt64(buffer,16);
+     if(a==pi.Pid&&b!=pi.Pid)childPid=b;else if(b==pi.Pid&&a!=pi.Pid)childPid=a;
+     if(childPid!=0)break;
+    }
+    Thread.Sleep(100);
+   }
+   Check(childPid!=0,"observe exactly two job processes");
+   childHandle=OpenProcess(0x00101001,false,childPid);Check(childHandle!=IntPtr.Zero,"open observed job child");
+   bool member;Check(IsProcessInJob(childHandle,job,out member)&&member,"child membership");result.ChildMembershipVerified=true;
+   Check(WaitForSingleObject(pi.Process,0)==WAIT_TIMEOUT&&WaitForSingleObject(childHandle,0)==WAIT_TIMEOUT,"both processes live");result.TwoLiveProcessesObserved=true;
+   Check(CloseHandle(job),"close job");job=IntPtr.Zero;
+   result.ParentExitedOnClose=WaitForSingleObject(pi.Process,5000)==WAIT_OBJECT_0;
+   result.ChildExitedOnClose=WaitForSingleObject(childHandle,5000)==WAIT_OBJECT_0;
+   Check(result.ParentExitedOnClose&&result.ChildExitedOnClose,"both processes exited on job close");
+   return result;
+  } finally {
+   if(job!=IntPtr.Zero)CloseHandle(job);
+   // Only the process handle created by this probe is eligible for fallback termination.
+   if(pi.Process!=IntPtr.Zero){
+    if(WaitForSingleObject(pi.Process,0)==WAIT_TIMEOUT)TerminateProcess(pi.Process,2);
+    WaitForSingleObject(pi.Process,5000);CloseHandle(pi.Process);
+   }
+   if(pi.Thread!=IntPtr.Zero)CloseHandle(pi.Thread);
+   if(childHandle!=IntPtr.Zero){if(result.ChildMembershipVerified&&WaitForSingleObject(childHandle,0)==WAIT_TIMEOUT)TerminateProcess(childHandle,2);WaitForSingleObject(childHandle,5000);CloseHandle(childHandle);}
+   if(buffer!=IntPtr.Zero)Marshal.FreeHGlobal(buffer);
+  }
+ }
+}

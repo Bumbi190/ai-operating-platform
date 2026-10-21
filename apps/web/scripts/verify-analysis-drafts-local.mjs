@@ -365,14 +365,35 @@ try {
         GRANT EXECUTE ON FUNCTION public.calendar_source_gate_try_begin_probe(uuid)
           TO social_schedule_full_publisher_fixture;
         SET LOCAL ROLE social_schedule_full_publisher_fixture;
-        DO $claim$ DECLARE result jsonb; BEGIN
+        DO $claim_to_recovery$ DECLARE result jsonb; BEGIN
           result=public.social_schedule_claim(jsonb_build_object(
             'workerId','probe-worker','now',to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
             'dryRun',false,'projectIds',jsonb_build_array(${quote(project)})));
           IF result->>'jobId' IS DISTINCT FROM ${quote(id.job)} OR result->>'version' IS DISTINCT FROM '2'
             THEN RAISE EXCEPTION 'SYNTHETIC_CLAIM_NOT_RECORDED: %',result; END IF;
-        END $claim$;
+          PERFORM public.social_schedule_step(
+            jsonb_build_object('jobId',result->>'jobId','claimId',result->>'claimId','version',2),
+            '{"action":"prepare"}'::jsonb
+          );
+          PERFORM public.social_schedule_step(
+            jsonb_build_object('jobId',result->>'jobId','claimId',result->>'claimId','version',3),
+            jsonb_build_object('action','claim_create','expectedVersion',1,'capabilityHash',${quote('e'.repeat(64))})
+          );
+          PERFORM public.social_schedule_recover_checkpoint(
+            jsonb_build_object('jobId',result->>'jobId','claimId',result->>'claimId','version',4)
+          );
+          IF NOT EXISTS (
+            SELECT 1 FROM public.social_schedule_jobs j JOIN public.social_publications p ON p.id=j.publication_id
+            WHERE j.id=${quote(id.job)}::uuid AND j.state='uncertain' AND j.version=5
+              AND p.state='uncertain' AND p.failure_code='receipt_unavailable' AND p.version=3
+              AND j.claim_id::text=result->>'claimId'
+          ) THEN RAISE EXCEPTION 'CLAIM_TO_RECOVERY_NOT_RECORDED'; END IF;
+        END $claim_to_recovery$;
         RESET ROLE;
+        DO $claim_source_revision$ BEGIN
+          IF (SELECT revision FROM public.calendar_source_revision_probe WHERE project_id=${quote(project)}::uuid)<>9
+            THEN RAISE EXCEPTION 'CLAIM_TO_RECOVERY_SOURCE_REVISION_NOT_BUMPED'; END IF;
+        END $claim_source_revision$;
         ROLLBACK TO SAVEPOINT synthetic_claim_probe;
         SET LOCAL ROLE service_role;
         DO $deny_service$ BEGIN
@@ -517,7 +538,7 @@ try {
       `))
       assert.deepEqual(roleResult, { state:'blocked', version:3, source_revision:4, prepare_events:1, checkpoint_events:1, publications:1 })
       assert.equal(sql("SELECT count(*) FROM public.projects WHERE id=" + quote(project)), '0', 'synthetic project escaped rollback')
-      console.log('CROSS-TREE SCHEDULE GATE ' + JSON.stringify(roleResult) + ' (claim, revocation, receipt, recovery and fabricated reconciliation proof branches rolled back; no provider call)')
+      console.log('CROSS-TREE SCHEDULE GATE ' + JSON.stringify(roleResult) + ' (continuous synthetic claim-to-recovery, revocation, receipt and fabricated reconciliation proof branches rolled back; no provider call)')
     }
     console.log(crossTreeReplay ? 'CROSS-TREE REPLAY PASS' : legacyDreamReplay ? 'LEGACY DREAM REPLAY PASS' : legacyCronReplay ? 'LEGACY CRON REPLAY PASS' : legacyMediaReplay ? 'LEGACY MEDIA REPLAY PASS' : dependencyReplay ? 'DEPENDENCY REPLAY PASS' : 'CANONICAL REPLAY PASS')
     process.exitCode = 0

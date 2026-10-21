@@ -5,7 +5,7 @@
 param()
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
-if($args.Count -ne 0){throw 'No arguments accepted'}
+# CmdletBinding rejects unknown named/positional arguments before the body; $args is unavailable here.
 $principal=[Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
 if($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){
  throw 'STOP: open a normal PowerShell window without Run as administrator; no test profile was created.'

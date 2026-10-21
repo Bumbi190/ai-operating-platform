@@ -262,3 +262,7 @@ Sources checked:
 - [CreateAppContainerProfile](https://learn.microsoft.com/en-us/windows/win32/api/userenv/nf-userenv-createappcontainerprofile) and [DeleteAppContainerProfile](https://learn.microsoft.com/en-us/windows/win32/api/userenv/nf-userenv-deleteappcontainerprofile): own-user temporary profile lifecycle.
 - [DuplicateTokenEx](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-duplicatetokenex): primary versus impersonation token requirements.
 - [CreateRestrictedToken](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-createrestrictedtoken): documented narrowing flags and own-primary process creation.
+
+## Standard-user wrapper argument bug fixed
+
+The operator's screenshot showed VariableIsUndefined for args before any probe ran. Reproduced in a fresh in-memory PowerShell runspace: CmdletBinding does not supply args; StrictMode rejects the manual args.Count read. Removed that redundant read; advanced binding already rejects unexpected named/positional arguments. Four checks against the actual wrapper header/guard passed: no arguments reaches the next guard without errors, unknown named argument rejected, unknown positional argument rejected, elevated context still rejected before imports/source/profile creation. No network/profile probe was started during these checks. The same standard-user command can now be retried. Network acceptance remains unverified.

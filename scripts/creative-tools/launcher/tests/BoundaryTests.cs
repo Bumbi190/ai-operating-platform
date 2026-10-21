@@ -2,8 +2,49 @@ using System;
 namespace Omnira.Creative.Synthetic {
  internal static class BoundaryTests {
   internal static void Run() {
-   foreach(Action test in new Action[]{RuntimePinPreventsMutation,CombinedAttributesRoundTrip,SentinelControls,PreResumeMismatchRefuses,SpawnGateRejectsReentry,NoBroadInheritanceFallback}){
+   SetupCleanupFailurePreservesPrimary();
+   foreach(Action test in new Action[]{VerificationFailureIsTerminal,RuntimePinPreventsMutation,CombinedAttributesRoundTrip,SentinelControls,PreResumeMismatchRefuses,SpawnGateRejectsReentry,NoBroadInheritanceFallback}){
     test();Assert.True(WindowsProcessBoundary.LastCleanup.Complete,"every test cleanup must be corroborated");
+   }
+  }
+  static NativeHandle HoldProcess(BoundarySession session) {
+   IntPtr copy;NativeMethods.Check(NativeMethods.DuplicateHandle(new IntPtr(-1),session.Process.Value,new IntPtr(-1),out copy,0,false,2),"test-hold-process");
+   return new NativeHandle(copy);
+  }
+  static void VerificationFailureIsTerminal() {
+   foreach(bool verifyFirst in new[]{true,false}) {
+    using(OwnedFixture f=WindowsProcessBoundary.PrepareOwnedFixture()) {
+     using(BoundarySession s=WindowsProcessBoundary.CreateSuspended(f,new OperationBudget()))
+     using(NativeHandle held=HoldProcess(s)) {
+      if(verifyFirst)s.VerifyBeforeResume();
+      BoundaryTestHooks.Mismatch="sid";
+      try {Assert.Refuses("pre-resume-token-mismatch",()=>s.VerifyBeforeResume());}
+      finally {BoundaryTestHooks.Mismatch=null;}
+      Assert.Refuses("resume-refused",()=>s.Resume());
+      Assert.Refuses("boundary-refused",()=>s.VerifyBeforeResume());
+      Assert.True(!s.Resumed,"refused session cannot resume");
+      Assert.Equal<uint>(0,NativeMethods.WaitForSingleObject(held.Value,0));
+      using(BoundarySession next=WindowsProcessBoundary.CreateSuspended(f,new OperationBudget())){}
+     }
+    }
+    Assert.True(WindowsProcessBoundary.LastCleanup.Complete,"terminal refusal cleanup");
+   }
+   Console.WriteLine("PASS VerificationFailureIsTerminal firstFailure=true reverifyFailure=true processStopped=true gateReleased=true");
+  }
+  static void SetupCleanupFailurePreservesPrimary() {
+   foreach(string stage in new[]{"before-folder","after-runtime"}) {
+    BoundaryTestHooks.SetupFailure=stage;
+    BoundaryTestHooks.MappingObservationFailure=true;
+    BoundaryTestHooks.LastFixture=null;
+    try {Assert.Refuses(stage=="before-folder"?"test-setup-before-folder":"test-setup-after-runtime",()=>{using(OwnedFixture unexpected=WindowsProcessBoundary.PrepareOwnedFixture()){} });}
+    finally {BoundaryTestHooks.SetupFailure=null;BoundaryTestHooks.MappingObservationFailure=false;}
+    OwnedFixture f=BoundaryTestHooks.LastFixture;
+    Assert.True(f!=null&&f.Disposed&&f.Sid==IntPtr.Zero&&f.RuntimePin==null,"native resources released despite cleanup failure");
+    Assert.True(object.ReferenceEquals(f.Cleanup,WindowsProcessBoundary.LastCleanup),"cleanup published despite failure");
+    Assert.True(!f.Cleanup.ProfileMappingAbsent&&!f.Cleanup.Complete,"failed cleanup remains unverified");
+    if(stage=="before-folder")Assert.True(!f.Cleanup.ProfileStorageAbsent&&!f.Cleanup.FixtureAbsent,"unresolved storage identity cannot prove absence");
+    f.Dispose();
+    Console.WriteLine("PASS SetupCleanupFailurePreservesPrimary stage="+stage+" originalRefusal=true SIDReleased=true runtimePinReleased=true cleanupPublished=true mappingAbsent=false");
    }
   }
   static void RuntimePinPreventsMutation() {
@@ -72,5 +113,8 @@ namespace Omnira.Creative.Synthetic {
   internal static NativeHandle AllowedSentinel;
   internal static string Mismatch;
   internal static bool UnsupportedAttribute;
+  internal static string SetupFailure;
+  internal static bool MappingObservationFailure;
+  internal static OwnedFixture LastFixture;
  }
 }

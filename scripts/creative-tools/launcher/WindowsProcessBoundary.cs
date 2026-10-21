@@ -24,10 +24,14 @@ namespace Omnira.Creative.Synthetic {
     f.ProfileName="omnira.launcher."+f.Nonce;
     int hr=NativeMethods.CreateAppContainerProfile(f.ProfileName,"Omnira synthetic launcher","Owned ordinary-user synthetic fixture",IntPtr.Zero,0,out f.Sid);
     if(hr!=0)throw new SyntheticRefusal("profile-create",hr);f.ProfileCreated=true;f.ProfileSid=new SecurityIdentifier(f.Sid).Value;
+#if TEST
+    BoundaryTestHooks.LastFixture=f;
+    if(BoundaryTestHooks.SetupFailure=="before-folder")throw new SyntheticRefusal("test-setup-before-folder");
+#endif
     IntPtr folder;hr=NativeMethods.GetAppContainerFolderPath(f.ProfileSid,out folder);if(hr!=0)throw new SyntheticRefusal("profile-path",hr);
     try{f.Storage=Marshal.PtrToStringUni(folder);}finally{Marshal.FreeCoTaskMem(folder);}
     string expected=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Packages",f.ProfileName,"AC");
-    NativeMethods.Require(string.Equals(f.Storage,expected,StringComparison.OrdinalIgnoreCase),"profile-path-mismatch");OrdinaryDirectory(f.Storage);
+    NativeMethods.Require(string.Equals(f.Storage,expected,StringComparison.OrdinalIgnoreCase),"profile-path-mismatch");f.StorageIdentityEstablished=true;OrdinaryDirectory(f.Storage);
     string dir=Path.Combine(f.Storage,"runtime");Directory.CreateDirectory(dir);OrdinaryDirectory(dir);f.Runtime=Path.Combine(dir,"node.exe");
     using(FileStream input=File.OpenRead(source))using(FileStream output=new FileStream(f.Runtime,FileMode.CreateNew,FileAccess.Write,FileShare.None)){input.CopyTo(output);output.Flush(true);}
     f.RuntimePin=new FileStream(f.Runtime,FileMode.Open,FileAccess.Read,FileShare.Read);
@@ -37,6 +41,9 @@ namespace Omnira.Creative.Synthetic {
     bool rx=false;foreach(FileSystemAccessRule rule in File.GetAccessControl(f.Runtime).GetAccessRules(true,true,typeof(SecurityIdentifier)))
      if(rule.IdentityReference.Value==f.ProfileSid&&rule.IsInherited&&rule.AccessControlType==AccessControlType.Allow&&(rule.FileSystemRights&FileSystemRights.ReadAndExecute)==FileSystemRights.ReadAndExecute)rx=true;
     NativeMethods.Require(rx,"runtime-inherited-package-rx");
+    #if TEST
+    if(BoundaryTestHooks.SetupFailure=="after-runtime")throw new SyntheticRefusal("test-setup-after-runtime");
+#endif
     Console.WriteLine("FIXTURE profile="+f.ProfileName+" sid="+f.ProfileSid+" runtimeHash="+f.RuntimeHash+" inheritedRX=true");
     return f;
    }catch{f.Dispose();throw;}
@@ -52,7 +59,7 @@ namespace Omnira.Creative.Synthetic {
   readonly OwnedFixture fixture;readonly OperationBudget budget;
   internal NativeHandle Process,Thread,Job,Input,Output,Error;
   internal bool ExactJobAtReturn,TokenVerified,Resumed;
-  bool disposed,verified;
+  bool disposed,verified,refused;
   internal BoundarySession(OwnedFixture f,OperationBudget b){fixture=f;budget=b;}
   static IntPtr H(NativeHandle h){return h==null?IntPtr.Zero:h.Value;}
   static void Close(ref NativeHandle h){if(h!=null){h.Dispose();h=null;}}
@@ -151,6 +158,9 @@ namespace Omnira.Creative.Synthetic {
   }
   internal static void VerifyHost(){VerifyToken(new IntPtr(-1),null);}
   internal void VerifyBeforeResume(){
+   if(refused)throw new SyntheticRefusal("boundary-refused");
+   verified=false;
+   try {
    NativeMethods.Require(!Resumed&&!disposed,"invalid-boundary-state");
    string expectedSid=fixture.ProfileSid,expectedImage=fixture.Runtime;
 #if TEST
@@ -175,8 +185,9 @@ namespace Omnira.Creative.Synthetic {
    }
    using(NativeBuffer b=new NativeBuffer(144))VerifyPolicy(b);
    TokenVerified=true;verified=true;
+   }catch{refused=true;verified=false;TokenVerified=false;Dispose();throw;}
   }
-  internal void Resume(){NativeMethods.Require(verified&&!Resumed&&!disposed&&budget.RunRemainingMs>0,"resume-refused");NativeMethods.Require(NativeMethods.ResumeThread(Thread.Value)==1,"resume-failed");Resumed=true;}
+  internal void Resume(){NativeMethods.Require(verified&&!refused&&!Resumed&&!disposed&&budget.RunRemainingMs>0,"resume-refused");NativeMethods.Require(NativeMethods.ResumeThread(Thread.Value)==1,"resume-failed");Resumed=true;}
   internal static bool ObjectIdentityDecision(bool numericEqual,bool objectsEqual){return objectsEqual;}
   internal bool ChildObjectMatches(NativeHandle original) {
    NativeMethods.Require(!Resumed&&budget.RunRemainingMs>0,"sentinel-state");IntPtr copy;

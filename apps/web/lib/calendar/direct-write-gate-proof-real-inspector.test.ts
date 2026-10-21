@@ -111,6 +111,34 @@ describe('real inspector candidate validation with signed source gate',()=>{
   expect(result.record.providerId).toBe('12345_99999');
   expect(count()).toBe('0');
  });
+ it('isolates a manual publisher role and rolls the candidate back',()=>{
+  f.sql('alter table social_publications disable trigger user;'+
+   'update social_publications set state='+q('publishing')+' where id='+q(publication)+';'+
+   'alter table social_publications enable trigger user;');
+  const input={projectId:PROJECT_A,postId:post,publicationId:publication,
+   expectedVersion:1,action:'complete',providerId:'12345_99999'};
+  const denied='do $probe$ begin '+
+   'perform public.social_publication_step('+j({userId:USER_A,allowedProjectIds:[PROJECT_A]})+','+j(input)+');'+
+   "raise exception 'UNEXPECTED_STEP_ALLOWED';"+
+   'exception when insufficient_privilege then null; end $probe$;';
+  const out=f.sql('savepoint role_probe;'+
+   read('direct-write-gate-manual-publisher-role-candidate.sql')+
+   "select has_table_privilege('service_role','public.social_publications','INSERT')::text||"+
+   "has_table_privilege('service_role','public.social_publications','UPDATE')::text||"+
+   "has_function_privilege('service_role','public.social_publication_step(jsonb,jsonb)','EXECUTE')::text;"+
+   'set local role service_role;'+denied+
+   'set local role social_publisher_fixture;'+
+   'select public.calendar_source_gate_begin_probe('+q(PROJECT_A)+');'+
+   'select public.social_publication_step('+j({userId:USER_A,allowedProjectIds:[PROJECT_A]})+','+j(input)+');'+
+   'rollback to savepoint role_probe;').split('\n');
+  expect(out[0]).toBe('falsefalsefalse');
+  const receipt=JSON.parse(out.at(-1)!);
+  expect(receipt.record.state).toBe('published');
+  expect(receipt.record.providerId).toBe('12345_99999');
+  expect(f.sql('select state from social_publications where id='+q(publication))).toBe('publishing');
+  expect(source()).toBe('1');
+  expect(f.sql("select to_regrole('social_publisher_fixture') is null")).toBe('t');
+ });
  it('documents that a shaped but unverified provider candidate is accepted',()=>{
   // No provider reader is called by this SQL fixture. This input is invented by
   // the caller and demonstrates the boundary the database cannot authenticate.

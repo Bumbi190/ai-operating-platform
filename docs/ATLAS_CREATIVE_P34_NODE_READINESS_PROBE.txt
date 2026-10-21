@@ -1,0 +1,264 @@
+using System;
+using System.Diagnostics;
+using System.Collections.Generic;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Security.Principal;
+using System.Text;
+using System.Threading;
+// THROWAWAY STANDARD-USER DIAGNOSTIC. No worker/editor, project data or network requests.
+public static class CreativeNodeReadinessProbe {
+ const string K=@"C:\Windows\System32\kernel32.dll",A=@"C:\Windows\System32\advapi32.dll",U=@"C:\Windows\System32\userenv.dll";
+ const uint WAIT_TIMEOUT=0x102;
+ [StructLayout(LayoutKind.Sequential)] struct BASIC {public long P,J;public uint Flags;public UIntPtr Min,Max;public uint Count;public UIntPtr Affinity;public uint Priority,Scheduling;}
+ [StructLayout(LayoutKind.Sequential)] struct IO {public ulong A,B,C,D,E,F;}
+ [StructLayout(LayoutKind.Sequential)] struct LIMITS {public BASIC Basic;public IO Io;public UIntPtr P,J,PP,PJ;}
+ [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)] struct STARTUP {public uint Size;public string Reserved,Desktop,Title;public uint X,Y,W,H,XC,YC,Fill,Flags;public ushort Show,ExtraSize;public IntPtr Extra,In,Out,Err;}
+ [StructLayout(LayoutKind.Sequential)] struct EX {public STARTUP Startup;public IntPtr Attributes;}
+ [StructLayout(LayoutKind.Sequential)] struct PROCESS {public IntPtr Process,Thread;public uint Pid,Tid;}
+ [StructLayout(LayoutKind.Sequential)] struct CAPS {public IntPtr Sid,Capabilities;public uint Count,Reserved;}
+ [DllImport(K,CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)] static extern IntPtr CreateJobObjectW(IntPtr a,string n);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool SetInformationJobObject(IntPtr j,int k,IntPtr p,uint n);
+ [DllImport(K,CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool CreateProcessW(string app,StringBuilder cmd,IntPtr pa,IntPtr ta,[MarshalAs(UnmanagedType.Bool)]bool inherit,uint flags,IntPtr env,string cwd,ref EX startup,out PROCESS process);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool AssignProcessToJobObject(IntPtr j,IntPtr p);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] static extern uint ResumeThread(IntPtr t);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] static extern uint WaitForSingleObject(IntPtr p,uint ms);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool GetExitCodeProcess(IntPtr p,out uint code);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool TerminateProcess(IntPtr p,uint code);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool CloseHandle(IntPtr h);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool InitializeProcThreadAttributeList(IntPtr p,int count,uint flags,ref IntPtr bytes);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool UpdateProcThreadAttribute(IntPtr p,uint flags,IntPtr attribute,IntPtr value,IntPtr bytes,IntPtr old,IntPtr returned);
+ [DllImport(K,ExactSpelling=true)] static extern void DeleteProcThreadAttributeList(IntPtr p);
+ [DllImport(A,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool OpenProcessToken(IntPtr p,uint rights,out IntPtr token);
+ [DllImport(A,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool GetTokenInformation(IntPtr t,int kind,IntPtr info,int size,out int need);
+ [DllImport(A,ExactSpelling=true)] static extern IntPtr FreeSid(IntPtr sid);
+ [DllImport(U,CharSet=CharSet.Unicode,ExactSpelling=true)] static extern int CreateAppContainerProfile(string name,string display,string description,IntPtr caps,uint count,out IntPtr sid);
+ [DllImport(U,CharSet=CharSet.Unicode,ExactSpelling=true)] static extern int DeleteAppContainerProfile(string name);
+ [DllImport(U,CharSet=CharSet.Unicode,ExactSpelling=true)] static extern int GetAppContainerFolderPath(string sid,out IntPtr path);
+ static void Hr(int code,string stage){if(code!=0)throw new InvalidOperationException(stage+"; HRESULT=0x"+code.ToString("X8"));}
+ static void Check(bool ok,string stage){if(!ok)throw new InvalidOperationException(stage+"; win32="+Marshal.GetLastWin32Error());}
+ static IntPtr TokenData(IntPtr token,int kind){
+  int need;GetTokenInformation(token,kind,IntPtr.Zero,0,out need);
+  if(need<1||need>65536)throw new InvalidOperationException("token buffer bound");
+  IntPtr b=Marshal.AllocHGlobal(need);
+  try{Check(GetTokenInformation(token,kind,b,need,out need),"token read "+kind);return b;}catch{Marshal.FreeHGlobal(b);throw;}
+ }
+ public sealed class TokenObservation {
+  public bool IsAppContainer,ExpectedPackageSid,AdministratorGroupEnabled,Elevated,DetailFieldsObserved;
+  public int CapabilityCount,IntegrityRid;
+ }
+ static TokenObservation InspectToken(IntPtr process,IntPtr expectedSid){return InspectToken(process,expectedSid,true);}
+ static TokenObservation InspectToken(IntPtr process,IntPtr expectedSid,bool enforce){
+  IntPtr token=IntPtr.Zero,b=IntPtr.Zero;TokenObservation r=new TokenObservation();
+  try{
+   Check(OpenProcessToken(process,8,out token),"open process token");
+   b=TokenData(token,29);r.IsAppContainer=Marshal.ReadInt32(b)!=0;Marshal.FreeHGlobal(b);b=IntPtr.Zero;
+   b=TokenData(token,20);r.Elevated=Marshal.ReadInt32(b)!=0;Marshal.FreeHGlobal(b);b=IntPtr.Zero;
+   if(expectedSid==IntPtr.Zero)Require(!r.IsAppContainer&&!r.Elevated,"baseline must be unelevated and not AppContainer");
+   b=TokenData(token,31);IntPtr sid=Marshal.ReadIntPtr(b);r.ExpectedPackageSid=expectedSid!=IntPtr.Zero&&sid!=IntPtr.Zero&&new SecurityIdentifier(sid).Value==new SecurityIdentifier(expectedSid).Value;Marshal.FreeHGlobal(b);b=IntPtr.Zero;
+   b=TokenData(token,30);r.CapabilityCount=Marshal.ReadInt32(b);Marshal.FreeHGlobal(b);b=IntPtr.Zero;
+   b=TokenData(token,25);string il=new SecurityIdentifier(Marshal.ReadIntPtr(b)).Value;r.IntegrityRid=int.Parse(il.Substring(il.LastIndexOf('-')+1));Marshal.FreeHGlobal(b);b=IntPtr.Zero;
+   b=TokenData(token,2);int n=Marshal.ReadInt32(b);if(n<0||n>512)throw new InvalidOperationException("group bound");
+   for(int i=0;i<n;i++){IntPtr gs=Marshal.ReadIntPtr(b,8+i*16);uint attributes=(uint)Marshal.ReadInt32(b,16+i*16);if(new SecurityIdentifier(gs).Value=="S-1-5-32-544"&&(attributes&4)!=0&&(attributes&16)==0)r.AdministratorGroupEnabled=true;}
+   r.DetailFieldsObserved=true;
+   if(enforce&&expectedSid!=IntPtr.Zero&&!(r.IsAppContainer&&r.ExpectedPackageSid&&r.CapabilityCount==0&&r.IntegrityRid==4096&&!r.Elevated&&!r.AdministratorGroupEnabled))throw new InvalidOperationException("token conditions: AppContainer="+r.IsAppContainer+",PackageSidMatches="+r.ExpectedPackageSid+",Capabilities="+r.CapabilityCount+",IntegrityRid="+r.IntegrityRid+",Elevated="+r.Elevated+",AdminGroupEnabled="+r.AdministratorGroupEnabled);
+   return r;
+  }finally{if(b!=IntPtr.Zero)Marshal.FreeHGlobal(b);if(token!=IntPtr.Zero)CloseHandle(token);}
+ }
+
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool QueryInformationJobObject(IntPtr job,int kind,IntPtr buffer,uint size,IntPtr returned);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool IsProcessInJob(IntPtr process,IntPtr job,[MarshalAs(UnmanagedType.Bool)]out bool member);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool TerminateJobObject(IntPtr job,uint code);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] static extern IntPtr OpenProcess(uint access,[MarshalAs(UnmanagedType.Bool)]bool inherit,uint pid);
+ [DllImport(K,CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)] [return:MarshalAs(UnmanagedType.Bool)] static extern bool QueryFullProcessImageNameW(IntPtr process,uint flags,StringBuilder image,ref uint size);
+ static void Require(bool ok,string stage){if(!ok)throw new InvalidOperationException(stage);}
+ static bool Stop(ref PROCESS p){
+  bool ok=true;
+  if(p.Process!=IntPtr.Zero){if(WaitForSingleObject(p.Process,0)==WAIT_TIMEOUT)TerminateProcess(p.Process,2);ok=WaitForSingleObject(p.Process,5000)==0;CloseHandle(p.Process);p.Process=IntPtr.Zero;}
+  if(p.Thread!=IntPtr.Zero){CloseHandle(p.Thread);p.Thread=IntPtr.Zero;}return ok;
+ }
+ static string ImageName(IntPtr handle){
+  StringBuilder path=new StringBuilder(1024);uint size=1024;Check(QueryFullProcessImageNameW(handle,0,path,ref size),"process image");
+  return path.ToString();
+ }
+
+ const string NodeImage=@"C:\Program Files\nodejs\node.exe",ExpectedNodeVersion="22.22.3";
+ const string Loader="eval(Buffer.from(process.argv[1],'base64').toString('utf8'))";
+ static string Encode(string s){return Convert.ToBase64String(Encoding.UTF8.GetBytes(s));}
+ static string Js(string s){return "'"+s.Replace("\\","\\\\").Replace("'","\\'").Replace("\r","\\r").Replace("\n","\\n")+"'";}
+ static void OrdinaryDirectory(string path){
+  Require(Path.IsPathRooted(path)&&path.StartsWith(@"C:\",StringComparison.OrdinalIgnoreCase),"local C drive path required");
+  for(DirectoryInfo d=new DirectoryInfo(path);d!=null;d=d.Parent)Require((d.Attributes&FileAttributes.ReparsePoint)==0,"reparse ancestor");
+ }
+ static string BoundedMarker(string path){
+  FileAttributes a=File.GetAttributes(path);Require((a&(FileAttributes.ReparsePoint|FileAttributes.Directory))==0,"marker must be a regular file");
+  using(FileStream f=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read)){
+   byte[] b=new byte[257];int n=0;
+   while(n<b.Length){int count=f.Read(b,n,b.Length-n);if(count==0)break;n+=count;}
+   Require(n>0&&n<=256,"marker byte bound");
+   for(int i=0;i<n;i++)Require(b[i]<128,"ASCII marker required");
+   return Encoding.ASCII.GetString(b,0,n);
+  }
+ }
+ public sealed class ConsoleObservation{public uint Pid;public string Image;public TokenObservation Token;public bool LiveBeforeClose,ExitedOnClose,TokenMatchesAppContainer;}
+ public sealed class Trial{
+  public string Kind,Nonce,ParentMarker,ChildMarker,ParentStartedMarker,SpawnErrorMarker,NullProbeMarker,ChildSpawnDiagnostic,NullDeviceDiagnostic,ImageVisibilityDiagnostic,ImageProbeMarker,StdioMode,TrialRuntimeImagePath;public bool DetachedRequested;
+  public uint ParentPid,ChildPid;public TokenObservation ParentToken,ChildToken;
+  public int NativeJobProcessCount;public List<ConsoleObservation> Consoles=new List<ConsoleObservation>();public List<string> JobMemberImages=new List<string>();
+  public bool ExactJobPolicyReadBack,ParentAssignedBeforeResume,ParentJavaScriptReady,ChildJavaScriptReady,ChildMembershipVerified,ChildImageVerified,TwoLiveProcessesObserved,ParentExitedOnClose,ChildExitedOnClose,Passed;
+  public long ReadyElapsedMs;
+ }
+ public sealed class Result{
+  public string Mode="throwaway-AppContainer-Node-readiness-probe",Error,ProfileName,ProfileSid,ProfileStorage,ObservedAtUtc;
+  public string NodeVersion=ExpectedNodeVersion,NodeImagePath=NodeImage,NodeObservedSha256,SelectedStdioMode,RuntimeLocation,RuntimeImagePath,RuntimeObservedSha256;
+  public string ControlRuntimeImagePath=NodeImage;
+  public bool RuntimeStaged,StagedRuntimeHashMatches,RuntimeExpectedPackageSidReadExecuteAllowObserved;
+  public bool ProfileCreated,ProfileDeleteApiSucceeded,ProfileStorageAbsenceCorroborated,ProfileMappingAbsent,AllProcessesStopped=true;
+  public bool WorkerAccountUsed=false,EditorStarted=false,NetworkRequested=false,ProjectAclChanged=false,ProductionReady=false;
+  public bool ExplicitWindowsBreakawayTestExecuted=false,ArbitraryBrokerContainmentVerified=false,ActualWorkerTokenVerified=false,SupervisorCrashScenarioVerified=false,GeneralExecutableTrustVerified=false;
+  public List<Trial> Trials=new List<Trial>();
+ }
+ static void RunTrial(IntPtr sid,bool detached,string kind,string storage,Result r,string stdioMode,string runtimeImage){
+  Trial t=new Trial();t.Kind=kind;t.StdioMode=stdioMode;t.TrialRuntimeImagePath=runtimeImage;t.DetachedRequested=detached;t.Nonce=Guid.NewGuid().ToString("N");
+  t.ParentMarker=Path.Combine(storage,t.Nonce+"-parent.ready");t.ChildMarker=Path.Combine(storage,t.Nonce+"-child.ready");
+  t.ParentStartedMarker=Path.Combine(storage,t.Nonce+"-parent.started");t.SpawnErrorMarker=Path.Combine(storage,t.Nonce+"-spawn.error");t.NullProbeMarker=Path.Combine(storage,t.Nonce+"-null.probe");t.ImageProbeMarker=Path.Combine(storage,t.Nonce+"-image.probe");r.Trials.Add(t);
+  Require(!File.Exists(t.ParentMarker)&&!File.Exists(t.ChildMarker),"marker preexistence");
+  string publisher="const fs=require('node:fs');function put(p,s){fs.writeFileSync(p+'.tmp',s,{flag:'wx',encoding:'ascii'});fs.renameSync(p+'.tmp',p);}";
+  string childCode=publisher+"put("+Js(t.ChildMarker)+","+Js(t.Nonce)+"+'|'+process.pid+'|'+process.versions.node);setTimeout(()=>process.exit(0),30000);";
+  string parentCode=publisher+"put("+Js(t.ParentStartedMarker)+","+Js(t.Nonce)+"+'|'+process.pid+'|'+process.versions.node);"+
+   "function nul(flag){let fd;try{fd=fs.openSync("+Js(@"\\.\NUL")+",flag);return 'ok';}catch(e){return String(e.code)+':'+String(e.errno);}finally{if(fd!==undefined)fs.closeSync(fd);}}"+
+   "put("+Js(t.NullProbeMarker)+","+Js(t.Nonce)+"+'|read='+nul(fs.constants.O_RDONLY)+'|write='+nul(fs.constants.O_WRONLY));"+
+   "function visible(p){try{return fs.statSync(p).isFile()?'file':'other';}catch(e){return String(e.code)+':'+String(e.errno);}}"+
+   "put("+Js(t.ImageProbeMarker)+","+Js(t.Nonce)+"+'|source='+visible("+Js(NodeImage)+")+'|self='+visible(process.execPath));"+
+   "const c=require('node:child_process').spawn(process.execPath,['--no-addons','--eval',"+Js(Loader)+","+Js(Encode(childCode))+"],{shell:false,windowsHide:true,detached:"+(detached?"true":"false")+",stdio:"+Js(stdioMode)+",env:process.env});"+
+   "c.once('error',(e)=>{try{put("+Js(t.SpawnErrorMarker)+","+Js(t.Nonce)+"+'|'+String(e.code)+'|'+String(e.errno)+'|'+String(e.syscall));}finally{process.exit(71);}});"+
+   "c.once('spawn',()=>{put("+Js(t.ParentMarker)+","+Js(t.Nonce)+"+'|'+process.pid+'|'+c.pid+'|'+process.versions.node);"+(detached?"c.unref();":"")+"});setTimeout(()=>process.exit(0),30000);";
+  string args="\""+runtimeImage+"\" --no-addons --eval \""+Loader+"\" "+Encode(parentCode);
+  IntPtr job=IntPtr.Zero,buffer=IntPtr.Zero,list=IntPtr.Zero,cap=IntPtr.Zero,env=IntPtr.Zero;bool initialized=false,resumed=false;
+  PROCESS parent=new PROCESS(),child=new PROCESS();List<PROCESS> consoles=new List<PROCESS>();
+  try{
+   job=CreateJobObjectW(IntPtr.Zero,null);Check(job!=IntPtr.Zero,"create unnamed job");
+   buffer=Marshal.AllocHGlobal(144);LIMITS limits=new LIMITS();limits.Basic.Flags=0x2008;limits.Basic.Count=4;
+   Marshal.StructureToPtr(limits,buffer,false);Check(SetInformationJobObject(job,9,buffer,144),"set exact kill-onclose job policy");
+   Check(QueryInformationJobObject(job,9,buffer,144,IntPtr.Zero),"job policy readback");
+   LIMITS read=(LIMITS)Marshal.PtrToStructure(buffer,typeof(LIMITS));Require(read.Basic.Flags==0x2008&&read.Basic.Count==4,"unexpected job policy");t.ExactJobPolicyReadBack=true;
+   EX startup=new EX();startup.Startup.Size=sid==IntPtr.Zero?104u:112u;
+   if(sid!=IntPtr.Zero){
+    IntPtr bytes=IntPtr.Zero;InitializeProcThreadAttributeList(IntPtr.Zero,1,0,ref bytes);Require(bytes.ToInt64()>0&&bytes.ToInt64()<65536,"attribute buffer bound");
+    list=Marshal.AllocHGlobal(bytes);Check(InitializeProcThreadAttributeList(list,1,0,ref bytes),"initialize attributes");initialized=true;
+    CAPS c=new CAPS();c.Sid=sid;cap=Marshal.AllocHGlobal(24);Marshal.StructureToPtr(c,cap,false);
+    Check(UpdateProcThreadAttribute(list,0,new IntPtr(0x20009),cap,new IntPtr(24),IntPtr.Zero,IntPtr.Zero),"zero capabilities attribute");startup.Attributes=list;
+   }
+   env=Marshal.StringToHGlobalUni("LOCALAPPDATA="+Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)+"\0PATH=C:\\Windows\\System32\0SystemRoot=C:\\Windows\0WINDIR=C:\\Windows\0\0");
+   uint flags=0x08000404;if(sid!=IntPtr.Zero)flags|=0x80000;
+   Check(CreateProcessW(runtimeImage,new StringBuilder(args),IntPtr.Zero,IntPtr.Zero,false,flags,env,@"C:\Windows\System32",ref startup,out parent),"create suspended fixed Node image");
+   t.ParentPid=parent.Pid;Check(AssignProcessToJobObject(job,parent.Process),"assign parent before resume");t.ParentAssignedBeforeResume=true;t.ParentToken=InspectToken(parent.Process,sid);
+   Require(string.Equals(ImageName(parent.Process),runtimeImage,StringComparison.OrdinalIgnoreCase),"unexpected parent image");
+   Check(ResumeThread(parent.Thread)!=0xffffffff,"resume parent");resumed=true;CloseHandle(parent.Thread);parent.Thread=IntPtr.Zero;
+   Stopwatch watch=Stopwatch.StartNew();
+   while(watch.ElapsedMilliseconds<10000&&WaitForSingleObject(parent.Process,0)==WAIT_TIMEOUT&&(!File.Exists(t.ParentMarker)||!File.Exists(t.ChildMarker)))Thread.Sleep(50);
+   t.ReadyElapsedMs=watch.ElapsedMilliseconds;
+   if(File.Exists(t.ParentStartedMarker)){Require(BoundedMarker(t.ParentStartedMarker)==t.Nonce+"|"+parent.Pid+"|"+ExpectedNodeVersion,"parent-start contents mismatch");t.ParentJavaScriptReady=true;}
+   if(File.Exists(t.NullProbeMarker)){string data=BoundedMarker(t.NullProbeMarker);Require(data.StartsWith(t.Nonce+"|",StringComparison.Ordinal),"null-probe nonce mismatch");t.NullDeviceDiagnostic=data.Substring(t.Nonce.Length+1);}
+   if(File.Exists(t.ImageProbeMarker)){string data=BoundedMarker(t.ImageProbeMarker);Require(data.StartsWith(t.Nonce+"|",StringComparison.Ordinal),"image-probe nonce mismatch");t.ImageVisibilityDiagnostic=data.Substring(t.Nonce.Length+1);}
+   if(File.Exists(t.SpawnErrorMarker)){string data=BoundedMarker(t.SpawnErrorMarker);Require(data.StartsWith(t.Nonce+"|",StringComparison.Ordinal),"spawn-error nonce mismatch");t.ChildSpawnDiagnostic=data.Substring(t.Nonce.Length+1);}
+   if(!File.Exists(t.ParentMarker)||!File.Exists(t.ChildMarker)){uint exit;GetExitCodeProcess(parent.Process,out exit);throw new InvalidOperationException("JavaScript child readiness unavailable; parent exit="+exit+", elapsedMs="+t.ReadyElapsedMs+", spawn="+t.ChildSpawnDiagnostic+", NUL="+t.NullDeviceDiagnostic);}
+   string parentText=BoundedMarker(t.ParentMarker),childText=BoundedMarker(t.ChildMarker);string[] p=parentText.Split('|'),cparts=childText.Split('|');uint childPid=0;
+   Require(p.Length==4&&p[0]==t.Nonce&&p[1]==parent.Pid.ToString()&&uint.TryParse(p[2],out childPid)&&childPid!=0&&childPid!=parent.Pid&&p[3]==ExpectedNodeVersion,"parent readiness contents mismatch");t.ParentJavaScriptReady=true;
+   Require(cparts.Length==3&&cparts[0]==t.Nonce&&cparts[1]==childPid.ToString()&&cparts[2]==ExpectedNodeVersion,"child readiness contents mismatch");t.ChildJavaScriptReady=true;
+   Check(QueryInformationJobObject(job,3,buffer,144,IntPtr.Zero),"native job membership");
+   int assigned=Marshal.ReadInt32(buffer,0),count=Marshal.ReadInt32(buffer,4);t.NativeJobProcessCount=count;
+   Require(assigned==count&&count>=2&&count<=4,"expected two Node members within readback job limit4");
+   bool parentFound=false,childFound=false;List<uint> consolePids=new List<uint>();
+   for(int i=0;i<count;i++){
+    uint pid=(uint)Marshal.ReadInt64(buffer,8+i*8);
+    if(pid==parent.Pid){Require(!parentFound,"duplicate parent PID");parentFound=true;}
+    else if(pid==childPid){Require(!childFound,"duplicate child PID");childFound=true;}
+    else {Require(pid!=0&&!consolePids.Contains(pid)&&consolePids.Count<2,"unexpected duplicate/extra member");consolePids.Add(pid);}
+   }
+   Require(parentFound&&childFound,"reported child not corroborated by native job");
+   child.Process=OpenProcess(0x00101001,false,childPid);Check(child.Process!=IntPtr.Zero,"open native job child");child.Pid=childPid;
+   bool member;if(!IsProcessInJob(child.Process,job,out member)||!member){CloseHandle(child.Process);child.Process=IntPtr.Zero;throw new InvalidOperationException("unverified child handle closed without termination");}
+   t.ChildMembershipVerified=true;t.ChildPid=childPid;
+   Require(string.Equals(ImageName(child.Process),runtimeImage,StringComparison.OrdinalIgnoreCase),"unexpected child image");t.ChildImageVerified=true;t.ChildToken=InspectToken(child.Process,sid);
+   t.JobMemberImages.Add(runtimeImage);t.JobMemberImages.Add(runtimeImage);
+   foreach(uint consolePid in consolePids){
+    PROCESS console=new PROCESS();console.Process=OpenProcess(0x00101001,false,consolePid);Check(console.Process!=IntPtr.Zero,"open auxiliary job member");console.Pid=consolePid;
+    bool consoleMember;if(!IsProcessInJob(console.Process,job,out consoleMember)||!consoleMember){CloseHandle(console.Process);console.Process=IntPtr.Zero;throw new InvalidOperationException("unverified auxiliary handle closed without termination");}
+    consoles.Add(console);
+    string image=ImageName(console.Process);t.JobMemberImages.Add(image);
+    Require(string.Equals(image,@"C:\Windows\System32\conhost.exe",StringComparison.OrdinalIgnoreCase),"unexpected auxiliary job image: "+image);
+    ConsoleObservation observation=new ConsoleObservation();observation.Pid=consolePid;observation.Image=image;observation.Token=InspectToken(console.Process,sid,false);t.Consoles.Add(observation);
+    TokenObservation ct=observation.Token;
+    observation.TokenMatchesAppContainer=sid!=IntPtr.Zero&&ct.IsAppContainer&&ct.ExpectedPackageSid&&ct.CapabilityCount==0&&ct.IntegrityRid==4096&&!ct.Elevated&&!ct.AdministratorGroupEnabled;
+    observation.LiveBeforeClose=WaitForSingleObject(console.Process,0)==WAIT_TIMEOUT;Require(observation.LiveBeforeClose,"console host must remain live before close");
+   }
+   Require(WaitForSingleObject(parent.Process,0)==WAIT_TIMEOUT&&WaitForSingleObject(child.Process,0)==WAIT_TIMEOUT,"both ready processes must remain live");t.TwoLiveProcessesObserved=true;
+   Check(CloseHandle(job),"close only job handle");job=IntPtr.Zero;
+   t.ParentExitedOnClose=WaitForSingleObject(parent.Process,5000)==0;t.ChildExitedOnClose=WaitForSingleObject(child.Process,5000)==0;
+   bool consolesStopped=true;for(int i=0;i<consoles.Count;i++){t.Consoles[i].ExitedOnClose=WaitForSingleObject(consoles[i].Process,5000)==0;consolesStopped=consolesStopped&&t.Consoles[i].ExitedOnClose;}
+   Require(t.ParentExitedOnClose&&t.ChildExitedOnClose&&consolesStopped,"all observed ready processes/consoles must stop on job close");t.Passed=true;
+  }finally{
+   bool empty=true;
+   if(job!=IntPtr.Zero){
+    empty=false;TerminateJobObject(job,2);
+    if(buffer!=IntPtr.Zero){Stopwatch drain=Stopwatch.StartNew();while(drain.ElapsedMilliseconds<5000){if(QueryInformationJobObject(job,3,buffer,144,IntPtr.Zero)&&Marshal.ReadInt32(buffer,0)==0&&Marshal.ReadInt32(buffer,4)==0){empty=true;break;}Thread.Sleep(50);}}
+    CloseHandle(job);
+   }
+   // A missing/unverified child could have detached outside the job. Never claim its cleanup solely from job emptiness.
+   bool consoleCleanup=true;for(int i=0;i<consoles.Count;i++){PROCESS console=consoles[i];consoleCleanup=Stop(ref console)&consoleCleanup;}
+   r.AllProcessesStopped=(Stop(ref parent)&Stop(ref child)&consoleCleanup&empty&(!resumed||t.ChildMembershipVerified))&r.AllProcessesStopped;
+   if(initialized)DeleteProcThreadAttributeList(list);if(list!=IntPtr.Zero)Marshal.FreeHGlobal(list);if(cap!=IntPtr.Zero)Marshal.FreeHGlobal(cap);
+   if(buffer!=IntPtr.Zero)Marshal.FreeHGlobal(buffer);if(env!=IntPtr.Zero)Marshal.FreeHGlobal(env);
+  }
+ }
+ public static Result Run(string stdioMode,string runtimeLocation){
+  Result r=new Result();r.SelectedStdioMode=stdioMode;r.RuntimeLocation=runtimeLocation;r.ProfileName="omnira.p34.node."+Guid.NewGuid().ToString("N");IntPtr sid=IntPtr.Zero,folder=IntPtr.Zero;
+  try{
+   Require(IntPtr.Size==8&&Marshal.SizeOf(typeof(LIMITS))==144&&Marshal.SizeOf(typeof(EX))==112&&Marshal.SizeOf(typeof(CAPS))==24,"unsupported x64 ABI");
+   Require(!new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator),"ordinary user required");InspectToken(new IntPtr(-1),IntPtr.Zero);
+   Require(stdioMode=="ignore"||stdioMode=="inherit","unsupported explicit stdio diagnostic mode");
+   Require(runtimeLocation=="installed"||runtimeLocation=="profile","unsupported explicit runtime location");
+   OrdinaryDirectory(Path.GetDirectoryName(NodeImage));Require((File.GetAttributes(NodeImage)&(FileAttributes.ReparsePoint|FileAttributes.Directory))==0,"fixed Node image must be regular");
+   using(FileStream f=File.OpenRead(NodeImage))using(System.Security.Cryptography.SHA256 hash=System.Security.Cryptography.SHA256.Create()){r.NodeObservedSha256=BitConverter.ToString(hash.ComputeHash(f)).Replace("-","").ToLowerInvariant();}
+   Hr(CreateAppContainerProfile(r.ProfileName,"Omnira Node readiness probe","Temporary zero-capability JavaScript readiness and detached-child diagnostic",IntPtr.Zero,0,out sid),"create own profile");r.ProfileCreated=true;r.ProfileSid=new SecurityIdentifier(sid).Value;
+   Hr(GetAppContainerFolderPath(r.ProfileSid,out folder),"own profile storage");r.ProfileStorage=Marshal.PtrToStringUni(folder);Marshal.FreeCoTaskMem(folder);folder=IntPtr.Zero;
+   string expected=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Packages",r.ProfileName,"AC");
+   Require(string.Equals(Path.GetFullPath(r.ProfileStorage),Path.GetFullPath(expected),StringComparison.OrdinalIgnoreCase),"unexpected profile storage");OrdinaryDirectory(r.ProfileStorage);
+   r.RuntimeImagePath=NodeImage;r.RuntimeObservedSha256=r.NodeObservedSha256;
+   if(runtimeLocation=="profile"){
+    string directory=Path.Combine(r.ProfileStorage,"runtime");Directory.CreateDirectory(directory);OrdinaryDirectory(directory);
+    r.RuntimeImagePath=Path.Combine(directory,"node-readiness.exe");Require(!File.Exists(r.RuntimeImagePath),"runtime staging target must be fresh");
+    using(FileStream source=File.OpenRead(NodeImage))using(FileStream target=new FileStream(r.RuntimeImagePath,FileMode.CreateNew,FileAccess.Write,FileShare.None)){source.CopyTo(target);target.Flush(true);}r.RuntimeStaged=true;
+    Require((File.GetAttributes(r.RuntimeImagePath)&(FileAttributes.ReparsePoint|FileAttributes.Directory))==0,"staged runtime must be regular");
+    using(FileStream f=File.OpenRead(r.RuntimeImagePath))using(System.Security.Cryptography.SHA256 hash=System.Security.Cryptography.SHA256.Create()){r.RuntimeObservedSha256=BitConverter.ToString(hash.ComputeHash(f)).Replace("-","").ToLowerInvariant();}
+    r.StagedRuntimeHashMatches=r.RuntimeObservedSha256==r.NodeObservedSha256;Require(r.StagedRuntimeHashMatches,"staged runtime hash mismatch");
+    System.Security.AccessControl.FileSecurity acl=File.GetAccessControl(r.RuntimeImagePath);
+    foreach(System.Security.AccessControl.FileSystemAccessRule rule in acl.GetAccessRules(true,true,typeof(SecurityIdentifier))){
+     if(rule.IdentityReference.Value==r.ProfileSid&&rule.AccessControlType==System.Security.AccessControl.AccessControlType.Allow&&(rule.FileSystemRights&System.Security.AccessControl.FileSystemRights.ReadAndExecute)==System.Security.AccessControl.FileSystemRights.ReadAndExecute)r.RuntimeExpectedPackageSidReadExecuteAllowObserved=true;
+    }
+    Require(r.RuntimeExpectedPackageSidReadExecuteAllowObserved,"fresh AC fixture did not inherit expected package read/execute allow");
+
+   }
+   RunTrial(IntPtr.Zero,false,"ordinary-normal-before",r.ProfileStorage,r,stdioMode,NodeImage);
+   RunTrial(IntPtr.Zero,true,"ordinary-detached-before",r.ProfileStorage,r,stdioMode,NodeImage);
+   RunTrial(sid,false,"AppContainer-normal",r.ProfileStorage,r,stdioMode,r.RuntimeImagePath);
+   RunTrial(sid,true,"AppContainer-detached",r.ProfileStorage,r,stdioMode,r.RuntimeImagePath);
+   RunTrial(IntPtr.Zero,false,"ordinary-normal-after",r.ProfileStorage,r,stdioMode,NodeImage);
+   RunTrial(IntPtr.Zero,true,"ordinary-detached-after",r.ProfileStorage,r,stdioMode,NodeImage);
+  }catch(Exception e){r.Error=e.Message;}
+  finally{
+   if(folder!=IntPtr.Zero)Marshal.FreeCoTaskMem(folder);
+   if(r.ProfileCreated&&r.AllProcessesStopped){
+    for(int i=0;i<3;i++){if(DeleteAppContainerProfile(r.ProfileName)==0){r.ProfileDeleteApiSucceeded=true;break;}Thread.Sleep(200);}
+    if(r.ProfileDeleteApiSucceeded){try{
+     r.ProfileStorageAbsenceCorroborated=Directory.GetFileSystemEntries(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Packages"),r.ProfileName,SearchOption.TopDirectoryOnly).Length==0;
+     using(Microsoft.Win32.RegistryKey k=Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppContainer\Mappings\"+r.ProfileSid)){r.ProfileMappingAbsent=k==null;}
+    }catch{}}
+   }
+   if(sid!=IntPtr.Zero)FreeSid(sid);r.ObservedAtUtc=DateTime.UtcNow.ToString("O");
+  }
+  if(!r.AllProcessesStopped||(r.ProfileCreated&&(!r.ProfileDeleteApiSucceeded||!r.ProfileStorageAbsenceCorroborated||!r.ProfileMappingAbsent)))r.Error=(r.Error==null?"":r.Error+"; ")+"cleanup unverified";
+  return r;
+ }
+}

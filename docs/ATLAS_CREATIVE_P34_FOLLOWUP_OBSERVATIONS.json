@@ -1,0 +1,119 @@
+﻿{
+    "date":  "2026-10-21",
+    "sourceExecutableDacl":  {
+                                 "path":  "C:\\Program Files\\nodejs\\node.exe",
+                                 "sddl":  "D:(A;ID;0x1200a9;;;BU)(A;ID;0x1200a9;;;AU)(A;ID;FA;;;BA)(A;ID;FA;;;SY)",
+                                 "observedAtUtc":  "2026-10-21T15:12:02.4239576Z",
+                                 "readOnly":  true
+                             },
+    "localStateFixtureAclObservation":  {
+                                            "profileName":  "omnira.p34.node.742666c649b24614aad2c8556365aaf7",
+                                            "profileSid":  "S-1-15-2-3828044694-1996878301-30980817-807959437-891364-3049180927-2710802062",
+                                            "expectedSidAllowRights":  {
+                                                                           "installedNode":  [
+
+                                                                                             ],
+                                                                           "packageRoot":  [
+
+                                                                                           ],
+                                                                           "LocalStateDirectory":  [
+
+                                                                                                   ],
+                                                                           "LocalStateImage":  [
+
+                                                                                               ],
+                                                                           "nativeACDirectory":  [
+                                                                                                     "FullControl"
+                                                                                                 ]
+                                                                       },
+                                            "allApplicationPackagesAllowPresent":  false,
+                                            "existingAclChanged":  false
+                                        },
+    "cleanupFollowups":  [
+                             {
+                                 "profileName":  "omnira.p34.node.91d6b019e7934d9fbe3e030af20c577b",
+                                 "purpose":  "initial exact-two-count control",
+                                 "knownNodePidsAbsent":  [
+                                                             11992,
+                                                             52916
+                                                         ],
+                                 "deleteHRESULT":  0,
+                                 "packageEntries":  0,
+                                 "mappingAbsent":  true,
+                                 "freshCheckUtc":  "2026-10-21T14:51:50.7193365Z"
+                             },
+                             {
+                                 "profileName":  "omnira.p34.node.43400b6abc2f4f3bb2495e563eda671a",
+                                 "purpose":  "exact-three-count control; four native members observed",
+                                 "knownNodePidsAbsent":  [
+                                                             19860,
+                                                             19580
+                                                         ],
+                                 "deleteHRESULT":  0,
+                                 "packageEntries":  0,
+                                 "mappingAbsent":  true,
+                                 "observedAtUtc":  "2026-10-21T14:54:36.1134268Z"
+                             },
+                             {
+                                 "profileName":  "omnira.p34.node.d2c2b1a364f54ba3b9ae9f0b5323246e",
+                                 "purpose":  "installed runtime before enhanced diagnostics",
+                                 "sameSession":  1,
+                                 "queriedNodeAndConsoleProcesses":  57,
+                                 "unreadable":  0,
+                                 "matchingPackageProcesses":  0,
+                                 "deleteHRESULT":  0,
+                                 "packageEntries":  0,
+                                 "mappingAbsent":  true,
+                                 "observedAtUtc":  "2026-10-21T15:02:21.9028400Z"
+                             },
+                             {
+                                 "profileName":  "omnira.p34.node.42a0a0611cd141b48331f286ad3835fc",
+                                 "originalResultFile":  "ATLAS_CREATIVE_P34_INSTALLED_RUNTIME_RESULT.json",
+                                 "sameSession":  1,
+                                 "queriedNodeAndConsoleProcesses":  57,
+                                 "unreadable":  0,
+                                 "matchingPackageProcesses":  0,
+                                 "deleteHRESULT":  0,
+                                 "packageEntries":  0,
+                                 "mappingAbsent":  true,
+                                 "observedAtUtc":  "2026-10-21T15:08:24.7940533Z"
+                             },
+                             {
+                                 "profileName":  "omnira.p34.node.742666c649b24614aad2c8556365aaf7",
+                                 "originalResultFile":  "ATLAS_CREATIVE_P34_LOCALSTATE_RUNTIME_RESULT.json",
+                                 "sameSession":  1,
+                                 "queriedNodeAndConsoleProcesses":  58,
+                                 "unreadable":  0,
+                                 "matchingPackageProcesses":  0,
+                                 "deleteHRESULT":  0,
+                                 "packageEntries":  0,
+                                 "mappingAbsent":  true,
+                                 "observedAtUtc":  "2026-10-21T15:15:38.0572770Z"
+                             },
+                             {
+                                 "profileName":  "omnira.p34.node.f3f3027dc73c4483b0a7865823c41065",
+                                 "originalResultFile":  "ATLAS_CREATIVE_P34_AC_ORDINARY_CONTROL_RESULT.json",
+                                 "sameSession":  1,
+                                 "queriedNodeAndConsoleProcesses":  58,
+                                 "unreadable":  0,
+                                 "matchingPackageProcesses":  0,
+                                 "deleteHRESULT":  0,
+                                 "packageEntries":  0,
+                                 "mappingAbsent":  true,
+                                 "observedAtUtc":  "2026-10-21T15:25:48.9049348Z"
+                             }
+                         ],
+    "interpretation":  "Original failed results retain conservative cleanup status. Later observations are separate, scoped follow-up facts. Initial unrestricted system-wide process queries could not inspect a protected process; the successful follow-ups queried the current session used by these direct CreateProcess payloads. This is not arbitrary broker or cross-session containment proof.",
+    "acStagedOrdinaryObservation":  {
+                                        "IsAppContainer":  false,
+                                        "Elevated":  false,
+                                        "AdministratorGroupEnabled":  false,
+                                        "CapabilityCount":  0,
+                                        "IntegrityRid":  4096,
+                                        "nodeVersion":  "22.22.3",
+                                        "markerWrite":  "EPERM",
+                                        "aclChanged":  false,
+                                        "mandatoryLabel":  "Low, NoWriteUp; inherited",
+                                        "interpretation":  "Launching the AC-staged image without AppContainer attributes still produced a Low token. Final ordinary controls therefore use the installed source; restricted trials use the matching-hash AC copy."
+                                    }
+}

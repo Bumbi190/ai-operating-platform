@@ -1,0 +1,14 @@
+﻿{
+    "ProfileName":  "omnira.p36.crash.fcfbb0b5e7a84551996fb65b8444ea74",
+    "ProfileSid":  "S-1-15-2-536402686-2294761808-3206980014-1374955823-3804693116-2989735595-2904136266",
+    "ObservedAtUtc":  "2026-10-21T16:33:54.9845592Z",
+    "SameSession":  1,
+    "QueriedNodeAndConsoleProcesses":  57,
+    "Unreadable":  0,
+    "MatchingPackageProcesses":  0,
+    "OwnerPidAbsent":  true,
+    "DeleteHRESULT":  0,
+    "PackageEntries":  0,
+    "MappingAbsent":  true,
+    "Interpretation":  "Separate scoped follow-up; original failed cleanup fields remain unchanged. No general broker/cross-session containment claim."
+}

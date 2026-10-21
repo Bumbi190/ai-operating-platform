@@ -1,0 +1,31 @@
+{
+  "scope": "P37 audit executable lookup",
+  "nodeVersion": "22.22.3",
+  "red": {
+    "command": "node --test scripts/creative-tools/worker-safety-report.test.mjs",
+    "tests": 8,
+    "pass": 7,
+    "fail": 1,
+    "failedAssertion": "read-only CLI must use system PowerShell despite lookup decoy",
+    "actualCliExit": 2,
+    "expectedCliExit": 0,
+    "fixture": "final absent-path query; bare/direct decoy preconditions passed"
+  },
+  "green": {
+    "command": "node --test --test-concurrency=1 scripts/creative-tools/*.test.mjs",
+    "tests": 304,
+    "pass": 304,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "durationMs": 26124.1193,
+    "exit": 0
+  },
+  "review": "Independent review identified locale-dependent decoy query; final fixture uses an absent absolute fixture path. Production change remains fixed executable selection only.",
+  "authorization": {
+    "workerActivation": false,
+    "creativeExecution": false,
+    "publish": false,
+    "productionReady": false
+  }
+}

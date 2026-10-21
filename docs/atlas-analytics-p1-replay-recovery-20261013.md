@@ -71,6 +71,24 @@ URL and secret values; the diagnostic does not point at live services. The
 earlier `--mode=legacy-media-replay` remains available to reproduce the
 missing-schema failure.
 
+The cron-root fixture needed `pg_cron` and `pg_net` preloaded, plus an empty
+test-only `supabase_migrations.schema_migrations(name text)` ledger for the
+later migration guard function. Its bootstrap installs `pg_cron` before the
+unaltered root SQL, which otherwise assumes Supabase has already installed it.
+These synthetic prerequisites exist only in the owned container. The canonical
+and media-only modes keep their earlier bootstrap and order.
+
+The resulting Hultgren run passed the cron root, media insights, the June BI
+and watchdog migrations, the migration guard, and several Atlas memory files.
+It stopped at `20260617160200_backfill_dream_issues.sql` because
+`public.dream_issues` does not exist. That table is created in the other tree,
+`supabase/migrations/20260609_dream_issues_ledger.sql`. The owned container was
+removed on failure. This is the next observed dependency; **full replay is
+still blocked**. Rather than append root files one at a time, the next step is
+to review a complete cross-tree manifest and its dependency ordering. Neither
+this local path nor the manifest by itself repairs the Supabase branch's
+production-ledger baseline.
+
 ## Production installation decision
 
 The preview's exact Vercel build stops before Next.js compilation because production lacks the enforced `atlas_analysis_drafts` migration. This repair intentionally does not make that deployment green.

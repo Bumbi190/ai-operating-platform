@@ -122,7 +122,7 @@ try {
     image,
     'postgres',
     '-c',
-    'shared_preload_libraries=pg_stat_statements',
+    'shared_preload_libraries='+(legacyCronReplay ? 'pg_stat_statements,pg_cron,pg_net' : 'pg_stat_statements'),
     '-c',
     'cron.launch_active_jobs=off',
   ])
@@ -143,6 +143,7 @@ try {
     sql(
       "CREATE SCHEMA IF NOT EXISTS extensions; CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions; CREATE SCHEMA IF NOT EXISTS auth; CREATE TABLE IF NOT EXISTS auth.users(id uuid PRIMARY KEY); CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$; DO $$ BEGIN IF NOT EXISTS(SELECT FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon; END IF; IF NOT EXISTS(SELECT FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated; END IF; IF NOT EXISTS(SELECT FROM pg_roles WHERE rolname='service_role') THEN CREATE ROLE service_role BYPASSRLS; END IF; END $$;",
     )
+    if(legacyCronReplay) sql('CREATE EXTENSION IF NOT EXISTS pg_cron; CREATE SCHEMA IF NOT EXISTS supabase_migrations; CREATE TABLE supabase_migrations.schema_migrations(name text);')
     // Supabase's cached PostgreSQL image has Auth, but Storage schema is installed by Storage API.
     // Use exact upstream SQL bytes; preserve image roles with the upstream install_roles switch.
     for (const [upstream, expected] of [

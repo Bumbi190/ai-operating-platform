@@ -1,7 +1,7 @@
 
 import {beforeAll,afterEach,it,expect,vi} from 'vitest'
 import {initializeReconciliationDb,reconciliationFixture} from './fixtures.test-utils'
-import {inspectReconciliation,completeReconciliation} from './service'
+import {candidateHash,inspectReconciliation,completeReconciliation} from './service'
 import {testSql} from '../../../website-build/test-db'
 let db:ReturnType<typeof initializeReconciliationDb>
 afterEach(()=>vi.unstubAllGlobals())
@@ -37,4 +37,20 @@ it('denies public roles and rejects unknown RPC fields',async()=>{
  expect(()=>testSql("set role authenticated;select social_publication_reconciliation_inspect('{}','{}');")).toThrow()
  const r=await (db as any).rpc('social_publication_reconciliation_inspect',{p_principal:f.principal,p_input:{...f.scope,extra:true}})
  expect(r.error).toBeTruthy();expect(f.providerPosts).toBe(0)
+},15000)
+
+it('documents that direct service-role RPC can register a fabricated provider candidate',async()=>{
+ const f=await reconciliationFixture(db)
+ // Bypass the service's provider.list call while using the real migration RPC.
+ const invented={...f.candidate,providerId:f.candidate.accountId+'_99999',
+  id:f.candidate.accountId+'_99999',
+  permalink:'https://www.facebook.com/'+f.candidate.accountId+'/posts/99999'}
+ const {data,error}=await (db as any).rpc('social_publication_reconciliation_inspect',{
+  p_principal:f.principal,p_input:{...f.scope,candidates:[{...invented,candidateHash:candidateHash(invented)}]}
+ })
+ expect(error).toBeNull()
+ expect(data.proofs).toHaveLength(1)
+ expect(data.proofs[0].providerId).toBe(invented.providerId)
+ expect(f.providerReads).toBe(0)
+ expect(f.providerPosts).toBe(0)
 },15000)

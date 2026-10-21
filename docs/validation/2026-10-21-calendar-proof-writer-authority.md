@@ -54,7 +54,19 @@ source inventory, not proof that no dynamic SQL or operational writer exists.
   for normal writes; readiness reads publication rows. Direct database grants
   remain broader than these app call sites.
 
-A read-only Vercel project inventory on 2026-10-21 found\n\`SUPABASE_SERVICE_ROLE_KEY\`, \`FACEBOOK_PAGE_ACCESS_TOKEN\`, \`FACEBOOK_PAGE_ID\`,\nand \`META_APP_SECRET\` scoped to both Production and Preview on the web\nproject. No values were retrieved. This establishes environment placement,\nnot which variables a running route uses. The current Facebook resolver\nrequires a project-store binding and reads \`platform_tokens\` through the\nshared service-role client; it explicitly has no environment fallback. Thus\nremoving the legacy-looking Facebook environment key would not remove the\nweb process's access to the project Page token. The token table and binding\ntable must be included in the effective-privilege audit, along with the\ncredential refresh and publishing paths.\n\nThe first implementation slice should inventory deployment-level secrets and\nsplit read and write credentials without changing the established publish\npath. Only after parity tests cover the other token consumers should the Page
+A read-only Vercel project inventory on 2026-10-21 found
+`SUPABASE_SERVICE_ROLE_KEY`, `FACEBOOK_PAGE_ACCESS_TOKEN`, `FACEBOOK_PAGE_ID`,
+and `META_APP_SECRET` scoped to both Production and Preview on the web
+project. No values were retrieved. This establishes environment placement,
+not which variables a running route uses. The current Facebook resolver
+requires a project-store binding and reads `platform_tokens` through the
+shared service-role client; it explicitly has no environment fallback. Thus
+removing the legacy-looking Facebook environment key would not remove the
+web process's access to the project Page token. The token table and binding
+table must be included in the effective-privilege audit, along with the
+credential refresh and publishing paths.
+
+The first implementation slice should inventory deployment-level secrets and\nsplit read and write credentials without changing the established publish\npath. Only after parity tests cover the other token consumers should the Page
 token leave the broad web process. No extra background service should be
 introduced merely to make the proof-table candidate look complete.
 

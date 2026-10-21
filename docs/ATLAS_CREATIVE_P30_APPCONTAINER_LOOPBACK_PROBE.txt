@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
@@ -64,6 +65,18 @@ public static class CreativeAppContainerLoopbackProbe {
    return r;
   }finally{if(b!=IntPtr.Zero)Marshal.FreeHGlobal(b);if(token!=IntPtr.Zero)CloseHandle(token);}
  }
+ static void Reply(TcpClient c) {
+  NetworkStream stream=c.GetStream();stream.WriteTimeout=1000;
+  byte[] header=new byte[4096];int count=0;bool complete=false;Stopwatch deadline=Stopwatch.StartNew();
+  while(count<header.Length&&deadline.ElapsedMilliseconds<1000){
+   stream.ReadTimeout=(int)Math.Max(1,1000-deadline.ElapsedMilliseconds);
+   int next=stream.ReadByte();if(next<0)break;header[count++]=(byte)next;
+   if(count>=4&&header[count-4]==13&&header[count-3]==10&&header[count-2]==13&&header[count-1]==10){complete=true;break;}
+  }
+  if(!complete)throw new InvalidOperationException("bounded HTTP request header incomplete");
+  byte[] reply=Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok");
+  stream.Write(reply,0,reply.Length);c.Client.Shutdown(SocketShutdown.Send);
+ }
  sealed class Server : IDisposable {
   TcpListener listener;Thread thread;int accepted;volatile bool stopped;
   public int Port;public string Host;
@@ -71,7 +84,7 @@ public static class CreativeAppContainerLoopbackProbe {
   public Server(IPAddress address){
    listener=new TcpListener(address,0);listener.Start();Port=((IPEndPoint)listener.LocalEndpoint).Port;Host=address.AddressFamily==AddressFamily.InterNetwork?"127.0.0.1":"[::1]";
    thread=new Thread(delegate(){
-    while(!stopped){try{using(TcpClient c=listener.AcceptTcpClient()){Interlocked.Increment(ref accepted);c.GetStream().WriteTimeout=1000;byte[] reply=Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok");c.GetStream().Write(reply,0,reply.Length);}}catch{if(stopped)break;}}
+    while(!stopped){try{using(TcpClient c=listener.AcceptTcpClient()){Interlocked.Increment(ref accepted);Reply(c);}}catch{if(stopped)break;}}
    });thread.IsBackground=true;thread.Start();
   }
   public void Dispose(){stopped=true;listener.Stop();if(!thread.Join(2000))throw new InvalidOperationException("test server did not stop");}
@@ -139,10 +152,10 @@ public static class CreativeAppContainerLoopbackProbe {
     using(Server server=new Server(address)){
      Trial t=new Trial();t.Family=address.AddressFamily==AddressFamily.InterNetwork?"IPv4-loopback-TCP":"IPv6-loopback-TCP";result.Trials.Add(t);TokenObservation ignored;string ignoredDiagnostic;
      int start=server.Accepted;t.BaselineBefore=Curl(server,IntPtr.Zero,null,result,out ignored,out ignoredDiagnostic);t.BaselineAccepts=server.Accepted-start;
-     Check(t.BaselineBefore==0&&t.BaselineAccepts==1,"reachable positive control before");
+     if(t.BaselineBefore!=0||t.BaselineAccepts!=1)throw new InvalidOperationException("positive control before failed; curlExit="+t.BaselineBefore+",accepts="+t.BaselineAccepts);
      start=server.Accepted;t.RestrictedExit=Curl(server,sid,storage,result,out t.RestrictedToken,out t.RestrictedDiagnostic);t.RestrictedAccepts=server.Accepted-start;
      start=server.Accepted;t.BaselineAfter=Curl(server,IntPtr.Zero,null,result,out ignored,out ignoredDiagnostic);t.AfterAccepts=server.Accepted-start;
-     Check(t.BaselineAfter==0&&t.AfterAccepts==1,"reachable positive control after");
+     if(t.BaselineAfter!=0||t.AfterAccepts!=1)throw new InvalidOperationException("positive control after failed; curlExit="+t.BaselineAfter+",accepts="+t.AfterAccepts);
      t.LoopbackDenied=t.RestrictedExit==7&&t.RestrictedAccepts==0;
      t.RestrictedOutcome=t.LoopbackDenied?"connection-failed-no-accept":t.RestrictedExit==28&&t.RestrictedAccepts==0?"timeout-no-accept-inconclusive":t.RestrictedAccepts>0?"connection-observed-failed":"unexpected-exit-inconclusive";
     }

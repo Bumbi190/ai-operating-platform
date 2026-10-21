@@ -56,6 +56,7 @@ namespace Omnira.Creative.Synthetic {
     valid.Replace("\"byteCount\":0","\"byteCount\":0,\"\\u0062yteCount\":0"),
     valid.Replace("\"byteCount\":0","\"extra\":0"),valid.Replace(",\"byteCount\":0",""),
     valid.Replace("\"byteCount\":0","\"byteCount\":{}"),valid.Replace("\"byteCount\":0","\"byteCount\":[]"),
+    valid.Replace("\"byteCount\":0","\"byteCount\":1"),
     valid.Replace("\"byteCount\":0","\"byteCount\":-1"),valid.Replace("\"byteCount\":0","\"byteCount\":65537"),
     valid.Replace("\"byteCount\":0","\"byteCount\":0.0"),valid.Replace("\"byteCount\":0","\"byteCount\":0e0"),
     valid.Replace("\"byteCount\":0","\"byteCount\":\"0\""),valid.Replace("\"byteCount\":0","\"byteCount\":00"),

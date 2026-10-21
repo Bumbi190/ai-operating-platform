@@ -25,6 +25,7 @@ namespace Omnira.Creative.Synthetic {
   internal NativeHandle Process,Thread,Job,Input,Output,Error;
   internal bool ExactJobAtReturn,TokenVerified,Resumed;
   bool disposed,verified,refused;
+  internal bool IsDisposed{get{return disposed;}}
   internal BoundarySession(OwnedFixture f,OperationBudget b){fixture=f;budget=b;}
   static IntPtr H(NativeHandle h){return h==null?IntPtr.Zero:h.Value;}
   static void Close(ref NativeHandle h){if(h!=null){h.Dispose();h=null;}}
@@ -38,6 +39,12 @@ namespace Omnira.Creative.Synthetic {
    NativeHandle childIn=null,childOut=null,childErr=null;
    try {
     Pipe(out childIn,out Input);Noninherit(Input);Pipe(out Output,out childOut);Noninherit(Output);Pipe(out Error,out childErr);Noninherit(Error);
+#if TEST
+    if(LifecycleTestHooks.HoldWriter){
+     IntPtr held;NativeMethods.Check(NativeMethods.DuplicateHandle(new IntPtr(-1),childOut.Value,new IntPtr(-1),out held,0,false,2),"test-held-writer");
+     LifecycleTestHooks.Writer=new NativeHandle(held);Noninherit(LifecycleTestHooks.Writer);
+    }
+#endif
     Job=new NativeHandle(NativeMethods.CreateJobObjectW(IntPtr.Zero,null));NativeMethods.Check(!Job.IsInvalid,"job-create");Noninherit(Job);
     using(NativeBuffer policy=new NativeBuffer(144)){
      NativeMethods.LIMITS limits=new NativeMethods.LIMITS();limits.Basic.Flags=0x2008;limits.Basic.Count=4;Marshal.StructureToPtr(limits,policy.Value,false);
@@ -71,6 +78,7 @@ namespace Omnira.Creative.Synthetic {
       string js=SyntheticProtocol.FixedNodePayload;
 #if TEST
       if(ProtocolTestHooks.Payload!=null)js=ProtocolTestHooks.Payload;
+      if(LifecycleTestHooks.Payload!=null)js=LifecycleTestHooks.Payload;
 #endif
       string loader="eval(Buffer.from(process.argv[1],'base64').toString('utf8'))";
       StringBuilder command=new StringBuilder("\""+fixture.Runtime+"\" --no-addons --eval \""+loader+"\" "+Convert.ToBase64String(Encoding.UTF8.GetBytes(js)));
@@ -101,19 +109,30 @@ namespace Omnira.Creative.Synthetic {
    NativeMethods.Require(p.Basic.Flags==expectedFlags&&p.Basic.Count==4,"pre-resume-token-mismatch");
   }
   static NativeBuffer TokenData(NativeHandle token,int kind) {
-   int n;NativeMethods.GetTokenInformation(token.Value,kind,IntPtr.Zero,0,out n);
-   NativeBuffer b=new NativeBuffer(n);try{NativeMethods.Check(NativeMethods.GetTokenInformation(token.Value,kind,b.Value,n,out n),"token-read");return b;}catch{b.Dispose();throw;}
+   int minimum=(kind==NativeMethods.TokenIntegrityLevel?16:(kind==NativeMethods.TokenAppContainerSid||kind==NativeMethods.TokenGroups||kind==NativeMethods.TokenCapabilities)?8:4);
+   int n=4;
+   // These two ABI classes are fixed DWORDs; TokenElevation's zero-byte probe
+   // returns ERROR_BAD_LENGTH on this OS, so query the known layout directly.
+   if(kind!=NativeMethods.TokenElevation&&kind!=NativeMethods.TokenIsAppContainer){
+    bool probe=NativeMethods.GetTokenInformation(token.Value,kind,IntPtr.Zero,0,out n);
+    int error=Marshal.GetLastWin32Error();
+    NativeMethods.Require(!probe&&error==NativeMethods.ErrorInsufficientBuffer&&n>=minimum&&n<=65536,"token-size");
+   }
+   NativeBuffer b=new NativeBuffer(n);try{
+    NativeMethods.Check(NativeMethods.GetTokenInformation(token.Value,kind,b.Value,b.Size,out n),"token-read");
+    NativeMethods.Require(n>=minimum&&n<=b.Size,"token-size");return b;
+   }catch{b.Dispose();throw;}
   }
   static void VerifyToken(IntPtr process,string expected) {
    IntPtr raw;NativeMethods.Check(NativeMethods.OpenProcessToken(process,8,out raw),"token-open");
    using(NativeHandle token=new NativeHandle(raw)){
     bool ac,elevated,admin=false;int caps,il;string sid=null;
-    using(NativeBuffer b=TokenData(token,29))ac=Marshal.ReadInt32(b.Value)!=0;
-    using(NativeBuffer b=TokenData(token,20))elevated=Marshal.ReadInt32(b.Value)!=0;
-    using(NativeBuffer b=TokenData(token,30))caps=Marshal.ReadInt32(b.Value);
-    using(NativeBuffer b=TokenData(token,31)){IntPtr p=Marshal.ReadIntPtr(b.Value);if(p!=IntPtr.Zero)sid=new SecurityIdentifier(p).Value;}
-    using(NativeBuffer b=TokenData(token,25)){string value=new SecurityIdentifier(Marshal.ReadIntPtr(b.Value)).Value;il=int.Parse(value.Substring(value.LastIndexOf('-')+1));}
-    using(NativeBuffer b=TokenData(token,2)){
+    using(NativeBuffer b=TokenData(token,NativeMethods.TokenIsAppContainer))ac=Marshal.ReadInt32(b.Value)!=0;
+    using(NativeBuffer b=TokenData(token,NativeMethods.TokenElevation))elevated=Marshal.ReadInt32(b.Value)!=0;
+    using(NativeBuffer b=TokenData(token,NativeMethods.TokenCapabilities))caps=Marshal.ReadInt32(b.Value);
+    using(NativeBuffer b=TokenData(token,NativeMethods.TokenAppContainerSid)){IntPtr p=Marshal.ReadIntPtr(b.Value);if(p!=IntPtr.Zero)sid=new SecurityIdentifier(p).Value;}
+    using(NativeBuffer b=TokenData(token,NativeMethods.TokenIntegrityLevel)){string value=new SecurityIdentifier(Marshal.ReadIntPtr(b.Value)).Value;il=int.Parse(value.Substring(value.LastIndexOf('-')+1));}
+    using(NativeBuffer b=TokenData(token,NativeMethods.TokenGroups)){
      int n=Marshal.ReadInt32(b.Value);NativeMethods.Require(n>=0&&n<=512&&8+n*16<=b.Size,"token-group-bound");
      for(int i=0;i<n;i++){uint flags=(uint)Marshal.ReadInt32(b.Value,16+i*16);if(new SecurityIdentifier(Marshal.ReadIntPtr(b.Value,8+i*16)).Value=="S-1-5-32-544"&&(flags&4)!=0&&(flags&16)==0)admin=true;}
     }
@@ -166,7 +185,7 @@ namespace Omnira.Creative.Synthetic {
     return ObjectIdentityDecision(copy==original.Value,same);
    }
   }
-  // Task3 qualification only; Task4 supplies the general cancellable PipeSession.
+  // Finite protocol qualification adapter uses the same cancellable PipeSession as RunSynthetic.
   internal void QualificationRoundTrip() {
    byte[] bytes=new byte[0];string hash="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
    string nonce=fixture.Nonce;
@@ -176,50 +195,111 @@ namespace Omnira.Creative.Synthetic {
   }
   internal ProtocolCapture CanaryRoundTrip(byte[] request) {
    NativeMethods.Require(Resumed&&!disposed&&request!=null,"qualification-not-running");
-   int limit=SyntheticProtocol.RequestLimit;
-#if TEST
-   limit++; // Exercise fixed Node ingress cap with one byte over the public codec limit.
-#endif
-   NativeMethods.Require(request.Length<=limit,"qualification-input-bound");
-   byte[] owned=(byte[])request.Clone();Exception writerFailure=null;NativeHandle writeHandle=Input;
-   System.Threading.Thread writer=new System.Threading.Thread(delegate(){
-    try{
-     int offset=0;
-     while(offset<owned.Length){
-      int n=Math.Min(4096,owned.Length-offset);byte[] chunk=new byte[n];Buffer.BlockCopy(owned,offset,chunk,0,n);
-      uint written;NativeMethods.Check(NativeMethods.WriteFile(writeHandle.Value,chunk,(uint)n,out written,IntPtr.Zero)&&written>0,"qualification-write");
-      offset+=(int)written;
-     }
-    }catch(Exception e){writerFailure=e;}
-    finally{writeHandle.Dispose();}
-   });
-   MemoryStream stdout=new MemoryStream(),stderr=new MemoryStream();bool outEof=false,errEof=false,started=false;
-   try {
-    writer.Start();started=true;
-    while(budget.RunRemainingMs>0&&!(outEof&&errEof&&!writer.IsAlive&&NativeMethods.WaitForSingleObject(Process.Value,0)==0)){
-     Drain(Output,stdout,ref outEof);Drain(Error,stderr,ref errEof);System.Threading.Thread.Sleep(5);
+   PipeSession pipes=null;
+   try{
+    ObserveMembers();
+    pipes=PipeSession.Start(this,request,budget);
+    while(true){
+     NativeMethods.Require(budget.RunRemainingMs>0,"qualification-timeout");
+     string failure=pipes.Failure;
+     NativeMethods.Require(failure==null||failure=="stdin-broken-pipe","qualification-pump-failure");
+     ObserveMembers();
+     if(RootExited&&ActiveMemberCount==0&&pipes.Finished)break;
+     NativeMethods.Require(budget.RunRemainingMs>0,"qualification-timeout");
+     System.Threading.Thread.Sleep(Math.Min(5,budget.RunRemainingMs));
     }
-    NativeMethods.Require(outEof&&errEof&&writer.Join(0)&&NativeMethods.WaitForSingleObject(Process.Value,0)==0,"qualification-timeout");
-    using(NativeBuffer members=new NativeBuffer(40)){
-     NativeMethods.Check(NativeMethods.QueryInformationJobObject(Job.Value,3,members.Value,40,IntPtr.Zero),"terminal-job-members");
-     NativeMethods.Require(Marshal.ReadInt32(members.Value,0)==0&&Marshal.ReadInt32(members.Value,4)==0,"live-job-producer");
-    }
-    uint exit;NativeMethods.Check(NativeMethods.GetExitCodeProcess(Process.Value,out exit),"qualification-exit");
-    NativeMethods.Require(writerFailure==null||exit!=0,"qualification-write-failed");
-    return new ProtocolCapture(stdout.ToArray(),stderr.ToArray(),exit);
-   }finally {
-    if(started&&writer.IsAlive){
-     NativeMethods.TerminateJobObject(Job.Value,2);
-     if(!writer.Join(budget.CleanupRemainingMs)){fixture.Cleanup.PumpsStopped=false;Environment.FailFast("qualification-writer-did-not-stop");}
-    }
-    if(started)Input=null; // writer owns and closes this handle exactly once
-    stdout.Dispose();stderr.Dispose();
+    uint exit=ExitCode;
+    NativeMethods.Require(pipes.OutputComplete&&(pipes.WriterComplete||exit!=0),"qualification-stream-incomplete");
+    NativeMethods.Require(pipes.Failure==null||exit!=0,"qualification-write-failed");
+    NativeMethods.Require(WaitForObservedExit(budget),"qualification-live-member");
+    CapturedStreams capture=pipes.CompleteAfterStop();
+    NativeMethods.Require(!capture.Overflow,"qualification-overflow");
+    return new ProtocolCapture(capture.Stdout,capture.Stderr,exit);
+   }finally{
+    if(pipes!=null)pipes.CancelAndJoin();
+    try{StopOwnedJob(budget);}catch{fixture.Cleanup.CleanupFailed=true;}
+    try{fixture.Cleanup.ProcessesStopped&=WaitForObservedExit(budget);}catch{fixture.Cleanup.ProcessesStopped=false;}
    }
   }
-  static void Drain(NativeHandle h,MemoryStream target,ref bool eof){
-   if(eof)return;uint available;
-   if(!NativeMethods.PeekNamedPipe(h.Value,IntPtr.Zero,0,IntPtr.Zero,out available,IntPtr.Zero)){int error=Marshal.GetLastWin32Error();if(error==109){eof=true;return;}throw new SyntheticRefusal("pipe-peek",error);}
-   if(available==0)return;NativeMethods.Require(available<=4096&&target.Length+available<=4096,"qualification-overflow");byte[] data=new byte[(int)available];uint read;NativeMethods.Check(NativeMethods.ReadFile(h.Value,data,available,out read,IntPtr.Zero),"pipe-read");target.Write(data,0,(int)read);
+  sealed class Member {
+   internal readonly NativeHandle Handle;internal readonly uint Pid;internal bool Verified;
+   internal Member(NativeHandle handle,uint pid){Handle=handle;Pid=pid;}
+  }
+  readonly System.Collections.Generic.List<Member> observed=new System.Collections.Generic.List<Member>();
+  int consoleMembers,nodeMembers;
+  internal int ObservedNodeCount{get{return nodeMembers;}}
+  internal int ObservedMemberCount{get{return observed.Count;}}
+  internal void MarkCleanupFailure(){fixture.Cleanup.CleanupFailed=true;}
+  internal uint ExitCode{get{uint code;NativeMethods.Check(NativeMethods.GetExitCodeProcess(Process.Value,out code),"process-exit-query");return code;}}
+  internal bool RootExited{get{return NativeMethods.WaitForSingleObject(Process.Value,0)==0;}}
+  internal int ActiveMemberCount{get;private set;}
+  internal void ObserveMembers(){
+   NativeMethods.Require(Job!=null&&!disposed,"membership-state");
+   using(NativeBuffer list=new NativeBuffer(40)){
+    NativeMethods.Check(NativeMethods.QueryInformationJobObject(Job.Value,3,list.Value,40,IntPtr.Zero),"job-members-query");
+    int assigned=Marshal.ReadInt32(list.Value),count=Marshal.ReadInt32(list.Value,4);
+    NativeMethods.Require(assigned==count&&count>=0&&count<=4,"job-member-bound");
+    for(int i=0;i<count;i++){
+     long id=Marshal.ReadInt64(list.Value,8+i*8);NativeMethods.Require(id>0&&id<=uint.MaxValue,"job-member-id");
+     uint pid=(uint)id;Member known=null;
+     foreach(Member m in observed)if(m.Pid==pid){known=m;break;}
+     if(known==null){
+      IntPtr handle;
+      if(pid==NativeMethods.GetProcessId(Process.Value))
+       NativeMethods.Check(NativeMethods.DuplicateHandle(new IntPtr(-1),Process.Value,new IntPtr(-1),out handle,0,false,2),"member-root-duplicate");
+      else{
+       handle=NativeMethods.OpenProcess(NativeMethods.Synchronize|NativeMethods.ProcessQueryLimitedInformation,false,pid);
+       NativeMethods.Check(handle!=IntPtr.Zero,"member-open");
+      }
+      NativeHandle held=new NativeHandle(handle);bool exact;
+      if(observed.Count>=4){held.Dispose();throw new SyntheticRefusal("observed-member-bound");}
+      try{
+       NativeMethods.Check(NativeMethods.IsProcessInJob(held.Value,Job.Value,out exact),"member-exact-job");
+       NativeMethods.Require(exact,"member-wrong-job");
+       known=new Member(held,pid);observed.Add(known);
+      }catch{held.Dispose();throw;}
+      // PID is only lookup input. All image/token decisions use the retained exact-job handle.
+      StringBuilder image=new StringBuilder(1024);uint length=1024;
+      NativeMethods.Check(NativeMethods.QueryFullProcessImageNameW(held.Value,0,image,ref length),"member-image");
+      string allowedImage=fixture.Runtime;
+#if TEST
+      if(LifecycleTestHooks.UnknownMember)allowedImage=@"C:\Windows\System32\not-the-owned-image.exe";
+#endif
+      bool node=string.Equals(image.ToString(),allowedImage,StringComparison.OrdinalIgnoreCase);
+      bool console=string.Equals(image.ToString(),@"C:\Windows\System32\conhost.exe",StringComparison.OrdinalIgnoreCase);
+      NativeMethods.Require(node||console,"unknown-job-member");
+      if(console){consoleMembers++;NativeMethods.Require(consoleMembers<=2,"console-member-bound");}
+      else nodeMembers++;
+      VerifyToken(held.Value,fixture.ProfileSid);
+      known.Verified=true;
+      Console.WriteLine("MEMBER pid="+pid+" role="+(console?"system-console":"pinned-node")+" exactJob=true imageVerified=true tokenVerified=true held=true");
+     }
+     NativeMethods.Require(known.Verified,"unknown-job-member");
+    }
+    ActiveMemberCount=count;
+   }
+  }
+  internal void StopOwnedJob(OperationBudget operation){
+   NativeMethods.Require(object.ReferenceEquals(operation,budget),"budget-mismatch");
+   if(Job==null||Job.IsInvalid)return;
+   Exception observationFailure=null;
+   try{if(!disposed)ObserveMembers();}catch(Exception e){observationFailure=e;fixture.Cleanup.CleanupFailed=true;}
+   NativeMethods.Check(NativeMethods.TerminateJobObject(Job.Value,2),"job-stop");
+   if(observationFailure!=null)throw observationFailure;
+  }
+  internal bool WaitForObservedExit(OperationBudget operation){
+   NativeMethods.Require(object.ReferenceEquals(operation,budget),"budget-mismatch");
+   bool stopped=Process==null||NativeMethods.WaitForSingleObject(Process.Value,(uint)budget.CleanupRemainingMs)==0;
+   foreach(Member member in observed)stopped&=NativeMethods.WaitForSingleObject(member.Handle.Value,(uint)budget.CleanupRemainingMs)==0;
+   // Terminated job can take time to publish its empty membership.
+   while(budget.CleanupRemainingMs>0){
+    using(NativeBuffer list=new NativeBuffer(40)){
+     if(!NativeMethods.QueryInformationJobObject(Job.Value,3,list.Value,40,IntPtr.Zero)){stopped=false;break;}
+     if(Marshal.ReadInt32(list.Value)==0&&Marshal.ReadInt32(list.Value,4)==0){fixture.Cleanup.ProcessesStopped&=stopped;return stopped;}
+    }
+    System.Threading.Thread.Sleep(Math.Min(5,budget.CleanupRemainingMs));
+   }
+   fixture.Cleanup.ProcessesStopped=false;return false;
   }
   public void Dispose(){
    if(disposed)return;disposed=true;
@@ -229,7 +309,7 @@ namespace Omnira.Creative.Synthetic {
      if(!ExactJobAtReturn)NativeMethods.TerminateProcess(Process.Value,2);
      bool stopped=NativeMethods.WaitForSingleObject(Process.Value,(uint)budget.CleanupRemainingMs)==0;fixture.Cleanup.ProcessesStopped&=stopped;
     }
-   }finally{Close(ref Input);Close(ref Output);Close(ref Error);Close(ref Thread);Close(ref Process);Close(ref Job);WindowsProcessBoundary.ReleaseGate();}
+   }finally{foreach(Member member in observed)member.Handle.Dispose();Close(ref Input);Close(ref Output);Close(ref Error);Close(ref Thread);Close(ref Process);Close(ref Job);WindowsProcessBoundary.ReleaseGate();}
   }
  }
 }

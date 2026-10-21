@@ -11,8 +11,16 @@ namespace Omnira.Creative.Synthetic {
  }
  internal sealed class OperationBudget {
   readonly Stopwatch clock=Stopwatch.StartNew();
-  internal int RunRemainingMs{get{return (int)Math.Max(0,20000-clock.ElapsedMilliseconds);}}
-  internal int CleanupRemainingMs{get{return (int)Math.Max(0,30000-clock.ElapsedMilliseconds);}}
+  internal readonly int RunLimitMs=20000,TotalLimitMs=30000;
+  internal OperationBudget(){
+#if TEST
+   RunLimitMs=LifecycleTestHooks.RunMs;TotalLimitMs=LifecycleTestHooks.TotalMs;
+#endif
+   NativeMethods.Require(RunLimitMs>0&&TotalLimitMs>RunLimitMs&&TotalLimitMs<=30000,"budget-invalid");
+  }
+  internal long ElapsedMs{get{return clock.ElapsedMilliseconds;}}
+  internal int RunRemainingMs{get{return (int)Math.Max(0,RunLimitMs-clock.ElapsedMilliseconds);}}
+  internal int CleanupRemainingMs{get{return (int)Math.Max(0,TotalLimitMs-clock.ElapsedMilliseconds);}}
  }
  internal sealed class CleanupObservation {
   internal bool ProcessesStopped=true,PumpsStopped=true,InputFixtureAbsent,FixtureAbsent,ProfileDeleteApiSucceeded,ProfileStorageAbsent,ProfileMappingAbsent,CleanupFailed;
@@ -85,9 +93,31 @@ namespace Omnira.Creative.Synthetic {
   internal readonly string Nonce,Sha256;internal readonly int ByteCount;
   internal RequestExpectation(string nonce,int byteCount,string sha256){Nonce=nonce;ByteCount=byteCount;Sha256=sha256;}
  }
- // Qualification-only capture. Task4 supplies the general cancellable session contract.
+ // Finite protocol test adapter capture; transport is shared with the general PipeSession.
  internal sealed class ProtocolCapture {
   internal readonly byte[] Stdout,Stderr;internal readonly uint ExitCode;
   internal ProtocolCapture(byte[] stdout,byte[] stderr,uint exitCode){Stdout=(byte[])stdout.Clone();Stderr=(byte[])stderr.Clone();ExitCode=exitCode;}
+ }
+}
+
+namespace Omnira.Creative.Synthetic {
+ internal sealed class CapturedStreams {
+  internal readonly byte[] Stdout,Stderr;
+  internal readonly bool Complete,Overflow,PumpFailed;
+  internal CapturedStreams(byte[] stdout,byte[] stderr,bool complete,bool overflow,bool failed){
+   Stdout=(byte[])stdout.Clone();Stderr=(byte[])stderr.Clone();Complete=complete;Overflow=overflow;PumpFailed=failed;
+  }
+ }
+ internal sealed class RunObservation {
+  internal bool Passed,Resumed,RootExitedBeforeStop,WriterCompleted,StreamsCompleted;
+  internal int InputBytes,RequestBytes,CancelAttempts,CancelAccepted,CancelNotFound,AbortedIo;
+  internal uint ChildExitCode;internal bool ChildExitObserved;
+  internal string State="Prepared",FailedStage,RefusalCode;
+  internal CleanupObservation Cleanup=new CleanupObservation();
+  internal long ElapsedMs;
+  internal int StdoutBytes,StderrBytes,ObservedMembers,ObservedNodes,RunLimitMs,TotalLimitMs;
+  internal readonly bool ActualWorkerTokenVerified=false,RootAclTrustVerified=false,NetworkEgressVerified=false,
+   RealHumanApprovalVerified=false,ArbitraryBrokerContainmentVerified=false,GeneralExecutableTrustVerified=false,
+   CreativeExecutionAuthorized=false,PublishAuthorized=false,ProductionReady=false;
  }
 }

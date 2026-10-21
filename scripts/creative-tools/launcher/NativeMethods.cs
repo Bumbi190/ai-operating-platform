@@ -42,6 +42,13 @@ namespace Omnira.Creative.Synthetic {
   [DllImport(U,CharSet=CharSet.Unicode,ExactSpelling=true)] internal static extern int CreateAppContainerProfile(string name,string display,string description,IntPtr caps,uint count,out IntPtr sid);
   [DllImport(U,CharSet=CharSet.Unicode,ExactSpelling=true)] internal static extern int DeleteAppContainerProfile(string name);
   [DllImport(U,CharSet=CharSet.Unicode,ExactSpelling=true)] internal static extern int GetAppContainerFolderPath(string sid,out IntPtr path);
+  internal const int TokenGroups=2,TokenElevation=20,TokenIntegrityLevel=25,TokenIsAppContainer=29,TokenCapabilities=30,TokenAppContainerSid=31;
+  internal const uint ThreadTerminate=0x0001, Synchronize=0x00100000, ProcessQueryLimitedInformation=0x1000;
+  internal const int ErrorNoData=232,ErrorNotFound=1168,ErrorOperationAborted=995,ErrorBrokenPipe=109,ErrorInsufficientBuffer=122;
+  [DllImport(K,ExactSpelling=true)] internal static extern IntPtr GetCurrentThread();
+  [DllImport(K,ExactSpelling=true,SetLastError=true)] internal static extern bool CancelSynchronousIo(IntPtr thread);
+  [DllImport(K,ExactSpelling=true,SetLastError=true)] internal static extern IntPtr OpenProcess(uint access,bool inherit,uint pid);
+  [DllImport(K,ExactSpelling=true,SetLastError=true)] internal static extern uint GetProcessId(IntPtr process);
   internal static void Check(bool ok,string code) {if(!ok)throw new SyntheticRefusal(code,Marshal.GetLastWin32Error());}
   internal static void Require(bool ok,string code){if(!ok)throw new SyntheticRefusal(code);}
   internal static void ValidateAbi(){Require(IntPtr.Size==8&&Marshal.SizeOf(typeof(LIMITS))==144&&Marshal.SizeOf(typeof(EX))==112&&Marshal.SizeOf(typeof(CAPS))==24&&Marshal.SizeOf(typeof(SA))==24,"unsupported-native-abi");}

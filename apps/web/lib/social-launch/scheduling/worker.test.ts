@@ -20,6 +20,23 @@ function dependencies(f:Fixture,handler?:(url:string,init:RequestInit)=>Promise<
 async function approved(options:Parameters<typeof scheduleFixture>[1]={}){
  const f=await scheduleFixture(db,options);const approvedBatch=await approveSchedule(db,f.principal,f.approval);setScheduleClock(f.dueAt);return {...f,approvedBatch}
 }
+it('records the canonical shared-role writer surface in the full SQL fixture',()=>{
+ const rights=JSON.parse(testSql(`select jsonb_build_object(
+  'publication_update',has_table_privilege('service_role','public.social_publications','UPDATE'),
+  'job_update',has_table_privilege('service_role','public.social_schedule_jobs','UPDATE'),
+  'proof_insert',has_table_privilege('service_role','public.social_publication_reconciliation_proofs','INSERT'),
+  'manual_step',has_function_privilege('service_role','public.social_publication_step(jsonb,jsonb)','EXECUTE'),
+  'scheduled_step',has_function_privilege('service_role','public.social_schedule_step(jsonb,jsonb)','EXECUTE'),
+  'inspect',has_function_privilege('service_role','public.social_publication_reconciliation_inspect(jsonb,jsonb)','EXECUTE'),
+  'complete',has_function_privilege('service_role','public.social_publication_reconciliation_complete(jsonb,jsonb)','EXECUTE'),
+  'browser_complete',has_function_privilege('authenticated','public.social_publication_reconciliation_complete(jsonb,jsonb)','EXECUTE')
+ );`))
+ expect(rights).toEqual({
+  publication_update:true,job_update:true,proof_insert:true,
+  manual_step:true,scheduled_step:true,inspect:true,complete:true,
+  browser_complete:false
+ })
+})
 it('one_post_for_two_workers',async()=>{
  const f=await approved(),d=dependencies(f)
  const results=await Promise.all(['a','b'].map(workerId=>runScheduleTick(db,{workerId,now:f.dueAt,dryRun:false},d.deps)))
@@ -69,6 +86,7 @@ it('checkpoint_loss_is_uncertain_without_retry even after lease expiry',async()=
    return (db as any).rpc(name,args)
   }} as any
   const result=await runScheduledPublication(faultDb,claim,d.deps)
+  expect(once).toBe(false)
   expect(result.publication!.state).toBe(committed?'published':'uncertain')
   expect(d.calls.filter(c=>c.init.method==='POST')).toHaveLength(1)
   const before=d.calls.length

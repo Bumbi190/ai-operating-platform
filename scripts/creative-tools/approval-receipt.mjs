@@ -12,6 +12,9 @@ import { join } from 'node:path';
 import { canonicalCreativeApproval, verifyCreativeApproval } from './approval-proof.mjs';
 
 const VALID_ID = /^[A-Za-z][A-Za-z0-9_-]{2,63}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const VALID_OPERATOR_ID = value=>typeof value==='string' &&
+  (VALID_ID.test(value) || UUID.test(value));
 const VALID_NONCE = /^[A-Za-z0-9_-]{20,64}$/;
 const REQUIRED_SCOPE=[
   'approverId','workId','projectId','sourceAssetId','sourceSha256',
@@ -25,7 +28,7 @@ const REQUIRED_SCOPE=[
 export function stageVerifiedCreativeApproval({proof, registry, expectedJob, receiptsDir, now=new Date()}) {
   if (!registry || typeof registry !== 'object' ||
       registry.status !== 'active' || registry.allowCreativeApproval !== true ||
-      !VALID_ID.test(registry.operatorId) || !registry.publicKey ||
+      !VALID_OPERATOR_ID(registry.operatorId) || !registry.publicKey ||
       !Array.isArray(registry.projectIds) ||
       !registry.projectIds.includes(expectedJob?.projectId)) {
     throw new Error('operator not trusted for project');

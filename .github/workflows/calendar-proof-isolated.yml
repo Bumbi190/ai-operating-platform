@@ -11,6 +11,8 @@ on:
       - 'apps/web/lib/social-launch/scheduling/worker.test.ts'
       - 'apps/web/lib/social-launch/publication/provider.ts'
       - 'apps/web/lib/social-launch/publication/provider.test.ts'
+      - 'apps/web/lib/social-launch/publication/reconciliation/**'
+      - 'apps/web/lib/social-launch/scheduling/worker.ts'
       - 'apps/web/lib/calendar/direct-write-gate-scheduled-publisher-role-candidate.sql'
       - 'apps/web/lib/calendar/direct-write-gate-scheduled-full-role-candidate.sql'
       - 'apps/web/lib/calendar/direct-write-gate-worker-recovery-integration-probe.sql'
@@ -150,6 +152,34 @@ jobs:
             throw new Error(`Scheduled worker: status=${result.status} passed=${passed} failed=${failed} skipped=${skipped}`)
           }
           console.log(`Scheduled worker: ${passed} passed, 0 failed/skipped`)
+          NODE
+      - name: Run Facebook reconciliation project boundary regression
+        working-directory: apps/web
+        run: |
+          npx --no vitest run lib/social-launch/publication/reconciliation/service.test.ts \\
+            --reporter=default --reporter=json \\
+            --outputFile.json="$RUNNER_TEMP/calendar-reconciliation.json"
+      - name: Enforce reconciliation anti-skip floor
+        if: always()
+        env:
+          REPORT: ${{ runner.temp }}/calendar-reconciliation.json
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs')
+          const path = require('node:path')
+          if (!fs.existsSync(process.env.REPORT)) throw new Error('Reconciliation report missing')
+          const report = JSON.parse(fs.readFileSync(process.env.REPORT, 'utf8'))
+          const result = (report.testResults ?? []).find(r => path.basename(r.name) === 'service.test.ts')
+          if (!result) throw new Error('Reconciliation suite absent')
+          const assertions = result.assertionResults ?? []
+          const passed = assertions.filter(a => a.status === 'passed').length
+          const failed = assertions.filter(a => a.status === 'failed').length
+          const skipped = assertions.filter(a => ['pending','skipped','todo','disabled'].includes(a.status)).length
+          if (result.status !== 'passed' || passed < 7 || failed || skipped ||
+              report.numFailedTests || report.numPendingTests || report.numTodoTests) {
+            throw new Error(`Reconciliation: status=${result.status} passed=${passed} failed=${failed} skipped=${skipped}`)
+          }
+          console.log(`Reconciliation: ${passed} passed, 0 failed/skipped`)
           NODE
       - name: Remove owned fixture
         if: always()

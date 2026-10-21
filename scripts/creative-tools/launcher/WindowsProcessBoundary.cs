@@ -10,6 +10,25 @@ namespace Omnira.Creative.Synthetic {
  internal static class WindowsProcessBoundary {
   internal static CleanupObservation LastCleanup;
   internal static int ProcessCreateAttempts;
+  internal static CleanupObservation CleanupProfile(OwnedFixture f,OperationBudget budget){
+   CleanupObservation c=f.Cleanup;
+   if(!c.ProcessesStopped||!c.PumpsStopped||!c.ProcessIdentityVerified){c.CleanupFailed=true;return c;}
+   try{
+    if(!f.ProfileCreated){c.ProfileDeleteApiSucceeded=c.ProfileStorageAbsent=c.ProfileMappingAbsent=true;c.FixtureAbsent=c.InputFixtureAbsent;return c;}
+    NativeMethods.Require(f.StorageIdentityEstablished&&f.ProfileOwner!=null&&budget.CleanupRemainingMs>0,"profile-cleanup-ownership");
+    // Delete only the pre-child manifest via held exact identities, before API removal.
+    if(!f.ProfileOwner.Delete(budget)){c.CleanupFailed=true;return c;}
+    NativeMethods.Require(budget.CleanupRemainingMs>0,"profile-cleanup-budget");
+    c.ProfileDeleteApiSucceeded=f.ProfileApiRemoved||NativeMethods.DeleteAppContainerProfile(f.ProfileName)==0;f.ProfileApiRemoved=c.ProfileDeleteApiSucceeded;
+    c.ProfileStorageAbsent=!Directory.Exists(Path.GetDirectoryName(f.Storage));
+#if TEST
+    if(BoundaryTestHooks.MappingObservationFailure)throw new IOException("test mapping observation failure");
+#endif
+    using(Microsoft.Win32.RegistryKey key=Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppContainer\Mappings\"+f.ProfileSid))c.ProfileMappingAbsent=key==null;
+    c.FixtureAbsent=c.InputFixtureAbsent&&c.ProfileStorageAbsent;
+   }catch{c.CleanupFailed=true;}
+   return c;
+  }
   static int gate;
   internal static void ReleaseGate(){Interlocked.Exchange(ref gate,0);}
   internal static string Hash(string path){using(FileStream f=File.OpenRead(path))using(SHA256 h=SHA256.Create())return BitConverter.ToString(h.ComputeHash(f)).Replace("-","").ToLowerInvariant();}
@@ -36,6 +55,9 @@ namespace Omnira.Creative.Synthetic {
   }
   internal void Create(){
    NativeMethods.ValidateAbi();NativeMethods.Require(budget.RunRemainingMs>0&&!fixture.Disposed,"setup-budget");
+#if TEST
+   CrashTestHooks.BeforeCreate();
+#endif
    NativeHandle childIn=null,childOut=null,childErr=null;
    try {
     Pipe(out childIn,out Input);Noninherit(Input);Pipe(out Output,out childOut);Noninherit(Output);Pipe(out Error,out childErr);Noninherit(Error);
@@ -44,6 +66,9 @@ namespace Omnira.Creative.Synthetic {
      IntPtr held;NativeMethods.Check(NativeMethods.DuplicateHandle(new IntPtr(-1),childOut.Value,new IntPtr(-1),out held,0,false,2),"test-held-writer");
      LifecycleTestHooks.Writer=new NativeHandle(held);Noninherit(LifecycleTestHooks.Writer);
     }
+#endif
+#if TEST
+    CleanupTestHooks.At("pipes");
 #endif
     Job=new NativeHandle(NativeMethods.CreateJobObjectW(IntPtr.Zero,null));NativeMethods.Check(!Job.IsInvalid,"job-create");Noninherit(Job);
     using(NativeBuffer policy=new NativeBuffer(144)){
@@ -87,6 +112,9 @@ namespace Omnira.Creative.Synthetic {
       int nativeError=Marshal.GetLastWin32Error();
       if(!ok)throw new SyntheticRefusal("combined-create-refused",nativeError);
       Process=new NativeHandle(p.Process);Thread=new NativeHandle(p.Thread);
+#if TEST
+      CrashTestHooks.AfterCreate(this);
+#endif
       // Parent copies close before any token inspection or resume.
       Close(ref childIn);Close(ref childOut);Close(ref childErr);
       bool member;NativeMethods.Check(NativeMethods.IsProcessInJob(Process.Value,Job.Value,out member),"job-at-return-query");NativeMethods.Require(member,"job-at-return-mismatch");ExactJobAtReturn=true;
@@ -94,6 +122,9 @@ namespace Omnira.Creative.Synthetic {
        NativeMethods.Check(NativeMethods.QueryInformationJobObject(Job.Value,3,members.Value,40,IntPtr.Zero),"job-members-query");
        NativeMethods.Require(Marshal.ReadInt32(members.Value,0)==1&&Marshal.ReadInt32(members.Value,4)==1&&(uint)Marshal.ReadInt64(members.Value,8)==p.Pid,"unexpected-job-member");
       }
+#if TEST
+      CleanupTestHooks.At("process");
+#endif
       Console.WriteLine("CREATE pid="+p.Pid+" suspended=true combinedAttributes=3 inheritHandles=true exactJobAtReturn=true");
      }finally{if(initialized)NativeMethods.DeleteProcThreadAttributeList(list.Value);if(env!=IntPtr.Zero)Marshal.FreeHGlobal(env);}
     }
@@ -123,7 +154,7 @@ namespace Omnira.Creative.Synthetic {
     NativeMethods.Require(n>=minimum&&n<=b.Size,"token-size");return b;
    }catch{b.Dispose();throw;}
   }
-  static void VerifyToken(IntPtr process,string expected) {
+  internal static void VerifyToken(IntPtr process,string expected) {
    IntPtr raw;NativeMethods.Check(NativeMethods.OpenProcessToken(process,8,out raw),"token-open");
    using(NativeHandle token=new NativeHandle(raw)){
     bool ac,elevated,admin=false;int caps,il;string sid=null;
@@ -146,7 +177,7 @@ namespace Omnira.Creative.Synthetic {
   internal static void VerifyHost(){VerifyToken(new IntPtr(-1),null);}
   internal void VerifyBeforeResume(){
    if(refused)throw new SyntheticRefusal("boundary-refused");
-   verified=false;
+   verified=false;TokenVerified=false;
    try {
    NativeMethods.Require(!Resumed&&!disposed,"invalid-boundary-state");
    string expectedSid=fixture.ProfileSid,expectedImage=fixture.Runtime;
@@ -172,7 +203,10 @@ namespace Omnira.Creative.Synthetic {
    }
    using(NativeBuffer b=new NativeBuffer(144))VerifyPolicy(b);
    TokenVerified=true;verified=true;
-   }catch{refused=true;verified=false;TokenVerified=false;Dispose();throw;}
+#if TEST
+   CleanupTestHooks.At("token");
+#endif
+   }catch{refused=true;verified=false;if(!TokenVerified)fixture.Cleanup.ProcessIdentityVerified=false;TokenVerified=false;Dispose();throw;}
   }
   internal void Resume(){NativeMethods.Require(verified&&!refused&&!Resumed&&!disposed&&budget.RunRemainingMs>0,"resume-refused");NativeMethods.Require(NativeMethods.ResumeThread(Thread.Value)==1,"resume-failed");Resumed=true;}
   internal static bool ObjectIdentityDecision(bool numericEqual,bool objectsEqual){return objectsEqual;}
@@ -283,7 +317,7 @@ namespace Omnira.Creative.Synthetic {
    NativeMethods.Require(object.ReferenceEquals(operation,budget),"budget-mismatch");
    if(Job==null||Job.IsInvalid)return;
    Exception observationFailure=null;
-   try{if(!disposed)ObserveMembers();}catch(Exception e){observationFailure=e;fixture.Cleanup.CleanupFailed=true;}
+   try{if(!disposed)ObserveMembers();}catch(Exception e){observationFailure=e;fixture.Cleanup.CleanupFailed=true;fixture.Cleanup.ProcessIdentityVerified=false;}
    NativeMethods.Check(NativeMethods.TerminateJobObject(Job.Value,2),"job-stop");
    if(observationFailure!=null)throw observationFailure;
   }
@@ -304,6 +338,20 @@ namespace Omnira.Creative.Synthetic {
   public void Dispose(){
    if(disposed)return;disposed=true;
    try {
+    // A setup exception may occur before VerifyBeforeResume was called.
+    // Corroborate the held created process before claiming cleanup, without
+    // ever upgrading an earlier failed identity observation.
+    if(Process!=null&&!Process.IsInvalid&&!TokenVerified&&fixture.Cleanup.ProcessIdentityVerified){
+     try{
+      NativeMethods.Require(budget.CleanupRemainingMs>0,"cleanup-identity-budget");
+      bool exact;NativeMethods.Check(NativeMethods.IsProcessInJob(Process.Value,Job.Value,out exact),"cleanup-exact-job");
+      NativeMethods.Require(exact,"cleanup-wrong-job");
+      VerifyToken(Process.Value,fixture.ProfileSid);
+      StringBuilder image=new StringBuilder(1024);uint length=1024;
+      NativeMethods.Check(NativeMethods.QueryFullProcessImageNameW(Process.Value,0,image,ref length),"cleanup-image");
+      NativeMethods.Require(string.Equals(image.ToString(),fixture.Runtime,StringComparison.OrdinalIgnoreCase),"cleanup-image-mismatch");
+     }catch{fixture.Cleanup.ProcessIdentityVerified=false;fixture.Cleanup.CleanupFailed=true;}
+    }
     if(Job!=null&&!Job.IsInvalid)NativeMethods.TerminateJobObject(Job.Value,2);
     if(Process!=null&&!Process.IsInvalid){
      if(!ExactJobAtReturn)NativeMethods.TerminateProcess(Process.Value,2);

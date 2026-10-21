@@ -65,6 +65,12 @@ namespace Omnira.Creative.Synthetic {
     if(name=="ValidJsonStillRunning"){Assert.True(!o.RootExitedBeforeStop&&o.WriterCompleted,"still running after input");SyntheticProtocol.VerifyResult(LifecycleTestHooks.Capture.Stdout,LifecycleTestHooks.Expected);}
     if(name=="DescendantWriterHeldOpen")Assert.True(o.RootExitedBeforeStop&&o.ObservedNodes>=2&&o.StdoutBytes==16&&!o.StreamsCompleted,"held descendant writer");
     if(name=="NativeCancelCompletionRace")Assert.True(o.CancelAccepted>0&&o.CancelNotFound>0&&o.AbortedIo>0,"actual native cancellation and completion race");
+    if(name=="UnknownJobMemberRefuses"||name=="TokenFailureNeverResumes"){
+     Assert.True(!o.Cleanup.Complete&&!o.Cleanup.FixtureAbsent,"unknown identity preserves artifacts");
+     Assert.True(o.Cleanup.ProcessesStopped,"held native exit before separate followup");
+     Assert.True(CleanupTestHooks.Followup(BoundaryTestHooks.LastFixture).Complete,"independent known TEST mismatch followup");
+     Assert.True(!o.Cleanup.Complete,"original identity refusal remains incomplete");
+    }
     Console.WriteLine("PASS "+name+" code="+o.RefusalCode+" elapsedMs="+o.ElapsedMs+" pumps="+PipeSession.LivePumps+" outputBytes="+o.StdoutBytes+" errorBytes="+o.StderrBytes+" observedMembers="+o.ObservedMembers+" exitObserved="+o.ChildExitObserved+" exitCode="+o.ChildExitCode+" cancelAccepted="+o.CancelAccepted+" cancelNotFound="+o.CancelNotFound+" abortedIo="+o.AbortedIo);
    }finally{LifecycleTestHooks.Reset();}
   }

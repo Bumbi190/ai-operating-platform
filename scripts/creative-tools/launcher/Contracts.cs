@@ -23,8 +23,8 @@ namespace Omnira.Creative.Synthetic {
   internal int CleanupRemainingMs{get{return (int)Math.Max(0,TotalLimitMs-clock.ElapsedMilliseconds);}}
  }
  internal sealed class CleanupObservation {
-  internal bool ProcessesStopped=true,PumpsStopped=true,InputFixtureAbsent,FixtureAbsent,ProfileDeleteApiSucceeded,ProfileStorageAbsent,ProfileMappingAbsent,CleanupFailed;
-  internal bool Complete {get{return !CleanupFailed&&ProcessesStopped&&PumpsStopped&&FixtureAbsent&&ProfileDeleteApiSucceeded&&ProfileStorageAbsent&&ProfileMappingAbsent;}}
+  internal bool ProcessesStopped=true,PumpsStopped=true,ProcessIdentityVerified=true,InputFixtureAbsent,FixtureAbsent,ProfileDeleteApiSucceeded,ProfileStorageAbsent,ProfileMappingAbsent,CleanupFailed;
+  internal bool Complete {get{return !CleanupFailed&&ProcessIdentityVerified&&ProcessesStopped&&PumpsStopped&&FixtureAbsent&&ProfileDeleteApiSucceeded&&ProfileStorageAbsent&&ProfileMappingAbsent;}}
  }
  internal sealed class CanaryInput {
   internal readonly byte[] Bytes;internal readonly string Sha256;
@@ -34,55 +34,29 @@ namespace Omnira.Creative.Synthetic {
   internal string InputDirectory,InputRoot;
   internal InputOwnership InputOwner;
   internal readonly string Nonce=Guid.NewGuid().ToString("N");
+  internal OwnedFixture(){}
+#if TEST
+  internal OwnedFixture(string nonce){Nonce=nonce;}
+#endif
   internal string ProfileName,ProfileSid,Storage,Runtime,RuntimeHash;
   internal IntPtr Sid;
   internal FileStream RuntimePin;
-  internal bool ProfileCreated,Disposed,StorageIdentityEstablished;
-  internal readonly CleanupObservation Cleanup=new CleanupObservation();
+  internal bool ProfileCreated,Disposed,StorageIdentityEstablished,ProfileApiRemoved;
+  internal CleanupObservation Cleanup=new CleanupObservation();
+  internal OperationBudget Budget;
+  internal OwnedEntries ProfileOwner;
   public void Dispose(){
-   if(Disposed)return;
-   Disposed=true;
-   try {
-    bool inputAbsent=InputOwner==null?InputDirectory==null:InputOwner.Cleanup();
-    Cleanup.InputFixtureAbsent=inputAbsent;
-    if(!inputAbsent)Cleanup.CleanupFailed=true;
-    FileStream pin=RuntimePin;
-    RuntimePin=null;
-    if(pin!=null){
-     Microsoft.Win32.SafeHandles.SafeFileHandle held=null;
-     try{held=pin.SafeFileHandle;pin.Dispose();}
-     catch{Cleanup.CleanupFailed=true;}
-     finally{if(held!=null)held.Dispose();}
-    }
-    if(ProfileCreated&&Cleanup.ProcessesStopped){
-     try{Cleanup.ProfileDeleteApiSucceeded=NativeMethods.DeleteAppContainerProfile(ProfileName)==0;}
-     catch{Cleanup.CleanupFailed=true;}
-     if(StorageIdentityEstablished){
-      try {
-       Cleanup.ProfileStorageAbsent=!Directory.Exists(Path.GetDirectoryName(Storage));
-       Cleanup.FixtureAbsent=Cleanup.ProfileStorageAbsent&&inputAbsent;
-      }catch{Cleanup.CleanupFailed=true;}
-     }
-     try {
-#if TEST
-      if(BoundaryTestHooks.MappingObservationFailure)throw new IOException("test mapping observation failure");
-#endif
-      using(RegistryKey k=Registry.CurrentUser.OpenSubKey(@"Software\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppContainer\Mappings\"+ProfileSid)){
-       Cleanup.ProfileMappingAbsent=k==null;
-      }
-     }catch{Cleanup.CleanupFailed=true;}
-    }
+   if(Disposed)return;Disposed=true;
+   try{
+    if(RuntimePin!=null){RuntimePin.Dispose();RuntimePin=null;}
+    FixtureInput.CleanupOwned(this,Budget);
+    WindowsProcessBoundary.CleanupProfile(this,Budget);
    }catch{Cleanup.CleanupFailed=true;}
-   finally {
-    try{if(Sid!=IntPtr.Zero)NativeMethods.FreeSid(Sid);}
-    catch{Cleanup.CleanupFailed=true;}
-    finally {
-     Sid=IntPtr.Zero;
-     WindowsProcessBoundary.LastCleanup=Cleanup;
-     try {
-      Console.WriteLine("CLEANUP profile="+ProfileName+" api="+Cleanup.ProfileDeleteApiSucceeded+" storageAbsent="+Cleanup.ProfileStorageAbsent+" mappingAbsent="+Cleanup.ProfileMappingAbsent+" stopped="+Cleanup.ProcessesStopped+" cleanupFailed="+Cleanup.CleanupFailed+" storageIdentityEstablished="+StorageIdentityEstablished+" inputAbsent="+Cleanup.InputFixtureAbsent);
-     }catch{Cleanup.CleanupFailed=true;}
-    }
+   finally{
+    if(RuntimePin!=null){try{RuntimePin.Dispose();}catch{Cleanup.CleanupFailed=true;}RuntimePin=null;}
+    if(Sid!=IntPtr.Zero){NativeMethods.FreeSid(Sid);Sid=IntPtr.Zero;}
+    WindowsProcessBoundary.LastCleanup=Cleanup;
+    Console.WriteLine("CLEANUP profile="+ProfileName+" api="+Cleanup.ProfileDeleteApiSucceeded+" storageAbsent="+Cleanup.ProfileStorageAbsent+" mappingAbsent="+Cleanup.ProfileMappingAbsent+" stopped="+Cleanup.ProcessesStopped+" cleanupFailed="+Cleanup.CleanupFailed+" inputAbsent="+Cleanup.InputFixtureAbsent);
    }
   }
  }
@@ -102,10 +76,12 @@ namespace Omnira.Creative.Synthetic {
 
 namespace Omnira.Creative.Synthetic {
  internal sealed class CapturedStreams {
-  internal readonly byte[] Stdout,Stderr;
+  readonly byte[] stdout,stderr;
+  internal byte[] Stdout{get{return (byte[])stdout.Clone();}}
+  internal byte[] Stderr{get{return (byte[])stderr.Clone();}}
   internal readonly bool Complete,Overflow,PumpFailed;
   internal CapturedStreams(byte[] stdout,byte[] stderr,bool complete,bool overflow,bool failed){
-   Stdout=(byte[])stdout.Clone();Stderr=(byte[])stderr.Clone();Complete=complete;Overflow=overflow;PumpFailed=failed;
+   this.stdout=(byte[])stdout.Clone();this.stderr=(byte[])stderr.Clone();Complete=complete;Overflow=overflow;PumpFailed=failed;
   }
  }
  internal sealed class RunObservation {

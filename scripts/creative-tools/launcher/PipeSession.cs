@@ -90,7 +90,16 @@ namespace Omnira.Creative.Synthetic {
     writer.Complete=true;
    }finally{input.Dispose();}
   }
+#if TEST
+  internal bool TestReady(string marker){
+   int count=stderr.Count;if(count!=marker.Length)return false;
+   return System.Text.Encoding.ASCII.GetString(stderr.Bytes,0,count)==marker;
+  }
+#endif
   void Read(Pump pump,NativeHandle pipe,string name){
+#if TEST
+   if(name=="stdout")CrashTestHooks.BlockPump();
+#endif
    byte[] chunk=new byte[4096];
    while(true){
     if(stop)return;
@@ -138,7 +147,12 @@ namespace Omnira.Creative.Synthetic {
      }
     }
     if(all)break;
-    if(budget.CleanupRemainingMs==0)Environment.FailFast("synthetic-pumps-exceeded-cleanup-deadline");
+    if(budget.CleanupRemainingMs==0){
+#if TEST
+     Console.Error.WriteLine("FAILSTOP synthetic-pumps-exceeded-cleanup-deadline");Console.Error.Flush();
+#endif
+     Environment.FailFast("synthetic-pumps-exceeded-cleanup-deadline");
+    }
     Thread.Sleep(Math.Min(5,budget.CleanupRemainingMs));
    }
    joined=true;

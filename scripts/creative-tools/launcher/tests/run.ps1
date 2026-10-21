@@ -2,27 +2,41 @@ param([string]$Suite='Boundary')
 $ErrorActionPreference='Stop'
 $PSModuleAutoLoadingPreference='None'
 Microsoft.PowerShell.Core\Import-Module 'C:\Windows\System32\WindowsPowerShell\v1.0\Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1'
-if($Suite -ne 'Boundary' -and $Suite -ne 'Input' -and $Suite -ne 'Protocol' -and $Suite -ne 'Lifecycle' -and $Suite -ne 'LifecycleDeadline'){throw 'unsupported suite'}
+if($Suite -notin @('Boundary','Input','Protocol','Lifecycle','LifecycleDeadline','Cleanup','Crash')){throw 'unsupported suite'}
 $build=& ([IO.Path]::Combine($PSScriptRoot,'..\build.ps1'))
 $info=$build | Microsoft.PowerShell.Utility\ConvertFrom-Json
 [Console]::WriteLine($build)
-$start=New-Object System.Diagnostics.ProcessStartInfo
-$start.FileName=$info.TestExe;$start.Arguments=$Suite;$start.UseShellExecute=$false
-$start.WorkingDirectory='C:\Windows\System32'
-$start.RedirectStandardOutput=$true;$start.RedirectStandardError=$true
-$p=[Diagnostics.Process]::Start($start)
-$stdout=$p.StandardOutput.ReadToEndAsync();$stderr=$p.StandardError.ReadToEndAsync()
-$timedOut=-not $p.WaitForExit(45000)
-if($timedOut){$p.Kill();[Console]::WriteLine('OUTER_TIMEOUT cleanupUnverified=true')}
-$p.WaitForExit()
 $stdoutPath=[IO.Path]::Combine($info.BuildRoot,($Suite+'.stdout.txt'))
 $stderrPath=[IO.Path]::Combine($info.BuildRoot,($Suite+'.stderr.txt'))
 $metadataPath=[IO.Path]::Combine($info.BuildRoot,($Suite+'.metadata.json'))
-[IO.File]::WriteAllText($stdoutPath,$stdout.Result)
-[IO.File]::WriteAllText($stderrPath,$stderr.Result)
-$evidence=@{Suite=$Suite;TimedOut=$timedOut;ExitCode=$p.ExitCode;StdoutPath=$stdoutPath;StderrPath=$stderrPath;StdoutBytes=[IO.FileInfo]::new($stdoutPath).Length;StderrBytes=[IO.FileInfo]::new($stderrPath).Length;Build=$info}
+$ownedOutput=[IO.Path]::Combine($info.BuildRoot,$Suite+'.owned.stdout.txt')
+$ownedError=[IO.Path]::Combine($info.BuildRoot,$Suite+'.owned.stderr.txt')
+$start=New-Object System.Diagnostics.ProcessStartInfo
+$start.FileName=$info.TestExe;$start.Arguments='Watchdog '+$Suite;$start.UseShellExecute=$false
+$start.WorkingDirectory='C:\Windows\System32'
+$start.EnvironmentVariables.Clear()
+$start.EnvironmentVariables['LOCALAPPDATA']=[Environment]::GetFolderPath('LocalApplicationData')
+$start.EnvironmentVariables['SystemRoot']='C:\Windows';$start.EnvironmentVariables['WINDIR']='C:\Windows'
+$start.EnvironmentVariables['PATH']='C:\Windows\System32'
+$start.RedirectStandardOutput=$true;$start.RedirectStandardError=$true
+$outFile=[IO.FileStream]::new($stdoutPath,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::ReadWrite,1,$true)
+$errFile=[IO.FileStream]::new($stderrPath,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::ReadWrite,1,$true)
+$clock=[Diagnostics.Stopwatch]::StartNew()
+$p=[Diagnostics.Process]::Start($start)
+# Retain the exact Process/SafeHandle; only this created watchdog can be stopped.
+[void]$p.Handle
+$stdout=$p.StandardOutput.BaseStream.CopyToAsync($outFile)
+$stderr=$p.StandardError.BaseStream.CopyToAsync($errFile)
+$timedOut=-not $p.WaitForExit([int][Math]::Max(0,45000-$clock.ElapsedMilliseconds))
+if($timedOut){$p.Kill();[Console]::WriteLine('OUTER_TIMEOUT cleanupUnverified=true')}
+$remaining=[int][Math]::Max(0,45000-$clock.ElapsedMilliseconds)
+$captureComplete=[Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($stdout,$stderr),$remaining)
+# No per-stream wait extension, and no synchronous disposal under pending writes.
+if($captureComplete){$outFile.Flush();$errFile.Flush();$outFile.Dispose();$errFile.Dispose()}
+$exitCode=$null;if($p.HasExited){$exitCode=$p.ExitCode}
+$evidence=@{Suite=$Suite;OuterLimitMs=45000;TimedOut=$timedOut;CaptureComplete=$captureComplete;ExitCode=$exitCode;StdoutPath=$stdoutPath;StderrPath=$stderrPath;OwnedStdoutPath=$ownedOutput;OwnedStderrPath=$ownedError;StdoutBytes=[IO.FileInfo]::new($stdoutPath).Length;StderrBytes=[IO.FileInfo]::new($stderrPath).Length;Build=$info}
 [IO.File]::WriteAllText($metadataPath,($evidence | Microsoft.PowerShell.Utility\ConvertTo-Json -Depth 5))
-[Console]::WriteLine($stdout.Result);[Console]::WriteLine($stderr.Result)
 [Console]::WriteLine('EVIDENCE '+$metadataPath)
-if($timedOut){exit 1}
-exit $p.ExitCode
+foreach($path in @($stdoutPath,$stderrPath,$ownedOutput,$ownedError)){if([IO.File]::Exists($path)){[Console]::WriteLine([IO.File]::ReadAllText($path))}}
+if($timedOut -or -not $captureComplete -or $null -eq $exitCode){exit 1}
+exit $exitCode

@@ -20,9 +20,13 @@ namespace Omnira.Creative.Synthetic {
 
 
   static void OrdinaryDirectory(string path){for(DirectoryInfo d=new DirectoryInfo(path);d!=null;d=d.Parent)NativeMethods.Require((d.Attributes&FileAttributes.ReparsePoint)==0,"reparse-ancestor");}
-  internal static OwnedFixture CreateOwned() {
+  internal static OwnedFixture CreateOwned(){OwnedFixture f;return CreateOwned(new OperationBudget(),out f);}
+  internal static OwnedFixture CreateOwned(OperationBudget budget,out OwnedFixture f) {
    NativeMethods.ValidateAbi();BoundarySession.VerifyHost();
-   OwnedFixture f=new OwnedFixture();
+#if TEST
+   if(CrashTestHooks.Phase!=null){f=CrashTestHooks.Attach(budget);return f;}
+#endif
+   f=new OwnedFixture();f.Budget=budget;
    try {
     string source=@"C:\Program Files\nodejs\node.exe";OrdinaryDirectory(Path.GetDirectoryName(source));
     NativeMethods.Require((File.GetAttributes(source)&(FileAttributes.ReparsePoint|FileAttributes.Directory))==0&&WindowsProcessBoundary.Hash(source)==Pin,"runtime-pin");
@@ -32,13 +36,20 @@ namespace Omnira.Creative.Synthetic {
 #if TEST
     BoundaryTestHooks.LastFixture=f;
     if(BoundaryTestHooks.SetupFailure=="before-folder")throw new SyntheticRefusal("test-setup-before-folder");
+
 #endif
     IntPtr folder;hr=NativeMethods.GetAppContainerFolderPath(f.ProfileSid,out folder);if(hr!=0)throw new SyntheticRefusal("profile-path",hr);
     try{f.Storage=Marshal.PtrToStringUni(folder);}finally{Marshal.FreeCoTaskMem(folder);}
     string expected=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Packages",f.ProfileName,"AC");
     NativeMethods.Require(string.Equals(f.Storage,expected,StringComparison.OrdinalIgnoreCase),"profile-path-mismatch");f.StorageIdentityEstablished=true;OrdinaryDirectory(f.Storage);
-    string dir=Path.Combine(f.Storage,"runtime");Directory.CreateDirectory(dir);OrdinaryDirectory(dir);f.Runtime=Path.Combine(dir,"node.exe");
+    f.ProfileOwner=new OwnedEntries();f.ProfileOwner.CaptureTree(Path.GetDirectoryName(f.Storage),budget);
+#if TEST
+    CleanupTestHooks.At("profile");
+#endif
+
+    string dir=Path.Combine(f.Storage,"runtime");Directory.CreateDirectory(dir);OrdinaryDirectory(dir);f.ProfileOwner.Record(dir,true);f.Runtime=Path.Combine(dir,"node.exe");
     using(FileStream input=File.OpenRead(source))using(FileStream output=new FileStream(f.Runtime,FileMode.CreateNew,FileAccess.Write,FileShare.None)){input.CopyTo(output);output.Flush(true);}
+    f.ProfileOwner.Record(f.Runtime,false);
     f.RuntimePin=new FileStream(f.Runtime,FileMode.Open,FileAccess.Read,FileShare.Read);
     uint pinFlags;NativeMethods.Check(NativeMethods.GetHandleInformation(f.RuntimePin.SafeFileHandle.DangerousGetHandle(),out pinFlags),"runtime-pin-flags");NativeMethods.Require((pinFlags&1)==0,"runtime-pin-inheritable");
     using(SHA256 hash=SHA256.Create()){f.RuntimeHash=BitConverter.ToString(hash.ComputeHash(f.RuntimePin)).Replace("-","").ToLowerInvariant();f.RuntimePin.Position=0;}
@@ -47,12 +58,19 @@ namespace Omnira.Creative.Synthetic {
      if(rule.IdentityReference.Value==f.ProfileSid&&rule.IsInherited&&rule.AccessControlType==AccessControlType.Allow&&(rule.FileSystemRights&FileSystemRights.ReadAndExecute)==FileSystemRights.ReadAndExecute)rx=true;
     NativeMethods.Require(rx,"runtime-inherited-package-rx");
     #if TEST
+    CleanupTestHooks.At("runtime");
     if(BoundaryTestHooks.SetupFailure=="after-runtime")throw new SyntheticRefusal("test-setup-after-runtime");
 #endif
     Console.WriteLine("FIXTURE profile="+f.ProfileName+" sid="+f.ProfileSid+" runtimeHash="+f.RuntimeHash+" inheritedRX=true");
     CreateInput(f);
     return f;
    }catch{f.Dispose();throw;}
+  }
+  internal static CleanupObservation CleanupOwned(OwnedFixture f,OperationBudget budget){
+   if(!f.Cleanup.ProcessesStopped||!f.Cleanup.PumpsStopped||!f.Cleanup.ProcessIdentityVerified){f.Cleanup.CleanupFailed=true;return f.Cleanup;}
+   f.Cleanup.InputFixtureAbsent=f.InputOwner==null?f.InputDirectory==null:f.InputOwner.Cleanup(budget);
+   if(!f.Cleanup.InputFixtureAbsent)f.Cleanup.CleanupFailed=true;
+   return f.Cleanup;
   }
   static void CreateInput(OwnedFixture f){
    string temp=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Temp");
@@ -217,27 +235,87 @@ namespace Omnira.Creative.Synthetic {
 #if TEST
   internal void RefreshTestLeaf(){entries[4].Identity=Identity(entries[4].Path,false);}
 #endif
-  internal bool Cleanup(){
+  bool cleaned;
+#if TEST
+  internal string Manifest(){
+   StringBuilder text=new StringBuilder();
+   foreach(Entry e in entries)text.AppendLine(e.Path+"\t"+e.Directory+"\t"+e.Identity.Volume+"\t"+e.Identity.IndexHigh+"\t"+e.Identity.IndexLow);
+   return text.ToString();
+  }
+#endif
+  internal bool Cleanup(OperationBudget budget){
+   if(cleaned)return !Directory.Exists(fixture.InputDirectory);
    try{
-    // First validate the complete known set; preserve the entire root if any unknown entry appears.
-    foreach(Entry e in entries){
-     NativeMethods.Require(Same(e.Identity,Identity(e.Path,e.Directory)),"input-cleanup-identity");
-     if(e.Directory){
-      IEnumerable<string> actual=Directory.EnumerateFileSystemEntries(e.Path);
-      List<string> expected=new List<string>();
-      foreach(Entry child in entries)if(Path.GetDirectoryName(child.Path)==e.Path)expected.Add(child.Path);
-      int count=0;
-      foreach(string name in actual){NativeMethods.Require(++count<=expected.Count&&expected.Contains(name),"input-cleanup-unexpected-entry");}
-      NativeMethods.Require(count==expected.Count,"input-cleanup-missing-entry");
-     }
-    }
     Entry marker=entries.Find(delegate(Entry e){return Path.GetFileName(e.Path)=="owner.txt";});
     if(marker!=null)NativeMethods.Require(MarkerMatches(marker),"input-cleanup-marker");
-    for(int i=entries.Count-1;i>=0;i--){
-     Entry e=entries[i];if(e.Directory)Directory.Delete(e.Path,false);else File.Delete(e.Path);
-    }
-    return !Directory.Exists(fixture.InputDirectory);
+    OwnedEntries exact=new OwnedEntries();
+    foreach(Entry e in entries)exact.RecordCaptured(e.Path,e.Directory,e.Identity);
+    cleaned=exact.Delete(budget);return cleaned;
+
    }catch{return false;}
+  }
+ }
+}
+namespace Omnira.Creative.Synthetic {
+ // A bounded manifest captured only while constructing an owned synthetic tree.
+ // Deletion holds no-delete-share handles to every entry, checks the full set,
+ // then marks those same handles for deletion. Unknown children make the parent
+ // delete fail; no recursive path removal or profile API can conceal them.
+ internal sealed class OwnedEntries {
+  sealed class Entry {internal string Path;internal bool Directory;internal INFO Identity;}
+  readonly List<Entry> entries=new List<Entry>();
+  bool deleted;
+  internal void Record(string path,bool directory){RecordCaptured(path,directory,ReadIdentity(path,directory));}
+  internal void RecordCaptured(string path,bool directory,INFO identity){NativeMethods.Require(entries.Count<128,"cleanup-entry-bound");entries.Add(new Entry{Path=path,Directory=directory,Identity=identity});}
+  internal static INFO ReadIdentity(string path,bool directory){
+   IntPtr h=InputNative.CreateFileW(path,0x100081,7,IntPtr.Zero,3,0x02200000,IntPtr.Zero);
+   NativeMethods.Check(h!=new IntPtr(-1),"cleanup-identity-open");
+   try{return PinnedRoot.Info(h,directory);}finally{InputNative.CloseHandle(h);}
+  }
+  static bool Same(INFO a,INFO b){return a.Volume==b.Volume&&a.IndexHigh==b.IndexHigh&&a.IndexLow==b.IndexLow;}
+  internal void CaptureTree(string path,OperationBudget budget){Capture(path,budget,0);}
+  void Capture(string path,OperationBudget budget,int depth){
+   NativeMethods.Require(depth<=8&&budget.RunRemainingMs>0,"cleanup-capture-bound");
+   bool directory=(File.GetAttributes(path)&FileAttributes.Directory)!=0;Record(path,directory);
+   if(directory)foreach(string child in Directory.EnumerateFileSystemEntries(path))Capture(child,budget,depth+1);
+  }
+#if TEST
+  internal string Manifest(){
+   StringBuilder text=new StringBuilder();
+   foreach(Entry e in entries)text.AppendLine(e.Path+"\t"+e.Directory+"\t"+e.Identity.Volume+"\t"+e.Identity.IndexHigh+"\t"+e.Identity.IndexLow);
+   return text.ToString();
+  }
+#endif
+  internal bool Delete(OperationBudget budget){
+   if(deleted)return entries.Count==0||!Directory.Exists(entries[0].Path)&&!File.Exists(entries[0].Path);
+   List<IntPtr> held=new List<IntPtr>();
+   try{
+    foreach(Entry e in entries){
+     NativeMethods.Require(budget!=null&&budget.CleanupRemainingMs>0,"cleanup-budget");
+     IntPtr h=InputNative.CreateFileW(e.Path,0x110081,3,IntPtr.Zero,3,0x02200000,IntPtr.Zero);
+     NativeMethods.Check(h!=new IntPtr(-1),"cleanup-open");held.Add(h);
+     NativeMethods.Require(Same(e.Identity,PinnedRoot.Info(h,e.Directory)),"cleanup-identity");
+     // A held parent cannot be renamed/replaced while its children are opened.
+     if(e.Directory){
+      int actual=0,expected=0;
+      foreach(Entry child in entries)if(Path.GetDirectoryName(child.Path)==e.Path)expected++;
+      foreach(string path in Directory.EnumerateFileSystemEntries(e.Path)){
+       NativeMethods.Require(++actual<=expected,"cleanup-unknown-entry");
+       bool known=false;foreach(Entry child in entries)if(child.Path==path){known=true;break;}
+       NativeMethods.Require(known,"cleanup-unknown-entry");
+      }
+      NativeMethods.Require(actual==expected,"cleanup-missing-entry");
+     }
+    }
+    for(int i=entries.Count-1;i>=0;i--){
+     NativeMethods.Require(budget.CleanupRemainingMs>0,"cleanup-budget");
+     int disposition=1;
+     NativeMethods.Check(InputNative.SetFileInformationByHandle(held[i],4,ref disposition,4),"cleanup-disposition");
+     InputNative.CloseHandle(held[i]);held[i]=IntPtr.Zero;
+    }
+    deleted=true;return entries.Count==0||!Directory.Exists(entries[0].Path)&&!File.Exists(entries[0].Path);
+   }catch{return false;}
+   finally{foreach(IntPtr h in held)if(h!=IntPtr.Zero)InputNative.CloseHandle(h);}
   }
  }
 }

@@ -13,7 +13,7 @@ namespace Omnira.Creative.Synthetic {
    OwnedFixture fixture=null;BoundarySession boundary=null;PipeSession pipes=null;
    try{
     BoundarySession.VerifyHost();
-    fixture=FixtureInput.CreateOwned();result.Cleanup=fixture.Cleanup;
+    FixtureInput.CreateOwned(budget,out fixture);result.Cleanup=fixture.Cleanup;
     NativeMethods.Require(budget.RunRemainingMs>0,"setup-budget");
     CanaryInput input=FixtureInput.ReadCanary(fixture);result.State="InputPinned";
 #if TEST
@@ -35,6 +35,9 @@ namespace Omnira.Creative.Synthetic {
     while(true){
      NativeMethods.Require(budget.RunRemainingMs>0,"run-timeout");
      if(pipes.Failure!=null)throw new SyntheticRefusal(pipes.Failure);
+#if TEST
+     CrashTestHooks.Ready(boundary,pipes);
+#endif
      boundary.ObserveMembers();int members=boundary.ActiveMemberCount;
      if(boundary.RootExited&&members==0&&pipes.Finished)break;
      NativeMethods.Require(budget.RunRemainingMs>0,"run-timeout");
@@ -64,6 +67,9 @@ namespace Omnira.Creative.Synthetic {
      result.StdoutBytes=pipes.StdoutCount;result.StderrBytes=pipes.StderrCount;
      result.Cleanup.PumpsStopped=true;
     }
+#if TEST
+    CrashTestHooks.ExhaustBudget(budget);
+#endif
     if(boundary!=null&&!boundary.IsDisposed){
      result.ObservedMembers=boundary.ObservedMemberCount;result.ObservedNodes=boundary.ObservedNodeCount;
      try{boundary.StopOwnedJob(budget);}catch{result.Cleanup.CleanupFailed=true;}
@@ -71,10 +77,15 @@ namespace Omnira.Creative.Synthetic {
      catch{result.Cleanup.ProcessesStopped=false;result.Cleanup.CleanupFailed=true;}
      boundary.Dispose();
     }
-    if(fixture!=null)fixture.Dispose();
+    if(fixture!=null){result.Cleanup=fixture.Cleanup;fixture.Dispose();}
     else result.Cleanup.CleanupFailed=true;
     result.ElapsedMs=budget.ElapsedMs;
-    if(budget.CleanupRemainingMs==0)Environment.FailFast("synthetic-operation-exceeded-cleanup-deadline");
+    if(budget.CleanupRemainingMs==0){
+#if TEST
+     Console.Error.WriteLine("FAILSTOP synthetic-operation-exceeded-cleanup-deadline");Console.Error.Flush();
+#endif
+     Environment.FailFast("synthetic-operation-exceeded-cleanup-deadline");
+    }
     if(result.State!="Refused"){
      if(result.Cleanup.Complete){result.State="Cleaned";result.Passed=true;}
      else Refuse(result,"cleanup-unverified");

@@ -68,6 +68,7 @@ namespace Omnira.Creative.Synthetic {
  [DllImport(K,ExactSpelling=true,SetLastError=true)] internal static extern uint GetFileType(IntPtr h);
  [DllImport(K,CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)] internal static extern uint GetFinalPathNameByHandleW(IntPtr h,StringBuilder path,uint size,uint flags);
  [DllImport(K,CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)] internal static extern bool GetVolumeInformationByHandleW(IntPtr h,StringBuilder volume,uint volumeSize,out uint serial,out uint maxComponent,out uint flags,StringBuilder fs,uint fsSize);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] internal static extern bool SetFileInformationByHandle(IntPtr file,int kind,ref int info,uint bytes);
  [DllImport(N,ExactSpelling=true)] internal static extern int NtCreateFile(out IntPtr h,uint access,ref OA attributes,out IOS io,IntPtr allocation,uint fileAttributes,uint share,uint disposition,uint options,IntPtr ea,uint eaLength);
  }
 }

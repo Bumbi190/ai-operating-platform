@@ -5,7 +5,7 @@ $framework='C:\Windows\Microsoft.NET\Framework64\v4.0.30319'
 $root=[IO.Path]::Combine([IO.Path]::GetTempPath(),'omnira-launcher-build-'+[Guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($root)
 $shared=@('Contracts.cs','NativeMethods.cs','NativeResources.cs','WindowsProcessBoundary.cs','FixtureInput.cs','SyntheticProtocol.cs','PipeSession.cs','SyntheticRunner.cs')
-$test=@('tests\TestProgram.cs','tests\BoundaryTests.cs','tests\InputTests.cs','tests\ProtocolTests.cs','tests\LifecycleTests.cs')
+$test=@('tests\TestProgram.cs','tests\BoundaryTests.cs','tests\InputTests.cs','tests\ProtocolTests.cs','tests\LifecycleTests.cs','tests\CleanupTests.cs','tests\CrashHarness.cs')
 $refs=@('mscorlib.dll','System.dll','System.Core.dll','System.Runtime.Serialization.dll')
 $common=@('/nologo','/noconfig','/nostdlib+','/platform:x64','/target:exe','/optimize+')
 foreach($ref in $refs){$common+=('/reference:'+[IO.Path]::Combine($framework,$ref))}

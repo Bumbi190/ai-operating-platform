@@ -4,8 +4,15 @@ namespace Omnira.Creative.Synthetic {
   internal static void Run() {
    SetupCleanupFailurePreservesPrimary();
    foreach(Action test in new Action[]{VerificationFailureIsTerminal,RuntimePinPreventsMutation,CombinedAttributesRoundTrip,SentinelControls,PreResumeMismatchRefuses,SpawnGateRejectsReentry,NoBroadInheritanceFallback}){
-    test();Assert.True(WindowsProcessBoundary.LastCleanup.Complete,"every test cleanup must be corroborated");
+    test();AssertCleanup();
    }
+  }
+  static void AssertCleanup(){
+   CleanupObservation original=WindowsProcessBoundary.LastCleanup;
+   if(original.ProcessIdentityVerified){Assert.True(original.Complete,"complete verified cleanup");return;}
+   Assert.True(!original.Complete&&!original.FixtureAbsent&&original.ProcessesStopped,"unverified identity stays incomplete with held process stopped");
+   Assert.True(CleanupTestHooks.Followup(BoundaryTestHooks.LastFixture).Complete,"separate stopped pre-resume TEST fixture cleanup");
+   Assert.True(!original.Complete,"original refusal cleanup retained");
   }
   static NativeHandle HoldProcess(BoundarySession session) {
    IntPtr copy;NativeMethods.Check(NativeMethods.DuplicateHandle(new IntPtr(-1),session.Process.Value,new IntPtr(-1),out copy,0,false,2),"test-hold-process");
@@ -27,7 +34,7 @@ namespace Omnira.Creative.Synthetic {
       using(BoundarySession next=WindowsProcessBoundary.CreateSuspended(f,new OperationBudget())){}
      }
     }
-    Assert.True(WindowsProcessBoundary.LastCleanup.Complete,"terminal refusal cleanup");
+    AssertCleanup();
    }
    Console.WriteLine("PASS VerificationFailureIsTerminal firstFailure=true reverifyFailure=true processStopped=true gateReleased=true");
   }
@@ -43,6 +50,8 @@ namespace Omnira.Creative.Synthetic {
     Assert.True(object.ReferenceEquals(f.Cleanup,WindowsProcessBoundary.LastCleanup),"cleanup published despite failure");
     Assert.True(!f.Cleanup.ProfileMappingAbsent&&!f.Cleanup.Complete,"failed cleanup remains unverified");
     if(stage=="before-folder")Assert.True(!f.Cleanup.ProfileStorageAbsent&&!f.Cleanup.FixtureAbsent,"unresolved storage identity cannot prove absence");
+    Assert.True(CleanupTestHooks.Followup(f).Complete,"separate authenticated setup followup");
+    Assert.True(!f.Cleanup.Complete,"original cleanup failure retained");
     f.Dispose();
     Console.WriteLine("PASS SetupCleanupFailurePreservesPrimary stage="+stage+" originalRefusal=true SIDReleased=true runtimePinReleased=true cleanupPublished=true mappingAbsent=false");
    }
@@ -88,6 +97,7 @@ namespace Omnira.Creative.Synthetic {
      try {Assert.Refuses("pre-resume-token-mismatch",()=>s.VerifyBeforeResume());Assert.True(!s.Resumed,"remained suspended");}
      finally {BoundaryTestHooks.Mismatch=null;}
     }
+    AssertCleanup();
    }
    Console.WriteLine("PASS PreResumeMismatchRefuses sid,image,job,capabilities,flags");
   }

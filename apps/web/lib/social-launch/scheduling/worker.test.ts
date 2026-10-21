@@ -17,7 +17,7 @@ type Fixture=Awaited<ReturnType<typeof scheduleFixture>>
 function dependencies(f:Fixture,handler?:(url:string,init:RequestInit)=>Promise<Response>){
  const calls:{url:string;init:RequestInit}[]=[]
  const provider=new MetaManualProvider(async(url,init)=>{calls.push({url,init});return handler?handler(url,init):Response.json(init.method==='POST'?{id:'222',post_id:f.manifest.items[0].accountId+'_222'}:{permalink:'https://www.instagram.com/p/fixture/'})})
- return {calls,deps:{provider,resolveCredential:async(_project:string,channel:'facebook'|'instagram')=>({channel,bindingId:f.manifest.items[0].bindingId,accountId:f.manifest.items[0].accountId,token:'fixture-token',apiBase:'https://graph.facebook.com/v21.0'}),verifyImage:async()=>({bytes:new Uint8Array(),width:320,height:400}),now:()=>Date.parse(f.dueAt)}}
+ return {calls,deps:{provider,resolveCredential:async(_project:string,channel:'facebook'|'instagram')=>({projectId:f.manifest.projectId,channel,bindingId:f.manifest.items[0].bindingId,accountId:f.manifest.items[0].accountId,token:'fixture-token',apiBase:'https://graph.facebook.com/v21.0'}),verifyImage:async()=>({bytes:new Uint8Array(),width:320,height:400}),now:()=>Date.parse(f.dueAt)}}
 }
 async function approved(options:Parameters<typeof scheduleFixture>[1]={}){
  const f=await scheduleFixture(db,options);const approvedBatch=await approveSchedule(db,f.principal,f.approval);setScheduleClock(f.dueAt);return {...f,approvedBatch}
@@ -199,6 +199,18 @@ it('one_post_for_two_workers',async()=>{
  const results=await Promise.all(['a','b'].map(workerId=>runScheduleTick(db,{workerId,now:f.dueAt,dryRun:false},d.deps)))
  expect(d.calls.filter(c=>c.init.method==='POST')).toHaveLength(1)
  expect(results.some(r=>r.result==='published')).toBe(true)
+},20000)
+it('rejects a credential resolved for a different project before any provider write',async()=>{
+ const f=await approved(),d=dependencies(f)
+ const otherProjectId=crypto.randomUUID()
+ expect(otherProjectId).not.toBe(f.manifest.projectId)
+ const result=await runScheduleTick(db,{workerId:'cross_project',now:f.dueAt,dryRun:false},{
+  ...d.deps,
+  resolveCredential:async(projectId,channel)=>({...await d.deps.resolveCredential(projectId,channel),projectId:otherProjectId})
+ })
+ expect(result.result).toBe('blocked')
+ expect(d.calls).toHaveLength(0)
+ expect(testSql("select state from social_schedule_jobs where project_id='"+f.manifest.projectId+"';")).toBe('blocked')
 },20000)
 it('no_send_after_stop_during_image_read',async()=>{
  const f=await approved(),d=dependencies(f)

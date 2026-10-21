@@ -344,14 +344,24 @@ try {
         ${reviewedBytes(resolve(web, 'lib/calendar/direct-write-gate-proof-permission-candidate.sql')).toString('utf8')}
         GRANT EXECUTE ON FUNCTION public.calendar_source_gate_begin_probe(uuid)
           TO social_schedule_full_publisher_fixture;
-        GRANT EXECUTE ON FUNCTION public.social_schedule_recover_checkpoint(jsonb)
-          TO social_schedule_full_publisher_fixture;
         SAVEPOINT synthetic_claim_probe;
         DO $seed_claim$ BEGIN
           PERFORM public.calendar_source_gate_begin_probe(${quote(project)}::uuid);
         END $seed_claim$;
         UPDATE public.social_schedule_jobs SET state='queued',claim_id=null,worker_id=null,lease_expires_at=null
           WHERE id=${quote(id.job)}::uuid;
+        SET LOCAL ROLE social_schedule_full_publisher_fixture;
+        DO $read_worker_path$ DECLARE peeked jsonb; receipt jsonb; BEGIN
+          peeked=public.social_schedule_peek(jsonb_build_object('projectIds',jsonb_build_array(${quote(project)})));
+          receipt=public.social_schedule_receipt(jsonb_build_object('jobId',${quote(id.job)}));
+          IF receipt->>'jobState' IS DISTINCT FROM 'queued' THEN
+            RAISE EXCEPTION 'SYNTHETIC_RECEIPT_NOT_QUEUED: %',receipt;
+          END IF;
+          IF peeked IS NULL THEN RAISE EXCEPTION 'SYNTHETIC_PEEK_UNAVAILABLE'; END IF;
+        END $read_worker_path$;
+        RESET ROLE;
+        REVOKE EXECUTE ON FUNCTION public.calendar_source_gate_try_begin_probe(uuid)
+          FROM social_schedule_full_publisher_fixture;
         SET LOCAL ROLE social_schedule_full_publisher_fixture;
         DO $claim_missing_gate$ BEGIN
           PERFORM public.social_schedule_claim(jsonb_build_object(
@@ -364,6 +374,8 @@ try {
         RESET ROLE;
         GRANT EXECUTE ON FUNCTION public.calendar_source_gate_try_begin_probe(uuid)
           TO social_schedule_full_publisher_fixture;
+        REVOKE EXECUTE ON FUNCTION public.social_schedule_authorize_write(jsonb,jsonb)
+          FROM social_schedule_full_publisher_fixture;
         SET LOCAL ROLE social_schedule_full_publisher_fixture;
         DO $authorize_missing_grant$ BEGIN
           PERFORM public.social_schedule_authorize_write(

@@ -166,10 +166,11 @@ by filename or infer production completeness from this inventory.
 The local replay now passes 13/13 ordering tests and the whole selected SQL
 sequence. The 12-operation calendar ACL baseline matches the read-only
 production catalog snapshot. A separate synthetic queued-job branch now
-exercises the signed `claim`: the proposed role initially fails because it
-lacks EXECUTE on `calendar_source_gate_try_begin_probe`. The worker's
-`social_schedule_authorize_write` also lacks an EXECUTE grant for that role.
-After transaction-local grants, the same restricted role claims the job,
+exercises the signed `claim`: the proposed role fails when its EXECUTE grant
+on `calendar_source_gate_try_begin_probe` is temporarily removed. The worker's
+`social_schedule_authorize_write` likewise fails when its grant is removed.
+The candidate now grants both functions, plus `peek`, `receipt`, and checkpoint
+recovery. After restoring the transaction-local grants, the restricted role claims the job,
 authorizes the write, prepares the publication, begins a synthetic Facebook
 create, reauthorizes, and runs checkpoint
 recovery on the same claim. The job and publication become `uncertain` with
@@ -203,10 +204,8 @@ The test role now has project `SELECT` plus column-scoped `UPDATE(id)` for
 the `SELECT ... FOR UPDATE` lock used by the signed functions. The replay
 rejects an attempted project-name edit under that role. The key-column
 grant can still update an unreferenced project ID, so this remains a
-candidate fixture rather than a production role definition. The missing
-`calendar_source_gate_try_begin_probe` and `social_schedule_authorize_write`
-grants were supplied only inside the rolled-back probe; the role candidate
-itself still needs a reviewed, complete permission design.
+candidate fixture rather than a production role definition. The role
+candidate still needs a reviewed, complete permission design.
 
 This replay connects the SQL claim and recovery path inside one transaction,
 but does **not** execute the application worker, load media bytes, contact

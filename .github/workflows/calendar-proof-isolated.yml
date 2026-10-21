@@ -91,7 +91,7 @@ jobs:
           set -euo pipefail
           fixture_output=$(WEBSITE_BUILD_TEST_DATABASE_URL='postgresql://postgres:local-fixture@127.0.0.1:54389/omnira_website_test' \
             WEBSITE_BUILD_TEST_KEEP_DATABASE=1 node apps/web/scripts/test-website-build-db.mjs)
-          fixture_db=$(printf '%s\\n' "$fixture_output" | sed -n 's/^KEEP_DB=\\(website_test_[0-9]*\\)$/\\1/p' | tail -n 1)
+          fixture_db=$(printf '%s\n' "$fixture_output" | sed -n 's/^KEEP_DB=\(website_test_[0-9]*\)$/\1/p' | tail -n 1)
           if [[ ! "$fixture_db" =~ ^website_test_[0-9]+$ ]]; then
             echo 'Owned fixture name missing'
             exit 1

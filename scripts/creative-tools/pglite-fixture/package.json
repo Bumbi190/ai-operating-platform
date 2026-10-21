@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node --experimental-strip-types --test --test-concurrency=1 creative-db.test.mjs worker-proof-db.test.mjs worker-auth-integration.test.mjs enrollment-db.test.mjs enrollment-flow-db.test.mjs"
+    "test": "node --experimental-strip-types --test --test-concurrency=1 creative-db.test.mjs worker-proof-db.test.mjs worker-auth-integration.test.mjs enrollment-db.test.mjs enrollment-flow-db.test.mjs review-db.test.mjs"
   },
   "keywords": [],
   "author": "",

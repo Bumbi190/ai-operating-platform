@@ -41,7 +41,7 @@ jobs:
               docker exec omnira-website-build-test-20261014 psql -U postgres -v ON_ERROR_STOP=1 \
                 -c 'create role anon nologin' \
                 -c 'create role authenticated nologin' \
-                -c 'create role service_role nologin'
+                -c 'create role service_role nologin bypassrls'
               exit 0
             fi
             sleep 1

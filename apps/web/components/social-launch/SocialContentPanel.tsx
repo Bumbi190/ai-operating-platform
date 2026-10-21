@@ -7,6 +7,7 @@ import {SocialSchedulePanel} from './SocialSchedulePanel'
 import {FAMILY_SOCIAL_PROJECT_ID} from '@/lib/social-launch/scheduling/policy'
 import {SocialPublicationPanel} from './SocialPublicationPanel'
 import {FamilyMonthSourceReviewPanel} from './FamilyMonthSourceReviewPanel'
+import {familyNovemberSuggestions,type FamilyNovemberSuggestion} from '@/lib/social-launch/content/family-november-suggestions'
 import styles from './SocialContentPanel.module.css'
 const formats={text:'Text',image:'Bild',video:'Video',link:'Länk'}
 const statuses={proposal:'Förslag att granska',approved:'Innehållet godkänt',rejected:'Avvisat innehåll',needs_review:'Behöver granskas igen'}
@@ -17,6 +18,7 @@ function mediaUrl(projectId:string,id:string,sha:string){return '/api/social-con
 function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{projectId:string;projectName:string;onPlanRequested?:()=>void;planStateKey?:string}){
  const [model,setModel]=useState<SocialContentView|null>(null),[editor,setEditor]=useState<Editor|null>(null),[selectedId,setSelectedId]=useState<string|null>(null)
  const [dirty,setDirty]=useState(false),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState(''),[stale,setStale]=useState(false)
+ const [showManual,setShowManual]=useState(false)
  const [loaded,setLoaded]=useState<Record<string,boolean>>({})
  const responseSequence=useRef(0),writeInFlight=useRef(false),observedPlan=useRef(planStateKey)
  const live=useRef(true),controllers=useRef(new Set<AbortController>()),pending=useRef<{signature:string;body:Record<string,unknown>}|null>(null)
@@ -64,20 +66,66 @@ function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{project
   }catch(e){if(live.current&&!c.signal.aborted&&sequence===responseSequence.current)setError(e instanceof Error?e.message:'Ändringen kunde inte sparas. Ditt utkast finns kvar.')}
   finally{controllers.current.delete(c);if(sequence===responseSequence.current){writeInFlight.current=false;if(live.current)setBusy(false)}}
  }
+ const novemberSuggestions=model?familyNovemberSuggestions({
+  projectId,projectSlug:model.project.slug,projectName:model.project.name,
+  planApproved:model.planApproved,planRevisionId:model.currentPlanRevisionId,
+  plannedChannels:model.plannedChannels,
+ }):[]
+ function loadNovemberSuggestion(value:FamilyNovemberSuggestion){
+  if(!model||busy||loading||writeInFlight.current||!novemberSuggestions.some(s=>s.id===value.id))return
+  if(dirty&&!window.confirm('Ersätt dina osparade ändringar?'))return
+  // Prefill locally only; the existing Save action does the ONLY write.
+  setSelectedId(null)
+  setEditor({postId:crypto.randomUUID(),expectedRevisionId:null,
+    draft:{...value.draft,mediaIds:[]},localTime:''})
+  setDirty(true);setError('');setStale(false);pending.current=null
+ }
+ const isFamily=projectId===FAMILY_SOCIAL_PROJECT_ID
+ const pendingReviews=(model?.posts??[]).filter(p=>p.status==='proposal'||p.status==='needs_review')
+ const nextReview=pendingReviews[0]??null
+ const upcomingCount=(model?.posts??[]).filter(p=>p.revision.draft.scheduledAt&&
+   Date.parse(p.revision.draft.scheduledAt)>Date.now()&&p.status!=='rejected').length
+ const manualVisible=!isFamily||showManual
+ function openFamilyReview(){
+  if(!nextReview||busy||loading)return
+  if(dirty&&!window.confirm('Ers\u00e4tt dina osparade \u00e4ndringar?'))return
+  setSelectedId(nextReview.id);setEditor(null);setDirty(false)
+  setShowManual(true);setError('')
+ }
  const media=selected?.revision.media??[]
  const mediaMissing=!!selected&&['image','video'].includes(selected.revision.draft.format)&&media.length===0
  const reviewDisabled=busy||loading||dirty||stale||mediaMissing||selected?.status==='needs_review'||media.some(m=>!loaded[m.id+':'+m.sha256])
  const calendar=[...(model?.posts??[])].filter(p=>p.revision.draft.scheduledAt).sort((a,b)=>a.revision.draft.scheduledAt!.localeCompare(b.revision.draft.scheduledAt!))
  return <section className={styles.panel} aria-label={'Innehåll för '+projectName} aria-busy={busy||loading}>
-  <header className={styles.header}><div><span className={styles.eyebrow}>Förbered lanseringen</span><h2>Innehåll – {projectName}</h2><p>Samla utkast, återanvänd material och granska innehållet tillsammans med Atlas.</p></div>
-   <p className={styles.notice}>Börja med utkast och granskning. När rätt konto är anslutet kan du bekräfta ett enskilt Facebook- eller Instagram-inlägg nedan. Inga inlägg skickas från kalendern.</p>
+  <header className={styles.header}><div><span className={styles.eyebrow}>{isFamily?'Atlas · Innehåll':'Förbered lanseringen'}</span><h2>Innehåll – {projectName}</h2>{!isFamily&&<p>Samla utkast, återanvänd material och granska innehållet tillsammans med Atlas.</p>}</div>
+   {!isFamily&&<p className={styles.notice}>Börja med utkast och granskning. När rätt konto är anslutet kan du bekräfta ett enskilt Facebook- eller Instagram-inlägg nedan. Inga inlägg skickas från kalendern.</p>}
   </header>
-  {projectId===FAMILY_SOCIAL_PROJECT_ID&&<FamilyMonthSourceReviewPanel key={projectId} projectId={projectId}/>}
-  <div className={styles.actions}><button type="button" disabled={busy||loading||(!model?.planApproved||!model.plannedChannels.length)} onClick={()=>edit()}>Nytt utkast</button><button type="button" disabled={busy||loading} onClick={()=>{if(!dirty||window.confirm('Ersätt ditt osparade utkast med senaste sparade versionen?')){setEditor(null);setDirty(false);void load()}}}>Läs senaste innehållet</button></div>
+  {isFamily&&model&&<section className={styles.atlasFocus} aria-label="Atlas innehållsöversikt">
+   <div>
+    <strong>Styr innehållet med Atlas</strong>
+    <p>{pendingReviews.length} förslag att granska · {upcomingCount} kommande inlägg</p>
+    <small>Atlas kan förbereda förslag på din begäran. Publicering och större beslut behöver ditt godkännande.</small>
+   </div>
+   <div className={styles.actions}>
+    <a className={styles.atlasLink} href="/atlas">Öppna Atlas</a>
+    {nextReview&&<button type="button" disabled={busy||loading} onClick={openFamilyReview}>Granska nästa förslag</button>}
+    <button type="button" aria-expanded={showManual} onClick={()=>setShowManual(v=>!v)}>
+     {showManual?'Dölj manuella verktyg':'Visa manuella verktyg'}
+    </button>
+   </div>
+  </section>}
+  {projectId===FAMILY_SOCIAL_PROJECT_ID&&<FamilyMonthSourceReviewPanel key={projectId} projectId={projectId}/>}\n  {manualVisible&&<div className={styles.actions}><button type="button" disabled={busy||loading||(!model?.planApproved||!model.plannedChannels.length)} onClick={()=>edit()}>Nytt utkast</button><button type="button" disabled={busy||loading} onClick={()=>{if(!dirty||window.confirm('Ersätt ditt osparade utkast med senaste sparade versionen?')){setEditor(null);setDirty(false);void load()}}}>Läs senaste innehållet</button></div>}
+  {manualVisible&&novemberSuggestions.length>0&&<section className={styles.notice} aria-label="Novemberförslag för Familje-Stunden">
+   <strong>November med Nova och Pling – utkast att granska</strong>
+   <p>Förifyll text eller bildidé enligt den godkända kanalplanen. Ingen video, fil, tid eller publicering kopplas automatiskt.</p>
+   <div className={styles.actions}>{novemberSuggestions.map(s=><button
+    key={s.id} type="button" disabled={busy||loading} onClick={()=>loadNovemberSuggestion(s)}
+    >{s.label}</button>)}</div>
+  </section>}
   {error&&<p className={styles.error} role="alert">{error}</p>}
   {loading&&<p role="status">Läser projektets innehåll…</p>}
   {model&&!model.planApproved&&<div className={styles.notice}><p>Godkänn projektets kanalplan innan du sparar innehållsförslag. Du behöver inte ansluta några konton för att förbereda ett utkast.</p>{onPlanRequested?<button type="button" onClick={onPlanRequested}>Gå till kanalplanen</button>:<a href={'/projects/'+model.project.slug+'/social'}>Gå till kanalplanen</a>}</div>}
-  {model&&<div className={styles.layout}>
+  {model&&manualVisible&&<div className={styles.layout}>
    <aside className={styles.list} aria-label="Sparade innehållsförslag"><h3>Utkast och granskning</h3>{model.posts.length===0?<p>Inga sparade utkast ännu. Planera innehållet med Atlas eller börja med ett nytt utkast.</p>:model.posts.map(p=><button type="button" key={p.id} disabled={busy||loading} className={p.id===selectedId?styles.active:styles.item} onClick={()=>{if(dirty&&!window.confirm('Ersätt dina osparade ändringar?'))return;setSelectedId(p.id);setEditor(null);setDirty(false);setError('')}}><strong>{p.revision.draft.title}</strong><span>{SOCIAL_LAUNCH_CHANNELS.find(c=>c.id===p.revision.draft.channel)?.label} · v{p.revision.sequence}</span><span>{statuses[p.status]}</span></button>)}</aside>
    <div className={styles.work}>
     {editor&&<form className={styles.editor} onSubmit={e=>{e.preventDefault();void send('propose')}}><h3>{editor.expectedRevisionId?'Redigera innehållet':'Nytt innehållsförslag'}</h3><fieldset disabled={busy||loading}>
@@ -103,8 +151,8 @@ function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{project
     </article>}
    </div>
   </div>}
-  {model&&<section className={styles.calendar} aria-label="Planerad innehållskalender"><h3>Kalender</h3><p>Önskade tider i Stockholm. Utkast behöver ett separat publiceringsgodkännande.</p>{calendar.length===0?<p>Inga daterade förberedelser ännu.</p>:<ol>{calendar.map(p=><li key={p.id}><time dateTime={p.revision.draft.scheduledAt!}>{stockholmLocal(p.revision.draft.scheduledAt!).replace('T',' ')}</time><button type="button" disabled={busy||loading} onClick={()=>{if(dirty&&!window.confirm('Ersätt dina osparade ändringar?'))return;setSelectedId(p.id);setEditor(null);setDirty(false)}}>{p.revision.draft.title}</button><span>{statuses[p.status]} · Väntar på aktivering</span></li>)}</ol>}</section>}
-  {model&&projectId===FAMILY_SOCIAL_PROJECT_ID&&<SocialSchedulePanel projectId={projectId} posts={model.posts} disabled={busy||loading||dirty||stale}/>}
+  {model&&manualVisible&&<section className={styles.calendar} aria-label="Planerad innehållskalender"><h3>Kalender</h3><p>Önskade tider i Stockholm. Utkast behöver ett separat publiceringsgodkännande.</p>{calendar.length===0?<p>Inga daterade förberedelser ännu.</p>:<ol>{calendar.map(p=><li key={p.id}><time dateTime={p.revision.draft.scheduledAt!}>{stockholmLocal(p.revision.draft.scheduledAt!).replace('T',' ')}</time><button type="button" disabled={busy||loading} onClick={()=>{if(dirty&&!window.confirm('Ersätt dina osparade ändringar?'))return;setSelectedId(p.id);setEditor(null);setDirty(false)}}>{p.revision.draft.title}</button><span>{statuses[p.status]} · Väntar på aktivering</span></li>)}</ol>}</section>}
+  {model&&manualVisible&&projectId===FAMILY_SOCIAL_PROJECT_ID&&<SocialSchedulePanel projectId={projectId} posts={model.posts} disabled={busy||loading||dirty||stale}/>}
  </section>
 }
 export function SocialContentPanel(props:{projectId:string;projectName:string;onPlanRequested?:()=>void;planStateKey?:string}){return <Workspace key={props.projectId} {...props}/>}

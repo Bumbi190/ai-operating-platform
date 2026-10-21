@@ -48,3 +48,20 @@ grant execute on function public.social_schedule_claim(jsonb),
  public.social_content_active(uuid),
  public.social_content_requirements(uuid)
  to social_schedule_full_publisher_fixture;
+
+-- The owned worker fixture predates the news-review migration. A fully
+-- migrated isolated branch must have this dependency set; the transaction
+-- probe there asserts its presence before evaluating this candidate.
+do $news_grants$
+begin
+ if to_regclass('public.media_news_review_evidence') is not null then
+  grant select on public.media_news_review_evidence,
+   public.asset_provenance, public.media_scripts, public.media_news_items,
+   public.cost_events to social_schedule_full_publisher_fixture;
+  grant execute on function public.media_news_review_requirements(uuid),
+   public.media_news_snapshot_requirements(uuid,jsonb),
+   public.media_news_canonical_json(jsonb),
+   public.media_news_review_caption(public.media_scripts)
+   to social_schedule_full_publisher_fixture;
+ end if;
+end $news_grants$;

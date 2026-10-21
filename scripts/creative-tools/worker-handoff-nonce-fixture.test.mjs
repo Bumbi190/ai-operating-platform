@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,generateKeyPairSync,sign} from 'node:crypto';
+import {spawn,spawnSync} from 'node:child_process';
 import {mkdtempSync,writeFileSync,readdirSync,readFileSync,rmSync} from 'node:fs';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
@@ -136,3 +137,53 @@ test('expired proof cannot create nonce and account authorization stays false',(
   /review_proof_expired_or_invalid_window/);
  assert.equal(readdirSync(f.root).length,1);
 }));
+
+const syntheticNonceChild = [
+  'import {recordSyntheticReviewedNonce} from '+JSON.stringify(new URL('./worker-handoff-nonce-fixture.mjs',import.meta.url).href)+';',
+  'const input=JSON.parse(process.env.CREATIVE_NONCE_TEST_INPUT);',
+  'input.now=new Date(input.now);',
+  'try{const r=recordSyntheticReviewedNonce(input); console.log(r.status);}',
+  'catch(e){console.error(e.message);process.exitCode=2;}',
+].join('\n');
+function childEnv(f){
+ return {
+  ...process.env,
+  CREATIVE_NONCE_TEST_INPUT:JSON.stringify({...f.defaults,now:f.now.toISOString()}),
+ };
+}
+function runNonceChild(f){
+ return spawnSync(process.execPath,['--input-type=module','-e',syntheticNonceChild],{
+  env:childEnv(f),encoding:'utf8',timeout:15000,maxBuffer:20000,
+ });
+}
+function runAsyncNonceChild(f){
+ return new Promise((resolve,reject)=>{
+  const p=spawn(process.execPath,['--input-type=module','-e',syntheticNonceChild],{
+   env:childEnv(f),shell:false,windowsHide:true,
+  });
+  let out='',err='';
+  p.stdout.on('data',d=>{out+=d.toString()});
+  p.stderr.on('data',d=>{err+=d.toString()});
+  p.on('error',reject);
+  p.on('close',code=>resolve({code,out,err}));
+ });
+}
+test('nonce use survives a real Node process exit/restart without becoming an approval',()=>withFixture(f=>{
+ const first=runNonceChild(f);
+ assert.equal(first.status,0,first.stderr);
+ assert.match(first.stdout,/nonce_recorded_for_test_only/);
+ const second=runNonceChild(f);
+ assert.equal(second.status,2);
+ assert.match(second.stderr,/synthetic_review_nonce_replay_rejected/);
+ assert.equal(readdirSync(f.root).length,2);
+}));
+test('two separate Node processes contend for same nonce: exactly one succeeds',async()=>{
+ const f=fixture();
+ try{
+  const results=await Promise.all([runAsyncNonceChild(f),runAsyncNonceChild(f)]);
+  assert.deepEqual(results.map(r=>r.code).sort(),[0,2],results.map(r=>r.err).join('\n'));
+  const loser=results.find(r=>r.code===2);
+  assert.match(loser.err,/synthetic_review_nonce_replay_rejected/);
+  assert.equal(readdirSync(f.root).length,2);
+ } finally {rmSync(f.root,{recursive:true,force:true})}
+});

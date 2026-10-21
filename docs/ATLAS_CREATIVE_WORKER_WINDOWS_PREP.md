@@ -432,6 +432,43 @@ copy-only elevated bootstrap; and complete Windows file, signer, ACL,
 network/process isolation audits. No API or script now grants installation
 permission, and `omnira-media-worker` remains disabled.
 
+## Append-only reviewer lifecycle and cross-process replay trial
+
+A new pure, read-only `worker-handoff-reviewer-lifecycle.mjs` models an
+**externally anchored revision chain** over an already-pinned reviewer
+registry. Only `suspend` and `revoke` events are allowed. Each event has
+a strict sequence number, previous SHA-256, actor ID distinct from reviewer
+ID, timestamp and domain-separated event hash. Revocation is terminal:
+no self-activation, replay, duplicate transition or key-reenrollment is
+available through this module.
+
+The inspection requires all three externally pinned values: base registry
+SHA-256, latest journal-head SHA-256, and minimum expected event sequence.
+It refuses missing, reordered, altered or deleted journal entries, event
+clock rollback, unknown reviewers, and a stale active snapshot after the
+pinned head has moved to a suspension/revocation. A valid signed review by
+a now-revoked reviewer is rejected **before** any inert nonce test receipt
+can be considered. The journal-builder is a *test-data constructor*,
+not an enrollment or approval endpoint; a hash-chain is tamper-evident
+only when the head was genuinely anchored outside the writable system.
+
+**15 lifecycle tests** plus **two new real cross-process replay tests**
+now verify the boundaries. Two separate Node processes compete for one
+synthetic receipt under a marked OS TEMP fixture: exactly one creates the
+file, while the other receives replay rejection; a process restart does
+not reset the nonce. This is still ordinary user-controlled temporary
+storage, with no independent durability, operator approval or protected
+Windows ACLs. The test fixture is removed after the checks.
+
+Together with the previous 84 handoff tests, GitHub CI requires
+**101/101 passing with zero skips**. The source code still has no
+production-granting reviewer enrollment, no administrator-controlled
+approval store, no executable handoff command, no network isolation
+attestation and no worker activation. Before any real deployment, a
+separate trusted authority must authenticate reviewer identities,
+publish and protect monotonically advancing current heads, verify
+operator actions, and use a durable ledger with revocation/fencing.
+
 ## Whole-archive integrity update
 
 The staging planner additionally checks SHA-256 of the original PhotoCraft and

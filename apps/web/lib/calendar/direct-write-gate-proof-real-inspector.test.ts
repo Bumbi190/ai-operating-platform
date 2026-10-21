@@ -37,6 +37,7 @@ beforeAll(()=>{
  f.sql(read('direct-write-gate-probe.sql'));
  f.sql(read('direct-write-gate-proof-trigger-probe.sql'));
  f.sql(read('direct-write-gate-proof-inspect-hardened-candidate.sql'));
+ f.sql(read('direct-write-gate-proof-permission-candidate.sql'));
 },60000);
 beforeEach(()=>{
  // Owner-only seeding in the uniquely named disposable database.
@@ -60,6 +61,13 @@ beforeEach(()=>{
 afterAll(()=>f?.close(),60000);
 
 describe('real inspector candidate validation with signed source gate',()=>{
+ it('denies direct service-role proof INSERT while the inspector retains its writer path',()=>{
+  expect(()=>f.sql('set local role service_role; insert into public.social_publication_reconciliation_proofs default values'))
+   .toThrow(/permission denied/i);
+  expect(count()).toBe('0');expect(source()).toBe('1');
+  expect(inspect([candidate()]).proofs).toHaveLength(1);
+  expect(source()).toBe('2');
+ });
  it('documents that a shaped but unverified provider candidate is accepted',()=>{
   // No provider reader is called by this SQL fixture. This input is invented by
   // the caller and demonstrates the boundary the database cannot authenticate.

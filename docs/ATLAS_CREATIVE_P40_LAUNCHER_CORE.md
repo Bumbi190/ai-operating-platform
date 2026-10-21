@@ -81,3 +81,20 @@ All nine rows remain cleanup-unverified and preserved. No current run adopted or
 The Task5 profile-unknown follow-up bookkeeping failure at build44e98ebfcdd049ec824a4ca9acb6695c also remains historical failed evidence; that case left no residual after its separate scoped deletion. It is not one of these nine pairs.
 
 Implementation is ready for independent whole-branch review. No merge, deployment, protected installation, account activation, real editor, live queue or publishing action is authorized by this record.
+
+## Final fix follow-up qualification
+
+M1 is resolved by preserving exactly stdout-read, stderr-read, stdout-overflow, stderr-overflow, local-NTFS-required and unsupported-ABI at serialization; arbitrary and dynamic native labels still redact. M2 remains nonblocking native literal/ownership auditability debt for a future focused readability-only change.
+
+Source identity: FIX_BASE 552c6f256c52f2c484ae752eb4bb65dae8dccc35 plus actual source hashes below (no future commit self-hash):
+{
+    "scripts\\creative-tools\\launcher\\ObservationWriter.cs":  "b1635b66d792a948b11a4633ee5aa627cc48242fc4676af5e8cc93cdf07c09be",
+    "scripts\\creative-tools\\launcher\\tests\\TestProgram.cs":  "0dba42954330ab2e530ea61391071c21d876decfeb7b17c73ba7b606ccca1bee"
+}
+
+Fresh final-source All passed all eight independently owned45s suites, exit0, no skips/timeouts, complete capture. Exact command: & .\scripts\creative-tools\launcher\tests\run.ps1 -Suite All. New evidence: .superpowers/sdd/creative-launcher-core/final-fix-all.log and final-fix-evidence/all-<Suite>.
+
+Fresh separate production --synthetic-self-test: exit0, stdout1976 bytes, stderr0, one bounded JSON, complete cleanup; all nine authorities false. UTC 2026-10-21T21:11:57.5469882Z; host SHA256 3498a6324c5e9c7219aa2cbcac000f0a90e0c12341e2fcef66ae14b51ce249d7. Exact host command, full source manifest, suite metadata, production output and environment are retained in final-fix-evidence/qualification.json and production.*. Original Task6 All/production/304 observations remain prior-source observations, intact and not relabeled. Existing .mjs unchanged;304 not rerun.
+
+Actual full45s watchdog expiry remains untested: material finite-proof limitation. All nine original residual pairs and their original unverified outcomes remain preserved; no adoption/deletion. No native policy, pump, input, public selector, authority or product behavior changed.
+Evidence tooling disclosure: first reused production wrapper missed embedded task-6-evidence path. It overwrote only original production-build.json before CreateNew rejected existing stdout; no host ran. Aborted new build retained as final-fix-evidence/prelaunch-aborted-build.json. Reversing the new BuildRoot and two changed source hashes recovered exact original1907 bytes, SHA256 ab35d53201e8a39e1a914084ed1d055110ee95bdfa2c3636ca04e2571e5c0ae2, matching unchanged preexisting task-6-evidence-hashes.txt. Original stdout/metadata/environment were untouched. Corrected unique output paths then captured one fresh standalone production run. New environment.initial.json retains unsupported compiler /version probe; environment.json labels FileVersionInfo accurately.

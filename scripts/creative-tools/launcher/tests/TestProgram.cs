@@ -78,7 +78,19 @@ namespace Omnira.Creative.Synthetic {
     Assert.True(System.Text.Encoding.UTF8.GetByteCount(json)<=32768,"bounded report");Assert.True(!json.Contains("SECRET")&&!json.Contains("xxxx"),"redacted unknown strings");CheckAuthorities(json);
     Assert.True(json.Contains("\"State\":\"Unknown\"")&&json.Contains("\"RefusalCode\":\"unrecognized-refusal\""),"strict enums");
    }
-   Console.WriteLine("PASS ReportIsBoundedAndRedacted maxUtf8Bytes=32768");
+   foreach(string code in new[]{"stdout-read","stderr-read","stdout-overflow","stderr-overflow","local-NTFS-required","unsupported-ABI"}){
+    using(var output=new System.IO.StringWriter()){
+     ObservationWriter.Write(new RunObservation{RefusalCode=code},output);
+     Assert.True(output.ToString().Contains("\"RefusalCode\":\""+code+"\""),"preserved finite refusal "+code);
+    }
+   }
+   foreach(string code in new[]{"arbitrary-refusal","native-open-failed-0xc0000022"}){
+    using(var output=new System.IO.StringWriter()){
+     ObservationWriter.Write(new RunObservation{RefusalCode=code},output);
+     Assert.True(output.ToString().Contains("\"RefusalCode\":\"unrecognized-refusal\"")&&!output.ToString().Contains(code),"redacted dynamic refusal");
+    }
+   }
+   Console.WriteLine("PASS ReportIsBoundedAndRedacted maxUtf8Bytes=32768 finiteSixPreserved=true dynamicRedacted=true");
   }
   static void NoProductImports(){
    int count=0;foreach(string file in System.IO.Directory.GetFiles(System.IO.Path.Combine(BuildContext.RepositoryRoot,"scripts","creative-tools"),"*.mjs")){

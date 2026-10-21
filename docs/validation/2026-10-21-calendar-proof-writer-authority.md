@@ -375,9 +375,22 @@ the exact error came from the branch's read-only `postgres_logs` query.
 The new branch was deleted immediately; a subsequent branch list confirmed
 it absent. The quoted rate was 0.01344 USD/hour; actual billing was not read.
 
-The full-schema role test therefore needs a reviewable baseline/replay
-repair or a disposable clone of the already migrated schema before grant
-changes can be evaluated. Do not mark the May table-creation script as applied
+This live branch finding is consistent with the earlier local replay
+investigation in `docs/atlas-analytics-p1-replay-recovery-20261013.md`.
+That investigation bootstrapped the repository's base schema and Storage
+prerequisites, then used a hash-pinned dependency order for the same-day
+`20260520_media_tables.sql` and `20260520_media_images.sql`. It passed the
+baseline and seven canonical migration files before stopping at
+`apps/web/supabase/migrations/20260602_atlas_bi_foundation.sql`:
+`media_insights` was missing because its creation is in the separate
+root `supabase/migrations/20260601_media_insights.sql`. The local runner
+explicitly did not include that root history. These are two different
+replay paths, and neither establishes a full schema or a fix for every later
+dependency. Restoring `media_scripts` alone would therefore be insufficient.
+
+The full-schema role test needs a reviewable baseline/replay repair that
+accounts for both historical migration trees, or a disposable clone of the
+already migrated schema, before grant changes can be evaluated. Do not mark the May table-creation script as applied
 or reset production migration history merely to make branch creation green;
 audit the baseline dependencies and subsequent migrations in isolation first.
 No production table, migration history, credential, dispatch flag or queued job

@@ -68,7 +68,7 @@ jobs:
           if (!fs.existsSync(process.env.REPORT)) throw new Error('Inspector report missing')
           const report = JSON.parse(fs.readFileSync(process.env.REPORT, 'utf8'))
           for (const [file, floor] of [
-            ['direct-write-gate-proof-real-inspector.test.ts', 22],
+            ['direct-write-gate-proof-real-inspector.test.ts', 23],
             ['direct-write-gate-worker-recovery.test.ts', 12],
           ]) {
             const result = (report.testResults ?? []).find(r => path.basename(r.name) === file)

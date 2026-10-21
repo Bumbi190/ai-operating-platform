@@ -105,7 +105,7 @@ describe('real inspector candidate validation with signed source gate',()=>{
    permalink:'https://www.facebook.com/12345/posts/99999'};
   const result=JSON.parse(f.sql('set local role service_role;'+
    'select public.calendar_source_gate_begin_probe('+q(PROJECT_A)+');'+
-   'select public.social_publication_step('+j({userId:USER_A,allowedProjectIds:[PROJECT_A]})+','+j(input)+');'));
+   'select public.social_publication_step('+j({userId:USER_A,allowedProjectIds:[PROJECT_A]})+','+j(input)+');').split('\n').pop()!);
   expect(result.changed).toBe(true);
   expect(result.record.state).toBe('published');
   expect(result.record.providerId).toBe('12345_99999');

@@ -9,15 +9,92 @@ param([switch]$Apply)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$root = Join-Path $env:ProgramData 'OmniraCreativeWorker'
+$trustedControl = Join-Path $root 'control'
+$trustedImports = Join-Path $root 'imports'
+# A privileged shell MUST NEVER execute the writable development worktree
+# or unpack the writable user's original archives directly. This gate runs
+# before any lockfile or archive source is read.
+if ($Apply) {
+  $realScriptDir=[IO.Path]::GetFullPath($PSScriptRoot).TrimEnd('\')
+  $allowedScriptDir=[IO.Path]::GetFullPath($trustedControl).TrimEnd('\')
+  if (-not [string]::Equals($realScriptDir,$allowedScriptDir,[StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Refusing elevated staging from a user-writable source. Protected control handoff required.'
+  }
+}
+function Assert-ProtectedCreativeSource([string]$Path) {
+  $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+  if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+    throw 'Privileged creative source contains a reparse point.'
+  }
+  $acl = Get-Acl -LiteralPath $Path -ErrorAction Stop
+  $owner = $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
+  $trusted = @('S-1-5-18','S-1-5-32-544')  # SYSTEM / BUILTIN Administrators
+  if ($owner -notin $trusted -or -not $acl.AreAccessRulesProtected) {
+    throw 'Privileged creative source is not owned by SYSTEM/Administrators with protected ACL.'
+  }
+  $rules = @($acl.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier]))
+  $allow = @($rules | Where-Object { $_.AccessControlType -eq 'Allow' })
+  if ($allow.Count -eq 0 -or @($allow | Where-Object {
+    $_.IdentityReference.Value -notin $trusted
+  }).Count -ne 0) {
+    throw 'Privileged creative source includes untrusted Allow ACE.'
+  }
+}
+if ($Apply) {
+  # This trust proof MUST run before loading ANY script/JSON from the protected
+  # control folder or any ZIP/binary from the protected import tree.
+  foreach ($required in @(
+    $trustedControl,$trustedImports,
+    (Join-Path $trustedControl 'worker-stage-binaries.ps1'),
+    (Join-Path $trustedControl 'worker-verify.ps1'),
+    (Join-Path $trustedControl 'worker-acl-policy.ps1'),
+    (Join-Path $trustedControl 'worker-archive-audit.ps1'),
+    (Join-Path $trustedControl 'worker-archive-policy.ps1'),
+    (Join-Path $trustedControl 'artcraft-lock.json')
+  )) { Assert-ProtectedCreativeSource $required }
+}
 $repoRoot = Join-Path $PSScriptRoot 'artcraft-lock.json'
 $lock = Get-Content -LiteralPath $repoRoot -Raw | ConvertFrom-Json
-$artcraftRoot = Join-Path $env:USERPROFILE 'Projects\Omnira\External\ArtCraft'
-$root = Join-Path $env:ProgramData 'OmniraCreativeWorker'
+if ($Apply) {
+  foreach ($name in @('photocraft','filmcraft')) {
+    $e = $lock.$name
+    $release = "$name-$($e.version)-windows-x64-portable"
+    if ($e.version -notmatch '^\d+\.\d+\.\d+$' -or
+        $e.binaryRelativePath -cne "$name/portable/$release/$name-cli.exe" -or
+        $e.archiveRelativePath -cne "$name/$release.zip" -or
+        $e.sha256 -cnotmatch '^[0-9a-f]{64}$' -or
+        $e.archiveSha256 -cnotmatch '^[0-9a-f]{64}$') {
+      throw 'Unexpected program lock path or unpinned digest.'
+    }
+    $part = Join-Path $trustedImports $name
+    $portable = Join-Path $part 'portable'
+    $releaseDir = Join-Path $portable $release
+    foreach ($required in @(
+      $part,$portable,$releaseDir,
+      (Join-Path $part "$release.zip"),
+      (Join-Path $releaseDir "$name-cli.exe"),
+      (Join-Path $releaseDir "$name.exe")
+    )) { Assert-ProtectedCreativeSource $required }
+  }
+}
+$artcraftRoot = if ($Apply) { $trustedImports } else { Join-Path $env:USERPROFILE 'Projects\Omnira\External\ArtCraft' }
 $binRoot = Join-Path $root 'bin'
 $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
 $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 $account = Get-LocalUser -Name 'omnira-media-worker' -ErrorAction SilentlyContinue
 
+function Inspect-Target([string]$Path) {
+  try {
+    $found = [bool](Test-Path -LiteralPath $Path -ErrorAction Stop)
+    return [pscustomobject]@{ inspected = $true; exists = $found; status = $(if ($found) { 'present' } else { 'absent' }) }
+  } catch [System.UnauthorizedAccessException] {
+    return [pscustomobject]@{ inspected = $false; exists = $null; status = 'access_denied' }
+  } catch {
+    return [pscustomobject]@{ inspected = $false; exists = $null; status = 'unreadable' }
+  }
+}
+$rootCheck = Inspect-Target $root
 $results = @()
 foreach ($name in @('photocraft','filmcraft')) {
   $entry = $lock.$name
@@ -29,14 +106,7 @@ foreach ($name in @('photocraft','filmcraft')) {
   $archiveMatches = $archiveExists -and $archiveDigest -eq ([string]$entry.archiveSha256).ToLowerInvariant()
   $relativeDir = Split-Path ($entry.binaryRelativePath -replace '/', '\') -Parent
   $dest = Join-Path $binRoot $relativeDir
-  $targetExists = $null
-  $targetVisibility = 'unreadable'
-  try {
-    $targetExists = [bool](Test-Path -LiteralPath $dest -ErrorAction Stop)
-    $targetVisibility = if ($targetExists) { 'present' } else { 'absent' }
-  } catch {
-    $targetVisibility = 'access_denied'
-  }
+  $targetCheck = Inspect-Target $dest
   $present = Test-Path -LiteralPath $binary -PathType Leaf
   $digest = if ($present) { (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash.ToLowerInvariant() } else { $null }
   $expected = [string]$entry.sha256
@@ -51,8 +121,8 @@ foreach ($name in @('photocraft','filmcraft')) {
     archiveFile = $archive
     sourceDir = $source
     targetDir = $dest
-    targetExists = $targetExists
-    targetVisibility = $targetVisibility
+    targetExists = $targetCheck.exists
+    targetInspection = $(if ($targetCheck.inspected) { 'verified' } else { $targetCheck.status })
   }
 }
 if (-not $Apply) {
@@ -62,7 +132,8 @@ if (-not $Apply) {
     elevated = [bool]$isAdmin
     workerAccountExists = ($null -ne $account)
     workerAccountDisabled = ($null -ne $account -and -not $account.Enabled)
-    targetRootExists = (Test-Path -LiteralPath $root)
+    targetRootExists = $rootCheck.exists
+    targetRootInspection = $(if ($rootCheck.inspected) { 'verified' } else { $rootCheck.status })
     programs = $results
     productionReady = $false
   } | ConvertTo-Json -Depth 5
@@ -70,15 +141,47 @@ if (-not $Apply) {
 }
 if (-not $isAdmin) { throw 'Requires elevated PowerShell; no changes applied.' }
 if ($null -eq $account -or $account.Enabled) { throw 'Worker account must exist and remain DISABLED.' }
-if (-not (Test-Path -LiteralPath $binRoot -PathType Container)) {
-  throw 'Provision worker directory and ACLs before staging binaries.'
+# Re-read the actual Windows ACLs from the elevated session. The operator's
+# earlier screenshot, account name and staging plan are not adequate proof.
+$verification = & (Join-Path $PSScriptRoot 'worker-verify.ps1') | ConvertFrom-Json
+if (-not $verification.accountExists -or -not $verification.accountDisabled -or
+    -not $verification.groupCheckAvailable -or -not $verification.accountNotAdministrator -or
+    -not $verification.restrictedAclsVerified) {
+  throw 'Independent Windows ACL audit did not pass. Staging remains prohibited.'
 }
-if (@($results | Where-Object { -not $_.sourceHashMatchesLock -or -not $_.archiveHashMatchesLock -or $_.targetExists -ne $false }).Count -gt 0) {
+# The read-only, exact-nine-file ZIP/Authenticode audit must also pass IN THIS
+# elevated session before any program directory is created.
+$archiveAudit = & (Join-Path $PSScriptRoot 'worker-archive-audit.ps1') -SourceRoot $trustedImports | ConvertFrom-Json
+if (-not $archiveAudit.allVerified -or @($archiveAudit.programs).Count -ne 2 -or
+    @($archiveAudit.programs | Where-Object { -not $_.programReadyForStaging }).Count -ne 0) {
+  throw 'Pinned release content/signature verification failed. Staging prohibited.'
+}
+$binCheck = Inspect-Target $binRoot
+if (-not $rootCheck.inspected -or -not $rootCheck.exists -or
+    -not $binCheck.inspected -or -not $binCheck.exists) {
+  throw 'Worker root/bin must be verifiably present; refusing staging on unknown access.'
+}
+if (@($results | Where-Object { -not $_.sourceHashMatchesLock -or -not $_.archiveHashMatchesLock -or $_.targetInspection -ne 'verified' -or $null -eq $_.targetExists -or $_.targetExists }).Count -gt 0) {
   throw 'Source hash mismatch or existing targets: refusing copy.'
+}
+# Preflight BOTH destinations before touching EITHER. The provisioned bin root
+# is RX for the worker; program subfolders must not exist or be reparse points.
+foreach ($fixedPath in @($root,$binRoot)) {
+  $node = Get-Item -LiteralPath $fixedPath -Force -ErrorAction Stop
+  if (-not $node.PSIsContainer -or ($node.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw 'Worker root or bin has an unexpected file type or reparse point.'
+  }
+}
+foreach ($program in $results) {
+  $programRoot = Join-Path $binRoot $program.program
+  $check = Inspect-Target $programRoot
+  if (-not $check.inspected -or $check.exists) {
+    throw 'Staging program parent exists or cannot be inspected; refusing all copies.'
+  }
 }
 foreach ($program in $results) {
   $targetParent = Split-Path $program.targetDir -Parent
-  New-Item -ItemType Directory -Path $targetParent -Force -ErrorAction Stop | Out-Null
+  New-Item -ItemType Directory -Path $targetParent -ErrorAction Stop | Out-Null
   # Extract the verified release archive, not potentially modified unpacked files.
   Expand-Archive -LiteralPath $program.archiveFile -DestinationPath $targetParent -ErrorAction Stop
   $copiedBinary = Join-Path $program.targetDir (Split-Path ($lock.($program.program).binaryRelativePath) -Leaf)
@@ -89,11 +192,25 @@ foreach ($program in $results) {
   if ($check -ne ([string]$lock.($program.program).sha256).ToLowerInvariant()) {
     throw "Copied binary hash mismatch for $($program.program). Account remains disabled."
   }
+  foreach ($executable in @($copiedBinary, (Join-Path $program.targetDir "$($program.program).exe"))) {
+    $signature = Get-AuthenticodeSignature -LiteralPath $executable -ErrorAction Stop
+    if ($signature.Status -ne 'Valid' -or $null -eq $signature.SignerCertificate -or
+        $signature.SignerCertificate.Thumbprint -cne '54A063654E51CD00D5620C36616F9A6AA30EDD15') {
+      throw 'Staged executable signature/signer mismatch. Account remains disabled.'
+    }
+  }
+  # If the original user-writable archive changed during extraction, stop.
+  $archiveRecheck=(Get-FileHash -LiteralPath $program.archiveFile -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
+  if ($archiveRecheck -cne ([string]$lock.($program.program).archiveSha256).ToLowerInvariant()) {
+    throw 'Source archive changed during staging. Account remains disabled.'
+  }
 }
+$workerFinal=Get-LocalUser -Name 'omnira-media-worker' -ErrorAction Stop
+if ($workerFinal.Enabled) { throw 'Worker unexpectedly enabled. STOP.' }
 [pscustomobject]@{
   mode = 'staged-binaries'
   changesApplied = $true
-  workerAccountStillDisabled = $true
+  workerAccountStillDisabled = (-not $workerFinal.Enabled)
   programs = @($results | ForEach-Object { $_.program })
   networkEgressVerified = $false
   productionReady = $false

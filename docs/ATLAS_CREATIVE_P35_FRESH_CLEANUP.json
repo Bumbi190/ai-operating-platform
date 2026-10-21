@@ -1,0 +1,17 @@
+﻿{
+    "ObservedAtUtc":  "2026-10-21T16:00:30.8959165Z",
+    "ProfileName":  "omnira.p35.breakaway.d771a4d081ae4a7eba6480af30cca20c",
+    "ProfileSid":  "S-1-15-2-767561053-440714257-2523607433-2554239378-2900975439-3277714561-2191109420",
+    "FreshPackageAbsent":  true,
+    "FreshMappingAbsent":  true,
+    "ObservedProcessIds":  [
+                               49904,
+                               56476,
+                               45176,
+                               56640,
+                               25024,
+                               57452
+                           ],
+    "ObservedProcessIdsAbsent":  true,
+    "Interpretation":  "Fresh PID absence corroborates the held-handle shutdown result; PID checks alone are not a process identity boundary."
+}

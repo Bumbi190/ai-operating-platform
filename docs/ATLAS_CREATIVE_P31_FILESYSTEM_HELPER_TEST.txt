@@ -1,0 +1,73 @@
+using System;
+using System.IO;
+using System.Text;
+using System.Diagnostics;
+public static class ReviewedP31HelperCheck {
+ static void Assert(bool ok,string message){if(!ok)throw new InvalidOperationException(message);}
+ static void RequireLocalDirectory(string path){
+  string full=Path.GetFullPath(path);
+  Assert(full.Length>=3&&char.IsLetter(full[0])&&full[1]==':'&&full[2]=='\\'&&!full.StartsWith(@"\\")&&full.IndexOf(':',2)<0,"local drive path required");
+  Assert(new DriveInfo(Path.GetPathRoot(full)).DriveType==DriveType.Fixed,"fixed local drive required");
+  DirectoryInfo current=new DirectoryInfo(full);
+  while(current!=null){Assert(current.Exists&&(current.Attributes&FileAttributes.ReparsePoint)==0,"directory absent or reparse point");current=current.Parent;}
+ }
+ static void RequireLocalFile(string path){
+  RequireLocalDirectory(Path.GetDirectoryName(Path.GetFullPath(path)));
+  FileAttributes a=File.GetAttributes(path);
+  Assert((a&(FileAttributes.Directory|FileAttributes.ReparsePoint))==0,"regular local file required");
+ }
+ static bool Absent(string path){
+  RequireLocalDirectory(Path.GetDirectoryName(path));
+  string name=Path.GetFileName(path);
+  Assert(name.Length>0&&name.IndexOfAny(new char[]{'*','?'})<0,"exact filename required");
+  return Directory.GetFileSystemEntries(Path.GetDirectoryName(path),name,SearchOption.TopDirectoryOnly).Length==0;
+ }
+ static void RequireAbsent(string path){Assert(Absent(path),"synthetic output already exists");}
+ static bool EmptyRegular(string path){
+  if(Absent(path))return false;RequireLocalFile(path);
+  using(FileStream stream=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read)){return stream.Length==0;}
+ }
+ static string LocalFileUri(string path){
+  RequireLocalFile(path);Uri uri=new Uri(Path.GetFullPath(path));
+  Assert(uri.IsFile&&!uri.IsUnc&&uri.Host.Length==0,"hostless local file URL required");return uri.AbsoluteUri;
+ }
+ static void CreateCanary(string path,byte[] value){
+  RequireAbsent(path);using(FileStream stream=new FileStream(path,FileMode.CreateNew,FileAccess.Write,FileShare.None)){stream.Write(value,0,value.Length);}
+ }
+ static bool Matches(string path,byte[] expected){
+  if(Absent(path))return false;RequireLocalFile(path);
+  using(FileStream stream=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.Read)){
+   if(stream.Length!=expected.Length||stream.Length>256)return false;
+   for(int i=0;i<expected.Length;i++)if(stream.ReadByte()!=expected[i])return false;return stream.ReadByte()==-1;
+  }
+ }
+
+ public static string Run(){
+  string root=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Temp","omnira-p31-helpercheck-"+Guid.NewGuid().ToString("N"));
+  string[] names=new string[]{"source with space.txt","output with space.txt","empty.txt","partial.txt","full.txt"};
+  byte[] data=Encoding.ASCII.GetBytes("P31_SYNTHETIC_CANARY_ONLY\n");int passed=0;
+  RequireLocalDirectory(Path.GetDirectoryName(root));Directory.CreateDirectory(root);
+  try{
+   string src=Path.Combine(root,names[0]),dest=Path.Combine(root,names[1]);
+   CreateCanary(src,data);
+   string uri=LocalFileUri(src);Assert(uri.StartsWith("file:///")&&uri.Contains("%20"),"hostless escaped URI");passed++;
+   bool rejected=false;try{RequireLocalDirectory(@"\\invalid-network-host\share");}catch(InvalidOperationException){rejected=true;}Assert(rejected,"UNC not rejected");passed++;
+   rejected=false;try{RequireLocalDirectory(@"\\?\C:\Windows");}catch(InvalidOperationException){rejected=true;}Assert(rejected,"device not rejected");passed++;
+   ProcessStartInfo start=new ProcessStartInfo(@"C:\Windows\System32\curl.exe","-q --proto =file --noproxy \"*\" --proxy \"\" --max-time 2 --retry 0 --silent --output \""+dest+"\" \""+uri+"\"");
+   start.UseShellExecute=false;start.CreateNoWindow=true;start.RedirectStandardError=true;start.RedirectStandardOutput=true;
+   start.EnvironmentVariables.Clear();start.EnvironmentVariables["SystemRoot"]=@"C:\Windows";start.EnvironmentVariables["WINDIR"]=@"C:\Windows";start.EnvironmentVariables["PATH"]=@"C:\Windows\System32";start.EnvironmentVariables["LOCALAPPDATA"]=Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+   using(Process p=Process.Start(start)){if(!p.WaitForExit(5000)){p.Kill();throw new Exception("curl check timeout");}Assert(p.ExitCode==0,"file curl copy failed: "+p.StandardError.ReadToEnd());}
+   Assert(Matches(dest,data),"copied bytes mismatch");passed++;
+   string missing=Path.Combine(root,"missing.txt"),empty=Path.Combine(root,names[2]),partial=Path.Combine(root,names[3]),full=Path.Combine(root,names[4]);
+   CreateCanary(empty,new byte[0]);CreateCanary(partial,new byte[]{80});CreateCanary(full,data);
+   Assert(37==37&&(Absent(missing)||EmptyRegular(missing)),"missing rejected");passed++;
+   Assert(37==37&&(Absent(empty)||EmptyRegular(empty)),"empty rejected");passed++;
+   Assert(!(Absent(partial)||EmptyRegular(partial)),"partial accepted as denied");passed++;
+   Assert(!(Absent(full)||EmptyRegular(full)),"full accepted as denied");passed++;
+   Assert(!Matches(partial,data)&&Matches(full,data),"exact content guard");passed++;
+   Assert(Matches(src,data),"source changed");passed++;
+   return "Reviewed literal file helpers: "+passed+"/10 passed; fixed file-only curl copied exact canary; no AppContainer probe executed.";
+  }finally{RequireLocalDirectory(root);foreach(string name in names){string path=Path.Combine(root,name);if(!Absent(path)){RequireLocalFile(path);File.Delete(path);}}Directory.Delete(root,false);}
+ }
+
+}

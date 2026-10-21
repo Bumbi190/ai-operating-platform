@@ -64,7 +64,7 @@ it('rolls back a separated publisher role against the canonical scheduled step',
    exception when insufficient_privilege then null; end $probe$;
   set local role social_schedule_full_publisher_fixture;
   select ${complete};
-  rollback;`).split('\\n')
+  rollback;`).split('\n')
  expect(output[0]).toBe('falsefalsefalse')
  const receipt=JSON.parse(output.at(-1)!)
  expect(receipt.jobState).toBe('published')

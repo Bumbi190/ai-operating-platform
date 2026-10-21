@@ -169,6 +169,7 @@ export async function proposeFamilyMonthSource(db:Db,actor:SocialContentPrincipa
  const {data,error}=await client(db).from(TABLE).insert(row).select('*').single()
  if(error){
   // Retry the *exact same* proposal using the unique immutable hash.
+  if(error.code==='23514')fail('CONFLICT')
   if(error.code!=='23505')fail('UNAVAILABLE')
   const {data:old,error:lookupError}=await client(db).from(TABLE).select('*')
    .eq('project_id',FAMILY_WEEKLY_PROJECT_ID)
@@ -215,7 +216,7 @@ export async function decideFamilyMonthSource(db:Db,actor:SocialContentPrincipal
   candidate_sha256:digest,decision:input.decision,
   decided_by:actor.userId,
  }).select('*').single()
- if(error?.code==='23505')fail('CONFLICT')
+ if(error?.code==='23505'||error?.code==='23514')fail('CONFLICT')
  if(error||!data)fail('UNAVAILABLE')
  return {candidateId:latest.id,candidateSha256:digest,
   decision:input.decision,decidedAt:(data as DecisionRow).decided_at,

@@ -52,3 +52,106 @@ revoke all on public.family_month_source_candidates from service_role;
 revoke all on public.family_month_source_decisions from service_role;
 grant select, insert on public.family_month_source_candidates to service_role;
 grant select, insert on public.family_month_source_decisions to service_role;
+
+
+-- Serialize candidate creation and owner decisions for the SAME project/month.
+-- A decision may be inserted only for the latest currently committed
+-- candidate, with the exact source checksum and the canonical owner.
+-- This closes the race between SELECT latest and INSERT decision in the
+-- server, without changing the existing authorization or release gates.
+--
+-- These are ordinary invoker trigger functions with no elevated privileges,
+-- client RPC, table UPDATE/DELETE, external provider or publication access.
+create function public.family_month_source_candidate_insert_gate()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, public
+as $family_gate$
+begin
+ perform pg_advisory_xact_lock(hashtextextended(
+   new.project_id::text || '|' || new.source_month, 0));
+ -- Lock acquisition, not client timestamp or transaction BEGIN,
+ -- defines review-version order for concurrent sessions.
+ new.created_at := clock_timestamp();
+ if not exists (
+  select 1 from public.projects p
+  where p.id = new.project_id
+    and p.slug = 'familje-stunden'
+    and p.owner_id = new.created_by
+ ) then
+  raise exception 'SOURCE_OWNER_MISMATCH' using errcode = '23514';
+ end if;
+ return new;
+end
+$family_gate$;
+
+create trigger family_month_source_candidate_insert_gate_trigger
+before insert on public.family_month_source_candidates
+for each row execute function public.family_month_source_candidate_insert_gate();
+
+create function public.family_month_source_decision_insert_gate()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, public
+as $family_gate$
+declare
+ v_source_month text;
+ candidate_owner uuid;
+ candidate_digest text;
+ latest_id uuid;
+begin
+ -- Only read the month here to obtain the correct per-month lock key;
+ -- re-read all authoritative state AFTER the lock is acquired.
+ select c.source_month into v_source_month
+ from public.family_month_source_candidates c
+ where c.id = new.candidate_id
+   and c.project_id = new.project_id;
+
+ if v_source_month is null then
+  raise exception 'SOURCE_CANDIDATE_NOT_FOUND' using errcode = '23514';
+ end if;
+
+ perform pg_advisory_xact_lock(hashtextextended(
+   new.project_id::text || '|' || v_source_month, 0));
+
+ select c.created_by, c.candidate_sha256
+ into candidate_owner, candidate_digest
+ from public.family_month_source_candidates c
+ where c.id = new.candidate_id
+   and c.project_id = new.project_id
+   and c.source_month = v_source_month;
+
+ select c.id into latest_id
+ from public.family_month_source_candidates c
+ where c.project_id = new.project_id
+   and c.source_month = v_source_month
+ order by c.created_at desc, c.id desc limit 1;
+
+ if candidate_owner is null
+   or latest_id is distinct from new.candidate_id
+   or candidate_digest is distinct from new.candidate_sha256
+   or candidate_owner is distinct from new.decided_by
+   or not exists (
+     select 1 from public.projects p
+     where p.id = new.project_id
+       and p.slug = 'familje-stunden'
+       and p.owner_id = new.decided_by
+   )
+ then
+  raise exception 'SOURCE_OWNER_OR_LATEST_VERSION_MISMATCH'
+    using errcode = '23514';
+ end if;
+
+ new.decided_at := clock_timestamp();
+ return new;
+end
+$family_gate$;
+
+create trigger family_month_source_decision_insert_gate_trigger
+before insert on public.family_month_source_decisions
+for each row execute function public.family_month_source_decision_insert_gate();
+
+revoke all on function public.family_month_source_candidate_insert_gate() from public, anon, authenticated;
+revoke all on function public.family_month_source_decision_insert_gate() from public, anon, authenticated;
+grant execute on function public.family_month_source_candidate_insert_gate() to service_role;
+grant execute on function public.family_month_source_decision_insert_gate() to service_role;

@@ -192,3 +192,60 @@ No production schema, owner decisions, media, schedules, dispatch,
 provider spending or subscriber entitlements were modified.
 The independent human security review remains a release blocker;
 these engineering changes do not constitute an independent approval.
+
+## P10 — atomic latest-version owner decision (2026-10-21)
+
+The review service previously read the latest month candidate and then
+inserted an owner decision using two separate DB round trips. Between
+those operations a second request could insert a newer candidate.
+The old decision would then be historically saved. The source resolver
+would already reject the stale source; the database now enforces a
+stronger invariant during the insert itself.
+
+### Unapplied migration — SQL gates
+
+- A before-insert candidate trigger serializes writes for each exact
+  (project ID, source month) with pg_advisory_xact_lock, verifies
+  project slug and actual projects.owner_id, and assigns the
+  authoritative created_at from clock_timestamp() after the lock.
+- A before-insert decision trigger acquires the same month lock and
+  refuses a decision unless the candidate is still the **latest**,
+  its SHA-256 is exact, and decided_by matches both the candidate
+  creator and the current project owner. It sets decided_at after
+  the lock and runs with ordinary invoker privileges.
+- No elevated functions, new client/RLS grants, UPDATE/DELETE rights,
+  RPC endpoints, cron, or source release permissions were introduced.
+- Existing unique(candidate_id) still prevents two competing
+  approve/reject decisions for one version.
+- Database check-violation code 23514 is mapped to ordinary
+  CONFLICT in the owner-only server API; Atlas cannot interpret
+  a stale decision as a successful authorization.
+
+### Real isolated PostgreSQL 17 verification
+
+- The EXACT new migration executed successfully in a scratch PG17
+  container with network disabled and no exposed ports.
+- Verified current/latest owner decision accepted exactly once;
+  stale version, foreign creator, foreign reviewer, wrong checksum
+  all rejected by the DB, independently of TypeScript.
+- A two-session concurrency proof inserted a newer candidate in a
+  transaction holding the advisory lock; a concurrent old owner
+  approval waited about 2.9 s and was rejected *after* the newer
+  transaction committed. No stale decision record was persisted.
+- Confirmed authenticated table reads and service_role UPDATE are
+  still denied. The disposable PG17 container was stopped/removed.
+- Schema security, migration guard and SQL contract tests:
+  212/212 pass.
+- Familje-Stunden focused unit tests: 100/100 pass.
+- Social Content and Social Launch Playwright: 16/16 + 6/6 pass.
+- Full local TypeScript still has only the three earlier unrelated
+  Remotion Lambda dependency/typing errors. No new diagnostics.
+
+### Release posture
+
+This code is NOT a substitute for an external independent human
+security review. The migration has NOT been applied in production.
+PR #472 remains Draft, no new owner approval, no feature flags enabled,
+no scheduled generation, public publication or customer-month unlock.
+The new version/race semantics need to be reviewed before any migration
+or release authorization.

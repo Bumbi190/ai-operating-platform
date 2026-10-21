@@ -24,6 +24,7 @@ class MemoryDb{
    checksum_sha256:'a'.repeat(64),storage_bucket:'media-assets-private',
    storage_path:FAMILY_WEEKLY_PROJECT_ID+'/social/month-sources/hero.jpg',
   }],family_month_source_candidates:[],family_month_source_decisions:[]}
+ forceInsertError:Partial<Record<Table,string>>={}
  sequence=0
  from(name:string){
   if(!(name in this.tables))throw Error('unknown table '+name)
@@ -44,6 +45,8 @@ class MemoryQuery{
  insert(row:any){this.newValue=row;return this}
  private execute(){
   if(this.newValue){
+   const forced=this.db.forceInsertError[this.table]
+   if(forced)return {data:null,error:{code:forced}}
    const row=this.newValue
    if(this.table==='family_month_source_candidates'&&
     this.db.tables[this.table].some(r=>r.project_id===row.project_id&&
@@ -115,6 +118,20 @@ describe('private, durable source review store on isolated append-only tables',(
   const second=await proposeFamilyMonthSource(db as any,actor,candidate())
   expect(second).toMatchObject({candidateId:first.candidateId,replayed:true})
   expect(db.tables.family_month_source_candidates).toHaveLength(1)
+ })
+ it('transient trigger latest-version conflicts surface as explicit CONFLICT, not 503',async()=>{
+  const db=new MemoryDb()
+  db.forceInsertError.family_month_source_candidates='23514'
+  await expect(proposeFamilyMonthSource(db as any,actor,candidate()))
+   .rejects.toMatchObject({code:'CONFLICT'})
+  db.forceInsertError={}
+  const existing=await proposeFamilyMonthSource(db as any,actor,candidate())
+  db.forceInsertError.family_month_source_decisions='23514'
+  await expect(decideFamilyMonthSource(db as any,actor,{
+   month:'2026-12',candidateId:existing.candidateId,
+   candidateSha256:existing.candidateSha256,decision:'approve',confirmed:true,
+  })).rejects.toMatchObject({code:'CONFLICT'})
+  expect(db.tables.family_month_source_decisions).toHaveLength(0)
  })
  it('two simultaneous decisions produce exactly one immutable decision row',async()=>{
   const db=new MemoryDb()

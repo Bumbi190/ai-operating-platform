@@ -8,7 +8,7 @@ import {lstatSync,readFileSync,writeFileSync,realpathSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {basename,dirname,isAbsolute,join,resolve} from 'node:path';
 import {tmpdir} from 'node:os';
-import {inspectPinnedCreativeReviewer} from './worker-handoff-reviewer-registry.mjs';
+import {inspectLifecycleBoundCreativeReview} from './worker-handoff-reviewer-lifecycle.mjs';
 
 export const NONCE_FIXTURE_MARKER='OMNIRA_CREATIVE_REVIEW_NONCE_TEST_ONLY_v1\n';
 const PREFIX='omnira-creative-review-fixture-';
@@ -37,17 +37,21 @@ function assertFixture(root){
  * return a production permission or an execution capability.
  */
 export function recordSyntheticReviewedNonce({
- fixtureRoot,registry,externallyPinnedRegistrySha256,reviewedCommitSha,
- reviewedManifestSha256,independentlyExpectedAuthorId,proof,manifest,now,
+ fixtureRoot,registry,journal,externallyPinnedRegistrySha256,externallyPinnedHeadSha256,
+ minimumSequence,reviewedCommitSha,reviewedManifestSha256,
+ independentlyExpectedAuthorId,proof,manifest,now,
 }){
  const root=assertFixture(fixtureRoot);
- // Full signature+registry+exact-manifest check BEFORE creating any receipt.
- const checked=inspectPinnedCreativeReviewer({
-  registry,externallyPinnedRegistrySha256,reviewedCommitSha,reviewedManifestSha256,
+ // Full pinned registry + monotonic lifecycle + signature + exact-manifest
+ // checks BEFORE creating any receipt. Stale or missing revocation proof fails.
+ const checked=inspectLifecycleBoundCreativeReview({
+  registry,journal,externallyPinnedRegistrySha256,externallyPinnedHeadSha256,
+  minimumSequence,reviewedCommitSha,reviewedManifestSha256,
   independentlyExpectedAuthorId,proof,manifest,now,
  });
- if(checked.reviewSignatureValid!==true||checked.bootstrapAuthorized!==false||
-    checked.workerExecutionEnabled!==false){
+ if(checked.cryptographicReviewValid!==true||
+    checked.lifecycleChainMatchesPins!==true||
+    checked.bootstrapAuthorized!==false||checked.workerExecutionEnabled!==false){
   throw Error('unsafe_review_verification_result');
  }
  const nonce=proof.claims.nonce;
@@ -58,6 +62,9 @@ export function recordSyntheticReviewedNonce({
   status:'nonce_recorded_for_test_only',
   nonceHash,commitSha:checked.commitSha,manifestSha256:checked.manifestSha256,
   reviewerId:checked.reviewerId,reviewedAt:now.toISOString(),
+  pinnedLifecycleHeadSha256:checked.headSha256,
+  pinnedLifecycleSequence:checked.sequence,
+  revocationChainChecked:true,
   registryPinMatched:true,reviewSignatureValid:true,
   reviewerAuthorityVerified:false,nonceConsumedForProduction:false,
   protectedCopyAuthorized:false,installerAuthorized:false,

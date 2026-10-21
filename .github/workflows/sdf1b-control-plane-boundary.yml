@@ -57,12 +57,12 @@ jobs:
             if(!match)throw new Error('Creative handoff missing TAP total: '+key)
             return Number(match[1])
           }
-          if(count('tests')!==101 || count('pass')!==101 ||
+          if(count('tests')!==106 || count('pass')!==106 ||
              count('fail')!==0 || count('skipped')!==0 ||
              count('cancelled')!==0 || count('todo')!==0) {
             throw new Error('Creative handoff tests incomplete')
           }
-          console.log('Creative handoff: exactly 101/101 pass and zero skips')
+          console.log('Creative handoff: exactly 106/106 pass and zero skips')
           NODE
       - name: Schema, concurrency, authority, isolation, lifecycle and receipt chain
         working-directory: apps/web

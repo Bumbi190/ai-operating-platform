@@ -469,6 +469,33 @@ separate trusted authority must authenticate reviewer identities,
 publish and protect monotonically advancing current heads, verify
 operator actions, and use a durable ledger with revocation/fencing.
 
+## Lifecycle-bound nonce receipt trial (2026-10-21)
+
+The synthetic nonce fixture now **requires a pinned reviewer lifecycle**
+in addition to the registry, exact Git revision, manifest digest and P-256
+review signature. The caller must supply a lifecycle journal, independently
+pinned registry/head SHA-256 values and a minimum trusted sequence number.
+There is deliberately **no fallback** to a registry-only signature check.
+The receipt includes the chain head and sequence that were actually checked,
+but does not become an execution or elevated-copy capability.
+
+Five new tests prove that a revoked/suspended reviewer cannot write a
+new nonce receipt, even with an otherwise valid signature and fresh nonce;
+a stale active journal cannot hide a revoked head; tampering with a journal
+entry fails before writing; missing external history pins fail closed; and an
+older inert receipt remains inert after the reviewer has been revoked.
+Existing tests still require a single winner across independent Node
+processes and prevent replay after process restart.
+
+These tests increase the Linux SDF-1B handoff anti-skip floor to
+**106/106 passing, zero skipped**. The whole reviewer journal and nonce
+fixture are still under the user's synthetic OS-temp test authority.
+Their hashes are **not** independent authenticated human approvals or
+evidence of Windows ACL confinement. Production-grade secure storage,
+monotonic external anchoring, verified reviewer enrollment and revocation
+delivery remain prerequisites. The worker stays disabled; no real files are
+copied into `ProgramData` and no elevated script is run.
+
 ## Whole-archive integrity update
 
 The staging planner additionally checks SHA-256 of the original PhotoCraft and

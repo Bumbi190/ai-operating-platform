@@ -175,6 +175,7 @@ export function inspectLifecycleBoundCreativeReview({
   schema:'omnira.creative.lifecycle_bound_review.v1',
   status:'review_signature_and_lifecycle_consistent_not_authorized',
   reviewerId:checked.reviewerId,
+  commitSha:checked.commitSha,manifestSha256:checked.manifestSha256,
   headSha256:lifecycle.headSha256,sequence:lifecycle.sequence,
   cryptographicReviewValid:true,lifecycleChainMatchesPins:true,
   reviewerIdentityExternallyVerified:false,

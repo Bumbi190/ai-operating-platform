@@ -12,6 +12,8 @@ import {fingerprintCreativeReviewerRegistry,REVIEWER_REGISTRY_SCHEMA}
  from './worker-handoff-reviewer-registry.mjs';
 import {recordSyntheticReviewedNonce,NONCE_FIXTURE_MARKER}
  from './worker-handoff-nonce-fixture.mjs';
+import {createTestReviewerLifecycle,appendTestReviewerLifecycleEvent}
+ from './worker-handoff-reviewer-lifecycle.mjs';
 
 const sha=x=>createHash('sha256').update(x).digest('hex');
 function fixture(){
@@ -56,17 +58,19 @@ function fixture(){
   noCopyAuthority:true,
  };
  const now=new Date('2026-10-21T06:30:00.000Z');
+ const journal=createTestReviewerLifecycle(registry);
  const signed=c=>({
   claims:c,signature:sign('sha256',canonicalCreativeHandoffReview(c),
    {key:keys.privateKey,dsaEncoding:'ieee-p1363'}).toString('base64url'),
  });
  const defaults={
-  fixtureRoot:root,registry,externallyPinnedRegistrySha256:fingerprintCreativeReviewerRegistry(registry),
+  fixtureRoot:root,registry,journal,externallyPinnedRegistrySha256:fingerprintCreativeReviewerRegistry(registry),
+  externallyPinnedHeadSha256:journal.headSha256,minimumSequence:0,
   reviewedCommitSha:claims.commitSha,reviewedManifestSha256:claims.manifestSha256,
   independentlyExpectedAuthorId:claims.authorId,
   proof:signed(claims),manifest,now,
  };
- return{root,registry,claims,now,keys,signed,defaults,run:(overrides={})=>recordSyntheticReviewedNonce({...defaults,...overrides})};
+ return{root,registry,journal,claims,now,keys,signed,defaults,run:(overrides={})=>recordSyntheticReviewedNonce({...defaults,...overrides})};
 }
 function withFixture(fn){
  const f=fixture();
@@ -82,6 +86,11 @@ test('one signature records an inert nonce hash only in marked OS temp fixture',
  assert.equal(r.productionReady,false);
  assert.equal(r.reviewerAuthorityVerified,false);
  assert.equal(r.nonceConsumedForProduction,false);
+ assert.equal(r.revocationChainChecked,true);
+ assert.equal(r.pinnedLifecycleHeadSha256,f.journal.headSha256);
+ assert.equal(r.pinnedLifecycleSequence,0);
+ assert.equal(r.commitSha,f.claims.commitSha);
+ assert.equal(r.manifestSha256,f.claims.manifestSha256);
  assert.equal(readdirSync(f.root).length,2);
  assert.ok(!JSON.stringify(r).includes(f.claims.nonce));
 }));
@@ -102,18 +111,20 @@ test('tampered signatures are refused before any nonce is written',()=>withFixtu
  assert.throws(()=>f.run({proof}),/independent_review_signature_invalid/);
  assert.equal(readdirSync(f.root).length,1);
 }));
-test('revoked reviewer is refused before receipt creation',()=>withFixture(f=>{
- const registry={...f.registry,reviewers:[{...f.registry.reviewers[0],status:'revoked'}]};
- assert.throws(()=>f.run({
-  registry,externallyPinnedRegistrySha256:fingerprintCreativeReviewerRegistry(registry),
- }),/reviewer_suspended_or_revoked/);
+test('revoked reviewer is refused BEFORE any nonce receipt, even with otherwise valid review',()=>withFixture(f=>{
+ const journal=appendTestReviewerLifecycleEvent(f.journal,{
+  reviewerId:f.claims.reviewerId,actorId:'separateAdmin',action:'revoke',
+  occurredAt:'2026-10-21T06:15:00.000Z',
+ });
+ assert.throws(()=>f.run({journal,externallyPinnedHeadSha256:journal.headSha256,
+   minimumSequence:1}),/lifecycle_reviewer_not_active/);
  assert.equal(readdirSync(f.root).length,1);
 }));
 test('stale commit, changed manifest or unpinned registry is blocked',()=>withFixture(f=>{
  assert.throws(()=>f.run({reviewedCommitSha:'f'.repeat(40)}),/review_scope_mismatch:commitSha/);
  assert.throws(()=>f.run({reviewedManifestSha256:'f'.repeat(64)}),/review_scope_mismatch:manifestSha256/);
  assert.throws(()=>f.run({externallyPinnedRegistrySha256:'f'.repeat(64)}),
-  /reviewer_registry_did_not_match_external_pin/);
+  /lifecycle_registry_external_pin_mismatch/);
  assert.equal(readdirSync(f.root).length,1);
 }));
 test('missing or altered fixture marker refuses without touching existing content',()=>withFixture(f=>{
@@ -187,3 +198,64 @@ test('two separate Node processes contend for same nonce: exactly one succeeds',
   assert.equal(readdirSync(f.root).length,2);
  } finally {rmSync(f.root,{recursive:true,force:true})}
 });
+test('revocation head cannot be hidden by presenting the old active journal',()=>withFixture(f=>{
+ const revoked=appendTestReviewerLifecycleEvent(f.journal,{
+  reviewerId:f.claims.reviewerId,actorId:'separateAdmin',action:'revoke',
+  occurredAt:'2026-10-21T06:15:00.000Z',
+ });
+ assert.throws(()=>f.run({externallyPinnedHeadSha256:revoked.headSha256,
+  minimumSequence:1}),/stale_or_invalid_review_history/);
+ assert.throws(()=>f.run({externallyPinnedHeadSha256:revoked.headSha256,
+  minimumSequence:0}),/reviewer_lifecycle_head_not_independently_pinned/);
+ assert.equal(readdirSync(f.root).length,1);
+}));
+test('a current suspension head blocks both old signature and a fresh nonce',()=>withFixture(f=>{
+ const journal=appendTestReviewerLifecycleEvent(f.journal,{
+  reviewerId:f.claims.reviewerId,actorId:'separateAdmin',action:'suspend',
+  occurredAt:'2026-10-21T06:15:00.000Z',
+ });
+ const fresh={...f.claims,nonce:'fresh234567890abcdef01234567890'};
+ assert.throws(()=>f.run({journal,externallyPinnedHeadSha256:journal.headSha256,
+  minimumSequence:1,proof:f.signed(fresh)}),/lifecycle_reviewer_not_active/);
+ assert.equal(readdirSync(f.root).length,1);
+}));
+test('tampering with lifecycle chain before proof prevents ANY receipt write',()=>withFixture(f=>{
+ const journal=appendTestReviewerLifecycleEvent(f.journal,{
+  reviewerId:f.claims.reviewerId,actorId:'separateAdmin',action:'suspend',
+  occurredAt:'2026-10-21T06:15:00.000Z',
+ });
+ const tampered=structuredClone(journal);
+ tampered.events[0].actorId='forgedAdmin';
+ assert.throws(()=>f.run({journal:tampered,
+  externallyPinnedHeadSha256:journal.headSha256,
+  minimumSequence:1}),/reviewer_lifecycle_chain_tampered/);
+ assert.equal(readdirSync(f.root).length,1);
+}));
+test('missing protected lifecycle pin or journal fails closed, not falling back to registry',()=>withFixture(f=>{
+ for(const extra of [
+  {journal:undefined},
+  {externallyPinnedHeadSha256:undefined},
+  {minimumSequence:undefined},
+ ]){
+  assert.throws(()=>f.run(extra));
+ }
+ assert.equal(readdirSync(f.root).length,1);
+}));
+test('an old inert receipt stays non-authoritative and cannot be reused after revocation',()=>withFixture(f=>{
+ const receipt=f.run();
+ const file=join(f.root,receipt.nonceHash+'.json');
+ const revoked=appendTestReviewerLifecycleEvent(f.journal,{
+  reviewerId:f.claims.reviewerId,actorId:'separateAdmin',action:'revoke',
+  occurredAt:'2026-10-21T06:15:00.000Z',
+ });
+ assert.throws(()=>f.run({journal:revoked,
+  externallyPinnedHeadSha256:revoked.headSha256,minimumSequence:1}),
+  /lifecycle_reviewer_not_active/);
+ const persisted=JSON.parse(readFileSync(file,'utf8'));
+ assert.equal(persisted.revocationChainChecked,true);
+ assert.equal(persisted.nonceConsumedForProduction,false);
+ assert.equal(persisted.protectedCopyAuthorized,false);
+ assert.equal(persisted.installerAuthorized,false);
+ assert.equal(persisted.pinnedLifecycleSequence,0);
+ assert.equal(readdirSync(f.root).length,2);
+}));

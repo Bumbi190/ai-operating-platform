@@ -8,6 +8,7 @@ on:
       - '.github/workflows/calendar-proof-isolated.yml'
       - 'apps/web/lib/calendar/direct-write-gate-proof-*'
       - 'apps/web/lib/calendar/direct-write-gate-worker-recovery.test.ts'
+      - 'apps/web/lib/calendar/direct-write-gate-scheduled-publisher-role-candidate.sql'
       - 'apps/web/lib/calendar/direct-write-gate-worker-recovery-integration-probe.sql'
       - 'apps/web/lib/calendar/social-*-fixture.sql'
       - 'apps/web/lib/calendar/test-db.ts'
@@ -69,7 +70,7 @@ jobs:
           const report = JSON.parse(fs.readFileSync(process.env.REPORT, 'utf8'))
           for (const [file, floor] of [
             ['direct-write-gate-proof-real-inspector.test.ts', 23],
-            ['direct-write-gate-worker-recovery.test.ts', 12],
+            ['direct-write-gate-worker-recovery.test.ts', 13],
           ]) {
             const result = (report.testResults ?? []).find(r => path.basename(r.name) === file)
             if (!result) throw new Error(`${file} absent`)

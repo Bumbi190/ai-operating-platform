@@ -17,6 +17,10 @@ const cron = {
   name: "20260528_pg_cron_setup.sql",
   sha256: "22569e22cd61cef171ad3be914a02d3e7d013a787304ce6904f09a24218d0967",
 };
+const dream = {
+  name: "20260609_dream_issues_ledger.sql",
+  sha256: "efc2b09e75c60fb8d14bcafdf4bcf2712e7d28e2107336634487d18fb9510089",
+};
 test("create media_scripts before its images alteration without dropping either migration", () => {
   const earlier = { name: "20260501_before.sql", sha256: "a" },
     later = { name: "20260521_after.sql", sha256: "b" };
@@ -74,6 +78,18 @@ test("legacy cron dependency is pinned and ordered before later watchdog functio
   assert.throws(() => orderLegacyMediaReplayMigrations([bi], insights, { ...cron, sha256: "changed" }), /unreviewed legacy cron dependency/);
   assert.throws(() => orderLegacyMediaReplayMigrations([bi, cron], insights, cron), /duplicate legacy cron dependency/);
 });
+test("dream ledger fixture requires reviewed bytes and precedes its backfill", () => {
+  const bi = { name: "20260602_atlas_bi_foundation.sql", sha256: "bi" };
+  const backfill = { name: "20260617160200_backfill_dream_issues.sql", sha256: "backfill" };
+  const rows = [backfill, bi, images, tables];
+  const ordered = orderLegacyMediaReplayMigrations(rows, insights, cron, dream);
+  assert.deepEqual(ordered, [tables, images, cron, insights, bi, dream, backfill]);
+  assert.throws(() => orderLegacyMediaReplayMigrations(rows, insights, cron, { ...dream, sha256: "changed" }), /unreviewed legacy dream dependency/);
+  assert.throws(() => orderLegacyMediaReplayMigrations(rows, insights, undefined, dream), /requires cron fixture/);
+  assert.throws(() => orderLegacyMediaReplayMigrations(rows, insights, cron, { ...dream, name: "other.sql" }), /unreviewed legacy dream dependency/);
+  assert.throws(() => orderLegacyMediaReplayMigrations([bi, dream, backfill], insights, cron, dream), /duplicate legacy dream dependency/);
+  assert.throws(() => orderLegacyMediaReplayMigrations([bi], insights, cron, dream), /missing replay dependency: dream backfill/);
+});
 
 test("repository replay retains every canonical SQL file exactly once", async () => {
   const { readdirSync } = await import("node:fs");
@@ -113,4 +129,9 @@ test("repository replay retains every canonical SQL file exactly once", async ()
   const cronOrder = orderLegacyMediaReplayMigrations(rows, pinnedRoot, pinnedCron);
   assert.equal(cronOrder.length, rows.length + 2);
   assert.equal(cronOrder.filter((entry) => entry === pinnedCron).length, 1);
+  const dreamBytes = execFileSync("git", ["show", "HEAD:supabase/migrations/20260609_dream_issues_ledger.sql"], { cwd: repo });
+  const pinnedDream = { ...dream, sha256: createHash("sha256").update(dreamBytes).digest("hex") };
+  const dreamOrder = orderLegacyMediaReplayMigrations(rows, pinnedRoot, pinnedCron, pinnedDream);
+  assert.equal(dreamOrder.length, rows.length + 3);
+  assert.equal(dreamOrder.filter((entry) => entry === pinnedDream).length, 1);
 });

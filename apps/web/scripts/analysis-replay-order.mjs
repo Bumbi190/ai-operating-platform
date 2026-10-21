@@ -13,6 +13,10 @@ const legacyCronSetup = {
   name: "20260528_pg_cron_setup.sql",
   sha256: "22569e22cd61cef171ad3be914a02d3e7d013a787304ce6904f09a24218d0967",
 };
+const legacyDreamLedger = {
+  name: "20260609_dream_issues_ledger.sql",
+  sha256: "efc2b09e75c60fb8d14bcafdf4bcf2712e7d28e2107336634487d18fb9510089",
+};
 export function orderReplayMigrations(entries) {
   const names = new Set(entries.map((entry) => entry.name));
   if (names.size !== entries.length) throw Error("duplicate replay migration");
@@ -44,7 +48,7 @@ export function orderReplayMigrations(entries) {
 
 // Diagnostic path for the older root migration that the canonical web tree
 // omitted. It must never be treated as a production migration-ledger repair.
-export function orderLegacyMediaReplayMigrations(canonicalEntries, legacyEntry, cronEntry) {
+export function orderLegacyMediaReplayMigrations(canonicalEntries, legacyEntry, cronEntry, dreamEntry) {
   if (legacyEntry.name !== legacyMediaInsights.name ||
       legacyEntry.sha256 !== legacyMediaInsights.sha256)
     throw Error("unreviewed legacy media dependency");
@@ -63,6 +67,19 @@ export function orderLegacyMediaReplayMigrations(canonicalEntries, legacyEntry, 
   }
   const insertion = ordered.findIndex((entry) => entry.name > legacyEntry.name);
   ordered.splice(insertion === -1 ? ordered.length : insertion, 0, legacyEntry);
+  if (dreamEntry) {
+    if (dreamEntry.name !== legacyDreamLedger.name || dreamEntry.sha256 !== legacyDreamLedger.sha256)
+      throw Error("unreviewed legacy dream dependency");
+    if (!cronEntry) throw Error("legacy dream dependency requires cron fixture");
+    if (canonicalEntries.some((entry) => entry.name === dreamEntry.name))
+      throw Error("duplicate legacy dream dependency");
+    const backfill = ordered.findIndex((entry) => entry.name === "20260617160200_backfill_dream_issues.sql");
+    if (backfill === -1) throw Error("missing replay dependency: dream backfill");
+    const dreamInsertion = ordered.findIndex((entry) => entry.name > dreamEntry.name);
+    ordered.splice(dreamInsertion === -1 ? ordered.length : dreamInsertion, 0, dreamEntry);
+    if (ordered.indexOf(dreamEntry) >= ordered.findIndex((entry) => entry.name === "20260617160200_backfill_dream_issues.sql"))
+      throw Error("legacy dream dependency must precede dream backfill");
+  }
   if (ordered.indexOf(legacyEntry) >= ordered.findIndex((entry) => entry.name === "20260602_atlas_bi_foundation.sql"))
     throw Error("legacy media dependency must precede atlas_bi_foundation");
   return ordered;

@@ -42,7 +42,8 @@ grant select on public.social_schedule_decisions,
  public.platform_config,
  public.social_content_revisions to social_schedule_full_publisher_fixture;
 grant insert on public.social_publications to social_schedule_full_publisher_fixture;
-grant execute on function public.social_schedule_authority(public.social_schedule_jobs,boolean),
+grant execute on function public.social_schedule_claim(jsonb),
+ public.social_schedule_authority(public.social_schedule_jobs,boolean),
  public.social_schedule_item_guard(uuid,jsonb),
  public.social_content_active(uuid),
  public.social_content_requirements(uuid)

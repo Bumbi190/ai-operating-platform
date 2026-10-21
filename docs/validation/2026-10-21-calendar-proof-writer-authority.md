@@ -196,8 +196,13 @@ verification, not a live exploit test or full Supabase-schema proof. The
 application dispatch normally obtains the provider receipt before calling
 this RPC, but a holder of the service key can bypass that application path.
 The scheduled step also accepts caller-supplied `providerId` on `complete`
-after a valid claim; its claim and authorization guards must be retained for
-the existing queue. Removing only the reconciliation RPC grant and direct
+after a valid claim. The isolated worker fixture exercised this path through
+an approved job, claim ID, lease and version sequence: a synthetic ID marked
+both publication and job `published` with no provider client. The targeted
+run 39585278572 passed **22/22 inspector plus 12/12 worker tests, 0 skipped**
+and removed its container. That worker fixture uses the reviewed source-gate
+integration projection, not the full Supabase schema or live provider. Its
+claim and authorization guards must be retained for the existing queue. Removing only the reconciliation RPC grant and direct
 table UPDATE would therefore leave an alternate route to a forged published
 state.
 

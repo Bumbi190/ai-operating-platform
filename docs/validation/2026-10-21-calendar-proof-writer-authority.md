@@ -241,6 +241,12 @@ A full-schema test must show that the generic identity cannot submit a fake
 provider receipt through manual or scheduled RPCs, while the dedicated
 publish worker still completes approved real posts and the queued jobs.
 
+### Canonical scheduled-step role probe in the owned SQL fixture
+
+A further rollback-only candidate, `direct-write-gate-scheduled-full-role-candidate.sql`, now exercises the canonical `social_schedule_step` function in the larger scheduled-worker PostgreSQL fixture. The test starts from an approved job already prepared and claimed by the existing role. Within one transaction it revokes the shared role's direct publication/job writes and scheduled-step EXECUTE, confirms the shared role cannot complete the job, and grants the separate fixture role the table and helper-function access needed for completion. The separate role completes the claimed job; rollback restores the data and removes the test role. GitHub Actions run [39594043070](https://github.com/Bumbi190/ai-operating-platform/actions/runs/39594043070) passed **23/23 inspector, 13/13 SQL worker, 11/11 provider and 12/12 scheduled application worker tests, 0 failed or skipped**. The owned database and container were removed.
+
+This verifies a completion path and the tested grant dependencies in the larger owned fixture. It does not establish effective grants in a fully migrated Supabase staging database, cover all preparation/recovery paths, or authenticate the caller-supplied provider ID. The separate role can still submit a synthetic receipt in this test. The candidate must remain test-only until credential isolation, full-schema grant review, worker parity and queue-preserving rollback are ready.
+
 ### Application worker response boundary
 
 The scheduled application worker normally obtains the Facebook receipt through

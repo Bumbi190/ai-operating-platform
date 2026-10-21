@@ -12,7 +12,7 @@ Scope: reviewable operator instructions only. No installer, launcher, migration 
 - Token isolation, network denial and real human approval: unverified. Execution/publication/activation authorization: false.
 - Registry metadata: EditionID `Core`, DisplayVersion `26H2`, build `26300.9711`. ProductName reports `Windows 10 Home`; this legacy string alone must not determine Windows version/support. Confirm edition/build in Settings before selecting a backend. No OS feature was installed or enabled.
 
-## Proposed next operator action (not performed)
+## Reviewed operator procedure (actual inspection results below)
 
 Inspect only these directories, in this order:
 
@@ -25,7 +25,7 @@ A separate operator must review this exact procedure and explicitly authorize an
 
 After explicit authorization, the operator can open Run using Win+R, enter `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile`, press Ctrl+Shift+Enter and review the Windows UAC prompt. This starts the system console only; it does not run the inspection block. Use a fresh elevated console. Do not elevate a command, script, Node dependency, executable or imported policy from any user-writable development worktree. Do not change execution policy. Inspect the reviewed built-in commands below directly in that console. Before metadata commands, the block disables automatic module loading, replaces the process-local module search path with the fixed system module directory, imports three exact system manifests and rejects unexpected module names/paths. Verify these Windows-owned system locations are trusted; stop if not. Module qualification and -NoProfile alone would not pin module provenance. All filesystem cmdlets are module-qualified and use literal fixed paths. No repository code is loaded.
 
-The following block is a proposed manual read-only metadata inspection. It has not been run elevated on Hultgren. Syntax validation is not a security audit or host acceptance test.
+The following combined sample was syntax-validated, not executed as a whole. After explicit operator authorization, equivalent per-path inspections were executed separately in the existing elevated context; see the dated result below. Syntax validation itself is not a security audit or host acceptance test.
 
 ```powershell
 $ErrorActionPreference = 'Stop'
@@ -138,4 +138,36 @@ Documentation-only change. Validate the embedded PowerShell with the system pars
 
 Review record: a fresh reviewer identified unpinned module discovery in the original draft; the procedure now restricts process-local discovery and imports only fixed Windows system manifests, with provenance checks. A minor limitation remains explicit: ACL acceptance of parent metadata is a manual reviewer decision, not an automated stop; descendant observations must be discarded when a parent fails. No runtime implementation was changed.
 
-Next action: independent operator review of this exact metadata inspection; then an explicitly approved read-only elevated inspection. Do not ask the operator to run an unspecified admin installer.
+Original next action was operator review and an explicitly approved read-only elevated inspection. That authorization and inspection are recorded below. The separate creation proposal remains unapproved; do not run an unspecified admin installer.
+
+## Authorized read-only inspection result - 2026-10-21 13:53 Europe/Stockholm
+
+The operator explicitly approved the read-only administrator inspection in the conversation. The remote process reported an effective administrator token. Inspection used a fresh fixed system PowerShell process with NoProfile, fixed protected system module imports and no worktree imports; no UAC elevation, ACL change or editor launch was requested.
+
+Correction to earlier context assumptions: the P29 ambiguous result did not prove that the remote session was unprivileged. The inspected session is elevated. Do not describe prior `inaccessible_or_missing` reports as confirmed access denial.
+
+The inspections were issued separately so parent metadata could be reviewed before proceeding to a child (stronger sequencing than the combined sample above):
+
+| Item | Observed result |
+| --- | --- |
+| ProgramData ancestor | Readable ordinary directory, no reparse point, SYSTEM-owned; inspected ancestor rights did not grant ordinary users deletion/replacement of the protected existing project root. This is a metadata assessment, not a full effective-token proof. |
+| OmniraCreativeWorker root | Readable ordinary directory, protected inheritance, Administrators owner, FullControl for SYSTEM/Administrators and a read/execute-only extra ACE; no untrusted write/delete/change-owner/change-permission grant observed. |
+| approvals | Fixed-path Get-Item returned ItemNotFoundException / PathNotFound / ObjectNotFound. Inspection stopped without inspecting nonces. |
+| Parent corroboration | Separate fixed-parent .NET top-level lookup for the exact child name approvals returned 0 matching entries at 2026-10-21T11:53:49.5361619Z. |
+
+Conclusion: approvals was absent at observation time, corroborated through the inspected parent. There is no existing approvals subtree at that moment; nonces was not independently inspected. This observation can become stale and is not authorization to create anything. There is no full-tree acceptance, human-identity proof, network/process proof or readiness grant. No protected settings or files changed. Raw ACL metadata and machine-specific principal identifiers are intentionally omitted from this GitHub document.
+
+## Concrete separate change proposal - not approved or applied
+
+| Target | Before (observed) | Proposed after |
+| --- | --- | --- |
+| C:\ProgramData\OmniraCreativeWorker\approvals | Absent at inspection time | New ordinary directory; owner Administrators S-1-5-32-544; protected inheritance; explicit FullControl Allow ACEs for SYSTEM S-1-5-18 and Administrators S-1-5-32-544 only, applying to this directory and descendants. |
+| C:\ProgramData\OmniraCreativeWorker\approvals\nonces | No approvals parent at inspection time | New ordinary directory with the same owner and exact protected two-principal ACL. |
+
+The proposal changes only these two directories. No root/ProgramData ACL edits, existing-directory repair, worker ACE, account activation, approval/key creation, receipt history, firewall settings or media execution. Installation must create each directory with its final protected security descriptor at creation time; do not create with inherited worker-readable permissions and fix them afterwards.
+
+Before implementation: prepare and independently review a protected-system-only creation procedure. Recheck the trusted parent, path absence and reparse/type conditions immediately beforehand. If either target now exists or any check disagrees, stop; do not reuse/overwrite/take ownership. User-writable worktree code must not be elevated. This proposal is an exact change boundary, not an implementation that has already passed review.
+
+After separately approved creation: read back owner, protected inheritance, all ACE rights/flags and allowed empty tree structure independently. Only that observation can support the proposed ACL check; execution stays denied. If the second creation fails, keep execution denied and report partial state. Rollback may remove only directories newly created by this operation, only after proving they are unchanged and empty; never recursive-delete, reset permissions or remove nonce/revocation evidence. If anything has written data or state is uncertain, preserve it and stop for operator review.
+
+Explicit authorization for this creation/ACL change is still outstanding. The earlier approval covered reading only. Existing worker activation, process/network and real-human-approval gates remain unchanged.

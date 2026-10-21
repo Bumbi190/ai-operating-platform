@@ -66,7 +66,9 @@ web process's access to the project Page token. The token table and binding
 table must be included in the effective-privilege audit, along with the
 credential refresh and publishing paths.
 
-The first implementation slice should inventory deployment-level secrets and\nsplit read and write credentials without changing the established publish\npath. Only after parity tests cover the other token consumers should the Page
+The first implementation slice should inventory deployment-level secrets and
+split read and write credentials without changing the established publish
+path. Only after parity tests cover the other token consumers should the Page
 token leave the broad web process. No extra background service should be
 introduced merely to make the proof-table candidate look complete.
 
@@ -185,6 +187,17 @@ found two historical published jobs and four future queued jobs for the
 enabled project; the next queued time was 2026-10-23 20:30 Europe/Stockholm
 and the last was 2026-12-01 20:30. These are queue facts, not a guarantee
 that an individual job will pass review, credential, release and stop gates.
+
+A second read-only check of those four future jobs found two Facebook and two
+Instagram jobs, all still queued and none overdue. Each has an approval from
+the current project owner, points to the current content revision, and has no
+recorded revocation or newer batch revision. The project execution pause,
+non-active lifecycle check and platform automation pause were all false at
+observation time. Two jobs have a monthly release condition. This check did
+not resolve current provider credentials or establish that time-limited
+monthly release evidence will exist when each job is due; the runtime item
+and release guards must still pass then. These observations can change before
+2026-10-23 and do not authorize a grant or credential cutover.
 
 A grant cutover or secret move can interrupt these already approved jobs.
 Do not silently turn off dispatch or migrate credentials out of the shared

@@ -138,6 +138,43 @@ after rollback as well.
 This audit query has not been run against a fully migrated staging database;
 it is a review artifact, not evidence that a new role boundary already works.
 
+## Read-only live catalog observation, 2026-10-21
+
+The four catalog queries above were run against the **AI Operating Platform**
+Supabase project (PostgreSQL 17) as SELECT only. No publication row, token,
+credential value, role, grant or function body was read or changed. This
+confirms effective privileges at observation time, not the safety of a future
+migration.
+
+| Object | Effective `service_role` privileges |
+| --- | --- |
+| `social_publications` | SELECT, INSERT, UPDATE |
+| `social_publication_events` | SELECT, INSERT |
+| `social_publication_reconciliation_proofs` | SELECT, INSERT |
+| `social_schedule_jobs` | SELECT, INSERT, UPDATE |
+| Other schedule batches, decisions, events and monthly release evidence | SELECT, INSERT |
+| `social_monthly_release_rules` | SELECT, INSERT, UPDATE |
+| `platform_tokens` | SELECT, INSERT, UPDATE, DELETE |
+| `social_account_bindings` | SELECT, INSERT, UPDATE |
+| Reconciliation inspect and complete functions | EXECUTE; both SECURITY INVOKER, owned by `postgres` |
+
+All eleven listed tables have RLS enabled, but `service_role` has
+`BYPASSRLS`. The inspected publication and schedule functions are also
+SECURITY INVOKER and executable by `service_role`. For the three sensitive
+tables (`social_publications`, proofs and `platform_tokens`) the `anon` and
+`authenticated` roles had no effective INSERT or UPDATE privilege; neither
+client role could execute the two reconciliation RPCs. This is a shared
+service-key authority problem, not an observed browser-role grant.
+
+Default ACLs in `public` grant broad rights on new relations and EXECUTE
+on new functions to `anon`, `authenticated` and `service_role` for objects
+created by `postgres` or `supabase_admin`. The current sensitive objects
+have narrower explicit ACLs. Any new function/table in a cutover migration
+must be created and restricted in one transaction, and its effective grants
+must be checked after deployment. The catalog returned no dedicated
+reconciliation reader role. This observation does not test whether one could
+be added safely, nor does it authenticate a provider candidate.
+
 ## Target boundary
 
 1. Keep the user's authenticated operator decision and the exact publication

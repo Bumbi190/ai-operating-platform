@@ -315,6 +315,37 @@ not be executed, inferred from this simulator, or treated as authorized.**
 
 **No step above was authorized or executed by this planning change.**
 
+## Synthetic on-disk transfer trial (2026-10-21)
+
+`worker-handoff-temp-copy.mjs` goes one step beyond the in-memory simulator
+by writing **twelve tiny synthetic files inside an automatically removed OS
+temporary test fixture**. This code deliberately has no command-line entrypoint,
+no permissions to create the real protected handoff, no Windows or user-account
+operations, and no support for real program archives or binaries.
+
+Its test-only confinement rejects a root outside a direct child of the OS
+temporary directory, missing fixture marker, any symlink or non-regular input,
+and input files above 64 KiB each. It uses the strict 12-file manifest and a
+separately supplied digest, prechecks all sources before copying, refuses any
+occupied target, stages files in a separate temporary folder with exclusive
+creation, rechecks source hashes during copying, and validates all staged bytes
+with the existing post-copy verifier before promoting the synthetic candidate.
+
+**Eleven new test cases** cover the all-pass fixture, a missing/forged marker,
+an occupied target, a same-size source swap after preflight, changed/extra
+staged files, two different simulated destination races, oversized inputs,
+source symlinks, and an incorrect external manifest hash. The trials clean up
+the entire temporary fixture and make **zero** changes to `ProgramData`.
+Linux SDF-1B CI now requires **43/43** creative handoff tests with zero skips;
+all Creative Tools Node tests are run locally before push.
+
+This is a **test of copy sequencing and failure handling only**. Windows
+filesystem atomicity, reparse-point races, ACL changes and privilege transfer
+cannot be inferred from the trial; a trusted, out-of-band, reviewed
+administrator-only bootstrap is still required. A self-provided SHA-256 does
+not count as independent signature or owner approval. No production copy or
+worker activation is allowed by this result.
+
 ## Whole-archive integrity update
 
 The staging planner additionally checks SHA-256 of the original PhotoCraft and

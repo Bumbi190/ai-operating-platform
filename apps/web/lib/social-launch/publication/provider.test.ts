@@ -13,6 +13,14 @@ it('uses reviewed image URL and exact caption without adding a brand footer',asy
  const calls:any[]=[];const provider=new MetaManualProvider(async(url,init)=>{calls.push({url,init});return Response.json({id:'67890',post_id:'12345_67890'})})
  await provider.facebook(facebook,{text:'Exakt text',linkUrl:null,imageUrl:media});expect(calls[0].url).toBe('https://graph.facebook.com/v21.0/12345/photos');const body=new URLSearchParams(calls[0].init.body);expect(body.get('url')).toBe(media);expect(body.get('message')).toBe('Exakt text');expect(body.get('published')).toBe('true')
 })
+it('rejects a Facebook composite receipt for another Page and accepts photo IDs',async()=>{
+ const wrong=new MetaManualProvider(async()=>Response.json({id:'99999_67890'}))
+ await expect(wrong.facebook(facebook,{text:'Exakt text',linkUrl:null,imageUrl:null}))
+  .rejects.toMatchObject({code:'invalid_response',outcome:'unknown'})
+ const photo=new MetaManualProvider(async()=>Response.json({id:'67890'}))
+ await expect(photo.facebook(facebook,{text:'Exakt text',linkUrl:null,imageUrl:media}))
+  .resolves.toMatchObject({providerId:'67890'})
+})
 it('creates and publishes an Instagram image through separate explicit calls',async()=>{
  const calls:any[]=[];const responses=[{id:'111'},{status_code:'FINISHED'},{id:'222'},{permalink:'https://www.instagram.com/p/fixture/'}]
  const provider=new MetaManualProvider(async(url,init)=>{calls.push({url,init});return Response.json(responses.shift())})

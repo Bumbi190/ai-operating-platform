@@ -5,8 +5,11 @@ create role social_schedule_full_publisher_fixture nologin bypassrls;
 grant usage on schema public to social_schedule_full_publisher_fixture;
 grant select on public.social_schedule_batches,
  public.social_content_revisions to social_schedule_full_publisher_fixture;
-grant select,update on public.projects,
- public.social_schedule_jobs,
+grant select on public.projects to social_schedule_full_publisher_fixture;
+-- SELECT ... FOR UPDATE needs UPDATE on at least one column. Limit the grant
+-- to the project key so this fixture cannot edit names, ownership or settings.
+grant update(id) on public.projects to social_schedule_full_publisher_fixture;
+grant select,update on public.social_schedule_jobs,
  public.social_publications to social_schedule_full_publisher_fixture;
 grant insert on public.social_schedule_events,
  public.social_publication_events to social_schedule_full_publisher_fixture;

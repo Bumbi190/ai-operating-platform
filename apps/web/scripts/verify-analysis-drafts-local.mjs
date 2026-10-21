@@ -365,12 +365,27 @@ try {
         GRANT EXECUTE ON FUNCTION public.calendar_source_gate_try_begin_probe(uuid)
           TO social_schedule_full_publisher_fixture;
         SET LOCAL ROLE social_schedule_full_publisher_fixture;
+        DO $authorize_missing_grant$ BEGIN
+          PERFORM public.social_schedule_authorize_write(
+            jsonb_build_object('jobId',${quote(id.job)},'claimId',${quote(id.claim)},'version',1),
+            jsonb_build_array(${quote(project)}));
+          RAISE EXCEPTION 'AUTHORIZE_WITHOUT_GRANT_ACCEPTED';
+        EXCEPTION WHEN insufficient_privilege THEN
+          IF SQLERRM NOT LIKE '%permission denied for function social_schedule_authorize_write%' THEN RAISE; END IF;
+        END $authorize_missing_grant$;
+        RESET ROLE;
+        GRANT EXECUTE ON FUNCTION public.social_schedule_authorize_write(jsonb,jsonb)
+          TO social_schedule_full_publisher_fixture;
+        SET LOCAL ROLE social_schedule_full_publisher_fixture;
         DO $claim_to_recovery$ DECLARE result jsonb; BEGIN
           result=public.social_schedule_claim(jsonb_build_object(
             'workerId','probe-worker','now',to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
             'dryRun',false,'projectIds',jsonb_build_array(${quote(project)})));
           IF result->>'jobId' IS DISTINCT FROM ${quote(id.job)} OR result->>'version' IS DISTINCT FROM '2'
             THEN RAISE EXCEPTION 'SYNTHETIC_CLAIM_NOT_RECORDED: %',result; END IF;
+          PERFORM public.social_schedule_authorize_write(
+            jsonb_build_object('jobId',result->>'jobId','claimId',result->>'claimId','version',2),
+            jsonb_build_array(${quote(project)}));
           PERFORM public.social_schedule_step(
             jsonb_build_object('jobId',result->>'jobId','claimId',result->>'claimId','version',2),
             '{"action":"prepare"}'::jsonb
@@ -379,6 +394,9 @@ try {
             jsonb_build_object('jobId',result->>'jobId','claimId',result->>'claimId','version',3),
             jsonb_build_object('action','claim_create','expectedVersion',1,'capabilityHash',${quote('e'.repeat(64))})
           );
+          PERFORM public.social_schedule_authorize_write(
+            jsonb_build_object('jobId',result->>'jobId','claimId',result->>'claimId','version',4),
+            jsonb_build_array(${quote(project)}));
           PERFORM public.social_schedule_recover_checkpoint(
             jsonb_build_object('jobId',result->>'jobId','claimId',result->>'claimId','version',4)
           );
@@ -404,6 +422,12 @@ try {
         END $deny_service$;
         RESET ROLE;
         SET LOCAL ROLE social_schedule_full_publisher_fixture;
+        DO $deny_project_edit$ BEGIN
+          UPDATE public.projects SET name='forbidden' WHERE id=${quote(project)}::uuid;
+          RAISE EXCEPTION 'PROJECT_NAME_WRITE_ACCEPTED';
+        EXCEPTION WHEN insufficient_privilege THEN
+          IF SQLERRM NOT LIKE '%permission denied for table projects%' THEN RAISE; END IF;
+        END $deny_project_edit$;
         DO $deny_fixture$ BEGIN
           UPDATE public.social_schedule_jobs SET reason='forbidden' WHERE id=${quote(id.job)}::uuid;
           RAISE EXCEPTION 'DIRECT_FIXTURE_WRITE_ACCEPTED';

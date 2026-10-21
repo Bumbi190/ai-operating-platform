@@ -1,0 +1,51 @@
+{
+  "date": "2026-10-21",
+  "scope": "standard-user synthetic startup diagnostics, no isolation pass inferred",
+  "ordinaryTempFullHelper": {
+    "processStartInheritedMs": 136,
+    "processStartMinimalMs": 128,
+    "nativeInheritedMs": 36,
+    "nativeMinimalMs": 43,
+    "allExit": 0,
+    "allMarkers": true,
+    "allFixturesRemoved": true
+  },
+  "sameMinimalBinary": {
+    "main": "return 42",
+    "launch": "native CreateProcess; inherited environment; cwd C:\\Windows\\System32",
+    "temp": {
+      "wait": 0,
+      "exit": 42,
+      "elapsedMs": 51
+    },
+    "freshProfileAC": {
+      "wait": 258,
+      "exit": 259,
+      "elapsedMs": 3002
+    },
+    "sameProfileLocalState": {
+      "wait": 0,
+      "exit": 42,
+      "elapsedMs": 44
+    },
+    "allCreatedHandlesStopped": true,
+    "profileDeleteHRESULT": 0,
+    "profileEntriesAfter": 0,
+    "tempRemoved": true
+  },
+  "conclusion": "AC storage placement reproduced a startup timeout even for a minimal program. LocalState resolves ordinary-token startup only; CLR behavior inside AppContainer remains unverified. Underlying Windows/CLR cause not established.",
+  "blockedProfileFollowup": {
+    "name": "omnira.artcraft.childprobe.99de97a6520a4a0b8c759cdc6a93d892",
+    "sid": "S-1-15-2-3935010541-2446557748-1871368424-776386095-3797197351-1797123539-2014514437",
+    "utc": "2026-10-21T13:52:18.1528302Z",
+    "relevantProcessNames": [
+      "inert-descendant",
+      "curl"
+    ],
+    "relevantProcessCount": 0,
+    "profileDeleteHRESULT": 0,
+    "profileEntriesAfter": 0,
+    "mappingAbsent": true,
+    "originalResultPreserved": true
+  }
+}

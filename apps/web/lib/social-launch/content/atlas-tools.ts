@@ -26,8 +26,8 @@ export const SOCIAL_CONTENT_TOOLS:Anthropic.Tool[]=[
   planRevisionId:{type:'string'},title:{type:'string',minLength:3,maxLength:100},
   publicSummary:{type:'string',minLength:15,maxLength:600},
   campaignPurpose:{type:'string',minLength:5,maxLength:250},
-  proof:{type:'array',minItems:1,maxItems:8,items:{type:'object',additionalProperties:false,properties:{
-   kind:{type:'string',enum:['owner-project-public-evidence']},referenceId:{type:'string'},
+  proof:{type:'array',minItems:1,maxItems:3,items:{type:'object',additionalProperties:false,properties:{
+   kind:{type:'string',enum:['owner-project-public-evidence']},referenceId:{type:'string',pattern:'^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$'},
    sha256:{type:'string',pattern:'^[a-f0-9]{64}$'},description:{type:'string'},
    privateSubscriberAsset:{type:'boolean',enum:[false]},
   },required:['kind','referenceId','sha256','description','privateSubscriberAsset']}},

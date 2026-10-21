@@ -57,10 +57,16 @@ test('owner reviews complete month evidence then expressly decides exact version
  const proposal={projectId:'77cda551-57c9-4dc0-b019-1bb6438777f7',month,
   planRevisionId:'e745041f-ad3a-493f-bd3b-025525d561b2',title:'December public preview',
   publicSummary:'A short private source review',campaignPurpose:'Preview',
-  proof:[{kind:'owner-project-public-evidence',referenceId:'public-december-hero',
+  proof:[{kind:'owner-project-public-evidence',referenceId:'20000000-0000-4000-8000-000000000002',
    sha256:'b'.repeat(64),description:'Owner source original',privateSubscriberAsset:false}],
   proposedCopy:[{date:'2026-11-27',variant:'winter',
    title:'Winter with Nova and Pling',text:'Public teaser needs independent review.'}]}
+ await page.route('**/api/social-content/media?*',async route=>{
+  await route.fulfill({
+   contentType:'image/svg+xml',
+   body:'<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="#447"/></svg>',
+  })
+ })
  await page.route('**/api/family-month-source-review**',async route=>{
   const u=new URL(route.request().url())
   if(route.request().method()==='POST'){
@@ -144,11 +150,17 @@ test('a successful decision HTTP response alone cannot claim success before pers
    evidenceCount:1,dates:['2026-11-27'],decisionPrompt:'Review the source',
    concerns:[]},decision:null,canActivate:false,canPublish:false}
  const proposal={projectId:'77cda551-57c9-4dc0-b019-1bb6438777f7',
-  month,proof:[{kind:'owner-project-public-evidence',referenceId:'public-image',
+  month,proof:[{kind:'owner-project-public-evidence',referenceId:'20000000-0000-4000-8000-000000000002',
    sha256:'b'.repeat(64),description:'Owner original image',privateSubscriberAsset:false}],
   proposedCopy:[{date:'2026-11-27',variant:'winter',title:'December',
    text:'Preview requires editorial approval.'}]}
  let posted=0
+ await page.route('**/api/social-content/media?*',async route=>{
+  await route.fulfill({
+   contentType:'image/svg+xml',
+   body:'<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="#447"/></svg>',
+  })
+ })
  await page.route('**/api/family-month-source-review**',async route=>{
   const u=new URL(route.request().url())
   if(route.request().method()==='POST'){
@@ -302,4 +314,54 @@ test('Atlas-first family page keeps the next-month owner source decision visible
  await expect(page.getByRole('region',{name:'M\u00e5nadsk\u00e4llor'})).toBeVisible()
  expect(sourceReads).toBe(1)
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+})
+
+
+test('an image that fails owner-authorized media loading blocks approval but allows rejection',async({page})=>{
+ const month='2026-12',candidateId='30000000-0000-4000-8000-000000000003',hash='a'.repeat(64)
+ const card={
+  candidateId,month,candidateSha256:hash,createdAt:'2026-10-20T20:00:00Z',
+  card:{heading:'Missing source image',summary:'Owner review, must check media',
+   evidenceCount:1,dates:['2026-11-27'],decisionPrompt:'Inspect exact images',
+   concerns:['Image missing']},
+  decision:null,canActivate:false,canPublish:false,
+ }
+ const proposal={projectId:'77cda551-57c9-4dc0-b019-1bb6438777f7',month,
+  planRevisionId:'e745041f-ad3a-493f-bd3b-025525d561b2',
+  proof:[{kind:'owner-project-public-evidence',
+   referenceId:'20000000-0000-4000-8000-000000000002',
+   sha256:'b'.repeat(64),description:'Private owner image',privateSubscriberAsset:false}],
+  proposedCopy:[{date:'2026-11-27',variant:'winter',
+   title:'Preview',text:'Preview awaiting image verification'}],
+ }
+ let posted:any=null
+ await page.route('**/api/social-content/media?*',async route=>
+  route.fulfill({status:404,body:'Not Found'}))
+ await page.route('**/api/family-month-source-review**',async route=>{
+  const url=new URL(route.request().url())
+  if(route.request().method()==='POST'){
+   posted=route.request().postDataJSON()
+   await route.fulfill({json:{stored:true,candidateId,candidateSha256:hash,
+    decision:'reject',activationAllowed:false,canPublish:false}})
+  }else if(url.searchParams.has('candidateId')){
+   await route.fulfill({json:{kind:'family-month-source-owner-review-v1',
+    month,candidate:card,proposal,latest:true,canActivate:false,canPublish:false}})
+  }else{
+   await route.fulfill({json:{kind:'family-month-source-owner-review-list-v1',
+    month,canActivate:false,canPublish:false,
+    records:[posted?{...card,decision:{kind:'reject',decidedAt:'2026-10-20T21:00:00Z',
+     candidateSha256:hash}}:card]}})
+  }
+ })
+ await page.goto('/content?family-source-review=1')
+ await page.getByRole('button',{name:'Granska underlag'}).click()
+ await expect(page.getByRole('img',{name:/Verifiera originalbild/})).toBeVisible()
+ await page.getByRole('checkbox',{name:/Jag har granskat/}).check()
+ await expect(page.getByRole('button',{name:/^Godk/})).toBeDisabled()
+ await expect(page.getByText(/Originalbilderna/)).toBeVisible()
+ await expect(page.getByRole('button',{name:'Avvisa'})).toBeEnabled()
+ expect(posted).toBeNull()
+ await page.getByRole('button',{name:'Avvisa'}).click()
+ expect(posted).toMatchObject({operation:'decide',decision:'reject',confirmed:true,
+  candidateId,candidateSha256:hash})
 })

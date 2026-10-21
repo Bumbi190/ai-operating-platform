@@ -46,8 +46,9 @@ function okSelection(value:Selection,expected:Card){
   value.candidate.candidateSha256===expected.candidateSha256&&
   value.candidate.decision===null&&value.proposal?.month===expected.month&&
   value.proposal.projectId===FAMILY_SOCIAL_PROJECT_ID&&
-  Array.isArray(value.proposal.proof)&&
-  value.proposal.proof.every(p=>p.privateSubscriberAsset===false&&reHash.test(p.sha256))&&
+  Array.isArray(value.proposal.proof)&&value.proposal.proof.length>=1&&
+  value.proposal.proof.length<=3&&
+  value.proposal.proof.every(p=>p.privateSubscriberAsset===false&&reHash.test(p.sha256)&&reId.test(p.referenceId))&&
   Array.isArray(value.proposal.proposedCopy)
 }
 const copy={
@@ -73,6 +74,7 @@ export function FamilyMonthSourceReviewPanel({
  const [rows,setRows]=useState<Card[]>([])
  const [selection,setSelection]=useState<Selection|null>(null)
  const [agreed,setAgreed]=useState(false)
+ const [visibleMedia,setVisibleMedia]=useState<Record<string,boolean>>({})
  const [busy,setBusy]=useState(false)
  const [hidden,setHidden]=useState(false)
  const [error,setError]=useState('')
@@ -82,11 +84,18 @@ export function FamilyMonthSourceReviewPanel({
  const latest=rows[0]??null
  const pending=latest&&latest.decision===null?latest:null
  const endpoint='/api/family-month-source-review'
+ const mediaReady=!!selection&&selection.proposal.proof.length>0&&
+  selection.proposal.proof.every(p=>visibleMedia[p.referenceId+'|'+p.sha256]===true)
+ function reviewedMediaUrl(p:Proposal['proof'][number]){
+  return '/api/social-content/media?'+new URLSearchParams({
+   projectId:FAMILY_SOCIAL_PROJECT_ID,assetId:p.referenceId,sha256:p.sha256,
+  })
+ }
  const load=useCallback(async()=>{
   const id=++seq.current
   controller.current?.abort()
   const abort=new AbortController();controller.current=abort
-  setBusy(true);setError('');setSelection(null);setAgreed(false)
+  setBusy(true);setError('');setSelection(null);setAgreed(false);setVisibleMedia({})
   try{
    const r=await fetch(endpoint+'?'+new URLSearchParams({month}),{cache:'no-store',signal:abort.signal})
    if(id!==seq.current||abort.signal.aborted)return
@@ -106,7 +115,7 @@ export function FamilyMonthSourceReviewPanel({
  useEffect(()=>{if(validProject)void load();return()=>{seq.current++;controller.current?.abort()}},[validProject,load])
  async function showFull(){
   if(!pending||busy)return
-  setBusy(true);setError('')
+  setBusy(true);setError('');setVisibleMedia({})
   const id=++seq.current;controller.current?.abort()
   const abort=new AbortController();controller.current=abort
   try{
@@ -123,7 +132,7 @@ export function FamilyMonthSourceReviewPanel({
   }finally{if(id===seq.current&&!abort.signal.aborted)setBusy(false)}
  }
  async function decide(decision:'approve'|'reject'){
-  if(busy||!agreed||!selection||!pending||!okSelection(selection,pending))return
+  if(busy||!agreed||(decision==='approve'&&!mediaReady)||!selection||!pending||!okSelection(selection,pending))return
   setBusy(true);setError('');setResult('')
   const id=++seq.current
   controller.current?.abort()
@@ -189,6 +198,12 @@ export function FamilyMonthSourceReviewPanel({
    <ul>{selection.proposal.proof.map((p,i)=><li key={p.referenceId+'-'+i}>
     <strong>{p.description}</strong><span>{p.referenceId}</span>
     <code>{p.sha256}</code>
+    <img key={selection.candidate.candidateId+'-'+p.sha256}
+     src={reviewedMediaUrl(p)} alt={'Verifiera originalbild: '+p.description}
+     loading="eager" referrerPolicy="no-referrer"
+     className={styles.reviewImage}
+     onLoad={()=>setVisibleMedia(previous=>({...previous,[p.referenceId+'|'+p.sha256]:true}))}
+     onError={()=>setVisibleMedia(previous=>({...previous,[p.referenceId+'|'+p.sha256]:false}))}/>
    </li>)}</ul>
    <h4>{copy.text}</h4>
    <ol>{selection.proposal.proposedCopy.map(p=><li key={p.date}>
@@ -197,10 +212,11 @@ export function FamilyMonthSourceReviewPanel({
    <details><summary>Exakt granskningsversion</summary><code>{pending.candidateSha256}</code>
     <ul>{pending.card.concerns.map((c,i)=><li key={i}>{c}</li>)}</ul>
    </details>
+   {!mediaReady&&<p role="status">Originalbilderna m?ste kunna visas innan k?llan kan godk?nnas. Du kan avvisa underlaget utan att godk?nna det.</p>}
    <label className={styles.confirm}><input type="checkbox" checked={agreed}
     onChange={e=>setAgreed(e.target.checked)}/>{copy.confirm}</label>
    <div className={styles.actions}>
-    <button type="button" disabled={!agreed||busy} onClick={()=>void decide('approve')}>{copy.approve}</button>
+    <button type="button" disabled={!agreed||busy||!mediaReady} onClick={()=>void decide('approve')}>{copy.approve}</button>
     <button type="button" disabled={!agreed||busy} onClick={()=>void decide('reject')}>{copy.reject}</button>
    </div><small>{copy.noPublish}</small>
   </div>}

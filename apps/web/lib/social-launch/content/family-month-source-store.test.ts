@@ -79,7 +79,7 @@ function candidate():FamilyMonthSourceProposal{
   projectId:FAMILY_WEEKLY_PROJECT_ID,month:'2026-12',planRevisionId:plan,
   title:'December family preview',publicSummary:'A December preview with public content.',
   campaignPurpose:'Introduce verified family activities',
-  proof:[{kind:'owner-project-public-evidence',referenceId:'december-public-image',
+  proof:[{kind:'owner-project-public-evidence',referenceId:'20000000-0000-4000-8000-000000000002',
    sha256:'a'.repeat(64),description:'Owner supplied public image',
    privateSubscriberAsset:false}],
   proposedCopy:[{date:'2026-11-27',variant:'winter',

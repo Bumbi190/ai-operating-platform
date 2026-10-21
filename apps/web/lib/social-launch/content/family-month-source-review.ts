@@ -64,7 +64,7 @@ export function prepareFamilyMonthSourceReview(value:FamilyMonthSourceProposal):
    typeof value.title!=='string'||value.title.length<3||value.title.length>100||
    typeof value.publicSummary!=='string'||value.publicSummary.length<15||value.publicSummary.length>600||
    typeof value.campaignPurpose!=='string'||value.campaignPurpose.length<5||value.campaignPurpose.length>250||
-   !Array.isArray(value.proof)||value.proof.length<1||value.proof.length>8||
+   !Array.isArray(value.proof)||value.proof.length<1||value.proof.length>3||
    !Array.isArray(value.proposedCopy)||value.proposedCopy.length<1||value.proposedCopy.length>12)
   throw Error('FAMILY_MONTH_SOURCE_INVALID')
 
@@ -75,7 +75,7 @@ export function prepareFamilyMonthSourceReview(value:FamilyMonthSourceProposal):
    Object.keys(p).sort().join('|')!==
     ['kind','referenceId','sha256','description','privateSubscriberAsset'].sort().join('|')||
    p.kind!=='owner-project-public-evidence'||p.privateSubscriberAsset!==false||
-   typeof p.referenceId!=='string'||!/^[a-z0-9][a-z0-9_-]{3,95}$/.test(p.referenceId)||
+   typeof p.referenceId!=='string'||!UUID.test(p.referenceId)||
    !SHA.test(p.sha256)||typeof p.description!=='string'||
    p.description.length<8||p.description.length>200||
    references.has(p.referenceId))

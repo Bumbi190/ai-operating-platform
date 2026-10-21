@@ -106,3 +106,52 @@ Original UI PR #448 merge rehearsal shows conflicts in
 SocialContentPanel.tsx, e2e/social-content-entry.tsx and
 e2e/social-content.spec.ts only. Resolve the Atlas-first UI and
 month-source owner card intentionally before merging either.
+
+## P8 — Source-image review integrity (2026-10-21)
+
+Independent engineering review is still REQUIRED before merge. This is
+an internal hardening pass, not independent security approval.
+
+### Fixed a readiness gap
+
+Previously a source proposal could contain a free-text source
+referenceId such as december-public-hero and still enter owner
+review. Later source activation requires an actual project-owned asset
+UUID. That mismatch could lead to unusable approved source packets.
+
+Now each source proof must contain a UUID-shaped asset reference, not a
+free-text label or URL; maximum three reference images, matching the
+subsequent verification cap. Atlas tool input schema enforces the same
+constraint. Membership, ownership, bytes and legal rights remain
+separate checks: a syntactically valid UUID alone is not proof.
+
+### Improved owner review before exact approval
+
+The compact review card fetches and displays every source image via
+the existing authenticated /api/social-content/media endpoint with
+the exact project ID, asset UUID and SHA-256. The endpoint checks
+project authorization, registered media status and actual byte hash.
+
+The owner cannot enable APPROVE until all source images have loaded.
+Missing/forbidden images keep APPROVE disabled; REJECT stays available.
+Exact copy/source/rights review checkbox remains mandatory.
+No public storage grants, untrusted arbitrary URLs, new provider calls,
+or automatic media generation added.
+
+### Verification
+
+- 95/95 focused Vitest passed.
+- 16/16 Social Content Playwright and 6/6 Social Launch tests passed,
+  including a negative broken-image approval test.
+- Full local TypeScript only reports the 3 existing Remotion errors.
+- No schema applied, no production data changed; no content uploaded,
+  scheduled, approved or published.
+
+### Remaining before release
+
+1. Independent code/security review of updated PR #472.
+2. Authenticated owner preview walkthrough, including image rights.
+3. Explicitly approved protected SQL migration apply.
+4. Both private flags remain OFF; no cron or automatic social dispatch.
+5. The image endpoint uses metered storage bandwidth; track actual
+   source asset sizes before enabling the review feature.

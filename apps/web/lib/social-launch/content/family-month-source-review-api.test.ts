@@ -50,7 +50,7 @@ function proposed():FamilyMonthSourceProposal{
   title:'December preview review',
   publicSummary:'Public preview from the owner studio.',
   campaignPurpose:'Preview December family activities',
-  proof:[{kind:'owner-project-public-evidence',referenceId:'source-image',
+  proof:[{kind:'owner-project-public-evidence',referenceId:'20000000-0000-4000-8000-000000000002',
    sha256:'a'.repeat(64),description:'Public promotional source',
    privateSubscriberAsset:false}],
   proposedCopy:[{date:'2026-11-27',variant:'winter',title:'Coming December preview',

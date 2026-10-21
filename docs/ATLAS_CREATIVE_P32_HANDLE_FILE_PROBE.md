@@ -31,7 +31,7 @@ handles and multi-link leaf files. Exact canonical final path is corroborated.
 The bounded read (<=64KiB) uses the SAME leaf handle and rechecks handle
 identity, byte size, link count and write timestamp before returning data.
 
-## Synthetic native cases — pending execution
+## Synthetic native cases
 
 The fixture creates only GUID-owned local Temp directories, small known
 canaries, a directory junction pointing to its own synthetic sibling, and a
@@ -86,7 +86,7 @@ network request, existing project ACL change or production deployment.
 - Independent reviewer read actual source and wrapper; elevated-cleanup
   execution blocker fixed by standard-user enforcement, then re-reviewed
   with no remaining confirmed blockers for standard-user reproduction.
-- Actual18 native observations: NOT YET RUN.
+- Actual18 native observations passed in both the operator run and an automatic standard-user run; see results below.
 
 Microsoft API references:
 - https://learn.microsoft.com/en-us/windows/win32/api/winternl/nf-winternl-ntcreatefile
@@ -106,3 +106,15 @@ A failed cleanup preserves FixturePath for targeted review; do not recursively
 delete an unexplained directory. No grant or activation follows this result.
 
 Keep Draft, stacked on #501; no merge/deployment.
+
+## Actual operator and automatic results — 2026-10-21
+
+The operator supplied an ordinary-user result with Error=null, AllTestsPassed=true and all18 test rows true; fixture suffix `f9c073da7e17481e9778d585d4d6c0c6` was reported removed. A fresh read-only check after reconnect independently found0 matching entries in the known Temp parent.
+
+After Desktop Commander reconnected, the remote process independently reported Administrator=false, Windows session1 and the expected Andre user SID. Therefore ordinary-user execution is now available directly; no linked-token synthesis, UAC bypass, service/account change or Explorer workaround was needed. This does not change the documented administrator context of earlier sessions.
+
+The assistant automatically ran the existing standard-user wrapper through fixed system PowerShell with NoProfile. It exited0 at `2026-10-21T13:32:03.3138152Z`: all18 native rows passed, Error=null, ElevatedContext=false and FixtureRemoved=true. A separate parent enumeration in the supervising process found0 entries for automatic fixture suffix `b7273eb6f9bd42e4bb3d64e80e2e35d4`. Structured output is in `ATLAS_CREATIVE_P32_HANDLE_FILE_RESULT.json`.
+
+Git recognized that this earlier worktree's metadata owner was Administrators. Worktree/ancestor metadata were checked for ordinary directory types/no reparse points and the exact known worktree was trusted with command-local `-c safe.directory=...` only. No global Git exception, ownership or ACL change was made.
+
+Conclusion: these18 bounded synthetic native observations passed twice. Root ACL trust, dedicated worker token and general adversarial race/production readiness remain false; no worker/editor/network operation or activation occurred. Automatic ordinary-user runs can be used for subsequent authorized diagnostics while that context remains verified.

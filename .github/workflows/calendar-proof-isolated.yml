@@ -38,6 +38,10 @@ jobs:
             -e POSTGRES_PASSWORD=postgres postgres:16
           for attempt in {1..30}; do
             if docker exec omnira-website-build-test-20261014 pg_isready -U postgres; then
+              docker exec omnira-website-build-test-20261014 psql -U postgres -v ON_ERROR_STOP=1 \
+                -c 'create role anon nologin' \
+                -c 'create role authenticated nologin' \
+                -c 'create role service_role nologin' \
               exit 0
             fi
             sleep 1

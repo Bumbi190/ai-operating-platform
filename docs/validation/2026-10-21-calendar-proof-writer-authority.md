@@ -141,10 +141,9 @@ it is a review artifact, not evidence that a new role boundary already works.
 ## Read-only live catalog observation, 2026-10-21
 
 The four catalog queries above were run against the **AI Operating Platform**
-Supabase project (PostgreSQL 17) as SELECT only. No publication row, token,
-credential value, role, grant or function body was read or changed. This
-confirms effective privileges at observation time, not the safety of a future
-migration.
+Supabase project (PostgreSQL 17) as SELECT only. Only catalog metadata was read; no publication row, token
+value or function body was read, and nothing was changed. This confirms
+effective privileges at observation time, not the safety of a future migration.
 
 | Object | Effective `service_role` privileges |
 | --- | --- |
@@ -171,9 +170,9 @@ on new functions to `anon`, `authenticated` and `service_role` for objects
 created by `postgres` or `supabase_admin`. The current sensitive objects
 have narrower explicit ACLs. Any new function/table in a cutover migration
 must be created and restricted in one transaction, and its effective grants
-must be checked after deployment. The catalog returned no dedicated
-reconciliation reader role. This observation does not test whether one could
-be added safely, nor does it authenticate a provider candidate.
+must be checked after deployment. The query covered `service_role` and
+`authenticator` membership only; it did not inventory every custom role.
+This observation does not authenticate a provider candidate.
 
 ## Target boundary
 

@@ -145,7 +145,7 @@ jobs:
           const passed = assertions.filter(a => a.status === 'passed').length
           const failed = assertions.filter(a => a.status === 'failed').length
           const skipped = assertions.filter(a => ['pending','skipped','todo','disabled'].includes(a.status)).length
-          if (result.status !== 'passed' || passed < 13 || failed || skipped ||
+          if (result.status !== 'passed' || passed < 14 || failed || skipped ||
               report.numFailedTests || report.numPendingTests || report.numTodoTests) {
             throw new Error(`Scheduled worker: status=${result.status} passed=${passed} failed=${failed} skipped=${skipped}`)
           }

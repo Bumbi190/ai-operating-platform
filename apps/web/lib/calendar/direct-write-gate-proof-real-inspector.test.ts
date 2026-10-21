@@ -70,7 +70,8 @@ describe('real inspector candidate validation with signed source gate',()=>{
  });
  it('shows that the source gate and proof INSERT revoke do not prevent direct publication UPDATE',()=>{
   // The source token enforces lock order and revision consistency. The shared
-  // service role can mint it, then still write a forged published row in this\n  // reduced schema. The original migration's receipt constraint is tested separately.
+  // service role can mint it, then still write a forged published row in this
+  // reduced schema. The original migration's receipt constraint is tested separately.
   f.sql('set local role service_role;select public.calendar_source_gate_begin_probe('+q(PROJECT_A)+');'+
    'update public.social_publications set state='+q('published')+
    ',provider_id='+q('12345_99999')+',permalink='+q('https://www.facebook.com/12345/posts/99999')+

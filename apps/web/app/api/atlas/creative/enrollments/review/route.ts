@@ -2,7 +2,7 @@
  * P19 DORMANT, not a new approval permission. Even a public HTTP request
  * fails before Supabase cookies, operator auth or the media worker load.
  */
-import {handleDormantCreativeReviewRoute} from '@/lib/media/creative-queue/review-route-gate.mjs'
+import {handleDormantCreativeReviewRoute} from '../../../../../../lib/media/creative-queue/review-route-gate.mjs'
 
 export const dynamic='force-dynamic'
 export const revalidate=0

@@ -18,7 +18,7 @@ interface PendingRow {
 }
 interface ProjectOwnerRow { id: string; owner_id: string }
 
-export function createDormantCreativeReviewPreviewReader() {
+export function createDormantCreativeReviewDependencies() {
   const db = createAdminClient()
   const lookup = async (id: string) => {
     // Private P13 table is unapplied; isolate the temporary ungenerated
@@ -43,7 +43,9 @@ export function createDormantCreativeReviewPreviewReader() {
       id:row.id, ownerId:row.owner_id,
     }))
   }
-  return makeCreativeReviewPreviewReader({
-    operator: resolvePlatformOperator, lookup, projectOwners,
-  })
+  return {operator: resolvePlatformOperator, lookup, projectOwners}
+}
+
+export function createDormantCreativeReviewPreviewReader() {
+  return makeCreativeReviewPreviewReader(createDormantCreativeReviewDependencies())
 }

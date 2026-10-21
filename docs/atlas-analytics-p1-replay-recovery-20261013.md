@@ -43,6 +43,16 @@ historical replay or working Supabase branch creation. It also does not repair
 the production migration registry's earlier missing `media_scripts` baseline,
 change any migration ledger, or apply SQL to production.
 
+An attempted isolated GitHub Actions run on 21 October
+([39619027578](https://github.com/Bumbi190/ai-operating-platform/actions/runs/39619027578))
+passed the eight ordering tests, but its first image download failed with
+`toomanyrequests: Data limit exceeded` from public ECR. The SQL step was
+skipped. The temporary automatic workflow was removed to avoid repeating the
+same blocked pull. No PostgreSQL replay result can be inferred from this run;
+use a machine with the exact required images already cached to run the command
+above. Do not substitute a different image version without reviewing its
+extension and bootstrap parity.
+
 ## Production installation decision
 
 The preview's exact Vercel build stops before Next.js compilation because production lacks the enforced `atlas_analysis_drafts` migration. This repair intentionally does not make that deployment green.

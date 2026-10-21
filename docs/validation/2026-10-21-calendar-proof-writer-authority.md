@@ -176,6 +176,34 @@ must be checked after deployment. The query covered `service_role` and
 `authenticator` membership only; it did not inventory every custom role.
 This observation does not authenticate a provider candidate.
 
+### Publication step entry points also accept provider receipts
+
+A second SELECT-only catalog check on 2026-10-21 confirmed that
+`service_role` can EXECUTE `social_publication_step(jsonb,jsonb)`,
+`social_schedule_claim(jsonb)` and `social_schedule_step(jsonb,jsonb)`.
+All three are SECURITY INVOKER; `anon` and `authenticated` cannot EXECUTE
+them. The repository SQL shows that a manual publication in `publishing`
+can move to `published` through `social_publication_step` with a
+syntactically valid caller-supplied `providerId`. The function verifies the
+owner-shaped `p_principal` against project rows but does not authenticate that
+JSON against the database caller, and its `complete` branch does not GET the
+provider. This is a source-level inference, not a live exploit test. The
+application dispatch normally obtains the provider receipt before calling
+this RPC, but a holder of the service key can bypass that application path.
+The scheduled step also accepts caller-supplied `providerId` on `complete`
+after a valid claim; its claim and authorization guards must be retained for
+the existing queue. Removing only the reconciliation RPC grant and direct
+table UPDATE would therefore leave an alternate route to a forged published
+state.
+
+The cutover inventory must include every `published` transition and its
+database EXECUTE grant, especially both step RPCs and the worker that calls
+them. The generic service key cannot be treated as a read-only principal
+merely because the app normally calls these methods through its dispatcher.
+A full-schema test must show that the generic identity cannot submit a fake
+provider receipt through manual or scheduled RPCs, while the dedicated
+publish worker still completes approved real posts and the queued jobs.
+
 ## Live schedule continuity, read-only observation
 
 On 2026-10-21, the Vercel Production configuration had
@@ -235,8 +263,10 @@ processable, then schedule the operational change with the owner.
 
 - With the effective role grants in a fully migrated Supabase test database:
   generic service_role cannot INSERT proof, execute proof-writing/complete RPCs,
-  or directly forge published state; the dedicated reader can perform its
-  exact functions and cannot mutate unrelated social/calendar data.
+  directly forge published state, or submit fabricated provider receipts through
+  manual/scheduled step RPCs; the dedicated reader can perform its exact
+  functions and cannot mutate unrelated social/calendar data. The legitimate
+  publish worker retains its reviewed completion path for approved jobs.
 - The reader refuses absent, expired, wrong-project or mismatched operator
   authorization; the UI decision binds to the exact publication, version and
   candidate. Replaying it after a binding/revision change fails.

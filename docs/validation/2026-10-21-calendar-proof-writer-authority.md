@@ -408,7 +408,19 @@ five named tables and execute the four helper signatures. GitHub Actions run
 [39602058849](https://github.com/Bumbi190/ai-operating-platform/actions/runs/39602058849)
 passed **23 inspector, 13 SQL recovery, 11 provider and 15 scheduled worker
 tests (62 total), 0 failed/skipped**; the owned test database and container
-were removed. The projection uses tiny synthetic functions rather than the
+were removed. A follow-up on the same rollback-only projection used the worker fixture's
+existing `platform_tokens` table. Within the transaction it checked that a
+direct SELECT by the isolated publisher role raises insufficient privilege;
+the shared service role retains SELECT in that fixture. The initial setup
+attempt [39602923088](https://github.com/Bumbi190/ai-operating-platform/actions/runs/39602923088)
+failed because it tried to recreate that existing table; cleanup succeeded.
+The corrected [39603446484](https://github.com/Bumbi190/ai-operating-platform/actions/runs/39603446484)
+passed the same **62/62 directed tests, 0 failed/skipped** and removed the
+database/container. This is a local SQL privilege check, not deployed token
+isolation: the real scheduled worker still resolves credentials through the
+general service key, and the fixture role has no dedicated credential source.
+
+The projection uses tiny synthetic functions rather than the
 canonical `20261018083917_media_news_review_evidence.sql` body, so it
 confirms SQL syntax and the optional grant path only. It does not establish
 that actual news-backed scheduled preparation, completion or recovery works

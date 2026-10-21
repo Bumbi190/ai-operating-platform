@@ -1,0 +1,397 @@
+{
+  "Mode": "throwaway-AppContainer-explicit-Windows-breakaway-probe",
+  "Error": null,
+  "ProfileName": "omnira.p35.breakaway.d771a4d081ae4a7eba6480af30cca20c",
+  "ProfileSid": "S-1-15-2-767561053-440714257-2523607433-2554239378-2900975439-3277714561-2191109420",
+  "ProfileStorage": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p35.breakaway.d771a4d081ae4a7eba6480af30cca20c\\AC",
+  "StagedRuntimeImage": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p35.breakaway.d771a4d081ae4a7eba6480af30cca20c\\AC\\runtime\\python.exe",
+  "ObservedAtUtc": "2026-10-21T16:00:07.7702000Z",
+  "PythonVersion": "3.12.2",
+  "ControlRuntimeImage": "C:\\Python312\\python.exe",
+  "ParentSourceSha256": "d08953fe5656b29946af60ebf5cb50e5133f1514d3cbd97b5aa5439b156b2101",
+  "ProfileCreated": true,
+  "ProfileDeleteApiSucceeded": true,
+  "ProfileStorageAbsenceCorroborated": true,
+  "ProfileMappingAbsent": true,
+  "AllProcessesStopped": true,
+  "WorkerAccountUsed": false,
+  "EditorStarted": false,
+  "NetworkRequested": false,
+  "ProjectAclChanged": false,
+  "ProductionReady": false,
+  "ArbitraryBrokerContainmentVerified": false,
+  "ActualWorkerTokenVerified": false,
+  "SupervisorCrashScenarioVerified": false,
+  "GeneralExecutableTrustVerified": false,
+  "StagedFiles": [
+    {
+      "RelativePath": "python.exe",
+      "SourceSha256": "624bbc0586d8855633b875e911883bbef8a0e8b8711e11126df480dd86f54181",
+      "StagedSha256": "624bbc0586d8855633b875e911883bbef8a0e8b8711e11126df480dd86f54181",
+      "Bytes": 103192,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "python312.dll",
+      "SourceSha256": "789a42ac160cef98f8925cb347473eeeb4e70f5513242e7faba5139ba06edf2d",
+      "StagedSha256": "789a42ac160cef98f8925cb347473eeeb4e70f5513242e7faba5139ba06edf2d",
+      "Bytes": 7009048,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "vcruntime140.dll",
+      "SourceSha256": "4d292623516f65c80482081e62d5dadb759dc16e851de5db24c3cbb57b87db83",
+      "StagedSha256": "4d292623516f65c80482081e62d5dadb759dc16e851de5db24c3cbb57b87db83",
+      "Bytes": 119192,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "vcruntime140_1.dll",
+      "SourceSha256": "a113f192195f245f17389e6ecbed8005990bcb2476ddad33f7c4c6c86327afe5",
+      "StagedSha256": "a113f192195f245f17389e6ecbed8005990bcb2476ddad33f7c4c6c86327afe5",
+      "Bytes": 49528,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "DLLs\\_ctypes.pyd",
+      "SourceSha256": "f20dfa748b878751ea1c4fe77a230d65212720652b99c4e5577bce461bbd9089",
+      "StagedSha256": "f20dfa748b878751ea1c4fe77a230d65212720652b99c4e5577bce461bbd9089",
+      "Bytes": 125208,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "DLLs\\libffi-8.dll",
+      "SourceSha256": "eff52743773eb550fcc6ce3efc37c85724502233b6b002a35496d828bd7b280a",
+      "StagedSha256": "eff52743773eb550fcc6ce3efc37c85724502233b6b002a35496d828bd7b280a",
+      "Bytes": 39696,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "Lib\\importlib\\_bootstrap_external.py",
+      "SourceSha256": "20f21978664f92571bd4b89ba99ff1dfbdd66d879be42fc52530367c6059a32e",
+      "StagedSha256": "20f21978664f92571bd4b89ba99ff1dfbdd66d879be42fc52530367c6059a32e",
+      "Bytes": 70811,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "Lib\\zipimport.py",
+      "SourceSha256": "9d1e64f2678e00be1afc59c1b791978e609906668d31d8c2f4ab3fde160a0cc8",
+      "StagedSha256": "9d1e64f2678e00be1afc59c1b791978e609906668d31d8c2f4ab3fde160a0cc8",
+      "Bytes": 28852,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "Lib\\codecs.py",
+      "SourceSha256": "000cf1d683c677ed3de6d8e284376f81def4b91f93d68ee41bdf07c4e04cea77",
+      "StagedSha256": "000cf1d683c677ed3de6d8e284376f81def4b91f93d68ee41bdf07c4e04cea77",
+      "Bytes": 37999,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "Lib\\encodings\\aliases.py",
+      "SourceSha256": "1893cfb597bc5eafd38ef03ac85d8874620112514eb42660408811929cc0d6f8",
+      "StagedSha256": "1893cfb597bc5eafd38ef03ac85d8874620112514eb42660408811929cc0d6f8",
+      "Bytes": 16228,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "Lib\\encodings\\__init__.py",
+      "SourceSha256": "8b997e9f7beef09de01c34ac34191866d3ab25e17164e08f411940b070bc3e74",
+      "StagedSha256": "8b997e9f7beef09de01c34ac34191866d3ab25e17164e08f411940b070bc3e74",
+      "Bytes": 6058,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "Lib\\encodings\\utf_8.py",
+      "SourceSha256": "9c54c7db8ce0722ca4ddb5f45d4e170357e37991afb3fcdc091721bf6c09257e",
+      "StagedSha256": "9c54c7db8ce0722ca4ddb5f45d4e170357e37991afb3fcdc091721bf6c09257e",
+      "Bytes": 1047,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "Lib\\encodings\\cp1252.py",
+      "SourceSha256": "7acb7b80c29d9ffda0fe79540509439537216df3a259973d54e1fb23c34e7519",
+      "StagedSha256": "7acb7b80c29d9ffda0fe79540509439537216df3a259973d54e1fb23c34e7519",
+      "Bytes": 13818,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "Lib\\encodings\\ascii.py",
+      "SourceSha256": "698c578b9b5df7bd6f8b2761d114f74cff854c1396083c8ab912b11fcae83b86",
+      "StagedSha256": "698c578b9b5df7bd6f8b2761d114f74cff854c1396083c8ab912b11fcae83b86",
+      "Bytes": 1298,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "Lib\\abc.py",
+      "SourceSha256": "d51c54428495cd62a5da4360315fa84f692b5aa9db21be986b3e14a83f7cf288",
+      "StagedSha256": "d51c54428495cd62a5da4360315fa84f692b5aa9db21be986b3e14a83f7cf288",
+      "Bytes": 6726,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "Lib\\io.py",
+      "SourceSha256": "d70646d9c063dd0ac4293591639de75a100731d9f091f916fbca4857cd8a044e",
+      "StagedSha256": "d70646d9c063dd0ac4293591639de75a100731d9f091f916fbca4857cd8a044e",
+      "Bytes": 3681,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "Lib\\stat.py",
+      "SourceSha256": "e514fd41e2933dd1f06be315fb42a62e67b33d04571435a4815a18f490e0f6ce",
+      "StagedSha256": "e514fd41e2933dd1f06be315fb42a62e67b33d04571435a4815a18f490e0f6ce",
+      "Bytes": 5680,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "Lib\\_collections_abc.py",
+      "SourceSha256": "c3454744bf6b649f19e91ca1411e88ffd608e86f58375f3f8cee5ca53473e331",
+      "StagedSha256": "c3454744bf6b649f19e91ca1411e88ffd608e86f58375f3f8cee5ca53473e331",
+      "Bytes": 33255,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "Lib\\genericpath.py",
+      "SourceSha256": "c540a28c560234d4d00d3451dfdde05b404f81a38bde87086ce8773021e1cc1b",
+      "StagedSha256": "c540a28c560234d4d00d3451dfdde05b404f81a38bde87086ce8773021e1cc1b",
+      "Bytes": 5468,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "Lib\\ntpath.py",
+      "SourceSha256": "35d008117c58c43967b9f7157eb5fbfea0eb2e94aea903859936c61f7eac3a1b",
+      "StagedSha256": "35d008117c58c43967b9f7157eb5fbfea0eb2e94aea903859936c61f7eac3a1b",
+      "Bytes": 32380,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "Lib\\os.py",
+      "SourceSha256": "72a64b7696dc9682ffd91c511ba0e2eb33ccf260ac4ca38101f05cdb40114753",
+      "StagedSha256": "72a64b7696dc9682ffd91c511ba0e2eb33ccf260ac4ca38101f05cdb40114753",
+      "Bytes": 40890,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "Lib\\types.py",
+      "SourceSha256": "d7ce485ecd8d4d1531d8f710e538b4d1a49378afacb6ff9231e48c645a9fa95e",
+      "StagedSha256": "d7ce485ecd8d4d1531d8f710e538b4d1a49378afacb6ff9231e48c645a9fa95e",
+      "Bytes": 11326,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "Lib\\struct.py",
+      "SourceSha256": "eadbcc540c3b6496e52449e712eca3694e31e1d935af0f1e26cff0e3cc370945",
+      "StagedSha256": "eadbcc540c3b6496e52449e712eca3694e31e1d935af0f1e26cff0e3cc370945",
+      "Bytes": 272,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "Lib\\ctypes\\_endian.py",
+      "SourceSha256": "8c5b9ac7306dcf98856c9b815a5fc604ba0f47acab15ac47ad858499c6981579",
+      "StagedSha256": "8c5b9ac7306dcf98856c9b815a5fc604ba0f47acab15ac47ad858499c6981579",
+      "Bytes": 2613,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "Lib\\ctypes\\__init__.py",
+      "SourceSha256": "bb22c1bd20afd47d33fa6958d8d3e55bea7a1034da8ef2d5f5c0bff1225832c0",
+      "StagedSha256": "bb22c1bd20afd47d33fa6958d8d3e55bea7a1034da8ef2d5f5c0bff1225832c0",
+      "Bytes": 18761,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    },
+    {
+      "RelativePath": "Lib\\ctypes\\wintypes.py",
+      "SourceSha256": "4d9150e8603bd922e9dbee8a5e9cf1379cf599a382b09a5cbf09bed520f6c459",
+      "StagedSha256": "4d9150e8603bd922e9dbee8a5e9cf1379cf599a382b09a5cbf09bed520f6c459",
+      "Bytes": 5831,
+      "HashMatches": true,
+      "PackageReadExecuteAllowObserved": true
+    }
+  ],
+  "Trials": [
+    {
+      "Kind": "ordinary-before",
+      "Nonce": "a4dc16b8447043ab80d01f75ee8db0d2",
+      "RuntimeImage": "C:\\Python312\\python.exe",
+      "StartedMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p35.breakaway.d771a4d081ae4a7eba6480af30cca20c\\AC\\a4dc16b8447043ab80d01f75ee8db0d2.started",
+      "ReportMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p35.breakaway.d771a4d081ae4a7eba6480af30cca20c\\AC\\a4dc16b8447043ab80d01f75ee8db0d2.report",
+      "ErrorMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p35.breakaway.d771a4d081ae4a7eba6480af30cca20c\\AC\\a4dc16b8447043ab80d01f75ee8db0d2.error",
+      "Report": "a4dc16b8447043ab80d01f75ee8db0d2|49904|3.12.2|1|0|0|1|0|5|-1|1|1|0|0|1",
+      "Diagnostic": null,
+      "ParentPid": 49904,
+      "ParentToken": {
+        "IsAppContainer": false,
+        "ExpectedPackageSid": false,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": true,
+        "CapabilityCount": 0,
+        "IntegrityRid": 8192
+      },
+      "NativeJobProcessCount": 2,
+      "ParentAssignedBeforeResume": true,
+      "ExactJobPolicyReadBack": true,
+      "ParentPythonReady": true,
+      "ExplicitWindowsBreakawayTestExecuted": true,
+      "NormalBeforePassed": true,
+      "NormalAfterPassed": true,
+      "BreakawayCreated": false,
+      "BreakawayDenied": true,
+      "CompleteReportAndDirectChildrenStopped": true,
+      "ParentLiveBeforeClose": true,
+      "ParentExitedOnClose": true,
+      "Passed": true,
+      "BreakawayWin32": 5,
+      "BreakawayExit": -1,
+      "ReadyElapsedMs": 183,
+      "AuxiliaryMembers": [
+        {
+          "Pid": 56476,
+          "Image": "C:\\Windows\\System32\\conhost.exe",
+          "Token": {
+            "IsAppContainer": false,
+            "ExpectedPackageSid": false,
+            "AdministratorGroupEnabled": false,
+            "Elevated": false,
+            "DetailFieldsObserved": true,
+            "CapabilityCount": 0,
+            "IntegrityRid": 8192
+          },
+          "LiveBeforeClose": true,
+          "ExitedOnClose": true
+        }
+      ]
+    },
+    {
+      "Kind": "AppContainer",
+      "Nonce": "c88e497bd4394ec784d03c6f055f8277",
+      "RuntimeImage": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p35.breakaway.d771a4d081ae4a7eba6480af30cca20c\\AC\\runtime\\python.exe",
+      "StartedMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p35.breakaway.d771a4d081ae4a7eba6480af30cca20c\\AC\\c88e497bd4394ec784d03c6f055f8277.started",
+      "ReportMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p35.breakaway.d771a4d081ae4a7eba6480af30cca20c\\AC\\c88e497bd4394ec784d03c6f055f8277.report",
+      "ErrorMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p35.breakaway.d771a4d081ae4a7eba6480af30cca20c\\AC\\c88e497bd4394ec784d03c6f055f8277.error",
+      "Report": "c88e497bd4394ec784d03c6f055f8277|45176|3.12.2|1|0|0|1|0|5|-1|1|1|0|0|1",
+      "Diagnostic": null,
+      "ParentPid": 45176,
+      "ParentToken": {
+        "IsAppContainer": true,
+        "ExpectedPackageSid": true,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": true,
+        "CapabilityCount": 0,
+        "IntegrityRid": 4096
+      },
+      "NativeJobProcessCount": 2,
+      "ParentAssignedBeforeResume": true,
+      "ExactJobPolicyReadBack": true,
+      "ParentPythonReady": true,
+      "ExplicitWindowsBreakawayTestExecuted": true,
+      "NormalBeforePassed": true,
+      "NormalAfterPassed": true,
+      "BreakawayCreated": false,
+      "BreakawayDenied": true,
+      "CompleteReportAndDirectChildrenStopped": true,
+      "ParentLiveBeforeClose": true,
+      "ParentExitedOnClose": true,
+      "Passed": true,
+      "BreakawayWin32": 5,
+      "BreakawayExit": -1,
+      "ReadyElapsedMs": 243,
+      "AuxiliaryMembers": [
+        {
+          "Pid": 56640,
+          "Image": "C:\\Windows\\System32\\conhost.exe",
+          "Token": {
+            "IsAppContainer": true,
+            "ExpectedPackageSid": true,
+            "AdministratorGroupEnabled": false,
+            "Elevated": false,
+            "DetailFieldsObserved": true,
+            "CapabilityCount": 0,
+            "IntegrityRid": 4096
+          },
+          "LiveBeforeClose": true,
+          "ExitedOnClose": true
+        }
+      ]
+    },
+    {
+      "Kind": "ordinary-after",
+      "Nonce": "fa6943b4556a43908671527b7b22eed6",
+      "RuntimeImage": "C:\\Python312\\python.exe",
+      "StartedMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p35.breakaway.d771a4d081ae4a7eba6480af30cca20c\\AC\\fa6943b4556a43908671527b7b22eed6.started",
+      "ReportMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p35.breakaway.d771a4d081ae4a7eba6480af30cca20c\\AC\\fa6943b4556a43908671527b7b22eed6.report",
+      "ErrorMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p35.breakaway.d771a4d081ae4a7eba6480af30cca20c\\AC\\fa6943b4556a43908671527b7b22eed6.error",
+      "Report": "fa6943b4556a43908671527b7b22eed6|25024|3.12.2|1|0|0|1|0|5|-1|1|1|0|0|1",
+      "Diagnostic": null,
+      "ParentPid": 25024,
+      "ParentToken": {
+        "IsAppContainer": false,
+        "ExpectedPackageSid": false,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": true,
+        "CapabilityCount": 0,
+        "IntegrityRid": 8192
+      },
+      "NativeJobProcessCount": 2,
+      "ParentAssignedBeforeResume": true,
+      "ExactJobPolicyReadBack": true,
+      "ParentPythonReady": true,
+      "ExplicitWindowsBreakawayTestExecuted": true,
+      "NormalBeforePassed": true,
+      "NormalAfterPassed": true,
+      "BreakawayCreated": false,
+      "BreakawayDenied": true,
+      "CompleteReportAndDirectChildrenStopped": true,
+      "ParentLiveBeforeClose": true,
+      "ParentExitedOnClose": true,
+      "Passed": true,
+      "BreakawayWin32": 5,
+      "BreakawayExit": -1,
+      "ReadyElapsedMs": 181,
+      "AuxiliaryMembers": [
+        {
+          "Pid": 57452,
+          "Image": "C:\\Windows\\System32\\conhost.exe",
+          "Token": {
+            "IsAppContainer": false,
+            "ExpectedPackageSid": false,
+            "AdministratorGroupEnabled": false,
+            "Elevated": false,
+            "DetailFieldsObserved": true,
+            "CapabilityCount": 0,
+            "IntegrityRid": 8192
+          },
+          "LiveBeforeClose": true,
+          "ExitedOnClose": true
+        }
+      ]
+    }
+  ]
+}

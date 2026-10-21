@@ -1,0 +1,1898 @@
+{
+  "source": "f0f48ca8f9164c3239924463020a4bf9c86ef72b plus the five test/fixture fixes subsequently committed as 6eed672",
+  "integrated_main_at_run": "496e826cd130994a362c76305890fc49f5dd70bf",
+  "environment": "Windows, Node 22.22.3, own physical locked npm ci, Vitest maxWorkers=1 minWorkers=1, explicit owned local SQL fixture; no production mutations or billable model calls",
+  "summary": {
+    "numTotalTests": 14107,
+    "numPassedTests": 12618,
+    "numFailedTests": 375,
+    "numPendingTests": 1110,
+    "numTodoTests": 0
+  },
+  "assertion_status_counts": {
+    "passed": 12618,
+    "failed": 375,
+    "skipped": 1110,
+    "pending": 4
+  },
+  "failed_files": 75,
+  "historical_baseline_names_also_failing": 204,
+  "comparison_limit": "Historical name overlap is not a paired same-environment/current-main regression comparison. The run predates the subsequent 7ded1f5 main integration.",
+  "failures": [
+    {
+      "file": "apps/web/lib/website-build/api.test.ts",
+      "test": "website build API authorization and durable results unknown_artifact_is_404_and_export_is_private_verified_utf8",
+      "reason": "Error: ERROR:  22023: DESIGN_WORKER_REQUIRED"
+    },
+    {
+      "file": "apps/web/lib/website-build/studio/api.test.ts",
+      "test": "studio HTTP boundary creates a private real owner workspace and recovers a repeated response",
+      "reason": "AssertionError: expected 400 to be 201 // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/website-build/studio/budget.test.ts",
+      "test": "explicit studio budgets and billable project identity requires a budget for the exact owned studio conversation and keeps replay idempotent",
+      "reason": "WebsiteBuildError: ERROR:  22023: INVALID_STUDIO_INPUT"
+    },
+    {
+      "file": "apps/web/lib/website-build/studio/loader.test.ts",
+      "test": "studio project and conversation identity loads a selected studio conversation with its missing budget and no invented desktop",
+      "reason": "WebsiteBuildError: ERROR:  22023: INVALID_STUDIO_INPUT"
+    },
+    {
+      "file": "apps/web/lib/website-build/studio/store.test.ts",
+      "test": "owner-bound studio creation in real PostgreSQL recovers a lost creation response without another project, agent or conversation",
+      "reason": "WebsiteBuildError: ERROR:  22023: INVALID_STUDIO_INPUT"
+    },
+    {
+      "file": "apps/web/lib/website-build/studio/store.test.ts",
+      "test": "owner-bound studio creation in real PostgreSQL rolls back project creation when agent insertion fails",
+      "reason": "AssertionError: expected WebsiteBuildError: ERROR:  22023: INVALID… { …(2) } to match object { code: 'BUILD_UNAVAILABLE', …(1) }"
+    },
+    {
+      "file": "apps/web/lib/website-build/studio/store.test.ts",
+      "test": "owner-bound studio creation in real PostgreSQL gives authenticated users owner-only SELECT and no mutation or RPC bypass",
+      "reason": "WebsiteBuildError: ERROR:  22023: INVALID_STUDIO_INPUT"
+    },
+    {
+      "file": "apps/web/lib/project/lifecycle/store.test.ts",
+      "test": "owner lifecycle and real static worker fences atomically pauses, versions and replays transitions while restore preserves an unrelated pause",
+      "reason": "WebsiteBuildError: ERROR:  22023: INVALID_STUDIO_INPUT"
+    },
+    {
+      "file": "apps/web/lib/project/lifecycle/store.test.ts",
+      "test": "owner lifecycle and real static worker fences refuses foreign, observer, stale and malformed commands and keeps history and folder requests",
+      "reason": "WebsiteBuildError: ERROR:  22023: INVALID_STUDIO_INPUT"
+    },
+    {
+      "file": "apps/web/lib/project/lifecycle/store.test.ts",
+      "test": "owner lifecycle and real static worker fences archive winning the project lock fences snapshot and commit even with allow_pause",
+      "reason": "WebsiteBuildError: ERROR:  22023: INVALID_STUDIO_INPUT"
+    },
+    {
+      "file": "apps/web/lib/project/lifecycle/store.test.ts",
+      "test": "owner lifecycle and real static worker fences commit winning the project lock finishes before archive and its verified artifact stays readable",
+      "reason": "WebsiteBuildError: ERROR:  22023: INVALID_STUDIO_INPUT"
+    },
+    {
+      "file": "apps/web/lib/project/lifecycle/store.test.ts",
+      "test": "owner lifecycle and real static worker fences serializes actual claim and archive in both orders without claiming paused work",
+      "reason": "WebsiteBuildError: ERROR:  22023: INVALID_STUDIO_INPUT"
+    },
+    {
+      "file": "apps/web/lib/project/lifecycle/store.test.ts",
+      "test": "owner lifecycle and real static worker fences never revives a skipped locked writer after restore and explicit project resume",
+      "reason": "WebsiteBuildError: ERROR:  22023: INVALID_STUDIO_INPUT"
+    },
+    {
+      "file": "apps/web/lib/project/lifecycle/store.test.ts",
+      "test": "owner lifecycle and real static worker fences a project-first writer refuses a busy run without deadlocking canonical claim",
+      "reason": "WebsiteBuildError: ERROR:  22023: INVALID_STUDIO_INPUT"
+    },
+    {
+      "file": "apps/web/lib/project/lifecycle/store.test.ts",
+      "test": "owner lifecycle and real static worker fences a project-first control refuses a busy run without deadlocking canonical claim",
+      "reason": "WebsiteBuildError: ERROR:  22023: INVALID_STUDIO_INPUT"
+    },
+    {
+      "file": "apps/web/lib/project/lifecycle/store.test.ts",
+      "test": "owner lifecycle and real static worker fences retries a transient writer lock on the same artifact, but never retries an actual fence",
+      "reason": "WebsiteBuildError: ERROR:  22023: INVALID_STUDIO_INPUT"
+    },
+    {
+      "file": "apps/web/lib/qa/activity-stream.test.ts",
+      "test": "aktivitet · the rollback body is the body it replaced is pinned by hash",
+      "reason": "AssertionError: expected '7194143c2709304e9fa9f812d0c67bcea4669…' to be '4d476c896efaa6008eeaad93fc7349b78fb6f…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/admission-inventory.test.ts",
+      "test": "G3C-2A · run admission has exactly one door no runtime module writes runs.status = running directly",
+      "reason": "Error: Command failed: find app lib -name '*.ts' -not -path '*/qa/*' -not -name '*.test.ts' -not -name 'database.types.ts'"
+    },
+    {
+      "file": "apps/web/lib/qa/admission-inventory.test.ts",
+      "test": "G3C-2A · run admission has exactly one door the drain is the only caller, and it goes through the canonical RPC",
+      "reason": "Error: Command failed: find app lib -name '*.ts' -not -path '*/qa/*' -not -name '*.test.ts' -not -name 'database.types.ts'"
+    },
+    {
+      "file": "apps/web/lib/qa/admission-inventory.test.ts",
+      "test": "G3C-2A · run admission has exactly one door no runtime module claims a due workflow instance outside the RPC",
+      "reason": "Error: Command failed: find app lib -name '*.ts' -not -path '*/qa/*' -not -name '*.test.ts' -not -name 'database.types.ts'"
+    },
+    {
+      "file": "apps/web/lib/qa/admission-inventory.test.ts",
+      "test": "G3C-2A · run admission has exactly one door queueing a run remains open — it is control-plane state, not execution",
+      "reason": "Error: Command failed: find app lib -name '*.ts' -not -path '*/qa/*' -not -name '*.test.ts' -not -name 'database.types.ts'"
+    },
+    {
+      "file": "apps/web/lib/qa/atlas-chat.test.ts",
+      "test": "atlas chat · the route contract it speaks does not observe a client abort — which is why there is no stop control",
+      "reason": "AssertionError: expected 'import {studioSystemPrompt} from \\'@/…' not to match /request\\.signal/"
+    },
+    {
+      "file": "apps/web/lib/qa/atlas-knowledge-boundary.test.ts",
+      "test": "NO PRODUCTION CONSUMER — Phase 1 wires nothing the only importers are the operator harness and these QA tests",
+      "reason": "AssertionError: expected [ …(6) ] to deeply equal [ …(6) ]"
+    },
+    {
+      "file": "apps/web/lib/qa/atlas-knowledge-boundary.test.ts",
+      "test": "PROJECTION SOURCE — a local boundary, never an Atlas one the only importers are the operator script and its QA suite",
+      "reason": "AssertionError: expected [ …(3) ] to deeply equal [ …(3) ]"
+    },
+    {
+      "file": "apps/web/lib/qa/atlas-knowledge-snapshot.test.ts",
+      "test": "golden artifacts — independently derived bytes documents.jsonl matches the golden byte for byte",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/atlas-knowledge-snapshot.test.ts",
+      "test": "golden artifacts — independently derived bytes knowledge-manifest.json matches the golden byte for byte",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/atlas-knowledge-snapshot.test.ts",
+      "test": "golden artifacts — independently derived bytes the identity preimage matches the golden byte for byte, with no trailing LF",
+      "reason": "AssertionError: expected 'ebcf96ff4eb01dbdf5c2b5994075fd0bfc172…' to be 'af17ee785fa0b6b71b5ad76001bdf889d1008…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/atlas-latency.test.ts",
+      "test": "Atlas latency · timing never becomes visible content keeps the visible reply fed only by text events",
+      "reason": "AssertionError: expected [] to have a length of 1 but got +0"
+    },
+    {
+      "file": "apps/web/lib/qa/atlas-latency.test.ts",
+      "test": "Atlas latency · timing never becomes visible content does not touch the reply from the timing branch",
+      "reason": "AssertionError: expected 0 to be greater than 0"
+    },
+    {
+      "file": "apps/web/lib/qa/atlas-memory-dream-producers.test.ts",
+      "test": "2B-2 · placement and boundaries no M4 recall can feed Dream — the producer closure has no recall seam",
+      "reason": "AssertionError: expected [ 'lib\\ai\\dream.ts', …(22) ] to include 'lib/atlas/memory/record-event.ts'"
+    },
+    {
+      "file": "apps/web/lib/qa/atlas-memory-emit-durability.test.ts",
+      "test": "Slice 2A — no memory emit is ever detached every recordMemoryEvent call in production code is awaited, at exactly the known sites",
+      "reason": "AssertionError: expected { …(5) } to deeply equal { …(5) }"
+    },
+    {
+      "file": "apps/web/lib/qa/atlas-memory-emit-durability.test.ts",
+      "test": "Slice 2A — no memory emit is ever detached the drain helper that emits workflow-action outcomes is itself awaited",
+      "reason": "AssertionError: expected { …(3) } to match object { …(2) }"
+    },
+    {
+      "file": "apps/web/lib/qa/atlas-memory-emit-durability.test.ts",
+      "test": "Slice 2A — no memory emit is ever detached the Slice 2B-1 emit helpers are awaited at exactly their known call sites",
+      "reason": "AssertionError: expected [ { …(3) } ] to deeply equal [ ObjectContaining{…} ]"
+    },
+    {
+      "file": "apps/web/lib/qa/atlas-memory-terminal-outcomes.test.ts",
+      "test": "2B-1 · placement and boundaries in the workflow runtime only advance-completed.ts writes memory, and nothing reads it back",
+      "reason": "AssertionError: expected [ Array(1) ] to deeply equal [ Array(1) ]"
+    },
+    {
+      "file": "apps/web/lib/qa/autonomy-bind-guards.test.ts",
+      "test": "the atomic bind migration is the only EXEMPT bind migration after Phase 3B1A (M0, 3B1B2 M1, M2, M3, M4-A and M4-B are the reviewed successors)",
+      "reason": "AssertionError: expected [ …(20) ] to deeply equal [ …(8) ]"
+    },
+    {
+      "file": "apps/web/lib/qa/autonomy-license.test.ts",
+      "test": "Phase 2C — the migration does not collide with the chain it joins names itself so it sorts last in the current canonical set",
+      "reason": "AssertionError: expected [ '20260520_media_images.sql', …(121) ] to have a length of 110 but got 122"
+    },
+    {
+      "file": "apps/web/lib/qa/autonomy-license.test.ts",
+      "test": "Phase 2C — hardening H7. the machine write seam is closed at the code level",
+      "reason": "AssertionError: only store.ts may name the RPC: expected [ Array(1) ] to deeply equal [ 'store.ts' ]"
+    },
+    {
+      "file": "apps/web/lib/qa/autonomy-license.test.ts",
+      "test": "Phase 2C — review #2 proofs §9. no production runtime outside this module calls the RPC or drives the store",
+      "reason": "AssertionError: production files naming the RPC:"
+    },
+    {
+      "file": "apps/web/lib/qa/autonomy-license.test.ts",
+      "test": "Phase 2C — inertness 52. no other atlas subsystem consumes the licence MACHINERY",
+      "reason": "AssertionError: unexpected atlas consumers:"
+    },
+    {
+      "file": "apps/web/lib/qa/autonomy-runtime-foundation.test.ts",
+      "test": "the Chapter 18 scale has exactly ONE declaration the scan actually reaches middleware.ts",
+      "reason": "AssertionError: expected [ …(1755) ] to include 'middleware.ts'"
+    },
+    {
+      "file": "apps/web/lib/qa/autonomy-trace-guards.test.ts",
+      "test": "migration discipline Phase 2C is byte-identical to its merged form — no historical edit",
+      "reason": "AssertionError: expected '2097664318d969193ca29099a75bf54a463b5…' to be '22348156e1415b7137ef0aa80ecf3e1001048…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/autonomy-trace-guards.test.ts",
+      "test": "migration discipline the new migration sorts after every pre-existing migration",
+      "reason": "AssertionError: unexpected migrations after Phase 3B1A:"
+    },
+    {
+      "file": "apps/web/lib/qa/autonomy-trace-guards.test.ts",
+      "test": "Phase 3B1A remains INERT no execution module consumes the trace or its writer",
+      "reason": "AssertionError: execution consumed the trace:"
+    },
+    {
+      "file": "apps/web/lib/qa/budget-scopes.test.ts",
+      "test": "canonical comments describe the FINAL code states the invariant it actually implements, in the TOP-LEVEL header",
+      "reason": "AssertionError: expected '-- ──────────────────────────────────…' to match /NO EXISTING IDEMPOTENCY KEY AUTHORIZ…/i"
+    },
+    {
+      "file": "apps/web/lib/qa/budget-scopes.test.ts",
+      "test": "canonical comments describe the FINAL code gives the stale-open reason wherever stale replay is described",
+      "reason": "AssertionError: expected '-- ──────────────────────────────────…' to match /visibility timeout does not prove th…/i"
+    },
+    {
+      "file": "apps/web/lib/qa/canonical-evidence-pin.test.ts",
+      "test": "B — every workflow evidence reader, pinned the inventory is COMPLETE — no sixth reader exists",
+      "reason": "Error: Command failed: grep -rln \"summarizeStateEvidence(\\|evaluateCheck(\" lib app --include=*.ts --include=*.tsx || true"
+    },
+    {
+      "file": "apps/web/lib/qa/canonical-evidence-pin.test.ts",
+      "test": "B — every workflow evidence reader, pinned the shared helper is the only place the pin is computed",
+      "reason": "Error: Command failed: grep -rln \"computeEvidenceTargetHash(\" lib app --include=*.ts --include=*.tsx || true"
+    },
+    {
+      "file": "apps/web/lib/qa/cl-shadow.test.ts",
+      "test": "runContextShadow — fire-and-forget containment delivers a diff to the sink and resolves void (assembled context never escapes)",
+      "reason": "AssertionError: expected 'artifact_invalid' to be 'policy_denied' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/content-center.test.ts",
+      "test": "content center · the rollback body is the body it replaced is pinned by hash, its own doc comment included",
+      "reason": "AssertionError: expected '01ba4719c80b6fe911b091a7c05124b64eeec…' to be 'c039a6572c539be3864cbb38f44ada08f3f90…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/delegation-mission-activation.test.ts",
+      "test": "Mission activation through an accepted Delegation ACTIVATES with an accepted current delegation plus a separate activate authorization",
+      "reason": "AssertionError: expected 'activation_incomplete:requirements_in…' to be 'ok' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/delegation-mission-activation.test.ts",
+      "test": "Mission activation through an accepted Delegation the activate authorization is SEPARATE — acceptance does not substitute for it",
+      "reason": "AssertionError: expected 'activation_incomplete' to be 'authority_not_effective' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/delegation-mission-activation.test.ts",
+      "test": "accepted-delegation availability is Mission- and version-specific a proof for Mission A does not answer for Mission B in the same project",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/delegation-mission-activation.test.ts",
+      "test": "accepted-delegation availability is Mission- and version-specific a version-1 acceptance does not answer for version 2",
+      "reason": "AssertionError: expected [ 'delegation_mission_not_authorized' ] to include 'mission_version_mismatch'"
+    },
+    {
+      "file": "apps/web/lib/qa/delegation-mission-activation.test.ts",
+      "test": "coverage: a narrowed envelope proves only what it covers (§21.13) an envelope carrying one tool does not prove the mission other tool",
+      "reason": "AssertionError: expected [ 'delegation_mission_not_authorized' ] to include 'tool:test_runner'"
+    },
+    {
+      "file": "apps/web/lib/qa/delegation-mission-activation.test.ts",
+      "test": "the underlying availability source still has to say yes a throwing source fails closed rather than propagating",
+      "reason": "AssertionError: expected [ 'delegation_mission_not_authorized' ] to include 'availability_source_unreadable'"
+    },
+    {
+      "file": "apps/web/lib/qa/delegation-mission-activation.test.ts",
+      "test": "the underlying availability source still has to say yes caches nothing — a revocation between two evaluations changes the answer",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/delegation-mission-activation.test.ts",
+      "test": "live Mission invalidation collapses the proof (§21.14) a revoked APPROVE authorization invalidates the proof",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/delegation-mission-activation.test.ts",
+      "test": "live Mission invalidation collapses the proof (§21.14) a governing Decision that stops governing invalidates the proof",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/delegation-mission-activation.test.ts",
+      "test": "live Mission invalidation collapses the proof (§21.14) a non-operational project mode invalidates the proof",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/delegation-mission-activation.test.ts",
+      "test": "R2 — a terminal Mission ends the handoff (§21.27) a failed Mission makes the accepted delegation unusable",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/desktop-commander-unlicensed.test.ts",
+      "test": "nothing in production can reach the host the scan can actually fail — it finds the production tree",
+      "reason": "Error: spawnSync grep ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/desktop-commander-unlicensed.test.ts",
+      "test": "nothing in production can reach the host no module imports the Desktop Commander MCP package",
+      "reason": "Error: spawnSync grep ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/desktop-commander-unlicensed.test.ts",
+      "test": "nothing in production can reach the host no module spawns the Desktop Commander server",
+      "reason": "Error: spawnSync grep ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/desktop-commander-unlicensed.test.ts",
+      "test": "nothing in production can reach the host no module opens an MCP client or transport at all",
+      "reason": "Error: spawnSync grep ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/desktop-commander-unlicensed.test.ts",
+      "test": "nothing in production can reach the host the declaration is imported by no production module",
+      "reason": "Error: spawnSync grep ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/execution-contract-propagation.test.ts",
+      "test": "every governed spend supplies an explicit execution contract all runtime withGovernedSpend calls pass `execution`",
+      "reason": "AssertionError: every governed dispatch must declare its execution: expected [ …(19) ] to deeply equal []"
+    },
+    {
+      "file": "apps/web/lib/qa/execution-contract-propagation.test.ts",
+      "test": "every governed spend supplies an explicit execution contract only the sanctioned provider modules call the boundary at all",
+      "reason": "AssertionError: expected [ …(19) ] to deeply equal [ 'lib/ai/anthropic.ts', …(6) ]"
+    },
+    {
+      "file": "apps/web/lib/qa/execution-contract-propagation.test.ts",
+      "test": "every governed spend supplies an explicit execution contract nothing defaults, coalesces or invents an execution contract",
+      "reason": "AssertionError: expected [ Array(1) ] to deeply equal []"
+    },
+    {
+      "file": "apps/web/lib/qa/execution-contract-propagation.test.ts",
+      "test": "every governed spend supplies an explicit execution contract test-only fixtures never leak into runtime code",
+      "reason": "AssertionError: named test contracts are for tests only: expected [ …(15) ] to deeply equal []"
+    },
+    {
+      "file": "apps/web/lib/qa/execution-contract-propagation.test.ts",
+      "test": "OPERATOR_INTERACTIVE is the only stop bypass, so its construction is allowlisted only the allowlisted files construct it",
+      "reason": "AssertionError: a new OPERATOR_INTERACTIVE construction must be reviewed, not merged quietly: expected [ 'app\\api\\chat\\route.ts', …(9) ] to deeply equal [ 'app/api/chat/route.ts', …(2) ]"
+    },
+    {
+      "file": "apps/web/lib/qa/execution-contract-propagation.test.ts",
+      "test": "classification follows authentication, not filenames cron-only execution paths declare AUTONOMOUS",
+      "reason": "AssertionError: expected cron paths to carry contracts: expected 0 to be greater than 0"
+    },
+    {
+      "file": "apps/web/lib/qa/execution-contract-propagation.test.ts",
+      "test": "every runtime GLOBAL_ONLY is reviewed and justified no unreviewed file constructs GLOBAL_ONLY",
+      "reason": "AssertionError: a new GLOBAL_ONLY must be justified in the inventory — it is the scope that answers to no project: expected [ 'app\\api\\chat\\route.ts', …(12) ] to deeply equal []"
+    },
+    {
+      "file": "apps/web/lib/qa/execution-contract-propagation.test.ts",
+      "test": "ExecutionStoppedError does not leak operator-authored text nothing reads a StopDecision’s observed prose outside the authority",
+      "reason": "AssertionError: a stop decision’s operator prose is operator-only: expected [ …(3) ] to deeply equal []"
+    },
+    {
+      "file": "apps/web/lib/qa/executive-brief-apex.test.ts",
+      "test": "EI-S1.5A — no shared-secret Executive Brief read surface exists no Executive Intelligence READ route authorizes on the shared secret",
+      "reason": "AssertionError: C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-overview-messenger-20261015\\apps\\web\\app\\api\\atlas\\intelligence\\cron\\brief\\route.ts authorizes on CRON_SECRET but is not a cron route: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/executive-brief-apex.test.ts",
+      "test": "EI-S1.5A — no shared-secret Executive Brief read surface exists leaves CRON_SECRET intact for unrelated scheduler routes",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/executive-intelligence-schema-activation.test.ts",
+      "test": "EI-S1.6A — Executive Intelligence schema activation bundle keeps the legacy EI companion count at exactly 83 enforced migrations",
+      "reason": "AssertionError: expected 108 to be 96 // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/external-dispatch-guards.test.ts",
+      "test": "G1 · every external write in the tree has a canonical dispatch boundary every external write CALL SITE has its own authorization",
+      "reason": "Error: Command failed: find app lib -name '*.ts' -not -path '*/qa/*' -not -name '*.test.ts'"
+    },
+    {
+      "file": "apps/web/lib/qa/external-dispatch-guards.test.ts",
+      "test": "G1 · every external write in the tree has a canonical dispatch boundary the inventory itself is non-empty and finds the known callers",
+      "reason": "Error: Command failed: find app lib -name '*.ts' -not -path '*/qa/*' -not -name '*.test.ts'"
+    },
+    {
+      "file": "apps/web/lib/qa/external-dispatch-guards.test.ts",
+      "test": "G1 · every external write in the tree has a canonical dispatch boundary no governance assertion is parked behind an unreachable branch",
+      "reason": "Error: Command failed: find app lib -name '*.ts' -not -path '*/qa/*' -not -name '*.test.ts'"
+    },
+    {
+      "file": "apps/web/lib/qa/external-dispatch-guards.test.ts",
+      "test": "G4 · the legacy global-only helper is no longer an authority no runtime module calls checkAutomationPaused",
+      "reason": "Error: Command failed: find app lib -name '*.ts' -not -path '*/qa/*' -not -name '*.test.ts'"
+    },
+    {
+      "file": "apps/web/lib/qa/global-auth-retired.test.ts",
+      "test": "the global key verifier is gone no PRODUCTION module defines the helpers",
+      "reason": "Error: spawnSync grep ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/global-auth-retired.test.ts",
+      "test": "the global key verifier is gone no production module reads the global key from the environment",
+      "reason": "Error: spawnSync grep ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/global-auth-retired.test.ts",
+      "test": "no route can reach a global key path finds route files at all — the scan must be able to fail",
+      "reason": "Error: Command failed: find C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-overview-messenger-20261015\\apps\\web/app/api -name route.ts"
+    },
+    {
+      "file": "apps/web/lib/qa/global-auth-retired.test.ts",
+      "test": "no route can reach a global key path zero routes call the helpers, directly or via one hop",
+      "reason": "Error: Command failed: find C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-overview-messenger-20261015\\apps\\web/app/api -name route.ts"
+    },
+    {
+      "file": "apps/web/lib/qa/global-auth-retired.test.ts",
+      "test": "no route can reach a global key path zero route files import from api-auth for anything but cron",
+      "reason": "Error: Command failed: find C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-overview-messenger-20261015\\apps\\web/app/api -name route.ts"
+    },
+    {
+      "file": "apps/web/lib/qa/global-auth-retired.test.ts",
+      "test": "the cron class survived the deletion cron routes still use CRON_SECRET directly",
+      "reason": "Error: Command failed: find C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-overview-messenger-20261015\\apps\\web/app/api -name route.ts"
+    },
+    {
+      "file": "apps/web/lib/qa/global-design-tokens.test.ts",
+      "test": "global design · every token a stylesheet needs exists scans the real stylesheets, including the surfaces that carried the defect",
+      "reason": "AssertionError: expected [ …(49) ] to include 'components/platform/vnext/ReviewQueue…'"
+    },
+    {
+      "file": "apps/web/lib/qa/global-design-tokens.test.ts",
+      "test": "global design · every token a stylesheet needs exists no CSS module uses a shadcn HSL triple bare as a colour",
+      "reason": "AssertionError: expected [ …(2) ] to deeply equal []"
+    },
+    {
+      "file": "apps/web/lib/qa/handlarborsen-visual-pulse.test.ts",
+      "test": "Handlarborsen overview hierarchy places charts after KPI and before secondary pulse, collapsing only the breakdown",
+      "reason": "AssertionError: expected 8931 to be less than 4973"
+    },
+    {
+      "file": "apps/web/lib/qa/leads-dual-accept.test.ts",
+      "test": "containment no other route imports the leads auth resolver",
+      "reason": "Error: spawnSync grep ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/leads-dual-accept.test.ts",
+      "test": "containment no other route imports the credential primitive",
+      "reason": "Error: spawnSync grep ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/leads-legacy-auth-removed.test.ts",
+      "test": "global legacy HTTP surface finds route files at all — the scan must be able to fail",
+      "reason": "Error: Command failed: find C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-overview-messenger-20261015\\apps\\web/app/api -name route.ts"
+    },
+    {
+      "file": "apps/web/lib/qa/leads-legacy-auth-removed.test.ts",
+      "test": "global legacy HTTP surface no route reaches requireApiKey or requireUserOrApiKey, directly or via one hop",
+      "reason": "Error: Command failed: find C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-overview-messenger-20261015\\apps\\web/app/api -name route.ts"
+    },
+    {
+      "file": "apps/web/lib/qa/leads-legacy-auth-removed.test.ts",
+      "test": "global legacy HTTP surface no route file reads AIOPS_API_KEY",
+      "reason": "Error: Command failed: find C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-overview-messenger-20261015\\apps\\web/app/api -name route.ts"
+    },
+    {
+      "file": "apps/web/lib/qa/leads-legacy-auth-removed.test.ts",
+      "test": "global legacy HTTP surface leaves cron auth untouched and still reachable",
+      "reason": "Error: Command failed: find C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-overview-messenger-20261015\\apps\\web/app/api -name route.ts"
+    },
+    {
+      "file": "apps/web/lib/qa/legacy-v1-api-removed.test.ts",
+      "test": "drift-guard — manifest ↔ filsystem varje manifestpost har en route-fil",
+      "reason": "AssertionError: expected [ …(103) ] to deeply equal []"
+    },
+    {
+      "file": "apps/web/lib/qa/legacy-v1-api-removed.test.ts",
+      "test": "auth-kärnan behålls — Familje-Stunden är beroende av den /business/leads är fortfarande registrerad",
+      "reason": "AssertionError: expected [ …(163) ] to include '/business/leads'"
+    },
+    {
+      "file": "apps/web/lib/qa/legacy-v1-api-removed.test.ts",
+      "test": "auth-kärnan behålls — Familje-Stunden är beroende av den /business/campaigns är fortfarande registrerad",
+      "reason": "AssertionError: expected [ …(163) ] to include '/business/campaigns'"
+    },
+    {
+      "file": "apps/web/lib/qa/legacy-v1-api-removed.test.ts",
+      "test": "auth-kärnan behålls — Familje-Stunden är beroende av den /business/revenue är fortfarande registrerad",
+      "reason": "AssertionError: expected [ …(163) ] to include '/business/revenue'"
+    },
+    {
+      "file": "apps/web/lib/qa/legacy-v1-api-removed.test.ts",
+      "test": "auth-kärnan behålls — Familje-Stunden är beroende av den /chat/tts är fortfarande registrerad",
+      "reason": "AssertionError: expected [ …(163) ] to include '/chat/tts'"
+    },
+    {
+      "file": "apps/web/lib/qa/licensed-bind-m4b-guards.test.ts",
+      "test": "M4-B is the last migration and leaves the exempt bind untouched no migration after M4-B, and M4-B does not redefine the exempt bind",
+      "reason": "AssertionError: expected '20261015210000_website_mockup_review.…' to be '20261004110000_m4b_licensed_bind.sql' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/marketing-review.test.ts",
+      "test": "marketing review · the rollback body is the body it replaced is pinned by hash, its own doc comment included",
+      "reason": "AssertionError: expected '01ba4719c80b6fe911b091a7c05124b64eeec…' to be 'a94f3da9b2f03d5f46e83224d98a8e1e82154…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/marketing-review.test.ts",
+      "test": "marketing review · the rollback body is the body it replaced the client component it renders is untouched",
+      "reason": "AssertionError: expected 'c39b0ab5d4c27985ae2302f9e15a33b6d7671…' to be '181067f762523f8e447d1e349bf7c99e33e3a…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/marketing-review.test.ts",
+      "test": "marketing review · rendered surface and layout the controls stay visible without the shared foreground token",
+      "reason": "AssertionError: .input,"
+    },
+    {
+      "file": "apps/web/lib/qa/media-orchestration-retry-authority.test.ts",
+      "test": "the article hero call site carries the authority every production withRetry around the orchestrator carries it",
+      "reason": "AssertionError: expected 0 to be greater than 0"
+    },
+    {
+      "file": "apps/web/lib/qa/media-token-authority.test.ts",
+      "test": "/api/media/token · the one place a project’s account is chosen and its credential stored platform_tokens is written, and its credential read, only by the token store; storing is this route, the YouTube connection callback and the refresh cron",
+      "reason": "AssertionError: expected [ 'lib\\media\\token-store.ts' ] to deeply equal [ 'lib/media/token-store.ts' ]"
+    },
+    {
+      "file": "apps/web/lib/qa/media-token-authority.test.ts",
+      "test": "/api/media/token · the one place a project’s account is chosen and its credential stored platform_credential_events is written only by its writer, and the writer is called only by this route and the YouTube connection callback",
+      "reason": "AssertionError: expected [ 'lib\\media\\credential-events.ts' ] to deeply equal [ 'lib/media/credential-events.ts' ]"
+    },
+    {
+      "file": "apps/web/lib/qa/media-token-authority.test.ts",
+      "test": "/api/media/token · the one place a project’s account is chosen and its credential stored social_account_bindings is written only by its module; bindings are created or changed only here and in the YouTube connection callback; only the YouTube upload confirmation blocks one",
+      "reason": "AssertionError: expected [ 'lib\\media\\social-bindings.ts' ] to deeply equal [ 'lib/media/social-bindings.ts' ]"
+    },
+    {
+      "file": "apps/web/lib/qa/memory-vnext.test.ts",
+      "test": "Minne vNext · generation and frozen legacy pins the mechanically moved legacy body",
+      "reason": "AssertionError: expected 'dca88705a9ac411c32199739c47cea9d38cfc…' to be 'da41d19120ba32d2f5cc94fc426d8085ddc80…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/memory-vnext.test.ts",
+      "test": "Minne vNext · generation and frozen legacy keeps the existing API and Memory helpers byte-identical",
+      "reason": "AssertionError: expected '5b7038a106a3d31fece13249d64a9105be5b4…' to be 'c4515b7a4a993b5cd5cd898314e8581b0b30a…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/mission-brief-v1.test.ts",
+      "test": "Canonical vocabulary (§20.11, §20.98) supports all sixteen §20.98 statuses in the public type",
+      "reason": "AssertionError: expected [ …(142) ] to deeply equal [ 'active', 'approved', …(14) ]"
+    },
+    {
+      "file": "apps/web/lib/qa/money-overview.test.ts",
+      "test": "pengar · the rollback body is the body it replaced is pinned by hash",
+      "reason": "AssertionError: expected '2920d2ee1464b29949a5220c1183b7106508f…' to be '53070889a81c45b54b4ff042e6ac73dd3bb49…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/monthly-release-v2.test.ts",
+      "test": "v1 is registered in production and must not move MUTATION — the v1 YAML still hashes to the pinned upstream value",
+      "reason": "AssertionError: expected '42fa8239c458f9b283320732e6ca6a8c94e8c…' to be '88d9cc31fe57181e974d1e37c8968eee40bc8…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/monthly-release-v2.test.ts",
+      "test": "v2 is vendored, never authored here the vendored YAML matches the pinned upstream hash",
+      "reason": "AssertionError: expected 'b8f31a8b54de331ce18dc0de986f25dc358a0…' to be '0cfd18242b8bdc3a285ccca164b6a89d1a508…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/monthly-release-v2.test.ts",
+      "test": "v2 is vendored, never authored here the committed JSON is the generated form of the vendored YAML",
+      "reason": "AssertionError: expected '{\\r\\n  \"ID\": \"familje-stunden.monthly…' to be '{\\n  \"ID\": \"familje-stunden.monthly-r…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/muapi-media-provider.test.ts",
+      "test": "no credential and no live default reaches the repository no tracked file assigns a non-placeholder MuAPI key",
+      "reason": "Error: spawnSync grep ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/muapi-media-provider.test.ts",
+      "test": "no credential and no live default reaches the repository no production module writes MuAPI config at runtime",
+      "reason": "Error: spawnSync grep ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/muapi-media-provider.test.ts",
+      "test": "no credential and no live default reaches the repository no production module hands out a credential outside config.ts",
+      "reason": "Error: spawnSync grep ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/muapi-media-provider.test.ts",
+      "test": "no credential and no live default reaches the repository the committed env template contains only empty placeholders",
+      "reason": "Error: spawnSync cat ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/muapi-media-provider.test.ts",
+      "test": "no credential and no live default reaches the repository nothing outside the provider directory imports the MuAPI adapter directly",
+      "reason": "Error: spawnSync grep ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/muapi-media-provider.test.ts",
+      "test": "nothing generates media on its own exactly ONE governed module calls a generation method",
+      "reason": "Error: spawnSync grep ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/muapi-media-provider.test.ts",
+      "test": "nothing generates media on its own no route, cron or workflow calls a generation method",
+      "reason": "Error: spawnSync grep ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/muapi-media-provider.test.ts",
+      "test": "nothing generates media on its own the provider layer is not imported by any route or cron",
+      "reason": "Error: spawnSync grep ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/platform-credential-events.test.ts",
+      "test": "Settings S0 · platform_credential_events migration — append-only and server-only RLS on, no policy, every client grant revoked, and the service role holds SELECT and INSERT only",
+      "reason": "AssertionError: expected [ …(2) ] to deeply equal [ Array(1) ]"
+    },
+    {
+      "file": "apps/web/lib/qa/platform-credential-events.test.ts",
+      "test": "Settings S0 · platform_credential_events migration — append-only and server-only touches no other object and carries no data statement",
+      "reason": "AssertionError: platform_tokens: expected true to be false // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/platform-credential-events.test.ts",
+      "test": "Settings S0 · platform_credential_events — the search_path follow-up pins the append-only function's search_path, and does nothing else",
+      "reason": "AssertionError: expected [ …(2) ] to deeply equal [ Array(1) ]"
+    },
+    {
+      "file": "apps/web/lib/qa/project-api-credentials.test.ts",
+      "test": "inertness — Phase 1 changes no existing auth is imported by no route directly — only via the leads-scoped resolver",
+      "reason": "Error: spawnSync grep ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/project-command-center.test.ts",
+      "test": "project command center · legacy rollback keeps the legacy body byte-identical to the page it replaced",
+      "reason": "AssertionError: expected 'b2d56287fc29d3deee61534bd035ad08feeb7…' to be '368c53d6d3d08c41b62c67cd5e189509b932d…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/project-command-center.test.ts",
+      "test": "project command center · Marknadsplatsstatistik link the view renders it as a plain link, with no project name of its own",
+      "reason": "AssertionError: expected 'import type { ReactNode } from \\'reac…' not to match /handlarborsen/i"
+    },
+    {
+      "file": "apps/web/lib/qa/project-workspace-vnext.test.ts",
+      "test": "project workspace B1 · generation and legacy rollback keeps the six legacy route bodies byte-for-byte from the reviewed base",
+      "reason": "AssertionError: expected '01ba4719c80b6fe911b091a7c05124b64eeec…' to be 'f468416dbe37fedb0c647068324e5b014c4f1…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/project-workspace-vnext.test.ts",
+      "test": "project workspace B1 · generation and legacy rollback moves the exact workflow editor behind /edit without changing its implementation",
+      "reason": "AssertionError: expected '59c7af18b546ad61b347524cf98eddeba3e1c…' to be 'ddb7ff59eb68db27bba50520f1cde641f058a…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/project-workspace-vnext.test.ts",
+      "test": "project workspace B1 · generation and legacy rollback keeps the previous output component and deletion endpoint untouched while stating whole-run deletion",
+      "reason": "AssertionError: expected 'a1bf05e625a597ecfbd029143808d24228a53…' to be '5ee0174f7e349ca8bbcacd82da4be89e11cd0…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/release-gate-proof-workflow.test.ts",
+      "test": "the proof definition is vendored, minimal and read-only the vendored file matches its pinned source hash",
+      "reason": "AssertionError: expected 'e7379aba12603da1277473cc32b50e5b2b677…' to be '5ce2468ffd0b0e7bd9c0e217e088bbc34a04d…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/release-gate-proof-workflow.test.ts",
+      "test": "single-remote-read authority the ONLY writer of AUTOMATED evidence is the executor",
+      "reason": "AssertionError: expected [] to deeply equal [ …(3) ]"
+    },
+    {
+      "file": "apps/web/lib/qa/review-queue.test.ts",
+      "test": "phase 11 · scope, authority and boundaries adds no endpoint, no migration and no schema change",
+      "reason": "Error: Command failed: git diff --name-only fcf53fd^1 fcf53fd"
+    },
+    {
+      "file": "apps/web/lib/qa/review-queue.test.ts",
+      "test": "phase 11 · the legacy rollback is the page that shipped the legacy body is the previous page verbatim — pinned by hash",
+      "reason": "AssertionError: expected 'cb92b22cd9ef060c7348a492a68d824c64465…' to be 'e07c443a999812fd796e7f3dd1df8bd3cdc2b…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/scoped-read-isolation.test.ts",
+      "test": "9A · every caller supplies scope canonically has exactly one production caller, and it passes a resolved allow-list",
+      "reason": "Error: Command failed: grep -rln \"fetchDashboardSnapshot(\" app lib --include=*.ts --include=*.tsx || true"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1b2-code-work-operator-plane.test.ts",
+      "test": "SDF-1B2 read isolation and no-execution boundary keeps migration 80 byte-identical",
+      "reason": "AssertionError: expected '97e5348b30998b0c16176a294efba42cdb907…' to be '54484f5af5d7addbb36729353ecc9f0213c9e…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c-broker-claim-credential.test.ts",
+      "test": "SDF-1C1B migration and structural boundary adds no route, no broker CLI command and no execution/model code",
+      "reason": "AssertionError: expected [ …(2) ] to deeply equal [ …(2) ]"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c-trusted-broker.test.ts",
+      "test": "SDF-1C1 repository, secret and no-execution boundary exposes only enrollment and identity diagnostics, never execution capability",
+      "reason": "AssertionError: expected [ …(2) ] to deeply equal [ …(2) ]"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c2-broker-control-channel.test.ts",
+      "test": "SDF-1C2 structural boundary exposes exactly the six purpose-specific broker routes and no generic boundary",
+      "reason": "AssertionError: expected [ 'claim\\recover\\route.ts', …(5) ] to deeply equal [ 'claim/recover/route.ts', …(5) ]"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-integration.test.ts",
+      "test": "SDF-1C3A real Git: the preparation substrate against a synthetic repository, with the real toolchain prepares an isolated worktree at the pinned commit and stays inside the approved parent",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A trusted toolchain: git and docker are never chosen by a caller resolves only from fixed absolute candidates and issues an unforgeable-by-shape tool",
+      "reason": "AssertionError: expected null to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A trusted toolchain: git and docker are never chosen by a caller refuses relative, missing, non-regular, non-executable, group/other-writable, foreign-owned and unsafe-ancestor candidates",
+      "reason": "AssertionError: missing: expected 'not_absolute' to be 'missing' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A trusted toolchain: git and docker are never chosen by a caller follows a symlink to its real target and judges the target (a link cannot launder trust)",
+      "reason": "AssertionError: expected undefined to be 'C:\\Users\\Andre\\AppData\\Local\\Temp\\sdf…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A trusted toolchain: git and docker are never chosen by a caller the runner refuses a tool object that did not come from the resolver",
+      "reason": "Error: refusing to remove a directory the broker did not create"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment only a broker-made command can run, and run() takes nothing but the command (no env, args or executable)",
+      "reason": "Error: infrastructure command refused: tool_unavailable"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment never enables a shell and runs exactly the trusted executable with direct argv",
+      "reason": "Error: infrastructure command refused: tool_unavailable"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment does not inherit the parent environment: secrets in process.env never reach a child",
+      "reason": "Error: infrastructure command refused: tool_unavailable"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment bounds stdout/stderr before returning",
+      "reason": "Error: infrastructure command refused: tool_unavailable"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment a timeout kills the child (TERM, then KILL) and reports timedOut",
+      "reason": "Error: infrastructure command refused: tool_unavailable"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment logs nothing and never puts a command line or secret in a result or thrown message",
+      "reason": "Error: infrastructure command refused: tool_unavailable"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A infrastructure process runner: closed commands, no shell, scratch environment a planted user gitconfig, hooks, filters and credential helper are unreachable (real git)",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) prepares a worktree at exactly the pinned commit with a closed, path-free result",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) is deterministic: same work → same branch, directory and hashes",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) accepts only trusted structured input; the caller cannot choose branch, directory, parent or arguments",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) requires a full lowercase SHA pin (uppercase)",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) requires a full lowercase SHA pin (39 chars)",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) requires a full lowercase SHA pin (41 chars)",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) requires a full lowercase SHA pin (abbreviated)",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) requires a full lowercase SHA pin (a ref name)",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) requires a full lowercase SHA pin (non-hex)",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) requires a full lowercase SHA pin (option-like)",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) requires a full lowercase SHA pin (empty)",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses a pin that is not a commit object present locally (missing, blob, tree, annotated tag) and never fetches",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) returns STALE_BASE, exactly and without fetching, when the approved base ref moved",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) needs no network at all (an unreachable origin cannot matter)",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses wrong remote",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses wrong host",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses file remote",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses plain path remote",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses credentials in URL",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses sub-path",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) accepts SCP, ssh and case-different forms of the SAME identity, and refuses a second identity or a missing remote",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses a repository whose own config launches programs (filter driver) before creating anything",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses a repository whose own config launches programs (fsmonitor) before creating anything",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses a repository whose own config launches programs (hooksPath) before creating anything",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses a repository whose own config launches programs (credential helper) before creating anything",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses a repository whose own config launches programs (include) before creating anything",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses a repository whose own config launches programs (ssh command) before creating anything",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses a repository whose own config launches programs (shell alias) before creating anything",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses a missing, symlinked, non-directory, non-canonical or non-repository root, and a linked worktree used as root",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses a missing, symlinked or non-canonical worktree parent and never creates it",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) refuses every collision without touching the existing state (path, dangling link, file, branch, worktree)",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) a worktree elsewhere already holding the branch or the path is a conflict",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) does not follow a symlink planted in the future target path",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A repository proof, pinned base and isolated worktree (synthetic repositories) verifies after creation and, on any failed check, keeps the workspace (explicit_cleanup_only) and says so",
+      "reason": "Error: spawnSync /usr/bin/git ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives verifies canonical roots only",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives reads existing files only when no segment is a symlink and the realpath is the lexical path",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives a write-intent check additionally refuses hardlinks and non-regular files",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives verifies a prospective create against its deepest existing ancestor",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses NUL",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_nul_or_control' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses newline",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_nul_or_control' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses tab",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_nul_or_control' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses DEL",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_nul_or_control' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses parent traversal",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_traversal' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses embedded traversal",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_traversal' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses absolute",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_absolute' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses double slash",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_dot_segment' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses dot segment",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_dot_segment' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses trailing slash",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_dot_segment' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses backslash",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_not_posix' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses windows drive",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_absolute' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses empty",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_empty_or_ambiguous' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses surrounding space",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_empty_or_ambiguous' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses non-NFC (NFD é)",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_not_nfc' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses .git",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_platform_denied' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses nested .git",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_platform_denied' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses .GIT case",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_platform_denied' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses .env",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_platform_denied' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses .env.local",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_platform_denied' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses .ENV.production",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_platform_denied' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses .ssh",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_platform_denied' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses .aws",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_platform_denied' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses secrets dir",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_platform_denied' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses pem",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_platform_denied' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses key",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_platform_denied' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses service account",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_platform_denied' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives refuses not a string",
+      "reason": "AssertionError: expected 'root_not_canonical' to be 'path_not_string' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives accepts ordinary NFC unicode names",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A real-filesystem containment primitives opens for reading with O_NOFOLLOW and refuses a final component that became a symlink",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A SandboxSpec and Docker command construction refuses every docker verb outside the closed set and every malformed target",
+      "reason": "TypeError: Cannot read properties of null (reading '0')"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A Docker host proof (VM-backed Docker Desktop required for production) derives the daemon socket only from a fixed host-side list (no DOCKER_HOST, no remote, no other socket)",
+      "reason": "AssertionError: expected [ '\\Users\\u\\.docker\\run\\docker.sock' ] to deeply equal [ '/Users/u/.docker/run/docker.sock' ]"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A boundary: no production caller, no route, no CLI command, no migration, no execution adds no broker route, and the route set is exactly the 1C2 control channel",
+      "reason": "AssertionError: expected [ 'claim\\recover\\route.ts', …(5) ] to deeply equal [ 'claim/recover/route.ts', …(5) ]"
+    },
+    {
+      "file": "apps/web/lib/qa/sdf1c3-isolation-substrate.test.ts",
+      "test": "SDF-1C3A boundary: no production caller, no route, no CLI command, no migration, no execution only the approved isolation modules can ISSUE an InfraCommand: brokerCommand is not reachable from any other production module",
+      "reason": "AssertionError: expected [ …(4) ] to deeply equal [ …(4) ]"
+    },
+    {
+      "file": "apps/web/lib/qa/session-only-routes.test.ts",
+      "test": "source invariants no route imports requireUserOrApiKey any more",
+      "reason": "Error: spawnSync grep ENOENT"
+    },
+    {
+      "file": "apps/web/lib/qa/session-only-routes.test.ts",
+      "test": "source invariants exactly ONE route surface still accepts the global key",
+      "reason": "Error: Command failed: find C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-overview-messenger-20261015\\apps\\web/app/api -name route.ts"
+    },
+    {
+      "file": "apps/web/lib/qa/social-credentials.test.ts",
+      "test": "social credentials · no consumer reaches a credential any other way no deployed code names a retired environment credential or a global account identity",
+      "reason": "AssertionError: expected [ 'lib\\bugs\\scan.ts', …(3) ] to deeply equal [ 'lib/bugs/scan.ts', …(3) ]"
+    },
+    {
+      "file": "apps/web/lib/qa/social-credentials.test.ts",
+      "test": "social credentials · no consumer reaches a credential any other way every credential resolution names the project of the resource it acts on — never a constant, slug or default",
+      "reason": "AssertionError: lib\\media\\social-credentials.ts resolves a credential for \"projectId: unknown\": expected 'projectId: unknown' to match /^(script\\.project_id|s\\.project_id|pr…/"
+    },
+    {
+      "file": "apps/web/lib/qa/social-credentials.test.ts",
+      "test": "social credentials · no consumer reaches a credential any other way the platform’s YouTube credential is read in one place, for the one binding attached to it",
+      "reason": "AssertionError: expected [ …(2) ] to deeply equal [ 'lib/media/social-credentials.ts' ]"
+    },
+    {
+      "file": "apps/web/lib/qa/social-credentials.test.ts",
+      "test": "social credentials · no consumer reaches a credential any other way token_health — keyed by platform alone — is written by nothing, and read only for the heartbeat’s transitional timestamp",
+      "reason": "AssertionError: expected [ Array(1) ] to deeply equal [ Array(1) ]"
+    },
+    {
+      "file": "apps/web/lib/qa/social-credentials.test.ts",
+      "test": "social credentials · no consumer reaches a credential any other way the platform’s YouTube OAuth client is read only by the resolver and the connection routes — and carries no refresh token",
+      "reason": "AssertionError: expected [ …(4) ] to deeply equal [ …(3) ]"
+    },
+    {
+      "file": "apps/web/lib/qa/spend-financial-decoupling.test.ts",
+      "test": "§14 · each flag has exactly ONE production reader H1_SPEND_GATE is read only in spend-gate-flag.ts",
+      "reason": "Error: Command failed: grep -rl 'H1_SPEND_GATE\\|H1_FINANCIAL_EXECUTION' lib app 2>/dev/null || true"
+    },
+    {
+      "file": "apps/web/lib/qa/spend-financial-decoupling.test.ts",
+      "test": "§14 · each flag has exactly ONE production reader H1_FINANCIAL_EXECUTION is read only in financial-execution-flag.ts",
+      "reason": "Error: Command failed: grep -rl 'H1_SPEND_GATE\\|H1_FINANCIAL_EXECUTION' lib app 2>/dev/null || true"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration and its reader semantics starts UNDECLARED — NULL is the absence of a declaration, with no default",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration and its reader semantics a positive declaration is stored exactly, and audits one SET",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration and its reader semantics ZERO is a KNOWN declaration, never a clear",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration and its reader semantics NEGATIVE is a KNOWN declaration — the sign is not this schema's policy",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration and its reader semantics CLEAR persists NULL, and is distinguishable from a zero declaration",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration and its reader semantics re-setting the SAME value writes nothing — no audit trail of non-events",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration and its reader semantics the RESPONSE equals current truth and the audit row, exactly",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · invalid input is refused at the boundary refuses NaN and both infinities",
+      "reason": "AssertionError: 'NaN'::numeric: expected '' to match /finite number/i"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · invalid input is refused at the boundary refuses an absent actor — the ledger cannot record an anonymous change",
+      "reason": "AssertionError: null: expected '' to match /canonical human actor shape/i"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · invalid input is refused at the boundary none of those probes changed the declaration or wrote an audit row",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration is persisted EXACTLY, never rounded ACCEPTS every exactly-representable shape",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration is persisted EXACTLY, never rounded REFUSES anything that would be silently rounded",
+      "reason": "AssertionError: 1.23456: expected '' to match /at most 4 decimal places/i"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration is persisted EXACTLY, never rounded REFUSES anything outside the numeric(12,4) range",
+      "reason": "AssertionError: 100000000: expected '' to match /outside the numeric\\(12,4\\) range/i"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration is persisted EXACTLY, never rounded ACCEPTS trailing zeros, which is not precision loss",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the declaration is persisted EXACTLY, never rounded the no-op comparison uses the CANONICAL stored value",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the actor must be a canonical authenticated human ACCEPTS the canonical user:<uuid> shape",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the actor must be a canonical authenticated human REFUSES machine-shaped and malformed actors through the RPC",
+      "reason": "AssertionError: cron: expected '' to match /canonical human actor shape/i"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the actor must be a canonical authenticated human REFUSES the same shapes at the TABLE, not only at the RPC",
+      "reason": "AssertionError: cron: expected '' to match /survival_funding_events_actor_human_i…/"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the actor must be a canonical authenticated human a refused actor leaves the declaration and the ledger untouched",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · current truth is a SERVER-ONLY singleton exists, and holds exactly the singleton row",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · current truth is a SERVER-ONLY singleton is the ONLY place the declaration lives — platform_config does not carry it",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · current truth is a SERVER-ONLY singleton has RLS on and ZERO policies, so no client can read it through a policy",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · current truth is a SERVER-ONLY singleton grants anon and authenticated NOTHING",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · current truth is a SERVER-ONLY singleton grants service_role SELECT and nothing else",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · current truth is a SERVER-ONLY singleton refuses every direct write by service_role",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · current truth is a SERVER-ONLY singleton refuses every direct write by anon and authenticated",
+      "reason": "AssertionError: anon UPDATE: expected '' to match /permission denied|42501|row-level se…/i"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · current truth is a SERVER-ONLY singleton the canonical RPC is the ONLY writer that can exist — and it works",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · current truth is a SERVER-ONLY singleton the singleton constraint refuses a second row even from the owner",
+      "reason": "AssertionError: expected '' to match /survival_funding_config_singleton|vi…/i"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the change and its evidence are atomic every change writes EXACTLY ONE audit row, and every audit row has a change",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the change and its evidence are atomic the ledger is NOT the current truth — clearing it would not change the declaration",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the change and its evidence are atomic concurrent setters serialise: the predecessor each records is the real one",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the audit ledger cannot be rewritten refuses UPDATE",
+      "reason": "AssertionError: expected '' to match /append-only|42501/i"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the audit ledger cannot be rewritten refuses DELETE",
+      "reason": "AssertionError: expected '' to match /append-only|42501/i"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the audit ledger cannot be rewritten refuses TRUNCATE",
+      "reason": "AssertionError: expected '' to match /append-only|42501/i"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the audit ledger cannot be rewritten refuses a direct INSERT by service_role, and by anon",
+      "reason": "AssertionError: expected '' to match /permission denied|42501/i"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · the audit ledger cannot be rewritten closes the event vocabulary, so a row cannot name an event no reader interprets",
+      "reason": "AssertionError: DECLARATION_MUTATED: expected '' to match /violates check constraint|permission…/i"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · exactly one current source, and history is never it the setter reads and writes the singleton, and never platform_config",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · exactly one current source, and history is never it the setter never reads the ledger to decide what is declared now",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · exactly one current source, and history is never it no function anywhere reads the ledger as current funding truth",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · exactly one current source, and history is never it the declaration column exists on exactly ONE table in the schema",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · least privilege anon and authenticated can neither read the ledger nor call the setter",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · least privilege service_role reads the ledger and executes the boundary, and writes neither table",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · least privilege the setter is SECURITY DEFINER with a fixed empty search_path",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · least privilege the ledger sequence is revoked from every role",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · scope completeness, answered without exposing anything is TRUE only when the set contains every project",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · scope completeness, answered without exposing anything is FALSE for a subset — a single project is never the platform",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · scope completeness, answered without exposing anything is FALSE for the empty set and for NULL",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · scope completeness, answered without exposing anything returns ONE BOOLEAN — never a row, an id or a count",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · scope completeness, answered without exposing anything is unmoved by a project added outside the caller set",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · a declaration moves nothing else reserves no spend, changes no stop, and issues no authorization",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · a declaration moves nothing else does not clear a pause that is already set",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-funding-sql.test.ts",
+      "test": "funding · a declaration moves nothing else Phase 2A history is untouched by a funding change",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · contract creates exactly one table, and grants write to nobody",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · contract denies INSERT to every role while letting the boundary INSERT",
+      "reason": "AssertionError: expected '' to match /permission denied|42501/i"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened is SECURITY DEFINER with an empty, fixed search_path",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened PUBLIC, anon and authenticated cannot execute it",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened service_role holds EXECUTE and nothing broader",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened has no autonomy, actor or provenance parameter at all",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened refuses a human or arbitrary actor, even on a direct INSERT",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened the RPC writes the canonical machine identity, whatever the observer",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened derives provenance from the version, and refuses every mismatched pair",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened the RPC takes no provenance argument at all",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened refuses an impossible state/ceiling pair on a direct INSERT",
+      "reason": "AssertionError: expected '' to match /autonomy_matches_state|violates chec…/i"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened refuses a policy identity no derivation implements",
+      "reason": "AssertionError: v999/canonical: expected '' to match /policy_identity_valid|violates check…/i"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened service_role cannot write the table or the sequence directly",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the recording boundary is hardened a real anon session is refused, and the boundary is reachable as itself",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · records transitions, not polling noise records exactly one baseline for the first observation",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · records transitions, not polling noise records nothing when the same state is observed again",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · records transitions, not polling noise records exactly one transition when the state really changes",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · records transitions, not polling noise keeps event_seq as the chain order and goes back to NORMAL",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · records transitions, not polling noise answers `unchanged` for a no-op rather than inserting",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · from_state is never the caller’s refuses a direct INSERT whose from_state does not follow the ledger",
+      "reason": "AssertionError: expected '' to match /does not follow the recorded state/"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · from_state is never the caller’s refuses a second baseline for a project that already has history",
+      "reason": "AssertionError: expected '' to match /cannot open a second baseline|first e…/"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · from_state is never the caller’s refuses a transition that does not change the state",
+      "reason": "AssertionError: expected '' to match /must change the state|survival_events…/"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · append-only, enforced by the database refuses UPDATE",
+      "reason": "AssertionError: expected '' to match /append-only|42501/i"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · append-only, enforced by the database refuses DELETE",
+      "reason": "AssertionError: expected '' to match /append-only|42501/i"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · append-only, enforced by the database refuses TRUNCATE",
+      "reason": "AssertionError: expected '' to match /append-only|42501/i"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · closed vocabularies closes the event, state, ceiling, funding and policy-identity vocabularies",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · closed vocabularies seeds a project with history so the CHECKs, not the guard, are under test",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · closed vocabularies refuses a value outside each closed set, by CHECK",
+      "reason": "AssertionError: funding_state: expected '' to match /violates check constraint|check/i"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · closed vocabularies refuses an unsupported to_state at the boundary, before anything is written",
+      "reason": "AssertionError: expected '' to match /unsupported to_state/i"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · closed vocabularies the declared amount is biconditional with KNOWN — all four cases",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · closed vocabularies ACCEPTS negative remaining headroom — an overspent scope is valid evidence",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · closed vocabularies refuses a negative limit, burn rate or runway",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · closed vocabularies refuses an unknown event type, which can only arrive by direct INSERT",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · closed vocabularies refuses an unknown project, fail-closed",
+      "reason": "AssertionError: expected '' to match /does not exist/"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the observation survives the round trip preserves reasons, gaps, ceiling, funding and the distinct funding states",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the observation survives the round trip keeps UNAVAILABLE distinct from UNDECLARED",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the observation survives the round trip stores declared funding when KNOWN, and only then",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the observation survives the round trip keeps MRR a SIGNAL — it never becomes runway, and runway stays unknown without funding",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the observation survives the round trip records the observation instant separately from the write instant",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · the observation survives the round trip refuses an occurred_at in the future",
+      "reason": "AssertionError: expected '' to match /may not be in the future/"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · concurrency cannot duplicate a logical transition two concurrent FIRST observations produce ONE baseline",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · concurrency cannot duplicate a logical transition two concurrent observers of the SAME change produce ONE transition",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · concurrency cannot duplicate a logical transition a retry of the same observation is idempotent",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/survival-history-sql.test.ts",
+      "test": "survival history · recording changes neither spend nor the stop leaves the automation pause and the spend ledger untouched",
+      "reason": "TypeError: The \"file\" argument must be of type string. Received null"
+    },
+    {
+      "file": "apps/web/lib/qa/system-health.test.ts",
+      "test": "phase 12 · authority is preserved, never re-created adds no endpoint, migration or schema change",
+      "reason": "Error: Command failed: git diff --name-only 9337100^1 9337100"
+    },
+    {
+      "file": "apps/web/lib/qa/system-health.test.ts",
+      "test": "phase 12 · the legacy rollback is the page that shipped the legacy body is the previous page verbatim — pinned by hash",
+      "reason": "AssertionError: expected 'c4374c934510ec284ee7e939faf867c844c08…' to be '141e8a6c8b3425bf649210a0a73ee0ccececa…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/vnext-intelligence-graph.test.ts",
+      "test": "phase 18 · the legacy rollback is the page that shipped renders the legacy canvas byte-identically to origin/main 430259e",
+      "reason": "AssertionError: operations-portfolio: expected '89c9c6c9307b93388a5d24ef4594eb98c59ac…' to be 'ffa43ab30ef902dd8e23934dfdcec6c51d893…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/vnext-intelligence-graph.test.ts",
+      "test": "phase 18 · the legacy rollback is the page that shipped keeps the legacy client markup byte-identical",
+      "reason": "AssertionError: expected '01ba4719c80b6fe911b091a7c05124b64eeec…' to be 'd4115d02711acc3d766351803a6decc32aea1…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/vnext-intelligence-graph.test.ts",
+      "test": "phase 18 · the legacy rollback is the page that shipped moves the previous page body verbatim into IntelligenceGraphLegacy",
+      "reason": "AssertionError: expected 'e3b0c44298fc1c149afbf4c8996fb92427ae4…' to be '2a99711985382448699a31252a7544c1a246d…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/vnext-intelligence-graph.test.ts",
+      "test": "phase 18 · the legacy rollback is the page that shipped leaves the legacy inspector file untouched",
+      "reason": "AssertionError: expected 'e9fa9b30fd40603c5a1168e108051462fe4d7…' to be '5ed411a3b4f59235fa1609514d47bfb7e0879…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/vnext-intelligence-graph.test.ts",
+      "test": "phase 18 · layout, scale and motion is exactly as tall as the vNext shell leaves it, not the legacy CommandBar height",
+      "reason": "AssertionError: expected '/* ══════════════════════════════════…' to match /\\.field \\{[^}]*\\n  height: calc\\(100d…/"
+    },
+    {
+      "file": "apps/web/lib/qa/vnext-intelligence-graph.test.ts",
+      "test": "phase 18 T2a · shell geometry measures the floating corner from the activity peek and the Atlas launcher",
+      "reason": "AssertionError: expected '\\'use client\\'\\r\\n\\r\\nimport { useEff…' to contain 'fixed z-50 bottom-5 right-5 h-11 px-4…'"
+    },
+    {
+      "file": "apps/web/lib/qa/vnext-intelligence-graph.test.ts",
+      "test": "phase 18 T2a · shell geometry goes fullscreen with the header, where the shell chrome is gone",
+      "reason": "AssertionError: expected '\\'use client\\'\\r\\n\\r\\n/**\\r\\n * Intel…' to match /const element = fieldRef\\.current\\n/"
+    },
+    {
+      "file": "apps/web/lib/qa/vnext-intelligence-graph.test.ts",
+      "test": "phase 18 T3b · release hardening opts only Live Operations into the G-27 last-safe guard",
+      "reason": "AssertionError: expected '\\'use client\\'\\r\\n\\r\\n/**\\r\\n * SVG r…' to contain 'const fit = useCallback(() => {\\n    …'"
+    },
+    {
+      "file": "apps/web/lib/qa/vnext-intelligence-graph.test.ts",
+      "test": "phase 18 T3b · release hardening keeps mobile list-first, System Map, Replay and legacy rollback contracts intact",
+      "reason": "AssertionError: operations-portfolio: expected '89c9c6c9307b93388a5d24ef4594eb98c59ac…' to be 'ffa43ab30ef902dd8e23934dfdcec6c51d893…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/vnext-settings.test.ts",
+      "test": "settings · the legacy rollback is the page that shipped the legacy body is the previous page verbatim — pinned by hash",
+      "reason": "AssertionError: expected 'a05e93beba673512d8117c05af2d79c8bc496…' to be '3cd199ffdc6fc5b14c0a7ea3beab0f04c28d2…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/website-build-drain.test.ts",
+      "test": "website build dispatch through actual drain route and SQL requires_cron_auth_before_any_build",
+      "reason": "WebsiteBuildError: PLAN_REVIEW_REQUIRED"
+    },
+    {
+      "file": "apps/web/lib/qa/website-build-drain.test.ts",
+      "test": "website build dispatch through actual drain route and SQL dispatches_website_kind_without_touching_legacy_handlers",
+      "reason": "WebsiteBuildError: PLAN_REVIEW_REQUIRED"
+    },
+    {
+      "file": "apps/web/lib/qa/website-build-drain.test.ts",
+      "test": "website build dispatch through actual drain route and SQL invalid_artifact_is_terminal_without_automatic_paid_retry",
+      "reason": "WebsiteBuildError: PLAN_REVIEW_REQUIRED"
+    },
+    {
+      "file": "apps/web/lib/qa/website-build-drain.test.ts",
+      "test": "website build dispatch through actual drain route and SQL in_flight_unknown_waits_for_reconciliation_and_never_looks_like_an_active_build",
+      "reason": "WebsiteBuildError: PLAN_REVIEW_REQUIRED"
+    },
+    {
+      "file": "apps/web/lib/qa/workflows-definition-familje-stunden.test.ts",
+      "test": "vendored definition — provenance the vendored YAML matches the pinned upstream hash",
+      "reason": "AssertionError: expected '42fa8239c458f9b283320732e6ca6a8c94e8c…' to be '88d9cc31fe57181e974d1e37c8968eee40bc8…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/workflows-definition-familje-stunden.test.ts",
+      "test": "vendored definition — provenance the committed JSON is the generated form of the vendored YAML",
+      "reason": "AssertionError: expected '{\\r\\n  \"ID\": \"familje-stunden.monthly…' to be '{\\n  \"ID\": \"familje-stunden.monthly-r…' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/qa/youtube-project-oauth.test.ts",
+      "test": "youtube connection · the codebase, read the state is touched only by the OAuth module; the start route records it, the callback consumes it and alone exchanges a code",
+      "reason": "AssertionError: expected [ 'lib\\media\\youtube-oauth.ts' ] to deeply equal [ 'lib/media/youtube-oauth.ts' ]"
+    },
+    {
+      "file": "apps/web/lib/architecture-knowledge/architecture-knowledge.test.ts",
+      "test": "Immutable artifact and runtime loader loads and verifies the committed artifact read-only",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/architecture-knowledge/architecture-knowledge.test.ts",
+      "test": "Golden lexical retrieval and server citations routes How are Agents, Tools and Execution Resources registered? to Intelligence Fabric canonical material",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/architecture-knowledge/architecture-knowledge.test.ts",
+      "test": "Golden lexical retrieval and server citations routes How are Credentials separated from Agent authority? to Intelligence Fabric canonical material",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/architecture-knowledge/architecture-knowledge.test.ts",
+      "test": "Golden lexical retrieval and server citations routes How does multimodal production work? to Intelligence Fabric canonical material",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/architecture-knowledge/architecture-knowledge.test.ts",
+      "test": "Golden lexical retrieval and server citations reaches provider-selection material in every canonical book that covers it",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/architecture-knowledge/architecture-knowledge.test.ts",
+      "test": "Golden lexical retrieval and server citations supports exact section, chapter, book-title and requirement identifiers",
+      "reason": "TypeError: Cannot read properties of undefined (reading 'source')"
+    },
+    {
+      "file": "apps/web/lib/architecture-knowledge/architecture-knowledge.test.ts",
+      "test": "Golden lexical retrieval and server citations excludes wrong/old versions and returns explicit unavailability",
+      "reason": "AssertionError: expected 'artifact_invalid' to be 'policy_denied' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/architecture-knowledge/architecture-knowledge.test.ts",
+      "test": "Golden lexical retrieval and server citations mints exact citations and rejects fabricated, stale or mismatched citations",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Generic artifact eligibility invariant accepts the committed artifact while Executive is active and approved",
+      "reason": "Error: Artifact checksum mismatch: sources.json"
+    },
+    {
+      "file": "apps/web/lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Generic artifact eligibility invariant rejects an inactive source that reached the artifact",
+      "reason": "AssertionError: expected [Function] to throw error matching /Ineligible source entered artifact/ but got 'Artifact checksum mismatch: sections.…'"
+    },
+    {
+      "file": "apps/web/lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Generic artifact eligibility invariant rejects an artifact source row that diverged from the registry",
+      "reason": "AssertionError: expected [Function] to throw error matching /divergence/ but got 'Artifact checksum mismatch: sections.…'"
+    },
+    {
+      "file": "apps/web/lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Generic artifact eligibility invariant rejects an artifact source that is not registered at all",
+      "reason": "AssertionError: expected [Function] to throw error matching /unregistered source/ but got 'Artifact checksum mismatch: sections.…'"
+    },
+    {
+      "file": "apps/web/lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Executive retrieval, citations and policy is an active knowledge source in the committed artifact",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Executive retrieval, citations and policy resolves FM.2 by exact front-matter identifier",
+      "reason": "TypeError: Cannot read properties of undefined (reading 'source')"
+    },
+    {
+      "file": "apps/web/lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Executive retrieval, citations and policy resolves FM.2 from an implementation-scope query and a canonical Stage 1 query",
+      "reason": "TypeError: Cannot read properties of undefined (reading 'source')"
+    },
+    {
+      "file": "apps/web/lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Executive retrieval, citations and policy resolves exact Executive chapter and section identifiers",
+      "reason": "TypeError: Cannot read properties of undefined (reading 'source')"
+    },
+    {
+      "file": "apps/web/lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Executive retrieval, citations and policy answers a governance and authority query from Executive doctrine",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Executive retrieval, citations and policy mints a valid Executive citation and rejects every tampered variant",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Executive retrieval, citations and policy denies internal Executive knowledge to an unauthorized principal and allows an authorized one",
+      "reason": "AssertionError: expected 'artifact_invalid' to be 'policy_denied' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/architecture-knowledge/executive-knowledge.test.ts",
+      "test": "Executive retrieval, citations and policy excludes an inactive, superseded or wrong-version Executive source before ranking",
+      "reason": "AssertionError: expected 'artifact_invalid' to be 'policy_denied' // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/trading/market-data/import-discipline.test.ts",
+      "test": "the contract boundary is identity, never a provider symbol the domain definitions each still exist exactly once",
+      "reason": "AssertionError: expected [ 'market-data\\contract-segment.ts' ] to deeply equal [ 'market-data/contract-segment.ts' ]"
+    },
+    {
+      "file": "apps/web/lib/trading/market-view/import-discipline.test.ts",
+      "test": "no Node builtin is reachable at runtime from the market-view package proves it across the whole transitive value-import closure",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/trading/provider-normalization/recorded-adapter.test.ts",
+      "test": "a transcript gap fails closed never branches on a provider message anywhere in the package",
+      "reason": "Error: ENOENT: no such file or directory, scandir 'C:\\C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-overview-messenger-20261015\\apps\\web\\lib\\trading\\provider-normalization\\'"
+    },
+    {
+      "file": "apps/web/lib/trading/replay/import-discipline.test.ts",
+      "test": "no Node builtin is reachable at runtime from the replay package proves it across the whole transitive value-import closure",
+      "reason": "AssertionError: expected false to be true // Object.is equality"
+    },
+    {
+      "file": "apps/web/lib/trading/replay/import-discipline.test.ts",
+      "test": "Stage 1.5 boundaries reads no wall clock on a trading-state path",
+      "reason": "AssertionError: expected [ Array(1) ] to deeply equal [ 'clock.ts' ]"
+    },
+    {
+      "file": "apps/web/lib/trading/session-calendar/import-discipline.test.ts",
+      "test": "AD. an answer cannot depend on where or when it runs names an explicit timeZone on every formatter it builds",
+      "reason": "AssertionError: expected 0 to be greater than or equal to 2"
+    }
+  ]
+}

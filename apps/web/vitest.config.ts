@@ -16,6 +16,14 @@ export default defineConfig({
   test: {
     environment: "node",
     include: [
+      'lib/calendar/**/*.test.ts',
+      'lib/local-text/**/*.test.ts',
+      'lib/website-build/**/*.test.ts',
+      'lib/social-launch/**/*.test.ts',
+      'lib/social-connections/**/*.test.ts',
+      'lib/project/lifecycle/**/*.test.ts',
+      'lib/atlas/voice-capture.test.ts',
+      'lib/atlas/conversation/**/*.test.ts',
       "lib/qa/**/*.test.ts",
       "lib/nav/**/*.test.ts",
       "lib/intelligence/**/*.test.ts",

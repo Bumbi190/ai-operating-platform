@@ -1,7 +1,9 @@
 import {
   Activity,
+  LayoutDashboard,
   CalendarRange,
   Cpu,
+  Orbit,
   Lightbulb,
   MessageSquare,
   Megaphone,
@@ -11,6 +13,7 @@ import {
   Settings,
   ShieldCheck,
   Sparkles,
+  PanelsTopLeft,
   TrendingUp,
   type LucideIcon,
 } from 'lucide-react'
@@ -51,7 +54,7 @@ export type VNextNavGroupId = 'atlas' | 'arbete' | 'intelligens' | 'system'
 
 export interface VNextNavItem {
   /** Stable identity, and the registry destination where one exists. */
-  id: DestinationId | 'system' | 'planning'
+  id: DestinationId | 'system' | 'planning' | 'projects'
   label: string
   href: string
   icon: LucideIcon
@@ -78,8 +81,10 @@ export const VNEXT_NAV: readonly VNextNavGroup[] = [
     id: 'atlas',
     label: 'Atlas',
     items: [
-      { id: 'atlas', label: 'Atlas', href: '/atlas', icon: Sparkles, desktop: true, mobile: true, primary: true },
+      { id: 'overview', label: 'Översikt', href: '/dashboard', icon: LayoutDashboard, desktop: true, mobile: true, primary: true },
+      { id: 'atlas', label: 'Atlas', href: '/atlas', icon: Sparkles, desktop: true, mobile: true },
       { id: 'chat', label: 'Chat', href: '/chat', icon: MessageSquare, desktop: true, mobile: true },
+      { id: 'build', label: 'Bygg med Atlas', href: '/build', icon: PanelsTopLeft, desktop: true, mobile: true },
       // Andre → Atlas → projects → agents. It belongs to the Atlas group rather
       // than Intelligens because it is the operator's own structure seen from
       // Atlas, not an instrument for understanding the system — that is the
@@ -87,6 +92,10 @@ export const VNEXT_NAV: readonly VNextNavGroup[] = [
       // boundary Phase 6 enforced in the code. Desktop only: the mobile sheet
       // is a quick-jump surface, and a hierarchy is not a quick jump.
       { id: 'organisation', label: 'Organisation', href: '/organisation', icon: Users, desktop: true, mobile: false },
+      // The project cover gallery is a single quick jump to the portfolio on desktop
+      // AND mobile. It is NOT a list of individual projects: those remain scoped
+      // to the already-authorized cards on Atlas Home and /projects.
+      { id: 'projects', label: 'Projekt', href: '/projects', icon: Orbit, desktop: true, mobile: true },
     ],
   },
   {
@@ -95,6 +104,7 @@ export const VNEXT_NAV: readonly VNextNavGroup[] = [
     items: [
       { id: 'approvals', label: 'Granskningar', href: '/approvals', icon: ShieldCheck, desktop: true, mobile: true },
       { id: 'activity', label: 'Aktivitet', href: '/agent-activity', icon: Activity, desktop: true, mobile: true },
+      { id: 'calendar', label: 'Kalender', href: '/calendar', icon: CalendarRange, desktop: true, mobile: true },
       { id: 'planning', label: 'Planering', href: '/planning', icon: CalendarRange, desktop: true, mobile: false },
       { id: 'marketing_queue', label: 'Marknadsgranskning', href: '/atlas/marketing', icon: Megaphone, desktop: true, mobile: false },
       { id: 'content_queue', label: 'Content Center', href: '/atlas/content', icon: Newspaper, desktop: true, mobile: false },

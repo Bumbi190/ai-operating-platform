@@ -14,9 +14,9 @@ import { join, resolve } from 'node:path'
 import {
   deriveSurvivalState,
   mostRestrictive,
-  PROVISIONAL_CRITICAL_HEADROOM_FRACTION,
-  PROVISIONAL_CONSERVE_HEADROOM_FRACTION,
-  PROVISIONAL_POLICY_NOTICE,
+  CRITICAL_HEADROOM_FRACTION,
+  CONSERVE_HEADROOM_FRACTION,
+  SURVIVAL_POLICY_NOTICE,
   SURVIVAL_THRESHOLD_STATUS,
   FUNDING_UNDECLARED_FLOOR,
   FUNDING_UNAVAILABLE_FLOOR,
@@ -167,7 +167,7 @@ describe('survival state derivation', () => {
   })
 
   it('threshold constants sit in the documented order', () => {
-    expect(PROVISIONAL_CRITICAL_HEADROOM_FRACTION).toBeLessThan(PROVISIONAL_CONSERVE_HEADROOM_FRACTION)
+    expect(CRITICAL_HEADROOM_FRACTION).toBeLessThan(CONSERVE_HEADROOM_FRACTION)
   })
 
   it('pinned: carrying operatingPaused never changes the state', () => {
@@ -726,32 +726,31 @@ describe('the thresholds cannot be mistaken for approved policy', () => {
     'EXPAND_MIN_RUNWAY_DAYS',
   ]
 
-  it('every threshold constant is EXPORTED with the PROVISIONAL_ prefix', () => {
-    // The name is the signal. A phase that approves these numbers must rename
-    // them, which puts the act in the diff instead of letting an implementer's
-    // choice drift into policy through nobody's decision.
+  it('every threshold constant is EXPORTED under its canonical (owner-approved) name', () => {
+    // The owner approved the six values on 2026-10-04 (Survival v1). The rename
+    // from PROVISIONAL_* is that approval made visible in the diff.
     const src = readCode('lib/atlas/survival/derive.ts')
     for (const name of THRESHOLDS) {
-      expect(src, `missing PROVISIONAL_${name}`).toContain(`export const PROVISIONAL_${name} =`)
+      expect(src, `missing ${name}`).toContain(`export const ${name} =`)
     }
   })
 
-  it('no threshold is exported WITHOUT the prefix', () => {
+  it('no PROVISIONAL_ threshold remains as an active policy definition', () => {
     const src = readCode('lib/atlas/survival/derive.ts')
     for (const bare of THRESHOLDS) {
-      expect(src, `${bare} exported unqualified`).not.toContain(`export const ${bare} =`)
+      expect(src, `PROVISIONAL_${bare} still exported`).not.toContain(`export const PROVISIONAL_${bare} =`)
     }
+    expect(src).not.toMatch(/export const PROVISIONAL_/)
   })
 
   it('declares its own status rather than leaving it to prose', () => {
-    expect(SURVIVAL_THRESHOLD_STATUS).toBe('provisional')
-    expect(PROVISIONAL_POLICY_NOTICE).toMatch(/provisional/i)
-    expect(PROVISIONAL_POLICY_NOTICE).toMatch(/not owner-approved/i)
-    // The corrected claim: the thresholds ARE applied, to the Phase 1
-    // observation. Only the wiring to anything that acts is absent.
-    expect(PROVISIONAL_POLICY_NOTICE).toMatch(/ARE applied/i)
-    expect(PROVISIONAL_POLICY_NOTICE).not.toMatch(/applied to nothing/i)
-    expect(PROVISIONAL_POLICY_NOTICE).toMatch(/NOT wired to execution/i)
+    expect(SURVIVAL_THRESHOLD_STATUS).toBe('canonical')
+    expect(SURVIVAL_POLICY_NOTICE).toMatch(/owner-approved canonical policy/i)
+    expect(SURVIVAL_POLICY_NOTICE).toMatch(/are applied/i)
+    expect(SURVIVAL_POLICY_NOTICE).not.toMatch(/applied to nothing/i)
+    // Survival only ever lowers authority; the notice must say so.
+    expect(SURVIVAL_POLICY_NOTICE).toMatch(/can only LOWER autonomy/)
+    expect(SURVIVAL_POLICY_NOTICE).toMatch(/never grants, raises or substitutes for an owner-issued licence/)
   })
 
   it('travels to the surface that shows the numbers to an operator', () => {
@@ -759,7 +758,7 @@ describe('the thresholds cannot be mistaken for approved policy', () => {
     // ride with the response in BOTH branches.
     const src = readCode('app/api/system/survival/route.ts')
     expect(src).toContain('SURVIVAL_THRESHOLD_STATUS')
-    expect(src).toContain('PROVISIONAL_POLICY_NOTICE')
+    expect(src).toContain('SURVIVAL_POLICY_NOTICE')
     expect(src.match(/\.\.\.policy,/g) ?? []).toHaveLength(2)
   })
 })
@@ -793,6 +792,56 @@ describe('read-only, with a closed consumer set', () => {
       // system-health model, and the Systemhälsa view renders it.
       resolve(process.cwd(), 'lib/os/system-health'),
       resolve(process.cwd(), 'components/platform/vnext/SystemHealth'),
+      // Phase 3B0 — the platform-runtime adapter, added DELIBERATELY.
+      //
+      // This is the first consumer that exists to feed an autonomy decision
+      // rather than to display one, which is precisely the kind of change this
+      // list is designed to make visible. It is added as a single FILE rather
+      // than the `autonomy-runtime` directory so that any further consumer —
+      // and in particular anything on an execution path — has to be added here
+      // by hand too.
+      //
+      // The adapter itself is still INERT: a separate guard (autonomy-runtime
+      // suite) proves no execution module imports it, so adding it here does
+      // not make the ceiling reachable from execution.
+      resolve(process.cwd(), 'lib/atlas/autonomy-runtime/platform-survival.ts'),
+      // Phase 3B0's own suite: it drives the adapter and asserts the pure
+      // ceiling rules (null → L0, hostile state → L0), which requires importing
+      // the backend rather than copying its constants.
+      resolve(process.cwd(), 'lib/qa/autonomy-runtime-foundation.test.ts'),
+      // M0's ceiling suite: it proves that burn counts possibly-billed spend
+      // (open reservations with dispatch intent) by driving the real snapshot.
+      resolve(process.cwd(), 'lib/qa/m0-spend-ceiling.test.ts'),
+      // Phase 3B1A's trace guards: they assert the trace migration's
+      // `survival_state` vocabulary is SET-EQUAL to the canonical states, which
+      // means reading `SURVIVAL_STATES` rather than restating it — the whole
+      // point of the guard is that a hand-copied list drifts.
+      //
+      // Like the two entries above, this is added as a single FILE. It imports
+      // only `atlas/survival/types` (a closed vocabulary of string constants);
+      // it does not import `readSurvivalSnapshot` and cannot read Survival.
+      resolve(process.cwd(), 'lib/qa/autonomy-trace-guards.test.ts'),
+      // Phase 3B1B2 M2's guards: they read the Survival source FILES as text to
+      // pin the epoch's source set to the current read surface (a new input must
+      // fail there until its epoch coverage is reviewed). They import nothing
+      // from `atlas/survival` and cannot read Survival.
+      resolve(process.cwd(), 'lib/qa/survival-input-epoch-m2-guards.test.ts'),
+      // Phase 3B1B2 M2's stable-observation proof: it drives the inert
+      // `observeSurvivalStable()` helper (and through it the real snapshot)
+      // against real PostgreSQL. A test, not a runtime consumer.
+      resolve(process.cwd(), 'lib/qa/survival-stable-observation-m2-sql.test.ts'),
+      // Phase 3B1B2 M3's proofs: the commit-bound observation suite drives the inert
+      // observeSurvivalCommitBound() helper; the M3 guards read the Survival sources as
+      // TEXT to keep the clock deadline in lock-step with them. Tests, not consumers.
+      resolve(process.cwd(), 'lib/qa/survival-commit-bound-observation-m3-sql.test.ts'),
+      resolve(process.cwd(), 'lib/qa/survival-commit-fence-m3-guards.test.ts'),
+      // Phase 3B1B2 M4-A's one-way parity proof drives the REAL readSurvivalSnapshot()
+      // against real rows to check the database's conservative ">= L3" predicate. A
+      // test, not a consumer.
+      resolve(process.cwd(), 'lib/qa/licensed-bind-v1-parity-sql.test.ts'),
+      // …and its static guards pin the canonical thresholds the SQL margins sit
+      // beyond. A test, not a consumer.
+      resolve(process.cwd(), 'lib/qa/licensed-bind-m4a-guards.test.ts'),
     ]
     const offenders: string[] = []
 
@@ -854,7 +903,9 @@ describe('read-only, with a closed consumer set', () => {
     // another tenant's burn, headroom or revenue.
     const src = readCode('lib/atlas/survival/snapshot.ts')
     expect(src).toContain("allowedProjectIds.includes(row.project_id")
-    expect((src.match(/\.in\('project_id', allowedProjectIds\)/g) ?? [])).toHaveLength(2)
+    // 3 since M0: burn also reads open reservations with dispatch intent —
+    // scoped to the same allow-list as every other read.
+    expect((src.match(/\.in\('project_id', allowedProjectIds\)/g) ?? [])).toHaveLength(3)
   })
 
   it('returns no secret and no environment value', () => {

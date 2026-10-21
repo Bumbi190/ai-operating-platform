@@ -107,9 +107,17 @@ export async function readSurvivalSnapshot(
   const db: AnyDb = options.db ?? createAdminClient()
   const at = options.now ?? new Date().toISOString()
 
-  // The funding source and the scope check are read alongside the measurements,
-  // in the same pass, so a snapshot can never mix a fresh burn with a stale
-  // declaration or vice versa.
+  // A MULTI-STATEMENT observation: headroom, burn, pending burn, revenue,
+  // funding, coverage and the pause are separate reads, each its own snapshot of
+  // committed data, so a Survival input that commits between two of them is seen
+  // by the later reads and not by the earlier ones. This raw snapshot therefore
+  // makes NO database-stability claim. Stability — every read having seen one
+  // committed authority state — is established only by `observeSurvivalStable()`
+  // (stable-observation.ts), which brackets this call with the M2 epoch vector
+  // and refuses when it moved. The current direct callers — the survival route,
+  // the Systemhälsa loader, the history recorder, and the still-inert Phase 3B0
+  // platform adapter (autonomy-runtime/platform-survival.ts) — gain no licensed
+  // authority from this raw snapshot.
   const [scopes, budgetsOk] = await readHeadroom(db, allowedProjectIds)
   const [burnSekPerDay, burnOk] = await readBurn(db, allowedProjectIds, at)
   const [revenueTrendSek, revenueOk] = await readRevenueTrend(db, allowedProjectIds)
@@ -199,11 +207,25 @@ async function readBurn(
       .in('project_id', allowedProjectIds)
       .gte('created_at', cutoff)
     if (error) return [null, false]
-    const total = (data ?? []).reduce(
+    const recorded = (data ?? []).reduce(
       (sum: number, row: any) => sum + (Number(row.cost_sek) || 0),
       0,
     )
-    return [total / BURN_WINDOW_DAYS, true]
+    // M0: spend that MAY already have been billed but is not yet a cost row —
+    // an open reservation with dispatch intent — counts at its hard ceiling
+    // until it is durably settled, whatever its age. Without this, a dispatch
+    // whose process died before settlement would be invisible to burn forever.
+    const pending = await db.from('spend_reservations')
+      .select('estimated_sek')
+      .eq('status', 'open')
+      .not('dispatched_at', 'is', null)
+      .in('project_id', allowedProjectIds)
+    if (pending.error) return [null, false]
+    const unsettled = (pending.data ?? []).reduce(
+      (sum: number, row: any) => sum + (Number(row.estimated_sek) || 0),
+      0,
+    )
+    return [(recorded + unsettled) / BURN_WINDOW_DAYS, true]
   } catch {
     return [null, false]
   }

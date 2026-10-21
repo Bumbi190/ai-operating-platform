@@ -131,11 +131,22 @@ class PostgresDecisionLedgerStore implements DecisionLedgerStore {
     return (createAdminClient() as AnyDb).from('atlas_decision_ledger')
   }
 
+  /**
+   * Phase 3B1B2 M4-A: the ONLY write path is the `atlas_decision_ledger_append`
+   * SECURITY DEFINER boundary — service_role holds no INSERT on the table. That
+   * boundary enforces database mutation INTEGRITY (start shape, one project,
+   * causal time order, lifecycle generation, type-required fields); the Chapter
+   * 11 fold the write boundary ran before calling this remains the only
+   * interpretation of what the lineage means.
+   */
   async append(record: DecisionRecord): Promise<DecisionRecord> {
-    const { data, error } = await this.table().insert(recordToRow(record)).select(COLS).single()
+    const row = recordToRow(record)
+    const args = Object.fromEntries(Object.entries(row).map(([k, v]) => [`p_${k}`, v]))
+    const { data, error } = await (createAdminClient() as AnyDb).rpc('atlas_decision_ledger_append', args)
     if (error) throw new Error(`[atlas-decision-ledger] append failed: ${error.message}`)
-    if (!data) throw new Error('[atlas-decision-ledger] append returned no row')
-    return rowToRecord(data as Row)
+    const written = Array.isArray(data) ? data[0] : data
+    if (!written) throw new Error('[atlas-decision-ledger] append returned no row')
+    return rowToRecord(written as Row)
   }
 
   async lineage(decisionId: string): Promise<DecisionRecord[]> {

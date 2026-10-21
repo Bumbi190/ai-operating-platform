@@ -1,0 +1,58 @@
+.shell {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(18px, 2.2vw, 30px);
+  border: 1px solid rgba(64, 211, 226, .25);
+  border-radius: 23px;
+  background: linear-gradient(133deg, #061f2d 0%, #061727 65%, #091b2b 100%);
+  color: #e8f5fa;
+}
+.shell::before {
+  position: absolute;
+  content: '';
+  width: 280px;
+  height: 280px;
+  right: -145px;
+  top: -175px;
+  background: rgba(53, 197, 209, .12);
+  filter: blur(60px);
+  pointer-events: none;
+}
+.topline, .rowTitle, .progressNumbers { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.topline { align-items: flex-start; flex-wrap: wrap; }
+.topline h2 { margin: 5px 0 4px; font-size: clamp(1.22rem, 2vw, 1.58rem); letter-spacing: -.035em; font-weight: 750; }
+.kicker { margin: 0; text-transform: uppercase; font-size: .66rem; letter-spacing: .19em; font-weight: 750; color: #68dbe7; }
+.subline { margin: 0; color: #a3bece; font-size: .81rem; }
+.quality { display: inline-flex; gap: 7px; align-items: center; flex-shrink: 0; padding: 8px 11px; border-radius: 99px; border: 1px solid rgba(85,221,191,.25); background: rgba(85,221,191,.08); color: #a7ebd5; font-size: .73rem; font-weight: 650; }
+.quality[data-stale='true'] { color: #ffdc93; background: rgba(255,189,91,.09); border-color: rgba(255,189,91,.27); }
+.kpis { margin-top: 22px; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; }
+.kpi { min-width: 0; border: 1px solid rgba(122,193,217,.15); border-radius: 14px; padding: 15px 16px 13px; background: rgba(15, 49, 72, .66); display: flex; flex-direction: column; gap: 8px; }
+.kpiLabel { color: #aec6d4; font-size: .78rem; }
+.kpiValue { color: #f4fbff; font-weight: 780; font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -.04em; font-size: clamp(1.7rem,2.6vw,2.25rem); }
+.kpiValue[data-unknown='true'] { font-size: 1.2rem; letter-spacing: 0; }
+.kpiNote { color: #87a7bc; font-size: .69rem; line-height: 1.35; }
+.insightRow { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 11px; margin-top: 12px; }
+.progress, .atlas, .competitors { min-width: 0; padding: 16px; border-radius: 14px; border: 1px solid rgba(122,193,217,.14); background: rgba(0, 17, 30, .5); }
+.rowTitle { justify-content: flex-start; gap: 9px; color: #77dce8; }
+.rowTitle h3 { font-size: .82rem; font-weight: 730; color: #d8edf4; margin: 0; }
+.progressNumbers { margin-top: 16px; align-items: baseline; flex-wrap: wrap; }
+.progressNumbers strong { color: #f0fbff; font-size: 1.38rem; letter-spacing: -.03em; }
+.progressNumbers span { color: #a2bdca; font-size: .7rem; }
+.track { height: 7px; margin: 10px 0 0; overflow: hidden; border-radius: 99px; background: rgba(184,216,232,.13); }
+.track span { display: block; height: 100%; background: linear-gradient(90deg,#2184ab,#5ce0d5); border-radius: inherit; }
+.atlas p, .competitors p { margin: 13px 0 8px; color: #cfdfeb; line-height: 1.55; font-size: .8rem; }
+.explain, .atlas .explain, .competitors .explain, .missing { color: #829fb2; font-size: .69rem; line-height: 1.5; }
+.explain { margin-top: 8px; }
+.atlas a, .competitors a { display: inline-flex; align-items: center; gap: 5px; color: #75e6e7; font-weight: 700; font-size: .76rem; margin-top: 4px; text-decoration: none; }
+.atlas a:hover, .competitors a:hover { text-decoration: underline; }
+.atlas a:focus-visible, .competitors a:focus-visible { outline: 2px solid #72e3ec; outline-offset: 4px; }
+@media(max-width:1050px) { .insightRow { grid-template-columns: repeat(2,minmax(0,1fr)); } .competitors { grid-column: 1 / -1; } }
+@media(max-width:720px) { .kpis { grid-template-columns: repeat(2,minmax(0,1fr)); } .insightRow { grid-template-columns: 1fr; } .competitors { grid-column: auto; } .kpi { padding: 13px; } .shell { padding: 16px; } }
+@media(max-width:370px) { .kpis { grid-template-columns: 1fr; } }
+
+.deepDive { border-radius: 16px; border: 1px solid rgba(125,190,213,.19); background: rgba(7,29,45,.65); overflow: hidden; margin-top: 6px; }
+.deepDive > summary { cursor: pointer; padding: 19px 23px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; color: #d7e9f2; font-weight: 720; font-size: .87rem; }
+.deepDive > summary:hover { background: rgba(76,198,209,.055); }
+.deepDive > summary:focus-visible { outline: 2px solid #7fe2eb; outline-offset: -3px; }
+.deepDiveHint { color: #85bdd1; font-size: .73rem; font-weight: 550; }
+.deepDiveContent { display: grid; gap: 18px; padding: 0 14px 17px; }

@@ -1,4 +1,7 @@
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { BUSINESS_PROFILES } from '@/lib/atlas/identity'
 import { presentationForProject } from '@/lib/atlas/project-presentation'
 import { resolveProjectRailKeyAction } from '@/lib/atlas/project-rail-keyboard'
 
@@ -24,6 +27,15 @@ describe('Atlas project rail presentation registry', () => {
       shortLabel: 'The Prompt',
       heroImage: '/project-rail/the-prompt.jpg',
     })
+  })
+
+  it('registers Handlarbörsen artwork that exists on disk, leaving the other projects untouched', () => {
+    const p = presentationForProject('handlarborsen', 'Handlarbörsen')
+    expect(p).toMatchObject({ shortLabel: 'Handlarbörsen', heroImage: '/project-rail/handlarborsen.png' })
+    expect(existsSync(join(process.cwd(), 'public', p.heroImage!))).toBe(true)
+    expect(presentationForProject('gainpilot', 'x').heroImage).toBe('/project-rail/gainpilot.png')
+    expect(presentationForProject('familje-stunden', 'x').heroImage).toBe('/project-rail/familje-stunden.png')
+    expect(BUSINESS_PROFILES['handlarborsen']).toMatchObject({ slug: 'handlarborsen', name: 'Handlarbörsen' })
   })
 
   it('falls back to the authorized database name when artwork is unknown', () => {

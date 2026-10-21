@@ -60,74 +60,73 @@ import {
   type SurvivalState,
 } from './types'
 
-// ═══ THRESHOLDS — PROVISIONAL. NOT CANONICAL POLICY. ════════════════════════
+// ═══ THRESHOLDS — OWNER-APPROVED CANONICAL POLICY (Survival v1) ═════════════
 //
-// These six numbers are NOT owner-approved canonical policy. They were chosen by
-// the implementer while building Phase 1 so the derivation could be exercised at
-// all. They have never been reviewed against a real funding position, and no
-// autonomy decision has ever been taken on them.
+// These six numbers are the owner-approved canonical Survival v1 policy
+// (approved 2026-10-04, Phase 3B1B2 M4). They began as an implementer's choice
+// in Phase 1 and carried a `PROVISIONAL_` prefix so that no phase could act on
+// them by accident; the owner reviewed and approved them, and removing the
+// prefix is that approval made visible in the diff. The values and the equality
+// semantics are exactly the Phase 1 ones:
 //
-// The `PROVISIONAL_` prefix is deliberate and load-bearing: an unqualified
-// `CRITICAL_HEADROOM_FRACTION` reads like a settled constant, and a constant
-// that merely LOOKS settled is how an implementer's guess becomes policy by
-// nobody's decision. Renaming these is the review gate — a phase that wants to
-// act on them must first have them approved, and the rename is that act made
-// visible in the diff.
+//   headroom   CRITICAL  when remaining fraction <  0.10  (exactly 10% is not CRITICAL)
+//              CONSERVE  when remaining fraction <  0.35  (exactly 35% is not CONSERVE)
+//              EXPAND requires remaining fraction >= 0.50 (exactly 50% satisfies it)
+//   runway     CRITICAL  when runway <  3 days            (exactly 3 is not CRITICAL)
+//              CONSERVE  when runway < 14 days            (exactly 14 is not CONSERVE)
+//              EXPAND requires runway >= 60 days          (exactly 60 satisfies it)
 //
-// Phase 1 changes no behaviour, so these numbers currently decide nothing that
-// matters: they are observations. They gate nothing until a phase applies the
-// ceiling, and that phase must not ship on unreviewed thresholds.
+// A permanent test pins all six values and every equality boundary, so changing
+// one is a reviewed policy change, never an edit that happens to compile.
+//
+// The approval grants NOTHING. Survival can only LOWER effective autonomy: its
+// ceiling is composed as min(owner-issued licence, Survival ceiling), and no
+// healthy Survival state creates, raises or substitutes for a licence.
 //
 // The shape of the numbers is a deliberate departure from absolute currency
 // thresholds ("> $5 is healthy"), which do not scale: that constant means the
 // same thing to a platform burning 0.01 SEK/day and one burning 5 SEK/hour.
 // Fractions of the binding limit at least move with the limit.
 
-/** Below this fraction of the binding limit, the state is CRITICAL. PROVISIONAL. */
-export const PROVISIONAL_CRITICAL_HEADROOM_FRACTION = 0.1
-/** Below this fraction of the binding limit, the state is CONSERVE. PROVISIONAL. */
-export const PROVISIONAL_CONSERVE_HEADROOM_FRACTION = 0.35
-/** EXPAND additionally requires at least this fraction still remaining. PROVISIONAL. */
-export const PROVISIONAL_EXPAND_MIN_HEADROOM_FRACTION = 0.5
+/** Below this fraction of the binding limit, the state is CRITICAL. Owner-approved v1. */
+export const CRITICAL_HEADROOM_FRACTION = 0.1
+/** Below this fraction of the binding limit, the state is CONSERVE. Owner-approved v1. */
+export const CONSERVE_HEADROOM_FRACTION = 0.35
+/** EXPAND additionally requires at least this fraction still remaining. Owner-approved v1. */
+export const EXPAND_MIN_HEADROOM_FRACTION = 0.5
 
-/** Days of runway below which the state is CRITICAL. PROVISIONAL. */
-export const PROVISIONAL_RUNWAY_CRITICAL_DAYS = 3
-/** Days of runway below which the state is CONSERVE. PROVISIONAL. */
-export const PROVISIONAL_RUNWAY_CONSERVE_DAYS = 14
-/** EXPAND requires at least this much runway. PROVISIONAL. */
-export const PROVISIONAL_EXPAND_MIN_RUNWAY_DAYS = 60
+/** Days of runway below which the state is CRITICAL. Owner-approved v1. */
+export const RUNWAY_CRITICAL_DAYS = 3
+/** Days of runway below which the state is CONSERVE. Owner-approved v1. */
+export const RUNWAY_CONSERVE_DAYS = 14
+/** EXPAND requires at least this much runway. Owner-approved v1. */
+export const EXPAND_MIN_RUNWAY_DAYS = 60
 
 /**
- * The provisional status as one machine-readable value, so a surface can say it
+ * The policy status as one machine-readable value, so a surface can say it
  * without restating the prose above and drifting from it.
  *
- * `'provisional'` here means: an implementer's choice, not an owner decision.
- * When the thresholds are approved this becomes `'canonical'` — and that change
- * should be a reviewed edit to this constant, not a silent rename.
+ * `'canonical'` means: owner-approved policy (Survival v1). It is persisted with
+ * every observation; the database accepts it for derivation v2 from migration
+ * 20261004090000 onward, beside the historical `'provisional'` rows.
  */
-export const SURVIVAL_THRESHOLD_STATUS = 'provisional' as const
+export const SURVIVAL_THRESHOLD_STATUS = 'canonical' as const
 export type SurvivalThresholdStatus = typeof SURVIVAL_THRESHOLD_STATUS
 
 /**
  * One line for an operator, naming exactly what is — and is not — true of the
  * thresholds.
- *
- * The earlier wording said they were "applied to nothing". That was wrong and
- * this is the correction: the thresholds ARE applied, to the Phase 1 OBSERVATION
- * this module reports. What they are not wired to is anything that acts.
  */
-export const PROVISIONAL_POLICY_NOTICE =
-  'Survival thresholds are provisional and not owner-approved canonical policy. '
-  + 'They ARE applied to the Phase 1 survival observation reported here. They are '
-  + 'NOT wired to execution, spending, authorization or runtime enforcement.'
+export const SURVIVAL_POLICY_NOTICE =
+  'Survival v1 thresholds are owner-approved canonical policy. '
+  + 'They are applied to the Survival observation reported here. Survival can only LOWER '
+  + 'autonomy: it never grants, raises or substitutes for an owner-issued licence.'
 
-// ─── Funding floors — OWNER DECISIONS, not provisional ──────────────────────
+// ─── Funding floors — OWNER DECISIONS ─────────────────────────────────────
 //
-// Deliberately NOT prefixed `PROVISIONAL_` and deliberately NOT part of the six
-// numbers above. The owner specified these two floors directly, so they carry
-// owner authority today; the six thresholds do not. Keeping the distinction
-// visible in the names is the point: a reader can tell policy from a guess at a
-// glance, and a future reviewer can see which of these needs approval.
+// Deliberately NOT part of the six thresholds above. The owner specified these
+// floors directly (before the six were approved), so they always carried owner
+// authority. They are separate policy facts with their own review history.
 
 /**
  * The floor when the owner has never supplied an operating-capital figure.
@@ -273,10 +272,10 @@ export function deriveSurvivalState(
     state = 'HIBERNATE'
   } else {
     const fraction = binding.remainingSek / binding.limitSek
-    if (fraction < PROVISIONAL_CRITICAL_HEADROOM_FRACTION) {
+    if (fraction < CRITICAL_HEADROOM_FRACTION) {
       applicable.add('headroom_critical')
       state = 'CRITICAL'
-    } else if (fraction < PROVISIONAL_CONSERVE_HEADROOM_FRACTION) {
+    } else if (fraction < CONSERVE_HEADROOM_FRACTION) {
       applicable.add('headroom_conserve')
       state = 'CONSERVE'
     } else {
@@ -360,7 +359,7 @@ export function deriveSurvivalState(
         //
         // CONSERVE breaks that: with the same funding, burn and headroom, a
         // complete observation whose runway falls under
-        // `PROVISIONAL_RUNWAY_CRITICAL_DAYS` is CRITICAL, so a partial one
+        // `RUNWAY_CRITICAL_DAYS` is CRITICAL, so a partial one
         // reporting CONSERVE sits a full level above it — a ceiling raised by
         // losing runway information. Same defect class as the
         // FUNDING_UNAVAILABLE_FLOOR sweep documented above.
@@ -392,10 +391,10 @@ export function deriveSurvivalState(
         state = mostRestrictive(state, 'CRITICAL')
       } else if (input.burnSekPerDay !== null && input.burnSekPerDay > 0) {
         runwayDays = declaredFundingSek / input.burnSekPerDay
-        if (runwayDays < PROVISIONAL_RUNWAY_CRITICAL_DAYS) {
+        if (runwayDays < RUNWAY_CRITICAL_DAYS) {
           applicable.add('runway_short')
           state = mostRestrictive(state, 'CRITICAL')
-        } else if (runwayDays < PROVISIONAL_RUNWAY_CONSERVE_DAYS) {
+        } else if (runwayDays < RUNWAY_CONSERVE_DAYS) {
           applicable.add('runway_short')
           state = mostRestrictive(state, 'CONSERVE')
         }
@@ -430,9 +429,9 @@ export function deriveSurvivalState(
     && readsComplete
     && input.funding.kind === 'KNOWN'
     && runwayDays !== null
-    && runwayDays >= PROVISIONAL_EXPAND_MIN_RUNWAY_DAYS
+    && runwayDays >= EXPAND_MIN_RUNWAY_DAYS
     && binding !== null
-    && binding.remainingSek / binding.limitSek >= PROVISIONAL_EXPAND_MIN_HEADROOM_FRACTION
+    && binding.remainingSek / binding.limitSek >= EXPAND_MIN_HEADROOM_FRACTION
     && input.revenueTrendSek !== null
     && input.revenueTrendSek > 0
   ) {

@@ -104,7 +104,9 @@ import { createSupabaseMediaJobStore } from '@/lib/media/job/store-supabase'
  * currency, no second fallback — and a missing rate REFUSES instead of guessing.
  */
 export type MuapiEstimate =
-  | { readonly ok: true; readonly estimatedSek: number; readonly basis: string }
+  | { readonly ok: true; readonly estimatedSek: number; readonly basis: string
+      /** M0: the snapshot that priced it; MuAPI is never metered, so it settles at this ceiling. */
+      readonly rates: Readonly<Record<string, number>> }
   | { readonly ok: false; readonly reason: string }
 
 export async function estimateMuapiImageSek(
@@ -126,7 +128,7 @@ export async function estimateMuapiImageSek(
     // ordering that matters — project resolution, then the G3C-1 stop check,
     // then dispatch — binding on a sandbox run exactly as on a paid one. A
     // paused platform must stop a free generation too.
-    return { ok: true, estimatedSek: 0, basis: 'non_billable_sandbox' }
+    return { ok: true, estimatedSek: 0, basis: 'non_billable_sandbox', rates: { usd_sek: 1 } }
   }
 
   const rates = await getRates()
@@ -144,7 +146,7 @@ export async function estimateMuapiImageSek(
   if (typeof usdSek !== 'number' || !Number.isFinite(usdSek) || usdSek <= 0) {
     return { ok: false, reason: 'cost_rates has no usable usd_sek conversion' }
   }
-  return { ok: true, estimatedSek: usd * usdSek, basis: `cost_rate:${admission.costRateKey}` }
+  return { ok: true, estimatedSek: usd * usdSek, basis: `cost_rate:${admission.costRateKey}`, rates }
 }
 
 // ── Dispatch classification ──────────────────────────────────────────────────
@@ -322,6 +324,10 @@ export async function runGovernedProviderJob(
           provider: providerId,
           operation: input.operation,
           estimatedSek: estimate.estimatedSek,
+          // M0: one execution at a fixed per-execution price; never metered, so
+          // it settles at exactly this ceiling.
+          ceilingBasis: 'fixed_units',
+          rates: estimate.rates,
           // No idempotency key. `governed-spend.ts` records that every retry
           // wrapper in this codebase sits OUTSIDE the boundary, so a key would
           // turn a retryable failure into a spend refusal. This path retries

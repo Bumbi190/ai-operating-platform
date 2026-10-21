@@ -1,0 +1,53 @@
+name: Handlarborsen Weekly Report
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/handlarborsen-weekly-report.yml'
+      - 'apps/web/components/platform/vnext/HandlarborsenWeeklyReport*'
+      - 'apps/web/components/platform/vnext/HandlarborsenCompetitors.tsx'
+      - 'apps/web/lib/atlas/project-analytics/handlarborsen-weekly-report.ts'
+      - 'apps/web/lib/atlas/project-analytics/handlarborsen-competitor-history-core.ts'
+      - 'apps/web/lib/atlas/project-analytics/handlarborsen-competitor-history-service.ts'
+      - 'apps/web/lib/atlas/project-analytics/handlarborsen-watch-runs-core.ts'
+      - 'apps/web/lib/atlas/project-analytics/handlarborsen-competitors.ts'
+      - 'apps/web/lib/atlas/project-analytics/handlarborsen-competitor-landscape.ts'
+      - 'apps/web/lib/qa/handlarborsen-weekly-report*.test.ts'
+permissions:
+  contents: read
+concurrency:
+  group: hb-weekly-report-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  evidence:
+    name: Weekly report evidence boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run pure report and rendering tests without database or providers
+        working-directory: apps/web
+        run: |
+          npx --no vitest run lib/qa/handlarborsen-weekly-report.test.ts lib/qa/handlarborsen-weekly-report-ui.test.ts \
+            --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/hb-weekly-report.json"
+      - name: Require both complete suites
+        if: always()
+        run: |
+          node - "$RUNNER_TEMP/hb-weekly-report.json" <<'NODE'
+          const fs = require('node:fs')
+          const result = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
+          const floors = {'handlarborsen-weekly-report.test.ts':22, 'handlarborsen-weekly-report-ui.test.ts':8}
+          for (const [name, floor] of Object.entries(floors)) {
+            const file = result.testResults.find(file => String(file.name).endsWith('/' + name))
+            const assertions = file?.assertionResults ?? []
+            if (assertions.length < floor || assertions.some(assertion => assertion.status !== 'passed'))
+              throw Error(name + ': all evidence boundary assertions must run and pass')
+          }
+          if (result.numFailedTests || result.numFailedTestSuites || result.numPendingTests || result.numTodoTests)
+            throw Error('Report tests failed or skipped')
+          console.log('Both weekly report suites passed; no skipped evidence boundaries.')
+          NODE

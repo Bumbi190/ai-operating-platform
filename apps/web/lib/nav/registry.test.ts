@@ -1,3 +1,4 @@
+import {resolveWorkspace} from '@/lib/atlas/workspace-registry'
 /**
  * Navigation Registry — unit tests.
  *
@@ -14,6 +15,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   resolveDestination,
+  pathToDestination,
   resolveLinks,
   resolveProjectSlug,
   searchDestinations,
@@ -196,6 +198,14 @@ describe('navigation targets — the exact hrefs `navigate` resolves', () => {
       .toBe('/projects/familje-stunden')
   })
 
+  it('Handlarbörsen resolves from the display name, the ASCII form and the slug', () => {
+    for (const ref of ['Handlarbörsen', 'handlarbörsen', 'Handlarborsen', 'handlarborsen']) {
+      expect(resolveDestination('project_home', { project: ref })?.href)
+        .toBe('/projects/handlarborsen')
+    }
+    expect(resolveProjectSlug('Handlarbörsen')).toBe('handlarborsen')
+  })
+
   it('approvals navigates to the approvals page (with pending filter)', () => {
     expect(resolveDestination('approvals', { filters: { state: 'pending' } })?.href)
       .toBe('/approvals?state=pending')
@@ -209,4 +219,14 @@ describe('navigation targets — the exact hrefs `navigate` resolves', () => {
   it('activity navigates to the activity page', () => {
     expect(resolveDestination('activity')?.href).toBe('/agent-activity')
   })
+})
+
+describe('Atlas builder destination',()=>{
+ it('resolves the studio from menu, palette and workspace identity',()=>{
+  expect(resolveDestination('build')).toEqual({id:'build',label:'Bygg med Atlas',href:'/build'})
+  expect(resolveDestination('build',{project:'gainpilot'})?.href).toBe('/build?project=gainpilot')
+  expect(pathToDestination('/build')).toBe('build')
+  expect(searchDestinations('bygg med atlas')).toContainEqual(expect.objectContaining({id:'build',href:'/build'}))
+  expect(resolveWorkspace('/build')).toMatchObject({href:'/build',label:'Bygg med Atlas'})
+ })
 })

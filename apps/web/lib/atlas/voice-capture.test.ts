@@ -1,0 +1,10 @@
+import { describe, expect, it, vi } from 'vitest'
+import { createVoiceCaptureDriver, type CaptureRecognition } from './voice-capture'
+function recognition() { return { start: vi.fn(), stop: vi.fn(), abort: vi.fn(), onresult: null, onerror: null, onend: null } as unknown as CaptureRecognition }
+const event = (text: string, final = true) => ({ results: Object.assign([{ 0: { transcript: text }, isFinal: final }], { length: 1 }) })
+describe('build utterance capture', () => {
+  it('emits only a final editable transcript and never sends a message', () => { const rec = recognition(), receive = vi.fn(); createVoiceCaptureDriver(() => rec).capture(receive); rec.onresult!(event('Interim', false)); expect(receive).not.toHaveBeenCalled(); rec.onresult!(event('Gör texten större')); expect(receive).toHaveBeenCalledOnce(); expect(receive).toHaveBeenCalledWith('Gör texten större'); expect(rec.lang).toBe('sv-SE') })
+  it('route cleanup and a new receiver discard late speech', () => { const rec = recognition(), first = vi.fn(), second = vi.fn(), driver = createVoiceCaptureDriver(() => rec); const cleanup = driver.capture(first); const late = rec.onresult!; cleanup(); late(event('För sent')); expect(first).not.toHaveBeenCalled(); driver.capture(second); late(event('Gammal session')); expect(second).not.toHaveBeenCalled() })
+  it('unsupported and denied microphone report text fallback', () => { const error = vi.fn(); createVoiceCaptureDriver(() => null).capture(vi.fn(), error); expect(error).toHaveBeenCalledWith(expect.stringContaining('text')); const rec = recognition(); createVoiceCaptureDriver(() => rec).capture(vi.fn(), error); rec.onerror!({ error: 'not-allowed' }); expect(error).toHaveBeenLastCalledWith(expect.stringContaining('nekad')) })
+  it('stopping capture has no build control side effect', () => { const rec = recognition(), receive = vi.fn(), driver = createVoiceCaptureDriver(() => rec); driver.capture(receive); driver.stop(); expect(receive).not.toHaveBeenCalled(); expect(rec.abort).toHaveBeenCalled() })
+})

@@ -473,7 +473,7 @@ describe('social credentials · no consumer reaches a credential any other way',
     return out
   }
   const FILES = () => ['app', 'components', 'lib'].flatMap((d) => sourceFiles(resolve(APP, d)))
-  const rel = (f: string) => relative(APP, f)
+  const rel = (f: string) => relative(APP, f).replaceAll('\\', '/')
   const raw = (f: string) => readFileSync(f, 'utf8')
   const code = (f: string) => raw(f).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/[^\n]*/g, '$1')
 

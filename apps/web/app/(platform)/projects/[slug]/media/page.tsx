@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { getProjectBySlug } from '@/lib/project/get-project'
 import { resolveMediaSettings, getNextCronFromSchedule } from '@/lib/project/media-settings'
+import { isLegacyNewsPipelineProject } from '@/lib/project/legacy-news-pipeline'
 import {
   ExternalLink,
   Instagram,
@@ -190,6 +191,7 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
   if (!project) notFound()
 
   const media = resolveMediaSettings(project)
+  const isNewsProject = isLegacyNewsPipelineProject(project.slug)
 
   // Projects without a media pipeline get a graceful empty state rather than
   // another project's scaffolding.
@@ -291,6 +293,7 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
             </div>
           </div>
 
+          {isNewsProject && (
           <div className="flex items-center gap-2">
             <BreakingButton projectId={project.id} />
             <Link href={`/projects/${params.slug}/scripts`}
@@ -304,6 +307,7 @@ export default async function MediaDashboardPage({ params }: { params: { slug: s
               Nyheter
             </Link>
           </div>
+          )}
         </div>
 
         {/* ── Status cards ──────────────────────────────────────────────────── */}

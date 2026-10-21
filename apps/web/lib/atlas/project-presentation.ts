@@ -2,6 +2,8 @@ export interface ProjectPresentation {
   shortLabel: string
   heroImage?: string
   heroPosition?: string
+  /** Square identity artwork is shown whole instead of being cropped as a banner. */
+  heroFit?: 'cover' | 'contain'
 }
 
 /**
@@ -24,15 +26,23 @@ const PROJECT_PRESENTATION: Readonly<Record<string, ProjectPresentation>> = {
     heroImage: '/project-rail/gainpilot.png',
     heroPosition: '50% 42%',
   },
+  handlarborsen: {
+    shortLabel: 'Handlarbörsen',
+    heroImage: '/project-rail/handlarborsen.png',
+    heroPosition: '50% 50%',
+    heroFit: 'contain',
+  },
   studieos: {
     shortLabel: 'StudieOS',
     heroImage: '/project-rail/studieos.png',
     heroPosition: '50% 50%',
+    heroFit: 'contain',
   },
   'studie-os': {
     shortLabel: 'StudieOS',
     heroImage: '/project-rail/studieos.png',
     heroPosition: '50% 50%',
+    heroFit: 'contain',
   },
 }
 

@@ -1,6 +1,7 @@
 import { Suspense } from 'react'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
+import {loadWebsiteBuilderSettings} from '@/lib/website-build/planning/settings'
 import { loadSettings } from '@/lib/os/settings'
 import { loadBrokerSettings } from '@/lib/atlas/code-broker/operator'
 import { youtubeConnectOutcome, type YouTubeConnectOutcome } from '@/lib/os/settings-shared'
@@ -48,7 +49,8 @@ export default async function SettingsPage({ searchParams }: { searchParams?: Re
 }
 
 async function LoadedSettings({ youtubeOutcome }: { youtubeOutcome: YouTubeConnectOutcome | null }) {
-  const [model, brokerModel] = await Promise.all([loadSettings(), loadBrokerSettings()])
+  const model = await loadSettings()
   if (!model) redirect('/login')
-  return <SettingsSurface model={model} brokerModel={brokerModel} displayPreferences={<DisplayPreferences />} youtubeOutcome={youtubeOutcome} />
+  const [brokerModel, websiteBuilderModel] = await Promise.all([loadBrokerSettings(), loadWebsiteBuilderSettings()])
+  return <SettingsSurface model={model} brokerModel={brokerModel} websiteBuilderModel={websiteBuilderModel} displayPreferences={<DisplayPreferences />} youtubeOutcome={youtubeOutcome} />
 }

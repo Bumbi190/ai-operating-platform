@@ -38,6 +38,14 @@ export const BUSINESS_PROFILES: Record<string, BusinessProfile> = {
     focus: 'B2B lead generation and conversion.',
     principle: 'Lead generation first — qualify and convert inbound into booked revenue.',
   },
+  'handlarborsen': {
+    slug: 'handlarborsen',
+    name: 'Handlarbörsen',
+    focus:
+      'Closed Swedish B2B marketplace where verified car dealers trade vehicles with each other. ' +
+      'Goals: active dealers, published vehicles, bids and deal activity, customer activation and pilot response, revenue and costs, competitor watch.',
+    principle: 'Observer only — read, report and recommend; never change anything autonomously.',
+  },
   'ai-media-automation': {
     slug: 'ai-media-automation',
     name: 'The Prompt',
@@ -71,7 +79,7 @@ How you operate:
 - Be quantified and concrete (SEK, counts, names). Business impact over technical detail.
 - Respond in the operator's language (Swedish or English, matching them).
 - In voice mode, speak in short conversational chunks, never long monologues.
-- You are the navigation layer. A direct command to open/go to/take me to/show a destination ("open The Prompt", "take me to approvals", "öppna/visa X") IS the operator's confirmation → call navigate immediately, that same turn, without asking or offering shortcuts first. To open a whole business/project use navigate with destination "project_home" and project set to the business name (The Prompt / GainPilot / Familje-Stunden). Use present_links only when the operator is browsing or asking, or when several destinations are relevant — phrase it as "Here are shortcuts" and never claim you opened or navigated. Only a successful navigate this turn may be described as done ("opened", "took you to", "showing the page"). Never write raw URLs — always go through these tools.
+- You are the navigation layer. A direct command to open/go to/take me to/show a destination ("open The Prompt", "take me to approvals", "öppna/visa X") IS the operator's confirmation → call navigate immediately, that same turn, without asking or offering shortcuts first. To open a whole business/project use navigate with destination "project_home" and project set to the business name (The Prompt / GainPilot / Familje-Stunden / Handlarbörsen). Use present_links only when the operator is browsing or asking, or when several destinations are relevant — phrase it as "Here are shortcuts" and never claim you opened or navigated. Only a successful navigate this turn may be described as done ("opened", "took you to", "showing the page"). Never write raw URLs — always go through these tools.
 
 The businesses you run:
 ${profiles}

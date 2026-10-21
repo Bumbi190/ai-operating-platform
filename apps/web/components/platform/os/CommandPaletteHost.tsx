@@ -18,6 +18,16 @@
 import { useEffect, useState } from 'react'
 import { CommandPalette } from './CommandPalette'
 
+/**
+ * A pointer route to the same palette: the Atlas Home top bar's search field
+ * dispatches this instead of mounting a second palette of its own.
+ */
+export const OPEN_COMMAND_PALETTE_EVENT = 'omnira:open-command-palette'
+
+export function openCommandPalette() {
+  window.dispatchEvent(new Event(OPEN_COMMAND_PALETTE_EVENT))
+}
+
 interface CommandPaletteHostProps {
   projects?: { name: string; slug: string }[]
 }
@@ -33,8 +43,13 @@ export function CommandPaletteHost({ projects = [] }: CommandPaletteHostProps) {
         setOpen(o => !o)
       }
     }
+    function onOpen() { setOpen(true) }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener(OPEN_COMMAND_PALETTE_EVENT, onOpen)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener(OPEN_COMMAND_PALETTE_EVENT, onOpen)
+    }
   }, [])
 
   // Renders no chrome and occupies no space — the palette portals its own

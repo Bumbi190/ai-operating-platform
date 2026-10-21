@@ -22,6 +22,7 @@ import { classifyPriorObservation, type PriorObservation } from '../workflows/ac
 import { ensureReadOnlyActionRuns } from '../workflows/action-scheduling'
 import { computeEvidenceTargetHash } from '../workflows/attestation'
 import { ACTION_OUTCOMES, type ActionOutcome } from '../workflows/action-outcome'
+import { bindRpcFake } from './bind-rpc-fake'
 
 const PROBE_DEF_KEY = 'omnira.probe-validation'
 const PROBE_ACTION = 'probe_anonymous_protected_access'
@@ -196,7 +197,7 @@ function makeDb(f: Fx = {}) {
       default: return { data: null, error: null }
     }
   }
-  const db = { inserted, from(table: string) {
+  const db = { inserted, rpc: bindRpcFake(inserted), from(table: string) {
     const q: Record<string, any> = { _table: table, _insert: null }
     const self = () => q
     q.select = self; q.eq = self; q.not = self; q.order = self; q.limit = self
@@ -232,7 +233,8 @@ describe('the seam, end to end', () => {
     const [d] = await ensureReadOnlyActionRuns(db as never, instance as never)
     expect(d.outcome).toBe('created')
     expect(d.reasonCode).toBe('terminal_prior_released')
-    expect(inserted.map(i => i.table)).toEqual(['runs'])
+    // The run and its atomic bind provenance (Phase 3B1B), nothing else.
+    expect(inserted.map(i => i.table)).toEqual(['runs', 'run_autonomy_decisions'])
   })
 
   it('the new run gets a FRESH attempt_group and never reopens the old run', async () => {

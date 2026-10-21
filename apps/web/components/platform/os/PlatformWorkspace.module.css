@@ -1,0 +1,38 @@
+.shell{position:relative;display:grid;grid-template-columns:minmax(0,1fr);height:100vh;min-width:0;overflow:hidden}
+/* Sidebar visibility must not hide floating dialogs rendered as sibling asides. */
+.shell>[data-shell-topbar],.shell>[id='omnira-sidebar']{display:none}
+.toggle{display:none;position:absolute;top:14px;left:14px;z-index:60;width:38px;height:38px;align-items:center;justify-content:center;border:1px solid rgb(var(--omnira-cyan-rgb)/.2);border-radius:10px;color:hsl(var(--foreground));background:hsl(var(--card));cursor:pointer}
+.toggle:hover{color:rgb(var(--omnira-cyan-rgb));background:rgb(var(--omnira-cyan-rgb)/.08)}
+.toggle:focus-visible{outline:2px solid rgb(var(--omnira-cyan-rgb));outline-offset:3px}
+.shell[data-workspace='studio']{height:100dvh;grid-template-rows:minmax(0,1fr)}
+.shell[data-workspace='studio']>main{display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden}
+.shell[data-workspace='studio']>main>[data-shell-page]{display:flex;flex:1;flex-direction:column;min-height:0;min-width:0;padding:12px 16px 10px;overflow:hidden}
+.shell[data-workspace='studio']>main>nav{flex-shrink:0}
+.shell[data-workspace='studio']>main>div[aria-hidden='true']{flex-shrink:0}
+@media(min-width:1024px){
+ .shell{grid-template-columns:260px minmax(0,1fr)}
+ .shell[data-shell-generation='vnext']{grid-template-rows:66px minmax(0,1fr)}
+ .shell>[data-shell-topbar]{display:block;grid-column:1/-1}
+ .shell>[id='omnira-sidebar']{display:flex;flex-direction:column;height:100%;overflow:hidden}
+ .toggle{display:flex}
+ .shell[data-shell-generation='vnext'][data-sidebar-collapsed='true']{grid-template-columns:0 minmax(0,1fr)}
+ .shell[data-shell-generation='vnext']>[id='omnira-sidebar']{min-width:0}
+ .shell[data-shell-generation='vnext'][data-sidebar-collapsed='true']>[id='omnira-sidebar']{visibility:hidden;pointer-events:none}
+ .shell[data-shell-generation='vnext'][data-workspace='studio']{grid-template-rows:66px minmax(0,1fr)}
+}
+@media(min-width:1280px){.shell[data-shell-generation='vnext']{grid-template-columns:287px minmax(0,1fr)}}
+@media(max-width:1023px){.shell[data-workspace='studio']>main>[data-shell-page]{padding:8px 8px 4px}}
+
+/* The mobile builder gives the canvas priority while keeping the main menu. */
+@media(max-width:1000px){
+ .shell[data-workspace='studio']>main>[data-shell-mobile-nav]{box-sizing:border-box;height:44px;min-height:44px;padding:3px 10px;flex-shrink:0}
+ .shell[data-workspace='studio']>main>[data-shell-mobile-nav]>a{font-size:11px;gap:7px}
+ .shell[data-workspace='studio']>main>[data-shell-mobile-nav]>a svg{width:22px;height:22px}
+ .shell[data-workspace='studio']>main>[data-shell-mobile-nav] summary{padding:5px 8px}
+ .shell[data-workspace='studio']>main>[data-shell-breadcrumbs],.shell[data-workspace='studio']>main>[data-shell-keyboard-hints]{display:none}
+ .shell[data-workspace='studio']>main>[data-shell-page]{padding:4px}
+ .shell[data-workspace='studio']>[data-activity-peek]{position:fixed;z-index:50;width:44px;height:44px;padding:0;justify-content:center}
+ .shell[data-workspace='studio']>[data-activity-peek]>svg{width:20px;height:20px}
+ .shell[data-workspace='studio']>[data-activity-peek]>[data-activity-label]{display:none}
+ .shell[data-workspace='studio']>[data-activity-peek]>[data-activity-count]{position:absolute;top:-4px;right:-4px;min-width:16px;justify-content:center;border-radius:8px;background:#065f46;padding:0 3px;font-size:10px}
+}

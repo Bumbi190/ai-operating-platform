@@ -1,0 +1,114 @@
+name: Atlas Studio Responsive UI
+on:
+  pull_request:
+    paths:
+      - 'apps/web/components/platform/os/PlatformWorkspace*'
+      - 'apps/web/components/platform/os/MobileRailToggle*'
+      - 'apps/web/components/platform/os/ActivityRail*'
+      - 'apps/web/components/platform/Sidebar*'
+      - 'apps/web/components/platform/vnext/ShellTopBar*'
+      - 'apps/web/components/platform/vnext/AtlasChat*'
+      - 'apps/web/components/platform/vnext/AtlasConversationComposer*'
+      - 'apps/web/components/website-build/**'
+      - 'apps/web/components/social-launch/**'
+      - 'apps/web/lib/social-launch/**'
+      - 'apps/web/lib/social-connections/**'
+      - 'apps/web/app/api/social-connections/**'
+      - 'apps/web/e2e/social-connections*'
+      - 'apps/web/playwright.social-connections.config.ts'
+      - 'apps/web/app/api/social-profile/**'
+      - 'apps/web/app/api/social-publications/**'
+      - 'apps/web/app/api/social-publication-media/**'
+      - 'apps/web/e2e/social-start*'
+      - 'apps/web/e2e/social-publication*'
+      - 'apps/web/playwright.social-start.config.ts'
+      - 'apps/web/playwright.social-publication.config.ts'
+      - 'apps/web/app/api/social-content/**'
+      - 'apps/web/e2e/social-content*'
+      - 'apps/web/playwright.social-content.config.ts'
+      - 'apps/web/app/api/social-launch/**'
+      - 'apps/web/app/(platform)/projects/[slug]/social/**'
+      - 'apps/web/e2e/social-launch*'
+      - 'apps/web/playwright.social-launch.config.ts'
+      - 'apps/web/app/(platform)/layout.tsx'
+      - 'apps/web/e2e/atlas-studio-ui-*'
+      - 'apps/web/e2e/atlas-studio-ui.spec.ts'
+      - 'apps/web/e2e/atlas-preview-*'
+      - 'apps/web/e2e/atlas-studio-costs.spec.ts'
+      - 'apps/web/e2e/activity-sheet*'
+      - 'apps/web/playwright.activity-sheet.config.ts'
+      - 'apps/web/lib/website-build/studio/costs*'
+      - 'apps/web/lib/website-build/studio/chat-context*'
+      - 'apps/web/lib/website-build/studio/preset.ts'
+      - 'apps/web/lib/website-build/artifact*'
+      - 'apps/web/lib/website-build/prompt*'
+      - 'apps/web/lib/website-build/worker*'
+      - 'apps/web/lib/website-build/rejected-draft*'
+      - 'apps/web/lib/website-build/recovery*'
+      - 'apps/web/lib/website-build/atlas-tools.ts'
+      - 'apps/web/lib/website-build/preview-runtime*'
+      - 'apps/web/lib/website-build/types.ts'
+      - 'apps/web/lib/ai/runner.ts'
+      - 'apps/web/lib/ai/atlas-model-policy.ts'
+      - 'apps/web/lib/ai/openai-client.ts'
+      - 'apps/web/lib/ai/pricing.ts'
+      - 'apps/web/lib/cost/spend-ceiling.ts'
+      - 'apps/web/lib/atlas/openai-chat.ts'
+      - 'apps/web/lib/qa/atlas-openai-chat.test.ts'
+      - 'apps/web/lib/qa/openai-stream-metering.test.ts'
+      - 'apps/web/lib/qa/runner-text-output.test.ts'
+      - 'apps/web/lib/qa/atlas-static-conversation-route.test.ts'
+      - 'apps/web/app/api/chat/route.ts'
+      - 'apps/web/supabase/migrations/*atlas_builder_output_allowance*'
+      - 'apps/web/lib/website-build/studio/api.ts'
+      - 'apps/web/app/api/website-build/studio/costs/**'
+      - 'apps/web/playwright.atlas-studio-ui.config.ts'
+      - '.github/workflows/atlas-studio-ui.yml'
+permissions:
+  contents: read
+concurrency:
+  group: atlas-studio-ui-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck --workspace=apps/web
+      - run: npx vitest run lib/website-build/studio/costs.test.ts lib/website-build/artifact.test.ts lib/website-build/rejected-draft.test.ts lib/website-build/feedback-interpretation.test.ts lib/qa/runner-text-output.test.ts lib/qa/atlas-static-conversation-route.test.ts lib/qa/atlas-openai-chat.test.ts lib/qa/openai-stream-metering.test.ts lib/qa/m0-spend-ceiling.test.ts lib/qa/m0-durable-spend.test.ts lib/qa/execution-authority-signal.test.ts
+        working-directory: apps/web
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+      - run: npx playwright test --config=playwright.atlas-studio-ui.config.ts
+        working-directory: apps/web
+      - run: npx vitest run lib/social-launch/profile/validate.test.ts lib/social-launch/publication/validate.test.ts lib/social-launch/publication/provider.test.ts lib/social-launch/content/validate.test.ts lib/social-launch/catalog.test.ts lib/social-launch/loader.test.ts lib/social-launch/release.test.ts lib/social-connections/providers.test.ts lib/social-connections/readiness.test.ts lib/social-connections/release.test.ts lib/social-connections/legacy-dispatch.test.ts lib/social-connections/snapshot-dispatch.test.ts
+        working-directory: apps/web
+      - run: npx playwright test --config=playwright.social-launch.config.ts
+        working-directory: apps/web
+      - run: npx playwright test --config=playwright.social-connections.config.ts
+        working-directory: apps/web
+      - run: npx playwright test --config=playwright.social-content.config.ts
+        working-directory: apps/web
+      - run: npx playwright test --config=playwright.social-start.config.ts
+        working-directory: apps/web
+      - run: npx playwright test --config=playwright.social-publication.config.ts
+        working-directory: apps/web
+      - run: npx playwright test --config=playwright.activity-sheet.config.ts
+        working-directory: apps/web
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: atlas-studio-ui
+          path: |
+            .superpowers/atlas-studio-ui-playwright
+            .superpowers/sdd/2026-10-16-activity-sheet/browser
+            .superpowers/sdd/2026-10-16-atlas-social-start/browser
+            .superpowers/sdd/2026-10-16-atlas-social-publication/browser
+            .superpowers/sdd/2026-10-16-atlas-social-content/browser
+          retention-days: 5

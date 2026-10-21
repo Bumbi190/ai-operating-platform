@@ -1,0 +1,209 @@
+.panel {
+  position: fixed;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid rgba(148, 184, 207, 0.2);
+  border-radius: 18px;
+  background: #0c1522;
+  color: #e1eaf3;
+  box-shadow: 0 18px 60px #0008;
+  font-size: 13px;
+  overscroll-behavior: contain;
+}
+.header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+  padding: 0 6px 0 12px;
+  border-bottom: 1px solid #9ab4ce15;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #173045;
+  color: #89e1df;
+}
+.mark svg {
+  width: 15px;
+  height: 15px;
+}
+.panel button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  color: #b1c5d7;
+  background: transparent;
+  cursor: pointer;
+}
+.panel button:hover {
+  color: #ecfeff;
+  background: #294452;
+}
+.panel button:focus-visible,
+.editor:focus-visible {
+  outline: 2px solid #79d9d7;
+  outline-offset: 2px;
+}
+.panel button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.messages {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 14px 12px;
+  scrollbar-width: thin;
+}
+.message {
+  width: fit-content;
+  max-width: 94%;
+  margin: 0 0 12px;
+  padding: 9px 11px;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+  background: #172638;
+  border-radius: 4px 13px 13px;
+}
+.user {
+  margin-left: auto;
+  background: #174346;
+  border-radius: 13px 4px 13px 13px;
+  color: #e5f8f5;
+}
+.message p {
+  margin: 0 0 8px;
+}
+.message p:last-child {
+  margin: 0;
+}
+.message pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.message a,
+.workspace a {
+  color: #91e2dd;
+  text-decoration: underline;
+}
+.message table {
+  display: block;
+  max-width: 100%;
+  overflow: auto;
+}
+.empty {
+  color: #8ea6b9;
+  margin: 5px 0;
+}
+.status,
+.workspace {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #a6b9ca;
+}
+.error {
+  color: #ffc9aa;
+}
+.composer {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  padding: 8px;
+  border-top: 1px solid #9ab4ce15;
+}
+.editor {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  height: 40px;
+  min-height: 40px;
+  max-height: 76px;
+  border: 1px solid #779bb42b;
+  border-radius: 11px;
+  background: #070f19;
+  color: #edf3f8;
+  padding: 9px 10px;
+  font: inherit;
+  line-height: 20px;
+  box-sizing: border-box;
+  scrollbar-width: thin;
+}
+.panel .send {
+  background: #8bd9cf;
+  color: #0b292c;
+}
+.panel .callActive {
+  background: #652a38;
+  color: #ffd6dd;
+}
+@media (max-width: 767px) {
+  .panel {
+    border-radius: 18px;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .header {
+    cursor: default;
+  }
+  .panel button {
+    width: 44px;
+    height: 44px;
+  }
+  .composer {
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel * {
+    scroll-behavior: auto;
+  }
+}
+
+.launcherDock {
+  position: fixed;
+  z-index: 79;
+  bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  right: max(16px, env(safe-area-inset-right, 0px));
+}
+@media (min-width: 1024px) {
+  .projectDock {
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Variable-height notices and live speech scroll above a reserved composer. */
+.status,
+.workspace {
+  overflow-wrap: anywhere;
+}
+.short .messages {
+  padding: 6px 8px;
+}
+.short .composer {
+  padding-top: 4px;
+  padding-bottom: max(4px, env(safe-area-inset-bottom, 0px));
+}
+.short .editor {
+  min-height: 36px;
+  max-height: 40px;
+  padding-top: 7px;
+  padding-bottom: 7px;
+}

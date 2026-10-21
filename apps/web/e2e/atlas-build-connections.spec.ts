@@ -1,0 +1,23 @@
+import {test,expect} from '@playwright/test'
+test('real plan guides are Strato first, refreshable, scoped and honest about native files',async({page},testInfo)=>{
+ await page.goto('/')
+ await page.getByText('Kopplingar och projektmapp',{exact:true}).click()
+ const cards=page.getByRole('region',{name:'Projektets kopplingar'})
+ await expect(cards).toBeVisible()
+ await expect(cards.getByRole('heading').first()).toHaveText('Domän via Strato')
+ await expect(cards.getByRole('link',{name:'Sök domän hos Strato'})).toHaveAttribute('href','https://www.strato.se/domannamn/sok-doman/')
+ await expect(cards.getByRole('link',{name:'Öppna ditt Strato-konto'})).toHaveAttribute('href','https://www.strato.se/apps/CustomerService')
+ await expect(cards.getByText('Körkoppling saknas',{exact:true})).toHaveCount(3)
+ await expect(cards.getByRole('button',{name:/Kör|Deploy|Köp/})).toHaveCount(0)
+ await expect(cards.getByRole('link',{name:'Välj standardmapp och byggagent'})).toHaveAttribute('href',/settings\/website-build#project-/)
+ await cards.getByRole('button',{name:'Kontrollera igen'}).click()
+ await expect(cards.getByRole('button',{name:'Kontrollera igen'})).toBeEnabled()
+ await expect(cards.getByText(/skapar ännu ingen mapp/)).toBeVisible()
+ await page.screenshot({path:testInfo.outputPath('connections.png'),fullPage:true})
+})
+for(const [status,label] of [['connected','Ansluten'],['missing','Saknas'],['unknown','Ej verifierad'],['expired','Inloggningen har gått ut'],['denied','Åtkomst nekad']])test('connection evidence renders '+status,async({page})=>{
+ await page.route('**/api/website-build-readiness?*',async route=>{const response=await route.fetch(),body=await response.json();body.items[0].adapterAvailability='implemented';body.items[0].connectionStatus=status;body.items[0].checkedAt='2026-10-14T00:00:00Z';await route.fulfill({response,json:body})})
+ await page.goto('/');await page.getByText('Kopplingar och projektmapp',{exact:true}).click()
+ await expect(page.getByRole('region',{name:'Projektets kopplingar'}).getByRole('article').first().getByText(label,{exact:true})).toBeVisible()
+})
+test('expanded guides scroll above the composer and show the exact bound project location',async({page,request})=>{await page.goto('/');await page.getByText('Kopplingar och projektmapp',{exact:true}).click();const id=new URL(page.url()).searchParams.get('session');const saved=await (await request.get('/__fixture/session/'+id)).json();await expect(page.getByRole('region',{name:'Projektets kopplingar'}).getByText('Projektmapp: '+saved.plan.setting.location.root,{exact:true})).toBeVisible();const body=page.locator('[data-embedded-scroll]');await expect(body).toHaveCount(1);const bodyBounds=await body.boundingBox(),composer=await page.getByLabel('Meddelande till Atlas').boundingBox();expect(bodyBounds!.y+bodyBounds!.height).toBeLessThanOrEqual(composer!.y);expect(await body.evaluate(el=>el.scrollHeight>el.clientHeight)).toBe(true)})

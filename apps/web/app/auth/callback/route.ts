@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { safeAuthDestination } from '@/lib/auth/safe-redirect'
 
 /**
  * GET /auth/callback
@@ -13,7 +14,7 @@ import type { NextRequest } from 'next/server'
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/atlas'
+  const next = safeAuthDestination(searchParams.get('next'))
 
   // Supabase sent back an error (expired OTP, already used, etc.)
   const supabaseError = searchParams.get('error')
@@ -64,5 +65,5 @@ export async function GET(request: NextRequest) {
   }
 
   // No code — might be implicit flow with hash fragment; send to client page
-  return NextResponse.redirect(`${origin}/auth/confirm`)
+  return NextResponse.redirect(`${origin}/auth/confirm?next=${encodeURIComponent(next)}`)
 }

@@ -28,8 +28,10 @@ import 'server-only'
 
 import { logImageCost } from '@/lib/cost/track'
 import { estimateImageSek } from '@/lib/cost/budget-gate'
+import { getRates } from '@/lib/cost/rates'
 import {
   ProviderNotDispatchedError,
+  SpendRefusedError,
   withGovernedSpend,
   resolveGovernedProjectId,
   type ProjectRef,
@@ -76,6 +78,36 @@ export interface ImageGovernanceContext {
 }
 
 /**
+ * M0 hard ceiling for Ideogram: ONE image at the canonical
+ * `ideogram_v3_usd_per_image` row, which prices Ideogram v3 at DEFAULT rendering
+ * speed (its seed note says so). The body is passed through untouched, so a
+ * request the row does not price is REFUSED rather than reserved at it:
+ *   • more than one image (`num_images` ≠ 1) — the ceiling and metering are one;
+ *   • a rendering speed other than DEFAULT or TURBO — QUALITY is a higher tier;
+ *     TURBO is the provider's cheapest tier, below the DEFAULT price the row holds;
+ *   • on the legacy route, a model other than V_3 — the row is the v3 price.
+ */
+function ideogramUnbounded(body: Record<string, unknown>, legacy: boolean): string | null {
+  const n = body.num_images
+  if (n !== undefined && n !== 1) return `num_images ${String(n)} — the ceiling covers exactly one image`
+  const speed = body.rendering_speed
+  if (speed !== undefined && speed !== 'DEFAULT' && speed !== 'TURBO') {
+    return `rendering_speed ${String(speed)} is not priced by ideogram_v3_usd_per_image (DEFAULT)`
+  }
+  if (legacy && body.model !== undefined && body.model !== 'V_3') {
+    return `legacy model ${String(body.model)} is not priced by the v3 row`
+  }
+  return null
+}
+
+function refuseUnboundedIdeogram(body: Record<string, unknown>, legacy: boolean): void {
+  const reason = ideogramUnbounded(body, legacy)
+  if (reason) {
+    throw new SpendRefusedError({ reason: 'unbounded_spend', provider: 'ideogram', operation: 'generate', detail: reason })
+  }
+}
+
+/**
  * Generate one Ideogram v3 image.
  *
  * `body` is passed through untouched, so prompt, aspect ratio, style, negative
@@ -90,11 +122,15 @@ export async function generateIdeogramV3(
   // Refuse before reserving: a missing credential is not a spend decision.
   if (!apiKey) throw new Error('IDEOGRAM_API_KEY not set')
 
-  const estimatedSek = await estimateImageSek(1, 'ideogram')
+  // M0: refuse what the canonical row does not price; one rate snapshot then
+  // prices the fixed-unit ceiling AND the metering.
+  refuseUnboundedIdeogram(body, false)
+  const rates = await getRates()
+  const estimatedSek = await estimateImageSek(1, 'ideogram', rates)
 
   return withGovernedSpend(
     { project: ctx.project, execution: ctx.execution, provider: 'ideogram', operation: ctx.operation, estimatedSek,
-      idempotencyKey: ctx.idempotencyKey },
+      idempotencyKey: ctx.idempotencyKey, ceilingBasis: 'fixed_units', rates },
     async () => {
       let res: Response
       try {
@@ -214,10 +250,15 @@ export async function generateIdeogramLegacy(
   const apiKey = process.env.IDEOGRAM_API_KEY
   if (!apiKey) throw new Error('IDEOGRAM_API_KEY not set')
 
-  const estimatedSek = await estimateImageSek(1, 'ideogram')
+  // M0: refuse what the canonical row does not price; one rate snapshot then
+  // prices the fixed-unit ceiling AND the metering.
+  refuseUnboundedIdeogram(imageRequest, true)
+  const rates = await getRates()
+  const estimatedSek = await estimateImageSek(1, 'ideogram', rates)
 
   return withGovernedSpend(
-    { project: ctx.project, execution: ctx.execution, provider: 'ideogram', operation: ctx.operation, estimatedSek },
+    { project: ctx.project, execution: ctx.execution, provider: 'ideogram', operation: ctx.operation, estimatedSek,
+      ceilingBasis: 'fixed_units', rates },
     async () => {
       // ── G3C-3C-A · E2 · A CLAIMED RUN REACHES THIS PROVIDER TOO ──────────
       // This is the saga/activity image path of a RUN_BOUND workflow run, and

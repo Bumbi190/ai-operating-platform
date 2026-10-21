@@ -24,10 +24,27 @@
  * ceiling means.
  *
  * ── SURVIVAL CAN ONLY LOWER ────────────────────────────────────────────────
- * `min` is the whole function. A null or absent ceiling does not raise anything:
- * it returns the licence's own resolved level, and an ineffective licence
- * contributes L0 regardless of how generous the ceiling is. Survival never
- * mutates the licence — this returns a number and writes nothing.
+ * `min` is the whole function, and BOTH inputs fail closed. An ineffective
+ * licence contributes L0 whatever the ceiling says. An UNAVAILABLE ceiling
+ * (null) also contributes L0 — see below; it does not hand the licence back
+ * unmodified. Survival never mutates the licence — this returns a number and
+ * writes nothing.
+ *
+ * ── A NULL CEILING IS NOT "NO OPINION", IT IS L0 ───────────────────────────
+ * This file previously returned the licence's own level when the ceiling was
+ * null, on the reasoning that "a null ceiling does not raise anything". That is
+ * true and was insufficient: it also did not RESTRICT. Survival's whole
+ * discipline is that losing a reading must never buy operational freedom — its
+ * own funding branch floors a failed read at HIBERNATE for exactly that reason
+ * — and a null ceiling here meant an unreadable platform condition produced the
+ * FULL licensed level. It was the one place in the survival composition that
+ * moved the wrong way.
+ *
+ * So null resolves to `ineffective`, not to "no opinion", and `boundedBy`
+ * reports `survival_unavailable` rather than `survival_ceiling`: an operator
+ * reading the audit trail must be able to tell "the ceiling was computed and
+ * bound" from "the ceiling could not be computed". Reusing `survival_ceiling`
+ * for both would hide the failure.
  */
 
 import { compareLevels, INEFFECTIVE_LEVEL } from './levels'
@@ -37,16 +54,22 @@ import type { ResolvedAutonomyLicense } from './types'
 export interface EffectiveAutonomyObservation {
   /** What the licence alone permits, after every derived ineffectiveness. */
   readonly licensedLevel: AutonomyLicenseLevel
-  /** What Survival allows, or null when Survival has expressed no opinion. */
+  /**
+   * What Survival allows, or null when the ceiling could NOT be established.
+   * Null is fail-closed and composes to L0 — it is not "Survival has no
+   * opinion", and it never returns the licensed level unreduced.
+   */
   readonly survivalCeiling: AutonomyLicenseLevel | null
   /** `min(licensed, ceiling)`. Never above either input. */
   readonly effectiveLevel: AutonomyLicenseLevel
   /**
    * Which input decided the answer — the audit question "why is this L2?".
    * `licence_ineffective` outranks everything: an ineffective licence is L0
-   * whatever the ceiling says.
+   * whatever the ceiling says. `survival_unavailable` means the ceiling could
+   * not be computed and L0 was imposed for that reason — deliberately distinct
+   * from `survival_ceiling`, which means a ceiling WAS computed and bound.
    */
-  readonly boundedBy: 'licence_ineffective' | 'licence' | 'survival_ceiling'
+  readonly boundedBy: 'licence_ineffective' | 'licence' | 'survival_ceiling' | 'survival_unavailable'
 }
 
 /**
@@ -71,7 +94,15 @@ export function observeEffectiveAutonomy(
   }
 
   if (survivalCeiling === null) {
-    return { licensedLevel, survivalCeiling, effectiveLevel: licensedLevel, boundedBy: 'licence' }
+    // An unreadable ceiling is NOT "no opinion". Failing open here would let a
+    // broken survival read hand back the full licensed level, which is the one
+    // direction this composition must never move.
+    return {
+      licensedLevel,
+      survivalCeiling,
+      effectiveLevel: INEFFECTIVE_LEVEL,
+      boundedBy: 'survival_unavailable',
+    }
   }
 
   // Negative when the ceiling is BELOW the licence, which is the only direction

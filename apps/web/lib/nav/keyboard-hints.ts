@@ -105,7 +105,7 @@ const ROUTE_HINTS: readonly RouteHints[] = [
     ],
   },
   {
-    // app/(platform)/projects/page.tsx → ProjectSpiral, which asks
+    // app/(platform)/projects/page.tsx → ProjectCoverGallery, which asks
     // resolveProjectRailKeyAction in the 'atlas' context — the same resolver,
     // the same guards, and the same meanings the Atlas rail already uses.
     base: '/projects',

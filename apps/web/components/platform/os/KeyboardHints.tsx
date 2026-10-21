@@ -85,7 +85,7 @@ export function KeyboardHints({ uiGeneration }: KeyboardHintsProps) {
   if (hints.length === 0) return null
 
   return (
-    <div className={styles.bar} aria-hidden="true">
+    <div data-shell-keyboard-hints className={styles.bar} aria-hidden="true">
       <KeyboardHintList hints={hints} />
     </div>
   )

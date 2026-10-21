@@ -48,7 +48,7 @@ const SIDEBAR = read('components/platform/Sidebar.tsx')
 
 /** The routes the review named as stranded, plus Atlas Home for contrast. */
 const STRANDED_ROUTES = ['/revenue', '/memory', '/approvals', '/planning', '/agent-activity']
-const OTHER_ROUTES = ['/chat', '/settings', '/system', '/projects/gainpilot', '/atlas/content']
+const OTHER_ROUTES = ['/chat', '/settings', '/system', '/projects', '/projects/gainpilot', '/atlas/content']
 
 describe('CASE B/C — stranded routes get a shell nav under vNext', () => {
   it('mounts on every route the review found stranded', () => {
@@ -151,11 +151,9 @@ describe('CASE D — desktop is untouched', () => {
     expect(SIDEBAR).toContain('hidden lg:flex')
   })
 
-  it('cannot collide with the Atlas launcher — the two never coexist', () => {
-    // Launcher is `hidden lg:block` (>=1024) and the header only exists <1024,
-    // so the bands are disjoint. This is the collision class that has already
-    // bitten this corner of the UI twice.
-    expect(MINI).toContain('hidden lg:block fixed z-50')
+  it('keeps the mobile launcher above the activity toggle', () => {
+    expect(MINI).toContain('styles.launcherDock')
+    expect(read('components/platform/os/AtlasMiniChatPanel.module.css')).toContain('bottom: calc(76px +')
   })
 
   it('cannot overlap the activity peek — it is in flow, not fixed', () => {
@@ -189,12 +187,12 @@ describe('NAVIGATION CONTRACT — the canonical model is the only source', () =>
     expect(resolveDestination('atlas')?.href).toBe(ATLAS_HOME_PATH)
   })
 
-  it('did not widen the approved mobile IA', () => {
-    // Exactly the five owner-approved entries. /revenue and /planning are
-    // deliberately desktop-only and must NOT be added just because the review
-    // named them as stranded routes.
+  it('adds the builder and portfolio index to the original mobile IA', () => {
+    // The existing five quick jumps retain their order; /projects is one new
+    // portfolio destination, not a list of user-specific projects. Other
+    // desktop-only destinations like /revenue and /planning stay hidden.
     expect(mobile.map((i) => i.href)).toEqual([
-      '/atlas', '/chat', '/approvals', '/agent-activity', '/memory',
+      '/dashboard', '/atlas', '/chat', '/build', '/projects', '/approvals', '/agent-activity', '/calendar', '/memory',
     ])
     expect(mobile.map((i) => i.href)).not.toContain('/revenue')
     expect(mobile.map((i) => i.href)).not.toContain('/planning')
@@ -208,7 +206,7 @@ describe('NAVIGATION CONTRACT — the canonical model is the only source', () =>
   it('keeps its accessible labels and a real tap target', () => {
     expect(MOBILE_NAV).toContain('aria-label="Öppna huvudnavigation"')
     expect(MOBILE_NAV).toContain('aria-label="Huvudnavigation"')
-    expect(MOBILE_NAV).toContain('aria-label="Omnira Atlas hem"')
+    expect(MOBILE_NAV).toContain('aria-label="Omnira hem"')
     // <details>/<summary> is keyboard- and touch-operable without JS, which
     // matters because this is the surface for people who have neither ⌘K nor a
     // sidebar.

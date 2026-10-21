@@ -37,6 +37,7 @@ import { assertProjectAllowed } from '@/lib/atlas/isolation'
 import { resolveProjectAccess } from '@/lib/auth/project-access'
 import { buildAuthorizationEvent, newAuthorizationId, type BuildAuthorizationEventInput } from './build'
 import { deriveAuthorizationState } from './derive'
+import { grantHumanExecutionAuthorization, HUMAN_ATTESTED_ACTION_KIND } from './human-execution-grant'
 import { createAuthorizationEventStore, type AuthorizationEventStore } from './store'
 import type {
   AuthorizationCondition,
@@ -196,6 +197,28 @@ function decider(type: 'granted' | 'granted_with_conditions' | 'denied' | 'revok
 
     // 3. ESTABLISH PROJECT AUTHORITY against the chain's own recorded scope.
     if (!assertProjectAllowed(pinned.projectId, principal.allowedProjectIds)) return DENY('not_permitted')
+
+    // 3½. An M4 EXECUTION grant is never written through the service-role store:
+    //      the database accepts it for a licensed bind only with a human-origin
+    //      attestation, which only the authenticated grant boundary can create.
+    //      So it goes through the signed-in user's own session (auth.uid()).
+    if (type === 'granted' && pinned.authority.actionKind === HUMAN_ATTESTED_ACTION_KIND) {
+      if (!args.expiresAt) return DENY('invalid_request', 'grant-requires-expiry')
+      const human = await grantHumanExecutionAuthorization({ authorizationId: args.authorizationId, expiresAt: args.expiresAt })
+      if (human.status !== 'ok') {
+        const mapped: Record<string, AuthorizationWriteStatus> = {
+          no_principal: 'no_principal', not_permitted: 'not_permitted', not_found: 'not_permitted',
+          conflict: 'conflict', invalid_request: 'invalid_request',
+        }
+        return DENY(mapped[human.status] ?? 'unavailable', human.detail)
+      }
+      try {
+        const after = await store.history(args.authorizationId)
+        return { state: deriveAuthorizationState(after, { at }), status: 'ok' }
+      } catch {
+        return DENY('unavailable')
+      }
+    }
 
     // 4. Append. Scope, target and authority are re-pinned from the chain, so a
     //    decision can never widen what was requested (§27.22, §27.313).

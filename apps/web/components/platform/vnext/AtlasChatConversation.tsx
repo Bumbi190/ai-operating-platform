@@ -68,10 +68,27 @@ import {
   type ToolEntry,
   type TranscriptEntry,
 } from '@/lib/os/chat-shared'
+import {AtlasTestDataReviewCard} from '../os/AtlasTestDataReviewCard'
+import {LocalTextJobReceipt} from './LocalTextJobReceipt'
+import {localTextReceiptLink} from '@/lib/local-text/receipt'
 import styles from './AtlasChat.module.css'
+import type {PlanView} from '@/lib/website-build/planning/types'
+import type {BuildSessionView} from '@/lib/website-build/types'
+import {useOptionalAtlas} from '@/lib/atlas/runtime'
+import {useAtlasConversation} from '@/lib/atlas/conversation/provider'
+import {useComposerDraft} from '@/lib/atlas/conversation/use-composer-draft'
+import {AtlasConversationComposer} from './AtlasConversationComposer'
 
 interface Props {
   model: ChatConversationModel
+  plan?:PlanView|null
+  initialSession?:BuildSessionView|null
+  embedded?:boolean
+  mode?:'conversation'|'studio'
+  readOnly?:boolean
+  canSend?:boolean
+  initialTurn?:{token:string;text:string;inputSource:'text'|'voice'}|null
+  children?:React.ReactNode
   /**
    * A launcher handed over a question in `?send=`. Read on the server only so
    * the empty state does not flash before the question is sent; the question
@@ -80,43 +97,32 @@ interface Props {
   asking?: boolean
 }
 
-const COMPOSER_MAX_HEIGHT = 192
-
-function fit(el: HTMLTextAreaElement) {
-  el.style.height = 'auto'
-  el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT)}px`
-  el.style.overflowY = el.scrollHeight > COMPOSER_MAX_HEIGHT ? 'auto' : 'hidden'
-}
-
 function motionAllowed(): boolean {
   return document.documentElement.getAttribute('data-motion') === 'full'
 }
 
-export function AtlasChatConversation({ model, asking = false }: Props) {
+export function AtlasChatConversation({ model, asking = false,plan=null,initialSession=null,embedded=false,children,mode='conversation',readOnly=false,canSend=true,initialTurn=null }: Props) {
   const router = useRouter()
   const pathname = usePathname()
-  const blocked = model.state === 'error'
+  const historyUnreadable = model.state === 'error'
+  const blocked = historyUnreadable || readOnly
 
-  const [entries, setEntries] = useState<TranscriptEntry[]>(() => hydrateTranscript(model.saved))
-  const [input, setInput] = useState('')
-  const [pending, setPending] = useState(false)
+  const {controller,snapshot}=useAtlasConversation()
+  useEffect(()=>{controller.activateConversation({id:model.id,saved:model.saved,state:model.state,projectId:model.projectId,plan,session:initialSession,studio:mode==='studio'})},[controller,model,plan,initialSession,mode])
+  const entries=snapshot.id===model.id?snapshot.entries:hydrateTranscript(model.saved)
+  const atlas=useOptionalAtlas()
+  const draftKey='atlas-chat-draft:'+ (model.operatorId??'session')+':'+model.id
+  const draft=useComposerDraft({draftKey,capture:atlas?cb=>atlas.captureUtterance(cb):null,captureError:atlas?.captureError})
+  const input=draft.text,inputSource=draft.inputSource
+  const pending=snapshot.id===model.id&&snapshot.pending
   const [launchChecked, setLaunchChecked] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createFailed, setCreateFailed] = useState(false)
 
-  const entriesRef = useRef(entries)
-  const pendingRef = useRef(false)
-  // The API history — text only, exactly as the replaced page kept it.
-  const history = useRef<HistoryMessage[]>(textHistory(model.saved))
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
   const followRef = useRef(true)
   const shownRef = useRef(0)
-
-  const commit = useCallback((next: TranscriptEntry[]) => {
-    entriesRef.current = next
-    setEntries(next)
-  }, [])
 
   // Follow the conversation only while the operator is at its end.
   useEffect(() => {
@@ -138,92 +144,26 @@ export function AtlasChatConversation({ model, asking = false }: Props) {
     endRef.current?.scrollIntoView({ block: 'end', behavior: !first && grew && motionAllowed() ? 'smooth' : 'auto' })
   }, [entries, pending])
 
-  const send = useCallback(async (raw: string) => {
-    const text = raw.trim()
-    if (!text || pendingRef.current || blocked) return
-    pendingRef.current = true
-    setPending(true)
-    setInput('')
-    if (inputRef.current) {
-      inputRef.current.style.height = ''
-      inputRef.current.style.overflowY = ''
-    }
-    followRef.current = true
+  const send = useCallback(async (raw:string,source:'text'|'voice'=inputSource) => {
+    const text=raw.trim()
+    if(!text||controller.snapshot().pending||blocked||!canSend)return
+    if(inputRef.current){inputRef.current.style.height='';inputRef.current.style.overflowY=''}
+    followRef.current=true
+    const result=await controller.sendTurn({conversationId:model.id,text,inputSource:source,onEvent:event=>{
+      const step=applyStreamEvent(startReply([]),event,pathname)
+      if(step.effect.type==='navigate')router.push(step.effect.href)
+      if(step.effect.type==='timing')console.log(`[chat-mode] ${step.effect.reqType} · första token ${step.effect.firstTokenMs}ms · totalt ${step.effect.serverTotalMs}ms`)
+      if(event.event==='done'&&controller.snapshot().history.filter(m=>m.role==='user').length===1)router.refresh()
+    }})
+    if(result.ok)draft.clear()
+    if(window.matchMedia?.('(pointer: fine)').matches)inputRef.current?.focus()
+  },[blocked,controller,model.id,pathname,router,inputSource,canSend,draft.clear])
+  useEffect(()=>{if(snapshot.id===model.id&&snapshot.speechDraft!==null){draft.setText(snapshot.speechDraft,'voice');controller.clearSpeechDraft();inputRef.current?.focus()}},[snapshot.id,snapshot.speechDraft,model.id])
 
-    history.current = [...history.current, { role: 'user', content: text }]
-    let state: ReplyState = startReply([...entriesRef.current, { kind: 'user', text }])
-    commit(state.entries)
-
-    const fail = (notice: string) => commit([...state.entries, { kind: 'notice', tone: 'error', text: notice }])
-    let streaming = false
-    let settled = false
-
-    try {
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildChatRequestBody({
-          messages: history.current,
-          conversation_id: model.id,
-        })),
-      })
-
-      if (!res.ok || !res.body) {
-        fail(res.ok ? CONNECTION_FAILED_NOTICE : failedResponseNotice(res.status, await res.json().catch(() => null)))
-        return
-      }
-
-      streaming = true
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const { lines, rest } = splitStreamBuffer(buffer)
-        buffer = rest
-
-        for (const line of lines) {
-          const event = parseStreamLine(line)
-          if (!event) continue
-          if (event.event === 'done' || event.event === 'error') settled = true
-          const step = applyStreamEvent(state, event, pathname)
-          state = step.state
-          const effect = step.effect
-
-          if (effect.type === 'navigate') router.push(effect.href)
-
-          if (effect.type === 'done') {
-            if (effect.fullText) {
-              history.current = [...history.current, { role: 'assistant', content: effect.fullText }]
-            }
-            // The route titles a conversation on its first exchange — let the page and the sidebar see it.
-            if (history.current.filter((m) => m.role === 'user').length === 1) {
-              router.refresh()
-            }
-          }
-
-          if (effect.type === 'timing') {
-            // eslint-disable-next-line no-console
-            console.log(`[chat-mode] ${effect.reqType} · första token ${effect.firstTokenMs}ms · totalt ${effect.serverTotalMs}ms`)
-          }
-        }
-        commit(state.entries)
-      }
-
-      if (!settled) fail(INCOMPLETE_NOTICE)
-    } catch {
-      fail(streaming ? INTERRUPTED_NOTICE : CONNECTION_FAILED_NOTICE)
-    } finally {
-      pendingRef.current = false
-      setPending(false)
-      setTimeout(() => {
-        if (window.matchMedia?.('(pointer: fine)').matches) inputRef.current?.focus()
-      }, 100)
-    }
-  }, [blocked, commit, model.id, pathname, router])
+  const initialDraftSet=useRef<string|null>(null)
+  useEffect(()=>{if(initialTurn&&initialDraftSet.current!==initialTurn.token){initialDraftSet.current=initialTurn.token;draft.setText(initialTurn.text,initialTurn.inputSource)}},[initialTurn,draft.setText])
+  const firstTurnSent=useRef<string|null>(null)
+  useEffect(()=>{if(initialTurn&&firstTurnSent.current!==initialTurn.token&&canSend&&!blocked){firstTurnSent.current=initialTurn.token;void send(initialTurn.text,initialTurn.inputSource)}},[initialTurn,canSend,blocked,send])
 
   // A launcher's question (`?send=`): sent once, into an empty conversation only,
   // after the parameter is removed from the address — as before.
@@ -261,20 +201,13 @@ export function AtlasChatConversation({ model, asking = false }: Props) {
     setCreating(false)
   }
 
-  function onKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-      event.preventDefault()
-      void send(input)
-    }
-  }
-
   const waiting = awaitingAtlas(entries, pending)
-  const showIntro = !blocked && entries.length === 0 && !pending && (launchChecked || !asking)
+  const showIntro = !blocked && !plan && !initialSession && entries.length === 0 && !pending && (launchChecked || !asking)
 
   return (
-    <div className={styles.field}>
+    <div className={(embedded?`${styles.field} ${styles.embedded}`:styles.field)+(mode==='studio'?' '+styles.studio:'')}>
       <div className={styles.conversation} data-state={model.state}>
-        <header className={styles.convHeader}>
+        <header className={styles.convHeader} hidden={mode==='studio'}>
           <Link href={model.chatBase} className={styles.back}>
             <ArrowLeft aria-hidden />
             Alla konversationer
@@ -290,18 +223,21 @@ export function AtlasChatConversation({ model, asking = false }: Props) {
           {createFailed && <p className={styles.formError} role="status">{CREATE_FAILED_NOTICE}</p>}
         </header>
 
-        {blocked ? (
+        <div className={embedded?styles.embeddedScroll:styles.plainBody} data-embedded-scroll={embedded||undefined}>
+        {children}
+        {snapshot.id===model.id&&snapshot.testDataReviews.map(review=><AtlasTestDataReviewCard key={review.packageView.packageId} review={review} conversationId={model.id} onUpdate={value=>controller.updateTestDataReview(model.id,value)} />)}
+        {historyUnreadable ? (
           <p className={styles.blocked} role="note">{TRANSCRIPT_UNREADABLE}</p>
         ) : (
           <>
             {showIntro && (
               <section className={styles.intro} aria-labelledby="atlas-chat-intro" data-intro>
-                <h2 id="atlas-chat-intro" className={styles.introTitle}>{INTRO_TITLE}</h2>
-                <p className={styles.introText}>{EMPTY_CONVERSATION}</p>
+                <h2 id="atlas-chat-intro" className={styles.introTitle}>{mode==='studio'?'Bygg vidare tillsammans med Atlas':INTRO_TITLE}</h2>
+                <p className={styles.introText}>{mode==='studio'?'Beskriv önskemålen och planera innan Atlas bygger.':EMPTY_CONVERSATION}</p>
                 <ul className={styles.starters} aria-label="Förslag">
-                  {CONVERSATION_STARTERS.map((starter) => (
+                  {(mode==='studio'?['Beskriv din hemsida','Förbättra en befintlig sida','Använd en referens']:CONVERSATION_STARTERS).map((starter) => (
                     <li key={starter}>
-                      <button type="button" className={styles.starter} onClick={() => void send(starter)}>
+                      <button type="button" className={styles.starter} onClick={() => mode==='studio'?draft.setText(starter):void send(starter)}>
                         {starter}
                       </button>
                     </li>
@@ -326,30 +262,9 @@ export function AtlasChatConversation({ model, asking = false }: Props) {
         )}
 
         <div ref={endRef} className={styles.endAnchor} aria-hidden />
-
-        <div className={styles.dock}>
-          <form className={styles.composer} onSubmit={(event) => { event.preventDefault(); void send(input) }}>
-            <label className={styles.srOnly} htmlFor="atlas-chat-composer">Meddelande till Atlas</label>
-            <textarea
-              id="atlas-chat-composer"
-              ref={inputRef}
-              className={styles.input}
-              value={input}
-              onChange={(event) => { setInput(event.target.value); fit(event.target) }}
-              onKeyDown={onKeyDown}
-              placeholder={COMPOSER_PLACEHOLDER}
-              rows={1}
-              disabled={pending || blocked}
-            />
-            <button type="submit" className={styles.send} disabled={!input.trim() || pending || blocked} aria-label="Skicka">
-              {pending ? <Loader2 className={styles.spin} aria-hidden /> : <ArrowUp aria-hidden />}
-            </button>
-          </form>
-          <p className={styles.composerHint}>
-            <span className={styles.hintKeys}>{COMPOSER_HINT} · </span>
-            {DISCLAIMER}
-          </p>
         </div>
+
+        <AtlasConversationComposer variant={mode==='studio'?'studio':'default'} value={input} onChange={draft.setText} onSend={()=>void send(input)} disabled={!!pending||blocked} sendDisabled={!canSend} pending={!!pending} capturing={draft.capturing} onVoice={draft.toggleCapture} onStopSpeech={()=>atlas?.stopAudio()} inputSource={inputSource} captureAvailable={!!atlas} captureError={atlas?.captureError} inputRef={inputRef}/>
       </div>
     </div>
   )
@@ -417,6 +332,8 @@ export function ChatEntry({ entry }: { entry: TranscriptEntry }) {
 }
 
 function ToolStep({ entry }: { entry: ToolEntry }) {
+  const localLink=localTextReceiptLink(entry.result)
+  if(localLink)return <LocalTextJobReceipt link={localLink}/>
   const outcome = toolOutcome(entry)
   const error = outcome === 'failed' ? toolError(entry) : null
   const run = runSummary(entry)
@@ -451,3 +368,4 @@ export function AtlasChatConversationLoading() {
     </div>
   )
 }
+

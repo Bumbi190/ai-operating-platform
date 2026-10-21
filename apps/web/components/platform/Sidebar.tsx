@@ -1,10 +1,11 @@
 'use client'
 
 import Link from 'next/link'
+import { collaboratorNavHref } from '@/lib/auth/collaborator-navigation'
 import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
-import { OmniraSidebarLogo } from '@/components/platform/OmniraLogo'
+import { OmniraMark, OmniraSidebarLogo } from '@/components/platform/OmniraLogo'
 import {
   Settings,
   ChevronRight,
@@ -49,6 +50,8 @@ interface SidebarProps {
   recentConversations?: RecentConversation[]
   /** Resolved server-side by the platform layout — never parsed here. */
   uiGeneration?: OmniraUiGeneration
+  /** Presentation only: route viewer to audited organization read pages. */
+  readOnly?: boolean
 }
 
 
@@ -58,6 +61,7 @@ export function Sidebar({
   operatorName,
   recentConversations = [],
   uiGeneration = DEFAULT_UI_GENERATION,
+  readOnly = false,
 }: SidebarProps) {
   const pathname = usePathname()
   const router = useRouter()
@@ -103,6 +107,7 @@ export function Sidebar({
 
   return (
     <aside
+      id="omnira-sidebar"
       className={cn(
         'relative z-40 hidden lg:flex flex-col sidebar-border-gradient h-full overflow-hidden',
         isVNextShell && vnextStyles.sidebar,
@@ -127,6 +132,21 @@ export function Sidebar({
       />
 
       {/* ── Header / Logo ───────────────────────────────────── */}
+      {isVNextShell ? (
+        <div className={vnextStyles.brandBlock}>
+          <div className={vnextStyles.brand}>
+            <OmniraMark size={36} variant="silver" />
+            <span className={vnextStyles.brandText}>
+              <span className={vnextStyles.brandName}>Omnira</span>
+              <span className={vnextStyles.brandSub}>AI Operating System</span>
+            </span>
+          </div>
+          <p className={vnextStyles.brandStatus}>
+            <span className={vnextStyles.brandStatusDot} aria-hidden="true" />
+            {projects.length} projekt kopplade
+          </p>
+        </div>
+      ) : (
       <div
         className="relative px-5 pt-5 pb-4 shrink-0"
         style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
@@ -147,6 +167,7 @@ export function Sidebar({
           <span className="caption-mono text-[9px] text-faint">{isVNextShell ? 'ATLAS' : 'v4.2'}</span>
         </div>
       </div>
+      )}
 
       {/* ── Navigation ──────────────────────────────────────── */}
       <nav className="flex-1 overflow-y-auto scrollbar-thin px-3 py-5 space-y-6">
@@ -161,15 +182,58 @@ export function Sidebar({
           <div className="space-y-1">
             {section.items.map((item) => {
               const Icon = item.icon
-              const isActive = item.href === '/chat'
+              const displayHref = readOnly ? collaboratorNavHref(item.href) : item.href
+              const isActive = readOnly
+                ? (pathname === displayHref || pathname.startsWith(displayHref + '/'))
+                : item.href === '/chat'
                 ? isChatActive
                 : pathname === item.href || pathname.startsWith(item.href + '/')
+
+              // vNext draws every destination the same way the mockup does: a
+              // small marker dot and a label, with the active one in a bordered
+              // pill. Atlas is no longer a special-cased banner — it is simply
+              // the first destination.
+              if (isVNextShell) {
+                return (
+                  <div key={item.href}>
+                    <Link
+                      href={readOnly ? displayHref : item.primary ? item.href + '?ui=vnext' : item.href}
+                      className={cn('nav-pill ease-os', vnextStyles.navItem)}
+                      data-active={isActive}
+                      aria-current={isActive ? 'page' : undefined}
+                    >
+                      <span className={vnextStyles.navDot} aria-hidden="true" />
+                      <span className="flex-1 tracking-tight">{item.label}</span>
+                      {isActive && item.href === '/approvals' && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400" style={{ boxShadow: '0 0 6px #fbbf24' }} />
+                      )}
+                    </Link>
+                    {item.href === '/chat' && isChatActive && recentConversations.length > 0 && (
+                      <div className="ml-3 mt-1 space-y-0.5 pl-3 border-l" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+                        {recentConversations.map(conv => (
+                          <Link
+                            key={conv.id}
+                            href={`/chat/${conv.id}`}
+                            className={cn(
+                              'flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] transition-colors',
+                              pathname === `/chat/${conv.id}` ? 'bg-white/[0.06] text-zinc-200' : 'text-meta hover:text-zinc-400',
+                            )}
+                          >
+                            <MessageSquare className="w-2.5 h-2.5 shrink-0 opacity-60" />
+                            <span className="truncate">{conv.title}</span>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              }
 
               if (item.primary) {
                 return (
                   <Link
                     key={item.href}
-                    href={isVNextShell ? '/atlas?ui=vnext' : item.href}
+                    href={readOnly ? displayHref : isVNextShell ? item.href + '?ui=vnext' : item.href}
                     className={cn(
                       'relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[12.5px] font-semibold transition-all ease-os overflow-hidden group',
                       isVNextShell && vnextStyles.primaryNav,
@@ -206,7 +270,7 @@ export function Sidebar({
 
               return (
                 <div key={item.href}>
-                  <Link href={item.href} className="nav-pill ease-os" data-active={isActive}>
+                  <Link href={displayHref} className="nav-pill ease-os" data-active={isActive}>
                     <Icon className={cn('w-3.5 h-3.5 shrink-0', isActive ? 'text-indigo-200' : 'text-meta')} />
                     <span className="flex-1 tracking-tight">{item.label}</span>
                     {isActive && item.href === '/approvals' && (
@@ -260,7 +324,7 @@ export function Sidebar({
             <span className="eyebrow !text-[9px] !text-faint">
               Autonom stack
             </span>
-            {showGlobalProjectList && (
+            {showGlobalProjectList && !readOnly && (
             <Link
                 href="/projects/new"
                 className="w-5 h-5 flex items-center justify-center rounded-md hover:bg-white/[0.06] text-meta hover:text-indigo-200 transition-colors ease-os"
@@ -274,7 +338,7 @@ export function Sidebar({
           <div className="space-y-1">
             {sidebarProjects.map((project) => {
               const isActive = activeSlug === project.slug
-              const projectBase = `/projects/${project.slug}`
+              const projectBase = readOnly ? `/organization/projects/${project.slug}` : `/projects/${project.slug}`
               return (
                 <div key={project.id}>
                   <Link
@@ -306,7 +370,7 @@ export function Sidebar({
                     />
                   </Link>
 
-                  {isActive && (
+                  {isActive && !readOnly && (
                     <div
                       className="ml-3 mt-1 mb-2 space-y-0.5 pl-3 border-l animate-fade-in"
                       style={{ borderColor: `${project.color}40` }}
@@ -341,7 +405,7 @@ export function Sidebar({
               )
             })}
 
-            {showGlobalProjectList && projects.length === 0 && (
+            {showGlobalProjectList && !readOnly && projects.length === 0 && (
               <Link
                 href="/projects/new"
                 className="flex items-center gap-2 px-3 py-2 text-[11px] text-meta hover:text-zinc-300 transition-colors rounded-lg hover:bg-white/[0.04] ease-os"
@@ -355,7 +419,11 @@ export function Sidebar({
         )}
       </nav>
 
-      {/* ── Bottom ──────────────────────────────────────────── */}
+      {/* ── Bottom ──────────────────────────────────────────────
+          vNext has no operator card: the operator lives in the shell top
+          bar's avatar menu (ShellTopBar), which also carries Logga ut — as in
+          the canonical mockup, the sidebar is destinations only. */}
+      {!isVNextShell && (
       <div
         className="px-3 py-3 space-y-1"
         style={{ borderTop: '1px solid rgba(255,255,255,0.04)' }}
@@ -406,6 +474,8 @@ export function Sidebar({
           </div>
         )}
       </div>
+      )}
     </aside>
   )
 }
+

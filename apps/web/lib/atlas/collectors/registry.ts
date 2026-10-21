@@ -8,12 +8,14 @@
  * Naming convention: "{source}.{metric_type}"
  *   stripe.revenue    → StripeRevenueCollector
  *   social.account    → SocialAccountCollector
+ *   handlarborsen.marketplace → HandlarborsenMarketplaceCollector
  *   supabase.platform → SupabasePlatformCollector (Phase 3)
  */
 
 import type { BaseCollector } from './types'
 import { StripeRevenueCollector } from './stripe-revenue'
 import { SocialAccountCollector } from './social-account'
+import { HandlarborsenMarketplaceCollector } from './handlarborsen-marketplace'
 
 const _registry: Record<string, BaseCollector> = {}
 
@@ -27,6 +29,7 @@ function register(collector: BaseCollector): void {
 // ── Register all collectors ───────────────────────────────────────────────────
 register(new StripeRevenueCollector())
 register(new SocialAccountCollector())
+register(new HandlarborsenMarketplaceCollector())
 // Phase 3: register(new SupabasePlatformCollector())
 
 // ── Public API ────────────────────────────────────────────────────────────────

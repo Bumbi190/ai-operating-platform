@@ -1,6 +1,28 @@
 {
   "crons": [
-    { "path": "/api/media/cron/heartbeat", "schedule": "0 7 * * *" },
-    { "path": "/api/bugscanner/scan-all", "schedule": "0 5 * * *" }
-  ]
+    {
+      "path": "/api/media/cron/heartbeat",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/bugscanner/scan-all",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/social-schedule-tick",
+      "schedule": "* * * * *"
+    }
+  ],
+  "functions": {
+    "app/api/atlas/voice-pilot/stream/route.ts": {
+      "regions": [
+        "dub1"
+      ]
+    },
+    "app/api/atlas/voice-pilot/speech/route.ts": {
+      "regions": [
+        "dub1"
+      ]
+    }
+  }
 }

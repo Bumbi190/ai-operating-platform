@@ -13,7 +13,8 @@
  */
 
 import { Anthropic } from '@anthropic-ai/sdk'
-import { getAnthropic } from '@/lib/ai/anthropic'
+import { CONTENT_GROWTH_QA_GUIDANCE } from '@/lib/content-growth/guidance'
+import { getMediaTextClient } from '@/lib/media/text-client'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
@@ -40,6 +41,8 @@ The audience: 20–30 year old developers and tech professionals who consume 50+
 The test: Would this stop doomscrolling within 1.5 seconds?
 
 Score 5 ENGAGEMENT dimensions + 1 factual-safety guard. Be HARSH — the bar is 8/10.
+
+${CONTENT_GROWTH_QA_GUIDANCE}
 
 hook_strength (0–10) — Hook Score:
 - 9–10: Curiosity gap, stops the scroll in <2s, makes you NEED the next line
@@ -93,7 +96,7 @@ export async function scoreScript(
   script: string,
   sourceContext: string,
 ): Promise<QualityScore> {
-  const client = getAnthropic({
+  const client = getMediaTextClient({
     project: MEDIA_PIPELINE_PROJECT, execution, agent: 'Quality Gate', operation: 'Score Content',
   })
 

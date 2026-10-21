@@ -51,7 +51,7 @@ export async function startLambdaRender(
     functionName:    fnName,
     serveUrl,
     composition,
-    inputProps,
+    inputProps:      { ...inputProps },
     codec:           'h264',
     imageFormat:     'jpeg',
     jpegQuality:     90,

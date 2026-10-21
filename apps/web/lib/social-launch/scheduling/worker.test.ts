@@ -102,6 +102,41 @@ it('rolls back a separated publisher role against the canonical scheduled step',
  expect(restored.claim.version).toBe(claim.version)
  expect(testSql("select to_regrole('social_schedule_full_publisher_fixture') is null")).toBe('t')
 },20000)
+it('recovers an expired unknown write under the rollback-only scheduled role',async()=>{
+ const f=await approved()
+ const claimed=(await claimScheduleJob(db,{workerId:'recovery_role_probe',now:f.dueAt,dryRun:false}))!
+ const prepared=await recordScheduleStep(db,claimed,{action:'prepare'})
+ const publishing=await recordScheduleStep(db,prepared.claim,{
+  action:'claim_create',expectedVersion:prepared.publication!.version,capabilityHash:'d'.repeat(64)
+ })
+ expect(publishing.publication!.state).toBe('publishing')
+ const later=new Date(Date.parse(f.dueAt)+91000).toISOString()
+ setScheduleClock(later)
+ const literal=(v:unknown)=>"'"+JSON.stringify(v).replaceAll("'","''")+"'::jsonb"
+ const recover=`public.social_schedule_claim(${literal({workerId:'recovery_fixture',now:later,dryRun:false,projectIds:[f.manifest.projectId]})})`
+ const candidate=readFileSync(resolve(process.cwd(),
+  'lib/calendar/direct-write-gate-scheduled-full-role-candidate.sql'),'utf8')
+ const output=testSql(`begin; ${candidate}
+  select has_function_privilege('service_role','public.social_schedule_claim(jsonb)','EXECUTE')::text||
+   has_table_privilege('service_role','public.social_schedule_jobs','UPDATE')::text;
+  set local role service_role;
+  do $probe$ begin perform ${recover};
+   raise exception 'UNEXPECTED_SHARED_RECOVERY';
+   exception when insufficient_privilege then null; end $probe$;
+  set local role social_schedule_full_publisher_fixture;
+  select ${recover};
+  select jsonb_build_object('jobState',j.state,'publicationState',p.state,'failureCode',p.failure_code)
+   from public.social_schedule_jobs j join public.social_publications p on p.id=j.publication_id
+   where j.id='${claimed.jobId}';
+  rollback;`).split('\n')
+ expect(output[0]).toBe('truefalse')
+ const recovered=JSON.parse(output.at(-1)!)
+ expect(recovered).toEqual({jobState:'uncertain',publicationState:'uncertain',failureCode:'receipt_unavailable'})
+ const restored=await readScheduleReceipt(db,publishing.claim)
+ expect(restored.jobState).toBe('claimed')
+ expect(restored.publication!.state).toBe('publishing')
+ expect(testSql("select to_regrole('social_schedule_full_publisher_fixture') is null")).toBe('t')
+},20000)
 it('one_post_for_two_workers',async()=>{
  const f=await approved(),d=dependencies(f)
  const results=await Promise.all(['a','b'].map(workerId=>runScheduleTick(db,{workerId,now:f.dueAt,dryRun:false},d.deps)))

@@ -28,7 +28,11 @@ const frozen=Object.freeze({
  '20261021120000_atlas_creative_review_owner_guard_p18.sql':
   '72f24c68c69178837d34bd651a93f900f4c1e230e3a1bfff9c132d97a205b29d',
 });
-const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
+// Original P25 fingerprints were captured on Windows checkout (CRLF).
+// Git may check out LF on Linux. Normalize line endings only for hash
+// comparison, without modifying SQL bytes or production migration policy.
+const digest=bytes=>createHash('sha256')
+ .update(bytes.toString('utf8').replace(/\r\n?|\n/g,'\r\n'),'utf8').digest('hex');
 test('canonical production SQL corpus retains unchanged Guard v2 expected membership',()=>{
  const files=readdirSync(production).filter(x=>x.endsWith('.sql'));
  const result=inspectCanonicalMigrationFiles(files);
@@ -41,7 +45,7 @@ test('canonical production SQL corpus retains unchanged Guard v2 expected member
  for(const name of Object.keys(frozen))
   assert.equal(files.includes(name),false,'draft migration leaked into canonical Supabase corpus');
 });
-test('all five staged prototypes retain the exact pre-move bytes',()=>{
+test('all five staged prototypes retain the exact pre-move contents across checkout line endings',()=>{
  assert.deepEqual(readdirSync(drafts).filter(f=>f.endsWith('.sql')).sort(),
   Object.keys(frozen).sort());
  for(const [name,expectedHash] of Object.entries(frozen)) {

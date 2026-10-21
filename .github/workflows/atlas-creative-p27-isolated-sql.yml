@@ -1,0 +1,68 @@
+name: Atlas Creative P27 Isolated SQL Verification
+
+# Run only for this draft PR against the prior ArtCraft integration branch.
+# It never contacts production Supabase, uses GitHub secrets or deploys code.
+on:
+  pull_request:
+    branches:
+      - feat/atlas-creative-p26-main-reconciliation
+    paths:
+      - '.github/workflows/atlas-creative-p27-isolated-sql.yml'
+      - 'scripts/creative-tools/draft-migration-isolation.test.mjs'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: creative-p27-isolated-sql
+  cancel-in-progress: true
+
+jobs:
+  pglite:
+    name: PGlite synthetic migrations
+    runs-on: ubuntu-22.04
+    timeout-minutes: 9
+    steps:
+      - name: Checkout isolated creative integration
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify draft-only SQL isolation
+        run: node --test scripts/creative-tools/draft-migration-isolation.test.mjs
+      - name: Install fixture dependency from frozen lockfile
+        run: npm ci --prefix scripts/creative-tools/pglite-fixture --no-audit --no-fund --ignore-scripts
+      - name: Run seven sequential local PostgreSQL WASM suites
+        run: npm test --prefix scripts/creative-tools/pglite-fixture --silent
+
+  postgres17:
+    name: PostgreSQL 17 isolated staging and races
+    runs-on: ubuntu-22.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout isolated creative integration
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Use Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Confirm Docker daemon
+        run: docker info --format '{{.ServerVersion}}'
+      - name: Pull exact pinned PostgreSQL 17 image
+        run: docker pull postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+      - name: Verify P7 through P18 against PostgreSQL 17
+        env:
+          DOCKER_BIN: /usr/bin/docker
+        run: node scripts/creative-tools/pg17-docker-fixture/run-pg17-p18.mjs
+      - name: Assert no test container remains
+        if: always()
+        run: |
+          if docker ps -a --format '{{.Names}}' | grep '^omnira-creative-pg17-p18-'; then
+            echo 'Unexpected creative PostgreSQL test container remains' >&2
+            exit 1
+          fi

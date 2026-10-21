@@ -14,6 +14,8 @@ import {recordSyntheticReviewedNonce,NONCE_FIXTURE_MARKER}
  from './worker-handoff-nonce-fixture.mjs';
 import {createTestReviewerLifecycle,appendTestReviewerLifecycleEvent}
  from './worker-handoff-reviewer-lifecycle.mjs';
+import {snapshotSyntheticNonceLedger,inspectPinnedSyntheticNonceLedger}
+ from './worker-handoff-nonce-ledger-audit.mjs';
 
 const sha=x=>createHash('sha256').update(x).digest('hex');
 function fixture(){
@@ -258,4 +260,31 @@ test('an old inert receipt stays non-authoritative and cannot be reused after re
  assert.equal(persisted.installerAuthorized,false);
  assert.equal(persisted.pinnedLifecycleSequence,0);
  assert.equal(readdirSync(f.root).length,2);
+}));
+test('real synthetic signed-review nonce receipt passes only byte inventory, never authorization',()=>withFixture(f=>{
+ const receipt=f.run();
+ const proposed=snapshotSyntheticNonceLedger({fixtureRoot:f.root});
+ assert.equal(proposed.recordCount,1);
+ const inspection=inspectPinnedSyntheticNonceLedger({
+  fixtureRoot:f.root,externallyPinnedHeadSha256:proposed.observedHeadSha256,
+  minimumRecordCount:1,
+ });
+ assert.equal(inspection.status,'test_history_matches_supplied_checkpoint_not_authorized');
+ assert.equal(inspection.externalAnchorAuthenticityVerified,false);
+ assert.equal(inspection.copyAuthorized,false);
+ assert.equal(inspection.productionReady,false);
+ assert.equal(receipt.nonceConsumedForProduction,false);
+}));
+test('signed-review receipt tampering after replay rejection fails ledger checkpoint',()=>withFixture(f=>{
+ const receipt=f.run();
+ const pin=snapshotSyntheticNonceLedger({fixtureRoot:f.root});
+ const file=join(f.root,receipt.nonceHash+'.json');
+ const fake=JSON.parse(readFileSync(file,'utf8'));
+ fake.pinnedLifecycleHeadSha256='f'.repeat(64);
+ writeFileSync(file,JSON.stringify(fake)+'\n');
+ assert.throws(()=>inspectPinnedSyntheticNonceLedger({
+  fixtureRoot:f.root,externallyPinnedHeadSha256:pin.observedHeadSha256,
+  minimumRecordCount:1,
+ }),/synthetic_ledger_external_head_mismatch/);
+ assert.throws(()=>f.run(),/synthetic_review_nonce_replay_rejected/);
 }));

@@ -496,6 +496,41 @@ monotonic external anchoring, verified reviewer enrollment and revocation
 delivery remain prerequisites. The worker stays disabled; no real files are
 copied into `ProgramData` and no elevated script is run.
 
+## Synthetic approval-ledger history audit (2026-10-21)
+
+`worker-handoff-nonce-ledger-audit.mjs` adds **read-only** verification
+of the existing marked OS TEMP nonce fixture. It does not create, amend,
+delete, authorize, or replay any receipt. It requires exactly named,
+canonical, non-executing synthetic nonce JSON receipts, rejects symbolic
+links, unknown files, malformed/partial records, changed authorization flags,
+and invalid lifecycle checkpoint fields. It computes a domain-separated
+SHA-256 head over the sorted receipt names, full bytes, and reported lifecycle
+reference. The read-only snapshot is explicitly just a **local observation**.
+
+A second entry point requires an **externally supplied exact expected head**
+and a **minimum record count**, detecting missing/deleted/replaced receipts,
+content manipulation, rollback to a lower receipt count, and a stale checkpoint
+even across a new Node process. It returns an audit-only match, never an
+authorization. **The verifier cannot tell whether the external pin was
+actually trusted.** An attacker who controls both the receipt directory and
+the supplied pin could forge a consistent snapshot; this design cannot
+replace a separately administered monotonic anchor or protected ACLs.
+
+The test suite contains **13 synthetic inventory/rollback tests** plus
+**two integration tests** using receipts created by the existing
+signature/lifecycle-bound nonce fixture. CI's Linux Creative Handoff
+anti-skip floor is now **121/121**, with no skipped tests. All tests use
+automatically removed fixtures under OS TEMP and require no added APIs,
+cloud resources, Windows administrator session, or model usage.
+
+The production-grade approval ledger and monotonic external checkpoint
+**do not exist yet**. Required future controls include an independent
+owner/reviewer identity and revocation authority, protected append-only
+storage with OS-level permissions and durable crash recovery, an externally
+anchored monotonic revision/nonce floor, post-crash verification,
+signer+ACL evidence, and separate human approval for every privileged
+copy/install action. The worker remains disabled.
+
 ## Whole-archive integrity update
 
 The staging planner additionally checks SHA-256 of the original PhotoCraft and

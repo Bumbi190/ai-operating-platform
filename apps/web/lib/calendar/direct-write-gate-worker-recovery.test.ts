@@ -164,7 +164,7 @@ describe('signed source guard + triggered social step and checkpoint recovery',(
    'set local role service_role;'+denied+
    'set local role social_schedule_publisher_fixture;'+
    sql('social_schedule_step',fx.claim(3),complete)+
-   'rollback to savepoint scheduled_role_probe;').split('\\n');
+   'rollback to savepoint scheduled_role_probe;').split('\n');
   expect(out[0]).toBe('falsefalsefalse');
   const receipt=JSON.parse(out.at(-1)!);
   expect(receipt.jobState).toBe('published');

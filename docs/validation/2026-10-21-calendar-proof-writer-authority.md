@@ -40,6 +40,26 @@ change only the original reconciliation migration. The application store uses
 RPCs for these writes; readiness also reads `social_publications`. This is a
 source inventory, not proof that no dynamic SQL or operational writer exists.
 
+## Credential and application caller inventory
+
+- `reconciliation/service.ts` resolves the Facebook Page token and performs
+  GET for candidate listing and completion re-read. Its store uses the shared
+  admin client for both RPCs.
+- Manual publication `publication/credentials.ts` and `dispatch.ts` use the
+  same token for approved publishing. Scheduled publication workers also
+  resolve credentials, so moving the Page token affects those paths.
+- Other media routes use Facebook credentials for comment replies, account
+  checks and webhook setup. A token move cannot silently break those flows.
+- The repository's application stores call the publication and schedule RPCs
+  for normal writes; readiness reads publication rows. Direct database grants
+  remain broader than these app call sites.
+
+The first implementation slice should inventory deployment-level secrets and
+split read and write credentials without changing the established publish
+path. Only after parity tests cover the other token consumers should the Page
+token leave the broad web process. No extra background service should be
+introduced merely to make the proof-table candidate look complete.
+
 ## Target boundary
 
 1. Keep the user's authenticated operator decision and the exact publication

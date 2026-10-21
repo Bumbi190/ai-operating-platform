@@ -36,8 +36,8 @@ adds only the hash-pinned root `20260601_media_insights.sql` to the local
 dependency replay order before `20260602_atlas_bi_foundation.sql`. It checks
 the root SQL bytes, retains every canonical web migration, and refuses a
 missing BI migration or a duplicate filename. The canonical and dependency
-modes keep their previous order and scope. The ordering tests pass (8/8),
-but PostgreSQL replay has not run in this environment, which has no Docker.
+modes keep their previous order and scope. The initial ordering tests passed
+(8/8) in scratch and CI; scratch itself has no Docker.
 This diagnostic exposes the next dependency; it does not establish complete
 historical replay or working Supabase branch creation. It also does not repair
 the production migration registry's earlier missing `media_scripts` baseline,
@@ -52,6 +52,24 @@ same blocked pull. No PostgreSQL replay result can be inferred from this run;
 use a machine with the exact required images already cached to run the command
 above. Do not substitute a different image version without reviewing its
 extension and bootstrap parity.
+
+On the connected Hultgren workstation, both exact image versions were already
+cached. A fresh detached worktree at the PR head ran the diagnostic in its
+owned container with network disabled and zero port bindings. The replay
+passed `media_insights`, `atlas_bi_foundation`, `cost_events` and later
+canonical files, then stopped in `20260614091000_h1p5_runs_claim_id.sql`:
+`schema "omnira_cron" does not exist` while replacing
+`omnira_cron.reap_stuck_runs()`. The runner removed the owned container on
+failure, and the worktree remained clean. This is the next observed local
+dependency, not a full replay result.
+
+`--mode=legacy-cron-replay` adds the exact hash-pinned root
+`supabase/migrations/20260528_pg_cron_setup.sql` before the later watchdog,
+alongside the media insights root file. It runs only in the isolated offline
+container with `cron.launch_active_jobs=off`. The SQL file contains placeholder
+URL and secret values; the diagnostic does not point at live services. The
+earlier `--mode=legacy-media-replay` remains available to reproduce the
+missing-schema failure.
 
 ## Production installation decision
 

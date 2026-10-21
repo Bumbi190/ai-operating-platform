@@ -1,11 +1,13 @@
 name: Atlas Creative P27 Isolated SQL Verification
 
-# This validation runs only on the deliberately named P27 test branch.
+# Run only for this draft PR against the prior ArtCraft integration branch.
 # It never contacts production Supabase, uses GitHub secrets or deploys code.
 on:
-  push:
+  pull_request:
     branches:
-      - feat/atlas-creative-p27-isolated-sql-ci
+      - feat/atlas-creative-p26-main-reconciliation
+    paths:
+      - '.github/workflows/atlas-creative-p27-isolated-sql.yml'
 
 permissions:
   contents: read
@@ -33,7 +35,7 @@ jobs:
       - name: Install fixture dependency from frozen lockfile
         run: npm ci --prefix scripts/creative-tools/pglite-fixture --no-audit --no-fund --ignore-scripts
       - name: Run seven sequential local PostgreSQL WASM suites
-        run: npm test --prefix scripts/creative-tools/pglite-fixture -- --silent
+        run: npm test --prefix scripts/creative-tools/pglite-fixture --silent
 
   postgres17:
     name: PostgreSQL 17 isolated staging and races

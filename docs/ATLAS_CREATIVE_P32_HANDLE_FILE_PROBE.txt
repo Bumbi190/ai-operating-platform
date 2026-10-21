@@ -1,0 +1,218 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Security.Principal;
+using System.Text;
+using System.Text.RegularExpressions;
+using Microsoft.Win32.SafeHandles;
+
+// Synthetic read-only handle prototype. Never a privileged copy or worker adapter.
+internal sealed class P32Refusal : Exception {
+ public readonly string Code;
+ public P32Refusal(string code):base(code){Code=code;}
+}
+internal sealed class P32PinnedRoot : IDisposable {
+ const string K=@"C:\Windows\System32\kernel32.dll",N=@"C:\Windows\System32\ntdll.dll";
+ [StructLayout(LayoutKind.Sequential)] internal struct FT {public uint Low,High;}
+ [StructLayout(LayoutKind.Sequential)] internal struct INFO {public uint Attributes;public FT Creation,Access,Write;public uint Volume,SizeHigh,SizeLow,Links,IndexHigh,IndexLow;}
+ [StructLayout(LayoutKind.Sequential)] struct US {public ushort Length,MaximumLength;public IntPtr Buffer;}
+ [StructLayout(LayoutKind.Sequential)] struct OA {public uint Length;public IntPtr Root,Name;public uint Attributes;public IntPtr Security,Qos;}
+ [StructLayout(LayoutKind.Sequential)] struct IOS {public IntPtr Status,Information;}
+ [DllImport(K,CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)] static extern IntPtr CreateFileW(string name,uint access,uint share,IntPtr security,uint disposition,uint flags,IntPtr template);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] internal static extern bool CloseHandle(IntPtr h);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] static extern bool GetFileInformationByHandle(IntPtr h,out INFO info);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] static extern uint GetFileType(IntPtr h);
+ [DllImport(K,CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)] static extern uint GetFinalPathNameByHandleW(IntPtr h,StringBuilder path,uint size,uint flags);
+ [DllImport(K,CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)] static extern bool GetVolumeInformationByHandleW(IntPtr h,StringBuilder volume,uint volumeSize,out uint serial,out uint maxComponent,out uint flags,StringBuilder fs,uint fsSize);
+ [DllImport(N,ExactSpelling=true)] static extern int NtCreateFile(out IntPtr h,uint access,ref OA attributes,out IOS io,IntPtr allocation,uint fileAttributes,uint share,uint disposition,uint options,IntPtr ea,uint eaLength);
+ IntPtr root;readonly string finalRoot;readonly object sync=new object();
+ static void Demand(bool ok,string code){if(!ok)throw new P32Refusal(code);}
+ static INFO Info(IntPtr h,bool directory){
+  INFO info=new INFO();Demand(GetFileType(h)==1&&GetFileInformationByHandle(h,out info),"handle-metadata-unavailable");
+  Demand((info.Attributes&0x400)==0,"reparse-rejected");
+  Demand(((info.Attributes&0x10)!=0)==directory,"handle-type-rejected");
+  if(!directory)Demand(info.Links==1,"hard-link-rejected");return info;
+ }
+ static string Final(IntPtr h){
+  StringBuilder path=new StringBuilder(1024);uint n=GetFinalPathNameByHandleW(h,path,1024,0);
+  Demand(n>0&&n<1024,"final-path-unavailable");return path.ToString();
+ }
+ public P32PinnedRoot(string path){
+  Demand(IntPtr.Size==8&&Marshal.SizeOf(typeof(US))==16&&Marshal.SizeOf(typeof(OA))==48&&Marshal.SizeOf(typeof(IOS))==16&&Marshal.SizeOf(typeof(INFO))==52,"unsupported-ABI");
+  string full=Path.GetFullPath(path).TrimEnd('\\');
+  Demand(full.Length>3&&char.IsLetter(full[0])&&full[1]==':'&&full[2]=='\\'&&full.IndexOf(':',2)<0&&!full.StartsWith(@"\\")&&string.Equals(full,path.TrimEnd('\\'),StringComparison.OrdinalIgnoreCase),"local-canonical-root-required");
+  Demand(new DriveInfo(Path.GetPathRoot(full)).DriveType==DriveType.Fixed,"local-fixed-drive-required");
+  root=CreateFileW(full,0x100081,1,IntPtr.Zero,3,0x02200000,IntPtr.Zero);
+  if(root==new IntPtr(-1)){root=IntPtr.Zero;throw new P32Refusal("root-open-failed");}
+  try{
+   INFO info=Info(root,true);
+   StringBuilder fs=new StringBuilder(32),label=new StringBuilder(64);uint serial,max,flags;
+   Demand(GetVolumeInformationByHandleW(root,label,64,out serial,out max,out flags,fs,32)&&fs.ToString()=="NTFS"&&serial==info.Volume,"local-NTFS-required");
+   finalRoot=Final(root);Demand(string.Equals(finalRoot,@"\\?\"+full,StringComparison.OrdinalIgnoreCase),"root-final-path-mismatch");
+  }catch{CloseHandle(root);root=IntPtr.Zero;throw;}
+ }
+ static string[] Parts(string relative){
+  Demand(relative!=null&&relative.Length>0&&relative.Length<=320,"invalid-relative-path");
+  string[] parts=relative.Split('/');Demand(parts.Length<=5,"invalid-relative-path");
+  foreach(string part in parts){
+   Demand(Regex.IsMatch(part,@"\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z")&&!part.EndsWith(".")&&part!="."&&part!="..","invalid-relative-path");
+   string stem=part.Split('.')[0];Demand(!Regex.IsMatch(stem,@"\A(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])\z",RegexOptions.IgnoreCase|RegexOptions.CultureInvariant),"invalid-relative-path");
+  }
+  return parts;
+ }
+ static IntPtr Relative(IntPtr parent,string name,bool directory){
+  IntPtr text=Marshal.StringToHGlobalUni(name),unicode=IntPtr.Zero,handle=IntPtr.Zero;
+  try{
+   US us=new US();us.Length=(ushort)(name.Length*2);us.MaximumLength=(ushort)(us.Length+2);us.Buffer=text;
+   unicode=Marshal.AllocHGlobal(16);Marshal.StructureToPtr(us,unicode,false);
+   OA oa=new OA();oa.Length=48;oa.Root=parent;oa.Name=unicode;oa.Attributes=0x1040;
+   IOS io;int status=NtCreateFile(out handle,0x100081,ref oa,out io,IntPtr.Zero,0,1,1,(directory?1u:0x40u)|0x20|0x200000,IntPtr.Zero,0);
+   if(status!=0){if(handle!=IntPtr.Zero&&handle!=new IntPtr(-1)){CloseHandle(handle);handle=IntPtr.Zero;}
+    if(unchecked((uint)status)==0xC000050B)throw new P32Refusal("reparse-rejected");
+    throw new P32Refusal("native-open-failed-0x"+unchecked((uint)status).ToString("X8"));
+   }
+   Demand(handle!=IntPtr.Zero&&handle!=new IntPtr(-1),"native-invalid-handle");
+   Info(handle,directory);IntPtr result=handle;handle=IntPtr.Zero;return result;
+  }finally{if(handle!=IntPtr.Zero&&handle!=new IntPtr(-1))CloseHandle(handle);if(unicode!=IntPtr.Zero)Marshal.FreeHGlobal(unicode);Marshal.FreeHGlobal(text);}
+ }
+ public PinnedRead OpenRead(string relative){
+  string[] parts=Parts(relative);List<IntPtr> held=new List<IntPtr>();
+  lock(sync){
+   Demand(root!=IntPtr.Zero,"root-disposed");IntPtr parent=root;
+   try{
+    for(int i=0;i<parts.Length;i++){parent=Relative(parent,parts[i],i<parts.Length-1);held.Add(parent);}
+    string expected=finalRoot+"\\"+string.Join("\\",parts);
+    Demand(string.Equals(Final(parent),expected,StringComparison.OrdinalIgnoreCase),"leaf-final-path-mismatch");
+    return new PinnedRead(held,parent);
+   }catch{for(int i=held.Count-1;i>=0;i--)CloseHandle(held[i]);throw;}
+  }
+ }
+ public sealed class PinnedRead : IDisposable {
+  List<IntPtr> held;readonly IntPtr file;bool consumed;
+  internal PinnedRead(List<IntPtr> handles,IntPtr leaf){held=handles;file=leaf;}
+  public byte[] ReadBounded(int max){
+   Demand(held!=null&&!consumed,"read-disposed-or-consumed");consumed=true;Demand(max>0&&max<=65536,"read-bound-rejected");
+   INFO before=Info(file,false);Demand(before.SizeHigh==0&&before.SizeLow<=(uint)max,"file-size-rejected");
+   byte[] bytes=new byte[(int)before.SizeLow];int got=0;
+   using(SafeFileHandle safe=new SafeFileHandle(file,false))
+   using(FileStream stream=new FileStream(safe,FileAccess.Read,4096,false)){
+    while(got<bytes.Length){int n=stream.Read(bytes,got,bytes.Length-got);Demand(n>0,"short-read-rejected");got+=n;}
+    Demand(stream.ReadByte()==-1,"file-growth-rejected");
+   }
+   INFO after=Info(file,false);
+   Demand(before.Volume==after.Volume&&before.IndexHigh==after.IndexHigh&&before.IndexLow==after.IndexLow&&before.SizeHigh==after.SizeHigh&&before.SizeLow==after.SizeLow&&before.Write.Low==after.Write.Low&&before.Write.High==after.Write.High&&after.Links==1,"file-change-rejected");
+   return bytes;
+  }
+  public void Dispose(){if(held!=null){for(int i=held.Count-1;i>=0;i--)CloseHandle(held[i]);held=null;}}
+ }
+ public void Dispose(){lock(sync){if(root!=IntPtr.Zero){CloseHandle(root);root=IntPtr.Zero;}}}
+}
+
+public static class CreativeHandleFileProbe {
+ const string K=@"C:\Windows\System32\kernel32.dll";
+ [DllImport(K,CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)] static extern bool CreateDirectoryW(string path,IntPtr attributes);
+ [DllImport(K,CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)] static extern bool CreateHardLinkW(string link,string target,IntPtr security);
+ [DllImport(K,CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)] static extern bool MoveFileExW(string from,string to,uint flags);
+ [DllImport(K,CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)] static extern bool DeleteFileW(string path);
+ [DllImport(K,CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)] static extern bool RemoveDirectoryW(string path);
+ [DllImport(K,CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)] static extern IntPtr CreateFileW(string name,uint access,uint share,IntPtr security,uint disposition,uint flags,IntPtr template);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] static extern bool DeviceIoControl(IntPtr h,uint control,byte[] input,uint size,IntPtr output,uint outputSize,out uint returned,IntPtr overlapped);
+ public sealed class Case {public string Name;public bool Passed=true;}
+ public sealed class Result {
+  public string Mode="synthetic-native-handle-read-prototype",Error,FixturePath;
+  public bool ElevatedContext,FixtureCreated,FixtureRemoved,AllTestsPassed;
+  public bool RootAclTrustVerified=false,WorkerTokenVerified=false,GeneralReparseRaceProtectionVerified=false,ProductionReady=false,WorkerActivated=false,NetworkRequested=false,ProjectAclChanged=false;
+  public List<Case> Tests=new List<Case>();
+ }
+ static void Need(bool ok,string message){if(!ok)throw new InvalidOperationException(message);}
+ static void Record(Result result,string name){Case test=new Case();test.Name=name;result.Tests.Add(test);}
+ static void FreshDirectory(string path){Need(CreateDirectoryW(path,IntPtr.Zero),"fresh fixture directory create failed");}
+ static void Canary(string path,byte[] data){using(FileStream s=new FileStream(path,FileMode.CreateNew,FileAccess.Write,FileShare.None)){s.Write(data,0,data.Length);}}
+ static bool Equal(byte[] a,byte[] b){if(a.Length!=b.Length)return false;for(int i=0;i<a.Length;i++)if(a[i]!=b[i])return false;return true;}
+ static void Junction(string link,string target){
+  FreshDirectory(link);IntPtr handle=CreateFileW(link,0x40000000,7,IntPtr.Zero,3,0x02200000,IntPtr.Zero);Need(handle!=new IntPtr(-1),"junction setup open failed");
+  try{
+   byte[] substitute=Encoding.Unicode.GetBytes(@"\??\"+target),print=Encoding.Unicode.GetBytes(target);
+   byte[] data=new byte[16+substitute.Length+2+print.Length+2];
+   Array.Copy(BitConverter.GetBytes(0xA0000003u),0,data,0,4);
+   Array.Copy(BitConverter.GetBytes((ushort)(data.Length-8)),0,data,4,2);
+   Array.Copy(BitConverter.GetBytes((ushort)substitute.Length),0,data,10,2);
+   Array.Copy(BitConverter.GetBytes((ushort)(substitute.Length+2)),0,data,12,2);
+   Array.Copy(BitConverter.GetBytes((ushort)print.Length),0,data,14,2);
+   Array.Copy(substitute,0,data,16,substitute.Length);Array.Copy(print,0,data,16+substitute.Length+2,print.Length);
+   uint returned;Need(DeviceIoControl(handle,0x900A4,data,(uint)data.Length,IntPtr.Zero,0,out returned,IntPtr.Zero),"junction setup failed");
+  }finally{P32PinnedRoot.CloseHandle(handle);}
+ }
+ static void DeniedRead(P32PinnedRoot root,string path,string expected){
+  bool rejected=false;
+  try{using(P32PinnedRoot.PinnedRead read=root.OpenRead(path)){read.ReadBounded(65536);}}catch(P32Refusal e){if(e.Code==expected)rejected=true;else throw;}
+  Need(rejected,"expected rejection missing: "+expected);
+ }
+ static void SharingFailure(bool result,string operation){
+  int error=Marshal.GetLastWin32Error();Need(!result&&error==32,"expected sharing violation absent: "+operation+",win32="+error);
+ }
+ public static Result Run(){
+  Result result=new Result();result.ElevatedContext=new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
+  if(result.ElevatedContext){result.Error="requires standard user session; fixture not created";return result;}
+  string fixture=null,root=null,nested=null,outside=null,file=null,secret=null,link=null,hard=null;
+  byte[] canary=Encoding.ASCII.GetBytes("P32_SYNTHETIC_CANARY_ONLY\n"),other=Encoding.ASCII.GetBytes("P32_OUTSIDE_SYNTHETIC_ONLY\n");
+  try{
+   string temp=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Temp");
+   Need(new DriveInfo(Path.GetPathRoot(temp)).DriveType==DriveType.Fixed,"local fixed temp required");
+   for(DirectoryInfo p=new DirectoryInfo(temp);p!=null;p=p.Parent)Need(p.Exists&&(p.Attributes&FileAttributes.ReparsePoint)==0,"temp ancestor reparse or absent");
+   fixture=Path.Combine(temp,"omnira-p32-handles-"+Guid.NewGuid().ToString("N"));FreshDirectory(fixture);result.FixtureCreated=true;result.FixturePath=fixture;
+   root=Path.Combine(fixture,"root");nested=Path.Combine(root,"input");outside=Path.Combine(fixture,"outside");
+   FreshDirectory(root);FreshDirectory(nested);FreshDirectory(outside);file=Path.Combine(nested,"sample.txt");secret=Path.Combine(outside,"secret.txt");
+   Canary(file,canary);Canary(secret,other);
+   Need(MoveFileExW(root,root+"-renamed",0)&&MoveFileExW(root+"-renamed",root,0),"unpinned root rename control failed");
+   Need(MoveFileExW(nested,nested+"-renamed",0)&&MoveFileExW(nested+"-renamed",nested,0),"unpinned parent rename control failed");
+   Need(DeleteFileW(file),"unpinned delete control failed");Canary(file,canary);
+   IntPtr writable=CreateFileW(file,0x40000000,1,IntPtr.Zero,3,0,IntPtr.Zero);Need(writable!=new IntPtr(-1),"unpinned write control failed");P32PinnedRoot.CloseHandle(writable);
+   Record(result,"unpinned mutation controls succeed");
+   link=Path.Combine(root,"junction");hard=Path.Combine(root,"hard.txt");Junction(link,outside);Need(CreateHardLinkW(hard,secret,IntPtr.Zero),"hardlink setup failed");
+   Need(Equal(File.ReadAllBytes(Path.Combine(link,"secret.txt")),other)&&Equal(File.ReadAllBytes(hard),other),"link positive controls failed");Record(result,"junction and hardlink fixtures verified");
+   using(P32PinnedRoot pinned=new P32PinnedRoot(root)){
+    using(P32PinnedRoot.PinnedRead read=pinned.OpenRead("input/sample.txt")){
+     Need(Equal(read.ReadBounded(65536),canary),"same-handle content mismatch");Record(result,"nested same-handle canary read");
+     SharingFailure(MoveFileExW(root,root+"-renamed",0),"root rename");Record(result,"root rename blocked while pinned");
+     SharingFailure(MoveFileExW(nested,nested+"-renamed",0),"parent rename");Record(result,"parent rename blocked while pinned");
+     SharingFailure(DeleteFileW(file),"leaf delete");Record(result,"leaf delete blocked while pinned");
+     writable=CreateFileW(file,0x40000000,1,IntPtr.Zero,3,0,IntPtr.Zero);int writeError=Marshal.GetLastWin32Error();
+     if(writable!=new IntPtr(-1)){P32PinnedRoot.CloseHandle(writable);throw new InvalidOperationException("leaf write opened while pinned");}
+     Need(writeError==32,"leaf write failed for an unexpected reason");Record(result,"leaf write blocked while pinned");
+    }
+    DeniedRead(pinned,"junction/secret.txt","reparse-rejected");Record(result,"directory junction rejected");
+    DeniedRead(pinned,"hard.txt","hard-link-rejected");Record(result,"hardlink leaf rejected");
+    foreach(string bad in new string[]{"../outside/secret.txt","input/sample.txt:ads",@"\\host\share\file",@"\\?\C:\file","CON.txt","input\\sample.txt"}){
+     DeniedRead(pinned,bad,"invalid-relative-path");Record(result,"unsafe relative name rejected "+(result.Tests.Count-8));
+    }
+    bool bound=false;try{using(P32PinnedRoot.PinnedRead small=pinned.OpenRead("input/sample.txt")){small.ReadBounded(1);}}catch(P32Refusal e){if(e.Code=="file-size-rejected")bound=true;else throw;}
+    Need(bound,"size cap not enforced");Record(result,"oversized read rejected");
+   }
+   Need(MoveFileExW(nested,nested+"-renamed",0)&&MoveFileExW(nested+"-renamed",nested,0),"parent handle not released");
+   Need(MoveFileExW(root,root+"-renamed",0)&&MoveFileExW(root+"-renamed",root,0),"root handle not released");Record(result,"renames work after handle disposal");
+   Need(Equal(File.ReadAllBytes(secret),other)&&Equal(File.ReadAllBytes(file),canary),"synthetic source modified");Record(result,"synthetic canaries unchanged");
+   result.AllTestsPassed=result.Tests.Count==18;
+   Need(result.AllTestsPassed,"unexpected test count");
+  }catch(Exception e){result.Error=e.Message;result.AllTestsPassed=false;}
+  finally{
+   if(result.FixtureCreated){
+    try{
+     // Exact known paths only; never recursive. RemoveDirectory removes a junction itself.
+     if(hard!=null&&File.Exists(hard))Need(DeleteFileW(hard),"hardlink cleanup failed");
+     if(link!=null&&Directory.Exists(link))Need(RemoveDirectoryW(link),"junction cleanup failed");
+     if(file!=null&&File.Exists(file))Need(DeleteFileW(file),"canary cleanup failed");
+     if(secret!=null&&File.Exists(secret))Need(DeleteFileW(secret),"outside canary cleanup failed");
+     if(nested!=null&&Directory.Exists(nested))Need(RemoveDirectoryW(nested),"nested cleanup failed");
+     if(root!=null&&Directory.Exists(root))Need(RemoveDirectoryW(root),"root cleanup failed");
+     if(outside!=null&&Directory.Exists(outside))Need(RemoveDirectoryW(outside),"outside cleanup failed");
+     Need(RemoveDirectoryW(fixture),"fixture cleanup failed");
+     result.FixtureRemoved=Directory.GetFileSystemEntries(Path.GetDirectoryName(fixture),Path.GetFileName(fixture),SearchOption.TopDirectoryOnly).Length==0;
+    }catch{result.FixtureRemoved=false;}
+    if(!result.FixtureRemoved){result.Error=(result.Error==null?"":result.Error+"; ")+"fixture cleanup unverified";result.AllTestsPassed=false;}
+   }
+  }
+  return result;
+ }
+}

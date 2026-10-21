@@ -3,13 +3,15 @@ import {handleSocialContentTool,SOCIAL_CONTENT_TOOL_NAMES,SOCIAL_CONTENT_TOOLS} 
 import {readSocialContent,proposeSocialContent} from './store'
 import {readSchedules} from '../scheduling/store'
 import {FAMILY_WEEKLY_PROJECT_ID} from './family-weekly-coverage'
-import {FamilySourceStoreError,listFamilyMonthSourceReviews,proposeFamilyMonthSource} from './family-month-source-store'
+import {FamilySourceStoreError,listFamilyMonthSourceReviews,proposeFamilyMonthSource,readLatestOwnerApprovedFamilyMonthSource} from './family-month-source-store'
+import {resolveFamilyOwnerApprovedPublicSource} from './family-month-source-activation'
 
 vi.mock('./store',()=>({
  readSocialContent:vi.fn(),proposeSocialContent:vi.fn(),
 }))
 vi.mock('../scheduling/store',()=>({readSchedules:vi.fn()}))
-vi.mock('./family-month-source-store',async(importOriginal)=>({...await importOriginal<typeof import('./family-month-source-store')>(),listFamilyMonthSourceReviews:vi.fn(),proposeFamilyMonthSource:vi.fn()}))
+vi.mock('./family-month-source-store',async(importOriginal)=>({...await importOriginal<typeof import('./family-month-source-store')>(),listFamilyMonthSourceReviews:vi.fn(),proposeFamilyMonthSource:vi.fn(),readLatestOwnerApprovedFamilyMonthSource:vi.fn()}))
+vi.mock('./family-month-source-activation',()=>({resolveFamilyOwnerApprovedPublicSource:vi.fn()}))
 const principal={userId:'10000000-0000-4000-8000-000000000001',
  allowedProjectIds:[FAMILY_WEEKLY_PROJECT_ID]}
 const ownerConversation='20000000-0000-4000-8000-000000000002'
@@ -19,6 +21,7 @@ const planId='e745041f-ad3a-493f-bd3b-025525d561b2'
 beforeEach(()=>{
  vi.clearAllMocks()
  vi.stubEnv('FAMILY_MONTH_SOURCE_REVIEW_ENABLED','false')
+ vi.stubEnv('FAMILY_PUBLIC_SOURCE_ACTIVATION_ENABLED','false')
  vi.mocked(readSocialContent).mockResolvedValue({
   project:{id:FAMILY_WEEKLY_PROJECT_ID,name:'Familje-Stunden',slug:'familje-stunden'},
   posts:[],assets:[],hasMoreAssets:false,planApproved:true,dispatchEnabled:false,
@@ -199,6 +202,74 @@ describe('Atlas weekly planning tool permission and side-effect boundary',()=>{
     conversationId:ownerConversation,expectedRevisionId:null})
    expect(first[2].draft.mediaIds).toEqual([])
    expect(first[2].draft.scheduledAt).not.toBe(null)
+  }finally{vi.useRealTimers()}
+ })
+ it('after verified owner approval Atlas can prepare next-month review drafts with one registered image',async()=>{
+  vi.stubEnv('FAMILY_PUBLIC_SOURCE_ACTIVATION_ENABLED','true')
+  vi.useFakeTimers()
+  try{
+   vi.setSystemTime(new Date('2026-11-23T18:00:00.000Z'))
+   const ownerSource={
+    kind:'family-owner-approved-public-source-v1',
+    projectId:FAMILY_WEEKLY_PROJECT_ID,sourceMonth:'2026-12',
+    candidateId:'30000000-0000-4000-8000-000000000003',
+    candidateSha256:'a'.repeat(64),
+    decisionId:'40000000-0000-4000-8000-000000000004',
+    approvedAt:'2026-11-23T11:00:00Z',sourceIntegrityVerified:true,
+    verifiedImageCount:1,
+    verifiedImageAssetIds:['50000000-0000-4000-8000-000000000005'],
+    templateDates:['2026-11-27'],
+    templates:[{date:'2026-11-27',variant:'winter',
+     title:'December source verified',text:'An approved public month preview caption.'}],
+    canDraftReviewProposals:true,canGenerateMedia:false,
+    canOpenMemberContent:false,canSchedule:false,canPublish:false,canSpend:false,
+   }
+   vi.mocked(resolveFamilyOwnerApprovedPublicSource).mockResolvedValue(ownerSource as any)
+   vi.mocked(readLatestOwnerApprovedFamilyMonthSource).mockResolvedValue({
+    candidateId:ownerSource.candidateId,candidateSha256:ownerSource.candidateSha256,
+    decisionId:ownerSource.decisionId,month:'2026-12',
+   } as any)
+   vi.mocked(proposeSocialContent).mockResolvedValue({} as any)
+   const result=await handleSocialContentTool('prepare_family_weekly_review_drafts',
+    {projectId:FAMILY_WEEKLY_PROJECT_ID},principal,ownerConversation,fakeDb) as any
+   expect(result).toMatchObject({kind:'family_weekly_review_staging_v1',
+    created:2,canPublish:false,canApprove:false,aiGenerationCalls:0,
+   })
+   expect(resolveFamilyOwnerApprovedPublicSource).toHaveBeenCalledWith(
+    fakeDb,principal,'2026-12')
+   expect(readLatestOwnerApprovedFamilyMonthSource).toHaveBeenCalledTimes(2)
+   expect(proposeSocialContent).toHaveBeenCalledTimes(2)
+   const proposals=vi.mocked(proposeSocialContent).mock.calls.map(x=>x[2])
+   expect(proposals[0].draft.mediaIds).toEqual([])
+   expect(proposals[1].draft.mediaIds).toEqual(ownerSource.verifiedImageAssetIds)
+   expect(proposals[1].draft.scheduledAt).toBe('2026-11-27T19:30:00.000Z')
+  }finally{vi.useRealTimers()}
+ })
+ it('a newer source decision blocks all drafts before the write',async()=>{
+  vi.stubEnv('FAMILY_PUBLIC_SOURCE_ACTIVATION_ENABLED','true')
+  vi.useFakeTimers()
+  try{
+   vi.setSystemTime(new Date('2026-11-23T18:00:00.000Z'))
+   vi.mocked(resolveFamilyOwnerApprovedPublicSource).mockResolvedValue({
+    kind:'family-owner-approved-public-source-v1',projectId:FAMILY_WEEKLY_PROJECT_ID,
+    sourceMonth:'2026-12',candidateId:'30000000-0000-4000-8000-000000000003',
+    candidateSha256:'a'.repeat(64),decisionId:'40000000-0000-4000-8000-000000000004',
+    approvedAt:'2026-11-23T11:00:00Z',sourceIntegrityVerified:true,
+    verifiedImageCount:1,verifiedImageAssetIds:['50000000-0000-4000-8000-000000000005'],
+    templateDates:['2026-11-27'],templates:[{
+     date:'2026-11-27',variant:'winter',title:'December',
+     text:'A reviewed source for December month.',
+    }],canDraftReviewProposals:true,canGenerateMedia:false,
+    canOpenMemberContent:false,canSchedule:false,canPublish:false,canSpend:false,
+   } as any)
+   vi.mocked(readLatestOwnerApprovedFamilyMonthSource).mockResolvedValue({
+    candidateId:'60000000-0000-4000-8000-000000000006',
+    candidateSha256:'b'.repeat(64),decisionId:'70000000-0000-4000-8000-000000000007',
+   } as any)
+   const result=await handleSocialContentTool('prepare_family_weekly_review_drafts',
+    {projectId:FAMILY_WEEKLY_PROJECT_ID},principal,ownerConversation,fakeDb) as any
+   expect(result.code).toBe('REVISION_CONFLICT')
+   expect(proposeSocialContent).not.toHaveBeenCalled()
   }finally{vi.useRealTimers()}
  })
  it('refuses changed tenant, unsolicited extra settings, or missing owner conversation',async()=>{

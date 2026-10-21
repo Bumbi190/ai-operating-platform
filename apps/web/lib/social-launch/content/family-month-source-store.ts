@@ -179,3 +179,42 @@ export async function decideFamilyMonthSource(db:Db,actor:SocialContentPrincipal
   stored:true,activationAllowed:false as const,
   canPublish:false as const}
 }
+
+
+/**
+ * Activate-for-draft-read candidate selection only: no mutation. A durable
+ * owner decision is necessary but not sufficient (media/source verifier follows).
+ * The most recent candidate alone is eligible; a new unapproved revision
+ * blocks an earlier approved one rather than silently rolling back.
+ */
+export async function readLatestOwnerApprovedFamilyMonthSource(
+ db:Db,actor:SocialContentPrincipal,month:string,
+):Promise<{candidateId:string;candidateSha256:string;month:string;
+  proposal:FamilyMonthSourceProposal;decisionId:string;decidedAt:string}>{
+ validateMonth(month)
+ await ownerProof(db,actor)
+ await currentPlan(db,actor)
+ const candidates=await latestCandidates(db,month)
+ const latest=candidates[0]
+ if(!latest)fail('REVIEW_REQUIRED')
+ const verified=shape(latest,undefined)
+ if(latest.plan_revision_id!==PLAN||latest.created_by!==actor.userId)
+  fail('REVIEW_REQUIRED')
+ const all=await decisions(db,[latest])
+ if(all.length!==1)fail('REVIEW_REQUIRED')
+ const decision=all[0]
+ if(!decision||decision.decision!=='approve'||
+  decision.candidate_id!==latest.id||
+  decision.project_id!==FAMILY_WEEKLY_PROJECT_ID||
+  decision.decided_by!==actor.userId||
+  decision.candidate_sha256!==latest.candidate_sha256||
+  !UUID.test(decision.id))
+  fail('REVIEW_REQUIRED')
+ // A malformed original source or a changed stored SHA must never activate.
+ if(verified.candidateSha256!==latest.candidate_sha256)fail('CONFLICT')
+ return {
+  candidateId:latest.id,candidateSha256:latest.candidate_sha256,
+  month:latest.source_month,proposal:latest.payload,
+  decisionId:decision.id,decidedAt:decision.decided_at,
+ }
+}

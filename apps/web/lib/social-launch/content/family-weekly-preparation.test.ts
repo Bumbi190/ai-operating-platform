@@ -2,6 +2,7 @@
 import {prepareFamilyReviewCandidates,stageFamilyReviewCandidates}
  from './family-weekly-preparation'
 import {FAMILY_WEEKLY_PROJECT_ID} from './family-weekly-coverage'
+import type {OwnerApprovedPublicSource} from './family-month-source-activation'
 import type {SocialContentView,SocialContentPost} from './types'
 import type {ScheduleWorkspaceView} from '../scheduling/store'
 import {resolveStockholmSchedule} from '../scheduling/time'
@@ -43,6 +44,24 @@ function existing(channel:'facebook'|'instagram',date:string):SocialContentPost{
   },
  }
 }
+function approvedSource():OwnerApprovedPublicSource{
+ return {
+  kind:'family-owner-approved-public-source-v1',
+  projectId:FAMILY_WEEKLY_PROJECT_ID,sourceMonth:'2026-12',
+  candidateId:'30000000-0000-4000-8000-000000000003',
+  candidateSha256:'a'.repeat(64),
+  decisionId:'40000000-0000-4000-8000-000000000004',
+  approvedAt:'2026-11-23T12:00:00.000Z',sourceIntegrityVerified:true,
+  verifiedImageCount:1,
+  verifiedImageAssetIds:['20000000-0000-4000-8000-000000000002'],
+  templateDates:['2026-11-27'],
+  templates:[{date:'2026-11-27',variant:'winter',
+   title:'December preview with Nova and Pling',
+   text:'A reviewed owner-sourced caption for a December preview.'}],
+  canDraftReviewProposals:true,canGenerateMedia:false,
+  canOpenMemberContent:false,canSchedule:false,canPublish:false,canSpend:false,
+ }
+}
 describe('Cost-free, grounded Familje-Stunden candidate preparation',()=>{
  it('prepares at most 4 review drafts with scheduled calendar intent, not released media',()=>{
   const plans=prepareFamilyReviewCandidates(input())
@@ -80,6 +99,77 @@ describe('Cost-free, grounded Familje-Stunden candidate preparation',()=>{
   const x=input()
   x.now='2026-11-01T19:00:00.000Z'
   expect(prepareFamilyReviewCandidates(x)).toEqual([])
+ })
+ it('a separately approved and SHA-verified December preview creates exact Nov 27 review drafts',()=>{
+  const x=input()
+  x.now='2026-11-23T18:00:00.000Z'
+  expect(prepareFamilyReviewCandidates(x)).toEqual([])
+  const drafts=prepareFamilyReviewCandidates({...x,ownerApprovedSource:approvedSource()})
+  expect(drafts).toHaveLength(2)
+  expect(drafts.map(p=>p.draft.channel)).toEqual(['facebook','instagram'])
+  for(const d of drafts){
+   expect(d.draft.scheduledAt).toBe(resolveStockholmSchedule('2026-11-27T20:30'))
+   expect(d.draft.title).toBe('December preview with Nova and Pling')
+   expect(d.sourceId).toContain('owner-approved-')
+   expect(d.sourceSha256).toBe('a'.repeat(64))
+   expect(d.expectedRevisionId).toBeNull()
+  }
+  expect(drafts[0].draft.mediaIds).toEqual([])
+  expect(drafts[1].draft.mediaIds).toEqual(approvedSource().verifiedImageAssetIds)
+  expect(drafts[1].draft.format).toBe('image')
+  expect(drafts.every(d=>d.draft.linkUrl===null)).toBe(true)
+  const repeated=prepareFamilyReviewCandidates({...x,ownerApprovedSource:approvedSource()})
+  expect(repeated).toEqual(drafts)
+ })
+ it('approved sources cannot replace existing posts or create duplicate review slots',()=>{
+  const x=input()
+  x.now='2026-11-23T18:00:00.000Z'
+  x.content.posts.push(existing('facebook','2026-11-27T20:30'))
+  const drafts=prepareFamilyReviewCandidates({...x,ownerApprovedSource:approvedSource()})
+  expect(drafts).toHaveLength(1)
+  expect(drafts[0].draft.channel).toBe('instagram')
+  x.content.posts.push(existing('instagram','2026-11-27T20:30'))
+  expect(prepareFamilyReviewCandidates({...x,ownerApprovedSource:approvedSource()})).toEqual([])
+ })
+ it('owner-approved source refuses direct save if latest owner-decision recheck is omitted',async()=>{
+  const x=input();x.now='2026-11-23T18:00:00.000Z'
+  const save=vi.fn(async(_draft:any)=>({status:'proposal'}))
+  await expect(stageFamilyReviewCandidates({...x,principal,conversationId,
+   ownerApprovedSource:approvedSource(),save}))
+   .rejects.toThrow('FAMILY_DRAFT_LATEST_OWNER_APPROVAL_REQUIRED')
+  expect(save).not.toHaveBeenCalled()
+ })
+ it('rechecks latest decision before each source draft and stops after first stale SHA',async()=>{
+  const x=input();x.now='2026-11-23T18:00:00.000Z'
+  const save=vi.fn(async(_draft:any)=>({status:'proposal'}))
+  const recheck=vi.fn().mockResolvedValueOnce(undefined)
+   .mockRejectedValueOnce(new Error('NEWER_SOURCE_REVIEW'))
+  await expect(stageFamilyReviewCandidates({...x,principal,conversationId,
+   ownerApprovedSource:approvedSource(),save,
+   validateOwnerSourceBeforeSave:recheck}))
+   .rejects.toThrow('NEWER_SOURCE_REVIEW')
+  expect(recheck).toHaveBeenCalledTimes(2)
+  expect(save).toHaveBeenCalledTimes(1)
+  expect(save.mock.calls[0][0].draft.mediaIds).toEqual([])
+ })
+ it('wrong approved month or non-project image IDs cannot seed another campaign',()=>{
+  const x=input();x.now='2026-11-23T18:00:00.000Z'
+  const wrongMonth=approvedSource()
+  wrongMonth.sourceMonth='2027-01'
+  expect(prepareFamilyReviewCandidates({...x,ownerApprovedSource:wrongMonth})).toEqual([])
+  const wrongMedia=approvedSource()
+  wrongMedia.verifiedImageAssetIds=['not-a-project-image']
+  expect(prepareFamilyReviewCandidates({...x,ownerApprovedSource:wrongMedia})).toEqual([])
+ })
+ it('changed reviewed source SHA changes idempotency key but not slot identity',()=>{
+  const x=input();x.now='2026-11-23T18:00:00.000Z'
+  const original=prepareFamilyReviewCandidates({...x,ownerApprovedSource:approvedSource()})
+  const different=approvedSource()
+  different.candidateSha256='b'.repeat(64)
+  const changed=prepareFamilyReviewCandidates({...x,ownerApprovedSource:different})
+  expect(changed).toHaveLength(2)
+  expect(changed[0].postId).toBe(original[0].postId)
+  expect(changed[0].idempotencyKey).not.toBe(original[0].idempotencyKey)
  })
  it('fails closed on changed plan or project and unreasonable batch cap',()=>{
   for(const change of [

@@ -3,6 +3,7 @@ import type {SocialContentInput,SocialContentView,SocialContentPrincipal} from '
 import type {ScheduleWorkspaceView} from '../scheduling/store'
 import {buildFamilyWeekCoverage,FAMILY_WEEKLY_PROJECT_ID} from './family-weekly-coverage'
 import {FAMILY_PUBLIC_PREVIEW_EVIDENCE,getFamilyPublicEditorialSlot} from './family-editorial-packs'
+import type {OwnerApprovedPublicSource} from './family-month-source-activation'
 
 /**
  * Project-owned, vetted public evidence only. Captions still need human review.
@@ -37,6 +38,7 @@ export function prepareFamilyReviewCandidates(input:{
  schedule:ScheduleWorkspaceView
  now:string
  maxDrafts?:number
+ ownerApprovedSource?:OwnerApprovedPublicSource
 }):FamilyReviewProposal[]{
  const {content,schedule,now}=input
  const maxDrafts=input.maxDrafts??4
@@ -51,13 +53,61 @@ export function prepareFamilyReviewCandidates(input:{
   if(slot.status!=='needs_content'||slot.kind!=='ordinary')continue
   // The source registry is the ONLY authority for eligible dates and claims.
   // Unknown months/dates return null. Never reuse a previous month's template.
-  const source=getFamilyPublicEditorialSlot({
+  const pinned=getFamilyPublicEditorialSlot({
    projectId:FAMILY_WEEKLY_PROJECT_ID,
    planRevisionId:content.currentPlanRevisionId,kind:slot.kind,
    channel:slot.channel,date:slot.localMinute.slice(0,10),
   })
-  if(!source)continue
+  const approved=input.ownerApprovedSource
+  const approvedRelease=approved?.sourceMonth&&
+   /^20\d{2}-(0[1-9]|1[0-2])$/.test(approved.sourceMonth)?
+   Date.parse(approved.sourceMonth+'-01T00:00:00.000Z'):NaN
+  const slotDate=Date.parse(slot.localMinute.slice(0,10)+'T00:00:00.000Z')
+  const nextCalendarMonth=Number.isFinite(slotDate)?
+   new Date(Date.UTC(
+    new Date(slotDate).getUTCFullYear(),
+    new Date(slotDate).getUTCMonth()+1,1,
+   )).toISOString().slice(0,7):null
+  const eligibleDate=Number.isFinite(approvedRelease)&&
+   approved?.sourceMonth===nextCalendarMonth&&
+   approvedRelease-slotDate>0&&approvedRelease-slotDate<=45*86400000
+  const trustedApproved=eligibleDate&&
+   approved?.kind==='family-owner-approved-public-source-v1'&&
+   approved.projectId===FAMILY_WEEKLY_PROJECT_ID&&
+   approved.sourceIntegrityVerified===true&&
+   approved.canDraftReviewProposals===true&&
+   approved.canPublish===false&&approved.canGenerateMedia===false&&
+   approved.canOpenMemberContent===false&&approved.canSchedule===false&&
+   approved.canSpend===false&&
+   /^[a-f0-9]{64}$/.test(approved.candidateSha256)&&
+   /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(approved.candidateId)&&
+   /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(approved.decisionId)&&
+   Array.isArray(approved.templates)&&
+   Array.isArray(approved.verifiedImageAssetIds)&&
+   approved.verifiedImageAssetIds.length>=1&&
+   approved.verifiedImageAssetIds.length<=3&&
+   approved.verifiedImageAssetIds.every(id=>/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id))
+  const matched=trustedApproved?
+   approved!.templates.find(template=>template.date===slot.localMinute.slice(0,10)):undefined
+  // No source may override the existing pinned marketing preview silently.
+  if(pinned&&matched)throw Error('FAMILY_DRAFT_SOURCE_OVERLAP')
   const channel=slot.channel
+  const source=pinned??(matched?{
+   sourceId:'owner-approved-'+approved!.candidateId,
+   sourceSha256:approved!.candidateSha256,
+   variant:matched.variant,
+   draft:{
+    channel,format:channel==='facebook'?'text' as const:'image' as const,
+    title:matched.title,text:matched.text,linkUrl:null,
+    // Owner verified a single public marketing asset: its image ID may
+    // be attached to a review DRAFT, never to a published post automatically.
+    mediaIds:channel==='instagram'&&approved!.verifiedImageAssetIds.length===1?
+     [...approved!.verifiedImageAssetIds]:[],
+    mediaBrief:channel==='instagram'?
+     'Granska den projekt?gda, SHA-verifierade marknadsf?ringsbilden och texten innan inneh?llet godk?nns.':'',
+   },
+  }:null)
+  if(!source)continue
   const draft:SocialContentInput={
    ...source.draft,scheduledAt:slot.scheduledAt,
   }
@@ -101,6 +151,8 @@ export async function stageFamilyReviewCandidates(input:{
   draft:SocialContentInput
  })=>Promise<unknown>
  maxDrafts?:number
+ ownerApprovedSource?:OwnerApprovedPublicSource
+ validateOwnerSourceBeforeSave?:(candidate:FamilyReviewProposal)=>Promise<void>
 }){
  const {principal,conversationId}=input
  if(!principal.allowedProjectIds.includes(FAMILY_WEEKLY_PROJECT_ID)||
@@ -110,6 +162,13 @@ export async function stageFamilyReviewCandidates(input:{
  const pending=prepareFamilyReviewCandidates(input)
  const receipts:{postId:string;channel:string;scheduledAt:string}[]=[]
  for(const candidate of pending){
+  if(candidate.sourceId.startsWith('owner-approved-')){
+   // The review source must be checked again immediately before each
+   // draft save. A user-supplied object cannot bypass the durable store.
+   if(!input.validateOwnerSourceBeforeSave)
+    throw Error('FAMILY_DRAFT_LATEST_OWNER_APPROVAL_REQUIRED')
+   await input.validateOwnerSourceBeforeSave(candidate)
+  }
   // Existing RPC enforces caller/conversation scope, plan revision and
   // idempotency. Stop on first failure rather than guessing success.
   await input.save({

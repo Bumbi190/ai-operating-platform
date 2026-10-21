@@ -1,7 +1,7 @@
 ﻿import {beforeEach,describe,expect,it,vi} from 'vitest'
 import {
  listFamilyMonthSourceReviews,proposeFamilyMonthSource,
- decideFamilyMonthSource,FamilySourceStoreError,
+ decideFamilyMonthSource,readLatestOwnerApprovedFamilyMonthSource,FamilySourceStoreError,
 } from './family-month-source-store'
 import type {FamilyMonthSourceProposal} from './family-month-source-review'
 import {FAMILY_WEEKLY_PROJECT_ID} from './family-weekly-coverage'
@@ -145,6 +145,60 @@ describe('private, durable source review store on isolated append-only tables',(
   await expect(proposeFamilyMonthSource(db as any,actor,value))
    .rejects.toMatchObject({code:'INVALID_INPUT'})
   expect(db.tables.family_month_source_candidates).toHaveLength(0)
+ })
+ it('reads only a persisted approved latest candidate for later public source verification',async()=>{
+  const db=new MemoryDb()
+  const proposed=await proposeFamilyMonthSource(db as any,actor,candidate())
+  await expect(readLatestOwnerApprovedFamilyMonthSource(db as any,actor,'2026-12'))
+   .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+  await decideFamilyMonthSource(db as any,actor,{
+   month:'2026-12',candidateId:proposed.candidateId,
+   candidateSha256:proposed.candidateSha256,decision:'approve',confirmed:true,
+  })
+  const result=await readLatestOwnerApprovedFamilyMonthSource(db as any,actor,'2026-12')
+  expect(result).toMatchObject({
+   month:'2026-12',candidateId:proposed.candidateId,
+   candidateSha256:proposed.candidateSha256,proposal:candidate(),
+  })
+  expect(result.decisionId).toMatch(/^30000000-/)
+ })
+ it('rejects an owner decision and newer unapproved source block activation',async()=>{
+  const db=new MemoryDb()
+  const old=await proposeFamilyMonthSource(db as any,actor,candidate())
+  await decideFamilyMonthSource(db as any,actor,{
+   month:'2026-12',candidateId:old.candidateId,
+   candidateSha256:old.candidateSha256,decision:'reject',confirmed:true,
+  })
+  await expect(readLatestOwnerApprovedFamilyMonthSource(db as any,actor,'2026-12'))
+   .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+  const newer=candidate();newer.proposedCopy[0].text+=' Different caption.'
+  await proposeFamilyMonthSource(db as any,actor,newer)
+  await expect(readLatestOwnerApprovedFamilyMonthSource(db as any,actor,'2026-12'))
+   .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+ })
+ it('a newer unapproved revision also blocks an older approved candidate',async()=>{
+  const db=new MemoryDb()
+  const older=await proposeFamilyMonthSource(db as any,actor,candidate())
+  await decideFamilyMonthSource(db as any,actor,{
+   month:'2026-12',candidateId:older.candidateId,
+   candidateSha256:older.candidateSha256,decision:'approve',confirmed:true,
+  })
+  const newer=candidate();newer.proposedCopy[0].text+=' More text.'
+  await proposeFamilyMonthSource(db as any,actor,newer)
+  await expect(readLatestOwnerApprovedFamilyMonthSource(db as any,actor,'2026-12'))
+   .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+  expect(db.tables.family_month_source_decisions).toHaveLength(1)
+ })
+ it('approved candidate with tampered stored decision hash is not an activatable source',async()=>{
+  const db=new MemoryDb()
+  const proposed=await proposeFamilyMonthSource(db as any,actor,candidate())
+  await decideFamilyMonthSource(db as any,actor,{
+   month:'2026-12',candidateId:proposed.candidateId,
+   candidateSha256:proposed.candidateSha256,decision:'approve',confirmed:true,
+  })
+  db.tables.family_month_source_decisions[0].candidate_sha256='b'.repeat(64)
+  await expect(readLatestOwnerApprovedFamilyMonthSource(db as any,actor,'2026-12'))
+   .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
  })
  it('owner scope and current plan are mandatory for every store operation',async()=>{
   const db=new MemoryDb()

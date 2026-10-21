@@ -9,6 +9,9 @@ import {readSchedules} from '../scheduling/store'
 import {buildFamilyWeekCoverage,FAMILY_WEEKLY_PROJECT_ID} from './family-weekly-coverage'
 import {stageFamilyReviewCandidates} from './family-weekly-preparation'
 import {getFamilyEditorialReadiness} from './family-editorial-packs'
+import {resolveFamilyOwnerApprovedPublicSource} from './family-month-source-activation'
+import type {OwnerApprovedPublicSource} from './family-month-source-activation'
+import {readLatestOwnerApprovedFamilyMonthSource} from './family-month-source-store'
 import {familyMonthSourceStatus} from './family-month-source-review'
 import type {FamilyMonthSourceProposal} from './family-month-source-review'
 import {
@@ -79,8 +82,41 @@ export async function handleSocialContentTool(name:string,input:Record<string,un
    if(input.projectId!==FAMILY_WEEKLY_PROJECT_ID)throw new SocialContentError('NOT_FOUND')
    const content=await readSocialContent(db,p,{projectId:FAMILY_WEEKLY_PROJECT_ID,conversationId})
    const schedule=await readSchedules(db,p,{projectId:FAMILY_WEEKLY_PROJECT_ID})
+   const now=new Date().toISOString()
+   let ownerApprovedSource:OwnerApprovedPublicSource|undefined
+   if(process.env.FAMILY_PUBLIC_SOURCE_ACTIVATION_ENABLED==='true'){
+    // Only a persisted owner decision and independently hash-verified
+    // project-owned media can supply new-month content, not chat text.
+    const localParts=new Intl.DateTimeFormat('en-US',{timeZone:'Europe/Stockholm',
+     year:'numeric',month:'2-digit'}).formatToParts(new Date(now))
+    const y=Number(localParts.find(x=>x.type==='year')?.value)
+    const m=Number(localParts.find(x=>x.type==='month')?.value)
+    if(!Number.isInteger(y)||!Number.isInteger(m)||m<1||m>12)
+     throw new SocialContentError('UNAVAILABLE')
+    const nextMonth=m===12?String(y+1)+'-01':String(y)+'-'+String(m+1).padStart(2,'0')
+    try{
+     ownerApprovedSource=await resolveFamilyOwnerApprovedPublicSource(db,p,nextMonth)
+    }catch(error){
+     if(!(error instanceof FamilySourceStoreError)||
+        error.code!=='REVIEW_REQUIRED')throw error
+     // Unapproved next month remains missing. Existing pinned previews may
+     // still fill their exact original dates, without future-month guesses.
+    }
+   }
    const result=await stageFamilyReviewCandidates({
-    principal:p,conversationId,content,schedule,now:new Date().toISOString(),
+    principal:p,conversationId,content,schedule,now,
+    ownerApprovedSource,
+    validateOwnerSourceBeforeSave:async candidate=>{
+     if(!ownerApprovedSource)throw new SocialContentError('REVIEW_REQUIRED')
+     const latest=await readLatestOwnerApprovedFamilyMonthSource(
+      db,p,ownerApprovedSource.sourceMonth,
+     )
+     if(latest.candidateId!==ownerApprovedSource.candidateId||
+        latest.candidateSha256!==ownerApprovedSource.candidateSha256||
+        latest.decisionId!==ownerApprovedSource.decisionId||
+        candidate.sourceSha256!==latest.candidateSha256)
+      throw new SocialContentError('REVISION_CONFLICT')
+    },
     save:proposal=>proposeSocialContent(db,p,proposal),
    })
    return {...result,workspaceUrl:'/projects/familje-stunden/social#content'}

@@ -387,6 +387,51 @@ copy-only bootstrap with protected ownership/ACLs, plus post-copy
 hash, signer and ACL verification. The current modules are solely
 planning and verification primitives, **not an installer**.
 
+## Reviewer registry and replay boundary (development-only, 2026-10-21)
+
+The new pure `worker-handoff-reviewer-registry.mjs` accepts a proposed
+reviewer registry **only when its serialized SHA-256 matches a separately
+supplied, externally pinned digest**. It requires an active P-256 reviewer,
+valid DER public-key/SPKI fingerprint, fixed repository and host, uniquely
+enrolled reviewer IDs, and rejects revoked/suspended reviewers, untrusted
+keys, modified manifests, stale Git commit bindings, and self-review.
+Author ID, commit SHA and manifest SHA must be supplied from independent
+project policy; none may be derived solely from the reviewer's signed claim.
+
+**The registry is not enrolled or authorized for production**. A writable
+file whose fingerprint is supplied by its own author does not establish an
+independently trusted human identity, even if its fields claim
+`independentlyEnrolled=true`. The verifier therefore always returns
+`externalEnrollmentAuthorityEstablished=false`,
+`reviewerActualIdentityVerified=false`,
+`reviewerPermissionToCopy=false`, and
+`bootstrapAuthorized=false`. No real reviewer credential or private
+key has been created.
+
+`worker-handoff-nonce-fixture.mjs` is a **synthetic replay-rejection test**:
+it validates the signed review+registry+manifest, then exclusively creates
+a non-executing receipt named after a domain-separated nonce SHA-256.
+The test directory MUST be a specifically marked direct child of OS TEMP.
+A duplicate or truncated old receipt blocks a second submission; revoked
+reviewers or expired signatures create no receipt. The receipt cannot be
+used for creative work, copying, privileged installation or production
+nonce consumption. All tests use temporary throwaway P-256 keys and delete
+their isolated fixture after the test. No `ProgramData` changes occur.
+
+Twelve independent reviewer-registry tests plus ten synthetic receipt
+tests passed locally, including missing author identity and replay.
+Together with the earlier 62 handoff tests, the SDF-1B Linux CI anti-skip
+floor now requires **84/84 tests without any skips**.
+
+**Still required** before real handoff: externally operated enrollment/key
+lifecycle with human identity proof, separation-of-duties and revocation;
+an approved reviewer policy and immutable digest distributed out of band;
+a protected production-grade nonce/approval store with durable recovery,
+concurrent writers, fencing and revocation; an independently reviewed
+copy-only elevated bootstrap; and complete Windows file, signer, ACL,
+network/process isolation audits. No API or script now grants installation
+permission, and `omnira-media-worker` remains disabled.
+
 ## Whole-archive integrity update
 
 The staging planner additionally checks SHA-256 of the original PhotoCraft and

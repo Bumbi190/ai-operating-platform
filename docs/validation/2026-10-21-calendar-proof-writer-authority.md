@@ -349,6 +349,23 @@ a fresh fully migrated test must verify the isolated role can traverse that
 call and its table reads for both ordinary posts and news-backed revisions.
 The existing CI run does not establish those grants.
 
+An ephemeral no-data branch named `codex-calendar-proof-role-20261021` was
+then created for this exact grant test. Supabase charged at the quoted rate of
+0.01344 USD/hour. Its automatic migration status changed to
+`MIGRATIONS_FAILED` before SQL access was available; no grant candidate or
+fixture test was run on it. The branch was deleted immediately and a follow-up
+branch listing confirmed its removal. Supabase's available branch status and
+migration-list tools did not return a failing migration or error log. A
+fully migrated test environment remains blocked until the replay failure is
+identified. Do not infer that the full-schema candidate passed.
+
+The SQL candidate now conditionally includes read/helper grants for the
+news-review dependencies when that migration exists. Isolated run
+[39598334233](https://github.com/Bumbi190/ai-operating-platform/actions/runs/39598334233)
+passed the existing 51 targeted tests in the older owned PostgreSQL fixture;
+that run exercises the branch where the news-review objects are absent.
+No production role, token or queued job was changed.
+
 The current cron entry `scheduling/api.ts` calls `runScheduleTick` with
 `createAdminClient()`. `scheduling/worker.ts` resolves the credential
 through `publication/credentials.ts`; the Facebook and Instagram resolvers

@@ -331,6 +331,24 @@ fully migrated isolated database is required for the complete effective-grant
 and worker-parity test. The test-only SQL candidates must not be applied to
 main to substitute for that test.
 
+A second read-only catalog query on main inspected only relation/function names,
+owners and effective ACLs for the omitted news-review dependencies. It read no
+rows or credential values. At observation time:
+
+| Dependency | Effective `service_role` access | Test-fixture status |
+| --- | --- | --- |
+| `media_news_review_evidence` | SELECT, INSERT; no UPDATE | Omitted |
+| `media_scripts`, `media_news_items`, `asset_provenance` | SELECT, INSERT, UPDATE | Omitted |
+| `social_launch_plans`, its revisions/decisions, content posts/decisions and account bindings | SELECT, with existing writer grants varying by table | Present as partial fixture objects |
+| `platform_tokens` | SELECT, INSERT, UPDATE | Outside isolated worker grant probe |
+| `media_news_review_requirements(uuid)` and the content/schedule guard helpers | EXECUTE; SECURITY INVOKER, owned by `postgres` | News helper omitted |
+
+These effective permissions describe the current shared role, not the proposed
+isolated role. The latest content requirements function calls the news helper;
+a fresh fully migrated test must verify the isolated role can traverse that
+call and its table reads for both ordinary posts and news-backed revisions.
+The existing CI run does not establish those grants.
+
 The current cron entry `scheduling/api.ts` calls `runScheduleTick` with
 `createAdminClient()`. `scheduling/worker.ts` resolves the credential
 through `publication/credentials.ts`; the Facebook and Instagram resolvers

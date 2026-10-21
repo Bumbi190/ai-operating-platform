@@ -54,3 +54,13 @@ it('documents that direct service-role RPC can register a fabricated provider ca
  expect(f.providerReads).toBe(0)
  expect(f.providerPosts).toBe(0)
 },15000)
+
+it('documents that direct service-role UPDATE can forge published state',async()=>{
+ const f=await reconciliationFixture(db)
+ testSql("set role service_role; update public.social_publications set state='published',"+
+  "provider_id='"+f.candidate.providerId+"',permalink='"+f.candidate.permalink+"',"+
+  "confirmation='provider_id',version=version+1 where id='"+f.scope.publicationId+"';")
+ expect(testSql("select state from public.social_publications where id='"+f.scope.publicationId+"';")).toBe('published')
+ expect(f.providerReads).toBe(0)
+ expect(f.providerPosts).toBe(0)
+},15000)

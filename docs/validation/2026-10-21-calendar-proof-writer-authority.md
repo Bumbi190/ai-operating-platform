@@ -111,8 +111,8 @@ order by r.rolname, parent.rolname;
 
 select n.nspname, d.defaclrole::regrole as grantor, d.defaclobjtype,
        d.defaclacl
-from pg_default_acl d join pg_namespace n on n.oid=d.defaclnamespace
-where n.nspname='public';
+from pg_default_acl d left join pg_namespace n on n.oid=d.defaclnamespace
+where n.nspname='public' or d.defaclnamespace=0;
 ```
 
 Current source grants include direct publication INSERT/UPDATE, proof INSERT,

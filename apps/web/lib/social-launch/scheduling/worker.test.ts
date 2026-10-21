@@ -50,6 +50,10 @@ it('exercises the optional news-review grant branch in an owned SQL projection',
   create table public.asset_provenance(id uuid);
   create table public.cost_events(id uuid);
   create table public.media_news_review_evidence(id uuid);
+  create table public.platform_tokens(project_id uuid,access_token text);
+  insert into public.platform_tokens values(gen_random_uuid(),'synthetic-token');
+  revoke all on public.platform_tokens from public,anon,authenticated;
+  grant select on public.platform_tokens to service_role;
   create function public.media_news_canonical_json(jsonb) returns text
    language sql security invoker set search_path='' as $news$ select $1::text $news$;
   create function public.media_news_review_caption(public.media_scripts) returns text
@@ -73,7 +77,13 @@ it('exercises the optional news-review grant branch in an owned SQL projection',
    public.media_news_review_requirements(uuid) from public;
   ${candidate}
   set local role social_schedule_full_publisher_fixture;
+  do $probe$ begin
+   perform access_token from public.platform_tokens;
+   raise exception 'UNEXPECTED_TOKEN_READ';
+   exception when insufficient_privilege then null;
+  end $probe$;
   select jsonb_build_object(
+   'token_select',has_table_privilege(current_user,'public.platform_tokens','SELECT'),
    'reads',public.media_news_review_requirements(null::uuid),
    'snapshot',public.media_news_snapshot_requirements(null::uuid,'{}'::jsonb),
    'canonical',public.media_news_canonical_json('{}'::jsonb),
@@ -82,7 +92,7 @@ it('exercises the optional news-review grant branch in an owned SQL projection',
   );
   rollback;`)
  expect(JSON.parse(output)).toEqual({
-  reads:['0','0','0','0','0'],snapshot:[],canonical:'{}',caption:'',evidence_select:true
+  reads:['0','0','0','0','0'],snapshot:[],canonical:'{}',caption:'',evidence_select:true,token_select:false
  })
  expect(testSql("select to_regclass('public.media_news_review_evidence') is null")).toBe('t')
  expect(testSql("select to_regrole('social_schedule_full_publisher_fixture') is null")).toBe('t')

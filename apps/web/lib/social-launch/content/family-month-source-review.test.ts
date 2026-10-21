@@ -31,6 +31,8 @@ describe('Familje-Stunden owner source-review contract',()=>{
   expect(receipt.card.evidenceCount).toBe(1)
   expect(receipt.card.dates).toEqual(['2026-11-27'])
   expect(receipt.card.concerns).toHaveLength(3)
+  expect(receipt.card.concerns.every(c=>!c.includes('?'))).toBe(true)
+  expect(receipt.card.decisionPrompt).not.toContain('?')
   expect(JSON.stringify(receipt)).not.toContain('Canonical campaign hero source')
   expect(prepareFamilyMonthSourceReview(candidate)).toEqual(receipt)
  })

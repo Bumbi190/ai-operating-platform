@@ -3,14 +3,14 @@ import {handleSocialContentTool,SOCIAL_CONTENT_TOOL_NAMES,SOCIAL_CONTENT_TOOLS} 
 import {readSocialContent,proposeSocialContent} from './store'
 import {readSchedules} from '../scheduling/store'
 import {FAMILY_WEEKLY_PROJECT_ID} from './family-weekly-coverage'
-import {FamilySourceStoreError,listFamilyMonthSourceReviews,proposeFamilyMonthSource,readLatestOwnerApprovedFamilyMonthSource} from './family-month-source-store'
+import {FamilySourceStoreError,listFamilyMonthSourceReviews,proposeFamilyMonthSource,assertFamilyOwnerSourceCurrentBeforeDraft} from './family-month-source-store'
 import {resolveFamilyOwnerApprovedPublicSource} from './family-month-source-activation'
 
 vi.mock('./store',()=>({
  readSocialContent:vi.fn(),proposeSocialContent:vi.fn(),
 }))
 vi.mock('../scheduling/store',()=>({readSchedules:vi.fn()}))
-vi.mock('./family-month-source-store',async(importOriginal)=>({...await importOriginal<typeof import('./family-month-source-store')>(),listFamilyMonthSourceReviews:vi.fn(),proposeFamilyMonthSource:vi.fn(),readLatestOwnerApprovedFamilyMonthSource:vi.fn()}))
+vi.mock('./family-month-source-store',async(importOriginal)=>({...await importOriginal<typeof import('./family-month-source-store')>(),listFamilyMonthSourceReviews:vi.fn(),proposeFamilyMonthSource:vi.fn(),assertFamilyOwnerSourceCurrentBeforeDraft:vi.fn()}))
 vi.mock('./family-month-source-activation',()=>({resolveFamilyOwnerApprovedPublicSource:vi.fn()}))
 const principal={userId:'10000000-0000-4000-8000-000000000001',
  allowedProjectIds:[FAMILY_WEEKLY_PROJECT_ID]}
@@ -284,10 +284,7 @@ describe('Atlas weekly planning tool permission and side-effect boundary',()=>{
     canOpenMemberContent:false,canSchedule:false,canPublish:false,canSpend:false,
    }
    vi.mocked(resolveFamilyOwnerApprovedPublicSource).mockResolvedValue(ownerSource as any)
-   vi.mocked(readLatestOwnerApprovedFamilyMonthSource).mockResolvedValue({
-    candidateId:ownerSource.candidateId,candidateSha256:ownerSource.candidateSha256,
-    decisionId:ownerSource.decisionId,month:'2026-12',
-   } as any)
+   vi.mocked(assertFamilyOwnerSourceCurrentBeforeDraft).mockResolvedValue(undefined)
    vi.mocked(proposeSocialContent).mockResolvedValue({} as any)
    const result=await handleSocialContentTool('prepare_family_weekly_review_drafts',
     {projectId:FAMILY_WEEKLY_PROJECT_ID},principal,ownerConversation,fakeDb) as any
@@ -296,7 +293,15 @@ describe('Atlas weekly planning tool permission and side-effect boundary',()=>{
    })
    expect(resolveFamilyOwnerApprovedPublicSource).toHaveBeenCalledWith(
     fakeDb,principal,'2026-12')
-   expect(readLatestOwnerApprovedFamilyMonthSource).toHaveBeenCalledTimes(2)
+   expect(assertFamilyOwnerSourceCurrentBeforeDraft).toHaveBeenCalledTimes(2)
+   expect(assertFamilyOwnerSourceCurrentBeforeDraft).toHaveBeenCalledWith(
+    fakeDb,principal,{
+     month:'2026-12',candidateId:ownerSource.candidateId,
+     candidateSha256:ownerSource.candidateSha256,
+     decisionId:ownerSource.decisionId,
+     verifiedImageAssetIds:ownerSource.verifiedImageAssetIds,
+    },
+   )
    expect(proposeSocialContent).toHaveBeenCalledTimes(2)
    const proposals=vi.mocked(proposeSocialContent).mock.calls.map(x=>x[2])
    expect(proposals[0].draft.mediaIds).toEqual([])
@@ -321,13 +326,43 @@ describe('Atlas weekly planning tool permission and side-effect boundary',()=>{
     }],canDraftReviewProposals:true,canGenerateMedia:false,
     canOpenMemberContent:false,canSchedule:false,canPublish:false,canSpend:false,
    } as any)
-   vi.mocked(readLatestOwnerApprovedFamilyMonthSource).mockResolvedValue({
-    candidateId:'60000000-0000-4000-8000-000000000006',
-    candidateSha256:'b'.repeat(64),decisionId:'70000000-0000-4000-8000-000000000007',
-   } as any)
+   vi.mocked(assertFamilyOwnerSourceCurrentBeforeDraft).mockRejectedValue(
+    new FamilySourceStoreError('CONFLICT'),
+   )
    const result=await handleSocialContentTool('prepare_family_weekly_review_drafts',
     {projectId:FAMILY_WEEKLY_PROJECT_ID},principal,ownerConversation,fakeDb) as any
    expect(result.code).toBe('REVISION_CONFLICT')
+   expect(proposeSocialContent).not.toHaveBeenCalled()
+  }finally{vi.useRealTimers()}
+ })
+ it('archived or replaced image during Atlas preparation blocks a Facebook draft too',async()=>{
+  vi.stubEnv('FAMILY_PUBLIC_SOURCE_ACTIVATION_ENABLED','true')
+  vi.useFakeTimers()
+  try{
+   vi.setSystemTime(new Date('2026-11-23T18:00:00.000Z'))
+   const verified={
+    kind:'family-owner-approved-public-source-v1',
+    projectId:FAMILY_WEEKLY_PROJECT_ID,sourceMonth:'2026-12',
+    candidateId:'30000000-0000-4000-8000-000000000003',
+    candidateSha256:'a'.repeat(64),
+    decisionId:'40000000-0000-4000-8000-000000000004',
+    approvedAt:'2026-11-23T11:00:00Z',sourceIntegrityVerified:true,
+    verifiedImageCount:1,verifiedImageAssetIds:['50000000-0000-4000-8000-000000000005'],
+    templateDates:['2026-11-27'],templates:[{
+     date:'2026-11-27',variant:'winter',
+     title:'Public winter month',text:'Public teaser for a family month.',
+    }],
+    canDraftReviewProposals:true,canGenerateMedia:false,
+    canOpenMemberContent:false,canSchedule:false,canPublish:false,canSpend:false,
+   }
+   vi.mocked(resolveFamilyOwnerApprovedPublicSource).mockResolvedValue(verified as any)
+   vi.mocked(assertFamilyOwnerSourceCurrentBeforeDraft).mockRejectedValue(
+    new FamilySourceStoreError('REVIEW_REQUIRED'),
+   )
+   const result=await handleSocialContentTool('prepare_family_weekly_review_drafts',
+    {projectId:FAMILY_WEEKLY_PROJECT_ID},principal,ownerConversation,fakeDb) as any
+   expect(result.code).toBe('REVIEW_REQUIRED')
+   expect(assertFamilyOwnerSourceCurrentBeforeDraft).toHaveBeenCalledTimes(1)
    expect(proposeSocialContent).not.toHaveBeenCalled()
   }finally{vi.useRealTimers()}
  })

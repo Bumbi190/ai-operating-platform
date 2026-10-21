@@ -111,11 +111,11 @@ export function prepareFamilyMonthSourceReview(value:FamilyMonthSourceProposal):
  const digest=createHash('sha256').update(JSON.stringify(normalized)).digest('hex')
  const existing=listFamilyEditorialSources().find(p=>p.themeMonth===value.month)
  const concerns=[
-  'De angivna offentliga k?llorna m?ste kontrolleras mot originalen innan godk?nnande.',
-  'Bildr?ttigheter, befintlig kanalplan och upphovsr?tt kr?ver separat kontroll.',
-  'Godk?nnande av k?llmaterial ger aldrig tillst?nd att ?ppna abonnentinneh?ll eller publicera.',
+  'De angivna offentliga källorna måste kontrolleras mot originalen innan godkännande.',
+  'Bildrättigheter, befintlig kanalplan och upphovsrätt kräver separat kontroll.',
+  'Godkännande av källmaterial ger aldrig tillstånd att öppna abonnentinnehåll eller publicera.',
  ]
- if(existing)concerns.unshift('M?naden har redan ett k?llpaket: j?mf?r versionen, ers?tt inte automatiskt.')
+ if(existing)concerns.unshift('Månaden har redan ett källpaket: jämför versionen, ersätt inte automatiskt.')
  return {
   kind:'familje-stunden-month-source-review-v1',
   projectId:FAMILY_WEEKLY_PROJECT_ID,
@@ -126,7 +126,7 @@ export function prepareFamilyMonthSourceReview(value:FamilyMonthSourceProposal):
    evidenceCount:value.proof.length,
    dates:[...allDates].sort(),
    concerns,
-   decisionPrompt:'Granska verifierade original, text och villkor. Ett separat ?garbeslut kr?vs f?r just denna kontrollsumma.',
+   decisionPrompt:'Granska verifierade original, text och villkor. Ett separat ägarbeslut krävs för just denna kontrollsumma.',
   },
   status:'needs_owner_review',canActivate:false,canPublish:false,canSpend:false,
  }

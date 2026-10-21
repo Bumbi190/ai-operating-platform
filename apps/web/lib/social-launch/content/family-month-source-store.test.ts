@@ -1,7 +1,7 @@
 ﻿import {beforeEach,describe,expect,it,vi} from 'vitest'
 import {
  listFamilyMonthSourceReviews,proposeFamilyMonthSource,
- decideFamilyMonthSource,readLatestOwnerApprovedFamilyMonthSource,FamilySourceStoreError,
+ decideFamilyMonthSource,readLatestOwnerApprovedFamilyMonthSource,assertFamilyOwnerSourceCurrentBeforeDraft,FamilySourceStoreError,
 } from './family-month-source-store'
 import type {FamilyMonthSourceProposal} from './family-month-source-review'
 import {FAMILY_WEEKLY_PROJECT_ID} from './family-weekly-coverage'
@@ -232,6 +232,57 @@ describe('private, durable source review store on isolated append-only tables',(
    candidateSha256:proposed.candidateSha256,proposal:candidate(),
   })
   expect(result.decisionId).toMatch(/^30000000-/)
+ })
+ it('pre-save image gate denies archived, cross-project or checksum-changed assets after owner approval',async()=>{
+  for(const patch of [
+   {status:'archived'},
+   {project_id:OTHER},
+   {checksum_sha256:'b'.repeat(64)},
+   {storage_bucket:'protected'},
+  ]){
+   const db=new MemoryDb()
+   const proposed=await proposeFamilyMonthSource(db as any,actor,candidate())
+   await decideFamilyMonthSource(db as any,actor,{
+    month:'2026-12',candidateId:proposed.candidateId,
+    candidateSha256:proposed.candidateSha256,decision:'approve',confirmed:true,
+   })
+   const current=await readLatestOwnerApprovedFamilyMonthSource(db as any,actor,'2026-12')
+   const approved={
+    month:'2026-12',candidateId:current.candidateId,
+    candidateSha256:current.candidateSha256,decisionId:current.decisionId,
+    verifiedImageAssetIds:[candidate().proof[0].referenceId],
+   }
+   await expect(assertFamilyOwnerSourceCurrentBeforeDraft(db as any,actor,approved))
+    .resolves.toBeUndefined()
+   Object.assign(db.tables.assets[0],patch)
+   await expect(assertFamilyOwnerSourceCurrentBeforeDraft(db as any,actor,approved))
+    .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+  }
+ })
+ it('pre-save image gate refuses replaced decision or untrusted image array',async()=>{
+  const db=new MemoryDb()
+  const proposed=await proposeFamilyMonthSource(db as any,actor,candidate())
+  await decideFamilyMonthSource(db as any,actor,{
+   month:'2026-12',candidateId:proposed.candidateId,
+   candidateSha256:proposed.candidateSha256,decision:'approve',confirmed:true,
+  })
+  const current=await readLatestOwnerApprovedFamilyMonthSource(db as any,actor,'2026-12')
+  const approved={
+   month:'2026-12',candidateId:current.candidateId,
+   candidateSha256:current.candidateSha256,decisionId:current.decisionId,
+   verifiedImageAssetIds:[candidate().proof[0].referenceId],
+  }
+  await expect(assertFamilyOwnerSourceCurrentBeforeDraft(db as any,actor,{
+   ...approved,verifiedImageAssetIds:['50000000-0000-4000-8000-000000000005'],
+  })).rejects.toMatchObject({code:'CONFLICT'})
+  await expect(assertFamilyOwnerSourceCurrentBeforeDraft(db as any,actor,{
+   ...approved,decisionId:'70000000-0000-4000-8000-000000000007',
+  })).rejects.toMatchObject({code:'CONFLICT'})
+  const newSource=candidate()
+  newSource.proposedCopy[0].text+=' Different and newer.'
+  await proposeFamilyMonthSource(db as any,actor,newSource)
+  await expect(assertFamilyOwnerSourceCurrentBeforeDraft(db as any,actor,approved))
+   .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
  })
  it('rejects an owner decision and newer unapproved source block activation',async()=>{
   const db=new MemoryDb()

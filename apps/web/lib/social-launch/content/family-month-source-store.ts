@@ -262,3 +262,41 @@ export async function readLatestOwnerApprovedFamilyMonthSource(
   decisionId:decision.id,decidedAt:decision.decided_at,
  }
 }
+
+
+/**
+ * Last owner+asset integrity check immediately before each review-only
+ * proposal is saved. No byte download here: a complete SHA-256 of source
+ * bytes was already required by resolveFamilyOwnerApprovedPublicSource.
+ * This fresh check catches newly archived, replaced or cross-tenant media
+ * metadata (including Facebook drafts without an attached image).
+ *
+ * This does NOT grant publication, approve social content, or make a
+ * long-lived authorization token. The downstream Social Content RPC
+ * independently enforces the caller, plan, revision and owned assets.
+ */
+export async function assertFamilyOwnerSourceCurrentBeforeDraft(
+ db:Db,actor:SocialContentPrincipal,input:{
+  month:string;candidateId:string;candidateSha256:string;
+  decisionId:string;verifiedImageAssetIds:string[];
+ },
+):Promise<void>{
+ if(!UUID.test(input.candidateId)||!UUID.test(input.decisionId)||
+  !SHA.test(input.candidateSha256)||
+  !Array.isArray(input.verifiedImageAssetIds)||
+  input.verifiedImageAssetIds.length<1||
+  input.verifiedImageAssetIds.length>3||
+  !input.verifiedImageAssetIds.every(id=>typeof id==='string'&&UUID.test(id)))
+  fail('INVALID_INPUT')
+
+ const current=await readLatestOwnerApprovedFamilyMonthSource(db,actor,input.month)
+ if(current.candidateId!==input.candidateId||
+  current.candidateSha256!==input.candidateSha256||
+  current.decisionId!==input.decisionId)
+  fail('CONFLICT')
+ const actualIds=current.proposal.proof.map(x=>x.referenceId)
+ if(actualIds.length!==input.verifiedImageAssetIds.length||
+  actualIds.some((id,i)=>id!==input.verifiedImageAssetIds[i]))
+  fail('CONFLICT')
+ await registeredPublicProofs(db,current.proposal)
+}

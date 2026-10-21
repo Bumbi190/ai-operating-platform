@@ -11,7 +11,7 @@ import {stageFamilyReviewCandidates} from './family-weekly-preparation'
 import {getFamilyEditorialReadiness} from './family-editorial-packs'
 import {resolveFamilyOwnerApprovedPublicSource} from './family-month-source-activation'
 import type {OwnerApprovedPublicSource} from './family-month-source-activation'
-import {readLatestOwnerApprovedFamilyMonthSource} from './family-month-source-store'
+import {assertFamilyOwnerSourceCurrentBeforeDraft} from './family-month-source-store'
 import {familyMonthSourceStatus} from './family-month-source-review'
 import type {FamilyMonthSourceProposal} from './family-month-source-review'
 import {
@@ -129,14 +129,15 @@ export async function handleSocialContentTool(name:string,input:Record<string,un
     ownerApprovedSource,
     validateOwnerSourceBeforeSave:async candidate=>{
      if(!ownerApprovedSource)throw new SocialContentError('REVIEW_REQUIRED')
-     const latest=await readLatestOwnerApprovedFamilyMonthSource(
-      db,p,ownerApprovedSource.sourceMonth,
-     )
-     if(latest.candidateId!==ownerApprovedSource.candidateId||
-        latest.candidateSha256!==ownerApprovedSource.candidateSha256||
-        latest.decisionId!==ownerApprovedSource.decisionId||
-        candidate.sourceSha256!==latest.candidateSha256)
+     if(candidate.sourceSha256!==ownerApprovedSource.candidateSha256)
       throw new SocialContentError('REVISION_CONFLICT')
+     await assertFamilyOwnerSourceCurrentBeforeDraft(db,p,{
+      month:ownerApprovedSource.sourceMonth,
+      candidateId:ownerApprovedSource.candidateId,
+      candidateSha256:ownerApprovedSource.candidateSha256,
+      decisionId:ownerApprovedSource.decisionId,
+      verifiedImageAssetIds:ownerApprovedSource.verifiedImageAssetIds,
+     })
     },
     save:proposal=>proposeSocialContent(db,p,proposal),
    })

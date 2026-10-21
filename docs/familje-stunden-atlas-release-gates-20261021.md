@@ -277,3 +277,45 @@ visually inspected read-only and showed the Atlas-first content view,
 current counters and manual tools hidden by default. The source-review
 card is hidden as intended while its deployment flag is OFF. No
 approve/publish/save actions were performed.
+
+## P12 — fresh project image metadata before EVERY owner-source review draft
+
+Review found a gap between the initial source download + SHA-256 check
+and each later draft save. A source could have its registered asset
+archived, replaced, moved between projects or changed in checksum
+after Atlas verified the original source and before it saved another
+review proposal (including text-only Facebook proposals).
+
+New read-only guard in the owner-scoped source store:
+- Re-read the latest durable approved candidate and exact decision ID.
+- Compare exact source SHA-256, ID and ordered approved image ID list
+  against the proof references of that latest immutable source.
+- Re-read and validate registered image metadata: owner project,
+  active status, internal visibility, checksum, JPEG/PNG/WebP MIME,
+  bounded size and private project social storage path.
+- Fail closed on stale/new approval, archived, moved, oversized,
+  wrong-bucket or changed-checksum media BEFORE saving any draft.
+- This check runs before each owner-approved source draft, not only
+  once per batch. The downstream Social Content RPC retains its
+  existing plan, actor, conversation and media validation.
+
+Actual image bytes were independently hashed at source resolution.
+The pre-save guard checks current metadata but does not re-download
+image bytes on every draft. Rights/licensing still need explicit
+human review; even passing SHA-256 does not establish copyrights.
+There remains the ordinary short nontransactional interval between
+the last metadata check and the downstream RPC; this is not claimed
+to be atomic. Real publication remains governed separately.
+
+Only the reviewer warning copy was corrected to proper Swedish.
+The immutable pinned Nova & Pling public editorial source copy and
+its reviewed SHA were deliberately left unchanged.
+
+Validation: 106/106 focused Family Vitest tests green, 16/16 Social
+Content and 6/6 Social Launch Playwright green. Full local tsc still
+reports exactly the three pre-existing unrelated Remotion Lambda
+module/region errors. Production schema, feature flags, jobs,
+subscriber access, social publishing and AI billing unchanged.
+
+The PR continues in Draft. Independent review, rights audit and
+explicit owner approval are STILL required before migration/release.

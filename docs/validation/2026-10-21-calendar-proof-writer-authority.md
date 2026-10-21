@@ -241,6 +241,22 @@ A full-schema test must show that the generic identity cannot submit a fake
 provider receipt through manual or scheduled RPCs, while the dedicated
 publish worker still completes approved real posts and the queued jobs.
 
+### Application worker response boundary
+
+The scheduled application worker normally obtains the Facebook receipt through
+`MetaManualProvider.facebook` before calling `social_schedule_step` with
+`action='complete'`. An owned full SQL fixture now covers a malformed Facebook
+response with an invalid post ID: the provider rejects it, the worker makes
+**zero completion RPC calls**, leaves the publication `uncertain`, and the next
+tick does not send another POST. GitHub Actions run 39589718860 passed
+**23/23 inspector, 13/13 SQL worker and 10/10 application worker tests,
+0 skipped**. Its separately created `website_test_*` database and labeled
+PostgreSQL container were removed. This validates the ordinary application
+path for this failure mode, not the trustworthiness of a direct SQL caller.
+Anyone retaining the broad `service_role` permission can still bypass the
+provider client and submit a syntactically valid fake receipt. The dedicated
+role and credential boundary remains the required production work.
+
 ## Live schedule continuity, read-only observation
 
 On 2026-10-21, the Vercel Production configuration had

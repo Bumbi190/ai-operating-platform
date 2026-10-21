@@ -68,7 +68,10 @@ namespace Omnira.Creative.Synthetic {
       NativeMethods.Check(NativeMethods.UpdateProcThreadAttribute(list.Value,0,attribute,jobList.Value,new IntPtr(8),IntPtr.Zero,IntPtr.Zero),"native-attribute-refused");
       NativeMethods.EX startup=new NativeMethods.EX();startup.Startup.Size=112;startup.Startup.Flags=0x100;startup.Startup.In=childIn.Value;startup.Startup.Out=childOut.Value;startup.Startup.Err=childErr.Value;startup.Attributes=list.Value;
       env=Marshal.StringToHGlobalUni("LOCALAPPDATA="+Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)+"\0PATH=C:\\Windows\\System32\0SystemRoot=C:\\Windows\0WINDIR=C:\\Windows\0\0");
-      string js="let b='';process.stdin.setEncoding('utf8');process.stdin.on('data',x=>{b+=x;if(b.length>16)process.exit(4)});process.stdin.on('end',()=>{if(b!=='ping')process.exit(3);process.stdout.write('pong');process.stderr.write('qualification');});";
+      string js=SyntheticProtocol.FixedNodePayload;
+#if TEST
+      if(ProtocolTestHooks.Payload!=null)js=ProtocolTestHooks.Payload;
+#endif
       string loader="eval(Buffer.from(process.argv[1],'base64').toString('utf8'))";
       StringBuilder command=new StringBuilder("\""+fixture.Runtime+"\" --no-addons --eval \""+loader+"\" "+Convert.ToBase64String(Encoding.UTF8.GetBytes(js)));
       NativeMethods.PROCESS p;WindowsProcessBoundary.CountCreate();
@@ -163,20 +166,55 @@ namespace Omnira.Creative.Synthetic {
     return ObjectIdentityDecision(copy==original.Value,same);
    }
   }
-  // Small qualification I/O uses PeekNamedPipe to avoid an unbounded synchronous read.
+  // Task3 qualification only; Task4 supplies the general cancellable PipeSession.
   internal void QualificationRoundTrip() {
-   NativeMethods.Require(Resumed,"qualification-not-running");byte[] ping=Encoding.ASCII.GetBytes("ping");uint written;
-   NativeMethods.Check(NativeMethods.WriteFile(Input.Value,ping,4,out written,IntPtr.Zero)&&written==4,"qualification-write");Close(ref Input);
-   MemoryStream stdout=new MemoryStream(),stderr=new MemoryStream();bool outEof=false,errEof=false;
-   while(budget.RunRemainingMs>0&&!(outEof&&errEof&&NativeMethods.WaitForSingleObject(Process.Value,0)==0)){
-    Drain(Output,stdout,ref outEof);Drain(Error,stderr,ref errEof);System.Threading.Thread.Sleep(5);
+   byte[] bytes=new byte[0];string hash="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+   string nonce=fixture.Nonce;
+   ProtocolCapture capture=CanaryRoundTrip(SyntheticProtocol.EncodeRequest(new CanaryInput(bytes,hash),nonce));
+   NativeMethods.Require(capture.ExitCode==0&&capture.Stderr.Length==0,"qualification-stream-mismatch");
+   SyntheticProtocol.VerifyResult(capture.Stdout,new RequestExpectation(nonce,0,hash));
+  }
+  internal ProtocolCapture CanaryRoundTrip(byte[] request) {
+   NativeMethods.Require(Resumed&&!disposed&&request!=null,"qualification-not-running");
+   int limit=SyntheticProtocol.RequestLimit;
+#if TEST
+   limit++; // Exercise fixed Node ingress cap with one byte over the public codec limit.
+#endif
+   NativeMethods.Require(request.Length<=limit,"qualification-input-bound");
+   byte[] owned=(byte[])request.Clone();Exception writerFailure=null;NativeHandle writeHandle=Input;
+   System.Threading.Thread writer=new System.Threading.Thread(delegate(){
+    try{
+     int offset=0;
+     while(offset<owned.Length){
+      int n=Math.Min(4096,owned.Length-offset);byte[] chunk=new byte[n];Buffer.BlockCopy(owned,offset,chunk,0,n);
+      uint written;NativeMethods.Check(NativeMethods.WriteFile(writeHandle.Value,chunk,(uint)n,out written,IntPtr.Zero)&&written>0,"qualification-write");
+      offset+=(int)written;
+     }
+    }catch(Exception e){writerFailure=e;}
+    finally{writeHandle.Dispose();}
+   });
+   MemoryStream stdout=new MemoryStream(),stderr=new MemoryStream();bool outEof=false,errEof=false,started=false;
+   try {
+    writer.Start();started=true;
+    while(budget.RunRemainingMs>0&&!(outEof&&errEof&&!writer.IsAlive&&NativeMethods.WaitForSingleObject(Process.Value,0)==0)){
+     Drain(Output,stdout,ref outEof);Drain(Error,stderr,ref errEof);System.Threading.Thread.Sleep(5);
+    }
+    NativeMethods.Require(outEof&&errEof&&writer.Join(0)&&NativeMethods.WaitForSingleObject(Process.Value,0)==0,"qualification-timeout");
+    using(NativeBuffer members=new NativeBuffer(40)){
+     NativeMethods.Check(NativeMethods.QueryInformationJobObject(Job.Value,3,members.Value,40,IntPtr.Zero),"terminal-job-members");
+     NativeMethods.Require(Marshal.ReadInt32(members.Value,0)==0&&Marshal.ReadInt32(members.Value,4)==0,"live-job-producer");
+    }
+    uint exit;NativeMethods.Check(NativeMethods.GetExitCodeProcess(Process.Value,out exit),"qualification-exit");
+    NativeMethods.Require(writerFailure==null||exit!=0,"qualification-write-failed");
+    return new ProtocolCapture(stdout.ToArray(),stderr.ToArray(),exit);
+   }finally {
+    if(started&&writer.IsAlive){
+     NativeMethods.TerminateJobObject(Job.Value,2);
+     if(!writer.Join(budget.CleanupRemainingMs)){fixture.Cleanup.PumpsStopped=false;Environment.FailFast("qualification-writer-did-not-stop");}
+    }
+    if(started)Input=null; // writer owns and closes this handle exactly once
+    stdout.Dispose();stderr.Dispose();
    }
-   NativeMethods.Require(outEof&&errEof&&NativeMethods.WaitForSingleObject(Process.Value,0)==0,"qualification-timeout");
-   using(NativeBuffer members=new NativeBuffer(40)){
-    NativeMethods.Check(NativeMethods.QueryInformationJobObject(Job.Value,3,members.Value,40,IntPtr.Zero),"terminal-job-members");
-    NativeMethods.Require(Marshal.ReadInt32(members.Value,0)==0&&Marshal.ReadInt32(members.Value,4)==0,"live-job-producer");
-   }
-   uint exit;NativeMethods.Check(NativeMethods.GetExitCodeProcess(Process.Value,out exit),"qualification-exit");NativeMethods.Require(exit==0&&Encoding.ASCII.GetString(stdout.ToArray())=="pong"&&Encoding.ASCII.GetString(stderr.ToArray())=="qualification","qualification-stream-mismatch");
   }
   static void Drain(NativeHandle h,MemoryStream target,ref bool eof){
    if(eof)return;uint available;

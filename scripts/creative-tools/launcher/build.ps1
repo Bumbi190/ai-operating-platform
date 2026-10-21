@@ -4,8 +4,8 @@ Microsoft.PowerShell.Core\Import-Module 'C:\Windows\System32\WindowsPowerShell\v
 $framework='C:\Windows\Microsoft.NET\Framework64\v4.0.30319'
 $root=[IO.Path]::Combine([IO.Path]::GetTempPath(),'omnira-launcher-build-'+[Guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($root)
-$shared=@('Contracts.cs','NativeMethods.cs','NativeResources.cs','WindowsProcessBoundary.cs','FixtureInput.cs')
-$test=@('tests\TestProgram.cs','tests\BoundaryTests.cs','tests\InputTests.cs')
+$shared=@('Contracts.cs','NativeMethods.cs','NativeResources.cs','WindowsProcessBoundary.cs','FixtureInput.cs','SyntheticProtocol.cs')
+$test=@('tests\TestProgram.cs','tests\BoundaryTests.cs','tests\InputTests.cs','tests\ProtocolTests.cs')
 $refs=@('mscorlib.dll','System.dll','System.Core.dll','System.Runtime.Serialization.dll')
 $common=@('/nologo','/noconfig','/nostdlib+','/platform:x64','/target:exe','/optimize+')
 foreach($ref in $refs){$common+=('/reference:'+[IO.Path]::Combine($framework,$ref))}

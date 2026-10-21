@@ -7,7 +7,7 @@ namespace Omnira.Creative.Synthetic {
  }
  internal static class TestProgram {
   static int Main(string[] args){
-   try{Assert.True(args.Length==1&&(args[0]=="Boundary"||args[0]=="Input"),"suite");BoundarySession.VerifyHost();Console.WriteLine("HOST outsideAppContainer=true elevated=false");if(args[0]=="Input")InputTests.Run();else BoundaryTests.Run();Console.WriteLine("Suite="+args[0]+", Passed=true, Skipped=0");return 0;}
+   try{Assert.True(args.Length==1&&(args[0]=="Boundary"||args[0]=="Input"||args[0]=="Protocol"),"suite");BoundarySession.VerifyHost();Console.WriteLine("HOST outsideAppContainer=true elevated=false");if(args[0]=="Input")InputTests.Run();else if(args[0]=="Protocol")ProtocolTests.Run();else BoundaryTests.Run();Console.WriteLine("Suite="+args[0]+", Passed=true, Skipped=0");return 0;}
    catch(Exception e){Console.WriteLine("Suite="+(args.Length==1?args[0]:"invalid")+", Passed=false, Skipped=0");Console.WriteLine(e.ToString());return 1;}
   }
  }

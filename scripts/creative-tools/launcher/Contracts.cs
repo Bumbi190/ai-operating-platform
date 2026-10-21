@@ -79,3 +79,15 @@ namespace Omnira.Creative.Synthetic {
   }
  }
 }
+
+namespace Omnira.Creative.Synthetic {
+ internal sealed class RequestExpectation {
+  internal readonly string Nonce,Sha256;internal readonly int ByteCount;
+  internal RequestExpectation(string nonce,int byteCount,string sha256){Nonce=nonce;ByteCount=byteCount;Sha256=sha256;}
+ }
+ // Qualification-only capture. Task4 supplies the general cancellable session contract.
+ internal sealed class ProtocolCapture {
+  internal readonly byte[] Stdout,Stderr;internal readonly uint ExitCode;
+  internal ProtocolCapture(byte[] stdout,byte[] stderr,uint exitCode){Stdout=(byte[])stdout.Clone();Stderr=(byte[])stderr.Clone();ExitCode=exitCode;}
+ }
+}

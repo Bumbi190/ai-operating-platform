@@ -58,6 +58,35 @@ async function currentPlan(db:Db,actor:SocialContentPrincipal){
  if(!content.planApproved||content.currentPlanRevisionId!==PLAN)
   fail('REVIEW_REQUIRED')
 }
+
+/**
+ * A source review must not contain references that could never be used.
+ * Only existing, registered, active PUBLIC-PREVIEW-ELIGIBLE project images
+ * enter the queue. This validates metadata; full media bytes and rights
+ * still require owner visual review and later independent SHA verification.
+ */
+async function registeredPublicProofs(db:Db,proposal:FamilyMonthSourceProposal){
+ for(const proof of proposal.proof){
+  const {data,error}=await client(db).from('assets')
+   .select('id,project_id,status,kind,visibility,mime_type,byte_size,checksum_sha256,storage_bucket,storage_path')
+   .eq('id',proof.referenceId).eq('project_id',FAMILY_WEEKLY_PROJECT_ID).maybeSingle()
+  if(error)fail('UNAVAILABLE')
+  if(!data||data.id!==proof.referenceId||
+    data.project_id!==FAMILY_WEEKLY_PROJECT_ID||
+    data.status!=='active'||data.kind!=='image'||
+    data.visibility!=='internal'||
+    !['image/jpeg','image/png','image/webp'].includes(data.mime_type)||
+    data.checksum_sha256!==proof.sha256||
+    data.storage_bucket!=='media-assets-private'||
+    !Number.isSafeInteger(Number(data.byte_size))||
+    Number(data.byte_size)<16||Number(data.byte_size)>5*1024*1024||
+    typeof data.storage_path!=='string'||
+    !data.storage_path.startsWith(FAMILY_WEEKLY_PROJECT_ID+'/social/')||
+    data.storage_path.includes('..')||data.storage_path.includes('\\')||
+    !/^[A-Za-z0-9_./-]{40,260}$/.test(data.storage_path))
+   fail('REVIEW_REQUIRED')
+ }
+}
 async function latestCandidates(db:Db,month:string){
  const {data,error}=await client(db).from(TABLE).select('*')
   .eq('project_id',FAMILY_WEEKLY_PROJECT_ID).eq('source_month',month)
@@ -131,6 +160,7 @@ export async function proposeFamilyMonthSource(db:Db,actor:SocialContentPrincipa
  try{review=prepareFamilyMonthSourceReview(proposal)}
  catch{fail('INVALID_INPUT')}
  await currentPlan(db,actor)
+ await registeredPublicProofs(db,proposal)
  const row={
   project_id:FAMILY_WEEKLY_PROJECT_ID,source_month:proposal.month,
   plan_revision_id:PLAN,candidate_sha256:review.candidateSha256,
@@ -175,6 +205,9 @@ export async function decideFamilyMonthSource(db:Db,actor:SocialContentPrincipal
   })
  }catch{fail('CONFLICT')}
  if(latest.plan_revision_id!==PLAN)fail('CONFLICT')
+ // Approving a source requires still-eligible image metadata. Rejecting a
+ // broken source must remain possible, even when its image is now missing.
+ if(input.decision==='approve')await registeredPublicProofs(db,latest.payload)
  // One atomic INSERT for one candidate, UNIQUE(candidate_id) is the
  // concurrency boundary. A losing simultaneous approve/reject is refused.
  const {data,error}=await client(db).from(DECISIONS).insert({

@@ -14,11 +14,16 @@ const OWNER='10000000-0000-4000-8000-000000000001'
 const OTHER='20000000-0000-4000-8000-000000000002'
 const actor={userId:OWNER,allowedProjectIds:[FAMILY_WEEKLY_PROJECT_ID]}
 const plan=state.planId
-type Table='projects'|'family_month_source_candidates'|'family_month_source_decisions'
+type Table='projects'|'assets'|'family_month_source_candidates'|'family_month_source_decisions'
 class MemoryDb{
  tables:Record<Table,any[]>={projects:[{id:FAMILY_WEEKLY_PROJECT_ID,
-  slug:'familje-stunden',owner_id:OWNER}],family_month_source_candidates:[],
-  family_month_source_decisions:[]}
+  slug:'familje-stunden',owner_id:OWNER}],assets:[{
+   id:'20000000-0000-4000-8000-000000000002',
+   project_id:FAMILY_WEEKLY_PROJECT_ID,status:'active',kind:'image',
+   visibility:'internal',mime_type:'image/jpeg',byte_size:1024,
+   checksum_sha256:'a'.repeat(64),storage_bucket:'media-assets-private',
+   storage_path:FAMILY_WEEKLY_PROJECT_ID+'/social/month-sources/hero.jpg',
+  }],family_month_source_candidates:[],family_month_source_decisions:[]}
  sequence=0
  from(name:string){
   if(!(name in this.tables))throw Error('unknown table '+name)
@@ -127,6 +132,29 @@ describe('private, durable source review store on isolated append-only tables',(
    stored:true,activationAllowed:false,canPublish:false,
   })
  })
+ it('rejects source approval if an image was archived or its checksum changed after proposing',async()=>{
+  for(const patch of [{status:'archived'},{checksum_sha256:'b'.repeat(64)}]){
+   const db=new MemoryDb()
+   const original=await proposeFamilyMonthSource(db as any,actor,candidate())
+   Object.assign(db.tables.assets[0],patch)
+   await expect(decideFamilyMonthSource(db as any,actor,{
+    month:'2026-12',candidateId:original.candidateId,
+    candidateSha256:original.candidateSha256,decision:'approve',confirmed:true,
+   })).rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+   expect(db.tables.family_month_source_decisions).toHaveLength(0)
+  }
+ })
+ it('can reject a broken source even when the media can no longer be read',async()=>{
+  const db=new MemoryDb()
+  const original=await proposeFamilyMonthSource(db as any,actor,candidate())
+  db.tables.assets=[]
+  const result=await decideFamilyMonthSource(db as any,actor,{
+   month:'2026-12',candidateId:original.candidateId,
+   candidateSha256:original.candidateSha256,decision:'reject',confirmed:true,
+  })
+  expect(result).toMatchObject({decision:'reject',stored:true,canPublish:false})
+  expect(db.tables.family_month_source_decisions).toHaveLength(1)
+ })
  it('a newer candidate makes an older exact-hash proposal undecidable',async()=>{
   const db=new MemoryDb()
   const first=await proposeFamilyMonthSource(db as any,actor,candidate())
@@ -144,6 +172,32 @@ describe('private, durable source review store on isolated append-only tables',(
   const value=candidate();value.proof[0].privateSubscriberAsset=true as false
   await expect(proposeFamilyMonthSource(db as any,actor,value))
    .rejects.toMatchObject({code:'INVALID_INPUT'})
+  expect(db.tables.family_month_source_candidates).toHaveLength(0)
+ })
+ it('does not store unusable evidence that is absent, foreign, archived, or mismatched',async()=>{
+  for(const change of [
+   (db:MemoryDb)=>{db.tables.assets=[]},
+   (db:MemoryDb)=>{db.tables.assets[0].project_id=OTHER},
+   (db:MemoryDb)=>{db.tables.assets[0].status='archived'},
+   (db:MemoryDb)=>{db.tables.assets[0].kind='audio'},
+   (db:MemoryDb)=>{db.tables.assets[0].visibility='private'},
+   (db:MemoryDb)=>{db.tables.assets[0].checksum_sha256='b'.repeat(64)},
+   (db:MemoryDb)=>{db.tables.assets[0].mime_type='image/svg+xml'},
+   (db:MemoryDb)=>{db.tables.assets[0].byte_size=6*1024*1024},
+   (db:MemoryDb)=>{db.tables.assets[0].storage_bucket='protected'},
+   (db:MemoryDb)=>{db.tables.assets[0].storage_path='../other/image.jpg'},
+  ]){
+   const db=new MemoryDb();change(db)
+   await expect(proposeFamilyMonthSource(db as any,actor,candidate()))
+    .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+   expect(db.tables.family_month_source_candidates).toHaveLength(0)
+  }
+ })
+ it('unrelated project asset cannot qualify even if SHA and ID otherwise match',async()=>{
+  const db=new MemoryDb()
+  db.tables.assets[0].project_id=OTHER
+  await expect(proposeFamilyMonthSource(db as any,actor,candidate()))
+   .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
   expect(db.tables.family_month_source_candidates).toHaveLength(0)
  })
  it('reads only a persisted approved latest candidate for later public source verification',async()=>{

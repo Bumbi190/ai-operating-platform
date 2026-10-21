@@ -155,3 +155,40 @@ or automatic media generation added.
 4. Both private flags remain OFF; no cron or automatic social dispatch.
 5. The image endpoint uses metered storage bandwidth; track actual
    source asset sizes before enabling the review feature.
+
+## P9 — verify public source registry before persisting any proposal
+
+Safety review found a remaining mismatch: a UUID-shaped source reference
+could still be missing, archived, wrong-project, wrong-bucket, wrong
+MIME or oversized when Atlas created the owner's review proposal.
+This would clutter the owner's queue with sources that cannot be
+activated. The validation was too late in the pipeline.
+
+Fix: the owner-scoped store now checks each of max three registered
+assets with an exact ID + FAMILY project ID match and verifies
+status=active, image kind, internal visibility, MIME JPEG/PNG/WebP,
+metadata checksum, media-assets-private bucket, project/social path
+and size 16 bytes–5 MiB. No storage download or media provider call
+is needed for this early metadata verification. Missing/mismatched
+proofs fail closed BEFORE inserting a candidate into immutable history.
+The owner APPROVE decision performs this same fresh metadata check
+again immediately before inserting a decision, so a source that became
+unusable during review cannot be newly approved. Owner REJECT remains
+available if the media vanished after the proposal was saved.
+
+This is NOT a proof of copyright/licensing, or cryptographic
+verification of actual bytes: authenticated source review still
+requires visual load via the hash-verifying media endpoint, and
+source activation still downloads/checks SHA-256 image bytes and
+revalidates the latest owner decision before every draft write.
+
+Verification: 99/99 targeted Vitest passed, including invalid/foreign,
+archive, bucket/path, size, MIME and changed-SHA negatives as well
+as reject-after-missing; 16/16 Social Content and 6/6 Social Launch
+Playwright tests passed. Full local typecheck has only the three
+unchanged Remotion Lambda dependency/type errors.
+
+No production schema, owner decisions, media, schedules, dispatch,
+provider spending or subscriber entitlements were modified.
+The independent human security review remains a release blocker;
+these engineering changes do not constitute an independent approval.

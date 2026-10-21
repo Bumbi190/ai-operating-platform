@@ -79,7 +79,7 @@ public static class CreativeAppContainerLoopbackProbe {
  public sealed class Trial {
   public string Family;public uint BaselineBefore,RestrictedExit,BaselineAfter;
   public int BaselineAccepts,RestrictedAccepts,AfterAccepts;
-  public bool LoopbackDenied;public string RestrictedOutcome;public TokenObservation RestrictedToken;
+  public bool LoopbackDenied;public string RestrictedOutcome,RestrictedDiagnostic;public TokenObservation RestrictedToken;
  }
  public sealed class Result {
   public string Mode="throwaway-AppContainer-loopback-probe",Error,ProfileName,ProfileSid;
@@ -88,7 +88,8 @@ public static class CreativeAppContainerLoopbackProbe {
   public List<Trial> Trials=new List<Trial>();
  }
 
- static uint Curl(Server server,IntPtr sid,Result all,out TokenObservation token){
+ static uint Curl(Server server,IntPtr sid,string storage,Result all,out TokenObservation token,out string diagnostic){
+  string diagnosticPath=null;diagnostic=null;
   IntPtr job=IntPtr.Zero,buf=IntPtr.Zero,list=IntPtr.Zero,cap=IntPtr.Zero,env=IntPtr.Zero;bool initialized=false;PROCESS p=new PROCESS();token=null;
   try{
    job=CreateJobObjectW(IntPtr.Zero,null);Check(job!=IntPtr.Zero,"create job");
@@ -103,12 +104,21 @@ public static class CreativeAppContainerLoopbackProbe {
    env=Marshal.StringToHGlobalUni("LOCALAPPDATA="+Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)+"\0PATH=C:\\Windows\\System32\0SystemRoot=C:\\Windows\0WINDIR=C:\\Windows\0\0");
    string app=@"C:\Windows\System32\curl.exe";
    string args="\""+app+"\" -q --noproxy \"*\" --proxy \"\" --connect-timeout 1 --max-time 2 --retry 0 --silent --output NUL http://"+server.Host+":"+server.Port+"/";
+   if(sid!=IntPtr.Zero){
+    if(string.IsNullOrEmpty(storage)||!Directory.Exists(storage))throw new InvalidOperationException("test profile diagnostic directory unavailable");
+    diagnosticPath=Path.Combine(storage,"curl-diagnostic-"+Guid.NewGuid().ToString("N")+".txt");
+    args+=" --verbose --show-error --stderr \""+diagnosticPath+"\"";
+   }
    Check(CreateProcessW(app,new StringBuilder(args),IntPtr.Zero,IntPtr.Zero,false,0x08080404,env,@"C:\Windows\System32",ref startup,out p),"create suspended curl from standard user session");
    Check(AssignProcessToJobObject(job,p.Process),"assign before resume");
    token=InspectToken(p.Process,sid);
    Check(ResumeThread(p.Thread)!=0xffffffff,"resume curl");CloseHandle(p.Thread);p.Thread=IntPtr.Zero;
    Check(WaitForSingleObject(p.Process,5000)==0,"bounded curl completion");
-   uint exit;Check(GetExitCodeProcess(p.Process,out exit),"curl exit");return exit;
+   uint exit;Check(GetExitCodeProcess(p.Process,out exit),"curl exit");
+   if(diagnosticPath!=null){
+    try{using(FileStream log=new FileStream(diagnosticPath,FileMode.Open,FileAccess.Read,FileShare.Read)){if(log.Length>16384)diagnostic="diagnostic exceeded 16 KiB bound";else using(StreamReader reader=new StreamReader(log,Encoding.UTF8,true,1024)){diagnostic=reader.ReadToEnd();}}}catch(Exception e){diagnostic="diagnostic unavailable: "+e.GetType().Name;}
+   }
+   return exit;
   }finally{
    if(job!=IntPtr.Zero)CloseHandle(job);
    if(p.Process!=IntPtr.Zero){if(WaitForSingleObject(p.Process,0)==WAIT_TIMEOUT)TerminateProcess(p.Process,2);if(WaitForSingleObject(p.Process,5000)!=0)all.AllProcessesStopped=false;CloseHandle(p.Process);}
@@ -127,11 +137,11 @@ public static class CreativeAppContainerLoopbackProbe {
    Hr(GetAppContainerFolderPath(new SecurityIdentifier(sid).Value,out folder),"query test profile storage");storage=Marshal.PtrToStringUni(folder);Marshal.FreeCoTaskMem(folder);folder=IntPtr.Zero;
    foreach(IPAddress address in new IPAddress[]{IPAddress.Loopback,IPAddress.IPv6Loopback}){
     using(Server server=new Server(address)){
-     Trial t=new Trial();t.Family=address.AddressFamily==AddressFamily.InterNetwork?"IPv4-loopback-TCP":"IPv6-loopback-TCP";result.Trials.Add(t);TokenObservation ignored;
-     int start=server.Accepted;t.BaselineBefore=Curl(server,IntPtr.Zero,result,out ignored);t.BaselineAccepts=server.Accepted-start;
+     Trial t=new Trial();t.Family=address.AddressFamily==AddressFamily.InterNetwork?"IPv4-loopback-TCP":"IPv6-loopback-TCP";result.Trials.Add(t);TokenObservation ignored;string ignoredDiagnostic;
+     int start=server.Accepted;t.BaselineBefore=Curl(server,IntPtr.Zero,null,result,out ignored,out ignoredDiagnostic);t.BaselineAccepts=server.Accepted-start;
      Check(t.BaselineBefore==0&&t.BaselineAccepts==1,"reachable positive control before");
-     start=server.Accepted;t.RestrictedExit=Curl(server,sid,result,out t.RestrictedToken);t.RestrictedAccepts=server.Accepted-start;
-     start=server.Accepted;t.BaselineAfter=Curl(server,IntPtr.Zero,result,out ignored);t.AfterAccepts=server.Accepted-start;
+     start=server.Accepted;t.RestrictedExit=Curl(server,sid,storage,result,out t.RestrictedToken,out t.RestrictedDiagnostic);t.RestrictedAccepts=server.Accepted-start;
+     start=server.Accepted;t.BaselineAfter=Curl(server,IntPtr.Zero,null,result,out ignored,out ignoredDiagnostic);t.AfterAccepts=server.Accepted-start;
      Check(t.BaselineAfter==0&&t.AfterAccepts==1,"reachable positive control after");
      t.LoopbackDenied=t.RestrictedExit==7&&t.RestrictedAccepts==0;
      t.RestrictedOutcome=t.LoopbackDenied?"connection-failed-no-accept":t.RestrictedExit==28&&t.RestrictedAccepts==0?"timeout-no-accept-inconclusive":t.RestrictedAccepts>0?"connection-observed-failed":"unexpected-exit-inconclusive";

@@ -13,7 +13,7 @@ namespace Omnira.Creative.Synthetic {
   }
   static void VerificationFailureIsTerminal() {
    foreach(bool verifyFirst in new[]{true,false}) {
-    using(OwnedFixture f=WindowsProcessBoundary.PrepareOwnedFixture()) {
+    using(OwnedFixture f=FixtureInput.CreateOwned()) {
      using(BoundarySession s=WindowsProcessBoundary.CreateSuspended(f,new OperationBudget()))
      using(NativeHandle held=HoldProcess(s)) {
       if(verifyFirst)s.VerifyBeforeResume();
@@ -36,7 +36,7 @@ namespace Omnira.Creative.Synthetic {
     BoundaryTestHooks.SetupFailure=stage;
     BoundaryTestHooks.MappingObservationFailure=true;
     BoundaryTestHooks.LastFixture=null;
-    try {Assert.Refuses(stage=="before-folder"?"test-setup-before-folder":"test-setup-after-runtime",()=>{using(OwnedFixture unexpected=WindowsProcessBoundary.PrepareOwnedFixture()){} });}
+    try {Assert.Refuses(stage=="before-folder"?"test-setup-before-folder":"test-setup-after-runtime",()=>{using(OwnedFixture unexpected=FixtureInput.CreateOwned()){} });}
     finally {BoundaryTestHooks.SetupFailure=null;BoundaryTestHooks.MappingObservationFailure=false;}
     OwnedFixture f=BoundaryTestHooks.LastFixture;
     Assert.True(f!=null&&f.Disposed&&f.Sid==IntPtr.Zero&&f.RuntimePin==null,"native resources released despite cleanup failure");
@@ -48,7 +48,7 @@ namespace Omnira.Creative.Synthetic {
    }
   }
   static void RuntimePinPreventsMutation() {
-   using(OwnedFixture f=WindowsProcessBoundary.PrepareOwnedFixture()) {
+   using(OwnedFixture f=FixtureInput.CreateOwned()) {
     bool blocked=false;
     try {using(System.IO.FileStream writer=new System.IO.FileStream(f.Runtime,System.IO.FileMode.Open,System.IO.FileAccess.Write,System.IO.FileShare.Read)){}}
     catch(System.IO.IOException e){blocked=(e.HResult&65535)==32;}
@@ -57,7 +57,7 @@ namespace Omnira.Creative.Synthetic {
    Console.WriteLine("PASS RuntimePinPreventsMutation writeDenied=sharingViolation");
   }
   static void CombinedAttributesRoundTrip() {
-   using(OwnedFixture f=WindowsProcessBoundary.PrepareOwnedFixture())
+   using(OwnedFixture f=FixtureInput.CreateOwned())
    using(BoundarySession s=WindowsProcessBoundary.CreateSuspended(f,new OperationBudget())) {
     Assert.True(s.ExactJobAtReturn,"creation-time job");
     s.VerifyBeforeResume(); Assert.True(s.TokenVerified,"token"); s.Resume(); s.QualificationRoundTrip();
@@ -66,7 +66,7 @@ namespace Omnira.Creative.Synthetic {
    Assert.True(WindowsProcessBoundary.LastCleanup.Complete,"cleanup");
   }
   static void SentinelControls() {
-   using(OwnedFixture f=WindowsProcessBoundary.PrepareOwnedFixture())
+   using(OwnedFixture f=FixtureInput.CreateOwned())
    using(NativeHandle sentinel=NativeMethods.Event()) {
     using(BoundarySession s=WindowsProcessBoundary.CreateSuspended(f,new OperationBudget())) {
      Assert.True(!s.ChildObjectMatches(sentinel),"excluded event");
@@ -82,7 +82,7 @@ namespace Omnira.Creative.Synthetic {
   }
   static void PreResumeMismatchRefuses() {
    foreach(string mismatch in new[]{"sid","image","job","capabilities","flags"}) {
-    using(OwnedFixture f=WindowsProcessBoundary.PrepareOwnedFixture())
+    using(OwnedFixture f=FixtureInput.CreateOwned())
     using(BoundarySession s=WindowsProcessBoundary.CreateSuspended(f,new OperationBudget())) {
      BoundaryTestHooks.Mismatch=mismatch;
      try {Assert.Refuses("pre-resume-token-mismatch",()=>s.VerifyBeforeResume());Assert.True(!s.Resumed,"remained suspended");}
@@ -92,14 +92,14 @@ namespace Omnira.Creative.Synthetic {
    Console.WriteLine("PASS PreResumeMismatchRefuses sid,image,job,capabilities,flags");
   }
   static void SpawnGateRejectsReentry() {
-   using(OwnedFixture f=WindowsProcessBoundary.PrepareOwnedFixture()) {
+   using(OwnedFixture f=FixtureInput.CreateOwned()) {
     using(BoundarySession s=WindowsProcessBoundary.CreateSuspended(f,new OperationBudget())) {Assert.Refuses("spawn-gate-busy",()=>WindowsProcessBoundary.CreateSuspended(f,new OperationBudget()));}
     using(BoundarySession s=WindowsProcessBoundary.CreateSuspended(f,new OperationBudget())){}
    }
    Console.WriteLine("PASS SpawnGateRejectsReentry gateReleased=true");
   }
   static void NoBroadInheritanceFallback() {
-   using(OwnedFixture f=WindowsProcessBoundary.PrepareOwnedFixture()) {
+   using(OwnedFixture f=FixtureInput.CreateOwned()) {
     int before=WindowsProcessBoundary.ProcessCreateAttempts;BoundaryTestHooks.UnsupportedAttribute=true;
     try {Assert.Refuses("native-attribute-refused",()=>WindowsProcessBoundary.CreateSuspended(f,new OperationBudget()));}
     finally {BoundaryTestHooks.UnsupportedAttribute=false;}

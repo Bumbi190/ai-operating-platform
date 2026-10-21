@@ -8,46 +8,11 @@ using System.Runtime.InteropServices;
 using System.Threading;
 namespace Omnira.Creative.Synthetic {
  internal static class WindowsProcessBoundary {
-  const string Pin="780f44f2c53c108bae261ada21a525b4bfe733c020ac85e41bfe94479090ac9b";
   internal static CleanupObservation LastCleanup;
   internal static int ProcessCreateAttempts;
   static int gate;
   internal static void ReleaseGate(){Interlocked.Exchange(ref gate,0);}
   internal static string Hash(string path){using(FileStream f=File.OpenRead(path))using(SHA256 h=SHA256.Create())return BitConverter.ToString(h.ComputeHash(f)).Replace("-","").ToLowerInvariant();}
-  static void OrdinaryDirectory(string path){for(DirectoryInfo d=new DirectoryInfo(path);d!=null;d=d.Parent)NativeMethods.Require((d.Attributes&FileAttributes.ReparsePoint)==0,"reparse-ancestor");}
-  internal static OwnedFixture PrepareOwnedFixture() {
-   NativeMethods.ValidateAbi();BoundarySession.VerifyHost();
-   OwnedFixture f=new OwnedFixture();
-   try {
-    string source=@"C:\Program Files\nodejs\node.exe";OrdinaryDirectory(Path.GetDirectoryName(source));
-    NativeMethods.Require((File.GetAttributes(source)&(FileAttributes.ReparsePoint|FileAttributes.Directory))==0&&Hash(source)==Pin,"runtime-pin");
-    f.ProfileName="omnira.launcher."+f.Nonce;
-    int hr=NativeMethods.CreateAppContainerProfile(f.ProfileName,"Omnira synthetic launcher","Owned ordinary-user synthetic fixture",IntPtr.Zero,0,out f.Sid);
-    if(hr!=0)throw new SyntheticRefusal("profile-create",hr);f.ProfileCreated=true;f.ProfileSid=new SecurityIdentifier(f.Sid).Value;
-#if TEST
-    BoundaryTestHooks.LastFixture=f;
-    if(BoundaryTestHooks.SetupFailure=="before-folder")throw new SyntheticRefusal("test-setup-before-folder");
-#endif
-    IntPtr folder;hr=NativeMethods.GetAppContainerFolderPath(f.ProfileSid,out folder);if(hr!=0)throw new SyntheticRefusal("profile-path",hr);
-    try{f.Storage=Marshal.PtrToStringUni(folder);}finally{Marshal.FreeCoTaskMem(folder);}
-    string expected=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Packages",f.ProfileName,"AC");
-    NativeMethods.Require(string.Equals(f.Storage,expected,StringComparison.OrdinalIgnoreCase),"profile-path-mismatch");f.StorageIdentityEstablished=true;OrdinaryDirectory(f.Storage);
-    string dir=Path.Combine(f.Storage,"runtime");Directory.CreateDirectory(dir);OrdinaryDirectory(dir);f.Runtime=Path.Combine(dir,"node.exe");
-    using(FileStream input=File.OpenRead(source))using(FileStream output=new FileStream(f.Runtime,FileMode.CreateNew,FileAccess.Write,FileShare.None)){input.CopyTo(output);output.Flush(true);}
-    f.RuntimePin=new FileStream(f.Runtime,FileMode.Open,FileAccess.Read,FileShare.Read);
-    uint pinFlags;NativeMethods.Check(NativeMethods.GetHandleInformation(f.RuntimePin.SafeFileHandle.DangerousGetHandle(),out pinFlags),"runtime-pin-flags");NativeMethods.Require((pinFlags&1)==0,"runtime-pin-inheritable");
-    using(SHA256 hash=SHA256.Create()){f.RuntimeHash=BitConverter.ToString(hash.ComputeHash(f.RuntimePin)).Replace("-","").ToLowerInvariant();f.RuntimePin.Position=0;}
-    NativeMethods.Require(f.RuntimeHash==Pin,"staged-runtime-pin");
-    bool rx=false;foreach(FileSystemAccessRule rule in File.GetAccessControl(f.Runtime).GetAccessRules(true,true,typeof(SecurityIdentifier)))
-     if(rule.IdentityReference.Value==f.ProfileSid&&rule.IsInherited&&rule.AccessControlType==AccessControlType.Allow&&(rule.FileSystemRights&FileSystemRights.ReadAndExecute)==FileSystemRights.ReadAndExecute)rx=true;
-    NativeMethods.Require(rx,"runtime-inherited-package-rx");
-    #if TEST
-    if(BoundaryTestHooks.SetupFailure=="after-runtime")throw new SyntheticRefusal("test-setup-after-runtime");
-#endif
-    Console.WriteLine("FIXTURE profile="+f.ProfileName+" sid="+f.ProfileSid+" runtimeHash="+f.RuntimeHash+" inheritedRX=true");
-    return f;
-   }catch{f.Dispose();throw;}
-  }
   internal static BoundarySession CreateSuspended(OwnedFixture f,OperationBudget budget) {
    if(Interlocked.CompareExchange(ref gate,1,0)!=0)throw new SyntheticRefusal("spawn-gate-busy");
    BoundarySession s=new BoundarySession(f,budget);

@@ -47,4 +47,20 @@ namespace Omnira.Creative.Synthetic {
   internal static void ValidateAbi(){Require(IntPtr.Size==8&&Marshal.SizeOf(typeof(LIMITS))==144&&Marshal.SizeOf(typeof(EX))==112&&Marshal.SizeOf(typeof(CAPS))==24&&Marshal.SizeOf(typeof(SA))==24,"unsupported-native-abi");}
   internal static NativeHandle Event(){SA a=new SA();a.Size=24;a.Inherit=true;IntPtr h=CreateEventW(ref a,true,false,null);Check(h!=IntPtr.Zero,"sentinel-create");return new NativeHandle(h);}
  }
+ internal static class InputNative {
+ [DllImport(@"C:\Windows\System32\kernel32.dll",CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)] internal static extern bool CreateDirectoryW(string path,IntPtr security);
+ const string K=@"C:\Windows\System32\kernel32.dll",N=@"C:\Windows\System32\ntdll.dll";
+ [StructLayout(LayoutKind.Sequential)] internal struct FT {public uint Low,High;}
+ [StructLayout(LayoutKind.Sequential)] internal struct INFO {public uint Attributes;public FT Creation,Access,Write;public uint Volume,SizeHigh,SizeLow,Links,IndexHigh,IndexLow;}
+ [StructLayout(LayoutKind.Sequential)] internal struct US {public ushort Length,MaximumLength;public IntPtr Buffer;}
+ [StructLayout(LayoutKind.Sequential)] internal struct OA {public uint Length;public IntPtr Root,Name;public uint Attributes;public IntPtr Security,Qos;}
+ [StructLayout(LayoutKind.Sequential)] internal struct IOS {public IntPtr Status,Information;}
+ [DllImport(K,CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)] internal static extern IntPtr CreateFileW(string name,uint access,uint share,IntPtr security,uint disposition,uint flags,IntPtr template);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] internal static extern bool CloseHandle(IntPtr h);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] internal static extern bool GetFileInformationByHandle(IntPtr h,out INFO info);
+ [DllImport(K,ExactSpelling=true,SetLastError=true)] internal static extern uint GetFileType(IntPtr h);
+ [DllImport(K,CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)] internal static extern uint GetFinalPathNameByHandleW(IntPtr h,StringBuilder path,uint size,uint flags);
+ [DllImport(K,CharSet=CharSet.Unicode,ExactSpelling=true,SetLastError=true)] internal static extern bool GetVolumeInformationByHandleW(IntPtr h,StringBuilder volume,uint volumeSize,out uint serial,out uint maxComponent,out uint flags,StringBuilder fs,uint fsSize);
+ [DllImport(N,ExactSpelling=true)] internal static extern int NtCreateFile(out IntPtr h,uint access,ref OA attributes,out IOS io,IntPtr allocation,uint fileAttributes,uint share,uint disposition,uint options,IntPtr ea,uint eaLength);
+ }
 }

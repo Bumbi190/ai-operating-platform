@@ -15,10 +15,16 @@ namespace Omnira.Creative.Synthetic {
   internal int CleanupRemainingMs{get{return (int)Math.Max(0,30000-clock.ElapsedMilliseconds);}}
  }
  internal sealed class CleanupObservation {
-  internal bool ProcessesStopped=true,PumpsStopped=true,FixtureAbsent,ProfileDeleteApiSucceeded,ProfileStorageAbsent,ProfileMappingAbsent,CleanupFailed;
+  internal bool ProcessesStopped=true,PumpsStopped=true,InputFixtureAbsent,FixtureAbsent,ProfileDeleteApiSucceeded,ProfileStorageAbsent,ProfileMappingAbsent,CleanupFailed;
   internal bool Complete {get{return !CleanupFailed&&ProcessesStopped&&PumpsStopped&&FixtureAbsent&&ProfileDeleteApiSucceeded&&ProfileStorageAbsent&&ProfileMappingAbsent;}}
  }
+ internal sealed class CanaryInput {
+  internal readonly byte[] Bytes;internal readonly string Sha256;
+  internal CanaryInput(byte[] bytes,string sha256){Bytes=(byte[])bytes.Clone();Sha256=sha256;}
+ }
  internal sealed class OwnedFixture:IDisposable {
+  internal string InputDirectory,InputRoot;
+  internal InputOwnership InputOwner;
   internal readonly string Nonce=Guid.NewGuid().ToString("N");
   internal string ProfileName,ProfileSid,Storage,Runtime,RuntimeHash;
   internal IntPtr Sid;
@@ -29,6 +35,9 @@ namespace Omnira.Creative.Synthetic {
    if(Disposed)return;
    Disposed=true;
    try {
+    bool inputAbsent=InputOwner==null?InputDirectory==null:InputOwner.Cleanup();
+    Cleanup.InputFixtureAbsent=inputAbsent;
+    if(!inputAbsent)Cleanup.CleanupFailed=true;
     FileStream pin=RuntimePin;
     RuntimePin=null;
     if(pin!=null){
@@ -43,7 +52,7 @@ namespace Omnira.Creative.Synthetic {
      if(StorageIdentityEstablished){
       try {
        Cleanup.ProfileStorageAbsent=!Directory.Exists(Path.GetDirectoryName(Storage));
-       Cleanup.FixtureAbsent=Cleanup.ProfileStorageAbsent;
+       Cleanup.FixtureAbsent=Cleanup.ProfileStorageAbsent&&inputAbsent;
       }catch{Cleanup.CleanupFailed=true;}
      }
      try {
@@ -63,7 +72,7 @@ namespace Omnira.Creative.Synthetic {
      Sid=IntPtr.Zero;
      WindowsProcessBoundary.LastCleanup=Cleanup;
      try {
-      Console.WriteLine("CLEANUP profile="+ProfileName+" api="+Cleanup.ProfileDeleteApiSucceeded+" storageAbsent="+Cleanup.ProfileStorageAbsent+" mappingAbsent="+Cleanup.ProfileMappingAbsent+" stopped="+Cleanup.ProcessesStopped+" cleanupFailed="+Cleanup.CleanupFailed+" storageIdentityEstablished="+StorageIdentityEstablished);
+      Console.WriteLine("CLEANUP profile="+ProfileName+" api="+Cleanup.ProfileDeleteApiSucceeded+" storageAbsent="+Cleanup.ProfileStorageAbsent+" mappingAbsent="+Cleanup.ProfileMappingAbsent+" stopped="+Cleanup.ProcessesStopped+" cleanupFailed="+Cleanup.CleanupFailed+" storageIdentityEstablished="+StorageIdentityEstablished+" inputAbsent="+Cleanup.InputFixtureAbsent);
      }catch{Cleanup.CleanupFailed=true;}
     }
    }

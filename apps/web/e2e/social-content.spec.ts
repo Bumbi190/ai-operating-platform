@@ -286,6 +286,11 @@ test('Atlas-first family page keeps the next-month owner source decision visible
  })
  await page.goto('/content?family-november=1')
  await expect(page.getByRole('region',{name:'Atlas inneh\u00e5lls\u00f6versikt'})).toBeVisible()
+ const escapedNodes=await page.locator('section').evaluateAll(sections=>
+  sections.flatMap(section=>Array.from(section.childNodes))
+   .filter(node=>node.nodeType===3&&
+    (node.textContent??'').includes(String.fromCharCode(92,110))).length)
+ expect(escapedNodes).toBe(0)
  await expect(page.getByRole('region',{name:'M\u00e5nadsk\u00e4llor'})).toBeVisible()
  await expect(page.getByText('November public campaign evidence')).toBeVisible()
  await expect(page.getByRole('button',{name:'Granska underlag'})).toBeVisible()

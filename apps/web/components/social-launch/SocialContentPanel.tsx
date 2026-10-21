@@ -114,7 +114,8 @@ function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{project
     </button>
    </div>
   </section>}
-  {projectId===FAMILY_SOCIAL_PROJECT_ID&&<FamilyMonthSourceReviewPanel key={projectId} projectId={projectId}/>}\n  {manualVisible&&<div className={styles.actions}><button type="button" disabled={busy||loading||(!model?.planApproved||!model.plannedChannels.length)} onClick={()=>edit()}>Nytt utkast</button><button type="button" disabled={busy||loading} onClick={()=>{if(!dirty||window.confirm('Ersätt ditt osparade utkast med senaste sparade versionen?')){setEditor(null);setDirty(false);void load()}}}>Läs senaste innehållet</button></div>}
+  {projectId===FAMILY_SOCIAL_PROJECT_ID&&<FamilyMonthSourceReviewPanel key={projectId} projectId={projectId}/>}
+  {manualVisible&&<div className={styles.actions}><button type="button" disabled={busy||loading||(!model?.planApproved||!model.plannedChannels.length)} onClick={()=>edit()}>Nytt utkast</button><button type="button" disabled={busy||loading} onClick={()=>{if(!dirty||window.confirm('Ersätt ditt osparade utkast med senaste sparade versionen?')){setEditor(null);setDirty(false);void load()}}}>Läs senaste innehållet</button></div>}
   {manualVisible&&novemberSuggestions.length>0&&<section className={styles.notice} aria-label="Novemberförslag för Familje-Stunden">
    <strong>November med Nova och Pling – utkast att granska</strong>
    <p>Förifyll text eller bildidé enligt den godkända kanalplanen. Ingen video, fil, tid eller publicering kopplas automatiskt.</p>

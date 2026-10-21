@@ -28,7 +28,11 @@ const frozen=Object.freeze({
  '20261021120000_atlas_creative_review_owner_guard_p18.sql':
   '72f24c68c69178837d34bd651a93f900f4c1e230e3a1bfff9c132d97a205b29d',
 });
-// Original P25 fingerprints were captured on Windows checkout (CRLF).\n// Git checkouts may use LF on Linux. Normalize line endings ONLY for\n// comparison, without changing SQL bytes, contents, or migration policy.\nconst digest=bytes=>createHash('sha256')\n .update(bytes.toString('utf8').replace(/\r\n?|\n/g,'\r\n'),'utf8').digest('hex');
+// Original P25 fingerprints were captured on Windows checkout (CRLF).
+// Git may check out LF on Linux. Normalize line endings only for hash
+// comparison, without modifying SQL bytes or production migration policy.
+const digest=bytes=>createHash('sha256')
+ .update(bytes.toString('utf8').replace(/\r\n?|\n/g,'\r\n'),'utf8').digest('hex');
 test('canonical production SQL corpus retains unchanged Guard v2 expected membership',()=>{
  const files=readdirSync(production).filter(x=>x.endsWith('.sql'));
  const result=inspectCanonicalMigrationFiles(files);

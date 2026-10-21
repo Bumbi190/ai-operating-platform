@@ -56,6 +56,14 @@ A candidate hash is a consistency checksum, not a provider signature.
 A compromised service_role can also call completion with fabricated readAt/hash.
 Therefore this change does NOT establish authenticity or least-privilege isolation.
 
+Follow-up regression: the real-inspector fixture now includes an explicit
+caller-invented, syntactically valid Facebook candidate. The inspector accepts
+it and stores a proof despite no provider read in the fixture. This test is a
+documented negative security property, not a claim that Facebook published it.
+The authoritative provider fetch and its credential boundary must be bound to
+the writer before treating such rows as trustworthy. SQL shape checks alone
+cannot close this gap.
+
 ## Verification scope
 
 New real-inspector behavioral tests cover valid insertion, replay, null refusal,

@@ -238,6 +238,31 @@ try {
         assert.equal(entry.authenticated, false, 'unexpected authenticated grant: ' + entry.obj)
       }
       console.log('CROSS-TREE ACL BASELINE ' + JSON.stringify(acl))
+      const roleCandidate = reviewedBytes(resolve(web, 'lib/calendar/direct-write-gate-scheduled-full-role-candidate.sql'))
+      const candidate = JSON.parse(sql(`
+        BEGIN;
+        ${roleCandidate.toString('utf8')}
+        SELECT jsonb_build_object(
+          'publisher_jobs_update',has_table_privilege('social_schedule_full_publisher_fixture','public.social_schedule_jobs','UPDATE'),
+          'publisher_publications_insert',has_table_privilege('social_schedule_full_publisher_fixture','public.social_publications','INSERT'),
+          'publisher_events_insert',has_table_privilege('social_schedule_full_publisher_fixture','public.social_schedule_events','INSERT'),
+          'publisher_step_execute',has_function_privilege('social_schedule_full_publisher_fixture','public.social_schedule_step(jsonb,jsonb)','EXECUTE'),
+          'publisher_tokens_select',has_table_privilege('social_schedule_full_publisher_fixture','public.platform_tokens','SELECT'),
+          'service_jobs_update',has_table_privilege('service_role','public.social_schedule_jobs','UPDATE'),
+          'service_publications_insert',has_table_privilege('service_role','public.social_publications','INSERT'),
+          'service_events_insert',has_table_privilege('service_role','public.social_schedule_events','INSERT'),
+          'service_step_execute',has_function_privilege('service_role','public.social_schedule_step(jsonb,jsonb)','EXECUTE'),
+          'service_manual_step_execute',has_function_privilege('service_role','public.social_publication_step(jsonb,jsonb)','EXECUTE'),
+          'service_proofs_insert',has_table_privilege('service_role','public.social_publication_reconciliation_proofs','INSERT')
+        );
+        ROLLBACK;
+      `))
+      for (const key of ['publisher_jobs_update','publisher_publications_insert','publisher_events_insert','publisher_step_execute','service_manual_step_execute','service_proofs_insert'])
+        assert.equal(candidate[key], true, 'expected candidate grant: ' + key)
+      for (const key of ['publisher_tokens_select','service_jobs_update','service_publications_insert','service_events_insert','service_step_execute'])
+        assert.equal(candidate[key], false, 'unexpected candidate grant: ' + key)
+      assert.equal(sql("SELECT count(*) FROM pg_roles WHERE rolname='social_schedule_full_publisher_fixture'"), '0', 'candidate role escaped rollback')
+      console.log('CROSS-TREE ROLE CANDIDATE ' + JSON.stringify(candidate) + ' (rolled back)')
     }
     console.log(crossTreeReplay ? 'CROSS-TREE REPLAY PASS' : legacyDreamReplay ? 'LEGACY DREAM REPLAY PASS' : legacyCronReplay ? 'LEGACY CRON REPLAY PASS' : legacyMediaReplay ? 'LEGACY MEDIA REPLAY PASS' : dependencyReplay ? 'DEPENDENCY REPLAY PASS' : 'CANONICAL REPLAY PASS')
     process.exitCode = 0

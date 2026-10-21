@@ -29,12 +29,22 @@ and reconciliation complete. Production's four inspected functions are
 `SECURITY INVOKER`, owned by `postgres`.
 
 This matches the **current broad grant baseline**. It does not establish
-that a proposed `social_schedule_publisher_fixture` role can perform the
-approved schedule path or that revoking `service_role` is safe. In particular,
-the draft role candidate references `calendar_source_gate_begin_probe(uuid)`,
-which is not part of this canonical replay. The next isolated test must
-install the explicitly reviewed gate candidate, then exercise allowed and
-denied paths in a rollback-only fixture before any production proposal.
+that revoking `service_role` is safe. A second local run applied
+`direct-write-gate-scheduled-full-role-candidate.sql` inside one transaction.
+Its `social_schedule_full_publisher_fixture` gained the inspected schedule
+UPDATE, publication INSERT, event INSERT, and schedule-step EXECUTE grants,
+without platform-token SELECT. The corresponding `service_role` grants
+were absent inside that transaction. The role and all grant changes were
+rolled back; the runner confirmed the role no longer existed. The older
+manual-step EXECUTE and direct reconciliation-proof INSERT remained granted
+to `service_role` in this candidate, so this is a partial boundary. Privilege
+checks do not prove that an approved job can complete or that other writers
+will continue to work.
+
+The separate `social_schedule_publisher_fixture` candidate also references
+`calendar_source_gate_begin_probe(uuid)`, which is not part of the canonical
+replay. The next isolated test must install the explicitly reviewed gate
+candidate and exercise allowed and denied operations with realistic rows.
 
 ## Observed dependency edges
 
@@ -121,8 +131,8 @@ The local replay now passes 13/13 ordering tests and the whole selected SQL
 sequence. The 12-operation calendar ACL baseline matches the read-only
 production catalog snapshot. It does **not** replay the other 28 root files,
 test existing production rows, verify authentic Supabase migration ledger
-entries, or prove the proposed calendar writer role. The next gate is the
-isolated calendar writer permission test against this schema. Separately,
+entries, or prove the proposed calendar writer's end-to-end operation. The
+next gate is the approved-claim execution test against this schema. Separately,
 production's missing May baseline still prevents a fresh Supabase branch from
 reconstructing the installed schema. None of these local experiments alters
 production, the production migration ledger, or its guard.

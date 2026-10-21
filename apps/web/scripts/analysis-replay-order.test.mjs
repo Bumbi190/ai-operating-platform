@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { orderReplayMigrations } from "./analysis-replay-order.mjs";
+import { orderReplayMigrations, orderLegacyMediaReplayMigrations } from "./analysis-replay-order.mjs";
 const tables = {
   name: "20260520_media_tables.sql",
   sha256: "ec1a18ef576352e99d2b38b54da6d2c8db6cb5b409b38e4ece3921135200e07c",
@@ -8,6 +8,10 @@ const tables = {
 const images = {
   name: "20260520_media_images.sql",
   sha256: "e1d544a46214f72d09588b66725989c5caf9ef4ce6bb8e53c34c34850264ca58",
+};
+const insights = {
+  name: "20260601_media_insights.sql",
+  sha256: "b3cad2590764175d104db1f6f62a48b2b63915e95fc3f0ee4020233e2ee941dd",
 };
 test("create media_scripts before its images alteration without dropping either migration", () => {
   const earlier = { name: "20260501_before.sql", sha256: "a" },
@@ -47,6 +51,18 @@ test("duplicate filenames are refused", () => {
   );
 });
 
+test("legacy media diagnostic includes its pinned root dependency before BI", () => {
+  const bi = { name: "20260602_atlas_bi_foundation.sql", sha256: "bi" };
+  const ordered = orderLegacyMediaReplayMigrations([bi, images, tables], insights);
+  assert.deepEqual(ordered, [tables, images, insights, bi]);
+  assert.equal(ordered.filter((entry) => entry === insights).length, 1);
+});
+test("legacy media diagnostic refuses changed bytes, duplicates and missing BI", () => {
+  assert.throws(() => orderLegacyMediaReplayMigrations([tables, images], insights), /missing replay dependency/);
+  assert.throws(() => orderLegacyMediaReplayMigrations([tables, images, { name: "20260602_atlas_bi_foundation.sql", sha256: "bi" }], { ...insights, sha256: "changed" }), /unreviewed legacy media dependency/);
+  assert.throws(() => orderLegacyMediaReplayMigrations([tables, images, insights, { name: "20260602_atlas_bi_foundation.sql", sha256: "bi" }], insights), /duplicate legacy media dependency/);
+});
+
 test("repository replay retains every canonical SQL file exactly once", async () => {
   const { readdirSync } = await import("node:fs");
   const { execFileSync } = await import("node:child_process");
@@ -75,4 +91,9 @@ test("repository replay retains every canonical SQL file exactly once", async ()
     ordered.findIndex((x) => x.name === tables.name) <
       ordered.findIndex((x) => x.name === images.name),
   );
+  const rootBytes = execFileSync("git", ["show", "HEAD:supabase/migrations/20260601_media_insights.sql"], { cwd: repo });
+  const pinnedRoot = { ...insights, sha256: createHash("sha256").update(rootBytes).digest("hex") };
+  const legacyOrder = orderLegacyMediaReplayMigrations(rows, pinnedRoot);
+  assert.equal(legacyOrder.length, rows.length + 1);
+  assert.equal(legacyOrder.filter((entry) => entry === pinnedRoot).length, 1);
 });

@@ -4,7 +4,7 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import assert from 'node:assert/strict'
-import { orderReplayMigrations } from './analysis-replay-order.mjs'
+import { orderReplayMigrations, orderLegacyMediaReplayMigrations } from './analysis-replay-order.mjs'
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..'),
   repo = resolve(web, '../..')
 const migrationDir = resolve(web, 'supabase/migrations')
@@ -26,8 +26,10 @@ assert.ok(
   'P1 function missing',
 )
 const dependencyReplay = process.argv.includes('--mode=dependency-replay')
-const replay = dependencyReplay || process.argv.includes('--mode=canonical-replay')
-const name = dependencyReplay ? 'omnira-atlas-p1-dependency-replay' : replay ? 'omnira-atlas-p1-canonical-replay' : 'omnira-atlas-p1-local'
+const legacyMediaReplay = process.argv.includes('--mode=legacy-media-replay')
+assert.ok(!(dependencyReplay && legacyMediaReplay), 'select one replay mode')
+const replay = dependencyReplay || legacyMediaReplay || process.argv.includes('--mode=canonical-replay')
+const name = legacyMediaReplay ? 'omnira-atlas-p1-legacy-media-replay' : dependencyReplay ? 'omnira-atlas-p1-dependency-replay' : replay ? 'omnira-atlas-p1-canonical-replay' : 'omnira-atlas-p1-local'
 const image = 'public.ecr.aws/supabase/postgres:17.11.0.004'
 const docker = (args, input) =>
   spawnSync('docker', args, { encoding: 'utf8', input, timeout: 60000, maxBuffer: 8 * 1024 * 1024 })
@@ -158,11 +160,15 @@ try {
       const bytes=reviewedBytes(resolve(migrationDir,name));
       return {name,sha256:createHash('sha256').update(bytes).digest('hex')};
     });
-    const ordered=dependencyReplay ? orderReplayMigrations(entries) : entries.sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0);
-    if(dependencyReplay) console.log('LOCAL REPLAY ORDER: hash-pinned media_tables before media_images; all canonical files retained');
+    const legacyFile=resolve(repo,'supabase/migrations/20260601_media_insights.sql');
+    const legacyEntry=legacyMediaReplay ? {name:'20260601_media_insights.sql',sha256:createHash('sha256').update(reviewedBytes(legacyFile)).digest('hex')} : null;
+    const ordered=legacyMediaReplay ? orderLegacyMediaReplayMigrations(entries,legacyEntry)
+      : dependencyReplay ? orderReplayMigrations(entries) : entries.sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0);
+    if(dependencyReplay || legacyMediaReplay) console.log('LOCAL REPLAY ORDER: hash-pinned media_tables before media_images; all canonical files retained');
+    if(legacyMediaReplay) console.log('LOCAL LEGACY MEDIA: one hash-pinned root media_insights migration included; diagnostic only');
     const files = [
       resolve(repo, 'packages/db/full_schema_run_in_supabase.sql'),
-      ...ordered.map(entry=>resolve(migrationDir,entry.name)),
+      ...ordered.map(entry=>entry === legacyEntry ? legacyFile : resolve(migrationDir,entry.name)),
     ]
     for (const file of files) {
       const bytes = reviewedBytes(file)
@@ -171,7 +177,7 @@ try {
       )
       sql(bytes.toString('utf8'))
     }
-    console.log(dependencyReplay ? 'DEPENDENCY REPLAY PASS' : 'CANONICAL REPLAY PASS')
+    console.log(legacyMediaReplay ? 'LEGACY MEDIA REPLAY PASS' : dependencyReplay ? 'DEPENDENCY REPLAY PASS' : 'CANONICAL REPLAY PASS')
     process.exitCode = 0
   } else {
     sql(readFileSync(resolve(web, 'lib/qa/fixtures/analysis-drafts-local-bootstrap.sql'), 'utf8'))

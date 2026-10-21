@@ -29,6 +29,20 @@ PostgreSQL reports `relation "media_insights" does not exist`. Its CREATE TABLE 
 
 Logs are retained in the separate recovery evidence directory. P1 migration SHA-256 remains `0582d94689b34e6704c26a830b879741d233ff81a7139bf28ce3642e83000738`.
 
+### Follow-up diagnostic mode (21 October)
+
+`node apps/web/scripts/verify-analysis-drafts-local.mjs --mode=legacy-media-replay`
+adds only the hash-pinned root `20260601_media_insights.sql` to the local
+dependency replay order before `20260602_atlas_bi_foundation.sql`. It checks
+the root SQL bytes, retains every canonical web migration, and refuses a
+missing BI migration or a duplicate filename. The canonical and dependency
+modes keep their previous order and scope. The ordering tests pass (8/8),
+but PostgreSQL replay has not run in this environment, which has no Docker.
+This diagnostic exposes the next dependency; it does not establish complete
+historical replay or working Supabase branch creation. It also does not repair
+the production migration registry's earlier missing `media_scripts` baseline,
+change any migration ledger, or apply SQL to production.
+
 ## Production installation decision
 
 The preview's exact Vercel build stops before Next.js compilation because production lacks the enforced `atlas_analysis_drafts` migration. This repair intentionally does not make that deployment green.

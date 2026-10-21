@@ -5,6 +5,10 @@ const mediaDependencies = {
   "20260520_media_images.sql":
     "e1d544a46214f72d09588b66725989c5caf9ef4ce6bb8e53c34c34850264ca58",
 };
+const legacyMediaInsights = {
+  name: "20260601_media_insights.sql",
+  sha256: "b3cad2590764175d104db1f6f62a48b2b63915e95fc3f0ee4020233e2ee941dd",
+};
 export function orderReplayMigrations(entries) {
   const names = new Set(entries.map((entry) => entry.name));
   if (names.size !== entries.length) throw Error("duplicate replay migration");
@@ -32,4 +36,22 @@ export function orderReplayMigrations(entries) {
     result.splice(dependent, 0, entry);
   }
   return result;
+}
+
+// Diagnostic path for the older root migration that the canonical web tree
+// omitted. It must never be treated as a production migration-ledger repair.
+export function orderLegacyMediaReplayMigrations(canonicalEntries, legacyEntry) {
+  if (legacyEntry.name !== legacyMediaInsights.name ||
+      legacyEntry.sha256 !== legacyMediaInsights.sha256)
+    throw Error("unreviewed legacy media dependency");
+  if (canonicalEntries.some((entry) => entry.name === legacyEntry.name))
+    throw Error("duplicate legacy media dependency");
+  const ordered = orderReplayMigrations(canonicalEntries);
+  const dependent = ordered.findIndex((entry) => entry.name === "20260602_atlas_bi_foundation.sql");
+  if (dependent === -1) throw Error("missing replay dependency: atlas_bi_foundation");
+  const insertion = ordered.findIndex((entry) => entry.name > legacyEntry.name);
+  ordered.splice(insertion === -1 ? ordered.length : insertion, 0, legacyEntry);
+  if (ordered.indexOf(legacyEntry) >= ordered.findIndex((entry) => entry.name === "20260602_atlas_bi_foundation.sql"))
+    throw Error("legacy media dependency must precede atlas_bi_foundation");
+  return ordered;
 }

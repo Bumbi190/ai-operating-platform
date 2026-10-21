@@ -44,6 +44,9 @@ vi.mock('@/lib/cost/budget-gate', () => ({
   },
   settleSpend: async () => { log('settle') },
   releaseSpend: async () => { log('release') },
+  // M0: dispatch intent always records; an advisory override gets an accounting reservation.
+  markSpendDispatchIntent: async () => true,
+  openOverrideReservation: async () => 'm0-override-reservation',
 }))
 
 // ── Stop authority ───────────────────────────────────────────────────────────

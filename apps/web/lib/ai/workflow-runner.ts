@@ -11,6 +11,7 @@ import 'server-only'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { interpolate } from '@/lib/utils'
 import { runStep } from '@/lib/ai/runner'
+import { composeAgentDesignSkills } from '@/lib/skills/compose-agent-skills'
 import {
   checkpointClaimedRun, settleRefusal, RunLifecycleWriteError,
   RunCheckpointRefusedError,
@@ -67,12 +68,15 @@ export async function runSteps(
 
     const { data: agent } = await db
       .from('agents')
-      .select('id, name, system_prompt, model, config')
+      .select('id, name, system_prompt, model, config, skill_ids')
       .eq('id', step.agent_id)
+      .eq('project_id', projectId)
       .single()
 
     if (!agent) throw new Error(`Agent hittades inte (steg "${step.name}")`)
 
+    const designKnowledge = composeAgentDesignSkills(agent.system_prompt, Array.isArray(agent.skill_ids) ? agent.skill_ids : [])
+    if (designKnowledge.unresolvedSkillIds.length) console.warn('[design-skills] unresolved labels', { runId, agentId: agent.id, count: designKnowledge.unresolvedSkillIds.length })
     const userMessage = interpolate(step.input_template, context)
 
     await db.from('run_logs').insert({
@@ -83,7 +87,7 @@ export async function runSteps(
     const result = await runStep({
       // AUTONOMOUS: the legacy runner is reached from the drain, never a human.
       execution: { context: 'AUTONOMOUS', scope: projectScope({ projectId }) },
-      systemPrompt: agent.system_prompt,
+      systemPrompt: designKnowledge.systemPrompt,
       userMessage,
       model: agent.model,
       // G3C-3C-A: in-flight authority when this invocation actually owns the run.

@@ -222,6 +222,9 @@ export async function executeGovernedEffect(
           provider: 'workflow',
           operation: run.action_kind,
           estimatedSek: EXECUTOR_ESTIMATE_SEK,
+          // M0: no provider is billed by this boundary; nested provider calls
+          // reserve their own ceilings.
+          ceilingBasis: 'internal_fixed',
           idempotencyKey: run.idempotency_key ?? undefined,
         },
         runEffect,

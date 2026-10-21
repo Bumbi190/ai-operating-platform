@@ -1,0 +1,23 @@
+import {test,expect} from '@playwright/test'
+for(const viewport of [{width:390,height:844},{width:430,height:932},{width:390,height:650}])test('activity opens above the backdrop at '+viewport.width+'x'+viewport.height,async({page},info)=>{
+ await page.setViewportSize(viewport);await page.goto('/build');await expect(page.locator('#omnira-sidebar')).toBeHidden()
+ const trigger=page.getByRole('button',{name:'Visa aktivitet',exact:true}),sheet=page.getByRole('dialog',{name:'Live activity'})
+ await trigger.click();await expect(trigger).toHaveAttribute('aria-expanded','true');await expect(sheet).toBeVisible();await expect(sheet).toBeInViewport({ratio:1})
+ await expect(sheet.getByText('Webbpreviewn är klar',{exact:true})).toBeVisible()
+ expect(await sheet.evaluate(el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.left+r.width/2,r.top+30))})).toBe(true)
+ expect(await page.evaluate(()=>document.body.style.overflow)).toBe('hidden')
+ await page.screenshot({path:info.outputPath('activity-open.png')})
+ await sheet.getByText('Sparad aktivitet 17',{exact:true}).scrollIntoViewIfNeeded();await expect(sheet.getByText('Sparad aktivitet 17',{exact:true})).toBeInViewport()
+ await sheet.getByRole('button',{name:'Close',exact:true}).click();await expect(sheet).toHaveCount(0);await expect(trigger).toHaveAttribute('aria-expanded','false');expect(await page.evaluate(()=>document.body.style.overflow)).not.toBe('hidden')
+ await trigger.click();await expect(sheet).toBeVisible();await page.keyboard.press('Escape');await expect(sheet).toHaveCount(0)
+ await trigger.click();await expect(sheet).toBeVisible();await page.mouse.click(viewport.width/2,20);await expect(sheet).toHaveCount(0)
+ await expect(page.getByRole('button',{name:'Bakgrundskontroll 0',exact:true})).toBeVisible()
+})
+test('collapsing the desktop sidebar leaves the activity dialog visible and clickable',async({page},info)=>{
+ await page.setViewportSize({width:1440,height:900});await page.goto('/settings')
+ await page.getByRole('button',{name:'Dölj meny',exact:true}).click();await expect(page.locator('#omnira-sidebar')).toBeHidden()
+ await page.getByRole('button',{name:'Visa aktivitet',exact:true}).click();const sheet=page.getByRole('dialog',{name:'Live activity'})
+ await expect(sheet).toBeVisible();await expect(sheet).toBeInViewport({ratio:1});await expect(sheet.getByText('Webbpreviewn är klar',{exact:true})).toBeVisible()
+ await sheet.getByRole('button',{name:'Close',exact:true}).click();await expect(sheet).toHaveCount(0)
+ await page.getByRole('button',{name:'Visa meny',exact:true}).click();await expect(page.locator('#omnira-sidebar')).toBeVisible();await page.screenshot({path:info.outputPath('desktop-activity-closed.png')})
+})

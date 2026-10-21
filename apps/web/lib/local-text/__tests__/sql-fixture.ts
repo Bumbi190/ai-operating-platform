@@ -1,0 +1,14 @@
+/** Disposable Postgres adapter for exercising real canonical TypeScript helpers.
+ * No production credentials/network; every call executes in the labelled fixture. */
+import type {Db} from '../types'
+export function fixtureDb(sql:(statement:string)=>string):Db{
+ const literal=(v:unknown):string=>v===null?'null':typeof v==='object'?"'"+JSON.stringify(v).replaceAll("'","''")+"'::jsonb":typeof v==='number'?String(v):typeof v==='boolean'?String(v):"'"+String(v).replaceAll("'","''")+"'"
+ const name=(s:string)=>{if(!/^[a-z_][a-z_0-9]*$/.test(s))throw Error('FIXTURE_IDENTIFIER');return s}
+ const allowed=new Set(['local_text_device_identity','local_text_worker_operation','local_text_revalidate','local_text_existing_request','local_text_human_selection_context','local_text_enqueue','local_text_read_receipt','local_text_read_review','local_text_resolve_approval','local_text_cloud_snapshot','local_text_cloud_operation','local_text_advance','local_text_maintain','local_text_purge','stop_state','claim_runs'])
+ return {rpc:async(n:string,args:Record<string,unknown>)=>{try{if(!allowed.has(n))throw Error('FIXTURE_RPC');const call='public.'+name(n)+'('+Object.entries(args).map(([k,v])=>name(k)+'=>'+literal(v)).join(',')+')';return {data:JSON.parse(sql(['stop_state','claim_runs'].includes(n)?"select coalesce(jsonb_agg(to_jsonb(x)),'[]'::jsonb) from "+call+' x;':'select '+call+';')),error:null}}catch(e){return {data:null,error:{message:e instanceof Error?e.message:'fixture'}}}},from:(table:string)=>{
+  if(!['runs','cost_events'].includes(table))throw Error('FIXTURE_TABLE');let fields='*',values:Record<string,unknown>|undefined;const filters:string[]=[];let max=100
+  const execute=async()=>{try{const where=filters.length?' where '+filters.join(' and '):'';let query:string;if(values){query='with changed as (update public.'+table+' set '+Object.entries(values).map(([k,v])=>name(k)+'='+literal(v)).join(',')+where+' returning '+fields+") select coalesce(jsonb_agg(to_jsonb(changed)),'[]'::jsonb) from changed;"}else query="select coalesce(jsonb_agg(to_jsonb(x)),'[]'::jsonb) from (select "+fields+' from public.'+table+where+' limit '+max+') x;';return {data:JSON.parse(sql(query)),error:null}}catch(e){return {data:null,error:{message:e instanceof Error?e.message:'fixture'}}}}
+  const builder={select:(s='*')=>{fields=s==='*'?'*':s.split(',').map(k=>name(k.trim())).join(',');return builder},update:(v:Record<string,unknown>)=>{values=v;return builder},eq:(k:string,v:unknown)=>{filters.push(name(k)+(v===null?' is null':'='+literal(v)));return builder},limit:(n:number)=>{if(!Number.isInteger(n)||n<1||n>100)throw Error('FIXTURE_LIMIT');max=n;return builder},maybeSingle:async()=>{const r=await execute();return {...r,data:r.data?.[0]??null}},then:(yes:(v:unknown)=>unknown,no:(e:unknown)=>unknown)=>execute().then(yes,no)}
+  return builder
+ }} as unknown as Db
+}

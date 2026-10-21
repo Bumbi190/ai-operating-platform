@@ -1,0 +1,302 @@
+.section {
+  margin-top: 1.4rem;
+  padding: 1.6rem;
+  border: 1px solid rgba(92, 188, 221, 0.17);
+  border-radius: 22px;
+  background: linear-gradient(
+    135deg,
+    rgba(14, 35, 52, 0.83),
+    rgba(7, 15, 29, 0.95) 65%,
+    rgba(13, 31, 46, 0.9)
+  );
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.13);
+  color: #eaf8ff;
+}
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 1.5rem;
+  margin-bottom: 1.35rem;
+  flex-wrap: wrap;
+}
+.eyebrow {
+  font-size: 0.69rem;
+  letter-spacing: 0.18em;
+  font-weight: 750;
+  color: #63d9e3;
+  margin: 0 0 0.5rem;
+}
+.header h2 {
+  margin: 0;
+  font-size: clamp(1.4rem, 2.1vw, 1.9rem);
+  font-weight: 720;
+  letter-spacing: -0.035em;
+}
+.subtitle {
+  margin: 0.43rem 0 0;
+  color: #9fb6c7;
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.52rem;
+  font-size: 0.73rem;
+  padding: 0.5rem 0.72rem;
+  background: rgba(144, 175, 194, 0.09);
+  border: 1px solid rgba(171, 212, 235, 0.12);
+  color: #b0cad7;
+  border-radius: 99px;
+  white-space: nowrap;
+}
+.statusDot {
+  width: 7px;
+  height: 7px;
+  background: #9fb6c7;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(159, 182, 199, 0.1);
+}
+.status[data-ready="yes"] {
+  color: #8de6d3;
+  border-color: rgba(124, 230, 193, 0.23);
+  background: rgba(64, 180, 139, 0.08);
+}
+.status[data-ready="yes"] .statusDot {
+  background: #7fe4bc;
+  box-shadow: 0 0 0 4px rgba(101, 233, 177, 0.13);
+}
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+.metric {
+  border: 1px solid rgba(181, 215, 231, 0.12);
+  border-radius: 15px;
+  min-height: 132px;
+  background: linear-gradient(
+    140deg,
+    rgba(255, 255, 255, 0.05),
+    rgba(255, 255, 255, 0.015)
+  );
+  padding: 1.05rem 1.18rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.metricLabel {
+  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #b6d6e1;
+}
+.metricLabel svg {
+  color: #59cfda;
+}
+.metricValue {
+  font-size: clamp(1.9rem, 3.5vw, 2.65rem);
+  line-height: 1.2;
+  letter-spacing: -0.045em;
+  margin: 0.76rem 0 0.35rem;
+  font-weight: 720;
+  color: #b4c6d2;
+}
+.metric[data-ready="yes"] .metricValue {
+  color: #f5ffff;
+}
+.metricNote {
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: #9aafc1;
+}
+.chartSurface {
+  border: 1px solid rgba(143, 207, 226, 0.13);
+  border-radius: 16px;
+  margin-top: 0.92rem;
+  padding: 1.15rem;
+  background: rgba(1, 9, 19, 0.27);
+}
+.chartHeading {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+.chartHeading h3 {
+  font-size: 1rem;
+  font-weight: 650;
+  margin: 0;
+}
+.chartHeading p {
+  font-size: 0.77rem;
+  margin: 0.35rem 0 0;
+  color: #9fb3c4;
+}
+.chartIcon {
+  color: #74dbe4;
+  opacity: 0.78;
+}
+.empty {
+  min-height: 182px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem 0.75rem;
+  gap: 0.55rem;
+}
+.emptyIcon {
+  display: grid;
+  place-items: center;
+  width: 45px;
+  height: 45px;
+  border: 1px solid rgba(117, 212, 232, 0.17);
+  background: rgba(108, 210, 236, 0.08);
+  border-radius: 50%;
+  color: #82d4e4;
+}
+.empty strong {
+  font-size: 0.94rem;
+  font-weight: 650;
+}
+.empty p {
+  margin: 0;
+  color: #a1b8c7;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  max-width: 540px;
+}
+.chart {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: clamp(0.35rem, 1.3vw, 0.85rem);
+  padding: 1.15rem 0.25rem 0.1rem;
+  min-height: 215px;
+  align-items: end;
+}
+.dayColumn {
+  height: 185px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  gap: 0.5rem;
+}
+.barValue {
+  color: #daecf3;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+}
+.barTrack {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  min-height: 0;
+}
+.barFill {
+  width: 100%;
+  background: linear-gradient(180deg, #62d8e7, #238eb3);
+  border-radius: 7px 7px 2px 2px;
+  min-height: 0;
+  box-shadow: 0 0 16px rgba(44, 177, 207, 0.16);
+}
+.dayLabel {
+  font-size: 0.7rem;
+  color: #9cb5c5;
+  white-space: nowrap;
+}
+.footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  margin-top: 1rem;
+  color: #95b0bf;
+  font-size: 0.73rem;
+  flex-wrap: wrap;
+}
+.footer a {
+  color: #86e4e8;
+  text-decoration: none;
+  display: inline-flex;
+  gap: 0.32rem;
+  align-items: center;
+}
+.footer a:hover {
+  text-decoration: underline;
+}
+@media (max-width: 620px) {
+  .section {
+    padding: 1rem;
+    border-radius: 17px;
+  }
+  .metricGrid {
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
+  }
+  .metric {
+    min-height: auto;
+    padding: 0.85rem 1rem;
+  }
+  .metricValue {
+    margin: 0.32rem 0 0.1rem;
+    font-size: 1.9rem;
+  }
+  .chartSurface {
+    padding: 0.85rem;
+  }
+  .chart {
+    gap: 0.3rem;
+    min-height: 155px;
+  }
+  .dayColumn {
+    height: 136px;
+  }
+  .barValue,
+  .dayLabel {
+    font-size: 0.62rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .section *,
+  .section *:before,
+  .section *:after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+
+/* Align the consent-gated traffic module with HB dashboard visual v2. */
+.section{border-radius:1.15rem;border-color:rgba(76,193,219,.22);background:radial-gradient(ellipse 60% 100% at 100% 0%,rgba(16,118,156,.11),transparent 80%),linear-gradient(142deg,#061c2e,#030e1e 83%);box-shadow:inset 0 1px rgba(255,255,255,.04),0 20px 50px rgba(0,0,0,.1)}
+.header h2{font-size:clamp(1.4rem,2.15vw,1.95rem);font-weight:730;letter-spacing:-.043em}
+.metric{border-color:rgba(87,167,209,.18);background:linear-gradient(135deg,rgba(14,48,72,.75),rgba(4,18,34,.77));border-radius:.9rem}
+.metricLabel svg{color:#7bd7fa}
+.metricValue{font-size:clamp(2rem,2.75vw,2.55rem);color:#e7f9ff}
+.chartSurface{border-radius:.95rem;border-color:rgba(79,172,218,.15);background:rgba(3,20,35,.42)}
+.emptyIcon{box-shadow:0 0 27px rgba(62,204,238,.12)}
+.barFill{background:linear-gradient(180deg,#71e6e7,#2388b7);box-shadow:0 0 15px rgba(37,177,212,.2)}
+
+/* Waiting state is a message, never a synthetic chart silhouette. */
+.empty { margin-top: 1.1rem; padding: 2rem 1rem; gap: 0.8rem; border: 1px dashed rgb(130 191 219 / 0.23); border-radius: 0.8rem; background: linear-gradient(135deg, rgb(23 65 87 / 0.18), rgb(3 15 29 / 0.3)); }
+.emptyIcon { width: 3.25rem; height: 3.25rem; border-radius: 1rem; box-shadow: none; }
+.empty strong { font-size: 1.0625rem; color: #e6f6ff; }
+.empty p { color: #bbd1df; font-size: 0.875rem; }
+.metricValue, .barValue { font-variant-numeric: tabular-nums; }
+.metricNote, .chartHeading p, .footer { color: #b4ccda; }
+.chart { gap: clamp(0.4rem, 1.5vw, 1.25rem); }
+.barTrack { border-bottom: 1px solid rgb(172 215 233 / 0.3); background: repeating-linear-gradient(to top, transparent 0, transparent calc(25% - 1px), rgb(140 194 219 / 0.09) calc(25% - 1px), rgb(140 194 219 / 0.09) 25%); }
+.barFill { max-width: 4rem; margin-inline: auto; box-shadow: none; }
+.barValue { color: #e6f7ff; font-size: 0.8125rem; overflow-wrap: anywhere; text-align: center; }
+.dayLabel { color: #bdd4e2; font-size: 0.75rem; }
+.footer a { min-height: 2.75rem; }
+.footer a:focus-visible { outline: 2px solid #86e4e8; outline-offset: 4px; border-radius: 0.25rem; }
+@media (max-width: 620px) {
+  .chart { gap: 0.35rem; }
+  .barValue, .dayLabel { font-size: 0.75rem; }
+}

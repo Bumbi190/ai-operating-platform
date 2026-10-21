@@ -536,8 +536,8 @@ describe('exactly ONE audited mutation path exists, repository-wide', () => {
       if (['node_modules', '.next', '.git', 'supabase'].includes(entry)) continue
       const full = join(dir, entry)
       if (statSync(full).isDirectory()) { runtimeFiles(full, acc); continue }
-      if (!/\.tsx?$/.test(entry)) continue
-      const rel = relative(process.cwd(), full)
+      if (!/\.tsx?$/.test(entry) || /\.(test|spec)\.tsx?$/.test(entry)) continue
+      const rel = relative(process.cwd(), full).replace(/\\/g, '/')
       if (rel.startsWith('lib/qa/') || rel.startsWith('tests/')) continue
       if (rel.endsWith('database.types.ts')) continue
       acc.push(rel)
@@ -702,8 +702,8 @@ describe('the canonical stop RPCs have exactly one application caller', () => {
       if (['node_modules', '.next', '.git', 'supabase'].includes(entry)) continue
       const full = join(dir, entry)
       if (statSync(full).isDirectory()) { runtimeSources(full, acc); continue }
-      if (!/\.tsx?$/.test(entry)) continue
-      const rel = relative(process.cwd(), full)
+      if (!/\.tsx?$/.test(entry) || /\.(test|spec)\.tsx?$/.test(entry)) continue
+      const rel = relative(process.cwd(), full).replace(/\\/g, '/')
       if (rel.startsWith('lib/qa/') || rel.startsWith('tests/')) continue
       acc.push(rel)
     }

@@ -28,6 +28,7 @@ import { summarizeSchedulingDecision } from '../workflows/action-scheduling'
 import { findAdapter } from '../workflows/adapters/registry'
 import { ACTION_REGISTRY, isGovernedEffectEnabled } from '../workflows/action-registry'
 import { ACTION_CLASS_POLICY } from '../workflows/action-target'
+import { bindRpcFake } from './bind-rpc-fake'
 
 const FS_DEF_KEY = 'familje-stunden.monthly-release'
 const PROBE_DEF_KEY = 'omnira.probe-validation'
@@ -113,6 +114,7 @@ function makeDb(f: Fixture) {
   }
   const db = {
     inserted,
+    rpc: bindRpcFake(inserted),
     from(table: string) {
       const q: Record<string, unknown> & Record<string, any> = { _table: table, _insert: null }
       const self = () => q
@@ -168,8 +170,9 @@ describe('C — the self-answered required check no longer blocks its own action
     const { db, inserted } = makeDb({ defKey: PROBE_DEF_KEY, spec: probeSpec, state: 'probe' })
     await createWorkflowActionRun(db as never,
       { instanceId: INSTANCE_ID, actionKind: PROBE_ACTION })
-    // The ONLY table written is `runs`. No synthesized evidence, no transition.
-    expect(inserted.map(i => i.table)).toEqual(['runs'])
+    // The ONLY writes are the run and its atomic bind provenance (Phase 3B1B).
+    // No synthesized evidence, no transition.
+    expect(inserted.map(i => i.table)).toEqual(['runs', 'run_autonomy_decisions'])
     expect(inserted.some(i => i.table === 'workflow_evidence')).toBe(false)
     expect(inserted.some(i => i.table === 'workflow_transitions')).toBe(false)
   })

@@ -1,3 +1,10 @@
+import {resolveCalendarProjectScope} from '@/lib/calendar/access';
+import {CALENDAR_TOOLS,CALENDAR_TOOL_NAMES,CALENDAR_GUIDE,handleCalendarTool,persistCalendarToolData,isCalendarIntent} from '@/lib/calendar/atlas-tools';
+import {calendarChangedForResult} from '@/lib/calendar/stream-effect';
+import type {CalendarDb} from '@/lib/calendar/types';
+import {LOCAL_TEXT_TOOLS,LOCAL_TEXT_TOOL_NAMES,availableLocalTextTools,handleLocalTextTool,persistLocalTextToolData} from '@/lib/local-text/atlas-tools'
+import {studioSystemPrompt} from '@/lib/website-build/studio/chat-context'
+import {resolveStudioTurnContext,type StudioTurnContext} from '@/lib/website-build/studio/turn-context'
 /**
  * POST /api/chat
  *
@@ -40,6 +47,22 @@ import { resolvePlatformOperator } from '@/lib/auth/platform-operator'
 import { resolveOwnedProjectId } from '@/lib/atlas/project-resolution'
 import { executeLegacyDelegate } from '@/lib/atlas/legacy-delegate'
 import { validateWorkflowDraft, type WorkflowDraft } from '@/lib/atlas/workflow-authoring'
+import { listAtlasWorkflowCatalog } from '@/lib/atlas/workflow-catalog'
+import { DESIGN_SKILL_TOOLS, DESIGN_SKILL_GUIDE, executeDesignSkillTool } from '@/lib/skills/atlas-tools'
+import {resolveConversationBuildContext} from '@/lib/website-build/planning/build-context'
+import {readWebsitePlan} from '@/lib/website-build/planning/store'
+import type {BuildContext} from '@/lib/atlas/conversation/stream-effects'
+import {executeVisiblePlanApproval,parseWebsitePlanRef} from '@/lib/website-build/planning/operator-command'
+import {buildErrorResponse} from '@/lib/website-build/api'
+import {WebsiteBuildError} from '@/lib/website-build/store'
+import {assertSameOrigin} from '@/lib/atlas/executive/http'
+import type {PlanRevisionRef} from '@/lib/website-build/planning/types'
+import { WEBSITE_BUILD_TOOLS, WEBSITE_BUILD_GUIDE, WEBSITE_BUILD_TOOL_NAMES, handleWebsiteBuildTool } from '@/lib/website-build/atlas-tools'
+import {SOCIAL_SCHEDULE_TOOLS,SOCIAL_SCHEDULE_TOOL_NAMES,handleSocialScheduleTool} from '@/lib/social-launch/scheduling/atlas-tools'
+import {SOCIAL_PUBLICATION_TOOLS,SOCIAL_PUBLICATION_TOOL_NAMES,handleSocialPublicationTool} from '@/lib/social-launch/publication/atlas-tools'
+import {SOCIAL_PROFILE_TOOLS,SOCIAL_PROFILE_TOOL_NAMES,SOCIAL_PROFILE_GUIDE,handleSocialProfileTool} from '@/lib/social-launch/profile/atlas-tools'
+import {SOCIAL_CONTENT_TOOLS,SOCIAL_CONTENT_TOOL_NAMES,SOCIAL_CONTENT_GUIDE,handleSocialContentTool} from '@/lib/social-launch/content/atlas-tools'
+import {SOCIAL_LAUNCH_TOOLS,SOCIAL_LAUNCH_TOOL_NAMES,SOCIAL_LAUNCH_GUIDE,handleSocialLaunchTool} from '@/lib/social-launch/atlas-tools'
 import type { Json } from '@/lib/supabase/database.types'
 import { isViewAwarenessEnabled, normalizeView, renderViewBlock, type ClientViewEnvelope } from '@/lib/atlas/view-context'
 import { fetchRecords } from '@/lib/atlas/record-access'
@@ -49,10 +72,16 @@ import { recordAction, buildActionMemory } from '@/lib/atlas/action-memory'
 // CL Commit 5 (Stage 0, shadow): assembler-vs-legacy diff instrumentation.
 // Flag-gated (ATLAS_CTX_ASSEMBLER=shadow), fire-and-forget, never in the live path.
 import { isContextShadowEnabled, runContextShadow } from '@/lib/atlas/context/shadow'
+import {CLEANUP_TOOLS,CLEANUP_TOOL_NAMES,CLEANUP_GUIDE,handleCleanupTool} from '@/lib/atlas/handlarborsen-test-data/atlas-tools'
+import {decodeReviewView} from '@/lib/atlas/handlarborsen-test-data/stream-effect'
+import { buildHandlarborsenChatFacts } from '@/lib/atlas/project-analytics/handlarborsen-chat'
 import { isExplicitlyAuthorizedInternalPrincipal } from '@/lib/architecture-knowledge/policy'
 import { resolveDestination, resolveLinks, resolveProjectSlug, DESTINATION_IDS, type DestinationId } from '@/lib/nav/registry'
 import { toJson, parseWorkflowSteps } from '@/lib/supabase/json'
 import { getAnthropic } from '@/lib/ai/anthropic'
+import type { OpenAIGovernanceContext } from '@/lib/ai/openai-client'
+import { atlasModelPolicy } from '@/lib/ai/atlas-model-policy'
+import { openAIAtlasStream } from '@/lib/atlas/openai-chat'
 import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
 import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
 
@@ -302,7 +331,30 @@ När operatören vill köra något: hitta rätt workflow, trigga det, presentera
 - Spegla alltid verkligheten: körde inget verktyg → säg det rakt ut. Körde ett verktyg → visa resultatet (t.ex. run_id och att körningen är köad).
 - Hitta aldrig på run_id, status eller utfall.`
 
+// Studio capabilities stay within its selected website project. Dispatch enforces
+// the same set even if a provider returns a tool absent from its schema.
+const STUDIO_TOOL_NAMES = new Set([
+  ...DESIGN_SKILL_TOOLS.map(tool => tool.name),
+  ...WEBSITE_BUILD_TOOL_NAMES,
+  ...SOCIAL_LAUNCH_TOOL_NAMES,
+  ...SOCIAL_PROFILE_TOOL_NAMES,
+  ...SOCIAL_PUBLICATION_TOOL_NAMES,
+  ...SOCIAL_SCHEDULE_TOOL_NAMES,
+  ...SOCIAL_CONTENT_TOOL_NAMES,
+  'get_current_time', 'present_links', 'navigate',
+])
+
 const TOOLS: Anthropic.Tool[] = [
+  ...CALENDAR_TOOLS,
+  ...CLEANUP_TOOLS,
+  ...LOCAL_TEXT_TOOLS,
+  ...DESIGN_SKILL_TOOLS,
+  ...WEBSITE_BUILD_TOOLS,
+  ...SOCIAL_LAUNCH_TOOLS,
+  ...SOCIAL_PROFILE_TOOLS,
+  ...SOCIAL_PUBLICATION_TOOLS,
+  ...SOCIAL_SCHEDULE_TOOLS,
+  ...SOCIAL_CONTENT_TOOLS,
   {
     // Read-only, side-effect free, and the ONLY source of a clock value. Atlas
     // must never answer a time question from training data or from reading a
@@ -321,6 +373,15 @@ const TOOLS: Anthropic.Tool[] = [
           description: 'Exakt IANA-tidszon, t.ex. "America/New_York". Föredras när den är känd; slår location.',
         },
       },
+    },
+  },
+  {
+    name: 'list_atlas_workflow_catalog',
+    description: 'Visa Omniras tekniska katalog över deklarerade workflow-åtgärder och deras säkerhetsklass. Enbart läsning. Visar INTE vilka flöden som är aktiva, godkända, driftsatta eller kan köras just nu. Kör aldrig en åtgärd från katalogen.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
     },
   },
   {
@@ -594,8 +655,10 @@ export async function POST(request: Request) {
   // streaming closure further down.
   const userId = user.id
 
-  const anthropicApiKey = process.env.ANTHROPIC_API_KEY?.trim()
-  if (!anthropicApiKey) {
+  const modelPolicy = atlasModelPolicy()
+  const openaiEconomy = modelPolicy.profile === 'openai_economy'
+  const providerApiKey = (openaiEconomy ? process.env.OPENAI_API_KEY : process.env.ANTHROPIC_API_KEY)?.trim()
+  if (!providerApiKey) {
     const code = 'ATLAS_PROVIDER_NOT_CONFIGURED' as const
     return NextResponse.json(
       { code, error: getAtlasServiceErrorMessage(code) },
@@ -605,7 +668,7 @@ export async function POST(request: Request) {
   // Atlas chat serves every project at once and belongs to none of them, so it
   // names the platform compatibility project explicitly. Listed in the G1 report
   // as a mapping G2 must decide when it introduces budget scopes.
-  const anthropic = getAnthropic({
+  let providerContext: Pick<OpenAIGovernanceContext,'project'|'execution'|'agent'|'operation'> = {
     project: PLATFORM_COMPAT_PROJECT,
     execution: {
       // Ordinary operator assistance. GLOBAL_ONLY, never the billing project:
@@ -613,18 +676,30 @@ export async function POST(request: Request) {
       // stop would take Atlas offline whenever the media project is paused.
       context: 'OPERATOR_INTERACTIVE', scope: GLOBAL_ONLY,
     }, agent: 'Atlas', operation: 'Atlas Chat',
-  })
+  }
+  let anthropic = openaiEconomy ? null : getAnthropic(providerContext)
 
-  const { messages, conversation_id, voice, mode, view } = await request.json() as {
+  const { messages, conversation_id, voice, mode, view, websitePlanRef, buildContext:rawBuildContext, inputSource, studioContext:rawStudioContext } = await request.json() as {
     messages: Anthropic.MessageParam[]
     conversation_id?: string
     voice?: boolean
     mode?: string
     view?: ClientViewEnvelope
+    websitePlanRef?:unknown
+    buildContext?:unknown
+    inputSource?:unknown
+    studioContext?:unknown
   }
 
   const db = createAdminClient()
   const tStart = Date.now()
+  let studioContext:StudioTurnContext|null=null
+  if(rawStudioContext!==undefined&&rawStudioContext!==null){
+    const denied=assertSameOrigin(request);if(denied)return denied
+    try{studioContext=await resolveStudioTurnContext(db,{userId,allowedProjectIds:await getAllowedProjectIds(db,userId)},conversation_id??null,rawStudioContext)}catch(error){return buildErrorResponse(error)}
+    providerContext={project:{projectId:studioContext.projectId},execution:{context:'OPERATOR_EXECUTION',scope:projectScope({projectId:studioContext.projectId})},agent:'Atlas',operation:'Atlas Studio Chat'}
+    anthropic=openaiEconomy?null:getAnthropic(providerContext)
+  }
 
   // ── CONVERSATION OWNERSHIP ────────────────────────────────────────────────
   // `conversation_id` arrives in the REQUEST BODY. It is a client-supplied id
@@ -666,12 +741,12 @@ export async function POST(request: Request) {
     const m = messages[messages.length - 1]
     return m?.role === 'user' && typeof m.content === 'string' ? m.content : ''
   })()
-  const fastPath = mode === 'content' || isFastPathContent(lastUserText)
+  const fastPath = !isCalendarIntent(lastUserText) && !studioContext && !websitePlanRef && !rawBuildContext && (mode === 'content' || isFastPathContent(lastUserText))
   // Statisk konversation (hej/tack/vem är du) — besvaras ur Atlas identitet ensam.
   // Allow-list, aldrig gissning: allt som inte bevisligen klarar sig utan live-
   // data, projekt, Memory, klocka och verktyg går full path.
   const staticConversation =
-    !fastPath && classifyStaticConversation(lastUserText) === 'static_conversation'
+    !studioContext && !fastPath && !websitePlanRef && !rawBuildContext && classifyStaticConversation(lastUserText) === 'static_conversation'
   // Resolution is a state-changing action with one exact boundary. Detect it
   // separately so turn zero can force resolve_dream_finding rather than any tool.
   const resolutionIntent = !fastPath && !staticConversation && isDreamResolutionIntent(lastUserText)
@@ -701,7 +776,40 @@ export async function POST(request: Request) {
   // that path builds no project context and is sent no tools, so `executeTool`
   // — the one remaining reader of this list — cannot be reached. Every other
   // path, the content fast path included, reads it exactly as before.
-  const allowedProjectIds = staticConversation ? [] : await getAllowedProjectIds(db, user.id)
+  const allowedProjectIds = studioContext ? [studioContext.projectId] : staticConversation && !websitePlanRef && !rawBuildContext ? [] : await getAllowedProjectIds(db, user.id)
+
+
+  // A visible-plan confirmation is an authenticated operator command, never a model tool.
+  let visiblePlan:PlanRevisionRef|null=null
+  try{visiblePlan=parseWebsitePlanRef(websitePlanRef)}catch(error){return buildErrorResponse(error)}
+  let verifiedBuildContext:BuildContext|null=null
+  if(rawBuildContext!==undefined&&rawBuildContext!==null){
+    const denied=assertSameOrigin(request);if(denied)return denied
+    try{verifiedBuildContext=await resolveConversationBuildContext(db,{userId,allowedProjectIds},await resolveOwnedConversationId(),rawBuildContext)}catch(error){return buildErrorResponse(error)}
+  }
+  if(visiblePlan){
+    const denied=assertSameOrigin(request);if(denied){denied.headers.set('cache-control','private, no-store');return denied}
+    try{
+      const owned=await resolveOwnedConversationId()
+      if(!owned)throw new WebsiteBuildError('NOT_FOUND',404)
+      const native=await executeVisiblePlanApproval({db,principal:{userId,allowedProjectIds},conversationId:owned,visiblePlan,userText:lastUserText})
+      if(native){
+        const reply='Planen är godkänd och bygget är köat. Du kan fortsätta prata eller skriva medan previewn uppdateras.'
+        await saveMessage('user',lastUserText)
+        await saveMessage('assistant',reply)
+        await saveMessage('tool',null,{kind:'website_effect',conversationId:owned,planRef:native.plan.ref,sessionRef:{projectId:native.session.projectId,sessionId:native.session.sessionId}})
+        const frames=[
+          {event:'website_plan',plan:native.plan,conversationId:owned},
+          {event:'website_workspace',session:native.session,conversationId:owned},
+          {event:'text',text:reply},{event:'done'},
+        ].map(frame=>'data: '+JSON.stringify(frame)+'\n\n').join('')
+        return new Response(frames,{headers:{'content-type':'text/event-stream','cache-control':'private, no-store'}})
+      }
+      const plan=await readWebsitePlan(db,{userId,allowedProjectIds},visiblePlan)
+      if(plan.conversationId!==owned)throw new WebsiteBuildError('NOT_FOUND',404)
+      if(plan.currentRevision.revisionId!==visiblePlan.revisionId||plan.currentRevision.sha256!==visiblePlan.sha256)throw new WebsiteBuildError('PLAN_STALE',409)
+    }catch(error){return buildErrorResponse(error)}
+  }
 
   // True when the action ledger already shows a delegation — corroborates truthful
   // recall so the delegation honesty guard does NOT fire on it (set below).
@@ -717,8 +825,17 @@ export async function POST(request: Request) {
     // STATIC_CONVERSATION_SYSTEM säger uttryckligen att live-data saknas denna
     // tur, så en felklassad fråga inte kan besvaras med påhittade siffror.
     systemPrompt = STATIC_CONVERSATION_SYSTEM + (voice ? VOICE_DIRECTIVE : '')
+  } else if(studioContext) {
+    // Keep the transcript and verified bindings, without the global executive snapshot.
+    systemPrompt=studioSystemPrompt(studioContext)+SOCIAL_LAUNCH_GUIDE+SOCIAL_CONTENT_GUIDE
+    if(visiblePlan)systemPrompt+='\nCURRENT REVIEWED PLAN REFERENCES: '+JSON.stringify(visiblePlan)+'; read get_website_build_plan before revising.\n'
+    if(verifiedBuildContext)systemPrompt+='\nCURRENT BUILD (verified for this conversation): '+JSON.stringify(verifiedBuildContext)+'; user changes go to submit_website_build_feedback for this rendered revision. Status questions go to get_website_build. Never start a second build for feedback.\n'
+    systemPrompt+=renderCurrentInstant(new Date())
+    if(voice)systemPrompt+=VOICE_DIRECTIVE
   } else {
-    systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE
+    systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE + DESIGN_SKILL_GUIDE + CLEANUP_GUIDE + WEBSITE_BUILD_GUIDE + SOCIAL_LAUNCH_GUIDE + SOCIAL_PROFILE_GUIDE + SOCIAL_CONTENT_GUIDE + CALENDAR_GUIDE
+    if(visiblePlan)systemPrompt+='\nCURRENT REVIEWED PLAN REFERENCES: '+JSON.stringify(visiblePlan)+'; read get_website_build_plan before revising.\n'
+    if(verifiedBuildContext)systemPrompt+='\nCURRENT BUILD (verified for this conversation): '+JSON.stringify(verifiedBuildContext)+'; user change requests go to submit_website_build_feedback in this session, using the actually rendered revision. Questions about status go to get_website_build. Never start a second build for a feedback request.\n'
     // UNCONDITIONAL, AND DELIBERATELY BEFORE EVERYTHING THAT CAN FAIL. The bug
     // this slice fixes was partly that the only timestamp lived inside a block
     // guarded by `try`, so a single failed database read left Atlas with no idea
@@ -735,23 +852,33 @@ export async function POST(request: Request) {
     // CL Commit 5: legacy segments captured verbatim for the shadow diff only —
     // the exact strings appended below, nothing recomputed, zero behavior change.
     let shadowLive = '', shadowAction = '', shadowView = ''
-    try {
-      const live = await buildLiveContext(db, allowedProjectIds)
-      shadowLive = live
-      systemPrompt += live
-    } catch { /* icke-kritiskt */ }
-    // Cross-turn tool memory: surface prior tool outputs (esp. Dream issue_ids) so
-    // delegation across turns doesn't require re-fetching (kills the fetch loop).
-    try { systemPrompt += await buildToolMemory(db, conversation_id, userId) } catch { /* icke-kritiskt */ }
-    // Action memory (atlas_actions): PROJECT-scoped so "what did you do?" works
-    // across chats/sessions. Also reports whether a delegation is on record, used
-    // to suppress a false-claim correction on truthful recall.
-    try {
-      const am = await buildActionMemory(db, allowedProjectIds)
-      shadowAction = am.text
-      systemPrompt += am.text
-      recentDelegationKnown = am.hasRecentDelegation
-    } catch { /* icke-kritiskt */ }
+    // These reads depend only on the verified principal/project scope above,
+    // not on one another. Preserve append order and each source's fallback.
+    const contextReadMs = { live: 0, tools: 0, actions: 0 }
+    async function measureContext<T>(stage: keyof typeof contextReadMs, read: () => Promise<T>): Promise<T> {
+      const started = Date.now()
+      try { return await read() }
+      finally { contextReadMs[stage] = Date.now() - started }
+    }
+    const [liveResult, toolResult, actionResult] = await Promise.allSettled([
+      measureContext('live', () => buildLiveContext(db, allowedProjectIds)),
+      measureContext('tools', () => buildToolMemory(db, conversation_id, userId)),
+      measureContext('actions', () => buildActionMemory(db, allowedProjectIds)),
+    ])
+    // Numeric durations only; never log memory contents or principal identifiers.
+    console.info('[atlas-context-latency]', contextReadMs)
+    if (liveResult.status === 'fulfilled') {
+      shadowLive = liveResult.value
+      systemPrompt += liveResult.value
+    }
+    // Cross-turn tool memory keeps Dream identities available without re-fetching.
+    if (toolResult.status === 'fulfilled') systemPrompt += toolResult.value
+    // Project-scoped action memory still corroborates truthful delegation recall.
+    if (actionResult.status === 'fulfilled') {
+      shadowAction = actionResult.value.text
+      systemPrompt += actionResult.value.text
+      recentDelegationKnown = actionResult.value.hasRecentDelegation
+    }
     // View Awareness (Foundation 1, flag-gated): tell Atlas what the operator is
     // currently looking at. Hint-only — route/project re-resolved via the registry.
     if (isViewAwarenessEnabled()) {
@@ -768,6 +895,15 @@ export async function POST(request: Request) {
             systemPrompt += await buildRecordsInView(db, nv, allowedProjectIds)
           }
         }
+      } catch { /* icke-kritiskt */ }
+    }
+    // Handlarbörsen marketplace facts (P1D.2): read-only, observer-safe, and ONLY when this
+    // turn is a plain question that names Handlarbörsen and nothing else. The user's
+    // allow-list (server-verified above) is the permission; the text is only a clue.
+    // Not for action/navigation/resolution turns, and never in every global answer.
+    if (!actionIntent && !navIntent && !resolutionIntent) {
+      try {
+        systemPrompt += await buildHandlarborsenChatFacts({ db, allowedProjectIds, text: lastUserText })
       } catch { /* icke-kritiskt */ }
     }
     if (voice) systemPrompt += VOICE_DIRECTIVE
@@ -796,7 +932,8 @@ export async function POST(request: Request) {
   // read safe: with no tool schema the model cannot emit a tool_use block, so
   // executeTool is unreachable on this path. Every other class keeps TOOLS
   // exactly as before — this is not general per-class schema pruning.
-  const activeTools = (fastPath || staticConversation) ? [] : TOOLS
+  const localTextEnabled=availableLocalTextTools({inputSource:voice||inputSource==='voice'?'voice':'text',studio:!!studioContext,fast:fastPath,staticConversation}).length>0
+  const activeTools = (fastPath || staticConversation) ? [] : studioContext ? TOOLS.filter(tool=>STUDIO_TOOL_NAMES.has(tool.name)) : TOOLS.filter(tool=>!LOCAL_TEXT_TOOL_NAMES.includes(tool.name)||localTextEnabled)
   const forceToolFirstTurn = actionIntent && activeTools.length > 0
   const forceResolutionFirstTurn = resolutionIntent && activeTools.length > 0
   // Direkt navigeringskommando → tvinga specifikt navigate-verktyget på turn 0.
@@ -885,14 +1022,17 @@ export async function POST(request: Request) {
                   ? { tool_choice: { type: 'any' as const } }
                   : {})
             : {}
-          const llm = await anthropic.messages.stream({
-            model: 'claude-sonnet-4-6',
+          const modelInput = {
+            model: modelPolicy.chatModel,
             max_tokens: voice ? 150 : (fastPath ? 1200 : 4096),
             system: systemPrompt,
             tools: activeTools,   // fast path = [] → ingen verktygsloop
             ...toolChoice,
             messages: msgs,
-          })
+          }
+          const llm = openaiEconomy
+            ? await openAIAtlasStream(providerContext,modelInput,request.signal)
+            : await anthropic!.messages.stream(modelInput)
           llm.on('text', (delta: string) => {
             if (!firstTokenMs) {
               firstTokenMs = Date.now() - tStart
@@ -968,7 +1108,7 @@ export async function POST(request: Request) {
 
             let result: unknown
             try {
-              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds, toolUse.id)
+              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds, toolUse.id, await resolveOwnedConversationId(), verifiedBuildContext, voice||inputSource==='voice'?'voice':'text',studioContext?.projectId??null,{sessionDb:supabase,sameOrigin:assertSameOrigin(request)===null})
             } catch (err) {
               result = { error: err instanceof Error ? err.message : 'Okänt fel' }
             }
@@ -983,6 +1123,7 @@ export async function POST(request: Request) {
             if (toolUse.name === 'run_media_step') took = !!r && r.ok === true
             // save_workflow: bara om det FAKTISKT sparades.
             if (toolUse.name === 'save_workflow') took = !!r && (r as { saved?: boolean }).saved === true
+            if(CALENDAR_TOOL_NAMES.includes(toolUse.name)&&toolUse.name!=='get_calendar'&&r?.ok===true)took=true
             if (took) actionToolUsed = true
 
             // Delegerings-spärr: en delegering räknas som utförd bara om verktyget LYCKADES.
@@ -1036,16 +1177,35 @@ export async function POST(request: Request) {
             }
 
             send('tool_result', { tool: toolUse.name, result })
+            if(CALENDAR_TOOL_NAMES.includes(toolUse.name)){
+              const owned=await resolveOwnedConversationId();
+              const effect=owned?calendarChangedForResult(toolUse.name,result,owned):null;
+              if(effect){const {event,...payload}=effect;send(event,payload);}
+            }
+            if(CLEANUP_TOOL_NAMES.includes(toolUse.name)){
+              const review=decodeReviewView((result as {review?:unknown}|null)?.review),owned=await resolveOwnedConversationId();
+              if(review&&owned===review.packageView.conversationId){
+                send('handlarborsen_test_data_review',{conversationId:owned,review});
+                await saveMessage('assistant',null,{kind:'handlarborsen_test_data_review',conversationId:owned,review});
+              }
+            }
+            // Typed effects come only from these authorized server tool outcomes.
+            const ownedWebsiteConversation=WEBSITE_BUILD_TOOL_NAMES.includes(toolUse.name)?await resolveOwnedConversationId():null
+            if(ownedWebsiteConversation&&r&&!(r as any).error&&(r as any).conversationId===ownedWebsiteConversation){
+              if(['draft_website_build_plan','get_website_build_plan'].includes(toolUse.name))send('website_plan',{plan:r,conversationId:ownedWebsiteConversation})
+              if(['start_website_build','get_website_build'].includes(toolUse.name))send('website_workspace',{session:r,conversationId:ownedWebsiteConversation})
+            }
 
             // PERSISTENS: spara verktygsanrop + resultat som en 'tool'-rad så att
             // utdata (särskilt Dream issue_id) överlever mellan turer och vid reload.
             // Visas inte i UI (klientens filter behåller bara user/assistant).
-            void saveMessage('tool', null, { kind: 'tool_result', tool: toolUse.name, input: toolUse.input, result })
+            const persistedTool=CALENDAR_TOOL_NAMES.includes(toolUse.name)?persistCalendarToolData(toolUse.input as Record<string,unknown>,result):LOCAL_TEXT_TOOL_NAMES.includes(toolUse.name)?persistLocalTextToolData(toolUse.input as Record<string,unknown>,result):{input:toolUse.input,result}
+            void saveMessage('tool', null, { kind: 'tool_result', tool: toolUse.name, ...persistedTool })
 
             toolResults.push({
               type: 'tool_result',
               tool_use_id: toolUse.id,
-              content: JSON.stringify(result),
+              content: JSON.stringify(LOCAL_TEXT_TOOL_NAMES.includes(toolUse.name)?persistedTool.result:result),
             })
           }
 
@@ -1103,13 +1263,63 @@ async function executeTool(
   userId: string,
   allowedProjectIds: string[] = [],
   toolCallId = globalThis.crypto.randomUUID(),
+  ownedConversationId: string | null = null,
+  verifiedBuildContext:BuildContext|null=null,
+  inputSource:'text'|'voice'='text',
+  studioProjectId:string|null=null,
+  calendarContext?:{sessionDb:CalendarDb;sameOrigin:boolean},
 ): Promise<unknown> {
+  if (studioProjectId && !STUDIO_TOOL_NAMES.has(name)) {
+    return { error: 'Verktyget är inte tillgängligt i byggstudion.', denied: 'studio_tool_not_allowed' }
+  }
+
+  if(CALENDAR_TOOL_NAMES.includes(name)){
+    if(!calendarContext?.sameOrigin)return {ok:false,code:'UNAUTHORIZED'};
+    const projectScope=await resolveCalendarProjectScope(db,userId);
+    return handleCalendarTool(name,input,{actor:{userId,...projectScope},conversationId:ownedConversationId,inputSource},{sessionDb:calendarContext.sessionDb,adminDb:db});
+  }
+  if(CLEANUP_TOOL_NAMES.includes(name))return handleCleanupTool(name,input,ownedConversationId)
+  if(LOCAL_TEXT_TOOL_NAMES.includes(name))return handleLocalTextTool(name,input,{userId,allowedProjectIds},ownedConversationId,db,inputSource)
+
   // Deterministic, read-only, no database and no network. Placed first because
   // it is the cheapest branch and touches nothing else in the system.
   if (name === 'get_current_time') {
     const { location, timezone } = input as { location?: string; timezone?: string }
     const result: TimeLookup = currentTimeFor({ location, timezone }, new Date())
     return result
+  }
+
+  if (name === 'list_design_skills' || name === 'read_design_skill') {
+    return executeDesignSkillTool(name, input)
+  }
+
+  if (SOCIAL_PUBLICATION_TOOL_NAMES.includes(name)) {
+    return handleSocialPublicationTool(name,input,{userId,allowedProjectIds},ownedConversationId,db)
+  }
+
+  if (SOCIAL_PROFILE_TOOL_NAMES.includes(name)) {
+    return handleSocialProfileTool(name,input,{userId,allowedProjectIds},ownedConversationId,db)
+  }
+
+  if (SOCIAL_SCHEDULE_TOOL_NAMES.includes(name)) {
+    return handleSocialScheduleTool(name,input,{userId,allowedProjectIds},ownedConversationId,db)
+  }
+  if (SOCIAL_CONTENT_TOOL_NAMES.includes(name)) {
+    return handleSocialContentTool(name,input,{userId,allowedProjectIds},ownedConversationId,db)
+  }
+
+  if (SOCIAL_LAUNCH_TOOL_NAMES.includes(name)) {
+    return handleSocialLaunchTool(name, input, { userId, allowedProjectIds }, ownedConversationId, db)
+  }
+
+  if (WEBSITE_BUILD_TOOL_NAMES.includes(name)) {
+    return handleWebsiteBuildTool(name, input, { userId, allowedProjectIds }, ownedConversationId, db, verifiedBuildContext, inputSource==='voice'?'voice':'text')
+  }
+
+  if (name === 'list_atlas_workflow_catalog') {
+    const operator = await resolvePlatformOperator()
+    if (!operator.ok) return { denied: 'platform_operator_required' }
+    return listAtlasWorkflowCatalog()
   }
 
   if (name === 'list_workflows') {
@@ -1327,6 +1537,7 @@ async function executeTool(
   }
 
   if (name === 'ask_manager') {
+    if(studioProjectId)return {error:'Specialistdelegering är inte ansluten till byggstudion ännu.',availability:'not_implemented'}
     const { message, project_id } = input as { message: string; project_id?: string }
     // ISOLATION: only narrow by a model-supplied project_id if the operator owns
     // it; otherwise ignore it. The manager's reads are scoped to allowedProjectIds

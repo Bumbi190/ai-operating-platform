@@ -21,8 +21,10 @@ import { BUSINESS_PROFILES } from '@/lib/atlas/identity'
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type DestinationId =
+  | 'overview'
   | 'atlas'
   | 'chat'
+  | 'build'
   | 'approvals'
   | 'activity'
   | 'money'
@@ -34,6 +36,7 @@ export type DestinationId =
   | 'content_queue'
   | 'marketing_queue'
   | 'actions'
+  | 'calendar'
   | 'planning'
   | 'settings'
   | 'intelligence_graph'
@@ -72,8 +75,10 @@ export interface NavResult {
 // Logical id → current base path. Repoint these (and only these) when the P3
 // instruments ship — e.g. activity → '/activity', money → '/money'.
 const ROUTE_MAP: Record<DestinationId, string> = {
+  overview: '/dashboard',
   atlas: '/atlas',
   chat: '/chat',
+  build: '/build',
   approvals: '/approvals',
   activity: '/agent-activity', // → '/activity' when the Activity instrument ships
   money: '/revenue', // P0: kostnader bor i /revenue (→ '/money' när Money-instrumentet skeppas)
@@ -85,6 +90,7 @@ const ROUTE_MAP: Record<DestinationId, string> = {
   content_queue: '/atlas/content',
   marketing_queue: '/atlas/marketing',
   actions: '/atlas',
+  calendar: '/calendar',
   planning: '/planning',
   settings: '/settings',
   intelligence_graph: '/intelligence/graph',
@@ -94,7 +100,9 @@ const ROUTE_MAP: Record<DestinationId, string> = {
 }
 
 const DESTINATIONS: Record<DestinationId, Destination> = {
-  atlas: { id: 'atlas', label: 'Atlas', keywords: ['atlas', 'home', 'start', 'hem', 'briefing'], projectMode: 'none' },
+  overview: {id:'overview',label:'Översikt',keywords:['overview','översikt','home','start','hem'],projectMode:'none'},
+  build: {id:'build',label:'Bygg med Atlas',keywords:['bygg med atlas','hemsida','byggstudio','website','webbplats','build'],projectMode:'query'},
+  atlas: { id: 'atlas', label: 'Atlas', keywords: ['atlas', 'briefing'], projectMode: 'none' },
   chat: { id: 'chat', label: 'Chat', keywords: ['chat', 'ask atlas', 'prata', 'fråga'], projectMode: 'none' },
   approvals: {
     id: 'approvals', label: 'Granskningar',
@@ -149,6 +157,7 @@ const DESTINATIONS: Record<DestinationId, Destination> = {
     keywords: ['actions', 'action center', 'att göra', 'priorities', 'next'],
     projectMode: 'none',
   },
+  calendar: {id:'calendar',label:'Kalender',keywords:['kalender','calendar','möten','möte','veckokalender','boka tid'],projectMode:'none'},
   planning: { id: 'planning', label: 'Planning', keywords: ['planning', 'planering', 'plan', 'week'], projectMode: 'none' },
   settings: { id: 'settings', label: 'Settings', keywords: ['settings', 'inställningar', 'config'], projectMode: 'none' },
   intelligence_graph: {
@@ -371,6 +380,7 @@ export function projectDisplayName(slug: string): string | undefined {
 
 /** Default jump targets shown in the palette before the operator types. */
 export const PRIMARY_JUMP_TARGETS: DestinationId[] = [
+  'overview',
   'atlas', 'chat', 'approvals', 'activity', 'money', 'revenue', 'actions', 'health', 'knowledge',
   'trading',
 ]

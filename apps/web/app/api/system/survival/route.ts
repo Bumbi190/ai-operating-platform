@@ -43,7 +43,7 @@ import {
   describeCeiling,
   presentFundingEvidence,
   readSurvivalSnapshot,
-  PROVISIONAL_POLICY_NOTICE,
+  SURVIVAL_POLICY_NOTICE,
   SURVIVAL_CEILING_EFFECT,
   SURVIVAL_THRESHOLD_STATUS,
 } from '@/lib/atlas/survival'
@@ -64,7 +64,7 @@ export async function GET() {
   // who could approve it.
   const policy = {
     policyStatus: SURVIVAL_THRESHOLD_STATUS,
-    policyNotice: PROVISIONAL_POLICY_NOTICE,
+    policyNotice: SURVIVAL_POLICY_NOTICE,
   }
 
   if (access.allowedProjectIds.length === 0) {

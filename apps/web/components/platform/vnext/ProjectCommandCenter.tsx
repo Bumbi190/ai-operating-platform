@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { formatDistanceToNow } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
 import { ProjectPauseToggle } from '@/components/platform/ProjectPauseToggle'
+import { shouldCollapseEmptyOwnerWorkspace } from '@/lib/os/project-command-center-visibility'
 import { statusConfig, UNKNOWN_STATUS } from '@/components/platform/RunStatusBadge'
 import type { RunStatus } from '@/lib/supabase/types'
 import type {
@@ -41,23 +43,59 @@ import styles from './ProjectCommandCenter.module.css'
  * idle or as zero, and a failed read is never rendered as an empty list.
  */
 
-export function ProjectCommandCenter({ model }: { model: ProjectCommandCenterModel }) {
+export function ProjectCommandCenter({
+  model,
+  overview,
+  briefing,
+}: {
+  model: ProjectCommandCenterModel
+  /**
+   * Key figures shown directly under the header, ahead of the workspace. Supplied only by
+   * a project that has them; every other project passes nothing and renders as before.
+   */
+  overview?: ReactNode
+  /** Optional, project-scoped, read-only briefing; absent for every other project. */
+  briefing?: ReactNode
+}) {
+  // Only the project-specific owner briefing may fold a proven-empty technical
+  // workspace. Other project pages and any unknown/error/live states stay open.
+  const foldEmptyWorkspace = Boolean(briefing) && shouldCollapseEmptyOwnerWorkspace(model)
+  const workspace = (
+    <div className={styles.workspace}>
+      <div className={styles.primary}>
+        <WorkflowsSection model={model} />
+        <InstancesSection model={model} />
+      </div>
+      <div className={styles.secondary}>
+        <ApprovalsSection model={model} />
+        <RunsSection model={model} />
+        <AgentsSection model={model} />
+        <OutputsSection model={model} />
+      </div>
+    </div>
+  )
+
   return (
-    <div className={styles.field}>
+    <div className={styles.field} data-owner-brief={briefing ? 'true' : undefined}>
       <div className={styles.ambient} aria-hidden />
       <Header model={model} />
-      <div className={styles.workspace}>
-        <div className={styles.primary}>
-          <WorkflowsSection model={model} />
-          <InstancesSection model={model} />
-        </div>
-        <div className={styles.secondary}>
-          <ApprovalsSection model={model} />
-          <RunsSection model={model} />
-          <AgentsSection model={model} />
-          <OutputsSection model={model} />
-        </div>
-      </div>
+      {overview ?? null}
+      {briefing ?? null}
+      {foldEmptyWorkspace ? (
+        <details className={styles.technicalDetails}>
+          <summary className={styles.technicalSummary}>
+            <span className={styles.technicalSummaryName}>Teknisk arbetsyta</span>
+            <span className={styles.technicalSummaryNote}>Inga konfigurerade agenter eller workflows · visa detaljer</span>
+            <span className={styles.technicalChevron} aria-hidden="true">⌄</span>
+          </summary>
+          {workspace}
+        </details>
+      ) : (
+        <>
+          {overview ? <h2 className={styles.workspaceHeading}>Arbetsyta</h2> : null}
+          {workspace}
+        </>
+      )}
     </div>
   )
 }
@@ -91,11 +129,13 @@ export function ProjectCommandCenterLoading({ name, color }: { name: string; col
 
 function Header({ model }: { model: ProjectCommandCenterModel }) {
   const { project, activity, links, approvals } = model
+  const hasCover = project.slug === 'handlarborsen'
   // The exact pending count the approvals read returned. It sits in the header so
   // review stays in view on a narrow screen, where the list itself stacks below
   // the workflows.
   const pendingApprovals = approvals.state === 'ok' ? approvals.total ?? approvals.items.length : null
   const actions: { label: string; href: string | null }[] = [
+    { label: 'Bygg hemsida med Atlas', href: links.build },
     { label: 'Alla körningar', href: links.runs },
     { label: 'Workflows', href: links.workflows },
     { label: 'Agenter', href: links.agents },
@@ -103,17 +143,38 @@ function Header({ model }: { model: ProjectCommandCenterModel }) {
     { label: 'Ny agent', href: links.newAgent },
     { label: 'Nytt workflow', href: links.newWorkflow },
     { label: 'Media Pipeline', href: links.media },
+    { label: 'Marknadsplatsstatistik', href: links.marketplace },
   ]
 
   return (
-    <header className={styles.header}>
+    <header className={hasCover ? styles.coverHeader + ' ' + styles.header : styles.header}>
+      {hasCover && (
+        <div className={styles.coverBackdrop} aria-hidden="true">
+          <Image
+            src="/project-covers/handlarborsen-showroom-v1.png"
+            alt=""
+            fill
+            priority
+            sizes="(max-width: 768px) 100vw, 85vw"
+          />
+        </div>
+      )}
       <div className={styles.headerMain}>
         <p className={styles.kicker}>Projekt · Command Center</p>
         <div className={styles.identity}>
-          <span className={styles.swatch} style={{ backgroundColor: project.color }} aria-hidden />
+          {hasCover ? (
+            <Image className={styles.coverLogo} src="/project-rail/handlarborsen.png" alt="" width={64} height={64} />
+          ) : (
+            <span className={styles.swatch} style={{ backgroundColor: project.color }} aria-hidden />
+          )}
           <h1 className={styles.title}>{project.name}</h1>
           <span className={styles.slug}>{project.slug}</span>
         </div>
+        {project.slug === 'handlarborsen' ? (
+          <p className={styles.projectDescription}>
+            AI-operativ överblick över företag, fordon, handel och observerad trafik.
+          </p>
+        ) : null}
 
         <dl className={styles.facts}>
           <div className={styles.fact}>

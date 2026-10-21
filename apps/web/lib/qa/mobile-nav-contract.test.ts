@@ -5,6 +5,12 @@ import { vnextNavItemsFor } from '@/lib/nav/vnext-nav'
 import { resolveDestination } from '@/lib/nav/registry'
 import { LEGACY_PROJECT_NAV } from '@/lib/nav/legacy-nav'
 import { shouldRenderGlobalProjectList } from '@/lib/nav/sidebar-visibility'
+import * as React from 'react'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { AtlasMobileNav } from '@/components/platform/vnext/AtlasMobileNav'
+
+;(globalThis as unknown as { React: typeof React }).React = React
 
 /**
  * Mobile navigation contract.
@@ -16,40 +22,50 @@ import { shouldRenderGlobalProjectList } from '@/lib/nav/sidebar-visibility'
  * "Aktivitet" and "Minne" — and `knowledge` is an alias to /memory that never
  * had a page.
  *
- * What this suite guards is that reconciliation is all that happened: the same
- * five destinations, in the same order, with the model — not the component —
- * deciding which are mobile.
+ * What this suite guards: the same five original destinations stay in order,
+ * while the dedicated /projects portfolio entry is now also accessible on
+ * mobile. The model — not the component — still owns the destination list.
  */
 
 const read = (rel: string) => readFileSync(resolve(__dirname, '../..', rel), 'utf8')
 
 const MOBILE = read('components/platform/vnext/AtlasMobileNav.tsx')
+const MOBILE_CODE = MOBILE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
-describe('mobile nav · destinations are unchanged', () => {
-  it('renders the same five destinations, in the same order, as before C6', () => {
-    // The pre-C6 list, resolved exactly as the component used to build it.
-    const before = ['atlas', 'chat', 'approvals', 'activity', 'knowledge']
-      .map((id) => resolveDestination(id as never)?.href)
-    expect(vnextNavItemsFor('mobile').map((i) => i.href)).toEqual(before)
+describe('mobile nav · portfolio quick jump', () => {
+  it('keeps the same five original destinations, in the same order', () => {
+    const original = ['atlas', 'chat', 'approvals', 'activity', 'knowledge']
+      .map((id) => resolveDestination(id as never)!.href)
+    const current = vnextNavItemsFor('mobile').map((i) => i.href)
+    expect(original.every((href) => current.includes(href))).toBe(true)
+    expect(original).toEqual(current.filter((href) => href !== '/projects' && href !== '/build' && href !== '/dashboard' && href !== '/calendar'))
   })
 
-  it('is exactly the five approved mobile entries', () => {
+  it('includes the builder and portfolio index, never an individual project', () => {
     expect(vnextNavItemsFor('mobile').map((i) => i.href)).toEqual([
-      '/atlas', '/chat', '/approvals', '/agent-activity', '/memory',
+      '/dashboard', '/atlas', '/chat', '/build', '/projects', '/approvals', '/agent-activity', '/calendar', '/memory',
     ])
+    expect(vnextNavItemsFor('mobile').map((i) => i.href).filter((href) => href.startsWith('/projects/'))).toEqual([])
   })
 
-  it('adds no new route', () => {
-    for (const item of vnextNavItemsFor('mobile')) {
-      expect(resolveDestination(item.id as never)?.href ?? item.href).toBe(item.href)
-    }
+  it('uses the already-implemented, scoped project index', () => {
+    const index = read('app/(platform)/projects/page.tsx')
+    expect(index).toContain('loadAtlasHomeViewModel()')
+    expect(index).toContain('composeAtlasRailCards(model.projects)')
+    expect(index).toContain('<ProjectCoverGallery cards={cards} projectsAvailable={projectsAvailable} />')
+  })
+
+  it('renders one actual, tappable Projekt link in the mobile header', () => {
+    const markup = renderToStaticMarkup(createElement(AtlasMobileNav))
+    expect(markup).toMatch(/href="\/projects"[^>]*>Projekt<\/a>/)
+    expect(markup.match(/href="\/projects"/g)).toHaveLength(1)
   })
 })
 
 describe('mobile nav · identity is now canonical', () => {
-  it('uses the desktop labels, retiring the registry English ones', () => {
+  it('uses the desktop labels, including the portfolio quick jump', () => {
     expect(vnextNavItemsFor('mobile').map((i) => i.label)).toEqual([
-      'Atlas', 'Chat', 'Granskningar', 'Aktivitet', 'Minne',
+      'Översikt', 'Atlas', 'Chat', 'Bygg med Atlas', 'Projekt', 'Granskningar', 'Aktivitet', 'Kalender', 'Minne',
     ])
   })
 
@@ -81,10 +97,11 @@ describe('mobile nav · scope was not broadened', () => {
     }
   })
 
-  it('adds no Manager and no project route', () => {
+  it('adds no Manager and no individual project routes', () => {
     const hrefs = vnextNavItemsFor('mobile').map((i) => i.href)
     expect(hrefs).not.toContain('/manager')
-    expect(hrefs.some((h) => h.startsWith('/projects'))).toBe(false)
+    expect(hrefs).toContain('/projects')
+    expect(hrefs.some((h) => h.startsWith('/projects/'))).toBe(false)
   })
 
   it('stays a strict subset of desktop', () => {
@@ -110,10 +127,10 @@ describe('mobile nav · the component consumes the model', () => {
     //
     // Asserted by absence of the rendering path AND of the data that fed it,
     // so a future edit cannot reintroduce it under a different shape.
-    expect(MOBILE).not.toContain('projects.map')
-    expect(MOBILE).not.toContain('AtlasHomeProjectSummary')
-    expect(MOBILE).not.toMatch(/\bprojects\b/)
-    expect(MOBILE).not.toContain('/projects')
+    expect(MOBILE_CODE).not.toContain('projects.map')
+    expect(MOBILE_CODE).not.toContain('AtlasHomeProjectSummary')
+    expect(MOBILE_CODE).not.toMatch(/\bprojects\b/)
+    expect(MOBILE_CODE).not.toContain('/projects')
   })
 
   it('leaves ProjectRail owning project selection on the same page', () => {
@@ -124,7 +141,7 @@ describe('mobile nav · the component consumes the model', () => {
     // The rail takes composed cards rather than a bare project array since
     // first-party system workspaces joined it, but the authorized project data
     // still reaches it and nothing else feeds project selection.
-    expect(home).toContain('composeAtlasRailCards(model.projects)')
+    expect(home).toMatch(/composeAtlasRailCards\(\s*model\.projects(?:\s*,|\s*\))/)
     expect(home).toContain('<AtlasMobileNav')
     // And the mobile nav is no longer handed project data at all.
     expect(home).not.toMatch(/<AtlasMobileNav[^>]*projects=/)

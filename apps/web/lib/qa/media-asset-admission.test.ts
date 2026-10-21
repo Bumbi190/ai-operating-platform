@@ -789,7 +789,10 @@ describe('the proof path (article hero) keeps its governance and spend behaviour
     // Unchanged by Phase 1 — asserted by shape so a refactor that DROPS one is
     // caught rather than merely reviewed.
     expect(src).toContain('resolveExecutionEligibility')  // G3 stop authority
-    expect(src).toContain('logImageCost')                 // cost_events
+    // M0: the paid call is settled inside its governed adapter; the hero's own
+    // cost_events row is attribution only, so it carries no second amount.
+    expect(src).toContain('logCostAttribution')           // cost_events (attribution)
+    expect(src).not.toContain('logImageCost(')
     expect(src).toContain('projectScope')                 // execution contract
     expect(src).toContain('sendPipelineAlert')            // failure alerting
 

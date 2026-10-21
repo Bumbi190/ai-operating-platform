@@ -5,6 +5,7 @@ export const MODELS = {
   'claude-sonnet-4-6': 'Claude Sonnet 4.6',
   'claude-haiku-4-5': 'Claude Haiku 4.5',
   // OpenAI text
+  'gpt-5.4-mini': 'GPT-5.4 Mini',
   'gpt-4o': 'GPT-4o',
   'gpt-4o-mini': 'GPT-4o Mini',
   // OpenAI image (dall-e-3 retired 2026-03-04 — använd gpt-image-1)

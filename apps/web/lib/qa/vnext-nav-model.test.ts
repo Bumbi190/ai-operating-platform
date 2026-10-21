@@ -34,9 +34,11 @@ describe('vnext nav · approved information architecture', () => {
     // a real route. It sits with Atlas rather than under Intelligens because it
     // is the operator's own structure seen from Atlas — the Intelligence Graph
     // remains the instrument for relationships and knowledge flow.
-    expect(byGroup.atlas).toEqual(['Atlas', 'Chat', 'Organisation'])
+    // Projekt (the Project Spiral) joined the Atlas group with Atlas Home vNext
+    // (owner ruling, 2026-10-07): one portfolio destination, never a project list.
+    expect(byGroup.atlas).toEqual(['Översikt', 'Atlas', 'Chat', 'Bygg med Atlas', 'Organisation', 'Projekt'])
     expect(byGroup.arbete).toEqual([
-      'Granskningar', 'Aktivitet', 'Planering', 'Marknadsgranskning', 'Content Center',
+      'Granskningar', 'Aktivitet', 'Kalender', 'Planering', 'Marknadsgranskning', 'Content Center',
     ])
     expect(byGroup.intelligens).toEqual(['Minne', 'Intelligence Graph', 'Pengar'])
     expect(byGroup.system).toEqual(['System', 'Inställningar'])
@@ -48,23 +50,25 @@ describe('vnext nav · approved information architecture', () => {
     // /settings was always reachable, but as a footer pill outside the nav model.
     // /organisation is a vNext-only surface — legacy renders a plain list at
     // the same route but has never carried it in its nav model.
-    expect(added.sort()).toEqual(['/organisation', '/planning', '/settings', '/system'])
+    expect(added.sort()).toEqual(['/calendar', '/organisation', '/planning', '/projects', '/settings', '/system'])
   })
 
   it('carries no individual project links', () => {
     // ProjectRail is the canonical project surface; duplicating projects here is
-    // exactly what Stage C removes.
+    // exactly what Stage C removes. The one allowed entry is the portfolio
+    // itself — /projects, the Project Spiral — never a /projects/<slug> link.
     for (const item of vnextNavItems()) {
-      expect(item.href.startsWith('/projects')).toBe(false)
+      expect(item.href.startsWith('/projects/')).toBe(false)
     }
+    expect(vnextNavItems().filter((i) => i.href.startsWith('/projects')).map((i) => i.href)).toEqual(['/projects'])
   })
 
   it('does not add Manager', () => {
     expect(vnextNavItems().map((i) => i.href)).not.toContain('/manager')
   })
 
-  it('keeps Atlas as the single primary entry', () => {
-    expect(vnextNavItems().filter((i) => i.primary).map((i) => i.href)).toEqual(['/atlas'])
+  it('keeps Overview as the single primary entry', () => {
+    expect(vnextNavItems().filter((i) => i.primary).map((i) => i.href)).toEqual(['/dashboard'])
   })
 
   it('uses unique ids and hrefs', () => {
@@ -101,14 +105,14 @@ describe('vnext nav · surface filtering is layout, not authorization', () => {
 
   it('mobile is a deliberate subset, not a copy', () => {
     const mobile = vnextNavItemsFor('mobile').map((i) => i.href)
-    expect(mobile).toEqual(['/atlas', '/chat', '/approvals', '/agent-activity', '/memory'])
+    expect(mobile).toEqual(['/dashboard', '/atlas', '/chat', '/build', '/projects', '/approvals', '/agent-activity', '/calendar', '/memory'])
     expect(mobile.length).toBeLessThan(vnextNavItems().length)
   })
 
   it('desktop renders all four groups, each with its approved items', () => {
     const groups = vnextNavGroupsFor('desktop')
     expect(groups.map((g) => [g.label, g.items.length])).toEqual([
-      ['Atlas', 3], ['Arbete', 5], ['Intelligens', 3], ['System', 2],
+      ['Atlas', 6], ['Arbete', 6], ['Intelligens', 3], ['System', 2],
     ])
     // Grouping must not have changed the C4 order.
     expect(groups.flatMap((g) => g.items.map((i) => i.href))).toEqual(
@@ -156,6 +160,6 @@ describe('vnext nav · stays data, and stays unwired', () => {
     // Referring to legacy-nav in a comment is fine and useful; importing it
     // would couple the two models so a vNext edit could reach legacy.
     expect(NAV_SRC).not.toMatch(/^\s*import[^\n]*legacy-nav/m)
-    expect(LEGACY_GLOBAL_NAV).toHaveLength(9)
+    expect(LEGACY_GLOBAL_NAV).toHaveLength(11)
   })
 })

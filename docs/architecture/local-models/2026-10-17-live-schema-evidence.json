@@ -1,0 +1,149 @@
+{
+  "scope": "Actual production local-text schema after owner-approved apply; no device/job seeded",
+  "ledger_count": 158,
+  "local_migrations": [
+    {
+      "name": "atlas_local_text",
+      "sha256": "5024a72db523f63ce7f42f4a5e0f774d50b34cda9a3f6e6f1c3f698610eba180",
+      "version": "20261017174301"
+    },
+    {
+      "name": "atlas_local_text_lifecycle",
+      "sha256": "d5c1ca9aba0c993a6be27625cfa9852d0eb719be5ccc5eb826bfa95acfd0aba3",
+      "version": "20261017180713"
+    }
+  ],
+  "tables": [
+    {
+      "rls": true,
+      "name": "local_text_admissions",
+      "anon_any": false,
+      "policies": 0,
+      "service_select": true,
+      "auth_any_select_column": false
+    },
+    {
+      "rls": true,
+      "name": "local_text_attempts",
+      "anon_any": false,
+      "policies": 0,
+      "service_select": true,
+      "auth_any_select_column": false
+    },
+    {
+      "rls": true,
+      "name": "local_text_authority_tombstones",
+      "anon_any": false,
+      "policies": 0,
+      "service_select": true,
+      "auth_any_select_column": false
+    },
+    {
+      "rls": true,
+      "name": "local_text_cloud_authorizations",
+      "anon_any": false,
+      "policies": 0,
+      "service_select": true,
+      "auth_any_select_column": false
+    },
+    {
+      "rls": true,
+      "name": "local_text_cloud_reservations",
+      "anon_any": false,
+      "policies": 0,
+      "service_select": true,
+      "auth_any_select_column": false
+    },
+    {
+      "rls": true,
+      "name": "local_text_cloud_stages",
+      "anon_any": false,
+      "policies": 0,
+      "service_select": true,
+      "auth_any_select_column": false
+    },
+    {
+      "rls": true,
+      "name": "local_text_devices",
+      "anon_any": false,
+      "policies": 0,
+      "service_select": true,
+      "auth_any_select_column": false
+    },
+    {
+      "rls": true,
+      "name": "local_text_events",
+      "anon_any": false,
+      "policies": 0,
+      "service_select": true,
+      "auth_any_select_column": false
+    },
+    {
+      "rls": true,
+      "name": "local_text_human_reviews",
+      "anon_any": false,
+      "policies": 0,
+      "service_select": true,
+      "auth_any_select_column": false
+    },
+    {
+      "rls": true,
+      "name": "local_text_incidents",
+      "anon_any": false,
+      "policies": 0,
+      "service_select": true,
+      "auth_any_select_column": false
+    },
+    {
+      "rls": true,
+      "name": "local_text_jobs",
+      "anon_any": false,
+      "policies": 1,
+      "service_select": true,
+      "auth_any_select_column": true
+    },
+    {
+      "rls": true,
+      "name": "local_text_request_nonces",
+      "anon_any": false,
+      "policies": 0,
+      "service_select": true,
+      "auth_any_select_column": false
+    },
+    {
+      "rls": true,
+      "name": "local_text_retention",
+      "anon_any": false,
+      "policies": 0,
+      "service_select": true,
+      "auth_any_select_column": false
+    },
+    {
+      "rls": true,
+      "name": "local_text_reviews",
+      "anon_any": false,
+      "policies": 0,
+      "service_select": true,
+      "auth_any_select_column": false
+    },
+    {
+      "rls": true,
+      "name": "local_text_selections",
+      "anon_any": false,
+      "policies": 0,
+      "service_select": true,
+      "auth_any_select_column": false
+    }
+  ],
+  "client_callable_functions": 0,
+  "advisorSummary": {
+    "info": 98,
+    "warn": 36,
+    "warnGroups": [
+      20,
+      7,
+      8,
+      1
+    ]
+  }
+}

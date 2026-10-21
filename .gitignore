@@ -57,3 +57,18 @@ apps/web/data/intelligence/
 
 # Nested git worktrees (e.g. .worktrees/omnira-intelligence-graph) — never tracked
 .worktrees/
+.superpowers/sdd/2026-10-14-atlas-live-build-workspace/
+
+# Website source routes are not generated build output.
+!apps/web/app/(platform)/projects/*/build/
+!apps/web/app/(platform)/projects/*/build/**
+
+.superpowers/sdd/2026-10-16-atlas-social-content/
+
+.superpowers/sdd/2026-10-16-atlas-social-start/
+
+.superpowers/sdd/2026-10-16-atlas-social-publication/
+
+.superpowers/sdd/2026-10-17-atlas-local-text-integration/
+# Generated pinned speech detector assets
+/apps/web/public/atlas-vad/

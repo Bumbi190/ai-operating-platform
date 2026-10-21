@@ -268,14 +268,44 @@ describe('EI-S1.6A — Executive Intelligence schema activation bundle', () => {
     // enables no runtime enforcement, adds no scheduler, and Phase 3B has NOT been
     // started by it.
     //
-    // 1C1A, 1C1B, 2B, 1C2 and 2C each arrived on their own branch and each moved this
-    // count by one, so the reconciled value is 87 and none may be dropped to make
-    // another fit.
-    // Migration Guard v2 owns the repository-wide 101/87 count contract. This
+    // 88: Phase 3B1A's `autonomy_trace_decisions` — the append-only, server-only
+    // provenance ledger for what the autonomy layer observed at one execution
+    // boundary, plus the single SECURITY DEFINER writer.
+    //
+    // APPLIED to production on 2026-09-26 (production ledger version
+    // 20260926082643 — assigned at apply time, and deliberately NOT the
+    // filename's timestamp). The production ledger contains it exactly once and
+    // now totals 125 rows, of which 88 are canonical enforced migrations. The
+    // apply changed database STRUCTURE ONLY: the table holds zero rows, and it
+    // still authorizes nothing. No execution module consumes the trace
+    // substrate, no rollout flag exists, and no runtime wiring exists — the
+    // phase is inert by construction.
+    //
+    // 89: Phase 3B1B's `autonomy_bind_atomic` — the atomic bind RPC that creates a run
+    // and its bind provenance in ONE transaction. NOT applied to production on its branch.
+    //
+    // 1C1A, 1C1B, 2B, 1C2, 2C, 3B1A and 3B1B each arrived on their own branch and each
+    // moved this count by one, so the reconciled value is 89 and none may be dropped to
+    // make another fit.
+    // 90: M0's `m0_durable_spend_settlement` — durable spend settlement. APPLIED to
+    // production on 2026-10-02 (ledger version 20261002062908).
+    // 91: Phase 3B1B2 M1's `autonomy_authority_serialization` — the Decision lineage
+    // head and the licence writer's instance-first lock. APPLIED to production on
+    // 2026-10-02 (ledger version 20261002134227).
+    // 92: Phase 3B1B2 M2's `survival_input_epoch` — the sharded Survival input epoch.
+    // APPLIED to production on 2026-10-03 (ledger version 20261003053532).
+    // 93: Phase 3B1B2 M3's `survival_commit_fence` — commit clock + self-probing fence.
+    // APPLIED to production on 2026-10-03 (ledger version 20261003183855).
+    // 94, 95: Phase 3B1B2 M4-A's `survival_threshold_status_canonical` and
+    // `m4a_licensed_authority_substrate`. APPLIED to production on 2026-10-07 (ledger
+    // versions 20261007094814 and 20261007095425).
+    // 96: Phase 3B1B2 M4-B's `m4b_licensed_bind`. APPLIED to production on 2026-10-07
+    // (ledger version 20261007100001).
+    // Migration Guard v2 owns the repository-wide 110/96 count contract. This
     // older assertion remains as an independent EI activation companion so a
     // canonical migration cannot move or disappear without both gates noticing.
     const enforced = canonFiles.map(ledgerName).length - GRANDFATHERED_COUNT
-    expect(enforced).toBe(87)
+    expect(enforced).toBe(96)
     // The EI-S1.6A bundle is still exactly three of them, all canonical.
     expect(BUNDLE).toHaveLength(3)
     expect(BUNDLE.every(f => canonFiles.includes(f))).toBe(true)

@@ -125,8 +125,9 @@ describe('sidebar · which nav list each generation renders', () => {
   it('vNext renders the canonical model in its approved order', () => {
     expect(vnextNavItemsFor('desktop').map((i) => i.label)).toEqual([
       // Organisation joined the Atlas group in Phase 6.5.
-      'Atlas', 'Chat', 'Organisation',
-      'Granskningar', 'Aktivitet', 'Planering', 'Marknadsgranskning', 'Content Center',
+      // Projekt (the Project Spiral) joined with Atlas Home vNext.
+      'Översikt', 'Atlas', 'Chat', 'Bygg med Atlas', 'Organisation', 'Projekt',
+      'Granskningar', 'Aktivitet', 'Kalender', 'Planering', 'Marknadsgranskning', 'Content Center',
       'Minne', 'Intelligence Graph', 'Pengar',
       'System', 'Inställningar',
     ])
@@ -135,7 +136,7 @@ describe('sidebar · which nav list each generation renders', () => {
   it('adds exactly the approved destinations', () => {
     const legacy = new Set(LEGACY_GLOBAL_NAV.map((i) => i.href))
     const added = vnextNavItemsFor('desktop').map((i) => i.href).filter((h) => !legacy.has(h))
-    expect(added.sort()).toEqual(['/organisation', '/planning', '/settings', '/system'])
+    expect(added.sort()).toEqual(['/calendar', '/organisation', '/planning', '/projects', '/settings', '/system'])
   })
 
   it('drops nothing that legacy carried', () => {
@@ -146,12 +147,14 @@ describe('sidebar · which nav list each generation renders', () => {
   it('still excludes Manager and any project link', () => {
     const hrefs = vnextNavItemsFor('desktop').map((i) => i.href)
     expect(hrefs).not.toContain('/manager')
-    expect(hrefs.some((h) => h.startsWith('/projects'))).toBe(false)
+    // The Project Spiral is the one portfolio destination; no single project.
+    expect(hrefs.some((h) => h.startsWith('/projects/'))).toBe(false)
+    expect(hrefs.filter((h) => h.startsWith('/projects'))).toEqual(['/projects'])
   })
 
-  it('legacy order is untouched by the vNext reorder', () => {
+  it('legacy keeps its original order around the approved builder entry', () => {
     expect(LEGACY_GLOBAL_NAV.map((i) => i.href)).toEqual([
-      '/atlas', '/atlas/marketing', '/atlas/content', '/revenue',
+      '/dashboard', '/atlas', '/build', '/atlas/marketing', '/atlas/content', '/revenue',
       '/agent-activity', '/chat', '/approvals', '/memory', '/intelligence/graph',
     ])
   })
@@ -169,8 +172,8 @@ describe('sidebar · the shell actually consumes these decisions', () => {
 
   it('gates the section and the deploy affordances on the decisions', () => {
     expect(SIDEBAR).toContain('{showProjectSection && (')
-    expect(SIDEBAR).toContain('{showGlobalProjectList && (')
-    expect(SIDEBAR).toContain('{showGlobalProjectList && projects.length === 0 && (')
+    expect(SIDEBAR).toContain('{showGlobalProjectList && !readOnly && (')
+    expect(SIDEBAR).toContain('{showGlobalProjectList && !readOnly && projects.length === 0 && (')
   })
 
   it('renders the nav list from the resolved sections, not the legacy constant', () => {

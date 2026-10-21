@@ -365,6 +365,11 @@ export type Op =
 
 const TABLE_PRIVS = ['select', 'insert', 'update', 'delete', 'truncate', 'references', 'trigger']
 const CLIENT_ROLES = ['anon', 'authenticated', 'public']
+/** Roles a DB_INTERNAL table may hold NO privilege for — the client roles AND service_role. */
+const DB_INTERNAL_FORBIDDEN_ROLES = [...CLIENT_ROLES, 'service_role']
+/** The forbidden privileges a relation still holds, as `role:privilege` — read from the replayed model. */
+const dbInternalDirectGrants = (r: Rel): string[] =>
+  DB_INTERNAL_FORBIDDEN_ROLES.flatMap(role => [...(r.grants.get(role) ?? [])].sort().map(priv => `${role}:${priv}`))
 const isClientRole = (r: string): boolean => CLIENT_ROLES.includes(r)
 
 /** Does this statement start like one the gate must understand? Used to fail closed on a parse miss. */
@@ -922,7 +927,10 @@ function insideCall(toks: Tok[], k: number): boolean {
 
 // ─── Classification context ─────────────────────────────────────────────────
 
-export type TableClass = 'SERVER_ONLY' | 'TENANT_RLS' | 'INTERNAL_DENY_ALL' | 'INTENTIONALLY_PUBLIC'
+// DB_INTERNAL: a table only reviewed SECURITY DEFINER database machinery reaches. RLS on, ZERO
+// policies, and NO direct privilege for any API role — service_role included. Stricter than
+// SERVER_ONLY (whose service-role writer must stay reachable), never an escape hatch from it.
+export type TableClass = 'SERVER_ONLY' | 'TENANT_RLS' | 'INTERNAL_DENY_ALL' | 'INTENTIONALLY_PUBLIC' | 'DB_INTERNAL'
 export interface Registry {
   tables: Record<string, { class: TableClass; rls: boolean }>
   views?: Record<string, { class: TableClass }>
@@ -948,8 +956,11 @@ export const RULES = {
   AUTH_POLICY_CROSS_TENANT: 'WEAKENING',
   AUTH_POLICY_CROSS_TENANT_WRITE: 'WEAKENING',
   CLIENT_POLICY_ON_SERVER_ONLY: 'WEAKENING',
+  POLICY_ON_DB_INTERNAL: 'WEAKENING',
   RESTRICTIVE_POLICY_DROPPED: 'WEAKENING',
   CLIENT_GRANT_ON_SERVER_ONLY: 'WEAKENING',
+  SERVICE_ROLE_GRANT_ON_DB_INTERNAL: 'WEAKENING',
+  DB_INTERNAL_DIRECT_GRANT_REMAINS: 'WEAKENING',
   CLIENT_GRANT_ON_RLS_OFF_TABLE: 'WEAKENING',
   CLIENT_DML_GRANT_ON_PUBLIC_TABLE: 'WEAKENING',
   CLIENT_GRANT_ALL_TABLES: 'WEAKENING',
@@ -1064,6 +1075,9 @@ export function evaluatePolicy(reg: Registry, pol: Pol): { rule: RuleId; detail:
   const name = pol.table.slice(pol.table.indexOf('.') + 1)
   const cls = pol.table.startsWith('public.') ? tableClass(reg, name) : null
   const roles = pol.roles.length ? pol.roles : ['public']
+  // A DB_INTERNAL table holds ZERO policies by definition: ANY policy — client, service-role or
+  // restrictive — changes its reviewed boundary.
+  if (cls === 'DB_INTERNAL') return [{ rule: 'POLICY_ON_DB_INTERNAL', detail: `DB_INTERNAL table gains a policy (${roles.join(', ')})` }]
   const anon = roles.some(r => r === 'public' || r === 'anon')
   const client = anon || roles.includes('authenticated')
   if (!pol.permissive) return [{ rule: 'RESTRICTIVE_POLICY', detail: 'restrictive policies can only narrow access' }]
@@ -1355,6 +1369,13 @@ function applyGrant(ctx: Ctx, op: Extract<Op, { k: 'grant' | 'revoke' }>, st: St
   if (t.type === 'all-tables') {
     for (const s of t.schemas) {
       for (const rel of m.rels.values()) if (rel.schema === s) mutate(rel)
+      if (isGrant && op.grantees.includes('service_role')) {
+        for (const rel of m.rels.values()) {
+          if (rel.schema === s && rel.kind === 'table' && s === 'public' && tableClass(ctx.registry, rel.name) === 'DB_INTERNAL') {
+            emit(ctx, 'SERVICE_ROLE_GRANT_ON_DB_INTERNAL', st, rel.key, null, `every table in ${s} granted to service_role — DB_INTERNAL ${rel.name} included`)
+          }
+        }
+      }
       if (!clients.length) { emit(ctx, isGrant ? 'SERVICE_ROLE_GRANT' : 'CLIENT_PRIVILEGE_REVOKED', st, `${s}.*`, null, `all tables in ${s}`); continue }
       if (!isGrant) { emit(ctx, 'CLIENT_PRIVILEGE_REVOKED', st, `${s}.*`, null, `all tables in ${s} revoked from ${clients.join(', ')}`); continue }
       const scope = scopeOf(ctx, s)
@@ -1372,9 +1393,13 @@ function applyGrant(ctx: Ctx, op: Extract<Op, { k: 'grant' | 'revoke' }>, st: St
       if (clients.length) emit(ctx, 'CLIENT_PRIVILEGE_REVOKED', st, key, null, `${op.privs.join(', ')} revoked from ${clients.join(', ')}`)
       continue
     }
+    const dbInternal = (q.schema ?? 'public') === 'public' && tableClass(ctx.registry, q.name) === 'DB_INTERNAL' && viewClass(ctx.registry, q.name) === null
+    if (dbInternal && op.grantees.includes('service_role')) {
+      emit(ctx, 'SERVICE_ROLE_GRANT_ON_DB_INTERNAL', st, key, null, `DB_INTERNAL table granted ${op.privs.join(', ')} to service_role — only database-internal SECURITY DEFINER machinery may reach it`)
+    }
     if (!clients.length) {
       if (rel) mutate(rel)
-      emit(ctx, 'SERVICE_ROLE_GRANT', st, key, null, `granted to ${op.grantees.join(', ')}`)
+      if (!dbInternal || !op.grantees.includes('service_role')) emit(ctx, 'SERVICE_ROLE_GRANT', st, key, null, `granted to ${op.grantees.join(', ')}`)
       continue
     }
     if (isDynamic(q)) { emit(ctx, 'DYNAMIC_SECURITY_SQL', st, key, null, 'client grant on a run-time name'); continue }
@@ -1396,7 +1421,7 @@ function applyGrant(ctx: Ctx, op: Extract<Op, { k: 'grant' | 'revoke' }>, st: St
     }
     const cls = tableClass(ctx.registry, q.name)
     if (!cls) { emit(ctx, 'UNCLASSIFIED_TABLE', st, key, null, 'client grant on a table nobody classified'); continue }
-    if (cls === 'SERVER_ONLY' || cls === 'INTERNAL_DENY_ALL') {
+    if (cls === 'SERVER_ONLY' || cls === 'INTERNAL_DENY_ALL' || cls === 'DB_INTERNAL') {
       emit(ctx, 'CLIENT_GRANT_ON_SERVER_ONLY', st, key, null, `${cls} table granted ${op.privs.join(', ')} to ${clients.join(', ')} — inert under RLS today, one permissive policy from live`)
     } else if (cls === 'INTENTIONALLY_PUBLIC' && op.privs.some(p => p !== 'select')) {
       emit(ctx, 'CLIENT_DML_GRANT_ON_PUBLIC_TABLE', st, key, null, 'a deliberately public table may hold SELECT only')
@@ -1523,6 +1548,13 @@ function runFile(model: Model, file: { relPath: string; root: Root | 'bootstrap'
     if (rel && rel.kind === 'table' && !rel.rls) {
       emit(ctx, 'NEW_TABLE_WITHOUT_RLS', st, key, null, `created without row level security${clientAny(rel) ? ' while Supabase default grants hand it to anon and authenticated' : ''}`)
     }
+    // DB_INTERNAL is judged on the FINAL replayed grant state, not on the REVOKEs the file
+    // happens to contain: a public table starts with Supabase's default grants to anon,
+    // authenticated and service_role, and any of them left behind is a direct API-role path.
+    if (rel && rel.kind === 'table' && rel.schema === 'public' && tableClass(ctx.registry, rel.name) === 'DB_INTERNAL') {
+      const left = dbInternalDirectGrants(rel)
+      if (left.length) emit(ctx, 'DB_INTERNAL_DIRECT_GRANT_REMAINS', st, key, null, `DB_INTERNAL table ends its creating migration with direct privileges: ${left.join(', ')}`)
+    }
   }
   for (const [key, st] of ctx.touchedViews) {
     const rel = model.rels.get(key)
@@ -1578,6 +1610,7 @@ export function stillOpen(e: AllowEntry, a: Analysis, reg: Registry): boolean {
     return !!v && (!v.invoker || (viewClass(reg, v.name) === 'SERVER_ONLY' && clientAny(v)))
   }
   if (e.rule === 'CLIENT_GRANT_ON_SERVER_ONLY' || e.rule === 'CLIENT_GRANT_ON_RLS_OFF_TABLE') { const r = m.rels.get(e.table); return !!r && clientAny(r) }
+  if (e.rule === 'DB_INTERNAL_DIRECT_GRANT_REMAINS') { const r = m.rels.get(e.table); return !!r && dbInternalDirectGrants(r).length > 0 }
   return true
 }
 

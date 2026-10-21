@@ -154,9 +154,17 @@ export function entriesFor(actionKinds: readonly string[]): LicensedActionEntry[
  * time — so removal reads as drift, which it is, rather than being silently
  * absorbed.
  *
- * `v: 2` records that this payload gained the two executability facts. Safe to
- * change now because no licence exists yet: the migration is unapplied, so
- * there is no stored fingerprint to invalidate.
+ * `v: 2` records that this payload gained the two executability facts.
+ *
+ * The format is still cheap to evolve, but the reason is NOT that the migration
+ * is unapplied — it IS applied in production (ledger version 20260925102918).
+ * The reason is that `atlas_autonomy_license_events` holds ZERO rows, so no
+ * fingerprint has ever been persisted and there is nothing to invalidate.
+ *
+ * Those two conditions are not the same, and only one of them is still true:
+ * the first was retired when the migration was applied. The moment a licence is
+ * issued, this becomes a FORWARD migration with real stored fingerprints to
+ * reconcile — so a `v: 3` extension is cheap now and stops being cheap then.
  */
 export function fingerprintFor(
   actionKinds: readonly string[],

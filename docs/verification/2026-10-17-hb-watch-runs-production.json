@@ -1,0 +1,173 @@
+{
+  "observedAt": "2026-10-17T20:05:21.982Z",
+  "project": "iboepohjwrhtgshrqaol",
+  "scope": "two newly installed journal tables and nine routines; read-only observation, no synthetic run",
+  "ledger": [
+    {
+      "name": "handlarborsen_watch_runs_v1",
+      "chars": 16520,
+      "sha256": "687d8cb87f8edf04f15618ed446d14fcae9dd9ebbf979f46b171429b7f7e9691",
+      "version": "20261017200436",
+      "statement_count": 1
+    }
+  ],
+  "tables": [
+    {
+      "rls": true,
+      "name": "handlarborsen_watch_run_events",
+      "force": true,
+      "owner": "postgres",
+      "anon_any": false,
+      "policies": 0,
+      "service_select": true,
+      "service_mutation": false,
+      "authenticated_any": false,
+      "client_column_any": false
+    },
+    {
+      "rls": true,
+      "name": "handlarborsen_watch_runs",
+      "force": true,
+      "owner": "postgres",
+      "anon_any": false,
+      "policies": 0,
+      "service_select": true,
+      "service_mutation": false,
+      "authenticated_any": false,
+      "client_column_any": false
+    }
+  ],
+  "routines": [
+    {
+      "name": "handlarborsen_watch_audit_v1",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "definer": false,
+      "anon_execute": false,
+      "service_execute": false,
+      "authenticated_execute": false
+    },
+    {
+      "name": "handlarborsen_watch_claim_v1",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "definer": true,
+      "anon_execute": false,
+      "service_execute": true,
+      "authenticated_execute": false
+    },
+    {
+      "name": "handlarborsen_watch_enqueue_v1",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "definer": true,
+      "anon_execute": false,
+      "service_execute": true,
+      "authenticated_execute": false
+    },
+    {
+      "name": "handlarborsen_watch_event_immutable_v1",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "definer": false,
+      "anon_execute": false,
+      "service_execute": false,
+      "authenticated_execute": false
+    },
+    {
+      "name": "handlarborsen_watch_expire_locked_v1",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "definer": false,
+      "anon_execute": false,
+      "service_execute": false,
+      "authenticated_execute": false
+    },
+    {
+      "name": "handlarborsen_watch_finish_v1",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "definer": true,
+      "anon_execute": false,
+      "service_execute": true,
+      "authenticated_execute": false
+    },
+    {
+      "name": "handlarborsen_watch_guard_v1",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "definer": false,
+      "anon_execute": false,
+      "service_execute": false,
+      "authenticated_execute": false
+    },
+    {
+      "name": "handlarborsen_watch_project_v1",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "definer": false,
+      "anon_execute": false,
+      "service_execute": false,
+      "authenticated_execute": false
+    },
+    {
+      "name": "handlarborsen_watch_receipt_v1",
+      "owner": "postgres",
+      "config": [
+        "search_path=\"\""
+      ],
+      "definer": false,
+      "anon_execute": false,
+      "service_execute": false,
+      "authenticated_execute": false
+    }
+  ],
+  "triggers": [
+    {
+      "name": "handlarborsen_watch_audit",
+      "table": "handlarborsen_watch_runs",
+      "enabled": "O"
+    },
+    {
+      "name": "handlarborsen_watch_event_immutable",
+      "table": "handlarborsen_watch_run_events",
+      "enabled": "O"
+    },
+    {
+      "name": "handlarborsen_watch_event_no_truncate",
+      "table": "handlarborsen_watch_run_events",
+      "enabled": "O"
+    },
+    {
+      "name": "handlarborsen_watch_guard",
+      "table": "handlarborsen_watch_runs",
+      "enabled": "O"
+    },
+    {
+      "name": "handlarborsen_watch_no_truncate",
+      "table": "handlarborsen_watch_runs",
+      "enabled": "O"
+    }
+  ],
+  "cron_jobs": 38,
+  "run_count": 0,
+  "migrations": 159,
+  "event_count": 0,
+  "public_tables": 152
+}

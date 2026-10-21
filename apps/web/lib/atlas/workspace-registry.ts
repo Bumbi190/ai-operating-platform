@@ -49,6 +49,7 @@ export function resolveWorkspace(
   }
 
   // ── Plattformssidor ───────────────────────────────────────────────────────
+  if(pathname==='/build')return {href:pathname,label:'Bygg med Atlas',icon:'panels-top-left'}
   if (pathname === '/approvals') {
     return { href: pathname, label: 'Granskningar', icon: 'shield-check' }
   }
@@ -73,6 +74,7 @@ export function resolveWorkspace(
   if (pathname === '/manager') {
     return { href: pathname, label: 'Manager', icon: 'layers' }
   }
+  if (pathname === '/calendar')return {href:pathname,label:'Kalender',icon:'calendar'}
   if (pathname === '/planning') {
     return { href: pathname, label: 'Planering', icon: 'calendar' }
   }
@@ -83,7 +85,7 @@ export function resolveWorkspace(
     return { href: pathname, label: 'Kostnader', icon: 'credit-card' }
   }
   if (pathname === '/dashboard') {
-    return { href: pathname, label: 'Dashboard', icon: 'layout-dashboard' }
+    return { href: pathname, label: 'Översikt', icon: 'layout-dashboard' }
   }
   if (pathname === '/action-center') {
     return { href: pathname, label: 'Action Center', icon: 'inbox' }

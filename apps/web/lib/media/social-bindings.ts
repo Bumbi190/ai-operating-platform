@@ -18,14 +18,14 @@ import { EXTERNAL_ACCOUNT_ID } from './social-identity'
 // credential audit writer (lib/media/credential-events.ts).
 type AnyDb = any
 
-export type SocialPlatform = 'instagram' | 'facebook' | 'youtube'
+export type SocialPlatform = 'instagram' | 'facebook' | 'youtube' | 'linkedin' | 'pinterest' | 'x'
 /**
  * The platforms whose credential each project stores itself. YouTube joined with project
  * connections (Y2a); its one transitional binding (Y1) still uses the platform's
  * credential until Y2b.
  */
 export type StoredSocialPlatform = 'instagram' | 'facebook' | 'youtube'
-export const SOCIAL_PLATFORMS: readonly SocialPlatform[] = ['instagram', 'facebook', 'youtube']
+export const SOCIAL_PLATFORMS: readonly SocialPlatform[] = ['instagram', 'facebook', 'youtube', 'linkedin', 'pinterest', 'x']
 
 export type CredentialSource = 'project_store' | 'platform_env_transitional'
 export type BindingVerification = 'provider_attested' | 'runtime_evidence'

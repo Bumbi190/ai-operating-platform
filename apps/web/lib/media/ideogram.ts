@@ -5,7 +5,7 @@
  * Each image corresponds to a ~12–15 second scene in the video.
  */
 
-import { getAnthropic } from '@/lib/ai/anthropic'
+import { getMediaTextClient } from '@/lib/media/text-client'
 import { generateIdeogramV3 } from '@/lib/media/image-client'
 import { MEDIA_PIPELINE_PROJECT, type ProjectRef } from '@/lib/cost/governed-spend'
 import { spendIdempotencyKey } from '@/lib/cost/spend-identity'
@@ -173,7 +173,7 @@ export async function generateNewsImage(
   execution: ExecutionContract,
   project: ProjectRef = MEDIA_PIPELINE_PROJECT,
 ): Promise<string> {
-  const client = getAnthropic({
+  const client = getMediaTextClient({
     project, execution, agent: 'Image Director', operation: 'Plan Scenes',
   })
 
@@ -281,7 +281,7 @@ export async function generateNewsImages(
    */
   spendSubject?: string,
 ): Promise<string[]> {
-  const client = getAnthropic({
+  const client = getMediaTextClient({
     project, execution, agent: 'Image Director', operation: 'Plan Scenes',
   })
 
@@ -427,7 +427,7 @@ export async function generateSceneImages(
   project: ProjectRef = MEDIA_PIPELINE_PROJECT,
 ): Promise<IdeogramImage[]> {
   // Use Claude to segment script → visual scene descriptions
-  const client = getAnthropic({
+  const client = getMediaTextClient({
     project, execution, agent: 'Image Director', operation: 'Plan Scenes',
   })
 

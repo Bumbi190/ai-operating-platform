@@ -1,0 +1,13 @@
+import { describe, expect, it } from 'vitest'
+import { bindProjectLocation, projectArtifactPath, validateProjectRoot } from './project-layout'
+describe('project directories',()=>{
+ it('binds a Windows project to one base folder',()=>{const x=bindProjectLocation({os:'windows',root:'C:\\Projects',targetId:null},'Min hemsida','10000000-0000-4000-8000-000000000001');expect(x.root).toBe('C:\\Projects\\min-hemsida-10000000-0000-4000-8000-000000000001');expect(x.status).toBe('pending_runner')})
+ it('binds a POSIX project without assuming a local runner',()=>expect(bindProjectLocation({os:'linux',root:'/srv/projects',targetId:null},'Webb','20000000-0000-4000-8000-000000000001').root).toBe('/srv/projects/webb-20000000-0000-4000-8000-000000000001'))
+ it.each(['relative/path','C:\\Projects\\..\\Windows','C:\\','C:\\Projects\\CON','C:\\Projects\\x.','\\\\server\\share','C:\\Projects\\x:stream'])('refuses unsafe Windows root %s',root=>expect(()=>validateProjectRoot({os:'windows',root,targetId:null})).toThrow('INVALID_PROJECT_ROOT'))
+ it.each(['/','/srv/../etc','/etc','/proc/x','/srv/projects\u0000bad'])('refuses unsafe POSIX root %s',root=>expect(()=>validateProjectRoot({os:'linux',root,targetId:null})).toThrow('INVALID_PROJECT_ROOT'))
+ it('rejects path escapes from the relative artifact layout',()=>{expect(()=>projectArtifactPath('image','../x')).toThrow('INVALID_ARTIFACT_PATH');expect(()=>projectArtifactPath('plan','/tmp/a')).toThrow('INVALID_ARTIFACT_PATH')})
+ it('routes images and plans beneath the same project',()=>{expect(projectArtifactPath('image','hero.png')).toBe('assets/images/hero.png');expect(projectArtifactPath('plan','architecture.json')).toBe('plans/architecture.json');expect(projectArtifactPath('source','index.html')).toBe('src/index.html')})
+ it('distinguishes projects sharing the UUID prefix',()=>{const base={os:'linux' as const,root:'/srv/projects',targetId:null};expect(bindProjectLocation(base,'Webb','10000000-0000-4000-8000-000000000001').root).not.toBe(bindProjectLocation(base,'Webb','10000000-0000-4000-8000-000000000002').root)})
+ it('allows a user folder containing spaces and Swedish letters',()=>expect(validateProjectRoot({os:'windows',root:'D:\\Andrés projekt',targetId:null}).root).toBe('D:\\Andrés projekt'))
+ it('does not relocate an already bound project on default change',()=>{const id='10000000-0000-4000-8000-000000000001',a=bindProjectLocation({os:'windows',root:'C:\\Projects',targetId:null},'Webb',id);expect(bindProjectLocation({os:'windows',root:'D:\\Nytt',targetId:null},'Webb',id,a)).toEqual(a)})
+})

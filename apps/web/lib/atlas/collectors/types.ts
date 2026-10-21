@@ -60,6 +60,15 @@ export interface CollectorResult {
   metadata:     Record<string, unknown>
 }
 
+/** Returned by store() when the snapshot was deliberately not kept. See BaseCollector.store. */
+export interface StoreDeclined {
+  declined: true
+  /** Fixed code recorded as the run's error_message, e.g. 'snapshot_not_stored:lower_quality'. */
+  reason:   string
+  /** Written to collector_runs.metadata in place of the payload. */
+  metadata: Record<string, unknown>
+}
+
 // ── BaseCollector abstract class ──────────────────────────────────────────────
 
 export abstract class BaseCollector {
@@ -67,6 +76,14 @@ export abstract class BaseCollector {
   abstract readonly id: string
   /** Signal kind emitted on success, e.g. "stripe.mrr_snapshot". */
   abstract readonly signalKind: string
+  /**
+   * Opt-in. When true, a failed store() fails the run: status 'error', NO signal is
+   * emitted and the failure is recorded by the caller in collector_runs. Default false
+   * keeps the original behaviour (store failure is non-fatal, signal still emitted), so
+   * every collector that does not opt in behaves exactly as before.
+   */
+  readonly storeRequired: boolean = false
+
   /** Producer version string, e.g. "stripe-collector-1.0.0". */
   abstract readonly version: string
   /** Source label, e.g. "stripe", "instagram". Stored in atlas_signals.source. */
@@ -87,8 +104,14 @@ export abstract class BaseCollector {
   /**
    * (Optional) Persist to a snapshot table. Called AFTER normalize(), BEFORE
    * signal emission. A store() failure is non-fatal — the signal still emits.
+   *
+   * A store() that decides NOT to keep the snapshot (e.g. a guarded store that refuses to
+   * overwrite better data) may return a StoreDeclined. The run is then reported as
+   * 'skipped' with the given reason and metadata, and no signal is emitted, so neither the
+   * signal stream nor the audit log claims something was saved that was not. Returning
+   * nothing (every existing collector) keeps the original behaviour.
    */
-  store?(payload: Record<string, unknown>, ctx: CollectorContext): Promise<void>
+  store?(payload: Record<string, unknown>, ctx: CollectorContext): Promise<void | StoreDeclined>
 
   /** Run the full collector lifecycle. Never throws. */
   async run(ctx: CollectorContext): Promise<CollectorResult> {
@@ -107,7 +130,11 @@ export abstract class BaseCollector {
       // store() is skipped entirely during dry runs — no DB writes of any kind.
       if (this.store && !ctx.dryRun) {
         try {
-          await this.store(payload, ctx)
+          const declined = await this.store(payload, ctx)
+          if (declined && declined.declined === true) {
+            return this._result(ctx, 'skipped', null, null, Date.now() - t0,
+              declined.reason, declined.metadata)
+          }
         } catch (storeErr) {
           // store() failure is non-fatal: signal is the Atlas source of truth;
           // snapshot tables are secondary derived storage. The run is recorded as
@@ -118,6 +145,13 @@ export abstract class BaseCollector {
             `[${this.id}] store() failed (non-fatal): ` +
             (storeErr instanceof Error ? storeErr.message : String(storeErr))
           )
+          if (this.storeRequired) {
+            // The snapshot is part of the contract: report the run as failed and emit
+            // nothing. The error text is a fixed code, never the underlying message
+            // (which stays in the server log above).
+            return this._result(ctx, 'error', null, null, Date.now() - t0,
+              'snapshot_store_failed', { store_failed: true })
+          }
           payload.__store_error = storeErr instanceof Error ? storeErr.message : String(storeErr)
         }
       }

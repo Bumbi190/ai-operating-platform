@@ -105,3 +105,109 @@
   ) !important;
   border-color: rgb(var(--omnira-cyan-soft-rgb) / 0.1) !important;
 }
+
+/* ── Destinations, after the canonical Atlas Home mockup ─────────────────
+   Marker dot + label; the active destination sits in a bordered pill with a
+   bright cyan edge. Sizes are rem so the display-scale preference reaches them
+   (0.875rem = 14px at Standard). */
+.navItem {
+  gap: 12px;
+  min-height: 2.5rem;
+  padding: 0 14px;
+  font-size: 0.875rem !important;
+  font-weight: 400 !important;
+  color: rgba(236, 242, 250, 0.9) !important;
+}
+
+.navItem[data-active='true'] {
+  color: #d5ffff !important;
+  background: rgb(var(--omnira-cyan-rgb) / 0.07) !important;
+  border: 1.5px solid rgba(165, 229, 250, 0.82) !important;
+  box-shadow: 0 0 18px -6px rgb(var(--omnira-cyan-rgb) / 0.55), inset 0 0 12px rgb(var(--omnira-cyan-rgb) / 0.06) !important;
+}
+
+/* The pill's own edge is the marker in this design; no side tick. */
+.navItem[data-active='true']::before { display: none; }
+
+.navDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(150, 160, 178, 0.55);
+}
+
+.navItem[data-active='true'] .navDot {
+  background: var(--omnira-cyan);
+  box-shadow: 0 0 8px rgb(var(--omnira-cyan-rgb) / 0.8);
+}
+
+/* ── Brand block, after the mockup ───────────────────────────────────────
+   The sidebar now starts under the shell top bar, so the brand sits at the top
+   of the column with the mockup's breathing room and no divider. */
+.brandBlock {
+  position: relative;
+  flex: none;
+  padding: 1.5rem 1.5rem 0.25rem 1.75rem;
+}
+.brand { display: flex; align-items: center; gap: 0.875rem; }
+.brandText { display: flex; flex-direction: column; gap: 0.3rem; }
+.brandName {
+  color: #ffffff;
+  font-size: 1.1875rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.brandSub {
+  color: rgba(150, 156, 170, 0.92);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.6875rem;
+  letter-spacing: 0.26em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.brandStatus {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.5rem 0 0 0.25rem;
+  color: #4ed2cd;
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+.brandStatusDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #34d399;
+  box-shadow: 0 0 8px #34d399;
+}
+
+/* ── Proportions at the mockup's width (xl, 287px column) ────────────────
+   Items ~17px at a 44px pitch, mono group labels widely tracked. Below xl the
+   260px column keeps the denser 14px set. */
+@media (min-width: 1280px) {
+  /* Vertical rhythm from the mockup: first group label ~140px under the top
+     bar, groups 16px apart — which also lets every destination fit at 992px
+     tall now that the operator card lives in the top bar. */
+  .sidebar nav {
+    padding: 0.625rem 1.125rem 0.75rem 1.5rem !important;
+  }
+  .sidebar nav :global(.space-y-5) > :not([hidden]) ~ :not([hidden]) { margin-top: 1rem !important; }
+  .sidebar nav :global(.eyebrow) { margin-bottom: 0.625rem !important; }
+  .sidebar nav :global(.eyebrow) {
+    font-size: 0.75rem !important;
+    letter-spacing: 0.3em;
+    color: rgba(150, 156, 172, 0.72) !important;
+  }
+  /* 2.5rem + the list's 4px gap = the mockup's 44px pitch. */
+  .navItem {
+    min-height: 2.5rem;
+    font-size: 1.0625rem !important;
+    padding: 0 16px;
+  }
+}

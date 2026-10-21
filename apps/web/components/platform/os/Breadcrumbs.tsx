@@ -45,7 +45,7 @@ export function Breadcrumbs({ uiGeneration, projects }: BreadcrumbsProps) {
   const lastIndex = items.length - 1
 
   return (
-    <nav aria-label="Brödsmulor" className={styles.nav}>
+    <nav data-shell-breadcrumbs aria-label="Brödsmulor" className={styles.nav}>
       <ol className={styles.list}>
         {items.map((item, index) => {
           const isRoot = index === 0

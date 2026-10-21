@@ -8,7 +8,7 @@
  * that existed guarded one ElevenLabs function and nothing else.
  *
  * `getAnthropic(ctx)` returns a client whose `messages.create` and
- * `messages.stream` are governed: an upper-bound estimate is reserved BEFORE the
+ * `messages.stream` are governed: a HARD ceiling is reserved BEFORE the
  * request is dispatched, the real cost is written to `cost_events` afterwards,
  * and the reservation is settled. Migrating a call site is a one-line change,
  * so the request shape, model, tools, temperature and error handling at each
@@ -16,15 +16,13 @@
  *
  * ── ESTIMATING BEFORE THE ANSWER EXISTS ─────────────────────────────────────
  * A completion's cost is only known once it returns, which is precisely why a
- * post-hoc ledger cannot bound spend. The reservation therefore uses a
- * conservative UPPER BOUND: measured input tokens plus the FULL `max_tokens` the
- * caller asked for, priced through the shared `MODEL_PRICING`. A request can
- * never cost more than that, so the reservation can never under-reserve — which
- * matters because the reservation is what a concurrent caller sees.
- *
- * Input tokens are approximated from character count rather than tokenised: a
- * real tokeniser would mean a second dependency and a second source of truth for
- * a number that only feeds an upper bound. The ratio is deliberately pessimistic.
+ * post-hoc ledger cannot bound spend. The reservation is therefore a HARD
+ * ceiling (M0, see `estimateAnthropicSek`): the model's context window — the
+ * provider-enforced maximum input — plus the FULL `max_tokens`, priced through
+ * the shared `MODEL_PRICING` at the rate snapshot the metering also uses. An
+ * earlier revision approximated input from a character count; that was a guess
+ * that a multi-byte or document-heavy prompt could exceed, and a guess is not
+ * an authority bound. Requests this cannot bound are refused.
  *
  * ── THE LEDGER STILL RECORDS REALITY ────────────────────────────────────────
  * `cost_events` is written from `response.usage` — the actual tokens — through
@@ -36,9 +34,10 @@ import 'server-only'
 
 import Anthropic from '@anthropic-ai/sdk'
 
-import { getModelPricing } from './pricing'
 import { logLlmCost, type CostContext } from '@/lib/cost/track'
+import { currentSpendMeter } from '@/lib/cost/spend-meter'
 import { getRates } from '@/lib/cost/rates'
+import { containsKey, tokenWindowCeiling, type RateSnapshot } from '@/lib/cost/spend-ceiling'
 import {
   watchExecutionAuthority, composeAbortSignals, authorityForRequest, followAsyncIterable,
   admitPhysicalRequest, isPhysicalAdmissionRefusal,
@@ -49,6 +48,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveGovernedProjectId } from '@/lib/cost/governed-spend'
 import {
   ProviderNotDispatchedError,
+  SpendRefusedError,
   withGovernedSpend,
   type ProjectRef,
 } from '@/lib/cost/governed-spend'
@@ -114,52 +114,51 @@ export interface AnthropicGovernanceContext {
 }
 
 /**
- * Characters per token, deliberately LOW so the token count comes out high.
- * English averages ~4 and Swedish rather less; 3 keeps the estimate on the
- * pessimistic side of both, which is the only safe direction for a ceiling.
+ * The HARD ceiling in SEK for one messages request (M0). Throws
+ * `SpendRefusedError('unbounded_spend')` for a request whose billable outcome
+ * cannot be bounded — it is then never dispatched.
+ *
+ * ── WHY NOT A CHARACTER ESTIMATE ─────────────────────────────────────────────
+ * This used to count prompt characters at 3 chars/token and charge a flat 4,000
+ * tokens per image or document block. Both are guesses: a character can be
+ * several tokens, and a PDF block can be far more than 4,000. A guess is not an
+ * authority bound — the crash reconciler settles exactly this figure — so the
+ * bound now comes from the provider's own contract instead:
+ *
+ *   billed input  ≤ the model's context window (a longer prompt is rejected
+ *                   before inference, unbilled)
+ *   billed output ≤ `max_tokens` (extended thinking counts inside it)
+ *
+ * priced by the same `MODEL_PRICING` entry the metering uses.
+ *
+ * ── REFUSED, because they bill outside input × price + output × price ───────
+ *   • a model with no price-book entry or documented window;
+ *   • `cache_control` anywhere (cache writes bill at 1.25×/2× input);
+ *   • server tools (any tool with a `type` other than `custom`: web search,
+ *     web fetch, code execution bill per use);
+ *   • an `anthropic-beta` header (it can enable the 1M window or other billing);
+ *   • `container` / `mcp_servers`.
  */
-const CHARS_PER_TOKEN = 3
-
-function textLength(content: unknown): number {
-  if (typeof content === 'string') return content.length
-  if (Array.isArray(content)) {
-    return content.reduce<number>((sum, block) => {
-      if (typeof block === 'string') return sum + block.length
-      if (block && typeof block === 'object') {
-        const b = block as { text?: unknown; content?: unknown }
-        if (typeof b.text === 'string') return sum + b.text.length
-        if (b.content !== undefined) return sum + textLength(b.content)
-      }
-      // An image or document block has real token cost we cannot measure here.
-      // Charge a flat allowance rather than zero: unmeasured must never mean free.
-      return sum + 4_000
-    }, 0)
-  }
-  return 0
-}
-
-/** Upper bound in SEK for one messages request. Never optimistic. */
 export async function estimateAnthropicSek(
   params: { model: string; max_tokens: number; system?: unknown; messages?: unknown[]; tools?: unknown },
+  rates?: RateSnapshot,
+  options?: { headers?: unknown },
 ): Promise<number> {
-  const rates = await getRates()
-  const pricing = getModelPricing(params.model)
-
-  const promptChars =
-    textLength(params.system)
-    + (params.messages ?? []).reduce<number>(
-      (sum, m) => sum + textLength((m as { content?: unknown })?.content), 0)
-    + textLength(params.tools)
-
-  const tokensIn = Math.ceil(promptChars / CHARS_PER_TOKEN)
-  // The whole output allowance, not an expected value: the caller may use all of it.
-  const tokensOut = Math.max(0, params.max_tokens || 0)
-
-  const usd =
-    (tokensIn / 1_000_000) * pricing.inputPer1M
-    + (tokensOut / 1_000_000) * pricing.outputPer1M
-
-  return usd * (rates.usd_sek ?? 10.5)
+  const unbounded = (reason: string) => new SpendRefusedError({
+    reason: 'unbounded_spend', provider: 'anthropic', operation: 'messages', detail: reason,
+  })
+  if (containsKey(params, 'cache_control')) throw unbounded('cache_control bills cache writes above the input price')
+  const tools = Array.isArray(params.tools) ? params.tools : []
+  if (tools.some(t => t && typeof t === 'object' && 'type' in t && (t as { type?: unknown }).type !== 'custom')) {
+    throw unbounded('server tools bill per use')
+  }
+  if ('container' in params || 'mcp_servers' in params) throw unbounded('container / MCP servers bill outside tokens')
+  if (options?.headers && JSON.stringify(options.headers).toLowerCase().includes('anthropic-beta')) {
+    throw unbounded('a beta header can change the context window or billing')
+  }
+  const ceiling = tokenWindowCeiling(params.model, params.max_tokens, rates ?? await getRates())
+  if (!ceiling.ok) throw unbounded(ceiling.reason)
+  return ceiling.sek
 }
 
 /**
@@ -295,13 +294,17 @@ export function getAnthropic(ctx: AnthropicGovernanceContext) {
         params: Anthropic.MessageCreateParamsNonStreaming,
         options?: Anthropic.RequestOptions,
       ): Promise<Anthropic.Message> {
-        const estimatedSek = await estimateAnthropicSek(params)
+        // M0: ONE rate snapshot prices both the hard ceiling and the metering.
+        const rates = await getRates()
+        const estimatedSek = await estimateAnthropicSek(params, rates, options)
         return withGovernedSpend(
           {
             project: ctx.project, execution: ctx.execution,
             provider: 'anthropic',
             operation: ctx.operation ?? 'messages.create',
             estimatedSek,
+            ceilingBasis: 'token_window',
+            rates,
             // Run-bound when the caller has a canonical execution identity;
             // undefined otherwise, which keeps every existing call site taking
             // its own per-call reservation exactly as before.
@@ -340,24 +343,27 @@ export function getAnthropic(ctx: AnthropicGovernanceContext) {
        * non-streaming call; the ledger write is attached to the stream's own
        * completion so the caller's consumption pattern is unchanged.
        *
-       * Settlement happens when `withGovernedSpend` returns the stream handle,
-       * not when the stream finishes — the money is committed the moment the
-       * request is accepted, and holding the reservation open until the last
-       * token would let a slow consumer block a concurrent caller for the whole
-       * generation. A stream that dies mid-flight was still billed for what it
-       * produced, so settling the upper bound is the conservative direction.
+       * M0: settlement happens when the stream ENDS, not at handle return. The
+       * reservation stays counted at its hard ceiling for the whole generation —
+       * a concurrent caller sees that headroom as taken, which is the
+       * conservative direction — and then settles durably with the real usage.
+       * A stream that dies mid-flight settles at the reserved hard ceiling.
        */
       async stream(
         params: Anthropic.MessageStreamParams,
         options?: Anthropic.RequestOptions,
       ) {
-        const estimatedSek = await estimateAnthropicSek(params)
+        // M0: ONE rate snapshot prices both the hard ceiling and the metering.
+        const rates = await getRates()
+        const estimatedSek = await estimateAnthropicSek(params, rates, options)
         return withGovernedSpend(
           {
             project: ctx.project, execution: ctx.execution,
             provider: 'anthropic',
             operation: ctx.operation ?? 'messages.stream',
             estimatedSek,
+            ceilingBasis: 'token_window',
+            rates,
             // Run-bound when the caller has a canonical execution identity;
             // undefined otherwise, which keeps every existing call site taking
             // its own per-call reservation exactly as before.
@@ -384,22 +390,33 @@ export function getAnthropic(ctx: AnthropicGovernanceContext) {
               }
               throw e
             }
-            // Fire-and-forget ledger write once the real usage exists. Detached
-            // on purpose: the caller owns the stream, and a logging failure must
-            // never surface as a broken response. `.catch` is mandatory — an
-            // unhandled rejection here would take the process down.
+            // ── M0 · THE STREAM'S COST SETTLES THE RESERVATION ───────────────
+            // The real usage exists only once the stream ends. It is metered
+            // into this governed call's spend meter, and the meter is told to
+            // wait for it: the reservation stays counted at its hard ceiling
+            // until then, and settles DURABLY with the real usage — or, if the
+            // stream ends without usage, at the reserved hard ceiling. Before M0
+            // this was a detached best-effort insert while the reservation had
+            // already been settled at handle return, so a failed insert made the
+            // stream's spend vanish.
+            //
+            // Still detached from the CALLER: the caller owns the stream, and a
+            // metering failure must never surface as a broken response.
             //
             // Guarded because the request has ALREADY been dispatched by this
             // point: a stream object without `finalMessage` would otherwise
             // throw out of a governed call that really did reach the provider,
             // reporting "never happened" about billable work — and stranding
-            // the watcher created three lines above.
-            void Promise.resolve()
+            // the watcher created above.
+            const metered = Promise.resolve()
               .then(() => typeof (stream as { finalMessage?: unknown }).finalMessage === 'function'
                 ? stream.finalMessage()
                 : Promise.reject(new Error('no finalMessage')))
               .then(msg => logLlmCost(params.model, (msg as { usage: never }).usage, costContext(ctx)))
-              .catch(() => { /* stream aborted or logging failed; estimate stands */ })
+            currentSpendMeter()?.settleAfter(metered)
+            // `.catch` is mandatory — an unhandled rejection would take the
+            // process down. The settlement observes the rejection separately.
+            void metered.catch(() => { /* stream aborted: settled at the reserved hard ceiling */ })
 
             // ── G3C-3C-A · STREAM TERMINATION, NOT HANDLE RETURN ──────────────
             // Returning the handle is NOT the end of the physical request: the

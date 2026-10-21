@@ -25,9 +25,10 @@ const QUICK_PROMPTS = [
 
 interface Props {
   operatorName: string
+  voiceHref?: string
 }
 
-export function AtlasVoiceHome({ operatorName }: Props) {
+export function AtlasVoiceHome({ operatorName, voiceHref }: Props) {
   const atlas = useAtlas()
 
   // ── Orb-klick: mappa UI-intention till runtime-åtgärder ──────────────────
@@ -118,6 +119,13 @@ export function AtlasVoiceHome({ operatorName }: Props) {
           )}
         </div>
       </div>
+
+      {atlas.warning?.detail && (
+        <div role="alert" className="mt-6 max-w-md text-sm text-amber-200">
+          <p>{atlas.warning.detail}</p>
+          <a href="/chat" className="mt-2 inline-block underline underline-offset-4">Öppna textchatten</a>
+        </div>
+      )}
 
       {/* ── Svarsbubbla ────────────────────────────────────────────────── */}
       {atlas.response && (

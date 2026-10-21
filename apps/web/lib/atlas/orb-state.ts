@@ -68,6 +68,21 @@ export const ATLAS_ORB_STATE_LABELS: Record<AtlasOrbState, string> = {
   warning: 'Behöver din uppmärksamhet',
 }
 
+/**
+ * One-word chip form of the same states, for the Atlas Home status chip and the
+ * shell's Atlas pill. Same seven keys, so a chip can never show a state the
+ * runtime does not have — idle reads "Redo", never a borrowed "Exekverar".
+ */
+export const ATLAS_ORB_STATE_CHIP_LABELS: Record<AtlasOrbState, string> = {
+  idle: 'Redo',
+  listening: 'Lyssnar',
+  thinking: 'Tänker',
+  speaking: 'Svarar',
+  executing: 'Exekverar',
+  awaiting_approval: 'Väntar',
+  warning: 'Varning',
+}
+
 export const ATLAS_ORB_VISUAL_PARAMETERS: Record<AtlasOrbState, AtlasOrbVisualParameters> = {
   idle: { particleBudget: 12, orbitSpeed: 0.12, energy: 0.34, cyan: 1, blue: 0.46, violet: 0.18 },
   listening: { particleBudget: 22, orbitSpeed: 0.2, energy: 0.68, cyan: 1, blue: 0.34, violet: 0.12 },

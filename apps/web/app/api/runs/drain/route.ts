@@ -12,10 +12,13 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { runSteps } from '@/lib/ai/workflow-runner'
 import { executeRunSteps } from '@/lib/ai/workflow-executor'
 import { computeCheckpoint } from '@/lib/ai/checkpoint'
+import {reconcileLocalTextHealth,purgeExpiredLocalText} from '@/lib/local-text/incidents'
+import {executeLocalTextCloudRun} from '@/lib/local-text/cloud-runs'
 import { decideGate, type GateOutcome } from '@/lib/ai/policy-gate'
 import { fencedRunUpdate, isFencedError } from '@/lib/ai/fencing'
 import { isCancelledError } from '@/lib/ai/cancel'
 import { MARKETING_HANDLERS, isMarketingRun } from '@/lib/marketing/workflows'
+import { executeWebsiteBuildRun, isWebsiteBuildRun, isWebsiteBuildPermanentError } from '@/lib/website-build/worker'
 import {
   checkpointClaimedRun, settleRefusal, terminalizeCancelledRun, recordDispatchUnknown,
   isRunCheckpointRefusal, isRunLifecycleWriteError, checkOwnedFinalization,
@@ -156,6 +159,7 @@ export async function GET(request: Request) {
   }
 
   const db = createAdminClient()
+  try{await reconcileLocalTextHealth(db,new Date());await purgeExpiredLocalText(db,new Date())}catch{console.warn('[local-text] maintenance unavailable')}
   const { data: claimed, error } = await db.rpc('claim_runs', { p_limit: CLAIM_LIMIT, p_lease_seconds: LEASE_SECONDS })
   if (error) return NextResponse.json({ status: 'claim_error', error: error.message }, { status: 500 })
 
@@ -239,6 +243,17 @@ export async function GET(request: Request) {
         continue
       }
 
+      if(typeof run.kind==='string'&&run.kind.startsWith('local_text_')&&run.kind!=='local_text_cloud'){
+        await finalizeOwnedRunUnlessCancelled(db,run.id,run.claim_id,{status:'failed',error:'LOCAL_TEXT_KIND_NOT_EXECUTABLE',finished_at:new Date().toISOString(),claimed_at:null,lease_until:null});results.push({run_id:run.id,status:'local_text_not_executable'});continue
+      }
+      if(run.kind==='local_text_cloud'){
+        let status='local_text_owned'
+        try{await executeLocalTextCloudRun(db,run as Run,run.claim_id!,new Date())}
+        catch{status='local_text_settlement_pending';try{await recordDispatchUnknown(db,run.id,run.claim_id,'LOCAL_TEXT_SETTLEMENT_UNAVAILABLE')}catch{}}
+        results.push({run_id:run.id,status})
+        continue
+      }
+
       // ── PR9e: bound workflow actions take a separate, closed path ─────────
       // Deliberately BEFORE any agent-step or marketing handling: a workflow
       // action must never reach an LLM step, and legacy runs must never reach
@@ -266,7 +281,9 @@ export async function GET(request: Request) {
       let outputContent: string | undefined
       let lastOutputKey: string | undefined
 
-      if (isMarketingRun(kind)) {
+      if (isWebsiteBuildRun(kind)) {
+        await executeWebsiteBuildRun(db, run as Run, run.claim_id!)
+      } else if (isMarketingRun(kind)) {
         // Kod-driven marketing-workflow: dispatch på `kind` till rätt handler.
         // (Fas 1: no-op-handlers.) Drainern äger fortfarande run-statuslogiken.
         // PR2 (decision A): marketing-runs gate:as INTE — outcome förblir 'done'.
@@ -670,6 +687,7 @@ export async function GET(request: Request) {
       const msg = e instanceof Error ? e.message : 'Okänt fel'
       // attempts är redan inkrementerad av claim_runs → willRetry om vi inte nått taket.
       const willRetry = (run.attempts ?? 0) < (run.max_attempts ?? 3)
+        && !(isWebsiteBuildRun(run.kind) && isWebsiteBuildPermanentError(e))
       const history = [
         ...(Array.isArray(run.error_history) ? run.error_history : []),
         { at: new Date().toISOString(), attempt: run.attempts, error: msg },

@@ -1,4 +1,5 @@
 import 'server-only'
+import {projectLifecycleState,type ProjectLifecycleRelation} from '@/lib/project/lifecycle/list'
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
@@ -9,7 +10,7 @@ import { resolveDestination } from '@/lib/nav/registry'
 
 type AnyDb = any
 
-type ProjectRow = {
+type ProjectRow = ProjectLifecycleRelation & {
   id: string
   name: string
   slug: string
@@ -143,7 +144,7 @@ export function assembleAtlasHomeViewModel({
   projectsAvailable = true,
 }: AssembleOptions): AtlasHomeViewModel {
   const allowed = new Set(allowedProjectIds)
-  const projects = projectRows.filter((project) => allowed.has(project.id))
+  const projects = projectRows.filter((project) => allowed.has(project.id) && projectLifecycleState(project)==='active')
   const projectById = new Map(projects.map((project) => [project.id, project]))
   const runs = runRows?.filter((run) => allowed.has(run.project_id) && projectById.has(run.project_id)) ?? []
   const approvals = approvalRows?.filter((approval) => (
@@ -245,7 +246,7 @@ export function assembleAtlasHomeViewModel({
 async function fetchProjects(db: AnyDb, allowedProjectIds: string[]): Promise<{ rows: ProjectRow[]; available: boolean }> {
   const scopedIds = scopeProjectFilter(allowedProjectIds)
   const withMode = await (db.from('projects') as any)
-    .select('id, name, slug, color, created_at, atlas_mode')
+    .select('id, name, slug, color, created_at, atlas_mode, project_lifecycle(state)')
     .in('id', scopedIds)
     .order('created_at', { ascending: true })
 
@@ -254,7 +255,7 @@ async function fetchProjects(db: AnyDb, allowedProjectIds: string[]): Promise<{ 
   // atlas_mode exists in migration 20260623_150000 but is intentionally not in
   // generated types yet. Older environments get the same safe model without it.
   const fallback = await (db.from('projects') as any)
-    .select('id, name, slug, color, created_at')
+    .select('id, name, slug, color, created_at, project_lifecycle(state)')
     .in('id', scopedIds)
     .order('created_at', { ascending: true })
 

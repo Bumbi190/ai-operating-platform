@@ -307,10 +307,10 @@ describe('no product capability was opened', () => {
     const { execFileSync } = require('node:child_process') as typeof import('node:child_process')
     let out = ''
     try {
-      out = execFileSync('grep', ['-rl', 'StoryTextProvider', `${process.cwd()}/lib`],
+      out = execFileSync('git', ['grep', '--untracked', '-l', '-e', 'StoryTextProvider', '--', 'lib'],
                          { encoding: 'utf8' })
     } catch { /* none */ }
-    const impls = out.trim().split('\n').filter(Boolean)
+    const impls = out.trim().split('\n').map(f => f.trim()).filter(Boolean)
       .filter(f => !f.includes('/qa/'))
       .map(f => f.slice(f.lastIndexOf('/') + 1)).sort()
     // The seam, the deterministic fake, and ONE real implementation.

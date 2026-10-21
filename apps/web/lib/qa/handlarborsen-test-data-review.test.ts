@@ -1,0 +1,68 @@
+import {beforeEach,afterEach,expect,it,vi} from 'vitest'
+import {AtlasConversationController} from '@/lib/atlas/conversation/controller'
+import {decodeCleanupEffect,decodeReviewView,cleanupOutcome} from '@/lib/atlas/handlarborsen-test-data/stream-effect'
+const m=vi.hoisted(()=>({authority:vi.fn(),rpc:vi.fn(),dispatch:vi.fn(),reconcile:vi.fn()}))
+vi.mock('@/lib/atlas/handlarborsen-test-data/authority',()=>({resolveCleanupOperator:m.authority}))
+vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>({rpc:m.rpc})}))
+vi.mock('@/lib/atlas/handlarborsen-test-data/service',()=>({dispatchApprovedCleanup:m.dispatch,reconcileCleanup:m.reconcile}))
+import {cleanupReviewApi} from '@/lib/atlas/handlarborsen-test-data/review-api'
+const c='11000000-0000-4000-8000-000000000001',p='8f673c09-1c8f-4d78-876e-4c14bf1c89b3',id='22000000-0000-4000-8000-000000000001',ref='33000000-0000-4000-8000-000000000001',binding='44000000-0000-4000-8000-000000000001'
+export const pkg={packageId:id,projectId:p,conversationId:c,operatorBindingId:binding,operation:'quarantine',organisationIds:['66000000-0000-4000-8000-000000000001'],classificationRevision:'a'.repeat(64),graphSha256:'b'.repeat(64),expiresAt:'2099-01-01T00:00:00Z',counts:{organizations:1},blockers:[],status:'prepared'}
+const view={packageView:pkg,reviewRef:ref,decisionState:'pending',executionId:null,receipt:null}
+const request=(body:unknown)=>new Request('http://localhost/api/atlas/handlarborsen/test-data/'+id+'/review',{method:'POST',headers:{origin:'http://localhost','content-type':'application/json'},body:JSON.stringify(body)})
+beforeEach(()=>{vi.clearAllMocks();m.authority.mockResolvedValue({ok:true,principal:{userId:ref,operatorBindingId:binding,projectId:p,conversationId:c,allowedOperations:['quarantine']}});m.rpc.mockResolvedValue({data:view,error:null});m.dispatch.mockResolvedValue({status:'unknown',executionId:ref});vi.stubEnv('ATLAS_TEST_DATA_MUTATIONS_ENABLED','true')})
+afterEach(()=>vi.unstubAllEnvs())
+it('tool prose or an arbitrary URL never creates a review',()=>{expect(decodeCleanupEffect({event:'tool_result',result:view},c)).toBeNull();expect(decodeCleanupEffect({event:'handlarborsen_test_data_review',conversationId:c,review:{...view,url:'https://fake'}},c)).toBeNull()})
+it('other_conversation_card_cannot_approve',()=>{expect(decodeCleanupEffect({event:'handlarborsen_test_data_review',conversationId:c,review:view},ref)).toBeNull()})
+it('receipt_required_for_success_copy',()=>{expect(cleanupOutcome(decodeReviewView(view)!)).not.toContain('undanlagd');expect(cleanupOutcome({...view,decisionState:'approved'} as never)).toBe('Utfallet kontrolleras');expect(decodeReviewView({...view,receipt:{outcome:'applied'}})).toBeNull()})
+it('llm_confirm_true_has_no_authority',async()=>{expect((await cleanupReviewApi(request({conversationId:c,reviewRef:ref,decision:'approve',confirm:true}),id)).status).toBe(400);expect(m.rpc).not.toHaveBeenCalled();expect(m.dispatch).not.toHaveBeenCalled()})
+it('loose_voice_yes_does_not_approve',async()=>{expect((await cleanupReviewApi(request({conversationId:c,reviewRef:ref,decision:'ja'}),id)).status).toBe(400);expect(m.dispatch).not.toHaveBeenCalled()})
+it('signout_revokes_review',async()=>{m.authority.mockResolvedValue({ok:false,reason:'unauthenticated'});expect((await cleanupReviewApi(request({conversationId:c,reviewRef:ref,decision:'approve'}),id)).status).toBe(401);expect(m.rpc).not.toHaveBeenCalled()})
+it('cross-origin decisions fail before database or upstream calls',async()=>{const r=request({conversationId:c,reviewRef:ref,decision:'approve'});r.headers.set('origin','https://foreign.test');expect((await cleanupReviewApi(r,id)).status).toBe(403);expect(m.rpc).not.toHaveBeenCalled()})
+it('expired_card_requires_new_review',async()=>{m.rpc.mockResolvedValue({data:null,error:null});const r=await cleanupReviewApi(request({conversationId:c,reviewRef:ref,decision:'approve'}),id);expect(r.status).toBe(409);expect(await r.json()).toEqual({status:'needs_new_review'});expect(m.dispatch).not.toHaveBeenCalled()})
+it('reject never dispatches, and decisions only use the dedicated RPC',async()=>{m.rpc.mockResolvedValue({data:{...view,decisionState:'rejected'},error:null});expect((await cleanupReviewApi(request({conversationId:c,reviewRef:ref,decision:'reject'}),id)).status).toBe(200);expect(m.rpc.mock.calls[0][0]).toBe('handlarborsen_test_data_decide_review');expect(m.dispatch).not.toHaveBeenCalled()})
+it('navigation preserves the card in its conversation and signout clears it',async()=>{const frames=[{event:'handlarborsen_test_data_review',conversationId:c,review:view},{event:'done'}];const ctl=new AtlasConversationController(async()=>new Response(frames.map(f=>'data: '+JSON.stringify(f)+'\n\n').join('')));ctl.activateConversation({id:c,state:'ok',saved:[],projectId:null});await ctl.sendTurn({conversationId:c,text:'Förbered testdata',inputSource:'voice'});expect(ctl.snapshot().testDataReviews).toEqual([view]);ctl.activateConversation({id:ref,state:'ok',saved:[]});expect(ctl.snapshot().testDataReviews).toEqual([]);ctl.activateConversation({id:c,state:'ok',saved:[]});expect(ctl.snapshot().testDataReviews).toEqual([view]);ctl.clearOnSignout();expect(ctl.snapshot().testDataReviews).toEqual([])})
+
+it('reload restores only validated persisted server review effects',()=>{const ctl=new AtlasConversationController();ctl.activateConversation({id:c,state:'ok',saved:[{role:'assistant',content:null,created_at:null,tool_data:{kind:'handlarborsen_test_data_review',conversationId:c,review:view}}]});expect(ctl.snapshot().testDataReviews).toEqual([view])})
+
+it('receipt button reconciles the same existing job without dispatching',async()=>{m.rpc.mockResolvedValue({data:{...view,decisionState:'approved',executionId:ref},error:null});const result=await cleanupReviewApi(new Request('http://localhost/api/atlas/handlarborsen/test-data/'+id+'/review?conversationId='+c),id);expect(result.status).toBe(200);expect(m.reconcile).toHaveBeenCalledWith(id,{projectId:p,conversationId:c});expect(m.dispatch).not.toHaveBeenCalled()})
+
+it('tool status never labels an unverified mutation as done',async()=>{const {toolOutcome}=await import('@/lib/os/chat-shared');const entry={kind:'tool' as const,tool:'execute_handlarborsen_test_cleanup',input:{packageId:id},resolved:true,result:{status:'ok',message:'Testdata undanlagd'}};expect(toolOutcome(entry)).toBe('unknown');expect(toolOutcome({...entry,result:{status:'unknown'} as never})).toBe('unknown')})
+it('an empty selection has its own honest outcome',async()=>{const {toolOutcome}=await import('@/lib/os/chat-shared');expect(toolOutcome({kind:'tool',tool:'prepare_handlarborsen_test_cleanup',input:{organisationIds:[]},resolved:true,result:{status:'ok',action:'prepare',data:{status:'nothing_to_do'}}})).toBe('nothing_to_do')})
+
+it('saved review arriving while another thread is active rehydrates the cached thread',()=>{
+ const ctl=new AtlasConversationController()
+ ctl.activateConversation({id:c,state:'ok',saved:[]})
+ ctl.activateConversation({id:ref,state:'ok',saved:[]})
+ const saved=[{role:'assistant',content:null,created_at:null,tool_data:{kind:'handlarborsen_test_data_review',conversationId:c,review:view}}]
+ ctl.activateConversation({id:c,state:'ok',saved})
+ expect(ctl.snapshot().testDataReviews).toEqual([view])
+ ctl.updateTestDataReview(c,{...view,decisionState:'approved',executionId:ref})
+ ctl.activateConversation({id:c,state:'ok',saved})
+ expect(ctl.snapshot().testDataReviews[0].decisionState).toBe('approved')
+})
+it.each(['needs_new_review','denied','disabled'] as const)('definitive %s is honest after reload and never a success receipt',rejectionStatus=>{
+ const decoded=decodeReviewView({...view,decisionState:'approved',executionId:ref,rejectionStatus})
+ expect(decoded).not.toBeNull()
+ expect(cleanupOutcome(decoded!)).not.toBe('Utfallet kontrolleras')
+ expect(decoded!.receipt).toBeNull()
+})
+
+it('a delayed review stream is recovered once in its original cached thread',async()=>{
+ let release!:(response:Response)=>void
+ const ctl=new AtlasConversationController(async()=>new Promise<Response>(resolve=>{release=resolve}))
+ ctl.activateConversation({id:c,state:'ok',saved:[]})
+ const turn=ctl.sendTurn({conversationId:c,text:'Förbered testdata',inputSource:'voice'})
+ ctl.activateConversation({id:ref,state:'ok',saved:[]})
+ release(new Response([{event:'handlarborsen_test_data_review',conversationId:c,review:view},{event:'done'}].map(f=>'data: '+JSON.stringify(f)+'\n\n').join('')))
+ await turn
+ expect(ctl.snapshot().testDataReviews).toEqual([])
+ const saved=[{role:'assistant',content:null,created_at:null,tool_data:{kind:'handlarborsen_test_data_review',conversationId:c,review:view}}]
+ ctl.activateConversation({id:c,state:'ok',saved})
+ expect(ctl.snapshot().testDataReviews).toEqual([view])
+ const receipt={packageId:id,executionId:ref,operation:'quarantine',outcome:'applied',beforeSha256:'a'.repeat(64),afterSha256:'b'.repeat(64),counts:{organizations:1},committedAt:'2026-10-17T12:00:00Z'}
+ ctl.updateTestDataReview(c,{...view,decisionState:'approved',executionId:ref,receipt})
+ ctl.activateConversation({id:c,state:'ok',saved})
+ expect(ctl.snapshot().testDataReviews).toHaveLength(1)
+ expect(ctl.snapshot().testDataReviews[0].receipt).toEqual(receipt)
+})

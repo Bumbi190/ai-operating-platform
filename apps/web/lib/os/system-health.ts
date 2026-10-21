@@ -13,7 +13,7 @@ import {
 } from '@/lib/atlas/dream-reconciliation'
 import { resolveDestination } from '@/lib/nav/registry'
 import {
-  PROVISIONAL_POLICY_NOTICE,
+  SURVIVAL_POLICY_NOTICE,
   SURVIVAL_CEILING_EFFECT,
   SURVIVAL_THRESHOLD_STATUS,
   describeCeiling,
@@ -702,6 +702,6 @@ function toSurvivalSection(
     gaps: snapshot.gaps,
     operatingPaused: snapshot.operatingPaused,
     thresholdStatus: SURVIVAL_THRESHOLD_STATUS,
-    policyNotice: PROVISIONAL_POLICY_NOTICE,
+    policyNotice: SURVIVAL_POLICY_NOTICE,
   }
 }

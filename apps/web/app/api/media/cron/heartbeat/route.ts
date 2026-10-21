@@ -28,7 +28,7 @@ type Cad = 'interval' | 'daily' | 'weekly'
 interface Check {
   key: string; label: string; jobs: string[]; cadence: string; type: Cad
   intervalMin?: number; slotsUtc?: string[]; graceMin: number
-  evidence?: 'news' | 'token'   // domän-bevis (konservativt: bara där arbete väntas varje gång)
+  evidence?: 'news' | 'token' | 'hb_snapshot'   // domän-bevis (konservativt: bara där arbete väntas varje gång)
 }
 
 const CHECKS: Check[] = [
@@ -46,6 +46,11 @@ const CHECKS: Check[] = [
   // Atlas Collectors (added 2026-06-23)
   { key: 'stripe_revenue', label: 'Stripe Revenue', jobs: ['omnira_stripe_revenue'], cadence: 'dagligen 06:45', type: 'daily', slotsUtc: ['06:45'], graceMin: 90 },
   { key: 'social_account', label: 'Social Account', jobs: ['omnira_social_account'], cadence: 'dagligen 06:50', type: 'daily', slotsUtc: ['06:50'], graceMin: 90 },
+  // Handlarbörsen marketplace collector (P1E). Dormant until the pg_cron job exists: a job
+  // that is not scheduled has no cron.job row, so lastFired is null and a daily check reads
+  // 'pending_first_run' (no alarm). Evidence = the newest stored snapshot, so "fired but
+  // stored nothing for two cycles" shows up as endpoint_failing.
+  { key: 'handlarborsen_marketplace', label: 'Handlarbörsen Marketplace', jobs: ['omnira_handlarborsen_marketplace'], cadence: 'dagligen 06:55', type: 'daily', slotsUtc: ['06:55'], graceMin: 90, evidence: 'hb_snapshot' },
 ]
 
 function slotToday(hhmm: string): number {
@@ -71,7 +76,7 @@ export async function GET(request: Request) {
 
   // Lager 2: domän-bevis
   const ev = async (p: Promise<{ data: any }>) => { try { const { data } = await p; return data?.[0]?.t ? new Date(data[0].t).getTime() : null } catch { return null } }
-  const [newsEv, credentialEv, legacyTokenEv] = await Promise.all([
+  const [newsEv, credentialEv, legacyTokenEv, hbSnapshotEv] = await Promise.all([
     ev(db.from('media_news_items').select('t:fetched_at').order('fetched_at', { ascending: false }).limit(1) as any),
     // The token-health job's work: per-project verification in social_credential_health.
     ev((db as any).from('social_credential_health').select('t:checked_at').order('checked_at', { ascending: false }).limit(1)),
@@ -80,9 +85,12 @@ export async function GET(request: Request) {
     // verification TIME still counts as evidence. It is a timestamp, never a credential
     // or a message, and it ages out of the two-cycle window on its own.
     ev(db.from('token_health').select('t:last_verified_at').order('last_verified_at', { ascending: false }).limit(1) as any),
+    // P1E: when the Handlarbörsen snapshot was last written (captured_at moves on insert, upgrade and refresh).
+    ev((db as any).from('handlarborsen_marketplace_snapshots').select('t:captured_at').order('captured_at', { ascending: false }).limit(1)),
   ])
   const tokenEv = credentialEv ?? legacyTokenEv
-  const evidenceFor = (c: Check): number | null => c.evidence === 'news' ? newsEv : c.evidence === 'token' ? tokenEv : null
+  const evidenceFor = (c: Check): number | null =>
+    c.evidence === 'news' ? newsEv : c.evidence === 'token' ? tokenEv : c.evidence === 'hb_snapshot' ? hbSnapshotEv : null
 
   const { data: prev } = await db.from('cron_heartbeat').select('jobname, last_warned_at, status')
   const prevBy = new Map<string, { last_warned_at: string | null; status: string }>((prev ?? []).map((r: any) => [r.jobname, r]))

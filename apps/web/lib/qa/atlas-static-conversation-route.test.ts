@@ -81,6 +81,13 @@ vi.mock('@/lib/supabase/admin', () => ({
 
 // ── Recording Anthropic client ────────────────────────────────────────────────
 let streamCalls: Array<{ system: string; tools: unknown[]; messages: unknown[] }> = []
+let openaiCalls:any[]=[]
+let openaiContexts:any[]=[]
+vi.mock('@/lib/ai/openai-client',()=>({openAIChatCompletion:async(ctx:unknown,params:any)=>{
+  openaiContexts.push(ctx)
+  openaiCalls.push(params)
+  return {async *[Symbol.asyncIterator](){yield {choices:[{index:0,delta:{content:'OpenAI svar'},finish_reason:null}]};yield {choices:[{index:0,delta:{},finish_reason:'stop'}]};yield {choices:[],usage:{prompt_tokens:10,completion_tokens:5}}}}
+}}))
 
 vi.mock('@anthropic-ai/sdk', () => {
   class FakeAnthropic {
@@ -105,10 +112,12 @@ async function post(body: unknown) {
   vi.resetModules()          // fresh module state, incl. the 45s live-context cache
   touchedTables = []
   streamCalls = []
+  openaiCalls = []
+  openaiContexts = []
   const { POST } = await import('@/app/api/chat/route')
   const res = await POST(new Request('http://localhost/api/chat', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', origin: 'http://localhost', host: 'localhost' },
     body: JSON.stringify(body),
   }) as any)
   const text = res.body ? await new Response(res.body).text() : ''
@@ -120,6 +129,7 @@ const userMsg = (content: string) => ({ messages: [{ role: 'user', content }] })
 beforeEach(() => {
   sessionUser = { id: 'user-1', email: 'owner@example.com' }
   process.env.ANTHROPIC_API_KEY = 'test-key'
+  delete process.env.ATLAS_MODEL_PROFILE
 })
 
 describe('authentication is unchanged', () => {
@@ -323,43 +333,38 @@ describe('FULL → STATIC history transition', () => {
     expect(res.status).toBe(401)
   })
 
-  it('PINS THE UPSTREAM INVARIANT: the client sends a text-only API history', async () => {
-    // If this ever stops being true — if tool_use/tool_result blocks start being
-    // persisted into apiMessages — then sending `tools: []` on a later static
-    // turn becomes a protocol error. This test is the tripwire for that change.
-    const { readFileSync } = await import('node:fs')
-    const { resolve } = await import('node:path')
-    const src = readFileSync(
-      resolve(__dirname, '../../components/platform/ChatClient.tsx'), 'utf8',
-    )
-    // Hydration filters persisted rows down to user/assistant with string content.
-    expect(src).toMatch(/m\.role === 'user' \|\| m\.role === 'assistant'/)
-    expect(src).toMatch(/content: m\.content as string/)
-    // Appends are plain strings on both sides of the exchange.
-    expect(src).toMatch(/apiMessages\.current = \[\.\.\.apiMessages\.current, \{ role: 'user', content: text \}\]/)
-    expect(src).toMatch(/apiMessages\.current = \[\.\.\.apiMessages\.current, \{ role: 'assistant', content: assistantText \}\]/)
+  it.each([
+    ['legacy', '../../components/platform/ChatClient.tsx'],
+    ['vNext', '../../components/platform/vnext/AtlasChatConversation.tsx'],
+  ])('%s uses the shared controller and sends text-only history after full replies', async (_surface, file) => {
+    const {readFileSync} = await import('node:fs')
+    const {resolve} = await import('node:path')
+    const client = readFileSync(resolve(__dirname, file), 'utf8')
+    expect(client).toContain('controller.activateConversation(')
+    expect(client).toContain('controller.sendTurn(')
+    const {AtlasConversationController} = await import('../atlas/conversation/controller')
+    const bodies: {messages: {role:string;content:string}[]}[] = []
+    const controller = new AtlasConversationController(async (_url, init) => {
+      bodies.push(JSON.parse(init!.body as string))
+      return new Response('data: {"event":"text","text":"Fullt svar"}\n\ndata: {"event":"done"}\n\n')
+    })
+    const id = '50000000-0000-4000-8000-000000000001'
+    controller.activateConversation({id, state:'ok', saved:[
+      {role:'user', content:'Visa statistik',tool_data:null,created_at:null},
+      {role:'assistant',content:'Tidigare svar',tool_data:[{type:'tool_use',id:'tool-1',name:'read',input:{}}],created_at:null},
+      {role:'tool',content:'Internt verktygsresultat',tool_data:null,created_at:null},
+    ]})
+    await controller.sendTurn({conversationId:id,text:'Analysera',inputSource:'text'})
+    await controller.sendTurn({conversationId:id,text:'Tack',inputSource:'text'})
+    expect(bodies[1].messages).toEqual([
+      {role:'user',content:'Visa statistik'},
+      {role:'assistant',content:'Tidigare svar'},
+      {role:'user',content:'Analysera'},
+      {role:'assistant',content:'Fullt svar'},
+      {role:'user',content:'Tack'},
+    ])
   })
 
-  it('PINS THE SAME INVARIANT for the vNext conversation client', async () => {
-    // vNext renders /chat/[id] with its own client. It must keep the history
-    // exactly as text-only as ChatClient does, for exactly the same reason.
-    const { readFileSync } = await import('node:fs')
-    const { resolve } = await import('node:path')
-    const shared = readFileSync(resolve(__dirname, '../../lib/os/chat-shared.ts'), 'utf8')
-    const client = readFileSync(
-      resolve(__dirname, '../../components/platform/vnext/AtlasChatConversation.tsx'), 'utf8',
-    )
-    // Hydration filters persisted rows down to user/assistant with string content.
-    expect(shared).toMatch(/\(m\.role === 'user' \|\| m\.role === 'assistant'\) && !!m\.content/)
-    expect(shared).toMatch(/content: m\.content as string/)
-    // The history starts from that filter and nothing else.
-    expect(client).toMatch(/useRef<HistoryMessage\[\]>\(textHistory\(model\.saved\)\)/)
-    // Appends are plain strings on both sides of the exchange.
-    expect(client).toMatch(/history\.current = \[\.\.\.history\.current, \{ role: 'user', content: text \}\]/)
-    expect(client).toMatch(/history\.current = \[\.\.\.history\.current, \{ role: 'assistant', content: effect\.fullText \}\]/)
-    // And it is the only thing the request carries as messages.
-    expect(client).toMatch(/buildChatRequestBody\(\{\s*messages: history\.current,\s*conversation_id: model\.id,\s*\}\)/)
-  })
 })
 
 describe('the two paths are genuinely different', () => {
@@ -384,4 +389,71 @@ describe('the two paths are genuinely different', () => {
     expect(staticTools).toBe(0)
     expect(fullTools).toBeGreaterThan(0)
   })
+})
+
+vi.mock('@/lib/website-build/studio/turn-context', () => ({
+  resolveStudioTurnContext: async (_db:unknown,_p:unknown,_id:unknown,value:unknown) => value,
+}))
+describe('website studio context economy', () => {
+  it('keeps project references and conversation without building the global executive snapshot', async () => {
+    const studioContext={projectId:'10000000-0000-4000-8000-000000000001',conversationId:'50000000-0000-4000-8000-000000000001'}
+    const history=[{role:'user',content:'Skapa en arkitektur för tre sidor'},{role:'assistant',content:'Vi planerar tillsammans.'},{role:'user',content:'Behåll färgerna och lägg till kontakt.'}]
+    const {res}=await post({messages:history,conversation_id:studioContext.conversationId,studioContext})
+    expect(res.status).toBe(200)
+    expect(streamCalls).toHaveLength(1)
+    const call=streamCalls[0]
+    expect(call.messages).toEqual(history)
+    expect(call.system).toContain('ACTIVE WEBSITE STUDIO PROJECT: '+JSON.stringify(studioContext))
+    expect(call.system).toContain('Strato')
+    expect(call.system).toContain('Stripe')
+    expect(call.system).toContain('0 kr')
+    expect(call.system).toContain('Europe/Stockholm')
+    expect(call.system.length).toBeLessThan(9000)
+    const studioChars=call.system.length,studioTables=[...touchedTables]
+    await post(userMsg('Skapa en arkitektur för tre sidor'))
+    const globalChars=streamCalls[0].system.length
+    console.log('[studio-context-size]',JSON.stringify({studioChars,globalChars}))
+    expect(studioChars).toBeLessThan(globalChars/2)
+    expect(call.tools).toEqual(expect.arrayContaining([expect.objectContaining({name:'get_website_build_plan'}),expect.objectContaining({name:'submit_website_build_feedback'})]))
+    expect(call.tools).not.toEqual(expect.arrayContaining([expect.objectContaining({name:'trigger_workflow'})]))
+    for(const table of ['atlas_actions','opportunities','manager_tasks','cost_events']) expect(studioTables).not.toContain(table)
+  })
+})
+
+describe('OpenAI economy test profile',()=>{
+  beforeEach(()=>{delete process.env.ATLAS_MODEL_PROFILE;delete process.env.OPENAI_API_KEY})
+  it('runs Atlas without an Anthropic key using the existing OpenAI connection',async()=>{
+    process.env.ATLAS_MODEL_PROFILE='openai_economy'
+    process.env.OPENAI_API_KEY='test-openai'
+    delete process.env.ANTHROPIC_API_KEY
+    const {res,text}=await post(userMsg('Hej'))
+    expect(res.status).toBe(200)
+    expect(text).toContain('OpenAI svar')
+    expect(streamCalls).toHaveLength(0)
+    expect(openaiCalls[0].model).toBe('gpt-5.4-mini')
+    expect(openaiCalls[0].max_completion_tokens).toBe(4096)
+    expect(openaiCalls[0].stream_options).toEqual({include_usage:true})
+  })
+  it('does not fall back to a configured Claude key when OpenAI is missing',async()=>{
+    process.env.ATLAS_MODEL_PROFILE='openai_economy'
+    const {res}=await post(userMsg('Hej'))
+    expect(res.status).toBe(503)
+    expect(streamCalls).toHaveLength(0)
+  })
+})
+
+it('binds OpenAI Studio spend and tools to the verified project while preserving history',async()=>{
+ process.env.ATLAS_MODEL_PROFILE='openai_economy';process.env.OPENAI_API_KEY='test-openai'
+ try{
+  delete process.env.ANTHROPIC_API_KEY
+  const studioContext={projectId:'10000000-0000-4000-8000-000000000001',conversationId:'50000000-0000-4000-8000-000000000001'}
+  const history=[{role:'user',content:'Planera tre sidor'},{role:'assistant',content:'Vi planerar.'},{role:'user',content:'Behåll färgerna'}]
+  const {res,text}=await post({messages:history,conversation_id:studioContext.conversationId,studioContext})
+  expect(res.status).toBe(200);expect(text).toContain('OpenAI svar');expect(streamCalls).toHaveLength(0)
+  expect(openaiContexts[0]).toMatchObject({project:{projectId:studioContext.projectId},execution:{context:'OPERATOR_EXECUTION'}})
+  expect(openaiCalls[0].messages.slice(1)).toEqual(history)
+  expect(openaiCalls[0].messages[0].content).toContain('ACTIVE WEBSITE STUDIO PROJECT')
+  const names=openaiCalls[0].tools.map((t:any)=>t.function.name)
+  expect(names).toContain('get_website_build_plan');expect(names).not.toContain('trigger_workflow')
+ }finally{delete process.env.ATLAS_MODEL_PROFILE}
 })

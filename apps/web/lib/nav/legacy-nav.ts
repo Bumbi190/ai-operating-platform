@@ -1,5 +1,6 @@
 import {
   Activity,
+  LayoutDashboard,
   Bot,
   FileOutput,
   FileText,
@@ -13,6 +14,7 @@ import {
   Radio,
   ShieldCheck,
   Sparkles,
+  PanelsTopLeft,
   TrendingUp,
   Video,
   type LucideIcon,
@@ -44,11 +46,14 @@ export interface LegacyNavItem {
 
 // P0: 14 → 9 poster; Intelligence Graph-epicen adderade en 10:e (medvetet).
 // /manager, /planning och /atlas/operations är DOLDA (nås via URL/Atlas, inte
-// via nav). /dashboard, /action-center, /atlas/actions och /atlas/activity är
+// via nav). /action-center, /atlas/actions och /atlas/activity är
 // redirects och har därför ingen nav-post.
 // Marknadsgranskning + Content Center flyttar till projektscope i P2.
 export const LEGACY_GLOBAL_NAV: readonly LegacyNavItem[] = [
-  { href: '/atlas',          label: 'Atlas',             icon: Sparkles, primary: true },
+  { href: '/dashboard', label: 'Översikt', icon: LayoutDashboard, primary: true },
+  { href: '/atlas', label: 'Atlas', icon: Sparkles },
+  // Explicit owner-approved studio entry; existing legacy destinations keep order.
+  { href: '/build', label: 'Bygg med Atlas', icon: PanelsTopLeft },
   { href: '/atlas/marketing', label: 'Marknadsgranskning', icon: Megaphone },
   { href: '/atlas/content',  label: 'Content Center',    icon: Newspaper },
   { href: '/revenue',        label: 'Revenue Center',    icon: TrendingUp },

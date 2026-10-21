@@ -94,7 +94,7 @@ const SCOPE_LABEL: Record<StatusScope, string> = {
  * Returns null when nothing matches AND when two different businesses are named
  * — an ambiguous reference must not be silently narrowed to one of them.
  */
-function resolveProjectInText(normalized: string): string | null {
+export function resolveProjectInText(normalized: string): string | null {
   const found = new Set<string>()
   for (const [alias, slug] of PROJECT_ALIAS_ENTRIES) {
     // Alias keys are lowercase; match on a word boundary so "prompt" does not

@@ -7,7 +7,7 @@
  * reorder is not, so the untouched groups are pinned alongside the new item.
  *
  * The RETURN risk is a wrong destination. Sending someone who came from the
- * spiral back to Atlas Home is worse than not returning at all, which is why
+ * projects gallery back to Atlas Home is worse than not returning at all, which is why
  * Phase 5 marked nothing until the marker could carry an origin. The round trip
  * is exercised against a stubbed sessionStorage rather than asserted from
  * source, because the shape of what gets stored is the whole point.
@@ -36,7 +36,7 @@ const read = (p: string) => readFileSync(resolve(WEB_ROOT, p), 'utf8')
 
 const RETURN_SRC = read('components/platform/vnext/AtlasProjectReturnShortcut.tsx')
 const RAIL = read('components/platform/vnext/ProjectRail.tsx')
-const SPIRAL = read('components/platform/vnext/ProjectSpiral.tsx')
+const GALLERY = read('components/platform/vnext/ProjectCoverGallery.tsx')
 const HINT_LIST = read('components/platform/os/KeyboardHintList.tsx')
 const HINT_BAR = read('components/platform/os/KeyboardHints.tsx')
 const HINT_CSS = read('components/platform/os/KeyboardHints.module.css')
@@ -58,7 +58,7 @@ const cssRule = (css: string, selector: string) => {
 describe('sidebar · Organisation joins the approved IA', () => {
   it('appears in the vNext nav, in the Atlas group', () => {
     const atlas = VNEXT_NAV.find((group) => group.id === 'atlas')!
-    expect(atlas.items.map((item) => item.label)).toEqual(['Atlas', 'Chat', 'Organisation'])
+    expect(atlas.items.map((item) => item.label)).toEqual(['Översikt', 'Atlas', 'Chat', 'Bygg med Atlas', 'Organisation', 'Projekt'])
   })
 
   it('uses the registry path rather than a literal', () => {
@@ -79,14 +79,14 @@ describe('sidebar · Organisation joins the approved IA', () => {
     const byGroup = Object.fromEntries(VNEXT_NAV.map((g) => [g.id, g.items.map((i) => i.label)]))
     expect(VNEXT_NAV.map((g) => g.id)).toEqual(['atlas', 'arbete', 'intelligens', 'system'])
     expect(byGroup.arbete).toEqual([
-      'Granskningar', 'Aktivitet', 'Planering', 'Marknadsgranskning', 'Content Center',
+      'Granskningar', 'Aktivitet', 'Kalender', 'Planering', 'Marknadsgranskning', 'Content Center',
     ])
     expect(byGroup.intelligens).toEqual(['Minne', 'Intelligence Graph', 'Pengar'])
     expect(byGroup.system).toEqual(['System', 'Inställningar'])
   })
 
-  it('keeps Atlas the single primary entry', () => {
-    expect(vnextNavItems().filter((i) => i.primary).map((i) => i.href)).toEqual(['/atlas'])
+  it('keeps Overview the single primary entry', () => {
+    expect(vnextNavItems().filter((i) => i.primary).map((i) => i.href)).toEqual(['/dashboard'])
   })
 
   it('is desktop-only — the mobile sheet stays a quick-jump surface', () => {
@@ -94,8 +94,8 @@ describe('sidebar · Organisation joins the approved IA', () => {
     expect(vnextNavItemsFor('desktop').some((i) => i.href === '/organisation')).toBe(true)
   })
 
-  it('leaves legacy navigation untouched', () => {
-    expect(LEGACY_GLOBAL_NAV).toHaveLength(9)
+  it('keeps legacy free of Organisation alongside the approved builder entry', () => {
+    expect(LEGACY_GLOBAL_NAV).toHaveLength(11)
     expect(LEGACY_GLOBAL_NAV.map((i) => i.href)).not.toContain('/organisation')
   })
 })
@@ -129,7 +129,7 @@ describe('project return · the marker carries where you came from', () => {
     expect(typeof marker().openedAt).toBe('number')
   })
 
-  it('the spiral writes the projects-index origin', () => {
+  it('the projects gallery writes the projects-index origin', () => {
     markAtlasProjectRailOpen('trading', 'projects-index')
     expect(marker()).toMatchObject({ slug: 'trading', origin: 'projects-index' })
   })
@@ -141,7 +141,7 @@ describe('project return · the marker carries where you came from', () => {
 
   it('a direct arrival writes nothing at all', () => {
     // Nothing marks on navigation the operator did not start from a rail or the
-    // spiral — no bookmark, reload or deep link gains invented back behaviour.
+    // gallery — no bookmark, reload or deep link gains invented back behaviour.
     expect(store.size).toBe(0)
   })
 })
@@ -153,7 +153,7 @@ describe('project return · each origin resolves to its own surface', () => {
     expect(href).toContain('project=familje-stunden')
   })
 
-  it('projects-index returns to the spiral', () => {
+  it('projects-index returns to the gallery', () => {
     expect(projectReturnHref('projects-index', 'trading')).toBe('/projects')
     expect(projectReturnHref('projects-index', 'trading'))
       .toBe(destinationBasePath('project_home'))
@@ -204,7 +204,7 @@ describe('project return · the guards and the owner are unchanged', () => {
     // be written there too or a pointer user gets no return.
     for (const [name, src, origin] of [
       ['rail', RAIL, 'atlas-home'],
-      ['spiral', SPIRAL, 'projects-index'],
+      ['gallery', GALLERY, 'projects-index'],
     ] as const) {
       const marks = [...src.matchAll(/markAtlasProjectRailOpen\([^)]*\)/g)].map((m) => m[0])
       expect(marks.length, name).toBeGreaterThanOrEqual(2)

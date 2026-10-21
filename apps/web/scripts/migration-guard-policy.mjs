@@ -41,8 +41,41 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // ever absent again — or present TWICE — the guard must fail just as hard. Neither
 // absence nor duplication is tolerated, and the current production ledger satisfies
 // the guard.
-export const EXPECTED_CANONICAL_SQL_COUNT = 101
-export const EXPECTED_ENFORCED_COUNT = 87
+// Phase 3B1B adds `autonomy_bind_atomic` (enforced): 102/88 → 103/89. NOT applied to
+// production on its branch, so the guard is RED there until the operator-approved apply —
+// the apply-before-PR contract reporting its own pre-apply condition.
+// M0 adds `m0_durable_spend_settlement` (enforced): 103/89 → 104/90. NOT applied to
+// production on its branch, so the guard is RED there until the operator-approved apply.
+// 3B1B2 M1 adds `autonomy_authority_serialization` (enforced): 104/90 → 105/91. APPLIED to
+// production on 2026-10-02 (ledger version 20261002134227).
+// 3B1B2 M2 adds `survival_input_epoch` (enforced): 105/91 → 106/92. APPLIED to
+// production on 2026-10-03 (ledger version 20261003053532).
+// 3B1B2 M3 adds `survival_commit_fence` (enforced): 106/92 → 107/93. APPLIED to
+// production on 2026-10-03 (ledger version 20261003183855).
+// 3B1B2 M4-A adds `survival_threshold_status_canonical` and
+// `m4a_licensed_authority_substrate` (both enforced): 107/93 → 109/95. APPLIED to
+// production on 2026-10-07 (ledger versions 20261007094814 and 20261007095425).
+// 3B1B2 M4-B adds `m4b_licensed_bind` (enforced): 109/95 → 110/96. APPLIED to
+// production on 2026-10-07 (ledger version 20261007100001).
+// P1B adds `handlarborsen_marketplace_snapshots` (enforced): 110/96 → 111/97. NOT applied to
+// production on its branch, so the guard is RED there until the operator-approved apply.
+// P1E adds `handlarborsen_guarded_snapshot_store` (enforced): 111/97 → 112/98. NOT applied to
+// production on its branch, so the guard is RED there until the operator-approved apply.
+// P1 adds atlas_analysis_drafts (20261012183305): 113/99. Local only; no activation claim.
+// Website build sessions: 115/101 -> 116/102 (already applied).
+// Handlarborsen competitor observations: 116/102 -> 117/103 (pending apply).
+// Website build planning v1: 117/103 -> 118/104 (enforced; pending reviewed apply).
+// Atlas studio: 118/104 -> 119/105 (enforced; pending reviewed apply).
+// Builder output allowance v2: 119/105 -> 120/106 (enforced).
+// + website_saved_draft_worker_protocol: no-paid recovery compatibility.
+// + website_mockup_review: immutable operator design selection and compatible worker fence.
+// Atlas sales draft pilot: 130/116; applied ledger 20261017130254, reconciled 2026-10-17.
+// Weekly watch journal: 136/122; applied ledger20261017200436. Flag remains absent.
+// Atlas metrics and test-data control migrations applied by the owner-approved October18 release.
+// Source-only reconciliation: sales_reply_sending already applied as ledger20261018074615.
+// Exact SQL SHA256 80158d54a4cc5d7f15901f0ed8e67dc7fa04a8738054e14fb1c7be1cf484e49e.
+export const EXPECTED_CANONICAL_SQL_COUNT = 151
+export const EXPECTED_ENFORCED_COUNT = 137
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([
@@ -264,3 +297,16 @@ export function evaluateAppliedMigrationLedger(appliedNames, repositoryState) {
     ]),
   }
 }
+
+// sales_strato_inbox is enforced canonical source, already live at20261017191904.
+// Its exact SQL hash is verified in the2026-10-18 release preflight; no allowlist expansion.
+
+// Shared main401 now records the same already-applied inbox blob; count140 includes it once plus our three pending migrations.
+
+// sales_reply_preparation is exact already-live source from PR386, hash verified 2026-10-18; no apply and no runtime import. Canonical141/enforced127.
+
+// Integrated main8d91af9: four already-live social scheduling migrations; sales reply source included once. Counts145/131; frozen14/30 unchanged.
+
+// The Prompt news review remains one additional enforced, unapplied migration; frozen 14/30 unchanged.
+
+// Integrated maind3f9fcc: news-review source already applied; calendar remains pending. Canonical148/enforced134; frozen14/30 unchanged.

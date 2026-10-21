@@ -3,17 +3,25 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
 import { Sidebar } from '@/components/platform/Sidebar'
+import { PlatformWorkspace } from '@/components/platform/os/PlatformWorkspace'
 import {
   ActivityRail, CommandBar, CommandPaletteHost, OperatorModeProvider,
   MobileRailToggle, AtlasMiniOrb, ShellMobileNav, Breadcrumbs, KeyboardHints,
   type ActivityEvent,
 } from '@/components/platform/os'
 import { resolveDestination, type DestinationId } from '@/lib/nav/registry'
+import { AtlasConversationProvider } from '@/lib/atlas/conversation/provider'
 import { AtlasRuntimeProvider } from '@/lib/atlas/runtime'
+import { atlasVoiceConversationEntryEnabled } from '@/lib/atlas/voice-pilot/entry'
 import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
+import { resolveOrganizationReadScope } from '@/lib/auth/organization-project-read'
 import { OPERATOR_DISPLAY_NAME } from '@/lib/atlas/identity'
 import { AtlasProjectReturnShortcut } from '@/components/platform/vnext/AtlasProjectReturnShortcut'
 import { AtlasMobileNav } from '@/components/platform/vnext/AtlasMobileNav'
+import { AtlasInboxProvider } from '@/components/platform/vnext/AtlasInboxProvider'
+import { competitorInboxEnabled } from '@/lib/atlas/project-analytics/handlarborsen-candidate-inbox-service'
+import { HANDLARBORSEN_PROJECT_ID } from '@/lib/atlas/collectors/handlarborsen-marketplace'
+import { ShellTopBar } from '@/components/platform/vnext/ShellTopBar'
 import { OMNIRA_UI_COOKIE, resolveUiGeneration, isVNext } from '@/lib/ui/generation'
 import {
   DISPLAY_SCALE_ATTRIBUTE,
@@ -54,15 +62,28 @@ export default async function PlatformLayout({
   })
 
   const db = createAdminClient()
-  const allowedProjectIds = await getAllowedProjectIds(db, user.id)
-  const scopedProjectIds = scopeProjectFilter(allowedProjectIds)
-  const allowedProjects = new Set(allowedProjectIds)
+  const ownedProjectIds = await getAllowedProjectIds(db, user.id)
+  // Display-only collaborator scope: NEVER write it back into the shared
+  // owner/executor allowlist. No new role lookup for an existing project owner.
+  const organizationScope = ownedProjectIds.length === 0
+    ? await resolveOrganizationReadScope(supabase, db, user.id)
+    : null
+  const isCollaborator = organizationScope?.role.active
+    && organizationScope.role.role === 'collaborator'
+  const displayProjectIds = isCollaborator ? [...organizationScope.projectIds] : ownedProjectIds
+  const scopedProjectIds = scopeProjectFilter(displayProjectIds)
+  const allowedProjects = new Set(displayProjectIds)
 
-  const [projectsRes, conversationsRes, runsRes, approvalsRes] = await Promise.allSettled([
-    supabase
-      .from('projects')
-      .select('id, name, slug, color')
-      .order('created_at', { ascending: true }),
+  const [projectsRes, conversationsRes, runsRes, approvalsRes, pendingRes] = await Promise.allSettled([
+    isCollaborator
+      ? (db.from('projects') as any)
+          .select('id, name, slug, color')
+          .in('id', scopedProjectIds)
+          .order('created_at', { ascending: true })
+      : supabase
+          .from('projects')
+          .select('id, name, slug, color')
+          .order('created_at', { ascending: true }),
     db
       .from('conversations')
       .select('id, title, project_id')
@@ -79,6 +100,11 @@ export default async function PlatformLayout({
       .in('project_id', scopedProjectIds)
       .order('created_at', { ascending: false })
       .limit(8),
+    // The vNext top bar's notice dot: a scoped count, not a row read.
+    (db.from('approvals') as any)
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending')
+      .in('project_id', scopedProjectIds),
   ])
 
   const projectsRaw = projectsRes.status === 'fulfilled' ? (projectsRes.value.data ?? []) : []
@@ -95,6 +121,11 @@ export default async function PlatformLayout({
         approval.project_id && allowedProjects.has(approval.project_id)
       ))
     : []
+
+  const pendingApprovals: number | null =
+    pendingRes.status === 'fulfilled' && !(pendingRes.value as any).error
+      ? ((pendingRes.value as any).count ?? 0)
+      : null
 
   const events: ActivityEvent[] = []
 
@@ -114,7 +145,7 @@ export default async function PlatformLayout({
         projectColor: p?.color,
         timestamp: r.finished_at ?? r.created_at,
         intense: true,
-        action: { label: 'Åtgärda', href: navHref('activity', { project: p?.slug, filters: { status: 'failed' } }) },
+        action: isCollaborator ? undefined : { label: 'Åtgärda', href: navHref('activity', { project: p?.slug, filters: { status: 'failed' } }) },
       })
     } else if (r.status === 'running') {
       events.push({
@@ -153,7 +184,7 @@ export default async function PlatformLayout({
         projectColor: p?.color,
         timestamp: a.created_at,
         intense: true,
-        action: { label: 'Granska', href: navHref('approvals', { project: p?.slug, filters: { state: 'pending' } }) },
+        action: isCollaborator ? undefined : { label: 'Granska', href: navHref('approvals', { project: p?.slug, filters: { state: 'pending' } }) },
       })
     } else if (a.status === 'approved') {
       events.push({
@@ -203,7 +234,12 @@ export default async function PlatformLayout({
   // ═══════════════════════════════════════════════════════════════════════════
 
   return (
-    <AtlasRuntimeProvider projects={projects}>
+    <AtlasInboxProvider key={user.id} audience={competitorInboxEnabled() && allowedProjects.has(HANDLARBORSEN_PROJECT_ID)
+      ? (isCollaborator ? 'collaborator' : 'owner') : null}>
+    <AtlasConversationProvider>
+    <AtlasRuntimeProvider projects={isCollaborator ? [] : projects}
+      voiceConversationEnabled={atlasVoiceConversationEntryEnabled(user.email, Boolean(isCollaborator))}
+      voiceReadOnly={Boolean(isCollaborator)}>
     <OperatorModeProvider uiGeneration={uiGeneration}>
       {/* Presentation preferences are applied before first paint.
           Without this the provider would only reach the DOM after hydration, so
@@ -229,22 +265,37 @@ export default async function PlatformLayout({
         }}
       />
       <AtlasProjectReturnShortcut />
-      <div
-        className="
+      <PlatformWorkspace
+        uiGeneration={uiGeneration}
+        className={`
           relative h-screen overflow-hidden
           grid
           grid-cols-1
           lg:[grid-template-columns:260px_minmax(0,1fr)]
-        "
+          ${isVNext(uiGeneration) ? 'xl:[grid-template-columns:287px_minmax(0,1fr)] lg:[grid-template-rows:66px_minmax(0,1fr)]' : ''}
+        `}
         style={{ background: '#030516' }}
       >
-        {/* ─── Column 1 · Sidebar (260px) ───────────────────────────────── */}
+        {/* ─── vNext top bar · one row across both columns ──────────────────
+            After the canonical Atlas Home mockup: the bar spans the window and
+            the sidebar starts under it. Desktop only — below lg the mobile
+            navigation owns the top of the screen. Pages that size themselves to
+            the viewport subtract --os-shell-topbar (globals.css), so nothing
+            is pushed into scrolling by it. Legacy renders no row here. */}
+        {isVNext(uiGeneration) && (
+          <div className="hidden lg:block lg:col-span-2" data-shell-topbar>
+            <ShellTopBar pendingApprovals={pendingApprovals} />
+          </div>
+        )}
+
+        {/* ─── Column 1 · Sidebar (260px; 287px from xl in vNext) ────────── */}
         <Sidebar
           projects={projects}
           userEmail={user.email ?? ''}
           operatorName={OPERATOR_DISPLAY_NAME}
           recentConversations={conversations}
           uiGeneration={uiGeneration}
+          readOnly={Boolean(isCollaborator)}
         />
 
         {/* ─── Column 2 · Operating Canvas (fluid 1fr) ──────────────────── */}
@@ -323,7 +374,7 @@ export default async function PlatformLayout({
           />
 
           {/* Page canvas */}
-          <div className="relative z-content">
+          <div className="relative z-content" data-shell-page>
             {children}
           </div>
 
@@ -344,11 +395,13 @@ export default async function PlatformLayout({
         <MobileRailToggle liveCount={liveCount} uiGeneration={uiGeneration}>
           <ActivityRail events={activityEvents} />
         </MobileRailToggle>
-      </div>
+      </PlatformWorkspace>
 
       {/* Atlas permanent närvaro — fixed bottom-right, dold på /atlas */}
-      <AtlasMiniOrb />
+      <AtlasMiniOrb uiGeneration={uiGeneration} />
     </OperatorModeProvider>
     </AtlasRuntimeProvider>
+    </AtlasConversationProvider>
+    </AtlasInboxProvider>
   )
 }

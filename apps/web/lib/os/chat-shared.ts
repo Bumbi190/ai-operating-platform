@@ -48,6 +48,8 @@
  *   conversation "EXECUTIVE". The route's timing line is still logged, as before.
  */
 
+// Typed cleanup review effects are decoded by the conversation controller; tool prose has no review authority.
+import {decodeReceiptView,isObject} from '@/lib/atlas/handlarborsen-test-data/contracts'
 import type { ResolvedLink } from '@/lib/nav/registry'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -107,6 +109,9 @@ export interface ChatHomeModel {
 }
 
 export interface ChatConversationModel {
+  website?: import("@/lib/website-build/planning/conversation-workspace").ConversationWorkspace
+  operatorId?: string
+  projectId?: string | null
   id: string
   title: string
   projectName: string | null
@@ -325,6 +330,20 @@ export function awaitingAtlas(entries: TranscriptEntry[], pending: boolean): boo
 
 /** One label per tool `/api/chat` offers — the names are the route's, the words are the surface's. */
 export const TOOL_LABELS: Record<string, string> = {
+  get_calendar: 'Läser kalendern',
+  create_calendar_event: 'Sparar kalenderhändelse',
+  update_calendar_event: 'Ändrar kalenderhändelse',
+  cancel_calendar_event: 'Avbokar kalenderhändelse',
+  get_website_build_readiness: 'Kontrollerar projektets kopplingar',
+  draft_website_build_plan: 'Planerar webbbygge',
+  get_website_build_plan: 'Läser byggplan',
+  start_website_build: 'Köar webbbygge',
+  get_website_build: 'Läser byggstatus',
+  submit_website_build_feedback: 'Sparar byggfeedback',
+  control_website_build: 'Begär byggkontroll',
+  list_design_skills: 'Listar designfärdigheter',
+  read_design_skill: 'Läser designfärdighet',
+  list_atlas_workflow_catalog: 'Listar workflowkatalog',
   get_current_time: 'Kontrollerar tiden',
   list_workflows: 'Listar workflows',
   trigger_workflow: 'Kör workflow',
@@ -346,9 +365,13 @@ export function toolLabel(tool: string): string {
   return TOOL_LABELS[tool] ?? tool
 }
 
-export type ToolOutcome = 'running' | 'done' | 'failed' | 'needs_confirmation' | 'no_result'
+export type ToolOutcome = 'running' | 'done' | 'failed' | 'needs_confirmation' | 'no_result' | 'unknown' | 'needs_new_review' | 'nothing_to_do' | 'blocked'
 
 export const TOOL_OUTCOME_LABELS: Record<ToolOutcome, string> = {
+  unknown: 'Utfallet kontrolleras',
+  needs_new_review: 'Ny granskning behövs',
+  nothing_to_do: 'Inga testposter att lägga undan',
+  blocked: 'Paketet är spärrat',
   running: 'pågår',
   done: 'klar',
   failed: 'misslyckades',
@@ -360,6 +383,24 @@ export const TOOL_OUTCOME_LABELS: Record<ToolOutcome, string> = {
 export function toolOutcome(entry: ToolEntry): ToolOutcome {
   if (!entry.resolved) return 'running'
   const r = entry.result
+  if(['inspect_handlarborsen_test_data','prepare_handlarborsen_test_cleanup','execute_handlarborsen_test_cleanup','get_handlarborsen_test_cleanup_receipt'].includes(entry.tool)){
+    if(!isObject(r))return 'unknown'
+    if(r.status==='review_required')return 'needs_confirmation'
+    if(r.status==='needs_new_review')return 'needs_new_review'
+    if(['denied','disabled','unavailable'].includes(String(r.status)))return 'failed'
+    if(r.status==='unknown')return 'unknown'
+    if(r.status==='ok'&&r.action==='prepare'&&isObject(r.data)){
+      if(r.data.status==='nothing_to_do')return 'nothing_to_do'
+      if(r.data.status==='blocked')return 'blocked'
+      return 'needs_confirmation'
+    }
+    if(entry.tool==='execute_handlarborsen_test_cleanup'||entry.tool==='get_handlarborsen_test_cleanup_receipt'){
+      const receipt=decodeReceiptView(r.data)
+      if(r.status!=='ok'||!receipt||!isObject(entry.input)||receipt.packageId!==entry.input.packageId)return 'unknown'
+      return receipt.outcome==='applied'?'done':'needs_new_review'
+    }
+    return r.status==='ok'&&r.action==='inventory'?'done':'unknown'
+  }
   if (r === undefined || r === null) return 'no_result'
   if (typeof r === 'object') {
     const o = r as Record<string, unknown>

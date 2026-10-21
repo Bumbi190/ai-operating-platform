@@ -1,0 +1,26 @@
+import { test, expect } from '@playwright/test'
+test('actual probe page paces45.6s through two real local WebSockets with no microphone/chat', async ({ page }) => {
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  await page.request.get('/atlas/rosttest')
+  await page.request.post('/__voice-stream-fixture', { data: { text: 'Atlas Omnira The Prompt' } })
+  await page.goto('/atlas-voice-provider-probe.html')
+  await page.getByRole('button', { name: 'Starta röstprovet' }).click()
+  await expect(page.getByRole('status')).toContainText('lyckades', { timeout: 105000 })
+  await expect(page.getByRole('status')).toContainText('45,6 sekunder')
+  const stats = await (await page.request.get('/__voice-stream-fixture')).json()
+  expect(stats).toMatchObject({ connections: 2, bytes: 1459200, finals: 2, segments: 2, limits: 0 })
+  expect(errors).toEqual([])
+  await page.screenshot({ path: '../../.superpowers/sdd/2026-10-17-atlas-streaming-stt/provider-probe-mobile.png', fullPage: true })
+})
+test('connection rejection stops the probe and reload cannot trigger a new paid attempt', async ({ page }) => {
+  await page.request.get('/atlas/rosttest?stream=fail-once')
+  await page.goto('/atlas-voice-provider-probe.html')
+  await page.getByRole('button', { name: 'Starta röstprovet' }).click()
+  await expect(page.getByRole('status')).toContainText('kunde inte')
+  await expect(page.getByRole('button', { name: 'Starta röstprovet' })).toBeDisabled()
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Starta röstprovet' })).toBeDisabled()
+  const stats = await (await page.request.get('/__voice-stream-fixture')).json()
+  expect(stats).toMatchObject({ connections: 1, bytes: 0, finals: 0 })
+})

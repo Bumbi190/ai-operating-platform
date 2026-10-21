@@ -1,0 +1,198 @@
+/* Handlarbörsen's decision-oriented content, below the existing verified KPI report.
+   Scope is local: generic Project Command Center and other projects do not change. */
+
+.section {
+  position: relative;
+  min-width: 0;
+}
+
+.heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  margin: 0 0 1.2rem;
+}
+
+.kicker {
+  margin: 0 0 0.35rem;
+  font: 600 0.7rem/1.5 var(--font-geist-mono, ui-monospace), monospace;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: rgb(var(--omnira-cyan-soft-rgb) / 0.75);
+}
+
+.heading h2 {
+  margin: 0;
+  font-size: clamp(1.22rem, 1.6vw, 1.65rem);
+  font-weight: 660;
+  letter-spacing: -0.02em;
+  color: hsl(var(--foreground));
+}
+
+.readOnly {
+  margin: 0 0 0.05rem;
+  font-size: 0.8rem;
+  color: var(--omnira-text-3);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(0.9rem, 1.4vw, 1.3rem);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  gap: 0.85rem;
+  min-width: 0;
+  min-height: 15rem;
+  padding: clamp(1.15rem, 1.6vw, 1.75rem);
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.19);
+  border-radius: 1rem;
+  background: linear-gradient(155deg, rgb(12 36 55 / 0.86), rgb(4 13 29 / 0.82) 83%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.035), 0 0.8rem 2.4rem rgb(0 0 0 / 0.12);
+}
+
+.card[data-tone='warning'] {
+  border-color: rgb(251 191 36 / 0.29);
+}
+
+.cardTop {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font: 600 0.68rem/1.4 var(--font-geist-mono, ui-monospace), monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  color: rgb(var(--omnira-aqua-rgb) / 0.71);
+}
+
+.cardTop svg {
+  color: var(--omnira-cyan);
+}
+
+.card[data-tone='warning'] .cardTop svg {
+  color: var(--omnira-amber);
+}
+
+.card h3 {
+  margin: 0;
+  font-size: clamp(1.08rem, 1.35vw, 1.32rem);
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: hsl(var(--foreground));
+  overflow-wrap: anywhere;
+}
+
+.card p {
+  margin: 0;
+  font-size: 0.91rem;
+  line-height: 1.58;
+  color: var(--omnira-text-2);
+  overflow-wrap: anywhere;
+}
+
+.card p strong {
+  color: hsl(var(--foreground));
+  font-weight: 650;
+}
+
+.card .collection {
+  font-size: 0.8rem;
+  color: rgb(var(--omnira-aqua-rgb) / 0.78);
+}
+
+.counts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.2rem;
+  margin: 0;
+  width: 100%;
+}
+
+.counts > div {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.15rem;
+}
+
+.counts dt {
+  font-size: 0.76rem;
+  color: var(--omnira-text-3);
+}
+
+.counts dd {
+  margin: 0;
+  font: 600 1.6rem/1.2 var(--font-geist-mono, ui-monospace), monospace;
+  color: hsl(var(--foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.9rem;
+  margin-top: auto;
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: auto;
+  min-height: 2.25rem;
+  font-size: 0.87rem;
+  font-weight: 650;
+  text-decoration: none;
+  color: var(--omnira-cyan);
+}
+
+.link:hover { color: hsl(var(--foreground)); }
+.link:focus-visible {
+  outline: 2px solid rgb(var(--omnira-cyan-rgb) / 0.8);
+  outline-offset: 3px;
+  border-radius: 0.25rem;
+}
+
+@media (max-width: 80rem) {
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .card:last-child { grid-column: 1 / -1; }
+}
+
+@media (max-width: 50rem) {
+  .cards { grid-template-columns: minmax(0, 1fr); }
+  .card:last-child { grid-column: auto; }
+  .card { min-height: 0; gap: 0.65rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(html:not([data-motion='full'])) .link {
+    transition: none;
+  }
+}
+
+
+/* Owner workspace v2: stronger hierarchy while preserving source and action gates. */
+.section {padding:clamp(1rem,1.7vw,1.5rem);border:1px solid rgba(66,170,208,.17);border-radius:1.15rem;background:linear-gradient(130deg,#081b2c,#041022 80%);box-shadow:inset 0 1px rgba(255,255,255,.035)}
+.heading{margin-bottom:1rem;padding-bottom:.8rem;border-bottom:1px solid rgba(71,168,196,.14)}
+.heading h2{font-size:clamp(1.35rem,1.9vw,1.75rem);font-weight:700;letter-spacing:-.035em}
+.kicker{color:#65d5e6}
+.cards{gap:clamp(.6rem,1.1vw,1.1rem)}
+.card{position:relative;overflow:hidden;min-height:13.5rem;padding:clamp(1.1rem,1.5vw,1.5rem);border-radius:.95rem;border-color:rgba(75,169,204,.2);background:radial-gradient(ellipse at 0% 0%,rgba(27,112,151,.1),transparent 70%),linear-gradient(152deg,rgba(9,39,60,.9),rgba(4,18,34,.91));box-shadow:inset 0 1px rgba(255,255,255,.035)}
+.card::before{content:'';height:1px;position:absolute;inset:0 30% auto;background:linear-gradient(90deg,transparent,rgba(37,184,225,.22),transparent);pointer-events:none}
+.card[data-tone='warning']{border-color:rgba(251,191,36,.24)}
+.cardTop{color:#82dbe9}
+.card h3{font-size:clamp(1.15rem,1.35vw,1.45rem);letter-spacing:-.03em}
+.card p{color:#b2c7d6;font-size:.82rem;line-height:1.6}
+.card .collection{font-size:.77rem}
+.counts dd{font-size:1.75rem;color:#ecffff}
+.link{font-size:.84rem;color:#7ce2f0}
+@media(max-width:80rem){.cards{grid-template-columns:repeat(3,minmax(0,1fr))}.card:last-child{grid-column:auto}}
+@media(max-width:68rem){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.card:last-child{grid-column:1/-1}}
+@media(max-width:48rem){.cards{grid-template-columns:minmax(0,1fr)}.card:last-child{grid-column:auto}}

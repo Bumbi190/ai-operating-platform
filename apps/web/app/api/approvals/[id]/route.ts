@@ -1,3 +1,5 @@
+import {assertSameOrigin} from '@/lib/atlas/executive/http'
+import {readLocalTextReview,resolveLocalTextApproval,readLocalTextIncident,acknowledgeLocalTextIncident} from '@/lib/local-text/incidents'
 /**
  * PATCH /api/approvals/[id]  — approve, reject, or revise an approval
  * GET   /api/approvals/[id]  — get a single approval with full content
@@ -20,6 +22,15 @@ export async function GET(
   if (!access.ok) return access.response
 
   const db = createAdminClient()
+  // Local reviews do not depend on legacy run/agent relationships. Authorize
+  // the owned approval before loading its separately hash-bound raw payload.
+  const {data:localHeader,error:headerError}=await db.from('approvals').select('*').eq('id',params.id).single()
+  if(headerError)return NextResponse.json({error:'APPROVAL_UNAVAILABLE'},{status:404})
+  if(!assertProjectAllowed(localHeader.project_id,access.allowedProjectIds))return projectForbidden()
+  if(localHeader.kind==='local_text_review'||localHeader.kind==='local_text_incident'){
+    try{return NextResponse.json({approval:localHeader,...(localHeader.kind==='local_text_review'?{localTextReview:await readLocalTextReview(db,access.userId,params.id)}:{localTextIncident:await readLocalTextIncident(db,access.userId,params.id)})},{headers:{'Cache-Control':'private, no-store'}})}
+    catch{return NextResponse.json({error:'LOCAL_TEXT_REVIEW_UNAVAILABLE'},{status:503,headers:{'Cache-Control':'private, no-store'}})}
+  }
   const { data, error } = await db
     .from('approvals')
     .select(`
@@ -74,6 +85,19 @@ export async function PATCH(
 
   // Ownership gate BEFORE any mutation or publish side effect.
   if (!projectId || !assertProjectAllowed(projectId, access.allowedProjectIds)) return projectForbidden()
+
+  if(existing.kind==='local_text_review'||existing.kind==='local_text_incident'){
+    const denied=assertSameOrigin(req);if(denied)return denied
+    if(Object.keys(body).sort().join(',')!=='action,expectedVersion'||!Number.isSafeInteger(body.expectedVersion)||body.expectedVersion<1||action==='revised'||(existing.kind==='local_text_incident'&&action!=='approved'))return NextResponse.json({error:'LOCAL_TEXT_VERSION_REQUIRED'},{status:400})
+    try{
+      if(existing.kind==='local_text_incident'){
+        const result=await acknowledgeLocalTextIncident(db,access.userId,params.id,body.expectedVersion)
+        return NextResponse.json(result,{status:result.kind==='refused'?409:200,headers:{'Cache-Control':'private, no-store'}})
+      }
+      const result=await resolveLocalTextApproval(db,{userId:access.userId,approvalId:params.id,decision:action==='approved'?'approve':'reject',expectedVersion:body.expectedVersion})
+      return NextResponse.json(result,{status:result.kind==='refused'?409:result.kind==='unknown'?503:200,headers:{'Cache-Control':'private, no-store'}})
+    }catch{return NextResponse.json({error:'LOCAL_TEXT_REVIEW_UNAVAILABLE'},{status:503})}
+  }
 
   // ── G3C-3B · RUN FIRST, THEN APPROVAL — ONE ATOMIC TRANSITION ────────────
   // This route used to write the APPROVAL first, unconditionally (no status

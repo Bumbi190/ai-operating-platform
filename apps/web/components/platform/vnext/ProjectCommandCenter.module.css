@@ -684,6 +684,100 @@ a.agentName:hover {
   50% { box-shadow: 0 0 0 0.3125rem rgb(var(--omnira-cyan-rgb) / 0.06); }
 }
 
+/* Shown only when a project leads with key figures: names the working area below them. */
+.workspaceHeading {
+  margin: 0;
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgb(var(--omnira-cyan-soft-rgb) / 0.7);
+}
+
+/* Handlarbörsen's owner view: easier reading on ultrawide displays.
+   All other projects keep the existing Command Center proportions. */
+.field[data-owner-brief='true'] .title {
+  font-size: clamp(1.55rem, 1.85vw, 2.2rem);
+}
+.field[data-owner-brief='true'] .kicker,
+.field[data-owner-brief='true'] .workspaceHeading {
+  font-size: 0.72rem;
+}
+.field[data-owner-brief='true'] .fact dt {
+  font-size: 0.67rem;
+}
+.field[data-owner-brief='true'] .fact dd {
+  font-size: 0.92rem;
+}
+.field[data-owner-brief='true'] .action {
+  min-height: 2rem;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.76rem;
+}
+.field[data-owner-brief='true'] .slug {
+  font-size: 0.75rem;
+}
+
+/* A native, keyboard-accessible disclosure. All six panels remain inspectable
+   and only a positively verified empty workspace is folded by the component. */
+.technicalDetails {
+  position: relative;
+  min-width: 0;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.18);
+  border-radius: 1rem;
+  background: linear-gradient(110deg, rgb(8 26 43 / 0.75), rgb(4 14 27 / 0.6));
+  overflow: hidden;
+}
+.technicalSummary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 4.2rem;
+  padding: 1rem 1.3rem;
+  cursor: pointer;
+  list-style: none;
+  color: hsl(var(--foreground));
+}
+.technicalSummary::-webkit-details-marker { display: none; }
+.technicalSummary:hover { background: rgb(var(--omnira-cyan-rgb) / 0.035); }
+.technicalSummary:focus-visible {
+  outline: 2px solid rgb(var(--omnira-cyan-rgb) / 0.85);
+  outline-offset: -3px;
+}
+.technicalSummaryName {
+  font-size: 0.95rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.technicalSummaryNote {
+  margin-left: auto;
+  font-size: 0.78rem;
+  color: var(--omnira-text-2);
+  text-align: right;
+}
+.technicalChevron {
+  flex: none;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--omnira-cyan);
+  transition: transform 180ms ease;
+}
+.technicalDetails[open] .technicalChevron { transform: rotate(180deg); }
+.technicalDetails[open] > .workspace {
+  padding: 0 1.2rem 1.2rem;
+}
+
+@media (max-width: 48rem) {
+  .technicalSummary { flex-wrap: wrap; padding: 0.9rem 1rem; }
+  .technicalSummaryNote { flex: 1 1 100%; order: 3; margin-left: 0; text-align: left; }
+  .technicalDetails[open] > .workspace { padding: 0 0.85rem 0.85rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(html:not([data-motion='full'])) .technicalChevron { transition: none; }
+}
+
 /* ── Width ───────────────────────────────────────────────────────────────── */
 
 /* One column before the secondary list gets cramped. DOM order is the priority
@@ -749,4 +843,141 @@ html[data-motion='reduce'] .runState[data-tone='live']::before {
   :where(html:not([data-motion='full'])) .action {
     transition: none;
   }
+}
+
+
+/* Handlarbörsen project hero only; other projects keep their original workspace. */
+.projectDescription { margin: .35rem 0 0; max-width: 64ch; color: #9cbfd0; font-size: .86rem; line-height: 1.55; }
+.field[data-owner-brief='true'] {
+  gap: clamp(1rem, 1.45vw, 1.5rem);
+  background: radial-gradient(ellipse 65% 17% at 55% 0, rgba(12,90,133,.085), transparent 80%);
+}
+.field[data-owner-brief='true'] .header {
+  isolation: isolate;
+  position: relative;
+  padding: clamp(1.3rem, 2vw, 2.1rem);
+  grid-template-columns: minmax(0,1fr) minmax(22rem,.42fr);
+  grid-template-areas: 'main side' 'actions actions';
+  gap: 1.05rem 1.5rem;
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / .18);
+  border-radius: 1.1rem;
+  background:
+    radial-gradient(ellipse 50% 180% at 52% -55%, rgba(26,118,160,.15),transparent 72%),
+    linear-gradient(130deg, rgba(8,31,49,.93),rgba(3,13,28,.96));
+  box-shadow: inset 0 1px rgba(219,250,255,.05),0 18px 55px rgba(0,0,0,.14);
+  overflow: hidden;
+}
+.field[data-owner-brief='true'] .header::after {
+  content: ''; position: absolute; z-index: -1; pointer-events: none;
+  width: min(48vw, 42rem); aspect-ratio: 1; border-radius: 50%;
+  left: 42%; top: -115%;
+  border: 1px solid rgba(86,171,217,.16);
+  box-shadow: 0 0 0 10px rgba(33,111,158,.025),0 0 0 46px rgba(33,111,158,.016),inset 16px -10px 80px rgba(6,91,126,.07);
+  transform: rotate(-21deg);
+}
+.field[data-owner-brief='true'] .headerMain, .field[data-owner-brief='true'] .headerSide,
+.field[data-owner-brief='true'] .actions { position: relative; z-index: 1; }
+.field[data-owner-brief='true'] .kicker { color: #70dfe9; font-size: .7rem; }
+.field[data-owner-brief='true'] .identity { margin-top: .5rem; align-items: center; gap: .75rem; }
+.field[data-owner-brief='true'] .title { font-size: clamp(1.85rem,2.8vw,2.7rem); letter-spacing: -.045em; }
+.field[data-owner-brief='true'] .swatch {
+  width: .75rem; height: .75rem; background-color: #16ded3 !important;
+  box-shadow: 0 0 0 .3rem rgba(19,215,207,.1),0 0 16px rgba(19,215,207,.45);
+}
+.field[data-owner-brief='true'] .slug {
+  padding: .33rem .63rem;
+  color: #6fb3ca;
+  border: 1px solid rgba(47,150,173,.19);
+  background: rgba(2,16,34,.45);
+  border-radius: 999px;
+}
+.field[data-owner-brief='true'] .facts {
+  width: 100%; margin: 0; gap: .35rem;
+  padding: .8rem 1.1rem;
+  border: 1px solid rgba(123,187,218,.12); border-radius: .86rem;
+  background: rgba(8,28,48,.69);
+  display: grid; grid-template-columns: repeat(2,minmax(0,1fr));
+}
+.field[data-owner-brief='true'] .fact { padding: .35rem .4rem; }
+.field[data-owner-brief='true'] .fact dt { color: #86aabd; }
+.field[data-owner-brief='true'] .fact dd { font-size: .91rem; }
+.field[data-owner-brief='true'] .headerSide {
+  align-self: start; justify-self: stretch; display: flex;
+  justify-content: flex-end;
+}
+.field[data-owner-brief='true'] .actions {
+  align-items: center;
+  gap: .45rem;
+  padding-top: .95rem;
+  border-top: 1px solid rgba(75,154,184,.15);
+}
+.field[data-owner-brief='true'] .action {
+  min-height: 2.35rem; display: inline-flex; align-items: center;
+  padding: .45rem .9rem;
+  border-radius: .66rem;
+  border-color: rgba(78,162,197,.2);
+  background: linear-gradient(180deg,rgba(19,48,72,.7),rgba(8,24,42,.6));
+  color: #b1d0df;
+}
+.field[data-owner-brief='true'] .action:hover {
+  border-color: rgba(80,216,232,.57);
+  box-shadow: 0 0 14px rgba(46,204,224,.11);
+}
+.field[data-owner-brief='true'] .action:focus-visible { outline: 2px solid #6ff0f2; outline-offset: 2px; }
+@media (max-width: 75rem) {
+  .field[data-owner-brief='true'] .header {
+    grid-template-columns: minmax(0,1fr);
+    grid-template-areas: 'main' 'side' 'actions';
+  }
+  .field[data-owner-brief='true'] .headerSide { justify-content: flex-start; }
+  .field[data-owner-brief='true'] .facts { grid-template-columns: repeat(4,minmax(0,1fr)); }
+}
+@media (max-width: 50rem) {
+  .field[data-owner-brief='true'] .header { padding: 1.05rem; }
+  .field[data-owner-brief='true'] .facts { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .field[data-owner-brief='true'] .projectDescription { max-width: 35ch; }
+}
+@media (max-width: 35rem) {
+  .field[data-owner-brief='true'] .header { padding: .9rem; }
+  .field[data-owner-brief='true'] .actions { gap: .35rem; }
+  .field[data-owner-brief='true'] .action { font-size: .68rem; padding: .45rem .6rem; }
+}
+
+/* Decorative cover for the Handlarbörsen project in Omnira. */
+.coverHeader {
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 21rem;
+  padding: clamp(1.25rem, 3vw, 2.25rem);
+  border: 1px solid rgb(var(--omnira-cyan-rgb) / 0.22);
+  border-radius: 1.25rem;
+  background: #07121f;
+  box-shadow: 0 1.25rem 3rem rgb(0 0 0 / 0.18);
+}
+.coverBackdrop { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.coverBackdrop img { object-fit: cover; object-position: 60% 50%; }
+.coverBackdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(0deg, rgb(4 12 24 / 0.94), transparent 62%),
+    linear-gradient(90deg, rgb(4 12 24 / 0.95), rgb(4 12 24 / 0.65) 45%, rgb(4 12 24 / 0.08) 80%);
+}
+.coverHeader .headerMain { align-self: center; }
+.coverHeader .identity { align-items: center; gap: 0.75rem; }
+.coverHeader .title { font-size: clamp(1.75rem, 3vw, 2.75rem); color: #f1f7fd; }
+.coverHeader .kicker { color: #a8dce7; }
+.coverHeader .slug { color: #b7cada; }
+.coverHeader .facts { margin-top: 1.5rem; }
+.coverHeader .fact dt { color: #acd0de; }
+.coverHeader .actions { align-self: end; }
+.coverHeader .action { background: rgb(5 16 29 / 0.75); color: #d8e8f4; }
+.coverLogo { width: 4rem; height: 4rem; object-fit: contain; flex: none; }
+@media (max-width: 640px) {
+  .coverHeader { min-height: 23rem; }
+  .coverBackdrop img { object-position: 58% 50%; }
+  .coverBackdrop::after { background: linear-gradient(90deg, rgb(4 12 24 / 0.88), rgb(4 12 24 / 0.3)), linear-gradient(0deg, #07121f, transparent); }
+  .coverHeader .identity { gap: 0.5rem; }
+  .coverLogo { width: 3rem; height: 3rem; }
 }

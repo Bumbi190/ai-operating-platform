@@ -318,7 +318,13 @@ describe('a bound action is not a permission to execute', () => {
   it('does not treat PR2 authorization as a replacement for the policy gate', () => {
     // action_class maps INTO policy_class; it does not bypass it, and this PR
     // does not touch H1_POLICY_GATE.
-    expect(runSrc).toMatch(/policy_class: policyClassForActionClass/)
+    // Since Phase 3B1B the atomic bind RPC writes policy_class itself: the fixed
+    // READ_ONLY mapping, pinned equal to policyClassForActionClass('READ_ONLY')
+    // by autonomy-bind-guards. No caller supplies it.
+    const bindSql = readFileSync(join(process.cwd(),
+      'supabase/migrations/20260926120000_autonomy_bind_atomic.sql'), 'utf8')
+    expect(bindSql).toMatch(/'non_destructive',/)
+    expect(runSrc).not.toMatch(/p_policy_class/)
     expect(runSrc).not.toMatch(/H1_POLICY_GATE/)
     expect(sqlCode).not.toMatch(/H1_POLICY_GATE/)
   })

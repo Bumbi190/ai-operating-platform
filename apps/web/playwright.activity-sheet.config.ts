@@ -1,0 +1,2 @@
+import {defineConfig} from '@playwright/test'
+export default defineConfig({testDir:'./e2e',testMatch:'activity-sheet.spec.ts',workers:1,retries:0,timeout:30000,expect:{timeout:5000},use:{baseURL:'http://127.0.0.1:54397',browserName:'chromium',reducedMotion:'reduce',screenshot:'only-on-failure'},outputDir:'../../.superpowers/sdd/2026-10-16-activity-sheet/browser',webServer:{command:'node e2e/activity-sheet-server.mjs',url:'http://127.0.0.1:54397/build',reuseExistingServer:false,timeout:60000}})

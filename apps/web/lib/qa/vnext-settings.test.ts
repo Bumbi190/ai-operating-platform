@@ -704,11 +704,18 @@ describe("settings · the routes' answers are shown as what they were", () => {
 
 describe('settings · generation', () => {
   const loadSpy = vi.fn(async () => model())
+  const brokerSpy = vi.fn(async () => ({
+    capability: { allowed: true, reason: 'allowed' }, brokers: [], openEnrollment: null,
+    generatedAt: NOW, readable: true,
+  }))
+  const websiteSpy = vi.fn(async () => ({root:null,rootReadable:true,projectsReadable:true,projects:[]}))
   let cookieValue: string | null = null
 
   beforeEach(() => {
     vi.resetModules()
     loadSpy.mockClear()
+    brokerSpy.mockClear()
+    websiteSpy.mockClear()
     cookieValue = null
     vi.doMock('next/headers', () => ({
       cookies: async () => ({ get: (n: string) => (cookieValue && n === 'omnira_ui' ? { value: cookieValue } : undefined) }),
@@ -717,12 +724,8 @@ describe('settings · generation', () => {
       ...(await importOriginal<typeof import('@/lib/os/settings')>()),
       loadSettings: loadSpy,
     }))
-    vi.doMock('@/lib/atlas/code-broker/operator', () => ({
-      loadBrokerSettings: async () => ({
-        capability: { allowed: true, reason: 'allowed' }, brokers: [], openEnrollment: null,
-        generatedAt: NOW, readable: true,
-      }),
-    }))
+    vi.doMock('@/lib/atlas/code-broker/operator', () => ({loadBrokerSettings: brokerSpy}))
+    vi.doMock('@/lib/website-build/planning/settings', () => ({loadWebsiteBuilderSettings: websiteSpy}))
     vi.doMock('@/app/(platform)/settings/SettingsLegacy', () => ({
       SettingsLegacy: () => createElement('div', { id: 'legacy-body' }),
     }))
@@ -755,6 +758,8 @@ describe('settings · generation', () => {
     const element = await Page({}) as React.ReactElement
     const inner = (element.props as { children: React.ReactElement }).children
     await expect((inner.type as (p: unknown) => Promise<unknown>)(inner.props)).rejects.toThrow(/NEXT_REDIRECT/)
+    expect(brokerSpy).not.toHaveBeenCalled()
+    expect(websiteSpy).not.toHaveBeenCalled()
   })
 
   it('hands the YouTube connection’s closed answer to the surface — and ignores anything that is not one', async () => {
@@ -884,7 +889,7 @@ describe('settings · the loader reads inside the session boundary', () => {
 describe('settings · the legacy rollback is the page that shipped', () => {
   it('the legacy body is the previous page verbatim — pinned by hash', () => {
     const legacy = read(FILES.legacy)
-    const body = legacy.slice(legacy.indexOf('import '))
+    const body = legacy.slice(legacy.indexOf('import ')).replace(/\r\n/g, '\n')
     expect(createHash('sha256').update(body).digest('hex')).toBe('3cd199ffdc6fc5b14c0a7ea3beab0f04c28d22a32cae834d0fb10825a1fc74de')
   })
 

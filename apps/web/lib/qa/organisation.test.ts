@@ -21,6 +21,7 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { assembleOrganisationModel } from '@/lib/os/organisation'
+import { initiallyCollapsedOrganisationProjects, ORG_LONG_AGENT_LIST_THRESHOLD } from '@/lib/nav/organisation-presentation'
 import { buildBreadcrumbs } from '@/lib/nav/breadcrumbs'
 import { keyboardHintsFor } from '@/lib/nav/keyboard-hints'
 import {
@@ -186,6 +187,55 @@ describe('organisation · hierarchy', () => {
     // project group can be a sibling of it.
     expect(body.indexOf('styles.atlasLabel')).toBeLessThan(body.indexOf('styles.projects'))
     expect(body.indexOf('styles.operatorName')).toBeLessThan(body.indexOf('styles.atlasLabel'))
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// All five project nodes remain discoverable on desktop
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('organisation · projects must not disappear below a tall agent list', () => {
+  const fiveProjects = [
+    { id: 'family', name: 'Familje-Stunden', slug: 'familje-stunden', color: '#a78bfa' },
+    { id: 'gain', name: 'GainPilot', slug: 'gainpilot', color: '#0f766e' },
+    { id: 'prompt', name: 'The Prompt', slug: 'ai-media-automation', color: '#6366f1' },
+    { id: 'audit', name: 'AUDIT 0b — Omnira Selftest', slug: 'omnira-selftest', color: '#64748b' },
+    { id: 'handlar', name: 'Handlarbörsen', slug: 'handlarborsen', color: '#2563eb' },
+  ]
+  const familyAgents = Array.from({ length: 33 }, (_, i) => ({
+    id: `family-a${i}`, project_id: 'family', name: `Agent ${i}`, description: null, model: 'unknown',
+  }))
+
+  it('keeps all five scoped projects, including the two with zero agents', () => {
+    const model = build({ projects: fiveProjects, agents: familyAgents })
+    expect(model.projects.map(p => p.slug)).toEqual(fiveProjects.map(p => p.slug))
+    expect(model.projects.find(p => p.slug === 'handlarborsen')).toMatchObject({
+      name: 'Handlarbörsen', href: '/projects/handlarborsen', agents: [],
+    })
+    expect(model.projects.find(p => p.slug === 'omnira-selftest')?.agents).toEqual([])
+    expect(model.projects.find(p => p.slug === 'familje-stunden')?.agents).toHaveLength(33)
+  })
+
+  it('folds only long real agent groups initially; never hides project cards', () => {
+    expect(ORG_LONG_AGENT_LIST_THRESHOLD).toBe(8)
+    const model = build({ projects: fiveProjects, agents: familyAgents })
+    const collapsed = initiallyCollapsedOrganisationProjects(model.projects)
+    expect([...collapsed]).toEqual(['family'])
+    expect(collapsed.has('handlar')).toBe(false)
+    expect(VIEW).toContain('initiallyCollapsedOrganisationProjects(model.projects)')
+    expect(VIEW).toContain('projects.map((project) =>')
+    expect(VIEW).toContain('project.agents.length > ORG_LONG_AGENT_LIST_THRESHOLD')
+  })
+
+  it('uses a fluid desktop grid and an independently scrollable expanded agent list', () => {
+    expect(VIEW_CSS).toMatch(/\.projects\s*\{[^}]*display:\s*grid/)
+    expect(VIEW_CSS).toContain('grid-template-columns: repeat(auto-fit')
+    expect(VIEW_CSS).toContain('max-width: 112rem')
+    expect(VIEW_CSS).toContain(".agents[data-long='true']")
+    expect(VIEW_CSS).toContain('overflow-y: auto')
+    expect(VIEW).toContain('tabIndex={project.agents.length > ORG_LONG_AGENT_LIST_THRESHOLD ? 0 : undefined}')
+    expect(VIEW_CSS).toMatch(/@media \(max-width: 720px\)/)
+    expect(VIEW_CSS).toContain('grid-template-columns: minmax(0, 1fr)')
   })
 })
 

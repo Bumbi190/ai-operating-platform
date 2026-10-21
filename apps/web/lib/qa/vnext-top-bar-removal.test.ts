@@ -13,6 +13,11 @@
  *
  * Legacy is the rollback path until PR #82 merges, so its rendering must be
  * provably untouched.
+ *
+ * Superseded in part (owner ruling 2026-10-07): vNext has a top bar again —
+ * `ShellTopBar`, after the canonical Atlas Home mockup. It is a different
+ * component from `CommandBar` and opens the same palette through
+ * CommandPaletteHost, so everything asserted below about CommandBar still holds.
  */
 
 import { describe, it, expect } from 'vitest'
@@ -134,7 +139,7 @@ describe('LEGACY INVARIANT — the bar itself is untouched', () => {
       'sticky top-0 z-bar',      // the bar itself
       'OperatorModeSwitcher',    // mode switcher
       'Search · jump · command', // ⌘K trigger
-      'Notifications',           // bell
+      'AtlasInboxNotice',        // real personal inbox replaces the decorative bell
       '/projects/new',           // deploy
       'Omnira OS',               // breadcrumb root
     ]) {

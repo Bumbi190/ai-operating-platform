@@ -1,0 +1,33 @@
+{
+  "image": "public.ecr.aws/supabase/postgres:17.6.1.095",
+  "productionAccess": false,
+  "providerCalls": 0,
+  "checks": [
+    "RLS+FORCE with zero policies/client table+column privileges",
+    "three scoped definers, hardened helpers",
+    "enqueue/claim/finish idempotency and CAS",
+    "terminal mismatch refuses",
+    "expired worker in pre-expiry transaction stays uncertain",
+    "cross-period running+uncertain exclusivity",
+    "append-only audit and immutable identity",
+    "bounded completion metadata",
+    "anon read denied",
+    "authenticated read denied",
+    "service insert denied",
+    "service update denied",
+    "service delete denied",
+    "service truncate denied",
+    "client enqueue denied",
+    "client claim denied",
+    "client finish denied",
+    "claim lease starts after queued row lock release",
+    "four simultaneous service enqueues create one row/event",
+    "two simultaneous service claims create one claim/event",
+    "row-lock wait crossing expiry cannot complete with stale time"
+  ],
+  "sourceSha256": "25301e60468986f276b2d32e630867782764d94304c38831f368414725939da6",
+  "version": "PostgreSQL 17.6 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 15.2.0, 64-bit",
+  "status": "passed",
+  "containerRemoved": true,
+  "finishedAt": "2026-10-17T19:45:04.459Z"
+}

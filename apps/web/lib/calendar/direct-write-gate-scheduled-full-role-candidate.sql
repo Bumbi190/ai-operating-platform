@@ -1,0 +1,28 @@
+-- TEST-ONLY full scheduling SQL fixture candidate. Never apply as a migration.
+-- The regression creates this NOLOGIN role in one transaction and rolls it back.
+-- Scope: complete an already approved, claimed and publishing job.
+create role social_schedule_full_publisher_fixture nologin bypassrls;
+grant usage on schema public to social_schedule_full_publisher_fixture;
+grant select on public.social_schedule_batches,
+ public.social_content_revisions to social_schedule_full_publisher_fixture;
+grant select,update on public.projects,
+ public.social_schedule_jobs,
+ public.social_publications to social_schedule_full_publisher_fixture;
+grant insert on public.social_schedule_events,
+ public.social_publication_events to social_schedule_full_publisher_fixture;
+grant execute on function public.social_schedule_fields(jsonb,text[],text[]),
+ public.social_schedule_now(),
+ public.social_schedule_locked_claim(jsonb),
+ public.social_schedule_step(jsonb,jsonb),
+ public.social_schedule_receipt(jsonb),
+ public.social_schedule_snapshot(public.social_schedule_jobs),
+ public.social_schedule_revision(public.social_content_revisions),
+ public.social_publication_record(public.social_publications)
+ to social_schedule_full_publisher_fixture;
+
+revoke insert,update on public.social_schedule_jobs,
+ public.social_publications from service_role;
+revoke insert on public.social_schedule_events,
+ public.social_publication_events from service_role;
+revoke execute on function public.social_schedule_step(jsonb,jsonb)
+ from public,service_role;

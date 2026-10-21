@@ -1,0 +1,513 @@
+{
+  "Mode": "throwaway-AppContainer-Node-readiness-probe",
+  "Error": null,
+  "ProfileName": "omnira.p34.node.683ec55684b84b7db26cff3f4602ef52",
+  "ProfileSid": "S-1-15-2-3631440951-2481104604-3518808902-2848636555-167408006-1962672110-1006740466",
+  "ProfileStorage": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC",
+  "ObservedAtUtc": "2026-10-21T15:29:10.6158602Z",
+  "NodeVersion": "22.22.3",
+  "NodeImagePath": "C:\\Program Files\\nodejs\\node.exe",
+  "NodeObservedSha256": "780f44f2c53c108bae261ada21a525b4bfe733c020ac85e41bfe94479090ac9b",
+  "SelectedStdioMode": "ignore",
+  "RuntimeLocation": "profile",
+  "RuntimeImagePath": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\runtime\\node-readiness.exe",
+  "RuntimeObservedSha256": "780f44f2c53c108bae261ada21a525b4bfe733c020ac85e41bfe94479090ac9b",
+  "ControlRuntimeImagePath": "C:\\Program Files\\nodejs\\node.exe",
+  "RuntimeStaged": true,
+  "StagedRuntimeHashMatches": true,
+  "RuntimeExpectedPackageSidReadExecuteAllowObserved": true,
+  "ProfileCreated": true,
+  "ProfileDeleteApiSucceeded": true,
+  "ProfileStorageAbsenceCorroborated": true,
+  "ProfileMappingAbsent": true,
+  "AllProcessesStopped": true,
+  "WorkerAccountUsed": false,
+  "EditorStarted": false,
+  "NetworkRequested": false,
+  "ProjectAclChanged": false,
+  "ProductionReady": false,
+  "ExplicitWindowsBreakawayTestExecuted": false,
+  "ArbitraryBrokerContainmentVerified": false,
+  "ActualWorkerTokenVerified": false,
+  "SupervisorCrashScenarioVerified": false,
+  "GeneralExecutableTrustVerified": false,
+  "Trials": [
+    {
+      "Kind": "ordinary-normal-before",
+      "Nonce": "2cee2a69ce12412ca7d4936b419d53bc",
+      "ParentMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\2cee2a69ce12412ca7d4936b419d53bc-parent.ready",
+      "ChildMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\2cee2a69ce12412ca7d4936b419d53bc-child.ready",
+      "ParentStartedMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\2cee2a69ce12412ca7d4936b419d53bc-parent.started",
+      "SpawnErrorMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\2cee2a69ce12412ca7d4936b419d53bc-spawn.error",
+      "NullProbeMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\2cee2a69ce12412ca7d4936b419d53bc-null.probe",
+      "ChildSpawnDiagnostic": null,
+      "NullDeviceDiagnostic": "read=ok|write=ok",
+      "ImageVisibilityDiagnostic": "source=file|self=file",
+      "ImageProbeMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\2cee2a69ce12412ca7d4936b419d53bc-image.probe",
+      "StdioMode": "ignore",
+      "TrialRuntimeImagePath": "C:\\Program Files\\nodejs\\node.exe",
+      "DetachedRequested": false,
+      "ParentPid": 35752,
+      "ChildPid": 25376,
+      "ParentToken": {
+        "IsAppContainer": false,
+        "ExpectedPackageSid": false,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": true,
+        "CapabilityCount": 0,
+        "IntegrityRid": 8192
+      },
+      "ChildToken": {
+        "IsAppContainer": false,
+        "ExpectedPackageSid": false,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": true,
+        "CapabilityCount": 0,
+        "IntegrityRid": 8192
+      },
+      "NativeJobProcessCount": 4,
+      "Consoles": [
+        {
+          "Pid": 5292,
+          "Image": "C:\\Windows\\System32\\conhost.exe",
+          "Token": {
+            "IsAppContainer": false,
+            "ExpectedPackageSid": false,
+            "AdministratorGroupEnabled": false,
+            "Elevated": false,
+            "DetailFieldsObserved": true,
+            "CapabilityCount": 0,
+            "IntegrityRid": 8192
+          },
+          "LiveBeforeClose": true,
+          "ExitedOnClose": true,
+          "TokenMatchesAppContainer": false
+        },
+        {
+          "Pid": 13520,
+          "Image": "C:\\Windows\\System32\\conhost.exe",
+          "Token": {
+            "IsAppContainer": false,
+            "ExpectedPackageSid": false,
+            "AdministratorGroupEnabled": false,
+            "Elevated": false,
+            "DetailFieldsObserved": true,
+            "CapabilityCount": 0,
+            "IntegrityRid": 8192
+          },
+          "LiveBeforeClose": true,
+          "ExitedOnClose": true,
+          "TokenMatchesAppContainer": false
+        }
+      ],
+      "JobMemberImages": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "C:\\Program Files\\nodejs\\node.exe",
+        "C:\\Windows\\System32\\conhost.exe",
+        "C:\\Windows\\System32\\conhost.exe"
+      ],
+      "ExactJobPolicyReadBack": true,
+      "ParentAssignedBeforeResume": true,
+      "ParentJavaScriptReady": true,
+      "ChildJavaScriptReady": true,
+      "ChildMembershipVerified": true,
+      "ChildImageVerified": true,
+      "TwoLiveProcessesObserved": true,
+      "ParentExitedOnClose": true,
+      "ChildExitedOnClose": true,
+      "Passed": true,
+      "ReadyElapsedMs": 186
+    },
+    {
+      "Kind": "ordinary-detached-before",
+      "Nonce": "d3c65a55490c4488ba5a6a70b05a9fb2",
+      "ParentMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\d3c65a55490c4488ba5a6a70b05a9fb2-parent.ready",
+      "ChildMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\d3c65a55490c4488ba5a6a70b05a9fb2-child.ready",
+      "ParentStartedMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\d3c65a55490c4488ba5a6a70b05a9fb2-parent.started",
+      "SpawnErrorMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\d3c65a55490c4488ba5a6a70b05a9fb2-spawn.error",
+      "NullProbeMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\d3c65a55490c4488ba5a6a70b05a9fb2-null.probe",
+      "ChildSpawnDiagnostic": null,
+      "NullDeviceDiagnostic": "read=ok|write=ok",
+      "ImageVisibilityDiagnostic": "source=file|self=file",
+      "ImageProbeMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\d3c65a55490c4488ba5a6a70b05a9fb2-image.probe",
+      "StdioMode": "ignore",
+      "TrialRuntimeImagePath": "C:\\Program Files\\nodejs\\node.exe",
+      "DetachedRequested": true,
+      "ParentPid": 31924,
+      "ChildPid": 27424,
+      "ParentToken": {
+        "IsAppContainer": false,
+        "ExpectedPackageSid": false,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": true,
+        "CapabilityCount": 0,
+        "IntegrityRid": 8192
+      },
+      "ChildToken": {
+        "IsAppContainer": false,
+        "ExpectedPackageSid": false,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": true,
+        "CapabilityCount": 0,
+        "IntegrityRid": 8192
+      },
+      "NativeJobProcessCount": 3,
+      "Consoles": [
+        {
+          "Pid": 35460,
+          "Image": "C:\\Windows\\System32\\conhost.exe",
+          "Token": {
+            "IsAppContainer": false,
+            "ExpectedPackageSid": false,
+            "AdministratorGroupEnabled": false,
+            "Elevated": false,
+            "DetailFieldsObserved": true,
+            "CapabilityCount": 0,
+            "IntegrityRid": 8192
+          },
+          "LiveBeforeClose": true,
+          "ExitedOnClose": true,
+          "TokenMatchesAppContainer": false
+        }
+      ],
+      "JobMemberImages": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "C:\\Program Files\\nodejs\\node.exe",
+        "C:\\Windows\\System32\\conhost.exe"
+      ],
+      "ExactJobPolicyReadBack": true,
+      "ParentAssignedBeforeResume": true,
+      "ParentJavaScriptReady": true,
+      "ChildJavaScriptReady": true,
+      "ChildMembershipVerified": true,
+      "ChildImageVerified": true,
+      "TwoLiveProcessesObserved": true,
+      "ParentExitedOnClose": true,
+      "ChildExitedOnClose": true,
+      "Passed": true,
+      "ReadyElapsedMs": 119
+    },
+    {
+      "Kind": "AppContainer-normal",
+      "Nonce": "9c03f5aa4667449198aff3620dd601a5",
+      "ParentMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\9c03f5aa4667449198aff3620dd601a5-parent.ready",
+      "ChildMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\9c03f5aa4667449198aff3620dd601a5-child.ready",
+      "ParentStartedMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\9c03f5aa4667449198aff3620dd601a5-parent.started",
+      "SpawnErrorMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\9c03f5aa4667449198aff3620dd601a5-spawn.error",
+      "NullProbeMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\9c03f5aa4667449198aff3620dd601a5-null.probe",
+      "ChildSpawnDiagnostic": null,
+      "NullDeviceDiagnostic": "read=ok|write=ok",
+      "ImageVisibilityDiagnostic": "source=EPERM:-4048|self=file",
+      "ImageProbeMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\9c03f5aa4667449198aff3620dd601a5-image.probe",
+      "StdioMode": "ignore",
+      "TrialRuntimeImagePath": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\runtime\\node-readiness.exe",
+      "DetachedRequested": false,
+      "ParentPid": 49768,
+      "ChildPid": 51108,
+      "ParentToken": {
+        "IsAppContainer": true,
+        "ExpectedPackageSid": true,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": true,
+        "CapabilityCount": 0,
+        "IntegrityRid": 4096
+      },
+      "ChildToken": {
+        "IsAppContainer": true,
+        "ExpectedPackageSid": true,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": true,
+        "CapabilityCount": 0,
+        "IntegrityRid": 4096
+      },
+      "NativeJobProcessCount": 4,
+      "Consoles": [
+        {
+          "Pid": 57084,
+          "Image": "C:\\Windows\\System32\\conhost.exe",
+          "Token": {
+            "IsAppContainer": true,
+            "ExpectedPackageSid": true,
+            "AdministratorGroupEnabled": false,
+            "Elevated": false,
+            "DetailFieldsObserved": true,
+            "CapabilityCount": 0,
+            "IntegrityRid": 4096
+          },
+          "LiveBeforeClose": true,
+          "ExitedOnClose": true,
+          "TokenMatchesAppContainer": true
+        },
+        {
+          "Pid": 45476,
+          "Image": "C:\\Windows\\System32\\conhost.exe",
+          "Token": {
+            "IsAppContainer": true,
+            "ExpectedPackageSid": true,
+            "AdministratorGroupEnabled": false,
+            "Elevated": false,
+            "DetailFieldsObserved": true,
+            "CapabilityCount": 0,
+            "IntegrityRid": 4096
+          },
+          "LiveBeforeClose": true,
+          "ExitedOnClose": true,
+          "TokenMatchesAppContainer": true
+        }
+      ],
+      "JobMemberImages": [
+        "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\runtime\\node-readiness.exe",
+        "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\runtime\\node-readiness.exe",
+        "C:\\Windows\\System32\\conhost.exe",
+        "C:\\Windows\\System32\\conhost.exe"
+      ],
+      "ExactJobPolicyReadBack": true,
+      "ParentAssignedBeforeResume": true,
+      "ParentJavaScriptReady": true,
+      "ChildJavaScriptReady": true,
+      "ChildMembershipVerified": true,
+      "ChildImageVerified": true,
+      "TwoLiveProcessesObserved": true,
+      "ParentExitedOnClose": true,
+      "ChildExitedOnClose": true,
+      "Passed": true,
+      "ReadyElapsedMs": 178
+    },
+    {
+      "Kind": "AppContainer-detached",
+      "Nonce": "8d6f2ee51a6048d6b2f6e98cf25a346f",
+      "ParentMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\8d6f2ee51a6048d6b2f6e98cf25a346f-parent.ready",
+      "ChildMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\8d6f2ee51a6048d6b2f6e98cf25a346f-child.ready",
+      "ParentStartedMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\8d6f2ee51a6048d6b2f6e98cf25a346f-parent.started",
+      "SpawnErrorMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\8d6f2ee51a6048d6b2f6e98cf25a346f-spawn.error",
+      "NullProbeMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\8d6f2ee51a6048d6b2f6e98cf25a346f-null.probe",
+      "ChildSpawnDiagnostic": null,
+      "NullDeviceDiagnostic": "read=ok|write=ok",
+      "ImageVisibilityDiagnostic": "source=EPERM:-4048|self=file",
+      "ImageProbeMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\8d6f2ee51a6048d6b2f6e98cf25a346f-image.probe",
+      "StdioMode": "ignore",
+      "TrialRuntimeImagePath": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\runtime\\node-readiness.exe",
+      "DetachedRequested": true,
+      "ParentPid": 41092,
+      "ChildPid": 37796,
+      "ParentToken": {
+        "IsAppContainer": true,
+        "ExpectedPackageSid": true,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": true,
+        "CapabilityCount": 0,
+        "IntegrityRid": 4096
+      },
+      "ChildToken": {
+        "IsAppContainer": true,
+        "ExpectedPackageSid": true,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": true,
+        "CapabilityCount": 0,
+        "IntegrityRid": 4096
+      },
+      "NativeJobProcessCount": 3,
+      "Consoles": [
+        {
+          "Pid": 26472,
+          "Image": "C:\\Windows\\System32\\conhost.exe",
+          "Token": {
+            "IsAppContainer": true,
+            "ExpectedPackageSid": true,
+            "AdministratorGroupEnabled": false,
+            "Elevated": false,
+            "DetailFieldsObserved": true,
+            "CapabilityCount": 0,
+            "IntegrityRid": 4096
+          },
+          "LiveBeforeClose": true,
+          "ExitedOnClose": true,
+          "TokenMatchesAppContainer": true
+        }
+      ],
+      "JobMemberImages": [
+        "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\runtime\\node-readiness.exe",
+        "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\runtime\\node-readiness.exe",
+        "C:\\Windows\\System32\\conhost.exe"
+      ],
+      "ExactJobPolicyReadBack": true,
+      "ParentAssignedBeforeResume": true,
+      "ParentJavaScriptReady": true,
+      "ChildJavaScriptReady": true,
+      "ChildMembershipVerified": true,
+      "ChildImageVerified": true,
+      "TwoLiveProcessesObserved": true,
+      "ParentExitedOnClose": true,
+      "ChildExitedOnClose": true,
+      "Passed": true,
+      "ReadyElapsedMs": 178
+    },
+    {
+      "Kind": "ordinary-normal-after",
+      "Nonce": "c50bf126ccca4fe2aa0d89e91bcde423",
+      "ParentMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\c50bf126ccca4fe2aa0d89e91bcde423-parent.ready",
+      "ChildMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\c50bf126ccca4fe2aa0d89e91bcde423-child.ready",
+      "ParentStartedMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\c50bf126ccca4fe2aa0d89e91bcde423-parent.started",
+      "SpawnErrorMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\c50bf126ccca4fe2aa0d89e91bcde423-spawn.error",
+      "NullProbeMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\c50bf126ccca4fe2aa0d89e91bcde423-null.probe",
+      "ChildSpawnDiagnostic": null,
+      "NullDeviceDiagnostic": "read=ok|write=ok",
+      "ImageVisibilityDiagnostic": "source=file|self=file",
+      "ImageProbeMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\c50bf126ccca4fe2aa0d89e91bcde423-image.probe",
+      "StdioMode": "ignore",
+      "TrialRuntimeImagePath": "C:\\Program Files\\nodejs\\node.exe",
+      "DetachedRequested": false,
+      "ParentPid": 35456,
+      "ChildPid": 39236,
+      "ParentToken": {
+        "IsAppContainer": false,
+        "ExpectedPackageSid": false,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": true,
+        "CapabilityCount": 0,
+        "IntegrityRid": 8192
+      },
+      "ChildToken": {
+        "IsAppContainer": false,
+        "ExpectedPackageSid": false,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": true,
+        "CapabilityCount": 0,
+        "IntegrityRid": 8192
+      },
+      "NativeJobProcessCount": 4,
+      "Consoles": [
+        {
+          "Pid": 56548,
+          "Image": "C:\\Windows\\System32\\conhost.exe",
+          "Token": {
+            "IsAppContainer": false,
+            "ExpectedPackageSid": false,
+            "AdministratorGroupEnabled": false,
+            "Elevated": false,
+            "DetailFieldsObserved": true,
+            "CapabilityCount": 0,
+            "IntegrityRid": 8192
+          },
+          "LiveBeforeClose": true,
+          "ExitedOnClose": true,
+          "TokenMatchesAppContainer": false
+        },
+        {
+          "Pid": 51088,
+          "Image": "C:\\Windows\\System32\\conhost.exe",
+          "Token": {
+            "IsAppContainer": false,
+            "ExpectedPackageSid": false,
+            "AdministratorGroupEnabled": false,
+            "Elevated": false,
+            "DetailFieldsObserved": true,
+            "CapabilityCount": 0,
+            "IntegrityRid": 8192
+          },
+          "LiveBeforeClose": true,
+          "ExitedOnClose": true,
+          "TokenMatchesAppContainer": false
+        }
+      ],
+      "JobMemberImages": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "C:\\Program Files\\nodejs\\node.exe",
+        "C:\\Windows\\System32\\conhost.exe",
+        "C:\\Windows\\System32\\conhost.exe"
+      ],
+      "ExactJobPolicyReadBack": true,
+      "ParentAssignedBeforeResume": true,
+      "ParentJavaScriptReady": true,
+      "ChildJavaScriptReady": true,
+      "ChildMembershipVerified": true,
+      "ChildImageVerified": true,
+      "TwoLiveProcessesObserved": true,
+      "ParentExitedOnClose": true,
+      "ChildExitedOnClose": true,
+      "Passed": true,
+      "ReadyElapsedMs": 125
+    },
+    {
+      "Kind": "ordinary-detached-after",
+      "Nonce": "be7c2453d7a146519108077eba3b5938",
+      "ParentMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\be7c2453d7a146519108077eba3b5938-parent.ready",
+      "ChildMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\be7c2453d7a146519108077eba3b5938-child.ready",
+      "ParentStartedMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\be7c2453d7a146519108077eba3b5938-parent.started",
+      "SpawnErrorMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\be7c2453d7a146519108077eba3b5938-spawn.error",
+      "NullProbeMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\be7c2453d7a146519108077eba3b5938-null.probe",
+      "ChildSpawnDiagnostic": null,
+      "NullDeviceDiagnostic": "read=ok|write=ok",
+      "ImageVisibilityDiagnostic": "source=file|self=file",
+      "ImageProbeMarker": "C:\\Users\\Andre\\AppData\\Local\\Packages\\omnira.p34.node.683ec55684b84b7db26cff3f4602ef52\\AC\\be7c2453d7a146519108077eba3b5938-image.probe",
+      "StdioMode": "ignore",
+      "TrialRuntimeImagePath": "C:\\Program Files\\nodejs\\node.exe",
+      "DetachedRequested": true,
+      "ParentPid": 40656,
+      "ChildPid": 26504,
+      "ParentToken": {
+        "IsAppContainer": false,
+        "ExpectedPackageSid": false,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": true,
+        "CapabilityCount": 0,
+        "IntegrityRid": 8192
+      },
+      "ChildToken": {
+        "IsAppContainer": false,
+        "ExpectedPackageSid": false,
+        "AdministratorGroupEnabled": false,
+        "Elevated": false,
+        "DetailFieldsObserved": true,
+        "CapabilityCount": 0,
+        "IntegrityRid": 8192
+      },
+      "NativeJobProcessCount": 3,
+      "Consoles": [
+        {
+          "Pid": 44276,
+          "Image": "C:\\Windows\\System32\\conhost.exe",
+          "Token": {
+            "IsAppContainer": false,
+            "ExpectedPackageSid": false,
+            "AdministratorGroupEnabled": false,
+            "Elevated": false,
+            "DetailFieldsObserved": true,
+            "CapabilityCount": 0,
+            "IntegrityRid": 8192
+          },
+          "LiveBeforeClose": true,
+          "ExitedOnClose": true,
+          "TokenMatchesAppContainer": false
+        }
+      ],
+      "JobMemberImages": [
+        "C:\\Program Files\\nodejs\\node.exe",
+        "C:\\Program Files\\nodejs\\node.exe",
+        "C:\\Windows\\System32\\conhost.exe"
+      ],
+      "ExactJobPolicyReadBack": true,
+      "ParentAssignedBeforeResume": true,
+      "ParentJavaScriptReady": true,
+      "ChildJavaScriptReady": true,
+      "ChildMembershipVerified": true,
+      "ChildImageVerified": true,
+      "TwoLiveProcessesObserved": true,
+      "ParentExitedOnClose": true,
+      "ChildExitedOnClose": true,
+      "Passed": true,
+      "ReadyElapsedMs": 124
+    }
+  ]
+}

@@ -9,7 +9,8 @@ import {createHash} from 'node:crypto';
 import {readFileSync,readdirSync,lstatSync} from 'node:fs';
 import {resolve,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {inspectCanonicalMigrationFiles} from
+import {inspectCanonicalMigrationFiles,
+ EXPECTED_CANONICAL_SQL_COUNT,EXPECTED_ENFORCED_COUNT} from
  '../../apps/web/scripts/migration-guard-policy.mjs';
 
 const cwd=resolve(fileURLToPath(new URL('../..',import.meta.url)));
@@ -31,8 +32,12 @@ const digest=bytes=>createHash('sha256').update(bytes).digest('hex');
 test('canonical production SQL corpus retains unchanged Guard v2 expected membership',()=>{
  const files=readdirSync(production).filter(x=>x.endsWith('.sql'));
  const result=inspectCanonicalMigrationFiles(files);
- assert.equal(result.sqlFiles.length,101);
- assert.equal(result.enforcedNames.length,87);
+ // P26 synchronizes to the full current main migration policy rather than
+ // pinning P25's obsolete 101/87 baseline. Guard v2 itself remains unchanged.
+ assert.equal(EXPECTED_CANONICAL_SQL_COUNT,151);
+ assert.equal(EXPECTED_ENFORCED_COUNT,137);
+ assert.equal(result.sqlFiles.length,EXPECTED_CANONICAL_SQL_COUNT);
+ assert.equal(result.enforcedNames.length,EXPECTED_ENFORCED_COUNT);
  for(const name of Object.keys(frozen))
   assert.equal(files.includes(name),false,'draft migration leaked into canonical Supabase corpus');
 });

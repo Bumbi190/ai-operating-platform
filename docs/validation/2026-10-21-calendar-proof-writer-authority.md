@@ -350,8 +350,8 @@ call and its table reads for both ordinary posts and news-backed revisions.
 The existing CI run does not establish those grants.
 
 An ephemeral no-data branch named `codex-calendar-proof-role-20261021` was
-then created for this exact grant test. Supabase charged at the quoted rate of
-0.01344 USD/hour. Its automatic migration status changed to
+then created for this exact grant test. The quoted branch rate was
+0.01344 USD/hour; actual billed usage was not inspected. Its automatic migration status changed to
 `MIGRATIONS_FAILED` before SQL access was available; no grant candidate or
 fixture test was run on it. The branch was deleted immediately and a follow-up
 branch listing confirmed its removal. Supabase's available branch status and

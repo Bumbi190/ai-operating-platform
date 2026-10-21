@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 const sql=readFileSync(resolve(import.meta.dirname,
- '../../apps/web/supabase/migrations/20261020235500_atlas_creative_worker_identity_p10.sql'),'utf8').toLowerCase();
+ '../../apps/web/supabase/creative-drafts/20261020235500_atlas_creative_worker_identity_p10.sql'),'utf8').toLowerCase();
 test('new creative worker identities are isolated from code-work broker',()=>{
  assert.match(sql,/create table public\.atlas_creative_worker_identities/);
  assert.match(sql,/create table public\.atlas_creative_worker_nonces/);

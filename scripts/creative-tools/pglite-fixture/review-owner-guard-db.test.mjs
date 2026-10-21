@@ -6,7 +6,7 @@ import {PGlite} from '@electric-sql/pglite';
 
 const db=new PGlite();
 const file=name=>readFileSync(resolve(import.meta.dirname,
- '../../../apps/web/supabase/migrations/'+name),'utf8');
+ '../../../apps/web/supabase/creative-drafts/'+name),'utf8');
 const operator='00000000-0000-4000-8000-000000000001';
 const foreign='00000000-0000-4000-8000-000000000002';
 const firstProject='00000000-0000-4000-8000-000000000011';

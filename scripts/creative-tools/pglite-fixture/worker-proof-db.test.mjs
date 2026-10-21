@@ -6,7 +6,7 @@ import {PGlite} from '@electric-sql/pglite';
 
 const db=new PGlite();
 const migration=readFileSync(resolve(import.meta.dirname,
- '../../../apps/web/supabase/migrations/20261020235500_atlas_creative_worker_identity_p10.sql'),'utf8');
+ '../../../apps/web/supabase/creative-drafts/20261020235500_atlas_creative_worker_identity_p10.sql'),'utf8');
 const project='00000000-0000-4000-8000-000000000011';
 const other='00000000-0000-4000-8000-000000000012';
 const worker='HultgrenCreative01';

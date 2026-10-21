@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 const dir=dirname(fileURLToPath(import.meta.url));
 const migration=readFileSync(resolve(dir,
- '../../apps/web/supabase/migrations/20261020230500_atlas_creative_queue_staging_p7.sql'),'utf8');
+ '../../apps/web/supabase/creative-drafts/20261020230500_atlas_creative_queue_staging_p7.sql'),'utf8');
 const normalized=migration.toLowerCase();
 test('staging is a new distinct media table and refuses browser grants',()=>{
  assert.match(normalized,/create table public\.atlas_creative_queue_staging/);

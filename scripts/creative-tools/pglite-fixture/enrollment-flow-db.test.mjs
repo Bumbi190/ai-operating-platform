@@ -11,7 +11,7 @@ import {makeCreativeEnrollmentService,canonicalCreativeEnrollment,
 
 const db=new PGlite();
 const migration=name=>readFileSync(resolve(import.meta.dirname,
- '../../../apps/web/supabase/migrations/'+name),'utf8');
+ '../../../apps/web/supabase/creative-drafts/'+name),'utf8');
 const operatorId='00000000-0000-4000-8000-000000000001';
 const projectId='00000000-0000-4000-8000-000000000011';
 const worker='HultgrenCreative01';

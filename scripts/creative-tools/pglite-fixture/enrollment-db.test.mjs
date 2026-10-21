@@ -6,7 +6,7 @@ import {PGlite} from '@electric-sql/pglite';
 
 const db=new PGlite();
 const sql=readFileSync(resolve(import.meta.dirname,
- '../../../apps/web/supabase/migrations/20261021080000_atlas_creative_worker_enrollment_staging_p13.sql'),'utf8');
+ '../../../apps/web/supabase/creative-drafts/20261021080000_atlas_creative_worker_enrollment_staging_p13.sql'),'utf8');
 const operatorId='00000000-0000-4000-8000-000000000001';
 const projectId='00000000-0000-4000-8000-000000000011';
 const worker='HultgrenCreative01';
@@ -47,7 +47,7 @@ function stageArgs(row,overrides={}){
 before(async()=>{
  await db.exec('create role service_role nologin;create role anon nologin;create role authenticated nologin;');
  const p10=readFileSync(resolve(import.meta.dirname,
-  '../../../apps/web/supabase/migrations/20261020235500_atlas_creative_worker_identity_p10.sql'),'utf8');
+  '../../../apps/web/supabase/creative-drafts/20261020235500_atlas_creative_worker_identity_p10.sql'),'utf8');
  await db.exec(p10);
  await db.exec(sql);
 });

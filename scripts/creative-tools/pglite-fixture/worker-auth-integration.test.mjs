@@ -12,7 +12,7 @@ import {
 
 const db=new PGlite();
 const migration=readFileSync(resolve(import.meta.dirname,
- '../../../apps/web/supabase/migrations/20261020235500_atlas_creative_worker_identity_p10.sql'),'utf8');
+ '../../../apps/web/supabase/creative-drafts/20261020235500_atlas_creative_worker_identity_p10.sql'),'utf8');
 const keys=generateKeyPairSync('ec',{namedCurve:'prime256v1'});
 const projectId='00000000-0000-4000-8000-000000000011';
 const otherProject='00000000-0000-4000-8000-000000000012';

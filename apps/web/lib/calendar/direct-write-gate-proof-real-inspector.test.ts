@@ -48,7 +48,9 @@ beforeAll(()=>{
  f.sql(read('direct-write-gate-proof-permission-candidate.sql'));
  // Load the exact manual step function into the reduced SQL fixture. Only
  // its completion branch runs here; provider and application code are absent.
- f.sql(manualStepSql()+\n  'revoke all on function public.social_publication_step(jsonb,jsonb) from public,anon,authenticated;'+\n  'grant execute on function public.social_publication_step(jsonb,jsonb) to service_role;');
+ f.sql(manualStepSql()+
+  'revoke all on function public.social_publication_step(jsonb,jsonb) from public,anon,authenticated;'+
+  'grant execute on function public.social_publication_step(jsonb,jsonb) to service_role;');
 },60000);
 beforeEach(()=>{
  // Owner-only seeding in the uniquely named disposable database.

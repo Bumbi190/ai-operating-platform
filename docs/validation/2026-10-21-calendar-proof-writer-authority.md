@@ -359,6 +359,30 @@ migration-list tools did not return a failing migration or error log. A
 fully migrated test environment remains blocked until the replay failure is
 identified. Do not infer that the full-schema candidate passed.
 
+A second short-lived no-data branch, `codex-calendar-proof-role-logs-20261021`,
+reproduced `MIGRATIONS_FAILED` on 2026-10-21. Its PostgreSQL log at
+12:24:54 UTC identified SQLSTATE `42P01`: `relation
+"public.media_scripts" does not exist`. The failing statement was the
+`ALTER TABLE public.media_scripts ADD COLUMN IF NOT EXISTS updated_at ...`
+in the first replayed migration, version `20260601071917`
+(`media_scripts_updated_at_and_stuck_watchdog`). The production migration
+registry begins with that version. The repository contains a table-creation
+script at `apps/web/supabase/migrations/20260520_media_tables.sql`, but
+that earlier baseline is absent from the production migration registry being
+replayed. This establishes the first replay failure, not the absence of any
+other later migration problems. The dashboard's workflow row was disabled;
+the exact error came from the branch's read-only `postgres_logs` query.
+The new branch was deleted immediately; a subsequent branch list confirmed
+it absent. The quoted rate was 0.01344 USD/hour; actual billing was not read.
+
+The full-schema role test therefore needs a reviewable baseline/replay
+repair or a disposable clone of the already migrated schema before grant
+changes can be evaluated. Do not mark the May table-creation script as applied
+or reset production migration history merely to make branch creation green;
+audit the baseline dependencies and subsequent migrations in isolation first.
+No production table, migration history, credential, dispatch flag or queued job
+was changed by this diagnosis.
+
 The SQL candidate now conditionally includes read/helper grants for the
 news-review dependencies when that migration exists. Isolated run
 [39598334233](https://github.com/Bumbi190/ai-operating-platform/actions/runs/39598334233)

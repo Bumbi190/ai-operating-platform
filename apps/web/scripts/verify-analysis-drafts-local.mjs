@@ -281,6 +281,9 @@ try {
         approval: '20000000-0000-4000-8000-000000000015',
         job: '20000000-0000-4000-8000-000000000016',
         claim: '20000000-0000-4000-8000-000000000017',
+        binding: '20000000-0000-4000-8000-000000000018',
+        asset: '20000000-0000-4000-8000-000000000019',
+        contentDecision: '20000000-0000-4000-8000-000000000020',
       }
       const roleResult = JSON.parse(sql(`
         BEGIN;
@@ -289,17 +292,41 @@ try {
           VALUES (${quote(project)},${quote(actor)},'Isolated calendar probe','calendar-probe-only');
         INSERT INTO public.social_launch_plans(project_id,created_by) VALUES (${quote(project)},${quote(actor)});
         INSERT INTO public.social_launch_plan_revisions(id,project_id,sequence,sha256,choices,idempotency_key,created_by)
-          VALUES (${quote(id.plan)},${quote(project)},1,${quote('a'.repeat(64))},'[]','probe-plan',${quote(actor)});
+          VALUES (${quote(id.plan)},${quote(project)},1,${quote('a'.repeat(64))},'[{"channel":"facebook","purpose":"test","format":"image","cadence":"manual"}]','probe-plan',${quote(actor)});
+        UPDATE public.social_launch_plans SET current_revision_id=${quote(id.plan)} WHERE project_id=${quote(project)};
+        INSERT INTO public.social_launch_plan_decisions(project_id,revision_id,sha256,decision,idempotency_key,decided_by)
+          VALUES (${quote(project)},${quote(id.plan)},${quote('a'.repeat(64))},'approve','probe-plan-approval',${quote(actor)});
+        INSERT INTO public.social_account_bindings(binding_id,project_id,platform,external_account_id,account_label,credential_source,verification,verified_at,bound_by)
+          VALUES (${quote(id.binding)},${quote(project)},'facebook','12345','Synthetic page','project_store','provider_attested',now(),${quote('user:'+actor)});
+        INSERT INTO public.assets(id,project_id,kind,mime_type,byte_size,checksum_sha256,width,height,storage_bucket,storage_path)
+          VALUES (${quote(id.asset)},${quote(project)},'image','image/jpeg',1024,${quote('d'.repeat(64))},600,600,'synthetic-only','role-probe/image.jpg');
         INSERT INTO public.social_content_posts(id,project_id,created_by)
           VALUES (${quote(id.post)},${quote(project)},${quote(actor)});
-        INSERT INTO public.social_content_revisions(id,post_id,project_id,sequence,plan_revision_id,sha256,draft,media,input_data,idempotency_key,created_by)
-          VALUES (${quote(id.revision)},${quote(id.post)},${quote(project)},1,${quote(id.plan)},${quote('b'.repeat(64))},'{}','[]','{}','probe-revision',${quote(actor)});
+        INSERT INTO public.social_content_revisions(id,post_id,project_id,sequence,plan_revision_id,sha256,draft,media,binding_id,binding,input_data,idempotency_key,created_by)
+          VALUES (${quote(id.revision)},${quote(id.post)},${quote(project)},1,${quote(id.plan)},${quote('b'.repeat(64))},
+            jsonb_build_object('channel','facebook','format','image','title','Synthetic','text','Synthetic caption',
+              'linkUrl',null,'mediaIds',jsonb_build_array(${quote(id.asset)}),'mediaBrief','',
+              'scheduledAt',to_char((now()-interval '1 minute') at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
+            jsonb_build_array(jsonb_build_object('id',${quote(id.asset)},'kind','image','mimeType','image/jpeg','sha256',${quote('d'.repeat(64))})),
+            ${quote(id.binding)},'{"accountId":"12345","label":"Synthetic page"}',
+            '{}','probe-revision',${quote(actor)});
+        UPDATE public.social_content_posts SET current_revision_id=${quote(id.revision)} WHERE id=${quote(id.post)};
+        INSERT INTO public.social_content_decisions(id,project_id,post_id,revision_id,sha256,decision,idempotency_key,decided_by)
+          VALUES (${quote(id.contentDecision)},${quote(project)},${quote(id.post)},${quote(id.revision)},${quote('b'.repeat(64))},'approve','probe-content-approval',${quote(actor)});
         INSERT INTO public.social_schedule_batches(id,batch_id,project_id,sequence,manifest,sha256,created_by,idempotency_key,input_data)
           VALUES (${quote(id.batch)},gen_random_uuid(),${quote(project)},1,'{}',${quote('c'.repeat(64))},${quote(actor)},'probe-batch','{}');
         INSERT INTO public.social_schedule_decisions(id,project_id,batch_revision_id,action,actor,idempotency_key,input_data)
           VALUES (${quote(id.approval)},${quote(project)},${quote(id.batch)},'approve',${quote(actor)},'probe-approval','{}');
         INSERT INTO public.social_schedule_jobs(id,project_id,batch_revision_id,approval_id,post_id,revision_id,revision_sha256,channel,occasion_id,scheduled_at,expires_at,item,state,claim_id,worker_id,lease_expires_at)
-          VALUES (${quote(id.job)},${quote(project)},${quote(id.batch)},${quote(id.approval)},${quote(id.post)},${quote(id.revision)},${quote('b'.repeat(64))},'facebook',gen_random_uuid(),now()-interval '1 minute',now()+interval '9 minutes','{}','claimed',${quote(id.claim)},'probe-worker',now()+interval '90 seconds');
+          VALUES (${quote(id.job)},${quote(project)},${quote(id.batch)},${quote(id.approval)},${quote(id.post)},${quote(id.revision)},${quote('b'.repeat(64))},'facebook',gen_random_uuid(),now()-interval '1 minute',now()+interval '9 minutes',
+            jsonb_build_object('postId',${quote(id.post)},'revisionId',${quote(id.revision)},'sha256',${quote('b'.repeat(64))},
+              'decisionId',${quote(id.contentDecision)},'planRevisionId',${quote(id.plan)},'bindingId',${quote(id.binding)},
+              'accountId','12345','channel','facebook','asset',jsonb_build_object('id',${quote(id.asset)},'sha256',${quote('d'.repeat(64))}),
+              'localMinute',to_char((now()-interval '1 minute') at time zone 'Europe/Stockholm','YYYY-MM-DD"T"HH24:MI'),
+              'scheduledAt',to_char((now()-interval '1 minute') at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+              'expiresAt',to_char((now()+interval '9 minutes') at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+              'occasionId',gen_random_uuid(),'kind','ordinary','releaseCondition',null),
+            'claimed',${quote(id.claim)},'probe-worker',now()+interval '90 seconds');
         ${reviewedBytes(resolve(web, 'lib/calendar/source-revision-probe.sql')).toString('utf8')}
         INSERT INTO public.calendar_source_revision_probe(owner_user_id,project_id,revision)
           VALUES (${quote(actor)},${quote(project)},1);
@@ -323,9 +350,32 @@ try {
         EXCEPTION WHEN insufficient_privilege THEN
           IF SQLERRM <> 'CALENDAR_WRITE_GATE_REQUIRED' THEN RAISE; END IF;
         END $deny_fixture$;
-        DO $checkpoint$ BEGIN
+        RESET ROLE;
+        SAVEPOINT revoked_approval_probe;
+        INSERT INTO public.social_schedule_decisions(project_id,batch_revision_id,action,actor,approval_id,reason,idempotency_key,input_data)
+          VALUES (${quote(project)},${quote(id.batch)},'revoke',${quote(actor)},${quote(id.approval)},'synthetic-revocation','probe-revocation','{}');
+        SET LOCAL ROLE social_schedule_full_publisher_fixture;
+        DO $deny_revoked$ BEGIN
           PERFORM public.social_schedule_step(
             jsonb_build_object('jobId',${quote(id.job)},'claimId',${quote(id.claim)},'version',1),
+            '{"action":"prepare"}'::jsonb
+          );
+          RAISE EXCEPTION 'REVOKED_APPROVAL_ACCEPTED';
+        EXCEPTION WHEN raise_exception THEN
+          IF SQLERRM <> 'SOCIAL_SCHEDULE_REVIEW_REQUIRED' THEN RAISE; END IF;
+        END $deny_revoked$;
+        RESET ROLE;
+        ROLLBACK TO SAVEPOINT revoked_approval_probe;
+        SET LOCAL ROLE social_schedule_full_publisher_fixture;
+        DO $prepare$ BEGIN
+          PERFORM public.social_schedule_step(
+            jsonb_build_object('jobId',${quote(id.job)},'claimId',${quote(id.claim)},'version',1),
+            '{"action":"prepare"}'::jsonb
+          );
+        END $prepare$;
+        DO $checkpoint$ BEGIN
+          PERFORM public.social_schedule_step(
+            jsonb_build_object('jobId',${quote(id.job)},'claimId',${quote(id.claim)},'version',2),
             '{"action":"checkpoint","reason":"stopped"}'::jsonb
           );
         END $checkpoint$;
@@ -334,14 +384,15 @@ try {
           'state',(SELECT state FROM public.social_schedule_jobs WHERE id=${quote(id.job)}),
           'version',(SELECT version FROM public.social_schedule_jobs WHERE id=${quote(id.job)}),
           'source_revision',(SELECT revision FROM public.calendar_source_revision_probe WHERE project_id=${quote(project)}),
+          'prepare_events',(SELECT count(*) FROM public.social_schedule_events WHERE job_id=${quote(id.job)} AND event='prepare'),
           'checkpoint_events',(SELECT count(*) FROM public.social_schedule_events WHERE job_id=${quote(id.job)} AND event='checkpoint'),
           'publications',(SELECT count(*) FROM public.social_publications WHERE project_id=${quote(project)})
         );
         ROLLBACK;
       `))
-      assert.deepEqual(roleResult, { state:'blocked', version:2, source_revision:2, checkpoint_events:1, publications:0 })
+      assert.deepEqual(roleResult, { state:'blocked', version:3, source_revision:4, prepare_events:1, checkpoint_events:1, publications:1 })
       assert.equal(sql("SELECT count(*) FROM public.projects WHERE id=" + quote(project)), '0', 'synthetic project escaped rollback')
-      console.log('CROSS-TREE CHECKPOINT GATE ' + JSON.stringify(roleResult) + ' (rolled back; no provider call)')
+      console.log('CROSS-TREE PREPARE AND CHECKPOINT GATE ' + JSON.stringify(roleResult) + ' (rolled back; no provider call)')
     }
     console.log(crossTreeReplay ? 'CROSS-TREE REPLAY PASS' : legacyDreamReplay ? 'LEGACY DREAM REPLAY PASS' : legacyCronReplay ? 'LEGACY CRON REPLAY PASS' : legacyMediaReplay ? 'LEGACY MEDIA REPLAY PASS' : dependencyReplay ? 'DEPENDENCY REPLAY PASS' : 'CANONICAL REPLAY PASS')
     process.exitCode = 0

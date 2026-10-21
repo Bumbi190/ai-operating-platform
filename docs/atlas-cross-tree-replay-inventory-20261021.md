@@ -50,13 +50,19 @@ reviewed source-gate and signed-lock candidates. The gate fixture's
 `extensions`, matching the replay's pinned pgcrypto install. It also granted
 the new fixture role EXECUTE on the gate begin function. Direct job UPDATEs
 from both `service_role` and the new role were denied; the latter had table
-UPDATE but lacked the transaction-bound source proof. The canonical
-`social_schedule_step` checkpoint action, called under the new role, moved
-the synthetic job to `blocked`, emitted one event and incremented the source
-revision from 1 to 2. All rows, roles, trigger/function changes and grants
-were rolled back. This tests an already claimed recovery action, not
-`prepare`, provider dispatch, receipt authenticity, or full approval
-validation: checkpoint itself does not re-evaluate the approval chain.
+UPDATE but lacked the transaction-bound source proof.
+
+The test then added a synthetic approved launch plan, destination binding,
+image asset metadata, content revision and content approval. A temporary
+revocation made the canonical `social_schedule_step` `prepare` action fail
+with `SOCIAL_SCHEDULE_REVIEW_REQUIRED`. After rolling that revocation back,
+`prepare` succeeded under the fixture role, created one requested
+publication and one schedule event. A subsequent checkpoint moved the job
+to `blocked`. The source revision went from 1 to 4: publication INSERT and
+job UPDATE at prepare, then job UPDATE at checkpoint. The job version went
+from 1 to 3. All synthetic rows, roles, trigger/function changes and grants
+were rolled back. The image was metadata only; no image bytes, provider
+request, credential, or provider receipt was involved.
 
 ## Observed dependency edges
 
@@ -144,8 +150,8 @@ sequence. The 12-operation calendar ACL baseline matches the read-only
 production catalog snapshot. It does **not** replay the other 28 root files,
 test existing production rows, verify authentic Supabase migration ledger
 entries, or prove the proposed calendar writer's end-to-end operation. The
-next gate is the real `prepare` authorization path against this schema,
-followed by receipt and worker compatibility tests. Separately,
+next gate is receipt handling, worker compatibility, and proof-inspector
+hardening against this schema. Separately,
 production's missing May baseline still prevents a fresh Supabase branch from
 reconstructing the installed schema. None of these local experiments alters
 production, the production migration ledger, or its guard.

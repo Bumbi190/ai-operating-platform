@@ -26,6 +26,20 @@ zero provider reads. The receipt constraint accepts provider_id and
 confirmation='provider_id'; it does not authenticate them. Thus proof-table
 containment alone is not an end-to-end barrier.
 
+## Effective writer inventory from migrations
+
+| Data | Legitimate SQL writers | Current direct grant to service_role |
+| --- | --- | --- |
+| Reconciliation proofs | `social_publication_reconciliation_inspect` in `20261018070155` | SELECT, INSERT |
+| Publication rows and events | Manual `social_publication_prepare/step` in `20261016115402`, later replaced by the scheduled versions in `20261018071209`; scheduled claim/step/recovery; reconciliation complete | Publication SELECT, INSERT, UPDATE; event SELECT, INSERT |
+| Schedule jobs and events | Scheduled approval/claim/step/recovery and scheduled reconciliation completion in `20261018071209` and `20261018073425` | Job SELECT, INSERT, UPDATE; event SELECT, INSERT |
+
+The later scheduled migration replaces `social_publication_reconciliation_complete`
+and also updates a scheduled job and inserts its event. A role migration cannot
+change only the original reconciliation migration. The application store uses
+RPCs for these writes; readiness also reads `social_publications`. This is a
+source inventory, not proof that no dynamic SQL or operational writer exists.
+
 ## Target boundary
 
 1. Keep the user's authenticated operator decision and the exact publication

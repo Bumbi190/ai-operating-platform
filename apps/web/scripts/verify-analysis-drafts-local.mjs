@@ -4,7 +4,7 @@ import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 import assert from 'node:assert/strict'
-import { orderReplayMigrations, orderLegacyMediaReplayMigrations } from './analysis-replay-order.mjs'
+import { orderReplayMigrations, orderLegacyMediaReplayMigrations, orderCrossTreeReplayMigrations } from './analysis-replay-order.mjs'
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..'),
   repo = resolve(web, '../..')
 const migrationDir = resolve(web, 'supabase/migrations')
@@ -28,10 +28,11 @@ assert.ok(
 const dependencyReplay = process.argv.includes('--mode=dependency-replay')
 const legacyCronReplay = process.argv.includes('--mode=legacy-cron-replay')
 const legacyDreamReplay = process.argv.includes('--mode=legacy-dream-replay')
-const legacyMediaReplay = legacyCronReplay || legacyDreamReplay || process.argv.includes('--mode=legacy-media-replay')
-assert.ok([dependencyReplay,legacyCronReplay,legacyDreamReplay,process.argv.includes('--mode=legacy-media-replay'),process.argv.includes('--mode=canonical-replay')].filter(Boolean).length<=1, 'select one replay mode')
+const crossTreeReplay = process.argv.includes('--mode=legacy-cross-tree-replay')
+const legacyMediaReplay = legacyCronReplay || legacyDreamReplay || crossTreeReplay || process.argv.includes('--mode=legacy-media-replay')
+assert.ok([dependencyReplay,legacyCronReplay,legacyDreamReplay,crossTreeReplay,process.argv.includes('--mode=legacy-media-replay'),process.argv.includes('--mode=canonical-replay')].filter(Boolean).length<=1, 'select one replay mode')
 const replay = dependencyReplay || legacyMediaReplay || process.argv.includes('--mode=canonical-replay')
-const name = legacyDreamReplay ? 'omnira-atlas-p1-legacy-dream-replay' : legacyCronReplay ? 'omnira-atlas-p1-legacy-cron-replay' : legacyMediaReplay ? 'omnira-atlas-p1-legacy-media-replay' : dependencyReplay ? 'omnira-atlas-p1-dependency-replay' : replay ? 'omnira-atlas-p1-canonical-replay' : 'omnira-atlas-p1-local'
+const name = crossTreeReplay ? 'omnira-atlas-p1-cross-tree-replay' : legacyDreamReplay ? 'omnira-atlas-p1-legacy-dream-replay' : legacyCronReplay ? 'omnira-atlas-p1-legacy-cron-replay' : legacyMediaReplay ? 'omnira-atlas-p1-legacy-media-replay' : dependencyReplay ? 'omnira-atlas-p1-dependency-replay' : replay ? 'omnira-atlas-p1-canonical-replay' : 'omnira-atlas-p1-local'
 const image = 'public.ecr.aws/supabase/postgres:17.11.0.004'
 const docker = (args, input) =>
   spawnSync('docker', args, { encoding: 'utf8', input, timeout: 60000, maxBuffer: 8 * 1024 * 1024 })
@@ -123,7 +124,7 @@ try {
     image,
     'postgres',
     '-c',
-    'shared_preload_libraries='+(legacyCronReplay || legacyDreamReplay ? 'pg_stat_statements,pg_cron,pg_net' : 'pg_stat_statements'),
+    'shared_preload_libraries='+(legacyCronReplay || legacyDreamReplay || crossTreeReplay ? 'pg_stat_statements,pg_cron,pg_net' : 'pg_stat_statements'),
     '-c',
     'cron.launch_active_jobs=off',
   ])
@@ -144,7 +145,7 @@ try {
     sql(
       "CREATE SCHEMA IF NOT EXISTS extensions; CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions; CREATE SCHEMA IF NOT EXISTS auth; CREATE TABLE IF NOT EXISTS auth.users(id uuid PRIMARY KEY); CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$; DO $$ BEGIN IF NOT EXISTS(SELECT FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon; END IF; IF NOT EXISTS(SELECT FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated; END IF; IF NOT EXISTS(SELECT FROM pg_roles WHERE rolname='service_role') THEN CREATE ROLE service_role BYPASSRLS; END IF; END $$;",
     )
-    if(legacyCronReplay || legacyDreamReplay) sql('CREATE EXTENSION IF NOT EXISTS pg_cron; CREATE SCHEMA IF NOT EXISTS supabase_migrations; CREATE TABLE supabase_migrations.schema_migrations(name text);')
+    if(legacyCronReplay || legacyDreamReplay || crossTreeReplay) sql('CREATE EXTENSION IF NOT EXISTS pg_cron; CREATE SCHEMA IF NOT EXISTS supabase_migrations; CREATE TABLE supabase_migrations.schema_migrations(name text);')
     // Supabase's cached PostgreSQL image has Auth, but Storage schema is installed by Storage API.
     // Use exact upstream SQL bytes; preserve image roles with the upstream install_roles switch.
     for (const [upstream, expected] of [
@@ -166,18 +167,31 @@ try {
     const legacyFile=resolve(repo,'supabase/migrations/20260601_media_insights.sql');
     const legacyEntry=legacyMediaReplay ? {name:'20260601_media_insights.sql',sha256:createHash('sha256').update(reviewedBytes(legacyFile)).digest('hex')} : null;
     const cronFile=resolve(repo,'supabase/migrations/20260528_pg_cron_setup.sql');
-    const cronEntry=legacyCronReplay || legacyDreamReplay ? {name:'20260528_pg_cron_setup.sql',sha256:createHash('sha256').update(reviewedBytes(cronFile)).digest('hex')} : null;
+    const cronEntry=legacyCronReplay || legacyDreamReplay || crossTreeReplay ? {name:'20260528_pg_cron_setup.sql',sha256:createHash('sha256').update(reviewedBytes(cronFile)).digest('hex')} : null;
     const dreamFile=resolve(repo,'supabase/migrations/20260609_dream_issues_ledger.sql');
-    const dreamEntry=legacyDreamReplay ? {name:'20260609_dream_issues_ledger.sql',sha256:createHash('sha256').update(reviewedBytes(dreamFile)).digest('hex')} : null;
-    const ordered=legacyMediaReplay ? orderLegacyMediaReplayMigrations(entries,legacyEntry,cronEntry,dreamEntry)
+    const dreamEntry=legacyDreamReplay || crossTreeReplay ? {name:'20260609_dream_issues_ledger.sql',sha256:createHash('sha256').update(reviewedBytes(dreamFile)).digest('hex')} : null;
+    const extraFiles=crossTreeReplay ? [
+      '20260528_pass_a_safeguards.sql',
+      '20260602_atlas_growth_account_snapshots.sql',
+      '20260602_stripe_intelligence_revenue_snapshots.sql',
+      '20260602_g1_multitenant_platform_tokens.sql',
+      '20260603_cron_heartbeat.sql',
+      '20260603_durable_runs.sql',
+      '20260609_manager_task_dream_link.sql',
+    ].map(name=>resolve(repo,'supabase/migrations',name)) : [];
+    const extraEntries=extraFiles.map(file=>({name:file.split(/[\\/]/).at(-1),sha256:createHash('sha256').update(reviewedBytes(file)).digest('hex')}));
+    const ordered=crossTreeReplay ? orderCrossTreeReplayMigrations(entries,legacyEntry,cronEntry,dreamEntry,extraEntries)
+      : legacyMediaReplay ? orderLegacyMediaReplayMigrations(entries,legacyEntry,cronEntry,dreamEntry)
       : dependencyReplay ? orderReplayMigrations(entries) : entries.sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0);
     if(dependencyReplay || legacyMediaReplay) console.log('LOCAL REPLAY ORDER: hash-pinned media_tables before media_images; all canonical files retained');
     if(legacyMediaReplay) console.log('LOCAL LEGACY MEDIA: one hash-pinned root media_insights migration included; diagnostic only');
     if(legacyCronReplay) console.log('LOCAL LEGACY CRON: hash-pinned root pg_cron setup included; cron launching disabled and network none');
     if(legacyDreamReplay) console.log('LOCAL LEGACY DREAM: hash-pinned cron and dream ledger roots included; cron launching disabled and network none');
+    if(crossTreeReplay) console.log('LOCAL CROSS-TREE: ten hash-pinned root files; cron launching disabled and network none; diagnostic only');
+    const rootFiles=new Map([[legacyEntry,legacyFile],[cronEntry,cronFile],[dreamEntry,dreamFile],...extraEntries.map((entry,index)=>[entry,extraFiles[index]])]);
     const files = [
       resolve(repo, 'packages/db/full_schema_run_in_supabase.sql'),
-      ...ordered.map(entry=>entry === legacyEntry ? legacyFile : entry === cronEntry ? cronFile : entry === dreamEntry ? dreamFile : resolve(migrationDir,entry.name)),
+      ...ordered.map(entry=>rootFiles.get(entry) ?? resolve(migrationDir,entry.name)),
     ]
     for (const file of files) {
       const bytes = reviewedBytes(file)
@@ -186,7 +200,7 @@ try {
       )
       sql(bytes.toString('utf8'))
     }
-    console.log(legacyDreamReplay ? 'LEGACY DREAM REPLAY PASS' : legacyCronReplay ? 'LEGACY CRON REPLAY PASS' : legacyMediaReplay ? 'LEGACY MEDIA REPLAY PASS' : dependencyReplay ? 'DEPENDENCY REPLAY PASS' : 'CANONICAL REPLAY PASS')
+    console.log(crossTreeReplay ? 'CROSS-TREE REPLAY PASS' : legacyDreamReplay ? 'LEGACY DREAM REPLAY PASS' : legacyCronReplay ? 'LEGACY CRON REPLAY PASS' : legacyMediaReplay ? 'LEGACY MEDIA REPLAY PASS' : dependencyReplay ? 'DEPENDENCY REPLAY PASS' : 'CANONICAL REPLAY PASS')
     process.exitCode = 0
   } else {
     sql(readFileSync(resolve(web, 'lib/qa/fixtures/analysis-drafts-local-bootstrap.sql'), 'utf8'))

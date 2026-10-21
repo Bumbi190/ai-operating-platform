@@ -1,11 +1,27 @@
 # Atlas P1 local replay repair — 13 October 2026
 
+**21 October update:** The separate, explicitly hash-pinned
+`--mode=legacy-cross-tree-replay` fixture now passes the base schema, all 151
+canonical web SQL files and 10 selected root SQL files in isolated PostgreSQL.
+See [the cross-tree inventory](atlas-cross-tree-replay-inventory-20261021.md)
+for the exact edges and exclusions. The earlier blockers below are historical
+diagnostic results, not the latest local outcome. This pass does not repair the
+production migration ledger, replay all 38 root files or verify live data and
+roles.
+
 ## Result and boundaries
 
 The local Storage bootstrap and same-date media ordering issue are repaired in a separate branch above PR #323's exact head `2dd5c0fd50fc18a203f1866a4b1cc5f21816b740`. The change affects local verification scripts only. Historical SQL bytes, migration filenames, production migration guard/ledger policy and P1 runtime code are unchanged.
 
 `--mode=canonical-replay` retains lexical canonical-file order.
-`--mode=dependency-replay` explicitly moves the hash-pinned `20260520_media_tables.sql` before `20260520_media_images.sql`, retaining every canonical SQL file exactly once. Missing prerequisite, duplicates or changed exception bytes refuse verification. This mode does not establish lexical replay success.
+`--mode=dependency-replay` explicitly moves hash-pinned prerequisites before
+their consumers while retaining every canonical SQL file exactly once. The
+initial exception is `20260520_media_tables.sql` before
+`20260520_media_images.sql`; the 21 October cross-tree investigation also
+found `20260829_workflow_instance_core.sql` before the same-day attestation
+alterations, and `20260830_workflow_action_binding.sql` before the same-day
+failure indexes. Missing prerequisites, duplicates or changed exception bytes
+refuse verification. This mode does not establish lexical replay success.
 
 Replay bootstrap reads upstream `0002-storage-schema.sql` and `0008-add-public-to-buckets.sql` from cached `public.ecr.aws/supabase/storage-api:v1.79.36` using `--pull=never --network none --rm --entrypoint cat`. Exact SHA-256 pins are checked before applying SQL. The upstream `storage.install_roles=false` switch preserves the PostgreSQL image's existing roles. This is the Storage prerequisite needed by the baseline; it is not a full Storage service fidelity claim.
 

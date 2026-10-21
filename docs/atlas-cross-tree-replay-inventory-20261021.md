@@ -8,6 +8,13 @@ then applies the canonical `apps/web/supabase/migrations` tree. The second
 bytes so a reviewer can identify what was considered. SHA-256 is for
 provenance, not an endorsement to execute every file.
 
+**Latest result:** `--mode=legacy-cross-tree-replay` passed on Hultgren's
+isolated PostgreSQL 17.11 fixture: base schema, all 151 canonical web SQL
+files exactly once, and 10 selected, byte-pinned root SQL files. The fixture
+had no network, no published ports, and cron job launching disabled. Its owned
+container was removed after the run. This establishes local SQL execution on
+an empty synthetic database, not production data migration or role parity.
+
 ## Observed dependency edges
 
 | Producer | Consumer | Evidence/status |
@@ -16,17 +23,23 @@ provenance, not an endorsement to execute every file.
 | root `20260601_media_insights.sql` | web `20260602_atlas_bi_foundation.sql` | PostgreSQL first reported missing `media_insights`; the pinned root file let the isolated replay advance. |
 | root `20260528_pg_cron_setup.sql` | web `20260614091000_h1p5_runs_claim_id.sql` | PostgreSQL next reported missing `omnira_cron`; the pinned root file let the isolated replay advance. This root file schedules jobs and needs the runner's isolated cron bootstrap. |
 | root `20260609_dream_issues_ledger.sql` | web `20260617160200_backfill_dream_issues.sql` | PostgreSQL had reported missing `public.dream_issues`. The pinned root file and the web backfill both passed in the offline fixture. It also backfills from `public.memories` and references `public.manager_tasks`, both declared in the base schema. |
-| root `20260603_cron_heartbeat.sql` | web `20260623_150300_atlas_collector_cron.sql` | Next observed failure: `relation "public.cron_heartbeat" does not exist` at the web migration's seed `INSERT`. The root file creates the table **and schedules a heartbeat job**. This edge is not yet exercised; any test must retain disabled cron launching and network isolation. |
+| root `20260603_cron_heartbeat.sql` | web `20260623_150300_atlas_collector_cron.sql` | Previously missing at the seed `INSERT`; the pinned root file creates it and schedules a heartbeat job. Passed with cron launching disabled and network isolated. |
+| root `20260609_manager_task_dream_link.sql` | web `20260820_manager_tasks_work_packages.sql` | Adds `source` and `source_key` columns used in a later CHECK constraint. Passed. |
+| web `20260829_workflow_instance_core.sql` | web `20260829_workflow_attested_evidence.sql` | Lexical order placed the table alteration before `workflow_evidence` creation. A hash-pinned local order exception passed. |
+| web `20260830_workflow_action_binding.sql` | web `20260830_action_failure_model.sql` | Lexical order placed the failure index before `runs.workflow_instance_id` creation. A hash-pinned local order exception passed. |
+| root `20260603_durable_runs.sql` | web `20260830_workflow_action_binding.sql` | Adds `runs.max_attempts`, among other run columns/functions and schedules. Passed offline. |
+| root `20260602_g1_multitenant_platform_tokens.sql` | web `20260914120300_platform_tokens_project_binding.sql` | Adds `platform_tokens.project_id`; passed with no real credentials in the fixture. |
+| root `20260528_pass_a_safeguards.sql` | web `20260831_budget_scopes.sql` | Creates `platform_config`; also has cleanup UPDATEs, which targeted no production rows in this empty fixture. Passed. |
+| root `20260602_atlas_growth_account_snapshots.sql` | web `20260914120400_social_account_bindings_the_prompt_evidence.sql` | Creates account snapshots. The later conditional evidence block saw no project/credentials in the fixture, so its live-data path remains unproven. |
+| root `20260602_stripe_intelligence_revenue_snapshots.sql` | web `20261002190000_survival_input_epoch.sql` | Creates revenue snapshots before the later trigger and TRUNCATE guard. Passed. |
 
-The first four edges have passed in the isolated container. The fifth
-is a candidate for separate review and test. The root `manager_task_dream_link`
-file adds optional manager task columns; the observed web backfill reads only
-`dream_issues`. It is therefore not automatically pulled into this fixture.
+These edges passed in the local fixture. The root `manager_task_dream_link`
+file was not necessary for the June Dream backfill, but proved necessary for
+the later August work-package constraint.
 
 ## Root file inventory
 
-`fixture` means already exercised in the isolated runner; `candidate` means
-identified for review before a possible next diagnostic; `hold` means **not selected for replay**.
+`fixture` means exercised in the isolated runner; `hold` means **not selected for replay**.
 Flags are a static text scan for cron registration, network calls, destructive
 DML/DDL, or secret/role text; absence of a flag is no safety guarantee.
 
@@ -38,7 +51,7 @@ DML/DDL, or secret/role text; absence of a flag is no safety guarantee.
 | `20260522_evaluation_memory.sql` | `4d65ccfbc36f442252fc960064f1d635acd245e746dd8cb0c3602ccae541afb6` | hold | — |
 | `20260522_evaluation_memory_fix.sql` | `773e3ff16a641a4b39b48a7c2508035cb7ff04314b9fbef678fd949ed07d2a11` | hold | delete/drop |
 | `20260522_instagram_columns.sql` | `5120f86021749a052b5b943137f50aa6b52c7dc73705cb9697911c0782c56958` | hold | — |
-| `20260528_pass_a_safeguards.sql` | `4665ac611487c0d833914c2b2e40de11b2e0433e9ed89d172b9b0e463e4c0c04` | hold | — |
+| `20260528_pass_a_safeguards.sql` | `4665ac611487c0d833914c2b2e40de11b2e0433e9ed89d172b9b0e463e4c0c04` | fixture | — |
 | `20260528_pg_cron_setup.sql` | `22569e22cd61cef171ad3be914a02d3e7d013a787304ce6904f09a24218d0967` | fixture | cron, HTTP |
 | `20260529_comment_replies.sql` | `b7ca35d9faf4fd8de49462114a9408e1e638de0c875d41dc409e83af224b8e3d` | hold | cron, HTTP |
 | `20260530_news_items_dedup.sql` | `03bf61045429c669d65ce71224d683b0092fdae634ac01a1396102cc7976f4d0` | hold | delete/drop |
@@ -47,13 +60,13 @@ DML/DDL, or secret/role text; absence of a flag is no safety guarantee.
 | `20260601_business_metrics.sql` | `db527f4a5e1749ff2b5db63a8514c2a44eb201c31badb7cd1ec0360511f8a035` | hold | — |
 | `20260601_insights_cron.sql` | `5f955734a29463131853e00b4546eb3df9146259bb5c658d992619f7458f2c9b` | hold | cron |
 | `20260601_media_insights.sql` | `b3cad2590764175d104db1f6f62a48b2b63915e95fc3f0ee4020233e2ee941dd` | fixture | — |
-| `20260602_atlas_growth_account_snapshots.sql` | `f035e5ff0e1b03d85a61463da8f1f0398445545544abf748d07beeee55617bb9` | hold | — |
+| `20260602_atlas_growth_account_snapshots.sql` | `f035e5ff0e1b03d85a61463da8f1f0398445545544abf748d07beeee55617bb9` | fixture | — |
 | `20260602_atlas_growth_opportunities.sql` | `a1f5c3d0b2246606f40dba90a43c20dd19e43ecd87aa2bcb40e20d1e1c3f40a8` | hold | — |
 | `20260602_atlas_growth_script_topic_format.sql` | `0eb5d380aba51e0ecabbe9fa8e2c846c5fd4d553fa634cd973e077bc69504e51` | hold | — |
-| `20260602_g1_multitenant_platform_tokens.sql` | `88a3f8e1f95cf3334dbedc11edb924a316d630ea52f7d47458665766db712d98` | hold | — |
-| `20260602_stripe_intelligence_revenue_snapshots.sql` | `941d578548f895e5087c201502bcc34c8cf9e8b90f422d7b35dbcffc764e833e` | hold | — |
-| `20260603_cron_heartbeat.sql` | `f3c28dcd9bd031098bed10f86817f7e4bb55d5b03193199e102ffeae9bcbd831` | candidate | cron, secret/role |
-| `20260603_durable_runs.sql` | `a189659945447189022e96bb8a26a5cb4e0e26fb321c9f56a02d0b6e44da7ee4` | hold | cron, secret/role |
+| `20260602_g1_multitenant_platform_tokens.sql` | `88a3f8e1f95cf3334dbedc11edb924a316d630ea52f7d47458665766db712d98` | fixture | — |
+| `20260602_stripe_intelligence_revenue_snapshots.sql` | `941d578548f895e5087c201502bcc34c8cf9e8b90f422d7b35dbcffc764e833e` | fixture | — |
+| `20260603_cron_heartbeat.sql` | `f3c28dcd9bd031098bed10f86817f7e4bb55d5b03193199e102ffeae9bcbd831` | fixture | cron, secret/role |
+| `20260603_durable_runs.sql` | `a189659945447189022e96bb8a26a5cb4e0e26fb321c9f56a02d0b6e44da7ee4` | fixture | cron, secret/role |
 | `20260603_marketing_engine_foundation.sql` | `90ab8c043371e706db0c304dcee1085f184d3779572dc5b94518b2bb16371b60` | hold | — |
 | `20260603_pipeline_retry.sql` | `ac9a45ed5fd058d16d9b501822bd4d7b95125dfdcd810bb1db3120f9f6008283` | hold | cron |
 | `20260603_token_health.sql` | `df760a6c0675c6294e3762ca68bca31cb4e429992934bfca76e81644d51dd625` | hold | cron, secret/role |
@@ -62,7 +75,7 @@ DML/DDL, or secret/role text; absence of a flag is no safety guarantee.
 | `20260606_pr2_route_webhook_isolation.sql` | `5b6368cb8545e089094540e2d3809de495f54daccb4ff2820a2ef289679cff70` | hold | — |
 | `20260608_project_media_settings.sql` | `32f6ed9d38aa58f7768d37d42b15ebfcfaea57ee7f82c3f166ade34467452bb5` | hold | — |
 | `20260609_dream_issues_ledger.sql` | `efc2b09e75c60fb8d14bcafdf4bcf2712e7d28e2107336634487d18fb9510089` | fixture | — |
-| `20260609_manager_task_dream_link.sql` | `c1fb7723f386343e61f9f81297f6e0eb2622dde1d703d348298e7c57b22a767a` | hold | — |
+| `20260609_manager_task_dream_link.sql` | `c1fb7723f386343e61f9f81297f6e0eb2622dde1d703d348298e7c57b22a767a` | fixture | — |
 | `20260611_atlas_actions.sql` | `c2ef6b952f5b84f169fa5ce8836e1ce7382f85553758daaf6fc84758ae7fb7f5` | hold | — |
 | `20260614_cron_guardian.sql` | `7e0d85d872c0ac4c94f8c0e88577adf92d54c49d9141bf17c6c4e2f518e4161f` | hold | cron |
 | `20260629_120000_atlas_intelligence.sql` | `6c8fc2c33f26a812685e9f401c88c19dfa290b4de28dc550ac826b524750299f` | hold | — |
@@ -74,24 +87,21 @@ DML/DDL, or secret/role text; absence of a flag is no safety guarantee.
 
 ## Review boundaries and next gate
 
-Several held root files create tables mentioned by later web SQL (for example
-`atlas_actions`, `cron_heartbeat` and `token_health`). Others schedule live jobs,
+Several held root files create tables mentioned in later web SQL (for example
+`atlas_actions` and `token_health`), but those mentions did not block this
+empty-data replay. Others schedule live jobs,
 change permissions, or overlap later canonical migrations (`atlas_entities`,
 `atlas_intelligence`, memory foundation). Text references do not prove an
 execution dependency: conditional SQL and schema-qualified names require a
 PostgreSQL result and object-by-object review. Do not merge all 38 histories
 by filename or infer production completeness from this inventory.
 
-The `--mode=legacy-dream-replay` run on Hultgren passed 10/10 ordering tests,
-applied the pinned Dream ledger and all canonical SQL through the June 17
-backfill, then stopped in `20260623_150300_atlas_collector_cron.sql` at the
-missing `public.cron_heartbeat` table. The runner removed its owned container.
-This is a real PostgreSQL result, **not a full replay pass**. The next fixture
-change needs a review of the heartbeat root's scheduled job and the later
-root objects referenced by web migrations before another offline run.
-
-A full replay claim requires the remaining ordering and overlap decisions,
-all canonical SQL applied exactly once, and a passing result. Separately,
+The local replay now passes 13/13 ordering tests and the whole selected SQL
+sequence. It does **not** replay the other 28 root files, test existing
+production rows, verify authentic Supabase migration ledger entries, or prove
+calendar writer grants and role parity. The next gate is the isolated calendar
+writer permission test against this schema, followed by read-only comparison
+with the installed target and review of any differences. Separately,
 production's missing May baseline still prevents a fresh Supabase branch from
 reconstructing the installed schema. None of these local experiments alters
 production, the production migration ledger, or its guard.

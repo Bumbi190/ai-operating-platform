@@ -125,7 +125,9 @@ namespace Omnira.Creative.Synthetic {
 #if TEST
       CleanupTestHooks.At("process");
 #endif
+#if TEST
       Console.WriteLine("CREATE pid="+p.Pid+" suspended=true combinedAttributes=3 inheritHandles=true exactJobAtReturn=true");
+#endif
      }finally{if(initialized)NativeMethods.DeleteProcThreadAttributeList(list.Value);if(env!=IntPtr.Zero)Marshal.FreeHGlobal(env);}
     }
    }finally{Close(ref childIn);Close(ref childOut);Close(ref childErr);}
@@ -306,7 +308,9 @@ namespace Omnira.Creative.Synthetic {
       else nodeMembers++;
       VerifyToken(held.Value,fixture.ProfileSid);
       known.Verified=true;
+#if TEST
       Console.WriteLine("MEMBER pid="+pid+" role="+(console?"system-console":"pinned-node")+" exactJob=true imageVerified=true tokenVerified=true held=true");
+#endif
      }
      NativeMethods.Require(known.Verified,"unknown-job-member");
     }

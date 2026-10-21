@@ -61,7 +61,9 @@ namespace Omnira.Creative.Synthetic {
     CleanupTestHooks.At("runtime");
     if(BoundaryTestHooks.SetupFailure=="after-runtime")throw new SyntheticRefusal("test-setup-after-runtime");
 #endif
+#if TEST
     Console.WriteLine("FIXTURE profile="+f.ProfileName+" sid="+f.ProfileSid+" runtimeHash="+f.RuntimeHash+" inheritedRX=true");
+#endif
     CreateInput(f);
     return f;
    }catch{f.Dispose();throw;}

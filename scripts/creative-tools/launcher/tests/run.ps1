@@ -2,7 +2,14 @@ param([string]$Suite='Boundary')
 $ErrorActionPreference='Stop'
 $PSModuleAutoLoadingPreference='None'
 Microsoft.PowerShell.Core\Import-Module 'C:\Windows\System32\WindowsPowerShell\v1.0\Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1'
-if($Suite -notin @('Boundary','Input','Protocol','Lifecycle','LifecycleDeadline','Cleanup','Crash')){throw 'unsupported suite'}
+if($Suite -notin @('All','Cli','Boundary','Input','Protocol','Lifecycle','LifecycleDeadline','Cleanup','Crash')){throw 'unsupported suite'}
+if($Suite -eq 'All'){
+ foreach($childSuite in @('Cli','Boundary','Input','Protocol','Lifecycle','LifecycleDeadline','Cleanup','Crash')){
+  & 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe' -NoProfile -NonInteractive -File $PSCommandPath -Suite $childSuite
+  if($LASTEXITCODE -ne 0){exit $LASTEXITCODE}
+ }
+ [Console]::WriteLine('Suite=All, Passed=true, Skipped=0');exit 0
+}
 $build=& ([IO.Path]::Combine($PSScriptRoot,'..\build.ps1'))
 $info=$build | Microsoft.PowerShell.Utility\ConvertFrom-Json
 [Console]::WriteLine($build)

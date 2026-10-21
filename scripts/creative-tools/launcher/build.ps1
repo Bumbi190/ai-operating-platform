@@ -4,7 +4,7 @@ Microsoft.PowerShell.Core\Import-Module 'C:\Windows\System32\WindowsPowerShell\v
 $framework='C:\Windows\Microsoft.NET\Framework64\v4.0.30319'
 $root=[IO.Path]::Combine([IO.Path]::GetTempPath(),'omnira-launcher-build-'+[Guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($root)
-$shared=@('Contracts.cs','NativeMethods.cs','NativeResources.cs','WindowsProcessBoundary.cs','FixtureInput.cs','SyntheticProtocol.cs','PipeSession.cs','SyntheticRunner.cs')
+$shared=@('Contracts.cs','NativeMethods.cs','NativeResources.cs','WindowsProcessBoundary.cs','FixtureInput.cs','SyntheticProtocol.cs','PipeSession.cs','SyntheticRunner.cs','ObservationWriter.cs')
 $test=@('tests\TestProgram.cs','tests\BoundaryTests.cs','tests\InputTests.cs','tests\ProtocolTests.cs','tests\LifecycleTests.cs','tests\CleanupTests.cs','tests\CrashHarness.cs')
 $refs=@('mscorlib.dll','System.dll','System.Core.dll','System.Runtime.Serialization.dll')
 $common=@('/nologo','/noconfig','/nostdlib+','/platform:x64','/target:exe','/optimize+')
@@ -13,6 +13,10 @@ $hostExe=[IO.Path]::Combine($root,'SyntheticLauncher.exe')
 $testExe=[IO.Path]::Combine($root,'SyntheticLauncher.Tests.exe')
 $hostSources=@();foreach($s in ($shared+@('Program.cs'))){$hostSources+=[IO.Path]::Combine($PSScriptRoot,$s)}
 $testSources=@();foreach($s in ($shared+$test)){$testSources+=[IO.Path]::Combine($PSScriptRoot,$s)}
+$context=[IO.Path]::Combine($root,'BuildContext.cs')
+$repo=[IO.Path]::GetFullPath([IO.Path]::Combine($PSScriptRoot,'..\..\..'))
+[IO.File]::WriteAllText($context,('namespace Omnira.Creative.Synthetic { internal static class BuildContext { internal const string RepositoryRoot=@"'+$repo.Replace('"','""')+'"; } }'))
+$testSources+=$context
 $compileLog=[IO.Path]::Combine($root,'compile.log')
 & "$framework\csc.exe" @common '/main:Omnira.Creative.Synthetic.Program' "/out:$hostExe" @hostSources *> $compileLog
 if($LASTEXITCODE -ne 0){throw [IO.File]::ReadAllText($compileLog)}

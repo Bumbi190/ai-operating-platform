@@ -56,9 +56,11 @@ namespace Omnira.Creative.Synthetic {
     if(RuntimePin!=null){try{RuntimePin.Dispose();}catch{Cleanup.CleanupFailed=true;}RuntimePin=null;}
     if(Sid!=IntPtr.Zero){NativeMethods.FreeSid(Sid);Sid=IntPtr.Zero;}
     WindowsProcessBoundary.LastCleanup=Cleanup;
+#if TEST
     // Diagnostics must never replace a setup refusal or escape runner finalization.
     try{Console.WriteLine("CLEANUP profile="+ProfileName+" api="+Cleanup.ProfileDeleteApiSucceeded+" storageAbsent="+Cleanup.ProfileStorageAbsent+" mappingAbsent="+Cleanup.ProfileMappingAbsent+" stopped="+Cleanup.ProcessesStopped+" cleanupFailed="+Cleanup.CleanupFailed+" inputAbsent="+Cleanup.InputFixtureAbsent);}
     catch{Cleanup.CleanupFailed=true;}
+#endif
    }
   }
  }
@@ -87,6 +89,9 @@ namespace Omnira.Creative.Synthetic {
   }
  }
  internal sealed class RunObservation {
+  internal int? NativeError;
+  internal bool HostIdentityVerified,ResourcesCreated,ExactJobAtReturn,SyntheticTokenAndImageVerified;
+  internal string FixtureNonce,InputSha256,HostSha256,ClrSha256,RuntimeSha256,ClrVersion,OsVersion;
   internal bool Passed,Resumed,RootExitedBeforeStop,WriterCompleted,StreamsCompleted;
   internal int InputBytes,RequestBytes,CancelAttempts,CancelAccepted,CancelNotFound,AbortedIo;
   internal uint ChildExitCode;internal bool ChildExitObserved;

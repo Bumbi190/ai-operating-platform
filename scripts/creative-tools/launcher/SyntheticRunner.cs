@@ -3,17 +3,22 @@ using System.Threading;
 namespace Omnira.Creative.Synthetic {
  internal static class SyntheticRunner {
   static int active;
-  internal static RunObservation RunSynthetic(){
+  internal static RunObservation RunSynthetic(){return RunSynthetic(new OperationBudget());}
+  internal static RunObservation RunSynthetic(OperationBudget budget){
    // Starts before any host verification or fixture setup, not at process launch.
-   OperationBudget budget=new OperationBudget();
+   if(budget==null)throw new ArgumentNullException("budget");
    RunObservation result=new RunObservation();result.RunLimitMs=budget.RunLimitMs;result.TotalLimitMs=budget.TotalLimitMs;
    if(Interlocked.CompareExchange(ref active,1,0)!=0){
     result.State="Refused";result.FailedStage="Prepared";result.RefusalCode="operation-busy";result.Cleanup.CleanupFailed=true;return result;
    }
    OwnedFixture fixture=null;BoundarySession boundary=null;PipeSession pipes=null;
    try{
-    BoundarySession.VerifyHost();
-    FixtureInput.CreateOwned(budget,out fixture);result.Cleanup=fixture.Cleanup;
+    BoundarySession.VerifyHost();result.HostIdentityVerified=true;
+    result.HostSha256=WindowsProcessBoundary.Hash(typeof(SyntheticRunner).Assembly.Location);
+    result.ClrSha256=WindowsProcessBoundary.Hash(System.IO.Path.Combine(System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory(),"clr.dll"));
+    result.ClrVersion=Environment.Version.ToString();result.OsVersion=Environment.OSVersion.Version.ToString();
+    NativeMethods.Require(budget.RunRemainingMs>0,"setup-budget");
+    FixtureInput.CreateOwned(budget,out fixture);result.Cleanup=fixture.Cleanup;result.RuntimeSha256=fixture.RuntimeHash;
     NativeMethods.Require(budget.RunRemainingMs>0,"setup-budget");
     CanaryInput input=FixtureInput.ReadCanary(fixture);result.State="InputPinned";
 #if TEST
@@ -23,12 +28,12 @@ namespace Omnira.Creative.Synthetic {
       input=new CanaryInput(bytes,BitConverter.ToString(hash.ComputeHash(bytes)).Replace("-","").ToLowerInvariant());
     }
 #endif
-    byte[] request=SyntheticProtocol.EncodeRequest(input,fixture.Nonce);result.InputBytes=input.Bytes.Length;result.RequestBytes=request.Length;
+    byte[] request=SyntheticProtocol.EncodeRequest(input,fixture.Nonce);result.InputSha256=input.Sha256;result.InputBytes=input.Bytes.Length;result.RequestBytes=request.Length;
 #if TEST
     LifecycleTestHooks.Expected=new RequestExpectation(fixture.Nonce,input.Bytes.Length,input.Sha256);
 #endif
     boundary=WindowsProcessBoundary.CreateSuspended(fixture,budget);result.State="ProcessSuspended";
-    boundary.VerifyBeforeResume();result.State="TokenAndJobVerified";
+    result.ExactJobAtReturn=boundary.ExactJobAtReturn;boundary.VerifyBeforeResume();result.SyntheticTokenAndImageVerified=boundary.TokenVerified;result.State="TokenAndJobVerified";
     boundary.ObserveMembers();
     pipes=PipeSession.Start(boundary,request,budget);
     boundary.Resume();result.Resumed=true;result.State="Running";
@@ -51,7 +56,7 @@ namespace Omnira.Creative.Synthetic {
     NativeMethods.Require(capture.Complete&&!capture.Overflow&&!capture.PumpFailed,"capture-incomplete");
     SyntheticProtocol.VerifyResult(capture.Stdout,new RequestExpectation(fixture.Nonce,input.Bytes.Length,input.Sha256));
     result.State="ResultVerified";
-   }catch(SyntheticRefusal e){Refuse(result,e.Code);}
+   }catch(SyntheticRefusal e){result.NativeError=e.NativeError;Refuse(result,e.Code);}
    catch(Exception){Refuse(result,"internal-failure");}
    finally{
     if(pipes!=null){
@@ -77,7 +82,7 @@ namespace Omnira.Creative.Synthetic {
      catch{result.Cleanup.ProcessesStopped=false;result.Cleanup.CleanupFailed=true;}
      boundary.Dispose();
     }
-    if(fixture!=null){result.Cleanup=fixture.Cleanup;fixture.Dispose();}
+    if(fixture!=null){result.ResourcesCreated=true;result.FixtureNonce=fixture.Nonce;result.RuntimeSha256=fixture.RuntimeHash;result.Cleanup=fixture.Cleanup;fixture.Dispose();}
     else result.Cleanup.CleanupFailed=true;
     result.ElapsedMs=budget.ElapsedMs;
     if(budget.CleanupRemainingMs==0){

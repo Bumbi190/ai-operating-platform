@@ -101,6 +101,13 @@ namespace Omnira.Creative.Synthetic {
    Assert.Refuses("protocol-bound",()=>SyntheticProtocol.VerifyResult(new byte[4097],Expected(new byte[0])));
    RejectRequest(Utf8.GetBytes(Request("65536",new string('A',87384))));
    RejectRequest(new byte[98304]);
+   string valid=Request("0","");
+   byte[] padded=Utf8.GetBytes(new string(' ',98304-Utf8.GetByteCount(valid))+valid);
+   Assert.Equal(98304,padded.Length);
+   ProtocolCapture accepted=Native(padded,null);Assert.Equal<uint>(0,accepted.ExitCode);Assert.Equal(0,accepted.Stderr.Length);
+   SyntheticProtocol.VerifyResult(accepted.Stdout,Expected(new byte[0]));
+   byte[] over=Utf8.GetBytes(" "+Utf8.GetString(padded));Assert.Equal(98305,over.Length);RejectRequest(over);
+   Console.WriteLine("PASS RawIngressBoundary otherwiseValid=true bytes98304=accepted bytes98305=rejected leadingPadding=true");
    // 98305 requires a test-only ingress allowance so the fixed Node reader itself proves its cap.
    ProtocolCapture c=Native(new byte[98305],null);Assert.True(c.ExitCode!=0,"encoded request cap");Assert.Equal<int>(0,c.Stdout.Length);
    Console.WriteLine("PASS BoundBeforeAllocation input=65536 request=98304 result=4096");

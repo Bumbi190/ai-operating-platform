@@ -333,6 +333,9 @@ try {
         ${gate}
         ${lockedClaim}
         ${roleCandidate.toString('utf8')}
+        ${reviewedBytes(resolve(web, 'lib/calendar/direct-write-gate-proof-trigger-probe.sql')).toString('utf8')}
+        ${reviewedBytes(resolve(web, 'lib/calendar/direct-write-gate-proof-inspect-hardened-candidate.sql')).toString('utf8')}
+        ${reviewedBytes(resolve(web, 'lib/calendar/direct-write-gate-proof-permission-candidate.sql')).toString('utf8')}
         GRANT EXECUTE ON FUNCTION public.calendar_source_gate_begin_probe(uuid)
           TO social_schedule_full_publisher_fixture;
         SET LOCAL ROLE service_role;
@@ -400,6 +403,49 @@ try {
           ) THEN RAISE EXCEPTION 'SYNTHETIC_RECEIPT_NOT_RECORDED'; END IF;
         END $receipt$;
         ROLLBACK TO SAVEPOINT synthetic_receipt_probe;
+        SAVEPOINT synthetic_reconciliation_probe;
+        DO $uncertain$ BEGIN
+          PERFORM public.social_schedule_step(
+            jsonb_build_object('jobId',${quote(id.job)},'claimId',${quote(id.claim)},'version',2),
+            jsonb_build_object('action','claim_create','expectedVersion',1,'capabilityHash',${quote('e'.repeat(64))})
+          );
+          PERFORM public.social_schedule_step(
+            jsonb_build_object('jobId',${quote(id.job)},'claimId',${quote(id.claim)},'version',3),
+            '{"action":"uncertain","expectedVersion":2,"failureCode":"receipt_unavailable"}'::jsonb
+          );
+        END $uncertain$;
+        RESET ROLE;
+        SET LOCAL ROLE service_role;
+        DO $deny_proof$ BEGIN
+          INSERT INTO public.social_publication_reconciliation_proofs(
+            publication_id,project_id,revision_id,revision_sha256,reviewed_asset_sha256,candidate,candidate_hash,version
+          ) VALUES ((SELECT publication_id FROM public.social_schedule_jobs WHERE id=${quote(id.job)}::uuid),
+            ${quote(project)},${quote(id.revision)},${quote('b'.repeat(64))},${quote('d'.repeat(64))},'{}',${quote('f'.repeat(64))},3);
+          RAISE EXCEPTION 'DIRECT_PROOF_WRITE_ACCEPTED';
+        EXCEPTION WHEN insufficient_privilege THEN
+          IF SQLERRM NOT LIKE '%permission denied%' THEN RAISE; END IF;
+        END $deny_proof$;
+        DO $inspect$ DECLARE result jsonb; BEGIN
+          result=public.social_publication_reconciliation_inspect(
+            jsonb_build_object('userId',${quote(actor)},'allowedProjectIds',jsonb_build_array(${quote(project)})),
+            jsonb_build_object('projectId',${quote(project)},'postId',${quote(id.post)},
+              'publicationId',(SELECT publication_id FROM public.social_schedule_jobs WHERE id=${quote(id.job)}::uuid),
+              'candidates',jsonb_build_array(jsonb_build_object(
+                'id','12345_99999','providerId','12345_99999','accountId','12345',
+                'createdAt',to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+                'text','Synthetic caption','permalink','https://www.facebook.com/12345/posts/99999',
+                'photoId','888','imageUrl','https://scontent.fna.fbcdn.net/fixture.jpg',
+                'candidateHash',${quote('f'.repeat(64))})))
+          );
+          IF jsonb_array_length(result->'proofs')<>1 THEN RAISE EXCEPTION 'SYNTHETIC_PROOF_MISSING'; END IF;
+        END $inspect$;
+        RESET ROLE;
+        DO $proof_revision$ BEGIN
+          IF (SELECT revision FROM public.calendar_source_revision_probe WHERE project_id=${quote(project)}::uuid)<>8
+            THEN RAISE EXCEPTION 'PROOF_SOURCE_REVISION_NOT_BUMPED'; END IF;
+        END $proof_revision$;
+        ROLLBACK TO SAVEPOINT synthetic_reconciliation_probe;
+        SET LOCAL ROLE social_schedule_full_publisher_fixture;
         DO $checkpoint$ BEGIN
           PERFORM public.social_schedule_step(
             jsonb_build_object('jobId',${quote(id.job)},'claimId',${quote(id.claim)},'version',2),
@@ -419,7 +465,7 @@ try {
       `))
       assert.deepEqual(roleResult, { state:'blocked', version:3, source_revision:4, prepare_events:1, checkpoint_events:1, publications:1 })
       assert.equal(sql("SELECT count(*) FROM public.projects WHERE id=" + quote(project)), '0', 'synthetic project escaped rollback')
-      console.log('CROSS-TREE SCHEDULE GATE ' + JSON.stringify(roleResult) + ' (revocation and synthetic receipt branches rolled back; no provider call)')
+      console.log('CROSS-TREE SCHEDULE GATE ' + JSON.stringify(roleResult) + ' (revocation, synthetic receipt and fabricated reconciliation proof branches rolled back; no provider call)')
     }
     console.log(crossTreeReplay ? 'CROSS-TREE REPLAY PASS' : legacyDreamReplay ? 'LEGACY DREAM REPLAY PASS' : legacyCronReplay ? 'LEGACY CRON REPLAY PASS' : legacyMediaReplay ? 'LEGACY MEDIA REPLAY PASS' : dependencyReplay ? 'DEPENDENCY REPLAY PASS' : 'CANONICAL REPLAY PASS')
     process.exitCode = 0

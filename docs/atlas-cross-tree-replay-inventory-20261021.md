@@ -165,11 +165,25 @@ by filename or infer production completeness from this inventory.
 
 The local replay now passes 13/13 ordering tests and the whole selected SQL
 sequence. The 12-operation calendar ACL baseline matches the read-only
-production catalog snapshot. It does **not** replay the other 28 root files,
-test existing production rows, verify authentic Supabase migration ledger
-entries, or prove the proposed calendar writer's end-to-end operation. The
-next gate is worker identity and credential wiring, authentic provider
-receipt handling, and proof-inspector hardening. Separately,
+production catalog snapshot. The synthetic scheduled path starts with an
+already claimed job; it checks `prepare`, `claim_create`, `complete`, and
+`checkpoint` within transactions that are rolled back. A malformed provider
+ID is rejected, while a caller-supplied, valid-shaped but fabricated ID can
+mark a publication as published. The candidate reconciliation inspector is
+also probed against an uncertain Facebook publication: direct proof INSERT
+by `service_role` is denied; the inspector can create a source-versioned
+proof for a fabricated candidate of the expected shape. These SQL checks
+cannot authenticate a Facebook response. The server worker must establish
+provider origin and keep its writer identity isolated before any cutover.
+
+This replay does **not** cover claim acquisition with the proposed role, the
+other 28 root files, existing production rows, authentic Supabase migration
+ledger entries, or the proposed calendar writer's end-to-end operation. The
+current worker still uses one `service_role` client for claim, guard, step,
+and recovery, whereas the proposed NOLOGIN role is only a transaction-local
+fixture. Applying the candidate revokes on their own would interrupt the
+worker. The next gate is coordinated worker identity and credential wiring,
+authentic provider receipt handling, and an end-to-end claim/recovery replay. Separately,
 production's missing May baseline still prevents a fresh Supabase branch from
 reconstructing the installed schema. None of these local experiments alters
 production, the production migration ledger, or its guard.

@@ -12,6 +12,7 @@ on:
       - 'apps/web/lib/social-launch/publication/provider.ts'
       - 'apps/web/lib/social-launch/publication/provider.test.ts'
       - 'apps/web/lib/calendar/direct-write-gate-scheduled-publisher-role-candidate.sql'
+      - 'apps/web/lib/calendar/direct-write-gate-scheduled-full-role-candidate.sql'
       - 'apps/web/lib/calendar/direct-write-gate-worker-recovery-integration-probe.sql'
       - 'apps/web/lib/calendar/social-*-fixture.sql'
       - 'apps/web/lib/calendar/test-db.ts'
@@ -144,7 +145,7 @@ jobs:
           const passed = assertions.filter(a => a.status === 'passed').length
           const failed = assertions.filter(a => a.status === 'failed').length
           const skipped = assertions.filter(a => ['pending','skipped','todo','disabled'].includes(a.status)).length
-          if (result.status !== 'passed' || passed < 11 || failed || skipped ||
+          if (result.status !== 'passed' || passed < 12 || failed || skipped ||
               report.numFailedTests || report.numPendingTests || report.numTodoTests) {
             throw new Error(`Scheduled worker: status=${result.status} passed=${passed} failed=${failed} skipped=${skipped}`)
           }

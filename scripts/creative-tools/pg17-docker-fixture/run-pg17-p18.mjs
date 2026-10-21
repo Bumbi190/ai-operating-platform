@@ -1,0 +1,433 @@
+/**
+ * Disposable PostgreSQL 17 verification of actual P7 and P10 SQL migrations.
+ * Local Docker only: --network none, no published ports or host mounts.
+ * Never touches Supabase or unrelated Docker containers.
+ */
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {spawnSync,spawn} from 'node:child_process';
+import {setTimeout as sleep} from 'node:timers/promises';
+import {resolve} from 'node:path';
+
+const docker=process.env.DOCKER_BIN ||
+  'C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe';
+const image='postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24';
+const container='omnira-creative-pg17-p18-'+process.pid;
+const migration=readFileSync(resolve(import.meta.dirname,
+  '../../../apps/web/supabase/migrations/20261020230500_atlas_creative_queue_staging_p7.sql'),'utf8');
+const pgArgs=['exec','-i',container,'psql','-X','-A','-t','-v','ON_ERROR_STOP=1',
+  '-U','postgres','-d','postgres'];
+const project='00000000-0000-4000-8000-000000000011';
+const imageId='00000000-0000-4000-8000-000000000021';
+const otherId='00000000-0000-4000-8000-000000000023';
+const worker='HultgrenCreative01';
+const h=c=>c.repeat(64);
+let count=0,created=false;
+function run(args,opts={}) {
+  const r=spawnSync(docker,args,{encoding:'utf8',timeout:30000,
+    maxBuffer:3*1024*1024,...opts});
+  if(r.error) throw r.error;
+  return r;
+}
+const sql=q=>run(pgArgs,{input:q+'\n'});
+function ok(query,label) {
+  const r=sql(query);
+  assert.equal(r.status,0,label+': '+r.stderr);
+  return r.stdout.trim();
+}
+function reject(query,pattern,label) {
+  const r=sql(query);
+  assert.notEqual(r.status,0,label+': unexpectedly succeeded');
+  assert.match(r.stderr,pattern,label);
+}
+function pass(label,fn) { fn(); console.log('PASS '+(++count)+' '+label); }
+const setup=[
+  'create role service_role nologin;',
+  'create role authenticated nologin;',
+  'create role anon nologin;',
+  'create table public.projects(id uuid primary key);',
+  'create table public.assets(id uuid primary key,project_id uuid not null references public.projects(id),',
+  ' checksum_sha256 text not null,status text not null,kind text not null);',
+  "insert into public.projects(id) values('00000000-0000-4000-8000-000000000011'),",
+  " ('00000000-0000-4000-8000-000000000012');",
+  "insert into public.assets(id,project_id,checksum_sha256,status,kind) values",
+  " ('00000000-0000-4000-8000-000000000021','00000000-0000-4000-8000-000000000011',repeat('d',64),'active','image'),",
+  " ('00000000-0000-4000-8000-000000000022','00000000-0000-4000-8000-000000000011',repeat('e',64),'active','video'),",
+  " ('00000000-0000-4000-8000-000000000023','00000000-0000-4000-8000-000000000012',repeat('f',64),'active','image');"
+].join('\n');
+function job(name,opts={}) {
+  const v={sourceId:imageId,sourceSha:h('d'),ticket:h('a'),nonce:h('b'),
+    operation:'photocraft.convert-webp',...opts};
+  return [
+    'insert into public.atlas_creative_queue_staging',
+    '(work_id,project_id,source_asset_id,source_sha256,worker_id,operation_id,',
+    ' binary_sha256,approval_receipt_sha256,signed_ticket_sha256,claim_nonce_sha256,',
+    ' output_max_bytes,ticket_issued_at,ticket_expires_at) values (',
+    "'"+name+"','"+project+"','"+v.sourceId+"','"+v.sourceSha+"','"+worker+"','"+v.operation+"',",
+    "'"+h('9')+"','"+h('c')+"','"+v.ticket+"','"+v.nonce+"',500000,",
+    "clock_timestamp()-interval '30 seconds',clock_timestamp()+interval '2 minutes');"
+  ].join('\n');
+}
+function claim(name,opts={}) {
+  const v={worker,ticket:h('a'),nonce:h('b'),approval:h('c'),...opts};
+  return 'select * from public.atlas_creative_claim_staging_p7('+
+    "'"+name+"','"+v.worker+"','"+v.ticket+"','"+v.nonce+"',"+
+    (v.approval===null?'NULL':"'"+v.approval+"'")+');';
+}
+const asRole=(query,role='service_role',jwtRole=role)=>
+  'set role '+role+";\nselect set_config('request.jwt.claim.role','"+jwtRole+"',false);\n"+query+'\n';
+function asyncSql(input) {
+  return new Promise((finish,rejectErr)=>{
+    const child=spawn(docker,pgArgs,{windowsHide:true,stdio:['pipe','pipe','pipe']});
+    let stdout='',stderr='';
+    child.stdout.on('data',x=>{stdout+=x.toString()});
+    child.stderr.on('data',x=>{stderr+=x.toString()});
+    child.on('error',rejectErr);
+    child.on('close',code=>finish({code,stdout,stderr}));
+    child.stdin.end(input+'\n');
+  });
+}
+try {
+  assert.equal(run(['image','inspect',image,'--format','{{.Id}}']).status,0,
+    'Required image missing. Run docker pull postgres:17-alpine first.');
+  const exists=run(['ps','-a','--filter','name=^/'+container+'$','--format','{{.Names}}']);
+  assert.equal(exists.stdout.trim(),'');
+  const launch=run(['run','-d','--rm','--name',container,'--network','none',
+    '--memory','384m','--tmpfs','/var/lib/postgresql/data:rw,size=256m',
+    '-e','POSTGRES_HOST_AUTH_METHOD=trust',image]);
+  assert.equal(launch.status,0,launch.stderr);
+  created=true;
+  let ready=false;
+  for(let n=0;n<40;n++){
+    if(run(['exec',container,'pg_isready','-U','postgres']).status===0){
+      ready=true;break;
+    }
+    await sleep(250);
+  }
+  assert.ok(ready,'Temporary database not ready');
+  // The first pg_isready may observe the temporary initdb server, which
+  // exits before the main postmaster starts. Require successful SQL twice.
+  let v='';
+  for(let attempt=0;attempt<50;attempt++) {
+    const probe=sql('show server_version;');
+    if(probe.status===0 && /^17\./.test(probe.stdout.trim())) {
+      await sleep(150);
+      const again=sql('show server_version;');
+      if(again.status===0) {v=again.stdout.trim();break;}
+    }
+    await sleep(200);
+  }
+  assert.ok(v,'PostgreSQL 17 primary server did not become ready');
+  assert.match(v,/^17\./);
+  console.log('ENGINE PostgreSQL '+v);
+  pass('isolated container has no Docker network or port mapping',()=>{
+    const state=run(['inspect','--format','{{.HostConfig.NetworkMode}}|{{json .HostConfig.PortBindings}}',container]);
+    assert.equal(state.status,0);
+    assert.match(state.stdout.trim(),/^none\|(null|\{\})$/);
+  });
+  ok(setup,'prepare test-only projects and assets');
+  ok(migration,'execute actual unapplied P7 migration');
+  pass('P7 migration executes in PostgreSQL 17',()=>{
+    assert.equal(ok("select to_regclass('public.atlas_creative_queue_staging');",'table'),
+      'atlas_creative_queue_staging');
+  });
+  pass('browser roles cannot execute SQL claim',()=>{
+    assert.equal(ok("select has_function_privilege('authenticated','public.atlas_creative_claim_staging_p7(text,text,text,text,text)','EXECUTE');",'priv'),'f');
+    assert.equal(ok("select has_table_privilege('anon','public.atlas_creative_queue_staging','SELECT');",'priv'),'f');
+  });
+  ok(job('oneJobP91'),'stage success');
+  pass('valid claim fences once and rejects replay',()=>{
+    assert.match(ok(asRole(claim('oneJobP91')),'claim'),/claimed_preview_only/);
+    reject(asRole(claim('oneJobP91')), /creative job unavailable/,'replay');
+    assert.equal(ok("select claim_fence from public.atlas_creative_queue_staging where work_id='oneJobP91';",'fence'),'1');
+  });
+  ok(job('roleJobP92',{ticket:h('2'),nonce:h('3')}),'stage role');
+  pass('spoofed service-role header cannot bypass browser grants',()=>{
+    reject(asRole(claim('roleJobP92',{ticket:h('2'),nonce:h('3')}),
+      'authenticated','service_role'),/permission denied/,'role');
+  });
+  pass('null approval SHA fails closed',()=>{
+    reject(asRole(claim('roleJobP92',{ticket:h('2'),nonce:h('3'),approval:null})),
+      /creative claim invalid/,'null approval');
+  });
+  ok(job('foreignJobP93',{sourceId:otherId,sourceSha:h('f'),
+    ticket:h('4'),nonce:h('5')}),'stage foreign');
+  pass('cross-project input cannot claim',()=>{
+    reject(asRole(claim('foreignJobP93',{ticket:h('4'),nonce:h('5')})),
+      /creative source invalid/,'foreign');
+  });
+  ok(job('raceJobP94',{ticket:h('6'),nonce:h('7')}),'stage concurrency');
+  const action=claim('raceJobP94',{ticket:h('6'),nonce:h('7')});
+  const first=asyncSql(asRole('begin;\n'+action+"\nselect pg_sleep(2);\ncommit;"));
+  await sleep(400);
+  const second=asyncSql(asRole(action));
+  const results=await Promise.all([first,second]);
+  pass('simultaneous distinct PostgreSQL sessions: one winner, one rejection',()=>{
+    assert.equal(results.filter(r=>r.code===0).length,1,JSON.stringify(results));
+    assert.equal(results.filter(r=>r.code!==0).length,1,JSON.stringify(results));
+    assert.match(results.find(r=>r.code!==0).stderr,/creative job unavailable/);
+    assert.equal(ok("select claim_fence from public.atlas_creative_queue_staging where work_id='raceJobP94';",'fence'),'1');
+  });
+  const proofMigration=readFileSync(resolve(import.meta.dirname,
+    '../../../apps/web/supabase/migrations/20261020235500_atlas_creative_worker_identity_p10.sql'),'utf8');
+  ok(proofMigration,'execute P10 identity migration in PostgreSQL 17');
+  pass('P10 migration creates private, empty identity and nonce tables',()=>{
+    assert.equal(ok("select count(*) from public.atlas_creative_worker_identities;",'worker count'),'0');
+    assert.equal(ok("select has_function_privilege('authenticated','public.atlas_creative_consume_worker_proof_p10(text,text,bigint,text,uuid[])','EXECUTE');",'function grants'),'f');
+    assert.equal(ok("select has_table_privilege('service_role','public.atlas_creative_worker_identities','SELECT');",'read role'),'t');
+    assert.equal(ok("select has_table_privilege('service_role','public.atlas_creative_worker_identities','UPDATE');",'write role'),'f');
+  });
+  ok("insert into public.atlas_creative_worker_identities("+
+      "worker_id,key_id,public_key_spki_pem,state,creative_claim_enabled,project_ids) values("+
+      "'HultgrenCreative01','creativeKey001',repeat('K',120),'active',true,"+
+      "ARRAY['"+project+"']::uuid[]);",'insert disposable identity fixture');
+  const proof=(counter,nonce,opts={})=>{
+    const v={key:'creativeKey001',projects:project,...opts};
+    return "select public.atlas_creative_consume_worker_proof_p10('"+
+      worker+"','"+v.key+"',"+counter+",'"+nonce+"',ARRAY['"+
+      v.projects+"']::uuid[]);";
+  };
+  const proofResult=(sqlStatement,label)=>
+    ok(asRole(sqlStatement),label).split(/\r?\n/).at(-1);
+  pass('P10 grants one valid monotonic counter and nonce',()=>{
+    assert.equal(proofResult(proof(1,h('1')),'proof 1'),'t');
+    assert.equal(ok("select last_counter from public.atlas_creative_worker_identities "+
+      "where worker_id='"+worker+"';",'counter'),'1');
+  });
+  pass('P10 rejects nonce replay and stale counters',()=>{
+    assert.equal(proofResult(proof(2,h('1')),'duplicate nonce'),'f');
+    assert.equal(proofResult(proof(1,h('2')),'stale counter'),'f');
+    assert.equal(proofResult(proof(2,h('3')),'new counter + nonce'),'t');
+    assert.equal(ok("select count(*) from public.atlas_creative_worker_nonces;",'accepted proofs'),'2');
+  });
+  pass('P10 rejects changed key, project and spoofed browser role',()=>{
+    assert.equal(proofResult(proof(3,h('4'),{key:'otherKey002'}),'wrong key'),'f');
+    assert.equal(proofResult(proof(3,h('4'),{
+      projects:'00000000-0000-4000-8000-000000000012'
+    }),'wrong project'),'f');
+    reject(asRole(proof(3,h('4')),'authenticated','service_role'),
+      /permission denied/,'browser role');
+  });
+  const proofAttempt=proof(10,h('5'));
+  const firstProof=asyncSql(asRole(
+    'begin;\n'+proofAttempt+"\nselect pg_sleep(2);\ncommit;"));
+  await sleep(400);
+  const secondProof=asyncSql(asRole(proofAttempt));
+  const competingProofs=await Promise.all([firstProof,secondProof]);
+  pass('two PG17 sessions consuming identical P10 proof: one true and one false',()=>{
+    assert.equal(competingProofs.filter(r=>r.code===0).length,2,
+      JSON.stringify(competingProofs));
+    const results=competingProofs.flatMap(r=>
+      r.stdout.split(/\r?\n/).filter(s=>s==='t'||s==='f'));
+    assert.deepEqual(results.sort(),['f','t'],JSON.stringify(competingProofs));
+    assert.equal(ok("select last_counter from public.atlas_creative_worker_identities "+
+      "where worker_id='"+worker+"';",'counter'),'10');
+    assert.equal(ok("select count(*) from public.atlas_creative_worker_nonces "+
+      "where counter=10;",'uniqueness'),'1');
+  });
+  const sameCounterOne=asyncSql(asRole(
+    'begin;\n'+proof(11,h('6'))+"\nselect pg_sleep(2);\ncommit;"));
+  await sleep(400);
+  const sameCounterTwo=asyncSql(asRole(proof(11,h('7'))));
+  const distinctNonces=await Promise.all([sameCounterOne,sameCounterTwo]);
+  pass('two different P10 nonces with the same counter: exactly one accepted',()=>{
+    assert.equal(distinctNonces.filter(r=>r.code===0).length,2,JSON.stringify(distinctNonces));
+    const outputs=distinctNonces.flatMap(r=>r.stdout.split(/\r?\n/).filter(s=>s==='t'||s==='f'));
+    assert.deepEqual(outputs.sort(),['f','t'],JSON.stringify(distinctNonces));
+    assert.equal(ok("select last_counter from public.atlas_creative_worker_identities "+
+      "where worker_id='"+worker+"';",'counter'),'11');
+    assert.equal(ok("select count(*) from public.atlas_creative_worker_nonces "+
+      "where counter=11;",'counter uniqueness'),'1');
+  });
+  ok("update public.atlas_creative_worker_identities set state='revoked' "+
+    "where worker_id='"+worker+"';",'test-only revocation');
+  pass('revoked P10 identity refuses valid next counter and nonce',()=>{
+    assert.equal(proofResult(proof(12,h('8')),'revocation'),'f');
+  });
+  const p13Migration=readFileSync(resolve(import.meta.dirname,
+    '../../../apps/web/supabase/migrations/20261021080000_atlas_creative_worker_enrollment_staging_p13.sql'),'utf8');
+  ok(p13Migration,'execute exact P13 enrollment migration');
+  pass('P13 empty private registry and service-only functions',()=>{
+    assert.equal(ok("select count(*) from public.atlas_creative_enrollment_staging;",'rows'),'0');
+    assert.equal(ok("select has_function_privilege('authenticated',"+
+      "'public.atlas_creative_enrollment_issue_p13(uuid,text,uuid,uuid[],text,timestamptz)','EXECUTE');",'role'),'f');
+    assert.equal(ok("select has_table_privilege('service_role','public.atlas_creative_enrollment_staging','UPDATE');",'grants'),'f');
+  });
+  const operatorP13='00000000-0000-4000-8000-000000000001';
+  const issueP13=(id,digest)=>"select public.atlas_creative_enrollment_issue_p13('"+
+    id+"'::uuid,'"+worker+"','"+operatorP13+"'::uuid,ARRAY['"+project+
+    "']::uuid[],'"+digest+"',clock_timestamp()+interval '2 minutes');";
+  const stageP13=(id,digest,operator=operatorP13,proofDigest=h('f'))=>{
+    // Read signed expiry as the trusted server would. The isolated fixture
+    // service_role does NOT have Supabase's BYPASSRLS role attribute; a
+    // subquery made AS service_role would see NULL, not the stored expiry.
+    const expires=ok("select expires_at from public.atlas_creative_enrollment_staging where enrollment_id='"+
+      id+"'::uuid;",'trusted stored expiry');
+    return "select public.atlas_creative_enrollment_stage_p13('"+
+      id+"'::uuid,'"+worker+"','"+operator+"'::uuid,ARRAY['"+project+
+      "']::uuid[],'"+digest+"','"+expires+"'::timestamptz,'creativeKeyP13',repeat('P',120),'"+
+      h('e')+"','"+proofDigest+"');";
+  };
+  const firstEnrollment='00000000-0000-4000-8000-000000000090';
+  const secondEnrollment='00000000-0000-4000-8000-000000000091';
+  pass('P13 issued challenge requires service role and persists one row',()=>{
+    assert.equal(proofResult(issueP13(firstEnrollment,h('a')),'issue'),'t');
+    assert.equal(ok("select state from public.atlas_creative_enrollment_staging where enrollment_id='"+
+      firstEnrollment+"';",'state'),'issued');
+    reject(asRole(issueP13(secondEnrollment,h('b')),'authenticated','service_role'),
+      /permission denied/,'browser cannot issue');
+  });
+  pass('P13 checks original operator and challenge before staging',()=>{
+    assert.equal(proofResult(stageP13(firstEnrollment,h('a'),
+      '00000000-0000-4000-8000-000000000002'),'wrong operator'),'f');
+    assert.equal(proofResult(stageP13(firstEnrollment,h('b')),'wrong challenge'),'f');
+    const stageResult=proofResult(stageP13(firstEnrollment,h('a')),'valid proof');
+    if(stageResult!=='t') {
+      console.log('P13 row diagnostic',ok("select worker_id,requested_by,project_ids,challenge_sha256,expires_at,created_at,state from public.atlas_creative_enrollment_staging where enrollment_id='"+firstEnrollment+"';",'diagnostic'));
+      console.log('P13 time diagnostic',ok('select clock_timestamp();','server clock'));
+      console.log('P13 predicate diagnostic',ok("select (worker_id is distinct from '"+worker+"') as worker_bad,(requested_by is distinct from '"+operatorP13+"'::uuid) as operator_bad,(challenge_sha256 is distinct from '"+h('a')+"') as challenge_bad,(expires_at is distinct from (select expires_at from public.atlas_creative_enrollment_staging where enrollment_id='"+firstEnrollment+"'::uuid)) as expiry_bad,(expires_at <= clock_timestamp()) as expired,(created_at > clock_timestamp()) as future,(project_ids is distinct from ARRAY['"+project+"']::uuid[]) as projects_bad from public.atlas_creative_enrollment_staging where enrollment_id='"+firstEnrollment+"'::uuid;",'predicates'));
+      console.log('P13 call diagnostic',stageP13(firstEnrollment,h('a')));
+      console.log('P13 guard diagnostic',proofResult("select (coalesce(current_setting('request.jwt.claim.role',true),'') <> 'service_role') as badrole,('creativeKeyP13' !~ '^[A-Za-z][A-Za-z0-9_-]{2,63}$') as badkey,(length(repeat('P',120)) not between 80 and 3000) as badpem,('"+h('e')+"' !~ '^[a-f0-9]{64}$') as badsha,('"+h('f')+"' !~ '^[a-f0-9]{64}$') as badproof,(cardinality(ARRAY['"+project+"']::uuid[]) not between 1 and 16) as badprojects,(array_position(ARRAY['"+project+"']::uuid[],null) is not null) as badnull;",'guard'));
+      console.log('P13 direct update diagnostic disabled to preserve evidence');
+    }
+    assert.equal(stageResult,'t');
+    assert.equal(proofResult(stageP13(firstEnrollment,h('a')),'replayed proof'),'f');
+    assert.equal(ok("select state from public.atlas_creative_enrollment_staging where enrollment_id='"+
+      firstEnrollment+"';",'state'),'pending_review');
+  });
+  pass('P13 one issued challenge per worker is preserved',()=>{
+    assert.equal(proofResult(issueP13(secondEnrollment,h('b')),'second issue'),'t');
+    const third='00000000-0000-4000-8000-000000000092';
+    assert.equal(proofResult(issueP13(third,h('c')),'duplicate issued'),'f');
+  });
+  // Each distinct enrollment uses a unique canonical proof fingerprint.
+  const concurrent=stageP13(secondEnrollment,h('b'),operatorP13,h('0'));
+  const firstStage=asyncSql(asRole('begin;\n'+concurrent+
+    "\nselect pg_sleep(2);\ncommit;"));
+  await sleep(400);
+  const secondStage=asyncSql(asRole(concurrent));
+  const stageRaces=await Promise.all([firstStage,secondStage]);
+  pass('two simultaneous P13 staging calls admit exactly one pending review',()=>{
+    assert.equal(stageRaces.filter(r=>r.code===0).length,2,JSON.stringify(stageRaces));
+    const values=stageRaces.flatMap(r=>
+      r.stdout.split(/\r?\n/).filter(s=>s==='t'||s==='f'));
+    assert.deepEqual(values.sort(),['f','t'],JSON.stringify(stageRaces));
+    assert.equal(ok("select count(*) from public.atlas_creative_enrollment_staging where "+
+      "enrollment_id='"+secondEnrollment+"' and state='pending_review';",'staged'),'1');
+    assert.equal(ok("select count(*) from public.atlas_creative_enrollment_staging where "+
+      "state='pending_review';",'pending jobs'),'2');
+  });
+  const reviewMigration=readFileSync(resolve(import.meta.dirname,
+    '../../../apps/web/supabase/migrations/20261021100000_atlas_creative_enrollment_review_p15.sql'),'utf8');
+  ok(reviewMigration,'execute exact unapplied P15 review migration');
+  pass('P15 review ledger private, empty, append-only via privileged function',()=>{
+    assert.equal(ok("select count(*) from public.atlas_creative_enrollment_review_decisions;",'empty ledger'),'0');
+    assert.equal(ok("select has_function_privilege('authenticated',"+
+      "'public.atlas_creative_enrollment_record_review_p15(uuid,uuid,text,text,text,uuid[],text,text)','EXECUTE');",'user role'),'f');
+    assert.equal(ok("select has_table_privilege('service_role',"+
+      "'public.atlas_creative_enrollment_review_decisions','UPDATE');",'no direct update'),'f');
+  });
+  const review=(id,decision,proofHash,nonceHash,reviewer=operatorP13)=>{
+    return "select public.atlas_creative_enrollment_record_review_p15('"+
+      id+"'::uuid,'"+reviewer+"'::uuid,'"+decision+"','"+h('e')+"','"+
+      proofHash+"',ARRAY['"+project+"']::uuid[],'"+nonceHash+
+      "','operator_verified_test');";
+  };
+  pass('P15 wrong proof is refused; signed evidence can be recorded once',()=>{
+    assert.equal(proofResult(review(firstEnrollment,'approve_registration_only',h('0'),h('1')),'wrong proof'),'f');
+    assert.equal(proofResult(review(firstEnrollment,'approve_registration_only',h('f'),h('1')),'verified review'),'t');
+    assert.equal(ok("select reviewer_user_id from public.atlas_creative_enrollment_review_decisions where enrollment_id='"+firstEnrollment+"'::uuid;",'recorded reviewer'),operatorP13);
+  });
+  // The DB function binds the evidence and reviewer ID, but (by design)
+  // only a trusted authenticated HTTP operator can authorize this reviewer.
+  // Use the second pending enrollment for the actual conflicting race test.
+  const approveReview=review(secondEnrollment,'approve_registration_only',h('0'),h('2'));
+  const rejectReview=review(secondEnrollment,'reject_registration',h('0'),h('3'));
+  const firstReview=asyncSql(asRole('begin;\n'+approveReview+
+    "\nselect pg_sleep(2);\ncommit;"));
+  await sleep(400);
+  const secondReview=asyncSql(asRole(rejectReview));
+  const resultReview=await Promise.all([firstReview,secondReview]);
+  pass('P15 conflicting concurrent approve/reject decisions: immutable single winner',()=>{
+    assert.equal(resultReview.filter(r=>r.code===0).length,2,JSON.stringify(resultReview));
+    const values=resultReview.flatMap(r=>r.stdout.split(/\r?\n/).filter(s=>s==='t'||s==='f'));
+    assert.deepEqual(values.sort(),['f','t'],JSON.stringify(resultReview));
+    assert.equal(ok("select count(*) from public.atlas_creative_enrollment_review_decisions where enrollment_id='"+
+      secondEnrollment+"'::uuid;",'ledger count'),'1');
+    assert.equal(ok("select decision from public.atlas_creative_enrollment_review_decisions where enrollment_id='"+
+      secondEnrollment+"'::uuid;",'first decision'),'approve_registration_only');
+  });
+  pass('P15 recorded decision cannot be replayed or reversed',()=>{
+    assert.equal(proofResult(rejectReview,'conflicting second decision'),'f');
+    assert.equal(proofResult(approveReview,'duplicated first decision'),'f');
+    assert.equal(ok("select count(*) from public.atlas_creative_worker_identities "+
+      "where state='active' and key_id='creativeKeyP13';",'active workers'),'0');
+  });
+  const ownerGuardSql=readFileSync(resolve(import.meta.dirname,
+    '../../../apps/web/supabase/migrations/20261021120000_atlas_creative_review_owner_guard_p18.sql'),'utf8');
+  ok("alter table public.projects add column owner_id uuid;",'P18 owner fixture column');
+  ok("update public.projects set owner_id='"+operatorP13+"'::uuid;",'test owner baseline');
+  ok(ownerGuardSql,'execute exact P18 owner-guard migration on PG17');
+  pass('P18 revokes direct P15 review function grants and blocks browser roles',()=>{
+    assert.equal(ok("select has_function_privilege('service_role',"+
+      "'public.atlas_creative_enrollment_record_review_p15(uuid,uuid,text,text,text,uuid[],text,text)','EXECUTE');",'old grant'),'f');
+    assert.equal(ok("select has_function_privilege('service_role',"+
+      "'public.atlas_creative_enrollment_record_review_p18(uuid,uuid,text,text,text,uuid[],text,text)','EXECUTE');",'new grant'),'t');
+    assert.equal(ok("select has_function_privilege('authenticated',"+
+      "'public.atlas_creative_enrollment_record_review_p18(uuid,uuid,text,text,text,uuid[],text,text)','EXECUTE');",'browser grant'),'f');
+  });
+  const reviewInput=(id,action,proofDigest,reviewNonce)=>{
+    return "select public.atlas_creative_enrollment_record_review_p18('"+
+      id+"'::uuid,'"+operatorP13+"'::uuid,'"+action+"','"+h('e')+"','"+
+      proofDigest+"',ARRAY['"+project+"']::uuid[],'"+reviewNonce+
+      "','operator_verified_test');";
+  };
+  const p18EnrollmentA='00000000-0000-4000-8000-000000000093';
+  const p18EnrollmentB='00000000-0000-4000-8000-000000000094';
+  function stageForOwnerReview(id,challengeDigest,proofDigest) {
+    ok("insert into public.atlas_creative_enrollment_staging("+
+      "enrollment_id,worker_id,requested_by,project_ids,challenge_sha256,"+
+      "expires_at,state,key_id,public_key_spki_pem,public_key_sha256,"+
+      "canonical_proof_sha256,proof_verified_at) values("+
+      "'"+id+"'::uuid,'"+worker+"','"+operatorP13+"'::uuid,ARRAY['"+project+
+      "']::uuid[],'"+challengeDigest+"',clock_timestamp()+interval '2 minutes',"+
+      "'pending_review','creativeKeyP18',repeat('P',120),'"+h('e')+"','"+
+      proofDigest+"',clock_timestamp());",'P18 pending review fixture');
+  }
+  stageForOwnerReview(p18EnrollmentA,h('3'),h('7'));
+  stageForOwnerReview(p18EnrollmentB,h('4'),h('8'));
+  pass('P18 refuses a legitimate actor after project ownership has changed',()=>{
+    ok("update public.projects set owner_id='00000000-0000-4000-8000-000000000002'::uuid where id='"+
+      project+"'::uuid;",'change owner');
+    assert.equal(proofResult(reviewInput(p18EnrollmentA,
+      'approve_registration_only',h('7'),h('a')),'foreign owner'),'f');
+    ok("update public.projects set owner_id='"+operatorP13+"'::uuid where id='"+
+      project+"'::uuid;",'restore owner');
+    assert.equal(proofResult(reviewInput(p18EnrollmentA,
+      'approve_registration_only',h('7'),h('a')),'legitimate owner'),'t');
+  });
+  const approvalP18=reviewInput(p18EnrollmentB,
+    'approve_registration_only',h('8'),h('b'));
+  const rejectionP18=reviewInput(p18EnrollmentB,
+    'reject_registration',h('8'),h('c'));
+  const contenderOne=asyncSql(asRole('begin;\n'+approvalP18+
+    "\nselect pg_sleep(2);\ncommit;"));
+  await sleep(400);
+  const contenderTwo=asyncSql(asRole(rejectionP18));
+  const concurrentReviews=await Promise.all([contenderOne,contenderTwo]);
+  pass('P18 concurrent conflicting decisions enforce ownership and one immutable winner',()=>{
+    assert.equal(concurrentReviews.filter(x=>x.code===0).length,2,JSON.stringify(concurrentReviews));
+    const vals=concurrentReviews.flatMap(x=>x.stdout.split(/\r?\n/).filter(t=>t==='t'||t==='f'));
+    assert.deepEqual(vals.sort(),['f','t'],JSON.stringify(concurrentReviews));
+    assert.equal(ok("select count(*) from public.atlas_creative_enrollment_review_decisions where enrollment_id='"+
+      p18EnrollmentB+"'::uuid;",'review count'),'1');
+    assert.equal(ok("select decision from public.atlas_creative_enrollment_review_decisions where enrollment_id='"+
+      p18EnrollmentB+"'::uuid;",'winner'),'approve_registration_only');
+  });
+  console.log('SUMMARY '+count+' PostgreSQL 17 integration checks passed.');
+} finally {
+  if(created) {
+    const cleanup=run(['rm','-f',container],{timeout:15000});
+    console.log('CLEANUP isolated container removed='+String(cleanup.status===0));
+  }
+}

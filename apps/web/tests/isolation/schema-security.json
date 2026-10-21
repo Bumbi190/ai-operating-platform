@@ -39,6 +39,8 @@
       "tables": [
         "agent_decisions",
         "ai_cost_snapshots",
+        "family_month_source_candidates",
+        "family_month_source_decisions",
         "memory_refs"
       ],
       "meaning": "Created by a migration but absent from the production catalog at capture time — never applied there, or dropped out-of-band. They are NOT a fresh-deploy hazard: each declares RLS in its own migration, so a rebuild creates them protected. Listed so their absence from the table map is a recorded fact rather than a silent gap, and so the fail-closed rule can distinguish them from a genuinely new unprotected table.",
@@ -46,9 +48,12 @@
       "classes": {
         "agent_decisions": "SERVER_ONLY",
         "ai_cost_snapshots": "SERVER_ONLY",
+        "family_month_source_candidates": "SERVER_ONLY",
+        "family_month_source_decisions": "SERVER_ONLY",
         "memory_refs": "SERVER_ONLY"
       },
-      "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class."
+      "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class.",
+      "family_month_source_review_note": "Not applied to production as of 2026-10-21: proposed migration 20261020212124_family_month_source_review.sql creates two private SERVER_ONLY tables. RLS on, zero policies, anon/authenticated revoked, service_role SELECT/INSERT only. Tested in an isolated PostgreSQL 17 fixture; production introspection must replace created_not_live entries after an explicitly approved apply."
     },
     "post_migration": "20260909120000_workflow_stories_rls.sql (Phase 9Y) and 20260910090000_declarative_rls_parity.sql (Phase 9Z). Every row reflects effective production state, which those two migrations now also declare; and 20260910120000_cost_ledger_rls_isolation.sql (Phase 9AB), which moves cost_events and infra_costs from TENANT_RLS to SERVER_ONLY: their `project_id IS NULL OR …` policies on role public are dropped and anon/authenticated grants revoked.",
     "views": "Phase 9AA. Public VIEWS, classified like tables. A view runs as its owner unless it is security_invoker, so base-table RLS does not protect it; the migration security gate fails any client-reachable public view without security_invoker and any public view absent from this map. `live` records whether it exists in production.",

@@ -77,3 +77,32 @@ Switch off FAMILY_PUBLIC_SOURCE_ACTIVATION_ENABLED and
 FAMILY_MONTH_SOURCE_REVIEW_ENABLED. Both must remain off until separate
 explicit approval. No schema rollback or table deletion should be
 attempted casually: immutable source history may matter for audit.
+
+## CI security and context gate follow-up — 2026-10-21
+
+First Draft PR #472 CI exposed two release checks outside the focused
+Familje-Stunden suite:
+
+- Migration security gate / schema inventory: both new public-schema
+  private source-review tables were UNKNOWN. Registered them in
+  tests/isolation/schema-security.json under _meta.created_not_live
+  with SERVER_ONLY class. This does NOT mutate the effective production
+  table snapshot; they do not exist in production. The migration still
+  requires RLS, zero client policies, anon/authenticated denied and
+  service_role SELECT+INSERT only.
+- Website studio context economy: the new Social Content guide increased
+  the model system prompt to 9279 characters (strict limit <9000).
+  Deduplicated guidance while retaining the operator review, no
+  publishing, project scope and no-cost boundaries. Verified test now
+  measured 8809 characters; no threshold was weakened.
+
+After changes, all 76 schema-security and 133 migration-security
+tests passed locally. The authentication and context economy test
+that was timing-sensitive during a concurrent local run also passed
+when rerun separately without load. The Draft PR remains unmerged;
+CI must rerun on the new commit.
+
+Original UI PR #448 merge rehearsal shows conflicts in
+SocialContentPanel.tsx, e2e/social-content-entry.tsx and
+e2e/social-content.spec.ts only. Resolve the Atlas-first UI and
+month-source owner card intentionally before merging either.

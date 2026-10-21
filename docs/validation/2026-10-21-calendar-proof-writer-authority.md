@@ -210,6 +210,19 @@ The cutover inventory must include every `published` transition and its
 database EXECUTE grant, especially both step RPCs and the worker that calls
 them. The generic service key cannot be treated as a read-only principal
 merely because the app normally calls these methods through its dispatcher.
+
+A rollback-only SQL candidate now models a separate manual publisher role in
+the disposable fixture. Inside a savepoint it removes generic-role
+INSERT/UPDATE on publications, event INSERT and EXECUTE on the manual step;
+the generic role's direct step call is denied. A narrowly granted fixture
+publisher completes the already claimed manual attempt, then the savepoint
+restores the original grants, publication state and temporary role. GitHub
+Actions run 39587747422 passed **23/23 inspector and 12/12 worker tests,
+0 skipped**. This confirms only the reduced manual-role slice. The candidate
+is under `lib/calendar`, not `supabase/migrations`; applying it as-is would
+break other manual/scheduled writers and would leave reconciliation, scheduled
+step and direct job paths accessible through the shared role. It does not
+isolate the Facebook token or create a production credential.
 A full-schema test must show that the generic identity cannot submit a fake
 provider receipt through manual or scheduled RPCs, while the dedicated
 publish worker still completes approved real posts and the queued jobs.

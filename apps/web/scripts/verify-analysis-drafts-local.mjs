@@ -373,6 +373,33 @@ try {
             '{"action":"prepare"}'::jsonb
           );
         END $prepare$;
+        SAVEPOINT synthetic_receipt_probe;
+        DO $receipt$ BEGIN
+          PERFORM public.social_schedule_step(
+            jsonb_build_object('jobId',${quote(id.job)},'claimId',${quote(id.claim)},'version',2),
+            jsonb_build_object('action','claim_create','expectedVersion',1,'capabilityHash',${quote('e'.repeat(64))})
+          );
+          BEGIN
+            PERFORM public.social_schedule_step(
+              jsonb_build_object('jobId',${quote(id.job)},'claimId',${quote(id.claim)},'version',3),
+              '{"action":"complete","expectedVersion":2,"providerId":"invalid"}'::jsonb
+            );
+            RAISE EXCEPTION 'INVALID_RECEIPT_ACCEPTED';
+          EXCEPTION WHEN raise_exception THEN
+            IF SQLERRM <> 'SOCIAL_SCHEDULE_INVALID_BODY' THEN RAISE; END IF;
+          END;
+          PERFORM public.social_schedule_step(
+            jsonb_build_object('jobId',${quote(id.job)},'claimId',${quote(id.claim)},'version',3),
+            '{"action":"complete","expectedVersion":2,"providerId":"12345_99999","permalink":"https://www.facebook.com/12345/posts/99999"}'::jsonb
+          );
+          IF NOT EXISTS (
+            SELECT 1 FROM public.social_schedule_jobs j
+            JOIN public.social_publications p ON p.id=j.publication_id
+            WHERE j.id=${quote(id.job)}::uuid AND j.state='published' AND j.version=4
+              AND p.state='published' AND p.provider_id='12345_99999' AND p.version=3
+          ) THEN RAISE EXCEPTION 'SYNTHETIC_RECEIPT_NOT_RECORDED'; END IF;
+        END $receipt$;
+        ROLLBACK TO SAVEPOINT synthetic_receipt_probe;
         DO $checkpoint$ BEGIN
           PERFORM public.social_schedule_step(
             jsonb_build_object('jobId',${quote(id.job)},'claimId',${quote(id.claim)},'version',2),
@@ -392,7 +419,7 @@ try {
       `))
       assert.deepEqual(roleResult, { state:'blocked', version:3, source_revision:4, prepare_events:1, checkpoint_events:1, publications:1 })
       assert.equal(sql("SELECT count(*) FROM public.projects WHERE id=" + quote(project)), '0', 'synthetic project escaped rollback')
-      console.log('CROSS-TREE PREPARE AND CHECKPOINT GATE ' + JSON.stringify(roleResult) + ' (rolled back; no provider call)')
+      console.log('CROSS-TREE SCHEDULE GATE ' + JSON.stringify(roleResult) + ' (revocation and synthetic receipt branches rolled back; no provider call)')
     }
     console.log(crossTreeReplay ? 'CROSS-TREE REPLAY PASS' : legacyDreamReplay ? 'LEGACY DREAM REPLAY PASS' : legacyCronReplay ? 'LEGACY CRON REPLAY PASS' : legacyMediaReplay ? 'LEGACY MEDIA REPLAY PASS' : dependencyReplay ? 'DEPENDENCY REPLAY PASS' : 'CANONICAL REPLAY PASS')
     process.exitCode = 0

@@ -64,6 +64,24 @@ from 1 to 3. All synthetic rows, roles, trigger/function changes and grants
 were rolled back. The image was metadata only; no image bytes, provider
 request, credential, or provider receipt was involved.
 
+A further savepoint tested the same canonical step with `claim_create`,
+then `complete`. A malformed provider ID was rejected; a syntactically
+valid caller-supplied ID and Facebook permalink marked the synthetic
+publication and job `published`. That branch was rolled back before the
+checkpoint test. **This is a demonstrated trust boundary:** SQL validates
+the shape of a supplied receipt but cannot establish that Facebook returned
+it. The writer credential and the worker's provider response handling must
+carry that assurance. Do not describe this test as provider authentication.
+
+The application is not yet wired for this role. The schedule route creates
+one `createAdminClient()` client and passes it to `runScheduleTick`;
+`worker.ts` uses that same client for claim, authorization, step, receipt
+and recovery calls. The role candidate is `NOLOGIN`, has no deployable
+credential, and revokes the existing service role's job DML and step
+EXECUTE. Applying it as-is would interrupt the current worker. The cutover
+needs an explicit, server-only writer identity and coordinated worker/SQL
+permissions, with the old paths tested before any revocation.
+
 ## Observed dependency edges
 
 | Producer | Consumer | Evidence/status |
@@ -150,8 +168,8 @@ sequence. The 12-operation calendar ACL baseline matches the read-only
 production catalog snapshot. It does **not** replay the other 28 root files,
 test existing production rows, verify authentic Supabase migration ledger
 entries, or prove the proposed calendar writer's end-to-end operation. The
-next gate is receipt handling, worker compatibility, and proof-inspector
-hardening against this schema. Separately,
+next gate is worker identity and credential wiring, authentic provider
+receipt handling, and proof-inspector hardening. Separately,
 production's missing May baseline still prevents a fresh Supabase branch from
 reconstructing the installed schema. None of these local experiments alters
 production, the production migration ledger, or its guard.

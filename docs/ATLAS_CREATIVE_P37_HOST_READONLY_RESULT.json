@@ -1,0 +1,25 @@
+﻿{
+    "schema":  "omnira.creative.worker-safety-observation.v1",
+    "mode":  "read-only-diagnostic",
+    "checks":  {
+                   "disabledNonadminWorkerAndSevenNtfsFoldersVerified":  false,
+                   "pinnedPhotoAndFilmArchivesVerified":  true,
+                   "approvalLedgerAclVerified":  false,
+                   "networkEgressDeniedByVerifiedSandbox":  false,
+                   "childProcessIsolationVerified":  false,
+                   "independentHumanApprovalVerified":  false,
+                   "authenticatedCreativeQueueLive":  false
+               },
+    "blockers":  [
+                     "worker_account_or_ntfs_unverified",
+                     "approval_ledger_acl_unverified",
+                     "worker_network_egress_not_independently_verified",
+                     "process_and_child_process_isolation_not_independently_verified",
+                     "real_human_approval_and_authenticated_queue_not_live"
+                 ],
+    "workerActivationAuthorized":  false,
+    "creativeExecutionAuthorized":  false,
+    "publishAuthorized":  false,
+    "productionReady":  false,
+    "changesApplied":  false
+}

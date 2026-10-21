@@ -99,7 +99,8 @@ export function evaluateCreativeWorkerSafetyEvidence(input){
 }
 function readOnlyPowerShell(script) {
  const full=join(dirname(fileURLToPath(import.meta.url)),script);
- const result=spawnSync('powershell.exe',[
+ // Fixed observed Windows system location; never resolve the audit host via cwd/PATH.
+ const result=spawnSync('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',[
   '-NoProfile','-NonInteractive','-File',full
  ],{windowsHide:true,timeout:30000,encoding:'utf8',maxBuffer:128*1024});
  if(result.error || result.status!==0 || !result.stdout)

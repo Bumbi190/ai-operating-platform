@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-import {resolve} from 'node:path';
+import {readFileSync,mkdtempSync,copyFileSync,rmSync} from 'node:fs';
+import {resolve,join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {spawnSync} from 'node:child_process';
 import {evaluateCreativeWorkerSafetyEvidence,CREATIVE_WORKER_EXECUTION_ENABLED} from './worker-safety-report.mjs';
 
 function fake(){
@@ -126,4 +128,31 @@ test('read-only program cannot call activation/firewall/admin commands',()=>{
  assert.doesNotMatch(source,/\bEnable-LocalUser\b|\bNew-NetFirewallRule\b|\bSet-NetFirewallRule\b|\bStart-Process\b/);
  assert.doesNotMatch(source,/\b--pilot-approve\b|\brunPilotJob\s*\(/);
  assert.match(source,/productionReady:false/);
+});
+
+test('Windows read-only CLI ignores a shadow powershell.exe in cwd and PATH',
+ {skip:process.platform!=='win32'},()=>{
+ const fixture=mkdtempSync(join(tmpdir(),'omnira-p37-path-'));
+ try{
+  // A byte copy of the fixed Windows where utility is an inert lookup decoy.
+  // Query a guaranteed-absent fixture path, independent of localized MUI resources.
+  copyFileSync('C:\\Windows\\System32\\where.exe',join(fixture,'powershell.exe'));
+  const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>k.toLowerCase()!=='path'));
+  env.PATH=fixture;
+  const options={cwd:fixture,env,windowsHide:true,encoding:'utf8',timeout:90000,maxBuffer:128*1024};
+  const missing=join(fixture,'absent-canary.exe');
+  const decoy=spawnSync('powershell.exe',['/Q',missing],options);
+  assert.ifError(decoy.error);
+  const direct=spawnSync(join(fixture,'powershell.exe'),['/Q',missing],options);
+  assert.ifError(direct.error);
+  assert.deepEqual([decoy.status,decoy.stdout,decoy.stderr],[direct.status,direct.stdout,direct.stderr],'lookup must select the exact decoy');
+  assert.notEqual(decoy.status,0,'decoy must not act like a successful PowerShell audit');
+  const actual=spawnSync(process.execPath,[resolve(import.meta.dirname,'worker-safety-report.mjs')],options);
+  assert.ifError(actual.error);
+  assert.equal(actual.status,0,'read-only CLI must use system PowerShell despite the lookup decoy: '+actual.stderr);
+  const report=JSON.parse(actual.stdout);
+  assert.equal(report.schema,'omnira.creative.worker-safety-observation.v1');
+  for(const flag of ['workerActivationAuthorized','creativeExecutionAuthorized','publishAuthorized','productionReady','changesApplied'])
+   assert.equal(report[flag],false,flag+' remains denied');
+ }finally{rmSync(fixture,{recursive:true,force:true});}
 });

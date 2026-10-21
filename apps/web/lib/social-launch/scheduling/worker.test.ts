@@ -229,11 +229,11 @@ it('unknown_write_never_reclaimed',async()=>{
 it('cross-page Facebook provider receipt never reaches completion or retries',async()=>{
  const f=await approved(),d=dependencies(f,async()=>Response.json({id:'99999_222'}))
  const completions:unknown[]=[]
- const original=db.rpc.bind(db)
+ const original=(db as any).rpc.bind(db)
  const observed={...db,rpc:async(name:string,args:any)=>{
   if(name==='social_schedule_step'&&args.p_step.action==='complete')completions.push(args)
   return original(name,args)
- }} as typeof db
+ }} as any
  const first=await runScheduleTick(observed,{workerId:'malformed_a',now:f.dueAt,dryRun:false},d.deps)
  expect(first.result).toBe('uncertain')
  expect(completions).toHaveLength(0)

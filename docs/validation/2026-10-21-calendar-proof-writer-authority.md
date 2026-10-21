@@ -174,6 +174,24 @@ must be checked after deployment. The query covered `service_role` and
 `authenticator` membership only; it did not inventory every custom role.
 This observation does not authenticate a provider candidate.
 
+## Live schedule continuity, read-only observation
+
+On 2026-10-21, the Vercel Production configuration had
+`SOCIAL_SCHEDULE_DISPATCH_ENABLED=true` and one project in
+`SOCIAL_SCHEDULE_PROJECT_IDS`. The deployed source configures
+`/api/social-schedule-tick` every minute and gates claims on that
+project list. A read-only aggregate in the AI Operating Platform database
+found two historical published jobs and four future queued jobs for the
+enabled project; the next queued time was 2026-10-23 20:30 Europe/Stockholm
+and the last was 2026-12-01 20:30. These are queue facts, not a guarantee
+that an individual job will pass review, credential, release and stop gates.
+
+A grant cutover or secret move can interrupt these already approved jobs.
+Do not silently turn off dispatch or migrate credentials out of the shared
+web process. Before any activation, run parity and rollback against the
+manual and scheduled workers, confirm the exact queued jobs remain
+processable, then schedule the operational change with the owner.
+
 ## Target boundary
 
 1. Keep the user's authenticated operator decision and the exact publication
@@ -226,8 +244,9 @@ Do not promote the two-line SECURITY DEFINER candidate from #492 alone.
 Implement the isolated reader and credential boundary as a separate reviewed
 workstream. Before choosing hosting, inventory current Facebook token usage
 and all direct publication/event/schedule writers, then produce a full-schema
-role matrix and migration rollback. Keep existing automation disabled while
-that work is incomplete.
+role matrix and migration rollback. Preserve the existing approved schedule while this work is incomplete; do
+not change the live dispatch flag or revoke privileges until an isolated reader,
+writer parity and a cutover/rollback for queued jobs have been verified.
 
 References: Supabase's current Row Level Security and Database Functions
 guides: https://supabase.com/docs/guides/database/postgres/row-level-security

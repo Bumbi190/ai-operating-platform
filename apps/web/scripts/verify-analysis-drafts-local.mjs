@@ -247,6 +247,11 @@ try {
           'publisher_publications_insert',has_table_privilege('social_schedule_full_publisher_fixture','public.social_publications','INSERT'),
           'publisher_events_insert',has_table_privilege('social_schedule_full_publisher_fixture','public.social_schedule_events','INSERT'),
           'publisher_step_execute',has_function_privilege('social_schedule_full_publisher_fixture','public.social_schedule_step(jsonb,jsonb)','EXECUTE'),
+          'publisher_claim_execute',has_function_privilege('social_schedule_full_publisher_fixture','public.social_schedule_claim(jsonb)','EXECUTE'),
+          'publisher_authorize_execute',has_function_privilege('social_schedule_full_publisher_fixture','public.social_schedule_authorize_write(jsonb,jsonb)','EXECUTE'),
+          'publisher_peek_execute',has_function_privilege('social_schedule_full_publisher_fixture','public.social_schedule_peek(jsonb)','EXECUTE'),
+          'publisher_receipt_execute',has_function_privilege('social_schedule_full_publisher_fixture','public.social_schedule_receipt(jsonb)','EXECUTE'),
+          'publisher_recover_execute',has_function_privilege('social_schedule_full_publisher_fixture','public.social_schedule_recover_checkpoint(jsonb)','EXECUTE'),
           'publisher_tokens_select',has_table_privilege('social_schedule_full_publisher_fixture','public.platform_tokens','SELECT'),
           'service_jobs_update',has_table_privilege('service_role','public.social_schedule_jobs','UPDATE'),
           'service_publications_insert',has_table_privilege('service_role','public.social_publications','INSERT'),
@@ -257,7 +262,10 @@ try {
         );
         ROLLBACK;
       `))
-      for (const key of ['publisher_jobs_update','publisher_publications_insert','publisher_events_insert','publisher_step_execute','service_manual_step_execute','service_proofs_insert'])
+      for (const key of ['publisher_jobs_update','publisher_publications_insert','publisher_events_insert',
+        'publisher_step_execute','publisher_claim_execute','publisher_authorize_execute',
+        'publisher_peek_execute','publisher_receipt_execute','publisher_recover_execute',
+        'service_manual_step_execute','service_proofs_insert'])
         assert.equal(candidate[key], true, 'expected candidate grant: ' + key)
       for (const key of ['publisher_tokens_select','service_jobs_update','service_publications_insert','service_events_insert','service_step_execute'])
         assert.equal(candidate[key], false, 'unexpected candidate grant: ' + key)
@@ -342,6 +350,16 @@ try {
         ${reviewedBytes(resolve(web, 'lib/calendar/direct-write-gate-proof-trigger-probe.sql')).toString('utf8')}
         ${reviewedBytes(resolve(web, 'lib/calendar/direct-write-gate-proof-inspect-hardened-candidate.sql')).toString('utf8')}
         ${reviewedBytes(resolve(web, 'lib/calendar/direct-write-gate-proof-permission-candidate.sql')).toString('utf8')}
+        DO $worker_grants$ BEGIN
+          IF NOT has_function_privilege('social_schedule_full_publisher_fixture',
+            'public.calendar_source_gate_try_begin_probe(uuid)','EXECUTE') THEN
+            RAISE EXCEPTION 'WORKER_GATE_GRANT_MISSING';
+          END IF;
+          IF has_column_privilege('social_schedule_full_publisher_fixture',
+            'public.projects','name','UPDATE') THEN
+            RAISE EXCEPTION 'WORKER_PROJECT_NAME_GRANT_TOO_BROAD';
+          END IF;
+        END $worker_grants$;
         GRANT EXECUTE ON FUNCTION public.calendar_source_gate_begin_probe(uuid)
           TO social_schedule_full_publisher_fixture;
         SAVEPOINT synthetic_claim_probe;

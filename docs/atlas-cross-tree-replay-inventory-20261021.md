@@ -207,6 +207,14 @@ grant can still update an unreferenced project ID, so this remains a
 candidate fixture rather than a production role definition. The role
 candidate still needs a reviewed, complete permission design.
 
+The replay asserts EXECUTE for every scheduler RPC used by the worker
+(`claim`, `authorize_write`, `step`, `peek`, `receipt`, `recover_checkpoint`)
+and the signed source-gate dependency. The existing TypeScript worker tests
+use a separately named, shared Docker fixture and require application test
+dependencies. They were not run against this disposable cross-tree database.
+An application replay needs its own RPC transport and synthetic committed
+rows inside this owned container before it can establish the worker boundary.
+
 This replay connects the SQL claim and recovery path inside one transaction,
 but does **not** execute the application worker, load media bytes, contact
 Meta, or establish a deployable identity. It does not cover the other 28 root

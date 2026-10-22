@@ -208,7 +208,7 @@ try {
     if(legacyMediaReplay) console.log('LOCAL LEGACY MEDIA: one hash-pinned root media_insights migration included; diagnostic only');
     if(legacyCronReplay) console.log('LOCAL LEGACY CRON: hash-pinned root pg_cron setup included; cron launching disabled and network none');
     if(legacyDreamReplay) console.log('LOCAL LEGACY DREAM: hash-pinned cron and dream ledger roots included; cron launching disabled and network none');
-    if(crossTreeReplay) console.log('LOCAL CROSS-TREE: ten hash-pinned root files; cron launching disabled and network none; diagnostic only');
+    if(crossTreeReplay) console.log('LOCAL CROSS-TREE: ten hash-pinned root files; cron launching disabled; '+(scheduleHttpRoleReplay?'private internal network':'network none')+'; diagnostic only');
     const rootFiles=new Map([[legacyEntry,legacyFile],[cronEntry,cronFile],[dreamEntry,dreamFile],...extraEntries.map((entry,index)=>[entry,extraFiles[index]])]);
     const files = [
       resolve(repo, 'packages/db/full_schema_run_in_supabase.sql'),

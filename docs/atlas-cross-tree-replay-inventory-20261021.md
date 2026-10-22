@@ -47,6 +47,19 @@ binding. A deployable design must bind scope to a trusted server principal,
 audit every callable function and prove cross-project denial through the
 actual Data API.
 
+**22 October HTTP replay:** `--with-schedule-http-role-replay` replayed the
+same full schema, then started cached PostgREST and Node images alongside
+PostgreSQL on an owned, Docker-internal network with no published ports. A
+short-lived synthetic JWT mapped through a temporary `authenticator` grant
+to the test role. Real PostgREST rejected foreign-project `claim` and `peek`
+with SQLSTATE `42501`, rejected direct table POST and the inaccessible
+unchecked claim function, and accepted allowed-project `peek`, `claim` and
+`receipt`. The SQL transaction probe separately covered prepare, create and
+recovery. The HTTP fixture used synthetic rows and token only; it did not
+exercise a production signing key, real server identity, media/credential
+clients, a provider response, or live Supabase. The runner removed its three
+owned containers and internal network after the pass.
+
 ## Calendar ACL baseline — read-only comparison
 
 On 21 October, the isolated cross-tree replay queried PostgreSQL's

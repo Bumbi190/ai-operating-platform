@@ -7,8 +7,8 @@ const payload={
   role:'social_schedule_rpc_only_fixture',iss:'omnira-schedule-fixture',
   aud:'authenticated',sub:subject,iat:now,exp:now+300,
 }
-const jwt=(overrides:Record<string,unknown>={})=>[
-  Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('base64url'),
+const jwt=(overrides:Record<string,unknown>={},headerChanges:Record<string,unknown>={})=>[
+  Buffer.from(JSON.stringify({alg:'RS256',typ:'JWT',kid:'calendar-rpc-ephemeral-v1',...headerChanges})).toString('base64url'),
   Buffer.from(JSON.stringify({...payload,...overrides})).toString('base64url'),
   'signature-only-in-unit-fixture',
 ].join('.')
@@ -45,7 +45,9 @@ it('fails closed before network on wrong identity, expired claims or malformed J
   const consoleErrors=vi.spyOn(console,'error').mockImplementation(()=>{})
   for(const token of [
     jwt({role:'service_role'}),jwt({role:'authenticated'}),jwt({sub:'00000000-0000-4000-8000-000000000011'}),
-    jwt({sub:null}),jwt({iss:'unknown'}),jwt({aud:'service_role'}),jwt({exp:now-1}),
+    jwt({sub:null}),jwt({iss:'unknown'}),jwt({aud:'service_role'}),
+    jwt({}, {alg:'HS256'}),jwt({}, {kid:'unknown-key'}),jwt({}, {kid:null}),
+    jwt({exp:now-1}),
     jwt({exp:now+3600}),jwt({iat:now+100}),jwt({nbf:now+100}),
     'not-a-jwt','a.b.c',jwt().replace(/\.[^.]*$/,'.'),
   ]){

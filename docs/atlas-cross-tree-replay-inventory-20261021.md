@@ -456,8 +456,10 @@ The canonical `Database` type does not yet include these fixture RPCs, so
 one internal cast is isolated behind this facade; this is not a type-safe
 production permission cutover.
 **Decoding claims in TypeScript does not verify a signature.** The owned
-PostgREST service verifies HS256 signatures using an ephemeral in-memory
-test key. A role-tampered but not re-signed JWT must yield HTTP 401.
+PostgREST service now verifies RS256 JWTs against an ephemeral public JWK
+with a pinned `kid`; only the isolated replay runner holds the private key.
+A role-tampered but not re-signed JWT must yield HTTP 401. Earlier HS256
+results predate this follow-up and are not evidence for the asymmetric path.
 The SQL scoped-role helper now also refuses a correctly signed JWT with
 an unexpected `iss` / `aud`, or malformed `sub`, with SQLSTATE 42501;
 per-subject project ownership checks remain mandatory.
@@ -491,3 +493,71 @@ calendar-file errors, but cannot pass in the borrowed local dependency
 tree because `@remotion/lambda/client` is missing and two dependent
 `region` types are unresolved in `lib/media/lambda-render.ts`.
 No CI workflow or production resource was changed.
+
+## Asymmetric schedule JWT boundary — 22 October (RS256 follow-up)
+
+The isolated HTTP role replay has replaced its shared HS256 test secret
+with a newly generated ephemeral **RSA-2048 key pair**. The trusted
+runner keeps the private key in its own process memory and signs
+short-lived fixture JWTs with `alg=RS256` and a pinned `kid`.
+The owned PostgREST v16.4 container receives **only the public JWK** in
+`PGRST_JWT_SECRET` as a one-key JWKS; `PGRST_JWT_AUD` is set to
+`authenticated`. The actual TypeScript worker receives a signed JWT
+via the test transport, **not** the signing key, and continues using the
+RPC-only `accessToken` facade with no Storage, Auth or direct table API.
+
+**Measured:** With the same 151 web + 10 selected root migrations,
+the isolated runner completed `CROSS-TREE RPC-ONLY ROLE PASS`,
+`CROSS-TREE POSTGREST ROLE PASS`,
+`CROSS-TREE POSTGREST APPLICATION WORKER PASS`, and
+`CROSS-TREE REPLAY PASS`. It rejected a changed JWT payload without a
+new signature (401), an unknown signing-key `kid` (401), and a signature
+from a different RSA private key using the expected `kid` (401). A
+correctly signed JWT with the wrong issuer was rejected by the
+fixture SQL wrapper (403/42501). The original foreign-project,
+missing-subject, direct-DML and 12-table-read denial checks also
+passed. An allowed subject's synthetic worker completed exactly one
+simulated Facebook call and reached `published`. No real Meta call was
+made; the test JWT cannot authorize any production environment.
+The local containers and internal network were removed afterward.
+
+**Deployment decision is still OPEN.** This tests vanilla PostgREST's
+public-JWK verifier, not Supabase-hosted custom OIDC onboarding or
+privileged custom-role issuance. Supabase currently recommends managed
+asymmetric signing keys; private Supabase-managed signing keys are not
+automatically available to an external scheduler. Its custom OIDC path
+requires HTTPS issuer discovery, asymmetric JWTs with `kid`, and trusted
+JWKS. A real identity issuer must authenticate the scheduler *before*
+issuing short-lived, fixed-role, project-scoped tokens, ensure that its
+private key is not accessible to the worker or general web routes,
+establish rotation/revocation and audit trails, and prove the custom
+role's actual hosted Data API grants in a safe environment. No signing
+secret should be copied from Supabase to the web cron route. The
+production API still instantiates two `createAdminClient()` objects.
+
+**Reviewed media/credential path:** `runScheduledPublication` invokes
+`resolvePublicationCredential` and `executeApprovedPublication`.
+`publication/credentials.ts` delegates Facebook/Instagram account
+credentials to `lib/media/social-credentials`. Its media verification
+calls `verifyPublicationImage(mediaDb,...)`, which directly reads
+`public.assets`, requests a 60-second Storage signed URL, then
+validates downloaded JPEG bytes and checksum. These operations are
+intentionally *outside* the scoped scheduling-RPC role. The current
+production `mediaDb` still uses `service_role`, and the credential
+resolver has a separate existing token consumer. A reviewed
+project/account-bound media-and-credential broker is required before
+the final permission cutover; replacing the scheduler client alone is
+not sufficient.
+
+**Other production blockers:** A caller-supplied valid-shaped Meta post
+ID still does not authenticate provider origin in SQL; the broader
+privileged definer/helper/trigger graph is not fully audited; the May
+media baseline and historical migration ledger are unreconciled.
+Keep this PR as draft and do not deploy the fixture functions, roles,
+JWT issuer, grants or revokes. No live queued jobs, external images,
+real provider credentials or other production resources are exercised.
+
+References:
+[PostgREST asymmetric JWT verification](https://docs.postgrest.org/en/v12/references/auth.html),
+[Supabase signing keys](https://supabase.com/docs/guides/auth/signing-keys),
+[Supabase custom OIDC](https://supabase.com/docs/guides/auth/third-party/custom-oidc).

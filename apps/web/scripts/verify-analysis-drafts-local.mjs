@@ -2,7 +2,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { readFileSync, readdirSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createHash, createHmac, randomBytes } from 'node:crypto'
+import { createHash, generateKeyPairSync, randomBytes, sign as signJwt } from 'node:crypto'
 import assert from 'node:assert/strict'
 import { orderReplayMigrations, orderLegacyMediaReplayMigrations, orderCrossTreeReplayMigrations } from './analysis-replay-order.mjs'
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..'),
@@ -788,7 +788,12 @@ try {
       console.log('CROSS-TREE RPC-ONLY ROLE PASS ' + JSON.stringify(rpcOnly) + ' (rolled back)')
       if (scheduleHttpRoleReplay) {
         const password='Synthetic-'+randomBytes(12).toString('hex')
-        const secret=randomBytes(32).toString('hex')
+        // A private signing key lives ONLY in this local replay runner's memory.
+        // PostgREST receives a public JWKS; the worker receives short-lived tokens.
+        const keys=generateKeyPairSync('rsa',{modulusLength:2048,publicExponent:0x10001})
+        const fixtureKid='calendar-rpc-ephemeral-v1'
+        const publicJwk={...keys.publicKey.export({format:'jwk'}),alg:'RS256',kid:fixtureKid,use:'sig',key_ops:['verify']}
+        const publicJwks=JSON.stringify({keys:[publicJwk]})
         sql(`BEGIN;
           ${seed}
           ${reviewedBytes(resolve(web, 'lib/calendar/source-revision-probe.sql')).toString('utf8')}
@@ -894,16 +899,16 @@ try {
         const startedRest=docker(['run','--pull=never','--detach','--name',restName,'--network',httpNetwork,'--network-alias','rest',
           '--env','PGRST_DB_URI=postgres://authenticator:'+password+'@db:5432/postgres',
           '--env','PGRST_DB_SCHEMAS=public','--env','PGRST_DB_ANON_ROLE=anon',
-          '--env','PGRST_JWT_SECRET='+secret,restImage])
+          '--env','PGRST_JWT_SECRET='+publicJwks,'--env','PGRST_JWT_AUD=authenticated',restImage])
         assert.equal(startedRest.status,0,startedRest.stderr);restOwned=true
         const startedGateway=docker(['run','--pull=never','--detach','--name',gatewayName,'--network',httpNetwork,
           gatewayImage,'node','-e','setInterval(()=>{},10000)'])
         assert.equal(startedGateway.status,0,startedGateway.stderr);gatewayOwned=true
         const now=Math.floor(Date.now()/1000)
-        const signedToken=(sub,override={})=>{
-          const body=[{alg:'HS256',typ:'JWT'}, {role:'social_schedule_rpc_only_fixture',iss:'omnira-schedule-fixture',aud:'authenticated',...(sub?{sub}:{}),iat:now,exp:now+600,...override}]
+        const signedToken=(sub,override={},headerOverride={})=>{
+          const body=[{alg:'RS256',typ:'JWT',kid:fixtureKid,...headerOverride}, {role:'social_schedule_rpc_only_fixture',iss:'omnira-schedule-fixture',aud:'authenticated',...(sub?{sub}:{}),iat:now,exp:now+600,...override}]
             .map(part=>Buffer.from(JSON.stringify(part)).toString('base64url')).join('.')
-          return body+'.'+createHmac('sha256',secret).update(body).digest('base64url')
+          return body+'.'+signJwt('RSA-SHA256',Buffer.from(body),keys.privateKey).toString('base64url')
         }
         const token=signedToken(actor),foreignToken=signedToken(id.foreignPrincipal),missingSubjectToken=signedToken(null)
         const requestScript=`const q=JSON.parse(Buffer.from(process.argv[1],'base64').toString());fetch('http://rest:3000'+q.path,{method:q.method,headers:{Authorization:'Bearer '+q.token,'Content-Type':'application/json'},body:q.body?JSON.stringify(q.body):undefined}).then(async r=>console.log(JSON.stringify({status:r.status,body:await r.text()}))).catch(e=>{console.error(e.message);process.exitCode=1})`
@@ -929,6 +934,15 @@ try {
         const tamperedToken=parts[0]+'.'+forgedRole+'.'+parts[2]
         const tampered=httpRole('/rpc/social_schedule_peek',{p_input:{projectIds:[project]}},'POST',tamperedToken)
         assert.equal(tampered.status,401,'JWT signature must be verified by PostgREST: '+tampered.body)
+        // A valid signature with the wrong key ID must fail before SQL.
+        const wrongKid=httpRole('/rpc/social_schedule_peek',{p_input:{projectIds:[project]}},'POST',signedToken(actor,{}, {kid:'untrusted-key'}))
+        assert.equal(wrongKid.status,401,'unknown kid must be refused: '+wrongKid.body)
+        // A signature by an untrusted private key is never accepted even when
+        // it advertises the known key ID.
+        const attackerKeys=generateKeyPairSync('rsa',{modulusLength:2048,publicExponent:0x10001})
+        const forgedSignature=signJwt('RSA-SHA256',Buffer.from(parts[0]+'.'+parts[1]),attackerKeys.privateKey).toString('base64url')
+        const wrongKey=httpRole('/rpc/social_schedule_peek',{p_input:{projectIds:[project]}},'POST',parts[0]+'.'+parts[1]+'.'+forgedSignature)
+        assert.equal(wrongKey.status,401,'untrusted signature must be refused: '+wrongKey.body)
         const foreignReceipt=httpRole('/rpc/social_schedule_receipt',{p_input:{jobId:id.job}},'POST',foreignToken)
         assert.equal(foreignReceipt.status,403,foreignReceipt.body)
         assert.equal(JSON.parse(foreignReceipt.body).code,'42501')

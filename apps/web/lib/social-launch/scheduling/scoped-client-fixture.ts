@@ -6,6 +6,7 @@ import type {Database} from '@/lib/supabase/types'
 // The fixture role has no production credential or persistent database grant.
 const fixtureRole='social_schedule_rpc_only_fixture'
 const fixtureIssuer='omnira-schedule-fixture'
+const fixtureKeyId='calendar-rpc-ephemeral-v1'
 const denied=():never=>{throw new Error('SOCIAL_SCHEDULE_FIXTURE_IDENTITY_DENIED')}
 type TokenClaims={role?:unknown;sub?:unknown;iss?:unknown;aud?:unknown;iat?:unknown;nbf?:unknown;exp?:unknown}
 export type ScopedScheduleFixtureOptions={
@@ -21,12 +22,12 @@ function checkedToken(value:unknown,subject:string,now:number):string{
   if(value.length>8192)denied()
   const parts=value.split('.')
   if(parts.length!==3||parts.some(part=>!part||!/^[A-Za-z0-9_-]+$/.test(part)))denied()
-  let header:{alg?:unknown;typ?:unknown}={},claims:TokenClaims={}
+  let header:{alg?:unknown;typ?:unknown;kid?:unknown}={},claims:TokenClaims={}
   try{
     header=JSON.parse(Buffer.from(parts[0],'base64url').toString('utf8'))
     claims=JSON.parse(Buffer.from(parts[1],'base64url').toString('utf8'))
   }catch{return denied()}
-  if(!header||header.alg!=='HS256'||header.typ!=='JWT'||
+  if(!header||header.alg!=='RS256'||header.typ!=='JWT'||header.kid!==fixtureKeyId||
     !claims||claims.role!==fixtureRole||claims.sub!==subject||
     claims.iss!==fixtureIssuer||claims.aud!=='authenticated'||
     !Number.isInteger(claims.iat)||!Number.isInteger(claims.exp)||

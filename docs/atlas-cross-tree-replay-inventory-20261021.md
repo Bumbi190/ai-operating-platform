@@ -55,7 +55,11 @@ short-lived synthetic JWT mapped through a temporary `authenticator` grant
 to the test role. Two signed subjects share that role but map to separate
 projects in the test scope table. Real PostgREST rejected the first subject's
 foreign-project `claim` and `peek`, the second subject's receipt for the
-first project's job, and a missing subject with SQLSTATE `42501`. It also
+first project's job, and a missing subject with SQLSTATE `42501`. The replay
+now also checks the second subject against the first project's claimed job at
+`authorize_write`, `step` (`prepare`) and `recover_checkpoint`: each must
+return HTTP 403 and `SOCIAL_SCHEDULE_PROJECT_SCOPE_DENIED` before it can lock
+or change the job. It also
 rejected direct table POST and the inaccessible unchecked claim function,
 while accepting allowed-project `peek`, `claim` and `receipt`. The SQL
 transaction probe separately covered prepare, create and recovery. The HTTP
@@ -89,6 +93,28 @@ changes. This catalog and source review does not audit the six definer bodies
 or their transitive calls; it is a regression guard, not a production grant
 review. The full cross-tree HTTP role replay passed with the expanded
 assertion on 22 October.
+
+**Scheduled RPC body review:** The six wrappers check the trusted fixture
+subject against every requested project (`claim`, `peek`) or the persisted
+job's project (`authorize_write`, `step`, `receipt`, `recover_checkpoint`)
+before invoking the elevated original. The original `claim` filters candidate
+jobs by the checked project IDs, while `peek` applies the same filter to its
+read. `receipt` reads a job, its linked publication and the snapshot;
+`authorize_write` locks the claim and reads scheduling authority. `step`
+locks the claim, updates only its linked publication and job, and inserts
+their events; recovery locks the same job and publication and may move an
+incomplete provider attempt to `uncertain`. Both write paths call the signed
+source gate for the job's project. Their helper reads include approval,
+revision, asset, release evidence and project state. This is a review of the
+fixture entry bodies and immediate call path in
+`direct-write-gate-worker-integration-probe.sql`,
+`direct-write-gate-worker-recovery-integration-probe.sql`, and
+`20261018071209_social_schedule_batches.sql`, not a proof of every transitive
+function or trigger. The `step` body accepts a caller supplied provider ID
+and confirmation action after checking claim/version/state and field shape;
+it does not authenticate a Meta receipt. Before deployment, the definer
+call graph, all triggered writes, identity issuance and provider receipt
+boundary still require review.
 
 ## Calendar ACL baseline — read-only comparison
 

@@ -864,11 +864,22 @@ try {
         const claimed=JSON.parse(claim.body)
         assert.equal(claimed.jobId,id.job)
         assert.equal(claimed.version,2)
+        const foreignClaim={jobId:id.job,claimId:claimed.claimId,version:claimed.version}
+        for (const [rpc,body] of [
+          ['social_schedule_authorize_write',{p_claim:foreignClaim,p_project_ids:[project]}],
+          ['social_schedule_step',{p_claim:foreignClaim,p_step:{action:'prepare'}}],
+          ['social_schedule_recover_checkpoint',{p_claim:foreignClaim}],
+        ]) {
+          const denied=httpRole('/rpc/'+rpc,body,'POST',foreignToken)
+          assert.equal(denied.status,403,rpc+': '+denied.body)
+          assert.equal(JSON.parse(denied.body).code,'42501',rpc)
+          assert.equal(JSON.parse(denied.body).message,'SOCIAL_SCHEDULE_PROJECT_SCOPE_DENIED',rpc)
+        }
         const receipt=httpRole('/rpc/social_schedule_receipt',{p_input:{jobId:id.job}})
         assert.equal(receipt.status,200,receipt.body)
         assert.equal(JSON.parse(receipt.body).jobState,'claimed')
         assert.equal(sql('SELECT state FROM public.social_schedule_jobs WHERE id='+quote(id.job)),'claimed')
-        console.log('CROSS-TREE POSTGREST ROLE PASS (subject-bound synthetic JWTs; foreign project, missing subject and direct write denied; allowed claim and receipt; owned network only)')
+        console.log('CROSS-TREE POSTGREST ROLE PASS (subject-bound synthetic JWTs; foreign project and all job-scoped RPCs, missing subject and direct write denied; allowed claim and receipt; owned network only)')
         if (scheduleHttpWorkerReplay) {
           sql(`BEGIN;
             DO $queue_again$ BEGIN PERFORM public.calendar_source_gate_begin_probe(${quote(project)}::uuid); END $queue_again$;

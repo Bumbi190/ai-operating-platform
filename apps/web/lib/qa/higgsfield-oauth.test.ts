@@ -39,6 +39,26 @@ describe('Higgsfield SDK OAuth',()=>{
   const params=new URLSearchParams(await exchange.text())
   expect(params.get('grant_type')).toBe('authorization_code');expect(params.get('code_verifier')).toBeTruthy()
  })
+ it.each(['invalid_grant','invalid_client'])('does not log or retry a rejected code exchange (%s)',async error=>{
+  const calls:Request[]=[]
+  const normal=providerFetch(calls)
+  let exchanges=0
+  const driver=createHiggsfieldOAuthDriver(async(input,init)=>{
+   const req=new Request(input,init)
+   if(new URL(req.url).pathname==='/oauth/token'){
+    exchanges++
+    return new Response(JSON.stringify({error,error_description:'SYNTHETIC_PROVIDER_SECRET'}),{status:400,headers:{'content-type':'application/json'}})
+   }
+   return normal(req)
+  })
+  const begun=await driver.begin('state','https://omnira.example/api/media/higgsfield/oauth/callback')
+  const warn=vi.spyOn(console,'warn').mockImplementation(()=>{})
+  try {
+   await expect(driver.finish(begun.payload,'code','https://omnira.example/api/media/higgsfield/oauth/callback',metadata.issuer)).rejects.toThrow()
+   expect(warn).not.toHaveBeenCalled()
+   expect(exchanges).toBe(1)
+  } finally {warn.mockRestore()}
+ })
  it('rejects issuer mixup before sending the authorization code',async()=>{
   const calls:Request[]=[];const driver=createHiggsfieldOAuthDriver(providerFetch(calls))
   const begun=await driver.begin('state','https://omnira.example/api/media/higgsfield/oauth/callback')

@@ -74,10 +74,10 @@ export function createHiggsfieldOAuthDriver(delegate:typeof fetch=fetch) {
    } catch { /* usable read-only connection, explicitly unverified identity */ }
    return {payload:p.payload,subject}
   },
-  async refresh(payload:OAuthPayload) {
+  async refresh(payload:OAuthPayload,deadline=Date.now()+20000) {
    if(!payload.tokens?.refresh_token||!payload.clientInformation||!payload.discovery)throw new HiggsfieldError('reconnect_required')
    checkDiscovery(payload.discovery)
-   const tokens=await refreshAuthorization(HIGGSFIELD_ISSUER,{metadata:payload.discovery.authorizationServerMetadata,clientInformation:payload.clientInformation,refreshToken:payload.tokens.refresh_token,resource:HIGGSFIELD_MCP_URL,fetchFn:createHiggsfieldFetch(delegate,20000)})
+   const tokens=await refreshAuthorization(HIGGSFIELD_ISSUER,{metadata:payload.discovery.authorizationServerMetadata,clientInformation:payload.clientInformation,refreshToken:payload.tokens.refresh_token,resource:HIGGSFIELD_MCP_URL,fetchFn:createHiggsfieldFetch(delegate,Math.max(0,deadline-Date.now()))})
    if(!tokens.access_token||tokens.token_type.toLowerCase()!=='bearer')throw new HiggsfieldError('reconnect_required')
    return {...payload,tokens:{...tokens,refresh_token:tokens.refresh_token??payload.tokens.refresh_token},expiresAt:Date.now()+(tokens.expires_in??0)*1000}
   },

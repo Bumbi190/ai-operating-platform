@@ -51,14 +51,22 @@ export async function inspectReadOnlyClient(client:ReadOnlyMcpClient):Promise<{c
  if(!object(quoted.cost))throw new HiggsfieldError('invalid_response')
  return {creditBalance,quoteCredits:credits(quoted.cost.credits_exact??quoted.cost.credits)}
 }
-export async function openHiggsfieldReadClient(payload:OAuthPayload):Promise<ReadOnlyMcpClient> {
+export async function openHiggsfieldReadClient(payload:OAuthPayload,deadline=Date.now()+20000,delegate:typeof fetch=fetch):Promise<ReadOnlyMcpClient> {
  if(!payload.tokens?.access_token)throw new HiggsfieldError('reconnect_required')
+ const remaining=()=>{const ms=deadline-Date.now();if(ms<=0)throw new HiggsfieldError('provider_unavailable');return ms}
+ const controller=new AbortController()
+ const options=()=>({signal:controller.signal,timeout:remaining(),maxTotalTimeout:remaining()})
  const client=new Client({name:'omnira-higgsfield-readonly',version:'1.0.0'},{capabilities:{}})
  const transport=new StreamableHTTPClientTransport(new URL(HIGGSFIELD_MCP_URL),{
   authProvider:{token:async()=>payload.tokens!.access_token},
-  fetch:createHiggsfieldFetch(fetch,20000),
+  fetch:createHiggsfieldFetch(delegate,remaining()),
  })
- try {await client.connect(transport)} catch(e) {
+ // A failed SSE reader does not settle SDK requests. Cancel requests and close
+ // the transport at the same absolute deadline, including initialization.
+ const timer=setTimeout(()=>{controller.abort();void client.close().catch(()=>{})},remaining())
+ const close=async()=>{clearTimeout(timer);controller.abort();await client.close()}
+ try {await client.connect(transport,options())} catch(e) {
+  clearTimeout(timer);controller.abort()
   await client.close().catch(()=>{})
   if(e instanceof UnauthorizedError)throw new HiggsfieldError('reconnect_required')
   throw new HiggsfieldError('provider_unavailable')
@@ -68,7 +76,7 @@ export async function openHiggsfieldReadClient(payload:OAuthPayload):Promise<Rea
    const collected:{name:string;inputSchema:unknown}[]=[]
    let cursor:string|undefined
    for(let i=0;i<64;i++){
-    const page=await client.listTools(cursor?{cursor}:undefined)
+    const page=await client.listTools(cursor?{cursor}:undefined,options())
     collected.push(...page.tools)
     if(!page.nextCursor)return collected
     cursor=page.nextCursor
@@ -77,9 +85,9 @@ export async function openHiggsfieldReadClient(payload:OAuthPayload):Promise<Rea
   },
   async callTool(name,args){
    if(!['balance','models_get','estimate_video_cost'].includes(name))throw new HiggsfieldError('access_denied')
-   try{return await client.callTool({name,arguments:args})}
+   try{return await client.callTool({name,arguments:args},options())}
    catch(e){if(e instanceof UnauthorizedError)throw new HiggsfieldError('reconnect_required');throw new HiggsfieldError('provider_unavailable')}
   },
-  close:()=>client.close()
+  close
  }
 }

@@ -10,7 +10,7 @@ function safe(row:ConnectionRecord|null):SafeConnectionStatus {return {status:ro
 function payload(row:ConnectionRecord):OAuthPayload {
  return openProviderPayload({projectId:row.project_id,recordKind:'connection',recordId:String(row.connection_version)},row.encrypted_payload) as OAuthPayload
 }
-export function createHiggsfieldReadiness(store:HiggsfieldStore=createHiggsfieldStore(),driver:HiggsfieldOAuthDriver=createHiggsfieldOAuthDriver(),open:(payload:OAuthPayload)=>Promise<ReadOnlyMcpClient>=openHiggsfieldReadClient) {
+export function createHiggsfieldReadiness(store:HiggsfieldStore=createHiggsfieldStore(),driver:HiggsfieldOAuthDriver=createHiggsfieldOAuthDriver(),open:(payload:OAuthPayload,deadline:number)=>Promise<ReadOnlyMcpClient>=openHiggsfieldReadClient) {
  return {
   async status(projectId:string):Promise<SafeConnectionStatus> {
    if(!resolveHiggsfieldConfig().ok)return {status:'unavailable',identityVerified:false,generationEnabled:false}
@@ -18,6 +18,7 @@ export function createHiggsfieldReadiness(store:HiggsfieldStore=createHiggsfield
   },
   async inspect(projectId:string):Promise<SafeInspection> {
    requireHiggsfieldConfig()
+   const deadline=Date.now()+20000
    let row=await store.readConnection(projectId)
    if(!row||row.status!=='connected')return {...safe(row),creditBalance:null,quoteCredits:null,observedAt:new Date().toISOString()}
    let current=payload(row),refreshed=false
@@ -27,7 +28,7 @@ export function createHiggsfieldReadiness(store:HiggsfieldStore=createHiggsfield
     if(!lease)throw new HiggsfieldError('busy')
     let exchanged=false
     try {
-     const renewed=await driver.refresh(current);exchanged=true
+     const renewed=await driver.refresh(current,deadline);exchanged=true
      await store.saveConnectionCAS({projectId,version,leaseId:lease,payload:sealProviderPayload({projectId,recordKind:'connection',recordId:String(version+1)},renewed),subject:row.subject,identityVerified:row.identity_verified})
      current=renewed;row={...row,connection_version:version+1};refreshed=true
     } catch(e) {
@@ -39,7 +40,7 @@ export function createHiggsfieldReadiness(store:HiggsfieldStore=createHiggsfield
    }
    if(!current.expiresAt||current.expiresAt<=Date.now()+30000)await refresh()
    async function run() {
-    const client=await open(current)
+    const client=await open(current,deadline)
     try{return await inspectReadOnlyClient(client)}finally{await client.close().catch(()=>{})}
    }
    let result

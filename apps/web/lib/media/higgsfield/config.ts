@@ -55,6 +55,12 @@ export function createHiggsfieldFetch(delegate:typeof fetch=fetch,budgetMs=25000
     try {
       const response=await delegate(request)
       if(response.status>=300 && response.status<400) throw new HiggsfieldError('invalid_endpoint')
+      // SDK auth recovery logs raw OAuth error descriptions and may replay a code.
+      // Stop rejected credential exchanges before the SDK parses their body.
+      if(purpose==='issuer' && ['/oauth/token','/oauth/register'].includes(url.pathname) && !response.ok) {
+        await response.body?.cancel().catch(()=>{})
+        throw new HiggsfieldError('provider_unavailable')
+      }
       if(Number(response.headers.get('content-length')??0)>MAX_PROVIDER_BYTES) throw new HiggsfieldError('invalid_response')
       if(!response.body) return response
       const reader=response.body.getReader()

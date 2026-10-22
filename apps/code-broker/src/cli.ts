@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises'
-import { SecureMacBrokerSigner } from './identity/signer.js'
+import { createPlatformBrokerSigner } from './identity/platform-signer.js'
 import { createEnrollmentProof, type EnrollmentPackage } from './identity/enrollment.js'
 import { postEnrollment, postSignedDiagnostic } from './protocol/http-client.js'
 
 const args = process.argv.slice(2)
 const command = args.shift()
 const value = (flag: string) => { const i = args.indexOf(flag); if (i < 0 || !args[i + 1]) throw new Error(`missing ${flag}`); return args[i + 1] }
-const signer = new SecureMacBrokerSigner()
+const signer = createPlatformBrokerSigner()
 
 // NOTE: `--build-sha256` is a build identity the operator DECLARES; it is signed and checked
 // against a server allowlist, but nothing here measures the running executable (no attestation).

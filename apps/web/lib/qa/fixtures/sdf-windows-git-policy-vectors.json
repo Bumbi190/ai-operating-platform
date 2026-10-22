@@ -1,0 +1,62 @@
+[
+  {
+    "id": "https",
+    "config": "remote.origin.url\nhttps://github.com/bumbi190/ai-operating-platform.git\u0000",
+    "allowed": true
+  },
+  {
+    "id": "scp",
+    "config": "remote.origin.url\ngit@github.com:Bumbi190/ai-operating-platform.git\u0000",
+    "allowed": true
+  },
+  {
+    "id": "ssh",
+    "config": "remote.origin.url\nssh://git@github.com/Bumbi190/ai-operating-platform.git\u0000",
+    "allowed": true
+  },
+  {
+    "id": "harmless",
+    "config": "remote.origin.url\nhttps://github.com/bumbi190/ai-operating-platform.git\u0000core.autocrlf\ntrue\u0000",
+    "allowed": true
+  },
+  {
+    "id": "wrong_host",
+    "config": "remote.origin.url\nhttps://example.invalid/bumbi190/ai-operating-platform.git\u0000",
+    "allowed": false
+  },
+  {
+    "id": "https_credentials",
+    "config": "remote.origin.url\nhttps://token@github.com/bumbi190/ai-operating-platform.git\u0000",
+    "allowed": false
+  },
+  {
+    "id": "url_query",
+    "config": "remote.origin.url\nhttps://github.com/bumbi190/ai-operating-platform.git?x=1\u0000",
+    "allowed": false
+  },
+  {
+    "id": "other_remote",
+    "config": "remote.origin.url\nhttps://github.com/bumbi190/ai-operating-platform.git\u0000remote.other.url\nhttps://github.com/other/repository.git\u0000",
+    "allowed": false
+  },
+  {
+    "id": "filter",
+    "config": "remote.origin.url\nhttps://github.com/bumbi190/ai-operating-platform.git\u0000filter.fixture.smudge\ncommand\u0000",
+    "allowed": false
+  },
+  {
+    "id": "include",
+    "config": "remote.origin.url\nhttps://github.com/bumbi190/ai-operating-platform.git\u0000include.path\n\u0000",
+    "allowed": false
+  },
+  {
+    "id": "worktree_config",
+    "config": "remote.origin.url\nhttps://github.com/bumbi190/ai-operating-platform.git\u0000extensions.worktreeconfig\ntrue\u0000",
+    "allowed": false
+  },
+  {
+    "id": "shell_alias",
+    "config": "remote.origin.url\nhttps://github.com/bumbi190/ai-operating-platform.git\u0000alias.fixture\n!echo wrong\u0000",
+    "allowed": false
+  }
+]

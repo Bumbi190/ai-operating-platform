@@ -414,6 +414,18 @@ describe('Phase 9AA — views that can bypass RLS', () => {
     expect(probe('grant usage on schema atlas to authenticated;').blocking).toEqual(['INTERNAL_SCHEMA_CLIENT_GRANT'])
     expect(probe('grant select on atlas.memories to anon;').blocking).toEqual(['INTERNAL_SCHEMA_CLIENT_GRANT'])
   })
+
+  it('Atlas code review private schema remains narrowly classified and denies all client grants', () => {
+    const entry = ALLOWLIST.internal_schemas.find(s => s.schema === 'atlas_code_review_private')
+    expect(entry?.exposed_via_data_api).toBe(false)
+    expect(entry?.verified).toMatch(/source-only.*unapplied/i)
+    const source = readFileSync(join(REPO, 'apps/web/supabase/migrations/20261018185809_atlas_code_review_storage.sql'), 'utf8')
+    expect(source).toMatch(/revoke all on schema atlas_code_review_private from public,anon,authenticated,service_role/i)
+    expect(source).toMatch(/revoke all on atlas_code_review_private\.credentials from public,anon,authenticated,service_role/i)
+    expect(probe('grant usage on schema atlas_code_review_private to authenticated;').blocking).toEqual(['INTERNAL_SCHEMA_CLIENT_GRANT'])
+    expect(probe('grant select on atlas_code_review_private.credentials to anon;').blocking).toEqual(['INTERNAL_SCHEMA_CLIENT_GRANT'])
+    expect(probe('grant usage on schema atlas_code_review_private_extra to authenticated;').blocking).toEqual(['UNKNOWN_SCHEMA'])
+  })
 })
 
 // ─── 6. Authenticated context and write semantics ───────────────────────────

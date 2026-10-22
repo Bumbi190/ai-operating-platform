@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { assertBrokerOrigin } from './origin.js'
 import type { BrokerSigner } from '../identity/types.js'
 import { canonicalRequestPayload, sha256Hex } from './canonical-request.js'
 
@@ -31,9 +32,11 @@ export async function postSignedDiagnostic(input: {
 
 async function postJson(origin: string, path: string, body: unknown, headers: Record<string, string>) {
   if (!ALLOWED_PATHS.has(path)) throw new Error('broker endpoint not allowlisted')
-  const url = new URL(path, origin)
-  if (!['http:', 'https:'].includes(url.protocol) || url.pathname !== path) throw new Error('invalid broker origin')
-  const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) })
+  const url = new URL(path, assertBrokerOrigin(origin))
+  let response: Response
+  try {
+    response = await fetch(url, { method: 'POST', redirect: 'error', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) })
+  } catch { throw new Error('broker protocol unavailable') }
   const value = await response.json().catch(() => null)
   if (!response.ok) throw new Error(`broker protocol rejected:${response.status}`)
   return value

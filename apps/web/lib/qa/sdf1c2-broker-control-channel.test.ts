@@ -565,9 +565,9 @@ describe('SDF-1C2 structural boundary', () => {
     const path = join(dir, name); return statSync(path).isDirectory() ? files(path) : /\.(?:ts|tsx)$/.test(name) ? [path] : []
   })
 
-  it('exposes exactly the six purpose-specific broker routes and no generic boundary', () => {
-    expect(files(api).map(file => file.slice(api.length + 1)).sort()).toEqual([
-      'claim/recover/route.ts', 'claim/route.ts', 'discover/route.ts', 'enroll/route.ts', 'heartbeat/route.ts', 'identity/route.ts',
+  it('exposes exactly the seven purpose-specific broker routes and no generic boundary', () => {
+    expect(files(api).map(file => file.slice(api.length + 1).replaceAll('\\', '/')).sort()).toEqual([
+      'claim/recover/route.ts', 'claim/route.ts', 'discover/route.ts', 'enroll/route.ts', 'execution-lease/route.ts', 'heartbeat/route.ts', 'identity/route.ts',
     ])
     for (const name of ['execute', 'tool', 'rpc', 'action', 'command', 'context', 'evidence', 'transition', 'preflight', 'patch', 'run', 'cancel', '[...path]', '[action]', '[op]']) {
       expect(existsSync(join(api, name)), name).toBe(false)

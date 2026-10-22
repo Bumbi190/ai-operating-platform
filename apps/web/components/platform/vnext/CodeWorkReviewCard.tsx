@@ -10,6 +10,7 @@ import {
   type CodeWorkReviewQueueModel,
 } from '@/lib/atlas/code-work/control-plane/operator-model'
 import styles from './CodeWorkReviewCard.module.css'
+import {CodeWorkIntakeDraft} from './CodeWorkIntakeDraft'
 
 type Outcome = { kind: 'idle' | 'working' | 'done' | 'error'; message?: string }
 
@@ -28,6 +29,7 @@ export function CodeWorkReviewPanel({ model }: { model: CodeWorkReviewQueueModel
         <span className={styles.truth}>NO EXECUTION RUNTIME</span>
       </div>
 
+      <CodeWorkIntakeDraft />
       <ProposalForm />
 
       {model.state === 'error' ? (

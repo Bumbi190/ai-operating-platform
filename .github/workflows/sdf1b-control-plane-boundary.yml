@@ -70,6 +70,11 @@ jobs:
           lib/qa/sdf1b2-code-work-ui.test.ts
           lib/qa/workpackage-admission-translation.test.ts
           lib/qa/operator-proposal-composition.test.ts
+          lib/qa/code-work-model-router.test.ts
+          lib/qa/code-work-intake-preview.test.ts
+          lib/qa/code-work-instruction.test.ts
+          lib/qa/code-work-intake-http.test.ts
+          lib/qa/code-work-git-base.test.ts
           --reporter=default --reporter=json
           --outputFile.json="$RUNNER_TEMP/sdf1b-contracts.json"
       - name: Enforce the contract and B2 anti-skip floor
@@ -90,6 +95,11 @@ jobs:
             ['sdf1b2-code-work-ui.test.ts', 4],
             ['workpackage-admission-translation.test.ts', 70],
             ['operator-proposal-composition.test.ts', 58],
+            ['code-work-model-router.test.ts', 14],
+            ['code-work-intake-preview.test.ts', 9],
+            ['code-work-instruction.test.ts', 8],
+            ['code-work-intake-http.test.ts', 11],
+            ['code-work-git-base.test.ts', 6],
           ])
           const byFile = new Map((report.testResults ?? []).map(result => [path.basename(result.name), result]))
 

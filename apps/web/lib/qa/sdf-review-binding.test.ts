@@ -1,0 +1,19 @@
+import { describe,it,expect } from 'vitest'
+import { makeReviewContext,makeReviewBinding,makeReviewAssignment } from './fixtures/sdf-review-fixtures'
+import { validateReviewContext,validateReviewBinding,validateReviewAssignment,validateLiveReviewContext } from '@/lib/atlas/code-work/review/binding'
+import { REVIEW_CONTRACT_LIMITS } from '@/lib/atlas/code-work/review/types'
+const clone=structuredClone
+describe('independent review binding',()=>{
+ it('valid_binding_matches_admission',()=>{const c=makeReviewContext();expect(validateReviewContext(c).ok).toBe(true);expect(validateReviewBinding(makeReviewBinding(c),c).ok).toBe(true);expect(validateReviewAssignment(makeReviewAssignment(),c).ok).toBe(true)})
+ it('pins the exact bounded policy',()=>expect(REVIEW_CONTRACT_LIMITS).toEqual({maxReviewSessions:2,maxModelDispatchesPerSession:3,maxMessages:12,maxMessageBodyBytes:4096,maxContextBytes:65536,maxResultBytes:32768}))
+ for(const field of ['workId','projectId','repositoryId','missionId','missionHash','admissionHash','delegationHash','workPackageHash','baseSha','targetRef','targetHeadSha','policyHash','reviewSettingsHash'])it('rejects changed '+field,()=>{const c=makeReviewContext(),b:any=makeReviewBinding(c);b[field]=field.includes('Hash')?'c'.repeat(64):'foreign';expect(validateReviewBinding(b,c).ok).toBe(false)})
+ for(const field of ['actorId','sessionId'])it('same_'+field+'_rejected',()=>{const c=makeReviewContext();c.assignment.reviewer[field as 'actorId']=c.assignment.worker[field as 'actorId'];expect(validateReviewContext(c).ok).toBe(false)})
+ for(const change of [(c:any)=>c.cancelled=true,(c:any)=>c.claimValid=false,(c:any)=>c.nowMs=Date.parse(c.assignment.claim.expiresAt),(c:any)=>c.deadlineMs=c.nowMs])it('expired_claim_and_cancel_rejected '+change,()=>{const c=makeReviewContext();change(c);expect(validateReviewContext(c).ok).toBe(true);expect(validateLiveReviewContext(c).ok).toBe(false);expect(validateReviewBinding(makeReviewBinding(c),c).ok).toBe(false)})
+ for(const value of [NaN,Infinity,-1,0,13,1.5,Number.MAX_SAFE_INTEGER+1])it('nonfinite_or_raised_limits_rejected '+value,()=>{const c=makeReviewContext();c.limits.maxMessages=value;expect(validateReviewContext(c).ok).toBe(false)})
+ for(const change of [(c:any)=>c.budget.totalMicrousd=0,(c:any)=>c.budget.reviewerAllocationMicrousd=0,(c:any)=>c.budget.spentMicrousd=-1,(c:any)=>c.budget.reservedReviewerMicrousd=100001,(c:any)=>c.requiredChecks[0].argvHash='d'.repeat(64),(c:any)=>c.requiredChecks[0].minPassedTests=0])it('rejects invalid cost or check '+change,()=>{const c=makeReviewContext();change(c);expect(validateReviewContext(c).ok).toBe(false)})
+ it('allows a settled zero reservation without promising another dispatch',()=>{const c=makeReviewContext();c.budget.reservedReviewerMicrousd=0;expect(validateReviewContext(c).ok).toBe(true)})
+ for(const change of [(c:any)=>c.extra=true,(c:any)=>delete c.claimValid,(c:any)=>c.assignment.claim.extra=true,(c:any)=>c.assignment.worker.actorId='bad/id',(c:any)=>c.assignment.claim.expiresAt='2026-02-30T18:15:00.000Z',(c:any)=>c.requiredChecks[0].arguments.extra='x',(c:any)=>c.admission.extra=true])it('rejects unknown or malformed nested input '+change,()=>{const c=makeReviewContext();change(c);expect(validateReviewContext(c).ok).toBe(false)})
+ it('copies and freezes rather than lending mutable authority pins',()=>{const c=makeReviewContext(),v=validateReviewContext(c);expect(v.ok).toBe(true);if(v.ok){c.assignment.worker.actorId='changed';expect(v.value.assignment.worker.actorId).toBe('worker');expect(Object.isFrozen(v.value.assignment.worker)).toBe(true)}})
+})
+
+it('bounds oversized input before inspecting later invalid content',()=>{const c:any={...makeReviewContext(),padding:'x'.repeat(262144),later:undefined};const result=validateReviewContext(c);expect(result.ok).toBe(false);if(!result.ok)expect(result.violations[0].code).toBe('input_too_large')})

@@ -11,6 +11,12 @@
   },
   "internal_schemas": [
     {
+      "schema": "atlas_code_review_private",
+      "exposed_via_data_api": false,
+      "verified": "2026-10-20 source-only: private schema created in 20261018185809_atlas_code_review_storage.sql with explicit client privilege revocations. Migration is unapplied; live Data API exposure must be checked independently before activation.",
+      "justification": "Exact private schema for role-bound Atlas code review credentials and helper functions. Never an authenticated or anon data surface. The SQL revokes client grants on schema, credentials and functions; any later client grant remains blocked by the migration security gate."
+    },
+    {
       "schema": "atlas",
       "exposed_via_data_api": false,
       "verified": "2026-09-10 — anon GET /rest/v1/memories with Accept-Profile: atlas → 406 PGRST106 (invalid schema)",

@@ -1,0 +1,1829 @@
+{
+  "schema": "atlas.guard_hardening_evidence.v1",
+  "plan": "docs/superpowers/plans/2026-10-20-guard-single-use.md",
+  "approval": {
+    "at": "2026-10-20T08:38+02:00",
+    "scope": "separate security step for the four single-use-guard review findings; RED, fix, full gate, A-D, independent review"
+  },
+  "testedSourceCommit": "700cdaa5b86c3cb25874a4fc649c42178ff8b1bf",
+  "testOnlyFollowUp": "bb76829 (tests and docs only; class V 6/6 re-verified, bindings unchanged)",
+  "red": {
+    "finding1": "forged guard started an attempt",
+    "finding2": "guard live during cleanup",
+    "finding3": "scheduler throw escaped without stop/kill",
+    "finding4": "gap tests green on first run (behaviour already correct)"
+  },
+  "green": {
+    "targeted": "135/135"
+  },
+  "binaries": {
+    "OmniraBrokerWorkspace.dll": "b018302fbccb526911a51116f4395092cf4371b103c37b25be019afdfa81f5bc",
+    "OmniraBrokerHost.dll": "f703110916c28b6f14c76d78311064bd1938edd602da20ca9b287a0cf2ddefb9"
+  },
+  "classN": {
+    "A": {
+      "intent": {
+        "attempt": "A",
+        "phase": "dispatched-once",
+        "attemptId": "ff595ff2-8dd8-4d52-a939-c6db1ac9b83d",
+        "preparedAt": "2026-10-20T06:42:43.7180258Z",
+        "qualifiedAt": "2026-10-20T06:42:43.573Z",
+        "backendIdentityHash": "fc3ae1f41038b227b0053215322c928eaf341871828d789485c2bb7aec36e05b",
+        "daemonIdentityHash": "097b04099237066832a5574e26cb1708df26ff5007ae0165f7135bea76df3601",
+        "codexService": "Running",
+        "sourceCommit": "700cdaa5b86c3cb25874a4fc649c42178ff8b1bf",
+        "binaries": {
+          "OmniraBrokerWorkspace.dll": "b018302fbccb526911a51116f4395092cf4371b103c37b25be019afdfa81f5bc",
+          "OmniraBrokerWorkspace.deps.json": "7e04cee2425e17bad27451bb3ac1f05f5533061e3f7dcb1c944b2af187ff288c",
+          "OmniraBrokerWorkspace.runtimeconfig.json": "28329cf08f6505e73806b17558b187c02f0c1c516fe47ebfb7a013d082aaa306",
+          "OmniraBrokerHost.dll": "f703110916c28b6f14c76d78311064bd1938edd602da20ca9b287a0cf2ddefb9"
+        },
+        "dispatchedAt": "2026-10-20T06:42:46.595Z"
+      },
+      "proof": {
+        "schema": "atlas.native_stop_real_attempt.v1",
+        "attempt": "A",
+        "attemptId": "ff595ff2-8dd8-4d52-a939-c6db1ac9b83d",
+        "recordedAt": "2026-10-20T06:43:04.597Z",
+        "bindings": {
+          "apps/code-broker/.native/windows-workspace/OmniraBrokerWorkspace.dll": "b018302fbccb526911a51116f4395092cf4371b103c37b25be019afdfa81f5bc",
+          "apps/code-broker/.native/windows-workspace/OmniraBrokerWorkspace.deps.json": "7e04cee2425e17bad27451bb3ac1f05f5533061e3f7dcb1c944b2af187ff288c",
+          "apps/code-broker/.native/windows-workspace/OmniraBrokerWorkspace.runtimeconfig.json": "28329cf08f6505e73806b17558b187c02f0c1c516fe47ebfb7a013d082aaa306",
+          "apps/code-broker/.native/windows-workspace/OmniraBrokerHost.dll": "f703110916c28b6f14c76d78311064bd1938edd602da20ca9b287a0cf2ddefb9",
+          "apps/code-broker/native/windows-workspace/Program.cs": "ea92c5dfbcfba48df67d52abc389d25a592fd4720cb2f553b1a6d82fa749b117",
+          "apps/code-broker/native/windows-workspace/NativeControlChannel.cs": "204573af0c1cee4514d2b85f07f30f1958d9bf6fc0226092f5a3dc57ce48080b",
+          "apps/code-broker/native/windows-workspace/WindowsMaterializationFixture.cs": "00f19aff8ded2a6c2f66a9c8262515b192e3a9a11cc28bda93f7cf8e98308224",
+          "apps/code-broker/native/windows-workspace/MaterializationContracts.cs": "204b50153b262114e2172619ea89148a7126996c6df820fe86e95097cab676c7",
+          "apps/code-broker/src/isolation/windows/controlled-helper.ts": "a39ffb112ea5c6c357a4bf0e637d5f8ed157abeeb596ae92cd43d46c55ec3b6f",
+          "apps/code-broker/src/runtime/native-stop-bridge.ts": "3c8f8de1db06ae952739bbb7b7ff505483d116e212978d16214b9b254a4c88c8",
+          "apps/code-broker/src/isolation/windows/source-fixture.ts": "2fc620c99326d7c4b38ad9c4b9ceb27b7a3c3dcafbad8b1f52f5118ae4dfc7d5",
+          "apps/code-broker/src/isolation/windows/source-contracts.ts": "b85f4e95a0fab40ef0086bb9e2677d52932c23bd9e60ba92d5503ac4cecb49af",
+          "apps/code-broker/src/runtime/execution-lease-guard.ts": "9e749abc7fd2e886178e30b24f0d449c89b1de2b67164045137174d9f01408cb",
+          "apps/code-broker/src/isolation/windows/workspace-helper.ts": "4bf7d7d56aef8666e39b69b5caaa5d124210403cd17ed2f4af30f762528d4697",
+          "request": "{\"schema\":\"sdf.windows_workspace_request.v1\",\"workId\":\"c435e423-d964-428b-b5c0-4060d89ce3c6\",\"repositoryId\":\"github.com/bumbi190/ai-operating-platform\",\"pinnedBaseSha\":\"d3f9fcc1045026042f6bb9c0cd302ed0b7283127\",\"admissionHash\":\"662d9af499e4d6fbc0c7e97b276d8526559a0658b6899eab63cc9a04880cec1d\",\"claimId\":\"2e0f09eb-cf7e-4619-834b-d78aa0ca5a7a\",\"fence\":1}"
+        },
+        "dockerBefore": {
+          "containers": [
+            "00839eda91e3e6bb08040960238cb02e87b8fcb75a92a70e93feede9f26c7bd8",
+            "01c0911cadce7caa369843ab1766ce408e6f5d1610bf493701d53b764379e921",
+            "156ca5835ca03fa689db5148fb140dc26009609661b16eb76e398a6d4875991f",
+            "19235ae79602a4aab2871166000c4ca09a619d10e6e3face94fe4a9159088216",
+            "1ddfd23844a2e745aa45a224047c834cc5dcd4e4fc2440b0f4d76af78d66beb5",
+            "20013e149e63f7dcbf0cc2fbad3b6766fbd73ac34442ee33f2ea1903ca9322b9",
+            "26f54fcab5b72f1c9c7f0515fa058b8ef1303236f3064c1da839704221e6b526",
+            "2bc195b9f1d2ce88c9286078de13d0c612c36fc5dd6873b9b9b5aedfd7947cc8",
+            "2d607fabc7a967e7303b78971b11745779732e8adae55bd7023326457c35f4a2",
+            "3949ec8c333a3398a573d8a00ed27819f567b87c03b21a26b63bf9bdcd06a186",
+            "452b860aaef9b80dbb2e7263156a4813ecd5f66e0286b0d7bae28ce861e7162f",
+            "49efc21389599e12f8b1e1cdcd67a5240dce6c2ab91a881b0fb09a2e137a5792",
+            "4d9914d590d319d493e4491cf94b11a9343390e25cb59088e8e39cdf514a94b8",
+            "56dd9297cdccb61c0d6294e65b6bff7ab58314b246be43758d5f34ba242125aa",
+            "57299eb3e8cb7bac1c967fff1aac945db2d978a4ce304b23663cf26f2e8d7267",
+            "5bcefa9048b0be6c1915342299a3902020d4acc107b56f4f42ec10c23d46345d",
+            "64cbc6f8663d2c801852eb874a315f8392f5f6c1619861dc34d8646979be2dee",
+            "6673a09d2da99d0982d0e7d1a9bc5164caaf182e62b9c1cea645bb6b4965f377",
+            "7c2698da13168fbdd358df8063336a77eaa02d1df0c22dc184076b78fb682a5b",
+            "7ee8e0c3c3ba92045124c10eb3db8e28799bc1c4a9b7424b9453ae250ef08045",
+            "83128523e56634b5fa732f252c8b17ee3f7522d8dbf748034abc201d24ceee76",
+            "833ed5818fb7ffaec222288aa422f00bada5a920e93113d0a4e34d690aa925eb",
+            "8bc1a7e73be34c898f92f70187665d18bbac625a272ac36ed4aaf4e9b507e35c",
+            "8c471fa77daac344677372ee75f6f63b3068827b87c2df75f23c34ffde9fb593",
+            "8cf11d4c0ec94ad7b8ec024de518ac0e38d0b4e944299f9eceb6f99bec50e9bb",
+            "9a5a42807fbcde3705162424d79fee39947a257127daf5a10cd09469904a4a49",
+            "a0ecd3953e3d24c5814f566558d088d16b61d5490ba183f8f35ba64023b2508f",
+            "ac5761b6700e603b13c5ff02d4406117672ef317202dca715fd4c0eb9d7f8e38",
+            "ad1e32968aa4ca641055a799a730d55647bd76725c028e25dea292693180d23b",
+            "ae0eb2e6466a805ac57d1b27863e2948d603e19bdd0464261422cf7575592026",
+            "b6203adda2cf8aefd0593f255d64018e945efc89473ef7820d4a042101cd4544",
+            "b6d075368fb6342d47fdd85824eaa46186cacb5f699e210f3aa80cecc4187a07",
+            "ca69e235d4a542d203eaf2f666b371884d2ea93df74db3895aaa19c802753a90",
+            "d33b6d9485fbc86b16c4fc30057e6a22f805e80c005357d0791231291c0d6d84",
+            "db1fbeadad578c2da01d260333d207e4e1286fbed27e9b7d6a8bbde1e218b0e1",
+            "db6c6643377a2004bc265314f769bf08c993b72a8cbb64b08a98b13deb5ed2b5",
+            "e5139cf27d09c3105c4cb13f3c4732b5a557fffe1de90cec0fef4095c6e9896e",
+            "e6630949c81aef258a34f5129e11b9f9be83fe3178e7f9b55ed76538f31707d8",
+            "ea053631a41fb0f70e08f74fe0743eea6ccb6ced043322a62c586a5552ceea17",
+            "fa60f68a6334e832669a1f429b67689b53f4f89b3511ae225bc3b1f05aa5a458"
+          ],
+          "volumes": [
+            "0ee0dcb53c0cbf185b8aac5834d21ace6d96fefad707e10a969dc606c6552ff1",
+            "11ecc40dc1e7eafadc63b88c9f22155e7d621b08c5923861ad685d5b951e9c3f",
+            "16499eef08eedb0c8b648252527ca980cff2c1ffd741046feb96876b4bbee16d",
+            "20f7360752a36bc3da79a90f1122c91aec50cf893fff9ea021ecd58888773902",
+            "23e6dde6740a6ac029afcbddf9fd193b180084a82ba0d92d0ea11d33a474a78a",
+            "429a1e461baad703d78a1379108abc9a7bfc90f0ba3a7f9fcf4b3c7b0de8780a",
+            "4b83689c5a4d989a868ad84820acba1b0f3d0ea2e4b3929cfef4d1bfe434b2f5",
+            "5e57b694f25de259d047b75c1c27a97aa904ead64855116752c6d8523ca6f7a7",
+            "5ea54d276b5c97daedfcde6db2e4d09c4140532ed7d3efd9244345b533c5183c",
+            "6145d00cf41afa2343698ff7a1b24fc9bfd2831d44a8fa1ca9893cd606992b58",
+            "790d252ad63b70c0cdc7006fb5f870438b33a4a8945ea5625849a4ee81e9397d",
+            "79c8f116ba369a3e10d1ae243ece337df187f5ec9547b14212e7d5de0c7f3e35",
+            "7c1bded3d4e8464af6724adf5b9c0fe04c80670875e46f7f8e5007fda2f03eba",
+            "80e69105619a60f8bd7160c02c6403fbc992dd33703f225b49c757a88230e10c",
+            "89beac618e3ccfe5c0e66497bdfd9dabb836b1e1d6f180ae3acd229941ed7bd7",
+            "8a48ff654fe599188506ca5eb683fde64496174d22ee19bd1681b88cf1e76f62",
+            "934686eca099120485f9b95f3329a285a9bc62602da36379b8239deede27af42",
+            "9624994e4417ca68b7b1083ffe3db8240b82a74b0e79383e520f099cdde35cf7",
+            "a440541f6a106800079241ce1a5116fd161ff451983b8555327a1f7683e0a2e2",
+            "b4fac80f008d956e0efee057983c4586974e2c0097436ccd598af5dc05c8873a",
+            "b8d71a8039a7392ad085d4b5c48527e661ece121298082714b61f1f2afa4d9de",
+            "b942f56d3e2d32a540c1b2ac028ef4fd7489fb0a3605a5c561b400c5933b20b7",
+            "bb47924bf91ff413fb80eab3a6c5c5b97aabf1dab73452ab3eea2f1acbf7988d",
+            "bb8116793e60fb60deedd02c115f1c0d36b185aedd60ce9805447ab46c0b754f",
+            "bf2ee9fd0ceeda17dcc2339ebcbc3ff7b4534d8b3c7a76a15c2f2aeb229797dc",
+            "c2fcee06b068e0203813a680cba0397d9679cb93975cc88aa1e27a95fbb60017",
+            "e884afc4cf2879b31a89470a34634afe5ca38bfc8ca0e1b50fc72a0c8e5a9ecd",
+            "handlarborsen-auth-ci-node-modules",
+            "omnira-openviking-pilot-20261015_models",
+            "omnira-openviking-pilot-20261015_state",
+            "omnira-openviking-pilot-20261015_state_lifecycle_20261015",
+            "omnira-openviking-pilot-20261015_state_semantic",
+            "omnira-openviking-pilot-20261015_state_vectors",
+            "omnira-openviking-probe-deps-20261015",
+            "supabase_db_Handlarborsen",
+            "supabase_db_Handlarborsen-auth-ci",
+            "supabase_db_Handlarborsen-pilot-e2e",
+            "supabase_db_handlarborsen-atlas-test-data-local",
+            "supabase_db_hb-posthog-readiness-20261013",
+            "supabase_db_omnira-stt-local",
+            "supabase_edge_runtime_Handlarborsen",
+            "supabase_edge_runtime_omnira-stt-local",
+            "supabase_storage_Handlarborsen",
+            "supabase_storage_Handlarborsen-auth-ci",
+            "supabase_storage_Handlarborsen-pilot-e2e",
+            "supabase_storage_handlarborsen-atlas-test-data-local",
+            "supabase_storage_hb-posthog-readiness-20261013",
+            "supabase_storage_omnira-stt-local"
+          ]
+        },
+        "dockerAfter": {
+          "containers": [
+            "00839eda91e3e6bb08040960238cb02e87b8fcb75a92a70e93feede9f26c7bd8",
+            "01c0911cadce7caa369843ab1766ce408e6f5d1610bf493701d53b764379e921",
+            "156ca5835ca03fa689db5148fb140dc26009609661b16eb76e398a6d4875991f",
+            "19235ae79602a4aab2871166000c4ca09a619d10e6e3face94fe4a9159088216",
+            "1ddfd23844a2e745aa45a224047c834cc5dcd4e4fc2440b0f4d76af78d66beb5",
+            "20013e149e63f7dcbf0cc2fbad3b6766fbd73ac34442ee33f2ea1903ca9322b9",
+            "26f54fcab5b72f1c9c7f0515fa058b8ef1303236f3064c1da839704221e6b526",
+            "2bc195b9f1d2ce88c9286078de13d0c612c36fc5dd6873b9b9b5aedfd7947cc8",
+            "2d607fabc7a967e7303b78971b11745779732e8adae55bd7023326457c35f4a2",
+            "3949ec8c333a3398a573d8a00ed27819f567b87c03b21a26b63bf9bdcd06a186",
+            "452b860aaef9b80dbb2e7263156a4813ecd5f66e0286b0d7bae28ce861e7162f",
+            "49efc21389599e12f8b1e1cdcd67a5240dce6c2ab91a881b0fb09a2e137a5792",
+            "4d9914d590d319d493e4491cf94b11a9343390e25cb59088e8e39cdf514a94b8",
+            "56dd9297cdccb61c0d6294e65b6bff7ab58314b246be43758d5f34ba242125aa",
+            "57299eb3e8cb7bac1c967fff1aac945db2d978a4ce304b23663cf26f2e8d7267",
+            "5bcefa9048b0be6c1915342299a3902020d4acc107b56f4f42ec10c23d46345d",
+            "64cbc6f8663d2c801852eb874a315f8392f5f6c1619861dc34d8646979be2dee",
+            "6673a09d2da99d0982d0e7d1a9bc5164caaf182e62b9c1cea645bb6b4965f377",
+            "7c2698da13168fbdd358df8063336a77eaa02d1df0c22dc184076b78fb682a5b",
+            "7ee8e0c3c3ba92045124c10eb3db8e28799bc1c4a9b7424b9453ae250ef08045",
+            "83128523e56634b5fa732f252c8b17ee3f7522d8dbf748034abc201d24ceee76",
+            "833ed5818fb7ffaec222288aa422f00bada5a920e93113d0a4e34d690aa925eb",
+            "8bc1a7e73be34c898f92f70187665d18bbac625a272ac36ed4aaf4e9b507e35c",
+            "8c471fa77daac344677372ee75f6f63b3068827b87c2df75f23c34ffde9fb593",
+            "8cf11d4c0ec94ad7b8ec024de518ac0e38d0b4e944299f9eceb6f99bec50e9bb",
+            "9a5a42807fbcde3705162424d79fee39947a257127daf5a10cd09469904a4a49",
+            "a0ecd3953e3d24c5814f566558d088d16b61d5490ba183f8f35ba64023b2508f",
+            "ac5761b6700e603b13c5ff02d4406117672ef317202dca715fd4c0eb9d7f8e38",
+            "ad1e32968aa4ca641055a799a730d55647bd76725c028e25dea292693180d23b",
+            "ae0eb2e6466a805ac57d1b27863e2948d603e19bdd0464261422cf7575592026",
+            "b6203adda2cf8aefd0593f255d64018e945efc89473ef7820d4a042101cd4544",
+            "b6d075368fb6342d47fdd85824eaa46186cacb5f699e210f3aa80cecc4187a07",
+            "ca69e235d4a542d203eaf2f666b371884d2ea93df74db3895aaa19c802753a90",
+            "d33b6d9485fbc86b16c4fc30057e6a22f805e80c005357d0791231291c0d6d84",
+            "db1fbeadad578c2da01d260333d207e4e1286fbed27e9b7d6a8bbde1e218b0e1",
+            "db6c6643377a2004bc265314f769bf08c993b72a8cbb64b08a98b13deb5ed2b5",
+            "e5139cf27d09c3105c4cb13f3c4732b5a557fffe1de90cec0fef4095c6e9896e",
+            "e6630949c81aef258a34f5129e11b9f9be83fe3178e7f9b55ed76538f31707d8",
+            "ea053631a41fb0f70e08f74fe0743eea6ccb6ced043322a62c586a5552ceea17",
+            "fa60f68a6334e832669a1f429b67689b53f4f89b3511ae225bc3b1f05aa5a458"
+          ],
+          "volumes": [
+            "0ee0dcb53c0cbf185b8aac5834d21ace6d96fefad707e10a969dc606c6552ff1",
+            "11ecc40dc1e7eafadc63b88c9f22155e7d621b08c5923861ad685d5b951e9c3f",
+            "16499eef08eedb0c8b648252527ca980cff2c1ffd741046feb96876b4bbee16d",
+            "20f7360752a36bc3da79a90f1122c91aec50cf893fff9ea021ecd58888773902",
+            "23e6dde6740a6ac029afcbddf9fd193b180084a82ba0d92d0ea11d33a474a78a",
+            "429a1e461baad703d78a1379108abc9a7bfc90f0ba3a7f9fcf4b3c7b0de8780a",
+            "4b83689c5a4d989a868ad84820acba1b0f3d0ea2e4b3929cfef4d1bfe434b2f5",
+            "5e57b694f25de259d047b75c1c27a97aa904ead64855116752c6d8523ca6f7a7",
+            "5ea54d276b5c97daedfcde6db2e4d09c4140532ed7d3efd9244345b533c5183c",
+            "6145d00cf41afa2343698ff7a1b24fc9bfd2831d44a8fa1ca9893cd606992b58",
+            "790d252ad63b70c0cdc7006fb5f870438b33a4a8945ea5625849a4ee81e9397d",
+            "79c8f116ba369a3e10d1ae243ece337df187f5ec9547b14212e7d5de0c7f3e35",
+            "7c1bded3d4e8464af6724adf5b9c0fe04c80670875e46f7f8e5007fda2f03eba",
+            "80e69105619a60f8bd7160c02c6403fbc992dd33703f225b49c757a88230e10c",
+            "89beac618e3ccfe5c0e66497bdfd9dabb836b1e1d6f180ae3acd229941ed7bd7",
+            "8a48ff654fe599188506ca5eb683fde64496174d22ee19bd1681b88cf1e76f62",
+            "934686eca099120485f9b95f3329a285a9bc62602da36379b8239deede27af42",
+            "9624994e4417ca68b7b1083ffe3db8240b82a74b0e79383e520f099cdde35cf7",
+            "a440541f6a106800079241ce1a5116fd161ff451983b8555327a1f7683e0a2e2",
+            "b4fac80f008d956e0efee057983c4586974e2c0097436ccd598af5dc05c8873a",
+            "b8d71a8039a7392ad085d4b5c48527e661ece121298082714b61f1f2afa4d9de",
+            "b942f56d3e2d32a540c1b2ac028ef4fd7489fb0a3605a5c561b400c5933b20b7",
+            "bb47924bf91ff413fb80eab3a6c5c5b97aabf1dab73452ab3eea2f1acbf7988d",
+            "bb8116793e60fb60deedd02c115f1c0d36b185aedd60ce9805447ab46c0b754f",
+            "bf2ee9fd0ceeda17dcc2339ebcbc3ff7b4534d8b3c7a76a15c2f2aeb229797dc",
+            "c2fcee06b068e0203813a680cba0397d9679cb93975cc88aa1e27a95fbb60017",
+            "e884afc4cf2879b31a89470a34634afe5ca38bfc8ca0e1b50fc72a0c8e5a9ecd",
+            "handlarborsen-auth-ci-node-modules",
+            "omnira-openviking-pilot-20261015_models",
+            "omnira-openviking-pilot-20261015_state",
+            "omnira-openviking-pilot-20261015_state_lifecycle_20261015",
+            "omnira-openviking-pilot-20261015_state_semantic",
+            "omnira-openviking-pilot-20261015_state_vectors",
+            "omnira-openviking-probe-deps-20261015",
+            "supabase_db_Handlarborsen",
+            "supabase_db_Handlarborsen-auth-ci",
+            "supabase_db_Handlarborsen-pilot-e2e",
+            "supabase_db_handlarborsen-atlas-test-data-local",
+            "supabase_db_hb-posthog-readiness-20261013",
+            "supabase_db_omnira-stt-local",
+            "supabase_edge_runtime_Handlarborsen",
+            "supabase_edge_runtime_omnira-stt-local",
+            "supabase_storage_Handlarborsen",
+            "supabase_storage_Handlarborsen-auth-ci",
+            "supabase_storage_Handlarborsen-pilot-e2e",
+            "supabase_storage_handlarborsen-atlas-test-data-local",
+            "supabase_storage_hb-posthog-readiness-20261013",
+            "supabase_storage_omnira-stt-local"
+          ]
+        },
+        "run": {
+          "result": {
+            "status": "stopped",
+            "attemptId": "ff595ff2-8dd8-4d52-a939-c6db1ac9b83d",
+            "reason": "lease_lost",
+            "cleanup": "confirmed",
+            "containerRemoved": true,
+            "volumeRemoved": true
+          },
+          "events": [
+            {
+              "event": "lease_read",
+              "phase": null,
+              "refuse": false,
+              "at": 9
+            },
+            {
+              "event": "launched",
+              "pid": 47580,
+              "at": 32
+            },
+            {
+              "event": "lease_read",
+              "phase": null,
+              "refuse": false,
+              "at": 5018
+            },
+            {
+              "event": "lease_read",
+              "phase": null,
+              "refuse": false,
+              "at": 10021
+            },
+            {
+              "event": "checkpoint",
+              "seq": 1,
+              "phase": "before_resources",
+              "at": 14783
+            },
+            {
+              "event": "lease_read",
+              "phase": "before_resources",
+              "refuse": false,
+              "at": 14783
+            },
+            {
+              "event": "checkpoint",
+              "seq": 2,
+              "phase": "before_volume_create",
+              "at": 14794
+            },
+            {
+              "event": "lease_read",
+              "phase": "before_volume_create",
+              "refuse": true,
+              "at": 14794
+            },
+            {
+              "event": "guard_aborted",
+              "at": 14794
+            },
+            {
+              "event": "stop_sent",
+              "at": 14795
+            },
+            {
+              "event": "native_outcome",
+              "kind": "report",
+              "at": 14821
+            }
+          ],
+          "native": {
+            "kind": "report",
+            "value": {
+              "status": "stopped",
+              "attemptId": "ff595ff2-8dd8-4d52-a939-c6db1ac9b83d",
+              "binding": {
+                "workId": "c435e423-d964-428b-b5c0-4060d89ce3c6",
+                "repositoryId": "github.com/bumbi190/ai-operating-platform",
+                "pinnedBaseSha": "d3f9fcc1045026042f6bb9c0cd302ed0b7283127",
+                "admissionHash": "662d9af499e4d6fbc0c7e97b276d8526559a0658b6899eab63cc9a04880cec1d",
+                "claimId": "2e0f09eb-cf7e-4619-834b-d78aa0ca5a7a",
+                "fence": 1
+              },
+              "reason": "stop_requested",
+              "sourcePolicyId": "sdf.windows_source_fixture.v1",
+              "manifest": {
+                "schema": "sdf.windows_source_manifest.v1",
+                "binding": {
+                  "workId": "c435e423-d964-428b-b5c0-4060d89ce3c6",
+                  "repositoryId": "github.com/bumbi190/ai-operating-platform",
+                  "pinnedBaseSha": "d3f9fcc1045026042f6bb9c0cd302ed0b7283127",
+                  "admissionHash": "662d9af499e4d6fbc0c7e97b276d8526559a0658b6899eab63cc9a04880cec1d",
+                  "claimId": "2e0f09eb-cf7e-4619-834b-d78aa0ca5a7a",
+                  "fence": 1
+                },
+                "policyId": "sdf.windows_source_fixture.v1",
+                "baseSha": "d3f9fcc1045026042f6bb9c0cd302ed0b7283127",
+                "files": [
+                  {
+                    "path": "apps/web/lib/atlas/authorization/build.ts",
+                    "gitBlobId": "b987fbec7a52be8ae81caf36429e565127d9db96",
+                    "sha256": "4cb92f114dff7a7ff0366bb1b800d294f92ea058a60174420365ff6716914a96",
+                    "byteLength": 7009
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/authorization/derive.ts",
+                    "gitBlobId": "5dd0733f71411063fed9f237b56c7df21304f2c0",
+                    "sha256": "586633381a5f4f5e5a178066cc8a3ab6113d0adfd37f49ec7074096ea0788bfd",
+                    "byteLength": 12570
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/authorization/types.ts",
+                    "gitBlobId": "59b7819d5849b8edf9c5d2374a73582b8b913562",
+                    "sha256": "248e6a1e3328766b680358d435cb36197fafa08ff27b48b3421ee850c256f522",
+                    "byteLength": 8804
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/binding.ts",
+                    "gitBlobId": "8029a281b66a081d97b1519f49fb0531e5d0524f",
+                    "sha256": "0c4804990773a3f3f2fd2f9d2cd0119f385e7fa92bb4427c6311517049e8892d",
+                    "byteLength": 4260
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/capability.ts",
+                    "gitBlobId": "89275590483a58c71ff4f1081cb2a05a8815b63b",
+                    "sha256": "12c3e403846f03b3614780f2f0d2b379b56b5d548f903189d850da47595092c3",
+                    "byteLength": 1667
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/command-registry.ts",
+                    "gitBlobId": "8832dee51b1d5c058fb268a2f8e650efc540d698",
+                    "sha256": "6ae7335ff444609201150ca262741bfe306dd8f7b611e702fc0b4c310ea5c40b",
+                    "byteLength": 6107
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/evidence.ts",
+                    "gitBlobId": "0577bee93a93316a27b5f7a8cdcb35738f6f92b5",
+                    "sha256": "01e325361886612e133e0f9a5da673f63193d3d76af2ed4976b0b44bcac8aa36",
+                    "byteLength": 15224
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/lifecycle.ts",
+                    "gitBlobId": "0a279c6ab0ee82188afcd25e1d2a9d3827d8063d",
+                    "sha256": "1c7130ede976ef78a7da85fc41750173217db566ce1f0fded0172981c55312cc",
+                    "byteLength": 2603
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/patch-protocol.ts",
+                    "gitBlobId": "02a5a981ee3f129649060794e62dec1efaea624f",
+                    "sha256": "5bad1e58b6d2ea65bdcb48d0ad51d9c8ed02690c35d0d74d586beb161f3e0633",
+                    "byteLength": 7885
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/path-policy.ts",
+                    "gitBlobId": "4f90a0fe3823ab45fade008ea2efdab5ef8fe303",
+                    "sha256": "9a10c2f2e182c4010070bf7b643b07162f3b2e66a41ec0097057f6be27400355",
+                    "byteLength": 4467
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/policy.ts",
+                    "gitBlobId": "aa43abb165d8bbbb97cb58b71873c44edf1650e2",
+                    "sha256": "9f828a58d836402d5d9acca4cec0ff61f1a90545a52d49a6284f1520893fbdeb",
+                    "byteLength": 15090
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/repository-registry.ts",
+                    "gitBlobId": "8216b2c46067c608c1642df86945010f44264383",
+                    "sha256": "30dd5c69de1874928ca8861d5e85ecc5e7179deee4ac7ba0e60ab7ca58ef6e40",
+                    "byteLength": 3291
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/terminal-evidence.ts",
+                    "gitBlobId": "70bee32907e27b80b310486de508e99adf13f700",
+                    "sha256": "5a71f15c2daf1217d56a60665d2f6475f50062c00a9a22441eea45119f9b3d7f",
+                    "byteLength": 2290
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/types.ts",
+                    "gitBlobId": "1c2ad191f916067048059f9eb67401a227863f09",
+                    "sha256": "3b76ead5678f1d52e9f1926355c5ea0426ec083f3c218257f4fdb5dc513754d8",
+                    "byteLength": 5014
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/worker-registry.ts",
+                    "gitBlobId": "3e3c27ca76bfb1aecbb4bb199c8d573b3c8c9cf0",
+                    "sha256": "80252b557615d2d3241e58a821d9b72ba9d29328f33f7aaa09511ffa7a48ef5d",
+                    "byteLength": 1171
+                  },
+                  {
+                    "path": "apps/web/lib/qa/__stubs__/server-only.ts",
+                    "gitBlobId": "a21398e1c7a304a106eb7b6f14ca7eb23fb384a0",
+                    "sha256": "85e86f36c66104ba0c9bda542cf9e7e5c7149927d273e02ac0daff5f0f3785f0",
+                    "byteLength": 168
+                  },
+                  {
+                    "path": "apps/web/lib/qa/sdf1a-code-work-contracts.test.ts",
+                    "gitBlobId": "64762ce8f5faecbca1ff85758df2ce60f06880ec",
+                    "sha256": "d1d1620fd8e1a02d7a6e0712c1176ac094bcd2a84ec8d3169ac70b3b0c3b7330",
+                    "byteLength": 22634
+                  },
+                  {
+                    "path": "apps/web/package.json",
+                    "gitBlobId": "017e0dbf914dc5c556e15d17031ab310131ff03b",
+                    "sha256": "def6e3795da9eb4250e703446080ddb824d2128a6e6869949c09efd374944313",
+                    "byteLength": 2692
+                  },
+                  {
+                    "path": "apps/web/tsconfig.json",
+                    "gitBlobId": "38842a8def6e59d0a27195243a7ed0dd9a173298",
+                    "sha256": "a41343617d3b41e5e0621c7827fe7ca0695429c2bc297fa25c66f1a97b40c5fa",
+                    "byteLength": 604
+                  },
+                  {
+                    "path": "package-lock.json",
+                    "gitBlobId": "42b6a33903a3a5fc7f7733a66827116323bdc5d8",
+                    "sha256": "17ba6aedc7139835f0de6c62fc13c727682b737fe142ee7e99d452673625de80",
+                    "byteLength": 567449
+                  },
+                  {
+                    "path": "package.json",
+                    "gitBlobId": "5674fc51550142c94648a741a8eb64017f34847d",
+                    "sha256": "d04f1e73243bd9d023a352fdc42b1892474d76f8c0519acd08819b926d500fdd",
+                    "byteLength": 354
+                  },
+                  {
+                    "path": "packages/local-text-contract/package.json",
+                    "gitBlobId": "f8048cc21e1f1880156b4c78148bbae55afe1f14",
+                    "sha256": "662e5cee1fd9e5bb13002f31793f54b50ea0a1eb67ab34a2931977f583c27cb3",
+                    "byteLength": 227
+                  }
+                ]
+              },
+              "manifestSha256": "c5dfd43d9b04a73a9143adeb61ce7eaaad549bf8bd94a4fbd72b9110f7503698",
+              "toolchainProfileHash": "d7c9937037175bb7b6689fe547b1d23b1ad514baed68e36eaeb57b2a876dea25",
+              "imageId": "sha256:354e46f6c5d5e046a2002b78f2d43931824b67110df42a40ab4204e269d1acd0",
+              "backendIdentityHash": "fc3ae1f41038b227b0053215322c928eaf341871828d789485c2bb7aec36e05b",
+              "daemonIdentityHash": "097b04099237066832a5574e26cb1708df26ff5007ae0165f7135bea76df3601",
+              "fixture": null,
+              "containerRemoved": true,
+              "volumeRemoved": true,
+              "observedAt": "2026-10-20T06:43:01.716Z",
+              "schema": "sdf.windows_materialization_report.v1",
+              "productionAuthority": false
+            }
+          },
+          "cleanups": 0,
+          "elapsedMs": 14822
+        },
+        "observedAbsence": {
+          "schema": "sdf.windows_materialization_absence_observation.v1",
+          "attemptId": "ff595ff2-8dd8-4d52-a939-c6db1ac9b83d",
+          "absent": true,
+          "toolchainProfileHash": "d7c9937037175bb7b6689fe547b1d23b1ad514baed68e36eaeb57b2a876dea25",
+          "backendIdentityHash": "fc3ae1f41038b227b0053215322c928eaf341871828d789485c2bb7aec36e05b",
+          "daemonIdentityHash": "097b04099237066832a5574e26cb1708df26ff5007ae0165f7135bea76df3601",
+          "productionAuthority": false
+        },
+        "absenceError": null,
+        "productionAuthority": false
+      },
+      "proofSha256": "aa960d750a1e0359c4d6ab14d67dcd0a1e9897eba947490e2b6a59f0cb76ef92"
+    },
+    "B": {
+      "intent": {
+        "attempt": "B",
+        "phase": "dispatched-once",
+        "attemptId": "c8b176c9-f3f9-4505-8e06-0ad728e5befe",
+        "preparedAt": "2026-10-20T06:43:08.9980580Z",
+        "qualifiedAt": "2026-10-20T06:43:08.931Z",
+        "backendIdentityHash": "fc3ae1f41038b227b0053215322c928eaf341871828d789485c2bb7aec36e05b",
+        "daemonIdentityHash": "097b04099237066832a5574e26cb1708df26ff5007ae0165f7135bea76df3601",
+        "codexService": "Running",
+        "sourceCommit": "700cdaa5b86c3cb25874a4fc649c42178ff8b1bf",
+        "binaries": {
+          "OmniraBrokerWorkspace.dll": "b018302fbccb526911a51116f4395092cf4371b103c37b25be019afdfa81f5bc",
+          "OmniraBrokerWorkspace.deps.json": "7e04cee2425e17bad27451bb3ac1f05f5533061e3f7dcb1c944b2af187ff288c",
+          "OmniraBrokerWorkspace.runtimeconfig.json": "28329cf08f6505e73806b17558b187c02f0c1c516fe47ebfb7a013d082aaa306",
+          "OmniraBrokerHost.dll": "f703110916c28b6f14c76d78311064bd1938edd602da20ca9b287a0cf2ddefb9"
+        },
+        "dispatchedAt": "2026-10-20T06:43:11.617Z"
+      },
+      "proof": {
+        "schema": "atlas.native_stop_real_attempt.v1",
+        "attempt": "B",
+        "attemptId": "c8b176c9-f3f9-4505-8e06-0ad728e5befe",
+        "recordedAt": "2026-10-20T06:43:43.221Z",
+        "bindings": {
+          "apps/code-broker/.native/windows-workspace/OmniraBrokerWorkspace.dll": "b018302fbccb526911a51116f4395092cf4371b103c37b25be019afdfa81f5bc",
+          "apps/code-broker/.native/windows-workspace/OmniraBrokerWorkspace.deps.json": "7e04cee2425e17bad27451bb3ac1f05f5533061e3f7dcb1c944b2af187ff288c",
+          "apps/code-broker/.native/windows-workspace/OmniraBrokerWorkspace.runtimeconfig.json": "28329cf08f6505e73806b17558b187c02f0c1c516fe47ebfb7a013d082aaa306",
+          "apps/code-broker/.native/windows-workspace/OmniraBrokerHost.dll": "f703110916c28b6f14c76d78311064bd1938edd602da20ca9b287a0cf2ddefb9",
+          "apps/code-broker/native/windows-workspace/Program.cs": "ea92c5dfbcfba48df67d52abc389d25a592fd4720cb2f553b1a6d82fa749b117",
+          "apps/code-broker/native/windows-workspace/NativeControlChannel.cs": "204573af0c1cee4514d2b85f07f30f1958d9bf6fc0226092f5a3dc57ce48080b",
+          "apps/code-broker/native/windows-workspace/WindowsMaterializationFixture.cs": "00f19aff8ded2a6c2f66a9c8262515b192e3a9a11cc28bda93f7cf8e98308224",
+          "apps/code-broker/native/windows-workspace/MaterializationContracts.cs": "204b50153b262114e2172619ea89148a7126996c6df820fe86e95097cab676c7",
+          "apps/code-broker/src/isolation/windows/controlled-helper.ts": "a39ffb112ea5c6c357a4bf0e637d5f8ed157abeeb596ae92cd43d46c55ec3b6f",
+          "apps/code-broker/src/runtime/native-stop-bridge.ts": "3c8f8de1db06ae952739bbb7b7ff505483d116e212978d16214b9b254a4c88c8",
+          "apps/code-broker/src/isolation/windows/source-fixture.ts": "2fc620c99326d7c4b38ad9c4b9ceb27b7a3c3dcafbad8b1f52f5118ae4dfc7d5",
+          "apps/code-broker/src/isolation/windows/source-contracts.ts": "b85f4e95a0fab40ef0086bb9e2677d52932c23bd9e60ba92d5503ac4cecb49af",
+          "apps/code-broker/src/runtime/execution-lease-guard.ts": "9e749abc7fd2e886178e30b24f0d449c89b1de2b67164045137174d9f01408cb",
+          "apps/code-broker/src/isolation/windows/workspace-helper.ts": "4bf7d7d56aef8666e39b69b5caaa5d124210403cd17ed2f4af30f762528d4697",
+          "request": "{\"schema\":\"sdf.windows_workspace_request.v1\",\"workId\":\"c435e423-d964-428b-b5c0-4060d89ce3c6\",\"repositoryId\":\"github.com/bumbi190/ai-operating-platform\",\"pinnedBaseSha\":\"d3f9fcc1045026042f6bb9c0cd302ed0b7283127\",\"admissionHash\":\"662d9af499e4d6fbc0c7e97b276d8526559a0658b6899eab63cc9a04880cec1d\",\"claimId\":\"2e0f09eb-cf7e-4619-834b-d78aa0ca5a7a\",\"fence\":1}"
+        },
+        "dockerBefore": {
+          "containers": [
+            "00839eda91e3e6bb08040960238cb02e87b8fcb75a92a70e93feede9f26c7bd8",
+            "01c0911cadce7caa369843ab1766ce408e6f5d1610bf493701d53b764379e921",
+            "156ca5835ca03fa689db5148fb140dc26009609661b16eb76e398a6d4875991f",
+            "19235ae79602a4aab2871166000c4ca09a619d10e6e3face94fe4a9159088216",
+            "1ddfd23844a2e745aa45a224047c834cc5dcd4e4fc2440b0f4d76af78d66beb5",
+            "20013e149e63f7dcbf0cc2fbad3b6766fbd73ac34442ee33f2ea1903ca9322b9",
+            "26f54fcab5b72f1c9c7f0515fa058b8ef1303236f3064c1da839704221e6b526",
+            "2bc195b9f1d2ce88c9286078de13d0c612c36fc5dd6873b9b9b5aedfd7947cc8",
+            "2d607fabc7a967e7303b78971b11745779732e8adae55bd7023326457c35f4a2",
+            "3949ec8c333a3398a573d8a00ed27819f567b87c03b21a26b63bf9bdcd06a186",
+            "452b860aaef9b80dbb2e7263156a4813ecd5f66e0286b0d7bae28ce861e7162f",
+            "49efc21389599e12f8b1e1cdcd67a5240dce6c2ab91a881b0fb09a2e137a5792",
+            "4d9914d590d319d493e4491cf94b11a9343390e25cb59088e8e39cdf514a94b8",
+            "56dd9297cdccb61c0d6294e65b6bff7ab58314b246be43758d5f34ba242125aa",
+            "57299eb3e8cb7bac1c967fff1aac945db2d978a4ce304b23663cf26f2e8d7267",
+            "5bcefa9048b0be6c1915342299a3902020d4acc107b56f4f42ec10c23d46345d",
+            "64cbc6f8663d2c801852eb874a315f8392f5f6c1619861dc34d8646979be2dee",
+            "6673a09d2da99d0982d0e7d1a9bc5164caaf182e62b9c1cea645bb6b4965f377",
+            "7c2698da13168fbdd358df8063336a77eaa02d1df0c22dc184076b78fb682a5b",
+            "7ee8e0c3c3ba92045124c10eb3db8e28799bc1c4a9b7424b9453ae250ef08045",
+            "83128523e56634b5fa732f252c8b17ee3f7522d8dbf748034abc201d24ceee76",
+            "833ed5818fb7ffaec222288aa422f00bada5a920e93113d0a4e34d690aa925eb",
+            "8bc1a7e73be34c898f92f70187665d18bbac625a272ac36ed4aaf4e9b507e35c",
+            "8c471fa77daac344677372ee75f6f63b3068827b87c2df75f23c34ffde9fb593",
+            "8cf11d4c0ec94ad7b8ec024de518ac0e38d0b4e944299f9eceb6f99bec50e9bb",
+            "9a5a42807fbcde3705162424d79fee39947a257127daf5a10cd09469904a4a49",
+            "a0ecd3953e3d24c5814f566558d088d16b61d5490ba183f8f35ba64023b2508f",
+            "ac5761b6700e603b13c5ff02d4406117672ef317202dca715fd4c0eb9d7f8e38",
+            "ad1e32968aa4ca641055a799a730d55647bd76725c028e25dea292693180d23b",
+            "ae0eb2e6466a805ac57d1b27863e2948d603e19bdd0464261422cf7575592026",
+            "b6203adda2cf8aefd0593f255d64018e945efc89473ef7820d4a042101cd4544",
+            "b6d075368fb6342d47fdd85824eaa46186cacb5f699e210f3aa80cecc4187a07",
+            "ca69e235d4a542d203eaf2f666b371884d2ea93df74db3895aaa19c802753a90",
+            "d33b6d9485fbc86b16c4fc30057e6a22f805e80c005357d0791231291c0d6d84",
+            "db1fbeadad578c2da01d260333d207e4e1286fbed27e9b7d6a8bbde1e218b0e1",
+            "db6c6643377a2004bc265314f769bf08c993b72a8cbb64b08a98b13deb5ed2b5",
+            "e5139cf27d09c3105c4cb13f3c4732b5a557fffe1de90cec0fef4095c6e9896e",
+            "e6630949c81aef258a34f5129e11b9f9be83fe3178e7f9b55ed76538f31707d8",
+            "ea053631a41fb0f70e08f74fe0743eea6ccb6ced043322a62c586a5552ceea17",
+            "fa60f68a6334e832669a1f429b67689b53f4f89b3511ae225bc3b1f05aa5a458"
+          ],
+          "volumes": [
+            "0ee0dcb53c0cbf185b8aac5834d21ace6d96fefad707e10a969dc606c6552ff1",
+            "11ecc40dc1e7eafadc63b88c9f22155e7d621b08c5923861ad685d5b951e9c3f",
+            "16499eef08eedb0c8b648252527ca980cff2c1ffd741046feb96876b4bbee16d",
+            "20f7360752a36bc3da79a90f1122c91aec50cf893fff9ea021ecd58888773902",
+            "23e6dde6740a6ac029afcbddf9fd193b180084a82ba0d92d0ea11d33a474a78a",
+            "429a1e461baad703d78a1379108abc9a7bfc90f0ba3a7f9fcf4b3c7b0de8780a",
+            "4b83689c5a4d989a868ad84820acba1b0f3d0ea2e4b3929cfef4d1bfe434b2f5",
+            "5e57b694f25de259d047b75c1c27a97aa904ead64855116752c6d8523ca6f7a7",
+            "5ea54d276b5c97daedfcde6db2e4d09c4140532ed7d3efd9244345b533c5183c",
+            "6145d00cf41afa2343698ff7a1b24fc9bfd2831d44a8fa1ca9893cd606992b58",
+            "790d252ad63b70c0cdc7006fb5f870438b33a4a8945ea5625849a4ee81e9397d",
+            "79c8f116ba369a3e10d1ae243ece337df187f5ec9547b14212e7d5de0c7f3e35",
+            "7c1bded3d4e8464af6724adf5b9c0fe04c80670875e46f7f8e5007fda2f03eba",
+            "80e69105619a60f8bd7160c02c6403fbc992dd33703f225b49c757a88230e10c",
+            "89beac618e3ccfe5c0e66497bdfd9dabb836b1e1d6f180ae3acd229941ed7bd7",
+            "8a48ff654fe599188506ca5eb683fde64496174d22ee19bd1681b88cf1e76f62",
+            "934686eca099120485f9b95f3329a285a9bc62602da36379b8239deede27af42",
+            "9624994e4417ca68b7b1083ffe3db8240b82a74b0e79383e520f099cdde35cf7",
+            "a440541f6a106800079241ce1a5116fd161ff451983b8555327a1f7683e0a2e2",
+            "b4fac80f008d956e0efee057983c4586974e2c0097436ccd598af5dc05c8873a",
+            "b8d71a8039a7392ad085d4b5c48527e661ece121298082714b61f1f2afa4d9de",
+            "b942f56d3e2d32a540c1b2ac028ef4fd7489fb0a3605a5c561b400c5933b20b7",
+            "bb47924bf91ff413fb80eab3a6c5c5b97aabf1dab73452ab3eea2f1acbf7988d",
+            "bb8116793e60fb60deedd02c115f1c0d36b185aedd60ce9805447ab46c0b754f",
+            "bf2ee9fd0ceeda17dcc2339ebcbc3ff7b4534d8b3c7a76a15c2f2aeb229797dc",
+            "c2fcee06b068e0203813a680cba0397d9679cb93975cc88aa1e27a95fbb60017",
+            "e884afc4cf2879b31a89470a34634afe5ca38bfc8ca0e1b50fc72a0c8e5a9ecd",
+            "handlarborsen-auth-ci-node-modules",
+            "omnira-openviking-pilot-20261015_models",
+            "omnira-openviking-pilot-20261015_state",
+            "omnira-openviking-pilot-20261015_state_lifecycle_20261015",
+            "omnira-openviking-pilot-20261015_state_semantic",
+            "omnira-openviking-pilot-20261015_state_vectors",
+            "omnira-openviking-probe-deps-20261015",
+            "supabase_db_Handlarborsen",
+            "supabase_db_Handlarborsen-auth-ci",
+            "supabase_db_Handlarborsen-pilot-e2e",
+            "supabase_db_handlarborsen-atlas-test-data-local",
+            "supabase_db_hb-posthog-readiness-20261013",
+            "supabase_db_omnira-stt-local",
+            "supabase_edge_runtime_Handlarborsen",
+            "supabase_edge_runtime_omnira-stt-local",
+            "supabase_storage_Handlarborsen",
+            "supabase_storage_Handlarborsen-auth-ci",
+            "supabase_storage_Handlarborsen-pilot-e2e",
+            "supabase_storage_handlarborsen-atlas-test-data-local",
+            "supabase_storage_hb-posthog-readiness-20261013",
+            "supabase_storage_omnira-stt-local"
+          ]
+        },
+        "dockerAfter": {
+          "containers": [
+            "00839eda91e3e6bb08040960238cb02e87b8fcb75a92a70e93feede9f26c7bd8",
+            "01c0911cadce7caa369843ab1766ce408e6f5d1610bf493701d53b764379e921",
+            "156ca5835ca03fa689db5148fb140dc26009609661b16eb76e398a6d4875991f",
+            "19235ae79602a4aab2871166000c4ca09a619d10e6e3face94fe4a9159088216",
+            "1ddfd23844a2e745aa45a224047c834cc5dcd4e4fc2440b0f4d76af78d66beb5",
+            "20013e149e63f7dcbf0cc2fbad3b6766fbd73ac34442ee33f2ea1903ca9322b9",
+            "26f54fcab5b72f1c9c7f0515fa058b8ef1303236f3064c1da839704221e6b526",
+            "2bc195b9f1d2ce88c9286078de13d0c612c36fc5dd6873b9b9b5aedfd7947cc8",
+            "2d607fabc7a967e7303b78971b11745779732e8adae55bd7023326457c35f4a2",
+            "3949ec8c333a3398a573d8a00ed27819f567b87c03b21a26b63bf9bdcd06a186",
+            "452b860aaef9b80dbb2e7263156a4813ecd5f66e0286b0d7bae28ce861e7162f",
+            "49efc21389599e12f8b1e1cdcd67a5240dce6c2ab91a881b0fb09a2e137a5792",
+            "4d9914d590d319d493e4491cf94b11a9343390e25cb59088e8e39cdf514a94b8",
+            "56dd9297cdccb61c0d6294e65b6bff7ab58314b246be43758d5f34ba242125aa",
+            "57299eb3e8cb7bac1c967fff1aac945db2d978a4ce304b23663cf26f2e8d7267",
+            "5bcefa9048b0be6c1915342299a3902020d4acc107b56f4f42ec10c23d46345d",
+            "64cbc6f8663d2c801852eb874a315f8392f5f6c1619861dc34d8646979be2dee",
+            "6673a09d2da99d0982d0e7d1a9bc5164caaf182e62b9c1cea645bb6b4965f377",
+            "7c2698da13168fbdd358df8063336a77eaa02d1df0c22dc184076b78fb682a5b",
+            "7ee8e0c3c3ba92045124c10eb3db8e28799bc1c4a9b7424b9453ae250ef08045",
+            "83128523e56634b5fa732f252c8b17ee3f7522d8dbf748034abc201d24ceee76",
+            "833ed5818fb7ffaec222288aa422f00bada5a920e93113d0a4e34d690aa925eb",
+            "8bc1a7e73be34c898f92f70187665d18bbac625a272ac36ed4aaf4e9b507e35c",
+            "8c471fa77daac344677372ee75f6f63b3068827b87c2df75f23c34ffde9fb593",
+            "8cf11d4c0ec94ad7b8ec024de518ac0e38d0b4e944299f9eceb6f99bec50e9bb",
+            "9a5a42807fbcde3705162424d79fee39947a257127daf5a10cd09469904a4a49",
+            "a0ecd3953e3d24c5814f566558d088d16b61d5490ba183f8f35ba64023b2508f",
+            "ac5761b6700e603b13c5ff02d4406117672ef317202dca715fd4c0eb9d7f8e38",
+            "ad1e32968aa4ca641055a799a730d55647bd76725c028e25dea292693180d23b",
+            "ae0eb2e6466a805ac57d1b27863e2948d603e19bdd0464261422cf7575592026",
+            "b6203adda2cf8aefd0593f255d64018e945efc89473ef7820d4a042101cd4544",
+            "b6d075368fb6342d47fdd85824eaa46186cacb5f699e210f3aa80cecc4187a07",
+            "ca69e235d4a542d203eaf2f666b371884d2ea93df74db3895aaa19c802753a90",
+            "d33b6d9485fbc86b16c4fc30057e6a22f805e80c005357d0791231291c0d6d84",
+            "db1fbeadad578c2da01d260333d207e4e1286fbed27e9b7d6a8bbde1e218b0e1",
+            "db6c6643377a2004bc265314f769bf08c993b72a8cbb64b08a98b13deb5ed2b5",
+            "e5139cf27d09c3105c4cb13f3c4732b5a557fffe1de90cec0fef4095c6e9896e",
+            "e6630949c81aef258a34f5129e11b9f9be83fe3178e7f9b55ed76538f31707d8",
+            "ea053631a41fb0f70e08f74fe0743eea6ccb6ced043322a62c586a5552ceea17",
+            "fa60f68a6334e832669a1f429b67689b53f4f89b3511ae225bc3b1f05aa5a458"
+          ],
+          "volumes": [
+            "0ee0dcb53c0cbf185b8aac5834d21ace6d96fefad707e10a969dc606c6552ff1",
+            "11ecc40dc1e7eafadc63b88c9f22155e7d621b08c5923861ad685d5b951e9c3f",
+            "16499eef08eedb0c8b648252527ca980cff2c1ffd741046feb96876b4bbee16d",
+            "20f7360752a36bc3da79a90f1122c91aec50cf893fff9ea021ecd58888773902",
+            "23e6dde6740a6ac029afcbddf9fd193b180084a82ba0d92d0ea11d33a474a78a",
+            "429a1e461baad703d78a1379108abc9a7bfc90f0ba3a7f9fcf4b3c7b0de8780a",
+            "4b83689c5a4d989a868ad84820acba1b0f3d0ea2e4b3929cfef4d1bfe434b2f5",
+            "5e57b694f25de259d047b75c1c27a97aa904ead64855116752c6d8523ca6f7a7",
+            "5ea54d276b5c97daedfcde6db2e4d09c4140532ed7d3efd9244345b533c5183c",
+            "6145d00cf41afa2343698ff7a1b24fc9bfd2831d44a8fa1ca9893cd606992b58",
+            "790d252ad63b70c0cdc7006fb5f870438b33a4a8945ea5625849a4ee81e9397d",
+            "79c8f116ba369a3e10d1ae243ece337df187f5ec9547b14212e7d5de0c7f3e35",
+            "7c1bded3d4e8464af6724adf5b9c0fe04c80670875e46f7f8e5007fda2f03eba",
+            "80e69105619a60f8bd7160c02c6403fbc992dd33703f225b49c757a88230e10c",
+            "89beac618e3ccfe5c0e66497bdfd9dabb836b1e1d6f180ae3acd229941ed7bd7",
+            "8a48ff654fe599188506ca5eb683fde64496174d22ee19bd1681b88cf1e76f62",
+            "934686eca099120485f9b95f3329a285a9bc62602da36379b8239deede27af42",
+            "9624994e4417ca68b7b1083ffe3db8240b82a74b0e79383e520f099cdde35cf7",
+            "a440541f6a106800079241ce1a5116fd161ff451983b8555327a1f7683e0a2e2",
+            "b4fac80f008d956e0efee057983c4586974e2c0097436ccd598af5dc05c8873a",
+            "b8d71a8039a7392ad085d4b5c48527e661ece121298082714b61f1f2afa4d9de",
+            "b942f56d3e2d32a540c1b2ac028ef4fd7489fb0a3605a5c561b400c5933b20b7",
+            "bb47924bf91ff413fb80eab3a6c5c5b97aabf1dab73452ab3eea2f1acbf7988d",
+            "bb8116793e60fb60deedd02c115f1c0d36b185aedd60ce9805447ab46c0b754f",
+            "bf2ee9fd0ceeda17dcc2339ebcbc3ff7b4534d8b3c7a76a15c2f2aeb229797dc",
+            "c2fcee06b068e0203813a680cba0397d9679cb93975cc88aa1e27a95fbb60017",
+            "e884afc4cf2879b31a89470a34634afe5ca38bfc8ca0e1b50fc72a0c8e5a9ecd",
+            "handlarborsen-auth-ci-node-modules",
+            "omnira-openviking-pilot-20261015_models",
+            "omnira-openviking-pilot-20261015_state",
+            "omnira-openviking-pilot-20261015_state_lifecycle_20261015",
+            "omnira-openviking-pilot-20261015_state_semantic",
+            "omnira-openviking-pilot-20261015_state_vectors",
+            "omnira-openviking-probe-deps-20261015",
+            "supabase_db_Handlarborsen",
+            "supabase_db_Handlarborsen-auth-ci",
+            "supabase_db_Handlarborsen-pilot-e2e",
+            "supabase_db_handlarborsen-atlas-test-data-local",
+            "supabase_db_hb-posthog-readiness-20261013",
+            "supabase_db_omnira-stt-local",
+            "supabase_edge_runtime_Handlarborsen",
+            "supabase_edge_runtime_omnira-stt-local",
+            "supabase_storage_Handlarborsen",
+            "supabase_storage_Handlarborsen-auth-ci",
+            "supabase_storage_Handlarborsen-pilot-e2e",
+            "supabase_storage_handlarborsen-atlas-test-data-local",
+            "supabase_storage_hb-posthog-readiness-20261013",
+            "supabase_storage_omnira-stt-local"
+          ]
+        },
+        "run": {
+          "result": {
+            "status": "stopped",
+            "attemptId": "c8b176c9-f3f9-4505-8e06-0ad728e5befe",
+            "reason": "lease_lost",
+            "cleanup": "confirmed",
+            "containerRemoved": true,
+            "volumeRemoved": true
+          },
+          "events": [
+            {
+              "event": "lease_read",
+              "phase": null,
+              "refuse": false,
+              "at": 7
+            },
+            {
+              "event": "launched",
+              "pid": 43820,
+              "at": 26
+            },
+            {
+              "event": "lease_read",
+              "phase": null,
+              "refuse": false,
+              "at": 5013
+            },
+            {
+              "event": "lease_read",
+              "phase": null,
+              "refuse": false,
+              "at": 10015
+            },
+            {
+              "event": "checkpoint",
+              "seq": 1,
+              "phase": "before_resources",
+              "at": 13190
+            },
+            {
+              "event": "lease_read",
+              "phase": "before_resources",
+              "refuse": false,
+              "at": 13190
+            },
+            {
+              "event": "checkpoint",
+              "seq": 2,
+              "phase": "before_volume_create",
+              "at": 13202
+            },
+            {
+              "event": "lease_read",
+              "phase": "before_volume_create",
+              "refuse": false,
+              "at": 13202
+            },
+            {
+              "event": "checkpoint",
+              "seq": 3,
+              "phase": "before_container_create",
+              "at": 14703
+            },
+            {
+              "event": "lease_read",
+              "phase": "before_container_create",
+              "refuse": false,
+              "at": 14703
+            },
+            {
+              "event": "checkpoint",
+              "seq": 4,
+              "phase": "before_upload",
+              "at": 18233
+            },
+            {
+              "event": "lease_read",
+              "phase": "before_upload",
+              "refuse": false,
+              "at": 18233
+            },
+            {
+              "event": "checkpoint",
+              "seq": 5,
+              "phase": "before_start",
+              "at": 18953
+            },
+            {
+              "event": "lease_read",
+              "phase": "before_start",
+              "refuse": false,
+              "at": 18953
+            },
+            {
+              "event": "lease_read",
+              "phase": "before_start",
+              "refuse": true,
+              "at": 23961
+            },
+            {
+              "event": "guard_aborted",
+              "at": 23962
+            },
+            {
+              "event": "stop_sent",
+              "at": 23962
+            },
+            {
+              "event": "native_outcome",
+              "kind": "report",
+              "at": 28217
+            }
+          ],
+          "native": {
+            "kind": "report",
+            "value": {
+              "status": "stopped",
+              "attemptId": "c8b176c9-f3f9-4505-8e06-0ad728e5befe",
+              "binding": {
+                "workId": "c435e423-d964-428b-b5c0-4060d89ce3c6",
+                "repositoryId": "github.com/bumbi190/ai-operating-platform",
+                "pinnedBaseSha": "d3f9fcc1045026042f6bb9c0cd302ed0b7283127",
+                "admissionHash": "662d9af499e4d6fbc0c7e97b276d8526559a0658b6899eab63cc9a04880cec1d",
+                "claimId": "2e0f09eb-cf7e-4619-834b-d78aa0ca5a7a",
+                "fence": 1
+              },
+              "reason": "stop_requested",
+              "sourcePolicyId": "sdf.windows_source_fixture.v1",
+              "manifest": {
+                "schema": "sdf.windows_source_manifest.v1",
+                "binding": {
+                  "workId": "c435e423-d964-428b-b5c0-4060d89ce3c6",
+                  "repositoryId": "github.com/bumbi190/ai-operating-platform",
+                  "pinnedBaseSha": "d3f9fcc1045026042f6bb9c0cd302ed0b7283127",
+                  "admissionHash": "662d9af499e4d6fbc0c7e97b276d8526559a0658b6899eab63cc9a04880cec1d",
+                  "claimId": "2e0f09eb-cf7e-4619-834b-d78aa0ca5a7a",
+                  "fence": 1
+                },
+                "policyId": "sdf.windows_source_fixture.v1",
+                "baseSha": "d3f9fcc1045026042f6bb9c0cd302ed0b7283127",
+                "files": [
+                  {
+                    "path": "apps/web/lib/atlas/authorization/build.ts",
+                    "gitBlobId": "b987fbec7a52be8ae81caf36429e565127d9db96",
+                    "sha256": "4cb92f114dff7a7ff0366bb1b800d294f92ea058a60174420365ff6716914a96",
+                    "byteLength": 7009
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/authorization/derive.ts",
+                    "gitBlobId": "5dd0733f71411063fed9f237b56c7df21304f2c0",
+                    "sha256": "586633381a5f4f5e5a178066cc8a3ab6113d0adfd37f49ec7074096ea0788bfd",
+                    "byteLength": 12570
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/authorization/types.ts",
+                    "gitBlobId": "59b7819d5849b8edf9c5d2374a73582b8b913562",
+                    "sha256": "248e6a1e3328766b680358d435cb36197fafa08ff27b48b3421ee850c256f522",
+                    "byteLength": 8804
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/binding.ts",
+                    "gitBlobId": "8029a281b66a081d97b1519f49fb0531e5d0524f",
+                    "sha256": "0c4804990773a3f3f2fd2f9d2cd0119f385e7fa92bb4427c6311517049e8892d",
+                    "byteLength": 4260
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/capability.ts",
+                    "gitBlobId": "89275590483a58c71ff4f1081cb2a05a8815b63b",
+                    "sha256": "12c3e403846f03b3614780f2f0d2b379b56b5d548f903189d850da47595092c3",
+                    "byteLength": 1667
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/command-registry.ts",
+                    "gitBlobId": "8832dee51b1d5c058fb268a2f8e650efc540d698",
+                    "sha256": "6ae7335ff444609201150ca262741bfe306dd8f7b611e702fc0b4c310ea5c40b",
+                    "byteLength": 6107
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/evidence.ts",
+                    "gitBlobId": "0577bee93a93316a27b5f7a8cdcb35738f6f92b5",
+                    "sha256": "01e325361886612e133e0f9a5da673f63193d3d76af2ed4976b0b44bcac8aa36",
+                    "byteLength": 15224
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/lifecycle.ts",
+                    "gitBlobId": "0a279c6ab0ee82188afcd25e1d2a9d3827d8063d",
+                    "sha256": "1c7130ede976ef78a7da85fc41750173217db566ce1f0fded0172981c55312cc",
+                    "byteLength": 2603
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/patch-protocol.ts",
+                    "gitBlobId": "02a5a981ee3f129649060794e62dec1efaea624f",
+                    "sha256": "5bad1e58b6d2ea65bdcb48d0ad51d9c8ed02690c35d0d74d586beb161f3e0633",
+                    "byteLength": 7885
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/path-policy.ts",
+                    "gitBlobId": "4f90a0fe3823ab45fade008ea2efdab5ef8fe303",
+                    "sha256": "9a10c2f2e182c4010070bf7b643b07162f3b2e66a41ec0097057f6be27400355",
+                    "byteLength": 4467
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/policy.ts",
+                    "gitBlobId": "aa43abb165d8bbbb97cb58b71873c44edf1650e2",
+                    "sha256": "9f828a58d836402d5d9acca4cec0ff61f1a90545a52d49a6284f1520893fbdeb",
+                    "byteLength": 15090
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/repository-registry.ts",
+                    "gitBlobId": "8216b2c46067c608c1642df86945010f44264383",
+                    "sha256": "30dd5c69de1874928ca8861d5e85ecc5e7179deee4ac7ba0e60ab7ca58ef6e40",
+                    "byteLength": 3291
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/terminal-evidence.ts",
+                    "gitBlobId": "70bee32907e27b80b310486de508e99adf13f700",
+                    "sha256": "5a71f15c2daf1217d56a60665d2f6475f50062c00a9a22441eea45119f9b3d7f",
+                    "byteLength": 2290
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/types.ts",
+                    "gitBlobId": "1c2ad191f916067048059f9eb67401a227863f09",
+                    "sha256": "3b76ead5678f1d52e9f1926355c5ea0426ec083f3c218257f4fdb5dc513754d8",
+                    "byteLength": 5014
+                  },
+                  {
+                    "path": "apps/web/lib/atlas/code-work/worker-registry.ts",
+                    "gitBlobId": "3e3c27ca76bfb1aecbb4bb199c8d573b3c8c9cf0",
+                    "sha256": "80252b557615d2d3241e58a821d9b72ba9d29328f33f7aaa09511ffa7a48ef5d",
+                    "byteLength": 1171
+                  },
+                  {
+                    "path": "apps/web/lib/qa/__stubs__/server-only.ts",
+                    "gitBlobId": "a21398e1c7a304a106eb7b6f14ca7eb23fb384a0",
+                    "sha256": "85e86f36c66104ba0c9bda542cf9e7e5c7149927d273e02ac0daff5f0f3785f0",
+                    "byteLength": 168
+                  },
+                  {
+                    "path": "apps/web/lib/qa/sdf1a-code-work-contracts.test.ts",
+                    "gitBlobId": "64762ce8f5faecbca1ff85758df2ce60f06880ec",
+                    "sha256": "d1d1620fd8e1a02d7a6e0712c1176ac094bcd2a84ec8d3169ac70b3b0c3b7330",
+                    "byteLength": 22634
+                  },
+                  {
+                    "path": "apps/web/package.json",
+                    "gitBlobId": "017e0dbf914dc5c556e15d17031ab310131ff03b",
+                    "sha256": "def6e3795da9eb4250e703446080ddb824d2128a6e6869949c09efd374944313",
+                    "byteLength": 2692
+                  },
+                  {
+                    "path": "apps/web/tsconfig.json",
+                    "gitBlobId": "38842a8def6e59d0a27195243a7ed0dd9a173298",
+                    "sha256": "a41343617d3b41e5e0621c7827fe7ca0695429c2bc297fa25c66f1a97b40c5fa",
+                    "byteLength": 604
+                  },
+                  {
+                    "path": "package-lock.json",
+                    "gitBlobId": "42b6a33903a3a5fc7f7733a66827116323bdc5d8",
+                    "sha256": "17ba6aedc7139835f0de6c62fc13c727682b737fe142ee7e99d452673625de80",
+                    "byteLength": 567449
+                  },
+                  {
+                    "path": "package.json",
+                    "gitBlobId": "5674fc51550142c94648a741a8eb64017f34847d",
+                    "sha256": "d04f1e73243bd9d023a352fdc42b1892474d76f8c0519acd08819b926d500fdd",
+                    "byteLength": 354
+                  },
+                  {
+                    "path": "packages/local-text-contract/package.json",
+                    "gitBlobId": "f8048cc21e1f1880156b4c78148bbae55afe1f14",
+                    "sha256": "662e5cee1fd9e5bb13002f31793f54b50ea0a1eb67ab34a2931977f583c27cb3",
+                    "byteLength": 227
+                  }
+                ]
+              },
+              "manifestSha256": "c5dfd43d9b04a73a9143adeb61ce7eaaad549bf8bd94a4fbd72b9110f7503698",
+              "toolchainProfileHash": "d7c9937037175bb7b6689fe547b1d23b1ad514baed68e36eaeb57b2a876dea25",
+              "imageId": "sha256:354e46f6c5d5e046a2002b78f2d43931824b67110df42a40ab4204e269d1acd0",
+              "backendIdentityHash": "fc3ae1f41038b227b0053215322c928eaf341871828d789485c2bb7aec36e05b",
+              "daemonIdentityHash": "097b04099237066832a5574e26cb1708df26ff5007ae0165f7135bea76df3601",
+              "fixture": null,
+              "containerRemoved": true,
+              "volumeRemoved": true,
+              "observedAt": "2026-10-20T06:43:40.141Z",
+              "schema": "sdf.windows_materialization_report.v1",
+              "productionAuthority": false
+            }
+          },
+          "cleanups": 0,
+          "elapsedMs": 28219
+        },
+        "observedAbsence": {
+          "schema": "sdf.windows_materialization_absence_observation.v1",
+          "attemptId": "c8b176c9-f3f9-4505-8e06-0ad728e5befe",
+          "absent": true,
+          "toolchainProfileHash": "d7c9937037175bb7b6689fe547b1d23b1ad514baed68e36eaeb57b2a876dea25",
+          "backendIdentityHash": "fc3ae1f41038b227b0053215322c928eaf341871828d789485c2bb7aec36e05b",
+          "daemonIdentityHash": "097b04099237066832a5574e26cb1708df26ff5007ae0165f7135bea76df3601",
+          "productionAuthority": false
+        },
+        "absenceError": null,
+        "productionAuthority": false
+      },
+      "proofSha256": "8931c96a9f14a97fa214c78c5eace6b3e4deeb7efd85fad4ed9190253ee8e620"
+    },
+    "C": {
+      "intent": {
+        "attempt": "C",
+        "phase": "dispatched-once",
+        "attemptId": "7bd181f8-2dac-43bf-8b0d-87cdcba9bebe",
+        "preparedAt": "2026-10-20T06:43:48.3741646Z",
+        "qualifiedAt": "2026-10-20T06:43:48.261Z",
+        "backendIdentityHash": "fc3ae1f41038b227b0053215322c928eaf341871828d789485c2bb7aec36e05b",
+        "daemonIdentityHash": "097b04099237066832a5574e26cb1708df26ff5007ae0165f7135bea76df3601",
+        "codexService": "Running",
+        "sourceCommit": "700cdaa5b86c3cb25874a4fc649c42178ff8b1bf",
+        "binaries": {
+          "OmniraBrokerWorkspace.dll": "b018302fbccb526911a51116f4395092cf4371b103c37b25be019afdfa81f5bc",
+          "OmniraBrokerWorkspace.deps.json": "7e04cee2425e17bad27451bb3ac1f05f5533061e3f7dcb1c944b2af187ff288c",
+          "OmniraBrokerWorkspace.runtimeconfig.json": "28329cf08f6505e73806b17558b187c02f0c1c516fe47ebfb7a013d082aaa306",
+          "OmniraBrokerHost.dll": "f703110916c28b6f14c76d78311064bd1938edd602da20ca9b287a0cf2ddefb9"
+        },
+        "dispatchedAt": "2026-10-20T06:43:51.496Z"
+      },
+      "proof": {
+        "schema": "atlas.native_stop_real_attempt.v1",
+        "attempt": "C",
+        "attemptId": "7bd181f8-2dac-43bf-8b0d-87cdcba9bebe",
+        "recordedAt": "2026-10-20T06:44:21.355Z",
+        "bindings": {
+          "apps/code-broker/.native/windows-workspace/OmniraBrokerWorkspace.dll": "b018302fbccb526911a51116f4395092cf4371b103c37b25be019afdfa81f5bc",
+          "apps/code-broker/.native/windows-workspace/OmniraBrokerWorkspace.deps.json": "7e04cee2425e17bad27451bb3ac1f05f5533061e3f7dcb1c944b2af187ff288c",
+          "apps/code-broker/.native/windows-workspace/OmniraBrokerWorkspace.runtimeconfig.json": "28329cf08f6505e73806b17558b187c02f0c1c516fe47ebfb7a013d082aaa306",
+          "apps/code-broker/.native/windows-workspace/OmniraBrokerHost.dll": "f703110916c28b6f14c76d78311064bd1938edd602da20ca9b287a0cf2ddefb9",
+          "apps/code-broker/native/windows-workspace/Program.cs": "ea92c5dfbcfba48df67d52abc389d25a592fd4720cb2f553b1a6d82fa749b117",
+          "apps/code-broker/native/windows-workspace/NativeControlChannel.cs": "204573af0c1cee4514d2b85f07f30f1958d9bf6fc0226092f5a3dc57ce48080b",
+          "apps/code-broker/native/windows-workspace/WindowsMaterializationFixture.cs": "00f19aff8ded2a6c2f66a9c8262515b192e3a9a11cc28bda93f7cf8e98308224",
+          "apps/code-broker/native/windows-workspace/MaterializationContracts.cs": "204b50153b262114e2172619ea89148a7126996c6df820fe86e95097cab676c7",
+          "apps/code-broker/src/isolation/windows/controlled-helper.ts": "a39ffb112ea5c6c357a4bf0e637d5f8ed157abeeb596ae92cd43d46c55ec3b6f",
+          "apps/code-broker/src/runtime/native-stop-bridge.ts": "3c8f8de1db06ae952739bbb7b7ff505483d116e212978d16214b9b254a4c88c8",
+          "apps/code-broker/src/isolation/windows/source-fixture.ts": "2fc620c99326d7c4b38ad9c4b9ceb27b7a3c3dcafbad8b1f52f5118ae4dfc7d5",
+          "apps/code-broker/src/isolation/windows/source-contracts.ts": "b85f4e95a0fab40ef0086bb9e2677d52932c23bd9e60ba92d5503ac4cecb49af",
+          "apps/code-broker/src/runtime/execution-lease-guard.ts": "9e749abc7fd2e886178e30b24f0d449c89b1de2b67164045137174d9f01408cb",
+          "apps/code-broker/src/isolation/windows/workspace-helper.ts": "4bf7d7d56aef8666e39b69b5caaa5d124210403cd17ed2f4af30f762528d4697",
+          "request": "{\"schema\":\"sdf.windows_workspace_request.v1\",\"workId\":\"c435e423-d964-428b-b5c0-4060d89ce3c6\",\"repositoryId\":\"github.com/bumbi190/ai-operating-platform\",\"pinnedBaseSha\":\"d3f9fcc1045026042f6bb9c0cd302ed0b7283127\",\"admissionHash\":\"662d9af499e4d6fbc0c7e97b276d8526559a0658b6899eab63cc9a04880cec1d\",\"claimId\":\"2e0f09eb-cf7e-4619-834b-d78aa0ca5a7a\",\"fence\":1}"
+        },
+        "dockerBefore": {
+          "containers": [
+            "00839eda91e3e6bb08040960238cb02e87b8fcb75a92a70e93feede9f26c7bd8",
+            "01c0911cadce7caa369843ab1766ce408e6f5d1610bf493701d53b764379e921",
+            "156ca5835ca03fa689db5148fb140dc26009609661b16eb76e398a6d4875991f",
+            "19235ae79602a4aab2871166000c4ca09a619d10e6e3face94fe4a9159088216",
+            "1ddfd23844a2e745aa45a224047c834cc5dcd4e4fc2440b0f4d76af78d66beb5",
+            "20013e149e63f7dcbf0cc2fbad3b6766fbd73ac34442ee33f2ea1903ca9322b9",
+            "26f54fcab5b72f1c9c7f0515fa058b8ef1303236f3064c1da839704221e6b526",
+            "2bc195b9f1d2ce88c9286078de13d0c612c36fc5dd6873b9b9b5aedfd7947cc8",
+            "2d607fabc7a967e7303b78971b11745779732e8adae55bd7023326457c35f4a2",
+            "3949ec8c333a3398a573d8a00ed27819f567b87c03b21a26b63bf9bdcd06a186",
+            "452b860aaef9b80dbb2e7263156a4813ecd5f66e0286b0d7bae28ce861e7162f",
+            "49efc21389599e12f8b1e1cdcd67a5240dce6c2ab91a881b0fb09a2e137a5792",
+            "4d9914d590d319d493e4491cf94b11a9343390e25cb59088e8e39cdf514a94b8",
+            "56dd9297cdccb61c0d6294e65b6bff7ab58314b246be43758d5f34ba242125aa",
+            "57299eb3e8cb7bac1c967fff1aac945db2d978a4ce304b23663cf26f2e8d7267",
+            "5bcefa9048b0be6c1915342299a3902020d4acc107b56f4f42ec10c23d46345d",
+            "64cbc6f8663d2c801852eb874a315f8392f5f6c1619861dc34d8646979be2dee",
+            "6673a09d2da99d0982d0e7d1a9bc5164caaf182e62b9c1cea645bb6b4965f377",
+            "7c2698da13168fbdd358df8063336a77eaa02d1df0c22dc184076b78fb682a5b",
+            "7ee8e0c3c3ba92045124c10eb3db8e28799bc1c4a9b7424b9453ae250ef08045",
+            "83128523e56634b5fa732f252c8b17ee3f7522d8dbf748034abc201d24ceee76",
+            "833ed5818fb7ffaec222288aa422f00bada5a920e93113d0a4e34d690aa925eb",
+            "8bc1a7e73be34c898f92f70187665d18bbac625a272ac36ed4aaf4e9b507e35c",
+            "8c471fa77daac344677372ee75f6f63b3068827b87c2df75f23c34ffde9fb593",
+            "8cf11d4c0ec94ad7b8ec024de518ac0e38d0b4e944299f9eceb6f99bec50e9bb",
+            "9a5a42807fbcde3705162424d79fee39947a257127daf5a10cd09469904a4a49",
+            "a0ecd3953e3d24c5814f566558d088d16b61d5490ba183f8f35ba64023b2508f",
+            "ac5761b6700e603b13c5ff02d4406117672ef317202dca715fd4c0eb9d7f8e38",
+            "ad1e32968aa4ca641055a799a730d55647bd76725c028e25dea292693180d23b",
+            "ae0eb2e6466a805ac57d1b27863e2948d603e19bdd0464261422cf7575592026",
+            "b6203adda2cf8aefd0593f255d64018e945efc89473ef7820d4a042101cd4544",
+            "b6d075368fb6342d47fdd85824eaa46186cacb5f699e210f3aa80cecc4187a07",
+            "ca69e235d4a542d203eaf2f666b371884d2ea93df74db3895aaa19c802753a90",
+            "d33b6d9485fbc86b16c4fc30057e6a22f805e80c005357d0791231291c0d6d84",
+            "db1fbeadad578c2da01d260333d207e4e1286fbed27e9b7d6a8bbde1e218b0e1",
+            "db6c6643377a2004bc265314f769bf08c993b72a8cbb64b08a98b13deb5ed2b5",
+            "e5139cf27d09c3105c4cb13f3c4732b5a557fffe1de90cec0fef4095c6e9896e",
+            "e6630949c81aef258a34f5129e11b9f9be83fe3178e7f9b55ed76538f31707d8",
+            "ea053631a41fb0f70e08f74fe0743eea6ccb6ced043322a62c586a5552ceea17",
+            "fa60f68a6334e832669a1f429b67689b53f4f89b3511ae225bc3b1f05aa5a458"
+          ],
+          "volumes": [
+            "0ee0dcb53c0cbf185b8aac5834d21ace6d96fefad707e10a969dc606c6552ff1",
+            "11ecc40dc1e7eafadc63b88c9f22155e7d621b08c5923861ad685d5b951e9c3f",
+            "16499eef08eedb0c8b648252527ca980cff2c1ffd741046feb96876b4bbee16d",
+            "20f7360752a36bc3da79a90f1122c91aec50cf893fff9ea021ecd58888773902",
+            "23e6dde6740a6ac029afcbddf9fd193b180084a82ba0d92d0ea11d33a474a78a",
+            "429a1e461baad703d78a1379108abc9a7bfc90f0ba3a7f9fcf4b3c7b0de8780a",
+            "4b83689c5a4d989a868ad84820acba1b0f3d0ea2e4b3929cfef4d1bfe434b2f5",
+            "5e57b694f25de259d047b75c1c27a97aa904ead64855116752c6d8523ca6f7a7",
+            "5ea54d276b5c97daedfcde6db2e4d09c4140532ed7d3efd9244345b533c5183c",
+            "6145d00cf41afa2343698ff7a1b24fc9bfd2831d44a8fa1ca9893cd606992b58",
+            "790d252ad63b70c0cdc7006fb5f870438b33a4a8945ea5625849a4ee81e9397d",
+            "79c8f116ba369a3e10d1ae243ece337df187f5ec9547b14212e7d5de0c7f3e35",
+            "7c1bded3d4e8464af6724adf5b9c0fe04c80670875e46f7f8e5007fda2f03eba",
+            "80e69105619a60f8bd7160c02c6403fbc992dd33703f225b49c757a88230e10c",
+            "89beac618e3ccfe5c0e66497bdfd9dabb836b1e1d6f180ae3acd229941ed7bd7",
+            "8a48ff654fe599188506ca5eb683fde64496174d22ee19bd1681b88cf1e76f62",
+            "934686eca099120485f9b95f3329a285a9bc62602da36379b8239deede27af42",
+            "9624994e4417ca68b7b1083ffe3db8240b82a74b0e79383e520f099cdde35cf7",
+            "a440541f6a106800079241ce1a5116fd161ff451983b8555327a1f7683e0a2e2",
+            "b4fac80f008d956e0efee057983c4586974e2c0097436ccd598af5dc05c8873a",
+            "b8d71a8039a7392ad085d4b5c48527e661ece121298082714b61f1f2afa4d9de",
+            "b942f56d3e2d32a540c1b2ac028ef4fd7489fb0a3605a5c561b400c5933b20b7",
+            "bb47924bf91ff413fb80eab3a6c5c5b97aabf1dab73452ab3eea2f1acbf7988d",
+            "bb8116793e60fb60deedd02c115f1c0d36b185aedd60ce9805447ab46c0b754f",
+            "bf2ee9fd0ceeda17dcc2339ebcbc3ff7b4534d8b3c7a76a15c2f2aeb229797dc",
+            "c2fcee06b068e0203813a680cba0397d9679cb93975cc88aa1e27a95fbb60017",
+            "e884afc4cf2879b31a89470a34634afe5ca38bfc8ca0e1b50fc72a0c8e5a9ecd",
+            "handlarborsen-auth-ci-node-modules",
+            "omnira-openviking-pilot-20261015_models",
+            "omnira-openviking-pilot-20261015_state",
+            "omnira-openviking-pilot-20261015_state_lifecycle_20261015",
+            "omnira-openviking-pilot-20261015_state_semantic",
+            "omnira-openviking-pilot-20261015_state_vectors",
+            "omnira-openviking-probe-deps-20261015",
+            "supabase_db_Handlarborsen",
+            "supabase_db_Handlarborsen-auth-ci",
+            "supabase_db_Handlarborsen-pilot-e2e",
+            "supabase_db_handlarborsen-atlas-test-data-local",
+            "supabase_db_hb-posthog-readiness-20261013",
+            "supabase_db_omnira-stt-local",
+            "supabase_edge_runtime_Handlarborsen",
+            "supabase_edge_runtime_omnira-stt-local",
+            "supabase_storage_Handlarborsen",
+            "supabase_storage_Handlarborsen-auth-ci",
+            "supabase_storage_Handlarborsen-pilot-e2e",
+            "supabase_storage_handlarborsen-atlas-test-data-local",
+            "supabase_storage_hb-posthog-readiness-20261013",
+            "supabase_storage_omnira-stt-local"
+          ]
+        },
+        "dockerAfter": {
+          "containers": [
+            "00839eda91e3e6bb08040960238cb02e87b8fcb75a92a70e93feede9f26c7bd8",
+            "01c0911cadce7caa369843ab1766ce408e6f5d1610bf493701d53b764379e921",
+            "156ca5835ca03fa689db5148fb140dc26009609661b16eb76e398a6d4875991f",
+            "19235ae79602a4aab2871166000c4ca09a619d10e6e3face94fe4a9159088216",
+            "1ddfd23844a2e745aa45a224047c834cc5dcd4e4fc2440b0f4d76af78d66beb5",
+            "20013e149e63f7dcbf0cc2fbad3b6766fbd73ac34442ee33f2ea1903ca9322b9",
+            "26f54fcab5b72f1c9c7f0515fa058b8ef1303236f3064c1da839704221e6b526",
+            "2bc195b9f1d2ce88c9286078de13d0c612c36fc5dd6873b9b9b5aedfd7947cc8",
+            "2d607fabc7a967e7303b78971b11745779732e8adae55bd7023326457c35f4a2",
+            "3949ec8c333a3398a573d8a00ed27819f567b87c03b21a26b63bf9bdcd06a186",
+            "452b860aaef9b80dbb2e7263156a4813ecd5f66e0286b0d7bae28ce861e7162f",
+            "49efc21389599e12f8b1e1cdcd67a5240dce6c2ab91a881b0fb09a2e137a5792",
+            "4d9914d590d319d493e4491cf94b11a9343390e25cb59088e8e39cdf514a94b8",
+            "56dd9297cdccb61c0d6294e65b6bff7ab58314b246be43758d5f34ba242125aa",
+            "57299eb3e8cb7bac1c967fff1aac945db2d978a4ce304b23663cf26f2e8d7267",
+            "5bcefa9048b0be6c1915342299a3902020d4acc107b56f4f42ec10c23d46345d",
+            "64cbc6f8663d2c801852eb874a315f8392f5f6c1619861dc34d8646979be2dee",
+            "6673a09d2da99d0982d0e7d1a9bc5164caaf182e62b9c1cea645bb6b4965f377",
+            "7c2698da13168fbdd358df8063336a77eaa02d1df0c22dc184076b78fb682a5b",
+            "7ee8e0c3c3ba92045124c10eb3db8e28799bc1c4a9b7424b9453ae250ef08045",
+            "83128523e56634b5fa732f252c8b17ee3f7522d8dbf748034abc201d24ceee76",
+            "833ed5818fb7ffaec222288aa422f00bada5a920e93113d0a4e34d690aa925eb",
+            "8bc1a7e73be34c898f92f70187665d18bbac625a272ac36ed4aaf4e9b507e35c",
+            "8c471fa77daac344677372ee75f6f63b3068827b87c2df75f23c34ffde9fb593",
+            "8cf11d4c0ec94ad7b8ec024de518ac0e38d0b4e944299f9eceb6f99bec50e9bb",
+            "9a5a42807fbcde3705162424d79fee39947a257127daf5a10cd09469904a4a49",
+            "a0ecd3953e3d24c5814f566558d088d16b61d5490ba183f8f35ba64023b2508f",
+            "ac5761b6700e603b13c5ff02d4406117672ef317202dca715fd4c0eb9d7f8e38",
+            "ad1e32968aa4ca641055a799a730d55647bd76725c028e25dea292693180d23b",
+            "ae0eb2e6466a805ac57d1b27863e2948d603e19bdd0464261422cf7575592026",
+            "b6203adda2cf8aefd0593f255d64018e945efc89473ef7820d4a042101cd4544",
+            "b6d075368fb6342d47fdd85824eaa46186cacb5f699e210f3aa80cecc4187a07",
+            "ca69e235d4a542d203eaf2f666b371884d2ea93df74db3895aaa19c802753a90",
+            "d33b6d9485fbc86b16c4fc30057e6a22f805e80c005357d0791231291c0d6d84",
+            "db1fbeadad578c2da01d260333d207e4e1286fbed27e9b7d6a8bbde1e218b0e1",
+            "db6c6643377a2004bc265314f769bf08c993b72a8cbb64b08a98b13deb5ed2b5",
+            "e5139cf27d09c3105c4cb13f3c4732b5a557fffe1de90cec0fef4095c6e9896e",
+            "e6630949c81aef258a34f5129e11b9f9be83fe3178e7f9b55ed76538f31707d8",
+            "ea053631a41fb0f70e08f74fe0743eea6ccb6ced043322a62c586a5552ceea17",
+            "fa60f68a6334e832669a1f429b67689b53f4f89b3511ae225bc3b1f05aa5a458"
+          ],
+          "volumes": [
+            "0ee0dcb53c0cbf185b8aac5834d21ace6d96fefad707e10a969dc606c6552ff1",
+            "11ecc40dc1e7eafadc63b88c9f22155e7d621b08c5923861ad685d5b951e9c3f",
+            "16499eef08eedb0c8b648252527ca980cff2c1ffd741046feb96876b4bbee16d",
+            "20f7360752a36bc3da79a90f1122c91aec50cf893fff9ea021ecd58888773902",
+            "23e6dde6740a6ac029afcbddf9fd193b180084a82ba0d92d0ea11d33a474a78a",
+            "429a1e461baad703d78a1379108abc9a7bfc90f0ba3a7f9fcf4b3c7b0de8780a",
+            "4b83689c5a4d989a868ad84820acba1b0f3d0ea2e4b3929cfef4d1bfe434b2f5",
+            "5e57b694f25de259d047b75c1c27a97aa904ead64855116752c6d8523ca6f7a7",
+            "5ea54d276b5c97daedfcde6db2e4d09c4140532ed7d3efd9244345b533c5183c",
+            "6145d00cf41afa2343698ff7a1b24fc9bfd2831d44a8fa1ca9893cd606992b58",
+            "790d252ad63b70c0cdc7006fb5f870438b33a4a8945ea5625849a4ee81e9397d",
+            "79c8f116ba369a3e10d1ae243ece337df187f5ec9547b14212e7d5de0c7f3e35",
+            "7c1bded3d4e8464af6724adf5b9c0fe04c80670875e46f7f8e5007fda2f03eba",
+            "80e69105619a60f8bd7160c02c6403fbc992dd33703f225b49c757a88230e10c",
+            "89beac618e3ccfe5c0e66497bdfd9dabb836b1e1d6f180ae3acd229941ed7bd7",
+            "8a48ff654fe599188506ca5eb683fde64496174d22ee19bd1681b88cf1e76f62",
+            "934686eca099120485f9b95f3329a285a9bc62602da36379b8239deede27af42",
+            "9624994e4417ca68b7b1083ffe3db8240b82a74b0e79383e520f099cdde35cf7",
+            "a440541f6a106800079241ce1a5116fd161ff451983b8555327a1f7683e0a2e2",
+            "b4fac80f008d956e0efee057983c4586974e2c0097436ccd598af5dc05c8873a",
+            "b8d71a8039a7392ad085d4b5c48527e661ece121298082714b61f1f2afa4d9de",
+            "b942f56d3e2d32a540c1b2ac028ef4fd7489fb0a3605a5c561b400c5933b20b7",
+            "bb47924bf91ff413fb80eab3a6c5c5b97aabf1dab73452ab3eea2f1acbf7988d",
+            "bb8116793e60fb60deedd02c115f1c0d36b185aedd60ce9805447ab46c0b754f",
+            "bf2ee9fd0ceeda17dcc2339ebcbc3ff7b4534d8b3c7a76a15c2f2aeb229797dc",
+            "c2fcee06b068e0203813a680cba0397d9679cb93975cc88aa1e27a95fbb60017",
+            "e884afc4cf2879b31a89470a34634afe5ca38bfc8ca0e1b50fc72a0c8e5a9ecd",
+            "handlarborsen-auth-ci-node-modules",
+            "omnira-openviking-pilot-20261015_models",
+            "omnira-openviking-pilot-20261015_state",
+            "omnira-openviking-pilot-20261015_state_lifecycle_20261015",
+            "omnira-openviking-pilot-20261015_state_semantic",
+            "omnira-openviking-pilot-20261015_state_vectors",
+            "omnira-openviking-probe-deps-20261015",
+            "supabase_db_Handlarborsen",
+            "supabase_db_Handlarborsen-auth-ci",
+            "supabase_db_Handlarborsen-pilot-e2e",
+            "supabase_db_handlarborsen-atlas-test-data-local",
+            "supabase_db_hb-posthog-readiness-20261013",
+            "supabase_db_omnira-stt-local",
+            "supabase_edge_runtime_Handlarborsen",
+            "supabase_edge_runtime_omnira-stt-local",
+            "supabase_storage_Handlarborsen",
+            "supabase_storage_Handlarborsen-auth-ci",
+            "supabase_storage_Handlarborsen-pilot-e2e",
+            "supabase_storage_handlarborsen-atlas-test-data-local",
+            "supabase_storage_hb-posthog-readiness-20261013",
+            "supabase_storage_omnira-stt-local"
+          ]
+        },
+        "run": {
+          "events": [
+            {
+              "event": "ready",
+              "parentPid": 42196,
+              "at": 2,
+              "observedAt": 296
+            },
+            {
+              "event": "launched",
+              "pid": 35052,
+              "at": 23,
+              "observedAt": 318
+            },
+            {
+              "event": "checkpoint",
+              "seq": 1,
+              "phase": "before_resources",
+              "at": 14235,
+              "observedAt": 14530
+            },
+            {
+              "event": "checkpoint",
+              "seq": 2,
+              "phase": "before_volume_create",
+              "at": 14248,
+              "observedAt": 14542
+            },
+            {
+              "event": "checkpoint",
+              "seq": 3,
+              "phase": "before_container_create",
+              "at": 15481,
+              "observedAt": 15776
+            },
+            {
+              "event": "checkpoint",
+              "seq": 4,
+              "phase": "before_upload",
+              "at": 18643,
+              "observedAt": 18937
+            },
+            {
+              "event": "checkpoint",
+              "seq": 5,
+              "phase": "before_start",
+              "at": 19288,
+              "observedAt": 19583
+            },
+            {
+              "event": "parent_killed",
+              "parentPid": 42196,
+              "at": 22583
+            },
+            {
+              "event": "parent_closed",
+              "code": null,
+              "at": 22594
+            }
+          ],
+          "helperPid": 35052,
+          "helperAliveAfterParentKill": true,
+          "helperExitedAt": 26539,
+          "parentStderr": "",
+          "elapsedMs": 26539
+        },
+        "observedAbsence": {
+          "schema": "sdf.windows_materialization_absence_observation.v1",
+          "attemptId": "7bd181f8-2dac-43bf-8b0d-87cdcba9bebe",
+          "absent": true,
+          "toolchainProfileHash": "d7c9937037175bb7b6689fe547b1d23b1ad514baed68e36eaeb57b2a876dea25",
+          "backendIdentityHash": "fc3ae1f41038b227b0053215322c928eaf341871828d789485c2bb7aec36e05b",
+          "daemonIdentityHash": "097b04099237066832a5574e26cb1708df26ff5007ae0165f7135bea76df3601",
+          "productionAuthority": false
+        },
+        "absenceError": null,
+        "productionAuthority": false
+      },
+      "proofSha256": "7995dfe2fcdb9517b29241a1e679509b839f12a9d5ea615fadbb9bec910f7333"
+    },
+    "D": {
+      "intent": {
+        "attempt": "D",
+        "phase": "dispatched-once",
+        "attemptId": "d9e3114c-7842-4aba-93a6-3c6504c47a22",
+        "preparedAt": "2026-10-20T06:44:25.5860211Z",
+        "qualifiedAt": "2026-10-20T06:44:25.516Z",
+        "backendIdentityHash": "fc3ae1f41038b227b0053215322c928eaf341871828d789485c2bb7aec36e05b",
+        "daemonIdentityHash": "097b04099237066832a5574e26cb1708df26ff5007ae0165f7135bea76df3601",
+        "codexService": "Running",
+        "sourceCommit": "700cdaa5b86c3cb25874a4fc649c42178ff8b1bf",
+        "binaries": {
+          "OmniraBrokerWorkspace.dll": "b018302fbccb526911a51116f4395092cf4371b103c37b25be019afdfa81f5bc",
+          "OmniraBrokerWorkspace.deps.json": "7e04cee2425e17bad27451bb3ac1f05f5533061e3f7dcb1c944b2af187ff288c",
+          "OmniraBrokerWorkspace.runtimeconfig.json": "28329cf08f6505e73806b17558b187c02f0c1c516fe47ebfb7a013d082aaa306",
+          "OmniraBrokerHost.dll": "f703110916c28b6f14c76d78311064bd1938edd602da20ca9b287a0cf2ddefb9"
+        },
+        "dispatchedAt": "2026-10-20T06:44:28.307Z"
+      },
+      "proof": {
+        "schema": "atlas.native_stop_real_attempt.v1",
+        "attempt": "D",
+        "attemptId": "d9e3114c-7842-4aba-93a6-3c6504c47a22",
+        "recordedAt": "2026-10-20T06:45:00.127Z",
+        "bindings": {
+          "apps/code-broker/.native/windows-workspace/OmniraBrokerWorkspace.dll": "b018302fbccb526911a51116f4395092cf4371b103c37b25be019afdfa81f5bc",
+          "apps/code-broker/.native/windows-workspace/OmniraBrokerWorkspace.deps.json": "7e04cee2425e17bad27451bb3ac1f05f5533061e3f7dcb1c944b2af187ff288c",
+          "apps/code-broker/.native/windows-workspace/OmniraBrokerWorkspace.runtimeconfig.json": "28329cf08f6505e73806b17558b187c02f0c1c516fe47ebfb7a013d082aaa306",
+          "apps/code-broker/.native/windows-workspace/OmniraBrokerHost.dll": "f703110916c28b6f14c76d78311064bd1938edd602da20ca9b287a0cf2ddefb9",
+          "apps/code-broker/native/windows-workspace/Program.cs": "ea92c5dfbcfba48df67d52abc389d25a592fd4720cb2f553b1a6d82fa749b117",
+          "apps/code-broker/native/windows-workspace/NativeControlChannel.cs": "204573af0c1cee4514d2b85f07f30f1958d9bf6fc0226092f5a3dc57ce48080b",
+          "apps/code-broker/native/windows-workspace/WindowsMaterializationFixture.cs": "00f19aff8ded2a6c2f66a9c8262515b192e3a9a11cc28bda93f7cf8e98308224",
+          "apps/code-broker/native/windows-workspace/MaterializationContracts.cs": "204b50153b262114e2172619ea89148a7126996c6df820fe86e95097cab676c7",
+          "apps/code-broker/src/isolation/windows/controlled-helper.ts": "a39ffb112ea5c6c357a4bf0e637d5f8ed157abeeb596ae92cd43d46c55ec3b6f",
+          "apps/code-broker/src/runtime/native-stop-bridge.ts": "3c8f8de1db06ae952739bbb7b7ff505483d116e212978d16214b9b254a4c88c8",
+          "apps/code-broker/src/isolation/windows/source-fixture.ts": "2fc620c99326d7c4b38ad9c4b9ceb27b7a3c3dcafbad8b1f52f5118ae4dfc7d5",
+          "apps/code-broker/src/isolation/windows/source-contracts.ts": "b85f4e95a0fab40ef0086bb9e2677d52932c23bd9e60ba92d5503ac4cecb49af",
+          "apps/code-broker/src/runtime/execution-lease-guard.ts": "9e749abc7fd2e886178e30b24f0d449c89b1de2b67164045137174d9f01408cb",
+          "apps/code-broker/src/isolation/windows/workspace-helper.ts": "4bf7d7d56aef8666e39b69b5caaa5d124210403cd17ed2f4af30f762528d4697",
+          "request": "{\"schema\":\"sdf.windows_workspace_request.v1\",\"workId\":\"c435e423-d964-428b-b5c0-4060d89ce3c6\",\"repositoryId\":\"github.com/bumbi190/ai-operating-platform\",\"pinnedBaseSha\":\"d3f9fcc1045026042f6bb9c0cd302ed0b7283127\",\"admissionHash\":\"662d9af499e4d6fbc0c7e97b276d8526559a0658b6899eab63cc9a04880cec1d\",\"claimId\":\"2e0f09eb-cf7e-4619-834b-d78aa0ca5a7a\",\"fence\":1}"
+        },
+        "dockerBefore": {
+          "containers": [
+            "00839eda91e3e6bb08040960238cb02e87b8fcb75a92a70e93feede9f26c7bd8",
+            "01c0911cadce7caa369843ab1766ce408e6f5d1610bf493701d53b764379e921",
+            "156ca5835ca03fa689db5148fb140dc26009609661b16eb76e398a6d4875991f",
+            "19235ae79602a4aab2871166000c4ca09a619d10e6e3face94fe4a9159088216",
+            "1ddfd23844a2e745aa45a224047c834cc5dcd4e4fc2440b0f4d76af78d66beb5",
+            "20013e149e63f7dcbf0cc2fbad3b6766fbd73ac34442ee33f2ea1903ca9322b9",
+            "26f54fcab5b72f1c9c7f0515fa058b8ef1303236f3064c1da839704221e6b526",
+            "2bc195b9f1d2ce88c9286078de13d0c612c36fc5dd6873b9b9b5aedfd7947cc8",
+            "2d607fabc7a967e7303b78971b11745779732e8adae55bd7023326457c35f4a2",
+            "3949ec8c333a3398a573d8a00ed27819f567b87c03b21a26b63bf9bdcd06a186",
+            "452b860aaef9b80dbb2e7263156a4813ecd5f66e0286b0d7bae28ce861e7162f",
+            "49efc21389599e12f8b1e1cdcd67a5240dce6c2ab91a881b0fb09a2e137a5792",
+            "4d9914d590d319d493e4491cf94b11a9343390e25cb59088e8e39cdf514a94b8",
+            "56dd9297cdccb61c0d6294e65b6bff7ab58314b246be43758d5f34ba242125aa",
+            "57299eb3e8cb7bac1c967fff1aac945db2d978a4ce304b23663cf26f2e8d7267",
+            "5bcefa9048b0be6c1915342299a3902020d4acc107b56f4f42ec10c23d46345d",
+            "64cbc6f8663d2c801852eb874a315f8392f5f6c1619861dc34d8646979be2dee",
+            "6673a09d2da99d0982d0e7d1a9bc5164caaf182e62b9c1cea645bb6b4965f377",
+            "7c2698da13168fbdd358df8063336a77eaa02d1df0c22dc184076b78fb682a5b",
+            "7ee8e0c3c3ba92045124c10eb3db8e28799bc1c4a9b7424b9453ae250ef08045",
+            "83128523e56634b5fa732f252c8b17ee3f7522d8dbf748034abc201d24ceee76",
+            "833ed5818fb7ffaec222288aa422f00bada5a920e93113d0a4e34d690aa925eb",
+            "8bc1a7e73be34c898f92f70187665d18bbac625a272ac36ed4aaf4e9b507e35c",
+            "8c471fa77daac344677372ee75f6f63b3068827b87c2df75f23c34ffde9fb593",
+            "8cf11d4c0ec94ad7b8ec024de518ac0e38d0b4e944299f9eceb6f99bec50e9bb",
+            "9a5a42807fbcde3705162424d79fee39947a257127daf5a10cd09469904a4a49",
+            "a0ecd3953e3d24c5814f566558d088d16b61d5490ba183f8f35ba64023b2508f",
+            "ac5761b6700e603b13c5ff02d4406117672ef317202dca715fd4c0eb9d7f8e38",
+            "ad1e32968aa4ca641055a799a730d55647bd76725c028e25dea292693180d23b",
+            "ae0eb2e6466a805ac57d1b27863e2948d603e19bdd0464261422cf7575592026",
+            "b6203adda2cf8aefd0593f255d64018e945efc89473ef7820d4a042101cd4544",
+            "b6d075368fb6342d47fdd85824eaa46186cacb5f699e210f3aa80cecc4187a07",
+            "ca69e235d4a542d203eaf2f666b371884d2ea93df74db3895aaa19c802753a90",
+            "d33b6d9485fbc86b16c4fc30057e6a22f805e80c005357d0791231291c0d6d84",
+            "db1fbeadad578c2da01d260333d207e4e1286fbed27e9b7d6a8bbde1e218b0e1",
+            "db6c6643377a2004bc265314f769bf08c993b72a8cbb64b08a98b13deb5ed2b5",
+            "e5139cf27d09c3105c4cb13f3c4732b5a557fffe1de90cec0fef4095c6e9896e",
+            "e6630949c81aef258a34f5129e11b9f9be83fe3178e7f9b55ed76538f31707d8",
+            "ea053631a41fb0f70e08f74fe0743eea6ccb6ced043322a62c586a5552ceea17",
+            "fa60f68a6334e832669a1f429b67689b53f4f89b3511ae225bc3b1f05aa5a458"
+          ],
+          "volumes": [
+            "0ee0dcb53c0cbf185b8aac5834d21ace6d96fefad707e10a969dc606c6552ff1",
+            "11ecc40dc1e7eafadc63b88c9f22155e7d621b08c5923861ad685d5b951e9c3f",
+            "16499eef08eedb0c8b648252527ca980cff2c1ffd741046feb96876b4bbee16d",
+            "20f7360752a36bc3da79a90f1122c91aec50cf893fff9ea021ecd58888773902",
+            "23e6dde6740a6ac029afcbddf9fd193b180084a82ba0d92d0ea11d33a474a78a",
+            "429a1e461baad703d78a1379108abc9a7bfc90f0ba3a7f9fcf4b3c7b0de8780a",
+            "4b83689c5a4d989a868ad84820acba1b0f3d0ea2e4b3929cfef4d1bfe434b2f5",
+            "5e57b694f25de259d047b75c1c27a97aa904ead64855116752c6d8523ca6f7a7",
+            "5ea54d276b5c97daedfcde6db2e4d09c4140532ed7d3efd9244345b533c5183c",
+            "6145d00cf41afa2343698ff7a1b24fc9bfd2831d44a8fa1ca9893cd606992b58",
+            "790d252ad63b70c0cdc7006fb5f870438b33a4a8945ea5625849a4ee81e9397d",
+            "79c8f116ba369a3e10d1ae243ece337df187f5ec9547b14212e7d5de0c7f3e35",
+            "7c1bded3d4e8464af6724adf5b9c0fe04c80670875e46f7f8e5007fda2f03eba",
+            "80e69105619a60f8bd7160c02c6403fbc992dd33703f225b49c757a88230e10c",
+            "89beac618e3ccfe5c0e66497bdfd9dabb836b1e1d6f180ae3acd229941ed7bd7",
+            "8a48ff654fe599188506ca5eb683fde64496174d22ee19bd1681b88cf1e76f62",
+            "934686eca099120485f9b95f3329a285a9bc62602da36379b8239deede27af42",
+            "9624994e4417ca68b7b1083ffe3db8240b82a74b0e79383e520f099cdde35cf7",
+            "a440541f6a106800079241ce1a5116fd161ff451983b8555327a1f7683e0a2e2",
+            "b4fac80f008d956e0efee057983c4586974e2c0097436ccd598af5dc05c8873a",
+            "b8d71a8039a7392ad085d4b5c48527e661ece121298082714b61f1f2afa4d9de",
+            "b942f56d3e2d32a540c1b2ac028ef4fd7489fb0a3605a5c561b400c5933b20b7",
+            "bb47924bf91ff413fb80eab3a6c5c5b97aabf1dab73452ab3eea2f1acbf7988d",
+            "bb8116793e60fb60deedd02c115f1c0d36b185aedd60ce9805447ab46c0b754f",
+            "bf2ee9fd0ceeda17dcc2339ebcbc3ff7b4534d8b3c7a76a15c2f2aeb229797dc",
+            "c2fcee06b068e0203813a680cba0397d9679cb93975cc88aa1e27a95fbb60017",
+            "e884afc4cf2879b31a89470a34634afe5ca38bfc8ca0e1b50fc72a0c8e5a9ecd",
+            "handlarborsen-auth-ci-node-modules",
+            "omnira-openviking-pilot-20261015_models",
+            "omnira-openviking-pilot-20261015_state",
+            "omnira-openviking-pilot-20261015_state_lifecycle_20261015",
+            "omnira-openviking-pilot-20261015_state_semantic",
+            "omnira-openviking-pilot-20261015_state_vectors",
+            "omnira-openviking-probe-deps-20261015",
+            "supabase_db_Handlarborsen",
+            "supabase_db_Handlarborsen-auth-ci",
+            "supabase_db_Handlarborsen-pilot-e2e",
+            "supabase_db_handlarborsen-atlas-test-data-local",
+            "supabase_db_hb-posthog-readiness-20261013",
+            "supabase_db_omnira-stt-local",
+            "supabase_edge_runtime_Handlarborsen",
+            "supabase_edge_runtime_omnira-stt-local",
+            "supabase_storage_Handlarborsen",
+            "supabase_storage_Handlarborsen-auth-ci",
+            "supabase_storage_Handlarborsen-pilot-e2e",
+            "supabase_storage_handlarborsen-atlas-test-data-local",
+            "supabase_storage_hb-posthog-readiness-20261013",
+            "supabase_storage_omnira-stt-local"
+          ]
+        },
+        "dockerAfter": {
+          "containers": [
+            "00839eda91e3e6bb08040960238cb02e87b8fcb75a92a70e93feede9f26c7bd8",
+            "01c0911cadce7caa369843ab1766ce408e6f5d1610bf493701d53b764379e921",
+            "156ca5835ca03fa689db5148fb140dc26009609661b16eb76e398a6d4875991f",
+            "19235ae79602a4aab2871166000c4ca09a619d10e6e3face94fe4a9159088216",
+            "1ddfd23844a2e745aa45a224047c834cc5dcd4e4fc2440b0f4d76af78d66beb5",
+            "20013e149e63f7dcbf0cc2fbad3b6766fbd73ac34442ee33f2ea1903ca9322b9",
+            "26f54fcab5b72f1c9c7f0515fa058b8ef1303236f3064c1da839704221e6b526",
+            "2bc195b9f1d2ce88c9286078de13d0c612c36fc5dd6873b9b9b5aedfd7947cc8",
+            "2d607fabc7a967e7303b78971b11745779732e8adae55bd7023326457c35f4a2",
+            "3949ec8c333a3398a573d8a00ed27819f567b87c03b21a26b63bf9bdcd06a186",
+            "452b860aaef9b80dbb2e7263156a4813ecd5f66e0286b0d7bae28ce861e7162f",
+            "49efc21389599e12f8b1e1cdcd67a5240dce6c2ab91a881b0fb09a2e137a5792",
+            "4d9914d590d319d493e4491cf94b11a9343390e25cb59088e8e39cdf514a94b8",
+            "56dd9297cdccb61c0d6294e65b6bff7ab58314b246be43758d5f34ba242125aa",
+            "57299eb3e8cb7bac1c967fff1aac945db2d978a4ce304b23663cf26f2e8d7267",
+            "5bcefa9048b0be6c1915342299a3902020d4acc107b56f4f42ec10c23d46345d",
+            "64cbc6f8663d2c801852eb874a315f8392f5f6c1619861dc34d8646979be2dee",
+            "6673a09d2da99d0982d0e7d1a9bc5164caaf182e62b9c1cea645bb6b4965f377",
+            "7c2698da13168fbdd358df8063336a77eaa02d1df0c22dc184076b78fb682a5b",
+            "7ee8e0c3c3ba92045124c10eb3db8e28799bc1c4a9b7424b9453ae250ef08045",
+            "83128523e56634b5fa732f252c8b17ee3f7522d8dbf748034abc201d24ceee76",
+            "833ed5818fb7ffaec222288aa422f00bada5a920e93113d0a4e34d690aa925eb",
+            "8bc1a7e73be34c898f92f70187665d18bbac625a272ac36ed4aaf4e9b507e35c",
+            "8c471fa77daac344677372ee75f6f63b3068827b87c2df75f23c34ffde9fb593",
+            "8cf11d4c0ec94ad7b8ec024de518ac0e38d0b4e944299f9eceb6f99bec50e9bb",
+            "9a5a42807fbcde3705162424d79fee39947a257127daf5a10cd09469904a4a49",
+            "a0ecd3953e3d24c5814f566558d088d16b61d5490ba183f8f35ba64023b2508f",
+            "ac5761b6700e603b13c5ff02d4406117672ef317202dca715fd4c0eb9d7f8e38",
+            "ad1e32968aa4ca641055a799a730d55647bd76725c028e25dea292693180d23b",
+            "ae0eb2e6466a805ac57d1b27863e2948d603e19bdd0464261422cf7575592026",
+            "b6203adda2cf8aefd0593f255d64018e945efc89473ef7820d4a042101cd4544",
+            "b6d075368fb6342d47fdd85824eaa46186cacb5f699e210f3aa80cecc4187a07",
+            "ca69e235d4a542d203eaf2f666b371884d2ea93df74db3895aaa19c802753a90",
+            "d33b6d9485fbc86b16c4fc30057e6a22f805e80c005357d0791231291c0d6d84",
+            "db1fbeadad578c2da01d260333d207e4e1286fbed27e9b7d6a8bbde1e218b0e1",
+            "db6c6643377a2004bc265314f769bf08c993b72a8cbb64b08a98b13deb5ed2b5",
+            "e5139cf27d09c3105c4cb13f3c4732b5a557fffe1de90cec0fef4095c6e9896e",
+            "e6630949c81aef258a34f5129e11b9f9be83fe3178e7f9b55ed76538f31707d8",
+            "ea053631a41fb0f70e08f74fe0743eea6ccb6ced043322a62c586a5552ceea17",
+            "fa60f68a6334e832669a1f429b67689b53f4f89b3511ae225bc3b1f05aa5a458"
+          ],
+          "volumes": [
+            "0ee0dcb53c0cbf185b8aac5834d21ace6d96fefad707e10a969dc606c6552ff1",
+            "11ecc40dc1e7eafadc63b88c9f22155e7d621b08c5923861ad685d5b951e9c3f",
+            "16499eef08eedb0c8b648252527ca980cff2c1ffd741046feb96876b4bbee16d",
+            "20f7360752a36bc3da79a90f1122c91aec50cf893fff9ea021ecd58888773902",
+            "23e6dde6740a6ac029afcbddf9fd193b180084a82ba0d92d0ea11d33a474a78a",
+            "429a1e461baad703d78a1379108abc9a7bfc90f0ba3a7f9fcf4b3c7b0de8780a",
+            "4b83689c5a4d989a868ad84820acba1b0f3d0ea2e4b3929cfef4d1bfe434b2f5",
+            "5e57b694f25de259d047b75c1c27a97aa904ead64855116752c6d8523ca6f7a7",
+            "5ea54d276b5c97daedfcde6db2e4d09c4140532ed7d3efd9244345b533c5183c",
+            "6145d00cf41afa2343698ff7a1b24fc9bfd2831d44a8fa1ca9893cd606992b58",
+            "790d252ad63b70c0cdc7006fb5f870438b33a4a8945ea5625849a4ee81e9397d",
+            "79c8f116ba369a3e10d1ae243ece337df187f5ec9547b14212e7d5de0c7f3e35",
+            "7c1bded3d4e8464af6724adf5b9c0fe04c80670875e46f7f8e5007fda2f03eba",
+            "80e69105619a60f8bd7160c02c6403fbc992dd33703f225b49c757a88230e10c",
+            "89beac618e3ccfe5c0e66497bdfd9dabb836b1e1d6f180ae3acd229941ed7bd7",
+            "8a48ff654fe599188506ca5eb683fde64496174d22ee19bd1681b88cf1e76f62",
+            "934686eca099120485f9b95f3329a285a9bc62602da36379b8239deede27af42",
+            "9624994e4417ca68b7b1083ffe3db8240b82a74b0e79383e520f099cdde35cf7",
+            "a440541f6a106800079241ce1a5116fd161ff451983b8555327a1f7683e0a2e2",
+            "b4fac80f008d956e0efee057983c4586974e2c0097436ccd598af5dc05c8873a",
+            "b8d71a8039a7392ad085d4b5c48527e661ece121298082714b61f1f2afa4d9de",
+            "b942f56d3e2d32a540c1b2ac028ef4fd7489fb0a3605a5c561b400c5933b20b7",
+            "bb47924bf91ff413fb80eab3a6c5c5b97aabf1dab73452ab3eea2f1acbf7988d",
+            "bb8116793e60fb60deedd02c115f1c0d36b185aedd60ce9805447ab46c0b754f",
+            "bf2ee9fd0ceeda17dcc2339ebcbc3ff7b4534d8b3c7a76a15c2f2aeb229797dc",
+            "c2fcee06b068e0203813a680cba0397d9679cb93975cc88aa1e27a95fbb60017",
+            "e884afc4cf2879b31a89470a34634afe5ca38bfc8ca0e1b50fc72a0c8e5a9ecd",
+            "handlarborsen-auth-ci-node-modules",
+            "omnira-openviking-pilot-20261015_models",
+            "omnira-openviking-pilot-20261015_state",
+            "omnira-openviking-pilot-20261015_state_lifecycle_20261015",
+            "omnira-openviking-pilot-20261015_state_semantic",
+            "omnira-openviking-pilot-20261015_state_vectors",
+            "omnira-openviking-probe-deps-20261015",
+            "supabase_db_Handlarborsen",
+            "supabase_db_Handlarborsen-auth-ci",
+            "supabase_db_Handlarborsen-pilot-e2e",
+            "supabase_db_handlarborsen-atlas-test-data-local",
+            "supabase_db_hb-posthog-readiness-20261013",
+            "supabase_db_omnira-stt-local",
+            "supabase_edge_runtime_Handlarborsen",
+            "supabase_edge_runtime_omnira-stt-local",
+            "supabase_storage_Handlarborsen",
+            "supabase_storage_Handlarborsen-auth-ci",
+            "supabase_storage_Handlarborsen-pilot-e2e",
+            "supabase_storage_handlarborsen-atlas-test-data-local",
+            "supabase_storage_hb-posthog-readiness-20261013",
+            "supabase_storage_omnira-stt-local"
+          ]
+        },
+        "run": {
+          "result": {
+            "status": "stopped",
+            "attemptId": "d9e3114c-7842-4aba-93a6-3c6504c47a22",
+            "reason": "control_lost",
+            "cleanup": "confirmed",
+            "containerRemoved": true,
+            "volumeRemoved": true
+          },
+          "events": [
+            {
+              "event": "lease_read",
+              "phase": null,
+              "refuse": false,
+              "at": 5
+            },
+            {
+              "event": "launched",
+              "pid": 9732,
+              "at": 24
+            },
+            {
+              "event": "lease_read",
+              "phase": null,
+              "refuse": false,
+              "at": 5010
+            },
+            {
+              "event": "lease_read",
+              "phase": null,
+              "refuse": false,
+              "at": 10018
+            },
+            {
+              "event": "checkpoint",
+              "seq": 1,
+              "phase": "before_resources",
+              "at": 12709
+            },
+            {
+              "event": "lease_read",
+              "phase": "before_resources",
+              "refuse": false,
+              "at": 12710
+            },
+            {
+              "event": "checkpoint",
+              "seq": 2,
+              "phase": "before_volume_create",
+              "at": 12722
+            },
+            {
+              "event": "lease_read",
+              "phase": "before_volume_create",
+              "refuse": false,
+              "at": 12722
+            },
+            {
+              "event": "checkpoint",
+              "seq": 3,
+              "phase": "before_container_create",
+              "at": 13987
+            },
+            {
+              "event": "lease_read",
+              "phase": "before_container_create",
+              "refuse": false,
+              "at": 13987
+            },
+            {
+              "event": "checkpoint",
+              "seq": 4,
+              "phase": "before_upload",
+              "at": 17335
+            },
+            {
+              "event": "lease_read",
+              "phase": "before_upload",
+              "refuse": false,
+              "at": 17335
+            },
+            {
+              "event": "checkpoint",
+              "seq": 5,
+              "phase": "before_start",
+              "at": 18095
+            },
+            {
+              "event": "lease_read",
+              "phase": "before_start",
+              "refuse": false,
+              "at": 18095
+            },
+            {
+              "event": "forced_terminate",
+              "pid": 9732,
+              "at": 21109
+            },
+            {
+              "event": "native_outcome",
+              "kind": "violation",
+              "at": 21121
+            },
+            {
+              "event": "guard_aborted",
+              "at": 21121
+            },
+            {
+              "event": "cleanup_called",
+              "at": 21122
+            },
+            {
+              "event": "cleanup_result",
+              "result": {
+                "status": "observed",
+                "report": {
+                  "status": "cleaned",
+                  "attemptId": "d9e3114c-7842-4aba-93a6-3c6504c47a22",
+                  "binding": {
+                    "workId": "c435e423-d964-428b-b5c0-4060d89ce3c6",
+                    "repositoryId": "github.com/bumbi190/ai-operating-platform",
+                    "pinnedBaseSha": "d3f9fcc1045026042f6bb9c0cd302ed0b7283127",
+                    "admissionHash": "662d9af499e4d6fbc0c7e97b276d8526559a0658b6899eab63cc9a04880cec1d",
+                    "claimId": "2e0f09eb-cf7e-4619-834b-d78aa0ca5a7a",
+                    "fence": 1
+                  },
+                  "reason": null,
+                  "sourcePolicyId": "sdf.windows_source_fixture.v1",
+                  "manifest": null,
+                  "manifestSha256": null,
+                  "toolchainProfileHash": "d7c9937037175bb7b6689fe547b1d23b1ad514baed68e36eaeb57b2a876dea25",
+                  "imageId": "sha256:354e46f6c5d5e046a2002b78f2d43931824b67110df42a40ab4204e269d1acd0",
+                  "backendIdentityHash": "fc3ae1f41038b227b0053215322c928eaf341871828d789485c2bb7aec36e05b",
+                  "daemonIdentityHash": "097b04099237066832a5574e26cb1708df26ff5007ae0165f7135bea76df3601",
+                  "fixture": null,
+                  "containerRemoved": true,
+                  "volumeRemoved": true,
+                  "observedAt": "2026-10-20T06:44:57.197Z",
+                  "schema": "sdf.windows_materialization_report.v1",
+                  "productionAuthority": false
+                }
+              },
+              "at": 28643
+            }
+          ],
+          "native": {
+            "kind": "violation",
+            "reason": "exited_without_report"
+          },
+          "cleanups": 1,
+          "elapsedMs": 28643
+        },
+        "observedAbsence": {
+          "schema": "sdf.windows_materialization_absence_observation.v1",
+          "attemptId": "d9e3114c-7842-4aba-93a6-3c6504c47a22",
+          "absent": true,
+          "toolchainProfileHash": "d7c9937037175bb7b6689fe547b1d23b1ad514baed68e36eaeb57b2a876dea25",
+          "backendIdentityHash": "fc3ae1f41038b227b0053215322c928eaf341871828d789485c2bb7aec36e05b",
+          "daemonIdentityHash": "097b04099237066832a5574e26cb1708df26ff5007ae0165f7135bea76df3601",
+          "productionAuthority": false
+        },
+        "absenceError": null,
+        "productionAuthority": false
+      },
+      "proofSha256": "9a6b1821c3c0076a695b78a4d47abd9c6fb5a06886029964eaf82a4af6cd16ff"
+    }
+  },
+  "classP": [
+    {
+      "dir": "pg-78ae2a52-eeff-4504-b465-f40b6263ecf6",
+      "status": "removed",
+      "absenceConfirmed": true,
+      "sealed": null,
+      "lockedBackendIdentityHash": "fc3ae1f41038b227b0053215322c928eaf341871828d789485c2bb7aec36e05b",
+      "peerCheckCount": 342,
+      "allPeerChecksOk": true,
+      "windows": [
+        {
+          "label": "lock_contention",
+          "maxMs": 12000,
+          "openedAt": "2026-10-20T06:51:16.196Z",
+          "durationMs": 3378,
+          "outcome": "closed"
+        },
+        {
+          "label": "broker_expiry_barrier",
+          "maxMs": 12000,
+          "openedAt": "2026-10-20T06:51:39.321Z",
+          "durationMs": 1911,
+          "outcome": "closed"
+        }
+      ],
+      "productionAuthority": false
+    }
+  ],
+  "gate": {
+    "log": [
+      "final gate start 2026-10-20T08:45:34.6303206+02:00 HEAD=700cdaa5b86c3cb25874a4fc649c42178ff8b1bf",
+      "08:45:37 workspace     0 Warning(s)",
+      "08:45:37 workspace     0 Error(s)",
+      "08:45:37 workspace exit=0",
+      "08:45:39 smoke     0 Warning(s)",
+      "08:45:39 smoke     0 Error(s)",
+      "08:45:39 smoke exit=0",
+      "08:45:40 hash OmniraBrokerWorkspace.dll b018302fbccb526911a51116f4395092cf4371b103c37b25be019afdfa81f5bc",
+      "08:45:40 hash OmniraBrokerWorkspace.deps.json 7e04cee2425e17bad27451bb3ac1f05f5533061e3f7dcb1c944b2af187ff288c",
+      "08:45:40 hash OmniraBrokerWorkspace.runtimeconfig.json 28329cf08f6505e73806b17558b187c02f0c1c516fe47ebfb7a013d082aaa306",
+      "08:45:40 hash OmniraBrokerHost.dll f703110916c28b6f14c76d78311064bd1938edd602da20ca9b287a0cf2ddefb9",
+      "08:45:42 smoke control-channel exit=0 passed=34 names=34 stderrEmpty=True",
+      "08:45:44 smoke materialization exit=0 passed=62 names=62 stderrEmpty=True",
+      "08:45:45 smoke materialization-spec exit=0 passed=25 names=25 stderrEmpty=True",
+      "08:45:45 smoke attempt-journal exit=0 passed=7 names=7 stderrEmpty=True",
+      "08:45:45 smoke toolchain exit=0 passed=8 names=8 stderrEmpty=True",
+      "08:51:49 vitest exit=0",
+      "08:51:52 tsc-broker exit=0",
+      "08:52:54 tsc-web exit=0",
+      "08:52:54 diffcheck exit=0",
+      "08:52:54 GATE_DONE"
+    ],
+    "files": 19,
+    "total": 393,
+    "passed": 393,
+    "failed": 0,
+    "pending": 0,
+    "todo": 0,
+    "success": true
+  },
+  "review": {
+    "verdict": "APPROVE WITH MINORS",
+    "material": 0,
+    "fixedInFollowUp": [
+      "M1",
+      "M4",
+      "M5"
+    ],
+    "open": [
+      "M2",
+      "M3"
+    ]
+  },
+  "productionAuthority": false
+}

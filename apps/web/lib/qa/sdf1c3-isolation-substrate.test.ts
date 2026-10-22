@@ -46,6 +46,10 @@ const hg = (...rest: string[]) => [...GIT_HARDENING_PREFIX, ...rest]
 const HEAD_ARGV = hg('rev-parse', '--verify', '--quiet', 'HEAD^{commit}')
 const LETTERED = 'abcdef00-0000-4000-8000-00000000000a'      // has hex letters, so upper-casing really changes it
 const ISO = resolve(ROOT, 'apps/code-broker/src/isolation')
+const walk = (dir: string): string[] => readdirSync(dir).flatMap(name => {
+  const path = join(dir, name)
+  return statSync(path).isDirectory() ? (name === 'node_modules' || name === '.next' ? [] : walk(path)) : /\.(?:ts|tsx|mjs)$/.test(name) ? [path] : []
+})
 const WORK = '50000000-0000-4000-8000-000000000001'
 const WORK_2 = '50000000-0000-4000-8000-000000000002'
 const REPO_ID = OMNIRA_LOCAL_REPOSITORY.repositoryId
@@ -336,8 +340,8 @@ describe('SDF-1C3A infrastructure process runner: closed commands, no shell, scr
   })
 
   it('has no way to read the parent environment at all', () => {
-    for (const file of readdirSync(ISO)) {
-      const source = code(join(ISO, file))
+    for (const file of walk(ISO)) {
+      const source = code(file)
       expect(source, file).not.toMatch(/process\.env|import\.meta\.env|\benv:\s*process/)
     }
   })
@@ -387,7 +391,7 @@ describe('SDF-1C3A infrastructure process runner: closed commands, no shell, scr
     try { brokerCommand({ tool: 'git', argv: hg('fetch', secret) }) } catch (error) { thrown = String(error) }
     expect(JSON.stringify(result) + thrown).not.toContain(secret)
     for (const spy of spies) { expect(spy).not.toHaveBeenCalled(); spy.mockRestore() }
-    for (const file of readdirSync(ISO)) expect(code(join(ISO, file)), file).not.toMatch(/\bconsole\.|\blogger\b/)
+    for (const file of walk(ISO)) expect(code(file), file).not.toMatch(/\bconsole\.|\blogger\b/)
   })
 
   it('a planted user gitconfig, hooks, filters and credential helper are unreachable (real git)', async () => {
@@ -913,9 +917,17 @@ describe('SDF-1C3A repository proof, pinned base and isolated worktree (syntheti
   })
 
   it('production code never deletes a worktree, prunes, removes or fetches (retention is explicit-cleanup-only)', () => {
-    for (const file of readdirSync(ISO)) {
-      const source = code(join(ISO, file))
-      if (file === 'process-runner.ts') { expect(source).toMatch(/rmSync\(home/); continue }      // only the broker's own isolated HOME
+    for (const file of walk(ISO)) {
+      const source = code(file)
+      if (file === join(ISO, 'process-runner.ts')) { expect(source).toMatch(/rmSync\(home/); continue }      // only the broker's own isolated HOME
+      if (file === join(ISO, 'windows/source-attempts.ts')) {
+        // A reviewed, append-only reservation writer, confined to the native attempts directory.
+        expect(source).toMatch(/const ROOT=fileURLToPath\(new URL\('\.\.\/\.\.\/\.\.\/\.native\/windows-workspace\/attempts'/)
+        expect(source).toMatch(/O_WRONLY\|constants\.O_CREAT\|constants\.O_EXCL/)
+        expect(source).toMatch(/checkDirectory\(ROOT\)/)
+        expect(source).not.toMatch(/\brmSync\b|\bunlinkSync\b|\brmdirSync\b|\brenameSync\b|\bcopyFileSync\b/)
+        continue
+      }
       expect(source, file).not.toMatch(/\brmSync\b|\brmdirSync\b|\bunlinkSync\b|\brenameSync\b|\bwriteFileSync\b|\bmkdirSync\b|\bcopyFileSync\b|['"]prune['"]|worktree remove|['"]remove['"]/)
     }
     expect(Object.keys(containment).filter(name => name !== 'FILESYSTEM_WRITES_ENABLED' && /write|unlink|remove|delete|mkdir|rename|copy|create(?!Path)/i.test(name))).toEqual([])
@@ -1115,15 +1127,15 @@ describe('SDF-1C3A SandboxSpec and Docker command construction', () => {
     expect(() => dockerCommands.remove('x; rm -rf /')).toThrow()
     expect(() => buildProbeCreateCommand('evil-name')).toThrow(/broker-generated/)
     expect(newProbeName(() => Buffer.from('0123456789ab', 'hex'))).toBe('omnira-sdf1c3-probe-0123456789ab')
-    const builder = readFileSync(join(ISO, 'sandbox-spec.ts'), 'utf8').match(/export function buildProbeCreateCommand[\s\S]*?\n}\n/)![0]
+    const builder = readFileSync(join(ISO, 'sandbox-spec.ts'), 'utf8').replace(/\r\n/g, '\n').match(/export function buildProbeCreateCommand[\s\S]*?\n}\n/)![0]
     expect(builder).toMatch(/function buildProbeCreateCommand\(name: string\)/)          // the ONLY parameter is the generated name
   })
 
   it('there is no way to smuggle a shell, host bind, docker socket or arbitrary argument anywhere in the isolation sources', () => {
-    for (const file of readdirSync(ISO)) {
-      const source = code(join(ISO, file))
+    for (const file of walk(ISO)) {
+      const source = code(file)
       expect(source, file).not.toMatch(/shell:\s*true|['"`]\/bin\/(?:ba|z|da|k|c|tc)?sh['"`]|\bsh\s+-c\b|\bbash\s+-c\b|\bzsh\s+-c\b/)
-      if (file !== 'process-runner.ts') expect(source, file).not.toMatch(/type=bind|['"]-v['"]\s*,|['"]--volume['"]\s*,|['"]--mount['"]\s*,/)     // process-runner.ts only NAMES them, in its refusal list
+      if (file !== join(ISO, 'process-runner.ts')) expect(source, file).not.toMatch(/type=bind|['"]-v['"]\s*,|['"]--volume['"]\s*,|['"]--mount['"]\s*,/)     // process-runner.ts only NAMES them, in its refusal list
     }
     const spec = code(join(ISO, 'sandbox-spec.ts'))
     expect(spec).not.toMatch(/['"]--privileged['"]|['"]--cap-add['"]|['"]--device['"]|['"]--pid['"]|['"]-p['"]|['"]--publish['"]/)
@@ -1319,10 +1331,6 @@ describe('SDF-1C3A health-probe orchestration (fake Docker; the real daemon is e
 })
 
 describe('SDF-1C3A boundary: no production caller, no route, no CLI command, no migration, no execution', () => {
-  const walk = (dir: string): string[] => readdirSync(dir).flatMap(name => {
-    const path = join(dir, name)
-    return statSync(path).isDirectory() ? (name === 'node_modules' || name === '.next' ? [] : walk(path)) : /\.(?:ts|tsx|mjs)$/.test(name) ? [path] : []
-  })
 
   it('nothing outside the isolation directory (and tests) imports the substrate', () => {
     const importers = [...walk(resolve(ROOT, 'apps/code-broker/src')), ...walk(resolve(ROOT, 'apps/web/app')), ...walk(resolve(ROOT, 'apps/web/lib/atlas')), ...walk(resolve(ROOT, 'apps/web/components'))]
@@ -1339,7 +1347,7 @@ describe('SDF-1C3A boundary: no production caller, no route, no CLI command, no 
 
   it('adds no broker route, and the route set is exactly the 1C2 control channel', () => {
     const api = resolve(ROOT, 'apps/web/app/api/atlas/code-work/broker')
-    expect(walk(api).map(file => file.slice(api.length + 1)).sort()).toEqual(['claim/recover/route.ts', 'claim/route.ts', 'discover/route.ts', 'enroll/route.ts', 'heartbeat/route.ts', 'identity/route.ts'])
+    expect(walk(api).map(file => file.slice(api.length + 1).replace(/\\/g, '/')).sort()).toEqual(['claim/recover/route.ts', 'claim/route.ts', 'discover/route.ts', 'enroll/route.ts', 'execution-lease/route.ts', 'heartbeat/route.ts', 'identity/route.ts'])
     for (const name of ['context', 'evidence', 'transition', 'execute', 'command', 'patch', 'prepare', 'worktree', 'sandbox']) expect(existsSync(join(api, name)), name).toBe(false)
   })
 
@@ -1373,8 +1381,8 @@ describe('SDF-1C3A boundary: no production caller, no route, no CLI command, no 
   })
 
   it('contains no model/provider, HTTP, database, credential or repository-content code', () => {
-    for (const file of readdirSync(ISO)) {
-      const source = code(join(ISO, file))
+    for (const file of walk(ISO)) {
+      const source = code(file)
       expect(source, file).not.toMatch(/@anthropic|from ['"]openai['"]|\banthropic\b|claude-|supabase|service[_-]?role|createAdminClient|\bfetch\(|node:https?|node:net|node:tls|XMLHttpRequest|WebSocket/i)
       expect(source, file).not.toMatch(/docker cp|docker exec|docker run\b|\btar\b.*-[cx]|type=bind/)
       expect(source, file).not.toMatch(/readFileSync\([^)]*(?:worktree|workspace)/)
@@ -1384,12 +1392,12 @@ describe('SDF-1C3A boundary: no production caller, no route, no CLI command, no 
   it('only the approved isolation modules can ISSUE an InfraCommand: brokerCommand is not reachable from any other production module', () => {
     const production = [...walk(resolve(ROOT, 'apps/code-broker/src')), ...walk(resolve(ROOT, 'apps/web/app')), ...walk(resolve(ROOT, 'apps/web/lib')), ...walk(resolve(ROOT, 'apps/web/components')), ...walk(resolve(ROOT, 'apps/web/scripts'))]
       .filter(file => !file.includes('/lib/qa/') && !/\.test\.tsx?$/.test(file))
-    const users = production.filter(file => /\bbrokerCommand\b/.test(code(file))).map(file => file.slice(ROOT.length + 1)).sort()
+    const users = production.filter(file => /\bbrokerCommand\b/.test(code(file))).map(file => file.slice(ROOT.length + 1).replace(/\\/g, '/')).sort()
     expect(users).toEqual([
       'apps/code-broker/src/isolation/docker-host.ts', 'apps/code-broker/src/isolation/git-commands.ts', 'apps/code-broker/src/isolation/process-runner.ts', 'apps/code-broker/src/isolation/sandbox-spec.ts',
     ])
     // …and nothing outside the isolation directory imports the runner module at all (protocol, CLI, HTTP, routes, model, WorkPackage code).
-    const importers = production.filter(file => !file.includes('/code-broker/src/isolation/') && /process-runner|git-grammar|git-commands|sandbox-spec|docker-host/.test(code(file)))
+    const importers = production.filter(file => !file.replace(/\\/g, '/').includes('/code-broker/src/isolation/') && /process-runner|git-grammar|git-commands|sandbox-spec|docker-host/.test(code(file)))
     expect(importers.map(file => file.slice(ROOT.length + 1))).toEqual([])
     // Git commands can only be made through the grammar: the runner takes its rules from git-grammar and has no second Git validator.
     const runner = code(join(ISO, 'process-runner.ts'))
@@ -1399,15 +1407,28 @@ describe('SDF-1C3A boundary: no production caller, no route, no CLI command, no 
     expect(code(join(ISO, 'git-commands.ts'))).not.toMatch(/GIT_ALLOWED_CONFIG_OVERRIDES\)\.flatMap/)   // the prefix has ONE definition (git-grammar), not a second copy in the builders
   })
 
-  it('confines child_process to the single runner module', () => {
-    for (const file of readdirSync(ISO)) {
-      const uses = /child_process/.test(readFileSync(join(ISO, file), 'utf8'))
-      expect(uses, file).toBe(file === 'process-runner.ts')
+  it('confines child_process to specifically reviewed runner and Windows helper modules', () => {
+    const allowed = new Set([
+      'process-runner.ts',
+      'windows/controlled-helper.ts',
+      'windows/workspace-helper.ts',
+      'windows/host-qualification.ts',
+    ])
+    const actual = walk(ISO)
+      .filter(file => /(?:node:)?child_process/.test(code(file)))
+      .map(file => file.slice(ISO.length + 1).replace(/\\/g, '/'))
+      .sort()
+    expect(actual).toEqual([...allowed].sort())
+    for (const name of [...allowed].filter(name => name.startsWith('windows/'))) {
+      const source = code(join(ISO, name))
+      expect(source, name).toMatch(/shell:\s*false/)
+      expect(source, name).toMatch(/\bRUNTIME\b/)
+      expect(source, name).toMatch(/\bHELPER\b/)
     }
   })
 
   it('imports nothing from apps/web (the broker stays a separate trust domain)', () => {
-    for (const file of readdirSync(ISO)) expect(readFileSync(join(ISO, file), 'utf8'), file).not.toMatch(/from ['"](?:@\/|\.\.\/\.\.\/\.\.\/web|.*apps\/web)/)
+    for (const file of walk(ISO)) expect(readFileSync(file, 'utf8'), file).not.toMatch(/from ['"](?:@\/|\.\.\/\.\.\/\.\.\/web|.*apps\/web)/)
   })
 
   it('lists every workflow file so the suite cannot silently disappear from CI', () => {

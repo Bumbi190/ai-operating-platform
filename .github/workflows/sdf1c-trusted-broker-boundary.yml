@@ -55,6 +55,7 @@ jobs:
           lib/qa/sql-test-role-bootstrap-race.test.ts
           lib/qa/sdf1c3-isolation-substrate.test.ts
           lib/qa/sdf1c3-isolation-integration.test.ts
+          lib/qa/sdf-execution-lease-peer-identity.test.ts
           --reporter=default --reporter=json
           --outputFile.json="$RUNNER_TEMP/sdf1c.json"
       - name: Enforce per-file anti-skip floors
@@ -79,6 +80,7 @@ jobs:
             ['sql-test-role-bootstrap-race.test.ts', 4],
             ['sdf1c3-isolation-substrate.test.ts', 195],
             ['sdf1c3-isolation-integration.test.ts', 10],
+            ['sdf-execution-lease-peer-identity.test.ts', 6],
           ])
           const byFile = new Map((report.testResults ?? []).map(result => [path.basename(result.name), result]))
           for (const [file, floor] of required) {
@@ -96,6 +98,46 @@ jobs:
             throw new Error('SDF-1C aggregate anti-skip failed')
           }
           console.log('SDF-1C Trusted Broker Boundary satisfied with 0 failed / 0 pending')
+          NODE
+      # Test-only, no Supabase credentials: fixtures create uniquely named,
+      # network-disabled --rm postgres:16 containers using the service's cached image.
+      - name: Verify durable review PostgreSQL authority and recovery
+        working-directory: apps/web
+        run: >-
+          ../../node_modules/.bin/vitest run
+          lib/qa/sdf-review-storage-sql.test.ts
+          lib/qa/sdf-review-storage-flow.test.ts
+          --maxWorkers=1 --minWorkers=1
+          --reporter=default --reporter=json
+          --outputFile.json="$RUNNER_TEMP/sdf-review-sql.json"
+      - name: Enforce durable review SQL per-file anti-skip floors
+        env:
+          REVIEW_SQL_REPORT: ${{ runner.temp }}/sdf-review-sql.json
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs')
+          const path = require('node:path')
+          const reportPath = process.env.REVIEW_SQL_REPORT
+          if (!reportPath || !fs.existsSync(reportPath)) throw new Error('review SQL report missing')
+          const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'))
+          const required = new Map([
+            ['sdf-review-storage-sql.test.ts', 17],
+            ['sdf-review-storage-flow.test.ts', 3],
+          ])
+          const byFile = new Map((report.testResults ?? []).map(result => [path.basename(result.name), result]))
+          for (const [file, floor] of required) {
+            const result = byFile.get(file)
+            if (!result) throw new Error(`review SQL required suite missing: ${file}`)
+            const assertions = result.assertionResults ?? []
+            const passed = assertions.filter(a => a.status === 'passed').length
+            const other = assertions.filter(a => a.status !== 'passed').length
+            if (result.status !== 'passed' || passed < floor || other !== 0) {
+              throw new Error(`review SQL suite incomplete: ${file} passed=${passed} other=${other}`)
+            }
+          }
+          if ((report.numFailedTests ?? 0) !== 0 || (report.numPendingTests ?? 0) !== 0 ||
+              (report.numTodoTests ?? 0) !== 0) throw new Error('review SQL aggregate incomplete')
+          console.log('Durable review PostgreSQL verified: 0 failed / 0 skipped')
           NODE
       - name: Typecheck web and broker identity library
         run: |

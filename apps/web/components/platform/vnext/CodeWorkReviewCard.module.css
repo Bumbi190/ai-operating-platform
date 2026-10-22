@@ -5,6 +5,15 @@
 .copy { margin: .35rem 0 0; max-width: 65ch; color: rgb(var(--foreground-rgb) / .62); font-size: .75rem; line-height: 1.5; }
 .truth { border: 1px solid rgb(var(--omnira-violet-rgb) / .34); border-radius: 999px; padding: .3rem .55rem; color: rgb(var(--omnira-violet-rgb)); font: 600 .5625rem/1 var(--font-geist-mono, ui-monospace); letter-spacing: .08em; }
 .proposal { display: grid; gap: .75rem; }
+.draftForm { display: grid; gap: .5rem; border: 1px solid rgb(var(--foreground-rgb) / .09); border-radius: .65rem; padding: .8rem; }
+.draftForm label { color: rgb(var(--foreground-rgb) / .7); font-size: .6875rem; }
+.draftForm textarea { width: 100%; min-width: 0; resize: vertical; border: 1px solid rgb(var(--foreground-rgb) / .14); border-radius: .45rem; background: rgb(var(--foreground-rgb) / .035); color: hsl(var(--foreground)); padding: .55rem .65rem; font: .75rem/1.4 var(--font-geist-mono, ui-monospace); }
+.draftForm textarea:focus-visible { outline: 2px solid rgb(var(--omnira-cyan-rgb) / .7); outline-offset: 2px; }
+.draftForm button:disabled { opacity: .55; cursor: wait; }
+.draftResult { color: rgb(var(--foreground-rgb) / .7); font-size: .75rem; overflow-wrap: anywhere; }
+.draftResult p { margin: .2rem 0; }
+.draftResult p[data-tone='error'] { color: #fb7185; }
+.draftResult code { overflow-wrap: anywhere; font-family: var(--font-geist-mono, ui-monospace); }
 .form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; padding: .8rem; border: 1px solid rgb(var(--foreground-rgb) / .09); border-radius: .65rem; }
 .form label { display: grid; gap: .3rem; min-width: 0; color: rgb(var(--foreground-rgb) / .7); font-size: .6875rem; }
 .form label span { color: rgb(var(--foreground-rgb) / .45); }

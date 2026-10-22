@@ -2,7 +2,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { readFileSync, readdirSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createHash } from 'node:crypto'
+import { createHash, createHmac, randomBytes } from 'node:crypto'
 import assert from 'node:assert/strict'
 import { orderReplayMigrations, orderLegacyMediaReplayMigrations, orderCrossTreeReplayMigrations } from './analysis-replay-order.mjs'
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..'),
@@ -31,17 +31,23 @@ const legacyDreamReplay = process.argv.includes('--mode=legacy-dream-replay')
 const crossTreeReplay = process.argv.includes('--mode=legacy-cross-tree-replay')
 const scheduleWorkerReplay = process.argv.includes('--with-schedule-worker-replay')
 assert.ok(!scheduleWorkerReplay || crossTreeReplay, 'worker replay requires the cross-tree mode')
+const scheduleHttpRoleReplay = process.argv.includes('--with-schedule-http-role-replay')
+assert.ok(!scheduleHttpRoleReplay || crossTreeReplay, 'HTTP role replay requires the cross-tree mode')
+assert.ok(!scheduleHttpRoleReplay || !scheduleWorkerReplay, 'run worker and HTTP role replays separately')
 const legacyMediaReplay = legacyCronReplay || legacyDreamReplay || crossTreeReplay || process.argv.includes('--mode=legacy-media-replay')
 assert.ok([dependencyReplay,legacyCronReplay,legacyDreamReplay,crossTreeReplay,process.argv.includes('--mode=legacy-media-replay'),process.argv.includes('--mode=canonical-replay')].filter(Boolean).length<=1, 'select one replay mode')
 const replay = dependencyReplay || legacyMediaReplay || process.argv.includes('--mode=canonical-replay')
 const name = crossTreeReplay ? 'omnira-atlas-p1-cross-tree-replay' : legacyDreamReplay ? 'omnira-atlas-p1-legacy-dream-replay' : legacyCronReplay ? 'omnira-atlas-p1-legacy-cron-replay' : legacyMediaReplay ? 'omnira-atlas-p1-legacy-media-replay' : dependencyReplay ? 'omnira-atlas-p1-dependency-replay' : replay ? 'omnira-atlas-p1-canonical-replay' : 'omnira-atlas-p1-local'
 const image = 'public.ecr.aws/supabase/postgres:17.11.0.004'
+const restImage = 'public.ecr.aws/supabase/postgrest:v16.4'
+const gatewayImage = 'node:22-bookworm'
+const httpNetwork = name + '-http-net', restName = name + '-rest', gatewayName = name + '-gateway'
 const docker = (args, input) =>
   spawnSync('docker', args, { encoding: 'utf8', input, timeout: 60000, maxBuffer: 8 * 1024 * 1024 })
 assert.equal(docker(['image', 'inspect', image]).status, 0, 'cached image required; never pulls')
 assert.notEqual(docker(['container', 'inspect', name]).status, 0, 'container name exists; refusing to touch it')
 let owned = false,
-  vite
+  vite, networkOwned = false, restOwned = false, gatewayOwned = false
 const quote = (s) => "'" + String(s).replaceAll("'", "''") + "'"
 const psqlArgs = [
   'exec',
@@ -111,6 +117,17 @@ function denied(s, pattern = /permission denied|immutable|violates/) {
   assert.match(r.stderr, pattern)
 }
 try {
+  if (scheduleHttpRoleReplay) {
+    for (const cached of [restImage,gatewayImage])
+      assert.equal(docker(['image','inspect',cached]).status,0,'cached HTTP image required: '+cached)
+    for (const container of [restName,gatewayName])
+      assert.notEqual(docker(['container','inspect',container]).status,0,'refusing existing container: '+container)
+    assert.notEqual(docker(['network','inspect',httpNetwork]).status,0,'refusing existing network')
+    const networkResult=docker(['network','create','--internal',httpNetwork])
+    assert.equal(networkResult.status,0,networkResult.stderr)
+    networkOwned=true
+    assert.equal(JSON.parse(docker(['network','inspect',httpNetwork]).stdout)[0].Internal,true)
+  }
   const r = docker([
     'run',
     '--pull=never',
@@ -118,7 +135,8 @@ try {
     '--name',
     name,
     '--network',
-    'none',
+    scheduleHttpRoleReplay ? httpNetwork : 'none',
+    ...(scheduleHttpRoleReplay ? ['--network-alias','db'] : []),
     '--env',
     'POSTGRES_PASSWORD=synthetic-local-only',
     '--env',
@@ -129,6 +147,7 @@ try {
     'shared_preload_libraries='+(legacyCronReplay || legacyDreamReplay || crossTreeReplay ? 'pg_stat_statements,pg_cron,pg_net' : 'pg_stat_statements'),
     '-c',
     'cron.launch_active_jobs=off',
+    ...(scheduleHttpRoleReplay ? ['-c','listen_addresses=*'] : []),
   ])
   assert.equal(r.status, 0, r.stderr)
   owned = true
@@ -140,9 +159,9 @@ try {
     60000,
   )
   const inspection = JSON.parse(docker(['inspect', name]).stdout)[0]
-  assert.equal(inspection.HostConfig.NetworkMode, 'none')
+  assert.equal(inspection.HostConfig.NetworkMode, scheduleHttpRoleReplay ? httpNetwork : 'none')
   assert.ok(!Object.keys(inspection.HostConfig.PortBindings ?? {}).length)
-  console.log('isolation: cached image, network none, zero port bindings, owned container only')
+  console.log(scheduleHttpRoleReplay ? 'isolation: cached images, private internal network, zero port bindings, owned containers only' : 'isolation: cached image, network none, zero port bindings, owned container only')
   if (replay) {
     sql(
       "CREATE SCHEMA IF NOT EXISTS extensions; CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions; CREATE SCHEMA IF NOT EXISTS auth; CREATE TABLE IF NOT EXISTS auth.users(id uuid PRIMARY KEY); CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$; DO $$ BEGIN IF NOT EXISTS(SELECT FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon; END IF; IF NOT EXISTS(SELECT FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated; END IF; IF NOT EXISTS(SELECT FROM pg_roles WHERE rolname='service_role') THEN CREATE ROLE service_role BYPASSRLS; END IF; END $$;",
@@ -711,6 +730,75 @@ try {
       assert.deepEqual(rpcOnly, {state:'uncertain',version:5,publications:1})
       assert.equal(sql("SELECT count(*) FROM pg_roles WHERE rolname='social_schedule_rpc_only_fixture'"), '0', 'RPC role escaped rollback')
       console.log('CROSS-TREE RPC-ONLY ROLE PASS ' + JSON.stringify(rpcOnly) + ' (rolled back)')
+      if (scheduleHttpRoleReplay) {
+        const password='Synthetic-'+randomBytes(12).toString('hex')
+        const secret=randomBytes(32).toString('hex')
+        sql(`BEGIN;
+          ${seed}
+          ${reviewedBytes(resolve(web, 'lib/calendar/source-revision-probe.sql')).toString('utf8')}
+          INSERT INTO public.calendar_source_revision_probe(owner_user_id,project_id,revision)
+            VALUES (${quote(actor)},${quote(project)},1);
+          ${gate}
+          ${lockedClaim}
+          ${claimFile}
+          ${recoveryCheckpoint}
+          ${rpcOnlyCandidate}
+          INSERT INTO public.social_schedule_rpc_scope_fixture(project_id) VALUES (${quote(project)});
+          INSERT INTO public.projects(id,owner_id,name,slug)
+            VALUES (${quote(id.unreferencedProject)},${quote(actor)},'HTTP foreign project','http-scope-denial');
+          DO $queue_http$ BEGIN PERFORM public.calendar_source_gate_begin_probe(${quote(project)}::uuid); END $queue_http$;
+          UPDATE public.social_schedule_jobs
+            SET state='queued',claim_id=null,worker_id=null,lease_expires_at=null
+            WHERE id=${quote(id.job)}::uuid;
+          ALTER ROLE authenticator PASSWORD ${quote(password)};
+          GRANT social_schedule_rpc_only_fixture TO authenticator;
+          COMMIT;`)
+        const startedRest=docker(['run','--pull=never','--detach','--name',restName,'--network',httpNetwork,'--network-alias','rest',
+          '--env','PGRST_DB_URI=postgres://authenticator:'+password+'@db:5432/postgres',
+          '--env','PGRST_DB_SCHEMAS=public','--env','PGRST_DB_ANON_ROLE=anon',
+          '--env','PGRST_JWT_SECRET='+secret,restImage])
+        assert.equal(startedRest.status,0,startedRest.stderr);restOwned=true
+        const startedGateway=docker(['run','--pull=never','--detach','--name',gatewayName,'--network',httpNetwork,
+          gatewayImage,'node','-e','setInterval(()=>{},10000)'])
+        assert.equal(startedGateway.status,0,startedGateway.stderr);gatewayOwned=true
+        const now=Math.floor(Date.now()/1000)
+        const jwtBody=[{alg:'HS256',typ:'JWT'}, {role:'social_schedule_rpc_only_fixture',iat:now,exp:now+600}]
+          .map(part=>Buffer.from(JSON.stringify(part)).toString('base64url')).join('.')
+        const token=jwtBody+'.'+createHmac('sha256',secret).update(jwtBody).digest('base64url')
+        const requestScript=`const q=JSON.parse(Buffer.from(process.argv[1],'base64').toString());fetch('http://rest:3000'+q.path,{method:q.method,headers:{Authorization:'Bearer '+q.token,'Content-Type':'application/json'},body:q.body?JSON.stringify(q.body):undefined}).then(async r=>console.log(JSON.stringify({status:r.status,body:await r.text()}))).catch(e=>{console.error(e.message);process.exitCode=1})`
+        function httpRole(path,body,method='POST') {
+          const input=Buffer.from(JSON.stringify({path,body,method,token})).toString('base64')
+          const response=docker(['exec',gatewayName,'node','-e',requestScript,input])
+          assert.equal(response.status,0,response.stderr)
+          return JSON.parse(response.stdout.trim())
+        }
+        await until(()=>{
+          const response=docker(['exec',gatewayName,'node','-e',"fetch('http://rest:3000/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"])
+          return response.status===0
+        },'PostgREST ready',60000)
+        const foreign={workerId:'probe-worker',now:new Date().toISOString(),dryRun:false,projectIds:[id.unreferencedProject]}
+        const deniedClaim=httpRole('/rpc/social_schedule_claim',{p_input:foreign})
+        assert.equal(deniedClaim.status,403,deniedClaim.body)
+        assert.equal(JSON.parse(deniedClaim.body).code,'42501')
+        const deniedPeek=httpRole('/rpc/social_schedule_peek',{p_input:{projectIds:[id.unreferencedProject]}})
+        assert.equal(deniedPeek.status,403,deniedPeek.body)
+        const direct=httpRole('/social_schedule_jobs',{reason:'forbidden'})
+        assert.ok(direct.status>=400,direct.body)
+        const unchecked=httpRole('/rpc/social_schedule_claim_unchecked_fixture',{p_input:foreign})
+        assert.ok(unchecked.status>=400,unchecked.body)
+        const peek=httpRole('/rpc/social_schedule_peek',{p_input:{projectIds:[project]}})
+        assert.equal(peek.status,200,peek.body)
+        const claim=httpRole('/rpc/social_schedule_claim',{p_input:{...foreign,projectIds:[project],now:new Date().toISOString()}})
+        assert.equal(claim.status,200,claim.body)
+        const claimed=JSON.parse(claim.body)
+        assert.equal(claimed.jobId,id.job)
+        assert.equal(claimed.version,2)
+        const receipt=httpRole('/rpc/social_schedule_receipt',{p_input:{jobId:id.job}})
+        assert.equal(receipt.status,200,receipt.body)
+        assert.equal(JSON.parse(receipt.body).jobState,'claimed')
+        assert.equal(sql('SELECT state FROM public.social_schedule_jobs WHERE id='+quote(id.job)),'claimed')
+        console.log('CROSS-TREE POSTGREST ROLE PASS (synthetic JWT; foreign project and direct write denied; allowed claim and receipt; owned network only)')
+      }
       if (scheduleWorkerReplay) {
         sql(`BEGIN;
           ${seed}
@@ -1119,10 +1207,13 @@ try {
   throw error
 } finally {
   if (vite) await vite.close()
+  for (const [container,isOwned] of [[gatewayName,gatewayOwned],[restName,restOwned]])
+    if (isOwned) assert.equal(docker(['rm','--force',container]).status,0,'owned HTTP container cleanup: '+container)
   if (owned) {
     const state = JSON.parse(docker(['inspect', name]).stdout)[0]
     assert.equal(state.Name, '/' + name)
-    assert.equal(state.HostConfig.NetworkMode, 'none')
+    assert.equal(state.HostConfig.NetworkMode, scheduleHttpRoleReplay ? httpNetwork : 'none')
     assert.equal(docker(['rm', '--force', name]).status, 0)
   }
+  if (networkOwned) assert.equal(docker(['network','rm',httpNetwork]).status,0,'owned HTTP network cleanup')
 }

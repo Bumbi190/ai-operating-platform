@@ -238,7 +238,8 @@ export function routeIndependentReviewer(
   request: RoutingRequest,
 ): RoutingDecision {
   const author = ATLAS_WORKERS.find(w => w.id === authorWorkerId)
-  if (!author || !isRoutingRequest(request)) return routeModel(null)
+  // Unknown author lineage could itself be Codex/OpenAI. Independence is unprovable.
+  if (!author || author.modelLineage === 'unknown' || !isRoutingRequest(request)) return routeModel(null)
   return routeModel({
     ...request,
     task: 'code_review',

@@ -95,3 +95,9 @@ P8 Pilot: isolerad staging-worktree; ingen merge/deploy utan oberoende review oc
 - Abacus 2.10.10 är installerad men ej inloggad. Officiell provider-guide bekräftar Codex-prenumeration och lokal Ollama i agenten, men Abacus-inloggning/planens faktiska kostnad måste klarläggas innan användning.
 - Kvar för ägarens åtgärd: Abacus-login, samt eventuellt frigöra RAM när befintliga arbeten tillåter. Vi stänger inga processer automatiskt.
 - Nästa kodfaser: korrekt lokal broker evidence-transport, nytt auktoriserat worker-adapter-kontrakt, hård budgetgrind och granskarroll i staging, E2E-test innan merge.
+
+## Slutlig granskningsnotering 2026-10-22
+- Codex CLI:s automatiska `exec review --base origin/main` blev först blockerat av systemets Git-kommando-policy. Inget positivt omdöme kunde dras från den körningen.
+- Därefter gavs granskaren endast git-diffen som text, i ett separat read-only/ephemeral Codex-anrop. Den identifierade ett verkligt P2-fel: om **författarens** modell-lineage var okänd (Abacus som wrapper) kunde en OpenAI-reviewer ändå föreslås som oberoende.
+- Fix: `routeIndependentReviewer` avbryter om författarens modell-lineage är okänd. Regressionstest tillagt.
+- Slutligt verifierat: 17 routertester + 42 SDF1a-kontrakt + 24 budgettester = **83 passed**; separat strict TypeScript check exit 0. Ingen självkörning/deployment/merge.

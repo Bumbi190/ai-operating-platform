@@ -64,6 +64,14 @@ describe('Atlas Model Router v1: advisory, fail closed', () => {
     const review = routeIndependentReviewer('unrecognized-agent', request())
     expect(review.status).toBe('blocked')
   })
+  it('refuses to certify reviewer independence when the author wraps an unknown model', () => {
+    const result = routeIndependentReviewer('abacus-code-worker', request({
+      task: 'code_patch', minimumQuality: 3,
+    }))
+    expect(result.status).toBe('blocked')
+    expect(result.selectedWorkerId).toBeNull()
+    expect(result.dispatchAuthorized).toBe(false)
+  })
   it('does not enable unverified Abacus billing just because it is logged in', () => {
     const res = routeModel(request({task: 'code_review', minimumQuality: 2,
       evidence: [health('abacus-code-worker')]}))

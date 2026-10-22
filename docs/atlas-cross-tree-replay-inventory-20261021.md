@@ -396,6 +396,17 @@ The existing separate callable-role guard still sees 40 public EXECUTE
 privileges: six definer worker wrappers, two rank helpers, and 32 functions
 returning `trigger`. Trigger functions are not ordinary callable RPCs.
 
+**Direct-read boundary (follow-up):** The rollback-only SQL role has no
+`SELECT` grants on `projects`, jobs, publications, their event tables,
+schedule batches/decisions, reconciliation proofs, or content posts/revisions.
+The SQL privilege assertions now cover those ten tables, in addition to the
+existing denied `assets`, `platform_tokens` and principal scope reads.
+The isolated PostgREST run also rejected `GET ?select=*` against all twelve
+business/media tables, while allowing the subject-scoped scheduling RPCs.
+This does not test actual Storage object signing, Facebook/Instagram account
+credential resolution, or production role membership; the media client still
+uses `service_role` in production.
+
 The immediate **reviewed source path** is project/subject-scoped wrapper
 to the renamed worker body. `claim` can call
 `calendar_source_gate_try_begin_probe`, `social_schedule_authority`,

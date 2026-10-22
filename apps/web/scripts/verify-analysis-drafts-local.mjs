@@ -675,6 +675,18 @@ try {
                 THEN RAISE EXCEPTION 'RPC_DIRECT_DML_GRANT: %.%',relation,privilege; END IF;
             END LOOP;
           END LOOP;
+          -- The callable scheduler role must learn job/account state only
+          -- through scoped RPCs, never through a direct table GET.
+          FOREACH relation IN ARRAY ARRAY[
+            'projects','social_schedule_jobs','social_publications',
+            'social_schedule_events','social_publication_events',
+            'social_schedule_batches','social_schedule_decisions',
+            'social_publication_reconciliation_proofs','social_content_posts',
+            'social_content_revisions'
+          ] LOOP
+            IF has_table_privilege('social_schedule_rpc_only_fixture','public.'||relation,'SELECT')
+              THEN RAISE EXCEPTION 'RPC_DIRECT_READ_GRANT: %',relation; END IF;
+          END LOOP;
           IF has_table_privilege('social_schedule_rpc_only_fixture','public.platform_tokens','SELECT')
             THEN RAISE EXCEPTION 'RPC_TOKEN_READ_GRANT'; END IF;
           IF has_table_privilege('social_schedule_rpc_only_fixture','public.assets','SELECT')
@@ -907,7 +919,13 @@ try {
         assert.equal(deniedPeek.status,403,deniedPeek.body)
         const direct=httpRole('/social_schedule_jobs',{reason:'forbidden'})
         assert.ok(direct.status>=400,direct.body)
-        for (const table of ['platform_tokens','assets']) {
+        for (const table of [
+          'platform_tokens','assets','projects','social_schedule_jobs',
+          'social_publications','social_schedule_events',
+          'social_publication_events','social_schedule_batches',
+          'social_schedule_decisions','social_publication_reconciliation_proofs',
+          'social_content_posts','social_content_revisions',
+        ]) {
           const read=httpRole('/'+table+'?select=*',undefined,'GET')
           assert.ok(read.status>=400,table+': '+read.body)
         }
@@ -935,7 +953,7 @@ try {
         assert.equal(receipt.status,200,receipt.body)
         assert.equal(JSON.parse(receipt.body).jobState,'claimed')
         assert.equal(sql('SELECT state FROM public.social_schedule_jobs WHERE id='+quote(id.job)),'claimed')
-        console.log('CROSS-TREE POSTGREST ROLE PASS (subject-bound synthetic JWTs; foreign project and all job-scoped RPCs, missing subject, direct write and media/token reads denied; allowed claim and receipt; owned network only)')
+        console.log('CROSS-TREE POSTGREST ROLE PASS (subject-bound synthetic JWTs; foreign project and job-scoped RPCs, missing subject, direct writes and 12 sensitive table GETs denied; allowed claim and receipt; owned network only)')
         if (scheduleHttpWorkerReplay) {
           sql(`BEGIN;
             DO $queue_again$ BEGIN PERFORM public.calendar_source_gate_begin_probe(${quote(project)}::uuid); END $queue_again$;

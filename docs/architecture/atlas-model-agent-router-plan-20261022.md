@@ -83,3 +83,15 @@ P8 Pilot: isolerad staging-worktree; ingen merge/deploy utan oberoende review oc
 - Abacus CLI 2.10.10 installerad; "Not logged in". Kräver användarens Abacus-inloggning innan test.
 - Read-only script: scripts/atlas-model-router/preflight.ps1. Observera att `localInferencePreflightPass=true` endast betyder att resursgränserna är uppfyllda, inte att modellen fungerar.
 - Ingen router, automatisk delegering, betald modell eller produktionskoppling är aktiverad. Nästa konkreta steg: åtgärda minnes-/CUDA-problemet utan att störa aktiva arbeten; därefter kör verifierat Qwen-test och abacus-plan-test.
+
+## P2/P3 genomfört i separat arbetsgren
+- Ny execution-free worker catalog: `apps/web/lib/atlas/model-router/catalog.ts` (Ollama, Codex, Abacus, metered API) med modellens verkliga lineage separat från agent/harness.
+- Pure/fail-closed routing: `apps/web/lib/atlas/model-router/route.ts` väljer bara **kandidat**, exekveringsrätt är alltid false. Giltiga tasks, färsk observation, visat lyckat lokal-inferenstest, abonemangskvot, inloggning, data-klassning och explicit kostnadsgodkännande filtreras.
+- Oberoende review-väljare vägrar samma provider eller modell-lineage och vägrar Abacus vars underliggande modell ännu är okänd.
+- Inga ändringar i gamla `CLAUDE_PATCH_V1`, SDF-1A-admission eller exekveringspipeline. Router ännu inte inkopplad i live Atlas.
+- 2026-10-22: Codex CLI 0.163.0, ChatGPT-login, riktig read-only/ephemeral smoke: returnerade korrekt `ATLAS ROUTER` och exit code 0 (gpt-6.1-sol enligt CLI). Begränsning: smoke innebär inte obegränsad kvot eller generell auth till moln-Atlas.
+- Testbevis: 16 routertester + 42 befintliga SDF-1A-kontraktstester + 24 budgettester = 82 passed. Avgränsad strict TypeScript-kontroll `TS_EXIT=0`.
+- CPU/RAM-risk kvar: tillgängligt system-RAM ibland < 1.5GB; Ollama 0.40.8 qwen3:4b gick inte att inferera (PTX JIT memory allocation failure). Lokal router får INTE markera smokePassed=true eller körklar bara för att `/api/tags` svarar.
+- Abacus 2.10.10 är installerad men ej inloggad. Officiell provider-guide bekräftar Codex-prenumeration och lokal Ollama i agenten, men Abacus-inloggning/planens faktiska kostnad måste klarläggas innan användning.
+- Kvar för ägarens åtgärd: Abacus-login, samt eventuellt frigöra RAM när befintliga arbeten tillåter. Vi stänger inga processer automatiskt.
+- Nästa kodfaser: korrekt lokal broker evidence-transport, nytt auktoriserat worker-adapter-kontrakt, hård budgetgrind och granskarroll i staging, E2E-test innan merge.

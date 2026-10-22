@@ -89,10 +89,20 @@ functions in `public`: 32 return `trigger`, six are the scheduled worker's
 helpers (`action_phase_rank`, `media_job_state_rank`). The two helper bodies
 are immutable SQL `CASE` expressions with no table access. The replay checks
 the exact six RPCs, two helpers and trigger count, and fails if the surface
-changes. This catalog and source review does not audit the six definer bodies
+changes. This catalog check alone does not audit the six definer bodies
 or their transitive calls; it is a regression guard, not a production grant
 review. The full cross-tree HTTP role replay passed with the expanded
 assertion on 22 October.
+
+**Media and credential read boundary:** The same scoped role has no direct
+`SELECT` privilege on `public.assets` or `public.platform_tokens`. The replay
+checks those privileges in PostgreSQL and rejects HTTP GETs for both tables
+through real PostgREST, while its authorized scheduling RPCs still work. This
+does not exercise Storage signing, media bytes, credential resolution or an
+actual split of the server keys. The production scheduled API still creates
+two admin clients with the same `service_role` key, and the credential
+resolver accesses its own privileged path; their separation remains a
+deployment prerequisite.
 
 **Scheduled RPC body review:** The six wrappers check the trusted fixture
 subject against every requested project (`claim`, `peek`) or the persisted

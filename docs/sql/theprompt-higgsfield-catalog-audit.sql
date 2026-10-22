@@ -16,7 +16,7 @@ with
      coalesce(has_table_privilege('service_role', c.oid, 'SELECT'),false) as service_select,
      coalesce(has_table_privilege('service_role', c.oid, 'INSERT'),false) as service_insert,
      coalesce(has_table_privilege('service_role', c.oid, 'UPDATE'),false) as service_update,
-     coalesce(has_table_privilege('service_role', c.oid, 'DELETE,TRUNCATE'),false) as service_delete_or_truncate
+     coalesce(has_table_privilege('service_role', c.oid, 'DELETE,TRUNCATE,REFERENCES,TRIGGER'),false) as service_forbidden_table_privilege
    from expected_tables e
    left join pg_class c on c.oid=to_regclass(format('public.%I',e.name))
  ),
@@ -42,7 +42,7 @@ with
    select *, (exists_in_public and rls_enabled and policy_count=0
      and not anon_any_table_grant and not authenticated_any_table_grant
      and service_select and service_insert and service_update
-     and not service_delete_or_truncate) as passed
+     and not service_forbidden_table_privilege) as passed
    from audited_tables
  ),
  function_checks as (

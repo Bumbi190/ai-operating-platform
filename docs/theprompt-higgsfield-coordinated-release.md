@@ -78,3 +78,9 @@ Both complete web suites finished in their separate Hultgren worktrees. The full
 ## Prepared live catalog acceptance check
 
 The repository now includes `docs/sql/theprompt-higgsfield-catalog-audit.sql`, which returns structured read-only evidence for table RLS, policy/grant exposure and nine RPC EXECUTE privileges. It was executed **read-only** on the intended Omnira production project on 2026-10-22. Expected pre-apply outcome was observed: `fully_passed=false`, both new tables absent, all nine functions absent. The same query after the approved migration must return `fully_passed=true`; if not, hold feature activation and diagnose the catalog without widening client grants. No production credentials are queried or printed.
+
+## Final ACL and refresh safety improvements (same-day follow-up)
+
+Production default-privilege introspection confirmed `service_role` gets ALL on newly created public tables unless explicitly revoked. A failing-first isolated PG17 test proved an unintended DELETE grant in the original SQL; corrected migration now REVOKEs `service_role` ALL and regrants only SELECT, INSERT and UPDATE. A repeat PG17 test passed, as did the standalone catalog acceptance audit for **two tables and nine functions**. Do not apply an older version of the SQL from the PR history; review the exact latest file/hash at release time.
+
+The read-only inspection's refresh error branch also now distinguishes transient provider failure (preserve encrypted connection and allow later retry) from proven unrecoverable grant or unpersisted rotated token (fail closed). The 12-suite focused regression set passed **328/328** on Hultgren. These changes do not authorize a production migration or paid generation. The same coordinated main-merge → approved DB apply → verified deployment sequence remains mandatory, with a temporary old READY version preserved.

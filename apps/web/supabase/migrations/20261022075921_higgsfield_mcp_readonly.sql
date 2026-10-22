@@ -27,7 +27,10 @@ create table public.media_provider_oauth_states (
 create index media_provider_oauth_states_project_idx on public.media_provider_oauth_states(project_id);
 alter table public.media_provider_connections enable row level security;
 alter table public.media_provider_oauth_states enable row level security;
-revoke all on public.media_provider_connections,public.media_provider_oauth_states from public,anon,authenticated;
+-- Supabase grants service_role ALL on new public tables by default. Revoke
+-- those inherited DELETE/TRUNCATE/etc rights before narrowly granting only
+-- the operations required by these SECURITY INVOKER RPCs.
+revoke all on public.media_provider_connections,public.media_provider_oauth_states from public,anon,authenticated,service_role;
 grant select,insert,update on public.media_provider_connections,public.media_provider_oauth_states to service_role;
 
 create function public.higgsfield_connection_read(p_project uuid) returns jsonb

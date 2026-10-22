@@ -32,10 +32,22 @@ export function createHiggsfieldReadiness(store:HiggsfieldStore=createHiggsfield
      await store.saveConnectionCAS({projectId,version,leaseId:lease,payload:sealProviderPayload({projectId,recordKind:'connection',recordId:String(version+1)},renewed),subject:row.subject,identityVerified:row.identity_verified})
      current=renewed;row={...row,connection_version:version+1};refreshed=true
     } catch(e) {
-     // A rotated refresh token whose local write failed cannot be retried safely.
-     if(!(e instanceof HiggsfieldError && e.code==='connection_changed'))await store.markReconnect(projectId,version).catch(()=>{})
      if(e instanceof HiggsfieldError && e.code==='connection_changed')throw e
-     throw new HiggsfieldError(exchanged?'storage_unavailable':'reconnect_required')
+     // The provider's error may be a temporary network outage or a sanitized
+     // token-endpoint failure. Neither proves the refresh grant was revoked.
+     // Keep the encrypted connection so a later inspection can retry safely.
+     if(!exchanged) {
+      if(e instanceof HiggsfieldError && e.code==='reconnect_required') {
+       await store.markReconnect(projectId,version).catch(()=>{})
+       throw e
+      }
+      throw e instanceof HiggsfieldError?e:new HiggsfieldError('provider_unavailable')
+     }
+     // After a successful refresh, tokens may have rotated. A failed/uncertain
+     // persistence write must never reuse the old grant or dispatch a second
+     // refresh: invalidate only the still-matching connection version.
+     await store.markReconnect(projectId,version).catch(()=>{})
+     throw new HiggsfieldError('storage_unavailable')
     } finally {await store.releaseRefreshLease(projectId,lease).catch(()=>{})}
    }
    if(!current.expiresAt||current.expiresAt<=Date.now()+30000)await refresh()

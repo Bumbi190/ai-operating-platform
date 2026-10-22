@@ -24,6 +24,25 @@ begin
  if exists(select 1 from pg_proc where proname like 'higgsfield_%' and prosecdef) then raise exception 'Privileged RPC forbidden'; end if;
 end $test$;
 
+-- Simulate Supabase's existing default ALL grants to service_role. The new
+-- tables must explicitly narrow them to the three operations the RPCs need.
+do $test$
+declare t text; permission_name text;
+begin
+ foreach t in array array['media_provider_connections','media_provider_oauth_states'] loop
+  foreach permission_name in array array['SELECT','INSERT','UPDATE'] loop
+   if not has_table_privilege('service_role',format('public.%I',t),permission_name) then
+    raise exception 'Required service_role privilege % missing on %',permission_name,t;
+   end if;
+  end loop;
+  foreach permission_name in array array['DELETE','TRUNCATE','REFERENCES','TRIGGER'] loop
+   if has_table_privilege('service_role',format('public.%I',t),permission_name) then
+    raise exception 'Unexpected service_role privilege % on %',permission_name,t;
+   end if;
+  end loop;
+ end loop;
+end $test$;
+
 do $test$
 declare p uuid:='20000000-0000-4000-8000-000000000001'; a uuid:='10000000-0000-4000-8000-000000000001';
  b uuid:='10000000-0000-4000-8000-000000000002'; payload jsonb:='{"v":1,"iv":"fixture","tag":"fixture","ciphertext":"fixture"}';

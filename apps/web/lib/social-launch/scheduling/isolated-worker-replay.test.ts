@@ -1,4 +1,5 @@
 import {spawnSync} from 'node:child_process'
+import {createClient} from '@supabase/supabase-js'
 import {expect,it,vi} from 'vitest'
 
 // The SQL authority is exercised in the disposable database. The dispatch
@@ -28,23 +29,29 @@ it.skipIf(!enabled)('runs the real scheduled worker with the restricted SQL role
  const allowed=new Set(['social_schedule_claim','social_schedule_authorize_write',
   'social_schedule_step','social_schedule_receipt','social_schedule_recover_checkpoint','social_schedule_peek'])
  const literal=(value:unknown)=>"'"+JSON.stringify(value).replaceAll("'","''")+"'::jsonb"
+ const httpDb=httpGateway?createClient('https://schedule-fixture.invalid','synthetic-anon-key',{
+  accessToken:async()=>httpToken!,
+  global:{fetch:async(input,init)=>{
+   const url=new URL(typeof input==='string'?input:input instanceof URL?input.href:input.url)
+   if(url.origin!=='https://schedule-fixture.invalid'||!url.pathname.startsWith('/rest/v1/rpc/'))throw Error('Unreviewed HTTP endpoint')
+   const headers=Object.fromEntries(new Headers(init?.headers).entries())
+   const requestScript=`const q=JSON.parse(Buffer.from(process.argv[1],'base64').toString());fetch('http://rest:3000'+q.path,{method:q.method,headers:q.headers,body:q.body}).then(async r=>console.log(JSON.stringify({status:r.status,body:await r.text()}))).catch(e=>{console.error(e.message);process.exitCode=1})`
+   const request=Buffer.from(JSON.stringify({path:url.pathname.replace('/rest/v1',''),method:init?.method,headers,body:init?.body})).toString('base64')
+   const result=spawnSync('docker',['exec',httpGateway,'node','-e',requestScript,request],{encoding:'utf8',timeout:10000,maxBuffer:1024*1024})
+   if(result.status!==0)throw Error('Internal PostgREST request failed: '+result.stderr.trim().slice(0,500))
+   const response=JSON.parse(result.stdout.trim())
+   return new Response(response.body,{status:response.status,headers:{'content-type':'application/json'}})
+  }},
+ }):null
  const db={rpc:async(name:string,args:Record<string,unknown>)=>{
   if(!allowed.has(name)||Object.keys(args).some(key=>!/^p_[a-z_]+$/.test(key)))throw Error('Unreviewed worker RPC')
   calls.push({name,args})
+  if(httpDb)return httpDb.rpc(name,args)
   const statement='SET ROLE social_schedule_full_publisher_fixture; SELECT to_jsonb(public.'+
    name+'('+Object.entries(args).map(([key,value])=>key+'=>'+literal(value)).join(',')+'));'
-  const requestScript=`const q=JSON.parse(Buffer.from(process.argv[1],'base64').toString());fetch('http://rest:3000/rpc/'+q.name,{method:'POST',headers:{Authorization:'Bearer '+q.token,'Content-Type':'application/json'},body:JSON.stringify(q.args)}).then(async r=>console.log(JSON.stringify({status:r.status,body:await r.text()}))).catch(e=>{console.error(e.message);process.exitCode=1})`
-  const request=Buffer.from(JSON.stringify({name,args,token:httpToken})).toString('base64')
-  const result=httpGateway
-   ?spawnSync('docker',['exec',httpGateway,'node','-e',requestScript,request],{encoding:'utf8',timeout:10000,maxBuffer:1024*1024})
-   :spawnSync('docker',['exec','-i',container!,'psql','-X','-q','-A','-t',
+  const result=spawnSync('docker',['exec','-i',container!,'psql','-X','-q','-A','-t',
     '-v','ON_ERROR_STOP=1','-U','supabase_admin','-d','postgres'],
     {input:'\\set VERBOSITY verbose\n'+statement,encoding:'utf8',timeout:10000,maxBuffer:1024*1024})
-  if(httpGateway&&result.status===0){
-   const response=JSON.parse(result.stdout.trim())
-   if(response.status>=400){const error=JSON.parse(response.body);return {data:null,error:{code:error.code??'XX000',message:error.message??response.body}}}
-   return {data:JSON.parse(response.body||'null'),error:null}
-  }
   if(result.status!==0){
    console.error('ISOLATED_WORKER_RPC_DENIED',name,result.stderr.trim().slice(0,1200))
    return {data:null,error:{code:result.stderr.match(/ERROR:\s+([A-Z0-9]{5}):/)?.[1]??'XX000',message:result.stderr}}

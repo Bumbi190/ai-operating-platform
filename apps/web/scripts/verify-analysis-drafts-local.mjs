@@ -791,9 +791,13 @@ try {
         ) SELECT jsonb_build_object(
           'publicFunctions',(SELECT count(*) FROM executable),
           'securityDefiners',(SELECT count(*) FROM executable WHERE prosecdef),
+          'triggerFunctions',(SELECT count(*) FROM executable WHERE result_type='trigger'),
           'rpcDefiners',(SELECT coalesce(jsonb_agg(signature ORDER BY signature),'[]'::jsonb) FROM (
             SELECT oid::regprocedure::text AS signature FROM executable
               WHERE prosecdef AND result_type<>'trigger') callable),
+          'otherCallable',(SELECT coalesce(jsonb_agg(entry ORDER BY entry->>'signature'),'[]'::jsonb) FROM (
+            SELECT jsonb_build_object('signature',oid::regprocedure::text,'result',result_type) AS entry
+              FROM executable WHERE NOT prosecdef AND result_type<>'trigger') others),
           'definerSample',(SELECT coalesce(jsonb_agg(signature),'[]'::jsonb) FROM (
             SELECT oid::regprocedure::text AS signature FROM executable WHERE prosecdef
               ORDER BY oid::regprocedure::text LIMIT 25) sample)

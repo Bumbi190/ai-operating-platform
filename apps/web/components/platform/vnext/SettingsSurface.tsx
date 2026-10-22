@@ -36,6 +36,7 @@ import { SettingsBrokerPanel } from './SettingsBrokerPanel'
 import { SettingsCredentialForm } from './SettingsCredentialForm'
 import { SettingsVerifyButton } from './SettingsVerifyButton'
 import { SettingsYouTubeConnect } from './SettingsYouTubeConnect'
+import { SettingsHiggsfieldConnect } from './SettingsHiggsfieldConnect'
 import styles from './SettingsSurface.module.css'
 
 /**
@@ -193,6 +194,7 @@ function ProjectBlock({ project, canAct }: { project: SettingsProject; canAct: b
         {project.slug ? <code className={styles.code}>{project.slug}</code> : null}
       </div>
       {project.slug ? <Link href={`/projects/${encodeURIComponent(project.slug)}/social`}>Planera sociala medier med Atlas</Link> : null}
+      <SettingsHiggsfieldConnect projectId={project.id} canManage={canAct} />
       <ul className={styles.channels} aria-labelledby={headingId}>
         {project.channels.map((channel) => (
           <ChannelCard key={channel.id} project={project} channel={channel} canAct={canAct} />

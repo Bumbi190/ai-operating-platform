@@ -677,6 +677,8 @@ try {
           END LOOP;
           IF has_table_privilege('social_schedule_rpc_only_fixture','public.platform_tokens','SELECT')
             THEN RAISE EXCEPTION 'RPC_TOKEN_READ_GRANT'; END IF;
+          IF has_table_privilege('social_schedule_rpc_only_fixture','public.assets','SELECT')
+            THEN RAISE EXCEPTION 'RPC_ASSET_READ_GRANT'; END IF;
           IF has_table_privilege('social_schedule_rpc_only_fixture','public.social_schedule_rpc_scope_fixture','SELECT')
             OR has_table_privilege('social_schedule_rpc_only_fixture','public.social_schedule_rpc_scope_fixture','INSERT')
             THEN RAISE EXCEPTION 'RPC_SCOPE_TABLE_GRANT'; END IF;
@@ -855,6 +857,10 @@ try {
         assert.equal(deniedPeek.status,403,deniedPeek.body)
         const direct=httpRole('/social_schedule_jobs',{reason:'forbidden'})
         assert.ok(direct.status>=400,direct.body)
+        for (const table of ['platform_tokens','assets']) {
+          const read=httpRole('/'+table+'?select=*',undefined,'GET')
+          assert.ok(read.status>=400,table+': '+read.body)
+        }
         const unchecked=httpRole('/rpc/social_schedule_claim_unchecked_fixture',{p_input:foreign})
         assert.ok(unchecked.status>=400,unchecked.body)
         const peek=httpRole('/rpc/social_schedule_peek',{p_input:{projectIds:[project]}})
@@ -879,7 +885,7 @@ try {
         assert.equal(receipt.status,200,receipt.body)
         assert.equal(JSON.parse(receipt.body).jobState,'claimed')
         assert.equal(sql('SELECT state FROM public.social_schedule_jobs WHERE id='+quote(id.job)),'claimed')
-        console.log('CROSS-TREE POSTGREST ROLE PASS (subject-bound synthetic JWTs; foreign project and all job-scoped RPCs, missing subject and direct write denied; allowed claim and receipt; owned network only)')
+        console.log('CROSS-TREE POSTGREST ROLE PASS (subject-bound synthetic JWTs; foreign project and all job-scoped RPCs, missing subject, direct write and media/token reads denied; allowed claim and receipt; owned network only)')
         if (scheduleHttpWorkerReplay) {
           sql(`BEGIN;
             DO $queue_again$ BEGIN PERFORM public.calendar_source_gate_begin_probe(${quote(project)}::uuid); END $queue_again$;

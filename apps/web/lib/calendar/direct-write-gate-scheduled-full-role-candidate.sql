@@ -1,6 +1,10 @@
 -- TEST-ONLY full scheduling SQL fixture candidate. Never apply as a migration.
 -- The regression creates this NOLOGIN role in one transaction and rolls it back.
 -- Scope: inspect, claim, publish and recover an already approved job.
+-- This is an execution-compatibility probe, NOT a least-privilege role:
+-- BYPASSRLS and direct job/publication UPDATE grants remain. Possession of a
+-- future credential for this role would permit more than the reviewed RPC flow.
+-- Do not give it a Data API identity or deploy these grants as a cutover.
 create role social_schedule_full_publisher_fixture nologin bypassrls;
 grant usage on schema public to social_schedule_full_publisher_fixture;
 grant select on public.social_schedule_batches,

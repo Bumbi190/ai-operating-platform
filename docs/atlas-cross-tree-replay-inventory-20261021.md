@@ -239,6 +239,14 @@ Identity cutover needs a separate, reviewed Data API credential that maps to
 the scheduling role, plus `authenticator` role membership and an isolated
 PostgREST RPC proof. Supabase documents custom `role` JWTs and the client
 `accessToken` option; a secret API key alone still maps to `service_role`.
+The current fixture role is **not** the role to expose through that credential:
+it has `BYPASSRLS`, direct `UPDATE` on jobs and publications, and `INSERT` on
+publication and event tables because the canonical worker functions are
+`SECURITY INVOKER`. The source gate proves transaction ordering, but it does
+not confine a holder of those grants to the reviewed provider and step flow.
+The cutover design must remove direct write authority from the callable role
+or enforce that boundary separately, then prove the resulting RPC flow and
+negative direct-write cases through PostgREST before any revocation.
 The scheduled API now passes distinct client objects to the worker: the
 scheduler client handles claims, authorizations and steps; the media client
 handles image verification, including `assets` reads and signed Storage URLs.

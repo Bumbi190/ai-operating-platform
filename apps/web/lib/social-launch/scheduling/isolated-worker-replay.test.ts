@@ -1,5 +1,7 @@
 import {spawnSync} from 'node:child_process'
 import {createScopedScheduleFixtureClient} from './scoped-client-fixture'
+import {createApprovedScheduleMediaScopeFixture} from './approved-media-scope-fixture'
+import type {ApprovedScheduleSnapshot,ScheduleClaim} from './types'
 import {expect,it,vi} from 'vitest'
 
 // The SQL authority is exercised in the disposable database. The dispatch
@@ -29,6 +31,10 @@ it.skipIf(!enabled)('runs the real scheduled worker with the restricted SQL role
  const calls:{name:string;args:Record<string,unknown>}[]=[]
  const allowed=new Set(['social_schedule_claim','social_schedule_authorize_write',
   'social_schedule_step','social_schedule_receipt','social_schedule_recover_checkpoint','social_schedule_peek'])
+ const mediaDb=Object.freeze({}) as any
+ let authorizedMedia:ReturnType<typeof createApprovedScheduleMediaScopeFixture>|null=null
+ let claimedFromSql:ScheduleClaim|null=null
+ let tokenReads=0,imageReads=0
  const literal=(value:unknown)=>"'"+JSON.stringify(value).replaceAll("'","''")+"'::jsonb"
  const httpDb=httpGateway?createScopedScheduleFixtureClient({
   url:'https://schedule-fixture.invalid',
@@ -50,17 +56,43 @@ it.skipIf(!enabled)('runs the real scheduled worker with the restricted SQL role
  const db={rpc:async(name:string,args:Record<string,unknown>)=>{
   if(!allowed.has(name)||Object.keys(args).some(key=>!/^p_[a-z_]+$/.test(key)))throw Error('Unreviewed worker RPC')
   calls.push({name,args})
-  if(httpDb)return httpDb.rpc(name,args)
-  const statement='SET ROLE social_schedule_full_publisher_fixture; SELECT to_jsonb(public.'+
-   name+'('+Object.entries(args).map(([key,value])=>key+'=>'+literal(value)).join(',')+'));'
-  const result=spawnSync('docker',['exec','-i',container!,'psql','-X','-q','-A','-t',
-    '-v','ON_ERROR_STOP=1','-U','supabase_admin','-d','postgres'],
-    {input:'\\set VERBOSITY verbose\n'+statement,encoding:'utf8',timeout:10000,maxBuffer:1024*1024})
-  if(result.status!==0){
-   console.error('ISOLATED_WORKER_RPC_DENIED',name,result.stderr.trim().slice(0,1200))
-   return {data:null,error:{code:result.stderr.match(/ERROR:\s+([A-Z0-9]{5}):/)?.[1]??'XX000',message:result.stderr}}
+  let outcome:{data:any;error:any}
+  if(httpDb)outcome=await httpDb.rpc(name,args)
+  else{
+   const statement='SET ROLE social_schedule_full_publisher_fixture; SELECT to_jsonb(public.'+
+    name+'('+Object.entries(args).map(([key,value])=>key+'=>'+literal(value)).join(',')+'));'
+   const result=spawnSync('docker',['exec','-i',container!,'psql','-X','-q','-A','-t',
+     '-v','ON_ERROR_STOP=1','-U','supabase_admin','-d','postgres'],
+     {input:'\\set VERBOSITY verbose\n'+statement,encoding:'utf8',timeout:10000,maxBuffer:1024*1024})
+   if(result.status!==0){
+    console.error('ISOLATED_WORKER_RPC_DENIED',name,result.stderr.trim().slice(0,1200))
+    return {data:null,error:{code:result.stderr.match(/ERROR:\s+([A-Z0-9]{5}):/)?.[1]??'XX000',message:result.stderr}}
+   }
+   outcome={data:JSON.parse(result.stdout.trim()||'null'),error:null}
   }
-  return {data:JSON.parse(result.stdout.trim()||'null'),error:null}
+  if(!outcome.error&&name==='social_schedule_claim'&&outcome.data)
+   claimedFromSql=outcome.data as ScheduleClaim
+  // Grant only after the actual SQL authorize_write RPC, never from
+  // caller-selected project, asset or account fields.
+  if(!outcome.error&&name==='social_schedule_authorize_write'&&outcome.data&&!authorizedMedia){
+   if(!claimedFromSql)throw Error('No SQL claim to bind media access')
+   authorizedMedia=createApprovedScheduleMediaScopeFixture(
+    outcome.data as ApprovedScheduleSnapshot,{
+     expectedProjectId:claimedFromSql.snapshot.projectId,
+     leaseExpiresAt:claimedFromSql.leaseExpiresAt,mediaDb,
+     resolveCredential:async(project,channel)=>{
+      tokenReads++
+      return {projectId:project,channel,bindingId:'20000000-0000-4000-8000-000000000018',
+       accountId:'12345',token:'synthetic-only',apiBase:'https://graph.facebook.com/v21.0'}
+     },
+     verifyImage:async(imageDb)=>{
+      expect(imageDb).toBe(mediaDb)
+      imageReads++
+      return {bytes:new Uint8Array(),width:600,height:600}
+     },
+    })
+  }
+  return outcome
  }} as any
  vi.stubEnv('SOCIAL_SCHEDULE_DISPATCH_ENABLED','true')
  vi.stubEnv('SOCIAL_SCHEDULE_PROJECT_IDS',projectId!)
@@ -71,17 +103,34 @@ it.skipIf(!enabled)('runs the real scheduled worker with the restricted SQL role
   posts++
   return Response.json({post_id:'12345_99999'})
  })
- const mediaDb={} as any
  const result=await runScheduleTick(db,{workerId:'isolated_worker',now:new Date().toISOString(),dryRun:false},{
-  provider,now:()=>Date.now(),verifyImage:async(imageDb)=>{
-   expect(imageDb).toBe(mediaDb)
-   return {bytes:new Uint8Array(),width:600,height:600}
+  provider,now:()=>Date.now(),
+  verifyImage:async(imageDb,project,asset)=>{
+   if(!authorizedMedia)throw Error('Media access attempted before SQL authorization')
+   return authorizedMedia.verifyImage(imageDb,project,asset)
   },
-  resolveCredential:async()=>({projectId:projectId!,channel:'facebook',bindingId:'20000000-0000-4000-8000-000000000018',
-   accountId:'12345',token:'synthetic-only',apiBase:'https://graph.facebook.com/v21.0'}),
+  resolveCredential:async(project,channel)=>{
+   if(!authorizedMedia)throw Error('Credential access attempted before SQL authorization')
+   return authorizedMedia.resolveCredential(project,channel)
+  },
  },mediaDb)
  expect(result).toMatchObject({mode:'execute',jobId,result:'published'})
  expect(posts).toBe(1)
+ expect(tokenReads).toBe(1)
+ expect(imageReads).toBe(1)
+ expect(authorizedMedia).not.toBeNull()
+ // Even after the successful simulated post, the scoped broker cannot
+ // be used for another project or an unrelated image/account.
+ const scoped=authorizedMedia!
+ await expect(scoped.resolveCredential('10000000-0000-4000-8000-000000000099','facebook'))
+  .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+ await expect(scoped.resolveCredential(projectId!,'instagram'))
+  .rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+ await expect(scoped.verifyImage(mediaDb,projectId!,{
+   id:'30000000-0000-4000-8000-000000000099',sha256:'e'.repeat(64),
+ })).rejects.toMatchObject({code:'REVIEW_REQUIRED'})
+ expect(tokenReads).toBe(1)
+ expect(imageReads).toBe(1)
  expect(calls.map(call=>call.name)).toEqual(expect.arrayContaining([
   'social_schedule_claim','social_schedule_authorize_write','social_schedule_step','social_schedule_receipt',
  ]))

@@ -561,3 +561,73 @@ References:
 [PostgREST asymmetric JWT verification](https://docs.postgrest.org/en/v12/references/auth.html),
 [Supabase signing keys](https://supabase.com/docs/guides/auth/signing-keys),
 [Supabase custom OIDC](https://supabase.com/docs/guides/auth/third-party/custom-oidc).
+
+## Scheduled media/account scope probe — 22 October (test-only, no cutover)
+
+This follow-up adds `apps/web/lib/social-launch/scheduling/approved-media-scope-fixture.ts`
+and its unit tests. The synthetic `isolated-worker-replay.test.ts` now
+opens this scope **only after the real scheduled `social_schedule_authorize_write`
+SQL RPC succeeds**, using the `projectId` and `leaseExpiresAt` from the
+server-returned claimed job. The scope is bound to the approved project,
+Facebook/Instagram channel, account ID, binding ID, image asset ID and
+SHA-256. Stable values are copied at construction so later mutations of
+the caller's snapshot cannot expand access. Neither the raw media client
+nor token store is exposed as a method of the returned fixture object.
+
+The scope's two operations are `resolveCredential(projectId,channel)`
+and `verifyImage(mediaDb,projectId,asset)`. A foreign project, channel,
+asset ID, asset hash, unknown media-client object, expired claim lease,
+or account/binding mismatch is refused *before* the delegated synthetic
+media/credential backend is invoked. The project is checked against the
+independent SQL claim snapshot, not a caller-selected project. The
+underlying resolver result is checked again before returning a token to
+the legacy publication executor. No application route uses this
+test-only facade; the canonical `worker.ts`, `api.ts` and SQL migrations
+were not modified.
+
+**Important SQL projection detail found by the full replay:** The
+canonical `social_schedule_revision` projects the stored
+`revision.binding` JSON with `accountId` and `label`, but not always
+an embedded `id`. The actual `revision.binding_id` column is checked
+against `item.bindingId` by the canonical `social_schedule_item_guard`
+before `authorize_write` returns. The fixture accepts this trusted
+SQL projection, rejects a *present but mismatched* embedded binding ID,
+and still validates the external account ID. An initial over-strict
+fixture version returned a safe `blocked` result; this was diagnosed
+against the pinned SQL seed, fixed with a separate regression test, and
+the complete integration was rerun successfully. Do **not** generalize
+this allowance to untrusted caller-provided snapshots.
+
+**Observed isolated result:** Six media-scope tests passed, covering
+success, foreign project/channel/asset/media client, wrong credential,
+expired lease, malformed snapshot, immutability, and the canonical SQL
+binding projection. The existing five scoped-RPC client tests and two
+calendar API tests also passed in targeted checks. The owned cross-tree
+replay again passed `CROSS-TREE POSTGREST ROLE PASS`,
+`CROSS-TREE POSTGREST APPLICATION WORKER PASS` and
+`CROSS-TREE REPLAY PASS`, using real PostgREST calls and the actual
+TypeScript scheduled worker. The approved synthetic Facebook job reached
+`published` after exactly one fake Meta POST; the media and token
+backends were each consulted once. Post-completion probes of foreign
+project/channel/asset were refused without additional backend calls.
+No real image bytes, Storage request, account credentials, Meta request
+or production job were touched. Owned containers/network were removed.
+
+**This is an application-layer probe, NOT a production permission
+boundary.** The existing worker still receives a `ManualCredential`
+with the raw token and still accepts a media-client argument; production
+still builds two `service_role` clients. The test-only media backend is
+synthetic and does **not** exercise real Storage signing, actual account
+attestation or a separately hosted privileged broker. A deployable
+boundary must separate privileged asset reads, short-lived signed
+Storage URLs and page-token resolution behind server-only, project- and
+approved-job-bound operations. Before cutover, decide how to prevent
+the scheduler from receiving reusable Meta tokens, bind every media
+request to a fresh SQL authorization and immutable publication identity,
+audit revocation and races, and prove both valid and denied paths using
+realistic but synthetic media through an isolated backend. The existing
+unverified Meta receipt origin, missing May media migration baseline
+and full definer/trigger audit remain blockers. No role, grant, route,
+migration, runtime credential or dispatch flag changed.
+
+Full local TypeScript `tsc --noEmit` remains blocked by the same three unrelated Remotion `lambda-render.ts` errors in the borrowed dependency tree; no errors were reported in the changed calendar files.

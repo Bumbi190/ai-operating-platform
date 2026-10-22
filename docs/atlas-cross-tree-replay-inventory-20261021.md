@@ -38,24 +38,28 @@ authentication. All role, function and data changes roll back.
 The first RPC-only version accepted a caller-supplied `projectIds` array in
 `claim` and `peek`. With elevated functions, that would let the caller select
 another project's jobs despite lacking direct table grants. The revised
-rollback probe seeds a scope table as the privileged fixture owner; the RPC
-role cannot read or edit it. Wrappers check each requested project or the
-job's project before invoking the original body. A second synthetic project
-is rejected by both `claim` and `peek`, while the allowed project's claim to
-recovery path still passes. This is a fixed test scope, not a real identity
-binding. A deployable design must bind scope to a trusted server principal,
-audit every callable function and prove cross-project denial through the
-actual Data API.
+rollback probe seeds a principal-to-project scope table as the privileged
+fixture owner; the RPC role cannot read or edit it. Wrappers read the `sub`
+claim from the request and check each requested project or the job's project
+before invoking the original body. A second synthetic project is rejected by
+the first subject's `claim` and `peek`, while the allowed project's claim to
+recovery path still passes. A missing subject is denied. This is a synthetic
+mapping, not a deployed identity issuer. A deployable design must protect
+signing keys, bind the subject to a trusted server principal, audit every
+callable function and verify the production Data API boundary.
 
 **22 October HTTP replay:** `--with-schedule-http-role-replay` replayed the
 same full schema, then started cached PostgREST and Node images alongside
 PostgreSQL on an owned, Docker-internal network with no published ports. A
 short-lived synthetic JWT mapped through a temporary `authenticator` grant
-to the test role. Real PostgREST rejected foreign-project `claim` and `peek`
-with SQLSTATE `42501`, rejected direct table POST and the inaccessible
-unchecked claim function, and accepted allowed-project `peek`, `claim` and
-`receipt`. The SQL transaction probe separately covered prepare, create and
-recovery. The HTTP fixture used synthetic rows and token only; it did not
+to the test role. Two signed subjects share that role but map to separate
+projects in the test scope table. Real PostgREST rejected the first subject's
+foreign-project `claim` and `peek`, the second subject's receipt for the
+first project's job, and a missing subject with SQLSTATE `42501`. It also
+rejected direct table POST and the inaccessible unchecked claim function,
+while accepting allowed-project `peek`, `claim` and `receipt`. The SQL
+transaction probe separately covered prepare, create and recovery. The HTTP
+fixture used synthetic rows and tokens only; it did not
 exercise a production signing key, real server identity, media/credential
 clients, a provider response, or live Supabase. The runner removed its three
 owned containers and internal network after the pass.

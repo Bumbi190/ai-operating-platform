@@ -52,3 +52,9 @@ Credit reservation/redovisning, generation, canonical clip admission, scene mani
 - A transient inspection error can be retried with **Läs saldo och testpris** without reloading the page. The UI clears stale credit figures, reports temporary unavailability, and never treats it as permission to generate. Authentication/authorization failures do not preserve an asserted connected state.
 - Before any environment changes: verify intended Supabase/Vercel project and deploy target, protected variable names and presence **without printing values**, migration order and a rollback plan. Never write encryption keys into the repository or chat. Verify schema RLS/grants and provider credits after reviewed activation.
 - Read-only feature defaults to disabled. The current release does not install video budgets, video jobs, media schedules, rendering, credit reservation, spend transactions or external asset transfer.
+
+## Coordinated release is mandatory (2026-10-22 follow-up)
+
+Read [the coordinated deployment preflight](theprompt-higgsfield-coordinated-release.md) **before** applying any production database change. The actual v2 guard was exercised against the 174 production migration names. Old main + new DB FAILS with an unknown `higgsfield_mcp_readonly` ledger name; new PR + old DB FAILS with a missing migration. Only the two matching code/database combinations PASS. Plan merge, migration and Vercel redeploy together, preserving a known READY deployment during the planned red-build window. Never enable `MIGRATION_GUARD_OVERRIDE` to hide this.
+
+Use vNext Settings from the **exact HTTPS origin configured by `HIGGSFIELD_OAUTH_REDIRECT_URI`**. Mutating provider routes reject a different browser Origin even if another Omnira domain points at the same Vercel app. This is an intentional CSRF boundary; a secondary domain will require a canonical redirect or explicit reviewed multi-origin design, not a weaker origin check.

@@ -107,6 +107,27 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
     expect(repositoryState.enforcedNames).toHaveLength(138)
   })
 
+  it('proves the Higgsfield code and database change require one coordinated release', () => {
+    const migration = 'higgsfield_mcp_readonly'
+    expect(repositoryState.enforcedNames).toContain(migration)
+    const previous = {
+      ...repositoryState,
+      sqlFiles: repositoryState.sqlFiles.filter(file => !file.endsWith('_' + migration + '.sql')),
+      repositoryNames: repositoryState.repositoryNames.filter(name => name !== migration),
+      enforcedNames: repositoryState.enforcedNames.filter(name => name !== migration),
+    }
+    expect(previous.sqlFiles).toHaveLength(151)
+    expect(previous.enforcedNames).toHaveLength(137)
+    const beforeApply = [...previous.enforcedNames, ...GRANDFATHERED_PRESENT_IN_VERIFIED_LEDGER, ...LEGACY_ONLY_PRODUCTION_LEDGER_NAMES]
+    const afterApply = [...beforeApply, migration]
+    expect(beforeApply).toHaveLength(174)
+    expect(afterApply).toHaveLength(175)
+    expect(() => evaluateAppliedMigrationLedger(beforeApply, previous)).not.toThrow()
+    expect(() => evaluateAppliedMigrationLedger(beforeApply, repositoryState)).toThrow(/higgsfield_mcp_readonly/)
+    expect(() => evaluateAppliedMigrationLedger(afterApply, previous)).toThrow(/unknown migration name/)
+    expect(() => evaluateAppliedMigrationLedger(afterApply, repositoryState)).not.toThrow()
+  })
+
   it('uses exact explicit names with no wildcard policy entries', () => {
     for (const name of [...GRANDFATHERED_MIGRATION_NAMES, ...LEGACY_ONLY_PRODUCTION_LEDGER_NAMES]) {
       expect(name).toMatch(/^[a-z0-9_]+$/)

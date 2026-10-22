@@ -109,7 +109,9 @@ test('different valid nonce is an independent inert test receipt, never authorit
  assert.equal(readdirSync(f.root).length,3);
 }));
 test('tampered signatures are refused before any nonce is written',()=>withFixture(f=>{
- const proof={...f.defaults.proof,signature:'A'+f.defaults.proof.signature.slice(1)};
+ const first=f.defaults.proof.signature[0]==='A'?'B':'A';
+ const proof={...f.defaults.proof,signature:first+f.defaults.proof.signature.slice(1)};
+ assert.notDeepEqual(Buffer.from(proof.signature,'base64url'),Buffer.from(f.defaults.proof.signature,'base64url'));
  assert.throws(()=>f.run({proof}),/independent_review_signature_invalid/);
  assert.equal(readdirSync(f.root).length,1);
 }));

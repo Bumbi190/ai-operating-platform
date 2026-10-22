@@ -87,7 +87,9 @@ test('cross-project and cross-worker claims rejected',async()=>{
  assert.equal((await handleCreativeQueueClaim(req(),wrongWorker)).status,404);
 });
 test('signature or pinned scope mutation is refused',async()=>{
- const corrupted={...ticket,signature:'A'+ticket.signature.slice(1)};
+ const first=ticket.signature[0]==='A'?'B':'A';
+ const corrupted={...ticket,signature:first+ticket.signature.slice(1)};
+ assert.notDeepEqual(Buffer.from(corrupted.signature,'base64url'),Buffer.from(ticket.signature,'base64url'));
  const services={...deps().services,
   claimAtomic:async()=>({ticket:corrupted,expected,trustedServerKey:pair.publicKey})};
  assert.equal((await handleCreativeQueueClaim(req(),services)).status,409);

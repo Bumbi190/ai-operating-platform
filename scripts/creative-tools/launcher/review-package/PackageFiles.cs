@@ -67,7 +67,7 @@ namespace Omnira.Creative.Review {
     ptr=Marshal.AllocHGlobal(Marshal.SizeOf(typeof(Unicode)));Marshal.StructureToPtr(u,ptr,false);
     Attributes a=new Attributes{Length=48,Root=root.DangerousGetHandle(),ObjectName=ptr,Flags=0x40};
     Status status;SafeFileHandle h;int result=NtCreateFile(out h,0x00100081,ref a,out status,IntPtr.Zero,0,1,1,0x00200060,IntPtr.Zero,0);
-    if(result<0){if(h!=null)h.Dispose();throw new ReviewRefusal(RefusalCode.NativeFailure,result);}Need(status.Information.ToUInt64()==1);return h;
+    try{if(result<0)throw new ReviewRefusal(RefusalCode.NativeFailure,result);Need(status.Information.ToUInt64()==1);var transferred=h;h=null;return transferred;}finally{if(h!=null)h.Dispose();}
    }finally{if(ptr!=IntPtr.Zero)Marshal.FreeHGlobal(ptr);Marshal.FreeHGlobal(chars);}
   }
   void Entries(){
@@ -101,6 +101,34 @@ namespace Omnira.Creative.Review {
    Need(!disposed&&Same(rootBefore,Metadata(root,true))&&Final(root)=="\\\\?\\"+canonical);
    for(int i=0;i<4;i++){Need(Same(before[i],Metadata(leaves[i],false))&&Final(leaves[i])=="\\\\?\\"+canonical+"\\"+Names[i]);}
    Entries();
+  }
+  // Fixed exporter inputs only. Callers cannot reach this through the CLI.
+  internal sealed class Source:IDisposable {
+   SafeFileHandle handle;Info initial;string path;
+   internal Source(string p){path=p;try{PathCheck(p);handle=CreateFileW(p,0x00100081,1,IntPtr.Zero,3,0x00200000,IntPtr.Zero);initial=Metadata(handle,false);Validate();}catch{Dispose();throw;}}
+   internal void Validate(){Need(Same(initial,Metadata(handle,false))&&Final(handle)=="\\\\?\\"+path);}
+   internal byte[] Read(int limit){Validate();Need(initial.SizeLow>0&&initial.SizeLow<=limit);long position;Win(SetFilePointerEx(handle,0,out position,0));Need(position==0);byte[] b=new byte[(int)initial.SizeLow];int offset=0;
+    while(offset<b.Length){byte[] chunk=new byte[Math.Min(65536,b.Length-offset)];uint got;Win(ReadFile(handle,chunk,(uint)chunk.Length,out got,IntPtr.Zero));Need(got>0&&got<=chunk.Length);Buffer.BlockCopy(chunk,0,b,offset,(int)got);offset+=(int)got;}
+    uint extra;Win(ReadFile(handle,new byte[1],1,out extra,IntPtr.Zero));Need(extra==0);Validate();return b;
+   }
+   public void Dispose(){if(handle!=null){handle.Dispose();handle=null;}}
+  }
+  [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool CreateDirectoryW(string p,IntPtr attributes);
+  internal static void NewDirectory(string path){PathCheck(path);Win(CreateDirectoryW(path,IntPtr.Zero));}
+  internal sealed class Output:IDisposable {
+   SafeFileHandle handle;Info initial;string path;
+   internal Output(string p){path=p;try{handle=CreateFileW(p,0x00100081,1,IntPtr.Zero,3,0x02200000,IntPtr.Zero);initial=Metadata(handle,true);Validate();uint serial,max,flags;var fs=new StringBuilder(32);var volume=new StringBuilder(261);Win(GetVolumeInformationByHandleW(handle,volume,261,out serial,out max,out flags,fs,32));Need(fs.ToString()=="NTFS"&&serial==initial.Volume);}catch{Dispose();throw;}}
+   void Validate(){Info now=Metadata(handle,true);Need(initial.Volume==now.Volume&&initial.IndexHigh==now.IndexHigh&&initial.IndexLow==now.IndexLow&&initial.Attributes==now.Attributes&&initial.Creation==now.Creation&&Final(handle)=="\\\\?\\"+path);}
+   internal void Write(string name,byte[] bytes){
+    Need(Array.IndexOf(Names,name)>=0);Validate();IntPtr chars=Marshal.StringToHGlobalUni(name),ptr=IntPtr.Zero;SafeFileHandle h=null;
+    try{Unicode u=new Unicode{Length=(ushort)(name.Length*2),MaximumLength=(ushort)(name.Length*2),Buffer=chars};ptr=Marshal.AllocHGlobal(Marshal.SizeOf(typeof(Unicode)));Marshal.StructureToPtr(u,ptr,false);
+     Attributes a=new Attributes{Length=48,Root=handle.DangerousGetHandle(),ObjectName=ptr,Flags=0x40};Status status;int result=NtCreateFile(out h,0x40100000,ref a,out status,IntPtr.Zero,0,1,2,0x00200060,IntPtr.Zero,0);
+     if(result<0)throw new ReviewRefusal(RefusalCode.NativeFailure,result);Need(status.Information.ToUInt64()==2);
+     using(var stream=new FileStream(h,FileAccess.Write)){h=null;stream.Write(bytes,0,bytes.Length);stream.Flush(true);}
+     Validate();
+    }finally{if(h!=null)h.Dispose();if(ptr!=IntPtr.Zero)Marshal.FreeHGlobal(ptr);Marshal.FreeHGlobal(chars);}
+   }
+   public void Dispose(){if(handle!=null){handle.Dispose();handle=null;}}
   }
   public void Dispose(){if(disposed)return;disposed=true;foreach(var h in leaves)if(h!=null)h.Dispose();if(root!=null)root.Dispose();}
  }

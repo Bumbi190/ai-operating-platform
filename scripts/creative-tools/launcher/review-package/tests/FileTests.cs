@@ -10,7 +10,8 @@ namespace Omnira.Creative.Review {
   sealed class Fixture:IDisposable {
    internal readonly string Parent=Path.Combine(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Temp"),"omnira-review-test-"+Guid.NewGuid().ToString("N"));
    internal string Root { get { return Path.Combine(Parent,"package"); } }
-   internal Fixture(){Console.WriteLine("OWNED_FIXTURE "+Root);Directory.CreateDirectory(Root);Set(new byte[]{77,90,0,0,1});}
+   internal Fixture(){Console.WriteLine("OWNED_FIXTURE "+Root);PackageSnapshot.NewDirectory(Parent);PackageSnapshot.NewDirectory(Root);Set(new byte[]{77,90,0,0,1});initial=false;}
+   bool initial=true;
    internal void Set(byte[] host){
     Manifest sample=ManifestTests.Sample();
     Manifest m=new Manifest(sample.Nonce,sample.SourceCommit,host.Length,PackageVerifier.Hash(host),sample.RuntimeSha256,sample.CompilerSha256,sample.CompilerVersion,sample.SourceDigests);
@@ -18,7 +19,7 @@ namespace Omnira.Creative.Review {
     Put("owner.txt",Encoding.ASCII.GetBytes(m.Nonce));Put("SyntheticLauncher.exe",host);Put("review-manifest.json",manifest);Put("manifest.sha256",Encoding.ASCII.GetBytes(PackageVerifier.Hash(manifest)));
    }
    internal string P(string n){return Path.Combine(Root,n);}
-   internal void Put(string n,byte[] b){File.WriteAllBytes(P(n),b);}
+   internal void Put(string n,byte[] b){using(var f=new FileStream(P(n),initial?FileMode.CreateNew:FileMode.Create,FileAccess.Write,FileShare.Read)){f.Write(b,0,b.Length);f.Flush(true);}}
    public void Dispose(){foreach(string n in Names)if(File.Exists(P(n)))File.Delete(P(n));Directory.Delete(Root);Directory.Delete(Parent);Console.WriteLine("REMOVED_FIXTURE "+Root);}
   }
   static void Good(ReviewResult r,string label){Check(r.PackageConsistent,label);Check(!r.InstallationAuthorized&&!r.WorkerActivated&&!r.ExecutableStarted&&!r.RuntimeProvenanceVerified&&!r.ProtectedDestinationWritten,label+" authority");foreach(var f in typeof(AuthorityObservation).GetFields(System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic))Check(!(bool)f.GetValue(r.Authorities),label+" "+f.Name);}

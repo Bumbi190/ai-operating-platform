@@ -2,10 +2,12 @@ param([string]$Suite='Codec')
 $ErrorActionPreference='Stop'
 $PSModuleAutoLoadingPreference='None'
 Microsoft.PowerShell.Core\Import-Module 'C:\Windows\System32\WindowsPowerShell\v1.0\Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1'
-if($Suite -cne 'Codec' -and $Suite -cne 'Files' -and $Suite -cne 'All'){throw 'unsupported suite'}
+if($Suite -cne 'Codec' -and $Suite -cne 'Files' -and $Suite -cne 'Export' -and $Suite -cne 'All'){throw 'unsupported suite'}
 $build=& ([IO.Path]::Combine($PSScriptRoot,'..\build.ps1'))
 $info=$build | Microsoft.PowerShell.Utility\ConvertFrom-Json
 [Console]::WriteLine($build)
+$suites=@($Suite);if($Suite -ceq 'All'){$suites=@('Codec','Files','Export')}
+foreach($Suite in $suites){
 $nonce=[Guid]::NewGuid().ToString('N')
 $stdoutPath=[IO.Path]::Combine($info.BuildRoot,$Suite+'-'+$nonce+'.stdout.txt')
 $stderrPath=[IO.Path]::Combine($info.BuildRoot,$Suite+'-'+$nonce+'.stderr.txt')
@@ -30,4 +32,6 @@ try{$b=[Text.UTF8Encoding]::new($false,$true).GetBytes(($evidence | Microsoft.Po
 [Console]::WriteLine('EVIDENCE '+$metadataPath)
 if($captureComplete){[Console]::WriteLine([IO.File]::ReadAllText($stdoutPath));[Console]::WriteLine([IO.File]::ReadAllText($stderrPath))}
 if($timedOut -or -not $captureComplete -or $null -eq $exitCode){exit 1}
-$p.Dispose();exit $exitCode
+$p.Dispose();if($exitCode -ne 0){exit $exitCode}
+}
+exit 0

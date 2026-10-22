@@ -41,15 +41,15 @@ $parentJson=& ([IO.Path]::Combine($parent,'build.ps1'))
 $info=$parentJson | Microsoft.PowerShell.Utility\ConvertFrom-Json
 $root=$info.BuildRoot
 $shared=@('Contracts.cs','NativeMethods.cs','NativeResources.cs','WindowsProcessBoundary.cs','FixtureInput.cs','SyntheticProtocol.cs','PipeSession.cs','SyntheticRunner.cs','ObservationWriter.cs')
-$production=@('PackageContracts.cs','PackageManifest.cs','PackageFiles.cs','PackageVerifier.cs','ReviewProgram.cs')
-$tests=@('tests\TestProgram.cs','tests\ManifestTests.cs','tests\FileTests.cs')
+$production=@('PackageContracts.cs','PackageManifest.cs','PackageFiles.cs','PackageVerifier.cs','PackageExporter.cs','ReviewProgram.cs')
+$tests=@('tests\TestProgram.cs','tests\ManifestTests.cs','tests\FileTests.cs','tests\ExportTests.cs')
 $sourceKeys=@($shared+@('Program.cs','tests\TestProgram.cs','tests\BoundaryTests.cs','tests\InputTests.cs','tests\ProtocolTests.cs','tests\LifecycleTests.cs','tests\CleanupTests.cs','tests\CrashHarness.cs'))
 $hostHash=HashFile $info.HostExe
 $hostLength=[IO.FileInfo]::new($info.HostExe).Length
 if($hostLength -lt 1 -or $hostLength -gt 1048576){throw 'host size'}
 $code='namespace Omnira.Creative.Review { internal static class ReleaseBuildContext {'
 $code+='internal const string HostSha256='+(CsString $hostHash)+';internal const int HostLength='+$hostLength+';'
-$code+='internal const string SourceCommit='+(CsString $commit)+';'
+$code+='internal const string SourceCommit='+(CsString $commit)+';internal const string SourceRoot='+(CsString $parent)+';'
 $code+='internal const string CompilerSha256='+(CsString $compilerHash)+';internal const string CompilerVersion='+(CsString $compilerVersion)+';'
 $code+='internal const string RuntimeSha256='+(CsString $runtimeHash)+';'
 $code+='internal static System.Collections.Generic.IDictionary<string,string> SourceDigests { get { var d=new System.Collections.Generic.Dictionary<string,string>(System.StringComparer.Ordinal);'

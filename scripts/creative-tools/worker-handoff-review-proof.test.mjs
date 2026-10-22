@@ -113,7 +113,10 @@ test('expired, future, overlong and zero-length grants are refused',()=>{
 });
 test('tampered proof signature and noncanonical signature encoding are rejected',()=>{
  const valid=proof();
- assert.throws(()=>verifyCreativeHandoffReview({...valid,signature:'A'+valid.signature.slice(1)},
+ const first=valid.signature[0]==='A'?'B':'A';
+ const forged={...valid,signature:first+valid.signature.slice(1)};
+ assert.notDeepEqual(Buffer.from(forged.signature,'base64url'),Buffer.from(valid.signature,'base64url'));
+ assert.throws(()=>verifyCreativeHandoffReview(forged,
   keys.publicKey,expected,now),/independent_review_signature_invalid/);
  assert.throws(()=>verifyCreativeHandoffReview({...valid,signature:'0x'+valid.signature},
   keys.publicKey,expected,now),/invalid_review_signature_encoding/);

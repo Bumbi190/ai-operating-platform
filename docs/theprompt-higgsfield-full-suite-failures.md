@@ -3,7 +3,7 @@
 Command: npm test --workspace=apps/web -- --maxWorkers=1 --minWorkers=1
 Platform: Windows, Node 22.22.3. Snapshot 98ca1cd (before final review fixes).
 
-Not a baseline comparison. These failures are not certified pre-existing. Many include POSIX commands unavailable on Windows, missing fixtures and stale baselines. Merge requires separate triage/CI.
+This section is a **historical single-branch snapshot**, not a baseline comparison. These failures are not individually certified pre-existing by this list. Many include POSIX commands unavailable on Windows, missing fixtures and stale baselines. A later **complete feature-vs-main comparison on 2026-10-22**, including all 681 shared test files, is recorded in [the verification report](theprompt-higgsfield-verification.md); it does not rewrite the original counts below or make the whole suite green.
 
 Test Files  127 failed | 526 passed | 35 skipped (688)
 Tests  421 failed | 13552 passed | 1397 skipped (15374)

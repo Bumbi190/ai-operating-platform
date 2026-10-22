@@ -58,3 +58,9 @@ Credit reservation/redovisning, generation, canonical clip admission, scene mani
 Read [the coordinated deployment preflight](theprompt-higgsfield-coordinated-release.md) **before** applying any production database change. The actual v2 guard was exercised against the 174 production migration names. Old main + new DB FAILS with an unknown `higgsfield_mcp_readonly` ledger name; new PR + old DB FAILS with a missing migration. Only the two matching code/database combinations PASS. Plan merge, migration and Vercel redeploy together, preserving a known READY deployment during the planned red-build window. Never enable `MIGRATION_GUARD_OVERRIDE` to hide this.
 
 Use vNext Settings from the **exact HTTPS origin configured by `HIGGSFIELD_OAUTH_REDIRECT_URI`**. Mutating provider routes reject a different browser Origin even if another Omnira domain points at the same Vercel app. This is an intentional CSRF boundary; a secondary domain will require a canonical redirect or explicit reviewed multi-origin design, not a weaker origin check.
+
+## Exact post-migration catalog verification query
+
+Run the **read-only** audit `docs/sql/theprompt-higgsfield-catalog-audit.sql` against the intended Omnira Supabase Postgres database after the reviewed `higgsfield_mcp_readonly` migration has been applied. It checks **both** new tables (RLS, client/service grants, policy count) and **all nine** expected RPCs (exactly one overload, SECURITY INVOKER and EXECUTE grants) without selecting credentials. Its `fully_passed` field must be **true** before deployment activation; it does not replace isolated SQL tests or hosted Supabase advisors.
+
+The same SQL was run against production on 2026-10-22 *before* migration application: `fully_passed=false` with both tables and all nine RPCs missing, exactly as expected. This read-only preflight made no schema changes. Do not misinterpret a missing pre-apply schema as successful post-apply evidence.

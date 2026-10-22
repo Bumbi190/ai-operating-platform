@@ -64,3 +64,17 @@ On 2026-10-22 the **separately connected ChatGPT Higgsfield application** return
 ## Broad baseline run in progress
 
 The isolated main baseline's entire Vitest suite produced an inspectable JSON result on Hultgren (`%TEMP%/omnira-pr514-main-full-20261022.json`): 681 test files, 405 failed tests, 13,539 passed tests, 1,397 pending/skipped. Baseline is **not green**. Identical full-suite run for the Higgsfield branch started after the main run; compare failure signatures (not only counts) before making any full-suite equivalence claim.
+
+## Completed full-suite comparative evidence — 2026-10-22
+
+Both complete web suites finished in their separate Hultgren worktrees. The full comparison now covers **all 681 shared test files**, not merely the initial 20-file sample:
+- Baseline `139a45c`: 681 files, 116 failed files, 405 failed assertions, 13,539 passes.
+- Higgsfield PR: 688 files, 116 failed files, 404 failed assertions, 13,613 passes; its seven additional Higgsfield files all passed.
+- Of the common files, 679 retained exactly the same failing assertion set and status. One operator isolation file has an extra 5-second timeout in PR, and one Atlas pages isolation file has two extra 5-second timeouts in base. All three isolated rechecks subsequently **passed** using 20-second test timeout. No repeatable new functional regression found; 116 red files remain in both full runs.
+- Detailed evidence, caveats and local JSON paths: `docs/theprompt-higgsfield-verification.md`. Committed minimized receipt with source report SHA-256s: `docs/verification/2026-10-22-pr514-full-suite-parity.json`.
+
+**Impact on merge:** Broad comparison removes the earlier evidence gap about whether red files exist in `main`, but it does not provide a green global suite, external identity/authorization review, real provider OAuth evidence or a completed production migration. The coordinated release gate, code review and RLS catalog checks remain mandatory.
+
+## Prepared live catalog acceptance check
+
+The repository now includes `docs/sql/theprompt-higgsfield-catalog-audit.sql`, which returns structured read-only evidence for table RLS, policy/grant exposure and nine RPC EXECUTE privileges. It was executed **read-only** on the intended Omnira production project on 2026-10-22. Expected pre-apply outcome was observed: `fully_passed=false`, both new tables absent, all nine functions absent. The same query after the approved migration must return `fully_passed=true`; if not, hold feature activation and diagnose the catalog without widening client grants. No production credentials are queried or printed.

@@ -663,7 +663,7 @@ try {
           SET state='queued',claim_id=null,worker_id=null,lease_expires_at=null
           WHERE id=${quote(id.job)}::uuid;
         DO $claims$ BEGIN
-          PERFORM set_config('request.jwt.claims',${quote(JSON.stringify({sub:actor}))},true);
+          PERFORM set_config('request.jwt.claims',${quote(JSON.stringify({sub:actor,iss:'omnira-schedule-fixture',aud:'authenticated'}))},true);
         END $claims$;
         DO $assert_privileges$ DECLARE privilege text; relation text; BEGIN
           IF (SELECT rolbypassrls OR rolcanlogin FROM pg_roles WHERE rolname='social_schedule_rpc_only_fixture')
@@ -706,8 +706,22 @@ try {
         EXCEPTION WHEN insufficient_privilege THEN
           IF SQLERRM <> 'SOCIAL_SCHEDULE_PROJECT_SCOPE_DENIED' THEN RAISE; END IF;
         END $deny_missing_subject$;
+        DO $deny_wrong_issuer$ BEGIN
+          PERFORM set_config('request.jwt.claims',${quote(JSON.stringify({sub:actor,iss:'unexpected-issuer',aud:'authenticated'}))},true);
+          PERFORM public.social_schedule_peek(jsonb_build_object('projectIds',jsonb_build_array(${quote(project)})));
+          RAISE EXCEPTION 'RPC_WRONG_ISSUER_ACCEPTED';
+        EXCEPTION WHEN insufficient_privilege THEN
+          IF SQLERRM <> 'SOCIAL_SCHEDULE_PROJECT_SCOPE_DENIED' THEN RAISE; END IF;
+        END $deny_wrong_issuer$;
+        DO $deny_invalid_sub$ BEGIN
+          PERFORM set_config('request.jwt.claims',${quote(JSON.stringify({sub:'not-a-uuid',iss:'omnira-schedule-fixture',aud:'authenticated'}))},true);
+          PERFORM public.social_schedule_peek(jsonb_build_object('projectIds',jsonb_build_array(${quote(project)})));
+          RAISE EXCEPTION 'RPC_INVALID_SUB_ACCEPTED';
+        EXCEPTION WHEN insufficient_privilege THEN
+          IF SQLERRM <> 'SOCIAL_SCHEDULE_PROJECT_SCOPE_DENIED' THEN RAISE; END IF;
+        END $deny_invalid_sub$;
         DO $claims_again$ BEGIN
-          PERFORM set_config('request.jwt.claims',${quote(JSON.stringify({sub:id.foreignPrincipal}))},true);
+          PERFORM set_config('request.jwt.claims',${quote(JSON.stringify({sub:id.foreignPrincipal,iss:'omnira-schedule-fixture',aud:'authenticated'}))},true);
         END $claims_again$;
         DO $deny_other_subject$ BEGIN
           PERFORM public.social_schedule_receipt(jsonb_build_object('jobId',${quote(id.job)}));
@@ -718,7 +732,7 @@ try {
         DO $foreign_scope$ BEGIN
           IF public.social_schedule_peek(jsonb_build_object('projectIds',jsonb_build_array(${quote(id.unreferencedProject)}))) IS NULL
             THEN RAISE EXCEPTION 'RPC_FOREIGN_SUBJECT_SCOPE_FAILED'; END IF;
-          PERFORM set_config('request.jwt.claims',${quote(JSON.stringify({sub:actor}))},true);
+          PERFORM set_config('request.jwt.claims',${quote(JSON.stringify({sub:actor,iss:'omnira-schedule-fixture',aud:'authenticated'}))},true);
         END $foreign_scope$;
         DO $deny_other_project$ BEGIN
           PERFORM public.social_schedule_claim(jsonb_build_object(
@@ -886,8 +900,8 @@ try {
           gatewayImage,'node','-e','setInterval(()=>{},10000)'])
         assert.equal(startedGateway.status,0,startedGateway.stderr);gatewayOwned=true
         const now=Math.floor(Date.now()/1000)
-        const signedToken=(sub)=>{
-          const body=[{alg:'HS256',typ:'JWT'}, {role:'social_schedule_rpc_only_fixture',...(sub?{sub}:{}),iat:now,exp:now+600}]
+        const signedToken=(sub,override={})=>{
+          const body=[{alg:'HS256',typ:'JWT'}, {role:'social_schedule_rpc_only_fixture',iss:'omnira-schedule-fixture',aud:'authenticated',...(sub?{sub}:{}),iat:now,exp:now+600,...override}]
             .map(part=>Buffer.from(JSON.stringify(part)).toString('base64url')).join('.')
           return body+'.'+createHmac('sha256',secret).update(body).digest('base64url')
         }
@@ -907,6 +921,14 @@ try {
         const missingSubject=httpRole('/rpc/social_schedule_peek',{p_input:{projectIds:[project]}},'POST',missingSubjectToken)
         assert.equal(missingSubject.status,403,missingSubject.body)
         assert.equal(JSON.parse(missingSubject.body).code,'42501')
+        const wrongIssuer=httpRole('/rpc/social_schedule_peek',{p_input:{projectIds:[project]}},'POST',signedToken(actor,{iss:'unexpected-issuer'}))
+        assert.equal(wrongIssuer.status,403,wrongIssuer.body)
+        assert.equal(JSON.parse(wrongIssuer.body).code,'42501')
+        const parts=token.split('.')
+        const forgedRole=Buffer.from(JSON.stringify({role:'service_role',sub:actor,iss:'omnira-schedule-fixture',aud:'authenticated',iat:now,exp:now+600})).toString('base64url')
+        const tamperedToken=parts[0]+'.'+forgedRole+'.'+parts[2]
+        const tampered=httpRole('/rpc/social_schedule_peek',{p_input:{projectIds:[project]}},'POST',tamperedToken)
+        assert.equal(tampered.status,401,'JWT signature must be verified by PostgREST: '+tampered.body)
         const foreignReceipt=httpRole('/rpc/social_schedule_receipt',{p_input:{jobId:id.job}},'POST',foreignToken)
         assert.equal(foreignReceipt.status,403,foreignReceipt.body)
         assert.equal(JSON.parse(foreignReceipt.body).code,'42501')
@@ -967,7 +989,8 @@ try {
             cwd:web,encoding:'utf8',timeout:90000,maxBuffer:1024*1024,
             env:{...process.env,OMNIRA_SCHEDULE_REPLAY_CONTAINER:name,
               OMNIRA_SCHEDULE_REPLAY_PROJECT:project,OMNIRA_SCHEDULE_REPLAY_JOB:id.job,
-              OMNIRA_SCHEDULE_REPLAY_HTTP_GATEWAY:gatewayName,OMNIRA_SCHEDULE_REPLAY_HTTP_TOKEN:token},
+              OMNIRA_SCHEDULE_REPLAY_HTTP_GATEWAY:gatewayName,OMNIRA_SCHEDULE_REPLAY_HTTP_TOKEN:token,
+              OMNIRA_SCHEDULE_REPLAY_SUBJECT:actor},
           })
           assert.equal(worker.status,0,worker.stderr+'\n'+worker.stdout)
           assert.equal(sql('SELECT state FROM public.social_schedule_jobs WHERE id='+quote(id.job)),'published')

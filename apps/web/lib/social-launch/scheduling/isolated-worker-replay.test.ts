@@ -1,5 +1,5 @@
 import {spawnSync} from 'node:child_process'
-import {createClient} from '@supabase/supabase-js'
+import {createScopedScheduleFixtureClient} from './scoped-client-fixture'
 import {expect,it,vi} from 'vitest'
 
 // The SQL authority is exercised in the disposable database. The dispatch
@@ -16,9 +16,10 @@ const projectId=process.env.OMNIRA_SCHEDULE_REPLAY_PROJECT
 const jobId=process.env.OMNIRA_SCHEDULE_REPLAY_JOB
 const httpGateway=process.env.OMNIRA_SCHEDULE_REPLAY_HTTP_GATEWAY
 const httpToken=process.env.OMNIRA_SCHEDULE_REPLAY_HTTP_TOKEN
+const httpSubject=process.env.OMNIRA_SCHEDULE_REPLAY_SUBJECT
 const enabled=container==='omnira-atlas-p1-cross-tree-replay'&&
  /^[0-9a-f-]{36}$/.test(projectId??'')&&/^[0-9a-f-]{36}$/.test(jobId??'')&&
- (!httpGateway||Boolean(httpToken))
+ (!httpGateway||Boolean(httpToken)&&/^[0-9a-f-]{36}$/.test(httpSubject??''))
 
 it.skipIf(!enabled)('runs the real scheduled worker with the restricted SQL role and fake Meta response',async()=>{
  const inspect=spawnSync('docker',['inspect','--format','{{.HostConfig.NetworkMode}}',container!],{encoding:'utf8'})
@@ -29,9 +30,12 @@ it.skipIf(!enabled)('runs the real scheduled worker with the restricted SQL role
  const allowed=new Set(['social_schedule_claim','social_schedule_authorize_write',
   'social_schedule_step','social_schedule_receipt','social_schedule_recover_checkpoint','social_schedule_peek'])
  const literal=(value:unknown)=>"'"+JSON.stringify(value).replaceAll("'","''")+"'::jsonb"
- const httpDb=httpGateway?createClient('https://schedule-fixture.invalid','synthetic-anon-key',{
-  accessToken:async()=>httpToken!,
-  global:{fetch:async(input,init)=>{
+ const httpDb=httpGateway?createScopedScheduleFixtureClient({
+  url:'https://schedule-fixture.invalid',
+  publishableKey:'sb_publishable_fixture_http',
+  expectedSubject:httpSubject!,
+  getAccessToken:async()=>httpToken!,
+  transport:async(input,init)=>{
    const url=new URL(typeof input==='string'?input:input instanceof URL?input.href:input.url)
    if(url.origin!=='https://schedule-fixture.invalid'||!url.pathname.startsWith('/rest/v1/rpc/'))throw Error('Unreviewed HTTP endpoint')
    const headers=Object.fromEntries(new Headers(init?.headers).entries())
@@ -41,7 +45,7 @@ it.skipIf(!enabled)('runs the real scheduled worker with the restricted SQL role
    if(result.status!==0)throw Error('Internal PostgREST request failed: '+result.stderr.trim().slice(0,500))
    const response=JSON.parse(result.stdout.trim())
    return new Response(response.body,{status:response.status,headers:{'content-type':'application/json'}})
-  }},
+  },
  }):null
  const db={rpc:async(name:string,args:Record<string,unknown>)=>{
   if(!allowed.has(name)||Object.keys(args).some(key=>!/^p_[a-z_]+$/.test(key)))throw Error('Unreviewed worker RPC')

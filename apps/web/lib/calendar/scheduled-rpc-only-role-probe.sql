@@ -17,10 +17,15 @@ revoke all on public.social_schedule_rpc_scope_fixture from public, anon, authen
 
 create function public.social_schedule_rpc_check_project_fixture(p_project uuid)
 returns void language plpgsql security definer set search_path='' as $fn$
-declare principal text;
+declare principal text; claims jsonb;
 begin
- principal := (nullif(current_setting('request.jwt.claims',true),'')::jsonb)->>'sub';
- if principal is null or not exists(select 1 from public.social_schedule_rpc_scope_fixture
+ claims := nullif(current_setting('request.jwt.claims',true),'')::jsonb;
+ principal := claims->>'sub';
+ if claims->>'iss' is distinct from 'omnira-schedule-fixture'
+   or claims->>'aud' is distinct from 'authenticated'
+   or principal is null or principal !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+ then raise exception 'SOCIAL_SCHEDULE_PROJECT_SCOPE_DENIED' using errcode='42501'; end if;
+ if not exists(select 1 from public.social_schedule_rpc_scope_fixture
    where principal_id=principal::uuid and project_id=p_project)
  then raise exception 'SOCIAL_SCHEDULE_PROJECT_SCOPE_DENIED' using errcode='42501'; end if;
 end $fn$;

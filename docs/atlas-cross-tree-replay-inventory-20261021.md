@@ -435,3 +435,59 @@ References: [Supabase Postgres roles](https://supabase.com/docs/guides/database/
 [custom JWTs and `accessToken`](https://supabase.com/docs/guides/auth/jwts),
 [custom role membership](https://supabase.com/docs/guides/storage/schema/custom-roles),
 [API keys](https://supabase.com/docs/guides/getting-started/api-keys).
+
+## Scoped scheduler identity client probe — 22 October (no production wiring)
+
+A **test-only** `scoped-client-fixture.ts` factory now uses
+`createClient<Database>` with a publishable fixture key and Supabase
+`accessToken` callback instead of a service-role key. It is invoked from
+the isolated real TypeScript worker / PostgREST HTTP replay, never from
+`socialScheduleTickApi`. The factory refuses every non-`test` environment;
+it does not read any production signing key, create JWTs or add grants.
+The server route still initializes both client objects using `createAdminClient`.
+
+The fixture checks a pinned expected subject, `social_schedule_rpc_only_fixture`
+role, issuer `omnira-schedule-fixture`, `aud=authenticated`, timestamp
+bounds, the pinned synthetic HTTPS endpoint and `sb_publishable_` key syntax before sending a
+JWT via `Authorization`. No session persists and requests use `no-store`. The returned object is
+an RPC-only, six-method allowlisted facade: it exposes no `.from()`,
+`.storage` or `.auth` and refuses unchecked/manual/reconciliation RPCs.
+The canonical `Database` type does not yet include these fixture RPCs, so
+one internal cast is isolated behind this facade; this is not a type-safe
+production permission cutover.
+**Decoding claims in TypeScript does not verify a signature.** The owned
+PostgREST service verifies HS256 signatures using an ephemeral in-memory
+test key. A role-tampered but not re-signed JWT must yield HTTP 401.
+The SQL scoped-role helper now also refuses a correctly signed JWT with
+an unexpected `iss` / `aud`, or malformed `sub`, with SQLSTATE 42501;
+per-subject project ownership checks remain mandatory.
+
+Do not copy this factory or issuer into production. A deployable
+credential split needs an independently trusted server-only issuer, short
+JWT lifetime, bounded rotation/revocation, role and subject binding from
+non-caller-controlled identity, and a reviewed PostgREST credential path.
+Supabase's publishable key alone is **not** an identity and cannot prevent
+someone with a signing key from forging a privileged `role` claim.
+The existing direct table/trigger and Meta-receipt gaps still block
+cutover. No scheduled real work, token, storage object or Meta API is used.
+
+Relevant docs:
+[Supabase JWT accessToken](https://supabase.com/docs/guides/auth/jwts),
+[Supabase API keys](https://supabase.com/docs/guides/getting-started/api-keys).
+
+**Observed isolated result (22 October):** The cross-tree replay with
+`--with-schedule-http-role-replay --with-schedule-http-worker-replay`
+passed `CROSS-TREE RPC-ONLY ROLE PASS`,
+`CROSS-TREE POSTGREST ROLE PASS`,
+`CROSS-TREE POSTGREST APPLICATION WORKER PASS` and
+`CROSS-TREE REPLAY PASS`. The TypeScript worker saw one fake Facebook
+POST through the RPC-only facade and committed only synthetic rows in
+the owned internal-network fixture. The runner cleaned its containers
+and network. Five scoped-client tests plus two scheduled API tests
+passed (7/7); the ordinary `worker.test.ts` suite requires its own
+separate, unstarted database fixture and was not independently
+validated in this step. Full project `tsc --noEmit` has no reported
+calendar-file errors, but cannot pass in the borrowed local dependency
+tree because `@remotion/lambda/client` is missing and two dependent
+`region` types are unresolved in `lib/media/lambda-render.ts`.
+No CI workflow or production resource was changed.

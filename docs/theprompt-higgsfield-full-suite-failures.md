@@ -1,0 +1,211 @@
+# Whole web-suite failure inventory
+
+Command: npm test --workspace=apps/web -- --maxWorkers=1 --minWorkers=1
+Platform: Windows, Node 22.22.3. Snapshot 98ca1cd (before final review fixes).
+
+This section is a **historical single-branch snapshot**, not a baseline comparison. These failures are not individually certified pre-existing by this list. Many include POSIX commands unavailable on Windows, missing fixtures and stale baselines. A later **complete feature-vs-main comparison on 2026-10-22**, including all 681 shared test files, is recorded in [the verification report](theprompt-higgsfield-verification.md); it does not rewrite the original counts below or make the whole suite green.
+
+Test Files  127 failed | 526 passed | 35 skipped (688)
+Tests  421 failed | 13552 passed | 1397 skipped (15374)
+Duration  679.46s (transform 19.74s, setup 0ms, collect 81.45s, tests 420.59s, environment 155ms, prepare 66.03s)
+SUITE_EXIT=1
+
+## Failed suites and test names reported by Vitest
+
+- FAIL  lib/calendar/access.test.ts [ lib/calendar/access.test.ts ]
+- FAIL  lib/calendar/api.test.ts [ lib/calendar/api.test.ts ]
+- FAIL  lib/calendar/atlas-tools.test.ts [ lib/calendar/atlas-tools.test.ts ]
+- FAIL  lib/calendar/integration.test.ts [ lib/calendar/integration.test.ts ]
+- FAIL  lib/calendar/isolation.test.ts [ lib/calendar/isolation.test.ts ]
+- FAIL  lib/calendar/recurrence-sql.test.ts [ lib/calendar/recurrence-sql.test.ts ]
+- FAIL  lib/calendar/source-changes.test.ts [ lib/calendar/source-changes.test.ts ]
+- FAIL  lib/calendar/sources.test.ts [ lib/calendar/sources.test.ts ]
+- FAIL  lib/calendar/store.test.ts [ lib/calendar/store.test.ts ]
+- FAIL  lib/website-build/api.test.ts [ lib/website-build/api.test.ts ]
+- FAIL  lib/website-build/worker.test.ts [ lib/website-build/worker.test.ts ]
+- FAIL  lib/website-build/connections/api.test.ts [ lib/website-build/connections/api.te
+- FAIL  lib/website-build/planning/api.test.ts [ lib/website-build/planning/api.test.ts
+- FAIL  lib/website-build/planning/build-context.test.ts [ lib/website-build/planning/bu
+- FAIL  lib/website-build/planning/chat-tools.test.ts [ lib/website-build/planning/chat-
+- FAIL  lib/website-build/planning/concurrency.test.ts [ lib/website-build/planning/conc
+- FAIL  lib/website-build/planning/conversation-workspace.test.ts [ lib/website-build/pl
+- FAIL  lib/website-build/planning/export-pinning.test.ts [ lib/website-build/planning/e
+- FAIL  lib/website-build/planning/mockup-store.test.ts [ lib/website-build/planning/moc
+- FAIL  lib/website-build/planning/store.test.ts [ lib/website-build/planning/store.test
+- FAIL  lib/social-launch/api.test.ts [ lib/social-launch/api.test.ts ]
+- FAIL  lib/social-launch/atlas-tools.test.ts [ lib/social-launch/atlas-tools.test.ts ]
+- FAIL  lib/social-launch/store.test.ts [ lib/social-launch/store.test.ts ]
+- FAIL  lib/social-launch/content/api.test.ts [ lib/social-launch/content/api.test.ts ]
+- FAIL  lib/social-launch/content/store.test.ts [ lib/social-launch/content/store.test.t
+- FAIL  lib/social-launch/profile/api.test.ts [ lib/social-launch/profile/api.test.ts ]
+- FAIL  lib/social-launch/profile/store.test.ts [ lib/social-launch/profile/store.test.t
+- FAIL  lib/social-launch/publication/api.test.ts [ lib/social-launch/publication/api.te
+- FAIL  lib/social-launch/publication/dispatch.test.ts [ lib/social-launch/publication/d
+- FAIL  lib/social-launch/publication/media.test.ts [ lib/social-launch/publication/medi
+- FAIL  lib/social-launch/publication/store.test.ts [ lib/social-launch/publication/stor
+- FAIL  lib/social-launch/scheduling/atlas-tools.test.ts [ lib/social-launch/scheduling/
+- FAIL  lib/social-launch/scheduling/store.test.ts [ lib/social-launch/scheduling/store.
+- FAIL  lib/social-launch/scheduling/worker.test.ts [ lib/social-launch/scheduling/worke
+- FAIL  lib/social-launch/publication/reconciliation/service.test.ts [ lib/social-launch
+- FAIL  lib/social-connections/api.test.ts [ lib/social-connections/api.test.ts ]
+- FAIL  lib/social-connections/credentials.test.ts [ lib/social-connections/credentials.
+- FAIL  lib/social-connections/store.test.ts [ lib/social-connections/store.test.ts ][2
+- FAIL  lib/qa/migration-guard-v2.test.ts [ lib/qa/migration-guard-v2.test.ts ]
+- FAIL  lib/qa/website-build-drain.test.ts [ lib/qa/website-build-drain.test.ts ]
+- FAIL  lib/website-build/chat-tools.test.ts > Website build through actual authent
+- FAIL  lib/website-build/chat-tools.test.ts > studio execution capabilities at the
+- FAIL  lib/website-build/migration-policy.test.ts > website build canonical migrat
+- FAIL  lib/website-build/migration-policy.test.ts > planning v1 is enforced and ne
+- FAIL  lib/website-build/migration-policy.test.ts > enforces the studio migration
+- FAIL  lib/website-build/migration-policy.test.ts > requires exactly one mockup re
+- FAIL  lib/website-build/test-db-bootstrap.test.ts > canonical website SQL fixture
+- FAIL  lib/website-build/studio/api.test.ts > studio HTTP boundary > auth
+- FAIL  lib/website-build/studio/api.test.ts > studio HTTP boundary > crea
+- FAIL  lib/website-build/studio/api.test.ts > studio HTTP boundary > refu
+- FAIL  lib/website-build/studio/api.test.ts > studio HTTP boundary > reje
+- FAIL  lib/website-build/studio/api.test.ts > studio HTTP boundary > does
+- FAIL  lib/website-build/studio/api.test.ts > studio HTTP boundary > repo
+- FAIL  lib/website-build/studio/budget.test.ts > explicit studio budgets and billa
+- FAIL  lib/website-build/studio/loader.test.ts > studio project and conversation i
+- FAIL  lib/website-build/studio/loader.test.ts > real requested folder binding
+- FAIL  lib/website-build/studio/output-allowance.test.ts > managed builder output
+- FAIL  lib/website-build/studio/store.test.ts > owner-bound studio creation in rea
+- FAIL  lib/project/lifecycle/api.test.ts > lifecycle HTTP boundary > auth
+- FAIL  lib/project/lifecycle/api.test.ts > lifecycle HTTP boundary > read
+- FAIL  lib/project/lifecycle/api.test.ts > lifecycle HTTP boundary > refu
+- FAIL  lib/project/lifecycle/api.test.ts > lifecycle HTTP boundary > retu
+- FAIL  lib/project/lifecycle/store.test.ts > owner lifecycle and real static worke
+- FAIL  lib/qa/activity-stream.test.ts > aktivitet ┬╖ the rollback body is the body
+- FAIL  lib/qa/admission-inventory.test.ts > G3C-2A ┬╖ run admission has exactly on
+- FAIL  lib/qa/analysis-draft-sql.test.ts > real_isolated_SQL_privileges_parity_and
+- FAIL  lib/qa/atlas-chat.test.ts > atlas chat ┬╖ the route contract it speaks
+- FAIL  lib/qa/atlas-knowledge-boundary.test.ts > NO PRODUCTION CONSUMER ΓÇö Phase
+- FAIL  lib/qa/atlas-knowledge-boundary.test.ts > PROJECTION SOURCE ΓÇö a local bou
+- FAIL  lib/qa/atlas-knowledge-snapshot.test.ts > golden artifacts ΓÇö independentl
+- FAIL  lib/qa/atlas-latency.test.ts > Atlas latency ┬╖ timing never becomes visibl
+- FAIL  lib/qa/atlas-memory-dream-producers.test.ts > 2B-2 ┬╖ placement and boundar
+- FAIL  lib/qa/atlas-memory-emit-durability.test.ts > Slice 2A ΓÇö no memory emit i
+- FAIL  lib/qa/atlas-memory-terminal-outcomes.test.ts > 2B-1 ┬╖ placement and bound
+- FAIL  lib/qa/autonomy-bind-guards.test.ts > the atomic bind migration >
+- FAIL  lib/qa/autonomy-license.test.ts > Phase 2C ΓÇö the migration does not colli
+- FAIL  lib/qa/autonomy-license.test.ts > Phase 2C ΓÇö hardening > H7. the
+- FAIL  lib/qa/autonomy-license.test.ts > Phase 2C ΓÇö review #2 proofs >
+- FAIL  lib/qa/autonomy-license.test.ts > Phase 2C ΓÇö inertness > 52. no
+- FAIL  lib/qa/autonomy-runtime-foundation.test.ts > the Chapter 18 scale has exact
+- FAIL  lib/qa/autonomy-trace-guards.test.ts > migration discipline > Phas
+- FAIL  lib/qa/autonomy-trace-guards.test.ts > migration discipline > the
+- FAIL  lib/qa/autonomy-trace-guards.test.ts > Phase 3B1A remains INERT >
+- FAIL  lib/qa/budget-scopes.test.ts > canonical comments describe the FINAL code[
+- FAIL  lib/qa/canonical-evidence-pin.test.ts > B ΓÇö every workflow evidence reade
+- FAIL  lib/qa/cl-shadow.test.ts > runContextShadow ΓÇö fire-and-forget containment
+- FAIL  lib/qa/content-center.test.ts > content center ┬╖ the rollback body is the
+- FAIL  lib/qa/delegation-mission-activation.test.ts > Mission activation through a
+- FAIL  lib/qa/delegation-mission-activation.test.ts > accepted-delegation availabi
+- FAIL  lib/qa/delegation-mission-activation.test.ts > coverage: a narrowed envelop
+- FAIL  lib/qa/delegation-mission-activation.test.ts > the underlying availability
+- FAIL  lib/qa/delegation-mission-activation.test.ts > live Mission invalidation co
+- FAIL  lib/qa/delegation-mission-activation.test.ts > R2 ΓÇö a terminal Mission en
+- FAIL  lib/qa/desktop-commander-unlicensed.test.ts > nothing in production can rea
+- FAIL  lib/qa/execution-contract-propagation.test.ts > every governed spend suppli
+- FAIL  lib/qa/execution-contract-propagation.test.ts > OPERATOR_INTERACTIVE is the
+- FAIL  lib/qa/execution-contract-propagation.test.ts > classification follows auth
+- FAIL  lib/qa/execution-contract-propagation.test.ts > every runtime GLOBAL_ONLY i
+- FAIL  lib/qa/execution-contract-propagation.test.ts > ExecutionStoppedError does
+- FAIL  lib/qa/executive-brief-apex.test.ts > EI-S1.5A ΓÇö no shared-secret Executi
+- FAIL  lib/qa/executive-intelligence-schema-activation.test.ts > EI-S1.6A ΓÇö Exec
+- FAIL  lib/qa/external-dispatch-guards.test.ts > G1 ┬╖ every external write in the
+- FAIL  lib/qa/external-dispatch-guards.test.ts > G4 ┬╖ the legacy global-only help
+- FAIL  lib/qa/global-auth-retired.test.ts > the global key verifier is gone >
+- FAIL  lib/qa/global-auth-retired.test.ts > no route can reach a global key path[
+- FAIL  lib/qa/global-auth-retired.test.ts > the cron class survived the deletion[
+- FAIL  lib/qa/global-design-tokens.test.ts > global design ┬╖ every token a styles
+- FAIL  lib/qa/handlarborsen-inbox-migration.test.ts > approved Handlarborsen inbox
+- FAIL  lib/qa/handlarborsen-visual-pulse.test.ts > Handlarborsen overview hierarch
+- FAIL  lib/qa/handlarborsen-watch-runs-migration.test.ts > reviewed weekly watch j
+- FAIL  lib/qa/leads-dual-accept.test.ts > containment > no other route im
+- FAIL  lib/qa/leads-legacy-auth-removed.test.ts > global legacy HTTP surface >
+- FAIL  lib/qa/legacy-v1-api-removed.test.ts > drift-guard ΓÇö manifest Γåö filsyst
+- FAIL  lib/qa/legacy-v1-api-removed.test.ts > auth-k├ñrnan beh├Ñlls ΓÇö Familje-St
+- FAIL  lib/qa/licensed-bind-m4b-guards.test.ts > M4-B is the last migration and le
+- FAIL  lib/qa/local-text-ledger-reconciliation.test.ts > source-only reconciliatio
+- FAIL  lib/qa/local-text-lifecycle-reconciliation.test.ts > exact source of alread
+- FAIL  lib/qa/marketing-review.test.ts > marketing review ┬╖ the rollback body is
+- FAIL  lib/qa/marketing-review.test.ts > marketing review ┬╖ rendered surface and
+- FAIL  lib/qa/media-orchestration-retry-authority.test.ts > the article hero call
+- FAIL  lib/qa/memory-vnext.test.ts > Minne vNext ┬╖ generation and frozen legacy[
+- FAIL  lib/qa/migration-security-gate.test.ts > Phase 9AA ΓÇö the real corpus pass
+- FAIL  lib/qa/mission-brief-v1.test.ts > Canonical vocabulary (┬º20.11, ┬º20.98)[
+- FAIL  lib/qa/money-overview.test.ts > pengar ┬╖ the rollback body is the body it
+- FAIL  lib/qa/monthly-release-v2.test.ts > v1 is registered in production and must
+- FAIL  lib/qa/monthly-release-v2.test.ts > v2 is vendored, never authored here
+- FAIL  lib/qa/muapi-media-provider.test.ts > no credential and no live default rea
+- FAIL  lib/qa/muapi-media-provider.test.ts > nothing generates media on its own[2
+- FAIL  lib/qa/platform-authority-closure.test.ts > A6-2 ┬╖ the legacy Atlas bug di
+- FAIL  lib/qa/platform-credential-events.test.ts > Settings S0 ┬╖ platform_credent
+- FAIL  lib/qa/project-api-credentials.test.ts > inertness ΓÇö Phase 1 changes no e
+- FAIL  lib/qa/project-command-center.test.ts > project command center ┬╖ legacy ro
+- FAIL  lib/qa/project-command-center.test.ts > project command center ┬╖ Marknadsp
+- FAIL  lib/qa/project-workspace-vnext.test.ts > project workspace B1 ┬╖ generation
+- FAIL  lib/qa/provider-dispatch-certainty.test.ts > no consumer of ProviderDispatc
+- FAIL  lib/qa/release-gate-proof-workflow.test.ts > the proof definition is vendor
+- FAIL  lib/qa/release-gate-proof-workflow.test.ts > single-remote-read authority[
+- FAIL  lib/qa/review-queue.test.ts > phase 11 ┬╖ scope, authority and boundaries[
+- FAIL  lib/qa/review-queue.test.ts > phase 11 ┬╖ the legacy rollback is the page t
+- FAIL  lib/qa/sales-inbox-ledger-reconciliation.test.ts > already-applied sales in
+- FAIL  lib/qa/sales-ledger-reconciliation.test.ts > already-applied sales schema r
+- FAIL  lib/qa/sales-reply-ledger-reconciliation.test.ts > reconciles exact already
+- FAIL  lib/qa/schema-security-invariant.test.ts > Phase 9Y ΓÇö schema-security inv
+- FAIL  lib/qa/scoped-read-isolation.test.ts > 9A ┬╖ every caller supplies scope ca
+- FAIL  lib/qa/sdf1b2-code-work-operator-plane.test.ts > SDF-1B2 read isolation and
+- FAIL  lib/qa/sdf1c-broker-claim-credential.test.ts > SDF-1C1B migration and struc
+- FAIL  lib/qa/sdf1c-trusted-broker.test.ts > SDF-1C1 repository, secret and no-exe
+- FAIL  lib/qa/sdf1c2-broker-control-channel.test.ts > SDF-1C2 structural boundary
+- FAIL  lib/qa/sdf1c3-isolation-integration.test.ts > SDF-1C3A real Git: the prepar
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A trusted toolchain: git
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A infrastructure process
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A repository proof, pinn
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A real-filesystem contai
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A SandboxSpec and Docker
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A Docker host proof (VM-
+- FAIL  lib/qa/sdf1c3-isolation-substrate.test.ts > SDF-1C3A boundary: no productio
+- FAIL  lib/qa/session-only-routes.test.ts > source invariants > no route
+- FAIL  lib/qa/session-only-routes.test.ts > source invariants > exactly O
+- FAIL  lib/qa/spend-financial-decoupling.test.ts > ┬º14 ┬╖ each flag has exactly O
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding ┬╖ the declaration and its re
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding ┬╖ invalid input is refused a
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding ┬╖ the declaration is persist
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding ┬╖ the actor must be a canoni
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding ┬╖ current truth is a SERVER-
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding ┬╖ the change and its evidenc
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding ┬╖ the audit ledger cannot be
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding ┬╖ exactly one current source
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding ┬╖ least privilege > [22
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding ┬╖ scope completeness, answer
+- FAIL  lib/qa/survival-funding-sql.test.ts > funding ┬╖ a declaration moves nothin
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history ┬╖ contract > [
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history ┬╖ the recording bou
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history ┬╖ records transitio
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history ┬╖ from_state is nev
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history ┬╖ append-only, enfo
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history ┬╖ closed vocabulari
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history ┬╖ the observation s
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history ┬╖ concurrency canno
+- FAIL  lib/qa/survival-history-sql.test.ts > survival history ┬╖ recording changes
+- FAIL  lib/qa/system-health.test.ts > phase 12 ┬╖ authority is preserved, never re
+- FAIL  lib/qa/system-health.test.ts > phase 12 ┬╖ the legacy rollback is the page
+- FAIL  lib/qa/vnext-intelligence-graph.test.ts > phase 18 ┬╖ the legacy rollback i
+- FAIL  lib/qa/vnext-intelligence-graph.test.ts > phase 18 ┬╖ layout, scale and mot
+- FAIL  lib/qa/vnext-intelligence-graph.test.ts > phase 18 T2a ┬╖ shell geometry[2
+- FAIL  lib/qa/vnext-intelligence-graph.test.ts > phase 18 T3b ┬╖ release hardening
+- FAIL  lib/qa/workflows-definition-familje-stunden.test.ts > vendored definition Γ
+- FAIL  lib/qa/youtube-project-oauth.test.ts > youtube connection ┬╖ the codebase,
+- FAIL  lib/architecture-knowledge/architecture-knowledge.test.ts > Immutable artif
+- FAIL  lib/architecture-knowledge/architecture-knowledge.test.ts > Golden lexical
+- FAIL  lib/architecture-knowledge/executive-knowledge.test.ts > Generic artifact e
+- FAIL  lib/architecture-knowledge/executive-knowledge.test.ts > Executive retrieva
+- FAIL  lib/trading/market-data/import-discipline.test.ts > the contract boundary i
+- FAIL  lib/trading/market-view/import-discipline.test.ts > no Node builtin is reac
+- FAIL  lib/trading/provider-normalization/recorded-adapter.test.ts > a transcript
+- FAIL  lib/trading/replay/import-discipline.test.ts > no Node builtin is reachable
+- FAIL  lib/trading/replay/import-discipline.test.ts > Stage 1.5 boundaries > 
+- FAIL  lib/trading/session-calendar/import-discipline.test.ts > AD. an answer cann

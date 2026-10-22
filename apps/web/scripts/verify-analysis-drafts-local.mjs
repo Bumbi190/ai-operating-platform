@@ -782,6 +782,20 @@ try {
           ALTER ROLE authenticator PASSWORD ${quote(password)};
           GRANT social_schedule_rpc_only_fixture TO authenticator;
           COMMIT;`)
+        const callableSurface=JSON.parse(sql(`WITH executable AS (
+          SELECT p.oid,p.prosecdef
+          FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+          WHERE n.nspname='public'
+            AND has_schema_privilege('social_schedule_rpc_only_fixture',n.oid,'USAGE')
+            AND has_function_privilege('social_schedule_rpc_only_fixture',p.oid,'EXECUTE')
+        ) SELECT jsonb_build_object(
+          'publicFunctions',(SELECT count(*) FROM executable),
+          'securityDefiners',(SELECT count(*) FROM executable WHERE prosecdef),
+          'definerSample',(SELECT coalesce(jsonb_agg(signature),'[]'::jsonb) FROM (
+            SELECT oid::regprocedure::text AS signature FROM executable WHERE prosecdef
+              ORDER BY oid::regprocedure::text LIMIT 25) sample)
+        );`))
+        console.log('CROSS-TREE RPC ROLE CALLABLE SURFACE '+JSON.stringify(callableSurface)+' (catalog diagnostic; does not review function bodies)')
         const startedRest=docker(['run','--pull=never','--detach','--name',restName,'--network',httpNetwork,'--network-alias','rest',
           '--env','PGRST_DB_URI=postgres://authenticator:'+password+'@db:5432/postgres',
           '--env','PGRST_DB_SCHEMAS=public','--env','PGRST_DB_ANON_ROLE=anon',

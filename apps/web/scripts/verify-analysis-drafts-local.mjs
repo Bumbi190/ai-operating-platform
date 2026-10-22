@@ -630,6 +630,12 @@ try {
         ${claimFile}
         ${recoveryCheckpoint}
         ${rpcOnlyCandidate}
+        DO $queue_rpc$ BEGIN
+          PERFORM public.calendar_source_gate_begin_probe(${quote(project)}::uuid);
+        END $queue_rpc$;
+        UPDATE public.social_schedule_jobs
+          SET state='queued',claim_id=null,worker_id=null,lease_expires_at=null
+          WHERE id=${quote(id.job)}::uuid;
         DO $assert_privileges$ DECLARE privilege text; relation text; BEGIN
           IF (SELECT rolbypassrls OR rolcanlogin FROM pg_roles WHERE rolname='social_schedule_rpc_only_fixture')
             THEN RAISE EXCEPTION 'RPC_ROLE_NOT_ISOLATED'; END IF;
@@ -652,20 +658,25 @@ try {
         END $deny_direct$;
         DO $rpc_flow$ DECLARE result jsonb; receipt jsonb; BEGIN
           receipt=public.social_schedule_receipt(jsonb_build_object('jobId',${quote(id.job)}));
-          IF receipt->>'jobState' IS DISTINCT FROM 'claimed' THEN RAISE EXCEPTION 'RPC_RECEIPT_FAILED: %',receipt; END IF;
+          IF receipt->>'jobState' IS DISTINCT FROM 'queued' THEN RAISE EXCEPTION 'RPC_RECEIPT_FAILED: %',receipt; END IF;
           IF public.social_schedule_peek(jsonb_build_object('projectIds',jsonb_build_array(${quote(project)}))) IS NULL
             THEN RAISE EXCEPTION 'RPC_PEEK_FAILED'; END IF;
+          result=public.social_schedule_claim(jsonb_build_object(
+            'workerId','probe-worker','now',to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+            'dryRun',false,'projectIds',jsonb_build_array(${quote(project)})));
+          IF result->>'jobId' IS DISTINCT FROM ${quote(id.job)} OR result->>'version' IS DISTINCT FROM '2'
+            THEN RAISE EXCEPTION 'RPC_CLAIM_FAILED: %',result; END IF;
           PERFORM public.social_schedule_authorize_write(
-            jsonb_build_object('jobId',${quote(id.job)},'claimId',${quote(id.claim)},'version',1),
+            jsonb_build_object('jobId',result->>'jobId','claimId',result->>'claimId','version',2),
             jsonb_build_array(${quote(project)}));
           PERFORM public.social_schedule_step(
-            jsonb_build_object('jobId',${quote(id.job)},'claimId',${quote(id.claim)},'version',1),
+            jsonb_build_object('jobId',result->>'jobId','claimId',result->>'claimId','version',2),
             '{"action":"prepare"}'::jsonb);
           PERFORM public.social_schedule_step(
-            jsonb_build_object('jobId',${quote(id.job)},'claimId',${quote(id.claim)},'version',2),
+            jsonb_build_object('jobId',result->>'jobId','claimId',result->>'claimId','version',3),
             jsonb_build_object('action','claim_create','expectedVersion',1,'capabilityHash',${quote('e'.repeat(64))}));
           PERFORM public.social_schedule_recover_checkpoint(
-            jsonb_build_object('jobId',${quote(id.job)},'claimId',${quote(id.claim)},'version',3));
+            jsonb_build_object('jobId',result->>'jobId','claimId',result->>'claimId','version',4));
         END $rpc_flow$;
         RESET ROLE;
         SELECT jsonb_build_object(
@@ -674,7 +685,7 @@ try {
           'publications',(SELECT count(*) FROM public.social_publications WHERE project_id=${quote(project)}));
         ROLLBACK;
       `))
-      assert.deepEqual(rpcOnly, {state:'uncertain',version:4,publications:1})
+      assert.deepEqual(rpcOnly, {state:'uncertain',version:5,publications:1})
       assert.equal(sql("SELECT count(*) FROM pg_roles WHERE rolname='social_schedule_rpc_only_fixture'"), '0', 'RPC role escaped rollback')
       console.log('CROSS-TREE RPC-ONLY ROLE PASS ' + JSON.stringify(rpcOnly) + ' (rolled back)')
       if (scheduleWorkerReplay) {

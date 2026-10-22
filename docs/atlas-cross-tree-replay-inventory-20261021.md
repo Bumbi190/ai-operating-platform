@@ -23,6 +23,17 @@ longer exists. The worker used fake image bytes, a synthetic credential and
 a fake Meta response; the fixture still does not prove a deployable role or
 contact a real provider.
 
+**22 October RPC boundary probe:** A second `NOLOGIN NOBYPASSRLS` role is
+created only in a rollback transaction. Six scheduled worker RPCs are changed
+to `SECURITY DEFINER` in that transaction and granted to this role. The probe
+checks that it has no direct INSERT, UPDATE or DELETE grants on the relevant
+job, publication, event, project or token tables, cannot SELECT platform
+tokens, and receives a permission error on a direct job UPDATE. It then
+exercises receipt, peek, claim, authorize, prepare, claim-create and recovery
+against a synthetic approved job through RPC. This is a SQL privilege
+experiment, not a reviewed definer API, JWT identity or provider receipt
+authentication. All role, function and data changes roll back.
+
 ## Calendar ACL baseline — read-only comparison
 
 On 21 October, the isolated cross-tree replay queried PostgreSQL's
@@ -81,10 +92,10 @@ the shape of a supplied receipt but cannot establish that Facebook returned
 it. The writer credential and the worker's provider response handling must
 carry that assurance. Do not describe this test as provider authentication.
 
-The application is not yet wired for this role. The schedule route creates
-one `createAdminClient()` client and passes it to `runScheduleTick`;
-`worker.ts` uses that same client for claim, authorization, step, receipt
-and recovery calls. The role candidate is `NOLOGIN`, has no deployable
+The application is not yet wired for this role. The schedule route passes
+distinct scheduler and media clients to `runScheduleTick`, but both currently
+use the `service_role` key. The earlier full publisher role candidate is
+`NOLOGIN`, has no deployable
 credential, and revokes the existing service role's job DML and step
 EXECUTE. Applying it as-is would interrupt the current worker. The cutover
 needs an explicit, server-only writer identity and coordinated worker/SQL
@@ -255,6 +266,11 @@ not confine a holder of those grants to the reviewed provider and step flow.
 The cutover design must remove direct write authority from the callable role
 or enforce that boundary separately, then prove the resulting RPC flow and
 negative direct-write cases through PostgREST before any revocation.
+The rollback-only RPC role above demonstrates one possible SQL permission
+boundary. A production version needs review of the complete `SECURITY DEFINER`
+call graph, input and project authorization, grant and RLS behavior, plus
+provider receipt authentication; a callable definer function can still
+perform an unauthorized transition if its input checks are insufficient.
 The scheduled API now passes distinct client objects to the worker: the
 scheduler client handles claims, authorizations and steps; the media client
 handles image verification, including `assets` reads and signed Storage URLs.

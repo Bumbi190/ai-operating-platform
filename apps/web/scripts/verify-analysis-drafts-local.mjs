@@ -807,6 +807,11 @@ try {
           'social_schedule_peek(jsonb)','social_schedule_receipt(jsonb)',
           'social_schedule_recover_checkpoint(jsonb)','social_schedule_step(jsonb,jsonb)',
         ],'unexpected callable SECURITY DEFINER function under schedule role')
+        assert.deepEqual(callableSurface.otherCallable,[
+          {signature:'action_phase_rank(text)',result:'integer'},
+          {signature:'media_job_state_rank(text)',result:'integer'},
+        ],'unexpected callable SECURITY INVOKER function under schedule role')
+        assert.equal(callableSurface.triggerFunctions,32,'trigger-function surface changed; inspect the callable inventory')
         console.log('CROSS-TREE RPC ROLE CALLABLE SURFACE '+JSON.stringify(callableSurface)+' (catalog diagnostic; does not review function bodies)')
         const startedRest=docker(['run','--pull=never','--detach','--name',restName,'--network',httpNetwork,'--network-alias','rest',
           '--env','PGRST_DB_URI=postgres://authenticator:'+password+'@db:5432/postgres',

@@ -21,6 +21,13 @@ it('rejects a Facebook composite receipt for another Page and accepts photo IDs'
  await expect(photo.facebook(facebook,{text:'Exakt text',linkUrl:null,imageUrl:media}))
   .resolves.toMatchObject({providerId:'67890'})
 })
+it('treats a bare feed receipt as uncertain instead of confirming the wrong Page',async()=>{
+ let calls=0
+ const provider=new MetaManualProvider(async()=>{calls++;return Response.json({id:'67890'})})
+ await expect(provider.facebook(facebook,{text:'Exakt text',linkUrl:null,imageUrl:null}))
+  .rejects.toMatchObject({code:'invalid_response',outcome:'unknown'})
+ expect(calls).toBe(1)
+})
 it('creates and publishes an Instagram image through separate explicit calls',async()=>{
  const calls:any[]=[];const responses=[{id:'111'},{status_code:'FINISHED'},{id:'222'},{permalink:'https://www.instagram.com/p/fixture/'}]
  const provider=new MetaManualProvider(async(url,init)=>{calls.push({url,init});return Response.json(responses.shift())})

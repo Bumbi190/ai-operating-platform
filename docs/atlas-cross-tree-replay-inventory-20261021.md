@@ -78,6 +78,16 @@ receipt, exercise live media or token access, or switch the production worker
 from `service_role`. The fixture and its internal network were removed.
 The rerun with the Supabase client passed `tsc --noEmit` and the full replay.
 
+**Callable function inventory:** The HTTP fixture now reads PostgreSQL's
+actual function privileges after the test role is installed. It found 40
+executable functions in `public`, including 13 `SECURITY DEFINER` functions.
+Seven of the latter return `trigger`; the six directly callable definer
+functions are exactly the six scheduled worker RPCs. The replay asserts that
+exact set and fails if another callable definer appears. This catalog check
+does not audit the 27 other executable functions, the six definer bodies or
+their transitive calls; it is a regression guard, not a production grant
+review. The full cross-tree HTTP role replay passed with this assertion.
+
 ## Calendar ACL baseline — read-only comparison
 
 On 21 October, the isolated cross-tree replay queried PostgreSQL's

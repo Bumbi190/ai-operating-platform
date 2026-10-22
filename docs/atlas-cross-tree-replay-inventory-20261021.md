@@ -60,6 +60,18 @@ exercise a production signing key, real server identity, media/credential
 clients, a provider response, or live Supabase. The runner removed its three
 owned containers and internal network after the pass.
 
+**22 October application HTTP replay:** The optional
+`--with-schedule-http-worker-replay` flag extends the HTTP role probe after
+requeuing its synthetic job. It runs the actual TypeScript `runScheduleTick`
+with its scheduling RPC adapter calling Docker-internal PostgREST using the
+scoped role's synthetic JWT. The media bytes, credential and Meta response
+are fake. The run reported `CROSS-TREE POSTGREST APPLICATION WORKER PASS`
+and `CROSS-TREE REPLAY PASS`; the job reached `published`. This closes the
+local application-to-Data-API execution gap in the fixture. It does not bind
+project scope to a trusted deployed identity, authenticate a provider
+receipt, exercise live media or token access, or switch the production worker
+from `service_role`. The fixture and its internal network were removed.
+
 ## Calendar ACL baseline — read-only comparison
 
 On 21 October, the isolated cross-tree replay queried PostgreSQL's

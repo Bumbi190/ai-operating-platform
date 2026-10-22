@@ -1,3 +1,4 @@
+import {GrowthSections} from './GrowthSections'
 import Link from 'next/link'
 import type { OverviewModel, Metric } from '@/lib/overview/types'
 import { OverviewCharts, formatSek, dataStateLabel } from './OverviewCharts'
@@ -52,7 +53,7 @@ export function OverviewDashboard({
         <div>
           <p className={styles.eyebrow}>OMNIRA</p>
           <h1>Översikt</h1>
-          <p className={styles.subtitle}>Så går dina projekt.</p>
+          <p className={styles.subtitle}>Resultat, möjligheter och nästa steg med Atlas.</p>
         </div>
         <div className={styles.headerActions}>
           <nav aria-label="Tidsperiod" className={styles.period}>
@@ -72,16 +73,7 @@ export function OverviewDashboard({
         </div>
       </header>
       <p className={styles.updated}>Uppdaterad {updated} · Stockholm</p>
-      <section className={styles.stats} aria-label="Sammanfattning">
-        <Stat label="AI-kostnad under perioden" value={cost} money />
-        <Stat label="Pågående körningar" value={model.totals.running} />
-        <Stat label="Fel senaste dygnet" value={model.totals.failed24h} />
-        <Stat
-          label="Väntar på granskning"
-          value={model.totals.pendingApprovals}
-        />
-      </section>
-      <OverviewCharts model={model} />
+      {model.growth&&<GrowthSections growth={model.growth} projects={model.projects.rows}/>}
       <section className={styles.projects} aria-label="Dina projekt">
         <div className={styles.sectionHeading}>
           <div>
@@ -132,6 +124,11 @@ export function OverviewDashboard({
                       </span>
                     )}
                 </div>
+                {model.growth&&<div className={styles.projectGrowth}>
+                  {model.growth.social.filter(s=>s.projectId===p.id&&s.followers!==null).map(s=>
+                    <span key={s.platform}>{s.label}: {new Intl.NumberFormat('sv-SE').format(s.followers!)} {s.platform==='youtube'?'prenumeranter':'följare'}</span>)}
+                  <span>{model.growth.recommendations.find(r=>r.projectId===p.id)?.title??'Öppna projektets underlag och nästa steg'}</span>
+                </div>}
               </Link>
             ))}
           </div>
@@ -139,6 +136,20 @@ export function OverviewDashboard({
           <p className={styles.empty}>Inga projekt att visa ännu.</p>
         )}
       </section>
+      <details className={styles.driftDetails}>
+        <summary>Drift och AI-kostnad</summary>
+        <p className={styles.quiet}>Registrerade kostnader, körningar och väntande granskningar · kalenderdagar i Stockholm.</p>
+      <section className={styles.stats} aria-label="Sammanfattning">
+        <Stat label="AI-kostnad under perioden" value={cost} money />
+        <Stat label="Pågående körningar" value={model.totals.running} />
+        <Stat label="Fel senaste dygnet" value={model.totals.failed24h} />
+        <Stat
+          label="Väntar på granskning"
+          value={model.totals.pendingApprovals}
+        />
+      </section>
+      <OverviewCharts model={model} />
+      </details>
     </div>
   )
 }

@@ -46,6 +46,14 @@ export function useMiniChatState(onSignout: () => void): MiniChatState {
       return { ...remaining, [id]: draft }
     })
   }), [controller])
+  useEffect(() => controller.subscribeDiscussion((text) => {
+    const key = controller.snapshot().id ?? 'new'
+    setDrafts((old) => {
+      const current = old[key] ?? ''
+      return current.endsWith(text) ? old : { ...old, [key]: current ? current + '\n\n' + text : text }
+    })
+    setOpen(true)
+  }), [controller])
   const setDraft = useCallback(
     (text: string) =>
       setDrafts((old) => ({

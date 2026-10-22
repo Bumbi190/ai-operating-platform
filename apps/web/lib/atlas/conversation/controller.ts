@@ -91,6 +91,22 @@ export class AtlasConversationController {
     return () => { this.settledListeners.delete(listener); };
   };
   private createdListeners = new Set<(id: string) => void>();
+  private discussionListeners = new Set<(text: string) => void>();
+  subscribeDiscussion = (listener: (text: string) => void) => {
+    this.discussionListeners.add(listener);
+    return () => { this.discussionListeners.delete(listener); };
+  };
+  /** Visible unsent text only: no thread switch, request, approval or execution. */
+  requestDiscussion(text: string): boolean {
+    const value = typeof text === "string" ? text.trim() : "";
+    if (!value || value.length > 6000 || !this.discussionListeners.size) return false;
+    let delivered = false;
+    this.discussionListeners.forEach(listener => {
+      try { listener(value); delivered = true; } catch {}
+    });
+    return delivered;
+  }
+
   subscribeCreated = (listener: (id: string) => void) => {
     this.createdListeners.add(listener);
     return () => { this.createdListeners.delete(listener); };

@@ -211,3 +211,13 @@ describe("Omnira project-scoped PostHog traffic", () => {
     expect(real).not.toContain("Antal online");
   });
 });
+
+describe('traffic period selected in the portfolio overview',()=>{
+ it('reads a real 30-day UTC series without changing the legacy seven-day default',async()=>{
+  const fetcher=vi.fn().mockResolvedValue(response({results:[['2026-09-13',2],['2026-10-12',4]]}))
+  const traffic=await loadHandlarborsenTraffic(project,scope,{env,fetcher,now,period:30} as any)
+  expect(traffic).toMatchObject({status:'available',firstDate:'2026-09-13',lastDate:'2026-10-12',totalPageviews:6})
+  expect(traffic?.status==='available'&&traffic.days.length).toBe(30)
+  expect(JSON.parse(fetcher.mock.calls[0][1].body).query.query).toContain('LIMIT 30')
+ })
+})

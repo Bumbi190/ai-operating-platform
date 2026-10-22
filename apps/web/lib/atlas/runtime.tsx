@@ -417,11 +417,10 @@ export function AtlasRuntimeProvider({
           listeningRef.current = false
           try { rec.stop() } catch { /* ignore */ }
           pendingSpeechEndRef.current = performance.now()
-          const current=conversation.snapshot()
-          if(current.plan||current.session||/hemsida|webbsida|website|landningssida/i.test(t)){
-            deactivate()
-            void ensureConversation(t).then(id=>{if(id){conversation.stageSpeechDraft(t);router.push('/chat/'+id+'?build=1')}})
-          }else void sendMessage(t)
+          // Saving a plan or queuing a governed job is a conversational turn.
+          // The shared controller releases the turn after the durable receipt;
+          // the worker continues independently of this voice session.
+          void sendMessage(t)
         }
       }, SILENCE_MS)
     }
@@ -725,7 +724,10 @@ export function AtlasRuntimeProvider({
 
     try {
       if(!convId){streamDone=true;setVoicePhase('idle');return}
-      const outcome=await conversation.sendTurn({conversationId:convId,text,inputSource:origin==='voice'?'voice':'text',onEvent:d=>{
+      const outcome=await conversation.sendTurn({conversationId:convId,text,inputSource:origin==='voice'?'voice':'text',
+        // Global speech is not proof that a particular plan/preview is visible.
+        // Exact approval and revision-bound feedback stay in the reviewed UI.
+        ...(origin==='voice'?{visiblePlan:null,buildContext:null}:{}),onEvent:d=>{
         if(cancelRef.current||generation!==requestGenRef.current)return
         if(d.event==='text'&&typeof d.text==='string'){
           markOnce(marksRef.current,generation,'firstByte',performance.now())
@@ -744,7 +746,7 @@ export function AtlasRuntimeProvider({
         }else if(d.event==='done'&&executionRef.current){
           executionRef.current=null;setExecution(null)
         }else if(d.event==='website_plan'||d.event==='website_workspace'){
-          router.push('/chat/'+convId+'?build=1')
+          if(pathnameRef.current!=='/dashboard')router.push('/chat/'+convId+'?build=1')
         }
       }})
       if(!outcome.ok)setWarning({active:true,detail:outcome.notice??'Atlas kunde inte slutföra svaret.'})

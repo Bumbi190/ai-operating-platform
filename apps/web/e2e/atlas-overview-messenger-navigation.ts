@@ -1,4 +1,6 @@
 import { useSyncExternalStore } from 'react'
+let refreshVersion=0
+export function useFixtureRefreshVersion(){return useSyncExternalStore(subscribe,()=>refreshVersion,()=>0)}
 const subscribe = (f: () => void) => {
   window.addEventListener('popstate', f)
   return () => window.removeEventListener('popstate', f)
@@ -23,5 +25,5 @@ export function useRouter() {
     history.pushState(null, '', url)
     window.dispatchEvent(new PopStateEvent('popstate'))
   }
-  return { push, replace: push, refresh: () => {} }
+  return { push, replace: push, refresh: () => { refreshVersion++; (window as any).fixtureRefreshes=refreshVersion; window.dispatchEvent(new PopStateEvent('popstate')) } }
 }

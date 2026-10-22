@@ -43,3 +43,12 @@ Rollback application code without deleting credential tables or historical asset
 ## Explicit later work
 
 Credit reservation/redovisning, generation, canonical clip admission, scene manifest, step3/step4 rendering, cost-triggered image fallback, desktop export and daily video activation are outside this first delivery. Proposed future credit ceilings are 20/reel, 40/svenskt dygn, 1000/rullande 30 dygn and 100 in reserve. They are not active settings.
+
+## 2026-10-22 follow-up: migration guard and read-only inspection recovery
+
+- Prior to this review, PR #514 CI failed because its migration lacked a `SERVER_ONLY` pending-table classification and canonical SQL/enforced counts were not reconciled. Both are corrected in the follow-up branch commit; the entries remain `created_not_live` until the intended deployment's migration is actually applied and its effective catalog inspected. **Do not add these to the live table map before verified deployment.**
+- The production-ledger guard is intentionally fail-closed for `higgsfield_mcp_readonly`. Historical ledger fixtures were not rewritten; hypothetical fixtures can include the migration but do **not** prove it is applied. Keep the deployment release blocked if the actual ledger lacks it.
+- During an authenticated inspection, `tools/list` 401 is normalized to the existing connection refresh path (subject to the CAS lease, single retry and common deadline). If refresh cannot recover the grant, the operator must reconnect; no generation may occur.
+- A transient inspection error can be retried with **Läs saldo och testpris** without reloading the page. The UI clears stale credit figures, reports temporary unavailability, and never treats it as permission to generate. Authentication/authorization failures do not preserve an asserted connected state.
+- Before any environment changes: verify intended Supabase/Vercel project and deploy target, protected variable names and presence **without printing values**, migration order and a rollback plan. Never write encryption keys into the repository or chat. Verify schema RLS/grants and provider credits after reviewed activation.
+- Read-only feature defaults to disabled. The current release does not install video budgets, video jobs, media schedules, rendering, credit reservation, spend transactions or external asset transfer.

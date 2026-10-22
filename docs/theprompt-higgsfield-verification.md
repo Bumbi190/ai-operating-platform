@@ -40,3 +40,31 @@ Deferred minors:
 8. Deliver the already-authorized draft PR with exact broad-suite failures, without merge, following the approved plan rather than the finishing skill's green-suite integration menu. Cost if wrong: additional CI/triage is required before merge readiness.
 
 The per-plan ignored test workspace is disposable after this evidence is committed. The feature worktree and branch remain for PR follow-up.
+
+## Follow-up review 2026-10-22 — PR #514 integration checks
+
+Scope remains strictly read-only. Work was performed only in the dedicated Hultgren worktree on branch `codex/theprompt-video-design-20261022`. No production migration, deployment, credentials setup, OAuth consent, provider read, generation or publishing activation occurred.
+
+The two red GitHub CI workflows on original head `eb6599bb` were investigated from their actual Actions job logs (rather than classified as pre-existing failures):
+- **Atlas Project Isolation:** two migration-security-gate assertions rejected the two new unclassified `public.media_provider_*` tables, and one schema-security invariant assertion found those same table names unregistered. The new tables are registered as `SERVER_ONLY` in `_meta.created_not_live`, explicitly **not** as inspected live production tables. The SQL migration enables RLS, creates no client policies, and revokes anon/authenticated grants.
+- **Migration Guard Integrity:** the new canonical migration raised the SQL source count from 151 to 152, enforced count from 137 to 138. Bumped both exact tripwires without extending grandfathered or legacy-only allowlists. Updated historical captured-ledger tests to preserve actual captured history and require `higgsfield_mcp_readonly` only in clearly labelled hypothetical post-apply fixtures. The real ledger must still fail closed until a reviewed production application.
+
+Two deferred connection issues now have failing-first regression coverage and repairs:
+- An SDK `UnauthorizedError` during paginated `tools/list` now maps to the existing `reconnect_required` signal, allowing at most one governed refresh/retry through the versioned database lease rather than silently skipping refresh.
+- A transient read-only inspection failure in the Settings controller keeps the known connected state, clears stale balance and quote, displays a safe retry warning, and permits another click without page reload. A revoked grant explicitly requires reconnect; 401/403 access refusal does not leave a misleading connected state.
+
+Post-fix checks on Hultgren:
+- Migration-security-gate 133/133, schema-security-invariant 76/76, migration-guard-v2 35/35, weekly-journal 4/4, sales-inbox 3/3: **251/251 passed**.
+- Seven Higgsfield suites: **72/72 passed**; five security/migration suites: **251/251 passed**; one final combined 12-suite verification: **323/323 PASS**, exit 0 (28.76s). GitHub Actions on the updated head still require their own results.
+- `npm run typecheck --workspace=apps/web`: **PASS**, exit 0.
+- `npm run build --workspace=apps/web` with process-local, nonsecret localhost public Supabase placeholders: **PASS**, exit 0 (91.48s). No production secrets used.
+- `git diff --check`: **PASS**.
+- **Not claimed:** an exhaustive broad Vitest suite comparison against main, hosted database advisors, live Higgsfield tools/schema/price compatibility or unchanged real credit balance. Original broad-suite inventory remains historical and unclassified.
+
+### Merge and activation gates still open
+
+1. Review the fresh PR CI for the updated commit, especially the two previously red workflows; perform an independent reviewer check of changed code and migration.
+2. Decide how to satisfy the repository's apply-before-merge production ledger guard without bypassing its security model. Applying migration is a separate change that requires the intended target, rollout and rollback review; do not falsify the production ledger.
+3. Configure protected server-only flags, exact HTTPS redirect and independent encryption key only in the authorized environment. Do not reveal values in logs, PR comments, local tracked files or chat.
+4. Complete real account consent and **read-only** balance → fixed quote → balance smoke after a reviewed deployment. Provider tool schemas remain unverified against the authenticated service.
+5. Maintain image-only production publishing and zero Higgsfield generation until separate credit accounting/limits, asset retention, fallback and publishing tests pass.

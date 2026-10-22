@@ -76,7 +76,10 @@ export async function openHiggsfieldReadClient(payload:OAuthPayload,deadline=Dat
    const collected:{name:string;inputSchema:unknown}[]=[]
    let cursor:string|undefined
    for(let i=0;i<64;i++){
-    const page=await client.listTools(cursor?{cursor}:undefined,options())
+    const page=await client.listTools(cursor?{cursor}:undefined,options()).catch(e=>{
+     if(e instanceof UnauthorizedError)throw new HiggsfieldError('reconnect_required')
+     throw new HiggsfieldError('provider_unavailable')
+    })
     collected.push(...page.tools)
     if(!page.nextCursor)return collected
     cursor=page.nextCursor

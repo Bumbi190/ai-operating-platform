@@ -21,6 +21,7 @@ export function SettingsHiggsfieldConnect({projectId,canManage}:{projectId:strin
   {!canManage?<p>En projektoperatör kan hantera anslutningen.</p>:<>
    <p role="status" aria-live="polite">{state.working?'Arbetar…':LABELS[state.status]}</p>
    {outcome?<p>{outcome}</p>:null}
+   {state.inspectionUnavailable?<p role="alert">Saldo och testpris kunde inte läsas just nu. Försök igen.</p>:null}
    <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
     <button type="button" className={styles.secondary} disabled={state.working} onClick={()=>void controller.act('connect')}>{state.status==='connected'?'Anslut igen':'Anslut Higgsfield'}</button>
     <button type="button" className={styles.secondary} disabled={state.working||state.status!=='connected'} onClick={()=>void controller.act('inspect')}>Läs saldo och testpris</button>

@@ -102,6 +102,22 @@ describe('absolute inspection deadline',()=>{
    expect(settled).toBe(true)
   } finally {await client.close();await pending;vi.unstubAllGlobals()}
  })
+ it('normalizes tools/list 401 into the one permitted refresh signal',async()=>{
+  let toolsListCalls=0
+  const delegate:typeof fetch=async(input,init)=>{
+   const req=new Request(input,init)
+   if(req.method!=='POST')return new Response(null,{status:405})
+   const body=await req.json()
+   if(body.method==='initialize')return new Response(JSON.stringify({jsonrpc:'2.0',id:body.id,result:{protocolVersion:'2025-03-26',capabilities:{tools:{}},serverInfo:{name:'fixture',version:'1'}}}),{headers:{'content-type':'application/json'}})
+   if(body.method==='tools/list'){toolsListCalls++;return new Response('expired access token',{status:401})}
+   return new Response(null,{status:202})
+  }
+  const client=await openHiggsfieldReadClient({tokens:{access_token:'expired',token_type:'Bearer'}},Date.now()+3000,delegate)
+  try {
+   await expect(client.listTools()).rejects.toThrow('reconnect_required')
+   expect(toolsListCalls).toBe(1)
+  } finally {await client.close()}
+ })
  it('shares the inspection deadline with refresh and MCP instead of resetting it',async()=>{
   const now=Date.now()
   const payload={tokens:{access_token:'old',refresh_token:'refresh',token_type:'Bearer'},expiresAt:0}

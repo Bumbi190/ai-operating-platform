@@ -29,6 +29,40 @@ describe('Higgsfield settings interactions',()=>{
   expect(c.getSnapshot().creditBalance).toBe(null)
   expect(JSON.stringify(c.getSnapshot())).not.toContain('private-token')
  })
+ it('allows retrying a transient inspection failure without claiming the account disconnected',async()=>{
+  let inspections=0
+  const fetcher:typeof fetch=async (input)=>{
+   if(String(input).includes('/status'))return new Response(JSON.stringify({status:'connected',creditBalance:null,quoteCredits:null,observedAt:null}))
+   inspections++
+   return inspections===1 ? new Response(JSON.stringify({ok:false,error:'provider_unavailable'}),{status:503})
+    :new Response(JSON.stringify({status:'connected',creditBalance:0,quoteCredits:4,observedAt:'2026-10-22T08:00:00Z'}))
+  }
+  const c=createHiggsfieldPanelController(projectId,true,fetcher,()=>{})
+  await c.load();expect(c.getSnapshot().status).toBe('connected')
+  await c.act('inspect');expect(c.getSnapshot().status).toBe('connected')
+  expect(c.getSnapshot().inspectionUnavailable).toBe(true)
+  await c.act('inspect');expect(inspections).toBe(2)
+  expect(c.getSnapshot().inspectionUnavailable).toBe(false)
+  expect(c.getSnapshot().creditBalance).toBe(0)
+ })
+ it('asks for reconnect when inspection returns the closed revoked-credential code',async()=>{
+  const fetcher:typeof fetch=async input=>String(input).includes('/status')
+   ?new Response(JSON.stringify({status:'connected'}))
+   :new Response(JSON.stringify({ok:false,error:'reconnect_required'}),{status:503})
+  const c=createHiggsfieldPanelController(projectId,true,fetcher,()=>{})
+  await c.load();await c.act('inspect')
+  expect(c.getSnapshot().status).toBe('reconnect_required')
+  expect(c.getSnapshot().inspectionUnavailable).toBe(false)
+ })
+ it('does not show an authorized connection after a rejected inspection permission',async()=>{
+  const fetcher:typeof fetch=async input=>String(input).includes('/status')
+   ?new Response(JSON.stringify({status:'connected'}))
+   :new Response(JSON.stringify({ok:false,error:'access_denied'}),{status:403})
+  const c=createHiggsfieldPanelController(projectId,true,fetcher,()=>{})
+  await c.load();await c.act('inspect')
+  expect(c.getSnapshot().status).toBe('unavailable')
+  expect(c.getSnapshot().inspectionUnavailable).toBe(false)
+ })
  it('only follows the pinned provider authorization endpoint',async()=>{
   const navigate=vi.fn()
   const c=createHiggsfieldPanelController(projectId,true,async()=>new Response(JSON.stringify({authorization_url:'https://evil.example/oauth/authorize'})),navigate)

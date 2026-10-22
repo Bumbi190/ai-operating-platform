@@ -6,16 +6,22 @@
 create role social_schedule_rpc_only_fixture nologin nobypassrls;
 grant usage on schema public to social_schedule_rpc_only_fixture;
 
--- An administrator seeds allowed projects in the replay transaction. The
--- RPC caller cannot edit this table. This fixed scope only models a future
--- trusted server mapping; it does not identify a real HTTP/JWT caller.
-create table public.social_schedule_rpc_scope_fixture(project_id uuid primary key);
+-- An administrator seeds principal-to-project bindings in the replay. The
+-- RPC caller cannot edit this table. PostgREST supplies the subject from a
+-- validated JWT; direct SQL probes set the same transaction-local claim.
+-- This is still a test mapping, not a production credential issuer.
+create table public.social_schedule_rpc_scope_fixture(
+ principal_id uuid not null,project_id uuid not null,
+ primary key(principal_id,project_id));
 revoke all on public.social_schedule_rpc_scope_fixture from public, anon, authenticated, service_role;
 
 create function public.social_schedule_rpc_check_project_fixture(p_project uuid)
 returns void language plpgsql security definer set search_path='' as $fn$
+declare principal text;
 begin
- if not exists(select 1 from public.social_schedule_rpc_scope_fixture where project_id=p_project)
+ principal := (nullif(current_setting('request.jwt.claims',true),'')::jsonb)->>'sub';
+ if principal is null or not exists(select 1 from public.social_schedule_rpc_scope_fixture
+   where principal_id=principal::uuid and project_id=p_project)
  then raise exception 'SOCIAL_SCHEDULE_PROJECT_SCOPE_DENIED' using errcode='42501'; end if;
 end $fn$;
 revoke all on function public.social_schedule_rpc_check_project_fixture(uuid)

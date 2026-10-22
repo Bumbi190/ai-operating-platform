@@ -320,6 +320,7 @@ try {
         asset: '20000000-0000-4000-8000-000000000019',
         contentDecision: '20000000-0000-4000-8000-000000000020',
         unreferencedProject: '20000000-0000-4000-8000-000000000021',
+        foreignPrincipal: '20000000-0000-4000-8000-000000000022',
       }
       const roleSql = `
         BEGIN;
@@ -651,7 +652,8 @@ try {
         ${claimFile}
         ${recoveryCheckpoint}
         ${rpcOnlyCandidate}
-        INSERT INTO public.social_schedule_rpc_scope_fixture(project_id) VALUES (${quote(project)});
+        INSERT INTO public.social_schedule_rpc_scope_fixture(principal_id,project_id)
+          VALUES (${quote(actor)},${quote(project)}),(${quote(id.foreignPrincipal)},${quote(id.unreferencedProject)});
         INSERT INTO public.projects(id,owner_id,name,slug)
           VALUES (${quote(id.unreferencedProject)},${quote(actor)},'Out-of-scope project','rpc-scope-denial');
         DO $queue_rpc$ BEGIN
@@ -660,6 +662,9 @@ try {
         UPDATE public.social_schedule_jobs
           SET state='queued',claim_id=null,worker_id=null,lease_expires_at=null
           WHERE id=${quote(id.job)}::uuid;
+        DO $claims$ BEGIN
+          PERFORM set_config('request.jwt.claims',${quote(JSON.stringify({sub:actor}))},true);
+        END $claims$;
         DO $assert_privileges$ DECLARE privilege text; relation text; BEGIN
           IF (SELECT rolbypassrls OR rolcanlogin FROM pg_roles WHERE rolname='social_schedule_rpc_only_fixture')
             THEN RAISE EXCEPTION 'RPC_ROLE_NOT_ISOLATED'; END IF;
@@ -680,6 +685,27 @@ try {
             THEN RAISE EXCEPTION 'RPC_UNCHECKED_FUNCTION_GRANT'; END IF;
         END $assert_privileges$;
         SET LOCAL ROLE social_schedule_rpc_only_fixture;
+        DO $deny_missing_subject$ BEGIN
+          PERFORM set_config('request.jwt.claims','{}',true);
+          PERFORM public.social_schedule_peek(jsonb_build_object('projectIds',jsonb_build_array(${quote(project)})));
+          RAISE EXCEPTION 'RPC_MISSING_SUBJECT_ACCEPTED';
+        EXCEPTION WHEN insufficient_privilege THEN
+          IF SQLERRM <> 'SOCIAL_SCHEDULE_PROJECT_SCOPE_DENIED' THEN RAISE; END IF;
+        END $deny_missing_subject$;
+        DO $claims_again$ BEGIN
+          PERFORM set_config('request.jwt.claims',${quote(JSON.stringify({sub:id.foreignPrincipal}))},true);
+        END $claims_again$;
+        DO $deny_other_subject$ BEGIN
+          PERFORM public.social_schedule_receipt(jsonb_build_object('jobId',${quote(id.job)}));
+          RAISE EXCEPTION 'RPC_OTHER_SUBJECT_RECEIPT_ACCEPTED';
+        EXCEPTION WHEN insufficient_privilege THEN
+          IF SQLERRM <> 'SOCIAL_SCHEDULE_PROJECT_SCOPE_DENIED' THEN RAISE; END IF;
+        END $deny_other_subject$;
+        DO $foreign_scope$ BEGIN
+          IF public.social_schedule_peek(jsonb_build_object('projectIds',jsonb_build_array(${quote(id.unreferencedProject)}))) IS NULL
+            THEN RAISE EXCEPTION 'RPC_FOREIGN_SUBJECT_SCOPE_FAILED'; END IF;
+          PERFORM set_config('request.jwt.claims',${quote(JSON.stringify({sub:actor}))},true);
+        END $foreign_scope$;
         DO $deny_other_project$ BEGIN
           PERFORM public.social_schedule_claim(jsonb_build_object(
             'workerId','probe-worker','now',to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
@@ -745,7 +771,8 @@ try {
           ${claimFile}
           ${recoveryCheckpoint}
           ${rpcOnlyCandidate}
-          INSERT INTO public.social_schedule_rpc_scope_fixture(project_id) VALUES (${quote(project)});
+          INSERT INTO public.social_schedule_rpc_scope_fixture(principal_id,project_id)
+            VALUES (${quote(actor)},${quote(project)}),(${quote(id.foreignPrincipal)},${quote(id.unreferencedProject)});
           INSERT INTO public.projects(id,owner_id,name,slug)
             VALUES (${quote(id.unreferencedProject)},${quote(actor)},'HTTP foreign project','http-scope-denial');
           DO $queue_http$ BEGIN PERFORM public.calendar_source_gate_begin_probe(${quote(project)}::uuid); END $queue_http$;
@@ -764,12 +791,15 @@ try {
           gatewayImage,'node','-e','setInterval(()=>{},10000)'])
         assert.equal(startedGateway.status,0,startedGateway.stderr);gatewayOwned=true
         const now=Math.floor(Date.now()/1000)
-        const jwtBody=[{alg:'HS256',typ:'JWT'}, {role:'social_schedule_rpc_only_fixture',iat:now,exp:now+600}]
-          .map(part=>Buffer.from(JSON.stringify(part)).toString('base64url')).join('.')
-        const token=jwtBody+'.'+createHmac('sha256',secret).update(jwtBody).digest('base64url')
+        const signedToken=(sub)=>{
+          const body=[{alg:'HS256',typ:'JWT'}, {role:'social_schedule_rpc_only_fixture',...(sub?{sub}:{}),iat:now,exp:now+600}]
+            .map(part=>Buffer.from(JSON.stringify(part)).toString('base64url')).join('.')
+          return body+'.'+createHmac('sha256',secret).update(body).digest('base64url')
+        }
+        const token=signedToken(actor),foreignToken=signedToken(id.foreignPrincipal),missingSubjectToken=signedToken(null)
         const requestScript=`const q=JSON.parse(Buffer.from(process.argv[1],'base64').toString());fetch('http://rest:3000'+q.path,{method:q.method,headers:{Authorization:'Bearer '+q.token,'Content-Type':'application/json'},body:q.body?JSON.stringify(q.body):undefined}).then(async r=>console.log(JSON.stringify({status:r.status,body:await r.text()}))).catch(e=>{console.error(e.message);process.exitCode=1})`
-        function httpRole(path,body,method='POST') {
-          const input=Buffer.from(JSON.stringify({path,body,method,token})).toString('base64')
+        function httpRole(path,body,method='POST',bearer=token) {
+          const input=Buffer.from(JSON.stringify({path,body,method,token:bearer})).toString('base64')
           const response=docker(['exec',gatewayName,'node','-e',requestScript,input])
           assert.equal(response.status,0,response.stderr)
           return JSON.parse(response.stdout.trim())
@@ -779,6 +809,14 @@ try {
           return response.status===0
         },'PostgREST ready',60000)
         const foreign={workerId:'probe-worker',now:new Date().toISOString(),dryRun:false,projectIds:[id.unreferencedProject]}
+        const missingSubject=httpRole('/rpc/social_schedule_peek',{p_input:{projectIds:[project]}},'POST',missingSubjectToken)
+        assert.equal(missingSubject.status,403,missingSubject.body)
+        assert.equal(JSON.parse(missingSubject.body).code,'42501')
+        const foreignReceipt=httpRole('/rpc/social_schedule_receipt',{p_input:{jobId:id.job}},'POST',foreignToken)
+        assert.equal(foreignReceipt.status,403,foreignReceipt.body)
+        assert.equal(JSON.parse(foreignReceipt.body).code,'42501')
+        const foreignOwnPeek=httpRole('/rpc/social_schedule_peek',{p_input:{projectIds:[id.unreferencedProject]}},'POST',foreignToken)
+        assert.equal(foreignOwnPeek.status,200,foreignOwnPeek.body)
         const deniedClaim=httpRole('/rpc/social_schedule_claim',{p_input:foreign})
         assert.equal(deniedClaim.status,403,deniedClaim.body)
         assert.equal(JSON.parse(deniedClaim.body).code,'42501')
@@ -799,7 +837,7 @@ try {
         assert.equal(receipt.status,200,receipt.body)
         assert.equal(JSON.parse(receipt.body).jobState,'claimed')
         assert.equal(sql('SELECT state FROM public.social_schedule_jobs WHERE id='+quote(id.job)),'claimed')
-        console.log('CROSS-TREE POSTGREST ROLE PASS (synthetic JWT; foreign project and direct write denied; allowed claim and receipt; owned network only)')
+        console.log('CROSS-TREE POSTGREST ROLE PASS (subject-bound synthetic JWTs; foreign project, missing subject and direct write denied; allowed claim and receipt; owned network only)')
         if (scheduleHttpWorkerReplay) {
           sql(`BEGIN;
             DO $queue_again$ BEGIN PERFORM public.calendar_source_gate_begin_probe(${quote(project)}::uuid); END $queue_again$;

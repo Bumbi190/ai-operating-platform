@@ -34,6 +34,8 @@ assert.ok(!scheduleWorkerReplay || crossTreeReplay, 'worker replay requires the 
 const scheduleHttpRoleReplay = process.argv.includes('--with-schedule-http-role-replay')
 assert.ok(!scheduleHttpRoleReplay || crossTreeReplay, 'HTTP role replay requires the cross-tree mode')
 assert.ok(!scheduleHttpRoleReplay || !scheduleWorkerReplay, 'run worker and HTTP role replays separately')
+const scheduleHttpWorkerReplay = process.argv.includes('--with-schedule-http-worker-replay')
+assert.ok(!scheduleHttpWorkerReplay || scheduleHttpRoleReplay, 'HTTP worker requires HTTP role replay')
 const legacyMediaReplay = legacyCronReplay || legacyDreamReplay || crossTreeReplay || process.argv.includes('--mode=legacy-media-replay')
 assert.ok([dependencyReplay,legacyCronReplay,legacyDreamReplay,crossTreeReplay,process.argv.includes('--mode=legacy-media-replay'),process.argv.includes('--mode=canonical-replay')].filter(Boolean).length<=1, 'select one replay mode')
 const replay = dependencyReplay || legacyMediaReplay || process.argv.includes('--mode=canonical-replay')
@@ -798,6 +800,25 @@ try {
         assert.equal(JSON.parse(receipt.body).jobState,'claimed')
         assert.equal(sql('SELECT state FROM public.social_schedule_jobs WHERE id='+quote(id.job)),'claimed')
         console.log('CROSS-TREE POSTGREST ROLE PASS (synthetic JWT; foreign project and direct write denied; allowed claim and receipt; owned network only)')
+        if (scheduleHttpWorkerReplay) {
+          sql(`BEGIN;
+            DO $queue_again$ BEGIN PERFORM public.calendar_source_gate_begin_probe(${quote(project)}::uuid); END $queue_again$;
+            UPDATE public.social_schedule_jobs
+              SET state='queued',claim_id=null,worker_id=null,lease_expires_at=null
+              WHERE id=${quote(id.job)}::uuid;
+            COMMIT;`)
+          assert.equal(sql('SELECT state FROM public.social_schedule_jobs WHERE id='+quote(id.job)),'queued')
+          const worker=spawnSync(process.execPath,[resolve(repo,'node_modules/vitest/vitest.mjs'),
+            'run','lib/social-launch/scheduling/isolated-worker-replay.test.ts','--maxWorkers=1','--minWorkers=1'],{
+            cwd:web,encoding:'utf8',timeout:90000,maxBuffer:1024*1024,
+            env:{...process.env,OMNIRA_SCHEDULE_REPLAY_CONTAINER:name,
+              OMNIRA_SCHEDULE_REPLAY_PROJECT:project,OMNIRA_SCHEDULE_REPLAY_JOB:id.job,
+              OMNIRA_SCHEDULE_REPLAY_HTTP_GATEWAY:gatewayName,OMNIRA_SCHEDULE_REPLAY_HTTP_TOKEN:token},
+          })
+          assert.equal(worker.status,0,worker.stderr+'\n'+worker.stdout)
+          assert.equal(sql('SELECT state FROM public.social_schedule_jobs WHERE id='+quote(id.job)),'published')
+          console.log('CROSS-TREE POSTGREST APPLICATION WORKER PASS (actual TypeScript worker, fake Meta, scoped RPC role)')
+        }
       }
       if (scheduleWorkerReplay) {
         sql(`BEGIN;

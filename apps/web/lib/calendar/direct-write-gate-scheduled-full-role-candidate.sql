@@ -9,6 +9,19 @@ grant select on public.projects to social_schedule_full_publisher_fixture;
 -- SELECT ... FOR UPDATE needs UPDATE on at least one column. Limit the grant
 -- to the project key so this fixture cannot edit names, ownership or settings.
 grant update(id) on public.projects to social_schedule_full_publisher_fixture;
+-- The invoker needs the UPDATE grant for SELECT ... FOR UPDATE, but must
+-- never change the project key, even on a row without references.
+create function public.social_schedule_project_key_guard_fixture()
+returns trigger language plpgsql set search_path = public, pg_temp as $guard$
+begin
+ if current_user = 'social_schedule_full_publisher_fixture' then
+  raise exception 'SOCIAL_SCHEDULE_PROJECT_KEY_WRITE_DENIED' using errcode = '42501';
+ end if;
+ return new;
+end $guard$;
+create trigger social_schedule_project_key_guard_fixture
+before update of id on public.projects
+for each row execute function public.social_schedule_project_key_guard_fixture();
 grant select,update on public.social_schedule_jobs,
  public.social_publications to social_schedule_full_publisher_fixture;
 grant insert on public.social_schedule_events,

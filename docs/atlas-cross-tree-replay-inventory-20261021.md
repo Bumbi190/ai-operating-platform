@@ -202,10 +202,11 @@ production credential path.
 
 The test role now has project `SELECT` plus column-scoped `UPDATE(id)` for
 the `SELECT ... FOR UPDATE` lock used by the signed functions. The replay
-rejects an attempted project-name edit under that role. The key-column
-grant can still update an unreferenced project ID, so this remains a
-candidate fixture rather than a production role definition. The role
-candidate still needs a reviewed, complete permission design.
+rejects an attempted project-name edit under that role. A test-only trigger
+rejects an attempted project-key edit, including an unreferenced row, while
+preserving the row lock. This remains a candidate fixture rather than a
+production role definition. The role candidate still needs a reviewed,
+complete permission design.
 
 The replay asserts EXECUTE for every scheduler RPC used by the worker
 (`claim`, `authorize_write`, `step`, `peek`, `receipt`, `recover_checkpoint`)
@@ -233,3 +234,20 @@ the actual server identity and credential path. Separately,
 production's missing May baseline still prevents a fresh Supabase branch from
 reconstructing the installed schema. None of these local experiments alters
 production, the production migration ledger, or its guard.
+
+Identity cutover needs a separate, reviewed Data API credential that maps to
+the scheduling role, plus `authenticator` role membership and an isolated
+PostgREST RPC proof. Supabase documents custom `role` JWTs and the client
+`accessToken` option; a secret API key alone still maps to `service_role`.
+The current worker also passes the same admin client into image verification,
+where it reads `assets` and creates a signed Storage URL, while the credential
+resolver reads platform tokens elsewhere. Those media and credential paths
+must be separated from the scheduler RPC client, with their own narrowly
+authorized server boundary, before revoking `service_role` schedule writes.
+No JWT signing key, Supabase secret, role membership or production switch is
+created by this replay.
+
+References: [Supabase Postgres roles](https://supabase.com/docs/guides/database/postgres/roles),
+[custom JWTs and `accessToken`](https://supabase.com/docs/guides/auth/jwts),
+[custom role membership](https://supabase.com/docs/guides/storage/schema/custom-roles),
+[API keys](https://supabase.com/docs/guides/getting-started/api-keys).

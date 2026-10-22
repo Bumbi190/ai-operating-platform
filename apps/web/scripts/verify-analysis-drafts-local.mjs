@@ -298,6 +298,7 @@ try {
         binding: '20000000-0000-4000-8000-000000000018',
         asset: '20000000-0000-4000-8000-000000000019',
         contentDecision: '20000000-0000-4000-8000-000000000020',
+        unreferencedProject: '20000000-0000-4000-8000-000000000021',
       }
       const roleSql = `
         BEGIN;
@@ -368,6 +369,16 @@ try {
             RAISE EXCEPTION 'WORKER_PROJECT_NAME_GRANT_TOO_BROAD';
           END IF;
         END $worker_grants$;
+        INSERT INTO public.projects(id,owner_id,name,slug)
+          VALUES (${quote(id.unreferencedProject)},${quote(actor)},'Unreferenced key probe','calendar-key-probe-only');
+        SET LOCAL ROLE social_schedule_full_publisher_fixture;
+        DO $project_key_guard$ BEGIN
+          UPDATE public.projects SET id=gen_random_uuid() WHERE id=${quote(id.unreferencedProject)}::uuid;
+          RAISE EXCEPTION 'WORKER_PROJECT_KEY_WRITE_ACCEPTED';
+        EXCEPTION WHEN insufficient_privilege THEN
+          IF SQLERRM IS DISTINCT FROM 'SOCIAL_SCHEDULE_PROJECT_KEY_WRITE_DENIED' THEN RAISE; END IF;
+        END $project_key_guard$;
+        RESET ROLE;
         GRANT EXECUTE ON FUNCTION public.calendar_source_gate_begin_probe(uuid)
           TO social_schedule_full_publisher_fixture;
         SAVEPOINT synthetic_claim_probe;

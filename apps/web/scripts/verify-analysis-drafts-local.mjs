@@ -815,6 +815,56 @@ try {
         ],'unexpected callable SECURITY INVOKER function under schedule role')
         assert.equal(callableSurface.triggerFunctions,32,'trigger-function surface changed; inspect the callable inventory')
         console.log('CROSS-TREE RPC ROLE CALLABLE SURFACE '+JSON.stringify(callableSurface)+' (catalog diagnostic; does not review function bodies)')
+        const triggerSurface=JSON.parse(sql(`SELECT coalesce(jsonb_agg(jsonb_build_object(
+          'table',c.relname,'trigger',t.tgname,'enabled',t.tgenabled,'eventBits',t.tgtype,
+          'function',p.oid::regprocedure::text,'definer',p.prosecdef,
+          'owner',pg_get_userbyid(p.proowner),'searchPath',coalesce(to_jsonb(p.proconfig),'[]'::jsonb))
+          ORDER BY c.relname,t.tgname),'[]'::jsonb)
+          FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid
+            JOIN pg_namespace n ON n.oid=c.relnamespace
+            JOIN pg_proc p ON p.oid=t.tgfoid
+          WHERE n.nspname='public' AND NOT t.tgisinternal
+            AND c.relname=ANY(ARRAY[
+              'projects','social_schedule_jobs','social_publications',
+              'social_schedule_events','social_publication_events',
+              'social_publication_reconciliation_proofs','calendar_source_revision_probe'
+            ]);`))
+        console.log('CROSS-TREE RPC TRIGGER SURFACE '+JSON.stringify(triggerSurface)+' (diagnostic; code not yet reviewed)')
+        // Snapshot the actual trigger graph at the privileged worker's write tables.
+        // New/retargeted triggers must be reviewed before any role or credential cutover.
+        assert.deepEqual(triggerSurface.map(({table,trigger,function:fn,definer})=>[table,trigger,fn,definer]),[
+          ['projects','project_lifecycle_resume_guard','project_lifecycle_resume_guard()',true],
+          ['projects','stop_guard_projects','stop_guard_projects()',false],
+          ['projects','survival_input_epoch_bump','survival_input_epoch_bump()',true],
+          ['projects','survival_input_epoch_bump_population','survival_input_epoch_bump()',true],
+          ['projects','survival_input_truncate_refused','survival_input_truncate_refused()',true],
+          ['social_publication_events','social_publication_events_immutable','social_launch_immutable()',false],
+          ['social_publication_events','social_publication_events_no_truncate','social_launch_immutable()',false],
+          ['social_publications','calendar_gate_publications_after_probe','calendar_source_gate_bump_probe()',true],
+          ['social_publications','calendar_gate_publications_before_probe','calendar_source_gate_assert_probe()',true],
+          ['social_schedule_events','social_schedule_events_immutable','social_launch_immutable()',false],
+          ['social_schedule_events','social_schedule_events_no_truncate','social_launch_immutable()',false],
+          ['social_schedule_jobs','calendar_gate_jobs_after_probe','calendar_source_gate_bump_probe()',true],
+          ['social_schedule_jobs','calendar_gate_jobs_before_probe','calendar_source_gate_assert_probe()',true],
+        ],'scheduled RPC trigger map changed: review all trigger events and bodies before cutover')
+        assert.ok(triggerSurface.every(t=>t.enabled==='O' &&
+          t.owner==='supabase_admin' && t.searchPath.length===1 &&
+          t.searchPath[0]==='search_path=""'),
+          'scheduled RPC trigger execution mode, owner or search_path changed')
+        // pg_trigger bitmask: ROW=1, BEFORE=2, INSERT=4, DELETE=8,
+        // UPDATE=16, TRUNCATE=32. Verify that protected writes still fire
+        // the signed gate and that append-only events cannot be rewritten.
+        assert.deepEqual(triggerSurface.filter(t=>t.table!=='projects')
+          .map(t=>[t.table,t.trigger,t.eventBits]),[
+          ['social_publication_events','social_publication_events_immutable',27],
+          ['social_publication_events','social_publication_events_no_truncate',34],
+          ['social_publications','calendar_gate_publications_after_probe',29],
+          ['social_publications','calendar_gate_publications_before_probe',31],
+          ['social_schedule_events','social_schedule_events_immutable',27],
+          ['social_schedule_events','social_schedule_events_no_truncate',34],
+          ['social_schedule_jobs','calendar_gate_jobs_after_probe',29],
+          ['social_schedule_jobs','calendar_gate_jobs_before_probe',31],
+        ],'scheduled RPC trigger events/timing changed')
         const startedRest=docker(['run','--pull=never','--detach','--name',restName,'--network',httpNetwork,'--network-alias','rest',
           '--env','PGRST_DB_URI=postgres://authenticator:'+password+'@db:5432/postgres',
           '--env','PGRST_DB_SCHEMAS=public','--env','PGRST_DB_ANON_ROLE=anon',

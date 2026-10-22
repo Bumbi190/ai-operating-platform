@@ -373,6 +373,53 @@ authorized server boundary before revoking `service_role` schedule writes.
 No JWT signing key, Supabase secret, role membership or production switch is
 created by this replay.
 
+## RPC trigger surface and transitive review — 22 October (test-only)
+
+The isolated cross-tree fixture now reads `pg_trigger` and `pg_proc` for
+`projects`, `social_schedule_jobs`, `social_publications`, both
+publication/schedule event tables, the reconciliation-proof table, and the
+fixture source-revision table. The observed user-defined trigger map has **13
+entries**: five on `projects`, four signed source-gate BEFORE/AFTER triggers
+on jobs/publications, and four append-only event guards. There were no
+user-defined triggers on the reconciliation-proof or source-revision probe
+tables at this point of the RPC-only fixture. A project `SELECT ... FOR
+UPDATE` lock is not a project-row `UPDATE` and does not fire its triggers.
+
+The HTTP replay's catalog guard now requires those exact table/trigger/function
+bindings, each trigger function's `SECURITY DEFINER` mode, enabled state,
+the fixture owner and empty function `search_path`. It also pins the
+`pg_trigger.tgtype` event/timing bits for all eight jobs/publications/events
+triggers, so changing a signed BEFORE guard to an AFTER guard or weakening an
+event immutability guard fails this diagnostic. The fixture owner check is
+local to the pinned PostgreSQL image; it is not a production owner claim.
+The existing separate callable-role guard still sees 40 public EXECUTE
+privileges: six definer worker wrappers, two rank helpers, and 32 functions
+returning `trigger`. Trigger functions are not ordinary callable RPCs.
+
+The immediate **reviewed source path** is project/subject-scoped wrapper
+to the renamed worker body. `claim` can call
+`calendar_source_gate_try_begin_probe`, `social_schedule_authority`,
+and `social_schedule_snapshot`; `step`, authorization and checkpoint
+recovery use a locked-claim helper and source gate; `receipt` and `peek`
+read scoped job state. `social_schedule_authority` reaches
+`social_schedule_item_guard`, `social_content_active`, requirements,
+approved content, and image **metadata** from `assets`. Changed job and
+publication rows invoke the signed gate BEFORE/AFTER triggers, and
+event-row INSERTs target append-only tables. Those nested calls execute
+with the wrapper's elevated authority in this fixture, not the caller's
+direct grants.
+
+**Boundary:** This is a catalog drift guard and partial source trace, not a
+complete transitive `SECURITY DEFINER` review. It does not prove that every
+helper's body, trigger side-effect, dynamic SQL reference, default grant or
+historical production row is safe. It neither authenticates a real Meta
+receipt nor isolates real media/token access. The synthetic JWT issuer and
+project mapping exist only inside the rolled-back fixture. Production still
+uses `service_role`; the missing May migration baseline, 28 unselected root
+migrations, real server credential split, and coordinated cutover remain
+blockers. No deployment, migration, production role, real queue or Meta call
+is performed by this step.
+
 References: [Supabase Postgres roles](https://supabase.com/docs/guides/database/postgres/roles),
 [custom JWTs and `accessToken`](https://supabase.com/docs/guides/auth/jwts),
 [custom role membership](https://supabase.com/docs/guides/storage/schema/custom-roles),

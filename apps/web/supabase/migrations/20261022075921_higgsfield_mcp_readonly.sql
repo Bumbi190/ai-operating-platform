@@ -45,6 +45,14 @@ begin
  values(p_state,p_project,p_actor,p_version,p_payload);
  return true;
 end $$;
+create function public.higgsfield_oauth_peek(p_state text,p_actor uuid) returns jsonb
+language sql security invoker set search_path='' as $$
+ select jsonb_build_object('project_id',s.project_id) from public.media_provider_oauth_states s
+ join public.media_provider_connections c on c.project_id=s.project_id and c.connection_version=s.connection_version
+ where s.state_hash=p_state and s.actor_id=p_actor and s.consumed_at is null and s.expires_at>clock_timestamp()
+$$;
+revoke all on function public.higgsfield_oauth_peek(text,uuid) from public,anon,authenticated;
+grant execute on function public.higgsfield_oauth_peek(text,uuid) to service_role;
 create function public.higgsfield_oauth_consume(p_state text,p_actor uuid) returns jsonb
 language plpgsql security invoker set search_path='' as $$
 declare s public.media_provider_oauth_states; c public.media_provider_connections;

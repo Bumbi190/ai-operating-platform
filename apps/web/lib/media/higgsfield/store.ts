@@ -12,8 +12,11 @@ export interface OAuthAttempt {
 function project(value:string) {if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value))throw new HiggsfieldError('access_denied')}
 function record(value:unknown):value is Record<string,unknown> {return !!value && typeof value==='object' && !Array.isArray(value)}
 export function createHiggsfieldStore(db:Db=createAdminClient()) {
- async function rpc(name:string,args:Record<string,unknown>) {
-  try {const {data,error}=await db.rpc(name,args);if(error)throw Error();return data as unknown}
+ type RpcName='higgsfield_connection_read'|'higgsfield_oauth_create'|'higgsfield_oauth_peek'|'higgsfield_oauth_consume'|'higgsfield_connection_save'|'higgsfield_refresh_acquire'|'higgsfield_refresh_release'|'higgsfield_reconnect_required'|'higgsfield_connection_disconnect'
+ // The pending migration is not in the generated schema yet; keep this port narrow.
+ const callRpc=db.rpc.bind(db) as unknown as (name:RpcName,args:Record<string,unknown>)=>PromiseLike<{data:unknown;error:unknown}>
+ async function rpc(name:RpcName,args:Record<string,unknown>) {
+  try {const {data,error}=await callRpc(name,args);if(error)throw Error();return data as unknown}
   catch {throw new HiggsfieldError('storage_unavailable')}
  }
  return {
@@ -27,6 +30,11 @@ export function createHiggsfieldStore(db:Db=createAdminClient()) {
    project(input.project_id)
    const ok=await rpc('higgsfield_oauth_create',{p_project:input.project_id,p_actor:input.actor_id,p_state:input.state_hash,p_version:input.connection_version,p_payload:input.encrypted_payload})
    if(ok!==true)throw new HiggsfieldError('connection_changed')
+  },
+  async peekOAuthAttempt(stateHash:string,actorId:string):Promise<{project_id:string}|null> {
+   if(!/^[a-f0-9]{64}$/.test(stateHash))throw new HiggsfieldError('state_invalid')
+   const value=await rpc('higgsfield_oauth_peek',{p_state:stateHash,p_actor:actorId})
+   return record(value)&&typeof value.project_id==='string'?{project_id:value.project_id}:null
   },
   async consumeOAuthAttempt(stateHash:string,actorId:string):Promise<OAuthAttempt> {
    if(!/^[a-f0-9]{64}$/.test(stateHash))throw new HiggsfieldError('state_invalid')

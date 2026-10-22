@@ -17,6 +17,10 @@ describe('provider store refusal semantics',()=>{
   await expect(store.consumeOAuthAttempt('a'.repeat(64),'operator')).rejects.toThrow('state_invalid')
   expect(calls).toBe(1)
  })
+ it('does not expose pending state when actor does not match',async()=>{
+  const store=createHiggsfieldStore({rpc:async()=>({data:null,error:null})} as never)
+  expect(await store.peekOAuthAttempt('a'.repeat(64),'operator')).toBe(null)
+ })
  it('validates project identities before touching privileged persistence',async()=>{
   const rpc=vi.fn()
   const store=createHiggsfieldStore({rpc} as never)

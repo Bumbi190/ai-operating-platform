@@ -53,6 +53,13 @@ begin
  update public.media_provider_oauth_states set expires_at=clock_timestamp()-interval '1 second' where state_hash=repeat('c',64);
  set local role service_role;
  if public.higgsfield_oauth_consume(repeat('c',64),a) is not null then raise exception 'Expired state consumed'; end if;
+ if public.higgsfield_connection_save(p,v,payload,'subject',true,null) is not true then raise exception 'Reconnect preparation'; end if;
+ v:=v+1;
+ lease:=public.higgsfield_refresh_acquire(p,v);
+ reset role;
+ update public.media_provider_connections set refresh_lease_until=clock_timestamp()-interval '1 second' where project_id=p;
+ set local role service_role;
+ if public.higgsfield_connection_save(p,v,payload,'subject',true,null) is not true then raise exception 'Expired lease prevented reconnect'; end if;
  reset role;
 end $test$;
 rollback;

@@ -75,7 +75,7 @@ begin
  encrypted_payload=p_payload,subject=p_subject,identity_verified=p_verified,status='connected',
  connection_version=connection_version+1,refresh_lease=null,refresh_lease_until=null,updated_at=clock_timestamp()
  where project_id=p_project and connection_version=p_version
- and ((p_lease is null and refresh_lease is null) or
+ and ((p_lease is null and (refresh_lease is null or refresh_lease_until<=clock_timestamp())) or
       (p_lease is not null and refresh_lease=p_lease and refresh_lease_until>clock_timestamp()));
  return found;
 end $$;

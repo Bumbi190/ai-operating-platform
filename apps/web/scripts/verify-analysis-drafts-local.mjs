@@ -783,7 +783,7 @@ try {
           GRANT social_schedule_rpc_only_fixture TO authenticator;
           COMMIT;`)
         const callableSurface=JSON.parse(sql(`WITH executable AS (
-          SELECT p.oid,p.prosecdef
+          SELECT p.oid,p.prosecdef,pg_get_function_result(p.oid) AS result_type
           FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
           WHERE n.nspname='public'
             AND has_schema_privilege('social_schedule_rpc_only_fixture',n.oid,'USAGE')
@@ -791,10 +791,18 @@ try {
         ) SELECT jsonb_build_object(
           'publicFunctions',(SELECT count(*) FROM executable),
           'securityDefiners',(SELECT count(*) FROM executable WHERE prosecdef),
+          'rpcDefiners',(SELECT coalesce(jsonb_agg(signature ORDER BY signature),'[]'::jsonb) FROM (
+            SELECT oid::regprocedure::text AS signature FROM executable
+              WHERE prosecdef AND result_type<>'trigger') callable),
           'definerSample',(SELECT coalesce(jsonb_agg(signature),'[]'::jsonb) FROM (
             SELECT oid::regprocedure::text AS signature FROM executable WHERE prosecdef
               ORDER BY oid::regprocedure::text LIMIT 25) sample)
         );`))
+        assert.deepEqual(callableSurface.rpcDefiners,[
+          'social_schedule_authorize_write(jsonb,jsonb)','social_schedule_claim(jsonb)',
+          'social_schedule_peek(jsonb)','social_schedule_receipt(jsonb)',
+          'social_schedule_recover_checkpoint(jsonb)','social_schedule_step(jsonb,jsonb)',
+        ],'unexpected callable SECURITY DEFINER function under schedule role')
         console.log('CROSS-TREE RPC ROLE CALLABLE SURFACE '+JSON.stringify(callableSurface)+' (catalog diagnostic; does not review function bodies)')
         const startedRest=docker(['run','--pull=never','--detach','--name',restName,'--network',httpNetwork,'--network-alias','rest',
           '--env','PGRST_DB_URI=postgres://authenticator:'+password+'@db:5432/postgres',

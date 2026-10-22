@@ -2,7 +2,7 @@ param([string]$Suite='Codec')
 $ErrorActionPreference='Stop'
 $PSModuleAutoLoadingPreference='None'
 Microsoft.PowerShell.Core\Import-Module 'C:\Windows\System32\WindowsPowerShell\v1.0\Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1'
-if($Suite -cne 'Codec'){throw 'unsupported suite'}
+if($Suite -cne 'Codec' -and $Suite -cne 'Files' -and $Suite -cne 'All'){throw 'unsupported suite'}
 $build=& ([IO.Path]::Combine($PSScriptRoot,'..\build.ps1'))
 $info=$build | Microsoft.PowerShell.Utility\ConvertFrom-Json
 [Console]::WriteLine($build)

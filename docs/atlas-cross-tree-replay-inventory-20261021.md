@@ -15,6 +15,14 @@ had no network, no published ports, and cron job launching disabled. Its owned
 container was removed after the run. This establishes local SQL execution on
 an empty synthetic database, not production data migration or role parity.
 
+**22 October rerun:** After Docker Desktop recovered, the same isolated mode
+with `--with-schedule-worker-replay` passed on PR #504's current commit. The
+runner reported `CROSS-TREE APPLICATION WORKER PASS` and `CROSS-TREE REPLAY
+PASS`. A separate Docker inspection confirmed that its named container no
+longer exists. The worker used fake image bytes, a synthetic credential and
+a fake Meta response; the fixture still does not prove a deployable role or
+contact a real provider.
+
 ## Calendar ACL baseline — read-only comparison
 
 On 21 October, the isolated cross-tree replay queried PostgreSQL's

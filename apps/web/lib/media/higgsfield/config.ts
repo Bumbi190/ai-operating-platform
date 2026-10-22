@@ -40,7 +40,7 @@ export function assertHiggsfieldUrl(value:string|URL, purpose:'resource'|'issuer
 }
 
 /** Pin all SDK traffic, prevent authenticated discovery, bound bodies and time. */
-export function createHiggsfieldFetch(delegate:typeof fetch=fetch,budgetMs=25000):typeof fetch {
+export function createHiggsfieldFetch(delegate:typeof fetch=fetch,budgetMs=25000,credentialFlow:'default'|'refresh'='default'):typeof fetch {
   const deadline=Date.now()+budgetMs
   return async (input,init) => {
     const original=new Request(input,init)
@@ -55,14 +55,14 @@ export function createHiggsfieldFetch(delegate:typeof fetch=fetch,budgetMs=25000
     try {
       const response=await delegate(request)
       if(response.status>=300 && response.status<400) throw new HiggsfieldError('invalid_endpoint')
-      // SDK auth recovery logs raw OAuth error descriptions and may replay a code.
-      // Stop rejected credential exchanges before the SDK parses their body.
-      if(purpose==='issuer' && ['/oauth/token','/oauth/register'].includes(url.pathname) && !response.ok) {
-        await response.body?.cancel().catch(()=>{})
-        throw new HiggsfieldError('provider_unavailable')
-      }
+      // Rejected credential responses must never reach the SDK: the SDK may log
+      // their raw error_description or replay a rejected authorization code.
+      const rejectedCredentials=purpose==='issuer' && ['/oauth/token','/oauth/register'].includes(url.pathname) && !response.ok
       if(Number(response.headers.get('content-length')??0)>MAX_PROVIDER_BYTES) throw new HiggsfieldError('invalid_response')
-      if(!response.body) return response
+      if(!response.body) {
+        if(rejectedCredentials)throw new HiggsfieldError('provider_unavailable')
+        return response
+      }
       const reader=response.body.getReader()
       let size=0
       const capped=new ReadableStream<Uint8Array>({
@@ -79,8 +79,22 @@ export function createHiggsfieldFetch(delegate:typeof fetch=fetch,budgetMs=25000
       })
       const result=new Response(capped,{status:response.status,statusText:response.statusText,headers:response.headers})
       // MCP SSE remains streaming; JSON is bounded before callers see it.
-      if(response.headers.get('content-type')?.includes('text/event-stream')) return result
+      if(!rejectedCredentials&&response.headers.get('content-type')?.includes('text/event-stream')) return result
       const bytes=await result.arrayBuffer()
+      if(rejectedCredentials){
+        // Only the refresh path may classify known terminal OAuth errors.
+        // Parse the already size-bounded body locally, but never pass its raw
+        // error/description to the SDK, response, or logs.
+        if(credentialFlow==='refresh'&&url.pathname==='/oauth/token'&&(response.status===400||response.status===401)){
+          let oauthError:unknown=null
+          try {
+            const parsed:unknown=JSON.parse(new TextDecoder().decode(bytes))
+            if(parsed&&typeof parsed==='object'&&!Array.isArray(parsed)&&'error' in parsed)oauthError=parsed.error
+          }catch{ /* malformed error payload remains transient/unknown */ }
+          if(oauthError==='invalid_grant'||oauthError==='invalid_client')throw new HiggsfieldError('reconnect_required')
+        }
+        throw new HiggsfieldError('provider_unavailable')
+      }
       return new Response(bytes,{status:response.status,statusText:response.statusText,headers:response.headers})
     } catch(error) {
       if(error instanceof HiggsfieldError) throw error

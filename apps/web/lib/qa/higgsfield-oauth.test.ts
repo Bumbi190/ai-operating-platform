@@ -1,7 +1,8 @@
 import {describe,it,expect,vi,beforeEach} from 'vitest'
 vi.mock('../supabase/admin',()=>({createAdminClient:()=>{throw Error('not injected')}}))
 import {createHiggsfieldOAuthDriver,createHiggsfieldOAuthService} from '../media/higgsfield/oauth'
-import {openProviderPayload} from '../media/higgsfield/crypto'
+import {openProviderPayload,sealProviderPayload} from '../media/higgsfield/crypto'
+import {createHiggsfieldReadiness} from '../media/higgsfield/readiness'
 const projectId='a8a1b1f6-c222-4893-9399-b1fb3bc2fa52',actorId='10000000-0000-4000-8000-000000000001'
 const metadata={issuer:'https://clerk.higgsfield.ai',authorization_endpoint:'https://clerk.higgsfield.ai/oauth/authorize',token_endpoint:'https://clerk.higgsfield.ai/oauth/token',registration_endpoint:'https://clerk.higgsfield.ai/oauth/register',response_types_supported:['code'],grant_types_supported:['authorization_code','refresh_token'],token_endpoint_auth_methods_supported:['none'],code_challenge_methods_supported:['S256'],authorization_response_iss_parameter_supported:true}
 function providerFetch(calls:Request[]) {
@@ -58,6 +59,46 @@ describe('Higgsfield SDK OAuth',()=>{
    expect(warn).not.toHaveBeenCalled()
    expect(exchanges).toBe(1)
   } finally {warn.mockRestore()}
+ })
+ it.each([
+  {name:'revoked OAuth grant',status:400,error:'invalid_grant',expected:'reconnect_required',shouldReconnect:true},
+  {name:'invalid dynamic OAuth client',status:401,error:'invalid_client',expected:'reconnect_required',shouldReconnect:true},
+  {name:'temporary provider outage',status:503,error:'temporarily_unavailable',expected:'provider_unavailable',shouldReconnect:false},
+  {name:'unclassified OAuth client error',status:400,error:'invalid_request',expected:'provider_unavailable',shouldReconnect:false},
+ ])('handles $name through the real refresh client without leaking provider text',async({status,error,expected,shouldReconnect})=>{
+  const calls:Request[]=[];const normal=providerFetch(calls)
+  let refreshRequests=0
+  const driver=createHiggsfieldOAuthDriver(async(input,init)=>{
+   const req=new Request(input,init)
+   if(new URL(req.url).pathname==='/oauth/token' && req.method==='POST'){
+    const grantType=new URLSearchParams(await req.clone().text()).get('grant_type')
+    if(grantType==='refresh_token'){
+     refreshRequests++
+     return new Response(JSON.stringify({error,error_description:'SYNTHETIC_PROVIDER_SECRET'}),{status,headers:{'content-type':'application/json'}})
+    }
+   }
+   return normal(req)
+  })
+  const redirect='https://omnira.example/api/media/higgsfield/oauth/callback'
+  const begun=await driver.begin('synthetic-state',redirect)
+  const connected=await driver.finish(begun.payload,'synthetic-code',redirect,metadata.issuer)
+  const expires={...connected.payload,expiresAt:0}
+  const row={project_id:projectId,connection_version:1,status:'connected',identity_verified:true,subject:connected.subject,
+   encrypted_payload:sealProviderPayload({projectId,recordKind:'connection',recordId:'1'},expires)}
+  const store={readConnection:vi.fn(async()=>structuredClone(row)),acquireRefreshLease:vi.fn(async()=> 'lease'),
+   releaseRefreshLease:vi.fn(async()=>{}),markReconnect:vi.fn(async()=>{}),saveConnectionCAS:vi.fn(async()=>{})}
+  const open=vi.fn()
+  const warn=vi.spyOn(console,'warn').mockImplementation(()=>{})
+  try{
+   const svc=createHiggsfieldReadiness(store as never,driver as never,open)
+   await expect(svc.inspect(projectId)).rejects.toThrow(expected)
+   expect(refreshRequests).toBe(1)
+   expect(open).not.toHaveBeenCalled()
+   expect(store.markReconnect).toHaveBeenCalledTimes(shouldReconnect?1:0)
+   if(shouldReconnect)expect(store.markReconnect).toHaveBeenCalledWith(projectId,1)
+   expect(store.releaseRefreshLease).toHaveBeenCalledWith(projectId,'lease')
+   expect(warn).not.toHaveBeenCalled()
+  }finally{warn.mockRestore()}
  })
  it('rejects issuer mixup before sending the authorization code',async()=>{
   const calls:Request[]=[];const driver=createHiggsfieldOAuthDriver(providerFetch(calls))

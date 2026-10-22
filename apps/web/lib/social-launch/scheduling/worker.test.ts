@@ -200,6 +200,20 @@ it('one_post_for_two_workers',async()=>{
  expect(d.calls.filter(c=>c.init.method==='POST')).toHaveLength(1)
  expect(results.some(r=>r.result==='published')).toBe(true)
 },20000)
+it('keeps scheduling RPCs on the scheduler client and verifies image through the media client',async()=>{
+ const f=await approved(),d=dependencies(f)
+ const mediaDb={rpc:()=>{throw Error('scheduler RPC used media client')}} as any
+ let imageReads=0
+ const separated={...d.deps,verifyImage:async(imageDb:any)=>{
+  expect(imageDb).toBe(mediaDb)
+  imageReads++
+  return {bytes:new Uint8Array(),width:320,height:400}
+ }}
+ const result=await runScheduleTick(db,{workerId:'separate_media_client',now:f.dueAt,dryRun:false},separated,mediaDb)
+ expect(result.result).toBe('published')
+ expect(imageReads).toBe(1)
+ expect(d.calls.filter(c=>c.init.method==='POST')).toHaveLength(1)
+},20000)
 it('rejects a credential resolved for a different project before any provider write',async()=>{
  const f=await approved(),d=dependencies(f)
  const otherProjectId=crypto.randomUUID()

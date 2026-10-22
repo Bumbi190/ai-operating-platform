@@ -48,11 +48,15 @@ it.skipIf(!enabled)('runs the real scheduled worker with the restricted SQL role
   posts++
   return Response.json({post_id:'12345_99999'})
  })
+ const mediaDb={} as any
  const result=await runScheduleTick(db,{workerId:'isolated_worker',now:new Date().toISOString(),dryRun:false},{
-  provider,now:()=>Date.now(),verifyImage:async()=>({bytes:new Uint8Array(),width:600,height:600}),
+  provider,now:()=>Date.now(),verifyImage:async(imageDb)=>{
+   expect(imageDb).toBe(mediaDb)
+   return {bytes:new Uint8Array(),width:600,height:600}
+  },
   resolveCredential:async()=>({projectId:projectId!,channel:'facebook',bindingId:'20000000-0000-4000-8000-000000000018',
    accountId:'12345',token:'synthetic-only',apiBase:'https://graph.facebook.com/v21.0'}),
- })
+ },mediaDb)
  expect(result).toMatchObject({mode:'execute',jobId,result:'published'})
  expect(posts).toBe(1)
  expect(calls.map(call=>call.name)).toEqual(expect.arrayContaining([

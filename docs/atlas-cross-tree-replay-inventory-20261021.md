@@ -239,11 +239,13 @@ Identity cutover needs a separate, reviewed Data API credential that maps to
 the scheduling role, plus `authenticator` role membership and an isolated
 PostgREST RPC proof. Supabase documents custom `role` JWTs and the client
 `accessToken` option; a secret API key alone still maps to `service_role`.
-The current worker also passes the same admin client into image verification,
-where it reads `assets` and creates a signed Storage URL, while the credential
-resolver reads platform tokens elsewhere. Those media and credential paths
-must be separated from the scheduler RPC client, with their own narrowly
-authorized server boundary, before revoking `service_role` schedule writes.
+The scheduled API now passes distinct client objects to the worker: the
+scheduler client handles claims, authorizations and steps; the media client
+handles image verification, including `assets` reads and signed Storage URLs.
+Both are still created with the same `service_role` key, so this is code
+plumbing rather than a security boundary. The credential resolver reads
+platform tokens elsewhere. Media and credential paths need their own narrowly
+authorized server boundary before revoking `service_role` schedule writes.
 No JWT signing key, Supabase secret, role membership or production switch is
 created by this replay.
 

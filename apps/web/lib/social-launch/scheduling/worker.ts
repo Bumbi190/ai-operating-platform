@@ -19,7 +19,7 @@ function refusal(error:unknown):'release_required'|'stopped'|'review_required'|'
  if(error instanceof PublicationBudgetError||error instanceof ManualProviderError||error instanceof ScheduleError&&error.code==='EXPIRED')return 'budget_exhausted'
  return 'review_required'
 }
-export async function runScheduledPublication(db:Db,claim:ScheduleClaim,deps:ScheduledPublicationDependencies=defaults(),signal:AbortSignal=AbortSignal.timeout(45000)):Promise<ScheduleStepResult>{
+export async function runScheduledPublication(db:Db,claim:ScheduleClaim,deps:ScheduledPublicationDependencies=defaults(),signal:AbortSignal=AbortSignal.timeout(45000),mediaDb:Db=db):Promise<ScheduleStepResult>{
  let current=claim,jobState='claimed'
  try{
   const snapshot=await checkScheduleWrite(db,current);current={...current,snapshot}
@@ -34,7 +34,7 @@ export async function runScheduledPublication(db:Db,claim:ScheduleClaim,deps:Sch
     return {changed:result.publication.version>record.version,record:result.publication}
    }
   }
-  await executeApprovedPublication({db,snapshot:{projectId:snapshot.projectId,postId:snapshot.item.postId,revision:snapshot.revision},record:snapshot.publication,credential,journal,authorizeWrite:async()=>{
+  await executeApprovedPublication({db:mediaDb,snapshot:{projectId:snapshot.projectId,postId:snapshot.item.postId,revision:snapshot.revision},record:snapshot.publication,credential,journal,authorizeWrite:async()=>{
    const fresh=await checkScheduleWrite(db,current)
    if(fresh.approvalId!==snapshot.approvalId||fresh.manifestSha256!==snapshot.manifestSha256)throw new ScheduleError('REVIEW_REQUIRED')
    await assertExecutionDispatchAllowed({context:'AUTONOMOUS',scope:projectScope({projectId:fresh.projectId})},{system:fresh.item.channel,operation:'publish'})
@@ -51,12 +51,12 @@ export async function runScheduledPublication(db:Db,claim:ScheduleClaim,deps:Sch
   catch{return recoverScheduleCheckpoint(db,saved.claim)}
  }
 }
-export async function runScheduleTick(db:Db,input:{workerId:string;now:string;dryRun:boolean},deps:ScheduledPublicationDependencies=defaults()){
+export async function runScheduleTick(db:Db,input:{workerId:string;now:string;dryRun:boolean},deps:ScheduledPublicationDependencies=defaults(),mediaDb:Db=db){
  const mode=input.dryRun?'dry_run' as const:'execute' as const,projects=enabledScheduleProjects()
  if(!projects.length)return {mode,jobId:null,result:'disabled'}
  if(input.dryRun){const peek=await peekScheduleJobs(db,projects);return {mode,...peek}}
  const signal=AbortSignal.timeout(45000),claim=await claimScheduleJob(db,input)
  if(!claim)return {mode,jobId:null,result:'no_jobs'}
- const result=await runScheduledPublication(db,claim,deps,signal)
+ const result=await runScheduledPublication(db,claim,deps,signal,mediaDb)
  return {mode,jobId:claim.jobId,result:result.jobState}
 }

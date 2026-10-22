@@ -631,3 +631,82 @@ and full definer/trigger audit remain blockers. No role, grant, route,
 migration, runtime credential or dispatch flag changed.
 
 Full local TypeScript `tsc --noEmit` remains blocked by the same three unrelated Remotion `lambda-render.ts` errors in the borrowed dependency tree; no errors were reported in the changed calendar files.
+
+## Privileged Facebook publication broker contract — 22 October (test-only)
+
+The follow-up introduces `apps/web/lib/social-launch/scheduling/privileged-publication-broker-fixture.ts`
+and a separate fixture test. This is an **in-process test-only HTTP Request
+handler**, not an independently deployed broker. It rejects construction
+unless `NODE_ENV=test`, binds an ephemeral broker authorization secret
+to the synthetic `https://broker-fixture.invalid/v1/facebook-photo`
+endpoint, and exposes **only** `handle(Request)`. A local test also
+sends actual HTTP requests over `127.0.0.1` to exercise a transport
+adapter. No external network endpoint is called.
+
+The browser/cron-facing payload is deliberately limited to the job
+`claim` (`jobId`, `claimId`, `version`), `publicationId`, caption
+and existing media-capability URL. It **never accepts caller-supplied
+project IDs, account IDs, credential values, Storage paths or media
+bytes** as authority. The broker uses an injected trusted
+`authorizeClaim` callback backed by the real
+`social_schedule_authorize_write` RPC and the job's receipt, checks
+that the authoritative publication is in `publishing` state, belongs
+to the current claim and approved binding, matches the caption and
+media-capability URL, and that the lease is still live. It uses the
+previously tested project/asset-bound media scope **inside the private
+handler**. After image and credential resolution it repeats the SQL
+authorization, checking job, source manifest, approval, image, account
+and binding again before the synthetic provider call. All refused
+responses use generic error codes and expose no token.
+
+The isolated actual TypeScript worker replay is wired through this
+fixture: the worker's `ManualCredential.token` is a **non-Meta opaque
+test reference**, while the private mock provider sees the synthetic
+account token only inside the broker handler. The worker-side provider
+is a facade that forwards a narrowly shaped request to the broker
+handler. A matching synthetic Facebook post ID is returned in the
+existing provider response format, keeping the canonical worker,
+executor, DB migrations and production route unchanged. This tests
+the intended boundary, but does **not** make the existing production
+worker token-free: its real `resolvePublicationCredential` still
+returns a raw Meta token and both production DB clients still use
+`service_role`.
+
+One attempted publish per `jobId|claimId` is permitted per handler
+instance: both an `inFlight` guard and a consumed-attempt set prevent
+parallel and repeated sends. An unknown provider outcome does not
+release the attempt; a restart would, so this is **not durable
+idempotency**. Before a provider call, any revoked source, changed
+approval/account/media, lost claim version or expired lease fails
+closed. The broker's response is a provider-shaped fake receipt, **not
+authenticated Meta evidence**. Production needs a separate process
+or service identity, server-side credential storage, a durable unique
+dispatch-intent ledger, legitimate provider receipt provenance,
+and proper ambiguous-outcome reconciliation. Instagram's
+container-create/status/publish lifecycle is **not included** in this
+Facebook-only candidate.
+
+**Verified:** The 9 broker tests passed, including auth failures,
+wrong account/publication/claim, malformed SQL authority, revoked
+approval between reads and dispatch, concurrency, unknown provider
+outcome, expired lease, no token exposure, and a local loopback HTTP
+request. Combined with the prior 6 media-scope tests, 5 scoped client
+tests and 2 API tests: **22/22**. The isolated real TypeScript
+`runScheduleTick` with RS256/PostgREST role, synthetic approved job,
+private broker provider and fake Facebook response passed
+`CROSS-TREE POSTGREST APPLICATION WORKER PASS` and
+`CROSS-TREE REPLAY PASS`; exactly one fake provider call occurred,
+with no extra backend read on disallowed reuse. The existing
+cross-tree ACL/trigger role checks also passed. All owned Docker
+resources were removed by the runner. The unrelated Remotion
+`lambda-render.ts` dependency/type errors still prevent a green
+repository-wide `tsc --noEmit`; the new calendar files caused no
+TypeScript errors in that run.
+
+This probe adds **no production endpoint, environment secret,
+database role, credential, migration, grant, Meta call, scheduled
+queue execution or deployment**. Keep PR #504 as a draft. The
+historical May migration baseline, broad definer/trigger graph,
+provider-authenticated receipt boundary, Storage signing authority,
+private service isolation and durable dispatch idempotency are
+unresolved cutover blockers.

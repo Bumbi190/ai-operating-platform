@@ -1,4 +1,6 @@
 import {spawnSync} from 'node:child_process'
+import {randomBytes} from 'node:crypto'
+import {createPrivilegedPublicationBrokerFixture} from './privileged-publication-broker-fixture'
 import {createScopedScheduleFixtureClient} from './scoped-client-fixture'
 import {createApprovedScheduleMediaScopeFixture} from './approved-media-scope-fixture'
 import type {ApprovedScheduleSnapshot,ScheduleClaim} from './types'
@@ -35,6 +37,11 @@ it.skipIf(!enabled)('runs the real scheduled worker with the restricted SQL role
  let authorizedMedia:ReturnType<typeof createApprovedScheduleMediaScopeFixture>|null=null
  let claimedFromSql:ScheduleClaim|null=null
  let tokenReads=0,imageReads=0
+ let providerCalls=0
+ let activeClaim:Pick<ScheduleClaim,'jobId'|'claimId'|'version'>|null=null
+ let publicationId:string|null=null
+ let broker:ReturnType<typeof createPrivilegedPublicationBrokerFixture>|null=null
+ const brokerKey=randomBytes(36).toString('base64url')
  const literal=(value:unknown)=>"'"+JSON.stringify(value).replaceAll("'","''")+"'::jsonb"
  const httpDb=httpGateway?createScopedScheduleFixtureClient({
   url:'https://schedule-fixture.invalid',
@@ -70,8 +77,15 @@ it.skipIf(!enabled)('runs the real scheduled worker with the restricted SQL role
    }
    outcome={data:JSON.parse(result.stdout.trim()||'null'),error:null}
   }
-  if(!outcome.error&&name==='social_schedule_claim'&&outcome.data)
+  if(!outcome.error&&name==='social_schedule_claim'&&outcome.data){
    claimedFromSql=outcome.data as ScheduleClaim
+   activeClaim={jobId:claimedFromSql.jobId,claimId:claimedFromSql.claimId,version:claimedFromSql.version}
+  }
+  if(!outcome.error&&name==='social_schedule_step'&&outcome.data?.claim){
+   const claim=outcome.data.claim as ScheduleClaim
+   activeClaim={jobId:claim.jobId,claimId:claim.claimId,version:claim.version}
+   if(outcome.data.publication?.id)publicationId=outcome.data.publication.id
+  }
   // Grant only after the actual SQL authorize_write RPC, never from
   // caller-selected project, asset or account fields.
   if(!outcome.error&&name==='social_schedule_authorize_write'&&outcome.data&&!authorizedMedia){
@@ -96,12 +110,48 @@ it.skipIf(!enabled)('runs the real scheduled worker with the restricted SQL role
  }} as any
  vi.stubEnv('SOCIAL_SCHEDULE_DISPATCH_ENABLED','true')
  vi.stubEnv('SOCIAL_SCHEDULE_PROJECT_IDS',projectId!)
- let posts=0
+ // This privileged fixture object owns the real synthetic Meta credential.
+ // The actual TypeScript worker receives only a non-Meta opaque reference.
+ const privateProvider=new MetaManualProvider(async(url,init)=>{
+  expect(url).toBe('https://graph.facebook.com/v21.0/12345/photos')
+  expect(new Headers(init.headers).get('authorization')).toBe('Bearer synthetic-only')
+  providerCalls++
+  return Response.json({post_id:'12345_99999'})
+ })
+ broker=createPrivilegedPublicationBrokerFixture({
+  brokerKey,expectedProjectId:projectId!,mediaDb,provider:privateProvider,
+  now:()=>Date.now(),
+  resolveCredential:async(project,channel)=>{
+   if(!authorizedMedia)throw Error('Privileged token requested before SQL authorization')
+   return authorizedMedia.resolveCredential(project,channel)
+  },
+  verifyImage:async(imageDb,project,asset)=>{
+   if(!authorizedMedia)throw Error('Privileged image requested before SQL authorization')
+   return authorizedMedia.verifyImage(imageDb,project,asset)
+  },
+  authorizeClaim:async(claim)=>{
+   const auth=await db.rpc('social_schedule_authorize_write',{
+    p_claim:claim,p_project_ids:[projectId!]})
+   const receipt=await db.rpc('social_schedule_receipt',{p_input:{jobId:claim.jobId}})
+   if(auth.error||receipt.error||!auth.data||!receipt.data?.claim||
+     receipt.data.claim.claimId!==claim.claimId||
+     receipt.data.claim.version!==claim.version)throw Error('BROKER_SQL_AUTHORITY_DENIED')
+   return {snapshot:auth.data as ApprovedScheduleSnapshot,
+    leaseExpiresAt:receipt.data.claim.leaseExpiresAt as string,claim}
+  },
+ })
  const provider=new MetaManualProvider(async(url,init)=>{
   expect(url).toBe('https://graph.facebook.com/v21.0/12345/photos')
   expect(init.method).toBe('POST')
-  posts++
-  return Response.json({post_id:'12345_99999'})
+  expect(new Headers(init.headers).get('authorization'))
+   .toBe('Bearer broker-opaque-non-meta-reference')
+  if(!broker||!activeClaim||!publicationId)throw Error('Broker claim unavailable')
+  const values=init.body as URLSearchParams
+  return broker.handle(new Request('https://broker-fixture.invalid/v1/facebook-photo',{
+   method:'POST',headers:{authorization:'Bearer '+brokerKey,'content-type':'application/json'},
+   body:JSON.stringify({claim:activeClaim,publicationId,
+    text:values.get('message'),imageUrl:values.get('url')}),
+  }))
  })
  const result=await runScheduleTick(db,{workerId:'isolated_worker',now:new Date().toISOString(),dryRun:false},{
   provider,now:()=>Date.now(),
@@ -109,16 +159,31 @@ it.skipIf(!enabled)('runs the real scheduled worker with the restricted SQL role
    if(!authorizedMedia)throw Error('Media access attempted before SQL authorization')
    return authorizedMedia.verifyImage(imageDb,project,asset)
   },
+  // The worker sees this unusable reference, never the private Meta token.
   resolveCredential:async(project,channel)=>{
-   if(!authorizedMedia)throw Error('Credential access attempted before SQL authorization')
-   return authorizedMedia.resolveCredential(project,channel)
+   if(!authorizedMedia)throw Error('Account reference requested before SQL authorization')
+   const snapshot=claimedFromSql?.snapshot
+   if(!snapshot||project!==snapshot.projectId||channel!==snapshot.item.channel)
+    throw Error('Account reference scope denied')
+   return {projectId:project,channel,accountId:snapshot.item.accountId,
+    bindingId:snapshot.item.bindingId,token:'broker-opaque-non-meta-reference',
+    apiBase:'https://graph.facebook.com/v21.0'}
   },
  },mediaDb)
  expect(result).toMatchObject({mode:'execute',jobId,result:'published'})
- expect(posts).toBe(1)
+ expect(providerCalls).toBe(1)
  expect(tokenReads).toBe(1)
- expect(imageReads).toBe(1)
+ expect(imageReads).toBe(2)
  expect(authorizedMedia).not.toBeNull()
+ expect(broker).not.toBeNull()
+ // The signed SQL claim cannot be re-used for a second provider call.
+ const repeat=await broker!.handle(new Request('https://broker-fixture.invalid/v1/facebook-photo',{
+  method:'POST',headers:{authorization:'Bearer '+brokerKey,'content-type':'application/json'},
+  body:JSON.stringify({claim:activeClaim,publicationId,text:'Synthetic caption',
+   imageUrl:'https://app.omniraos.se/api/social-publication-media?publicationId='+publicationId+'&key='+'a'.repeat(43)}),
+ }))
+ expect(repeat.status).toBe(403)
+ expect(providerCalls).toBe(1)
  // Even after the successful simulated post, the scoped broker cannot
  // be used for another project or an unrelated image/account.
  const scoped=authorizedMedia!
@@ -130,7 +195,8 @@ it.skipIf(!enabled)('runs the real scheduled worker with the restricted SQL role
    id:'30000000-0000-4000-8000-000000000099',sha256:'e'.repeat(64),
  })).rejects.toMatchObject({code:'REVIEW_REQUIRED'})
  expect(tokenReads).toBe(1)
- expect(imageReads).toBe(1)
+ expect(imageReads).toBe(2)
+ expect(providerCalls).toBe(1)
  expect(calls.map(call=>call.name)).toEqual(expect.arrayContaining([
   'social_schedule_claim','social_schedule_authorize_write','social_schedule_step','social_schedule_receipt',
  ]))

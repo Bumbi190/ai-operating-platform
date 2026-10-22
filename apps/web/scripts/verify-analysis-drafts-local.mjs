@@ -630,6 +630,9 @@ try {
         ${claimFile}
         ${recoveryCheckpoint}
         ${rpcOnlyCandidate}
+        INSERT INTO public.social_schedule_rpc_scope_fixture(project_id) VALUES (${quote(project)});
+        INSERT INTO public.projects(id,owner_id,name,slug)
+          VALUES (${quote(id.unreferencedProject)},${quote(actor)},'Out-of-scope project','rpc-scope-denial');
         DO $queue_rpc$ BEGIN
           PERFORM public.calendar_source_gate_begin_probe(${quote(project)}::uuid);
         END $queue_rpc$;
@@ -648,8 +651,28 @@ try {
           END LOOP;
           IF has_table_privilege('social_schedule_rpc_only_fixture','public.platform_tokens','SELECT')
             THEN RAISE EXCEPTION 'RPC_TOKEN_READ_GRANT'; END IF;
+          IF has_table_privilege('social_schedule_rpc_only_fixture','public.social_schedule_rpc_scope_fixture','SELECT')
+            OR has_table_privilege('social_schedule_rpc_only_fixture','public.social_schedule_rpc_scope_fixture','INSERT')
+            THEN RAISE EXCEPTION 'RPC_SCOPE_TABLE_GRANT'; END IF;
+          IF has_function_privilege('social_schedule_rpc_only_fixture',
+            'public.social_schedule_claim_unchecked_fixture(jsonb)','EXECUTE')
+            THEN RAISE EXCEPTION 'RPC_UNCHECKED_FUNCTION_GRANT'; END IF;
         END $assert_privileges$;
         SET LOCAL ROLE social_schedule_rpc_only_fixture;
+        DO $deny_other_project$ BEGIN
+          PERFORM public.social_schedule_claim(jsonb_build_object(
+            'workerId','probe-worker','now',to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+            'dryRun',false,'projectIds',jsonb_build_array(${quote(id.unreferencedProject)})));
+          RAISE EXCEPTION 'RPC_OTHER_PROJECT_CLAIM_ACCEPTED';
+        EXCEPTION WHEN insufficient_privilege THEN
+          IF SQLERRM <> 'SOCIAL_SCHEDULE_PROJECT_SCOPE_DENIED' THEN RAISE; END IF;
+        END $deny_other_project$;
+        DO $deny_other_peek$ BEGIN
+          PERFORM public.social_schedule_peek(jsonb_build_object('projectIds',jsonb_build_array(${quote(id.unreferencedProject)})));
+          RAISE EXCEPTION 'RPC_OTHER_PROJECT_PEEK_ACCEPTED';
+        EXCEPTION WHEN insufficient_privilege THEN
+          IF SQLERRM <> 'SOCIAL_SCHEDULE_PROJECT_SCOPE_DENIED' THEN RAISE; END IF;
+        END $deny_other_peek$;
         DO $deny_direct$ BEGIN
           UPDATE public.social_schedule_jobs SET reason='forbidden' WHERE id=${quote(id.job)}::uuid;
           RAISE EXCEPTION 'RPC_DIRECT_WRITE_ACCEPTED';

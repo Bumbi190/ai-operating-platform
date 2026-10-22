@@ -24,8 +24,9 @@ a fake Meta response; the fixture still does not prove a deployable role or
 contact a real provider.
 
 **22 October RPC boundary probe:** A second `NOLOGIN NOBYPASSRLS` role is
-created only in a rollback transaction. Six scheduled worker RPCs are changed
-to `SECURITY DEFINER` in that transaction and granted to this role. The probe
+created only in a rollback transaction. Six scheduled worker RPCs are wrapped
+as `SECURITY DEFINER` functions and granted to this role. The original bodies
+are inaccessible under fixture names. The probe
 checks that it has no direct INSERT, UPDATE or DELETE grants on the relevant
 job, publication, event, project or token tables, cannot SELECT platform
 tokens, and receives a permission error on a direct job UPDATE. It then
@@ -33,6 +34,18 @@ exercises receipt, peek, claim, authorize, prepare, claim-create and recovery
 against a synthetic approved job through RPC. This is a SQL privilege
 experiment, not a reviewed definer API, JWT identity or provider receipt
 authentication. All role, function and data changes roll back.
+
+The first RPC-only version accepted a caller-supplied `projectIds` array in
+`claim` and `peek`. With elevated functions, that would let the caller select
+another project's jobs despite lacking direct table grants. The revised
+rollback probe seeds a scope table as the privileged fixture owner; the RPC
+role cannot read or edit it. Wrappers check each requested project or the
+job's project before invoking the original body. A second synthetic project
+is rejected by both `claim` and `peek`, while the allowed project's claim to
+recovery path still passes. This is a fixed test scope, not a real identity
+binding. A deployable design must bind scope to a trusted server principal,
+audit every callable function and prove cross-project denial through the
+actual Data API.
 
 ## Calendar ACL baseline — read-only comparison
 

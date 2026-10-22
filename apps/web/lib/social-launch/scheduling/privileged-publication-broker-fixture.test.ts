@@ -48,13 +48,20 @@ function setup(custom:Record<string,unknown>={}){
  const mediaDb={} as any
  const authorizeClaim=vi.fn(async()=>({snapshot:current,leaseExpiresAt:new Date(now+90000).toISOString(),claim}))
  const verifyImage=vi.fn(async()=>({width:600,height:600,bytes:new Uint8Array([1,2,3])}))
+ const committed=new Set<string>()
+ const reserveIntent=vi.fn(async(value:typeof claim,pub:string)=>{
+  const key=value.jobId+'|'+pub
+  if(committed.has(key))return false
+  committed.add(key)
+  return true
+ })
  const resolveCredential=vi.fn(async()=>({projectId:project,channel:'facebook' as const,
   bindingId,accountId:'12345',token:secret,apiBase:'https://graph.facebook.com/v21.0'}))
  const providerPost=vi.fn(async(_url:string,init:RequestInit)=>{
   expect(new Headers(init.headers).get('authorization')).toBe('Bearer '+secret)
   return Response.json({post_id:'12345_99999'})
  })
- const deps={brokerKey:key,expectedProjectId:project,mediaDb,authorizeClaim,
+ const deps={brokerKey:key,expectedProjectId:project,mediaDb,authorizeClaim,reserveIntent,
   verifyImage,resolveCredential,provider:new MetaManualProvider(providerPost),
   now:()=>now,...custom}
  const broker=createPrivilegedPublicationBrokerFixture(deps)
@@ -78,9 +85,15 @@ it('does not expose the underlying Meta token, client or Storage and publishes o
  expect('mediaDb' in s.broker).toBe(false)
  expect('resolveCredential' in s.broker).toBe(false)
  expect(s.deps.authorizeClaim).toHaveBeenCalledTimes(2)
+ expect(s.deps.reserveIntent).toHaveBeenCalledTimes(1)
  expect(s.deps.verifyImage).toHaveBeenCalledTimes(1)
  expect(s.deps.resolveCredential).toHaveBeenCalledTimes(1)
  expect(s.providerPost).toHaveBeenCalledTimes(1)
+ // A fresh handler has no memory of the original attempt, but the
+ // shared committed reservation survives and prevents another send.
+ const restarted=createPrivilegedPublicationBrokerFixture(s.deps)
+ expect((await restarted.handle(s.request())).status).toBe(403)
+ expect(s.deps.reserveIntent).toHaveBeenCalledTimes(2)
  const retry=await s.broker.handle(s.request())
  expect(retry.status).toBe(403)
  expect(s.providerPost).toHaveBeenCalledTimes(1)
@@ -209,4 +222,27 @@ it('rejects a malformed SQL authorization response without throwing or accessing
  expect(s.deps.resolveCredential).not.toHaveBeenCalled()
  expect(s.deps.verifyImage).not.toHaveBeenCalled()
  expect(s.providerPost).not.toHaveBeenCalled()
+})
+
+it('denies parallel calls from two independently constructed broker processes sharing one durable reservation',async()=>{
+ const s=setup()
+ const other=createPrivilegedPublicationBrokerFixture(s.deps)
+ const responses=await Promise.all([s.broker.handle(s.request()),other.handle(s.request())])
+ expect(responses.map(x=>x.status).sort()).toEqual([200,403])
+ expect(s.providerPost).toHaveBeenCalledTimes(1)
+ expect(s.deps.reserveIntent).toHaveBeenCalledTimes(2)
+})
+
+it('refuses before provider I/O if the SQL reservation was already committed or its ACK was lost',async()=>{
+ for(const [reserveIntent,expectedStatus] of [
+  [vi.fn(async()=>false),403],
+  [vi.fn(async()=>{throw Error('DB committed, but HTTP ACK was lost')}),503],
+ ]){
+  const s=setup({reserveIntent})
+  const response=await s.broker.handle(s.request())
+  expect(response.status).toBe(expectedStatus)
+
+  expect(s.providerPost).not.toHaveBeenCalled()
+  expect(s.deps.resolveCredential).toHaveBeenCalledTimes(1)
+ }
 })

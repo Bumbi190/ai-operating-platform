@@ -710,3 +710,80 @@ historical May migration baseline, broad definer/trigger graph,
 provider-authenticated receipt boundary, Storage signing authority,
 private service isolation and durable dispatch idempotency are
 unresolved cutover blockers.
+
+## Durable provider dispatch reservation — 22 October (test-only)
+
+The prior broker candidate used an in-memory `attempted` set, which
+disappeared on process restart. This follow-up adds a SQL-only
+`lib/calendar/scheduled-broker-durable-intent-probe.sql` candidate,
+**not a production migration**. It is installed only inside the owned
+PostgreSQL cross-tree HTTP fixture. It creates
+`social_schedule_dispatch_intents_fixture` with primary key
+`job_id`, a separate unique constraint on `publication_id`, and
+`provider_outcome='unknown'` on admission. The fixture has RLS
+enabled and no direct SELECT/INSERT/UPDATE/DELETE grants to public,
+`anon`, `authenticated`, `service_role`, the calendar-worker role,
+or the new broker role.
+
+A separate `NOLOGIN NOBYPASSRLS` role,
+`social_schedule_broker_intent_fixture`, is explicitly granted EXECUTE on the
+`social_schedule_dispatch_try_begin_fixture(jsonb,uuid)` admission
+function. The function runs as the reviewed fixture's owner with an
+empty search path, checks the verified PostgREST JWT role, issuer,
+audience and subject-to-project binding, calls the canonical scoped
+`social_schedule_authorize_write` for a still-owned job claim, and
+checks the approved scheduled Facebook image-publication identity,
+account and binding. It atomically inserts with `ON CONFLICT DO
+NOTHING RETURNING`; the first committed request yields `true`,
+any subsequent request for that job or publication yields `false`.
+The broker identity cannot run scheduler-step RPCs, read the ledger
+or impersonate another project's subject; the scheduler identity
+cannot call the reservation RPC at all.
+
+The private test broker now requires a `reserveIntent` dependency.
+It calls this **after** the second current SQL authorization check,
+but **before** the provider POST. An explicit `false` causes a
+denial; a lost reservation acknowledgment is treated as unavailable
+with **no** subsequent provider dispatch. The existing in-memory
+attempt gate remains as defense in depth only. The current
+`isolated-worker-replay.test.ts` uses a separate RS256-signed JWT
+for the broker role and sends reservation calls through the internal
+PostgREST gateway in independent HTTP/database transactions. The
+simulated Meta provider checks a second reservation from a fresh
+database transaction *while the first publication is still in
+flight*. The second request returns `false` and no second Meta
+request is made. The cross-tree runner independently verifies the
+committed row count is **1** and that its provider outcome remains
+`unknown`. Its negative tests verify worker cannot reserve, broker
+cannot step scheduled jobs or directly read the table, foreign
+principal cannot reserve, and an unprepared job produces
+`SOCIAL_SCHEDULE_CONFLICT` without any reservation. This is the
+specific database durability check absent from earlier in-memory
+broker unit tests.
+
+**Verified after correcting the precise negative HTTP expectation:**
+24/24 targeted unit/API tests passed. The full 151-web + 10-root
+cross-tree replay passed `CROSS-TREE BROKER INTENT ACL PASS`,
+`CROSS-TREE POSTGREST ROLE PASS`,
+`CROSS-TREE POSTGREST APPLICATION WORKER PASS` and
+`CROSS-TREE REPLAY PASS`. All provider responses were synthetic,
+Meta was never contacted, and owned containers/internal network
+were cleaned up. The negative early-reserve SQL deliberately raises
+`SOCIAL_SCHEDULE_CONFLICT`/HTTP 400, not the 403 of an identity
+denial; both are refusals and neither creates an intent.
+
+**Security boundary and remaining limitations:** This is an
+at-most-once attempt, **not** exactly-once delivery. A database
+reservation committed just before a process crash may prevent a post
+that was never actually sent; automatic retry is intentionally
+disabled, and a human/independently verified reconciliation path is
+required. A real service requires a durable migration, a hardened
+broker identity and deployment, controlled JWT issuance, verified
+Storage and Facebook token isolation, transaction/fault/recovery
+testing, provider-origin receipt attestation and Instagram's
+multi-stage workflow. The existing `service_role` clients and
+production routes are untouched. No production SQL/grants,
+configuration, Meta credentials, scheduled jobs or provider calls
+are changed; do not deploy the fixture as-is.
+
+**TypeScript note:** The full local `tsc --noEmit` still reports only the three unrelated `lib/media/lambda-render.ts` Remotion dependency/type errors inherited from the borrowed local dependency tree; it reported no errors in the new calendar SQL-adapter and broker test files. The normal SQL and HTTP tests were run against the isolated owned PostgreSQL instance, not Supabase production.

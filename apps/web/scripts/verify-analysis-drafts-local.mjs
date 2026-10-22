@@ -804,6 +804,7 @@ try {
           ${claimFile}
           ${recoveryCheckpoint}
           ${rpcOnlyCandidate}
+          ${reviewedBytes(resolve(web,'lib/calendar/scheduled-broker-durable-intent-probe.sql')).toString('utf8')}
           INSERT INTO public.social_schedule_rpc_scope_fixture(principal_id,project_id)
             VALUES (${quote(actor)},${quote(project)}),(${quote(id.foreignPrincipal)},${quote(id.unreferencedProject)});
           INSERT INTO public.projects(id,owner_id,name,slug)
@@ -814,6 +815,7 @@ try {
             WHERE id=${quote(id.job)}::uuid;
           ALTER ROLE authenticator PASSWORD ${quote(password)};
           GRANT social_schedule_rpc_only_fixture TO authenticator;
+          GRANT social_schedule_broker_intent_fixture TO authenticator;
           COMMIT;`)
         const callableSurface=JSON.parse(sql(`WITH executable AS (
           SELECT p.oid,p.prosecdef,pg_get_function_result(p.oid) AS result_type
@@ -911,6 +913,8 @@ try {
           return body+'.'+signJwt('RSA-SHA256',Buffer.from(body),keys.privateKey).toString('base64url')
         }
         const token=signedToken(actor),foreignToken=signedToken(id.foreignPrincipal),missingSubjectToken=signedToken(null)
+        const brokerToken=signedToken(actor,{role:'social_schedule_broker_intent_fixture'})
+        const foreignBrokerToken=signedToken(id.foreignPrincipal,{role:'social_schedule_broker_intent_fixture'})
         const requestScript=`const q=JSON.parse(Buffer.from(process.argv[1],'base64').toString());fetch('http://rest:3000'+q.path,{method:q.method,headers:{Authorization:'Bearer '+q.token,'Content-Type':'application/json'},body:q.body?JSON.stringify(q.body):undefined}).then(async r=>console.log(JSON.stringify({status:r.status,body:await r.text()}))).catch(e=>{console.error(e.message);process.exitCode=1})`
         function httpRole(path,body,method='POST',bearer=token) {
           const input=Buffer.from(JSON.stringify({path,body,method,token:bearer})).toString('base64')
@@ -922,6 +926,44 @@ try {
           const response=docker(['exec',gatewayName,'node','-e',"fetch('http://rest:3000/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"])
           return response.status===0
         },'PostgREST ready',60000)
+        // Separate broker identity: no direct table reads and only the
+        // atomic dispatch-intent RPC. This is an isolated probe role.
+        const brokerAcl=JSON.parse(sql(`SELECT jsonb_build_object(
+          'brokerBegin',has_function_privilege('social_schedule_broker_intent_fixture',
+            'public.social_schedule_dispatch_try_begin_fixture(jsonb,uuid)','EXECUTE'),
+          'workerBegin',has_function_privilege('social_schedule_rpc_only_fixture',
+            'public.social_schedule_dispatch_try_begin_fixture(jsonb,uuid)','EXECUTE'),
+          'serviceBegin',has_function_privilege('service_role',
+            'public.social_schedule_dispatch_try_begin_fixture(jsonb,uuid)','EXECUTE'),
+          'brokerStep',has_function_privilege('social_schedule_broker_intent_fixture',
+            'public.social_schedule_step(jsonb,jsonb)','EXECUTE'),
+          'brokerRead',has_table_privilege('social_schedule_broker_intent_fixture',
+            'public.social_schedule_dispatch_intents_fixture','SELECT'),
+          'brokerInsert',has_table_privilege('social_schedule_broker_intent_fixture',
+            'public.social_schedule_dispatch_intents_fixture','INSERT')
+        );`))
+        assert.deepEqual(brokerAcl,{brokerBegin:true,workerBegin:false,serviceBegin:false,
+          brokerStep:false,brokerRead:false,brokerInsert:false})
+        const queuedClaim={jobId:id.job,claimId:id.claim,version:1}
+        const brokerInput={p_claim:queuedClaim,p_publication_id:id.post}
+        const workerCannotReserve=httpRole('/rpc/social_schedule_dispatch_try_begin_fixture',
+          brokerInput,'POST',token)
+        assert.equal(workerCannotReserve.status,403,workerCannotReserve.body)
+        const brokerCannotSchedule=httpRole('/rpc/social_schedule_step',
+          {p_claim:queuedClaim,p_step:{action:'prepare'}},'POST',brokerToken)
+        assert.equal(brokerCannotSchedule.status,403,brokerCannotSchedule.body)
+        const brokerCannotRead=httpRole('/social_schedule_dispatch_intents_fixture?select=*',
+          undefined,'GET',brokerToken)
+        assert.ok(brokerCannotRead.status>=400,brokerCannotRead.body)
+        const foreignCannotReserve=httpRole('/rpc/social_schedule_dispatch_try_begin_fixture',
+          brokerInput,'POST',foreignBrokerToken)
+        assert.equal(foreignCannotReserve.status,403,foreignCannotReserve.body)
+        const prematureReserve=httpRole('/rpc/social_schedule_dispatch_try_begin_fixture',
+          brokerInput,'POST',brokerToken)
+        assert.equal(prematureReserve.status,400,prematureReserve.body)
+        assert.equal(JSON.parse(prematureReserve.body).message,'SOCIAL_SCHEDULE_CONFLICT')
+        assert.equal(sql('SELECT count(*) FROM public.social_schedule_dispatch_intents_fixture'),'0')
+        console.log('CROSS-TREE BROKER INTENT ACL PASS (distinct scoped JWT role; no DML, no worker reservation, no pre-publication reserve)')
         const foreign={workerId:'probe-worker',now:new Date().toISOString(),dryRun:false,projectIds:[id.unreferencedProject]}
         const missingSubject=httpRole('/rpc/social_schedule_peek',{p_input:{projectIds:[project]}},'POST',missingSubjectToken)
         assert.equal(missingSubject.status,403,missingSubject.body)
@@ -1004,10 +1046,15 @@ try {
             env:{...process.env,OMNIRA_SCHEDULE_REPLAY_CONTAINER:name,
               OMNIRA_SCHEDULE_REPLAY_PROJECT:project,OMNIRA_SCHEDULE_REPLAY_JOB:id.job,
               OMNIRA_SCHEDULE_REPLAY_HTTP_GATEWAY:gatewayName,OMNIRA_SCHEDULE_REPLAY_HTTP_TOKEN:token,
-              OMNIRA_SCHEDULE_REPLAY_SUBJECT:actor},
+              OMNIRA_SCHEDULE_REPLAY_SUBJECT:actor,
+              OMNIRA_SCHEDULE_REPLAY_BROKER_HTTP_TOKEN:brokerToken},
           })
           assert.equal(worker.status,0,worker.stderr+'\n'+worker.stdout)
           assert.equal(sql('SELECT state FROM public.social_schedule_jobs WHERE id='+quote(id.job)),'published')
+          assert.equal(sql('SELECT count(*) FROM public.social_schedule_dispatch_intents_fixture'), '1',
+            'durable broker dispatch intent not committed')
+          assert.equal(sql('SELECT provider_outcome FROM public.social_schedule_dispatch_intents_fixture'), 'unknown',
+            'unknown Meta outcome must remain awaiting independent reconciliation')
           console.log('CROSS-TREE POSTGREST APPLICATION WORKER PASS (actual TypeScript worker, fake Meta, scoped RPC role)')
         }
       }

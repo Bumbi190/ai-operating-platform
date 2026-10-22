@@ -19,6 +19,9 @@ export type BrokerFixtureDependencies={
   brokerKey:string
   expectedProjectId:string
   authorizeClaim:(claim:Claim)=>Promise<Authority>
+  // Atomic COMMITTED reservation in a separately authorized database role.
+  // A false response means this job/publication was already reserved.
+  reserveIntent:(claim:Claim,publicationId:string)=>Promise<boolean>
   mediaDb:Db
   resolveCredential:(projectId:string,channel:'facebook'|'instagram')=>Promise<Credential>
   verifyImage:(db:Db,projectId:string,asset:Pick<SocialContentAsset,'id'|'sha256'>)=>Promise<Image>
@@ -41,11 +44,13 @@ function sameSecret(received:string,expected:string){
 export function createPrivilegedPublicationBrokerFixture(deps:BrokerFixtureDependencies){
   if(process.env.NODE_ENV!=='test'||!uuid.test(deps.expectedProjectId)||
     !/^[A-Za-z0-9_-]{32,128}$/.test(deps.brokerKey)||
-    typeof deps.authorizeClaim!=='function'||typeof deps.resolveCredential!=='function'||
+    typeof deps.authorizeClaim!=='function'||typeof deps.reserveIntent!=='function'||
+    typeof deps.resolveCredential!=='function'||
     typeof deps.verifyImage!=='function'||!deps.mediaDb||!deps.provider)
     throw new ScheduleError('DISABLED')
-  // A consumed attempt cannot retry after a provider response is lost.
-  // A durable provider-intent ledger is REQUIRED in production.
+  // Local duplicate shielding is additional defense only. The injected
+  // SQL reservation provides durability across new handler processes.
+  // Its own role/issuer is test-only and not a production credential.
   const attempted=new Set<string>()
   const inFlight=new Set<string>()
   const handle=async(request:Request):Promise<Response>=>{
@@ -129,6 +134,9 @@ export function createPrivilegedPublicationBrokerFixture(deps:BrokerFixtureDepen
         fresh.snapshot.item.accountId!==snapshot.item.accountId||
         fresh.snapshot.item.bindingId!==snapshot.item.bindingId||
         Date.parse(fresh.leaseExpiresAt)<=(deps.now?.()??Date.now()))return deny()
+      // This MUST commit in a separate SQL transaction before contacting Meta.
+      // A lost reservation ACK may consume the attempt; never auto-retry.
+      if(await deps.reserveIntent(claim,snapshot.publication.id)!==true)return deny()
       const receipt=await deps.provider.facebook(credential,{
         text:snapshot.revision.draft.text,linkUrl:snapshot.revision.draft.linkUrl,
         imageUrl:body.imageUrl,

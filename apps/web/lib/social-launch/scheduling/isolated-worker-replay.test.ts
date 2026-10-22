@@ -20,10 +20,12 @@ const projectId=process.env.OMNIRA_SCHEDULE_REPLAY_PROJECT
 const jobId=process.env.OMNIRA_SCHEDULE_REPLAY_JOB
 const httpGateway=process.env.OMNIRA_SCHEDULE_REPLAY_HTTP_GATEWAY
 const httpToken=process.env.OMNIRA_SCHEDULE_REPLAY_HTTP_TOKEN
+const brokerHttpToken=process.env.OMNIRA_SCHEDULE_REPLAY_BROKER_HTTP_TOKEN
 const httpSubject=process.env.OMNIRA_SCHEDULE_REPLAY_SUBJECT
 const enabled=container==='omnira-atlas-p1-cross-tree-replay'&&
  /^[0-9a-f-]{36}$/.test(projectId??'')&&/^[0-9a-f-]{36}$/.test(jobId??'')&&
- (!httpGateway||Boolean(httpToken)&&/^[0-9a-f-]{36}$/.test(httpSubject??''))
+ (!httpGateway||Boolean(httpToken)&&Boolean(brokerHttpToken)&&
+  /^[0-9a-f-]{36}$/.test(httpSubject??''))
 
 it.skipIf(!enabled)('runs the real scheduled worker with the restricted SQL role and fake Meta response',async()=>{
  const inspect=spawnSync('docker',['inspect','--format','{{.HostConfig.NetworkMode}}',container!],{encoding:'utf8'})
@@ -37,7 +39,7 @@ it.skipIf(!enabled)('runs the real scheduled worker with the restricted SQL role
  let authorizedMedia:ReturnType<typeof createApprovedScheduleMediaScopeFixture>|null=null
  let claimedFromSql:ScheduleClaim|null=null
  let tokenReads=0,imageReads=0
- let providerCalls=0
+ let providerCalls=0,reservationCalls=0,localReservation=false
  let activeClaim:Pick<ScheduleClaim,'jobId'|'claimId'|'version'>|null=null
  let publicationId:string|null=null
  let broker:ReturnType<typeof createPrivilegedPublicationBrokerFixture>|null=null
@@ -110,16 +112,50 @@ it.skipIf(!enabled)('runs the real scheduled worker with the restricted SQL role
  }} as any
  vi.stubEnv('SOCIAL_SCHEDULE_DISPATCH_ENABLED','true')
  vi.stubEnv('SOCIAL_SCHEDULE_PROJECT_IDS',projectId!)
+ const reserveDispatchIntent=async(claim:{
+  jobId:string;claimId:string;version:number},publication:string):Promise<boolean>=>{
+  reservationCalls++
+  if(!httpGateway){
+   // Older no-HTTP worker probe uses a local-only fallback; the durable
+   // result is verified exclusively by the HTTP/PostgreSQL replay.
+   if(localReservation)return false
+   localReservation=true
+   return true
+  }
+  if(!brokerHttpToken)throw Error('Missing separate broker JWT in replay')
+  const request=Buffer.from(JSON.stringify({token:brokerHttpToken,
+   body:{p_claim:claim,p_publication_id:publication}})).toString('base64')
+  const script=`const q=JSON.parse(Buffer.from(process.argv[1],'base64').toString());
+    fetch('http://rest:3000/rpc/social_schedule_dispatch_try_begin_fixture',{
+      method:'POST',headers:{Authorization:'Bearer '+q.token,'Content-Type':'application/json'},
+      body:JSON.stringify(q.body)
+    }).then(async r=>console.log(JSON.stringify({status:r.status,body:await r.text()})))
+      .catch(e=>{console.error(e.message);process.exitCode=1})`
+  const result=spawnSync('docker',['exec',httpGateway,'node','-e',script,request],
+   {encoding:'utf8',timeout:10000,maxBuffer:1024*1024})
+  if(result.status!==0)throw Error('Broker reservation transport failed')
+  const response=JSON.parse(result.stdout.trim())
+  if(response.status!==200)throw Error('Broker reservation denied: '+response.body.slice(0,400))
+  const admitted=JSON.parse(response.body)
+  if(typeof admitted!=='boolean')throw Error('Unexpected reservation result')
+  return admitted
+ }
  // This privileged fixture object owns the real synthetic Meta credential.
  // The actual TypeScript worker receives only a non-Meta opaque reference.
  const privateProvider=new MetaManualProvider(async(url,init)=>{
   expect(url).toBe('https://graph.facebook.com/v21.0/12345/photos')
   expect(new Headers(init.headers).get('authorization')).toBe('Bearer synthetic-only')
+  // A separate broker instance on another PostgreSQL transaction cannot
+  // reserve the same job again, even before the first provider response.
+  expect(activeClaim).not.toBeNull()
+  expect(publicationId).not.toBeNull()
+  expect(await reserveDispatchIntent(activeClaim!,publicationId!)).toBe(false)
   providerCalls++
   return Response.json({post_id:'12345_99999'})
  })
  broker=createPrivilegedPublicationBrokerFixture({
   brokerKey,expectedProjectId:projectId!,mediaDb,provider:privateProvider,
+  reserveIntent:reserveDispatchIntent,
   now:()=>Date.now(),
   resolveCredential:async(project,channel)=>{
    if(!authorizedMedia)throw Error('Privileged token requested before SQL authorization')
@@ -172,6 +208,7 @@ it.skipIf(!enabled)('runs the real scheduled worker with the restricted SQL role
  },mediaDb)
  expect(result).toMatchObject({mode:'execute',jobId,result:'published'})
  expect(providerCalls).toBe(1)
+ expect(reservationCalls).toBe(2)
  expect(tokenReads).toBe(1)
  expect(imageReads).toBe(2)
  expect(authorizedMedia).not.toBeNull()

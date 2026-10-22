@@ -805,6 +805,7 @@ try {
           ${recoveryCheckpoint}
           ${rpcOnlyCandidate}
           ${reviewedBytes(resolve(web,'lib/calendar/scheduled-broker-durable-intent-probe.sql')).toString('utf8')}
+          ${reviewedBytes(resolve(web,'lib/calendar/scheduled-broker-review-queue-probe.sql')).toString('utf8')}
           INSERT INTO public.social_schedule_rpc_scope_fixture(principal_id,project_id)
             VALUES (${quote(actor)},${quote(project)}),(${quote(id.foreignPrincipal)},${quote(id.unreferencedProject)});
           INSERT INTO public.projects(id,owner_id,name,slug)
@@ -816,6 +817,7 @@ try {
           ALTER ROLE authenticator PASSWORD ${quote(password)};
           GRANT social_schedule_rpc_only_fixture TO authenticator;
           GRANT social_schedule_broker_intent_fixture TO authenticator;
+          GRANT social_schedule_broker_review_fixture TO authenticator;
           COMMIT;`)
         const callableSurface=JSON.parse(sql(`WITH executable AS (
           SELECT p.oid,p.prosecdef,pg_get_function_result(p.oid) AS result_type
@@ -915,6 +917,8 @@ try {
         const token=signedToken(actor),foreignToken=signedToken(id.foreignPrincipal),missingSubjectToken=signedToken(null)
         const brokerToken=signedToken(actor,{role:'social_schedule_broker_intent_fixture'})
         const foreignBrokerToken=signedToken(id.foreignPrincipal,{role:'social_schedule_broker_intent_fixture'})
+        const reviewToken=signedToken(actor,{role:'social_schedule_broker_review_fixture'})
+        const foreignReviewToken=signedToken(id.foreignPrincipal,{role:'social_schedule_broker_review_fixture'})
         const requestScript=`const q=JSON.parse(Buffer.from(process.argv[1],'base64').toString());fetch('http://rest:3000'+q.path,{method:q.method,headers:{Authorization:'Bearer '+q.token,'Content-Type':'application/json'},body:q.body?JSON.stringify(q.body):undefined}).then(async r=>console.log(JSON.stringify({status:r.status,body:await r.text()}))).catch(e=>{console.error(e.message);process.exitCode=1})`
         function httpRole(path,body,method='POST',bearer=token) {
           const input=Buffer.from(JSON.stringify({path,body,method,token:bearer})).toString('base64')
@@ -944,6 +948,59 @@ try {
         );`))
         assert.deepEqual(brokerAcl,{brokerBegin:true,workerBegin:false,serviceBegin:false,
           brokerStep:false,brokerRead:false,brokerInsert:false})
+        const reviewAcl=JSON.parse(sql(`SELECT jsonb_build_object(
+          'reviewQuery',has_function_privilege('social_schedule_broker_review_fixture',
+            'public.social_schedule_dispatch_review_fixture(uuid)','EXECUTE'),
+          'workerQuery',has_function_privilege('social_schedule_rpc_only_fixture',
+            'public.social_schedule_dispatch_review_fixture(uuid)','EXECUTE'),
+          'brokerQuery',has_function_privilege('social_schedule_broker_intent_fixture',
+            'public.social_schedule_dispatch_review_fixture(uuid)','EXECUTE'),
+          'serviceQuery',has_function_privilege('service_role',
+            'public.social_schedule_dispatch_review_fixture(uuid)','EXECUTE'),
+          'reviewReserve',has_function_privilege('social_schedule_broker_review_fixture',
+            'public.social_schedule_dispatch_try_begin_fixture(jsonb,uuid)','EXECUTE'),
+          'reviewComplete',has_function_privilege('social_schedule_broker_review_fixture',
+            'public.social_publication_reconciliation_complete(jsonb,jsonb)','EXECUTE'),
+          'reviewTableRead',has_table_privilege('social_schedule_broker_review_fixture',
+            'public.social_schedule_dispatch_intents_fixture','SELECT'),
+          'reviewTableWrite',has_table_privilege('social_schedule_broker_review_fixture',
+            'public.social_schedule_dispatch_intents_fixture','UPDATE'),
+          'reviewTokens',has_table_privilege('social_schedule_broker_review_fixture',
+            'public.platform_tokens','SELECT')
+        );`))
+        assert.deepEqual(reviewAcl,{reviewQuery:true,workerQuery:false,
+          brokerQuery:false,serviceQuery:false,reviewReserve:false,
+          reviewComplete:false,reviewTableRead:false,reviewTableWrite:false,
+          reviewTokens:false},'read-only review role has excessive privileges')
+        const reviewInput={p_project_id:project}
+        for(const identity of [token,brokerToken]){
+          const denied=httpRole('/rpc/social_schedule_dispatch_review_fixture',
+            reviewInput,'POST',identity)
+          assert.equal(denied.status,403,denied.body)
+        }
+        const reviewAsBrokerCannotReserve=httpRole(
+          '/rpc/social_schedule_dispatch_try_begin_fixture',
+          {p_claim:{jobId:id.job,claimId:id.claim,version:1},p_publication_id:id.post},
+          'POST',reviewToken)
+        assert.equal(reviewAsBrokerCannotReserve.status,403,reviewAsBrokerCannotReserve.body)
+        const reviewDirect=httpRole('/social_schedule_dispatch_intents_fixture?select=*',
+          undefined,'GET',reviewToken)
+        assert.ok(reviewDirect.status>=400,reviewDirect.body)
+        const reviewForeign=httpRole('/rpc/social_schedule_dispatch_review_fixture',
+          reviewInput,'POST',foreignReviewToken)
+        assert.equal(reviewForeign.status,403,reviewForeign.body)
+        const ownReview=httpRole('/rpc/social_schedule_dispatch_review_fixture',
+          reviewInput,'POST',reviewToken)
+        assert.equal(ownReview.status,200,ownReview.body)
+        const emptyReview=JSON.parse(ownReview.body)
+        assert.deepEqual(emptyReview.items,[],'no provider dispatch has been reserved')
+        assert.equal(emptyReview.automaticRetryAllowed,false)
+        const foreignOwnReview=httpRole('/rpc/social_schedule_dispatch_review_fixture',
+          {p_project_id:id.unreferencedProject},'POST',foreignReviewToken)
+        assert.equal(foreignOwnReview.status,200,foreignOwnReview.body)
+        assert.deepEqual(JSON.parse(foreignOwnReview.body).items,[])
+        assert.equal(sql('SELECT count(*) FROM public.social_schedule_dispatch_intents_fixture'),'0')
+        console.log('CROSS-TREE BROKER REVIEW ACL PASS (separate RS256 role; no table DML, no finalization, no cross-project inbox)')
         const queuedClaim={jobId:id.job,claimId:id.claim,version:1}
         const brokerInput={p_claim:queuedClaim,p_publication_id:id.post}
         const workerCannotReserve=httpRole('/rpc/social_schedule_dispatch_try_begin_fixture',
@@ -1055,6 +1112,44 @@ try {
             'durable broker dispatch intent not committed')
           assert.equal(sql('SELECT provider_outcome FROM public.social_schedule_dispatch_intents_fixture'), 'unknown',
             'unknown Meta outcome must remain awaiting independent reconciliation')
+          // The database may say "published" after a fake provider response,
+          // but the broker intent STILL lacks authenticated Meta evidence.
+          const review=httpRole('/rpc/social_schedule_dispatch_review_fixture',
+            {p_project_id:project},'POST',reviewToken)
+          assert.equal(review.status,200,review.body)
+          const queue=JSON.parse(review.body)
+          assert.equal(queue.projectId,project)
+          assert.equal(queue.automaticRetryAllowed,false)
+          assert.equal(queue.reviewAction,'operator_inspect_provider')
+          assert.equal(queue.items.length,1,JSON.stringify(queue))
+          assert.deepEqual(Object.keys(queue.items[0]).sort(),[
+            'automaticRetryAllowed','databaseJobState','jobId','providerOutcome',
+            'publicationId','reservedAt','reviewStatus',
+          ])
+          assert.equal(queue.items[0].jobId,id.job)
+          assert.equal(queue.items[0].databaseJobState,'published')
+          assert.equal(queue.items[0].providerOutcome,'unknown')
+          assert.equal(queue.items[0].reviewStatus,'needs_authenticated_meta_evidence')
+          assert.equal(queue.items[0].automaticRetryAllowed,false)
+          assert.equal(JSON.stringify(queue).includes('12345_99999'),false,
+            'untrusted/synthetic provider receipt leaked into review inbox')
+          // A second HTTP/database transaction sees precisely the same
+          // pending review; trying to supply a fake provider receipt to the
+          // read-only RPC is not a valid function argument.
+          const reread=httpRole('/rpc/social_schedule_dispatch_review_fixture',
+            {p_project_id:project},'POST',reviewToken)
+          assert.equal(reread.status,200,reread.body)
+          assert.deepEqual(JSON.parse(reread.body).items,queue.items)
+          const fakeProof=httpRole('/rpc/social_schedule_dispatch_review_fixture',
+            {p_project_id:project,providerId:'12345_99999',confirmed:true},
+            'POST',reviewToken)
+          assert.ok(fakeProof.status>=400,fakeProof.body)
+          const cannotFinalize=httpRole('/rpc/social_publication_reconciliation_complete',
+            {p_principal:{},p_input:{}},'POST',reviewToken)
+          assert.ok(cannotFinalize.status>=400,cannotFinalize.body)
+          assert.equal(sql('SELECT provider_outcome FROM public.social_schedule_dispatch_intents_fixture'),'unknown')
+          assert.equal(sql('SELECT count(*) FROM public.social_schedule_dispatch_intents_fixture'),'1')
+          console.log('CROSS-TREE BROKER REVIEW QUEUE PASS (committed unknown intent visible only to scoped reviewer; published SQL state is NOT Meta proof; no retry/finalize)')
           console.log('CROSS-TREE POSTGREST APPLICATION WORKER PASS (actual TypeScript worker, fake Meta, scoped RPC role)')
         }
       }

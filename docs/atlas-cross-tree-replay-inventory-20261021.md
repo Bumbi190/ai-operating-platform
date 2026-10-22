@@ -787,3 +787,84 @@ configuration, Meta credentials, scheduled jobs or provider calls
 are changed; do not deploy the fixture as-is.
 
 **TypeScript note:** The full local `tsc --noEmit` still reports only the three unrelated `lib/media/lambda-render.ts` Remotion dependency/type errors inherited from the borrowed local dependency tree; it reported no errors in the new calendar SQL-adapter and broker test files. The normal SQL and HTTP tests were run against the isolated owned PostgreSQL instance, not Supabase production.
+
+## Safe unresolved-Meta review queue — 22 October (fixture only, no production wiring)
+
+A new **test-only** `lib/calendar/scheduled-broker-review-queue-probe.sql`
+creates `social_schedule_broker_review_fixture` as a separate
+`NOLOGIN NOBYPASSRLS` role, distinct from both the scheduled worker
+and the privileged broker dispatch-intent role. The role receives
+an explicit EXECUTE grant on the
+`social_schedule_dispatch_review_fixture(uuid)` read-only entry point.
+Inherited PUBLIC function privileges remain outside this limited proof.
+No direct SELECT/INSERT/UPDATE on the durable intent table, no token
+reads, no scheduled write RPC, no broker reserve RPC, and **no**
+`social_publication_reconciliation_complete` execution are granted.
+The function is `STABLE SECURITY DEFINER` with an empty
+`search_path`, explicitly revokes PUBLIC/anon/authenticated/service
+execution, checks the *verified* PostgREST JWT role/issuer/audience
+and subject-to-project binding through the existing fixture helper,
+and limits output to the first 25 project-bound dispatch intents
+still recorded as `provider_outcome='unknown'`.
+
+The projection returns only job and publication IDs, reservation
+timestamp, internal job state, provider outcome and a literal
+`reviewStatus='needs_authenticated_meta_evidence'`. Both the top
+level and every item say `automaticRetryAllowed=false`; the
+top-level `reviewAction='operator_inspect_provider'` is a
+description, **not an enabled action**. The response deliberately
+omits credentials, provider tokens, storage paths, image URLs,
+privileged claims, raw provider IDs and the original Facebook
+response. It has no mutation endpoint. It does **not** verify Meta;
+in particular, an existing SQL job state `published` does not
+turn an intent with `unknown` outcome into a confirmed Meta receipt.
+
+The canonical code already has a separate operator-authorized
+manual Facebook reconciliation path:
+`publication/reconciliation/service.ts` resolves a project-bound
+Facebook credential, lists and re-reads provider candidates and
+requires a manual image confirmation; its
+`publication/reconciliation/api.ts` enforces operator and project
+access. That existing route is **not wired** to the new read-only
+fixture, is not being claimed to authenticate all provider receipts,
+and was not modified. A future reviewed implementation must link
+these without letting Atlas invent a provider proof, grant itself
+completion privileges or silently retry a reserved job.
+
+**Observed in isolated PostgreSQL 17 / PostgREST replay:**
+The review queue was empty before the synthetic provider attempt.
+A separate RS256-signed reviewer JWT for the owned project could
+read it, while scheduler/broker JWTs and a foreign-project
+reviewer were denied. A foreign reviewer's own empty project was
+visible only to that identity. The reviewer could not read the
+private intent table, reserve a publication, or call the existing
+finalize RPC. After the single synthetically published Facebook
+job had committed a durable intent, a new HTTP/database
+transaction read **exactly one** review item, with
+`databaseJobState='published'`, `providerOutcome='unknown'`
+and `reviewStatus='needs_authenticated_meta_evidence'`.
+A second read gave the same result. A request adding a fabricated
+`providerId` and `confirmed=true` was rejected and did not
+change the intent. The runner passed
+`CROSS-TREE BROKER REVIEW ACL PASS`,
+`CROSS-TREE BROKER REVIEW QUEUE PASS`,
+`CROSS-TREE POSTGREST APPLICATION WORKER PASS` and
+`CROSS-TREE REPLAY PASS` using **only** local synthetic data.
+The prior 24 targeted TypeScript unit/API tests also passed; the
+full local `tsc --noEmit` remains blocked by the three unrelated
+Remotion `lambda-render.ts` errors in the borrowed dependency tree.
+
+**Important limitations:** This is a 25-item test-only read
+projection, with no pagination, UI, durable operator notification
+or deployment. It is not a complete reconciliation workflow
+and does not prove a real Meta provider ID or whether an unknown
+request did or did not publish. The underlying durable intent
+remains irrevocably `unknown`, so the safe behavior is to
+**stop automatic retries and request human/provider review**.
+Production still has broader `service_role` clients and unreviewed
+definer/trigger transitivity, an unresolved May media migration
+baseline, an unfinished broker isolation/issuer path, and missing
+Meta-authenticated receipt provenance. Keep PR #504 as draft:
+no schema migrations, SQL privileges, client credentials, actual
+publication, Meta network request or CI workflows were applied
+to production.

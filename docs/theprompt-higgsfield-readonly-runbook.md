@@ -23,7 +23,7 @@ No Higgsfield API key or dollar-balance setup is needed. OAuth consent belongs t
 
 Resource metadata resolves to https://clerk.higgsfield.ai; root MCP proxy metadata is not an automatic fallback. Only the fixed MCP and Clerk origins are accepted. Credentials are encrypted with project/kind/record identity in authenticated data. State expires after 10 minutes and is consumed once.
 
-If tools/list does not expose the exact supported balance/models_get/estimate_video_cost schemas, inspection reports unsupported_server_schema. It never substitutes a generation tool with a get_cost argument. Unknown credit values stay unknown.
+If tools/list does not expose the exact supported balance/models_get/estimate_video_cost schemas, inspection reports unsupported_server_schema. It never substitutes a generation tool with a get_cost argument. Unknown credit values stay unknown. Inspection uses a shared absolute 20-second provider deadline across refresh and MCP, with explicit SDK cancellation and transport closure. Rejected credential responses are sanitized before SDK error parsing.
 
 The panel's temporary-unavailable status does not prove a disconnected account: inspect the closed server error and operational logs without revealing provider payloads. A missing schema/key/flag is a configuration refusal. A revoked grant requires Anslut igen. An unverified provider identity cannot be used for paid activation.
 
@@ -38,7 +38,7 @@ Rollback application code without deleting credential tables or historical asset
 - Unit tests: config, encryption, persistence refusal, SDK OAuth flow, actual Next handlers, read-only tool path, refresh/disconnect and panel controller/SSR.
 - SQL tests: real isolated PostgreSQL 17, denied client CRUD/RPC, RLS, actor binding, replay/expiry, CAS, refresh lease and disconnect behavior.
 - UI: actual compiled React panel in Playwright, desktop/mobile, zero credit balance and unavailable backend. API responses are stubbed; this is not a live authenticated OAuth smoke.
-- Full-suite/build results and final review will be recorded in the PR; no blanket green claim follows from focused tests.
+- Exact full-suite/build results, independent review and decisions: [verification report](theprompt-higgsfield-verification.md). No blanket green claim follows from focused tests.
 
 ## Explicit later work
 

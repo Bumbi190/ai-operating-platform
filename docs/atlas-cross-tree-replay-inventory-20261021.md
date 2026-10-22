@@ -87,8 +87,8 @@ are immutable SQL `CASE` expressions with no table access. The replay checks
 the exact six RPCs, two helpers and trigger count, and fails if the surface
 changes. This catalog and source review does not audit the six definer bodies
 or their transitive calls; it is a regression guard, not a production grant
-review. The full cross-tree HTTP role replay passed with the initial catalog
-assertion; the expanded assertion is verified in the next run.
+review. The full cross-tree HTTP role replay passed with the expanded
+assertion on 22 October.
 
 ## Calendar ACL baseline — read-only comparison
 

@@ -1,6 +1,6 @@
 # Atlas Model & Agent Router — genomförandeplan
 Datum: 2026-10-22
-Status: PLAN/SETUP, inte produktionsaktiverad
+Status: P0 preflight klar; lokalt GPU-inferenstest BLOCKERAT; inte produktionsaktiverad
 Ansvar: Atlas som orkestrerare; Codex, Abacus, Ollama och API-modeller som utbytbara exekutörer.
 Branch: codex/atlas-model-agent-router-20261022
 
@@ -73,3 +73,13 @@ P8 Pilot: isolerad staging-worktree; ingen merge/deploy utan oberoende review oc
 - https://github.com/openai/codex
 - https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan
 - https://docs.ollama.com/windows
+
+## Faktisk P0-uppföljning 2026-10-22
+- Ollama 0.40.8 installerad via officiell Winget-källa; endpoint på 127.0.0.1:11434 besvarar /api/tags.
+- qwen3:4b nedladdad 2.5 GB och synlig i Ollama-listan. Modellens första inferensanrop returnerade HTTP 500.
+- Ollama server.log visar "ptxas fatal: Memory allocation failure" och "CUDA error: a PTX JIT compilation failed" under GPU-uppvärmningen. Orsak ännu inte definitivt fastställd. Byt inte NVIDIA-drivrutin eller stoppa användarens andra processer utan separat godkännande.
+- RAM: endast ca 0.7-1.4 GB ledigt vid prov, trots ca 9.9 GB ledigt VRAM. Lokala modellexekveringar ska därför inte schemaläggas innan minnesmarginal finns och felet är diagnostiserat.
+- Codex CLI 0.163.0 installerad och "Logged in using ChatGPT" verifierat. Ingen automatisk debitering/API-nyckel har använts.
+- Abacus CLI 2.10.10 installerad; "Not logged in". Kräver användarens Abacus-inloggning innan test.
+- Read-only script: scripts/atlas-model-router/preflight.ps1. Observera att `localInferencePreflightPass=true` endast betyder att resursgränserna är uppfyllda, inte att modellen fungerar.
+- Ingen router, automatisk delegering, betald modell eller produktionskoppling är aktiverad. Nästa konkreta steg: åtgärda minnes-/CUDA-problemet utan att störa aktiva arbeten; därefter kör verifierat Qwen-test och abacus-plan-test.

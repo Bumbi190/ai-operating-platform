@@ -60,7 +60,8 @@ grant execute on function public.social_schedule_claim(jsonb),
 do $source_gate_grant$
 begin
  if to_regprocedure('public.calendar_source_gate_try_begin_probe(uuid)') is not null then
-  grant execute on function public.calendar_source_gate_try_begin_probe(uuid)
+  grant execute on function public.calendar_source_gate_try_begin_probe(uuid),
+   public.calendar_source_gate_begin_probe(uuid)
    to social_schedule_full_publisher_fixture;
  end if;
 end $source_gate_grant$;

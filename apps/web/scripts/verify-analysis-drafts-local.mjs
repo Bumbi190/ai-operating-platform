@@ -29,6 +29,8 @@ const dependencyReplay = process.argv.includes('--mode=dependency-replay')
 const legacyCronReplay = process.argv.includes('--mode=legacy-cron-replay')
 const legacyDreamReplay = process.argv.includes('--mode=legacy-dream-replay')
 const crossTreeReplay = process.argv.includes('--mode=legacy-cross-tree-replay')
+const scheduleWorkerReplay = process.argv.includes('--with-schedule-worker-replay')
+assert.ok(!scheduleWorkerReplay || crossTreeReplay, 'worker replay requires the cross-tree mode')
 const legacyMediaReplay = legacyCronReplay || legacyDreamReplay || crossTreeReplay || process.argv.includes('--mode=legacy-media-replay')
 assert.ok([dependencyReplay,legacyCronReplay,legacyDreamReplay,crossTreeReplay,process.argv.includes('--mode=legacy-media-replay'),process.argv.includes('--mode=canonical-replay')].filter(Boolean).length<=1, 'select one replay mode')
 const replay = dependencyReplay || legacyMediaReplay || process.argv.includes('--mode=canonical-replay')
@@ -297,8 +299,9 @@ try {
         asset: '20000000-0000-4000-8000-000000000019',
         contentDecision: '20000000-0000-4000-8000-000000000020',
       }
-      const roleResult = JSON.parse(sql(`
+      const roleSql = `
         BEGIN;
+        -- SCHEDULE_WORKER_SEED_BEGIN
         INSERT INTO auth.users(id) VALUES (${quote(actor)});
         INSERT INTO public.projects(id,owner_id,name,slug)
           VALUES (${quote(project)},${quote(actor)},'Isolated calendar probe','calendar-probe-only');
@@ -339,6 +342,7 @@ try {
               'expiresAt',to_char((now()+interval '9 minutes') at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
               'occasionId',gen_random_uuid(),'kind','ordinary','releaseCondition',null),
             'claimed',${quote(id.claim)},'probe-worker',now()+interval '90 seconds');
+        -- SCHEDULE_WORKER_SEED_END
         ${reviewedBytes(resolve(web, 'lib/calendar/source-revision-probe.sql')).toString('utf8')}
         INSERT INTO public.calendar_source_revision_probe(owner_user_id,project_id,revision)
           VALUES (${quote(actor)},${quote(project)},1);
@@ -354,6 +358,10 @@ try {
           IF NOT has_function_privilege('social_schedule_full_publisher_fixture',
             'public.calendar_source_gate_try_begin_probe(uuid)','EXECUTE') THEN
             RAISE EXCEPTION 'WORKER_GATE_GRANT_MISSING';
+          END IF;
+          IF NOT has_function_privilege('social_schedule_full_publisher_fixture',
+            'public.calendar_source_gate_begin_probe(uuid)','EXECUTE') THEN
+            RAISE EXCEPTION 'WORKER_LOCK_GATE_GRANT_MISSING';
           END IF;
           IF has_column_privilege('social_schedule_full_publisher_fixture',
             'public.projects','name','UPDATE') THEN
@@ -589,10 +597,45 @@ try {
           'publications',(SELECT count(*) FROM public.social_publications WHERE project_id=${quote(project)})
         );
         ROLLBACK;
-      `))
+      `
+      const roleResult = JSON.parse(sql(roleSql))
       assert.deepEqual(roleResult, { state:'blocked', version:3, source_revision:4, prepare_events:1, checkpoint_events:1, publications:1 })
       assert.equal(sql("SELECT count(*) FROM public.projects WHERE id=" + quote(project)), '0', 'synthetic project escaped rollback')
       console.log('CROSS-TREE SCHEDULE GATE ' + JSON.stringify(roleResult) + ' (continuous synthetic claim-to-recovery, revocation, receipt and fabricated reconciliation proof branches rolled back; no provider call)')
+      if (scheduleWorkerReplay) {
+        const seedStart = '-- SCHEDULE_WORKER_SEED_BEGIN'
+        const seedEnd = '-- SCHEDULE_WORKER_SEED_END'
+        assert.equal(roleSql.split(seedStart).length, 2)
+        assert.equal(roleSql.split(seedEnd).length, 2)
+        const seed = roleSql.split(seedStart)[1].split(seedEnd)[0]
+        sql(`BEGIN;
+          ${seed}
+          ${reviewedBytes(resolve(web, 'lib/calendar/source-revision-probe.sql')).toString('utf8')}
+          INSERT INTO public.calendar_source_revision_probe(owner_user_id,project_id,revision)
+            VALUES (${quote(actor)},${quote(project)},1);
+          ${gate}
+          ${lockedClaim}
+          ${claimFile}
+          ${recoveryCheckpoint}
+          ${roleCandidate.toString('utf8')}
+          DO $queue$ BEGIN
+            PERFORM public.calendar_source_gate_begin_probe(${quote(project)}::uuid);
+          END $queue$;
+          UPDATE public.social_schedule_jobs
+            SET state='queued',claim_id=null,worker_id=null,lease_expires_at=null
+            WHERE id=${quote(id.job)}::uuid;
+          COMMIT;`)
+        assert.equal(sql('SELECT state FROM public.social_schedule_jobs WHERE id='+quote(id.job)), 'queued')
+        const test = spawnSync(process.execPath, [resolve(repo, 'node_modules/vitest/vitest.mjs'),
+          'run', 'lib/social-launch/scheduling/isolated-worker-replay.test.ts', '--maxWorkers=1', '--minWorkers=1'], {
+          cwd:web, encoding:'utf8', timeout:90000, maxBuffer:1024*1024,
+          env:{...process.env,OMNIRA_SCHEDULE_REPLAY_CONTAINER:name,
+            OMNIRA_SCHEDULE_REPLAY_PROJECT:project,OMNIRA_SCHEDULE_REPLAY_JOB:id.job},
+        })
+        assert.equal(test.status, 0, test.stderr+'\n'+test.stdout)
+        assert.equal(sql('SELECT state FROM public.social_schedule_jobs WHERE id='+quote(id.job)), 'published')
+        console.log('CROSS-TREE APPLICATION WORKER PASS (fake provider response, owned container removed)')
+      }
     }
     console.log(crossTreeReplay ? 'CROSS-TREE REPLAY PASS' : legacyDreamReplay ? 'LEGACY DREAM REPLAY PASS' : legacyCronReplay ? 'LEGACY CRON REPLAY PASS' : legacyMediaReplay ? 'LEGACY MEDIA REPLAY PASS' : dependencyReplay ? 'DEPENDENCY REPLAY PASS' : 'CANONICAL REPLAY PASS')
     process.exitCode = 0

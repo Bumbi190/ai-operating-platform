@@ -209,15 +209,19 @@ candidate still needs a reviewed, complete permission design.
 
 The replay asserts EXECUTE for every scheduler RPC used by the worker
 (`claim`, `authorize_write`, `step`, `peek`, `receipt`, `recover_checkpoint`)
-and the signed source-gate dependency. The existing TypeScript worker tests
-use a separately named, shared Docker fixture and require application test
-dependencies. They were not run against this disposable cross-tree database.
-An application replay needs its own RPC transport and synthetic committed
-rows inside this owned container before it can establish the worker boundary.
+and both signed source-gate functions. The optional
+`--with-schedule-worker-replay` mode commits synthetic rows inside the owned,
+networkless container, then invokes the real TypeScript `runScheduleTick`
+through a restricted-role RPC adapter. A fake Meta response yields one
+Facebook POST and a `published` job. The test mocks the dispatch stop check
+and image bytes, uses a synthetic credential, and removes the owned container
+afterward. The existing TypeScript suite's separate shared Docker fixture is
+not touched by this mode.
 
-This replay connects the SQL claim and recovery path inside one transaction,
-but does **not** execute the application worker, load media bytes, contact
-Meta, or establish a deployable identity. It does not cover the other 28 root
+The default replay connects the SQL claim and recovery path inside one
+transaction. The optional application replay exercises a fake provider
+receipt, but does **not** load real media bytes, contact Meta, or establish a
+deployable identity. It does not cover the other 28 root
 files, existing production rows, authentic Supabase migration ledger entries,
 or the proposed calendar writer's deployed operation. The
 current worker still uses one `service_role` client for claim, guard, step,
@@ -225,7 +229,7 @@ and recovery, whereas the proposed NOLOGIN role is only a transaction-local
 fixture. Applying the candidate revokes on their own would interrupt the
 worker. The next gate is coordinated worker identity and credential wiring,
 an enforceable boundary around the existing provider receipt handling, and
-an application-level worker replay. Separately,
+the actual server identity and credential path. Separately,
 production's missing May baseline still prevents a fresh Supabase branch from
 reconstructing the installed schema. None of these local experiments alters
 production, the production migration ledger, or its guard.

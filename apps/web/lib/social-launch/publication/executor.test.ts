@@ -42,6 +42,7 @@ it('unknown_write_never_reclaimed',async()=>{
 })
 it('a bare Facebook feed receipt stays uncertain and is not sent again',async()=>{
  const f=fixture();let posts=0
+ f.ctx.snapshot.revision.draft.format='text'
  f.deps.provider=new MetaManualProvider(async()=>{posts++;return Response.json({id:'222'})})
  const first=await executeApprovedPublication(f.ctx,f.deps)
  expect(first).toMatchObject({state:'uncertain',failureCode:'invalid_response'})

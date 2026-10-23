@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { projectScope, GLOBAL_ONLY } from '@/lib/governance/execution-stop'
 
-const mocks = vi.hoisted(() => ({ anthropic: vi.fn(), openai: vi.fn() }))
+const mocks = vi.hoisted(() => ({ anthropic: vi.fn(), openai: vi.fn(), reserve: vi.fn() }))
 vi.mock('@/lib/ai/anthropic', () => ({ getAnthropic: () => ({ messages: { create: mocks.anthropic } }) }))
 vi.mock('@/lib/ai/openai-client', () => ({ openAIChatCompletion: mocks.openai }))
+vi.mock('@/lib/media/atlas-fallback-budget', () => ({ reserveAtlasFallback: mocks.reserve }))
 
 import { getMediaTextClient } from '@/lib/media/text-client'
 import { canRouteTextFailure, isAutomaticTextFailoverAllowed } from '@/lib/media/model-failover-policy'
@@ -34,6 +35,7 @@ beforeEach(()=>{
   vi.stubEnv('ANTHROPIC_API_KEY','synthetic-primary')
   vi.stubEnv('MEDIA_NEWS_ANTHROPIC_AUTH_FALLBACK_ENABLED','false')
   mocks.openai.mockResolvedValue(completion)
+  mocks.reserve.mockResolvedValue(undefined)
   vi.spyOn(console,'warn').mockImplementation(()=>{})
 })
 afterEach(()=>{vi.unstubAllEnvs();vi.restoreAllMocks()})
@@ -56,6 +58,7 @@ describe('governed Atlas model failover, operator opt-in',()=>{
    expect(r.stop_reason).toBe('end_turn')
    expect(mocks.anthropic).toHaveBeenCalledTimes(1)
    expect(mocks.openai).toHaveBeenCalledTimes(1)
+   expect(mocks.reserve).toHaveBeenCalledTimes(1)
    expect(mocks.openai).toHaveBeenCalledWith(ctx,expect.objectContaining({
      model:'gpt-5.4-mini',max_completion_tokens:512,reasoning_effort:'none',
    }))
@@ -113,6 +116,14 @@ describe('governed Atlas model failover, operator opt-in',()=>{
    mocks.anthropic.mockRejectedValue(error)
    expect(canRouteTextFailure(dream,error)).toBe(null)
    await expect(getMediaTextClient(dream).messages.create(input)).rejects.toBe(error)
+   expect(mocks.openai).not.toHaveBeenCalled()
+ })
+ it('refuses paid OpenAI dispatch when the separate Atlas allowance denies',async()=>{
+   const budgetDenied=Object.assign(new Error('ATLAS_RESERVE_REFUSED'),{reason:'daily_limit'})
+   mocks.anthropic.mockRejectedValue(badKey())
+   mocks.reserve.mockRejectedValueOnce(budgetDenied)
+   await expect(getMediaTextClient(news).messages.create(input)).rejects.toBe(budgetDenied)
+   expect(mocks.reserve).toHaveBeenCalledTimes(1)
    expect(mocks.openai).not.toHaveBeenCalled()
  })
  it('preserves the reserve budget refusal instead of trying a third model',async()=>{

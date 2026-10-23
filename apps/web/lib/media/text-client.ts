@@ -4,6 +4,7 @@ import type Anthropic from '@anthropic-ai/sdk'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { openAIChatCompletion, type OpenAIGovernanceContext } from '@/lib/ai/openai-client'
 import { openAITextOptions } from '@/lib/ai/atlas-model-policy'
+import { reserveAtlasFallback, type AtlasReserveKind } from './atlas-fallback-budget'
 import {
   classifyAnthropicNoGeneration, canRouteTextFailure,
   isAutomaticTextFailoverAllowed, type FailoverReason,
@@ -40,6 +41,16 @@ function mayUseNewsAuthReserve(ctx: MediaTextContext, error: unknown): boolean {
 async function secondaryText(
   ctx: MediaTextContext, input: MediaTextRequest, reason: FailoverReason,
 ): Promise<MediaTextResponse> {
+  // The budget applies to every reserve (including legacy media credit recovery)
+  // once the operator opts into the new router. This is BEFORE OpenAI dispatch.
+  if (process.env.ATLAS_TEXT_FAILOVER_ENABLED === 'true') {
+    const kind: AtlasReserveKind =
+      ctx.agent === 'News Hunter' && ctx.operation === 'Analyze News' ? 'news'
+      : ctx.agent === 'CFO Briefing' && ctx.operation === 'Morning Briefing' ? 'briefing'
+      : ctx.agent === 'Dream' && ctx.operation === 'Dream Analysis' ? 'dream'
+      : 'media'
+    await reserveAtlasFallback(ctx, kind, input)
+  }
   // Never log credentials, provider response body, request content or account ids.
   console.warn(`[media/text] governed model reserve selected: ${reason}`)
   // The existing cost boundary checks project ownership, stops and budget before

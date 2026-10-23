@@ -77,8 +77,8 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Higgsfield project-owned OAuth state migration is an enforced, not-yet-applied
 // migration. Count tripwires include its canonical SQL; production activation
 // still requires explicit reviewed application and a matching ledger entry.
-export const EXPECTED_CANONICAL_SQL_COUNT = 152
-export const EXPECTED_ENFORCED_COUNT = 138
+export const EXPECTED_CANONICAL_SQL_COUNT = 154
+export const EXPECTED_ENFORCED_COUNT = 140
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

@@ -13,6 +13,7 @@ create table if not exists auth.sessions(
  id uuid primary key, user_id uuid not null,
  not_after timestamptz
 );
+alter table auth.sessions enable row level security;
 revoke all on auth.sessions from public, anon, authenticated;
 
 create function public.social_schedule_native_operator_guard_fixture(p_project uuid)

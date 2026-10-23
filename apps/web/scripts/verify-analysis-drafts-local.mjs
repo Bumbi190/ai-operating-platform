@@ -6,6 +6,7 @@ import { createHash, generateKeyPairSync, randomBytes, sign as signJwt } from 'n
 import assert from 'node:assert/strict'
 import { orderReplayMigrations, orderLegacyMediaReplayMigrations, orderCrossTreeReplayMigrations } from './analysis-replay-order.mjs'
 import {runClosedCalendarRotationProbe} from './calendar-postgrest-rotation-fixture.mjs'
+import {auditNativeDefinerSurface,buildNativeDefinerCatalogQuery,reviewedNativeDefinerFingerprints} from './calendar-native-definer-surface.mjs'
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..'),
   repo = resolve(web, '../..')
 const migrationDir = resolve(web, 'supabase/migrations')
@@ -841,6 +842,13 @@ try {
           GRANT social_schedule_broker_review_fixture TO authenticator;
           GRANT social_schedule_operator_review_fixture TO authenticator;
           COMMIT;`)
+        // This is a strict, review-scoped catalog audit. PL/pgSQL body
+        // dependencies are not exhaustively represented by pg_depend; compare
+        // visible source references, object privileges, owner and body hashes.
+        const nativeAuditQuery=buildNativeDefinerCatalogQuery()
+        const nativeAuditSnapshot=JSON.parse(sql(nativeAuditQuery))
+        const nativeAudit=auditNativeDefinerSurface(nativeAuditSnapshot,{fingerprints:reviewedNativeDefinerFingerprints,requireFingerprints:true})
+        console.log('CROSS-TREE NATIVE OPERATOR DEFINER SNAPSHOT '+JSON.stringify(nativeAudit))
         const callableSurface=JSON.parse(sql(`WITH executable AS (
           SELECT p.oid,p.prosecdef,pg_get_function_result(p.oid) AS result_type
           FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace

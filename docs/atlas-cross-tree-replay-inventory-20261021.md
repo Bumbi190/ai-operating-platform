@@ -1434,3 +1434,45 @@ feasibility test**, not a production RLS/definer/callgraph audit,
 real Supabase Auth session validation, deployment, Meta verification
 or hosted Data API permission rollout. See
 `docs/calendar-hosted-authenticated-role-decision-20261023.md`.
+
+## Native operator privileged SQL catalog audit — 23 October (test-only)
+
+The new read-only catalog checker in
+`apps/web/scripts/calendar-native-definer-surface.mjs` checks
+the three native `SECURITY DEFINER` operator functions and four
+RLS-protected fixture tables. It verifies function owner, volatility,
+language, `search_path`, exact scoped EXECUTE grants (including
+PUBLIC/anon/service/scheduler refusal), table RLS/direct privileges,
+the explicitly referenced SQL object set and SHA-256 of the exact
+PostgreSQL `pg_get_functiondef` text. All three fingerprints are
+pinned, so changed function definitions now fail the replay pending
+an explicit review. The native fixture's minimal `auth.sessions`
+bootstrap was set to RLS enabled for defense in depth.
+
+The first full replay captured baseline hashes, and a second
+full replay with these hashes enforced completed successfully:
+`CROSS-TREE REPLAY PASS`, exit code 0. Four native catalog-audit
+unit tests passed, including intentional drift of **in-memory
+catalog data** (permission changes, missing or altered functions,
+search-path, dynamic SQL/reference injection, body fingerprints
+and table privilege/RLS drift). The eight earlier calendar Vitest
+suites passed 55/55 tests; the four environment-gated integration
+tests ran in the full PostgREST replay. No destructive or rollback
+DDL mutation test was run against the actual database, and no live
+Supabase mutation was made.
+
+A separate security decision report,
+`docs/calendar-native-definer-audit-20261023.md`, records the
+exact limited call/reference graph, normalized definition hashes,
+and outstanding gaps. Read-only catalog checks of the hosted
+AI Operating Platform project showed 116 public SECURITY DEFINER
+functions, including eight callable by `authenticated` and seven
+by `anon`. Seven are named trigger/guard functions. The eighth
+(`atlas_grant_m4_execution_authorization`) was inspected and
+contains project-owner, signed-in-user, target and pending-action
+gates; this is not a confirmed vulnerability. The new native
+operator RPCs still require a separate production-ready human
+security review because Supabase warns about
+`authenticated`-callable SECURITY DEFINER functions. Current
+recommendation: keep PR #504 DRAFT; no production migration,
+function grant, identity/Meta key or external publication.

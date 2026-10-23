@@ -2,6 +2,7 @@ import 'server-only'
 import {NextResponse} from 'next/server'
 import {resolvePlatformOperator} from '@/lib/auth/platform-operator'
 import {createAdminClient} from '@/lib/supabase/admin'
+import {localTextDispatchEnabled} from './activation-fence'
 import {isUuid,isSha256} from '@omnira/local-text-contract'
 import {publicIdentityFingerprint,readBoundedRequestBody} from './identity'
 
@@ -14,7 +15,7 @@ const safeDevice=(v:unknown)=>{
  return {deviceId:v.deviceId,projectId:v.projectId,status:v.status,version:v.version,fingerprint:v.fingerprint,...(typeof v.enrolled==='boolean'?{enrolled:v.enrolled}:{}),...(v.lastHeartbeatAt===null||typeof v.lastHeartbeatAt==='string'?{lastHeartbeatAt:v.lastHeartbeatAt}:{})}
 }
 export async function handleOwnerDeviceRequest(request:Request,deviceId?:string):Promise<NextResponse>{
- const enabled=process.env.ATLAS_LOCAL_TEXT_ENABLED==='true'
+ const enabled=localTextDispatchEnabled()
  if(request.method==='POST'&&!enabled)return error(503)
  let operator;try{operator=await resolvePlatformOperator()}catch{return error(503)}
  if(!operator.ok)return error(operator.reason==='unauthenticated'?401:operator.reason==='no_operator_configured'?503:403)

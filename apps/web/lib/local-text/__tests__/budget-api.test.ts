@@ -1,4 +1,7 @@
 import {it,expect,vi,beforeEach,afterEach} from 'vitest'
+// Existing behavioral tests opt into a simulated post-incident-clearance gate;
+// production hard-stop behavior is tested independently in activation-fence.test.ts.
+vi.mock('../activation-fence',()=>({localTextDispatchEnabled:()=>process.env.ATLAS_LOCAL_TEXT_ENABLED==='true'}))
 const f=vi.hoisted(()=>({operator:{ok:true,userId:'11111111-1111-4111-8111-111111111111'} as Record<string,unknown>,calls:[] as any[],profile:null as any}))
 vi.mock('@/lib/auth/platform-operator',()=>({resolvePlatformOperator:async()=>f.operator}))
 vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>({rpc:async(...args:any[])=>{f.calls.push(args);return {data:{kind:'applied',value:{id:'11111111-1111-4111-8111-111111111111',status:'revoked',version:2}},error:null}}})}))

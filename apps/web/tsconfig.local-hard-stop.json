@@ -1,0 +1,23 @@
+{
+ "extends": "./tsconfig.json",
+ "compilerOptions": {
+   "incremental": false,
+   "paths": {
+     "@/*": ["./*"],
+     "@omnira/local-text-contract": ["../../packages/local-text-contract/index.d.mts"]
+   }
+ },
+ "include": [
+   "next-env.d.ts",
+   "lib/local-text/activation-fence.ts",
+   "app/api/local-text/worker/[operation]/route.ts",
+   "lib/local-text/owner-api.ts",
+   "lib/local-text/admission-api.ts",
+   "lib/local-text/pilot-api.ts",
+   "lib/local-text/atlas-tools.ts",
+   "lib/local-text/budget-api.ts",
+   "lib/local-text/cloud-runs.ts",
+   "lib/local-text/__tests__/activation-fence.test.ts"
+ ],
+ "exclude": ["node_modules"]
+}

@@ -12,7 +12,7 @@ Status: intentionally failing TEST-ONLY branch for https://github.com/Bumbi190/a
 
 ## Test-first deliverable
 - A new source-contract test in apps/web/lib/qa/local-text-project-incident-fence.contract.test.ts scans additive migrations for the last authoritative public.local_text_eligible definition.
-- It explicitly requires an existence check against local_text_incidents for the SAME project, where kind=reconcile and state=open.
+- It explicitly requires a **denying** incident predicate against local_text_incidents for the SAME project, where kind=reconcile and state=open. The strengthened syntax checker recognizes fail-closed `IF EXISTS ... THEN RETURN FALSE` or qualifying `AND NOT EXISTS`, not a superficial incident SELECT; it requires all incident columns to use the same table alias.
 - As expected, the test FAILS on the current SQL. Do NOT skip, xfail, weaken, or merge it into production while red. No SQL files, live functions, schema ledger, RLS, stop flags or workers were changed in this branch.
 - Source inspection cannot PROVE database semantics. The final implementation needs PostgreSQL integration tests before code review.
 

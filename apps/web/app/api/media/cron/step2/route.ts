@@ -40,7 +40,7 @@ export async function GET(request: Request) {
 
   let query = db
     .from('media_scripts')
-    .select('id, project_id, hook, script, voice_attempts, media_news_items(title)')
+    .select('id, project_id, hook, script, voice_status, voice_attempts, media_news_items(title)')
     .eq('status', 'approved')
     .order('generated_at', { ascending: false })
     .limit(1)
@@ -62,10 +62,36 @@ export async function GET(request: Request) {
     return NextResponse.json({ status: 'nothing_to_do', reason: 'No script waiting for voice in last 15 min' })
   }
 
-  console.log(`[cron/step2] Generating voice for script ${script.id}`)
+  // Claim this exact observed voice status and attempt generation atomically.
+  // Two cron/recovery invocations may select the same approved script. A blind
+  // UPDATE lets both pay for a voice + three images before either observes the
+  // other's progress. Never spend until the conditional write returns our row.
+  const status = script.voice_status
+  const attempts = script.voice_attempts
+  if ((status !== null && status !== 'none' && status !== 'failed')
+      || (attempts ?? 0) >= 3) {
+    return NextResponse.json({ status: 'nothing_to_do', reason: 'Voice is not claimable' })
+  }
 
-  // Mark as generating to prevent double-processing
-  await db.from('media_scripts').update({ voice_status: 'generating' }).eq('id', script.id)
+  let claim = db.from('media_scripts')
+    .update({ voice_status: 'generating' })
+    .eq('id', script.id)
+    .eq('project_id', script.project_id)
+    .eq('status', 'approved')
+    .is('published_at', null)
+    .is('audio_url', null)
+    .is('timing_url', null)
+  claim = status === null ? claim.is('voice_status', null) : claim.eq('voice_status', status)
+  claim = attempts === null ? claim.is('voice_attempts', null) : claim.eq('voice_attempts', attempts)
+  const { data: claimed, error: claimError } = await claim.select('id').maybeSingle()
+  if (claimError) {
+    // A failed CAS read is NOT permission to dispatch expensive provider work.
+    return NextResponse.json({ error: 'Voice claim unavailable' }, { status: 503 })
+  }
+  if (!claimed) {
+    return NextResponse.json({ status: 'nothing_to_do', reason: 'Voice already claimed' })
+  }
+  console.log(`[cron/step2] Generating voice for claimed script ${script.id}`)
 
   try {
     const { script: scriptText, project_id: projectId, hook } = script

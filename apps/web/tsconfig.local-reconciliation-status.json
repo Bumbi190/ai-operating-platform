@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "paths": {
+      "@/*": ["./*"],
+      "@omnira/local-text-contract": ["../../packages/local-text-contract/index.d.mts"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "lib/local-text/reconciliation-readiness.ts",
+    "lib/local-text/reconciliation-status-api.ts",
+    "app/api/local-text/reconciliation-status/route.ts",
+    "lib/local-text/__tests__/reconciliation-status-api.test.ts"
+  ],
+  "exclude": ["node_modules"]
+}

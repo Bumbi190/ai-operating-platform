@@ -26,6 +26,27 @@ describe('fixed read-only tool path',()=>{
   const {client,calls}=stub();expect(await inspectReadOnlyClient(client)).toEqual({creditBalance:0,quoteCredits:4})
   expect(calls).toEqual(['balance','models_get','estimate_video_cost'])
  })
+ it('accepts Higgsfield production duration model parameter without a duration_range wrapper',async()=>{
+  const liveModel={id:'grok_video_v15_lite',aspect_ratios:['auto','9:16'],parameters:[
+   {name:'resolution',type:'string',options:['480p','720p','1080p'],default:'720p'},
+   {name:'duration',type:'number',min:1,max:15,default:5}
+  ]}
+  const {client,calls}=stub({callTool:async(name:string,args:unknown)=>{
+   calls.push(name)
+   if(name==='estimate_video_cost')expect(args).toEqual({params:{model:'grok_video_v15_lite',duration:4,resolution:'720p',aspect_ratio:'9:16',count:1}})
+   return {structuredContent:name==='balance'?{credits:1170}:name==='models_get'?liveModel:{cost:{credits:4,credits_exact:4}}}
+  }})
+  expect(await inspectReadOnlyClient(client)).toEqual({creditBalance:1170,quoteCredits:4})
+  expect(calls).toEqual(['balance','models_get','estimate_video_cost'])
+ })
+ it('refuses a model whose duration parameter excludes four seconds',async()=>{
+  const {client,calls}=stub({callTool:async(name:string)=>{
+   calls.push(name)
+   return {structuredContent:name==='balance'?{credits:1170}:{id:'grok_video_v15_lite',aspect_ratios:['9:16'],parameters:[{name:'resolution',options:['720p']},{name:'duration',min:5,max:15}]}}
+  }})
+  await expect(inspectReadOnlyClient(client)).rejects.toThrow('unsupported_server_schema')
+  expect(calls).toEqual(['balance','models_get'])
+ })
  it('refuses schema drift without fallback to generation',async()=>{
   const {client,calls}=stub({listTools:async()=>tools.filter(t=>t.name!=='estimate_video_cost')})
   await expect(inspectReadOnlyClient(client)).rejects.toThrow('unsupported_server_schema');expect(calls).toHaveLength(0)

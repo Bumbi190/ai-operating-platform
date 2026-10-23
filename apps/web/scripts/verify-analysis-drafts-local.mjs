@@ -11,6 +11,7 @@ import {auditCalendarTriggerChain,buildCalendarTriggerChainQuery,triggerChainFin
 import {auditSchedulerRpcChain,buildSchedulerRpcChainCatalogQuery,reviewedRpcChainPins} from './calendar-worker-rpc-callchain-audit.mjs'
 import {auditCalendarHelperChain,buildCalendarHelperCatalogQuery,reviewedHelperPins} from './calendar-helper-chain-audit.mjs'
 import {auditMediaNewsCallees,buildMediaNewsCalleeCatalogQuery,reviewedMediaNewsPins} from './calendar-media-news-callees-audit.mjs'
+import {auditMediaProvenanceTriggers,mediaProvenanceCatalogSql,mediaProvenancePins} from './calendar-media-provenance-trigger-audit.mjs'
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..'),
   repo = resolve(web, '../..')
 const migrationDir = resolve(web, 'supabase/migrations')
@@ -955,6 +956,8 @@ try {
           ${quote(project)}::uuid,'{}'::jsonb))`)
         assert.equal(invalidMedia,'["news_evidence_invalid"]',
           'invalid media admission snapshot was incorrectly allowed')
+        const mediaProvInventory=auditMediaProvenanceTriggers(JSON.parse(sql(mediaProvenanceCatalogSql())),{pins:mediaProvenancePins,enforce:true})
+        console.log('CROSS-TREE MEDIA PROVENANCE TRIGGER PASS '+JSON.stringify({triggers:mediaProvInventory.triggers.length,functions:mediaProvInventory.functions.length})+' (pinned source/trigger definitions; news guard ACL strict; legacy ACL to review)')
         console.log('CROSS-TREE MEDIA NEWS CALLEE PASS '+JSON.stringify({
           functions:mediaNewsReview.reviewedFunctions,
           directCalls:mediaNewsReview.functions.reduce((n,x)=>n+x.calls.length,0),

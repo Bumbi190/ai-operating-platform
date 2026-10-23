@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false
+  },
+  "include": [
+    "next-env.d.ts",
+    "lib/content-growth/instagram-agent.ts",
+    "lib/content-growth/instagram-metrics.ts",
+    "lib/content-growth/instagram-read.ts",
+    "app/(platform)/atlas/operations/InstagramGrowthCard.tsx"
+  ],
+  "exclude": ["node_modules"]
+}

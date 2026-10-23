@@ -929,6 +929,15 @@ try {
         const reviewToken=signedToken(actor,{role:'social_schedule_broker_review_fixture'})
         const foreignReviewToken=signedToken(id.foreignPrincipal,{role:'social_schedule_broker_review_fixture'})
         const operatorToken=signedToken(operatorSubject,{role:'social_schedule_operator_review_fixture'})
+        // Operator/reader-only scoped short-lived JWTs. Their RSA signing
+        // key never leaves this parent replay runner process. The bridge
+        // test process receives only these tokens and a fixed RPC gateway.
+        const bridgeOperatorToken=signedToken(operatorSubject,{
+          role:'social_schedule_operator_review_fixture',
+          omnira_project:project,exp:now+240})
+        const bridgeReviewToken=signedToken(operatorSubject,{
+          role:'social_schedule_broker_review_fixture',
+          omnira_project:project,exp:now+240})
         const nonOperatorToken=signedToken(actor,{role:'social_schedule_operator_review_fixture'})
         const foreignOperatorToken=signedToken(id.foreignPrincipal,{role:'social_schedule_operator_review_fixture'})
         const requestScript=`const q=JSON.parse(Buffer.from(process.argv[1],'base64').toString());fetch('http://rest:3000'+q.path,{method:q.method,headers:{Authorization:'Bearer '+q.token,'Content-Type':'application/json'},body:q.body?JSON.stringify(q.body):undefined}).then(async r=>console.log(JSON.stringify({status:r.status,body:await r.text()}))).catch(e=>{console.error(e.message);process.exitCode=1})`
@@ -1348,6 +1357,26 @@ try {
           })
           assert.equal(uiProof.status,0,uiProof.stderr+'\n'+uiProof.stdout)
           console.log('CROSS-TREE OPERATOR REVIEW UI PASS (real scoped SQL observation history; login/operator checks; confirm-only note form)')
+          // Bridge proves that the existing app session gate can reach the
+          // three precise PostgREST RPCs using two separate issuer-signed
+          // role tokens WITHOUT placing the private issuer key in the app.
+          const bridgeProof=spawnSync(process.execPath,[resolve(repo,'node_modules/vitest/vitest.mjs'),
+            'run','lib/social-launch/scheduling/operator-session-rpc-bridge-fixture.test.ts',
+            '--maxWorkers=1','--minWorkers=1'],{
+            cwd:web,encoding:'utf8',timeout:60000,maxBuffer:1024*1024,
+            env:{...process.env,
+              OMNIRA_SCHEDULE_REPLAY_GATEWAY:gatewayName,
+              OMNIRA_SCHEDULE_REPLAY_BRIDGE_REVIEW_TOKEN:bridgeReviewToken,
+              OMNIRA_SCHEDULE_REPLAY_BRIDGE_OPERATOR_TOKEN:bridgeOperatorToken,
+              OMNIRA_SCHEDULE_REPLAY_BRIDGE_SUBJECT:operatorSubject,
+              OMNIRA_SCHEDULE_REPLAY_BRIDGE_SCOPE_B64:Buffer.from(JSON.stringify({
+                projectId:project,jobId:id.job,publicationId:reviewNote.publicationId,
+              }),'utf8').toString('base64')},
+          })
+          assert.equal(bridgeProof.status,0,bridgeProof.stderr+'\n'+bridgeProof.stdout)
+          assert.equal(sql('SELECT count(*) FROM public.social_schedule_operator_review_events_fixture'),'2')
+          assert.equal(sql('SELECT provider_outcome FROM public.social_schedule_dispatch_intents_fixture'),'unknown')
+          console.log('CROSS-TREE OPERATOR SESSION RPC BRIDGE PASS (signed short-lived JWTs, real operator+reviewer SQL roles; no signer or proof leak)')
           const immutability=sql(`
             DO $operator_note_guard$ BEGIN
               UPDATE public.social_schedule_operator_review_events_fixture

@@ -1272,3 +1272,113 @@ or production migration. The existing production
 baseline and the privileged function/trigger transitive audit remain
 open. PR #504 stays a draft; nothing here grants Atlas human
 approval authority or deploys a public endpoint.
+
+## Trusted operator session → scoped PostgREST RPC boundary — 23 October (test-only)
+
+This follow-up adds a **test-only private RPC bridge**, not a production
+JWT issuer or a deployed application route:
+`apps/web/lib/social-launch/scheduling/operator-session-rpc-bridge-fixture.ts`.
+The prior operator observation UI handler already rechecks
+`resolveProjectAccess` and `resolvePlatformOperator` but previously
+used injected store callbacks without proving that they could operate
+under the intended SQL roles. This bridge supplies **only those three
+callbacks**: `readQueue`, `readHistory`, and `appendNote`.
+
+For **each** callback it independently rechecks the signed-in user
+through the application's server-side Supabase Auth `getUser()` path,
+project ownership, and configured platform-operator status, and
+compares that server-derived user ID to the expected subject. It
+refuses caller-selected projects, extra write fields, invalid
+candidate IDs and unreviewed RPC names. The dispatch targets are
+pinned:
+- `social_schedule_dispatch_review_fixture` under
+  `social_schedule_broker_review_fixture` (read-only review role)
+- `social_schedule_operator_review_history_fixture` and
+  `social_schedule_operator_review_append_fixture` under
+  `social_schedule_operator_review_fixture` (human operator role).
+
+The bridge takes **no signing key**. A distinct trusted identity
+authority must provide a short-lived JWT via the injected private
+`issueScopedToken(role,projectId,subject)` callback. Only the
+private server-side transport receives that token; the bridge
+does not return the bearer, a token-issuance API, raw `.rpc`,
+`.from`, `.auth` or `.storage` to application/browser consumers.
+The unmounted fixture rejects use outside `NODE_ENV=test`.
+
+The bridge also checks the JWT **shape** before transport:
+RS256, pinned `kid`, canonical issuer/audience, exact allowed
+role, exact verified subject/project, bounded issued/not-before
+and expiration, with a maximum lifetime of four minutes.
+**Parsing an untrusted JWT is NOT signature verification.** In the
+isolated integration PostgREST performs cryptographic signature
+verification using its public JWKS; the private signer stays in
+the *parent* Docker replay runner process, not the
+Vitest/Next application process. Modified payloads cannot
+substitute different authority without passing PostgREST's
+independent RSA signature check.
+
+An intentional limitation: the hosted Supabase third-party
+Custom OIDC path requires an HTTPS OIDC discovery endpoint and
+asymmetric keys with `kid`. Supabase's published examples
+generally configure a JWT `role='authenticated'`. **The raw
+PostgREST fixture using a custom role does NOT prove that a
+hosted Supabase project would admit the same custom SQL role
+or this issuer configuration.** Before any production rollout,
+select a supported issuer and dedicated service deployment,
+configure OIDC/JWKS trust, demonstrate hosted role/grant/RLS
+behavior in a safe test environment, and define key rotation,
+session revocation and private token delivery. Never put
+the private signing key or a service-role key in a browser,
+Next public bundle or ordinary cron endpoint.
+
+### Verification intent
+
+Unit tests cover operator/session/ownership denial **before
+token issuance**, strict RPC allowlisting and request shapes,
+short TTL, issuer/role/audience/subject/project/`kid` bounds,
+mismatched roles, altered JWT payload, transport errors and
+the absence of any token/signing API on the returned facade.
+The integration test uses the actual scoped PostgREST
+role-mapped JWTs signed by the **separate parent runner**,
+replays a previously committed operator request ID
+(idempotently), and checks the existing operator UI returns
+a human-only observation history without changing the durable
+Meta outcome. The runner must verify there are still exactly
+two audit notes, one durable dispatch intent and
+`provider_outcome='unknown'`.
+
+All data, signing keys, mappings and Meta responses used
+here are synthetic; no live session, hosted OIDC provider,
+real Instagram/Facebook account, public UI route, Vercel
+deployment, production migration, grant, JWT secret or
+external provider call is created. The historical May media
+baseline, transitive SQL definer/trigger audit, live
+provider proof provenance, and hosted custom-role
+feasibility remain separate launch blockers. Keep PR #504
+a draft.
+
+**Verified result, 23 October:** The targeted Vitest run passed
+**55 tests** across eight suites (four replay-only tests intentionally
+skipped in normal mode). The isolated full cross-tree
+PostgreSQL/PostgREST replay completed with exit code 0 and specifically
+reported `CROSS-TREE OPERATOR SESSION RPC BRIDGE PASS`,
+`CROSS-TREE OPERATOR REVIEW UI PASS`,
+`CROSS-TREE OPERATOR AUDIT PASS`, and
+`CROSS-TREE REPLAY PASS`. The new conditional test used the private
+parent-runner-signed reviewer and operator JWTs against actual owned
+PostgREST. The application-side mock session first passed through the
+existing Omnira project/operator guard functions; its UI handler
+then called exactly three pinned RPCs via the private bridge.
+PostgREST independently authenticated the signed tokens, and the
+same operator note request ID returned the existing audit record
+without adding a third event. The durable dispatch intent was still
+one row, `provider_outcome='unknown'`, with automatic retry
+disabled. No signing key entered the Vitest process.
+
+The final local `tsc --noEmit` rerun had **only** the three previously
+documented unrelated `lib/media/lambda-render.ts` Remotion
+dependency/type errors; no new errors in the bridge or its tests.
+`node --check` on the modified replay script and
+`git diff --check` passed. No GitHub CI, production operation,
+live Meta API request or migration was triggered. The owned Docker
+resources were cleaned by the runner.

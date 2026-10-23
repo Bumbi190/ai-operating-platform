@@ -3,16 +3,11 @@ import {useEffect,useRef,useState} from 'react';
 import type {CalendarEntry,CalendarRange,CalendarWeekModel} from '@/lib/calendar/types';
 import {layoutCalendarWeek} from '@/lib/calendar/layout';
 import {stockholmDate,stockholmMinute} from '@/lib/calendar/time';
+import {calendarProgress,calendarResponsibility} from '@/lib/calendar/progress';
 import styles from './Calendar.module.css';
 const dateLabel=(date:string,options:Intl.DateTimeFormatOptions)=>new Intl.DateTimeFormat('sv-SE',{...options,timeZone:'UTC'}).format(new Date(date+'T12:00:00Z'));
 export function calendarStatus(entry:CalendarEntry):string {
- if(entry.source.kind==='social'&&entry.source.jobId===null){
-  if(entry.status==='rejected')return 'Innehåll avvisat';
-  return 'Innehållsförslag · inte schemalagt';
- }
- if(entry.status==='cancelled')return 'Avbokat';
- if(entry.manualEvent?.kind==='work_block')return {planned:'Planerat',in_progress:'Pågår',done:'Klart'}[entry.manualEvent.workStatus??'planned'];
- return ({scheduled:'Planerat',queued:'Schemalagt',proposal:'Tidsförslag',needs_review:'Behöver granskas',approved:'Godkänt',rejected:'Avvisat',claimed:'Bearbetas',waiting:'Väntar',published:'Publicerat',failed:'Misslyckades',uncertain:'Utfallet är oklart',blocked:'Spärrat',missed:'Missat',content_missing:'Innehåll saknas',active:'Fortsättning',complete:'Klart',abandoned:'Avslutat'} as Record<string,string>)[entry.status]??entry.status;
+ return calendarProgress(entry).label;
 }
 export function CalendarWeek({entries,range,projects,selectedDay,onDay,onSelect,onCreate}:{entries:CalendarEntry[];range:CalendarRange;projects:CalendarWeekModel['projects'];selectedDay:string;onDay:(date:string)=>void;onSelect:(entry:CalendarEntry)=>void;onCreate:(date:string,minute:number)=>void}){
  const proposals=entries.filter(e=>e.pendingChange).map<CalendarEntry>(e=>({...e,id:e.id+':proposal',title:'Tidsförslag · '+e.title,time:e.pendingChange!.time,status:'proposal',pendingChange:null}));
@@ -26,13 +21,16 @@ export function CalendarWeek({entries,range,projects,selectedDay,onDay,onSelect,
  const renderEntry=(entry:CalendarEntry,slot?:{startMinute:number;endMinute:number;column:number;columnCount:number;isPoint:boolean})=>{
   const original=originals.get(entry.id)??originals.get(entry.id.replace(/:proposal$/,''))??entry;
   const proposed=original.id!==entry.id;
+  const progress=calendarProgress(entry),responsibility=calendarResponsibility(entry);
   const time=entry.time.kind==='timed'?stockholmMinute(entry.time.startUtc).slice(11,16):'Heldag';
   return <button key={entry.id} type="button" className={styles.event+(slot?.isPoint?' '+styles.point:'')+(entry.status==='cancelled'?' '+styles.cancelled:'')} style={{'--event-accent':accent(entry),...(slot?{top:slot.startMinute,height:Math.max(23,slot.endMinute-slot.startMinute),left:'calc('+slot.column+'/'+slot.columnCount+' * 100% + 3px)',width:'calc(100% / '+slot.columnCount+' - 6px)'}:{})} as React.CSSProperties}
    data-event-id={original.id} data-proposal={proposed} data-start-utc={entry.time.kind==='timed'?entry.time.startUtc:''} data-end-utc={entry.time.kind==='timed'?entry.time.endUtc??'':''} data-status={entry.status} data-columns={slot?.columnCount??1} onClick={e=>{e.stopPropagation();onSelect(original)}} aria-label={entry.title+' · '+time+' · '+calendarStatus(entry)}>
-   <span className={styles.eventTitle}>{entry.title}</span><span className={styles.eventMeta}>{time}{slot?.isPoint?' · sluttid saknas':''} · {calendarStatus(entry)}</span>{entry.pendingChange&&<span className={styles.pending}>Ny tid föreslagen</span>}{slot&&slot.columnCount>1&&<span className={styles.conflict}>Överlapp</span>}
+   <span className={styles.statusDot} data-tone={progress.tone} title={progress.label} aria-hidden="true"/>
+   <span className={styles.eventTitle}>{entry.title}</span><span className={styles.eventMeta}>{time}{slot?.isPoint?' · sluttid saknas':''} · {progress.label}{responsibility?' · '+responsibility:''}</span>{entry.pendingChange&&<span className={styles.pending}>Ny tid föreslagen</span>}{slot&&slot.columnCount>1&&<span className={styles.conflict}>Överlapp</span>}
   </button>;
  };
  return <section className={styles.calendar} aria-label="Veckokalender">
+  <div className={styles.statusLegend} aria-label="Kalenderstatus">{[['waiting','Väntar eller pågår'],['review','Behöver granskas'],['success','Klart'],['error','Fel eller spärrat']].map(([tone,label])=><span key={tone}><i className={styles.statusDot} data-tone={tone} aria-hidden="true"/>{label}</span>)}</div>
   <div className={styles.mobileDays} aria-label="Välj dag">{layout.days.map(day=><button type="button" key={day.date} aria-label={dateLabel(day.date,{weekday:'long',day:'numeric'})} aria-pressed={selectedDay===day.date} onClick={()=>onDay(day.date)}><span>{dateLabel(day.date,{weekday:'short'})}</span><strong>{Number(day.date.slice(8))}</strong></button>)}</div>
   <div className={styles.weekHeader}><div className={styles.zone}>svensk tid</div>{layout.days.map(day=><div key={day.date} className={styles.dayHeader} data-active={selectedDay===day.date} data-today={today===day.date}><span>{dateLabel(day.date,{weekday:'long'})}</span><strong>{Number(day.date.slice(8))}</strong></div>)}</div>
   <div className={styles.allDayRow}><div className={styles.allDayLabel}>Heldag</div>{layout.days.map(day=><div key={day.date} data-date={day.date} data-active={selectedDay===day.date} className={styles.allDayCell}>{day.allDay.map(entry=>renderEntry(entry))}</div>)}</div>

@@ -4,6 +4,7 @@ import {X} from 'lucide-react';
 import {CalendarTimePicker} from './CalendarTimePicker';
 import {stockholmMinute,stockholmDate} from '@/lib/calendar/time';
 import {calendarStatus} from './CalendarWeek';
+import {calendarProgress,calendarResponsibility} from '@/lib/calendar/progress';
 import type {CalendarWorkspaceState} from './use-calendar';
 import styles from './Calendar.module.css';
 export function CalendarEventPanel({state:s}:{state:CalendarWorkspaceState}){
@@ -21,6 +22,8 @@ export function CalendarEventPanel({state:s}:{state:CalendarWorkspaceState}){
  return <aside className={styles.panel} role="dialog" aria-modal="false" aria-labelledby="calendar-panel-title" ref={panel}>
   <div className={styles.panelTop}><div><p className={styles.eyebrow}>{social?'Publicering':s.selected?'Kalenderhändelse':'Ny kalenderhändelse'}</p><h2 id="calendar-panel-title">{s.selected?.title??'Boka en stund'}</h2></div><button type="button" aria-label="Stäng panel" className={styles.iconButton} onClick={s.closePanel}><X size={20}/></button></div>
   {s.selected&&<div className={styles.sourceSummary}><span>{calendarStatus(s.selected)}</span>{shownTime?.kind==='timed'?<p>{stockholmMinute(shownTime.startUtc).replace('T',' kl ')}{shownTime.endUtc?' – '+stockholmMinute(shownTime.endUtc).replace('T',' kl '):' · sluttid saknas'}</p>:shownTime?.kind==='all_day'?<p>Heldag från {shownTime.startDate}</p>:null}
+   {calendarResponsibility(s.selected)&&<p>Utförs av: {calendarResponsibility(s.selected)}</p>}
+   {calendarProgress(s.selected).needsAttention&&<p>Öppna källan nedan för att granska läget och nästa steg.</p>}
    {s.selected.pendingChange&&<p>Föreslagen tid: {s.selected.pendingChange.time.kind==='timed'?stockholmMinute(s.selected.pendingChange.time.startUtc).replace('T',' kl '):s.selected.pendingChange.time.startDate}</p>}
   </div>}
   {social&&<p className={styles.help}>Den godkända tiden gäller tills det nya tidsförslaget har granskats.</p>}

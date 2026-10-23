@@ -1,4 +1,28 @@
 import {test,expect} from '@playwright/test';
+test('shows source-aware status dots and opens calendar attention on mobile and desktop',async({page})=>{
+ const zone='Europe/Stockholm',projectId='10000000-0000-4000-8000-000000000001';
+ const base={projectId,editable:false,href:'/projects/familje-stunden/social#content',pendingChange:null,time:{kind:'all_day',startDate:'2026-10-22',endDateExclusive:'2026-10-23',timeZone:zone}};
+ const entries=[
+  {...base,id:'social:1',title:'Publiceringskontroll',status:'published',source:{kind:'social',projectId,postId:'p',revisionId:'r',sha256:'a'.repeat(64),jobId:'j'}},
+  {...base,id:'workflow:1',title:'Illustrationer',status:'failed',source:{kind:'workflow',projectId,instanceId:'w'}},
+  {...base,id:'workflow:2',title:'Sagan färdig',status:'complete',source:{kind:'workflow',projectId,instanceId:'w2'}},
+ ];
+ await page.route('**/api/calendar?**',route=>route.fulfill({json:{range:{fromDate:'2026-10-19',toDateExclusive:'2026-10-26',timeZone:zone},entries,projects:[],unscheduledTasks:[],availability:{manual:true,social:true,workflows:true,tasks:true},truncated:{manual:false,social:false,workflows:false,tasks:false}}}));
+ for(const width of [1280,390]){
+  await page.setViewportSize({width,height:844});await open(page);
+  if(width===390)await page.getByRole('button',{name:/torsdag 22/}).click();
+  await expect(page.locator('[data-event-id="social:1"] [data-tone="review"]')).toBeVisible();
+  await expect(page.locator('[data-event-id="workflow:1"] [data-tone="error"]')).toBeVisible();
+  await expect(page.locator('[data-event-id="workflow:2"] [data-tone="success"]')).toBeVisible();
+  const notices=page.getByRole('region',{name:'Kalendernotiser för veckan'});
+  await notices.getByText('Behöver din uppmärksamhet (2)').click();
+  await notices.getByRole('button',{name:'Öppna kalendernotis: Publiceringskontroll'}).click();
+  await expect(page.getByRole('dialog')).toContainText('Publicering behöver bekräftas');
+  await page.keyboard.press('Escape');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  if(process.env.CALENDAR_STATUS_SCREENSHOT_DIR)await page.screenshot({path:process.env.CALENDAR_STATUS_SCREENSHOT_DIR+'/kalender-status-'+width+'.png',fullPage:true});
+ }
+});
 test.beforeEach(async({request})=>{await request.post('/_test/reset')});
 async function open(page:any){await page.goto('/calendar?week=2026-10-19');await expect(page.getByRole('heading',{name:'Kalender',exact:true})).toBeVisible({timeout:20000})}
 async function setClock(page:any,label:string,time:string){

@@ -1,0 +1,346 @@
+{
+    "ScopeException":  "Four existing test-only signature mutations guarantee different first char and assert decoded bytes differ; no production policy change",
+    "NoEnclosingCommitOrDocumentSelfHash":  true,
+    "FinalTestDigests":  {
+                             "worker-handoff-nonce-fixture.test.mjs":  "af73e0209c27521b7098fb1f3d8fbcdc8a6ca34b296b337ad9a1681b9dfa4135",
+                             "worker-handoff-review-proof.test.mjs":  "badd25e9c8e958f12f4972148692a373e57ee027005724329d89df2f1db8f00f",
+                             "queue-http-contract.test.mjs":  "39f9709221aedf26d6dc69e6f2fe48c728d69859b9f303835897c99e29579344",
+                             "approval-proof.test.mjs":  "7f4f592bdf3af9c122be1401ed0d3aba666cfc745ec5976861896795aebab534"
+                         },
+    "ObservationUtc":  "2026-10-22T13:33:30.5412444Z",
+    "OriginalQualification":  {
+                                  "Regression":  {
+                                                     "WorkingDirectory":  "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-creative-p38-launcher-design",
+                                                     "CaptureComplete":  true,
+                                                     "Executable":  "C:\\Program Files\\nodejs\\node.exe",
+                                                     "TimedOut":  false,
+                                                     "Stdout":  "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-creative-p38-launcher-design\\.superpowers\\sdd\\creative-release-review\\task3-qualification-74f18ee5d11b4f3bbcc3e09b525cb780\\creative304.stdout.txt",
+                                                     "Utc":  "2026-10-22T13:24:48.8589637Z",
+                                                     "ExecutableSha256":  "780f44f2c53c108bae261ada21a525b4bfe733c020ac85e41bfe94479090ac9b",
+                                                     "Stderr":  "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-creative-p38-launcher-design\\.superpowers\\sdd\\creative-release-review\\task3-qualification-74f18ee5d11b4f3bbcc3e09b525cb780\\creative304.stderr.txt",
+                                                     "ElapsedMs":  17671,
+                                                     "Arguments":  "--test scripts/creative-tools/*.test.mjs",
+                                                     "ExitCode":  1,
+                                                     "OuterLimitMs":  45000
+                                                 },
+                                  "RegressionSummary":  {
+                                                            "Rerun":  false,
+                                                            "FailingTest":  "signature or pinned scope mutation is refused",
+                                                            "CauseInference":  "Existing fixture replaces first signature character with A, potentially a no-op. Actual original signature was not captured; cause not proven.",
+                                                            "Actual":  200,
+                                                            "Pass":  303,
+                                                            "Skipped":  0,
+                                                            "Tests":  304,
+                                                            "Fail":  1,
+                                                            "Location":  "scripts/creative-tools/queue-http-contract.test.mjs:93",
+                                                            "Expected":  409
+                                                        },
+                                  "Export":  {
+                                                 "WorkingDirectory":  "C:\\Windows\\System32",
+                                                 "CaptureComplete":  true,
+                                                 "Executable":  "C:\\Users\\Andre\\AppData\\Local\\Temp\\omnira-launcher-build-fee8efa3577941bb8a97fa302e6d5423\\LauncherReview.exe",
+                                                 "TimedOut":  false,
+                                                 "Stdout":  "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-creative-p38-launcher-design\\.superpowers\\sdd\\creative-release-review\\task3-qualification-74f18ee5d11b4f3bbcc3e09b525cb780\\export.stdout.txt",
+                                                 "Utc":  "2026-10-22T13:24:48.1467147Z",
+                                                 "ExecutableSha256":  "b1a1673ab6b1a1f477620ffeb864f3113bd02324250bbe90e0977498e4fc808c",
+                                                 "Stderr":  "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-creative-p38-launcher-design\\.superpowers\\sdd\\creative-release-review\\task3-qualification-74f18ee5d11b4f3bbcc3e09b525cb780\\export.stderr.txt",
+                                                 "ElapsedMs":  561,
+                                                 "Arguments":  "--export",
+                                                 "ExitCode":  0,
+                                                 "OuterLimitMs":  45000
+                                             },
+                                  "QualificationStatus":  "New package tests and actual export/verify passed; existing304 regression not green",
+                                  "Full45sExpiryExercised":  false,
+                                  "All14FlagsFalse":  true,
+                                  "NoFutureCommitOrDocumentSelfHash":  true,
+                                  "VerifyUnchanged":  true,
+                                  "NativeP40SuitesRerun":  false,
+                                  "Build":  {
+                                                "HostExe":  "C:\\Users\\Andre\\AppData\\Local\\Temp\\omnira-launcher-build-fee8efa3577941bb8a97fa302e6d5423\\SyntheticLauncher.exe",
+                                                "BuildRoot":  "C:\\Users\\Andre\\AppData\\Local\\Temp\\omnira-launcher-build-fee8efa3577941bb8a97fa302e6d5423",
+                                                "SourceDigests":  {
+                                                                      "NativeMethods.cs":  "061f8283cc0f0c5cb2cc6087b08b760e5f1859b180b6f47180db311475161cf1",
+                                                                      "tests\\BoundaryTests.cs":  "7ec548f1ff2d98485f06a82fca36999416d533c19f1e66332c51fb10c98b7719",
+                                                                      "PipeSession.cs":  "53777623e512d2d90cdc20c9f2b11b87d97d12dca164e317a8371af4b91f633c",
+                                                                      "SyntheticProtocol.cs":  "7cc7ff29cdfbf052879a5f0c53793c6618c1000b8fea0aa6c131ea1a8976aa2c",
+                                                                      "tests\\TestProgram.cs":  "0dba42954330ab2e530ea61391071c21d876decfeb7b17c73ba7b606ccca1bee",
+                                                                      "tests\\CrashHarness.cs":  "5588451385225301040261bf93a80bf62d304c11ba2799ed78ce1db4a9c51c75",
+                                                                      "tests\\LifecycleTests.cs":  "063e45274745cc5ac383fcd83c2fed17501c4a8889824d5bf886c3fc58e2983d",
+                                                                      "Program.cs":  "7524643016511acb661e216b9027ad9201254e54627a7866b094ea58997bfb6d",
+                                                                      "FixtureInput.cs":  "dbca71aeb9951c818cf5c9819667ccddf56a875eb295d6ba3965e6fa5f97eff3",
+                                                                      "ObservationWriter.cs":  "b1635b66d792a948b11a4633ee5aa627cc48242fc4676af5e8cc93cdf07c09be",
+                                                                      "Contracts.cs":  "b2dd5a5c4b69ebf9fa643daea6b5f40c6c93b11698becf7b4f3e49cab20f7bec",
+                                                                      "WindowsProcessBoundary.cs":  "f99d7eac91e9a0158ee3b5a4d2b99c7c94065b4bdd880988fd617a6a95f5b7a8",
+                                                                      "NativeResources.cs":  "0b795e5697d304a3bc894fd210c3d72d15a0c181c956d67eeb0a6c52f43d0d43",
+                                                                      "tests\\CleanupTests.cs":  "e38ebfe250dc86e887f44f01e81d4817298157b328821f41520f3ccfbbb3d6b7",
+                                                                      "tests\\ProtocolTests.cs":  "9e746bb8aa43a9e38ba6331df32eea3c4b5609d5b8da971b0f1ecf76dec631e8",
+                                                                      "SyntheticRunner.cs":  "cb363c1244223381a387fbf7d0f293e7052f0c38ee965f04f7a3e1aff355ed53",
+                                                                      "tests\\InputTests.cs":  "429a834a3182c05fbb60b0461b1c44928c944b01e517243422425dec37458dd6"
+                                                                  },
+                                                "TestExe":  "C:\\Users\\Andre\\AppData\\Local\\Temp\\omnira-launcher-build-fee8efa3577941bb8a97fa302e6d5423\\SyntheticLauncher.Tests.exe",
+                                                "ReviewExe":  "C:\\Users\\Andre\\AppData\\Local\\Temp\\omnira-launcher-build-fee8efa3577941bb8a97fa302e6d5423\\LauncherReview.exe",
+                                                "ReviewTestExe":  "C:\\Users\\Andre\\AppData\\Local\\Temp\\omnira-launcher-build-fee8efa3577941bb8a97fa302e6d5423\\LauncherReview.Tests.exe",
+                                                "ReviewSourceDigests":  {
+                                                                            "build.ps1":  "f6cf5d959555a8f025f8b6269d4c10a65eb502c2ee55ee349cb229447e093b08",
+                                                                            "PackageVerifier.cs":  "dc8c13eed8dc57fc7b42201db021333fbd952de728413ed42d7f01339154e0ff",
+                                                                            "PackageManifest.cs":  "a274b0eb3961e6f450259410c7cb4270859d2b7110554c5cf4e731c88bc7872b",
+                                                                            "tests\\ExportTests.cs":  "2b7ccffad0fbceb96d074f1834062365dd3105e8597b5c9698f9a0f7de24d782",
+                                                                            "tests\\FileTests.cs":  "fc2af1746049eacfe52fcc908c16081a85c054a57c60c8d416facab40986f0a1",
+                                                                            "ReviewProgram.cs":  "bcbb4fe17bd6d0158ad75f6106d77755c3a1af84179c38b69c42c9cefa28dfa7",
+                                                                            "tests\\TestProgram.cs":  "e14f5b8a4eaa8a653c90567e5c4af6b066f949ce688edb65b4f671c1e89bdd37",
+                                                                            "PackageExporter.cs":  "efe6e799e22fec69696efcfded5919b97f2f810b9049bd155a471d79978330ac",
+                                                                            "tests\\run.ps1":  "fe696f1664443bf6bb1fcfd88c9aa70f957517a117a447729fa0f06bc9680d7d",
+                                                                            "generated:ReleaseBuildContext.cs":  "aae145faaa7c01da5bab29b4b447efef470063eb1d43af022905544d68f6d0c0",
+                                                                            "tests\\ManifestTests.cs":  "950c46a1bb8024b8cf0b11ac35e47deb6ce7164d852f735fa34a1298184228eb",
+                                                                            "PackageFiles.cs":  "206d561bf4604069e7b6e4f25f8344fb24b0f2b23627be2d1ce6009c6e9d2e3c",
+                                                                            "PackageContracts.cs":  "b914775353f0df02678d1006e2a36ad42cad103ac60161136782ae46569ee9d2"
+                                                                        }
+                                            },
+                                  "InstalledRuntimeProvenanceVerified":  false,
+                                  "CompilerObservation":  "Fixed compiler metadata/hash before/after build; no provenance claim",
+                                  "PackageBefore":  {
+                                                        "Files":  {
+                                                                      "SyntheticLauncher.exe":  {
+                                                                                                    "Sha256":  "bdcf4c6c765045f07277b8fd002b89931caa97955671721a279255d697ceedc6",
+                                                                                                    "CreationTicks":  639282722884756309,
+                                                                                                    "LastWriteTicks":  639282722884756309,
+                                                                                                    "Length":  79360
+                                                                                                },
+                                                                      "review-manifest.json":  {
+                                                                                                   "Sha256":  "1ddd5934530ba837d066edf060e4f5d725875b3db0170c902b096e54dec92504",
+                                                                                                   "CreationTicks":  639282722884791393,
+                                                                                                   "LastWriteTicks":  639282722884791393,
+                                                                                                   "Length":  2352
+                                                                                               },
+                                                                      "manifest.sha256":  {
+                                                                                              "Sha256":  "ce4e61bed1929bcd4e2a256ca12aad7ba36b9492a0f9f898562a24f107509bbe",
+                                                                                              "CreationTicks":  639282722884831396,
+                                                                                              "LastWriteTicks":  639282722884831396,
+                                                                                              "Length":  64
+                                                                                          },
+                                                                      "owner.txt":  {
+                                                                                        "Sha256":  "6a7ba5eabce905f229edba44e988c534bf0909d21c33d63aec01750ebba18928",
+                                                                                        "CreationTicks":  639282722884686308,
+                                                                                        "LastWriteTicks":  639282722884686308,
+                                                                                        "Length":  32
+                                                                                    }
+                                                                  },
+                                                        "EntryCount":  4
+                                                    },
+                                  "ManualP41PacketTouched":  false,
+                                  "SourceCommitAtBuild":  "f5eaa713c8290fc0154c73796841afbd38fc1bad",
+                                  "Verify":  {
+                                                 "WorkingDirectory":  "C:\\Windows\\System32",
+                                                 "CaptureComplete":  true,
+                                                 "Executable":  "C:\\Users\\Andre\\AppData\\Local\\Temp\\omnira-launcher-build-fee8efa3577941bb8a97fa302e6d5423\\LauncherReview.exe",
+                                                 "TimedOut":  false,
+                                                 "Stdout":  "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-creative-p38-launcher-design\\.superpowers\\sdd\\creative-release-review\\task3-qualification-74f18ee5d11b4f3bbcc3e09b525cb780\\verify.stdout.txt",
+                                                 "Utc":  "2026-10-22T13:24:48.7526578Z",
+                                                 "ExecutableSha256":  "b1a1673ab6b1a1f477620ffeb864f3113bd02324250bbe90e0977498e4fc808c",
+                                                 "Stderr":  "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-creative-p38-launcher-design\\.superpowers\\sdd\\creative-release-review\\task3-qualification-74f18ee5d11b4f3bbcc3e09b525cb780\\verify.stderr.txt",
+                                                 "ElapsedMs":  72,
+                                                 "Arguments":  "--verify \"C:\\Users\\Andre\\AppData\\Local\\Temp\\omnira-launcher-review-51fae6e28a794c12a727c558640cf239\"",
+                                                 "ExitCode":  0,
+                                                 "OuterLimitMs":  45000
+                                             },
+                                  "PackageAfter":  {
+                                                       "Files":  {
+                                                                     "SyntheticLauncher.exe":  {
+                                                                                                   "Sha256":  "bdcf4c6c765045f07277b8fd002b89931caa97955671721a279255d697ceedc6",
+                                                                                                   "CreationTicks":  639282722884756309,
+                                                                                                   "LastWriteTicks":  639282722884756309,
+                                                                                                   "Length":  79360
+                                                                                               },
+                                                                     "review-manifest.json":  {
+                                                                                                  "Sha256":  "1ddd5934530ba837d066edf060e4f5d725875b3db0170c902b096e54dec92504",
+                                                                                                  "CreationTicks":  639282722884791393,
+                                                                                                  "LastWriteTicks":  639282722884791393,
+                                                                                                  "Length":  2352
+                                                                                              },
+                                                                     "manifest.sha256":  {
+                                                                                             "Sha256":  "ce4e61bed1929bcd4e2a256ca12aad7ba36b9492a0f9f898562a24f107509bbe",
+                                                                                             "CreationTicks":  639282722884831396,
+                                                                                             "LastWriteTicks":  639282722884831396,
+                                                                                             "Length":  64
+                                                                                         },
+                                                                     "owner.txt":  {
+                                                                                       "Sha256":  "6a7ba5eabce905f229edba44e988c534bf0909d21c33d63aec01750ebba18928",
+                                                                                       "CreationTicks":  639282722884686308,
+                                                                                       "LastWriteTicks":  639282722884686308,
+                                                                                       "Length":  32
+                                                                                   }
+                                                                 },
+                                                       "EntryCount":  4
+                                                   },
+                                  "PackageRetained":  true,
+                                  "Evidence":  "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-creative-p38-launcher-design\\.superpowers\\sdd\\creative-release-review\\task3-qualification-74f18ee5d11b4f3bbcc3e09b525cb780",
+                                  "ManifestObservation":  {
+                                                              "Schema":  "omnira.creative.launcher-review-package.v2",
+                                                              "Nonce":  "51fae6e28a794c12a727c558640cf239",
+                                                              "SourceCommit":  "f5eaa713c8290fc0154c73796841afbd38fc1bad",
+                                                              "HostLength":  79360,
+                                                              "HostSha256":  "bdcf4c6c765045f07277b8fd002b89931caa97955671721a279255d697ceedc6",
+                                                              "RuntimeSha256":  "780f44f2c53c108bae261ada21a525b4bfe733c020ac85e41bfe94479090ac9b",
+                                                              "CompilerSha256":  "eca02e6b15cde93009a59a3d129d5a77fb5008f2e1cf62cf573b6737c747ecc3",
+                                                              "CompilerVersion":  "14.8.10001.0",
+                                                              "SourceDigests":  {
+                                                                                    "Contracts.cs":  "b2dd5a5c4b69ebf9fa643daea6b5f40c6c93b11698becf7b4f3e49cab20f7bec",
+                                                                                    "NativeMethods.cs":  "061f8283cc0f0c5cb2cc6087b08b760e5f1859b180b6f47180db311475161cf1",
+                                                                                    "NativeResources.cs":  "0b795e5697d304a3bc894fd210c3d72d15a0c181c956d67eeb0a6c52f43d0d43",
+                                                                                    "WindowsProcessBoundary.cs":  "f99d7eac91e9a0158ee3b5a4d2b99c7c94065b4bdd880988fd617a6a95f5b7a8",
+                                                                                    "FixtureInput.cs":  "dbca71aeb9951c818cf5c9819667ccddf56a875eb295d6ba3965e6fa5f97eff3",
+                                                                                    "SyntheticProtocol.cs":  "7cc7ff29cdfbf052879a5f0c53793c6618c1000b8fea0aa6c131ea1a8976aa2c",
+                                                                                    "PipeSession.cs":  "53777623e512d2d90cdc20c9f2b11b87d97d12dca164e317a8371af4b91f633c",
+                                                                                    "SyntheticRunner.cs":  "cb363c1244223381a387fbf7d0f293e7052f0c38ee965f04f7a3e1aff355ed53",
+                                                                                    "ObservationWriter.cs":  "b1635b66d792a948b11a4633ee5aa627cc48242fc4676af5e8cc93cdf07c09be",
+                                                                                    "Program.cs":  "7524643016511acb661e216b9027ad9201254e54627a7866b094ea58997bfb6d",
+                                                                                    "tests\\TestProgram.cs":  "0dba42954330ab2e530ea61391071c21d876decfeb7b17c73ba7b606ccca1bee",
+                                                                                    "tests\\BoundaryTests.cs":  "7ec548f1ff2d98485f06a82fca36999416d533c19f1e66332c51fb10c98b7719",
+                                                                                    "tests\\InputTests.cs":  "429a834a3182c05fbb60b0461b1c44928c944b01e517243422425dec37458dd6",
+                                                                                    "tests\\ProtocolTests.cs":  "9e746bb8aa43a9e38ba6331df32eea3c4b5609d5b8da971b0f1ecf76dec631e8",
+                                                                                    "tests\\LifecycleTests.cs":  "063e45274745cc5ac383fcd83c2fed17501c4a8889824d5bf886c3fc58e2983d",
+                                                                                    "tests\\CleanupTests.cs":  "e38ebfe250dc86e887f44f01e81d4817298157b328821f41520f3ccfbbb3d6b7",
+                                                                                    "tests\\CrashHarness.cs":  "5588451385225301040261bf93a80bf62d304c11ba2799ed78ce1db4a9c51c75"
+                                                                                },
+                                                              "Authorities":  {
+                                                                                  "ActualWorkerTokenVerified":  false,
+                                                                                  "RootAclTrustVerified":  false,
+                                                                                  "NetworkEgressVerified":  false,
+                                                                                  "RealHumanApprovalVerified":  false,
+                                                                                  "ArbitraryBrokerContainmentVerified":  false,
+                                                                                  "GeneralExecutableTrustVerified":  false,
+                                                                                  "CreativeExecutionAuthorized":  false,
+                                                                                  "PublishAuthorized":  false,
+                                                                                  "ProductionReady":  false
+                                                                              },
+                                                              "InstallationAuthorized":  false,
+                                                              "WorkerActivated":  false
+                                                          },
+                                  "SourceIdentitiesStillMatch":  true,
+                                  "CopiedHostStarted":  false,
+                                  "Suites":  [
+                                                 {
+                                                     "ExitCode":  0,
+                                                     "OuterLimitMs":  45000,
+                                                     "Name":  "Codec",
+                                                     "CaptureComplete":  true,
+                                                     "StdoutSha256":  "f2b982047fca378043bab762ba723c12598782209d92083a7093cf46c405e3eb",
+                                                     "MetadataSha256":  "66dca3143436dea94622aa086afc8ed37f66a30e15cc05bcf26266a1679816bf",
+                                                     "TimedOut":  false,
+                                                     "Metadata":  "C:\\Users\\Andre\\AppData\\Local\\Temp\\omnira-launcher-build-fee8efa3577941bb8a97fa302e6d5423\\Codec-cde55c0dcc204d73b27686fdfecb3e8e.metadata.json"
+                                                 },
+                                                 {
+                                                     "ExitCode":  0,
+                                                     "OuterLimitMs":  45000,
+                                                     "Name":  "Files",
+                                                     "CaptureComplete":  true,
+                                                     "StdoutSha256":  "5662749f2c62c1be12a31966af09ecb504aeb11f0d2e8b6c56bf507895bc21e3",
+                                                     "MetadataSha256":  "660a710aa5125d61ea294c0d8e88450d6f0842a116439fb016a559daa432ea26",
+                                                     "TimedOut":  false,
+                                                     "Metadata":  "C:\\Users\\Andre\\AppData\\Local\\Temp\\omnira-launcher-build-fee8efa3577941bb8a97fa302e6d5423\\Files-75e7d5a6c6af4957863ee2e5b2eb2e77.metadata.json"
+                                                 },
+                                                 {
+                                                     "ExitCode":  0,
+                                                     "OuterLimitMs":  45000,
+                                                     "Name":  "Export",
+                                                     "CaptureComplete":  true,
+                                                     "StdoutSha256":  "1379743f9b7560aa67908851854fca6a83bbab066320c5c623c2c72a1682f6e6",
+                                                     "MetadataSha256":  "6ed2a0ab1f58dcc95c994e7c8132e99499696c9d8f0ca2b0a579938605248c16",
+                                                     "TimedOut":  false,
+                                                     "Metadata":  "C:\\Users\\Andre\\AppData\\Local\\Temp\\omnira-launcher-build-fee8efa3577941bb8a97fa302e6d5423\\Export-7967918d3cb64d09b436ba2448c226e0.metadata.json"
+                                                 }
+                                             ],
+                                  "HistoricalNinePairsTouched":  false,
+                                  "ToolSha256":  "b1a1673ab6b1a1f477620ffeb864f3113bd02324250bbe90e0977498e4fc808c",
+                                  "ObservationUtc":  "2026-10-22T13:27:47.3203184Z",
+                                  "TestToolSha256":  "654eb6478b1ea611ee36f14f2bc577da2b3e4d7816c5757d2610120644ab9317",
+                                  "Schema":  "omnira.creative.release-review-observation.v1",
+                                  "FreshHostSha256":  "bdcf4c6c765045f07277b8fd002b89931caa97955671721a279255d697ceedc6",
+                                  "PackageNonce":  "51fae6e28a794c12a727c558640cf239"
+                              },
+    "QualificationStatus":  "Package Codec59/Files78/Export59, production export/verify, final focused45/45 and full304/304 passed; original two303/1 failures retained",
+    "SecondRegressionFailure":  {
+                                    "Failure":  "rejects expired/overlong decisions and tampered signature",
+                                    "Process":  {
+                                                    "ExecutableSha256":  "780f44f2c53c108bae261ada21a525b4bfe733c020ac85e41bfe94479090ac9b",
+                                                    "ElapsedMs":  16665,
+                                                    "Arguments":  "--test scripts/creative-tools/*.test.mjs",
+                                                    "OuterLimitMs":  45000,
+                                                    "Stdout":  "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-creative-p38-launcher-design\\.superpowers\\sdd\\creative-release-review\\task3-regression-fix-bdf97ff395774d65a6eff4070532335f\\creative304.stdout.txt",
+                                                    "Utc":  "2026-10-22T13:28:16.0840343Z",
+                                                    "ExitCode":  1,
+                                                    "WorkingDirectory":  "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-creative-p38-launcher-design",
+                                                    "CaptureComplete":  true,
+                                                    "Executable":  "C:\\Program Files\\nodejs\\node.exe",
+                                                    "Stderr":  "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-creative-p38-launcher-design\\.superpowers\\sdd\\creative-release-review\\task3-regression-fix-bdf97ff395774d65a6eff4070532335f\\creative304.stderr.txt",
+                                                    "TimedOut":  false,
+                                                    "FixtureSha256":  "39f9709221aedf26d6dc69e6f2fe48c728d69859b9f303835897c99e29579344"
+                                                },
+                                    "Pass":  303,
+                                    "OriginalCauseNotProven":  true,
+                                    "Skipped":  0,
+                                    "Tests":  304,
+                                    "Fail":  1,
+                                    "Location":  "scripts/creative-tools/approval-proof.test.mjs:51",
+                                    "Error":  "Missing expected exception"
+                                },
+    "FinalFocusedSummary":  {
+                                "Fail":  0,
+                                "Pass":  45,
+                                "Skipped":  0,
+                                "Tests":  45
+                            },
+    "Schema":  "omnira.creative.release-review-observation.v1",
+    "FinalRegressionQualification":  {
+                                         "Fail":  0,
+                                         "Pass":  304,
+                                         "Tests":  304,
+                                         "Focused":  {
+                                                         "ExecutableSha256":  "780f44f2c53c108bae261ada21a525b4bfe733c020ac85e41bfe94479090ac9b",
+                                                         "ElapsedMs":  842,
+                                                         "Arguments":  "--test scripts/creative-tools/approval-proof.test.mjs scripts/creative-tools/queue-http-contract.test.mjs scripts/creative-tools/worker-handoff-nonce-fixture.test.mjs scripts/creative-tools/worker-handoff-review-proof.test.mjs",
+                                                         "OuterLimitMs":  45000,
+                                                         "Stdout":  "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-creative-p38-launcher-design\\.superpowers\\sdd\\creative-release-review\\task3-regression-final-4cd53b88769c43dc9a5e9e17f54078a5\\four-focused.stdout.txt",
+                                                         "Utc":  "2026-10-22T13:32:16.6042515Z",
+                                                         "ExitCode":  0,
+                                                         "WorkingDirectory":  "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-creative-p38-launcher-design",
+                                                         "CaptureComplete":  true,
+                                                         "Executable":  "C:\\Program Files\\nodejs\\node.exe",
+                                                         "Stderr":  "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-creative-p38-launcher-design\\.superpowers\\sdd\\creative-release-review\\task3-regression-final-4cd53b88769c43dc9a5e9e17f54078a5\\four-focused.stderr.txt",
+                                                         "TimedOut":  false,
+                                                         "FixtureSha256":  "39f9709221aedf26d6dc69e6f2fe48c728d69859b9f303835897c99e29579344"
+                                                     },
+                                         "Regression":  {
+                                                            "ExecutableSha256":  "780f44f2c53c108bae261ada21a525b4bfe733c020ac85e41bfe94479090ac9b",
+                                                            "ElapsedMs":  17848,
+                                                            "Arguments":  "--test scripts/creative-tools/*.test.mjs",
+                                                            "OuterLimitMs":  45000,
+                                                            "Stdout":  "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-creative-p38-launcher-design\\.superpowers\\sdd\\creative-release-review\\task3-regression-final-4cd53b88769c43dc9a5e9e17f54078a5\\creative304.stdout.txt",
+                                                            "Utc":  "2026-10-22T13:32:17.4578385Z",
+                                                            "ExitCode":  0,
+                                                            "WorkingDirectory":  "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-creative-p38-launcher-design",
+                                                            "CaptureComplete":  true,
+                                                            "Executable":  "C:\\Program Files\\nodejs\\node.exe",
+                                                            "Stderr":  "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-creative-p38-launcher-design\\.superpowers\\sdd\\creative-release-review\\task3-regression-final-4cd53b88769c43dc9a5e9e17f54078a5\\creative304.stderr.txt",
+                                                            "TimedOut":  false,
+                                                            "FixtureSha256":  "39f9709221aedf26d6dc69e6f2fe48c728d69859b9f303835897c99e29579344"
+                                                        },
+                                         "OriginalFailurePreserved":  true,
+                                         "Skipped":  0
+                                     },
+    "FirstFocusedQueueHttp":  {
+                                  "ExecutableSha256":  "780f44f2c53c108bae261ada21a525b4bfe733c020ac85e41bfe94479090ac9b",
+                                  "ElapsedMs":  397,
+                                  "Arguments":  "--test scripts/creative-tools/queue-http-contract.test.mjs",
+                                  "OuterLimitMs":  45000,
+                                  "Stdout":  "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-creative-p38-launcher-design\\.superpowers\\sdd\\creative-release-review\\task3-regression-fix-bdf97ff395774d65a6eff4070532335f\\queue-http-focused.stdout.txt",
+                                  "Utc":  "2026-10-22T13:28:15.6602274Z",
+                                  "ExitCode":  0,
+                                  "WorkingDirectory":  "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-creative-p38-launcher-design",
+                                  "CaptureComplete":  true,
+                                  "Executable":  "C:\\Program Files\\nodejs\\node.exe",
+                                  "Stderr":  "C:\\Users\\Andre\\Projects\\Omnira\\.worktrees\\atlas-creative-p38-launcher-design\\.superpowers\\sdd\\creative-release-review\\task3-regression-fix-bdf97ff395774d65a6eff4070532335f\\queue-http-focused.stderr.txt",
+                                  "TimedOut":  false,
+                                  "FixtureSha256":  "39f9709221aedf26d6dc69e6f2fe48c728d69859b9f303835897c99e29579344"
+                              }
+}

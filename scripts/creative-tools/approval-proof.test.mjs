@@ -47,7 +47,9 @@ test('rejects expired/overlong decisions and tampered signature',()=>{
   assert.throws(()=>verifyCreativeApproval(valid,publicKey,scope,new Date('2026-10-20T18:05:00Z')),/expired/);
   const tooLong={...claims,expiresAt:'2026-10-20T18:10:00.000Z'};
   assert.throws(()=>verifyCreativeApproval(proof(tooLong),publicKey,scope,now),/excessively long/);
-  const forged={...valid,signature:'A'+valid.signature.slice(1)};
+  const first=valid.signature[0]==='A'?'B':'A';
+  const forged={...valid,signature:first+valid.signature.slice(1)};
+  assert.notDeepEqual(Buffer.from(forged.signature,'base64url'),Buffer.from(valid.signature,'base64url'));
   assert.throws(()=>verifyCreativeApproval(forged,publicKey,scope,now),/signature rejected/);
 });
 

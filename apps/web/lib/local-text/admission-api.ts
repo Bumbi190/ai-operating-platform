@@ -2,6 +2,7 @@ import 'server-only'
 import {NextResponse} from 'next/server'
 import {resolvePlatformOperator} from '@/lib/auth/platform-operator'
 import {createAdminClient} from '@/lib/supabase/admin'
+import {localTextDispatchEnabled} from './activation-fence'
 import {isUuid,isSha256} from '@omnira/local-text-contract'
 import {readBoundedRequestBody} from './identity'
 import {LOCAL_TEXT_QUALIFICATIONS} from './catalog'
@@ -18,7 +19,7 @@ export async function handleOwnerAdmissionRequest(request:Request,deviceId:strin
  let projectId:string,action:'admit'|'revoke',specification:Record<string,unknown>
  if(exact(body,['projectId','action','admissionId','expectedVersion'])&&body.action==='revoke'&&isUuid(body.projectId)&&isUuid(body.admissionId)&&Number.isInteger(body.expectedVersion)&&Number(body.expectedVersion)>0){projectId=body.projectId;action='revoke';specification={id:body.admissionId,expectedVersion:body.expectedVersion}}
  else{
-  if(process.env.ATLAS_LOCAL_TEXT_ENABLED!=='true')return json({error:'LOCAL_TEXT_UNAVAILABLE'},503)
+  if(!localTextDispatchEnabled())return json({error:'LOCAL_TEXT_UNAVAILABLE'},503)
   const admitKeys=['projectId','action','evidenceHash','approvedInputHashes','dataClass','expiresAt','jobCostCapUsd','dailyCostCapUsd',...(body&&typeof body==='object'&&Object.hasOwn(body,'reviewMode')?['reviewMode']:[])]
   if(!exact(body,admitKeys)||(body.reviewMode!==undefined&&!['human','governed_openai'].includes(String(body.reviewMode)))||body.action!=='admit'||!isUuid(body.projectId)||!isSha256(body.evidenceHash)||!Array.isArray(body.approvedInputHashes)||body.approvedInputHashes.length<1||body.approvedInputHashes.length>100||!body.approvedInputHashes.every(isSha256)||new Set(body.approvedInputHashes).size!==body.approvedInputHashes.length||!['synthetic','approved_cloud_text'].includes(String(body.dataClass))||typeof body.expiresAt!=='string'||!Number.isFinite(Date.parse(body.expiresAt))||Date.parse(body.expiresAt)<=Date.now()||Date.parse(body.expiresAt)>Date.now()+90*86400000||typeof body.jobCostCapUsd!=='number'||!Number.isFinite(body.jobCostCapUsd)||body.jobCostCapUsd<=0||body.jobCostCapUsd>0.25||typeof body.dailyCostCapUsd!=='number'||!Number.isFinite(body.dailyCostCapUsd)||body.dailyCostCapUsd<=0||body.dailyCostCapUsd>5)return json({error:'INVALID_REQUEST'},400)
   const qualified=LOCAL_TEXT_QUALIFICATIONS.find(q=>q.evidenceHash===body.evidenceHash)

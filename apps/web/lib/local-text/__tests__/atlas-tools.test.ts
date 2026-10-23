@@ -1,4 +1,7 @@
 import {it,expect,vi,beforeEach} from 'vitest'
+// Existing behavioral tests opt into a simulated post-incident-clearance gate;
+// production hard-stop behavior is tested independently in activation-fence.test.ts.
+vi.mock('../activation-fence',()=>({localTextDispatchEnabled:()=>process.env.ATLAS_LOCAL_TEXT_ENABLED==='true'}))
 const f=vi.hoisted(()=>({queued:0,reads:0,receipt:null as any}))
 vi.mock('../request',()=>({requestLocalTextJob:async()=>{f.queued++;return {kind:'applied',value:f.receipt}}}))
 vi.mock('../store',()=>({readReceipt:async()=>{f.reads++;return f.receipt}}))

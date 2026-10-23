@@ -1,4 +1,5 @@
 import 'server-only'
+import {localTextDispatchEnabled} from './activation-fence'
 import {NextResponse} from 'next/server'
 import {resolvePlatformOperator} from '@/lib/auth/platform-operator'
 import {createAdminClient} from '@/lib/supabase/admin'
@@ -14,7 +15,7 @@ const json=(value:unknown,status=200)=>NextResponse.json(value,{status,headers:{
  * selection, retry fences and review still decide whether any GPU job can run. */
 export async function handleLocalTextPilotRequest(request:Request){
  const project=process.env.ATLAS_LOCAL_TEXT_PILOT_PROJECT_ID
- if(process.env.ATLAS_LOCAL_TEXT_ENABLED!=='true'||!isUuid(project))return json({error:'LOCAL_TEXT_DISABLED'},503)
+ if(!localTextDispatchEnabled()||!isUuid(project))return json({error:'LOCAL_TEXT_DISABLED'},503)
  const operator=await resolvePlatformOperator()
  if(!operator.ok)return json({error:'FORBIDDEN'},operator.reason==='unauthenticated'?401:403)
  if(request.method!=='POST'||request.headers.get('origin')!==new URL(request.url).origin||!/^application\/json(?:\s*;|$)/i.test(request.headers.get('content-type')??''))return json({error:'FORBIDDEN'},403)

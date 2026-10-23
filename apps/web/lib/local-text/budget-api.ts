@@ -1,4 +1,5 @@
 import 'server-only'
+import {localTextDispatchEnabled} from './activation-fence'
 import {NextResponse} from 'next/server'
 import {isUuid,isSha256} from '@omnira/local-text-contract'
 import {resolvePlatformOperator} from '@/lib/auth/platform-operator'
@@ -17,7 +18,7 @@ export async function handleCloudBudgetRequest(request:Request,admissionId:strin
  let spec:Record<string,unknown>,projectId:string,action:string
  if(exact(v,['action','projectId','authorizationId','expectedVersion'])&&v.action==='revoke'&&isUuid(v.projectId)&&isUuid(v.authorizationId)&&Number.isInteger(v.expectedVersion)&&Number(v.expectedVersion)>0){projectId=v.projectId;action='revoke';spec={id:v.authorizationId,expectedVersion:v.expectedVersion}}
  else{
-  if(process.env.ATLAS_LOCAL_TEXT_ENABLED!=='true')return json({error:'LOCAL_TEXT_UNAVAILABLE'},503)
+  if(!localTextDispatchEnabled())return json({error:'LOCAL_TEXT_UNAVAILABLE'},503)
   if(!exact(v,['action','projectId','profileHash','expiresAt','jobCostCapUsd','dailyCostCapUsd'])||v.action!=='authorize'||!isUuid(v.projectId)||!isSha256(v.profileHash)||typeof v.expiresAt!=='string'||!Number.isFinite(Date.parse(v.expiresAt))||Date.parse(v.expiresAt)<=Date.now()||typeof v.jobCostCapUsd!=='number'||v.jobCostCapUsd<=0||v.jobCostCapUsd>0.25||typeof v.dailyCostCapUsd!=='number'||v.dailyCostCapUsd<=0||v.dailyCostCapUsd>5)return json({error:'INVALID_REQUEST'},400)
   const profile=readCloudTextProfile()
   if(!profile||profile.qualificationHash!==v.profileHash||Date.parse(profile.expiresAt)<=Date.now())return json({error:'CLOUD_QUALIFICATION_REQUIRED'},409)

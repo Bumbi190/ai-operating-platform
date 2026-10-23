@@ -1,4 +1,7 @@
 import {it,expect,vi,afterEach} from 'vitest'
+// Existing behavioral tests opt into a simulated post-incident-clearance gate;
+// production hard-stop behavior is tested independently in activation-fence.test.ts.
+vi.mock('../activation-fence',()=>({localTextDispatchEnabled:()=>process.env.ATLAS_LOCAL_TEXT_ENABLED==='true'}))
 const fixture=vi.hoisted(()=>({calls:0}))
 vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>({})}))
 vi.mock('@/lib/local-text/worker-api',()=>({executeWorkerRequest:async()=>{fixture.calls++;throw Error('private implementation detail must not escape')}}))

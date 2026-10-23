@@ -1,4 +1,5 @@
 import 'server-only'
+import {localTextDispatchEnabled} from './activation-fence'
 import {isUuid,isSha256,parseTask,validateTaskResult,hashTask,canonicalJson,sha256} from '@omnira/local-text-contract'
 import type {Run} from '@/lib/supabase/types'
 import {checkpointClaimedRun,settleRefusal,recordDispatchUnknown,finalizeOwnedRunUnlessCancelled} from '@/lib/governance/run-execution-checkpoint'
@@ -43,7 +44,7 @@ export async function executeLocalTextCloudRun(db:Db,run:Run,claimId:string,now:
   if(terminal.outcome==='SUCCEEDED')await apply();return
  }
  if(s.state!=='pending'){await unknown();return}
- if(process.env.ATLAS_LOCAL_TEXT_ENABLED!=='true'){await human('LOCAL_TEXT_DISABLED');return}
+ if(!localTextDispatchEnabled()){await human('LOCAL_TEXT_DISABLED');return}
  if(!['local_review','cloud_task','cloud_review'].includes(String(s.stage))){await human('INVALID_STAGE');return}
  if(s.reviewMode==='human'){await human(s.stage==='cloud_task'?'HUMAN_MODE_NO_CLOUD_TASK':'HUMAN_REVIEW_REQUIRED');return}
  const profile=readCloudTextProfile()

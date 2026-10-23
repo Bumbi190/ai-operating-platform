@@ -8,6 +8,7 @@ import { orderReplayMigrations, orderLegacyMediaReplayMigrations, orderCrossTree
 import {runClosedCalendarRotationProbe} from './calendar-postgrest-rotation-fixture.mjs'
 import {auditNativeDefinerSurface,buildNativeDefinerCatalogQuery,reviewedNativeDefinerFingerprints} from './calendar-native-definer-surface.mjs'
 import {auditCalendarTriggerChain,buildCalendarTriggerChainQuery,triggerChainFingerprints} from './calendar-trigger-chain-audit.mjs'
+import {auditSchedulerRpcChain,buildSchedulerRpcChainCatalogQuery,reviewedRpcChainPins} from './calendar-worker-rpc-callchain-audit.mjs'
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..'),
   repo = resolve(web, '../..')
 const migrationDir = resolve(web, 'supabase/migrations')
@@ -934,6 +935,9 @@ try {
         const triggerChainSnapshot=JSON.parse(sql(buildCalendarTriggerChainQuery()))
         const triggerChain=auditCalendarTriggerChain(triggerChainSnapshot,{expected:triggerChainFingerprints,requireFingerprints:true})
         console.log('CROSS-TREE TRIGGER CHAIN PASS '+JSON.stringify({triggerCount:triggerChain.triggers.length,callbackCount:triggerChain.functions.length,gate:triggerChain.gate.sha256,boundedStaticAudit:true})+' (15 trigger definitions, 8 callback bodies, 1 source revision/HMAC gate pinned; static only)')
+        const workerRpcCatalog=JSON.parse(sql(buildSchedulerRpcChainCatalogQuery()))
+        const workerRpcAudit=auditSchedulerRpcChain(workerRpcCatalog,{pins:reviewedRpcChainPins,requirePins:true})
+        console.log('CROSS-TREE WORKER RPC CHAIN PASS '+JSON.stringify({reviewedFunctions:workerRpcAudit.reviewedPrivilegedBodies.length,exposedRpcs:workerRpcAudit.exposedWorkerRpcs.length,uncheckedFunctions:workerRpcAudit.privilegedUncheckedBodies,scopeGuards:workerRpcAudit.scopeGuards,reviewedStaticReferences:workerRpcAudit.reviewedPrivilegedBodies.reduce((n,x)=>n+x.references.length,0)})+' (pinned body hashes, exact direct calls/references, definer owner and grants)')
         const startedRest=docker(['run','--pull=never','--detach','--name',restName,'--network',httpNetwork,'--network-alias','rest',
           '--env','PGRST_DB_URI=postgres://authenticator:'+password+'@db:5432/postgres',
           '--env','PGRST_DB_SCHEMAS=public','--env','PGRST_DB_ANON_ROLE=anon',

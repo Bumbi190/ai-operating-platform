@@ -1500,3 +1500,27 @@ See `docs/calendar-trigger-chain-audit-20261023.md` for trigger
 semantics, observed production/fixture differences and remaining
 release blockers. No production code/migrations, grants, Meta,
 deployment or CI workflows were changed.
+
+## Six scoped scheduler RPC → six private unchecked bodies — 23 October
+
+`calendar-worker-rpc-callchain-audit.mjs` now locks the actual
+isolated PostgreSQL `pg_get_functiondef` hashes, direct qualified
+calls/references, owner, privilege grants and search paths for
+**15** named privileged SQL functions: six externally scoped
+scheduled-worker RPCs, six renamed internal elevated bodies, and
+three subject/project guards. The six internal routines and all
+three guard helpers lack direct EXECUTE access from the scoped
+worker role. The code scanner correctly classifies qualified
+`INSERT INTO public.table(...)` expressions as table operations,
+not direct function calls. The first complete replay recorded
+the actual source hashes; a second replay with all pins enforced
+passed `CROSS-TREE WORKER RPC CHAIN PASS` and
+`CROSS-TREE REPLAY PASS` (exit 0). Six native catalogue unit tests
+and all 55 previous calendar Vitest tests passed; the four
+conditional environment-only cases run in the owned SQL/PostgREST
+replay. The work does **not** certify transitive helper code,
+provider receipt authenticity or production privileges.
+See `docs/calendar-worker-rpc-callchain-audit-20261023.md`
+for the six wrapper mappings, seven unreviewed direct helper
+names and remaining release gates. No CI, production grants,
+migration, live Meta/API call or other development branch changed.

@@ -1120,14 +1120,16 @@ try {
           const queue=JSON.parse(review.body)
           assert.equal(queue.projectId,project)
           assert.equal(queue.automaticRetryAllowed,false)
-          assert.equal(queue.reviewAction,'operator_inspect_provider')
+          assert.equal(queue.reviewAction,'operator_review_provider_evidence')
           assert.equal(queue.items.length,1,JSON.stringify(queue))
           assert.deepEqual(Object.keys(queue.items[0]).sort(),[
-            'automaticRetryAllowed','databaseJobState','jobId','providerOutcome',
-            'publicationId','reservedAt','reviewStatus',
+            'automaticRetryAllowed','databaseJobState','jobId','postId',
+            'providerOutcome','publicationId','publicationState','reservedAt','reviewStatus',
           ])
           assert.equal(queue.items[0].jobId,id.job)
           assert.equal(queue.items[0].databaseJobState,'published')
+          assert.equal(queue.items[0].postId,id.post)
+          assert.equal(queue.items[0].publicationState,'published')
           assert.equal(queue.items[0].providerOutcome,'unknown')
           assert.equal(queue.items[0].reviewStatus,'needs_authenticated_meta_evidence')
           assert.equal(queue.items[0].automaticRetryAllowed,false)
@@ -1149,6 +1151,18 @@ try {
           assert.ok(cannotFinalize.status>=400,cannotFinalize.body)
           assert.equal(sql('SELECT provider_outcome FROM public.social_schedule_dispatch_intents_fixture'),'unknown')
           assert.equal(sql('SELECT count(*) FROM public.social_schedule_dispatch_intents_fixture'),'1')
+          // Feed the actual PostgREST projection to the passive Swedish
+          // review panel contract. No browser route or provider request.
+          const handoff=spawnSync(process.execPath,[resolve(repo,'node_modules/vitest/vitest.mjs'),
+            'run','lib/social-launch/scheduling/review-handoff-fixture.test.ts',
+            '--maxWorkers=1','--minWorkers=1'],{
+            cwd:web,encoding:'utf8',timeout:45000,maxBuffer:1024*1024,
+            env:{...process.env,
+              OMNIRA_SCHEDULE_REPLAY_REVIEW_B64:Buffer.from(review.body,'utf8').toString('base64'),
+              OMNIRA_SCHEDULE_REPLAY_REVIEW_PROJECT:project},
+          })
+          assert.equal(handoff.status,0,handoff.stderr+'\n'+handoff.stdout)
+          console.log('CROSS-TREE REVIEW HANDOFF UI PASS (actual PostgREST result rendered read-only, without operator actions)')
           console.log('CROSS-TREE BROKER REVIEW QUEUE PASS (committed unknown intent visible only to scoped reviewer; published SQL state is NOT Meta proof; no retry/finalize)')
           console.log('CROSS-TREE POSTGREST APPLICATION WORKER PASS (actual TypeScript worker, fake Meta, scoped RPC role)')
         }

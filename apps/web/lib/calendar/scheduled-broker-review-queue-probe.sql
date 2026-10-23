@@ -31,6 +31,8 @@ begin
       'publicationId', entries.publication_id,
       'reservedAt', entries.reserved_at,
       'databaseJobState', entries.database_job_state,
+      'postId', entries.post_id,
+      'publicationState', entries.publication_state,
       'providerOutcome', 'unknown',
       'reviewStatus', 'needs_authenticated_meta_evidence',
       'automaticRetryAllowed', false
@@ -38,9 +40,13 @@ begin
   ),'[]'::jsonb) into items
   from (
     select intent.job_id,intent.publication_id,intent.reserved_at,
-      coalesce(job.state::text,'missing') as database_job_state
+      coalesce(job.state::text,'missing') as database_job_state,
+      publication.post_id,coalesce(publication.state::text,'missing') as publication_state
     from public.social_schedule_dispatch_intents_fixture intent
-    left join public.social_schedule_jobs job on job.id=intent.job_id
+    left join public.social_schedule_jobs job
+      on job.id=intent.job_id and job.project_id=intent.project_id
+    left join public.social_publications publication
+      on publication.id=intent.publication_id and publication.project_id=intent.project_id
     where intent.project_id=p_project_id
       and intent.provider_outcome='unknown'
     order by intent.reserved_at,intent.job_id
@@ -49,7 +55,8 @@ begin
   return jsonb_build_object(
     'projectId',p_project_id,
     'automaticRetryAllowed',false,
-    'reviewAction','operator_inspect_provider',
+    -- This is review advice, NEVER an executable approval or publish action.
+    'reviewAction','operator_review_provider_evidence',
     'pageLimit',25,
     'items',items
   );

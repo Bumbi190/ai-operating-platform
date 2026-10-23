@@ -868,3 +868,100 @@ Meta-authenticated receipt provenance. Keep PR #504 as draft:
 no schema migrations, SQL privileges, client credentials, actual
 publication, Meta network request or CI workflows were applied
 to production.
+
+## Operator-only Facebook review handoff — 23 October (fixture, no production wiring)
+
+This follow-up acknowledges a real compatibility boundary in the
+**existing** application. `SocialReconciliationPanel.tsx` is shown
+only when `social_publications.state='uncertain'` on Facebook;
+`publication/reconciliation/service.ts` itself returns no provider
+candidates unless the publication is `uncertain`. Meanwhile, the
+isolated synthetic broker test can leave a job and publication
+`published` while the independently persisted broker intent still
+says `provider_outcome='unknown'`. Those two states MUST NOT be
+presented as a confirmed Meta receipt or routed directly to the
+existing reconciliation completion path. The production
+`SocialPublicationPanel.tsx` still calls `published` confirmed,
+so the production UI must be updated in a separately approved
+cutover rather than quietly overriding current app behaviour here.
+
+The **test-only** SQL projection in
+`lib/calendar/scheduled-broker-review-queue-probe.sql` now
+includes `postId` and `publicationState` from the
+same-project `social_publications` record, alongside the
+existing `databaseJobState`, immutable unknown provider outcome,
+job/publication IDs and the false automatic-retry flag. Its
+top-level `reviewAction` is generalized to
+`operator_review_provider_evidence`, which means advisory text,
+NOT an enabled action. These fields are read-only, do not
+provide a token, caption, photo URL, candidate ID or trusted
+provider attestation, and do not grant more SQL rights.
+
+`lib/social-launch/scheduling/review-handoff-fixture.ts`
+requires the exact, project-matching scoped PostgREST response
+shape with valid IDs and timestamps, no extra command/receipt
+fields, `providerOutcome='unknown'`, and explicit
+`automaticRetryAllowed=false` at all levels. It fails
+closed on duplicate IDs, forged confirmation, changed project,
+unknown states, or more than 25 rows. Each read-only review case
+is converted into Swedish operator guidance:
+- If the actual publication is `uncertain` and `postId` exists,
+  it identifies the existing manual Facebook inspection panel as
+  **potentially available to an authenticated operator** and
+  supplies its read-only project/post/publication scope; no API
+  invocation is made.
+- If the publication is `published`, `missing`, or any other
+  state, it requires **separate operator verification** and
+  explicitly marks the legacy completion panel incompatible.
+  The fact that SQL reports `published` never changes the
+  Meta-evidence state to verified.
+All cases prohibit automatic retry, Meta confirmation, and
+new publishing from this handoff.
+
+`components/social-launch/ScheduledMetaReviewFixture.tsx`
+is a passive Swedish React preview of these cases. It has
+no buttons, links, forms, network requests or handlers; it is
+not mounted in any live route, menu, calendar, or Atlas tool.
+There is no Atlas background job, user notification, Meta
+query, privileged completion, or UI activation in this change.
+
+Unit tests verify both publication-status branches, rejection
+of fake proof/actions, project isolation, missing records,
+the 25-item nonpaginated limit, HTML preview without controls,
+and refusal outside `NODE_ENV=test`. An additional integration
+test uses a base64-transported copy of the **actual isolated
+PostgREST review query result**, not a fabricated client
+record; the full replay must prove the rendered case still
+labels the Meta result unverified even if the SQL job and
+publication both say `published`. Existing operator-only
+`/api/social-publication-reconciliation` and
+`SocialReconciliationPanel` remain unmodified.
+
+**Before production:** A reviewed endpoint/UI must require the
+logged-in operator and project binding; an explicit operator action
+may invoke the *existing* inspection only where its state and
+authority checks are applicable. A separate, independently
+attested Meta-proof path is still required for an internal
+`published` / broker-`unknown` mismatch. A reserved Facebook
+dispatch must never be silently retried; human confirmation
+cannot be synthesized by Atlas or turned into a broker write.
+The historical May media migration baseline, provider receipt
+provenance, durable workflow review UX, dedicated service
+credentials and full privileged SQL call graph are not resolved
+by this fixture.
+
+**Observed final local verification (23 October):** The five targeted
+Vitest files passed **30 tests**, with the one conditional
+real-PostgREST-handoff test skipped outside the isolated runner.
+The complete 151-web + 10-root cross-tree replay then passed
+`CROSS-TREE REVIEW HANDOFF UI PASS`,
+`CROSS-TREE BROKER REVIEW QUEUE PASS`,
+`CROSS-TREE POSTGREST APPLICATION WORKER PASS` and
+`CROSS-TREE REPLAY PASS` (exit 0). In the replay the conditional
+handoff test ran against the *actual* verified PostgREST read-only
+projection and rendered the Swedish preview with no operator action.
+All database changes were confined to disposable local Docker
+resources. Full project `tsc --noEmit` reports only the three
+pre-existing Remotion dependency/type errors in
+`lib/media/lambda-render.ts`, no new calendar-file errors. This
+does NOT establish real Meta delivery or production readiness.

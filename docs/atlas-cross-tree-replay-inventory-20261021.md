@@ -1476,3 +1476,27 @@ security review because Supabase warns about
 `authenticated`-callable SECURITY DEFINER functions. Current
 recommendation: keep PR #504 DRAFT; no production migration,
 function grant, identity/Meta key or external publication.
+
+## Calendar triggers and privileged callback-body gate — 23 October
+
+The previous static catalogue of scheduled write-table triggers is
+now upgraded to `apps/web/scripts/calendar-trigger-chain-audit.mjs`
+with pinned `pg_get_triggerdef` hashes for **15** actual isolated
+triggers and `pg_get_functiondef` hashes for their **eight** unique
+callback functions, plus the HMAC/source-revision begin gate (one more
+function). The observed and locked `CROSS-TREE TRIGGER CHAIN PASS`
+inventory covers `projects`, `social_schedule_jobs`,
+`social_publications`, `social_schedule_events`,
+`social_publication_events` and the test-only human-observation
+audit table. Five focused native tests passed (including negative
+in-memory catalog mutation), all 55 existing calendar Vitest cases
+passed, and the full PostgreSQL 17/PostgREST replay completed
+`CROSS-TREE REPLAY PASS` with exit code 0 after checking the pinned
+fingerprints. The audit is intentionally **bounded and static**:
+dynamic SQL/unqualified callees and all canonical scheduler RPC
+dependencies still need manual source review. The actual hosted
+project still lacks the test-only calendar source-write gates.
+See `docs/calendar-trigger-chain-audit-20261023.md` for trigger
+semantics, observed production/fixture differences and remaining
+release blockers. No production code/migrations, grants, Meta,
+deployment or CI workflows were changed.

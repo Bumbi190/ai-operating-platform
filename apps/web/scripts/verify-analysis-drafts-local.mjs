@@ -7,6 +7,7 @@ import assert from 'node:assert/strict'
 import { orderReplayMigrations, orderLegacyMediaReplayMigrations, orderCrossTreeReplayMigrations } from './analysis-replay-order.mjs'
 import {runClosedCalendarRotationProbe} from './calendar-postgrest-rotation-fixture.mjs'
 import {auditNativeDefinerSurface,buildNativeDefinerCatalogQuery,reviewedNativeDefinerFingerprints} from './calendar-native-definer-surface.mjs'
+import {auditCalendarTriggerChain,buildCalendarTriggerChainQuery,triggerChainFingerprints} from './calendar-trigger-chain-audit.mjs'
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..'),
   repo = resolve(web, '../..')
 const migrationDir = resolve(web, 'supabase/migrations')
@@ -930,6 +931,9 @@ try {
           ['social_schedule_jobs','calendar_gate_jobs_after_probe',29],
           ['social_schedule_jobs','calendar_gate_jobs_before_probe',31],
         ],'scheduled RPC trigger events/timing changed')
+        const triggerChainSnapshot=JSON.parse(sql(buildCalendarTriggerChainQuery()))
+        const triggerChain=auditCalendarTriggerChain(triggerChainSnapshot,{expected:triggerChainFingerprints,requireFingerprints:true})
+        console.log('CROSS-TREE TRIGGER CHAIN PASS '+JSON.stringify({triggerCount:triggerChain.triggers.length,callbackCount:triggerChain.functions.length,gate:triggerChain.gate.sha256,boundedStaticAudit:true})+' (15 trigger definitions, 8 callback bodies, 1 source revision/HMAC gate pinned; static only)')
         const startedRest=docker(['run','--pull=never','--detach','--name',restName,'--network',httpNetwork,'--network-alias','rest',
           '--env','PGRST_DB_URI=postgres://authenticator:'+password+'@db:5432/postgres',
           '--env','PGRST_DB_SCHEMAS=public','--env','PGRST_DB_ANON_ROLE=anon',

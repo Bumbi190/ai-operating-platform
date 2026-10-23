@@ -225,6 +225,10 @@ describe('News Hunter persistence contract', () => {
       duplicateCount: 1,
     })
     expect(db.inserts.media_scripts ?? []).toHaveLength(0)
+    expect(mocks.runNewsHunter).toHaveBeenCalledTimes(1)
+    // Trends previously ran in parallel but were never passed to News Hunter.
+    // Avoid optional 7-second Hermes work which cannot affect the selection.
+    expect(mocks.callHermesTrends).not.toHaveBeenCalled()
     expect(mocks.anthropicCreate).not.toHaveBeenCalled()
   })
 })

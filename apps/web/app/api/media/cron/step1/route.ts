@@ -14,7 +14,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { runNewsHunter, type HunterCandidate } from '@/lib/media/news-hunter'
 import { scoreScript, shouldRegenerate } from '@/lib/media/quality'
-import { callHermesScrape, callHermesRead, callHermesTrends, callHermesCompetitors, isHermesConfigured } from '@/lib/media/hermes'
+import { callHermesScrape, callHermesRead, callHermesCompetitors, isHermesConfigured } from '@/lib/media/hermes'
 import { Anthropic } from '@anthropic-ai/sdk'
 import { logRun } from '@/lib/media/run-log'
 import { logLlmCost } from '@/lib/cost/track'
@@ -197,30 +197,21 @@ export async function GET(request: Request) {
   const SCRIPT_SYSTEM = buildScriptSystem(competitorHooks, competitorPattern)
   // ── End competitor intelligence ───────────────────────────────────────────
 
-  // ── Fetch trends + hunt news in parallel ─────────────────────────────────
-  // Trends run alongside the news hunt — no extra time cost.
-  // If Hermes isn't configured, trends silently returns null.
-  let trendingTopics: string[] = []
-  let hunterResult
-
-  const [trendsResult, hunterRes] = await Promise.allSettled([
-    callHermesTrends(7_000),               // hard 7s cap (was 25s default)
+  // ── Hunt news once; no unused Hermes trends request ─────────────────────
+  // The previous parallel Hermes /trends request cost up to 7 seconds and
+  // routinely timed out; its output was only logged and NEVER passed to
+  // runNewsHunter (which always received []). It could not affect selection.
+  // A separate reviewed cache/provenance pipeline can supply real trend
+  // context later without extending this 60-second production cron budget.
+  const [hunterRes] = await Promise.allSettled([
     runNewsHunter({ context: 'AUTONOMOUS' as const, scope: projectScope({ projectId: project.id }) }, db, project.id, 5, []),
   ])
-
-  if (trendsResult.status === 'fulfilled' && trendsResult.value) {
-    trendingTopics = trendsResult.value.topics.map(t => t.topic)
-    console.log(`[cron/step1] Trends: ${trendingTopics.slice(0, 5).join(', ')}...`)
-  }
-
   if (hunterRes.status === 'rejected') {
     return NextResponse.json({ status: 'hunt_failed', error: String(hunterRes.reason) }, { status: 500 })
   }
-
-  // NOTE: we used to re-run runNewsHunter a second time with trend context.
-  // That doubled the hunt cost and pushed step1 past Vercel's 60s limit (→ 504,
-  // script never saved). We now use the single parallel hunt result directly.
-  hunterResult = hunterRes.value
+  // Never run the paid News Hunter a second time to incorporate a late
+  // enrichment response. One hunt and its existing persistence only.
+  const hunterResult = hunterRes.value
 
   // ── Hermes fallback ──────────────────────────────────────────────────────
   // If the API hunt found nothing (or everything was low-virality), ask Hermes

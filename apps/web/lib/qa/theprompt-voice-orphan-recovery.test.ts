@@ -23,6 +23,7 @@ vi.mock('@/lib/media/alert', () => ({ sendPipelineAlert: fake.alert }))
 vi.mock('@/lib/media/retry', () => ({ withRetry: (fn: () => unknown) => fn(), nextRetryDelayMs: () => 1000, isPermanentByStatusText: () => false }))
 import { GET as runStep2 } from '@/app/api/media/cron/step2/route'
 import { GET as runRetry } from '@/app/api/media/cron/pipeline-retry/route'
+import { validatedVoiceOrphanRecoveryStartAt } from '@/lib/media/voice-orphan-recovery-policy'
 
 const projectId = 'a8a1b1f6-c222-4893-9399-b1fb3bc2fa52'
 const scriptId = 'd95b077a-a977-4a48-b596-b89459f0518e'
@@ -37,6 +38,7 @@ let step2Script: typeof latestScript | null = { ...latestScript }
 let claimResult: { data: { id: string } | null; error: { message: string } | null } = { data: { id: scriptId }, error: null }
 let claimQueue: Array<typeof claimResult> | null = null
 let orphanCandidates: Array<{ id: string }> = [{ id: scriptId }]
+let orphanCreatedAt = '2026-10-23T10:00:00.000Z'
 let missingPromptProject = false
 function query(table: string) {
   const filters: Recorded[] = []
@@ -57,7 +59,13 @@ function query(table: string) {
     },
     then(resolve: (x: unknown)=>unknown, reject?:(e:unknown)=>unknown) {
       const isVoiceOrphan=table==='media_scripts'&&filters.some(f=>f.method==='or' && f.args[0]==='voice_status.eq.none,voice_status.is.null')
-      return Promise.resolve({data:isVoiceOrphan?orphanCandidates:null,error:null}).then(resolve,reject)
+      const lower = filters.filter(f=>f.method==='gte'&&f.args[0]==='generated_at')
+        .map(f=>Date.parse(String(f.args[1])))
+      const upper = filters.filter(f=>f.method==='lt'&&f.args[0]==='generated_at')
+        .map(f=>Date.parse(String(f.args[1])))
+      const time = Date.parse(orphanCreatedAt)
+      const isWithinRange = lower.every(v=>time>=v) && upper.every(v=>time<v)
+      return Promise.resolve({data:isVoiceOrphan?(isWithinRange?orphanCandidates:[]):null,error:null}).then(resolve,reject)
     },
   }
   return q
@@ -70,10 +78,12 @@ beforeEach(() => {
   vi.stubEnv('NEXT_PUBLIC_SITE_URL','https://app.omniraos.se')
   vi.stubEnv('H1_SPEND_GATE','1')
   vi.stubEnv('MEDIA_PROMPT_VOICE_ORPHAN_RECOVERY_ENABLED','true')
+  vi.stubEnv('MEDIA_PROMPT_VOICE_ORPHAN_RECOVERY_FROM_UTC','2026-10-23T10:00:00.000Z')
   step2Script={...latestScript}
   claimResult={data:{id:scriptId},error:null}
   claimQueue=null
   orphanCandidates=[{id:scriptId}]
+  orphanCreatedAt='2026-10-23T10:00:00.000Z'
   missingPromptProject=false
   fake.createAdminClient.mockReturnValue(db)
   fake.voice.mockResolvedValue({audioBuffer:Buffer.from('SYNTHETIC'),durationMs:9000,words:[]})
@@ -168,6 +178,53 @@ describe('The Prompt pipeline retry finds late approved voice orphans only',()=>
     expect(operations.some(o=>o.method==='is'&&o.args[0]==='published_at'&&o.args[1]===null)).toBe(true)
     expect(operations.some(o=>o.method==='lt'&&o.args[0]==='generated_at'&&o.args[1]===new Date('2026-10-23T10:10:00Z').toISOString())).toBe(true)
     expect(operations.some(o=>o.method==='gte'&&o.args[0]==='generated_at'&&o.args[1]===new Date('2026-10-23T04:20:00Z').toISOString())).toBe(true)
+  })
+  it('requires an explicit UTC activation lower bound even if the paid flag and spend gate are enabled',async()=>{
+    vi.stubEnv('MEDIA_PROMPT_VOICE_ORPHAN_RECOVERY_FROM_UTC','')
+    const calls=vi.fn()
+    vi.stubGlobal('fetch',calls)
+    const res=await runRetry(request('/api/media/cron/pipeline-retry'))
+    const body=await res.json()
+    expect(body.voiceOrphanCandidates).toBe(1)
+    expect(body.voiceOrphanRescued).toEqual([])
+    expect(calls).not.toHaveBeenCalled()
+  })
+  it.each(['garbage','2026-10-23T12:00:00+02:00','2026-02-30T10:00:00Z','2026-10-23T10:15:00Z'])('refuses malformed, local-time or premature recovery cutover %s',async (startAt)=>{
+    vi.stubEnv('MEDIA_PROMPT_VOICE_ORPHAN_RECOVERY_FROM_UTC',startAt)
+    const calls=vi.fn()
+    vi.stubGlobal('fetch',calls)
+    const res=await runRetry(request('/api/media/cron/pipeline-retry'))
+    expect((await res.json()).voiceOrphanRescued).toEqual([])
+    expect(calls).not.toHaveBeenCalled()
+  })
+  it('does not backfill a historical 11 AM script created before a newly approved cutover',async()=>{
+    orphanCreatedAt='2026-10-23T09:00:55.596Z'
+    const calls=vi.fn()
+    vi.stubGlobal('fetch',calls)
+    const res=await runRetry(request('/api/media/cron/pipeline-retry'))
+    const body=await res.json()
+    expect(body.voiceOrphanCandidates).toBe(0)
+    expect(body.voiceOrphanRescued).toEqual([])
+    expect(calls).not.toHaveBeenCalled()
+    expect(operations.some(o=>o.method==='gte' && o.args[0]==='generated_at' && o.args[1]==='2026-10-23T10:00:00.000Z')).toBe(true)
+  })
+  it('preserves pre-cutover monitoring when the paid feature remains disabled',async()=>{
+    vi.stubEnv('MEDIA_PROMPT_VOICE_ORPHAN_RECOVERY_ENABLED','')
+    orphanCreatedAt='2026-10-23T09:00:55.596Z'
+    const calls=vi.fn()
+    vi.stubGlobal('fetch',calls)
+    const body=await (await runRetry(request('/api/media/cron/pipeline-retry'))).json()
+    expect(body.voiceOrphanCandidates).toBe(1)
+    expect(body.voiceOrphanRescued).toEqual([])
+    expect(calls).not.toHaveBeenCalled()
+  })
+  it('validates ISO UTC cutovers and refuses invalid or too-recent timestamps',()=>{
+    const now=new Date('2026-10-23T10:20:00Z')
+    expect(validatedVoiceOrphanRecoveryStartAt('2026-10-23T10:00:00Z',now)).toBe('2026-10-23T10:00:00.000Z')
+    expect(validatedVoiceOrphanRecoveryStartAt('2026-10-23T10:00:00.000Z',now)).toBe('2026-10-23T10:00:00.000Z')
+    for(const invalid of ['', 'tomorrow','2026-10-23T12:00:00+02:00','2026-02-30T10:00:00Z','2026-10-23T10:11:00Z']) {
+      expect(validatedVoiceOrphanRecoveryStartAt(invalid,now)).toBeNull()
+    }
   })
   it('does not dispatch a paid voice recovery by default, but reports a safe candidate count',async()=>{
     vi.stubEnv('MEDIA_PROMPT_VOICE_ORPHAN_RECOVERY_ENABLED','')

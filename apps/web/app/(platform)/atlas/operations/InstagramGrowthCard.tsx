@@ -1,4 +1,5 @@
 import type { InstagramGrowthPanel } from '@/lib/content-growth/instagram-read'
+import { suggestInstagramExperiment } from '@/lib/content-growth/instagram-experiments'
 
 const count = (n: number) => new Intl.NumberFormat('sv-SE').format(n)
 const percent = (n: number | null) => n === null ? 'Saknas' : `${(n * 100).toFixed(1).replace('.', ',')} %`
@@ -25,6 +26,7 @@ export function InstagramGrowthCard({ panel }: { panel: InstagramGrowthPanel }) 
   }
 
   const { summary, lastFetchedAt } = panel
+  const suggestion = suggestInstagramExperiment(panel.brand, summary, lastFetchedAt)
   const ranked = [...summary.posts]
     .filter(post => post.viewMultiple !== null)
     .sort((a, b) => (b.viewMultiple ?? 0) - (a.viewMultiple ?? 0))
@@ -58,6 +60,14 @@ export function InstagramGrowthCard({ panel }: { panel: InstagramGrowthPanel }) 
           <p className="text-xs text-muted-foreground">Sparningar / räckvidd (toppinlägg)</p>
           <p className="text-lg font-semibold">{percent(highest?.savesPerReach ?? null)}</p>
         </div>
+      </div>
+      <div className="mt-4 rounded-lg border border-border/70 px-3 py-3" aria-label="Atlas föreslår experiment">
+        <p className="text-xs font-semibold">Atlas · Förslag för manuell granskning</p>
+        <p className="mt-1 text-sm font-medium">{suggestion.title}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{suggestion.rationale}</p>
+        <p className="mt-2 text-xs">{suggestion.action}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{suggestion.measurement}</p>
+        <p className="mt-2 text-xs text-muted-foreground">Endast ett förslag – Atlas ändrar inte publicering eller kalender utan godkännande.</p>
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
         {lastFetchedAt

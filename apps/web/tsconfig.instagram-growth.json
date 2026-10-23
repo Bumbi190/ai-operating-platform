@@ -16,7 +16,10 @@
     "lib/qa/instagram-growth-reader.test.ts",
     "lib/qa/instagram-metrics.test.ts",
     "lib/qa/social-publication-cron-order.test.ts",
-    "lib/qa/social-publication-insights.test.ts"
+    "lib/qa/social-publication-insights.test.ts",
+    "lib/content-growth/instagram-experiments.ts",
+    "lib/qa/instagram-experiments.test.ts",
+    "lib/qa/instagram-experiments-ui.test.ts"
   ],
   "exclude": ["node_modules"]
 }

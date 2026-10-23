@@ -4,7 +4,7 @@
 The operator approved a shared **SEK 10 per Stockholm calendar day and SEK 100 per Stockholm calendar month** for additional *automatic reserve-model* work. This is a conservative allowance, not an instruction to spend it. The existing project/global budgets and all workflow stop gates remain independently binding.
 
 ## Implemented
-- New append-only `public.atlas_fallback_reservations` journal, RLS enabled, no anon/authenticated table grants.
+- New append-only `public.atlas_fallback_reservations` journal, RLS enabled, no anon/authenticated table grants. The LIVE table was inspected and added to `tests/isolation/schema-security.json` as `SERVER_ONLY` with zero policies, preserving the full migration security diff gate.
 - Service-role-only `public.atlas_fallback_reserve(uuid,uuid,text,numeric)` RPC. Every request takes the same Postgres transaction-scoped advisory lock and sums reservations from ALL projects for the current Europe/Stockholm day/month. Records are unique by opaque request UUID; replays refuse. Every request is charged a rounded-up SEK allowance before an OpenAI provider call, with no refund on ambiguous outcomes.
 - Explicit project validation: News Hunter, morning briefing and legacy media reserve jobs can only use The Prompt's project. Dream uses the actual project ID and its own stop authority.
 - Two additive reviewed schema changes: `atlas_fallback_reservation_ceiling` and `atlas_fallback_reservation_locktime`. The second ensures that a request waiting at a midnight boundary gets its calendar instant AFTER obtaining the lock.

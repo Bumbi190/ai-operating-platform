@@ -40,6 +40,15 @@ it('unknown_write_never_reclaimed',async()=>{
  const first=await executeApprovedPublication(f.ctx,f.deps);expect(first.state).toBe('uncertain')
  const second=await executeApprovedPublication({...f.ctx,record:first},f.deps);expect(second.state).toBe('uncertain');expect(posts).toBe(1)
 })
+it('a bare Facebook feed receipt stays uncertain and is not sent again',async()=>{
+ const f=fixture();let posts=0
+ f.ctx.snapshot.revision.draft.format='text'
+ f.deps.provider=new MetaManualProvider(async()=>{posts++;return Response.json({id:'222'})})
+ const first=await executeApprovedPublication(f.ctx,f.deps)
+ expect(first).toMatchObject({state:'uncertain',failureCode:'invalid_response'})
+ const second=await executeApprovedPublication({...f.ctx,record:first},f.deps)
+ expect(second.state).toBe('uncertain');expect(posts).toBe(1)
+})
 it('checkpoint_loss_is_uncertain_without_retry',async()=>{
  for(const fault of ['committed','uncommitted'] as const){
   const f=fixture('facebook',fault),r=await executeApprovedPublication(f.ctx,f.deps)

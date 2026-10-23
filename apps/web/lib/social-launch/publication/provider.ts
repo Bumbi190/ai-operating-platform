@@ -34,9 +34,10 @@ export class MetaManualProvider{
   const body=new URLSearchParams({message:p.text,published:'true'})
   if(p.imageUrl)body.set('url',this.imageUrl(p.imageUrl));else if(p.linkUrl)body.set('link',p.linkUrl)
   const result=await this.json(c,c.accountId+(p.imageUrl?'/photos':'/feed'),body,30000),providerId=this.id(result.post_id??result.id,true)
-  // A composite Page post ID must belong to the Page addressed by this write.
-  // Photo responses can contain a standalone numeric photo ID instead.
-  if(providerId.includes('_')&&!providerId.startsWith(c.accountId+'_'))throw new ManualProviderError('invalid_response')
+  // Feed posts need a Page-bound post ID. Photo responses can instead return
+  // a standalone numeric photo ID, which remains an uncertain receipt if lost.
+  if((!p.imageUrl||providerId.includes('_'))&&!providerId.startsWith(c.accountId+'_'))
+   throw new ManualProviderError('invalid_response')
   return {providerId,permalink:'https://www.facebook.com/'+providerId}
  }
  async createImage(c:ManualCredential,url:string,caption:string):Promise<string>{

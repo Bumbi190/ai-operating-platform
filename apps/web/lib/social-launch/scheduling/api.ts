@@ -12,6 +12,9 @@ export async function socialScheduleTickApi(request:Request){
  if(keys.some(k=>k!=='dryRun')||u.searchParams.getAll('dryRun').length>1||u.searchParams.has('dryRun')&&u.searchParams.get('dryRun')!=='1')return Response.json({code:'INVALID_BODY'},{status:400,headers})
  const dryRun=u.searchParams.get('dryRun')==='1'
  if(!enabledScheduleProjects().length)return Response.json({mode:dryRun?'dry_run':'execute',jobId:null,result:'disabled'},{headers})
- try{return Response.json(await runScheduleTick(createAdminClient(),{workerId:'schedule_'+randomUUID(),now:new Date().toISOString(),dryRun}),{headers})}
+ try{
+  const scheduleDb=createAdminClient(),mediaDb=createAdminClient()
+  return Response.json(await runScheduleTick(scheduleDb,{workerId:'schedule_'+randomUUID(),now:new Date().toISOString(),dryRun},undefined,mediaDb),{headers})
+ }
  catch{return Response.json({code:'UNAVAILABLE'},{status:503,headers})}
 }

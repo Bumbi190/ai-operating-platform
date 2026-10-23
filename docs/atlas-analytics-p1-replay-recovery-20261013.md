@@ -1,11 +1,27 @@
 # Atlas P1 local replay repair — 13 October 2026
 
+**21 October update:** The separate, explicitly hash-pinned
+`--mode=legacy-cross-tree-replay` fixture now passes the base schema, all 151
+canonical web SQL files and 10 selected root SQL files in isolated PostgreSQL.
+See [the cross-tree inventory](atlas-cross-tree-replay-inventory-20261021.md)
+for the exact edges and exclusions. The earlier blockers below are historical
+diagnostic results, not the latest local outcome. This pass does not repair the
+production migration ledger, replay all 38 root files or verify live data and
+roles.
+
 ## Result and boundaries
 
 The local Storage bootstrap and same-date media ordering issue are repaired in a separate branch above PR #323's exact head `2dd5c0fd50fc18a203f1866a4b1cc5f21816b740`. The change affects local verification scripts only. Historical SQL bytes, migration filenames, production migration guard/ledger policy and P1 runtime code are unchanged.
 
 `--mode=canonical-replay` retains lexical canonical-file order.
-`--mode=dependency-replay` explicitly moves the hash-pinned `20260520_media_tables.sql` before `20260520_media_images.sql`, retaining every canonical SQL file exactly once. Missing prerequisite, duplicates or changed exception bytes refuse verification. This mode does not establish lexical replay success.
+`--mode=dependency-replay` explicitly moves hash-pinned prerequisites before
+their consumers while retaining every canonical SQL file exactly once. The
+initial exception is `20260520_media_tables.sql` before
+`20260520_media_images.sql`; the 21 October cross-tree investigation also
+found `20260829_workflow_instance_core.sql` before the same-day attestation
+alterations, and `20260830_workflow_action_binding.sql` before the same-day
+failure indexes. Missing prerequisites, duplicates or changed exception bytes
+refuse verification. This mode does not establish lexical replay success.
 
 Replay bootstrap reads upstream `0002-storage-schema.sql` and `0008-add-public-to-buckets.sql` from cached `public.ecr.aws/supabase/storage-api:v1.79.36` using `--pull=never --network none --rm --entrypoint cat`. Exact SHA-256 pins are checked before applying SQL. The upstream `storage.install_roles=false` switch preserves the PostgreSQL image's existing roles. This is the Storage prerequisite needed by the baseline; it is not a full Storage service fidelity claim.
 
@@ -28,6 +44,66 @@ Dependency replay passes the full baseline and seven canonical migrations, then 
 PostgreSQL reports `relation "media_insights" does not exist`. Its CREATE TABLE is in `supabase/migrations/20260601_media_insights.sql`, the separate root history explicitly excluded by the approved P1 replay plan. No root migration is injected, skipped or rewritten. A complete baseline for that legacy history remains unresolved. **Full replay is BLOCKED, not PASS.**
 
 Logs are retained in the separate recovery evidence directory. P1 migration SHA-256 remains `0582d94689b34e6704c26a830b879741d233ff81a7139bf28ce3642e83000738`.
+
+### Follow-up diagnostic mode (21 October)
+
+`node apps/web/scripts/verify-analysis-drafts-local.mjs --mode=legacy-media-replay`
+adds only the hash-pinned root `20260601_media_insights.sql` to the local
+dependency replay order before `20260602_atlas_bi_foundation.sql`. It checks
+the root SQL bytes, retains every canonical web migration, and refuses a
+missing BI migration or a duplicate filename. The canonical and dependency
+modes keep their previous order and scope. The initial ordering tests passed
+(8/8) in scratch and CI; scratch itself has no Docker.
+This diagnostic exposes the next dependency; it does not establish complete
+historical replay or working Supabase branch creation. It also does not repair
+the production migration registry's earlier missing `media_scripts` baseline,
+change any migration ledger, or apply SQL to production.
+
+An attempted isolated GitHub Actions run on 21 October
+([39619027578](https://github.com/Bumbi190/ai-operating-platform/actions/runs/39619027578))
+passed the eight ordering tests, but its first image download failed with
+`toomanyrequests: Data limit exceeded` from public ECR. The SQL step was
+skipped. The temporary automatic workflow was removed to avoid repeating the
+same blocked pull. No PostgreSQL replay result can be inferred from this run;
+use a machine with the exact required images already cached to run the command
+above. Do not substitute a different image version without reviewing its
+extension and bootstrap parity.
+
+On the connected Hultgren workstation, both exact image versions were already
+cached. A fresh detached worktree at the PR head ran the diagnostic in its
+owned container with network disabled and zero port bindings. The replay
+passed `media_insights`, `atlas_bi_foundation`, `cost_events` and later
+canonical files, then stopped in `20260614091000_h1p5_runs_claim_id.sql`:
+`schema "omnira_cron" does not exist` while replacing
+`omnira_cron.reap_stuck_runs()`. The runner removed the owned container on
+failure, and the worktree remained clean. This is the next observed local
+dependency, not a full replay result.
+
+`--mode=legacy-cron-replay` adds the exact hash-pinned root
+`supabase/migrations/20260528_pg_cron_setup.sql` before the later watchdog,
+alongside the media insights root file. It runs only in the isolated offline
+container with `cron.launch_active_jobs=off`. The SQL file contains placeholder
+URL and secret values; the diagnostic does not point at live services. The
+earlier `--mode=legacy-media-replay` remains available to reproduce the
+missing-schema failure.
+
+The cron-root fixture needed `pg_cron` and `pg_net` preloaded, plus an empty
+test-only `supabase_migrations.schema_migrations(name text)` ledger for the
+later migration guard function. Its bootstrap installs `pg_cron` before the
+unaltered root SQL, which otherwise assumes Supabase has already installed it.
+These synthetic prerequisites exist only in the owned container. The canonical
+and media-only modes keep their earlier bootstrap and order.
+
+The resulting Hultgren run passed the cron root, media insights, the June BI
+and watchdog migrations, the migration guard, and several Atlas memory files.
+It stopped at `20260617160200_backfill_dream_issues.sql` because
+`public.dream_issues` does not exist. That table is created in the other tree,
+`supabase/migrations/20260609_dream_issues_ledger.sql`. The owned container was
+removed on failure. This is the next observed dependency; **full replay is
+still blocked**. Rather than append root files one at a time, the next step is
+to review a complete cross-tree manifest and its dependency ordering. Neither
+this local path nor the manifest by itself repairs the Supabase branch's
+production-ledger baseline.
 
 ## Production installation decision
 

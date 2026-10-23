@@ -10,6 +10,7 @@ import {auditNativeDefinerSurface,buildNativeDefinerCatalogQuery,reviewedNativeD
 import {auditCalendarTriggerChain,buildCalendarTriggerChainQuery,triggerChainFingerprints} from './calendar-trigger-chain-audit.mjs'
 import {auditSchedulerRpcChain,buildSchedulerRpcChainCatalogQuery,reviewedRpcChainPins} from './calendar-worker-rpc-callchain-audit.mjs'
 import {auditCalendarHelperChain,buildCalendarHelperCatalogQuery,reviewedHelperPins} from './calendar-helper-chain-audit.mjs'
+import {auditMediaNewsCallees,buildMediaNewsCalleeCatalogQuery,reviewedMediaNewsPins} from './calendar-media-news-callees-audit.mjs'
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..'),
   repo = resolve(web, '../..')
 const migrationDir = resolve(web, 'supabase/migrations')
@@ -942,6 +943,25 @@ try {
         const nextHopCatalog=JSON.parse(sql(buildCalendarHelperCatalogQuery()))
         const nextHopAudit=auditCalendarHelperChain(nextHopCatalog,{pins:reviewedHelperPins,requirePins:true})
         console.log('CROSS-TREE HELPER CHAIN PASS '+JSON.stringify({helperCount:nextHopAudit.functions.length,invokerHelpers:nextHopAudit.invokerHelpers,privilegedHelpers:nextHopAudit.privilegedHelpers,referenceCount:nextHopAudit.functions.reduce((sum,x)=>sum+x.references.length,0),directCallCount:nextHopAudit.functions.reduce((sum,x)=>sum+x.calls.length,0)})+' (pinned helper source, SQL references, direct qualified calls, signatures and effective grants)')
+        const mediaNewsCatalog=JSON.parse(sql(buildMediaNewsCalleeCatalogQuery()))
+        const mediaNewsReview=auditMediaNewsCallees(mediaNewsCatalog,{pins:reviewedMediaNewsPins,requirePins:true})
+        // Exercise two SQL helpers with actual Postgres semantics, without
+        // a real asset or a provider. This is NOT a Meta delivery receipt.
+        const canon=sql(`SELECT public.media_news_canonical_json(
+          '{"z":1,"a":[{"b":2,"a":1},3]}'::jsonb)`)
+        assert.equal(canon,'{"a":[{"a":1,"b":2},3],"z":1}',
+          'canonical hash input changed or JSON ordering became unstable')
+        const invalidMedia=sql(`SELECT to_jsonb(public.media_news_snapshot_requirements(
+          ${quote(project)}::uuid,'{}'::jsonb))`)
+        assert.equal(invalidMedia,'["news_evidence_invalid"]',
+          'invalid media admission snapshot was incorrectly allowed')
+        console.log('CROSS-TREE MEDIA NEWS CALLEE PASS '+JSON.stringify({
+          functions:mediaNewsReview.reviewedFunctions,
+          directCalls:mediaNewsReview.functions.reduce((n,x)=>n+x.calls.length,0),
+          sqlReferences:mediaNewsReview.functions.reduce((n,x)=>n+x.references.length,0),
+          invokerOnly:mediaNewsReview.functions.every(x=>x.invoker),
+          canonicalJsonValidated:true,invalidMediaRejected:true,
+        })+' (pinned source, signed roles, private creative evidence; no provider publishing proof)')
         const startedRest=docker(['run','--pull=never','--detach','--name',restName,'--network',httpNetwork,'--network-alias','rest',
           '--env','PGRST_DB_URI=postgres://authenticator:'+password+'@db:5432/postgres',
           '--env','PGRST_DB_SCHEMAS=public','--env','PGRST_DB_ANON_ROLE=anon',

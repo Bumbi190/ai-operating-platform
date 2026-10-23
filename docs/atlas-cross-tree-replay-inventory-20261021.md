@@ -1550,3 +1550,27 @@ Granskningen täcker inte rekursivt de tre underliggande
 media-news-specialfunktionerna, och Meta-bevis,
 hostad staging och den historiska mediemigrationsbasen
 är fortfarande spärrar för produktionsövergången.
+
+## Media-news creative evidence SQL callees — 23 October
+
+The isolated calendar replay now includes
+`apps/web/scripts/calendar-media-news-callees-audit.mjs`, a bounded
+read-only SQL catalog review of the three downstream functions
+called by `media_news_review_requirements`:
+`media_news_canonical_json`,
+`media_news_review_caption`, and
+`media_news_snapshot_requirements`. The migration catalog
+fingerprints, signatures, volatility/STRICT flags, EXECUTE ACL,
+SQL references and direct qualified callees are permanently pinned.
+The full PostgreSQL/PostgREST cross-tree replay passed
+`CROSS-TREE MEDIA NEWS CALLEE PASS` and
+`CROSS-TREE REPLAY PASS` with exit code 0,
+including deterministic canonical JSON and invalid creative
+evidence refusal. Three invoker functions, 17 qualified SQL
+references and two direct helper calls were checked.
+**7/7** native security tests and **55/55** existing calendar
+Vitest cases passed (four replay-only cases run in the full
+isolation runner). These checks do not authenticate Meta publishing
+receipts and do not authorize any production role grants,
+schema migrations or automatic retries. See
+`docs/calendar-media-news-callees-audit-20261023.md`.

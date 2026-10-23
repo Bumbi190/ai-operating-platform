@@ -9,7 +9,7 @@ import { getMediaTextClient } from '@/lib/media/text-client'
 import { canRouteTextFailure, isAutomaticTextFailoverAllowed } from '@/lib/media/model-failover-policy'
 const ID = '11111111-1111-4111-8111-111111111111'
 const otherID = '22222222-2222-4222-8222-222222222222'
-const news = { project: { projectId: ID },
+const news = { project: { projectId: ID }, verifiedProjectSlug: 'ai-media-automation',
   execution: { context: 'AUTONOMOUS' as const, scope: projectScope({projectId: ID}) },
   agent: 'News Hunter', operation: 'Analyze News' }
 const briefing = { project: {projectSlug:'ai-media-automation'},
@@ -90,7 +90,9 @@ describe('governed Atlas model failover, operator opt-in',()=>{
    { project:news.project,execution:{context:'OPERATOR_EXECUTION' as const,scope:news.execution.scope},agent:'News Hunter',operation:'Analyze News' },
    { project:briefing.project,execution:news.execution,agent:'CFO Briefing',operation:'Morning Briefing' },
    { project:{projectId:ID},execution:{context:'AUTONOMOUS' as const,scope:projectScope({projectId:otherID})},agent:'Dream',operation:'Dream Analysis' },
-   { project:{projectId:otherID},execution:news.execution,agent:'News Hunter',operation:'Analyze News' },
+   { project:{projectId:otherID},verifiedProjectSlug:'ai-media-automation',execution:news.execution,agent:'News Hunter',operation:'Analyze News' },
+   { project:{projectId:ID},verifiedProjectSlug:'familje-stunden',execution:news.execution,agent:'News Hunter',operation:'Analyze News' },
+   { project:{projectId:ID},execution:news.execution,agent:'News Hunter',operation:'Analyze News' },
    { project:news.project,execution:news.execution,agent:'Script Writer',operation:'Generate Script' },
  ])('refuses nonallowlisted task/scope %j',async ctx=>{
    expect(isAutomaticTextFailoverAllowed(ctx)).toBe(false)

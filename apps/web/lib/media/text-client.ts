@@ -17,7 +17,10 @@ interface MediaTextRequest {
   system?: string
   messages: Array<{ role: 'user' | 'assistant'; content: string }>
 }
-type MediaTextContext = Omit<OpenAIGovernanceContext, 'onFlight'>
+type MediaTextContext = Omit<OpenAIGovernanceContext, 'onFlight'> & {
+  /** Supplied only after database verification by the News Hunter caller. */
+  verifiedProjectSlug?: string
+}
 type MediaTextResponse = Pick<Anthropic.Message, 'content'> & { stop_reason?: Anthropic.Message['stop_reason'] }
 
 /**

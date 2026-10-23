@@ -8,7 +8,10 @@
 import type { OpenAIGovernanceContext } from '@/lib/ai/openai-client'
 import { isSpendGateEnforced } from '@/lib/cost/spend-gate-flag'
 
-type TextContext = Omit<OpenAIGovernanceContext, 'onFlight'>
+type TextContext = Omit<OpenAIGovernanceContext, 'onFlight'> & {
+  /** Actual DB-confirmed slug for a project-ID-scoped News Hunter run. */
+  verifiedProjectSlug?: string
+}
 export type FailoverReason = 'missing_anthropic_key' | 'invalid_anthropic_key' | 'anthropic_credits_unavailable'
 
 const isMediaProject = (ctx: TextContext) =>
@@ -21,7 +24,9 @@ function matchesAllowedTask(ctx: TextContext): boolean {
     const executionProject = ctx.execution.scope.project
     // Do not let another project's stop authority pay for this project's job.
     if ('projectId' in ctx.project) {
-      return 'projectId' in executionProject && ctx.project.projectId === executionProject.projectId
+      return ctx.verifiedProjectSlug === 'ai-media-automation'
+        && 'projectId' in executionProject
+        && ctx.project.projectId === executionProject.projectId
     }
     return isMediaProject(ctx)
       && 'projectSlug' in executionProject

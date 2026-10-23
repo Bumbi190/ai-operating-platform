@@ -25,7 +25,8 @@ describe('Atlas text model failover consumers remain routed and opt-in', () => {
     const content = source('lib/media/news-hunter.ts')
     expect(content).toContain('verifiedProjectId')
     expect(content).toContain('getMediaTextClient({')
-    expect(content).toContain('claudeEditorialPick(execution, scored, maxCandidates, trendingTopics, projectId)')
+    expect(content).toContain('claudeEditorialPick(execution, scored, maxCandidates, trendingTopics, projectId, verifiedProjectSlug)')
+    expect(content).toContain("data?.slug === 'ai-media-automation'")
   })
   it('does not introduce publishing, scheduling, paid retries or an API route', () => {
     const content = source('lib/media/text-client.ts')

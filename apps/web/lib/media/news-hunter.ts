@@ -411,11 +411,13 @@ export async function claudeEditorialPick(
   maxCandidates = 3,
   trendingTopics: string[] = [],   // Optional: trending topics from Hermes to guide selection
   verifiedProjectId?: string,        // Provided by the caller's verified project row
+  verifiedProjectSlug?: string,      // Confirmed by DB, never client-supplied
 ): Promise<{ candidates: HunterCandidate[]; summary: string }> {
   const claude = getMediaTextClient({
     project: verifiedProjectId && process.env.ATLAS_TEXT_FAILOVER_ENABLED === 'true' && isSpendGateEnforced()
       ? { projectId: verifiedProjectId } : MEDIA_PIPELINE_PROJECT,
     execution, agent: 'News Hunter', operation: 'Analyze News',
+    verifiedProjectSlug,
   })
 
   // Feed top 20 to Claude for editorial judgment
@@ -532,8 +534,17 @@ export async function runNewsHunter(
   // 3. Score and rank
   const scored = scoreAndRank(fresh)
 
+  // Bind a project-ID-based reserve to The Prompt's DB-verified slug. A
+  // supplied project ID alone does not prove which brand it belongs to.
+  let verifiedProjectSlug: string | undefined
+  if (process.env.ATLAS_TEXT_FAILOVER_ENABLED === 'true' && isSpendGateEnforced()) {
+    const { data, error } = await db.from('projects')
+      .select('slug').eq('id', projectId).maybeSingle()
+    if (!error && data?.slug === 'ai-media-automation') verifiedProjectSlug = data.slug
+  }
+
   // 4. Claude picks the best — with optional trend context
-  const { candidates, summary } = await claudeEditorialPick(execution, scored, maxCandidates, trendingTopics, projectId)
+  const { candidates, summary } = await claudeEditorialPick(execution, scored, maxCandidates, trendingTopics, projectId, verifiedProjectSlug)
 
   return {
     fetchedAt,

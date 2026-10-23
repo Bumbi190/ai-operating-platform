@@ -798,6 +798,9 @@ try {
         // A distinct, administrator-bound synthetic platform operator.
         // The scheduler/broker/reviewer principals never inherit this mapping.
         const operatorSubject='b6718615-5cf3-4833-bceb-2fb79cb53d9b'
+        const nativeOperatorSession='a3226219-64b1-4c69-a6f9-781ed5f45a80'
+        const nativeNonOperatorSession='a3226219-64b1-4c69-a6f9-781ed5f45a81'
+        const nativeExpiredSession='a3226219-64b1-4c69-a6f9-781ed5f45a82'
         sql(`BEGIN;
           ${seed}
           ${reviewedBytes(resolve(web, 'lib/calendar/source-revision-probe.sql')).toString('utf8')}
@@ -812,11 +815,20 @@ try {
           ${reviewedBytes(resolve(web,'lib/calendar/scheduled-broker-review-queue-probe.sql')).toString('utf8')}
           ${reviewedBytes(resolve(web,'lib/calendar/scheduled-operator-review-audit-probe.sql')).toString('utf8')}
           ${reviewedBytes(resolve(web,'lib/calendar/scheduled-operator-review-history-probe.sql')).toString('utf8')}
+          ${reviewedBytes(resolve(web,'lib/calendar/scheduled-authenticated-operator-role-probe.sql')).toString('utf8')}
           INSERT INTO public.social_schedule_rpc_scope_fixture(principal_id,project_id)
             VALUES (${quote(actor)},${quote(project)}),(${quote(id.foreignPrincipal)},${quote(id.unreferencedProject)}),
               (${quote(operatorSubject)},${quote(project)});
           INSERT INTO public.social_schedule_operator_scope_fixture(operator_id,project_id,active)
             VALUES (${quote(operatorSubject)},${quote(project)},true);
+          -- Synthetic native GoTrue session proof, no real Auth user/session.
+          INSERT INTO auth.users(id) VALUES
+            (${quote(operatorSubject)}::uuid) ON CONFLICT(id) DO NOTHING;
+          INSERT INTO auth.sessions(id,user_id,not_after) VALUES
+            (${quote(nativeOperatorSession)}::uuid,${quote(operatorSubject)}::uuid,now()+interval '1 hour'),
+            (${quote(nativeNonOperatorSession)}::uuid,${quote(actor)}::uuid,now()+interval '1 hour'),
+            (${quote(nativeExpiredSession)}::uuid,${quote(operatorSubject)}::uuid,now()-interval '5 minutes')
+          ON CONFLICT(id) DO NOTHING;
           INSERT INTO public.projects(id,owner_id,name,slug)
             VALUES (${quote(id.unreferencedProject)},${quote(actor)},'HTTP foreign project','http-scope-denial');
           DO $queue_http$ BEGIN PERFORM public.calendar_source_gate_begin_probe(${quote(project)}::uuid); END $queue_http$;
@@ -930,6 +942,24 @@ try {
         const reviewToken=signedToken(actor,{role:'social_schedule_broker_review_fixture'})
         const foreignReviewToken=signedToken(id.foreignPrincipal,{role:'social_schedule_broker_review_fixture'})
         const operatorToken=signedToken(operatorSubject,{role:'social_schedule_operator_review_fixture'})
+        // Supabase-native-style authenticated JWTs. A real session_id MUST
+        // match the active auth.sessions row; user-supplied fields cannot
+        // self-select the operator/project privilege.
+        const nativeClaims=(sub,sessionId,extra={})=>({
+          role:'authenticated',session_id:sessionId,is_anonymous:false,...extra,
+        })
+        const nativeOperatorToken=signedToken(operatorSubject,
+          nativeClaims(operatorSubject,nativeOperatorSession))
+        const nativeNonOperatorToken=signedToken(actor,
+          nativeClaims(actor,nativeNonOperatorSession))
+        const nativeWrongSessionToken=signedToken(operatorSubject,
+          nativeClaims(operatorSubject,nativeNonOperatorSession))
+        const nativeExpiredSessionToken=signedToken(operatorSubject,
+          nativeClaims(operatorSubject,nativeExpiredSession))
+        const nativeMissingSessionToken=signedToken(operatorSubject,
+          {role:'authenticated',is_anonymous:false})
+        const nativeAnonymousToken=signedToken(operatorSubject,
+          nativeClaims(operatorSubject,nativeOperatorSession,{is_anonymous:true}))
         // Operator/reader-only scoped short-lived JWTs. Their RSA signing
         // key never leaves this parent replay runner process. The bridge
         // test process receives only these tokens and a fixed RPC gateway.
@@ -952,6 +982,59 @@ try {
           const response=docker(['exec',gatewayName,'node','-e',"fetch('http://rest:3000/').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"])
           return response.status===0
         },'PostgREST ready',60000)
+        // Separate no-OIDC candidate: use the already-hosted 'authenticated'
+        // PostgREST role with a cryptographically verified native-style JWT.
+        // No database schema/grant change is ever sent to hosted Supabase.
+        const nativeAcl=JSON.parse(sql(`SELECT jsonb_build_object(
+          'member',pg_has_role('authenticator','authenticated','MEMBER'),
+          'nativeHistory',has_function_privilege('authenticated',
+            'public.social_schedule_native_operator_history_fixture(uuid,uuid,uuid)','EXECUTE'),
+          'nativeAppend',has_function_privilege('authenticated',
+            'public.social_schedule_native_operator_append_fixture(jsonb)','EXECUTE'),
+          'anonHistory',has_function_privilege('anon',
+            'public.social_schedule_native_operator_history_fixture(uuid,uuid,uuid)','EXECUTE'),
+          'anonAppend',has_function_privilege('anon',
+            'public.social_schedule_native_operator_append_fixture(jsonb)','EXECUTE'),
+          'serviceAppend',has_function_privilege('service_role',
+            'public.social_schedule_native_operator_append_fixture(jsonb)','EXECUTE'),
+          'schedulerAppend',has_function_privilege('social_schedule_rpc_only_fixture',
+            'public.social_schedule_native_operator_append_fixture(jsonb)','EXECUTE'),
+          'helper',has_function_privilege('authenticated',
+            'public.social_schedule_native_operator_guard_fixture(uuid)','EXECUTE'),
+          'sessionRead',has_table_privilege('authenticated',
+            'auth.sessions','SELECT'),
+          'membershipRead',has_table_privilege('authenticated',
+            'public.social_schedule_operator_scope_fixture','SELECT'),
+          'auditInsert',has_table_privilege('authenticated',
+            'public.social_schedule_operator_review_events_fixture','INSERT'),
+          'providerProof',has_table_privilege('authenticated',
+            'public.social_publication_reconciliation_proofs','INSERT')
+        );`))
+        assert.deepEqual(nativeAcl,{
+          member:true,nativeHistory:true,nativeAppend:true,
+          anonHistory:false,anonAppend:false,serviceAppend:false,
+          schedulerAppend:false,helper:false,sessionRead:false,
+          membershipRead:false,auditInsert:false,providerProof:false,
+        },'native authenticated-role compatibility proof has excessive permissions')
+        const nativePath='/rpc/social_schedule_native_operator_append_fixture'
+        const nativeHistoryPath='/rpc/social_schedule_native_operator_history_fixture'
+        const prematureNative=httpRole(nativePath,{p_input:{
+          projectId:project,jobId:id.job,publicationId:id.post,
+          requestId:'42937e29-d6e8-41df-bb9b-e58291603b3c',
+          observation:'review_deferred',candidateId:null,
+        }},'POST',nativeOperatorToken)
+        assert.equal(prematureNative.status,403,prematureNative.body)
+        for(const jwt of [nativeNonOperatorToken,nativeWrongSessionToken,
+          nativeExpiredSessionToken,nativeMissingSessionToken,nativeAnonymousToken]){
+          const denied=httpRole(nativeHistoryPath,{
+            p_project_id:project,p_job_id:id.job,p_publication_id:id.post,
+          },'POST',jwt)
+          assert.equal(denied.status,403,denied.body)
+        }
+        const nativeDirect=httpRole('/social_schedule_operator_review_events_fixture?select=*',
+          undefined,'GET',nativeOperatorToken)
+        assert.ok(nativeDirect.status>=400,nativeDirect.body)
+        console.log('CROSS-TREE HOSTED AUTHENTICATED ACL PASS (shared role has only gated RPC; active session/operator mapping required; no token/ledger/grants)')
         // Separate broker identity: no direct table reads and only the
         // atomic dispatch-intent RPC. This is an isolated probe role.
         const brokerAcl=JSON.parse(sql(`SELECT jsonb_build_object(
@@ -1286,7 +1369,10 @@ try {
             observation:'possible_match_observed',candidateId:'12345_24680'}
           const noteCall=(body,bearer=operatorToken)=>
             httpRole(operatorPath,{p_input:body},'POST',bearer)
-          const noteOne=noteCall(reviewNote)
+          // The first human note uses ONLY the standard authenticated JWT;
+          // the second invocation uses the older custom-operator route.
+          // Both share the same durable append-only, actor-bound ledger.
+          const noteOne=httpRole(nativePath,{p_input:reviewNote},'POST',nativeOperatorToken)
           assert.equal(noteOne.status,200,noteOne.body)
           const recorded=JSON.parse(noteOne.body)
           assert.equal(recorded.observation,'possible_match_observed')
@@ -1320,6 +1406,40 @@ try {
           const noMatch=noteCall(noMatchNote)
           assert.equal(noMatch.status,200,noMatch.body)
           assert.equal(JSON.parse(noMatch.body).evidenceClass,'human_observation_only')
+          const nativeHistoryInput={p_project_id:project,p_job_id:id.job,
+            p_publication_id:reviewNote.publicationId}
+          const nativeHistory=httpRole(nativeHistoryPath,nativeHistoryInput,
+            'POST',nativeOperatorToken)
+          assert.equal(nativeHistory.status,200,nativeHistory.body)
+          const nativeHistoryData=JSON.parse(nativeHistory.body)
+          assert.equal(nativeHistoryData.items.length,2)
+          assert.equal(nativeHistoryData.providerOutcome,'unknown')
+          assert.equal(nativeHistoryData.automaticRetryAllowed,false)
+          assert.equal(nativeHistoryData.canFinalize,false)
+          assert.equal(nativeHistoryData.canPublish,false)
+          assert.ok(nativeHistoryData.items.every(item=>
+            item.operatorId===operatorSubject&&
+            item.providerAttested===false&&
+            item.evidenceClass==='human_observation_only'))
+          const sameNative=httpRole(nativePath,{p_input:noMatchNote},
+            'POST',nativeOperatorToken)
+          assert.equal(sameNative.status,200,sameNative.body)
+          assert.equal(JSON.parse(sameNative.body).eventId,JSON.parse(noMatch.body).eventId)
+          const nativeSpoof=httpRole(nativePath,{p_input:{
+            ...noMatchNote,requestId:'c2717b18-7a6c-46d5-bc7c-4b888282db12',
+            providerAttested:true,
+          }},'POST',nativeOperatorToken)
+          assert.equal(nativeSpoof.status,403,nativeSpoof.body)
+          const nativeBadCandidate=httpRole(nativePath,{p_input:{
+            ...reviewNote,requestId:'c2717b18-7a6c-46d5-bc7c-4b888282db13',
+            candidateId:'99999_12345',
+          }},'POST',nativeOperatorToken)
+          assert.equal(nativeBadCandidate.status,403,nativeBadCandidate.body)
+          const nativeWrongProject=httpRole(nativeHistoryPath,{
+            ...nativeHistoryInput,p_project_id:id.unreferencedProject,
+          },'POST',nativeOperatorToken)
+          assert.equal(nativeWrongProject.status,403,nativeWrongProject.body)
+          console.log('CROSS-TREE HOSTED AUTHENTICATED OPERATOR PASS (signed native-style JWT, real session+operator mapping, append/read allowed, no proof/retry, shared immutable audit)')
           assert.equal(sql('SELECT count(*) FROM public.social_schedule_operator_review_events_fixture'),'2',
             'operator review audit is not durably append-only/idempotent')
           assert.equal(sql('SELECT count(*) FROM public.social_schedule_operator_review_events_fixture WHERE provider_attested OR automatic_retry_allowed'),'0')
@@ -1413,6 +1533,15 @@ try {
             SELECT count(*) FROM public.social_schedule_operator_review_events_fixture;
           `)
           assert.equal(immutability,'2','an audit event was changed or deleted')
+          // Revoked native session is denied even while operator membership
+          // remains active and the signed JWT has not yet expired.
+          assert.equal(sql(`DELETE FROM auth.sessions
+            WHERE id=${quote(nativeOperatorSession)}::uuid;
+            SELECT count(*) FROM auth.sessions
+            WHERE id=${quote(nativeOperatorSession)}::uuid;`),'0')
+          const nativeRevoked=httpRole(nativeHistoryPath,nativeHistoryInput,
+            'POST',nativeOperatorToken)
+          assert.equal(nativeRevoked.status,403,nativeRevoked.body)
           const activeRevocation=sql(`UPDATE public.social_schedule_operator_scope_fixture SET active=false
             WHERE operator_id=${quote(operatorSubject)}::uuid AND project_id=${quote(project)}::uuid;
             SELECT active FROM public.social_schedule_operator_scope_fixture

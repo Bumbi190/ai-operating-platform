@@ -1405,3 +1405,32 @@ Supabase's Custom OIDC uses HTTPS discovery and documents
 success is not evidence that a hosted Supabase Data API will
 accept custom operator roles. Supabase's third-party key discovery
 may lag by up to 30 minutes. Keep PR #504 DRAFT.
+
+## Native hosted-role operator alternative — 23 October (isolated only)
+
+Read-only catalog checks of the existing AI Operating Platform
+hosted Supabase project confirmed the standard `authenticated`
+and `authenticator` roles and the `auth.sessions` fields needed
+for strict session checks. No fixture custom operator role was
+installed or SQL migrated in production. The new test-only
+`lib/calendar/scheduled-authenticated-operator-role-probe.sql`
+adds purpose-specific human-history and human-observation
+`SECURITY DEFINER` RPCs callable by the standard
+`authenticated` role. Each query independently requires
+a signed native-style JWT, nonanonymous active `auth.sessions`
+membership and an administrator-maintained active project/operator
+mapping. Direct tables, raw sessions, provider tokens, the
+privileged helper and receipt/finalization interfaces remain
+inaccessible. The integration passed
+`CROSS-TREE HOSTED AUTHENTICATED ACL PASS`,
+`CROSS-TREE HOSTED AUTHENTICATED OPERATOR PASS` and
+`CROSS-TREE REPLAY PASS` (exit code 0). Revoked, missing, expired
+or mismatched synthetic sessions and foreign users/projects
+failed closed; a session revoked before JWT expiry could not
+read again. It reused the prior immutable two-item human audit
+without adding a third item or unlocking the one durable
+dispatch intent. This is only an isolated **alternative
+feasibility test**, not a production RLS/definer/callgraph audit,
+real Supabase Auth session validation, deployment, Meta verification
+or hosted Data API permission rollout. See
+`docs/calendar-hosted-authenticated-role-decision-20261023.md`.

@@ -1524,3 +1524,29 @@ See `docs/calendar-worker-rpc-callchain-audit-20261023.md`
 for the six wrapper mappings, seven unreviewed direct helper
 names and remaining release gates. No CI, production grants,
 migration, live Meta/API call or other development branch changed.
+
+## Kalenderns nästa SQL-hjälpfunktionskedja — 23 oktober
+
+En ny katalogbaserad granskningskandidat i
+`apps/web/scripts/calendar-helper-chain-audit.mjs` omfattar
+**12** hjälpdefinitioner efter de tidigare sex schemalagda
+RPC:erna och de sex privilegierade interna funktionerna.
+Kodfingeravtryck, signaturer, exekveringsroller och
+direkta kvalificerade SQL-anrop/referenser är låsta.
+`media_news_review_requirements` identifierades som ett
+ytterligare indirekt beroende via
+`social_content_requirements` och inkluderades före
+slutverifieringen. **6/6** native säkerhetstester och
+**55/55** riktade kalender-Vitest-tester passerade.
+Den slutliga isolerade PostgreSQL/PostgREST-återspelningen
+passerade med `CROSS-TREE HELPER CHAIN PASS` och
+`CROSS-TREE REPLAY PASS` (exit 0): 12 funktioner,
+56 kvalificerade SQL-referenser och 16 direkta anrop.
+Det finns **11 invoker-funktioner och 1 test-only definer**;
+ingen kan anropas direkt av `anon`, `authenticated`
+eller den begränsade kalenderarbetaren.
+Se `docs/calendar-helper-chain-audit-20261023.md`.
+Granskningen täcker inte rekursivt de tre underliggande
+media-news-specialfunktionerna, och Meta-bevis,
+hostad staging och den historiska mediemigrationsbasen
+är fortfarande spärrar för produktionsövergången.

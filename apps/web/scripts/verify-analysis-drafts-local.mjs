@@ -9,6 +9,7 @@ import {runClosedCalendarRotationProbe} from './calendar-postgrest-rotation-fixt
 import {auditNativeDefinerSurface,buildNativeDefinerCatalogQuery,reviewedNativeDefinerFingerprints} from './calendar-native-definer-surface.mjs'
 import {auditCalendarTriggerChain,buildCalendarTriggerChainQuery,triggerChainFingerprints} from './calendar-trigger-chain-audit.mjs'
 import {auditSchedulerRpcChain,buildSchedulerRpcChainCatalogQuery,reviewedRpcChainPins} from './calendar-worker-rpc-callchain-audit.mjs'
+import {auditCalendarHelperChain,buildCalendarHelperCatalogQuery,reviewedHelperPins} from './calendar-helper-chain-audit.mjs'
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..'),
   repo = resolve(web, '../..')
 const migrationDir = resolve(web, 'supabase/migrations')
@@ -938,6 +939,9 @@ try {
         const workerRpcCatalog=JSON.parse(sql(buildSchedulerRpcChainCatalogQuery()))
         const workerRpcAudit=auditSchedulerRpcChain(workerRpcCatalog,{pins:reviewedRpcChainPins,requirePins:true})
         console.log('CROSS-TREE WORKER RPC CHAIN PASS '+JSON.stringify({reviewedFunctions:workerRpcAudit.reviewedPrivilegedBodies.length,exposedRpcs:workerRpcAudit.exposedWorkerRpcs.length,uncheckedFunctions:workerRpcAudit.privilegedUncheckedBodies,scopeGuards:workerRpcAudit.scopeGuards,reviewedStaticReferences:workerRpcAudit.reviewedPrivilegedBodies.reduce((n,x)=>n+x.references.length,0)})+' (pinned body hashes, exact direct calls/references, definer owner and grants)')
+        const nextHopCatalog=JSON.parse(sql(buildCalendarHelperCatalogQuery()))
+        const nextHopAudit=auditCalendarHelperChain(nextHopCatalog,{pins:reviewedHelperPins,requirePins:true})
+        console.log('CROSS-TREE HELPER CHAIN PASS '+JSON.stringify({helperCount:nextHopAudit.functions.length,invokerHelpers:nextHopAudit.invokerHelpers,privilegedHelpers:nextHopAudit.privilegedHelpers,referenceCount:nextHopAudit.functions.reduce((sum,x)=>sum+x.references.length,0),directCallCount:nextHopAudit.functions.reduce((sum,x)=>sum+x.calls.length,0)})+' (pinned helper source, SQL references, direct qualified calls, signatures and effective grants)')
         const startedRest=docker(['run','--pull=never','--detach','--name',restName,'--network',httpNetwork,'--network-alias','rest',
           '--env','PGRST_DB_URI=postgres://authenticator:'+password+'@db:5432/postgres',
           '--env','PGRST_DB_SCHEMAS=public','--env','PGRST_DB_ANON_ROLE=anon',

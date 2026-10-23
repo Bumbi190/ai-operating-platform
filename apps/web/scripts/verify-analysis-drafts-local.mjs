@@ -1163,6 +1163,21 @@ try {
           })
           assert.equal(handoff.status,0,handoff.stderr+'\n'+handoff.stdout)
           console.log('CROSS-TREE REVIEW HANDOFF UI PASS (actual PostgREST result rendered read-only, without operator actions)')
+          // Separate operator-only read: real scoped SQL inbox, synthetic
+          // attempted-publication snapshot and mocked private Facebook GET.
+          // Does not register provider proof or enable the legacy completed path.
+          const evidence=spawnSync(process.execPath,[resolve(repo,'node_modules/vitest/vitest.mjs'),
+            'run','lib/social-launch/scheduling/operator-meta-evidence-fixture.test.ts',
+            '--maxWorkers=1','--minWorkers=1'],{
+            cwd:web,encoding:'utf8',timeout:45000,maxBuffer:1024*1024,
+            env:{...process.env,
+              OMNIRA_SCHEDULE_REPLAY_REVIEW_B64:Buffer.from(review.body,'utf8').toString('base64'),
+              OMNIRA_SCHEDULE_REPLAY_REVIEW_PROJECT:project},
+          })
+          assert.equal(evidence.status,0,evidence.stderr+'\n'+evidence.stdout)
+          assert.equal(sql('SELECT provider_outcome FROM public.social_schedule_dispatch_intents_fixture'),'unknown')
+          assert.equal(sql('SELECT count(*) FROM public.social_schedule_dispatch_intents_fixture'),'1')
+          console.log('CROSS-TREE OPERATOR FACEBOOK EVIDENCE PASS (real scoped SQL inbox; private mocked Meta GET; no proof/write/retry)')
           console.log('CROSS-TREE BROKER REVIEW QUEUE PASS (committed unknown intent visible only to scoped reviewer; published SQL state is NOT Meta proof; no retry/finalize)')
           console.log('CROSS-TREE POSTGREST APPLICATION WORKER PASS (actual TypeScript worker, fake Meta, scoped RPC role)')
         }

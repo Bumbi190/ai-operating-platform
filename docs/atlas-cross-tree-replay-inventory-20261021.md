@@ -965,3 +965,103 @@ resources. Full project `tsc --noEmit` reports only the three
 pre-existing Remotion dependency/type errors in
 `lib/media/lambda-render.ts`, no new calendar-file errors. This
 does NOT establish real Meta delivery or production readiness.
+
+## Operator-authorized Facebook evidence discovery — 23 October (test-only)
+
+The previous read-only queue can show `published` in the SQL job and
+publication while `provider_outcome='unknown'` in the independent
+durable dispatch-intent ledger. Existing production manual Facebook
+reconciliation only inspects candidate posts when the publication
+state is `uncertain`; reusing its `complete` operation for this
+published/unknown mismatch would be incorrect. **Neither Atlas
+nor a caller may infer a provider-confirmed receipt from the SQL
+state or a candidate list.**
+
+This follow-up introduces an **isolated, unmounted, test-only**
+`scheduling/operator-meta-evidence-fixture.ts` handler, protected
+by a trusted/injected operator identity callback, requiring an active
+platform operator and exact project access. The request can identify
+only an existing project, job and publication in the scoped reviewer
+inbox; arbitrary credential, project override, provider proof, action
+or completion fields are refused before any privileged read.
+A trusted server adapter must read the PostgREST scoped review queue
+and the current publication/revision snapshot. The handler requires
+that both independently agree on project, job, publication, post,
+Facebook channel, saved revision hash and publication state. It
+handles only `published` or `uncertain` evidence requests, and it
+never writes any SQL row or calls a publishing provider.
+
+The private adapter obtains a scoped Facebook account credential and
+uses the existing `publication/reconciliation/provider.ts`
+`listFacebookCandidates` implementation. That path issues only
+`GET /{pageId}/published_posts` with a private Page token; the
+token never enters the browser/worker response, link or query
+parameters. The implementation considers only the first 50 posts,
+revalidates account ID, exact caption, request-time window, numeric
+photo ID, composite Page post ID, Facebook permalink origin and
+Facebook CDN image origin, and presents at most 10 safe candidates.
+A candidate is **not** a proof: an operator must compare actual
+images/text/account in Facebook. Zero matches are **not evidence of
+nonpublication**, since permissions/pagination/availability can
+hide a post. Before returning the candidate preview, the handler
+rechecks the authenticated operator identity and read-only queue;
+stale/revoked identities or changed publication state invalidate
+the result. Provider errors are reduced to generic unavailable
+responses without token or provider output leaks.
+
+A second **unmounted** component,
+`components/social-launch/ScheduledMetaEvidenceFixture.tsx`,
+renders the safe candidate list and existing Facebook links in
+Swedish without buttons, form actions, completion, scheduling or
+Meta POST. There is no live route, Atlas skill, production secret,
+calendar action or user notification. The existing operator-only
+reconciliation API and `SocialReconciliationPanel` are untouched.
+A subsequent separately approved decision path must use trusted
+freshly re-read provider evidence and an explicit operator action;
+no auto-finalization or retry is authorized here.
+
+Negative tests exercise caller-injected `publish`/confirmation
+fields, foreign projects/claims, nonoperators, changed account
+binding, altered revision, invalid provider origin, lost operator
+authorization during the Meta read, changed review state during
+the request, provider outage, production-mode refusal, and
+read-only HTML rendering. The positive test uses the existing
+Facebook candidate parser with an **entirely mocked** Graph
+`published_posts` response and proves only a GET with private
+credential is issued. No real Meta API requests are made.
+
+The cross-tree replay includes a conditional test reading the
+**actual scoped PostgREST review JSON** from the owned database
+after the synthetic schedule job. The publication snapshot for that
+conditional read is still **synthetic**; this is not a verified
+live provider or a real backend adapter. The runner must check
+that the independent intent remains `unknown` and that no
+additional publication row or Meta call is created. A production
+design needs a real identity-checked inspector service, independent
+read-only account credential broker, durable audit of operator
+reads, provider-bound and operator-confirmed attestation, review
+UI routing and updated producer/consumer authority. PR #504
+remains DRAFT with no deployable credentials or grants.
+
+**Final isolated results:** In normal local mode, 6 targeted
+Vitest suites passed **40 tests**; two conditional replay-only tests
+were skipped, as designed. The cross-tree PostgreSQL/PostgREST
+runner subsequently passed
+`CROSS-TREE OPERATOR FACEBOOK EVIDENCE PASS`,
+`CROSS-TREE BROKER REVIEW QUEUE PASS`,
+`CROSS-TREE POSTGREST APPLICATION WORKER PASS`, and
+`CROSS-TREE REPLAY PASS` (exit code 0). The conditional
+operator-evidence test consumed the real scoped review response,
+but used a **synthetic publication snapshot and mocked Meta GET**.
+The persistent dispatch-intent row stayed `unknown` and there
+were no new writes or second provider dispatch. The full
+`tsc --noEmit` has the same three unrelated existing Remotion
+`lib/media/lambda-render.ts` errors from the borrowed dependencies;
+no errors were reported for the changed evidence files.
+
+This is **candidate discovery, not proof attestation or
+production-ready manual completion**. Do not attach the new
+review UI to a route, Calendar or Atlas automation until
+separate authenticated operator access, privileged Meta read
+isolation, logged operator actions and post-verification durable
+state transitions have their own reviewed boundaries.

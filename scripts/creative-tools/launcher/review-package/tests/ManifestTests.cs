@@ -50,9 +50,18 @@ namespace Omnira.Creative.Review {
   static void CountLexemes(){
    foreach(string s in new[]{"0","1048577","-1","1.0","1e0","01","\"1\"","9223372036854775808","+1","null","true"})Reject(Host(s),"HostLength "+s);
   }
+  static bool Scan(string text){
+   Type type=typeof(PackageManifest).GetNestedType("Scanner",BindingFlags.NonPublic);
+   object scanner=Activator.CreateInstance(type,BindingFlags.Instance|BindingFlags.NonPublic,null,new object[]{text},null);
+   try{type.GetMethod("Object",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(scanner,new object[]{1});return (bool)type.GetProperty("AtEnd",BindingFlags.Instance|BindingFlags.NonPublic).GetValue(scanner,null);}
+   catch(TargetInvocationException e){if(e.InnerException is ReviewRefusal)return false;throw;}
+  }
+  static string Properties(int count){var b=new StringBuilder("{");for(int i=0;i<count;i++){if(i>0)b.Append(',');b.Append("\"p"+i+"\":false");}return b.Append('}').ToString();}
   static void DepthPropertyBounds(){
-   Reject(Canonical().Replace("\"WorkerActivated\":false","\"WorkerActivated\":{\"a\":{\"b\":{}}}"),"depth four");
-   var b=new StringBuilder("{");for(int i=0;i<65;i++){if(i>0)b.Append(',');b.Append("\"p"+i+"\":false");}b.Append('}');Reject(b.ToString(),"property 65");
+   Check(Scan("{\"a\":{\"b\":{}}}"),"scanner depth three accepted");
+   Check(!Scan("{\"a\":{\"b\":{\"c\":{}}}}"),"scanner depth four refused");
+   Check(Scan(Properties(64)),"scanner 64 properties accepted");Check(!Scan(Properties(65)),"scanner 65 properties refused");
+   Check(Scan("{\"a\":"+Properties(64)+",\"b\":"+Properties(64)+"}"),"scanner count per object");
   }
   static void FixedSourceKeysAndPins(){
    string c=Canonical();Reject(c.Replace(ManifestSchema.RuntimePin,Hex('f',64)),"runtime pin");

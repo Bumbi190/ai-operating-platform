@@ -7,10 +7,12 @@ namespace Omnira.Creative.Review {
   internal static int Assertions;
   static readonly string[] Names={"owner.txt","SyntheticLauncher.exe","review-manifest.json","manifest.sha256"};
   static void Check(bool value,string label){Assertions++;if(!value)throw new Exception(label);}
+  [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool CreateDirectoryW(string path,IntPtr attributes);
+  static void NewFixtureDirectory(string path){if(!CreateDirectoryW(path,IntPtr.Zero))throw new IOException("fixture create-only refusal");}
   sealed class Fixture:IDisposable {
    internal readonly string Parent=Path.Combine(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Temp"),"omnira-review-test-"+Guid.NewGuid().ToString("N"));
    internal string Root { get { return Path.Combine(Parent,"package"); } }
-   internal Fixture(){Console.WriteLine("OWNED_FIXTURE "+Root);PackageSnapshot.NewDirectory(Parent);PackageSnapshot.NewDirectory(Root);Set(new byte[]{77,90,0,0,1});initial=false;}
+   internal Fixture(){Console.WriteLine("OWNED_FIXTURE "+Root);NewFixtureDirectory(Parent);NewFixtureDirectory(Root);Set(new byte[]{77,90,0,0,1});initial=false;}
    bool initial=true;
    internal void Set(byte[] host){
     Manifest sample=ManifestTests.Sample();

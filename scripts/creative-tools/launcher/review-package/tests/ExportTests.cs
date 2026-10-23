@@ -9,7 +9,53 @@ namespace Omnira.Creative.Review {
   static string Root(ReviewResult r){return Path.Combine(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Temp"),"omnira-launcher-review-"+r.ExportNonce);}
   static void Clean(ReviewResult r){if(r.ExportNonce==null)return;string p=Root(r);foreach(string n in Names)if(File.Exists(Path.Combine(p,n)))File.Delete(Path.Combine(p,n));if(Directory.Exists(p)){Directory.Delete(p);Console.WriteLine("REMOVED_EXPORT "+p);}}
   static void FalseFlags(ReviewResult r){Check(!r.InstallationAuthorized&&!r.WorkerActivated&&!r.ExecutableStarted&&!r.RuntimeProvenanceVerified&&!r.ProtectedDestinationWritten,"side effects false");foreach(var f in typeof(AuthorityObservation).GetFields(System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic))Check(!(bool)f.GetValue(r.Authorities),"authority "+f.Name);}
-  internal static void Run(){ExportOwnSiblingOnly();SourceDriftRefuses();CreateNewNoOverwrite();PartialExportPreserved();UnknownEntryPreserved();NoExecutionOrPrivilegedEffects();ExportThenVerify();PublicModesStrict();BoundedRedactedFailure();}
+  internal static void Run(){CreateBoundaryRefusal();VerificationDirectoryReplacement();VerificationSubstitution();CreateAcquisitionReplacement();ExportOwnSiblingOnly();SourceDriftRefuses();CreateNewNoOverwrite();PartialExportPreserved();UnknownEntryPreserved();NoExecutionOrPrivilegedEffects();ExportThenVerify();PublicModesStrict();BoundedRedactedFailure();}
+  static void CreateBoundaryRefusal(){
+   ReviewResult r=null;ReviewExportHooks.Stage=delegate(int stage,string p){if(stage==6)throw new ReviewRefusal(RefusalCode.SourceMismatch);};
+   try{r=PackageExporter.Export();Check(r.Code==RefusalCode.SourceMismatch&&r.IncompleteOutput&&!r.ExportCompleted&&r.ExportNonce!=null,"create-return refusal retains ownership evidence");Check(Directory.Exists(Root(r))&&Directory.GetFileSystemEntries(Root(r)).Length==0,"incomplete empty creation retained");}
+   finally{ReviewExportHooks.Stage=null;if(r!=null)Clean(r);}
+  }
+  static void CreateAcquisitionReplacement(){
+   string path=null,moved=null;bool attempted=false,blocked=false;ReviewResult r=null;
+   ReviewExportHooks.Stage=delegate(int stage,string p){if(stage!=6)return;attempted=true;path=p;moved=p+".test-moved";
+    try{Directory.Move(p,moved);}catch(IOException){blocked=true;return;}catch(UnauthorizedAccessException){blocked=true;return;}
+    Directory.CreateDirectory(p);File.WriteAllText(Path.Combine(p,"unknown"),"replacement");
+   };
+   try{r=PackageExporter.Export();Check(attempted,"create boundary reached");Check(blocked,"created directory acquired atomically before replacement");Check(r.ExportCompleted,"blocked replacement leaves valid export");}
+   finally{ReviewExportHooks.Stage=null;if(moved!=null&&Directory.Exists(moved)){Check(Directory.GetFileSystemEntries(moved).Length==0,"displaced creation untouched");Directory.Delete(moved);File.Delete(Path.Combine(path,"unknown"));}if(r!=null)Clean(r);}
+  }
+  static void WritePacket(string p,Manifest m,byte[] host,byte[] raw){
+   File.WriteAllBytes(Path.Combine(p,"SyntheticLauncher.exe"),host);File.WriteAllBytes(Path.Combine(p,"review-manifest.json"),raw);
+   File.WriteAllText(Path.Combine(p,"owner.txt"),m.Nonce);File.WriteAllText(Path.Combine(p,"manifest.sha256"),PackageVerifier.Hash(raw));
+  }
+  static void RemoveKnownPacket(string p){foreach(string n in Names)File.Delete(Path.Combine(p,n));Directory.Delete(p);}
+  static void VerificationDirectoryReplacement(){
+   string moved=null;bool attempted=false,blocked=false;ReviewResult r=null;ReviewTestHooks.OpenCount=0;
+   ReviewExportHooks.Stage=delegate(int stage,string p){if(stage!=7)return;attempted=true;moved=p+".test-moved";
+    try{Directory.Move(p,moved);}catch(IOException){blocked=true;return;}catch(UnauthorizedAccessException){blocked=true;return;}
+    Directory.CreateDirectory(p);Manifest m=ManifestTests.Sample();byte[] host=new byte[]{42};
+    m=new Manifest(m.Nonce,m.SourceCommit,host.Length,PackageVerifier.Hash(host),m.RuntimeSha256,m.CompilerSha256,m.CompilerVersion,m.SourceDigests);
+    WritePacket(p,m,host,PackageManifest.Encode(m));
+   };
+   try{r=PackageExporter.Export();Check(attempted,"directory verification boundary reached");Check(blocked,"export directory retained through verification");Check(r.ExportCompleted,"blocked directory substitution export");Check(ReviewTestHooks.OpenCount==0,"export never reopens directory path");}
+   finally{ReviewExportHooks.Stage=null;if(moved!=null&&Directory.Exists(moved))RemoveKnownPacket(moved);if(r!=null)Clean(r);}
+  }
+  static void VerificationSubstitution(){
+   for(int variant=0;variant<3;variant++){
+    bool attempted=false;ReviewResult r=null;int which=variant;string expectedNonce=null,rawHash=null,hostHash=null;
+    ReviewExportHooks.Stage=delegate(int stage,string p){if(stage!=7)return;attempted=true;
+     Manifest original=PackageManifest.Parse(File.ReadAllBytes(Path.Combine(p,"review-manifest.json")));
+     expectedNonce=original.Nonce;Manifest m=which==0?ManifestTests.Sample():original;
+     byte[] host=which==0?new byte[]{42}:File.ReadAllBytes(Path.Combine(p,"SyntheticLauncher.exe"));
+     m=new Manifest(m.Nonce,which==1?new string(original.SourceCommit[0]=='a'?'b':'a',40):m.SourceCommit,host.Length,PackageVerifier.Hash(host),m.RuntimeSha256,m.CompilerSha256,m.CompilerVersion,m.SourceDigests);
+     byte[] raw=PackageManifest.Encode(m);if(which==2)raw=Encoding.UTF8.GetBytes(" "+Encoding.UTF8.GetString(raw));
+     rawHash=PackageVerifier.Hash(raw);hostHash=PackageVerifier.Hash(host);WritePacket(p,m,host,raw);
+     Check(PackageVerifier.Verify(p).PackageConsistent,"substituted packet coherent variant="+which);
+    };
+    try{r=PackageExporter.Export();Check(attempted,"verification boundary reached");Check(r.Code==RefusalCode.InvalidPackage&&!r.PackageConsistent&&!r.ExportCompleted&&r.IncompleteOutput,"coherent substitution refuses variant="+which);Check(r.ExportNonce==expectedNonce,"exact new nonce retained");Check(Directory.GetFileSystemEntries(Root(r)).Length==4&&PackageVerifier.Hash(File.ReadAllBytes(Path.Combine(Root(r),"review-manifest.json")))==rawHash&&PackageVerifier.Hash(File.ReadAllBytes(Path.Combine(Root(r),"SyntheticLauncher.exe")))==hostHash,"substitution evidence retained");}
+    finally{ReviewExportHooks.Stage=null;if(r!=null)Clean(r);}
+   }
+  }
   static void ExportOwnSiblingOnly(){ReviewResult r=PackageExporter.Export();try{Check(r.PackageConsistent&&r.ExportCompleted&&!r.IncompleteOutput,"own sibling export code="+r.Code+" native="+r.NativeError+" nonce="+r.ExportNonce);Check(Directory.GetFileSystemEntries(Root(r)).Length==4,"exact four");byte[] host=File.ReadAllBytes(Path.Combine(Root(r),"SyntheticLauncher.exe"));Check(host.Length==ReleaseBuildContext.HostLength&&PackageVerifier.Hash(host)==ReleaseBuildContext.HostSha256,"bound host bytes");Check(!File.Exists(Path.Combine(Root(r),"LauncherReview.Tests.exe"))&&!File.Exists(Path.Combine(Root(r),"node.exe")),"no test/runtime");}finally{Clean(r);}}
   static void SourceDriftRefuses(){
    string sibling=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"SyntheticLauncher.exe"),backup=sibling+"."+Guid.NewGuid().ToString("N")+".owned";

@@ -36,19 +36,18 @@ namespace Omnira.Creative.Review {
     string temp=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"Temp");
     Match(Path.IsPathRooted(temp)&&Directory.Exists(temp));
     string path=Path.Combine(temp,"omnira-launcher-review-"+candidate);Stage(0,path);
-    PackageSnapshot.NewDirectory(path);owned=true;nonce=candidate;
-    using(var output=new PackageSnapshot.Output(path)){
+    nonce=candidate;
+    using(var output=new PackageSnapshot.Output(path,out owned)){
      Stage(1,path);output.Write("owner.txt",Encoding.ASCII.GetBytes(candidate));Stage(2,path);
      output.Write("SyntheticLauncher.exe",bytes);host.Validate();Stage(3,path);
      output.Write("review-manifest.json",raw);Stage(4,path);
      output.Write("manifest.sha256",Encoding.ASCII.GetBytes(PackageVerifier.Hash(raw)));Stage(5,path);
      foreach(var source in sources)source.Validate();
+     Stage(7,path);ReviewResult verified=PackageVerifier.VerifyExport(output,manifest,raw);
+     return new ReviewResult(true,true,false,null,null,verified.Manifest,nonce);
     }
-    ReviewResult verified=PackageVerifier.Verify(path);
-    if(!verified.PackageConsistent)return new ReviewResult(false,false,true,verified.Code,verified.NativeError,null,nonce);
-    return new ReviewResult(true,true,false,null,null,verified.Manifest,nonce);
-   }catch(ReviewRefusal e){return new ReviewResult(false,false,owned,e.Code,e.NativeError,null,nonce);}
-   catch{return new ReviewResult(false,false,owned,RefusalCode.UnexpectedFailure,null,null,nonce);}
+   }catch(ReviewRefusal e){return new ReviewResult(false,false,owned,e.Code,e.NativeError,null,owned?nonce:null);}
+   catch{return new ReviewResult(false,false,owned,RefusalCode.UnexpectedFailure,null,null,owned?nonce:null);}
    finally{foreach(var source in sources)source.Dispose();}
   }
  }

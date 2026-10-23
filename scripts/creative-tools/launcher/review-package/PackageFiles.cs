@@ -26,6 +26,7 @@ namespace Omnira.Creative.Review {
   [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool GetVolumeInformationByHandleW(SafeFileHandle h,StringBuilder volume,uint len,out uint serial,out uint max,out uint flags,StringBuilder fs,uint fslen);
   [DllImport("kernel32.dll",SetLastError=true)]static extern bool ReadFile(SafeFileHandle h,byte[] b,uint size,out uint read,IntPtr ov);
   [DllImport("kernel32.dll",SetLastError=true)]static extern bool SetFilePointerEx(SafeFileHandle h,long offset,out long position,uint origin);
+  [DllImport("kernel32.dll",SetLastError=true)]static extern bool DuplicateHandle(IntPtr process,SafeFileHandle source,IntPtr target,out SafeFileHandle duplicate,uint access,bool inherit,uint options);
   [DllImport("ntdll.dll")]static extern int NtCreateFile(out SafeFileHandle h,uint access,ref Attributes attributes,out Status status,IntPtr allocation,uint fileAttributes,uint share,uint disposition,uint options,IntPtr ea,uint eaLength);
   [DllImport("ntdll.dll")]static extern int NtQueryDirectoryFile(SafeFileHandle h,IntPtr ev,IntPtr apc,IntPtr context,out Status status,IntPtr buffer,uint length,uint kind,[MarshalAs(UnmanagedType.U1)]bool single,IntPtr name,[MarshalAs(UnmanagedType.U1)]bool restart);
   static void Need(bool b){if(!b)throw new ReviewRefusal(RefusalCode.InvalidPackage);}
@@ -55,10 +56,13 @@ namespace Omnira.Creative.Review {
     s.rootBefore=Metadata(s.root,true);Need(Final(s.root)=="\\\\?\\"+absoluteDirectory);
     uint serial,max,flags;var fs=new StringBuilder(32);var volume=new StringBuilder(261);
     Win(GetVolumeInformationByHandleW(s.root,volume,261,out serial,out max,out flags,fs,32));Need(fs.ToString()=="NTFS"&&serial==s.rootBefore.Volume);
-    s.Entries();
-    for(int i=0;i<4;i++){s.leaves[i]=s.OpenLeaf(Names[i]);s.before[i]=Metadata(s.leaves[i],false);Need(s.before[i].Volume==s.rootBefore.Volume&&s.before[i].SizeLow>0&&s.before[i].SizeLow<=Limits[i]);Need(Final(s.leaves[i])=="\\\\?\\"+absoluteDirectory+"\\"+Names[i]);}
-    s.ValidateUnchanged();return s;
+    s.Capture();return s;
    }catch{s.Dispose();throw;}
+  }
+  void Capture(){
+   Entries();
+   for(int i=0;i<4;i++){leaves[i]=OpenLeaf(Names[i]);before[i]=Metadata(leaves[i],false);Need(before[i].Volume==rootBefore.Volume&&before[i].SizeLow>0&&before[i].SizeLow<=Limits[i]);Need(Final(leaves[i])=="\\\\?\\"+canonical+"\\"+Names[i]);}
+   ValidateUnchanged();
   }
   SafeFileHandle OpenLeaf(string name){
    IntPtr chars=Marshal.StringToHGlobalUni(name),ptr=IntPtr.Zero;
@@ -113,12 +117,43 @@ namespace Omnira.Creative.Review {
    }
    public void Dispose(){if(handle!=null){handle.Dispose();handle=null;}}
   }
-  [DllImport("kernel32.dll",CharSet=CharSet.Unicode,SetLastError=true)]static extern bool CreateDirectoryW(string p,IntPtr attributes);
-  internal static void NewDirectory(string path){PathCheck(path);Win(CreateDirectoryW(path,IntPtr.Zero));}
+  // The create-only NT operation returns the very handle kept for writes and verification.
+  // Neither a successful create nor a caller-controlled path is subsequently reopened.
   internal sealed class Output:IDisposable {
-   SafeFileHandle handle;Info initial;string path;
-   internal Output(string p){path=p;try{handle=CreateFileW(p,0x00100081,1,IntPtr.Zero,3,0x02200000,IntPtr.Zero);initial=Metadata(handle,true);Validate();uint serial,max,flags;var fs=new StringBuilder(32);var volume=new StringBuilder(261);Win(GetVolumeInformationByHandleW(handle,volume,261,out serial,out max,out flags,fs,32));Need(fs.ToString()=="NTFS"&&serial==initial.Volume);}catch{Dispose();throw;}}
-   void Validate(){Info now=Metadata(handle,true);Need(initial.Volume==now.Volume&&initial.IndexHigh==now.IndexHigh&&initial.IndexLow==now.IndexLow&&initial.Attributes==now.Attributes&&initial.Creation==now.Creation&&Final(handle)=="\\\\?\\"+path);}
+   SafeFileHandle handle,parent;Info initial,parentInitial;string path,parentPath;
+   internal Output(string p,out bool created){created=false;path=p;IntPtr chars=IntPtr.Zero,ptr=IntPtr.Zero;
+    try{
+     Need(IntPtr.Size==8&&Marshal.SizeOf(typeof(Info))==52&&Marshal.SizeOf(typeof(Attributes))==48&&Marshal.SizeOf(typeof(Status))==16);
+     PathCheck(p);parentPath=Path.GetDirectoryName(p);PathCheck(parentPath);
+     parent=CreateFileW(parentPath,0x00100081,1,IntPtr.Zero,3,0x02200000,IntPtr.Zero);
+     parentInitial=Metadata(parent,true);Need(Final(parent)=="\\\\?\\"+parentPath);Ntfs(parent,parentInitial);
+     string name=Path.GetFileName(p);chars=Marshal.StringToHGlobalUni(name);
+     Unicode u=new Unicode{Length=(ushort)(name.Length*2),MaximumLength=(ushort)(name.Length*2),Buffer=chars};
+     ptr=Marshal.AllocHGlobal(Marshal.SizeOf(typeof(Unicode)));Marshal.StructureToPtr(u,ptr,false);
+     // OBJ_DONT_REPARSE | OBJ_CASE_INSENSITIVE; no OBJ_INHERIT. FILE_CREATE,
+     // FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT.
+     Attributes a=new Attributes{Length=48,Root=parent.DangerousGetHandle(),ObjectName=ptr,Flags=0x1040};Status status;
+     int result=NtCreateFile(out handle,0x00100081,ref a,out status,IntPtr.Zero,16,1,2,0x00200021,IntPtr.Zero,0);
+     if(result<0)throw new ReviewRefusal(RefusalCode.NativeFailure,result);Need(status.Information.ToUInt64()==2);created=true;
+#if REVIEW_TEST
+     if(ReviewExportHooks.Stage!=null)ReviewExportHooks.Stage(6,p);
+#endif
+     initial=Metadata(handle,true);Need(initial.Volume==parentInitial.Volume);Ntfs(handle,initial);Validate();
+    }catch{Dispose();throw;}
+    finally{if(ptr!=IntPtr.Zero)Marshal.FreeHGlobal(ptr);if(chars!=IntPtr.Zero)Marshal.FreeHGlobal(chars);}
+   }
+   static void Ntfs(SafeFileHandle h,Info i){uint serial,max,flags;var fs=new StringBuilder(32);var volume=new StringBuilder(261);Win(GetVolumeInformationByHandleW(h,volume,261,out serial,out max,out flags,fs,32));Need(fs.ToString()=="NTFS"&&serial==i.Volume);}
+   internal PackageSnapshot Snapshot(){
+    Validate();var snapshot=new PackageSnapshot();
+    try{
+     // Duplicate the held object, never resolve the export path. Keep Output alive
+     // until the duplicate and every observational leaf have been disposed.
+     Win(DuplicateHandle(new IntPtr(-1),handle,new IntPtr(-1),out snapshot.root,0,false,2));
+     snapshot.canonical=path;snapshot.rootBefore=Metadata(snapshot.root,true);
+     Need(Same(snapshot.rootBefore,Metadata(handle,true)));snapshot.Capture();Validate();return snapshot;
+    }catch{snapshot.Dispose();throw;}
+   }
+   void Validate(){Info pi=Metadata(parent,true);Need(pi.Volume==parentInitial.Volume&&pi.IndexHigh==parentInitial.IndexHigh&&pi.IndexLow==parentInitial.IndexLow&&pi.Attributes==parentInitial.Attributes&&pi.Creation==parentInitial.Creation&&Final(parent)=="\\\\?\\"+parentPath);Info now=Metadata(handle,true);Need(initial.Volume==now.Volume&&initial.IndexHigh==now.IndexHigh&&initial.IndexLow==now.IndexLow&&initial.Attributes==now.Attributes&&initial.Creation==now.Creation&&Final(handle)=="\\\\?\\"+path);}
    internal void Write(string name,byte[] bytes){
     Need(Array.IndexOf(Names,name)>=0);Validate();IntPtr chars=Marshal.StringToHGlobalUni(name),ptr=IntPtr.Zero;SafeFileHandle h=null;
     try{Unicode u=new Unicode{Length=(ushort)(name.Length*2),MaximumLength=(ushort)(name.Length*2),Buffer=chars};ptr=Marshal.AllocHGlobal(Marshal.SizeOf(typeof(Unicode)));Marshal.StructureToPtr(u,ptr,false);
@@ -128,7 +163,7 @@ namespace Omnira.Creative.Review {
      Validate();
     }finally{if(h!=null)h.Dispose();if(ptr!=IntPtr.Zero)Marshal.FreeHGlobal(ptr);Marshal.FreeHGlobal(chars);}
    }
-   public void Dispose(){if(handle!=null){handle.Dispose();handle=null;}}
+   public void Dispose(){if(handle!=null){handle.Dispose();handle=null;}if(parent!=null){parent.Dispose();parent=null;}}
   }
   public void Dispose(){if(disposed)return;disposed=true;foreach(var h in leaves)if(h!=null)h.Dispose();if(root!=null)root.Dispose();}
  }

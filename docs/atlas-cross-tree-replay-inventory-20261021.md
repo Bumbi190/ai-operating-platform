@@ -1065,3 +1065,115 @@ review UI to a route, Calendar or Atlas automation until
 separate authenticated operator access, privileged Meta read
 isolation, logged operator actions and post-verification durable
 state transitions have their own reviewed boundaries.
+
+## Durable, operator-scoped human observation audit — 23 October (test-only)
+
+The next isolated safety gate is an **append-only human observation
+ledger**, implemented only as
+`apps/web/lib/calendar/scheduled-operator-review-audit-probe.sql`
+and loaded into the owned disposable PostgreSQL/PostgREST replay. This
+is NOT a migration, runtime endpoint, deployed role or an Atlas
+approval integration.
+
+### Separation and admissible claims
+
+The independently provisioned, `NOLOGIN NOBYPASSRLS`
+`social_schedule_operator_review_fixture` role receives EXECUTE
+on `social_schedule_operator_review_append_fixture(jsonb)` ONLY
+as an explicitly privileged operator action. The test's RSA-signed
+JWT includes a distinct synthetic operator `sub`. A separate
+administrator-seeded
+`social_schedule_operator_scope_fixture(operator_id,project_id,active)`
+mapping must show active operator access; normal scheduler/broker/
+read-only reviewer JWTs cannot append. The mapping and audit tables
+have RLS enabled and no direct DML grants to the fixture roles,
+service_role, anon, authenticated or PUBLIC. The `SECURITY DEFINER`
+append function has an empty search path, checks role, issuer,
+audience, subject UUID, active operator/project binding and the
+existing immutable dispatch intent. All six input keys are required;
+unexpected values, cross-project job IDs and claims of elevated
+authority are denied.
+
+The only permitted `observation` values are
+`possible_match_observed`, `no_match_observed` and
+`review_deferred`. A potential match requires a plausible
+account-bound Page post ID, but that ID is still **operator-supplied,
+not authenticated Meta evidence**. The other values require a
+null candidate ID. No `confirmed`, `published`, `approve`,
+`retry` or `providerAttested` input is accepted. Every stored
+event has `evidence_class='human_observation_only'`,
+`provider_attested=false` and
+`automatic_retry_allowed=false`, all enforced by SQL checks.
+
+### Durable/idempotent audit mechanics
+
+Events store database-generated event ID and timestamp plus the
+signed actor, project, job, publication, request UUID, observation
+and optional candidate ID. A unique `request_id` supports
+idempotent retry of the *same* operator note; reuse with a changed
+payload is a hard conflict. Multiple distinct observations can be
+appended without overwriting history. Explicit BEFORE
+UPDATE/DELETE/TRUNCATE triggers forbid editing or erasing events
+even when an elevated role accidentally issues DML in the isolated
+fixture. This is **not cryptographically immutable WORM**: the
+database owner/superuser could alter the schema or triggers.
+A production design will need an independently maintained,
+tamper-evident/event-stream audit if stronger integrity is
+required. Direct table reads are not exposed to the operator
+role. Atlas/reviewer consumption of safe summarized observations
+remains a separate, not-yet-built read path.
+
+Crucially, the append RPC **never changes**
+`social_schedule_dispatch_intents_fixture.provider_outcome`,
+`social_publications.state`, permissions or publication
+authorization. It cannot execute Meta GET/POST, retry a previously
+reserved publication, write a provider receipt or call the existing
+`social_publication_reconciliation_complete` RPC. These observations
+are *human statements for follow-up*, NOT a completed operator
+decision proving that Meta did/did not publish.
+
+### Isolated verification
+
+The pinned 151-web + 10-selected-root migration replay with real
+PostgREST verified a dedicated RSA-signed operator role, exact
+operator mapping and denied identities, including scheduler,
+broker, passive reviewer, non-operator and foreign-project subjects.
+It denied writes before a durable dispatch intent exists. After
+the synthetic worker reached `published` through a fake Meta
+provider, the operator submitted a
+`possible_match_observed` note with a **synthetic account-bound
+candidate ID**; a second independent PostgREST request with the
+same request UUID returned the same event rather than inserting
+another row. Reusing the request UUID with different observation
+was denied; an injected fake `provider_confirmed`, an extra
+`providerAttested` field and a wrong-account candidate were
+denied. A separate `no_match_observed` note was appended.
+The persisted audit contained **exactly two human-only events**,
+not any provider-attested record. Fixture UPDATE, DELETE and
+TRUNCATE attempts raised the append-only trigger error. After
+the administrator revoked the operator mapping, another signed
+operator request was denied. The original dispatch intent count
+remained one, `provider_outcome` remained `unknown`, and
+the read-only review queue continued to deny retries.
+`CROSS-TREE OPERATOR AUDIT ACL PASS`,
+`CROSS-TREE OPERATOR AUDIT PASS`,
+`CROSS-TREE POSTGREST APPLICATION WORKER PASS` and
+`CROSS-TREE REPLAY PASS` all completed with exit code 0. The test
+uses no real Meta accounts/keys or external provider network.
+
+### Remaining launch gates
+
+This proof uses an ephemeral test signer and an administratively
+seeded synthetic operator record, **not an actual user-click
+verification or a deployable authorization service**. Before a real
+operator can record a review, a trustworthy login/session, CSRF
+protection, per-project operator checks, human confirmation UI,
+audit read projection, optional tamper-evident archival and
+transaction/revocation review are required. A distinct authenticated
+Meta evidence provenance path must still adjudicate actual
+publication results without re-enabling duplicate dispatch. The
+existing production `service_role` clients, prior ability to
+forge manual reconciliation evidence via broad service_role,
+May migration reconciliation and the full privileged SQL call
+graph remain unresolved. Keep PR #504 DRAFT; do not deploy this
+test-only role, function or table.

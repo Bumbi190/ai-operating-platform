@@ -40,7 +40,7 @@ function dbFor(
             const record = row as Record<string, any>
             if (op === 'in') return (val as string[]).includes(record[key])
             if (op === 'eq') return record[key] === val
-            if (op === 'gte') return record[key] >= val
+            if (op === 'gte') return String(record[key]) >= String(val)
             return true
           }))
           return Promise.resolve(resolve({

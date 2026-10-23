@@ -17,7 +17,7 @@ function fixture(records: Record<string, unknown>[], initiallyExisting: Record<s
   const writes: Record<string, unknown>[] = []
   // Own in-memory rows to simulate database-level ownership checks and
   // a conflicting concurrent unique-key claim.
-  const existing = initiallyExisting.map(r => ({ platform: 'instagram', id: 'mid-' + r.instagram_media_id, ...r }))
+  const existing: Record<string, unknown>[] = initiallyExisting.map(r => ({ platform: 'instagram', id: 'mid-' + r.instagram_media_id, ...r }))
   let raceBeforeInsert: Record<string, unknown> | null = null
   const race = (row: Record<string, unknown>) => { raceBeforeInsert = row }
   const db = {

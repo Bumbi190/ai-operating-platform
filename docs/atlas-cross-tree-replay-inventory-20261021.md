@@ -1382,3 +1382,26 @@ dependency/type errors; no new errors in the bridge or its tests.
 `git diff --check` passed. No GitHub CI, production operation,
 live Meta API request or migration was triggered. The owned Docker
 resources were cleaned by the runner.
+
+## Issuer key rotation proof — 23 October (isolated only)
+
+See `docs/calendar-issuer-rotation-decision-20261023.md` for the
+design, JWKS retirement test and the unresolved hosted Supabase OIDC
+feasibility issue. Two ephemeral RSA key pairs were generated only in
+the closed replay parent process; one owned PostgREST verifier was
+reconfigured from two trusted public keys to the new key alone.
+`CROSS-TREE OPERATOR JWT ROTATION PASS` and
+`CROSS-TREE REPLAY PASS` completed with exit code 0.
+The old JWT passed only during the trust-overlap and was denied
+HTTP 401 after retirement; new JWT continued working.
+Wrong `kid` and tampered subject were denied. Existing review and
+dispatch-intent records stayed unchanged (`provider_outcome=unknown`,
+two human-only notes, one locked intent). Local Node rotation tests
+were 5/5 and calendar regression Vitest tests 55/55. All resources
+were test-owned and cleaned, with no production route, SQL migration,
+network exposure, Meta API request, hosted OIDC or CI execution.
+Supabase's Custom OIDC uses HTTPS discovery and documents
+`authenticated` as the signed-in role; raw PostgREST custom-role
+success is not evidence that a hosted Supabase Data API will
+accept custom operator roles. Supabase's third-party key discovery
+may lag by up to 30 minutes. Keep PR #504 DRAFT.

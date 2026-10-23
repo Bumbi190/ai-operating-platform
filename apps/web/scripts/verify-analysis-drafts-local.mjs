@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { createHash, generateKeyPairSync, randomBytes, sign as signJwt } from 'node:crypto'
 import assert from 'node:assert/strict'
 import { orderReplayMigrations, orderLegacyMediaReplayMigrations, orderCrossTreeReplayMigrations } from './analysis-replay-order.mjs'
+import {runClosedCalendarRotationProbe} from './calendar-postgrest-rotation-fixture.mjs'
 const web = resolve(dirname(fileURLToPath(import.meta.url)), '..'),
   repo = resolve(web, '../..')
 const migrationDir = resolve(web, 'supabase/migrations')
@@ -1377,6 +1378,18 @@ try {
           assert.equal(sql('SELECT count(*) FROM public.social_schedule_operator_review_events_fixture'),'2')
           assert.equal(sql('SELECT provider_outcome FROM public.social_schedule_dispatch_intents_fixture'),'unknown')
           console.log('CROSS-TREE OPERATOR SESSION RPC BRIDGE PASS (signed short-lived JWTs, real operator+reviewer SQL roles; no signer or proof leak)')
+          // A second disposable verifier receives only the public JWKS.
+          // Test overlap, retirement, and signed-token refusal through real
+          // PostgREST; keep private RSA keys in this parent runner.
+          const rotated=await runClosedCalendarRotationProbe({
+            docker,dbContainerName:name,httpNetwork,gatewayName,restImage,
+            password,operatorSubject,projectId:project,
+            jobId:id.job,publicationId:reviewNote.publicationId,sql,
+          })
+          assert.equal(rotated.oldKeyAcceptedDuringOverlap,true)
+          assert.equal(rotated.retiredOldRejected,true)
+          assert.equal(rotated.newKeyContinues,true)
+          console.log('CROSS-TREE OPERATOR JWT ROTATION PASS '+JSON.stringify(rotated)+' (owned public-JWKS verifier reconfigured with new-only key; no hosted OIDC assertion)')
           const immutability=sql(`
             DO $operator_note_guard$ BEGIN
               UPDATE public.social_schedule_operator_review_events_fixture

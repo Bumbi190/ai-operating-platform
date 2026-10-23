@@ -46,9 +46,9 @@ WHY IT MATTERS (15–25s): 1–2 sentences. Concrete implication.
 
 RETENTION: every sentence must earn the next. Make the final line loop back toward the hook so re-watches feel seamless.
 
-CAPTIONS: 2–4 punchy on-screen lines (few words each, from frame 0). Make the LAST caption a follow-promise that gives scrollers a reason to follow: "Follow for daily AI news in 30s 🤖".
+CAPTIONS: 2–4 punchy on-screen lines (few words each, from frame 0). Make the LAST caption a clear verified takeaway or useful conclusion. Do not add a separate follow request in the overlay when the CTA is a comment question.
 
-CTA = a discussion-trigger question that drives comments: "Hype or game-changer?" | "Would you trust this?"${competitorBlock}
+CTA = ONE truthful call to action only, consistent across script and captions. Prefer a relevant discussion question ("Hype or game-changer?" / "Would you trust this?") OR a follow request, never both.${competitorBlock}
 
 ${THE_PROMPT_GROWTH_GUIDANCE}
 
@@ -56,9 +56,9 @@ Return ONLY valid JSON (no markdown fences):
 {
   "hook": "Named actor + just + concrete verb + stake. Max 12 words.",
   "script": "Full voiceover script — hook flows into core, core into consequence...",
-  "captions": ["Punchy caption 1", "Punchy caption 2", "Follow for daily AI news in 30s 🤖"],
+  "captions": ["Punchy caption 1", "Punchy caption 2", "Verified takeaway — not a second CTA"],
   "hashtags": ["#AI", "#Tech"],
-  "cta": "A discussion-trigger question",
+  "cta": "One truthful comment question OR follow request",
   "tone": "insider",
   "estimated_duration": "~22 seconds",
   "difficulty": "intermediate"

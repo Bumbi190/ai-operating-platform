@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false
+  },
+  "include": [
+    "next-env.d.ts",
+    "lib/content-growth/instagram-agent.ts",
+    "lib/content-growth/instagram-metrics.ts",
+    "lib/content-growth/instagram-read.ts",
+    "lib/media/social-publication-insights.ts",
+    "app/api/media/cron/insights/route.ts",
+    "app/(platform)/atlas/operations/InstagramGrowthCard.tsx",
+    "lib/qa/instagram-agent-integration.test.ts",
+    "lib/qa/instagram-graph-shape.test.ts",
+    "lib/qa/instagram-growth-reader.test.ts",
+    "lib/qa/instagram-metrics.test.ts",
+    "lib/qa/social-publication-cron-order.test.ts",
+    "lib/qa/social-publication-insights.test.ts"
+  ],
+  "exclude": ["node_modules"]
+}

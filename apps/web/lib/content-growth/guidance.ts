@@ -7,7 +7,13 @@
  * https://github.com/Ootto-AI/claude-virality-skill
  * https://github.com/Ootto-AI/claude-content-skills
  */
-export const CONTENT_GROWTH_VERSION = 'atlas-content-growth-v1'
+import {
+  INSTAGRAM_AGENT_PROMPT_GUIDANCE,
+  INSTAGRAM_AGENT_FAMILY_GUIDANCE,
+  INSTAGRAM_AGENT_REVIEW_GUIDANCE,
+} from './instagram-agent'
+
+export const CONTENT_GROWTH_VERSION = 'atlas-content-growth-v1-instagram-agent'
 
 export const THE_PROMPT_GROWTH_GUIDANCE = [
   'VISUAL-FIRST REEL DIRECTION (producer brief; not proof of the rendered frames):',
@@ -19,6 +25,7 @@ export const THE_PROMPT_GROWTH_GUIDANCE = [
   '- One honest end CTA only. Never promise a DM, download or material unless an approved delivery workflow actually exists.',
   '- The Prompt voiceover must remain the pinned Victoria voice from lib/voice/config.ts; never choose another voice by display name.',
   '- Preserve the existing JSON response shape. This is creative direction, not a render, publish or analytics command.',
+  INSTAGRAM_AGENT_PROMPT_GUIDANCE,
 ].join('\n')
 
 export const FAMILJE_STUNDEN_GROWTH_GUIDANCE = [
@@ -31,6 +38,7 @@ export const FAMILJE_STUNDEN_GROWTH_GUIDANCE = [
   '- Preserve one brief-approved CTA; never imply an automated DM, freebie or link delivery that is not actually configured.',
   '- Nova and Pling must use the already-approved exact character ElevenLabs voices; if the role-level voice mapping is unverified, BLOCK generation instead of falling back to Sanna/Victoria.',
   '- Keep the existing response JSON and existing reel_spec.scenes fields unchanged. This does not authorize rendering or publishing.',
+  INSTAGRAM_AGENT_FAMILY_GUIDANCE,
 ].join('\n')
 
 export const CONTENT_GROWTH_QA_GUIDANCE = [
@@ -38,4 +46,5 @@ export const CONTENT_GROWTH_QA_GUIDANCE = [
   'If the script or supplied source gives no evidence of a moving, recognisable opening, list that as a weak spot. Never claim to have inspected actual rendered frames: that needs a separate video QA step.',
   'Do not improve engagement at the cost of factual accuracy; never invent social proof, numbers, engagement, or a guaranteed viral outcome.',
   'Keep the existing six numeric scoring dimensions, thresholds and JSON schema unchanged.',
+  INSTAGRAM_AGENT_REVIEW_GUIDANCE,
 ].join('\n')

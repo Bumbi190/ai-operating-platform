@@ -5,6 +5,8 @@
     "next-env.d.ts",
     "lib/media/model-failover-policy.ts",
     "lib/media/text-client.ts",
+    "lib/media/atlas-fallback-budget.ts",
+    "lib/qa/atlas-fallback-budget.test.ts",
     "lib/media/news-hunter.ts",
     "lib/qa/atlas-text-failover-wiring.test.ts",
     "app/api/media/cron/morning-briefing/route.ts",

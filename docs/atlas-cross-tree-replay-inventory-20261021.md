@@ -1177,3 +1177,98 @@ forge manual reconciliation evidence via broad service_role,
 May migration reconciliation and the full privileged SQL call
 graph remain unresolved. Keep PR #504 DRAFT; do not deploy this
 test-only role, function or table.
+
+## Operator history and explicit human note confirmation — 23 October (test-only)
+
+This follow-up adds the missing **read-back** boundary for prior operator
+observations and a **test-only interactive React preview**, without
+exposing any real calendar route, actual Meta call, or production DB
+migration.
+
+The isolated SQL candidate
+`lib/calendar/scheduled-operator-review-history-probe.sql`
+creates a `STABLE SECURITY DEFINER` read-only function with an empty
+search path and *explicitly limited EXECUTE privileges*. It requires
+the separately signed `social_schedule_operator_review_fixture` role,
+issuer, audience, UUID subject, administrator-maintained active
+operator/project membership, and matching job/publication in the
+unchanged `provider_outcome='unknown'` dispatch-intent table.
+It returns only the latest 25 **human observations**, including
+server-generated event/timestamp, actual operator UUID, observation
+and optional candidate post ID. Every event explicitly says
+`evidenceClass='human_observation_only'` and
+`providerAttested=false`. The response cannot authorize a retry,
+Meta receipt confirmation or publication. No direct ledger SELECT,
+INSERT, UPDATE, DELETE or token privileges are granted to the operator.
+A revoked operator is denied both new writes and history reads.
+The entire fixture exists only in the owned disposable PostgREST
+replay; its owner and callable transitive function inventory still
+require a production audit.
+
+`lib/social-launch/scheduling/operator-review-history-fixture.ts`
+validates the exact, project/job/publication-bound JSON projection,
+including UUIDs, timestamp, all observation fields and the
+no-retry/no-confirmation flags. It refuses forged provider attestation,
+cross-project results, duplicate event IDs, unexpected command keys,
+fake/invalid timestamps and more than 25 entries, and labels each
+observation in Swedish. Untrusted operator notes are never promoted
+to Meta-confirmed evidence.
+
+`lib/social-launch/scheduling/operator-review-ui-fixture.ts`
+is an **unmounted server-only test handler**. It invokes the *existing*
+Omnira `resolveProjectAccess` and `resolvePlatformOperator` guards,
+including a verified identical signed-in user and active project
+scope, along with the existing `assertSameOrigin` HTTP CSRF defense.
+It allows only two exact operations, `read` and `record`, and
+refuses injected actor IDs, provider proof IDs, publish commands or
+extra fields. For `record` it requires a valid stable request UUID,
+one of the three allowed human observations, correct candidate-ID
+shape and an explicit `confirmHumanObservation=true`. The actual
+signed operator identity is always derived from the session and passed
+to the injected DB adapter; the caller **cannot** provide an actor ID.
+The operator's session is rechecked before the privileged append and
+before any response. The append response must say
+`providerOutcome='unknown'`, `providerAttested=false`, and
+no retry/finalization, and its **exact event ID** must be present in
+the subsequently read signed operator history before reporting success.
+
+`components/social-launch/ScheduledOperatorReviewPanelFixture.tsx`
+is an unmounted Swedish client-side preview that renders human
+observation history, three possible human notes, a candidate field
+only for 'possible match', a required explicit confirmation checkbox,
+a button disabled until valid, and a 'reload history' control.
+It preserves its idempotency request UUID when an ambiguous send
+fails, to avoid doubling the note. There are **no** publication,
+receipt completion, Meta write, or approval buttons.
+
+### Verification and limitations
+
+The targeted Vitest check covers actual application session guard
+invocation (with mocks of the auth return values), same-origin
+denial, non-operator and foreign-project refusal, revoked access,
+correctly bound SQL response, forged evidence, absent or mismatched
+new event, strict form payloads, and rendered HTML showing a
+disabled save button without human confirmation.
+
+The complete cross-tree replay tests real PostgREST with a separately
+RS256-signed operator JWT, verifies only that operator has EXECUTE
+on the history function, and that other roles, wrong principal,
+direct table access, and revoked operators are denied. It reads
+exactly the two previously committed human-only events from the
+disposable database, in descending event order, and then passes
+that exact HTTP JSON to the same test-only UI handler validator
+and React view. The published synthetic Facebook job still has
+`provider_outcome='unknown'`, and its durable dispatch intent
+remains reserved and non-retryable. Neither the operator note nor
+the historic source can forge a Meta provider receipt.
+
+**Still not production ready:** This is a preview with injected
+transport callbacks and mocked login returns in unit tests. There
+is no Next.js route mounting, real user-facing UI menu, configured
+operator JWT issuer, browser-to-production signed-RPC adapter,
+actual session-based operator rollout, Meta verification service,
+or production migration. The existing production
+`createAdminClient()` service-role consumers, the media migration
+baseline and the privileged function/trigger transitive audit remain
+open. PR #504 stays a draft; nothing here grants Atlas human
+approval authority or deploys a public endpoint.

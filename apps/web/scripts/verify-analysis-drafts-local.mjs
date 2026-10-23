@@ -810,6 +810,7 @@ try {
           ${reviewedBytes(resolve(web,'lib/calendar/scheduled-broker-durable-intent-probe.sql')).toString('utf8')}
           ${reviewedBytes(resolve(web,'lib/calendar/scheduled-broker-review-queue-probe.sql')).toString('utf8')}
           ${reviewedBytes(resolve(web,'lib/calendar/scheduled-operator-review-audit-probe.sql')).toString('utf8')}
+          ${reviewedBytes(resolve(web,'lib/calendar/scheduled-operator-review-history-probe.sql')).toString('utf8')}
           INSERT INTO public.social_schedule_rpc_scope_fixture(principal_id,project_id)
             VALUES (${quote(actor)},${quote(project)}),(${quote(id.foreignPrincipal)},${quote(id.unreferencedProject)}),
               (${quote(operatorSubject)},${quote(project)});
@@ -1045,6 +1046,23 @@ try {
           operatorReserve:false,operatorReadTokens:false,operatorReadAudit:false,
           operatorWriteAudit:false,operatorEditMembership:false,
         },'operator review role has excessive privileges')
+        const historyAcl=JSON.parse(sql(`SELECT jsonb_build_object(
+          'operatorHistory',has_function_privilege('social_schedule_operator_review_fixture',
+            'public.social_schedule_operator_review_history_fixture(uuid,uuid,uuid)','EXECUTE'),
+          'workerHistory',has_function_privilege('social_schedule_rpc_only_fixture',
+            'public.social_schedule_operator_review_history_fixture(uuid,uuid,uuid)','EXECUTE'),
+          'brokerHistory',has_function_privilege('social_schedule_broker_intent_fixture',
+            'public.social_schedule_operator_review_history_fixture(uuid,uuid,uuid)','EXECUTE'),
+          'reviewHistory',has_function_privilege('social_schedule_broker_review_fixture',
+            'public.social_schedule_operator_review_history_fixture(uuid,uuid,uuid)','EXECUTE'),
+          'serviceHistory',has_function_privilege('service_role',
+            'public.social_schedule_operator_review_history_fixture(uuid,uuid,uuid)','EXECUTE'),
+          'operatorDirectRead',has_table_privilege('social_schedule_operator_review_fixture',
+            'public.social_schedule_operator_review_events_fixture','SELECT')
+        );`))
+        assert.deepEqual(historyAcl,{operatorHistory:true,workerHistory:false,
+          brokerHistory:false,reviewHistory:false,serviceHistory:false,
+          operatorDirectRead:false})
         const operatorReviewInput={
           projectId:project,jobId:id.job,publicationId:id.post,
           requestId:'492a21ae-b593-4bc2-baf6-b25fa075d9cc',
@@ -1059,6 +1077,13 @@ try {
           {p_input:operatorReviewInput},'POST',operatorToken)
         assert.equal(beforeIntent.status,403,beforeIntent.body)
         assert.equal(sql('SELECT count(*) FROM public.social_schedule_operator_review_events_fixture'),'0')
+        const historyPath='/rpc/social_schedule_operator_review_history_fixture'
+        const absentHistory=httpRole(historyPath,{p_project_id:project,
+          p_job_id:id.job,p_publication_id:id.post},'POST',operatorToken)
+        assert.equal(absentHistory.status,403,absentHistory.body)
+        const workerHistory=httpRole(historyPath,{p_project_id:project,
+          p_job_id:id.job,p_publication_id:id.post},'POST',token)
+        assert.equal(workerHistory.status,403,workerHistory.body)
         const auditTableRead=httpRole('/social_schedule_operator_review_events_fixture?select=*',
           undefined,'GET',operatorToken)
         assert.ok(auditTableRead.status>=400,auditTableRead.body)
@@ -1289,6 +1314,40 @@ try {
             'operator review audit is not durably append-only/idempotent')
           assert.equal(sql('SELECT count(*) FROM public.social_schedule_operator_review_events_fixture WHERE provider_attested OR automatic_retry_allowed'),'0')
           assert.equal(sql('SELECT count(*) FROM public.social_schedule_operator_review_events_fixture WHERE operator_id='+quote(operatorSubject)),'2')
+          const historyInput={p_project_id:project,p_job_id:id.job,
+            p_publication_id:reviewNote.publicationId}
+          for(const jwt of [token,brokerToken,reviewToken,nonOperatorToken,foreignOperatorToken]){
+            const denied=httpRole(historyPath,historyInput,'POST',jwt)
+            assert.equal(denied.status,403,denied.body)
+          }
+          const signedHistory=httpRole(historyPath,historyInput,'POST',operatorToken)
+          assert.equal(signedHistory.status,200,signedHistory.body)
+          const history=JSON.parse(signedHistory.body)
+          assert.equal(history.projectId,project)
+          assert.equal(history.jobId,id.job)
+          assert.equal(history.publicationId,reviewNote.publicationId)
+          assert.equal(history.providerOutcome,'unknown')
+          assert.equal(history.automaticRetryAllowed,false)
+          assert.equal(history.canFinalize,false)
+          assert.equal(history.canPublish,false)
+          assert.equal(history.limitReached,false)
+          assert.equal(history.items.length,2)
+          assert.deepEqual(history.items.map(v=>v.observation),[
+            'no_match_observed','possible_match_observed'])
+          assert.ok(history.items.every(v=>v.operatorId===operatorSubject&&
+            v.evidenceClass==='human_observation_only'&&v.providerAttested===false))
+          const uiProof=spawnSync(process.execPath,[resolve(repo,'node_modules/vitest/vitest.mjs'),
+            'run','lib/social-launch/scheduling/operator-review-ui-fixture.test.ts',
+            '--maxWorkers=1','--minWorkers=1'],{
+            cwd:web,encoding:'utf8',timeout:45000,maxBuffer:1024*1024,
+            env:{...process.env,
+              OMNIRA_SCHEDULE_REPLAY_OPERATOR_HISTORY_B64:Buffer.from(signedHistory.body,'utf8').toString('base64'),
+              OMNIRA_SCHEDULE_REPLAY_OPERATOR_SCOPE_B64:Buffer.from(JSON.stringify({
+                projectId:project,jobId:id.job,publicationId:reviewNote.publicationId,
+              }),'utf8').toString('base64')},
+          })
+          assert.equal(uiProof.status,0,uiProof.stderr+'\n'+uiProof.stdout)
+          console.log('CROSS-TREE OPERATOR REVIEW UI PASS (real scoped SQL observation history; login/operator checks; confirm-only note form)')
           const immutability=sql(`
             DO $operator_note_guard$ BEGIN
               UPDATE public.social_schedule_operator_review_events_fixture
@@ -1321,6 +1380,8 @@ try {
             requestId:'8ad4eb82-ef95-4142-9706-0cce8b4a3886',
             observation:'review_deferred',candidateId:null})
           assert.equal(afterRevocation.status,403,afterRevocation.body)
+          const afterRevokedRead=httpRole(historyPath,historyInput,'POST',operatorToken)
+          assert.equal(afterRevokedRead.status,403,afterRevokedRead.body)
           assert.equal(sql('SELECT count(*) FROM public.social_schedule_operator_review_events_fixture'),'2')
           assert.equal(sql('SELECT provider_outcome FROM public.social_schedule_dispatch_intents_fixture'),'unknown',
             'operator observation must not become Meta confirmation')

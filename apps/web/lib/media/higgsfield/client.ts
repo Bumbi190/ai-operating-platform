@@ -16,6 +16,9 @@ function schema(v:unknown,requiredKeys:string[]) {
 function prop(v:unknown,name:string):Record<string,unknown>|null {
  return object(v)&&object(v.properties)&&object(v.properties[name])?v.properties[name]:null
 }
+function numericParameter(v:Record<string,unknown>|null):boolean {
+ return v?.type==='integer'||v?.type==='number'
+}
 function data(result:unknown):Record<string,unknown> {
  if(!object(result)||result.isError===true)throw new HiggsfieldError('invalid_response')
  if(object(result.structuredContent))return result.structuredContent
@@ -37,13 +40,16 @@ export async function inspectReadOnlyClient(client:ReadOnlyMcpClient):Promise<{c
  if(balances.length!==1||models.length!==1||quotes.length!==1||
  !schema(balances[0].inputSchema,[])||!schema(models[0].inputSchema,['model_id'])||prop(models[0].inputSchema,'model_id')?.type!=='string'||
  !schema(quote,['params'])||!schema(params,['model','duration','resolution','aspect_ratio','count'])||
- prop(params,'model')?.type!=='string'||prop(params,'duration')?.type!=='number'||prop(params,'aspect_ratio')?.type!=='string'||prop(params,'count')?.type!=='number'||
+ prop(params,'model')?.type!=='string'||!numericParameter(prop(params,'duration'))||prop(params,'aspect_ratio')?.type!=='string'||!numericParameter(prop(params,'count'))||
  !(prop(params,'resolution')?.type==='string'||params?.additionalProperties===true))
   throw new HiggsfieldError('unsupported_server_schema')
  const balance=data(await client.callTool('balance',{})),creditBalance=credits(balance.credits)
  const model=data(await client.callTool('models_get',{model_id:'grok_video_v15_lite'}))
  const range=model.duration_range
- const durationSupported=object(range)&&typeof range.min==='number'&&typeof range.max==='number'&&range.min<=4&&range.max>=4 || Array.isArray(model.durations)&&model.durations.includes(4)
+ const durationParameter=Array.isArray(model.parameters)?model.parameters.find(p=>object(p)&&p.name==='duration'):null
+ const durationSupported=(object(range)&&typeof range.min==='number'&&typeof range.max==='number'&&range.min<=4&&range.max>=4) ||
+  (Array.isArray(model.durations)&&model.durations.includes(4)) ||
+  (object(durationParameter)&&typeof durationParameter.min==='number'&&typeof durationParameter.max==='number'&&durationParameter.min<=4&&durationParameter.max>=4)
  const resolution=Array.isArray(model.parameters)?model.parameters.find(p=>object(p)&&p.name==='resolution'):null
  if(model.id!=='grok_video_v15_lite'||!Array.isArray(model.aspect_ratios)||!model.aspect_ratios.includes('9:16')||!durationSupported||!object(resolution)||!Array.isArray(resolution.options)||!resolution.options.includes('720p'))throw new HiggsfieldError('unsupported_server_schema')
  // Fixed local arguments; no caller-controlled model, count, prompt, or media.

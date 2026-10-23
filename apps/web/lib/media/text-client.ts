@@ -26,10 +26,32 @@ function isAnthropicCreditRefusal(error: unknown): boolean {
     && providerError.message.startsWith('Your credit balance is too low to access the Anthropic API.')
 }
 
+function isAnthropicInvalidCredential(error: unknown): boolean {
+  const candidate = error as {
+    status?: unknown
+    error?: { type?: unknown; error?: { type?: unknown; message?: unknown } }
+  } | null
+  return candidate?.status === 401
+    && candidate.error?.type === 'error'
+    && candidate.error.error?.type === 'authentication_error'
+    && candidate.error.error.message === 'invalid x-api-key'
+}
+
+function mayUseNewsAuthReserve(ctx: MediaTextContext, error: unknown): boolean {
+  return process.env.MEDIA_NEWS_ANTHROPIC_AUTH_FALLBACK_ENABLED === 'true'
+    && 'projectSlug' in ctx.project
+    && ctx.project.projectSlug === 'ai-media-automation'
+    && ctx.execution.context === 'AUTONOMOUS'
+    && ctx.agent === 'News Hunter'
+    && ctx.operation === 'Analyze News'
+    && isAnthropicInvalidCredential(error)
+}
+
 /**
- * Recover only the explicit, non-billed Anthropic credit refusal.
- * Both attempts keep the caller's project, execution authority and budget boundary.
- * Stops, budget refusals, transport ambiguity and other provider errors propagate.
+ * Recover a proven unbilled Anthropic credit refusal or an explicitly
+ * enabled The Prompt News Hunter-only invalid-credential refusal.
+ * Keep the caller's project, authority and governed spend boundary.
+ * Never retry ambiguous transport, governance or other provider failures.
  */
 type MediaTextContext = Omit<OpenAIGovernanceContext, 'onFlight'>
 
@@ -41,9 +63,13 @@ export function getMediaTextClient(ctx: MediaTextContext) {
         try {
           return await primary.messages.create(input)
         } catch (error) {
-          if (!isAnthropicCreditRefusal(error) || !process.env.OPENAI_API_KEY) throw error
+          const creditsUnavailable = isAnthropicCreditRefusal(error)
+          const permittedAuthReserve = mayUseNewsAuthReserve(ctx, error)
+          if ((!creditsUnavailable && !permittedAuthReserve) || !process.env.OPENAI_API_KEY) throw error
 
-          console.warn('[media/text] Anthropic credits unavailable; using governed OpenAI reserve')
+          console.warn(creditsUnavailable
+            ? '[media/text] Anthropic credits unavailable; using governed OpenAI reserve'
+            : '[media/text] The Prompt News Hunter API credential rejected; opted-in governed OpenAI reserve')
           const response = await openAIChatCompletion(ctx, {
             model: 'gpt-5.4-mini',
             ...openAITextOptions('gpt-5.4-mini', input.max_tokens, 0.7),

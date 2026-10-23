@@ -8,6 +8,8 @@
     "lib/content-growth/instagram-agent.ts",
     "lib/content-growth/instagram-metrics.ts",
     "lib/content-growth/instagram-read.ts",
+    "lib/media/social-publication-insights.ts",
+    "app/api/media/cron/insights/route.ts",
     "app/(platform)/atlas/operations/InstagramGrowthCard.tsx"
   ],
   "exclude": ["node_modules"]

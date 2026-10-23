@@ -106,8 +106,12 @@ export async function fetchMediaInsights(mediaId: string, token: string): Promis
 
       const metrics: MediaInsight = {}
       for (const m of json.data ?? []) {
-        const value = m.values?.[0]?.value ?? 0
-        if (m.name in metricKeyMap) metrics[metricKeyMap[m.name]] = value
+        const value = m.values?.[0]?.value
+        // Missing Graph data is unknown, NOT a measured zero. Keep the field
+        // absent so downstream analytics can represent it as null.
+        if (m.name in metricKeyMap && typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) {
+          metrics[metricKeyMap[m.name]] = value
+        }
       }
       return { ok: true, metrics }
     } catch (e) {

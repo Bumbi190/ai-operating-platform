@@ -4,7 +4,7 @@
 - Source: Jake Schincariol, `Jakeschincariol/instagram-agent-skill`, MIT.
 - Pinned local source: `C:/Users/Andre/Projects/Omnira/External/instagram-agent-skill` at `d03c56bb598be770c60b201f94237e5d1a4268a6`.
 - Four Python-backed skills available **only to local coding assistants**: `ig-reel`, `ig-viral`, `ig-human`, `ig-audit`.
-- App integration in this branch is a **cost-free editorial adaptation**: project-scoped text guidance, a pure metrics summarizer and an authenticated, read-only Operations Center card per brand. The new code does not call local Python, Meta or other external APIs.
+- App integration in this branch is a **cost-free editorial adaptation**: project-scoped text guidance, a pure metrics summarizer and an authenticated, read-only Operations Center card per brand. The view only reads cached data; it does not call local Python, Meta or other external APIs.
 - The existing Atlas The Prompt scriptwriting/QA and Familje-Stunden Reel drafting pipelines import `lib/content-growth/guidance.ts`, which now composes the Instagram Agent guidance. No new background scheduler, token, DB migration or publishing path.
 
 ## Behavioral boundaries

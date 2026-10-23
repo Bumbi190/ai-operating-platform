@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "incremental": false, "paths": { "@/*": ["./*"], "@omnira/local-text-contract": ["../../packages/local-text-contract/index.d.mts"] } },
+  "include": [
+    "next-env.d.ts",
+    "lib/media/model-failover-policy.ts",
+    "lib/media/text-client.ts",
+    "app/api/media/cron/morning-briefing/route.ts",
+    "lib/ai/dream.ts",
+    "lib/qa/atlas-text-model-failover.test.ts",
+    "lib/qa/media-text-fallback.test.ts"
+  ],
+  "exclude": ["node_modules"]
+}

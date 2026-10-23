@@ -16,10 +16,9 @@
 
 import { NextResponse }   from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { Anthropic }      from '@anthropic-ai/sdk'
 import { calculateCost }  from '@/lib/ai/pricing'
 import { logLlmCost }     from '@/lib/cost/track'
-import { getAnthropic } from '@/lib/ai/anthropic'
+import { getMediaTextClient } from '@/lib/media/text-client'
 import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
 import { GLOBAL_ONLY, projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
 
@@ -34,7 +33,7 @@ export async function GET(request: Request) {
   }
 
   const db     = createAdminClient()
-  const claude = getAnthropic({
+  const claude = getMediaTextClient({
     project: PLATFORM_COMPAT_PROJECT, execution: { context: 'AUTONOMOUS', scope: GLOBAL_ONLY }, agent: 'CFO Briefing', operation: 'Morning Briefing',
   })
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()

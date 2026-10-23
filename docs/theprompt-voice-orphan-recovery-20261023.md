@@ -48,3 +48,17 @@ Related: [Anthropic key recovery incident #518](https://github.com/Bumbi190/ai-o
 An extra compare-and-set guard now also refuses to claim any row with an existing `published_at`, `audio_url` or `timing_url`, rather than buying media for a partially completed or already published script. The mock integration test asserts each SQL filter. A two-worker synthetic race case verifies that one conditional claim succeeds and one returns `nothing_to_do`, with **exactly one** ElevenLabs and one Ideogram invocation.
 
 After isolated lockfile `npm ci --ignore-scripts` (949 packages, no inherited node_modules junction), the final focused test set passed **51/51** across the new voice-orphan integration suite, spend retry lifecycle and provider boundary suites. The **complete web TypeScript check PASSED** (exit 0). Earlier exploratory broader Windows QA (6 suites) had 11 unrelated failures in legacy static scanning / 5-second timeouts; these are **not** counted as passing tests or certified pre-existing without a base comparison. Independent read-only review and Vercel/GitHub checks remain release gates. No database write, provider request or cron replay was executed during development.
+
+## Safety hardening — explicit UTC cutover for paid voice-orphan recovery
+
+As of the Oct 23 follow-up, an additional required server-only setting makes delayed-voice recovery *prospective by default* rather than retroactively spending on a missed publication slot:
+
+- `MEDIA_PROMPT_VOICE_ORPHAN_RECOVERY_ENABLED=true` (existing opt-in)
+- `H1_SPEND_GATE=1` (existing mandatory strict budget enforcement)
+- **NEW: `MEDIA_PROMPT_VOICE_ORPHAN_RECOVERY_FROM_UTC=YYYY-MM-DDTHH:MM:SSZ`** (or with `.SSS` milliseconds), set explicitly after the operator's approval.
+
+All three are required for a paid recovery dispatch. The cutoff must be a valid canonical **UTC** timestamp and at least ten minutes old at the time of the retry tick. Missing, malformed, locally offset, impossible-date, or not-yet-eligible cutoffs keep the paid path **OFF**. The database query must also require that the script was generated at or after this approved cutoff; the existing six-hour freshness rule still applies. There is no implicit "all scripts since midnight" default.
+
+The current old 11:00 manuscript can still appear in the nonbillable `voiceOrphanCandidates` monitoring result when recovery is disabled, but activating recovery with a cutoff *after* that manuscript does **not** buy its voice or images. Releasing this code must **not** create or set either environment variable automatically. The operator may explicitly approve an older cutoff for an individual production recovery later, with budget, editorial review, no duplicate publishing, and media reconciliation checked separately.
+
+The regression suite covers the cutoff-required failure, malformed UTC values, future cutoffs, no silent backfill of the Oct 23 script, preserved read-only orphan monitoring while the flag is OFF, and the existing atomic single-claim behavior. The remote paid provider calls remain mocked in automated tests. No production variables, credentials, database rows, cron executions, or publishing schedules were modified as part of this hardening.

@@ -21,6 +21,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { sendPipelineAlert } from '@/lib/media/alert'
 import { PLATFORM_SOCIAL_PROJECT_SLUG } from '@/lib/media/social-destination'
 import { isSpendGateEnforced } from '@/lib/cost/spend-gate-flag'
+import { validatedVoiceOrphanRecoveryStartAt } from '@/lib/media/voice-orphan-recovery-policy'
 
 export const dynamic     = 'force-dynamic'
 export const maxDuration = 300
@@ -89,13 +90,21 @@ export async function GET(request: Request) {
   // forever: failed-voice retry and ready-voice render recovery both miss it.
   // Observe such candidates, but do NOT spend or replay missed content unless
   // the operator explicitly enables this narrowly scoped recovery. A strict
-  // spend gate is required even if that feature flag was accidentally enabled.
+  // spend gate AND an operator-provided UTC creation cutoff are required.
+  // Activation must never buy assets for missed slots created before cutover.
+  const voiceRescueCutover = validatedVoiceOrphanRecoveryStartAt(
+    process.env.MEDIA_PROMPT_VOICE_ORPHAN_RECOVERY_FROM_UTC, new Date(),
+  )
+  const voiceRescueMayDispatch =
+    process.env.MEDIA_PROMPT_VOICE_ORPHAN_RECOVERY_ENABLED === 'true'
+    && isSpendGateEnforced()
+    && voiceRescueCutover !== null
   results.voiceOrphanRescued = []
   results.voiceOrphanCandidates = 0
   const { data: voiceProject, error: voiceProjectError } = await db.from('projects')
     .select('id').eq('slug', PROMPT_SLUG).maybeSingle()
   if (!voiceProjectError && voiceProject?.id) {
-    const { data: voiceOrphans, error: voiceOrphanError } = await db.from('media_scripts')
+    let voiceQuery = db.from('media_scripts')
       .select('id')
       .eq('project_id', voiceProject.id)
       .eq('status', 'approved')
@@ -104,11 +113,15 @@ export async function GET(request: Request) {
       .lt('voice_attempts', MAX_ATTEMPTS)
       .gte('generated_at', sixHoursAgo)
       .lt('generated_at', tenMinAgo)
+    if (voiceRescueMayDispatch && voiceRescueCutover) {
+      voiceQuery = voiceQuery.gte('generated_at', voiceRescueCutover)
+    }
+    const { data: voiceOrphans, error: voiceOrphanError } = await voiceQuery
       .order('generated_at', { ascending: true })
       .limit(PER_TICK)
     if (!voiceOrphanError) {
       results.voiceOrphanCandidates = voiceOrphans?.length ?? 0
-      if (process.env.MEDIA_PROMPT_VOICE_ORPHAN_RECOVERY_ENABLED === 'true' && isSpendGateEnforced()) {
+      if (voiceRescueMayDispatch) {
         for (const s of (voiceOrphans ?? [])) {
           log(`Rescue newly approved voice orphan (step2) för ${s.id}`)
           ;(results.voiceOrphanRescued as unknown[]).push(await callStep('/api/media/cron/step2', s.id))

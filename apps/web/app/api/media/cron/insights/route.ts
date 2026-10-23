@@ -49,15 +49,6 @@ export async function GET(request: Request) {
   const startedAt = Date.now()
   const result = await refreshAllInsights({ deadlineAt: startedAt + INSIGHTS_WORK_BUDGET_MS })
 
-  // OPTIONAL rollout, disabled by default. No new cron, credential, schema or
-  // unattended Meta requests until operator explicitly enables this feature.
-  // The existing insight refresh and opportunity pass keep their own budgets.
-  const socialPublicationInsights = process.env.OMNIRA_SOCIAL_PUBLICATION_INSIGHTS_ENABLED !== 'true'
-    ? { status: 'disabled' as const, attempted: 0, written: 0 }
-    : Date.now() - startedAt >= INSIGHTS_OPPORTUNITIES_BUDGET_MS - 28_000
-      ? { status: 'time_budget_exhausted' as const, attempted: 0, written: 0 }
-      : await refreshSocialPublicationInstagramInsights({ deadlineAt: startedAt + INSIGHTS_OPPORTUNITIES_BUDGET_MS })
-
   // Fas 4: efter att insights uppdaterats, låt Atlas samla möjligheter (best-effort).
   let opportunities: OpportunitiesOutcome
   if (Date.now() - startedAt >= INSIGHTS_OPPORTUNITIES_BUDGET_MS) {
@@ -71,6 +62,15 @@ export async function GET(request: Request) {
       opportunities = { error: e instanceof Error ? redactSecrets(e.message) : 'okänt fel' }
     }
   }
+
+  // OPTIONAL rollout, disabled by default. Existing insights AND Atlas
+  // opportunity generation always run first; the new reader uses only the
+  // remaining budget and can never starve those established workflows.
+  const socialPublicationInsights = process.env.OMNIRA_SOCIAL_PUBLICATION_INSIGHTS_ENABLED !== 'true'
+    ? { status: 'disabled' as const, attempted: 0, written: 0 }
+    : Date.now() - startedAt >= INSIGHTS_OPPORTUNITIES_BUDGET_MS - 28_000
+      ? { status: 'time_budget_exhausted' as const, attempted: 0, written: 0 }
+      : await refreshSocialPublicationInstagramInsights({ deadlineAt: startedAt + INSIGHTS_OPPORTUNITIES_BUDGET_MS })
 
   const opportunitiesRan = 'detected' in opportunities
   const ok = result.complete && opportunitiesRan

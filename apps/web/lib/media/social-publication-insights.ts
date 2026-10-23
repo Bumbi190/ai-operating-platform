@@ -129,22 +129,18 @@ async function run(deps: Dependencies, options: SocialInsightsOptions): Promise<
         // media_insights already has UNIQUE(instagram_media_id). Avoid rewriting
         // another project's record or anything owned by the media_scripts job.
         const existing = await deps.db.from('media_insights')
-          .select('id, project_id, script_id')
+          .select('id, project_id, script_id, platform')
           .eq('instagram_media_id', row.provider_id)
           .maybeSingle()
         if (existing.error) continue
         if (existing.data && (existing.data.project_id !== binding.projectId ||
-          existing.data.script_id !== null)) continue
+          existing.data.script_id !== null || existing.data.platform !== 'instagram')) continue
 
         if (expired()) { skipped++; attempted--; continue }
         const response = await deps.fetch(row.provider_id, credential.credential.token)
         if (!response.ok || !response.metrics) continue
         const metrics = response.metrics
-        const { error: saveError } = await deps.db.from('media_insights').upsert({
-          project_id: binding.projectId,
-          script_id: null,
-          platform: 'instagram',
-          instagram_media_id: row.provider_id,
+        const counts = {
           // MISSING is null, never a fabricated zero.
           views: validCount(metrics.views),
           reach: validCount(metrics.reach),
@@ -153,10 +149,34 @@ async function run(deps: Dependencies, options: SocialInsightsOptions): Promise<
           likes: validCount(metrics.likes),
           comments: validCount(metrics.comments),
           total_interactions: validCount(metrics.total_interactions),
-          published_at: typeof row.updated_at === 'string' ? row.updated_at : null,
           fetched_at: new Date(deps.now()).toISOString(),
-        }, { onConflict: 'instagram_media_id' })
-        if (!saveError) written++
+        }
+        if (existing.data) {
+          // Atomic ownership predicate at WRITE time, not just a prior read.
+          // A concurrent project transfer/claim cannot be overwritten.
+          const { data: updated, error: saveError } = await deps.db.from('media_insights')
+            .update(counts)
+            .eq('id', existing.data.id)
+            .eq('project_id', binding.projectId)
+            .eq('instagram_media_id', row.provider_id)
+            .eq('platform', 'instagram')
+            .is('script_id', null)
+            .select('id')
+            .maybeSingle()
+          if (!saveError && updated?.id === existing.data.id) written++
+        } else {
+          // INSERT, never UPSERT: a concurrent unique-key claim must fail,
+          // not update a post belonging to another project or a script.
+          const { error: saveError } = await deps.db.from('media_insights').insert({
+            ...counts,
+            project_id: binding.projectId,
+            script_id: null,
+            platform: 'instagram',
+            instagram_media_id: row.provider_id,
+            published_at: typeof row.updated_at === 'string' ? row.updated_at : null,
+          })
+          if (!saveError) written++
+        }
       } catch {
         // No provider errors or credential details leave this function.
       }

@@ -192,7 +192,7 @@ describe('NAVIGATION CONTRACT — the canonical model is the only source', () =>
     // portfolio destination, not a list of user-specific projects. Other
     // desktop-only destinations like /revenue and /planning stay hidden.
     expect(mobile.map((i) => i.href)).toEqual([
-      '/dashboard', '/atlas', '/chat', '/build', '/projects', '/approvals', '/agent-activity', '/calendar', '/memory',
+      '/dashboard', '/atlas', '/chat', '/build', '/projects', '/approvals', '/agent-activity', '/calendar', '/memory', '/settings',
     ])
     expect(mobile.map((i) => i.href)).not.toContain('/revenue')
     expect(mobile.map((i) => i.href)).not.toContain('/planning')
@@ -236,6 +236,18 @@ describe('WIRING — the shell mounts it once, with the resolved generation', ()
 
   it('renders above the page canvas, so it cannot cover content', () => {
     expect(LAYOUT.indexOf('<ShellMobileNav')).toBeLessThan(LAYOUT.indexOf('relative z-content'))
+  })
+
+  it('resets an open native menu on pathname changes without another DOM wrapper', () => {
+    // The Next.js App Router reuses the shell between client navigations;
+    // changing a keyed Fragment remounts the native details in that shell.
+    expect(SHELL).toContain('Fragment key={pathname}')
+    expect(SHELL).not.toContain('<div key={pathname}')
+    const mobileLink = read('components/platform/vnext/MobileMenuLink.tsx')
+    expect(mobileLink).toContain("'use client'")
+    expect(mobileLink).toContain("closest('details')")
+    expect(mobileLink).toContain("removeAttribute('open')")
+    expect(MOBILE_NAV).not.toContain("'use client'")
   })
 
   it('keeps AtlasMobileNav a server component — the wrapper takes it as children', () => {

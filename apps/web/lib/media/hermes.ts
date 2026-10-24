@@ -88,10 +88,14 @@ export function isHermesConfigured(): boolean {
   return Boolean(HERMES_URL)
 }
 
-export async function checkHermesHealth(): Promise<boolean> {
+export async function checkHermesHealth(timeoutMs = 5_000): Promise<boolean> {
   if (!HERMES_URL) return false
   try {
-    const res = await fetch(`${HERMES_URL}/health`, { method: 'GET' })
+    const res = await fetch(`${HERMES_URL}/health`, {
+      method: 'GET',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(timeoutMs),
+    })
     return res.ok
   } catch {
     return false

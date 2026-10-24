@@ -93,6 +93,39 @@ test('persists planning responsibility and removes it when converting to a priva
  await page.getByRole('button',{name:'Spara',exact:true}).click();
  expect((await converted).postDataJSON().draft).not.toHaveProperty('responsibility');
 });
+test('links a project planning flow, follows its status and clears a link on project or responsibility changes',async({page,request})=>{
+ await request.post('/_test/reset',{data:{workflowLinks:true}});await open(page);await fillMeeting(page,'Sagan med Atlas');
+ await page.getByLabel('Typ',{exact:true}).selectOption('work_block');await page.getByLabel('Planerat ansvar').selectOption('atlas_planned');
+ await expect(page.getByLabel('Kopplat Atlas-flöde')).toBeDisabled();
+ await page.getByLabel('Projekt',{exact:false}).selectOption('10000000-0000-4000-8000-000000000001');
+ await page.getByLabel('Arbetsstatus').selectOption('done');
+ await page.getByLabel('Kopplat Atlas-flöde').selectOption('60000000-0000-4000-8000-000000000001');
+ await page.getByRole('button',{name:'Spara',exact:true}).click();await page.reload();
+ const entry=page.getByRole('button',{name:/Sagan med Atlas/});
+ await expect(entry).toContainText('Planeringsflöde');await entry.click();
+ await expect(page.getByLabel('Kopplat Atlas-flöde')).toHaveValue('60000000-0000-4000-8000-000000000001');
+ await expect(page.getByRole('link',{name:'Öppna planeringsflödet'})).toHaveAttribute('href','/releases');
+ await page.keyboard.press('Escape');
+ await request.post('/_test/workflow-state',{data:{state:'review'}});await page.reload();
+ await expect(entry.locator('[data-tone="review"]')).toBeVisible();
+ await request.post('/_test/workflow-state',{data:{state:'success'}});await page.reload();
+ await expect(entry).toContainText('Flödet avslutat');
+ await request.post('/_test/workflow-state',{data:{state:'missing'}});await page.reload();
+ await expect(entry).toContainText('Flödet behöver kontrolleras');await entry.click();
+ await expect(page.getByLabel('Kopplat Atlas-flöde')).toBeEnabled();
+ await expect(page.getByRole('link',{name:'Öppna planeringsflödet'})).toHaveCount(0);await page.keyboard.press('Escape');
+ await request.post('/_test/workflow-state',{data:{state:'waiting'}});await page.reload();
+ await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:/torsdag 22/}).click();await entry.click();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ if(process.env.CALENDAR_STATUS_SCREENSHOT_DIR)await page.screenshot({path:process.env.CALENDAR_STATUS_SCREENSHOT_DIR+'/kalender-flodeskoppling-390.png',fullPage:true});
+ await page.getByLabel('Projekt',{exact:false}).selectOption('');await expect(page.getByLabel('Kopplat Atlas-flöde')).toHaveValue('');
+ await page.getByLabel('Projekt',{exact:false}).selectOption('10000000-0000-4000-8000-000000000001');
+ await page.getByLabel('Kopplat Atlas-flöde').selectOption('60000000-0000-4000-8000-000000000001');
+ await page.getByLabel('Planerat ansvar').selectOption('self');
+ const saved=page.waitForRequest(r=>r.method()==='POST'&&r.url().endsWith('/api/calendar'));
+ await page.getByRole('button',{name:'Spara',exact:true}).click();expect((await saved).postDataJSON().draft).not.toHaveProperty('workflowInstanceId');
+});
+
 test('mobile clock and recurrence controls are usable without horizontal overflow',async({page})=>{
  await page.setViewportSize({width:390,height:844});await open(page);
  await page.getByRole('button',{name:'Ny händelse',exact:true}).click();

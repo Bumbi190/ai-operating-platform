@@ -10,6 +10,10 @@ export function calendarProgress(entry:CalendarEntry):CalendarProgress{
  // SQL published alone must not be presented as verified external delivery.
  if(entry.source.kind==='social'&&entry.status==='published')return state('review','Publicering behöver bekräftas');
  if(entry.manualEvent?.kind==='work_block'){
+  if(entry.manualEvent.responsibility==='atlas_planned'&&entry.manualEvent.workflowInstanceId){
+   const link=entry.linkedWorkflow;
+   return link?state(link.tone,link.label):state('review','Flödet behöver kontrolleras');
+  }
   const status=entry.manualEvent.workStatus;
   if(status==='done')return state('success','Klart');
   if(status==='in_progress')return state('waiting','Pågår');

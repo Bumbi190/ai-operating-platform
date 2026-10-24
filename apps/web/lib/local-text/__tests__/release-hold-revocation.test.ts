@@ -85,6 +85,25 @@ describe('authorized safety actions remain available under the real release hold
   expect(f.rpc).toHaveBeenCalledTimes(kind==='admission'?0:1)
   expect(f.admission).toHaveBeenCalledTimes(kind==='admission'?1:0)
  })
+ it.each(['array','boxed','coercing'])('refuses an entire inventory containing a %s device status without coercion',async kind=>{
+  const convert=vi.fn(()=>'active')
+  const status=kind==='array'?['active']:kind==='boxed'?new String('active'):{toString:convert}
+  f.rpc.mockResolvedValue({data:{kind:'applied',value:[revokedDevice,{...revokedDevice,deviceId:authorization,status}]},error:null})
+  const response=await handleOwnerDeviceRequest(new Request('https://omnira.test/api/local-text/devices?projectId='+project))
+  expect(response.status).toBe(503)
+  expect(await response.json()).toEqual({error:'LOCAL_TEXT_UNAVAILABLE'})
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store')
+  expect(convert).not.toHaveBeenCalled()
+  expect(f.rpc).toHaveBeenCalledTimes(1)
+ })
+ it.each(['pending','active','paused','revoked','lost','retired'])('preserves valid primitive device status %s without enabling dispatch',async status=>{
+  const receipt={...revokedDevice,status}
+  f.rpc.mockResolvedValue({data:{kind:'applied',value:[receipt]},error:null})
+  const response=await handleOwnerDeviceRequest(new Request('https://omnira.test/api/local-text/devices?projectId='+project))
+  expect(response.status).toBe(200)
+  expect(await response.json()).toEqual({enabled:false,devices:[receipt]})
+  expect(f.admission).not.toHaveBeenCalled()
+ })
  it('keeps owner device inventory readable while reporting enabled false',async()=>{
   f.rpc.mockResolvedValue({data:{kind:'applied',value:[revokedDevice]},error:null})
   const response=await handleOwnerDeviceRequest(new Request('https://omnira.test/api/local-text/devices?projectId='+project))

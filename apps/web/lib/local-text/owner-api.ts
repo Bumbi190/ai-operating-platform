@@ -11,7 +11,7 @@ const exact=(v:unknown,keys:string[]):v is Record<string,unknown>=>object(v)&&Ob
 const json=(value:unknown,status=200)=>NextResponse.json(value,{status,headers:{'Cache-Control':'private, no-store'}})
 const error=(status:number)=>json({error:status===401?'UNAUTHENTICATED':status===403?'FORBIDDEN':status===400?'INVALID_REQUEST':'LOCAL_TEXT_UNAVAILABLE'},status)
 const safeDevice=(v:unknown)=>{
- if(!object(v)||!isUuid(v.deviceId)||!isUuid(v.projectId)||!['pending','active','paused','revoked','lost','retired'].includes(String(v.status))||!Number.isSafeInteger(v.version)||Number(v.version)<1||!isSha256(v.fingerprint))throw Error('INVALID_DEVICE_RECEIPT')
+ if(!object(v)||!isUuid(v.deviceId)||!isUuid(v.projectId)||typeof v.status!=='string'||!['pending','active','paused','revoked','lost','retired'].includes(v.status)||!Number.isSafeInteger(v.version)||Number(v.version)<1||!isSha256(v.fingerprint))throw Error('INVALID_DEVICE_RECEIPT')
  return {deviceId:v.deviceId,projectId:v.projectId,status:v.status,version:v.version,fingerprint:v.fingerprint,...(typeof v.enrolled==='boolean'?{enrolled:v.enrolled}:{}),...(v.lastHeartbeatAt===null||typeof v.lastHeartbeatAt==='string'?{lastHeartbeatAt:v.lastHeartbeatAt}:{})}
 }
 export async function handleOwnerDeviceRequest(request:Request,deviceId?:string):Promise<NextResponse>{

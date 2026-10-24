@@ -26,7 +26,7 @@ export function calendarProgress(entry:CalendarEntry):CalendarProgress{
  return state('neutral','Status okänd');
 }
 export function calendarResponsibility(entry:CalendarEntry):string|null{
- if(entry.source.kind==='manual'&&entry.manualEvent?.kind==='work_block')return 'Du';
+ if(entry.source.kind==='manual'&&entry.manualEvent?.kind==='work_block')return entry.manualEvent.responsibility==='atlas_planned'?'Atlas – planerat':'Du';
  if(entry.source.kind==='workflow')return 'Atlas-flöde';
  if(entry.source.kind==='social'&&entry.source.jobId!==null)return 'Publiceringsflöde';
  return null;

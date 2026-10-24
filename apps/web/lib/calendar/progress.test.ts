@@ -14,6 +14,10 @@ describe('source-aware calendar progress',()=>{
   const e={...entry('scheduled'),source:{kind:'manual' as const,eventId:'e',version:1},manualEvent:{kind:'work_block',workStatus:'done'}} as CalendarEntry;
   expect(calendarProgress(e).tone).toBe('success');expect(calendarResponsibility(e)).toBe('Du');
  });
+ it('planning Atlas work does not claim a running or completed flow',()=>{
+  const e={...entry('scheduled'),source:{kind:'manual' as const,eventId:'e',version:1},manualEvent:{kind:'work_block',workStatus:'planned',responsibility:'atlas_planned'}} as CalendarEntry;
+  expect(calendarResponsibility(e)).toBe('Atlas – planerat');expect(calendarProgress(e)).toMatchObject({tone:'waiting',label:'Planerat'});
+ });
  it('pending time changes need review even when the old work is complete',()=>{const e=entry('complete');e.pendingChange={time:e.time,reviewHref:'/review'};expect(calendarProgress(e).tone).toBe('review')});
  it('cancelled entries stay neutral even with a pending proposal',()=>{const e=entry('cancelled');e.pendingChange={time:e.time,reviewHref:'/review'};expect(calendarProgress(e)).toMatchObject({tone:'neutral',needsAttention:false})});
  it('unrecognized states never imply success',()=>expect(calendarProgress(entry('future_state'))).toMatchObject({tone:'neutral',label:'Status okänd',needsAttention:false}));

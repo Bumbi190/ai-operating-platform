@@ -41,6 +41,7 @@ async function fillMeeting(page:any,title='Möte med Oscar'){
  await page.getByLabel('Titel',{exact:true}).fill(title);await page.getByLabel('Datum',{exact:true}).fill('2026-10-22');await setClock(page,'Starttid','14:00');
  await page.getByLabel('Ingen sluttid').uncheck();await page.getByLabel('Slutdatum',{exact:true}).fill('2026-10-22');await setClock(page,'Sluttid','15:00');
 }
+
 test('expanded clock stays inside event panel at desktop and narrow widths',async({page})=>{
  for(const width of [1024,525,390]){
   await page.setViewportSize({width,height:800});
@@ -60,6 +61,37 @@ test('expanded clock stays inside event panel at desktop and narrow widths',asyn
   await picker.getByRole('button',{name:'Klar'}).click();
   await expect(picker).toHaveCount(0);
  }
+});
+
+test('persists planning responsibility and removes it when converting to a private appointment',async({page})=>{
+ await open(page);await fillMeeting(page,'Planera sagan');
+ await page.getByLabel('Typ',{exact:true}).selectOption('work_block');
+ await expect(page.getByLabel('Planerat ansvar')).toHaveValue('self');
+ await page.getByLabel('Planerat ansvar').selectOption('atlas_planned');
+ await expect(page.getByRole('dialog')).toContainText('Startar inte automatiskt');
+ const saved=page.waitForRequest(r=>r.method()==='POST'&&r.url().endsWith('/api/calendar'));
+ await page.getByRole('button',{name:'Spara',exact:true}).click();
+ expect((await saved).postDataJSON().draft).toMatchObject({responsibility:'atlas_planned',workStatus:'planned'});
+ await page.reload();
+ const entry=page.getByRole('button',{name:/Planera sagan/});
+ await expect(entry).toContainText('Atlas – planerat');
+ for(const width of [1280,390]){
+  await page.setViewportSize({width,height:844});
+  if(width===390)await page.getByRole('button',{name:/torsdag 22/}).click();
+  await entry.click();await expect(page.getByLabel('Planerat ansvar')).toHaveValue('atlas_planned');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  if(process.env.CALENDAR_STATUS_SCREENSHOT_DIR)await page.screenshot({path:process.env.CALENDAR_STATUS_SCREENSHOT_DIR+'/kalender-ansvar-'+width+'.png',fullPage:true});
+  await page.keyboard.press('Escape');
+ }
+ await entry.click();
+ await page.getByLabel('Planerat ansvar').selectOption('self');
+ await page.getByRole('button',{name:'Spara',exact:true}).click();await entry.click();
+ await expect(page.getByLabel('Planerat ansvar')).toHaveValue('self');
+ await page.getByLabel('Typ',{exact:true}).selectOption('private');
+ await expect(page.getByLabel('Planerat ansvar')).toHaveCount(0);
+ const converted=page.waitForRequest(r=>r.method()==='POST'&&r.url().endsWith('/api/calendar'));
+ await page.getByRole('button',{name:'Spara',exact:true}).click();
+ expect((await converted).postDataJSON().draft).not.toHaveProperty('responsibility');
 });
 test('mobile clock and recurrence controls are usable without horizontal overflow',async({page})=>{
  await page.setViewportSize({width:390,height:844});await open(page);

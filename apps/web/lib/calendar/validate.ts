@@ -41,7 +41,7 @@ export function parseCalendarRange(input:unknown):CalendarRange {
  return {fromDate,toDateExclusive,timeZone:CALENDAR_TIME_ZONE};
 }
 export function parseCalendarDraft(input:unknown):CalendarEventDraft {
- calendarFields(input,['kind','title','description','location','projectId','taskId','time','workStatus','repeat']);
+ calendarFields(input,['kind','title','description','location','projectId','taskId','time','workStatus','repeat','responsibility']);
  if(input.kind!=='private'&&input.kind!=='work_block')invalid();
  if(typeof input.title!=='string'||!input.title.trim()||input.title.trim().length>150||/[\u0000-\u001f\u007f]/.test(input.title))invalid();
  for(const [key,max] of [['description',5000],['location',500]] as const){
@@ -53,7 +53,8 @@ export function parseCalendarDraft(input:unknown):CalendarEventDraft {
  if(input.taskId!==null)calendarId(input.taskId);
  if(input.taskId!==null&&input.projectId===null)invalid();
  if(input.kind==='private'?input.workStatus!==null:!['planned','in_progress','done'].includes(input.workStatus as string))invalid();
- return {kind:input.kind,title:input.title.trim(),description:input.description as string,location:input.location as string,projectId:input.projectId as string|null,taskId:input.taskId as string|null,time:parseCalendarTime(input.time),workStatus:input.workStatus as CalendarEventDraft['workStatus'],...(input.repeat===undefined?{}:{repeat:validateCalendarRepeat(input.repeat,(input.time as {kind:string;startDate?:string;startUtc?:string}).kind==='all_day'?(input.time as {startDate:string}).startDate:stockholmDate((input.time as {startUtc:string}).startUtc))})};
+ if(Object.prototype.hasOwnProperty.call(input,'responsibility')&&(input.kind!=='work_block'||!['self','atlas_planned'].includes(input.responsibility as string)))invalid();
+ return {...(input.responsibility===undefined?{}:{responsibility:input.responsibility as CalendarEventDraft['responsibility']}),kind:input.kind,title:input.title.trim(),description:input.description as string,location:input.location as string,projectId:input.projectId as string|null,taskId:input.taskId as string|null,time:parseCalendarTime(input.time),workStatus:input.workStatus as CalendarEventDraft['workStatus'],...(input.repeat===undefined?{}:{repeat:validateCalendarRepeat(input.repeat,(input.time as {kind:string;startDate?:string;startUtc?:string}).kind==='all_day'?(input.time as {startDate:string}).startDate:stockholmDate((input.time as {startUtc:string}).startUtc))})};
 }
 export function parseCalendarMutation(input:unknown):CalendarMutation {
  calendarFields(input,['operation','eventId','idempotencyKey','expectedVersion','draft']);

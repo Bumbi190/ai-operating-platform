@@ -22,7 +22,7 @@ export function CalendarEventPanel({state:s}:{state:CalendarWorkspaceState}){
  return <aside className={styles.panel} role="dialog" aria-modal="false" aria-labelledby="calendar-panel-title" ref={panel}>
   <div className={styles.panelTop}><div><p className={styles.eyebrow}>{social?'Publicering':s.selected?'Kalenderhändelse':'Ny kalenderhändelse'}</p><h2 id="calendar-panel-title">{s.selected?.title??'Boka en stund'}</h2></div><button type="button" aria-label="Stäng panel" className={styles.iconButton} onClick={s.closePanel}><X size={20}/></button></div>
   {s.selected&&<div className={styles.sourceSummary}><span>{calendarStatus(s.selected)}</span>{shownTime?.kind==='timed'?<p>{stockholmMinute(shownTime.startUtc).replace('T',' kl ')}{shownTime.endUtc?' – '+stockholmMinute(shownTime.endUtc).replace('T',' kl '):' · sluttid saknas'}</p>:shownTime?.kind==='all_day'?<p>Heldag från {shownTime.startDate}</p>:null}
-   {calendarResponsibility(s.selected)&&<p>Utförs av: {calendarResponsibility(s.selected)}</p>}
+   {calendarResponsibility(s.selected)&&<p>{manual?'Planerat ansvar':'Utförs av'}: {calendarResponsibility(s.selected)}</p>}
    {calendarProgress(s.selected).needsAttention&&<p>Öppna källan nedan för att granska läget och nästa steg.</p>}
    {s.selected.pendingChange&&<p>Föreslagen tid: {s.selected.pendingChange.time.kind==='timed'?stockholmMinute(s.selected.pendingChange.time.startUtc).replace('T',' kl '):s.selected.pendingChange.time.startDate}</p>}
   </div>}
@@ -31,9 +31,13 @@ export function CalendarEventPanel({state:s}:{state:CalendarWorkspaceState}){
    <fieldset disabled={s.editorSaving} style={{display:'contents'}}>
    {manual&&<>
     <label>Titel<input aria-label="Titel" maxLength={150} required value={f.title} onChange={e=>field('title',e.target.value)}/></label>
-    <label>Typ<select value={f.kind} onChange={e=>field('kind',e.target.value)}><option value="private">Privat möte</option><option value="work_block">Arbetsblock</option></select></label>
+    <label>Typ<select aria-label="Typ" value={f.kind} onChange={e=>field('kind',e.target.value)}><option value="private">Privat möte</option><option value="work_block">Arbetsblock</option></select></label>
     <label>Projekt<select value={f.projectId} onChange={e=>field('projectId',e.target.value)}><option value="">Utan projekt</option>{s.model.projects.map(project=><option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
     {f.kind==='work_block'&&<label>Arbetsstatus<select value={f.workStatus} onChange={e=>field('workStatus',e.target.value)}><option value="planned">Planerat</option><option value="in_progress">Pågår</option><option value="done">Klart</option></select></label>}
+    {f.kind==='work_block'&&<>
+     <label>Planerat ansvar<select aria-label="Planerat ansvar" value={f.responsibility} onChange={e=>field('responsibility',e.target.value)}><option value="self">Du</option><option value="atlas_planned">Atlas – planerat</option></select></label>
+     {f.responsibility==='atlas_planned'&&<p className={styles.help}>Startar inte automatiskt. Arbetsblocket planeras för Atlas; ett körbart flöde behöver kopplas in separat.</p>}
+    </>}
     <label className={styles.checkbox}><input type="checkbox" checked={f.allDay} onChange={e=>field('allDay',e.target.checked)}/>Heldag</label>
    </>}
    <div className={styles.formRow}><label>Datum<input aria-label="Datum" type="date" required value={f.startDate} onChange={e=>field('startDate',e.target.value)}/></label>{!f.allDay&&<CalendarTimePicker label="Starttid" value={f.startTime} onChange={value=>field('startTime',value)} disabled={s.editorSaving}/>}</div>
@@ -41,7 +45,7 @@ export function CalendarEventPanel({state:s}:{state:CalendarWorkspaceState}){
     {!f.allDay&&<label className={styles.checkbox}><input type="checkbox" checked={f.noEnd} onChange={e=>field('noEnd',e.target.checked)}/>Ingen sluttid</label>}
     {(f.allDay||!f.noEnd)&&<div className={styles.formRow}><label>{f.allDay?'Sista dag':'Slutdatum'}<input aria-label={f.allDay?'Sista dag':'Slutdatum'} type="date" required value={f.endDate} onChange={e=>field('endDate',e.target.value)}/></label>{!f.allDay&&<CalendarTimePicker label="Sluttid" value={f.endTime} onChange={value=>field('endTime',value)} disabled={s.editorSaving}/>}</div>}
     <label>Upprepning<select aria-label="Upprepning" value={f.repeat} onChange={e=>field('repeat',e.target.value)}><option value="none">Ingen</option><option value="daily">Varje dag</option><option value="weekly">Varje vecka</option></select></label>
-    {f.repeat!=='none'&&<><label>Upprepa till (valfritt)<input aria-label="Upprepa till" type="date" min={f.startDate} value={f.repeatUntil} onChange={e=>field('repeatUntil',e.target.value)}/></label><button type="button" className={styles.secondaryButton} disabled={s.editorSaving||stockholmDate(new Date().toISOString())<f.startDate} onClick={()=>field('repeatUntil',stockholmDate(new Date().toISOString()))}>Avsluta upprepning efter idag</button><p className={styles.help}>Tidigare tillfällen behålls. Spara för att avsluta serien. Välj Ingen om du vill göra om den till ett engångsmöte.</p></>}
+    {f.repeat!=='none'&&<><label>Upprepa till (valfritt)<input aria-label="Upprepa till" type="date" min={f.startDate} value={f.repeatUntil} onChange={e=>field('repeatUntil',e.target.value)}/></label><button type="button" className={styles.secondaryButton} disabled={s.editorSaving||stockholmDate(new Date().toISOString())<f.startDate} onClick={()=>field('repeatUntil',stockholmDate(new Date().toISOString()))}>Avsluta upprepning efter idag</button><p className={styles.help}>Ändringar gäller hela serien, även planerat ansvar. Tidigare tillfällen behålls. Spara för att avsluta serien. Välj Ingen om du vill göra om den till ett engångsmöte.</p></>}
     <label>Plats<input maxLength={500} value={f.location} onChange={e=>field('location',e.target.value)}/></label>
     <label>Anteckning<textarea rows={4} maxLength={5000} value={f.description} onChange={e=>field('description',e.target.value)}/></label>
    </>}

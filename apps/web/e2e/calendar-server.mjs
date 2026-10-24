@@ -41,7 +41,7 @@ server.middlewares.use(async(req,res,next)=>{
    const key=user+':'+input.idempotencyKey;if(receipts.has(key))return json(res,receipts.get(key));
    const events=users.get(user)??empty(),old=events.get(input.eventId);
    if(input.operation!=='create'&&(!old||old.version!==input.expectedVersion))return json(res,{ok:false,code:'CONFLICT'},409);
-   const event=input.operation==='create'?seedEvent(input.eventId,input.draft.title,input.draft.time,input.draft):{...old,...(input.operation==='update'?input.draft:{}),status:input.operation==='cancel'?'cancelled':input.operation==='restore'?'scheduled':old.status,version:old.version+1};
+   const event=input.operation==='create'?seedEvent(input.eventId,input.draft.title,input.draft.time,input.draft):{...(input.operation==='update'?{...input.draft,id:old.id,createdAt:old.createdAt,updatedAt:old.updatedAt}:old),status:input.operation==='cancel'?'cancelled':input.operation==='restore'?'scheduled':old.status,version:old.version+1};
    events.set(event.id,event);users.set(user,events);const local=event.time.kind==='all_day'?event.time.startDate:new Intl.DateTimeFormat('sv-SE',{timeZone:zone}).format(new Date(event.time.startUtc));const d=new Date(local+'T00:00:00Z');d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);
    const receipt={ok:true,mutationId:randomUUID(),event,calendarHref:'/calendar?week='+d.toISOString().slice(0,10)};receipts.set(key,receipt);return json(res,receipt);
   }

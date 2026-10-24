@@ -9,6 +9,38 @@ async function linkedProductionMeeting(page:any,request:any){
  await page.getByRole('button',{name:'Spara',exact:true}).click();
  await page.getByRole('button',{name:/Sagoarbetet/}).click();
 }
+test('requires explicit bounded consent, retries the same approval and recovers its receipt after reload',async({page,request})=>{
+ const requestId='40000000-0000-4000-8000-000000000001',runId='50000000-0000-4000-8000-000000000001',reviewedHash='a'.repeat(64);
+ const approved:any[]=[];let started=false;
+ const receipt={requestId,runId,status:'pending',replayed:true};
+ await page.route('**/api/calendar/production-preview?**',route=>route.fulfill({json:{ok:true,preview:productionPreview}}));
+ await page.route('**/api/calendar/production-start',async route=>{
+  const body=route.request().postDataJSON();
+  if(body.operation==='status')return route.fulfill({json:{ok:true,receipt:started?receipt:null}});
+  if(body.operation==='prepare')return route.fulfill({json:{ok:true,review:{requestId,reviewedHash,expiresAt:'2026-10-25T12:00:00Z',provider:'anthropic',model:'claude-sonnet-4-6',maximumSek:'7.1234',month:'2026-11',theme:'Löv- & Skuggmånaden',receipt:null}}});
+  approved.push(body);started=true;
+  return route.fulfill(approved.length===1?{status:503,json:{ok:false,code:'unavailable'}}:{json:{ok:true,receipt}});
+ });
+ await linkedProductionMeeting(page,request);await page.setViewportSize({width:390,height:844});
+ await page.getByRole('button',{name:'Granska produktionsjobb'}).click();
+ const consent=page.getByRole('region',{name:'Körgodkännande'});
+ await consent.getByRole('button',{name:'Förbered körgodkännande'}).click();
+ await expect(consent).toContainText('7,1234 kr');await expect(consent).toContainText('claude-sonnet-4-6');
+ const start=consent.getByRole('button',{name:'Godkänn och starta'});await expect(start).toBeDisabled();expect(approved).toHaveLength(0);
+ await consent.getByRole('checkbox').check();
+ if(process.env.CALENDAR_STATUS_SCREENSHOT_DIR)await page.screenshot({path:process.env.CALENDAR_STATUS_SCREENSHOT_DIR+'/kalender-korgodkannande-390.png',fullPage:true});
+ await start.click();await expect(consent.getByRole('alert')).toContainText('samma jobb');await start.click();
+ await expect(consent).toContainText('Godkänt och lagt i kö');expect(approved).toHaveLength(2);expect(approved[0]).toEqual(approved[1]);
+ await expect(consent.getByRole('button',{name:'Godkänn och starta'})).toHaveCount(0);
+ await page.reload();await page.getByRole('button',{name:/torsdag 22/}).click();await page.getByRole('button',{name:/Sagoarbetet/}).click();
+ await page.getByRole('button',{name:'Granska produktionsjobb'}).click();
+ await expect(consent).toContainText('Godkänt och lagt i kö');expect(approved).toHaveLength(2);
+ receipt.status='needs_review';await consent.getByRole('button',{name:'Uppdatera jobbstatus'}).click();
+ await expect(consent).toContainText('Resultatet är osäkert');await expect(consent.getByRole('button',{name:'Granska en ny körning'})).toHaveCount(0);
+ receipt.status='failed';await consent.getByRole('button',{name:'Uppdatera jobbstatus'}).click();
+ await expect(consent.getByRole('button',{name:'Granska en ny körning'})).toBeVisible();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
 test('reviews a saved story job on mobile, retries a failed read and hides it after an unsaved link change',async({page,request})=>{
  let count=0;
  await page.route('**/api/calendar/production-preview?**',async route=>{

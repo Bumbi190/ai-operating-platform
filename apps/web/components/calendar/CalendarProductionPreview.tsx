@@ -2,6 +2,7 @@
 import {useEffect,useRef,useState} from 'react';
 import type {CalendarProductionPreview,ProductionRequirement} from '@/lib/calendar/production-preview-types';
 import styles from './Calendar.module.css';
+import {CalendarStoryStart} from './CalendarStoryStart';
 const requirements:Record<ProductionRequirement,string>={
  supported_contract:'Flödet behöver en stödd sagoplan. Öppna planeringsflödet för att kontrollera version och månad.',
  active_instance:'Flödet är avslutat. Ett aktivt flöde behövs för nytt arbete.',
@@ -32,7 +33,7 @@ export function CalendarProductionPreview({projectId,instanceId}:{projectId:stri
   {error&&<p role="alert">Produktionsjobbet kunde inte hämtas. Försök igen.</p>}
   {preview&&<div>
    <h3>{preview.title}</h3>
-   <p>Förhandsgranskning. Kalenderns arbetstid är en planerad tid; inget jobb startas här.</p>
+   <p>Att öppna granskningen startar inget jobb. Kalenderns arbetstid är en planerad tid och ändrar inte körschemat.</p>
    {preview.brief&&<>
     <p><strong>{preview.brief.month} · {preview.brief.theme}</strong></p>
     <p>{preview.brief.language} · {preview.brief.audience.min_age}–{preview.brief.audience.max_age} år</p>
@@ -40,9 +41,10 @@ export function CalendarProductionPreview({projectId,instanceId}:{projectId:stri
    </>}
    {preview.state&&<p>Aktuellt steg: {preview.state}</p>}
    {preview.checks.length>0&&<><h4>Resultatkontroller</h4><ul>{preview.checks.map(check=><li key={check.key}>{check.label}: {check.status==='satisfied'?'bekräftat':check.status==='pending'?'väntar på resultat':'behöver kontrolleras'}</li>)}</ul></>}
-   <p>Kostnad: ännu inte fastställd.</p>
+   <p>Slutkostnad: ännu inte fastställd.</p>
    <h4>Före körning</h4><ul>{preview.requirements.map(key=><li key={key}>{requirements[key]}</li>)}</ul>
-   <p>Körgodkännande och start från kalendern är ännu inte tillgängliga. Sagan behöver också granskas före fortsatt produktion och publicering.</p>
+   <p>Sagan behöver också granskas före fortsatt produktion och publicering.</p>
+   {preview.brief&&<CalendarStoryStart projectId={projectId} instanceId={instanceId}/>}
   </div>}
  </section>;
 }

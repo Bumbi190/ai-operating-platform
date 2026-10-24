@@ -35,12 +35,13 @@ import type { StoryTextProvider } from './provider'
  * the environment: which model writes the product is a policy decision, and an
  * env override would move it outside review.
  */
-export const STORY_MODEL = 'claude-sonnet-4-6' as const
+import {STORY_MODEL,STORY_MAX_TOKENS} from './dispatch-contract'
+export {STORY_MODEL,STORY_MAX_TOKENS} from './dispatch-contract'
 
 /** Generous enough for 18 pages of Swedish, bounded so the estimate is real. */
-export const STORY_MAX_TOKENS = 4096
 
 export interface AnthropicStoryProviderInput {
+  readonly approvedStoryMaximumSek?: number
   readonly projectId: string
   readonly execution: ExecutionContract
   /** The run's execution identity. Becomes the single reservation's key. */
@@ -129,6 +130,7 @@ export function anthropicStoryProvider(
         // THE single reservation's key. Without it this adapter would reserve
         // per call rather than per intent, which is the defect 2B-2.6 closed.
         idempotencyKey: input.idempotencyKey,
+        approvedMaximumSek: input.approvedStoryMaximumSek,
       })
 
       // Past this line the request is in flight, or may be.

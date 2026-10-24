@@ -474,7 +474,9 @@ describe('D. exactly one effect was enabled', () => {
   it('D5 — MUTATION: the model is not caller- or env-configurable', () => {
     const src = readFileSync(
       join(process.cwd(), 'lib/workflows/story/anthropic-provider.ts'), 'utf8')
-    expect(src).toMatch(/export const STORY_MODEL = 'claude-sonnet-4-6' as const/)
+    const contract=readFileSync(join(process.cwd(),'lib/workflows/story/dispatch-contract.ts'),'utf8')
+    expect(contract).toMatch(/export const STORY_MODEL = 'claude-sonnet-4-6' as const/)
+    expect(src).toContain("from './dispatch-contract'")
     expect(src).not.toMatch(/model:\s*(input|ctx|opts)\./)
   })
 })

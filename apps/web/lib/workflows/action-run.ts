@@ -34,6 +34,7 @@ import { summarizeStateEvidence } from './evidence-consumption'
 import { findAdapter } from './adapters/registry'
 import { checkAnsweredBy } from './action-discovery'
 import { deferredStoryOutputChecks } from './action-prerequisites'
+import {humanStoryReadiness,HumanStoryAuthorizationError} from './story/human-readiness'
 import { evidenceTargetHashFor } from './evidence-binding'
 import { isSpendGateEnforced } from '@/lib/cost/spend-gate-flag'
 import { isFinancialExecutionEnabled } from '@/lib/governance/financial-execution-flag'
@@ -426,6 +427,8 @@ export type ActionReadinessBlocker =
   | 'cancel_requested'
 
 export interface ActionReadiness {
+  /** Present only after verifying immutable, individually human-granted scope. */
+  approvedStoryMaximumSek?: number
   ready: boolean
   blockers: ActionReadinessBlocker[]
   /**
@@ -450,9 +453,10 @@ const DRIFT: ActionReadinessBlocker[] = [
  */
 export async function assertWorkflowActionReady(db: AnyDb, runId: string): Promise<ActionReadiness> {
   const blockers: ActionReadinessBlocker[] = []
+  let approvedStoryMaximumSek:number|undefined
   const { data: run } = await db.from('runs')
     .select('id, project_id, status, cancel_requested, workflow_instance_id, workflow_def_hash, '
-          + 'workflow_from_state, action_kind, action_class, target_version_hash, authorization_id, attempt_group')
+          + 'workflow_from_state, action_kind, action_class, target_version_hash, authorization_id, attempt_group, human_story_request_id')
     .eq('id', runId).maybeSingle()
 
   if (!run || !run.workflow_instance_id) {
@@ -498,6 +502,10 @@ export async function assertWorkflowActionReady(db: AnyDb, runId: string): Promi
     // A write-capable action with no authorization id is not merely unverified;
     // it should not exist, and the DB refuses it. Treat it as ineffective.
     if (!run.authorization_id) blockers.push('authorization_not_effective')
+    else if(run.human_story_request_id){
+      // The scoped human branch proves immutable provenance, current owner,
+      // target AND live ledger authority below. Never an ambient-session read.
+    }
     else if (lookupAction(run.action_kind)?.executor_family === 'governed_effect') {
       // ── The split (Phase 2B-2.5) ───────────────────────────────────────────
       // An EFFECT needs permission to ACT, which is a different decision from
@@ -546,14 +554,20 @@ export async function assertWorkflowActionReady(db: AnyDb, runId: string): Promi
       })
       // Evidence is part of the payload, so new or changed evidence moves the
       // hash — reported as target drift, which is what it is.
-      if (target.versionHash !== run.target_version_hash) blockers.push('target_drifted')
-    } catch {
-      blockers.push('target_drifted')
+      let expectedHash=target.versionHash
+      if(run.human_story_request_id){
+        const human=await humanStoryReadiness(db,run,instance,target.versionHash)
+        expectedHash=human.targetHash;approvedStoryMaximumSek=human.maximumSek
+      }
+      if (expectedHash !== run.target_version_hash) blockers.push('target_drifted')
+    } catch (error) {
+      blockers.push(error instanceof HumanStoryAuthorizationError?'authorization_not_effective':'target_drifted')
     }
   }
 
   const terminal = blockers.some(b => DRIFT.includes(b))
   return {
+    ...(approvedStoryMaximumSek===undefined?{}:{approvedStoryMaximumSek}),
     ready: blockers.length === 0,
     blockers, terminal,
     detail: blockers.length === 0 ? 'bound action is ready' : `blocked: ${blockers.join(', ')}`,

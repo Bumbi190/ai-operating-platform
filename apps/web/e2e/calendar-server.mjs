@@ -31,6 +31,9 @@ server.middlewares.use(async(req,res,next)=>{
   if(url.pathname==='/_test/delay'){delayDate=input.date;delayMs=input.ms??400;}
   return json(res,{ok:true});
  }
+ if(url.pathname==='/api/calendar/production-start'){
+  const input=await body(req);return json(res,input.operation==='status'?{ok:true,receipt:null}:{ok:false,code:'configuration'},input.operation==='status'?200:409);
+ }
  if(url.pathname==='/api/calendar'){
   if(req.method==='GET'){
    const from=url.searchParams.get('fromDate'),to=url.searchParams.get('toDateExclusive'),snapshot=calendarModel(user,from,to);

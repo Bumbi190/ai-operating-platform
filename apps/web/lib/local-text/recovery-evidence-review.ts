@@ -82,7 +82,8 @@ export function assessHistoricalLocalTextEvidence(
   }
   if(candidate===null || candidate===undefined) return finding('CANDIDATE_RECEIPT_MISSING')
   if(!obj(candidate) || !validBindings(candidate) ||
-     !['completed','known_failed','not_dispatched'].includes(String(candidate.outcome)) ||
+     typeof candidate.outcome!=='string' ||
+     !['completed','known_failed','not_dispatched'].includes(candidate.outcome) ||
      !sha(candidate.signedReceiptHash) ||
      typeof candidate.claimedSigner!=='string' ||
      candidate.claimedSigner.length<1 || candidate.claimedSigner.length>128) {

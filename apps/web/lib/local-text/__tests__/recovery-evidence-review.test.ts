@@ -80,6 +80,54 @@ describe('pure local inference reconciliation evidence: no recovery authority',(
     expect(decision.historicalIncidentResolved).toBe(false)
     expect('verified' in decision).toBe(false)
   })
+  it.each([
+    ['array', ['completed']],
+    ['boxed string', new String('completed')],
+    ['coercible object', {toString:():string=> 'completed'}],
+  ])('rejects a non-string outcome instead of coercing it: %s', (_name,outcome)=>{
+    expect(assess(canonical,{...candidate,outcome})).toMatchObject({
+      finding:'INVALID_CANDIDATE_RECEIPT',candidateStructurallyMatches:false,
+      cryptographicSignatureVerified:false,historicalIncidentResolved:false,
+      mayRetry:false,mayResume:false,mayEnroll:false,
+    })
+  })
+  it('does not execute a caller-supplied outcome conversion',()=>{
+    const outcome={toString:():never=>{throw new Error('UNTRUSTED_CONVERSION_EXECUTED')}}
+    expect(assess(canonical,{...candidate,outcome}).finding).toBe('INVALID_CANDIDATE_RECEIPT')
+  })
+  it.each([
+    {original:null,receipt:candidate,finding:'CANONICAL_ATTEMPT_NOT_RETAINED',matches:false},
+    {original:{...canonical,state:'completed'},receipt:candidate,finding:'INVALID_CANONICAL_RECORD',matches:false},
+    {original:canonical,receipt:null,finding:'CANDIDATE_RECEIPT_MISSING',matches:false},
+    {original:canonical,receipt:{...candidate,outcome:['completed']},finding:'INVALID_CANDIDATE_RECEIPT',matches:false},
+    {original:canonical,receipt:{...candidate,projectId:uuid(99)},finding:'BOUND_IDENTITY_MISMATCH',matches:false},
+    {original:canonical,receipt:candidate,finding:'INDEPENDENT_VERIFICATION_REQUIRED',matches:true},
+  ])('keeps all authority denied for $finding', ({original,receipt,finding,matches})=>{
+    const decision=assessHistoricalLocalTextEvidence(original,receipt)
+    expect(decision).toEqual({
+      finding,candidateStructurallyMatches:matches,
+      cryptographicSignatureVerified:false,independentHumanReviewRequired:true,
+      historicalIncidentResolved:false,mayRetry:false,mayResume:false,mayEnroll:false,
+    })
+    expect(Object.isFrozen(decision)).toBe(true)
+  })
+  it('does not accumulate authority from repeated receipts or restore expired canonical evidence',()=>{
+    for(let i=0;i<3;i++) {
+      expect(assess(canonical,candidate)).toMatchObject({
+        finding:'INDEPENDENT_VERIFICATION_REQUIRED',cryptographicSignatureVerified:false,
+        historicalIncidentResolved:false,mayRetry:false,mayResume:false,mayEnroll:false,
+      })
+    }
+    expect(assess(null,candidate)).toMatchObject({
+      finding:'CANONICAL_ATTEMPT_NOT_RETAINED',candidateStructurallyMatches:false,
+      cryptographicSignatureVerified:false,historicalIncidentResolved:false,
+      mayRetry:false,mayResume:false,mayEnroll:false,
+    })
+    expect(assess(canonical,[candidate,candidate])).toMatchObject({
+      finding:'INVALID_CANDIDATE_RECEIPT',candidateStructurallyMatches:false,
+      mayRetry:false,mayResume:false,mayEnroll:false,
+    })
+  })
   it('returns no caller-provided identifiers, hashes, raw texts or secrets',()=>{
     const decision=assess(canonical,candidate)
     const text=JSON.stringify(decision)

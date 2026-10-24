@@ -126,7 +126,7 @@ export const VNEXT_NAV: readonly VNextNavGroup[] = [
     label: 'System',
     items: [
       { id: 'system', label: 'System', href: '/system', icon: Cpu, desktop: true, mobile: false },
-      { id: 'settings', label: 'Inställningar', href: '/settings', icon: Settings, desktop: true, mobile: false },
+      { id: 'settings', label: 'Inställningar', href: '/settings', icon: Settings, desktop: true, mobile: true },
     ],
   },
 ]

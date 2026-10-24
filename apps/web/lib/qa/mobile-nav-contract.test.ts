@@ -38,12 +38,12 @@ describe('mobile nav · portfolio quick jump', () => {
       .map((id) => resolveDestination(id as never)!.href)
     const current = vnextNavItemsFor('mobile').map((i) => i.href)
     expect(original.every((href) => current.includes(href))).toBe(true)
-    expect(original).toEqual(current.filter((href) => href !== '/projects' && href !== '/build' && href !== '/dashboard' && href !== '/calendar'))
+    expect(original).toEqual(current.filter((href) => href !== '/projects' && href !== '/build' && href !== '/dashboard' && href !== '/calendar' && href !== '/settings'))
   })
 
   it('includes the builder and portfolio index, never an individual project', () => {
     expect(vnextNavItemsFor('mobile').map((i) => i.href)).toEqual([
-      '/dashboard', '/atlas', '/chat', '/build', '/projects', '/approvals', '/agent-activity', '/calendar', '/memory',
+      '/dashboard', '/atlas', '/chat', '/build', '/projects', '/approvals', '/agent-activity', '/calendar', '/memory', '/settings',
     ])
     expect(vnextNavItemsFor('mobile').map((i) => i.href).filter((href) => href.startsWith('/projects/'))).toEqual([])
   })
@@ -53,6 +53,12 @@ describe('mobile nav · portfolio quick jump', () => {
     expect(index).toContain('loadAtlasHomeViewModel()')
     expect(index).toContain('composeAtlasRailCards(model.projects)')
     expect(index).toContain('<ProjectCoverGallery cards={cards} projectsAvailable={projectsAvailable} />')
+  })
+
+  it('exposes Inställningar as one accessible mobile link', () => {
+    const markup = renderToStaticMarkup(createElement(AtlasMobileNav))
+    expect(markup).toMatch(/href="\/settings"[^>]*>Inställningar<\/a>/)
+    expect(markup.match(/href="\/settings"/g)).toHaveLength(1)
   })
 
   it('renders one actual, tappable Projekt link in the mobile header', () => {
@@ -65,7 +71,7 @@ describe('mobile nav · portfolio quick jump', () => {
 describe('mobile nav · identity is now canonical', () => {
   it('uses the desktop labels, including the portfolio quick jump', () => {
     expect(vnextNavItemsFor('mobile').map((i) => i.label)).toEqual([
-      'Översikt', 'Atlas', 'Chat', 'Bygg med Atlas', 'Projekt', 'Granskningar', 'Aktivitet', 'Kalender', 'Minne',
+      'Översikt', 'Atlas', 'Chat', 'Bygg med Atlas', 'Projekt', 'Granskningar', 'Aktivitet', 'Kalender', 'Minne', 'Inställningar',
     ])
   })
 
@@ -87,11 +93,17 @@ describe('mobile nav · identity is now canonical', () => {
 })
 
 describe('mobile nav · scope was not broadened', () => {
+  it('keeps desktop-only work areas hidden while exposing operator settings', () => {
+    const mobile = vnextNavItemsFor('mobile').map(item => item.href)
+    expect(mobile).toContain('/settings')
+    expect(mobile).not.toContain('/system')
+  })
+
   it('excludes every desktop-only destination', () => {
     const mobile = new Set(vnextNavItemsFor('mobile').map((i) => i.href))
     for (const href of [
       '/planning', '/atlas/marketing', '/atlas/content',
-      '/revenue', '/system', '/settings', '/intelligence/graph',
+      '/revenue', '/system', '/intelligence/graph',
     ]) {
       expect(mobile.has(href)).toBe(false)
     }

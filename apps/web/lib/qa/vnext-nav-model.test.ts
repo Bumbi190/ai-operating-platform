@@ -105,7 +105,7 @@ describe('vnext nav · surface filtering is layout, not authorization', () => {
 
   it('mobile is a deliberate subset, not a copy', () => {
     const mobile = vnextNavItemsFor('mobile').map((i) => i.href)
-    expect(mobile).toEqual(['/dashboard', '/atlas', '/chat', '/build', '/projects', '/approvals', '/agent-activity', '/calendar', '/memory'])
+    expect(mobile).toEqual(['/dashboard', '/atlas', '/chat', '/build', '/projects', '/approvals', '/agent-activity', '/calendar', '/memory', '/settings'])
     expect(mobile.length).toBeLessThan(vnextNavItems().length)
   })
 
@@ -121,7 +121,7 @@ describe('vnext nav · surface filtering is layout, not authorization', () => {
   })
 
   it('drops empty groups per surface rather than rendering a bare heading', () => {
-    expect(vnextNavGroupsFor('mobile').map((g) => g.id)).toEqual(['atlas', 'arbete', 'intelligens'])
+    expect(vnextNavGroupsFor('mobile').map((g) => g.id)).toEqual(['atlas', 'arbete', 'intelligens', 'system'])
     expect(vnextNavGroupsFor('desktop').map((g) => g.id)).toEqual(VNEXT_NAV.map((g) => g.id))
   })
 

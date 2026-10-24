@@ -340,7 +340,8 @@ export async function GET(request: Request) {
   // left (skip when >30s elapsed). Bounded to 10s either way (was 30s).
   if (isHermesConfigured() && articleUrl && Date.now() - t0 < 30_000) {
     console.log(`[cron/step1] Reading full article via Hermes: ${articleUrl}`)
-    const read = await withTimeout(callHermesRead(articleUrl), 10_000, null)
+    // Abort the HTTP request too; racing alone left it alive for 30 seconds.
+    const read = await withTimeout(callHermesRead(articleUrl, 10_000), 10_000, null)
     if (read?.success && read.word_count > 100) {
       fullArticleText = read.text
       console.log(`[cron/step1] Got ${read.word_count} words from article`)

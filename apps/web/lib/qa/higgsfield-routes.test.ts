@@ -7,6 +7,7 @@ vi.mock('../auth/platform-operator',()=>({resolvePlatformOperator:h.operator}))
 vi.mock('../auth/project-access',()=>({resolveProjectAccess:h.access,assertProjectAllowed:(p:string,ids:string[])=>ids.includes(p)}))
 vi.mock('../media/higgsfield/oauth',()=>({createHiggsfieldOAuthService:()=>({begin:h.begin,finish:h.finish})}))
 vi.mock('../media/higgsfield/readiness',()=>({readHiggsfieldConnectionStatus:h.status,inspectHiggsfield:h.inspect,disconnectHiggsfield:h.disconnect}))
+import {HiggsfieldError} from '../media/higgsfield/types'
 import {POST as start} from '../../app/api/media/higgsfield/oauth/start/route'
 import {GET as callback} from '../../app/api/media/higgsfield/oauth/callback/route'
 import {GET as status} from '../../app/api/media/higgsfield/status/route'
@@ -47,6 +48,20 @@ describe('Higgsfield routes real handlers',()=>{
  it('redacts provider errors',async()=>{
   h.begin.mockRejectedValue(Error('private-refresh-token'))
   const r=await start(post());expect(r.status).toBe(503);expect(await r.text()).not.toContain('private-refresh-token')
+ })
+ it('emits a closed inspection stage without logging or serializing provider exceptions',async()=>{
+  const warn=vi.spyOn(console,'warn').mockImplementation(()=>{})
+  try{
+   h.inspect.mockRejectedValueOnce(new HiggsfieldError('unsupported_server_schema','model'))
+   const failure=await inspect(post())
+   expect(failure.status).toBe(503)
+   expect(await failure.json()).toEqual({ok:false,error:'unsupported_server_schema',stage:'model'})
+   h.inspect.mockRejectedValueOnce(Error('PRIVATE_REFRESH_TOKEN'))
+   expect(await (await inspect(post())).json()).toEqual({ok:false,error:'provider_unavailable'})
+   expect(warn).toHaveBeenCalledWith('[higgsfield-inspect] read_failed',{code:'unsupported_server_schema',stage:'model'})
+   expect(warn).toHaveBeenCalledWith('[higgsfield-inspect] read_failed',{code:'provider_unavailable',stage:'unknown'})
+   expect(JSON.stringify(warn.mock.calls)).not.toContain('PRIVATE_REFRESH_TOKEN')
+  }finally{warn.mockRestore()}
  })
  it('reads status and valid zero balance',async()=>{
   const r=await status(new Request(base+'/api/test?project_id='+h.project))

@@ -52,7 +52,9 @@ export function createHiggsfieldReadiness(store:HiggsfieldStore=createHiggsfield
    }
    if(!current.expiresAt||current.expiresAt<=Date.now()+30000)await refresh()
    async function run() {
-    const client=await open(current,deadline)
+    let client:ReadOnlyMcpClient
+    try{client=await open(current,deadline)}
+    catch(e){throw new HiggsfieldError(e instanceof HiggsfieldError?e.code:'provider_unavailable','connect')}
     try{return await inspectReadOnlyClient(client)}finally{await client.close().catch(()=>{})}
    }
    let result
@@ -62,7 +64,7 @@ export function createHiggsfieldReadiness(store:HiggsfieldStore=createHiggsfield
    }
    // Do not report a live connection after a concurrent disconnect.
    const final=await store.readConnection(projectId)
-   if(final?.connection_version!==row.connection_version||final.status!=='connected')throw new HiggsfieldError('connection_changed')
+   if(final?.connection_version!==row.connection_version||final.status!=='connected')throw new HiggsfieldError('connection_changed','consistency')
    return {...safe(final),...result,observedAt:new Date().toISOString()}
   },
   async disconnect(projectId:string) {

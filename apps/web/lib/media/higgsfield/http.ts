@@ -7,7 +7,11 @@ import {HIGGSFIELD_CALLBACK_PATH} from './config'
 export function json(value:unknown,status=200){return NextResponse.json(value,{status,headers:{'Cache-Control':'no-store'}})}
 export function refusal(error:unknown){
  const code=error instanceof HiggsfieldError?error.code:'provider_unavailable'
- return json({ok:false,error:code},code==='access_denied'?403:code==='state_invalid'?400:503)
+ // Stage values are a closed list authored by Omnira; never serialize raw
+ // provider/SDK messages, OAuth fields or unknown exception properties.
+ const safeStages=['connect','list_tools','tool_schema','balance','model','quote','consistency']
+ const stage=error instanceof HiggsfieldError&&error.stage&&safeStages.includes(error.stage)?error.stage:null
+ return json({ok:false,error:code,...(stage?{stage}:{})},code==='access_denied'?403:code==='state_invalid'?400:503)
 }
 export async function authorize() {
  const operator=await resolvePlatformOperator()

@@ -21,6 +21,8 @@ export interface WorkerEvidence {
   readonly observedAtMs: number
   /** Local inference must be proved by a successful smoke test. */
   readonly inferenceSmokePassed?: boolean
+  /** Attested, fresh host RAM/VRAM/temperature gate; distinct from inference success. */
+  readonly localResourcePreflightPassed?: boolean
   /** For paid/subscription harnesses, login alone is not a quota guarantee. */
   readonly entitlement?: 'available' | 'exhausted' | 'unknown'
   readonly authenticated?: boolean
@@ -59,6 +61,7 @@ export type RejectReason =
   | 'external_processing_forbidden'
   | 'unverified_or_stale_health'
   | 'local_inference_not_proven'
+  | 'local_resources_unavailable'
   | 'account_not_authenticated'
   | 'quota_not_available'
   | 'unverified_commercial_terms'
@@ -115,6 +118,7 @@ function reasonFor(candidate: WorkerCandidate, request: RoutingRequest): RejectR
   }
 
   if (candidate.cost === 'local') {
+    if (observation?.localResourcePreflightPassed !== true) reasons.push('local_resources_unavailable')
     if (observation?.inferenceSmokePassed !== true) reasons.push('local_inference_not_proven')
   } else {
     if (observation?.authenticated !== true) reasons.push('account_not_authenticated')
@@ -181,6 +185,7 @@ function isRoutingRequest(input: unknown): input is RoutingRequest {
       && Number.isSafeInteger(ev.observedAtMs) && (ev.observedAtMs as number) >= 0
       && (ev.authenticated === undefined || typeof ev.authenticated === 'boolean')
       && (ev.inferenceSmokePassed === undefined || typeof ev.inferenceSmokePassed === 'boolean')
+      && (ev.localResourcePreflightPassed === undefined || typeof ev.localResourcePreflightPassed === 'boolean')
       && (ev.entitlement === undefined
         || ['available', 'exhausted', 'unknown'].includes(ev.entitlement))
       && (ev.estimatedSpendSek === undefined || typeof ev.estimatedSpendSek === 'number')

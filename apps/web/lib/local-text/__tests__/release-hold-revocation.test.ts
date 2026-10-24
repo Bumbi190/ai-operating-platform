@@ -85,6 +85,21 @@ describe('authorized safety actions remain available under the real release hold
   expect(f.rpc).toHaveBeenCalledTimes(kind==='admission'?0:1)
   expect(f.admission).toHaveBeenCalledTimes(kind==='admission'?1:0)
  })
+ it.each([
+  {label:'revoke array',action:['revoke']},
+  {label:'nested revoke array',action:[['revoke']]},
+  {label:'approve array',action:['approve']},
+ ])('rejects $label as invalid input before any device decision',async({action})=>{
+  const request=new Request('https://omnira.test/api/local-text/devices/'+device,{
+   method:'PATCH',headers:{origin:'https://omnira.test','content-type':'application/json'},
+   body:JSON.stringify({projectId:project,action,expectedVersion:1}),
+  })
+  const response=await handleOwnerDeviceRequest(request,device)
+  expect(response.status).toBe(400)
+  expect(await response.json()).toEqual({error:'INVALID_REQUEST'})
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store')
+  expect(f.rpc).not.toHaveBeenCalled();expect(f.admission).not.toHaveBeenCalled()
+ })
  it.each(['array','boxed','coercing'])('refuses an entire inventory containing a %s device status without coercion',async kind=>{
   const convert=vi.fn(()=>'active')
   const status=kind==='array'?['active']:kind==='boxed'?new String('active'):{toString:convert}

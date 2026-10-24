@@ -39,10 +39,10 @@ export async function handleOwnerDeviceRequest(request:Request,deviceId?:string)
    let fingerprint;try{fingerprint=publicIdentityFingerprint(body.publicJwk)}catch{return error(400)}
    projectId=body.projectId;target=body.deviceId;action='register';version=null;registration={keyId:body.keyId,publicJwk:body.publicJwk,buildHash:body.buildHash,fingerprint,origin:new URL(request.url).origin}
   }else{
-   if(!deviceId||!object(body)||!['approve','revoke'].includes(String(body.action))||!exact(body,body.action==='approve'?['projectId','action','expectedVersion','confirmFingerprint']:['projectId','action','expectedVersion'])||!isUuid(body.projectId)||!Number.isInteger(body.expectedVersion)||Number(body.expectedVersion)<1||Number(body.expectedVersion)>2147483647)return error(400)
+   if(!deviceId||!object(body)||typeof body.action!=='string'||!['approve','revoke'].includes(body.action)||!exact(body,body.action==='approve'?['projectId','action','expectedVersion','confirmFingerprint']:['projectId','action','expectedVersion'])||!isUuid(body.projectId)||!Number.isInteger(body.expectedVersion)||Number(body.expectedVersion)<1||Number(body.expectedVersion)>2147483647)return error(400)
    if(body.action==='approve'&&!isSha256(body.confirmFingerprint))return error(400)
    if(!enabled&&body.action!=='revoke')return error(503)
-   projectId=body.projectId;target=deviceId;action=String(body.action);version=Number(body.expectedVersion);registration=action==='approve'?{confirmFingerprint:body.confirmFingerprint}:{}
+   projectId=body.projectId;target=deviceId;action=body.action;version=Number(body.expectedVersion);registration=action==='approve'?{confirmFingerprint:body.confirmFingerprint}:{}
   }
   const response=await call('local_text_owner_device',{p_owner_id:operator.userId,p_project_id:projectId,p_device_id:target,p_action:action,p_expected_version:version,p_registration:registration})
   if(response.error||!object(response.data))return error(503)

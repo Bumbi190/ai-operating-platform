@@ -162,6 +162,76 @@ describe('credential lifecycle on inspection',()=>{
 })
 
 describe('absolute inspection deadline',()=>{
+ it('stops listing after finding the three validated read-only tools, despite extra provider pages',async()=>{
+  let pages=0
+  const invoked:string[]=[]
+  const delegate:typeof fetch=async(input,init)=>{
+   const req=new Request(input,init)
+   if(req.method!=='POST')return new Response(null,{status:405})
+   const body=await req.json() as {id?:number;method:string;params?:{cursor?:string;name?:string}}
+   if(body.method==='initialize')return new Response(JSON.stringify({jsonrpc:'2.0',id:body.id,result:{protocolVersion:'2025-03-26',capabilities:{tools:{}},serverInfo:{name:'fixture',version:'1'}}}),{headers:{'content-type':'application/json'}})
+   if(!body.id)return new Response(null,{status:202})
+   if(body.method==='tools/list'){
+    pages++
+    const cursor=body.params?.cursor
+    const index=cursor===undefined?0:cursor==='page-2'?1:cursor==='page-3'?2:3
+    const list=index<3?[tools[index]]:[tools[3]]
+    const nextCursor=index===0?'page-2':index===1?'page-3':'remaining-catalog'
+    return new Response(JSON.stringify({jsonrpc:'2.0',id:body.id,result:{tools:list,nextCursor}}),{headers:{'content-type':'application/json'}})
+   }
+   if(body.method==='tools/call'){
+    const name=body.params?.name??''
+    invoked.push(name)
+    const value=name==='balance'?{credits:1170}:name==='models_get'?model:{cost:{credits:4,credits_exact:4}}
+    return new Response(JSON.stringify({jsonrpc:'2.0',id:body.id,result:{content:[{type:'text',text:JSON.stringify(value)}]}}),{headers:{'content-type':'application/json'}})
+   }
+   return new Response(null,{status:405})
+  }
+  const client=await openHiggsfieldReadClient({tokens:{access_token:'synthetic',token_type:'Bearer'}},Date.now()+3000,delegate)
+  try{
+   expect(await inspectReadOnlyClient(client)).toEqual({creditBalance:1170,quoteCredits:4})
+   expect(pages).toBe(3)
+   expect(invoked).toEqual(['balance','models_get','estimate_video_cost'])
+  }finally{await client.close()}
+ })
+ it('reports only a bounded failure category, never raw MCP error or credentials',async()=>{
+  const spy=vi.spyOn(console,'warn').mockImplementation(()=>{})
+  const delegate:typeof fetch=async(input,init)=>{
+   const req=new Request(input,init)
+   if(req.method!=='POST')return new Response(null,{status:405})
+   const body=await req.json()
+   if(body.method==='initialize')return new Response(JSON.stringify({jsonrpc:'2.0',id:body.id,result:{protocolVersion:'2025-03-26',capabilities:{tools:{}},serverInfo:{name:'fixture',version:'1'}}}),{headers:{'content-type':'application/json'}})
+   if(!body.id)return new Response(null,{status:202})
+   if(body.method==='tools/list')throw Error('PRIVATE_BEARER_TOKEN_FROM_PROVIDER')
+   return new Response(null,{status:404})
+  }
+  let client:Awaited<ReturnType<typeof openHiggsfieldReadClient>>|null=null
+  try{
+   client=await openHiggsfieldReadClient({tokens:{access_token:'private_token_not_to_log',token_type:'Bearer'}},Date.now()+3000,delegate)
+   await expect(client.listTools()).rejects.toThrow('provider_unavailable')
+   expect(spy).toHaveBeenCalledWith('[higgsfield-mcp] tools_list_failed',{page:1,category:'provider_unavailable'})
+   expect(JSON.stringify(spy.mock.calls)).not.toMatch(/PRIVATE_BEARER_TOKEN|private_token_not_to_log/)
+  }finally{await client?.close();spy.mockRestore()}
+ })
+ it('refuses a repeated provider pagination cursor before any paid tool call',async()=>{
+  let lists=0,calls=0
+  const delegate:typeof fetch=async(input,init)=>{
+   const req=new Request(input,init)
+   if(req.method!=='POST')return new Response(null,{status:405})
+   const body=await req.json()
+   if(body.method==='initialize')return new Response(JSON.stringify({jsonrpc:'2.0',id:body.id,result:{protocolVersion:'2025-03-26',capabilities:{tools:{}},serverInfo:{name:'fixture',version:'1'}}}),{headers:{'content-type':'application/json'}})
+   if(!body.id)return new Response(null,{status:202})
+   if(body.method==='tools/list'){lists++;return new Response(JSON.stringify({jsonrpc:'2.0',id:body.id,result:{tools:[tools[3]],nextCursor:'repeat'}}),{headers:{'content-type':'application/json'}})}
+   if(body.method==='tools/call')calls++
+   return new Response(null,{status:405})
+  }
+  const client=await openHiggsfieldReadClient({tokens:{access_token:'fixture',token_type:'Bearer'}},Date.now()+3000,delegate)
+  try{
+   await expect(inspectReadOnlyClient(client)).rejects.toMatchObject({code:'unsupported_server_schema',stage:'list_tools'})
+   expect(lists).toBe(2)
+   expect(calls).toBe(0)
+  }finally{await client.close()}
+ })
  it('cancels a hanging SSE SDK request before its default timeout',async()=>{
   const delegate:typeof fetch=async(input,init)=>{
    const req=new Request(input,init)

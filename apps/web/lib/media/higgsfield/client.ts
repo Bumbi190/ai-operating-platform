@@ -8,6 +8,20 @@ export interface ReadOnlyMcpClient {
  callTool(name:string,args:Record<string,unknown>):Promise<unknown>
  close():Promise<void>
 }
+// Only print locally enumerated error categories. Never serialize an SDK error,
+// its message, a remote JSON-RPC body, bearer tokens, or provider-supplied data.
+function catalogFailureCategory(error:unknown):string {
+ if(error instanceof UnauthorizedError)return 'unauthorized'
+ if(error instanceof HiggsfieldError)return error.code
+ if(error&&typeof error==='object'){
+  const candidate=error as {code?:unknown;name?:unknown}
+  const approved=new Set(['REQUEST_TIMEOUT','INVALID_RESULT','LIST_PAGINATION_EXCEEDED','CLIENT_HTTP_AUTHENTICATION','CLIENT_HTTP_FORBIDDEN','CLIENT_HTTP_UNEXPECTED_CONTENT','CLIENT_HTTP_FAILED_TO_OPEN_STREAM'])
+  if(typeof candidate.code==='string'&&approved.has(candidate.code))return candidate.code.toLowerCase()
+  if(typeof candidate.code==='number')return 'rpc_error'
+  if(candidate.name==='AbortError'||candidate.name==='TimeoutError')return 'deadline'
+ }
+ return 'unknown'
+}
 function object(v:unknown):v is Record<string,unknown>{return !!v&&typeof v==='object'&&!Array.isArray(v)}
 function schema(v:unknown,requiredKeys:string[]) {
  if(!object(v)||v.type!=='object')return false
@@ -90,16 +104,30 @@ export async function openHiggsfieldReadClient(payload:OAuthPayload,deadline=Dat
  }
  return {
   async listTools(){
+   const wanted=new Set(['balance','models_get','estimate_video_cost'])
    const collected:{name:string;inputSchema:unknown}[]=[]
+   const seenCursors=new Set<string>()
    let cursor:string|undefined
    for(let i=0;i<64;i++){
-    const page=await client.listTools(cursor?{cursor}:undefined,options()).catch(e=>{
+    // The v2 SDK's listTools(undefined) auto-fetches *every* page before
+    // returning, which can exhaust our 20-second budget on a large catalog.
+    // A typed, explicit tools/list request fetches exactly one page; stop
+    // once the only three eligible read-only tools are present.
+    const page=await client.request({method:'tools/list',params:cursor?{cursor}:{}},options()).catch(e=>{
+     console.warn('[higgsfield-mcp] tools_list_failed',{page:i+1,category:catalogFailureCategory(e)})
      if(e instanceof UnauthorizedError)throw new HiggsfieldError('reconnect_required')
+     if(e instanceof HiggsfieldError)throw e
      throw new HiggsfieldError('provider_unavailable')
     })
-    collected.push(...page.tools)
-    if(!page.nextCursor)return collected
-    cursor=page.nextCursor
+    for(const tool of page.tools){
+     if(wanted.has(tool.name))collected.push({name:tool.name,inputSchema:tool.inputSchema})
+    }
+    if(wanted.size===3&&[...wanted].every(name=>collected.some(t=>t.name===name)))return collected
+    const next=page.nextCursor
+    if(next===undefined)return collected
+    if(typeof next!=='string'||next.length===0||next.length>1024||seenCursors.has(next))throw new HiggsfieldError('unsupported_server_schema')
+    seenCursors.add(next)
+    cursor=next
    }
    throw new HiggsfieldError('unsupported_server_schema')
   },

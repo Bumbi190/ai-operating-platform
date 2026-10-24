@@ -102,7 +102,7 @@ export async function scoreScript(
 
   const res = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 400,
+    max_tokens: 1200,
     system: QUALITY_SYSTEM,
     messages: [{
       role: 'user',
@@ -113,26 +113,44 @@ HOOK: "${hook}"
 FULL SCRIPT: "${script}"
 
 SOURCE CONTEXT (what the original article actually said):
-${sourceContext.slice(0, 600)}`,
+${sourceContext.slice(0, 12000)}`,
     }],
   })
 
-  const raw = res.content[0].type === 'text' ? res.content[0].text : ''
-  const clean = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
-
+  const raw = res.content.filter(block => block.type === 'text').map(block => block.text).join('\n')
+  const clean = raw.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '').trim()
   try {
-    return JSON.parse(clean) as QualityScore
+    const value: unknown = JSON.parse(clean)
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid quality response')
+    const score = value as QualityScore
+    const dimensions = [score.hook_strength, score.retention_score, score.visual_relevance,
+      score.shareability, score.discussion_potential]
+    if (![...dimensions, score.hallucination_risk, score.overall].every(v =>
+      typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 10)
+      || typeof score.passed !== 'boolean' || typeof score.verdict !== 'string' || !score.verdict.trim()
+      || !Array.isArray(score.weak_spots) || !score.weak_spots.every(v => typeof v === 'string')) {
+      throw new Error('Invalid quality response')
+    }
+    const overall = dimensions.reduce((a, b) => a + b, 0) / dimensions.length
+    return {...score, overall, passed: score.passed && overall >= 8 && score.hook_strength >= 8 && score.hallucination_risk >= 7}
   } catch {
-    // Fallback if JSON parse fails — don't block the pipeline
+    // An unreadable evaluation is missing evidence, never a passing score.
     return {
-      hook_strength: 8, retention_score: 8, visual_relevance: 8, shareability: 8,
-      discussion_potential: 8, hallucination_risk: 8, overall: 8.0, passed: true,
-      verdict: 'Quality check parse error — proceeding with caution.', weak_spots: [],
+      hook_strength: 0, retention_score: 0, visual_relevance: 0, shareability: 0,
+      discussion_potential: 0, hallucination_risk: 0, overall: 0, passed: false,
+      verdict: 'Quality evaluation invalid or incomplete; requires a new review.',
+      weak_spots: ['Obtain a complete, valid quality evaluation before approval.'],
     }
   }
 }
 
 /** Returns true if the script should be regenerated. Bar: overall ≥ 8, hook ≥ 8, faktasäkert. */
 export function shouldRegenerate(score: QualityScore): boolean {
-  return score.overall < 8.0 || score.hook_strength < 8 || score.hallucination_risk < 7
+  return score.passed !== true || !Number.isFinite(score.overall) || !Number.isFinite(score.hook_strength)
+    || !Number.isFinite(score.hallucination_risk) || score.overall < 8.0 || score.hook_strength < 8 || score.hallucination_risk < 7
+}
+
+/** Stop before voice, images or publication when final quality evidence is missing. */
+export function assertPassingScriptQuality(score: QualityScore | null): asserts score is QualityScore {
+  if (!score || shouldRegenerate(score)) throw new Error('MEDIA_SCRIPT_QUALITY_REVIEW_REQUIRED')
 }

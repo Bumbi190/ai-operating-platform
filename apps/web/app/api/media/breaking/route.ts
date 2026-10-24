@@ -29,7 +29,7 @@ import { Anthropic } from '@anthropic-ai/sdk'
 import { runNewsHunter } from '@/lib/media/news-hunter'
 import { callHermesRead, isHermesConfigured } from '@/lib/media/hermes'
 import { NEWS_SYSTEM, buildScriptSystem } from '@/lib/media/script-prompt'
-import { scoreScript } from '@/lib/media/quality'
+import { scoreScript, assertPassingScriptQuality } from '@/lib/media/quality'
 import { classifyTopic } from '@/lib/atlas/content-tags'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 import { toJson } from '@/lib/supabase/json'
@@ -172,7 +172,8 @@ export async function POST(request: Request) {
       messages: [{ role: 'user', content: `Write a short-form video script for this AI news story:\n\nTitle: ${news.title}\nSummary: ${news.summary}\nKey insight: ${news.key_insight}\nAudience: ${news.target_audience}\nAngle: ${news.content_angle}` }],
     })
     const script = parseJson<ScriptWriterOutput>(scriptRes.content[0].type === 'text' ? scriptRes.content[0].text : '')
-    const qualityScore = await scoreScript(execution, script.hook, script.script, `${news.title}\n${news.summary}\n${news.key_insight}`).catch(() => null)
+    const qualityScore = await scoreScript(execution, script.hook, script.script, `${news.title}\n${news.summary}\n${news.key_insight}`)
+    assertPassingScriptQuality(qualityScore)
     steps.hook = script.hook
 
     const { data: scriptRow } = await db.from('media_scripts').insert({

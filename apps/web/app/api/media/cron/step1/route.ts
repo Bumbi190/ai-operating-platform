@@ -371,16 +371,16 @@ export async function GET(request: Request) {
 
   // Quality gate
   const sourceContext = fullArticleText || `${news.title}\n${news.summary}\n${news.key_insight}`
-  const qualityScore  = await scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext)
+  let qualityScore  = await scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext)
 
-  // Skip the (expensive) regenerate pass if we're low on budget — better to ship a
-  // slightly weaker hook than to 504 and save nothing.
-  if (shouldRegenerate(qualityScore) && Date.now() - t0 < 40_000) {
+  // Reserve time for rewrite, final scoring and persistence. A failed gate stays pending.
+  if (shouldRegenerate(qualityScore) && Date.now() - t0 < 30_000) {
     const rewriteRes = await withRetry(() => scriptRewriter.messages.create({
       model: 'claude-sonnet-4-6', max_tokens: 2000, system: SCRIPT_SYSTEM,
       messages: [{ role: 'user', content: `Rewrite — previous rejected.\nSTORY:\n${scriptContext}\nREJECTED HOOK: "${script.hook}"\nVERDICT: ${qualityScore.verdict}\nWEAK SPOTS: ${qualityScore.weak_spots.join(', ')}\nFix everything. Hook must score 8+.` }],
     }))
     script = JSON.parse((rewriteRes.content[0].type === 'text' ? rewriteRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as ScriptWriterOutput
+    qualityScore = await scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext)
   }
 
   // Save script — voice_status='none' signals step2 to pick it up
@@ -389,7 +389,7 @@ export async function GET(request: Request) {
     hook: script.hook, script: script.script, captions: script.captions,
     hashtags: script.hashtags, cta: script.cta, tone: script.tone,
     estimated_duration: script.estimated_duration, raw_output: toJson(script),
-    quality_score: toJson(qualityScore), status: 'approved',
+    quality_score: toJson(qualityScore), status: shouldRegenerate(qualityScore) ? 'pending_review' : 'approved',
     voice_status: 'none', video_status: 'none', version: 1,
     topic: classifyTopic(script.hook, script.script), format: 'reel',
     generated_at: new Date().toISOString(),
@@ -405,10 +405,10 @@ export async function GET(request: Request) {
   if (scriptRunId) { try { await db.from('media_scripts').update({ run_id: scriptRunId }).eq('id', scriptRow.id) } catch { /* non-blocking */ } }
 
   return NextResponse.json({
-    status: 'step1_done',
+    status: shouldRegenerate(qualityScore) ? 'quality_review_required' : 'step1_done',
     scriptId: scriptRow.id,
     hook: script.hook,
     quality: qualityScore.overall,
-    next: 'step2 will run in 5 min',
+    next: shouldRegenerate(qualityScore) ? 'Manual quality review required; automatic production blocked' : 'step2 will run in 5 min',
   })
 }

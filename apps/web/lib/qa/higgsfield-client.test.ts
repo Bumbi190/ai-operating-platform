@@ -66,6 +66,16 @@ describe('fixed read-only tool path',()=>{
   await expect(inspectReadOnlyClient(client)).rejects.toThrow('unsupported_server_schema')
   expect(calls).toEqual(['balance','models_get'])
  })
+ it('labels the failing read-only stage without making a paid call',async()=>{
+  const missingTools=stub({listTools:async()=>{throw new HiggsfieldError('provider_unavailable')}})
+  await expect(inspectReadOnlyClient(missingTools.client)).rejects.toMatchObject({code:'provider_unavailable',stage:'list_tools'})
+  const badBalance=stub({callTool:async(name:string)=>({structuredContent:name==='balance'?{credits:'PRIVATE_REFRESH_TOKEN'}:model})})
+  await expect(inspectReadOnlyClient(badBalance.client)).rejects.toMatchObject({code:'invalid_response',stage:'balance'})
+  const badModel=stub({callTool:async(name:string)=>({structuredContent:name==='balance'?{credits:3}:{id:'unapproved-paid-model'}})})
+  await expect(inspectReadOnlyClient(badModel.client)).rejects.toMatchObject({code:'unsupported_server_schema',stage:'model'})
+  const failedQuote=stub({callTool:async(name:string)=>({structuredContent:name==='balance'?{credits:3}:name==='models_get'?model:{cost:{credits:'PRIVATE'}},isError:name==='estimate_video_cost'})})
+  await expect(inspectReadOnlyClient(failedQuote.client)).rejects.toMatchObject({code:'invalid_response',stage:'quote'})
+ })
  it('refuses schema drift without fallback to generation',async()=>{
   const {client,calls}=stub({listTools:async()=>tools.filter(t=>t.name!=='estimate_video_cost')})
   await expect(inspectReadOnlyClient(client)).rejects.toThrow('unsupported_server_schema');expect(calls).toHaveLength(0)

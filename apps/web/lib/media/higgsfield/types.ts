@@ -1,7 +1,8 @@
 export type ConnectionStatus = 'disconnected' | 'connected' | 'reconnect_required' | 'unavailable'
 export type HiggsfieldFailure = 'disabled' | 'not_configured' | 'invalid_endpoint' | 'provider_unavailable' | 'invalid_response' | 'unsupported_server_schema' | 'state_invalid' | 'access_denied' | 'connection_changed' | 'reconnect_required' | 'storage_unavailable' | 'busy'
+export type HiggsfieldInspectionStage = 'connect' | 'list_tools' | 'tool_schema' | 'balance' | 'model' | 'quote' | 'consistency'
 export class HiggsfieldError extends Error {
-  constructor(readonly code: HiggsfieldFailure) { super(code); this.name = 'HiggsfieldError' }
+  constructor(readonly code: HiggsfieldFailure, readonly stage?: HiggsfieldInspectionStage) { super(code); this.name = 'HiggsfieldError' }
 }
 export interface SafeConnectionStatus {
   status: ConnectionStatus

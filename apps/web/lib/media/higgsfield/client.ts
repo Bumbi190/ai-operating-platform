@@ -1,7 +1,7 @@
 import 'server-only'
 import {Client,StreamableHTTPClientTransport,UnauthorizedError} from '@modelcontextprotocol/client'
 import {createHiggsfieldFetch,HIGGSFIELD_MCP_URL} from './config'
-import {HiggsfieldError} from './types'
+import {HiggsfieldError,type HiggsfieldInspectionStage} from './types'
 import type {OAuthPayload} from './oauth'
 export interface ReadOnlyMcpClient {
  listTools():Promise<{name:string;inputSchema:unknown}[]>
@@ -32,8 +32,13 @@ function credits(v:unknown):number {
  if(typeof v!=='number'||!Number.isFinite(v)||v<0)throw new HiggsfieldError('invalid_response')
  return v
 }
+/** Attach only a finite, locally authored stage. Never serialize provider errors, tokens or payloads. */
+async function readStep<T>(stage:HiggsfieldInspectionStage,fn:()=>Promise<T>):Promise<T> {
+ try{return await fn()}
+ catch(e){throw new HiggsfieldError(e instanceof HiggsfieldError?e.code:'provider_unavailable',stage)}
+}
 export async function inspectReadOnlyClient(client:ReadOnlyMcpClient):Promise<{creditBalance:number;quoteCredits:number}> {
- const tools=await client.listTools()
+ const tools=await readStep('list_tools',()=>client.listTools())
  const find=(name:string)=>tools.filter(t=>t.name===name)
  const balances=find('balance'),models=find('models_get'),quotes=find('estimate_video_cost')
  const quote=quotes[0]?.inputSchema,params=prop(quote,'params')
@@ -42,20 +47,26 @@ export async function inspectReadOnlyClient(client:ReadOnlyMcpClient):Promise<{c
  !schema(quote,['params'])||!schema(params,['model','duration','resolution','aspect_ratio','count'])||
  prop(params,'model')?.type!=='string'||!numericParameter(prop(params,'duration'))||prop(params,'aspect_ratio')?.type!=='string'||!numericParameter(prop(params,'count'))||
  !(prop(params,'resolution')?.type==='string'||params?.additionalProperties===true))
-  throw new HiggsfieldError('unsupported_server_schema')
- const balance=data(await client.callTool('balance',{})),creditBalance=credits(balance.credits)
- const model=data(await client.callTool('models_get',{model_id:'grok_video_v15_lite'}))
+  throw new HiggsfieldError('unsupported_server_schema','tool_schema')
+ const creditBalance=await readStep('balance',async()=>{
+  const balance=data(await client.callTool('balance',{}))
+  return credits(balance.credits)
+ })
+ const model=await readStep('model',async()=>data(await client.callTool('models_get',{model_id:'grok_video_v15_lite'})))
  const range=model.duration_range
  const durationParameter=Array.isArray(model.parameters)?model.parameters.find(p=>object(p)&&p.name==='duration'):null
  const durationSupported=(object(range)&&typeof range.min==='number'&&typeof range.max==='number'&&range.min<=4&&range.max>=4) ||
   (Array.isArray(model.durations)&&model.durations.includes(4)) ||
   (object(durationParameter)&&typeof durationParameter.min==='number'&&typeof durationParameter.max==='number'&&durationParameter.min<=4&&durationParameter.max>=4)
  const resolution=Array.isArray(model.parameters)?model.parameters.find(p=>object(p)&&p.name==='resolution'):null
- if(model.id!=='grok_video_v15_lite'||!Array.isArray(model.aspect_ratios)||!model.aspect_ratios.includes('9:16')||!durationSupported||!object(resolution)||!Array.isArray(resolution.options)||!resolution.options.includes('720p'))throw new HiggsfieldError('unsupported_server_schema')
+ if(model.id!=='grok_video_v15_lite'||!Array.isArray(model.aspect_ratios)||!model.aspect_ratios.includes('9:16')||!durationSupported||!object(resolution)||!Array.isArray(resolution.options)||!resolution.options.includes('720p'))throw new HiggsfieldError('unsupported_server_schema','model')
  // Fixed local arguments; no caller-controlled model, count, prompt, or media.
- const quoted=data(await client.callTool('estimate_video_cost',{params:{model:'grok_video_v15_lite',duration:4,resolution:'720p',aspect_ratio:'9:16',count:1}}))
- if(!object(quoted.cost))throw new HiggsfieldError('invalid_response')
- return {creditBalance,quoteCredits:credits(quoted.cost.credits_exact??quoted.cost.credits)}
+ const quoteCredits=await readStep('quote',async()=>{
+  const quoted=data(await client.callTool('estimate_video_cost',{params:{model:'grok_video_v15_lite',duration:4,resolution:'720p',aspect_ratio:'9:16',count:1}}))
+  if(!object(quoted.cost))throw new HiggsfieldError('invalid_response')
+  return credits(quoted.cost.credits_exact??quoted.cost.credits)
+ })
+ return {creditBalance,quoteCredits}
 }
 export async function openHiggsfieldReadClient(payload:OAuthPayload,deadline=Date.now()+20000,delegate:typeof fetch=fetch):Promise<ReadOnlyMcpClient> {
  if(!payload.tokens?.access_token)throw new HiggsfieldError('reconnect_required')

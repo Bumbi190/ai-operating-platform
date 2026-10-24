@@ -119,6 +119,63 @@ describe('authorized safety actions remain available under the real release hold
   expect(await response.json()).toEqual({enabled:false,devices:[receipt]})
   expect(f.admission).not.toHaveBeenCalled()
  })
+ it.each([false,true])('refuses a mixed-project inventory before device filtering (filtered=%s)',async filtered=>{
+  f.rpc.mockResolvedValue({data:{kind:'applied',value:[revokedDevice,{...revokedDevice,deviceId:authorization,projectId:authorization}]},error:null})
+  const response=await handleOwnerDeviceRequest(new Request('https://omnira.test/api/local-text/devices?projectId='+project),filtered?device:undefined)
+  expect(response.status).toBe(503)
+  expect(await response.json()).toEqual({error:'LOCAL_TEXT_UNAVAILABLE'})
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store')
+  expect(f.rpc).toHaveBeenCalledTimes(1)
+  expect(f.rpc).toHaveBeenCalledWith('local_text_owner_devices',{p_owner_id:owner,p_project_id:project})
+ })
+ it('rejects a revocation receipt bound to the wrong target device',async()=>{
+  const receipt={...revokedDevice,deviceId:authorization}
+  f.rpc.mockResolvedValue({data:{kind:'applied',value:receipt},error:null})
+  const response=await revoke('device')
+  expect(response.status).toBe(503)
+  expect(await response.json()).toEqual({error:'LOCAL_TEXT_UNAVAILABLE'})
+  expect(response.headers.get('Cache-Control')).toBe('private, no-store')
+  expect(f.rpc).toHaveBeenCalledTimes(1)
+  expect(f.rpc).toHaveBeenCalledWith('local_text_owner_device',{
+   p_owner_id:owner,p_project_id:project,p_device_id:device,p_action:'revoke',p_expected_version:1,p_registration:{},
+  })
+ })
+ it('preserves revocation via another owned project when the RPC returns the device pairing project',async()=>{
+  // The frozen RPC checks project ownership and device ownership separately
+  // for revoke; pairing-project equality is required only for approval.
+  const receipt={...revokedDevice,projectId:authorization}
+  f.rpc.mockResolvedValue({data:{kind:'applied',value:receipt},error:null})
+  const response=await revoke('device')
+  expect(response.status).toBe(200)
+  expect(await response.json()).toEqual({device:receipt})
+  expect(f.rpc).toHaveBeenCalledTimes(1)
+  expect(f.rpc).toHaveBeenCalledWith('local_text_owner_device',{
+   p_owner_id:owner,p_project_id:project,p_device_id:device,p_action:'revoke',p_expected_version:1,p_registration:{},
+  })
+ })
+ it('filters valid same-project device inventory without rejecting other devices',async()=>{
+  f.rpc.mockResolvedValue({data:{kind:'applied',value:[revokedDevice,{...revokedDevice,deviceId:authorization}]},error:null})
+  const response=await handleOwnerDeviceRequest(new Request('https://omnira.test/api/local-text/devices?projectId='+project),device)
+  expect(response.status).toBe(200)
+  expect(await response.json()).toEqual({enabled:false,devices:[revokedDevice]})
+  expect(f.rpc).toHaveBeenCalledTimes(1)
+ })
+ it.each(['inventory','revoke'])('preserves equivalent UUID letter casing for %s bindings',async operation=>{
+  const canonicalProject='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const canonicalDevice='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  const receipt={...revokedDevice,projectId:canonicalProject,deviceId:canonicalDevice}
+  f.rpc.mockResolvedValue({data:{kind:'applied',value:operation==='inventory'?[receipt]:receipt},error:null})
+  const request=operation==='inventory'
+   ?new Request('https://omnira.test/api/local-text/devices?projectId='+canonicalProject.toUpperCase())
+   :new Request('https://omnira.test/api/local-text/devices/'+canonicalDevice.toUpperCase(),{
+    method:'PATCH',headers:{origin:'https://omnira.test','content-type':'application/json'},
+    body:JSON.stringify({projectId:canonicalProject.toUpperCase(),action:'revoke',expectedVersion:1}),
+   })
+  const response=await handleOwnerDeviceRequest(request,canonicalDevice.toUpperCase())
+  expect(response.status).toBe(200)
+  expect(await response.json()).toEqual(operation==='inventory'?{enabled:false,devices:[receipt]}:{device:receipt})
+  expect(f.rpc).toHaveBeenCalledTimes(1)
+ })
  it('keeps owner device inventory readable while reporting enabled false',async()=>{
   f.rpc.mockResolvedValue({data:{kind:'applied',value:[revokedDevice]},error:null})
   const response=await handleOwnerDeviceRequest(new Request('https://omnira.test/api/local-text/devices?projectId='+project))

@@ -1,4 +1,49 @@
 import {test,expect} from '@playwright/test';
+const productionPreview={planningOnly:true,canStart:false,title:'Skapa månadens saga',state:'Skapa månadens material',cost:'unknown',brief:{month:'2026-11',theme:'Löv- & Skuggmånaden',language:'svenska',audience:{min_age:3,max_age:8},pages:{total_pages:18,cover_pages:1,content_pages:16,closing_pages:1}},requirements:['execution_approval','budget_check'],checks:[{key:'story_generated',label:'Sagan skapad',status:'pending'}]};
+async function linkedProductionMeeting(page:any,request:any){
+ await request.post('/_test/reset',{data:{workflowLinks:true}});await open(page);await fillMeeting(page,'Sagoarbetet');
+ await page.getByLabel('Typ',{exact:true}).selectOption('work_block');await page.getByLabel('Planerat ansvar').selectOption('atlas_planned');
+ await page.getByLabel('Projekt',{exact:false}).selectOption('10000000-0000-4000-8000-000000000001');
+ await page.getByLabel('Kopplat Atlas-flöde').selectOption('60000000-0000-4000-8000-000000000001');
+ await expect(page.getByRole('button',{name:'Granska produktionsjobb'})).toHaveCount(0);
+ await page.getByRole('button',{name:'Spara',exact:true}).click();
+ await page.getByRole('button',{name:/Sagoarbetet/}).click();
+}
+test('reviews a saved story job on mobile, retries a failed read and hides it after an unsaved link change',async({page,request})=>{
+ let count=0;
+ await page.route('**/api/calendar/production-preview?**',async route=>{
+  count++;const url=new URL(route.request().url());
+  expect(url.searchParams.get('instanceId')).toBe('60000000-0000-4000-8000-000000000001');
+  await route.fulfill(count===1?{status:503,json:{ok:false,code:'UNAVAILABLE'}}:{json:{ok:true,preview:productionPreview}});
+ });
+ await linkedProductionMeeting(page,request);
+ await page.setViewportSize({width:390,height:844});
+ const region=page.getByRole('region',{name:'Produktionsjobb'});
+ await region.getByRole('button',{name:'Granska produktionsjobb'}).click();
+ await expect(region.getByRole('alert')).toContainText('kunde inte hämtas');
+ await region.getByRole('button',{name:'Försök igen'}).click();
+ await expect(region).toContainText('Löv- & Skuggmånaden');
+ await expect(region).toContainText('16 innehållssidor');await expect(region).toContainText('ännu inte fastställd');
+ await expect(region).toContainText('Ett separat körgodkännande');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ if(process.env.CALENDAR_STATUS_SCREENSHOT_DIR)await page.screenshot({path:process.env.CALENDAR_STATUS_SCREENSHOT_DIR+'/kalender-produktionsjobb-390.png',fullPage:true});
+ await page.getByLabel('Kopplat Atlas-flöde').selectOption('');await expect(region).toHaveCount(0);
+ expect(count).toBe(2);
+});
+test('discards a late production preview after the flow link is removed',async({page,request})=>{
+ let release:()=>void=()=>{};const barrier=new Promise<void>(resolve=>{release=resolve;});
+ await page.route('**/api/calendar/production-preview?**',async route=>{
+  await barrier;await route.fulfill({json:{ok:true,preview:productionPreview}}).catch(()=>{});
+ });
+ await linkedProductionMeeting(page,request);
+ await page.getByRole('button',{name:'Granska produktionsjobb'}).click();
+ await expect(page.getByRole('status').filter({hasText:'Hämtar den sparade sagoplanen'})).toBeVisible();
+ await page.getByLabel('Kopplat Atlas-flöde').selectOption('');release();
+ await expect(page.getByRole('region',{name:'Produktionsjobb'})).toHaveCount(0);
+ await page.getByLabel('Kopplat Atlas-flöde').selectOption('60000000-0000-4000-8000-000000000001');
+ await expect(page.getByRole('button',{name:'Granska produktionsjobb'})).toBeVisible();
+ await expect(page.getByText('Löv- & Skuggmånaden',{exact:false})).toHaveCount(0);
+});
 test('shows source-aware status dots and opens calendar attention on mobile and desktop',async({page})=>{
  const zone='Europe/Stockholm',projectId='10000000-0000-4000-8000-000000000001';
  const base={projectId,editable:false,href:'/projects/familje-stunden/social#content',pendingChange:null,time:{kind:'all_day',startDate:'2026-10-22',endDateExclusive:'2026-10-23',timeZone:zone}};

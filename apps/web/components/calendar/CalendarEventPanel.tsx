@@ -2,6 +2,7 @@
 import {useEffect,useRef} from 'react';
 import {X} from 'lucide-react';
 import {CalendarTimePicker} from './CalendarTimePicker';
+import {CalendarProductionPreview} from './CalendarProductionPreview';
 import {stockholmMinute,stockholmDate} from '@/lib/calendar/time';
 import {calendarStatus} from './CalendarWeek';
 import {calendarProgress,calendarResponsibility} from '@/lib/calendar/progress';
@@ -27,6 +28,7 @@ export function CalendarEventPanel({state:s}:{state:CalendarWorkspaceState}){
    {calendarProgress(s.selected).needsAttention&&<p>Öppna källan nedan för att granska läget och nästa steg.</p>}
    {s.selected.pendingChange&&<p>Föreslagen tid: {s.selected.pendingChange.time.kind==='timed'?stockholmMinute(s.selected.pendingChange.time.startUtc).replace('T',' kl '):s.selected.pendingChange.time.startDate}</p>}
   </div>}
+  {s.selected?.linkedWorkflow?.instanceId&&s.selected.projectId&&s.selected.status!=='cancelled'&&f?.kind==='work_block'&&f.responsibility==='atlas_planned'&&f.projectId===s.selected.projectId&&f.workflowInstanceId===s.selected.linkedWorkflow.instanceId&&<CalendarProductionPreview key={s.selected.projectId+':'+s.selected.linkedWorkflow.instanceId} projectId={s.selected.projectId} instanceId={s.selected.linkedWorkflow.instanceId}/>}
   {social&&<p className={styles.help}>Den godkända tiden gäller tills det nya tidsförslaget har granskats.</p>}
   {f&&(manual||social)&&<form className={styles.form} onSubmit={e=>{e.preventDefault();void s.save();}}>
    <fieldset disabled={s.editorSaving} style={{display:'contents'}}>

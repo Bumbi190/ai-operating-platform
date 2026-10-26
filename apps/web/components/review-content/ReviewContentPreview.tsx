@@ -14,6 +14,6 @@ export function ReviewContentPreview({content}:{content:ReviewContent}){
  return <section className={styles.preview} aria-label="Mejlutkast">
   <dl className={styles.headers}><dt>Till</dt><dd>{content.to.join(', ')}</dd>{content.cc.length>0&&<><dt>Kopia</dt><dd>{content.cc.join(', ')}</dd></>}{content.bcc.length>0&&<><dt>Hemlig kopia</dt><dd>{content.bcc.join(', ')}</dd></>}<dt>Ämne</dt><dd>{content.subject||'Inget ämne'}</dd></dl>
   <div className={styles.text}>{content.bodyText}</div>
-  {content.attachments.length>0&&<section aria-label="Bilagor"><h3>Bilagor</h3><ul className={styles.attachments}>{content.attachments.map(a=><li key={a.id}><strong>{a.name}</strong>{a.preview?<Media key={a.preview.id+':'+a.preview.src} media={a.preview}/>:<span>Ingen tillgänglig förhandsvisning{a.mimeType?' · '+a.mimeType:''}</span>}</li>)}</ul></section>}
+  {content.attachments.length>0&&<section aria-label="Bilagor"><h3>Bilagor</h3><ul className={styles.attachments}>{content.attachments.map((a,index)=><li key={a.id+':'+index}><strong>{a.name}</strong>{a.preview?<Media key={a.preview.id+':'+a.preview.src} media={a.preview}/>:<span>Ingen tillgänglig förhandsvisning{a.mimeType?' · '+a.mimeType:''}</span>}</li>)}</ul></section>}
  </section>;
 }

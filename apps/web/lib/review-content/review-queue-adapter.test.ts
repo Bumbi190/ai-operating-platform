@@ -7,3 +7,8 @@ it('preserves normal stored text and attaches only safe same-origin hash-bound p
  const result=deriveStoredReviewContent({kind:'email_draft',outputKey:null,content,projectId});expect(result.kind).toBe('email');if(result.kind==='email')expect(result.attachments[0].preview?.src).toBe('/api/social-content/media?projectId='+projectId+'&assetId='+assetId+'&sha256='+'a'.repeat(64));
  const missing=deriveStoredReviewContent({kind:'email_draft',outputKey:null,content});if(missing.kind==='email')expect(missing.attachments[0].preview).toBe(null);
 });
+it('keeps each attachment hash and filename even when an asset identity is repeated',()=>{
+ const content=JSON.stringify({to:['a@example.se'],subject:'Versioner',bodyText:'Båda versionerna',attachments:['a','b'].map((hash,i)=>({assetId,sha256:hash.repeat(64),name:'Version '+i,mimeType:'image/jpeg'}))});
+ const result=deriveStoredReviewContent({kind:'email_draft',outputKey:null,content,projectId});expect(result.kind).toBe('email');
+ if(result.kind==='email')expect(result.attachments.map(a=>[a.name,new URL(a.preview!.src,'https://app.test').searchParams.get('sha256')])).toEqual([['Version 0','a'.repeat(64)],['Version 1','b'.repeat(64)]]);
+});

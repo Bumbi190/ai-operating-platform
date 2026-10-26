@@ -12,6 +12,8 @@ import {projectPromptChannelStates} from './media-queue-projection';
 import {parsePromptQueueScripts,parsePromptQueueBindings} from './source-media-queue';
 import type {CalendarMediaChannelState} from './media-queue-types';
 import {PLATFORM_SOCIAL_PROJECT_SLUG} from '../media/social-destination';
+import {buildInstagramCaption} from '../media/instagram';
+import {buildYouTubeMeta} from '../media/youtube';
 export type CalendarDetail={source:CalendarSourceRef;title:string;content:ReviewContent;channelStates?:CalendarMediaChannelState[];dateBasis?:CalendarEntry['dateBasis'];sourceHref:string|null;revisionHash:string|null};
 export function parseDetailSource(value:unknown):Extract<CalendarSourceRef,{kind:'media'|'social'}>{
  calendarFields(value,['kind','projectId','scriptId','postId','revisionId','sha256','jobId']);calendarId(value.projectId);
@@ -31,12 +33,15 @@ export async function readCalendarDetail({adminDb:db}:{adminDb:AdminDb},actor:Ca
  if(!project||project.id!==source.projectId||project.owner_id!==actor.userId)throw new CalendarError('NOT_FOUND');
  if(source.kind==='media'){
   if(project.slug!==PLATFORM_SOCIAL_PROJECT_SLUG)throw new CalendarError('NOT_FOUND');
-  const {data:s,error}=await db.from('media_scripts').select('id,project_id,hook,script,cta,status,video_status,generated_at,reviewed_at,published_at,instagram_media_id,facebook_post_id,youtube_video_id,publish_channel_state,video_url,render_id,render_bucket').eq('id',source.scriptId).eq('project_id',source.projectId).in('status',['approved','publishing','published']).maybeSingle();
+  const {data:s,error}=await db.from('media_scripts').select('id,project_id,hook,script,cta,hashtags,media_news_items(url,source_name),status,video_status,generated_at,reviewed_at,published_at,instagram_media_id,facebook_post_id,youtube_video_id,publish_channel_state,video_url,render_id,render_bucket').eq('id',source.scriptId).eq('project_id',source.projectId).in('status',['approved','publishing','published']).maybeSingle();
   if(error)throw new CalendarError('UNAVAILABLE');if(!s||s.id!==source.scriptId||s.project_id!==source.projectId)throw new CalendarError('NOT_FOUND');
   const row=parsePromptQueueScripts([s],source.projectId)[0];
   const bound=await (db as any).from('social_account_bindings').select('platform,verification,blocked_at').eq('project_id',source.projectId).is('superseded_at',null).in('platform',['facebook','instagram','youtube']).limit(4);
   const channelStates=projectPromptChannelStates(row,bound.error?null:parsePromptQueueBindings(bound.data),new Date().toISOString());
-  const text=[s.script,s.cta].filter(v=>typeof v==='string'&&v.trim()).join('\n\n');const normalized=normalizeReviewContent({kind:null,outputKey:null,content:text});
+  const news=Array.isArray(s.media_news_items)?s.media_news_items[0]:s.media_news_items;
+  const fields={hook:s.hook??'',cta:s.cta??undefined,hashtags:Array.isArray(s.hashtags)?s.hashtags:[],sourceUrl:news?.url??undefined,sourceName:news?.source_name??undefined};
+  const caption=buildInstagramCaption(fields),youtube=buildYouTubeMeta({...fields,hook:s.hook??'AI news update'});
+  const text=['Manus',typeof s.script==='string'?s.script:'','Facebook / Instagram · bildtext',caption,'YouTube · titel',youtube.title,'YouTube · beskrivning',youtube.description,'YouTube · taggar',youtube.tags.join(', ')].join('\n\n');const normalized=normalizeReviewContent({kind:null,outputKey:null,content:text});
   const media:ReviewMedia[]=[];
   const legacy=resolveLegacyScriptVideo({scriptId:s.id,videoUrl:s.video_url,renderId:s.render_id,bucket:s.render_bucket,region:process.env.AWS_REGION??'eu-north-1',configuredBucket:process.env.REMOTION_S3_BUCKET});
   if(legacy)media.push(legacy);
@@ -51,7 +56,7 @@ export async function readCalendarDetail({adminDb:db}:{adminDb:AdminDb},actor:Ca
     }
    }catch{/* Unverified legacy references never become media elements. */}
   }
-  return {source,title:(s.hook??'Nyhetsfilm').slice(0,150),content:normalized.kind==='unavailable'?normalized:{kind:'media',text,media,...(!media.length?{notice:'Ingen verifierbar färdig video finns att visa för den här posten.'}:{})},channelStates,sourceHref:'/projects/ai-media-automation/scripts',revisionHash:createHash('sha256').update(JSON.stringify([s.hook,s.script,s.cta,s.video_url])).digest('hex')};
+  return {source,title:(s.hook??'Nyhetsfilm').slice(0,150),content:normalized.kind==='unavailable'?normalized:{kind:'media',text,media,...(!media.length?{notice:'Ingen verifierbar färdig video finns att visa för den här posten.'}:{})},channelStates,sourceHref:'/projects/ai-media-automation/scripts',revisionHash:createHash('sha256').update(JSON.stringify([text,s.video_url])).digest('hex')};
  }
  const content=await readSocialContent(db,actor,{projectId:source.projectId});
  const post=content.posts.find(p=>p.id===source.postId);
@@ -65,6 +70,7 @@ export async function readCalendarDetail({adminDb:db}:{adminDb:AdminDb},actor:Ca
  if(!revision||revision.id!==source.revisionId||revision.sha256!==source.sha256)throw new CalendarError('CONFLICT');
  if(revision.media.length>10)throw new CalendarError('UNAVAILABLE');
  const media=(await Promise.all(revision.media.map(m=>resolveOwnedPreviewMedia(db,actor,source.projectId,{assetId:m.id,sha256:m.sha256,name:revision!.draft.title,mimeType:m.mimeType})))).filter((m):m is ReviewMedia=>m!==null);
- const normalized=normalizeReviewContent({kind:null,outputKey:null,content:revision.draft.text});
- return {source,title:revision.draft.title,content:normalized.kind==='unavailable'?normalized:{kind:'media',text:revision.draft.text,media,...(media.length<revision.media.length?{notice:'En del av bild- eller videounderlaget kunde inte verifieras och visas inte.'}:{})},sourceHref:content.workspaceUrl??null,revisionHash:revision.sha256};
+ const text=revision.draft.text+(revision.draft.linkUrl?'\n\nLänk som följer med inlägget\n'+revision.draft.linkUrl:'');
+ const normalized=normalizeReviewContent({kind:null,outputKey:null,content:text});
+ return {source,title:revision.draft.title,content:normalized.kind==='unavailable'?normalized:{kind:'media',text,media,...(media.length<revision.media.length?{notice:'En del av bild- eller videounderlaget kunde inte verifieras och visas inte.'}:{})},sourceHref:content.workspaceUrl??null,revisionHash:revision.sha256};
 }

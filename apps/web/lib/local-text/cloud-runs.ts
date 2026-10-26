@@ -29,8 +29,12 @@ export async function executeLocalTextCloudRun(db:Db,run:Run,claimId:string,now:
  const snapshot=await rpc(db,'local_text_cloud_snapshot',{p_run_id:run.id,p_claim_id:claimId})
  if(snapshot?.kind!=='applied'||!object(snapshot.value)){await finalizeOwnedRunUnlessCancelled(db,run.id,claimId,{status:'failed',error:'LOCAL_TEXT_SOURCE_UNAVAILABLE',finished_at:now.toISOString(),claimed_at:null,lease_until:null});return}
  const s=snapshot.value
+ // Saved responses and held human routing also require primitive scoped IDs.
+ // Validate before terminal context, apply or continuation can consume them.
+ if(!isUuid(s.jobId)||!isUuid(s.stageId)||!isUuid(s.attemptId)||!isUuid(s.projectId)||s.projectId!==run.project_id){await finalizeOwnedRunUnlessCancelled(db,run.id,claimId,{status:'failed',error:'LOCAL_TEXT_SOURCE_UNAVAILABLE',finished_at:now.toISOString(),claimed_at:null,lease_until:null});return}
+ const jobId=s.jobId
  const operate=(operation:string,value:Record<string,unknown>)=>rpc(db,'local_text_cloud_operation',{p_run_id:run.id,p_claim_id:claimId,p_operation:operation,p_value:value})
- async function apply(){const r=await operate('apply',{});if(!r||typeof r.kind!=='string'||!['applied','duplicate'].includes(r.kind))throw Error('LOCAL_TEXT_APPLY_PENDING');await advanceLocalText(db,String(s.jobId),new Date())}
+ async function apply(){const r=await operate('apply',{});if(!r||typeof r.kind!=='string'||!['applied','duplicate'].includes(r.kind))throw Error('LOCAL_TEXT_APPLY_PENDING');await advanceLocalText(db,jobId,new Date())}
  async function human(reasonCode:string){
   const r=await operate('human',{reasonCode});if(r?.kind!=='applied')return
   const terminal=await finalizeOwnedRunUnlessCancelled(db,run.id,claimId,{status:'awaiting_approval',context:{localText:{jobId:s.jobId,stageId:s.stageId,reasonCode}},finished_at:now.toISOString(),claimed_at:null,lease_until:null})
@@ -58,7 +62,7 @@ export async function executeLocalTextCloudRun(db:Db,run:Run,claimId:string,now:
  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),60000)
  try{
   if(s.stage==='cloud_task'){
-   const output=await executeCloudTextTask({db,task,binding:{jobId:String(s.jobId),inputHash:hashTask(task),runId:run.id,claimId,projectId:run.project_id},profile,budgetReserved:true,signal:controller.signal})
+   const output=await executeCloudTextTask({db,task,binding:{jobId,inputHash:hashTask(task),runId:run.id,claimId,projectId:run.project_id},profile,budgetReserved:true,signal:controller.signal})
    if(output.flight==='unknown'){await unknown();return}
    if(output.flight==='not_started'){await human('CLOUD_TASK_NOT_ADMITTED');return}
    const cost=await db.from('cost_events').select('id').eq('run_id',run.id).eq('project_id',run.project_id).eq('provider','openai').eq('operation','local_text.task').limit(2)

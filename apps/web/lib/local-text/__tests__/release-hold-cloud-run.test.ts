@@ -34,10 +34,10 @@ const run={id,project_id:id,claim_id:id,kind:'local_text_cloud',workflow_id:null
 const task={kind:'classify' as const,text:'Synthetic hold test',labels:['one','two']}
 const result={label:'one'}
 const stages=['local_review','cloud_task','cloud_review'] as const
-function fixture(stage:typeof stages[number]) {
+function fixture(stage:typeof stages[number],patch:Record<string,unknown>={}) {
   const snapshot={stageId:id,jobId:id,attemptId:id,projectId:id,stage,state:'pending',
     reviewMode:'governed_openai',budgetReserved:true,task,result,
-    inputHash:hashTask(task),resultHash:stage==='cloud_task'?null:sha256(canonicalJson(result))}
+    inputHash:hashTask(task),resultHash:stage==='cloud_task'?null:sha256(canonicalJson(result)),...patch}
   const rpc=vi.fn(async(name:string,args:Record<string,unknown>)=>{
     if(name==='local_text_cloud_snapshot') {
       expect(args).toEqual({p_run_id:id,p_claim_id:id})
@@ -72,6 +72,33 @@ afterEach(()=>{
   for(const spy of [f.profile,f.reviewer,f.review,f.flight,f.task,f.unknown,f.settle,f.from]) expect(spy).not.toHaveBeenCalled()
 })
 describe('pending cloud stages under the real unresolved-incident hold',()=>{
+  it.each(['pending','response_ready','human_ready'].flatMap(state=>
+    ['array job','coercing job','stage','attempt','project'].map(binding=>({state,binding}))))('rejects $binding snapshot binding before $state continuation',async ({state,binding})=>{
+    const convert=vi.fn(()=>id)
+    const patches:Record<string,Record<string,unknown>>={
+      'array job':{jobId:[id]},'coercing job':{jobId:{toString:convert}},
+      stage:{stageId:0},attempt:{attemptId:null},project:{projectId:'22222222-2222-4222-8222-222222222222'},
+    }
+    const patch=patches[binding]
+    const {db,rpc}=fixture('local_review',{state,...patch})
+    await executeLocalTextCloudRun(db,run,id,now)
+    expect(f.sequence).toEqual(['checkpoint','snapshot','finalize'])
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(f.finalize).toHaveBeenCalledWith(db,id,id,{
+      status:'failed',error:'LOCAL_TEXT_SOURCE_UNAVAILABLE',finished_at:now.toISOString(),claimed_at:null,lease_until:null,
+    })
+    expect(f.advance).not.toHaveBeenCalled();expect(convert).not.toHaveBeenCalled()
+  })
+  it.each(['response_ready','human_ready'])('preserves valid saved %s handling without provider access',async state=>{
+    const {db}=fixture('local_review',{state})
+    await executeLocalTextCloudRun(db,run,id,now)
+    expect(f.sequence).toEqual(['checkpoint','snapshot','finalize','apply','advance'])
+    expect(f.finalize).toHaveBeenCalledWith(db,id,id,{
+      status:state==='human_ready'?'awaiting_approval':'done',context:{localText:{jobId:id,stageId:id}},
+      finished_at:now.toISOString(),claimed_at:null,lease_until:null,
+    })
+    expect(f.advance).toHaveBeenCalledWith(db,id,expect.any(Date))
+  })
   it.each(['array','boxed','coercing'])('does not advance after a %s apply result kind',async representation=>{
     const convert=vi.fn(()=>'applied')
     f.applyKind=representation==='array'?['applied']:representation==='boxed'?new String('applied'):{toString:convert}

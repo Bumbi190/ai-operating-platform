@@ -63,6 +63,18 @@ This is adapter robustness evidence, not an observed production-format failure.
 The offline command passes 322 tests with the same four pending integration cases;
 the reconciliation API suite passes 49, and scoped strict TypeScript passes.
 
+Cloud snapshot controls additionally cover malformed job/stage/attempt UUIDs and
+a mismatched project in pending, saved-response and saved-human states. Fifteen
+cases first failed before primitive UUID/project checks moved ahead of every
+snapshot continuation. Invalid snapshots now use the existing failed/source-
+unavailable finalization and perform no apply/advance or provider access. The
+validated job ID is retained without string coercion. Two valid saved-state
+controls preserve the existing finalization/apply order under the real hold.
+This is adapter validation evidence, not an observed malformed production RPC or
+proof of DB authority. The offline command passes 339 tests with the same four
+integration cases pending; the held cloud suite passes 31. Scoped strict
+TypeScript passes and independent review found no material issues.
+
 This command does not include that separate RED source-contract assertion or
 prove actual database privileges, multi-device concurrency, healthy-project
 dispatch, physical model behavior or full CI. Keep the production disable flag

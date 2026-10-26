@@ -5439,6 +5439,10 @@ isOneToOne: false
       [_ in never]: never
     }
     Functions: {
+      social_content_repeat_check: {
+        Args: { p_input: Json; p_principal: Json }
+        Returns: Json
+      }
       approve_and_start_human_story: {
         Args: {
           p_current_action_hash: string

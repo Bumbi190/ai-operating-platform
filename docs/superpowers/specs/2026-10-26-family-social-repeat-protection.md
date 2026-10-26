@@ -40,4 +40,4 @@ Bygg en separat, läsande Instagram-avstämning med rätt kontobindning, exakt t
 
 Först implementeringsplan och isolerad verifiering av innehållsskyddet; Instagram-avstämning hålls som en egen testbar del. Ingen ny stående publiceringsfullmakt, automatisk veckoproduktion eller betald bildgenerering införs här. Befintliga godkännanden och stoppregler gäller fortsatt.
 
-Status: design godkänd av André 26 oktober 2026. Repetitionsskyddet är implementerat och lokalt verifierat. Produktionsinstallation avvaktar uttryckligt driftsättningsgodkännande efter automatisk avvisning; ingen produktionsändring har utförts för skyddet. Instagram-avstämning kvarstår som separat del.
+Status: design och därefter uppladdning/driftsättning godkända av André 26 oktober 2026. Repetitionsskyddet är implementerat och lokalt verifierat. Databasdelen installerad som version20261026073245 efter separat klartecken; kodleverans via PR546. Instagram-avstämning kvarstår som separat del.

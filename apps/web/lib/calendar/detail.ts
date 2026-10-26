@@ -39,7 +39,8 @@ export async function readCalendarDetail({adminDb:db}:{adminDb:AdminDb},actor:Ca
   const bound=await (db as any).from('social_account_bindings').select('platform,verification,blocked_at').eq('project_id',source.projectId).is('superseded_at',null).in('platform',['facebook','instagram','youtube']).limit(4);
   const channelStates=projectPromptChannelStates(row,bound.error?null:parsePromptQueueBindings(bound.data),new Date().toISOString());
   const news=Array.isArray(s.media_news_items)?s.media_news_items[0]:s.media_news_items;
-  const fields={hook:s.hook??'',cta:s.cta??undefined,hashtags:Array.isArray(s.hashtags)?s.hashtags:[],sourceUrl:news?.url??undefined,sourceName:news?.source_name??undefined};
+  const rawTags=s.hashtags??[];if(!Array.isArray(rawTags)||rawTags.some(h=>typeof h!=='string'))throw new CalendarError('UNAVAILABLE');
+  const fields={hook:s.hook??'',cta:s.cta??undefined,hashtags:rawTags.filter((h):h is string=>typeof h==='string'),sourceUrl:news?.url??undefined,sourceName:news?.source_name??undefined};
   const caption=buildInstagramCaption(fields),youtube=buildYouTubeMeta({...fields,hook:s.hook??'AI news update'});
   const text=['Manus',typeof s.script==='string'?s.script:'','Facebook / Instagram · bildtext',caption,'YouTube · titel',youtube.title,'YouTube · beskrivning',youtube.description,'YouTube · taggar',youtube.tags.join(', ')].join('\n\n');const normalized=normalizeReviewContent({kind:null,outputKey:null,content:text});
   const media:ReviewMedia[]=[];

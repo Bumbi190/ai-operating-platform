@@ -5,7 +5,8 @@
     "captured_at": "2026-09-25",
     "handlarborsen_review_p2_migration_note": "Operator-approved, project-locked, immutable human review decision events. RLS + FORCE RLS, zero policies, no anon/auth grants; service role SELECT/INSERT only, REVIEW RPC only service role. Fully isolated PG17.6 security tests passed. Live production catalog must be checked after application.",
     "handlarborsen_candidates_migration_note": "Additional candidate memory table to be verified against the scoped live production catalog after operator-approved application: project-locked, RLS and FORCE RLS, zero policies and client grants, service_role SELECT/INSERT only. Earlier table classifications remain unchanged.",
-    "total_tables": 181,
+    "total_tables": 182,
+    "family_weekly_preparation_note": "Applied with explicit owner authorization on 2026-10-26; live catalog verified RLS on, zero policies, no anon/authenticated privileges, service-role SELECT/INSERT. Existing weekly tools create editorial proposals only, no public grant or publication authority.",
     "atlas_fallback_reservations_note": "Owner-approved 2026-10-23, verified live in production. SEK 10/day and 100/month shared reserve journal. RLS enabled, zero policies, anon and authenticated have no table privileges; service_role can SELECT/INSERT and the reviewed RPC is service-role only. No real reservations existed after rolled-back admission tests.",
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
     "platform_tokens_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090000_platform_tokens_client_revoke.sql (Settings S0): client grants revoked, RLS on, no policy.",
@@ -42,8 +43,7 @@
         "ai_cost_snapshots",
         "memory_refs",
         "media_provider_connections",
-        "media_provider_oauth_states",
-        "social_weekly_preparations"
+        "media_provider_oauth_states"
       ],
       "meaning": "Created by a migration but absent from the production catalog at capture time — never applied there, or dropped out-of-band. They are NOT a fresh-deploy hazard: each declares RLS in its own migration, so a rebuild creates them protected. Listed so their absence from the table map is a recorded fact rather than a silent gap, and so the fail-closed rule can distinguish them from a genuinely new unprotected table.",
       "requirement": "Every entry must have RLS declared in the migration corpus.",
@@ -52,8 +52,7 @@
         "ai_cost_snapshots": "SERVER_ONLY",
         "memory_refs": "SERVER_ONLY",
         "media_provider_connections": "SERVER_ONLY",
-        "media_provider_oauth_states": "SERVER_ONLY",
-        "social_weekly_preparations": "SERVER_ONLY"
+        "media_provider_oauth_states": "SERVER_ONLY"
       },
       "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class. The two Higgsfield tables are proposed by 20261022075921_higgsfield_mcp_readonly.sql and have NOT been applied or inspected in production; they remain created_not_live until a reviewed production migration and live catalog reconciliation."
     },
@@ -1691,6 +1690,16 @@
       "created_by_migration": true
     },
     "social_publication_reconciliation_proofs": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "social_weekly_preparations": {
       "class": "SERVER_ONLY",
       "rls": true,
       "policies": 0,

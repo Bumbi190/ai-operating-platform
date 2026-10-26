@@ -75,6 +75,16 @@ export function useCalendarWorkspace(initialWeek:CalendarWeekModel,userId:string
  },[userId,loadWeek]);
  useEffect(()=>{currentWeek.current=week;void loadWeek(week);const url=new URL(window.location.href);url.searchParams.set('week',week);window.history.replaceState(null,'',url.pathname+url.search);},[week,loadWeek]);
  useEffect(()=>controller.subscribeCalendarChanged(()=>{if(owner.current!==userId)return;setNotice('Atlas uppdaterade kalendern.');void loadWeek(currentWeek.current);}),[controller,loadWeek,userId]);
+ useEffect(()=>{
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  const refresh=()=>{
+   if(document.visibilityState==='hidden'||owner.current!==userId||!mounted.current)return;
+   if(timer!==undefined)clearTimeout(timer);
+   timer=setTimeout(()=>{timer=undefined;void loadWeek(currentWeek.current);},150);
+  };
+  window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);
+  return()=>{if(timer!==undefined)clearTimeout(timer);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
+ },[loadWeek,userId]);
  const changeWeek=(date:string)=>{
   const next=weekRange(date).fromDate;currentWeek.current=next;sequence.current++;abort.current?.abort();setSelectedDay(date);setWeek(next);
   if(next===week)void loadWeek(next);

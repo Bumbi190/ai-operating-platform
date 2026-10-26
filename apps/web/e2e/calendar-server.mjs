@@ -1,5 +1,6 @@
 import {createServer} from 'vite';
 import {randomUUID} from 'node:crypto';
+import {mediaQueueFixture} from './calendar-media-queue-fixture.mjs';
 const testPort=Number(process.env.CALENDAR_TEST_PORT||54413);
 const root=process.cwd(),users=new Map(),receipts=new Map();let social=true,saveError=false,readError=false,delayDate=null,delayMs=0,pending=false,workflowLinks=false,workflowState='waiting';
 const zone='Europe/Stockholm',A='20000000-0000-4000-8000-000000000001';
@@ -14,6 +15,8 @@ server.middlewares.use(async(req,res,next)=>{
  const url=new URL(req.url,'http://127.0.0.1:'+testPort),user=/calendar_test_user=([a-f0-9-]+)/.exec(req.headers.cookie??'')?.[1]??A;
  if(url.pathname.startsWith('/_test/')){
   const input=await body(req);
+  if(url.pathname==='/_test/reset')mediaQueueFixture.reset(input.mediaQueue===true);
+  if(url.pathname==='/_test/media')mediaQueueFixture.change(input.version);
   if(url.pathname==='/_test/reset'){users.clear();receipts.clear();pending=input.pending===true;workflowLinks=input.workflowLinks===true;workflowState='waiting';social=true;saveError=false;readError=false;delayDate=null;delayMs=0;res.setHeader('Set-Cookie','calendar_test_user='+A+'; Path=/');if(input.geometry){const events=empty();for(const event of [
    seedEvent('10000000-0000-4000-8000-000000000001','Heldag den 25:e',{kind:'all_day',startDate:'2026-10-25',endDateExclusive:'2026-10-26',timeZone:zone}),
    seedEvent('10000000-0000-4000-8000-000000000002','Nattarbete',point('2026-10-22T21:00:00.000Z','2026-10-23T01:00:00.000Z'),{kind:'work_block',workStatus:'planned'}),
@@ -36,7 +39,7 @@ server.middlewares.use(async(req,res,next)=>{
  }
  if(url.pathname==='/api/calendar'){
   if(req.method==='GET'){
-   const from=url.searchParams.get('fromDate'),to=url.searchParams.get('toDateExclusive'),snapshot=calendarModel(user,from,to);
+   const from=url.searchParams.get('fromDate'),to=url.searchParams.get('toDateExclusive'),snapshot=mediaQueueFixture.model(user,calendarModel(user,from,to));
    if(delayDate===from)await new Promise(resolve=>setTimeout(resolve,delayMs));
    return json(res,readError?{ok:false,code:'UNAVAILABLE'}:snapshot,readError?503:200);
   }
@@ -51,6 +54,7 @@ server.middlewares.use(async(req,res,next)=>{
   }
  }
  if(req.method==='GET'&&url.pathname==='/calendar'){res.setHeader('content-type','text/html');res.end(await server.transformIndexHtml(req.url,'<!doctype html><html lang="sv"><head><meta charset="utf-8"><title>Omnira Kalender · förhandsvisning</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;background:#07111b;color:#edf5fa;font-family:system-ui}*{box-sizing:border-box}button,input,select,textarea{font:inherit}</style></head><body><div id="root"></div><script type="module" src="/e2e/calendar-entry.tsx"></script></body></html>'));return;}
+ if(req.method==='GET'&&url.pathname==='/projects/ai-media-automation/scripts'){res.setHeader('content-type','text/html');res.end('<h1>Nyhetsfilmer · testvy</h1>');return;}
  next();
 });
 await server.listen();

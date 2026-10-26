@@ -12,3 +12,4 @@ Tasks1–4 pending.
 
 Ruling: Git Bash helper failed before executing with Windows NtCreateDirectoryObject access denial. Equivalent per-plan scratch/marker/progress setup uses native PowerShell, while committed ledger retains task ranges and test results; no product consequence. First copy command used an incorrect relative build-copy path and ran no tests; corrected to absolute source path. Actual Task1 RED observed missing projection module.
 Task1: complete (5f05bfc..Task1 commit),8 projection tests RED missing module then GREEN. No network or mutation capability in projection.
+Task2: complete (6d488f0..Task2 commit). Reader6 and aggregation1 tests observed RED (missing reader/queue), then15 combined tests GREEN; separate tsc passed. Supabase select reference checked; changelog Markdown endpoint unsupported by browser tool, no new Supabase API/schema feature used.

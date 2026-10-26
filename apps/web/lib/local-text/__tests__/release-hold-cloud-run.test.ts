@@ -6,7 +6,7 @@ import type { Db } from '../types'
 // Real runner and real hold; every persisted operation below is an in-memory
 // adapter observation. Provider boundaries must never be reached.
 const f=vi.hoisted(()=>({
-  sequence:[] as string[],allowed:true,humanApplied:true,finalized:true,
+  sequence:[] as string[],allowed:true,humanApplied:true,finalized:true,applyKind:'applied' as unknown,
   checkpoint:vi.fn(),finalize:vi.fn(),advance:vi.fn(),
   profile:vi.fn(()=>{throw new Error('unexpected profile lookup')}),
   reviewer:vi.fn(()=>{throw new Error('unexpected reviewer creation')}),
@@ -55,12 +55,12 @@ function fixture(stage:typeof stages[number]) {
     expect(args.p_operation).toBe('apply')
     expect(args.p_value).toEqual({})
     f.sequence.push('apply')
-    return {data:{kind:'applied'},error:null}
+    return {data:{kind:f.applyKind},error:null}
   })
   return {db:{rpc,from:f.from} as unknown as Db,rpc}
 }
 beforeEach(()=>{
-  vi.clearAllMocks();f.sequence=[];f.allowed=true;f.humanApplied=true;f.finalized=true
+  vi.clearAllMocks();f.sequence=[];f.allowed=true;f.humanApplied=true;f.finalized=true;f.applyKind='applied'
   vi.stubEnv('ATLAS_LOCAL_TEXT_ENABLED','true')
   expect(LOCAL_TEXT_UNRESOLVED_INCIDENT_RELEASE_HOLD).toBe(true)
   f.checkpoint.mockImplementation(async()=>{f.sequence.push('checkpoint');return f.allowed?{allowed:true}:{allowed:false,refusal:'FENCED'}})
@@ -72,6 +72,18 @@ afterEach(()=>{
   for(const spy of [f.profile,f.reviewer,f.review,f.flight,f.task,f.unknown,f.settle,f.from]) expect(spy).not.toHaveBeenCalled()
 })
 describe('pending cloud stages under the real unresolved-incident hold',()=>{
+  it.each(['array','boxed','coercing'])('does not advance after a %s apply result kind',async representation=>{
+    const convert=vi.fn(()=>'applied')
+    f.applyKind=representation==='array'?['applied']:representation==='boxed'?new String('applied'):{toString:convert}
+    await expect(executeLocalTextCloudRun(fixture('local_review').db,run,id,now)).rejects.toThrow('LOCAL_TEXT_APPLY_PENDING')
+    expect(f.sequence).toEqual(['checkpoint','snapshot','human','finalize','apply'])
+    expect(f.advance).not.toHaveBeenCalled();expect(convert).not.toHaveBeenCalled()
+  })
+  it('preserves a primitive duplicate apply result without provider dispatch',async()=>{
+    f.applyKind='duplicate'
+    await executeLocalTextCloudRun(fixture('local_review').db,run,id,now)
+    expect(f.sequence).toEqual(['checkpoint','snapshot','human','finalize','apply','advance'])
+  })
   it.each(stages)('routes pending %s to human review without dispatch',async stage=>{
     const {db}=fixture(stage)
     await executeLocalTextCloudRun(db,run,id,now)

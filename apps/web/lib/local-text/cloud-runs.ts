@@ -30,7 +30,7 @@ export async function executeLocalTextCloudRun(db:Db,run:Run,claimId:string,now:
  if(snapshot?.kind!=='applied'||!object(snapshot.value)){await finalizeOwnedRunUnlessCancelled(db,run.id,claimId,{status:'failed',error:'LOCAL_TEXT_SOURCE_UNAVAILABLE',finished_at:now.toISOString(),claimed_at:null,lease_until:null});return}
  const s=snapshot.value
  const operate=(operation:string,value:Record<string,unknown>)=>rpc(db,'local_text_cloud_operation',{p_run_id:run.id,p_claim_id:claimId,p_operation:operation,p_value:value})
- async function apply(){const r=await operate('apply',{});if(!r||!['applied','duplicate'].includes(String(r.kind)))throw Error('LOCAL_TEXT_APPLY_PENDING');await advanceLocalText(db,String(s.jobId),new Date())}
+ async function apply(){const r=await operate('apply',{});if(!r||typeof r.kind!=='string'||!['applied','duplicate'].includes(r.kind))throw Error('LOCAL_TEXT_APPLY_PENDING');await advanceLocalText(db,String(s.jobId),new Date())}
  async function human(reasonCode:string){
   const r=await operate('human',{reasonCode});if(r?.kind!=='applied')return
   const terminal=await finalizeOwnedRunUnlessCancelled(db,run.id,claimId,{status:'awaiting_approval',context:{localText:{jobId:s.jobId,stageId:s.stageId,reasonCode}},finished_at:now.toISOString(),claimed_at:null,lease_until:null})
@@ -45,7 +45,7 @@ export async function executeLocalTextCloudRun(db:Db,run:Run,claimId:string,now:
  }
  if(s.state!=='pending'){await unknown();return}
  if(!localTextDispatchEnabled()){await human('LOCAL_TEXT_DISABLED');return}
- if(!['local_review','cloud_task','cloud_review'].includes(String(s.stage))){await human('INVALID_STAGE');return}
+ if(typeof s.stage!=='string'||!['local_review','cloud_task','cloud_review'].includes(s.stage)){await human('INVALID_STAGE');return}
  if(s.reviewMode==='human'){await human(s.stage==='cloud_task'?'HUMAN_MODE_NO_CLOUD_TASK':'HUMAN_REVIEW_REQUIRED');return}
  const profile=readCloudTextProfile()
  if(!profile||Date.parse(profile.expiresAt)<=now.getTime()){await human('REVIEW_QUALIFICATION_REQUIRED');return}

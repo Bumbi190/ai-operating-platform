@@ -54,7 +54,7 @@ export async function reviewResult(input:{task:Task;result:TaskResult;binding:Re
   const v:unknown=JSON.parse(response.content)
   if(!v||typeof v!=='object'||Array.isArray(v)||Object.keys(v).sort().join(',')!=='reasonCodes,verdict')throw Error('INVALID_REVIEW')
   const parsed=v as {verdict:unknown;reasonCodes:unknown}
-  if(!['approved','rejected'].includes(String(parsed.verdict))||!Array.isArray(parsed.reasonCodes)||parsed.reasonCodes.length>6||new Set(parsed.reasonCodes).size!==parsed.reasonCodes.length||parsed.reasonCodes.some(c=>typeof c!=='string'||!reasons.has(c))||(parsed.verdict==='approved'?parsed.reasonCodes.length!==0:parsed.reasonCodes.length===0))throw Error('INVALID_REVIEW')
+  if(typeof parsed.verdict!=='string'||!['approved','rejected'].includes(parsed.verdict)||!Array.isArray(parsed.reasonCodes)||parsed.reasonCodes.length>6||new Set(parsed.reasonCodes).size!==parsed.reasonCodes.length||parsed.reasonCodes.some(c=>typeof c!=='string'||!reasons.has(c))||(parsed.verdict==='approved'?parsed.reasonCodes.length!==0:parsed.reasonCodes.length===0))throw Error('INVALID_REVIEW')
   return receipt(parsed.verdict as 'approved'|'rejected',parsed.reasonCodes)
  }catch{return receipt('unknown',[state.reason??'REVIEW_UNAVAILABLE'])}
 }

@@ -2,14 +2,10 @@ import {PROMPT_QUEUE_HREF,type CalendarMediaChannel,type CalendarMediaChannelSta
 const channels:CalendarMediaChannel[]=['facebook','instagram','youtube'];
 const receiptColumns={facebook:'facebook_post_id',instagram:'instagram_media_id',youtube:'youtube_video_id'} as const;
 const object=(value:unknown):Record<string,unknown>=>value!==null&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:{};
-export function projectPromptQueue(scripts:PromptQueueScript[],bindings:PromptQueueBinding[]|null,now:string):CalendarMediaQueueItem[]{
- const at=Date.parse(now),seen=new Set<string>(),items:CalendarMediaQueueItem[]=[];
- for(const script of scripts){
-  if(!['approved','publishing','published'].includes(script.status)||seen.has(script.id))continue;
-  seen.add(script.id);
-  const age=at-Date.parse(script.generated_at??''),validAge=Number.isFinite(age)&&age>=0;
+export function projectPromptChannelStates(script:PromptQueueScript,bindings:PromptQueueBinding[]|null,now:string):CalendarMediaChannelState[]{
+  const age=Date.parse(now)-Date.parse(script.generated_at??''),validAge=Number.isFinite(age)&&age>=0;
   const observations=object(script.publish_channel_state);
-  const states:CalendarMediaChannelState[]=channels.map(channel=>{
+  return channels.map(channel=>{
    const binding=bindings?.find(b=>b.platform===channel),receipt=script[receiptColumns[channel]],obs=object(observations[channel]);
    const bindingWarning=bindings===null?'Kontokoppling behöver kontrolleras':!binding?'Kontokoppling saknas':binding.blocked_at?'Kontokopplingen är spärrad':binding.verification!=='provider_attested'?'Kontokopplingen behöver verifieras':null;
    const state=(tone:CalendarMediaChannelState['tone'],label:string):CalendarMediaChannelState=>({channel,tone,label,bindingWarning});
@@ -29,6 +25,13 @@ export function projectPromptQueue(scripts:PromptQueueScript[],bindings:PromptQu
    if(['none','generating','rendering'].includes(script.video_status??''))return state('waiting','Godkänd · video förbereds');
    return state('review','Videons status behöver kontrolleras');
   });
+}
+export function projectPromptQueue(scripts:PromptQueueScript[],bindings:PromptQueueBinding[]|null,now:string):CalendarMediaQueueItem[]{
+ const seen=new Set<string>(),items:CalendarMediaQueueItem[]=[];
+ for(const script of scripts){
+  if(!['approved','publishing','published'].includes(script.status)||seen.has(script.id))continue;
+  seen.add(script.id);
+  const states=projectPromptChannelStates(script,bindings,now);
   // A shared published status/time does not settle each channel; warnings remain actionable.
   if(states.every(s=>s.tone==='success'&&!s.bindingWarning))continue;
   const tone=states.some(s=>s.tone==='error'||s.bindingWarning==='Kontokopplingen är spärrad')?'error':states.some(s=>s.tone==='review'||s.bindingWarning)?'review':'waiting';

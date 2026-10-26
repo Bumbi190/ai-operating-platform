@@ -6,5 +6,5 @@ export type ReconciliationCandidate={id:string;providerId:string;accountId:strin
 export type AttemptSnapshot={publication:PublicationRecord;revision:SocialContentRevision}
 export type ReconciliationScope={projectId:string;postId:string;publicationId:string}
 export type ReconciliationProof=ReconciliationCandidate&{publicationId:string;revisionId:string;revisionSha256:string;reviewedAssetSha256:string;candidateHash:string;expiresAt:string;version:number}
-export type ReconciliationDependencies={provider:{list:typeof listFacebookCandidates;read:typeof readFacebookCandidate};resolveCredential:(projectId:string)=>Promise<ManualCredential&{bindingId:string}>;now:()=>number}
+export type ReconciliationDependencies={provider:{list:typeof listFacebookCandidates;read:typeof readFacebookCandidate};resolveCredential:(projectId:string,channel:'facebook'|'instagram')=>Promise<ManualCredential&{bindingId:string}>;now:()=>number}
 export type CompleteReconciliation=ReconciliationScope&{candidateId:string;expectedVersion:number;imageConfirmed:true}

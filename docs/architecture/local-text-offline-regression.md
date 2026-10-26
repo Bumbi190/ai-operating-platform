@@ -34,6 +34,18 @@ Scoped strict TypeScript for the configuration/setup passed. Execution reports
 are retained in the local Work review artifacts, outside the repository.
 
 Issue #533's missing authoritative project-wide DB incident fence remains open.
+
+On 26 October 2026, the offline command passed 315 tests with the same four
+integration cases pending. Four additional reconciliation API controls explicitly
+pause project A's incident read while same-owner healthy project B completes.
+A then returns valid evidence, a returned error, a thrown error or malformed
+evidence. B remains readable before and after A settles; A never gains retry,
+resume or enrollment authority. Promise barriers establish this response order
+without timing sleeps. The paused request is drained during cleanup even if an
+assertion fails. These are mocked API isolation controls, not actual database
+concurrency or a positive healthy-project dispatch test. The affected API suite
+passes 42 tests; the scoped strict TypeScript check also passes.
+
 This command does not include that separate RED source-contract assertion or
 prove actual database privileges, multi-device concurrency, healthy-project
 dispatch, physical model behavior or full CI. Keep the production disable flag

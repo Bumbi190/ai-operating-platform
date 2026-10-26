@@ -9,6 +9,7 @@ const mock = vi.hoisted(() => ({
   ownerThrowsByProject: {} as Record<string,boolean>,
   rowsByProject: {} as Record<string,Record<string,Record<string,unknown>[]>>,
   failuresByProject: {} as Record<string,Record<string,'returned'|'thrown'>>,
+  readPausesByProject: {} as Record<string,{table:string;wait:Promise<void>;entered:()=>void}>,
   calls: [] as {table:string;select?:string;column?:string;value?:string;limit?:number}[],
   rows: {
     local_text_incidents: [
@@ -37,6 +38,8 @@ vi.mock('@/lib/supabase/admin',()=>({
         eq: (column:string,value:string) => ({
           limit: async (limit:number) => {
             mock.calls.push({table,select:selection,column,value,limit})
+            const pause=mock.readPausesByProject[value]
+            if(pause?.table===table) { pause.entered();await pause.wait }
             const failure=mock.failuresByProject[value]?.[table]
             if(failure==='thrown') throw new Error('private database failure')
             return {data:(mock.rowsByProject[value]??mock.rows)[table]??null,error:failure==='returned'||mock.failTable===table?new Error('private database failure'):null}
@@ -59,6 +62,7 @@ beforeEach(()=>{
   mock.ownerResult={data:{kind:'applied',value:[{status:'revoked'}]},error:null}
   mock.ownersByProject={};mock.rowsByProject={};mock.failuresByProject={}
   mock.ownerThrowsByProject={}
+  mock.readPausesByProject={}
   mock.calls.length=0;mock.rpcCalls.length=0;mock.failTable=''
   mock.rows.local_text_incidents=[
     {kind:'reconcile',state:'open',job_id:null},
@@ -290,6 +294,66 @@ describe('read-only, owner-scoped local text reconciliation status',()=>{
     expect(recovered.data).toMatchObject({status:'blocked',canRetry:false,canResume:false,canEnroll:false,
       counts:{openReconcile:1,openOffline:1}})
     expect((await inspect(url(healthy))).data).toEqual(control.data)
+  })
+  it.each(['valid','returned error','thrown error','malformed'] as const)('keeps a healthy project readable while the affected incident read is delayed then %s',async mode=>{
+    const healthy='22222222-2222-4222-8222-222222222222'
+    let release!:()=>void
+    let entered!:()=>void
+    const waiting=new Promise<void>(resolve=>{release=resolve})
+    const started=new Promise<void>(resolve=>{entered=resolve})
+    mock.readPausesByProject[ID]={table:'local_text_incidents',wait:waiting,entered}
+    mock.ownersByProject[healthy]={data:{kind:'applied',value:[{status:'active'}]},error:null}
+    mock.rowsByProject[healthy]={
+      local_text_incidents:[],local_text_admissions:[{status:'active'}],local_text_jobs:[],
+    }
+    let affectedSettled=false
+    const affected=inspect(url(ID)).then(result=>{affectedSettled=true;return result})
+    let control:Awaited<ReturnType<typeof inspect>>
+    try {
+      await started
+      control=await inspect(url(healthy))
+      expect(affectedSettled).toBe(false)
+      expect(control.status).toBe(200)
+      expect(control.data).toMatchObject({status:'requires_new_admission_review',manualEvidenceRequired:true,
+        canRetry:false,canResume:false,canEnroll:false,
+        counts:{openReconcile:0,openOffline:0,activeDevices:1,activeAdmissions:1}})
+      expect(control.data.reasons).toEqual(['NEW_ADMISSION_AND_ATTESTATION_REQUIRED'])
+      if(mode==='returned error') mock.failuresByProject[ID]={local_text_incidents:'returned'}
+      if(mode==='thrown error') mock.failuresByProject[ID]={local_text_incidents:'thrown'}
+      if(mode==='malformed') mock.rows.local_text_incidents=[{kind:'reconcile',state:['open'],job_id:null}]
+    } finally {
+      release()
+      // Drain A even if B/assertions fail, before the next test resets shared fixtures.
+      // A's result is asserted below; cleanup must preserve an earlier failure.
+      await affected.then(()=>undefined,()=>undefined)
+    }
+    const delayed=await affected
+    if(mode==='valid') {
+      expect(delayed.status).toBe(200)
+      expect(delayed.data).toMatchObject({status:'blocked',manualEvidenceRequired:true,
+        canRetry:false,canResume:false,canEnroll:false,counts:{openReconcile:1,openOffline:1}})
+    } else {
+      expect(delayed.status).toBe(503)
+      expect(delayed.data).toEqual({error:'LOCAL_TEXT_RECONCILIATION_READ_UNAVAILABLE'})
+    }
+    for(const result of [delayed,control]) {
+      expect(result.headers.get('Cache-Control')).toBe('private, no-store')
+      expect(JSON.stringify(result.data)).not.toContain(ID)
+      expect(JSON.stringify(result.data)).not.toContain(healthy)
+      expect(JSON.stringify(result.data)).not.toContain('private database failure')
+    }
+    // The delayed success/error must not replace or poison B's next response.
+    expect((await inspect(url(healthy))).data).toEqual(control.data)
+    for(const project of [ID,healthy]) {
+      const reads=mock.calls.filter(call=>call.value===project)
+      expect(reads).toHaveLength(project===ID?3:6)
+      expect(reads.every(call=>call.column==='project_id'&&call.limit===101)).toBe(true)
+    }
+    expect(mock.rpcCalls).toEqual([
+      ['local_text_owner_devices',{p_owner_id:ID,p_project_id:ID}],
+      ['local_text_owner_devices',{p_owner_id:ID,p_project_id:healthy}],
+      ['local_text_owner_devices',{p_owner_id:ID,p_project_id:healthy}],
+    ])
   })
   it.each(['returned error','thrown error','refused','malformed'] as const)('stops before inventory reads on %s owner qualification while a healthy project remains readable',async mode=>{
     const healthy='22222222-2222-4222-8222-222222222222'

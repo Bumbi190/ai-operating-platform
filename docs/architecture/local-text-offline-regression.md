@@ -88,6 +88,17 @@ pending; the cloud behavior suite passes 17 and scoped strict TypeScript passes.
 This is post-clearance adapter robustness, not a production provider-dispatch
 observation or permission to clear the hold.
 
+The pure `computeRemainingStages` reference planner rejects unrecognized or
+non-string stage states and verdicts while preserving an explicit null verdict.
+Eleven regressions first returned a nonempty plan; strict enum checks now refuse
+them without invoking conversion methods. Three positive pending/dispatching/
+saved-response reservation controls remain intact. Repository reference search
+finds this planner only in its definition and tests; no runtime caller was added.
+This strengthens the model, not production SQL reservation or dispatch authority.
+Offline verification passes 362 tests with four integration cases pending; the
+fallback suite passes 20. A common strict compiler input covers all 26 changed
+TypeScript files. The existing known-unknown and human-ready denials remain.
+
 This command does not include that separate RED source-contract assertion or
 prove actual database privileges, multi-device concurrency, healthy-project
 dispatch, physical model behavior or full CI. Keep the production disable flag

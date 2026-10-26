@@ -111,6 +111,18 @@ source search; no recovery endpoint or authority is introduced. Offline tests
 pass 374 with four integration cases pending; this evidence suite passes 32.
 Common scoped TypeScript and independent local review pass.
 
+Twelve additional worker-boundary controls cover identity substitution using
+real P-256 signatures and canonical bodies. Signed started/complete/fail/reconcile
+payloads carrying another device's claim reject after identity verification and
+before any operation or selection RPC. Applied and duplicate replies bound to
+another device (claim/heartbeat/enroll) or job (complete) return UNKNOWN without
+an automatic second operation call. Existing positive receipt cases remain.
+These tests exercise existing guards; no runtime behavior or SQL was changed.
+The focused worker suite passes 40 tests; offline verification passes 386 with
+the same four integration cases pending. Common scoped TypeScript passes.
+Adapter replies do not establish actual DB scope enforcement, multi-device
+authorization ordering or a healthy control project's dispatch eligibility.
+
 This command does not include that separate RED source-contract assertion or
 prove actual database privileges, multi-device concurrency, healthy-project
 dispatch, physical model behavior or full CI. Keep the production disable flag

@@ -83,3 +83,32 @@ it.each(['applied','duplicate'])('preserves valid primitive enums in %s worker r
   }
  }
 })
+
+const otherId='22222222-2222-4222-8222-222222222222'
+it.each(['started','complete','fail','reconcile'] as const)('rejects a signed %s payload bound to another device before any operation RPC',async operation=>{
+ const foreignClaim={...claim,deviceId:otherId},result={label:'support'}
+ const payload=operation==='started'?{claim:foreignClaim}
+  :operation==='complete'?{claim:foreignClaim,result,resultHash:sha256(canonicalJson(result)),usage:{eval_count:4}}
+  :operation==='fail'?{claim:foreignClaim,outcome:'dispatch_unknown'}:{claim:foreignClaim,proofRef:id}
+ const p=packet(operation,payload),calls:{name:string;args:unknown}[]=[]
+ const db={rpc:async(name:string,args:unknown)=>{
+  calls.push({name,args})
+  if(name==='local_text_device_identity')return {data:{deviceId:id,ownerId:id,keyId:id,buildHash:h,status:'active',counter:'0',expiresAt:'2099-01-01T00:00:00.000Z',publicJwk:p.publicJwk,serverOrigin:'https://omnira.example',allowedProjects:[],allowedTasks:[]},error:null}
+  throw Error('Unexpected authority call for a foreign device claim')
+ }} as unknown as Db
+ await expect(api.executeWorkerRequest(db,p.request,operation,now)).rejects.toThrow('INVALID_WORKER_PAYLOAD')
+ expect(calls).toEqual([{name:'local_text_device_identity',args:{p_device_id:id}}])
+})
+
+const foreignReceiptCases=[
+ {operation:'claim' as const,value:{...claim,deviceId:otherId}},
+ {operation:'heartbeat' as const,value:{deviceId:otherId,jobAction:'continue'}},
+ {operation:'enroll' as const,value:{deviceId:otherId,status:'active',version:1}},
+ {operation:'complete' as const,value:{id:otherId,state:'reviewing',reviewStatus:'approved'}},
+]
+it.each(foreignReceiptCases.flatMap(c=>['applied','duplicate'].map(kind=>({...c,kind}))))('returns UNKNOWN for a $kind $operation receipt bound to a different device or job',async c=>{
+ const {response,requestId,calls}=await executeReply(c.operation,c.value,c.kind)
+ expect(response.result).toEqual({kind:'unknown',reconcileId:requestId})
+ // A malformed committed reply is not rollback evidence and must not be retried.
+ expect(calls).toEqual(['local_text_device_identity','local_text_worker_operation'])
+})

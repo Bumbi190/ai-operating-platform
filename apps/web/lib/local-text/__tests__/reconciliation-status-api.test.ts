@@ -7,6 +7,7 @@ const mock = vi.hoisted(() => ({
   ownerResult: { data: {kind:'applied',value:[{status:'revoked'}]}, error:null } as {data:unknown;error:unknown},
   ownersByProject: {} as Record<string,{data:unknown;error:unknown}>,
   ownerThrowsByProject: {} as Record<string,boolean>,
+  ownerPausesByProject: {} as Record<string,{wait:Promise<void>;entered:()=>void}>,
   rowsByProject: {} as Record<string,Record<string,Record<string,unknown>[]>>,
   failuresByProject: {} as Record<string,Record<string,'returned'|'thrown'>>,
   readPausesByProject: {} as Record<string,{table:string;wait:Promise<void>;entered:()=>void}>,
@@ -30,6 +31,8 @@ vi.mock('@/lib/supabase/admin',()=>({
     rpc: async (...args:unknown[]) => {
       mock.rpcCalls.push(args)
       const projectId=(args[1] as Record<string,string>).p_project_id
+      const pause=mock.ownerPausesByProject[projectId]
+      if(pause) { pause.entered();await pause.wait }
       if(mock.ownerThrowsByProject[projectId]) throw new Error('private owner qualification failure')
       return mock.ownersByProject[projectId]??mock.ownerResult
     },
@@ -62,6 +65,7 @@ beforeEach(()=>{
   mock.ownerResult={data:{kind:'applied',value:[{status:'revoked'}]},error:null}
   mock.ownersByProject={};mock.rowsByProject={};mock.failuresByProject={}
   mock.ownerThrowsByProject={}
+  mock.ownerPausesByProject={}
   mock.readPausesByProject={}
   mock.calls.length=0;mock.rpcCalls.length=0;mock.failTable=''
   mock.rows.local_text_incidents=[
@@ -383,6 +387,63 @@ describe('read-only, owner-scoped local text reconciliation status',()=>{
     expect(control.data).toMatchObject({status:'requires_new_admission_review',manualEvidenceRequired:true,
       canRetry:false,canResume:false,canEnroll:false,counts:{openReconcile:0,activeDevices:1,activeAdmissions:1}})
     expect(control.data.reasons).toEqual(['NEW_ADMISSION_AND_ATTESTATION_REQUIRED'])
+  })
+  it.each(['valid','returned error','thrown error','refused','malformed'] as const)('waits for delayed %s ownership evidence before reading the affected inventory',async mode=>{
+    const healthy='22222222-2222-4222-8222-222222222222'
+    const owner='55555555-5555-4555-8555-555555555555'
+    mock.principal={ok:true,userId:owner}
+    let release!:()=>void
+    let entered!:()=>void
+    const waiting=new Promise<void>(resolve=>{release=resolve})
+    const started=new Promise<void>(resolve=>{entered=resolve})
+    mock.ownerPausesByProject[ID]={wait:waiting,entered}
+    mock.ownersByProject[healthy]={data:{kind:'applied',value:[{status:'active'}]},error:null}
+    mock.rowsByProject[healthy]={
+      local_text_incidents:[],local_text_admissions:[{status:'active'}],local_text_jobs:[],
+    }
+    let affectedSettled=false
+    const affected=inspect(url(ID)).then(result=>{affectedSettled=true;return result})
+    let control:Awaited<ReturnType<typeof inspect>>
+    try {
+      await started
+      control=await inspect(url(healthy))
+      expect(affectedSettled).toBe(false)
+      expect(mock.calls.filter(call=>call.value===ID)).toEqual([])
+      expect(mock.calls).toHaveLength(3)
+      expect(control.status).toBe(200)
+      expect(control.data).toMatchObject({status:'requires_new_admission_review',manualEvidenceRequired:true,
+        canRetry:false,canResume:false,canEnroll:false,counts:{openReconcile:0,activeDevices:1,activeAdmissions:1}})
+      if(mode==='returned error') mock.ownersByProject[ID]={data:{kind:'applied',value:[{status:'active'}]},error:new Error('private owner qualification failure')}
+      if(mode==='thrown error') mock.ownerThrowsByProject[ID]=true
+      if(mode==='refused') mock.ownersByProject[ID]={data:{kind:'refused',reason:'SCOPE_REFUSED',value:[{status:'active'}]},error:null}
+      if(mode==='malformed') mock.ownersByProject[ID]={data:{kind:'applied',value:{status:'active'}},error:null}
+    } finally {
+      release()
+      await affected.then(()=>undefined,()=>undefined)
+    }
+    const delayed=await affected
+    if(mode==='valid') {
+      expect(delayed.status).toBe(200)
+      expect(delayed.data).toMatchObject({status:'blocked',manualEvidenceRequired:true,
+        canRetry:false,canResume:false,canEnroll:false,counts:{openReconcile:1,openOffline:1}})
+    } else {
+      const unavailable=mode==='returned error'||mode==='thrown error'
+      expect(delayed.status).toBe(unavailable?503:404)
+      expect(delayed.data).toEqual({error:unavailable?'LOCAL_TEXT_RECONCILIATION_READ_UNAVAILABLE':'NOT_FOUND'})
+    }
+    const affectedReads=mock.calls.filter(call=>call.value===ID)
+    expect(affectedReads).toHaveLength(mode==='valid'?3:0)
+    for(const result of [delayed,control]) {
+      expect(result.headers.get('Cache-Control')).toBe('private, no-store')
+      for(const value of [ID,healthy,owner,'private owner qualification failure']) expect(JSON.stringify(result.data)).not.toContain(value)
+    }
+    expect((await inspect(url(healthy))).data).toEqual(control.data)
+    expect(mock.calls.every(call=>call.column==='project_id'&&call.limit===101)).toBe(true)
+    expect(mock.rpcCalls).toEqual([
+      ['local_text_owner_devices',{p_owner_id:owner,p_project_id:ID}],
+      ['local_text_owner_devices',{p_owner_id:owner,p_project_id:healthy}],
+      ['local_text_owner_devices',{p_owner_id:owner,p_project_id:healthy}],
+    ])
   })
   it('is a bounded GET without write operations',async()=>{
     const response=await getLocalReconciliationStatus(new Request(url().url,{method:'POST'}))

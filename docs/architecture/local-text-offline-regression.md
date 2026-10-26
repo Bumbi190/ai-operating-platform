@@ -46,6 +46,14 @@ assertion fails. These are mocked API isolation controls, not actual database
 concurrency or a positive healthy-project dispatch test. The affected API suite
 passes 42 tests; the scoped strict TypeScript check also passes.
 
+Five further owner-qualification controls pause A's owner RPC while B completes.
+No A inventory read occurs before its owner reply; valid evidence leads to the
+blocked inventory, returned/thrown errors to 503, and refused/malformed replies
+to 404. B's following response stays unchanged. The same offline command now
+passes 320 tests with four existing integration cases pending; the reconciliation
+API suite passes 47. Scoped strict TypeScript passes. These Promise-controlled
+adapter tests do not establish real owner/RLS enforcement or DB transaction order.
+
 This command does not include that separate RED source-contract assertion or
 prove actual database privileges, multi-device concurrency, healthy-project
 dispatch, physical model behavior or full CI. Keep the production disable flag

@@ -54,6 +54,15 @@ passes 320 tests with four existing integration cases pending; the reconciliatio
 API suite passes 47. Scoped strict TypeScript passes. These Promise-controlled
 adapter tests do not establish real owner/RLS enforcement or DB transaction order.
 
+Two test-first UUID controls reproduced a false missing-job count when a valid
+incident/job UUID differed only in letter casing. The read-only API now compares
+already-validated UUIDs case-insensitively within the scoped retained-job set.
+Both case directions pass, while another project's retained job still cannot
+fill A's missing history and open incidents remain blocked without authority.
+This is adapter robustness evidence, not an observed production-format failure.
+The offline command passes 322 tests with the same four pending integration cases;
+the reconciliation API suite passes 49, and scoped strict TypeScript passes.
+
 This command does not include that separate RED source-contract assertion or
 prove actual database privileges, multi-device concurrency, healthy-project
 dispatch, physical model behavior or full CI. Keep the production disable flag

@@ -267,6 +267,38 @@ describe('read-only, owner-scoped local text reconciliation status',()=>{
       for(const identifier of [ID,healthy,originalJob,unrelatedJob]) expect(JSON.stringify(result.data)).not.toContain(identifier)
     }
   })
+  it.each(['incident','job'] as const)('matches retained jobs with uppercase %s UUIDs without borrowing another project history',async uppercase=>{
+    const job='abcdefab-cdef-4abc-8def-abcdefabcdef'
+    const otherJob='fedcbafe-dcba-4fed-8cba-fedcbafedcba'
+    const healthy='22222222-2222-4222-8222-222222222222'
+    mock.ownerResult={data:{kind:'applied',value:[{status:'active'},{status:'active'}]},error:null}
+    mock.rows.local_text_admissions=[{status:'active'},{status:'active'}]
+    mock.rows.local_text_incidents=[{kind:'reconcile',state:'open',job_id:uppercase==='incident'?job.toUpperCase():job}]
+    mock.rows.local_text_jobs=[{id:uppercase==='job'?job.toUpperCase():job}]
+    mock.ownersByProject[healthy]={data:{kind:'applied',value:[{status:'active'}]},error:null}
+    mock.rowsByProject[healthy]={local_text_incidents:[],local_text_admissions:[{status:'active'}],local_text_jobs:[{id:otherJob.toUpperCase()}]}
+    const [affected,control]=await Promise.all([inspect(url(ID)),inspect(url(healthy))])
+    expect(affected.status).toBe(200)
+    expect(affected.data).toMatchObject({status:'blocked',manualEvidenceRequired:true,
+      canRetry:false,canResume:false,canEnroll:false,
+      counts:{openReconcile:1,activeDevices:2,activeAdmissions:2,retainedJobs:1,openIncidentsWithoutRetainedJob:0}})
+    expect(affected.data.reasons).toEqual(['UNRESOLVED_DISPATCH_OUTCOME'])
+    // B's retained job must not satisfy A's new incident, even with equivalent UUID casing.
+    mock.rows.local_text_incidents.push({kind:'reconcile',state:'open',job_id:otherJob})
+    const missing=await inspect(url(ID))
+    expect(missing.status).toBe(200)
+    expect(missing.data).toMatchObject({status:'blocked',manualEvidenceRequired:true,
+      canRetry:false,canResume:false,canEnroll:false,
+      counts:{openReconcile:2,retainedJobs:1,openIncidentsWithoutRetainedJob:1}})
+    expect(missing.data.reasons).toEqual(['UNRESOLVED_DISPATCH_OUTCOME','CANONICAL_JOB_NOT_RETAINED'])
+    expect(control.status).toBe(200)
+    expect(control.data).toMatchObject({status:'requires_new_admission_review',canRetry:false,canResume:false,canEnroll:false})
+    expect((await inspect(url(healthy))).data).toEqual(control.data)
+    for(const result of [affected,missing,control]) {
+      expect(result.headers.get('Cache-Control')).toBe('private, no-store')
+      for(const value of [ID,healthy,job,job.toUpperCase(),otherJob,otherJob.toUpperCase()]) expect(JSON.stringify(result.data)).not.toContain(value)
+    }
+  })
   it.each([
     ['local_text_incidents','returned'],['local_text_incidents','thrown'],
     ['local_text_admissions','returned'],['local_text_admissions','thrown'],

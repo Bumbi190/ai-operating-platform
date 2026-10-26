@@ -10,6 +10,13 @@ Ruling: Existing standalone isolated clone is reused rather than creating anothe
 
 Tasks1–4 pending.
 
+Task3 in progress:4 native component tests GREEN after missing-component RED. First browser run could not open loopback sockets in restricted environment; authorized elevated local fixture run reached2/3 passing, third failed from an ambiguous alert selector (decision-history alert plus calendar-read alert). Scoped selector to the calendar read failure. No production defect inferred from that selector failure.
+
+Ruling: Separate fixture helper keeps queue test data isolated from the existing calendar server. Added one module, no runtime product dependency. No material product risk.
+
+Ruling: Meta cron selects only approved while YouTube also selects published. Missing Meta receipt on a global published row is review, not waiting for Meta cron. Added regression observed RED, then mapping corrected; preserves publishers exactly.
+
 Ruling: Git Bash helper failed before executing with Windows NtCreateDirectoryObject access denial. Equivalent per-plan scratch/marker/progress setup uses native PowerShell, while committed ledger retains task ranges and test results; no product consequence. First copy command used an incorrect relative build-copy path and ran no tests; corrected to absolute source path. Actual Task1 RED observed missing projection module.
 Task1: complete (5f05bfc..Task1 commit),8 projection tests RED missing module then GREEN. No network or mutation capability in projection.
 Task2: complete (6d488f0..Task2 commit). Reader6 and aggregation1 tests observed RED (missing reader/queue), then15 combined tests GREEN; separate tsc passed. Supabase select reference checked; changelog Markdown endpoint unsupported by browser tool, no new Supabase API/schema feature used.
+Task3: complete pending commit.20 new-focused tests, separate tsc and4 Chromium fixture flows passed. Expanded70-calendar test suite (including existing real local DB access tests) passed. Browser fixture account switch now clears queue/project labels and updates test cookie. No production source writes. Whole-branch review pending.

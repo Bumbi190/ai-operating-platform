@@ -47,3 +47,7 @@ it('omits unapproved statuses and bounds title using a safe fallback',()=>{
  for(const status of ['draft','rejected','pending_review','unknown'])expect(project({status})).toEqual([]);
  expect(project({hook:' '.repeat(4)})[0].title).toBe('Godkänd nyhetsfilm');expect(project({hook:'x'.repeat(10000)})[0].title.length).toBeLessThanOrEqual(150);
 });
+it('does not label missing Meta receipts in globally published rows as queued for Meta cron',()=>{
+ const row=project({status:'published',youtube_video_id:'youtube-id'})[0];expect(row.channels[0].tone).toBe('review');expect(row.channels[1].tone).toBe('review');
+ expect(project({publish_channel_state:{instagram:{ok:true,skipped:'not_configured'}}})[0].channels[1].tone).toBe('review');
+});

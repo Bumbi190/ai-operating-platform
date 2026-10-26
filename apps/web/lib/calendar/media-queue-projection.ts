@@ -19,6 +19,8 @@ export function projectPromptQueue(scripts:PromptQueueScript[],bindings:PromptQu
    if(script.video_status==='failed')return state('error','Videoproduktionen misslyckades');
    if(obs.ok===false&&obs.permanent===true)return state('error','Publiceringen är spärrad');
    if(obs.needsVerification===true||obs.ok===true)return state('review','Publicering behöver bekräftas');
+   // Meta only picks approved rows; published can still be picked by YouTube.
+   if(channel!=='youtube'&&script.status==='published')return state('review','Kanalutfallet behöver kontrolleras');
    if(!validAge)return state('review','Nyhetens tid behöver kontrolleras');
    if(script.video_status==='archived'||age>(channel==='youtube'?48:96)*3600000)return state('review','Nyheten är för gammal för automatisk publicering');
    if(obs.ok===false||obs.stopped===true)return state('review','Publiceringen behöver kontrolleras');

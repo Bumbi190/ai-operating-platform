@@ -78,9 +78,9 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // migration. Count tripwires include its canonical SQL; production activation
 // still requires explicit reviewed application and a matching ledger entry.
 // Calendar approval/responsibility/workflow-link applied on 2026-10-26.
-// All three are enforced; no grandfathered entry or override is added.
-export const EXPECTED_CANONICAL_SQL_COUNT = 157
-export const EXPECTED_ENFORCED_COUNT = 143
+// Family repeat protection adds one pending enforced migration. All are enforced; no grandfathered entry or override is added.
+export const EXPECTED_CANONICAL_SQL_COUNT = 158
+export const EXPECTED_ENFORCED_COUNT = 144
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

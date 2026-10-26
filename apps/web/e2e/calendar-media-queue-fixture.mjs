@@ -5,5 +5,5 @@ const item=(scriptId,title,partial=false,video=false)=>({scriptId,title,tone:'wa
 export const mediaQueueFixture={reset(on){enabled=on;version=0},change(value){version=value},model(user,model){
  if(!enabled)return model;
  const owned=user===owner;
- return {...model,projects:owned?[...model.projects,{id:projectId,name:'The Prompt',color:'#70b6ff'}]:[],mediaQueue:{projectId:owned?projectId:null,available:true,truncated:false,readAt:'2026-10-26T10:00:00.000Z',items:owned?[...(version===0?[item('ready','Godkänd film')]:[]),item('preparing','Video förbereds',false,true),item('partial','YouTube väntar',true)]:[]}};
+ return {...model,projects:owned?[...model.projects,{id:projectId,name:'The Prompt',color:'#70b6ff'}]:[],mediaQueue:{projectId:owned?projectId:null,available:true,truncated:false,readAt:'2026-10-26T10:00:00.000Z',items:owned?[...(version===2?Array.from({length:8},(_,i)=>({...item('old'+i,'Äldre film '+i),tone:'review',label:'Publiceringen behöver kontrolleras'})):[]),...(version!==1?[item('ready','Godkänd film')]:[]),item('preparing','Video förbereds',false,true),item('partial','YouTube väntar',true)]:[]}};
 }};

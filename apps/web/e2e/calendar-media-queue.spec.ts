@@ -38,3 +38,8 @@ test('does not carry the previous account queue into a newly mounted user worksp
  const response=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/calendar');await page.getByRole('button',{name:'Byt testkonto'}).click();await response;
  await expect(region(page)).toHaveCount(0);await expect(page.getByLabel('Visa i kalendern').getByRole('option',{name:'The Prompt'})).toHaveCount(0);
 });
+test('keeps a long queue compact with current films first and expandable history',async({page,request})=>{
+ await request.post('/_test/media',{data:{version:2}});await page.goto('/calendar?week=2026-10-19');
+ await expect(region(page)).toContainText('Godkänd film');await expect(region(page).getByText('Godkänd film',{exact:true})).toBeVisible();
+ await expect(region(page).getByText('Äldre film 7',{exact:true})).not.toBeVisible();await region(page).getByText('Visa fler filmer (6)').click();await expect(region(page).getByText('Äldre film 7',{exact:true})).toBeVisible();
+});

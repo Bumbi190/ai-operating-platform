@@ -24,3 +24,9 @@ it('distinguishes healthy empty, failure and truncation',()=>{
 it('masks prior queue while refreshing instead of presenting stale receipts as current',()=>{
  const html=render(queue,'all',true);expect(html).toContain('Läser aktuell publiceringskö');expect(html).not.toContain('unsafe title');
 });
+it('keeps long history compact and prioritizes current waiting films ahead of inspection backlog',()=>{
+ const old=Array.from({length:7},(_,i)=>({...queue.items[0],scriptId:'old'+i,title:'Äldre film '+i,tone:'review' as const}));
+ const html=render({...queue,items:[...old,{...queue.items[0],scriptId:'current',title:'Aktuell film',tone:'waiting'}]});
+ expect(html).toContain('Visa fler filmer (3)');expect(html.indexOf('Aktuell film')).toBeLessThan(html.indexOf('Äldre film 0'));
+ expect(html).not.toContain('<details open');
+});

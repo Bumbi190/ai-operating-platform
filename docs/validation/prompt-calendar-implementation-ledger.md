@@ -27,3 +27,6 @@ Final: Ruling: Provider's actual current publication state is not rechecked by t
 Final: Ruling: Live deployed calendar and release correctness are deferred by the static reviewer — deployment and live read-only smoke are separate release checks, not inferred from fixture tests — without those checks the feature must be reported as locally verified only.
 
 Task ranges after tree-preserving rebase onto main547f46c: Task1 b645bb7..900ddd8, Task2 900ddd8..3ff9176, Task3 3ff9176..315b182. Main547f46c tree equals old127e4b0. No source change from rebase.
+
+Final: Ruling: Live read-only source inspection found30 approved scripts, so an uncollapsed list would displace the calendar — use the spec-permitted compact layout with five default rows, current waiting rows first, and native expandable remainder — older inspection items require one extra click. Regression observed RED before fix; provider code unchanged. Independent reviewer previously approved the complete feature; this additional compact-layout refinement is covered by focused unit/browser regressions.
+Final compact-layout regression GREEN,71/71 calendar tests and5/5 queue Chromium tests passed; separate tsc passed. No independent re-review dispatched per executing-plans one-review rule. Final build in progress; PR550 checks restart on refinement.

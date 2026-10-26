@@ -186,6 +186,7 @@ export async function callHermesScrape(
  */
 export async function callHermesRead(
   url: string,
+  timeoutMs = 30_000,
 ): Promise<HermesReadResult | null> {
   if (!HERMES_URL) return null
 
@@ -194,7 +195,7 @@ export async function callHermesRead(
       method:  'POST',
       headers: hermesHeaders(),
       body:    JSON.stringify({ url }),
-      signal:  AbortSignal.timeout(30 * 1000), // 30s — single article, should be fast
+      signal:  AbortSignal.timeout(timeoutMs), // Bound the request and response body to the caller's budget.
     })
 
     if (!res.ok) {

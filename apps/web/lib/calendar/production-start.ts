@@ -18,8 +18,8 @@ import {resolveExecutionStop} from '../governance/execution-stop';
 import type {StoryJobReview,StoryJobReceipt} from './production-start-types';
 
 export class StoryStartError extends Error{constructor(readonly reason:'not_ready'|'configuration'|'changed'|'expired'|'unavailable'){super(reason);}}
-// Additive migration not yet present in the generated Supabase schema. Keep
-// this transport cast confined to its new tables/RPCs.
+// Keep this compatibility transport confined to the human-story tables/RPCs.
+// Their generated schema was refreshed against the hosted 2026-10-26 migration.
 type HumanStoryDb={from:(table:string)=>any;rpc:(name:string,args:Record<string,unknown>)=>Promise<{data:any;error:{code?:string}|null}>};
 type RequestRow={id:string;project_id:string;instance_id:string;requested_by:string;authorization_id:string;target_version_hash:string;action_target_hash:string;brief_hash:string;prompt_hash:string;maximum_sek:number;expires_at:string};
 async function assertEnabled(db:AdminDb,projectId:string){

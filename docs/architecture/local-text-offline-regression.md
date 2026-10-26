@@ -99,6 +99,18 @@ Offline verification passes 362 tests with four integration cases pending; the
 fallback suite passes 20. A common strict compiler input covers all 26 changed
 TypeScript files. The existing known-unknown and human-ready denials remain.
 
+Historical evidence assessment compares the six validated UUID identities
+case-insensitively without changing either input record. Twelve test-first cases
+cover both case directions for project/job/device/attempt/claim/selection IDs.
+Different UUIDs still mismatch; absent canonical history still blocks assessment.
+Hash, fence and model-digest comparisons remain strict. Every result still denies
+signature verification, incident resolution, retry, resume and enrollment, even
+when the candidate structurally matches and human verification is required.
+This pure helper still has only definition/test references in the inspected
+source search; no recovery endpoint or authority is introduced. Offline tests
+pass 374 with four integration cases pending; this evidence suite passes 32.
+Common scoped TypeScript and independent local review pass.
+
 This command does not include that separate RED source-contract assertion or
 prove actual database privileges, multi-device concurrency, healthy-project
 dispatch, physical model behavior or full CI. Keep the production disable flag

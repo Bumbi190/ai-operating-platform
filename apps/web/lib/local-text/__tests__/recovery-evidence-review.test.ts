@@ -57,6 +57,25 @@ describe('pure local inference reconciliation evidence: no recovery authority',(
     expect(assess(canonical,{...candidate,inputHash:'d'.repeat(64)}).finding).toBe('BOUND_IDENTITY_MISMATCH')
     expect(assess(canonical,{...candidate,modelDigest:'sha256:'+'e'.repeat(64)}).finding).toBe('BOUND_IDENTITY_MISMATCH')
   })
+  it.each((['projectId','jobId','deviceId','attemptId','claimId','selectionId'] as const).flatMap(field=>
+    (['canonical','candidate'] as const).map(side=>({field,side}))))('recognizes the same $field UUID with uppercase $side text without granting authority',({field,side})=>{
+    const lower='abcdef01-abcd-4abc-8def-abcdefabcdef'
+    const original={...canonical,[field]:side==='canonical'?lower.toUpperCase():lower}
+    const receipt={...candidate,[field]:side==='candidate'?lower.toUpperCase():lower}
+    const before=JSON.stringify({original,receipt})
+    const decision=assess(original,receipt)
+    expect(decision).toEqual({finding:'INDEPENDENT_VERIFICATION_REQUIRED',candidateStructurallyMatches:true,
+      cryptographicSignatureVerified:false,independentHumanReviewRequired:true,
+      historicalIncidentResolved:false,mayRetry:false,mayResume:false,mayEnroll:false})
+    expect(Object.isFrozen(decision)).toBe(true)
+    expect(assess(original,{...receipt,[field]:'ABCDEF02-ABCD-4ABC-8DEF-ABCDEFABCDEF'})).toMatchObject({
+      finding:'BOUND_IDENTITY_MISMATCH',candidateStructurallyMatches:false,
+      cryptographicSignatureVerified:false,historicalIncidentResolved:false,mayRetry:false,mayResume:false,mayEnroll:false,
+    })
+    expect(assess(null,receipt)).toMatchObject({finding:'CANONICAL_ATTEMPT_NOT_RETAINED',candidateStructurallyMatches:false,
+      cryptographicSignatureVerified:false,historicalIncidentResolved:false,mayRetry:false,mayResume:false,mayEnroll:false})
+    expect(JSON.stringify({original,receipt})).toBe(before)
+  })
   it.each(['completed','known_failed','not_dispatched'] as const)(
     'even structurally bound %s receipts cannot resolve or resume',
     outcome=>{

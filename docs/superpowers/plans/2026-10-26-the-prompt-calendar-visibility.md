@@ -79,4 +79,4 @@
 
 ## Self-review and handoff
 
-Spec sections map to Tasks1–4; partial publication, unknown bindings, bounded status serialization and unchanged daily publisher are explicit. No new review gate replaces The Prompt's approval flow. Family pilot state has already been read and requires no new product code in this plan. Internal module boundaries and queue limits are implementer decisions permitted by the spec. Native execution is preserved from the preceding work, with a whole-branch independent review. Awaiting human review of this plan before implementation.
+Spec sections map to Tasks1–4; partial publication, unknown bindings, bounded status serialization and unchanged daily publisher are explicit. No new review gate replaces The Prompt's approval flow. Family pilot state has already been read and requires no new product code in this plan. Internal module boundaries and queue limits are implementer decisions permitted by the spec. Native execution was approved by André on2026-10-26; Tasks1–3 and local Task4 validation/review are complete. See docs/validation/2026-10-26-the-prompt-calendar-visibility.md for evidence and remaining release steps.

@@ -1,0 +1,10 @@
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {ReviewQueue} from '../components/platform/vnext/ReviewQueue';
+import {emitCalendarAuth} from './calendar-auth-fixture';
+import type {ReviewItem,ReviewQueueModel} from '../lib/os/review-queue';
+const userId='20000000-0000-4000-8000-000000000001';
+const draft=JSON.stringify({to:['to@example.se'],cc:['cc@example.se'],bcc:['bcc@example.se'],subject:'Veckans utkast',bodyText:'Hela mejlutkastet\n<img src="https://tracker.invalid/pixel">',attachments:[{assetId:'30000000-0000-4000-8000-000000000001',sha256:'a'.repeat(64),name:'Underlag.pdf',mimeType:'application/pdf'}]});
+const item=(id:string,kind:string,outputKey:string,content:string):ReviewItem=>({id,kind,outputKey,content,status:'pending',statusClass:'actionable',statusLabel:'Väntar på granskning',reviewerNotes:null,createdAt:null,reviewedAt:null,decidedAt:null,runId:'run',runStatus:'needs_input',runHref:null,runActionKind:null,workflowName:null,project:null,decidable:true,blockedReason:null});
+const model:ReviewQueueModel={state:'ok',queue:[item('draft','email_draft','Mejlutkast',draft),item('text','workflow_output','Vanlig rapport','Hela rapporten')],archive:[],total:2,truncated:false,filter:null,links:{approvals:null}};
+createRoot(document.getElementById('root')!).render(<><button onClick={()=>emitCalendarAuth(null)}>Logga ut i testsession</button><ReviewQueue userId={userId} model={model}/></>);

@@ -29,7 +29,7 @@ export function projectCalendarSocial(projectId:string,posts:SocialContentPost[]
   const approved=batch.review?.find(r=>r.item.postId===postId&&r.item.revisionId===item.revisionId)?.revision;
   const pending=revision&&revision.id!==item.revisionId&&revision.draft.scheduledAt?{time:calendarPoint(revision.draft.scheduledAt),reviewHref:href}:null;
   const status=repeatHeld(current)&&['queued','waiting','claimed'].includes(job.state)?'needs_review':job.state;
-  entries.push({id:'social:'+projectId+':'+postId,source:{kind:'social',projectId,postId,revisionId:revision?.id??item.revisionId,sha256:revision?.sha256??item.sha256,jobId:job.id},
+  entries.push({id:'social:'+projectId+':'+postId,contentSource:{kind:'social',projectId,postId,revisionId:item.revisionId,sha256:item.sha256,jobId:job.id},source:{kind:'social',projectId,postId,revisionId:revision?.id??item.revisionId,sha256:revision?.sha256??item.sha256,jobId:job.id},
    title:approved?.draft.title??'Publicering · '+job.channel,time:calendarPoint(job.scheduledAt),projectId,status,editable:!!revision,href,pendingChange:pending});
  }
  for(const post of posts){

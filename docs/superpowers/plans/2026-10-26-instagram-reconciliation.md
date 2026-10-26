@@ -1,0 +1,9 @@
+# Instagram receipt reconciliation
+
+Scope follows the approved repeat-protection spec's separate reconciliation section. Native implementation in existing isolated checkout; no provider POST or resend. Preserve Facebook behavior and operator/owner/image-confirmation boundary.
+
+1. Add GET-only Instagram candidate adapter, fixed Graph hosts/numeric IDs, bounded response/time, exact image type/owner/caption, request[-60s,+5m] window, trusted Instagram permalink/CDN hosts. Reuse proof candidate contract with photoId equal to media ID. Test malformed/wrong-account/video/URL attacks, no token in URL, no pagination following.
+2. Generalize service credential dispatch by receipt channel. Instagram inspection requires exactly one exact candidate; completion lists again and re-reads selected media, rejecting missing/multiple/changed candidates. Inject store dependencies for offline orchestration tests; keep public HTTP fields unchanged.
+3. CLI-scaffold additive migration replacing only inspect/complete RPC definitions. Add Instagram-specific IDs/URLs/binding checks without loosening Facebook checks. Preserve latest publication_record, shared proofs, immutable events, scheduled receipt propagation and repeat trigger. Test real SQL via full local ledger and canonical publication flow; no real media/provider used.
+4. Expose the same visual image confirmation for Instagram; leave zero/multiple/no-receipt outcomes uncertain. Test route ownership/CSRF boundaries and Facebook regression. Update migration guard counts and exact-name tests without grandfathering.
+5. Independent review, type/build checks, isolated SQL tests, and safe live read if available through an existing credential path. Deployment remains separately explicit if automatic approval review requires it. Do not label the October23 attempt resolved without actual evidence and required owner confirmation.

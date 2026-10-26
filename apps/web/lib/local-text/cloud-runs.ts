@@ -50,6 +50,7 @@ export async function executeLocalTextCloudRun(db:Db,run:Run,claimId:string,now:
  if(s.state!=='pending'){await unknown();return}
  if(!localTextDispatchEnabled()){await human('LOCAL_TEXT_DISABLED');return}
  if(typeof s.stage!=='string'||!['local_review','cloud_task','cloud_review'].includes(s.stage)){await human('INVALID_STAGE');return}
+ if(s.reviewMode!=='human'&&s.reviewMode!=='governed_openai'){await human('INVALID_REVIEW_MODE');return}
  if(s.reviewMode==='human'){await human(s.stage==='cloud_task'?'HUMAN_MODE_NO_CLOUD_TASK':'HUMAN_REVIEW_REQUIRED');return}
  const profile=readCloudTextProfile()
  if(!profile||Date.parse(profile.expiresAt)<=now.getTime()){await human('REVIEW_QUALIFICATION_REQUIRED');return}

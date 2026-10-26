@@ -12,7 +12,7 @@ vi.mock('../review',()=>({createGovernedReviewer:(v:any)=>{f.reviewCalls++;retur
 const api=await import('../cloud-runs').catch(()=>({}) as typeof import('../cloud-runs'))
 const id='11111111-1111-4111-8111-111111111111',task={kind:'classify' as const,text:'Hjälp',labels:['support','annat']},result={label:'support'}
 const run={id,project_id:id,claim_id:id,kind:'local_text_cloud',workflow_id:null,workflow_instance_id:null} as Run
-const snapshot={stageId:id,jobId:id,attemptId:id,projectId:id,stage:'local_review',state:'pending',inputHash:hashTask(task),resultHash:sha256(canonicalJson(result)),task,result}
+const snapshot={stageId:id,jobId:id,attemptId:id,projectId:id,stage:'local_review',state:'pending',reviewMode:'governed_openai',inputHash:hashTask(task),resultHash:sha256(canonicalJson(result)),task,result}
 function db(state=snapshot){return {rpc:async(name:string,args:Record<string,unknown>)=>{f.operations.push({name,args});if(args.p_operation)f.sequence.push(String(args.p_operation));return {data:name==='local_text_cloud_snapshot'?{kind:'applied',value:state}:{kind:'applied',value:null},error:null}},from:()=>({select(){return this},eq(){return this},limit:async()=>({data:[{id}],error:null})})} as unknown as Db}
 beforeEach(()=>{f.allowed=true;f.operations.length=0;f.finals.length=0;f.unknown=0;f.profile=null;f.profileReads=0;f.reviewCalls=0;f.sequence.length=0;vi.stubEnv('ATLAS_LOCAL_TEXT_ENABLED','true')})
 it('no qualified reviewer queues human on an owned canonical run with no physical call',async()=>{expect(typeof api.executeLocalTextCloudRun).toBe('function');await api.executeLocalTextCloudRun(db(),run,id,new Date());expect(f.operations).toContainEqual(expect.objectContaining({args:expect.objectContaining({p_operation:'human',p_value:{reasonCode:'REVIEW_QUALIFICATION_REQUIRED'}})}));expect(f.finals[0]).toEqual(expect.arrayContaining([expect.objectContaining({status:'awaiting_approval'})]));expect(f.operations).toContainEqual(expect.objectContaining({args:expect.objectContaining({p_operation:'apply'})}))})
@@ -26,5 +26,20 @@ it.each(['array','boxed','coercing'])('refuses a %s cloud stage before qualifica
  await api.executeLocalTextCloudRun(db({...snapshot,stage} as unknown as typeof snapshot),run,id,new Date())
  expect(f.operations).toContainEqual(expect.objectContaining({args:expect.objectContaining({p_operation:'human',p_value:{reasonCode:'INVALID_STAGE'}})}))
  expect(f.profileReads).toBe(0);expect(f.reviewCalls).toBe(0);expect(convert).not.toHaveBeenCalled()
+ expect(f.operations.some((x:any)=>x.args.p_operation==='dispatch')).toBe(false)
+})
+it.each(['missing','null','unknown','array','boxed','coercing'])('does not treat a %s review mode as governed provider permission',async representation=>{
+ const convert=vi.fn(()=>'governed_openai')
+ const reviewMode=representation==='missing'?undefined:representation==='null'?null:representation==='unknown'?'invented':representation==='array'?['governed_openai']:representation==='boxed'?new String('governed_openai'):{toString:convert}
+ f.profile={deployment:'gpt-5.4-mini-2026-03-17',qualificationHash:'a'.repeat(64),expiresAt:'2099-01-01T00:00:00.000Z',inputTokenUpperBound:8192,tokenBudgetVerified:true,pricingVerified:true,textEnvelopeEvidence:{model:'gpt-5.4-mini-2026-03-17'}}
+ await api.executeLocalTextCloudRun(db({...snapshot,reviewMode} as unknown as typeof snapshot),run,id,new Date())
+ expect(f.operations).toContainEqual(expect.objectContaining({args:expect.objectContaining({p_operation:'human',p_value:{reasonCode:'INVALID_REVIEW_MODE'}})}))
+ expect(f.profileReads).toBe(0);expect(f.reviewCalls).toBe(0);expect(convert).not.toHaveBeenCalled()
+ expect(f.operations.some((x:any)=>x.args.p_operation==='dispatch')).toBe(false)
+})
+it.each(['local_review','cloud_task','cloud_review'])('preserves explicit human mode for %s without looking up provider qualification',async stage=>{
+ await api.executeLocalTextCloudRun(db({...snapshot,stage,reviewMode:'human'}),run,id,new Date())
+ expect(f.operations).toContainEqual(expect.objectContaining({args:expect.objectContaining({p_operation:'human',p_value:{reasonCode:stage==='cloud_task'?'HUMAN_MODE_NO_CLOUD_TASK':'HUMAN_REVIEW_REQUIRED'}})}))
+ expect(f.profileReads).toBe(0);expect(f.reviewCalls).toBe(0)
  expect(f.operations.some((x:any)=>x.args.p_operation==='dispatch')).toBe(false)
 })

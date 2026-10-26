@@ -75,6 +75,19 @@ proof of DB authority. The offline command passes 339 tests with the same four
 integration cases pending; the held cloud suite passes 31. Scoped strict
 TypeScript passes and independent review found no material issues.
 
+Pending cloud stages also require an explicit primitive review mode: `human` or
+`governed_openai`. Six adapter cases first failed because missing, null, unknown
+or non-string modes reached the mock reviewer in the existing simulated future-
+clearance tests. They now route to human handling before profile/reviewer access.
+Three positive human-mode stage controls and the existing governed-mode control
+remain valid. The canonical fixture now includes the mode returned by the frozen
+snapshot RPC; its source already supplies a default for absent configuration.
+No new source-hold override is introduced, and saved-response recovery ordering
+is unchanged. Offline verification passes 348 tests with four integration cases
+pending; the cloud behavior suite passes 17 and scoped strict TypeScript passes.
+This is post-clearance adapter robustness, not a production provider-dispatch
+observation or permission to clear the hold.
+
 This command does not include that separate RED source-contract assertion or
 prove actual database privileges, multi-device concurrency, healthy-project
 dispatch, physical model behavior or full CI. Keep the production disable flag

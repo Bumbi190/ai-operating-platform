@@ -8,6 +8,7 @@ const image='public.ecr.aws/supabase/postgres:17.11.0.004';
 const label='calendar-history-local';
 const schemaBaseline=process.argv.includes('--schema-baseline');
 const humanStory=process.argv.includes('--human-story');
+const repeatGuard=process.argv.includes('--repeat-guard');
 const dockerBin=process.env.DOCKER_BIN||'docker';
 const docker=(args,input)=>{
  const result=spawnSync(dockerBin,args,{input,encoding:'utf8',maxBuffer:4194304});
@@ -127,13 +128,20 @@ try{
    const {probeHumanStoryStart}=await import('./probe-human-story-start.mjs');
    report.humanStoryCases=await probeHumanStoryStart({sql,dockerBin,container:name});
   }
+  if(repeatGuard){
+   applyFile('apps/web/supabase/migrations/20261026070303_family_social_repeat_guard.sql');
+   const pureProbe=file('apps/web/scripts/probe-social-repeat.sql').split('insert into public.projects')[0]+'rollback;';
+   sql(pureProbe);report.repeatGuardSchemaApplied=true;
+   sql(file('apps/web/scripts/probe-social-repeat-full.sql'));report.repeatGuardCanonicalRpcPassed=true;
+   console.log('PASS: repeat guard installed and pure/ACL probes passed on full historical schema.');
+  }
   console.log('PASS: 16 real-schema provenance owner regression cases; test changes rolled back.');
   assert.equal(sql("select current_setting('cron.launch_active_jobs')"),'off');
   assert.equal(sql('select count(*) from supabase_migrations.schema_migrations'),'177');
   console.log('PASS: all 177 source entries replayed; inspect explicit adaptations; job launching disabled.');
  }catch(error){if(!report.failure)report.failure={phase:report.applied.length===rows.length?'verification':'prerequisites',error:error.message};throw error;}
  finally{
-  const path=new URL('docs/validation/'+(humanStory?'calendar-human-story-replay-20261024.json':schemaBaseline?'calendar-full-ledger-replay-20261024.json':'calendar-original-ledger-failure-20261024.json'),repo);
+  const path=new URL('docs/validation/'+(repeatGuard?'social-repeat-full-replay-20261026.json':humanStory?'calendar-human-story-replay-20261024.json':schemaBaseline?'calendar-full-ledger-replay-20261024.json':'calendar-original-ledger-failure-20261024.json'),repo);
   writeFileSync(path,JSON.stringify(report,null,2)+'\n');
   console.log('Evidence saved; applied='+report.applied.length+'/'+rows.length+'; replayReady remains false.');
  }

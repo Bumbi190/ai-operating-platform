@@ -122,6 +122,7 @@ export const generateMonthlyStoryHandler: EffectHandler = async input => {
   // and a claimed reservation, for a call that provably never happened.
   let mayHaveDispatched = false
   const provider = anthropicStoryProvider({
+    ...(input.approvedStoryMaximumSek===undefined?{}:{approvedStoryMaximumSek:input.approvedStoryMaximumSek}),
     projectId: input.projectId,
     execution: input.execution,
     idempotencyKey: input.idempotencyKey,

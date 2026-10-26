@@ -440,6 +440,7 @@ export async function executeWorkflowAction(
   if (isGovernedEffect) {
     const effect = await executeGovernedEffect({
       db, run, claimId, now, canonical, instance, def,
+      ...(readiness.approvedStoryMaximumSek===undefined?{}:{approvedStoryMaximumSek:readiness.approvedStoryMaximumSek}),
       // Constructed HERE because this is the layer that knows WHY the work is
       // running: a claimed run reached this executor through the scheduler and
       // the drain, with no person at a keyboard. AUTONOMOUS is therefore the

@@ -38,6 +38,7 @@ import type { EffectHandlerOutput } from './effect-handler'
 type AnyDb = any
 
 export interface GovernedEffectInput {
+  approvedStoryMaximumSek?: number
   db: AnyDb
   run: any
   claimId: string | null
@@ -133,6 +134,7 @@ export async function executeGovernedEffect(
   }
 
   const handlerInput = {
+    ...(input.approvedStoryMaximumSek===undefined?{}:{approvedStoryMaximumSek:input.approvedStoryMaximumSek}),
     runId: run.id,
     claimId,
     projectId: run.project_id,
@@ -283,7 +285,12 @@ export async function executeGovernedEffect(
     }
   }
 
-  const outcome = outcomeForObservation(observed.observation, 'DISPATCH_STARTED')
+  // DISPATCH_STARTED records intent before entering the trusted adapter. An
+  // explicit non-application proof can still establish that no physical request
+  // occurred (for example the approved ceiling refused before reservation).
+  // Missing proof remains conservative, including ordinary lost responses.
+  const outcome = observed.provablyNotApplied === true && observed.observation === 'not_dispatched'
+    ? 'FAILED' : outcomeForObservation(observed.observation, 'DISPATCH_STARTED')
   const reconciliationRequired = outcome === 'UNKNOWN' || outcome === 'PARTIAL'
 
   await fencedActionUpdate(db, run.id, claimId, {

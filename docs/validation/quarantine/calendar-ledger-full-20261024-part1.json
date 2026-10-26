@@ -1,0 +1,413 @@
+{
+  "capturedDate": "2026-10-24",
+  "projectId": "iboepohjwrhtgshrqaol",
+  "scope": "Quarantined original migration statements; evidence only, not migration input.",
+  "part": 1,
+  "rows": [
+    {
+      "version": "20260601071917",
+      "name": "media_scripts_updated_at_and_stuck_watchdog",
+      "statement_count": 1,
+      "body_sha256": "2518b77a6fed95bec896f66f8044f66d7f371e0ef5a75abe5b0e22d050134de8",
+      "statements": [
+        "-- 1. updated_at column + auto-update trigger (to measure how long a script is stuck)\nalter table public.media_scripts\n  add column if not exists updated_at timestamptz not null default now();\n\n-- backfill existing rows so the watchdog doesn't reset healthy old rows\nupdate public.media_scripts set updated_at = coalesce(generated_at, now()) where updated_at is null;\n\ncreate or replace function public.set_updated_at()\nreturns trigger language plpgsql as $$\nbegin\n  new.updated_at := now();\n  return new;\nend $$;\n\ndrop trigger if exists trg_media_scripts_updated_at on public.media_scripts;\ncreate trigger trg_media_scripts_updated_at\n  before update on public.media_scripts\n  for each row execute function public.set_updated_at();\n\n-- 2. Watchdog function: reset scripts stuck in 'generating_images' (step3 was\n--    killed by Vercel's 60s timeout before it could start the render or run its\n--    catch block). Resetting to 'none' lets the next step3 cron retry them.\ncreate or replace function omnira_cron.reset_stuck_scripts()\nreturns integer language plpgsql security definer set search_path = '' as $$\ndeclare n integer;\nbegin\n  update public.media_scripts\n     set video_status = 'none'\n   where video_status = 'generating_images'\n     and status = 'approved'\n     and published_at is null\n     and updated_at < now() - interval '8 minutes'\n     and generated_at > now() - interval '24 hours';\n  get diagnostics n = row_count;\n  if n > 0 then raise notice 'reset % stuck script(s)', n; end if;\n  return n;\nend $$;"
+      ]
+    },
+    {
+      "version": "20260601072505",
+      "name": "add_render_input_props_for_edge_render",
+      "statement_count": 1,
+      "body_sha256": "c94f981a5f4a93e97c33a9d4366ab122376383d3c8254cae61c7ddff8784f9d6",
+      "statements": [
+        "-- Stores the Remotion inputProps built by Vercel step3, so the Supabase Edge\n-- Function `render-start` can kick off renderMediaOnLambda without re-deriving\n-- the caption/scene logic. video_status flow: none → generating_images →\n-- render_pending → rendering → ready.\nalter table public.media_scripts\n  add column if not exists render_input_props jsonb;"
+      ]
+    },
+    {
+      "version": "20260601073550",
+      "name": "20260601_business_metrics",
+      "statement_count": 1,
+      "body_sha256": "b4356f68e1598f092c6e97d721e7b6147f2e09bcdda74e5b31d364a63b85596b",
+      "statements": [
+        "-- Business-first dashboard: real data sources for revenue, leads and campaigns.\n-- These start empty and are populated by the GainPilot / sales pipeline.\n\nCREATE TABLE IF NOT EXISTS leads (\n  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n  project_id  uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,\n  name        text,\n  email       text,\n  source      text,\n  status      text NOT NULL DEFAULT 'new' CHECK (status IN ('new','qualified','converted','lost')),\n  value_sek   numeric,\n  created_at  timestamptz NOT NULL DEFAULT now()\n);\nCREATE INDEX IF NOT EXISTS idx_leads_project ON leads(project_id);\nCREATE INDEX IF NOT EXISTS idx_leads_created ON leads(created_at);\n\nCREATE TABLE IF NOT EXISTS campaigns (\n  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n  project_id  uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,\n  name        text NOT NULL,\n  channel     text,\n  status      text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','active','paused','ended')),\n  created_at  timestamptz NOT NULL DEFAULT now(),\n  started_at  timestamptz,\n  ended_at    timestamptz\n);\nCREATE INDEX IF NOT EXISTS idx_campaigns_project ON campaigns(project_id);\n\nCREATE TABLE IF NOT EXISTS revenue_events (\n  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n  project_id  uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,\n  amount_sek  numeric NOT NULL,\n  currency    text NOT NULL DEFAULT 'SEK',\n  source      text,\n  description text,\n  occurred_at timestamptz NOT NULL DEFAULT now(),\n  created_at  timestamptz NOT NULL DEFAULT now()\n);\nCREATE INDEX IF NOT EXISTS idx_revenue_project ON revenue_events(project_id);\nCREATE INDEX IF NOT EXISTS idx_revenue_occurred ON revenue_events(occurred_at);\n\nALTER TABLE leads          ENABLE ROW LEVEL SECURITY;\nALTER TABLE campaigns      ENABLE ROW LEVEL SECURITY;\nALTER TABLE revenue_events ENABLE ROW LEVEL SECURITY;"
+      ]
+    },
+    {
+      "version": "20260601093023",
+      "name": "20260601_media_insights",
+      "statement_count": 1,
+      "body_sha256": "06a6bc0abe9f7ea73b6e45597341255a1d6115a3ee45cd72e3f17b09f36f9381",
+      "statements": [
+        "-- Cache för Instagram-insights per publicerat inlägg (engagemang/räckvidd).\n-- Fylls av /api/media/cron/insights. Tomt tills tokenet har instagram_manage_insights.\n\nCREATE TABLE IF NOT EXISTS media_insights (\n  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n  script_id           uuid REFERENCES media_scripts(id) ON DELETE CASCADE,\n  project_id          uuid REFERENCES projects(id) ON DELETE CASCADE,\n  instagram_media_id  text UNIQUE,\n  reach               integer,\n  views               integer,\n  likes               integer,\n  comments            integer,\n  saved               integer,\n  shares              integer,\n  total_interactions  integer,\n  published_at        timestamptz,\n  fetched_at          timestamptz NOT NULL DEFAULT now()\n);\nCREATE INDEX IF NOT EXISTS idx_media_insights_project ON media_insights(project_id);\nCREATE INDEX IF NOT EXISTS idx_media_insights_published ON media_insights(published_at);\n\nALTER TABLE media_insights ENABLE ROW LEVEL SECURITY;"
+      ]
+    },
+    {
+      "version": "20260601093204",
+      "name": "20260601_insights_cron",
+      "statement_count": 1,
+      "body_sha256": "151608e9a3a8a629a953542a11893fd8d111e964e8924b1fd757efe5616e42a4",
+      "statements": [
+        "-- Daglig uppdatering av Instagram-engagemang (efter morgonens publicering).\nselect cron.schedule(\n  'omnira_insights_daily',\n  '0 9 * * *',\n  $$select omnira_cron.call_vercel('/api/media/cron/insights');$$\n);"
+      ]
+    },
+    {
+      "version": "20260601100502",
+      "name": "20260601_briefing_cron",
+      "statement_count": 1,
+      "body_sha256": "031baadab9dea0e1015f9e38d5d492a5baf600dce2faf9913e000bcd8283be00",
+      "statements": [
+        "-- Daglig morgonbriefing till operatörens inkorg (06:30).\nselect cron.schedule(\n  'omnira_briefing_morning',\n  '30 6 * * *',\n  $$select omnira_cron.call_vercel('/api/briefing/cron');$$\n);"
+      ]
+    },
+    {
+      "version": "20260601102516",
+      "name": "add_youtube_columns",
+      "statement_count": 1,
+      "body_sha256": "23e8840834040b3eb01d3a837a8eee428aabc4af3de52c413720c17140e05dd5",
+      "statements": [
+        "alter table public.media_scripts\n  add column if not exists youtube_video_id text,\n  add column if not exists youtube_url text;"
+      ]
+    },
+    {
+      "version": "20260602045914",
+      "name": "cost_events",
+      "statement_count": 1,
+      "body_sha256": "88055e213fbac739ef6c71cd7f2aa08ad121d6a0eb739fa6cead3ab8d7ce382f",
+      "statements": [
+        "CREATE TABLE IF NOT EXISTS cost_events (\n  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  project_id   UUID REFERENCES projects(id) ON DELETE CASCADE,\n  provider     TEXT NOT NULL,\n  model        TEXT,\n  agent        TEXT,\n  operation    TEXT,\n  unit_type    TEXT NOT NULL DEFAULT 'tokens'\n                 CHECK (unit_type IN ('tokens', 'characters', 'images', 'seconds', 'requests')),\n  units        NUMERIC(14, 2) NOT NULL DEFAULT 0,\n  tokens_in    BIGINT NOT NULL DEFAULT 0,\n  tokens_out   BIGINT NOT NULL DEFAULT 0,\n  cost_usd     NUMERIC(12, 6) NOT NULL DEFAULT 0,\n  cost_sek     NUMERIC(12, 4) NOT NULL DEFAULT 0,\n  run_id       UUID,\n  script_id    UUID,\n  metadata     JSONB NOT NULL DEFAULT '{}',\n  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()\n);\n\nCREATE INDEX IF NOT EXISTS idx_cost_events_project  ON cost_events(project_id);\nCREATE INDEX IF NOT EXISTS idx_cost_events_provider ON cost_events(provider);\nCREATE INDEX IF NOT EXISTS idx_cost_events_agent    ON cost_events(agent);\nCREATE INDEX IF NOT EXISTS idx_cost_events_created  ON cost_events(created_at DESC);\n\nALTER TABLE cost_events ENABLE ROW LEVEL SECURITY;\nCREATE POLICY \"cost_events_owner\" ON cost_events\n  FOR ALL USING (\n    project_id IS NULL\n    OR project_id IN (SELECT id FROM projects WHERE owner_id = auth.uid())\n  );\n\nCREATE TABLE IF NOT EXISTS cost_rates (\n  key        TEXT PRIMARY KEY,\n  value      NUMERIC(14, 6) NOT NULL,\n  note       TEXT,\n  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()\n);\n\nINSERT INTO cost_rates (key, value, note) VALUES\n  ('usd_sek',                       10.50,  'USD->SEK växelkurs'),\n  ('elevenlabs_usd_per_1k_chars',   0.240,  'ElevenLabs TTS per 1000 tecken'),\n  ('ideogram_v3_usd_per_image',     0.080,  'Ideogram v3 per bild'),\n  ('gpt_image_usd_per_image',       0.042,  'OpenAI gpt-image-1 per bild')\nON CONFLICT (key) DO NOTHING;"
+      ]
+    },
+    {
+      "version": "20260602051807",
+      "name": "project_budgets",
+      "statement_count": 1,
+      "body_sha256": "2848737fb9bce324d711820436b0cfeb4a390427bc0c89c034a2853d20a4ba42",
+      "statements": [
+        "CREATE TABLE IF NOT EXISTS project_budgets (\n  project_id  UUID PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,\n  monthly_sek NUMERIC(12, 2) NOT NULL DEFAULT 0,\n  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()\n);\n\nALTER TABLE project_budgets ENABLE ROW LEVEL SECURITY;\nCREATE POLICY \"project_budgets_owner\" ON project_budgets\n  FOR ALL USING (\n    project_id IN (SELECT id FROM projects WHERE owner_id = auth.uid())\n  );\n\nINSERT INTO project_budgets (project_id, monthly_sek)\nSELECT id, CASE slug\n  WHEN 'ai-media-automation' THEN 700\n  WHEN 'familje-stunden'     THEN 500\n  WHEN 'gainpilot'           THEN 300\n  ELSE 0 END\nFROM projects\nWHERE slug IN ('ai-media-automation', 'familje-stunden', 'gainpilot')\nON CONFLICT (project_id) DO NOTHING;"
+      ]
+    },
+    {
+      "version": "20260602113831",
+      "name": "atlas_bi_foundation",
+      "statement_count": 1,
+      "body_sha256": "06caefe88bd13a6358de0aa91b7c35bde6a340638907bcde3407ad920118f511",
+      "statements": [
+        "-- Social analytics: extend existing media_insights (do not create social_metrics)\nALTER TABLE media_insights ADD COLUMN IF NOT EXISTS platform         TEXT NOT NULL DEFAULT 'instagram';\nALTER TABLE media_insights ADD COLUMN IF NOT EXISTS impressions      INTEGER;\nALTER TABLE media_insights ADD COLUMN IF NOT EXISTS profile_visits   INTEGER;\nALTER TABLE media_insights ADD COLUMN IF NOT EXISTS link_clicks      INTEGER;\nALTER TABLE media_insights ADD COLUMN IF NOT EXISTS followers_gained INTEGER;\n\n-- Lead intelligence: extend existing leads (do not create lead_events)\nALTER TABLE leads ADD COLUMN IF NOT EXISTS phone TEXT;\n\n-- Infra/subscription costs (monthly, not per-call) — complements cost_events\nCREATE TABLE IF NOT EXISTS infra_costs (\n  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  provider     TEXT NOT NULL,                 -- 'supabase' | 'vercel' | 'resend' | ...\n  project_id   UUID REFERENCES projects(id) ON DELETE SET NULL,  -- NULL = plattformsglobal\n  period_month DATE NOT NULL,                 -- första dagen i månaden\n  amount_sek   NUMERIC(12, 2) NOT NULL DEFAULT 0,\n  note         TEXT,\n  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()\n);\nCREATE INDEX IF NOT EXISTS idx_infra_costs_period ON infra_costs(period_month DESC);\n\nALTER TABLE infra_costs ENABLE ROW LEVEL SECURITY;\nCREATE POLICY \"infra_costs_owner\" ON infra_costs\n  FOR ALL USING (\n    project_id IS NULL OR project_id IN (SELECT id FROM projects WHERE owner_id = auth.uid())\n  );"
+      ]
+    },
+    {
+      "version": "20260602161429",
+      "name": "atlas_growth_account_snapshots",
+      "statement_count": 1,
+      "body_sha256": "73e9a24b0c73fb289e79167219edcb31689de0bdf4ab491a1f39a8c2ba01fc94",
+      "statements": [
+        "\n-- Fas 4a: account-level time series (DISTINKT från media_insights som är per-INLÄGG).\n-- Fångar följare/reach/profil per plattform & projekt över tid → grunden för\n-- all tillväxt- och publikanalys. Daglig snapshot, idempotent via unik (projekt,plattform,datum).\ncreate table if not exists public.account_snapshots (\n  id            uuid primary key default gen_random_uuid(),\n  project_id    uuid references public.projects(id) on delete set null,\n  platform      text not null check (platform in ('instagram','facebook','youtube')),\n  snapshot_date date not null default (now() at time zone 'utc')::date,\n  captured_at   timestamptz not null default now(),\n  followers     integer,\n  following     integer,\n  media_count   integer,\n  reach         integer,   -- konto-reach (period day) om scope tillåter\n  profile_views integer,   -- om scope tillåter\n  raw           jsonb,     -- full API-payload för spårbarhet\n  unique (project_id, platform, snapshot_date)\n);\ncreate index if not exists account_snapshots_proj_plat_date_idx\n  on public.account_snapshots (project_id, platform, snapshot_date desc);\n\nalter table public.account_snapshots enable row level security;\n-- Endast service-role (cron/Atlas) rör denna tabell; ingen klient-policy → RLS blockerar anon/auth.\n"
+      ]
+    },
+    {
+      "version": "20260602161432",
+      "name": "atlas_growth_opportunities",
+      "statement_count": 1,
+      "body_sha256": "4a5ce71ac48811a9e77750eec6e8ed98b79a0e74025e578633d63d1b08bc6fab",
+      "statements": [
+        "\n-- Fas 4a: opportunities — Atlas SAMLAR möjligheter (Feature 7). INGA auto-actions.\ncreate table if not exists public.opportunities (\n  id           uuid primary key default gen_random_uuid(),\n  project_id   uuid references public.projects(id) on delete set null,\n  type         text not null,   -- 'content_topic' | 'posting_time' | 'format' | 'growth' | 'cost' ...\n  title        text not null,   -- naturligt språk: själva möjligheten\n  rationale    text,            -- varför (bevis i klartext)\n  score        numeric(5,2),    -- 0-100 möjlighetspoäng\n  confidence   text check (confidence in ('low','medium','high')),  -- urvalsmedveten\n  evidence     jsonb,           -- strukturerade signaler bakom\n  status       text not null default 'open' check (status in ('open','dismissed','actioned')),\n  detected_at  timestamptz not null default now(),\n  created_at   timestamptz not null default now()\n);\ncreate index if not exists opportunities_proj_status_score_idx\n  on public.opportunities (project_id, status, score desc);\n\nalter table public.opportunities enable row level security;\n"
+      ]
+    },
+    {
+      "version": "20260602162046",
+      "name": "atlas_growth_script_topic_format",
+      "statement_count": 1,
+      "body_sha256": "f5ab91143519b6c2f772afe6dd06c34c1c64e753c55e4704b833205b87fc2dc0",
+      "statements": [
+        "\n-- Fas 4a: dimensioner för innehållsanalys. format konstant 'reel' tills vidare.\nalter table public.media_scripts add column if not exists topic  text;\nalter table public.media_scripts add column if not exists format text default 'reel';\n"
+      ]
+    },
+    {
+      "version": "20260602175032",
+      "name": "g1_multitenant_platform_tokens",
+      "statement_count": 1,
+      "body_sha256": "cdec814c505a866bf38345ad49804ddacdb167fe4641ed18ee6f152fe8e758e8",
+      "statements": [
+        "\n-- G1: gör platform_tokens projekt-medveten (multi-tenant social-lager).\nalter table public.platform_tokens add column if not exists project_id uuid references public.projects(id) on delete cascade;\nalter table public.platform_tokens add column if not exists account_id text;\n\n-- Backfill: befintliga tokens tillhör The Prompt (ai-media-automation).\nupdate public.platform_tokens\n   set project_id = (select id from public.projects where slug = 'ai-media-automation')\n where project_id is null;\n\n-- Byt unik-nyckel: (platform, token_type) → (project_id, platform, token_type),\n-- så flera projekt kan ha egna IG/FB-konton.\nalter table public.platform_tokens drop constraint if exists platform_tokens_platform_token_type_key;\ncreate unique index if not exists platform_tokens_project_platform_type_key\n  on public.platform_tokens (project_id, platform, token_type);\n"
+      ]
+    },
+    {
+      "version": "20260602175605",
+      "name": "stripe_intelligence_revenue_snapshots",
+      "statement_count": 1,
+      "body_sha256": "ef88ada4323d1295ea662327a413157da6a810f9d4244c2bbc6a37e6e6a9c7c0",
+      "statements": [
+        "\n-- Del 1: daglig aggregat-snapshot av prenumerations-KPI:er (beräknas FRÅN Stripe).\n-- INGA per-prenumeration-rader → ingen lokal billinglogik. Stripe = source of truth.\ncreate table if not exists public.revenue_snapshots (\n  id                 uuid primary key default gen_random_uuid(),\n  project_id         uuid references public.projects(id) on delete set null,\n  snapshot_date      date not null default (now() at time zone 'utc')::date,\n  captured_at        timestamptz not null default now(),\n  active_subscribers integer,\n  new_subscribers    integer,\n  trialing           integer,\n  churned_this_month integer,\n  mrr_sek            numeric(12,2),\n  revenue_month_sek  numeric(12,2),\n  currency           text default 'sek',\n  raw                jsonb,\n  unique (project_id, snapshot_date)\n);\ncreate index if not exists revenue_snapshots_proj_date_idx\n  on public.revenue_snapshots (project_id, snapshot_date desc);\nalter table public.revenue_snapshots enable row level security;\n"
+      ]
+    },
+    {
+      "version": "20260603055456",
+      "name": "durable_runs_claim_reaper",
+      "statement_count": 1,
+      "body_sha256": "d8d988291fc63df2a9b3dca6b30d913b7351a65f626a4db41eb291d2e041cd49",
+      "statements": [
+        "\n-- Durable workflow execution (Alternativ A).\nalter table public.runs add column if not exists attempts      integer not null default 0;\nalter table public.runs add column if not exists max_attempts  integer not null default 3;\nalter table public.runs add column if not exists claimed_at    timestamptz;\nalter table public.runs add column if not exists lease_until   timestamptz;\nalter table public.runs add column if not exists last_error    text;\nalter table public.runs add column if not exists error_history jsonb not null default '[]'::jsonb;\n\ncreate index if not exists runs_pending_idx        on public.runs (created_at)  where status = 'pending';\ncreate index if not exists runs_running_lease_idx  on public.runs (lease_until) where status = 'running';\n\n-- Atomisk claim: markerar pending → running, sätter lease + attempts++. SKIP LOCKED = ingen dubbelkörning.\ncreate or replace function omnira_cron.claim_runs(p_limit int, p_lease_seconds int default 280)\nreturns setof public.runs\nlanguage plpgsql security definer set search_path to '' as $$\nbegin\n  return query\n  update public.runs r set\n    status      = 'running',\n    claimed_at  = now(),\n    started_at  = coalesce(r.started_at, now()),\n    lease_until = now() + make_interval(secs => p_lease_seconds),\n    attempts    = r.attempts + 1\n  where r.id in (\n    select id from public.runs\n    where status = 'pending' and attempts < max_attempts\n    order by created_at\n    for update skip locked\n    limit p_limit\n  )\n  returning r.*;\nend $$;\n\n-- Reaper: återställ fastnade 'running' (lease utgången) → pending (eller failed vid max attempts).\ncreate or replace function omnira_cron.reap_stuck_runs()\nreturns int language plpgsql security definer set search_path to '' as $$\ndeclare n int;\nbegin\n  update public.runs set\n    status      = case when attempts >= max_attempts then 'failed' else 'pending' end,\n    error       = case when attempts >= max_attempts then coalesce(last_error,'Lease expired (stuck run)') else error end,\n    finished_at = case when attempts >= max_attempts then now() else finished_at end,\n    claimed_at  = null,\n    lease_until = null\n  where status = 'running' and lease_until is not null and lease_until < now();\n  get diagnostics n = row_count;\n  return n;\nend $$;\n"
+      ]
+    },
+    {
+      "version": "20260603055620",
+      "name": "durable_runs_claim_public_rpc",
+      "statement_count": 1,
+      "body_sha256": "4765262786fd1f4c6c76ef31605487ae0b94e7ea4c42d11fbee422564a98581c",
+      "statements": [
+        "\n-- claim_runs måste vara rpc-anropbar från drain-endpointen → public-schemat.\ndrop function if exists omnira_cron.claim_runs(int, int);\n\ncreate or replace function public.claim_runs(p_limit int, p_lease_seconds int default 280)\nreturns setof public.runs\nlanguage plpgsql security definer set search_path to '' as $$\nbegin\n  return query\n  update public.runs r set\n    status      = 'running',\n    claimed_at  = now(),\n    started_at  = coalesce(r.started_at, now()),\n    lease_until = now() + make_interval(secs => p_lease_seconds),\n    attempts    = r.attempts + 1\n  where r.id in (\n    select id from public.runs\n    where status = 'pending' and attempts < max_attempts\n    order by created_at\n    for update skip locked\n    limit p_limit\n  )\n  returning r.*;\nend $$;\n\n-- Endast service-role (drain-endpointen) får claima. Inte anon/authenticated.\nrevoke all on function public.claim_runs(int, int) from public, anon, authenticated;\ngrant execute on function public.claim_runs(int, int) to service_role;\n"
+      ]
+    },
+    {
+      "version": "20260603084745",
+      "name": "token_health_monitoring",
+      "statement_count": 1,
+      "body_sha256": "6f03e73d8806012e836536e526168fed4c5fe9ea69e24439ab614b0003cca2ba",
+      "statements": [
+        "\ncreate table if not exists public.token_health (\n  platform            text primary key,\n  expires_at          timestamptz,\n  days_left           integer,\n  status              text not null default 'unknown',   -- ok | warning | expired | error | unknown\n  last_verified_at    timestamptz,\n  last_refreshed_at   timestamptz,\n  last_error          text,\n  last_warned_threshold integer,                          -- dedupe: 14|7|3|0\n  updated_at          timestamptz not null default now()\n);\nrevoke all on public.token_health from anon, authenticated;\ngrant all on public.token_health to service_role;\n\ninsert into public.token_health (platform, status) values\n  ('instagram','unknown'), ('facebook','unknown'), ('youtube','unknown')\non conflict (platform) do nothing;\n\n-- IG-refresh: månadsvis → veckovis (måndag 06:00 UTC)\nselect cron.schedule('omnira_refresh_tokens', '0 6 * * 1', $$select omnira_cron.call_vercel('/api/media/cron/refresh-tokens')$$);\n-- Ny daglig token-hälsokoll 06:15 UTC\nselect cron.schedule('omnira_token_health', '15 6 * * *', $$select omnira_cron.call_vercel('/api/media/cron/token-health')$$);\n"
+      ]
+    },
+    {
+      "version": "20260603085842",
+      "name": "pipeline_retry_state",
+      "statement_count": 1,
+      "body_sha256": "02bf082e31b14c045386daa7e4acabb1b9ab7cc9086ea0ae7fe2072b08a00cdf",
+      "statements": [
+        "\n-- Durabel steg-retry för media-pipelinen (step2/step3). Inget tyst bortfall.\nalter table public.media_scripts add column if not exists voice_attempts        integer not null default 0;\nalter table public.media_scripts add column if not exists render_attempts       integer not null default 0;\nalter table public.media_scripts add column if not exists pipeline_next_retry_at timestamptz;\nalter table public.media_scripts add column if not exists pipeline_failed_reason text;\n\n-- Ersätt den smala reset-cronen med en generell pipeline-retry-drainer (var 5:e min).\nselect cron.unschedule('omnira_reset_stuck_images');\nselect cron.schedule('omnira_pipeline_retry', '*/5 * * * *', $$select omnira_cron.call_vercel('/api/media/cron/pipeline-retry')$$);\n"
+      ]
+    },
+    {
+      "version": "20260603091319",
+      "name": "cron_heartbeat",
+      "statement_count": 1,
+      "body_sha256": "405ffdb9f423cd5190108279166747356728ebd93ed4d3651b4675c7d01667ae",
+      "statements": [
+        "\n-- Brygga: appen (PostgREST) kan inte läsa cron-schemat direkt. SECURITY DEFINER\n-- exponerar senaste körning per jobb via public (rpc-anropbar, endast service_role).\ncreate or replace function public.cron_job_status()\nreturns table(jobname text, schedule text, active boolean, last_run timestamptz, last_status text)\nlanguage sql security definer set search_path to '' as $$\n  select j.jobname, j.schedule, j.active,\n    (select d.start_time from cron.job_run_details d where d.jobid = j.jobid order by d.start_time desc limit 1),\n    (select d.status     from cron.job_run_details d where d.jobid = j.jobid order by d.start_time desc limit 1)\n  from cron.job j;\n$$;\nrevoke all on function public.cron_job_status() from public, anon, authenticated;\ngrant execute on function public.cron_job_status() to service_role;\n\n-- Beräknad heartbeat-status per kritiskt jobb (skrivs av heartbeat-checkern).\ncreate table if not exists public.cron_heartbeat (\n  jobname           text primary key,   -- logiskt nyckelnamn (news, publish, …)\n  label             text,\n  cadence           text,\n  last_fired_at     timestamptz,\n  last_evidence_at  timestamptz,\n  status            text not null default 'unknown',  -- ok|late|endpoint_failing|dead|pending_first_run\n  detail            text,\n  checked_at        timestamptz,\n  last_warned_at    timestamptz,\n  updated_at        timestamptz not null default now()\n);\nrevoke all on public.cron_heartbeat from anon, authenticated;\ngrant all on public.cron_heartbeat to service_role;\n\n-- Oberoende av Vercel-cron: pg_cron-sidan av korskontrollen, var 10:e min.\nselect cron.schedule('omnira_heartbeat', '*/10 * * * *', $$select omnira_cron.call_vercel('/api/media/cron/heartbeat')$$);\n"
+      ]
+    },
+    {
+      "version": "20260603135744",
+      "name": "marketing_engine_foundation",
+      "statement_count": 1,
+      "body_sha256": "ec581d56f259767f23cb2c40a1a39f22bd3918b9dc1d971e1ca2cb4303f12553",
+      "statements": [
+        "-- Familje-Stunden Marketing Engine v1 — Fas 1 (Foundation).\nalter table public.runs add column if not exists kind text;\nalter table public.runs alter column workflow_id drop not null;\ncreate index if not exists runs_kind_pending_idx\n  on public.runs (created_at) where status = 'pending' and kind is not null;\n\ncreate table if not exists public.campaign_plans (\n  id                 uuid primary key default gen_random_uuid(),\n  project_id         uuid not null references public.projects(id) on delete cascade,\n  run_id             uuid references public.runs(id) on delete set null,\n  plan_key           text not null,\n  target_month       date not null,\n  theme_key          text,\n  theme_name         text,\n  next_theme_key     text,\n  status             text not null default 'draft'\n                       check (status in ('draft','approved','archived','superseded')),\n  campaign_angle     jsonb,\n  revenue_strategy   jsonb,\n  gaps               jsonb not null default '[]'::jsonb,\n  human_input_needed jsonb not null default '[]'::jsonb,\n  canon_level        jsonb,\n  generated_at       timestamptz,\n  approved_at        timestamptz,\n  approved_by        text,\n  created_at         timestamptz not null default now(),\n  updated_at         timestamptz not null default now(),\n  unique (project_id, plan_key)\n);\ncreate index if not exists campaign_plans_proj_month_idx\n  on public.campaign_plans (project_id, target_month desc);\ncreate index if not exists campaign_plans_status_idx\n  on public.campaign_plans (project_id, status);\ncreate unique index if not exists campaign_plans_active_month_uidx\n  on public.campaign_plans (project_id, target_month)\n  where status in ('draft','approved');\n\ncreate table if not exists public.campaign_briefs (\n  id             uuid primary key default gen_random_uuid(),\n  project_id     uuid not null references public.projects(id) on delete cascade,\n  plan_id        uuid not null references public.campaign_plans(id) on delete cascade,\n  brief_key      text not null,\n  post_key       text,\n  channel        text not null check (channel in ('instagram','facebook')),\n  format         text not null\n                   check (format in ('reel','carousel','story','single_post','fb_post','fb_event')),\n  beat           text not null check (beat in ('teaser','launch','mid','bridge')),\n  scheduled_week text,\n  scheduled_date date,\n  objective      text,\n  brief_payload  jsonb,\n  canon_level    jsonb,\n  status         text not null default 'planned'\n                   check (status in ('planned','drafting','drafted','needs_input')),\n  created_at     timestamptz not null default now(),\n  updated_at     timestamptz not null default now(),\n  unique (plan_id, brief_key)\n);\ncreate index if not exists campaign_briefs_plan_idx on public.campaign_briefs (plan_id);\ncreate index if not exists campaign_briefs_status_idx on public.campaign_briefs (project_id, status);\n\ncreate table if not exists public.draft_posts (\n  id            uuid primary key default gen_random_uuid(),\n  project_id    uuid not null references public.projects(id) on delete cascade,\n  run_id        uuid references public.runs(id) on delete set null,\n  brief_id      uuid not null references public.campaign_briefs(id) on delete cascade,\n  draft_key     text not null,\n  channel       text not null check (channel in ('instagram','facebook')),\n  format        text not null\n                  check (format in ('reel','carousel','story','single_post','fb_post','fb_event')),\n  beat          text,\n  draft_payload jsonb,\n  self_check    jsonb,\n  gaps          jsonb not null default '[]'::jsonb,\n  needs_input   jsonb not null default '[]'::jsonb,\n  canon_level   jsonb,\n  status        text not null default 'drafted'\n                  check (status in ('drafted','needs_input','guard_passed','guard_failed','approved','rejected','returned')),\n  version       integer not null default 1,\n  created_at    timestamptz not null default now(),\n  updated_at    timestamptz not null default now(),\n  unique (brief_id, version)\n);\ncreate index if not exists draft_posts_brief_idx on public.draft_posts (brief_id);\ncreate index if not exists draft_posts_status_idx on public.draft_posts (project_id, status);\n\ncreate table if not exists public.guard_reports (\n  id              uuid primary key default gen_random_uuid(),\n  project_id      uuid not null references public.projects(id) on delete cascade,\n  run_id          uuid references public.runs(id) on delete set null,\n  draft_id        uuid not null references public.draft_posts(id) on delete cascade,\n  report_key      text not null,\n  verdict         text check (verdict in ('approved','warning','rejected')),\n  score           integer check (score between 0 and 100),\n  score_breakdown jsonb,\n  violations      jsonb not null default '[]'::jsonb,\n  warnings        jsonb not null default '[]'::jsonb,\n  gap_flags       jsonb not null default '[]'::jsonb,\n  checks          jsonb,\n  recommendation  text,\n  evaluated_at    timestamptz,\n  created_at      timestamptz not null default now(),\n  updated_at      timestamptz not null default now(),\n  unique (draft_id)\n);\ncreate index if not exists guard_reports_draft_idx on public.guard_reports (draft_id);\ncreate index if not exists guard_reports_verdict_idx on public.guard_reports (project_id, verdict);\n\nalter table public.approvals add column if not exists kind            text not null default 'workflow_output';\nalter table public.approvals add column if not exists project_id      uuid references public.projects(id) on delete cascade;\nalter table public.approvals add column if not exists draft_id        uuid references public.draft_posts(id) on delete cascade;\nalter table public.approvals add column if not exists guard_report_id uuid references public.guard_reports(id) on delete set null;\nalter table public.approvals add column if not exists fix_patch       jsonb;\nalter table public.approvals add column if not exists operator        text;\nalter table public.approvals add column if not exists action          text\n                   check (action in ('approve','approve_with_fix','reject','return_to_drafter'));\nalter table public.approvals add column if not exists decided_at      timestamptz;\n\nalter table public.approvals drop constraint if exists approvals_status_check;\nalter table public.approvals add constraint approvals_status_check\n  check (status in ('pending','approved','rejected','revised','returned','needs_input'));\n\ncreate index if not exists approvals_kind_idx on public.approvals (kind);\ncreate index if not exists approvals_marketing_idx\n  on public.approvals (project_id, status) where kind = 'marketing_draft';\n\nalter table public.campaign_plans   enable row level security;\nalter table public.campaign_briefs  enable row level security;\nalter table public.draft_posts      enable row level security;\nalter table public.guard_reports    enable row level security;"
+      ]
+    },
+    {
+      "version": "20260605071529",
+      "name": "media_insights_multiplatform",
+      "statement_count": 1,
+      "body_sha256": "bd29b60044d8214d87ca435412c82d8784c52488800248ff0d1865786ca4b4d0",
+      "statements": [
+        "-- Make media_insights multi-platform (YouTube + Facebook per-post), additive & non-destructive.\nalter table public.media_insights\n  add column if not exists youtube_video_id text,\n  add column if not exists facebook_post_id text;\n\n-- Allow per-platform upserts keyed on (script_id, platform).\n-- Existing data: 14 rows, 0 null script_id, all distinct on (script_id, platform) — safe.\ncreate unique index if not exists media_insights_script_platform_key\n  on public.media_insights (script_id, platform);\n\ncomment on column public.media_insights.youtube_video_id is 'YouTube video id for platform=youtube rows (null otherwise).';\ncomment on column public.media_insights.facebook_post_id  is 'Facebook post id for platform=facebook rows (null otherwise).';"
+      ]
+    },
+    {
+      "version": "20260605213648",
+      "name": "media_insights_retention",
+      "statement_count": 1,
+      "body_sha256": "390846a61efd21ab9156320d7cd298c1c2c8b2031f98a0580adc49cd76873ef9",
+      "statements": [
+        "-- Genomtittnings-% (retention) per video. Numerisk 0–100. Additivt.\nalter table public.media_insights\n  add column if not exists avg_view_pct numeric;\ncomment on column public.media_insights.avg_view_pct is 'YouTube averageViewPercentage (0-100) via Analytics API. Null tills yt-analytics.readonly-scope finns.';"
+      ]
+    },
+    {
+      "version": "20260605232026",
+      "name": "media_scripts_breaking_flag",
+      "statement_count": 1,
+      "body_sha256": "dbdfc0b0410f1e5734378c97650253c9cbfecddceee95c088fe6dfc0dc33e1b7",
+      "statements": [
+        "-- Flagga för newsjacking/breaking-videos (publiceras direkt, utanför schemat). Additivt.\nalter table public.media_scripts\n  add column if not exists breaking boolean not null default false;\ncomment on column public.media_scripts.breaking is 'Newsjacking: publiceras omedelbart via /api/media/breaking + pipeline-retry, inte vid 08/18-slot.';"
+      ]
+    },
+    {
+      "version": "20260606013407",
+      "name": "pr2_route_webhook_isolation",
+      "statement_count": 1,
+      "body_sha256": "f1525ae8126993690f4e38d732ecc75cf8ba88bf95094c4f45a5311b2c8bd9f1",
+      "statements": [
+        "-- PR-2 (Finding A) — idempotent reconciliation.\n-- The schema/policy/backfill were already present in prod (applied out-of-band);\n-- this records the migration in the ledger as a verified no-op. Same end-state as\n-- the committed file supabase/migrations/20260606_pr2_route_webhook_isolation.sql.\n\n-- 1) Leak stop: remove permissive authenticated read policy (no-op if already gone).\ndrop policy if exists \"authenticated_read_comment_replies\" on public.comment_replies;\n\n-- 2) Structural scoping: project_id column + index (no-op if present).\nalter table public.comment_replies\n  add column if not exists project_id uuid references public.projects(id) on delete cascade;\ncreate index if not exists idx_comment_replies_project on public.comment_replies (project_id);\n\n-- 3) Backfill via post_id → media_scripts → project (idempotent; only fills NULLs that match).\nupdate public.comment_replies cr\nset    project_id = ms.project_id\nfrom   public.media_scripts ms\nwhere  cr.project_id is null\n  and  ms.project_id is not null\n  and  (\n        (cr.platform = 'instagram' and cr.post_id = ms.instagram_media_id)\n     or (cr.platform = 'facebook'  and cr.post_id = ms.facebook_post_id)\n      );\n\n-- 4) Owner-scoped read policy — guarded so re-apply is a no-op (no drop of the live policy).\ndo $$\nbegin\n  if not exists (\n    select 1 from pg_policies\n    where schemaname='public' and tablename='comment_replies'\n      and policyname='comment_replies_owner_read'\n  ) then\n    create policy \"comment_replies_owner_read\"\n      on public.comment_replies for select\n      to authenticated\n      using (project_id in (select id from public.projects where owner_id = auth.uid()));\n  end if;\nend $$;\n\n-- NOT NULL on project_id deferred intentionally until the webhook sets it on insert\n-- and the queue drains (one historical NULL row for a post with no media_script)."
+      ]
+    },
+    {
+      "version": "20260606032600",
+      "name": "schedule_dream_cron",
+      "statement_count": 1,
+      "body_sha256": "36570de242843186ddc1e21cc0d0d80f1c0699571c0b6423bc704e055c61675e",
+      "statements": [
+        "-- Nattlig dream cycle (självförbättring) ~02:00 svensk sommartid (00:00 UTC).\n-- Anropar /api/media/cron/dream som kör analysen per projekt (skippar tomma).\n-- Verifierad end-to-end via manuell call_vercel-trigger 2026-06-06.\nselect cron.schedule(\n  'omnira_dream',\n  '0 0 * * *',\n  $$select omnira_cron.call_vercel('/api/media/cron/dream');$$\n);"
+      ]
+    },
+    {
+      "version": "20260606051956",
+      "name": "bug_monitoring_foundation",
+      "statement_count": 1,
+      "body_sha256": "c09b8b7b636710c4736dfed77fe163898a0ceed653997712b1ee3cd7aa908684",
+      "statements": [
+        "-- Buggövervakning — Foundation. Datamodell för push + daglig scan.\n-- public-schema, service-role-åtkomst (RLS PÅ, inga policies), project_id-scopat.\n\ncreate table if not exists public.project_scanners (\n  id                   uuid primary key default gen_random_uuid(),\n  project_id           uuid not null references public.projects(id) on delete cascade,\n  label                text not null,\n  scanner_url          text not null,\n  secret_env_key       text,\n  enabled              boolean not null default true,\n  expected_check_count int,\n  created_at           timestamptz not null default now(),\n  updated_at           timestamptz not null default now(),\n  unique (project_id)\n);\ncreate index if not exists project_scanners_enabled_idx\n  on public.project_scanners (enabled) where enabled = true;\n\ncreate table if not exists public.bug_reports (\n  id           uuid primary key default gen_random_uuid(),\n  project_id   uuid references public.projects(id) on delete cascade,\n  source       text not null check (source in ('system','user','scan')),\n  severity     text not null default 'warning'\n                 check (severity in ('critical','warning','info')),\n  title        text not null,\n  detail       text,\n  area         text,\n  repro        text,\n  fix_prompt   text,\n  status       text not null default 'open'\n                 check (status in ('open','resolved','ignored')),\n  dedupe_key   text,\n  emailed_at   timestamptz,\n  created_at   timestamptz not null default now(),\n  resolved_at  timestamptz\n);\ncreate index if not exists bug_reports_open_idx\n  on public.bug_reports (status, created_at desc);\ncreate index if not exists bug_reports_project_idx\n  on public.bug_reports (project_id, created_at desc);\ncreate index if not exists bug_reports_dedupe_idx\n  on public.bug_reports (dedupe_key, created_at desc) where dedupe_key is not null;\n\ncreate table if not exists public.bugscan_runs (\n  id          uuid primary key default gen_random_uuid(),\n  started_at  timestamptz not null default now(),\n  finished_at timestamptz,\n  ok          int not null default 0,\n  warnings    int not null default 0,\n  errors      int not null default 0,\n  summary     jsonb not null default '{}'::jsonb,\n  created_at  timestamptz not null default now()\n);\ncreate index if not exists bugscan_runs_started_idx\n  on public.bugscan_runs (started_at desc);\n\ncreate table if not exists public.bugscan_findings (\n  id           uuid primary key default gen_random_uuid(),\n  run_id       uuid not null references public.bugscan_runs(id) on delete cascade,\n  project_id   uuid references public.projects(id) on delete set null,\n  project_name text,\n  check_name   text not null,\n  status       text not null check (status in ('ok','warning','error')),\n  message      text,\n  is_new       boolean not null default false,\n  fix_prompt   text,\n  created_at   timestamptz not null default now()\n);\ncreate index if not exists bugscan_findings_run_idx\n  on public.bugscan_findings (run_id);\ncreate index if not exists bugscan_findings_new_idx\n  on public.bugscan_findings (created_at desc) where is_new = true;\ncreate index if not exists bugscan_findings_project_idx\n  on public.bugscan_findings (project_id, status);\n\nalter table public.project_scanners  enable row level security;\nalter table public.bug_reports        enable row level security;\nalter table public.bugscan_runs       enable row level security;\nalter table public.bugscan_findings   enable row level security;"
+      ]
+    },
+    {
+      "version": "20260608110948",
+      "name": "create_website_content_system_a",
+      "statement_count": 1,
+      "body_sha256": "a38333a1fa1878396eea42833b396e1589be1b861e7abde6825aec976ec88e5a",
+      "statements": [
+        "-- System A (Website Content Engine) — editorial system of record.\n-- Atlas owns the workflow + status; The Prompt website is a publish DESTINATION only.\n-- Deliberately separate from System B (media_scripts / social) and from the\n-- marketing `approvals` queue. Only FK is to projects (news_item_id is a soft\n-- uuid reference, intentionally NOT a FK to any media_* table).\n\ncreate table if not exists public.website_content (\n  id                uuid primary key default gen_random_uuid(),\n  project_id        uuid not null references public.projects(id) on delete cascade,\n  content_type      text not null default 'article'\n                      check (content_type in ('article','news','blog','guide','evergreen')),\n  source_kind       text,\n  news_item_id      uuid,                          -- soft provenance ref (no FK by design)\n  external_id       text not null unique,          -- publish idempotency key\n  title             text,\n  slug              text,\n  summary           text,\n  payload           jsonb not null,                -- full publish-contract payload (incl. body)\n  qa                jsonb,\n  meta              jsonb,\n  model             text,\n  cost_usd          numeric,\n  generated_by      text,\n  status            text not null default 'pending_review'\n                      check (status in ('pending_review','approved','rejected','published','scheduled','failed')),\n  status_reason     text,                          -- human-readable workflow explanation\n  reviewed_at       timestamptz,\n  reviewed_by       text,\n  reviewer_notes    text,\n  rejection_reason  text,\n  destination_key   text not null default 'the-prompt',\n  destination_url   text,\n  publish_operation text,\n  published_at      timestamptz,\n  publish_error     text,\n  scheduled_at      timestamptz,\n  version           int not null default 1,\n  created_at        timestamptz not null default now(),\n  updated_at        timestamptz not null default now()\n);\n\ncreate index if not exists idx_website_content_queue\n  on public.website_content (project_id, status, created_at desc);\n\ncreate index if not exists idx_website_content_pending\n  on public.website_content (status) where status = 'pending_review';\n\nalter table public.website_content enable row level security;\n\n-- Owner-scoped read, mirroring comment_replies_owner_read. Writes go through the\n-- server-side admin (service-role) client, which bypasses RLS.\ncreate policy \"website_content_owner_read\"\n  on public.website_content for select to authenticated\n  using (project_id in (select id from projects where owner_id = auth.uid()));"
+      ]
+    },
+    {
+      "version": "20260609075336",
+      "name": "manager_task_dream_link",
+      "statement_count": 1,
+      "body_sha256": "c1b8a33f2396a96a5e52a5f02c5758381160018bf30b1cbee1a3380e7e032fbd",
+      "statements": [
+        "alter table public.manager_tasks add column if not exists owner      text;\nalter table public.manager_tasks add column if not exists source     text;\nalter table public.manager_tasks add column if not exists source_key text;\ncreate index if not exists idx_manager_tasks_source\n  on public.manager_tasks (project_id, source, source_key);"
+      ]
+    },
+    {
+      "version": "20260609082919",
+      "name": "dream_issues_ledger",
+      "statement_count": 1,
+      "body_sha256": "e6a31b1161c5fee9ba8681986562db3e3841e8a814db42c9dfacbdba923f7b93",
+      "statements": [
+        "create table if not exists public.dream_issues (\n  id                uuid primary key default gen_random_uuid(),\n  project_id        uuid not null references public.projects(id) on delete cascade,\n  issue_id          text not null,\n  title             text,\n  severity          text,\n  latest_insight    text,\n  latest_action     text,\n  latest_memory_key text,\n  manager_task_id   uuid references public.manager_tasks(id) on delete set null,\n  occurrences       int  not null default 1,\n  first_seen_at     timestamptz not null default now(),\n  last_seen_at      timestamptz not null default now(),\n  created_at        timestamptz not null default now(),\n  updated_at        timestamptz not null default now(),\n  unique (project_id, issue_id)\n);\ncreate index if not exists idx_dream_issues_project on public.dream_issues (project_id);\ncreate index if not exists idx_dream_issues_task    on public.dream_issues (manager_task_id);\n\ninsert into public.dream_issues\n  (project_id, issue_id, title, severity, latest_insight, latest_action, latest_memory_key, occurrences, first_seen_at, last_seen_at)\nselect d.project_id, d.issue_id, d.insight, d.severity, d.insight, d.action, d.key, d.occurrences, d.first_seen, d.last_seen\nfrom (\n  select\n    m.project_id,\n    regexp_replace(regexp_replace(m.key, '^dream_[0-9]{4}-?[0-9]{2}-?[0-9]{2}_', ''), '_(day)?[0-9]+$', '') as issue_id,\n    m.key,\n    lower(coalesce(substring(m.value from '^\\[(CRITICAL|WARNING|INFO)\\]'), 'info')) as severity,\n    trim(both ' ' from regexp_replace(split_part(regexp_replace(m.value, '^\\[[A-Z]+\\]\\s*', ''), '→', 1), '\\s+$', '')) as insight,\n    nullif(trim(both ' ' from split_part(regexp_replace(m.value, '^\\[[A-Z]+\\]\\s*', ''), '→', 2)), '') as action,\n    1 as occurrences,\n    m.updated_at as first_seen,\n    m.updated_at as last_seen,\n    row_number() over (\n      partition by m.project_id,\n        regexp_replace(regexp_replace(m.key, '^dream_[0-9]{4}-?[0-9]{2}-?[0-9]{2}_', ''), '_(day)?[0-9]+$', '')\n      order by m.updated_at desc\n    ) as rn\n  from public.memories m\n  where m.key like 'dream_%'\n) d\nwhere d.rn = 1\non conflict (project_id, issue_id) do nothing;"
+      ]
+    },
+    {
+      "version": "20260609164447",
+      "name": "enable_rls_cost_rates_dream_issues",
+      "statement_count": 1,
+      "body_sha256": "1435ae12ae0d4ecefe91b25387148b3a84e0775a3da6e6d205d197d91c2345dc",
+      "statements": [
+        "-- Security fix: enable Row Level Security on two public tables flagged by the\n-- Supabase Security Advisor (\"RLS Disabled in Public\"). Both tables are accessed\n-- only server-side via the service_role key (createAdminClient), which bypasses\n-- RLS, so enabling RLS with no permissive policies closes anon/public access\n-- without affecting the application.\nalter table public.cost_rates  enable row level security;\nalter table public.dream_issues enable row level security;"
+      ]
+    },
+    {
+      "version": "20260609165615",
+      "name": "harden_set_updated_at_search_path",
+      "statement_count": 1,
+      "body_sha256": "0210a5e12290cb3b500f1a3791a874a424eda3d2f455c558ca34dfc9c11dd890",
+      "statements": [
+        "-- Security hardening: pin the search_path on the trigger function so it can't be\n-- hijacked via a mutable role search_path. The function only calls now()\n-- (pg_catalog), so an empty search_path is safe.\nalter function public.set_updated_at() set search_path = '';"
+      ]
+    },
+    {
+      "version": "20260611084813",
+      "name": "atlas_actions",
+      "statement_count": 1,
+      "body_sha256": "59b00af04b9c513a7b4c85ea41915b2aaf0f7a86e6f5623ce27aeafcb9432b6d",
+      "statements": [
+        "create table if not exists atlas_actions (\n  id              uuid primary key default gen_random_uuid(),\n  project_id      uuid references projects(id) on delete cascade,\n  conversation_id uuid references conversations(id) on delete set null,\n  actor           text not null default 'Atlas',\n  action_type     text not null,\n  tool_name       text not null,\n  target_kind     text,\n  target_id       text,\n  summary         text not null,\n  detail          jsonb,\n  status          text,\n  created_at      timestamptz not null default now()\n);\ncreate index if not exists atlas_actions_project_recent on atlas_actions (project_id, created_at desc);\ncreate index if not exists atlas_actions_conversation_recent on atlas_actions (conversation_id, created_at desc);"
+      ]
+    },
+    {
+      "version": "20260613063430",
+      "name": "media_rls_hardening",
+      "statement_count": 1,
+      "body_sha256": "6538859ea77a38f045027d51b40696400189db1c6523fb7acaeb80c66640180b",
+      "statements": [
+        "ALTER TABLE media_news_items ALTER COLUMN project_id SET NOT NULL;\nALTER TABLE media_scripts    ALTER COLUMN project_id SET NOT NULL;\n\nALTER TABLE media_news_items ENABLE ROW LEVEL SECURITY;\nALTER TABLE media_scripts    ENABLE ROW LEVEL SECURITY;\n\nDROP POLICY IF EXISTS \"media_news_items_owner\" ON media_news_items;\nCREATE POLICY \"media_news_items_owner\" ON media_news_items\n  FOR ALL USING (\n    project_id IN (SELECT id FROM projects WHERE owner_id = auth.uid())\n  );\n\nDROP POLICY IF EXISTS \"media_scripts_owner\" ON media_scripts;\nCREATE POLICY \"media_scripts_owner\" ON media_scripts\n  FOR ALL USING (\n    project_id IN (SELECT id FROM projects WHERE owner_id = auth.uid())\n  );"
+      ]
+    },
+    {
+      "version": "20260613074403",
+      "name": "h1p1_execution_policy_foundation",
+      "statement_count": 1,
+      "body_sha256": "820b57d0ef28e3cb7f752703e3d7d055f7b727546ff7baf4485935ee8df2990c",
+      "statements": [
+        "ALTER TABLE public.runs DROP CONSTRAINT IF EXISTS runs_status_check;\nALTER TABLE public.runs ADD CONSTRAINT runs_status_check\n  CHECK (status IN ('pending','running','done','failed','awaiting_approval','cancelled'));\n\nALTER TABLE public.workflows\n  ADD COLUMN IF NOT EXISTS side_effect_class text NOT NULL DEFAULT 'approval_required'\n  CHECK (side_effect_class IN ('non_destructive','approval_required'));\n\nUPDATE public.workflows\nSET side_effect_class = 'non_destructive'\nWHERE name NOT IN ('Publish to Social', 'Publish to YouTube');\n\nCOMMENT ON COLUMN public.workflows.side_effect_class IS\n  'H1 execution policy: non_destructive = auto-run; approval_required = gate via awaiting_approval. Per-step \"gated\" in steps JSON overrides.';"
+      ]
+    },
+    {
+      "version": "20260613230750",
+      "name": "h1p3_run_steps_snapshot",
+      "statement_count": 1,
+      "body_sha256": "a30f87cc03fbeb1ebd7f37dcb346c233432b3079dcd41a25d866ae0d6ca89084",
+      "statements": [
+        "ALTER TABLE public.runs ADD COLUMN IF NOT EXISTS steps_snapshot jsonb;\nCOMMENT ON COLUMN public.runs.steps_snapshot IS 'H1.P3 durable resume: immutable copy of workflows.steps captured at run creation. Drain/executor prefer this over live workflows.steps; NULL => fall back to live steps (pre-P3 runs). Marketing runs (workflow_id IS NULL, dispatched by kind) leave it NULL.';"
+      ]
+    },
+    {
+      "version": "20260614000935",
+      "name": "migration_guard_fn",
+      "statement_count": 1,
+      "body_sha256": "3f07aa3816b9902acd3cbe38af07319c9b6a681be40727a9af5a88cc3bf6ef2f",
+      "statements": [
+        "create or replace function public.omnira_applied_migrations()\nreturns text[]\nlanguage sql\nsecurity definer\nset search_path = ''\nas $$\n  select coalesce(array_agg(name), '{}')\n  from supabase_migrations.schema_migrations\n  where name is not null;\n$$;\n\nrevoke all on function public.omnira_applied_migrations() from public, anon, authenticated;\ngrant execute on function public.omnira_applied_migrations() to service_role;\n\ncomment on function public.omnira_applied_migrations() is\n  'H1 migration guard: read-only list of applied migration names from the Supabase ledger. SECURITY DEFINER so the Vercel build can read it via the service-role key over PostgREST (supabase_migrations is not exposed to the API). Returns only names; no other data.';"
+      ]
+    },
+    {
+      "version": "20260614015805",
+      "name": "h1p4_run_policy_snapshot",
+      "statement_count": 1,
+      "body_sha256": "ed988e57fa2479517c61645def19bb824e015d80485c21af21106de46ec8ed14",
+      "statements": [
+        "ALTER TABLE public.runs ADD COLUMN IF NOT EXISTS policy_class text;\nCOMMENT ON COLUMN public.runs.policy_class IS 'H1.P4 policy snapshot: side_effect_class captured at run creation so the gate decision is immutable per-run. NULL => PR2 fail-safe (Default Deny => approval_required).';"
+      ]
+    },
+    {
+      "version": "20260614032512",
+      "name": "h1p4_pr2_run_rejected_status",
+      "statement_count": 1,
+      "body_sha256": "b11a0d701a56cd9c9759a0bde500e378df9980a1ca83cc7074cfa91ef40fdbd8",
+      "statements": [
+        "-- H1.P4 (PR2) — Add 'rejected' to runs.status (ADDITIVE, behavior-neutral).\n-- 'rejected' = a run that reached awaiting_approval and whose approval was REJECTED\n-- by a human. First-class TERMINAL status — distinct from 'failed' (technical) and\n-- 'cancelled' (cooperative cancel, H1.P5). INERT: no row is written 'rejected' yet\n-- (the gate is flag-gated, H1_POLICY_GATE, and lands in PR2 commit 3/4). Back-compat:\n-- only widens the CHECK; no existing row violates it.\nALTER TABLE public.runs DROP CONSTRAINT IF EXISTS runs_status_check;\nALTER TABLE public.runs ADD CONSTRAINT runs_status_check\n  CHECK (status IN ('pending','running','done','failed','awaiting_approval','cancelled','rejected'));\n\nCOMMENT ON COLUMN public.runs.status IS\n  'pending | running | done | failed | awaiting_approval (gated, awaiting human decision) | '\n  'rejected (approval rejected, terminal) | cancelled (cooperative cancel, H1.P5).';"
+      ]
+    },
+    {
+      "version": "20260614041600",
+      "name": "website_content_hero_image",
+      "statement_count": 1,
+      "body_sha256": "92cf5c63a1b4f726de7366ce8824e4740571b17f02eb3263eee99acca14191d8",
+      "statements": [
+        "-- MVP Phase 1: hero image columns on website_content (Atlas article image pipeline).\n--\n-- Adds operator-managed hero image fields so the Atlas review UI can generate,\n-- preview, and regenerate the hero image before approve→publish. All additive,\n-- defensively idempotent, behavior-neutral until Commit 5 wires hero_image_url\n-- into the publish payload (still defaults to null when unset).\n\nALTER TABLE public.website_content\n  ADD COLUMN IF NOT EXISTS hero_image_url    text;\n\nALTER TABLE public.website_content\n  ADD COLUMN IF NOT EXISTS hero_image_prompt text;\n\nALTER TABLE public.website_content\n  ADD COLUMN IF NOT EXISTS hero_image_status text;\n\nALTER TABLE public.website_content\n  ADD COLUMN IF NOT EXISTS hero_image_qa     jsonb;\n\nALTER TABLE public.website_content\n  DROP CONSTRAINT IF EXISTS website_content_hero_image_status_check;\nALTER TABLE public.website_content\n  ADD CONSTRAINT website_content_hero_image_status_check\n  CHECK (hero_image_status IS NULL OR hero_image_status IN\n         ('pending','generating','ready','failed','rejected_qa'));\n\nCREATE INDEX IF NOT EXISTS idx_website_content_hero_queue\n  ON public.website_content (project_id, hero_image_status)\n  WHERE hero_image_status IN ('pending','failed','rejected_qa');"
+      ]
+    },
+    {
+      "version": "20260615062127",
+      "name": "h1p5_outputs_run_id_unique",
+      "statement_count": 1,
+      "body_sha256": "1478fb2928dfbcc2fd5fb59579c21e11f75e64441d284ec0bc72280364cc1028",
+      "statements": [
+        "-- H1.P5 Commit 1 — idempotency: ONE output per run, DB-enforced.\n-- Partial (WHERE run_id IS NOT NULL) unique index; additive, 0 duplicate run_ids verified.\ncreate unique index if not exists outputs_run_id_uniq\n  on public.outputs (run_id) where run_id is not null;"
+      ]
+    },
+    {
+      "version": "20260615071318",
+      "name": "website_content_hero_image_brief",
+      "statement_count": 1,
+      "body_sha256": "3c0a79a57abed1188541e9f1c0cfa6ec56bd137bcf1504be26b5633011005879",
+      "statements": [
+        "-- Hero Image V2: editor brief column on website_content (additive, nullable, idempotent).\n\nALTER TABLE public.website_content\n  ADD COLUMN IF NOT EXISTS hero_image_brief jsonb;"
+      ]
+    },
+    {
+      "version": "20260615081009",
+      "name": "website_content_hero_editor_brief_rename",
+      "statement_count": 1,
+      "body_sha256": "4747b1da1a2321af78e7746472f3bf5f835a25469da5b96e4fa10126011a87c1",
+      "statements": [
+        "ALTER TABLE public.website_content\n  RENAME COLUMN hero_image_brief TO hero_editor_brief;"
+      ]
+    },
+    {
+      "version": "20260616063310",
+      "name": "website_content_hero_image_observability",
+      "statement_count": 1,
+      "body_sha256": "8b3dc051f020caf83eed4448c744ad236ee7851be57864df7e26d103f62a7647",
+      "statements": [
+        "ALTER TABLE public.website_content\n  ADD COLUMN IF NOT EXISTS hero_image_source text;\n\nALTER TABLE public.website_content\n  ADD COLUMN IF NOT EXISTS hero_image_render_input jsonb;\n\nCOMMENT ON COLUMN public.website_content.hero_image_source IS\n  'Pipeline that produced the current hero_image_url: brief | fallback_writer | NULL.';\n\nCOMMENT ON COLUMN public.website_content.hero_image_render_input IS\n  'Exact Ideogram request body for the current hero_image_url when source=brief.';"
+      ]
+    },
+    {
+      "version": "20260616074642",
+      "name": "h1p5_runs_claim_id",
+      "statement_count": 1,
+      "body_sha256": "9d9815f34f7cd3df86de5c97370c14a11af15198570ba2682f33842718182e45",
+      "statements": [
+        "-- ─────────────────────────────────────────────────────────────────────────────\n-- H1.P5 Commit 2 — claim_id fencing token.\n--\n-- Adds runs.claim_id (additive, nullable) and rotates it inside the two live RPCs:\n--   • claim_runs()      stamps a fresh gen_random_uuid() per claim\n--   • reap_stuck_runs() clears it (claim_id = null) when it reclaims a stuck run\n--\n-- This turns the lease(320s) > maxDuration(300s) TIME heuristic (Codex review #2)\n-- into a HARD guarantee: a reclaimed (zombie) invocation's run-writes — conditioned\n-- on the claim_id it was handed — match ZERO rows once the token has rotated, so the\n-- zombie aborts instead of clobbering the new owner or spending more LLM budget.\n--\n-- Code-side fencing is gated behind H1_FENCING (default OFF). This migration is INERT\n-- until that flag is on: the token is stamped/cleared but never read by drain code.\n--\n-- Additive & back-compat: pre-Commit-2 drain code ignores claim_id and keeps working\n-- (token set but unused). Both functions are CREATE OR REPLACE, so rollback is a\n-- single step — re-apply supabase/rollback/h1p5_rpc_baseline_pre_h1p5.sql (the\n-- byte-identical pre-H1.P5 definitions), which also neutralizes fencing (baseline\n-- claim_runs does not set claim_id; baseline reaper does not clear it).\n--\n-- Verified on staging branch h1p5-staging (project_ref meeefoltazwtwqlvirnd):\n-- claim matrix C1–C5, reaper R1–R4, fencing F1–F3 all green (SQL-level, Tier 1).\n-- ─────────────────────────────────────────────────────────────────────────────\n\nalter table public.runs add column if not exists claim_id uuid;\n\n-- claim_runs: stamp a fresh claim-token per claim. drain receives it for free via r.*.\ncreate or replace function public.claim_runs(p_limit integer, p_lease_seconds integer default 280)\nreturns setof public.runs\nlanguage plpgsql\nsecurity definer\nset search_path to ''\nas $function$\nbegin\n  return query\n  update public.runs r set\n    status='running', claimed_at=now(), started_at=coalesce(r.started_at, now()),\n    lease_until=now()+make_interval(secs=>p_lease_seconds), attempts=r.attempts+1,\n    claim_id=gen_random_uuid()\n  where r.id in (select id from public.runs where status='pending' and attempts<max_attempts\n                 order by created_at for update skip locked limit p_limit)\n  returning r.*;\nend $function$;\n\n-- reaper: rotate the token off on reclaim → any still-in-flight zombie is now fenced.\ncreate or replace function omnira_cron.reap_stuck_runs()\nreturns integer\nlanguage plpgsql\nsecurity definer\nset search_path to ''\nas $function$\ndeclare n int;\nbegin\n  update public.runs set\n    status=case when attempts>=max_attempts then 'failed' else 'pending' end,\n    error=case when attempts>=max_attempts then coalesce(last_error,'Lease expired (stuck run)') else error end,\n    finished_at=case when attempts>=max_attempts then now() else finished_at end,\n    claimed_at=null, lease_until=null, claim_id=null\n  where status='running' and lease_until is not null and lease_until<now();\n  get diagnostics n=row_count; return n;\nend $function$;"
+      ]
+    }
+  ]
+}

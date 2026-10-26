@@ -157,9 +157,9 @@ describe('Phase 9AA — the real corpus passes, and only by exact review', () =>
     expect(byRule('AUTH_POLICY_CROSS_TENANT')).toEqual(['public.comment_replies', 'public.platform_config'])
   })
 
-  it('only one exception is CURRENT_INTENTIONAL — platform_config, which is global configuration by design', () => {
+  it('pins the two intentional exceptions: global config and owner-scoped private calendar lookup', () => {
     const current = ALLOWLIST.exceptions.filter(e => e.status === 'CURRENT_INTENTIONAL')
-    expect(current.map(e => `${e.table}:${e.policy}`)).toEqual(['public.platform_config:authenticated_read_platform_config'])
+    expect(current.map(e => `${e.table}:${e.policy}`)).toEqual(['public.platform_config:authenticated_read_platform_config', 'calendar_private:null'])
   })
 
   it('the Phase 9AA view migration is pure hardening', () => {
@@ -246,6 +246,17 @@ describe('Phase 9AA — the allowlist cannot be widened quietly', () => {
     const al = clone()
     al.internal_schemas.push({ schema: 'public', exposed_via_data_api: false, verified: 'x', justification: 'no — this must be refused by the gate itself' })
     expect(problems(al).join('\n')).toMatch(/public can never be an internal schema/)
+  })
+
+  it('accepts schema-only exceptions only for the exact reviewed internal schema grant', () => {
+    const al = clone()
+    const entry = al.exceptions.find(e => e.table === 'calendar_private')!
+    expect(problems(al)).toEqual([])
+    entry.table = 'unreviewed_private'
+    expect(problems(al).join('\n')).toMatch(/must be schema-qualified/)
+    entry.table = 'calendar_private'
+    entry.rule = 'CLIENT_GRANT_ON_SERVER_ONLY'
+    expect(problems(al).join('\n')).toMatch(/must be schema-qualified/)
   })
 
   it('every exception excuses a blocking rule, names a real fingerprint and is justified', () => {

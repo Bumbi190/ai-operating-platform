@@ -69,6 +69,12 @@
       "exposed_via_data_api": false,
       "verified": "Supabase-managed migration ledger; client roles hold no usage (Phase 9Z audit)",
       "justification": "The migration ledger read by scripts/check-migrations.mjs through a SECURITY DEFINER RPC granted to service_role only."
+    },
+    {
+      "schema": "calendar_private",
+      "exposed_via_data_api": false,
+      "verified": "2026-10-26 live PostgREST GET with Accept-Profile: calendar_private returned HTTP 406 / PGRST106; only public and graphql_public are exposed. Catalog: postgres UC, authenticated USAGE only; locked function search paths.",
+      "justification": "Contains only the owner-scoped boolean workflow link lookup and invoker trigger; authenticated may execute only workflow_link_valid, which derives auth.uid and checks ownership and exact project/instance. No table access is granted."
     }
   ],
   "exceptions": [
@@ -320,6 +326,15 @@
       "status": "HISTORICAL_SUPERSEDED",
       "superseded_by": "apps/web/supabase/migrations/20260909120000_workflow_stories_rls.sql",
       "justification": "The closure audit #3 finding: anon read and write live in production. The Phase 9Y migration enables RLS and revokes client grants; applied 2026-09-09."
+    },
+    {
+      "migration": "apps/web/supabase/migrations/20261024174001_user_calendar_workflow_link.sql",
+      "table": "calendar_private",
+      "policy": null,
+      "rule": "INTERNAL_SCHEMA_CLIENT_GRANT",
+      "fingerprint": "88cec4104bd51a3e",
+      "status": "CURRENT_INTENTIONAL",
+      "justification": "Exact authenticated USAGE grant is needed for the calendar event trigger to call the owner-scoped private boolean lookup. It gives no CREATE/table access. workflow_link_valid derives auth.uid, verifies project ownership and exact instance, uses an empty search path and exposes no row content; anon and service_role have no usage. Verified hosted ACLs on 2026-10-26."
     }
   ]
 }

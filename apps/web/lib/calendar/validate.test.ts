@@ -1,9 +1,27 @@
 import {describe,it,expect} from 'vitest';
-import {parseCalendarMutation,parseCalendarRange} from './validate';
+import {parseCalendarDraft,parseCalendarMutation,parseCalendarRange} from './validate';
 const id='11111111-1111-4111-8111-111111111111';
 const draft=()=>({kind:'private',title:'  Oscar  ',description:'',location:'',projectId:null,taskId:null,time:{kind:'timed',startUtc:'2026-10-22T12:00:00.000Z',endUtc:'2026-10-22T13:00:00.000Z',timeZone:'Europe/Stockholm'},workStatus:null});
 const create=()=>({operation:'create',eventId:id,idempotencyKey:id,draft:draft()});
 describe('calendar validation',()=>{
+ it('accepts only an Atlas work block with project for a workflow link',()=>{
+  const linked={...draft(),kind:'work_block',workStatus:'planned',responsibility:'atlas_planned',projectId:id,workflowInstanceId:id};
+  expect(parseCalendarDraft(linked)).toMatchObject({workflowInstanceId:id});
+  for(const patch of [{kind:'private',workStatus:null},{responsibility:'self'},{projectId:null},{workflowInstanceId:null},{workflowInstanceId:'bad'}])expect(()=>parseCalendarDraft({...linked,...patch})).toThrow();
+ });
+ it('preserves planning responsibility without granting execution fields',()=>{
+  for(const responsibility of ['self','atlas_planned']){
+   const input={...draft(),kind:'work_block',workStatus:'planned',responsibility};
+   expect(parseCalendarDraft(input)).toMatchObject({responsibility,workStatus:'planned'});
+  }
+  expect(parseCalendarDraft(draft())).not.toHaveProperty('responsibility');
+  for(const patch of [{responsibility:'atlas_planned'},{responsibility:null},{responsibility:'worker'},{execute:true},{approved:true}]){
+   expect(()=>parseCalendarDraft({...draft(),...patch})).toThrow();
+  }
+  for(const responsibility of [null,'worker',{},true]){
+   expect(()=>parseCalendarDraft({...draft(),kind:'work_block',workStatus:'planned',responsibility})).toThrow();
+  }
+ });
  it('normalizes the title and preserves an explicit point',()=>{
   const body=create();body.draft.time.endUtc=null as unknown as string;
   const parsed=parseCalendarMutation(body);

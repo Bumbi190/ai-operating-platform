@@ -36,6 +36,7 @@ const TEST_DATA_RELEASE_MIGRATIONS: string[] = ['handlarborsen_metrics_definitio
 // Upstream local-text migrations are already reconciled. These exact-name
 // perturbation tests still reject a synthetic ledger that omits either one.
 const LOCAL_TEXT_MIGRATIONS: string[] = ['atlas_local_text','atlas_local_text_lifecycle']
+const CALENDAR_RELEASE_MIGRATIONS = ['human_story_start','user_calendar_responsibility','user_calendar_workflow_link'] as const
 const ATLAS_RESERVE_MIGRATIONS = ['atlas_fallback_reservation_ceiling','atlas_fallback_reservation_locktime'] as const
 const P1B_MIGRATION = 'handlarborsen_marketplace_snapshots'
 // P1E (guarded snapshot store). Like every enforced migration on its branch it is NOT applied
@@ -98,14 +99,14 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
   // NOTE ON 3B1A: these two counts describe the CANONICAL CORPUS, so they move as soon
   // as the file exists. The production APPLY is a separate fact, and it has NOT happened
   // for 3B1A — see the ledger assertion below, which is deliberately left RED.
-  it('pins policy v2 and the current 154/140/14/30 counts', () => {
+  it('pins policy v2 and the current 157/143/14/30 counts', () => {
     expect(MIGRATION_GUARD_POLICY_VERSION).toBe(2)
-    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(154)
-    expect(EXPECTED_ENFORCED_COUNT).toBe(140)
+    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(157)
+    expect(EXPECTED_ENFORCED_COUNT).toBe(143)
     expect(GRANDFATHERED_MIGRATION_NAMES).toHaveLength(14)
     expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).toHaveLength(30)
-    expect(repositoryState.sqlFiles).toHaveLength(154)
-    expect(repositoryState.enforcedNames).toHaveLength(140)
+    expect(repositoryState.sqlFiles).toHaveLength(157)
+    expect(repositoryState.enforcedNames).toHaveLength(143)
   })
 
   it('proves the Higgsfield code and database change require one coordinated release', () => {
@@ -117,12 +118,12 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
       repositoryNames: repositoryState.repositoryNames.filter(name => name !== migration),
       enforcedNames: repositoryState.enforcedNames.filter(name => name !== migration),
     }
-    expect(previous.sqlFiles).toHaveLength(153)
-    expect(previous.enforcedNames).toHaveLength(139)
+    expect(previous.sqlFiles).toHaveLength(156)
+    expect(previous.enforcedNames).toHaveLength(142)
     const beforeApply = [...previous.enforcedNames, ...GRANDFATHERED_PRESENT_IN_VERIFIED_LEDGER, ...LEGACY_ONLY_PRODUCTION_LEDGER_NAMES]
     const afterApply = [...beforeApply, migration]
-    expect(beforeApply).toHaveLength(176)
-    expect(afterApply).toHaveLength(177)
+    expect(beforeApply).toHaveLength(179)
+    expect(afterApply).toHaveLength(180)
     expect(() => evaluateAppliedMigrationLedger(beforeApply, previous)).not.toThrow()
     expect(() => evaluateAppliedMigrationLedger(beforeApply, repositoryState)).toThrow(/higgsfield_mcp_readonly/)
     expect(() => evaluateAppliedMigrationLedger(afterApply, previous)).toThrow(/unknown migration name/)
@@ -287,7 +288,7 @@ describe('Migration Guard v2 — production ledger set integrity', () => {
     // P1E (`handlarborsen_guarded_snapshot_store`, file 20261010130000) takes the enforced set
     // from 97 to 98 and this fixture from 134 to 135. Not applied yet: this line records the
     // post-apply state and is true only after the operator-approved apply.
-    expect(result.appliedLedgerCount).toBe(177)
+    expect(result.appliedLedgerCount).toBe(180)
     expect(result.unknownLedgerNames).toEqual([])
     expect(result.duplicateLedgerNames).toEqual([])
   })
@@ -425,9 +426,9 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
     expect(result).toMatchObject({
       skipped: false,
       policyVersion: 2,
-      canonicalSqlCount: 154,
-      enforcedCount: 140,
-      appliedLedgerCount: 177,
+      canonicalSqlCount: 157,
+      enforcedCount: 143,
+      appliedLedgerCount: 180,
     })
   })
 })
@@ -464,7 +465,7 @@ it("rejects a synthetic ledger missing the reconciled sales migration",()=>{expe
 
 it('refuses the pre-apply ledger while Atlas metrics definition migration is pending',()=>{
   const preApply=hypotheticalPostApplyLedger.filter(n=>!TEST_DATA_RELEASE_MIGRATIONS.includes(n))
-  expect(preApply).toHaveLength(174)
+  expect(preApply).toHaveLength(177)
   expect(()=>evaluateAppliedMigrationLedger(preApply,repositoryState)).toThrow(/handlarborsen_metrics_definition/)
 })
 
@@ -482,7 +483,7 @@ it('captured October18 ledger remains blocked until the separate news review mig
  expect(()=>evaluateAppliedMigrationLedger([...afterHypotheticalNewsApply,'user_calendar_v1','user_calendar_recurrence','sales_contact_timing','sales_email_copy_versions'],repositoryState)).toThrow(/higgsfield_mcp_readonly/)
  const historicalWithoutAllowance=[...afterHypotheticalNewsApply,'user_calendar_v1','user_calendar_recurrence','sales_contact_timing','sales_email_copy_versions','higgsfield_mcp_readonly']
  expect(()=>evaluateAppliedMigrationLedger(historicalWithoutAllowance,repositoryState)).toThrow(/atlas_fallback_reservation_ceiling/)
- expect(()=>evaluateAppliedMigrationLedger([...historicalWithoutAllowance,...ATLAS_RESERVE_MIGRATIONS],repositoryState)).not.toThrow()
+ expect(()=>evaluateAppliedMigrationLedger([...historicalWithoutAllowance,...ATLAS_RESERVE_MIGRATIONS,...CALENDAR_RELEASE_MIGRATIONS],repositoryState)).not.toThrow()
  expect(()=>evaluateAppliedMigrationLedger(beforeOwnApply,repositoryState)).toThrow(/handlarborsen_metrics_definition/)
  expect(()=>evaluateAppliedMigrationLedger(afterOwnApply.filter(n=>n!=='sales_strato_inbox'),repositoryState)).toThrow(/sales_strato_inbox/)
  expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain('sales_strato_inbox')
@@ -523,7 +524,7 @@ it('accepts the actual news-review post-apply ledger without weakening the missi
  expect(()=>evaluateAppliedMigrationLedger(afterHypotheticalCalendarApply,repositoryState)).toThrow(/higgsfield_mcp_readonly/)
  const afterHypotheticalHiggsfieldApply=[...afterHypotheticalCalendarApply,'higgsfield_mcp_readonly']
  expect(()=>evaluateAppliedMigrationLedger(afterHypotheticalHiggsfieldApply,repositoryState)).toThrow(/atlas_fallback_reservation_ceiling/)
- const afterAllowanceApply=[...afterHypotheticalHiggsfieldApply,...ATLAS_RESERVE_MIGRATIONS]
+ const afterAllowanceApply=[...afterHypotheticalHiggsfieldApply,...ATLAS_RESERVE_MIGRATIONS,...CALENDAR_RELEASE_MIGRATIONS]
  expect(()=>evaluateAppliedMigrationLedger(afterAllowanceApply,repositoryState)).not.toThrow()
  expect(()=>evaluateAppliedMigrationLedger(afterHypotheticalHiggsfieldApply.filter(name=>name!=='media_news_review_evidence'),repositoryState)).toThrow(/media_news_review_evidence/)
 })
@@ -533,4 +534,12 @@ it('requires the pending calendar migration exactly once without pretending it i
  expect(repositoryState.enforcedNames).toContain(name);
  expect(()=>evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger.filter(n=>n!==name),repositoryState)).toThrow(/user_calendar_v1/);
  expect(()=>evaluateAppliedMigrationLedger([...hypotheticalPostApplyLedger,name],repositoryState)).toThrow(/duplicate/);
+});
+
+it("requires each calendar release migration exactly once",()=>{
+ for(const name of CALENDAR_RELEASE_MIGRATIONS){
+  expect(repositoryState.enforcedNames).toContain(name);
+  expect(()=>evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger.filter(n=>n!==name),repositoryState)).toThrow(new RegExp(name));
+  expect(()=>evaluateAppliedMigrationLedger([...hypotheticalPostApplyLedger,name],repositoryState)).toThrow(/duplicate/);
+ }
 });

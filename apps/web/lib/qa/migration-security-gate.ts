@@ -1636,7 +1636,13 @@ export function allowlistProblems(al: Allowlist, a: Analysis, reg: Registry, rep
     if (!/^[0-9a-f]{16}$/.test(e.fingerprint)) p.push(`${id}: fingerprint is not a 16-hex statement hash`)
     if (!existsSync(join(repoRoot, e.migration))) p.push(`${id}: migration file does not exist`)
     if (pos(e.migration) === -1) p.push(`${id}: migration is not in the scanned corpus`)
-    if (!/^[a-z_][a-z0-9_]*\.[^.]+$/.test(e.table)) p.push(`${id}: table must be schema-qualified`)
+    // Schema USAGE findings name the schema itself, not a table. Accept only
+    // exact reviewed internal schemas for this rule; all table rules retain
+    // their qualified-object requirement and all fingerprints remain pinned.
+    const reviewedSchemaGrant = e.rule === 'INTERNAL_SCHEMA_CLIENT_GRANT'
+      && /^[a-z_][a-z0-9_]*$/.test(e.table)
+      && al.internal_schemas.some(s => s.schema === e.table && s.exposed_via_data_api === false)
+    if (!reviewedSchemaGrant && !/^[a-z_][a-z0-9_]*\.[^.]+$/.test(e.table)) p.push(`${id}: table must be schema-qualified`)
     if (e.justification.length < 60) p.push(`${id}: justification too thin to review`)
     if (seen.has(id)) p.push(`${id}: duplicate entry`)
     seen.add(id)

@@ -37,6 +37,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { logLlmCost, type CostContext } from '@/lib/cost/track'
 import { currentSpendMeter } from '@/lib/cost/spend-meter'
 import { getRates } from '@/lib/cost/rates'
+import {approvedSpendWithin} from '@/lib/cost/approved-spend'
 import { containsKey, tokenWindowCeiling, type RateSnapshot } from '@/lib/cost/spend-ceiling'
 import {
   watchExecutionAuthority, composeAbortSignals, authorityForRequest, followAsyncIterable,
@@ -56,6 +57,8 @@ import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
 /** Everything the boundary needs that the SDK does not carry. */
 export interface AnthropicGovernanceContext {
+  /** Individually human-approved hard cap; additional to the normal budget gate. */
+  approvedMaximumSek?: number
   /**
    * REQUIRED execution classification — why this work runs and which stop
    * authorities bind it. Propagated to the governed boundary, never defaulted
@@ -297,6 +300,8 @@ export function getAnthropic(ctx: AnthropicGovernanceContext) {
         // M0: ONE rate snapshot prices both the hard ceiling and the metering.
         const rates = await getRates()
         const estimatedSek = await estimateAnthropicSek(params, rates, options)
+        if(ctx.approvedMaximumSek!==undefined&&!approvedSpendWithin(estimatedSek,ctx.approvedMaximumSek))
+          throw new ProviderNotDispatchedError('Human-approved maximum no longer covers this request',undefined)
         return withGovernedSpend(
           {
             project: ctx.project, execution: ctx.execution,
@@ -356,6 +361,8 @@ export function getAnthropic(ctx: AnthropicGovernanceContext) {
         // M0: ONE rate snapshot prices both the hard ceiling and the metering.
         const rates = await getRates()
         const estimatedSek = await estimateAnthropicSek(params, rates, options)
+        if(ctx.approvedMaximumSek!==undefined&&!approvedSpendWithin(estimatedSek,ctx.approvedMaximumSek))
+          throw new ProviderNotDispatchedError('Human-approved maximum no longer covers this request',undefined)
         return withGovernedSpend(
           {
             project: ctx.project, execution: ctx.execution,

@@ -22,7 +22,7 @@ export function CalendarWeek({entries,range,projects,selectedDay,onDay,onSelect,
   const original=originals.get(entry.id)??originals.get(entry.id.replace(/:proposal$/,''))??entry;
   const proposed=original.id!==entry.id;
   const progress=calendarProgress(entry),responsibility=calendarResponsibility(entry);
-  const time=entry.time.kind==='timed'?stockholmMinute(entry.time.startUtc).slice(11,16):'Heldag';
+  const time=entry.time.kind==='timed'?stockholmMinute(entry.time.startUtc).slice(11,16):entry.displayLabel??'Heldag';
   return <button key={entry.id} type="button" className={styles.event+(slot?.isPoint?' '+styles.point:'')+(entry.status==='cancelled'?' '+styles.cancelled:'')} style={{'--event-accent':accent(entry),...(slot?{top:slot.startMinute,height:Math.max(23,slot.endMinute-slot.startMinute),left:'calc('+slot.column+'/'+slot.columnCount+' * 100% + 3px)',width:'calc(100% / '+slot.columnCount+' - 6px)'}:{})} as React.CSSProperties}
    data-event-id={original.id} data-proposal={proposed} data-start-utc={entry.time.kind==='timed'?entry.time.startUtc:''} data-end-utc={entry.time.kind==='timed'?entry.time.endUtc??'':''} data-status={entry.status} data-columns={slot?.columnCount??1} onClick={e=>{e.stopPropagation();onSelect(original)}} aria-label={entry.title+' · '+time+' · '+calendarStatus(entry)}>
    <span className={styles.statusDot} data-tone={progress.tone} title={progress.label} aria-hidden="true"/>

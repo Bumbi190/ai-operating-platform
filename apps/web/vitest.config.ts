@@ -17,6 +17,7 @@ export default defineConfig({
     environment: "node",
     include: [
       'lib/calendar/**/*.test.{ts,tsx}',
+      'lib/review-content/**/*.test.{ts,tsx}',
       'lib/local-text/**/*.test.ts',
       'lib/website-build/**/*.test.ts',
       'lib/social-launch/**/*.test.ts',

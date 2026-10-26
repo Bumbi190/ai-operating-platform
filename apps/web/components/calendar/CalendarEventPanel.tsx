@@ -3,12 +3,14 @@ import {useEffect,useRef} from 'react';
 import {X} from 'lucide-react';
 import {CalendarTimePicker} from './CalendarTimePicker';
 import {CalendarProductionPreview} from './CalendarProductionPreview';
+import {CalendarContentDetail} from './CalendarContentDetail';
+import type {CalendarUndatedReview} from '@/lib/calendar/types';
 import {stockholmMinute,stockholmDate} from '@/lib/calendar/time';
 import {calendarStatus} from './CalendarWeek';
 import {calendarProgress,calendarResponsibility} from '@/lib/calendar/progress';
 import type {CalendarWorkspaceState} from './use-calendar';
 import styles from './Calendar.module.css';
-export function CalendarEventPanel({state:s}:{state:CalendarWorkspaceState}){
+export function CalendarEventPanel({state:s,undated}:{state:CalendarWorkspaceState;undated?:CalendarUndatedReview}){
  const panel=useRef<HTMLElement>(null);
  useEffect(()=>{
   const previous=document.activeElement as HTMLElement|null;
@@ -17,17 +19,21 @@ export function CalendarEventPanel({state:s}:{state:CalendarWorkspaceState}){
   document.addEventListener('keydown',escape);
   return()=>{document.removeEventListener('keydown',escape);previous?.focus();};
  },[]);
- const f=s.form,source=s.selected?.source.kind,manual=!source||source==='manual',social=source==='social';
+ const f=s.form,source=undated?.source.kind??s.selected?.source.kind,manual=!source||source==='manual',social=source==='social';
+ const detailSource=undated?.source??s.selected?.contentSource??s.selected?.source;
  const field=(key: keyof NonNullable<typeof f>,value:string|boolean)=>s.patchForm({[key]:value});
  const shownTime=s.selected?.time;
  return <aside className={styles.panel} role="dialog" aria-modal="false" aria-labelledby="calendar-panel-title" ref={panel}>
-  <div className={styles.panelTop}><div><p className={styles.eyebrow}>{social?'Publicering':s.selected?'Kalenderhändelse':'Ny kalenderhändelse'}</p><h2 id="calendar-panel-title">{s.selected?.title??'Boka en stund'}</h2></div><button type="button" aria-label="Stäng panel" className={styles.iconButton} onClick={s.closePanel}><X size={20}/></button></div>
-  {s.selected&&<div className={styles.sourceSummary}><span>{calendarStatus(s.selected)}</span>{shownTime?.kind==='timed'?<p>{stockholmMinute(shownTime.startUtc).replace('T',' kl ')}{shownTime.endUtc?' – '+stockholmMinute(shownTime.endUtc).replace('T',' kl '):' · sluttid saknas'}</p>:shownTime?.kind==='all_day'?<p>Heldag från {shownTime.startDate}</p>:null}
+  <div className={styles.panelTop}><div><p className={styles.eyebrow}>{social||source==='media'?'Publicering':s.selected?'Kalenderhändelse':'Ny kalenderhändelse'}</p><h2 id="calendar-panel-title">{undated?.title??s.selected?.title??'Boka en stund'}</h2></div><button type="button" aria-label="Stäng panel" className={styles.iconButton} onClick={s.closePanel}><X size={20}/></button></div>
+  {s.selected&&<div className={styles.sourceSummary}><span>{calendarStatus(s.selected)}</span>{shownTime?.kind==='timed'?<p>{stockholmMinute(shownTime.startUtc).replace('T',' kl ')}{shownTime.endUtc?' – '+stockholmMinute(shownTime.endUtc).replace('T',' kl '):' · sluttid saknas'}</p>:shownTime?.kind==='all_day'?<p>{source==='media'?'Datum: ':'Heldag från '}{shownTime.startDate}</p>:null}
    {calendarResponsibility(s.selected)&&<p>{manual?'Planerat ansvar':'Utförs av'}: {calendarResponsibility(s.selected)}</p>}
    {s.selected.linkedWorkflow&&<p>{s.selected.linkedWorkflow.title}. Planeringsflöde; detta bekräftar inte att material har producerats.</p>}
-   {calendarProgress(s.selected).needsAttention&&<p>Öppna källan nedan för att granska läget och nästa steg.</p>}
+   {source==='media'&&<p>{s.selected.dateBasis==='first_publication'?'Första publicering · kanalernas egna utfall visas nedan.':s.selected.dateBasis==='reported_publication'?'Rapporterad publicering · kvitto saknas.':s.selected.dateBasis==='approval'?'Godkännandedatum · ingen fast publiceringstid.':'Nyhetens skapandedatum · ingen fast publiceringstid.'}</p>}
+   {calendarProgress(s.selected).needsAttention&&source!=='media'&&!social&&<p>Öppna källan nedan för att granska läget och nästa steg.</p>}
    {s.selected.pendingChange&&<p>Föreslagen tid: {s.selected.pendingChange.time.kind==='timed'?stockholmMinute(s.selected.pendingChange.time.startUtc).replace('T',' kl '):s.selected.pendingChange.time.startDate}</p>}
   </div>}
+  {undated&&<p className={styles.help}>Datum saknas · ingen publiceringstid har antagits.</p>}
+  {detailSource&&(detailSource.kind==='media'||detailSource.kind==='social')&&<CalendarContentDetail key={s.userId+':'+JSON.stringify(detailSource)} source={detailSource} userId={s.userId}/>}
   {s.selected?.linkedWorkflow?.instanceId&&s.selected.projectId&&s.selected.status!=='cancelled'&&f?.kind==='work_block'&&f.responsibility==='atlas_planned'&&f.projectId===s.selected.projectId&&f.workflowInstanceId===s.selected.linkedWorkflow.instanceId&&<CalendarProductionPreview key={s.selected.projectId+':'+s.selected.linkedWorkflow.instanceId} projectId={s.selected.projectId} instanceId={s.selected.linkedWorkflow.instanceId}/>}
   {social&&<p className={styles.help}>Den godkända tiden gäller tills det nya tidsförslaget har granskats.</p>}
   {f&&(manual||social)&&<form className={styles.form} onSubmit={e=>{e.preventDefault();void s.save();}}>
@@ -64,6 +70,6 @@ export function CalendarEventPanel({state:s}:{state:CalendarWorkspaceState}){
   </form>}
   {!f&&s.saveError&&<p className={styles.error} role="alert">{s.saveError}</p>}
   {s.selected?.linkedWorkflow?.href&&<a className={styles.sourceLink} href={s.selected.linkedWorkflow.href}>Öppna planeringsflödet <span aria-hidden="true">↗</span></a>}
-  {s.selected?.href&&<a className={styles.sourceLink} href={s.selected.href}>{social||source==='monthly'?'Öppna granskningen':'Visa arbetsflödet'} <span aria-hidden="true">↗</span></a>}
+  {s.selected?.href&&<a className={styles.sourceLink} href={s.selected.href}>{source==='media'?'Öppna nyhetsfilmerna':social||source==='monthly'?'Öppna granskningen':'Visa arbetsflödet'} <span aria-hidden="true">↗</span></a>}
  </aside>;
 }

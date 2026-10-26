@@ -59,6 +59,7 @@ import {assertSameOrigin} from '@/lib/atlas/executive/http'
 import type {PlanRevisionRef} from '@/lib/website-build/planning/types'
 import { WEBSITE_BUILD_TOOLS, WEBSITE_BUILD_GUIDE, WEBSITE_BUILD_TOOL_NAMES, handleWebsiteBuildTool } from '@/lib/website-build/atlas-tools'
 import {SOCIAL_SCHEDULE_TOOLS,SOCIAL_SCHEDULE_TOOL_NAMES,handleSocialScheduleTool} from '@/lib/social-launch/scheduling/atlas-tools'
+import {WEEKLY_MARKETING_TOOLS,WEEKLY_MARKETING_TOOL_NAMES,WEEKLY_MARKETING_GUIDE,handleWeeklyMarketingTool} from '@/lib/social-launch/weekly/atlas-tools'
 import {SOCIAL_PUBLICATION_TOOLS,SOCIAL_PUBLICATION_TOOL_NAMES,handleSocialPublicationTool} from '@/lib/social-launch/publication/atlas-tools'
 import {SOCIAL_PROFILE_TOOLS,SOCIAL_PROFILE_TOOL_NAMES,SOCIAL_PROFILE_GUIDE,handleSocialProfileTool} from '@/lib/social-launch/profile/atlas-tools'
 import {SOCIAL_CONTENT_TOOLS,SOCIAL_CONTENT_TOOL_NAMES,SOCIAL_CONTENT_GUIDE,handleSocialContentTool} from '@/lib/social-launch/content/atlas-tools'
@@ -340,6 +341,7 @@ const STUDIO_TOOL_NAMES = new Set([
   ...SOCIAL_PROFILE_TOOL_NAMES,
   ...SOCIAL_PUBLICATION_TOOL_NAMES,
   ...SOCIAL_SCHEDULE_TOOL_NAMES,
+  ...WEEKLY_MARKETING_TOOL_NAMES,
   ...SOCIAL_CONTENT_TOOL_NAMES,
   'get_current_time', 'present_links', 'navigate',
 ])
@@ -354,6 +356,7 @@ const TOOLS: Anthropic.Tool[] = [
   ...SOCIAL_PROFILE_TOOLS,
   ...SOCIAL_PUBLICATION_TOOLS,
   ...SOCIAL_SCHEDULE_TOOLS,
+  ...WEEKLY_MARKETING_TOOLS,
   ...SOCIAL_CONTENT_TOOLS,
   {
     // Read-only, side-effect free, and the ONLY source of a clock value. Atlas
@@ -827,13 +830,13 @@ export async function POST(request: Request) {
     systemPrompt = STATIC_CONVERSATION_SYSTEM + (voice ? VOICE_DIRECTIVE : '')
   } else if(studioContext) {
     // Keep the transcript and verified bindings, without the global executive snapshot.
-    systemPrompt=studioSystemPrompt(studioContext)+SOCIAL_LAUNCH_GUIDE+SOCIAL_CONTENT_GUIDE
+    systemPrompt=studioSystemPrompt(studioContext)+SOCIAL_LAUNCH_GUIDE+SOCIAL_CONTENT_GUIDE+WEEKLY_MARKETING_GUIDE
     if(visiblePlan)systemPrompt+='\nCURRENT REVIEWED PLAN REFERENCES: '+JSON.stringify(visiblePlan)+'; read get_website_build_plan before revising.\n'
     if(verifiedBuildContext)systemPrompt+='\nCURRENT BUILD (verified for this conversation): '+JSON.stringify(verifiedBuildContext)+'; user changes go to submit_website_build_feedback for this rendered revision. Status questions go to get_website_build. Never start a second build for feedback.\n'
     systemPrompt+=renderCurrentInstant(new Date())
     if(voice)systemPrompt+=VOICE_DIRECTIVE
   } else {
-    systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE + DESIGN_SKILL_GUIDE + CLEANUP_GUIDE + WEBSITE_BUILD_GUIDE + SOCIAL_LAUNCH_GUIDE + SOCIAL_PROFILE_GUIDE + SOCIAL_CONTENT_GUIDE + CALENDAR_GUIDE
+    systemPrompt = buildAtlasSystemPrompt() + '\n\n' + TOOL_GUIDE + DESIGN_SKILL_GUIDE + CLEANUP_GUIDE + WEBSITE_BUILD_GUIDE + SOCIAL_LAUNCH_GUIDE + SOCIAL_PROFILE_GUIDE + SOCIAL_CONTENT_GUIDE + WEEKLY_MARKETING_GUIDE + CALENDAR_GUIDE
     if(visiblePlan)systemPrompt+='\nCURRENT REVIEWED PLAN REFERENCES: '+JSON.stringify(visiblePlan)+'; read get_website_build_plan before revising.\n'
     if(verifiedBuildContext)systemPrompt+='\nCURRENT BUILD (verified for this conversation): '+JSON.stringify(verifiedBuildContext)+'; user change requests go to submit_website_build_feedback in this session, using the actually rendered revision. Questions about status go to get_website_build. Never start a second build for a feedback request.\n'
     // UNCONDITIONAL, AND DELIBERATELY BEFORE EVERYTHING THAT CAN FAIL. The bug
@@ -1301,6 +1304,9 @@ async function executeTool(
     return handleSocialProfileTool(name,input,{userId,allowedProjectIds},ownedConversationId,db)
   }
 
+  if (WEEKLY_MARKETING_TOOL_NAMES.includes(name)) {
+    return handleWeeklyMarketingTool(name,input,{userId,allowedProjectIds},ownedConversationId,db)
+  }
   if (SOCIAL_SCHEDULE_TOOL_NAMES.includes(name)) {
     return handleSocialScheduleTool(name,input,{userId,allowedProjectIds},ownedConversationId,db)
   }

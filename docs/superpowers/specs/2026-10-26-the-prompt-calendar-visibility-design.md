@@ -1,6 +1,6 @@
 # The Prompt i kalendern och Familjestundens första granskningsvecka
 
-Status: förslag för godkännande. Ingen produktkod, ny automation eller publicering har aktiverats med detta dokument.
+Status: design godkänd av André den 26 oktober 2026 genom ”Perfekt då fortsätter vi :)” efter det konkreta designförslaget. Genomförandeplan ska granskas före produktkod. Ingen ny automation eller publicering har aktiverats med detta dokument.
 
 ## Beslut från André
 

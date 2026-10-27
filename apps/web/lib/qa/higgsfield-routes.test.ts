@@ -1,16 +1,18 @@
 import {beforeEach,describe,it,expect,vi} from 'vitest'
 const h=vi.hoisted(()=>({
- operator:vi.fn(),access:vi.fn(),begin:vi.fn(),finish:vi.fn(),status:vi.fn(),inspect:vi.fn(),disconnect:vi.fn(),
+ operator:vi.fn(),access:vi.fn(),begin:vi.fn(),finish:vi.fn(),status:vi.fn(),inspect:vi.fn(),disconnect:vi.fn(),budget:vi.fn(),
  project:'a8a1b1f6-c222-4893-9399-b1fb3bc2fa52',actor:'10000000-0000-4000-8000-000000000001'
 }))
 vi.mock('../auth/platform-operator',()=>({resolvePlatformOperator:h.operator}))
 vi.mock('../auth/project-access',()=>({resolveProjectAccess:h.access,assertProjectAllowed:(p:string,ids:string[])=>ids.includes(p)}))
 vi.mock('../media/higgsfield/oauth',()=>({createHiggsfieldOAuthService:()=>({begin:h.begin,finish:h.finish})}))
 vi.mock('../media/higgsfield/readiness',()=>({readHiggsfieldConnectionStatus:h.status,inspectHiggsfield:h.inspect,disconnectHiggsfield:h.disconnect}))
+vi.mock('../media/higgsfield/daily-budget',()=>({readHiggsfieldDailyBudget:h.budget}))
 import {HiggsfieldError} from '../media/higgsfield/types'
 import {POST as start} from '../../app/api/media/higgsfield/oauth/start/route'
 import {GET as callback} from '../../app/api/media/higgsfield/oauth/callback/route'
 import {GET as status} from '../../app/api/media/higgsfield/status/route'
+import {GET as budget} from '../../app/api/media/higgsfield/budget/route'
 import {POST as inspect} from '../../app/api/media/higgsfield/inspect/route'
 import {POST as disconnect} from '../../app/api/media/higgsfield/disconnect/route'
 const base='https://omnira.example'
@@ -26,6 +28,7 @@ beforeEach(()=>{
  h.status.mockResolvedValue({status:'disconnected',identityVerified:false,generationEnabled:false})
  h.inspect.mockResolvedValue({status:'connected',creditBalance:0,quoteCredits:4,identityVerified:true,generationEnabled:false,observedAt:'2026-10-22T08:00:00Z'})
  h.disconnect.mockResolvedValue(undefined)
+ h.budget.mockResolvedValue({day:'2026-10-26',budgetSek:5,reservedSek:0,reservedCredits:0,remainingSek:5,paidGenerationEnabled:false})
 })
 describe('Higgsfield routes real handlers',()=>{
  it.each([start,inspect,disconnect])('rejects unauthenticated before side effects',async route=>{
@@ -67,6 +70,27 @@ describe('Higgsfield routes real handlers',()=>{
   const r=await status(new Request(base+'/api/test?project_id='+h.project))
   expect((await r.json()).status).toBe('disconnected')
   const result=await (await inspect(post())).json();expect(result.creditBalance).toBe(0)
+ })
+ it('shows shared budget to an authorized project operator only, with no paid side effect',async()=>{
+  const url=base+'/api/media/higgsfield/budget?project_id='+h.project
+  const response=await budget(new Request(url))
+  expect(response.status).toBe(200)
+  expect(response.headers.get('cache-control')).toBe('no-store')
+  expect(await response.json()).toEqual({ok:true,day:'2026-10-26',budgetSek:5,
+   reservedSek:0,reservedCredits:0,remainingSek:5,paidGenerationEnabled:false})
+  expect(h.budget).toHaveBeenCalledTimes(1)
+  h.operator.mockResolvedValueOnce({ok:false,reason:'unauthenticated'})
+  expect((await budget(new Request(url))).status).toBe(401)
+  h.access.mockResolvedValueOnce({ok:true,userId:h.actor,allowedProjectIds:[]})
+  expect((await budget(new Request(url))).status).toBe(403)
+  expect((await budget(new Request(base+'/api/media/higgsfield/budget'))).status).toBe(400)
+  expect(h.budget).toHaveBeenCalledTimes(1)
+ })
+ it('fails closed and redacts errors when budget storage is unavailable',async()=>{
+  h.budget.mockRejectedValueOnce(Error('PRIVATE_SQL_SECRET'))
+  const response=await budget(new Request(base+'/api/media/higgsfield/budget?project_id='+h.project))
+  expect(response.status).toBe(503)
+  expect(await response.json()).toEqual({ok:false,error:'budget_unavailable'})
  })
  it('redirects callback to configured origin regardless of request host',async()=>{
   const r=await callback(new Request('https://evil.example/api/callback?state='+'a'.repeat(43)+'&code=secret&iss=https%3A%2F%2Fclerk.higgsfield.ai'))

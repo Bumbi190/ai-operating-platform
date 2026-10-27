@@ -17,3 +17,6 @@ apps/web/supabase/migrations/20261018083917_media_news_review_evidence.sql -text
 
 # Preserve reviewed calendar migration bytes across worktrees.
 apps/web/supabase/migrations/20261018182213_user_calendar_v1.sql -text
+
+# The isolated PostgreSQL Docker proof runs this file with /bin/sh.
+scripts/higgsfield/*.sh text eol=lf

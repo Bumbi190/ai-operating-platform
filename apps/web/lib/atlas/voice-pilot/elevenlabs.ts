@@ -1,7 +1,7 @@
 import 'server-only'
 import { listStandardVoiceIds, streamAtlasSwedishVoice } from '@/lib/media/elevenlabs'
 import { resolveNovaVoiceId } from './nova-voice'
-import { ATLAS_NOVA_VOICE, ATLAS_SWEDISH_VOICES, isAtlasSwedishVoice, type AtlasSwedishVoice } from './voices'
+import { ATLAS_NOVA_VOICE, ATLAS_NOVA_ELEVEN_MODEL, ATLAS_SWEDISH_VOICES, isAtlasSwedishVoice, type AtlasSwedishVoice } from './voices'
 
 /** Server-owned voice selection; all provider I/O stays in the sanctioned adapter. */
 export async function availableSwedishVoices(signal: AbortSignal): Promise<AtlasSwedishVoice[]> {
@@ -21,7 +21,9 @@ export async function streamSwedishSpeech(
     // Fail closed before any lookup or paid call unless the owner approved a configured ID.
     const novaId = resolveNovaVoiceId()
     if (!novaId) throw new Error('voice_not_approved')
-    return streamAtlasSwedishVoice(ctx, text, novaId, signal)
+    // The owner approved the v4 sample; Flash sounded wrong with this voice.
+    // Never silently downgrade Nova to Flash if v4 is unavailable.
+    return streamAtlasSwedishVoice(ctx, text, novaId, signal, { modelId: ATLAS_NOVA_ELEVEN_MODEL })
   }
   return streamAtlasSwedishVoice(ctx, text, ATLAS_SWEDISH_VOICES[voice].id, signal)
 }

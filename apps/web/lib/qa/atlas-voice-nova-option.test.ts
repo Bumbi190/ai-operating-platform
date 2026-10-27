@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-const state = vi.hoisted(() => ({ calls: [] as any[], listed: [] as string[] }))
+const state = vi.hoisted(() => ({ calls: [] as any[], listed: [] as string[], payloads: [] as any[], ceilings: [] as number[], ratePer1k: 0.24 }))
 vi.mock('@/lib/auth/platform-operator', () => ({ resolvePlatformOperator: async () => ({ ok: true, reason: '' }) }))
 vi.mock('@/lib/supabase/server', () => ({ createClient: async () => ({
   from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { role: 'owner', revoked_at: null }, error: null }) }) }) }),
 }) }))
-vi.mock('@/lib/cost/rates', () => ({ getRates: async () => ({ usd_sek: 10.5, elevenlabs_usd_per_1k_chars: 0.24 }) }))
+vi.mock('@/lib/cost/rates', () => ({ getRates: async () => ({ usd_sek: 10.5, elevenlabs_usd_per_1k_chars: state.ratePer1k }) }))
 vi.mock('@/lib/cost/governed-spend', async orig => ({ ...(await orig<any>()),
-  withGovernedSpend: async (input: unknown, run: () => Promise<Response>) => { state.calls.push('spend'); return run() },
+  withGovernedSpend: async (input: unknown, run: () => Promise<Response>) => {
+    state.calls.push('spend'); state.ceilings.push((input as { estimatedSek: number }).estimatedSek); return run()
+  },
 }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({}) }))
 vi.mock('@/lib/governance/execution-signal', async orig => ({ ...(await orig<any>()),
@@ -17,7 +19,7 @@ import { GET, POST } from '@/app/api/atlas/voice-pilot/speech/route'
 import { availableSwedishVoices } from '@/lib/atlas/voice-pilot/elevenlabs'
 import { REJECTED_NOVA_ELEVENLABS_VOICE_ID, resolveNovaVoiceId } from '@/lib/atlas/voice-pilot/nova-voice'
 
-const ANDERS = 'DSL3PSQNPbkOavwmnYl1', PETER = 'oJEeOXECH9V31Oci9WHK', NOVA = 'AbCdEfGhIjKlMnOpQrSt'
+const ANDERS = 'DSL3PSQNPbkOavwmnYl1', PETER = 'oJEeOXECH9V31Oci9WHK', NOVA = '4xkUqaR9MYOJHoaC1Nak'
 const post = (voice: string) => new Request('https://preview.test/api/atlas/voice-pilot/speech', {
   method: 'POST', headers: { origin: 'https://preview.test', 'content-type': 'application/json' }, body: JSON.stringify({ text: 'Hej', voice }),
 })
@@ -27,13 +29,14 @@ const approve = (id: string, approved = 'true') => { vi.stubEnv('ATLAS_NOVA_VOIC
 beforeEach(() => {
   vi.stubEnv('VERCEL_ENV', 'preview'); vi.stubEnv('ELEVENLABS_API_KEY', 'secret-test-key')
   vi.stubEnv('ATLAS_NOVA_VOICE_ID', ''); vi.stubEnv('ATLAS_NOVA_VOICE_APPROVED', '')
-  state.calls = []; state.listed = [ANDERS, PETER, NOVA]
-  fetcher = vi.fn(async (url: string) => {
+  state.calls = []; state.payloads = []; state.ceilings = []; state.ratePer1k = 0.24; state.listed = [ANDERS, PETER, NOVA]
+  fetcher = vi.fn(async (url: string, options?: RequestInit) => {
     if (url.includes('/v2/voices?')) {
       const asked = new URL(url).searchParams.getAll('voice_ids')
       return Response.json({ voices: asked.filter(id => state.listed.includes(id)).map(voice_id => ({ voice_id })) })
     }
     state.calls.push('dispatch:' + url.split('/text-to-speech/')[1].split('/')[0])
+    state.payloads.push(JSON.parse(String(options?.body ?? '{}')))
     return new Response(new Uint8Array([0, 64]))
   })
   vi.stubGlobal('fetch', fetcher)
@@ -90,9 +93,21 @@ describe('Nova (Agent Office) dormant voice option', () => {
     approve(NOVA)
     expect((await POST(post('nova'))).status).toBe(200)
     expect(state.calls).toEqual(['spend', 'admit', 'dispatch:' + NOVA])
+    expect(state.payloads[0]).toMatchObject({ model_id: 'eleven_v4', language_code: 'sv',
+      voice_settings: { stability: 0.5, similarity_boost: 0.75 } })
+    expect(state.payloads[0].voice_settings).not.toHaveProperty('speed')
+    expect(state.payloads[0].voice_settings).not.toHaveProperty('style')
     state.calls = []; state.listed = [ANDERS, PETER]
     expect((await POST(post('nova'))).status).toBe(503)
     expect(state.calls).toEqual([])
+  })
+  it('uses a conservative v4 spending floor if the shared DB rate was tuned for cheaper Flash speech', async () => {
+    state.ratePer1k = 0.02
+    approve(NOVA)
+    expect((await POST(post('nova'))).status).toBe(200)
+    expect(state.ceilings[0]).toBeCloseTo(3 / 1000 * 0.24 * 10.5, 7)
+    expect((await POST(post('anders'))).status).toBe(200)
+    expect(state.ceilings[1]).toBeCloseTo(3 / 1000 * 0.02 * 10.5, 7)
   })
   it('leaves Anders and Peter unchanged whether or not Nova is configured', async () => {
     for (const configured of [false, true]) {
@@ -101,6 +116,7 @@ describe('Nova (Agent Office) dormant voice option', () => {
       expect((await POST(post('anders'))).status).toBe(200)
       expect((await POST(post('peter'))).status).toBe(200)
       expect(state.calls.filter(c => String(c).startsWith('dispatch'))).toEqual(['dispatch:' + ANDERS, 'dispatch:' + PETER])
+      expect(state.payloads.slice(-2).map(p => p.model_id)).toEqual(['eleven_flash_v2_5', 'eleven_flash_v2_5'])
     }
     expect((await POST(post('victoria'))).status).toBe(400)
   })

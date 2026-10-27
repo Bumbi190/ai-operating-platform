@@ -41,6 +41,7 @@
       "tables": [
         "agent_decisions",
         "ai_cost_snapshots",
+        "calendar_manual_publication_reports",
         "memory_refs",
         "media_provider_connections",
         "media_provider_oauth_states"
@@ -50,6 +51,7 @@
       "classes": {
         "agent_decisions": "SERVER_ONLY",
         "ai_cost_snapshots": "SERVER_ONLY",
+        "calendar_manual_publication_reports": "SERVER_ONLY",
         "memory_refs": "SERVER_ONLY",
         "media_provider_connections": "SERVER_ONLY",
         "media_provider_oauth_states": "SERVER_ONLY"

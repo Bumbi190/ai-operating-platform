@@ -44,3 +44,17 @@ A subsequent independent work package must implement a narrow video-job adapter 
 - Actual pre-release Supabase ledger read-only check: **184 migrations**, `higgsfield_daily_budget` not present, budget table and RPCs absent, and two existing Higgsfield OAuth connections unchanged.
 - Executed the actual `evaluateAppliedMigrationLedger` implementation against 184 genuine production ledger names and current/PR canonical migration sets: **4/4 PASS or fail closed as intended**. Old main (161 canonical) + actual ledger PASSES; new PR (162) + actual ledger BLOCKED missing budget; old main + hypothetical extra budget migration BLOCKED unknown name; new PR + hypothetical applied budget PASSES. Keep the PR as draft and do not merge/apply in isolation.
 - The existing global Atlas fallback `10 kr/day / 100 kr/month` policy is a **separate text-inference allowance**. The Higgsfield credit allowance is not a replacement for it. Paid video generation remains OFF; no paid Higgsfield API method is reachable through this PR.
+
+## Independent concurrent admission proof — 2026-10-27
+
+Verified **six simultaneous, separate PostgreSQL 17 transactions** calling the actual `higgsfield_daily_budget_reserve` SECURITY DEFINER RPC for a 4-credit request, with six distinct request UUIDs. Exactly **1/6** requests received `allowed=true`; the other **5/6** returned `daily_limit`. The final SQL budget status was **4.00 SEK reserved**, **1.00 SEK remaining**. Thus concurrent admission attempts did not produce an over-budget journal or bypass the shared cross-project advisory transaction lock.
+
+The proof is reproducible on Hultgren from the repository root:
+
+```powershell
+powershell.exe -NoProfile -File .\scripts\higgsfield\verify-budget-concurrency.ps1
+```
+
+The harness uses a uniquely named **disposable** `postgres:17-alpine` Docker container, locally cached image, synthetic roles/projects and six independent `psql` workers. It does not connect to Omnira production, does not use Supabase environment secrets, does not spend Higgsfield credits, and **removes the container even if the test fails**. It is an additional isolated concurrency test, not a full live generation test or proof of provider billing prices.
+
+A separate Codex CLI review attempt on 27 October was **blocked by the account's current usage limit** before any findings were returned; therefore do **not** describe this PR as independently model-reviewed. The repository's existing 7/7 GitHub workflows had passed at `4c4021d`, but the checks must run again on any new commit. The production DB still had **184 migrations** at the last read, with no `higgsfield_daily_budget` table or RPC. This PR remains draft until a coordinated migration/release and approved independent review. No paid generation is enabled.

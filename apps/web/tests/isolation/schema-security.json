@@ -5,7 +5,7 @@
     "captured_at": "2026-09-25",
     "handlarborsen_review_p2_migration_note": "Operator-approved, project-locked, immutable human review decision events. RLS + FORCE RLS, zero policies, no anon/auth grants; service role SELECT/INSERT only, REVIEW RPC only service role. Fully isolated PG17.6 security tests passed. Live production catalog must be checked after application.",
     "handlarborsen_candidates_migration_note": "Additional candidate memory table to be verified against the scoped live production catalog after operator-approved application: project-locked, RLS and FORCE RLS, zero policies and client grants, service_role SELECT/INSERT only. Earlier table classifications remain unchanged.",
-    "total_tables": 182,
+    "total_tables": 183,
     "family_weekly_preparation_note": "Applied with explicit owner authorization on 2026-10-26; live catalog verified RLS on, zero policies, no anon/authenticated privileges, service-role SELECT/INSERT. Existing weekly tools create editorial proposals only, no public grant or publication authority.",
     "atlas_fallback_reservations_note": "Owner-approved 2026-10-23, verified live in production. SEK 10/day and 100/month shared reserve journal. RLS enabled, zero policies, anon and authenticated have no table privileges; service_role can SELECT/INSERT and the reviewed RPC is service-role only. No real reservations existed after rolled-back admission tests.",
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
@@ -37,11 +37,11 @@
       "meaning": "Empty since Phase 9Z. It previously held dream_issues, whose RLS existed in production but was declared in no migration. Closure audit #4 showed that was not an isolated case and not merely documentation debt: a database rebuilt from repo SQL created dream_issues, cost_rates and morning_briefings with RLS OFF and anon DML live. supabase/migrations/20260910090000_declarative_rls_parity.sql declares all three, so the exception has no remaining subject.",
       "rule": "An entry here excuses a table from the migration-text rule. It must still be RLS-enabled in effective state, and it should be treated as temporary: an exception that outlives its cause is a hole with a comment next to it."
     },
+    "calendar_manual_publication_reports_note": "Scoped production observation 2026-10-27 after additive calendar_manual_publication_reports migration was applied: RLS ON, zero policies, anon/authenticated SELECT denied, service_role SELECT/INSERT/UPDATE/DELETE allowed. User-marked external publication only, not a provider receipt. Older registry classifications unchanged.",
     "created_not_live": {
       "tables": [
         "agent_decisions",
         "ai_cost_snapshots",
-        "calendar_manual_publication_reports",
         "memory_refs",
         "media_provider_connections",
         "media_provider_oauth_states"
@@ -51,7 +51,6 @@
       "classes": {
         "agent_decisions": "SERVER_ONLY",
         "ai_cost_snapshots": "SERVER_ONLY",
-        "calendar_manual_publication_reports": "SERVER_ONLY",
         "memory_refs": "SERVER_ONLY",
         "media_provider_connections": "SERVER_ONLY",
         "media_provider_oauth_states": "SERVER_ONLY"
@@ -436,6 +435,16 @@
       "policies": 0,
       "anon_grants": true,
       "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "calendar_manual_publication_reports": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
       "service_role": true,
       "rls_declared_in_migration": true,
       "created_by_migration": true

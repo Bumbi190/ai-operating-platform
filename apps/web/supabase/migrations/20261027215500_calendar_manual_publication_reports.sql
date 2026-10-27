@@ -12,5 +12,6 @@ create index if not exists calendar_manual_publication_reports_reporter_idx
  on public.calendar_manual_publication_reports (reported_by);
 alter table public.calendar_manual_publication_reports enable row level security;
 revoke all on public.calendar_manual_publication_reports from anon, authenticated;
+grant select, insert, update, delete on public.calendar_manual_publication_reports to service_role;
 comment on table public.calendar_manual_publication_reports is
  'User-confirmed external manual publication only, never an observed provider receipt or proof of automatic delivery.';

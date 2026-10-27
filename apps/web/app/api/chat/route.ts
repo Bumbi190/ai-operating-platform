@@ -682,7 +682,7 @@ export async function POST(request: Request) {
   }
   let anthropic = openaiEconomy ? null : getAnthropic(providerContext)
 
-  const { messages, conversation_id, voice, mode, view, websitePlanRef, buildContext:rawBuildContext, inputSource, studioContext:rawStudioContext } = await request.json() as {
+  const { messages, conversation_id, voice, mode, view, websitePlanRef, buildContext:rawBuildContext, inputSource, studioContext:rawStudioContext, image:rawImage } = await request.json() as {
     messages: Anthropic.MessageParam[]
     conversation_id?: string
     voice?: boolean
@@ -692,8 +692,13 @@ export async function POST(request: Request) {
     buildContext?:unknown
     inputSource?:unknown
     studioContext?:unknown
+    image?:unknown
   }
 
+  if(rawImage!==undefined&&(!rawImage||typeof rawImage!=='object'||Array.isArray(rawImage)))return NextResponse.json({error:'Ogiltig bildbilaga.'},{status:400})
+  const image=rawImage as {mediaType?:unknown;data?:unknown}|undefined
+  if(image&&(!['image/png','image/jpeg','image/webp'].includes(String(image.mediaType))||typeof image.data!=='string'||image.data.length>5_600_000||image.data.length<16||!/^[A-Za-z0-9+/]+={0,2}$/.test(image.data)||image.data.length%4!==0))return NextResponse.json({error:'Ogiltig eller för stor bild (max cirka 4 MB).'},{status:400})
+  if(image&&openaiEconomy)return NextResponse.json({error:'Bildanalys kräver en aktiverad bildmodell.'},{status:422})
   const db = createAdminClient()
   const tStart = Date.now()
   let studioContext:StudioTurnContext|null=null
@@ -744,12 +749,12 @@ export async function POST(request: Request) {
     const m = messages[messages.length - 1]
     return m?.role === 'user' && typeof m.content === 'string' ? m.content : ''
   })()
-  const fastPath = !isCalendarIntent(lastUserText) && !studioContext && !websitePlanRef && !rawBuildContext && (mode === 'content' || isFastPathContent(lastUserText))
+  const fastPath = !image && !isCalendarIntent(lastUserText) && !studioContext && !websitePlanRef && !rawBuildContext && (mode === 'content' || isFastPathContent(lastUserText))
   // Statisk konversation (hej/tack/vem är du) — besvaras ur Atlas identitet ensam.
   // Allow-list, aldrig gissning: allt som inte bevisligen klarar sig utan live-
   // data, projekt, Memory, klocka och verktyg går full path.
   const staticConversation =
-    !studioContext && !fastPath && !websitePlanRef && !rawBuildContext && classifyStaticConversation(lastUserText) === 'static_conversation'
+    !image && !studioContext && !fastPath && !websitePlanRef && !rawBuildContext && classifyStaticConversation(lastUserText) === 'static_conversation'
   // Resolution is a state-changing action with one exact boundary. Detect it
   // separately so turn zero can force resolve_dream_finding rather than any tool.
   const resolutionIntent = !fastPath && !staticConversation && isDreamResolutionIntent(lastUserText)
@@ -1231,7 +1236,7 @@ export async function POST(request: Request) {
       }
 
       try {
-        await runConversation(messages)
+        await runConversation(image?messages.map((msg,index)=>index===messages.length-1&&msg.role==="user"?{...msg,content:[{type:"image" as const,source:{type:"base64" as const,media_type:image.mediaType as 'image/png'|'image/jpeg'|'image/webp',data:image.data as string}},{type:"text" as const,text:lastUserText||"Beskriv bilden."}]}:msg):messages)
       } catch (err) {
         const code = classifyAnthropicError(err)
         console.error(`[atlas-chat] Anthropic request failed (${code})`, {

@@ -28,7 +28,7 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
   const [voice, setVoice] = useState<AtlasSwedishVoice>('anders')
   const [inputMode, setInputMode] = useState<'batch' | 'streaming'>(live && streamingAvailable ? 'streaming' : 'batch')
   const [measurements, setMeasurements] = useState<{ mode: 'batch' | 'streaming'; endToPlaybackMs: number }[]>([])
-  const [pauseMs, setPauseMs] = useState(1200)
+  const [pauseMs, setPauseMs] = useState(1400)
   const [playbackMode, setPlaybackMode] = useState<'speakers' | 'headphones'>('speakers')
   const [outputBusy, setOutputBusy] = useState(false)
   const [listening, setListening] = useState(false)

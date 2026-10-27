@@ -286,7 +286,7 @@ describe('optional streaming microphone turns', () => {
     expect(f.draft.mock.invocationCallOrder[0]).toBeLessThan(f.receive.mock.invocationCallOrder[0])
     f.capture.stop()
   })
-  it.each([1200, 2000, 3500, 5000])('keeps the selected%s ms local pause and counts its streamed silence', async pause => {
+  it.each([1200, 1400, 2000, 3500, 5000])('keeps the selected%s ms local pause and counts its streamed silence', async pause => {
     const f = streamingFixture(pause); await f.capture.start(); f.frames(200, true); f.frames(pause - 20)
     expect(f.turns[0].finish).not.toHaveBeenCalled()
     f.frames(20); expect(f.turns[0].finish).toHaveBeenCalledTimes(1)

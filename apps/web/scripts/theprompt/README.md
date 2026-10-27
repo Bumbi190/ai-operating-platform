@@ -69,6 +69,6 @@ Historiska klipp märks `source: imported`, `provider: higgsfield`, `model: grok
 
 ## Automatiskt CI-skydd för importen
 
-`.github/workflows/theprompt-hybrid-safety.yml` kör lokala kod- och avvisningstester utan databas, hemliga nycklar eller npm-installation. I CI ska **40/40** syntetiska fall passera och de **2** fall som behöver riktiga privata MP4-original ska vara explicit markerade som överhoppade. På Hultgren verifierades alla **42/42** med de riktiga godkända källfilerna. En separat lokal `--module-check` bekräftar att de kanoniska importmodulerna går att ladda med redan installerade serverberoenden.
+`.github/workflows/theprompt-hybrid-safety.yml` kör lokala kod- och avvisningstester utan databas, hemliga nycklar eller npm-installation. I CI ska **41/41** syntetiska fall passera och de **2** fall som behöver riktiga privata MP4-original ska vara explicit markerade som överhoppade. På Hultgren verifierades alla **43/43** med de riktiga godkända källfilerna. En separat lokal `--module-check` bekräftar att de kanoniska importmodulerna går att ladda med redan installerade serverberoenden.
 
 **Detta är inget produktionskvitto.** Det saknas fortfarande ett skyddat, behörigt `--apply`-test med faktiska kanoniska Asset-ID och efterföljande objekt-/provenancekontroll, samt en färdigrenderad reel.

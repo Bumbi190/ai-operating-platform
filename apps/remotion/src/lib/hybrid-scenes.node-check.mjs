@@ -25,7 +25,7 @@ describe('The Prompt hybrid reel visual selection (no spend)', () => {
     assert.ok(plan.every(Boolean))
     assert.ok(plan.every(v => v.playbackRate >= 0.25 && v.playbackRate < 1))
     assert.equal(plan[0].startFrame, 0)
-    assert.equal(plan[3].startFrame + plan[3].displayFrames, 900)
+    assert.equal(plan[3].startFrame + plan[3].displayFrames, 825)
     assert.ok(plan.every(v => Math.abs(v.displayFrames * v.playbackRate - 120) < 0.001))
   })
 
@@ -67,6 +67,22 @@ describe('The Prompt hybrid reel visual selection (no spend)', () => {
       {src:'not-a-url',durationFrames:120},
     ]))
     assert.deepEqual(plan, [null, null, null, null])
+  })
+
+  it('stops the last clip at the content boundary, not at the branded outro', () => {
+    // Three image fallbacks and 28-second narration: stretching into the outro
+    // formerly slowed the last clip far more than its neighbours.
+    const plan = planHybridSceneClips({
+      sceneCount: 3,
+      totalFrames: 872,
+      outroFrames: 75,
+      transitionFrames: 22,
+      sceneVideos: [clip(1,121),clip(2,121),clip(3,121)],
+    })
+    assert.ok(plan.every(Boolean))
+    assert.equal(plan[2].startFrame + plan[2].displayFrames, 797)
+    const rates = plan.map(p => p.playbackRate)
+    assert.ok(Math.max(...rates) - Math.min(...rates) < 0.05)
   })
 
   it('does not generate a scene when image slots are absent or the timeline is inconsistent', () => {

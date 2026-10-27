@@ -59,4 +59,10 @@ Den tidigare direkta Node-processen kunde inte importera Nexts \`server-only\`-m
 
 ## GitHub-kontraktsgrind för ny importer- och hybridkod
 
-`.github/workflows/theprompt-hybrid-safety.yml` läggs till som separat PR-grind för ändringar i denna funktion. Den kör **40** källfria tester på Node 22, vägrar databasmiljövariabler och kontrollerar att exakt **två** privatfilsberoende fall är överhoppade. Ett källfritt lokalt CI-genrep gav `42 tests / 40 pass / 2 skip / 0 fail`; med originalfilerna på Hultgren är `42/42` gröna. Det här är inte en oberoende kodgranskning och inte en riktig MP4-rendering eller produktionsimport.
+`.github/workflows/theprompt-hybrid-safety.yml` läggs till som separat PR-grind för ändringar i denna funktion. Den kör **41** källfria tester på Node 22, vägrar databasmiljövariabler och kontrollerar att exakt **två** privatfilsberoende fall är överhoppade. Ett källfritt lokalt CI-genrep gav `43 tests / 41 pass / 2 skip / 0 fail`; med originalfilerna på Hultgren är `43/43` gröna. Det här är inte en oberoende kodgranskning och inte en riktig MP4-rendering eller produktionsimport.
+
+## 27 oktober — korrigering av sista scenens slutbild
+
+Vid jämförelse med det verkliga sparade provmanuset observerades **28 049 ms berättarröst och tre godkända bildplatser**, medan fyra separata original-MP4 finns på Hultgren. Det finns inget annat just nu färdigutrustat fyrabildsmanus i The Prompts mediedata. Därför försöker PR #558 inte tyst koppla fyra MP4 till tre bilder; den oförändrade projektägda slotgrinden blockerar denna felmatchning. Detta är endast en läsande observation.
+
+En ren, offline 3-scensberäkning identifierade även att tidigare hjälplogik sträckte sista videoklippet genom filmens 75-frames-slutkort. Hjälpfunktionen använder nu **contentFrames** i stället för hela videons sluttid för sista videon. Nytt regressionstest går grönt och slutscenen stannar korrekt vid frame **797/872** i testfixturen, med jämnare uppspelningshastigheter **0,437 / 0,419 / 0,437** i tre scener. Med de verkliga lokala klippen passerar nu **43/43** riktade tester; CI utan privata filer förväntar **41 pass / 2 överhoppade**. Ingen färdig reel har renderats eller publicerats.

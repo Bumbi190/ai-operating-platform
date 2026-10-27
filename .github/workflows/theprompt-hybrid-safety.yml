@@ -55,10 +55,10 @@ jobs:
         run: |
           set -euo pipefail
           test -s "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
-          grep -q '^# tests 42$' "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
-          grep -q '^# pass 40$' "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
+          grep -q '^# tests 43$' "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
+          grep -q '^# pass 41$' "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
           grep -q '^# fail 0$' "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
           # Two real-file import scenarios intentionally require private MP4s
           # on Hultgren and are skipped only in this source-free CI runner.
           grep -q '^# skipped 2$' "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
-          echo 'The Prompt hybrid safety: 40/40 source-free checks passed, 2 private-file checks explicitly skipped.'
+          echo 'The Prompt hybrid safety: 41/41 source-free checks passed, 2 private-file checks explicitly skipped.'

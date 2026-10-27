@@ -71,9 +71,11 @@ export function planHybridSceneClips(input: HybridScenePlanInput): Array<Planned
         clip.durationFrames < 1 || clip.durationFrames > 30 * 60) return null
 
     const startFrame = Math.max(0, Math.floor(index * sceneDuration - halfTransition))
+    // The branded outro is not a content scene. Do not stretch the final
+    // clip through those hidden frames: that makes its playback unnaturally slow.
     const endFrame = index === sceneCount - 1
-      ? totalFrames
-      : Math.min(totalFrames, Math.ceil((index + 1) * sceneDuration + halfTransition))
+      ? contentFrames
+      : Math.min(contentFrames, Math.ceil((index + 1) * sceneDuration + halfTransition))
     const displayFrames = endFrame - startFrame
     if (displayFrames < 1) return null
 

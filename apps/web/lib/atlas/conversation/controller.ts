@@ -68,6 +68,7 @@ type Turn = {
   conversationId: string;
   text: string;
   inputSource: "text" | "voice";
+  image?: {mediaType:"image/png"|"image/jpeg"|"image/webp";data:string};
   visiblePlan?: PlanRevisionRef | null;
   buildContext?: BuildContext | null;
   onEvent?: (event: StreamEvent) => void;
@@ -359,6 +360,7 @@ export class AtlasConversationController {
             conversation_id: id,
             ...(turn.inputSource === "voice" ? { voice: true } : {}),
             inputSource: turn.inputSource,
+            ...(turn.image?{image:turn.image}:{}),
             ...(start.studio&&start.projectId?{studioContext:{projectId:start.projectId,conversationId:id}}:{}),
             ...(visible ? { websitePlanRef: visible } : {}),
             ...(buildContext ? { buildContext } : {}),

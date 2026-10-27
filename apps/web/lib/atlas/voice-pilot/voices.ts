@@ -15,4 +15,6 @@ export function isAtlasSwedishVoice(value: unknown): value is AtlasSwedishVoice 
 export function atlasVoiceLabel(voice: AtlasSwedishVoice): string {
   return voice === ATLAS_NOVA_VOICE.key ? ATLAS_NOVA_VOICE.label : ATLAS_SWEDISH_VOICES[voice].label
 }
-export const ATLAS_ELEVEN_MODEL = 'eleven_flash_v2_5'
+/** Anders and Peter keep the proven low-latency path. Only the gated Nova option uses v4. */
+export const ATLAS_ELEVEN_MODEL = 'eleven_flash_v2_5' as const
+export const ATLAS_NOVA_ELEVEN_MODEL = 'eleven_v4' as const

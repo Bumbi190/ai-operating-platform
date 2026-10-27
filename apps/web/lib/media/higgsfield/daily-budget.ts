@@ -84,10 +84,10 @@ export async function readHiggsfieldDailyBudget(
  */
 export async function reserveHiggsfieldDailyBudget(
  input:{projectId:string;quoteCredits:number;requestId?:string},
- deps:{db?:Db;requestId?:()=>string;paidEnabled?:boolean;hardGate?:boolean}={},
+ deps:{db?:Db;requestId?:()=>string}={},
 ):Promise<{reservationId:string;ceilingSek:number;remainingSek:number}>{
- if((deps.paidEnabled??process.env.HIGGSFIELD_PAID_VIDEO_ENABLED==='true')!==true||
-  (deps.hardGate??isSpendGateEnforced())!==true){
+ // Runtime safety switches cannot be overridden by caller-supplied test options.
+ if(process.env.HIGGSFIELD_PAID_VIDEO_ENABLED!=='true'||!isSpendGateEnforced()){
   throw new HiggsfieldDailyBudgetRefusal('disabled')
  }
  if(!uuid(input.projectId))throw new HiggsfieldDailyBudgetRefusal('wrong_project')

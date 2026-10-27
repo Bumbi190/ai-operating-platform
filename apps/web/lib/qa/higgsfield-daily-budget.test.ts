@@ -1,6 +1,6 @@
-import {beforeEach,describe,expect,it,vi} from 'vitest'
+import {beforeEach,afterEach,describe,expect,it,vi} from 'vitest'
 vi.mock('../supabase/admin',()=>({createAdminClient:()=>{throw Error('Use injected DB')}}))
-vi.mock('../cost/spend-gate-flag',()=>({isSpendGateEnforced:()=>false}))
+vi.mock('../cost/spend-gate-flag',()=>({isSpendGateEnforced:()=>process.env.H1_SPEND_GATE==='1'}))
 import {ceilingForHiggsfieldCredits,readHiggsfieldDailyBudget,
  reserveHiggsfieldDailyBudget,HiggsfieldDailyBudgetRefusal,
  HIGGSFIELD_DAILY_LIMIT_SEK,HIGGSFIELD_CONSERVATIVE_SEK_PER_CREDIT,
@@ -10,8 +10,14 @@ const requestId='00000000-0000-4000-8000-000000000001'
 const response={allowed:true,reason:'reserved',reserved_sek:4,remaining_sek:1}
 const rpc=vi.fn()
 const db={rpc}
-const enabled={db,paidEnabled:true,hardGate:true}
-beforeEach(()=>{vi.clearAllMocks();rpc.mockResolvedValue({data:response,error:null})})
+const enabled={db}
+beforeEach(()=>{
+ vi.clearAllMocks()
+ vi.stubEnv('HIGGSFIELD_PAID_VIDEO_ENABLED','true')
+ vi.stubEnv('H1_SPEND_GATE','1')
+ rpc.mockResolvedValue({data:response,error:null})
+})
+afterEach(()=>vi.unstubAllEnvs())
 
 describe('Higgsfield 5 SEK/day conservative admission',()=>{
  it('values the 4-credit quote as 4 SEK with ample upper bound',()=>{
@@ -24,14 +30,25 @@ describe('Higgsfield 5 SEK/day conservative admission',()=>{
   expect(()=>ceilingForHiggsfieldCredits(quote)).toThrow('HIGGSFIELD_DAILY_BUDGET_REFUSED')
  })
  it('refuses if the paid-video flag is absent even when the global gate is on',async()=>{
-  await expect(reserveHiggsfieldDailyBudget({projectId,quoteCredits:4},{db,paidEnabled:false,hardGate:true}))
+  vi.stubEnv('HIGGSFIELD_PAID_VIDEO_ENABLED','false')
+  await expect(reserveHiggsfieldDailyBudget({projectId,quoteCredits:4},enabled))
    .rejects.toMatchObject({reason:'disabled'})
   expect(rpc).not.toHaveBeenCalled()
  })
  it('refuses advisory spend-gate mode even when the provider switch is enabled',async()=>{
-  await expect(reserveHiggsfieldDailyBudget({projectId,quoteCredits:4},{db,paidEnabled:true,hardGate:false}))
+  vi.stubEnv('H1_SPEND_GATE','0')
+  await expect(reserveHiggsfieldDailyBudget({projectId,quoteCredits:4},enabled))
    .rejects.toMatchObject({reason:'disabled'})
   expect(rpc).not.toHaveBeenCalled()
+ })
+ it('never permits call-site overrides to bypass both disabled runtime spend gates',async()=>{
+  vi.stubEnv('HIGGSFIELD_PAID_VIDEO_ENABLED','false')
+  vi.stubEnv('H1_SPEND_GATE','0')
+  try{
+   await expect(reserveHiggsfieldDailyBudget({projectId,quoteCredits:4},
+    {db,paidEnabled:true,hardGate:true} as never)).rejects.toMatchObject({reason:'disabled'})
+   expect(rpc).not.toHaveBeenCalled()
+  }finally{vi.unstubAllEnvs()}
  })
  it('reserves a unique request against the ONE global SQL RPC, never dispatches media',async()=>{
   expect(await reserveHiggsfieldDailyBudget({projectId,requestId,quoteCredits:4},enabled))

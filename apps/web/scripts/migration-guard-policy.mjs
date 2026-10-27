@@ -79,8 +79,12 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // still requires explicit reviewed application and a matching ledger entry.
 // Calendar approval/responsibility/workflow-link applied on 2026-10-26.
 // Family repeat protection adds one pending enforced migration. All are enforced; no grandfathered entry or override is added.
-export const EXPECTED_CANONICAL_SQL_COUNT = 161
-export const EXPECTED_ENFORCED_COUNT = 147
+// 2026-10-27: calendar_manual_publication_reports is already applied in the production
+// ledger at version 20261027211328. Recover the exact applied SQL as enforced
+// canonical source, without growing the frozen grandfathered or legacy allowlists.
+// Reconciled set counts: 161/147 -> 162/148; confirm the actual ledger independently.
+export const EXPECTED_CANONICAL_SQL_COUNT = 162
+export const EXPECTED_ENFORCED_COUNT = 148
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

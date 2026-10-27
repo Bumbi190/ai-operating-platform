@@ -53,7 +53,7 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
       </form>
       <details className={styles.settings}><summary>Röstinställningar</summary>
         <label>Ljud<select value={s.playbackMode} onChange={e => { s.stopAll(); s.setPlaybackMode(e.target.value === 'headphones' ? 'headphones' : 'speakers') }}><option value="speakers">Högtalare</option><option value="headphones">Hörlurar</option></select></label>
-        <label>Tid att tänka<select value={s.pauseMs} onChange={e => { s.stopAll(); s.setPauseMs(Number(e.target.value)) }}><option value={1200}>1,2 sekunder</option><option value={2000}>2 sekunder</option><option value={3500}>3,5 sekunder</option><option value={5000}>5 sekunder</option></select></label>
+        <label>Tid att tänka<select value={s.pauseMs} onChange={e => { s.stopAll(); s.setPauseMs(Number(e.target.value)) }}><option value={1200}>1,2 sekunder</option><option value={1400}>1,4 sekunder</option><option value={2000}>2 sekunder</option><option value={3500}>3,5 sekunder</option><option value={5000}>5 sekunder</option></select></label>
         <p>{s.playbackMode === 'speakers' ? 'Atlas lyssnar när han har tystnat. Tryck på Avbryt och rätta för att avbryta.' : 'Med hörlurar kan du avbryta genom att börja prata.'}</p>
       </details>
       {s.snapshot.id && <Link className={styles.fullChat} href={'/chat/' + s.snapshot.id}>Öppna hela samtalet</Link>}

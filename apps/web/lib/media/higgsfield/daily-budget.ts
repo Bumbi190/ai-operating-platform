@@ -37,14 +37,26 @@ const uuid=(id:unknown):id is string=>typeof id==='string'&&
  */
 export function ceilingForHiggsfieldCredits(quoteCredits:unknown):number{
  if(typeof quoteCredits!=='number'||!Number.isFinite(quoteCredits)||
-  quoteCredits<=0||quoteCredits>HIGGSFIELD_DAILY_LIMIT_SEK/HIGGSFIELD_CONSERVATIVE_SEK_PER_CREDIT){
+  quoteCredits<0.0001||quoteCredits>HIGGSFIELD_DAILY_LIMIT_SEK/HIGGSFIELD_CONSERVATIVE_SEK_PER_CREDIT){
+  // The SQL quoted_credits column has four fractional digits: smaller quotes
+  // would silently round to zero before the CHECK and must never be dispatched.
   throw new HiggsfieldDailyBudgetRefusal('estimate_unavailable')
  }
- const sek=Math.ceil(quoteCredits*HIGGSFIELD_CONSERVATIVE_SEK_PER_CREDIT*100)/100
- if(!Number.isFinite(sek)||sek<=0||sek>HIGGSFIELD_DAILY_LIMIT_SEK){
+ // SEK 1 per credit is deliberately fixed. Convert the canonical decimal
+ // representation sent to PostgREST, not an IEEE-754 multiplied approximation.
+ // e.g. 0.28 * 100 is 28.000000000000004 in JS, but SQL ceil(0.28*100)
+ // correctly reserves 28 öre. A mismatch after RPC commit cannot be retried.
+ const canonical=quoteCredits.toString()
+ const parts=/^([0-9]+)(?:[.]([0-9]+))?(?:e([+-]?[0-9]+))?$/i.exec(canonical)
+ if(!parts)throw new HiggsfieldDailyBudgetRefusal('estimate_unavailable')
+ const digits=BigInt(parts[1]+(parts[2]??''))
+ const power=Number(parts[3]??0)-(parts[2]?.length??0)+2
+ const divisor=BigInt(10)**BigInt(Math.abs(power))
+ const cents=power>=0?digits*divisor:(digits+divisor-BigInt(1))/divisor
+ if(cents<BigInt(1)||cents>BigInt(HIGGSFIELD_DAILY_LIMIT_SEK*100)){
   throw new HiggsfieldDailyBudgetRefusal('single_request_exceeds_day')
  }
- return sek
+ return Number(cents)/100
 }
 
 function parseStatus(value:unknown):BudgetStatus{

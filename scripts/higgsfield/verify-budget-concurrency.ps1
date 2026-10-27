@@ -25,6 +25,13 @@ try {
  if($LASTEXITCODE -ne 0){throw 'Copy migration failed'}
  docker exec $name psql -U postgres -v ON_ERROR_STOP=1 -f /tmp/migration.sql | Out-Null
  if($LASTEXITCODE -ne 0){throw 'Apply fixture migration failed'}
+ # Run ACL/replay/cross-project/fractional/DST SQL tests inside their own
+ # rolled-back transaction, before seeding the parallel-admission test.
+ docker cp "$root\apps\web\supabase\tests\higgsfield_daily_budget.sql" "${name}:/tmp/budget_sql_test.sql" | Out-Null
+ if($LASTEXITCODE -ne 0){throw 'Copy SQL admission test failed'}
+ docker exec $name psql -U postgres -v ON_ERROR_STOP=1 -f /tmp/budget_sql_test.sql
+ if($LASTEXITCODE -ne 0){throw 'SQL admission tests failed'}
+ Write-Output 'POSTGRES17_ROLLED_BACK_SQL_ADMISSION_TEST=PASS'
  docker exec $name psql -U postgres -v ON_ERROR_STOP=1 -c "insert into auth.users(id)values('10000000-0000-4000-8000-000000000001');insert into public.projects(id,name,slug,owner_id) values ('20000000-0000-4000-8000-000000000001','The Prompt','ai-media-automation','10000000-0000-4000-8000-000000000001');" | Out-Null
  if($LASTEXITCODE -ne 0){throw 'Fixture seed failed'}
  docker cp (Join-Path $PSScriptRoot 'concurrent-six-reservations.sh') "${name}:/tmp/concurrent.sh" | Out-Null

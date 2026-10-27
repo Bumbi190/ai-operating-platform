@@ -38,6 +38,34 @@ BEGIN
  END LOOP;
 END $security$;
 
+-- Verify that PostgreSQL numeric rounding matches the JS canonical-decimal
+-- reservation ceiling. Roll these fixture reservations back before the
+-- cross-project tests so both independent assertions start at SEK 0.
+SAVEPOINT higgsfield_fractional_quotes;
+DO $fractional$
+DECLARE
+ result jsonb;
+ project uuid:='20000000-0000-4000-8000-000000000001';
+BEGIN
+ SET LOCAL ROLE service_role;
+ result:=public.higgsfield_daily_budget_reserve(
+  '30000000-0000-4000-8000-000000000011',project,0.28);
+ IF (result->>'reserved_sek')::numeric<>0.28 THEN
+  RAISE EXCEPTION 'Exact decimal 0.28 must reserve 0.28, got %',result;
+ END IF;
+ result:=public.higgsfield_daily_budget_reserve(
+  '30000000-0000-4000-8000-000000000012',project,0.2800000000000001);
+ IF (result->>'reserved_sek')::numeric<>0.29 THEN
+  RAISE EXCEPTION 'True decimal >0.28 must round UP to 0.29, got %',result;
+ END IF;
+ result:=public.higgsfield_daily_budget_status();
+ IF (result->>'reserved_sek')::numeric<>0.57 THEN
+  RAISE EXCEPTION 'Fractional daily total must equal 0.57, got %',result;
+ END IF;
+ RESET ROLE;
+END $fractional$;
+ROLLBACK TO SAVEPOINT higgsfield_fractional_quotes;
+
 DO $spending$
 DECLARE
  a uuid:='20000000-0000-4000-8000-000000000001';

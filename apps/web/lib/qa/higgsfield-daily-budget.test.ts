@@ -29,6 +29,24 @@ describe('Higgsfield 5 SEK/day conservative admission',()=>{
  it.each([0,-1,6,NaN,Infinity,'4',null,undefined])('refuses unknown or unaffordable credit quote %s',quote=>{
   expect(()=>ceilingForHiggsfieldCredits(quote)).toThrow('HIGGSFIELD_DAILY_BUDGET_REFUSED')
  })
+ it('rounds fractional quotes like PostgreSQL numeric, never by binary floating-point noise',()=>{
+  expect(ceilingForHiggsfieldCredits(0.28)).toBe(0.28)
+  expect(ceilingForHiggsfieldCredits(0.2800000000000001)).toBe(0.29)
+  expect(ceilingForHiggsfieldCredits(4.28)).toBe(4.28)
+  expect(ceilingForHiggsfieldCredits(4.28001)).toBe(4.29)
+  expect(ceilingForHiggsfieldCredits(1e-4)).toBe(0.01)
+ })
+ it('accepts PostgreSQL-confirmed 0.28 SEK without a false storage failure after reservation',async()=>{
+  rpc.mockResolvedValueOnce({data:{allowed:true,reason:'reserved',reserved_sek:0.28,remaining_sek:4.72},error:null})
+  await expect(reserveHiggsfieldDailyBudget({projectId,requestId,quoteCredits:0.28},enabled))
+   .resolves.toEqual({reservationId:requestId,ceilingSek:0.28,remainingSek:4.72})
+  expect(rpc).toHaveBeenCalledTimes(1)
+ })
+ it('refuses sub-database-precision quotes before writing to numeric(12,4)',async()=>{
+  await expect(reserveHiggsfieldDailyBudget({projectId,quoteCredits:1e-8},enabled))
+   .rejects.toMatchObject({reason:'estimate_unavailable'})
+  expect(rpc).not.toHaveBeenCalled()
+ })
  it('refuses if the paid-video flag is absent even when the global gate is on',async()=>{
   vi.stubEnv('HIGGSFIELD_PAID_VIDEO_ENABLED','false')
   await expect(reserveHiggsfieldDailyBudget({projectId,quoteCredits:4},enabled))

@@ -22,7 +22,7 @@ const timestamp=(v:unknown):v is string=>typeof v==='string'&&Number.isFinite(Da
 function receipt(value:unknown,task:Task|null,binding:{jobId?:string;projectId?:string;conversationId?:string}):JobReceipt{
  if(!object(value)||!isUuid(value.id)||!isUuid(value.projectId)||!isUuid(value.conversationId)
  ||(binding.jobId&&value.id!==binding.jobId)||(binding.projectId&&value.projectId!==binding.projectId)||(binding.conversationId&&value.conversationId!==binding.conversationId)
- ||!JOB_STATES.includes(value.state as JobReceipt['state'])||!['pending','approved','rejected','unknown'].includes(String(value.reviewStatus))
+ ||!JOB_STATES.includes(value.state as JobReceipt['state'])||typeof value.reviewStatus!=='string'||!['pending','approved','rejected','unknown'].includes(value.reviewStatus)
  ||!(value.reasonCode===null||code(value.reasonCode))||!(value.selectionId===null||isUuid(value.selectionId))||!timestamp(value.expiresAt)||!timestamp(value.updatedAt))throw Error('INVALID_RECEIPT')
  const expired=Date.parse(value.expiresAt)<=Date.now()||value.reasonCode==='PAYLOAD_EXPIRED'
  const result=!expired&&task&&value.state==='succeeded'&&value.reviewStatus==='approved'&&value.result!==null?validateTaskResult(task,value.result):null
@@ -70,7 +70,7 @@ export async function writeOwnerAdmission(db:Db,ownerId:string,projectId:string,
   const {data,error}=await call('local_text_owner_admission',{p_owner_id:ownerId,p_project_id:projectId,p_device_id:deviceId,p_action:action,p_specification:specification})
   if(error)return {kind:'unknown',reconcileId:deviceId}
   return resultOf(data,deviceId,v=>{
-   if(!object(v)||!isUuid(v.id)||v.projectId!==projectId||v.deviceId!==deviceId||!['active','paused','revoked'].includes(String(v.status))||!isSha256(v.evidenceHash)||!Number.isInteger(v.version)||Number(v.version)<1||!timestamp(v.expiresAt))throw Error('INVALID_ADMISSION')
+   if(!object(v)||!isUuid(v.id)||v.projectId!==projectId||v.deviceId!==deviceId||typeof v.status!=='string'||!['active','paused','revoked'].includes(v.status)||!isSha256(v.evidenceHash)||!Number.isInteger(v.version)||Number(v.version)<1||!timestamp(v.expiresAt))throw Error('INVALID_ADMISSION')
    return {id:v.id,projectId,deviceId,status:v.status as AdmissionReceipt['status'],evidenceHash:v.evidenceHash,version:Number(v.version),expiresAt:v.expiresAt}
   })
  }catch{return {kind:'unknown',reconcileId:deviceId}}
@@ -88,7 +88,7 @@ export async function readLocalTextCost(db:Db,userId:string,jobId:string){
   if(error||!object(data)||data.jobId!==jobId||!Array.isArray(data.stages)||data.stages.length>3)return unknown
   let total=0,estimated=false
   for(const stage of data.stages){
-   if(!object(stage)||!['local_review','cloud_task','cloud_review'].includes(String(stage.stage)))return unknown
+   if(!object(stage)||typeof stage.stage!=='string'||!['local_review','cloud_task','cloud_review'].includes(stage.stage))return unknown
    if((stage.state==='pending'||stage.state==='human_ready'||stage.state==='applied')&&stage.usageRef===null&&stage.costUsd===null)continue
    if(!isUuid(stage.usageRef)||typeof stage.costUsd!=='number'||!Number.isFinite(stage.costUsd)||stage.costUsd<0)return unknown
    total+=stage.costUsd

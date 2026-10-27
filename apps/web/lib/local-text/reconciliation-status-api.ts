@@ -63,8 +63,8 @@ export async function getLocalReconciliationStatus(request: Request) {
     if (!obj(owned.data) || owned.data.kind !== 'applied' ||
         !Array.isArray(owned.data.value)) return response({ error: 'NOT_FOUND' }, 404)
     const devices = owned.data.value
-    if (devices.length > 100 || devices.some(v => !obj(v) ||
-        !['pending','active','paused','revoked','lost','retired'].includes(String(v.status)))) {
+    if (devices.length > 100 || devices.some(v => !obj(v) || typeof v.status !== 'string' ||
+        !['pending','active','paused','revoked','lost','retired'].includes(v.status))) {
       return unavailable()
     }
 
@@ -84,13 +84,15 @@ export async function getLocalReconciliationStatus(request: Request) {
       readRows('local_text_jobs', 'id'),
     ])
     const incidents = rawIncidents.map(value => {
-      if (!obj(value) || !['reconcile','offline','quality','needs_input'].includes(String(value.kind)) ||
-          !['open','resolved'].includes(String(value.state)) ||
+      if (!obj(value) || typeof value.kind !== 'string' || typeof value.state !== 'string' ||
+          !['reconcile','offline','quality','needs_input'].includes(value.kind) ||
+          !['open','resolved'].includes(value.state) ||
           !(value.job_id === null || isUuid(value.job_id))) throw new Error('INVALID_INCIDENT')
-      return { kind: String(value.kind), state: String(value.state), jobId: value.job_id as string | null }
+      return { kind: value.kind, state: value.state, jobId: value.job_id as string | null }
     })
     const admissions = rawAdmissions.map(value => {
-      if (!obj(value) || typeof value.status !== 'string' || !/^[a-z_]{1,40}$/.test(value.status)) {
+      if (!obj(value) || typeof value.status !== 'string' ||
+          !['pending','active','paused','revoked'].includes(value.status)) {
         throw new Error('INVALID_ADMISSION')
       }
       return { status: value.status }
@@ -99,7 +101,8 @@ export async function getLocalReconciliationStatus(request: Request) {
       if (!obj(value) || !isUuid(value.id)) throw new Error('INVALID_JOB')
       return value.id
     })
-    const jobsLeft = new Set(jobs)
+    // Valid UUIDs identify the same retained row regardless of text casing.
+    const jobsLeft = new Set(jobs.map(id => id.toLowerCase()))
     const open = incidents.filter(item => item.state === 'open')
     const summary = summarizeReconciliation({
       openReconcile: open.filter(i => i.kind === 'reconcile').length,
@@ -109,7 +112,7 @@ export async function getLocalReconciliationStatus(request: Request) {
       activeDevices: devices.filter(i => i.status === 'active').length,
       activeAdmissions: admissions.filter(i => i.status === 'active').length,
       retainedJobs: jobs.length,
-      openIncidentsWithoutRetainedJob: open.filter(i => !i.jobId || !jobsLeft.has(i.jobId)).length,
+      openIncidentsWithoutRetainedJob: open.filter(i => !i.jobId || !jobsLeft.has(i.jobId.toLowerCase())).length,
     })
     return response(summary, 200)
   } catch { return unavailable() }

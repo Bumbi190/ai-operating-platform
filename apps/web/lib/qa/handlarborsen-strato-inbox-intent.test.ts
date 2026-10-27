@@ -45,5 +45,9 @@ describe('Explicit Atlas Strato inbox READ request routing',()=>{
   expect(source).toContain('const forceStratoReadFirstTurn = stratoInboxReadIntent && activeTools.some')
   expect(source).toContain("tool_choice: { type: 'tool' as const, name: HB_STRATO_INBOX_TOOL_NAMES[0] }")
   expect(source).toContain('...(hbStratoInboxReadEnabled()?HB_STRATO_INBOX_TOOLS:[])')
+  // LinkedIn/Strato sales-specific instructions should not inflate the
+  // short website-studio system prompt.
+  expect(source).toContain('studioSystemPrompt(studioContext)+SOCIAL_LAUNCH_GUIDE+SOCIAL_CONTENT_GUIDE')
+  expect(source).toContain('SOCIAL_CONTENT_GUIDE + HB_DISTRIBUTION_GUIDE + WEEKLY_MARKETING_GUIDE')
  })
 })

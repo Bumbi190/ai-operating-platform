@@ -163,6 +163,8 @@ const RECEIPT_LABELS: Record<string, string> = {
   authorization_requested: 'Ägarbeslut begärt',
   authorization_effective: 'Behörighet verksam',
   authorization_refused: 'Behörighet ej verksam',
+  claim_issued: 'Tilldelning registrerad',
+  lease_renewed: 'Lease förnyad',
   cancellation: 'Avbrott registrerat',
   transition: 'Livscykel ändrad',
   evidence: 'Evidens registrerad',

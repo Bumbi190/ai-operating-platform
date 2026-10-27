@@ -127,7 +127,8 @@ describe('Handlarbörsen paper workflow drafts', () => {
     expect(markup).toContain('Manuella steg')
     expect(markup).toContain('handlarborsen.marketplace')
     expect(markup).toContain('Snapshotreferens')
-    expect(markup.match(/<summary>/g)).toHaveLength(3)
+    expect(markup.match(/<summary>/g)).toHaveLength(6) // three manual checklists + three source disclosures
+    expect(markup.match(/Manuella steg – visa checklista/g)).toHaveLength(3)
     expect(markup.match(/data-paper-draft=/g)).toHaveLength(3)
     expect(markup).not.toMatch(/<button\b|<form\b|<a\b|onClick|\b(?:Run|Approve|Publish|Kör|Godkänn|Publicera)\b/)
   })

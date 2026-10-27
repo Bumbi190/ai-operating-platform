@@ -23,17 +23,18 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
   }, [s.snapshot.entries, s.reply, minimized])
 
   const micOn = s.mic || s.opening
-  const muteLabel = micOn ? 'Muta mikrofonen' : 'Slå på mikrofonen'
+  const muteLabel = micOn ? 'Muta mikrofonen' : s.micProblem ? 'Återanslut mikrofonen' : 'Slå på mikrofonen'
   const voiceLabel = s.voice === 'nova' ? 'Nova' : s.voices.find(v => v.key === s.voice)?.label ?? 'Atlas'
   const status = s.transcribing ? 'Tolkar det du sa' : s.speaking ? 'Pratar' : s.sending ? 'Arbetar'
-    : s.opening ? 'Startar mikrofonen' : s.listening ? 'Lyssnar' : micOn ? 'Redo att lyssna' : 'Mikrofonen är mutad'
+    : s.opening ? 'Startar mikrofonen' : s.listening ? 'Lyssnar' : micOn ? 'Redo att lyssna'
+    : s.micProblem ? 'Återanslut mikrofon' : 'Mikrofonen är mutad'
   const mute = () => s.toggleMute()
   const muteIcon = micOn ? <Mic size={17} /> : <MicOff size={17} />
   const endIcon = <PhoneOff size={17} />
 
   if (minimized) return <aside className={styles.dock} aria-label="Pågående röstsamtal med Atlas">
     <div className={styles.identity} aria-live="polite">
-      <strong>{voiceLabel}</strong><span>{status}</span>
+      <strong>{voiceLabel}</strong><span title={s.micProblem ?? undefined}>{status}</span>
     </div>
     <div className={styles.actions}>
       <button type="button" onClick={mute} aria-label={muteLabel} aria-pressed={!micOn} title={muteLabel}>{muteIcon}</button>
@@ -45,7 +46,7 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
   return <section ref={panel} tabIndex={-1} className={styles.panel} aria-label="Atlas röstsamtal">
     <header className={styles.header}>
       <div className={styles.identity} aria-live="polite">
-        <strong>{voiceLabel}</strong><span>{status}</span>
+        <strong>{voiceLabel}</strong><span title={s.micProblem ?? undefined}>{status}</span>
       </div>
       <div className={styles.actions}>
         <button type="button" onClick={mute} aria-label={muteLabel} aria-pressed={!micOn} title={muteLabel}>{muteIcon}</button>
@@ -55,6 +56,7 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
     </header>
     {runtimeNotice && <p className={styles.notice} role="alert">{runtimeNotice}</p>}
     {s.notice && <p className={styles.notice} role="alert">{s.notice}</p>}
+    {s.micProblem && s.micProblem !== s.notice && <p className={styles.notice} role="alert">{s.micProblem}</p>}
     <div ref={messages} className={styles.messages} aria-live="polite">
       {!s.snapshot.history.length && !s.snapshot.pending && <p className={styles.empty}>Säg något till Nova, eller skriv här. Samtalet fortsätter när du minimerar chatten och navigerar i Omnira.</p>}
       {s.snapshot.history.map((message, i) => <div key={i} className={message.role === 'user' ? styles.userMessage : styles.atlasMessage}>

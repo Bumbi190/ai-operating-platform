@@ -23,6 +23,13 @@ The ElevenLabs voice named Nova with ID `I0uKCr8dyBq1Ouru7CWl` was **explicitly 
 - On 2026-10-27 the owner explicitly requested **Nova as the default**. When the server authorises her, the voice session prefers Nova on first load. If the gate is disabled or the voice unavailable, Anders (or the first available approved option) remains the fallback. Nova uses `eleven_v4` only; Anders/Peter retain Flash.
 - The provider documentation places `eleven_v4` at high quality and `eleven_v4_turbo` at lower latency. Turbo has **not been listened to or approved**; do not substitute it without a separate test.
 
+## Recovery after an interrupted microphone/stream turn (2026-10-27)
+- A transient realtime STT error used to call `stop()` on the entire browser microphone. The compact dock then displayed **muted**, falsely implying the operator had pressed Mute.
+- The client now aborts and discards only the failed transcription turn. It requires **400 ms of fresh silence** before permitting another user-spoken turn, to prevent unintended repeat billing or playback echoes. The failed audio is never replayed and batch STT is never used as an invisible fallback.
+- **After two consecutive failures**, capture closes instead of repeatedly starting new paid requests. Provider authority/access refusal remains fail-closed immediately, as do physical microphone errors and the existing 90-second input cap.
+- The live dock now differentiates **user mute** from **source disconnected**, displays **Återanslut mikrofon** when appropriate, and preserves a useful error reason in expanded chat. A manual reconnect reuses the same running conversation and leaves Nova's speech output intact.
+- The existing 10-minute microphone safety pause is retained but presented as a pause, not as an operator mute. The microphone still closes on actual browser unload and sign-out.
+
 ## Speech economics and implementation
 - The shared ElevenLabs adapter streams PCM 24kHz and keeps its original request/settlement/abort/cancellation governance.
 - Because stored rates can reflect cheap Flash, v4 enforces a conservative minimum reserve price of USD 0.24 per 1,000 characters even when the database rate is lower; actual cost should be monitored before any default switch.

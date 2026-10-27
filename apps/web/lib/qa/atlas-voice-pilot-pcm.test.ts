@@ -267,6 +267,7 @@ function streamingFixture(pauseMs = 1200, playbackMode: 'speakers' | 'headphones
   })
   return { capture, receive, draft, notice, active, processing, interrupt, stop, transcribe, streamTurn, turns,
     failSend: () => { failSend = true },
+    restoreSend: () => { failSend = false },
     frames(ms: number, speech = false) { for (let i = 0; i < ms; i += 20) frame(new Float32Array(320).fill(speech ? 0.02 : 0), speech ? 0.95 : 0.01) },
     async resolve(text: string) { turns.at(-1)!.resolve(text); await Promise.resolve(); await Promise.resolve() },
   }
@@ -322,11 +323,57 @@ describe('optional streaming microphone turns', () => {
     await f.resolve('Lang fraga'); expect(f.draft).toHaveBeenCalledWith('Lang fraga'); expect(f.receive).not.toHaveBeenCalled()
     expect(f.active).toHaveBeenLastCalledWith(false)
   })
-  it('stops a failed stream instead of reopening on continued speech or replaying through batch', async () => {
-    const f = streamingFixture(); await f.capture.start(); f.frames(200, true); f.failSend(); f.frames(2000, true)
-    expect(f.streamTurn).toHaveBeenCalledTimes(1); expect(f.transcribe).not.toHaveBeenCalled()
-    expect(f.active).toHaveBeenLastCalledWith(false); expect(f.notice).toHaveBeenCalledTimes(1)
+  it('keeps the microphone after one transient stream failure, but never replays audio or retries during continuous speech', async () => {
+    const f = streamingFixture(); await f.capture.start()
+    f.frames(200, true); f.failSend(); f.frames(2000, true)
+    expect(f.streamTurn).toHaveBeenCalledTimes(1)
+    expect(f.transcribe).not.toHaveBeenCalled()
+    expect(f.stop).not.toHaveBeenCalled()
+    expect(f.active).toHaveBeenLastCalledWith(true)
+    expect(f.turns[0].signal.aborted).toBe(true)
+    expect(f.notice).toHaveBeenCalledTimes(1)
+    f.restoreSend()
+    f.frames(300); f.frames(100)
+    expect(f.streamTurn).toHaveBeenCalledTimes(1)
+    f.frames(200, true)
+    expect(f.streamTurn).toHaveBeenCalledTimes(2)
+    f.capture.finish(); await f.resolve('Ny fråga')
+    expect(f.receive).toHaveBeenCalledTimes(1); expect(f.receive).toHaveBeenCalledWith('Ny fråga')
     f.capture.stop()
+  })
+  it('fails closed after two consecutive streaming transport failures without silently rerouting to batch', async () => {
+    const f = streamingFixture(); await f.capture.start()
+    f.frames(200, true); f.failSend(); f.frames(200, true)
+    f.frames(400); f.frames(200, true)
+    expect(f.streamTurn).toHaveBeenCalledTimes(2)
+    expect(f.stop).toHaveBeenCalledTimes(1)
+    expect(f.active).toHaveBeenLastCalledWith(false)
+    expect(f.transcribe).not.toHaveBeenCalled()
+    expect(f.receive).not.toHaveBeenCalled()
+  })
+  it('preserves microphone capture when a streamed final fails transiently, then accepts a newly spoken question', async () => {
+    const f = streamingFixture(); await f.capture.start()
+    f.frames(200, true); f.capture.finish()
+    f.turns[0].reject(new Error('temporary_realtime_disconnect'))
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+    expect(f.stop).not.toHaveBeenCalled()
+    expect(f.receive).not.toHaveBeenCalled()
+    f.frames(1000, true)
+    expect(f.streamTurn).toHaveBeenCalledTimes(1)
+    f.frames(400); f.frames(200, true)
+    expect(f.streamTurn).toHaveBeenCalledTimes(2)
+    f.capture.finish(); await f.resolve('Vi fortsätter')
+    expect(f.receive).toHaveBeenCalledTimes(1); expect(f.receive).toHaveBeenCalledWith('Vi fortsätter')
+    f.capture.stop()
+  })
+  it('still closes capture on an authority failure in streaming finalization', async () => {
+    const f = streamingFixture(); await f.capture.start()
+    f.frames(200, true); f.capture.finish()
+    f.turns[0].reject(new Error('voice_access_unavailable'))
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve()
+    expect(f.stop).toHaveBeenCalledTimes(1)
+    expect(f.active).toHaveBeenLastCalledWith(false)
+    expect(f.streamTurn).toHaveBeenCalledTimes(1)
   })
   it('continues checking microphone health during a pending final and fences late text', async () => {
     vi.useFakeTimers()

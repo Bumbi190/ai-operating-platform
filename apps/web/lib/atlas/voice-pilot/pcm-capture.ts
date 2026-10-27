@@ -43,16 +43,33 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
   let receivedFrame = false, health: ReturnType<typeof setTimeout> | undefined
   let samples: Float32Array[] = [], count = 0, idle: Float32Array[] = [], idleCount = 0
   let voiced = false, candidateMs = 0, quietMs = 0
+  // A failed realtime turn must never replay its audio or start a second paid
+  // request during continuous speech. Allow a fresh turn only after silence.
+  let waitForNewSilence = false, freshSilenceMs = 0, consecutiveStreamFailures = 0
   const blocked = () => options.playbackMode === 'speakers' && (output || recovering)
-  const ready = () => options.listening?.(live && !!source && receivedFrame && !blocked() && !upload && !capped)
+  const ready = () => options.listening?.(live && !!source && receivedFrame && !blocked() && !upload && !capped && !waitForNewSilence)
   function abortStream() { const owned = stream; stream = null; owned?.controller.abort(); owned?.turn.abort() }
   function clearAudio() { samples = []; count = 0; idle = []; idleCount = 0; idleOverflow = false; voiced = false; candidateMs = quietMs = 0; source?.reset?.() }
   function discard() {
     if (capped && live) { stop(); return }
     revision++; upload?.abort(); upload = null; abortStream(); options.processing?.(false); clearAudio(); ready()
   }
+  /** Drop just the failed streamed question, not the browser microphone. */
+  function failedRealtimeTurn() {
+    consecutiveStreamFailures++
+    if (consecutiveStreamFailures > 1) {
+      stop()
+      options.notice('Talanslutningen avbröts flera gånger. Tryck på mikrofonen för att återansluta.')
+      return
+    }
+    abortStream(); clearAudio()
+    waitForNewSilence = true; freshSilenceMs = 0
+    options.processing?.(false); ready()
+    options.notice('Talanslutningen bröts för frågan. Vänta en kort stund och säg frågan igen.')
+  }
   function stop() {
     generation++; live = false; clearTimeout(recovery); clearTimeout(health); receivedFrame = false; recovering = false
+    waitForNewSilence = false; freshSilenceMs = 0; consecutiveStreamFailures = 0
     discard(); device?.abort(); device = null; source?.stop(); source = null; capped = false
     options.listening?.(false); options.active(false)
   }
@@ -78,6 +95,7 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
     try {
       const text = (await (activeStream ? activeStream.turn.finish(reviewOnly ? 'limit' : reason) : deps.transcribe(pcm16(audio!), abort.signal, reviewOnly ? 'limit' : reason))).trim()
       if (!live || token !== generation || turn !== revision || abort.signal.aborted) return
+      if (activeStream) consecutiveStreamFailures = 0
       if (!text) options.notice('Jag kunde inte urskilja några ord. Prova igen eller skriv din fråga.')
       else {
         options.draft(text)
@@ -86,8 +104,14 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
       }
     } catch (error) {
       if (live && token === generation && turn === revision && !abort.signal.aborted) {
-        options.notice(isVoiceAccessFailure(error) ? VOICE_ACCESS_NOTICE : 'Talet kunde inte tolkas. Prova att säga frågan igen eller skriv den. Kontrollera åtkomst och budget om felet återkommer.')
-        if (activeStream) stop()
+        if (activeStream) {
+          // Security/permission refusals still stop capture. Transient network
+          // failures may only restart after a fresh, clearly separated phrase.
+          if (isVoiceAccessFailure(error)) { stop(); options.notice(VOICE_ACCESS_NOTICE) }
+          else failedRealtimeTurn()
+        } else {
+          options.notice('Talet kunde inte tolkas. Prova att säga frågan igen eller skriv den. Kontrollera åtkomst och budget om felet återkommer.')
+        }
       }
     } finally {
       if (upload === abort) {
@@ -105,6 +129,7 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
   async function start() {
     if (live) return
     live = true; const token = ++generation
+    waitForNewSilence = false; freshSilenceMs = 0; consecutiveStreamFailures = 0
     device = new AbortController()
     let resample: ReturnType<typeof createPcmResampler> | undefined
     const watchStream = () => {
@@ -124,6 +149,13 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
         const pcm = resample(frame)
         if (!pcm.length) return
         const ms = pcm.length / PCM_RATE * 1000
+        if (waitForNewSilence) {
+          freshSilenceMs = probability >= 0.3 ? 0 : freshSilenceMs + ms
+          if (freshSilenceMs >= 400) {
+            waitForNewSilence = false; freshSilenceMs = 0; clearAudio(); ready()
+          }
+          return // never replay or reopen a paid stream on uninterrupted speech
+        }
         // Silero speech probability, not sound level: room noise must not
         // indefinitely reset the pause after a question.
         // Thresholds from the pinned VAD package's V5 frame defaults.
@@ -151,12 +183,12 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
               const controller = new AbortController()
               stream = { controller, turn: deps.streamTurn(controller.signal) }
               sendStream(joined)
-            } catch { stop(); options.notice('Anslutningen för frågan bröts. Starta mikrofonen igen och säg hela frågan på nytt.'); return }
+            } catch { failedRealtimeTurn(); return }
           }
         } else {
           if (deps.streamTurn) {
             const kept = pcm.subarray(0, Math.max(0, maxSamples - count)); count += kept.length
-            try { sendStream(kept) } catch { stop(); options.notice('Anslutningen för frågan bröts. Starta mikrofonen igen och säg hela frågan på nytt.'); return }
+            try { sendStream(kept) } catch { failedRealtimeTurn(); return }
           } else { samples.push(pcm); count += pcm.length }
         }
         quietMs = speech ? 0 : quietMs + ms

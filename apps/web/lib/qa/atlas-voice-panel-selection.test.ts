@@ -60,6 +60,21 @@ describe('Compact persistent Atlas call shell', () => {
     expect(html).toContain('aria-pressed="true"')
     expect(html).toContain('aria-label="Lägg på"')
   })
+  it('distinguishes an unexpected microphone disconnect from an intentional mute', () => {
+    const state = session({
+      mic: false, listening: false,
+      micProblem: 'Talanslutningen avbröts. Tryck för att återansluta.',
+      notice: '',
+    })
+    const dock = render(state, true)
+    expect(dock).toContain('Återanslut mikrofon')
+    expect(dock).toContain('aria-label="Återanslut mikrofonen"')
+    expect(dock).not.toContain('Mikrofonen är mutad')
+    expect(dock).toContain('aria-label="Lägg på"')
+    const expanded = render(state)
+    expect(expanded).toContain('Talanslutningen avbröts')
+    expect(expanded).toContain('aria-label="Återanslut mikrofonen"')
+  })
   it('keeps transcript/chat visible only after expanding, without old navigation clutter', () => {
     const html = render(session({
       snapshot: {

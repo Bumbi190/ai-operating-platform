@@ -1,3 +1,4 @@
+import {loadGrowthOverview} from './growth-reader'
 import 'server-only'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -256,10 +257,12 @@ export async function loadOverviewModel(
   const session = await createClient(),
     { data, error } = await session.auth.getUser()
   if (error || !data.user) return null
-  return buildOverviewModel({
-    db: createAdminClient(),
-    userId: data.user.id,
-    period,
-    now: new Date()
-  })
+  const db=createAdminClient(),now=new Date()
+  const model=await buildOverviewModel({db,userId:data.user.id,period,now})
+  if(model.projects.state!=='complete')return model
+  return {...model,growth:await loadGrowthOverview({db,userId:data.user.id,period,now,projects:model.projects.rows})}
 }
+
+export {deriveGrowthOverview} from './growth'
+
+export {loadGrowthOverview} from './growth-reader'

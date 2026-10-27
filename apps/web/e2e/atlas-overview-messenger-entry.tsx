@@ -3,15 +3,18 @@ import { AtlasChatConversation } from '../components/platform/vnext/AtlasChatCon
 import { AtlasHomeVNext } from '../components/platform/vnext/AtlasHomeVNext'
 import type { AtlasHomeViewModel } from '../lib/atlas/home-view-model'
 import { OverviewDashboard } from '../components/platform/overview/OverviewDashboard'
+import {growthFixture} from './overview-growth-fixture'
 import { overviewFixture } from './atlas-overview-messenger-model'
 import { createRoot } from 'react-dom/client'
 import {
   AtlasConversationProvider,
   useAtlasConversation
 } from '../lib/atlas/conversation/provider'
+import {useAtlas} from '../lib/atlas/runtime'
 import { AtlasRuntimeProvider } from '../lib/atlas/runtime'
 import { AtlasMiniOrb } from '../components/platform/os/AtlasMiniOrb'
 import {
+  useFixtureRefreshVersion,
   usePathname,
   useRouter,
   useSearchParams
@@ -32,10 +35,25 @@ const atlasModel: AtlasHomeViewModel = {
 }
 ;(window as any).fixtureToken = crypto.randomUUID()
 function Workspace() {
+  const refreshVersion=useFixtureRefreshVersion()
+  const runtime=useAtlas()
   const path = usePathname(),
     router = useRouter(),
     { controller, snapshot } = useAtlasConversation()
   const params = useSearchParams()
+  const query=params.toString()
+  // Server-provided model changes only on navigation or router.refresh,
+  // never just because the client conversation received another frame.
+  const overviewModel=useMemo(()=>{
+    // This value invalidates the simulated server-prop snapshot on refresh.
+    void refreshVersion
+    const q=new URLSearchParams(query)
+    const model=overviewFixture(q.get('period')==='30'?30:7,
+      q.get('fixture-state')==='partial'?'partial':q.get('fixture-state')==='unavailable'?'unavailable':'complete',
+      q.has('fixture-empty'))
+    return q.has('fixture-growth')?growthFixture(model):model
+  },[query,refreshVersion])
+
   const chatModel = useMemo(
     () => ({
       id: path.split('/')[2] ?? C,
@@ -50,6 +68,8 @@ function Workspace() {
   )
   return (
     <>
+      <output data-testid="fixture-build-status">{snapshot.session?.status??'none'}</output><output data-testid="fixture-turn-status">{snapshot.pending?'pending':'idle'}</output>
+      <output data-testid="fixture-session">{runtime.isSessionActive?'active':'idle'}:{runtime.voicePhase}</output>
       <nav aria-label="Fixture navigation">
         {['/dashboard', '/projects/test-project', '/atlas', '/chat/' + C].map(
           (p) => (
@@ -84,15 +104,7 @@ function Workspace() {
       <main style={{ padding: path === '/dashboard' ? 0 : 32 }}>
         {path === '/dashboard' ? (
           <OverviewDashboard
-            model={overviewFixture(
-              params.get('period') === '30' ? 30 : 7,
-              params.get('fixture-state') === 'partial'
-                ? 'partial'
-                : params.get('fixture-state') === 'unavailable'
-                  ? 'unavailable'
-                  : 'complete',
-              params.has('fixture-empty')
-            )}
+            model={overviewModel}
           />
         ) : path.startsWith('/chat/') ? (
           <AtlasChatConversation model={chatModel} />

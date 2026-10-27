@@ -361,3 +361,12 @@ it('defensively omits trashed projects and cost rows outside the period', async 
   expect(m.projects.rows.map((p) => p.id)).toEqual([A])
   expect(m.costByProject.value).toEqual([{ projectId: A, costSek: 8.5 }])
 })
+
+it('loads the growth data for the authenticated dashboard without accepting another owner source',async()=>{
+ const f:any=fixtures()
+ const today=new Date().toISOString().slice(0,10)
+ f.account_snapshots=[{id:'growth-own',project_id:A,platform:'instagram',snapshot_date:today,captured_at:today+'T00:00:00Z',followers:42,reach:null,account_id:'own-ig'}]
+ auth.user={id:'owner-a'};auth.error=null;auth.db=database(f)
+ const model:any=await loadOverviewModel(7)
+ expect(model?.growth?.social.find((s:any)=>s.projectId===A&&s.platform==='instagram')?.followers).toBe(42)
+})

@@ -39,6 +39,15 @@ test('period links preserve an open chat draft', async ({ page }) => {
   await page.goto('/dashboard')
   await page.getByRole('button', { name: 'Öppna Atlas' }).click()
   await page.getByRole('textbox').fill('Spara mitt utkast')
+  // The compact, draggable window can cover the period links on this
+  // deliberately short fixture. Move it aside just as an operator would.
+  const panel=await page.getByRole('dialog',{name:'Atlas chatt'}).boundingBox()
+  if(!panel)throw Error('Compact chat missing')
+  await page.mouse.move(panel.x+90,panel.y+22)
+  await page.mouse.down()
+  await page.mouse.move(panel.x-410,panel.y+22,{steps:12})
+  await page.mouse.up()
+
   await page.getByRole('link', { name: '30 dagar', exact: true }).click()
   await expect(
     page.getByRole('link', { name: '30 dagar', exact: true })

@@ -1,3 +1,4 @@
+import type {GrowthOverview} from './growth-types'
 export type OverviewPeriod = 7 | 30
 export type DataState = 'complete' | 'partial' | 'unavailable'
 export type ReadResult<T> = { state: DataState; rows: T[] }
@@ -16,6 +17,7 @@ export type CostDay = { date: string; costSek: number }
 export type ProjectCost = { projectId: string; costSek: number }
 export type RunDay = { date: string; counts: Record<string, number> }
 export type OverviewModel = {
+  growth?: GrowthOverview
   period: OverviewPeriod
   generatedAt: string
   projects: ReadResult<OverviewProject>

@@ -79,8 +79,9 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // still requires explicit reviewed application and a matching ledger entry.
 // Calendar approval/responsibility/workflow-link applied on 2026-10-26.
 // Family repeat protection adds one pending enforced migration. All are enforced; no grandfathered entry or override is added.
-export const EXPECTED_CANONICAL_SQL_COUNT = 161
-export const EXPECTED_ENFORCED_COUNT = 147
+// Owner-reviewed additive manual publication reporting migration, already applied and security-verified.
+export const EXPECTED_CANONICAL_SQL_COUNT = 162
+export const EXPECTED_ENFORCED_COUNT = 148
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

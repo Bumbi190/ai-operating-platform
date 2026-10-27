@@ -43,6 +43,7 @@ const P1B_MIGRATION = 'handlarborsen_marketplace_snapshots'
 // to production yet, so the real guard is RED on the branch until the operator-approved apply.
 // The fixtures below model the post-apply world, exactly as they did for P1B.
 const P1E_MIGRATION = 'handlarborsen_guarded_snapshot_store'
+const MANUAL_PUBLICATION_MIGRATION = 'calendar_manual_publication_reports'
 
 // The verified production history once P1E is applied: 135 rows = every enforced migration (all
 // applied) plus the grandfathered and legacy-only names. Perturbation tests start from it.
@@ -99,14 +100,14 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
   // NOTE ON 3B1A: these two counts describe the CANONICAL CORPUS, so they move as soon
   // as the file exists. The production APPLY is a separate fact, and it has NOT happened
   // for 3B1A — see the ledger assertion below, which is deliberately left RED.
-  it('pins policy v2 and the current 161/147/14/30 counts', () => {
+  it('pins policy v2 and the current 162/148/14/30 counts', () => {
     expect(MIGRATION_GUARD_POLICY_VERSION).toBe(2)
-    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(161)
-    expect(EXPECTED_ENFORCED_COUNT).toBe(147)
+    expect(EXPECTED_CANONICAL_SQL_COUNT).toBe(162)
+    expect(EXPECTED_ENFORCED_COUNT).toBe(148)
     expect(GRANDFATHERED_MIGRATION_NAMES).toHaveLength(14)
     expect(LEGACY_ONLY_PRODUCTION_LEDGER_NAMES).toHaveLength(30)
-    expect(repositoryState.sqlFiles).toHaveLength(161)
-    expect(repositoryState.enforcedNames).toHaveLength(147)
+    expect(repositoryState.sqlFiles).toHaveLength(162)
+    expect(repositoryState.enforcedNames).toHaveLength(148)
   })
 
   it('proves the Higgsfield code and database change require one coordinated release', () => {
@@ -118,12 +119,12 @@ describe('Migration Guard v2 — frozen policy and repository set', () => {
       repositoryNames: repositoryState.repositoryNames.filter(name => name !== migration),
       enforcedNames: repositoryState.enforcedNames.filter(name => name !== migration),
     }
-    expect(previous.sqlFiles).toHaveLength(160)
-    expect(previous.enforcedNames).toHaveLength(146)
+    expect(previous.sqlFiles).toHaveLength(161)
+    expect(previous.enforcedNames).toHaveLength(147)
     const beforeApply = [...previous.enforcedNames, ...GRANDFATHERED_PRESENT_IN_VERIFIED_LEDGER, ...LEGACY_ONLY_PRODUCTION_LEDGER_NAMES]
     const afterApply = [...beforeApply, migration]
-    expect(beforeApply).toHaveLength(183)
-    expect(afterApply).toHaveLength(184)
+    expect(beforeApply).toHaveLength(184)
+    expect(afterApply).toHaveLength(185)
     expect(() => evaluateAppliedMigrationLedger(beforeApply, previous)).not.toThrow()
     expect(() => evaluateAppliedMigrationLedger(beforeApply, repositoryState)).toThrow(/higgsfield_mcp_readonly/)
     expect(() => evaluateAppliedMigrationLedger(afterApply, previous)).toThrow(/unknown migration name/)
@@ -288,7 +289,7 @@ describe('Migration Guard v2 — production ledger set integrity', () => {
     // P1E (`handlarborsen_guarded_snapshot_store`, file 20261010130000) takes the enforced set
     // from 97 to 98 and this fixture from 134 to 135. Not applied yet: this line records the
     // post-apply state and is true only after the operator-approved apply.
-    expect(result.appliedLedgerCount).toBe(184)
+    expect(result.appliedLedgerCount).toBe(185)
     expect(result.unknownLedgerNames).toEqual([])
     expect(result.duplicateLedgerNames).toEqual([])
   })
@@ -426,9 +427,9 @@ describe('Migration Guard v2 — Vercel fail-closed runtime', () => {
     expect(result).toMatchObject({
       skipped: false,
       policyVersion: 2,
-      canonicalSqlCount: 161,
-      enforcedCount: 147,
-      appliedLedgerCount: 184,
+      canonicalSqlCount: 162,
+      enforcedCount: 148,
+      appliedLedgerCount: 185,
     })
   })
 })
@@ -465,7 +466,7 @@ it("rejects a synthetic ledger missing the reconciled sales migration",()=>{expe
 
 it('refuses the pre-apply ledger while Atlas metrics definition migration is pending',()=>{
   const preApply=hypotheticalPostApplyLedger.filter(n=>!TEST_DATA_RELEASE_MIGRATIONS.includes(n))
-  expect(preApply).toHaveLength(181)
+  expect(preApply).toHaveLength(182)
   expect(()=>evaluateAppliedMigrationLedger(preApply,repositoryState)).toThrow(/handlarborsen_metrics_definition/)
 })
 
@@ -483,7 +484,7 @@ it('captured October18 ledger remains blocked until the separate news review mig
  expect(()=>evaluateAppliedMigrationLedger([...afterHypotheticalNewsApply,'user_calendar_v1','user_calendar_recurrence','sales_contact_timing','sales_email_copy_versions'],repositoryState)).toThrow(/higgsfield_mcp_readonly/)
  const historicalWithoutAllowance=[...afterHypotheticalNewsApply,'user_calendar_v1','user_calendar_recurrence','sales_contact_timing','sales_email_copy_versions','higgsfield_mcp_readonly']
  expect(()=>evaluateAppliedMigrationLedger(historicalWithoutAllowance,repositoryState)).toThrow(/atlas_fallback_reservation_ceiling/)
- expect(()=>evaluateAppliedMigrationLedger([...historicalWithoutAllowance,...ATLAS_RESERVE_MIGRATIONS,...CALENDAR_RELEASE_MIGRATIONS,'family_social_repeat_guard','instagram_receipt_reconciliation','social_schedule_cancelled_reservations','family_weekly_preparation'],repositoryState)).not.toThrow()
+ expect(()=>evaluateAppliedMigrationLedger([...historicalWithoutAllowance,...ATLAS_RESERVE_MIGRATIONS,...CALENDAR_RELEASE_MIGRATIONS,'family_social_repeat_guard','instagram_receipt_reconciliation','social_schedule_cancelled_reservations','family_weekly_preparation',MANUAL_PUBLICATION_MIGRATION],repositoryState)).not.toThrow()
  expect(()=>evaluateAppliedMigrationLedger(beforeOwnApply,repositoryState)).toThrow(/handlarborsen_metrics_definition/)
  expect(()=>evaluateAppliedMigrationLedger(afterOwnApply.filter(n=>n!=='sales_strato_inbox'),repositoryState)).toThrow(/sales_strato_inbox/)
  expect(GRANDFATHERED_MIGRATION_NAMES).not.toContain('sales_strato_inbox')
@@ -524,10 +525,16 @@ it('accepts the actual news-review post-apply ledger without weakening the missi
  expect(()=>evaluateAppliedMigrationLedger(afterHypotheticalCalendarApply,repositoryState)).toThrow(/higgsfield_mcp_readonly/)
  const afterHypotheticalHiggsfieldApply=[...afterHypotheticalCalendarApply,'higgsfield_mcp_readonly']
  expect(()=>evaluateAppliedMigrationLedger(afterHypotheticalHiggsfieldApply,repositoryState)).toThrow(/atlas_fallback_reservation_ceiling/)
- const afterAllowanceApply=[...afterHypotheticalHiggsfieldApply,...ATLAS_RESERVE_MIGRATIONS,...CALENDAR_RELEASE_MIGRATIONS,'family_social_repeat_guard','instagram_receipt_reconciliation','social_schedule_cancelled_reservations','family_weekly_preparation']
+ const afterAllowanceApply=[...afterHypotheticalHiggsfieldApply,...ATLAS_RESERVE_MIGRATIONS,...CALENDAR_RELEASE_MIGRATIONS,'family_social_repeat_guard','instagram_receipt_reconciliation','social_schedule_cancelled_reservations','family_weekly_preparation',MANUAL_PUBLICATION_MIGRATION]
  expect(()=>evaluateAppliedMigrationLedger(afterAllowanceApply,repositoryState)).not.toThrow()
  expect(()=>evaluateAppliedMigrationLedger(afterHypotheticalHiggsfieldApply.filter(name=>name!=='media_news_review_evidence'),repositoryState)).toThrow(/media_news_review_evidence/)
 })
+
+it('requires manual publication migration once and refuses missing database history',()=>{
+ expect(repositoryState.enforcedNames).toContain(MANUAL_PUBLICATION_MIGRATION);
+ expect(()=>evaluateAppliedMigrationLedger(hypotheticalPostApplyLedger.filter(n=>n!==MANUAL_PUBLICATION_MIGRATION),repositoryState)).toThrow(/calendar_manual_publication_reports/);
+ expect(()=>evaluateAppliedMigrationLedger([...hypotheticalPostApplyLedger,MANUAL_PUBLICATION_MIGRATION],repositoryState)).toThrow(/duplicate/);
+});
 
 it('requires the pending calendar migration exactly once without pretending it is applied',()=>{
  const name='user_calendar_v1';
@@ -550,5 +557,5 @@ it("keeps the captured production ledger blocked until repeat protection is appl
  expect(()=>evaluateAppliedMigrationLedger([...ledger,"family_social_repeat_guard"],repositoryState)).toThrow(/instagram_receipt_reconciliation/);
  expect(()=>evaluateAppliedMigrationLedger([...ledger,"family_social_repeat_guard","instagram_receipt_reconciliation"],repositoryState)).toThrow(/social_schedule_cancelled_reservations/);
  expect(()=>evaluateAppliedMigrationLedger([...ledger,"family_social_repeat_guard","instagram_receipt_reconciliation","social_schedule_cancelled_reservations"],repositoryState)).toThrow(/family_weekly_preparation/);
- expect(()=>evaluateAppliedMigrationLedger([...ledger,"family_social_repeat_guard","instagram_receipt_reconciliation","social_schedule_cancelled_reservations","family_weekly_preparation"],repositoryState)).not.toThrow();
+ expect(()=>evaluateAppliedMigrationLedger([...ledger,"family_social_repeat_guard","instagram_receipt_reconciliation","social_schedule_cancelled_reservations","family_weekly_preparation",MANUAL_PUBLICATION_MIGRATION],repositoryState)).not.toThrow();
 });

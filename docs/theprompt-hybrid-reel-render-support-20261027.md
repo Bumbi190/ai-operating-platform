@@ -37,3 +37,11 @@
 5. Wire only reviewed videos into the authorized render path and hold a bounded manual publishing trial. Existing image-reel times (10:00 and 20:00) and legacy image generation remain untouched until the operator explicitly activates the new mode.
 
 **Product limitation:** With a conservative allowance of 1 SEK/credit, the previously quoted four-credit/four-second model permits at most one such new clip per Swedish day. Two full AI-video reels per day are not supported by this budget; a hybrid/image fallback remains essential.
+
+## 27 oktober — tillägg: inlåst förkontroll och gated privat MP4-import
+
+Den nya, helt isolerade `apps/web/scripts/theprompt/`-modulen låser originalfilerna till exakt full SHA-256 och verifierar MP4-container, 720×1280-upplösning, 4042 ms per fil och byteantal. De fyra verkliga lokala filerna klarade förkontrollen **4/4**. MP4-/importsuiten kördes med **12/12 godkända tester**, inklusive en simulerad import med de riktiga filernas bytes och ett negativt fall där felaktigt fjärde klipp stoppar alla skrivningar.
+
+En särskild `--apply`-grind är OFF som standard och kräver separat miljöflagga, förväntat projekt-ID och korrekt Omnira-Supabase-host. Den blockerades korrekt i ett negativt på-datorn-test. En framtida riktig import ska använda befintliga `admitAssetBytes`, lagra i privat `media-assets-private` med både Asset-ID och historiskt ursprung utan att skapa nya kostnadshändelser. Ingen server-/react-server-integration, produktionsuppladdning eller fullständig Remotion-render är ännu genomförd.
+
+Läs den fullständiga operatörsbeskrivningen i `apps/web/scripts/theprompt/README.md`. Den skyddade produktionens läsande katalogkontroll visade `0` tidigare videorader och `0` objekt i importprefixet. De godkända klippen finns fortfarande endast lokalt; PR #558 ska inte mergas förrän import- och renderkraven är granskade.

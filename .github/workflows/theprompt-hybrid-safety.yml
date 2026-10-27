@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - 'apps/remotion/src/compositions/SimpleNewsReel.tsx'
+      - 'apps/remotion/src/Root.tsx'
       - 'apps/remotion/src/lib/hybrid-scenes*'
       - 'apps/remotion/src/lib/types.ts'
       - 'apps/web/lib/media/video-props*'
@@ -65,3 +66,24 @@ jobs:
           # on Hultgren and are skipped only in this source-free CI runner.
           grep -q '^# skipped 2$' "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
           echo 'The Prompt hybrid safety: 53/53 source-free checks passed, 2 private-file checks explicitly skipped.'
+
+  remotion-bundle:
+    name: Remotion source bundle (no render, no provider)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HIGGSFIELD_PAID_VIDEO_ENABLED: 'false'
+      H1_SPEND_GATE: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/remotion/package-lock.json
+      - name: Install pinned Remotion dependencies in cloud CI
+        working-directory: apps/remotion
+        run: npm ci --no-audit --no-fund
+      - name: Bundle all compositions without rendering or calling AI providers
+        working-directory: apps/remotion
+        run: npm run build

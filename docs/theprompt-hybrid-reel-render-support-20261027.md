@@ -87,3 +87,9 @@ New owner/project-scoped GET endpoint at /api/media/hybrid-preview/[scriptId] ac
 The saved source script b0495f6b-9973-40dc-ae9b-156cc110ab51 is ALREADY PUBLISHED in the old image flow, with duration 28049 ms, 3 still images and ready audio/timing. The private video preview maps scene-0/1/2 to the first three imported Asset IDs, holds scene-3 for later, and must not create a second public post.
 
 This API code remains in draft PR #558; no successful owner-authenticated live API request or full Remotion-rendered video is claimed yet. The 12 new offline validation tests cover request identity, alignment, duplicates, external/signed URL refusal and project-origin pinning. Regression CI is expanded to include them (55 cases total, 53 source-free/2 source-dependent in CI; 55/55 expected on Hultgren). The separate 5 SEK/day Higgsfield paid video budget PR #552 remains unmerged and generation stays OFF.
+
+## 27 October — cloud compile smoke without workstation RAM pressure
+
+RemotionRoot's old Studio default props still contained obsolete fields script/caption/theme and lacked the required captions and images fields of VideoInputProps. These have been reconciled to the typed renderer contract, without changing existing script data or media schedules.
+
+The Prompt Hybrid Safety GitHub workflow now has a separate limited cloud CI job which installs the Remotion app's pinned dependencies and bundles the actual compositions via npm run build. It does not perform a render, retrieve private assets, call providers, charge Higgsfield credits or alter production. Its purpose is to catch a real bundler failure on the hybrid renderer without consuming Hultgren's very limited available RAM. This new cloud job still requires an exact-head GitHub result after push; a successful local code transpilation is not a substitute for this build.

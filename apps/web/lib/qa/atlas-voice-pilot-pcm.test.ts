@@ -26,18 +26,31 @@ function fixture(mode: 'speakers' | 'headphones' = 'speakers') {
   let now = 0
   let frame!: (value: Float32Array, probability: number) => void, grant!: (value: { sampleRate: number; stop(): void }) => void
   let resolve!: (text: string) => void, reject!: (error: Error) => void
-  const stop = vi.fn(), receive = vi.fn(), draft = vi.fn(), notice = vi.fn(), interrupt = vi.fn(), active = vi.fn(), listening = vi.fn(), processing = vi.fn(), endpoint = vi.fn()
+  const stop = vi.fn(), receive = vi.fn(), draft = vi.fn(), notice = vi.fn(), interrupt = vi.fn(), active = vi.fn(), listening = vi.fn(), processing = vi.fn(), endpoint = vi.fn(), onSignal = vi.fn()
   const transcribe = vi.fn((_bytes: Uint8Array, _signal: AbortSignal, _reason: 'pause' | 'manual' | 'limit') => new Promise<string>((yes, no) => { resolve = yes; reject = no }))
-  const capture = createPcmVoiceCapture({ pauseMs: 2000, playbackMode: mode, receive, draft, notice, interrupt, active, listening, processing, endpoint }, {
+  const capture = createPcmVoiceCapture({ pauseMs: 2000, playbackMode: mode, receive, draft, notice, interrupt, active, listening, processing, endpoint, onSignal }, {
     open: callback => { frame = callback; return new Promise(yes => { grant = yes }) }, transcribe, now: () => now,
   })
-  return { capture, stop, receive, draft, notice, interrupt, active, listening, processing, transcribe, endpoint, at: (time: number) => { now = time },
+  return { capture, stop, receive, draft, notice, interrupt, active, listening, processing, transcribe, endpoint, onSignal, at: (time: number) => { now = time },
     grant: () => grant({ sampleRate: 16000, stop }),
     frames: (amplitude: number, ms: number, probability = amplitude >= 0.0012 ? 0.95 : 0.01) => { for (let t = 0; t < ms; t += 20) frame(new Float32Array(320).fill(amplitude), probability) },
     resolve: async (text: string) => { resolve(text); await Promise.resolve(); await Promise.resolve() },
     reject: async () => { reject(new Error('provider_unavailable')); await Promise.resolve(); await Promise.resolve() },
   }
 }
+
+describe('local microphone input signal feedback', () => {
+  it('emits real local input levels even when Silero does not classify them as speech', async () => {
+    const f = fixture(); const started = f.capture.start(); f.grant(); await started
+    f.at(0); f.frames(0.02, 20, 0.01)
+    f.at(250); f.frames(0.02, 20, 0.01)
+    expect(f.onSignal.mock.calls.length).toBeGreaterThanOrEqual(2)
+    expect(f.onSignal.mock.lastCall?.[0].level).toBeCloseTo(0.4, 2)
+    expect(f.receive).not.toHaveBeenCalled()
+    f.capture.stop()
+    expect(f.onSignal).toHaveBeenLastCalledWith({ level: 0, voiceProbability: 0 })
+  })
+})
 
 describe('direct audio input without native ASR finalization', () => {
   it('automatically ends after speech followed by steady background sound, without the finish button', async () => {

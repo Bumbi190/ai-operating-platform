@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { preferredAtlasVoice } from '@/lib/atlas/voice-pilot/voices'
+import { createMicSignalStore } from '@/lib/atlas/voice-pilot/mic-diagnostics'
 
 beforeEach(() => vi.stubGlobal('React', React))
 afterEach(() => vi.unstubAllGlobals())
@@ -23,6 +24,7 @@ function session(overrides: Record<string, unknown> = {}): AtlasVoiceSession {
   return {
     voices: choices, voice: 'nova', mic: true, speaking: false, listening: true, transcribing: false,
     opening: false, sending: false, reply: '', draft: '', notice: '',
+    micSignalStore: createMicSignalStore(), micDeviceId: '', micDevices: [], selectMicDevice: fn,
     stopAll: fn, setVoice: fn, toggleMute: fn, editDraft: fn, submitDraft: fn,
     snapshot: { id: null, history: [], entries: [], testDataReviews: [], pending: false },
     ...overrides,
@@ -45,6 +47,8 @@ describe('Compact persistent Atlas call shell', () => {
     const html = render(session(), true)
     expect(html).toContain('Pågående röstsamtal med Atlas')
     expect(html).toContain('Nova')
+    expect(html).toContain('role="meter"')
+    expect(html).toContain('aria-label="Mikrofonens ljudnivå"')
     expect(html).toContain('aria-label="Muta mikrofonen"')
     expect(html).toContain('aria-label="Visa chatten"')
     expect(html).toContain('aria-label="Lägg på"')
@@ -94,6 +98,23 @@ describe('Compact persistent Atlas call shell', () => {
     expect(html).toContain('<details')
     expect(html).toContain('Byt röst')
     expect(html).not.toContain('4xkUqaR9MYOJHoaC1Nak')
+  })
+  it('offers optional browser microphone selection in expanded chat without a fourth dock control', () => {
+    const html = render(session({
+      micDevices: [
+        { id: 'hyperx', label: 'HyperX Cloud II Wireless' },
+        { id: 'sandberg', label: 'Sandberg 133-97' },
+      ],
+      micDeviceId: 'hyperx',
+    }))
+    expect(html).toContain('Mikrofontest')
+    expect(html).toContain('Systemets standardmikrofon')
+    expect(html).toContain('HyperX Cloud II Wireless')
+    expect(html).toContain('Sandberg 133-97')
+    expect(html).toContain('value="hyperx" selected=""')
+    expect(html).toContain('Mikrofonens ljudnivå')
+    expect(render(session(), true)).not.toContain('atlas-shared-mic-device')
+    expect((render(session(), true).match(/<button /g) ?? [])).toHaveLength(3)
   })
   it('does not invent Nova if provider voices are missing, and disables manual voice change', () => {
     const html = render(session({ voices: [], voice: 'anders' }))

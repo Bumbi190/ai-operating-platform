@@ -24,7 +24,9 @@ Prior research was recorded in workspace notes:
   sanitized metadata snapshot **in the codebase**. The runtime does not
   fetch GitHub, access credentials or evaluate workflow JSON.
 - `catalog-search.mjs` provides deterministic, bounded offline matching and
-  returns 1–8 references. No `eval`, `fetch`, `spawn`, DB or dispatch.
+  returns 1–8 references. Multi-word concept coverage is preferred and identical
+  copies are collapsed **in results**, without changing the reference index.
+  No `eval`, `fetch`, `spawn`, DB query or dispatch inside the search function.
 - `catalog-search.d.mts` gives the Node-compatible `.mjs` core strict
   TypeScript contracts without adding runtime dependencies.
 - `index.ts` is the Atlas-facing adapter.
@@ -33,6 +35,10 @@ Prior research was recorded in workspace notes:
   `resolvePlatformOperator()` access gate used by the internal workflow catalog.
 - Studio scope excludes the tool by default. No scheduler, cron, data
   migrations, social publishing code or permission grants were modified.
+- **Existing chat persistence still applies:** tool results may be stored in
+  `conversation_messages` by the existing chat logger. The reference function
+  itself performs no database operation. This is not a no-write guarantee for
+  the surrounding chat endpoint.
 
 ## Source discrepancy, stated explicitly
 - Pinned external Git commit: `94007c1445d9258a7da116646b79473e7c7c3282`.
@@ -45,6 +51,9 @@ Prior research was recorded in workspace notes:
 - Counts do not establish operational, integration or licensing quality.
   During a separate five-file spot check, three had zero source nodes in
   `connections`. Even references labeled active by upstream are UNREVIEWED.
+- Four additional workflows were inspected structurally, without execution;
+  see `docs/verification/2026-10-27-atlas-external-workflows-static-review.md`.
+  A named approval step did not eliminate e-mail-send or credential risk.
 
 Each result has `reviewState: unreviewed_reference_only` and
 `runnableInOmnira: false` and a GitHub URL pinned to the same commit.

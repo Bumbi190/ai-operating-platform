@@ -31,6 +31,8 @@ export interface ExternalWorkflowSearchResult {
   readonly upstreamClaimedTotal?: number | null
   readonly filenameOnlyCount?: number | null
   readonly totalKeywordMatches?: number
+  readonly uniqueKeywordMatches?: number
+  readonly duplicatesSuppressed?: number
   readonly truncated?: boolean
   readonly limitation?: string
 }

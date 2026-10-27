@@ -30,13 +30,28 @@ function tokens(text) {
     .split(/[^\p{L}\p{N}]+/u).filter(v => v.length > 1).slice(0, 14)
 }
 
-function expandedTokens(query) {
-  const expanded = new Set()
-  for (const word of tokens(query)) {
-    expanded.add(word)
-    for (const alias of ALIASES[word] || []) expanded.add(alias)
-  }
-  return [...expanded]
+function termGroups(query) {
+  // Synonyms are alternatives for each requested concept, not extra votes.
+  return tokens(query).map(word => [word, ...(ALIASES[word] || [])])
+}
+
+function includesTerm(text, word) {
+  if (word.length > 2) return text.includes(word)
+  // Never match "AI" inside "email"/"Airtop": two-letter substring matches
+  // made the old search rank unrelated tools above relevant AI workflows.
+  const chunks = text.match(/[\p{L}\p{N}]+/gu) || []
+  return chunks.some(chunk => chunk === word ||
+    (word === 'ai' && chunk.endsWith('openai')))
+}
+
+function uniqueKey(entry) {
+  // Collapse near-identical catalog copies in results, not in the source index.
+  // Different integrations or node counts remain separate variants.
+  const name = String(entry.name || '').toLocaleLowerCase('sv-SE').trim()
+  const integrations = Array.isArray(entry.integrations)
+    ? [...entry.integrations].map(v => String(v).toLowerCase()).sort().join('|')
+    : ''
+  return [name, integrations, entry.nodeCountClaim ?? 'unknown'].join('::')
 }
 
 function cleanProject(project) {
@@ -64,7 +79,7 @@ export function searchReferences(index, input = {}) {
   const requestedLimit = Number.isInteger(input.limit) ? input.limit : 5
   const limit = Math.max(1, Math.min(MAX_RESULTS, requestedLimit))
   const project = cleanProject(input.project)
-  const terms = expandedTokens(query)
+  const groups = termGroups(query)
   const projectTerms = project ? PROJECT_TERMS[project] : []
 
   const scored = []
@@ -80,26 +95,39 @@ export function searchReferences(index, input = {}) {
     const path = entry.path.toLowerCase()
     let score = 0
     let matched = 0
-    for (const word of terms) {
-      let points = 0
-      if (name.includes(word)) points += 8
-      if (integrations.includes(word)) points += 5
-      if (category.includes(word)) points += 3
-      if (path.includes(word)) points += 2
-      if (description.includes(word)) points += 1
-      if (points > 0) matched++
-      score += points
+    for (const group of groups) {
+      let bestPoints = 0
+      for (const word of group) {
+        let points = 0
+        if (includesTerm(name, word)) points += 8
+        if (includesTerm(integrations, word)) points += 5
+        if (includesTerm(category, word)) points += 3
+        if (includesTerm(path, word)) points += 2
+        if (includesTerm(description, word)) points += 1
+        bestPoints = Math.max(bestPoints, points)
+      }
+      if (bestPoints > 0) matched++
+      score += bestPoints
     }
     if (matched === 0) continue
+    // Prefer entries covering the entire user query to one-keyword accidents.
+    score += matched * 20 + (matched === groups.length ? 30 : 0)
     for (const word of projectTerms) {
-      if (name.includes(word) || integrations.includes(word)) score += 2
+      if (includesTerm(name, word) || includesTerm(integrations, word)) score += 2
     }
     scored.push({ entry, score })
   }
   scored.sort((a, b) => b.score - a.score ||
     a.entry.name.localeCompare(b.entry.name, 'sv') ||
     a.entry.path.localeCompare(b.entry.path, 'sv'))
-  const matches = scored.slice(0, limit).map(({ entry }) => ({
+  const seen = new Set()
+  const unique = scored.filter(({ entry }) => {
+    const key = uniqueKey(entry)
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+  const matches = unique.slice(0, limit).map(({ entry }) => ({
     name: entry.name,
     description: entry.description,
     category: entry.category,
@@ -121,8 +149,10 @@ export function searchReferences(index, input = {}) {
     upstreamClaimedTotal: index.counts?.upstreamClaimedTotal ?? null,
     filenameOnlyCount: index.counts?.filenameOnly ?? null,
     totalKeywordMatches: scored.length,
-    truncated: scored.length > matches.length,
+    uniqueKeywordMatches: unique.length,
+    duplicatesSuppressed: scored.length - unique.length,
+    truncated: unique.length > matches.length,
     matches,
-    limitation: 'Extern, delvis gammal metadata. Sökmatchning är inte kvalitetskontroll. Ingenting kan importeras eller köras via detta verktyg.',
+    limitation: 'Extern, delvis gammal och overifierad metadata. Träffar och sortering är inte kvalitetskontroll. Ingenting kan importeras eller köras via detta verktyg.',
   }
 }

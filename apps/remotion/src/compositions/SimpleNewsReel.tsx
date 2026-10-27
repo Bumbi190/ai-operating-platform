@@ -3,6 +3,7 @@ import {
   AbsoluteFill,
   Audio,
   Img,
+  OffthreadVideo,
   interpolate,
   Sequence,
   useCurrentFrame,
@@ -11,6 +12,7 @@ import {
 import { CaptionOverlay } from '../components/CaptionOverlay'
 import { Watermark } from '../components/Watermark'
 import type { VideoInputProps } from '../lib/types'
+import { planHybridSceneClips } from '../lib/hybrid-scenes'
 
 const OUTRO_FRAMES      = 75  // 2.5s branded end-card
 const TRANSITION_FRAMES = 22  // 0.73s cross-dissolve between scenes
@@ -28,10 +30,12 @@ const TRANSITION_FRAMES = 22  // 0.73s cross-dissolve between scenes
  */
 function MultiSceneBackground({
   images,
+  sceneVideos,
   totalFrames,
   outroFrames,
 }: {
   images: string[]
+  sceneVideos?: VideoInputProps['sceneVideos']
   totalFrames: number
   outroFrames: number
 }) {
@@ -49,12 +53,22 @@ function MultiSceneBackground({
   const n = images.length
   const sceneDuration = contentFrames / n
   const HALF_T = TRANSITION_FRAMES / 2
+  // Absent or unadmitted clips preserve the existing still-image rendering.
+  // The renderer never requests, retries or pays for a Higgsfield generation.
+  const plannedClips = planHybridSceneClips({
+    sceneCount: n,
+    totalFrames,
+    outroFrames,
+    transitionFrames: TRANSITION_FRAMES,
+    sceneVideos,
+  })
 
   return (
     <AbsoluteFill>
       {images.map((url, i) => {
         const sceneStart = i * sceneDuration
         const sceneEnd   = (i + 1) * sceneDuration
+        const clip = plannedClips[i]
 
         // ── Cross-dissolve opacity ──────────────────────────────────────────
         let opacity: number
@@ -102,17 +116,40 @@ function MultiSceneBackground({
 
         return (
           <AbsoluteFill key={i} style={{ opacity }}>
-            <Img
-              src={url}
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-                objectPosition: 'center',
+            {clip ? (
+              <AbsoluteFill style={{
                 transform: `scale(${scale})`,
                 transformOrigin: 'center center',
-              }}
-            />
+              }}>
+                {/* The image remains underneath the video as an editorial fallback.
+                    A decode failure still fails the render: never publish a broken clip. */}
+                <Img src={url} style={{
+                  width: '100%', height: '100%', objectFit: 'cover',
+                  objectPosition: 'center',
+                }} />
+                <Sequence from={clip.startFrame} durationInFrames={clip.displayFrames} layout="none">
+                  <OffthreadVideo
+                    src={clip.src}
+                    muted
+                    volume={0}
+                    playbackRate={clip.playbackRate}
+                    style={{width: '100%', height: '100%', objectFit: 'cover'}}
+                  />
+                </Sequence>
+              </AbsoluteFill>
+            ) : (
+              <Img
+                src={url}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  objectPosition: 'center',
+                  transform: `scale(${scale})`,
+                  transformOrigin: 'center center',
+                }}
+              />
+            )}
           </AbsoluteFill>
         )
       })}
@@ -222,6 +259,7 @@ export function SimpleNewsReel({
   captions,
   words,
   images,
+  sceneVideos,
   accentColor = '#6366f1',
   backgroundMusicUrl,
 }: VideoInputProps) {
@@ -233,6 +271,7 @@ export function SimpleNewsReel({
       {/* ── Layer 1: Multi-scene background with cross-dissolve + Ken Burns ── */}
       <MultiSceneBackground
         images={images ?? []}
+        sceneVideos={sceneVideos}
         totalFrames={durationInFrames}
         outroFrames={OUTRO_FRAMES}
       />

@@ -32,6 +32,8 @@ export interface VideoInputProps {
   captions: CaptionGroup[]
   hookDurationFrames: number
   images: string[]
+  /** Server-resolved, admitted MP4 clips only; index-aligned to image fallbacks. */
+  sceneVideos?: Array<{src: string; durationFrames: number} | null>
   sceneStartFrames?: number[]
   accentColor?: string
   backgroundMusicUrl?: string
@@ -131,10 +133,11 @@ export async function buildVideoInputProps(params: {
   timingUrl: string
   durationMs: number
   images: string[]
+  sceneVideos?: Array<{src: string; durationFrames: number} | null>
   accentColor?: string
   backgroundMusicUrl?: string
 }): Promise<VideoInputProps> {
-  const { hook, audioUrl, timingUrl, durationMs, images, accentColor, backgroundMusicUrl } = params
+  const { hook, audioUrl, timingUrl, durationMs, images, sceneVideos, accentColor, backgroundMusicUrl } = params
 
   // Fetch word timing
   let words: WordTiming[] = []
@@ -159,6 +162,7 @@ export async function buildVideoInputProps(params: {
     captions,
     hookDurationFrames,
     images,
+    ...(sceneVideos ? {sceneVideos} : {}),
     sceneStartFrames: sceneStartFrames.length > 0 ? sceneStartFrames : undefined,
     accentColor: accentColor ?? '#6366f1',
     backgroundMusicUrl,

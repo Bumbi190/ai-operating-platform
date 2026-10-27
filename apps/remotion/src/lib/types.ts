@@ -1,3 +1,5 @@
+import type { AdmittedReelClip } from './hybrid-scenes'
+
 export interface WordTiming {
   word: string
   startMs: number
@@ -30,6 +32,9 @@ export interface VideoInputProps {
   // Visual scenes — 4–5 image URLs (Ideogram-generated)
   // If empty, falls back to dark gradient background
   images: string[]
+
+  /** Optional, index-aligned admitted MP4s. Null means keep the original still. */
+  sceneVideos?: Array<AdmittedReelClip | null>
 
   /**
    * Per-scene start frames — computed from word timing in render.ts.

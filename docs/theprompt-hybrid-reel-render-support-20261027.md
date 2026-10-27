@@ -1,28 +1,39 @@
-# The Prompt — hybrid reel renderer (27 October 2026)
+# The Prompt — hybrid reel rendering and canonical MP4 selection
 
-**Scope: local code only. No production deploy, paid generation, database changes or social scheduling.**
+**27 October 2026 · Draft PR #558 · Code preparation only.** No production deploy, paid Higgsfield generation, database migration, changed cron or social publishing.
 
-## Implemented in this isolated branch
+## Existing renderer support (09df0e6)
 
-- `SimpleNewsReel` accepts optional, index-aligned `sceneVideos` with HTTPS source and source-frame duration. Every video must already be admitted to **the correct project-owned asset store** by a future vetted ingestion step. The renderer itself does **not** certify an asset's ownership merely because an HTTPS URL is present.
-- The existing `images` array remains mandatory for editorial fallback. With no `sceneVideos`, original still-image visuals, continuous Ken Burns zoom, crossfades, voice, captions, watermark and outro remain unchanged.
-- Video metadata is checked deterministically: image/video alignment, absolute HTTPS source, bounded positive source duration, valid total timeline and playback rate within 0.25–2. Invalid/missing video is treated as **still-image mode for that scene** without initiating any provider call. The planner never loops or replays video clips.
-- A valid MP4 is rendered muted at a constant scene-fitting playback rate via Remotion `OffthreadVideo`; the original image remains beneath it. A broken video decode still fails the render instead of silently publishing an incomplete video.
-- The web-side `buildVideoInputProps` forwards optional `sceneVideos` when a future **server-owned** producer provides them. The existing `render/start` route does not load MP4 assets yet and has not been modified.
+- `SimpleNewsReel` optionally accepts index-aligned MP4 scenes while retaining its four/five approved image fallbacks, smooth transitions, continuous slow zoom, voice, captions, watermark and outro.
+- Valid clips play muted at fixed `playbackRate` (0.25–2), without replaying the same clip to fill a scene. The image is retained below the video. A decode/render failure must be investigated, not auto-published.
+- `buildVideoInputProps` accepts optional `sceneVideos`; calls that omit them retain the exact old image-only payload.
+- No live API, cron, Lambda invocation or publisher requests a video yet.
 
-## Local evidence on Hultgren
+## Canonical project-owned clip selection (follow-up)
 
-- `node --experimental-strip-types --test apps/remotion/src/lib/hybrid-scenes.node-check.mjs`: **8/8 PASS** before integrating.
-- `node --experimental-strip-types --test apps/web/lib/media/video-props-hybrid.node-check.mjs`: **2/2 PASS** for legacy image-only props and explicit video props. Combined tests: **10/10 PASS**.
-- TypeScript `transpileModule` syntax diagnostics: PASS for 4 changed/new TypeScript/TSX source files. This is **syntax**, not a full project typecheck or rendered video proof.
-- `git diff --check`: clean (after patch completion).
+- `project-video-slots.ts` is a pure, read-only selector. A future *authorized* server route may supply one canonical Asset UUID or `null` per approved scene. A `null` or omitted selection intentionally uses the existing still image.
+- **Every non-null asset is validated before a delivery URL is minted**: ID identity, exact project owner, active video, MP4 MIME, 9:16 dimensions, bounded duration, checksum, byte size, public/private bucket and safe storage path. It refuses duplicate video UUIDs and slot misalignment.
+- Foreign-project, missing, inactive, wrong-type or suspicious assets **fail closed**; they are not silently remapped to another project or arbitrary video URL. Even a valid first scene receives no signed URL if a later scene is invalid.
+- `project-video-slots-server.ts` binds the selector to the existing canonical `getAsset` and the trusted `publicDeliveryUrl` / `signedAssetUrl` helpers. Private delivery URLs expire after 3600 seconds and must never be persisted as identities or logged.
+- This is deliberately **not connected to render/start yet**. The future calling route must first authorize the exact saved script and project, enforce its editorial review state, and select the version-bound asset IDs. The pure selector cannot establish user permission or editorial approval by itself.
+- No provider `generate_video`, paid quote, retry, storage write, SQL mutation or publication entry point was added.
 
-## Hold before enabling or releasing
+## Verification on Hultgren (isolated worktree)
 
-1. Keep `HIGGSFIELD_PAID_VIDEO_ENABLED` OFF. PR #552 is a **separate draft** for the shared 5 kr/day allowance and requires independently reviewed, coordinated SQL/source release. Never bypass the live migration guard.
-2. Build a strictly scoped Higgsfield producer with live quote, durable **pre-dispatch budget reservation**, one authorized provider dispatch, durable usage/reconciliation receipt and no retries on uncertain outcomes. Today's read-only Higgsfield client deliberately has no generate capability.
-3. Validate and ingest the returned MP4 to a canonical project-owned asset and record content hash, ownership and rights metadata. Only the canonical, verified asset URL may be placed in `sceneVideos`.
-4. Connect the server-side saved asset to `render/start` with project ownership checked before render, then complete one **offline full Remotion render** using already-approved footage. Verify audio, captions, first-frame motion, no loop, no undesirable logos and mobile 9:16 layout.
-5. Independently review, then activate a small bounded production trial with old still-image reel fallback and separate human review of the first post. Existing schedules remain untouched until explicit production rollout.
+- `node --experimental-strip-types --test apps/remotion/src/lib/hybrid-scenes.node-check.mjs`: **8/8 pass**.
+- `node --experimental-strip-types --test apps/web/lib/media/video-props-hybrid.node-check.mjs`: **2/2 pass**.
+- `node --experimental-strip-types --test apps/web/lib/media/project-video-slots.node-check.mjs`: **13/13 pass**, including cross-project refusal, duplicate scenes, invalid metadata, unsafe URLs, signer failures and canonical asset → Remotion props.
+- **23/23 focused, non-billable tests passed** across these files (when each suite last ran).
+- TypeScript `transpileModule` syntax checks passed for six new/modified TS/TSX files. The pure `project-video-slots.ts` TypeScript module and its type-only canonical Asset dependency pass a **strict no-emit typecheck**. These are *not* a full workspace typecheck.
+- No complete Remotion render has been run. Remotion is not installed in this worktree, and Hultgren reported ~1.1 GB of 15.8 GB RAM free when checked; installing/rendering there now would create unnecessary pressure.
+- Existing four pre-approved MP4 source clips remain under `Projects/Theprompt/Nyheter/Provreel-20261022`; they have **not** been inserted into canonical storage by this PR.
 
-**Cost note:** The conservative allowance maps one Higgsfield credit to at least one SEK and currently allows only one quoted 4-credit clip per Swedish day; it does not cap provider subscription charges or Auto-Refill. Two full AI-video reels per day therefore cannot be promised under this policy. Still-image fallback remains the default.
+## Release and generation remain gated
+
+1. PR #552 is a separate **draft** containing the shared conservative 5 kr/Swedish-day Higgsfield budget. Its production migration remains **unapplied**, and `HIGGSFIELD_PAID_VIDEO_ENABLED` stays OFF. Do not bypass Omnira's migration guard or treat the allowance as a provider invoice cap.
+2. Independently review PR #558, particularly asset ownership, canonical storage, private URL lifetime and Remotion timing. No production merge until a full real-file render and broad compatibility checks pass.
+3. Establish an editorially approved, revision-bound script → asset-ID assignment. Verify/canonicalize one existing approved MP4 for a **non-billable render** before attaching a live producer.
+4. Add a narrow Higgsfield generation adapter only after #552 coordinated release: exact current cost quote, durable reservation before the sole authorized dispatch, no ambiguous retry, job/usage receipt, canonical MP4 admission and reviewed fallbacks.
+5. Wire only reviewed videos into the authorized render path and hold a bounded manual publishing trial. Existing image-reel times (10:00 and 20:00) and legacy image generation remain untouched until the operator explicitly activates the new mode.
+
+**Product limitation:** With a conservative allowance of 1 SEK/credit, the previously quoted four-credit/four-second model permits at most one such new clip per Swedish day. Two full AI-video reels per day are not supported by this budget; a hybrid/image fallback remains essential.

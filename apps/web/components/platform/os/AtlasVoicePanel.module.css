@@ -5,6 +5,11 @@
 .header { display: flex; gap: 8px; align-items: center; padding: 14px 16px; border-bottom: 1px solid #ffffff18; }
 .header > div { flex: 1; }
 .header p { margin: 2px 0 0; color: #86e3d6; font-size: 13px; }
+.voicePicker { display: flex; gap: 12px; align-items: center; padding: 10px 16px; border-bottom: 1px solid #ffffff18; background: #102535; }
+.voicePicker label { flex-shrink: 0; color: #baf0e8; font-size: 13px; font-weight: 600; }
+.voicePicker select { min-width: 0; flex: 1; min-height: 42px; padding: 8px 10px; border: 1px solid #ffffff48; border-radius: 9px; background: #091725; color: #eaf6ff; font: inherit; }
+.voicePicker select:focus-visible { outline: 2px solid #86e3d6; outline-offset: 2px; }
+.voicePicker select:disabled { opacity: .6; cursor: default; }
 .panel button, .dock button { min-height: 44px; border: 1px solid #ffffff26; border-radius: 10px; padding: 8px 12px; background: #17303f; color: inherit; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; justify-content: center; font: inherit; }
 .panel button:disabled { opacity: .45; cursor: default; }
 .panel button:focus-visible, .panel a:focus-visible, .dock button:focus-visible, .panel summary:focus-visible { outline: 2px solid #86e3d6; outline-offset: 2px; }

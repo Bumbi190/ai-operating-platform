@@ -31,6 +31,13 @@ The ElevenLabs voice named Nova with ID `I0uKCr8dyBq1Ouru7CWl` was **explicitly 
 - Streaming transcription through the Atlas WebSocket (`/stream`) is independent of the managed streaming TTS (`/speech`). Switching the TTS model must not interfere with STT, barge-in, echo suppression, or turn scheduling.
 - Relevant reference: https://elevenlabs.io/docs/sv/overview/models and https://elevenlabs.io/docs/api-reference/text-to-speech/stream.
 
+## Voice selector in the actual Atlas panel
+- The production Atlas conversation uses the shared `AtlasVoicePanel` from `components/platform/os/`, not the isolated `/atlas/rosttest` UI. That test route is preview-only, and `/atlas/rost` delegates to the shared panel in the live operator shell.
+- The main panel now displays **Välj röst** immediately under the header, before the scrollable chat; it shows the server-authorized choices `Anders`, `Peter`, and `Nova (Agent Office)` when they are available.
+- Selecting another voice stops current microphone/playback before switching, matching the existing isolated voice trial. The operator can start the microphone again, and the new voice is used from the next turn. Pending turns temporarily disable switching.
+- The selector sends only the safe alias keys; it never exposes provider voice IDs or changes session identity, cost authority, voice gates, or the default Anders.
+- If a voice lookup fails or the approval gate is disabled, the UI never fabricates a Nova option.
+
 ## Owner opt-in pilot activation
 1. Verify environment has permission to call ElevenLabs and resolve the Sanna voice, with model `eleven_v4` supported.
 2. For **opt-in** testing only, set the server-only env vars `ATLAS_NOVA_VOICE_ID=4xkUqaR9MYOJHoaC1Nak` and `ATLAS_NOVA_VOICE_APPROVED=true`. Never put these in client-visible `NEXT_PUBLIC_*` or migrate them to other projects.

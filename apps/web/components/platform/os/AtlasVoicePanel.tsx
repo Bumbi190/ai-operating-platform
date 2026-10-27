@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { Mic, MicOff, Minus, PhoneOff } from 'lucide-react'
 import type { AtlasVoiceSession } from '@/lib/atlas/voice-pilot/use-voice-session'
+import { isAtlasSwedishVoice } from '@/lib/atlas/voice-pilot/voices'
 import {AtlasTestDataReviewCard} from './AtlasTestDataReviewCard'
 import {useAtlasConversation} from '@/lib/atlas/conversation/provider'
 import styles from './AtlasVoicePanel.module.css'
@@ -28,6 +29,22 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
       <button onClick={onMinimize} aria-label="Minimera röstsamtalet"><Minus size={20} /></button>
       <button onClick={onClose} aria-label="Avsluta röstsamtalet"><PhoneOff size={20} /></button>
     </header>
+    <div className={styles.voicePicker}>
+      <label htmlFor="atlas-shared-voice-select">Välj röst</label>
+      <select id="atlas-shared-voice-select"
+        value={s.voices.some(v => v.key === s.voice) ? s.voice : ''}
+        disabled={!s.voices.length || s.sending || s.snapshot.pending}
+        onChange={e => {
+          const selected = e.currentTarget.value
+          if (!isAtlasSwedishVoice(selected) || !s.voices.some(v => v.key === selected)) return
+          // Same policy as the isolated voice trial: stop input/output before switching.
+          s.stopAll(); s.setVoice(selected)
+        }}>
+        {!s.voices.length && <option value="">Hämtar röster…</option>}
+        {s.voices.length > 0 && !s.voices.some(v => v.key === s.voice) && <option value="">Välj en tillgänglig röst</option>}
+        {s.voices.map(v => <option key={v.key} value={v.key}>{v.label}</option>)}
+      </select>
+    </div>
     <nav className={styles.links} aria-label="Samtalets arbetsytor">
       <button onClick={onBuild} disabled={s.snapshot.pending && !s.snapshot.id}>Bygg med Atlas</button>
       <Link href="/projects">Projekt</Link><Link href="/costs">Kostnader</Link>

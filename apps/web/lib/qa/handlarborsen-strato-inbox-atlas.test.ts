@@ -60,11 +60,15 @@ describe('Atlas Handlarbörsen Strato read-only interim bridge',()=>{
   expect(f.calls).toEqual([])
  })
  it('foreign project/unknown conversation or wrong owner blocks all mailbox work',async()=>{
-  for(const [principal,conversation] of [
-   [{...p,allowedProjectIds:[OTHER_PROJECT]},CONVERSATION],
-   [p,null],
-   [{...p,userId:'bad'},CONVERSATION],
-  ] as const){
+  const deniedScenarios: Array<{
+   principal:{userId:string;allowedProjectIds:string[]}
+   conversation:string|null
+  }> = [
+   {principal:{...p,allowedProjectIds:[OTHER_PROJECT]},conversation:CONVERSATION},
+   {principal:p,conversation:null},
+   {principal:{...p,userId:'bad'},conversation:CONVERSATION},
+  ]
+  for(const {principal,conversation} of deniedScenarios){
    const f=fixture()
    expect(await readHbStratoInbox(summaryTool,{},principal,conversation,f.source,true)).toEqual({
     status:'not_authorized',sendingAllowed:false,

@@ -69,6 +69,7 @@ import {SOCIAL_PUBLICATION_TOOLS,SOCIAL_PUBLICATION_TOOL_NAMES,handleSocialPubli
 import {SOCIAL_PROFILE_TOOLS,SOCIAL_PROFILE_TOOL_NAMES,SOCIAL_PROFILE_GUIDE,handleSocialProfileTool} from '@/lib/social-launch/profile/atlas-tools'
 import {SOCIAL_CONTENT_TOOLS,SOCIAL_CONTENT_TOOL_NAMES,SOCIAL_CONTENT_GUIDE,handleSocialContentTool} from '@/lib/social-launch/content/atlas-tools'
 import {HB_STRATO_INBOX_TOOLS,HB_STRATO_INBOX_TOOL_NAMES,HB_STRATO_INBOX_GUIDE,hbStratoInboxReadEnabled,handleHbStratoInboxTool} from '@/lib/handlarborsen/distribution/atlas-strato-inbox'
+import {isHandlarborsenInboxReadIntent} from '@/lib/handlarborsen/distribution/strato-inbox-intent'
 import {SOCIAL_LAUNCH_TOOLS,SOCIAL_LAUNCH_TOOL_NAMES,SOCIAL_LAUNCH_GUIDE,handleSocialLaunchTool} from '@/lib/social-launch/atlas-tools'
 import type { Json } from '@/lib/supabase/database.types'
 import { isViewAwarenessEnabled, normalizeView, renderViewBlock, type ClientViewEnvelope } from '@/lib/atlas/view-context'
@@ -769,7 +770,10 @@ export async function POST(request: Request) {
     const m = messages[messages.length - 1]
     return m?.role === 'user' && typeof m.content === 'string' ? m.content : ''
   })()
-  const fastPath = !isNotionKnowledgeIntent(lastUserText) && !image && !isCalendarIntent(lastUserText) && !studioContext && !websitePlanRef && !rawBuildContext && (mode === 'content' || isFastPathContent(lastUserText))
+  // Strato requests must use the owner-scoped inbox read tool, not fast content
+  // copywriting. Preserve the independent opt-in Notion project-memory gate.
+  const stratoInboxReadIntent = !studioContext && hbStratoInboxReadEnabled() && isHandlarborsenInboxReadIntent(lastUserText)
+  const fastPath = !isNotionKnowledgeIntent(lastUserText) && !stratoInboxReadIntent && !image && !isCalendarIntent(lastUserText) && !studioContext && !websitePlanRef && !rawBuildContext && (mode === 'content' || isFastPathContent(lastUserText))
   // Statisk konversation (hej/tack/vem är du) — besvaras ur Atlas identitet ensam.
   // Allow-list, aldrig gissning: allt som inte bevisligen klarar sig utan live-
   // data, projekt, Memory, klocka och verktyg går full path.
@@ -782,7 +786,7 @@ export async function POST(request: Request) {
   const actionIntent = !fastPath && !staticConversation && isActionIntent(lastUserText)
   // Navigerings-intent (öppna/gå till/ta mig till/visa <mål>) → ett direkt
   // kommando ÄR bekräftelsen; tvinga navigate på första turen (ingen extra tur).
-  const navIntent = !fastPath && !staticConversation && !actionIntent && isNavIntent(lastUserText)
+  const navIntent = !stratoInboxReadIntent && !fastPath && !staticConversation && !actionIntent && isNavIntent(lastUserText)
   // Läs-status ("hur har X gått idag?"). Påverkar INTE routningen — en
   // statusfråga går full path precis som förut, med samma autentisering,
   // projektisolering och verktyg. Den enda effekten är ett kort direktiv i
@@ -973,6 +977,7 @@ export async function POST(request: Request) {
   // exactly as before — this is not general per-class schema pruning.
   const localTextEnabled=availableLocalTextTools({inputSource:voice||inputSource==='voice'?'voice':'text',studio:!!studioContext,fast:fastPath,staticConversation}).length>0
   const activeTools = notionReadOnlyTurn ? ATLAS_NOTION_TOOLS : (fastPath || staticConversation) ? [] : studioContext ? TOOLS.filter(tool=>STUDIO_TOOL_NAMES.has(tool.name)) : TOOLS.filter(tool=>!LOCAL_TEXT_TOOL_NAMES.includes(tool.name)||localTextEnabled)
+  const forceStratoReadFirstTurn = stratoInboxReadIntent && activeTools.some(tool=>tool.name===HB_STRATO_INBOX_TOOL_NAMES[0])
   const forceToolFirstTurn = actionIntent && activeTools.length > 0
   // A Notion answer must not come from the model's memory when the approved
   // read tool is available. Force a real cited source read on turn zero.
@@ -1058,6 +1063,8 @@ export async function POST(request: Request) {
           const toolChoice = i === 0
             ? (forceNotionFirstTurn
                 ? { tool_choice: { type: 'tool' as const, name: ATLAS_NOTION_TOOL_NAME } }
+                : forceStratoReadFirstTurn
+                ? { tool_choice: { type: 'tool' as const, name: HB_STRATO_INBOX_TOOL_NAMES[0] } }
                 : forceResolutionFirstTurn
                 ? { tool_choice: { type: 'tool' as const, name: 'resolve_dream_finding' } }
                 : forceNavigateFirstTurn

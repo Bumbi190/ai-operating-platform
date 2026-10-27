@@ -1,5 +1,5 @@
 'use client';
-import {useEffect,useRef} from 'react';
+import {useEffect,useRef,useState} from 'react';
 import {X} from 'lucide-react';
 import {CalendarTimePicker} from './CalendarTimePicker';
 import {CalendarProductionPreview} from './CalendarProductionPreview';
@@ -12,6 +12,19 @@ import type {CalendarWorkspaceState} from './use-calendar';
 import styles from './Calendar.module.css';
 export function CalendarEventPanel({state:s,undated}:{state:CalendarWorkspaceState;undated?:CalendarUndatedReview}){
  const panel=useRef<HTMLElement>(null);
+ const [manualBusy,setManualBusy]=useState(false),[manualError,setManualError]=useState('');
+ async function confirmManualPublication(){
+  const source=s.selected?.source;
+  if(!source||source.kind!=='social'||source.jobId!==null||manualBusy)return;
+  setManualBusy(true);setManualError('');
+  try{
+   const response=await fetch('/api/calendar/manual-publication',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({operation:s.selected?.manualPublished?'unmark':'mark',source})});
+   const receipt=await response.json();
+   if(!response.ok||receipt.ok!==true)throw Error(receipt.code==='CONFLICT'?'Inlägget har ändrats. Ladda om kalendern.':receipt.code==='SCHEDULED_JOB'?'Inlägget har redan ett schemalagt flöde och kan inte markeras här.':'Kunde inte spara. Försök igen.');
+   s.closePanel();s.reload();
+  }catch(error){setManualError(error instanceof Error?error.message:'Kunde inte spara.');}
+  finally{setManualBusy(false);}
+ }
  useEffect(()=>{
   const previous=document.activeElement as HTMLElement|null;
   panel.current?.querySelector<HTMLElement>('input,button,a')?.focus();
@@ -34,6 +47,11 @@ export function CalendarEventPanel({state:s,undated}:{state:CalendarWorkspaceSta
   </div>}
   {undated&&<p className={styles.help}>Datum saknas · ingen publiceringstid har antagits.</p>}
   {detailSource&&(detailSource.kind==='media'||detailSource.kind==='social')&&<CalendarContentDetail key={s.userId+':'+JSON.stringify(detailSource)} source={detailSource} userId={s.userId}/>}
+  {s.selected?.source.kind==='social'&&s.selected.source.jobId===null&&<div className={styles.contentDetail}>
+   <p className={styles.help}>Manuell publicering rapporteras av dig och är inte ett verifierat LinkedIn-kvitto.</p>
+   <button type="button" className={styles.secondaryButton} disabled={manualBusy} onClick={()=>void confirmManualPublication()}>{manualBusy?'Sparar…':s.selected.manualPublished?'Ångra manuellt publicerad':'Markera som manuellt publicerad'}</button>
+   {manualError&&<p role="alert" className={styles.error}>{manualError}</p>}
+  </div>}
   {s.selected?.linkedWorkflow?.instanceId&&s.selected.projectId&&s.selected.status!=='cancelled'&&f?.kind==='work_block'&&f.responsibility==='atlas_planned'&&f.projectId===s.selected.projectId&&f.workflowInstanceId===s.selected.linkedWorkflow.instanceId&&<CalendarProductionPreview key={s.selected.projectId+':'+s.selected.linkedWorkflow.instanceId} projectId={s.selected.projectId} instanceId={s.selected.linkedWorkflow.instanceId}/>}
   {social&&<p className={styles.help}>Den godkända tiden gäller tills det nya tidsförslaget har granskats.</p>}
   {f&&(manual||social)&&<form className={styles.form} onSubmit={e=>{e.preventDefault();void s.save();}}>

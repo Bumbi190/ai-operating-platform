@@ -1,11 +1,34 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
 import Link from 'next/link'
 import { MessageCircle, Mic, MicOff, Minus, PhoneOff, Send } from 'lucide-react'
 import type { AtlasVoiceSession } from '@/lib/atlas/voice-pilot/use-voice-session'
 import { isAtlasSwedishVoice } from '@/lib/atlas/voice-pilot/voices'
+import { createMicSignalStore, type MicSignalStore } from '@/lib/atlas/voice-pilot/mic-diagnostics'
 import styles from './AtlasVoicePanel.module.css'
+
+const EMPTY_SIGNAL_STORE = createMicSignalStore()
+
+/** Client-side sound meter only; level is derived from local PCM and never uploaded. */
+function MicSignalBars({ store, active }: { store: MicSignalStore; active: boolean }) {
+  const { level } = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot)
+  if (!active) return null
+  const percent = Math.round(Math.min(1, Math.max(0, level)) * 100)
+  return <span className={styles.micSignal} role="meter" aria-label="Mikrofonens ljudnivå"
+    aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+    {[3, 10, 20, 40].map((threshold, index) => <span key={index}
+      data-lit={percent >= threshold ? 'true' : undefined} />)}
+  </span>
+}
+
+function MicrophoneCheckStatus({ store, active }: { store: MicSignalStore; active: boolean }) {
+  const { level, voiceProbability } = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot)
+  return <p role="status">{!active ? 'Mikrofonen är inte påslagen.'
+    : voiceProbability >= 0.3 ? 'Tal upptäcks.'
+    : level >= 0.08 ? 'Ljud kommer in, men tal har inte identifierats ännu.'
+    : 'Svagt eller inget mikrofonljud.'}</p>
+}
 
 /** The platform layout owns this one call across its client-side navigations. */
 export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onClose, runtimeNotice }: {
@@ -31,10 +54,14 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
   const mute = () => s.toggleMute()
   const muteIcon = micOn ? <Mic size={17} /> : <MicOff size={17} />
   const endIcon = <PhoneOff size={17} />
+  const micStore = s.micSignalStore ?? EMPTY_SIGNAL_STORE
 
   if (minimized) return <aside className={styles.dock} aria-label="Pågående röstsamtal med Atlas">
     <div className={styles.identity} aria-live="polite">
-      <strong>{voiceLabel}</strong><span title={s.micProblem ?? undefined}>{status}</span>
+      <strong>{voiceLabel}</strong><div className={styles.statusRow}>
+        <span title={s.micProblem ?? undefined}>{status}</span>
+        <MicSignalBars store={micStore} active={micOn && !s.speaking} />
+      </div>
     </div>
     <div className={styles.actions}>
       <button type="button" onClick={mute} aria-label={muteLabel} aria-pressed={!micOn} title={muteLabel}>{muteIcon}</button>
@@ -46,7 +73,10 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
   return <section ref={panel} tabIndex={-1} className={styles.panel} aria-label="Atlas röstsamtal">
     <header className={styles.header}>
       <div className={styles.identity} aria-live="polite">
-        <strong>{voiceLabel}</strong><span title={s.micProblem ?? undefined}>{status}</span>
+        <strong>{voiceLabel}</strong><div className={styles.statusRow}>
+          <span title={s.micProblem ?? undefined}>{status}</span>
+          <MicSignalBars store={micStore} active={micOn && !s.speaking} />
+        </div>
       </div>
       <div className={styles.actions}>
         <button type="button" onClick={mute} aria-label={muteLabel} aria-pressed={!micOn} title={muteLabel}>{muteIcon}</button>
@@ -75,6 +105,17 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
       <button type="submit" aria-label="Skicka meddelande" title="Skicka meddelande"
         disabled={s.sending || s.snapshot.pending || !s.draft.trim()}><Send size={18} /></button>
     </form>
+    <details className={styles.voiceSettings}>
+      <summary>Mikrofontest</summary>
+      <p>Prata normalt. Staplarna vid Nova ska röra sig när mikrofonen får ljud. Om de inte gör det, prova en annan mikrofon här.</p>
+      <label htmlFor="atlas-shared-mic-device">Välj mikrofon</label>
+      <select id="atlas-shared-mic-device" value={s.micDeviceId}
+        onChange={e => s.selectMicDevice(e.currentTarget.value)}>
+        <option value="">Systemets standardmikrofon</option>
+        {s.micDevices.map(device => <option key={device.id} value={device.id}>{device.label}</option>)}
+      </select>
+      <MicrophoneCheckStatus store={micStore} active={micOn} />
+    </details>
     <details className={styles.voiceSettings}>
       <summary>Byt röst</summary>
       <label htmlFor="atlas-shared-voice-select">Röst</label>

@@ -30,6 +30,13 @@ The ElevenLabs voice named Nova with ID `I0uKCr8dyBq1Ouru7CWl` was **explicitly 
 - The live dock now differentiates **user mute** from **source disconnected**, displays **Återanslut mikrofon** when appropriate, and preserves a useful error reason in expanded chat. A manual reconnect reuses the same running conversation and leaves Nova's speech output intact.
 - The existing 10-minute microphone safety pause is retained but presented as a pause, not as an operator mute. The microphone still closes on actual browser unload and sign-out.
 
+## Microphone input verification (2026-10-27)
+- A live call showed "Lyssnar" while production Vercel logs at 13:26 UTC showed only the voice-list GET and **no** streamed speech-turn request. That indicates no recognized speech was sent, not an ElevenLabs voice playback fault. The existing ready state only proves PCM frames arrived, not that those frames contained audible voice.
+- A tiny **client-only RMS sound meter** in the compact and expanded Nova call displays the actual microphone input level, alongside the existing listening status. Separately, the expanded chat has a collapsed **Mikrofontest** section: select system default or an enumerated input device, observe sound bars and a local Silero voice-probability assessment.
+- The selected input device ID and names remain entirely inside browser memory: no device identifiers, recorded audio or raw waveforms are added to the Atlas API or server logs. `getUserMedia` uses browser-validated `deviceId: { exact: selectedId }` only after the operator selects a device; otherwise the browser's default remains unchanged. If a chosen device is unavailable, existing mic error handling remains authoritative.
+- The meter derives bounded numeric readings from already-processed PCM; a stable external React store updates **only the small signal widgets**, not the entire Atlas runtime every 180 ms. The compact dock still has exactly three controls: microphone mute, chat and hang up.
+- The VAD speech threshold, paid-stream start gate, speaker echo protection, authority/budget governance and ten-minute safety limit are unchanged. A low microphone level is not automatically converted to a paid voice turn. Any actual failure still requires a browser/device test to distinguish hardware selection from acoustic speech detection.
+
 ## Speech economics and implementation
 - The shared ElevenLabs adapter streams PCM 24kHz and keeps its original request/settlement/abort/cancellation governance.
 - Because stored rates can reflect cheap Flash, v4 enforces a conservative minimum reserve price of USD 0.24 per 1,000 characters even when the database rate is lower; actual cost should be monitored before any default switch.

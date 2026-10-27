@@ -1,6 +1,7 @@
 import { createPcmResampler, pcm16, PCM_MAX_BYTES, PCM_RATE } from './pcm'
 import type { RealtimeTurn } from './stream-protocol'
 import { voiceResponseError, isVoiceAccessFailure, VOICE_ACCESS_NOTICE } from './failure'
+import { createMicSignalMeter, microphoneConstraints, type MicSignal } from './mic-diagnostics'
 
 function microphoneStartNotice(error: unknown): string {
   if (error instanceof Error && error.message.startsWith('speech_'))
@@ -21,6 +22,7 @@ type Options = {
   receive(text: string): void; draft(text: string): void; interrupt(): void
   notice(message: string): void; active(value: boolean): void
   listening?(value: boolean): void; processing?(value: boolean): void; endpoint?(quietMs: number): void
+  onSignal?(reading: MicSignal): void
 }
 type Source = { sampleRate: number; stop(): void; reset?(): void }
 type EndReason = 'pause' | 'manual' | 'limit'
@@ -35,6 +37,7 @@ type Dependencies = {
 export function createPcmVoiceCapture(options: Options, deps: Dependencies = browserDependencies()) {
   const pause = Math.max(1200, Math.min(5000, options.pauseMs)), maxSamples = PCM_MAX_BYTES / 2
   const now = deps.now ?? (() => performance.now())
+  const signalMeter = createMicSignalMeter(reading => options.onSignal?.(reading), now)
   let live = false, generation = 0, revision = 0, source: Source | null = null
   let output = false, recovering = false, recovery: ReturnType<typeof setTimeout> | undefined
   let stream: { controller: AbortController; turn: RealtimeTurn } | null = null
@@ -70,7 +73,7 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
   function stop() {
     generation++; live = false; clearTimeout(recovery); clearTimeout(health); receivedFrame = false; recovering = false
     waitForNewSilence = false; freshSilenceMs = 0; consecutiveStreamFailures = 0
-    discard(); device?.abort(); device = null; source?.stop(); source = null; capped = false
+    signalMeter.reset(); discard(); device?.abort(); device = null; source?.stop(); source = null; capped = false
     options.listening?.(false); options.active(false)
   }
   async function finish(reviewOnly = false, reason: EndReason = 'manual') {
@@ -129,6 +132,7 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
   async function start() {
     if (live) return
     live = true; const token = ++generation
+    signalMeter.reset()
     waitForNewSilence = false; freshSilenceMs = 0; consecutiveStreamFailures = 0
     device = new AbortController()
     let resample: ReturnType<typeof createPcmResampler> | undefined
@@ -146,6 +150,7 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
         watchStream()
         if (!receivedFrame) { receivedFrame = true; ready() }
         if (blocked() || upload || capped) return
+        signalMeter.observe(frame, probability)
         const pcm = resample(frame)
         if (!pcm.length) return
         const ms = pcm.length / PCM_RATE * 1000
@@ -215,10 +220,10 @@ export function createPcmVoiceCapture(options: Options, deps: Dependencies = bro
   } }
 }
 
-export function browserDependencies(): Dependencies {
+export function browserDependencies(selectedMicDeviceId = ''): Dependencies {
   return {
     async open(receive, signal, failed) {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } })
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: microphoneConstraints(selectedMicDeviceId) })
       let context: AudioContext | undefined, input: MediaStreamAudioSourceNode | undefined, node: AudioWorkletNode | undefined
       let detector: ReturnType<typeof import('./speech-detector')['createSpeechFrameProcessor']> | undefined
       let stopped = false

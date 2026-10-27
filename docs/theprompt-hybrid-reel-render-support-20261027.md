@@ -1,6 +1,6 @@
 # The Prompt — hybrid reel rendering and canonical MP4 selection
 
-**27 October 2026 · Draft PR #558 · Code preparation only.** No production deploy, paid Higgsfield generation, database migration, changed cron or social publishing.
+**27 October 2026 · Draft PR #558.** Current state: four previously approved MP4s privately imported and byte-verified in Omnira's canonical storage. No code production deployment, paid Higgsfield generation, SQL migration, scheduling change or social publication. Earlier sections below record pre-import checkpoints; the final section records the verified import and new preview endpoint.
 
 ## Existing renderer support (09df0e6)
 
@@ -26,7 +26,7 @@
 - **23/23 focused, non-billable tests passed** across these files (when each suite last ran).
 - TypeScript `transpileModule` syntax checks passed for six new/modified TS/TSX files. The pure `project-video-slots.ts` TypeScript module and its type-only canonical Asset dependency pass a **strict no-emit typecheck**. These are *not* a full workspace typecheck.
 - No complete Remotion render has been run. Remotion is not installed in this worktree, and Hultgren reported ~1.1 GB of 15.8 GB RAM free when checked; installing/rendering there now would create unnecessary pressure.
-- Existing four pre-approved MP4 source clips remain under `Projects/Theprompt/Nyheter/Provreel-20261022`; they have **not** been inserted into canonical storage by this PR.
+- Four original MP4s remain locally in `Projects/Theprompt/Nyheter/Provreel-20261022`. Their private canonical import was completed separately after the original code-only checkpoint (see latest audit below).
 
 ## Release and generation remain gated
 
@@ -42,19 +42,19 @@
 
 Den nya, helt isolerade `apps/web/scripts/theprompt/`-modulen låser originalfilerna till exakt full SHA-256 och verifierar MP4-container, 720×1280-upplösning, 4042 ms per fil och byteantal. De fyra verkliga lokala filerna klarade förkontrollen **4/4**. MP4-/importsuiten kördes med **12/12 godkända tester**, inklusive en simulerad import med de riktiga filernas bytes och ett negativt fall där felaktigt fjärde klipp stoppar alla skrivningar.
 
-En särskild `--apply`-grind är OFF som standard och kräver separat miljöflagga, förväntat projekt-ID och korrekt Omnira-Supabase-host. Den blockerades korrekt i ett negativt på-datorn-test. En framtida riktig import ska använda befintliga `admitAssetBytes`, lagra i privat `media-assets-private` med både Asset-ID och historiskt ursprung utan att skapa nya kostnadshändelser. Ingen server-/react-server-integration, produktionsuppladdning eller fullständig Remotion-render är ännu genomförd.
+En särskild `--apply`-grind är OFF som standard och kräver separat miljöflagga, förväntat projekt-ID och korrekt Omnira-Supabase-host. Den blockerades korrekt i ett negativt på-datorn-test. Vid detta första checkpoint var importen ännu inte genomförd. Senare under dagen kördes den skyddat mot rätt projekt och fyra privata Asset-ID verifierades efteråt. Ingen fullständig Remotion-render är ännu genomförd.
 
-Läs den fullständiga operatörsbeskrivningen i `apps/web/scripts/theprompt/README.md`. Den skyddade produktionens läsande katalogkontroll visade `0` tidigare videorader och `0` objekt i importprefixet. De godkända klippen finns fortfarande endast lokalt; PR #558 ska inte mergas förrän import- och renderkraven är granskade.
+Läs operatörsbeskrivningen i `apps/web/scripts/theprompt/README.md`. Katalogkontrollen före importen visade 0 tidigare videorader och 0 objekt i importprefixet. Efter importen finns nu 4 privata objektrader och 4 aktiva Asset-ID. PR #558 ska inte mergas förrän den nya granskningsvägen och renderkraven är verifierade.
 
 ## 27 oktober — nästa uppdatering: fungerande betrodd Node-serverstartare (read-only prover)
 
-Den tidigare direkta Node-processen kunde inte importera Nexts \`server-only\`-moduler. Ett nytt, separat \`run-approved-import.cjs\` reparerar det **endast för lokal betrodd Node-körning**: esbuild kompilerar den verkliga kanoniska \`admitAssetBytes\`-koden och behandlar Nexts servermarkör som tom i denna speciella CLI. Det påverkar inte webbens bundling eller behörighetslogik.
+Den tidigare direkta Node-processen kunde inte importera Nexts `server-only`-moduler. Ett nytt, separat `run-approved-import.cjs` reparerar det **endast för lokal betrodd Node-körning**: esbuild kompilerar den verkliga kanoniska `admitAssetBytes`-koden och behandlar Nexts servermarkör som tom i denna speciella CLI. Det påverkar inte webbens bundling eller behörighetslogik.
 
-- \`--link-check\`: PASS. 50 kod-/beroendemoduler analyserades offline i en isolerad miljö, utan databasanrop eller nycklar.
-- \`--module-check\`: PASS. Kompilerad Node-process laddade \`createAdminClient\` och \`admitAssetBytes\` i rätt serverkontext utan att skapa någon klient eller exekvera en skrivning.
-- \`run-approved-import.node-check.mjs\`: **7/7 PASS**. Anrop med \`--apply\` vägras utan operatörsgrind, rätt projekt-ID, korrekt Omnira-Supabase-värd och servernyckel; \`--apply\` kan inte kombineras med de fria testlägena.
+- `--link-check`: PASS. 50 kod-/beroendemoduler analyserades offline i en isolerad miljö, utan databasanrop eller nycklar.
+- `--module-check`: PASS. Kompilerad Node-process laddade `createAdminClient` och `admitAssetBytes` i rätt serverkontext utan att skapa någon klient eller exekvera en skrivning.
+- `run-approved-import.node-check.mjs`: **7/7 PASS**. Anrop med `--apply` vägras utan operatörsgrind, rätt projekt-ID, korrekt Omnira-Supabase-värd och servernyckel; `--apply` kan inte kombineras med de fria testlägena.
 - Normal förkontroll är fortsatt samma inlåsta fyra MP4-filer, helt offline och utan Supabase-variabler.
-- Den riktiga importen är **fortfarande ej körd**. Den lokala arbetskopian saknar skyddad produktionskonfiguration; Vercel har relaterade produktionsvariabelnamn men deras värden har inte hämtats. Det finns ännu inga kanoniska MP4-tillgångar i produktion.
+- Vid detta checkpoint var riktig import ännu inte körd. Senare verifierades befintliga lokala serverbehörigheter utan att avslöja nyckelvärden, och de fyra filerna importerades i privat lagring. Aktuella kvitton och verifiering återfinns längre ner.
 - Inga produktionsändringar, betalda Higgsfield-anrop, ny Remotion-render, sociala schemabyten eller merge görs i denna uppdatering. Oberoende granskning och en verifierad riktig import behövs före produktionsaktivering.
 
 ## GitHub-kontraktsgrind för ny importer- och hybridkod
@@ -66,3 +66,24 @@ Den tidigare direkta Node-processen kunde inte importera Nexts \`server-only\`-m
 Vid jämförelse med det verkliga sparade provmanuset observerades **28 049 ms berättarröst och tre godkända bildplatser**, medan fyra separata original-MP4 finns på Hultgren. Det finns inget annat just nu färdigutrustat fyrabildsmanus i The Prompts mediedata. Därför försöker PR #558 inte tyst koppla fyra MP4 till tre bilder; den oförändrade projektägda slotgrinden blockerar denna felmatchning. Detta är endast en läsande observation.
 
 En ren, offline 3-scensberäkning identifierade även att tidigare hjälplogik sträckte sista videoklippet genom filmens 75-frames-slutkort. Hjälpfunktionen använder nu **contentFrames** i stället för hela videons sluttid för sista videon. Nytt regressionstest går grönt och slutscenen stannar korrekt vid frame **797/872** i testfixturen, med jämnare uppspelningshastigheter **0,437 / 0,419 / 0,437** i tre scener. Med de verkliga lokala klippen passerar nu **43/43** riktade tester; CI utan privata filer förväntar **41 pass / 2 överhoppade**. Ingen färdig reel har renderats eller publicerats.
+
+## 27 October — actual private import and signed-byte readback
+
+The approved four original Grok/Higgsfield MP4s were imported through the operator-gated local CLI using the existing Omnira server configuration. No key values were copied or printed. A separate production SQL read verified one active video Asset and one provenance row per clip, with correctly owned project ID, 720×1280 dimensions, 4042 ms duration, original SHA-256 hashes, visibility=internal, and publicationApproved=false. Four corresponding objects exist in media-assets-private.
+
+| Original | Canonical Asset ID |
+| --- | --- |
+| scene-0.mp4 | 30e4b399-d3f4-4aec-9dc9-4f468c413b69 |
+| scene-1.mp4 | d806c254-0b22-46be-abb9-a52310eb6af7 |
+| scene-2.mp4 | dda65355-c200-4a41-a1ff-12f7da10e637 |
+| scene-3.mp4 | 069bac8a-9c88-4f41-b872-7fdcde33a992 |
+
+The actual stored bytes were downloaded privately once more and hashed: 4/4 byte-perfect matches. Each asset could also be read using a temporary signed URL, which was never logged or persisted. Neither provider spend nor social publishing was performed.
+
+## 27 October — owner-only hybrid preview render INPUT (not MP4)
+
+New owner/project-scoped GET endpoint at /api/media/hybrid-preview/[scriptId] accepts exactly one video_asset_id per saved image scene (or "-" for still fallback). Platform operator identity and project ownership are both verified; the endpoint is also pinned to The Prompt's project. It uses the existing canonical asset selector and issues short-lived private video URLs only after checks. It returns synchronized Remotion input props, published-source status and explicit canGenerate=false, canPublish=false, canSchedule=false with private no-store headers.
+
+The saved source script b0495f6b-9973-40dc-ae9b-156cc110ab51 is ALREADY PUBLISHED in the old image flow, with duration 28049 ms, 3 still images and ready audio/timing. The private video preview maps scene-0/1/2 to the first three imported Asset IDs, holds scene-3 for later, and must not create a second public post.
+
+This API code remains in draft PR #558; no successful owner-authenticated live API request or full Remotion-rendered video is claimed yet. The 12 new offline validation tests cover request identity, alignment, duplicates, external/signed URL refusal and project-origin pinning. Regression CI is expanded to include them (55 cases total, 53 source-free/2 source-dependent in CI; 55/55 expected on Hultgren). The separate 5 SEK/day Higgsfield paid video budget PR #552 remains unmerged and generation stays OFF.

@@ -1,74 +1,49 @@
-# The Prompt — godkända MP4-klipp till Omniras kanoniska medielagring
+# The Prompt — privat videopilot och kanonisk MP4-import
 
-**2026-10-27, status: förkontroll godkänd, riktig import INTE genomförd.**
+**Status 27 oktober 2026:** 4/4 tidigare godkända klipp har importerats till Omniras **privata** Supabase-lagring. Varje fil har hämtats tillbaka, jämförts mot originalets fulla SHA-256 och testats via en temporär signerad läslänk. Ingen ny Higgsfield-generering, schemaändring eller publicering har skett.
 
-Den här mappen innehåller tre separata arbetsdelar:
+## Bekräftade filer och identiteter
 
-- `approved-clips-preflight.mjs`: läsande MP4-inspektion och SHA-256-lås mot de fyra klippen som redan godkänts
-- `approved-clips-check.mjs`: fristående förkontroll, inga externa beroenden, inga skrivningar
-- `import-approved-clips.mjs`: låst operatörsimport, **ingen automatisk aktivering**; använder Omniras befintliga `admitAssetBytes` när den får uttrycklig skrivbehörighet
-- `run-approved-import.cjs`: separat Node-serverstartare som kompilerar den riktiga kanoniska importeraren till en tillfällig, serverbegränsad CLI; kompilerar bara under kontroll och öppnar ingen publik API-route
+Projektet är `ai-media-automation` (`a8a1b1f6-c222-4893-9399-b1fb3bc2fa52`) i Omniras databas `iboepohjwrhtgshrqaol`. Privat bucket: `media-assets-private`. Alla fyra poster är aktiva `video/mp4`, 720×1280, 4042 ms, `visibility=internal` och `publicationApproved=false` i provenance.
 
-## Verifierade resurser
+| Lokalt original | Kanoniskt Asset-ID |
+| --- | --- |
+| `scene-0.mp4` | `30e4b399-d3f4-4aec-9dc9-4f468c413b69` |
+| `scene-1.mp4` | `d806c254-0b22-46be-abb9-a52310eb6af7` |
+| `scene-2.mp4` | `dda65355-c200-4a41-a1ff-12f7da10e637` |
+| `scene-3.mp4` | `069bac8a-9c88-4f41-b872-7fdcde33a992` |
 
-- Lokalt: `C:\Users\Andre\Projects\Theprompt\Nyheter\Provreel-20261022\scene-0.mp4` till `scene-3.mp4`.
-- Samtliga fyra har 720×1280 (9:16), 4042 ms MP4-containervaraktighet och fullständig inlåst SHA-256.
-- Projektet i Omniras egen Supabase: `ai-media-automation` / `a8a1b1f6-c222-4893-9399-b1fb3bc2fa52`.
-- Avsedd bucket: `media-assets-private` (privat). Tabellen `assets` och `asset_provenance` har RLS aktiverad.
-- Läsande livekontroll: **0** registrerade The Prompt-videotillgångar, **0** befintliga objekt under importens lagringsprefix och **0** SHA-256-dubbletter från dessa fyra klipp.
+Det äldre publicerade manuset `b0495f6b-9973-40dc-ae9b-156cc110ab51` har 28 049 ms berättarröst, ordtider och **tre** sparade bakgrundsbilder. Pilotens privata scenmappning är scen 0–2 i ordning; fjärde klippet förvaras men kopplas inte tyst till ett tretalsmanus.
 
-## Helt säker förkontroll
+## Importskriptens säkerhetsgränser
 
-Från `apps/web`:
+`approved-clips-preflight.mjs` är en ren filvaliderare med inlåsta fulla SHA-256, filstorlekar och MP4-containerdimensioner.
+
+`approved-clips-check.mjs` är en läsande, beroendefri lokal förkontroll. `import-approved-clips.mjs` innehåller den befintliga kanoniska `admitAssetBytes`-importen, utan `upsert` eller automatisk omkörning efter osäkra resultat. `run-approved-import.cjs` är en skyddad Node-startare för dessa befintliga servermoduler, inte en webb- eller publiceringsväg. En korrekt `--apply` kräver separat operatörsflagga, rätt projekt-ID, rätt Supabase-värd och giltig servernyckel. Nycklar lagras inte i detta repo eller dess loggar.
+
+**Importen har redan genomförts. Kör inte ytterligare en produktions-`--apply` utan att först stämma av registrerade tillgångar och granskningsbeslut.** Vid en oklar utgång måste objekten granskas manuellt; importen utlovar inte atomiska transaktioner över fyra filer.
+
+Helt läsande förkontroll på Hultgren:
 
 ```powershell
 node scripts/theprompt/approved-clips-check.mjs --source-dir "C:\Users\Andre\Projects\Theprompt\Nyheter\Provreel-20261022"
 node scripts/theprompt/run-approved-import.cjs --source-dir "C:\Users\Andre\Projects\Theprompt\Nyheter\Provreel-20261022"
 ```
 
-Båda kommandona är **read-only**, verifierar fyra exakta filer och behöver inga Supabase-nycklar. Kompilering utan externa anrop kan separat testas med `node scripts/theprompt/run-approved-import.cjs --link-check`. Kompilerad körning av riktiga kanoniska moduler (utan databasanslutning) kan testas med `--module-check`. Dessa två tekniska kontroller kräver installerade beroenden, men inga hemliga nycklar.
+Tekniska, likaså läsande verifieringar med installerade beroenden: `run-approved-import.cjs --link-check` respektive `--module-check`. Båda passerade på Hultgren innan den verkliga importen.
 
-Tester:
+## Privat förhandsgranskning (nästa leverans)
 
-```powershell
-node --test scripts/theprompt/approved-clips.node-check.mjs scripts/theprompt/import-approved-clips.node-check.mjs scripts/theprompt/run-approved-import.node-check.mjs
-```
+`GET /api/media/hybrid-preview/[scriptId]` byggs i PR #558 som en **läsande, ägarbegränsad förhandsgranskningsväg**. Den accepterar en `video_asset_id` per redan sparad bildscen, eller `-` för att behålla en stillbild. Alla ID:n valideras och hämtas ur rätt projekts kanoniska tillgångsregister; privata nedladdningslänkar skapas först efter kontroll av inloggad plattformsoperatör och projektägare.
 
-För de två operatörsspecifika simuleringstesterna med verkliga MP4-filer kan man före kommandot sätta `THEPROMPT_APPROVED_CLIPS_DIR` till den lokala provreel-mappen. Utan dessa filer hoppas de två testerna över i CI; de övriga körs utan särskilda beroenden.
+Svar markeras `private_review_only`, `canGenerate=false`, `canPublish=false` och `canSchedule=false`, med `private,no-store` och `no-referrer`. Samma gamla render- och publiceringsvägar har inte ändrats. Den här vägen ger **renderindata**, inte en färdig MP4. Inga signerade privata länkar sparas i Git eller i dessa anteckningar.
 
-## Uttryckligen blockerad riktig import
+## Tester och återstående arbete
 
-Skrivläget är spärrat om inte **samtliga** följande är uppfyllda:
+- Föregående hybrid- och importkontroller: 43/43 på Hultgren med verkliga filoriginal.
+- Nytillkomna läsande previewförfrågnings- och ursprungstester körs tillsammans med ovanstående i GitHub-regressioner. CI saknar med avsikt de två privata källfilssimuleringarna och redovisar dem som `skipped`.
+- Riktig databas- och Storage-kvittoverifiering: 4/4 aktivt lagrade MP4, 4/4 fullständig bytehash efter återhämtning och 4/4 fungerande temporära signerade läslänkar.
 
-1. Oberoende granskning av importkoden samt projekt-/assetisoleringen och godkänd körning i en riktig servermiljö.
-2. Den lokala processen har korrekta *server-only* `NEXT_PUBLIC_SUPABASE_URL` och `SUPABASE_SERVICE_ROLE_KEY` utan att nycklar skickas till chatt eller loggar. Kodens accepterade projekthost är låst till Omniras rätta Supabase, inte Familje-Stundens eller Handlarbörsens databaser.
-3. Operatören aktiverar den separata grinden `OMNIRA_THEPROMPT_IMPORT_APPROVED=1`, anger `--apply`, och anger exakt förväntat projekts UUID i `--expected-project-id`. Grinden är OFF som standard. Ett negativt lokalt test med `--apply` utan grinden gav `NO-GO: operator_gate_off`, exit code 1.
-4. Start sker med `run-approved-import.cjs`, som **enbart i en betrodd lokal Node-serverprocess** kompilerar de befintliga kanoniska modulerna. Nexts `server-only`-markör görs till en no-op i denna **privilegierade CLI-kompilering, inte i webbappen**. `--link-check` och `--module-check` har passerat med installerade beroenden från en isolerad arbetskopia, utan nätverksanrop. Fullständigt operativt `--apply` med riktiga skyddade miljövariabler och efterföljande importkvitton är **inte testat**.
-5. Alla fyra källfiler kontrolleras igen med bytehash före *första* skrivning. Databasens eventuella existerande tillgångar kontrolleras mot både checksumma och provenance innan nya filer registreras.
+**Återstår:** slutför API- och typkontrollerna på den aktuella PR-versionen; koppla preview till en faktisk spelare eller Remotion-rendering, skapa en privat MP4 och granska den manuellt. Datorn har haft mycket lite ledigt RAM; kör därför tung rendering i separat godkänd miljö eller först när maskinen klarar det. PR #552 för framtida Higgsfield-budget är fortfarande **draft** och betald videogenerering är AV. Det gamla bildflödet och schemat 10.00/20.00 är oförändrade.
 
-Importen använder endast Omniras befintliga, kanoniska `admitAssetBytes`: först MP4-validering, sedan privat lagring, asset-rad och ursprungsrad. Inget `upsert`, ingen dubbelgenerering och ingen automatisk återförsök vid oklar utgång. Vid en redan registrerad exakt match väljs befintligt ID. Vid en partiell DB-/nätverksincident stannar hela körningen för manuell avstämning; en fyrfilsbatch utlovas **inte** vara databasatomisk.
-
-Historiska klipp märks `source: imported`, `provider: higgsfield`, `model: grok_video_v15_lite`, `publicationApproved: false`. Inga tidigare provider-jobb-ID eller nya kostnadshändelser hittas på. Importbeslut är skilt från filmens redaktionella publiceringsgodkännande.
-
-## Lokala verifieringsresultat
-
-- 5/5 syntax/MP4-simulatorfall gröna.
-- 7/7 importsäkerhetsfall gröna, varav två testades med riktiga filer och mockade DB-/Storage-operationer.
-- 4/4 lokala MP4-filer passerade SHA-256, byteantal, bilddimensioner och MP4-containervaraktighet.
-- Tvingad `--apply` utan separat env-grind vägrades. Ytterligare 7/7 grindtester avvisade bland annat fel projekt, fel Supabase-värd och saknad nyckel, och bekräftade att vanlig dry-run är oförändrad.
-- Offline Node-`--link-check` PASS; riktig kompilerad `--module-check` PASS – kanoniska admin- och admissionmoduler laddades utan databas-/lagringsanrop.
-- Inga produktionsfiler uppladdade, inga `assets` eller `asset_provenance` rader skapade, ingen Higgsfield-kredit debiterad.
-
-## Återstående beroenden
-
-- Oberoende kodgranskning och säker integration i riktig, skyddad servermiljö.
-- Uppladdning av fyra klipp med riktiga privata tillgångs-ID som kvitto och uppföljande SQL- och Storage-läsning.
-- Fristående fullständig Remotion-render och manuell kvalitetsgranskning av den färdiga vertikala reelen.
-- Separat PR #552 (budget för framtida betalda Higgsfield-anrop) behöver koordinerad DB/source-release innan någon automatiserad videogenerering får aktiveras.
-- Gammalt bildbaserat publiceringsflöde är kvar oförändrat och videoläget för publicering är AV.
-
-## Automatiskt CI-skydd för importen
-
-`.github/workflows/theprompt-hybrid-safety.yml` kör lokala kod- och avvisningstester utan databas, hemliga nycklar eller npm-installation. I CI ska **41/41** syntetiska fall passera och de **2** fall som behöver riktiga privata MP4-original ska vara explicit markerade som överhoppade. På Hultgren verifierades alla **43/43** med de riktiga godkända källfilerna. En separat lokal `--module-check` bekräftar att de kanoniska importmodulerna går att ladda med redan installerade serverberoenden.
-
-**Detta är inget produktionskvitto.** Det saknas fortfarande ett skyddat, behörigt `--apply`-test med faktiska kanoniska Asset-ID och efterföljande objekt-/provenancekontroll, samt en färdigrenderad reel.
+För fullständig historik, se `docs/theprompt-hybrid-reel-render-support-20261027.md` och lokala `Projects/Theprompt/Nyheter/Provreel-20261022/LAS-MIG.md`.

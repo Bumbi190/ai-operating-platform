@@ -1,0 +1,64 @@
+# The Prompt hybrid reel safety: DB-free, credential-free narrow regression gate.
+# This is NOT a paid-generation, canonical-storage, video-render or release proof.
+name: The Prompt Hybrid Safety
+
+on:
+  pull_request:
+    paths:
+      - 'apps/remotion/src/compositions/SimpleNewsReel.tsx'
+      - 'apps/remotion/src/lib/hybrid-scenes*'
+      - 'apps/remotion/src/lib/types.ts'
+      - 'apps/web/lib/media/video-props*'
+      - 'apps/web/lib/media/project-video-slots*'
+      - 'apps/web/scripts/theprompt/**'
+      - '.github/workflows/theprompt-hybrid-safety.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: theprompt-hybrid-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-boundaries:
+    name: Approved MP4 & project-isolated renderer tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      OMNIRA_THEPROMPT_IMPORT_APPROVED: '0'
+      NEXT_PUBLIC_SUPABASE_URL: ''
+      SUPABASE_SERVICE_ROLE_KEY: ''
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run all bounded pure tests, without npm install, secrets or network
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types --test \
+            apps/remotion/src/lib/hybrid-scenes.node-check.mjs \
+            apps/web/lib/media/video-props-hybrid.node-check.mjs \
+            apps/web/lib/media/project-video-slots.node-check.mjs \
+            apps/web/scripts/theprompt/approved-clips.node-check.mjs \
+            apps/web/scripts/theprompt/import-approved-clips.node-check.mjs \
+            apps/web/scripts/theprompt/run-approved-import.node-check.mjs \
+            | tee "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
+
+      - name: Anti-skip contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
+          grep -q '^# tests 42$' "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
+          grep -q '^# pass 40$' "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
+          grep -q '^# fail 0$' "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
+          # Two real-file import scenarios intentionally require private MP4s
+          # on Hultgren and are skipped only in this source-free CI runner.
+          grep -q '^# skipped 2$' "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
+          echo 'The Prompt hybrid safety: 40/40 source-free checks passed, 2 private-file checks explicitly skipped.'

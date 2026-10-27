@@ -45,3 +45,18 @@ Den nya, helt isolerade `apps/web/scripts/theprompt/`-modulen låser originalfil
 En särskild `--apply`-grind är OFF som standard och kräver separat miljöflagga, förväntat projekt-ID och korrekt Omnira-Supabase-host. Den blockerades korrekt i ett negativt på-datorn-test. En framtida riktig import ska använda befintliga `admitAssetBytes`, lagra i privat `media-assets-private` med både Asset-ID och historiskt ursprung utan att skapa nya kostnadshändelser. Ingen server-/react-server-integration, produktionsuppladdning eller fullständig Remotion-render är ännu genomförd.
 
 Läs den fullständiga operatörsbeskrivningen i `apps/web/scripts/theprompt/README.md`. Den skyddade produktionens läsande katalogkontroll visade `0` tidigare videorader och `0` objekt i importprefixet. De godkända klippen finns fortfarande endast lokalt; PR #558 ska inte mergas förrän import- och renderkraven är granskade.
+
+## 27 oktober — nästa uppdatering: fungerande betrodd Node-serverstartare (read-only prover)
+
+Den tidigare direkta Node-processen kunde inte importera Nexts \`server-only\`-moduler. Ett nytt, separat \`run-approved-import.cjs\` reparerar det **endast för lokal betrodd Node-körning**: esbuild kompilerar den verkliga kanoniska \`admitAssetBytes\`-koden och behandlar Nexts servermarkör som tom i denna speciella CLI. Det påverkar inte webbens bundling eller behörighetslogik.
+
+- \`--link-check\`: PASS. 50 kod-/beroendemoduler analyserades offline i en isolerad miljö, utan databasanrop eller nycklar.
+- \`--module-check\`: PASS. Kompilerad Node-process laddade \`createAdminClient\` och \`admitAssetBytes\` i rätt serverkontext utan att skapa någon klient eller exekvera en skrivning.
+- \`run-approved-import.node-check.mjs\`: **7/7 PASS**. Anrop med \`--apply\` vägras utan operatörsgrind, rätt projekt-ID, korrekt Omnira-Supabase-värd och servernyckel; \`--apply\` kan inte kombineras med de fria testlägena.
+- Normal förkontroll är fortsatt samma inlåsta fyra MP4-filer, helt offline och utan Supabase-variabler.
+- Den riktiga importen är **fortfarande ej körd**. Den lokala arbetskopian saknar skyddad produktionskonfiguration; Vercel har relaterade produktionsvariabelnamn men deras värden har inte hämtats. Det finns ännu inga kanoniska MP4-tillgångar i produktion.
+- Inga produktionsändringar, betalda Higgsfield-anrop, ny Remotion-render, sociala schemabyten eller merge görs i denna uppdatering. Oberoende granskning och en verifierad riktig import behövs före produktionsaktivering.
+
+## GitHub-kontraktsgrind för ny importer- och hybridkod
+
+`.github/workflows/theprompt-hybrid-safety.yml` läggs till som separat PR-grind för ändringar i denna funktion. Den kör **40** källfria tester på Node 22, vägrar databasmiljövariabler och kontrollerar att exakt **två** privatfilsberoende fall är överhoppade. Ett källfritt lokalt CI-genrep gav `42 tests / 40 pass / 2 skip / 0 fail`; med originalfilerna på Hultgren är `42/42` gröna. Det här är inte en oberoende kodgranskning och inte en riktig MP4-rendering eller produktionsimport.

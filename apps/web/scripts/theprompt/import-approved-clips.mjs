@@ -151,6 +151,19 @@ async function main(){
     console.log('Apply requires OMNIRA_THEPROMPT_IMPORT_APPROVED=1 and local server-only environment.')
     return
   }
+  if(process.argv.includes('--module-check')){
+    // Runtime read-only smoke under the Node-only compiled server context.
+    // Loads the REAL canonical modules but never creates a client, checks an
+    // account, reads credentials, uploads, generates, or writes to Supabase.
+    const [{createAdminClient},{admitAssetBytes}]=await Promise.all([
+      import('../../lib/supabase/admin.ts'),
+      import('../../lib/media/asset/admission.ts'),
+    ])
+    if(typeof createAdminClient!=='function'||typeof admitAssetBytes!=='function')
+      throw new ApprovedImportRefusal('canonical_modules_unavailable')
+    console.log('CANONICAL_MODULE_CHECK_PASS: real admission and admin modules loaded; no external work.')
+    return
+  }
   const dir=option('--source-dir')
   const clips=await inspectApprovedClipDirectory(dir)
   if(!process.argv.includes('--apply')){

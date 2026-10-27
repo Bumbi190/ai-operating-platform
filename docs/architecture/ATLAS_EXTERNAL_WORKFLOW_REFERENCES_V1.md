@@ -25,6 +25,8 @@ Prior research was recorded in workspace notes:
   fetch GitHub, access credentials or evaluate workflow JSON.
 - `catalog-search.mjs` provides deterministic, bounded offline matching and
   returns 1–8 references. No `eval`, `fetch`, `spawn`, DB or dispatch.
+- `catalog-search.d.mts` gives the Node-compatible `.mjs` core strict
+  TypeScript contracts without adding runtime dependencies.
 - `index.ts` is the Atlas-facing adapter.
 - `app/api/chat/route.ts` adds the tool
   `search_external_workflow_references(query, project?, limit?)`, with the same
@@ -71,14 +73,18 @@ node scripts/check-external-workflow-references.mjs
 - A refresh is *never* scheduled and requires explicit `--update`, review of
   pinned SHA plus an index diff. The SHA must be changed deliberately in code
   to opt into a new upstream revision.
-- Offline smoke checks run with Node 22, no dependencies or backend.
+- Offline smoke checks run with Node 20 or Node 22, no dependencies or backend.
+- `.github/workflows/atlas-external-workflow-references.yml` runs focused
+  Vitest, an anti-skip proof and full TypeScript checks on a GitHub runner
+  when a relevant PR is opened. It requires no production secrets or database.
 - `lib/qa/atlas-external-workflow-references.test.ts` holds Vitest regression
   coverage to run in a dependency-provisioned workspace/CI.
 - Static smoke checks prove only the index/parser/tool registration shape; they
   **cannot** prove a live authenticated chat, production deployment or full
   TypeScript build.
-- This branch has NOT been merged, pushed or deployed. The live Atlas
-  cannot use the tool until the ordinary review/merge/deploy flow completes.
+- The live Atlas cannot use this tool until the ordinary review, verified
+  CI, merge and production deployment have explicitly completed. Never
+  treat a draft PR as operational authorization.
 
 ## No implicit future autonomy
 Do not turn on background searches, import third-party JSON, spawn n8n, grant

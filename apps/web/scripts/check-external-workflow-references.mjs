@@ -5,8 +5,9 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import index from '../lib/atlas/workflow-references/catalog-index.json' with { type: 'json' }
 import { searchReferences } from '../lib/atlas/workflow-references/catalog-search.mjs'
+
+const index = JSON.parse(readFileSync(new URL('../lib/atlas/workflow-references/catalog-index.json', import.meta.url), 'utf8'))
 
 const SHA = '94007c1445d9258a7da116646b79473e7c7c3282'
 assert.equal(index.source.pinnedSha, SHA)

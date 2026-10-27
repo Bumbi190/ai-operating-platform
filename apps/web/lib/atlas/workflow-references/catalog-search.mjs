@@ -49,17 +49,17 @@ function cleanProject(project) {
 
 export function searchReferences(index, input = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
-    return { ok: false, code: 'INVALID_SEARCH_QUERY' }
+    return { ok: false, code: 'INVALID_SEARCH_QUERY', matches: [] }
   }
   if (!index || index.schemaVersion !== 1 ||
       index.source?.repository !== EXPECTED_REPOSITORY ||
       index.source?.pinnedSha !== EXPECTED_SHA ||
       !Array.isArray(index.workflows)) {
-    return { ok: false, code: 'CATALOG_UNAVAILABLE' }
+    return { ok: false, code: 'CATALOG_UNAVAILABLE', matches: [] }
   }
   const query = typeof input.query === 'string' ? input.query.trim() : ''
   if (!query || query.length > 160 || tokens(query).length === 0) {
-    return { ok: false, code: 'INVALID_SEARCH_QUERY', message: 'Ange 2–160 tecken med sökord.' }
+    return { ok: false, code: 'INVALID_SEARCH_QUERY', message: 'Ange 2–160 tecken med sökord.', matches: [] }
   }
   const requestedLimit = Number.isInteger(input.limit) ? input.limit : 5
   const limit = Math.max(1, Math.min(MAX_RESULTS, requestedLimit))

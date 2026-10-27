@@ -41,3 +41,12 @@ Git branch: `feat/hb-distribution-20261027` (separate from SCB and Atlas Sales w
 - No secrets, person numbers, private messages or raw SCB exports were copied or committed.
 - No API outbound sends, automatic posting, DB writes, migrations, environment variable changes, worker restarts, feature activation or production deployment were performed by this workstream.
 - This status snapshot **ages**. Live readiness must be re-read before claiming Strato is operational or publishing is ready.
+
+
+## Addendum — 2026-10-27, 15:15–15:20 Stockholm
+
+**Strato incident resolved for inbox synchronization:** a real read-only IMAP probe authenticated, selected INBOX readonly (23 messages; UIDNEXT 34), then one explicitly approved project-scoped sync through the original existing Sales inbox endpoint succeeded. Verified `sales_inbox_configs.last_synced_at` advanced to 13:53:25 UTC and saved message count increased 9 → 16, with no new send job. This is **not** evidence of full email bodies being read or Atlas-chat tools being deployed.
+
+The old Windows Omnira Sales logon task (local `sendEnabled=true`) was explicitly disabled. A new strictly inbox-only local Windows task `Omnira-Strato-InboxOnly-HB` was installed for 15-minute checks and first ran on schedule at 15:15:47 with exit 0. Its Python implementation and 21 passing offline safety tests are in `scripts/sales/`; only four inbox operations are allowed. Task and local checkpoint are independently rollbackable. Details and release gates: `docs/handlarborsen-strato-inbox-only-verification-20261027.md`.
+
+The **Atlas chat reader is not yet deployed**. `atlas-strato-inbox.ts` and the guarded chat route add two strictly read-only functions, behind server flag `HB_STRATO_INBOX_READ_ENABLED` (OFF by default); 32 targeted Vitest checks passed across the existing distribution suites and mocked protected reader. Production flag was not changed. Exact-head full CI, native authenticated preview and operator approval are required before activation.

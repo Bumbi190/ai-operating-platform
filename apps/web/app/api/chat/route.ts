@@ -713,7 +713,6 @@ export async function POST(request: Request) {
   if(rawImage!==undefined&&(!rawImage||typeof rawImage!=='object'||Array.isArray(rawImage)))return NextResponse.json({error:'Ogiltig bildbilaga.'},{status:400})
   const image=rawImage as {mediaType?:unknown;data?:unknown}|undefined
   if(image&&(!['image/png','image/jpeg','image/webp'].includes(String(image.mediaType))||typeof image.data!=='string'||image.data.length>5_600_000||image.data.length<16||!/^[A-Za-z0-9+/]+={0,2}$/.test(image.data)||image.data.length%4!==0))return NextResponse.json({error:'Ogiltig eller för stor bild (max cirka 4 MB).'},{status:400})
-  if(image&&openaiEconomy)return NextResponse.json({error:'Bildanalys kräver en aktiverad bildmodell.'},{status:422})
   const db = createAdminClient()
   const tStart = Date.now()
   let studioContext:StudioTurnContext|null=null

@@ -66,6 +66,14 @@ export function AtlasMiniChatPanel({
     follow = useRef(true),
     draftRef = useRef(draft)
   draftRef.current = draft
+  const [image,setImage]=useState<{mediaType:'image/png'|'image/jpeg'|'image/webp';data:string;preview:string}|null>(null)
+  const attachImage=(file:File)=>{
+    if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>4_000_000){setNotice('Bilden måste vara PNG, JPG eller WebP, högst 4 MB.');return}
+    const reader=new FileReader()
+    reader.onload=()=>{const preview=String(reader.result??'');const data=preview.split(',')[1];if(!data){setNotice('Bilden kunde inte läsas.');return}setImage({mediaType:file.type as 'image/png'|'image/jpeg'|'image/webp',data,preview});setNotice('')}
+    reader.onerror=()=>setNotice('Bilden kunde inte läsas.')
+    reader.readAsDataURL(file)
+  }
   const [busy, setBusy] = useState(false),
     [notice, setNotice] = useState(''),
     [frame, setFrame] = useState({
@@ -149,18 +157,19 @@ export function AtlasMiniChatPanel({
     }
   }, [frame.mobile])
   async function submit() {
-    if (!draft.trim() || sending.current || snapshot.pending) return
-    const text = draft,
+    if ((!draft.trim()&&!image) || sending.current || snapshot.pending) return
+    const text = draft.trim()||'Beskriv bilden.',
       id = snapshot.id,
       token = ++requestSeq.current
     sending.current = true
     setBusy(true)
     setNotice('')
     onDraftChange('')
-    const result = await controller.sendCompactText({ text, initialProjectId })
+    const result = await controller.sendCompactText({ text, initialProjectId, image:image?{mediaType:image.mediaType,data:image.data}:undefined })
     if (alive.current && requestSeq.current === token) {
       sending.current = false
       setBusy(false)
+      if(result.ok)setImage(null)
       if (!result.ok && result.notice) {
         setNotice(result.notice)
         if (controller.snapshot().id === id && !draftRef.current)
@@ -310,6 +319,8 @@ export function AtlasMiniChatPanel({
           void submit()
         }}
       >
+        {image&&<div style={{display:'flex',alignItems:'center',gap:8}}><img src={image.preview} alt="Bifogad bild" style={{maxWidth:80,maxHeight:80,borderRadius:6}}/><button type="button" onClick={()=>setImage(null)}>Ta bort</button></div>}
+        <label style={{fontSize:12,cursor:'pointer'}}>Bifoga bild <input type="file" accept="image/png,image/jpeg,image/webp" style={{maxWidth:120}} onChange={e=>{const file=e.target.files?.[0];if(file)attachImage(file);e.target.value=''}}/></label>
         <textarea
           ref={editor}
           aria-label="Skriv till Atlas"
@@ -319,6 +330,7 @@ export function AtlasMiniChatPanel({
           value={draft}
           disabled={(busy || snapshot.pending) && !snapshot.id}
           onChange={(e) => onDraftChange(e.target.value)}
+          onPaste={e=>{const file=Array.from(e.clipboardData.files).find(file=>file.type.startsWith('image/'));if(file){e.preventDefault();attachImage(file)}}}
           onKeyDown={(e) => {
             if (
               e.key === 'Enter' &&

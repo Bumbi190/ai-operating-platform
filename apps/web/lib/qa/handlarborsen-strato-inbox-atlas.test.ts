@@ -28,7 +28,7 @@ const rawMessage={
 function fixture(overrides:Partial<HbInboxReads>={}){
  const calls:string[]=[]
  const source: HbInboxReads={
-  async confirmConversation(){calls.push('conversation');return HB},
+  async confirmConversation(){calls.push('conversation');return {projectId:HB}},
   async mailboxIds(){calls.push('mailboxes');return [MAILBOX]},
   async readPage(){calls.push('page');return {
    config:{lastSyncedAt:'2026-10-27T13:53:25Z',state:'enabled',folder:'INBOX'},
@@ -75,9 +75,29 @@ describe('Atlas Handlarbörsen Strato read-only interim bridge',()=>{
    })
    expect(f.calls).toEqual([])
   }
-  const f=fixture({confirmConversation:async()=>OTHER_PROJECT})
+  const f=fixture({confirmConversation:async()=>({projectId:OTHER_PROJECT})})
   expect(await readHbStratoInbox(summaryTool,{},p,CONVERSATION,f.source,true)).toMatchObject({status:'not_authorized'})
   expect(f.calls).toEqual([])
+ })
+ it('global overview requires a real owned conversation and explicit CURRENT user request',async()=>{
+  const overview=fixture({confirmConversation:async()=>({projectId:null})})
+  expect(await readHbStratoInbox(summaryTool,{},p,CONVERSATION,overview.source,true)).toEqual({status:'not_authorized',sendingAllowed:false})
+  expect(overview.calls).toEqual([])
+  const requested=fixture({confirmConversation:async()=>({projectId:null})})
+  const result=await readHbStratoInbox(summaryTool,{},p,CONVERSATION,requested.source,true,true) as any
+  expect(result.status).toBe('ok')
+  expect(result.source).toBe('saved_strato_inbox')
+  expect(result.sendingAllowed).toBe(false)
+  expect(requested.calls).toEqual(['mailboxes','page'])
+  const missing=fixture({confirmConversation:async()=>null})
+  expect(await readHbStratoInbox(summaryTool,{},p,CONVERSATION,missing.source,true,true)).toEqual({status:'not_authorized',sendingAllowed:false})
+  expect(missing.calls).toEqual([])
+  const foreign=fixture({confirmConversation:async()=>({projectId:OTHER_PROJECT})})
+  expect(await readHbStratoInbox(summaryTool,{},p,CONVERSATION,foreign.source,true,true)).toMatchObject({status:'not_authorized'})
+  expect(foreign.calls).toEqual([])
+  const untrustedUser=fixture({confirmConversation:async()=>({projectId:null})})
+  expect(await readHbStratoInbox(summaryTool,{}, {...p,allowedProjectIds:[OTHER_PROJECT]},CONVERSATION,untrustedUser.source,true,true)).toMatchObject({status:'not_authorized'})
+  expect(untrustedUser.calls).toEqual([])
  })
  it('forbids model-defined mailbox, tenant, write or arbitrary tool operations',async()=>{
   const f=fixture()
@@ -148,7 +168,7 @@ describe('Atlas Handlarbörsen Strato read-only interim bridge',()=>{
 })
 
 describe('Atlas Strato adapter production call boundaries (mocked DB)',()=>{
- async function fakeDb(){
+ async function fakeDb(conversationProjectId:string|null=HB,exists=true){
   const filters:{table:string;field:string;value:string}[]=[]
   const calls:{name:string;args:Record<string,unknown>}[]=[]
   const db={
@@ -157,7 +177,7 @@ describe('Atlas Strato adapter production call boundaries (mocked DB)',()=>{
      select(_columns:string){return q},
      eq(field:string,value:string){filters.push({table,field,value});return q},
      async maybeSingle(){
-      if(table==='conversations')return {data:{project_id:HB},error:null}
+      if(table==='conversations')return {data:exists?{project_id:conversationProjectId}:null,error:null}
       return {data:null,error:'BAD_TABLE'}
      },
      async limit(_amount:number){
@@ -193,6 +213,27 @@ describe('Atlas Strato adapter production call boundaries (mocked DB)',()=>{
    p_input:{projectId:HB,mailboxId:MAILBOX,cursor:null},
   })
  })
+ it('authenticated overview reads are allowed only with explicit same-turn user intent',async()=>{
+  const {handleHbStratoInboxTool}=await import('@/lib/handlarborsen/distribution/atlas-strato-inbox')
+  const noIntent=await fakeDb(null)
+  expect(await handleHbStratoInboxTool(summaryTool,{},p,CONVERSATION,noIntent.db as never,true,false)).toEqual({status:'not_authorized',sendingAllowed:false})
+  expect(noIntent.calls).toEqual([])
+  expect(noIntent.filters.filter(f=>f.table==='sales_inbox_configs')).toEqual([])
+  const allowed=await fakeDb(null)
+  const result=await handleHbStratoInboxTool(summaryTool,{},p,CONVERSATION,allowed.db as never,true,true) as any
+  expect(result.status).toBe('ok')
+  expect(result.messageCountOnThisPage).toBe(1)
+  expect(result.sendingAllowed).toBe(false)
+  expect(allowed.calls.map(c=>c.name)).toEqual(['sales_inbox_read_inbox'])
+  expect(allowed.filters).toContainEqual({table:'conversations',field:'user_id',value:OWNER})
+  expect(allowed.filters).toContainEqual({table:'sales_inbox_configs',field:'owner_id',value:OWNER})
+  const missing=await fakeDb(null,false)
+  expect(await handleHbStratoInboxTool(summaryTool,{},p,CONVERSATION,missing.db as never,true,true)).toEqual({status:'not_authorized',sendingAllowed:false})
+  expect(missing.calls).toEqual([])
+  const another=await fakeDb(OTHER_PROJECT)
+  expect(await handleHbStratoInboxTool(summaryTool,{},p,CONVERSATION,another.db as never,true,true)).toEqual({status:'not_authorized',sendingAllowed:false})
+  expect(another.calls).toEqual([])
+ })
  it('does not issue service-role requests when feature off or outside project',async()=>{
   const {handleHbStratoInboxTool}=await import('@/lib/handlarborsen/distribution/atlas-strato-inbox')
   const f=await fakeDb()
@@ -214,7 +255,7 @@ describe('Atlas chat route registration fails closed',()=>{
   const src=readFileSync(resolve(__dirname,'../../app/api/chat/route.ts'),'utf8')
   expect(src).toContain('...(hbStratoInboxReadEnabled()?HB_STRATO_INBOX_TOOLS:[])')
   expect(src).toContain("(hbStratoInboxReadEnabled()?HB_STRATO_INBOX_GUIDE:'')")
-  expect(src).toContain('handleHbStratoInboxTool(name,input,{userId,allowedProjectIds},ownedConversationId,db)')
+  expect(src).toContain('handleHbStratoInboxTool(name,input,{userId,allowedProjectIds},ownedConversationId,db,hbStratoInboxReadEnabled(),allowGlobalFromExplicitUserIntent)')
   expect(src).not.toContain('...HB_STRATO_INBOX_TOOLS,')
  })
 })

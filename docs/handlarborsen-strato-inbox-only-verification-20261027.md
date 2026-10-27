@@ -53,3 +53,14 @@ Temporary, fully opt-in read-only handoff, added in this distribution branch:
 - For the **new 15-minute local watcher only**, disable `\\Omnira\\Omnira-Strato-InboxOnly-HB` using the Windows Task Scheduler or `Disable-ScheduledTask -TaskPath '\\Omnira\\' -TaskName 'Omnira-Strato-InboxOnly-HB'`. Do not turn on the old `Omnira-Sales-...` task.
 - For the **future Atlas read UI**, remove/unset `HB_STRATO_INBOX_READ_ENABLED`, returning to the strict default OFF; existing database and local Strato auth are left intact.
 - Do not delete or overwrite the local credential manager entries, saved mailbox notes, sender journal or existing accepted SMTP receipt.
+
+
+## Addendum — Global Atlas overview access incident, 2026-10-27 ~22:22 Europe/Stockholm
+
+Owner's authenticated Preview chat on Omnira **Översikt** returned that the Handlarbörsen Strato inbox was not authorized. Read-only production metadata verified an actual recently updated conversation with `project_id IS NULL` at the exact screenshot time, and that conversation's owner is also the verified Handlarbörsen project/inbox owner. The inbox-only local sync remained healthy; this was an **over-restrictive conversation scope**, not failed IMAP credentials.
+
+Fix in isolated branch: `atlas-strato-inbox.ts` now distinguishes a real owner-owned global conversation with `project_id=null` from a missing/foreign conversation. It permits a global owner request ONLY when the current authenticated user turn explicitly asks to read the Handlarbörsen/Strato inbox; the model cannot create this permission through tool inputs. Routing passes that verified read intent as a server-only argument. Real Handlarbörsen-bound conversations retain the existing behaviour. Conversations bound to any other project still fail closed, even when the operator owns that other project.
+
+Access gates continue to include: enabled Preview-only feature flag, owner-authenticated stored conversation, verified allowed Handlarbörsen project ID, exact existing owner-scoped mailbox row, owner-checked existing read-only SQL RPCs, no implicit body-text selection, no send/reply/publish operations.
+
+Pre-push local verification: **87/87 targeted Vitest and Atlas chat regression tests passed**, plus bounded TS compile including the chat route and new atlas bridge. No private message bodies were copied into test fixtures or Git logs. This change requires a new **exact-head** GitHub CI and Preview build and another real authenticated overview retest. Production remains disabled, PR must stay DRAFT until that is completed.

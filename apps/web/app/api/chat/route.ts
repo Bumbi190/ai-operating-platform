@@ -1160,7 +1160,7 @@ export async function POST(request: Request) {
 
             let result: unknown
             try {
-              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds, toolUse.id, await resolveOwnedConversationId(), verifiedBuildContext, voice||inputSource==='voice'?'voice':'text',studioContext?.projectId??null,{sessionDb:supabase,sameOrigin:assertSameOrigin(request)===null},notionReadOnlyTurn)
+              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds, toolUse.id, await resolveOwnedConversationId(), verifiedBuildContext, voice||inputSource==='voice'?'voice':'text',studioContext?.projectId??null,{sessionDb:supabase,sameOrigin:assertSameOrigin(request)===null},notionReadOnlyTurn,stratoInboxReadIntent)
             } catch (err) {
               result = { error: err instanceof Error ? err.message : 'Okänt fel' }
             }
@@ -1323,6 +1323,7 @@ async function executeTool(
   studioProjectId:string|null=null,
   calendarContext?:{sessionDb:CalendarDb;sameOrigin:boolean},
   notionReadOnlyTurn = false,
+  allowGlobalFromExplicitUserIntent=false,
 ): Promise<unknown> {
   if (studioProjectId && !STUDIO_TOOL_NAMES.has(name)) {
     return { error: 'Verktyget är inte tillgängligt i byggstudion.', denied: 'studio_tool_not_allowed' }
@@ -1371,7 +1372,7 @@ async function executeTool(
     return handleSocialContentTool(name,input,{userId,allowedProjectIds},ownedConversationId,db)
   }
   if (HB_STRATO_INBOX_TOOL_NAMES.some(tool=>tool===name)) {
-    return handleHbStratoInboxTool(name,input,{userId,allowedProjectIds},ownedConversationId,db)
+    return handleHbStratoInboxTool(name,input,{userId,allowedProjectIds},ownedConversationId,db,hbStratoInboxReadEnabled(),allowGlobalFromExplicitUserIntent)
   }
 
   if (SOCIAL_LAUNCH_TOOL_NAMES.includes(name)) {

@@ -29,6 +29,7 @@ export default async function LeadFinderPage({ params, searchParams }: {
   let importPreviewEnabled = false
   let importWriteEnabled = false
   let researchEnabled = false
+  let researchExtractEnabled = false
   const localFlag = process.env.NODE_ENV === 'development' && process.platform === 'win32' &&
     process.env.HB_LEADFINDER_LOCAL_REVIEW_ENABLED === 'true'
   const importFlag = process.env.HB_LEADFINDER_IMPORT_PREVIEW_ENABLED === 'true'
@@ -51,6 +52,7 @@ export default async function LeadFinderPage({ params, searchParams }: {
         importWriteEnabled = importFlag && process.env.HB_LEADFINDER_IMPORT_WRITE_ENABLED === 'true'
         researchEnabled = importFlag && process.env.VERCEL_ENV !== 'production' && process.env.HB_LEADFINDER_RESEARCH_ENABLED === 'true' &&
           !!process.env.TAVILY_API_KEY?.trim()
+        researchExtractEnabled = researchEnabled && process.env.HB_LEADFINDER_EXTRACT_ENABLED === 'true'
       }
     }
   }
@@ -71,5 +73,6 @@ export default async function LeadFinderPage({ params, searchParams }: {
     importPreviewEnabled={importPreviewEnabled}
     importWriteEnabled={importWriteEnabled}
     researchEnabled={researchEnabled}
+    researchExtractEnabled={researchExtractEnabled}
   />
 }

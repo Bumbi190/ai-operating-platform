@@ -102,3 +102,19 @@
 .researchList li { padding: .6rem .7rem; border-bottom: 1px solid rgba(125, 189, 203, .12); overflow-wrap: anywhere; }
 .researchList li strong { display: block; font-weight: 650; }
 .researchList li small { display: block; margin: .15rem 0 .35rem; font-size: .72rem; color: var(--omnira-text-2, #b5c9d6); }
+
+/* Public general-company contacts only, proposed after source-based verification.
+   No mailto/tel actions or authorization to contact. */
+.researchContact {
+  margin: .65rem 0;
+  padding: .8rem;
+  background: rgba(21, 71, 81, .19);
+  border: 1px solid rgba(111, 205, 196, .2);
+  border-radius: 10px;
+}
+.researchContact strong { display:block; font-size: .83rem; font-weight: 650; }
+.researchContact small { display:block; margin-top: .3rem; }
+.researchContact p { margin: .4rem 0 0; overflow-wrap:anywhere; font-size: .8rem; }
+.researchContact code { font-size: .78rem; color: #bde4ea; overflow-wrap: anywhere; }
+.researchContact a { color: #78e5e9; text-decoration: underline; }
+.researchContact a:focus-visible { outline: 2px solid var(--omnira-cyan, #77e7ee); outline-offset: 3px; }

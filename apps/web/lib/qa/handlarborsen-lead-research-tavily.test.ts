@@ -342,6 +342,22 @@ describe('research route: every gate is closed before a single search credit is 
     expect(res.headers.get('cache-control')).toBe('private, no-store')
   })
 
+  it('requires separate human confirmation for optional billable site extracts before any search', async () => {
+    const h = harness({ env: {
+      HB_LEADFINDER_IMPORT_PREVIEW_ENABLED: 'true',
+      HB_LEADFINDER_RESEARCH_ENABLED: 'true',
+      HB_LEADFINDER_EXTRACT_ENABLED: 'true',
+      TAVILY_API_KEY: KEY,
+    } })
+    const old = await leadFinderResearchApi(req(goodBody()), h.deps)
+    expect(old.status).toBe(400)
+    expect(h.getAdapter).not.toHaveBeenCalled()
+    expect(h.fetchImpl).not.toHaveBeenCalled()
+    const newer = goodBody({ confirmation: 'UNDERSÖK 5 FÖRETAG OCH GRANSKA WEBBSIDOR' })
+    const accepted = await leadFinderResearchApi(req(newer), h.deps)
+    expect(accepted.status).toBe(200)
+    expect((await accepted.json()).sourceMode).toBe('search_and_page_extract')
+  })
   it('runs exactly five basic searches and returns sanitized, blocked, cited results', async () => {
     const h = harness()
     const res = await leadFinderResearchApi(req(goodBody()), h.deps)

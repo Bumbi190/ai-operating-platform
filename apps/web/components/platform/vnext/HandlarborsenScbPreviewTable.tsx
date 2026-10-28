@@ -133,7 +133,6 @@ export function HandlarborsenScbPreviewTable({ review, researched = false }: { r
         </nav>
       ) : null}
       <p className={styles.reviewFootnote}>Företagens uppgifter visas bara i den här tillfälliga förhandsvisningen. Ingen knapp godkänner, importerar eller skickar mejl.</p>
-      <AtlasResearchQueue review={review} researched={researched} />
     </section>
   )
 }

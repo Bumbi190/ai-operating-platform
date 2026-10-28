@@ -23,6 +23,7 @@ export interface LeadFinderProps {
   importPreviewEnabled?: boolean
   importWriteEnabled?: boolean
   researchEnabled?: boolean
+  researchExtractEnabled?: boolean
 }
 
 const localFilterLabels: Record<LocalReviewFilter, string> = {
@@ -117,7 +118,7 @@ function LocalReviewSection({ state, search, filter }: { state: LocalReviewState
 }
 
 /** Pure presentation: no actions, email sends, data reads or test fixtures. */
-export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search, filter, localReview = { status: 'disabled' }, localSearch = '', localFilter = 'all', importPreviewEnabled = false, importWriteEnabled = false, researchEnabled = false }: LeadFinderProps) {
+export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search, filter, localReview = { status: 'disabled' }, localSearch = '', localFilter = 'all', importPreviewEnabled = false, importWriteEnabled = false, researchEnabled = false, researchExtractEnabled = false }: LeadFinderProps) {
   const rows = saved.status === 'ready' ? filterCandidateViews(saved.candidates, search, filter) : []
   const total = saved.status === 'ready' ? saved.candidates.length.toString() : '—'
   const reviewCount = saved.status === 'ready'
@@ -183,7 +184,7 @@ export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search,
       </div>
 
       <LocalReviewSection state={localReview} search={localSearch} filter={localFilter} />
-      {importPreviewEnabled ? <HandlarborsenScbImportControl writeEnabled={importWriteEnabled} researchEnabled={researchEnabled} /> : null}
+      {importPreviewEnabled ? <HandlarborsenScbImportControl writeEnabled={importWriteEnabled} researchEnabled={researchEnabled} extractEnabled={researchExtractEnabled} /> : null}
 
       <section className={styles.panel} aria-labelledby="hb-leads-results">
         <div className={styles.sectionHeader}>

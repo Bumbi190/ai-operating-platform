@@ -137,6 +137,16 @@ export function buildResearchQueue(review: LocalReview, limit: number = LEAD_RES
   const groupCount = new Map<string, number>()
   const sniCount = new Map<string, number>()
   const codesOf = (r: LocalReviewRow) => r.sni.split(';')
+  // NAME hints are only used to order scarce RESEARCH CREDITS. They never
+  // determine suitability, eliminate a company or grant outreach permission.
+  // Example: an "Inkasso" name goes later than a similarly situated "Bilhandel"
+  // name, but can still be researched if later evidence merits it.
+  const researchNameHint = (r: LocalReviewRow) => {
+    const name = fold(r.name)
+    if (/\b(inkasso|kapitalinvest|factoring|kredit|finans|investment|holding)\b/.test(name)) return 2
+    if (/\b(bil|bilhandel|bilhandlare|bilar|bilcenter|fordonscenter|motor|motors|cars|automotive|auto|autohub|bilgruppen)\b/.test(name)) return 0
+    return 1
+  }
   while (picked.length < max && pool.length > 0) {
     let bestIndex = 0
     let best: number[] | null = null
@@ -146,9 +156,12 @@ export function buildResearchQueue(review: LocalReview, limit: number = LEAD_RES
         group ? groupCount.get(group) ?? 0 : 0,
         cityCount.get(fold(r.city)) ?? 0,
         codesOf(r).reduce((n, c) => n + (sniCount.get(c) ?? 0), 0),
+        researchNameHint(r),
       ]
       if (best === null || score[0] < best[0] ||
-        (score[0] === best[0] && (score[1] < best[1] || (score[1] === best[1] && score[2] < best[2])))) {
+        (score[0] === best[0] && (score[1] < best[1] ||
+          (score[1] === best[1] && (score[2] < best[2] ||
+            (score[2] === best[2] && score[3] < best[3])))))) {
         best = score; bestIndex = i
       }
     })

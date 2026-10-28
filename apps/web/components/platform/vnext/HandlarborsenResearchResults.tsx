@@ -2,12 +2,62 @@ import React from 'react'
 import { BUSINESS_INDICATORS, parseSafePublicUrl, type BusinessIndicator } from '@/lib/handlarborsen/lead-finder/lead-research'
 import styles from './HandlarborsenScbImportControl.module.css'
 
+export interface GeneralContactSuggestion {
+  email: { value: string; sourceUrl: string } | null
+  switchboard: { value: string; sourceUrl: string } | null
+}
+
+/** Generic only: no mailbox with an employee's name and no arbitrary numbers. */
+function parseContactSuggestion(
+  raw: unknown, officialSite: unknown, classification: unknown, identityVerified: unknown, sourceMode: unknown,
+): GeneralContactSuggestion | null {
+  if (sourceMode !== 'search_and_page_extract' ||
+    classification !== 'DEALER_EVIDENCE' || identityVerified !== true ||
+    !raw || typeof raw !== 'object') return null
+  const site = parseSafePublicUrl(officialSite)
+  if (!site) return null
+  const rec = raw as Record<string, unknown>
+  if (rec.status !== 'NEEDS_MANUAL_CONTACT_CHECK' ||
+      rec.contactability !== 'BLOCKED_PENDING_VERIFICATION') return null
+  const host = site.host.replace(/^www\./, '')
+  const sameDomain = (url: unknown) => {
+    const parsed = parseSafePublicUrl(url)
+    if (!parsed) return null
+    const sourceHost = parsed.host.replace(/^www\./, '')
+    return sourceHost === host || sourceHost.endsWith('.' + host) ? parsed : null
+  }
+  let email: GeneralContactSuggestion['email'] = null
+  const rawEmail = rec.generalBusinessEmail
+  if (rawEmail && typeof rawEmail === 'object') {
+    const x = rawEmail as Record<string, unknown>
+    const value = str(x.value, 110)?.toLowerCase()
+    const source = sameDomain(x.sourceUrl)
+    const m = value?.match(/^(info|kontakt|contact|kundservice|sales|foretag|service|order|support)@([a-z0-9-]+(?:\.[a-z0-9-]+)+)$/)
+    if (m && source && (m[2] === host || host.endsWith('.' + m[2])))
+      email = { value: value!, sourceUrl: source.href }
+  }
+  let switchboard: GeneralContactSuggestion['switchboard'] = null
+  const rawPhone = rec.switchboardPhone
+  if (rawPhone && typeof rawPhone === 'object') {
+    const x = rawPhone as Record<string, unknown>
+    const value = str(x.value, 22)
+    const source = sameDomain(x.sourceUrl)
+    const digits = value?.replace(/\D/g, '') ?? ''
+    if (value && source && /^0[0-9\s()-]{7,20}$/.test(value) &&
+      digits.length >= 8 && digits.length <= 12 &&
+      !/^07/.test(digits) && !/^467/.test(digits))
+      switchboard = { value, sourceUrl: source.href }
+  }
+  return email || switchboard ? { email, switchboard } : null
+}
+
 export interface ResearchView {
   orgnr: string
   companyName: string
   city: string
   classification: 'DEALER_EVIDENCE' | 'OUT_OF_SCOPE_EVIDENCE' | 'NEEDS_FURTHER_RESEARCH'
   reasons: string[]
+  contacts: GeneralContactSuggestion | null
   evidence: { sourceUrl: string; sourceKind: string; observedOn: string; excerpt: string; indicators: BusinessIndicator[] }[]
 }
 
@@ -56,6 +106,7 @@ export function parseResearchResponse(data: unknown): ResearchView[] | null {
       companyName: str(r.companyName, 120) ?? 'Okänt företag',
       city: str(r.city, 60) ?? '',
       reasons: Array.isArray(r.reasons) ? r.reasons.filter((x): x is string => typeof x === 'string' && x.length <= 80).slice(0, 8) : [],
+      contacts: parseContactSuggestion(r.contactSuggestion, r.officialSite, r.classification, r.identityVerified, d.sourceMode),
     })
   }
   return out
@@ -76,6 +127,18 @@ export function HandlarborsenResearchResults({ results }: { results: ResearchVie
           {r.evidence.some(e => e.indicators.some(i => ['financial_or_collection_services','wheelchairs_or_mobility_aids','unrelated_products'].includes(i))) ?
             <span className={styles.reviewTag}>Sökutdrag nämner annan verksamhet – ej verifierat</span> : null}
           <span className={styles.reviewTag} data-tone="warning">Ej kontaktbar</span>
+          {r.contacts ? <div className={styles.researchContact}>
+            <strong>Allmän företagskontakt – kräver manuell kontroll</strong>
+            <small>Endast offentligt angivna växel-/funktionskontakter från verifierad källsida. Ingen kontaktbehörighet.</small>
+            {r.contacts.email ? <p>
+              Allmän e-post: <code>{r.contacts.email.value}</code>{' '}
+              <a href={r.contacts.email.sourceUrl} target="_blank" rel="noopener noreferrer nofollow">Källsida</a>
+            </p> : null}
+            {r.contacts.switchboard ? <p>
+              Företagsväxel: <code>{r.contacts.switchboard.value}</code>{' '}
+              <a href={r.contacts.switchboard.sourceUrl} target="_blank" rel="noopener noreferrer nofollow">Källsida</a>
+            </p> : null}
+          </div> : null}
           {r.evidence.length > 0 ? <ul className={styles.researchList}>
             {r.evidence.map(e => <li key={e.sourceUrl}>
               <small>{kindLabel[e.sourceKind] ?? 'Källa'} · {e.observedOn}</small>

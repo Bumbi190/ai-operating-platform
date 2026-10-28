@@ -11,7 +11,7 @@ import {
   type ResearchJob,
 } from '@/lib/handlarborsen/lead-finder/lead-research'
 import { runLeadResearch } from '@/lib/handlarborsen/lead-finder/lead-research-worker'
-import { HandlarborsenScbPreviewTable } from '@/components/platform/vnext/HandlarborsenScbPreviewTable'
+import { AtlasResearchQueue, HandlarborsenScbPreviewTable } from '@/components/platform/vnext/HandlarborsenScbPreviewTable'
 
 const orgnr = (i: number) => withCheckDigit('556700' + String(i).padStart(3,'0'))
 function reviewFixture(): LocalReview {
@@ -64,6 +64,23 @@ describe('Atlas Lead Research Worker v1: research is NOT contact authorization',
       {orgnr:orgnr(20),reason:'prior_contact'},
       {orgnr:orgnr(83),reason:'inactive_per_scb'},
     ]))
+  })
+  it('uses cautious name hints to spend the FIRST research credit on a likelier dealer, not inkasso',()=>{
+    const review=reviewFixture()
+    review.rows[0].name='AKTIEBOLAGET INKASSO'
+    review.rows[0].groupHypothesis=null
+    review.rows[1].name='Neutralt Testbolag AB'
+    review.rows[1].groupHypothesis=null
+    review.rows[6].name='Syntetisk Bilhandel AB'
+    review.rows[6].city=review.rows[0].city
+    review.rows[6].sni=review.rows[0].sni
+    const result=buildResearchQueue(review,5)
+    expect(result.status).toBe('ready')
+    if(result.status!=='ready')return
+    expect(result.eligible).toBe(81) // no name-based exclusion or made-up business status
+    expect(result.jobs[0].orgnr).toBe(review.rows[6].orgnr)
+    expect(result.jobs.some(j=>j.legalName==='AKTIEBOLAGET INKASSO')).toBe(false)
+    expect(result.skipped.some(x=>x.orgnr===review.rows[0].orgnr)).toBe(false)
   })
   it('caps research at max ten requests and fails closed for an invalid or changed source',()=>{
     expect(normalizeResearchLimit(-1)).toBe(0)
@@ -182,19 +199,25 @@ describe('Atlas Lead Research Worker v1: research is NOT contact authorization',
     }
   })
   it('prepares only five visible research requests; no fake contact or action button',()=>{
-    const html=renderToStaticMarkup(React.createElement(HandlarborsenScbPreviewTable,{review:verified}))
+    const html=renderToStaticMarkup(React.createElement(AtlasResearchQueue,{review:verified}))
     expect(html).toContain('Atlas forskningskö')
     expect(html).toContain('Research ej körd')
     expect(html).toContain('5 företag')
     expect(html).not.toMatch(/mailto:|tel:|Skicka mejl|Godkänn för utskick/)
   })
   it('updates the research queue status only after a completed owner review run', () => {
-    const before=renderToStaticMarkup(React.createElement(HandlarborsenScbPreviewTable,{review:verified}))
-    const after=renderToStaticMarkup(React.createElement(HandlarborsenScbPreviewTable,{review:verified,researched:true}))
+    const before=renderToStaticMarkup(React.createElement(AtlasResearchQueue,{review:verified}))
+    const after=renderToStaticMarkup(React.createElement(AtlasResearchQueue,{review:verified,researched:true}))
     expect(before).toContain('Research ej körd')
     expect(after).toContain('Research körd – källgranska')
     expect(after).not.toContain('Research ej körd')
-    expect(after).toContain('Ingen utskicksbehörighet')
+    expect(after).toContain('Ej kontaktbar')
+  })
+  it('puts the research queue and the manual search control ABOVE the long company table',()=>{
+    const owner = readFileSync(fileURLToPath(new URL('../../components/platform/vnext/HandlarborsenScbImportControl.tsx',import.meta.url)),'utf8')
+    expect(owner.indexOf('<AtlasResearchQueue')).toBeGreaterThan(0)
+    expect(owner.indexOf('<AtlasResearchQueue')).toBeLessThan(owner.indexOf('<HandlarborsenScbPreviewTable'))
+    expect(owner.indexOf('researchEnabled && preview && review')).toBeLessThan(owner.indexOf('<HandlarborsenScbPreviewTable'))
   })
   it('contains no Node or outbound search dependency in the browser-safe core',()=>{
     const source=readFileSync(fileURLToPath(new URL('../handlarborsen/lead-finder/lead-research.ts',import.meta.url)),'utf8')

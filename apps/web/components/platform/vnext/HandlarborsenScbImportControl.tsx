@@ -2,7 +2,7 @@
 
 import React, { useRef, useState } from 'react'
 import { buildLocalReview, type LocalReview } from '@/lib/handlarborsen/lead-finder/local-review'
-import { HandlarborsenScbPreviewTable } from './HandlarborsenScbPreviewTable'
+import { AtlasResearchQueue, HandlarborsenScbPreviewTable } from './HandlarborsenScbPreviewTable'
 import { HandlarborsenResearchResults, parseResearchResponse, type ResearchView } from './HandlarborsenResearchResults'
 import styles from './HandlarborsenScbImportControl.module.css'
 
@@ -25,6 +25,7 @@ const CONFIRMATION = 'IMPORTERA 89 SOM EJ KONTAKTBARA'
 const MAX_BYTES = 150_000
 const RESEARCH_ENDPOINT = '/api/atlas/handlarborsen/lead-finder/research'
 const RESEARCH_CONFIRMATION = 'UNDERSÖK 5 FÖRETAG'
+const RESEARCH_EXTRACT_CONFIRMATION = 'UNDERSÖK 5 FÖRETAG OCH GRANSKA WEBBSIDOR'
 
 function errorLabel(code: string): string {
   switch (code) {
@@ -44,7 +45,7 @@ function errorLabel(code: string): string {
   }
 }
 
-export function HandlarborsenScbImportControl({ writeEnabled = false, researchEnabled = false }: { writeEnabled?: boolean; researchEnabled?: boolean }) {
+export function HandlarborsenScbImportControl({ writeEnabled = false, researchEnabled = false, extractEnabled = false }: { writeEnabled?: boolean; researchEnabled?: boolean; extractEnabled?: boolean }) {
   const [csvFile, setCsvFile] = useState<File | null>(null)
   const [summaryFile, setSummaryFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<PreviewCounts | null>(null)
@@ -136,13 +137,13 @@ export function HandlarborsenScbImportControl({ writeEnabled = false, researchEn
   async function runResearch() {
     if (!researchEnabled || !preview || !source.current || busy || researchAttempted) return
     const { csv, summary } = source.current
-    const body = JSON.stringify({ csv, summary, digest: preview.digest, confirmation: RESEARCH_CONFIRMATION })
+    const body = JSON.stringify({ csv, summary, digest: preview.digest, confirmation: extractEnabled ? RESEARCH_EXTRACT_CONFIRMATION : RESEARCH_CONFIRMATION })
     setConfirmingResearch(false)
     setResearchResults(null)
     setResearchAttempted(true) // one attempt per verified upload, even if the network fails
     if (new Blob([body]).size > MAX_BYTES) { setStatus(errorLabel('body_too_large')); return }
     setBusy(true)
-    setStatus('Söker… högst 5 sökningar körs.')
+    setStatus(extractEnabled ? 'Undersöker… högst 5 grundsökningar och 5 separata sidkontroller.' : 'Söker… högst 5 sökningar körs.')
     try {
       // One explicit click = at most five basic searches. Nothing is stored or sent.
       const response = await fetch(RESEARCH_ENDPOINT, {
@@ -209,16 +210,18 @@ export function HandlarborsenScbImportControl({ writeEnabled = false, researchEn
         <code>{preview.digest}</code>
       </div> : null}
 
-      {preview && review ? <HandlarborsenScbPreviewTable review={review} researched={researchResults !== null} /> : null}
+      {preview && review ? <AtlasResearchQueue review={review} researched={researchResults !== null} /> : null}
 
       {researchEnabled && preview && review ? <div className={styles.researchResults}>
         <div className={styles.researchActions}>
           {!confirmingResearch && !researchAttempted ? <button type="button" disabled={busy} onClick={() => setConfirmingResearch(true)}>
-            Undersök 5 företag (max 5 sökkrediter)
+            {extractEnabled ? 'Undersök 5 företag och granska webbplatser' : 'Undersök 5 företag (max 5 sökkrediter)'}
           </button> : null}
         </div>
         {confirmingResearch ? <div role="alert">
-          <p>Detta skickar högst 5 webbsökningar till Tavily och förbrukar högst 5 sökkrediter. Inget sparas och inget företag godkänns för kontakt.</p>
+          <p>{extractEnabled
+            ? 'Detta skickar högst 5 grundsökningar och upp till 5 extra sidkontroller till Tavily. De kan förbruka fler krediter än enbart sökning. Ingen kontakt får godkännas och inget sparas.'
+            : 'Detta skickar högst 5 webbsökningar till Tavily och förbrukar högst 5 sökkrediter. Inget sparas och inget företag godkänns för kontakt.'}</p>
           <div className={styles.researchActions}>
             <button type="button" disabled={busy} onClick={runResearch}>Bekräfta och sök</button>
             <button type="button" data-variant="secondary" disabled={busy} onClick={() => setConfirmingResearch(false)}>Avbryt</button>
@@ -227,6 +230,8 @@ export function HandlarborsenScbImportControl({ writeEnabled = false, researchEn
         {researchAttempted && !researchResults ? <p>Den här omgången är försökt. För att starta en ny sökning behöver du förhandsgranska filerna igen. Det förhindrar oavsiktliga upprepade API-anrop.</p> : null}
         {researchResults ? <HandlarborsenResearchResults results={researchResults} /> : null}
       </div> : null}
+
+      {preview && review ? <HandlarborsenScbPreviewTable review={review} researched={researchResults !== null} /> : null}
 
       {writeEnabled && preview && !committed ?<div className={styles.confirm}>
         <p>Även en framtida import lagrar endast blockerade granskningsposter. Ingen utskicksknapp aktiveras.</p>

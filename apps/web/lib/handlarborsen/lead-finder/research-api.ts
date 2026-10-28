@@ -11,6 +11,8 @@ import { runLeadResearch, WORKER_MAX_JOBS, type SearchAdapter } from './lead-res
 export const RESEARCH_FLAG = 'HB_LEADFINDER_RESEARCH_ENABLED'
 export const RESEARCH_KEY_ENV = 'TAVILY_API_KEY'
 export const RESEARCH_CONFIRMATION = 'UNDERSÖK 5 FÖRETAG' as const
+export const RESEARCH_EXTRACT_FLAG = 'HB_LEADFINDER_EXTRACT_ENABLED'
+export const RESEARCH_EXTRACT_CONFIRMATION = 'UNDERSÖK 5 FÖRETAG OCH GRANSKA WEBBSIDOR' as const
 
 const headers = { 'cache-control': 'private, no-store' }
 const respond = (status: number, value: unknown) => Response.json(value, { status, headers })
@@ -32,7 +34,7 @@ const failureStatus: Record<ImportIntakeFailure, number> = {
 }
 const BODY_KEYS = ['csv', 'summary', 'digest', 'confirmation']
 
-function parseBody(text: string): { csv: string; summary: string; digest: string } | 'unknown_fields' | 'confirmation_invalid' | 'body_invalid' {
+function parseBody(text: string, expectedConfirmation: string): { csv: string; summary: string; digest: string } | 'unknown_fields' | 'confirmation_invalid' | 'body_invalid' {
   let body: unknown
   try { body = JSON.parse(text) } catch { return 'body_invalid' }
   if (body === null || typeof body !== 'object' || Array.isArray(body)) return 'body_invalid'
@@ -42,7 +44,7 @@ function parseBody(text: string): { csv: string; summary: string; digest: string
   if (!BODY_KEYS.every(k => keys.includes(k))) return 'body_invalid'
   if (typeof rec.csv !== 'string' || typeof rec.summary !== 'string' || !rec.csv || !rec.summary) return 'body_invalid'
   if (typeof rec.digest !== 'string' || !/^[0-9a-f]{64}$/.test(rec.digest)) return 'body_invalid'
-  if (typeof rec.confirmation !== 'string' || !constantTimeEqual(rec.confirmation, RESEARCH_CONFIRMATION)) return 'confirmation_invalid'
+  if (typeof rec.confirmation !== 'string' || !constantTimeEqual(rec.confirmation, expectedConfirmation)) return 'confirmation_invalid'
   return { csv: rec.csv, summary: rec.summary, digest: rec.digest }
 }
 
@@ -85,7 +87,8 @@ export async function leadFinderResearchApi(request: Request, deps: LeadFinderRe
 
   const read = await readBoundedImportBody(request)
   if (!read.ok) return respond(read.status, { status: read.status === 413 ? 'body_too_large' : 'body_invalid' })
-  const parsed = parseBody(read.text)
+  const verifiedPagesEnabled = deps.env[RESEARCH_EXTRACT_FLAG] === 'true'
+  const parsed = parseBody(read.text, verifiedPagesEnabled ? RESEARCH_EXTRACT_CONFIRMATION : RESEARCH_CONFIRMATION)
   if (typeof parsed === 'string') return respond(failureStatus[parsed], { status: parsed })
 
   // The digest the owner saw in the preview must match the exact files sent now.
@@ -109,6 +112,7 @@ export async function leadFinderResearchApi(request: Request, deps: LeadFinderRe
     status: 'researched',
     calls: run.calls,
     preliminary: true,
+    sourceMode: verifiedPagesEnabled ? 'search_and_page_extract' : 'search_snippets_only',
     contactability: 'BLOCKED_PENDING_VERIFICATION',
     outreachReady: false,
     results: run.results.map(r => ({
@@ -123,6 +127,12 @@ export async function leadFinderResearchApi(request: Request, deps: LeadFinderRe
         sourceUrl: e.sourceUrl, sourceKind: e.sourceKind, observedOn: e.observedOn,
         indicators: e.indicators, excerpt: e.excerpt,
       })),
+      // No search-result contacts. Only generic contacts explicitly seen on a
+      // validated official company page, for dealer evidence, pending review.
+      ...(verifiedPagesEnabled && r.classification === 'DEALER_EVIDENCE' &&
+        r.identityVerified && r.contactProposal
+        ? { contactSuggestion: r.contactProposal }
+        : {}),
       contactability: 'BLOCKED_PENDING_VERIFICATION',
       outreachReady: false,
     })),

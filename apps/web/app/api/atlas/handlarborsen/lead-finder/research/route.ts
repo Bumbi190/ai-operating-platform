@@ -3,6 +3,7 @@ import { HANDLARBORSEN_PROJECT_ID } from '@/lib/atlas/handlarborsen-test-data/co
 import { isHandlarborsenProject } from '@/lib/os/project-command-center'
 import { leadFinderResearchApi } from '@/lib/handlarborsen/lead-finder/research-api'
 import { makeTavilyResearchAdapter } from '@/lib/handlarborsen/lead-finder/tavily-research-adapter'
+import { makeTavilyVerifiedResearchAdapter } from '@/lib/handlarborsen/lead-finder/tavily-extract-research'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -33,6 +34,12 @@ export async function POST(request: Request) {
       }
     },
     isHandlarborsenProject,
-    getAdapter: () => makeTavilyResearchAdapter({ key: process.env.TAVILY_API_KEY, fetchImpl: fetch }),
+    getAdapter: () => process.env.HB_LEADFINDER_EXTRACT_ENABLED === 'true'
+      ? makeTavilyVerifiedResearchAdapter({
+          key: process.env.TAVILY_API_KEY,
+          fetchImpl: fetch,
+          extractApproved: true,
+        })
+      : makeTavilyResearchAdapter({ key: process.env.TAVILY_API_KEY, fetchImpl: fetch }),
   })
 }

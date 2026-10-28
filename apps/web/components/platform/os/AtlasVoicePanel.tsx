@@ -115,6 +115,13 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
         {s.micDevices.map(device => <option key={device.id} value={device.id}>{device.label}</option>)}
       </select>
       <MicrophoneCheckStatus store={micStore} active={micOn} />
+      <label className={styles.callAudioOption} htmlFor="atlas-headphones-barge-in">
+        <input type="checkbox" id="atlas-headphones-barge-in"
+          checked={s.playbackMode === 'headphones'}
+          onChange={e => s.setCallAudioMode(e.currentTarget.checked ? 'headphones' : 'speakers')} />
+        Jag använder hörlurar – låt mig avbryta Nova genom att börja prata
+      </label>
+      <p>Med högtalare blockeras tal under Novas svar för att hon inte ska lyssna på sin egen röst.</p>
     </details>
     <details className={styles.voiceSettings}>
       <summary>Byt röst</summary>

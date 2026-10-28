@@ -183,7 +183,7 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
       if (mounted.current && token === lifetime.current && audioToken === speechEpoch.current) speak().enqueue(text, voice)
     } catch { if (mounted.current && token === lifetime.current && audioToken === speechEpoch.current) setNotice('Klicka på provlyssna igen för att aktivera ljudet i webbläsaren.') }
   }
-  async function startMic() {
+  async function startMic(mode: 'speakers' | 'headphones' = playbackMode) {
     if (micRef.current || openingRef.current) return
     if (!enabled || !mounted.current) return
     openingRef.current = true
@@ -199,7 +199,7 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
       const streamTurn = streamingAvailable && inputMode === 'streaming'
       ? (await import('@/lib/atlas/voice-pilot/stream-client')).beginVoiceStream : undefined
       if (!currentMic()) return
-      const next = createPcmVoiceCapture({ pauseMs, playbackMode,
+      const next = createPcmVoiceCapture({ pauseMs, playbackMode: mode,
       endpoint: quietMs => { lastQuietMs.current = quietMs },
       onSignal: value => { if (currentMic()) micSignalStoreRef.current?.update(value) },
       listening: value => { if (currentMic()) setListening(value) },
@@ -324,6 +324,14 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
     micDevices, micDeviceId, opening, speaking, draft, reply, notice, sending, phase,
     active: mic || opening || outputBusy, sample,
     toggleMute: () => { if (micRef.current || openingRef.current) pauseMic(); else void startMic() },
+    setCallAudioMode: (mode: 'speakers' | 'headphones') => {
+      if (mode !== 'speakers' && mode !== 'headphones') return
+      if (mode === playbackMode) return
+      const wasActive = micRef.current || openingRef.current
+      pauseMic(); setPlaybackMode(mode)
+      // Use the explicit new mode: React state is not synchronous in this click.
+      if (wasActive) void startMic(mode)
+    },
     selectMicDevice: (id: string) => {
       if (id && !micDevices.some(device => device.id === id)) return
       const wasActive = micRef.current || openingRef.current

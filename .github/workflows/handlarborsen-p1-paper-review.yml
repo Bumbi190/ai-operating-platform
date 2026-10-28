@@ -1,0 +1,64 @@
+name: Handlarborsen P1 Paper Preview Safety
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/handlarborsen-p1-paper-review.yml'
+      - 'apps/web/components/platform/vnext/HandlarborsenWorkflowDrafts*'
+      - 'apps/web/components/platform/vnext/HandlarborsenOverview.tsx'
+      - 'apps/web/lib/atlas/project-analytics/handlarborsen-workflow-drafts.ts'
+      - 'apps/web/lib/qa/handlarborsen-workflow-drafts.test.ts'
+      - 'apps/web/lib/qa/handlarborsen-overview.test.ts'
+      - 'docs/HANDLARBORSEN_ATLAS_WORKFLOW_DRAFTS_P1.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: HB P1 paper-only contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: TypeScript
+        run: npm run typecheck --workspace=apps/web
+      - name: Run focused pure suites
+        working-directory: apps/web
+        run: |
+          npx --no vitest run \
+            lib/qa/handlarborsen-workflow-drafts.test.ts \
+            lib/qa/handlarborsen-overview.test.ts \
+            lib/qa/handlarborsen-insights.test.ts \
+            --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/hb-p1-review.json"
+      - name: Verify exact test suites and forbid skips
+        if: always()
+        run: |
+          node - "$RUNNER_TEMP/hb-p1-review.json" <<'NODE'
+          const fs = require('node:fs')
+          const path = process.argv[2]
+          if (!fs.existsSync(path)) throw Error('No verified Vitest JSON result')
+          const result = JSON.parse(fs.readFileSync(path, 'utf8'))
+          const required = [
+            'handlarborsen-workflow-drafts.test.ts',
+            'handlarborsen-overview.test.ts',
+            'handlarborsen-insights.test.ts'
+          ]
+          for (const name of required) {
+            const file = result.testResults?.find(item => String(item.name).replaceAll('\\', '/').endsWith('/' + name))
+            if (!file || !file.assertionResults?.length) throw Error(name + ': missing tests')
+            if (file.assertionResults.some(assertion => assertion.status !== 'passed')) throw Error(name + ': a test failed or was skipped')
+          }
+          if (result.numFailedTests || result.numFailedTestSuites ||
+              result.numPendingTests || result.numTodoTests) {
+            throw Error('Focused suites must pass without skipped/pending tests')
+          }
+          console.log('HB P1 focused tests present and all passed')
+          NODE

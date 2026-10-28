@@ -39,13 +39,19 @@ describe('Explicit Atlas Strato inbox READ request routing',()=>{
  })
  it('wires real inbox requests ahead of fast path and navigation',()=>{
   const source=readFileSync(resolve(__dirname,'../../app/api/chat/route.ts'),'utf8')
-  expect(source).toContain('const stratoInboxReadIntent = !studioContext && hbStratoInboxReadEnabled() && isHandlarborsenInboxReadIntent(lastUserText)')
-  expect(source).toContain('const fastPath = !isNotionKnowledgeIntent(lastUserText) && !stratoInboxReadIntent &&')
-  expect(source).toContain('notionReadOnlyTurn,stratoInboxReadIntent)')
+  expect(source).toContain('const stratoInboxReadIntent = !hbCompositeEvidenceIntent && !externalReferenceReadIntent')
+  expect(source).toContain('&& !hbSalesOverviewReadIntent && !hbReplyLifecycleReadIntent')
+  expect(source).toContain('&& !isNotionKnowledgeIntent(lastUserText) && hbStratoInboxReadEnabled()')
+  expect(source).toContain('&& isHandlarborsenInboxReadIntent(lastUserText)')
+  expect(source).toContain('const fastPath = !stratoInboxReadIntent && !hbCompositeEvidenceIntent')
+  expect(source).toContain('notionReadOnlyTurn,lastUserText,stratoInboxReadIntent)')
   expect(source).toContain('const navIntent = !stratoInboxReadIntent &&')
-  expect(source).toContain('const forceStratoReadFirstTurn = stratoInboxReadIntent && activeTools.some')
+  expect(source).toContain('const forceStratoReadFirstTurn = stratoInboxReadIntent')
+  expect(source).toContain('&& activeTools.some(tool => tool.name === HB_STRATO_INBOX_TOOL_NAMES[0])')
   expect(source).toContain("tool_choice: { type: 'tool' as const, name: HB_STRATO_INBOX_TOOL_NAMES[0] }")
   expect(source).toContain('...(hbStratoInboxReadEnabled()?HB_STRATO_INBOX_TOOLS:[])')
+  expect(source).toContain('stratoInboxReadIntent ? TOOLS.filter(tool => HB_STRATO_INBOX_TOOL_NAMES.some')
+  expect(source).toContain('!HB_STRATO_INBOX_TOOL_NAMES.some(stratoName => stratoName === tool.name)')
   // LinkedIn/Strato sales-specific instructions should not inflate the
   // short website-studio system prompt.
   expect(source).toContain('studioSystemPrompt(studioContext)+SOCIAL_LAUNCH_GUIDE+SOCIAL_CONTENT_GUIDE')

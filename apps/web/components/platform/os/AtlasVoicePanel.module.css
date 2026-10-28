@@ -55,6 +55,9 @@
 .voiceSettings { border-top: 1px solid #ffffff14; padding: 7px 13px 10px; color: #a6bacb; font-size: 12px; }
 .voiceSettings summary { cursor: pointer; width: max-content; }
 .voiceSettings label { display: block; margin: 8px 0 3px; }
+.voiceSettings .callAudioOption { display: flex; align-items: flex-start; gap: 8px; color: #c5f0e7; cursor: pointer; }
+.callAudioOption input { margin-top: 3px; flex-shrink: 0; accent-color: #49ddc7; }
+.voiceSettings p { margin: 7px 0; }
 .voiceSettings select { box-sizing: border-box; display: block; width: 100%; min-height: 40px; color: #eaf6ff;
   padding: 8px; background: #102333; border: 1px solid #ffffff30; border-radius: 8px; }
 .visuallyHidden { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden;

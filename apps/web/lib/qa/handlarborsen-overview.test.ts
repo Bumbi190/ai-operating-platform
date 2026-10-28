@@ -179,8 +179,11 @@ describe('rendered overview', () => {
   it('opts only this project into clearer KPI type in both data and no-data states', () => {
     expect(render(report([row()]))).toContain('data-prominent="true"')
     expect(render(report([]))).toContain('data-prominent="true"')
+    expect(render(report([]))).not.toContain('href="#hb-workflow-drafts"')
     const css = readFileSync(resolve(__dirname, '../../components/platform/vnext/KpiOverview.module.css'), 'utf8')
     expect(css).toContain(".overview[data-prominent='true']")
+    const paperCss = readFileSync(resolve(__dirname, '../../components/platform/vnext/HandlarborsenWorkflowDrafts.module.css'), 'utf8')
+    expect(paperCss).toContain('scroll-margin-top: 5rem')
   })
 
   it('leads with big numbers, shows Okänt for null, links the full report and includes the saved-data visuals', () => {
@@ -193,6 +196,9 @@ describe('rendered overview', () => {
     expect(html).toContain('id="hb-market-pulse"')
     expect(html).toContain('id="hb-executive-heading"')
     expect(html).toContain('Det viktigaste just nu')
+    expect(html).toContain('Visa arbetsflödesförslag')
+    expect(html).toContain('href="#hb-workflow-drafts"')
+    expect(html.indexOf('href="#hb-workflow-drafts"')).toBeLessThan(html.indexOf('id="hb-workflow-drafts"'))
     expect(html).toContain('Konkurrentbevakning')
     expect(html).toContain('href="/projects/handlarborsen/competitors"')
     expect(html.indexOf('id="hb-executive-heading"')).toBeLessThan(html.indexOf('id="hb-trend-companies"'))
@@ -245,6 +251,8 @@ describe('project page', () => {
       const overview = el.props.overview as ReactElement
       const markup = renderToStaticMarkup(React.cloneElement(overview, { now: NOW }))
       expect(markup).toContain('id="hb-atlas-evidence"')
+      expect(markup).toContain('id="hb-workflow-drafts"')
+      expect(markup).toContain('Förhandsutkast – inte sparade')
       expect(markup).toContain('handlarborsen-insights-1.0.0')
       expect(fetch).not.toHaveBeenCalled()
       expect(loadReport).toHaveBeenCalledTimes(1)
@@ -281,6 +289,7 @@ describe('project page', () => {
     expect(fallback.props.model).toBeDefined()
     expect(fallback.props.briefing).toBeUndefined()
     expect(renderToStaticMarkup(fallback.props.overview)).not.toContain('hb-atlas-evidence')
+    expect(renderToStaticMarkup(fallback.props.overview)).not.toContain('hb-workflow-drafts')
     expect(isValidElement(fallback.props.overview)).toBe(true)
     resolveReport({ status: 'ok', report: report([row()]) })
     const final = await (children.type as (p: unknown) => Promise<ReactElement>)(children.props)
@@ -333,6 +342,9 @@ describe('project page', () => {
     const el = await loaded(HB)
     const markup = renderToStaticMarkup(el.props.overview as ReactElement)
     expect(markup).not.toContain('hb-atlas-evidence')
+    expect(markup).toContain('hb-workflow-drafts')
+    expect(markup).not.toContain('data-paper-draft="review_company_status"')
+    expect(markup).not.toContain('data-paper-draft="check_bid_activity"')
     expect(markup).not.toContain('501')
     expect(loadReport).toHaveBeenCalledTimes(1)
   })

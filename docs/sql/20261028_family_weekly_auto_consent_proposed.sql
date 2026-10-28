@@ -38,6 +38,12 @@ begin
  if tg_op<>'INSERT' then
   raise exception 'WEEKLY_CONSENT_IMMUTABLE' using errcode='42501';
  end if;
+ -- Serialize a real owner revoke/enable with the weekly paid admission
+ -- and final review-only save. This session-level public advisory lock does
+ -- NOT require UPDATE rights on the project's row.
+ perform pg_catalog.pg_advisory_xact_lock(
+  pg_catalog.hashtextextended('family-weekly:'||new.project_id::text,0)
+ );
  new.created_at:=clock_timestamp();
  if new.action='enable' and
   (new.valid_until is null or new.valid_until<=new.created_at

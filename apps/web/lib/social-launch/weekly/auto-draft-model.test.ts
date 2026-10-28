@@ -30,10 +30,14 @@ const ctx=()=>({
  missing:[],
 })
 const base=()=>({
- projectId:FAMILY,ownerId:owner,now,context:ctx(),
+ projectId:FAMILY,ownerId:owner,conversationId:'55555555-5555-4555-8555-555555555555',now,context:ctx(),
  run:{kind:'RUN_BOUND' as const,context:'AUTONOMOUS' as const,runId,claimId},
  verifiedEnrollment:{eventId:1,status:'owner_verified' as const,projectId:FAMILY,ownerId:owner,
   permittedOperation:'family_weekly_caption_drafts' as const,validThrough:'2027-01-04T00:00:00Z'},
+ paidAttempt:{status:'admitted' as const,attemptId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  projectId:FAMILY,ownerId:owner,weekStart:'2027-01-04',
+  conversationId:'55555555-5555-4555-8555-555555555555',runId,claimId,eventId:1,
+  publicationAuthority:false as const},
 })
 const drafts=()=>keys.flatMap(slotKey=>['facebook','instagram'].map(channel=>({
  slotKey,channel,assetId:img,title:'En liten sagostund',
@@ -123,6 +127,21 @@ describe('Familje-Stunden weekly governed caption proposal boundary',()=>{
    const f=model()
    const r=await generateReviewOnlyWeeklyDrafts({...base(),...variation} as never,f.send)
    expect(r).toMatchObject({status:'blocked',modelCalls:0})
+   expect(f.send).not.toHaveBeenCalled()
+  }
+ })
+ it('never spends when the database has not admitted this exact week and run',async()=>{
+  for(const changed of [
+   {paidAttempt:null},
+   {paidAttempt:{...base().paidAttempt,eventId:2}},
+   {paidAttempt:{...base().paidAttempt,claimId:'11111111-1111-4111-8111-111111111111'}},
+   {paidAttempt:{...base().paidAttempt,conversationId:'11111111-1111-4111-8111-111111111111'}},
+   {paidAttempt:{...base().paidAttempt,status:'blocked'}},
+   {paidAttempt:{...base().paidAttempt,publicationAuthority:true}},
+  ]){
+   const f=model()
+   const result=await generateReviewOnlyWeeklyDrafts({...base(),...changed} as never,f.send)
+   expect(result).toMatchObject({status:'blocked',modelCalls:0,publicationAuthority:false})
    expect(f.send).not.toHaveBeenCalled()
   }
  })

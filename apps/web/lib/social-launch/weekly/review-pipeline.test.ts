@@ -10,6 +10,7 @@ const runId='77777777-7777-4777-8777-777777777777'
 const claimId='88888888-8888-4888-8888-888888888888'
 const img='99999999-9999-4999-8999-999999999999'
 const savedId='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+const admissionId='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
 const sha='b'.repeat(64),contextHash='c'.repeat(64)
 const now='2027-01-03T14:10:00Z'
 const slots=[
@@ -41,6 +42,10 @@ const generated=()=>slots.flatMap(s=>['facebook','instagram'].map(channel=>({
 })))
 function fixture(){
  const stages:string[]=[]
+ const admit=vi.fn(async(req:Record<string,unknown>):Promise<unknown>=>{
+  stages.push('admission')
+  return {...req,status:'admitted',attemptId:admissionId,publicationAuthority:false}
+ })
  const save=vi.fn(async(_p:unknown,i:unknown)=>{
   stages.push('save')
   return {preparationId:savedId,status:'editorial_review_required',
@@ -56,14 +61,20 @@ function fixture(){
   stages.push('context')
   return context()
  })
+ const noticeWriter={
+  currentProjectOwner:vi.fn(async()=>{stages.push('notice-owner');return true}),
+  insertOnce:vi.fn(async(_receipt:unknown)=>{stages.push('notice-insert')}),
+ }
  const runModel=vi.fn(async()=>{
   stages.push('model')
   return {content:JSON.stringify({drafts:generated()}),
    stopReason:'stop',authorityRefreshRequired:false,
    tokensIn:120,tokensOut:300,durationMs:100}
  })
- return {stages,save,getEnrollment,loadContext,runModel,
+ return {stages,admit,save,getEnrollment,loadContext,runModel,noticeWriter,
   ports:{
+   noticeWriter,
+   admitOnce:admit,saveEditorialAtomically:save,
    loadVerifiedEnrollment:getEnrollment,
    loadWeeklyContext:loadContext,
    saveForEditorialReview:save,
@@ -75,11 +86,11 @@ describe('Family weekly review pipeline: real controlled boundaries, no send',()
  it('saves through native review-only writer and returns notice only AFTER saving',async()=>{
   const f=fixture()
   const r=await prepareWeekForOwnerReview(input(),f.ports as never)
-  expect(r).toMatchObject({status:'review_ready',modelCalls:1,publicationAuthority:false,
+  expect(r).toMatchObject({status:'review_ready',noticeStored:true,modelCalls:1,publicationAuthority:false,
    preparationId:savedId,
    notice:{kind:'familje-stunden-weekly-editorial-review',
     weekStart:'2027-01-04',count:4}})
-  expect(f.stages).toEqual(['enrollment','context','model','enrollment','save'])
+  expect(f.stages).toEqual(['enrollment','context','admission','model','enrollment','save','notice-owner','notice-insert'])
   expect(f.save).toHaveBeenCalledTimes(1)
   const saved=f.save.mock.calls[0][1] as Record<string,unknown>
   expect(saved).toMatchObject({projectId:FAMILY,conversationId,
@@ -109,6 +120,19 @@ describe('Family weekly review pipeline: real controlled boundaries, no send',()
    expect(f.stages).toEqual([])
   }
  })
+ it('missing in-app notification never repeats a paid model call or loses saved editorial draft',async()=>{
+  const f=fixture()
+  f.noticeWriter.insertOnce.mockRejectedValueOnce(Error('IN_APP_NOTICE_DOWN'))
+  const r=await prepareWeekForOwnerReview(input(),f.ports as never)
+  expect(r).toMatchObject({
+   status:'review_ready',noticeStored:false,
+   preparationId:savedId,modelCalls:1,publicationAuthority:false,
+  })
+  expect(f.runModel).toHaveBeenCalledTimes(1)
+  expect(f.admit).toHaveBeenCalledTimes(1)
+  expect(f.save).toHaveBeenCalledTimes(1)
+  expect(f.noticeWriter.insertOnce).toHaveBeenCalledTimes(1)
+ })
  it('does not run early or on another weekday',async()=>{
   for(const date of ['2026-12-27T14:10:00Z','2027-01-04T14:10:00Z']){
    const f=fixture()
@@ -126,6 +150,49 @@ describe('Family weekly review pipeline: real controlled boundaries, no send',()
   expect(f.loadContext).toHaveBeenCalledTimes(1)
   expect(f.stages).toEqual(['enrollment'])
  })
+ it('never invokes a paid provider when durable once-only admission is missing',async()=>{
+  const f=fixture()
+  f.admit.mockResolvedValueOnce({status:'blocked'})
+  const r=await prepareWeekForOwnerReview(input(),f.ports as never)
+  expect(r).toMatchObject({status:'blocked',reason:'paid_attempt_not_authorized',modelCalls:0})
+  expect(f.admit).toHaveBeenCalledTimes(1)
+  expect(f.runModel).not.toHaveBeenCalled()
+  expect(f.save).not.toHaveBeenCalled()
+ })
+ it('does not consume an admission while known content/source evidence is incomplete',async()=>{
+  const f=fixture()
+  f.loadContext.mockResolvedValueOnce({...context(),missing:['account_unverified:instagram']} as never)
+  const r=await prepareWeekForOwnerReview(input(),f.ports as never)
+  expect(r).toMatchObject({status:'blocked',modelCalls:0})
+  expect(f.admit).not.toHaveBeenCalled()
+  expect(f.runModel).not.toHaveBeenCalled()
+ })
+ it('two overlapping workers cannot both generate once the admission ledger denies the second',async()=>{
+  const f=fixture()
+  let used=false
+  f.admit.mockImplementation(async(req:Record<string,unknown>)=>{
+   if(used)return {status:'blocked'}
+   used=true
+   return {...req,status:'admitted',attemptId:admissionId,publicationAuthority:false}
+  })
+  const outcomes=await Promise.all([
+   prepareWeekForOwnerReview(input(),f.ports as never),
+   prepareWeekForOwnerReview(input(),f.ports as never),
+  ])
+  expect(outcomes.map(r=>r.status).sort()).toEqual(['blocked','review_ready'])
+  expect(f.admit).toHaveBeenCalledTimes(2)
+  expect(f.runModel).toHaveBeenCalledTimes(1)
+  expect(f.save).toHaveBeenCalledTimes(1)
+ })
+ it('an atomic final DB save refusal never returns a fictional notification',async()=>{
+  const f=fixture()
+  f.save.mockRejectedValueOnce(Error('OWNER_REVOKED_WHILE_SAVING'))
+  const r=await prepareWeekForOwnerReview(input(),f.ports as never)
+  expect(r).toMatchObject({status:'blocked',reason:'editorial_save_unavailable',modelCalls:1})
+  expect(r).not.toHaveProperty('notice')
+  expect(f.runModel).toHaveBeenCalledTimes(1)
+  expect(f.save).toHaveBeenCalledTimes(1)
+ })
  it('will not save if owner consent was revoked during the billable model call',async()=>{
   const f=fixture()
   f.getEnrollment.mockResolvedValueOnce(consent())
@@ -134,7 +201,7 @@ describe('Family weekly review pipeline: real controlled boundaries, no send',()
   expect(r).toMatchObject({status:'blocked',reason:'owner_enrollment_revoked',modelCalls:1})
   expect(f.save).not.toHaveBeenCalled()
   expect(f.getEnrollment).toHaveBeenCalledTimes(2)
-  expect(f.stages).toEqual(['context','model'])
+  expect(f.stages).toEqual(['context','admission','model'])
  })
  it('checks real elapsed time after the model before saving, even if consent row did not change',async()=>{
   const f=fixture()
@@ -185,6 +252,7 @@ describe('Family weekly review pipeline: real controlled boundaries, no send',()
   f.runModel.mockImplementationOnce(async()=>{throw Error('SPEND_REFUSED')})
   await expect(prepareWeekForOwnerReview(input(),f.ports as never)).rejects.toThrow('SPEND_REFUSED')
   expect(f.runModel).toHaveBeenCalledTimes(1)
+  expect(f.admit).toHaveBeenCalledTimes(1)
   expect(f.save).not.toHaveBeenCalled()
  })
 })

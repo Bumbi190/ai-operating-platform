@@ -18,6 +18,7 @@ import {
  type WeeklyAutoEvidence,
 } from './auto-preparation'
 import type {WeeklyDraftInput} from './service'
+import {validatePaidAttemptReceipt,type PaidAttemptReceipt} from './paid-attempt'
 
 export const WEEKLY_REVIEW_MODEL='gpt-4o-mini' as const
 export const WEEKLY_REVIEW_OUTPUT_TOKEN_LIMIT=1800 as const
@@ -61,12 +62,15 @@ type ClaimedRun={
 export type WeeklyModelInvocation={
  projectId:string
  ownerId:string
+ conversationId:string
  now:string
  context:WeeklyAutoContext
  /** Obtained from the existing trusted claimed-run worker, never the model. */
  run:ClaimedRun
  /** Caller-provided source, NEVER a request-body boolean. */
  verifiedEnrollment:VerifiedWeeklyEnrollment|null
+ /** Actual DB-admitted once-per-week claim, consumed before a paid call. */
+ paidAttempt:PaidAttemptReceipt
 }
 export type WeeklyReviewDraftsResult=
  | {status:'blocked';reason:string;modelCalls:0|1;publicationAuthority:false}
@@ -180,13 +184,18 @@ export function parseWeeklyDraftResponse(input:{
 export async function generateReviewOnlyWeeklyDrafts(
  input:WeeklyModelInvocation,model:ModelPort=runStep
 ):Promise<WeeklyReviewDraftsResult>{
- const {projectId,ownerId,now,context,run,verifiedEnrollment}=input
+ const {projectId,ownerId,now,context,run,verifiedEnrollment,paidAttempt}=input
  if(projectId!==FAMILY_WEEKLY_PROJECT_ID||!UUID.test(ownerId)||
  !run||run.kind!=='RUN_BOUND'||run.context!=='AUTONOMOUS'||
  !UUID.test(run.runId)||!UUID.test(run.claimId)||
  !verifiedEnrollment||!Number.isSafeInteger(verifiedEnrollment.eventId)||verifiedEnrollment.eventId<1||verifiedEnrollment.status!=='owner_verified'||
  verifiedEnrollment.projectId!==projectId||verifiedEnrollment.ownerId!==ownerId||
  verifiedEnrollment.permittedOperation!=='family_weekly_caption_drafts'||
+ !validatePaidAttemptReceipt(paidAttempt,{
+  projectId,ownerId,weekStart:context.plan.weekStart,
+  runId:run.runId,claimId:run.claimId,eventId:verifiedEnrollment.eventId,
+  conversationId:input.conversationId,
+ })||
  !Number.isFinite(Date.parse(verifiedEnrollment.validThrough))||
  Date.parse(verifiedEnrollment.validThrough)<=Date.parse(now))return refuse('owner_authority_unavailable')
  const gate=evaluateAutomaticWeeklyPreparation({projectId,ownerOptIn:true,now,evidence:context})

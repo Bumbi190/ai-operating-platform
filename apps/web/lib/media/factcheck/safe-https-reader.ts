@@ -83,13 +83,15 @@ async function systemPinnedTransfer(
   return new Promise((resolve, reject) => {
     let total = 0
     const chunks: Buffer[] = []
+    // Node 22 supports autoSelectFamily at runtime; the repository's pinned
+    // Node type declarations predate this RequestOptions property.
+    const ipv4OnlyDial = {family: 4, autoSelectFamily: false} as const
     const req = httpsRequest(url, {
       method: 'GET',
       agent: false,
       // Node 22's default auto-family selection may ask lookup({all:true});
       // force the single IPv4 socket whose address we already validated.
-      family: 4,
-      autoSelectFamily: false,
+      ...ipv4OnlyDial,
       signal,
       servername: url.hostname,
       rejectUnauthorized: true,

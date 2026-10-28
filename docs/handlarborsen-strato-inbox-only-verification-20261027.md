@@ -64,3 +64,17 @@ Fix in isolated branch: `atlas-strato-inbox.ts` now distinguishes a real owner-o
 Access gates continue to include: enabled Preview-only feature flag, owner-authenticated stored conversation, verified allowed Handlarbörsen project ID, exact existing owner-scoped mailbox row, owner-checked existing read-only SQL RPCs, no implicit body-text selection, no send/reply/publish operations.
 
 Pre-push local verification: **87/87 targeted Vitest and Atlas chat regression tests passed**, plus bounded TS compile including the chat route and new atlas bridge. No private message bodies were copied into test fixtures or Git logs. This change requires a new **exact-head** GitHub CI and Preview build and another real authenticated overview retest. Production remains disabled, PR must stay DRAFT until that is completed.
+
+
+## Addendum — 2026-10-28: source-backed owner review queue
+
+A read-only production SQL inspection (no message bodies, addresses or contact PII read) verified **16 saved Handlarbörsen Strato records**, of which **5 have owner-selected complete text** (4 are linked to a saved contact, 1 is unlinked) and **11 are not selected**. The old send-capable Windows task remains disabled; the separate inbox-only watcher has continued with last result 0.
+
+The protected Atlas read-inbox tool now adds a deterministic `reviewGate` to every **returned page** message and `reviewSummary.scope='returned_page_only'`. Gates are:
+- `owner_text_selection_needed`: no owner-approved readable text; never summarize body.
+- `text_incomplete`: prior text selection exists but body is partial/unavailable; don't fabricate content.
+- `contact_link_review_needed`: saved association is ambiguous; operator must reconcile source.
+- `sender_classification_needed`: readable text but no confirmed sales contact link; do not claim the sender is a pilot.
+- `owner_draft_review_possible`: selected complete saved text and contact association; the operator may request a **draft only**, after the exact saved message is read and any commercial terms separately checked.
+
+This status does not imply legal contact approval, sender identity proof, draft approval, a send-ready job or completed followup. The aggregate is **not** a complete mailbox total; pagination and selection remain authoritative. No database migrations or state writes are added. The existing Sales reply-preparation implementation is not duplicated or activated; follow-up remains an owner-reviewed action behind its separately gated release.

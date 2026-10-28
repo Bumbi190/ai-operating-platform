@@ -123,7 +123,43 @@ describe('Atlas Handlarbörsen Strato read-only interim bridge',()=>{
   })
   expect(JSON.stringify(result)).not.toContain(rawMessage.text)
   expect(result.messageCountOnThisPage).toBe(1)
+  expect(result.messages[0].reviewGate).toBe('sender_classification_needed')
+  expect(result.reviewSummary).toMatchObject({
+    scope:'returned_page_only',ownerTextSelectionNeeded:0,
+    senderClassificationNeeded:1,ownerDraftReviewPossible:0,
+    sendingAllowed:false,
+  })
   expect(f.calls).toEqual(['conversation','mailboxes','page'])
+ })
+ it('produces source-backed owner review gates for a single page without inventing send permission',async()=>{
+  const entries=[
+   {...rawMessage,id:'7f000001-0000-4000-8000-000000000011',contactState:'linked',textSelected:false,textState:'not_selected'},
+   {...rawMessage,id:'7f000001-0000-4000-8000-000000000012',contactState:'linked',textSelected:true,textState:'truncated'},
+   {...rawMessage,id:'7f000001-0000-4000-8000-000000000013',contactState:'ambiguous',textSelected:true,textState:'complete'},
+   {...rawMessage,id:'7f000001-0000-4000-8000-000000000014',contactState:'unlinked',textSelected:true,textState:'complete'},
+   {...rawMessage,id:'7f000001-0000-4000-8000-000000000015',contactState:'linked',textSelected:true,textState:'complete'},
+  ]
+  const f=fixture({readPage:async()=>({
+   messages:entries,
+   config:{state:'enabled',folder:'INBOX',lastSyncedAt:'2026-10-27T13:53:25Z'},
+   nextCursor:null,readingEnabled:false,reasonCode:null,scopeCurrent:true,
+  })})
+  const result=await readHbStratoInbox(summaryTool,{},p,CONVERSATION,f.source,true) as any
+  expect(result.status).toBe('ok')
+  expect(result.messages.map((m:any)=>m.reviewGate)).toEqual([
+   'owner_text_selection_needed','text_incomplete',
+   'contact_link_review_needed','sender_classification_needed',
+   'owner_draft_review_possible',
+  ])
+  expect(result.reviewSummary).toEqual({
+   scope:'returned_page_only',ownerTextSelectionNeeded:1,textIncomplete:1,
+   contactLinkReviewNeeded:1,senderClassificationNeeded:1,
+   ownerDraftReviewPossible:1,sendingAllowed:false,
+  })
+  expect(result.messageCountOnThisPage).toBe(5)
+  expect(JSON.stringify(result)).not.toContain(rawMessage.text)
+  // The overridden fake page reader does not record default-fixture calls.
+  expect(f.calls).toEqual(['conversation','mailboxes'])
  })
  it('detail returns body ONLY when owner already selected exact complete message',async()=>{
   const f=fixture()

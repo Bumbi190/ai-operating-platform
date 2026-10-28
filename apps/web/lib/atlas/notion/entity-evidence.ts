@@ -14,15 +14,16 @@ export type ScopedEntityEvidence =
   | { kind: 'not_found'; subject: string }
   | { kind: 'found'; subject: string; excerpt: string; excerptOnly: true; actionAuthority: false; sourceEvidence: 'named_heading' | 'named_line' }
 
+const normalized = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('sv-SE').replace(/\s+/g, ' ').trim()
+
 const GENERIC = new Set([
   'notion', 'atlas', 'omnira', 'handlarbörsen', 'handlarbörsens', 'projekt',
   'projektet', 'pilot', 'piloten', 'status', 'överlämning', 'tidigare',
   'beslut', 'dag', 'företaget', 'företag', 'firman', 'personen', 'idag',
-])
+].map(normalized))
 const MAX_EXCERPT = 4_800
 const SEPARATOR = '\n\n[--- separat källutdrag ---]\n\n'
 
-const normalized = (text: string) => text.normalize('NFC').toLocaleLowerCase('sv-SE').replace(/\s+/g, ' ').trim()
 
 /** The model must not decide whether a question concerns one business or two. */
 export function inferNotionEntityScope(question: string, project: string): EntityScope {
@@ -112,8 +113,17 @@ export function selectNotionEntityEvidence(markdown: string, question: string, p
       if (headingLevel(line) !== null) return false
       const label = line.trim().replace(/^(?:[-*]|\d+\.)\s*/, '')
         .replace(/^(?:<b>|<strong>|\*\*)/i, '').trim()
-      return normalized(label).startsWith(normalized(subject))
-        && mentions(label.slice(0, subject.length + 3), subject)
+      if (normalized(label).startsWith(normalized(subject))
+        && mentions(label.slice(0, subject.length + 3), subject)) return true
+      // Accept short, standalone descriptions such as "Pilotstart med Kareby
+      // Bil." while refusing mixed-company narratives ("EVExperten och Kareby
+      // Bil: EVExperten ..."). Never use this fallback for a bullet whose
+      // label belongs to a different company.
+      if (/^(?:[-*]|\d+\.)\s/.test(line.trim())) return false
+      const n = normalized(label), needle = normalized(subject), at = n.indexOf(needle)
+      if (at < 0 || at > 48 || !mentions(label, subject)) return false
+      const lead = n.slice(0, at)
+      return /^(?:(?:pilotstart|pilotstatus|status|uppfoljning|kontakt|registrering|information|fakta|notis|oversikt)\s+)?(?:med|om|for|hos|gallande|angaende)\s+$/.test(lead)
     }).map(line => line.trim()).filter(Boolean)
     passages = [...new Set(scoped)].reverse()
     sourceEvidence = 'named_line'

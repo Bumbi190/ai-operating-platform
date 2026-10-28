@@ -5,7 +5,8 @@
     "captured_at": "2026-09-25",
     "handlarborsen_review_p2_migration_note": "Operator-approved, project-locked, immutable human review decision events. RLS + FORCE RLS, zero policies, no anon/auth grants; service role SELECT/INSERT only, REVIEW RPC only service role. Fully isolated PG17.6 security tests passed. Live production catalog must be checked after application.",
     "handlarborsen_candidates_migration_note": "Additional candidate memory table to be verified against the scoped live production catalog after operator-approved application: project-locked, RLS and FORCE RLS, zero policies and client grants, service_role SELECT/INSERT only. Earlier table classifications remain unchanged.",
-    "total_tables": 183,
+    "total_tables": 184,
+    "hb_lead_candidates_note": "Applied to Omnira production 2026-10-28 as migration 20261028072659_handlarborsen_scb_review_only_candidates. Live catalog verified: RLS enabled, one authenticated owner-scoped SELECT policy, anon no grants, authenticated SELECT only, service_role technically reachable for future separately authorized import. Zero rows, zero triggers, owner-vs-other RLS tested in rolled-back transactions, seven unsafe variants refused by CHECK constraints. Classification: TENANT_RLS; NOT contact/approval authority.",
     "family_weekly_preparation_note": "Applied with explicit owner authorization on 2026-10-26; live catalog verified RLS on, zero policies, no anon/authenticated privileges, service-role SELECT/INSERT. Existing weekly tools create editorial proposals only, no public grant or publication authority.",
     "atlas_fallback_reservations_note": "Owner-approved 2026-10-23, verified live in production. SEK 10/day and 100/month shared reserve journal. RLS enabled, zero policies, anon and authenticated have no table privileges; service_role can SELECT/INSERT and the reviewed RPC is service-role only. No real reservations existed after rolled-back admission tests.",
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
@@ -1360,6 +1361,16 @@
       "anon_grants": false,
       "authenticated_grants": true,
       "service_role": true
+    },
+    "hb_lead_candidates": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": false,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
     },
     "sales_contact_timing_rules": {
       "class": "SERVER_ONLY",

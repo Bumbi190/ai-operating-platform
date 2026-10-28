@@ -43,7 +43,7 @@ function signedAppJwt(settings: GitHubAppSettings): string | null {
   } catch { return null }
 }
 
-export type SourceInspectionFailure = 'not_configured' | 'provider_unavailable' | 'identity_unverified' | 'source_denied'
+export type SourceInspectionFailure = 'not_configured' | 'provider_unavailable' | 'identity_unverified' | 'source_denied' | 'source_changed'
 export type SourceInspectionResult =
   | { ok: false; code: SourceInspectionFailure }
   | { ok: true; repository: string; repositoryId: number; projectSlug: string; sha: string;
@@ -200,6 +200,8 @@ export async function inspectVerifiedSource(
     const commit = await getRepoJson(repo, '/commits/' + repo.branch, token, fetcher, deadline)
     const sha = commit.sha
     if (typeof sha !== 'string' || !SOURCE_GIT_SHA.test(sha)) throw new InspectionError('identity_unverified')
+    if (verified.action === 'read_file' && (verified.startLine ?? 1) > 1 && verified.expectedSha !== sha)
+      throw new InspectionError('source_changed')
     const common = {
       repository: repo.owner + '/' + repo.name, repositoryId: repo.repositoryId,
       projectSlug: repo.projectSlug, sha, observedAt: new Date().toISOString(), readonly: true as const,

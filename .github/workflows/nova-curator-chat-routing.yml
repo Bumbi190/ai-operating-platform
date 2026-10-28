@@ -1,0 +1,53 @@
+name: Nova Curator Chat Routing Safety
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web/app/api/chat/route.ts'
+      - 'apps/web/lib/atlas/source-curator/pending-review-intent.ts'
+      - 'apps/web/lib/qa/nova-curator-routing.test.mjs'
+      - 'docs/runbooks/nova-curator-chat-routing-safety.md'
+      - '.github/workflows/nova-curator-chat-routing.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/app/api/chat/route.ts'
+      - 'apps/web/lib/atlas/source-curator/pending-review-intent.ts'
+      - 'apps/web/lib/qa/nova-curator-routing.test.mjs'
+      - 'docs/runbooks/nova-curator-chat-routing-safety.md'
+      - '.github/workflows/nova-curator-chat-routing.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  no-crm-misrouting:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run screenshot routing regression without dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --no-warnings --experimental-strip-types --test \
+            apps/web/lib/qa/nova-curator-routing.test.mjs \
+            | tee "$RUNNER_TEMP/nova-routing.tap"
+      - name: Reject missing or skipped regression cases
+        shell: bash
+        run: |
+          node - "$RUNNER_TEMP/nova-routing.tap" <<'NODE'
+          const fs=require('node:fs')
+          const tap=fs.readFileSync(process.argv[2],'utf8')
+          const read=name=>Number(new RegExp('^# '+name+' (\\d+)$','m').exec(tap)?.[1])
+          const [tests,pass,fail,skip,todo]=['tests','pass','fail','skipped','todo'].map(read)
+          console.log(JSON.stringify({tests,pass,fail,skip,todo}))
+          if(!Number.isInteger(tests)||tests<22||tests!==pass||
+            fail!==0||skip!==0||todo!==0)process.exitCode=1
+          NODE

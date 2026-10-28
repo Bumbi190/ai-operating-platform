@@ -76,12 +76,12 @@ jobs:
           const report = JSON.parse(fs.readFileSync(filename, 'utf8'))
           const files = report.testResults || []
           const required = {
-            'nova-source-inspection.test.ts': 26,
-            'nova-source-inspection-route.test.ts': 9,
-            'nova-source-atlas-tool.test.ts': 7,
-            'github-app-transport.test.ts': 1,
-            'sdf1a-code-work-contracts.test.ts': 1,
-            'handlarborsen-evidence-comparison.test.ts': 1,
+            'nova-source-inspection.test.ts': 42,
+            'nova-source-inspection-route.test.ts': 10,
+            'nova-source-atlas-tool.test.ts': 8,
+            'github-app-transport.test.ts': 43,
+            'sdf1a-code-work-contracts.test.ts': 42,
+            'handlarborsen-evidence-comparison.test.ts': 19,
           }
           let failures = 0
           for (const [name, minimum] of Object.entries(required)) {
@@ -99,3 +99,7 @@ jobs:
           if (files.length !== Object.keys(required).length) failures++
           if (failures) process.exit(1)
           NODE
+
+      - name: Typecheck complete web workspace without production credentials
+        working-directory: apps/web
+        run: npx --no tsc --noEmit --pretty false

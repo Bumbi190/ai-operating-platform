@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useRef, useSyncExternalStore } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
-import { MessageCircle, Mic, MicOff, Minus, PhoneOff, Send } from 'lucide-react'
+import { Check, Copy, MessageCircle, Mic, MicOff, Minus, PhoneOff, Send } from 'lucide-react'
 import type { AtlasVoiceSession } from '@/lib/atlas/voice-pilot/use-voice-session'
 import { isAtlasSwedishVoice } from '@/lib/atlas/voice-pilot/voices'
 import { createMicSignalStore, type MicSignalStore } from '@/lib/atlas/voice-pilot/mic-diagnostics'
@@ -40,6 +40,15 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
   runtimeNotice?: string
 }) {
   const panel = useRef<HTMLElement>(null), messages = useRef<HTMLDivElement>(null)
+  const [copyResult, setCopyResult] = useState<{ index: number; ok: boolean } | null>(null)
+  const copyAssistantReply = (text: string, index: number) => {
+    // Explicit user gesture: copy the entire final artifact, not the TTS intro.
+    if (!navigator.clipboard?.writeText) { setCopyResult({ index, ok: false }); return }
+    void navigator.clipboard.writeText(text).then(
+      () => setCopyResult({ index, ok: true }),
+      () => setCopyResult({ index, ok: false }),
+    )
+  }
   useEffect(() => { if (!minimized) panel.current?.focus() }, [minimized])
   useEffect(() => {
     if (messages.current) messages.current.scrollTop = messages.current.scrollHeight
@@ -92,6 +101,14 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
       {s.snapshot.history.map((message, i) => <div key={i} className={message.role === 'user' ? styles.userMessage : styles.atlasMessage}>
         <small>{message.role === 'user' ? 'Du' : voiceLabel}</small>
         <p>{message.content}</p>
+        {message.role === 'assistant' && message.content.trim() &&
+          <button type="button" className={styles.copyReply}
+            onClick={() => copyAssistantReply(message.content, i)}
+            aria-label="Kopiera hela svaret"
+            title="Kopiera hela svaret, inklusive eventuell Claude-prompt">
+            {copyResult?.index === i && copyResult.ok ? <Check size={13} /> : <Copy size={13} />}
+            {copyResult?.index === i ? copyResult.ok ? 'Kopierat!' : 'Kopiera manuellt' : 'Kopiera hela svaret'}
+          </button>}
       </div>)}
       {s.snapshot.pending && <p className={styles.pending}>{s.reply || 'Nova arbetar…'}</p>}
       {s.snapshot.testDataReviews.length > 0 && s.snapshot.id && <p className={styles.review}>

@@ -58,12 +58,13 @@ jobs:
             lib/qa/nova-source-inspection-route.test.ts \
             lib/qa/nova-source-atlas-tool.test.ts \
             lib/qa/nova-source-chat-route.test.ts \
+            lib/qa/atlas-openai-chat.test.ts \
             lib/qa/github-app-transport.test.ts \
             lib/qa/sdf1a-code-work-contracts.test.ts \
             lib/qa/handlarborsen-evidence-comparison.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/nova-source-inspection.json"
 
-      - name: Verify all seven suites actually ran, with zero skips
+      - name: Verify all eight suites actually ran, with zero skips
         if: always()
         shell: bash
         run: |
@@ -80,7 +81,8 @@ jobs:
             'nova-source-inspection.test.ts': 42,
             'nova-source-inspection-route.test.ts': 10,
             'nova-source-atlas-tool.test.ts': 8,
-            'nova-source-chat-route.test.ts': 7,
+            'nova-source-chat-route.test.ts': 8,
+            'atlas-openai-chat.test.ts': 5,
             'github-app-transport.test.ts': 43,
             'sdf1a-code-work-contracts.test.ts': 42,
             'handlarborsen-evidence-comparison.test.ts': 19,

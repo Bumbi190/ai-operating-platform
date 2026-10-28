@@ -103,6 +103,37 @@ vi.mock('@anthropic-ai/sdk', () => {
   }
   return { default: MockAnthropic }
 })
+// The economy profile must preserve the very same read-only tool offer and
+// routing. The real OpenAI wire adapter has its own dedicated tests; here the
+// agent-stream contract is synthetic and absolutely no API request is sent.
+vi.mock('@/lib/atlas/openai-chat', () => ({
+  openAIAtlasStream: async (_context: unknown, args: any) => {
+    state.turn++
+    const turn = state.turn
+    state.calls.push({
+      tools: (args.tools ?? []).map((t: any) => t.name),
+      choice: args.tool_choice,
+      messages: args.messages ?? [],
+    })
+    const handlers: Record<string, (text: string) => void> = {}
+    return {
+      on(name: string, fn: (text: string) => void) { handlers[name] = fn; return this },
+      async finalMessage() {
+        if (turn === 1) {
+          return {
+            stop_reason: 'tool_use', content: [{
+              type: 'tool_use', id: 'economy-source1',
+              name: state.extraTools[0] || 'nova_inspect_project_source', input: state.toolInput,
+            }],
+          }
+        }
+        const text = 'Verifierad källa registrerad via ekonomiprofil.'
+        handlers.text?.(text)
+        return { stop_reason: 'end_turn', content: [{ type: 'text', text }] }
+      },
+    }
+  },
+}))
 async function ask(input: {
   question?: string; origin?: string; mode?: string; conversation_id?: string,
 } = {}) {
@@ -162,6 +193,20 @@ describe('Nova source inspection end-to-end chat route: no live provider', () =>
       ok: true, readonly: true, path: 'app/page.tsx', sha: 'a'.repeat(40),
     })
     expect(JSON.stringify(toolRows)).not.toContain('PRIVATE_SOURCE_SHOULD_NOT_BE_SAVED')
+    expect(state.network).toEqual([])
+  })
+  it('the OpenAI economy profile enforces the identical source-only boundaries', async () => {
+    vi.stubEnv('ATLAS_MODEL_PROFILE', 'openai_economy')
+    vi.stubEnv('OPENAI_API_KEY', 'synthetic-economy-key-not-used')
+    const { response, frames } = await ask()
+    expect(response.status).toBe(200)
+    expect(state.calls[0].tools).toEqual(['nova_inspect_project_source'])
+    expect(state.calls[0].choice).toEqual({ type: 'tool', name: 'nova_inspect_project_source' })
+    expect(state.calls[1].tools).toEqual([])
+    expect(state.dispatches).toEqual([state.toolInput])
+    expect(frames.find(f => f.event === 'tool_result')?.result).toMatchObject({
+      ok: true, readonly: true, path: 'app/page.tsx', sha: 'a'.repeat(40),
+    })
     expect(state.network).toEqual([])
   })
   it('even if a model forges a write-capable tool during the source-only turn, no work runs', async () => {

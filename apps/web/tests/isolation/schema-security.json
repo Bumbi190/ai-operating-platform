@@ -5,7 +5,7 @@
     "captured_at": "2026-09-25",
     "handlarborsen_review_p2_migration_note": "Operator-approved, project-locked, immutable human review decision events. RLS + FORCE RLS, zero policies, no anon/auth grants; service role SELECT/INSERT only, REVIEW RPC only service role. Fully isolated PG17.6 security tests passed. Live production catalog must be checked after application.",
     "handlarborsen_candidates_migration_note": "Additional candidate memory table to be verified against the scoped live production catalog after operator-approved application: project-locked, RLS and FORCE RLS, zero policies and client grants, service_role SELECT/INSERT only. Earlier table classifications remain unchanged.",
-    "total_tables": 183,
+    "total_tables": 184,
     "family_weekly_preparation_note": "Applied with explicit owner authorization on 2026-10-26; live catalog verified RLS on, zero policies, no anon/authenticated privileges, service-role SELECT/INSERT. Existing weekly tools create editorial proposals only, no public grant or publication authority.",
     "atlas_fallback_reservations_note": "Owner-approved 2026-10-23, verified live in production. SEK 10/day and 100/month shared reserve journal. RLS enabled, zero policies, anon and authenticated have no table privileges; service_role can SELECT/INSERT and the reviewed RPC is service-role only. No real reservations existed after rolled-back admission tests.",
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
@@ -96,9 +96,20 @@
     "sales_reply_sending_source_reconciliation_note": "Read-only scoped production observation2026-10-18: sales_send_events, sales_send_jobs and sales_send_policies have RLS enabled, zero policies, no anon/authenticated grants and service_role SELECT reachability. Exact canonical SQL20261018074615 from PR386 commit1b31d1fe23d8e9e36edaeda4b593bd5f044960c7 matches applied ledger SHA25680158d54a4cc5d7f15901f0ed8e67dc7fa04a8738054e14fb1c7be1cf484e49e (25411bytes). Source-only reconciliation; no SQL apply, application code, mail sending activation or privilege change. Older catalog entries retain their earlier capture scope.",
     "media_news_review_evidence_note": "Owner approved production apply2026-10-18T20:20:51 Europe/Stockholm. Exact35199-byte source SQL SHA2569cfd8807817878d492814cc29240114c3e3101ac8504651f377f375089b63e52 applied as ledger20261018182224. Read-only catalogue confirms RLS ON, zero policies/client grants, service SELECT/INSERT only, no UPDATE/DELETE/TRUNCATE; four enabled guards and13 routine bodies/ACL/search_path match the exact source. Observed live after apply; older table entries retain their capture scopes. No movie admission, publication or app deployment.",
     "user_calendar_v1_note": "Pending reviewed apply. Owner-scoped session-client tables; real local SQL RLS/grants verified. No production-catalog claim before deployment.",
-    "human_story_note": "2026-10-26 hosted catalog verified: RLS, zero policies, no anon/authenticated table access, service_role SELECT only; immutable SQL RPC writes, authenticated owner approval only."
+    "human_story_note": "2026-10-26 hosted catalog verified: RLS, zero policies, no anon/authenticated table access, service_role SELECT only; immutable SQL RPC writes, authenticated owner approval only.",
+    "hb_lead_candidates_note": "Scoped read-only production observation 2026-10-28 after already-applied SCB review-only ledger 20261028072659: public.hb_lead_candidates contains 0 rows; RLS ON, 1 authenticated owner-scoped SELECT policy (projects.owner_id = auth.uid()), anon has no SELECT, authenticated has SELECT only without INSERT/UPDATE, service_role holds INSERT reachability. Class TENANT_RLS. Only this table classification was added; older registry entries were not re-audited. The SQL source normalized to journal statement has MD5 1f2ac10b5380bff29aabf64b27bf7a71. This records a protected empty review queue, not permission to import or contact leads."
   },
   "tables": {
+    "hb_lead_candidates": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": false,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
     "handlarborsen_competitor_review_decisions": {
       "class": "SERVER_ONLY",
       "rls": true,

@@ -38,6 +38,14 @@ Projekt: `AI Operating Platform` (`eu-west-1`).
 3. Uppdatera `EXPECTED_ENFORCED_COUNT`: 148 → 149.
 4. Justera migrationsvaktens testfixtures för **186** nu kända journalposter
    (tidigare 185) och ge den nya migrationen krav på exakt en förekomst.
+5. Lägg till `public.hb_lead_candidates` i det befintliga, fail-closed
+   schema-säkerhetsregistret som `TENANT_RLS` med **en** owner-scopad
+   authenticated-SELECT-policy, noll anon-behörighet, oförändrad service-role.
+   Registret uppdateras med just denna scoped observation: 183 → 184 kända rader.
+   Det är **inte** ett påstående att hela produktionskatalogen återinventerats.
+6. Utöka det befintliga schema-invariant-testet med samma observerade klass.
+   Detta löser tre röda säkerhetskontroller genom sanningsenlig klassificering,
+   inte genom allowlist-undantag eller sänkta säkerhetskrav.
 
 **Ingen förändring** av frozen grandfather/legacy-allowlists, behörigheter,
 Supabase-databasen, scheduler, marknadsföring, mejlutskick, live SCB-API,
@@ -47,6 +55,10 @@ lead-import eller Handlarbörsens operativa pipeline.
 Den separata SCB-arbetskopian innehåller fler opublicerade implementerings-
 commits. De följer **inte med** detta avstämningspaket och worktreen har
 inte ändrats.
+
+Den första PR-testkörningen passerade migrationsgrinden och Vercels preview,
+men Atlas Project Isolation stoppade rätteligen en **oklassificerad ny tabell**.
+Den nya registry-posten krävs därför före nytt grönt totalresultat.
 
 Byggtester på GitHub och Vercel krävs mot exakt slut-HEAD; **merge till main
 först efter verifierat godkänt release-test**. Vercels build-migrationscheck

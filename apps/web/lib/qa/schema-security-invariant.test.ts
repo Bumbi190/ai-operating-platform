@@ -134,6 +134,20 @@ function rlsDeclaredInMigrations(t: string): boolean {
 }
 
 describe('Phase 9Y — schema-security invariant: effective state', () => {
+  it('pins the live HB SCB review queue as owner-read-only TENANT_RLS, not SERVER_ONLY', () => {
+    expect(REGISTRY.tables.hb_lead_candidates).toMatchObject({
+      class: 'TENANT_RLS',
+      rls: true,
+      policies: 1,
+      anon_grants: false,
+      authenticated_grants: true,
+      service_role: true,
+      rls_declared_in_migration: true,
+      created_by_migration: true,
+    })
+    expect(REGISTRY._meta.hb_lead_candidates_note).toContain('Scoped read-only production observation')
+  })
+
   it('the registry is populated and covers the whole public schema', () => {
     expect(TABLES.length, 'registry is empty — the invariant would be vacuous').toBeGreaterThan(50)
     expect(REGISTRY._meta.total_tables).toBe(TABLES.length)

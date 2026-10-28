@@ -144,3 +144,15 @@ test('a network failure, DNS exception or incomplete page fails closed',async()=
     body:new TextEncoder().encode('short')}))
   assert.equal(await short(WIRED,signal),null)
 })
+
+test('real HTTPS implementation is TLS-verified and pins only IPv4 sockets',async()=>{
+  const {readFileSync}=await import('node:fs')
+  const source=readFileSync(new URL('./safe-https-reader.ts',import.meta.url),'utf8')
+  assert.match(source,/family:\s*4/)
+  assert.match(source,/autoSelectFamily:\s*false/)
+  assert.match(source,/servername:\s*url\.hostname/)
+  assert.match(source,/rejectUnauthorized:\s*true/)
+  assert.match(source,/lookup:\s*\(hostname,\s*_opts,\s*callback\)/)
+  assert.match(source,/pinnedIpv4,\s*4/)
+  assert.doesNotMatch(source,/redirect:\s*['"]follow['"]/)
+})

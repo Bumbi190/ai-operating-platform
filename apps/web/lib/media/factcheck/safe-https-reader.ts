@@ -86,6 +86,10 @@ async function systemPinnedTransfer(
     const req = httpsRequest(url, {
       method: 'GET',
       agent: false,
+      // Node 22's default auto-family selection may ask lookup({all:true});
+      // force the single IPv4 socket whose address we already validated.
+      family: 4,
+      autoSelectFamily: false,
       signal,
       servername: url.hostname,
       rejectUnauthorized: true,

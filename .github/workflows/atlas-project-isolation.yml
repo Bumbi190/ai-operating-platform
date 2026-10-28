@@ -105,6 +105,7 @@ jobs:
             lib/qa/chat-operator-capability.test.ts \
             lib/qa/chat-workflow-read-isolation.test.ts \
             lib/qa/handlarborsen-sales-overview.test.ts \
+            lib/qa/handlarborsen-reply-lifecycle.test.ts \
             lib/qa/handlarborsen-evidence-comparison.test.ts \
             lib/qa/handlarborsen-operator-tools.test.ts \
             lib/qa/handlarborsen-tool-intent.test.ts \
@@ -262,6 +263,9 @@ jobs:
             // Handlarbörsen CRM read stays owner-scoped and HEAD count-only, with
             // existing latest-mail/marketplace routes still tested for regressions.
             'handlarborsen-sales-overview.test.ts': 12,
+            // Reply-status correlation is owner-read-only; errors fail closed,
+            // and an approved revision never implies recipient delivery.
+            'handlarborsen-reply-lifecycle.test.ts': 25,
             // Composite external+internal evidence adds no identities, sends or new grants.
             'handlarborsen-evidence-comparison.test.ts': 19,
             'handlarborsen-operator-tools.test.ts': 5,

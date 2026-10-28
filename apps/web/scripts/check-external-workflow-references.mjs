@@ -76,6 +76,30 @@ for (const query of queries) {
   }
 }
 
+const noOpExamples = searchReferences(index, {
+  query: 'lead email follow-up placeholder structure metadata',
+  project: 'handlarborsen',
+  limit: 8,
+})
+assert.equal(noOpExamples.ok, true)
+assert.ok(noOpExamples.matches.length <= 8)
+assert.equal(noOpExamples.auditedNoOpExamples.length, 3)
+assert.deepEqual(noOpExamples.auditedNoOpExamples
+  .map(hit => hit.qualityAssessment.observedStructure.noOpNodeCount)
+  .sort((a, b) => a - b), [6, 12, 15])
+for (const hit of noOpExamples.auditedNoOpExamples) {
+  assert.equal(hit.runnableInOmnira, false)
+  assert.equal(hit.qualityAssessment.workingAutomationVerified, false)
+  assert.ok(hit.sourceUrl.startsWith(
+    'https://github.com/Zie619/n8n-workflows/blob/' + SHA + '/workflows/'))
+}
+const operatorRequested = searchReferences(index, {
+  query: 'lead email follow-up', includeNoOpAuditExamples: true, limit: 2,
+})
+assert.equal(operatorRequested.auditedNoOpExamples.length, 3)
+assert.ok(operatorRequested.matches.length <= 2)
+assert.ok(!('auditedNoOpExamples' in searchReferences(index, { query: 'YouTube video' })))
+
 assert.equal(searchReferences(index, { query: '' }).code, 'INVALID_SEARCH_QUERY')
 assert.equal(searchReferences(index, { query: 'z'.repeat(161) }).code, 'INVALID_SEARCH_QUERY')
 assert.equal(searchReferences(index, { query: 'lead', limit: 200 }).matches.length, 8)

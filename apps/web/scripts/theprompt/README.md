@@ -47,3 +47,11 @@ Svar markeras `private_review_only`, `canGenerate=false`, `canPublish=false` och
 **Återstår:** slutför API- och typkontrollerna på den aktuella PR-versionen; koppla preview till en faktisk spelare eller Remotion-rendering, skapa en privat MP4 och granska den manuellt. Datorn har haft mycket lite ledigt RAM; kör därför tung rendering i separat godkänd miljö eller först när maskinen klarar det. PR #552 för framtida Higgsfield-budget är fortfarande **draft** och betald videogenerering är AV. Det gamla bildflödet och schemat 10.00/20.00 är oförändrade.
 
 För fullständig historik, se `docs/theprompt-hybrid-reel-render-support-20261027.md` och lokala `Projects/Theprompt/Nyheter/Provreel-20261022/LAS-MIG.md`.
+
+## 28 oktober – godkänd 720p V3-master och redaktionell stil
+
+Den specifika V3-filmen med SHA-256 `d23d62737aa04b4203159b0da0f775a88addf50274e16c79d3bfa12e8f092788` och stilen med 12 kortare utsnitt, redigerbara texter, mjuka zoomningar och återställt originalslutkort är nu **godkänd för återanvändning som privat kreativ referens**. Det utgör inte tillstånd att automatiskt publicera eller debitera nya Higgsfield-krediter.
+
+Godkännandet finns på två ställen: lokala `V3_REVIEW_MANIFEST.json` i `V3-Dynamic` och kodprofilen `apps/web/lib/media/theprompt-dynamic-v3-approved.json` (med tester). Den privata 720p-masterfilen finns fortfarande **endast lokalt** och har inte påståtts vara uppladdad. En separat read-only-förkontroll och avstängd canonical import för just denna exakta master finns i `approved-v3-master.mjs` och `run-approved-v3-master.cjs`. Användaren godkände innehållet, men en separat skrivgrind och oberoende driftgranskning krävs för att registrera output i Supabase. Den skarpa importen stoppades innan skrivning; skyddet har inte kringgåtts.
+
+En självständig handlingsplan finns i `docs/theprompt-v3-approved-master-20261028.md`. PR #552 om videobudget är fortfarande separat draft. Befintliga bildinlägg och tidsscheman är oförändrade.

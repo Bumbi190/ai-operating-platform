@@ -97,3 +97,11 @@ The Prompt Hybrid Safety GitHub workflow now has a separate limited cloud CI job
 ## 27 oktober kväll – privat FFmpeg-prov på Hultgren
 
 Ett 29,10 sekunders tekniskt lågupplöst MP4-prov skapades lokalt från tre tidigare godkända originalklipp, sparad röst och 19 undertextgrupper. Filen finns i `Projects/Theprompt/Nyheter/Provreel-20261022/preview-local/ThePrompt_Private_Hybrid_Preview_2026-10-27.mp4` (2 250 091 byte, SHA-256 e42174634a801aa5605fcb418810869a3e7409b7808fb5b897c955d27da9e2ab). H.264 360x640 30 fps, AAC mono. Hela filen dekodades utan FFmpeg-fel, ljudnivåer kontrollerades och tre stillbilder granskades. Denna första privata provfil har hårda scenbyten och ett enklare slutkort, inte Remotions färdiga crossfades eller slutkvalitet. Den har inte publicerats eller laddats upp publikt. Kanoniska klipp i Supabase och befintligt socialt bildflöde är orörda. Nästa steg: riktig Remotion-render med privata medier i skyddad körmiljö och manuell granskning.
+
+## 28 oktober – godkänd 720p V3-master och redaktionell stil
+
+Den specifika V3-filmen med SHA-256 `d23d62737aa04b4203159b0da0f775a88addf50274e16c79d3bfa12e8f092788` och stilen med 12 kortare utsnitt, redigerbara texter, mjuka zoomningar och återställt originalslutkort är nu **godkänd för återanvändning som privat kreativ referens**. Det utgör inte tillstånd att automatiskt publicera eller debitera nya Higgsfield-krediter.
+
+Godkännandet finns på två ställen: lokala `V3_REVIEW_MANIFEST.json` i `V3-Dynamic` och kodprofilen `apps/web/lib/media/theprompt-dynamic-v3-approved.json` (med tester). Den privata 720p-masterfilen finns fortfarande **endast lokalt** och har inte påståtts vara uppladdad. En separat read-only-förkontroll och avstängd canonical import för just denna exakta master finns i `approved-v3-master.mjs` och `run-approved-v3-master.cjs`. Användaren godkände innehållet, men en separat skrivgrind och oberoende driftgranskning krävs för att registrera output i Supabase. Den skarpa importen stoppades innan skrivning; skyddet har inte kringgåtts.
+
+En självständig handlingsplan finns i `docs/theprompt-v3-approved-master-20261028.md`. PR #552 om videobudget är fortfarande separat draft. Befintliga bildinlägg och tidsscheman är oförändrade.

@@ -12,6 +12,7 @@ on:
       - 'apps/web/lib/media/video-props*'
       - 'apps/web/lib/media/project-video-slots*'
       - 'apps/web/lib/media/hybrid-preview-*'
+      - 'apps/web/lib/media/theprompt-dynamic-v3-*'
       - 'apps/web/app/api/media/hybrid-preview/**'
       - 'apps/web/scripts/theprompt/**'
       - '.github/workflows/theprompt-hybrid-safety.yml'
@@ -49,6 +50,8 @@ jobs:
             apps/web/lib/media/video-props-hybrid.node-check.mjs \
             apps/web/lib/media/project-video-slots.node-check.mjs \
             apps/web/lib/media/hybrid-preview-request.node-check.mjs \
+            apps/web/lib/media/theprompt-dynamic-v3-profile.node-check.mjs \
+            apps/web/scripts/theprompt/approved-v3-master.node-check.mjs \
             apps/web/scripts/theprompt/approved-clips.node-check.mjs \
             apps/web/scripts/theprompt/import-approved-clips.node-check.mjs \
             apps/web/scripts/theprompt/run-approved-import.node-check.mjs \
@@ -59,13 +62,14 @@ jobs:
         run: |
           set -euo pipefail
           test -s "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
-          grep -q '^# tests 55$' "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
-          grep -q '^# pass 53$' "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
+          grep -q '^# tests 67$' "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
+          grep -q '^# pass 64$' "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
           grep -q '^# fail 0$' "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
-          # Two real-file import scenarios intentionally require private MP4s
+          # Three real-file scenarios (two source imports, one approved master)
+          # intentionally require private MP4s
           # on Hultgren and are skipped only in this source-free CI runner.
-          grep -q '^# skipped 2$' "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
-          echo 'The Prompt hybrid safety: 53/53 source-free checks passed, 2 private-file checks explicitly skipped.'
+          grep -q '^# skipped 3$' "$RUNNER_TEMP/theprompt-hybrid-tests.tap"
+          echo 'The Prompt hybrid safety: 64/64 source-free checks passed, 3 private-file checks explicitly skipped.'
 
   remotion-bundle:
     name: Remotion source bundle (no render, no provider)

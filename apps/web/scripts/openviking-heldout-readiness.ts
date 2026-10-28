@@ -13,7 +13,8 @@
  *   --report-only
  */
 import { realpathSync, readFileSync, statSync } from 'node:fs'
-import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { parseCorpus } from '../lib/atlas/openviking/corpus'
 import { checkHeldoutReadiness } from '../lib/atlas/openviking/heldout-readiness'
 
@@ -65,7 +66,11 @@ if (!options) {
   try {
     if (!isAbsolute(options.privateRoot)) throw new Error('invalid private root')
     const privateRoot = realpathSync(options.privateRoot)
-    const repositoryRoot = resolve(process.cwd(), '../..')
+    if (!statSync(privateRoot).isDirectory()) throw new Error('private root not a directory')
+    // Source-relative repository root: NOT dependent on the caller's cwd.
+    // Otherwise running this CLI from another folder could accidentally
+    // read private question text from inside a public Git checkout.
+    const repositoryRoot = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../..'))
     // A question plan committed under the public repository is a privacy
     // incident, even if its content currently looks innocuous.
     if (inside(repositoryRoot, privateRoot) || inside(privateRoot, repositoryRoot)) {

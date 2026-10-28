@@ -3,7 +3,7 @@ import {readFileSync} from 'node:fs'
 import {resolve} from 'node:path'
 
 const migration=readFileSync(resolve(__dirname,
- '../../../supabase/migrations/20261028093000_family_weekly_auto_consent_events.sql'),'utf8')
+ '../../../../../docs/sql/20261028_family_weekly_auto_consent_proposed.sql'),'utf8')
 const api=readFileSync(resolve(__dirname,
  '../../../app/api/social-weekly-automation/route.ts'),'utf8')
 const schedule=readFileSync(resolve(__dirname,

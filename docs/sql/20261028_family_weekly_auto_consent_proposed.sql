@@ -1,3 +1,4 @@
+-- PROPOSED SQL, UNAPPLIED: requires migration-guard and real RLS review before canonical promotion.
 -- Familje-Stunden weekly DRAFT preparation enrollment ONLY.
 -- This migration alone schedules nothing, spends nothing and publishes nothing.
 -- Owner opt-in is append-only, revocable and bounded to a maximum 90 days.

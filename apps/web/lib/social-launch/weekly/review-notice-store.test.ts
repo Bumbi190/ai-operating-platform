@@ -97,7 +97,7 @@ describe('Family owner-only persisted weekly review notification',()=>{
   const {readFileSync}=await import('node:fs')
   const {resolve}=await import('node:path')
   const m=readFileSync(resolve(__dirname,
-   '../../../supabase/migrations/20261028094000_family_weekly_review_notices.sql'),'utf8')
+   '../../../../../docs/sql/20261028_family_weekly_review_notices_proposed.sql'),'utf8')
   expect(m).toContain('references public.social_weekly_preparations(id)')
   expect(m).toContain('p.created_by=new.owner_id')
   expect(m).toContain("p.result->>'status'='editorial_review_required'")

@@ -1,3 +1,4 @@
+-- PROPOSED SQL, UNAPPLIED: requires migration-guard and real RLS review before canonical promotion.
 -- Persistent, owner-only IN-APP notice for verified weekly editorial drafts.
 -- No outbound email, provider call, scheduler, model execution or public posting.
 -- A unique preparation_id makes worker retries harmless and cost-free.

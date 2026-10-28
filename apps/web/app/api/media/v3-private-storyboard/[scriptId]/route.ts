@@ -88,6 +88,7 @@ export async function GET(
   if(script.status==='published')return response({ok:false,error:'already_published'},409)
   const images=jsonStringArray(script.images)
   if(script.voice_status!=='ready'||typeof script.duration_ms!=='number'||
+    typeof script.audio_url!=='string'||typeof script.timing_url!=='string'||
     !Number.isInteger(script.duration_ms)||
     images.length===0||images.length>5||
     !isExactProjectMediaUrl(script.audio_url,'audio',id)||
@@ -95,8 +96,11 @@ export async function GET(
     images.some(img=>!isExactProjectMediaUrl(img,'images',id)))
     return response({ok:false,error:'source_not_ready'},409)
 
+  // Freeze validated source URLs before awaits so the type stays narrow.
+  const audioUrl=script.audio_url
+  const timingUrl=script.timing_url
   try{
-    const words=await readVerifiedWordTiming(script.timing_url)
+    const words=await readVerifiedWordTiming(timingUrl)
     const quality=script.quality_score
     const verdict=quality&&typeof quality==='object'&&!Array.isArray(quality)
       ?String((quality as Record<string,unknown>).verdict??'')
@@ -115,8 +119,8 @@ export async function GET(
     })
     const renderInput=await buildVideoInputProps({
       hook:script.hook??'',
-      audioUrl:script.audio_url,
-      timingUrl:script.timing_url,
+      audioUrl,
+      timingUrl,
       durationMs:script.duration_ms,
       images,
       v3Storyboard:storyboard,

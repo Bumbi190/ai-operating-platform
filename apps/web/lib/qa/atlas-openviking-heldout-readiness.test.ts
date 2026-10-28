@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { spawnSync } from 'node:child_process'
 import { buildKnowledgeSnapshot } from '@/lib/atlas/knowledge/projection/snapshot'
 import { parseCorpus, type PublishedCorpus } from '@/lib/atlas/openviking/corpus'
 import {
@@ -220,6 +222,62 @@ describe('Private OpenViking independent held-out cohort preflight', () => {
       runtimeActivationAuthorized: false,
       expectedDigest: null, reasonCodes: ['plan_schema_invalid'],
     })
+  })
+
+  it('real CLI reads only private filesystem inputs and emits aggregate readiness without source text', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'atlas-heldout-private-'))
+    try {
+      const sources = Array.from({ length: 8 }, (_, i) => ({
+        path: '70 References/synthetic-' + (i + 1) + '.md',
+        title: 'Synthetic document ' + (i + 1),
+        type: 'reference' as const,
+        classification: 'internal' as const,
+        scope: { kind: 'project' as const, projectId: PROJECT },
+        sourceOfTruth: 'vault' as const,
+        content: '# Fictional source\nSynthetic example number ' + (i + 1),
+      }))
+      const snapshot = buildKnowledgeSnapshot(sources)
+      const bundle = {
+        projectId: PROJECT, projectSlug: 'omnira-selftest',
+        manifest: snapshot.manifest, documentsJsonl: snapshot.documentsJsonl,
+      }
+      const verified = parseCorpus(bundle)!
+      const cohort = plan(verified)
+      const corpusPath = join(directory, 'private-snapshot.json')
+      const planPath = join(directory, 'private-questions.json')
+      writeFileSync(corpusPath, JSON.stringify(bundle))
+      writeFileSync(planPath, JSON.stringify(cohort))
+      const args = [
+        '--import', 'tsx', 'scripts/openviking-heldout-readiness.ts',
+        '--private-root=' + directory, '--plan=' + planPath, '--corpus=' + corpusPath,
+      ]
+      const run = spawnSync(process.execPath, args, {
+        cwd: process.cwd(), encoding: 'utf8', timeout: 20_000,
+      })
+      expect(run.status).toBe(0)
+      const result = JSON.parse(run.stdout)
+      expect(result).toMatchObject({
+        readyForOperatorCaptureReview: true,
+        runtimeActivationAuthorized: false,
+        reasonCodes: [], counts: { sourceDocuments: 8, answerable: 30 },
+      })
+      expect(run.stdout).not.toContain('syntetiska källan')
+      expect(run.stdout).not.toContain('Fictional source')
+      expect(run.stdout).not.toContain(PROJECT)
+
+      // A single post-lock edit is denied with no private text in stdout.
+      cohort.questions[0].question = 'Ändrat efter att frågorna låsts och sparats!'
+      writeFileSync(planPath, JSON.stringify(cohort))
+      const changed = spawnSync(process.execPath, args, {
+        cwd: process.cwd(), encoding: 'utf8', timeout: 20_000,
+      })
+      expect(changed.status).toBe(2)
+      expect(JSON.parse(changed.stdout).reasonCodes)
+        .toContain('question_set_not_immutably_locked')
+      expect(changed.stdout).not.toContain('Ändrat efter')
+    } finally {
+      rmSync(directory, { recursive: true, force: true })
+    }
   })
 
   it('keeps private question bodies out of the public runtime and output paths', () => {

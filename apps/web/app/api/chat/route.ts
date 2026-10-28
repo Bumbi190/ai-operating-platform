@@ -1412,9 +1412,10 @@ async function executeTool(
     if (!operator.ok) return { denied: 'platform_operator_required' }
     return searchExternalWorkflowReferences({
       query: input.query, project: input.project, limit: input.limit,
-      // Derived from the real operator message, not an untrusted source title
-      // or model-controlled parameter. Pinned examples stay read-only.
-      includeNoOpAuditExamples: /no[\s-]?op|platshåll|placeholder/i.test(lastUserText),
+      // The last executeTool parameter is the authenticated user's question,
+      // already passed to this function for Notion source grounding. It is NOT
+      // an LLM-controlled tool argument or third-party workflow description.
+      includeNoOpAuditExamples: /no[\s-]?op|platshåll|placeholder/i.test(notionUserQuestion),
     })
   }
 

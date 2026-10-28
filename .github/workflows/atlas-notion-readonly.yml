@@ -7,7 +7,10 @@ on:
     paths:
       - 'apps/web/lib/atlas/notion/**'
       - 'apps/web/lib/qa/atlas-notion-readonly.test.ts'
+      - 'apps/web/lib/qa/atlas-notion-chat-read.test.ts'
+      - 'apps/web/app/api/chat/route.ts'
       - 'docs/runbooks/atlas-notion-readonly-p0.md'
+      - 'docs/runbooks/atlas-notion-chat-read-p1.md'
       - '.github/workflows/atlas-notion-readonly.yml'
   workflow_dispatch:
 
@@ -38,7 +41,7 @@ jobs:
       - name: Run exact source-boundary regression
         working-directory: apps/web
         run: |
-          npx --no vitest run lib/qa/atlas-notion-readonly.test.ts \
+          npx --no vitest run lib/qa/atlas-notion-readonly.test.ts lib/qa/atlas-notion-chat-read.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/notion-readonly.json"
       - name: Verify test execution and anti-skip floor
         if: always()
@@ -56,7 +59,8 @@ jobs:
           const failedSuites = report.numFailedTestSuites ?? 0
           console.log(JSON.stringify({passed, failed, pending, todo, failedSuites}))
           if (!files.some(x => x.endsWith('atlas-notion-readonly.test.ts')) ||
-              passed < 20 || failed > 0 || pending > 0 || todo > 0 || failedSuites > 0) {
+              !files.some(x => x.endsWith('atlas-notion-chat-read.test.ts')) ||
+              passed < 30 || failed > 0 || pending > 0 || todo > 0 || failedSuites > 0) {
             console.error('::error::Notion boundary was missing, skipped, or failed')
             process.exit(1)
           }

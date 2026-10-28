@@ -128,6 +128,24 @@ describe('Nova trusted source boundary, separate from SDF-1 execution', () => {
     expect(immutableSourceUrl(sourceRepositoryForProject('handlarborsen')!, SHA, 'src/app/page.tsx', 8))
       .toBe('https://github.com/Bumbi190/handlarborsen/blob/' + SHA + '/src/app/page.tsx#L1-L8')
   })
+  it.each([
+    ["const DATABASE_URL = 'postgresql://demo:fixture-password@db.example.test/app'", 'database URI with password'],
+    ["export const SUPABASE_SERVICE_ROLE_KEY = 'fixture-value'", 'service role credential'],
+    ["const githubToken = 'fixture-short-token'", 'camelCase token name'],
+    ['{"client_secret":"fixture-value"}', 'JSON credentials'],
+    ['smtp_password: fixture', 'YAML unquoted password'],
+    ['https://alice:fixture-pass@example.test/path', 'URL userinfo'],
+    ['Authorization: Basic ZGVtbzpwYXNzd29yZA==', 'Basic authorization'],
+    ["const DATABASE_DSN = process.env.DATABASE_DSN", 'sensitive assignment even if runtime environment-sourced'],
+    ["const credential = '" + 'eyJ' + "' + 'a'.repeat(16) + '.' + 'eyJ' + 'b'.repeat(16) + '.' + 'c'.repeat(24)", 'JWT-shaped credential'],
+    ['sk_live_' + 'a'.repeat(24), 'live payment credential'],
+  ])('fails closed on inline %s (%s)', (source, _category) => {
+    expect(isSafeInspectableText(source)).toBe(false)
+  })
+  it('allows ordinary public component code and benign documentation', () => {
+    expect(isSafeInspectableText("export default function Page() { return 'Hello' }")).toBe(true)
+    expect(isSafeInspectableText('Public URL: https://www.handlarborsen.se')).toBe(true)
+  })
   it('mints exact single-repository read-only App token and returns SHA-pinned source evidence', async () => {
     const github = fakeGitHub()
     const result = await inspectVerifiedSource({

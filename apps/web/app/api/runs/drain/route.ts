@@ -19,6 +19,7 @@ import { fencedRunUpdate, isFencedError } from '@/lib/ai/fencing'
 import { isCancelledError } from '@/lib/ai/cancel'
 import { MARKETING_HANDLERS, isMarketingRun } from '@/lib/marketing/workflows'
 import { executeWebsiteBuildRun, isWebsiteBuildRun, isWebsiteBuildPermanentError } from '@/lib/website-build/worker'
+import {executeClaimedFamilyWeeklyRun} from '@/lib/social-launch/weekly/claimed-run-worker'
 import {
   checkpointClaimedRun, settleRefusal, terminalizeCancelledRun, recordDispatchUnknown,
   isRunCheckpointRefusal, isRunLifecycleWriteError, checkOwnedFinalization,
@@ -281,7 +282,32 @@ export async function GET(request: Request) {
       let outputContent: string | undefined
       let lastOutputKey: string | undefined
 
-      if (isWebsiteBuildRun(kind)) {
+      if (kind === 'family_weekly_editorial_drafts') {
+        // Separate, fail-closed editorial-only worker. This kind MUST NEVER
+        // fall through to generic workflow steps or marketing distribution.
+        // Both flags default OFF; no scheduler or model can be activated here.
+        const prepared = await executeClaimedFamilyWeeklyRun(db, run)
+        if (prepared.status !== 'review_ready') {
+          const settled = await finalizeOwnedRunUnlessCancelled(
+            db, run.id, run.claim_id, {
+              status: 'failed', error: 'FAMILY_WEEKLY_REVIEW_NOT_READY',
+              finished_at: new Date().toISOString(), claimed_at: null, lease_until: null,
+            },
+          )
+          results.push({
+            run_id: run.id,
+            status: settled.outcome === 'SUCCEEDED' ? 'family_weekly_blocked'
+                  : settled.outcome === 'CANCELLED' ? 'cancelled'
+                  : settled.outcome === 'FENCED' ? 'fenced' : 'lifecycle_error',
+          })
+          continue
+        }
+        // Notice failure must NOT regenerate content or re-charge a provider.
+        // The saved weekly preparation is already authoritative and review-only.
+        if (!prepared.noticeStored) {
+          console.warn('[family-weekly] editorial drafts saved, in-app notice pending repair')
+        }
+      } else if (isWebsiteBuildRun(kind)) {
         await executeWebsiteBuildRun(db, run as Run, run.claim_id!)
       } else if (isMarketingRun(kind)) {
         // Kod-driven marketing-workflow: dispatch på `kind` till rätt handler.

@@ -45,6 +45,24 @@ end $$;
 
 reset role;
 set role service_role;
+-- The synthetic fixture starts with a pending native workflow row.
+-- Link it to the unique weekly queue plan (one per week) BEFORE the model
+-- admission, then simulate the existing claim_runs() atomic claim.
+insert into public.family_weekly_run_plans(
+ project_id,owner_id,week_start,consent_event_id,
+ conversation_id,run_id
+) values(
+ '77cda551-57c9-4dc0-b019-1bb6438777f7',
+ '77777777-7777-4777-8777-777777777777',
+ '2027-01-04'::date,1,
+ '55555555-5555-4555-8555-555555555555',
+ '66666666-6666-4666-8666-666666666666'
+);
+update public.runs
+ set status='running',
+ claim_id='88888888-8888-4888-8888-888888888888',
+ lease_until=clock_timestamp()+interval '25 minutes',attempts=1
+ where id='66666666-6666-4666-8666-666666666666';
 do $$
 declare
  family constant uuid:='77cda551-57c9-4dc0-b019-1bb6438777f7';

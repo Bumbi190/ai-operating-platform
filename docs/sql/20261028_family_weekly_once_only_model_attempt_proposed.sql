@@ -65,7 +65,19 @@ language sql volatile security invoker set search_path='' as $$
     and r.input->>'ownerId'=p_owner_id::text
     and r.input->>'conversationId'=p_conversation_id::text
     and r.input->>'weekStart'=p_week_start::text
-    and r.idempotency_key='family_weekly_drafts:'||to_char(p_week_start,'YYYYMMDD')
+    and r.input->>'eventId'=p_consent_event_id::text
+    -- Unbound runs MUST have no idempotency_key by canonical runs constraints.
+    -- The durable family_weekly_run_plans UNIQUE(project,week) row is the
+    -- only legitimate scheduling/idempotency proof for this workflow.
+    and r.idempotency_key is null
+    and r.workflow_instance_id is null
+    and exists(
+      select 1 from public.family_weekly_run_plans q
+      where q.project_id=p.id and q.owner_id=p_owner_id
+        and q.conversation_id=p_conversation_id
+        and q.run_id=p_run_id and q.week_start=p_week_start
+        and q.consent_event_id=p_consent_event_id
+    )
     and exists(
       select 1 from public.family_weekly_auto_consent_events e
       where e.project_id=p.id and e.owner_id=p_owner_id
@@ -112,7 +124,7 @@ begin
   return jsonb_build_object('status','blocked');
  end if;
  if not public.family_weekly_authority_current(
-  p_owner_id,p_run_id,p_claim_id,p_consent_event_id,p_conversation_id
+  p_owner_id,p_run_id,p_claim_id,p_consent_event_id,p_conversation_id,p_week_start
  ) then
   return jsonb_build_object('status','blocked');
  end if;

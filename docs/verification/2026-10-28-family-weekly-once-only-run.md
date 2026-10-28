@@ -148,3 +148,199 @@ aktivering måste befintlig \`runs/drain\`-motor uttryckligen stödja
 \`family_weekly_editorial_drafts\` och faktiskt skapa ett unikt,
 \`max_attempts=1\`-jobb med origin/projekt/konversation/ägare inlästa
 från betrodda källor, inte från modellens output eller ett oskyddat API.
+
+
+## Fas 5 – verifierad Atlas-jobbskapare och separat RUN_BOUND-hanterare
+
+**Ej aktiverad / förslag i PR.**
+
+### Korrigering mot produktionens verkliga runs-schema
+
+En read-only kontroll av \`pg_constraint\` i Omniras verkliga projekt visade
+att \`runs_action_binding_complete\` kräver \`idempotency_key IS NULL\`
+när \`workflow_instance_id IS NULL\`, och
+\`runs_idempotency_key_sha256\` bara accepterar 64 små hextecken när
+nyckeln väl används. Våra tidigare planeringsanteckningar med en
+läsbar \`family_weekly_drafts:YYYYMMDD\` direkt i
+\`runs.idempotency_key\` hade alltså blivit nekade i produktion.
+
+Den nya, föreslagna
+\`docs/sql/20261028_family_weekly_run_creator_proposed.sql\` skapar
+i stället \`family_weekly_run_plans\` med en **permanent unik
+\`(project_id,week_start)\`**, och ett faktiskt \`public.runs\`-jobb
+med \`workflow_id=NULL\`, \`workflow_instance_id=NULL\`,
+\`idempotency_key=NULL\`, \`kind=family_weekly_editorial_drafts\`,
+\`max_attempts=1\`, inga action-/schema-/publiceringsrättigheter.
+
+Ägaren är inte klient-/modellstyrd: \`family_weekly_enqueue_once()\`
+utan argument läser **nuvarande** \`projects.owner_id\`, kontrollerar
+\`execution_paused=false\`, senaste aktiva append-only consent-event
+och en verklig projektbunden konversation som ägs av personen.
+Den får bara skriva söndag kl 15.00–15.59 Europe/Stockholm från och
+med 2027-01-03, med kommande måndag som målvecka.
+Redan köade, redan förberedda eller återkallade veckor går inte igenom.
+Inget cron-schema registreras i detta steg.
+
+\`family_weekly_authority_current()\` i det tidigare
+\`once_only_model_attempt_proposed.sql\` kräver nu även att
+den permanenta körningsplanen faktiskt motsvarar det aktuella
+\`runId\`, ägaren, \`conversationId\`, \`weekStart\`, samtyckets
+\`eventId\` och ett verkligt \`claim_id\` som fortfarande lever.
+Alla fyra SQL-dokumenten är **förslag**, inte kanoniska migreringar.
+
+### Kod (avstängd som standard)
+
+- \`run-creator.ts\` och \`run-creator-db.ts\`: snäv
+  \`family_weekly_enqueue_once()\`-adapter med exakt DB-kvitto.
+- \`/api/social-weekly-automation/cron\`: separat Bearer
+  \`CRON_SECRET\`-skyddad GET-ingång. Kräver **både**
+  \`FAMILY_WEEKLY_AUTO_DRAFTS_RUNTIME_ENABLED=true\` och
+  \`FAMILY_WEEKLY_ENQUEUE_ENABLED=true\`. Båda är
+  default OFF/inte satta i produktion. Inga klientparametrar för
+  ägare, vecka, modell eller bolag accepteras.
+- \`claimed-run-worker.ts\`: validerar de verkliga fälten i en
+  redan hämtad \`public.runs\`-rad, kräver runtime ON, kontrollerar
+  ägarskap/run-claim/vecka via service-role DB-RPC, återanvänder
+  befintliga \`getWeeklyContext\`, \`runStep\`, governed spend,
+  engångsanspråk, atomärt \`social_weekly_save\` och ägarprivat
+  in-app-granskningsnotis.
+- \`/api/runs/drain\` har nu en **egen, uttrycklig**
+  \`family_weekly_editorial_drafts\`-gren så sådana jobb aldrig
+  faller vidare till generic workflow/marknadsföring. Avslag
+  terminaliseras claim-bundet och misslyckad avisering triggar
+  varken nytt modell-anrop eller ny schemapublicering.
+- Ingen ändring har gjorts i Familje-Stundens befintliga
+  november/december-socialkö, SCB-grenen eller Strato-PR:n.
+
+### Verifierat
+
+- 44/44 riktade Vitest-tester för cronbehörighet, exakt datum,
+  dubbel kö, jobbformat, drift OFF, förfalskat claim och
+  fail-closed arbetshanterare godkända.
+- Avgränsad TypeScript-kontroll PASS inklusive
+  \`app/api/runs/drain/route.ts\`.
+- Riktig, lokal PostgreSQL 16 med \`--network none\`,
+  inga portar/volymer och syntetiska konton:
+  - \`normal\`: RLS, dubbletter, DB-signaturer, spärr före
+    januarifönstret, återkallelse och editorial-only: PASS.
+  - \`simulated-sunday\`: en **endast i Docker-fixturens
+    minneskopia** simulerad lokal söndag 2027-01-03 kl 15.10,
+    lyckad och exakt 1 native \`runs\`-INSERT och unik
+    \`family_weekly_run_plans\`-post; andra försöket blockerades.
+    Den då claimade körningen kunde göra exakt en betald
+    modell-admission, andra försöket blockerades; rätt
+    granskningskvitto skapades, en senare ägaråterkallelse
+    spärrade vidare godkännande.
+  - Båda resultat gav exit 0:
+    \`FAMILY_WEEKLY_SYNTHETIC_PG_ROLE_AND_CLAIM_TESTS_PASS\`
+    respektive
+    \`FAMILY_WEEKLY_SYNTHETIC_SUNDAY_QUEUE_ONCE_AND_MODEL_ONCE_PASS\`.
+  - Båda testcontainrarna stoppades och togs bort.
+
+Reproducerbart via
+\`docs/verification/fixtures/run-family-weekly-pg-smoke.ps1\`
+med valfri \`-Mode normal\` eller \`-Mode simulated-sunday\`.
+Det här är ett **isolerat syntetiskt** Postgres-test, inte
+full migration-replay med Omniras riktiga \`social_weekly_save\`
+eller något aktiverat januarischema. Fullständigt, inloggat
+Preview-acceptanstest och migrations-/RLS-revision återstår
+innan produktion.
+
+
+## Fas 6 – Atlas native jobbskapare, cron-adapter och kodregression
+
+### Implementerat i isolerad PR-gren, avstängt tills release
+
+- Ny **föreslagen och icke-applicerad** SQL:
+  \`docs/sql/20261028_family_weekly_run_creator_proposed.sql\`.
+  Den innehåller en permanent, unik \`family_weekly_run_plans\` för en
+  Familje-Stunden-vecka och \`family_weekly_enqueue_once()\` utan
+  användarinmatning. SQL väljer projektets befintliga ägare och en av
+  den ägarens faktiska projektbundna konversationer, kontrollerar
+  \`execution_paused=false\`, senaste aktiva consent-event och lokal
+  söndag 15:00–15:59 från januari 2027 innan ett review-only-jobb
+  får skapas i **befintliga** \`public.runs\`. En redan sparad
+  förberedelse eller veckokö gör omförsök till no-op.
+- **Verklig produktionsschemainkompatibilitet åtgärdad:** read-only
+  inspektion av \`pg_constraint\` visade att ett obundet \`runs\`-jobb
+  måste ha \`idempotency_key=NULL\`, trots att bundna workflow-actions
+  accepterar SHA-256. Därför använder denna nya arbetsström en egen
+  \`UNIQUE(project_id,week_start)\`-tabell i stället för att skriva en
+  läsbar veckonyckel till \`runs.idempotency_key\`. Detta har
+  bekräftats i en isolerad fixture med motsvarande DB-constraints.
+- \`run-creator.ts\` + \`run-creator-db.ts\` är fail-closed
+  enqueue-adaptrar. Den skyddade \`GET
+  /api/social-weekly-automation/cron\` kräver exakt server-side
+  \`CRON_SECRET\` och **båda** oberoende flaggorna
+  \`FAMILY_WEEKLY_AUTO_DRAFTS_RUNTIME_ENABLED=true\` och
+  \`FAMILY_WEEKLY_ENQUEUE_ENABLED=true\`. Alla flaggor är OFF
+  som standard; ingen \`vercel.json\`-registrering, \`pg_cron\`
+  eller annan timer har skapats i denna PR.
+- \`claimed-run-worker.ts\` har en egen verifierad jobbtyp
+  \`family_weekly_editorial_drafts\`, med samma \`RUN_BOUND\`
+  \`claim_id\` som den existerande \`runs/drain\`-motorn.
+  Den får aldrig skapa egna claims eller en ny identitet.
+  Funktionen accepterar bara aktuell status \`running\`,
+  \`attempts=max_attempts=1\`, rätt familjeprojekt,
+  obundet workflow, och en fullständig DB-verifierad
+  projektkonversation, ägare, consent-event och målvecka
+  via \`family_weekly_authority_current\`.
+- En liten uttrycklig gren i \`app/api/runs/drain/route.ts\`
+  hindrar jobbtypen från att falla vidare till generic
+  agent-/marketing-/site-builder-flöden. Om en kontroll fallerar
+  terminaliseras det ägda jobbet utan betalt modell-anrop;
+  endast ett verifierat redaktionellt resultat kan slutföras.
+- Kostnadsstyrd textgenerering, exact-once-admission,
+  atomär slutkontroll mot återkallat consent,
+  \`social_weekly_save\`, och unik intern granskningsnotis
+  återanvänder de föregående PR-etapperna. Ett misslyckat
+  notiskvitto startar **aldrig** en ny AI-generering.
+  Native separat owner-approval krävs fortfarande för
+  all schemaläggning och publicering.
+
+### Verifiering
+
+- **44/44** riktade nya testfall för cron-gate, verklig
+  run-claim-koppling, fel vecka, fel ägare, tidigare consent,
+  falsk claim-ID, och offentlig route som inte anropar DB
+  om en flagga/CRON_SECRET saknas.
+- **383/383** relevanta Vitest-testfall gröna: hela
+  Familje-Stunden weekly-sviten + Migration Guard v2
+  + Schema Security Invariant + Migration Security Gate.
+- Avgränsad TypeScript-kontroll **PASS**, inklusive hela
+  \`app/api/runs/drain/route.ts\` och den skyddade cron-routen.
+- Reproducerbar lokal PostgreSQL 16:
+  \`run-family-weekly-pg-smoke.ps1 -Mode normal\` **PASS**,
+  \`-Mode simulated-sunday\` **PASS**. Januariklockan simuleras
+  **endast genom ersättning i minnet när SQL strömmas till
+  en helt isolerad Docker-instans**; produktionskoden innehåller
+  inget testklock-undantag. Kontrollerade riktig run-INSERT
+  med NULL idempotency-key, ägarkoppling, en plan per vecka,
+  en paid-attempt, claim-rotation, post-save-kvitto och revoke.
+  Alla Docker-testcontainrar är stoppade och borttagna.
+- \`lib/qa/website-build-drain.test.ts\` kunde inte samlas
+  i denna arbetsyta eftersom den kräver en särskild
+  \`WEBSITE_BUILD_TEST_DATABASE_NAME\`-fixture. Den är
+  inte en del av ovanstående 383 gröna tester och anges
+  **inte** som godkänd. Ingen sådan fixture fabricerades
+  eller ärvd testdatabas användes.
+
+### Kvarvarande release-gates
+
+1. SCB-arbetsströmmens parallella migrationsledgeravvikelse
+   måste lösas i sin egen PR, inte kopieras in här.
+2. Alla **fyra** föreslagna SQL-filer för samtycke,
+   avisering, veckokö och betalt modellanspråk ska
+   granskas/tillämpas genom normal migreringspolicy,
+   med full PostgreSQL/pgTAP-role replay samt RLS
+   mot Omniras riktiga migrationsuppsättning.
+3. Skyddad Preview med ägarens autentiserade session
+   och kanonisk \`social_weekly_save\` måste testas.
+   Den riktiga söndagskörningen 2027-01-03 är ännu
+   **inte** installerad eller aktiv.
+4. Ägaren behöver klicka ett uttryckligt, tidsbegränsat
+   consent i Omnira. Om en körning aktiveras senare
+   förbereder den **bara** utkast; faktiska sociala
+   publiceringar har sin separat godkända kö.
+
+PR:n ska stanna **DRAFT** tills dessa grindar är klara.

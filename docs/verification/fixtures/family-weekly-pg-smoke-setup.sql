@@ -16,25 +16,34 @@ grant execute on function auth.uid() to authenticated;
 create table public.projects(
  id uuid primary key,
  owner_id uuid not null references auth.users(id),
- slug text not null
+ slug text not null,
+ execution_paused boolean not null default false
 );
 create table public.conversations(
  id uuid primary key,
  user_id uuid not null references auth.users(id),
- project_id uuid references public.projects(id)
+ project_id uuid references public.projects(id),
+ created_at timestamptz default clock_timestamp()
 );
 create table public.runs(
- id uuid primary key,
+ id uuid primary key default gen_random_uuid(),
  project_id uuid not null references public.projects(id),
- status text not null,
+ workflow_id uuid,
+ workflow_instance_id uuid,
+ status text not null default 'pending',
  claim_id uuid,
  lease_until timestamptz,
- attempts integer not null,
- max_attempts integer not null,
- cancel_requested boolean not null,
+ attempts integer not null default 0,
+ max_attempts integer not null default 3,
+ cancel_requested boolean not null default false,
  kind text,
  idempotency_key text,
- input jsonb not null default '{}'::jsonb
+ input jsonb not null default '{}'::jsonb,
+ context jsonb not null default '{}'::jsonb,
+ constraint runs_idempotency_key_sha256
+ check(idempotency_key is null or idempotency_key~'^[0-9a-f]{64}$'),
+ constraint runs_action_binding_complete
+ check(workflow_instance_id is not null or idempotency_key is null)
 );
 create table public.social_weekly_preparations(
  id uuid primary key default gen_random_uuid(),
@@ -74,6 +83,7 @@ end $$;
 
 grant select on public.projects,public.conversations to authenticated;
 grant select on public.projects,public.conversations,public.runs,public.social_weekly_preparations to service_role;
+grant update,insert on public.runs to service_role;
 grant insert on public.social_weekly_preparations to service_role;
 grant usage on schema public to authenticated,service_role;
 grant select on public.social_weekly_preparations to authenticated;
@@ -95,10 +105,10 @@ insert into public.runs(
 ) values(
  '66666666-6666-4666-8666-666666666666',
  '77cda551-57c9-4dc0-b019-1bb6438777f7',
- 'running','88888888-8888-4888-8888-888888888888',
- clock_timestamp()+interval '25 minutes',
- 1,1,false,
+ 'pending',null,
+ null,
+ 0,1,false,
  'family_weekly_editorial_drafts',
- 'family_weekly_drafts:20270104',
- '{"ownerId":"77777777-7777-4777-8777-777777777777","conversationId":"55555555-5555-4555-8555-555555555555","weekStart":"2027-01-04"}'::jsonb
+ null,
+ '{"ownerId":"77777777-7777-4777-8777-777777777777","conversationId":"55555555-5555-4555-8555-555555555555","weekStart":"2027-01-04","eventId":1,"source":"family_weekly_sunday_v1"}'::jsonb
 );

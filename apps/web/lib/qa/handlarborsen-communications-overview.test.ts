@@ -148,7 +148,8 @@ describe('Handlarbörsen: read-only communications view', () => {
   it('keeps the page owner-gated and both reads before rendering, with no mutation paths', () => {
     const page = readFileSync(resolve('app/(platform)/projects/[slug]/communications/page.tsx'), 'utf8')
     const component = readFileSync(resolve('components/platform/vnext/HandlarborsenCommunications.tsx'), 'utf8')
-    const link = readFileSync(resolve('components/platform/vnext/ProjectCommandCenter.tsx'), 'utf8')
+    const projectOverview = readFileSync(resolve('components/platform/vnext/HandlarborsenOverview.tsx'), 'utf8')
+    const sharedNavigation = readFileSync(resolve('components/platform/vnext/ProjectCommandCenter.tsx'), 'utf8')
     expect(page).toContain('getProjectBySlug(params.slug)')
     expect(page).toContain('isHandlarborsenProject(project)')
     expect(page).toContain('resolveProjectAccess()')
@@ -157,7 +158,9 @@ describe('Handlarbörsen: read-only communications view', () => {
     expect(page).toContain('readHandlarborsenSalesOverview(context)')
     expect(page).toContain('readHandlarborsenReplyLifecycle(context)')
     expect(page).toContain("if (sales.status === 'not_permitted' || reply.status === 'not_permitted') notFound()")
-    expect(link).toContain("hasCover ? '/projects/handlarborsen/communications' : null")
+    expect(projectOverview).toContain("projectSlug === 'handlarborsen'")
+    expect(projectOverview).toContain('href="/projects/handlarborsen/communications"')
+    expect(sharedNavigation).not.toContain('/projects/handlarborsen/communications')
     for (const body of [page, component]) {
       for (const forbidden of ['.insert(', '.update(', '.delete(', '.rpc(', 'sendEmail(', 'fetch(']) {
         expect(body).not.toContain(forbidden)

@@ -13,7 +13,9 @@ Den stora, öppna PR #386 innehåller en separat sales-vy och
 PR #562 innehåller en avstängd Strato-inkorgsbrygga. Ingen av dessa aktiveras här.
 
 Ny route: /projects/handlarborsen/communications
-Navigation: endast Handlarbörsens projektheader får länken "Kommunikation".
+Navigation: endast Handlarbörsens egen översiktskomponent visar länken
+"Kommunikation · inkorg och AI-svar"; gemensamma ProjectCommandCenter lämnas
+oförändrat för att undvika filöverlapp med den äldre öppna Sales-PR #386.
 
 ## Säkerhetskedja
 

@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import type { AnalysisRuleId, SaveSelector } from '@/lib/atlas/project-analytics/analysis-review-contract'
 import type { MarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-report'
 import { buildHandlarborsenOverview } from '@/lib/atlas/project-analytics/handlarborsen-overview'
@@ -55,10 +56,20 @@ export function HandlarborsenOverview({
     reportLabel: 'Fullständig statistikrapport',
     prominent: true,
   }
+  // Scope this shortcut to Handlarbörsen's own overview, not shared project navigation.
+  const communicationShortcut = projectSlug === 'handlarborsen' ? (
+    <nav className="mb-4 flex justify-end px-1" aria-label="Handlarbörsens kommunikation">
+      <Link href="/projects/handlarborsen/communications"
+        className="inline-flex rounded-xl border border-sky-400/25 bg-sky-400/10 px-4 py-2 text-sm font-semibold text-sky-200 transition-colors hover:bg-sky-400/20">
+        Kommunikation · inkorg och AI-svar
+      </Link>
+    </nav>
+  ) : null
 
   if (model.kind === 'note') {
     return (
       <>
+        {communicationShortcut}
         <HandlarborsenCandidateReviewNotice memory={candidateMemory} enabled={candidateMemoryEnabled} audience={candidateAudience} reviews={candidateReviews} reviewEnabled={candidateReviewEnabled} />
         <KpiOverviewNote {...common} title={model.title} text={model.text} tone={model.tone} />
         {traffic && <HandlarborsenPosthogTraffic traffic={traffic} />}
@@ -69,6 +80,7 @@ export function HandlarborsenOverview({
   }
   return (
     <>
+      {communicationShortcut}
       <HandlarborsenCandidateReviewNotice memory={candidateMemory} enabled={candidateMemoryEnabled} audience={candidateAudience} reviews={candidateReviews} reviewEnabled={candidateReviewEnabled} />
       <HandlarborsenExecutiveSummary report={report} model={model} traffic={traffic} now={now} />
       <HandlarborsenTrends report={report} />

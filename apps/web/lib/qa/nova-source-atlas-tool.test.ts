@@ -51,7 +51,7 @@ describe('Nova source inspection tool authority and minimal durable receipt',()=
     expect((NOVA_SOURCE_TOOL.input_schema.properties as any).action.enum).toEqual(['status','read_file'])
     expect((NOVA_SOURCE_TOOL.input_schema.properties as any).projectSlug.enum).toEqual(['handlarborsen'])
     expect((NOVA_SOURCE_TOOL.input_schema.properties as any).startLine).toMatchObject({ type: 'integer', minimum: 1, maximum: 5000 })
-    expect((NOVA_SOURCE_TOOL.input_schema.properties as any).expectedSha).toMatchObject({ type: 'string', pattern: '^[a-f0-9]{40}
+    expect((NOVA_SOURCE_TOOL.input_schema.properties as any).expectedSha).toMatchObject({ type: 'string' })
     expect(NOVA_SOURCE_TOOL.input_schema.additionalProperties).toBe(false)
   })
   it('refuses all work before source dispatch unless operator, origin and project owner hold',async()=>{

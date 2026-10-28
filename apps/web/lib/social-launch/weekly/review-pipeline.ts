@@ -43,19 +43,8 @@ const reject=(reason:string,modelCalls:0|1=0):WeeklyPipelineResult=>
  ({status:'blocked',reason,modelCalls,publicationAuthority:false})
 function sameConsent(a:VerifiedWeeklyEnrollment,b:VerifiedWeeklyEnrollment):boolean{
  return a.status==='owner_verified'&&b.status==='owner_verified'&&
- a.ownerId===b.ownerId&&a.projectId===b.projectId&&
+ a.eventId===b.eventId&&a.ownerId===b.ownerId&&a.projectId===b.projectId&&
  a.validThrough===b.validThrough&&a.permittedOperation===b.permittedOperation
-}
-function safeReviewUrl(value:unknown):string{
- if(typeof value!=='string')return REVIEW_URL
- try{
-  const url=new URL(value)
-  if(url.protocol==='https:'&&url.hostname==='app.omniraos.se'&&
-   url.pathname==='/projects/familje-stunden/social'&&!url.username&&!url.password){
-   return url.toString()
-  }
- }catch{/* Invalid source link is never reused. */}
- return REVIEW_URL
 }
 export function buildWeeklyReviewNotice(
  saved:unknown,weekStart:string,expectedCount:number
@@ -69,7 +58,8 @@ export function buildWeeklyReviewNotice(
  return {kind:'familje-stunden-weekly-editorial-review',
   projectId:FAMILY_WEEKLY_PROJECT_ID,weekStart,
   preparationId:r.preparationId,count:expectedCount,
-  workspaceUrl:safeReviewUrl(r.workspaceUrl),
+  // Never let a stored or model-supplied URL change the owner review destination.
+  workspaceUrl:REVIEW_URL,
   message:'Atlas har förberett '+expectedCount+' utkast för veckan '+weekStart+
    '. Granska versionerna i Familje-Stundens sociala arbetsyta. '+
    'Ingenting är ännu godkänt, schemalagt eller publicerat.'}

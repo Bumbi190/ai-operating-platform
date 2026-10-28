@@ -23,7 +23,7 @@ const input=()=>({
  conversationId,now,run:{kind:'RUN_BOUND' as const,context:'AUTONOMOUS' as const,runId,claimId},
 })
 const consent=()=>({
- status:'owner_verified' as const,ownerId:owner,projectId:FAMILY,
+ eventId:1,status:'owner_verified' as const,ownerId:owner,projectId:FAMILY,
  permittedOperation:'family_weekly_caption_drafts' as const,validThrough:'2027-01-05T00:00:00Z',
 })
 const context=()=>({
@@ -145,6 +145,14 @@ describe('Family weekly review pipeline: real controlled boundaries, no send',()
    expect(f.runModel).toHaveBeenCalledTimes(1)
    expect(f.save).not.toHaveBeenCalled()
   }finally{spy.mockRestore()}
+ })
+ it('rejects a revoked/reissued grant even if its expiry remains the same',async()=>{
+  const f=fixture()
+  f.getEnrollment.mockResolvedValueOnce(consent())
+  f.getEnrollment.mockResolvedValueOnce({...consent(),eventId:2})
+  const r=await prepareWeekForOwnerReview(input(),f.ports as never)
+  expect(r).toMatchObject({status:'blocked',reason:'owner_enrollment_revoked',modelCalls:1})
+  expect(f.save).not.toHaveBeenCalled()
  })
  it('rejects unverified model response without creating drafts',async()=>{
   const f=fixture()

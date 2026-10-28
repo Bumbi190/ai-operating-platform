@@ -45,6 +45,7 @@ export type WeeklyAutoContext=WeeklyAutoEvidence&{
  workspaceUrl?:string
 }
 export type VerifiedWeeklyEnrollment={
+ eventId:number
  status:'owner_verified'
  projectId:string
  ownerId:string
@@ -183,7 +184,7 @@ export async function generateReviewOnlyWeeklyDrafts(
  if(projectId!==FAMILY_WEEKLY_PROJECT_ID||!UUID.test(ownerId)||
  !run||run.kind!=='RUN_BOUND'||run.context!=='AUTONOMOUS'||
  !UUID.test(run.runId)||!UUID.test(run.claimId)||
- !verifiedEnrollment||verifiedEnrollment.status!=='owner_verified'||
+ !verifiedEnrollment||!Number.isSafeInteger(verifiedEnrollment.eventId)||verifiedEnrollment.eventId<1||verifiedEnrollment.status!=='owner_verified'||
  verifiedEnrollment.projectId!==projectId||verifiedEnrollment.ownerId!==ownerId||
  verifiedEnrollment.permittedOperation!=='family_weekly_caption_drafts'||
  !Number.isFinite(Date.parse(verifiedEnrollment.validThrough))||

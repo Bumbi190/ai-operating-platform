@@ -32,7 +32,7 @@ const ctx=()=>({
 const base=()=>({
  projectId:FAMILY,ownerId:owner,now,context:ctx(),
  run:{kind:'RUN_BOUND' as const,context:'AUTONOMOUS' as const,runId,claimId},
- verifiedEnrollment:{status:'owner_verified' as const,projectId:FAMILY,ownerId:owner,
+ verifiedEnrollment:{eventId:1,status:'owner_verified' as const,projectId:FAMILY,ownerId:owner,
   permittedOperation:'family_weekly_caption_drafts' as const,validThrough:'2027-01-04T00:00:00Z'},
 })
 const drafts=()=>keys.flatMap(slotKey=>['facebook','instagram'].map(channel=>({

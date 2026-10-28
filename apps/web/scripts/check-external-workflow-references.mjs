@@ -84,7 +84,7 @@ assert.equal(injectedHits.matches.length, 1)
 assert.ok(injectedHits.matches[0].sourceUrl.endsWith('workflows/Allowed/0001_valid.json'))
 
 const route = readFileSync(resolve('app/api/chat/route.ts'), 'utf8')
-assert.equal((route.match(/name: 'search_external_workflow_references'/g) ?? []).length, 1)
+assert.equal((route.match(/\{\s*name: 'search_external_workflow_references',\s*description:/g) ?? []).length, 1)
 assert.ok(route.includes("import { searchExternalWorkflowReferences } from '@/lib/atlas/workflow-references'"))
 assert.match(route, /if \(name === 'search_external_workflow_references'\) \{\r?\n\s*const operator = await resolvePlatformOperator\(\)/)
 assert.ok(route.includes("if (!operator.ok) return { denied: 'platform_operator_required' }"))

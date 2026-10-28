@@ -121,3 +121,24 @@ test('malformed reviewer and source payloads fail closed without throwing',()=>{
   assert.equal(run(material,[{...sources[0],publisherGroup:undefined},sources[1]]).outcome,'requires_review')
   assert.equal(run({...material,captions:null}).outcome,'requires_review')
 })
+
+test('known high-impact topics require human review even if riskTier is forged standard',()=>{
+  for (const dangerous of [
+    'The Home Office is using AI to make asylum decisions.',
+    'A company is facing a government investigation.',
+    'Researchers claim a new cancer diagnosis system works.',
+    'An AI election prediction is supposedly confirmed.',
+    'The provider reported a major data breach.',
+  ]) {
+    const m={...material,hook:dangerous,riskTier:'standard'}
+    const revised={...assessment,contentSha256:contentDigest(m),
+      findings:materialUnits(m).map(unit=>({
+        unitId:unit.id,exactText:unit.text,verdict:'supported',
+        explanation:'Test of the policy, not of real factual verification.',
+        evidence:sources.map(source=>({sourceId:source.id,exactQuote:
+          'Researchers can access the published documentation now.'})),
+      })),
+    }
+    assert.equal(run(m,sources,revised).outcome,'requires_review')
+  }
+})

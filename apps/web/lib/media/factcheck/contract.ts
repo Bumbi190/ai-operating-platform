@@ -207,7 +207,15 @@ export function assessFactCheck(
     }
     if (independentlyPublished.size < 2) return stop('insufficient_independent_sources')
   }
-  if (material.riskTier !== 'standard') return stop('sensitive_or_unclassified')
+  // Defense in depth: an upstream model must never be able to label an asylum,
+  // election or health claim as 'standard' to bypass the human-review policy.
+  // This catches common high-impact topics; other risks still require an
+  // independent conservative classifier (a keyword list is not sufficient).
+  const publicText = [material.hook,material.script,material.socialCaption,
+    ...material.captions,material.cta ?? '',material.thumbnailText ?? ''].join(' ')
+  const sensitive = /\b(?:asylum|deportation|refugees?|suicide|cancer|diagnos(?:is|ed)|medical advice|medication|vot(?:e|ing)|elections?|criminal charges?|arrested|genocide|war crimes?|child abuse|fraud|lawsuits?|data breach|privacy breach|government investigation|regulatory investigation)\b/i
+  if (material.riskTier !== 'standard' || sensitive.test(publicText))
+    return stop('sensitive_or_unclassified')
   return {outcome: 'ready_for_editor', reasons: [], contentSha256,
     unitCount: units.length, reviewedSourceCount: sources.length}
 }

@@ -137,7 +137,7 @@ describe('Nova trusted source boundary, separate from SDF-1 execution', () => {
     ['https://alice:fixture-pass@example.test/path', 'URL userinfo'],
     ['Authorization: Basic ZGVtbzpwYXNzd29yZA==', 'Basic authorization'],
     ["const DATABASE_DSN = process.env.DATABASE_DSN", 'sensitive assignment even if runtime environment-sourced'],
-    ["const credential = '" + 'eyJ' + "' + 'a'.repeat(16) + '.' + 'eyJ' + 'b'.repeat(16) + '.' + 'c'.repeat(24)", 'JWT-shaped credential'],
+    ["const credential = '" + 'eyJ' + 'a'.repeat(16) + '.' + 'eyJ' + 'b'.repeat(16) + '.' + 'c'.repeat(24) + "'", 'JWT-shaped credential'],
     ['sk_live_' + 'a'.repeat(24), 'live payment credential'],
   ])('fails closed on inline %s (%s)', (source, _category) => {
     expect(isSafeInspectableText(source)).toBe(false)

@@ -123,6 +123,63 @@ describe('Atlas external workflow references: read-only, pinned discovery', () =
     }
   })
 
+  it('returns pinned noOp examples separately from eight keyword matches', () => {
+    const result = searchReferences(index, {
+      query: 'lead email follow-up placeholder structure metadata',
+      project: 'handlarborsen',
+      limit: 8,
+    })
+    expect(result.ok).toBe(true)
+    expect(result.matches.length).toBeLessThanOrEqual(8)
+    expect(result.auditedNoOpEvidenceScope).toBe('five_pinned_json_files_only_not_full_catalog')
+    expect(result.auditedNoOpExamples).toHaveLength(3)
+    expect(result.auditedNoOpExamples?.map(hit => hit.qualityAssessment.observedStructure?.noOpNodeCount).sort((a, b) => (a ?? 0) - (b ?? 0)))
+      .toEqual([6, 12, 15])
+    for (const hit of result.auditedNoOpExamples ?? []) {
+      expect(hit.sourceUrl).toBe('https://github.com/Zie619/n8n-workflows/blob/' +
+        SOURCE_AUDIT_PIN + '/' + hit.sourcePath)
+      expect(hit.reviewState).toBe('unreviewed_reference_only')
+      expect(hit.runnableInOmnira).toBe(false)
+      expect(hit.qualityAssessment.workingAutomationVerified).toBe(false)
+      expect(hit.qualityAssessment.approvedForIntegration).toBe(false)
+      expect(hit.qualityAssessment.warnings.join(' ')).toContain('noOp')
+    }
+  })
+
+  it('uses operator-side noOp request even when model keywords omit noOp', () => {
+    const result = searchReferences(index, {
+      query: 'lead email follow-up',
+      project: 'handlarborsen',
+      includeNoOpAuditExamples: true,
+      limit: 2,
+    })
+    expect(result.matches.length).toBeLessThanOrEqual(2)
+    expect(result.auditedNoOpExamples).toHaveLength(3)
+  })
+
+  it('keeps normal unrelated searches compact and unaugmented', () => {
+    const result = searchReferences(index, { query: 'YouTube video', project: 'the-prompt' })
+    expect(result.ok).toBe(true)
+    expect(result).not.toHaveProperty('auditedNoOpExamples')
+    expect(result).not.toHaveProperty('auditedNoOpEvidenceScope')
+  })
+
+  it('does not produce NoOp evidence for an invalid or unpinned catalog', () => {
+    const result = searchReferences({
+      ...index, source: { ...index.source, pinnedSha: '0'.repeat(40) },
+    }, { query: 'noOp placeholders', includeNoOpAuditExamples: true })
+    expect(result.code).toBe('CATALOG_UNAVAILABLE')
+    expect(result.matches).toEqual([])
+    expect(result).not.toHaveProperty('auditedNoOpExamples')
+  })
+
+  it('derives noOp intent from authenticated user text, not tool input', () => {
+    const route = readFileSync(resolve(process.cwd(), 'app/api/chat/route.ts'), 'utf8')
+    expect(route).toContain('includeNoOpAuditExamples: /no[\\s-]?op|platshåll|placeholder/i.test(lastUserText)')
+    expect(route).toContain('När användaren frågar om noOp/platshållare:')
+    expect(route).toContain('if (!operator.ok) return { denied: \'platform_operator_required\' }')
+  })
+
   it('fails closed on invalid input and an unpinned/untrusted repository', () => {
     expect(searchExternalWorkflowReferences({ query: '' }).ok).toBe(false)
     expect(searchExternalWorkflowReferences({ query: 'x'.repeat(161) }).ok).toBe(false)

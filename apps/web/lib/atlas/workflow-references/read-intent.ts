@@ -20,8 +20,11 @@ const NEGATED_READ = /^(?:sök|söka|hitta|visa|lista|jämför|jämföra|granska
 export function isExternalWorkflowReferenceReadIntent(text: unknown): boolean {
   if (typeof text !== 'string' || text.length > 1200) return false
   const normalized = text.normalize('NFC').trim().toLocaleLowerCase('sv-SE')
-  if (!normalized || !SUBJECT.test(normalized)) return false
-  const command = normalized.replace(POLITE, '').trim()
+  // Only the leading operator request may select a tool. Quoted instructions
+  // or additional paragraphs are not authority to route the conversation.
+  const firstClause = normalized.split(/[.!?;:\n]/u, 1)[0].trim()
+  if (!firstClause || !SUBJECT.test(firstClause)) return false
+  const command = firstClause.replace(POLITE, '').trim()
   if (NEGATED_READ.test(command)) return false
   return READ.test(command) || QUESTION.test(command)
 }

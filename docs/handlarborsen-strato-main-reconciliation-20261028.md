@@ -40,9 +40,12 @@ extern källgranskning; Stratos flagga kommer efteråt och påverkar
 inte Notion-only-läsning. Ingen Notion-källa kan ge e-postsändrätt.
 
 ## Testbevis från isolerad arbetskopia
-- Riktad Vitest med 10 sviter: 136/136 godkända.
-  Innefattar Strato-inbox, intent, ägargrindar, Notion, CRM,
-  svarslivscykel, externa referenser och manuell LinkedIn.
+- Utökad riktad Vitest med 12 sviter: 195/195 godkända.
+  Innefattar Strato-inbox, intent, ägargrindar, Notion/entitetskällor,
+  CRM, svarslivscykel, externa workflowreferenser och manuell LinkedIn.
+  Fyra äldre textassertioner i externa workflow-/Notion-sviter uppdaterades
+  för att kräva main-grindarnas nya parameterordning och verktygsscope
+  utan att försvaga separationen mellan källor och åtgärder.
 - Python unittest med fake/isolated test sources:
   21/21 godkända. Ingen verklig IMAP/SMTP användes i dessa tester.
 - Testernas textassertioner har anpassats till kombinerad routing utan

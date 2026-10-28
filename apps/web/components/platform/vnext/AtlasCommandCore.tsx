@@ -12,6 +12,7 @@ import {
 } from '@/lib/atlas/orb-state'
 import { OPERATOR_NAME } from '@/lib/atlas/identity'
 import { AtlasFace } from './AtlasFace'
+import { AtlasResponseMarkdown } from './AtlasResponseMarkdown'
 import styles from './AtlasHomeVNext.module.css'
 
 /**
@@ -188,7 +189,10 @@ export function AtlasCommandCore({ readOnly = false, voiceHref }: { readOnly?: b
               <span>Atlas</span>
               {atlas.perf ? <span className={styles.performance}>{atlas.perf}</span> : null}
             </div>
-            <p>{readOnly ? observerAnswer : atlas.response}</p>
+            <AtlasResponseMarkdown
+              className={styles.responseMarkdown}
+              text={readOnly ? observerAnswer : atlas.response}
+            />
             {!readOnly && atlas.conversationId && atlas.voicePhase === 'idle' ? (
               <button
                 type="button"

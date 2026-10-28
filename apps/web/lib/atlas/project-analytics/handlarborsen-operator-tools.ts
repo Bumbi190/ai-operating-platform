@@ -7,6 +7,7 @@ import {
 } from '@/lib/atlas/collectors/handlarborsen-marketplace'
 import { loadHandlarborsenMarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-read'
 import { readHandlarborsenSalesOverview } from '@/lib/atlas/project-analytics/handlarborsen-sales-overview'
+import { compareHandlarborsenWorkflowEvidence } from '@/lib/atlas/project-analytics/handlarborsen-evidence-comparison'
 
 /**
  * Operator-only, read-only bridges from Atlas's already ingested sources.
@@ -17,6 +18,7 @@ export const HANDLARBORSEN_READ_TOOL_NAMES = [
   'handlarborsen_statistics',
   'handlarborsen_latest_mail',
   'handlarborsen_sales_overview',
+  'handlarborsen_compare_workflow_evidence',
 ] as const
 export type HandlarborsenReadTool = (typeof HANDLARBORSEN_READ_TOOL_NAMES)[number]
 
@@ -34,6 +36,11 @@ export const HANDLARBORSEN_READ_TOOLS = [
   {
     name: 'handlarborsen_sales_overview',
     description: 'Läs exakt antal lagrade Handlarbörsen-säljkontakter, suppressed/confirmed/excluded-flaggor, inkommande Strato-meddelandeposter, svar som väntar på granskning, svarsutkast, registrerade SMTP-jobb och SCB-granskningskön. Allt är projektägargrindade HEAD-counts; INGA kontaktuppgifter, mejltexter eller företagsidentiteter kan hämtas. confirmed betyder inte tillåten kontakt, suppressed kan överlappa confirmed, smtp_accepted betyder inte levererat, SCB-underlag utanför databaskön ingår inte. Inget skrivs eller skickas.',
+    input_schema: { type: 'object' as const, properties: {}, required: [] },
+  },
+  {
+    name: 'handlarborsen_compare_workflow_evidence',
+    description: 'Jämför Handlarbörsens ägargrindade CRM/inkorg/SCB-antal med fastlåsta externa workflowreferenser och deras noOp-varningar. ENDAST plattformsoperatör. Båda datakällorna är läsningar. Indata måste vara tomma; inga företag, adresser, tabeller eller sökord får väljas av modellen. Externa idéer är overifierade. Inga mejl, importer, körningar eller åtgärder.',
     input_schema: { type: 'object' as const, properties: {}, required: [] },
   },
 ] as const
@@ -97,6 +104,9 @@ export async function handleHandlarborsenReadTool(name: HandlarborsenReadTool, c
   }
   if (name === 'handlarborsen_sales_overview') {
     return readHandlarborsenSalesOverview(context)
+  }
+  if (name === 'handlarborsen_compare_workflow_evidence') {
+    return compareHandlarborsenWorkflowEvidence(context)
   }
   if (name !== 'handlarborsen_latest_mail') return { status: 'unavailable' as const, reason: 'unknown_tool' }
   // The project allow-list is owner-only (projects.owner_id = auth.uid).

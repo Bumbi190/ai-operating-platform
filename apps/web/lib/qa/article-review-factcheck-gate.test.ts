@@ -3,17 +3,18 @@
  *
  * Proves that a row from the fact-checked workflow can reach publishArticle
  * only after an explicit operator approval AND a passed fact-check bound to
- * the exact body, and that the website's confirmation is what marks it
+ * the exact headline, lede and body it publishes, and that the website's confirmation is what marks it
  * published (with the URL the website returned).
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { sha256 } from '@/lib/article/factcheck/contract'
+import { articleContentSha256, articleFieldHashes, sha256 } from '@/lib/article/factcheck/contract'
 
 let mockRow: Record<string, unknown> | null = null
 let mockUser: { id?: string; email?: string } | null = null
 let ownedProjectIds: string[] = []
 let publishCalls = 0
+let published: Array<Record<string, unknown>> = []
 let publishShouldThrow: Error | null = null
 let updates: Array<Record<string, unknown>> = []
 
@@ -38,6 +39,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 vi.mock('@/lib/publishing/publish', () => ({
   publishArticle: async (_d: string, payload: Record<string, unknown>) => {
     publishCalls++
+    published.push(payload)
     if (publishShouldThrow) throw publishShouldThrow
     return { ok: true, id: 'cms-1', external_id: payload.external_id, slug: 's', status: 'published',
       published_at: '2026-10-28T10:00:00.000Z', published_url: 'https://theprompt.nu/articles/s', operation: 'created' }
@@ -46,13 +48,20 @@ vi.mock('@/lib/publishing/publish', () => ({
 
 import { POST } from '@/app/api/content/articles/[id]/review/route'
 
+const TITLE = 'Acme releases Model X'
+const SUMMARY = 'Acme released Model X on Tuesday.'
 const BODY = 'According to The Verge, Acme released Model X on Tuesday.'
-const passedReport = { version: 1, verdict: 'passed', bodySha256: sha256(BODY), reasons: [], claims: [], sources: [] }
+const TEXT = { title: TITLE, summary: SUMMARY, body: BODY }
+const passedReport = {
+  version: 2, verdict: 'passed', fieldSha256: articleFieldHashes(TEXT), contentSha256: articleContentSha256(TEXT),
+  reasons: [], claims: [], sources: [],
+}
+const PAYLOAD = { version: 1, external_id: 'omnira_n1', ...TEXT }
 
 function row(meta: Record<string, unknown>, extra: Record<string, unknown> = {}) {
   return {
     id: 'wc-1', project_id: 'p1', status: 'pending_review', destination_key: 'the-prompt', hero_image_url: null,
-    payload: { version: 1, external_id: 'omnira_n1', title: 'T', body: BODY },
+    payload: PAYLOAD,
     qa: { pass: true }, meta, ...extra,
   }
 }
@@ -64,6 +73,7 @@ beforeEach(() => {
   mockUser = { id: 'op-1', email: 'op@example.com' }
   ownedProjectIds = ['p1']
   publishCalls = 0
+  published = []
   publishShouldThrow = null
   updates = []
 })
@@ -75,6 +85,8 @@ describe('review route fact-check gate', () => {
     expect(res.status).toBe(200)
     expect(publishCalls).toBe(1)
     expect(updates[0]).toMatchObject({ status: 'published', destination_url: 'https://theprompt.nu/articles/s' })
+    // The exact reviewed headline, lede and body are what the website receives.
+    expect(published[0]).toMatchObject(TEXT)
   })
 
   it.each([
@@ -82,7 +94,23 @@ describe('review route fact-check gate', () => {
     ['needs_revision report', { factcheck_required: true, factcheck: { ...passedReport, verdict: 'needs_revision' } }, {}, 'factcheck_needs_revision'],
     ['missing report', { factcheck_required: true }, {}, 'factcheck_missing'],
     ['body edited after check', { factcheck_required: true, factcheck: passedReport },
-      { payload: { version: 1, external_id: 'omnira_n1', body: BODY + ' New unchecked claim.' } }, 'factcheck_body_mismatch'],
+      { payload: { ...PAYLOAD, body: BODY + ' New unchecked claim.' } }, 'factcheck_body_mismatch'],
+    ['ONLY the headline edited after a passed check', { factcheck_required: true, factcheck: passedReport },
+      { payload: { ...PAYLOAD, title: 'Acme launches Model Y today' } }, 'factcheck_title_mismatch'],
+    ['one word added to the headline after a passed check', { factcheck_required: true, factcheck: passedReport },
+      { payload: { ...PAYLOAD, title: `${TITLE} today` } }, 'factcheck_title_mismatch'],
+    ['ONLY the lede edited after a passed check', { factcheck_required: true, factcheck: passedReport },
+      { payload: { ...PAYLOAD, summary: 'Acme raised $5 billion.' } }, 'factcheck_summary_mismatch'],
+    ['lede removed after a passed check', { factcheck_required: true, factcheck: passedReport },
+      { payload: { ...PAYLOAD, summary: null } }, 'factcheck_summary_mismatch'],
+    ['false headline the fact-check did not pass', { factcheck_required: true,
+      factcheck: { ...passedReport, verdict: 'needs_revision', reasons: ['u1:central:unsupported', 'title_not_verified'] } },
+      {}, 'factcheck_needs_revision'],
+    ['body-only (v1) report, even with a matching body hash', { factcheck_required: true,
+      factcheck: { version: 1, verdict: 'passed', bodySha256: sha256(BODY), reasons: [], claims: [], sources: [] } },
+      {}, 'factcheck_unknown_version'],
+    ['headline missing from the payload', { factcheck_required: true, factcheck: passedReport },
+      { payload: { ...PAYLOAD, title: undefined } }, 'payload_title_missing'],
     ['QA failed', { factcheck_required: true, factcheck: passedReport }, { qa: { pass: false } }, 'article_qa_not_passed'],
   ])('%s → 409, nothing published, row untouched', async (_l, meta, extra, reason) => {
     mockRow = row(meta, extra)

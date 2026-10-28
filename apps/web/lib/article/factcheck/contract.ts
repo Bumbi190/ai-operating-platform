@@ -4,9 +4,14 @@
  * Deterministic half of the website-article FactCheck gate. Pure: no network,
  * no model, no database.
  *
+ * It covers the WHOLE publishable text: the headline (`title`), the lede
+ * (`summary`) and the body. The review route publishes all three, so a report
+ * that judged only the body could pass a false headline.
+ *
  * The reviewer model proposes claims, verdicts and evidence quotes. NOTHING it
  * says is trusted here:
- *   - every claim must quote a sentence that actually exists in the body,
+ *   - every claim must quote a sentence that actually exists in the headline,
+ *     lede or body (each field matched on its own, never across a boundary),
  *   - every evidence quote must exist verbatim in the snapshot it cites,
  *   - "supported" without verified evidence becomes "unsupported",
  *   - "contradicted" without verified evidence becomes "uncertain".
@@ -19,6 +24,8 @@
 
 import { createHash } from 'node:crypto'
 import type {
+  ArticleField,
+  ArticleText,
   CheckedClaim,
   ClaimEvidence,
   ClaimVerdict,
@@ -121,9 +128,33 @@ function isModelClaim(value: unknown): value is ModelClaim {
   )
 }
 
+const FIELDS: readonly ArticleField[] = ['title', 'summary', 'body']
+
+/** Canonical field values: exactly what the review route publishes (`summary || null` => ''). */
+export function canonicalArticleText(text: ArticleText): { title: string; summary: string; body: string } {
+  return { title: text.title ?? '', summary: text.summary ?? '', body: text.body ?? '' }
+}
+
+export function articleFieldHashes(text: ArticleText): { title: string; summary: string; body: string } {
+  const t = canonicalArticleText(text)
+  return { title: sha256(t.title), summary: sha256(t.summary), body: sha256(t.body) }
+}
+
+/** One binding hash over all three fields; JSON array encoding keeps field boundaries unambiguous. */
+export function articleContentSha256(text: ArticleText): string {
+  const t = canonicalArticleText(text)
+  return sha256(JSON.stringify([t.title, t.summary, t.body]))
+}
+
+/** Sentences of one field. The headline and lede are plain text, so a leading '#' is content. */
+function fieldSentences(field: ArticleField, value: string): string[] {
+  return bodySentences(field === 'body' ? value : value.replace(/^\s*#+\s*/, ''))
+}
+
 function checkClaim(
   raw: ModelClaim,
   index: number,
+  field: ArticleField,
   sourcesById: Map<string, SourceSnapshot>,
 ): CheckedClaim {
   const evidence: ClaimEvidence[] = []
@@ -148,12 +179,19 @@ function checkClaim(
     downgrades.push('contradiction_without_verified_evidence')
   }
   if (rejectedEvidence.length > 0) downgrades.push(`rejected_evidence:${rejectedEvidence.length}`)
+  // The headline and lede are what most readers take away; they can never be "supporting".
+  let importance = raw.importance
+  if (field !== 'body' && importance !== 'central') {
+    importance = 'central'
+    downgrades.push(`${field}_claim_is_central`)
+  }
 
   return {
     id: `c${index + 1}`,
+    field,
     sentence: raw.sentence.trim(),
     claim: raw.claim.trim(),
-    importance: raw.importance,
+    importance,
     modelVerdict: raw.verdict,
     verdict,
     evidence,
@@ -174,6 +212,10 @@ export function claimIsPublishable(c: CheckedClaim): boolean {
 }
 
 export interface AssessInput {
+  /** The publishable headline. */
+  title: string
+  /** The publishable lede; null/undefined => ''. */
+  summary?: string | null
   body: string
   sources: readonly SourceSnapshot[]
   /** Raw reviewer output; null when the reviewer failed. Validated here. */
@@ -184,48 +226,64 @@ export interface AssessInput {
 }
 
 export function assessArticleFactCheck(input: AssessInput): FactCheckReport {
-  const bodySha256 = sha256(input.body)
+  const text = canonicalArticleText(input)
+  const fieldSha256 = articleFieldHashes(text)
+  const contentSha256 = articleContentSha256(text)
   const checkedAt = (input.now ?? new Date()).toISOString()
   const sources = input.sources.map(({ text, ...rest }) => ({ ...rest, chars: text.length }))
   const empty = { supported: 0, uncertain: 0, contradicted: 0, unsupported: 0, central: 0, centralSingleGroup: 0 }
 
   const blocked = (reason: string, claims: CheckedClaim[] = []): FactCheckReport => ({
-    version: 1, verdict: 'blocked', reasons: [reason], bodySha256, checkedAt,
+    version: 2, verdict: 'blocked', reasons: [reason], fieldSha256, contentSha256, checkedAt,
     reviewerModel: input.reviewerModel, sources, claims, counts: countClaims(claims) ?? empty,
     round: input.round,
   })
 
-  if (!input.body.trim()) return blocked('empty_body')
+  if (!text.title.trim()) return blocked('empty_title')
+  if (!text.body.trim()) return blocked('empty_body')
   if (input.sources.length === 0) return blocked('no_usable_sources')
   if (!Array.isArray(input.modelClaims)) return blocked('invalid_review_output')
   if (input.modelClaims.length === 0) return blocked('no_claims_extracted')
   if (input.modelClaims.length > MAX_CLAIMS) return blocked('too_many_claims')
   if (!input.modelClaims.every(isModelClaim)) return blocked('invalid_review_output')
 
-  const normalizedBody = normalizeForMatch(input.body)
-  const sourcesById = new Map(input.sources.map((s) => [s.id, s]))
-  const claims = (input.modelClaims as ModelClaim[]).map((c, i) => checkClaim(c, i, sourcesById))
-
-  // A claim the body does not contain cannot gate the body. One mismatch means the
-  // review was not of this text, so the whole review is refused rather than trusted in part.
-  if (claims.some((c) => !normalizedBody.includes(normalizeForMatch(c.sentence)))) {
-    return blocked('review_sentence_not_in_body', claims)
+  const normalizedFields = FIELDS.map((f) => [f, normalizeForMatch(text[f])] as const)
+  const fieldOf = (sentence: string): ArticleField | null => {
+    const n = normalizeForMatch(sentence)
+    if (!n) return null
+    // Headline first, then lede: a sentence the body repeats is still a headline/lede claim.
+    return normalizedFields.find(([, v]) => v.includes(n))?.[0] ?? null
   }
+  const sourcesById = new Map(input.sources.map((s) => [s.id, s]))
+  const modelClaims = input.modelClaims as ModelClaim[]
+  const located = modelClaims.map((c) => fieldOf(c.sentence))
+
+  // A claim the article does not contain cannot gate the article. One mismatch means the
+  // review was not of this text, so the whole review is refused rather than trusted in part.
+  if (located.some((f) => f === null)) {
+    return blocked('review_sentence_not_in_article',
+      modelClaims.map((c, i) => checkClaim(c, i, located[i] ?? 'body', sourcesById)))
+  }
+  const claims = modelClaims.map((c, i) => checkClaim(c, i, located[i]!, sourcesById))
 
   // COVERAGE. The reviewer decides what it lists, so an omitted claim would
-  // otherwise never be judged. Every checkable body sentence must be contained
-  // in some listed claim sentence (a listed fragment does not cover the whole
-  // sentence). Anything omitted becomes an UNSUPPORTED CENTRAL claim — fail
-  // closed — which forces a revision and, if still omitted, blocks.
+  // otherwise never be judged. Every headline and lede sentence (always: they are
+  // the most prominent assertions) and every checkable body sentence must be
+  // contained in some listed claim sentence (a listed fragment does not cover
+  // the whole sentence). Anything omitted becomes an UNSUPPORTED CENTRAL claim —
+  // fail closed — which forces a revision and, if still omitted, blocks.
   const listed = claims.map((c) => normalizeForMatch(c.sentence))
-  const omitted = bodySentences(input.body)
-    .filter(isCheckableSentence)
-    .filter((s) => {
-      const n = normalizeForMatch(s)
-      return n.length > 0 && !listed.some((l) => l.includes(n))
-    })
-  omitted.forEach((sentence, i) => claims.push({
+  const required = FIELDS.flatMap((field) =>
+    fieldSentences(field, text[field])
+      .filter((s) => field !== 'body' || isCheckableSentence(s))
+      .map((sentence) => ({ field, sentence })))
+  const omitted = required.filter(({ sentence }) => {
+    const n = normalizeForMatch(sentence)
+    return n.length > 0 && !listed.some((l) => l.includes(n))
+  })
+  omitted.forEach(({ field, sentence }, i) => claims.push({
     id: `u${i + 1}`,
+    field,
     sentence,
     claim: sentence,
     importance: 'central',
@@ -235,7 +293,9 @@ export function assessArticleFactCheck(input: AssessInput): FactCheckReport {
     rejectedEvidence: [],
     publisherGroups: [],
     hasPrimarySource: false,
-    note: 'Checkable sentence was not listed by the reviewer; treated as an unsupported central claim.',
+    note: field === 'body'
+      ? 'Checkable sentence was not listed by the reviewer; treated as an unsupported central claim.'
+      : `The ${field === 'title' ? 'headline' : 'lede'} was not listed by the reviewer; treated as an unsupported central claim.`,
     downgrades: ['omitted_by_reviewer'],
   }))
 
@@ -244,6 +304,9 @@ export function assessArticleFactCheck(input: AssessInput): FactCheckReport {
 
   const reasons: string[] = []
   if (omitted.length > 0) reasons.push(`omitted_checkable_sentences:${omitted.length}`)
+  for (const f of ['title', 'summary'] as const) {
+    if (claims.some((c) => c.field === f && !claimIsPublishable(c))) reasons.push(`${f}_not_verified`)
+  }
   for (const c of claims) {
     if (!claimIsPublishable(c)) reasons.push(`${c.id}:${c.importance}:${c.verdict}`)
   }
@@ -256,7 +319,7 @@ export function assessArticleFactCheck(input: AssessInput): FactCheckReport {
   const verdict: FactCheckVerdict = blocking.length === 0 ? 'passed' : 'needs_revision'
 
   return {
-    version: 1, verdict, reasons, bodySha256, checkedAt,
+    version: 2, verdict, reasons, fieldSha256, contentSha256, checkedAt,
     reviewerModel: input.reviewerModel, sources, claims, counts, round: input.round,
   }
 }
@@ -280,15 +343,24 @@ export function claimsNeedingRevision(report: FactCheckReport): CheckedClaim[] {
 
 /**
  * Publication gate used by the review route. A report authorises publication of
- * EXACTLY the body it was computed on, and only when it passed.
+ * EXACTLY the headline, lede and body it was computed on, and only when it passed.
+ * Editing any one of them (even only the headline) refuses publication until the
+ * new version has been fact-checked. Version-1 (body-only) reports are refused.
  */
-export function factCheckAllowsPublication(report: unknown, body: string): { ok: true } | { ok: false; reason: string } {
+export function factCheckAllowsPublication(report: unknown, text: ArticleText): { ok: true } | { ok: false; reason: string } {
   if (!report || typeof report !== 'object') return { ok: false, reason: 'factcheck_missing' }
   const r = report as Partial<FactCheckReport>
-  if (r.version !== 1) return { ok: false, reason: 'factcheck_unknown_version' }
+  if (r.version !== 2) return { ok: false, reason: 'factcheck_unknown_version' }
   if (r.verdict !== 'passed') return { ok: false, reason: `factcheck_${r.verdict ?? 'missing'}` }
-  if (typeof r.bodySha256 !== 'string' || r.bodySha256 !== sha256(body)) {
-    return { ok: false, reason: 'factcheck_body_mismatch' }
+  const current = articleFieldHashes(text)
+  const reviewed = (r.fieldSha256 ?? {}) as Partial<Record<ArticleField, unknown>>
+  for (const f of FIELDS) {
+    if (typeof reviewed[f] !== 'string' || reviewed[f] !== current[f]) {
+      return { ok: false, reason: `factcheck_${f}_mismatch` }
+    }
+  }
+  if (typeof r.contentSha256 !== 'string' || r.contentSha256 !== articleContentSha256(text)) {
+    return { ok: false, reason: 'factcheck_content_mismatch' }
   }
   return { ok: true }
 }

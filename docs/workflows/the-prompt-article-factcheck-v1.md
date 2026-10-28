@@ -41,14 +41,18 @@ facts and is never treated as a fact-check. The fact-check (`lib/article/factche
    as one publisher. Only public https URLs are used, the URL is classified after redirects, and too-short
    pages are skipped.
 2. The **reviewer model** (the same Anthropic Sonnet family as the writer, via the governed `getAnthropic`)
-   lists every checkable claim. For each claim it gives the exact article sentence, an importance level,
+   is shown the **headline, lede and body** exactly as they will be published and lists every checkable claim. For each claim it gives the exact article sentence, an importance level,
    a verdict, and verbatim quotes.
 3. **Deterministic validation** (`contract.ts`) trusts none of it:
-   - each sentence must exist in the body, or the whole review is refused;
+   - each sentence must exist in the headline, the lede or the body (matched per field, never across a field
+     boundary), or the whole review is refused (`review_sentence_not_in_article`);
+   - a headline or lede claim is always **central**, even if the reviewer labels it supporting (`title_claim_is_central`);
    - each quote must exist verbatim in the cited snapshot;
    - `supported` without a verified quote becomes `unsupported`;
    - `contradicted` without a verified quote becomes `uncertain`.
-   - **Coverage:** the reviewer chooses which claims to list, so omission is checked in code. Every body
+   - **Coverage:** the reviewer chooses which claims to list, so omission is checked in code. The headline and
+     **every** lede sentence must always be listed, with or without fact signals; a false headline over a correct
+     body is therefore never `passed` (`title_not_verified` / `summary_not_verified`). Every body
      sentence with a fact signal (a number, amount or percentage, a quotation, a date or weekday, or an
      event verb such as announced, launched, raised, acquired, said, according to, costs or available)
      must be contained in a listed claim sentence. A listed *fragment* does not count. Any such sentence
@@ -62,12 +66,16 @@ facts and is never treated as a fact-check. The fact-check (`lib/article/factche
    - central claims backed by only one publisher are reported, but not blocking, since independent corroboration is "where possible".
 5. If the verdict is `needs_revision`, the flagged sentences are revised **once**: corrected from sources, qualified, or removed.
    The article is then re-checked. If it still does not pass, it is `blocked`.
-6. The report is stored in `website_content.meta.factcheck`, together with the sources, every claim, the
-   verified and rejected quotes, the downgrades and the `bodySha256` of the exact text that was checked.
+6. The report (version 2) is stored in `website_content.meta.factcheck`, together with the sources, every claim
+   (with the field it was found in), the verified and rejected quotes, the downgrades, `fieldSha256`
+   (`title`, `summary`, `body`) and `contentSha256` over the exact triple that was checked.
 
 **Publication gate** (`/api/content/articles/[id]/review`, approve): for rows with `meta.factcheck_required`,
-it requires `qa.pass`, `factcheck.verdict === 'passed'` and `sha256(payload.body) === factcheck.bodySha256`.
-Otherwise it returns 409 before any write, and reject still works. The row is marked `published` only after
+it requires `qa.pass`, `factcheck.verdict === 'passed'`, report version 2, and that the **payload it is about to
+publish** has exactly the reviewed `title`, `summary` and `body` (per-field hash and combined hash). Editing only
+the headline or only the lede after a passed check is refused (`factcheck_title_mismatch` /
+`factcheck_summary_mismatch`) until the new version has itself been fact-checked. A body-only version-1 report is
+refused (`factcheck_unknown_version`). Otherwise it returns 409 before any write, and reject still works. The row is marked `published` only after
 `publishArticle` returns the website's confirmation, and `destination_url` comes from that response.
 Rows from the existing generate paths are unchanged.
 
@@ -113,6 +121,8 @@ Anthropic `claude-sonnet-4-6` at $3 / $15 per million input/output tokens (`lib/
 
 - **Typical article: ≈ $0.15. Worst case with revision: ≈ $0.33.**
 - At the default 2 articles a day: **≈ $9–20 per month (≈ 95–210 SEK)**.
+- Checking the headline and lede adds roughly 100 input and 200 output tokens per check (< $0.005). The larger
+  effect is indirect: a headline the sources do not support now triggers the one revision (≈ +$0.17).
 - The fact-check `max_tokens` is 9 000, so the reviewer can list every checkable sentence.
 - Retries add at most one repeated step per crash.
 - Hermes `/read`: 1–3 reads per article on the existing service. No new integration; there is extra load, but its hosting cost is not metered here.
@@ -134,7 +144,11 @@ No new external AI service, paid API, search API or webhook is introduced.
 
 ## Verification done
 
-- 95 vitest cases across 7 files: contract, sources, runner, tick route, review gate, store, error class.
+- 120 vitest cases across 7 files: contract, sources, runner, tick route, review gate, store, error class.
+  This includes headline/lede cases: a false headline or lede over a verified body never passes (omitted,
+  fabricated quote, contradicted, fragment-only, "supporting"), and a headline-only or lede-only edit after a
+  passed check (including one added word) is refused by the route with no `publishArticle` call. An end-to-end
+  runner test gates the exact payload `toPublishPayload` builds from the saved draft.
   This includes the owner's scenario: a new central claim is added to the test article and the AI reviewer
   leaves it out of its list. The result is never `passed`. It is blocked after the revision round if still
   omitted, and the publication gate refuses it.
@@ -147,7 +161,14 @@ No new external AI service, paid API, search API or webhook is introduced.
   - unbounded revisions;
   - coverage check disabled;
   - a fragment counted as coverage;
-  - an omitted claim treated as supporting.
+  - an omitted claim treated as supporting;
+  - headline/lede excluded from coverage, or required only with fact signals;
+  - a headline claim allowed to stay "supporting";
+  - the gate ignoring the title hash, the summary hash or the content hash, or accepting v1 reports;
+  - claims located across a field boundary;
+  - the runner checking a different lede than it saves, or not showing the reviewer the lede;
+  - the gate normalising the headline before hashing (survived at first; killed after adding the
+    one-added-word route test).
 - The proposed SQL was run on PGlite (`20261028150000_website_article_jobs.verify.mjs`, 9/9): duplicate enqueue,
   daily cap, exclusive claim, stale-token fencing, deferred not counting, expired-lease reclaim, max-attempts → failed,
   and the grants. It runs on a single connection, so real SKIP LOCKED contention was **not** exercised. Recommended next:
@@ -162,6 +183,12 @@ No new external AI service, paid API, search API or webhook is introduced.
 4. Watch the first articles in `/atlas/content`. Only an explicit Approve publishes.
 
 ## Known residual risks
+
+- Other published payload fields are **not** fact-checked: `category`, `tags`, `source` (name/url) and the hero
+  image. `source` comes from the news item, not from the model. Category and tags are labels, not claims.
+- Because every headline must be supported by a verbatim quote, a purely editorial headline ("What Acme's move
+  means for developers") will usually go to revision, and is blocked if the revision keeps it. This is a deliberate
+  fail-closed choice; watch the blocked rate in the first Preview articles.
 
 - The legacy `approvals`-based pipeline (`lib/article/pipeline.ts`, `ARTICLE_AUTOPUBLISH=high`) uses the same
   `external_id` scheme. If it were run for the same news item, it could publish its own version. It is untouched here.

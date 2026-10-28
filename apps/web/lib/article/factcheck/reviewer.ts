@@ -24,19 +24,21 @@ const REVISE_TOOL = 'submit_revision'
 const SOURCE_CHARS_FOR_REVIEW = 14_000
 
 export const FACTCHECK_SYSTEM_PROMPT = `You are the fact-check desk of "The Prompt", an AI-news publication.
-You receive a draft article and SOURCE SNAPSHOTS that were fetched independently of the writer.
+You receive a draft article (HEADLINE, LEDE and BODY) and SOURCE SNAPSHOTS that were fetched independently of the writer.
 Your job is verification, not editing.
 
 1. Extract every checkable factual claim in the article: names, organisations, products, versions,
    numbers, prices, dates, quotes, launches, availability, legal/regulatory facts, causal statements
    presented as fact. Skip sentences that are clearly marked opinion or interpretation
    ("this suggests", "the likely play is") unless they smuggle in a new fact.
-   COVERAGE IS CHECKED IN CODE: every article sentence that contains a number, amount, percentage,
+   The HEADLINE and every LEDE sentence are published too and are ALWAYS checked: list each of them
+   as a claim, always with importance "central", even if the body repeats it.
+   COVERAGE IS CHECKED IN CODE: every body sentence that contains a number, amount, percentage,
    quotation, date/weekday, or an event verb (announced, launched, released, raised, acquired, said,
    reported, according to, costs, available, ...) MUST appear in your list. Any such sentence you omit
    is automatically treated as an unsupported CENTRAL claim and blocks publication.
-2. For each claim copy the WHOLE article sentence it appears in EXACTLY, character for character
-   (not a fragment of it).
+2. For each claim copy the WHOLE sentence it appears in (headline, lede or body) EXACTLY, character
+   for character (not a fragment of it).
 3. Mark importance "central" if the story would be wrong or misleading without it; else "supporting".
 4. Judge it ONLY against the snapshots — not your memory:
    - supported: a snapshot states it. Give at least one exact quote (12-400 chars, copied verbatim).
@@ -63,6 +65,7 @@ export interface ReviewCallResult {
 export interface ReviewArgs {
   execution: ExecutionContract
   title: string
+  summary: string
   body: string
   sources: readonly SourceSnapshot[]
 }
@@ -80,7 +83,8 @@ export async function reviewClaims(args: ReviewArgs): Promise<ReviewCallResult> 
     system: FACTCHECK_SYSTEM_PROMPT,
     messages: [{
       role: 'user',
-      content: `SOURCE SNAPSHOTS\n${sourcesBlock(args.sources)}\n\nARTICLE\n# ${args.title}\n\n${args.body}`,
+      content: `SOURCE SNAPSHOTS\n${sourcesBlock(args.sources)}\n\n` +
+        `HEADLINE\n${args.title}\n\nLEDE\n${args.summary}\n\nBODY\n${args.body}`,
     }],
     tools: [{
       name: REVIEW_TOOL,
@@ -94,7 +98,7 @@ export async function reviewClaims(args: ReviewArgs): Promise<ReviewCallResult> 
             items: {
               type: 'object',
               properties: {
-                sentence: { type: 'string', description: 'The exact article sentence containing the claim.' },
+                sentence: { type: 'string', description: 'The exact headline, lede or body sentence containing the claim.' },
                 claim: { type: 'string', description: 'The claim restated atomically.' },
                 importance: { type: 'string', enum: ['central', 'supporting'] },
                 verdict: { type: 'string', enum: ['supported', 'contradicted', 'uncertain', 'unsupported'] },
@@ -130,7 +134,8 @@ export async function reviewClaims(args: ReviewArgs): Promise<ReviewCallResult> 
 }
 
 export const REVISE_SYSTEM_PROMPT = `You are the copy chief of "The Prompt". A fact-check found sentences in the
-article that are not supported by the sources. Revise the article so that EVERY flagged sentence is either:
+article (headline, lede or body) that are not supported by the sources. Revise the article so that EVERY flagged
+sentence is either:
 - corrected to match what the sources actually say (only using facts present in the sources), or
 - clearly qualified (e.g. "X reports, but has not confirmed, that…"), or
 - removed.
@@ -156,7 +161,7 @@ export async function reviseFlaggedClaims(args: ReviseArgs): Promise<ReviseResul
     agent: 'Article FactCheck', operation: 'Revise Unverified Claims',
   })
   const flaggedList = args.flagged.map((c) =>
-    `- [${c.verdict}/${c.importance}] "${c.sentence}" — ${c.note || c.claim}`).join('\n')
+    `- [${c.field}/${c.verdict}/${c.importance}] "${c.sentence}" — ${c.note || c.claim}`).join('\n')
   const response = await claude.messages.create({
     model: FACTCHECK_MODEL,
     max_tokens: 4000,

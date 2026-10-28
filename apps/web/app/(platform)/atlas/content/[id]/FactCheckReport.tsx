@@ -67,7 +67,7 @@ export function FactCheckReport({ row }: { row: { payload: unknown; qa: unknown;
               <li key={c.id} className="text-xs border-l-2 border-border pl-2">
                 <div className="flex flex-wrap gap-2 items-center">
                   <span className={`font-mono uppercase text-[10px] ${VERDICT_STYLE[c.verdict] ?? ''}`}>{c.verdict}</span>
-                  <span className="font-mono text-[10px] text-secondary">{c.importance}</span>
+                  <span className="font-mono text-[10px] text-secondary">{c.field ?? 'body'} · {c.importance}</span>
                   {c.publisherGroups.length > 0 && (
                     <span className="text-[10px] text-secondary">sources: {c.publisherGroups.join(', ')}{c.hasPrimarySource ? ' · primary' : ''}</span>
                   )}

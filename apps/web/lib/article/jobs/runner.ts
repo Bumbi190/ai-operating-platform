@@ -41,7 +41,7 @@ export interface ArticleJobDeps {
   findCorroborating(newsItem: NewsItemInput): Promise<CorroborationCandidate[]>
   readSource: SourceReader
   write(args: { newsItem: NewsItemInput; groundingText: string }): Promise<{ draft: ArticleDraft }>
-  review(args: { title: string; body: string; sources: SourceSnapshot[] }): Promise<ReviewCallResult>
+  review(args: { title: string; summary: string; body: string; sources: SourceSnapshot[] }): Promise<ReviewCallResult>
   revise(args: {
     title: string; summary: string; body: string; flagged: CheckedClaim[]; sources: SourceSnapshot[]
   }): Promise<ReviseResult>
@@ -120,7 +120,8 @@ export async function runArticleJob(job: ArticleJob, deps: ArticleJobDeps): Prom
     if (!cp.qa.pass && cp.reports.length === 0) {
       // Structural QA failure: fact-checking text that is not fit to run would spend for nothing.
       const report = assessArticleFactCheck({
-        body: draft.body, sources, modelClaims: null, reviewerModel: null, round: 0, now: deps.now(),
+        title: draft.title, summary: draft.summary, body: draft.body,
+        sources, modelClaims: null, reviewerModel: null, round: 0, now: deps.now(),
       })
       const blockedReport: FactCheckReport = { ...report, verdict: 'blocked', reasons: ['article_qa_failed', ...cp.qa.issues] }
       cp.reports.push(blockedReport)
@@ -133,10 +134,11 @@ export async function runArticleJob(job: ArticleJob, deps: ArticleJobDeps): Prom
       const round = cp.revised ? 1 : 0
       const existing = cp.reports[round]
       if (!existing) {
-        const reviewed = await deps.review({ title: draft.title, body: draft.body, sources })
+        // Headline, lede and body are reviewed together: all three are published.
+        const reviewed = await deps.review({ title: draft.title, summary: draft.summary ?? '', body: draft.body, sources })
         addCost(reviewed.costUsd)
         cp.reports.push(assessArticleFactCheck({
-          body: draft.body, sources, modelClaims: reviewed.claims,
+          title: draft.title, summary: draft.summary, body: draft.body, sources, modelClaims: reviewed.claims,
           reviewerModel: reviewed.model, round, now: deps.now(),
         }))
         await save()

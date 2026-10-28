@@ -1,7 +1,8 @@
 /**
  * lib/article/factcheck/types.ts
  *
- * Website-article FactCheck v1 — shared types.
+ * Website-article FactCheck — shared types (report version 2: headline, lede and
+ * body are checked and bound together).
  *
  * This is a SEPARATE gate from lib/article/qa.ts. Article QA checks structure,
  * attribution, slop and copy overlap; it never verifies a factual claim. A row
@@ -49,8 +50,21 @@ export interface ModelClaim {
   readonly note: string
 }
 
+/** The publishable text fields a fact-check covers. Each is published as-is by the review route. */
+export type ArticleField = 'title' | 'summary' | 'body'
+
+/** Exactly what the reader sees: the payload's title, summary (lede) and body. */
+export interface ArticleText {
+  readonly title: string
+  /** null/undefined is treated as the empty string, matching `payload.summary || null`. */
+  readonly summary?: string | null
+  readonly body: string
+}
+
 export interface CheckedClaim {
   readonly id: string
+  /** Where the sentence was found. Headline and lede claims are always central. */
+  readonly field: ArticleField
   readonly sentence: string
   readonly claim: string
   readonly importance: ClaimImportance
@@ -72,17 +86,23 @@ export interface CheckedClaim {
 
 /**
  * passed          — every central claim is supported by verified evidence; nothing contradicted.
- * needs_revision  — the body contains claims that must be corrected, qualified or removed.
+ * needs_revision  — the headline, lede or body contains claims that must be corrected, qualified or removed.
  * blocked         — cannot be fact-checked (no usable sources, invalid review) or failed after revision.
  */
 export type FactCheckVerdict = 'passed' | 'needs_revision' | 'blocked'
 
 export interface FactCheckReport {
-  readonly version: 1
+  readonly version: 2
   readonly verdict: FactCheckVerdict
   readonly reasons: readonly string[]
-  /** sha256 of the exact body that was checked; the review route re-hashes before publishing. */
-  readonly bodySha256: string
+  /**
+   * sha256 of each exact field that was checked. The review route re-hashes the
+   * payload it is about to publish; a change to ANY field (even only the headline)
+   * invalidates the report until the new version is checked.
+   */
+  readonly fieldSha256: { readonly title: string; readonly summary: string; readonly body: string }
+  /** sha256 over the canonical [title, summary, body] triple; the single binding value. */
+  readonly contentSha256: string
   readonly checkedAt: string
   readonly reviewerModel: string | null
   readonly sources: ReadonlyArray<Omit<SourceSnapshot, 'text'> & { readonly chars: number }>

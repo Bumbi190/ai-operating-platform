@@ -214,7 +214,12 @@ export function assessFactCheck(
   const publicText = [material.hook,material.script,material.socialCaption,
     ...material.captions,material.cta ?? '',material.thumbnailText ?? ''].join(' ')
   const sensitive = /\b(?:asylum|deportation|refugees?|suicide|cancer|diagnos(?:is|ed)|medical advice|medication|vot(?:e|ing)|elections?|criminal charges?|arrested|genocide|war crimes?|child abuse|fraud|lawsuits?|data breach|privacy breach|government investigation|regulatory investigation)\b/i
-  if (material.riskTier !== 'standard' || sensitive.test(publicText))
+  // The Prompt may write Swedish scripts as well as English ones. An English
+  // only keyword floor could wrongly treat Swedish high-impact reporting as
+  // ordinary. Keep this conservative; it is NOT a complete classifier.
+  const sensitiveSwedish = /(?:asyl|utvisning|flykting|självmord|läkemedel|diagnos|riksdagsval|presidentval|valresultat|valfusk|röstning|åtal|häktad|krigsbrott|dataintrång|personuppgiftsincident|myndighetsutredning|regeringsutredning)/i
+  if (material.riskTier !== 'standard' || sensitive.test(publicText) ||
+      sensitiveSwedish.test(publicText))
     return stop('sensitive_or_unclassified')
   return {outcome: 'ready_for_editor', reasons: [], contentSha256,
     unitCount: units.length, reviewedSourceCount: sources.length}

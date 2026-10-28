@@ -129,6 +129,11 @@ test('known high-impact topics require human review even if riskTier is forged s
     'Researchers claim a new cancer diagnosis system works.',
     'An AI election prediction is supposedly confirmed.',
     'The provider reported a major data breach.',
+    'AI används för beslut i asylärenden.',
+    'Ett riksdagsval avgörs nu av automatiserade modeller.',
+    'Forskare hävdar att ett nytt läkemedel botar cancer.',
+    'Regeringen möter en myndighetsutredning om dataintrång.',
+    'Åtal väcks efter en stor personuppgiftsincident.',
   ]) {
     const m={...material,hook:dangerous,riskTier:'standard'}
     const revised={...assessment,contentSha256:contentDigest(m),

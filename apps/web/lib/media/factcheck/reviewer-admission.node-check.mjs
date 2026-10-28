@@ -96,3 +96,24 @@ test('live adapter calls only sanctioned spending boundary and has no public rou
   assert.equal(workflow.enabled,false)
   assert.equal(workflow.authority.can_publish,false)
 })
+
+test('no production media route imports the disabled FactCheck adapter',async()=>{
+  const {readdirSync}=await import('node:fs')
+  const {join}=await import('node:path')
+  const root='apps/web/app/api/media'
+  const paths=[]
+  const walk=dir=>{
+    for(const ent of readdirSync(dir,{withFileTypes:true})){
+      const path=join(dir,ent.name)
+      if(ent.isDirectory()) walk(path)
+      else if(ent.isFile() && /\.(?:ts|tsx)$/.test(path)) paths.push(path)
+    }
+  }
+  walk(root)
+  assert.ok(paths.length>10,'expected real media API routes')
+  for (const path of paths) {
+    const text=readFileSync(path,'utf8')
+    assert.doesNotMatch(text,/governedFactCheckReview|\/factcheck\/governed-reviewer|runFactCheckFixturePreview/,
+      'Unexpected FactCheck activation in '+path)
+  }
+})

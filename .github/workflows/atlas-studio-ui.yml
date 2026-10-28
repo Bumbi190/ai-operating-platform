@@ -28,8 +28,16 @@ on:
       - 'apps/web/playwright.social-start.config.ts'
       - 'apps/web/playwright.social-publication.config.ts'
       - 'apps/web/app/api/social-content/**'
+      - 'apps/web/app/api/social-weekly-automation/**'
+      - 'apps/web/app/api/runs/drain/route.ts'
       - 'apps/web/e2e/social-content*'
       - 'apps/web/playwright.social-content.config.ts'
+      - 'apps/web/e2e/weekly-consent*'
+      - 'apps/web/e2e/weekly-preparation*'
+      - 'apps/web/playwright.weekly-preparation.config.ts'
+      - 'docs/sql/20261028_family_weekly_*_proposed.sql'
+      - 'docs/verification/fixtures/family-weekly*'
+      - 'docs/verification/fixtures/run-family-weekly-pg-smoke.ps1'
       - 'apps/web/app/api/social-launch/**'
       - 'apps/web/app/(platform)/projects/[slug]/social/**'
       - 'apps/web/e2e/social-launch*'
@@ -92,6 +100,10 @@ jobs:
       - run: npx playwright test --config=playwright.atlas-studio-ui.config.ts
         working-directory: apps/web
       - run: npx vitest run lib/social-launch/profile/validate.test.ts lib/social-launch/publication/validate.test.ts lib/social-launch/publication/provider.test.ts lib/social-launch/content/validate.test.ts lib/social-launch/catalog.test.ts lib/social-launch/loader.test.ts lib/social-launch/release.test.ts lib/social-connections/providers.test.ts lib/social-connections/readiness.test.ts lib/social-connections/release.test.ts lib/social-connections/legacy-dispatch.test.ts lib/social-connections/snapshot-dispatch.test.ts
+        working-directory: apps/web
+      - run: npx vitest run lib/social-launch/weekly
+        working-directory: apps/web
+      - run: npx playwright test --config=playwright.weekly-preparation.config.ts
         working-directory: apps/web
       - run: npx playwright test --config=playwright.social-launch.config.ts
         working-directory: apps/web

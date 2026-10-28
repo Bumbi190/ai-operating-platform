@@ -571,3 +571,23 @@ API-svaren var uttryckliga testdubletter. Det är inte ett inloggat
 ägartest mot Vercels skyddade Preview och inte ett fullschema
 Supabase/Postgres end-to-end-test. Inga API-flaggor, cron, SQL-migrationer,
 AI-anrop eller publiceringsjobb har aktiverats.
+
+## Fas 12 – Skydd mot framtida regressioner i GitHub CI (2026-10-28)
+
+De 137 veckorelaterade Vitest-testerna och 9 isolerade Chromium/
+Playwright-testerna kördes tidigare lokalt men saknades som **obligatoriskt
+exekverade steg** i den befintliga GitHub-workflowen
+`Atlas Studio Responsive UI`.
+
+`.github/workflows/atlas-studio-ui.yml` anropar nu
+`npx vitest run lib/social-launch/weekly` och
+`npx playwright test --config=playwright.weekly-preparation.config.ts`
+i samma redan existerande UI-jobb efter installation av Chromium.
+Workflowens filfilter täcker nu veckans React-fixtures, API-rutter,
+den centrala runs/drain-vägen, Playwright-konfigurationen, berörda
+SQL-förslag och SQL-testfixtures. Denna ändring skapar ingen ny
+arbetskö, ingen produktionscron och ger ingen publiceringsbehörighet.
+
+**Verifikationsgrind:** körning och slutlig status för den exakta nya
+committen i GitHub Actions måste kontrolleras efter push; lokal
+testpassning ensam räcker inte som CI-bevis.

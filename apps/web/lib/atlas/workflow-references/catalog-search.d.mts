@@ -38,7 +38,7 @@ export interface ExternalWorkflowSearchResult {
   readonly message?: string
   readonly matches: readonly ExternalWorkflowReferenceHit[]
   /** Supplemental pinned structural evidence, not part of the limited search hits. */
-  readonly auditedNoOpExamples?: readonly Array<{
+  readonly auditedNoOpExamples?: ReadonlyArray<{
     readonly name: string
     readonly sourcePath: string
     readonly sourceUrl: string

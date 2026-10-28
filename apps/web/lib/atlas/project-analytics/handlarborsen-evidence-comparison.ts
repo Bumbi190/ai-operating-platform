@@ -58,7 +58,17 @@ export async function compareHandlarborsenWorkflowEvidence(context: OwnerReadCon
     status: 'ok' as const,
     projectSlug: HANDLARBORSEN_PROJECT_SLUG,
     mode: 'read_only_evidence_comparison' as const,
-    internalEvidence: sales,
+    // Whitelist the published count contract; never propagate future private
+    // fields added to the internal reader by another workstream.
+    internalEvidence: {
+      source: sales.source,
+      observedAt: sales.observedAt,
+      dataScope: sales.dataScope,
+      readMethod: sales.readMethod,
+      consistency: sales.consistency,
+      metrics: sales.metrics.map(metric => ({ key: metric.key, source: metric.source, count: metric.count })),
+      interpretation: sales.interpretation,
+    },
     externalEvidence: {
       source: catalog.source,
       queryScope: 'five_pinned_examples_and_top_five_keyword_matches',

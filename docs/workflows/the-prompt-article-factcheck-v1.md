@@ -1,6 +1,7 @@
 # The Prompt — fact-checked website articles (Workflow B) v1
 
-Status: **implemented behind a flag that is OFF. Not scheduled. Migration proposed, not applied.**
+Status: **implemented behind a flag that is OFF. Not scheduled. Migration proposed, not applied** — reviewed and
+verified with separate connections on an isolated PostgreSQL 17 (see "Queue migration: review and PostgreSQL 17 test").
 Date: 28 October 2026. Work ID `THEPROMPT-ARTICLE-FACTCHECK-20261028`.
 
 ## What it does
@@ -98,6 +99,72 @@ is exact-substring after normalisation, so a paraphrased quote is rejected (fail
 - AI or network errors: retry with back-off, up to `max_attempts` (default 3), then `failed`.
 - Saving uses `writeMode: 'reviewable_only'`: an existing `published/approved/rejected/scheduled/failed` row is never
   overwritten. The UPDATE carries `status = 'pending_review'`, so an approval racing the write wins.
+- Every checkpoint also renews the lease (heartbeat). A live worker therefore keeps its job; only a worker that stopped
+  checkpointing for the whole lease (600 s, longer than the route's 300 s `maxDuration`) can be taken over, and its
+  later writes are fenced out. Two workers can therefore not run paid steps for the same job at the same time,
+  except in the one-step crash window above.
+
+## Queue migration: review and PostgreSQL 17 test
+
+The proposed SQL was reviewed before testing. Changes made in review:
+
+| Finding | Risk | Change |
+|---|---|---|
+| `search_path = public` on SECURITY DEFINER functions | Differs from the repo convention (`''`, 464 uses); a shadowing object could be resolved first | `set search_path = ''`, every name schema-qualified |
+| `p_daily_max = null` | `count >= null` is never true: the daily cap would be silently off | Rejected (`22023`); allowed range 0–24 |
+| `p_lease_seconds = null` | `lease_expires_at` null never "expires": job stuck forever | Rejected; allowed 30–3600 |
+| Unknown `p_outcome` | Fell through to `queued`: a typo would re-queue (and re-spend on) a job | Rejected |
+| `external_id` only a caller convention | A wrong id could create a second identity for one news item | `CHECK (external_id = 'omnira_' \|\| news_item_id)` + checked in enqueue |
+| Running state without a lease was representable | A running job with no lease can never be reclaimed | `CHECK ((state = 'running') = (lease_token and lease_expires_at not null))` |
+| RLS policy called `auth.uid()` per row | Performance (Supabase advisor) | `(select auth.uid())` |
+| `finish` delay unbounded | A bad caller could park a job for years | Clamped to 0–86 400 s |
+
+**Test environment.** `20261028150000_website_article_jobs.pg17-concurrency.sh` starts a throwaway container from the
+locally present Supabase image `public.ecr.aws/supabase/postgres:17.11.0.004` with `--pull never` (no download) and
+`--network none` (unreachable from anywhere), creates a fresh database per run, applies Supabase-equivalent roles,
+default privileges and `auth.uid()`, then the migration, and removes the container on exit. No shared, local-dev or
+production database is touched. Workers are **separate backend connections** (dblink) acting as `service_role`, as the
+tick route does through PostgREST; the controller holds or releases their transactions so races are deterministic.
+
+**Result on the migration as proposed: 62/62 checks pass** (`...pg17-concurrency.sql`):
+
+- **SKIP LOCKED:** while worker 1 holds job A's row lock, worker 2's claim returns immediately with job B, and a third
+  claim returns nothing; each job ends up running once with distinct lease tokens.
+- **Concurrent claims:** 20 rounds × 8 workers released at the same instant × 5 jobs: every job claimed exactly once.
+- **Daily cap under concurrency:** a second enqueue waits on the per-project lock (`wait_event_type = Lock`) and then
+  returns `daily_cap`; exactly `cap` rows.
+- **Duplicate triggers:** 8 simultaneous enqueues of one news item → 1 `enqueued`, 7 `exists`, one row.
+- **Leases:** a live lease is not reclaimable; an expired one is reclaimed with a new token and attempt 2; the stale
+  worker's checkpoint write (the exact `repo.ts` fence) changes 0 rows and its `finish` returns false.
+- **Retries:** back-off is honoured, attempts 1→2→3, then `failed` with `finished_at`; never claimed again.
+- **Cost gate:** six deferrals in a row consume no attempt.
+- **Crashes:** a worker that died on its last attempt is failed, not re-run; a worker whose connection dropped is
+  resumed by the next claim with its paid draft still in `checkpoint`.
+- **Validation and constraints:** the six review findings above are enforced (`22023` / `23514`).
+- **Privileges and RLS:** `anon` and `authenticated` cannot enqueue, claim, finish or update; an owner reads only their
+  own project's jobs; `anon` cannot read.
+- **No duplicate AI spend per news item:** of 8 simultaneous claimers of one job exactly one gets it; after it is saved,
+  re-triggering returns `exists` and the job is never claimed again.
+- **Social independence:** a social write (`media_scripts` insert) completes while article-job row and advisory locks
+  are held; job operations leave `media_scripts` byte-identical; no foreign key, trigger or function reference from the
+  job queue to any media/social/approvals table.
+
+**The suite detects real faults.** The driver re-runs it against deliberately broken copies of the migration and
+fails unless every copy is caught (final run: `VERDICT: PASS`):
+
+| Broken copy | Caught by |
+|---|---|
+| claim uses `FOR UPDATE` without `SKIP LOCKED` | T1: the second worker waits on the first worker's row lock |
+| claim without row locking | T1, T2 (8 workers all got the **same** job with 8 different tokens), T13 (8 workers would have run paid steps for one news item) |
+| enqueue without the per-project advisory lock | T3: no lock wait, both `enqueued` past a cap of 1 |
+| `finish` not fenced on the lease token | T5: the stale worker's `saved` lands, the real owner's is refused |
+| a deferral consumes an attempt | T7: the job is unclaimable after 3 deferrals |
+| a null daily cap is accepted | T10 |
+
+The harness itself was debugged honestly: the first runs hung or errored because of test-side bugs (the controller's
+own transaction held locks; plpgsql name clashes), not migration bugs. Controller writes now go through a separate
+autocommit connection, every statement has a 90 s timeout, and a test block that aborts is reported as FAIL rather than
+silently missing.
 
 ## Configuration
 
@@ -135,8 +202,8 @@ No new external AI service, paid API, search API or webhook is introduced.
 - Tick route: `Bearer CRON_SECRET`. With the flag off it returns `disabled` before creating a DB client.
 - Project isolation: the job reads only `media_news_items` of its own `project_id`. The review route keeps its existing
   ownership check, and foreign rows still return 404.
-- The job table has RLS enabled and owner-read only. The SECURITY DEFINER functions are executable only by `service_role`
-  (verified on PGlite: anon/authenticated get "permission denied").
+- The job table has RLS enabled and owner-read only. The SECURITY DEFINER functions (`search_path = ''`) are executable
+  only by `service_role` (verified on PostgreSQL 17 with Supabase-equivalent default privileges, and on PGlite).
 - Source URLs are https-only, have no credentials, and exclude private/loopback/link-local hosts and raw IPs; they are
   classified by their final URL. This is a pre-filter, not SSRF protection: the fetch happens inside Hermes, which owns egress.
 - Source text is passed to the model as data inside `<source>` tags. Prompt injection inside a source can at worst
@@ -169,20 +236,39 @@ No new external AI service, paid API, search API or webhook is introduced.
   - the runner checking a different lede than it saves, or not showing the reviewer the lede;
   - the gate normalising the headline before hashing (survived at first; killed after adding the
     one-added-word route test).
-- The proposed SQL was run on PGlite (`20261028150000_website_article_jobs.verify.mjs`, 9/9): duplicate enqueue,
-  daily cap, exclusive claim, stale-token fencing, deferred not counting, expired-lease reclaim, max-attempts → failed,
-  and the grants. It runs on a single connection, so real SKIP LOCKED contention was **not** exercised. Recommended next:
-  a two-connection test on PostgreSQL 17 before applying.
+- The proposed SQL was run on PGlite (`20261028150000_website_article_jobs.verify.mjs`, 9/9, single connection) and
+  on an isolated PostgreSQL 17 with separate connections (62/62; see "Queue migration: review and PostgreSQL 17 test").
 
 ## Activation (each step needs the owner's explicit approval)
 
-1. Review and apply `docs/workflows/proposed-migrations/20261028150000_website_article_jobs.sql`. Move it into
-   `apps/web/supabase/migrations/` per the migration guard and regenerate `database.types`.
-2. Set `THEPROMPT_ARTICLE_JOBS_SINCE` to the activation time and `THEPROMPT_ARTICLE_JOBS_ENABLED=true` (Preview first).
-3. Schedule the tick: for example every 15 minutes via pg_cron (GMT) or `vercel.json`. Schedules are not changed in this PR.
-4. Watch the first articles in `/atlas/content`. Only an explicit Approve publishes.
+**Important:** Vercel Preview deployments use the **production** Supabase project (noted during the M0 rollout;
+re-check before the test). A Preview test therefore writes real `website_content` / job rows and spends real Anthropic
+money. There is no separate staging database to test against.
+
+First Preview test with a single article:
+
+1. Approve and apply the migration to the production project (the only database Preview reads), following the
+   existing migration procedure (committed bytes, quiet window, ledger check), and regenerate `database.types`.
+   This only adds a table and three functions; nothing calls them while the flag is off.
+2. In the **Preview** environment only: `THEPROMPT_ARTICLE_JOBS_DAILY_MAX=1`, `THEPROMPT_ARTICLE_JOBS_MAX_ATTEMPTS=1`,
+   `THEPROMPT_ARTICLE_JOBS_SINCE` = a moment just before a known social selection, `THEPROMPT_ARTICLE_JOBS_ENABLED=true`.
+   Production env stays unset (off).
+3. Call `POST /api/content/articles/jobs/tick` on the Preview URL **once** by hand with the CRON_SECRET. No schedule.
+   Expected spend ≈ $0.15, worst case ≈ $0.33.
+4. Inspect the job row, the `website_content` row (`pending_review`), the FactCheck Report and the cost ledger.
+   Approve or reject in `/atlas/content`. Only an explicit Approve publishes.
+5. Afterwards set `THEPROMPT_ARTICLE_JOBS_ENABLED` back to unset in Preview until a schedule is approved.
+
+Later, separately approved: production flag and a tick schedule (for example every 15 minutes via pg_cron in GMT).
 
 ## Known residual risks
+
+- A job that keeps being deferred by the cost gate is re-queued every 60 minutes without consuming attempts. Each
+  deferral is refused before dispatch (no spend), but the job never ends on its own; cancel it by hand if needed.
+- A failed or blocked article is never re-enqueued automatically (re-trigger returns `exists`). Retrying one needs a
+  deliberate manual action.
+- The PostgreSQL 17 test uses the Supabase image and Supabase-equivalent privileges, not the production database
+  itself; production-specific objects (other policies, triggers, extensions) were not part of it.
 
 - Other published payload fields are **not** fact-checked: `category`, `tags`, `source` (name/url) and the hero
   image. `source` comes from the news item, not from the model. Category and tags are labels, not claims.

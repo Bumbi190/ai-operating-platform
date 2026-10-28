@@ -118,6 +118,20 @@ function quotedInSource(source: SourceSnapshot, quote: string): boolean {
 }
 
 /**
+ * Conservative language-aware floor for human editorial escalation. The
+ * independent reviewer may NEVER set a story to "standard" to bypass this.
+ * This is not exhaustive classification; it can only escalate, never clear.
+ */
+export function needsEnhancedEditorialRiskReview(material: ScriptMaterial): boolean {
+  if (material.riskTier !== 'standard') return true
+  const publicText = [material.hook,material.script,material.socialCaption,
+    ...material.captions,material.cta ?? '',material.thumbnailText ?? ''].join(' ')
+  const sensitive = /\b(?:asylum|deportation|refugees?|suicide|cancer|diagnos(?:is|ed)|medical advice|medication|vot(?:e|ing)|elections?|criminal charges?|arrested|genocide|war crimes?|child abuse|fraud|lawsuits?|data breach|privacy breach|government investigation|regulatory investigation)\b/i
+  const sensitiveSwedish = /(?:asyl|utvisning|flykting|självmord|läkemedel|diagnos|riksdagsval|presidentval|valresultat|valfusk|röstning|åtal|häktad|krigsbrott|dataintrång|personuppgiftsincident|myndighetsutredning|regeringsutredning)/i
+  return sensitive.test(publicText) || sensitiveSwedish.test(publicText)
+}
+
+/**
  * Verifies minimum sentence coverage, source-excerpt presence, distinct
  * publishers, project identity and revision pinning. It does NOT prove semantic
  * truth or that every compound sentence has been split into atomic claims.
@@ -207,19 +221,8 @@ export function assessFactCheck(
     }
     if (independentlyPublished.size < 2) return stop('insufficient_independent_sources')
   }
-  // Defense in depth: an upstream model must never be able to label an asylum,
-  // election or health claim as 'standard' to bypass the human-review policy.
-  // This catches common high-impact topics; other risks still require an
-  // independent conservative classifier (a keyword list is not sufficient).
-  const publicText = [material.hook,material.script,material.socialCaption,
-    ...material.captions,material.cta ?? '',material.thumbnailText ?? ''].join(' ')
-  const sensitive = /\b(?:asylum|deportation|refugees?|suicide|cancer|diagnos(?:is|ed)|medical advice|medication|vot(?:e|ing)|elections?|criminal charges?|arrested|genocide|war crimes?|child abuse|fraud|lawsuits?|data breach|privacy breach|government investigation|regulatory investigation)\b/i
-  // The Prompt may write Swedish scripts as well as English ones. An English
-  // only keyword floor could wrongly treat Swedish high-impact reporting as
-  // ordinary. Keep this conservative; it is NOT a complete classifier.
-  const sensitiveSwedish = /(?:asyl|utvisning|flykting|självmord|läkemedel|diagnos|riksdagsval|presidentval|valresultat|valfusk|röstning|åtal|häktad|krigsbrott|dataintrång|personuppgiftsincident|myndighetsutredning|regeringsutredning)/i
-  if (material.riskTier !== 'standard' || sensitive.test(publicText) ||
-      sensitiveSwedish.test(publicText))
+  // Never let a caller downgrade high-impact content to "standard".
+  if (needsEnhancedEditorialRiskReview(material))
     return stop('sensitive_or_unclassified')
   return {outcome: 'ready_for_editor', reasons: [], contentSha256,
     unitCount: units.length, reviewedSourceCount: sources.length}

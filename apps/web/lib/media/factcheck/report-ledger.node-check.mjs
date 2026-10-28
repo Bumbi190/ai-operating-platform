@@ -36,7 +36,9 @@ test('report is evidence, never editorial approval or dispatch authority',()=>{
   assert.match(migration,/source_set_sha256 is not null/i)
   assert.match(migration,/jsonb_array_length\(source_receipts\) >= 2/i)
   assert.doesNotMatch(migration,/create policy/i)
-  assert.doesNotMatch(migration,/publish.*\(/i)
+  // Commentary may mention publication; only executable dispatch is banned.
+  assert.doesNotMatch(migration,/(?:perform|call)\s+public\.[a-z_]*publish[a-z_]*\s*\(/i)
+  assert.doesNotMatch(migration,/insert\s+into\s+public\.social_publications\s*\(/i)
 })
 
 test('private table has RLS and no anon/authenticated grants',()=>{
@@ -102,4 +104,59 @@ test('schema registry must not claim a not-yet-canonical proposal is deployed',(
   assert.equal(registry._meta?.created_not_live?.tables?.includes('media_factcheck_reports'),false)
   assert.match(migration,/private, append-only source-grounded review evidence/i)
   assert.match(migration,/grant select, insert on public\.media_factcheck_reports to service_role/i)
+})
+
+test('separate preproduction human decision remains private SERVER_ONLY',()=>{
+  assert.match(migration,/create table public\.media_factcheck_editorial_decisions\s*\(/i)
+  assert.match(migration,/report_id uuid not null unique references public\.media_factcheck_reports\(id\)/i)
+  assert.match(migration,/decided_by uuid not null references auth\.users\(id\)/i)
+  assert.match(migration,/decision text not null check\(decision in \('approve','reject'\)\)/i)
+  assert.match(migration,/enable row level security;/i)
+  assert.match(migration,/alter table public\.media_factcheck_editorial_decisions force row level security/i)
+  assert.match(migration,/revoke all on public\.media_factcheck_editorial_decisions\s+from public,anon,authenticated,service_role/i)
+  assert.match(migration,/grant select,insert on public\.media_factcheck_editorial_decisions to service_role/i)
+})
+
+test('human editorial approval binds owner, current script and report digest',()=>{
+  assert.match(migration,/new\.decided_by is distinct from owner/i)
+  assert.match(migration,/r\.project_id is distinct from new\.project_id/i)
+  assert.match(migration,/r\.script_version is distinct from new\.script_version/i)
+  assert.match(migration,/r\.content_sha256 is distinct from new\.content_sha256/i)
+  assert.match(migration,/r\.source_set_sha256 is distinct from new\.source_set_sha256/i)
+  assert.match(migration,/s\.version is distinct from r\.script_version/i)
+  assert.match(migration,/new\.revision_id is distinct from \('v'\|\|s\.version::text\)/i)
+  assert.match(migration,/new\.decided_at > r\.reviewed_at \+ interval '48 hours'/i)
+  assert.match(migration,/r\.reasons=array\['sensitive_or_unclassified'\]::text\[\]/i)
+  assert.match(migration,/new\.sensitive_risk_acknowledged/i)
+})
+
+test('cited publisher groups are structurally checked before human approval',()=>{
+  assert.match(migration,/create function public\.media_factcheck_editorial_evidence_complete/i)
+  assert.match(migration,/if cardinality\(publisher_groups\)<2 then return false/i)
+  assert.match(migration,/finding->>'verdict'<>'supported'/i)
+  assert.match(migration,/not public\.media_factcheck_editorial_evidence_complete\(r\.source_receipts,r\.findings\)/i)
+  assert.match(migration,/revoke all on function public\.media_factcheck_editorial_evidence_complete\(jsonb,jsonb\)/i)
+  assert.match(migration,/grant execute on function public\.media_factcheck_editorial_evidence_complete\(jsonb,jsonb\)\s+to service_role/i)
+  assert.match(migration,/length\(btrim\(coalesce\(evidence->>'exactQuote',''\)\)\) not between 12 and 500/i)
+})
+
+test('every preproduction human decision is immutable, no publish authority',()=>{
+  assert.match(migration,/media_factcheck_editorial_append_only\s+before update or delete/i)
+  assert.match(migration,/media_factcheck_editorial_no_truncate\s+before truncate/i)
+  assert.match(migration,/for each statement execute function public\.media_factcheck_report_append_only/i)
+  assert.doesNotMatch(migration,/create policy on public\.media_factcheck_editorial_decisions/i)
+  assert.doesNotMatch(migration,/grant.*(?:update|delete).*media_factcheck_editorial_decisions/i)
+  assert.doesNotMatch(migration,/from public\.media_factcheck_editorial_decisions[\s\S]*insert into public\.media_scripts/i)
+})
+
+test('isolated real PostgreSQL regression fixtures are recorded in source tree',()=>{
+  const bootstrap=readFileSync('docs/workflows/factcheck-postgres-test-bootstrap.sql','utf8')
+  const assertions=readFileSync('docs/workflows/factcheck-postgres-test-assertions.sql','utf8')
+  assert.match(bootstrap,/CREATE TABLE public\.projects/i)
+  assert.match(bootstrap,/CREATE TABLE public\.runs/i)
+  assert.match(assertions,/FACTCHECK_PG_ISOLATION_ALL_ASSERTIONS_PASSED/i)
+  assert.match(assertions,/SENSITIVE_WITHOUT_ACK/i)
+  assert.match(assertions,/SAME_PUBLISHER_CITATION_FALSE_POSITIVE/i)
+  assert.match(assertions,/EDITORIAL_TRUNCATE_DENIED/i)
+  assert.doesNotMatch(assertions,/CREATE EXTENSION.*dblink/i)
 })

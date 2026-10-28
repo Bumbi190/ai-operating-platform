@@ -142,3 +142,169 @@ revoke all on function public.media_factcheck_report_insert_guard()
   from public, anon, authenticated;
 revoke all on function public.media_factcheck_report_append_only()
   from public, anon, authenticated;
+
+
+-- Pure structural proof of per-claim independent evidence excerpts. It does
+-- NOT establish semantic truth (which requires independent review and a human).
+create function public.media_factcheck_editorial_evidence_complete(
+  p_receipts jsonb,p_findings jsonb
+) returns boolean
+language plpgsql immutable strict security invoker set search_path='' as $fn$
+declare
+  receipt jsonb;
+  finding jsonb;
+  evidence jsonb;
+  source_group text;
+  publisher_groups text[];
+  all_sources text[]='{}'::text[];
+  all_hashes text[]='{}'::text[];
+begin
+  if jsonb_typeof(p_receipts)<>'array' or
+     jsonb_array_length(p_receipts) not between 2 and 4 or
+     jsonb_typeof(p_findings)<>'array' or
+     jsonb_array_length(p_findings)<2 then return false;end if;
+  for receipt in select value from jsonb_array_elements(p_receipts) loop
+    if jsonb_typeof(receipt)<>'object'
+      or coalesce(receipt->>'sourceId','')=''
+      or coalesce(receipt->>'publisherGroup','')=''
+      or coalesce(receipt->>'url','') !~ '^https://'
+      or coalesce(receipt->>'textSha256','') !~ '^[0-9a-f]{64}$'
+      or receipt->>'sourceId'=any(all_sources)
+      or receipt->>'textSha256'=any(all_hashes)
+    then return false;end if;
+    all_sources=array_append(all_sources,receipt->>'sourceId');
+    all_hashes=array_append(all_hashes,receipt->>'textSha256');
+  end loop;
+  for finding in select value from jsonb_array_elements(p_findings) loop
+    if jsonb_typeof(finding)<>'object'
+      or finding->>'verdict'<>'supported'
+      or jsonb_typeof(finding->'evidence')<>'array'
+      or jsonb_array_length(finding->'evidence')<2
+    then return false;end if;
+    publisher_groups='{}'::text[];
+    for evidence in select value from jsonb_array_elements(finding->'evidence') loop
+      if jsonb_typeof(evidence)<>'object'
+        or length(btrim(coalesce(evidence->>'exactQuote',''))) not between 12 and 500
+      then return false;end if;
+      select r->>'publisherGroup' into source_group
+      from jsonb_array_elements(p_receipts) r
+      where r->>'sourceId'=evidence->>'sourceId' limit 1;
+      if source_group is null then return false;end if;
+      if not source_group=any(publisher_groups) then
+        publisher_groups=array_append(publisher_groups,source_group);
+      end if;
+    end loop;
+    if cardinality(publisher_groups)<2 then return false;end if;
+  end loop;
+  return true;
+exception when others then return false;
+end $fn$;
+revoke all on function public.media_factcheck_editorial_evidence_complete(jsonb,jsonb)
+  from public,anon,authenticated;
+-- The private SECURITY INVOKER insert guard calls this helper as the
+-- service-role writer. No browser role is permitted to EXECUTE it.
+grant execute on function public.media_factcheck_editorial_evidence_complete(jsonb,jsonb)
+  to service_role;
+
+-- HUMAN-ORIGIN preproduction editorial decisions. This is NOT a publish gate.
+-- Existing social_content_decisions remains the final separate per-channel,
+-- exact-revision approval boundary AFTER media preparation.
+create table public.media_factcheck_editorial_decisions (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references public.projects(id) on delete restrict,
+  report_id uuid not null unique references public.media_factcheck_reports(id) on delete restrict,
+  script_id uuid not null references public.media_scripts(id) on delete restrict,
+  script_version integer not null check(script_version>0),
+  revision_id text not null,
+  content_sha256 text not null check(content_sha256~'^[a-f0-9]{64}$'),
+  source_set_sha256 text not null check(source_set_sha256~'^[a-f0-9]{64}$'),
+  decision text not null check(decision in ('approve','reject')),
+  notes text not null check(length(notes) between 1 and 1200),
+  sensitive_risk_acknowledged boolean not null default false,
+  decided_by uuid not null references auth.users(id) on delete restrict,
+  decided_at timestamptz not null default clock_timestamp()
+);
+create index media_factcheck_editorial_decisions_project_history
+  on public.media_factcheck_editorial_decisions(project_id,decided_at desc,id desc);
+alter table public.media_factcheck_editorial_decisions enable row level security;
+alter table public.media_factcheck_editorial_decisions force row level security;
+revoke all on public.media_factcheck_editorial_decisions
+  from public,anon,authenticated,service_role;
+grant select,insert on public.media_factcheck_editorial_decisions to service_role;
+
+create function public.media_factcheck_editorial_insert_guard() returns trigger
+language plpgsql security invoker set search_path='' as $fn$
+declare
+  r public.media_factcheck_reports;
+  s public.media_scripts;
+  owner uuid;
+begin
+  if current_user not in ('service_role','postgres') then
+    raise exception 'FACTCHECK_EDITOR_SERVER_ONLY' using errcode='42501';
+  end if;
+  select * into r from public.media_factcheck_reports where id=new.report_id;
+  select owner_id into owner from public.projects where id=new.project_id;
+  if r.id is null or owner is null or new.decided_by is distinct from owner
+    or r.project_id is distinct from new.project_id
+    or r.script_id is distinct from new.script_id
+    or r.script_version is distinct from new.script_version
+    or r.revision_id is distinct from new.revision_id
+    or r.content_sha256 is distinct from new.content_sha256
+    or r.source_set_sha256 is null
+    or r.source_set_sha256 is distinct from new.source_set_sha256
+    or r.writer_model = r.reviewer_model
+    or new.decided_at < r.recorded_at
+    or new.decided_at > r.reviewed_at + interval '48 hours'
+    or new.decided_at > clock_timestamp()+interval '5 minutes'
+  then raise exception 'FACTCHECK_EDITOR_EVIDENCE_MISMATCH' using errcode='23514';end if;
+  select * into s from public.media_scripts
+    where id=new.script_id and project_id=new.project_id for share;
+  if s.id is null or s.version is distinct from r.script_version
+    or new.revision_id is distinct from ('v'||s.version::text)
+    or coalesce(s.hook,'') is distinct from r.manuscript_snapshot->>'hook'
+    or coalesce(s.script,'') is distinct from r.manuscript_snapshot->>'script'
+    or coalesce(s.captions,'[]'::jsonb) is distinct from r.manuscript_snapshot->'captions'
+    or coalesce(s.cta,'') is distinct from r.manuscript_snapshot->>'cta'
+  then raise exception 'FACTCHECK_EDITOR_SCRIPT_CHANGED' using errcode='23514';end if;
+  if new.decision='approve' then
+    if length(btrim(new.notes))<30
+      or not public.media_factcheck_editorial_evidence_complete(r.source_receipts,r.findings)
+      or (
+        r.outcome='ready_for_editor'
+        and r.framing is distinct from 'faithful_to_evidence'
+      )
+      or not (
+        r.outcome='ready_for_editor'
+        or (
+          r.outcome='requires_review'
+          and r.reasons=array['sensitive_or_unclassified']::text[]
+          and r.framing='faithful_to_evidence'
+          and new.sensitive_risk_acknowledged
+          and length(btrim(new.notes))>=50
+          and jsonb_array_length(r.source_receipts)>=2
+          and jsonb_array_length(r.findings)>=2
+          and not exists(
+            select 1 from jsonb_array_elements(r.findings) f
+            where f->>'verdict' is distinct from 'supported'
+          )
+        )
+      )
+    then raise exception 'FACTCHECK_EDITOR_APPROVAL_NOT_SUPPORTED'
+      using errcode='23514';end if;
+  end if;
+  return new;
+end $fn$;
+
+create trigger media_factcheck_editorial_insert_guard
+  before insert on public.media_factcheck_editorial_decisions
+  for each row execute function public.media_factcheck_editorial_insert_guard();
+create trigger media_factcheck_editorial_append_only
+  before update or delete on public.media_factcheck_editorial_decisions
+  for each row execute function public.media_factcheck_report_append_only();
+create trigger media_factcheck_editorial_no_truncate
+  before truncate on public.media_factcheck_editorial_decisions
+  for each statement execute function public.media_factcheck_report_append_only();
+revoke all on function public.media_factcheck_editorial_insert_guard()
+  from public,anon,authenticated;
+comment on table public.media_factcheck_editorial_decisions is
+  'Append-only owner-origin preproduction editorial decision bound to one FactCheck report. Never authorizes publication itself.';

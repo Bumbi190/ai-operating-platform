@@ -13,6 +13,14 @@ Status: Code and deterministic mocked API tests only. Feature OFF by default. No
 - Private source text is not persisted in the chat's tool history; only an evidence receipt with repo ID, SHA, file path, URL and line count. The authorized session can see the current tool result.
 - Source files with likely secret material are refused entirely. Regex-based secret checks are conservative, NOT proof that all secrets can be identified.
 
+## Continued security and long-file inspection checks (28 October 2026)
+
+- The conservative whole-file secret detector now refuses additional inline database URLs with userinfo, JSON/YAML assignments to credential-like keys, camelCase tokens, HTTP Basic/Bearer authorization, JWT-like strings and common service/payment tokens. These heuristic checks are deliberately fail-closed and may reject harmless code; they DO NOT replace an independent secrets audit.
+- A verified example from the canonical Handlarbörsen repo is `app/page.tsx` (390 lines, about 16 KiB). This is the real homepage location, not `src/app/page.tsx`.
+- Each read still exposes at most 240 numbered lines. First page returns `startLine: 1`, `nextStartLine: 241` and an exact commit SHA. To read subsequent lines, submit `action: read_file`, the same path, `startLine: 241` and `expectedSha` equal to that **exact previous commit SHA**. The provider resolves main again and refuses the continuation with `source_changed` (HTTP 409) if the commit moved. Start again from line 1; NEVER combine fragments from two commits.
+- No source byte limits or operator/project isolation gates have been relaxed. Only response metadata (`startLine`, `nextStartLine`, SHA, URL) persists in chat tool-history receipts. The actual source lines are delivered only in the authorized live tool result.
+- Prior verified baseline: 146/146 focused tests with the earlier Git-blob hardening. New scanner, paging and stale-commit regression fixtures were committed afterwards; the full Vitest run has not been repeated because the workstation execution interface rejected local commands. A standalone check against the **actual committed regex patterns** passed 14/14 illustrative cases, and GitHub source inspection confirmed that Handlarbörsen `app/page.tsx` fits the 32-KiB cap and passes the candidate content scan. These are not a substitute for the new full test suite.
+- No GitHub App has been installed; feature flag, production and article/social workflows remain unchanged. Require fresh CI and an independent security review before an owner-approved live pilot.
 ## Disabled release gates
 
 The new POST endpoint is /api/atlas/source-inspection. It is permanently unavailable in Production in this tranche. Preview also requires all of these server-side settings, currently NOT installed:

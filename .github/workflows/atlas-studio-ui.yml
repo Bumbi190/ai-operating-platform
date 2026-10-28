@@ -137,15 +137,25 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch test-only PostgreSQL 16 image
-        run: docker pull postgres:16
+      - name: Fetch test-only PostgreSQL 16 and 17 images
+        run: |
+          docker pull postgres:16
+          docker pull postgres:17-alpine
       - name: Verify SQL roles, owner revoke, run-once and canonical editor
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           foreach ($mode in @('normal','simulated-sunday','native-editorial','native-content','native-claim')) {
-            & ./docs/verification/fixtures/run-family-weekly-pg-smoke.ps1 -Mode $mode
+            & ./docs/verification/fixtures/run-family-weekly-pg-smoke.ps1 -Mode $mode -PostgresImage postgres:16
             if ($LASTEXITCODE -ne 0) {
-              throw "FAMILY_WEEKLY_POSTGRES_TEST_FAILED:$mode"
+              throw "FAMILY_WEEKLY_POSTGRES16_TEST_FAILED:$mode"
+            }
+          }
+          # Cross-check the real parent RLS predicates and high-risk native
+          # claim/save integration on PostgreSQL 17, Omnira's production major.
+          foreach ($mode in @('normal','native-claim','native-content')) {
+            & ./docs/verification/fixtures/run-family-weekly-pg-smoke.ps1 -Mode $mode -PostgresImage postgres:17-alpine
+            if ($LASTEXITCODE -ne 0) {
+              throw "FAMILY_WEEKLY_POSTGRES17_TEST_FAILED:$mode"
             }
           }

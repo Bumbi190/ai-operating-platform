@@ -631,3 +631,41 @@ isolerade, noggrant begränsade beroendetabeller – inte en full replay
 av alla 163 migrationsfiler, en riktig Supabase Auth-session eller
 en fullständig publiceringskedja. Ingen cron, produktionsmigration,
 AI-kostnad eller automatisk postning har aktiverats.
+
+## Fas 15 – PostgreSQL 17 och produktionens parent-RLS (2026-10-28)
+
+Första verifiering mot Omniras produktions-PostgreSQL gjordes
+**enbart läsbart**: `pg_policies` visade
+`projects_owner`, `conversations_owner` och `runs_owner`
+som `FOR ALL TO PUBLIC` med owner-principaler via `auth.uid()`
+och ägda projekt. Testsviten kompletterades med
+`family-weekly-pg-parent-rls.sql` som aktiverar RLS på de syntetiska
+parent-tabellerna och återger **deras faktiskt observerade
+RLS-predikat**. En autentiserad ägare får läsa sitt projekt,
+sin konversation och sitt jobb; främmande inloggad användare får
+noll rader trots SELECT-behörighet; service_role ser fixturedata.
+`platform_config` och `project_lifecycle` får också RLS i fixture
+(utan att ge vanligt inloggade användare egna policies).
+
+Testköraren accepterar endast `postgres:16` eller
+`postgres:17-alpine` via en ny explicit `-PostgresImage`-parameter.
+`--pull=never` och `docker image inspect` hindrar oplanerad
+nedladdning och diskförbrukning på stationära datorn.
+Samtliga fem isolerade testlägen **PASS lokalt på PostgreSQL 17**:
+`normal`, `simulated-sunday`, `native-editorial`,
+`native-content` och `native-claim`. Därtill är
+`normal` PASS på PostgreSQL 16 med parent-RLS påslagen.
+Varje container stoppades och avlägsnades automatiskt.
+
+Den befintliga GitHub-jobbkön verifierar nu alla fem lägen på
+PostgreSQL 16 och kompletterar med `normal`, `native-claim`
+och `native-content` på PostgreSQL 17. GitHub ska kontrollera
+slutresultat för exakt ny commit innan CI kallas grönt.
+
+**Avgränsning:** Parent-RLS-reglerna hämtades från riktiga
+`pg_policies`, men de underliggande testtabellerna och vissa
+beroendefunktioner är fortfarande smala testdubletter.
+Detta är ännu **inte** replay av hela produktionsschemat med 163
+migrationsfiler, RLS under riktig autentiserad Vercel Preview-session
+eller någon faktisk social publicering. Inga Supabase-skrivningar,
+produktnycklar, cronaktiveringar eller betalda modellkörningar gjordes.

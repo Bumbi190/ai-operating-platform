@@ -1,14 +1,16 @@
-# Disposable PostgreSQL 16 smoke test for proposed weekly SQL.
+# Disposable PostgreSQL 16/17 smoke test for proposed weekly SQL.
 # Usage (from repo root):
 #   powershell -NoProfile -File docs/verification/fixtures/run-family-weekly-pg-smoke.ps1 -Mode normal
 #   powershell -NoProfile -File docs/verification/fixtures/run-family-weekly-pg-smoke.ps1 -Mode simulated-sunday
 #   powershell -NoProfile -File docs/verification/fixtures/run-family-weekly-pg-smoke.ps1 -Mode native-claim
 # NEVER connects to Supabase or an existing Docker network.
-# Local postgres:16 image only; NO published ports, volumes or mounts.
+# Cached postgres:16 or postgres:17-alpine ONLY. No published ports, volumes or mounts.
 # Simulated-Sunday rewrites SQL in memory ONLY for disposable tests.
 param(
  [ValidateSet('normal','simulated-sunday','native-editorial','native-content','native-claim')]
- [string]$Mode='normal'
+ [string]$Mode='normal',
+ [ValidateSet('postgres:16','postgres:17-alpine')]
+ [string]$PostgresImage='postgres:16'
 )
 $ErrorActionPreference='Stop'
 $repo=(Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
@@ -17,7 +19,12 @@ $existing=(docker ps -a --filter "name=^/$name$" --format '{{.Names}}'|Out-Strin
 if($existing){throw 'DISPOSABLE_TEST_NAME_COLLISION'}
 $started=$false
 try{
- $containerId=(docker run --rm -d --pull=never --network none --name $name -e POSTGRES_PASSWORD=synthetic_only postgres:16)
+ # Never download an image implicitly: only reuse an explicitly allowed,
+ # already-cached image. Avoid unplanned workstation disk usage.
+ docker image inspect $PostgresImage *> $null
+ if($LASTEXITCODE -ne 0){throw 'DISPOSABLE_POSTGRES_IMAGE_NOT_CACHED'}
+ Write-Output ('TEST_POSTGRES_IMAGE='+$PostgresImage)
+ $containerId=(docker run --rm -d --pull=never --network none --name $name -e POSTGRES_PASSWORD=synthetic_only $PostgresImage)
  if($LASTEXITCODE -ne 0 -or -not $containerId){throw 'ISOLATED_TEST_POSTGRES_NOT_STARTED'}
  $started=$true
  $ready=$false
@@ -43,6 +50,7 @@ try{
  if(-not $connected){throw 'ISOLATED_TEST_POSTGRES_SQL_NOT_READY'}
  $files=@(
   'docs\verification\fixtures\family-weekly-pg-smoke-setup.sql',
+  'docs\verification\fixtures\family-weekly-pg-parent-rls.sql',
   'docs\sql\20261028_family_weekly_auto_consent_proposed.sql',
   'docs\sql\20261028_family_weekly_review_notices_proposed.sql',
   'docs\sql\20261028_family_weekly_run_creator_proposed.sql',

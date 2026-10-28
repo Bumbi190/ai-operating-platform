@@ -27,12 +27,13 @@ const save=():WeeklySave=>({
  projectId:FAMILY,conversationId:ids.conversation,weekStart:'2027-01-04',
  generation:1,contextHash:'a'.repeat(64),
  idempotencyKey:'weekly_20270104_'+'a'.repeat(24),
- drafts:[{
+ drafts:['facebook','instagram'].map(channel=>({
   slotKey:'2027-01-05T17:00:ordinary',
-  channel:'instagram',assetId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  channel:channel as 'facebook'|'instagram',
+  assetId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   title:'Nova och Pling',text:'Sagor och pyssel',
   sourceReferences:['profile:'+'b'.repeat(64)],
- }],
+ })),
 })
 function fakeDB(){
  const operations:Array<{name:string;args:Record<string,unknown>}>=[]
@@ -92,7 +93,30 @@ describe('One permitted paid attempt per Family week, no automatic retries',()=>
    p_run_id:ids.run,p_claim_id:ids.claim,
    p_consent_event_id:1,p_conversation_id:ids.conversation,
   })
-  expect(f.operations[1].args.p_input).toEqual(save())
+  const payload=f.operations[1].args.p_input as WeeklySave&{
+   drafts:Array<WeeklySave['drafts'][number]&{scheduledAt:string}>
+  }
+  expect(payload).toMatchObject({projectId:FAMILY,weekStart:'2027-01-04',
+   contextHash:'a'.repeat(64),generation:1})
+  expect(payload.drafts).toEqual(save().drafts.map(d=>({
+   ...d,scheduledAt:'2027-01-05T16:00:00.000Z',
+  })))
+ })
+ it('rejects a model-supplied or malformed date and never sends it to native SQL',async()=>{
+  const f=fakeDB()
+  const bad={...save(),drafts:save().drafts.map(d=>({
+   ...d,slotKey:'2027-01-05T23:59:ordinary',
+   scheduledAt:'2027-01-05T21:00:00Z',
+  }))} as never
+  await expect(saveEditorialWithFrozenAuthority(f.port,receipt(),bad)).rejects.toThrow('WEEKLY_NATIVE_TIME_INVALID')
+  expect(f.operations).toEqual([])
+ })
+ it('native weekly SQL contract explicitly requires scheduledAt on EACH draft',()=>{
+  const native=readFileSync(resolve(__dirname,
+   '../../../supabase/migrations/20261026090516_family_weekly_preparation.sql'),'utf8')
+  expect(native).toContain("array['slotKey','channel','assetId','text','title','sourceReferences','scheduledAt']")
+  expect(native).toContain("public.social_schedule_resolve_minute(local_minute)")
+  expect(native).toContain("'editorial_review_required'")
  })
  it('cannot save with an alien week, project or conversation even after valid admission',async()=>{
   const f=fakeDB(),r=receipt()

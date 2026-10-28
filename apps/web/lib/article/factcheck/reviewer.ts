@@ -14,6 +14,7 @@ import { getAnthropic } from '@/lib/ai/anthropic'
 import { calculateCost } from '@/lib/ai/pricing'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 import type { ExecutionContract } from '@/lib/governance/execution-stop'
+import { MAX_CLAIMS } from './contract'
 import type { CheckedClaim, SourceSnapshot } from './types'
 
 export const FACTCHECK_MODEL = 'claude-sonnet-4-6'
@@ -30,7 +31,12 @@ Your job is verification, not editing.
    numbers, prices, dates, quotes, launches, availability, legal/regulatory facts, causal statements
    presented as fact. Skip sentences that are clearly marked opinion or interpretation
    ("this suggests", "the likely play is") unless they smuggle in a new fact.
-2. For each claim copy the article sentence it appears in EXACTLY, character for character.
+   COVERAGE IS CHECKED IN CODE: every article sentence that contains a number, amount, percentage,
+   quotation, date/weekday, or an event verb (announced, launched, released, raised, acquired, said,
+   reported, according to, costs, available, ...) MUST appear in your list. Any such sentence you omit
+   is automatically treated as an unsupported CENTRAL claim and blocks publication.
+2. For each claim copy the WHOLE article sentence it appears in EXACTLY, character for character
+   (not a fragment of it).
 3. Mark importance "central" if the story would be wrong or misleading without it; else "supporting".
 4. Judge it ONLY against the snapshots — not your memory:
    - supported: a snapshot states it. Give at least one exact quote (12-400 chars, copied verbatim).
@@ -68,7 +74,8 @@ export async function reviewClaims(args: ReviewArgs): Promise<ReviewCallResult> 
   })
   const response = await claude.messages.create({
     model: FACTCHECK_MODEL,
-    max_tokens: 6000,
+    // Coverage is enforced, so the reviewer must be able to list every checkable sentence.
+    max_tokens: 9000,
     temperature: 0,
     system: FACTCHECK_SYSTEM_PROMPT,
     messages: [{
@@ -83,7 +90,7 @@ export async function reviewClaims(args: ReviewArgs): Promise<ReviewCallResult> 
         properties: {
           claims: {
             type: 'array',
-            maxItems: 60,
+            maxItems: MAX_CLAIMS,
             items: {
               type: 'object',
               properties: {

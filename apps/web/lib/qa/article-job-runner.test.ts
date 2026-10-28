@@ -9,6 +9,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { runArticleJob, type ArticleJobDeps } from '@/lib/article/jobs/runner'
 import { LeaseLostError, type ArticleJob, type ArticleJobCheckpoint } from '@/lib/article/jobs/types'
 import { sha256 } from '@/lib/article/factcheck/contract'
+import { publicationGate } from '@/lib/article/factcheck/gate'
+import type { FactCheckReport } from '@/lib/article/factcheck/types'
 import type { ArticleDraft } from '@/lib/article/types'
 
 const SOURCE_TEXT =
@@ -17,8 +19,10 @@ const SOURCE_TEXT =
 
 function sentenceBody(extra = ''): string {
   // ~950 words: enough for the deep tier; the claim sentences are the first paragraphs.
+  // Analysis prose WITHOUT fact signals (no digits, dates or event verbs), so coverage applies only to the claims.
+  const words = ['enterprise', 'consumer', 'developer', 'education', 'research', 'startup', 'cloud', 'mobile', 'hardware']
   const filler = Array.from({ length: 90 }, (_, i) =>
-    `This suggests that pricing pressure in segment ${i} will shape how rivals respond over time.`).join(' ')
+    `This suggests that pricing pressure in the ${words[i % words.length]} segment will shape how rivals respond over time.`).join(' ')
   return [
     'According to The Verge, Acme released Model X on Tuesday.',
     'The model costs $2 per million input tokens.',
@@ -50,12 +54,14 @@ interface Fakes {
   deps: ArticleJobDeps
   calls: Record<string, number>
   saved: Array<{ body: string; verdict: string; reportSha: string }>
+  reports: FactCheckReport[]
   persisted: ArticleJobCheckpoint[]
 }
 
 function makeFakes(over: Partial<ArticleJobDeps> & { reviews?: unknown[]; reviseBody?: string } = {}): Fakes {
   const calls: Record<string, number> = { read: 0, write: 0, review: 0, revise: 0, save: 0, checkpoint: 0 }
   const saved: Fakes['saved'] = []
+  const reports: FactCheckReport[] = []
   const persisted: ArticleJobCheckpoint[] = []
   const reviews = over.reviews ?? [PASSING_CLAIMS]
   const deps: ArticleJobDeps = {
@@ -66,12 +72,12 @@ function makeFakes(over: Partial<ArticleJobDeps> & { reviews?: unknown[]; revise
     review: async () => { const r = reviews[Math.min(calls.review, reviews.length - 1)]; calls.review++; return { claims: r, model: 'm', costUsd: 0.1 } },
     revise: async (a) => { calls.revise++; return { title: a.title, summary: a.summary, body: over.reviseBody ?? sentenceBody(), model: 'm', costUsd: 0.05 } },
     checkpoint: async (_job, cp) => { calls.checkpoint++; persisted.push(JSON.parse(JSON.stringify(cp))) },
-    save: async ({ draft, report }) => { calls.save++; saved.push({ body: draft.body, verdict: report.verdict, reportSha: report.bodySha256 }); return { id: 'wc-1' } },
+    save: async ({ draft, report }) => { calls.save++; reports.push(report); saved.push({ body: draft.body, verdict: report.verdict, reportSha: report.bodySha256 }); return { id: 'wc-1' } },
     classifyError: (e) => (e instanceof LeaseLostError ? 'lease_lost' : (e as { kind?: string })?.kind === 'spend' ? 'deferred' : 'retryable'),
     now: () => new Date('2026-10-28T09:00:00.000Z'),
     ...over,
   }
-  return { deps, calls, saved, persisted }
+  return { deps, calls, saved, reports, persisted }
 }
 
 let job: ArticleJob
@@ -136,6 +142,28 @@ describe('runArticleJob', () => {
     expect(f.calls.revise).toBe(1)
     expect(f.calls.review).toBe(2)
     expect(f.saved[0].verdict).toBe('blocked')
+  })
+
+  it('reviewer OMITS a new central claim in every round → saved blocked, never publishable', async () => {
+    // Draft contains BAD_SENTENCE; the reviewer verifies the rest and never mentions it, and the
+    // reviser leaves it in. Coverage must catch it in both rounds.
+    const f = makeFakes({ reviews: [PASSING_CLAIMS, PASSING_CLAIMS], reviseBody: sentenceBody(BAD_SENTENCE) })
+    const out = await runArticleJob(job, f.deps)
+    expect(out).toMatchObject({ state: 'saved', factcheck: 'blocked' })
+    expect(f.calls).toMatchObject({ review: 2, revise: 1 })
+    const savedReport = f.reports[0]
+    expect(savedReport.verdict).toBe('blocked')
+    expect(savedReport.claims.find((c) => c.sentence === BAD_SENTENCE)?.downgrades).toEqual(['omitted_by_reviewer'])
+    expect(publicationGate({ payload: { body: f.saved[0].body }, qa: { pass: true },
+      meta: { factcheck_required: true, factcheck: savedReport } }).ok).toBe(false)
+  })
+
+  it('reviewer omits it, the revision removes the unverified sentence → passes on the corrected text only', async () => {
+    const f = makeFakes({ reviews: [PASSING_CLAIMS, PASSING_CLAIMS] })
+    const out = await runArticleJob(job, f.deps)
+    expect(out).toMatchObject({ state: 'saved', factcheck: 'passed' })
+    expect(f.calls.revise).toBe(1)
+    expect(f.saved[0].body).not.toContain(BAD_SENTENCE)
   })
 
   it('unavailable originating source → retry with zero model spend', async () => {

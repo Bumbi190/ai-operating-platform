@@ -48,6 +48,14 @@ facts and is never treated as a fact-check. The fact-check (`lib/article/factche
    - each quote must exist verbatim in the cited snapshot;
    - `supported` without a verified quote becomes `unsupported`;
    - `contradicted` without a verified quote becomes `uncertain`.
+   - **Coverage:** the reviewer chooses which claims to list, so omission is checked in code. Every body
+     sentence with a fact signal (a number, amount or percentage, a quotation, a date or weekday, or an
+     event verb such as announced, launched, raised, acquired, said, according to, costs or available)
+     must be contained in a listed claim sentence. A listed *fragment* does not count. Any such sentence
+     the reviewer omits is added as an `unsupported` **central** claim (`omitted_by_reviewer`), so the
+     article cannot pass. It goes to revision, and if it is still omitted it is blocked.
+     Honest limit: a factual sentence with none of these signals (for example "The company was bought
+     by its rival.") is not caught by this rule and still relies on the reviewer and the owner.
 4. **Verdict:**
    - `passed` requires every central claim to be `supported` and nothing contradicted or unsupported;
    - an `uncertain` *supporting* claim passes only if the sentence is visibly qualified ("reportedly", "has not confirmed" and similar);
@@ -99,12 +107,13 @@ Anthropic `claude-sonnet-4-6` at $3 / $15 per million input/output tokens (`lib/
 | Step | Input tokens | Output tokens | ≈ USD |
 |---|---|---|---|
 | Draft (deep) | ~5 500 | ~1 800 | 0.045 |
-| Fact-check | ~13 000 | ~3 000 | 0.085 |
+| Fact-check (full coverage) | ~13 000 | ~4 500 | 0.107 |
 | Revision (only if needed) | ~13 000 | ~1 800 | 0.066 |
-| Re-check (only if needed) | ~13 000 | ~3 000 | 0.085 |
+| Re-check (only if needed) | ~13 000 | ~4 500 | 0.107 |
 
-- **Typical article: ≈ $0.13. Worst case with revision: ≈ $0.28.**
-- At the default 2 articles a day: **≈ $8–17 per month (≈ 85–180 SEK)**.
+- **Typical article: ≈ $0.15. Worst case with revision: ≈ $0.33.**
+- At the default 2 articles a day: **≈ $9–20 per month (≈ 95–210 SEK)**.
+- The fact-check `max_tokens` is 9 000, so the reviewer can list every checkable sentence.
 - Retries add at most one repeated step per crash.
 - Hermes `/read`: 1–3 reads per article on the existing service. No new integration; there is extra load, but its hosting cost is not metered here.
 - The governed boundary *reserves* a context-window ceiling per call before dispatch. That uses temporary budget headroom, but not real spend. If the daily budget is tight, jobs defer instead of failing.
@@ -125,9 +134,20 @@ No new external AI service, paid API, search API or webhook is introduced.
 
 ## Verification done
 
-- 87 vitest cases across 7 files: contract, sources, runner, tick route, review gate, store, error class.
-- Targeted mutants were killed by named assertions with byte-verified restores: review gate disabled,
-  evidence verification skipped, draft rewritten on resume, body hash ignored, loose flag parsing, unbounded revisions.
+- 95 vitest cases across 7 files: contract, sources, runner, tick route, review gate, store, error class.
+  This includes the owner's scenario: a new central claim is added to the test article and the AI reviewer
+  leaves it out of its list. The result is never `passed`. It is blocked after the revision round if still
+  omitted, and the publication gate refuses it.
+- Targeted mutants were killed by named assertions with byte-verified restores:
+  - review gate disabled;
+  - evidence verification skipped;
+  - draft rewritten on resume;
+  - body hash ignored;
+  - loose flag parsing;
+  - unbounded revisions;
+  - coverage check disabled;
+  - a fragment counted as coverage;
+  - an omitted claim treated as supporting.
 - The proposed SQL was run on PGlite (`20261028150000_website_article_jobs.verify.mjs`, 9/9): duplicate enqueue,
   daily cap, exclusive claim, stale-token fencing, deferred not counting, expired-lease reclaim, max-attempts → failed,
   and the grants. It runs on a single connection, so real SKIP LOCKED contention was **not** exercised. Recommended next:

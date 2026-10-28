@@ -30,7 +30,44 @@ import type {
 
 const MIN_QUOTE_CHARS = 12
 const MAX_QUOTE_CHARS = 600
-const MAX_CLAIMS = 60
+export const MAX_CLAIMS = 80
+
+/**
+ * Deterministic "this sentence asserts something checkable" signals: numbers,
+ * money/percent, quotations, calendar words and factual-event verbs. A body
+ * sentence carrying any of them MUST appear in the reviewer's claim list; the
+ * reviewer cannot exempt it. Pure analysis without these signals may go
+ * unlisted. Honest limit: a factual sentence with none of these signals (for
+ * example "The company was bought by its rival.") is not caught here and still
+ * relies on the reviewer and the owner.
+ */
+const FACT_SIGNAL_RE = new RegExp([
+  String.raw`\d`,
+  String.raw`[$€£¥%]`,
+  String.raw`["“”]`,
+  String.raw`\b(jan(uary)?|feb(ruary)?|march|april|june|july|aug(ust)?|sept?(ember)?|oct(ober)?|nov(ember)?|dec(ember)?)\b`,
+  String.raw`\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|yesterday|today|tomorrow|last (week|month|year)|next (week|month|quarter|year))\b`,
+  String.raw`\b(announc\w*|launch\w*|releas\w*|unveil\w*|introduc\w*|acquir\w*|acquisition|merg\w*|rais(e|ed|es|ing)|fund\w*|valu(ed|ation)|invest\w*|fil(ed|es|ing)|sued|sues|lawsuit|ban(ned|s)?|fin(ed|es)|regulat\w*|confirm\w*|reported|reports|according to|said|says|stated|told|hired|fired|laid off|resign\w*|appoint\w*|partner\w*|priced|costs?|revenue|profit|users|customers|outperform\w*|beat|benchmark\w*|available|availability)\b`,
+].join('|'), 'i')
+
+/** Split a Markdown body into prose sentences; headings and blank lines are skipped. */
+export function bodySentences(body: string): string[] {
+  const out: string[] = []
+  for (const rawLine of body.split(/\n+/)) {
+    const line = rawLine.trim()
+    if (!line || /^#{1,6}\s/.test(line)) continue
+    const prose = line.replace(/^([-*+]|\d+[.)])\s+/, '').replace(/^>\s*/, '')
+    for (const s of prose.split(/(?<=[.!?])\s+(?=["'“‘(]?[A-Z0-9])/u)) {
+      const t = s.trim()
+      if (t) out.push(t)
+    }
+  }
+  return out
+}
+
+export function isCheckableSentence(sentence: string): boolean {
+  return FACT_SIGNAL_RE.test(sentence)
+}
 
 /** Words that make an uncertain supporting statement explicitly qualified. */
 const QUALIFIER_RE =
@@ -175,10 +212,38 @@ export function assessArticleFactCheck(input: AssessInput): FactCheckReport {
     return blocked('review_sentence_not_in_body', claims)
   }
 
+  // COVERAGE. The reviewer decides what it lists, so an omitted claim would
+  // otherwise never be judged. Every checkable body sentence must be contained
+  // in some listed claim sentence (a listed fragment does not cover the whole
+  // sentence). Anything omitted becomes an UNSUPPORTED CENTRAL claim — fail
+  // closed — which forces a revision and, if still omitted, blocks.
+  const listed = claims.map((c) => normalizeForMatch(c.sentence))
+  const omitted = bodySentences(input.body)
+    .filter(isCheckableSentence)
+    .filter((s) => {
+      const n = normalizeForMatch(s)
+      return n.length > 0 && !listed.some((l) => l.includes(n))
+    })
+  omitted.forEach((sentence, i) => claims.push({
+    id: `u${i + 1}`,
+    sentence,
+    claim: sentence,
+    importance: 'central',
+    modelVerdict: 'unsupported',
+    verdict: 'unsupported',
+    evidence: [],
+    rejectedEvidence: [],
+    publisherGroups: [],
+    hasPrimarySource: false,
+    note: 'Checkable sentence was not listed by the reviewer; treated as an unsupported central claim.',
+    downgrades: ['omitted_by_reviewer'],
+  }))
+
   const counts = countClaims(claims)
   if (counts.central === 0) return blocked('no_central_claims', claims)
 
   const reasons: string[] = []
+  if (omitted.length > 0) reasons.push(`omitted_checkable_sentences:${omitted.length}`)
   for (const c of claims) {
     if (!claimIsPublishable(c)) reasons.push(`${c.id}:${c.importance}:${c.verdict}`)
   }

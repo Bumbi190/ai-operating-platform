@@ -8,7 +8,8 @@
 
 import { describe, expect, it } from 'vitest'
 import {
-  assessArticleFactCheck, claimsNeedingRevision, factCheckAllowsPublication, normalizeForMatch, quoteFoundIn, sha256,
+  assessArticleFactCheck, bodySentences, claimsNeedingRevision, factCheckAllowsPublication, isCheckableSentence,
+  normalizeForMatch, quoteFoundIn, sha256,
 } from '@/lib/article/factcheck/contract'
 import { publicationGate } from '@/lib/article/factcheck/gate'
 import type { SourceSnapshot } from '@/lib/article/factcheck/types'
@@ -38,6 +39,9 @@ const supported = (sentence: string, quotes: Array<[string, string]>, importance
 })
 
 const NOW = new Date('2026-10-28T09:00:00.000Z')
+/** Covers every checkable sentence in BODY (the third sentence carries no fact signal). */
+const RELEASE = supported('According to The Verge, Acme released Model X on Tuesday.', [['s1', 'Acme released Model X on Tuesday']])
+const COSTS = supported('The model costs $2 per million input tokens.', [['s1', 'costs $2 per million input tokens']])
 const assess = (claims: unknown, sources = [S1, S2], body = BODY) =>
   assessArticleFactCheck({ body, sources, modelClaims: claims, reviewerModel: 'm', round: 0, now: NOW })
 
@@ -101,12 +105,13 @@ describe('assessArticleFactCheck', () => {
   })
 
   it('accepts an uncertain SUPPORTING claim only when the sentence is visibly qualified', () => {
-    const base = supported('According to The Verge, Acme released Model X on Tuesday.', [['s1', 'Acme released Model X on Tuesday']])
     const qualified = { sentence: 'Acme may expand access later this year.', claim: 'x', importance: 'supporting', verdict: 'uncertain', note: '', evidence: [] }
-    expect(assess([base, qualified]).verdict).toBe('passed')
+    expect(assess([RELEASE, COSTS, qualified]).verdict).toBe('passed')
     const bodyFlat = BODY.replace('Acme may expand access later this year.', 'Acme will expand access later this year.')
     const flat = { ...qualified, sentence: 'Acme will expand access later this year.' }
-    expect(assess([base, flat], [S1, S2], bodyFlat).verdict).toBe('needs_revision')
+    const flatReport = assess([RELEASE, COSTS, flat], [S1, S2], bodyFlat)
+    expect(flatReport.verdict).toBe('needs_revision')
+    expect(flatReport.reasons).toEqual(['c3:supporting:uncertain', 'info:central_claims_single_publisher:2'])
   })
 
   it('never accepts an uncertain CENTRAL claim, qualified or not', () => {
@@ -132,7 +137,10 @@ describe('assessArticleFactCheck', () => {
   })
 
   it('blocks when only supporting claims were extracted', () => {
-    const r = assess([supported('The model costs $2 per million input tokens.', [['s1', 'costs $2 per million input tokens']], 'supporting')])
+    const r = assess([
+      supported('According to The Verge, Acme released Model X on Tuesday.', [['s1', 'Acme released Model X on Tuesday']], 'supporting'),
+      supported('The model costs $2 per million input tokens.', [['s1', 'costs $2 per million input tokens']], 'supporting'),
+    ])
     expect(r.reasons).toEqual(['no_central_claims'])
   })
 
@@ -143,8 +151,55 @@ describe('assessArticleFactCheck', () => {
   })
 })
 
+describe('coverage: the reviewer cannot pass an article by omitting a claim', () => {
+  const OMITTED = 'Acme raised $5 billion from investors last week.'
+  const bodyWithNewClaim = `${BODY}\n\n${OMITTED}`
+
+  it('a new central claim the reviewer leaves out is never passed', () => {
+    // The reviewer verifies everything else perfectly and simply does not mention the new claim.
+    const r = assess([RELEASE, COSTS], [S1, S2], bodyWithNewClaim)
+    expect(r.verdict).not.toBe('passed')
+    expect(r.verdict).toBe('needs_revision')
+    const omitted = r.claims.find((c) => c.sentence === OMITTED)!
+    expect(omitted).toMatchObject({ importance: 'central', verdict: 'unsupported', downgrades: ['omitted_by_reviewer'] })
+    expect(r.reasons).toContain('omitted_checkable_sentences:1')
+    expect(claimsNeedingRevision(r).map((c) => c.sentence)).toEqual([OMITTED])
+    // …and the report cannot authorise publication of that body.
+    expect(factCheckAllowsPublication(r, bodyWithNewClaim)).toEqual({ ok: false, reason: 'factcheck_needs_revision' })
+    expect(publicationGate({ payload: { body: bodyWithNewClaim }, qa: { pass: true }, meta: { factcheck_required: true, factcheck: r } }).ok).toBe(false)
+  })
+
+  it('listing only a harmless FRAGMENT of the sentence does not cover it', () => {
+    const fragment = { sentence: 'Acme raised', claim: 'Acme raised money', importance: 'supporting', verdict: 'uncertain', note: '', evidence: [] }
+    const r = assess([RELEASE, COSTS, fragment], [S1, S2], bodyWithNewClaim)
+    expect(r.verdict).not.toBe('passed')
+    expect(r.claims.some((c) => c.sentence === OMITTED && c.downgrades.includes('omitted_by_reviewer'))).toBe(true)
+  })
+
+  it('the same claim, when listed and verified, passes — coverage is the only difference', () => {
+    const s3: SourceSnapshot = { ...S2, id: 's3', publisherGroup: 'reuters', kind: 'independent_reporting', host: 'reuters.com',
+      url: 'https://www.reuters.com/x', text: 'Acme raised $5 billion from investors last week, two people familiar said.' }
+    const listed = supported(OMITTED, [['s3', 'Acme raised $5 billion from investors last week']])
+    expect(assess([RELEASE, COSTS, listed], [S1, S2, s3], bodyWithNewClaim).verdict).toBe('passed')
+  })
+
+  it('omission inside a compound paragraph and a bullet list is still detected', () => {
+    const body = `${BODY}\n\n- The deal values Acme at $60 billion. Analysts called it aggressive.`
+    const r = assess([RELEASE, COSTS], [S1, S2], body)
+    expect(r.claims.filter((c) => c.downgrades.includes('omitted_by_reviewer')).map((c) => c.sentence))
+      .toEqual(['The deal values Acme at $60 billion.'])
+  })
+
+  it('pure analysis without fact signals does not have to be listed', () => {
+    expect(bodySentences('## Why it matters\n\nThis suggests rivals will respond.')).toEqual(['This suggests rivals will respond.'])
+    expect(isCheckableSentence('This suggests rivals will respond.')).toBe(false)
+    expect(isCheckableSentence(OMITTED)).toBe(true)
+  })
+})
+
 describe('publication gate', () => {
-  const passed = assess([supported('The model costs $2 per million input tokens.', [['s1', 'costs $2 per million input tokens']])])
+  const passed = assess([RELEASE, COSTS])
+  it('fixture sanity: the shared report passed', () => expect(passed.verdict).toBe('passed'))
 
   it('allows only a passed report computed on exactly this body', () => {
     expect(factCheckAllowsPublication(passed, BODY)).toEqual({ ok: true })

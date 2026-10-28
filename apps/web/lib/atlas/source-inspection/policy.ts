@@ -32,11 +32,12 @@ export function sourceRepositoryForProject(projectSlug: unknown): SourceReposito
 
 export const SOURCE_MAX_BYTES = 32_768
 export const SOURCE_MAX_LINES = 240
+export const SOURCE_MAX_START_LINE = 5_000
 export const SOURCE_GIT_SHA = /^[a-f0-9]{40}$/
 
 export type SourceRequest =
   | { action: 'status'; projectSlug: 'handlarborsen' }
-  | { action: 'read_file'; projectSlug: 'handlarborsen'; path: string }
+  | { action: 'read_file'; projectSlug: 'handlarborsen'; path: string; startLine?: number }
 
 const ALLOWED_ROOTS = new Set(['app', 'src', 'lib', 'components', 'docs', 'tests', 'test', 'e2e', 'pages'])
 const ALLOWED_EXTENSIONS = /\.(?:ts|tsx|js|jsx|mjs|cjs|css|scss|md|mdx|json|yaml|yml|html)$/i
@@ -66,9 +67,15 @@ export function parseSourceRequest(value: unknown): SourceRequest | null {
   if (x.action === 'status' && JSON.stringify(keys) === JSON.stringify(['action', 'projectSlug'])) {
     return { action: 'status', projectSlug: 'handlarborsen' }
   }
-  if (x.action === 'read_file' && JSON.stringify(keys) === JSON.stringify(['action', 'path', 'projectSlug'])) {
+  const readFileKeys = JSON.stringify(keys)
+  if (x.action === 'read_file' && (readFileKeys === JSON.stringify(['action', 'path', 'projectSlug'])
+    || readFileKeys === JSON.stringify(['action', 'path', 'projectSlug', 'startLine']))) {
     const path = safeSourcePath(x.path)
-    return path ? { action: 'read_file', projectSlug: 'handlarborsen', path } : null
+    const startLine = x.startLine === undefined ? 1 : x.startLine
+    if (!path || !Number.isSafeInteger(startLine) || (startLine as number) < 1
+      || (startLine as number) > SOURCE_MAX_START_LINE) return null
+    return { action: 'read_file', projectSlug: 'handlarborsen', path,
+      ...((startLine as number) > 1 ? { startLine: startLine as number } : {}) }
   }
   return null
 }
@@ -95,12 +102,17 @@ export function isSafeInspectableText(text: string): boolean {
   return !highRisk.some(pattern => pattern.test(text))
 }
 
-export function selectedSourceLines(text: string): { line: number; text: string }[] {
-  return text.split(/\r?\n/).slice(0, SOURCE_MAX_LINES).map((line, index) => ({ line: index + 1, text: line }))
+export function selectedSourceLines(text: string, startLine = 1): { line: number; text: string }[] {
+  if (!Number.isSafeInteger(startLine) || startLine < 1 || startLine > SOURCE_MAX_START_LINE) return []
+  return text.split(/\r?\n/).slice(startLine - 1, startLine - 1 + SOURCE_MAX_LINES)
+    .map((line, index) => ({ line: startLine + index, text: line }))
 }
 
-export function immutableSourceUrl(repo: SourceRepository, sha: string, path: string, lastLine: number): string {
-  if (!SOURCE_GIT_SHA.test(sha) || !safeSourcePath(path)) throw new Error('untrusted_source_receipt')
+export function immutableSourceUrl(repo: SourceRepository, sha: string, path: string, lastLine: number, startLine = 1): string {
+  if (!SOURCE_GIT_SHA.test(sha) || !safeSourcePath(path) || !Number.isSafeInteger(startLine)
+    || startLine < 1 || startLine > SOURCE_MAX_START_LINE || !Number.isSafeInteger(lastLine)
+    || lastLine < startLine || lastLine - startLine + 1 > SOURCE_MAX_LINES)
+    throw new Error('untrusted_source_receipt')
   return 'https://github.com/' + repo.owner + '/' + repo.name + '/blob/' + sha + '/' +
-    path.split('/').map(encodeURIComponent).join('/') + '#L1-L' + Math.min(lastLine, SOURCE_MAX_LINES)
+    path.split('/').map(encodeURIComponent).join('/') + '#L' + startLine + '-L' + lastLine
 }

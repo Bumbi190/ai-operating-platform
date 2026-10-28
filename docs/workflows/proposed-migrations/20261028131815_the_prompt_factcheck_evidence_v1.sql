@@ -86,7 +86,9 @@ begin
   select * into script_row from public.media_scripts
     where id = new.script_id and project_id = new.project_id for share;
   if script_row.id is null
-    or coalesce(script_row.version, 1) <> new.script_version
+    or script_row.version is null
+    or script_row.version <> new.script_version
+    or new.revision_id is distinct from ('v' || script_row.version::text)
     or new.manuscript_snapshot ->> 'projectId' is distinct from new.project_id::text
     or new.manuscript_snapshot ->> 'scriptId' is distinct from new.script_id::text
     or new.manuscript_snapshot ->> 'revisionId' is distinct from new.revision_id
@@ -103,6 +105,9 @@ begin
   if run_row.id is null
     or run_row.project_id is distinct from new.project_id
     or run_row.claim_id is distinct from new.claim_id
+    or run_row.status is distinct from 'running'
+    or run_row.lease_until is null
+    or run_row.lease_until <= clock_timestamp()
     or run_row.cancel_requested
   then
     raise exception 'FACTCHECK_RUN_OWNERSHIP_MISMATCH' using errcode = '23514';

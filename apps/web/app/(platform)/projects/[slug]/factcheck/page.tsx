@@ -224,7 +224,7 @@ export default async function FactCheckHistoryPage({ params }: {
                   <div className="text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1">
                     <span>Version {report.script_version}</span>
                     <span>Granskare: {report.reviewer_model}</span>
-                    <span>{sources.length} verifierbara källhänvisningar</span>
+                    <span>{sources.length} sparade källhänvisningar</span>
                     <span>{findings.length} granskade textdelar</span>
                   </div>
                   <p className="text-sm text-muted-foreground">{report.framing_reason}</p>

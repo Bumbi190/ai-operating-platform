@@ -58,10 +58,13 @@ test('append-only even for privileged roles',()=>{
 
 test('insert guard binds run claim and script to the same project',()=>{
   assert.match(migration,/id = new\.script_id and project_id = new\.project_id for share/i)
-  assert.match(migration,/coalesce\(script_row\.version, 1\) <> new\.script_version/i)
+  assert.match(migration,/script_row\.version <> new\.script_version/i)
+  assert.match(migration,/new\.revision_id is distinct from \('v' \|\| script_row\.version::text\)/i)
   assert.match(migration,/script_row\.captions/i)
   assert.match(migration,/run_row\.project_id is distinct from new\.project_id/i)
   assert.match(migration,/run_row\.claim_id is distinct from new\.claim_id/i)
+  assert.match(migration,/run_row\.status is distinct from 'running'/i)
+  assert.match(migration,/run_row\.lease_until <= clock_timestamp\(\)/i)
   assert.match(migration,/run_row\.cancel_requested/i)
   assert.match(migration,/current_user not in \('service_role', 'postgres'\)/i)
 })

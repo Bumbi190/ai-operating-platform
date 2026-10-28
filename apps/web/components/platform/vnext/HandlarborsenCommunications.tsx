@@ -101,8 +101,32 @@ export function HandlarborsenCommunications({
         ) : view.stages.length === 0 ? (
           <p className="text-sm text-slate-300">Inga reply-jobb finns registrerade i den lästa källan.</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+          <>
+            <div className="space-y-3 sm:hidden" aria-label="Svarskedjans statusar på mobil">
+              {view.stages.map((stage) => (
+                <dl key={[stage.replyJobStatus, stage.currentApprovalStatus, stage.currentSendStatus].join(':')}
+                  className="space-y-3 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                  <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-2">
+                    <dt className="text-xs font-semibold text-slate-400">Antal</dt>
+                    <dd className="font-semibold tabular-nums text-white">{number(stage.count)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-400">Bearbetning</dt>
+                    <dd className="mt-1 text-sm text-white">{processLabels[stage.replyJobStatus] ?? 'Okänd processstatus'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-400">Godkännande</dt>
+                    <dd className="mt-1 text-sm text-white">{approvalLabels[stage.currentApprovalStatus] ?? 'Okänd godkännandestatus'}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-slate-400">SMTP-koppling</dt>
+                    <dd className="mt-1 text-sm text-white">{sendLabels[stage.currentSendStatus] ?? 'Okänd SMTP-status'}</dd>
+                  </div>
+                </dl>
+              ))}
+            </div>
+            <div className="hidden overflow-x-auto sm:block">
+              <table className="w-full min-w-[640px] border-collapse text-left text-sm">
               <caption className="sr-only">Grupperad processstatus, godkännande och kopplat SMTP-jobb</caption>
               <thead className="border-b border-white/15 text-slate-400">
                 <tr><th scope="col" className="py-3 pr-4">Bearbetning</th><th scope="col" className="py-3 pr-4">Godkännande</th>
@@ -117,8 +141,9 @@ export function HandlarborsenCommunications({
                   <td className="py-3 text-right tabular-nums">{number(stage.count)}</td>
                 </tr>)}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+          </>
         )}
         <p className="mt-4 text-xs text-slate-400">Svarskedjan är en separat läsning med upp till 200 metadataobjekt per källa. Tidigare revisioner blandas inte ihop med det aktuella utkastet.</p>
       </Panel>

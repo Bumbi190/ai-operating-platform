@@ -1,3 +1,4 @@
+import * as React from 'react'
 import { notFound } from 'next/navigation'
 import { getProjectBySlug } from '@/lib/project/get-project'
 import { resolveProjectAccess } from '@/lib/auth/project-access'

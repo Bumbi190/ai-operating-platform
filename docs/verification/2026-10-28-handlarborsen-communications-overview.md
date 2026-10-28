@@ -42,10 +42,16 @@ Navigation: endast Handlarbörsens projektheader får länken "Kommunikation".
 
 ## Testbevis och återstående granskning
 
-- Lokal riktad Vitest för kommunikationsvyn, CRM och svarskedjan: 50 av 50 gröna
-  (13 + 12 + 25), efter att JSX-miljön och sekretessassertionen korrigerats.
-- Kommunikationssviten ligger i befintlig Atlas Project Isolation CI med anti-skip
-  minimum 13 tester. Kör CI på exakt PR-head före eventuell merge.
+- Lokal riktad Vitest för kommunikationsvy, åtkomstgrind, CRM och svarskedja:
+  58 av 58 gröna (14 + 7 + 12 + 25). Behörighetstesterna kör den riktiga
+  sidkomponenten mot mockade sessioner: okänd/annat projekt, oinloggad och
+  obehörig ägare stoppas innan service-role-klient eller statusläsningar.
+- Syntetisk HTML/React/Tailwind-granskning i Playwright: 1440, 390 och 360
+  pixlars bredd, inget dokumentöverflöde. Mobil visar alla tre statusdimensioner
+  i ett separat kort i stället för en sidledsrullad tabell. Detta är INTE en
+  autentiserad previewgranskning med riktiga konton.
+- Båda kommunikationssviterna ligger i befintlig Atlas Project Isolation CI
+  med anti-skip-minima 14 respektive 7. Kör CI på exakt PR-head före merge.
 - Full lokal TypeScript-kontroll blockerades av den lånade beroendemappens saknade
   @omnira/local-text-contract, @modelcontextprotocol/client och @remotion/lambda.
   Felen var utanför de nya kommunikationsfilerna; detta är inte en grön typkontroll.

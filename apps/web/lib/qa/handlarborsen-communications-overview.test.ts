@@ -120,6 +120,19 @@ describe('Handlarbörsen: read-only communications view', () => {
     expect(html).not.toContain('Leverans bekräftad')
   })
 
+  it('shows all three lifecycle statuses in the mobile card instead of hiding SMTP behind a swipe', () => {
+    const html = renderToStaticMarkup(
+      createElement(HandlarborsenCommunications, {
+        projectSlug: 'handlarborsen', view: buildCommunicationsOverview(sales, reply),
+      }),
+    )
+    expect(html).toContain('aria-label="Svarskedjans statusar på mobil"')
+    expect(html).toContain('space-y-3 sm:hidden')
+    expect(html).toContain('hidden overflow-x-auto sm:block')
+    expect(html).toMatch(/SMTP-koppling<\/dt>.*?Accepterat av SMTP \(ej leverans\)/s)
+    expect(html).toMatch(/Godkännande<\/dt>.*?Godkänt utkast/s)
+  })
+
   it('renders explicit unavailable states instead of fake zeros', () => {
     const html = renderToStaticMarkup(
       createElement(HandlarborsenCommunications, {

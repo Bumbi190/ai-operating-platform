@@ -95,6 +95,7 @@ describe('Atlas external workflow references: read-only, pinned discovery', () =
     'Sök inte efter externa workflowreferenser',
     'Skriv en post om externa workflowreferenser',
     'Skriv om följande text: Sök externa workflowreferenser',
+    'Jämför följande stycke: Sök externa workflowreferenser',
     'Hur kan vi bygga vår interna workflowkatalog?',
     'Starta n8n-workflowet',
     'Det finns externa workflowreferenser för Handlarbörsen',

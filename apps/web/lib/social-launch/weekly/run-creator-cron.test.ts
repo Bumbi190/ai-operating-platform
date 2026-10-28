@@ -90,6 +90,9 @@ describe('Family weekly cron enqueues only after bearer + two OFF-by-default fea
    '../../../../../docs/sql/20261028_family_weekly_run_creator_proposed.sql'),'utf8')
   const route=readFileSync(resolve(__dirname,
    '../../../app/api/social-weekly-automation/cron/route.ts'),'utf8')
+  const vercel=JSON.parse(readFileSync(resolve(__dirname,
+   '../../../vercel.json'),'utf8')) as {crons?:Array<{path:string}>}
+  expect((vercel.crons??[]).some(c=>c.path==='/api/social-weekly-automation/cron')).toBe(false)
   expect(sql).not.toContain('cron.schedule(')
   expect(route).not.toMatch(/cron\.schedule\(/)
   expect(route).toContain("process.env.CRON_SECRET")

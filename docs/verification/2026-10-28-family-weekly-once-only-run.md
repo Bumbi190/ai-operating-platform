@@ -529,3 +529,45 @@ autentiserad ägarsession, kundpublicering, leverans, externa konton,
 eller betald AI-generering. Dessa steg är fortfarande RELEASE GATES.
 Ingen produktionstabell har skapats, ingen cron är på, inget AI-anrop
 har gjorts och inget har publicerats.
+
+## Fas 11 – UI-kvitto, återkallelse och isolerad webbläsargranskning (2026-10-28)
+
+Den befintliga `SocialWeeklyAutomationControls` hade ett viktigt fel:
+när `POST /api/social-weekly-automation` misslyckades eller kvittot
+tappades, sade gränssnittet att ingen ändring hade sparats. Ett POST kan
+dock redan ha committats innan dess HTTP-svar går förlorat. Det var en
+felaktig och säkerhetskänslig slutsats för både opt-in och återkallelse.
+
+Gränssnittet behandlar nu ett tvetydigt POST-kvitto som **osäkert**:
+inga nya opt-in-/revoke-knappar visas och inget POST upprepas
+automatiskt. Ägaren måste först välja **Kontrollera sparad status**,
+vilket gör en separat, ej cachad, autentiserad GET-läsning och
+återställer knapparna först när ett strikt review-only-svar har
+verifierats. Även ett felaktigt GET-svar låser beslutsytan till nästa
+bekräftade statuskontroll. Ingen status får påstå
+`canSchedule=true` eller `canPublish=true`.
+
+Ägaren får fortfarande återkalla ett tidigare godkännande även när den
+separata schemapanelen är disabled/under omläsning; samma
+serverstyrda project-owner-, operator-, same-origin- och session-RLS-
+kontroller gäller vid själva POST-anropet. Att granskningslänken i
+panelens notice-lista nu är en fast **relativ** projektsökväg håller
+läsgranskning inom aktuell Preview/produktionsorigin utan att navigera
+till en annan deployment. Främmande projekt renderar inte kontrollen
+och anropar inte API:et.
+
+Testad i Chromium med befintlig isolerad
+`playwright.weekly-preparation.config.ts` och Vite-fixture;
+**9/9 Playwright PASS** inklusive explicit opt-in/revoke, osäkert kvitto,
+återläsning utan dubbla POST, disabled schemapanel, projektgräns,
+notislänk, felaktigt GET-svar, korrupta granskningsaviseringar och befintlig oberoende
+innehålls-/schemagranskning. Veckosviten **137/137 Vitest PASS**
+(inklusive ett nytt server-API-test där INSERT kan lyckas före att den
+efterföljande läsningen misslyckas). Hela
+`npm --prefix apps/web run typecheck` **PASS**.
+
+**Begränsning:** Playwright testade riktiga React-komponenter men
+API-svaren var uttryckliga testdubletter. Det är inte ett inloggat
+ägartest mot Vercels skyddade Preview och inte ett fullschema
+Supabase/Postgres end-to-end-test. Inga API-flaggor, cron, SQL-migrationer,
+AI-anrop eller publiceringsjobb har aktiverats.

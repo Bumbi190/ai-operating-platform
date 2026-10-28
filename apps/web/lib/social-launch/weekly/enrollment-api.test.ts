@@ -157,4 +157,16 @@ describe('Owner UI enrollment route never dispatches background work',()=>{
   expect(got.status).toBe(503)
   expect(JSON.stringify(await got.json())).not.toContain('private db')
  })
+ it('insert can commit before a failed read: 503 is ambiguous, never a second insert',async()=>{
+  const {familyWeeklyOwnerEnrollmentApi}=await import('./enrollment-api')
+  state.read.mockResolvedValueOnce({
+   enabled:false,status:'unavailable',canSchedule:false,canPublish:false,
+   validUntil:'2027-01-25T00:00:00Z',lastUpdatedAt:'2026-10-28T12:00:00Z',
+  })
+  const got=await familyWeeklyOwnerEnrollmentApi(post(enable))
+  expect(got.status).toBe(503)
+  expect(await got.json()).toEqual({code:'ENROLLMENT_UNAVAILABLE'})
+  expect(state.insert).toHaveBeenCalledTimes(1)
+  expect(state.read).toHaveBeenCalledTimes(1)
+ })
 })

@@ -157,6 +157,66 @@ describe('Atlas Notion chat activation boundary', () => {
     expect(excerpt.length).toBeLessThanOrEqual(4800)
   })
 
+  it('regression: a late exact Kareby Bil note wins the 4800-char budget over older generic pilot logs', () => {
+    const oldParagraphs = Array.from({ length: 9 }, (_, index) =>
+      'Handlarbörsens pilot, äldre status ' + index + ': '
+      + 'andra bolag, utskick och allmän planering. '.repeat(65),
+    ).join('\n\n')
+    const lateNote = '### Notis till Atlas – Kareby Bil, uppföljning 22 oktober 2026\n\n'
+      + '- Thomas Ivarsson fick uppföljning den 22 oktober 2026. '
+      + 'Han frågade hur han registrerar företaget. Ingen registrering bekräftad.'
+    const excerpt = selectNotionPassages(oldParagraphs + '\n\n' + lateNote,
+      'Vad står i Notion om Handlarbörsens pilot och Kareby Bil?')
+    // Old code ranked the target correctly, then sorted the hits BACK to
+    // source order so the generic 2k excerpts consumed all the model budget.
+    expect(excerpt.slice(0, 380)).toContain('Kareby Bil')
+    expect(excerpt).toContain('Thomas Ivarsson')
+    expect(excerpt).toContain('22 oktober 2026')
+    expect(excerpt.length).toBeLessThanOrEqual(4_800)
+  })
+
+  it('finds the only late relevant note even past the former first-3000-paragraph limit', () => {
+    const longIndex = Array.from({ length: 3_050 }, (_, i) =>
+      'Äldre anteckning nummer ' + i + ' utan företagsnamn.',
+    ).join('\n\n')
+    const result = selectNotionPassages(longIndex
+      + '\n\n### Kareby Bil – Thomas Ivarsson\n\nUppföljning skickad 22 oktober 2026.',
+      'Vad står i Notion om Kareby Bil?')
+    expect(result).toContain('Kareby Bil – Thomas Ivarsson')
+    expect(result).toContain('Uppföljning skickad 22 oktober 2026.')
+  })
+
+  it('focuses on the actual name deep inside a long paragraph, not only its opening', () => {
+    const text = 'Övriga anteckningar. ' + 'olika utskick och projektstatus. '.repeat(130)
+      + 'Kareby Bil: Thomas har fått registreringslänk. '
+      + 'Inga andra beslut är verifierade.'
+    const excerpt = selectNotionPassages(text, 'Vad har vi bestämt om Kareby Bil?')
+    expect(excerpt).toContain('Kareby Bil: Thomas')
+    expect(excerpt.length).toBeLessThanOrEqual(4_800)
+  })
+
+  it('ranks by the user original question even when the model tool input omits the business name', async () => {
+    const generic = 'Handlarbörsens pilot och marknad. '.repeat(90)
+    const note = '### Kareby Bil, 22 oktober 2026\n\n'
+      + 'Thomas Ivarsson fick ett uppföljningsmejl.'
+    const reader = vi.fn(async () => ({
+      ...evidence,
+      markdown: generic + '\n\n' + generic + '\n\n' + note,
+    }))
+    const result = await handleAtlasNotionRead(
+      { project: 'Handlarbörsen', question: 'Vilken generell pilotstatus har vi?' },
+      {
+        db: fakeDb, allowedProjectIds: [PROJECT],
+        userQuestion: 'Vad står i Notion om Handlarbörsens pilot och Kareby Bil?',
+      },
+      { resolveProject: identity as never, loadConfig: () => allowed(), read: reader },
+    )
+    expect(result.ok).toBe(true)
+    expect(String(result.excerpt).slice(0, 300)).toContain('Kareby Bil')
+    expect(String(result.excerpt)).toContain('Thomas Ivarsson')
+    expect(result.actionAuthority).toBe(false)
+  })
+
   it('chat route restricts Notion evidence turns to only the read tool', () => {
     const route = readFileSync(join(process.cwd(), 'app/api/chat/route.ts'), 'utf8')
     expect(route).toContain('notionReadOnlyTurn ? ATLAS_NOTION_TOOLS')
@@ -164,7 +224,8 @@ describe('Atlas Notion chat activation boundary', () => {
     expect(route).toContain("if(name===ATLAS_NOTION_TOOL_NAME)")
     expect(route).toContain("if(!notionReadOnlyTurn) return {ok:false,code:'notion_read_unavailable'}")
     expect(route).toContain('persistedNotionToolResult(')
-    expect(route).toContain('notionReadOnlyTurn)')
+    expect(route).toContain('notionReadOnlyTurn,lastUserText)')
+    expect(route).toContain('userQuestion:notionUserQuestion')
     // Tool is absent from global TOOLS, so it cannot appear in action/studio turns.
     expect(route).not.toContain('...ATLAS_NOTION_TOOLS,')
   })

@@ -2,7 +2,7 @@
 .crumbs{display:flex;align-items:center;gap:.6rem;color:var(--omnira-text-3);font-size:.8rem;margin-bottom:1.4rem}
 .crumbs a{display:inline-flex;align-items:center;gap:.4rem;color:var(--omnira-cyan,#6bdde4);text-decoration:none}
 .crumbs a:hover,.footer a:hover{text-decoration:underline}
-.crumbs a:focus-visible,.footer a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--omnira-cyan,#77dbe5);outline-offset:3px}
+.crumbs a:focus-visible,.footer a:focus-visible,.page button:focus-visible,.page input:focus-visible,.page select:focus-visible{outline:2px solid var(--omnira-cyan,#77dbe5);outline-offset:3px}
 .heading{display:flex;justify-content:space-between;align-items:flex-start;gap:1.5rem;flex-wrap:wrap;margin-bottom:1.55rem}
 .heading h1{font-size:clamp(2rem,3.8vw,3.1rem);font-weight:760;letter-spacing:-.04em;line-height:1.15;margin:.25rem 0 .65rem}
 .heading p:not(.kicker){max-width:700px;color:var(--omnira-text-2,#a7bdcc);font-size:.95rem;line-height:1.6;margin:0}

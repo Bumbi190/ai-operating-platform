@@ -1301,6 +1301,46 @@ describe('A6-3 · the breaking chain cannot turn a project owner into the platfo
 })
 
 describe('A6-3 · the machine publishers post only the platform social project’s content', () => {
+  it('an old quality-parse placeholder cannot publish to Instagram or Facebook', async () => {
+    DB.tables.media_scripts = [mediaScript('script-editorial-hold', SOCIAL, {
+      quality_score: { ...VERIFIED_EDITORIAL_QA, verdict: 'Quality check parse error — proceeding with caution.' },
+      generated_at: minutesAgo(10),
+    })]
+    const res = await cron('publish')
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ status: 'editorial_review_required' })
+    expect(publishCalls()).toEqual([])
+    expect(DB.mutations('media_scripts')).toEqual([])
+  })
+
+  it('an unverified oldest row cannot starve a valid publication', async () => {
+    DB.tables.media_scripts = [
+      mediaScript('script-held-older', SOCIAL, {
+        quality_score: { ...VERIFIED_EDITORIAL_QA, verdict: 'Quality check parse error — proceeding with caution.' },
+        generated_at: minutesAgo(200),
+      }),
+      mediaScript('script-verified-newer', SOCIAL, { generated_at: minutesAgo(180) }),
+    ]
+    const res = await cron('publish')
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ scriptId: 'script-verified-newer' })
+    expect(posted('script-held-older')).toEqual([])
+    expect(posted('script-verified-newer').length).toBeGreaterThan(0)
+  })
+
+  it('a named unverified YouTube short and Instagram container are both blocked', async () => {
+    DB.tables.media_scripts = [mediaScript('script-editorial-hold', SOCIAL, {
+      quality_score: { ...VERIFIED_EDITORIAL_QA, verdict: 'Quality check parse error — proceeding with caution.' },
+      generated_at: minutesAgo(10),
+    })]
+    const yt = await cron('youtube', '?scriptId=script-editorial-hold')
+    expect(yt.status).toBe(200)
+    expect(EXTERNAL).toEqual([])
+    const ig = await cron('step4', '?scriptId=script-editorial-hold')
+    expect(ig.status).toBe(409)
+    expect(EXTERNAL).toEqual([])
+  })
+
   it('11 · scheduled cron/publish still publishes — the platform’s oldest ready script, not another tenant’s', async () => {
     const res = await cron('publish')
     expect(res.status).toBe(200)

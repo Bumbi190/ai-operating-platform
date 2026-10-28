@@ -221,7 +221,7 @@ export function evaluateOpenVikingQuality(input: unknown): QualityDecision {
       firstSourceRateDifferencePctPoints: openviking.answerable > 0
         ? Math.round(10000 * (
           openviking.correctFirstSourceAllRuns / openviking.answerable
-          - lexical.correctFirstSourceAllRuns / lexical.answerable,
+          - lexical.correctFirstSourceAllRuns / lexical.answerable
         )) / 100 : 0,
       openvikingOverLexicalMedianLatencyRatio: lexical.medianMs > 0
         ? Math.round(100 * openviking.medianMs / lexical.medianMs) / 100 : null,

@@ -128,3 +128,24 @@ jobs:
             .superpowers/sdd/2026-10-16-atlas-social-publication/browser
             .superpowers/sdd/2026-10-16-atlas-social-content/browser
           retention-days: 5
+
+  family_weekly_postgres:
+    name: Family weekly SQL / isolated PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch test-only PostgreSQL 16 image
+        run: docker pull postgres:16
+      - name: Verify SQL roles, owner revoke, run-once and canonical editor
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($mode in @('normal','simulated-sunday','native-editorial','native-content')) {
+            & ./docs/verification/fixtures/run-family-weekly-pg-smoke.ps1 -Mode $mode
+            if ($LASTEXITCODE -ne 0) {
+              throw "FAMILY_WEEKLY_POSTGRES_TEST_FAILED:$mode"
+            }
+          }

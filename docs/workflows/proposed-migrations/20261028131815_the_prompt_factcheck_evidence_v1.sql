@@ -206,7 +206,10 @@ revoke all on function public.media_factcheck_editorial_evidence_complete(jsonb,
 grant execute on function public.media_factcheck_editorial_evidence_complete(jsonb,jsonb)
   to service_role;
 
--- HUMAN-ORIGIN preproduction editorial decisions. This is NOT a publish gate.
+-- OWNER-MATCHED proposed preproduction decisions. NOT a publish gate.
+-- The DB checks decided_by = projects.owner_id; it cannot by itself prove
+-- that a human session supplied the value. A future writer MUST derive the
+-- actor from authenticated getUser() and enforce fresh owner authority.
 -- Existing social_content_decisions remains the final separate per-channel,
 -- exact-revision approval boundary AFTER media preparation.
 create table public.media_factcheck_editorial_decisions (

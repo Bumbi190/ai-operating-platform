@@ -38,7 +38,7 @@ The successful tail is FACTCHECK_PG_ISOLATION_ALL_ASSERTIONS_PASSED, followed by
 - The first isolated fixture surfaced a real Postgres privilege distinction: SELECT ... FOR SHARE on runs requires the source table's UPDATE privilege too. The test fixture was adjusted only after **read-only** confirmation that Omnira's actual service_role holds that privilege; no production permission was changed.
 - The isolated run also found that revoking function EXECUTE from PUBLIC disables the new evidence-shape helper for service_role unless it receives a **specific** grant. The proposal now grants only this function's EXECUTE to service_role.
 - This is a physical SQL test, **not** a complete production-schema replay or an independent verification of semantic truth. Input sources, IDs and model reviews are synthetic fixtures. Model-generated citations may be materially misleading even when they are structurally valid.
-- No real owner-session approval API, provider-funded fact-check worker, source licensing verification, report storage in production, or mandatory render/publish admission has been activated.
+- Owner equality in the SQL trigger does not by itself attest a human-origin action: a privileged writer could provide the owner's UUID. A future live writer must derive that identity from a fresh authenticated operator session, never from model/client JSON. No real owner-session approval API, provider-funded fact-check worker, source licensing verification, report storage in production, or mandatory render/publish admission has been activated.
 - The **existing** social_content_decisions remains a separate, final channel/revision-bound human approval after preparation. Never treat a new FactCheck decision as permission to publish.
 
 ## Release blockers

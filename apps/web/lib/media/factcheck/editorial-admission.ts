@@ -1,7 +1,8 @@
 /**
  * The Prompt: TWO distinct editorial gates, default-off. Pure preview policy.
  *
- * 1. An owner-origin FactCheck decision before paid creative work.
+ * 1. An owner-matched FactCheck decision before paid creative work.
+ *    Human-origin identity still requires a verified session-bound writer.
  * 2. A DIFFERENT existing social_content_decisions approval bound to the
  *    final video/post revision, before dispatch/publication.
  *

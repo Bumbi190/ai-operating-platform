@@ -349,6 +349,7 @@ export function awaitingAtlas(entries: TranscriptEntry[], pending: boolean): boo
 export const TOOL_LABELS: Record<string, string> = {
   handlarborsen_statistics: 'Läser Handlarbörsens statistik',
   handlarborsen_sales_overview: 'Läser Handlarbörsens försäljningsöversikt',
+  handlarborsen_compare_workflow_evidence: 'Jämför Handlarbörsens källor',
   handlarborsen_latest_mail: 'Läser Handlarbörsens senaste mejl',
   search_external_workflow_references: 'Söker workflowreferenser',
   get_calendar: 'Läser kalendern',

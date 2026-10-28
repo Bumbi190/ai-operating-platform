@@ -253,8 +253,8 @@ describe('Atlas external workflow references: read-only, pinned discovery', () =
   it('forces the exact read-only catalog tool before navigation or generic action routing', () => {
     const route = readFileSync(resolve(process.cwd(), 'app/api/chat/route.ts'), 'utf8')
     expect(route).toContain("import { isExternalWorkflowReferenceReadIntent } from '@/lib/atlas/workflow-references/read-intent'")
-    expect(route).toContain('const externalReferenceReadIntent = !image && !studioContext')
-    expect(route).toContain('const fastPath = !hbSalesOverviewReadIntent && !externalReferenceReadIntent &&')
+    expect(route).toContain('const externalReferenceReadIntent = !hbCompositeEvidenceIntent && !image && !studioContext')
+    expect(route).toContain('const fastPath = !hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent && !externalReferenceReadIntent &&')
     expect(route).toContain("const forceExternalReferenceReadFirstTurn = externalReferenceReadIntent && activeTools.some")
     expect(route).toContain("name: 'search_external_workflow_references' } }")
     expect(route.indexOf(': forceExternalReferenceReadFirstTurn')).toBeLessThan(route.indexOf(': forceNavigateFirstTurn'))
@@ -264,8 +264,11 @@ describe('Atlas external workflow references: read-only, pinned discovery', () =
 
   it('preserves Notion-only routing when the request also mentions external workflows', () => {
     const route = readFileSync(resolve(process.cwd(), 'app/api/chat/route.ts'), 'utf8')
-    expect(route).toContain('const fastPath = !hbSalesOverviewReadIntent && !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText)')
-    expect(route).toContain('const activeTools = notionReadOnlyTurn ? ATLAS_NOTION_TOOLS')
+    expect(route).toContain('const fastPath = !hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent && !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText)')
+    // The merged voice-document contract filters an existing base allowlist;
+    // a Notion-only read still selects ATLAS_NOTION_TOOLS first.
+    expect(route).toContain('const baseTools = notionReadOnlyTurn ? ATLAS_NOTION_TOOLS')
+    expect(route).toContain('const activeTools = continuingIncompleteDocument ? [] : voiceDocument ? baseTools.filter')
     expect(route).toContain('const forceNotionFirstTurn = notionReadOnlyTurn')
     expect(route).toContain("const forceExternalReferenceReadFirstTurn = externalReferenceReadIntent && activeTools.some(tool => tool.name === 'search_external_workflow_references') && !forceNotionFirstTurn")
     expect(route.indexOf('? (forceNotionFirstTurn')).toBeLessThan(route.indexOf(': forceExternalReferenceReadFirstTurn'))

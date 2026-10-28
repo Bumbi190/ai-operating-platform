@@ -80,8 +80,11 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Calendar approval/responsibility/workflow-link applied on 2026-10-26.
 // Family repeat protection adds one pending enforced migration. All are enforced; no grandfathered entry or override is added.
 // Owner-reviewed additive manual publication reporting migration, already applied and security-verified.
-export const EXPECTED_CANONICAL_SQL_COUNT = 162
-export const EXPECTED_ENFORCED_COUNT = 148
+// Handlarbörsen SCB lead-review table applied 2026-10-28 as
+// ledger 20261028072659_handlarborsen_scb_review_only_candidates.
+// Both the newly merged calendar migration and this SCB migration are enforced.
+export const EXPECTED_CANONICAL_SQL_COUNT = 163
+export const EXPECTED_ENFORCED_COUNT = 149
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

@@ -1,6 +1,8 @@
 /** Atlas Notion P0: exact page + project authorization; no live Notion access. */
 import { describe, it, expect, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { afterEach } from 'vitest'
+import { loadNotionReadConfig } from '@/lib/atlas/notion/server-config'
 import { join } from 'node:path'
 
 vi.mock('server-only', () => ({}))
@@ -199,5 +201,39 @@ describe('Atlas Notion: read-only, bounded, source-scoped', () => {
     expect(src).not.toMatch(/createAdminClient|service_role|budget_reserve|atlas_memory_emit|update_page/)
     const chat = readFileSync(join(process.cwd(), 'app/api/chat/route.ts'), 'utf8')
     expect(chat).not.toContain('atlas/notion/read-only')
+  })
+})
+
+afterEach(() => vi.unstubAllEnvs())
+
+describe('Atlas Notion operator config', () => {
+  it('is off by default regardless of whether other values are present', () => {
+    vi.stubEnv('ATLAS_NOTION_MODE', 'off')
+    vi.stubEnv('ATLAS_NOTION_READ_TOKEN', TOKEN)
+    vi.stubEnv('ATLAS_NOTION_APPROVED_PAGES_JSON', JSON.stringify([{ projectId: PROJECT, pageId: PAGE }]))
+    expect(loadNotionReadConfig([PROJECT])).toEqual({
+      mode: 'off', authorizedProjectIds: [], approvedPages: [],
+    })
+  })
+
+  it('requires a strict trusted JSON allowlist before enabling reads', () => {
+    vi.stubEnv('ATLAS_NOTION_MODE', 'read')
+    vi.stubEnv('ATLAS_NOTION_APPROVED_PAGES_JSON', '')
+    expect(() => loadNotionReadConfig([PROJECT])).toThrow(NotionReadError)
+    vi.stubEnv('ATLAS_NOTION_APPROVED_PAGES_JSON', '{"userInput": true}')
+    expect(() => loadNotionReadConfig([PROJECT])).toThrow(NotionReadError)
+    vi.stubEnv('ATLAS_NOTION_APPROVED_PAGES_JSON', JSON.stringify([{ projectId: PROJECT, pageId: PAGE, wildcard: '*' }]))
+    expect(() => loadNotionReadConfig([PROJECT])).toThrow(NotionReadError)
+  })
+
+  it('preserves caller-approved project scope and reads credentials only from the server environment', () => {
+    vi.stubEnv('ATLAS_NOTION_MODE', 'read')
+    vi.stubEnv('ATLAS_NOTION_READ_TOKEN', TOKEN)
+    vi.stubEnv('ATLAS_NOTION_APPROVED_PAGES_JSON', JSON.stringify([{ projectId: PROJECT, pageId: PAGE }]))
+    const config = loadNotionReadConfig([PROJECT])
+    expect(config.mode).toBe('read')
+    expect(config.authorizedProjectIds).toEqual([PROJECT])
+    expect(config.approvedPages).toEqual([{ projectId: PROJECT, pageId: PAGE }])
+    expect(config.token).toBe(TOKEN)
   })
 })

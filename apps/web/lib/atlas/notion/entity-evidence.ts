@@ -105,8 +105,16 @@ export function selectNotionEntityEvidence(markdown: string, question: string, p
   } else {
     // Fallback: only individually named lines. Never return an entire mixed
     // paragraph just because one company name occurs somewhere within it.
-    const scoped = lines.filter(line => mentions(line, subject) && headingLevel(line) === null)
-      .map(line => line.trim()).filter(Boolean)
+    // A mention in the MIDDLE of another company's sentence is not evidence
+    // about this subject. Require the actual bullet/line label to BEGIN with
+    // the subject (after list markers and optional Markdown emphasis).
+    const scoped = lines.filter(line => {
+      if (headingLevel(line) !== null) return false
+      const label = line.trim().replace(/^(?:[-*]|\d+\.)\s*/, '')
+        .replace(/^(?:<b>|<strong>|\*\*)/i, '').trim()
+      return normalized(label).startsWith(normalized(subject))
+        && mentions(label.slice(0, subject.length + 3), subject)
+    }).map(line => line.trim()).filter(Boolean)
     passages = [...new Set(scoped)].reverse()
     sourceEvidence = 'named_line'
   }

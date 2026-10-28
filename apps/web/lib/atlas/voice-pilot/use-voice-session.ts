@@ -322,7 +322,12 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
         },
       })
       completed = outcome.ok
-      if (current()) { flush(true); if (!outcome.ok) setNotice(outcome.notice ?? 'Atlas kunde inte slutföra svaret. Öppna chatten för att fortsätta.') }
+      if (current()) {
+        // Never speak a fabricated "document is ready" introduction when the
+        // provider failed before producing any text. Partials remain in chat.
+        if (outcome.ok || responseText.trim()) flush(true)
+        if (!outcome.ok) setNotice(outcome.notice ?? 'Atlas kunde inte slutföra svaret. Öppna chatten för att fortsätta.')
+      }
     } catch { if (current()) setNotice('Samtalet kunde inte starta. Texten finns kvar, försök igen.') }
     finally {
       if (turnToken === turnGeneration.current) {

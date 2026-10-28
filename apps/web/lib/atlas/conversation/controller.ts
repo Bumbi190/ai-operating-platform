@@ -333,6 +333,7 @@ export class AtlasConversationController {
     let reply = startReply([...start.entries, { kind: "user", text }]),
       settled = false,
       completed = false,
+      incompleteDraft = false,
       streaming = false;
     this.update(id, {
       history,
@@ -397,7 +398,8 @@ export class AtlasConversationController {
           reply = step.state;
           if (event.event === "done") {
             settled = true;
-            completed = true;
+            // The transport ended; a max-token draft is NOT a finished artifact.
+            completed = !incompleteDraft;
             if (step.effect.type === "done" && step.effect.fullText)
               this.update(id, {
                 history: [
@@ -406,6 +408,7 @@ export class AtlasConversationController {
                 ],
               });
           }
+          if (event.event === "draft_interrupted") incompleteDraft = true;
           if (event.event === "draft_interrupted" && reply.fullText.trim()) {
             // Immediately continue from the actually streamed partial draft,
             // even before a server refresh rehydrates the saved incomplete row.
@@ -449,7 +452,9 @@ export class AtlasConversationController {
         this.update(id, { entries: reply.entries });
       }
       if (!settled) return fail(INCOMPLETE_NOTICE);
-      return result = { ok: completed };
+      return result = incompleteDraft
+        ? { ok: false, notice: 'Utkastet är ofullständigt. Använd Fortsätt utkast för att skriva klart.' }
+        : { ok: completed };
     } catch {
       return fail(streaming ? INTERRUPTED_NOTICE : CONNECTION_FAILED_NOTICE);
     } finally {

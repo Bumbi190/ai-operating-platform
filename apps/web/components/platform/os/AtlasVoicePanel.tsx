@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import Link from 'next/link'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { VOICE_DOCUMENT_CONTINUATION_COMMAND } from '@/lib/atlas/voice-pilot/document-mode'
 import { Check, Copy, MessageCircle, Mic, MicOff, Minus, PhoneOff, Send } from 'lucide-react'
 import type { AtlasVoiceSession } from '@/lib/atlas/voice-pilot/use-voice-session'
 import { isAtlasSwedishVoice } from '@/lib/atlas/voice-pilot/voices'
@@ -54,6 +57,14 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
     if (messages.current) messages.current.scrollTop = messages.current.scrollHeight
   }, [s.snapshot.entries, s.reply, minimized])
 
+  // The controller's transcript carries persisted incomplete-draft metadata;
+  // the text-only history alone cannot distinguish an unfinished Claude prompt.
+  const latestAssistant = [...s.snapshot.entries].reverse().find(entry => entry.kind === 'assistant')
+  const latestAssistantIndex = s.snapshot.history.reduce((last, message, index) => message.role === 'assistant' ? index : last, -1)
+  const incompleteIndex = latestAssistant?.kind === 'assistant' && latestAssistant.incomplete
+    && s.snapshot.history[latestAssistantIndex]?.content === latestAssistant.text ? latestAssistantIndex : -1
+  const continuationIndex = incompleteIndex >= 0 && latestAssistant?.kind === 'assistant' && latestAssistant.continuationAllowed
+    && !s.snapshot.pending && !s.sending ? incompleteIndex : -1
   const micOn = s.mic || s.opening
   const muteLabel = micOn ? 'Muta mikrofonen' : s.micProblem ? 'Återanslut mikrofonen' : 'Slå på mikrofonen'
   const voiceLabel = s.voice === 'nova' ? 'Nova' : s.voices.find(v => v.key === s.voice)?.label ?? 'Atlas'
@@ -100,17 +111,28 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
       {!s.snapshot.history.length && !s.snapshot.pending && <p className={styles.empty}>Säg något till Nova, eller skriv här. Samtalet fortsätter när du minimerar chatten och navigerar i Omnira.</p>}
       {s.snapshot.history.map((message, i) => <div key={i} className={message.role === 'user' ? styles.userMessage : styles.atlasMessage}>
         <small>{message.role === 'user' ? 'Du' : voiceLabel}</small>
-        <p>{message.content}</p>
+        {message.role === 'assistant'
+          ? <div className={styles.markdown}><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>{message.content}</ReactMarkdown></div>
+          : <p>{message.content}</p>}
+        {i === incompleteIndex &&
+          <p className={styles.incompleteDraft} role="status">Ofullständigt utkast – använd inte som färdig Claude-prompt.</p>}
         {message.role === 'assistant' && message.content.trim() &&
           <button type="button" className={styles.copyReply}
             onClick={() => copyAssistantReply(message.content, i)}
-            aria-label="Kopiera hela svaret"
-            title="Kopiera hela svaret, inklusive eventuell Claude-prompt">
+            aria-label={i === incompleteIndex ? 'Kopiera ofullständigt utkast' : 'Kopiera hela svaret'}
+            title={i === incompleteIndex ? 'Kopiera endast som ofullständigt utkast' : 'Kopiera hela svaret, inklusive eventuell Claude-prompt'}>
             {copyResult?.index === i && copyResult.ok ? <Check size={13} /> : <Copy size={13} />}
-            {copyResult?.index === i ? copyResult.ok ? 'Kopierat!' : 'Kopiera manuellt' : 'Kopiera hela svaret'}
+            {copyResult?.index === i ? copyResult.ok ? 'Kopierat!' : 'Kopiera manuellt' : i === incompleteIndex ? 'Kopiera utkast' : 'Kopiera hela svaret'}
+          </button>}
+        {message.role === 'assistant' && i === continuationIndex &&
+          <button type="button" className={styles.continueDraft}
+            onClick={() => { void s.submitText(VOICE_DOCUMENT_CONTINUATION_COMMAND) }}>
+            Fortsätt utkast
           </button>}
       </div>)}
-      {s.snapshot.pending && <p className={styles.pending}>{s.reply || 'Nova arbetar…'}</p>}
+      {s.snapshot.pending && <div className={styles.pending} role="status">
+        {s.reply ? <div className={styles.markdown}><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>{s.reply}</ReactMarkdown></div> : 'Nova arbetar…'}
+      </div>}
       {s.snapshot.testDataReviews.length > 0 && s.snapshot.id && <p className={styles.review}>
         {s.snapshot.testDataReviews.length} granskning(ar) väntar. <Link href={'/chat/' + s.snapshot.id}>Öppna i hela chatten</Link>
       </p>}

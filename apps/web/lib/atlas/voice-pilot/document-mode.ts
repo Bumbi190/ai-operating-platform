@@ -27,12 +27,12 @@ export const VOICE_DOCUMENT_MAX_TOKENS = 3200 as const
 /** Stable command shared by the chat button and the continuation classifier. */
 export const VOICE_DOCUMENT_CONTINUATION_COMMAND = 'Fortsätt' as const
 export const VOICE_DOCUMENT_SPEECH_FALLBACK =
-  'Jag har lagt hela underlaget i chatten, så att du kan kopiera det.'
+  'Jag skriver underlaget i chatten nu.'
 
 /**
- * Extract one safe spoken opening while preserving every streamed character in
- * chat. The opening should be a complete brief sentence, never an unfinished
- * snippet of a long Claude prompt, Markdown list or code fence.
+ * Recognize the first complete sentence or Markdown boundary, then speak a
+ * neutral acknowledgment. Never claim a document is finished before the
+ * provider confirms its result; the original text remains fully in chat.
  */
 export function completeVoiceDocumentOpening(text: string, final: boolean): string | null {
   const raw = text.trimStart()
@@ -51,7 +51,7 @@ export function completeVoiceDocumentOpening(text: string, final: boolean): stri
     const candidate = raw.slice(0, breakAt).trim().replace(/\s+/g, ' ')
     if (candidate.length >= 8 && candidate.length <= 170
       && !/[\x60#*|<>]/.test(candidate) && !/^(?:\d+[.)]|[-•])\s/.test(candidate))
-      return /[.!?]$/.test(candidate) ? candidate : candidate + '.'
+      return VOICE_DOCUMENT_SPEECH_FALLBACK // generated claims of completion are not safe before provider finalMessage()
     return VOICE_DOCUMENT_SPEECH_FALLBACK
   }
   if (raw.length > 180 || final) return VOICE_DOCUMENT_SPEECH_FALLBACK

@@ -336,7 +336,7 @@ const VOICE_DOCUMENT_READ_TOOLS = new Set([
 const VOICE_DOCUMENT_DIRECTIVE = `
 
 VIKTIGT — OPERATÖREN BER OM EN SKRIFTLIG LEVERANS I ETT RÖSTSAMTAL:
-- Ge först exakt EN kort naturlig svensk sammanfattningsmening (helst högst 100 tecken) utan rubrik eller markdown. Avsluta med punkt och en tom rad.
+- Ge först EN kort neutral svensk mening i pågående form, exempelvis "Jag skriver underlaget i chatten nu.". Påstå inte att hela dokumentet redan är färdigt. Avsluta med punkt och en tom rad.
 - Skriv sedan HELA arbetsplanen, workflow-beskrivningen, instruktionen eller Claude-prompten i tydlig kopierbar Markdown. Ta med konkreta steg, projektgränser, verifiering, risker och kriterier för när uppgiften är färdig om de är relevanta.
 - För en Claude-prompt: skapa en komplett sammanhängande prompt som kan kopieras direkt. Kapa inte efter två meningar. Håll hela dokumentet fokuserat, normalt under cirka 2 000 svarstoken.
 - Om det förra svaret nådde längdgränsen och operatören ber dig fortsätta: komplettera återstående delar utan att börja om från början. Inled ändå med en kort fullständig mening som kan läsas upp.

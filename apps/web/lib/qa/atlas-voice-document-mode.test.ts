@@ -71,8 +71,10 @@ describe('explicit voice deliverables keep their complete written content', () =
     const prefix = 'Jag har tagit fram ett komplett förslag.'
     expect(completeVoiceDocumentOpening(prefix.slice(0, 12), false)).toBeNull()
     const content = prefix + '\n\n### Prompt till Claude\n```ts\nconsole.log("do not read me")\n```'
-    expect(completeVoiceDocumentOpening(content, false)).toBe(prefix)
-    expect(completeVoiceDocumentOpening(content, true)).toBe(prefix)
+    expect(completeVoiceDocumentOpening(content, false)).toBe(VOICE_DOCUMENT_SPEECH_FALLBACK)
+    expect(completeVoiceDocumentOpening(content, true)).toBe(VOICE_DOCUMENT_SPEECH_FALLBACK)
+    expect(VOICE_DOCUMENT_SPEECH_FALLBACK).not.toMatch(/har lagt|är klart|färdig/i)
+    expect(completeVoiceDocumentOpening('Jag har lagt hela prompten i chatten.', false)).toBe(VOICE_DOCUMENT_SPEECH_FALLBACK)
   })
   it('never reads Markdown blocks or an unfinished sentence aloud', () => {
     const code = '### Kod\n```ts\nconst token = "secret";'

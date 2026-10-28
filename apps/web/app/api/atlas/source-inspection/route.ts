@@ -80,6 +80,7 @@ export async function POST(request: Request) {
   if (!assertProjectAllowed(sourceProjectId, allowedIds)) return reply({ error: 'not_found' }, 404)
 
   const result = await inspectVerifiedSource(input)
-  if (!result.ok) return reply({ error: result.code }, result.code === 'source_denied' ? 422 : 503)
+  if (!result.ok) return reply({ error: result.code },
+    result.code === 'source_denied' ? 422 : result.code === 'source_changed' ? 409 : 503)
   return reply({ ...result, policy: 'nova.source.read.v1' }, 200)
 }

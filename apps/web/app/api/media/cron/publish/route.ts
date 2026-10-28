@@ -294,13 +294,16 @@ export async function GET(request: Request) {
     })
   }
 
-  const script = scripts.find(candidate => isApprovedQualityScore(candidate.quality_score))
-  if (!script) {
+  const selectedScript = scripts.find(candidate => isApprovedQualityScore(candidate.quality_score))
+  if (!selectedScript) {
     log('quality', `Blocked ${scripts.length} unverified script(s); no external posting`)
     return NextResponse.json({
       status: 'editorial_review_required', blockedScripts: scripts.length, dryRun,
     }, { status: 409 })
   }
+  // Freeze the checked, non-null row in a fresh const: nested publisher
+  // functions must retain this narrowing across their async boundaries.
+  const script = selectedScript
 
   // The script's OWN project is the execution authority. MEDIA_PIPELINE_PROJECT
   // is billing attribution; that every script happens to sit in that project

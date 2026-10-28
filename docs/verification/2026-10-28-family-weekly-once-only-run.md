@@ -700,3 +700,60 @@ CHECK-constraints, inte alla triggers, FK-beroenden, fullständig
 Supabase Auth-miljö eller samtliga produktionsmigrationsfiler.
 Inget test får betraktas som ett produktionsgodkännande. Samtliga
 Family SQL-förslag är fortsatt oinstallerade och automatiken OFF.
+
+## Fas 17 – Kanonisk veckokontext → riktigt redaktionellt sparande (2026-10-28)
+
+Ny isolerad `-Mode native-context` laddar utan omskrivning
+SQL-kropparna ur de kanoniska migrationerna för:
+`social_content_posts/revisions/decisions`,
+`social_content_validate/requirements/read/save`,
+`social_project_profiles/profile_revisions`,
+`social_profile_read`,
+`social_schedule_fields`, `social_schedule_canonical`,
+`social_schedule_resolve_minute`,
+`social_repeat_normalize`, `social_repeat_similarity`,
+`social_weekly_context` och `social_weekly_save`.
+Detta är första isolerade testläget där både den **faktiska
+source-backed context-hashen** och den **faktiska veckospararen**
+körs tillsammans med de verkliga innehålls- och profilläsarna.
+
+Testdatat är syntetiskt. En redan sparad, ägd JPEG och en
+tidigare redaktionell content-revision (skapad genom den riktiga
+`social_content_save`) tillför dokumenterad bildbeskrivning;
+en godkänd kanalplan, två `provider_attested` konton och en
+profilrevision används av de verkliga läsarna. Begränsade
+schemafixturer finns fortfarande för `projects`, `runs`,
+`social_account_bindings`, `social_schedule_jobs`,
+`social_publications` och `social_monthly_release_rules`.
+Den projektägda principalkontrollen, trots separat testning på
+många nivåer, är också en begränsad testdublett i detta läge.
+Detta är **inte** replay av hela produktionsschemat.
+
+`family-weekly-pg-native-context-assert.sql` kräver två
+verifierade Facebook-/Instagram-bindningar, faktakällans
+profil-SHA, en egen beskriven JPEG, en giltig och stabil
+SHA-256-kontexthash och inga publiceringar, reservationsjobb
+eller redan skapade förberedelser. Den verkliga context-hashen
+måste ändras när Instagram-verifieringen görs ogiltig och sedan
+återgå när testfixturen återställs; fel ägare och icke-måndag
+avvisas.
+
+`family-weekly-pg-native-context-save-assert.sql` kräver att
+saknad `scheduledAt`, manipulerad hash och verifieringsdrift
+mellan kontextläsning och sparning **stoppar skrivning**.
+Med korrekt underlag sparar den verkliga `social_weekly_save`
+fyra Facebook-/Instagram-draftrevisioner atomiskt för tisdag
+och fredag med exakt två lokala Stockholm-tider, utan
+redaktionellt godkännande, schemaläggning eller publicering.
+Identiskt omförsök återanvänder preparationId; en privat
+granskningsavisering kopplas till det sparade materialet och
+ägarens efterföljande återkallelse blockerar gammal authority.
+Inga modeller eller externa sociala API:er anropas.
+
+Både PostgreSQL 16 och 17: **native-context PASS**, exitkod 0,
+engångscontainrar borttagna. Tillägget körs tillsammans med
+befintliga PG-lägen i samma isolerade GitHub-jobb;
+en CI-körning för exakt ny commit måste fortfarande granskas.
+**Återstående release-grindar:** fullständigt relevant
+migrations-/FK-/triggerreplay, verklig autentiserad ägar-
+Preview-acceptans och uttrycklig separat aktiveringsgranskning.

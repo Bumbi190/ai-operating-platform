@@ -7,7 +7,7 @@
 # Cached postgres:16 or postgres:17-alpine ONLY. No published ports, volumes or mounts.
 # Simulated-Sunday rewrites SQL in memory ONLY for disposable tests.
 param(
- [ValidateSet('normal','simulated-sunday','native-editorial','native-content','native-claim')]
+ [ValidateSet('normal','simulated-sunday','native-editorial','native-content','native-context','native-claim')]
  [string]$Mode='normal',
  [ValidateSet('postgres:16','postgres:17-alpine')]
  [string]$PostgresImage='postgres:16'
@@ -99,7 +99,7 @@ try{
    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
   if($LASTEXITCODE -ne 0){throw 'CANONICAL_CLAIM_RUNS_TEST_FAILED'}
  }
- if($Mode -eq 'native-content'){
+ if($Mode -in @('native-content','native-context')){
   # Add synthetic prerequisites, then load the EXACT real content table and
   # writer/read/validation bodies, not the simplified native-editorial stubs.
   $deps=Join-Path $repo 'docs\verification\fixtures\family-weekly-pg-native-content-deps.sql'
@@ -125,6 +125,116 @@ try{
   'grant execute on function public.social_content_validate(jsonb), public.social_content_requirements(uuid), public.social_content_read(jsonb,jsonb), public.social_content_save(jsonb,jsonb) to service_role;' |
    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
   if($LASTEXITCODE -ne 0){throw 'NATIVE_CONTENT_GRANTS_FAILED'}
+ }
+ if($Mode -eq 'native-context'){
+  # Profile tables, source-backed profile reader, real scheduling canonicalizer
+  # and real weekly context: extract from canonical migrations, never rewrite
+  # any business-logic body. The synthetic dependency tables are clearly named.
+  $profilePath=Join-Path $repo 'apps\web\supabase\migrations\20261016113247_social_project_profiles_v1.sql'
+  $profile=Get-Content -LiteralPath $profilePath -Raw -Encoding UTF8
+  $t0=$profile.IndexOf('create table public.social_project_profiles(')
+  $t1=$profile.IndexOf('create trigger social_profile_revisions_immutable',$t0)
+  $f0=$profile.IndexOf('create function public.social_profile_read(')
+  $f1=$profile.IndexOf('create function public.social_profile_save(',$f0)
+  if($t0 -lt 0 -or $t1 -le $t0 -or $f0 -lt 0 -or $f1 -le $f0){
+   throw 'CANONICAL_PROFILE_SOURCE_NOT_FOUND'
+  }
+  $profile.Substring($t0,$t1-$t0) |
+   docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'CANONICAL_PROFILE_TABLES_LOAD_FAILED'}
+  $profile.Substring($f0,$f1-$f0) |
+   docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'CANONICAL_PROFILE_READER_LOAD_FAILED'}
+  'grant execute on function public.social_profile_read(jsonb,jsonb) to service_role;' |
+   docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'CANONICAL_PROFILE_GRANTS_FAILED'}
+
+  $schedulePath=Join-Path $repo 'apps\web\supabase\migrations\20261018071209_social_schedule_batches.sql'
+  $schedule=Get-Content -LiteralPath $schedulePath -Raw -Encoding UTF8
+  $s0=$schedule.IndexOf('create function public.social_schedule_fields(')
+  $s1=$schedule.IndexOf('create function public.social_schedule_resolve_minute(',$s0)
+  if($s0 -lt 0 -or $s1 -le $s0){throw 'CANONICAL_SCHEDULE_CANONICAL_SOURCE_NOT_FOUND'}
+  'drop function public.social_schedule_fields(jsonb,text[]);' |
+   docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'SYNTHETIC_SCHEDULE_FIELDS_DROP_FAILED'}
+  $schedule.Substring($s0,$s1-$s0).Replace(
+   'create function public.social_schedule_canonical(',
+   'create or replace function public.social_schedule_canonical(') |
+   docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'CANONICAL_SCHEDULE_HELPERS_LOAD_FAILED'}
+  'grant execute on function public.social_schedule_fields(jsonb,text[],text[]),public.social_schedule_canonical(jsonb) to service_role;' |
+   docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'CANONICAL_SCHEDULE_HELPERS_GRANTS_FAILED'}
+  $resolveStart=$schedule.IndexOf('create function public.social_schedule_resolve_minute(')
+  $resolveEnd=$schedule.IndexOf('create table public.social_schedule_batches(',$resolveStart)
+  if($resolveStart -lt 0 -or $resolveEnd -le $resolveStart){
+   throw 'CANONICAL_SCHEDULE_RESOLVE_SOURCE_NOT_FOUND'
+  }
+  $schedule.Substring($resolveStart,$resolveEnd-$resolveStart).Replace(
+   'create function public.social_schedule_resolve_minute(',
+   'create or replace function public.social_schedule_resolve_minute(') |
+   docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'CANONICAL_SCHEDULE_RESOLVE_LOAD_FAILED'}
+
+  # The real text duplicate / similarity implementation is important:
+  # the earlier native-content test intentionally stubbed similarity=0.
+  $repeatPath=Join-Path $repo 'apps\web\supabase\migrations\20261026070303_family_social_repeat_guard.sql'
+  $repeat=Get-Content -LiteralPath $repeatPath -Raw -Encoding UTF8
+  $r0=$repeat.IndexOf('create function public.social_repeat_normalize(')
+  $r1=$repeat.IndexOf('revoke all on function public.social_repeat_normalize(',$r0)
+  if($r0 -lt 0 -or $r1 -le $r0){throw 'CANONICAL_REPEAT_HELPERS_SOURCE_NOT_FOUND'}
+  # DROP fixture stubs first: the canonical normalize helper has a
+  # different argument name and PostgreSQL rejects CREATE OR REPLACE.
+  'drop function public.social_repeat_similarity(text,text); drop function public.social_repeat_normalize(text);' |
+   docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'SYNTHETIC_REPEAT_HELPERS_DROP_FAILED'}
+  $realRepeat=$repeat.Substring($r0,$r1-$r0)
+  Write-Output 'LOAD_CANONICAL_REPEAT_HELPERS_IN_DISPOSABLE_DB_ONLY=true'
+  $realRepeat | docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'CANONICAL_REPEAT_HELPERS_LOAD_FAILED'}
+  'grant execute on function public.social_repeat_normalize(text),public.social_repeat_similarity(text,text) to service_role;' |
+   docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'CANONICAL_REPEAT_HELPERS_GRANTS_FAILED'}
+
+  $deps=Join-Path $repo 'docs\verification\fixtures\family-weekly-pg-native-context-deps.sql'
+  Write-Output 'SEED_OWNED_PROFILE_DESCRIBED_IMAGE_AND_REVIEW_ONLY_CONTEXT=true'
+  Get-Content -LiteralPath $deps -Raw -Encoding UTF8 |
+   docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'CANONICAL_CONTEXT_DEPENDENCIES_FAILED'}
+
+  $weeklyPath=Join-Path $repo 'apps\web\supabase\migrations\20261026090516_family_weekly_preparation.sql'
+  $weekly=Get-Content -LiteralPath $weeklyPath -Raw -Encoding UTF8
+  $w0=$weekly.IndexOf('create function public.social_weekly_context(')
+  $w1=$weekly.IndexOf('create function public.social_weekly_save(',$w0)
+  if($w0 -lt 0 -or $w1 -le $w0){throw 'CANONICAL_WEEKLY_CONTEXT_SOURCE_NOT_FOUND'}
+  $context=$weekly.Substring($w0,$w1-$w0).Replace(
+   'create function public.social_weekly_context(',
+   'create or replace function public.social_weekly_context(')
+  Write-Output 'LOAD_CANONICAL_WEEKLY_CONTEXT_IN_DISPOSABLE_DB_ONLY=true'
+  $context | docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'CANONICAL_WEEKLY_CONTEXT_LOAD_FAILED'}
+  $assertFile=Join-Path $repo 'docs\verification\fixtures\family-weekly-pg-native-context-assert.sql'
+  Get-Content -LiteralPath $assertFile -Raw -Encoding UTF8 |
+   docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'CANONICAL_WEEKLY_CONTEXT_ASSERT_FAILED'}
+  # Also verify the full review-only persistence chain with the REAL
+  # contextHash, source-backed profile/assets, real repeat checks and
+  # canonical social_content_save. All writes are to disposable PG only.
+  $saveStart=$weekly.IndexOf('create function public.social_weekly_save(',$w1)
+  $saveEnd=$weekly.IndexOf('revoke all on function public.social_weekly_context',$saveStart)
+  if($saveStart -lt 0 -or $saveEnd -le $saveStart){
+   throw 'CANONICAL_WEEKLY_SAVE_SOURCE_NOT_FOUND'
+  }
+  $save=$weekly.Substring($saveStart,$saveEnd-$saveStart).Replace(
+   'create function public.social_weekly_save(',
+   'create or replace function public.social_weekly_save(')
+  Write-Output 'LOAD_CANONICAL_NATIVE_SAVE_AFTER_REAL_CONTEXT=true'
+  $save | docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'CANONICAL_NATIVE_CONTEXT_SAVE_LOAD_FAILED'}
+  $saveAssert=Join-Path $repo 'docs\verification\fixtures\family-weekly-pg-native-context-save-assert.sql'
+  Get-Content -LiteralPath $saveAssert -Raw -Encoding UTF8 |
+   docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'CANONICAL_NATIVE_CONTEXT_SAVE_ASSERT_FAILED'}
  }
  if($Mode -in @('native-editorial','native-content')){
   # The exact native save function is loaded from the reviewed canonical

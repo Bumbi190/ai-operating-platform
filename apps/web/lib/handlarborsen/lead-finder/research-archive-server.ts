@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { HANDLARBORSEN_PROJECT_ID } from '@/lib/atlas/handlarborsen-test-data/contracts'
 import { isHandlarborsenProject } from '@/lib/os/project-command-center'
 import type { KnownContacts } from './known-contacts'
-import { archiveDigest, RESEARCH_ARCHIVE_FLAG } from './research-archive-api'
+import { archiveDigest } from './research-archive-api'
 import { parseResearchArchive, reconcileArchiveWithCrm, type ArchiveReview } from './research-archive'
 
 /**
@@ -12,7 +12,7 @@ import { parseResearchArchive, reconcileArchiveWithCrm, type ArchiveReview } fro
  */
 export async function loadArchivedLeadResearchForOwner(projectId: string, known: KnownContacts): Promise<ArchiveReview> {
   if (projectId !== HANDLARBORSEN_PROJECT_ID || process.env.VERCEL_ENV === 'production' ||
-    process.env[RESEARCH_ARCHIVE_FLAG] !== 'true') return { status: 'disabled' }
+    process.env.HB_LEADFINDER_RESEARCH_ARCHIVE_ENABLED !== 'true') return { status: 'disabled' }
   try {
     const db = await createClient()
     const { data: auth, error: authError } = await db.auth.getUser()

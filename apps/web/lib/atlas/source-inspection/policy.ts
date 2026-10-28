@@ -77,13 +77,20 @@ export function parseSourceRequest(value: unknown): SourceRequest | null {
 export function isSafeInspectableText(text: string): boolean {
   if (typeof text !== 'string' || !text || new TextEncoder().encode(text).length > SOURCE_MAX_BYTES) return false
   if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)) return false
+  // This is a conservative release gate, not a complete DLP system. Treat
+  // sensitive assignments as unsafe EVEN without quotes or with short values:
+  // secrets can be URLs, YAML/JSON properties and camelCase variables too.
   const highRisk = [
     /-----BEGIN (?:[A-Z ]*PRIVATE KEY|OPENSSH PRIVATE KEY)-----/i,
     /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{25,}\b/,
     /\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b/,
     /\bAKIA[0-9A-Z]{16}\b/,
-    /\b(?:api[_-]?key|access[_-]?token|private[_-]?key|client[_-]?secret|password)\s*[:=]\s*["'][^"'\r\n]{8,}["']/i,
-    /\b(?:Bearer)\s+[A-Za-z0-9._~-]{30,}\b/i,
+    /\b(?:[A-Za-z0-9_$]+[_-])?(?:api[_-]?key|access[_-]?token|auth[_-]?token|service[_-]?role[_-]?key|secret[_-]?key|client[_-]?secret|private[_-]?key|password|passwd|db[_-]?password|database[_-]?url|database[_-]?dsn|connection[_-]?string|smtp[_-]?pass(?:word)?|webhook[_-]?secret)\b["']?\s*[:=]\s*\S/i,
+    /\b(?:[A-Za-z_$][A-Za-z0-9_$]*)?(?:apiKey|accessToken|authToken|githubToken|serviceRoleKey|clientSecret|secretKey|privateKey|password|databaseUrl|connectionString)\s*[:=]\s*\S/i,
+    /\b[a-z][a-z0-9+.-]*:\/\/[^\s/"'<>@]*:[^\s/"'<>@]*@/i,
+    /\b(?:Authorization|Proxy-Authorization)["']?\s*[:=]\s*["']?(?:Bearer|Basic)\s+[A-Za-z0-9+\/._~-]{10,}/i,
+    /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/,
+    /\b(?:xox[baprs]-|glpat-|sk_live_|rk_live_|whsec_)[A-Za-z0-9_-]{12,}\b/i,
   ]
   return !highRisk.some(pattern => pattern.test(text))
 }

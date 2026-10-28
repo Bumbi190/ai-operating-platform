@@ -278,6 +278,11 @@ describe('local review UI', () => {
     expect(html).toContain('Databasskrivning är avstängd')
     expect(html).not.toContain('Importera endast som ej kontaktbara')
     expect(html).not.toContain('Skicka mejl')
+    expect(html).not.toContain('Tavily – manuell webbresearch')
+    const researchPreview = render(ready, { importPreviewEnabled: true, researchEnabled: true })
+    expect(researchPreview).toContain('Tavily – manuell webbresearch')
+    expect(researchPreview).toContain('Den extra webbsidgranskningen är avstängd.')
+    expect(researchPreview).not.toContain('Skicka mejl')
   })
   it('renders the audited review with warnings, provenance and no approval/outreach actions', () => {
     const html = render(ready)
@@ -291,8 +296,8 @@ describe('local review UI', () => {
     expect(html).toContain('Ej verksam per SCB')
     expect(html).toContain('hypotes')
     expect(html).toContain('BLOCKED_PENDING_VERIFICATION')
-    expect(html).toContain('API-nyckeln saknas')
-    expect(html).toContain('skild från live-API')
+    expect(html).toContain('SCB:s live-API-nyckel saknas')
+    expect(html).toContain('kan fortfarande granskas utan liveanrop')
     expect(html).not.toMatch(/Godkänn|Skicka mejl|Kontakta nu|>Ny<|nytt företag/)
     expect(html).not.toMatch(/mailto:|tel:|@/)
     expect((html.match(/<button/g) ?? []).length).toBe(1) // only the local GET filter submit; legacy form has no candidates

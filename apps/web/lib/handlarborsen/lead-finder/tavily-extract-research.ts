@@ -64,7 +64,7 @@ const cleaned=(text:string):string=>text
   .replace(/[\u0000-\u001f\u007f<>@]/g,' ')
   .replace(/\s+/g,' ').trim()
 
-const SALE=/\b(?:vi säljer (?:nya |begagnade )?(?:bilar|personbilar)|(?:bilar|personbilar) till salu|(?:bedriver|erbjuder|arbetar med) bilförsäljning|vårt billager|bilar i lager|aktuella lagerbilar|vårt bilutbud)\b/i
+const SALE=/\b(?:(?:vi\s+)?säljer\s+(?:alla\s+typer\s+av\s+)?(?:nya\s+|begagnade\s+)?(?:bilar|personbilar)|(?:bilar|personbilar) till salu|(?:bedriver|erbjuder|arbetar med) bilförsäljning|vårt billager|bilar i lager|aktuella lagerbilar|vårt bilutbud)\b/i
 const STOCK=/\b(?:vårt billager|bilar i lager|aktuella lagerbilar)\b/i
 const NEGATED=/(?:\b0\b|\binga\b|\bingen\b|\bnoll\b)\s+(?:aktuella\s+)?(?:bilannonser|bilar|lagerbilar|fordon)/i
 const OTHER=[

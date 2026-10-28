@@ -28,7 +28,7 @@ export interface TavilyAdapterOptions {
 }
 
 const SALE_SIGNALS: [BusinessIndicator, RegExp][] = [
-  ['cars_for_sale', /bilar till salu|personbilar till salu|vi säljer (?:nya |begagnade )?(?:bilar|personbilar)|(?:bedriver|erbjuder|arbetar med) bilförsäljning|(?:vi är|auktoriserad) bilhandlare/i],
+  ['cars_for_sale', /bilar till salu|personbilar till salu|(?:vi\s+)?säljer\s+(?:alla\s+typer\s+av\s+)?(?:nya\s+|begagnade\s+)?(?:bilar|personbilar)|(?:bedriver|erbjuder|arbetar med) bilförsäljning|(?:vi är|auktoriserad) bilhandlare/i],
   ['vehicle_stock_listings', /vårt billager|bilar i lager|aktuella lagerbilar|aktuellt lager|vårt bilutbud/i],
   ['dealer_purchases_cars', /vi köper (?:din |dina )?(?:bil|bilar)|bedriver bilinköp|köper din bil/i],
 ]

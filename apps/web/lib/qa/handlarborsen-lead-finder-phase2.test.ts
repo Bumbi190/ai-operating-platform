@@ -165,7 +165,7 @@ describe('Handlarbörsen Lead Finder UI', () => {
       slug: 'handlarborsen', readiness, known, saved: savedCandidates, search: '', filter: 'all',
     }))
     expect(html).toContain('Lead Finder')
-    expect(html).toContain('API-nyckeln saknas')
+    expect(html).toContain('SCB:s live-API-nyckel saknas')
     expect(html).toContain('Inga riktiga leads')
     expect(html).toContain('Utskick')
     expect(html).not.toContain('kontakt@')

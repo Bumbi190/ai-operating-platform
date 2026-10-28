@@ -310,6 +310,44 @@ describe('Tavily adapter: one fixed, bounded basic search per job', () => {
     expect(obs[0].observedBusinessIndicators).not.toContain('vehicle_stock_listings')
   })
 
+  it('classifies planned vehicle trade from the two real-world register text patterns without alleging current sales', async () => {
+    for (const [name, description] of [
+      ['Förenade Bil Aktiebolaget i Malmö', 'Bolaget skall bedriva handel med motorfordon, reservdelar och reparation av motorfordon.'],
+      ['Otto Olssons Bil Aktiebolag', 'Föremålet för bolagets verksamhet är handel med bilar, reparation och service inom bilbranschen.'],
+      ['Wä Bil Aktiebolag', 'Verksamhetsbeskrivning: Bolaget skall bedriva handel med motorfordon och reservdelar.'],
+    ]) {
+      const job = { ...JOB, legalName: name }
+      const hit = { title: name, url: 'https://www.foretagsexempel.se/foretag/uppgifter',
+        content: `${name}. Org.nr ${dashed(job.orgnr)}. ${description}` }
+      const adapter = makeTavilyResearchAdapter({ key: KEY, fetchImpl: vi.fn(async () => tavily([hit])), now: NOW })
+      const obs = await adapter.collect(job, new AbortController().signal) as { observedBusinessIndicators: string[] }[]
+      expect(obs).toHaveLength(1)
+      expect(obs[0].observedBusinessIndicators).toContain('registered_vehicle_trade')
+      expect(obs[0].observedBusinessIndicators).not.toContain('cars_for_sale')
+      expect(obs[0].observedBusinessIndicators).not.toContain('vehicle_stock_listings')
+      expect(evaluateLeadEvidence(job, obs)).toMatchObject({
+        classification: 'NEEDS_FURTHER_RESEARCH', identityVerified: false, outreachReady: false,
+      })
+    }
+  })
+
+  it('recognizes a company-linked dealer profile that explicitly says it sells used cars, but not as an official site', async () => {
+    const job = { ...JOB, legalName: 'AutoHub Sverige AB' }
+    const hit = {
+      title: 'AutoHub Sverige AB – Bilhandlare',
+      url: 'https://www.bytbil.com/handlare/autohub-sverige-ab-8940',
+      content: 'Välkommen till AutoHub Sverige! Vi hjälper er med er nuvarande, eller kommande bil. Vi finns i utkanten av Helsingborg säljer alla typer av begagnade bilar.',
+    }
+    const adapter = makeTavilyResearchAdapter({ key: KEY, fetchImpl: vi.fn(async () => tavily([hit])), now: NOW })
+    const obs = await adapter.collect(job, new AbortController().signal) as { sourceKind: string; observedBusinessIndicators: string[] }[]
+    expect(obs).toHaveLength(1)
+    expect(obs[0].sourceKind).toBe('search_snippet')
+    expect(obs[0].observedBusinessIndicators).toContain('cars_for_sale')
+    expect(evaluateLeadEvidence(job, obs)).toMatchObject({
+      classification: 'NEEDS_FURTHER_RESEARCH', identityVerified: false, outreachReady: false,
+    })
+  })
+
   it('fails closed on error status, oversized or invalid responses, and never retries', async () => {
     const run = async (response: () => Response) => {
       const fetchImpl = vi.fn(async () => response())
@@ -525,7 +563,11 @@ describe('owner UI and static guarantees', () => {
     for (const text of [control, results]) {
       expect(text).not.toMatch(/mailto:|sendMail|\/send|(?:localStorage|sessionStorage)\s*(?:\.|\[)|setInterval\s*\(|\bcron\s*\(|\bapprove\s*\(|Godkänn för/i)
     }
-    expect(src('../../components/platform/vnext/HandlarborsenLeadFinder.tsx')).toContain('researchEnabled={researchEnabled}')
+    const leadFinder = src('../../components/platform/vnext/HandlarborsenLeadFinder.tsx')
+    expect(leadFinder).toContain('researchEnabled={researchEnabled}')
+    expect(leadFinder).toContain('Tavily – manuell webbresearch')
+    expect(leadFinder).toContain('SCB och Tavily är två separata datakällor.')
+    expect(leadFinder).toContain('{researchEnabled && importPreviewEnabled ? <div className={styles.source}>')
     const page = src('../../app/(platform)/projects/[slug]/lead-finder/page.tsx')
     expect(page).toMatch(/researchEnabled = importFlag && process\.env\.VERCEL_ENV !== 'production' && process\.env\.HB_LEADFINDER_RESEARCH_ENABLED === 'true'/)
     // The flag assignment sits inside the verified-owner branch.

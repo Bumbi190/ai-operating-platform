@@ -154,10 +154,17 @@ export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search,
           <div className={styles.source}>
             <Database size={20} aria-hidden="true" />
             <div><strong>SCB:s företagsregister</strong>
-              <p>{!readiness.scbKeyConfigured ? 'API-nyckeln saknas fortfarande på servern. En lokal SCB-läsning är genomförd, men den lokala granskade rapporten är skild från live-API-tillgänglighet. Klienten är byggd och testad med simulerade svar.' : 'Nyckeln är konfigurerad. Liveanrop förblir spärrade tills testet godkänts.'}</p>
+              <p>{!readiness.scbKeyConfigured ? 'SCB:s live-API-nyckel saknas på servern. Den tidigare verifierade SCB-rapporten kan fortfarande granskas utan liveanrop. SCB och Tavily är två separata datakällor.' : 'SCB-nyckeln är konfigurerad. Liveanrop förblir spärrade tills testet godkänts.'}</p>
             </div>
             <span className={styles.flag} data-tone="warning">{!readiness.scbKeyConfigured ? 'Inväntar nyckel' : 'Live avstängt'}</span>
           </div>
+          {researchEnabled && importPreviewEnabled ? <div className={styles.source}>
+            <Search size={20} aria-hidden="true" />
+            <div><strong>Tavily – manuell webbresearch</strong>
+              <p>Separat från SCB:s live-API. Högst fem sökningar efter uttrycklig bekräftelse, inga utskick eller automatiska godkännanden. {researchExtractEnabled ? 'Webbsidgranskning kan använda extra krediter och kräver egen bekräftelse.' : 'Den extra webbsidgranskningen är avstängd.'}</p>
+            </div>
+            <span className={styles.flag} data-tone="info">Preview · manuell</span>
+          </div> : null}
           <div className={styles.source}>
             <Building2 size={20} aria-hidden="true" />
             <div><strong>Befintliga säljkontoakter</strong>

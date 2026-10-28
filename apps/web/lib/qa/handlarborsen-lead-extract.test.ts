@@ -112,6 +112,21 @@ describe('optional Tavily basic site extraction: separately consented and bounde
     expect(output.evidence.some(e=>e.indicators.includes('cars_for_sale'))).toBe(false)
   })
 
+  it('keeps registered motor-vehicle trade distinct from actual car sales even on a checked company page',async()=>{
+    const job={...JOB,legalName:'Förenade Bil Aktiebolaget i Malmö'}
+    const url='https://www.forenadebil.se/foretagsinformation'
+    const snippet={title:job.legalName,url,
+      content:`${job.legalName}, org.nr ${DASHED}. Bolaget skall bedriva handel med motorfordon.`}
+    const extracted={url,raw_content:`${job.legalName}. Organisationsnummer: ${DASHED}. Bolaget skall bedriva handel med motorfordon, reservdelar och reparation av motorfordon.`}
+    const output=evaluateLeadEvidence(job,await make(mockFetch([snippet],[extracted]))
+      .collect(job,new AbortController().signal))
+    expect(output.identityVerified).toBe(true)
+    expect(output.classification).toBe('NEEDS_FURTHER_RESEARCH')
+    expect(output.evidence.some(e=>e.indicators.includes('registered_vehicle_trade'))).toBe(true)
+    expect(output.evidence.some(e=>e.indicators.includes('cars_for_sale'))).toBe(false)
+    expect(output.outreachReady).toBe(false)
+  })
+
   it('recognizes debt-collection services only when they are explicitly described on the page',async()=>{
     const job={...JOB,legalName:'Aktiebolaget Inkasso'}
     const url='https://www.inkasso.se/om-oss'

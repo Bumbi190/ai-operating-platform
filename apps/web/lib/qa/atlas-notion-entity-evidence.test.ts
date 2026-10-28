@@ -192,6 +192,19 @@ describe('Atlas Notion entity-evidence isolation', () => {
     expect(persisted).toMatchObject({ sourceHash: EVIDENCE.contentHash, actionAuthority: false })
   })
 
+  it('preserves unambiguous standalone prose (legacy source contract)', () => {
+    const source = '# Handlarbörsen\n\nPilotstart med Kareby Bil.'
+    const result = selectNotionEntityEvidence(source, QUERY, 'Handlarbörsen')
+    expect(result.kind).toBe('found')
+    if (result.kind !== 'found') return
+    expect(result.excerpt).toContain('Pilotstart med Kareby Bil.')
+  })
+
+  it('does not treat an ASCII project slug as another named company', () => {
+    expect(inferNotionEntityScope(QUERY, 'handlarborsen'))
+      .toEqual({ kind: 'named', subject: 'Kareby Bil' })
+  })
+
   it('Notion-only chat turns cannot include live data, action memory or the Handlarbörsen dashboard facts', () => {
     const route = readFileSync(join(process.cwd(), 'app/api/chat/route.ts'), 'utf8')
     expect(route).toContain('notionReadOnlyTurn ? ATLAS_NOTION_TOOLS')

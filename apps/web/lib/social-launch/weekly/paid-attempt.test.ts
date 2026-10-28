@@ -111,6 +111,21 @@ describe('One permitted paid attempt per Family week, no automatic retries',()=>
   await expect(saveEditorialWithFrozenAuthority(f.port,receipt(),bad)).rejects.toThrow('WEEKLY_NATIVE_TIME_INVALID')
   expect(f.operations).toEqual([])
  })
+ it('derives Stockholm summer time and ignores any model-provided scheduledAt',async()=>{
+  const f=fakeDB()
+  const july:WeeklySave={...save(),weekStart:'2027-07-05',drafts:save().drafts.map(d=>({
+   ...d,slotKey:'2027-07-06T17:00:ordinary',
+   scheduledAt:'2027-07-06T22:00:00.000Z',
+  })) as WeeklySave['drafts']}
+  await f.port.saveEditorialAtomically({...request(),weekStart:'2027-07-05'},july)
+  const payload=f.operations[0].args.p_input as WeeklySave&{
+   drafts:Array<WeeklySave['drafts'][number]&{scheduledAt:string}>
+  }
+  expect(payload.drafts).toEqual(july.drafts.map(d=>({
+   ...d,scheduledAt:'2027-07-06T15:00:00.000Z',
+  })))
+  expect(f.operations[0].name).toBe('family_weekly_save_editorial_if_current')
+ })
  it('native weekly SQL contract explicitly requires scheduledAt on EACH draft',()=>{
   const native=readFileSync(resolve(__dirname,
    '../../../supabase/migrations/20261026090516_family_weekly_preparation.sql'),'utf8')
@@ -148,6 +163,9 @@ describe('One permitted paid attempt per Family week, no automatic retries',()=>
   expect(attempt).toContain('r.claim_id=p_claim_id')
   expect(attempt).toContain('r.max_attempts=1')
   expect(attempt).toContain("r.kind='family_weekly_editorial_drafts'")
+  expect(attempt).toContain('p.execution_paused=false')
+  expect(attempt).toContain("l.state<>'active'")
+  expect(attempt).toContain('cfg.automation_paused')
   expect(attempt).toContain('e.event_id=(')
   expect(attempt).toContain('public.social_weekly_save(')
   expect(attempt).toContain('family_weekly_authority_current(')

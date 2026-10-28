@@ -19,6 +19,17 @@ create table public.projects(
  slug text not null,
  execution_paused boolean not null default false
 );
+-- Model the same three STOP authorities used by the native
+-- production public.social_content_active function.
+create table public.project_lifecycle(
+ project_id uuid not null references public.projects(id),
+ state text not null
+);
+create table public.platform_config(
+ automation_paused boolean not null default false
+);
+insert into public.platform_config(automation_paused) values(false);
+
 create table public.conversations(
  id uuid primary key,
  user_id uuid not null references auth.users(id),
@@ -82,7 +93,11 @@ begin
 end $$;
 
 grant select on public.projects,public.conversations to authenticated;
-grant select on public.projects,public.conversations,public.runs,public.social_weekly_preparations to service_role;
+grant select on public.projects,public.conversations,public.runs,public.social_weekly_preparations,
+ public.project_lifecycle,public.platform_config to service_role;
+-- Synthetic fixture only: simulate administrative STOP transitions in tests.
+grant update on public.projects,public.platform_config to service_role;
+grant insert,delete on public.project_lifecycle to service_role;
 grant update,insert on public.runs to service_role;
 grant insert on public.social_weekly_preparations to service_role;
 grant usage on schema public to authenticated,service_role;

@@ -51,6 +51,11 @@ begin
      on e.event_id=new.consent_event_id
   where r.id=new.run_id and r.project_id=new.project_id
     and p.id=new.project_id and p.owner_id=new.owner_id
+    and p.execution_paused=false
+    and not exists(select 1 from public.project_lifecycle l
+      where l.project_id=p.id and l.state<>'active')
+    and not exists(select 1 from public.platform_config cfg
+      where cfg.automation_paused)
     and c.user_id=new.owner_id and c.project_id=new.project_id
     and e.project_id=new.project_id and e.owner_id=new.owner_id
     and e.action='enable' and e.valid_until>clock_timestamp()
@@ -104,7 +109,11 @@ begin
  end if;
  v_week:=v_local::date+1;
  select p.owner_id into v_owner from public.projects p
-  where p.id=v_project and p.execution_paused=false;
+  where p.id=v_project and p.execution_paused=false
+    and not exists(select 1 from public.project_lifecycle l
+      where l.project_id=p.id and l.state<>'active')
+    and not exists(select 1 from public.platform_config cfg
+      where cfg.automation_paused);
  if v_owner is null then return jsonb_build_object('status','blocked');end if;
  if exists(select 1 from public.family_weekly_run_plans
    where project_id=v_project and week_start=v_week) or

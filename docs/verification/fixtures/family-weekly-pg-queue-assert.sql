@@ -30,6 +30,25 @@ declare
  v_denied jsonb;
  v_saved jsonb;
 begin
+ -- The cost-free Sunday enqueue also respects native STOP sources.
+ update public.projects set execution_paused=true where id=v_project;
+ v_queued:=public.family_weekly_enqueue_once();
+ if v_queued->>'status' is distinct from 'blocked' then
+  raise exception 'PAUSED_PROJECT_QUEUED_RUN';
+ end if;
+ update public.projects set execution_paused=false where id=v_project;
+ update public.platform_config set automation_paused=true;
+ v_queued:=public.family_weekly_enqueue_once();
+ if v_queued->>'status' is distinct from 'blocked' then
+  raise exception 'GLOBAL_STOP_QUEUED_RUN';
+ end if;
+ update public.platform_config set automation_paused=false;
+ insert into public.project_lifecycle(project_id,state) values(v_project,'hibernate');
+ v_queued:=public.family_weekly_enqueue_once();
+ if v_queued->>'status' is distinct from 'blocked' then
+  raise exception 'INACTIVE_PROJECT_QUEUED_RUN';
+ end if;
+ delete from public.project_lifecycle where project_id=v_project;
  v_queued:=public.family_weekly_enqueue_once();
  if v_queued->>'status' is distinct from 'queued' or
   v_queued->>'weekStart' is distinct from '2027-01-04' or
@@ -68,6 +87,17 @@ begin
  if not public.family_weekly_authority_current(
   v_owner,v_run,v_claim,v_event,v_conv,'2027-01-04'
  ) then raise exception 'QUEUED_RUN_CLAIM_NOT_VERIFIED';end if;
+ -- A STOP arriving after claim but before provider admission must also
+ -- block cost even while the clock is still in the Sunday window.
+ update public.platform_config set automation_paused=true;
+ v_denied:=public.family_weekly_admit_once(
+  v_owner,'2027-01-04',v_run,v_claim,v_event,v_conv
+ );
+ if v_denied->>'status' is distinct from 'blocked' or
+  (select count(*) from public.family_weekly_model_attempts)<>0 then
+  raise exception 'STOP_DID_NOT_BLOCK_PAID_ADMISSION';
+ end if;
+ update public.platform_config set automation_paused=false;
  v_admitted:=public.family_weekly_admit_once(
   v_owner,'2027-01-04',v_run,v_claim,v_event,v_conv
  );

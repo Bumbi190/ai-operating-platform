@@ -88,6 +88,8 @@ describe('Scheduled Sunday queue creator never creates AI or publish authority',
   expect(sql).toContain('select p.owner_id into v_owner')
   expect(sql).toContain('c.user_id=v_owner and c.project_id=v_project')
   expect(sql).toContain("p.execution_paused=false")
+  expect(sql).toContain("l.state<>'active'")
+  expect(sql).toContain('cfg.automation_paused')
   expect(sql).toContain('on public.family_weekly_run_plans')
   expect(sql).not.toContain('cron.schedule(')
   expect(sql).not.toMatch(/grant execute on function public\.family_weekly_enqueue_once\(\)\s*to authenticated/i)

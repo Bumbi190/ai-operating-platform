@@ -83,6 +83,23 @@ begin
  if public.family_weekly_authority_current(owner,run,'11111111-1111-4111-8111-111111111111',event,conv,'2027-01-04'::date) then
   raise exception 'FORGED_CLAIM_ACCEPTED';
  end if;
+ -- Mirror native social_content_active: all three STOP sources must
+ -- revoke claimed-run authority BEFORE any possible paid admission.
+ update public.projects set execution_paused=true where id=family;
+ if public.family_weekly_authority_current(owner,run,claim,event,conv,'2027-01-04') then
+  raise exception 'PAUSED_PROJECT_HAS_MODEL_AUTHORITY';
+ end if;
+ update public.projects set execution_paused=false where id=family;
+ update public.platform_config set automation_paused=true;
+ if public.family_weekly_authority_current(owner,run,claim,event,conv,'2027-01-04') then
+  raise exception 'GLOBAL_STOP_HAS_MODEL_AUTHORITY';
+ end if;
+ update public.platform_config set automation_paused=false;
+ insert into public.project_lifecycle(project_id,state) values(family,'hibernate');
+ if public.family_weekly_authority_current(owner,run,claim,event,conv,'2027-01-04') then
+  raise exception 'INACTIVE_PROJECT_HAS_MODEL_AUTHORITY';
+ end if;
+ delete from public.project_lifecycle where project_id=family;
  denied:=public.family_weekly_admit_once(owner,'2027-01-04'::date,run,claim,event,conv);
  if denied->>'status' is distinct from 'blocked' then
   raise exception 'PRE_START_SUNDAY_WINDOW_ACCEPTED';

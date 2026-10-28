@@ -408,3 +408,56 @@ parallella SCB-worktreen**.
 - Fyra nya SQL-förslag kvarstår i \`docs/sql\`; de är ännu
   **inte** produktionsmigrationer. Ingen automatisk körning,
   publicering eller avisering har aktiverats.
+
+
+## Fas 8 – Verifierad Preview, produktionsschema och stoppgrindar (2026-10-28)
+
+**Verifiering före denna etapps ändringar:** Exakt commit
+`527c6e1af7d357d2e0c343443a92be3b8a254a67` har Vercel Preview
+`READY` (`dpl_DaUbFLfJDFUJXtPNWcA3Qyq7NysU`), GitHub/Vercel status
+`success` och åtta avslutade GitHub Actions-workflows med `success`.
+SCB-migrationsledgern blockerar inte längre denna Preview. PR #581
+är fortfarande DRAFT och inte mergad. En ny kodcommit kräver egen CI/Preview.
+
+**Läsbar verklig databasverifiering:** Omniras Supabase/PostgreSQL 17
+innehåller de kanoniska funktionerna `social_weekly_context`,
+`social_weekly_save`, `social_content_active` och
+`social_schedule_resolve_minute`. `runs` kräver NULL
+`idempotency_key` på obundna jobb. Familje-Stunden har en godkänd
+kanalplan, ägardata och 20 beskrivna bilder; Facebook/Instagram-bindningarna
+är `provider_attested` och inte blockerade. Veckan 4–10 januari 2027
+har inga befintliga schemalagda jobb eller sparade veckoförberedelser.
+Ingen skrivning eller muterande funktion anropades i produktionsdatabasen.
+
+**Ny identifierad skyddslucka och avgränsad kodrättning:**
+De föreslagna RPC:erna kontrollerade inte samtliga stoppvillkor i
+kanonisk `social_content_active` innan jobbkön eller kostnadsanspråket.
+`family_weekly_enqueue_once`, `family_weekly_run_plan_guard` och
+`family_weekly_authority_current` kräver nu att
+`projects.execution_paused=false`, att ingen inaktiv
+`project_lifecycle` finns och att `platform_config.automation_paused`
+inte är satt. Samma källa används i de existerande editorflödena.
+
+**Isolerad PostgreSQL-verifiering:** Både normalt roll-/RLS-/claim-test
+och simulerad söndag 3 januari 2027 har PASS, inklusive projektstopp,
+globalt STOP, inaktiv livscykel och globalt STOP mellan RUN-claim och
+betalt modellanspråk. Dockercontainrarna har stoppats och tagits bort.
+Regressionstester låser även sommartidskonvertering till 15:00 UTC
+för tisdag 6 juli 2027 kl. 17:00 Stockholm, oavsett modellens fält.
+
+**Kvarstående grindar:** En autentiserad ägarsession kunde inte
+öppnas via Vercels skyddade Preview; den direkta läskontrollen returnerade
+401. E2E för UI och full kanonisk `social_weekly_save` med riktig
+schema-replay i en skyddad separat testmiljö återstår. Våra isolerade
+PostgreSQL-tester använder uttryckligen en stub för native save och
+får inte beskrivas som ett godkänt end-to-end-test mot riktig
+`social_weekly_save`. Ingen SQL har installerats i Supabase, ingen
+cron är aktiverad, inga AI-modellanrop har betalats och inget har
+publicerats. Alla flaggor ska fortsätta vara OFF tills separata
+granskningar och uttryckligt ägargodkännande är klara.
+
+**Fas 8 verifierad testmatris:** 17/17 relevanta Vitest-sviter,
+387/387 testfall PASS efter säkerhetsskärpningen; fullständig
+`npm run typecheck` i `apps/web` PASS (exit 0); `git diff --check`
+PASS. Den tidigare Website Build-testrutinen utan sin särskilda
+databasfixture ingår inte i dessa testresultat.

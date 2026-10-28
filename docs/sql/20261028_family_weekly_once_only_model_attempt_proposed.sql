@@ -56,6 +56,13 @@ language sql volatile security invoker set search_path='' as $$
   join public.conversations c on c.id=p_conversation_id
   where p.id='77cda551-57c9-4dc0-b019-1bb6438777f7'::uuid
     and p.owner_id=p_owner_id
+    -- Mirror the native social_content_active STOP gate BEFORE any paid
+    -- admission, not only when finally saving the editorial drafts.
+    and p.execution_paused=false
+    and not exists(select 1 from public.project_lifecycle l
+      where l.project_id=p.id and l.state<>'active')
+    and not exists(select 1 from public.platform_config cfg
+      where cfg.automation_paused)
     and c.user_id=p_owner_id and c.project_id=p.id
     and r.id=p_run_id and r.claim_id=p_claim_id
     and r.status='running' and r.cancel_requested=false

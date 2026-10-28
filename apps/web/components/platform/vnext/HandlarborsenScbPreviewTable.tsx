@@ -2,7 +2,7 @@
 
 import React, { useMemo, useState } from 'react'
 import {
-  filterLocalReview, LOCAL_REVIEW_FILTERS,
+  filterLocalReview, paginateLocalReview, LOCAL_REVIEW_FILTERS,
   type LocalReview, type LocalReviewFilter,
 } from '@/lib/handlarborsen/lead-finder/local-review'
 import styles from './HandlarborsenScbImportControl.module.css'
@@ -29,10 +29,13 @@ const channelNames: Record<'reklam' | 'epost' | 'telefon', string> = {
 export function HandlarborsenScbPreviewTable({ review }: { review: LocalReview }) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<LocalReviewFilter>('all')
+  const [page, setPage] = useState(1)
   const rows = useMemo(
-    () => filterLocalReview(review.rows, query, filter),
+    () => filterLocalReview(review.rows, query, filter)
+      .sort((a, b) => a.name.localeCompare(b.name, 'sv', { sensitivity: 'base' }) || a.orgnr.localeCompare(b.orgnr)),
     [review.rows, query, filter],
   )
+  const current = useMemo(() => paginateLocalReview(rows, page, 15), [rows, page])
 
   return (
     <section className={styles.reviewPanel} aria-labelledby="hb-preview-company-title">
@@ -50,7 +53,7 @@ export function HandlarborsenScbPreviewTable({ review }: { review: LocalReview }
             id="hb-preview-company-search"
             type="search"
             value={query}
-            onChange={e => setQuery(e.target.value.slice(0, 80))}
+            onChange={e => { setQuery(e.target.value.slice(0, 80)); setPage(1) }}
             maxLength={80}
             placeholder="Sök bland 89 företag"
           />
@@ -60,14 +63,14 @@ export function HandlarborsenScbPreviewTable({ review }: { review: LocalReview }
           <select
             id="hb-preview-company-filter"
             value={filter}
-            onChange={e => setFilter(e.target.value as LocalReviewFilter)}
+            onChange={e => { setFilter(e.target.value as LocalReviewFilter); setPage(1) }}
           >
             {LOCAL_REVIEW_FILTERS.map(f => <option value={f} key={f}>{filterNames[f]}</option>)}
           </select>
         </div>
       </div>
       <p className={styles.reviewCount} role="status" aria-live="polite">
-        Visar {rows.length} av {review.counts.total} företag · samtliga spärrade för utskick
+        Visar {current.from}–{current.to} av {rows.length} matchande företag (totalt {review.counts.total}) · samtliga spärrade för utskick
       </p>
 
       {rows.length > 0 ? (
@@ -82,7 +85,7 @@ export function HandlarborsenScbPreviewTable({ review }: { review: LocalReview }
               <th scope="col">Kontakt</th>
             </tr></thead>
             <tbody>
-              {rows.map(company => {
+              {current.items.map(company => {
                 const excluded = !company.scbActive || company.priorContact
                 return (
                   <tr key={company.orgnr}>
@@ -119,6 +122,15 @@ export function HandlarborsenScbPreviewTable({ review }: { review: LocalReview }
           </table>
         </div>
       ) : <p className={styles.reviewEmpty}>Inga företag matchar sökningen eller filtret.</p>}
+      {current.total > 0 && current.pages > 1 ? (
+        <nav className={styles.reviewPagination} aria-label="Bläddra mellan företagssidor">
+          <button type="button" onClick={() => setPage(current.page - 1)}
+            disabled={current.page === 1}>Föregående sida</button>
+          <span aria-live="polite">Sida {current.page} av {current.pages}</span>
+          <button type="button" onClick={() => setPage(current.page + 1)}
+            disabled={current.page === current.pages}>Nästa sida</button>
+        </nav>
+      ) : null}
       <p className={styles.reviewFootnote}>Företagens uppgifter visas bara i den här tillfälliga förhandsvisningen. Ingen knapp godkänner, importerar eller skickar mejl.</p>
     </section>
   )

@@ -101,7 +101,7 @@ const CHANNELS = [
 
 const GENERIC_GROUP_TOKENS = new Set([
   'bil', 'bilar', 'bilhandel', 'bilcenter', 'bilservice', 'bilforsaljning', 'bilforetag', 'motor', 'motors', 'fordon', 'auto', 'car', 'cars',
-  'ab', 'aktiebolag', 'och', 'the', 'nya', 'ny', 'sverige', 'svenska', 'nordic', 'skane', 'syd', 'norr', 'vast', 'ost',
+  'ab', 'aktiebolag', 'aktiebolaget', 'aktiebolags', 'och', 'the', 'nya', 'ny', 'sverige', 'svenska', 'nordic', 'skane', 'syd', 'norr', 'vast', 'ost',
   'center', 'centrum', 'service', 'trading', 'group', 'holding', 'invest', 'fastighet', 'fastigheter',
   'malmo', 'lund', 'helsingborg', 'helsingborgs', 'kristianstad', 'kristianstads', 'ystad', 'ystads', 'goteborg', 'stockholm', 'landskrona',
   'trelleborg', 'eslov', 'hassleholm', 'halmstad', 'karlskrona', 'vaxjo', 'kalmar', 'uppsala', 'orebro', 'linkoping', 'norrkoping',
@@ -236,6 +236,27 @@ export function buildLocalReview(csvText: string, summaryText: string): LocalRev
 
 export function normalizeLocalFilter(value: string): LocalReviewFilter {
   return (LOCAL_REVIEW_FILTERS as readonly string[]).includes(value) ? (value as LocalReviewFilter) : 'all'
+}
+
+/**
+ * Paginates a filtered snapshot without changing its contents or permissions.
+ * An old page number is safely clamped when a search narrows the results.
+ */
+export function paginateLocalReview(
+  rows: LocalReviewRow[], requestedPage: number, pageSize = 15,
+): { items: LocalReviewRow[]; page: number; pages: number; from: number; to: number; total: number } {
+  const size = Number.isInteger(pageSize) && pageSize >= 1 && pageSize <= 50 ? pageSize : 15
+  const total = rows.length
+  const pages = Math.max(1, Math.ceil(total / size))
+  const page = Number.isInteger(requestedPage) ? Math.min(pages, Math.max(1, requestedPage)) : 1
+  const start = (page - 1) * size
+  return {
+    items: rows.slice(start, start + size),
+    page, pages,
+    from: total === 0 ? 0 : start + 1,
+    to: Math.min(start + size, total),
+    total,
+  }
 }
 
 /** Search on name / orgnr / city plus one filter. Pure and total. */

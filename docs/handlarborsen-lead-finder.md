@@ -53,3 +53,11 @@ Tabellen byggs endast från den redan manuellt valda och validerade filen i webb
 Det tidigare steget ”Granska 50 kandidater” är ersatt med **”Granska 89 juridiska företag”** för just denna verifierade rapport, utan att påstå att SCB har godkänt dem som bilhandlare. Om nästa rapport omfattar ett annat antal krävs en separat uppdatering av den medvetet snävt avgränsade importgrinden.
 
 **Webbläsarsäker validering:** tabellen efter en lyckad förhandskontroll använder `client-review-core.ts`, som inte importerar Node.js-kryptografi, filsystem, API-nycklar eller servermiljö. CSV-format och juridiska nummer valideras konservativt och fail-closed. Kodens exakta kolumnschema delas med den skyddade serverexporten. Serverns digest-/ägarkontroll och databasskrivningsgrind är oförändrade. Sex riktade gränstester jämför klient och server; ingen databasimport aktiveras.
+
+## Smidigare genomgång av de 89 bolagen
+
+Den tillfälliga, ägarstyrda förhandsvisningen visar nu **15 företag per sida**, i alfabetisk ordning. Sidknapparna bläddrar i hela den verifierade rapporten, medan sökning och filter gäller alla 89 – även de som inte syns på aktuell sida. Om ett filter minskar antalet träffar återgår visningen automatiskt till första sidan. Ingen post faller bort från rapporten.
+
+En felaktig namn-/koncernvarning för det generiska första namnledet **AKTIEBOLAGET** är borttagen. Mer särskiljande namnled som Bilia och Hedbergs kan fortfarande markeras som **möjliga namnkopplingar**, men är inte bevis för koncernrelationer. Offlinekontroll av den faktiska rensade rapporten gav 89 unika företag fördelade över 6 sidor (15 på första och 14 på sista), en SCB-spärr och en dokumenterad tidigare kontakt i ofullständig historik.
+
+**Alla 89 är fortfarande ej kontaktbara**. Sidindelning, sortering och visningsändringar ger ingen tillåtelse att kontakta företag och påverkar inte API:ets separata import-/skrivspärrar eller Supabase-data.

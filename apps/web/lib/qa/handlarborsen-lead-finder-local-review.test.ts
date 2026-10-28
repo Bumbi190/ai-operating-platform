@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { HANDLARBORSEN_PROJECT_ID } from '@/lib/atlas/handlarborsen-test-data/contracts'
 import { withCheckDigit } from '@/lib/handlarborsen/lead-finder/fixtures'
 import {
-  buildLocalReview, filterLocalReview, LocalReviewError, parseLocalReview, type LocalReviewState,
+  buildLocalReview, filterLocalReview, paginateLocalReview, LocalReviewError, parseLocalReview, type LocalReviewState,
 } from '@/lib/handlarborsen/lead-finder/local-review'
 import { loadLocalReviewForOwner, type LocalReviewDeps } from '@/lib/handlarborsen/lead-finder/local-review-server'
 import { csvField } from '@/lib/handlarborsen/lead-finder/offline-vetting'
@@ -119,10 +119,20 @@ describe('group hypotheses, search and filters', () => {
     expect(hinted.map(r => r.groupHypothesis).sort()).toEqual(['Bilia', 'Bilia', 'Hedbergs', 'Hedbergs'])
     expect(rows.find(r => r.name.startsWith('Firma') && r.groupHypothesis)).toBeUndefined()
   })
-  it('ignores generic words such as Bil and place names', () => {
-    const csv = toCsv(synthetic(r => { r[30].legalCompanyName = 'Bil Alfa AB'; r[31].legalCompanyName = 'Bil Beta AB'; r[32].legalCompanyName = 'Malmö Alfa AB'; r[33].legalCompanyName = 'Malmo Beta AB' }))
+  it('ignores generic words such as Bil, Aktiebolaget and place names', () => {
+    const csv = toCsv(synthetic(r => {
+      r[30].legalCompanyName = 'Bil Alfa AB'
+      r[31].legalCompanyName = 'Bil Beta AB'
+      r[32].legalCompanyName = 'Malmö Alfa AB'
+      r[33].legalCompanyName = 'Malmo Beta AB'
+      r[34].legalCompanyName = 'AKTIEBOLAGET INKASSO'
+      r[35].legalCompanyName = 'AKTIEBOLAGET AUTO-ÄLGEN'
+    }))
     const parsed = parseLocalReview(csv, SUMMARY).rows
-    expect(parsed.slice(30, 34).every(r => r.groupHypothesis === null)).toBe(true)
+    expect(parsed.slice(30, 36).every(r => r.groupHypothesis === null)).toBe(true)
+    // Real distinct names such as Bilia or Hedbergs still produce tentative hints.
+    expect(parsed.filter(r => r.groupHypothesis === 'Bilia')).toHaveLength(2)
+    expect(parsed.filter(r => r.groupHypothesis === 'Hedbergs')).toHaveLength(2)
   })
   it('filters', () => {
     expect(filterLocalReview(rows, '', 'all')).toHaveLength(89)
@@ -133,6 +143,23 @@ describe('group hypotheses, search and filters', () => {
     expect(filterLocalReview(rows, '', 'possible_group')).toHaveLength(4)
     expect(filterLocalReview(rows, '', 'other_legal_form')).toHaveLength(1)
     expect(filterLocalReview(rows, '', 'bogus')).toHaveLength(89)
+  })
+  it('paginates the same 89 companies into 15-row pages without dropping anyone', () => {
+    const sorted = filterLocalReview(rows, '', 'all')
+      .sort((a, b) => a.name.localeCompare(b.name, 'sv', { sensitivity: 'base' }) || a.orgnr.localeCompare(b.orgnr))
+    const first = paginateLocalReview(sorted, 1)
+    const second = paginateLocalReview(sorted, 2)
+    const last = paginateLocalReview(sorted, 6)
+    expect(first).toMatchObject({ from: 1, to: 15, total: 89, page: 1, pages: 6 })
+    expect(second).toMatchObject({ from: 16, to: 30, page: 2 })
+    expect(last).toMatchObject({ from: 76, to: 89, page: 6 })
+    expect([...Array.from({ length: 6 }, (_, i) => paginateLocalReview(sorted, i + 1).items)]
+      .flat().map(r => r.orgnr)).toEqual(sorted.map(r => r.orgnr))
+    expect(paginateLocalReview(sorted, 999).page).toBe(6)
+    expect(paginateLocalReview(sorted, -2).page).toBe(1)
+    expect(paginateLocalReview([], 2)).toMatchObject({ from: 0, to: 0, total: 0, page: 1, pages: 1 })
+    expect(paginateLocalReview(filterLocalReview(rows, '', 'restricted'), 6))
+      .toMatchObject({ from: 1, to: 1, page: 1, pages: 1 })
   })
   it('searches name (accent/case-insensitive), orgnr and city', () => {
     expect(filterLocalReview(rows, 'HEDBERGS', 'all')).toHaveLength(2)
@@ -147,23 +174,29 @@ describe('preview-only company table after verified owner upload', () => {
   const review = parseLocalReview(good(), SUMMARY)
   const html = renderToStaticMarkup(React.createElement(HandlarborsenScbPreviewTable, { review }))
 
-  it('shows all 89 validated legal entities without database import or contact buttons', () => {
+  it('shows 15 of 89 safely, with pagination but without import or contact actions', () => {
     expect(html).toContain('Företagen i den verifierade rapporten')
-    expect(html).toContain('Visar 89 av 89 företag')
+    expect(html).toContain('Visar 1–15 av 89 matchande företag (totalt 89)')
+    expect(html).toContain('Sida 1 av 6')
     expect(html).toContain('Sök på företag, organisationsnummer eller ort')
     expect(html).toContain('Kontaktspärr')
-    expect((html.match(/<tr\b/g) ?? []).length).toBe(90) // header + 89 validated legal rows
-    expect(html).not.toMatch(/mailto:|tel:|<a\b|<button\b/)
+    expect((html.match(/<tr\b/g) ?? []).length).toBe(16) // header + 15 of 89 validated legal rows
+    expect(html).not.toMatch(/mailto:|tel:|<a\b/)
+    expect(html).toContain('Föregående sida')
+    expect(html).toContain('Nästa sida')
+    expect(html).not.toMatch(/Importera endast som|Godkänn för kontakt|Skicka mejl/)
     expect(html).not.toContain('SYNTHETIC PERSON')
     expect(html).toContain('Ingen utskicksbehörighet')
   })
-  it('separates blocked, inactive, prior-contact and name-only group hints', () => {
-    expect(html).toContain('SCB-spärr: reklam, e-post, telefon')
-    expect(html).toContain('Tidigare kontakt (delhistorik)')
-    expect(html).toContain('Exkluderad från nya leads')
-    expect(html).toContain('Möjlig namnkoppling: Hedbergs')
+  it('keeps blocked, inactive, prior contact and group hints in the full filtered dataset', () => {
+    expect(filterLocalReview(review.rows, '', 'restricted')).toMatchObject([
+      { restricted: true, restrictedChannels: ['reklam', 'epost', 'telefon'] },
+    ])
+    expect(filterLocalReview(review.rows, '', 'prior')).toMatchObject([{ priorContact: true }])
+    expect(filterLocalReview(review.rows, '', 'inactive')).toHaveLength(6)
+    expect(filterLocalReview(review.rows, '', 'possible_group')).toHaveLength(4)
+    expect(html).toContain('Möjlig namnkoppling:')
     expect(html).toContain('Verksam enligt SCB')
-    expect(html).toContain('Ej verksam enligt SCB')
     expect(html).toContain('Kräver manuell granskning')
     expect(html).not.toContain('Godkänn för utskick')
   })

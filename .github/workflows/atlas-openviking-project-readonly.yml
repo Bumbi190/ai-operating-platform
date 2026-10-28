@@ -9,10 +9,13 @@ on:
       - 'apps/web/lib/atlas/openviking/**'
       - 'apps/web/lib/qa/atlas-openviking-project-readonly.test.ts'
       - 'apps/web/lib/qa/atlas-openviking-quality.test.ts'
+      - 'apps/web/lib/qa/atlas-openviking-heldout-readiness.test.ts'
       - 'apps/web/lib/qa/fixtures/atlas-openviking-five-source-history.json'
       - 'apps/web/scripts/openviking-quality-evaluate.ts'
+      - 'apps/web/scripts/openviking-heldout-readiness.ts'
       - 'docs/runbooks/atlas-openviking-project-readonly.md'
       - 'docs/runbooks/atlas-openviking-quality-gate.md'
+      - 'docs/runbooks/atlas-openviking-heldout-readiness.md'
       - '.github/workflows/atlas-openviking-project-readonly.yml'
   workflow_dispatch:
 
@@ -43,7 +46,7 @@ jobs:
       - name: Verify exact offline project reader
         working-directory: apps/web
         run: |
-          npx --no vitest run lib/qa/atlas-openviking-project-readonly.test.ts lib/qa/atlas-openviking-quality.test.ts \
+          npx --no vitest run lib/qa/atlas-openviking-project-readonly.test.ts lib/qa/atlas-openviking-quality.test.ts lib/qa/atlas-openviking-heldout-readiness.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/openviking-project.json"
       - name: Enforce test execution, count and zero skip
         if: always()
@@ -64,7 +67,8 @@ jobs:
           console.log(JSON.stringify(stats))
           if (!names.some(name => name.endsWith('atlas-openviking-project-readonly.test.ts'))
             || !names.some(name => name.endsWith('atlas-openviking-quality.test.ts'))
-            || stats.passed < 36 || stats.failed || stats.skipped || stats.todo || stats.suitesFailed) {
+            || !names.some(name => name.endsWith('atlas-openviking-heldout-readiness.test.ts'))
+            || stats.passed < 55 || stats.failed || stats.skipped || stats.todo || stats.suitesFailed) {
             console.error('::error::OpenViking source-boundary suite missing, skipped or failed')
             process.exit(1)
           }
@@ -94,6 +98,33 @@ jobs:
             candidateUnsupportedFalsePositiveCases: 4,
             qualityEligibleForManualReview: false,
           }))
+          NODE
+      - name: Prove missing private heldout inputs fail closed
+        working-directory: apps/web
+        run: |
+          set +e
+          node --import tsx scripts/openviking-heldout-readiness.ts \
+            --private-root="$RUNNER_TEMP" \
+            --plan="$RUNNER_TEMP/nonexistent-private-plan.json" \
+            --corpus="$RUNNER_TEMP/nonexistent-private-corpus.json" \
+            > "$RUNNER_TEMP/heldout-empty.json"
+          result=$?
+          set -e
+          if [ "$result" -ne 2 ]; then
+            echo "::error::Missing private inputs did not fail closed"
+            exit 1
+          fi
+          node - "$RUNNER_TEMP/heldout-empty.json" <<'NODE'
+          const fs = require('node:fs')
+          const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
+          if (report.readyForOperatorCaptureReview !== false
+              || report.runtimeActivationAuthorized !== false
+              || report.reasonCodes.length !== 1
+              || report.reasonCodes[0] !== 'private_inputs_missing_or_unsafe') {
+            console.error('::error::Unsafe heldout private-input fallback')
+            process.exit(1)
+          }
+          console.log('Heldout private input gate: safely blocked')
           NODE
       - name: Typecheck web workspace
         working-directory: apps/web

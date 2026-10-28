@@ -52,8 +52,20 @@ export type PreparedNovaShadow =
   | Readonly<{ok:true;receipt:NovaShadowReceipt}>
   | Readonly<{ok:false;reason:string}>
 
+// PostgreSQL JSONB normalizes object-key order. Compare structurally
+// without weakening value identity or reordering source/claim ARRAYS.
+function canonicalJson(value:unknown):unknown {
+  if(Array.isArray(value))return value.map(canonicalJson)
+  if(value && typeof value==='object'){
+    const obj=value as Record<string,unknown>
+    return Object.fromEntries(Object.keys(obj).sort()
+      .map(key=>[key,canonicalJson(obj[key])]))
+  }
+  return value
+}
 const same=(a:unknown,b:unknown):boolean=>{
-  try{return JSON.stringify(a)===JSON.stringify(b)}catch{return false}
+  try{return JSON.stringify(canonicalJson(a))===JSON.stringify(canonicalJson(b))}
+  catch{return false}
 }
 
 /** Only independently corroborated ordinary stories can become candidates. */

@@ -222,3 +222,34 @@ test('a forged Nova planning action is irrelevant; real inputs are re-evaluated'
   }})
   assert.equal(result.ok,false)
 })
+
+test('Postgres JSONB key reordering does not break exact source/report proof',async()=>{
+  const input=await freshFixture()
+  const reorder=value=>{
+    if(Array.isArray(value))return value.map(reorder)
+    if(value && typeof value==='object')
+      return Object.fromEntries(Object.entries(value).reverse()
+        .map(([k,v])=>[k,reorder(v)]))
+    return value
+  }
+  const report={
+    ...input.storedReport,
+    manuscript_snapshot:reorder(input.storedReport.manuscript_snapshot),
+    source_receipts:reorder(input.storedReport.source_receipts),
+    findings:reorder(input.storedReport.findings),
+  }
+  const output=prepareNovaShadowReceipt({...input,storedReport:report})
+  assert.equal(output.ok,true,JSON.stringify(output))
+})
+
+test('Postgres JSONB normalization never permits source or claim array reordering',async()=>{
+  const input=await freshFixture()
+  for(const storedReport of [
+    {...input.storedReport,source_receipts:
+      [...input.storedReport.source_receipts].reverse()},
+    {...input.storedReport,findings:
+      [...input.storedReport.findings].reverse()},
+  ]){
+    assert.equal(prepareNovaShadowReceipt({...input,storedReport}).ok,false)
+  }
+})

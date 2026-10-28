@@ -83,7 +83,8 @@ export async function GET(
     .eq('id',id)
     .eq('project_id',THEPROMPT_V3_PROJECT)
     .maybeSingle()
-  if(error||!script||!assertProjectAllowed(script.project_id,access.allowedProjectIds))
+  if(error||!script||script.project_id!==THEPROMPT_V3_PROJECT||
+    !assertProjectAllowed(script.project_id,access.allowedProjectIds))
     return response({ok:false,error:'not_found'},404)
   if(script.status==='published')return response({ok:false,error:'already_published'},409)
   const images=jsonStringArray(script.images)

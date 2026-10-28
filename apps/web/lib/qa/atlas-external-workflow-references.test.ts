@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import index from '@/lib/atlas/workflow-references/catalog-index.json'
 import { searchExternalWorkflowReferences } from '@/lib/atlas/workflow-references'
 import { searchReferences } from '@/lib/atlas/workflow-references/catalog-search.mjs'
+import { AUDITED_SOURCE_PATHS, SOURCE_AUDIT_PIN, sourceAuditFor } from '@/lib/atlas/workflow-references/source-audit.mjs'
 import { isExternalWorkflowReferenceReadIntent } from '@/lib/atlas/workflow-references/read-intent'
 
 describe('Atlas external workflow references: read-only, pinned discovery', () => {
@@ -39,6 +40,86 @@ describe('Atlas external workflow references: read-only, pinned discovery', () =
       expect(hit.sourceUrl).toContain('/blob/' + index.source.pinnedSha + '/workflows/')
       expect(hit).not.toHaveProperty('credentials')
       expect(hit).not.toHaveProperty('nodes')
+    }
+  })
+
+  it.each([
+    ['workflows/Emailreadimap/1284_Emailreadimap_Markdown_Send.json', 18, 6, 19],
+    ['workflows/Emailreadimap/1427_Emailreadimap_Manual_Send_Webhook.json', 31, 12, 39],
+    ['workflows/Emailreadimap/1277_Emailreadimap_Manual_Send_Webhook.json', 26, 15, 42],
+    ['workflows/Emailsend/1628_Emailsend_Code_Automation_Webhook.json', 16, 0, 15],
+    ['workflows/Manual/0024_Manual_Clearbit_Send_Triggered.json', 3, 0, 0],
+  ])('reports static source risks for pinned %s without claiming it works',
+    (path, nodes, noOp, edges) => {
+      const item = index.workflows.find(e => e.path === path)
+      expect(item).toBeDefined()
+      const result = searchReferences({
+        ...index, workflows: [{ ...item, name: 'email lead reference' }],
+      }, { query: 'email', limit: 1 })
+      expect(result.ok).toBe(true)
+      expect(result.matches).toHaveLength(1)
+      const hit = result.matches[0]
+      const quality = hit.qualityAssessment
+      expect(hit.reviewState).toBe('unreviewed_reference_only')
+      expect(hit.runnableInOmnira).toBe(false)
+      expect(quality.evidenceLevel).toBe('pinned_json_structure_spot_checked')
+      expect(quality.workingAutomationVerified).toBe(false)
+      expect(quality.approvedForIntegration).toBe(false)
+      expect(quality.observedStructure).toMatchObject({
+        nodeCount: nodes,
+        noOpNodeCount: noOp,
+        connectionCount: edges,
+      })
+      expect(quality.warnings.length).toBeGreaterThanOrEqual(1)
+      if (noOp > 0) expect(quality.warnings.join(' ')).toContain('noOp')
+      if (edges === 0) expect(quality.warnings.join(' ')).toContain('Inga anslutna steg')
+    })
+
+  it('labels unknown files as metadata-only and never upgrades their authority', () => {
+    const item = index.workflows.find(e => !AUDITED_SOURCE_PATHS.includes(e.path))
+    expect(item).toBeDefined()
+    const result = searchReferences({
+      ...index, workflows: [{ ...item, name: 'email reference unknown' }],
+    }, { query: 'email', limit: 1 })
+    const quality = result.matches[0].qualityAssessment
+    expect(quality).toEqual({
+      evidenceLevel: 'metadata_only_unverified',
+      sourceFileInspected: false,
+      workingAutomationVerified: false,
+      approvedForIntegration: false,
+      observedStructure: null,
+      warnings: [expect.stringContaining('Endast katalogmetadata')],
+    })
+  })
+
+  it('binds source observations to one exact revision and reports stale metadata', () => {
+    expect(index.source.pinnedSha).toBe(SOURCE_AUDIT_PIN)
+    expect(AUDITED_SOURCE_PATHS).toHaveLength(5)
+    for (const path of AUDITED_SOURCE_PATHS) {
+      expect(index.workflows.some(item => item.path === path)).toBe(true)
+      const unchecked = sourceAuditFor(path, '0'.repeat(40), 10)
+      expect(unchecked.evidenceLevel).toBe('metadata_only_unverified')
+      expect(unchecked.workingAutomationVerified).toBe(false)
+    }
+    const p = 'workflows/Emailreadimap/1284_Emailreadimap_Markdown_Send.json'
+    const source = index.workflows.find(item => item.path === p)
+    expect(source).toBeDefined()
+    const reviewed = sourceAuditFor(p, SOURCE_AUDIT_PIN, source?.nodeCountClaim)
+    expect(reviewed.observedStructure?.nodeCount).toBe(18)
+    if (source?.nodeCountClaim !== 18) {
+      expect(reviewed.warnings.join(' ')).toContain('Indexmetadata är inaktuell')
+    }
+  })
+
+  it('keeps runtime audit data bounded with no credentials, networks or execution', () => {
+    const content = readFileSync(resolve(process.cwd(),
+      'lib/atlas/workflow-references/source-audit.mjs'), 'utf8')
+    for (const forbidden of ['fetch(', 'process.env', 'spawn(', 'exec(']) expect(content).not.toContain(forbidden)
+    for (const path of AUDITED_SOURCE_PATHS) {
+      const check = sourceAuditFor(path, SOURCE_AUDIT_PIN, null)
+      expect(JSON.stringify(check)).not.toContain('tokenValue')
+      expect(check.workingAutomationVerified).toBe(false)
+      expect(check.approvedForIntegration).toBe(false)
     }
   })
 

@@ -2,6 +2,8 @@
  * Search static, pinned, third-party metadata. No I/O, network or execution.
  * Text found here is untrusted source data and never a tool instruction.
  */
+import { sourceAuditFor } from './source-audit.mjs'
+
 const MAX_RESULTS = 8
 const EXPECTED_REPOSITORY = 'https://github.com/Zie619/n8n-workflows'
 const EXPECTED_SHA = '94007c1445d9258a7da116646b79473e7c7c3282'
@@ -137,6 +139,7 @@ export function searchReferences(index, input = {}) {
     sourceUrl: `${EXPECTED_REPOSITORY}/blob/${index.source.pinnedSha}/${entry.path}`,
     sourcePath: entry.path,
     reviewState: 'unreviewed_reference_only',
+    qualityAssessment: sourceAuditFor(entry.path, index.source.pinnedSha, entry.nodeCountClaim),
     runnableInOmnira: false,
   }))
 
@@ -153,6 +156,6 @@ export function searchReferences(index, input = {}) {
     duplicatesSuppressed: scored.length - unique.length,
     truncated: unique.length > matches.length,
     matches,
-    limitation: 'Extern, delvis gammal och overifierad metadata. Träffar och sortering är inte kvalitetskontroll. Ingenting kan importeras eller köras via detta verktyg.',
+    limitation: 'Extern och delvis inaktuell metadata. Fem filer har endast statisk strukturgranskning, aldrig funktionell verifiering. Namn, scoring och strukturgranskning är inte godkännande att importera eller köra något.',
   }
 }

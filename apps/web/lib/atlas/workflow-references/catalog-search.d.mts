@@ -2,6 +2,22 @@
  * Types for the Node-compatible .mjs pure search core.
  * Keep this aligned with catalog-search.mjs and its standalone smoke suite.
  */
+export interface ExternalSourceQualityAssessment {
+  readonly evidenceLevel: 'metadata_only_unverified' | 'pinned_json_structure_spot_checked'
+  readonly sourceFileInspected: boolean
+  readonly workingAutomationVerified: false
+  readonly approvedForIntegration: false
+  readonly observedStructure: null | {
+    readonly nodeCount: number
+    readonly connectionCount: number
+    readonly noOpNodeCount: number
+    readonly emailActionNodeCount: number
+    readonly httpRequestNodeCount: number
+    readonly credentialReferenceNodeCount: number
+  }
+  readonly warnings: readonly string[]
+}
+
 export interface ExternalWorkflowReferenceHit {
   readonly name: string
   readonly description: string
@@ -12,6 +28,7 @@ export interface ExternalWorkflowReferenceHit {
   readonly sourceUrl: string
   readonly sourcePath: string
   readonly reviewState: 'unreviewed_reference_only'
+  readonly qualityAssessment: ExternalSourceQualityAssessment
   readonly runnableInOmnira: false
 }
 

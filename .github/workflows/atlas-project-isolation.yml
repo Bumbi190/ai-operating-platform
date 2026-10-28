@@ -106,6 +106,8 @@ jobs:
             lib/qa/chat-workflow-read-isolation.test.ts \
             lib/qa/handlarborsen-sales-overview.test.ts \
             lib/qa/handlarborsen-reply-lifecycle.test.ts \
+            lib/qa/handlarborsen-communications-overview.test.ts \
+            lib/qa/handlarborsen-communications-access.test.ts \
             lib/qa/handlarborsen-evidence-comparison.test.ts \
             lib/qa/handlarborsen-operator-tools.test.ts \
             lib/qa/handlarborsen-tool-intent.test.ts \
@@ -266,6 +268,10 @@ jobs:
             // Reply-status correlation is owner-read-only; errors fail closed,
             // and an approved revision never implies recipient delivery.
             'handlarborsen-reply-lifecycle.test.ts': 25,
+            // The communications page must be owner-only, accurate and inert; never infer delivery or permission.
+            'handlarborsen-communications-overview.test.ts': 14,
+            // Executable route tests reject foreign projects and non-owners before privileged reads.
+            'handlarborsen-communications-access.test.ts': 7,
             // Composite external+internal evidence adds no identities, sends or new grants.
             'handlarborsen-evidence-comparison.test.ts': 19,
             'handlarborsen-operator-tools.test.ts': 5,

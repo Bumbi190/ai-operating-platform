@@ -39,7 +39,7 @@ export type ReviewerFixture = Readonly<{
     sourceSnapshots: readonly SourceSnapshot[]
     manuscript: ScriptMaterial
     contentSha256: string
-    requiredUnits: ReturnType<typeof materialUnits>
+    requiredUnits: readonly Readonly<ReturnType<typeof materialUnits>[number]>[]
   }>) => Promise<unknown>
 }>
 

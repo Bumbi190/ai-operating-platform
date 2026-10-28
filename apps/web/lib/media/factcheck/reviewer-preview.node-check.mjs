@@ -209,3 +209,81 @@ test('non-array manuscript input is refused before any reader or reviewer call',
   assert.equal(result.decision.outcome,'requires_review')
   assert.equal(invoked,0)
 })
+
+test('pinned HTTPS source adapter composes with the complete offline FactCheck flow',async()=>{
+  const {createPinnedReaderForOfflineTests}=await import('./safe-https-reader.ts')
+  const sourceText=[
+    'Researchers announced a new public API.',
+    'Developers can now read the published technical documentation.',
+    'The API is public.',
+  ].join(' ')
+  const reader=createPinnedReaderForOfflineTests(
+    async host=>[{address:'151.101.65.55',family:4}],
+    async url=>({
+      status:200,contentType:'text/plain',contentEncoding:'',
+      body:new TextEncoder().encode(sourceText+' Independent publication: '+url.hostname),
+    }),
+  )
+  const result=await runFactCheckFixturePreview(makeArgs({
+    sourceReader:{kind:'fixture',read:reader},
+  }))
+  assert.equal(result.decision.outcome,'ready_for_editor')
+  assert.equal(result.sources.length,2)
+  assert.equal(result.canPublish,false)
+  assert.equal(result.canGeneratePaidMedia,false)
+})
+
+test('DNS poisoning in the real-reader adapter blocks the reviewer and publishing',async()=>{
+  const {createPinnedReaderForOfflineTests}=await import('./safe-https-reader.ts')
+  let reviewed=0
+  const reader=createPinnedReaderForOfflineTests(
+    async host=>host==='www.wired.com' ?
+      [{address:'151.101.65.55',family:4}] :
+      [{address:'169.254.169.254',family:4}],
+    async url=>({
+      status:200,contentType:'text/plain',contentEncoding:'',
+      body:new TextEncoder().encode('A legitimate article with public evidence. Publisher '+url.hostname+
+        ' The conclusions are independently verifiable in two separate stories.'),
+    }),
+  )
+  const result=await runFactCheckFixturePreview(makeArgs({
+    sourceReader:{kind:'fixture',read:reader},
+    reviewer:{kind:'fixture',modelIdentity:'reviewer',review:async()=>{reviewed++;return {}}},
+  }))
+  assert.equal(result.decision.outcome,'requires_review')
+  assert.equal(result.sources.length,0)
+  assert.equal(result.canPublish,false)
+  assert.equal(reviewed,0)
+})
+
+test('Home Office overclaim simulation is rejected even if full source texts are present',async()=>{
+  const script={
+    ...manuscript,
+    hook:'UK Home Office used ChatGPT to decide asylum cases.',
+    script:'A government watchdog is now investigating the AI tool.',
+    socialCaption:'UK government AI made asylum decisions.',
+    riskTier:'standard',
+  }
+  const reader=async url=>({
+    success:true,url,title:'Source evidence',
+    text:url.includes('wired.com') ?
+      'The watchdog may consider investigating AI tool use. The Home Office says human caseworkers make the actual decisions, while AI may assist summaries and research.' :
+      'The parliamentary answer says artificial intelligence does not make asylum decisions. Caseworkers retain responsibility. The report does not say an investigation is underway.',
+  })
+  const result=await runFactCheckFixturePreview(makeArgs({
+    manuscript:script,
+    sourceReader:{kind:'fixture',read:reader},
+    reviewer:{kind:'fixture',modelIdentity:'independent-reviewer',review:async input=>({
+      ...validAssessment(input),
+      framing:'misleading',
+      framingReason:'A potential investigation was presented as confirmed; human decisions were attributed to AI.',
+      findings:input.requiredUnits.map(unit=>({
+        unitId:unit.id,exactText:unit.text,verdict:'contradicted',
+        explanation:'The available sources contradict the claim and its certainty.',
+        evidence:[],
+      })),
+    })},
+  }))
+  assert.equal(result.decision.outcome,'rejected')
+  assert.equal(result.canPublish,false)
+})

@@ -37,7 +37,7 @@ export const SOURCE_GIT_SHA = /^[a-f0-9]{40}$/
 
 export type SourceRequest =
   | { action: 'status'; projectSlug: 'handlarborsen' }
-  | { action: 'read_file'; projectSlug: 'handlarborsen'; path: string; startLine?: number }
+  | { action: 'read_file'; projectSlug: 'handlarborsen'; path: string; startLine?: number; expectedSha?: string }
 
 const ALLOWED_ROOTS = new Set(['app', 'src', 'lib', 'components', 'docs', 'tests', 'test', 'e2e', 'pages'])
 const ALLOWED_EXTENSIONS = /\.(?:ts|tsx|js|jsx|mjs|cjs|css|scss|md|mdx|json|yaml|yml|html)$/i
@@ -68,14 +68,25 @@ export function parseSourceRequest(value: unknown): SourceRequest | null {
     return { action: 'status', projectSlug: 'handlarborsen' }
   }
   const readFileKeys = JSON.stringify(keys)
-  if (x.action === 'read_file' && (readFileKeys === JSON.stringify(['action', 'path', 'projectSlug'])
-    || readFileKeys === JSON.stringify(['action', 'path', 'projectSlug', 'startLine']))) {
+  const initialKeys = JSON.stringify(['action', 'path', 'projectSlug'])
+  const firstPageKeys = JSON.stringify(['action', 'path', 'projectSlug', 'startLine'])
+  const continuationKeys = JSON.stringify(['action', 'expectedSha', 'path', 'projectSlug', 'startLine'])
+  if (x.action === 'read_file' &&
+    (readFileKeys === initialKeys || readFileKeys === firstPageKeys || readFileKeys === continuationKeys)) {
     const path = safeSourcePath(x.path)
     const startLine = x.startLine === undefined ? 1 : x.startLine
     if (!path || !Number.isSafeInteger(startLine) || (startLine as number) < 1
       || (startLine as number) > SOURCE_MAX_START_LINE) return null
-    return { action: 'read_file', projectSlug: 'handlarborsen', path,
-      ...((startLine as number) > 1 ? { startLine: startLine as number } : {}) }
+    if ((startLine as number) > 1) {
+      // A continuation MUST pin the previous page's exact commit. Never mix
+      // fragments from two Git versions after a concurrent main update.
+      if (readFileKeys !== continuationKeys || typeof x.expectedSha !== 'string'
+        || !SOURCE_GIT_SHA.test(x.expectedSha)) return null
+      return { action: 'read_file', projectSlug: 'handlarborsen', path,
+        startLine: startLine as number, expectedSha: x.expectedSha }
+    }
+    if (readFileKeys === continuationKeys) return null
+    return { action: 'read_file', projectSlug: 'handlarborsen', path }
   }
   return null
 }

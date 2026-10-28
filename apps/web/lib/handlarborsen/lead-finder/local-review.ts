@@ -1,5 +1,4 @@
-import { parseCsv, parseLegalOrgnr } from './offline-vetting'
-import { STATUS_AUDIT_EXPORT_COLUMNS } from './status-audit'
+import { parseReviewCsv, parseReviewLegalOrgnr, STATUS_AUDIT_EXPORT_COLUMNS } from './client-review-core'
 
 /**
  * Pure, sanitized display model for the local, owner-only SCB audited review.
@@ -146,7 +145,7 @@ export function parseLocalReview(csvText: string, summaryInput: unknown): LocalR
   const summary = parseSummary(summaryInput)
 
   let table: string[][]
-  try { table = parseCsv(csvText) } catch { return fail('csv_malformed') }
+  try { table = parseReviewCsv(csvText) } catch { return fail('csv_malformed') }
   const header = table.shift()
   if (!header || header.length !== STATUS_AUDIT_EXPORT_COLUMNS.length ||
     header.join('|') !== STATUS_AUDIT_EXPORT_COLUMNS.join('|')) return fail('header_mismatch')
@@ -163,7 +162,7 @@ export function parseLocalReview(csvText: string, summaryInput: unknown): LocalR
     if (!safeText(r.legalCompanyName, 120) || !safeText(r.city, 60)) return fail('row_invalid')
 
     if (!/^\d{10}$/.test(r.orgnr) || !luhnValid(r.orgnr)) return fail('row_invalid')
-    try { if (parseLegalOrgnr(r.orgnr) !== r.orgnr) return fail('row_invalid') } catch { return fail('row_invalid') }
+    try { if (parseReviewLegalOrgnr(r.orgnr) !== r.orgnr) return fail('row_invalid') } catch { return fail('row_invalid') }
     if (seen.has(r.orgnr)) return fail('duplicate_orgnr')
     seen.add(r.orgnr)
 

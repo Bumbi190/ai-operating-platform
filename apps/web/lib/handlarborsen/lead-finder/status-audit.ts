@@ -1,4 +1,6 @@
 import { csvField, parseCsv, parseLegalOrgnr, validateSnapshot } from './offline-vetting'
+import { STATUS_AUDIT_EXPORT_COLUMNS } from './client-review-core'
+export { STATUS_AUDIT_EXPORT_COLUMNS } from './client-review-core'
 
 /**
  * Offline correction of a previously saved SCB legal-entity status review.
@@ -196,12 +198,6 @@ export function auditStatusFile(rawCsv: string, rawCodebooks: unknown, rawSource
   }
 }
 
-export const STATUS_AUDIT_EXPORT_COLUMNS = [
-  'legalCompanyName','orgnr','city','sni','scbStatusCode','scbStatusClass',
-  'legalFormCode','legalFormLabel','reklamCode','epostCode','telefonCode',
-  'marketingReview','priorContactReview','legalIdentityReview',
-  'manual_review_only','NOT_CONTACTABLE','historyCoverage',
-] as const
 export function renderAuditedCsv(results:StatusAuditResult):string {
   return [STATUS_AUDIT_EXPORT_COLUMNS.join(','),
     ...results.reviewed.map(r=> STATUS_AUDIT_EXPORT_COLUMNS.map(c=>csvField(String(r[c]))).join(',')),

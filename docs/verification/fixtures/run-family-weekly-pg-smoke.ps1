@@ -50,6 +50,7 @@ try{
  if(-not $connected){throw 'ISOLATED_TEST_POSTGRES_SQL_NOT_READY'}
  $files=@(
   'docs\verification\fixtures\family-weekly-pg-smoke-setup.sql',
+  'docs\verification\fixtures\family-weekly-pg-runs-constraints.sql',
   'docs\verification\fixtures\family-weekly-pg-parent-rls.sql',
   'docs\sql\20261028_family_weekly_auto_consent_proposed.sql',
   'docs\sql\20261028_family_weekly_review_notices_proposed.sql',

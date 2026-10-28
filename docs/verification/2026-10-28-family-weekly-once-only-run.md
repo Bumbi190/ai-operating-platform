@@ -669,3 +669,34 @@ Detta är ännu **inte** replay av hela produktionsschemat med 163
 migrationsfiler, RLS under riktig autentiserad Vercel Preview-session
 eller någon faktisk social publicering. Inga Supabase-skrivningar,
 produktnycklar, cronaktiveringar eller betalda modellkörningar gjordes.
+
+## Fas 16 – Kanoniska runs-bindnings- och kostnadsbegränsningar (2026-10-28)
+
+Ytterligare en **läsbar produktionsgranskning** via
+`pg_get_constraintdef` av `public.runs` identifierade att
+den tidigare syntetiska `runs_action_binding_complete` bara
+modellerade två kolumner och därför inte kunde avslöja
+felaktiga, icke-tomma action-proveniensfält på obundna jobb.
+
+Den isolerade fixturen `family-weekly-pg-runs-constraints.sql`
+lägger nu till samma relevanta action-kolumner och återskapar de
+faktiskt observerade CHECK-villkoren för:
+`runs_action_binding_complete`,
+`runs_action_class_vocabulary`,
+`runs_idempotency_key_sha256` (redan i grundtabellen),
+`runs_material_actions_single_attempt`,
+`runs_unauthorized_action_is_read_only` och
+`runs_status_check`. Negativa tester förkastar obunden
+action-proveniens, idempotency_key på obundet jobb, icke tillåten
+status och ett material/finansiellt jobb med flera försök.
+
+**Lokalt PASS** med dessa skärpta villkor: PostgreSQL 17
+`normal`, `native-claim` och `native-content`, samt
+PostgreSQL 16 `normal` och `native-claim`. Alla kördes i redan cachade
+engångscontainrar utan nätverk; samtliga containrar togs bort.
+
+**Kvarstår:** detta återskapar ett avgränsat urval av kanoniska
+CHECK-constraints, inte alla triggers, FK-beroenden, fullständig
+Supabase Auth-miljö eller samtliga produktionsmigrationsfiler.
+Inget test får betraktas som ett produktionsgodkännande. Samtliga
+Family SQL-förslag är fortsatt oinstallerade och automatiken OFF.

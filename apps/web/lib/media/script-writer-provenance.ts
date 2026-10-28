@@ -14,7 +14,10 @@ import type {ScriptWriterOutput} from './types'
 export const SCRIPT_WRITER_PROVENANCE = 'provider_response_v1' as const
 
 export type ScriptOutputForProvenance = Pick<ScriptWriterOutput,
-  'hook'|'script'|'captions'|'hashtags'|'cta'|'tone'|'estimated_duration'>
+  'hook'|'script'|'captions'|'hashtags'|'cta'|'estimated_duration'> & {
+  /** Live model outputs may use tones beyond the legacy union. */
+  tone:string
+}
 export type ServerWriterIdentity = Readonly<{
   writer_model:string
   writer_provider:'anthropic'|'openai'
@@ -22,12 +25,12 @@ export type ServerWriterIdentity = Readonly<{
   writer_version:number
   writer_content_sha256:string
 }>
-export type SanitizedScriptOutput = ScriptWriterOutput & Partial<ServerWriterIdentity> & {
-  writer_model?:string|null
-  writer_provider?:'anthropic'|'openai'|null
-  writer_provenance?:typeof SCRIPT_WRITER_PROVENANCE|null
-  writer_version?:number|null
-  writer_content_sha256?:string|null
+export type SanitizedScriptOutput = ScriptWriterOutput & {
+  writer_model:string|null
+  writer_provider:'anthropic'|'openai'|null
+  writer_provenance:typeof SCRIPT_WRITER_PROVENANCE|null
+  writer_version:number|null
+  writer_content_sha256:string|null
 }
 
 function text(value:unknown):string|null {

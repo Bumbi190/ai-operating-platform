@@ -49,6 +49,8 @@ test('manual text editing revokes provenance and all stale quality/render accept
  ]){
    assert.match(source,pattern,field)
  }
+ assert.match(source,/hook: body\.hook \?\? existing\.hook/)
+ assert.match(source,/script: body\.script \?\? existing\.script/)
  assert.match(source,/\.eq\('version', existing\.version \?\? 1\)/)
 })
 test('governed OpenAI fallback is distinguishable and never attributed to requested model',()=>{

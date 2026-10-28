@@ -68,7 +68,7 @@ export async function PATCH(
   // Verify ownership BEFORE mutating — fetch the row's project first.
   const { data: existing } = await db
     .from('media_scripts')
-    .select('id, project_id, version, raw_output')
+    .select('id, project_id, version, raw_output, hook, script')
     .eq('id', id)
     .single()
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -85,6 +85,10 @@ export async function PATCH(
     updates.version = (existing.version ?? 1) + 1
     updates.raw_output = toJson({
       ...raw,
+      // Keep the legacy script JSON coherent with the newly saved columns.
+      // The original provider signature is still invalidated unconditionally.
+      hook: body.hook ?? existing.hook,
+      script: body.script ?? existing.script,
       writer_model: null, writer_provider: null, writer_provenance: null,
       writer_version: null, writer_content_sha256: null,
     })

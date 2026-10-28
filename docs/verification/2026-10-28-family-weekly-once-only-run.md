@@ -461,3 +461,38 @@ granskningar och uttryckligt ägargodkännande är klara.
 `npm run typecheck` i `apps/web` PASS (exit 0); `git diff --check`
 PASS. Den tidigare Website Build-testrutinen utan sin särskilda
 databasfixture ingår inte i dessa testresultat.
+
+
+## Fas 9 – Canonical native social_weekly_save i isolerad PostgreSQL (2026-10-28)
+
+Efter Fas 8 genomfördes en ytterligare **skrivskyddad gentemot alla riktiga
+Supabase-projekt** integrationstestning. En tredje runner-mode,
+`-Mode native-editorial`, startar endast en tillfällig PostgreSQL 16 i
+Docker med `--network none` och utan externa portar, mounts eller volymer.
+Den läser **exakt den kanoniska funktionskroppen**
+`public.social_weekly_save(jsonb,jsonb)` från
+`apps/web/supabase/migrations/20261026090516_family_weekly_preparation.sql`
+och installerar en lokal `CREATE OR REPLACE`-kopia ovanpå den äldre
+syntetiska test-stubben. Den faktiska funktionen är därmed under test,
+medan beroende-funktioner (`social_weekly_context`,
+`social_content_save`, källa/profil/asset- och granskningsunderlag)
+uttryckligen är isolerade testdubletter. Detta **är inte en full replay
+av hela produktionsschemat eller full E2E**.
+
+Native PostgreSQL-test: **PASS**. Verifierar explicit att saknat
+`scheduledAt` får fel av den riktiga funktionen; komplett Facebook-
+och Instagram-par på tisdag kl. 17.00 Stockholm respektive fredag
+kl. 20.30 sparar fyra redaktionella utkast med noll
+publiceringsbehörighet; samma kvitto/antal poster återkommer vid
+idempotent återupprepning; ägarprivat notis knyts till verkligt
+`preparationId`; efter ett återkallat consent får inget nytt sparande
+ske. Alla operationer gjordes i den tillfälliga testdatabasen, som
+stoppats och tagits bort.
+
+Det befintliga normala PostgreSQL- och simulerade söndagstestet kvarstår
+som separata modes. Testverktygets Docker-cleanup inväntar nu asynkron
+`--rm`-städning efter `docker stop` utan att röra andra containrar.
+
+Verifierat för commit `88517e0`: alla åtta GitHub Actions-workflows
+**success** och exakt Vercel Preview **READY**. Fas 9 är en ny,
+ännu ej CI-verifierad kodändring fram till egen push och ny Preview.

@@ -6,7 +6,7 @@
 # Local postgres:16 image only; NO published ports, volumes or mounts.
 # Simulated-Sunday rewrites SQL in memory ONLY for disposable tests.
 param(
- [ValidateSet('normal','simulated-sunday')]
+ [ValidateSet('normal','simulated-sunday','native-editorial')]
  [string]$Mode='normal'
 )
 $ErrorActionPreference='Stop'
@@ -48,7 +48,8 @@ try{
   'docs\sql\20261028_family_weekly_once_only_model_attempt_proposed.sql'
  )
  if($Mode -eq 'normal'){$files+= 'docs\verification\fixtures\family-weekly-pg-smoke-assert.sql'}
- else {$files+='docs\verification\fixtures\family-weekly-pg-queue-assert.sql'}
+ elseif($Mode -eq 'simulated-sunday'){$files+='docs\verification\fixtures\family-weekly-pg-queue-assert.sql'}
+ else {$files+='docs\verification\fixtures\family-weekly-pg-native-deps.sql'}
  foreach($relative in $files){
   $file=Join-Path $repo $relative
   if(-not(Test-Path $file)){throw ('DISPOSABLE_TEST_FILE_MISSING:'+ $relative)}
@@ -65,11 +66,38 @@ try{
   $raw | docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
   if($LASTEXITCODE -ne 0){throw ('DISPOSABLE_TEST_SQL_FAILED:'+ $relative)}
  }
+ if($Mode -eq 'native-editorial'){
+  # The exact native save function is loaded from the reviewed canonical
+  # migration; never copy/paste or silently simplify its PL/pgSQL.
+  $sourcePath=Join-Path $repo 'apps\web\supabase\migrations\20261026090516_family_weekly_preparation.sql'
+  $canonical=Get-Content -LiteralPath $sourcePath -Raw -Encoding UTF8
+  $start=$canonical.IndexOf('create function public.social_weekly_save(')
+  $end=$canonical.IndexOf('revoke all on function public.social_weekly_context',$start)
+  if($start -lt 0 -or $end -le $start){throw 'CANONICAL_NATIVE_SAVE_SOURCE_NOT_FOUND'}
+  $native=$canonical.Substring($start,$end-$start).Replace(
+   'create function public.social_weekly_save(',
+   'create or replace function public.social_weekly_save(')
+  Write-Output 'LOAD_CANONICAL_NATIVE_SOCIAL_WEEKLY_SAVE_IN_DISPOSABLE_DB_ONLY=true'
+  $native | docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'NATIVE_SAVE_FUNCTION_LOAD_FAILED'}
+  $assertFile=Join-Path $repo 'docs\verification\fixtures\family-weekly-pg-native-assert.sql'
+  Get-Content -LiteralPath $assertFile -Raw -Encoding UTF8 |
+   docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'NATIVE_WEEKLY_SAVE_TEST_FAILED'}
+ }
  Write-Output ('FAMILY_WEEKLY_ISOLATED_PG_'+$Mode+'_PASS=true')
 }finally{
  if($started){
   docker stop $name | Out-Null
-  $left=(docker ps -a --filter "name=^/$name$" --format '{{.Names}}'|Out-String).Trim()
+  # --rm cleanup can finish a moment after docker stop returns on Windows.
+  # Wait for the EXACT uniquely named fixture to disappear; never touch
+  # unrelated containers.
+  $left=''
+  for($cleanup=0;$cleanup -lt 20;$cleanup++){
+   $left=(docker ps -a --filter "name=^/$name$" --format '{{.Names}}'|Out-String).Trim()
+   if(-not $left){break}
+   Start-Sleep -Milliseconds 250
+  }
   if($left){throw 'DISPOSABLE_POSTGRES_NOT_REMOVED'}
   Write-Output 'ISOLATED_POSTGRES_CONTAINER_STOPPED_AND_REMOVED=true'
  }

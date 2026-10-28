@@ -52,8 +52,9 @@ function loadJson(file: string, root: string, maxSize: number): unknown {
 }
 
 /**
- * Return 0 ONLY for complete, locked evidence in --report-only mode.
- * Without --report-only, incomplete or blocked evidence exits 2.
+ * In normal mode, a blocked plan exits 2; a complete, locked plan exits 0.
+ * --report-only permits an INCOMPLETE plan to exit 0 for local diagnosis,
+ * but never grants runtime access or executes retrieval.
  * This program never launches retrieval or writes an output document.
  */
 const options = parseArgs(process.argv.slice(2))

@@ -51,6 +51,7 @@ import { sendPipelineAlert } from '@/lib/media/alert'
 import { Anthropic } from '@anthropic-ai/sdk'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 import { toJson } from '@/lib/supabase/json'
+import { stampedScriptOutput } from '@/lib/media/script-writer-provenance'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 import { GLOBAL_ONLY, projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
@@ -331,6 +332,7 @@ Angle: ${news.content_angle}`,
   const scriptRaw   = scriptRes.content[0].type === 'text' ? scriptRes.content[0].text : ''
   const scriptClean = scriptRaw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
   let   script      = JSON.parse(scriptClean) as ScriptWriterOutput
+  let actualScriptWriterResponse = scriptRes
 
   // ── 6. Quality gate ───────────────────────────────────────────────────────────
   log('quality', 'Scoring script...')
@@ -362,6 +364,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
     const rewriteRaw   = rewriteRes.content[0].type === 'text' ? rewriteRes.content[0].text : ''
     const rewriteClean = rewriteRaw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
     script = JSON.parse(rewriteClean) as ScriptWriterOutput
+    actualScriptWriterResponse = rewriteRes
     qualityScore = await scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope({ projectId: project.id }) }, script.hook, script.script, sourceContext)
   }
 
@@ -380,7 +383,7 @@ Write a significantly stronger version. Fix every weak spot. The hook must score
     cta:                script.cta,
     tone:               script.tone,
     estimated_duration: script.estimated_duration,
-    raw_output:         toJson(script),
+    raw_output:         toJson(stampedScriptOutput(script, actualScriptWriterResponse, 1)),
     quality_score:      toJson(qualityScore),
     status:             'approved',
     voice_status:       'none',

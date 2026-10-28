@@ -14,6 +14,7 @@ import type {SupabaseClient} from '@supabase/supabase-js'
 import type {ScriptMaterial,SourceSnapshot} from './contract'
 import type {ReviewedFinding} from './independent-review'
 import {prepareFactCheckReport, type CurrentRunRow, type CurrentScriptRow} from './report-record'
+import {verifiedStoredWriterModel} from '@/lib/media/script-writer-provenance'
 
 export type ReportWriteResult =
   | Readonly<{status:'recorded'; reportId:string; outcome:string}>
@@ -71,7 +72,7 @@ export async function persistFactCheckReport(
 
     const [scriptRes,runRes]=await Promise.all([
       db.from('media_scripts')
-        .select('id,project_id,version,hook,script,captions,cta,raw_output')
+        .select('id,project_id,version,hook,script,captions,hashtags,cta,tone,estimated_duration,raw_output')
         .eq('id',input.material.scriptId).eq('project_id',trustedProjectId)
         .maybeSingle(),
       db.from('runs')
@@ -85,18 +86,31 @@ export async function persistFactCheckReport(
     }
     const row=scriptRes.data as CurrentScriptRow & {
       raw_output?:unknown
+      hashtags?:unknown
+      tone?:string|null
+      estimated_duration?:string|null
     }
     const actualRun=runRes.data as CurrentRunRow
     if (actualRun.claim_id!==input.authority.claimId) {
       return hold('factcheck_claim_fenced')
     }
-    // Existing 2026 scripts lack trustworthy writer provenance in raw_output.
-    // Do not guess "Claude" from prompts or from a model's own declaration.
-    const raw=row.raw_output
-    const writerModel=raw && typeof raw==='object' && !Array.isArray(raw)
-      ? (raw as Record<string,unknown>).writer_model : undefined
-    if (typeof writerModel!=='string' || !writerModel.trim()) {
-      return hold('factcheck_writer_provenance_absent')
+    // Never trust a model-supplied writer_model string by itself. The origin
+    // must have been stamped by our server from a completed provider response,
+    // AND bound to the current persisted content, model family and version.
+    // A manual edit, stale revision or workflow JSON injection stays on HOLD.
+    const writerModel=Array.isArray(row.captions) &&
+      Array.isArray(row.hashtags) &&
+      typeof row.hook==='string' && typeof row.script==='string' &&
+      typeof row.cta==='string' && typeof row.tone==='string' &&
+      typeof row.estimated_duration==='string'
+      ? verifiedStoredWriterModel(row.raw_output,{
+        version:row.version??0,hook:row.hook,script:row.script,
+        captions:row.captions as string[],hashtags:row.hashtags as string[],
+        cta:row.cta,tone:row.tone,estimated_duration:row.estimated_duration,
+      })
+      : null
+    if (!writerModel) {
+      return hold('factcheck_writer_provenance_absent_or_changed')
     }
     const prepared=prepareFactCheckReport({
       trustedProjectId,

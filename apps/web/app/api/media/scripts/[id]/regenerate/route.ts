@@ -20,6 +20,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import type { Database } from '@/lib/supabase/types'
 import { Anthropic } from '@anthropic-ai/sdk'
 import type { ScriptWriterOutput } from '@/lib/media/types'
+import { stampedScriptOutput } from '@/lib/media/script-writer-provenance'
+import { toJson } from '@/lib/supabase/json'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 import { GLOBAL_ONLY, projectScope, type ExecutionContract } from '@/lib/governance/execution-stop'
@@ -187,7 +189,7 @@ Write a new script that covers the same story but from a different entry point o
       cta:                newScript.cta,
       tone:               newScript.tone,
       estimated_duration: newScript.estimated_duration,
-      raw_output:         newScript,
+      raw_output:         toJson(stampedScriptOutput(newScript, res, (script.version ?? 1) + 1)),
       version:            (script.version ?? 1) + 1,
       // Clear voice/video so they get regenerated with new text
       voice_status:       'none',
@@ -228,6 +230,8 @@ Write a new script that covers the same story but from a different entry point o
     .from('media_scripts')
     .update(updates)
     .eq('id', id)
+    .eq('project_id', projectId)
+    .eq('version', script.version ?? 1)
     .select()
     .single()
 

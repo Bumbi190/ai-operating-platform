@@ -8,6 +8,8 @@ on:
       - 'apps/web/lib/media/quality-validation.node-check.mjs'
       - 'apps/web/lib/media/quality-publication-boundary.node-check.mjs'
       - 'apps/web/lib/media/factcheck/**'
+      - 'apps/web/lib/media/script-writer-provenance*'
+      - 'apps/web/lib/media/text-client.ts'
       - 'apps/web/app/**/factcheck/**'
       - 'apps/web/app/**/media/page.tsx'
       - 'docs/workflows/proposed-migrations/*the_prompt_factcheck*'
@@ -29,4 +31,4 @@ jobs:
         with:
           node-version: '22'
       - name: Prove invalid editorial scores never authorize publishing
-        run: node --experimental-strip-types --test apps/web/lib/media/quality-validation.node-check.mjs apps/web/lib/media/quality-publication-boundary.node-check.mjs apps/web/lib/media/factcheck/contract.node-check.mjs apps/web/lib/media/factcheck/source-collector.node-check.mjs apps/web/lib/media/factcheck/reviewer-preview.node-check.mjs apps/web/lib/media/factcheck/safe-https-reader.node-check.mjs apps/web/lib/media/factcheck/independent-review.node-check.mjs apps/web/lib/media/factcheck/reviewer-admission.node-check.mjs apps/web/lib/media/factcheck/report-ledger.node-check.mjs apps/web/lib/media/factcheck/report-record.node-check.mjs apps/web/lib/media/factcheck/report-writer.node-check.mjs
+        run: node --experimental-strip-types --test apps/web/lib/media/quality-validation.node-check.mjs apps/web/lib/media/quality-publication-boundary.node-check.mjs apps/web/lib/media/factcheck/contract.node-check.mjs apps/web/lib/media/factcheck/source-collector.node-check.mjs apps/web/lib/media/factcheck/reviewer-preview.node-check.mjs apps/web/lib/media/factcheck/safe-https-reader.node-check.mjs apps/web/lib/media/factcheck/independent-review.node-check.mjs apps/web/lib/media/factcheck/reviewer-admission.node-check.mjs apps/web/lib/media/factcheck/report-ledger.node-check.mjs apps/web/lib/media/factcheck/report-record.node-check.mjs apps/web/lib/media/factcheck/report-writer.node-check.mjs apps/web/lib/media/script-writer-provenance.node-check.mjs apps/web/lib/media/script-writer-provenance-wiring.node-check.mjs

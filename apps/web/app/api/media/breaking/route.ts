@@ -33,6 +33,7 @@ import { scoreScript, shouldRegenerate } from '@/lib/media/quality'
 import { classifyTopic } from '@/lib/atlas/content-tags'
 import type { NewsHunterOutput, ScriptWriterOutput } from '@/lib/media/types'
 import { toJson } from '@/lib/supabase/json'
+import { stampedScriptOutput } from '@/lib/media/script-writer-provenance'
 import { getAnthropic } from '@/lib/ai/anthropic'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
 import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
@@ -180,7 +181,8 @@ export async function POST(request: Request) {
       project_id: project.id, news_item_id: newsItem?.id ?? null,
       hook: script.hook, script: script.script, captions: script.captions,
       hashtags: script.hashtags, cta: script.cta, tone: script.tone,
-      estimated_duration: script.estimated_duration, raw_output: toJson(script),
+      estimated_duration: script.estimated_duration,
+      raw_output: toJson(stampedScriptOutput(script, scriptRes, 1)),
       quality_score: toJson(qualityScore), status: 'approved',
       voice_status: 'none', video_status: 'none', version: 1,
       topic: classifyTopic(script.hook, script.script), format: 'reel',

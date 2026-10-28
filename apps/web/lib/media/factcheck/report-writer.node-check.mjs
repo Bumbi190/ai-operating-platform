@@ -10,6 +10,9 @@ registerHooks({
     if (specifier==='@/lib/supabase/admin') {
       return stub('export function createAdminClient(){return globalThis.__factcheckFakeDb()}')
     }
+    if (specifier==='@/lib/media/script-writer-provenance') {
+      return next('../script-writer-provenance.ts',ctx)
+    }
     if (specifier==='@/lib/cost/spend-gate-flag') {
       return stub('export function isSpendGateEnforced(){return globalThis.__factcheckHardGate===true}')
     }
@@ -22,6 +25,7 @@ registerHooks({
 
 const {persistFactCheckReport}=await import('./report-writer.ts')
 const {evaluateIndependentReview}=await import('./independent-review.ts')
+const {stampedScriptOutput}=await import('../script-writer-provenance.ts')
 const projectId='a8a1b1f6-c222-4893-9399-b1fb3bc2fa52'
 const scriptId='b9271d5b-5254-4ad8-a36c-ce7c66e9c63e'
 const runId='94e620bf-31d4-401c-baf8-ec1521f5ba13'
@@ -73,10 +77,13 @@ async function checkedReview(m=material,s=sources){
 function makeDb(overrides={}){
   const history=[]
   const project={id:projectId,slug:'ai-media-automation'}
+  const rawFields={hook:material.hook,script:material.script,
+    captions:[...material.captions],hashtags:['#AI'],cta:material.cta,
+    tone:'educational',estimated_duration:'~22 seconds',difficulty:'intermediate'}
+  const response={type:'message',id:'msg_writer_response',model:'claude-sonnet-4-6'}
   const script={id:scriptId,project_id:projectId,version:1,
-    hook:material.hook,script:material.script,
-    captions:[...material.captions],cta:material.cta,
-    raw_output:{writer_model:'claude-sonnet-4-6'}}
+    ...rawFields,
+    raw_output:stampedScriptOutput(rawFields,response,1)}
   const run={id:runId,project_id:projectId,claim_id:claimId,status:'running',
     cancel_requested:false,lease_until:new Date(now+60000).toISOString()}
   const rows={projects:overrides.project===undefined?project:overrides.project,
@@ -155,7 +162,7 @@ test('unknown script writer metadata cannot be guessed or written',async()=>{
   process.env.THE_PROMPT_FACTCHECK_MODEL_ENABLED='true'
   globalThis.__factcheckHardGate=true
   const result=await persistFactCheckReport(input(review))
-  assert.equal(result.reason,'factcheck_writer_provenance_absent')
+  assert.equal(result.reason,'factcheck_writer_provenance_absent_or_changed')
   assert.equal(history.filter(x=>x.action==='insert').length,0)
 })
 

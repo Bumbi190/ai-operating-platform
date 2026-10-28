@@ -81,7 +81,7 @@ jobs:
             'nova-source-inspection.test.ts': 42,
             'nova-source-inspection-route.test.ts': 10,
             'nova-source-atlas-tool.test.ts': 8,
-            'nova-source-chat-route.test.ts': 8,
+            'nova-source-chat-route.test.ts': 10,
             'atlas-openai-chat.test.ts': 5,
             'github-app-transport.test.ts': 43,
             'sdf1a-code-work-contracts.test.ts': 42,

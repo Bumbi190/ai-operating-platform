@@ -35,6 +35,16 @@ export interface SaveGeneratedArticleArgs {
   contentType?: WebsiteContentType
   sourceKind?: 'news_item' | 'manual' | 'agent'
   generatedBy?: string
+  /** Merged over the draft's meta (e.g. the fact-check report). */
+  extraMeta?: Record<string, unknown>
+  /**
+   * 'upsert' (default, existing behaviour): re-generation overwrites the row.
+   * 'reviewable_only': never touch a row that has left pending_review — an
+   * approved, published, rejected or failed article is the operator's, and an
+   * automated re-run must not pull it back into the queue. Enforced in the
+   * UPDATE's WHERE clause, so an approval racing this write wins.
+   */
+  writeMode?: 'upsert' | 'reviewable_only'
 }
 
 export interface SaveGeneratedArticleResult {
@@ -43,13 +53,23 @@ export interface SaveGeneratedArticleResult {
   status: 'pending_review'
 }
 
+export type SaveReviewableResult =
+  | (SaveGeneratedArticleResult & { skippedReason?: undefined })
+  | { id: string | null; externalId: string; status: null; skippedReason: string }
+
 /**
  * Persist a generated article as a pending-review row in website_content.
  * Idempotent on external_id (re-generation upserts the same logical item).
  */
 export async function saveGeneratedArticle(
+  args: SaveGeneratedArticleArgs & { writeMode?: 'upsert' },
+): Promise<SaveGeneratedArticleResult>
+export async function saveGeneratedArticle(
+  args: SaveGeneratedArticleArgs & { writeMode: 'reviewable_only' },
+): Promise<SaveReviewableResult>
+export async function saveGeneratedArticle(
   args: SaveGeneratedArticleArgs,
-): Promise<SaveGeneratedArticleResult> {
+): Promise<SaveGeneratedArticleResult | SaveReviewableResult> {
   const db = createAdminClient()
   const { draft, qa, payload } = args.generated
 
@@ -81,11 +101,13 @@ export async function saveGeneratedArticle(
   // external_id (gated by cron + manual trigger). Race acceptable for MVP.
   const existingHeroQuery = await db
     .from('website_content')
-    .select('hero_image_url, hero_image_prompt, hero_image_status, hero_image_qa')
+    .select('id, status, hero_image_url, hero_image_prompt, hero_image_status, hero_image_qa')
     .eq('external_id', payload.external_id)
     .maybeSingle()
   const existingHero = existingHeroQuery.data as
     | {
+        id: string
+        status: string
         hero_image_url: string | null
         hero_image_prompt: string | null
         hero_image_status: string | null
@@ -131,7 +153,7 @@ export async function saveGeneratedArticle(
     summary:       draft.summary || null,
     payload: toJson(payload),                  // jsonb — full publish-contract payload (incl. body)
     qa: toJson(qa),                            // jsonb
-    meta: toJson(meta),                        // jsonb
+    meta: toJson(args.extraMeta ? { ...meta, ...args.extraMeta } : meta), // jsonb
     model:         meta?.model ?? null,        // denormalized for Atlas reporting
     cost_usd:      meta?.estCostUsd ?? null,   // denormalized for Atlas reporting
     generated_by:  args.generatedBy ?? 'omnira-article-pipeline',
@@ -139,6 +161,32 @@ export async function saveGeneratedArticle(
     status_reason: 'Generated; awaiting Atlas review',
     updated_at:    new Date().toISOString(),
     ...heroFields,
+  }
+
+  if (args.writeMode === 'reviewable_only') {
+    if (existingHero && existingHero.status !== 'pending_review') {
+      return { id: existingHero.id, externalId: payload.external_id, status: null,
+        skippedReason: `existing_row_${existingHero.status}` }
+    }
+    const write = existingHero
+      ? db.from('website_content').update(row)
+          .eq('external_id', payload.external_id).eq('status', 'pending_review')
+          .select('id, external_id').maybeSingle()
+      : db.from('website_content').insert(row).select('id, external_id').maybeSingle()
+    const { data: written, error: writeErr } = await write
+    if (writeErr) {
+      // 23505: a concurrent writer created the row between our read and insert.
+      if ((writeErr as { code?: string }).code === '23505') {
+        return { id: null, externalId: payload.external_id, status: null, skippedReason: 'concurrent_insert' }
+      }
+      throw new Error(`[website_content] persist failed: ${writeErr.message}`)
+    }
+    if (!written) {
+      return { id: existingHero?.id ?? null, externalId: payload.external_id, status: null,
+        skippedReason: 'left_pending_review_concurrently' }
+    }
+    const w = written as { id: string; external_id: string }
+    return { id: w.id, externalId: w.external_id, status: 'pending_review' }
   }
 
   const { data, error } = await db

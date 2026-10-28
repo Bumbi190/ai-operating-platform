@@ -63,10 +63,24 @@ export function selectNotionPassages(markdown: string, question: string): string
   const separator = '\n\n[--- separat källutdrag ---]\n\n'
   // P0 already bounds the complete source to 512 KiB. Scan ALL its paragraphs;
   // an arbitrary first-N cutoff silently hides late, owner-approved handovers.
-  const sections = markdown.replace(/\r\n/g, '\n')
+  const paragraphs = markdown.replace(/\r\n/g, '\n')
     .split(/\n\s*\n/g)
     .map(s => s.trim())
     .filter(Boolean)
+  // Notion often emits "### Kareby Bil" and its status as separate blocks.
+  // Keep an isolated heading with its FIRST following paragraph, otherwise a
+  // high-scoring heading can exhaust the result quota without its actual facts.
+  const sections: string[] = []
+  for (let i = 0; i < paragraphs.length; i++) {
+    const heading = paragraphs[i]
+    if (/^#{1,6}\s/.test(heading) && i + 1 < paragraphs.length
+      && !/^#{1,6}\s/.test(paragraphs[i + 1])) {
+      sections.push(heading + '\n' + paragraphs[i + 1])
+      i++
+    } else {
+      sections.push(heading)
+    }
+  }
   if (!sections.length) return ''
 
   const stop = new Set([

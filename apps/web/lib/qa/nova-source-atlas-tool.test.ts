@@ -8,12 +8,13 @@ import {
   novaSourcePilotEnabled, NOVA_SOURCE_TOOL_NAME, NOVA_SOURCE_TOOL, persistNovaSourceReceipt,
 } from '@/lib/atlas/source-inspection/atlas-tool'
 
-const req = { action: 'read_file', projectSlug: 'handlarborsen', path: 'src/app/page.tsx' }
+const req = { action: 'read_file', projectSlug: 'handlarborsen', path: 'app/page.tsx' }
 const source: Extract<SourceInspectionResult, { ok: true; action: 'read_file' }> = { ok: true, action: 'read_file', repository: 'Bumbi190/handlarborsen',
   repositoryId: 1374257653, projectSlug: 'handlarborsen', sha: 'f'.repeat(40),
-  path: 'src/app/page.tsx', readonly: true, sourceUrl: 'https://github.com/verified/blob/id',
+  path: 'app/page.tsx', readonly: true, sourceUrl: 'https://github.com/verified/blob/id',
   lines: [{ line: 1, text: 'PRIVATE SOURCE NOT FOR DATABASE PERSISTENCE' }], totalLines: 1,
-  truncated: false, untrustedSource: true, observedAt: '2026-10-28T00:00:00Z' }
+  startLine: 1, nextStartLine: null, truncated: false,
+  untrustedSource: true, observedAt: '2026-10-28T00:00:00Z' }
 function guardedDb(projectId: string | null, error = false) {
   const log: Array<{op:string;field:string;value:unknown}> = []
   const db = { from: (table: string) => {
@@ -35,7 +36,7 @@ describe('Nova source inspection tool authority and minimal durable receipt',()=
   it('only recognizes explicit project-code read intent and ignores ordinary questions',()=>{
     expect(isNovaSourceReadIntent('Nova, visa Handlarbörsens GitHub-kod')).toBe(true)
     expect(isNovaSourceReadIntent('Vilken repo-branch använder Handlarbörsen?')).toBe(true)
-    expect(isNovaSourceReadIntent('Visa src/app/page.tsx i Handlarbörsen')).toBe(true)
+    expect(isNovaSourceReadIntent('Visa app/page.tsx i Handlarbörsen')).toBe(true)
     expect(isNovaSourceReadIntent('Hur går det för Handlarbörsen?')).toBe(false)
     expect(isNovaSourceReadIntent('Kör Handlarbörsens workflows')).toBe(false)
     expect(isNovaSourceReadIntent('Visa annan kunds repo')).toBe(false)
@@ -49,6 +50,7 @@ describe('Nova source inspection tool authority and minimal durable receipt',()=
     expect(toolLabel(NOVA_SOURCE_TOOL_NAME)).toBe('Granskar Handlarbörsens källkod')
     expect((NOVA_SOURCE_TOOL.input_schema.properties as any).action.enum).toEqual(['status','read_file'])
     expect((NOVA_SOURCE_TOOL.input_schema.properties as any).projectSlug.enum).toEqual(['handlarborsen'])
+    expect((NOVA_SOURCE_TOOL.input_schema.properties as any).startLine).toMatchObject({ type: 'integer', minimum: 1, maximum: 5000 })
     expect(NOVA_SOURCE_TOOL.input_schema.additionalProperties).toBe(false)
   })
   it('refuses all work before source dispatch unless operator, origin and project owner hold',async()=>{
@@ -87,6 +89,14 @@ describe('Nova source inspection tool authority and minimal durable receipt',()=
     expect(result).toMatchObject({input:req,result:{ok:true,readonly:true,sha:'f'.repeat(40),totalLines:1}})
     expect(JSON.stringify(result)).not.toContain('PRIVATE SOURCE NOT FOR DATABASE PERSISTENCE')
     expect(persistNovaSourceReceipt({...req,path:'../../private'},source).input).toBeNull()
+  })
+  it('persists only continuation line metadata, never the code in a later page', () => {
+    const page = { ...source, totalLines: 390, startLine: 241, nextStartLine: null,
+      lines: [{ line: 241, text: 'private source belonging to later page' }] }
+    const input = { ...req, startLine: 241 }
+    const receipt = persistNovaSourceReceipt(input, page)
+    expect(receipt).toMatchObject({ input, result: { startLine: 241, nextStartLine: null, totalLines: 390 } })
+    expect(JSON.stringify(receipt)).not.toContain('private source belonging to later page')
   })
   it('offers only the read tool on a special source turn and forces that exact tool once',()=>{
     const route=readFileSync(resolve('app/api/chat/route.ts'),'utf8')

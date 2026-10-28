@@ -20,7 +20,7 @@ export const NOVA_SOURCE_TOOL: Anthropic.Tool = {
       projectSlug: { type: 'string', enum: ['handlarborsen'] },
       path: { type: 'string', description: 'Exact relative code file, e.g. app/page.tsx; required for read_file, forbidden for status. Never a URL.' },
       startLine: { type: 'integer', minimum: 1, maximum: 5000, description: 'For a long file, 1-based first line to display; defaults to 1. At most 240 lines per turn.' },
-      expectedSha: { type: 'string', pattern: '^[a-f0-9]{40}
+      expectedSha: { type: 'string', description: 'Required when startLine exceeds 1. Exact 40-character lowercase Git SHA returned by previous page. Never choose an arbitrary revision.' },
     },
     required: ['action', 'projectSlug'],
     additionalProperties: false,

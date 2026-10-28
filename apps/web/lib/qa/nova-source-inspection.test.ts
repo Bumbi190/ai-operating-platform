@@ -217,12 +217,18 @@ describe('Nova trusted source boundary, separate from SDF-1 execution', () => {
     expect(result).toEqual({ ok: false, code: 'source_denied' })
     expect(JSON.stringify(result)).not.toContain(DEFAULT_FILE)
   })
-  it('blocks any source containing a secret-looking assignment, without returning partial text', async () => {
-    const github = fakeGitHub({ fileText: 'const api_key = "never-print-this-value"\n' })
+  it.each([
+    ['const api_key = "fixture-secret-value"\n'],
+    ["const DATABASE_URL = 'postgresql://demo:fixture-password@db.example.test/app'\n"],
+    ["export const SUPABASE_SERVICE_ROLE_KEY = 'fixture-value'\n"],
+    ["const githubToken = 'fixture-token-value'\n"],
+  ])('refuses whole Git blob when it contains inline credentials', async (fileText) => {
+    const github = fakeGitHub({ fileText })
     const result = await inspectVerifiedSource({
       action: 'read_file', projectSlug: 'handlarborsen', path: 'src/app/page.tsx',
     }, { fetcher: github.fetcher })
     expect(result).toEqual({ ok: false, code: 'source_denied' })
+    expect(JSON.stringify(result)).not.toContain(fileText.trim())
   })
   it('revalidates path at the network boundary even if a typed caller is compromised', async () => {
     const github = fakeGitHub()

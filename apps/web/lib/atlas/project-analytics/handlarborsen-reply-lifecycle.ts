@@ -160,9 +160,9 @@ export async function readHandlarborsenReplyLifecycle(context: ReadContext) {
     }
     const ordered = [...rules].sort((a, b) => Number(b.version) - Number(a.version))
     for (const rule of ordered) {
-      if (!Number.isSafeInteger(rule.version) || (rule.version as number) < 1 ||
-          !Number.isSafeInteger(rule.min_wait_seconds) || (rule.min_wait_seconds as number) < 0 ||
-          !Number.isSafeInteger(rule.max_reminders) || (rule.max_reminders as number) < 0) {
+      if (typeof rule.version !== 'number' || !Number.isSafeInteger(rule.version) || rule.version < 1 ||
+          typeof rule.min_wait_seconds !== 'number' || !Number.isSafeInteger(rule.min_wait_seconds) || rule.min_wait_seconds < 0 ||
+          typeof rule.max_reminders !== 'number' || !Number.isSafeInteger(rule.max_reminders) || rule.max_reminders < 0) {
         throw new Error('invalid_timing_rule')
       }
     }

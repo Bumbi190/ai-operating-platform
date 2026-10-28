@@ -24,6 +24,8 @@ export function needsCompleteVoiceDocument(input: unknown): boolean {
 }
 
 export const VOICE_DOCUMENT_MAX_TOKENS = 3200 as const
+/** Stable command shared by the chat button and the continuation classifier. */
+export const VOICE_DOCUMENT_CONTINUATION_COMMAND = 'Fortsätt' as const
 export const VOICE_DOCUMENT_SPEECH_FALLBACK =
   'Jag har lagt hela underlaget i chatten, så att du kan kopiera det.'
 
@@ -59,6 +61,10 @@ export function completeVoiceDocumentOpening(text: string, final: boolean): stri
 export const VOICE_DOCUMENT_INCOMPLETE_WARNING =
   '\n\n⚠️ Svaret nådde längdgränsen och är inte komplett. Använd inte en halv prompt till Claude. Be Nova fortsätta resten i nästa meddelande.'
 
+/** Provider stream ended without a confirmed final artifact. Never present this text as a ready-to-run Claude prompt. */
+export const VOICE_DOCUMENT_STREAM_INTERRUPTED_WARNING =
+  '\n\n⚠️ Utkastet avbröts innan det blev komplett. Kopiera inte som färdig Claude-prompt. Använd Fortsätt utkast för att skriva klart resten.'
+
 /** Only a visibly incomplete prior document authorises a one-word continuation
  * to use the extended writing mode. No unrelated chat turn inherits this budget.
  */
@@ -68,4 +74,5 @@ export function continuesIncompleteVoiceDocument(input: unknown, previousAssista
   if (!/^(?:ja[, ]+)?(?:forts[aä]tt(?: d[aä]r du slutade)?|skriv klart|slutf[oö]r|forts[aä]tt med resten|ge mig resten)[.!? ]*$/i.test(command))
     return false
   return previousAssistantText.includes(VOICE_DOCUMENT_INCOMPLETE_WARNING.trim())
+    || previousAssistantText.includes(VOICE_DOCUMENT_STREAM_INTERRUPTED_WARNING.trim())
 }

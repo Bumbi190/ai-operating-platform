@@ -39,7 +39,7 @@ import { getOperations, operationsSummary } from '@/lib/atlas/operations'
 import { getDreamFindings, dreamLiveSummary, delegateDreamFinding, resolveDreamFinding } from '@/lib/atlas/dream'
 import { NAV_CLAIM_RE, DELEGATE_CLAIM_RE, isUnsupportedActionClaim } from '@/lib/atlas/honesty'
 import { isNavIntent } from '@/lib/atlas/nav-intent'
-import { continuesIncompleteVoiceDocument, needsCompleteVoiceDocument, VOICE_DOCUMENT_INCOMPLETE_WARNING, VOICE_DOCUMENT_MAX_TOKENS } from '@/lib/atlas/voice-pilot/document-mode'
+import { continuesIncompleteVoiceDocument, needsCompleteVoiceDocument, VOICE_DOCUMENT_INCOMPLETE_WARNING, VOICE_DOCUMENT_STREAM_INTERRUPTED_WARNING, VOICE_DOCUMENT_MAX_TOKENS } from '@/lib/atlas/voice-pilot/document-mode'
 import { isActionIntent, isDreamResolutionIntent } from '@/lib/atlas/action-intent'
 import { classifyStaticConversation, STATIC_CONVERSATION_SYSTEM } from '@/lib/atlas/static-conversation'
 import { classifyStatusIntent, renderStatusDirective } from '@/lib/atlas/status-intent'
@@ -92,6 +92,7 @@ import { getAnthropic } from '@/lib/ai/anthropic'
 import type { OpenAIGovernanceContext } from '@/lib/ai/openai-client'
 import { atlasModelPolicy } from '@/lib/ai/atlas-model-policy'
 import { openAIAtlasStream } from '@/lib/atlas/openai-chat'
+import { allowSafeTextFallback } from '@/lib/atlas/provider-recovery'
 import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
 import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
 
@@ -341,6 +342,14 @@ VIKTIGT — OPERATÖREN BER OM EN SKRIFTLIG LEVERANS I ETT RÖSTSAMTAL:
 - Om det förra svaret nådde längdgränsen och operatören ber dig fortsätta: komplettera återstående delar utan att börja om från början. Inled ändå med en kort fullständig mening som kan läsas upp.
 - Lovar inte att kod, byggjobb, publicering eller navigering har utförts om inget behörigt verktyg faktiskt har körts. Skilj tydligt mellan planer och utförda ändringar.
 - Om fakta eller behörighet saknas: skriv antagandena uttryckligen. Avsluta inte mitt i en ofärdig prompt.
+`
+
+const DOCUMENT_CONTINUATION_DIRECTIVE = `
+VIKTIGT — DETTA ÄR EN UTTRYCKLIG FORTSÄTTNING AV ETT AVBRUTET SKRIFTLIGT UTKAST:
+- Utgå från föregående assistentmeddelandes faktiskt skrivna text; upprepa inte inledningen eller färdiga avsnitt.
+- Fortsätt vid den ofullständiga meningen och skriv återstående avsnitt i Markdown utan att påstå att den tidigare delen var färdig.
+- Använd inga verktyg eller nya arbetsflöden. Detta är enbart textgenerering.
+- Om återstående text inte får plats, ange tydligt vad som saknas i stället för att presentera en halv prompt som färdig.
 `
 
 // Verktygsvägledning — hur Atlas använder sina verktyg.
@@ -804,14 +813,13 @@ export async function POST(request: Request) {
   // Only explicit deliverable requests lift the tiny live-voice limit. This is
   // presentation, never permission to execute code or bypass project policies.
   const priorAssistantText = [...messages].reverse().find(m => m.role === 'assistant' && typeof m.content === 'string')?.content
-  const voiceDocument = Boolean(voice && (
-    needsCompleteVoiceDocument(lastUserText) || continuesIncompleteVoiceDocument(lastUserText, priorAssistantText)
-  ))
+  const continuingIncompleteDocument = continuesIncompleteVoiceDocument(lastUserText, priorAssistantText)
+  const voiceDocument = Boolean((voice && needsCompleteVoiceDocument(lastUserText)) || continuingIncompleteDocument)
   const voiceInstruction = voiceDocument ? VOICE_DOCUMENT_DIRECTIVE : VOICE_DIRECTIVE
   // Both external catalog searches and approved Notion reads need tools, even
   // when the message includes writing verbs such as "förbättra".
   const externalReferenceReadIntent = !image && !studioContext && !websitePlanRef && !rawBuildContext && isExternalWorkflowReferenceReadIntent(lastUserText)
-  const fastPath = !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText) && !image && !isCalendarIntent(lastUserText) && !studioContext && !websitePlanRef && !rawBuildContext && (mode === 'content' || isFastPathContent(lastUserText))
+  const fastPath = !continuingIncompleteDocument && !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText) && !image && !isCalendarIntent(lastUserText) && !studioContext && !websitePlanRef && !rawBuildContext && (mode === 'content' || isFastPathContent(lastUserText))
   // Statisk konversation (hej/tack/vem är du) — besvaras ur Atlas identitet ensam.
   // Allow-list, aldrig gissning: allt som inte bevisligen klarar sig utan live-
   // data, projekt, Memory, klocka och verktyg går full path.
@@ -869,7 +877,8 @@ export async function POST(request: Request) {
     const denied=assertSameOrigin(request);if(denied)return denied
     try{verifiedBuildContext=await resolveConversationBuildContext(db,{userId,allowedProjectIds},await resolveOwnedConversationId(),rawBuildContext)}catch(error){return buildErrorResponse(error)}
   }
-  if(visiblePlan){
+  // A one-word continuation is never approval to start a website build.
+  if(visiblePlan && !continuingIncompleteDocument){
     const denied=assertSameOrigin(request);if(denied){denied.headers.set('cache-control','private, no-store');return denied}
     try{
       const owned=await resolveOwnedConversationId()
@@ -1014,6 +1023,7 @@ export async function POST(request: Request) {
       })
     }
   }
+  if (continuingIncompleteDocument) systemPrompt += DOCUMENT_CONTINUATION_DIRECTIVE
 
   // Static conversation is defined as the class that needs no tool, so it is
   // sent none. Sending zero tools is also what makes skipping the isolation
@@ -1024,7 +1034,7 @@ export async function POST(request: Request) {
   const baseTools = notionReadOnlyTurn ? ATLAS_NOTION_TOOLS : (fastPath || staticConversation) ? [] : studioContext ? TOOLS.filter(tool=>STUDIO_TOOL_NAMES.has(tool.name)) : TOOLS.filter(tool=>!LOCAL_TEXT_TOOL_NAMES.includes(tool.name)||localTextEnabled)
   // Copyable voice documents are read/draft only. A prompt request must never
   // opportunistically create a workflow, deploy code or send a message.
-  const activeTools = voiceDocument ? baseTools.filter(tool=>VOICE_DOCUMENT_READ_TOOLS.has(tool.name)) : baseTools
+  const activeTools = continuingIncompleteDocument ? [] : voiceDocument ? baseTools.filter(tool=>VOICE_DOCUMENT_READ_TOOLS.has(tool.name)) : baseTools
   const forceToolFirstTurn = actionIntent && activeTools.length > 0
   // A Notion answer must not come from the model's memory when the approved
   // read tool is available. Keep Notion's narrower tool selection authoritative.
@@ -1102,9 +1112,11 @@ export async function POST(request: Request) {
       let navigateSucceeded = false  // emitterades ett LYCKAT navigate-event DENNA förfrågan?
       // present_links räknas INTE — det visar bara genvägar, det navigerar inte.
       let delegateToolUsed = false  // kördes ett LYCKAT delegate/delegate_dream_finding DENNA förfrågan?
+      let streamedDraft = '' // only the latest uncommitted provider text; never log it
+      let toolCallsMade = 0 // do not replay even read-only tools on provider fallback
       // Tystar delegerings-ärlighetsspärren — bara en verklig, lyckad delegering räknas.
 
-      async function runConversation(msgs: Anthropic.MessageParam[]) {
+      async function runConversation(msgs: Anthropic.MessageParam[], useFallback = false) {
         // Agentic loop — Claude can use tools multiple times
         for (let i = 0; i < 10; i++) {
           // STREAMA svaret token-för-token. Detta är nyckeln: TTS kan börja på
@@ -1128,14 +1140,15 @@ export async function POST(request: Request) {
                   : {})
             : {}
           const modelInput = {
-            model: modelPolicy.chatModel,
+            model: useFallback ? 'gpt-5.4-mini' : modelPolicy.chatModel,
             max_tokens: voice ? (voiceDocument ? VOICE_DOCUMENT_MAX_TOKENS : 150) : (fastPath ? 1200 : 4096),
             system: systemPrompt,
             tools: activeTools,   // fast path = [] → ingen verktygsloop
             ...toolChoice,
             messages: msgs,
           }
-          const llm = openaiEconomy
+          streamedDraft = '' // reset for each tool/model round; completed tool text is saved separately
+          const llm = openaiEconomy || useFallback
             ? await openAIAtlasStream(providerContext,modelInput,request.signal)
             : await anthropic!.messages.stream(modelInput)
           llm.on('text', (delta: string) => {
@@ -1147,7 +1160,10 @@ export async function POST(request: Request) {
                 send('timing', { reqType, contextMs, firstTokenMs })
               }
             }
-            if (delta) send('text', { text: delta })
+            if (delta) {
+              streamedDraft += delta // bounded by the provider output-token cap; never silently discard emitted text
+              send('text', { text: delta })
+            }
           })
           const response = await llm.finalMessage()
 
@@ -1191,20 +1207,25 @@ export async function POST(request: Request) {
 
             // A clipped response must never masquerade as a complete Claude
             // prompt or workflow. Save the warning alongside the unfinished text.
-            if (response.stop_reason === 'max_tokens') {
+            const incomplete = response.stop_reason === 'max_tokens'
+            if (incomplete) {
               const warning = voiceDocument ? VOICE_DOCUMENT_INCOMPLETE_WARNING
                 : '\n\n⚠️ Svaret nådde längdgränsen och är inte komplett. Be mig fortsätta.'
               send('text', { text: warning })
               fullText += warning
             }
-            // A generated deliverable must be persisted before signalling done;
-            // ordinary quick speech keeps its existing non-blocking save path.
+            // Persist complete voice documents and EVERY truncated answer before
+            // signalling done. A max_tokens stop is never labelled complete.
             if (fullText) {
-              if (voiceDocument) {
-                const saved = await saveMessage('assistant', fullText)
+              if (voiceDocument || incomplete) {
+                const saved = await saveMessage('assistant', fullText, incomplete
+                  ? { kind: 'incomplete_draft', continuationAllowed: voiceDocument, errorCode: 'ATLAS_OUTPUT_TOKEN_LIMIT' }
+                  : undefined)
+                if (incomplete) send('draft_interrupted', { saved, continuationAllowed: voiceDocument })
                 if (!saved) send('text', { text: '\n\n⚠️ Svaret kunde inte sparas i historiken. Kopiera hela texten innan du lämnar chatten.' })
               } else void saveMessage('assistant', fullText)
             }
+            streamedDraft = ''
             break
           }
 
@@ -1222,8 +1243,10 @@ export async function POST(request: Request) {
             .join('')
             .trim()
           if (inlineText) void saveMessage('assistant', inlineText)
+          streamedDraft = '' // prior inline text already has its own persisted row
 
           for (const toolUse of toolUseBlocks) {
+            toolCallsMade++
             send('tool_call', { tool: toolUse.name, input: toolUse.input })
 
             let result: unknown
@@ -1349,18 +1372,80 @@ export async function POST(request: Request) {
         controller.close()
       }
 
+      const initialMessages = image ? messages.map((msg,index)=>index===messages.length-1&&msg.role==="user"?{...msg,content:[{type:"image" as const,source:{type:"base64" as const,media_type:image.mediaType as 'image/png'|'image/jpeg'|'image/webp',data:image.data as string}},{type:"text" as const,text:lastUserText||"Beskriv bilden."}]}:msg) : messages
       try {
-        await runConversation(image?messages.map((msg,index)=>index===messages.length-1&&msg.role==="user"?{...msg,content:[{type:"image" as const,source:{type:"base64" as const,media_type:image.mediaType as 'image/png'|'image/jpeg'|'image/webp',data:image.data as string}},{type:"text" as const,text:lastUserText||"Beskriv bilden."}]}:msg):messages)
+        await runConversation(initialMessages)
       } catch (err) {
-        const code = classifyAnthropicError(err)
-        console.error(`[atlas-chat] Anthropic request failed (${code})`, {
-          name: err instanceof Error ? err.name : 'UnknownError',
-          status: typeof (err as { status?: unknown } | null)?.status === 'number'
-            ? (err as { status: number }).status
+        let failedError: unknown = err
+        let fallbackAttempted = false
+        if (allowSafeTextFallback({
+          enabled: process.env.ATLAS_TEXT_FAILOVER_ENABLED === 'true',
+          configured: Boolean(process.env.OPENAI_API_KEY?.trim()),
+          originalProvider: openaiEconomy ? 'openai' : 'anthropic',
+          // Never dispatch another model for a write-capable or forced-tool turn.
+          safeTurn: (voiceDocument || fastPath || staticConversation)
+            && !visiblePlan && !forceToolFirstTurn && !forceNotionFirstTurn
+            && !forceExternalReferenceReadFirstTurn && !forceNavigateFirstTurn
+            && !forceHbReadFirstTurn && !forceResolutionFirstTurn,
+          errorCode: classifyAnthropicError(err),
+          textEmitted: firstTokenMs > 0 || Boolean(streamedDraft),
+          toolCalls: toolCallsMade,
+          clientAborted: request.signal.aborted,
+          retryAlreadyAttempted: false,
+        })) {
+          fallbackAttempted = true
+          try {
+            await runConversation(initialMessages, true)
+            return // fallback completed and closed the original SSE stream
+          } catch (secondError) { failedError = secondError }
+        }
+        const code = classifyAnthropicError(failedError)
+        console.error(`[atlas-chat] Provider request failed (${code})`, {
+          provider: fallbackAttempted || openaiEconomy ? 'openai' : 'anthropic',
+          fallbackAttempted,
+          name: failedError instanceof Error ? failedError.name : 'UnknownError',
+          status: typeof (failedError as { status?: unknown } | null)?.status === 'number'
+            ? (failedError as { status: number }).status
             : undefined,
+          phase: streamedDraft ? 'after_text' : 'before_text',
+          elapsedMs: Date.now() - tStart,
+          providerAndToolMs: Math.max(0, Date.now() - tStart - contextMs),
+          signalAborted: request.signal.aborted,
+          // Only an allowlisted transport code, never the raw error message or request content.
+          transportCode: (() => {
+            const direct = (failedError as { code?: unknown } | null)?.code
+            const cause = (failedError as { cause?: { code?: unknown } } | null)?.cause?.code
+            const value = typeof direct === 'string' ? direct : cause
+            return typeof value === 'string' && /^[A-Z0-9_]{1,40}$/.test(value) ? value : undefined
+          })(),
+          partialLength: streamedDraft.length,
+          artifactMode: voiceDocument,
         })
-        send('error', { code, message: getAtlasServiceErrorMessage(code) })
-        controller.close()
+        if (streamedDraft.trim()) {
+          // A provider failure AFTER partial output must not silently destroy a
+          // Claude prompt. Persist an explicitly incomplete owner-scoped row.
+          // Never rerun the request or any tool call automatically.
+          const warning = voiceDocument
+            ? VOICE_DOCUMENT_STREAM_INTERRUPTED_WARNING
+            : '\n\n⚠️ Svaret avbröts och är inte komplett. Kopiera bara som utkast.'
+          const partial = streamedDraft + warning
+          const saved = await saveMessage('assistant', partial, {
+            kind: 'incomplete_draft',
+            continuationAllowed: voiceDocument,
+            errorCode: code,
+          })
+          // A caller disconnect is not permission to discard the generated draft.
+          // Persistence is owner-scoped; after client abort do not try to emit events.
+          if (!request.signal.aborted) {
+            send('text', { text: warning })
+            send('draft_interrupted', { saved, continuationAllowed: voiceDocument })
+            if (!saved) send('text', { text: '\n\n⚠️ Kunde inte spara utkastet. Kopiera texten innan du lämnar sidan.' })
+          }
+        }
+        if (!request.signal.aborted) {
+          send('error', { code, message: getAtlasServiceErrorMessage(code) })
+          controller.close()
+        }
       }
     },
   })

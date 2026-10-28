@@ -32,7 +32,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { ArrowLeft, ArrowRight, ArrowUp, Loader2, Plus } from 'lucide-react'
+import { ArrowLeft, ArrowRight, ArrowUp, Loader2, Plus, Copy } from 'lucide-react'
 import { buildChatRequestBody } from '@/lib/atlas/view-client'
 import {
   AWAITING_ATLAS,
@@ -71,6 +71,7 @@ import {
 import {AtlasTestDataReviewCard} from '../os/AtlasTestDataReviewCard'
 import {LocalTextJobReceipt} from './LocalTextJobReceipt'
 import {localTextReceiptLink} from '@/lib/local-text/receipt'
+import { VOICE_DOCUMENT_CONTINUATION_COMMAND } from '@/lib/atlas/voice-pilot/document-mode'
 import styles from './AtlasChat.module.css'
 import type {PlanView} from '@/lib/website-build/planning/types'
 import type {BuildSessionView} from '@/lib/website-build/types'
@@ -248,7 +249,11 @@ export function AtlasChatConversation({ model, asking = false,plan=null,initialS
 
             {entries.length > 0 && (
               <ol className={styles.transcript} aria-label="Konversation" aria-busy={pending}>
-                {entries.map((entry, index) => <ChatEntry key={index} entry={entry} />)}
+                {entries.map((entry, index) => <ChatEntry key={index} entry={entry}
+                  onContinue={entry.kind === 'assistant' && entry.incomplete && entry.continuationAllowed && !pending &&
+                    !entries.slice(index + 1).some(later => later.kind === 'assistant')
+                    ? () => void send(VOICE_DOCUMENT_CONTINUATION_COMMAND)
+                    : undefined} />)}
               </ol>
             )}
 
@@ -271,7 +276,7 @@ export function AtlasChatConversation({ model, asking = false,plan=null,initialS
 }
 
 /** One transcript entry. Exported for the tests; the conversation is its only caller. */
-export function ChatEntry({ entry }: { entry: TranscriptEntry }) {
+export function ChatEntry({ entry, onContinue }: { entry: TranscriptEntry; onContinue?: () => void }) {
   switch (entry.kind) {
     case 'user':
       return (
@@ -291,6 +296,13 @@ export function ChatEntry({ entry }: { entry: TranscriptEntry }) {
             <span className={styles.srOnly}>Atlas: </span>
             <div className={styles.markdown}>
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.text}</ReactMarkdown>
+            </div>
+            <div className={styles.assistantActions}>
+              {entry.incomplete && <span role="status">Ofullständigt utkast – granska innan du använder det.</span>}
+              <button type="button" onClick={() => { void navigator.clipboard?.writeText(entry.text) }}
+                aria-label="Kopiera hela svaret" title="Kopiera hela svaret"><Copy size={14} aria-hidden /> Kopiera</button>
+              {entry.incomplete && entry.continuationAllowed && onContinue &&
+                <button type="button" onClick={onContinue}>Fortsätt utkast</button>}
             </div>
           </div>
         </li>

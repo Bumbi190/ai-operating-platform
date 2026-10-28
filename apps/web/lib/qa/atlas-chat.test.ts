@@ -24,6 +24,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import { DESIGN_SKILL_TOOLS } from '@/lib/skills/atlas-tools'
+import { CALENDAR_TOOLS } from '@/lib/calendar/atlas-tools'
 import {AtlasConversationController} from '@/lib/atlas/conversation/controller'
 import { WEBSITE_BUILD_TOOLS } from '@/lib/website-build/atlas-tools'
 import {
@@ -452,11 +453,12 @@ describe('atlas chat · the route contract it speaks', () => {
 
   it('emits the transcript events and the two typed website effects', () => {
     const events = [...new Set([...ROUTE.matchAll(/\bsend\('([a-z_]+)'/g)].map((m) => m[1]))].sort()
-    expect(events).toEqual(['done', 'error', 'links', 'navigate', 'text', 'timing', 'tool_call', 'tool_result', 'website_plan', 'website_workspace'])
+    expect(events).toEqual(['done', 'draft_interrupted', 'error', 'handlarborsen_test_data_review', 'links', 'navigate', 'text', 'timing', 'tool_call', 'tool_result', 'website_plan', 'website_workspace'])
   })
 
-  it('does not observe a client abort — which is why there is no stop control', () => {
-    expect(ROUTE).not.toMatch(/request\.signal/)
+  it('uses client cancellation only for the provider transport, never to claim a workflow was undone', () => {
+    expect(ROUTE).toMatch(/openAIAtlasStream\(providerContext,modelInput,request\.signal\)/)
+    expect(ROUTE).not.toMatch(/send\('cancelled'/)
   })
 
   it('counts a result carrying `error` as a failure — the rule the tool steps follow', () => {
@@ -469,8 +471,11 @@ describe('atlas chat · the route contract it speaks', () => {
     expect(start).toBeGreaterThan(-1)
     const block = normalizedRoute.slice(start, normalizedRoute.indexOf('\n]\n', start))
     const names = [...block.matchAll(/\bname: '([a-z_]+)'/g)].map((m) => m[1]).concat(DESIGN_SKILL_TOOLS.map(tool => tool.name), WEBSITE_BUILD_TOOLS.map(tool => tool.name))
+    const additionalSources = ['lib/calendar/atlas-tools.ts', 'lib/atlas/project-analytics/handlarborsen-operator-tools.ts']
+    for (const path of additionalSources) names.push(...[...read(path).matchAll(/\bname: '([a-z_]+)'/g)].map(m => m[1]))
+    names.push(...CALENDAR_TOOLS.map(tool => tool.name))
     expect(names.length).toBeGreaterThanOrEqual(15)
-    expect(Object.keys(TOOL_LABELS).sort()).toEqual([...names].sort())
+    expect(Object.keys(TOOL_LABELS).sort()).toEqual([...new Set(names)].sort())
   })
 
   it('titles a conversation on its first user message — why an unreadable history must not be continued', () => {
@@ -1105,5 +1110,45 @@ describe('atlas chat · layout rules that are load-bearing', () => {
     const alphas = [...CSS.matchAll(/(?:^|[;{\s])color: rgb\(var\(--foreground-rgb\) \/ ([0-9.]+)\)/g)].map((m) => Number(m[1]))
     expect(alphas.length).toBeGreaterThan(10)
     for (const alpha of alphas) expect(alpha).toBeGreaterThanOrEqual(0.6)
+  })
+})
+describe('interrupt-safe copyable drafts', () => {
+  it('marks persisted incomplete output after reload without claiming it is finished', () => {
+    const saved = [{
+      role: 'assistant', content: '## Claude-prompt\n\nSteg 1.',
+      tool_data: { kind: 'incomplete_draft', continuationAllowed: true, errorCode: 'ATLAS_PROVIDER_REQUEST_FAILED' },
+      created_at: null,
+    }]
+    expect(hydrateTranscript(saved)).toEqual([{
+      kind: 'assistant', text: '## Claude-prompt\n\nSteg 1.',
+      incomplete: true, continuationAllowed: true,
+    }])
+    expect(textHistory(saved)).toEqual([{ role: 'assistant', content: '## Claude-prompt\n\nSteg 1.' }])
+    const html = renderToStaticMarkup(React.createElement(ChatEntry, {
+      entry: hydrateTranscript(saved)[0], onContinue: () => {},
+    }))
+    expect(html).toContain('Ofullständigt utkast')
+    expect(html).toContain('Kopiera hela svaret')
+    expect(html).toContain('Fortsätt utkast')
+  })
+  it('marks the existing streamed text without duplicating it after the provider fails', () => {
+    let state = startReply([{ kind: 'user', text: 'Skriv en Claude-prompt.' }])
+    state = applyStreamEvent(state, { event: 'text', text: 'Fullt första stycke.\n' }, '/chat/a').state
+    state = applyStreamEvent(state, { event: 'text', text: 'Början på det andra' }, '/chat/a').state
+    state = applyStreamEvent(state, { event: 'draft_interrupted', saved: true, continuationAllowed: true }, '/chat/a').state
+    state = applyStreamEvent(state, { event: 'error', code: 'ATLAS_PROVIDER_REQUEST_FAILED' }, '/chat/a').state
+    expect(state.entries.filter(entry => entry.kind === 'assistant')).toEqual([{
+      kind: 'assistant', text: 'Fullt första stycke.\nBörjan på det andra', incomplete: true, continuationAllowed: true,
+    }])
+    expect(state.entries.at(-1)?.kind).toBe('notice')
+    expect(state.fullText).toBe('Fullt första stycke.\nBörjan på det andra')
+  })
+  it('never offers a continuation of a non-artifact tool-using answer', () => {
+    let state = startReply([])
+    state = applyStreamEvent(state, { event: 'text', text: 'En avbruten sammanfattning' }, '/chat/a').state
+    state = applyStreamEvent(state, { event: 'draft_interrupted', saved: true, continuationAllowed: false }, '/chat/a').state
+    const last = state.entries[state.entries.length - 1]
+    expect(last).toMatchObject({ kind: 'assistant', incomplete: true, continuationAllowed: false })
+    expect(renderToStaticMarkup(React.createElement(ChatEntry, { entry: last }))).not.toContain('Fortsätt utkast')
   })
 })

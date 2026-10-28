@@ -78,3 +78,12 @@ The protected Atlas read-inbox tool now adds a deterministic `reviewGate` to eve
 - `owner_draft_review_possible`: selected complete saved text and contact association; the operator may request a **draft only**, after the exact saved message is read and any commercial terms separately checked.
 
 This status does not imply legal contact approval, sender identity proof, draft approval, a send-ready job or completed followup. The aggregate is **not** a complete mailbox total; pagination and selection remain authoritative. No database migrations or state writes are added. The existing Sales reply-preparation implementation is not duplicated or activated; follow-up remains an owner-reviewed action behind its separately gated release.
+
+
+## Addendum — 2026-10-28: merge with Atlas Notion memory
+
+Origin/main gained project-scoped, opt-in Notion reading in the same Atlas chat route. Rebased this branch onto main `1e14a3c` and resolved only the three overlapping read-intent boundaries: fast-path bypass, available-tool selection and first-turn tool selection, plus the two independent owner-derived arguments passed to the tool executor.
+
+A Notion-only turn continues to expose ONLY its approved read tool; a Strato turn, when its separate feature flag is enabled and operator explicitly requests the Handlarbörsen inbox, uses its exact restricted owner-scoped Strato read tool. Neither tool can manufacture the other's permission or trigger sends.
+
+After merge resolution, the combined **122/122 targeted Notion, Atlas chat, Strato, distribution and social manual-copy unit tests passed**, scoped TypeScript including the complete chat route passed, and **21/21 Strato inbox-only Python safety tests passed**. The release is still subject to exact-head GitHub CI, protected Preview verification and a human go/no-go decision; all send-capable paths remain disabled.

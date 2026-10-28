@@ -40,7 +40,8 @@ describe('Explicit Atlas Strato inbox READ request routing',()=>{
  it('wires real inbox requests ahead of fast path and navigation',()=>{
   const source=readFileSync(resolve(__dirname,'../../app/api/chat/route.ts'),'utf8')
   expect(source).toContain('const stratoInboxReadIntent = !studioContext && hbStratoInboxReadEnabled() && isHandlarborsenInboxReadIntent(lastUserText)')
-  expect(source).toContain('const fastPath = !stratoInboxReadIntent &&')
+  expect(source).toContain('const fastPath = !isNotionKnowledgeIntent(lastUserText) && !stratoInboxReadIntent &&')
+  expect(source).toContain('notionReadOnlyTurn,stratoInboxReadIntent)')
   expect(source).toContain('const navIntent = !stratoInboxReadIntent &&')
   expect(source).toContain('const forceStratoReadFirstTurn = stratoInboxReadIntent && activeTools.some')
   expect(source).toContain("tool_choice: { type: 'tool' as const, name: HB_STRATO_INBOX_TOOL_NAMES[0] }")

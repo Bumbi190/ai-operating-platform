@@ -164,7 +164,8 @@ describe('Atlas Notion chat activation boundary', () => {
     expect(route).toContain("if(name===ATLAS_NOTION_TOOL_NAME)")
     expect(route).toContain("if(!notionReadOnlyTurn) return {ok:false,code:'notion_read_unavailable'}")
     expect(route).toContain('persistedNotionToolResult(')
-    expect(route).toContain('notionReadOnlyTurn)')
+    // A separate owner-only Strato read gate is passed after the Notion flag.
+    expect(route).toContain('notionReadOnlyTurn,stratoInboxReadIntent)')
     // Tool is absent from global TOOLS, so it cannot appear in action/studio turns.
     expect(route).not.toContain('...ATLAS_NOTION_TOOLS,')
   })

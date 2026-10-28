@@ -1,0 +1,66 @@
+# No Notion credential or workspace permission is used by this workflow.
+# Every HTTP response is a deterministic local mock.
+name: Atlas Notion Read-Only Boundary
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web/lib/atlas/notion/**'
+      - 'apps/web/lib/qa/atlas-notion-readonly.test.ts'
+      - 'docs/runbooks/atlas-notion-readonly-p0.md'
+      - '.github/workflows/atlas-notion-readonly.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-boundary:
+    name: Atlas Notion read-only safety
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Prove Notion is not enabled in CI
+        run: |
+          if [ -n "${ATLAS_NOTION_MODE:-}" ] || [ -n "${ATLAS_NOTION_READ_TOKEN:-}" ]; then
+            echo "::error::Notion runtime configuration must be absent in this test runner"
+            exit 1
+          fi
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Run exact source-boundary regression
+        working-directory: apps/web
+        run: |
+          npx --no vitest run lib/qa/atlas-notion-readonly.test.ts \
+            --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/notion-readonly.json"
+      - name: Verify test execution and anti-skip floor
+        if: always()
+        run: |
+          node - "$RUNNER_TEMP/notion-readonly.json" <<'NODE'
+          const fs = require('node:fs')
+          const filename = process.argv[2]
+          if (!fs.existsSync(filename)) process.exit(1)
+          const report = JSON.parse(fs.readFileSync(filename, 'utf8'))
+          const files = (report.testResults ?? []).map(x => x.name ?? x.testFilePath ?? '')
+          const passed = report.numPassedTests ?? 0
+          const failed = report.numFailedTests ?? 0
+          const pending = report.numPendingTests ?? 0
+          const todo = report.numTodoTests ?? 0
+          const failedSuites = report.numFailedTestSuites ?? 0
+          console.log(JSON.stringify({passed, failed, pending, todo, failedSuites}))
+          if (!files.some(x => x.endsWith('atlas-notion-readonly.test.ts')) ||
+              passed < 20 || failed > 0 || pending > 0 || todo > 0 || failedSuites > 0) {
+            console.error('::error::Notion boundary was missing, skipped, or failed')
+            process.exit(1)
+          }
+          NODE
+      - name: Typecheck entire web workspace
+        working-directory: apps/web
+        run: npx tsc --noEmit

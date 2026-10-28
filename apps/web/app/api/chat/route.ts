@@ -1173,7 +1173,7 @@ export async function POST(request: Request) {
 
             let result: unknown
             try {
-              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds, toolUse.id, await resolveOwnedConversationId(), verifiedBuildContext, voice||inputSource==='voice'?'voice':'text',studioContext?.projectId??null,{sessionDb:supabase,sameOrigin:assertSameOrigin(request)===null},notionReadOnlyTurn)
+              result = await executeTool(toolUse.name, toolUse.input as Record<string, unknown>, db, userId, allowedProjectIds, toolUse.id, await resolveOwnedConversationId(), verifiedBuildContext, voice||inputSource==='voice'?'voice':'text',studioContext?.projectId??null,{sessionDb:supabase,sameOrigin:assertSameOrigin(request)===null},notionReadOnlyTurn,lastUserText)
             } catch (err) {
               result = { error: err instanceof Error ? err.message : 'Okänt fel' }
             }
@@ -1336,6 +1336,7 @@ async function executeTool(
   studioProjectId:string|null=null,
   calendarContext?:{sessionDb:CalendarDb;sameOrigin:boolean},
   notionReadOnlyTurn = false,
+  notionUserQuestion = '',
 ): Promise<unknown> {
   if (studioProjectId && !STUDIO_TOOL_NAMES.has(name)) {
     return { error: 'Verktyget är inte tillgängligt i byggstudion.', denied: 'studio_tool_not_allowed' }
@@ -1343,7 +1344,7 @@ async function executeTool(
 
   if(name===ATLAS_NOTION_TOOL_NAME) {
     if(!notionReadOnlyTurn) return {ok:false,code:'notion_read_unavailable'}
-    return handleAtlasNotionRead(input,{db,allowedProjectIds})
+    return handleAtlasNotionRead(input,{db,allowedProjectIds,userQuestion:notionUserQuestion})
   }
 
   if(CALENDAR_TOOL_NAMES.includes(name)){

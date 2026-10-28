@@ -6,7 +6,7 @@
  * platform-operator authority are separately enforced by executeTool.
  */
 const HB = /handlarb[oö]rs(?:en|ens|[-\s]?b[oö]rsen)?/iu
-const INTERNAL = /(?:crm|sälj|sales|kontakt|mejl|e-post|epost|inkorg|svar|scb|pipeline|uppfölj|outreach)/iu
+const INTERNAL = /(?:crm|sälj|sales|kontakt|mejl|e-post|epost|inkorg|inbox|svar|scb|pipeline|uppfölj|outreach)/iu
 const EXTERNAL = /(?:n8n|extern(?:a|t)?[\s-]+(?:workflow|arbetsflö|flöde|automati)|workflow[\s-]?referens|arbetsflödesreferens|workflowkatalog)/iu
 const READ_BEGIN = /^(?:(?:kan du|skulle du kunna|vänligen|snälla|please)\s+)*(?:jämför|jämföra|granska|visa\s+(?:en\s+)?jämförelse|gör\s+en\s+jämförelse|sök)(?![\p{L}\p{N}_])/iu
 const NO_READ = /^(?:(?:kan du|skulle du kunna|vänligen|snälla)\s+)*(?:jämför|granska|visa|sök)\s+(?:inte|ej|aldrig)(?![\p{L}\p{N}_])/iu

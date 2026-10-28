@@ -114,7 +114,7 @@ describe('Atlas external workflow references: read-only, pinned discovery', () =
   it('keeps runtime audit data bounded with no credentials, networks or execution', () => {
     const content = readFileSync(resolve(process.cwd(),
       'lib/atlas/workflow-references/source-audit.mjs'), 'utf8')
-    expect(content).not.toMatch(/\\bfetch\\s*\\(|\\bprocess\\.env\\b|\\bexec\\s*\\(|\\bspawn\\s*\\(/)
+    for (const forbidden of ['fetch(', 'process.env', 'spawn(', 'exec(']) expect(content).not.toContain(forbidden)
     for (const path of AUDITED_SOURCE_PATHS) {
       const check = sourceAuditFor(path, SOURCE_AUDIT_PIN, null)
       expect(JSON.stringify(check)).not.toContain('tokenValue')

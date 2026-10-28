@@ -591,3 +591,43 @@ arbetskö, ingen produktionscron och ger ingen publiceringsbehörighet.
 **Verifikationsgrind:** körning och slutlig status för den exakta nya
 committen i GitHub Actions måste kontrolleras efter push; lokal
 testpassning ensam räcker inte som CI-bevis.
+
+## Fas 14 – Riktigt kanoniskt claim_runs i isolerad PostgreSQL (2026-10-28)
+
+Efter CI-integrationen av de fyra tidigare testlägena har vi lagt till
+ett femte: `-Mode native-claim`. Den befintliga testköraren laddar
+**exakt den kanoniska funktionen** `public.claim_runs(integer,integer)`
+från `apps/web/supabase/migrations/20261015041654_atlas_builder_studio_workspace.sql`
+i enbart en disposable PostgreSQL 16-container med `--network none`,
+utan volymer eller publika portar. Funktionen har även granskats läsbart
+mot Omniras aktiva Supabase/PostgreSQL 17-definition.
+
+En extra minimal fixture tillför `platform_config.id=1`,
+`runs.created_at/claimed_at/started_at` och
+`project_lifecycle.version` som **faktiska dependency-kolumner**,
+utan att ändra Omniras produktionsschema eller beröra andra Dockercontainrar.
+Endast de föreslagna veckofunktionernas lokala söndagsklocka ersätts
+i minnet med 3 januari 2027 kl. 15:10 Stockholm.
+
+Detta test använder **den faktiska `claim_runs`-uppdateringen**, inte
+en manuell `UPDATE runs SET status='running'`. Det kräver att
+Familje-Stundens native köpost skapas en gång med
+`idempotency_key=NULL`, att projektstopp och globalt STOP blockerar
+claim, att riktiga `claim_id`, lease, försök och körstatus skapas,
+att ett andra claim inte hittar ett redan taget jobb, och att
+`family_weekly_authority_current` godtar just det verifierade
+native-jobbet. Globalt STOP mellan claim och betalt anspråk blockerar
+kostnad, därefter tillåts högst ett betalt anspråk per vecka.
+Utgången lease och ett separat autentiserat owner-revoke tar bort
+auktoriteten utan att radera permanenta kö-/kostnadsledgern.
+
+**Windows-test: PASS**, exitkod 0. Temporary container stoppades
+och avlägsnades. Det nya läget är tillagt i den befintliga
+`Atlas Studio Responsive UI`-workflowens separata disposable
+PostgreSQL-jobb. Ny commit kräver egen verifierad GitHub CI/Preview.
+
+**Viktig begränsning:** Detta är verklig kanonisk `claim_runs` med
+isolerade, noggrant begränsade beroendetabeller – inte en full replay
+av alla 163 migrationsfiler, en riktig Supabase Auth-session eller
+en fullständig publiceringskedja. Ingen cron, produktionsmigration,
+AI-kostnad eller automatisk postning har aktiverats.

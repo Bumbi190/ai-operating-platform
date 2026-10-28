@@ -143,7 +143,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($mode in @('normal','simulated-sunday','native-editorial','native-content')) {
+          foreach ($mode in @('normal','simulated-sunday','native-editorial','native-content','native-claim')) {
             & ./docs/verification/fixtures/run-family-weekly-pg-smoke.ps1 -Mode $mode
             if ($LASTEXITCODE -ne 0) {
               throw "FAMILY_WEEKLY_POSTGRES_TEST_FAILED:$mode"

@@ -2,11 +2,12 @@
 # Usage (from repo root):
 #   powershell -NoProfile -File docs/verification/fixtures/run-family-weekly-pg-smoke.ps1 -Mode normal
 #   powershell -NoProfile -File docs/verification/fixtures/run-family-weekly-pg-smoke.ps1 -Mode simulated-sunday
+#   powershell -NoProfile -File docs/verification/fixtures/run-family-weekly-pg-smoke.ps1 -Mode native-claim
 # NEVER connects to Supabase or an existing Docker network.
 # Local postgres:16 image only; NO published ports, volumes or mounts.
 # Simulated-Sunday rewrites SQL in memory ONLY for disposable tests.
 param(
- [ValidateSet('normal','simulated-sunday','native-editorial','native-content')]
+ [ValidateSet('normal','simulated-sunday','native-editorial','native-content','native-claim')]
  [string]$Mode='normal'
 )
 $ErrorActionPreference='Stop'
@@ -49,12 +50,12 @@ try{
  )
  if($Mode -eq 'normal'){$files+= 'docs\verification\fixtures\family-weekly-pg-smoke-assert.sql'}
  elseif($Mode -eq 'simulated-sunday'){$files+='docs\verification\fixtures\family-weekly-pg-queue-assert.sql'}
- else {$files+='docs\verification\fixtures\family-weekly-pg-native-deps.sql'}
+ elseif($Mode -ne 'native-claim'){$files+='docs\verification\fixtures\family-weekly-pg-native-deps.sql'}
  foreach($relative in $files){
   $file=Join-Path $repo $relative
   if(-not(Test-Path $file)){throw ('DISPOSABLE_TEST_FILE_MISSING:'+ $relative)}
   $raw=Get-Content -LiteralPath $file -Raw -Encoding UTF8
-  if($Mode -eq 'simulated-sunday' -and
+  if($Mode -in @('simulated-sunday','native-claim') -and
     $relative -match 'family_weekly_(run_creator|once_only_model_attempt)_proposed\.sql$'){
    $original="v_local:=clock_timestamp() at time zone 'Europe/Stockholm';"
    $replacement="v_local:=timestamp '2027-01-03 15:10:00';"
@@ -65,6 +66,29 @@ try{
   Write-Output ('APPLY_DISPOSABLE_ONLY='+ ($relative -split '\\')[-1])
   $raw | docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
   if($LASTEXITCODE -ne 0){throw ('DISPOSABLE_TEST_SQL_FAILED:'+ $relative)}
+ }
+ if($Mode -eq 'native-claim'){
+  # Execute the actual canonical claim_runs body over the native Family queue,
+  # not the synthetic tests' direct UPDATE into running state.
+  $deps=Join-Path $repo 'docs\verification\fixtures\family-weekly-pg-native-claim-deps.sql'
+  Get-Content -LiteralPath $deps -Raw -Encoding UTF8 |
+   docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'NATIVE_CLAIM_DEPENDENCIES_FAILED'}
+  $source=Join-Path $repo 'apps\web\supabase\migrations\20261015041654_atlas_builder_studio_workspace.sql'
+  $canonical=Get-Content -LiteralPath $source -Raw -Encoding UTF8
+  $start=$canonical.IndexOf('create or replace function public.claim_runs(')
+  $end=$canonical.IndexOf('$fn$;',$start)
+  if($start -lt 0 -or $end -le $start){
+   throw 'CANONICAL_CLAIM_RUNS_SOURCE_NOT_FOUND'
+  }
+  $native=$canonical.Substring($start,$end-$start+5)
+  Write-Output 'LOAD_CANONICAL_CLAIM_RUNS_IN_DISPOSABLE_DB_ONLY=true'
+  $native | docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'CANONICAL_CLAIM_RUNS_LOAD_FAILED'}
+  $assertFile=Join-Path $repo 'docs\verification\fixtures\family-weekly-pg-native-claim-assert.sql'
+  Get-Content -LiteralPath $assertFile -Raw -Encoding UTF8 |
+   docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'CANONICAL_CLAIM_RUNS_TEST_FAILED'}
  }
  if($Mode -eq 'native-content'){
   # Add synthetic prerequisites, then load the EXACT real content table and

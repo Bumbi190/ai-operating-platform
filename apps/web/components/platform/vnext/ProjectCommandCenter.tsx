@@ -144,6 +144,7 @@ function Header({ model }: { model: ProjectCommandCenterModel }) {
     { label: 'Nytt workflow', href: links.newWorkflow },
     { label: 'Media Pipeline', href: links.media },
     { label: 'Marknadsplatsstatistik', href: links.marketplace },
+    { label: 'Kommunikation', href: hasCover ? '/projects/handlarborsen/communications' : null },
   ]
 
   return (

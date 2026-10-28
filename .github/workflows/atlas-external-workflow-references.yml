@@ -69,7 +69,7 @@ jobs:
           }
           const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'))
           const required = {
-            'atlas-external-workflow-references.test.ts': 25,
+            'atlas-external-workflow-references.test.ts': 26,
             'atlas-workflow-catalog-chat.test.ts': 2,
             'atlas-workflow-catalog.test.ts': 3,
           }

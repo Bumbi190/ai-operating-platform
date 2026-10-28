@@ -9,6 +9,8 @@ export interface ExternalWorkflowSearchInput {
   query?: unknown
   project?: unknown
   limit?: unknown
+  /** Set by the authenticated server from the operator's actual question. */
+  includeNoOpAuditExamples?: unknown
 }
 
 export function searchExternalWorkflowReferences(input: ExternalWorkflowSearchInput) {

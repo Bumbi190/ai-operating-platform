@@ -70,12 +70,12 @@ vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({ from: (t: string) => makeBuilder(t), rpc: () => Promise.resolve({ data: null, error: null }) }),
 }))
 
-let streamCalls: Array<{ system: string; tools: unknown[] }> = []
+let streamCalls: Array<{ system: string; tools: unknown[]; toolChoice?: unknown }> = []
 vi.mock('@anthropic-ai/sdk', () => {
   class FakeAnthropic {
     messages = {
       stream: (args: any) => {
-        streamCalls.push({ system: args.system, tools: args.tools })
+        streamCalls.push({ system: args.system, tools: args.tools, toolChoice: args.tool_choice })
         const handlers: Record<string, (d: any) => void> = {}
         return {
           on(event: string, cb: (d: any) => void) { handlers[event] = cb; return this },
@@ -272,4 +272,27 @@ describe('wiring (source)', () => {
     const alloc = readFileSync(resolve(__dirname, '../atlas/context/allocation.ts'), 'utf8')
     expect(alloc).not.toMatch(/export const STATIC_POLICY_V2/)
   })
+})
+
+describe('voice operator tools are actually offered and forced when requested', () => {
+  it('forces the authorized Strato inbox read when the operator asks for latest Handlarbörsen mail', async () => {
+    await ask('Har du tillgång till Handlarbörsens Strato-mail och kan du läsa senaste mejlet?', { voice: true })
+    expect(streamCalls[0]?.toolChoice).toEqual({ type: 'tool', name: 'handlarborsen_latest_mail' })
+    expect(streamCalls[0]?.tools).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'handlarborsen_latest_mail' }),
+    ]))
+  }, 15000)
+
+  it('forces the stored source statistics read for a direct Handlarbörsen KPI question', async () => {
+    await ask('Hur många verifierade handlare har Handlarbörsen?', { voice: true })
+    expect(streamCalls[0]?.toolChoice).toEqual({ type: 'tool', name: 'handlarborsen_statistics' })
+  }, 15000)
+
+  it('forces actual navigation for the user’s spoken collaborative Handlarbörsen request', async () => {
+    await ask('Jag vill att vi går in på Handlarbörsen och sedan analyserar statistiken', { voice: true })
+    expect(streamCalls[0]?.toolChoice).toEqual({ type: 'tool', name: 'navigate' })
+    expect(streamCalls[0]?.tools).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'handlarborsen_statistics' }),
+    ]))
+  }, 15000)
 })

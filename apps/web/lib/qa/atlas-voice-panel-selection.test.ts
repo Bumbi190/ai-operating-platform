@@ -134,6 +134,15 @@ describe('Compact persistent Atlas call shell', () => {
     expect(runtime).toContain("const currentSessionActive = managedVoice ? voicePanel !== 'closed'")
     expect(runtime).toContain("setVoicePanel('minimized')")
   })
+  it('keeps hands-free interruption behind an explicit headset choice in expanded microphone settings', () => {
+    const html = render(session({ playbackMode: 'headphones' }))
+    expect(html).toContain('atlas-headphones-barge-in')
+    expect(html).toContain('checked=""')
+    expect(html).toContain('börja prata')
+    const dock = render(session({ playbackMode: 'headphones' }), true)
+    expect(dock).not.toContain('atlas-headphones-barge-in')
+    expect((dock.match(/<button /g) ?? [])).toHaveLength(3)
+  })
   it('exposes the phone entry on Atlas home instead of the old microphone entry', () => {
     const home = readFileSync(join(process.cwd(), 'components/platform/vnext/AtlasCommandCore.tsx'), 'utf8')
     expect(home).toContain("'Ring Nova'")

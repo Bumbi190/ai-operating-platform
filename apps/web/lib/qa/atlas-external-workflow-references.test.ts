@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import index from '@/lib/atlas/workflow-references/catalog-index.json'
 import { searchExternalWorkflowReferences } from '@/lib/atlas/workflow-references'
 import { searchReferences } from '@/lib/atlas/workflow-references/catalog-search.mjs'
+import { isExternalWorkflowReferenceReadIntent } from '@/lib/atlas/workflow-references/read-intent'
 
 describe('Atlas external workflow references: read-only, pinned discovery', () => {
   it('indexes pinned source metadata only, acknowledging upstream inconsistency', () => {
@@ -79,9 +80,61 @@ describe('Atlas external workflow references: read-only, pinned discovery', () =
     expect(result.matches[0].sourceUrl).toContain('/workflows/Safe/123_safe.json')
   })
 
+  it.each([
+    'Sök externa workflowreferenser som kan förbättra Handlarbörsens leadhantering och mejluppföljning. Visa källorna, jämför med våra befintliga funktioner och föreslå inga ändringar utan godkännande.',
+    'Kan du söka i n8n-biblioteket efter mejlflöden?',
+    'Visa externa workflowreferenser',
+    'Vilka externa workflowreferenser finns för oss?',
+    'Jämför våra flöden med n8n workflows',
+    'Hitta externa automationsflöden för Handlarbörsen',
+  ])('routes explicit external reference reads through the catalog: %s', (request) => {
+    expect(isExternalWorkflowReferenceReadIntent(request)).toBe(true)
+  })
+
+  it.each([
+    'Sök inte efter externa workflowreferenser',
+    'Skriv en post om externa workflowreferenser',
+    'Skriv om följande text: Sök externa workflowreferenser',
+    'Jämför följande stycke: Sök externa workflowreferenser',
+    'Hur kan vi bygga vår interna workflowkatalog?',
+    'Starta n8n-workflowet',
+    'Det finns externa workflowreferenser för Handlarbörsen',
+    'Berätta mer om n8n',
+    'Visa kundlistan i CRM',
+  ])('does not force catalog tools for unrelated or negated requests: %s', (request) => {
+    expect(isExternalWorkflowReferenceReadIntent(request)).toBe(false)
+  })
+
+  it('fails closed on invalid, missing or oversized user messages', () => {
+    expect(isExternalWorkflowReferenceReadIntent(null)).toBe(false)
+    expect(isExternalWorkflowReferenceReadIntent({ text: 'Sök externa workflowreferenser' })).toBe(false)
+    expect(isExternalWorkflowReferenceReadIntent('Sök externa workflowreferenser'.repeat(55))).toBe(false)
+  })
+
+  it('forces the exact read-only catalog tool before navigation or generic action routing', () => {
+    const route = readFileSync(resolve(process.cwd(), 'app/api/chat/route.ts'), 'utf8')
+    expect(route).toContain("import { isExternalWorkflowReferenceReadIntent } from '@/lib/atlas/workflow-references/read-intent'")
+    expect(route).toContain('const externalReferenceReadIntent = !image && !studioContext')
+    expect(route).toContain('const fastPath = !externalReferenceReadIntent &&')
+    expect(route).toContain("const forceExternalReferenceReadFirstTurn = externalReferenceReadIntent && activeTools.some")
+    expect(route).toContain("name: 'search_external_workflow_references' } }")
+    expect(route.indexOf(': forceExternalReferenceReadFirstTurn')).toBeLessThan(route.indexOf(': forceNavigateFirstTurn'))
+    expect(route).toContain('Om resultatet är tomt, felaktigt eller denied:')
+    expect(route).toContain('Visa bara faktiska träffar med deras sourceUrl')
+  })
+
+  it('preserves Notion-only routing when the request also mentions external workflows', () => {
+    const route = readFileSync(resolve(process.cwd(), 'app/api/chat/route.ts'), 'utf8')
+    expect(route).toContain('const fastPath = !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText)')
+    expect(route).toContain('const activeTools = notionReadOnlyTurn ? ATLAS_NOTION_TOOLS')
+    expect(route).toContain('const forceNotionFirstTurn = notionReadOnlyTurn')
+    expect(route).toContain("const forceExternalReferenceReadFirstTurn = externalReferenceReadIntent && activeTools.some(tool => tool.name === 'search_external_workflow_references') && !forceNotionFirstTurn")
+    expect(route.indexOf('? (forceNotionFirstTurn')).toBeLessThan(route.indexOf(': forceExternalReferenceReadFirstTurn'))
+  })
+
   it('keeps the Atlas tool operator-only, separate from executable workflows', () => {
     const route = readFileSync(resolve(process.cwd(), 'app/api/chat/route.ts'), 'utf8')
-    expect(route.match(/name: 'search_external_workflow_references'/g)).toHaveLength(1)
+    expect(route.match(/\{\s*name: 'search_external_workflow_references',\s*description:/g)).toHaveLength(1)
     expect(route).toContain("import { searchExternalWorkflowReferences } from '@/lib/atlas/workflow-references'")
     expect(route).toMatch(/if \(name === 'search_external_workflow_references'\) \{\r?\n\s*const operator = await resolvePlatformOperator\(\)/)
     expect(route).toContain("if (!operator.ok) return { denied: 'platform_operator_required' }")

@@ -44,7 +44,6 @@
         "agent_decisions",
         "ai_cost_snapshots",
         "memory_refs",
-        "media_factcheck_reports",
         "media_provider_connections",
         "media_provider_oauth_states"
       ],
@@ -54,11 +53,10 @@
         "agent_decisions": "SERVER_ONLY",
         "ai_cost_snapshots": "SERVER_ONLY",
         "memory_refs": "SERVER_ONLY",
-        "media_factcheck_reports": "SERVER_ONLY",
         "media_provider_connections": "SERVER_ONLY",
         "media_provider_oauth_states": "SERVER_ONLY"
       },
-      "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class. The two Higgsfield tables are proposed by 20261022075921_higgsfield_mcp_readonly.sql and have NOT been applied or inspected in production. media_factcheck_reports is proposed by the draft 20261028131815_the_prompt_factcheck_evidence_v1.sql: append-only server-owned FactCheck evidence only, RLS enabled, no client privileges or policies, service_role SELECT/INSERT only. None of these proposed tables may be represented as live until a reviewed production migration and catalog reconciliation."
+      "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class. The two Higgsfield tables are proposed by 20261022075921_higgsfield_mcp_readonly.sql and have NOT been applied or inspected in production; they remain created_not_live until a reviewed production migration and live catalog reconciliation."
     },
     "post_migration": "20260909120000_workflow_stories_rls.sql (Phase 9Y) and 20260910090000_declarative_rls_parity.sql (Phase 9Z). Every row reflects effective production state, which those two migrations now also declare; and 20260910120000_cost_ledger_rls_isolation.sql (Phase 9AB), which moves cost_events and infra_costs from TENANT_RLS to SERVER_ONLY: their `project_id IS NULL OR …` policies on role public are dropped and anon/authenticated grants revoked.",
     "views": "Phase 9AA. Public VIEWS, classified like tables. A view runs as its owner unless it is security_invoker, so base-table RLS does not protect it; the migration security gate fails any client-reachable public view without security_invoker and any public view absent from this map. `live` records whether it exists in production.",

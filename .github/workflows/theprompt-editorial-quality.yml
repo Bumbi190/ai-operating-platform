@@ -10,7 +10,7 @@ on:
       - 'apps/web/lib/media/factcheck/**'
       - 'apps/web/app/**/factcheck/**'
       - 'apps/web/app/**/media/page.tsx'
-      - 'apps/web/supabase/migrations/*the_prompt_factcheck*'
+      - 'docs/workflows/proposed-migrations/*the_prompt_factcheck*'
       - 'docs/workflows/the-prompt.factcheck.v1.json'
       - 'apps/web/app/api/media/**'
       - '.github/workflows/theprompt-editorial-quality.yml'

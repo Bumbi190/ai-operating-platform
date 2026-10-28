@@ -3,10 +3,14 @@ import assert from 'node:assert/strict'
 import {readFileSync,readdirSync} from 'node:fs'
 import {join} from 'node:path'
 
-const files=readdirSync('apps/web/supabase/migrations')
+const canonical=readdirSync('apps/web/supabase/migrations')
   .filter(name=>/_the_prompt_factcheck_evidence_v1\.sql$/.test(name))
-assert.equal(files.length,1,'Exactly one CLI-generated FactCheck migration is required')
-const migration=readFileSync(join('apps/web/supabase/migrations',files[0]),'utf8')
+assert.deepEqual(canonical,[],
+  'Unreleased FactCheck SQL must NOT enter the canonical production migrations')
+const files=readdirSync('docs/workflows/proposed-migrations')
+  .filter(name=>/_the_prompt_factcheck_evidence_v1\.sql$/.test(name))
+assert.equal(files.length,1,'Exactly one proposed FactCheck migration is required')
+const migration=readFileSync(join('docs/workflows/proposed-migrations',files[0]),'utf8')
 const pagePath='apps/web/app/(platform)/projects/[slug]/factcheck/page.tsx'
 const page=readFileSync(pagePath,'utf8')
 const media=readFileSync(
@@ -86,11 +90,10 @@ test('owner can navigate to history only from The Prompt media area',()=>{
   assert.match(page,/rel="noopener noreferrer"/)
 })
 
-test('schema registry declares the proposed table SERVER_ONLY, not live',()=>{
+test('schema registry must not claim a not-yet-canonical proposal is deployed',()=>{
   const registry=JSON.parse(readFileSync('apps/web/tests/isolation/schema-security.json','utf8'))
-  const notLive=registry._meta?.created_not_live
-  assert.ok(notLive?.tables?.includes('media_factcheck_reports'))
-  assert.equal(notLive.classes.media_factcheck_reports,'SERVER_ONLY')
-  assert.equal(Object.hasOwn(registry.tables,'media_factcheck_reports'),false,
-    'A draft table must not be reported as an observed live database relation')
+  assert.equal(Object.hasOwn(registry.tables,'media_factcheck_reports'),false)
+  assert.equal(registry._meta?.created_not_live?.tables?.includes('media_factcheck_reports'),false)
+  assert.match(migration,/private, append-only source-grounded review evidence/i)
+  assert.match(migration,/grant select, insert on public\.media_factcheck_reports to service_role/i)
 })

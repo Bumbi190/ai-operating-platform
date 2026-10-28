@@ -85,3 +85,12 @@ test('owner can navigate to history only from The Prompt media area',()=>{
   assert.match(page,/recognizeSource\(obj\.url\)/)
   assert.match(page,/rel="noopener noreferrer"/)
 })
+
+test('schema registry declares the proposed table SERVER_ONLY, not live',()=>{
+  const registry=JSON.parse(readFileSync('apps/web/tests/isolation/schema-security.json','utf8'))
+  const notLive=registry._meta?.created_not_live
+  assert.ok(notLive?.tables?.includes('media_factcheck_reports'))
+  assert.equal(notLive.classes.media_factcheck_reports,'SERVER_ONLY')
+  assert.equal(Object.hasOwn(registry.tables,'media_factcheck_reports'),false,
+    'A draft table must not be reported as an observed live database relation')
+})

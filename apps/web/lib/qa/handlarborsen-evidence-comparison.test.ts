@@ -97,7 +97,8 @@ describe('Handlarbörsen read-only combined source comparison', () => {
     if (out.status !== 'ok') return
     expect(sources.sales).toHaveBeenCalledOnce()
     expect(sources.sales).toHaveBeenCalledWith(CTX)
-    expect(sources.catalog).toHaveBeenCalledExactlyOnceWith({
+    expect(sources.catalog).toHaveBeenCalledOnce()
+    expect(sources.catalog).toHaveBeenCalledWith({
       project: 'handlarborsen', query: 'lead email follow up approval',
       limit: 5, includeNoOpAuditExamples: true,
     })

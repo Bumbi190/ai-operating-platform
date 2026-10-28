@@ -19,8 +19,49 @@ Status: Code and deterministic mocked API tests only. Feature OFF by default. No
 - A verified example from the canonical Handlarbörsen repo is `app/page.tsx` (390 lines, about 16 KiB). This is the real homepage location, not `src/app/page.tsx`.
 - Each read still exposes at most 240 numbered lines. First page returns `startLine: 1`, `nextStartLine: 241` and an exact commit SHA. To read subsequent lines, submit `action: read_file`, the same path, `startLine: 241` and `expectedSha` equal to that **exact previous commit SHA**. The provider resolves main again and refuses the continuation with `source_changed` (HTTP 409) if the commit moved. Start again from line 1; NEVER combine fragments from two commits.
 - No source byte limits or operator/project isolation gates have been relaxed. Only response metadata (`startLine`, `nextStartLine`, SHA, URL) persists in chat tool-history receipts. The actual source lines are delivered only in the authorized live tool result.
-- Verified 28 October 2026: the new GitHub Actions security boundary passed 164/164 tests (six suites) and full web TypeScript in a clean Ubuntu runner on commit `1a85b87`. After adding a genuine `/api/chat` route-level synthetic integration suite, **177/177 focused tests passed locally across eight suites**; the new full-chat route suite contributes eight tests, including the OpenAI economy-profile chat path. The eighth suite is the existing five-case `atlas-openai-chat.test.ts` wire-adapter test. The Github Actions security gate now requires all eight suites (177 total), without skipped tests. It checks authorized source-only tool routing, exact SHA receipt, omitted private source content in durable tool rows, forged write tools, duplicate source requests, foreign operators/projects, wrong origin, and production-off behavior. The route is exercised with fake Anthropic/GitHub results, never live credentials, external network or paid provider calls. CI is extended to require all seven suites and will supply the authoritative clean-run verification after the next push.
-- No GitHub App has been installed; feature flag, production and article/social workflows remain unchanged. Require fresh CI and an independent security review before an owner-approved live pilot.
+- Verified 28 October 2026: the new GitHub Actions security boundary passed 164/164 tests (six suites) and full web TypeScript in a clean Ubuntu runner on commit `1a85b87`. After adding a genuine `/api/chat` route-level synthetic integration suite, **177/177 focused tests passed locally across eight suites**; the new full-chat route suite contributes eight tests, including the OpenAI economy-profile chat path. The eighth suite is the existing five-case `atlas-openai-chat.test.ts` wire-adapter test. The Github Actions security gate now requires all eight suites (177 total), without skipped tests. It checks authorized source-only tool routing, exact SHA receipt, omitted private source content in durable tool rows, forged write tools, duplicate source requests, foreign operators/projects, wrong origin, and production-off behavior. The route is exercised with fake Anthropic/GitHub results, never live credentials, external network or paid provider calls. The dedicated GitHub Actions run [#40758745238](https://github.com/Bumbi190/ai-operating-platform/actions/runs/40758745238) PASSED 177/177 tests, all eight suites without skipped tests, and a full web TypeScript check on clean CI. Vercel Preview for commit `0818e27` was READY.
+- No GitHub App has been installed; feature flag, production and article/social workflows remain unchanged. Require independent security review before an owner-approved live pilot.
+
+## GitHub App – owner setup prepared, NOT installed (28 October 2026)
+
+GitHub supports registration links that prefill permission and account settings. This is an owner checklist, not authority for an assistant to create or install an app.
+
+Owner-only app registration (opens a prefilled form, does NOT submit or install):
+https://github.com/settings/apps/new?name=omnira-nova-source-read&description=Private%20read-only%20GitHub%20source%20inspection%20for%20Omnira%20Nova%20%28Handlarborsen%20pilot%20only%29&url=https%3A%2F%2Fomniraos.se&contents=read&public=false&webhook_active=false&request_oauth_on_install=false
+
+Verify the actual settings on the GitHub form before creating the app:
+
+1. Owner: personal account controlling `Bumbi190/handlarborsen`. Proposed app name `omnira-nova-source-read` may require adjustment if unavailable. Homepage is the existing `https://omniraos.se`.
+2. Visibility: **Only on this account** (`public=false`). OAuth on installation **OFF**. No callback URL or device flow. Webhooks **OFF**. No events subscribed.
+3. Permissions: **Contents: Read-only** and GitHub's automatic **Metadata: Read**. ALL other repository, organization and account permissions **No access**. No Actions, Pull requests, Administration, Checks or Deployments permissions.
+4. After registering, choose **Install App** > **Only select repositories** > select exactly `Bumbi190/handlarborsen` > review and explicitly confirm. Never choose **All repositories**. Verify the actual installation selection afterward; the connected ChatGPT GitHub installation is broader and must NOT be reused.
+5. Use GitHub's **numeric App ID**, not Client ID. The numeric **Installation ID** appears in the installation settings/URL after installation. Generate the App's private key from the GitHub App settings.
+6. **Do not paste the downloaded PEM private key into chat, Notion, GitHub issues/PRs, code, browser URLs or terminal command arguments.** Do not create a classic personal access token. Deliver the private key only into Vercel's server-side secret settings through an owner-approved secure flow.
+
+After independent security review and separate explicit owner approval, enter the following **branch-scoped Preview-only** environment variables in the Omnira Vercel web project:
+
+- `NOVA_SOURCE_GITHUB_APP_ID`: numeric GitHub App ID
+- `NOVA_SOURCE_GITHUB_INSTALLATION_ID`: numeric installation ID for this selected-repo installation
+- `NOVA_SOURCE_GITHUB_APP_PRIVATE_KEY`: PEM in the Vercel secure server environment; literal newlines or escaped `\n` are supported
+- `ATLAS_SOURCE_INSPECTION_MODE=pilot`: enable only after all three values have been configured and reviewed
+
+Never add `NEXT_PUBLIC_` prefixes. Production is blocked by code (`VERCEL_ENV !== preview`) even if a pilot flag is copied there. Do not enable the flag to debug missing credentials. A real owner-authenticated Preview session must be used for acceptance.
+
+Preview acceptance after owner approval:
+
+1. Ask Nova for Handlarbörsen's repository status. Verify exact numeric repo ID `1374257653`, immutable 40-char commit SHA and observed timestamp. An error is not an observed status.
+2. Read `README.md` and `app/page.tsx` first page, limited to 240 numbered lines. Verify source URL pinned to the same commit and continuation cursor.
+3. Read `app/page.tsx` beginning at `startLine=241` with the exact `expectedSha` returned previously; expect the rest of the 390 lines and no mixed Git versions. A wrong or stale SHA must fail closed.
+4. Prove denials for wrong owner/project/origin, dotfiles, symlinks, oversize/binary content, and forged write tools. No publishing, execution or editing should be available.
+5. Log only a redacted evidence receipt with commit, path, denial codes and timestamp. Never copy private code or secrets into PR comments or Notion.
+
+Authoritative references:
+- https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-using-url-parameters
+- https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app
+- https://docs.github.com/en/apps/using-github-apps/installing-your-own-github-app
+
+Status: **not created, not installed, not enabled, not merged**. Do not treat registration-form preparation as real GitHub authorization.
+
 ## Disabled release gates
 
 The new POST endpoint is /api/atlas/source-inspection. It is permanently unavailable in Production in this tranche. Preview also requires all of these server-side settings, currently NOT installed:

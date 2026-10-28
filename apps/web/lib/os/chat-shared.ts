@@ -348,6 +348,7 @@ export function awaitingAtlas(entries: TranscriptEntry[], pending: boolean): boo
 /** One label per tool `/api/chat` offers — the names are the route's, the words are the surface's. */
 export const TOOL_LABELS: Record<string, string> = {
   handlarborsen_statistics: 'Läser Handlarbörsens statistik',
+  handlarborsen_sales_overview: 'Läser Handlarbörsens försäljningsöversikt',
   handlarborsen_latest_mail: 'Läser Handlarbörsens senaste mejl',
   search_external_workflow_references: 'Söker workflowreferenser',
   get_calendar: 'Läser kalendern',

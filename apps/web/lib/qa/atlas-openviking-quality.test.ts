@@ -35,8 +35,8 @@ function sample(): QualityEvaluation {
         const wrong = sourceIds[(i + 1) % sourceIds.length]
         return {
           id: 'answer-' + i, kind: 'answerable' as const, expectedIds: [expected],
-          lexical: observations([i < 26 ? expected : wrong, expected], 10),
-          openviking: observations([i < 30 ? expected : wrong, expected], 40),
+          lexical: observations([i < 26 ? expected : wrong, i < 26 ? wrong : expected], 10),
+          openviking: observations([i < 30 ? expected : wrong, i < 30 ? wrong : expected], 40),
         }
       }),
       ...Array.from({ length: 12 }, (_, i) => ({

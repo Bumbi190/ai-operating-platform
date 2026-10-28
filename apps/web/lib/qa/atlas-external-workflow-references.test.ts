@@ -125,7 +125,7 @@ describe('Atlas external workflow references: read-only, pinned discovery', () =
 
   it('keeps the Atlas tool operator-only, separate from executable workflows', () => {
     const route = readFileSync(resolve(process.cwd(), 'app/api/chat/route.ts'), 'utf8')
-    expect(route.match(/name: 'search_external_workflow_references'/g)).toHaveLength(1)
+    expect(route.match(/\{\s*name: 'search_external_workflow_references',\s*description:/g)).toHaveLength(1)
     expect(route).toContain("import { searchExternalWorkflowReferences } from '@/lib/atlas/workflow-references'")
     expect(route).toMatch(/if \(name === 'search_external_workflow_references'\) \{\r?\n\s*const operator = await resolvePlatformOperator\(\)/)
     expect(route).toContain("if (!operator.ok) return { denied: 'platform_operator_required' }")

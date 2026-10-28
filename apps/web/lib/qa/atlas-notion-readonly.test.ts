@@ -151,6 +151,21 @@ describe('Atlas Notion: read-only, bounded, source-scoped', () => {
     }
   })
 
+  it('accepts a valid Notion Markdown response with omitted optional warnings', async () => {
+    const fetcher = mockTransport([
+      { payload: BASE },
+      { payload: {
+        object: 'page_markdown', id: PAGE, markdown: '# Approved content',
+        truncated: false, unknown_block_ids: [],
+      } },
+      { payload: BASE },
+    ])
+    const result = await readApprovedNotionPage(config(fetcher), PROJECT, PAGE)
+    expect(result.markdown).toBe('# Approved content')
+    expect(result.actionAuthority).toBe(false)
+    expect(fetcher).toHaveBeenCalledTimes(3)
+  })
+
   it('rejects truncated, unknown, or warned Markdown rather than indexing partial knowledge', async () => {
     for (const change of [
       { truncated: true }, { unknown_block_ids: [OTHER_PAGE] },

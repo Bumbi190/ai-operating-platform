@@ -197,8 +197,11 @@ export async function readApprovedNotionPage(
   const page = await getJson(safePath + '/markdown', config.token, fetcher)
   if (page.object !== 'page_markdown' || canonicalId(page.id) !== pageId
     || page.truncated !== false || !Array.isArray(page.unknown_block_ids)
-    || page.unknown_block_ids.length > 0 || !Array.isArray(page.warnings)
-    || page.warnings.length > 0 || typeof page.markdown !== 'string'
+    || page.unknown_block_ids.length > 0
+    // The 2026-03-11 Markdown response omits warnings when none are present.
+    || (page.warnings !== undefined
+      && (!Array.isArray(page.warnings) || page.warnings.length > 0))
+    || typeof page.markdown !== 'string'
     || page.markdown.trim().length === 0) {
     throw new NotionReadError('source_incomplete')
   }

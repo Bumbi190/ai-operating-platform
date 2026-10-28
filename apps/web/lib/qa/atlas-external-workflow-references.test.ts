@@ -123,6 +123,15 @@ describe('Atlas external workflow references: read-only, pinned discovery', () =
     expect(route).toContain('Visa bara faktiska träffar med deras sourceUrl')
   })
 
+  it('preserves Notion-only routing when the request also mentions external workflows', () => {
+    const route = readFileSync(resolve(process.cwd(), 'app/api/chat/route.ts'), 'utf8')
+    expect(route).toContain('const fastPath = !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText)')
+    expect(route).toContain('const activeTools = notionReadOnlyTurn ? ATLAS_NOTION_TOOLS')
+    expect(route).toContain('const forceNotionFirstTurn = notionReadOnlyTurn')
+    expect(route).toContain("const forceExternalReferenceReadFirstTurn = externalReferenceReadIntent && activeTools.some(tool => tool.name === 'search_external_workflow_references') && !forceNotionFirstTurn")
+    expect(route.indexOf('? (forceNotionFirstTurn')).toBeLessThan(route.indexOf(': forceExternalReferenceReadFirstTurn'))
+  })
+
   it('keeps the Atlas tool operator-only, separate from executable workflows', () => {
     const route = readFileSync(resolve(process.cwd(), 'app/api/chat/route.ts'), 'utf8')
     expect(route.match(/\{\s*name: 'search_external_workflow_references',\s*description:/g)).toHaveLength(1)

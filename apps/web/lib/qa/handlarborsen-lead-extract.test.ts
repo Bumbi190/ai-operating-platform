@@ -94,6 +94,53 @@ describe('optional Tavily basic site extraction: separately consented and bounde
         identityVerified:false,contactProposal:null,outreachReady:false})
     }
   })
+  it('never promotes an Inkasso company name or registered car trade into active sales',async()=>{
+    const job={...JOB,legalName:'Aktiebolaget Inkasso'}
+    const url='https://www.inkasso.se/om-oss'
+    const snippet={title:job.legalName,url,
+      content:`Aktiebolaget Inkasso, org.nr ${DASHED}. Verksamhet inom detaljhandel med personbilar.`}
+    const extracted={url,raw_content:`Aktiebolaget Inkasso. Organisationsnummer: ${DASHED}. Företaget har verksamhet inom detaljhandel med personbilar och lätta motorfordon.`}
+    const fetch=mockFetch([snippet],[extracted])
+    const output=evaluateLeadEvidence(job,await make(fetch).collect(job,new AbortController().signal))
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(output).toMatchObject({
+      classification:'NEEDS_FURTHER_RESEARCH',identityVerified:true,
+      contactProposal:null,outreachReady:false,
+    })
+    expect(output.evidence.some(e=>e.indicators.includes('registered_vehicle_trade'))).toBe(true)
+    expect(output.evidence.some(e=>e.indicators.includes('financial_or_collection_services'))).toBe(false)
+    expect(output.evidence.some(e=>e.indicators.includes('cars_for_sale'))).toBe(false)
+  })
+
+  it('recognizes debt-collection services only when they are explicitly described on the page',async()=>{
+    const job={...JOB,legalName:'Aktiebolaget Inkasso'}
+    const url='https://www.inkasso.se/om-oss'
+    const snippet={title:job.legalName,url,content:`Aktiebolaget Inkasso, org.nr ${DASHED}. Företagsinformation.`}
+    const extracted={url,raw_content:`Aktiebolaget Inkasso. Organisationsnummer: ${DASHED}. Vi bedriver inkassoverksamhet och factoring.`}
+    const output=evaluateLeadEvidence(job,await make(mockFetch([snippet],[extracted]))
+      .collect(job,new AbortController().signal))
+    expect(output.evidence.some(e=>e.indicators.includes('financial_or_collection_services'))).toBe(true)
+    expect(output.evidence.some(e=>e.indicators.includes('registered_vehicle_trade'))).toBe(false)
+    expect(output).toMatchObject({classification:'OUT_OF_SCOPE_EVIDENCE',identityVerified:true,
+      contactProposal:null,outreachReady:false})
+  })
+
+  it('does not turn Bilförsäljning appearing only in a legal name into sales proof',async()=>{
+    const job={...JOB,legalName:'Bengt Bilförsäljning AB'}
+    const url='https://www.bengt-bilforsaljning.se/om-oss'
+    const snippet={title:job.legalName,url,
+      content:`Bengt Bilförsäljning AB, org.nr ${DASHED}. Företaget erbjuder konsulttjänster.`}
+    const extracted={url,raw_content:`Bengt Bilförsäljning AB. Organisationsnummer: ${DASHED}. Företaget erbjuder konsulttjänster.`}
+    const fetch=mockFetch([snippet],[extracted])
+    const output=evaluateLeadEvidence(job,await make(fetch).collect(job,new AbortController().signal))
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(output.identityVerified).toBe(true)
+    expect(output.classification).toBe('NEEDS_FURTHER_RESEARCH')
+    expect(output.evidence.every(e=>!e.indicators.includes('cars_for_sale') &&
+      !e.indicators.includes('vehicle_stock_listings'))).toBe(true)
+    expect(output.outreachReady).toBe(false)
+  })
+
   it('does not extract directories, unrelated hosts or unsafe IP URLs',async()=>{
     for(const url of [
       'https://allabolag.se/foretag/provbil','https://www.car.info/sv-se/company/provbil',

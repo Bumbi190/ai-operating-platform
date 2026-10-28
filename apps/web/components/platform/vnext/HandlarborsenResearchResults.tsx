@@ -124,8 +124,10 @@ export function HandlarborsenResearchResults({ results }: { results: ResearchVie
           <span className={styles.reviewTag}>{classLabel[r.classification]}</span>
           {r.evidence.some(e => e.indicators.some(i => ['cars_for_sale','vehicle_stock_listings','dealer_purchases_cars'].includes(i))) ?
             <span className={styles.reviewTag}>Sökutdrag nämner bilhandel – ej verifierat</span> : null}
+          {r.evidence.some(e => e.indicators.includes('registered_vehicle_trade')) ?
+            <span className={styles.reviewTag}>Registrerad bilhandel nämns – ingen faktisk försäljning verifierad</span> : null}
           {r.evidence.some(e => e.indicators.some(i => ['financial_or_collection_services','wheelchairs_or_mobility_aids','unrelated_products'].includes(i))) ?
-            <span className={styles.reviewTag}>Sökutdrag nämner annan verksamhet – ej verifierat</span> : null}
+            <span className={styles.reviewTag}>Källan beskriver annan verksamhet – behöver verifieras</span> : null}
           <span className={styles.reviewTag} data-tone="warning">Ej kontaktbar</span>
           {r.contacts ? <div className={styles.researchContact}>
             <strong>Allmän företagskontakt – kräver manuell kontroll</strong>

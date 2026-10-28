@@ -240,6 +240,76 @@ describe('Tavily adapter: one fixed, bounded basic search per job', () => {
     expect(obs).toEqual([])
   })
 
+  it('does not infer debt collection from an Inkasso company name and separates registered car trade', async () => {
+    const job = { ...JOB, legalName: 'AKTIEBOLAGET INKASSO' }
+    const hit = {
+      title: 'Aktiebolaget Inkasso - företagsuppgifter',
+      url: 'https://www.foretag-uppgifter.se/foretag/aktiebolaget-inkasso',
+      content: `AB Inkasso är ett aktiebolag. Org.nr ${dashed(job.orgnr)}. Företaget har verksamhet inom "detaljhandel med personbilar och lätta motorfordon".`,
+    }
+    const observations = await makeTavilyResearchAdapter({ key: KEY, fetchImpl: vi.fn(async () => tavily([hit])), now: NOW })
+      .collect(job, new AbortController().signal) as { observedBusinessIndicators: string[] }[]
+    expect(observations).toHaveLength(1)
+    expect(observations[0].observedBusinessIndicators).toEqual(['registered_vehicle_trade'])
+    const result = evaluateLeadEvidence(job, observations)
+    expect(result).toMatchObject({ classification: 'NEEDS_FURTHER_RESEARCH', identityVerified: false, outreachReady: false })
+    const parsed = parseResearchResponse({
+      status: 'researched', sourceMode: 'search_snippets_only', outreachReady: false,
+      results: [{
+        orgnr: job.orgnr, companyName: job.legalName, city: job.city,
+        classification: result.classification, identityVerified: result.identityVerified,
+        contactability: 'BLOCKED_PENDING_VERIFICATION', outreachReady: false,
+        evidence: result.evidence, reasons: result.reasons,
+      }],
+    })
+    expect(parsed).not.toBeNull()
+    const html = renderToStaticMarkup(React.createElement(HandlarborsenResearchResults, { results: parsed! }))
+    expect(html).toContain('Registrerad bilhandel nämns')
+    expect(html).not.toContain('Källan beskriver annan verksamhet')
+    expect(html).not.toContain('Sökutdrag nämner bilhandel')
+  })
+
+  it('requires explicit debt-collection activity instead of a financial-sounding company name', async () => {
+    const job = { ...JOB, legalName: 'AKTIEBOLAGET INKASSO' }
+    const own = {
+      title: job.legalName,
+      url: 'https://www.foretag-uppgifter.se/foretag/aktiebolaget-inkasso',
+      content: `Aktiebolaget Inkasso, org.nr ${dashed(job.orgnr)}. Företaget bedriver inkassoverksamhet och hjälper med kravhantering.`,
+    }
+    const obs = await makeTavilyResearchAdapter({ key: KEY, fetchImpl: vi.fn(async () => tavily([own])), now: NOW })
+      .collect(job, new AbortController().signal) as { observedBusinessIndicators: string[] }[]
+    expect(obs).toHaveLength(1)
+    expect(obs[0].observedBusinessIndicators).toContain('financial_or_collection_services')
+    expect(obs[0].observedBusinessIndicators).not.toContain('registered_vehicle_trade')
+    expect(evaluateLeadEvidence(job, obs).classification).toBe('NEEDS_FURTHER_RESEARCH')
+  })
+
+  it('does not infer finance even when a service-like word is part of the legal name', async () => {
+    const job = { ...JOB, legalName: 'Inkassoverksamhet Norden AB' }
+    const hit = {
+      title: job.legalName,
+      url: 'https://www.foretag-uppgifter.se/foretag/inkassoverksamhet-norden',
+      content: `Inkassoverksamhet Norden AB, org.nr ${dashed(job.orgnr)}. Bolaget säljer konsulttjänster inom IT.`,
+    }
+    const obs = await makeTavilyResearchAdapter({ key: KEY, fetchImpl: vi.fn(async () => tavily([hit])), now: NOW })
+      .collect(job, new AbortController().signal) as { observedBusinessIndicators: string[] }[]
+    expect(obs).toHaveLength(1)
+    expect(obs[0].observedBusinessIndicators).not.toContain('financial_or_collection_services')
+  })
+
+  it('does not treat Bilförsäljning in a company name as actual car sales', async () => {
+    const job = { ...JOB, legalName: 'Bengt Bilförsäljning AB' }
+    const source = {
+      title: job.legalName, url: 'https://www.foretag-uppgifter.se/foretag/bengt-bilforsaljning',
+      content: `Bengt Bilförsäljning AB. Organisationsnummer ${dashed(job.orgnr)}. Bolaget erbjuder konsulttjänster inom IT.`,
+    }
+    const obs = await makeTavilyResearchAdapter({ key: KEY, fetchImpl: vi.fn(async () => tavily([source])), now: NOW })
+      .collect(job, new AbortController().signal) as { observedBusinessIndicators: string[] }[]
+    expect(obs).toHaveLength(1)
+    expect(obs[0].observedBusinessIndicators).not.toContain('cars_for_sale')
+    expect(obs[0].observedBusinessIndicators).not.toContain('vehicle_stock_listings')
+  })
+
   it('fails closed on error status, oversized or invalid responses, and never retries', async () => {
     const run = async (response: () => Response) => {
       const fetchImpl = vi.fn(async () => response())

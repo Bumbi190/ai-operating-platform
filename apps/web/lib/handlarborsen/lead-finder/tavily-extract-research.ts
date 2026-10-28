@@ -3,6 +3,7 @@ import type { ResearchJob } from './lead-research'
 import { parseSafePublicUrl } from './lead-research'
 import type { SearchAdapter } from './lead-research-worker'
 import { makeTavilyResearchAdapter, type TavilyAdapterOptions } from './tavily-research-adapter'
+import { EXPLICIT_FINANCIAL_ACTIVITY, REGISTRATION_ONLY_VEHICLE_TRADE } from './business-signal-rules'
 
 /**
  * EXTRA / BILLABLE preview-only research stage.
@@ -63,12 +64,12 @@ const cleaned=(text:string):string=>text
   .replace(/[\u0000-\u001f\u007f<>@]/g,' ')
   .replace(/\s+/g,' ').trim()
 
-const SALE=/\b(?:begagnade bilar|begagnade personbilar|vi säljer (?:nya |begagnade )?bilar|bilar till salu|bilförsäljning|vårt billager|bilar i lager|aktuella lagerbilar|vårt bilutbud)\b/i
-const STOCK=/\b(?:vårt billager|bilar i lager|aktuella lagerbilar|lagerbilar)\b/i
+const SALE=/\b(?:vi säljer (?:nya |begagnade )?(?:bilar|personbilar)|(?:bilar|personbilar) till salu|(?:bedriver|erbjuder|arbetar med) bilförsäljning|vårt billager|bilar i lager|aktuella lagerbilar|vårt bilutbud)\b/i
+const STOCK=/\b(?:vårt billager|bilar i lager|aktuella lagerbilar)\b/i
 const NEGATED=/(?:\b0\b|\binga\b|\bingen\b|\bnoll\b)\s+(?:aktuella\s+)?(?:bilannonser|bilar|lagerbilar|fordon)/i
 const OTHER=[
   ['wheelchairs_or_mobility_aids',/\b(?:rullstolar|rullstol|eldrivna rullstolar|hjälpmedel)\b/i],
-  ['financial_or_collection_services',/\b(?:inkasso|kreditförvaltning|factoring|skuldindrivning)\b/i],
+  ['financial_or_collection_services',EXPLICIT_FINANCIAL_ACTIVITY],
   ['auto_repairs_only',/\b(?:bilverkstad|bilreparation|fordonsservice)\b/i],
 ] as const
 
@@ -79,6 +80,8 @@ function indicatorsFor(text:string):{indicators:string[];at:number}{
   const stock=STOCK.exec(text)
   if(stock&&!NEGATED.test(text.slice(Math.max(0,stock.index-65),stock.index+stock[0].length+30)))result.push('vehicle_stock_listings')
   if(result.length) return {indicators:result,at:(sale?.index??stock?.index??0)}
+  const registration=REGISTRATION_ONLY_VEHICLE_TRADE.exec(text)
+  if(registration)return {indicators:['registered_vehicle_trade'],at:registration.index}
   for(const [type,re] of OTHER){
     const match=re.exec(text)
     if(match)return {indicators:[type],at:match.index}

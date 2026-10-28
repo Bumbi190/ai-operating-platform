@@ -4,6 +4,7 @@ import {
   type BusinessIndicator, type ResearchJob,
 } from './lead-research'
 import type { SearchAdapter } from './lead-research-worker'
+import { EXPLICIT_FINANCIAL_ACTIVITY, REGISTRATION_ONLY_VEHICLE_TRADE } from './business-signal-rules'
 
 /**
  * Tavily search adapter for the Atlas lead research worker (server-only).
@@ -27,14 +28,14 @@ export interface TavilyAdapterOptions {
 }
 
 const SALE_SIGNALS: [BusinessIndicator, RegExp][] = [
-  ['cars_for_sale', /bilar till salu|begagnade (?:bilar|personbilar)|vi säljer (?:begagnade )?(?:bilar|personbilar)|bilförsäljning|bilhandlare|personbilar till salu/i],
-  ['vehicle_stock_listings', /lagerbilar|vårt billager|bilar i lager|aktuellt lager|vårt bilutbud|\bbillager\b/i],
-  ['dealer_purchases_cars', /vi köper (?:din |dina )?(?:bil|bilar)|bilinköp|köper din bil/i],
+  ['cars_for_sale', /bilar till salu|personbilar till salu|vi säljer (?:nya |begagnade )?(?:bilar|personbilar)|(?:bedriver|erbjuder|arbetar med) bilförsäljning|(?:vi är|auktoriserad) bilhandlare/i],
+  ['vehicle_stock_listings', /vårt billager|bilar i lager|aktuella lagerbilar|aktuellt lager|vårt bilutbud/i],
+  ['dealer_purchases_cars', /vi köper (?:din |dina )?(?:bil|bilar)|bedriver bilinköp|köper din bil/i],
 ]
 const REPAIR_SIGNAL = /bilverkstad|bilservice|reparation av bilar|fordonsverkstad/i
 const OTHER_SIGNALS: [BusinessIndicator, RegExp][] = [
   ['wheelchairs_or_mobility_aids', /rullstol|elscooter|rörelsehjälpmedel|ledsagarbil/i],
-  ['financial_or_collection_services', /inkasso|factoring|skuldrådgivning|kreditupplysning/i],
+  ['financial_or_collection_services', EXPLICIT_FINANCIAL_ACTIVITY],
 ]
 
 const keyOk = (k: unknown): k is string => typeof k === 'string' && /^[\x21-\x7e]{8,200}$/.test(k)
@@ -127,6 +128,12 @@ function toObservation(raw: unknown, job: ResearchJob, today: string): Record<st
   if (!sale && !indicators.length) {
     const repair = REPAIR_SIGNAL.exec(text)
     if (repair) { indicators.push('auto_repairs_only'); signalAt = repair.index }
+  }
+  // A register entry describing trade is a research clue, never a claim
+  // that the company is presently selling vehicles.
+  if (!indicators.length) {
+    const registration = REGISTRATION_ONLY_VEHICLE_TRADE.exec(text)
+    if (registration) { indicators.push('registered_vehicle_trade'); signalAt = registration.index }
   }
   if (!indicators.length) {
     for (const [indicator, re] of OTHER_SIGNALS) {

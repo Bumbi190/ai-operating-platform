@@ -20,6 +20,7 @@ export type SourceKind = (typeof SOURCE_KINDS)[number]
 export const BUSINESS_INDICATORS = [
   'cars_for_sale', 'vehicle_stock_listings', 'dealer_purchases_cars', 'auto_repairs_only',
   'wheelchairs_or_mobility_aids', 'financial_or_collection_services', 'unrelated_products',
+  'registered_vehicle_trade', // source describes a registration, not actual vehicle sales
 ] as const
 export type BusinessIndicator = (typeof BUSINESS_INDICATORS)[number]
 

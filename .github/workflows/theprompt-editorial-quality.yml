@@ -7,6 +7,8 @@ on:
       - 'apps/web/lib/media/quality-validation.ts'
       - 'apps/web/lib/media/quality-validation.node-check.mjs'
       - 'apps/web/lib/media/quality-publication-boundary.node-check.mjs'
+      - 'apps/web/lib/media/factcheck/**'
+      - 'docs/workflows/the-prompt.factcheck.v1.json'
       - 'apps/web/app/api/media/**'
       - '.github/workflows/theprompt-editorial-quality.yml'
   workflow_dispatch:
@@ -24,4 +26,4 @@ jobs:
         with:
           node-version: '22'
       - name: Prove invalid editorial scores never authorize publishing
-        run: node --experimental-strip-types --test apps/web/lib/media/quality-validation.node-check.mjs apps/web/lib/media/quality-publication-boundary.node-check.mjs
+        run: node --experimental-strip-types --test apps/web/lib/media/quality-validation.node-check.mjs apps/web/lib/media/quality-publication-boundary.node-check.mjs apps/web/lib/media/factcheck/contract.node-check.mjs

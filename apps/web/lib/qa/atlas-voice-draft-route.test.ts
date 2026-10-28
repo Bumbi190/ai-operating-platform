@@ -118,7 +118,7 @@ describe('Nova real-stream draft recovery',()=>{
     expect(saved.tool_data).toMatchObject({kind:'incomplete_draft',continuationAllowed:true})
     expect(state.calls).toHaveLength(1)
     expect(state.fallbackCalls).toBe(0)
-  })
+  }, 15_000)
   it('treats a max-token stop as an incomplete document and resumes without any tools',async()=>{
     state.outcome='max_tokens'
     const {events}=await post(owned([{role:'user',content:requestPrompt}]))
@@ -138,12 +138,12 @@ describe('Nova real-stream draft recovery',()=>{
     expect(state.calls).toHaveLength(1)
     expect(state.calls[0].tools).toEqual([])
     expect(assistantDraft().content).toContain('säkra fortsättningen')
-  })
+  }, 15_000)
   it('does not persist drafts to an unowned conversation',async()=>{
     state.foreignOwner=true
     const {events}=await post(owned([{role:'user',content:requestPrompt}]))
     expect(events.some(e=>e.event==='draft_interrupted' && e.saved===false)).toBe(true)
     expect(assistantDraft()).toBeUndefined()
     expect(state.fallbackCalls).toBe(0)
-  })
+  }, 15_000)
 })

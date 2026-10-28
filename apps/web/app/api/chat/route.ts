@@ -972,6 +972,9 @@ export async function POST(request: Request) {
   const localTextEnabled=availableLocalTextTools({inputSource:voice||inputSource==='voice'?'voice':'text',studio:!!studioContext,fast:fastPath,staticConversation}).length>0
   const activeTools = notionReadOnlyTurn ? ATLAS_NOTION_TOOLS : (fastPath || staticConversation) ? [] : studioContext ? TOOLS.filter(tool=>STUDIO_TOOL_NAMES.has(tool.name)) : TOOLS.filter(tool=>!LOCAL_TEXT_TOOL_NAMES.includes(tool.name)||localTextEnabled)
   const forceToolFirstTurn = actionIntent && activeTools.length > 0
+  // A Notion answer must not come from the model's memory when the approved
+  // read tool is available. Force a real cited source read on turn zero.
+  const forceNotionFirstTurn = notionReadOnlyTurn
   const forceResolutionFirstTurn = resolutionIntent && activeTools.length > 0
   // Direkt navigeringskommando → tvinga specifikt navigate-verktyget på turn 0.
   const forceNavigateFirstTurn = navIntent && activeTools.length > 0
@@ -1051,7 +1054,9 @@ export async function POST(request: Request) {
           //  • navigerings-kommando → tvinga specifikt navigate (kommandot ÄR bekräftelsen).
           //  • action-intent → tvinga något verktyg (tool_choice=any) så Atlas inte bara påstår.
           const toolChoice = i === 0
-            ? (forceResolutionFirstTurn
+            ? (forceNotionFirstTurn
+                ? { tool_choice: { type: 'tool' as const, name: ATLAS_NOTION_TOOL_NAME } }
+                : forceResolutionFirstTurn
                 ? { tool_choice: { type: 'tool' as const, name: 'resolve_dream_finding' } }
                 : forceNavigateFirstTurn
                 ? { tool_choice: { type: 'tool' as const, name: 'navigate' } }

@@ -50,8 +50,8 @@ export type SourceInspectionResult =
       observedAt: string; action: 'status'; readonly: true }
   | { ok: true; repository: string; repositoryId: number; projectSlug: string; sha: string;
       observedAt: string; action: 'read_file'; readonly: true; path: string; sourceUrl: string;
-      lines: Array<{ line: number; text: string }>; totalLines: number; truncated: boolean;
-      untrustedSource: true }
+      lines: Array<{ line: number; text: string }>; totalLines: number; startLine: number;
+      nextStartLine: number | null; truncated: boolean; untrustedSource: true }
 
 class InspectionError extends Error {
   constructor(public readonly code: SourceInspectionFailure) { super('source_inspection_' + code) }
@@ -226,12 +226,17 @@ export async function inspectVerifiedSource(
     try { decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes) }
     catch { throw new InspectionError('source_denied') }
     if (!isSafeInspectableText(decoded)) throw new InspectionError('source_denied')
-    const lines = selectedSourceLines(decoded)
     const totalLines = decoded.split(/\r?\n/).length
+    const startLine = verified.startLine ?? 1
+    if (startLine > totalLines) throw new InspectionError('source_denied')
+    const lines = selectedSourceLines(decoded, startLine)
+    const lastLine = lines[lines.length - 1]?.line
+    if (!lastLine) throw new InspectionError('source_denied')
+    const truncated = lastLine < totalLines
     return {
-      ok: true, action: 'read_file', path, lines, totalLines,
-      truncated: totalLines > lines.length,
-      sourceUrl: immutableSourceUrl(repo, sha, path, lines.length),
+      ok: true, action: 'read_file', path, lines, totalLines, startLine,
+      nextStartLine: truncated ? lastLine + 1 : null, truncated,
+      sourceUrl: immutableSourceUrl(repo, sha, path, lastLine, startLine),
       untrustedSource: true, ...common,
     }
   } catch (error) {

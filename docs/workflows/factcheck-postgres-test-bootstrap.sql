@@ -10,6 +10,11 @@ CREATE TABLE public.projects (
   id uuid PRIMARY KEY,
   owner_id uuid NOT NULL REFERENCES auth.users(id)
 );
+CREATE TABLE public.agents (
+  id uuid PRIMARY KEY,
+  project_id uuid NOT NULL REFERENCES public.projects(id),
+  name text NOT NULL
+);
 CREATE TABLE public.media_scripts (
   id uuid PRIMARY KEY,
   project_id uuid NOT NULL REFERENCES public.projects(id),
@@ -36,6 +41,8 @@ GRANT SELECT, UPDATE ON public.media_scripts TO service_role;
 -- service_role has both SELECT and UPDATE on runs (read-only verified).
 GRANT SELECT, UPDATE ON public.runs TO service_role;
 GRANT SELECT ON public.projects TO service_role;
+GRANT SELECT, UPDATE ON public.agents TO service_role;
+ALTER TABLE public.agents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.media_scripts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
@@ -43,6 +50,11 @@ ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 INSERT INTO public.projects(id,owner_id)
 VALUES ('11111111-1111-4111-8111-111111111111',
         '66666666-6666-4666-8666-666666666666');
+INSERT INTO public.agents(id,project_id,name) VALUES
+  ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+   '11111111-1111-4111-8111-111111111111','Nova'),
+  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+   '11111111-1111-4111-8111-111111111111','GrowthAgent');
 INSERT INTO public.media_scripts (
   id,project_id,version,hook,script,captions,cta
 ) VALUES (

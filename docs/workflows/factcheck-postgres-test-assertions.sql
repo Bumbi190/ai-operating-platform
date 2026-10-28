@@ -58,8 +58,8 @@ INSERT INTO public.media_factcheck_reports (
     'socialCaption','Safe research source'
   ),
   jsonb_build_array(
-    jsonb_build_object('sourceId','a','publisherGroup','reuters','url','https://www.reuters.com/world/demo','textSha256',repeat('c',64)),
-    jsonb_build_object('sourceId','b','publisherGroup','bbc','url','https://www.bbc.com/news/demo','textSha256',repeat('d',64))
+    jsonb_build_object('sourceId','a','publisherGroup','uk-government','kind','primary','url','https://www.gov.uk/government/news/demo','textSha256',repeat('c',64)),
+    jsonb_build_object('sourceId','b','publisherGroup','reuters','kind','independent_reporting','url','https://www.reuters.com/world/demo','textSha256',repeat('d',64))
   ),
   jsonb_build_array(
     jsonb_build_object('unitId','hook:0','verdict','supported','evidence',
@@ -461,6 +461,198 @@ BEGIN
  IF (SELECT count(*) FROM public.media_factcheck_editorial_decisions)<>3
  THEN RAISE EXCEPTION 'WRONG_FINAL_EDITORIAL_COUNT';END IF;
  RAISE NOTICE 'PASS IMMUTABLE_OWNER_DECISIONS=3';
+END $$;
+
+-- Nova's agent-shadow evidence is NOT the project owner's approval. It
+-- cannot be used to authorize rendering, spending, scheduling or publishing.
+DO $$
+DECLARE count_policies integer;
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='public' AND c.relname='media_factcheck_nova_decisions'
+      AND c.relrowsecurity AND c.relforcerowsecurity
+  ) THEN RAISE EXCEPTION 'NOVA_RLS_NOT_FORCED';END IF;
+  SELECT count(*) INTO count_policies FROM pg_policies
+  WHERE schemaname='public' AND tablename='media_factcheck_nova_decisions';
+  IF count_policies<>0 OR
+    has_table_privilege('anon','public.media_factcheck_nova_decisions','SELECT') OR
+    has_table_privilege('authenticated','public.media_factcheck_nova_decisions','INSERT') OR
+    has_table_privilege('service_role','public.media_factcheck_nova_decisions','UPDATE') OR
+    has_table_privilege('service_role','public.media_factcheck_nova_decisions','DELETE') OR
+    has_table_privilege('service_role','public.media_factcheck_nova_decisions','TRUNCATE') OR
+    NOT has_table_privilege('service_role','public.media_factcheck_nova_decisions','SELECT') OR
+    NOT has_table_privilege('service_role','public.media_factcheck_nova_decisions','INSERT')
+  THEN RAISE EXCEPTION 'NOVA_DB_GRANTS_UNSAFE';END IF;
+  RAISE NOTICE 'PASS NOVA_PRIVATE_APPEND_ONLY_GRANTS';
+END $$;
+
+-- A correct low-impact report with a registered Nova in this project and an
+-- active run claim can generate ONE shadow editorial-candidate receipt.
+SET ROLE service_role;
+INSERT INTO public.media_factcheck_nova_decisions (
+  project_id,agent_id,run_id,claim_id,report_id,script_id,
+  script_version,revision_id,content_sha256,source_set_sha256,
+  reviewer_run_id,policy_version,decision,reason
+)
+SELECT
+  r.project_id,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'::uuid,
+  r.run_id,r.claim_id,r.id,r.script_id,r.script_version,r.revision_id,
+  r.content_sha256,r.source_set_sha256,r.reviewer_run_id,
+  'nova.shadow.v1','editorial_candidate','ordinary_story_independently_supported'
+FROM public.media_factcheck_reports r
+WHERE r.reviewer_run_id='55555555-5555-4555-8555-555555555555';
+RESET ROLE;
+
+DO $$
+BEGIN
+  IF (SELECT count(*) FROM public.media_factcheck_nova_decisions)<>1
+  THEN RAISE EXCEPTION 'NOVA_SHADOW_WRITE_MISSING';END IF;
+  RAISE NOTICE 'PASS NOVA_SEPARATE_AGENT_CANDIDATE';
+END $$;
+
+-- Test helper deliberately refers only to the report already used for shadow
+-- evidence. It never signs or fabricates an actual human or provider action.
+CREATE FUNCTION pg_temp.try_nova(
+  p_report uuid,
+  p_agent uuid DEFAULT 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  p_claim uuid DEFAULT NULL,
+  p_version integer DEFAULT NULL,
+  p_source_sha text DEFAULT NULL,
+  p_project uuid DEFAULT NULL
+) RETURNS void LANGUAGE plpgsql AS $$
+BEGIN
+  INSERT INTO public.media_factcheck_nova_decisions (
+    project_id,agent_id,run_id,claim_id,report_id,script_id,
+    script_version,revision_id,content_sha256,source_set_sha256,
+    reviewer_run_id,policy_version,decision,reason
+  )
+  SELECT coalesce(p_project,r.project_id),p_agent,r.run_id,
+    coalesce(p_claim,r.claim_id),r.id,r.script_id,
+    coalesce(p_version,r.script_version),r.revision_id,
+    r.content_sha256,coalesce(p_source_sha,r.source_set_sha256),
+    r.reviewer_run_id,'nova.shadow.v1','editorial_candidate',
+    'ordinary_story_independently_supported'
+  FROM public.media_factcheck_reports r WHERE r.id=p_report;
+  IF NOT FOUND THEN RAISE EXCEPTION 'NOVA_REPORT_NOT_FOUND' USING errcode='23514';END IF;
+END $$;
+
+CREATE FUNCTION pg_temp.expect_nova_rejection(
+  p_label text,p_report uuid,p_state text DEFAULT '23514',
+  p_agent uuid DEFAULT 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  p_claim uuid DEFAULT NULL,
+  p_version integer DEFAULT NULL,
+  p_source_sha text DEFAULT NULL,
+  p_project uuid DEFAULT NULL
+) RETURNS void LANGUAGE plpgsql AS $$
+DECLARE actual_state text;
+BEGIN
+  BEGIN
+    PERFORM pg_temp.try_nova(p_report,p_agent,p_claim,p_version,p_source_sha,p_project);
+    RAISE EXCEPTION 'NOVA_SHADOW_UNEXPECTED_ACCEPTANCE:%',p_label;
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS actual_state=RETURNED_SQLSTATE;
+    IF actual_state<>p_state
+    THEN RAISE EXCEPTION 'NOVA_%: EXPECTED %, GOT %',p_label,p_state,actual_state;END IF;
+    RAISE NOTICE 'PASS NOVA_% (SQLSTATE %)',p_label,actual_state;
+  END;
+END $$;
+
+DO $$
+DECLARE original uuid;
+  eligible_copy uuid;
+  declined uuid;
+  sensitive uuid;
+BEGIN
+  SELECT id INTO original FROM public.media_factcheck_reports
+  WHERE reviewer_run_id='55555555-5555-4555-8555-555555555555';
+  SELECT id INTO eligible_copy FROM public.media_factcheck_reports
+  WHERE outcome='ready_for_editor' AND id<>original
+    AND jsonb_array_length(findings->0->'evidence')>=2
+    AND exists (SELECT 1 FROM jsonb_array_elements(source_receipts) s
+      WHERE s->>'kind'='primary')
+  ORDER BY recorded_at DESC LIMIT 1;
+  IF eligible_copy IS NULL THEN RAISE EXCEPTION 'NOVA_VALID_SECOND_REPORT_MISSING';END IF;
+  SELECT id INTO declined FROM public.media_factcheck_reports
+  WHERE reasons=array['claim_unverified']::text[]
+  ORDER BY recorded_at DESC LIMIT 1;
+  SELECT id INTO sensitive FROM public.media_factcheck_reports
+  WHERE reasons=array['sensitive_or_unclassified']::text[]
+  ORDER BY recorded_at DESC LIMIT 1;
+  PERFORM pg_temp.expect_nova_rejection('REPLAY',original,'23505');
+  PERFORM pg_temp.expect_nova_rejection('NOT_NOVA_AGENT',eligible_copy,'23514',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+  PERFORM pg_temp.expect_nova_rejection('REJECTED_FACTS',declined);
+  PERFORM pg_temp.expect_nova_rejection('SENSITIVE_REQUIRES_OWNER',sensitive);
+  PERFORM pg_temp.expect_nova_rejection('FORGED_SOURCE_SHA',eligible_copy,'23514',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',NULL,NULL,repeat('f',64));
+  PERFORM pg_temp.expect_nova_rejection('WRONG_RUN_CLAIM',eligible_copy,'23514',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    '88888888-8888-4888-8888-888888888888');
+  PERFORM pg_temp.expect_nova_rejection('REVISION_CHANGED',eligible_copy,'23514',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',NULL,2);
+  PERFORM pg_temp.expect_nova_rejection('FOREIGN_PROJECT',eligible_copy,'23514',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',NULL,NULL,NULL,
+    '99999999-9999-4999-8999-999999999999');
+END $$;
+
+-- An otherwise "ready" report with no true primary evidence cannot receive
+-- a Nova candidate, even when all claim citations structurally look valid.
+INSERT INTO public.media_factcheck_reports (
+  project_id,script_id,run_id,claim_id,reviewer_run_id,
+  script_version,revision_id,content_sha256,source_set_sha256,
+  writer_model,reviewer_model,risk_tier,outcome,framing,
+  framing_reason,reasons,manuscript_snapshot,source_receipts,findings,reviewed_at
+)
+SELECT project_id,script_id,run_id,claim_id,gen_random_uuid(),
+  script_version,revision_id,content_sha256,source_set_sha256,
+  writer_model,reviewer_model,risk_tier,outcome,framing,
+  framing_reason,reasons,manuscript_snapshot,
+  (select jsonb_agg(jsonb_set(value,'{kind}','"independent_reporting"'::jsonb))
+   from jsonb_array_elements(source_receipts) value),
+  findings,clock_timestamp()
+FROM public.media_factcheck_reports
+WHERE reviewer_run_id='55555555-5555-4555-8555-555555555555';
+
+DO $$
+DECLARE copied uuid;
+BEGIN
+  SELECT id INTO copied FROM public.media_factcheck_reports
+  WHERE outcome='ready_for_editor'
+    AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(source_receipts) s
+      WHERE s->>'kind'='primary')
+    ORDER BY recorded_at DESC LIMIT 1;
+  IF copied IS NULL THEN RAISE EXCEPTION 'MISSING_NO_PRIMARY_FIXTURE';END IF;
+  PERFORM pg_temp.expect_nova_rejection('NO_PRIMARY_EVIDENCE',copied);
+END $$;
+
+UPDATE public.runs SET lease_until=clock_timestamp()-interval '5 minutes'
+WHERE id='33333333-3333-4333-8333-333333333333';
+DO $$
+DECLARE stale_report uuid;
+BEGIN
+  SELECT id INTO stale_report FROM public.media_factcheck_reports
+  WHERE outcome='ready_for_editor'
+    AND id NOT IN (SELECT report_id FROM public.media_factcheck_nova_decisions)
+    AND jsonb_array_length(findings->0->'evidence')>=2
+    AND exists (SELECT 1 FROM jsonb_array_elements(source_receipts) s
+      WHERE s->>'kind'='primary') LIMIT 1;
+  PERFORM pg_temp.expect_nova_rejection('EXPIRED_WORKER_CLAIM',stale_report);
+END $$;
+UPDATE public.runs SET lease_until=clock_timestamp()+interval '1 hour'
+WHERE id='33333333-3333-4333-8333-333333333333';
+
+SELECT pg_temp.expect_immutable('NOVA_UPDATE_DENIED',
+  'UPDATE public.media_factcheck_nova_decisions SET decision=''editorial_candidate''');
+SELECT pg_temp.expect_immutable('NOVA_DELETE_DENIED',
+  'DELETE FROM public.media_factcheck_nova_decisions');
+SELECT pg_temp.expect_immutable('NOVA_TRUNCATE_DENIED',
+  'TRUNCATE public.media_factcheck_nova_decisions');
+DO $$
+BEGIN
+  IF (SELECT count(*) FROM public.media_factcheck_nova_decisions)<>1
+  THEN RAISE EXCEPTION 'NOVA_SHADOW_RECEIPTS_MUTATED';END IF;
+  RAISE NOTICE 'PASS NOVA_IMMUTABLE_SHADOW_RECEIPT=1';
 END $$;
 
 ROLLBACK;

@@ -43,8 +43,28 @@ type OwnerDecisionRow = {
   decided_by: string
   decided_at: string
 }
+type NovaShadowDecisionRow = {
+  id:string
+  project_id:string
+  agent_id:string
+  run_id:string
+  claim_id:string
+  report_id:string
+  script_id:string
+  script_version:number
+  revision_id:string
+  content_sha256:string
+  source_set_sha256:string
+  reviewer_run_id:string
+  policy_version:string
+  decision:string
+  recorded_at:string
+}
 type ReviewHistoryRow = {
   id: string
+  run_id: string
+  claim_id: string
+  reviewer_run_id: string
   script_id: string
   script_version: number
   revision_id: string
@@ -147,7 +167,7 @@ export default async function FactCheckHistoryPage({ params }: {
   const db = createAdminClient() as unknown as SupabaseClient
   const { data, error } = await db.from('media_factcheck_reports')
     .select(
-      'id,script_id,script_version,revision_id,content_sha256,source_set_sha256,writer_model,reviewer_model,risk_tier,outcome,framing,framing_reason,reasons,manuscript_snapshot,source_receipts,findings,reviewed_at'
+      'id,run_id,claim_id,reviewer_run_id,script_id,script_version,revision_id,content_sha256,source_set_sha256,writer_model,reviewer_model,risk_tier,outcome,framing,framing_reason,reasons,manuscript_snapshot,source_receipts,findings,reviewed_at'
     )
     .eq('project_id', project.id)
     .order('reviewed_at', { ascending: false })
@@ -205,6 +225,63 @@ export default async function FactCheckHistoryPage({ params }: {
     }
   }
 
+  // Nova shadow receipts are a THIRD class of evidence: not a human
+  // approval and not permission to render or publish. Match both project-
+  // registered Nova identity and every receipt/report revision SHA/claim.
+  let novaUnavailable = false
+  let trustedNovaAgents = new Set<string>()
+  let novaRows: NovaShadowDecisionRow[] = []
+  if (!error && reports.length > 0) {
+    const agents = await db.from('agents').select('id,project_id,name')
+      .eq('project_id', project.id).limit(30)
+    if (agents.error) {
+      novaUnavailable = true
+    } else {
+      trustedNovaAgents = new Set((agents.data ?? []).filter(a =>
+        a.project_id === project.id &&
+        typeof a.name === 'string' &&
+        a.name.trim().toLowerCase() === 'nova'
+      ).map(a => a.id as string))
+      const shadow = await db.from('media_factcheck_nova_decisions')
+        .select(
+          'id,project_id,agent_id,run_id,claim_id,report_id,script_id,script_version,revision_id,content_sha256,source_set_sha256,reviewer_run_id,policy_version,decision,recorded_at'
+        )
+        .eq('project_id',project.id)
+        .in('report_id',reports.map(report=>report.id))
+        .order('recorded_at',{ascending:false}).limit(25)
+      if(shadow.error){
+        novaUnavailable = true
+        console.warn('[factcheck/history] Nova shadow evidence unavailable:',shadow.error.code)
+      } else {
+        novaRows = (shadow.data??[]) as unknown as NovaShadowDecisionRow[]
+      }
+    }
+  }
+  const novaByReport = new Map<string,NovaShadowDecisionRow>()
+  for(const shadow of novaRows){
+    const report=reports.find(r=>r.id===shadow.report_id)
+    if(!report || shadow.project_id!==project.id ||
+       !trustedNovaAgents.has(shadow.agent_id) ||
+       shadow.script_id!==report.script_id ||
+       shadow.script_version!==report.script_version ||
+       shadow.revision_id!==report.revision_id ||
+       shadow.run_id!==report.run_id ||
+       shadow.claim_id!==report.claim_id ||
+       shadow.reviewer_run_id!==report.reviewer_run_id ||
+       shadow.content_sha256!==report.content_sha256 ||
+       shadow.source_set_sha256!==report.source_set_sha256 ||
+       shadow.policy_version!=='nova.shadow.v1' ||
+       shadow.decision!=='editorial_candidate' ||
+       report.outcome!=='ready_for_editor' ||
+       report.risk_tier!=='standard' ||
+       report.framing!=='faithful_to_evidence' ||
+       !Array.isArray(report.reasons) ||
+       report.reasons.length!==0){
+      continue
+    }
+    if(!novaByReport.has(report.id))novaByReport.set(report.id,shadow)
+  }
+
   return (
     <main className="min-h-screen px-5 py-7 md:px-10 md:py-10 space-y-6">
       <header className="space-y-3">
@@ -231,9 +308,9 @@ export default async function FactCheckHistoryPage({ params }: {
         <div className="text-sm space-y-1">
           <p className="font-semibold text-amber-200">Granskning är inte samma sak som publicering</p>
           <p className="text-muted-foreground">
-            En automatisk kontroll kan bara föreslå att en nyhet går vidare till redaktören.
-            Den här sidan är skrivskyddad och aktiverar varken AI-kostnader, video eller social publicering.
-            En faktarapport visas aldrig som mänskligt godkänd utan en separat, verifierad beslutsrad.
+            Nova är tänkt att själv granska vanliga nyheter och bara fråga dig vid verkliga undantag.
+            Hennes nuvarande granskningskvitto är bara ett testläge, inte ett publiceringstillstånd.
+            Sidan är skrivskyddad och aktiverar varken AI-kostnader, video eller social publicering.
           </p>
         </div>
       </section>
@@ -260,6 +337,7 @@ export default async function FactCheckHistoryPage({ params }: {
           {reports.map(report => {
             const status = decisionView(report.outcome)
             const ownerDecision = decisionByReport.get(report.id)
+            const novaDecision = novaByReport.get(report.id)
             const sources = sourceReceipts(report.source_receipts)
             const findings = claimFindings(report.findings)
             const manuscript = report.manuscript_snapshot &&
@@ -294,20 +372,26 @@ export default async function FactCheckHistoryPage({ params }: {
                   </div>
                   <p className="text-sm text-muted-foreground">{report.framing_reason}</p>
                   <div className="rounded-lg border border-border p-3 space-y-1 text-xs">
-                    {decisionsUnavailable ? (
-                      <p className="text-amber-300">Redaktionellt beslut kan inte verifieras – granskning krävs</p>
-                    ) : !ownerDecision ? (
-                      <p className="text-amber-300">Inväntar separat redaktionellt beslut – inte godkänt</p>
-                    ) : ownerDecision.decision === 'approve' ? (
-                      <>
-                        <p className="text-amber-300">Godkänd för vidare förberedelse av projektägaren – inte godkänd för publicering</p>
-                        <p className="text-muted-foreground">Beslutat {formatTime(ownerDecision.decided_at)}: {ownerDecision.notes}</p>
-                      </>
-                    ) : (
+                    {ownerDecision?.decision === 'reject' ? (
                       <>
                         <p className="text-red-300">Redaktionellt avvisad – stoppad</p>
                         <p className="text-muted-foreground">Beslutat {formatTime(ownerDecision.decided_at)}: {ownerDecision.notes}</p>
                       </>
+                    ) : novaDecision ? (
+                      <p className="text-amber-300">Nova: självständigt faktagranskad kandidat – väntar på säker lanseringsspärr, ej publicerad ({formatTime(novaDecision.recorded_at)})</p>
+                    ) : decisionsUnavailable || novaUnavailable ? (
+                      <p className="text-amber-300">Beslutsunderlaget kan inte verifieras – ingen automatisk publicering</p>
+                    ) : ownerDecision?.decision === 'approve' ? (
+                      <>
+                        <p className="text-amber-300">Godkänd för vidare förberedelse av projektägaren – inte godkänd för publicering</p>
+                        <p className="text-muted-foreground">Beslutat {formatTime(ownerDecision.decided_at)}: {ownerDecision.notes}</p>
+                      </>
+                    ) : report.outcome === 'ready_for_editor' ? (
+                      <p className="text-amber-300">Inväntar Novas separata granskningskvitto – inget krav på ditt rutinmässiga godkännande</p>
+                    ) : report.outcome === 'rejected' ? (
+                      <p className="text-red-300">Stoppad efter granskning – Nova ska rätta eller välja en annan nyhet</p>
+                    ) : (
+                      <p className="text-amber-300">Nova behöver fler källor eller ett undantagsbeslut – inte klar för publicering</p>
                     )}
                   </div>
                   {reasonList.length > 0 && (

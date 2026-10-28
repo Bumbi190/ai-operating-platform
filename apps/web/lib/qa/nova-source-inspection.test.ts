@@ -118,8 +118,10 @@ describe('Nova trusted source boundary, separate from SDF-1 execution', () => {
     expect(parseSourceRequest({ action: 'publish', projectSlug: 'handlarborsen' })).toBeNull()
   })
   it('validates optional 1-based line pagination without widening the per-read cap', () => {
-    const page = parseSourceRequest({ action: 'read_file', projectSlug: 'handlarborsen', path: 'app/page.tsx', startLine: 241 })
-    expect(page).toEqual({ action: 'read_file', projectSlug: 'handlarborsen', path: 'app/page.tsx', startLine: 241 })
+    const page = parseSourceRequest({ action: 'read_file', projectSlug: 'handlarborsen', path: 'app/page.tsx', startLine: 241, expectedSha: SHA })
+    expect(page).toEqual({ action: 'read_file', projectSlug: 'handlarborsen', path: 'app/page.tsx', startLine: 241, expectedSha: SHA })
+    expect(parseSourceRequest({ action: 'read_file', projectSlug: 'handlarborsen', path: 'app/page.tsx', startLine: 241 })).toBeNull()
+    expect(parseSourceRequest({ action: 'read_file', projectSlug: 'handlarborsen', path: 'app/page.tsx', startLine: 241, expectedSha: 'invalid' })).toBeNull()
     for (const startLine of [0, -1, 1.25, 5001, '241', null, Infinity]) {
       expect(parseSourceRequest({ action: 'read_file', projectSlug: 'handlarborsen', path: 'app/page.tsx', startLine })).toBeNull()
     }
@@ -135,15 +137,19 @@ describe('Nova trusted source boundary, separate from SDF-1 execution', () => {
     if (!first.ok || first.action !== 'read_file') throw Error('expected first source page')
     expect(first.lines).toHaveLength(240)
     expect(first.sourceUrl).toContain('#L1-L240')
-    const next = await inspectVerifiedSource({ action: 'read_file', projectSlug: 'handlarborsen', path: 'src/app/page.tsx', startLine: first.nextStartLine! }, { fetcher: github.fetcher })
+    const next = await inspectVerifiedSource({ action: 'read_file', projectSlug: 'handlarborsen', path: 'src/app/page.tsx', startLine: first.nextStartLine!, expectedSha: first.sha }, { fetcher: github.fetcher })
     expect(next).toMatchObject({ ok: true, action: 'read_file', startLine: 241, nextStartLine: null, totalLines: 390, truncated: false })
     if (!next.ok || next.action !== 'read_file') throw Error('expected second source page')
     expect(next.lines).toHaveLength(150)
     expect(next.lines[0].line).toBe(241)
     expect(next.lines.at(-1)?.line).toBe(390)
     expect(next.sourceUrl).toContain('#L241-L390')
-    const invalid = await inspectVerifiedSource({ action: 'read_file', projectSlug: 'handlarborsen', path: 'src/app/page.tsx', startLine: 391 }, { fetcher: github.fetcher })
+    const invalid = await inspectVerifiedSource({ action: 'read_file', projectSlug: 'handlarborsen', path: 'src/app/page.tsx', startLine: 391, expectedSha: first.sha }, { fetcher: github.fetcher })
     expect(invalid).toEqual({ ok: false, code: 'source_denied' })
+    const changed = await inspectVerifiedSource({ action: 'read_file', projectSlug: 'handlarborsen',
+      path: 'src/app/page.tsx', startLine: 241, expectedSha: first.sha },
+      { fetcher: fakeGitHub({ sha: 'e'.repeat(40) }).fetcher })
+    expect(changed).toEqual({ ok: false, code: 'source_changed' })
   })
   it('rejects credential-looking text instead of revealing a redacted partial file', () => {
     expect(isSafeInspectableText('const api_key = "super-secret-secret"')).toBe(false)

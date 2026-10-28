@@ -29,6 +29,20 @@ type ClaimFinding = {
   explanation: string
   evidence: { sourceId: string; exactQuote: string }[]
 }
+type OwnerDecisionRow = {
+  id: string
+  report_id: string
+  project_id: string
+  script_id: string
+  script_version: number
+  revision_id: string
+  content_sha256: string
+  source_set_sha256: string
+  decision: 'approve' | 'reject'
+  notes: string
+  decided_by: string
+  decided_at: string
+}
 type ReviewHistoryRow = {
   id: string
   script_id: string
@@ -142,6 +156,55 @@ export default async function FactCheckHistoryPage({ params }: {
   if (error) console.warn('[factcheck/history] report ledger unavailable:', error.code)
   const reports = error ? [] : (data ?? []) as unknown as ReviewHistoryRow[]
 
+  // A FactCheck report is only an AI/evidence finding. The owner's decision
+  // is stored separately and must never be inferred from ready_for_editor.
+  // The proposal is not deployed, so this read may legitimately be unavailable.
+  let decisionsUnavailable = false
+  let verifiedOwnerId: string | null = null
+  let decisions: OwnerDecisionRow[] = []
+  if (!error && reports.length > 0) {
+    // getProjectBySlug intentionally does not expose the owner_id field.
+    // Fetch it via a narrowly scoped admin read AFTER the RLS project check.
+    const ownerResult = await db.from('projects').select('owner_id')
+      .eq('id', project.id).maybeSingle()
+    if (ownerResult.error || typeof ownerResult.data?.owner_id !== 'string') {
+      decisionsUnavailable = true
+    } else {
+      verifiedOwnerId = ownerResult.data.owner_id
+      const result = await db.from('media_factcheck_editorial_decisions')
+        .select(
+          'id,report_id,project_id,script_id,script_version,revision_id,content_sha256,source_set_sha256,decision,notes,decided_by,decided_at'
+        )
+        .eq('project_id', project.id)
+        .in('report_id', reports.map(report => report.id))
+        .order('decided_at', { ascending: false })
+        .limit(25)
+      if (result.error) {
+        decisionsUnavailable = true
+        console.warn('[factcheck/history] decision ledger unavailable:', result.error.code)
+      } else {
+        decisions = (result.data ?? []) as unknown as OwnerDecisionRow[]
+      }
+    }
+  }
+  const decisionByReport = new Map<string, OwnerDecisionRow>()
+  for (const decision of decisions) {
+    const report = reports.find(r => r.id === decision.report_id)
+    if (!report || decision.project_id !== project.id ||
+        decision.script_id !== report.script_id ||
+        decision.script_version !== report.script_version ||
+        decision.revision_id !== report.revision_id ||
+        decision.content_sha256 !== report.content_sha256 ||
+        decision.source_set_sha256 !== report.source_set_sha256 ||
+        !['approve','reject'].includes(decision.decision) ||
+        typeof decision.notes !== 'string' ||
+        typeof decision.decided_by !== 'string' ||
+        !verifiedOwnerId || decision.decided_by !== verifiedOwnerId) continue
+    if (!decisionByReport.has(report.id)) {
+      decisionByReport.set(report.id, decision)
+    }
+  }
+
   return (
     <main className="min-h-screen px-5 py-7 md:px-10 md:py-10 space-y-6">
       <header className="space-y-3">
@@ -170,6 +233,7 @@ export default async function FactCheckHistoryPage({ params }: {
           <p className="text-muted-foreground">
             En automatisk kontroll kan bara föreslå att en nyhet går vidare till redaktören.
             Den här sidan är skrivskyddad och aktiverar varken AI-kostnader, video eller social publicering.
+            En faktarapport visas aldrig som mänskligt godkänd utan en separat, verifierad beslutsrad.
           </p>
         </div>
       </section>
@@ -195,6 +259,7 @@ export default async function FactCheckHistoryPage({ params }: {
           <p className="text-xs text-muted-foreground">De {reports.length} senaste rapporterna för The Prompt</p>
           {reports.map(report => {
             const status = decisionView(report.outcome)
+            const ownerDecision = decisionByReport.get(report.id)
             const sources = sourceReceipts(report.source_receipts)
             const findings = claimFindings(report.findings)
             const manuscript = report.manuscript_snapshot &&
@@ -228,6 +293,23 @@ export default async function FactCheckHistoryPage({ params }: {
                     <span>{findings.length} granskade textdelar</span>
                   </div>
                   <p className="text-sm text-muted-foreground">{report.framing_reason}</p>
+                  <div className="rounded-lg border border-border p-3 space-y-1 text-xs">
+                    {decisionsUnavailable ? (
+                      <p className="text-amber-300">Redaktionellt beslut kan inte verifieras – granskning krävs</p>
+                    ) : !ownerDecision ? (
+                      <p className="text-amber-300">Inväntar separat redaktionellt beslut – inte godkänt</p>
+                    ) : ownerDecision.decision === 'approve' ? (
+                      <>
+                        <p className="text-amber-300">Godkänd för vidare förberedelse av projektägaren – inte godkänd för publicering</p>
+                        <p className="text-muted-foreground">Beslutat {formatTime(ownerDecision.decided_at)}: {ownerDecision.notes}</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-red-300">Redaktionellt avvisad – stoppad</p>
+                        <p className="text-muted-foreground">Beslutat {formatTime(ownerDecision.decided_at)}: {ownerDecision.notes}</p>
+                      </>
+                    )}
+                  </div>
                   {reasonList.length > 0 && (
                     <p className="text-sm text-orange-300">
                       Orsak: {reasonList.join(', ')}

@@ -496,3 +496,36 @@ som separata modes. Testverktygets Docker-cleanup inväntar nu asynkron
 Verifierat för commit `88517e0`: alla åtta GitHub Actions-workflows
 **success** och exakt Vercel Preview **READY**. Fas 9 är en ny,
 ännu ej CI-verifierad kodändring fram till egen push och ny Preview.
+
+## Fas 10 – Kanonisk content-writer och negativa behörighetsfall (2026-10-28)
+
+Ny isolerad runner-mode: `-Mode native-content`. Utgår från samma
+ofarliga PostgreSQL 16-container (`--network none`, inga publika portar,
+volymer eller mounts) som övriga modes. Kör fyra **föreslagna, ej
+produktinstallerade** Family SQL-filer i enbart testdatabasen.
+
+Förutom den redan kanoniska `social_weekly_save` läses nu även
+**ordagrann SQL-kod från den kanoniska migrationen**
+`20261016100941_social_content_preparation_v1.sql` för
+`social_content_posts`, `social_content_revisions`,
+`social_content_decisions`, `social_content_validate`,
+`social_content_requirements`, `social_content_read` och
+`social_content_save`. De kanoniska tabell- och funktionsutdragen laddas
+utan att reimplementera affärslogiken. Övriga beroenden (identitetsfixture,
+projekt, godkänd kanalplan, kontobindningar, en ägd JPEG och
+`social_weekly_context`) är uttryckligen testdubletter, inte en dump
+eller replay av hela produktionsdatabasen.
+
+`native-content` har PASS för 4 sparade riktiga revisioner under
+4 redaktionella inlägg, rätt Facebook-/Instagram-kontobindningar,
+bild-SHA, godkänd plan, Stockholmstider, en idempotent
+veckoförberedelse, en kopplad intern avisering och ingen automatisk
+ägarattest. Fyra **negativa** kanoniska writer-kontroller passerade:
+främmande ägare, oägd bild, spärrad kontobindning och saknat
+plangodkännande. De avslås utan ytterligare inlägg eller revisioner.
+
+Testerna är **inte** full-schema-replay, riktigt Supabase-RLS med
+autentiserad ägarsession, kundpublicering, leverans, externa konton,
+eller betald AI-generering. Dessa steg är fortfarande RELEASE GATES.
+Ingen produktionstabell har skapats, ingen cron är på, inget AI-anrop
+har gjorts och inget har publicerats.

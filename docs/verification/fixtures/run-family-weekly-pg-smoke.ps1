@@ -6,7 +6,7 @@
 # Local postgres:16 image only; NO published ports, volumes or mounts.
 # Simulated-Sunday rewrites SQL in memory ONLY for disposable tests.
 param(
- [ValidateSet('normal','simulated-sunday','native-editorial')]
+ [ValidateSet('normal','simulated-sunday','native-editorial','native-content')]
  [string]$Mode='normal'
 )
 $ErrorActionPreference='Stop'
@@ -66,7 +66,34 @@ try{
   $raw | docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
   if($LASTEXITCODE -ne 0){throw ('DISPOSABLE_TEST_SQL_FAILED:'+ $relative)}
  }
- if($Mode -eq 'native-editorial'){
+ if($Mode -eq 'native-content'){
+  # Add synthetic prerequisites, then load the EXACT real content table and
+  # writer/read/validation bodies, not the simplified native-editorial stubs.
+  $deps=Join-Path $repo 'docs\verification\fixtures\family-weekly-pg-native-content-deps.sql'
+  Get-Content -LiteralPath $deps -Raw -Encoding UTF8 |
+   docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'NATIVE_CONTENT_DEPENDENCIES_FAILED'}
+  $source=Join-Path $repo 'apps\web\supabase\migrations\20261016100941_social_content_preparation_v1.sql'
+  $text=Get-Content -LiteralPath $source -Raw -Encoding UTF8
+  $t0=$text.IndexOf('create table public.social_content_posts(')
+  $t1=$text.IndexOf('create trigger social_content_revisions_immutable',$t0)
+  $f0=$text.IndexOf('create function public.social_content_validate(')
+  $f1=$text.IndexOf('create function public.social_content_decide(',$f0)
+  if($t0 -lt 0 -or $t1 -le $t0 -or $f0 -lt 0 -or $f1 -le $f0){
+   throw 'CANONICAL_CONTENT_SOURCE_NOT_FOUND'
+  }
+  Write-Output 'LOAD_CANONICAL_SOCIAL_CONTENT_TABLES_AND_WRITER_IN_DISPOSABLE_DB_ONLY=true'
+  $text.Substring($t0,$t1-$t0) |
+   docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'NATIVE_CONTENT_TABLES_FAILED'}
+  $text.Substring($f0,$f1-$f0) |
+   docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'NATIVE_CONTENT_FUNCTIONS_FAILED'}
+  'grant execute on function public.social_content_validate(jsonb), public.social_content_requirements(uuid), public.social_content_read(jsonb,jsonb), public.social_content_save(jsonb,jsonb) to service_role;' |
+   docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+  if($LASTEXITCODE -ne 0){throw 'NATIVE_CONTENT_GRANTS_FAILED'}
+ }
+ if($Mode -in @('native-editorial','native-content')){
   # The exact native save function is loaded from the reviewed canonical
   # migration; never copy/paste or silently simplify its PL/pgSQL.
   $sourcePath=Join-Path $repo 'apps\web\supabase\migrations\20261026090516_family_weekly_preparation.sql'
@@ -84,6 +111,16 @@ try{
   Get-Content -LiteralPath $assertFile -Raw -Encoding UTF8 |
    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
   if($LASTEXITCODE -ne 0){throw 'NATIVE_WEEKLY_SAVE_TEST_FAILED'}
+  if($Mode -eq 'native-content'){
+   $contentAssert=Join-Path $repo 'docs\verification\fixtures\family-weekly-pg-native-content-assert.sql'
+   Get-Content -LiteralPath $contentAssert -Raw -Encoding UTF8 |
+    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+   if($LASTEXITCODE -ne 0){throw 'NATIVE_CONTENT_PERSISTENCE_ASSERT_FAILED'}
+   $negative=Join-Path $repo 'docs\verification\fixtures\family-weekly-pg-native-content-negative.sql'
+   Get-Content -LiteralPath $negative -Raw -Encoding UTF8 |
+    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+   if($LASTEXITCODE -ne 0){throw 'NATIVE_CONTENT_NEGATIVE_ASSERT_FAILED'}
+  }
  }
  Write-Output ('FAMILY_WEEKLY_ISOLATED_PG_'+$Mode+'_PASS=true')
 }finally{

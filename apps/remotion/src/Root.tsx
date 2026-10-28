@@ -81,7 +81,10 @@ export function RemotionRoot() {
         height={1920}
         defaultProps={defaultProps}
         calculateMetadata={async ({ props }) => {
-          const durationInFrames = Math.ceil((props.durationMs / 1000) * 30) + 30
+          // V3 private review has a verified 75-frame outro. The old image
+          // and hybrid-MP4 rendering modes keep their original timing.
+          const durationInFrames=props.v3Storyboard?.totalFrames ??
+            (Math.ceil((props.durationMs / 1000) * 30) + 30)
           return { durationInFrames, props }
         }}
       />

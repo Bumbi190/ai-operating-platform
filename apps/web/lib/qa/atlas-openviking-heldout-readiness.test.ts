@@ -287,6 +287,9 @@ describe('Private OpenViking independent held-out cohort preflight', () => {
     expect(chat).not.toContain('openviking/heldout-readiness')
     expect(chat).not.toContain('scripts/openviking-heldout-readiness')
     expect(check).not.toMatch(/fetch\(|\.post\(|writeFileSync|execSync|createAdminClient/)
+    // Path containment must be anchored to this module, not to a caller's cwd.
+    expect(check).toContain("resolve(dirname(fileURLToPath(import.meta.url)), '../../..')")
+    expect(check).not.toContain("resolve(process.cwd(), '../..')")
   })
 
   it('never returns source text, canonical paths, personal information, keys or execution authority', () => {

@@ -210,6 +210,8 @@ describe('Handlarbörsen: owner-gated aggregate-only CRM snapshot', () => {
   it('routes CRM summaries but preserves latest mail and marketplace statistics', () => {
     expect(classifyHandlarborsenReadIntent('Sammanfatta Handlarbörsens CRM-status'))
       .toBe('handlarborsen_sales_overview')
+    expect(classifyHandlarborsenReadIntent('Hur är läget med Handlarbörsens kontakter och mejluppföljning?'))
+      .toBe('handlarborsen_sales_overview')
     expect(classifyHandlarborsenReadIntent('Hur många säljkontakter har Handlarbörsen?'))
       .toBe('handlarborsen_sales_overview')
     expect(classifyHandlarborsenReadIntent('Visa antal SCB-kandidater hos Handlarbörsen'))
@@ -223,6 +225,7 @@ describe('Handlarbörsen: owner-gated aggregate-only CRM snapshot', () => {
   it('does not turn sending or unrelated writing prompts into sales reads', () => {
     for (const s of [
       'Skicka mejl till Handlarbörsens säljkontakter',
+      'Kan du skicka en översikt till Handlarbörsens CRM-kontakter?',
       'Skriv en artikel om Handlarbörsens CRM-status',
       'Visa inte Handlarbörsens CRM-status',
       'Sammanfatta Familje-Stundens CRM-status',

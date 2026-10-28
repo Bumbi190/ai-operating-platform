@@ -182,6 +182,8 @@ describe('rendered overview', () => {
     expect(render(report([]))).not.toContain('href="#hb-workflow-drafts"')
     const css = readFileSync(resolve(__dirname, '../../components/platform/vnext/KpiOverview.module.css'), 'utf8')
     expect(css).toContain(".overview[data-prominent='true']")
+    const paperCss = readFileSync(resolve(__dirname, '../../components/platform/vnext/HandlarborsenWorkflowDrafts.module.css'), 'utf8')
+    expect(paperCss).toContain('scroll-margin-top: 5rem')
   })
 
   it('leads with big numbers, shows Okänt for null, links the full report and includes the saved-data visuals', () => {

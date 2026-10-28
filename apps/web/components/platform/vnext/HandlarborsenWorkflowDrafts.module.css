@@ -14,6 +14,7 @@
 }
 .section h2 {
   margin: 0 0 .3rem;
+  scroll-margin-top: 5rem;
   font-size: clamp(1.15rem, 1.6vw, 1.4rem);
   font-weight: 690;
   letter-spacing: -.03em;

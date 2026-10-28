@@ -2,6 +2,7 @@ import type {CalendarEntry} from './types';
 export type CalendarProgress={tone:'waiting'|'review'|'success'|'error'|'neutral';label:string;needsAttention:boolean};
 const state=(tone:CalendarProgress['tone'],label:string):CalendarProgress=>({tone,label,needsAttention:tone==='review'||tone==='error'});
 export function calendarProgress(entry:CalendarEntry):CalendarProgress{
+ if(entry.status==='manually_published'&&entry.manualPublished)return state('success','Manuellt publicerad · bekräftad av dig');
  if(entry.source.kind==='media'){
   const statuses:Record<string,CalendarProgress>={media_published:state('success','Publicerat · sparade kvitton'),media_waiting:state('waiting','Godkänt · väntar'),media_review:state('review','Behöver kontrolleras'),media_error:state('error','Behöver åtgärdas')};
   return statuses[entry.status]??state('review','Status behöver kontrolleras');

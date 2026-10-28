@@ -1,0 +1,98 @@
+# External workflow *reference* boundary. CI never runs imported n8n JSON.
+# A pinned metadata snapshot can only be inspected, never dispatched.
+name: Atlas External Workflow References
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/atlas-external-workflow-references.yml'
+      - 'apps/web/app/api/chat/route.ts'
+      - 'apps/web/lib/atlas/workflow-references/**'
+      - 'apps/web/lib/qa/atlas-external-workflow-references.test.ts'
+      - 'apps/web/scripts/*external-workflow-reference*.mjs'
+      - 'docs/architecture/ATLAS_EXTERNAL_WORKFLOW_REFERENCES_V1.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: atlas-external-references-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  reference-boundary:
+    name: External catalog read-only boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Offline catalog/index and tool-security smoke
+        working-directory: apps/web
+        run: |
+          node --check scripts/build-external-workflow-reference-index.mjs
+          node --check scripts/check-external-workflow-references.mjs
+          node --check lib/atlas/workflow-references/catalog-search.mjs
+          node scripts/check-external-workflow-references.mjs
+
+      - name: Deterministic dependency install (on hosted runner only)
+        run: npm ci
+
+      - name: Focused Vitest regression tests
+        working-directory: apps/web
+        run: |
+          npx --no vitest run \
+            lib/qa/atlas-external-workflow-references.test.ts \
+            lib/qa/atlas-workflow-catalog-chat.test.ts \
+            lib/qa/atlas-workflow-catalog.test.ts \
+            --reporter=default --reporter=json \
+            --outputFile="$RUNNER_TEMP/atlas-external-reference.json"
+
+      - name: Prove each required suite really ran (no skips)
+        if: always()
+        env:
+          REPORT: ${{ runner.temp }}/atlas-external-reference.json
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs')
+          const path = require('node:path')
+          const reportPath = process.env.REPORT
+          if (!reportPath || !fs.existsSync(reportPath)) {
+            throw new Error('Expected focused Vitest JSON report missing')
+          }
+          const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'))
+          const required = {
+            'atlas-external-workflow-references.test.ts': 27,
+            'atlas-workflow-catalog-chat.test.ts': 2,
+            'atlas-workflow-catalog.test.ts': 3,
+          }
+          for (const [name, minimum] of Object.entries(required)) {
+            const result = (report.testResults ?? []).find(item =>
+              path.basename(item.name) === name)
+            if (!result || result.status !== 'passed') {
+              throw new Error(name + ' missing or failed')
+            }
+            const outcomes = result.assertionResults ?? []
+            const passed = outcomes.filter(test => test.status === 'passed').length
+            if (passed < minimum || outcomes.some(test => test.status !== 'passed')) {
+              throw new Error(name + ' expected >=' + minimum + ' passing, 0 skipped')
+            }
+          }
+          if ((report.numFailedTests ?? 0) !== 0 ||
+              (report.numPendingTests ?? 0) !== 0 ||
+              (report.numTodoTests ?? 0) !== 0) {
+            throw new Error('Focused regression run contains failures/skips')
+          }
+          console.log('External workflow references: verified three suites, no skips.')
+          NODE
+
+      - name: Full TypeScript check
+        working-directory: apps/web
+        run: npx --no tsc --noEmit --incremental false

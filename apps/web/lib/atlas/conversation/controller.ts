@@ -68,6 +68,7 @@ type Turn = {
   conversationId: string;
   text: string;
   inputSource: "text" | "voice";
+  image?: {mediaType:"image/png"|"image/jpeg"|"image/webp";data:string};
   visiblePlan?: PlanRevisionRef | null;
   buildContext?: BuildContext | null;
   onEvent?: (event: StreamEvent) => void;
@@ -131,7 +132,7 @@ export class AtlasConversationController {
     }
   }
 
-  async sendCompactText(input: {text: string; initialProjectId: string | null}): Promise<TurnResult> {
+  async sendCompactText(input: {text: string; initialProjectId: string | null; image?: {mediaType:'image/png'|'image/jpeg'|'image/webp';data:string}}): Promise<TurnResult> {
     const text = input.text.trim();
     if (!text || this.compactPending || this.active.pending) return {ok: false};
     const token = Symbol();
@@ -140,7 +141,7 @@ export class AtlasConversationController {
       const id = await this.ensureConversation({firstText: text, inputSource: "text", projectId: input.initialProjectId});
       if (this.compactPending !== token) return {ok: false};
       if (!id) return {ok: false, notice: "Konversationen kunde inte sparas. Försök igen."};
-      return await this.sendTurn({conversationId: id, text, inputSource: "text", visiblePlan: null, buildContext: null});
+      return await this.sendTurn({conversationId: id, text, image: input.image, inputSource: "text", visiblePlan: null, buildContext: null});
     } finally {
       if (this.compactPending === token) this.compactPending = null;
     }
@@ -359,6 +360,7 @@ export class AtlasConversationController {
             conversation_id: id,
             ...(turn.inputSource === "voice" ? { voice: true } : {}),
             inputSource: turn.inputSource,
+            ...(turn.image?{image:turn.image}:{}),
             ...(start.studio&&start.projectId?{studioContext:{projectId:start.projectId,conversationId:id}}:{}),
             ...(visible ? { websitePlanRef: visible } : {}),
             ...(buildContext ? { buildContext } : {}),

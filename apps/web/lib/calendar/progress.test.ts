@@ -9,6 +9,11 @@ describe('source-aware calendar progress',()=>{
  it('requires review of an unknown publication outcome, never green',()=>expect(calendarProgress(social('uncertain'))).toMatchObject({tone:'review',needsAttention:true}));
  it('does not trust published database state as provider confirmation',()=>expect(calendarProgress(social('published'))).toMatchObject({tone:'review',label:'Publicering behöver bekräftas'}));
  it('does not mark a content proposal green or assign it a publisher',()=>{expect(calendarProgress(social('published',null))).toMatchObject({tone:'review'});expect(calendarResponsibility(social('proposal',null))).toBeNull()});
+ it('marks an explicit manual publication green only with a self-report',()=>{
+  expect(calendarProgress(social('manually_published',null)).tone).not.toBe('success');
+  const confirmed={...social('manually_published',null),manualPublished:{reportedBy:'operator',reportedAt:'2026-10-27T20:00:00Z'}};
+  expect(calendarProgress(confirmed)).toMatchObject({tone:'success',needsAttention:false});
+ });
  it('marks a completed workflow green without alerting',()=>expect(calendarProgress(entry('complete'))).toMatchObject({tone:'success',needsAttention:false}));
  it('marks explicitly completed personal work green and identifies the human',()=>{
   const e={...entry('scheduled'),source:{kind:'manual' as const,eventId:'e',version:1},manualEvent:{kind:'work_block',workStatus:'done'}} as CalendarEntry;

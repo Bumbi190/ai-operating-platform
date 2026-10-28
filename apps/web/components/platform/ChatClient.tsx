@@ -111,6 +111,15 @@ export function ChatClient({
     return {role:entry.kind==='user'?'user':'assistant',type:'text',content:entry.text} as TextMessage
   }):initialMessages
   const [input, setInput] = useState('')
+  const [image,setImage]=useState<{mediaType:'image/png'|'image/jpeg'|'image/webp';data:string;preview:string}|null>(null)
+  const [imageError,setImageError]=useState('')
+  const attachImage=(file:File)=>{
+    if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>4_000_000){setImageError('Använd PNG, JPG eller WebP under 4 MB.');return}
+    const reader=new FileReader()
+    reader.onload=()=>{const result=String(reader.result??'');const data=result.split(',')[1];if(!data){setImageError('Kunde inte läsa bilden.');return}setImage({mediaType:file.type as 'image/png'|'image/jpeg'|'image/webp',data,preview:result});setImageError('')}
+    reader.onerror=()=>setImageError('Kunde inte läsa bilden.')
+    reader.readAsDataURL(file)
+  }
   const loading=snapshot.id===conversationId&&snapshot.pending
   const [mode, setMode] = useState<'fast_path' | 'atlas' | null>(null)   // routing-verifiering
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -123,16 +132,18 @@ export function ChatClient({
   const handleSubmit=useCallback(async(e?:React.FormEvent,overrideText?:string)=>{
     e?.preventDefault()
     const text=(overrideText??input).trim()
-    if(!text||loading||!conversationId||!historyReadable)return
+    if((!text&&!image)||loading||!conversationId||!historyReadable)return
     setInput('')
-    await controller.sendTurn({conversationId,text,inputSource:'text',onEvent:event=>{
+    const result=await controller.sendTurn({conversationId,text:text||'Beskriv bilden.',image:image?{mediaType:image.mediaType,data:image.data}:undefined,inputSource:'text',onEvent:event=>{
       if(event.event==='navigate'&&typeof event.href==='string'&&event.href.split('?')[0]!==pathname)router.push(event.href)
       if(event.event==='done'&&controller.snapshot().history.filter(m=>m.role==='user').length===1)router.refresh()
       if(event.event==='timing')setMode(event.reqType==='fast_path'?'fast_path':'atlas')
       if(event.event==='website_plan'||event.event==='website_workspace')router.push('/chat/'+conversationId+'?build=1')
     }})
+    if(result.ok)setImage(null)
+    else {setInput(text);setImageError(result.notice||'Bilden kunde inte skickas.')}
     inputRef.current?.focus()
-  },[input,loading,conversationId,historyReadable,controller,pathname,router])
+  },[input,image,loading,conversationId,historyReadable,controller,pathname,router])
   useEffect(()=>{if(snapshot.id===conversationId&&snapshot.speechDraft!==null)setInput(snapshot.speechDraft)},[snapshot.id,snapshot.speechDraft,conversationId])
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -306,12 +317,16 @@ export function ChatClient({
       {/* Input */}
       <div className="shrink-0 px-4 pb-6 pt-2">
         <form onSubmit={handleSubmit}>
+          {image&&<div className="mb-2 flex items-center gap-2"><img src={image.preview} alt="Bifogad skärmbild" className="max-h-28 rounded border"/><button type="button" onClick={()=>setImage(null)}>Ta bort bild</button></div>}
+          {imageError&&<p role="alert" className="text-xs text-red-400">{imageError}</p>}
+          <label className="mb-2 inline-block cursor-pointer text-xs text-indigo-300">Bifoga bild <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={e=>{const file=e.target.files?.[0];if(file)attachImage(file);e.target.value=''}}/></label>
           <div className="flex items-end gap-2 rounded-2xl border border-border bg-card px-4 py-3 focus-within:border-indigo-500/40 transition-colors">
             <textarea
               ref={inputRef}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
+              onPaste={e=>{const file=Array.from(e.clipboardData.files).find(file=>file.type.startsWith('image/'));if(file){e.preventDefault();attachImage(file)}}}
               placeholder="Skriv ett meddelande… (Enter för att skicka, Shift+Enter för ny rad)"
               rows={1}
               disabled={loading}
@@ -320,7 +335,7 @@ export function ChatClient({
             />
             <button
               type="submit"
-              disabled={!input.trim() || loading}
+              disabled={(!input.trim()&&!image) || loading}
               className="w-8 h-8 rounded-xl bg-indigo-500 text-white flex items-center justify-center hover:bg-indigo-600 disabled:opacity-30 disabled:cursor-not-allowed transition-colors shrink-0"
             >
               {loading ? (

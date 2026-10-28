@@ -15,6 +15,12 @@ export function isAtlasSwedishVoice(value: unknown): value is AtlasSwedishVoice 
 export function atlasVoiceLabel(voice: AtlasSwedishVoice): string {
   return voice === ATLAS_NOVA_VOICE.key ? ATLAS_NOVA_VOICE.label : ATLAS_SWEDISH_VOICES[voice].label
 }
+/** Adult Nova is the preferred operator voice only when the server actually authorises it. */
+export function preferredAtlasVoice<T extends { key: AtlasSwedishVoice }>(available: readonly T[]): AtlasSwedishVoice {
+  return available.some(v => v.key === 'nova') ? 'nova'
+    : available.some(v => v.key === 'anders') ? 'anders'
+    : available[0]?.key ?? 'anders'
+}
 /** Anders and Peter keep the proven low-latency path. Only the gated Nova option uses v4. */
 export const ATLAS_ELEVEN_MODEL = 'eleven_flash_v2_5' as const
 export const ATLAS_NOVA_ELEVEN_MODEL = 'eleven_v4' as const

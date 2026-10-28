@@ -207,6 +207,10 @@ const PROJECT_ALIASES: Record<string, string> = (() => {
     'familje stunden': 'familje-stunden',
     familjestunden: 'familje-stunden',
     'gain pilot': 'gainpilot',
+    // Common speech-to-text duplication of Handlarbörsen in live Swedish calls.
+    'handlarbörs-börsen': 'handlarborsen',
+    'handlarbors-borsen': 'handlarborsen',
+    'handlarbörsen': 'handlarborsen',
   })
   return map
 })()

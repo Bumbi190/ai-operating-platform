@@ -124,32 +124,99 @@
 .composer {
   flex: none;
   display: flex;
-  align-items: flex-end;
-  gap: 3px;
-  padding: 8px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 9px 10px;
   border-top: 1px solid #9ab4ce15;
+  min-width: 0;
+}
+.composerRow {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  min-width: 0;
+  gap: 5px;
+  padding: 4px;
+  box-sizing: border-box;
+  border: 1px solid #779bb43d;
+  border-radius: 16px;
+  background: #07111e;
+}
+.composerRow:focus-within {
+  border-color: #79d9d7;
+  box-shadow: 0 0 0 1px #79d9d740;
+}
+.fileInput {
+  display: none;
 }
 .editor {
   display: block;
-  flex: 1;
+  flex: 1 1 0;
+  width: 0;
   min-width: 0;
   resize: none;
   height: 40px;
   min-height: 40px;
-  max-height: 76px;
-  border: 1px solid #779bb42b;
-  border-radius: 11px;
-  background: #070f19;
+  max-height: 120px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
   color: #edf3f8;
-  padding: 9px 10px;
+  padding: 10px 7px;
   font: inherit;
+  font-size: 16px;
   line-height: 20px;
   box-sizing: border-box;
   scrollbar-width: thin;
 }
+.composerRow .editor:focus-visible {
+  outline: none;
+}
+.attachmentPreview {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  padding: 0 4px;
+}
+.attachmentThumb {
+  width: 46px;
+  height: 46px;
+  object-fit: cover;
+  border-radius: 9px;
+  border: 1px solid #779bb43d;
+}
+.attachmentName {
+  flex: 1;
+  min-width: 0;
+  color: #b1c5d7;
+  font-size: 12px;
+}
+.panel .removeImage {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #779bb43d;
+  background: #172638;
+}
+.panel .attachButton,
+.panel .send,
+.panel .callButton,
+.panel .callActive {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+}
+.panel .attachButton,
+.panel .callButton {
+  color: #b1c5d7;
+}
 .panel .send {
   background: #8bd9cf;
   color: #0b292c;
+}
+.panel .send:hover:not(:disabled) {
+  background: #a9ebe3;
+  color: #08252a;
 }
 .panel .callActive {
   background: #652a38;
@@ -167,8 +234,22 @@
     width: 44px;
     height: 44px;
   }
+  .panel .attachButton,
+  .panel .send,
+  .panel .callButton,
+  .panel .callActive {
+    width: 44px;
+    height: 44px;
+  }
+  .panel .removeImage {
+    width: 36px;
+    height: 36px;
+  }
   .composer {
-    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    padding: 8px 9px max(8px, env(safe-area-inset-bottom, 0px));
+  }
+  .composerRow {
+    gap: 4px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

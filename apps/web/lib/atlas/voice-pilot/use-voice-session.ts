@@ -5,7 +5,8 @@ import { AtlasConversationController } from '@/lib/atlas/conversation/controller
 import { browserDependencies, createPcmVoiceCapture } from '@/lib/atlas/voice-pilot/pcm-capture'
 import { createPcmSpeechPlayer } from '@/lib/atlas/voice-pilot/player'
 import { takeSpeechChunk } from '@/lib/atlas/voice-pilot/reply'
-import { isAtlasSwedishVoice, type AtlasSwedishVoice } from '@/lib/atlas/voice-pilot/voices'
+import { isAtlasSwedishVoice, preferredAtlasVoice, type AtlasSwedishVoice } from '@/lib/atlas/voice-pilot/voices'
+import { createMicSignalStore, type MicSignalStore } from '@/lib/atlas/voice-pilot/mic-diagnostics'
 import type { StreamEvent } from '@/lib/os/chat-shared'
 import { createClient } from '@/lib/supabase/client'
 
@@ -22,7 +23,8 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
   const conversation = shared ?? local
   const latest = useRef({ beforeStart, onEvent, onDraftCaptureEnd, projectId })
   latest.current = { beforeStart, onEvent, onDraftCaptureEnd, projectId }
-  const openingRef = useRef(false), micRef = useRef(false), draftReceiver = useRef<((text: string) => void) | null>(null), voicesReady = useRef<Promise<boolean>>(Promise.resolve(false))
+  const openingRef = useRef(false), micRef = useRef(false), captureEpoch = useRef(0)
+  const draftReceiver = useRef<((text: string) => void) | null>(null), voicesReady = useRef<Promise<boolean>>(Promise.resolve(false))
   const snapshot = useSyncExternalStore(conversation.subscribe, conversation.snapshot, conversation.snapshot)
   const [voices, setVoices] = useState<{ key: AtlasSwedishVoice; label: string }[]>([])
   const [voice, setVoice] = useState<AtlasSwedishVoice>('anders')
@@ -35,6 +37,12 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
   const [transcribing, setTranscribing] = useState(false)
   const [timing, setTiming] = useState<Timing | null>(null)
   const [mic, setMic] = useState(false), [opening, setOpening] = useState(false), [speaking, setSpeaking] = useState(false)
+  const [micProblem, setMicProblem] = useState<string | null>(null)
+  const micSignalStoreRef = useRef<MicSignalStore | null>(null)
+  micSignalStoreRef.current ??= createMicSignalStore()
+  const [micDevices, setMicDevices] = useState<{ id: string; label: string }[]>([])
+  const [micDeviceId, setMicDeviceId] = useState('')
+  const micDeviceRef = useRef('')
   const [draft, setDraft] = useState(''), [reply, setReply] = useState(''), [notice, setNotice] = useState('')
   const [sending, setSending] = useState(false)
   const turnGeneration = useRef(0)
@@ -70,16 +78,41 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
     stopSpeech(); capture.current?.discard()
     setNotice(mic ? 'Rösten är avbruten. Säg rättelsen när Atlas lyssnar. Ett redan påbörjat jobb fortsätter; din rättelse skickas därefter.' : 'Rösten är stoppad. Ett redan påbörjat jobb fortsätter och svaret finns kvar i text.')
   }
+  /** Mute affects only microphone capture, never TTS, the active reply or the call. */
+  function pauseMic() {
+    setMicProblem(null) // Only a deliberate mute is labelled "muted".
+    micSignalStoreRef.current?.reset()
+    captureEpoch.current++ // invalidate any pending mic-start or late capture callback
+    openingRef.current = false; micRef.current = false
+    const owned = capture.current; capture.current = null
+    owned?.stop()
+    if (mounted.current) { setMic(false); setOpening(false); setListening(false); setTranscribing(false) }
+  }
   function stopAll() {
     queuedVoice.current = null; heldDraft.current = ''
     if (draftReceiver.current) latest.current.onDraftCaptureEnd?.('Mikrofoninspelningen avslutades. Du kan starta den igen.')
-    lifetime.current++; openingRef.current = false; micRef.current = false; draftReceiver.current = null; stopSpeech(); capture.current?.stop(); capture.current = null
-    if (mounted.current) { setMic(false); setOpening(false); setListening(false); setTranscribing(false) }
+    lifetime.current++; draftReceiver.current = null; stopSpeech(); pauseMic()
+  }
+
+  async function refreshMicDevices() {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.enumerateDevices) return
+    try {
+      const found = (await navigator.mediaDevices.enumerateDevices())
+        .filter(device => device.kind === 'audioinput' && Boolean(device.deviceId))
+        .map((device, index) => ({
+          id: device.deviceId,
+          label: device.label || `Mikrofon ${index + 1}`,
+        }))
+      if (mounted.current) setMicDevices(found)
+    } catch { /* Browser permission and device enumeration are optional. */ }
   }
 
   useEffect(() => {
     if (!enabled) { stopAll(); return }
     mounted.current = true
+    void refreshMicDevices()
+    const devicesChanged = () => { void refreshMicDevices() }
+    navigator.mediaDevices?.addEventListener?.('devicechange', devicesChanged)
     const abort = new AbortController()
     voicesReady.current = fetch('/api/atlas/voice-pilot/speech', { signal: abort.signal }).then(async response => {
       if (!response.ok) throw new Error('lookup_failed')
@@ -87,19 +120,21 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
       if (!mounted.current || abort.signal.aborted) return false
       const found = Array.isArray(data.voices) ? data.voices.filter((v: any) => isAtlasSwedishVoice(v.key) && typeof v.label === 'string') : []
       setVoices(found)
-      if (found.length) setVoice(found[0].key)
+      if (found.length) setVoice(preferredAtlasVoice(found))
       else setNotice('Anders och Peter är inte tillgängliga i det anslutna ElevenLabs-kontot. Du kan fortfarande testa textchatten.')
       return found.length > 0
     }).catch(() => { if (mounted.current && !abort.signal.aborted) setNotice('Rösterna kunde inte hämtas. Ladda om sidan och försök igen.'); return false })
-    const hide = () => { if (document.hidden) stopAll() }
+    // A live, owner-started call must survive app navigation and a temporarily hidden tab.
+    // A full document unload cannot retain a browser-owned microphone; stop it on pagehide.
     const leave = () => stopAll()
-    document.addEventListener('visibilitychange', hide); window.addEventListener('pagehide', leave)
+    window.addEventListener('pagehide', leave)
     const { data: auth } = createClient().auth.onAuthStateChange(event => {
       if (event === 'SIGNED_OUT') { stopAll(); heldDraft.current = ''; writeDraft('', 'text'); setReply(''); setNotice(''); conversation.clearOnSignout() }
     })
     return () => {
       mounted.current = false; abort.abort(); stopAll(); player.current?.dispose(); player.current = null
-      auth.subscription.unsubscribe(); document.removeEventListener('visibilitychange', hide); window.removeEventListener('pagehide', leave)
+      auth.subscription.unsubscribe(); window.removeEventListener('pagehide', leave)
+      navigator.mediaDevices?.removeEventListener?.('devicechange', devicesChanged)
     }
     // One owned device lifetime per mounted trial page.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -131,7 +166,11 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
 
   useEffect(() => {
     if (!mic) return
-    const timer = setTimeout(() => { stopAll(); setNotice('Mikrofonen stängdes efter tio minuter. Starta den igen om du vill fortsätta.') }, 10 * 60 * 1000)
+    const timer = setTimeout(() => {
+      pauseMic()
+      setMicProblem('Mikrofonen pausades efter tio minuter av säkerhetsskäl. Slå på den igen för att fortsätta.')
+      setNotice('Mikrofonen pausades efter tio minuter. Samtalet är kvar – slå på mikrofonen för att fortsätta.')
+    }, 10 * 60 * 1000)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mic])
@@ -144,29 +183,45 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
       if (mounted.current && token === lifetime.current && audioToken === speechEpoch.current) speak().enqueue(text, voice)
     } catch { if (mounted.current && token === lifetime.current && audioToken === speechEpoch.current) setNotice('Klicka på provlyssna igen för att aktivera ljudet i webbläsaren.') }
   }
-  async function startMic() {
+  async function startMic(mode: 'speakers' | 'headphones' = playbackMode) {
     if (micRef.current || openingRef.current) return
     if (!enabled || !mounted.current) return
     openingRef.current = true
+    setMicProblem(null)
     latest.current.beforeStart?.(); setNotice(''); setOpening(true)
-    const token = lifetime.current
+    const token = lifetime.current, micToken = ++captureEpoch.current
+    const selectedDeviceId = micDeviceRef.current
+    const currentMic = () => mounted.current && token === lifetime.current && micToken === captureEpoch.current
     try {
-    // Resume in the tap before awaiting the lazy transport module.
-    const prepared = speak().prepare()
-    void prepared.catch(() => {})
-    const streamTurn = streamingAvailable && inputMode === 'streaming'
+      // Resume in the tap before awaiting the lazy transport module.
+      const prepared = speak().prepare()
+      void prepared.catch(() => {})
+      const streamTurn = streamingAvailable && inputMode === 'streaming'
       ? (await import('@/lib/atlas/voice-pilot/stream-client')).beginVoiceStream : undefined
-    if (!mounted.current || token !== lifetime.current) return
-    const next = createPcmVoiceCapture({ pauseMs, playbackMode,
+      if (!currentMic()) return
+      const next = createPcmVoiceCapture({ pauseMs, playbackMode: mode,
       endpoint: quietMs => { lastQuietMs.current = quietMs },
-      listening: value => { if (mounted.current && token === lifetime.current) setListening(value) },
-      processing: value => { if (mounted.current && token === lifetime.current) setTranscribing(value) },
-      active: value => { if (mounted.current && token === lifetime.current) { setMic(value); micRef.current = value; openingRef.current = false; setOpening(false); if (!value && draftReceiver.current) latest.current.onDraftCaptureEnd?.('Mikrofoninspelningen avslutades. Du kan starta den igen.') } },
-      notice: message => { if (mounted.current && token === lifetime.current) { if (draftReceiver.current) { draftReceiver.current = null; latest.current.onDraftCaptureEnd?.(message); stopAll() } openingRef.current = false; setOpening(false); setNotice(message) } },
-      draft: text => { if (mounted.current && token === lifetime.current) writeDraft([heldDraft.current, text].filter(Boolean).join(' '), 'voice') },
-      interrupt: () => { if (mounted.current && token === lifetime.current) stopSpeech() },
+      onSignal: value => { if (currentMic()) micSignalStoreRef.current?.update(value) },
+      listening: value => { if (currentMic()) setListening(value) },
+      processing: value => { if (currentMic()) setTranscribing(value) },
+      active: value => { if (currentMic()) {
+        if (!value && (micRef.current || openingRef.current))
+          setMicProblem('Mikrofonen tappade anslutningen. Tryck på mikrofonknappen för att återansluta.')
+        else if (value) setMicProblem(null)
+        setMic(value); micRef.current = value; openingRef.current = false; setOpening(false)
+        if (!value && draftReceiver.current) latest.current.onDraftCaptureEnd?.('Mikrofoninspelningen avslutades. Du kan starta den igen.')
+      } },
+      notice: message => { if (currentMic()) {
+        if (draftReceiver.current) { draftReceiver.current = null; latest.current.onDraftCaptureEnd?.(message); stopAll() }
+        openingRef.current = false; setOpening(false); setNotice(message)
+        // After an unexpected source stop, preserve its actual reason even
+        // though an unrelated conversation turn might clear the notice later.
+        if (!micRef.current) setMicProblem(message)
+      } },
+      draft: text => { if (currentMic()) writeDraft([heldDraft.current, text].filter(Boolean).join(' '), 'voice') },
+      interrupt: () => { if (currentMic()) stopSpeech() },
       receive: text => {
-        if (!mounted.current || token !== lifetime.current) return
+        if (!currentMic()) return
         const receiver = draftReceiver.current
         if (receiver) { draftReceiver.current = null; stopAll(); receiver(text); return }
         const combined = [heldDraft.current, text].filter(Boolean).join(' ')
@@ -177,13 +232,25 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
           setNotice('Jag hörde dig. Din fortsättning skickas när det pågående svaret är klart. Redigera texten om du vill ändra den först.')
         } else void submitRef.current(combined, 'voice', lastQuietMs.current)
       },
-    }, streamTurn ? { ...browserDependencies(), streamTurn } : undefined)
-    capture.current = next
-    next.setOutputActive(outputActive.current)
+    }, streamTurn
+      ? { ...browserDependencies(selectedDeviceId), streamTurn }
+      : browserDependencies(selectedDeviceId))
+      capture.current = next
+      next.setOutputActive(outputActive.current)
       await prepared
-      if (!await voicesReady.current) { if (mounted.current && token === lifetime.current) stopAll(); return }
-      if (mounted.current && token === lifetime.current) await next.start()
-    } catch { if (mounted.current && token === lifetime.current) { stopAll(); setNotice('Ljudet kunde inte starta. Prova att klicka på provlyssna först.') } }
+      if (!await voicesReady.current) {
+        if (currentMic()) { pauseMic(); setNotice('Inga röster är tillgängliga. Samtalet är kvar.') }
+        return
+      }
+      if (currentMic()) {
+        await next.start()
+        if (currentMic()) void refreshMicDevices()
+      } else next.stop()
+    } catch { if (currentMic()) {
+      pauseMic()
+      setMicProblem('Mikrofonen kunde inte starta. Kontrollera anslutningen och tryck för att återansluta.')
+      setNotice('Mikrofonen kunde inte starta. Kontrollera anslutningen och försök igen.')
+    } }
   }
 
   function resumeQueuedVoice(token: number, completed: boolean) {
@@ -253,8 +320,24 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
 
   const phase = speaking ? 'speaking' as const : sending || transcribing ? 'thinking' as const : listening ? 'listening' as const : 'idle' as const
   return { snapshot, voices, voice, setVoice, inputMode, setInputMode, measurements, pauseMs, setPauseMs, playbackMode, setPlaybackMode,
-    outputBusy, listening, transcribing, timing, mic, opening, speaking, draft, reply, notice, sending, phase,
+    outputBusy, listening, transcribing, timing, mic, micProblem, micSignalStore: micSignalStoreRef.current,
+    micDevices, micDeviceId, opening, speaking, draft, reply, notice, sending, phase,
     active: mic || opening || outputBusy, sample,
+    toggleMute: () => { if (micRef.current || openingRef.current) pauseMic(); else void startMic() },
+    setCallAudioMode: (mode: 'speakers' | 'headphones') => {
+      if (mode !== 'speakers' && mode !== 'headphones') return
+      if (mode === playbackMode) return
+      const wasActive = micRef.current || openingRef.current
+      pauseMic(); setPlaybackMode(mode)
+      // Use the explicit new mode: React state is not synchronous in this click.
+      if (wasActive) void startMic(mode)
+    },
+    selectMicDevice: (id: string) => {
+      if (id && !micDevices.some(device => device.id === id)) return
+      const wasActive = micRef.current || openingRef.current
+      pauseMic(); micDeviceRef.current = id; setMicDeviceId(id)
+      if (wasActive) void startMic()
+    },
     toggleMic: () => { if (micRef.current || openingRef.current) stopAll(); else void startMic() }, startMic: () => { if (draftReceiver.current) stopAll(); void startMic() },
     captureDraft: (receive: (text: string) => void) => { stopAll(); latest.current.onDraftCaptureEnd?.(null); const token = lifetime.current; draftReceiver.current = receive; void startMic(); return () => { if (token === lifetime.current) stopAll() } },
     stopAll, interruptForCorrection, finish: () => capture.current?.finish(),

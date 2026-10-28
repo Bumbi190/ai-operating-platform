@@ -1,0 +1,76 @@
+# Dedicated, secret-free regression gate for budget replay dispatch safety.
+# Uses the actual production TypeScript verdict code, with mocked RPC data only.
+# Does not enable the spend gate or interact with production Supabase.
+name: Spend Replay Boundary
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web/lib/cost/budget-gate.ts'
+      - 'apps/web/lib/cost/governed-spend.ts'
+      - 'apps/web/lib/qa/spend-budget-gate.test.ts'
+      - 'apps/web/lib/qa/spend-replay-advisory.test.ts'
+      - '.github/workflows/spend-replay-boundary.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spend-replay-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  replay-safety:
+    name: Spend replay refusal suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Deterministic dependency install
+        run: npm ci
+      - name: Run replay and budget regressions
+        working-directory: apps/web
+        run: |
+          npx --no vitest run \
+            lib/qa/spend-budget-gate.test.ts \
+            lib/qa/spend-replay-advisory.test.ts \
+            --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/spend-replay.json"
+      - name: Verify test coverage actually ran
+        if: always()
+        run: |
+          node - "$RUNNER_TEMP/spend-replay.json" <<'NODE'
+          const fs = require('node:fs')
+          const filename = process.argv[2]
+          if (!fs.existsSync(filename)) {
+            console.error('::error::No test report')
+            process.exit(1)
+          }
+          const report = JSON.parse(fs.readFileSync(filename, 'utf8'))
+          const files = (report.testResults ?? []).map(x => x.name ?? x.testFilePath ?? '')
+          const required = [
+            'spend-budget-gate.test.ts',
+            'spend-replay-advisory.test.ts',
+          ]
+          const missing = required.filter(name => !files.some(x => x.endsWith(name)))
+          const pass = (report.numPassedTests ?? 0) >= 20 &&
+            (report.numFailedTests ?? 0) === 0 &&
+            (report.numPendingTests ?? 0) === 0 &&
+            (report.numFailedTestSuites ?? 0) === 0 &&
+            (report.numTodoTests ?? 0) === 0 &&
+            missing.length === 0
+          console.log(JSON.stringify({ passed: report.numPassedTests, failed: report.numFailedTests, pending: report.numPendingTests, files, missing }))
+          if (!pass) {
+            console.error('::error::Replay safety test floor or zero-failure contract not met')
+            process.exit(1)
+          }
+          NODE
+      - name: Typecheck
+        working-directory: apps/web
+        run: npx tsc --noEmit

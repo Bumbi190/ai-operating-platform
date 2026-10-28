@@ -65,6 +65,7 @@ create index media_factcheck_reports_script_history
   on public.media_factcheck_reports (project_id, script_id, recorded_at desc);
 
 alter table public.media_factcheck_reports enable row level security;
+alter table public.media_factcheck_reports force row level security;
 -- This is a PRIVATE server-only evidence ledger; no authenticated/anon policies.
 revoke all on public.media_factcheck_reports from public, anon, authenticated, service_role;
 grant select, insert on public.media_factcheck_reports to service_role;
@@ -127,6 +128,9 @@ create trigger media_factcheck_report_insert_guard
 create trigger media_factcheck_report_append_only
   before update or delete on public.media_factcheck_reports
   for each row execute function public.media_factcheck_report_append_only();
+create trigger media_factcheck_report_no_truncate
+  before truncate on public.media_factcheck_reports
+  for each statement execute function public.media_factcheck_report_append_only();
 
 -- Trigger functions are internal implementation details, not callable API.
 revoke all on function public.media_factcheck_report_insert_guard()

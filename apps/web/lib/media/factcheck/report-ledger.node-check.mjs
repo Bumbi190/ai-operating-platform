@@ -41,6 +41,7 @@ test('report is evidence, never editorial approval or dispatch authority',()=>{
 
 test('private table has RLS and no anon/authenticated grants',()=>{
   assert.match(migration,/alter table public\.media_factcheck_reports enable row level security/i)
+  assert.match(migration,/alter table public\.media_factcheck_reports force row level security/i)
   assert.match(migration,/revoke all on public\.media_factcheck_reports from public, anon, authenticated, service_role/i)
   assert.match(migration,/grant select, insert on public\.media_factcheck_reports to service_role/i)
   assert.doesNotMatch(migration,/grant\s+.*(?:update|delete).*media_factcheck_reports/i)
@@ -50,6 +51,8 @@ test('private table has RLS and no anon/authenticated grants',()=>{
 test('append-only even for privileged roles',()=>{
   assert.match(migration,/raise exception 'FACTCHECK_EVIDENCE_IMMUTABLE'/i)
   assert.match(migration,/before update or delete on public\.media_factcheck_reports/i)
+  assert.match(migration,/before truncate on public\.media_factcheck_reports/i)
+  assert.match(migration,/for each statement execute function public\.media_factcheck_report_append_only/i)
   assert.match(migration,/for each row execute function public\.media_factcheck_report_append_only/i)
 })
 

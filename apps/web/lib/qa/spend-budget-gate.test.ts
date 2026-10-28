@@ -79,8 +79,9 @@ describe('SQL tells the truth; the flag decides enforcement', () => {
   it('the verdict distinguishes "budget said yes" from "we let it through"', () => {
     // allowed vs wouldAllow vs advisoryOverride — collapsing these would make
     // advisory mode indistinguishable from a passing budget in the audit trail.
-    expect(gate).toMatch(/allowed:\s*p\.wouldAllow \|\| !enforced/)
-    expect(gate).toMatch(/advisoryOverride:\s*!p\.wouldAllow && !enforced/)
+    expect(gate).toMatch(/allowed:\s*!hardRefusal && \(p\.wouldAllow \|\| !enforced\)/)
+    expect(gate).toMatch(/advisoryOverride:\s*!p\.wouldAllow && !enforced && !hardRefusal/)
+    expect(gate).toMatch(/const hardRefusal = isReplayRefusal\(p\.reason\)/)
   })
 
   it('one predicate, shared — the status surface cannot report a fiction', () => {

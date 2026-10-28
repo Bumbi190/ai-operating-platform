@@ -53,7 +53,7 @@ const makeArgs=(override={})=>({
   writerModelIdentity:'model-writer-1',manuscript,
   sourceUrls:[WIRED,PARLIAMENT],
   sourceReader:{kind:'fixture',read:async url=>({
-    success:true,url,title:'Test source',text:SOURCE_TEXT,
+    success:true,url,title:'Test source',text:SOURCE_TEXT+' Publisher: '+url,
   })},
   reviewer:{kind:'fixture',modelIdentity:'model-reviewer-2',review:async input=>validAssessment(input)},
   nowMs:NOW,...override,
@@ -175,4 +175,37 @@ test('an invented claim with no support is not cleared by made-up evidence',asyn
   }})
   const result=await runFactCheckFixturePreview(options)
   assert.equal(result.decision.outcome,'requires_review')
+})
+
+test('a reviewer cannot edit frozen source evidence or the exact script version',async()=>{
+  let mutationRejected=0
+  const options=makeArgs({
+    reviewer:{
+      kind:'fixture',modelIdentity:'independent-reviewer',
+      review:async input=>{
+        try{ input.sourceSnapshots[0].text='The AI decides asylum cases.' }
+        catch{ mutationRejected++ }
+        try{ input.manuscript.hook='A fabricated new headline.' }
+        catch{ mutationRejected++ }
+        try{ input.requiredUnits[0].text='Tampered with evidence.' }
+        catch{ mutationRejected++ }
+        return validAssessment(input)
+      },
+    },
+  })
+  const result=await runFactCheckFixturePreview(options)
+  assert.equal(mutationRejected,3)
+  assert.equal(result.decision.outcome,'ready_for_editor')
+  assert.equal(result.canPublish,false)
+  assert.equal(manuscript.hook,'Researchers announced a new public API.')
+})
+test('non-array manuscript input is refused before any reader or reviewer call',async()=>{
+  let invoked=0
+  const opts=makeArgs({
+    manuscript:{...manuscript,captions:null},
+    sourceReader:{kind:'fixture',read:async()=>{invoked++;return null}},
+  })
+  const result=await runFactCheckFixturePreview(opts)
+  assert.equal(result.decision.outcome,'requires_review')
+  assert.equal(invoked,0)
 })

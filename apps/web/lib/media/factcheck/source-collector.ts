@@ -128,6 +128,7 @@ export async function collectVerifiedSources(
 
   const snapshots: SourceSnapshot[] = []
   const receipts: SourceReceipt[] = []
+  const seenTextHashes = new Set<string>()
   for (const [index, source] of recognized.entries()) {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), PER_SOURCE_TIMEOUT_MS)
@@ -156,18 +157,24 @@ export async function collectVerifiedSources(
         response.text.length > MAX_TEXT_CHARS) {
       return refused('source_identity_or_body_invalid')
     }
+    const textSha256 = createHash('sha256').update(response.text).digest('hex')
+    // Two different news outlets republishing IDENTICAL text do not provide
+    // independent corroboration. Near-copies still need semantic scrutiny.
+    if (seenTextHashes.has(textSha256)) return refused('duplicate_source_content')
+    seenTextHashes.add(textSha256)
     const id = 'source-' + index
     const retrievedAt = new Date(nowMs).toISOString()
-    snapshots.push({
+    snapshots.push(Object.freeze({
       id, url: source.url, publisherGroup: source.group,
       kind: source.kind, retrievedAt, text: response.text,
-    })
-    receipts.push({
+    }))
+    receipts.push(Object.freeze({
       sourceId: id, url: source.url, publisherGroup: source.group,
       retrievedAt,
-      textSha256: createHash('sha256').update(response.text).digest('hex'),
+      textSha256,
       characterCount: response.text.length,
-    })
+    }))
   }
-  return {ok: true, snapshots, receipts}
+  return {ok: true, snapshots: Object.freeze(snapshots),
+    receipts: Object.freeze(receipts)}
 }

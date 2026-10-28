@@ -10,6 +10,7 @@
  * genuine independent semantic review, immutable audit storage and a separate
  * owner editorial gate before this can be a real publishing dependency.
  */
+import {createHash} from 'node:crypto'
 import {
   assessFactCheck, contentDigest, materialUnits,
   type FactCheckDecision, type ReviewerAssessment, type ScriptMaterial,
@@ -129,8 +130,18 @@ export async function runFactCheckFixturePreview(
   if (!options || options.mode !== 'offline_fixture_only' ||
       options.sourceReader?.kind !== 'fixture' ||
       options.reviewer?.kind !== 'fixture') return noApproval('not_enabled_for_live_execution',null)
-  const material = options.manuscript
-  if (!material || material.projectId !== options.projectId ||
+  const incomingMaterial = options.manuscript
+  if (!incomingMaterial || !Array.isArray(incomingMaterial.captions) ||
+      incomingMaterial.captions.some(item => typeof item !== 'string') ||
+      typeof incomingMaterial.script !== 'string' ||
+      typeof incomingMaterial.hook !== 'string' ||
+      typeof incomingMaterial.socialCaption !== 'string') {
+    return noApproval('invalid_manuscript',incomingMaterial)
+  }
+  const material: ScriptMaterial = Object.freeze({
+    ...incomingMaterial,captions:Object.freeze([...incomingMaterial.captions]),
+  })
+  if (material.projectId !== options.projectId ||
       typeof options.projectId !== 'string' ||
       !options.projectId.trim()) return noApproval('project_identity_mismatch',material)
   if (typeof options.writerModelIdentity !== 'string' ||
@@ -148,6 +159,13 @@ export async function runFactCheckFixturePreview(
     return noApproval('source_collection_unavailable',material)
   }
   if (!collected.ok) return noApproval(collected.reason,material)
+  // A reviewer must not be able to rewrite evidence after its receipt was
+  // computed. Reverify actual snapshot bytes before passing them to a reviewer.
+  if (!collected.snapshots.every((source,index) =>
+    createHash('sha256').update(source.text).digest('hex') ===
+      collected.receipts[index]?.textSha256)) {
+    return noApproval('source_snapshot_integrity_failed',material)
+  }
 
   let assessment: ReviewerAssessment | null
   try {
@@ -156,7 +174,7 @@ export async function runFactCheckFixturePreview(
       sourceSnapshots: collected.snapshots,
       manuscript: material,
       contentSha256: contentDigest(material),
-      requiredUnits: materialUnits(material),
+      requiredUnits: Object.freeze(materialUnits(material).map(unit => Object.freeze(unit))),
     })
     assessment = validAssessment(output)
   } catch {

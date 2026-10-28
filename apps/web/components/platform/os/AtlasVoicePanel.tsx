@@ -124,6 +124,7 @@ export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onC
     </form>
     <details className={styles.voiceSettings}>
       <summary>Mikrofontest</summary>
+      <p>Taligenkänning: {s.inputMode === 'batch' ? 'stabilt läge – ljudet tolkas när du har pratat klart' : 'realtidsläge'}.</p>
       <p>Prata normalt. Staplarna vid Nova ska röra sig när mikrofonen får ljud. Om de inte gör det, prova en annan mikrofon här.</p>
       <label htmlFor="atlas-shared-mic-device">Välj mikrofon</label>
       <select id="atlas-shared-mic-device" value={s.micDeviceId}

@@ -115,6 +115,12 @@ describe('Compact persistent Atlas call shell', () => {
     expect(render(live, true)).not.toContain('Kopiera hela svaret')
     expect((render(live, true).match(/<button /g) ?? [])).toHaveLength(3)
   })
+  it('labels batch transcription honestly while preview uses stable mode', () => {
+    const stable = render(session({ inputMode: 'batch' }))
+    expect(stable).toContain('stabilt läge')
+    expect(stable).toContain('ljudet tolkas när du har pratat klart')
+    expect(render(session({ inputMode: 'streaming' }))).toContain('realtidsläge')
+  })
   it('offers optional browser microphone selection in expanded chat without a fourth dock control', () => {
     const html = render(session({
       micDevices: [

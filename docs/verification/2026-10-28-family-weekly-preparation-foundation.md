@@ -46,3 +46,26 @@ Från januari 2027 ska Atlas på söndag eftermiddag förbereda nästa veckas va
 ### Gräns för utlovad funktion
 
 Detta är **fas 1**, inte en färdig autonom veckoagent. Att testen säger `ready_to_prepare_drafts` betyder att systemet får överväga ett skyddat genereringsanrop när steg 1–6 ovan är implementerade, **inte** att utkast skapas idag. Användaren ska inte få ett falskt löfte om helautomatiska veckoutkast efter december innan dessa steg är live.
+
+
+## Fas 2 – kostnadsstyrd textgenerering och granskningsavisering (2026-10-28)
+
+**Kod färdig och offline-verifierad, inte driftsatt.** Den här grenen innehåller nu:
+
+- \`auto-draft-model.ts\`: kompilerar en kort, strukturerad prompt av endast projektets redan sparade verifierade faktaprofil, godkända befintliga bildbeskrivningar och lediga tidsluckor. En enda \`gpt-4o-mini\`-körning med max \`1800\` genererade token kan bli aktuell efter en verkligt verifierad opt-in och ett riktigt \`RUN_BOUND\`-anspråk. Anropet går via \`runStep\` / \`openAIChatCompletion\` / \`withGovernedSpend\` under \`AUTONOMOUS\` och rätt projektbudget/STOP. Om budget, STOP eller modell nekas finns **ingen** reservmodell, automatisk retry eller okontrollerad kostnadskanal.
+- Modellsvaret kräver komplett JSON med exakt Facebook- och Instagram-utkast för varje ledig ordinarie veckotid. Ingen ny tid, källa, bild eller kanal accepteras; otillåtna rabatt-/garantipåståenden och främmande länkar nekas. En avbruten eller osäker körning kan **ha kostat** även om resultatet underkänns, så den rapporterar \`modelCalls:1\`, inte noll.
+- \`review-pipeline.ts\`: två oberoende kontroller av samma *bestående och betrodda* ägaropt-in (före och efter eventuell modellkostnad). Kräver faktiskt ägar-ID, Familje-Stunden-ägarskap, ägardriven konversation och ett äkta anspråk på ett autonomt jobb. Modellen får inte själv skapa dessa. Sparande går bara till det existerande \`prepareWeeklyDrafts\` → \`social_weekly_save\`, vilket återläser context-hash och begränsar generation1/idempotens under projektlås. Ingen schemapublicering sker.
+- Efter ett verifierat serverkvitto \`editorial_review_required\` med \`publicationAuthority=false\` skapas en avgränsad \`ReviewNotification\` med länk till Familje-Stundens sociala granskningsyta och antal förslag. **Aviseringen är bara data.** Ingen e-post, push eller meddelande skickas av denna modul, och modellen får ingen mottagaradress.
+- Nya \`auto-draft-model.test.ts\` och \`review-pipeline.test.ts\` med omöjliga/dubbla/tamperade modellutdata, återkallat ägargodkännande under pågående körning, budgetvägran, falskt publiceringskvitto och främmande granskningslänk. **56/56 fokuserade tester godkända, avgränsad TypeScript-kontroll godkänd.** Alla AI-modeller var mockade; inga API-anrop eller kostnader uppstod.
+
+### Resterande aktiveringsarbete och extern blockerare
+
+- Det finns **ännu ingen betrodd, beständig enrollment-adapter** som läser operatörens aktiva samtycke från en auditerbar databasregel. \`loadVerifiedEnrollment\` måste implementeras i en egen granskad serverenhet, med avregistrering, giltighet, betal-/körningstak och ägarkontroll. Ingen typ/boolean/LLM-text från en HTTP-request kvalificerar som samtycke.
+- Det finns **ännu inget schemalagt, hållbart \`RUN_BOUND\`-jobb**, ingen signerad cron-worker och ingen background-körning; \`prepareWeekForOwnerReview\` anropas inte från appen. Förhindra dubbla betalda körningar med claim/idempotens och budgetkontroll innan aktivering.
+- Ingen faktisk notifiering skickas. En separat notifier behöver beständig \`preparationId\`-baserad deduplicering, korrekt ägarmottagare och uppföljningsstatus. Ett uteblivet notiskvitto får inte trigga ny modellgenerering.
+- Ägargranskning, separat social-plan-/schemaapproval och månadsrelease-grinden är fortsatt oförändrade. Ingen ny bildmodell, publiceringskanal eller företagskontakt har aktiverats.
+- Vercels tidigare Preview-bygge för denna gren är blockerat av \`handlarborsen_scb_review_only_candidates\` som finns i produktionsledgret men ännu inte i \`main\`. **Inga** migrationsfiler kopieras från det parallella SCB-arbetet, och ingen migrationsspärr får kringgås. Ny Vercel-verifiering efter att SCB-grenen korrekt har landat.
+
+### Leveransgräns
+
+\`auto-draft-model.ts\` + \`review-pipeline.ts\` är en färdig **avstängd kodväg för kostnadsstyrd beredning och granskning**. Att den finns i PR:n är **inte** ett påstående om att Atlas skickar utkast automatiskt januari 2027. Återkommande schema, beständigt opt-in, aktiva arbetsanspråk och notifieringsleverans kräver en separat aktiveringsgranskning.

@@ -7,6 +7,8 @@ import { filterCandidateViews, type SavedCandidates } from '@/lib/handlarborsen/
 import { filterLocalReview, normalizeLocalFilter, LOCAL_REVIEW_FILTERS, type LocalReviewFilter, type LocalReviewState } from '@/lib/handlarborsen/lead-finder/local-review'
 import styles from './HandlarborsenLeadFinder.module.css'
 import { HandlarborsenScbImportControl } from './HandlarborsenScbImportControl'
+import { HandlarborsenResearchArchive } from './HandlarborsenResearchArchive'
+import type { ArchiveReview } from '@/lib/handlarborsen/lead-finder/research-archive'
 
 type Summary = Pick<KnownContacts, 'status' | 'count' | 'externalPilotRegistryConnected'> & { reviewBlocked: true }
 export interface LeadFinderProps {
@@ -24,6 +26,7 @@ export interface LeadFinderProps {
   importWriteEnabled?: boolean
   researchEnabled?: boolean
   researchExtractEnabled?: boolean
+  archivedResearch?: ArchiveReview
 }
 
 const localFilterLabels: Record<LocalReviewFilter, string> = {
@@ -118,7 +121,7 @@ function LocalReviewSection({ state, search, filter }: { state: LocalReviewState
 }
 
 /** Pure presentation: no actions, email sends, data reads or test fixtures. */
-export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search, filter, localReview = { status: 'disabled' }, localSearch = '', localFilter = 'all', importPreviewEnabled = false, importWriteEnabled = false, researchEnabled = false, researchExtractEnabled = false }: LeadFinderProps) {
+export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search, filter, localReview = { status: 'disabled' }, localSearch = '', localFilter = 'all', importPreviewEnabled = false, importWriteEnabled = false, researchEnabled = false, researchExtractEnabled = false, archivedResearch = { status: 'disabled' } }: LeadFinderProps) {
   const rows = saved.status === 'ready' ? filterCandidateViews(saved.candidates, search, filter) : []
   const total = saved.status === 'ready' ? saved.candidates.length.toString() : '—'
   const reviewCount = saved.status === 'ready'
@@ -190,6 +193,7 @@ export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search,
         </aside>
       </div>
 
+      <HandlarborsenResearchArchive archive={archivedResearch} />
       <LocalReviewSection state={localReview} search={localSearch} filter={localFilter} />
       {importPreviewEnabled ? <HandlarborsenScbImportControl writeEnabled={importWriteEnabled} researchEnabled={researchEnabled} extractEnabled={researchExtractEnabled} /> : null}
 

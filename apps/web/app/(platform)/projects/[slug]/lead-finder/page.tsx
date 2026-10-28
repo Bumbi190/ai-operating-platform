@@ -9,6 +9,8 @@ import { loadSavedCandidatesForOwner } from '@/lib/handlarborsen/lead-finder/sav
 import { loadLocalReviewForOwner } from '@/lib/handlarborsen/lead-finder/local-review-server'
 import type { LocalReviewState } from '@/lib/handlarborsen/lead-finder/local-review'
 import { HandlarborsenLeadFinder } from '@/components/platform/vnext/HandlarborsenLeadFinder'
+import { loadArchivedLeadResearchForOwner } from '@/lib/handlarborsen/lead-finder/research-archive-server'
+import type { ArchiveReview } from '@/lib/handlarborsen/lead-finder/research-archive'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,6 +32,7 @@ export default async function LeadFinderPage({ params, searchParams }: {
   let importWriteEnabled = false
   let researchEnabled = false
   let researchExtractEnabled = false
+  let archivedResearch: ArchiveReview = { status: 'disabled' }
   const localFlag = process.env.NODE_ENV === 'development' && process.platform === 'win32' &&
     process.env.HB_LEADFINDER_LOCAL_REVIEW_ENABLED === 'true'
   const importFlag = process.env.HB_LEADFINDER_IMPORT_PREVIEW_ENABLED === 'true'
@@ -53,6 +56,9 @@ export default async function LeadFinderPage({ params, searchParams }: {
         researchEnabled = importFlag && process.env.VERCEL_ENV !== 'production' && process.env.HB_LEADFINDER_RESEARCH_ENABLED === 'true' &&
           !!process.env.TAVILY_API_KEY?.trim()
         researchExtractEnabled = researchEnabled && process.env.HB_LEADFINDER_EXTRACT_ENABLED === 'true'
+        if (importFlag && process.env.VERCEL_ENV !== 'production' &&
+          process.env.HB_LEADFINDER_RESEARCH_ARCHIVE_ENABLED === 'true')
+          archivedResearch = await loadArchivedLeadResearchForOwner(project.id, contacts)
       }
     }
   }
@@ -74,5 +80,6 @@ export default async function LeadFinderPage({ params, searchParams }: {
     importWriteEnabled={importWriteEnabled}
     researchEnabled={researchEnabled}
     researchExtractEnabled={researchExtractEnabled}
+    archivedResearch={archivedResearch}
   />
 }

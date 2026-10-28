@@ -8,7 +8,11 @@ on:
     paths:
       - 'apps/web/lib/atlas/openviking/**'
       - 'apps/web/lib/qa/atlas-openviking-project-readonly.test.ts'
+      - 'apps/web/lib/qa/atlas-openviking-quality.test.ts'
+      - 'apps/web/lib/qa/fixtures/atlas-openviking-five-source-history.json'
+      - 'apps/web/scripts/openviking-quality-evaluate.ts'
       - 'docs/runbooks/atlas-openviking-project-readonly.md'
+      - 'docs/runbooks/atlas-openviking-quality-gate.md'
       - '.github/workflows/atlas-openviking-project-readonly.yml'
   workflow_dispatch:
 
@@ -39,7 +43,7 @@ jobs:
       - name: Verify exact offline project reader
         working-directory: apps/web
         run: |
-          npx --no vitest run lib/qa/atlas-openviking-project-readonly.test.ts \
+          npx --no vitest run lib/qa/atlas-openviking-project-readonly.test.ts lib/qa/atlas-openviking-quality.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/openviking-project.json"
       - name: Enforce test execution, count and zero skip
         if: always()
@@ -59,10 +63,37 @@ jobs:
           }
           console.log(JSON.stringify(stats))
           if (!names.some(name => name.endsWith('atlas-openviking-project-readonly.test.ts'))
-            || stats.passed < 14 || stats.failed || stats.skipped || stats.todo || stats.suitesFailed) {
+            || !names.some(name => name.endsWith('atlas-openviking-quality.test.ts'))
+            || stats.passed < 36 || stats.failed || stats.skipped || stats.todo || stats.suitesFailed) {
             console.error('::error::OpenViking source-boundary suite missing, skipped or failed')
             process.exit(1)
           }
+          NODE
+      - name: Reproduce frozen historical quality NO-GO (aggregates only)
+        working-directory: apps/web
+        run: |
+          node --import tsx scripts/openviking-quality-evaluate.ts \
+            --input=lib/qa/fixtures/atlas-openviking-five-source-history.json \
+            --report-only > "$RUNNER_TEMP/openviking-legacy-report.json"
+          node - "$RUNNER_TEMP/openviking-legacy-report.json" <<'NODE'
+          const fs = require('node:fs')
+          const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
+          if (report.cohortId !== 'legacy-five-source-2026-10-15'
+              || report.qualityEligibleForManualReview !== false
+              || report.runtimeActivationAuthorized !== false
+              || report.lexical.correctFirstSourceAllRuns !== 16
+              || report.openviking.correctFirstSourceAllRuns !== 11
+              || report.openviking.unsupportedCasesReturningAnySource !== 4
+              || !report.reasons.includes('first_source_worse_than_lexical')) {
+            console.error('::error::Historical OpenViking NO-GO evidence changed')
+            process.exit(1)
+          }
+          console.log(JSON.stringify({
+            historicalTop1Lexical: 16,
+            historicalTop1OpenViking: 11,
+            candidateUnsupportedFalsePositiveCases: 4,
+            qualityEligibleForManualReview: false,
+          }))
           NODE
       - name: Typecheck web workspace
         working-directory: apps/web

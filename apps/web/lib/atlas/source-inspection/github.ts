@@ -4,7 +4,7 @@
  * Every file is read at a pinned commit SHA after numeric repo-ID verification.
  */
 import 'server-only'
-import { createSign } from 'node:crypto'
+import { createHash, createSign } from 'node:crypto'
 import {
   immutableSourceUrl, isSafeInspectableText, selectedSourceLines, SOURCE_GIT_SHA,
   SOURCE_MAX_BYTES, sourceRepositoryForProject, parseSourceRequest, type SourceRepository, type SourceRequest,
@@ -13,6 +13,9 @@ import {
 const API = 'https://api.github.com'
 const MAX_JSON_BYTES = 100_000
 const REQUEST_TIMEOUT_MS = 8_000
+// The route has a 30s wall-time limit: no chain of Git trees may exceed this
+// independent transport deadline even when each individual GET is slow.
+const INSPECTION_DEADLINE_MS = 23_000
 const API_ACCEPT = 'application/vnd.github+json'
 type Fetcher = typeof fetch
 
@@ -54,12 +57,14 @@ class InspectionError extends Error {
   constructor(public readonly code: SourceInspectionFailure) { super('source_inspection_' + code) }
 }
 const fail = (code: SourceInspectionFailure): SourceInspectionResult => ({ ok: false, code })
-interface CachedToken { value: string; expiry: number; appId: string; installationId: string }
+interface CachedToken { value: string; expiry: number; appId: string; installationId: string; repositoryId: number }
 let cached: CachedToken | null = null
 export function __clearNovaSourceTokenForTest() { cached = null }
 
-async function boundedJson(url: string, opts: RequestInit, fetcher: Fetcher): Promise<Record<string, any>> {
-  const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), REQUEST_TIMEOUT_MS)
+async function boundedJson(url: string, opts: RequestInit, fetcher: Fetcher, deadline: number): Promise<Record<string, any>> {
+  if (Date.now() >= deadline) throw new InspectionError('provider_unavailable')
+  const ctl = new AbortController()
+  const timer = setTimeout(() => ctl.abort(), Math.max(1, Math.min(REQUEST_TIMEOUT_MS, deadline - Date.now())))
   try {
     const response = await fetcher(url, {
       ...opts, cache: 'no-store', redirect: 'error', signal: ctl.signal,
@@ -93,10 +98,11 @@ async function boundedJson(url: string, opts: RequestInit, fetcher: Fetcher): Pr
   } finally { clearTimeout(timer) }
 }
 
-async function readToken(repo: SourceRepository, fetcher: Fetcher): Promise<string> {
+async function readToken(repo: SourceRepository, fetcher: Fetcher, deadline: number): Promise<string> {
   const cfg = configuredApp()
   if (!cfg) throw new InspectionError('not_configured')
   if (cached && cached.appId === cfg.appId && cached.installationId === cfg.installationId
+    && cached.repositoryId === repo.repositoryId
     && cached.expiry > Date.now() + 5 * 60_000) return cached.value
   const jwt = signedAppJwt(cfg)
   if (!jwt) throw new InspectionError('not_configured')
@@ -104,24 +110,73 @@ async function readToken(repo: SourceRepository, fetcher: Fetcher): Promise<stri
     method: 'POST',
     headers: { Authorization: 'Bearer ' + jwt, 'Content-Type': 'application/json' },
     body: JSON.stringify({ repository_ids: [repo.repositoryId], permissions: { contents: 'read' } }),
-  }, fetcher)
+  }, fetcher, deadline)
   const permitted = receipt.permissions
   const repositories = receipt.repositories
-  if (!permitted || permitted.contents !== 'read' ||
+  if (!permitted || permitted.contents !== 'read' || receipt.repository_selection !== 'selected' ||
     Object.keys(permitted).some(k => (k !== 'contents' && k !== 'metadata') || permitted[k] !== 'read') ||
     !Array.isArray(repositories) || repositories.length !== 1 || repositories[0]?.id !== repo.repositoryId)
     throw new InspectionError('identity_unverified')
   const expiry = typeof receipt.expires_at === 'string' ? Date.parse(receipt.expires_at) : NaN
   if (!Number.isFinite(expiry) || expiry < Date.now() + 6 * 60_000 ||
     typeof receipt.token !== 'string' || !receipt.token) throw new InspectionError('identity_unverified')
-  cached = { value: receipt.token, expiry, appId: cfg.appId, installationId: cfg.installationId }
+  cached = { value: receipt.token, expiry, appId: cfg.appId, installationId: cfg.installationId, repositoryId: repo.repositoryId }
   return cached.value
 }
 
-async function getRepoJson(repo: SourceRepository, path: string, token: string, fetcher: Fetcher) {
+async function getRepoJson(repo: SourceRepository, path: string, token: string, fetcher: Fetcher, deadline: number) {
   return boundedJson(API + '/repos/' + repo.owner + '/' + repo.name + path, {
     method: 'GET', headers: { Authorization: 'Bearer ' + token },
-  }, fetcher)
+  }, fetcher, deadline)
+}
+
+/**
+ * A path accepted by policy.ts must ALSO be a real regular blob in the
+ * immutable commit's Git tree. The GitHub /contents endpoint dereferences some
+ * symlinks and can otherwise expose a denied target through a harmless alias.
+ *
+ * Walk each tree non-recursively at pinned SHA; reject symlinks (120000),
+ * submodules (160000), non-tree ancestors and truncated/incomplete trees.
+ */
+async function resolveRegularBlob(
+  repo: SourceRepository,
+  rootTreeSha: string,
+  path: string,
+  token: string,
+  fetcher: Fetcher,
+  deadline: number,
+): Promise<{ sha: string; size: number }> {
+  if (!SOURCE_GIT_SHA.test(rootTreeSha)) throw new InspectionError('identity_unverified')
+  const parts = path.split('/')
+  let treeSha = rootTreeSha
+  for (const [index, part] of parts.entries()) {
+    const tree = await getRepoJson(repo, '/git/trees/' + treeSha, token, fetcher, deadline)
+    if (tree.sha !== treeSha || tree.truncated !== false || !Array.isArray(tree.tree) || tree.tree.length > 650)
+      throw new InspectionError('source_denied')
+    const matches = tree.tree.filter((entry: any) => entry?.path === part)
+    if (matches.length !== 1) throw new InspectionError('source_denied')
+    const entry = matches[0]
+    if (!SOURCE_GIT_SHA.test(entry.sha)) throw new InspectionError('source_denied')
+    if (index < parts.length - 1) {
+      if (entry.type !== 'tree' || entry.mode !== '040000') throw new InspectionError('source_denied')
+      treeSha = entry.sha
+      continue
+    }
+    if (entry.type !== 'blob' || !['100644', '100755'].includes(entry.mode)
+      || !Number.isSafeInteger(entry.size) || entry.size < 1 || entry.size > SOURCE_MAX_BYTES)
+      throw new InspectionError('source_denied')
+    return { sha: entry.sha, size: entry.size }
+  }
+  throw new InspectionError('source_denied')
+}
+
+/** Verify bytes belong to the exact blob named by the immutable Git tree. */
+function validGitBlob(bytes: Buffer, sha: string): boolean {
+  const calculated = createHash('sha1')
+    .update('blob ' + bytes.byteLength + '\0', 'utf8')
+    .update(bytes)
+    .digest('hex')
+  return calculated === sha
 }
 
 export async function inspectVerifiedSource(
@@ -135,13 +190,14 @@ export async function inspectVerifiedSource(
   if (!repo) return fail('identity_unverified')
   const fetcher = options.fetcher ?? fetch
   try {
-    const token = await readToken(repo, fetcher)
+    const deadline = Date.now() + INSPECTION_DEADLINE_MS
+    const token = await readToken(repo, fetcher, deadline)
     // Repo name alone is not authorization: prove immutable repo and owner IDs.
-    const identity = await getRepoJson(repo, '', token, fetcher)
+    const identity = await getRepoJson(repo, '', token, fetcher, deadline)
     if (identity.id !== repo.repositoryId || identity.owner?.id !== repo.ownerId ||
       String(identity.full_name).toLowerCase() !== (repo.owner + '/' + repo.name).toLowerCase() ||
       identity.default_branch !== repo.branch) throw new InspectionError('identity_unverified')
-    const commit = await getRepoJson(repo, '/commits/' + repo.branch, token, fetcher)
+    const commit = await getRepoJson(repo, '/commits/' + repo.branch, token, fetcher, deadline)
     const sha = commit.sha
     if (typeof sha !== 'string' || !SOURCE_GIT_SHA.test(sha)) throw new InspectionError('identity_unverified')
     const common = {
@@ -151,16 +207,20 @@ export async function inspectVerifiedSource(
     if (verified.action === 'status') return { ok: true, action: 'status', ...common }
 
     const path = verified.path
-    const suffix = path.split('/').map(encodeURIComponent).join('/')
-    const result = await getRepoJson(repo, '/contents/' + suffix + '?ref=' + sha, token, fetcher)
-    if (result.type !== 'file' || result.path !== path || result.encoding !== 'base64' ||
-      !Number.isSafeInteger(result.size) || result.size < 1 || result.size > SOURCE_MAX_BYTES ||
-      typeof result.content !== 'string') throw new InspectionError('source_denied')
+    const rootTreeSha = commit.commit?.tree?.sha
+    const entry = await resolveRegularBlob(repo, rootTreeSha, path, token, fetcher, deadline)
+    // Fetch a verified *blob*, not /contents/path. The latter may follow a
+    // symlink to a secret file even when the requested alias looks safe.
+    const result = await getRepoJson(repo, '/git/blobs/' + entry.sha, token, fetcher, deadline)
+    if (result.sha !== entry.sha || result.encoding !== 'base64' ||
+      result.size !== entry.size || typeof result.content !== 'string')
+      throw new InspectionError('source_denied')
     const encoded = result.content.replace(/\s/g, '')
     if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded) || encoded.length % 4 !== 0)
       throw new InspectionError('source_denied')
     const bytes = Buffer.from(encoded, 'base64')
-    if (bytes.byteLength !== result.size || bytes.byteLength > SOURCE_MAX_BYTES)
+    if (bytes.byteLength !== entry.size || bytes.byteLength > SOURCE_MAX_BYTES ||
+      !validGitBlob(bytes, entry.sha))
       throw new InspectionError('source_denied')
     let decoded: string
     try { decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes) }

@@ -8,7 +8,8 @@ Status: Code and deterministic mocked API tests only. Feature OFF by default. No
 - A new dedicated GitHub App installation must provide a single-repo token with Contents: Read only and mandatory Metadata: Read. A separate App prevents confusing ChatGPT's GitHub connector or the Familje-Stunden App with Nova's server permissions. Never use an account-wide classic PAT.
 - Nova's source chat intent offers ONE read-only tool. It does not present any unrelated workflow/code-action tools in that turn. The handler revalidates operator session, same origin, project ownership and exact tool input before provider dispatch.
 - A second invocation within that turn is refused. Executable instructions embedded in source files are treated as UNTRUSTED DATA, never commands.
-- Every GitHub read verifies numeric repo/owner identity and resolves a full immutable commit SHA before requesting a file at that SHA. Only safe relative paths under selected code/doc roots, maximum 32 KiB and 240 numbered lines, are exposed. Exact source URL and SHA are returned.
+- Every GitHub read verifies numeric repo/owner identity and resolves a full immutable commit SHA. To prevent GitHub's Contents API from dereferencing a symlink, the reader now walks the commit's Git tree one directory at a time. Every ancestor must be an actual tree (040000) and the final file a regular blob (100644/100755). Symlinks (120000), submodules (160000), wrong/incomplete tree responses and unexpected modes are denied before content is read. Only then does it fetch the pinned raw Git blob and independently validate its SHA-1 from the exact bytes.
+- Only safe relative paths under selected code/doc roots, maximum 32 KiB and 240 numbered lines, are exposed. Exact source URL and SHA are returned. GitHub calls share a 23-second overall deadline under the 30-second route limit.
 - Private source text is not persisted in the chat's tool history; only an evidence receipt with repo ID, SHA, file path, URL and line count. The authorized session can see the current tool result.
 - Source files with likely secret material are refused entirely. Regex-based secret checks are conservative, NOT proof that all secrets can be identified.
 
@@ -21,7 +22,7 @@ The new POST endpoint is /api/atlas/source-inspection. It is permanently unavail
 - NOVA_SOURCE_GITHUB_INSTALLATION_ID
 - NOVA_SOURCE_GITHUB_APP_PRIVATE_KEY
 
-The GitHub App must be installed only on the reviewed Handlarbörsen repo. Its runtime token request narrows permissions and repository ID again, and rejects an overly broad token receipt. No anonymous or broader credential fallback exists. All outbound calls have bounded duration/response sizes, no redirect following and no secret-bearing error logs.
+The GitHub App must be installed only on the reviewed Handlarbörsen repo. Its runtime token request narrows permissions and repository ID again, and rejects an overly broad token receipt, including repository_selection other than selected. The in-memory token cache is keyed by repository ID as well as app and installation IDs. No anonymous or broader credential fallback exists. All outbound calls have bounded duration/response sizes, no redirect following and no secret-bearing error logs.
 
 ## Remaining acceptance gates
 

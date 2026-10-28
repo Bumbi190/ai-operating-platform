@@ -11,6 +11,12 @@ on:
       - 'apps/web/app/api/chat/route.ts'
       - 'apps/web/lib/os/chat-shared.ts'
   workflow_dispatch:
+  # PR merge conflicts suppress pull_request workflows. Keep test verification
+  # available on exactly this approved draft branch without merging or rebasing.
+  # Remove this narrow branch-only trigger after the PR is safely reconciled.
+  push:
+    branches:
+      - feat/nova-source-inspection-issue576
 
 permissions:
   contents: read

@@ -32,6 +32,16 @@ Requests carrying an image, a visible website plan or an active website build co
 
 Added two integration cases for both the Claude and OpenAI economy chat profiles; each submits a preceding synthetic private-other-project conversation, then proves the model receives only the current source question and the narrow system prompt, with no cross-project-history marker. **10/10 source-chat integration tests passed locally; 179/179 focused tests also passed locally across eight suites**. This new HEAD has NOT yet completed the clean GitHub CI run; require the workflow's zero-skip test check and clean TypeScript verification after pushing. Local Windows TSC remains affected only by the previously documented three unrelated `@remotion/lambda/client` cache errors.
 
+## Concurrent main changes – CI and merge hold (28 October 2026)
+
+After PR #598 was created, `origin/main` advanced from its original base `bdf1943` to `32e58e7` through separate Handlarbörsen communications work (PR #599 and #562). A read-only `git merge-tree` inspection shows overlapping edits in `apps/web/app/api/chat/route.ts` (tool selection and dispatch). GitHub marks PR #598 as **not mergeable** until the shared chat route is reconciled.
+
+**No merge, rebase, reset, force-push, production deployment or edit in the other agent's worktree was performed.** Reconciliation must preserve both the newly added communications tools and Nova's source-only authorization/isolation logic, with both domains' tests rerun. Never choose one conflicting side blindly.
+
+GitHub documents that `pull_request` workflows do not trigger while a PR has merge conflicts. A narrowly scoped `push` trigger on the EXISTING `feat/nova-source-inspection-issue576` branch was added to `.github/workflows/nova-source-inspection-boundary.yml` to prove this HEAD's tests without merging/rebasing. It has `contents:read`, no persisted checkout tokens or external secrets, and uses the same zero-skips test gates and TypeScript check. Remove that temporary trigger after the conflict is resolved safely. A green branch-only CI proves its own branch, **not** compatibility with merged `main`.
+
+Authoritative reference: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
+
 ## GitHub App – owner setup prepared, NOT installed (28 October 2026)
 
 GitHub supports registration links that prefill permission and account settings. This is an owner checklist, not authority for an assistant to create or install an app.

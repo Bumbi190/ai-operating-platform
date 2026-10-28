@@ -52,6 +52,11 @@ Navigation: endast Handlarbörsens projektheader får länken "Kommunikation".
   autentiserad previewgranskning med riktiga konton.
 - Båda kommunikationssviterna ligger i befintlig Atlas Project Isolation CI
   med anti-skip-minima 14 respektive 7. Kör CI på exakt PR-head före merge.
+- Den första CI-omgången på 881afbc körde testerna men tre oberoende
+  typkontroller stoppades av TS1501 på två regex /s-flaggor i ett nytt UI-test
+  (projektet targetar äldre ECMAScript än ES2018). Testuttrycken är nu ändrade
+  till [\s\S] utan att sänka assertionerna. Riktad Vitest 58/58 är grön igen;
+  exakt ny commit måste fortfarande bekräftas av GitHub CI.
 - Full lokal TypeScript-kontroll blockerades av den lånade beroendemappens saknade
   @omnira/local-text-contract, @modelcontextprotocol/client och @remotion/lambda.
   Felen var utanför de nya kommunikationsfilerna; detta är inte en grön typkontroll.

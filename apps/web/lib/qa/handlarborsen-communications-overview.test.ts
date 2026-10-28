@@ -129,8 +129,8 @@ describe('Handlarbörsen: read-only communications view', () => {
     expect(html).toContain('aria-label="Svarskedjans statusar på mobil"')
     expect(html).toContain('space-y-3 sm:hidden')
     expect(html).toContain('hidden overflow-x-auto sm:block')
-    expect(html).toMatch(/SMTP-koppling<\/dt>.*?Accepterat av SMTP \(ej leverans\)/s)
-    expect(html).toMatch(/Godkännande<\/dt>.*?Godkänt utkast/s)
+    expect(html).toMatch(/SMTP-koppling<\/dt>[\s\S]*?Accepterat av SMTP \(ej leverans\)/)
+    expect(html).toMatch(/Godkännande<\/dt>[\s\S]*?Godkänt utkast/)
   })
 
   it('renders explicit unavailable states instead of fake zeros', () => {

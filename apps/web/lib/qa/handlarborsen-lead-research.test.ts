@@ -82,6 +82,45 @@ describe('Atlas Lead Research Worker v1: research is NOT contact authorization',
     expect(result.jobs.some(j=>j.legalName==='AKTIEBOLAGET INKASSO')).toBe(false)
     expect(result.skipped.some(x=>x.orgnr===review.rows[0].orgnr)).toBe(false)
   })
+  it('pages through all 81 eligible companies deterministically without repeating previous batches', () => {
+    const seen = new Set<string>()
+    const first = buildResearchQueue(verified, 5)
+    expect(first.status).toBe('ready')
+    for (let offset = 0; offset < 85; offset += 5) {
+      const batch = buildResearchQueue(verified, 5, offset)
+      expect(batch.status).toBe('ready')
+      if (batch.status !== 'ready') return
+      expect(batch.jobs).toHaveLength(offset === 80 ? 1 : 5)
+      expect(batch.outreachReady).toBe(false)
+      for (const job of batch.jobs) {
+        expect(seen.has(job.orgnr)).toBe(false)
+        seen.add(job.orgnr)
+        expect(job.contactability).toBe('BLOCKED_PENDING_VERIFICATION')
+      }
+    }
+    expect(seen.size).toBe(81)
+    expect(buildResearchQueue(verified, 5, 0)).toEqual(first)
+    for (const bad of [-5, 1, 4, 2.5, NaN, Infinity, 90, Number.MAX_SAFE_INTEGER]) {
+      expect(buildResearchQueue(verified, 5, bad)).toMatchObject({status:'refused',reason:'offset_invalid'})
+    }
+    expect(buildResearchQueue(verified, 5, 85)).toMatchObject({status:'refused',reason:'offset_out_of_range'})
+  })
+  it('research worker handles second and final batch without repeating or exceeding per-call cap', async () => {
+    const adapter={name:'synthetic-no-network',collect:vi.fn(async (job:ResearchJob)=>[obs(job)])}
+    const b0=await runLeadResearch({review:verified,adapter,limit:5,offset:0})
+    const b1=await runLeadResearch({review:verified,adapter,limit:5,offset:5})
+    const last=await runLeadResearch({review:verified,adapter,limit:5,offset:80})
+    expect(b0.status).toBe('completed')
+    expect(b1.status).toBe('completed')
+    expect(last.status).toBe('completed')
+    if(b0.status==='completed'&&b1.status==='completed'&&last.status==='completed'){
+      expect(b0.calls).toBe(5)
+      expect(b1.calls).toBe(5)
+      expect(last.calls).toBe(1)
+      expect(new Set([...b0.results,...b1.results,...last.results].map(r=>r.orgnr)).size).toBe(11)
+      expect(adapter.collect).toHaveBeenCalledTimes(11)
+    }
+  })
   it('caps research at max ten requests and fails closed for an invalid or changed source',()=>{
     expect(normalizeResearchLimit(-1)).toBe(0)
     expect(normalizeResearchLimit(0)).toBe(0)

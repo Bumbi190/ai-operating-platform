@@ -138,17 +138,19 @@ export function HandlarborsenScbPreviewTable({ review, researched = false }: { r
 }
 
 /** Read-only summary of what Atlas WOULD research next. No research has run and nothing here grants contact. */
-export function AtlasResearchQueue({ review, researched = false }: { review: LocalReview; researched?: boolean }) {
-  const queue = useMemo(() => buildResearchQueue(review, 5), [review])
+export function AtlasResearchQueue({ review, researched = false, offset = 0, completed = 0 }: { review: LocalReview; researched?: boolean; offset?: number; completed?: number }) {
+  const queue = useMemo(() => buildResearchQueue(review, 5, offset), [review, offset])
   return (
     <section className={styles.researchQueue} aria-labelledby="hb-atlas-research-title">
       <h4 id="hb-atlas-research-title">Atlas forskningskö</h4>
       {queue.status === 'ready' ? (
         <>
           <p>
-            {researched
-              ? `Atlas har undersökt ${queue.jobs.length} företag i den här tillfälliga vyn. Preliminära källresultat visas nedan; ingen är godkänd för kontakt.`
-              : `Nästa ${queue.jobs.length} företag som Atlas skulle undersöka (av ${queue.eligible} möjliga). Ingen sökning har körts. Det här är en kö, inte ett resultat eller en rekommendation.`}
+            {completed > 0
+              ? `${completed} företag har preliminära resultat i denna flik. Nästa ${queue.jobs.length} (av ${queue.eligible} möjliga) står i kön; de har inte sökts ännu.`
+              : researched
+                ? `Atlas har undersökt ${queue.jobs.length} företag i den här tillfälliga vyn. Ingen är godkänd för kontakt.`
+                : `Nästa ${queue.jobs.length} företag som Atlas skulle undersöka (av ${queue.eligible} möjliga), start vid nummer ${offset + 1}. Det här är en kö, inte ett resultat eller en rekommendation.`}
           </p>
           <ol className={styles.researchList}>
             {queue.jobs.map(job => (
@@ -162,7 +164,9 @@ export function AtlasResearchQueue({ review, researched = false }: { review: Loc
           </ol>
         </>
       ) : (
-        <p className={styles.reviewEmpty}>Forskningskön är spärrad eftersom rapporten inte klarade alla kontroller ({queue.reason}).</p>
+        <p className={styles.reviewEmpty}>{queue.reason === 'offset_out_of_range'
+          ? 'Alla företag i den valda forskningskön har passerats.'
+          : `Forskningskön är spärrad eftersom rapporten inte klarade alla kontroller (${queue.reason}).`}</p>
       )}
     </section>
   )

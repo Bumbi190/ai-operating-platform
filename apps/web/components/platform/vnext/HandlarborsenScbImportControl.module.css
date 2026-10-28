@@ -11,12 +11,14 @@
 .kicker { font-size: .7rem !important; text-transform: uppercase; letter-spacing: .11em; color: var(--omnira-cyan, #70e4e6) !important; font-weight: 650; }
 .fields { display: grid; grid-template-columns: 1fr; max-width: 640px; gap: .65rem; margin-block: 1.25rem; }
 .fields label, .confirm label { font-size: .82rem; color: var(--omnira-text-2, #c4d1dc); }
-.fields input, .confirm input {
+.fields input, .fields select, .confirm input {
   display: block; width: 100%; max-width: 100%; box-sizing: border-box;
   padding: .65rem; border-radius: 8px; border: 1px solid rgba(125, 189, 203, .32);
   background: rgba(2, 17, 32, .75); color: inherit;
 }
 .fields input[type=file] { font-size: .8rem; }
+.fields small { color: var(--omnira-text-2, #b5c9d6); font-size: .72rem; line-height: 1.5; }
+.fields select { min-width: 0; font-size: .86rem; }
 .fields button, .confirm button {
   justify-self: start; border: none; border-radius: 8px;
   font-size: .82rem; font-weight: 700; padding: .7rem 1rem;
@@ -24,7 +26,7 @@
 }
 .fields button:disabled, .confirm button:disabled { cursor: not-allowed; opacity: .52; }
 .fields button:focus-visible, .confirm button:focus-visible,
-.fields input:focus-visible, .confirm input:focus-visible { outline: 2px solid var(--omnira-cyan, #77e7ee); outline-offset: 3px; }
+.fields input:focus-visible, .fields select:focus-visible, .confirm input:focus-visible { outline: 2px solid var(--omnira-cyan, #77e7ee); outline-offset: 3px; }
 .preview, .confirm { max-width: 760px; margin-block: 1rem; padding: 1rem; border: 1px solid rgba(120, 185, 210, .18); border-radius: 11px; background: rgba(4, 24, 41, .5); }
 .preview strong { display: block; font-size: 1.1rem; }
 .preview code { display: block; padding: .5rem; font-size: .67rem; word-break: break-all; overflow-wrap: anywhere; color: var(--omnira-cyan, #70e4e6); }

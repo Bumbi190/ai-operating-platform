@@ -156,6 +156,35 @@ describe('optional Tavily basic site extraction: separately consented and bounde
     expect(output.outreachReady).toBe(false)
   })
 
+  it('can discover a plausible branded company URL before its snippet proves the legal entity',async()=>{
+    const job={...JOB,legalName:'Förenade Bil Aktiebolaget i Malmö'}
+    const url='https://www.forenadebil.se/om-oss'
+    const unrelatedSearchExcerpt={title:'Förenade Bil | BMW och MINI',url,
+      content:'Välkommen till Förenade Bil. Upptäck våra bilar och tjänster i Malmö.'}
+    const verifiedPage={url,raw_content:`${job.legalName}. Organisationsnummer: ${DASHED}. Vi säljer begagnade bilar i Malmö.`}
+    const f=mockFetch([unrelatedSearchExcerpt],[verifiedPage])
+    const observations=await make(f).collect(job,new AbortController().signal) as {sourceKind:string}[]
+    expect(f).toHaveBeenCalledTimes(2)
+    expect(f.mock.calls.map(([endpoint])=>endpoint)).toEqual(['https://api.tavily.com/search',TAVILY_EXTRACT_URL])
+    expect(observations).toHaveLength(1) // no unlinked search snippet is exposed
+    expect(observations[0].sourceKind).toBe('official_company_site')
+    expect(evaluateLeadEvidence(job,observations)).toMatchObject({
+      classification:'DEALER_EVIDENCE',identityVerified:true,outreachReady:false,
+    })
+  })
+  it('can recognize a short distinctive compact company domain without relaxing identity checks',async()=>{
+    const job={...JOB,legalName:'Wä Bil Aktiebolag'}
+    const url='https://www.wabil.se/om-oss'
+    const hit={title:'Wä Bil',url,content:'Välkommen till vårt bilcenter i Kristianstad.'}
+    const f=mockFetch([hit],[{url,raw_content:`${job.legalName}. Organisationsnummer ${DASHED}. Vi säljer begagnade bilar.`}])
+    const obs=await make(f).collect(job,new AbortController().signal)
+    expect(f).toHaveBeenCalledTimes(2)
+    expect(evaluateLeadEvidence(job,obs).identityVerified).toBe(true)
+    // Brand/domain similarity alone remains insufficient without correct orgnr.
+    const bad=mockFetch([hit],[{url,raw_content:`${job.legalName}. Vi säljer bilar.`}])
+    const raw=await make(bad).collect(job,new AbortController().signal)
+    expect(evaluateLeadEvidence(job,raw).identityVerified).toBe(false)
+  })
   it('does not extract directories, unrelated hosts or unsafe IP URLs',async()=>{
     for(const url of [
       'https://allabolag.se/foretag/provbil','https://www.car.info/sv-se/company/provbil',

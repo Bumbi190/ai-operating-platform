@@ -2,6 +2,7 @@
 
 import React, { useRef, useState } from 'react'
 import { buildLocalReview, type LocalReview } from '@/lib/handlarborsen/lead-finder/local-review'
+import { buildResearchQueue } from '@/lib/handlarborsen/lead-finder/lead-research'
 import { AtlasResearchQueue, HandlarborsenScbPreviewTable } from './HandlarborsenScbPreviewTable'
 import { HandlarborsenResearchResults, parseResearchResponse, type ResearchView } from './HandlarborsenResearchResults'
 import styles from './HandlarborsenScbImportControl.module.css'
@@ -25,6 +26,9 @@ const CONFIRMATION = 'IMPORTERA 89 SOM EJ KONTAKTBARA'
 const MAX_BYTES = 150_000
 const RESEARCH_ENDPOINT = '/api/atlas/handlarborsen/lead-finder/research'
 const RESEARCH_CONFIRMATION = 'UNDERSÖK 5 FÖRETAG'
+const RESEARCH_BATCH_SIZE = 5
+// Local session guard only. Tavily's 25-credit key limit remains the hard spend cap.
+const RESEARCH_MAX_BATCHES_PER_REVIEW = 5
 const RESEARCH_EXTRACT_CONFIRMATION = 'UNDERSÖK 5 FÖRETAG OCH GRANSKA WEBBSIDOR'
 
 function errorLabel(code: string): string {
@@ -40,6 +44,7 @@ function errorLabel(code: string): string {
     case 'table_not_empty': return 'Databasen innehåller redan kandidatposter. Ingen överskrivning gjordes.'
     case 'unsupported_media_type':
     case 'confirmation_invalid': return 'Begäran avvisades. Ingen sökning gjordes.'
+    case 'batch_unavailable': return 'Den valda omgången ligger utanför den verifierade företagslistan.'
     case 'unavailable': return 'Importtjänsten eller databasanslutningen är inte tillgänglig.'
     default: return 'Begäran kunde inte genomföras. Ingen data har godkänts för kontakt.'
   }
@@ -57,6 +62,15 @@ export function HandlarborsenScbImportControl({ writeEnabled = false, researchEn
   const [confirmingResearch, setConfirmingResearch] = useState(false)
   const [researchResults, setResearchResults] = useState<ResearchView[] | null>(null)
   const [researchAttempted, setResearchAttempted] = useState(false)
+  const [researchOffset, setResearchOffset] = useState(0)
+  const [researchAttempts, setResearchAttempts] = useState(0)
+  const queue = review ? buildResearchQueue(review, RESEARCH_BATCH_SIZE, researchOffset) : null
+  const firstQueue = review ? buildResearchQueue(review, RESEARCH_BATCH_SIZE) : null
+  const eligibleCount = firstQueue?.status === 'ready' ? firstQueue.eligible : 0
+  // Extraction can add up to five extra Tavily calls per batch.
+  const sessionMaxBatches = extractEnabled ? 2 : RESEARCH_MAX_BATCHES_PER_REVIEW
+  const canResearchNext = queue?.status === 'ready' && queue.jobs.length > 0 &&
+    researchAttempts < sessionMaxBatches
   const source = useRef<{ csv: string; summary: string } | null>(null)
 
   function clearPreview() {
@@ -64,6 +78,8 @@ export function HandlarborsenScbImportControl({ writeEnabled = false, researchEn
     setConfirmingResearch(false)
     setResearchResults(null)
     setResearchAttempted(false)
+    setResearchOffset(0)
+    setResearchAttempts(0)
     setPreview(null)
     setReview(null)
     setConfirmation('')
@@ -135,17 +151,24 @@ export function HandlarborsenScbImportControl({ writeEnabled = false, researchEn
   }
 
   async function runResearch() {
-    if (!researchEnabled || !preview || !source.current || busy || researchAttempted) return
+    if (!researchEnabled || !preview || !source.current || busy || researchAttempted || !canResearchNext ||
+        !queue || queue.status !== 'ready') return
+    const offset = researchOffset
+    const expected = queue.jobs.map(job => job.orgnr)
     const { csv, summary } = source.current
-    const body = JSON.stringify({ csv, summary, digest: preview.digest, confirmation: extractEnabled ? RESEARCH_EXTRACT_CONFIRMATION : RESEARCH_CONFIRMATION })
+    const body = JSON.stringify({
+      csv, summary, digest: preview.digest, offset,
+      confirmation: extractEnabled ? RESEARCH_EXTRACT_CONFIRMATION : RESEARCH_CONFIRMATION,
+    })
     setConfirmingResearch(false)
-    setResearchResults(null)
-    setResearchAttempted(true) // one attempt per verified upload, even if the network fails
     if (new Blob([body]).size > MAX_BYTES) { setStatus(errorLabel('body_too_large')); return }
+    setResearchAttempted(true)
+    setResearchAttempts(count => count + 1)
     setBusy(true)
     setStatus(extractEnabled ? 'Undersöker… högst 5 grundsökningar och 5 separata sidkontroller.' : 'Söker… högst 5 sökningar körs.')
     try {
-      // One explicit click = at most five basic searches. Nothing is stored or sent.
+      // One explicit approval = one unique batch of at most five basic searches.
+      // Earlier results remain in this tab; nothing is persisted or sent.
       const response = await fetch(RESEARCH_ENDPOINT, {
         method: 'POST', headers: { 'content-type': 'application/json' }, body,
         cache: 'no-store', credentials: 'same-origin',
@@ -156,12 +179,19 @@ export function HandlarborsenScbImportControl({ writeEnabled = false, researchEn
         throw new Error(typeof code === 'string' ? code : 'unavailable')
       }
       const results = parseResearchResponse(data)
-      if (!results) throw new Error('unavailable')
-      setResearchResults(results)
-      setStatus('Researchen är klar. Resultaten är preliminära och ingen är kontaktbar.')
+      const payload = data as Record<string, unknown>
+      if (!results || payload.offset !== offset || payload.eligible !== queue.eligible ||
+        results.length !== expected.length || results.some((r, i) => r.orgnr !== expected[i]))
+        throw new Error('unavailable')
+      setResearchResults(previous => [...(previous ?? []), ...results])
+      setStatus(`Omgång ${Math.floor(offset / RESEARCH_BATCH_SIZE) + 1} klar. ${results.length} företag granskade preliminärt, inga kontaktbara.`)
     } catch (e) {
-      setStatus(errorLabel(e instanceof Error ? e.message : 'unavailable'))
+      setStatus(`Omgång ${Math.floor(offset / RESEARCH_BATCH_SIZE) + 1} kunde inte verifieras. ${errorLabel(e instanceof Error ? e.message : 'unavailable')} Inget automatiskt omförsök sker.`)
     } finally {
+      // Never retry a possibly charged batch from this review session.
+      // Advance even if the network failed or only partial results were returned.
+      setResearchOffset(current => current + RESEARCH_BATCH_SIZE)
+      setResearchAttempted(false)
       setBusy(false)
     }
   }
@@ -210,24 +240,44 @@ export function HandlarborsenScbImportControl({ writeEnabled = false, researchEn
         <code>{preview.digest}</code>
       </div> : null}
 
-      {preview && review ? <AtlasResearchQueue review={review} researched={researchResults !== null} /> : null}
+      {preview && review ? <AtlasResearchQueue review={review} offset={researchOffset} completed={researchResults?.length ?? 0} /> : null}
 
       {researchEnabled && preview && review ? <div className={styles.researchResults}>
+        <p role="status" aria-live="polite">
+          Omgång {Math.floor(researchOffset / RESEARCH_BATCH_SIZE) + 1} av {Math.ceil(eligibleCount / RESEARCH_BATCH_SIZE)}.
+          {' '}{researchAttempts} av högst {sessionMaxBatches} omgångar försökt i denna förhandsgranskning.
+          {' '}Tidigare resultat nedan finns endast kvar i denna flik.
+        </p>
+        {researchAttempts === 0 && !confirmingResearch ? <div className={styles.fields}>
+          <label htmlFor="hb-research-offset">Återuppta från omgång efter omladdning (valfritt)</label>
+          <select id="hb-research-offset" value={researchOffset} disabled={busy} onChange={e => setResearchOffset(Number(e.target.value))}>
+            {Array.from({ length: Math.ceil(eligibleCount / RESEARCH_BATCH_SIZE) }, (_, i) =>
+              <option value={i * RESEARCH_BATCH_SIZE} key={i}>Omgång {i + 1} – från företag {i * RESEARCH_BATCH_SIZE + 1}</option>)}
+          </select>
+          <small>Ingen tidigare körhistorik sparas mellan besök. Välj föregående fortsättningspunkt varsamt för att undvika dubbla Tavily-kostnader.</small>
+        </div> : null}
         <div className={styles.researchActions}>
-          {!confirmingResearch && !researchAttempted ? <button type="button" disabled={busy} onClick={() => setConfirmingResearch(true)}>
-            {extractEnabled ? 'Undersök 5 företag och granska webbplatser' : 'Undersök 5 företag (max 5 sökkrediter)'}
+          {!confirmingResearch && !researchAttempted && canResearchNext ? <button type="button" disabled={busy} onClick={() => setConfirmingResearch(true)}>
+            {extractEnabled ? 'Undersök 5 företag och granska webbplatser' :
+              researchAttempts === 0 && researchOffset === 0 ? 'Undersök 5 företag (max 5 sökkrediter)' :
+              `Undersök nästa ${queue && queue.status === 'ready' ? queue.jobs.length : 5} företag (max 5 sökkrediter)`}
           </button> : null}
         </div>
-        {confirmingResearch ? <div role="alert">
-          <p>{extractEnabled
-            ? 'Detta skickar högst 5 grundsökningar och upp till 5 extra sidkontroller till Tavily. De kan förbruka fler krediter än enbart sökning. Ingen kontakt får godkännas och inget sparas.'
-            : 'Detta skickar högst 5 webbsökningar till Tavily och förbrukar högst 5 sökkrediter. Inget sparas och inget företag godkänns för kontakt.'}</p>
+        {confirmingResearch && canResearchNext ? <div role="alert">
+          <p>Omgång {Math.floor(researchOffset / RESEARCH_BATCH_SIZE) + 1}, företag {researchOffset + 1}–{researchOffset + (queue && queue.status === 'ready' ? queue.jobs.length : 5)}.
+            {' '}{extractEnabled
+              ? 'Högst 5 grundsökningar och upp till 5 extra sidkontroller kan förbruka krediter. Ingen kontakt får godkännas eller sparas.'
+              : 'Högst 5 grundsökningar kan förbruka 5 Tavily-krediter. Ingen kontakt får godkännas eller sparas.'}</p>
           <div className={styles.researchActions}>
             <button type="button" disabled={busy} onClick={runResearch}>Bekräfta och sök</button>
             <button type="button" data-variant="secondary" disabled={busy} onClick={() => setConfirmingResearch(false)}>Avbryt</button>
           </div>
         </div> : null}
-        {researchAttempted && !researchResults ? <p>Den här omgången är försökt. För att starta en ny sökning behöver du förhandsgranska filerna igen. Det förhindrar oavsiktliga upprepade API-anrop.</p> : null}
+        {!canResearchNext && !busy ? <p>
+          {researchAttempts >= sessionMaxBatches
+            ? 'Omgångsgränsen för denna förhandsgranskning är nådd. Tavily-nyckelns separata månadsgräns gäller fortfarande.'
+            : 'Inga fler företag finns i den valda forskningskön.'}
+        </p> : null}
         {researchResults ? <HandlarborsenResearchResults results={researchResults} /> : null}
       </div> : null}
 

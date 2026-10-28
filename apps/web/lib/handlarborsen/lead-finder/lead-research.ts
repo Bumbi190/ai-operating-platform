@@ -9,6 +9,7 @@ import { LOCAL_REVIEW_PROVENANCE, type LocalReview, type LocalReviewRow } from '
  */
 export const LEAD_RESEARCH_DEFAULT_LIMIT = 5
 export const LEAD_RESEARCH_MAX_LIMIT = 10
+export const LEAD_RESEARCH_MAX_OFFSET = 85 // verified report contains 89 entities; bounded, page-aligned
 export const LEAD_RESEARCH_MAX_OBSERVATIONS = 5
 export const LEAD_RESEARCH_MIN_OBSERVATION_DATE = '2026-10-28'
 export const LEAD_RESEARCH_EXCERPT_MAX = 160
@@ -117,9 +118,11 @@ function searchQueries(r: LocalReviewRow): string[] {
  * to an already-represented name group, city and SNI code is taken, orgnr as final tie-break.
  * There is deliberately no fit score; this is a research order, not a ranking of quality.
  */
-export function buildResearchQueue(review: LocalReview, limit: number = LEAD_RESEARCH_DEFAULT_LIMIT): ResearchQueueResult {
+export function buildResearchQueue(review: LocalReview, limit: number = LEAD_RESEARCH_DEFAULT_LIMIT, offset = 0): ResearchQueueResult {
   const problem = reviewProblem(review)
   if (problem) return refused(problem)
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > LEAD_RESEARCH_MAX_OFFSET || offset % LEAD_RESEARCH_DEFAULT_LIMIT !== 0)
+    return refused('offset_invalid')
   const max = normalizeResearchLimit(limit)
 
   const skipped: { orgnr: string; reason: ResearchSkipReason }[] = []
@@ -131,6 +134,7 @@ export function buildResearchQueue(review: LocalReview, limit: number = LEAD_RES
     else eligible.push(r)
   }
   skipped.sort((a, b) => a.orgnr.localeCompare(b.orgnr))
+  if (max > 0 && offset >= eligible.length) return refused('offset_out_of_range')
 
   const pool = [...eligible].sort((a, b) => a.orgnr.localeCompare(b.orgnr))
   const picked: LocalReviewRow[] = []
@@ -148,7 +152,9 @@ export function buildResearchQueue(review: LocalReview, limit: number = LEAD_RES
     if (/\b(bil|bilhandel|bilhandlare|bilar|bilcenter|fordonscenter|motor|motors|cars|automotive|auto|autohub|bilgruppen)\b/.test(name)) return 0
     return 1
   }
-  while (picked.length < max && pool.length > 0) {
+  // Recreate the deterministic order from the beginning, but only return the
+  // requested page. Previously every new review restarted at the same five.
+  while (picked.length < offset + max && pool.length > 0) {
     let bestIndex = 0
     let best: number[] | null = null
     pool.forEach((r, i) => {
@@ -174,7 +180,7 @@ export function buildResearchQueue(review: LocalReview, limit: number = LEAD_RES
   }
 
   const sourceDate = LOCAL_REVIEW_PROVENANCE.replace(/^SCB /, '')
-  const jobs: ResearchJob[] = picked.map(r => ({
+  const jobs: ResearchJob[] = picked.slice(offset, offset + max).map(r => ({
     id: `research:${r.orgnr}`, legalName: r.name, orgnr: r.orgnr, city: r.city, sni: r.sni,
     searchQueries: searchQueries(r).slice(0, 3),
     status: 'RESEARCH_NOT_STARTED', outreachReady: false, contactability: 'BLOCKED_PENDING_VERIFICATION', sourceDate,

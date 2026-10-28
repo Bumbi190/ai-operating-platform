@@ -32,20 +32,23 @@ const failureStatus: Record<ImportIntakeFailure, number> = {
   body_too_large: 413, body_invalid: 400, unknown_fields: 400, mode_invalid: 400,
   confirmation_invalid: 400, snapshot_invalid: 422, manifest_invalid: 422,
 }
-const BODY_KEYS = ['csv', 'summary', 'digest', 'confirmation']
+const BODY_KEYS = ['csv', 'summary', 'digest', 'confirmation', 'offset']
 
-function parseBody(text: string, expectedConfirmation: string): { csv: string; summary: string; digest: string } | 'unknown_fields' | 'confirmation_invalid' | 'body_invalid' {
+function parseBody(text: string, expectedConfirmation: string): { csv: string; summary: string; digest: string; offset: number } | 'unknown_fields' | 'confirmation_invalid' | 'body_invalid' {
   let body: unknown
   try { body = JSON.parse(text) } catch { return 'body_invalid' }
   if (body === null || typeof body !== 'object' || Array.isArray(body)) return 'body_invalid'
   const rec = body as Record<string, unknown>
   const keys = Object.keys(rec)
   if (keys.some(k => !BODY_KEYS.includes(k))) return 'unknown_fields'
-  if (!BODY_KEYS.every(k => keys.includes(k))) return 'body_invalid'
+  if (!['csv', 'summary', 'digest', 'confirmation'].every(k => keys.includes(k))) return 'body_invalid'
   if (typeof rec.csv !== 'string' || typeof rec.summary !== 'string' || !rec.csv || !rec.summary) return 'body_invalid'
   if (typeof rec.digest !== 'string' || !/^[0-9a-f]{64}$/.test(rec.digest)) return 'body_invalid'
   if (typeof rec.confirmation !== 'string' || !constantTimeEqual(rec.confirmation, expectedConfirmation)) return 'confirmation_invalid'
-  return { csv: rec.csv, summary: rec.summary, digest: rec.digest }
+  const offset = rec.offset === undefined ? 0 : rec.offset
+  // Only integer batches of five from the fixed, verified 89-company report.
+  if (typeof offset !== 'number' || !Number.isSafeInteger(offset) || offset < 0 || offset > 85 || offset % 5 !== 0) return 'body_invalid'
+  return { csv: rec.csv, summary: rec.summary, digest: rec.digest, offset }
 }
 
 /**
@@ -97,19 +100,21 @@ export async function leadFinderResearchApi(request: Request, deps: LeadFinderRe
   if (!constantTimeEqual(intake.value.aggregate.digest, parsed.digest)) return respond(422, { status: 'snapshot_invalid' })
   const state = buildLocalReview(parsed.csv, parsed.summary)
   if (state.status !== 'ready') return respond(422, { status: 'snapshot_invalid' })
-  const queue = buildResearchQueue(state.review, WORKER_MAX_JOBS)
-  if (queue.status !== 'ready') return respond(422, { status: 'snapshot_invalid' })
+  const queue = buildResearchQueue(state.review, WORKER_MAX_JOBS, parsed.offset)
+  if (queue.status !== 'ready') return respond(422, { status: 'batch_unavailable' })
 
   let run: Awaited<ReturnType<typeof runLeadResearch>>
   try {
     const adapter = deps.getAdapter()
-    run = await runLeadResearch({ review: state.review, adapter, limit: WORKER_MAX_JOBS })
+    run = await runLeadResearch({ review: state.review, adapter, limit: WORKER_MAX_JOBS, offset: parsed.offset })
   } catch { return respond(503, { status: 'unavailable' }) }
   if (run.status !== 'completed') return respond(503, { status: 'unavailable' })
 
   const names = new Map(queue.jobs.map(j => [j.orgnr, j]))
   return respond(200, {
     status: 'researched',
+    offset: parsed.offset,
+    eligible: queue.eligible,
     calls: run.calls,
     preliminary: true,
     sourceMode: verifiedPagesEnabled ? 'search_and_page_extract' : 'search_snippets_only',

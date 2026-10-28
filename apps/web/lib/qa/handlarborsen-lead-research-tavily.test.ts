@@ -436,6 +436,12 @@ describe('research route: every gate is closed before a single search credit is 
     ['digest not matching source', null, () => req(goodBody({ digest: 'a'.repeat(64) })), 422],
     ['tampered csv', null, () => req(goodBody({ csv: CSV.replace('Teststad', 'Annanstad') })), 422],
     ['bad summary', null, () => req(goodBody({ summary: '{}' })), 422],
+    ['negative research offset', null, () => req(goodBody({ offset: -5 })), 400],
+    ['unaligned research offset', null, () => req(goodBody({ offset: 1 })), 400],
+    ['fractional research offset', null, () => req(goodBody({ offset: 2.5 })), 400],
+    ['string research offset', null, () => req(goodBody({ offset: '5' })), 400],
+    ['offset beyond 89 legal entities', null, () => req(goodBody({ offset: 90 })), 400],
+    ['offset beyond 81 eligible firms', null, () => req(goodBody({ offset: 85 })), 422],
   ]
   it.each(refusals)('%s -> %s without creating the adapter or calling fetch', async (_name, over, build, status) => {
     const h = harness(over ?? {})
@@ -488,6 +494,33 @@ describe('research route: every gate is closed before a single search credit is 
       expect(r.evidence[0].sourceKind).toBe('search_snippet')
       expect(r.evidence[0].excerpt.length).toBeLessThanOrEqual(160)
     }
+  })
+
+  it('runs different verified batches and does not repeat first five in the next response', async () => {
+    const one = harness()
+    const first = await leadFinderResearchApi(req(goodBody({ offset: 0 })), one.deps)
+    const second = harness()
+    const next = await leadFinderResearchApi(req(goodBody({ offset: 5 })), second.deps)
+    expect(first.status).toBe(200)
+    expect(next.status).toBe(200)
+    expect(one.fetchImpl).toHaveBeenCalledTimes(5)
+    expect(second.fetchImpl).toHaveBeenCalledTimes(5)
+    const a = await first.json()
+    const b = await next.json()
+    expect(a).toMatchObject({ status: 'researched', offset: 0, eligible: 81, calls: 5, outreachReady: false })
+    expect(b).toMatchObject({ status: 'researched', offset: 5, eligible: 81, calls: 5, outreachReady: false })
+    expect(b.results.map((r: {orgnr:string}) => r.orgnr)).toEqual(
+      (buildResearchQueue(state.review,5,5) as {jobs:ResearchJob[]}).jobs.map(j=>j.orgnr))
+    expect(new Set([...a.results, ...b.results].map((r: { orgnr: string }) => r.orgnr)).size).toBe(10)
+  })
+  it('checks the final partial batch and spends only one simulated search', async () => {
+    const h = harness()
+    const response = await leadFinderResearchApi(req(goodBody({ offset: 80 })), h.deps)
+    expect(response.status).toBe(200)
+    expect(h.fetchImpl).toHaveBeenCalledTimes(1)
+    const parsed = await response.json()
+    expect(parsed).toMatchObject({ offset: 80, eligible: 81, calls: 1, outreachReady: false })
+    expect(parsed.results).toHaveLength(1)
   })
 
   it('maps adapter failure to a generic 503 with no detail', async () => {
@@ -560,6 +593,14 @@ describe('owner UI and static guarantees', () => {
     expect(control).toContain('Undersök 5 företag (max 5 sökkrediter)')
     expect(control).toContain("RESEARCH_CONFIRMATION = 'UNDERSÖK 5 FÖRETAG'")
     expect(control.match(/fetch\(/g)).toHaveLength(2)
+    expect(control).toContain('Återuppta från omgång efter omladdning')
+    expect(control).toContain('setResearchOffset(current => current + RESEARCH_BATCH_SIZE)')
+    expect(control).toContain('setResearchResults(previous => [...(previous ?? []), ...results])')
+    expect(control).toContain('researchAttempts < sessionMaxBatches')
+    expect(control).toContain('extractEnabled ? 2 : RESEARCH_MAX_BATCHES_PER_REVIEW')
+    expect(control).toContain('payload.offset !== offset')
+    const queueView = src('../../components/platform/vnext/HandlarborsenScbPreviewTable.tsx')
+    expect(queueView).toContain('buildResearchQueue(review, 5, offset)')
     for (const text of [control, results]) {
       expect(text).not.toMatch(/mailto:|sendMail|\/send|(?:localStorage|sessionStorage)\s*(?:\.|\[)|setInterval\s*\(|\bcron\s*\(|\bapprove\s*\(|Godkänn för/i)
     }

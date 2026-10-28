@@ -42,8 +42,13 @@ const isPlausibleOwnHost=(host:string,company:string):boolean=>{
   const domainPart=bare(host).split('.')[0]
   // A domain name can only be evidence when it resembles a distinctive
   // part of this company's legal name. Name resemblance is not identity!
-  const tokens=normalize(company).split(' ').filter(x=>x.length>=4&&!LEGAL_STOP.has(x))
-  return tokens.some(token=>normalizeCompact(domainPart).includes(token))
+  const words=normalize(company).split(' ').filter(x=>x.length>=2&&!LEGAL_STOP.has(x))
+  const compactName=words.join('')
+  const compactDomain=normalizeCompact(domainPart)
+  // Short names such as "Wä Bil AB" can have a distinctive compact domain
+  // (wabil.se) although neither individual word is four letters long.
+  if(compactName.length>=5&&compactDomain.includes(compactName))return true
+  return words.some(token=>token.length>=4&&compactDomain.includes(token))
 }
 const own=(v:unknown):v is Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v)
 const legalIdOnPage=(text:string,orgnr:string):boolean=>{
@@ -175,16 +180,28 @@ export interface TavilyVerifiedAdapterOptions extends TavilyAdapterOptions {
 export function makeTavilyVerifiedResearchAdapter(options:TavilyVerifiedAdapterOptions):SearchAdapter{
   if(options.extractApproved!==true)throw Error('extract_not_approved')
   // The first adapter retains the existing 5 basic-search credit hard cap.
-  const search=makeTavilyResearchAdapter(options)
+  const urlsByJob=new Map<string,string[]>()
+  const search=makeTavilyResearchAdapter({
+    ...options,
+    onCandidateUrl:(job,url)=>{
+      const urls=urlsByJob.get(job.id)??[]
+      if(urls.length<3)urls.push(url)
+      urlsByJob.set(job.id,urls)
+    },
+  })
   const extractSeen=new Set<string>()
   return {
     name:'tavily-basic-search-with-explicit-extract',
     async collect(job:ResearchJob,signal:AbortSignal):Promise<unknown>{
       const snippets=await search.collect(job,signal)
+      const proposedUrls=urlsByJob.get(job.id)??[]
+      urlsByJob.delete(job.id)
       if(!Array.isArray(snippets))return []
       const result=[...snippets]
-      const candidate=snippets.map(x=>own(x)?x.sourceUrl:null)
-        .map(parseSafePublicUrl)
+      // Only a plausible URL candidate: its search snippet can be unlinked.
+      // The extract response must independently prove legal identity and
+      // vehicle sales before any official evidence or contact is displayed.
+      const candidate=proposedUrls.map(parseSafePublicUrl)
         .find(x=>x&&isPlausibleOwnHost(x.host,job.legalName))
       if(!candidate||extractSeen.has(job.id)||extractSeen.size>=MAX_EXTRACTS_PER_BATCH)return result
       extractSeen.add(job.id)

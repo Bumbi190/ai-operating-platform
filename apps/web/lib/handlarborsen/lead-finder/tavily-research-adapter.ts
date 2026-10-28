@@ -25,6 +25,9 @@ export interface TavilyAdapterOptions {
   key: string | undefined
   fetchImpl: FetchImpl
   now?: () => Date
+  /** Internal callback for the optional extract stage: public URL candidates only,
+   * never returned to the owner as evidence unless independently verified. */
+  onCandidateUrl?: (job: ResearchJob, url: string) => void
 }
 
 const SALE_SIGNALS: [BusinessIndicator, RegExp][] = [
@@ -216,6 +219,14 @@ export function makeTavilyResearchAdapter(options: TavilyAdapterOptions): Search
       const today = now().toISOString().slice(0, 10)
       const observations: Record<string, unknown>[] = []
       for (const result of results.slice(0, TAVILY_MAX_RESULTS)) {
+        // A branded official URL may be discoverable even when its search
+        // excerpt does not contain the company's exact legal name or orgnr.
+        // Pass only its safe URL to the optional extraction candidate sink;
+        // it NEVER becomes a trusted search observation by this path.
+        if (options.onCandidateUrl && result && typeof result === 'object') {
+          const candidate = parseSafePublicUrl((result as Record<string, unknown>).url)
+          if (candidate) { try { options.onCandidateUrl(job, candidate.href) } catch { /* optional sink fails closed */ } }
+        }
         const o = toObservation(result, job, today)
         if (o) observations.push(o)
       }

@@ -28,6 +28,7 @@ export interface ResearchRunOptions {
   review: LocalReview
   adapter?: SearchAdapter | null
   limit?: number
+  offset?: number
   timeoutMs?: number
 }
 
@@ -52,7 +53,7 @@ export async function runLeadResearch(options: ResearchRunOptions): Promise<Rese
   const adapter = options.adapter
   if (!adapter || typeof adapter.collect !== 'function') return blocked('adapter_absent')
 
-  const queue = buildResearchQueue(options.review, Math.min(options.limit ?? WORKER_MAX_JOBS, WORKER_MAX_JOBS))
+  const queue = buildResearchQueue(options.review, Math.min(options.limit ?? WORKER_MAX_JOBS, WORKER_MAX_JOBS), options.offset ?? 0)
   if (queue.status !== 'ready') return blocked(queue.reason)
 
   const timeoutMs = Number.isFinite(options.timeoutMs)

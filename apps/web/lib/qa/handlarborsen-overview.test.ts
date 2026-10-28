@@ -179,6 +179,7 @@ describe('rendered overview', () => {
   it('opts only this project into clearer KPI type in both data and no-data states', () => {
     expect(render(report([row()]))).toContain('data-prominent="true"')
     expect(render(report([]))).toContain('data-prominent="true"')
+    expect(render(report([]))).not.toContain('href="#hb-workflow-drafts"')
     const css = readFileSync(resolve(__dirname, '../../components/platform/vnext/KpiOverview.module.css'), 'utf8')
     expect(css).toContain(".overview[data-prominent='true']")
   })
@@ -193,6 +194,9 @@ describe('rendered overview', () => {
     expect(html).toContain('id="hb-market-pulse"')
     expect(html).toContain('id="hb-executive-heading"')
     expect(html).toContain('Det viktigaste just nu')
+    expect(html).toContain('Visa arbetsflödesförslag')
+    expect(html).toContain('href="#hb-workflow-drafts"')
+    expect(html.indexOf('href="#hb-workflow-drafts"')).toBeLessThan(html.indexOf('id="hb-workflow-drafts"'))
     expect(html).toContain('Konkurrentbevakning')
     expect(html).toContain('href="/projects/handlarborsen/competitors"')
     expect(html.indexOf('id="hb-executive-heading"')).toBeLessThan(html.indexOf('id="hb-trend-companies"'))

@@ -3,6 +3,7 @@
 import React, { useRef, useState } from 'react'
 import { buildLocalReview, type LocalReview } from '@/lib/handlarborsen/lead-finder/local-review'
 import { HandlarborsenScbPreviewTable } from './HandlarborsenScbPreviewTable'
+import { HandlarborsenResearchResults, parseResearchResponse, type ResearchView } from './HandlarborsenResearchResults'
 import styles from './HandlarborsenScbImportControl.module.css'
 
 type PreviewCounts = {
@@ -22,6 +23,8 @@ type PreviewCounts = {
 const ENDPOINT = '/api/atlas/handlarborsen/lead-finder/import'
 const CONFIRMATION = 'IMPORTERA 89 SOM EJ KONTAKTBARA'
 const MAX_BYTES = 150_000
+const RESEARCH_ENDPOINT = '/api/atlas/handlarborsen/lead-finder/research'
+const RESEARCH_CONFIRMATION = 'UNDERSÖK 5 FÖRETAG'
 
 function errorLabel(code: string): string {
   switch (code) {
@@ -34,12 +37,14 @@ function errorLabel(code: string): string {
     case 'manifest_invalid': return 'Rapporten kunde inte verifieras. Ingen data importerades.'
     case 'digest_not_approved': return 'Den exakta rapporten är inte godkänd för import.'
     case 'table_not_empty': return 'Databasen innehåller redan kandidatposter. Ingen överskrivning gjordes.'
+    case 'unsupported_media_type':
+    case 'confirmation_invalid': return 'Begäran avvisades. Ingen sökning gjordes.'
     case 'unavailable': return 'Importtjänsten eller databasanslutningen är inte tillgänglig.'
     default: return 'Begäran kunde inte genomföras. Ingen data har godkänts för kontakt.'
   }
 }
 
-export function HandlarborsenScbImportControl({ writeEnabled = false }: { writeEnabled?: boolean }) {
+export function HandlarborsenScbImportControl({ writeEnabled = false, researchEnabled = false }: { writeEnabled?: boolean; researchEnabled?: boolean }) {
   const [csvFile, setCsvFile] = useState<File | null>(null)
   const [summaryFile, setSummaryFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<PreviewCounts | null>(null)
@@ -48,10 +53,16 @@ export function HandlarborsenScbImportControl({ writeEnabled = false }: { writeE
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
   const [committed, setCommitted] = useState(false)
+  const [confirmingResearch, setConfirmingResearch] = useState(false)
+  const [researchResults, setResearchResults] = useState<ResearchView[] | null>(null)
+  const [researchAttempted, setResearchAttempted] = useState(false)
   const source = useRef<{ csv: string; summary: string } | null>(null)
 
   function clearPreview() {
     source.current = null
+    setConfirmingResearch(false)
+    setResearchResults(null)
+    setResearchAttempted(false)
     setPreview(null)
     setReview(null)
     setConfirmation('')
@@ -122,6 +133,38 @@ export function HandlarborsenScbImportControl({ writeEnabled = false }: { writeE
     }
   }
 
+  async function runResearch() {
+    if (!researchEnabled || !preview || !source.current || busy || researchAttempted) return
+    const { csv, summary } = source.current
+    const body = JSON.stringify({ csv, summary, digest: preview.digest, confirmation: RESEARCH_CONFIRMATION })
+    setConfirmingResearch(false)
+    setResearchResults(null)
+    setResearchAttempted(true) // one attempt per verified upload, even if the network fails
+    if (new Blob([body]).size > MAX_BYTES) { setStatus(errorLabel('body_too_large')); return }
+    setBusy(true)
+    setStatus('Söker… högst 5 sökningar körs.')
+    try {
+      // One explicit click = at most five basic searches. Nothing is stored or sent.
+      const response = await fetch(RESEARCH_ENDPOINT, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body,
+        cache: 'no-store', credentials: 'same-origin',
+      })
+      const data: unknown = await response.json().catch(() => null)
+      if (!response.ok) {
+        const code = data && typeof data === 'object' ? (data as Record<string, unknown>).status : null
+        throw new Error(typeof code === 'string' ? code : 'unavailable')
+      }
+      const results = parseResearchResponse(data)
+      if (!results) throw new Error('unavailable')
+      setResearchResults(results)
+      setStatus('Researchen är klar. Resultaten är preliminära och ingen är kontaktbar.')
+    } catch (e) {
+      setStatus(errorLabel(e instanceof Error ? e.message : 'unavailable'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function importWithApproval() {
     if (!writeEnabled || !preview || !source.current || confirmation !== CONFIRMATION || busy || committed) return
     setBusy(true)
@@ -166,9 +209,26 @@ export function HandlarborsenScbImportControl({ writeEnabled = false }: { writeE
         <code>{preview.digest}</code>
       </div> : null}
 
-      {preview && review ? <HandlarborsenScbPreviewTable review={review} /> : null}
+      {preview && review ? <HandlarborsenScbPreviewTable review={review} researched={researchResults !== null} /> : null}
 
-      {writeEnabled && preview && !committed ? <div className={styles.confirm}>
+      {researchEnabled && preview && review ? <div className={styles.researchResults}>
+        <div className={styles.researchActions}>
+          {!confirmingResearch && !researchAttempted ? <button type="button" disabled={busy} onClick={() => setConfirmingResearch(true)}>
+            Undersök 5 företag (max 5 sökkrediter)
+          </button> : null}
+        </div>
+        {confirmingResearch ? <div role="alert">
+          <p>Detta skickar högst 5 webbsökningar till Tavily och förbrukar högst 5 sökkrediter. Inget sparas och inget företag godkänns för kontakt.</p>
+          <div className={styles.researchActions}>
+            <button type="button" disabled={busy} onClick={runResearch}>Bekräfta och sök</button>
+            <button type="button" data-variant="secondary" disabled={busy} onClick={() => setConfirmingResearch(false)}>Avbryt</button>
+          </div>
+        </div> : null}
+        {researchAttempted && !researchResults ? <p>Den här omgången är försökt. För att starta en ny sökning behöver du förhandsgranska filerna igen. Det förhindrar oavsiktliga upprepade API-anrop.</p> : null}
+        {researchResults ? <HandlarborsenResearchResults results={researchResults} /> : null}
+      </div> : null}
+
+      {writeEnabled && preview && !committed ?<div className={styles.confirm}>
         <p>Även en framtida import lagrar endast blockerade granskningsposter. Ingen utskicksknapp aktiveras.</p>
         <label htmlFor="hb-import-confirm">Skriv exakt: {CONFIRMATION}</label>
         <input id="hb-import-confirm" type="text" autoComplete="off" spellCheck={false}

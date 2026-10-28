@@ -83,6 +83,18 @@
 .reviewPagination button:focus-visible { outline: 2px solid var(--omnira-cyan, #77e7ee); outline-offset: 3px; }
 @media (max-width: 640px) { .reviewPagination { justify-content: center; } }
 
+.researchResults { margin-top: 1.2rem; max-width: 860px; }
+.researchResults h3 { margin: .2rem 0 .5rem; font-size: 1.05rem; font-weight: 700; }
+.researchResults a { color: var(--omnira-cyan, #70e4e6); }
+.researchActions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: .6rem; }
+.researchActions button {
+  border: none; border-radius: 8px; font-size: .82rem; font-weight: 700; padding: .7rem 1rem;
+  cursor: pointer; background: var(--omnira-cyan, #77e7ee); color: #04252d;
+}
+.researchActions button[data-variant="secondary"] { background: transparent; color: inherit; border: 1px solid rgba(115, 198, 218, .4); }
+.researchActions button:disabled { cursor: not-allowed; opacity: .52; }
+.researchActions button:focus-visible { outline: 2px solid var(--omnira-cyan, #77e7ee); outline-offset: 3px; }
+
 /* Atlas research queue: compact, read-only, five rows at most. */
 .researchQueue { margin-top: 1.2rem; padding: .9rem 1rem; border: 1px solid rgba(125, 189, 203, .2); border-radius: 10px; }
 .researchQueue h4 { margin: 0 0 .5rem; font-size: 1rem; font-weight: 700; }

@@ -27,7 +27,7 @@ const channelNames: Record<'reklam' | 'epost' | 'telefon', string> = {
  * No storage, network, approval, navigation to company profiles, or email action.
  * It NEVER treats the partial outreach history as proof that a firm is new.
  */
-export function HandlarborsenScbPreviewTable({ review }: { review: LocalReview }) {
+export function HandlarborsenScbPreviewTable({ review, researched = false }: { review: LocalReview; researched?: boolean }) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<LocalReviewFilter>('all')
   const [page, setPage] = useState(1)
@@ -133,13 +133,13 @@ export function HandlarborsenScbPreviewTable({ review }: { review: LocalReview }
         </nav>
       ) : null}
       <p className={styles.reviewFootnote}>Företagens uppgifter visas bara i den här tillfälliga förhandsvisningen. Ingen knapp godkänner, importerar eller skickar mejl.</p>
-      <AtlasResearchQueue review={review} />
+      <AtlasResearchQueue review={review} researched={researched} />
     </section>
   )
 }
 
 /** Read-only summary of what Atlas WOULD research next. No research has run and nothing here grants contact. */
-export function AtlasResearchQueue({ review }: { review: LocalReview }) {
+export function AtlasResearchQueue({ review, researched = false }: { review: LocalReview; researched?: boolean }) {
   const queue = useMemo(() => buildResearchQueue(review, 5), [review])
   return (
     <section className={styles.researchQueue} aria-labelledby="hb-atlas-research-title">
@@ -147,15 +147,16 @@ export function AtlasResearchQueue({ review }: { review: LocalReview }) {
       {queue.status === 'ready' ? (
         <>
           <p>
-            Nästa {queue.jobs.length} företag som Atlas skulle undersöka (av {queue.eligible} möjliga). Ingen sökning har körts
-            och ingen extern sökkälla är kopplad. Det här är en kö, inte ett resultat eller en rekommendation.
+            {researched
+              ? `Atlas har undersökt ${queue.jobs.length} företag i den här tillfälliga vyn. Preliminära källresultat visas nedan; ingen är godkänd för kontakt.`
+              : `Nästa ${queue.jobs.length} företag som Atlas skulle undersöka (av ${queue.eligible} möjliga). Ingen sökning har körts. Det här är en kö, inte ett resultat eller en rekommendation.`}
           </p>
           <ol className={styles.researchList}>
             {queue.jobs.map(job => (
               <li key={job.orgnr}>
                 <strong>{job.legalName}</strong>
                 <small>{job.orgnr} · {job.city} · SNI {job.sni.replaceAll(';', ', ')}</small>
-                <span className={styles.reviewTag} data-tone="warning">Research ej körd</span>
+                <span className={styles.reviewTag} data-tone={researched ? 'neutral' : 'warning'}>{researched ? 'Research körd – källgranska' : 'Research ej körd'}</span>
                 <span className={styles.reviewTag} data-tone="neutral">Ej kontaktbar</span>
               </li>
             ))}

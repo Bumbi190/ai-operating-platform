@@ -28,6 +28,7 @@ export default async function LeadFinderPage({ params, searchParams }: {
   let localReview: LocalReviewState = { status: 'disabled' }
   let importPreviewEnabled = false
   let importWriteEnabled = false
+  let researchEnabled = false
   const localFlag = process.env.NODE_ENV === 'development' && process.platform === 'win32' &&
     process.env.HB_LEADFINDER_LOCAL_REVIEW_ENABLED === 'true'
   const importFlag = process.env.HB_LEADFINDER_IMPORT_PREVIEW_ENABLED === 'true'
@@ -48,6 +49,8 @@ export default async function LeadFinderPage({ params, searchParams }: {
         if (localFlag) localReview = await loadLocalReviewForOwner(project.id)
         importPreviewEnabled = importFlag
         importWriteEnabled = importFlag && process.env.HB_LEADFINDER_IMPORT_WRITE_ENABLED === 'true'
+        researchEnabled = importFlag && process.env.VERCEL_ENV !== 'production' && process.env.HB_LEADFINDER_RESEARCH_ENABLED === 'true' &&
+          !!process.env.TAVILY_API_KEY?.trim()
       }
     }
   }
@@ -67,5 +70,6 @@ export default async function LeadFinderPage({ params, searchParams }: {
     localFilter={first(searchParams?.local_filter) || 'all'}
     importPreviewEnabled={importPreviewEnabled}
     importWriteEnabled={importWriteEnabled}
+    researchEnabled={researchEnabled}
   />
 }

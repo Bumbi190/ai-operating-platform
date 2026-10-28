@@ -205,6 +205,8 @@ export function parseSafePublicUrl(input: unknown): SafeUrl | null {
 
 const stripWww = (h: string) => h.replace(/^www\./, '')
 const hostMatches = (host: string, domain: string) => host === domain || host.endsWith('.' + domain)
+/** True for directories, marketplaces and social hosts: these can never be an official company site. */
+export const isNonOfficialHost = (host: string) => NON_OFFICIAL_HOSTS.some(d => hostMatches(host, d))
 const sameSiteFamily = (a: string, b: string) => {
   const x = stripWww(a), y = stripWww(b)
   return x === y || x.endsWith('.' + y) || y.endsWith('.' + x)

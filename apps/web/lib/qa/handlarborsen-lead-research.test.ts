@@ -188,6 +188,14 @@ describe('Atlas Lead Research Worker v1: research is NOT contact authorization',
     expect(html).toContain('5 företag')
     expect(html).not.toMatch(/mailto:|tel:|Skicka mejl|Godkänn för utskick/)
   })
+  it('updates the research queue status only after a completed owner review run', () => {
+    const before=renderToStaticMarkup(React.createElement(HandlarborsenScbPreviewTable,{review:verified}))
+    const after=renderToStaticMarkup(React.createElement(HandlarborsenScbPreviewTable,{review:verified,researched:true}))
+    expect(before).toContain('Research ej körd')
+    expect(after).toContain('Research körd – källgranska')
+    expect(after).not.toContain('Research ej körd')
+    expect(after).toContain('Ingen utskicksbehörighet')
+  })
   it('contains no Node or outbound search dependency in the browser-safe core',()=>{
     const source=readFileSync(fileURLToPath(new URL('../handlarborsen/lead-finder/lead-research.ts',import.meta.url)),'utf8')
     expect(source).not.toMatch(/from ['"]node:|require\(|\bfetch\(|axios|process\.env|setInterval\(|setTimeout\(|localStorage|window\.location/)

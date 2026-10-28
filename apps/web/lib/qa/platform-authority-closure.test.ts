@@ -1310,7 +1310,9 @@ describe('A6-3 Â· the machine publishers post only the platform social projectâ€
     expect(res.status).toBe(409)
     expect(await res.json()).toMatchObject({ status: 'editorial_review_required' })
     expect(publishCalls()).toEqual([])
-    expect(DB.mutations('media_scripts')).toEqual([])
+    // The cron's unrelated housekeeping writes may still run before queue selection.
+    // No publish claim or per-script state mutation may be performed on the held row.
+    expect(DB.mutations('media_scripts').filter(m => m.filters.includes('eq:id'))).toEqual([])
   })
 
   it('an unverified oldest row cannot starve a valid publication', async () => {

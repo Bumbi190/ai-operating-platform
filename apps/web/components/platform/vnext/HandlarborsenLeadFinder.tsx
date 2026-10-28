@@ -174,9 +174,9 @@ export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search,
         <aside className={styles.panel} aria-labelledby="hb-leads-next">
           <h2 id="hb-leads-next">Tre steg till första listan</h2>
           <ol className={styles.steps}>
-            <li><span>01</span><div><strong>Verifiera SCB</strong><p>Konfigurera nyckel på servern och provhämta med begränsad kvot.</p></div></li>
+            <li><span>01</span><div><strong>Granska SCB-underlaget</strong><p>Den sanerade SCB-rapporten kan förhandsgranskas av projektägaren. Serverns liveanrop är fortfarande avstängda.</p></div></li>
             <li><span>02</span><div><strong>Matcha spärrar</strong><p>Jämför alla pilotkontakter och kontrollera SCB:s reklam- och e-postspärrar.</p></div></li>
-            <li><span>03</span><div><strong>Granska 50 kandidater</strong><p>Atlas prioriterar, du granskar. Inget mejl skickas från denna vy.</p></div></li>
+            <li><span>03</span><div><strong>Granska 89 juridiska företag</strong><p>Filtrera de verifierade företagen i förhandsvisningen. Ingen är godkänd för kontakt eller utskick.</p></div></li>
           </ol>
         </aside>
       </div>
@@ -218,7 +218,7 @@ export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search,
             <h3>{saved.status === 'unavailable' || saved.status === 'incomplete' ? 'Kandidaterna kan inte verifieras' : localReview.status === 'ready' ? 'Inga företag importerade i Omniras databas' : 'Inga riktiga leads inlästa ännu'}</h3>
             <p>{saved.status === 'unavailable' || saved.status === 'incomplete'
               ? 'Källan är otillgänglig eller ofullständig och visas därför inte.'
-              : 'När SCB är verifierat och importen godkänd kommer bilhandlarna att listas här med poäng, källa och status.'}</p>
+              : 'Efter en separat godkänd import kan de juridiska företagen listas här med SCB-status och granskningsflaggor. Ingen automatisk poäng eller kontaktbehörighet tilldelas.'}</p>
           </div>
         )}
         <div className={styles.footer}><span>Även granskade kandidater är inte utskicksklara utan fullständiga spärrkontroller.</span>

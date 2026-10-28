@@ -43,3 +43,11 @@ cd apps/web
 ```
 
 Det finns en separat **privat** lokal insamlings- och kvalificeringshistorik. Den ingår inte i den publika PR:n eftersom den innehåller information om faktiska affärskontakter.
+
+## Förhandsvisning av enskilda företag
+
+Efter att projektägarens två valda filer har verifierats av importens förhandsgransknings-API kan webbläsaren även visa en **tillfällig tabell med de 89 juridiska företagen**. Användaren kan söka på namn, organisationsnummer och ort samt filtrera på verksamhetsstatus, tidigare kontakt i partiell historik, SCB-spärr, annan juridisk form och möjliga gemensamma namnled.
+
+Tabellen byggs endast från den redan manuellt valda och validerade filen i webbläsarens minne. Serverns svar innehåller fortfarande **enbart antal och kontrollsumma**, aldrig en hel företagslista. Ingen databaspost skapas, ingen cookie eller lokal lagring används för företagsraderna, och inga knappar för godkännande, kontakt eller utskick finns i tabellen. Att rapporten saknar historisk träff innebär **inte** att företaget är nytt eller att kontakt är tillåten.
+
+Det tidigare steget ”Granska 50 kandidater” är ersatt med **”Granska 89 juridiska företag”** för just denna verifierade rapport, utan att påstå att SCB har godkänt dem som bilhandlare. Om nästa rapport omfattar ett annat antal krävs en separat uppdatering av den medvetet snävt avgränsade importgrinden.

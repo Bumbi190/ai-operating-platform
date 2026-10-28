@@ -1,6 +1,8 @@
 'use client'
 
 import React, { useRef, useState } from 'react'
+import { buildLocalReview, type LocalReview } from '@/lib/handlarborsen/lead-finder/local-review'
+import { HandlarborsenScbPreviewTable } from './HandlarborsenScbPreviewTable'
 import styles from './HandlarborsenScbImportControl.module.css'
 
 type PreviewCounts = {
@@ -41,6 +43,7 @@ export function HandlarborsenScbImportControl({ writeEnabled = false }: { writeE
   const [csvFile, setCsvFile] = useState<File | null>(null)
   const [summaryFile, setSummaryFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<PreviewCounts | null>(null)
+  const [review, setReview] = useState<LocalReview | null>(null)
   const [confirmation, setConfirmation] = useState('')
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
@@ -50,6 +53,7 @@ export function HandlarborsenScbImportControl({ writeEnabled = false }: { writeE
   function clearPreview() {
     source.current = null
     setPreview(null)
+    setReview(null)
     setConfirmation('')
     setCommitted(false)
     setStatus('')
@@ -95,11 +99,23 @@ export function HandlarborsenScbImportControl({ writeEnabled = false }: { writeE
         counts.historyCoverage !== 'PARTIAL' ||
         counts.contactability !== 'BLOCKED_PENDING_VERIFICATION' ||
         !/^[0-9a-f]{64}$/.test(counts.digest)) throw new Error('unavailable')
+      // Parse and display only AFTER the owner-authenticated server has
+      // verified these exact selected files. No company rows are returned by
+      // the server: the browser already holds the owner's chosen report.
+      const verified = buildLocalReview(csv, summary)
+      if (verified.status !== 'ready' ||
+        verified.review.counts.total !== counts.count ||
+        verified.review.counts.inactive !== counts.inactive ||
+        verified.review.counts.restricted !== counts.marketingRestricted ||
+        verified.review.counts.priorContact !== counts.priorContact ||
+        verified.review.outreachReady !== 0) throw new Error('snapshot_invalid')
       source.current = { csv, summary }
       setPreview(counts)
+      setReview(verified.review)
       setStatus('Förhandskontrollen är godkänd. Ingen data har importerats.')
     } catch (e) {
       source.current = null
+      setReview(null)
       setStatus(errorLabel(e instanceof Error ? e.message : 'unavailable'))
     } finally {
       setBusy(false)
@@ -149,6 +165,8 @@ export function HandlarborsenScbImportControl({ writeEnabled = false }: { writeE
         <p>Tidigare kontakthistorik: ofullständig. Kontrollsumma för rapporten:</p>
         <code>{preview.digest}</code>
       </div> : null}
+
+      {preview && review ? <HandlarborsenScbPreviewTable review={review} /> : null}
 
       {writeEnabled && preview && !committed ? <div className={styles.confirm}>
         <p>Även en framtida import lagrar endast blockerade granskningsposter. Ingen utskicksknapp aktiveras.</p>

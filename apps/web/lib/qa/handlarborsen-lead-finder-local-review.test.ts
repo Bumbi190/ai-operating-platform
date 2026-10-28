@@ -10,6 +10,7 @@ import { loadLocalReviewForOwner, type LocalReviewDeps } from '@/lib/handlarbors
 import { csvField } from '@/lib/handlarborsen/lead-finder/offline-vetting'
 import { STATUS_AUDIT_EXPORT_COLUMNS } from '@/lib/handlarborsen/lead-finder/status-audit'
 import { HandlarborsenLeadFinder } from '@/components/platform/vnext/HandlarborsenLeadFinder'
+import { HandlarborsenScbPreviewTable } from '@/components/platform/vnext/HandlarborsenScbPreviewTable'
 import { knownContactSummary, parseKnownContacts } from '@/lib/handlarborsen/lead-finder/known-contacts'
 import { parseSavedCandidates } from '@/lib/handlarborsen/lead-finder/saved-candidates'
 
@@ -139,6 +140,32 @@ describe('group hypotheses, search and filters', () => {
     expect(filterLocalReview(rows, 'teststad', 'all')).toHaveLength(89)
     expect(filterLocalReview(rows, 'hedbergs', 'restricted')).toHaveLength(0)
     expect(filterLocalReview(rows, 'x'.repeat(500), 'all')).toHaveLength(0)
+  })
+})
+
+describe('preview-only company table after verified owner upload', () => {
+  const review = parseLocalReview(good(), SUMMARY)
+  const html = renderToStaticMarkup(React.createElement(HandlarborsenScbPreviewTable, { review }))
+
+  it('shows all 89 validated legal entities without database import or contact buttons', () => {
+    expect(html).toContain('Företagen i den verifierade rapporten')
+    expect(html).toContain('Visar 89 av 89 företag')
+    expect(html).toContain('Sök på företag, organisationsnummer eller ort')
+    expect(html).toContain('Kontaktspärr')
+    expect((html.match(/<tr\b/g) ?? []).length).toBe(90) // header + 89 validated legal rows
+    expect(html).not.toMatch(/mailto:|tel:|<a\b|<button\b/)
+    expect(html).not.toContain('SYNTHETIC PERSON')
+    expect(html).toContain('Ingen utskicksbehörighet')
+  })
+  it('separates blocked, inactive, prior-contact and name-only group hints', () => {
+    expect(html).toContain('SCB-spärr: reklam, e-post, telefon')
+    expect(html).toContain('Tidigare kontakt (delhistorik)')
+    expect(html).toContain('Exkluderad från nya leads')
+    expect(html).toContain('Möjlig namnkoppling: Hedbergs')
+    expect(html).toContain('Verksam enligt SCB')
+    expect(html).toContain('Ej verksam enligt SCB')
+    expect(html).toContain('Kräver manuell granskning')
+    expect(html).not.toContain('Godkänn för utskick')
   })
 })
 

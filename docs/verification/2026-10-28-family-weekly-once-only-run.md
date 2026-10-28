@@ -344,3 +344,67 @@ innan produktion.
    publiceringar har sin separat godkända kö.
 
 PR:n ska stanna **DRAFT** tills dessa grindar är klara.
+
+
+## Fas 7 – Native SQL-kontrakt och uppdatering till aktuell main
+
+2026-10-28, 14:30 svensk tid. Den här etappen korrigerar ett konkret
+integrationsglapp mellan AI-utkast och den **faktiska** produktionsfunktionen
+\`public.social_weekly_save(jsonb,jsonb)\`, utan någon produktionsskrivning.
+
+### Native-save-kontrakt verifierat läsbart i produktion
+
+\`pg_get_functiondef\` och den kanoniska migrationen
+\`apps/web/supabase/migrations/20261026090516_family_weekly_preparation.sql\`
+bekräftar att varje enskilt utkast måste ha exakt nyckeluppsättning:
+
+\`slotKey, channel, assetId, text, title, sourceReferences, scheduledAt\`.
+
+Den textstyrda modellen får avsiktligt inte välja tider och returnerar
+**inte** \`scheduledAt\`. Föregående review-pipeline skickade därför ett
+utanpåliggande \`WeeklySave\` utan detta obligatoriska fält genom vår nya
+atomära editor-RPC. Det hade inte fungerat mot den kanoniska
+\`social_weekly_save\` trots att syntetisk SQL-stub hade passerat.
+
+\`paid-attempt-db.ts\` härleder nu \`scheduledAt\` från
+\`slotKey\` med samma \`resolveStockholmSchedule\` som den gamla,
+godkända \`prepareWeeklyDrafts\`. Endast vanligt format
+\`YYYY-MM-DDT17:00:ordinary\` respektive \`...T20:30:ordinary\`
+är giltigt; explicit modellstyrd tid skrivs alltid över. Alla tidigare
+verktygskontrakt (ägare, context-hash, komplett Facebook/Instagram-par,
+dubbletter, källreferenser) kontrolleras fortsatt i native SQL.
+
+Läsbar kontroll mot den verkliga produktionsfunktionen
+\`social_schedule_resolve_minute\` bekräftade:
+
+- Tisdag 2027-01-05 17:00 Stockholm = 16:00 UTC.
+- Fredag 2027-01-08 20:30 Stockholm = 19:30 UTC.
+- Tisdag 2027-07-06 17:00 Stockholm = 15:00 UTC.
+
+\`service_role\` har också \`EXECUTE\` på
+\`public.social_weekly_save(jsonb,jsonb)\`. Inga produktionsfunktioner
+anropades med muterande innehåll.
+
+### SCB-samordning utan övertramp
+
+Den tidigare SCB migration-filen
+\`apps/web/supabase/migrations/20261028072659_handlarborsen_scb_review_only_candidates.sql\`
+har kommit in i \`origin/main\`. Denna branch har
+samordnats med aktuell \`origin/main\` via en vanlig merge,
+**utan konflikt, branch-omskrivning, force-push eller ändring i den
+parallella SCB-worktreen**.
+
+### Verifiering av sammanlagd kod
+
+- **386/386** relevanta Vitest-tester PASS i 17 suites för
+  Familje-Stunden weekly + migrationssäkerhet + schema-invarianter.
+- Scoped TypeScript inklusive \`runs/drain\`,
+  \`paid-attempt-db.ts\` och den skyddade cron-routen PASS.
+- Lokalt \`node scripts/check-migrations.mjs\` returnerar 0
+  men med besked **"not on Vercel — skipping"**; därför betraktas
+  detta inte som kontroll av produktions-ledger.
+- Nästa obligatoriska verifiering är en **färsk Vercel Preview
+  för exakt uppdaterad branch-commit**.
+- Fyra nya SQL-förslag kvarstår i \`docs/sql\`; de är ännu
+  **inte** produktionsmigrationer. Ingen automatisk körning,
+  publicering eller avisering har aktiverats.

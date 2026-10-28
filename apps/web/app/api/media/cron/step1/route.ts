@@ -363,7 +363,7 @@ export async function GET(request: Request) {
 
   // Quality gate
   const sourceContext = fullArticleText || `${news.title}\n${news.summary}\n${news.key_insight}`
-  const qualityScore  = await scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext)
+  let qualityScore  = await scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext)
 
   // Skip the (expensive) regenerate pass if we're low on budget — better to ship a
   // slightly weaker hook than to 504 and save nothing.
@@ -373,6 +373,12 @@ export async function GET(request: Request) {
       messages: [{ role: 'user', content: `Rewrite — previous rejected.\nSTORY:\n${scriptContext}\nREJECTED HOOK: "${script.hook}"\nVERDICT: ${qualityScore.verdict}\nWEAK SPOTS: ${qualityScore.weak_spots.join(', ')}\nFix everything. Hook must score 8+.` }],
     }))
     script = JSON.parse((rewriteRes.content[0].type === 'text' ? rewriteRes.content[0].text : '').replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()) as ScriptWriterOutput
+    qualityScore = await scoreScript({ context: 'AUTONOMOUS' as const, scope: projectScope(MEDIA_PIPELINE_PROJECT) }, script.hook, script.script, sourceContext)
+  }
+
+  // A rewrite cannot inherit the rejected script's quality approval.
+  if (shouldRegenerate(qualityScore)) {
+    return NextResponse.json({ error: 'quality_review_required' }, { status: 422 })
   }
 
   // Save script — voice_status='none' signals step2 to pick it up

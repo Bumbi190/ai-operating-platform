@@ -1,0 +1,27 @@
+name: The Prompt Editorial Quality Safety
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web/lib/media/quality.ts'
+      - 'apps/web/lib/media/quality-validation.ts'
+      - 'apps/web/lib/media/quality-validation.node-check.mjs'
+      - 'apps/web/lib/media/quality-publication-boundary.node-check.mjs'
+      - 'apps/web/app/api/media/**'
+      - '.github/workflows/theprompt-editorial-quality.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fail-closed-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prove invalid editorial scores never authorize publishing
+        run: node --experimental-strip-types --test apps/web/lib/media/quality-validation.node-check.mjs apps/web/lib/media/quality-publication-boundary.node-check.mjs

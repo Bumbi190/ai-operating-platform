@@ -65,7 +65,7 @@ export function HandlarborsenResearchResults({ results }: { results: ResearchVie
   return (
     <div className={styles.researchResults} aria-label="Preliminära researchresultat">
       <h3>Preliminär research ({results.length} företag)</h3>
-      <p>Resultaten bygger på sökutdrag och är inte verifierade. Inget företag är godkänt eller kontaktbart; kontaktväg måste klareras manuellt.</p>
+      <p>Endast sökutdrag som kan kopplas till det aktuella företaget visas. Generella bilannonser filtreras bort. Träffarna är fortfarande inte verifierade och inget företag är godkänt för kontakt.</p>
       <ul className={styles.researchList}>
         {results.map(r => <li key={r.orgnr}>
           <strong>{r.companyName}</strong>
@@ -82,7 +82,9 @@ export function HandlarborsenResearchResults({ results }: { results: ResearchVie
               {e.excerpt}{' '}
               <a href={e.sourceUrl} target="_blank" rel="noopener noreferrer nofollow">Källa</a>
             </li>)}
-          </ul> : <small>Inga användbara källor hittades.</small>}
+          </ul> : <small>{r.reasons.includes('adapter_failed')
+            ? 'Sökningen kunde inte slutföras för detta företag.'
+            : 'Inga företagsspecifika sökutdrag hittades. Generella annonser räknas inte som belägg.'}</small>}
         </li>)}
       </ul>
     </div>

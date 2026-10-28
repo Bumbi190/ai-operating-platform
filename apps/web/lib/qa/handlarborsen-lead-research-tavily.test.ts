@@ -115,14 +115,14 @@ describe('Tavily adapter: one fixed, bounded basic search per job', () => {
     ]))
     const adapter = makeTavilyResearchAdapter({ key: KEY, fetchImpl, now: NOW })
     const obs = await adapter.collect(JOB, new AbortController().signal) as Record<string, unknown>[]
-    expect(obs).toHaveLength(3)
+    expect(obs).toHaveLength(2) // unrelated third hit is filtered before classification
     for (const o of obs) {
       const ex = String(o.excerpt)
       expect(ex.length).toBeLessThanOrEqual(160)
       expect(ex).not.toMatch(/[<>@]|https?:|www\.|\d{6}/)
       expect(o.observedOn).toBe('2026-10-28')
     }
-    expect(obs.map(o => o.sourceKind)).toEqual(['search_snippet', 'search_snippet', 'search_snippet'])
+    expect(obs.map(o => o.sourceKind)).toEqual(['search_snippet', 'search_snippet'])
     expect(obs.every(o => !('orgnrOnPage' in o))).toBe(true)
     const verdict = evaluateLeadEvidence(JOB, obs)
     expect(verdict).toMatchObject({ classification: 'NEEDS_FURTHER_RESEARCH', identityVerified: false, officialSite: null, outreachReady: false, contactProposal: null })
@@ -167,7 +167,77 @@ describe('Tavily adapter: one fixed, bounded basic search per job', () => {
     const other = withCheckDigit('559999999')
     const fetchImpl = vi.fn(async () => tavily([officialHit(other)]))
     const obs = await makeTavilyResearchAdapter({ key: KEY, fetchImpl, now: NOW }).collect(JOB, new AbortController().signal) as { sourceKind: string }[]
-    expect(obs[0].sourceKind).toBe('search_snippet')
+    expect(obs).toEqual([]) // a different company's orgnr is not a valid lead clue
+  })
+
+  it('filters generic car-marketplace hits for an inkasso-named legal entity', async () => {
+    const job = { ...JOB, legalName: 'EXEMPEL INKASSO AB' }
+    const results = [
+      { title: 'Bilweb – bilar till salu', url: 'https://bilweb.se/', content: 'Utforska tusentals Volvo, Kia och Audi till salu.' },
+      { title: 'Sälj företagsbil genom kvd.se', url: 'https://www.kvd.se/', content: 'Hitta din nästa bil.' },
+      { title: 'Bytbil – nya annonser', url: 'https://www.bytbil.com/', content: 'Begagnade bilar i hela Sverige.' },
+    ]
+    const fetchImpl = vi.fn(async () => tavily(results))
+    const obs = await makeTavilyResearchAdapter({ key: KEY, fetchImpl, now: NOW })
+      .collect(job, new AbortController().signal)
+    expect(fetchImpl).toHaveBeenCalledTimes(1)
+    expect(obs).toEqual([])
+    expect(evaluateLeadEvidence(job, obs)).toMatchObject({
+      classification: 'NEEDS_FURTHER_RESEARCH', reasons: ['no_observations'],
+      identityVerified: false, outreachReady: false,
+    })
+  })
+
+  it('never treats a similarly named group company as the exact Swedish legal entity', async () => {
+    const job = { ...JOB, legalName: 'Semler Retail Filial' }
+    const hits = [
+      { title: 'Semler Premium Sweden AB', url: 'https://semler.dk/en/business-areas/semler-mobility-premium',
+        content: 'Large showroom and new cars for sale in Stockholm.' },
+      { title: job.legalName, url: 'https://www.allabolag.se/foretag/fel-bolag',
+        content: 'Organisationsnummer 5560201369, bilar till salu' },
+    ]
+    const obs = await makeTavilyResearchAdapter({ key: KEY, fetchImpl: vi.fn(async () => tavily(hits)), now: NOW })
+      .collect(job, new AbortController().signal)
+    expect(obs).toEqual([])
+  })
+
+  it('keeps company-specific directory profiles without claiming that zero listings means car sales', async () => {
+    const job = { ...JOB, legalName: 'AutoHub Sverige AB' }
+    const hits = [
+      { title: 'AutoHub Sverige', url: 'https://www.car.info/sv-se/company/autohub-sverige-17439204',
+        content: 'Har just nu 0 aktuella bilannonser med bilar till salu. Adress: Mörarp.' },
+      { title: 'AutoHub Sverige AB', url: 'https://www.allabolag.se/foretag/autohub-sverige-ab',
+        content: 'Företaget erbjuder logistik och konsulttjänster inom motorbranschen.' },
+    ]
+    const obs = await makeTavilyResearchAdapter({ key: KEY, fetchImpl: vi.fn(async () => tavily(hits)), now: NOW })
+      .collect(job, new AbortController().signal) as { observedBusinessIndicators: string[]; sourceKind: string }[]
+    expect(obs).toHaveLength(2)
+    expect(obs.every(o => o.sourceKind === 'search_snippet')).toBe(true)
+    expect(obs.every(o => !o.observedBusinessIndicators.includes('cars_for_sale'))).toBe(true)
+    expect(obs.every(o => !o.observedBusinessIndicators.includes('vehicle_stock_listings'))).toBe(true)
+    expect(evaluateLeadEvidence(job, obs).identityVerified).toBe(false)
+  })
+
+  it('still keeps matched sale signals from specific company pages without granting contact permission', async () => {
+    const job = { ...JOB, legalName: 'Rönnbärs Bilhandel AB' }
+    const hits = [{ title: 'Rönnbärs Bilhandel AB | vårt utbud', url: 'https://bilhandlare.test-bil.se/lager',
+      content: 'Vi säljer begagnade personbilar i vår bilhall.' }]
+    const obs = await makeTavilyResearchAdapter({ key: KEY, fetchImpl: vi.fn(async () => tavily(hits)), now: NOW })
+      .collect(job, new AbortController().signal) as { observedBusinessIndicators: string[] }[]
+    expect(obs).toHaveLength(1)
+    expect(obs[0].observedBusinessIndicators).toContain('cars_for_sale')
+    expect(evaluateLeadEvidence(job, obs)).toMatchObject({
+      classification: 'NEEDS_FURTHER_RESEARCH', identityVerified: false, outreachReady: false,
+    })
+  })
+
+  it('rejects a conflicting organisation number even if the title has the target name', async () => {
+    const other = withCheckDigit('559999999')
+    const hits = [{ title: JOB.legalName, url: 'https://www.allabolag.se/foretag/annan',
+      content: `Organisationsnummer ${dashed(other)}. Vi säljer begagnade bilar.` }]
+    const obs = await makeTavilyResearchAdapter({ key: KEY, fetchImpl: vi.fn(async () => tavily(hits)), now: NOW })
+      .collect(JOB, new AbortController().signal)
+    expect(obs).toEqual([])
   })
 
   it('fails closed on error status, oversized or invalid responses, and never retries', async () => {
@@ -333,6 +403,23 @@ describe('owner UI and static guarantees', () => {
     expect(html).toContain('href="https://www.exempelbil.se/om"')
     expect(html).toContain('rel="noopener noreferrer nofollow"')
     expect(html).not.toMatch(/javascript:|127\.0\.0\.1|mailto:|<form|type="submit"/)
+  })
+
+  it('explains filtered generic sources instead of displaying unrelated car-sale claims', () => {
+    const noSpecificEvidence = parseResearchResponse({
+      status: 'researched', outreachReady: false,
+      results: [{
+        orgnr: JOB.orgnr, companyName: 'Exempel Inkasso AB', city: 'Teststad',
+        classification: 'NEEDS_FURTHER_RESEARCH', reasons: ['no_observations'],
+        outreachReady: false, contactability: 'BLOCKED_PENDING_VERIFICATION', evidence: [],
+      }],
+    })
+    expect(noSpecificEvidence).not.toBeNull()
+    const html = renderToStaticMarkup(React.createElement(HandlarborsenResearchResults, { results: noSpecificEvidence! }))
+    expect(html).toContain('Inga företagsspecifika sökutdrag hittades')
+    expect(html).toContain('Generella annonser räknas inte som belägg')
+    expect(html).not.toContain('Sökutdrag nämner bilhandel')
+    expect(html).toContain('Ej kontaktbar')
   })
 
   it('rejects server payloads that claim outreach readiness or are malformed', () => {

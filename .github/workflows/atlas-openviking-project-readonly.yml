@@ -1,0 +1,69 @@
+# Zero external service credentials. All read-only search responses are mocks.
+# Project identity, immutable source evidence and no runtime activation are
+# explicit CI invariants before the broader draft #343 can be decomposed.
+name: Atlas OpenViking Project Read-Only Boundary
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web/lib/atlas/openviking/**'
+      - 'apps/web/lib/qa/atlas-openviking-project-readonly.test.ts'
+      - 'docs/runbooks/atlas-openviking-project-readonly.md'
+      - '.github/workflows/atlas-openviking-project-readonly.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  project-reader:
+    name: OpenViking immutable project read gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Prove OpenViking is disabled in this runner
+        run: |
+          if [ -n "$ATLAS_OPENVIKING_MODE" ] || [ -n "$ATLAS_OPENVIKING_API_KEY" ]; then
+            echo "::error::OpenViking runtime mode and credentials must be absent in CI"
+            exit 1
+          fi
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Verify exact offline project reader
+        working-directory: apps/web
+        run: |
+          npx --no vitest run lib/qa/atlas-openviking-project-readonly.test.ts \
+            --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/openviking-project.json"
+      - name: Enforce test execution, count and zero skip
+        if: always()
+        run: |
+          node - "$RUNNER_TEMP/openviking-project.json" <<'NODE'
+          const fs = require('node:fs')
+          const filename = process.argv[2]
+          if (!fs.existsSync(filename)) process.exit(1)
+          const report = JSON.parse(fs.readFileSync(filename, 'utf8'))
+          const names = (report.testResults ?? []).map(x => x.name ?? x.testFilePath ?? '')
+          const stats = {
+            passed: report.numPassedTests ?? 0,
+            failed: report.numFailedTests ?? 0,
+            skipped: report.numPendingTests ?? 0,
+            todo: report.numTodoTests ?? 0,
+            suitesFailed: report.numFailedTestSuites ?? 0,
+          }
+          console.log(JSON.stringify(stats))
+          if (!names.some(name => name.endsWith('atlas-openviking-project-readonly.test.ts'))
+            || stats.passed < 14 || stats.failed || stats.skipped || stats.todo || stats.suitesFailed) {
+            console.error('::error::OpenViking source-boundary suite missing, skipped or failed')
+            process.exit(1)
+          }
+          NODE
+      - name: Typecheck web workspace
+        working-directory: apps/web
+        run: npx tsc --noEmit

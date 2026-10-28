@@ -1,0 +1,52 @@
+name: Nova Source Curator P0 Boundary
+
+on:
+  pull_request:
+    paths:
+      - 'apps/web/lib/atlas/source-curator/**'
+      - 'apps/web/lib/qa/nova-source-curator.test.mjs'
+      - 'docs/runbooks/nova-source-curator-p0.md'
+      - '.github/workflows/nova-source-curator-p0.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/lib/atlas/source-curator/**'
+      - 'apps/web/lib/qa/nova-source-curator.test.mjs'
+      - 'docs/runbooks/nova-source-curator-p0.md'
+      - '.github/workflows/nova-source-curator-p0.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-review-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run exact synthetic reviewer safety tests (no packages or secrets)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --no-warnings --experimental-strip-types --test \
+            apps/web/lib/qa/nova-source-curator.test.mjs \
+            | tee "$RUNNER_TEMP/nova-source-curator.tap"
+      - name: Require real execution, zero skip and all twenty passing
+        shell: bash
+        run: |
+          node - "$RUNNER_TEMP/nova-source-curator.tap" <<'NODE'
+          const fs = require('node:fs')
+          const report = fs.readFileSync(process.argv[2], 'utf8')
+          const find = name => Number(new RegExp('^# ' + name + ' (\\d+)$', 'm').exec(report)?.[1])
+          const tests = find('tests'), passed = find('pass'), failed = find('fail')
+          const skipped = find('skipped'), todo = find('todo')
+          console.log(JSON.stringify({tests, passed, failed, skipped, todo}))
+          if (!Number.isInteger(tests) || tests < 20 || tests !== passed ||
+              failed !== 0 || skipped !== 0 || todo !== 0) {
+            process.exitCode = 1
+          }
+          NODE

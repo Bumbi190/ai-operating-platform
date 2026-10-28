@@ -120,7 +120,7 @@ describe('Nova read-only source API permission boundary', () => {
     const input = { action: 'read_file', projectSlug: 'handlarborsen',
       path: 'app/page.tsx', startLine: 241, expectedSha: 'f'.repeat(40) }
     expect((await post({ ...input, expectedSha: 'bad' })).status).toBe(400)
-    const { expectedSha, ...missingSha } = input
+    const missingSha = { action: input.action, projectSlug: input.projectSlug, path: input.path, startLine: input.startLine }
     expect((await post(missingSha)).status).toBe(400)
     expect(s.dispatches).toBe(0)
     s.result = { ok: false, code: 'source_changed' }

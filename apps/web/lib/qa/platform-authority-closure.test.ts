@@ -92,9 +92,15 @@ function operations(projectId: string, tag: string) {
   }
 }
 
+const VERIFIED_EDITORIAL_QA = {
+  hook_strength: 9, retention_score: 9, visual_relevance: 9,
+  shareability: 9, discussion_potential: 9, hallucination_risk: 9,
+  overall: 9, passed: true, verdict: 'Verified editorial fixture for authority testing.', weak_spots: [],
+}
+
 function mediaScript(id: string, projectId: string, over: Row = {}): Row {
   return {
-    id, project_id: projectId, news_item_id: null,
+    id, project_id: projectId, news_item_id: null, quality_score: { ...VERIFIED_EDITORIAL_QA },
     hook: `${id}-HOOK`, script: 'body', cta: null, hashtags: [], captions: [], tone: 'insider',
     status: 'approved', voice_status: 'ready', video_status: 'ready',
     video_url: `https://cdn.test/${id}.mp4`, render_id: null, render_bucket: null,
@@ -612,7 +618,7 @@ vi.mock('@/lib/bugs/digest', async (importOriginal) => {
 })
 vi.mock('@/lib/media/quality', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/media/quality')>()),
-  scoreScript: async () => ({ overall: 9, hook_strength: 9, verdict: 'ok', weak_spots: [] }),
+  scoreScript: async () => ({ ...VERIFIED_EDITORIAL_QA }),
 }))
 
 /**

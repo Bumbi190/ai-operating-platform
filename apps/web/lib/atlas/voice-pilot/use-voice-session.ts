@@ -5,6 +5,7 @@ import { AtlasConversationController } from '@/lib/atlas/conversation/controller
 import { browserDependencies, createPcmVoiceCapture } from '@/lib/atlas/voice-pilot/pcm-capture'
 import { createPcmSpeechPlayer } from '@/lib/atlas/voice-pilot/player'
 import { takeSpeechChunk } from '@/lib/atlas/voice-pilot/reply'
+import { completeVoiceDocumentOpening, continuesIncompleteVoiceDocument, needsCompleteVoiceDocument } from '@/lib/atlas/voice-pilot/document-mode'
 import { isAtlasSwedishVoice, preferredAtlasVoice, type AtlasSwedishVoice } from '@/lib/atlas/voice-pilot/voices'
 import { createMicSignalStore, type MicSignalStore } from '@/lib/atlas/voice-pilot/mic-diagnostics'
 import type { StreamEvent } from '@/lib/os/chat-shared'
@@ -30,7 +31,9 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
   const [voice, setVoice] = useState<AtlasSwedishVoice>('anders')
   const [inputMode, setInputMode] = useState<'batch' | 'streaming'>(live && streamingAvailable ? 'streaming' : 'batch')
   const [measurements, setMeasurements] = useState<{ mode: 'batch' | 'streaming'; endToPlaybackMs: number }[]>([])
-  const [pauseMs, setPauseMs] = useState(1400)
+  // Live voice can safely use the already-tested 1.2 s minimum pause.
+  // Isolated manual voice trials keep the original 1.4 s default.
+  const [pauseMs, setPauseMs] = useState(live ? 1200 : 1400)
   const [playbackMode, setPlaybackMode] = useState<'speakers' | 'headphones'>('speakers')
   const [outputBusy, setOutputBusy] = useState(false)
   const [listening, setListening] = useState(false)
@@ -273,12 +276,25 @@ export function useAtlasVoiceSession({ enabled = true, streamingAvailable = fals
     queuedVoice.current = null; heldDraft.current = ''; capture.current?.discard()
     latest.current.beforeStart?.(); stopSpeech(); setNotice(''); setReply('')
     const token = lifetime.current, audioToken = speechEpoch.current, selectedVoice = voice
+    const lastAssistantText = [...conversation.snapshot().history].reverse().find(m => m.role === 'assistant')?.content
+    const completeDocument = needsCompleteVoiceDocument(text) || continuesIncompleteVoiceDocument(text, lastAssistantText)
     const record = { quietMs: quietMs ?? null, textMs: null as number | null, audioMs: null as number | null, startedAt: performance.now(), audioToken, mode: inputMode }
     timedReply.current = record; setTiming({ ...record })
     let responseText = '', spoken = 0, completed = false, submittedConversationId: string | null = null
     const current = () => mounted.current && token === lifetime.current
     const flush = (final: boolean) => {
       if (!current() || audioToken !== speechEpoch.current || !voices.some(v => v.key === selectedVoice)) return
+      if (completeDocument) {
+        if (spoken) return
+        const spokenOpening = completeVoiceDocumentOpening(responseText, final)
+        if (spokenOpening) {
+          // The full transcript still streams into the chat; only this one
+          // complete opening is ever queued for speech, never Markdown/code.
+          speak().enqueue(spokenOpening, selectedVoice)
+          spoken = 1
+        }
+        return
+      }
       for (;;) {
         const rest = responseText.slice(spoken)
         const length = takeSpeechChunk(rest, spoken === 0, final)

@@ -77,7 +77,7 @@ export type ToolEntry = { kind: 'tool'; tool: string; input: unknown; result: un
 
 export type TranscriptEntry =
   | { kind: 'user'; text: string }
-  | { kind: 'assistant'; text: string }
+  | { kind: 'assistant'; text: string; incomplete?: boolean; continuationAllowed?: boolean }
   | ToolEntry
   | { kind: 'links'; links: ResolvedLink[] }
   | { kind: 'notice'; tone: 'info' | 'error'; text: string }
@@ -132,13 +132,16 @@ export function hydrateTranscript(saved: SavedMessage[]): TranscriptEntry[] {
   const entries: TranscriptEntry[] = []
   for (const m of saved) {
     if (m.role !== 'user' && m.role !== 'assistant') continue
-    const td = m.tool_data as { kind?: string; links?: ResolvedLink[] } | null
+    const td = m.tool_data as { kind?: string; links?: ResolvedLink[]; continuationAllowed?: boolean } | null
     if (m.role === 'assistant' && td?.kind === 'links' && Array.isArray(td.links)) {
       entries.push({ kind: 'links', links: td.links })
       continue
     }
     if (!m.content) continue
-    entries.push(m.role === 'user' ? { kind: 'user', text: m.content } : { kind: 'assistant', text: m.content })
+    entries.push(m.role === 'user' ? { kind: 'user', text: m.content } : {
+      kind: 'assistant', text: m.content,
+      ...(td?.kind === 'incomplete_draft' ? { incomplete: true, continuationAllowed: td.continuationAllowed === true } : {}),
+    })
   }
   return entries
 }
@@ -279,6 +282,20 @@ export function applyStreamEvent(
       return { state, effect: { type: 'navigate', href } }
     }
 
+    case 'draft_interrupted': {
+      const entries = [...state.entries]
+      // The server has already sent every partial text delta. Mark, do not
+      // append duplicate text. The saved flag is the source of reload safety.
+      for (let i = entries.length - 1; i >= 0; i--) {
+        const entry = entries[i]
+        if (entry.kind === 'assistant') {
+          entries[i] = { ...entry, incomplete: true, continuationAllowed: event.continuationAllowed === true }
+          break
+        }
+      }
+      return { state: { ...state, entries, segmentOpen: false }, effect: NONE }
+    }
+
     case 'done':
       return { state: { ...state, segmentOpen: false }, effect: { type: 'done', fullText: state.fullText } }
 
@@ -330,6 +347,10 @@ export function awaitingAtlas(entries: TranscriptEntry[], pending: boolean): boo
 
 /** One label per tool `/api/chat` offers — the names are the route's, the words are the surface's. */
 export const TOOL_LABELS: Record<string, string> = {
+  handlarborsen_statistics: 'Läser Handlarbörsens statistik',
+  handlarborsen_sales_overview: 'Läser Handlarbörsens försäljningsöversikt',
+  handlarborsen_latest_mail: 'Läser Handlarbörsens senaste mejl',
+  search_external_workflow_references: 'Söker workflowreferenser',
   get_calendar: 'Läser kalendern',
   create_calendar_event: 'Sparar kalenderhändelse',
   update_calendar_event: 'Ändrar kalenderhändelse',

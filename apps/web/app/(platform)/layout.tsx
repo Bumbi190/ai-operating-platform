@@ -13,6 +13,7 @@ import { resolveDestination, type DestinationId } from '@/lib/nav/registry'
 import { AtlasConversationProvider } from '@/lib/atlas/conversation/provider'
 import { AtlasRuntimeProvider } from '@/lib/atlas/runtime'
 import { atlasVoiceConversationEntryEnabled } from '@/lib/atlas/voice-pilot/entry'
+import { atlasVoiceLiveEnabled } from '@/lib/atlas/voice-pilot/deployment'
 import { getAllowedProjectIds, scopeProjectFilter } from '@/lib/atlas/isolation'
 import { resolveOrganizationReadScope } from '@/lib/auth/organization-project-read'
 import { OPERATOR_DISPLAY_NAME } from '@/lib/atlas/identity'
@@ -239,6 +240,7 @@ export default async function PlatformLayout({
     <AtlasConversationProvider>
     <AtlasRuntimeProvider projects={isCollaborator ? [] : projects}
       voiceConversationEnabled={atlasVoiceConversationEntryEnabled(user.email, Boolean(isCollaborator))}
+      voiceRealtimePreferred={atlasVoiceLiveEnabled()}
       voiceReadOnly={Boolean(isCollaborator)}>
     <OperatorModeProvider uiGeneration={uiGeneration}>
       {/* Presentation preferences are applied before first paint.

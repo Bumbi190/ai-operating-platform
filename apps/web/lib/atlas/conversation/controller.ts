@@ -406,6 +406,14 @@ export class AtlasConversationController {
                 ],
               });
           }
+          if (event.event === "draft_interrupted" && reply.fullText.trim()) {
+            // Immediately continue from the actually streamed partial draft,
+            // even before a server refresh rehydrates the saved incomplete row.
+            // No provider/tool request is repeated automatically.
+            this.update(id, {
+              history: [...history, { role: 'assistant', content: reply.fullText }],
+            });
+          }
           if (event.event === "error") settled = true;
           if (isCurrent()) {
             const calendarEffect=decodeCalendarEffect(event,id);

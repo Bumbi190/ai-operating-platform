@@ -9,6 +9,7 @@ vi.mock('@/lib/supabase/client',()=>({createClient:vi.fn()}))
 vi.mock('@/lib/atlas/conversation/provider',()=>({useAtlasConversation:()=>({controller:state.controller,snapshot:state.controller.snapshot()})}))
 import { AtlasConversationController } from '@/lib/atlas/conversation/controller'
 import { AtlasRuntimeProvider, useAtlas } from '@/lib/atlas/runtime'
+import { atlasVoiceLiveEnabled, atlasVoiceConversationEnabled } from '@/lib/atlas/voice-pilot/deployment'
 function Consumer(){state.value=useAtlas();return null}
 beforeEach(()=>{vi.clearAllMocks();vi.useFakeTimers();state.controller=new AtlasConversationController();vi.stubGlobal('React',React);vi.stubGlobal('requestAnimationFrame',vi.fn());vi.stubGlobal('cancelAnimationFrame',vi.fn());vi.stubGlobal('window',{SpeechRecognition:state.recognition})})
 afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();vi.unstubAllEnvs()})
@@ -28,11 +29,23 @@ it('blocks read-only activation with the live gate disabled too',()=>{
 it('retains explicit legacy fallback without live conversation availability',()=>{
  mount({});state.value.activate();expect(state.recognition).toHaveBeenCalledTimes(1);expect(state.push).not.toHaveBeenCalled()
 })
+it('allows managed Nova in preview while selecting only stable batch transcription',()=>{
+ vi.stubEnv('NODE_ENV','production');vi.stubEnv('VERCEL_ENV','preview');vi.stubEnv('ATLAS_VOICE_STREAM_MODE','pilot')
+ expect(atlasVoiceConversationEnabled()).toBe(true)
+ expect(atlasVoiceLiveEnabled()).toBe(false)
+ vi.stubEnv('VERCEL_ENV','production');vi.stubEnv('ATLAS_VOICE_STREAM_MODE','live')
+ expect(atlasVoiceConversationEnabled()).toBe(true)
+ expect(atlasVoiceLiveEnabled()).toBe(true)
+})
 it('passes the server release gate and collaborator restriction into the persistent provider',()=>{
  const layout=readFileSync(resolve('app/(platform)/layout.tsx'),'utf8')
  expect(layout).toContain("from '@/lib/atlas/voice-pilot/entry'")
  expect(layout).toMatch(/voiceConversationEnabled=\{atlasVoiceConversationEntryEnabled\(user\.email, Boolean\(isCollaborator\)\)\}/)
  expect(layout).toMatch(/voiceReadOnly=\{Boolean\(isCollaborator\)\}/)
+ expect(layout).toContain('voiceRealtimePreferred={atlasVoiceLiveEnabled()}')
+ expect(layout).toContain("from '@/lib/atlas/voice-pilot/deployment'")
+ const runtime=readFileSync(resolve('lib/atlas/runtime.tsx'),'utf8')
+ expect(runtime).toContain('streamingAvailable: voiceRealtimePreferred, live: true')
 })
 
 it.each([

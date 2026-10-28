@@ -99,6 +99,28 @@ describe('Compact persistent Atlas call shell', () => {
     expect(html).toContain('Byt röst')
     expect(html).not.toContain('4xkUqaR9MYOJHoaC1Nak')
   })
+  it('shows the full Claude prompt and a copy action only on written assistant replies', () => {
+    const prompt = '### Prompt till Claude\\n\\nBehåll säkerhetsgränserna och verifiera alla tester.'
+    const live = session({ snapshot: {
+      id: 'long-document-thread', history: [
+        { role: 'user', content: 'Skriv prompt till Claude' },
+        { role: 'assistant', content: prompt },
+      ], entries: [], testDataReviews: [], pending: false,
+    } })
+    const html = render(live)
+    expect(html).toContain('Behåll säkerhetsgränserna')
+    expect(html).toContain('aria-label="Kopiera hela svaret"')
+    expect(html).toContain('Kopiera hela svaret')
+    expect((html.match(/aria-label="Kopiera hela svaret"/g) ?? [])).toHaveLength(1)
+    expect(render(live, true)).not.toContain('Kopiera hela svaret')
+    expect((render(live, true).match(/<button /g) ?? [])).toHaveLength(3)
+  })
+  it('labels batch transcription honestly while preview uses stable mode', () => {
+    const stable = render(session({ inputMode: 'batch' }))
+    expect(stable).toContain('stabilt läge')
+    expect(stable).toContain('ljudet tolkas när du har pratat klart')
+    expect(render(session({ inputMode: 'streaming' }))).toContain('realtidsläge')
+  })
   it('offers optional browser microphone selection in expanded chat without a fourth dock control', () => {
     const html = render(session({
       micDevices: [

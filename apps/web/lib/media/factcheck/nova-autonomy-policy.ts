@@ -190,6 +190,8 @@ export function planNovaEditorialReview(input:NovaReviewInput):NovaReviewPlan {
     }
     const writerModel=verifiedStoredWriterModel(input.script.raw_output,{
       ...input.script,
+      captions:[...input.script.captions],
+      hashtags:[...input.script.hashtags],
     })
     if(!writerModel){
       return result('hold_system','unverified_script_writer_provenance')

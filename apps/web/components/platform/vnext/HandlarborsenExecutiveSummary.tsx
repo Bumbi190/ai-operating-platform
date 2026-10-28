@@ -53,6 +53,9 @@ export function HandlarborsenExecutiveSummary({
           <p className={styles.kicker}>Handlarbörsen / Ledningsöversikt</p>
           <h2 id="hb-executive-heading">Det viktigaste just nu</h2>
           <p className={styles.subline}>Uppmätta värden och tydliga nästa steg. Detaljerna finns längre ner.</p>
+          <a className={styles.quickLink} href="#hb-workflow-drafts">
+            Visa arbetsflödesförslag <ArrowUpRight size={14} aria-hidden="true" />
+          </a>
         </div>
         <span className={styles.quality} data-stale={report.latest.freshness === 'stale'}>
           <ShieldCheck size={15} aria-hidden="true" />

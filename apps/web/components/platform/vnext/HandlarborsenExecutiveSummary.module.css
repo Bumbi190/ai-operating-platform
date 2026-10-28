@@ -23,6 +23,9 @@
 .topline h2 { margin: 5px 0 4px; font-size: clamp(1.22rem, 2vw, 1.58rem); letter-spacing: -.035em; font-weight: 750; }
 .kicker { margin: 0; text-transform: uppercase; font-size: .66rem; letter-spacing: .19em; font-weight: 750; color: #68dbe7; }
 .subline { margin: 0; color: #a3bece; font-size: .81rem; }
+.quickLink { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; margin-top: 8px; padding: 7px 11px; color: #8ce9e7; font-size: .8rem; font-weight: 700; text-decoration: none; border: 1px solid rgba(100, 220, 221, .27); border-radius: 10px; background: rgba(26, 111, 132, .13); }
+.quickLink:hover { color: #e6fffd; border-color: rgba(120, 234, 231, .52); background: rgba(26, 111, 132, .24); }
+.quickLink:focus-visible { outline: 2px solid #90f7ed; outline-offset: 3px; }
 .quality { display: inline-flex; gap: 7px; align-items: center; flex-shrink: 0; padding: 8px 11px; border-radius: 99px; border: 1px solid rgba(85,221,191,.25); background: rgba(85,221,191,.08); color: #a7ebd5; font-size: .73rem; font-weight: 650; }
 .quality[data-stale='true'] { color: #ffdc93; background: rgba(255,189,91,.09); border-color: rgba(255,189,91,.27); }
 .kpis { margin-top: 22px; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; }

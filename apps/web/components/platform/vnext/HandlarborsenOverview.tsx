@@ -4,6 +4,7 @@ import { buildHandlarborsenOverview } from '@/lib/atlas/project-analytics/handla
 import { KpiOverview, KpiOverviewNote } from './KpiOverview'
 import { HandlarborsenVisualPulse } from './HandlarborsenVisualPulse'
 import { HandlarborsenInsights } from './HandlarborsenInsights'
+import { HandlarborsenWorkflowDrafts } from './HandlarborsenWorkflowDrafts'
 import { HandlarborsenTrends } from './HandlarborsenTrends'
 import { HandlarborsenPosthogTraffic } from './HandlarborsenPosthogTraffic'
 import { HandlarborsenExecutiveSummary } from './HandlarborsenExecutiveSummary'
@@ -62,6 +63,7 @@ export function HandlarborsenOverview({
         <KpiOverviewNote {...common} title={model.title} text={model.text} tone={model.tone} />
         {traffic && <HandlarborsenPosthogTraffic traffic={traffic} />}
         {projectSlug && <AnalysisDraftHistoryLink projectSlug={projectSlug} />}
+        <HandlarborsenWorkflowDrafts report={report} now={now} />
       </>
     )
   }
@@ -95,6 +97,7 @@ export function HandlarborsenOverview({
             projectSlug={projectSlug}
             analysisSelectors={analysisSelectors}
           />
+          <HandlarborsenWorkflowDrafts report={report} now={now} />
           {projectSlug && <AnalysisDraftHistoryLink projectSlug={projectSlug} />}
         </div>
       </details>

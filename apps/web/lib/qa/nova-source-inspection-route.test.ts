@@ -116,6 +116,19 @@ describe('Nova read-only source API permission boundary', () => {
     expect(body.policy).toBe('nova.source.read.v1')
     expect(body.sha).toBe('f'.repeat(40))
   })
+  it('accepts only SHA-bound continuation pages and returns 409 if the commit changed', async () => {
+    const input = { action: 'read_file', projectSlug: 'handlarborsen',
+      path: 'app/page.tsx', startLine: 241, expectedSha: 'f'.repeat(40) }
+    expect((await post({ ...input, expectedSha: 'bad' })).status).toBe(400)
+    const { expectedSha, ...missingSha } = input
+    expect((await post(missingSha)).status).toBe(400)
+    expect(s.dispatches).toBe(0)
+    s.result = { ok: false, code: 'source_changed' }
+    const res = await post(input)
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ error: 'source_changed' })
+    expect(s.lastInput).toEqual(input)
+  })
   it('uses generic nonsecret provider codes and never reports a failed read as success', async () => {
     s.result = { ok: false, code: 'not_configured' }
     const first = await post()

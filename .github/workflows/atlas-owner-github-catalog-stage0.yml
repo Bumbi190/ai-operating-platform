@@ -1,0 +1,31 @@
+# Inert Atlas owner repository catalog: no app secrets, SQL, provider calls or models.
+name: Atlas Owner GitHub Catalog Boundary
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/atlas-owner-github-catalog-stage0.yml'
+      - 'apps/web/lib/atlas/project-connections/owner-github-catalog.ts'
+      - 'apps/web/lib/qa/atlas-owner-github-catalog.test.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: atlas-owner-repository-catalog-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  owner-catalog-offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run offline read-only catalogue identity tests
+        run: node --experimental-strip-types --test apps/web/lib/qa/atlas-owner-github-catalog.test.mjs

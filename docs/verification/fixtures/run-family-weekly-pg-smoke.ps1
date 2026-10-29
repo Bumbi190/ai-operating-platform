@@ -7,7 +7,7 @@
 # Cached postgres:16 or postgres:17-alpine ONLY. No published ports, volumes or mounts.
 # Simulated-Sunday rewrites SQL in memory ONLY for disposable tests.
 param(
- [ValidateSet('normal','simulated-sunday','native-editorial','native-content','native-context','native-binding','native-plan-assets','native-claim')]
+ [ValidateSet('normal','simulated-sunday','native-editorial','native-content','native-context','native-binding','native-plan-assets','native-schedule','native-claim')]
  [string]$Mode='normal',
  [ValidateSet('postgres:16','postgres:17-alpine')]
  [string]$PostgresImage='postgres:16'
@@ -99,11 +99,11 @@ try{
    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
   if($LASTEXITCODE -ne 0){throw 'CANONICAL_CLAIM_RUNS_TEST_FAILED'}
  }
- if($Mode -in @('native-content','native-context','native-binding','native-plan-assets')){
+ if($Mode -in @('native-content','native-context','native-binding','native-plan-assets','native-schedule')){
   # This extended mode swaps the simplified account binding table for the
   # real 20260914 table, CHECKs, unique indexes and immutable triggers.
   # All other narrow test modes retain their original fixture.
-  $depName=if($Mode -eq 'native-plan-assets'){
+  $depName=if($Mode -in @('native-plan-assets','native-schedule')){
    'family-weekly-pg-native-plan-asset-deps.sql'
   }elseif($Mode -eq 'native-binding'){
    'family-weekly-pg-native-binding-deps.sql'
@@ -112,7 +112,7 @@ try{
   Get-Content -LiteralPath $deps -Raw -Encoding UTF8 |
    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
   if($LASTEXITCODE -ne 0){throw 'NATIVE_CONTENT_DEPENDENCIES_FAILED'}
-  if($Mode -in @('native-binding','native-plan-assets')){
+  if($Mode -in @('native-binding','native-plan-assets','native-schedule')){
    $bindingPath=Join-Path $repo 'apps\web\supabase\migrations\20260914120000_social_account_bindings.sql'
    $binding=Get-Content -LiteralPath $bindingPath -Raw -Encoding UTF8
    $b0=$binding.IndexOf('create table if not exists public.social_account_bindings (')
@@ -126,7 +126,7 @@ try{
     docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
    if($LASTEXITCODE -ne 0){throw 'CANONICAL_BINDING_SEED_FAILED'}
   }
-  if($Mode -eq 'native-plan-assets'){
+  if($Mode -in @('native-plan-assets','native-schedule')){
    # Reproduce the exact production launch plan root/revisions/decisions,
    # composite FKs, immutability triggers and owner/plan RPCs.
    $planPath=Join-Path $repo 'apps\web\supabase\migrations\20261016052226_social_launch_plans_v1.sql'
@@ -186,7 +186,7 @@ try{
   $text.Substring($t0,$t1-$t0) |
    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
   if($LASTEXITCODE -ne 0){throw 'NATIVE_CONTENT_TABLES_FAILED'}
-  if($Mode -eq 'native-plan-assets'){
+  if($Mode -in @('native-plan-assets','native-schedule')){
    $triggerStart=$text.IndexOf('create trigger social_content_revisions_immutable')
    $triggerEnd=$text.IndexOf('create function public.social_content_active(',$triggerStart)
    if($triggerStart -lt 0 -or $triggerEnd -le $triggerStart){
@@ -204,7 +204,7 @@ try{
    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
   if($LASTEXITCODE -ne 0){throw 'NATIVE_CONTENT_GRANTS_FAILED'}
  }
- if($Mode -in @('native-context','native-binding','native-plan-assets')){
+ if($Mode -in @('native-context','native-binding','native-plan-assets','native-schedule')){
   # Profile tables, source-backed profile reader, real scheduling canonicalizer
   # and real weekly context: extract from canonical migrations, never rewrite
   # any business-logic body. The synthetic dependency tables are clearly named.
@@ -274,7 +274,53 @@ try{
    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
   if($LASTEXITCODE -ne 0){throw 'CANONICAL_REPEAT_HELPERS_GRANTS_FAILED'}
 
-  $deps=Join-Path $repo 'docs\verification\fixtures\family-weekly-pg-native-context-deps.sql'
+  if($Mode -eq 'native-schedule'){
+   # The owner-only scheduled job and manual publication tables are no
+   # longer test doubles in this mode. Extract exactly the base DDL/FKs/
+   # RLS/triggers/grants without installing dispatch workers or routines.
+   $publicationPath=Join-Path $repo 'apps\web\supabase\migrations\20261016115402_social_manual_publication_v1.sql'
+   $pub=Get-Content -LiteralPath $publicationPath -Raw -Encoding UTF8
+   $p0=$pub.IndexOf('create table public.social_publications(')
+   $p1=$pub.IndexOf('create function public.social_publication_record(',$p0)
+   if($p0 -lt 0 -or $p1 -le $p0){throw 'CANONICAL_PUBLICATION_TABLE_SOURCE_CHANGED'}
+   Write-Output 'LOAD_CANONICAL_PUBLICATIONS_EVENTS_RECEIPTS_AND_FKS=true'
+   $pub.Substring($p0,$p1-$p0) |
+    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+   if($LASTEXITCODE -ne 0){throw 'CANONICAL_PUBLICATION_TABLES_LOAD_FAILED'}
+
+   $s0=$schedule.IndexOf('create table public.social_schedule_batches(')
+   $s1=$schedule.IndexOf('create or replace function public.social_publication_record(',$s0)
+   if($s0 -lt 0 -or $s1 -le $s0){
+    throw 'CANONICAL_SCHEDULE_TABLES_SOURCE_CHANGED'
+   }
+   Write-Output 'LOAD_CANONICAL_SCHEDULE_BATCH_DECISION_JOB_EVENT_RULES_FKS=true'
+   $schedule.Substring($s0,$s1-$s0) |
+    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+   if($LASTEXITCODE -ne 0){throw 'CANONICAL_SCHEDULE_TABLES_LOAD_FAILED'}
+
+   # The exact owner-review guards must refuse unpublished/unapproved
+   # editorial content even if an attacker supplies all item fields.
+   $g0=$pub.IndexOf('create function public.social_publication_guard(')
+   $g1=$pub.IndexOf('create function public.social_publication_read(',$g0)
+   $sg0=$schedule.IndexOf('create function public.social_schedule_item_guard(')
+   $sg1=$schedule.IndexOf('create function public.social_schedule_validate_manifest(',$sg0)
+   if($g0 -lt 0 -or $g1 -le $g0 -or $sg0 -lt 0 -or $sg1 -le $sg0){
+    throw 'CANONICAL_PUBLICATION_SCHEDULE_OWNER_GUARDS_SOURCE_CHANGED'
+   }
+   Write-Output 'LOAD_CANONICAL_MANUAL_PUBLICATION_AND_SCHEDULE_REVIEW_GUARDS=true'
+   $pub.Substring($g0,$g1-$g0) |
+    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+   if($LASTEXITCODE -ne 0){throw 'CANONICAL_PUBLICATION_OWNER_GUARD_LOAD_FAILED'}
+   $schedule.Substring($sg0,$sg1-$sg0) |
+    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+   if($LASTEXITCODE -ne 0){throw 'CANONICAL_SCHEDULE_OWNER_GUARD_LOAD_FAILED'}
+   'revoke all on function public.social_publication_guard(jsonb,jsonb),public.social_schedule_item_guard(uuid,jsonb) from public,anon,authenticated; grant execute on function public.social_publication_guard(jsonb,jsonb),public.social_schedule_item_guard(uuid,jsonb) to service_role;' |
+    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+   if($LASTEXITCODE -ne 0){throw 'CANONICAL_SCHEDULE_PUBLICATION_GUARD_GRANTS_FAILED'}
+   $deps=Join-Path $repo 'docs\verification\fixtures\family-weekly-pg-native-schedule-seed.sql'
+  }else{
+   $deps=Join-Path $repo 'docs\verification\fixtures\family-weekly-pg-native-context-deps.sql'
+  }
   Write-Output 'SEED_OWNED_PROFILE_DESCRIBED_IMAGE_AND_REVIEW_ONLY_CONTEXT=true'
   Get-Content -LiteralPath $deps -Raw -Encoding UTF8 |
    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
@@ -313,17 +359,23 @@ try{
   Get-Content -LiteralPath $saveAssert -Raw -Encoding UTF8 |
    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
   if($LASTEXITCODE -ne 0){throw 'CANONICAL_NATIVE_CONTEXT_SAVE_ASSERT_FAILED'}
-  if($Mode -in @('native-binding','native-plan-assets')){
+  if($Mode -in @('native-binding','native-plan-assets','native-schedule')){
    $bindingAssert=Join-Path $repo 'docs\verification\fixtures\family-weekly-pg-native-binding-assert.sql'
    Get-Content -LiteralPath $bindingAssert -Raw -Encoding UTF8 |
     docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
    if($LASTEXITCODE -ne 0){throw 'CANONICAL_NATIVE_BINDING_GUARDS_ASSERT_FAILED'}
   }
-  if($Mode -eq 'native-plan-assets'){
+  if($Mode -in @('native-plan-assets','native-schedule')){
    $planAssetAssert=Join-Path $repo 'docs\verification\fixtures\family-weekly-pg-native-plan-asset-assert.sql'
    Get-Content -LiteralPath $planAssetAssert -Raw -Encoding UTF8 |
     docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
    if($LASTEXITCODE -ne 0){throw 'CANONICAL_NATIVE_PLAN_ASSET_ASSERT_FAILED'}
+  }
+  if($Mode -eq 'native-schedule'){
+   $scheduleAssert=Join-Path $repo 'docs\verification\fixtures\family-weekly-pg-native-schedule-assert.sql'
+   Get-Content -LiteralPath $scheduleAssert -Raw -Encoding UTF8 |
+    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+   if($LASTEXITCODE -ne 0){throw 'CANONICAL_NATIVE_SCHEDULE_PUBLICATION_ASSERT_FAILED'}
   }
  }
  if($Mode -in @('native-editorial','native-content')){

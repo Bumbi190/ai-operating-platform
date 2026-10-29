@@ -880,3 +880,70 @@ ett fullständigt replay av samtliga 163 migrationer
 eller en verklig användarinloggad Preview-acceptans.
 Inga produktionsskrivningar, cronregistreringar,
 modellkostnader, utskick eller publiceringar.
+
+## Fas 20 – Kanoniska schemaläggnings- och publiceringstabeller (2026-10-29)
+
+Det nya isolerade testläget `-Mode native-schedule` bygger ovanpå
+föregående `native-plan-assets`. Det ersätter de kvarvarande
+förenklade schemaläggnings-/publiceringstabellerna med SQL som
+hämtas oförändrat ur följande granskade migrationer:
+
+- `20261016115402_social_manual_publication_v1.sql`:
+  verkliga `social_publications`, `social_publication_events`,
+  projektrelaterade FK, publiceringskvitto-CHECK, RLS, service grants
+  och immutabla eventtriggers.
+- `20261018071209_social_schedule_batches.sql`:
+  verkliga `social_schedule_batches`, `social_schedule_decisions`,
+  `social_schedule_jobs`, `social_schedule_events`,
+  `social_monthly_release_rules` och
+  `social_monthly_release_evidence` med sammansatta FK,
+  reservations-/utgångs-CHECK, en-gångs-UNIQUE-index,
+  RLS och oföränderliga batch-/besluts-/evidenstriggers.
+- Samma migrationsfiler levererar de verkliga
+  `social_publication_guard` och `social_schedule_item_guard`,
+  som bara exponeras till `service_role` i denna testfixtur.
+
+Faktisk dispatcher/cron, provider-token, kvitto-mottagning,
+schemamodell-/AI-kostnad eller publikations-API installeras
+**inte** i testdatabasen. `family-weekly-pg-native-schedule-seed.sql`
+skapar enbart påhittad profilrevision, ett eget beskrivet bildobjekt,
+en stängd månadsregel och det tidigare godkända kanalplansunderlaget.
+Därefter körs de tidigare verifierade native-funktionerna
+för kontexthash och **fyra redaktionella utkast**.
+
+`family-weekly-pg-native-schedule-assert.sql` kontrollerar
+**att inga redaktionella beslut, schemabatcher, godkännanden,
+schemauppdrag, publikationer eller providerhändelser skapas** av
+veckoförberedelsen. Verkliga `social_schedule_item_guard`
+nekar ett oförhandsgranskat utkast och verkliga
+`social_publication_guard` nekar manuell publicering av
+samma utkast. Kanoniska CHECK-villkor nekar en publikation
+utan giltigt publiceringskvitto, schemalagd auktoritet utan
+bundet jobb och ett schemauppdrag vars expiration inte är
+exakt tio minuter efter starten. Serverrollen får inte
+`UPDATE`-rättighet till immutabla schemabatcher/beslut;
+separat test som DB-superuser verifierar att den verkliga
+immutabilitetstriggern nekar en sådan ändring.
+Alla temporära positiva batch-/beslutsrader rullas tillbaka
+innan testet avslutas.
+
+**Lokalt verifierat: `native-schedule` PASS på både PostgreSQL 16
+och 17, båda containrarna borttagna.** CI utökas till **9 PG16-
+och 7 PG17-lägen** och ska verifieras för exakt ny commit innan
+vi anger grönt totalresultat.
+
+**Avgränsningar:** detta är fortfarande en beroendebegränsad
+isolerad SQL-fixture med syntetiska parent-`projects`,
+`conversations` och `runs`, inte ett fullständigt
+Supabase-prod-schema med live auth/session eller körd social leverans.
+Hela det verkliga sociala migrationsförloppet efter de två
+tabellmigrationerna är inte återspelat. De fyra Familje-Stunden-
+förslagen förblir oinstallerade, veckocron AV och PR #581 Draft.
+
+**Separat releaseblockering:** Vercel-preview för tidigare
+`9d4d7e1` nekades av den giltiga fail-closed migration-guard
+eftersom produktionsledgern har
+`handlarborsen_owner_review_archive_20261029` medan
+Familje-Stundens gren ännu saknar migrationsfilen.
+Migrationen hör till **separat Draft-PR #584** med pågående arbete
+och kan inte kopieras, förbigås eller mergas från FS-testkörningen.

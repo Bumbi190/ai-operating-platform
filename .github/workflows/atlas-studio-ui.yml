@@ -145,7 +145,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($mode in @('normal','simulated-sunday','native-editorial','native-content','native-context','native-binding','native-plan-assets','native-claim')) {
+          foreach ($mode in @('normal','simulated-sunday','native-editorial','native-content','native-context','native-binding','native-plan-assets','native-schedule','native-claim')) {
             & ./docs/verification/fixtures/run-family-weekly-pg-smoke.ps1 -Mode $mode -PostgresImage postgres:16
             if ($LASTEXITCODE -ne 0) {
               throw "FAMILY_WEEKLY_POSTGRES16_TEST_FAILED:$mode"
@@ -153,7 +153,7 @@ jobs:
           }
           # Cross-check the real parent RLS predicates and high-risk native
           # claim/save integration on PostgreSQL 17, Omnira's production major.
-          foreach ($mode in @('normal','native-claim','native-content','native-context','native-binding','native-plan-assets')) {
+          foreach ($mode in @('normal','native-claim','native-content','native-context','native-binding','native-plan-assets','native-schedule')) {
             & ./docs/verification/fixtures/run-family-weekly-pg-smoke.ps1 -Mode $mode -PostgresImage postgres:17-alpine
             if ($LASTEXITCODE -ne 0) {
               throw "FAMILY_WEEKLY_POSTGRES17_TEST_FAILED:$mode"

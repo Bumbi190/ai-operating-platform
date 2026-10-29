@@ -83,8 +83,11 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Handlarbörsen SCB lead-review table applied 2026-10-28 as
 // ledger 20261028072659_handlarborsen_scb_review_only_candidates.
 // Both the newly merged calendar migration and this SCB migration are enforced.
-export const EXPECTED_CANONICAL_SQL_COUNT = 163
-export const EXPECTED_ENFORCED_COUNT = 149
+// Owner-only, RLS-guarded HB research archive applied 2026-10-29
+// (ledger version 20261029065156, canonical file committed in PR #584).
+// An additive enforced migration: 163/149 -> 164/150. No bypass or grandfathering.
+export const EXPECTED_CANONICAL_SQL_COUNT = 164
+export const EXPECTED_ENFORCED_COUNT = 150
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

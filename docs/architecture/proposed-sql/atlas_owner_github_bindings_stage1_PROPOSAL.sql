@@ -8,11 +8,21 @@
 -- Creating this table alone is not a working endpoint. An explicit, separately
 -- reviewed API exposure and privilege decision is required. Never bypass RLS.
 
+-- The foreign key must enforce *both* the project identity AND its owner;
+-- otherwise privileged code can incorrectly attach another owner's project.
+-- PostgreSQL requires a unique/nonpartial referenced key on both columns.
+-- This index changes an EXISTING projects table if ever applied live:
+-- separate review of locks, index size, rollback and migration ledger required.
+create unique index atlas_github_projects_id_owner_key
+  on public.projects(id,owner_id);
+
 create table public.atlas_owner_github_bindings (
   id uuid primary key default gen_random_uuid(),
-  project_id uuid not null
-    references public.projects(id) on delete restrict,
+  project_id uuid not null,
   owner_user_id uuid not null references auth.users(id),
+  constraint atlas_owner_github_project_owner_fk
+    foreign key (project_id,owner_user_id)
+    references public.projects(id,owner_id) on delete restrict,
   project_slug text not null
     check (project_slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
   installation_id bigint not null check (installation_id > 0),
@@ -57,7 +67,11 @@ alter table public.atlas_owner_github_bindings enable row level security;
 -- Owner may read only their own and owned-project mapping metadata.
 -- No browser/Pling/user API can create, approve, revoke or mutate rows.
 -- Stage 1 proposes NO mutation endpoint or permanent secret storage.
-revoke all on public.atlas_owner_github_bindings from public, anon, authenticated;
+-- Supabase's postgres/supabase_admin default ACLs can GRANT ALL to
+-- service_role, authenticated and anon on new public tables. Merely GRANTing
+-- SELECT does NOT remove the inherited DML privileges. Explicitly revoke
+-- EVERY default role first, including the RLS-bypassing service_role.
+revoke all on public.atlas_owner_github_bindings from public, anon, authenticated, service_role;
 grant select on public.atlas_owner_github_bindings to authenticated;
 grant select on public.atlas_owner_github_bindings to service_role;
 

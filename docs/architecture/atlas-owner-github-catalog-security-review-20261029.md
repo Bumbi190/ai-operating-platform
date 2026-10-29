@@ -22,21 +22,32 @@
 ### SEC-604-03 – ambiguous approval timestamps and unqualified SQL outer key
 - **Before:** JS `Date.parse` accepted locale-dependent and date-only strings; a SQL proposal predicate `p.id = project_id` could become shadowed if a new `projects.project_id` column were introduced.
 - **Fix:** only accept explicit ISO 8601 timestamps with time and timezone; use `p.id = atlas_owner_github_bindings.project_id` in the RLS proposal.
-- **Post-fix tests:** non-ISO/ambiguous approval values and outer-key qualification; no live SQL ran.
+- **Post-fix tests:** non-ISO/ambiguous approval values and outer-key qualification; the follow-up real PostgreSQL 17 fixture verified the qualified RLS predicate, not production SQL.
+
+### SEC-604-04 – privileged cross-owner project binding accepted without composite FK
+- **RED in real isolated PostgreSQL 17:** the previous SQL allowed a privileged insert with `project_id` belonging to owner B but `owner_user_id` claiming owner A. Although SELECT RLS hid the record from ordinary users, the database accepted incorrect project-to-owner attribution.
+- **Fix:** the SQL proposal now creates a unique reference key on `projects(id,owner_id)` and a composite `FOREIGN KEY(project_id,owner_user_id) REFERENCES projects(id,owner_id) ON DELETE RESTRICT`.
+- **GREEN in real PG17:** the cross-owner insert raises `foreign_key_violation`; both owners' own records remain readable only within their scope. This proposed unique index modifies an existing table and requires lock/size/rollback review BEFORE any production migration.
+
+### SEC-604-05 – Supabase default ACL silently retains service-role write privileges
+- **Observed read-only in live Omnira Supabase:** `pg_default_acl` grants all table privileges on new public tables to `anon`, `authenticated` and `service_role` for postgres/supabase_admin creators. A `GRANT SELECT TO service_role` is additive and does not remove DML.
+- **RED in real isolated PostgreSQL 17:** with matching fixture default privileges, the original SQL left INSERT/UPDATE/DELETE available to `service_role`.
+- **Fix:** the SQL proposal explicitly `REVOKE ALL ... FROM public, anon, authenticated, service_role`, then grants `SELECT` only to `authenticated` and `service_role`.
+- **GREEN in real PG17:** `service_role` has no direct table DML privileges even with the reproduced default ACLs, though its **BYPASSRLS** attribute still exposes all rows for authorized SELECT. Owner-scoping must therefore be separately enforced by future server code.
 
 ## Verification recorded
 - Test-first RED on existing code: **2/34 failing**, new exploitable candidate paths isolated by synthetic tests; no provider call.
-- After fixes: `node --experimental-strip-types --test` on three offline suites: **44/44 PASS, 0 skipped**.
+- After SEC-604-01…03: 44/44 offline tests green. After the PG17 review additions: **46/46 offline tests PASS, 0 skipped** (including default ACL and disposable runner contracts).
 - Strict standalone TypeScript on changed catalogue module: PASS.
 - Git diff whitespace check: PASS.
-- GitHub CI/Vercel on the **exact future patched commit** remain pending at time of local review; do not substitute prior green build from `bd0ee4b`.
+- PR #605 at `8f2a831` previously had **8/8 GitHub Actions SUCCESS** and Vercel Preview READY. The **new SQL/fixture/PG17 changes are not yet covered by that exact-head CI**; a new commit must be pushed and tested before any merge consideration.
 - Only code in this existing PR/worktree was touched; Prime Agent `codex/atlas-model-agent-router-20261022` and Nova Source Curator files stayed untouched.
 
 ## Remaining gates – not solved by this review
 
 1. **DB authority and audit:** the SQL document is NOT installed and a row with `approved_by` merely asserts owner review. A future owner approval/revoke API must issue verifiable, replay-resistant decision receipts, preserve immutable history, check live authenticated principal, bind stable project/repo IDs, and revoke provider grants promptly. No DB role should be able to self-attest without independent authority.
-2. **Owner-to-project referential consistency:** proposed schema references `projects(id)` and separately `auth.users(id)`; it does not contain a composite FK guaranteeing `bindings.owner_user_id = projects.owner_id`. RLS checks the relationship on SELECT and the offline loader repeats the check, but a future privileged write path must enforce it in an audited transaction.
-3. **RLS and production migration:** the RLS SQL is a proposal. No isolated real PostgreSQL RLS attack test has been run, including authenticated foreign-owner reads, guest/anon, ordinary-write denial, service-role bypass checks, migration-guard ledgers and rollback. Do not claim database verification from text-match tests.
+2. **Owner-to-project referential consistency:** now enforced by a **proposed composite FK** and verified against a synthetic, networkless PG17 container. Production has **not** received it. The supporting unique index on the existing `projects(id,owner_id)` table requires independent review of migration lock time, rollback, and owner-transfer semantics before applying.
+3. **RLS and production migration:** the documented proposal is now **tested with 12 real PG17 assertions in an isolated, disposable, network-disabled container** (owner A/B, anon, Pling, missing auth, denied DML, cross-owner FK, SQL default grants, and service-role bypass). The real Supabase schema is still untouched. The fixture mocks auth.uid using trusted PostgREST claim semantics, **not real JWT verification**. No staging/production migration-ledger reconciliation or production rollback test has been completed.
 4. **Live App installation:** GitHub parent App can have `All repositories`, but the provider-installed App ID/owner/permissions must be independently authenticated by a signed App-JWT request and each generated token must have **exactly one** approved `repository_id` and `contents:read`. No PEM/keys in chat, logs, git or Notion. A fabricated token response is not a verified token.
 5. **TOCTOU/cross-tenant:** even an approved DB row can be revoked after an initial lookup. Before any actual source read the server must recheck current project ownership, binding revision/state, installation identity, repo numeric identity, pinned commit and budget/approval. The current pure contract does not implement this.
 6. **Supabase API exposure rollout:** per [official Supabase April 28, 2026 changelog](https://supabase.com/changelog/45329-breaking-change-tables-not-exposed-to-data-and-graphql-api-automatically), the new default becomes enforced on existing projects on **October 30, 2026**. Future schema should use explicit per-role grants and RLS; consider a private schema with a reviewed server-only access path if browser reads are not required.
@@ -45,7 +56,8 @@
 ## Independent review checklist
 - [ ] Independent engineer checks staged patch against base SHA, authorizes no accidental repo or cross-project expansion.
 - [ ] Threat review validates owner/provider IDs, App permissions, revoked/stale mapping, pagination and correct RLS/GRANT model.
-- [ ] Separate real isolated PG17 and RLS negative test evidence, migration guard reconciliation.
+- [x] Real isolated PG17/RLS negative test evidence, including deliberately RED→GREEN owner FK and Supabase default ACL cases; fixture cleaned up.
+- [ ] Future canonical migration guard reconciliation, staging rollback and production release authorization.
 - [ ] Owner accepts explicit risk/cost/rollback for any live registration table and GitHub App credentials.
 - [ ] Preview E2E with an authenticated operator, wrong-project denial and a single-repo read receipt; production remains OFF pending separate decision.
 

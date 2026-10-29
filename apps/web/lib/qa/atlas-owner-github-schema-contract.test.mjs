@@ -26,8 +26,12 @@ describe('GitHub connection proposal: static offline contract, NOT a real migrat
       assert.ok(normalized.includes(column),column)
     }
   })
-  it('must not cascade deletions of project connection evidence',()=>{
-    assert.match(normalized,/references public\.projects\(id\) on delete restrict/)
+  it('enforces immutable project AND owner with a composite foreign key',()=>{
+    assert.match(normalized,/unique index atlas_github_projects_id_owner_key/)
+    assert.match(normalized,/on public\.projects\(id,owner_id\)/)
+    assert.match(normalized,/foreign key \(project_id,owner_user_id\)/)
+    assert.match(normalized,/references public\.projects\(id,owner_id\) on delete restrict/)
+    assert.doesNotMatch(normalized,/references public\.projects\(id\) on delete cascade/)
   })
   it('enables RLS and restricts owner read by both project and user ID',()=>{
     assert.ok(normalized.includes('alter table '+table+' enable row level security'))
@@ -41,8 +45,9 @@ describe('GitHub connection proposal: static offline contract, NOT a real migrat
     assert.doesNotMatch(normalized,/p\.id = project_id/)
   })
   it('does not grant mutate, run functions or unsafe bypass to public clients',()=>{
-    assert.match(normalized,/revoke all on public\.atlas_owner_github_bindings from public, anon, authenticated/)
+    assert.match(normalized,/revoke all on public\.atlas_owner_github_bindings from public, anon, authenticated, service_role/)
     assert.match(normalized,/grant select on public\.atlas_owner_github_bindings to authenticated/)
+    assert.match(normalized,/grant select on public\.atlas_owner_github_bindings to service_role/)
     assert.doesNotMatch(normalized,/grant\s+(?:insert|update|delete|all)/)
     assert.doesNotMatch(normalized,/create\s+(?:or replace\s+)?function|security definer|migration_guard_override/)
   })
@@ -56,6 +61,27 @@ describe('GitHub connection proposal: static offline contract, NOT a real migrat
     assert.match(normalized,/unique index atlas_owner_github_one_active_project/)
     assert.match(normalized,/unique index atlas_owner_github_one_active_repo/)
     assert.match(normalized,/where state='approved'/)
+  })
+  it('replays the observed Supabase default-ACL privilege risk in a synthetic PG17 fixture',()=>{
+    const path=fileURLToPath(new URL('./fixtures/atlas-owner-github-rls/bootstrap_pg17.sql',import.meta.url))
+    const fixture=readFileSync(path,'utf8').toLowerCase().replace(/\s+/g,' ')
+    assert.match(fixture,/alter default privileges in schema public/)
+    assert.match(fixture,/grant all on tables to anon, authenticated, service_role/)
+    assert.ok(normalized.includes('revoke all on public.atlas_owner_github_bindings from public, anon, authenticated, service_role'))
+  })
+  it('documents a real PostgreSQL role-denial replay with a networkless disposable runner',()=>{
+    const verifier=readFileSync(fileURLToPath(new URL('./fixtures/atlas-owner-github-rls/verify_pg17.sql',import.meta.url)),'utf8')
+    const runner=readFileSync(fileURLToPath(new URL('../../../../scripts/atlas/verify-owner-github-pg17-rls.ps1',import.meta.url)),'utf8')
+    assert.match(verifier,/foreign_key_violation/)
+    assert.ok(verifier.includes("has_table_privilege('service_role'"))
+    assert.match(verifier,/set role authenticated/)
+    assert.match(verifier,/set role anon/)
+    assert.match(verifier,/set role pling_executor/)
+    assert.match(runner,/--network none --memory 256m/)
+    assert.ok(runner.includes('--rm -d --name $name'))
+    assert.ok(runner.includes('finally {'))
+    assert.ok(runner.includes('docker stop --time 1 $name'))
+    assert.doesNotMatch(runner,/--publish|--privileged|--volume/)
   })
   it('contains no credential material fields and no data mutations',()=>{
     assert.doesNotMatch(normalized,/\b(?:api_key|private_key|secret_token|access_token|password)\s+(?:text|bytea|varchar)/)

@@ -10,8 +10,12 @@ curator is a capability of Atlas. The unavailable response must never suggest
 that Nova needs to be linked as a second assistant.
 
 Issue: [Nova Source Curator #600](https://github.com/Bumbi190/ai-operating-platform/issues/600).
-Separate dormant pure-review engine: [PR #601](https://github.com/Bumbi190/ai-operating-platform/pull/601).
-Private GitHub reader, also dormant: [PR #598](https://github.com/Bumbi190/ai-operating-platform/pull/598).
+The original offline P0 review kernel from [PR #601](https://github.com/Bumbi190/ai-operating-platform/pull/601)
+is now preserved inside **this same PR #602**; #601 was closed unmerged as superseded.
+The separate, Preview-gated read-only GitHub **code** inspector from
+[PR #598](https://github.com/Bumbi190/ai-operating-platform/pull/598) was merged to
+`main`. It does **not** read operator-local knowledge drafts or authorize P0 to
+review, classify, publish or index them.
 
 ## Observed failure
 
@@ -64,12 +68,14 @@ and deterministic SSE fallthrough. It checks module source text plus
 the classifier; full authenticated browser acceptance remains a separate
 manual test. The exact-head Preview build/CI must pass before promotion.
 
-This guard is deliberately **separate** from PR #601 (pure offline
-review engine), because it modifies the live chat route. When a
-project-authorized Nova Source Curator reader is independently reviewed
-and released, replace this disabled branch with an explicit
-**Source-Curator-only tool turn**. Do not re-enable generic CRM tools
-for the same user request.
+This guard is a distinct **runtime path** from the pure offline
+`source-curator/review.ts` kernel, although both are staged in **PR #602**.
+The merged GitHub source-code inspector is also a separate capability.
+Only when a project-authorized, operator-local knowledge Source Curator
+reader is independently reviewed and released may this disabled branch be
+replaced with an explicit **Source-Curator-only tool turn**. Never infer
+permission from a GitHub code-read flag, and never enable generic CRM
+tools for the same user request.
 
 No secrets, migration, schema, model, external API, new paid service,
 production environment flag, cron, notification, automatic merge or

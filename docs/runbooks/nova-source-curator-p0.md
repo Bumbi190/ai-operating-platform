@@ -17,8 +17,13 @@ it grants **no** approval, publication, indexing, memory writer, retrieval or ex
   functions remain the authority for editorial status, classification and hard-secret checks.
 - `#590/#593/#595` still govern a separate, blocked OpenViking evaluation.
 - `#572/#574/#579/#587` still govern the narrow, working Notion read-only seam.
-- `#598` is a separate, dormant **private Handlarbörsen GitHub source reader**.
-  Its auth, repo-ID gate and transport are NOT used or activated by this P0.
+- `#598` is now merged as a separate, Preview-gated **read-only GitHub code
+  inspector** for Handlarbörsen. Its GitHub App authorization, repo-ID gate
+  and transport are **NOT** reused or activated by this offline P0. This is
+  not approval to read private operator-local knowledge drafts.
+- The original P0 PR `#601` was closed **unmerged** after its four files were
+  preserved verbatim inside current `#602`, which also stages the negative
+  Atlas chat-routing guard. Do not create another parallel curator PR.
 - The stale and broad `#343` is not merged or imported.
 
 ## Source contract

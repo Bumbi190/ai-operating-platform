@@ -2,8 +2,8 @@
  * lib/article/jobs/repo.ts
  *
  * Supabase-backed side of the website-article queue. Uses the (proposed)
- * `website_article_jobs` table and its three SECURITY DEFINER functions
- * (enqueue / claim / finish). The table is not in database.types until the
+ * `website_article_jobs` table and its SECURITY DEFINER functions
+ * (enqueue / claim / save_content / finish). The table is not in database.types until the
  * migration is applied, hence the narrow `AnyDb` casts.
  *
  * Reads media_scripts to learn which news items social selected. Never writes
@@ -19,7 +19,7 @@ import {
 import { MEDIA_PIPELINE_PROJECT, ProviderNotDispatchedError, SpendRefusedError } from '@/lib/cost/governed-spend'
 import { writeArticle } from '../writer'
 import { externalIdForNewsItem, toPublishPayload } from '../to-contract'
-import { saveGeneratedArticle, SYSTEM_A_PROJECT_SLUG } from '../store'
+import { LEASE_LOST, saveGeneratedArticle, SYSTEM_A_PROJECT_SLUG } from '../store'
 import { reviewClaims, reviseFlaggedClaims } from '../factcheck/reviewer'
 import type { NewsItemInput } from '../types'
 import { ARTICLE_TIER, type ArticleJobDeps, type SaveArticleArgs } from './runner'
@@ -182,6 +182,8 @@ export function createArticleJobDeps(db: AnyDb, cfg: ArticleJobsConfig, latest: 
       const { job, newsItem, draft, checkpoint, report } = args
       const payload = toPublishPayload(draft, { newsItemId: newsItem.id, publishedAt: null })
       if (payload.external_id !== job.external_id) throw new Error('[article-job] external_id drift')
+      if (!job.lease_token) throw new LeaseLostError(job.id)
+      // Lease check and write are one database transaction: a stale worker cannot write.
       const res = await saveGeneratedArticle({
         generated: { draft, qa: checkpoint.qa!, payload },
         newsItemId: newsItem.id,
@@ -189,6 +191,7 @@ export function createArticleJobDeps(db: AnyDb, cfg: ArticleJobsConfig, latest: 
         sourceKind: 'news_item',
         generatedBy: ARTICLE_JOB_GENERATED_BY,
         writeMode: 'reviewable_only',
+        leaseFence: { jobId: job.id, leaseToken: job.lease_token },
         extraMeta: {
           factcheck_required: true,
           factcheck: report,
@@ -198,6 +201,7 @@ export function createArticleJobDeps(db: AnyDb, cfg: ArticleJobsConfig, latest: 
           job_cost_usd: checkpoint.costUsd ?? 0,
         },
       })
+      if (res.skippedReason === LEASE_LOST) throw new LeaseLostError(job.id)
       return res.skippedReason ? { id: null, skippedReason: res.skippedReason } : { id: res.id }
     },
     classifyError: classifyArticleJobError,

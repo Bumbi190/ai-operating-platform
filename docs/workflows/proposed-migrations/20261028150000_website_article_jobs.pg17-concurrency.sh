@@ -17,6 +17,7 @@ export MSYS_NO_PATHCONV=1
 HERE="$(cd "$(dirname "$0")" && pwd)"
 MIGRATION="$HERE/20261028150000_website_article_jobs.sql"
 SUITE="$HERE/20261028150000_website_article_jobs.pg17-concurrency.sql"
+WEB_MIGRATIONS="$(cd "$HERE/../../../apps/web/supabase/migrations" && pwd)"
 IMAGE="${1:-public.ecr.aws/supabase/postgres:17.11.0.004}"
 NAME="omnira-articlejobs-pgtest-$$"
 PW="$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
@@ -55,7 +56,6 @@ create schema extensions;
 create extension dblink schema extensions;
 -- Minimal stand-ins for the existing tables the migration references, plus the social table.
 create table public.projects (id uuid primary key default gen_random_uuid(), owner_id uuid, slug text);
-create table public.website_content (id uuid primary key default gen_random_uuid());
 create table public.media_scripts (id uuid primary key, news_item_id uuid, status text);
 create schema t;
 create table t.conf (connstr text);
@@ -63,6 +63,13 @@ create table t.results (name text, ok boolean, detail text);
 create table t.ids (k text primary key, id uuid);
 insert into t.conf values ('host=localhost dbname=$db user=supabase_admin password=$PW');
 SQL
+  # The real website_content schema from the repo's migrations (the save function writes to it).
+  local f
+  for f in 20260608110948_create_website_content_system_a.sql 20260618_website_content_hero_image.sql \
+           20260619_website_content_hero_image_brief.sql 20260620_website_content_hero_editor_brief_rename.sql \
+           20260621_website_content_hero_image_observability.sql; do
+    psql_in -d "$db" < "$WEB_MIGRATIONS/$f" >/dev/null 2>&1
+  done
   psql_in -d "$db" < "$migration" >/dev/null
   local out; out="$(psql_in -d "$db" -tA -v ON_ERROR_STOP=0 < "$SUITE" 2>&1 | grep -E '^(PASS|FAIL|SUMMARY)|ERROR' || true)"
   echo "=== $label"
@@ -87,6 +94,8 @@ if grep -q '^FAIL' <<<"$LAST_OUT" || ! grep -q '^SUMMARY .* 0 failed' <<<"$LAST_
 mutant "claim waits instead of SKIP LOCKED"        m_nowait   's/for update skip locked/for update/'
 mutant "claim without row locking"                 m_nolock   '/^ +for update skip locked$/d'
 mutant "enqueue without the per-project lock"      m_noadv    '/pg_advisory_xact_lock/d'
-mutant "finish not fenced on the lease token"      m_nofence  's/ and lease_token = p_lease_token//'
+mutant "finish not fenced on the lease token"      m_nofence  's/where id = p_id and lease_token = p_lease_token/where id = p_id/'
 mutant "deferral consumes an attempt"              m_defer    's/greatest\(v_job\.attempts - 1, 0\)/v_job.attempts/'
 mutant "null daily cap accepted"                   m_nullcap  's/p_daily_max is null or //'
+mutant "final save not fenced on the lease token"   m_savetok  "s/where id = p_job_id and lease_token = p_lease_token and state = 'running'/where id = p_job_id and state = 'running'/"
+mutant "final save accepts an expired lease"        m_saveexp  '/and lease_expires_at > pg_catalog.now\(\)$/d'

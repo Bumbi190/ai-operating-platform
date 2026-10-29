@@ -277,6 +277,13 @@ describe('runArticleJob', () => {
     expect(f.calls.review).toBe(0)
   })
 
+  it('lease lost AT the final save (fenced write refused) → lease_lost; no retry, no further steps', async () => {
+    const f = makeFakes({ save: async () => { f.calls.save++; throw new LeaseLostError('job-1') } })
+    const out = await runArticleJob(job, f.deps)
+    expect(out.state).toBe('lease_lost')
+    expect(f.calls).toMatchObject({ save: 1, write: 1, review: 1 })
+  })
+
   it('existing published/approved row is not overwritten → blocked with reason', async () => {
     const f = makeFakes({ save: async () => ({ id: null, skippedReason: 'existing_row_published' }) })
     const out = await runArticleJob(job, f.deps)

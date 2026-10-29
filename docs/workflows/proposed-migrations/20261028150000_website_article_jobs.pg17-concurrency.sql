@@ -48,6 +48,7 @@ begin
   perform t.close_all();
   perform t.open('ctl', null);
   perform t.admin('delete from public.website_article_jobs');
+  perform t.admin('delete from public.website_content');
 end $$;
 
 /** Wait until the async query on n finishes; false if still running after ms. */
@@ -95,6 +96,16 @@ $$;
 create or replace function t.finish_sql(id uuid, tok uuid, outcome text, delay int default 0) returns text language sql as $$
   select format('select public.website_article_job_finish(%L::uuid, %L::uuid, %L, %L, null, null, null, %s)::text',
                 id, tok, outcome, 'test', delay)
+$$;
+
+/** The fenced save exactly as store.ts calls it (p_row = the reviewable row; identity comes from the job). */
+create or replace function t.save_sql(id uuid, tok uuid, title text default 'Acme releases Model X') returns text language sql as $$
+  select format('select public.website_article_job_save_content(%L::uuid, %L::uuid, %L::jsonb)::text', id, tok,
+    jsonb_build_object('title', title, 'summary', 'Lede.', 'content_type', 'article', 'source_kind', 'news_item',
+      'generated_by', 'omnira-article-job:factcheck-v1', 'qa', '{"pass":true}'::jsonb, 'meta', '{"factcheck_required":true}'::jsonb,
+      'project_id', gen_random_uuid(),   -- a hostile caller value: must be ignored in favour of the job's project
+      'payload', jsonb_build_object('version', 1, 'external_id',
+        (select external_id from public.website_article_jobs j where j.id = save_sql.id), 'title', title)))
 $$;
 
 create or replace function t.ok(name text, cond boolean, detail text default null) returns void
@@ -440,10 +451,101 @@ begin
   perform t.ok('T13 still one job row', (select count(*) from public.website_article_jobs where news_item_id = news) = 1);
 end $$;
 
+-- ── T14: the final save is fenced on the lease, atomically ─────────────────
+do $$
+#variable_conflict use_variable
+declare a text; b text; id uuid; t1 uuid; t2 uuid; r jsonb; cid uuid;
+begin
+  perform t.reset();
+  perform t.open('w1'); perform t.open('w2');
+  perform t.q('w1', t.enq_sql(gen_random_uuid()));
+  a := t.q('w1', t.claim_sql());
+  id := split_part(a, '|', 1)::uuid; t1 := split_part(a, '|', 2)::uuid;
+  perform t.admin(format('update public.website_article_jobs set lease_expires_at = now() - interval ''1 second'' where id = %L', id));
+  r := t.q('w1', t.save_sql(id, t1))::jsonb;
+  perform t.ok('T14 expired (not yet reclaimed) lease: save refused', r ->> 'reason' = 'lease_lost', r::text);
+  perform t.ok('T14 ... and nothing written', (select count(*) from public.website_content) = 0);
+  b := t.q('w2', t.claim_sql());
+  t2 := split_part(b, '|', 2)::uuid;
+  r := t.q('w1', t.save_sql(id, t1, 'STALE'))::jsonb;
+  perform t.ok('T14 stale worker after takeover: save refused', r ->> 'reason' = 'lease_lost', r::text);
+  perform t.ok('T14 stale worker wrote zero website_content rows', (select count(*) from public.website_content) = 0);
+  r := t.q('w2', t.save_sql(id, t2))::jsonb;
+  cid := (r ->> 'id')::uuid;
+  perform t.ok('T14 current owner saves', (r ->> 'ok')::boolean and cid is not null, r::text);
+  r := t.q('w2', t.save_sql(id, t2, 'Acme releases Model X (retry)'))::jsonb;
+  perform t.ok('T14 owner retry updates the same row (exactly one row)',
+    (r ->> 'id')::uuid = cid and (select count(*) from public.website_content) = 1, r::text);
+  perform t.ok('T14 row is pending_review, owned by the job''s project, linked from the job',
+    (select c.status = 'pending_review' and c.project_id = j.project_id and j.website_content_id = c.id
+            and c.title <> 'STALE'
+       from public.website_content c join public.website_article_jobs j on j.external_id = c.external_id));
+  perform t.q('w2', t.finish_sql(id, t2, 'saved'));
+  r := t.q('w2', t.save_sql(id, t2, 'AFTER FINISH'))::jsonb;
+  perform t.ok('T14 no save after finish', r ->> 'reason' = 'lease_lost'
+    and not exists (select 1 from public.website_content where title = 'AFTER FINISH'), r::text);
+end $$;
+
+-- ── T15: a claim during an in-flight save neither steals the job nor waits ───
+do $$
+#variable_conflict use_variable
+declare a text; id uuid; t1 uuid; r jsonb; got text; ok boolean;
+begin
+  perform t.reset();
+  perform t.open('w1'); perform t.open('w2');
+  perform t.q('w1', t.enq_sql(gen_random_uuid()));
+  a := t.q('w1', t.claim_sql());
+  id := split_part(a, '|', 1)::uuid; t1 := split_part(a, '|', 2)::uuid;
+  perform t.admin(format('update public.website_article_jobs set lease_expires_at = now() + interval ''1 second'' where id = %L', id));
+  perform dblink_exec('w1', 'begin');
+  r := t.q('w1', t.save_sql(id, t1))::jsonb;               -- valid at this instant; transaction left open
+  perform pg_sleep(1.5);                                    -- the lease has now expired in wall-clock time
+  perform dblink_send_query('w2', t.claim_sql());
+  ok := t.wait('w2', 3000);
+  got := case when ok then t.result('w2') else '<blocked>' end;
+  perform t.ok('T15 claim during the save does not take the job (row locked) and does not block',
+    (r ->> 'ok')::boolean and got = 'none', r::text || ' / ' || got);
+  perform dblink_exec('w1', 'commit');
+  perform t.ok('T15 the in-flight save committed exactly one row', (select count(*) from public.website_content) = 1);
+end $$;
+
+-- ── T16: save rules (same as store.ts reviewable_only) and privileges ────────
+do $$
+#variable_conflict use_variable
+declare a text; id uuid; tok uuid; r jsonb; code text; ext text; before text;
+begin
+  perform t.reset();
+  perform t.open('w1'); perform t.open('anon', 'anon'); perform t.open('authenticated', 'authenticated');
+  perform t.q('w1', t.enq_sql(gen_random_uuid()));
+  a := t.q('w1', t.claim_sql());
+  id := split_part(a, '|', 1)::uuid; tok := split_part(a, '|', 2)::uuid;
+  select external_id into ext from public.website_article_jobs where website_article_jobs.id = id;
+  perform t.admin(format('insert into public.website_content (project_id, external_id, title, status, payload) ' ||
+    'values (%L, %L, ''Published by the owner'', ''published'', ''{"version":1}'')', (select i.id from t.ids i where i.k = 'P'), ext));
+  select md5(c::text) into before from public.website_content c where external_id = ext;
+  r := t.q('w1', t.save_sql(id, tok))::jsonb;
+  perform t.ok('T16 published row: skipped, never overwritten',
+    r ->> 'skipped' = 'existing_row_published' and (select md5(c::text) from public.website_content c where external_id = ext) = before, r::text);
+  perform t.admin(format('update public.website_content set status = ''pending_review'', hero_image_status = ''ready'', ' ||
+    'hero_image_url = ''https://img.example/h.png'' where external_id = %L', ext));
+  r := t.q('w1', t.save_sql(id, tok, 'Regenerated'))::jsonb;
+  perform t.ok('T16 pending row updated; an operator''s hero image is preserved',
+    (select title = 'Regenerated' and hero_image_status = 'ready' and hero_image_url = 'https://img.example/h.png'
+       from public.website_content where external_id = ext), r::text);
+  begin perform t.q('w1', format('select public.website_article_job_save_content(%L::uuid, %L::uuid, %L::jsonb)::text',
+      id, tok, '{"payload":{"external_id":"omnira_someone_else"}}')); code := 'none';
+  exception when others then code := sqlstate; end;
+  perform t.ok('T16 payload.external_id must be the job''s', code = '22023', code);
+  foreach a in array array['anon', 'authenticated'] loop
+    begin perform t.q(a, t.save_sql(id, tok)); code := 'none'; exception when others then code := sqlstate; end;
+    perform t.ok('T16 ' || a || ' cannot call the save function', code = '42501', code);
+  end loop;
+end $$;
+
 select t.close_all();
 insert into t.results
   select g || ' produced no results (block aborted)', false, null
-    from unnest(array['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12','T13']) g
+    from unnest(array['T1','T2','T3','T4','T5','T6','T7','T8','T9','T10','T11','T12','T13','T14','T15','T16']) g
    where not exists (select 1 from t.results r where r.name like g || ' %');
 \set ON_ERROR_STOP 1
 select case when ok then 'PASS' else 'FAIL' end || '  ' || name || coalesce('  [' || detail || ']', '') as result

@@ -45,7 +45,23 @@ export interface SaveGeneratedArticleArgs {
    * UPDATE's WHERE clause, so an approval racing this write wins.
    */
   writeMode?: 'upsert' | 'reviewable_only'
+  /**
+   * Article jobs only: proof of the job's lease. When given, the write goes through
+   * `website_article_job_save_content`, which checks the lease and writes the row in
+   * ONE transaction under the job row's lock. A worker whose lease expired or was
+   * taken over writes nothing and gets skippedReason 'lease_lost'.
+   */
+  leaseFence?: LeaseFence
 }
+
+/** The job id and lease token a fenced save must still hold at commit time. */
+export interface LeaseFence {
+  jobId: string
+  leaseToken: string
+}
+
+/** skippedReason of a fenced save whose lease was no longer valid. */
+export const LEASE_LOST = 'lease_lost'
 
 export interface SaveGeneratedArticleResult {
   id: string
@@ -62,7 +78,7 @@ export type SaveReviewableResult =
  * Idempotent on external_id (re-generation upserts the same logical item).
  */
 export async function saveGeneratedArticle(
-  args: SaveGeneratedArticleArgs & { writeMode?: 'upsert' },
+  args: SaveGeneratedArticleArgs & { writeMode?: 'upsert'; leaseFence?: undefined },
 ): Promise<SaveGeneratedArticleResult>
 export async function saveGeneratedArticle(
   args: SaveGeneratedArticleArgs & { writeMode: 'reviewable_only' },
@@ -70,6 +86,7 @@ export async function saveGeneratedArticle(
 export async function saveGeneratedArticle(
   args: SaveGeneratedArticleArgs,
 ): Promise<SaveGeneratedArticleResult | SaveReviewableResult> {
+  if (args.leaseFence) return saveLeaseFenced(args, args.leaseFence)
   const db = createAdminClient()
   const { draft, qa, payload } = args.generated
 
@@ -199,4 +216,47 @@ export async function saveGeneratedArticle(
 
   const saved = data as { id: string; external_id: string }
   return { id: saved.id, externalId: saved.external_id, status: 'pending_review' }
+}
+
+/**
+ * The article job's write: lease check + reviewable_only write, atomically in the
+ * database. Nothing is read or written here before the database has proven the
+ * lease, so there is no check-then-write window on the client side.
+ */
+async function saveLeaseFenced(args: SaveGeneratedArticleArgs, fence: LeaseFence): Promise<SaveReviewableResult> {
+  const db = createAdminClient()
+  const { draft, qa, payload } = args.generated
+  const meta = draft._meta
+  const row = {
+    content_type:      args.contentType ?? 'article',
+    source_kind:       args.sourceKind ?? (args.newsItemId ? 'news_item' : 'manual'),
+    title:             draft.title,
+    slug:              payload.slug ?? null,
+    summary:           draft.summary || null,
+    payload:           toJson(payload),
+    qa:                toJson(qa),
+    meta:              toJson(args.extraMeta ? { ...meta, ...args.extraMeta } : meta),
+    model:             meta?.model ?? null,
+    cost_usd:          meta?.estCostUsd ?? null,
+    generated_by:      args.generatedBy ?? 'omnira-article-pipeline',
+    status_reason:     'Generated; awaiting Atlas review',
+    hero_image_prompt: typeof draft.hero_image_prompt === 'string' && draft.hero_image_prompt.trim()
+      ? draft.hero_image_prompt : null,
+  }
+  // The function is part of the proposed article-jobs migration and not in database.types yet.
+  const rpc = (db as unknown as {
+    rpc(fn: string, a: Record<string, unknown>): Promise<{ data: unknown; error: { message: string } | null }>
+  }).rpc.bind(db)
+  const { data, error } = await rpc('website_article_job_save_content', {
+    p_job_id: fence.jobId, p_lease_token: fence.leaseToken, p_row: row,
+  })
+  if (error) throw new Error(`[website_content] fenced persist failed: ${error.message}`)
+  const r = (data ?? {}) as { ok?: boolean; reason?: string; id?: string | null; skipped?: string }
+  if (r.ok !== true) {
+    return { id: null, externalId: payload.external_id, status: null, skippedReason: r.reason ?? LEASE_LOST }
+  }
+  if (r.skipped || !r.id) {
+    return { id: r.id ?? null, externalId: payload.external_id, status: null, skippedReason: r.skipped ?? 'save_skipped' }
+  }
+  return { id: r.id, externalId: payload.external_id, status: 'pending_review' }
 }

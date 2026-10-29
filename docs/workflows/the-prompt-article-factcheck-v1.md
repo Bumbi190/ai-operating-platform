@@ -99,6 +99,13 @@ is exact-substring after normalisation, so a paraphrased quote is rejected (fail
 - AI or network errors: retry with back-off, up to `max_attempts` (default 3), then `failed`.
 - Saving uses `writeMode: 'reviewable_only'`: an existing `published/approved/rejected/scheduled/failed` row is never
   overwritten. The UPDATE carries `status = 'pending_review'`, so an approval racing the write wins.
+- **The final save is lease-fenced, atomically.** `website_article_job_save_content(job, token, row)` checks the lease
+  (`token`, `state = 'running'`, `lease_expires_at > now()`) under the job row's lock and writes `website_content` in
+  the same transaction. A worker whose lease expired or was taken over writes nothing (`lease_lost` →
+  `LeaseLostError`, no finish); the next owner resumes from the checkpoint with zero model calls. A claim during an
+  in-flight save skips the locked job instead of stealing it. Identity (`project_id`, `news_item_id`,
+  `external_id`) and `status` come from the job row, never from the caller. Before this fix the save went straight to
+  `website_content` with no lease check: reproduced on PostgreSQL 17 (a stale worker wrote 1 row after a takeover).
 - Every checkpoint also renews the lease (heartbeat). A live worker therefore keeps its job; only a worker that stopped
   checkpointing for the whole lease (600 s, longer than the route's 300 s `maxDuration`) can be taken over, and its
   later writes are fenced out. Two workers can therefore not run paid steps for the same job at the same time,
@@ -118,6 +125,7 @@ The proposed SQL was reviewed before testing. Changes made in review:
 | Running state without a lease was representable | A running job with no lease can never be reclaimed | `CHECK ((state = 'running') = (lease_token and lease_expires_at not null))` |
 | RLS policy called `auth.uid()` per row | Performance (Supabase advisor) | `(select auth.uid())` |
 | `finish` delay unbounded | A bad caller could park a job for years | Clamped to 0–86 400 s |
+| **Final `website_content` save not lease-fenced** (PR review, 29 Oct) | A worker whose lease was taken over could still write the article; **reproduced** | New `website_article_job_save_content`: lease proof + write in one transaction under the job row lock |
 
 **Test environment.** `20261028150000_website_article_jobs.pg17-concurrency.sh` starts a throwaway container from the
 locally present Supabase image `public.ecr.aws/supabase/postgres:17.11.0.004` with `--pull never` (no download) and
@@ -126,7 +134,8 @@ default privileges and `auth.uid()`, then the migration, and removes the contain
 production database is touched. Workers are **separate backend connections** (dblink) acting as `service_role`, as the
 tick route does through PostgREST; the controller holds or releases their transactions so races are deterministic.
 
-**Result on the migration as proposed: 62/62 checks pass** (`...pg17-concurrency.sql`):
+**Result on the migration as proposed: 77/77 checks pass** (`...pg17-concurrency.sql`; the real `website_content`
+schema from `apps/web/supabase/migrations` is applied first):
 
 - **SKIP LOCKED:** while worker 1 holds job A's row lock, worker 2's claim returns immediately with job B, and a third
   claim returns nothing; each job ends up running once with distinct lease tokens.
@@ -148,6 +157,10 @@ tick route does through PostgREST; the controller holds or releases their transa
 - **Social independence:** a social write (`media_scripts` insert) completes while article-job row and advisory locks
   are held; job operations leave `media_scripts` byte-identical; no foreign key, trigger or function reference from the
   job queue to any media/social/approvals table.
+- **Fenced final save (T14–T16):** an expired lease, a taken-over lease and a finished job all get `lease_lost` and
+  write **zero** rows; the current owner saves exactly one row (a retry updates the same row); a claim during an
+  in-flight save neither takes the job nor waits; a published row is never overwritten; an operator's hero image is
+  preserved; a wrong `payload.external_id` is rejected; `anon`/`authenticated` cannot call the function.
 
 **The suite detects real faults.** The driver re-runs it against deliberately broken copies of the migration and
 fails unless every copy is caught (final run: `VERDICT: PASS`):
@@ -160,11 +173,32 @@ fails unless every copy is caught (final run: `VERDICT: PASS`):
 | `finish` not fenced on the lease token | T5: the stale worker's `saved` lands, the real owner's is refused |
 | a deferral consumes an attempt | T7: the job is unclaimable after 3 deferrals |
 | a null daily cap is accepted | T10 |
+| final save not fenced on the lease token | T14: the stale worker's save is accepted and writes a row |
+| final save accepts an expired lease | T14: an expired-but-unreclaimed lease still writes |
 
 The harness itself was debugged honestly: the first runs hung or errored because of test-side bugs (the controller's
 own transaction held locks; plpgsql name clashes), not migration bugs. Controller writes now go through a separate
 autocommit connection, every statement has a 90 s timeout, and a test block that aborts is reported as FAIL rather than
 silently missing.
+
+## Isolated end-to-end test (real code, real database, no spend)
+
+`20261028150000_website_article_jobs.integration.sh` runs the **real** `repo.ts`, `store.ts` and `runArticleJob`
+(`lib/qa/article-jobs-isolated-db.test.ts`) against PostgreSQL 17 + PostgREST in throwaway containers. Only the writer,
+reviewer, reviser and Hermes reads are fakes. Isolation: local images only (`--pull never`), the database has no
+published port and sits on an `--internal` network, PostgREST is published on `127.0.0.1` at a random port, random
+password and JWT secret per run, everything removed on exit. The test refuses any non-loopback URL and points the
+Supabase env of its own process at the throwaway stack. The repo's real `website_content` migrations are applied.
+
+| Test | Before the fix | After |
+|---|---|---|
+| I1 enqueue → claim → run → save → finish; stored row passes the publication gate | pass | pass |
+| I2 lease taken over right before the final save | **fail: stale worker `saved`, 1 row written** | pass: `lease_lost`, 0 rows; new owner saves once with 0 model calls |
+| I3 lease expired (not reclaimed) at save | **fail: written** | pass: 0 rows; next claim resumes and saves with 0 model calls |
+| I4 two ticks at once on one job | pass | pass: exactly one claims it |
+| I5 existing published article | pass | pass: never overwritten |
+
+Removing `leaseFence` from `repo.ts` (falling back to the unfenced write) makes I2 and I3 fail again (byte-verified restore).
 
 ## Configuration
 
@@ -237,27 +271,42 @@ No new external AI service, paid API, search API or webhook is introduced.
   - the gate normalising the headline before hashing (survived at first; killed after adding the
     one-added-word route test).
 - The proposed SQL was run on PGlite (`20261028150000_website_article_jobs.verify.mjs`, 9/9, single connection) and
-  on an isolated PostgreSQL 17 with separate connections (62/62; see "Queue migration: review and PostgreSQL 17 test").
+  on an isolated PostgreSQL 17 with separate connections (77/77, 8 broken copies caught), plus the isolated end-to-end
+  test of the real TypeScript against PostgreSQL 17 + PostgREST (5/5).
 
 ## Activation (each step needs the owner's explicit approval)
 
-**Important:** Vercel Preview deployments use the **production** Supabase project (noted during the M0 rollout;
-re-check before the test). A Preview test therefore writes real `website_content` / job rows and spends real Anthropic
-money. There is no separate staging database to test against.
+### Preview is not isolated
 
-First Preview test with a single article:
+Preview writes to the **production** database. Evidence (29 Oct):
+- Every Vercel build, Preview included, runs `apps/web/scripts/check-migrations.mjs`, which uses that build's
+  `NEXT_PUBLIC_SUPABASE_URL` + service key to read `omnira_applied_migrations` and fails closed unless it matches the
+  repo. Preview builds of this PR are READY, so Preview's database carries the full production ledger; the only
+  Supabase branch (`h1p5-staging`) is stale (MIGRATIONS_FAILED).
+- The PR review (29 Oct) read Vercel env metadata, without values: the Supabase URL, anon key and service-role key are
+  single records targeted at both `production` and `preview`.
+- Our own attempt to list the env metadata was refused (Vercel API 403 for this connection; no Vercel CLI installed),
+  so that point is the reviewer's observation, not re-verified here.
 
-1. Approve and apply the migration to the production project (the only database Preview reads), following the
-   existing migration procedure (committed bytes, quiet window, ledger check), and regenerate `database.types`.
-   This only adds a table and three functions; nothing calls them while the flag is off.
-2. In the **Preview** environment only: `THEPROMPT_ARTICLE_JOBS_DAILY_MAX=1`, `THEPROMPT_ARTICLE_JOBS_MAX_ATTEMPTS=1`,
-   `THEPROMPT_ARTICLE_JOBS_SINCE` = a moment just before a known social selection, `THEPROMPT_ARTICLE_JOBS_ENABLED=true`.
-   Production env stays unset (off).
-3. Call `POST /api/content/articles/jobs/tick` on the Preview URL **once** by hand with the CRON_SECRET. No schedule.
-   Expected spend ≈ $0.15, worst case ≈ $0.33.
-4. Inspect the job row, the `website_content` row (`pending_review`), the FactCheck Report and the cost ledger.
-   Approve or reject in `/atlas/content`. Only an explicit Approve publishes.
-5. Afterwards set `THEPROMPT_ARTICLE_JOBS_ENABLED` back to unset in Preview until a schedule is approved.
+So a "Preview test" would apply the migration to production and write production rows. **Do not use Preview for the
+first article test.**
+
+### Safe first article test (isolated database)
+
+Use the isolated stack above, which is already proven with fakes. The remaining step is ONE real article, needing a
+separate owner approval because it spends money:
+
+1. Run `...integration.sh` unchanged (no spend) to confirm the stack.
+2. With approval: the same stack, but the real writer and reviewer for **one** news item whose source text is
+   supplied as a fixture (or read once through Hermes, if its credentials may be used locally). Budget ≈ $0.15,
+   at most ≈ $0.33; `DAILY_MAX=1`, `MAX_ATTEMPTS=1`. Uses the existing Anthropic key through the governed boundary,
+   so no new service. Nothing can publish: the stack has no website destination.
+3. Review the resulting `website_content` row and FactCheck Report (exported from the throwaway database) before
+   anything touches production.
+
+Only after that, as separate approvals: apply the migration to production in a quiet window, then a production (not
+Preview) flag with `DAILY_MAX=1` and one manual tick, then a schedule. An alternative to step 2 is a dedicated Supabase
+project or branch for staging, which is a new paid resource and needs its own approval.
 
 Later, separately approved: production flag and a tick schedule (for example every 15 minutes via pg_cron in GMT).
 
@@ -267,8 +316,10 @@ Later, separately approved: production flag and a tick schedule (for example eve
   deferral is refused before dispatch (no spend), but the job never ends on its own; cancel it by hand if needed.
 - A failed or blocked article is never re-enqueued automatically (re-trigger returns `exists`). Retrying one needs a
   deliberate manual action.
-- The PostgreSQL 17 test uses the Supabase image and Supabase-equivalent privileges, not the production database
-  itself; production-specific objects (other policies, triggers, extensions) were not part of it.
+- The PostgreSQL 17 and end-to-end tests use the Supabase image and Supabase-equivalent privileges, not the
+  production database itself; production-specific objects (other policies, triggers, extensions) were not part of it.
+- Other writers of `website_content` (the legacy approvals pipeline and the default `upsert` generate routes) do not
+  go through the lease-fenced function. They are not article jobs and are unchanged.
 
 - Other published payload fields are **not** fact-checked: `category`, `tags`, `source` (name/url) and the hero
   image. `source` comes from the news item, not from the model. Category and tags are labels, not claims.

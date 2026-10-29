@@ -181,7 +181,89 @@ begin
   return true;
 end $$;
 
+-- Save the reviewable article ONLY while holding a valid lease, atomically.
+-- The lease proof and the website_content write happen in ONE transaction,
+-- under the job row's lock: a claim (FOR UPDATE SKIP LOCKED) cannot take the
+-- job over between the check and the write, and a worker whose lease expired
+-- or was taken over writes nothing. A preceding read-then-write from the
+-- client would be a TOCTOU race; this is the only write path the job uses.
+--
+-- Same rules as store.ts writeMode 'reviewable_only': a row that has left
+-- pending_review is never touched; the hero-image state of an existing row
+-- is preserved once an operator workflow has started. Identity fields come
+-- from the job row, never from the caller.
+--   returns {ok:false, reason:'lease_lost'}
+--         | {ok:true, id, skipped?: 'existing_row_<status>' | 'concurrent_insert'}
+create or replace function public.website_article_job_save_content(
+  p_job_id uuid, p_lease_token uuid, p_row jsonb
+) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare
+  v_job      public.website_article_jobs;
+  v_existing public.website_content;
+  v_id       uuid;
+begin
+  select * into v_job from public.website_article_jobs
+   where id = p_job_id and lease_token = p_lease_token and state = 'running'
+     and lease_expires_at > pg_catalog.now()
+   for update;
+  if not found then
+    return pg_catalog.jsonb_build_object('ok', false, 'reason', 'lease_lost');
+  end if;
+  if p_row is null or p_row -> 'payload' ->> 'external_id' is distinct from v_job.external_id then
+    raise exception 'website_article_job_save_content: payload.external_id must be the job''s external_id' using errcode = '22023';
+  end if;
+
+  select * into v_existing from public.website_content where external_id = v_job.external_id for update;
+  if found and v_existing.status <> 'pending_review' then
+    return pg_catalog.jsonb_build_object('ok', true, 'id', v_existing.id, 'skipped', 'existing_row_' || v_existing.status);
+  end if;
+
+  if found then
+    update public.website_content set
+      content_type      = coalesce(p_row ->> 'content_type', 'article'),
+      source_kind       = p_row ->> 'source_kind',
+      news_item_id      = v_job.news_item_id,
+      title             = p_row ->> 'title',
+      slug              = p_row ->> 'slug',
+      summary           = p_row ->> 'summary',
+      payload           = p_row -> 'payload',
+      qa                = p_row -> 'qa',
+      meta              = p_row -> 'meta',
+      model             = p_row ->> 'model',
+      cost_usd          = (p_row ->> 'cost_usd')::numeric,
+      generated_by      = p_row ->> 'generated_by',
+      status_reason     = p_row ->> 'status_reason',
+      hero_image_url    = case when v_existing.hero_image_status is null then null else v_existing.hero_image_url end,
+      hero_image_prompt = case when v_existing.hero_image_status is null then p_row ->> 'hero_image_prompt' else v_existing.hero_image_prompt end,
+      hero_image_qa     = case when v_existing.hero_image_status is null then null else v_existing.hero_image_qa end,
+      hero_image_status = coalesce(v_existing.hero_image_status, 'pending'),
+      updated_at        = pg_catalog.now()
+    where id = v_existing.id and status = 'pending_review'
+    returning id into v_id;
+  else
+    insert into public.website_content (
+      project_id, content_type, source_kind, news_item_id, external_id, title, slug, summary, payload, qa, meta,
+      model, cost_usd, generated_by, status, status_reason, hero_image_prompt, hero_image_status)
+    values (
+      v_job.project_id, coalesce(p_row ->> 'content_type', 'article'), p_row ->> 'source_kind', v_job.news_item_id,
+      v_job.external_id, p_row ->> 'title', p_row ->> 'slug', p_row ->> 'summary', p_row -> 'payload', p_row -> 'qa',
+      p_row -> 'meta', p_row ->> 'model', (p_row ->> 'cost_usd')::numeric, p_row ->> 'generated_by', 'pending_review',
+      p_row ->> 'status_reason', p_row ->> 'hero_image_prompt', 'pending')
+    on conflict (external_id) do nothing
+    returning id into v_id;
+    if v_id is null then
+      return pg_catalog.jsonb_build_object('ok', true, 'id', null, 'skipped', 'concurrent_insert');
+    end if;
+  end if;
+
+  update public.website_article_jobs set website_content_id = v_id, updated_at = pg_catalog.now() where id = p_job_id;
+  return pg_catalog.jsonb_build_object('ok', true, 'id', v_id);
+end $$;
+
 revoke all on function public.website_article_job_enqueue(uuid, uuid, uuid, text, int, int) from public, anon, authenticated;
+revoke all on function public.website_article_job_save_content(uuid, uuid, jsonb) from public, anon, authenticated;
+grant execute on function public.website_article_job_save_content(uuid, uuid, jsonb) to service_role;
 revoke all on function public.website_article_job_claim(int) from public, anon, authenticated;
 revoke all on function public.website_article_job_finish(uuid, uuid, text, text, uuid, jsonb, numeric, int) from public, anon, authenticated;
 grant execute on function public.website_article_job_enqueue(uuid, uuid, uuid, text, int, int) to service_role;

@@ -94,6 +94,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Refuse incomplete or unsafe Family weekly Supabase test branches
+        run: node --test docs/verification/fixtures/family-weekly-branch-preflight.test.cjs
       - run: npm run typecheck --workspace=apps/web
       - run: npx vitest run lib/website-build/studio/costs.test.ts lib/website-build/artifact.test.ts lib/website-build/rejected-draft.test.ts lib/website-build/feedback-interpretation.test.ts lib/qa/runner-text-output.test.ts lib/qa/atlas-home-markdown.test.tsx lib/qa/atlas-static-conversation-route.test.ts lib/qa/atlas-openai-chat.test.ts lib/qa/openai-stream-metering.test.ts lib/qa/m0-spend-ceiling.test.ts lib/qa/m0-durable-spend.test.ts lib/qa/execution-authority-signal.test.ts
         working-directory: apps/web

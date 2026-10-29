@@ -49,6 +49,7 @@ import { assertExecutionDispatchAllowed, isExecutionStopped } from '@/lib/govern
 import { logRun } from '@/lib/media/run-log'
 import { persistChannelSuccess } from '@/lib/media/channel-persistence'
 import { PLATFORM_SOCIAL_PROJECT_SLUG } from '@/lib/media/social-destination'
+import { isApprovedQualityScore } from '@/lib/media/quality-validation'
 import {
   confirmYouTubeUploadChannel,
   createCredentialResolver,
@@ -69,6 +70,7 @@ type ScriptRow = {
   hashtags: unknown
   video_url: string | null
   youtube_video_id: string | null
+  quality_score: unknown
   media_news_items: unknown
 }
 
@@ -141,9 +143,12 @@ export async function GET(request: Request) {
   // ── Hämta kandidater ──────────────────────────────────────────────────────
   let query = db
     .from('media_scripts')
-    .select('id, project_id, hook, cta, hashtags, video_url, youtube_video_id, media_news_items ( url, source_name ), projects!inner ( slug )')
+    .select('id, project_id, hook, cta, hashtags, video_url, youtube_video_id, quality_score, media_news_items ( url, source_name ), projects!inner ( slug )')
     .not('video_url', 'is', null)
     .is('youtube_video_id', null)
+    // Named ?scriptId calls must satisfy the same editorial status and readiness.
+    .in('status', ['approved', 'published'])
+    .eq('video_status', 'ready')
     // DESTINATION (Phase 9AC, A6-3): the platform's channel posts only the
     // platform social project's videos — for a named ?scriptId (the breaking
     // chain, pipeline-retry) exactly as for the schedule. `!inner` makes the
@@ -159,11 +164,9 @@ export async function GET(request: Request) {
     // script får aldrig ut. 'pending_review' och 'draft' utesluts därmed.
     // Äldst först → en missad video åker upp före den nyaste, i kronologisk ordning.
     query = query
-      .in('status', ['approved', 'published'])
-      .eq('video_status', 'ready')
       .gte('generated_at', cutoff)
       .order('generated_at', { ascending: true })
-      .limit(MAX_PER_RUN)
+      .limit(MAX_PER_RUN * 8)
   }
 
   const { data: scripts } = await query
@@ -183,13 +186,21 @@ export async function GET(request: Request) {
 
   const credentials = createCredentialResolver()
 
+  let attempted = 0
   for (const script of scripts as ScriptRow[]) {
     if (!script.video_url) continue
+    if (!isApprovedQualityScore(script.quality_score)) {
+      skipped.push({ scriptId: script.id, refusal: 'editorial_review_required' })
+      continue
+    }
     // Idempotens: gäller även ?scriptId-vägen, som annars kringgår filtret ovan.
     if (script.youtube_video_id) {
       log(`Script ${script.id} har redan youtube_video_id — hoppar över`)
       continue
     }
+
+    if (attempted >= MAX_PER_RUN) break
+    attempted++
 
     // The script's project → its YouTube channel binding → the credential that binding
     // may use. No binding or no credential: this video is not uploaded anywhere.

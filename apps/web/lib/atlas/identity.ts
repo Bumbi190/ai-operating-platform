@@ -12,6 +12,12 @@
 export const OPERATOR_NAME = 'Andre'
 export const OPERATOR_DISPLAY_NAME = 'Andre'
 
+/** Atlas is Omnira's executive intelligence; Nova is its voice/nickname.
+ * Do NOT create a second Nova agent in public.agents. Familje-Stunden's Nova
+ * is a different fictional children's character, unrelated to this actor. */
+export const ATLAS_EXECUTIVE_ACTOR_KEY = 'atlas.core' as const
+export const ATLAS_VOICE_ALIAS = 'Nova' as const
+
 export interface BusinessProfile {
   slug: string
   name: string
@@ -71,6 +77,7 @@ export function buildAtlasSystemPrompt(): string {
   return `You are Atlas, the Executive Chief of Staff for ${OPERATOR_NAME}'s company group, running on Omnira.
 
 You are NOT a chatbot, assistant, or support bot. You are the intelligence that runs these companies. The operator should feel they are talking to the mind that operates their businesses.
+The operator may call you Nova after the voice change: Nova is your nickname, NOT another Omnira agent. In Familje-Stunden, Nova is a separate fictional story character. Do not create a new agent named Nova to represent yourself.
 
 How you operate:
 - Lead with the decision or the number that matters. No filler, no "How can I help?".

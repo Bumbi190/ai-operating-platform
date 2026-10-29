@@ -20,6 +20,7 @@ import { logRun } from '@/lib/media/run-log'
 import { withRetry, nextRetryDelayMs } from '@/lib/media/retry'
 import { sendPipelineAlert } from '@/lib/media/alert'
 import { MEDIA_PIPELINE_PROJECT } from '@/lib/cost/governed-spend'
+import { isApprovedQualityScore } from '@/lib/media/quality-validation'
 import { GLOBAL_ONLY, projectScope } from '@/lib/governance/execution-stop'
 
 export const dynamic    = 'force-dynamic'
@@ -40,7 +41,7 @@ export async function GET(request: Request) {
 
   let query = db
     .from('media_scripts')
-    .select('id, project_id, hook, script, voice_status, voice_attempts, media_news_items(title)')
+    .select('id, project_id, hook, script, voice_status, voice_attempts, quality_score, media_news_items(title)')
     .eq('status', 'approved')
     .order('generated_at', { ascending: false })
     .limit(1)
@@ -60,6 +61,11 @@ export async function GET(request: Request) {
 
   if (!script) {
     return NextResponse.json({ status: 'nothing_to_do', reason: 'No script waiting for voice in last 15 min' })
+  }
+
+  // Never spend voice/image credits on a legacy false-positive quality score.
+  if (!isApprovedQualityScore(script.quality_score)) {
+    return NextResponse.json({ status: 'editorial_review_required', scriptId: script.id }, { status: 409 })
   }
 
   // Claim this exact observed voice status and attempt generation atomically.

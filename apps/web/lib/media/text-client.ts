@@ -22,7 +22,13 @@ type MediaTextContext = Omit<OpenAIGovernanceContext, 'onFlight'> & {
   /** Supplied only after database verification by the News Hunter caller. */
   verifiedProjectSlug?: string
 }
-type MediaTextResponse = Pick<Anthropic.Message, 'content'> & { stop_reason?: Anthropic.Message['stop_reason'] }
+type MediaTextResponse = Pick<Anthropic.Message, 'content'> & {
+  stop_reason?: Anthropic.Message['stop_reason']
+  /** Actual provider model; absent when the SDK did not return it. */
+  model?: string
+  /** Server-only tag assigned in the governed reserve branch, never by a model. */
+  writer_transport?: 'governed_openai_reserve_v1'
+}
 
 /**
  * A narrow legacy The Prompt opt-in. Preserved for already reviewed operations.
@@ -69,7 +75,12 @@ async function secondaryText(
     || typeof text !== 'string' || !text.trim()) {
     throw new Error('MEDIA_TEXT_FALLBACK_INCOMPLETE')
   }
-  return { content: [{ type: 'text', text, citations: null }], stop_reason: 'end_turn' }
+  // Carry the actual billed provider's response model (not input.model).
+  // If the provider omitted it, provenance remains UNKNOWN/blocked.
+  return { content: [{ type: 'text', text, citations: null }], stop_reason: 'end_turn',
+    model: typeof response.model === 'string' ? response.model : undefined,
+    writer_transport: 'governed_openai_reserve_v1',
+  }
 }
 
 /**

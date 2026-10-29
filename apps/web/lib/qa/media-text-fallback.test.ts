@@ -54,6 +54,15 @@ describe('media text credit recovery', () => {
     expect(mocks.openai).not.toHaveBeenCalled()
   })
 
+  it('reports the ACTUAL governed reserve model without pretending it was Anthropic', async () => {
+    mocks.anthropic.mockRejectedValue(creditError())
+    mocks.openai.mockResolvedValue({ ...completion(), model: 'gpt-5.4-mini' })
+    const result = await getMediaTextClient(ctx).messages.create(input)
+    expect(result.model).toBe('gpt-5.4-mini')
+    expect(result.writer_transport).toBe('governed_openai_reserve_v1')
+    expect(mocks.openai).toHaveBeenCalledTimes(1)
+  })
+
   it('recovers the explicit Anthropic billing refusal through the governed OpenAI boundary', async () => {
     mocks.anthropic.mockRejectedValue(creditError())
     const result = await getMediaTextClient(ctx).messages.create(input)

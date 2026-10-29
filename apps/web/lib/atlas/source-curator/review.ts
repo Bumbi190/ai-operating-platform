@@ -292,8 +292,17 @@ export function prepareNovaSourceReview(
       else if (claim.time === 'planned') issues.push('plan_is_not_production_execution')
       else if (claim.time === 'unknown') issues.push('temporal_scope_unknown')
 
+      // A line can match literally yet belong to an invalid draft pointer,
+      // the wrong project or a source that contains secret-shaped data.
+      // Such candidates are not safe to surface as immutable citations.
+      const unsafeCitationBoundary = [
+        'source_scope_or_revision_mismatch',
+        'canonical_pointer_mismatch',
+        'draft_project_scope_mismatch',
+        'secret_like_pattern_requires_human_review',
+      ].some(code => codes.includes(code))
       const canLink = matched && matchedDigests && subjectAnchored &&
-        !codes.includes('source_scope_or_revision_mismatch')
+        !unsafeCitationBoundary
       return {
         id: claim.id,
         line: claim.line,

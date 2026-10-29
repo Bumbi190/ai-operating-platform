@@ -33,6 +33,9 @@ The pure function `prepareNovaSourceReview(raw, trustedScope)` additionally chec
 - parsed frontmatter through the current policy evaluator (no classification defaults);
 - secret-pattern counts over source, draft and path;
 - original exact line/quote matches (literal provenance only, NOT semantic fact-checking);
+- suppresses immutable citation URLs if canonical pointer, project/scope or revision
+  is inconsistent, or secret-shaped content appears in either the original or draft,
+  even when the literal quote and source digests still match;
 - named entity must occur in the exact quote to avoid cross-company citation;
 - current/planned claims are always marked as unresolved for fresh verification;
 - no raw source or untrusted quote is returned in the compact metadata report.
@@ -73,7 +76,9 @@ The suite uses **synthetic fixtures only**, exercises the real existing document
 publication policy and secret scanner, and asserts the source-curator module is not
 wired into live Atlas chat. It tests eight draft notes, foreign-repository/foreign-project
 denial, altered commit/blob, bad canonical path, Kareby Bil vs EVExperten collision,
-unsafe simulated secret, temporal uncertainty and absent execution authority.
+unsafe simulated secret, suppressing citations for mismatched project or canonical
+pointer, a secret in a correctly hashed original, temporal uncertainty and absent
+execution authority.
 
 ## Separate gates before Nova integration
 

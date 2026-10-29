@@ -129,10 +129,15 @@ test('rejects foreign repository numeric ID and unauthenticated/truncated scopes
 test('rejects wrong canonical project UUID on candidate and project scope in frontmatter', () => {
   const candidate = make()
   candidate.projectId = '11111111-1111-4111-8111-111111111111'
-  assert.ok(review([candidate]).documents[0].reasonCodes.includes('source_scope_or_revision_mismatch'))
+  const badScope = review([candidate]).documents[0]
+  assert.ok(badScope.reasonCodes.includes('source_scope_or_revision_mismatch'))
+  assert.equal(badScope.claims[0].immutableSourceUrl, null)
   const alien = make()
   alien.draftMarkdown = alien.draftMarkdown.replace('project: handlarborsen', 'project: the-prompt')
-  assert.ok(review([alien]).documents[0].reasonCodes.includes('draft_project_scope_mismatch'))
+  const foreignDraft = review([alien]).documents[0]
+  assert.ok(foreignDraft.reasonCodes.includes('draft_project_scope_mismatch'))
+  assert.equal(foreignDraft.claims[0].literalEvidenceMatched, true)
+  assert.equal(foreignDraft.claims[0].immutableSourceUrl, null)
 })
 test('rejects wrong immutable commit revision', () => {
   const item = make()
@@ -157,6 +162,8 @@ test('rejects altered canonical pointer even if source SHA remains correct', () 
   const result = review([item])
   assert.equal(result.readyForOwnerReview, false)
   assert.ok(result.documents[0].reasonCodes.includes('canonical_pointer_mismatch'))
+  assert.equal(result.documents[0].claims[0].literalEvidenceMatched, true)
+  assert.equal(result.documents[0].claims[0].immutableSourceUrl, null)
 })
 test('does not mistake evidence about EVExperten for Kareby Bil', () => {
   const item = make()
@@ -206,6 +213,8 @@ test('scanner detects a synthetic secret and never returns it', () => {
   const result = review([item])
   assert.ok(result.documents[0].draftSecretPatternCount >= 1)
   assert.ok(result.documents[0].reasonCodes.includes('secret_like_pattern_requires_human_review'))
+  assert.equal(result.documents[0].claims[0].literalEvidenceMatched, true)
+  assert.equal(result.documents[0].claims[0].immutableSourceUrl, null)
   assert.equal(JSON.stringify(result).includes(synthetic), false)
 })
 test('a real status: approved plus internal class still cannot grant approval or publishing', () => {
@@ -261,4 +270,17 @@ test('enforces UTF-8 byte caps rather than only JavaScript string length', () =>
   const item = make()
   item.originalText = 'é'.repeat(70_000)
   assert.deepEqual(review([item]).reasonCodes, ['source_input_invalid_or_unbounded'])
+})
+
+test('never mints a citation URL when the pinned original contains secret-shaped data', () => {
+  const item = make()
+  item.originalText += '\n' + 'sk-' + 'D'.repeat(32)
+  Object.assign(item, hash(item.originalText)) // valid exact bytes, not a hash mismatch
+  const result = review([item])
+  assert.equal(result.documents[0].sourceBytesMatchExpectedDigests, true)
+  assert.ok(result.documents[0].sourceSecretPatternCount >= 1)
+  assert.equal(result.documents[0].claims[0].literalEvidenceMatched, true)
+  assert.equal(result.documents[0].claims[0].immutableSourceUrl, null)
+  assert.ok(result.documents[0].reasonCodes.includes('secret_like_pattern_requires_human_review'))
+  assert.equal(JSON.stringify(result).includes('sk-' + 'D'.repeat(32)), false)
 })

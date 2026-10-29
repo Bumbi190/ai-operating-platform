@@ -35,7 +35,7 @@ jobs:
           node --no-warnings --experimental-strip-types --test \
             apps/web/lib/qa/nova-source-curator.test.mjs \
             | tee "$RUNNER_TEMP/nova-source-curator.tap"
-      - name: Require real execution, zero skip and all twenty passing
+      - name: Require real execution, zero skip and all twenty-one passing
         shell: bash
         run: |
           node - "$RUNNER_TEMP/nova-source-curator.tap" <<'NODE'
@@ -45,7 +45,7 @@ jobs:
           const tests = find('tests'), passed = find('pass'), failed = find('fail')
           const skipped = find('skipped'), todo = find('todo')
           console.log(JSON.stringify({tests, passed, failed, skipped, todo}))
-          if (!Number.isInteger(tests) || tests < 20 || tests !== passed ||
+          if (!Number.isInteger(tests) || tests < 21 || tests !== passed ||
               failed !== 0 || skipped !== 0 || todo !== 0) {
             process.exitCode = 1
           }

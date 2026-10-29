@@ -120,7 +120,7 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
         <p>En separat granskningsrapport för de 81 undersökta juridiska företagen. Ingen import sker till CRM, inga utskick skickas och ingen är kontaktbar.</p>
       </header>
       {archive.status === 'unavailable' ? <p className={styles.warning} role="status">Arkivtabellen eller läsbehörigheten är ännu inte verifierad. Inga uppgifter visas förrän kontrollen är klar.</p> : null}
-      {archive.status === 'empty' ? <p>Inget bestående researcharkiv finns ännu. Den lokala rapporten kan laddas upp en gång och sparas efter separat bekräftelse.</p> : null}
+      {archive.status === 'empty' ? <p>Inget researcharkiv är sparat ännu. Välj den färdiga JSON-rapporten för en säker förhandsgranskning.</p> : null}
       {activeArchive.status === 'ready' ? <>
         <div className={styles.metrics} aria-label="Källgranskningens status">
           <div><strong>{activeArchive.report.counts.covered} / 81</strong><small>Företag genomgångna</small></div>
@@ -162,7 +162,7 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
         <small className={styles.footnote}>{isPreviewOnly ? 'Endast tillfällig förhandsvisning, inte sparad' : 'Arkiv sparat '+activeArchive.createdAt.slice(0,10)} · kontrollsumma: {activeArchive.status === 'ready' ? activeArchive.sourceDigest.slice(0,14) : ''}…</small>
       </> : null}
       <div className={styles.upload}>
-        <h3>Spara en granskningsrapport</h3>
+        <h3>{saveEnabled ? 'Spara en granskningsrapport' : 'Förhandsgranska källrapporten'}</h3>
         <label htmlFor="hb-archive-file">Välj den lokala filen <code>kallgranskning.json</code></label>
         <input id="hb-archive-file" type="file" accept=".json,application/json" disabled={busy}
           onChange={e=>{setFile(e.target.files?.[0]??null);setDigest(null);setReport(null);setConfirm('');setFeedback('')}} />
@@ -175,7 +175,7 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
           <button type="button" disabled={busy || confirm !== CONFIRMATION}
             onClick={()=>void send('save')}>Spara endast som granskningsunderlag</button>
         </> : null}
-        {!saveEnabled ? <p className={styles.warning} role="note">Förhandsvisning fungerar utan arkivtabell. Bestående lagring är ännu avstängd.</p> : null}
+        {!saveEnabled ? <p className={styles.warning} role="note">Rapporten kan förhandsgranskas utan databasskrivning. Bestående lagring är avstängd.</p> : null}
         {feedback ? <p role="status" aria-live="polite">{feedback}</p> : null}
       </div>
     </section>

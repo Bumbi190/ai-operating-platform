@@ -48,12 +48,12 @@ export type ScopeDecision =
   | { ok: false; code: 'not_available' }
   | { ok: true; scope: OwnerGithubReadScope }
 
-// A local, non-serializable marker stops accidental direct use of a caller-
-// constructed scope. This is NOT cryptographic authority; server-side owner
-// authentication, database project ownership and GitHub API evidence remain required.
-const VERIFIED_SCOPE_MARKER = Symbol('atlas-owner-github-read-candidate')
+// A module-private WeakSet rejects arbitrary object clones and prevents a
+// caller from copying a readable Symbol marker to forge a different repo.
+// This is defense in depth, not session/DB/provider authentication.
+const VERIFIED_SCOPES = new WeakSet<object>()
 function internallyResolvedScope(value: OwnerGithubReadScope): boolean {
-  return !!value && Object.getOwnPropertyDescriptor(value, VERIFIED_SCOPE_MARKER)?.value === true
+  return !!value && typeof value === 'object' && VERIFIED_SCOPES.has(value)
 }
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
@@ -122,11 +122,9 @@ export function resolveOwnerGithubReadScope(input: ReadScopeRequest): ScopeDecis
   if (scoped.some(b => b.projectId !== project && b.repositoryId === target[0].repositoryId))
     return { ok: false, code: 'not_available' }
   const { state: _state, ...scope } = target[0]
-  const candidate = Object.defineProperty(
-    { ...scope, access: 'read' as const }, VERIFIED_SCOPE_MARKER,
-    { value: true, enumerable: false, writable: false },
-  )
-  return { ok: true, scope: Object.freeze(candidate) }
+  const candidate = Object.freeze({ ...scope, access: 'read' as const })
+  VERIFIED_SCOPES.add(candidate)
+  return { ok: true, scope: candidate }
 }
 
 export interface ExpectedGithubInstallation {
@@ -244,7 +242,14 @@ function verifiedBindingRow(input: unknown, owner: string, projectSlugs: Map<str
   if (!input || typeof input !== 'object' || Array.isArray(input)) return null
   const r = input as Record<string, unknown>
   const projectId = typeof r.project_id === 'string' ? r.project_id.toLowerCase() : ''
-  const approvedAt = typeof r.approved_at === 'string' ? Date.parse(r.approved_at) : NaN
+  // Database timestamps must be explicit UTC/offset ISO instants, not permissive
+  // locale/date-only strings whose meaning can vary between runtimes.
+  const approvedAt = typeof r.approved_at === 'string' &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(r.approved_at)
+    ? Date.parse(r.approved_at) : NaN
+  // Revocation must be checked even when an inconsistent privileged query
+  // returns an 'approved' row. A previous review receipt cannot revive it.
+  if (r.revoked_at !== null) return null
   // The catalogue is untrusted unless an owner-approved row has an explicit
   // reviewer and a valid approval time. Live provider identity is rechecked
   // independently at the transport boundary on EVERY actual inspection.
@@ -292,7 +297,7 @@ export async function loadStoredOwnerGithubReadScope(input: StoredScopeLookup): 
     if (!slugs.has(targetId)) return DENIED // No binding read for a foreign project.
     const ids = projects.map(p=>p.id)
     const result = await input.db.from(OWNER_GITHUB_BINDINGS_TABLE)
-      .select('project_id,owner_user_id,project_slug,installation_id,repository_id,repository_owner_id,repository_owner,repository_name,default_branch,state,approved_by,approved_at')
+      .select('project_id,owner_user_id,project_slug,installation_id,repository_id,repository_owner_id,repository_owner,repository_name,default_branch,state,approved_by,approved_at,revoked_at')
       .eq('owner_user_id',owner).eq('state','approved')
       .in('project_id',ids).limit(FETCH_LIMIT)
     if (result.error || !Array.isArray(result.data) || result.data.length >= FETCH_LIMIT)

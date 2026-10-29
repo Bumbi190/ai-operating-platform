@@ -14,7 +14,7 @@ const approved = (project=projects[0],repoId=1001) => ({
   installation_id:6001, repository_id:repoId, repository_owner_id:321,
   repository_owner:'ExampleOwner', repository_name:'repo-'+repoId,
   default_branch:'main', state:'approved',
-  approved_by:owner, approved_at:'2026-10-28T20:00:00Z',
+  approved_by:owner, approved_at:'2026-10-28T20:00:00Z', revoked_at:null,
 })
 function makeDb({projectRows=projects,bindingRows=[approved()],failProject=false,failBinding=false,throwTable=null,overrideFilter=false}={}) {
   const queries=[]
@@ -122,6 +122,17 @@ describe('Atlas owner repository DB loader Stage 1: no live SQL or provider call
   })
   it('requires a real non-future approval timestamp and matching owner',async()=>{
     for(const approved_at of [null,'bogus','2099-01-01T00:00:00Z']){
+      assert.equal((await load(makeDb({bindingRows:[{...approved(),approved_at}]}))).ok,false)
+    }
+  })
+  it('refuses a supposedly approved binding that is already revoked',async()=>{
+    const x=makeDb({bindingRows:[{
+      ...approved(), revoked_at:'2026-10-29T12:00:00Z',
+    }]})
+    assert.equal((await load(x)).ok,false)
+  })
+  it('rejects locale-dependent or date-only approval values',async()=>{
+    for(const approved_at of ['2026-10-28', 'October 28 2026', '2026-10-28T20:00:00']){
       assert.equal((await load(makeDb({bindingRows:[{...approved(),approved_at}]}))).ok,false)
     }
   })

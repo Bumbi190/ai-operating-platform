@@ -126,6 +126,19 @@ describe('Atlas dynamic owner GitHub catalog: isolated, read-only and no provide
     assert.equal(matchesGithubRepository(repo, forged), false)
     assert.equal(validatesSingleRepositoryTokenReceipt(token(valid), forged), false)
   })
+  it('rejects a stolen internal marker replayed onto a different repository', () => {
+    const genuine = scope()
+    const symbols = Object.getOwnPropertySymbols(genuine)
+    const forged = { ...genuine, repositoryId: 9999 }
+    for (const symbol of symbols) {
+      Object.defineProperty(forged, symbol, {
+        value: Object.getOwnPropertyDescriptor(genuine, symbol)?.value,
+        enumerable: false,
+      })
+    }
+    assert.equal(singleRepositoryReadGrant(forged), null)
+    assert.equal(validatesSingleRepositoryTokenReceipt(token(forged), forged), false)
+  })
   it('checks immutable GitHub numeric repo and owner identity', () => {
     const valid = scope()
     assert.equal(matchesGithubRepository(repo, valid), true)

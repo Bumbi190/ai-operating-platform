@@ -65,3 +65,11 @@ Offline local `node --experimental-strip-types --test` over three named suites: 
 5. Optional **Supabase/Vercel** project connectors remain separate read-only-to-write capability stages; **Prime Agent's code broker and model router remain exclusively in their own workstream**.
 
 All work remains in existing Draft PR #605, linked to GitHub issue #604. **No merge, production deployment or secret installation is authorized by test success.**
+
+## Stage 1a targeted security review – 29 October 2026
+
+A further manual security pass reproduced two concrete **RED** regressions in the previous Stage 1 candidate: copying the old public-object Symbol marker onto a forged repo ID, and accepting an `approved` DB row despite a non-null `revoked_at` timestamp. Both were fixed within PR #605 without adding live authority: the candidate identity now uses a module-private WeakSet rather than a copyable Symbol, and the database lookup fetches and independently verifies `revoked_at is null`.
+
+The same pass tightened approval timestamps to explicit timezone-aware ISO instants and qualified the outer project ID in the proposed RLS SQL. New negative tests were added; the three offline suites now pass **44/44, 0 skipped**, with strict standalone TypeScript PASS. A deeper finding remains unresolved: SQL constraints alone do not prove `owner_user_id = projects.owner_id` and no signed independent approval/revocation audit or real PostgreSQL/RLS negative proof exists. A true external/independent reviewer is still required.
+
+Full findings, attack demonstrations, residual risk and owner release gates: `docs/architecture/atlas-owner-github-catalog-security-review-20261029.md`. **This self-review is not an independent attestation. No migration/production/GitHub App configuration was changed.**

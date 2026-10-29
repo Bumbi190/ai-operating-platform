@@ -37,7 +37,7 @@ jobs:
             apps/web/lib/qa/atlas-owner-github-store.test.mjs \
             apps/web/lib/qa/atlas-owner-github-schema-contract.test.mjs \
             | tee "$RUNNER_TEMP/owner-catalog-tests.txt"
-          grep -qx '# tests 40' "$RUNNER_TEMP/owner-catalog-tests.txt"
-          grep -qx '# pass 40' "$RUNNER_TEMP/owner-catalog-tests.txt"
+          grep -qx '# tests 44' "$RUNNER_TEMP/owner-catalog-tests.txt"
+          grep -qx '# pass 44' "$RUNNER_TEMP/owner-catalog-tests.txt"
           grep -qx '# fail 0' "$RUNNER_TEMP/owner-catalog-tests.txt"
           grep -qx '# skipped 0' "$RUNNER_TEMP/owner-catalog-tests.txt"

@@ -69,7 +69,7 @@ create policy atlas_owner_github_owner_read
     exists (
       select 1
       from public.projects p
-      where p.id = project_id
+      where p.id = atlas_owner_github_bindings.project_id
         and p.owner_id = (select auth.uid())
     )
   );

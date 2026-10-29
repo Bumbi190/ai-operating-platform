@@ -33,8 +33,12 @@ describe('GitHub connection proposal: static offline contract, NOT a real migrat
     assert.ok(normalized.includes('alter table '+table+' enable row level security'))
     assert.match(normalized,/for select to authenticated/)
     assert.match(normalized,/owner_user_id = \(select auth\.uid\(\)\)/)
-    assert.match(normalized,/p\.id = project_id/)
+    assert.match(normalized,/p\.id = atlas_owner_github_bindings\.project_id/)
     assert.match(normalized,/p\.owner_id = \(select auth\.uid\(\)\)/)
+  })
+  it('qualifies the outer project id to avoid future SQL column shadowing',()=>{
+    assert.match(normalized,/p\.id = atlas_owner_github_bindings\.project_id/)
+    assert.doesNotMatch(normalized,/p\.id = project_id/)
   })
   it('does not grant mutate, run functions or unsafe bypass to public clients',()=>{
     assert.match(normalized,/revoke all on public\.atlas_owner_github_bindings from public, anon, authenticated/)

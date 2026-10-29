@@ -115,3 +115,33 @@ test('a document review mixed with a sending request still cannot invoke outgoin
     'Nova, granska Handlarbörsens kunskapskällor och skicka ett mejl till alla.'
   ),true)
 })
+
+test('Atlas direct name reaches the same pending Source Curator boundary as Nova', () => {
+  for (const prompt of [
+    'Atlas, granska Handlarbörsens kunskapskällor.',
+    'Hej Atlas, kontrollera Handlarbörsens kunskapsdokument.',
+    'Jag vill att Atlas ska förhandsgranska Handlarbörsens projektkunskap.'
+  ]) assert.equal(isPendingNovaCuratorRequest(prompt), true, prompt)
+})
+test('direct document review without a persona name is still a specific source request', () => {
+  for (const prompt of [
+    'Granska Handlarbörsens kunskapskällor.',
+    'Förhandsgranska Handlarbörsens kunskapsdokument och visa riskerna.',
+    'Kontrollera Handlarbörsens projektkunskap.'
+  ]) assert.equal(isPendingNovaCuratorRequest(prompt), true, prompt)
+})
+test('negated review remains blocked from the specialist guard for all aliases', () => {
+  for (const prompt of [
+    'Atlas, granska inte Handlarbörsens kunskapskällor.',
+    'Granska aldrig Handlarbörsens kunskapskällor.',
+    'Nova, kontrollera inte Handlarbörsens kunskapsdokument.'
+  ]) assert.equal(isPendingNovaCuratorRequest(prompt), false, prompt)
+})
+test('same-assistant aliases do not capture CRM, other projects or ordinary knowledge lookups', () => {
+  for (const prompt of [
+    'Atlas, granska Handlarbörsens CRM-inkorg.',
+    'Atlas, granska Familje-Stundens kunskapskällor.',
+    'Vad säger Handlarbörsens kunskapsdokument om arkitekturen?',
+    'Atlas, visa Handlarbörsens senaste mejl.'
+  ]) assert.equal(isPendingNovaCuratorRequest(prompt), false, prompt)
+})

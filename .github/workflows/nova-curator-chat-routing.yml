@@ -48,6 +48,6 @@ jobs:
           const read=name=>Number(new RegExp('^# '+name+' (\\d+)$','m').exec(tap)?.[1])
           const [tests,pass,fail,skip,todo]=['tests','pass','fail','skipped','todo'].map(read)
           console.log(JSON.stringify({tests,pass,fail,skip,todo}))
-          if(!Number.isInteger(tests)||tests<22||tests!==pass||
+          if(!Number.isInteger(tests)||tests<26||tests!==pass||
             fail!==0||skip!==0||todo!==0)process.exitCode=1
           NODE

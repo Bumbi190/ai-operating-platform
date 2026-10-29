@@ -7,7 +7,7 @@
 # Cached postgres:16 or postgres:17-alpine ONLY. No published ports, volumes or mounts.
 # Simulated-Sunday rewrites SQL in memory ONLY for disposable tests.
 param(
- [ValidateSet('normal','simulated-sunday','native-editorial','native-content','native-context','native-binding','native-claim')]
+ [ValidateSet('normal','simulated-sunday','native-editorial','native-content','native-context','native-binding','native-plan-assets','native-claim')]
  [string]$Mode='normal',
  [ValidateSet('postgres:16','postgres:17-alpine')]
  [string]$PostgresImage='postgres:16'
@@ -99,18 +99,20 @@ try{
    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
   if($LASTEXITCODE -ne 0){throw 'CANONICAL_CLAIM_RUNS_TEST_FAILED'}
  }
- if($Mode -in @('native-content','native-context','native-binding')){
+ if($Mode -in @('native-content','native-context','native-binding','native-plan-assets')){
   # This extended mode swaps the simplified account binding table for the
   # real 20260914 table, CHECKs, unique indexes and immutable triggers.
   # All other narrow test modes retain their original fixture.
-  $depName=if($Mode -eq 'native-binding'){
+  $depName=if($Mode -eq 'native-plan-assets'){
+   'family-weekly-pg-native-plan-asset-deps.sql'
+  }elseif($Mode -eq 'native-binding'){
    'family-weekly-pg-native-binding-deps.sql'
   }else{'family-weekly-pg-native-content-deps.sql'}
   $deps=Join-Path $repo ('docs\verification\fixtures\'+$depName)
   Get-Content -LiteralPath $deps -Raw -Encoding UTF8 |
    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
   if($LASTEXITCODE -ne 0){throw 'NATIVE_CONTENT_DEPENDENCIES_FAILED'}
-  if($Mode -eq 'native-binding'){
+  if($Mode -in @('native-binding','native-plan-assets')){
    $bindingPath=Join-Path $repo 'apps\web\supabase\migrations\20260914120000_social_account_bindings.sql'
    $binding=Get-Content -LiteralPath $bindingPath -Raw -Encoding UTF8
    $b0=$binding.IndexOf('create table if not exists public.social_account_bindings (')
@@ -123,6 +125,53 @@ try{
    Get-Content -LiteralPath $bindingSeed -Raw -Encoding UTF8 |
     docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
    if($LASTEXITCODE -ne 0){throw 'CANONICAL_BINDING_SEED_FAILED'}
+  }
+  if($Mode -eq 'native-plan-assets'){
+   # Reproduce the exact production launch plan root/revisions/decisions,
+   # composite FKs, immutability triggers and owner/plan RPCs.
+   $planPath=Join-Path $repo 'apps\web\supabase\migrations\20261016052226_social_launch_plans_v1.sql'
+   $plan=Get-Content -LiteralPath $planPath -Raw -Encoding UTF8
+   if(-not $plan.Contains('create function public.social_launch_assert_owner(') -or
+      -not $plan.Contains('create trigger social_launch_revisions_immutable')){
+    throw 'CANONICAL_LAUNCH_PLAN_SOURCE_CHANGED'
+   }
+   # Only adapt CREATE to OR REPLACE for the already installed test-only
+   # owner guard; the canonical function body itself is unchanged.
+   $plan=$plan.Replace('create function public.social_launch_assert_owner(',
+      'create or replace function public.social_launch_assert_owner(')
+   Write-Output 'LOAD_CANONICAL_LAUNCH_PLAN_TABLES_FKS_TRIGGERS_RPCS=true'
+   $plan | docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+   if($LASTEXITCODE -ne 0){throw 'CANONICAL_LAUNCH_PLAN_LOAD_FAILED'}
+
+   # Assets is the single media identity table; the rest of the large
+   # media migration involves unrelated provenance and website outputs.
+   $mediaPath=Join-Path $repo 'apps\web\supabase\migrations\20260902_media_asset_foundation.sql'
+   $media=Get-Content -LiteralPath $mediaPath -Raw -Encoding UTF8
+   $a0=$media.IndexOf('create table if not exists public.assets (')
+   $a1=$media.IndexOf('create table if not exists public.asset_provenance (',$a0)
+   $policy0=$media.IndexOf('drop policy if exists "assets_owner" on public.assets;')
+   $policy1=$media.IndexOf('-- Provenance inherits',$policy0)
+   if($a0 -lt 0 -or $a1 -le $a0 -or $policy0 -lt 0 -or $policy1 -le $policy0){
+    throw 'CANONICAL_ASSETS_SOURCE_CHANGED'
+   }
+   Write-Output 'LOAD_CANONICAL_ASSET_TABLE_CHECKS_INDEXES_AND_OWNER_RLS=true'
+   $media.Substring($a0,$a1-$a0) |
+    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+   if($LASTEXITCODE -ne 0){throw 'CANONICAL_ASSET_TABLE_LOAD_FAILED'}
+   # The exact policy text comes from the canonical media migration;
+   # explicit SELECT grants match the read-only permissions observed in
+   # Omnira production, without granting INSERT/UPDATE to browser roles.
+   $assetAcl='alter table public.assets enable row level security;'+"`n"+
+    $media.Substring($policy0,$policy1-$policy0)+"`n"+
+    'revoke all on public.assets from public,anon,authenticated,service_role;'+"`n"+
+    'grant select on public.assets to authenticated,service_role;'
+   $assetAcl | docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+   if($LASTEXITCODE -ne 0){throw 'CANONICAL_ASSETS_RLS_LOAD_FAILED'}
+
+   $seed=Join-Path $repo 'docs\verification\fixtures\family-weekly-pg-native-plan-asset-seed.sql'
+   Get-Content -LiteralPath $seed -Raw -Encoding UTF8 |
+    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+   if($LASTEXITCODE -ne 0){throw 'CANONICAL_LAUNCH_PLAN_ASSET_SEED_FAILED'}
   }
   $source=Join-Path $repo 'apps\web\supabase\migrations\20261016100941_social_content_preparation_v1.sql'
   $text=Get-Content -LiteralPath $source -Raw -Encoding UTF8
@@ -137,6 +186,17 @@ try{
   $text.Substring($t0,$t1-$t0) |
    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
   if($LASTEXITCODE -ne 0){throw 'NATIVE_CONTENT_TABLES_FAILED'}
+  if($Mode -eq 'native-plan-assets'){
+   $triggerStart=$text.IndexOf('create trigger social_content_revisions_immutable')
+   $triggerEnd=$text.IndexOf('create function public.social_content_active(',$triggerStart)
+   if($triggerStart -lt 0 -or $triggerEnd -le $triggerStart){
+    throw 'CANONICAL_CONTENT_IMMUTABLE_TRIGGERS_SOURCE_CHANGED'
+   }
+   Write-Output 'LOAD_CANONICAL_CONTENT_IMMUTABILITY_TRIGGERS=true'
+   $text.Substring($triggerStart,$triggerEnd-$triggerStart) |
+    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+   if($LASTEXITCODE -ne 0){throw 'CANONICAL_CONTENT_IMMUTABLE_TRIGGERS_LOAD_FAILED'}
+  }
   $text.Substring($f0,$f1-$f0) |
    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
   if($LASTEXITCODE -ne 0){throw 'NATIVE_CONTENT_FUNCTIONS_FAILED'}
@@ -144,7 +204,7 @@ try{
    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
   if($LASTEXITCODE -ne 0){throw 'NATIVE_CONTENT_GRANTS_FAILED'}
  }
- if($Mode -in @('native-context','native-binding')){
+ if($Mode -in @('native-context','native-binding','native-plan-assets')){
   # Profile tables, source-backed profile reader, real scheduling canonicalizer
   # and real weekly context: extract from canonical migrations, never rewrite
   # any business-logic body. The synthetic dependency tables are clearly named.
@@ -253,11 +313,17 @@ try{
   Get-Content -LiteralPath $saveAssert -Raw -Encoding UTF8 |
    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
   if($LASTEXITCODE -ne 0){throw 'CANONICAL_NATIVE_CONTEXT_SAVE_ASSERT_FAILED'}
-  if($Mode -eq 'native-binding'){
+  if($Mode -in @('native-binding','native-plan-assets')){
    $bindingAssert=Join-Path $repo 'docs\verification\fixtures\family-weekly-pg-native-binding-assert.sql'
    Get-Content -LiteralPath $bindingAssert -Raw -Encoding UTF8 |
     docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
    if($LASTEXITCODE -ne 0){throw 'CANONICAL_NATIVE_BINDING_GUARDS_ASSERT_FAILED'}
+  }
+  if($Mode -eq 'native-plan-assets'){
+   $planAssetAssert=Join-Path $repo 'docs\verification\fixtures\family-weekly-pg-native-plan-asset-assert.sql'
+   Get-Content -LiteralPath $planAssetAssert -Raw -Encoding UTF8 |
+    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
+   if($LASTEXITCODE -ne 0){throw 'CANONICAL_NATIVE_PLAN_ASSET_ASSERT_FAILED'}
   }
  }
  if($Mode -in @('native-editorial','native-content')){

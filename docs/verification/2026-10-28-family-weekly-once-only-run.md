@@ -813,3 +813,70 @@ Detta är inte en fullständigt återspelad produktionsdatabas eller
 ett ägartest i en inloggad Vercel Preview. Inga
 produktionsmigrationer, schemalagda jobb, kostnadsförande
 modellanrop eller publikationer har gjorts.
+
+## Fas 19 – Verklig kanalplansgraf och medieidentitet (2026-10-29)
+
+Det tidigare `native-binding`-testläget använde riktiga
+kontobindningar, profil-/innehållsläsare och veckospararen, men hade
+fortfarande **förenklade tabeller för kanalplaner och bilder**.
+Det nya, strikt isolerade testläget `-Mode native-plan-assets`
+ersätter också dessa två beroenden med kanoniska SQL-källor:
+
+- `20261016052226_social_launch_plans_v1.sql` läses med
+  de exakta `social_launch_plans`,
+  `social_launch_plan_revisions` och
+  `social_launch_plan_decisions`-tabellerna, sammansatta FK,
+  CHECK/UNIQUE/RLS, immutabla UPDATE/DELETE/TRUNCATE-triggers
+  och verkliga `social_launch_plan_read/save/decide`.
+  Enbart `CREATE` för testets redan befintliga
+  `social_launch_assert_owner` ändras till `CREATE OR REPLACE`;
+  den kanoniska funktionskroppen är intakt.
+- `20260902_media_asset_foundation.sql` används oförändrat
+  för `public.assets`-tabellen med korrekt byte_size,
+  SHA-256, mediaegenskaper, status, visibility, bucket/path,
+  lagringsunikhet och projekt-FK. Den kanoniska
+  `assets_owner`-policyn laddas från samma migration.
+  Testets explicita SELECT-grants matchar observerade
+  produktionstillståndet; ingen annan medieproveniens eller
+  faktisk lagrad fil kopieras.
+- `social_content_revisions` och
+  `social_content_decisions` får också de verkliga
+  oföränderlighetstriggers som tidigare inte ingick i
+  den smalare innehållstestfixturen.
+
+Detta test lägger in **enbart påhittad** projekt-/plan-/bildmetadata
+och demonstrerar den kanoniska ägarstyrda planens läsning,
+sparande och godkännande, med en tillfällig planändring som
+rullas tillbaka. Negativa SQL-assertioner kräver att
+felaktig plan-SHA nekas av den sammansatta FK:n,
+plan-/innehållsrevisioner och planbeslut inte kan muteras,
+ogiltig bildstorlek, hash och mediatyp nekas,
+samma storage-object inte kan knytas till två asset-ID:n,
+okänt projekt stoppas av FK och andra användare
+inte får se ägarens bilder genom riktig RLS.
+Planernas internrelationer kan inte läsas direkt av en
+vanligt autentiserad användare.
+
+Samma `native-plan-assets`-körning kräver samtidigt den
+redan verifierade kedjan kanonisk veckokontext →
+fakta-/konto-/bildhash → fyra review-only
+innehållsrevisioner → idempotent försök →
+ägarenotifiering → återkallad behörighet.
+Kontobindningarnas riktiga one-way-spärrar och
+`social_account_rebind` verifieras också.
+
+**Lokalt:** PASS på PostgreSQL 16 och 17 med exitkod 0,
+och båda temporära testcontainrar avlägsnade.
+GitHub-jobbet utökas till **8 lägen på PG16 och 6 på PG17**;
+resultatet för den exakta nya committen kontrolleras
+separat innan den kan beskrivas som CI-godkänd.
+
+**Kvarvarande gränser:** `projects`, `runs`,
+`conversations`, `social_schedule_jobs`,
+`social_publications`, månadens release-regler och
+vissa auth-/proveniensberoenden är fortfarande
+begränsade testfixturer. Detta är alltså inte
+ett fullständigt replay av samtliga 163 migrationer
+eller en verklig användarinloggad Preview-acceptans.
+Inga produktionsskrivningar, cronregistreringar,
+modellkostnader, utskick eller publiceringar.

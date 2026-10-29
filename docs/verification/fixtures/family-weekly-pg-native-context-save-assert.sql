@@ -114,18 +114,24 @@ begin
  exception when others then
   if sqlerrm<>'SOCIAL_WEEKLY_CONFLICT' then raise;end if;
  end;
- -- A binding can lose provider verification AFTER the owner context
- -- was read. A stale hash must prevent the editorial write entirely.
- update public.social_account_bindings set verification='unverified'
- where platform='instagram';
+ -- A real provider-attested binding cannot be downgraded or silently
+ -- unblocked. Simulate a valid, one-way account block between context read
+ -- and save, check the stale-context refusal, then rollback this fixture
+ -- subtransaction rather than illicitly reversing a production block.
  begin
-  perform public.family_weekly_save_editorial_if_current(actor,run,claim,1,conv,p);
-  raise exception 'FULL_CONTEXT_PROVIDER_DRIFT_ACCEPTED';
+  update public.social_account_bindings
+   set blocked_at=clock_timestamp(),blocked_reason='account_mismatch'
+   where platform='instagram';
+  begin
+   perform public.family_weekly_save_editorial_if_current(actor,run,claim,1,conv,p);
+   raise exception 'FULL_CONTEXT_ACCOUNT_BLOCK_BYPASSED';
+  exception when others then
+   if sqlerrm<>'SOCIAL_WEEKLY_CONFLICT' then raise;end if;
+  end;
+  raise exception 'FULL_CONTEXT_TEMP_BLOCK_ROLLBACK';
  exception when others then
-  if sqlerrm<>'SOCIAL_WEEKLY_CONFLICT' then raise;end if;
+  if sqlerrm<>'FULL_CONTEXT_TEMP_BLOCK_ROLLBACK' then raise;end if;
  end;
- update public.social_account_bindings set verification='provider_attested'
- where platform='instagram';
  if (select count(*) from public.social_content_posts)<>1 then
   raise exception 'FULL_CONTEXT_FAILED_SAVE_CREATED_POSTS';
  end if;

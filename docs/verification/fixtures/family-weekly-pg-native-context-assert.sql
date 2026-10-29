@@ -63,18 +63,23 @@ begin
   raise exception 'NATIVE_CONTEXT_HASH_NOT_DETERMINISTIC';
  end if;
 
- -- When one provider's verification goes stale, the real context reports
- -- the change and source hash changes. The caller must refuse generation.
- update public.social_account_bindings set verification='stale'
- where platform='instagram';
- stale:=public.social_weekly_context(v_principal,v_input);
- if stale->>'contextHash'=v->>'contextHash'
- or (select count(*) from jsonb_array_elements(stale->'bindings') b
-     where b->>'channel'='instagram' and b->>'verification'='stale')<>1 then
-  raise exception 'NATIVE_CONTEXT_MISSED_PROVIDER_VERIFICATION_DRIFT';
- end if;
- update public.social_account_bindings set verification='provider_attested'
- where platform='instagram';
+ -- A provider-attested account cannot be downgraded in the actual
+ -- schema. Simulate a real account-mismatch block instead, and ROLLBACK
+ -- the test-only block with a PL/pgSQL subtransaction (never lift a block).
+ begin
+  update public.social_account_bindings
+   set blocked_at=clock_timestamp(),blocked_reason='account_mismatch'
+   where platform='instagram';
+  stale:=public.social_weekly_context(v_principal,v_input);
+  if stale->>'contextHash'=v->>'contextHash'
+  or (select count(*) from jsonb_array_elements(stale->'bindings') b
+      where b->>'channel'='instagram' and b->'blocked'='true'::jsonb)<>1 then
+   raise exception 'NATIVE_CONTEXT_DID_NOT_NOTICE_ACCOUNT_BLOCK';
+  end if;
+  raise exception 'NATIVE_CONTEXT_TEMPORARY_BLOCK_ROLLBACK';
+ exception when others then
+  if sqlerrm<>'NATIVE_CONTEXT_TEMPORARY_BLOCK_ROLLBACK' then raise;end if;
+ end;
  if (public.social_weekly_context(v_principal,v_input))->>'contextHash'
   is distinct from v->>'contextHash' then
   raise exception 'NATIVE_CONTEXT_HASH_DID_NOT_RECOVER_ON_RESTORE';

@@ -6,10 +6,12 @@
 -- are loaded VERBATIM from the checked-in migrations by the runner.
 -- No real owner, production assets, social provider, or Supabase connection.
 alter table public.social_account_bindings
- add column verification text not null default 'provider_attested';
--- Fixture-only capability to simulate a provider losing verification and
--- restore it; does NOT imply a production service_role UPDATE grant.
-grant update(verification) on public.social_account_bindings to service_role;
+ add column if not exists verification text not null default 'provider_attested';
+alter table public.social_account_bindings
+ add column if not exists blocked_reason text;
+-- In the synthetic binding-table mode allow a temporary blocked account.
+-- The native-binding mode has the genuine guarded service_role UPDATE grant.
+grant update(blocked_at,blocked_reason) on public.social_account_bindings to service_role;
 
 create table public.social_schedule_jobs(
  id uuid primary key default gen_random_uuid(),

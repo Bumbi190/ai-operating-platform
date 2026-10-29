@@ -734,12 +734,13 @@ verifierade Facebook-/Instagram-bindningar, faktakällans
 profil-SHA, en egen beskriven JPEG, en giltig och stabil
 SHA-256-kontexthash och inga publiceringar, reservationsjobb
 eller redan skapade förberedelser. Den verkliga context-hashen
-måste ändras när Instagram-verifieringen görs ogiltig och sedan
-återgå när testfixturen återställs; fel ägare och icke-måndag
+måste ändras när Instagram-bindningen spärras enligt kontoreglerna
+och sedan återgå när den tillfälliga testtransaktionen rullas tillbaka;
+fel ägare och icke-måndag
 avvisas.
 
 `family-weekly-pg-native-context-save-assert.sql` kräver att
-saknad `scheduledAt`, manipulerad hash och verifieringsdrift
+saknad `scheduledAt`, manipulerad hash och giltig kontospärr
 mellan kontextläsning och sparning **stoppar skrivning**.
 Med korrekt underlag sparar den verkliga `social_weekly_save`
 fyra Facebook-/Instagram-draftrevisioner atomiskt för tisdag
@@ -757,3 +758,58 @@ en CI-körning för exakt ny commit måste fortfarande granskas.
 **Återstående release-grindar:** fullständigt relevant
 migrations-/FK-/triggerreplay, verklig autentiserad ägar-
 Preview-acceptans och uttrycklig separat aktiveringsgranskning.
+
+## Fas 18 – Kanoniska sociala kontobindningar och engångsspärr (2026-10-29)
+
+Läsbar jämförelse av den aktiva Supabase-funktionen
+`public.social_account_bindings_guard_update()` visade tre starka
+regler som tidigare testdata inte efterliknade:
+en `provider_attested`-bindning får inte nedgraderas,
+`blocked_at` + `blocked_reason` får inte återställas efter en spärr,
+och en ersatt (`superseded_at`) bindning får inte ändras.
+Tidigare `native-context` simulerade däremot
+`verification='stale'`, vilket den verkliga tabellen avvisar.
+
+Ett sjunde, separat isolerat läge `-Mode native-binding` laddar
+därför den **kanoniska** `social_account_bindings`-tabellen,
+CHECK-villkoren, de tre unika kontoindexen,
+insert/update/delete/truncate-triggers och
+`social_account_rebind` direkt ur
+`20260914120000_social_account_bindings.sql`.
+Det använder inga verkliga konton eller credentials.
+Kontodata, bilder och projektägare i testet är enbart påhittade,
+och de övriga syntetiska relationerna redovisas öppet som sådana.
+
+De tidigare `native-context`-testerna använder nu i stället
+en **giltig tillfällig kontospärr**
+(`blocked_reason='account_mismatch'`) för att pröva att
+kontexthashen ändras och att den kanoniska
+`social_weekly_save` stoppar skrivning efter en spärr.
+Eftersom riktiga spärrar aldrig får lyftas rullas själva
+spärrtestet tillbaka med ett isolerat PL/pgSQL-undantagsblock;
+inget `UPDATE` som återöppnar kontot görs.
+
+`family-weekly-pg-native-binding-assert.sql` testar dessutom
+negativa fall: avvisad nedgradering, oföränderlig
+`external_account_id`, spärr som inte kan hävas,
+avvisad dubblerad aktiv kontobindning,
+okänd verifieringsstatus, förhindrad DELETE och ett
+atomiskt rebind-anrop där gammal bindning ersätts med en
+ny provider-attested bindning. Såväl ACL/RLS-gränsen för
+anonyma/inloggade användare som bibehållen innehålls-,
+kontext- och redaktionell save-chain kontrolleras.
+
+**Lokalt PASS** på PostgreSQL 16 och 17 för `native-binding`,
+och befintligt `native-context` passerade på PostgreSQL 17
+efter att testet korrigerats. Varje engångscontainer
+raderades. GitHub CI kör nu det sjunde läget på PostgreSQL 16
+och det femte kritiska läget på PostgreSQL 17; en ny exakt
+commit måste fortfarande passera samtliga workflow-kontroller.
+
+**Fortsatt release-grind:** den kanoniska
+`social_launch_plan*`-grafen, `assets` och andra bredare
+FK-/triggerrelationer är ännu delvis smalare testdubletter.
+Detta är inte en fullständigt återspelad produktionsdatabas eller
+ett ägartest i en inloggad Vercel Preview. Inga
+produktionsmigrationer, schemalagda jobb, kostnadsförande
+modellanrop eller publikationer har gjorts.

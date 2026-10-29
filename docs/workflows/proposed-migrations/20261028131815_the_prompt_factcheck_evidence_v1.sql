@@ -324,6 +324,10 @@ create table public.media_factcheck_nova_decisions (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects(id) on delete restrict,
   agent_id uuid not null references public.agents(id) on delete restrict,
+  workflow_id uuid not null references public.workflows(id) on delete restrict,
+  agent_step_order integer not null check(agent_step_order between 1 and 1000),
+  agent_step_log_id uuid not null references public.run_logs(id) on delete restrict,
+  agent_step_output_sha256 text not null check(agent_step_output_sha256~'^[0-9a-f]{64}$'),
   run_id uuid not null references public.runs(id) on delete restrict,
   claim_id uuid not null,
   report_id uuid not null unique references public.media_factcheck_reports(id) on delete restrict,
@@ -355,6 +359,10 @@ declare
   story public.media_scripts;
   source_run public.runs;
   nova public.agents;
+  agent_workflow public.workflows;
+  agent_log public.run_logs;
+  matching_steps integer;
+  nova_steps integer;
 begin
   if current_user not in ('service_role','postgres') then
     raise exception 'NOVA_SERVER_ONLY' using errcode='42501';
@@ -369,8 +377,24 @@ begin
     where id=new.run_id and project_id=new.project_id for share;
   select * into nova from public.agents
     where id=new.agent_id and project_id=new.project_id for share;
+  select * into agent_workflow from public.workflows
+    where id=new.workflow_id and project_id=new.project_id for share;
+  select * into agent_log from public.run_logs
+    where id=new.agent_step_log_id and run_id=new.run_id for share;
   if report.id is null or story.id is null or source_run.id is null
     or nova.id is null or lower(btrim(nova.name))<>'nova'
+    or agent_workflow.id is null
+    or agent_log.id is null
+    or source_run.workflow_id is distinct from new.workflow_id
+    or source_run.claimed_at is null
+    or source_run.claimed_at > clock_timestamp()
+    or agent_log.step_order is distinct from new.agent_step_order
+    or agent_log.role is distinct from 'assistant'
+    or agent_log.created_at < source_run.claimed_at
+    or agent_log.created_at > clock_timestamp()
+    or length(btrim(agent_log.content)) < 12
+    or encode(sha256(convert_to(agent_log.content,'UTF8')),'hex')
+      is distinct from new.agent_step_output_sha256
     or report.script_id is distinct from new.script_id
     or report.script_version is distinct from new.script_version
     or report.revision_id is distinct from new.revision_id
@@ -391,6 +415,39 @@ begin
     or source_run.lease_until <= clock_timestamp()
     or source_run.cancel_requested
   then raise exception 'NOVA_RUN_OR_REVISION_UNVERIFIED' using errcode='23514';end if;
+  -- Trust ONLY the immutable per-run steps_snapshot, not mutable live
+  -- workflows.steps. An assistant log without the matching frozen Nova step
+  -- is NOT evidence of assigned agent execution.
+  if jsonb_typeof(source_run.steps_snapshot) is distinct from 'array'
+  then raise exception 'NOVA_FROZEN_WORKFLOW_ASSIGNMENT_MISSING'
+    using errcode='23514';end if;
+  if jsonb_array_length(source_run.steps_snapshot) not between 1 and 24
+  then raise exception 'NOVA_FROZEN_WORKFLOW_ASSIGNMENT_MISSING'
+    using errcode='23514';end if;
+  select count(*) into matching_steps
+  from jsonb_array_elements(source_run.steps_snapshot) s
+  where s->>'agent_id'=new.agent_id::text
+    and s->>'order'=new.agent_step_order::text
+    and s->>'name'=agent_log.step_name;
+  select count(*) into nova_steps
+  from jsonb_array_elements(source_run.steps_snapshot) s
+  where s->>'agent_id'=new.agent_id::text;
+  if matching_steps<>1 or nova_steps<>1 or
+     (select count(distinct s->>'order')
+      from jsonb_array_elements(source_run.steps_snapshot) s)
+       <> jsonb_array_length(source_run.steps_snapshot)
+     or exists (
+       select 1 from jsonb_array_elements(source_run.steps_snapshot) s
+       where jsonb_typeof(s) is distinct from 'object'
+         or coalesce(s->>'order','') !~ '^[1-9][0-9]{0,2}$'
+         or coalesce(s->>'name','')=''
+         or coalesce(s->>'agent_id','') !~
+           '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+     )
+     or (select count(*) from public.agents a
+       where a.project_id=new.project_id and lower(btrim(a.name))='nova')<>1
+  then raise exception 'NOVA_FROZEN_STEP_OR_UNIQUE_ROLE_MISMATCH'
+    using errcode='23514';end if;
   -- Ordinary fully evidenced articles only. A "sensitive", contradictory or
   -- uncertain report belongs to the human escalation/skip path, not Nova auto.
   if report.outcome is distinct from 'ready_for_editor'

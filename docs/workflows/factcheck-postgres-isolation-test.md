@@ -1,6 +1,6 @@
 # The Prompt — isolated PostgreSQL 17 FactCheck proof
 
-**Status:** local security rehearsal PASS, **NOT a production migration**.
+**Status:** previous Nova/FactCheck local PostgreSQL 17 rehearsal PASS on 28 October 2026. **The newer workflow-step/run-log/claimed_at binding added 29 October has NOT yet been executed against PostgreSQL** because the owner's Docker Desktop daemon was stopped; it remains a reviewed SQL proposal pending a fresh isolated replay. Neither version is a production migration.
 Related: PR #585, issue #591. Rehearsal performed on 28 October 2026.
 
 ## Scope and safety

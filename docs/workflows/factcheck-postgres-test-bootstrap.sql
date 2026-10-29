@@ -15,6 +15,11 @@ CREATE TABLE public.agents (
   project_id uuid NOT NULL REFERENCES public.projects(id),
   name text NOT NULL
 );
+CREATE TABLE public.workflows (
+  id uuid PRIMARY KEY,
+  project_id uuid NOT NULL REFERENCES public.projects(id),
+  steps jsonb NOT NULL DEFAULT '[]'::jsonb
+);
 CREATE TABLE public.media_scripts (
   id uuid PRIMARY KEY,
   project_id uuid NOT NULL REFERENCES public.projects(id),
@@ -30,7 +35,19 @@ CREATE TABLE public.runs (
   claim_id uuid,
   status text NOT NULL,
   lease_until timestamptz,
-  cancel_requested boolean NOT NULL DEFAULT false
+  cancel_requested boolean NOT NULL DEFAULT false,
+  workflow_id uuid REFERENCES public.workflows(id),
+  claimed_at timestamptz,
+  steps_snapshot jsonb
+);
+CREATE TABLE public.run_logs (
+  id uuid PRIMARY KEY,
+  run_id uuid NOT NULL REFERENCES public.runs(id),
+  step_order integer,
+  step_name text,
+  role text NOT NULL,
+  content text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT clock_timestamp()
 );
 
 -- These roles already exist in the dedicated local test cluster. Do NOT
@@ -40,11 +57,15 @@ GRANT SELECT, UPDATE ON public.media_scripts TO service_role;
 -- SELECT FOR SHARE needs UPDATE privileges as well; Omnira production
 -- service_role has both SELECT and UPDATE on runs (read-only verified).
 GRANT SELECT, UPDATE ON public.runs TO service_role;
+GRANT SELECT, UPDATE ON public.workflows TO service_role;
+GRANT SELECT, UPDATE ON public.run_logs TO service_role;
 GRANT SELECT ON public.projects TO service_role;
 GRANT SELECT, UPDATE ON public.agents TO service_role;
 ALTER TABLE public.agents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.media_scripts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.run_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.workflows ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
 
 INSERT INTO public.projects(id,owner_id)
@@ -66,11 +87,26 @@ INSERT INTO public.media_scripts (
   '["Research API","Official documentation"]'::jsonb,
   'Read the official guide.'
 );
+INSERT INTO public.workflows (id,project_id,steps) VALUES (
+  'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+  '11111111-1111-4111-8111-111111111111',
+  '[{"order":1,"name":"Nova FactCheck","agent_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","input_template":"{{sources}}","output_key":"review"}]'::jsonb
+);
 INSERT INTO public.runs (
-  id,project_id,claim_id,status,lease_until,cancel_requested
+  id,project_id,claim_id,status,lease_until,cancel_requested,
+  workflow_id,claimed_at,steps_snapshot
 ) VALUES (
   '33333333-3333-4333-8333-333333333333',
   '11111111-1111-4111-8111-111111111111',
   '44444444-4444-4444-8444-444444444444',
-  'running', now()+ interval '1 hour', false
+  'running', now()+ interval '1 hour', false,
+  'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+  now() - interval '2 minutes',
+  '[{"order":1,"name":"Nova FactCheck","agent_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","input_template":"{{sources}}","output_key":"review"}]'::jsonb
+);
+INSERT INTO public.run_logs(id,run_id,step_order,step_name,role,content) VALUES (
+  'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+  '33333333-3333-4333-8333-333333333333',
+  1,'Nova FactCheck','assistant',
+  'Nova reviewed all independent technical evidence and found no contradictions.'
 );

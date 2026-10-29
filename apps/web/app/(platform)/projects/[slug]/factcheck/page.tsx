@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation'
+import {novaStepOutputSha256} from '@/lib/media/factcheck/nova-run-step-identity'
 import Link from 'next/link'
 import { ShieldCheck, ShieldAlert, FileText, ArrowLeft, ExternalLink, Clock } from 'lucide-react'
 import type { SupabaseClient } from '@supabase/supabase-js'
@@ -47,6 +48,10 @@ type NovaShadowDecisionRow = {
   id:string
   project_id:string
   agent_id:string
+  workflow_id:string
+  agent_step_order:number
+  agent_step_log_id:string
+  agent_step_output_sha256:string
   run_id:string
   claim_id:string
   report_id:string
@@ -59,6 +64,23 @@ type NovaShadowDecisionRow = {
   policy_version:string
   decision:string
   recorded_at:string
+}
+type NovaRunHistory = {
+  id:string
+  project_id:string
+  workflow_id:string|null
+  claim_id:string|null
+  claimed_at:string|null
+  steps_snapshot:unknown
+}
+type NovaStepLogHistory = {
+  id:string
+  run_id:string
+  step_order:number|null
+  step_name:string|null
+  role:string
+  content:string
+  created_at:string
 }
 type ReviewHistoryRow = {
   id: string
@@ -244,7 +266,7 @@ export default async function FactCheckHistoryPage({ params }: {
       ).map(a => a.id as string))
       const shadow = await db.from('media_factcheck_nova_decisions')
         .select(
-          'id,project_id,agent_id,run_id,claim_id,report_id,script_id,script_version,revision_id,content_sha256,source_set_sha256,reviewer_run_id,policy_version,decision,recorded_at'
+          'id,project_id,agent_id,workflow_id,agent_step_order,agent_step_log_id,agent_step_output_sha256,run_id,claim_id,report_id,script_id,script_version,revision_id,content_sha256,source_set_sha256,reviewer_run_id,policy_version,decision,recorded_at'
         )
         .eq('project_id',project.id)
         .in('report_id',reports.map(report=>report.id))
@@ -257,11 +279,71 @@ export default async function FactCheckHistoryPage({ params }: {
       }
     }
   }
+  // Historical shadow receipts also need matching frozen workflow assignment
+  // and the durable assistant log. Neither an agent name nor a stored SHA
+  // alone is sufficient evidence of which step was actually recorded.
+  const runById = new Map<string,NovaRunHistory>()
+  const logById = new Map<string,NovaStepLogHistory>()
+  const trustedWorkflows = new Set<string>()
+  if (!novaUnavailable && novaRows.length > 0) {
+    const [runs,logs,workflows] = await Promise.all([
+      db.from('runs')
+        .select('id,project_id,workflow_id,claim_id,claimed_at,steps_snapshot')
+        .eq('project_id',project.id)
+        .in('id',[...new Set(novaRows.map(row=>row.run_id))]).limit(25),
+      db.from('run_logs')
+        .select('id,run_id,step_order,step_name,role,content,created_at')
+        .in('id',[...new Set(novaRows.map(row=>row.agent_step_log_id))]).limit(25),
+      db.from('workflows')
+        .select('id,project_id')
+        .eq('project_id',project.id)
+        .in('id',[...new Set(novaRows.map(row=>row.workflow_id))]).limit(25),
+    ])
+    if (runs.error || logs.error || workflows.error) {
+      novaUnavailable = true
+      console.warn('[factcheck/history] Nova assignment evidence unavailable')
+    } else {
+      for(const row of (runs.data??[]) as unknown as NovaRunHistory[])
+        runById.set(row.id,row)
+      for(const row of (logs.data??[]) as unknown as NovaStepLogHistory[])
+        logById.set(row.id,row)
+      for(const row of (workflows.data??[]) as {id:string;project_id:string}[])
+        if(row.project_id===project.id)trustedWorkflows.add(row.id)
+    }
+  }
   const novaByReport = new Map<string,NovaShadowDecisionRow>()
   for(const shadow of novaRows){
+    const run = runById.get(shadow.run_id)
+    const log = logById.get(shadow.agent_step_log_id)
+    const snapshot = Array.isArray(run?.steps_snapshot)
+      ? run.steps_snapshot as {agent_id?:unknown;order?:unknown;name?:unknown}[]
+      : []
+    const stepMatches=snapshot.filter(s=>
+      s && s.agent_id===shadow.agent_id)
+    const assigned=stepMatches.length===1 &&
+      stepMatches[0].order===shadow.agent_step_order &&
+      stepMatches[0].name===log?.step_name
+    const claimedAt=Date.parse(run?.claimed_at??'')
+    const loggedAt=Date.parse(log?.created_at??'')
+    const recordedAt=Date.parse(shadow.recorded_at)
+    const validLog=!!log && log.run_id===shadow.run_id &&
+      log.step_order===shadow.agent_step_order &&
+      log.role==='assistant' && typeof log.content==='string' &&
+      log.content.trim().length>=12 &&
+      novaStepOutputSha256(log.content)===shadow.agent_step_output_sha256 &&
+      Number.isFinite(claimedAt) && Number.isFinite(loggedAt) &&
+      Number.isFinite(recordedAt) &&
+      loggedAt>=claimedAt && recordedAt>=loggedAt
+
     const report=reports.find(r=>r.id===shadow.report_id)
-    if(!report || shadow.project_id!==project.id ||
+    if(!report || novaUnavailable || !run || !assigned || !validLog ||
+       trustedNovaAgents.size!==1 ||
        !trustedNovaAgents.has(shadow.agent_id) ||
+       run.project_id!==project.id ||
+       run.workflow_id!==shadow.workflow_id ||
+       run.claim_id!==shadow.claim_id ||
+       !trustedWorkflows.has(shadow.workflow_id) ||
+       shadow.project_id!==project.id ||
        shadow.script_id!==report.script_id ||
        shadow.script_version!==report.script_version ||
        shadow.revision_id!==report.revision_id ||

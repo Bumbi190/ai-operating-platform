@@ -4,7 +4,7 @@ import {registerHooks} from 'node:module'
 
 registerHooks({resolve(specifier,ctx,next){
   if (['./contract','./source-collector','./reviewer-preview',
-    './independent-review','./report-record','./nova-autonomy-policy']
+    './independent-review','./report-record','./nova-autonomy-policy','./nova-run-step-identity']
     .includes(specifier) && ctx.parentURL?.includes('/factcheck/')) {
     return next(specifier+'.ts',ctx)
   }
@@ -23,6 +23,8 @@ const scriptId='b9271d5b-5254-4ad8-a36c-ce7c66e9c63e'
 const runId='94e620bf-31d4-401c-baf8-ec1521f5ba13'
 const claimId='824ecfe1-cbda-4a7a-9de5-7683d454bc08'
 const agentId='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+const workflowId='cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+const stepLogId='dddddddd-dddd-4ddd-8ddd-dddddddddddd'
 const reportId='b5b5b5b5-b5b5-45b5-85b5-b5b5b5b5b5b5'
 const now=Date.parse('2026-10-28T16:00:00Z')
 const material={
@@ -63,7 +65,16 @@ const sources=[
     text:baseText+' Reuters independently reported the announcement.'},
 ]
 const run={id:runId,project_id:projectId,claim_id:claimId,status:'running',
-  lease_until:new Date(now+60_000).toISOString(),cancel_requested:false}
+  lease_until:new Date(now+60_000).toISOString(),cancel_requested:false,
+  claimed_at:new Date(now-120_000).toISOString(),workflow_id:workflowId,
+  steps_snapshot:[{order:1,name:'Nova FactCheck',agent_id:agentId,
+    input_template:'{{sources}}',output_key:'review'}],
+}
+const workflow={id:workflowId,project_id:projectId}
+const assistantLog={id:stepLogId,run_id:runId,step_order:1,
+  step_name:'Nova FactCheck',role:'assistant',
+  created_at:new Date(now-60_000).toISOString(),
+  content:'Nova reviewed the independent original evidence and flagged no contradictions.'}
 const nova={id:agentId,project_id:projectId,name:'Nova'}
 async function freshFixture(){
   const review=await evaluateIndependentReview(material,sources,projectId,
@@ -88,7 +99,7 @@ async function freshFixture(){
   assert.equal(reportPrepared.ok,true,JSON.stringify(reportPrepared))
   return {
     mode:'offline_shadow_only',featureEnabled:true,
-    agent:nova,claimedRun:run,
+    agent:nova,claimedRun:run,workflow,assistantLog,
     storedReport:{id:reportId,...reportPrepared.record},
     reviewContext:{previewMode:'offline_only',featureEnabled:true,
       project,script,material,sources,review,nowMs:now,
@@ -107,6 +118,10 @@ test('ordinary fact-checked script yields a separately identified Nova shadow re
   assert.equal(result.receipt.claim_id,claimId)
   assert.equal(result.receipt.report_id,reportId)
   assert.equal(result.receipt.script_version,1)
+  assert.equal(result.receipt.workflow_id,workflowId)
+  assert.equal(result.receipt.agent_step_order,1)
+  assert.equal(result.receipt.agent_step_log_id,stepLogId)
+  assert.equal(result.receipt.agent_step_output_sha256.length,64)
   assert.equal(result.receipt.policy_version,'nova.shadow.v1')
   assert.equal(result.receipt.decision,'editorial_candidate')
   assert.equal(Object.isFrozen(result.receipt),true)
@@ -144,8 +159,12 @@ test('claimed run is fresh, active, and bound to the same project',async()=>{
     {...run,status:'completed'},
     {...run,cancel_requested:true},
     {...run,lease_until:new Date(now-1).toISOString()},
-  ])assert.equal(reason(prepareNovaShadowReceipt({...input,claimedRun})),
-    'nova_claim_not_current')
+    {...run,claimed_at:null},
+    {...run,claimed_at:new Date(now+60_000).toISOString()},
+  ]){
+    const rejection=reason(prepareNovaShadowReceipt({...input,claimedRun}))
+    assert.match(rejection,/^nova_claim_not_current$|^nova_agent_run_binding_missing:/)
+  }
 })
 
 test('recorded report cannot be moved to another run, claim, project or script',async()=>{
@@ -252,4 +271,89 @@ test('Postgres JSONB normalization never permits source or claim array reorderin
   ]){
     assert.equal(prepareNovaShadowReceipt({...input,storedReport}).ok,false)
   }
+})
+
+test('Nova candidate needs an agent assignment in an immutable RUN snapshot',async()=>{
+  const input=await freshFixture()
+  const cases=[
+    {claimedRun:{...run,workflow_id:null}},
+    {claimedRun:{...run,workflow_id:scriptId}},
+    {workflow:{...workflow,project_id:scriptId}},
+    {claimedRun:{...run,steps_snapshot:null}},
+    {claimedRun:{...run,steps_snapshot:[]}},
+    {claimedRun:{...run,steps_snapshot:[
+      {...run.steps_snapshot[0],agent_id:scriptId}]}},
+    {claimedRun:{...run,steps_snapshot:[
+      run.steps_snapshot[0],{...run.steps_snapshot[0],order:2}]}},
+    {claimedRun:{...run,steps_snapshot:[
+      run.steps_snapshot[0],{...run.steps_snapshot[0]}]}},
+  ]
+  for(const patch of cases){
+    const actual=prepareNovaShadowReceipt({...input,...patch})
+    assert.equal(actual.ok,false,JSON.stringify(patch))
+    assert.match(actual.reason,/nova_agent_run_binding_missing|nova_workflow_or_claim_not_current/)
+  }
+})
+
+test('a log that belongs to another run, role or step cannot attest Nova',async()=>{
+  const input=await freshFixture()
+  const cases=[
+    {...assistantLog,id:'forged'},
+    {...assistantLog,run_id:scriptId},
+    {...assistantLog,step_order:2},
+    {...assistantLog,step_name:'Script Writer'},
+    {...assistantLog,role:'user'},
+    {...assistantLog,content:''},
+    {...assistantLog,content:'short'},
+    {...assistantLog,created_at:new Date(now-180_000).toISOString()},
+    {...assistantLog,created_at:new Date(now+30_000).toISOString()},
+  ]
+  for(const assistantLog of cases){
+    const actual=prepareNovaShadowReceipt({...input,assistantLog})
+    assert.equal(actual.ok,false,JSON.stringify(assistantLog))
+    assert.match(actual.reason,/nova_agent_run_binding_missing/)
+  }
+})
+
+test('durably logged Nova step output SHA is byte-exact',async()=>{
+  const input=await freshFixture()
+  const a=prepareNovaShadowReceipt(input)
+  assert.equal(a.ok,true)
+  if(!a.ok)return
+  const {createHash}=await import('node:crypto')
+  const expected=createHash('sha256').update(assistantLog.content).digest('hex')
+  assert.equal(a.receipt.agent_step_output_sha256,expected)
+  const changed=prepareNovaShadowReceipt({...input,
+    assistantLog:{...assistantLog,content:assistantLog.content+' additional text'},
+  })
+  assert.equal(changed.ok,true)
+  if(changed.ok){
+    assert.notEqual(changed.receipt.agent_step_output_sha256,expected)
+    assert.equal(changed.receipt.agent_step_log_id,a.receipt.agent_step_log_id)
+  }
+})
+
+test('no production media API can activate a Nova step receipt or shadow INSERT',async()=>{
+  const {readFileSync,readdirSync}=await import('node:fs')
+  const {join}=await import('node:path')
+  let inspected=0
+  const visit=dir=>{
+    for(const item of readdirSync(dir,{withFileTypes:true})){
+      const path=join(dir,item.name)
+      if(item.isDirectory())visit(path)
+      else if(item.isFile()&&(path.endsWith('.ts')||path.endsWith('.tsx'))){
+        inspected++
+        const content=readFileSync(path,'utf8')
+        for(const forbidden of [
+          'prepareNovaShadowReceipt','proveNovaAssignedWorkflowStep',
+          'media_factcheck_nova_decisions','nova-run-step-identity',
+        ]){
+          assert.ok(!content.includes(forbidden),
+            'Nova shadow decision route activated: '+path+' '+forbidden)
+        }
+      }
+    }
+  }
+  visit('apps/web/app/api/media')
+  assert.ok(inspected>20,'expected the real The Prompt API route tree')
 })

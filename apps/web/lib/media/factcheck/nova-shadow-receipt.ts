@@ -15,6 +15,12 @@ import {
   type NovaReviewInput,
 } from './nova-autonomy-policy'
 import {verifiedStoredWriterModel} from '../script-writer-provenance'
+import {
+  proveNovaAssignedWorkflowStep,
+  type NovaAssignedRun,
+  type NovaWorkflowRecord,
+  type NovaStepLogRecord,
+} from './nova-run-step-identity'
 
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i
 
@@ -44,7 +50,9 @@ export interface NovaShadowInput {
   readonly mode:'offline_shadow_only'
   readonly featureEnabled:boolean
   readonly agent:Readonly<{id:string;project_id:string;name:string}>
-  readonly claimedRun:CurrentRunRow
+  readonly claimedRun:CurrentRunRow & NovaAssignedRun
+  readonly workflow:NovaWorkflowRecord
+  readonly assistantLog:NovaStepLogRecord
   readonly storedReport:StoredNovaReport
   readonly reviewContext:NovaReviewInput
 }
@@ -77,7 +85,7 @@ export function prepareNovaShadowReceipt(
     if(!input||input.mode!=='offline_shadow_only'||input.featureEnabled!==true){
       return hold('nova_shadow_not_enabled')
     }
-    const {agent,claimedRun,storedReport,reviewContext:context}=input
+    const {agent,claimedRun,workflow,assistantLog,storedReport,reviewContext:context}=input
     if(!agent||!claimedRun||!storedReport||!context||
        !UUID.test(agent.id)||!UUID.test(agent.project_id)||
        agent.name.trim().toLowerCase()!=='nova'||
@@ -91,6 +99,13 @@ export function prepareNovaShadowReceipt(
        Date.parse(claimedRun.lease_until)<=context.nowMs){
       return hold('nova_claim_not_current')
     }
+    const assigned=proveNovaAssignedWorkflowStep({
+      mode:'shadow_only',featureEnabled:true,
+      projectId:context.project.id,
+      agent,workflow,run:claimedRun,assistantLog,
+      nowMs:context.nowMs,
+    })
+    if(!assigned.ok) return hold('nova_agent_run_binding_missing:'+assigned.reason)
     if(!UUID.test(storedReport.id)||
        storedReport.project_id!==agent.project_id||
        storedReport.run_id!==claimedRun.id||
@@ -168,6 +183,10 @@ export function prepareNovaShadowReceipt(
       content_sha256:verified.content_sha256,
       source_set_sha256:verified.source_set_sha256,
       reviewer_run_id:storedReport.reviewer_run_id,
+      workflow_id:assigned.binding.workflowId,
+      agent_step_order:assigned.binding.stepOrder,
+      agent_step_log_id:assigned.binding.stepLogId,
+      agent_step_output_sha256:assigned.binding.outputSha256,
       policy_version:NOVA_SHADOW_POLICY_VERSION,
       decision:'editorial_candidate',
       reason:'ordinary_story_independently_supported',

@@ -1,0 +1,87 @@
+{
+  "schema": "omnira.theprompt.creative-profile.v3",
+  "version": "2026-10-28-approved",
+  "projectSlug": "ai-media-automation",
+  "approval": {
+    "scope": "approved_master_video_and_reusable_visual_style",
+    "date": "2026-10-28",
+    "referenceSha256": "d23d62737aa04b4203159b0da0f775a88addf50274e16c79d3bfa12e8f092788",
+    "sourceScriptId": "b0495f6b-9973-40dc-ae9b-156cc110ab51",
+    "privateReferenceOnly": true,
+    "publicPublicationAuthorized": false,
+    "recurringPublicationsAuthorized": false,
+    "paidGenerationAuthorized": false
+  },
+  "reference": {
+    "fileName": "ThePrompt_Dynamic_V3_720_Master_TEST_2026-10-28.mp4",
+    "aspectRatio": "9:16",
+    "width": 720,
+    "height": 1280,
+    "fps": 30,
+    "durationMs": 30720,
+    "sourceClips": 4,
+    "editedShots": 12,
+    "captions": 19,
+    "logoOutroSeconds": 2.5
+  },
+  "design": {
+    "editorialTone": "Fast, clear, cinematic short-form AI news",
+    "shots": {
+      "typicalSeconds": 2.6,
+      "sourceReuseExplicit": true,
+      "useOriginalClipMotionWherePresent": true,
+      "motion": [
+        "short cuts",
+        "deliberate cross-dissolves",
+        "subtle animated zooms",
+        "reframes"
+      ],
+      "avoid": [
+        "9-second slowed still-like clips",
+        "source loops",
+        "duplicate publication of source story"
+      ]
+    },
+    "overlay": {
+      "style": "Large brief fact and headline callouts timed to actual spoken words",
+      "verifiedExamples": [
+        "AI AGENT",
+        "7,500 RESEARCHERS",
+        "REPLY-ALL CHAOS",
+        "THE PROBLEM",
+        "AI AGENTS",
+        "SPREAD CONFUSION",
+        "NORM SHIFT"
+      ],
+      "safeArea": "upper portion; do not overlap bottom narration captions"
+    },
+    "captions": {
+      "source": "canonical voice word timing",
+      "color": "#FFFFFF",
+      "weight": "bold",
+      "background": "semi-transparent dark",
+      "placement": "lower safe area"
+    },
+    "outro": {
+      "asset": "Theprompt-hemsida/public/logo-square.png",
+      "restoredDoubleRules": true,
+      "tagline": "AI NEWS. DAILY. NO FLUFF.",
+      "startAfterLastSpokenWord": true,
+      "noCaptionsOverLogo": true
+    }
+  },
+  "operations": {
+    "automaticPublicationEnabled": false,
+    "automaticPaidGenerationEnabled": false,
+    "existingImageFallbackMustRemain": true,
+    "existingTenAndTwentyHourPostingPreserved": true,
+    "dailyBudgetPolicy": "PR #552 draft, separate coordinated database release required",
+    "releaseRequires": [
+      "authorized script and project ownership",
+      "canonical verified media asset IDs",
+      "final visual and audio QA",
+      "independent review",
+      "separate explicit publish authorization"
+    ]
+  }
+}

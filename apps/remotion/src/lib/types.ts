@@ -1,3 +1,35 @@
+import type { AdmittedReelClip } from './hybrid-scenes'
+
+/** Wire-compatible with the owner-scoped web-side private V3 storyboard. */
+export interface V3MontageShot {
+  index:number
+  imageIndex:number
+  startFrame:number
+  durationFrames:number
+  zoomFrom:number
+  zoomTo:number
+  panFrom:[number,number]
+  panTo:[number,number]
+  transitionInFrames:number
+}
+export interface V3StoryboardPlan {
+  schema:'theprompt.v3.private-storyboard.v1'
+  projectId:string
+  scriptId:string
+  referenceSha256:string
+  fps:30
+  contentFrames:number
+  outroFrames:75
+  totalFrames:number
+  shots:V3MontageShot[]
+  safeAudioMilliseconds:number
+  captionWordCount:number
+  editorialHold:{required:true;reasons:string[];overlay:string}
+  canGenerate:false
+  canPublish:false
+  canSchedule:false
+}
+
 export interface WordTiming {
   word: string
   startMs: number
@@ -30,6 +62,12 @@ export interface VideoInputProps {
   // Visual scenes — 4–5 image URLs (Ideogram-generated)
   // If empty, falls back to dark gradient background
   images: string[]
+
+  /** Optional, index-aligned admitted MP4s. Null means keep the original still. */
+  sceneVideos?: Array<AdmittedReelClip | null>
+
+  /** Owner-authorized storyboard input, never production publication authority. */
+  v3Storyboard?: V3StoryboardPlan
 
   /**
    * Per-scene start frames — computed from word timing in render.ts.

@@ -1,7 +1,7 @@
 param(
  [ValidateSet('postgres:16','postgres:17-alpine')]
  [string]$PostgresImage='postgres:17-alpine',
- [ValidateSet('public.ecr.aws/supabase/postgrest:v16.5')]
+ [ValidateSet('public.ecr.aws/supabase/postgrest:v16.5','postgrest/postgrest:v16.5')]
  [string]$PostgrestImage='public.ecr.aws/supabase/postgrest:v16.5',
  [ValidateSet('node:22-alpine')]
  [string]$NodeImage='node:22-alpine'

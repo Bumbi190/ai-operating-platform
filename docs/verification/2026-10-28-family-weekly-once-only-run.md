@@ -1253,3 +1253,16 @@ gren. En separat externt nåbar testbackend och test-only credentials
 krävs innan webbläsartestet kan genomföras utan produktionsrisk.
 Inga tunnlar, hostportar, prod-credentials, prod-migrationer, cronjobb,
 AI-körningar eller publiceringar har aktiverats. PR #581 är fortsatt Draft.
+
+
+### CI-registerjustering efter första GitHub-körningen
+
+Första CI-körningen på commit c5a0216 stoppades **innan teststegen**
+av Amazon Public ECR: toomanyrequests / Data limit exceeded.
+Detta är ett register-/nedladdningsfel, inte ett RLS- eller GoTrue-testfel.
+Det versionlåsta CI-jobbet hämtar därför PostgREST v16.5 från
+postgrest/postgrest och GoTrue v2.197.0 från supabase/gotrue på
+officiella Docker Hub. Lokala körningar av dessa exakta varianter
+passerade GoTrue och signerad JWT mot PostgreSQL 17, utan hostportar.
+Runner-skripten behåller explicita, tillåtna bildparametrar så CI
+inte behöver skapa fejkade ECR-taggar eller ändra testlogiken.

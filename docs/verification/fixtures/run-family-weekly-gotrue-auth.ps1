@@ -1,6 +1,10 @@
 param(
  [ValidateSet('postgres:17-alpine','postgres:16')]
- [string]$PostgresImage='postgres:17-alpine'
+ [string]$PostgresImage='postgres:17-alpine',
+ [ValidateSet('public.ecr.aws/supabase/gotrue:v2.197.0','supabase/gotrue:v2.197.0')]
+ [string]$GotrueImage='public.ecr.aws/supabase/gotrue:v2.197.0',
+ [ValidateSet('public.ecr.aws/supabase/postgrest:v16.5','postgrest/postgrest:v16.5')]
+ [string]$PostgrestImage='public.ecr.aws/supabase/postgrest:v16.5'
 )
 # Real Supabase GoTrue email/password -> signed JWT -> PostgREST RLS.
 # Every container resides on a new --internal Docker network, without host ports.
@@ -14,8 +18,8 @@ $rest=$name+'-rest'
 $pgPass=[guid]::NewGuid().ToString('N')
 $restPass=[guid]::NewGuid().ToString('N')
 $jwtSecret=[guid]::NewGuid().ToString('N')+[guid]::NewGuid().ToString('N')
-$authImage='public.ecr.aws/supabase/gotrue:v2.197.0'
-$restImage='public.ecr.aws/supabase/postgrest:v16.5'
+$authImage=$GotrueImage
+$restImage=$PostgrestImage
 $nodeImage='node:22-alpine'
 $startedNet=$false
 $startedPg=$false

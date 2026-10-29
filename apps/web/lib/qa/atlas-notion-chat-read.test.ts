@@ -219,7 +219,7 @@ describe('Atlas Notion chat activation boundary', () => {
 
   it('chat route restricts Notion evidence turns to only the read tool', () => {
     const route = readFileSync(join(process.cwd(), 'app/api/chat/route.ts'), 'utf8')
-    expect(route).toMatch(/const activeTools\s*=\s*notionReadOnlyTurn\s*\?\s*ATLAS_NOTION_TOOLS/)
+    expect(route).toMatch(/const activeTools\s*=\s*pendingNovaCuratorReview\s*\?\s*\[\]\s*:\s*notionReadOnlyTurn\s*\?\s*ATLAS_NOTION_TOOLS/)
     expect(route).toContain('&& !actionIntent && !navIntent && !resolutionIntent')
     expect(route).toContain("if(name===ATLAS_NOTION_TOOL_NAME)")
     expect(route).toContain("if(!notionReadOnlyTurn) return {ok:false,code:'notion_read_unavailable'}")

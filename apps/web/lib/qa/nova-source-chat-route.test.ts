@@ -138,10 +138,11 @@ vi.mock('@/lib/atlas/openai-chat', () => ({
 }))
 async function ask(input: {
   question?: string; origin?: string; mode?: string; conversation_id?: string;
+  image?: { mediaType: 'image/png'; data: string };
   priorMessages?: Array<{ role: 'user' | 'assistant'; content: string }>,
 } = {}) {
   const { question = 'Nova, visa Handlarbörsens GitHub-kod i app/page.tsx',
-    origin = 'https://nova-test.omnira.test', mode, conversation_id = 'conversation-1', priorMessages = [] } = input
+    origin = 'https://nova-test.omnira.test', mode, conversation_id = 'conversation-1', priorMessages = [], image } = input
   state.turn = 0
   state.calls = []
   state.dispatches = []
@@ -151,7 +152,7 @@ async function ask(input: {
   const request = new Request('https://nova-test.omnira.test/api/chat', {
     method: 'POST', headers: { 'content-type': 'application/json', origin, host: 'nova-test.omnira.test' },
     body: JSON.stringify({ messages: [...priorMessages, { role: 'user', content: question }], conversation_id,
-      ...(mode ? { mode } : {}) }),
+      ...(mode ? { mode } : {}), ...(image ? { image } : {}) }),
   })
   const response: any = await POST(request)
   const stream = response.body ? await new Response(response.body).text() : ''
@@ -311,6 +312,25 @@ describe('Nova source inspection end-to-end chat route: no live provider', () =>
     const { frames } = await ask()
     expect(state.dispatches).toHaveLength(0)
     expect(JSON.stringify(frames)).toContain('source_turn_required')
+  })
+  it('keeps knowledge review tool-free when the operator also attaches an image', async () => {
+    vi.stubEnv('HB_STRATO_INBOX_READ_ENABLED', 'true')
+    const { response, frames } = await ask({
+      question: 'Nova, granska Handlarbörsens kunskapskällor och visa mig vilka beslut du behöver från mig.',
+      image: {
+        mediaType: 'image/png',
+        data: Buffer.from('synthetic image metadata only, no actual user image').toString('base64'),
+      },
+    })
+    expect(response.status).toBe(200)
+    const answer = frames.filter(f => f.event === 'text').map(f => f.text).join('')
+    expect(answer).toContain('ännu inte ansluten')
+    expect(state.calls).toHaveLength(0) // neither Anthropic nor OpenAI
+    expect(state.dispatches).toHaveLength(0) // no GitHub inspection
+    expect(state.network).toEqual([])
+    expect(frames.filter(f => f.event === 'tool_result')).toHaveLength(0)
+    expect(state.writes.filter(w => w.table === 'conversation_messages' && w.row.role === 'tool')).toHaveLength(0)
+    expect(frames.some(f => f.event === 'done')).toBe(true)
   })
   it.each([
     ['Nova original request', 'standard', 'Nova, granska Handlarbörsens kunskapskällor och visa mig vilka beslut du behöver från mig.', undefined],

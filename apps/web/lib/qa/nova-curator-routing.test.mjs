@@ -72,7 +72,8 @@ test('the unavailable answer never claims the work was performed', () => {
   assert.match(NOVA_CURATOR_NOT_CONNECTED_REPLY,/Ingen publicering/)
 })
 test('the guard is installed on the real chat turn, not only a helper', () => {
-  assert.match(route,/const pendingNovaCuratorReview = [^\n]*!image[\s\S]{0,250}isPendingNovaCuratorRequest\(lastUserText\)/)
+  assert.match(route,/const pendingNovaCuratorReview = [^\n]*!studioContext[\s\S]{0,250}isPendingNovaCuratorRequest\(lastUserText\)/)
+  assert.doesNotMatch(route,/const pendingNovaCuratorReview = [^\n]*!image/)
 })
 test('the tool allowlist is empty while the specialist is unavailable', () => {
   assert.match(route,/const activeTools = pendingNovaCuratorReview \? \[\] : notionReadOnlyTurn/)
@@ -157,4 +158,12 @@ test('pending Atlas knowledge review preempts the newly merged read-only GitHub 
   assert.equal(isPendingNovaCuratorRequest(
     'Nova, visa Handlarbörsens GitHub-kod i app/page.tsx.'
   ),false)
+})
+
+test('explicit knowledge review stays tool-free even if a user attaches an image', () => {
+  assert.match(route, /const pendingNovaCuratorReview = !studioContext && !websitePlanRef && !rawBuildContext\s+&& isPendingNovaCuratorRequest\(lastUserText\)/)
+  assert.doesNotMatch(route, /const pendingNovaCuratorReview = !image/)
+  assert.equal(isPendingNovaCuratorRequest(
+    'Nova, granska Handlarbörsens kunskapskällor och visa mig vilka beslut du behöver från mig.'
+  ), true)
 })

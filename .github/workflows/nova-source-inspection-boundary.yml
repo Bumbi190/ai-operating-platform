@@ -86,7 +86,7 @@ jobs:
             'nova-source-inspection.test.ts': 52,
             'nova-source-inspection-route.test.ts': 10,
             'nova-source-atlas-tool.test.ts': 9,
-            'nova-source-chat-route.test.ts': 17,
+            'nova-source-chat-route.test.ts': 20,
             'handlarborsen-strato-inbox-atlas.test.ts': 15,
             'handlarborsen-strato-inbox-intent.test.ts': 22,
             'atlas-openai-chat.test.ts': 5,

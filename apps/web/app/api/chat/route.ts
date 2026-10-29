@@ -786,7 +786,9 @@ export async function POST(request: Request) {
   })()
   // Source Curator is NOT yet a chat tool. Explicit Nova document review must
   // fail honestly rather than falling through to the generic CRM/tool catalog.
-  const pendingNovaCuratorReview = !image && !studioContext && !websitePlanRef && !rawBuildContext
+  // An attached image cannot turn an explicitly unavailable knowledge-review
+  // request back into a generic model/tool turn (including CRM and inbox tools).
+  const pendingNovaCuratorReview = !studioContext && !websitePlanRef && !rawBuildContext
     && isPendingNovaCuratorRequest(lastUserText)
   // Both external catalog searches and approved Notion reads need tools, even
   // when the message includes writing verbs such as "förbättra".

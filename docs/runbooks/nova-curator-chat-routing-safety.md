@@ -39,8 +39,11 @@ is recognized. Atlas and Nova are interchangeable names for this request,
 and a direct command in Atlas chat is also recognized, e.g.:
 "Nova, granska Handlarbörsens kunskapskällor", "Atlas, granska
 Handlarbörsens kunskapskällor" and "Granska Handlarbörsens kunskapskällor".
-Negated commands, unrelated CRM reads, other project names and meta questions
-remain on their existing routes.
+An image attachment on the **same explicit document-review question** must not
+re-enable the generic model and CRM tools; the not-connected answer remains
+fail-closed even if the user attaches an image. Other image-only questions retain
+their existing multimodal handling. Negated commands, unrelated CRM reads,
+other project names and meta questions remain on their existing routes.
 
 Until a separate authorized Source Curator tool is deployed, this turn:
 

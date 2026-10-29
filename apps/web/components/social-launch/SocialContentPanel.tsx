@@ -6,6 +6,7 @@ import type {SocialContentInput,SocialContentView,SocialContentPost} from '@/lib
 import {SocialSchedulePanel} from './SocialSchedulePanel'
 import {FAMILY_SOCIAL_PROJECT_ID} from '@/lib/social-launch/scheduling/policy'
 import {SocialPublicationPanel} from './SocialPublicationPanel'
+import {buildManualLinkedInCopy,manualAssetFilename} from '@/lib/handlarborsen/distribution/manual-linkedin'
 import styles from './SocialContentPanel.module.css'
 const formats={text:'Text',image:'Bild',video:'Video',link:'Länk'}
 const statuses={proposal:'Förslag att granska',approved:'Innehållet godkänt',rejected:'Avvisat innehåll',needs_review:'Behöver granskas igen'}
@@ -17,6 +18,7 @@ function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{project
  const [model,setModel]=useState<SocialContentView|null>(null),[editor,setEditor]=useState<Editor|null>(null),[selectedId,setSelectedId]=useState<string|null>(null)
  const [dirty,setDirty]=useState(false),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState(''),[stale,setStale]=useState(false)
  const [showDrafts,setShowDrafts]=useState(true)
+ const [linkedInCopyFeedback,setLinkedInCopyFeedback]=useState<{revisionId:string;message:string}|null>(null)
  const [loaded,setLoaded]=useState<Record<string,boolean>>({})
  const responseSequence=useRef(0),writeInFlight=useRef(false),observedPlan=useRef(planStateKey)
  const live=useRef(true),controllers=useRef(new Set<AbortController>()),pending=useRef<{signature:string;body:Record<string,unknown>}|null>(null)
@@ -64,6 +66,16 @@ function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{project
   }catch(e){if(live.current&&!c.signal.aborted&&sequence===responseSequence.current)setError(e instanceof Error?e.message:'Ändringen kunde inte sparas. Ditt utkast finns kvar.')}
   finally{controllers.current.delete(c);if(sequence===responseSequence.current){writeInFlight.current=false;if(live.current)setBusy(false)}}
  }
+ async function copyLinkedInText(){
+  if(!selected||busy||loading||dirty||stale)return
+  const pkg=buildManualLinkedInCopy(selected)
+  if(!pkg.ok){setLinkedInCopyFeedback({revisionId:selected.revision.id,message:'Det här innehållet saknar ett giltigt godkännande för aktuell version.'});return}
+  try{
+   if(!navigator.clipboard?.writeText)throw Error('clipboard_unavailable')
+   await navigator.clipboard.writeText(pkg.text)
+   if(live.current)setLinkedInCopyFeedback({revisionId:pkg.revisionId,message:'Godkänd text kopierad. Klistra in på LinkedIn och publicera själv. Omnira har inte publicerat något.'})
+  }catch{if(live.current)setLinkedInCopyFeedback({revisionId:pkg.revisionId,message:'Kunde inte kopiera automatiskt. Markera inläggstexten ovan och kopiera manuellt.'})}
+ }
  const media=selected?.revision.media??[]
  const mediaMissing=!!selected&&['image','video'].includes(selected.revision.draft.format)&&media.length===0
  const reviewDisabled=busy||loading||dirty||stale||mediaMissing||selected?.status==='needs_review'||media.some(m=>!loaded[m.id+':'+m.sha256])
@@ -101,7 +113,17 @@ function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{project
      <div className={styles.actions}><button type="button" disabled={busy||loading} onClick={()=>edit(selected)}>Redigera utkast</button>{!selected.decision&&<><button type="button" disabled={reviewDisabled} onClick={()=>void send('decide','approve')}>Godkänn innehållet</button><button type="button" disabled={busy||loading||dirty||stale} onClick={()=>void send('decide','reject')}>Avvisa innehållet</button></>}</div>
      {dirty&&<p className={styles.notice}>Spara den nya versionen innan du granskar den.</p>}
      <details><summary>Granskningskvitto</summary><p>SHA256: {selected.revision.sha256}</p><p>Godkännandet gäller innehållet. Publicering kräver separat aktivering och kontroll av kanalens krav.</p></details>
-     <SocialPublicationPanel projectId={projectId} post={selected} disabled={busy||loading||dirty||stale}/>
+     {selected.revision.draft.channel==='linkedin'&&<section className={styles.notice} aria-label="LinkedIn – manuell publicering">
+      <h4>LinkedIn – publicera manuellt</h4>
+      <p>Atlas kan förbereda inlägget här, men kopieringen publicerar ingenting. Godkänn först exakt innehållsversion.</p>
+      <div className={styles.actions}>
+       <button type="button" disabled={busy||loading||dirty||stale||!buildManualLinkedInCopy(selected).ok} onClick={()=>void copyLinkedInText()}>Kopiera godkänd LinkedIn-text</button>
+       {buildManualLinkedInCopy(selected).ok&&media.map(m=>{const name=manualAssetFilename(m);return name?<a key={m.id+':'+m.sha256} href={mediaUrl(projectId,m.id,m.sha256)} download={name}>{m.kind==='image'?'Hämta godkänd bild':'Hämta godkänd video'}</a>:null})}
+      </div>
+      {linkedInCopyFeedback?.revisionId===selected.revision.id&&<p role="status">{linkedInCopyFeedback.message}</p>}
+      <p>Klistra in texten och bifoga eventuell bild på LinkedIn. En manuell publicering behöver senare verifieras separat innan Atlas kan räkna den som publicerad.</p>
+     </section>}
+     {(['facebook','instagram'] as string[]).includes(selected.revision.draft.channel)&&<SocialPublicationPanel projectId={projectId} post={selected} disabled={busy||loading||dirty||stale}/>}
     </article>}
    </div>
   </div></>}

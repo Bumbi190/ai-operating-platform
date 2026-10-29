@@ -1,0 +1,26 @@
+name: Atlas Git PR Preflight Contract
+
+on:
+  pull_request:
+    paths:
+      - AGENTS.md
+      - CLAUDE.md
+      - scripts/atlas/pr-preflight.mjs
+      - scripts/atlas/pr-preflight.test.mjs
+      - .github/workflows/atlas-branch-preflight.yml
+      - docs/verification/2026-10-28-atlas-pr-preflight.md
+
+permissions:
+  contents: read
+
+jobs:
+  preflight-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate Atlas branch/PR preflight decision contract
+        run: node --test scripts/atlas/pr-preflight.test.mjs

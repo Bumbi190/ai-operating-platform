@@ -2,6 +2,8 @@
  * Search static, pinned, third-party metadata. No I/O, network or execution.
  * Text found here is untrusted source data and never a tool instruction.
  */
+import { AUDITED_SOURCE_PATHS, sourceAuditFor } from './source-audit.mjs'
+
 const MAX_RESULTS = 8
 const EXPECTED_REPOSITORY = 'https://github.com/Zie619/n8n-workflows'
 const EXPECTED_SHA = '94007c1445d9258a7da116646b79473e7c7c3282'
@@ -81,6 +83,11 @@ export function searchReferences(index, input = {}) {
   const project = cleanProject(input.project)
   const groups = termGroups(query)
   const projectTerms = project ? PROJECT_TERMS[project] : []
+  // A model may shorten the search query and omit the operator's noOp term.
+  // That intent is therefore optionally supplied by the authenticated server
+  // from the LAST user message, never from a third-party workflow description.
+  const noOpEvidenceRequested = input.includeNoOpAuditExamples === true ||
+    /no[\s-]?op|platshåll|placeholder/i.test(query)
 
   const scored = []
   for (const entry of index.workflows) {
@@ -137,8 +144,33 @@ export function searchReferences(index, input = {}) {
     sourceUrl: `${EXPECTED_REPOSITORY}/blob/${index.source.pinnedSha}/${entry.path}`,
     sourcePath: entry.path,
     reviewState: 'unreviewed_reference_only',
+    qualityAssessment: sourceAuditFor(entry.path, index.source.pinnedSha, entry.nodeCountClaim),
     runnableInOmnira: false,
   }))
+
+  // A source-quality question needs the EXISTING spot-checked noOp evidence,
+  // even if those three specific files fell outside the eight ranked matches.
+  // This supplemental list is not search availability, nor validation of the
+  // workflow's behavior. Its filenames are pinned in our local audit module.
+  const auditedNoOpExamples = []
+  if (noOpEvidenceRequested) {
+    for (const path of AUDITED_SOURCE_PATHS) {
+      if (!/^workflows\/[A-Za-z0-9_-]+\/[A-Za-z0-9_.-]+\.json$/.test(path)) continue
+      const entry = index.workflows.find(item => item?.path === path)
+      if (!entry) continue
+      const assessment = sourceAuditFor(path, index.source.pinnedSha, entry.nodeCountClaim)
+      const noOp = assessment.observedStructure?.noOpNodeCount ?? 0
+      if (assessment.evidenceLevel !== 'pinned_json_structure_spot_checked' || noOp <= 0) continue
+      auditedNoOpExamples.push({
+        name: entry.name,
+        sourcePath: path,
+        sourceUrl: `${EXPECTED_REPOSITORY}/blob/${index.source.pinnedSha}/${path}`,
+        qualityAssessment: assessment,
+        reviewState: 'unreviewed_reference_only',
+        runnableInOmnira: false,
+      })
+    }
+  }
 
   return {
     ok: true,
@@ -153,6 +185,10 @@ export function searchReferences(index, input = {}) {
     duplicatesSuppressed: scored.length - unique.length,
     truncated: unique.length > matches.length,
     matches,
-    limitation: 'Extern, delvis gammal och overifierad metadata. Träffar och sortering är inte kvalitetskontroll. Ingenting kan importeras eller köras via detta verktyg.',
+    ...(noOpEvidenceRequested ? {
+      auditedNoOpExamples,
+      auditedNoOpEvidenceScope: 'five_pinned_json_files_only_not_full_catalog',
+    } : {}),
+    limitation: 'Extern och delvis inaktuell metadata. Fem filer har endast statisk strukturgranskning, aldrig funktionell verifiering. Namn, scoring och strukturgranskning är inte godkännande att importera eller köra något.',
   }
 }

@@ -104,6 +104,17 @@ jobs:
             lib/qa/breaking-dual-authority-isolation.test.ts \
             lib/qa/chat-operator-capability.test.ts \
             lib/qa/chat-workflow-read-isolation.test.ts \
+            lib/qa/handlarborsen-sales-overview.test.ts \
+            lib/qa/handlarborsen-reply-lifecycle.test.ts \
+            lib/qa/handlarborsen-communications-overview.test.ts \
+            lib/qa/handlarborsen-communications-access.test.ts \
+            lib/qa/handlarborsen-evidence-comparison.test.ts \
+            lib/qa/handlarborsen-operator-tools.test.ts \
+            lib/qa/handlarborsen-tool-intent.test.ts \
+            lib/qa/handlarborsen-strato-inbox-atlas.test.ts \
+            lib/qa/handlarborsen-strato-inbox-intent.test.ts \
+            lib/qa/handlarborsen-distribution-funnel.test.ts \
+            lib/qa/handlarborsen-manual-linkedin.test.ts \
             lib/qa/schema-security-invariant.test.ts \
             lib/qa/migration-security-gate.test.ts \
             lib/qa/bugscanner-run-authorization.test.ts \
@@ -119,6 +130,18 @@ jobs:
             lib/qa/insights-bounded-run.test.ts \
             lib/qa/youtube-project-oauth.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/atlas-isolation.json"
+
+      - name: Verify Strato inbox-only offline Python safety tests
+        run: |
+          python3 - <<'PY'
+          import unittest
+          suite = unittest.TestLoader().discover('scripts/sales/tests', pattern='test_strato_*.py')
+          if suite.countTestCases() < 21:
+              raise SystemExit('Strato offline tests missing: expected at least 21')
+          result = unittest.TextTestRunner(verbosity=1).run(suite)
+          if not result.wasSuccessful() or result.skipped:
+              raise SystemExit('Strato offline tests failed or skipped')
+          PY
 
       # The anti-skip proof. Console text is not evidence; the JSON results are.
       - name: Verify every isolation suite RAN and did not skip
@@ -255,6 +278,26 @@ jobs:
             // ordering alone would surface them first, and both accounts asserted so
             // isolation is proven in both directions rather than from one seat.
             'chat-workflow-read-isolation.test.ts': 14,
+            // Handlarbörsen CRM read stays owner-scoped and HEAD count-only, with
+            // existing latest-mail/marketplace routes still tested for regressions.
+            'handlarborsen-sales-overview.test.ts': 12,
+            // Reply-status correlation is owner-read-only; errors fail closed,
+            // and an approved revision never implies recipient delivery.
+            'handlarborsen-reply-lifecycle.test.ts': 25,
+            // The communications page must be owner-only, accurate and inert; never infer delivery or permission.
+            'handlarborsen-communications-overview.test.ts': 14,
+            // Executable route tests reject foreign projects and non-owners before privileged reads.
+            'handlarborsen-communications-access.test.ts': 7,
+            // Composite external+internal evidence adds no identities, sends or new grants.
+            'handlarborsen-evidence-comparison.test.ts': 19,
+            'handlarborsen-operator-tools.test.ts': 5,
+            'handlarborsen-tool-intent.test.ts': 4,
+            // PR #562 keeps Strato owner-scoped and read-only; no unreviewed
+            // bodies, sends, cross-project reads, or LinkedIn provider POST.
+            'handlarborsen-strato-inbox-atlas.test.ts': 15,
+            'handlarborsen-strato-inbox-intent.test.ts': 22,
+            'handlarborsen-distribution-funnel.test.ts': 12,
+            'handlarborsen-manual-linkedin.test.ts': 8,
             // Phase 9Y — the schema layer. Every phase from 9J to 9X.2 audited
             // ROUTE code and every one was clean; the exposure that blocked
             // closure was a TABLE. workflow_stories was created with no row

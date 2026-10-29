@@ -96,3 +96,23 @@ Current PR branch: `codex/atlas-global-repo-catalog-issue604`; previous commit `
 Disposable real PG17 runner: `scripts/atlas/verify-owner-github-pg17-rls.ps1`, cached `postgres:17-alpine`, no network, no host ports/volumes, 256 MiB memory, 0.6 CPU, ephemeral data/roles only, auto-removal. It now tests **transactional, timeout-bounded SQL install and synthetic rollback**, along with the prior 12 real PG17 role/RLS/FK assertions. This is not proof of an end-to-end Supabase migration, true JWT/RLS auth or production traffic lock behavior.
 
 **Final state: HOLD / DRAFT.** No automated migration, merge, GitHub key provision, token creation, privileged Nova/Pling tool, Vercel promotion, paid API or production write is authorized by this document.
+
+## 9. Later Stage 1d: tested alternative to FK deletion blocker
+
+The restrictive baseline proposal is deliberately unchanged. An **additional, unapproved** SQL alternative now exists at `docs/architecture/proposed-sql/atlas_owner_github_lifecycle_OPTION_NOT_MIGRATION.sql`, with complete comparison/retention considerations in `docs/architecture/atlas-owner-github-lifecycle-decision-20261029.md`.
+
+A separate real, networkless disposable PostgreSQL 17 fixture successfully verified:
+- composite project/owner foreign key still prevents cross-project spoofing;
+- revoke makes a binding ineligible for new scoped read; duplicate revoke is denied;
+- unlink physically removes the mapping but keeps owner-readable approval/revoke/unlink events while project exists;
+- removing a project deletes only its related audit and link metadata, without blocking project deletion;
+- deleting the owner cascades their remaining project-owned mappings/audit, while a foreign owner survives;
+- Pling/anon cannot read audit, authenticated actors cannot insert/delete audit, and `service_role` cannot directly mutate event rows despite replayed Supabase default ACLs;
+- project transfer continues to be **intentionally blocked** until the consented audit-handoff/erasure flow exists.
+
+Run the two isolated variants separately (one uses the original restrictive proposal; one adds the unapproved CASCADE/audit option):
+```powershell
+powershell -NoProfile -File scripts/atlas/verify-owner-github-pg17-rls.ps1
+powershell -NoProfile -File scripts/atlas/verify-owner-github-pg17-rls.ps1 -LifecycleVariant
+```
+Both require the cached local PG17 Docker image, create no host ports or provider connections and auto-clean their synthetic containers. No actual Supabase Auth, GitHub provider token invalidation, signed owner review or production migration is implemented. **Option B is recommended for further discussion/testing, not approved.** Account erasure may still involve other Omnira database dependencies; the synthetic fixture does not establish whole-platform deletion success.

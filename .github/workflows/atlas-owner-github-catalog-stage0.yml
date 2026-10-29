@@ -8,6 +8,7 @@ on:
       - 'apps/web/lib/atlas/project-connections/**'
       - 'apps/web/lib/qa/atlas-owner-github-*.test.mjs'
       - 'docs/architecture/proposed-sql/atlas_owner_github_bindings_stage1_PROPOSAL.sql'
+      - 'docs/architecture/proposed-sql/atlas_owner_github_lifecycle_OPTION_NOT_MIGRATION.sql'
       - 'apps/web/lib/qa/fixtures/atlas-owner-github-rls/**'
       - 'scripts/atlas/verify-owner-github-pg17-rls.ps1'
   workflow_dispatch:
@@ -38,8 +39,9 @@ jobs:
             apps/web/lib/qa/atlas-owner-github-catalog.test.mjs \
             apps/web/lib/qa/atlas-owner-github-store.test.mjs \
             apps/web/lib/qa/atlas-owner-github-schema-contract.test.mjs \
+            apps/web/lib/qa/atlas-owner-github-lifecycle.test.mjs \
             | tee "$RUNNER_TEMP/owner-catalog-tests.txt"
-          grep -qx '# tests 49' "$RUNNER_TEMP/owner-catalog-tests.txt"
-          grep -qx '# pass 49' "$RUNNER_TEMP/owner-catalog-tests.txt"
+          grep -qx '# tests 59' "$RUNNER_TEMP/owner-catalog-tests.txt"
+          grep -qx '# pass 59' "$RUNNER_TEMP/owner-catalog-tests.txt"
           grep -qx '# fail 0' "$RUNNER_TEMP/owner-catalog-tests.txt"
           grep -qx '# skipped 0' "$RUNNER_TEMP/owner-catalog-tests.txt"

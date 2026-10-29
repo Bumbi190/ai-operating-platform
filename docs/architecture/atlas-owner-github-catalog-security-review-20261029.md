@@ -75,3 +75,13 @@ Read-only production evidence refreshed for the Omnira project: `projects` has *
 **Current evidence:** real PG17 role/RLS/FK tests + bounded transactional candidate install and destructive rollback **only of synthetic test rows**, plus **49/49 offline Node tests** covering the migration plan, timeout contract, rollback file, expected deletion blocker, one-repo scope and unauthorized operations. No actual Supabase Auth/JWT validation or production migration has run. The live schema remains unchanged, and the disposable test container was confirmed absent after completion.
 
 **Review decision remains HOLD / DRAFT.** The test author and security reviewer are the same assistant; this is *not* an independent approval. No owner authorization for production SQL, an authenticated Nova GitHub read, external provider permissions or any automatic credentials was granted.
+
+## Stage 1d: explicit revoke/unlink and account-erasure SQL alternative – self-review
+
+A **second documentation-only SQL candidate** (`atlas_owner_github_lifecycle_OPTION_NOT_MIGRATION.sql`) demonstrates that project-owned GitHub bindings can use `ON DELETE CASCADE` with separately project-owned RLS audit records. The project audit persists after a binding is unlinked and is erased with the project or owning account. The existing restrictive proposal remains intact for comparison and **neither candidate is migrated**.
+
+Real disposable PG17 fixture `verify_lifecycle_pg17.sql` passed: cross-owner link/audit admission denied; owner A/B isolation; anon and Pling audit access denied; authenticated and service-role DML denied; serialized synthetic revoke plus event, stale retry refusal; unlink retains audit while active project exists; project and owner erasure remove only their data and leave foreign owner's project/audit untouched. No live repo permission or GitHub token was created or revoked. The existing restrictive variant continues to pass separately.
+
+**Remaining unresolved security / privacy:** this does NOT prove an append-only cryptographic audit log, does not attest human consent, does not invalidate provider credentials issued before DB revocation, does not guarantee cancellation of already-running workers, and does not implement legitimate owner transfer or a production-wide privacy erasure workflow. Audit metadata/receipt digests may still be pseudonymous data and need an explicit retention decision. Treat CASCADE as a database-consistency backstop, not a substitute for secure revoke/unlink orchestration. No independent human reviewer has signed off.
+
+Design and decision comparison: `docs/architecture/atlas-owner-github-lifecycle-decision-20261029.md`. **Release HOLD / PR Draft.**

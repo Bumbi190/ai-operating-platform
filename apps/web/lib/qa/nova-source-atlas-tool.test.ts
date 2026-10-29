@@ -42,6 +42,20 @@ describe('Nova source inspection tool authority and minimal durable receipt',()=
     expect(isNovaSourceReadIntent('Visa annan kunds repo')).toBe(false)
     expect(isNovaSourceReadIntent(null)).toBe(false)
   })
+  it('never treats an explicit DO NOT READ instruction as source-read consent', () => {
+    for (const question of [
+      'Nova, visa inte Handlarbörsens GitHub-kod.',
+      'Nova, läs aldrig Handlarbörsens repo i app/page.tsx.',
+      'Jag vill inte att Nova läser Handlarbörsens GitHub-kod.',
+      'Visa Handlarbörsens repo utan att läsa filen.',
+      "Don't read Handlarbörsens GitHub code; visa inte filen.",
+      'Sök inte i Handlarbörsens github-repo.',
+    ]) {
+      expect(isNovaSourceReadIntent(question), question).toBe(false)
+    }
+    // A refusal to CHANGE code must not suppress an otherwise clear read.
+    expect(isNovaSourceReadIntent('Visa Handlarbörsens GitHub-kod, men ändra inte någonting.')).toBe(true)
+  })
   it('is preview-only and tool schema admits no writable action or arbitrary repo',()=>{
     expect(novaSourcePilotEnabled()).toBe(true)
     vi.stubEnv('VERCEL_ENV','production')

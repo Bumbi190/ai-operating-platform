@@ -31,10 +31,25 @@ export function novaSourcePilotEnabled(): boolean {
   return process.env.VERCEL_ENV === 'preview' && process.env.ATLAS_SOURCE_INSPECTION_MODE === 'pilot'
 }
 
+/**
+ * A refusal to read code is not a positive source-read authorization.
+ * Keep the small lexical gate conservative: a false negative is one extra
+ * clarification, whereas a false positive sends private code to a provider.
+ * Unicode boundaries matter for Swedish läs/läsa/läser.
+ */
+const SOURCE_READ_VERBS = '(?:visa|visar|läs|läsa|läser|granska|granskar|kontrollera|kontrollerar|kolla|hämta|hitta|sök|söka|öppna|show|read|inspect|check|fetch|open)'
+const SOURCE_READ_NEGATION = new RegExp(
+  '(?:(?<![\\p{L}\\p{N}_])(?:inte|ej|icke|aldrig|never|don\\u2019t|don\\u0027t|do\\s+not|without|utan\\s+att)\\s+(?:att\\s+)?(?:nova\\s+)?' + SOURCE_READ_VERBS + '(?![\\p{L}\\p{N}_]))' +
+  '|(?:(?<![\\p{L}\\p{N}_])' + SOURCE_READ_VERBS + '(?:\\s+(?:mig|den|det|oss))?\\s+(?:inte|ej|icke|aldrig|not)(?![\\p{L}\\p{N}_]))' +
+  '|(?:(?<![\\p{L}\\p{N}_])inte\\s+att\\s+(?:nova\\s+)?' + SOURCE_READ_VERBS + '(?![\\p{L}\\p{N}_]))',
+  'iu',
+)
+
 /** One authorized project-specific read turn. No generic repository querying. */
 export function isNovaSourceReadIntent(value: unknown): boolean {
   if (typeof value !== 'string' || value.length < 10 || value.length > 700) return false
-  const text = value.toLowerCase()
+  const text = value.toLowerCase().normalize('NFC')
+  if (SOURCE_READ_NEGATION.test(text)) return false
   return /handlarb(?:ö|o)rsen/.test(text)
     && /(kod|källkod|repo|github|filen|filer|commit|branch|src\/|app\/)/.test(text)
     && /(visa|läs|hitta|kolla|granska|kontrollera|vilket|vilken|status|sök|öppna)/.test(text)

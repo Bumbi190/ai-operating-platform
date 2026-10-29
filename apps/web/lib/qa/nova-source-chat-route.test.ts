@@ -234,6 +234,13 @@ describe('Nova source inspection end-to-end chat route: no live provider', () =>
     })
     expect(state.network).toEqual([])
   })
+  it('does not fetch source on an explicitly negated code-reading request', async () => {
+    const { frames } = await ask({ question: 'Nova, visa inte Handlarbörsens GitHub-kod i app/page.tsx' })
+    expect(state.calls[0].tools).not.toContain('nova_inspect_project_source')
+    expect(state.dispatches).toHaveLength(0)
+    expect(JSON.stringify(frames)).toContain('source_turn_required')
+    expect(state.network).toEqual([])
+  })
   it('keeps a GitHub source request exclusive when the Strato inbox tool is enabled', async () => {
     vi.stubEnv('HB_STRATO_INBOX_READ_ENABLED', 'true')
     const { frames } = await ask()

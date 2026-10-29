@@ -58,6 +58,15 @@ Local full TypeScript is still affected by the three known shared dependency-cac
 
 This is a branch-only merge, NOT a merge of PR #598 into production. It does not install the new GitHub App, activate Preview or Production, change Supabase, send email, publish or authorize code modification. PR #598 stays Draft until separate approval.
 
+## Subsequent security and migration-source verification (29 October 2026)
+
+- A second read-intent audit found that explicit negations, such as 'Nova, visa inte Handlarbörsens GitHub-kod', were misclassified as positive source requests because the original classifier matched only keywords. The new conservative Unicode-aware negation guard refuses direct 'do not read/show/inspect', 'visa inte', 'läs aldrig', 'inte att Nova läser', and 'utan att läsa' requests. A negative request cannot trigger an approved source turn. Clear positive reads with 'ändra inte' remain eligible because refusing code modification is not refusing a read.
+- Added one policy regression and one real `/api/chat` route-level regression proving no GitHub source dispatch under negated read intent. This does not add a new repo, permission, model, workflow, or secret.
+
+- The unrelated Vercel migration guard failure has a **known exact source** in the existing Handlarbörsen Lead Finder work branch `feat/hb-leadfinder-review-20261028`, associated with Draft PR #584: local commit `0eacfc4` adds `apps/web/supabase/migrations/20261029065156_handlarborsen_owner_review_archive_20261029.sql`, and local `921287b` updates the guard/test counts from 163/149 to 164/150. Neither commit had been published to PR #584 at the read-only comparison point (its remote HEAD was `2060dd63`). **Do not copy or cherry-pick this feature's migration into Nova PR #598.**
+- A read-only production Supabase query found the applied ledger entry `version=20261029065156`, `name=handlarborsen_owner_review_archive_20261029` with one SQL statement. Its 420 lexical SQL tokens match the exact local canonical source's 420 tokens after removing comments and irrelevant whitespace. This is strong source correspondence but is not a proof of complete database replay or that the owning PR has passed its own release gates. No production data or migration ledger was changed.
+- **Release sequencing:** let PR #584's owning work complete its own migration guard reconciliation, independent review, and approved merge to `main`. After that, sync the current Nova branch with updated main, rerun Nova/Handlarbörsen security CI and verify the actual Vercel build. Do not add a migration-guard override, create a ledger placeholder, or turn on any feature before approved release.
+
 ## GitHub App – owner setup prepared, NOT installed (28 October 2026)
 
 GitHub supports registration links that prefill permission and account settings. This is an owner checklist, not authority for an assistant to create or install an app.

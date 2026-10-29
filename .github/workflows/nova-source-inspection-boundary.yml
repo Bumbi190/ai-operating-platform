@@ -1,0 +1,116 @@
+# Nova source inspection: no secrets, databases, execution or provider billing.
+name: Nova Source Inspection Boundary
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/nova-source-inspection-boundary.yml'
+      - 'apps/web/lib/atlas/source-inspection/**'
+      - 'apps/web/app/api/atlas/source-inspection/**'
+      - 'apps/web/lib/qa/nova-source-*.test.ts'
+      - 'apps/web/app/api/chat/route.ts'
+      - 'apps/web/lib/os/chat-shared.ts'
+      - 'apps/web/lib/handlarborsen/distribution/atlas-strato-inbox.ts'
+      - 'apps/web/lib/handlarborsen/distribution/strato-inbox-intent.ts'
+      - 'apps/web/lib/qa/handlarborsen-strato-inbox-*.test.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nova-source-inspection-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check out PR code without persistent credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Prove no live provider or SQL credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in NOVA_SOURCE_GITHUB_APP_ID NOVA_SOURCE_GITHUB_INSTALLATION_ID NOVA_SOURCE_GITHUB_APP_PRIVATE_KEY ATLAS_SQL_TEST_URL; do
+            if [ -n "${!key-}" ]; then
+              echo "::error::Unexpected live service configuration: $key"
+              exit 1
+            fi
+          done
+          echo "No live GitHub App or SQL access."
+
+      - name: Run focused Nova security and existing broker regressions
+        working-directory: apps/web
+        run: |
+          npx --no vitest run --maxWorkers=2 --minWorkers=1 \
+            lib/qa/nova-source-inspection.test.ts \
+            lib/qa/nova-source-inspection-route.test.ts \
+            lib/qa/nova-source-atlas-tool.test.ts \
+            lib/qa/nova-source-chat-route.test.ts \
+            lib/qa/handlarborsen-strato-inbox-atlas.test.ts \
+            lib/qa/handlarborsen-strato-inbox-intent.test.ts \
+            lib/qa/atlas-openai-chat.test.ts \
+            lib/qa/github-app-transport.test.ts \
+            lib/qa/sdf1a-code-work-contracts.test.ts \
+            lib/qa/handlarborsen-evidence-comparison.test.ts \
+            --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/nova-source-inspection.json"
+
+      - name: Verify all ten suites actually ran, with zero skips
+        if: always()
+        shell: bash
+        run: |
+          node - "$RUNNER_TEMP/nova-source-inspection.json" <<'NODE'
+          const fs = require('node:fs')
+          const filename = process.argv[2]
+          if (!fs.existsSync(filename)) {
+            console.error('::error::Nova source tests produced no result file')
+            process.exit(1)
+          }
+          const report = JSON.parse(fs.readFileSync(filename, 'utf8'))
+          const files = report.testResults || []
+          const required = {
+            'nova-source-inspection.test.ts': 52,
+            'nova-source-inspection-route.test.ts': 10,
+            'nova-source-atlas-tool.test.ts': 9,
+            'nova-source-chat-route.test.ts': 13,
+            'handlarborsen-strato-inbox-atlas.test.ts': 15,
+            'handlarborsen-strato-inbox-intent.test.ts': 22,
+            'atlas-openai-chat.test.ts': 5,
+            'github-app-transport.test.ts': 43,
+            'sdf1a-code-work-contracts.test.ts': 42,
+            'handlarborsen-evidence-comparison.test.ts': 19,
+          }
+          let failures = 0
+          for (const [name, minimum] of Object.entries(required)) {
+            const matching = files.filter(t => t.name?.replace(/\\/g, '/').endsWith('/' + name))
+            const tests = matching.flatMap(t => t.assertionResults || [])
+            const passed = tests.filter(t => t.status === 'passed').length
+            const notPassed = tests.filter(t => t.status !== 'passed').length
+            if (matching.length !== 1 || matching[0].status !== 'passed' || passed < minimum || notPassed) {
+              console.error('::error::Nova boundary missing/failed/skipped: ' + name + '; passed=' + passed + ', other=' + notPassed)
+              failures++
+            } else {
+              console.log(name + ': ' + passed + ' passed, no skips')
+            }
+          }
+          if (files.length !== Object.keys(required).length) failures++
+          if (failures) process.exit(1)
+          NODE
+
+      - name: Typecheck complete web workspace without production credentials
+        working-directory: apps/web
+        run: npx --no tsc --noEmit --pretty false

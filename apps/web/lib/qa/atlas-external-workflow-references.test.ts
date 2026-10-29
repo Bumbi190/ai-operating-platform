@@ -176,7 +176,7 @@ describe('Atlas external workflow references: read-only, pinned discovery', () =
   it('derives noOp intent from authenticated user text, not tool input', () => {
     const route = readFileSync(resolve(process.cwd(), 'app/api/chat/route.ts'), 'utf8')
     expect(route).toContain('includeNoOpAuditExamples: /no[\\s-]?op|platshåll|placeholder/i.test(notionUserQuestion)')
-    expect(route).toContain('notionReadOnlyTurn,lastUserText,stratoInboxReadIntent)')
+    expect(route).toContain('notionReadOnlyTurn,lastUserText,stratoInboxReadIntent,sourceReadTurn)')
     expect(route).toContain('När användaren frågar om noOp/platshållare:')
     expect(route).toContain('if (!operator.ok) return { denied: \'platform_operator_required\' }')
   })

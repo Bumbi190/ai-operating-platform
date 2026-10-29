@@ -145,3 +145,16 @@ test('same-assistant aliases do not capture CRM, other projects or ordinary know
     'Atlas, visa Handlarbörsens senaste mejl.'
   ]) assert.equal(isPendingNovaCuratorRequest(prompt), false, prompt)
 })
+
+test('pending Atlas knowledge review preempts the newly merged read-only GitHub source inspection tool', () => {
+  assert.match(route,
+    /if \(!pendingNovaCuratorReview && novaSourcePilotEnabled\(\) && isNovaSourceReadIntent\(lastUserText\)/)
+  assert.match(route,/const offeredTools: Anthropic\.Tool\[\] = sourceReadTurn \? \[NOVA_SOURCE_TOOL\] : activeTools/)
+  assert.match(route,/if \(pendingNovaCuratorReview\) \{\n\s*send\('text',/)
+  assert.equal(isPendingNovaCuratorRequest(
+    'Atlas, granska Handlarbörsens kunskapskällor och kontrollera GitHub-koden.'
+  ),true)
+  assert.equal(isPendingNovaCuratorRequest(
+    'Nova, visa Handlarbörsens GitHub-kod i app/page.tsx.'
+  ),false)
+})

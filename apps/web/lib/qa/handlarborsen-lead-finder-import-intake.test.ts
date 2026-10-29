@@ -145,7 +145,7 @@ function harness(opts: {
   }
   const getWriter = vi.fn(() => writer)
   const deps: LeadFinderImportDeps = {
-    env: opts.env ?? { HB_LEADFINDER_IMPORT_PREVIEW_ENABLED: 'true' },
+    env: { VERCEL_ENV: 'preview', ...(opts.env ?? { HB_LEADFINDER_IMPORT_PREVIEW_ENABLED: 'true' }) },
     getUser: vi.fn(async () => (opts.user === undefined ? { id: OWNER } : opts.user)),
     loadProject: vi.fn(async () => (opts.project === undefined ? ownerProject() : opts.project)),
     isHandlarborsenProject: () => opts.isProject ?? true,
@@ -165,6 +165,23 @@ const COMMIT_ENV = () => ({
 const status = async (r: Response) => ({ status: r.status, json: await r.json() })
 
 describe('import route gate', () => {
+  it.each(['production', 'development', 'staging', undefined])(
+    'refuses every import operation before auth outside Preview, even with ALL write approvals (%s)',
+    async (runtime) => {
+      for (const mode of ['preview', 'commit'] as const) {
+        const h = harness({ env: { ...COMMIT_ENV(), VERCEL_ENV: runtime } })
+        const response = await status(await leadFinderImportApi(
+          req(mode === 'preview' ? body() : commitBody()), h.deps,
+        ))
+        expect(response).toEqual({ status: 404, json: { status: 'disabled' } })
+        expect(h.deps.getUser).not.toHaveBeenCalled()
+        expect(h.deps.loadProject).not.toHaveBeenCalled()
+        expect(h.getWriter).not.toHaveBeenCalled()
+        expect(h.writer.countCandidates).not.toHaveBeenCalled()
+        expect(h.writer.insertCandidates).not.toHaveBeenCalled()
+      }
+    },
+  )
   it('is disabled by default (no flags, wrong flag values) and touches nothing', async () => {
     for (const env of [{}, { HB_LEADFINDER_IMPORT_PREVIEW_ENABLED: 'TRUE' }, { HB_LEADFINDER_IMPORT_PREVIEW_ENABLED: '1' }, { HB_LEADFINDER_IMPORT_WRITE_ENABLED: 'true' }]) {
       const h = harness({ env })

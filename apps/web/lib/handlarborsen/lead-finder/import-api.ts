@@ -73,13 +73,17 @@ const failureStatus: Record<ImportIntakeFailure, number> = {
 
 /**
  * POST /api/atlas/handlarborsen/lead-finder/import
- * Disabled unless env flags are exactly "true". Preview never writes and never
- * creates a service-role client. Commit additionally needs the write flag, an
+ * Preview-runtime only and disabled unless env flags are exactly "true".
+ * The request's mode='preview' never writes or creates a service-role client.
+ * The separately gated commit mode additionally needs the write flag, an
  * approved SHA-256 from server env, the human confirmation phrase and an empty
  * target table. No payload or row data is ever logged or echoed on failure.
  */
 export async function leadFinderImportApi(request: Request, deps: LeadFinderImportDeps): Promise<Response> {
   if (request.method !== 'POST') return respond(405, { status: 'method_not_allowed' })
+  // The commit pathway must never be reachable on a Production deployment,
+  // regardless of misconfigured flags, a valid owner or a matching digest.
+  if (deps.env.VERCEL_ENV !== 'preview') return respond(404, { status: 'disabled' })
   if (deps.env[IMPORT_PREVIEW_FLAG] !== 'true') return respond(404, { status: 'disabled' })
 
   let origin: string

@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useMemo, useState } from 'react'
-import { parseResearchArchive, type ArchiveReview, type ArchiveReviewCompany } from '@/lib/handlarborsen/lead-finder/research-archive'
+import type { ArchiveReview, ArchiveReviewCompany, ArchiveSummary } from '@/lib/handlarborsen/lead-finder/research-archive'
 import styles from './HandlarborsenResearchArchive.module.css'
 
 const URL = '/api/atlas/handlarborsen/lead-finder/archive'
@@ -61,18 +61,25 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
           value.historyComplete !== false || typeof value.digest !== 'string' ||
           !/^[a-f0-9]{64}$/.test(value.digest))
           throw new Error('Rapporten kunde inte valideras.')
-        const parsed = parseResearchArchive(source)
+        // Full archive/schema validation is performed by the authenticated server.
+        // Client only checks response identity and contact-safety fields; never
+        // import the server archive module (which depends on node:crypto).
+        const original = source && typeof source === 'object' && !Array.isArray(source)
+          ? source as { counts?: ArchiveSummary; result?: unknown[] } : null
         const serverReport = value.report
-        if (!parsed.ok || !serverReport || typeof serverReport !== 'object' ||
+        if (!original || !original.counts || !Array.isArray(original.result) ||
+          original.result.length !== 81 || original.counts.noneContactable !== true ||
+          !serverReport || typeof serverReport !== 'object' ||
           !Array.isArray((serverReport as { result?: unknown }).result))
           throw new Error('Källgranskningen kunde inte verifieras.')
+        const sourceRows = original.result
         const results = (serverReport as {result: unknown[]}).result
         const approvedCrm = ['matched_existing_contact', 'no_match_in_partial_history', 'crm_unavailable']
-        const valid = results.length === parsed.value.result.length && results.every((raw, i) => {
+        const valid = results.length === sourceRows.length && results.every((raw, i) => {
           if (!raw || typeof raw !== 'object') return false
           const row = raw as Record<string, unknown>
-          const original = parsed.value.result[i]
-          return row.orgnr === original.orgnr && row.name === original.name &&
+          const sourceRow = sourceRows[i] as Record<string, unknown>
+          return sourceRow && row.orgnr === sourceRow.orgnr && row.name === sourceRow.name &&
             row.contactable === false && row.outreachReady === false &&
             row.historyComplete === false && approvedCrm.includes(String(row.crm)) &&
             Array.isArray(row.crmReasons) && row.crmReasons.every(x => typeof x === 'string' && x.length < 100)
@@ -83,7 +90,7 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
           ? crmStatus as 'ready' | 'unavailable' | 'incomplete' | 'disabled' | 'forbidden' : 'unavailable'
         setPreviewedArchive({
           status: 'ready',
-          report: { counts: parsed.value.counts, result: results as ArchiveReviewCompany[] },
+          report: { counts: original.counts, result: results as ArchiveReviewCompany[] },
           sourceDigest: value.digest,
           createdAt: new Date().toISOString(),
           crmStatus: safeCrm,

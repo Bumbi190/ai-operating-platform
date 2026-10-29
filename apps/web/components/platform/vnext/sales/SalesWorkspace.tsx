@@ -1,7 +1,7 @@
 'use client'
 import {useState,type FormEvent} from 'react'
 import Link from 'next/link'
-import type {SalesWorkspace as Workspace,SalesContact,SalesDraftRevision} from '@/lib/sales/types'
+import type {SalesWorkspace as Workspace,SalesContact} from '@/lib/sales/types'
 import {canPrepareContact,salesStatusLabel} from '@/lib/sales/view-model'
 import {StratoConnection} from './StratoConnection'
 import {SalesConnection} from './SalesConnection'
@@ -9,9 +9,10 @@ import {SalesInbox} from './SalesInbox'
 import {SalesEmailTemplates} from './SalesEmailTemplates'
 import {SalesContactTiming} from './SalesContactTiming'
 import {SalesReplies} from './SalesReplies'
+import {SalesFirstDraftReviews} from './SalesFirstDraftReviews'
 import styles from './SalesWorkspace.module.css'
 export function SalesWorkspace({initial,projectName}:{initial:Workspace;projectName:string}){
- const [model,setModel]=useState(initial),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[selected,setSelected]=useState<string[]>([]),[offerId,setOfferId]=useState(initial.offers[0]?.id??''),[editing,setEditing]=useState<SalesContact|null>(null),[editDraft,setEditDraft]=useState<SalesDraftRevision|null>(null)
+ const [model,setModel]=useState(initial),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[selected,setSelected]=useState<string[]>([]),[offerId,setOfferId]=useState(initial.offers[0]?.id??''),[editing,setEditing]=useState<SalesContact|null>(null),[openReviewKey,setOpenReviewKey]=useState<string|null>(null)
  const offer=model.offers.find(x=>x.id===offerId)
  async function load(){const r=await fetch(`/api/sales?projectId=${model.projectId}`,{cache:'no-store'});if(!r.ok)throw Error('Underlaget kunde inte uppdateras.');setModel(await r.json())}
  async function mutate(value:Record<string,unknown>){
@@ -22,10 +23,7 @@ export function SalesWorkspace({initial,projectName}:{initial:Workspace;projectN
  async function action(work:()=>Promise<void>){setBusy(true);setMessage('');try{await work()}catch(e){setMessage(e instanceof Error?e.message:'Åtgärden kunde inte genomföras.')}finally{setBusy(false)}}
  function saveContact(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);void action(async()=>{await mutate({operation:'save_contact',id:editing?.id??crypto.randomUUID(),expectedVersion:editing?.version??0,companyName:f.get('companyName'),branchName:f.get('branchName'),email:f.get('email'),websiteUrl:f.get('websiteUrl')||null,history:f.get('history'),historySource:f.get('historySource'),pilotMonths:Number(f.get('pilotMonths')),confirmed:f.get('confirmed')==='on',excluded:f.get('excluded')==='on',suppressed:f.get('suppressed')==='on'});setEditing(null);await load();setMessage('Kontakten är sparad. Tidigare utskick har inte antagits eller skapats.')})}
  function saveOffer(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);void action(async()=>{const id=crypto.randomUUID();await mutate({operation:'save_offer',id,senderEmail:f.get('senderEmail'),freeMonths:Number(f.get('freeMonths')),offerText:f.get('offerText'),productFacts:String(f.get('productFacts')).split('\n').map(x=>x.trim()).filter(Boolean),confirmed:f.get('confirmed')==='on'});await load();setOfferId(id);setMessage('Erbjudandet är sparat som en ny version.')})}
- function saveDraft(e:FormEvent<HTMLFormElement>){e.preventDefault();if(!editDraft)return;const f=new FormData(e.currentTarget);const {contactId,contactVersion,offerRevisionId,senderEmail,toEmail,evidenceIds}=editDraft;void action(async()=>{await mutate({operation:'revise',revisionId:editDraft.id,draft:{contactId,contactVersion,offerRevisionId,senderEmail,toEmail,evidenceIds,subject:f.get('subject'),body:f.get('body'),questions:String(f.get('questions')).split('\n').map(x=>x.trim()).filter(Boolean)}});setEditDraft(null);await load();setMessage('Ny version sparad. Den behöver granskas på nytt.')})}
- async function decide(d:SalesDraftRevision,decision:'approved'|'rejected'){
-  const r=await fetch(`/api/approvals/${d.approvalId}`,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({action:decision})});if(!r.ok)throw Error('Granskningen kunde inte sparas. Utkastet kan ha ändrats.');await load();setMessage(decision==='approved'?'Utkastet är godkänt. Inget mejl har skickats.':'Utkastet är avvisat.')
- }
+
  const request=offer&&selected.length?`Förbered ett svenskt första mejlutkast till ${model.contacts.filter(c=>selected.includes(c.id)).map(c=>`${c.companyName}, ${c.branchName||'huvudkontor'} (${c.email})`).join('; ')} för ${projectName}. Använd det sparade erbjudandet ”${offer.offerText}”, skapat ${new Date(offer.createdAt).toLocaleString('sv-SE')}. Läs aktuellt säljunderlag först och be om förtydligande om kontakten eller erbjudandet inte kan matchas exakt. Skicka inget.`:''
  return <main className={styles.page}>
   <header className={styles.header}><div><p className={styles.eyebrow}>{projectName} / Atlas</p><h1>Säljförberedelse</h1><p>Från verifierad kontakt till ett personligt mejlutkast.</p></div><button disabled={busy} onClick={()=>void action(load)}>Uppdatera</button></header>
@@ -51,9 +49,14 @@ export function SalesWorkspace({initial,projectName}:{initial:Workspace;projectN
    </div></details>
   <details className={styles.disclosure}><summary><h2>Stratoanslutning</h2></summary><div className={styles.disclosureBody}><StratoConnection projectId={model.projectId}/></div></details>
   <details className={styles.disclosure}><summary><h2>Inkorg</h2></summary><div className={styles.disclosureBody}><SalesInbox projectId={model.projectId} contacts={model.contacts} offers={model.offers}/></div></details>
-  <details className={styles.disclosure}><summary><h2>Svarsförslag att granska</h2></summary><div className={styles.disclosureBody}><SalesReplies projectId={model.projectId}/></div></details>
+  <details className={styles.disclosure}><summary><h2>Svarsförslag att granska</h2></summary><div className={styles.disclosureBody}><SalesReplies projectId={model.projectId} openReviewKey={openReviewKey} onOpenReviewKeyChange={setOpenReviewKey}/></div></details>
   <details className={styles.disclosure}><summary><h2>Uppdrag</h2><span>{model.jobs.length} registrerade</span></summary><div className={styles.disclosureBody}>{!model.jobs.length?<p className={styles.empty}>Inga uppdrag har skapats.</p>:<ul className={styles.jobs}>{model.jobs.map(j=><li key={j.id}><span><strong>{salesStatusLabel(j.status)}</strong><small>{new Date(j.createdAt).toLocaleString('sv-SE')} · {j.attempts} modellförsök</small>{j.detail&&<small>{j.detail}</small>}</span>{['queued','running','reconciling'].includes(j.status)&&<button disabled={busy} onClick={()=>void action(async()=>{await mutate({operation:'cancel',jobId:j.id});await load()})}>Avbryt uppdrag</button>}</li>)}</ul>}</div></details>
-  <details className={styles.disclosure}><summary><h2>Mejlutkast att granska</h2><span>{model.drafts.length} aktuella versioner</span></summary><div className={styles.disclosureBody+" "+styles.review}>{!model.drafts.length&&<p className={styles.empty}>Utkasten visas här när specialisten har lämnat ett verifierat svar.</p>}{model.drafts.map(d=><article key={d.id} className={styles.panel}><div className={styles.sectionHead}><h3>{model.contacts.find(c=>c.id===d.contactId)?.companyName??'Kontakt'} {model.contacts.find(c=>c.id===d.contactId)?.branchName}</h3><span>{d.status==='approved'?'Utkast godkänt':d.status==='rejected'?'Avvisat':d.questions.length?'Behöver underlag':'Väntar på granskning'}</span></div><dl className={styles.metadata}><dt>Från</dt><dd>{d.senderEmail}</dd><dt>Till</dt><dd>{d.toEmail}</dd><dt>Erbjudande</dt><dd>{model.offers.find(o=>o.id===d.offerRevisionId)?.offerText??'Version saknas'}</dd></dl><h4>{d.subject}</h4><div className={styles.body}>{d.body}</div>{d.questions.length>0&&<div className={styles.notice}><strong>Behöver kontrolleras</strong><ul>{d.questions.map(q=><li key={q}>{q}</li>)}</ul></div>}<details><summary>Visa källunderlag och kontakthistorik</summary><p>{model.contacts.find(c=>c.id===d.contactId)?.historySource}</p>{model.evidence?.filter(e=>e.contactId===d.contactId&&d.evidenceIds.includes(e.id)).map(e=><div key={e.id}>{e.source&&<><a href={e.source.sourceUrl} target="_blank" rel="noreferrer">{e.source.sourceUrl}</a><small>Observerat {new Date(e.source.observedAt).toLocaleString('sv-SE')}</small><p>{e.source.text}</p></>}</div>)}<small>Version {d.id} · Kontrollsumma {d.sha256.slice(0,12)}</small></details><div className={styles.actions}><button disabled={busy} onClick={()=>setEditDraft(d)}>Redigera och granska på nytt</button>{d.approvalId&&['pending','revised','needs_input'].includes(d.status)&&<><button disabled={busy||d.questions.length>0} onClick={()=>void action(()=>decide(d,'approved'))}>Godkänn utkast</button><button disabled={busy} onClick={()=>void action(()=>decide(d,'rejected'))}>Avvisa</button></>}{d.runId&&<Link href={`/projects/${model.workspaceUrl.split('/')[2]}/runs/${d.runId}`}>Visa granskningskörning</Link>}</div></article>)}</div></details>
-  {editDraft&&<section className={styles.panel}><h2>Ny utkastversion</h2><p>Tidigare godkännande gäller inte den ändrade texten.</p><form onSubmit={saveDraft} className={styles.form}><label>Ämne<input name="subject" required maxLength={90} defaultValue={editDraft.subject}/></label><label>Mejltext<textarea name="body" required maxLength={2000} rows={8} defaultValue={editDraft.body}/></label><label>Kvarstående frågor, en per rad<textarea name="questions" defaultValue={editDraft.questions.join('\n')}/></label><button disabled={busy}>Spara ny version</button><button type="button" onClick={()=>setEditDraft(null)}>Avbryt</button></form></section>}
+  <details className={styles.disclosure}>
+    <summary><h2>Mejlutkast att granska</h2><span>{model.drafts.length} aktuella versioner</span></summary>
+    <div className={styles.disclosureBody}>
+      <SalesFirstDraftReviews model={model} openReviewKey={openReviewKey}
+        onOpenReviewKeyChange={setOpenReviewKey} onRefresh={load} />
+    </div>
+  </details>
  </main>
 }

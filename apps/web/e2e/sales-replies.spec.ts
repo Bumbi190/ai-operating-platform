@@ -19,6 +19,7 @@ async function fixture(page:any){
 }
 test('unselected text and ambiguous branch cannot silently start a model; exact request goes through Atlas',async({page,context})=>{
  const f=await fixture(page);await context.grantPermissions(['clipboard-read','clipboard-write']);await page.goto('/sales?stratoWorker='+workerId)
+ await page.getByRole('heading',{name:'Inkorg',exact:true}).click()
  const inbox=page.getByRole('region',{name:'Inkorg',exact:true});await inbox.getByRole('button',{name:'Svar om pilot',exact:true}).click()
  await expect(inbox.getByText(/Välj och läs hela mejltexten/)).toBeVisible();expect(f.calls).toEqual([])
  await inbox.getByRole('button',{name:'Läs texten i detta mejl'}).click();await expect(inbox.getByText(/Koppla en bekräftad kontakt/)).toBeVisible()
@@ -28,25 +29,38 @@ test('unselected text and ambiguous branch cannot silently start a model; exact 
 })
 test('private reply review shows stale evidence, plain text, exact revision and no send action on desktop/mobile',async({page})=>{
  const f=await fixture(page);await page.setViewportSize({width:1440,height:1000});await page.goto('/sales?stratoWorker='+workerId)
+ await page.getByRole('heading',{name:'Svarsförslag att granska',exact:true}).click()
  const replies=page.getByRole('region',{name:'Svarsförslag',exact:true});await expect(replies).toBeVisible();await expect(replies.getByText(/Svarsförslag för granskning/)).toBeVisible();await expect(replies.locator('img')).toHaveCount(0);expect(f.external()).toBe(0);await expect(replies.getByRole('button',{name:/Skicka/})).toHaveCount(0)
- await expect(replies.getByText('Lund',{exact:false})).toBeVisible();await replies.getByRole('button',{name:'Redigera svarsförslag'}).click();await replies.getByLabel('Svarstext').fill('Ett granskat svar.');await replies.getByRole('button',{name:'Spara ny svarsversion'}).click();expect(f.calls.find(x=>x.operation==='edit')).toMatchObject({revisionId,expectedHash:'a'.repeat(64),body:'Ett granskat svar.'})
+ await expect(replies.getByText(f.draft.body,{exact:true})).toHaveCount(0); await replies.locator('button[aria-controls^="reply-review-"]').first().click()
+ await expect(replies.getByText(f.draft.body,{exact:true})).toBeVisible();await expect(replies.getByText('Lund',{exact:false})).toBeVisible();await replies.getByRole('button',{name:'Redigera svarsförslag'}).click();await replies.getByLabel('Svarstext').fill('Ett granskat svar.');await replies.getByRole('button',{name:'Spara ny svarsversion'}).click();expect(f.calls.find(x=>x.operation==='edit')).toMatchObject({revisionId,expectedHash:'a'.repeat(64),body:'Ett granskat svar.'})
  f.setFailReview();await replies.getByRole('button',{name:'Godkänn svarsförslag'}).click();await expect(replies.getByText(/Underlaget har ändrats/)).toBeVisible();expect(f.calls.find(x=>x.operation==='review')).toMatchObject({revisionId:'b0000000-0000-4000-8000-000000000002',expectedHash:'b'.repeat(64)})
- f.job.newerIncoming=true;await replies.getByRole('button',{name:'Uppdatera svarsförslag'}).click();await expect(replies.getByText(/Nyare mejl från samma adress/)).toBeVisible();await expect(replies.getByRole('button',{name:'Godkänn svarsförslag'})).toBeDisabled()
+ f.job.newerIncoming=true;await replies.getByRole('button',{name:'Uppdatera svarsförslag'}).click();await expect(replies.getByText(/nyare mejl finns från samma adress/i)).toBeVisible();await expect(replies.getByRole('button',{name:'Godkänn svarsförslag'})).toBeDisabled()
  const dir=process.env.SALES_BROWSER_ARTIFACT_DIR!;mkdirSync(dir,{recursive:true});await page.screenshot({path:dir+'/reply-desktop.png',fullPage:true});await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:dir+'/reply-mobile.png',fullPage:true});expect(await replies.getAttribute('data-private')).toBe('true')
 })
 
 test('switching from dirty reply A to branch B resets all editor fields before saving B',async({page})=>{
  const f=await fixture(page),jobB={...f.job,id:'a0000000-0000-4000-8000-000000000002',source:{...f.job.source,branchName:'Malmö'}},draftB={...f.draft,id:'b0000000-0000-4000-8000-000000000003',jobId:jobB.id,sha256:'c'.repeat(64),subject:'Only branch B subject',body:'Only branch B body',questions:['Only branch B question']}
  await page.route('**/api/sales/replies?*',(r:any)=>r.fulfill({json:{jobs:[f.job,jobB],drafts:[f.draft,draftB],sendingEnabled:false}}))
- await page.goto('/sales?stratoWorker='+workerId);const replies=page.getByRole('region',{name:'Svarsförslag',exact:true}),edit=replies.getByRole('button',{name:'Redigera svarsförslag'})
- await edit.nth(0).click();await replies.getByLabel('Svarstext').fill('Dirty private text for A only');await replies.getByLabel('Ämne för svaret').fill('Dirty A subject');await edit.nth(1).click()
- await expect(replies.getByRole('heading',{name:'Ny svarsversion · Exempelbil · Malmö'})).toBeVisible();await expect(replies.getByLabel('Svarstext')).toHaveValue('Only branch B body');await expect(replies.getByLabel('Ämne för svaret')).toHaveValue('Only branch B subject');await expect(replies.getByLabel('Kvarstående frågor')).toHaveValue('Only branch B question')
+ await page.goto('/sales?stratoWorker='+workerId)
+ await page.getByRole('heading',{name:'Svarsförslag att granska',exact:true}).click()
+ const replies=page.getByRole('region',{name:'Svarsförslag',exact:true}),toggle=replies.locator('button[aria-controls^="reply-review-"]')
+ await expect(replies.getByText('Only branch B body',{exact:true})).toHaveCount(0)
+ await toggle.nth(0).click()
+ await replies.getByRole('button',{name:'Redigera svarsförslag'}).click()
+ await replies.getByLabel('Svarstext').fill('Dirty private text for A only')
+ await replies.getByLabel('Ämne för svaret').fill('Dirty A subject')
+ await toggle.nth(1).click()
+ await expect(replies.getByText('Dirty private text for A only')).toHaveCount(0)
+ await expect(replies.getByText('Only branch B body',{exact:true})).toBeVisible()
+ await replies.getByRole('button',{name:'Redigera svarsförslag'}).click()
+ await expect(replies.getByRole('heading',{name:'Redigera detta svar'})).toBeVisible();await expect(replies.getByLabel('Svarstext')).toHaveValue('Only branch B body');await expect(replies.getByLabel('Ämne för svaret')).toHaveValue('Only branch B subject');await expect(replies.getByLabel('Kvarstående frågor')).toHaveValue('Only branch B question')
  await replies.getByRole('button',{name:'Spara ny svarsversion'}).click();expect(f.calls.find(x=>x.operation==='edit')).toMatchObject({revisionId:draftB.id,expectedHash:draftB.sha256,body:'Only branch B body',subject:'Only branch B subject',questions:['Only branch B question']})
 })
 
 test('ordinary selected reply needs no customer or offer and mode changes reset consent',async({page,context})=>{
  const f=await fixture(page);Object.assign(f.message,{text:'Tack för testet.',textSelected:true,textState:'complete',version:2,contactId:null,contactState:'unknown'})
  await context.grantPermissions(['clipboard-read','clipboard-write']);await page.goto('/sales?stratoWorker='+workerId)
+ await page.getByRole('heading',{name:'Inkorg',exact:true}).click()
  const inbox=page.getByRole('region',{name:'Inkorg',exact:true});await inbox.getByRole('button',{name:'Svar om pilot',exact:true}).click()
  await inbox.getByLabel('Typ av svar').selectOption('general')
  const button=inbox.getByRole('button',{name:'Kopiera svarsuppdrag till Atlas'});await expect(button).toBeDisabled()
@@ -79,5 +93,97 @@ test('global review shows exact private email preview and uses only version-boun
  await expect(detail.getByRole('button',{name:'Godkänn',exact:true})).toHaveCount(0)
  await detail.getByRole('button',{name:'Godkänn svarsförslag',exact:true}).click()
  expect(f.calls.find(x=>x.operation==='review')).toMatchObject({revisionId,expectedHash:'a'.repeat(64)})
- await expect(detail.getByText(/redaktionellt godkänt/)).toBeVisible()
+ await expect(detail.getByText(/godkänt för texten.*Inget mejl har skickats/)).toBeVisible()
+ await expect(detail.getByText(f.draft.body,{exact:true})).toHaveCount(0)
+})
+
+test('one open proposal across reply and first-email draft queues; hidden text is not rendered',async({page})=>{
+ const f=await fixture(page)
+ const first={id:'b0000000-0000-4000-8000-000000000011',projectId,contactId:f.contacts[0].id,contactVersion:1,
+  offerRevisionId:f.offer.id,senderEmail:'info@handlarborsen.se',toEmail:'dealer@example.se',
+  evidenceIds:[],subject:'FIRST-DRAFT SUBJECT',body:'FIRST-DRAFT PRIVATE CANARY',questions:[],sha256:'f'.repeat(64),
+  approvalId:'b0000000-0000-4000-8000-000000000012',runId:null,current:true,status:'pending',
+  createdAt:'2026-10-19T12:00:00Z'}
+ await page.route('**/api/sales?*',(route:any)=>route.fulfill({json:{
+  projectId, state:'ok',contacts:f.contacts,offers:[f.offer],jobs:[],drafts:[first],
+  workspaceUrl:'/projects/handlarborsen/sales',sendingEnabled:false,
+ }}))
+ await page.goto('/sales?stratoWorker='+workerId)
+ await page.getByRole('heading',{name:'Mejlutkast att granska'}).click()
+ const initial=page.getByRole('region',{name:'Mejlutkast för granskning'})
+ const repliesSection=page.getByRole('region',{name:'Svarsförslag',exact:true})
+ const a=initial.locator('button[aria-controls^="outreach-review-"]')
+ await expect(initial.getByText(first.body,{exact:true})).toHaveCount(0)
+ await expect(page.getByText(f.draft.body,{exact:true})).toHaveCount(0)
+ await a.click()
+ await expect(initial.getByText(first.body,{exact:true})).toBeVisible()
+ await page.getByRole('heading',{name:'Svarsförslag att granska'}).click()
+ await repliesSection.locator('button[aria-controls^="reply-review-"]').first().click()
+ await expect(initial.getByText(first.body,{exact:true})).toHaveCount(0)
+ await expect(repliesSection.getByText(f.draft.body,{exact:true})).toBeVisible()
+ await a.click()
+ await expect(repliesSection.getByText(f.draft.body,{exact:true})).toHaveCount(0)
+ await expect(initial.getByText(first.body,{exact:true})).toBeVisible()
+ await a.click()
+ await expect(initial.getByText(first.body,{exact:true})).toHaveCount(0)
+ await page.setViewportSize({width:390,height:844})
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+ expect(f.calls.some((call:any)=>/send|review|prepare/i.test(call.operation))).toBe(false)
+})
+
+test('obsolete first-email draft is not editable or approvable',async({page})=>{
+ const f=await fixture(page)
+ const obsolete={id:'b0000000-0000-4000-8000-000000000041',projectId,
+  contactId:f.contacts[0].id,contactVersion:1,offerRevisionId:f.offer.id,
+  senderEmail:'info@handlarborsen.se',toEmail:'dealer@example.se',
+  evidenceIds:[],subject:'OBSOLETE SUBJECT',body:'OBSOLETE PRIVATE BODY',questions:[],
+  sha256:'e'.repeat(64),approvalId:'b0000000-0000-4000-8000-000000000042',
+  current:false,status:'pending',runId:null,createdAt:'2026-10-28T12:00:00Z'}
+ await page.route('**/api/sales?*',r=>r.fulfill({json:{
+  projectId,state:'ok',contacts:f.contacts,offers:[f.offer],jobs:[],
+  drafts:[obsolete],workspaceUrl:'/projects/handlarborsen/sales',sendingEnabled:false,
+ }}))
+ await page.goto('/sales?stratoWorker='+workerId)
+ await page.getByRole('heading',{name:'Mejlutkast att granska'}).click()
+ const initial=page.getByRole('region',{name:'Mejlutkast för granskning'})
+ await expect(initial.getByText('Föråldrad version – kan inte granskas')).toBeVisible()
+ await expect(initial.getByText(obsolete.body,{exact:true})).toHaveCount(0)
+ await initial.locator('button[aria-controls^="outreach-review-"]').click()
+ await expect(initial.getByText(obsolete.body,{exact:true})).toBeVisible()
+ await expect(initial.getByRole('button',{name:'Redigera',exact:true})).toBeDisabled()
+ await expect(initial.getByRole('button',{name:'Godkänn mejltext'})).toHaveCount(0)
+ await expect(initial.getByRole('button',{name:'Avvisa'})).toHaveCount(0)
+ expect(f.calls.some((x:any)=>/send|review|revise|approve/i.test(x.operation))).toBe(false)
+})
+
+test('first-email text approval is a review decision only, never an SMTP operation',async({page})=>{
+ const f=await fixture(page)
+ const first={id:'b0000000-0000-4000-8000-000000000051',projectId,
+  contactId:f.contacts[0].id,contactVersion:1,offerRevisionId:f.offer.id,
+  senderEmail:'info@handlarborsen.se',toEmail:'dealer@example.se',
+  evidenceIds:[],subject:'FIRST EMAIL SUBJECT',body:'FIRST EMAIL PRIVATE BODY',
+  questions:[],sha256:'d'.repeat(64),approvalId:'b0000000-0000-4000-8000-000000000052',
+  current:true,status:'pending',runId:jobId,createdAt:'2026-10-28T12:00:00Z'}
+ const writes:string[]=[]
+ await page.route('**/api/sales?*',r=>r.fulfill({json:{
+  projectId,state:'ok',contacts:f.contacts,offers:[f.offer],jobs:[],
+  drafts:[first],workspaceUrl:'/projects/handlarborsen/sales',sendingEnabled:false,
+ }}))
+ await page.route('**/api/approvals/*',r=>{
+  writes.push(r.request().method()+' '+new URL(r.request().url()).pathname)
+  const body=r.request().postDataJSON()
+  if(body.action==='approved')first.status='approved'
+  return r.fulfill({json:{ok:true}})
+ })
+ page.on('request',req=>{
+  if(req.method()!=='GET' && /sending|smtp|\/send(\?|$)/i.test(req.url()))writes.push('UNAUTHORIZED_SEND '+req.url())
+ })
+ await page.goto('/sales?stratoWorker='+workerId)
+ await page.getByRole('heading',{name:'Mejlutkast att granska'}).click()
+ const initial=page.getByRole('region',{name:'Mejlutkast för granskning'})
+ await initial.locator('button[aria-controls^="outreach-review-"]').click()
+ await initial.getByRole('button',{name:'Godkänn mejltext'}).click()
+ await expect(initial.getByText('Mejltexten godkändes. Inget mejl har skickats.')).toBeVisible()
+ expect(writes).toEqual(['PATCH /api/approvals/'+first.approvalId])
+ await expect(initial.getByText('Text godkänd – ej skickad')).toBeVisible()
 })

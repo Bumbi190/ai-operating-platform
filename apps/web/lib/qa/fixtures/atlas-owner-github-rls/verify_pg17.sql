@@ -137,7 +137,7 @@ begin
 end $$;
 reset role;
 
--- Anonymous and Pling have NO SELECT grant and no mutation capability.
+-- Anonymous and project/workflow agents have NO SELECT grant and no mutation capability.
 set role anon;
 do $$
 begin
@@ -150,21 +150,21 @@ begin
  raise exception 'FAIL: anon SELECT permitted';
 end $$;
 reset role;
-set role pling_executor;
+set role workflow_agent;
 do $$
 begin
  begin
    perform 1 from public.atlas_owner_github_bindings;
  exception when insufficient_privilege then
-   raise notice 'PASS: Pling SELECT denied';
+   raise notice 'PASS: workflow-agent SELECT denied';
    return;
  end;
- raise exception 'FAIL: Pling SELECT permitted';
+ raise exception 'FAIL: workflow-agent SELECT permitted';
 end $$;
 reset role;
 
 -- This fixture mimics Supabase's service_role bypass, proving why the app MUST
--- never pass a service-role client or credential to Nova or Pling.
+-- never pass a service-role client or credential to Nova or a workflow agent.
 set role service_role;
 select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
 do $$

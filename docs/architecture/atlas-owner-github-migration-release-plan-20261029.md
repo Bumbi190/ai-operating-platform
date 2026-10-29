@@ -1,10 +1,12 @@
 # Omnira / Atlas owner-GitHub binding – migration and rollback release plan
 
 **Status:** DRAFT PLAN / NOT AUTHORIZED FOR PRODUCTION / NOT A CANONICAL MIGRATION.
+
+**Owner mandate correction:** GitHub repository deletion is reserved exclusively for the owner, performed **manually in GitHub**. Nova may create via a separate scoped tool, recommend deletion and stop/revoke integrations but may never execute or delegate repository deletion. Project/account data erasure SQL in the *disposable synthetic fixture* illustrates a separate human-authorized administrative process, not an agent permission. Project/workflow agents are technical identities; "Pling" is just their 3D visual avatar. Familje-Stunden Pling is a separate story character.
 **Date:** 2026-10-29 (Europe/Stockholm).
 **Work:** [Issue #604](https://github.com/Bumbi190/ai-operating-platform/issues/604), existing [Draft PR #605](https://github.com/Bumbi190/ai-operating-platform/pull/605).
 **Scope:** `docs/architecture/proposed-sql/atlas_owner_github_bindings_stage1_PROPOSAL.sql` and synthetic PG17 tests only.
-**Owner/Agent separation:** Atlas/Nova is one cross-project intelligence with project-specific tool authorization; Pling receives separate project+workflow-only delegation; Prime Agent owns code-execution runtime independently.
+**Owner/Agent separation:** Atlas/Nova is one cross-project intelligence with project-specific tool authorization; workflow agent receives separate project+workflow-only delegation; Prime Agent owns code-execution runtime independently.
 
 ## 1. Production evidence, read-only observation on 29 October 2026
 
@@ -37,7 +39,7 @@ PostgreSQL `CREATE INDEX CONCURRENTLY` reduces write locking but **cannot** run 
 
 - Verify the authorized owner, correct project/environment and that the separate preview branch is not production. Read exact `main` SHA, migration ledger, open PRs and relevant ongoing agent work. Confirm Prime Agent's Windows/TPM/code-broker worktree is untouched.
 - Read-only inspect `projects` size, ownership, duplicates of `(id, owner_id)`, index state, trigger/FK dependencies, active long transactions, migration guard status and whether either proposed object already exists. Confirm a verified recoverable database snapshot/backup appropriate to the operation and its actual restore procedure, not just a stated backup flag.
-- Keep all Nova source-inspection and project-connection feature flags OFF; no user, Pling, model or other provider writes. No PEM, API keys, service-role keys, database URLs or private customer records in PRs, Notion, CLI logs, temporary fixtures or model context.
+- Keep all Nova source-inspection and project-connection feature flags OFF; no user, workflow agent, model or other provider writes. No PEM, API keys, service-role keys, database URLs or private customer records in PRs, Notion, CLI logs, temporary fixtures or model context.
 - Have a separate security reviewer inspect project/owner relationships, revocation, RLS, default ACL and `service_role` behavior. Explicitly decide the project/user deletion and owner-transfer contract. Obtain **specific owner approval** for an actual schema change, possible write lock and rollback.
 - Stage the exact proposed migration using Supabase CLI `migration new` and reconcile the migration guard **only after approval**; validate the real deployment path in a safe nonproduction environment. Do not create a new canonical migration merely because the SQL proposal exists.
 
@@ -65,7 +67,7 @@ If a lock timeout, statement timeout or constraint failure occurs, the transacti
 
 After a successfully committed approved migration and **BEFORE** enabling any Nova tool, verify:
 - Composite unique index is valid and points to `projects(id, owner_id)`; composite FK rejects wrong-owner connections; existing `projects` triggers, policies, data and other indexes are unchanged.
-- RLS enabled; authenticated owner A sees only own mappings; B sees only own; guest/anon sees none; Pling sees none; authenticated UPDATE/DELETE/INSERT denied; `service_role` has only direct SELECT and still bypasses RLS, requiring separate app authorization.
+- RLS enabled; authenticated owner A sees only own mappings; B sees only own; guest/anon sees none; workflow agent sees none; authenticated UPDATE/DELETE/INSERT denied; `service_role` has only direct SELECT and still bypasses RLS, requiring separate app authorization.
 - No mappings were silently preapproved; the new table is empty initially; no secret data or scheduled agent jobs exist.
 - Backend owner session and project scope tested end-to-end without service-role access leaking across projects. Explicit owner grant/revoke flow and immutable audit must be verified prior to use; a server-only private-schema approach can be assessed if public Data API exposure isn't necessary.
 - Run CI, Migration Guard, independent review and actual authenticated Preview evidence. Production activation is a separate final owner decision.
@@ -95,7 +97,7 @@ Current PR branch: `codex/atlas-global-repo-catalog-issue604`; previous commit `
 
 Disposable real PG17 runner: `scripts/atlas/verify-owner-github-pg17-rls.ps1`, cached `postgres:17-alpine`, no network, no host ports/volumes, 256 MiB memory, 0.6 CPU, ephemeral data/roles only, auto-removal. It now tests **transactional, timeout-bounded SQL install and synthetic rollback**, along with the prior 12 real PG17 role/RLS/FK assertions. This is not proof of an end-to-end Supabase migration, true JWT/RLS auth or production traffic lock behavior.
 
-**Final state: HOLD / DRAFT.** No automated migration, merge, GitHub key provision, token creation, privileged Nova/Pling tool, Vercel promotion, paid API or production write is authorized by this document.
+**Final state: HOLD / DRAFT.** No automated migration, merge, GitHub key provision, token creation, privileged Nova/workflow agent tool, Vercel promotion, paid API or production write is authorized by this document.
 
 ## 9. Later Stage 1d: tested alternative to FK deletion blocker
 
@@ -107,7 +109,7 @@ A separate real, networkless disposable PostgreSQL 17 fixture successfully verif
 - unlink physically removes the mapping but keeps owner-readable approval/revoke/unlink events while project exists;
 - removing a project deletes only its related audit and link metadata, without blocking project deletion;
 - deleting the owner cascades their remaining project-owned mappings/audit, while a foreign owner survives;
-- Pling/anon cannot read audit, authenticated actors cannot insert/delete audit, and `service_role` cannot directly mutate event rows despite replayed Supabase default ACLs;
+- workflow agent/anon cannot read audit, authenticated actors cannot insert/delete audit, and `service_role` cannot directly mutate event rows despite replayed Supabase default ACLs;
 - project transfer continues to be **intentionally blocked** until the consented audit-handoff/erasure flow exists.
 
 Run the two isolated variants separately (one uses the original restrictive proposal; one adds the unapproved CASCADE/audit option):

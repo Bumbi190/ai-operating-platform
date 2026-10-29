@@ -1,6 +1,14 @@
 # Atlas/Nova GitHub-project lifecycle – revoke, unlink, account deletion
 
 **Design alternative / REVIEW REQUIRED – NOT A PRODUCTION MIGRATION**
+
+## Owner correction – GitHub repository deletion is MANUAL ONLY; Pling is a 3D avatar
+
+**Nova/Atlas must NEVER delete a GitHub repository**, directly or by delegating to a workflow agent, code worker, browser, computer, app or automation, even with a prior task approval. Nova may create new GitHub repos only through a separately approved project-scoped creation capability; recommend deletion and give the owner manual GitHub steps; pause workflows or revoke/disconnect the *Omnira integration* without deleting the repository. A total GitHub repo deletion is exclusively the owner's action performed manually inside GitHub.
+
+**A workflow agent is a technical project-bound executor. "Pling" is solely its on-screen robot avatar/persona in the Omnira 3D office**, with no role in authorization or the server-side agent identity. The Pling in Familje-Stunden is a separate fictional story character. Old references to a "Pling agent" in historic worknotes must be read as "project/workflow agent", not a real Pling principal.
+
+The synthetic SQL `DELETE` operations below describe an **independently authorized administrative project/account erasure process**, not a capability granted to Nova and **never GitHub's repository-delete API**. If a revoked binding's metadata is physically unlinked, require a separate explicit owner-approved admin workflow; Nova's normal stop operation only blocks work, scopes and future token issuance. Revoke ≠ physical deletion.
 Date: 29 October 2026 • [Issue #604](https://github.com/Bumbi190/ai-operating-platform/issues/604) • [Draft PR #605](https://github.com/Bumbi190/ai-operating-platform/pull/605)
 
 ## Problem confirmed in isolated PostgreSQL 17
@@ -23,13 +31,13 @@ The desired lifecycle has TWO independently governed operations:
 
 Documentation-only SQL: `docs/architecture/proposed-sql/atlas_owner_github_lifecycle_OPTION_NOT_MIGRATION.sql`. It runs **after** the original Stage 1 proposal inside a disposable PG17 test fixture. The resulting candidate:
 - Changes child binding's composite `project_id, owner_user_id` FK to `ON DELETE CASCADE`; changes binding's user/reviewer FKs to `ON DELETE CASCADE`. Existing `public.projects` FKs, triggers and membership policies are **unchanged**.
-- Adds project-owned `atlas_owner_github_binding_events`: composite owner/project FK with cascade, `binding_id` as a non-FK immutable correlation label, nonnegative sequence/allowed event types, and hash-format-only decision reference (no real signing). The event schema has no client/Pling write grants. Owner SELECT is independently RLS-restricted; `service_role` SELECT bypasses RLS and must be server-scoped.
+- Adds project-owned `atlas_owner_github_binding_events`: composite owner/project FK with cascade, `binding_id` as a non-FK immutable correlation label, nonnegative sequence/allowed event types, and hash-format-only decision reference (no real signing). The event schema has no client/workflow agent write grants. Owner SELECT is independently RLS-restricted; `service_role` SELECT bypasses RLS and must be server-scoped.
 - Keeps audit entries after a mapping is unlinked. Event records cascade away on project/account deletion. There is no automatic archival to Notion, browser, desktop, other repositories or external paid services.
 - **Auditing limitation:** the table lacks a trusted signed event issuer and cannot claim cryptographic immutability. PostgreSQL owners remain privileged, and future signed approval/revocation needs a separate serialized, authorized write API and trusted provenance.
 
 ### Planned owner-directed flow (NOT implemented live)
 1. Nova receives a precise owner request, identifies the exact `projectId` and GitHub numeric `repositoryId`, and shows current connection status and possible live effect.
-2. Server authenticates the owner, checks project ownership and a signed, bounded task mandate. Stop new token mint and pause Pling workflows for this project. An already-issued GitHub token must be invalidated via a provider-supported method or expired/confirmed inactive before claiming full revoke. No agent may continue with cached authority.
+2. Server authenticates the owner, checks project ownership and a signed, bounded task mandate. Stop new token mint and pause workflow agent workflows for this project. An already-issued GitHub token must be invalidated via a provider-supported method or expired/confirmed inactive before claiming full revoke. No agent may continue with cached authority.
 3. In a **serializable/locked** DB transaction, change `approved → revoked` only if expected `bindingId`, revision and state match, append the related owner-attributed event and issue a verified completion receipt. A stale retry may not make a second event or revive the binding.
 4. `revoked → unlinked` after access is actually closed, in another audited transaction. The live binding is removed; the project audit remains available for owner review. No other project's connection changes.
 5. **Project deletion / account erasure:** shut down active tasks and tokens first; then delete the project/account under authenticated owner/administrator authority. The DB CASCADE safety net ensures connected binding metadata + project audit do not block erasure. Never call this cascade a way to revoke a still-valid external token.
@@ -41,7 +49,7 @@ Reproduction: `powershell -NoProfile -File scripts/atlas/verify-owner-github-pg1
 
 The runner requires a pre-cached `postgres:17-alpine`, refuses to collide with an existing fixture, uses **network=none**, 256 MiB memory cap, 0.6 CPU, temporary PGDATA, no host mount or host port, and stops/deletes its own container in `finally`. The SQL variant and its verifier are copied only into the container. It cannot reach the actual Supabase database and requires no real provider secrets.
 
-**Real PG17 results:** cross-owner binding denied; A/B owner audit and mappings isolated; guest and Pling audit access denied; normal-user audit deletion denied; approved binding becomes revoked with matching audit; duplicate revoke cannot update; unlink removes only binding while three audit events persist; project deletion erases project-linked audit only; owner deletion cascades own remaining binding/audit while foreign owner survives. Transfer remains an EXPECTED BLOCKER, intentionally not promoted.
+**Real PG17 results:** cross-owner binding denied; A/B owner audit and mappings isolated; guest and workflow agent audit access denied; normal-user audit deletion denied; approved binding becomes revoked with matching audit; duplicate revoke cannot update; unlink removes only binding while three audit events persist; project deletion erases project-linked audit only; owner deletion cascades own remaining binding/audit while foreign owner survives. Transfer remains an EXPECTED BLOCKER, intentionally not promoted.
 
 Node offline contract suite `apps/web/lib/qa/atlas-owner-github-lifecycle.test.mjs` verifies the proposed SQL doesn't grant writes, that the two owner-scope FK types are cascaded, that audit is separately project-owned, and that the disposable runner never touches real credentials/ports. Existing baseline PG17 tests for the original restrictive proposal must also continue passing.
 

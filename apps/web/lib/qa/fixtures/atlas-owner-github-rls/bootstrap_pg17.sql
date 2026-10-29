@@ -4,7 +4,7 @@
 create role authenticated noinherit nologin nobypassrls;
 create role anon noinherit nologin nobypassrls;
 create role service_role noinherit nologin bypassrls;
-create role pling_executor noinherit nologin nobypassrls;
+create role workflow_agent noinherit nologin nobypassrls;
 
 create schema auth;
 create table auth.users (id uuid primary key);

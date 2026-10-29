@@ -149,16 +149,16 @@ begin
 end $$;
 reset role;
 
-set role pling_executor;
+set role workflow_agent;
 do $$
 begin
  begin
   perform 1 from public.atlas_owner_github_binding_events;
  exception when insufficient_privilege then
-  raise notice 'PASS: project-bound Pling cannot read global audit table';
+  raise notice 'PASS: project-bound workflow agent cannot read global audit table';
   return;
  end;
- raise exception 'FAIL: Pling audit access permitted';
+ raise exception 'FAIL: workflow agent audit access permitted';
 end $$;
 reset role;
 

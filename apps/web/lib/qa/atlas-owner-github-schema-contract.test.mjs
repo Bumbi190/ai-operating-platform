@@ -76,7 +76,7 @@ describe('GitHub connection proposal: static offline contract, NOT a real migrat
     assert.ok(verifier.includes("has_table_privilege('service_role'"))
     assert.match(verifier,/set role authenticated/)
     assert.match(verifier,/set role anon/)
-    assert.match(verifier,/set role pling_executor/)
+    assert.match(verifier,/set role workflow_agent/)
     assert.match(runner,/--network none --memory 256m/)
     assert.ok(runner.includes('--rm -d --name $name'))
     assert.ok(runner.includes('finally {'))

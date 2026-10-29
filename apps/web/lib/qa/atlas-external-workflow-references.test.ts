@@ -176,7 +176,7 @@ describe('Atlas external workflow references: read-only, pinned discovery', () =
   it('derives noOp intent from authenticated user text, not tool input', () => {
     const route = readFileSync(resolve(process.cwd(), 'app/api/chat/route.ts'), 'utf8')
     expect(route).toContain('includeNoOpAuditExamples: /no[\\s-]?op|platshåll|placeholder/i.test(notionUserQuestion)')
-    expect(route).toContain('notionReadOnlyTurn,lastUserText)')
+    expect(route).toContain('notionReadOnlyTurn,lastUserText,stratoInboxReadIntent)')
     expect(route).toContain('När användaren frågar om noOp/platshållare:')
     expect(route).toContain('if (!operator.ok) return { denied: \'platform_operator_required\' }')
   })
@@ -254,7 +254,7 @@ describe('Atlas external workflow references: read-only, pinned discovery', () =
     const route = readFileSync(resolve(process.cwd(), 'app/api/chat/route.ts'), 'utf8')
     expect(route).toContain("import { isExternalWorkflowReferenceReadIntent } from '@/lib/atlas/workflow-references/read-intent'")
     expect(route).toContain('const externalReferenceReadIntent = !pendingNovaCuratorReview && !hbCompositeEvidenceIntent && !image && !studioContext')
-    expect(route).toContain('const fastPath = !pendingNovaCuratorReview && !hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent && !externalReferenceReadIntent &&')
+    expect(route).toContain('const fastPath = !pendingNovaCuratorReview && !stratoInboxReadIntent && !hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent && !externalReferenceReadIntent &&')
     expect(route).toContain("const forceExternalReferenceReadFirstTurn = externalReferenceReadIntent && activeTools.some")
     expect(route).toContain("name: 'search_external_workflow_references' } }")
     expect(route.indexOf(': forceExternalReferenceReadFirstTurn')).toBeLessThan(route.indexOf(': forceNavigateFirstTurn'))
@@ -264,8 +264,8 @@ describe('Atlas external workflow references: read-only, pinned discovery', () =
 
   it('preserves Notion-only routing when the request also mentions external workflows', () => {
     const route = readFileSync(resolve(process.cwd(), 'app/api/chat/route.ts'), 'utf8')
-    expect(route).toContain('const fastPath = !pendingNovaCuratorReview && !hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent && !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText)')
-    expect(route).toContain('const activeTools = pendingNovaCuratorReview ? [] : notionReadOnlyTurn ? ATLAS_NOTION_TOOLS')
+    expect(route).toContain('const fastPath = !pendingNovaCuratorReview && !stratoInboxReadIntent && !hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent && !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText)')
+    expect(route).toMatch(/const activeTools\s*=\s*pendingNovaCuratorReview\s*\?\s*\[\]\s*:\s*notionReadOnlyTurn\s*\?\s*ATLAS_NOTION_TOOLS/)
     expect(route).toContain('const forceNotionFirstTurn = notionReadOnlyTurn')
     expect(route).toContain("const forceExternalReferenceReadFirstTurn = externalReferenceReadIntent && activeTools.some(tool => tool.name === 'search_external_workflow_references') && !forceNotionFirstTurn")
     expect(route.indexOf('? (forceNotionFirstTurn')).toBeLessThan(route.indexOf(': forceExternalReferenceReadFirstTurn'))

@@ -54,6 +54,7 @@ function harness(change: Partial<ResearchArchiveDeps> = {}) {
   const save = vi.fn(async (_record: unknown) => ({ failed: false }))
   const deps: ResearchArchiveDeps = {
     env: { VERCEL_ENV: 'preview', HB_LEADFINDER_RESEARCH_ARCHIVE_ENABLED: 'true',
+      HB_LEADFINDER_RESEARCH_ARCHIVE_WRITE_ENABLED: 'true',
       HB_LEADFINDER_RESEARCH_ARCHIVE_APPROVED_SHA256: archiveDigest(report) },
     getUser: async () => ({ id: OWNER }),
     loadProject: async () => ({
@@ -61,6 +62,7 @@ function harness(change: Partial<ResearchArchiveDeps> = {}) {
       owner_id: OWNER, slug: 'handlarborsen', name: 'Handlarbörsen', executionPaused: false,
     }),
     isHandlarborsenProject: p => p.slug === 'handlarborsen',
+    getKnownContacts: async () => parseKnownContacts([], HANDLARBORSEN_PROJECT_ID),
     readExisting, save, ...change,
   }
   return { deps, readExisting, save }
@@ -143,7 +145,7 @@ describe('Handlarbörsen research archive – validated, non-contactable legal e
     const denied = await leadFinderResearchArchiveApi(request({
       mode:'save', report, digest:first.digest, confirmation:RESEARCH_ARCHIVE_CONFIRMATION,
     }),unapproved.deps)
-    expect(denied.status).toBe(403)
+    expect(denied.status).toBe(404) // write flag is off: fail closed before digest validation
     expect(unapproved.save).not.toHaveBeenCalled()
     const already = harness({ readExisting: async () => ({ exists: true, failed: false }) })
     expect((await leadFinderResearchArchiveApi(request({

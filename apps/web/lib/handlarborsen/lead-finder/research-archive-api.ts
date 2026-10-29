@@ -3,9 +3,11 @@ import { createHash } from 'node:crypto'
 import { HANDLARBORSEN_PROJECT_ID } from '@/lib/atlas/handlarborsen-test-data/contracts'
 import { readBoundedImportBody, type ImportProjectRow } from './import-api'
 import { constantTimeEqual, digestApproved } from './import-intake'
-import { parseResearchArchive, type ArchiveReport } from './research-archive'
+import { parseResearchArchive, reconcileArchiveWithCrm, type ArchiveReport } from './research-archive'
+import type { KnownContacts } from './known-contacts'
 
 export const RESEARCH_ARCHIVE_FLAG = 'HB_LEADFINDER_RESEARCH_ARCHIVE_ENABLED'
+export const RESEARCH_ARCHIVE_WRITE_FLAG = 'HB_LEADFINDER_RESEARCH_ARCHIVE_WRITE_ENABLED'
 export const RESEARCH_ARCHIVE_APPROVED_DIGEST_ENV = 'HB_LEADFINDER_RESEARCH_ARCHIVE_APPROVED_SHA256'
 export const RESEARCH_ARCHIVE_CONFIRMATION = 'SPARA 81 SOM EJ KONTAKTBARA' as const
 /** Stable even after Postgres jsonb reorders object properties. */
@@ -34,6 +36,8 @@ export interface ResearchArchiveDeps {
   getUser: () => Promise<{ id: string } | null>
   loadProject: (userId: string) => Promise<ImportProjectRow | null>
   isHandlarborsenProject: (project: { id: string; slug: string; name: string }) => boolean
+  /** Owner-scoped RLS SELECT; never returns raw CRM records to the browser. */
+  getKnownContacts: () => Promise<KnownContacts>
   /** The actual session client, constrained by RLS. Never admin/service role. */
   readExisting: (digest: string) => Promise<{ exists: boolean; failed: boolean }>
   save: (record: SaveRecord) => Promise<{ failed: boolean }>
@@ -83,10 +87,22 @@ export async function leadFinderResearchArchiveApi(request: Request, deps: Resea
   if (!parsed.ok) return respond(422, { status: parsed.reason })
   const digest = archiveDigest(parsed.value)
 
-  if (body.mode === 'preview') return respond(200, {
-    status: 'preview', count: parsed.value.result.length, digest,
-    stored: false, outreachReady: false, historyComplete: false,
-  })
+  if (body.mode === 'preview') {
+    let known: KnownContacts | null = null
+    try { known = await deps.getKnownContacts() } catch { known = null }
+    const matches = known && known.status === 'ready' ? reconcileArchiveWithCrm(parsed.value, known) :
+      parsed.value.result.map(company => ({...company, crm: 'crm_unavailable' as const,
+        crmReasons: [] as string[], outreachReady: false as const, historyComplete: false as const }))
+    return respond(200, {
+      status: 'preview', count: parsed.value.result.length, digest,
+      stored: false, outreachReady: false, historyComplete: false,
+      crmStatus: known?.status ?? 'unavailable',
+      report: { counts: parsed.value.counts, result: matches },
+    })
+  }
+  // A distinct feature gate protects writes even after a safe Preview is enabled.
+  if (deps.env[RESEARCH_ARCHIVE_WRITE_FLAG] !== 'true')
+    return respond(404, { status: 'write_disabled' })
   if (typeof body.digest !== 'string' || !/^[0-9a-f]{64}$/.test(body.digest) ||
     !constantTimeEqual(body.digest, digest) ||
     typeof body.confirmation !== 'string' ||

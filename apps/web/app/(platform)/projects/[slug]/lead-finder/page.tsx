@@ -33,6 +33,7 @@ export default async function LeadFinderPage({ params, searchParams }: {
   let researchEnabled = false
   let researchExtractEnabled = false
   let archivedResearch: ArchiveReview = { status: 'disabled' }
+  let archiveSaveEnabled = false
   const localFlag = process.env.NODE_ENV === 'development' && process.platform === 'win32' &&
     process.env.HB_LEADFINDER_LOCAL_REVIEW_ENABLED === 'true'
   const importFlag = process.env.HB_LEADFINDER_IMPORT_PREVIEW_ENABLED === 'true'
@@ -57,8 +58,11 @@ export default async function LeadFinderPage({ params, searchParams }: {
           !!process.env.TAVILY_API_KEY?.trim()
         researchExtractEnabled = researchEnabled && process.env.HB_LEADFINDER_EXTRACT_ENABLED === 'true'
         if (importFlag && process.env.VERCEL_ENV !== 'production' &&
-          process.env.HB_LEADFINDER_RESEARCH_ARCHIVE_ENABLED === 'true')
+          process.env.HB_LEADFINDER_RESEARCH_ARCHIVE_ENABLED === 'true') {
           archivedResearch = await loadArchivedLeadResearchForOwner(project.id, contacts)
+          archiveSaveEnabled = process.env.HB_LEADFINDER_RESEARCH_ARCHIVE_WRITE_ENABLED === 'true' &&
+            archivedResearch.status !== 'unavailable'
+        }
       }
     }
   }
@@ -81,5 +85,6 @@ export default async function LeadFinderPage({ params, searchParams }: {
     researchEnabled={researchEnabled}
     researchExtractEnabled={researchExtractEnabled}
     archivedResearch={archivedResearch}
+    archiveSaveEnabled={archiveSaveEnabled}
   />
 }

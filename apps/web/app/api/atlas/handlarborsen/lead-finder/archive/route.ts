@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { HANDLARBORSEN_PROJECT_ID } from '@/lib/atlas/handlarborsen-test-data/contracts'
 import { isHandlarborsenProject } from '@/lib/os/project-command-center'
 import { leadFinderResearchArchiveApi } from '@/lib/handlarborsen/lead-finder/research-archive-api'
+import { loadKnownContactsForOwner } from '@/lib/handlarborsen/lead-finder/known-contacts-server'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -28,6 +29,7 @@ export async function POST(request: Request) {
       } : null
     },
     isHandlarborsenProject,
+    getKnownContacts: () => loadKnownContactsForOwner(HANDLARBORSEN_PROJECT_ID),
     readExisting: async digest => {
       const db = await createClient()
       // This table is not yet in the old generated DB type. RLS still applies.

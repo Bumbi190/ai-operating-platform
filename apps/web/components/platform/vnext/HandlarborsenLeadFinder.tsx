@@ -27,6 +27,7 @@ export interface LeadFinderProps {
   researchEnabled?: boolean
   researchExtractEnabled?: boolean
   archivedResearch?: ArchiveReview
+  archiveSaveEnabled?: boolean
 }
 
 const localFilterLabels: Record<LocalReviewFilter, string> = {
@@ -121,7 +122,7 @@ function LocalReviewSection({ state, search, filter }: { state: LocalReviewState
 }
 
 /** Pure presentation: no actions, email sends, data reads or test fixtures. */
-export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search, filter, localReview = { status: 'disabled' }, localSearch = '', localFilter = 'all', importPreviewEnabled = false, importWriteEnabled = false, researchEnabled = false, researchExtractEnabled = false, archivedResearch = { status: 'disabled' } }: LeadFinderProps) {
+export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search, filter, localReview = { status: 'disabled' }, localSearch = '', localFilter = 'all', importPreviewEnabled = false, importWriteEnabled = false, researchEnabled = false, researchExtractEnabled = false, archivedResearch = { status: 'disabled' }, archiveSaveEnabled = false }: LeadFinderProps) {
   const rows = saved.status === 'ready' ? filterCandidateViews(saved.candidates, search, filter) : []
   const total = saved.status === 'ready' ? saved.candidates.length.toString() : '—'
   const reviewCount = saved.status === 'ready'
@@ -193,7 +194,7 @@ export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search,
         </aside>
       </div>
 
-      <HandlarborsenResearchArchive archive={archivedResearch} />
+      <HandlarborsenResearchArchive archive={archivedResearch} saveEnabled={archiveSaveEnabled} />
       <LocalReviewSection state={localReview} search={localSearch} filter={localFilter} />
       {importPreviewEnabled ? <HandlarborsenScbImportControl writeEnabled={importWriteEnabled} researchEnabled={researchEnabled} extractEnabled={researchExtractEnabled} /> : null}
 

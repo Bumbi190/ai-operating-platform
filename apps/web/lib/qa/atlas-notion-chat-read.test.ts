@@ -219,12 +219,14 @@ describe('Atlas Notion chat activation boundary', () => {
 
   it('chat route restricts Notion evidence turns to only the read tool', () => {
     const route = readFileSync(join(process.cwd(), 'app/api/chat/route.ts'), 'utf8')
-    expect(route).toContain('notionReadOnlyTurn ? ATLAS_NOTION_TOOLS')
+    expect(route).toMatch(/const activeTools\s*=\s*notionReadOnlyTurn\s*\?\s*ATLAS_NOTION_TOOLS/)
     expect(route).toContain('&& !actionIntent && !navIntent && !resolutionIntent')
     expect(route).toContain("if(name===ATLAS_NOTION_TOOL_NAME)")
     expect(route).toContain("if(!notionReadOnlyTurn) return {ok:false,code:'notion_read_unavailable'}")
     expect(route).toContain('persistedNotionToolResult(')
-    expect(route).toContain('notionReadOnlyTurn,lastUserText)')
+    // Strato's independent permission gate is a third parameter, after
+    // the original user question required by Notion and external search.
+    expect(route).toContain('notionReadOnlyTurn,lastUserText,stratoInboxReadIntent)')
     expect(route).toContain('userQuestion:notionUserQuestion')
     // Tool is absent from global TOOLS, so it cannot appear in action/studio turns.
     expect(route).not.toContain('...ATLAS_NOTION_TOOLS,')

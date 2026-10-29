@@ -7,7 +7,7 @@
 # Cached postgres:16 or postgres:17-alpine ONLY. No published ports, volumes or mounts.
 # Simulated-Sunday rewrites SQL in memory ONLY for disposable tests.
 param(
- [ValidateSet('normal','simulated-sunday','native-editorial','native-content','native-context','native-binding','native-plan-assets','native-schedule','native-claim')]
+ [ValidateSet('normal','simulated-sunday','native-editorial','native-content','native-context','native-binding','native-plan-assets','native-schedule','native-claim','native-concurrency')]
  [string]$Mode='normal',
  [ValidateSet('postgres:16','postgres:17-alpine')]
  [string]$PostgresImage='postgres:16'
@@ -59,12 +59,12 @@ try{
  )
  if($Mode -eq 'normal'){$files+= 'docs\verification\fixtures\family-weekly-pg-smoke-assert.sql'}
  elseif($Mode -eq 'simulated-sunday'){$files+='docs\verification\fixtures\family-weekly-pg-queue-assert.sql'}
- elseif($Mode -ne 'native-claim'){$files+='docs\verification\fixtures\family-weekly-pg-native-deps.sql'}
+ elseif($Mode -notin @('native-claim','native-concurrency')){$files+='docs\verification\fixtures\family-weekly-pg-native-deps.sql'}
  foreach($relative in $files){
   $file=Join-Path $repo $relative
   if(-not(Test-Path $file)){throw ('DISPOSABLE_TEST_FILE_MISSING:'+ $relative)}
   $raw=Get-Content -LiteralPath $file -Raw -Encoding UTF8
-  if($Mode -in @('simulated-sunday','native-claim') -and
+  if($Mode -in @('simulated-sunday','native-claim','native-concurrency') -and
     $relative -match 'family_weekly_(run_creator|once_only_model_attempt)_proposed\.sql$'){
    $original="v_local:=clock_timestamp() at time zone 'Europe/Stockholm';"
    $replacement="v_local:=timestamp '2027-01-03 15:10:00';"
@@ -76,7 +76,7 @@ try{
   $raw | docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
   if($LASTEXITCODE -ne 0){throw ('DISPOSABLE_TEST_SQL_FAILED:'+ $relative)}
  }
- if($Mode -eq 'native-claim'){
+ if($Mode -in @('native-claim','native-concurrency')){
   # Execute the actual canonical claim_runs body over the native Family queue,
   # not the synthetic tests' direct UPDATE into running state.
   $deps=Join-Path $repo 'docs\verification\fixtures\family-weekly-pg-native-claim-deps.sql'
@@ -94,7 +94,10 @@ try{
   Write-Output 'LOAD_CANONICAL_CLAIM_RUNS_IN_DISPOSABLE_DB_ONLY=true'
   $native | docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
   if($LASTEXITCODE -ne 0){throw 'CANONICAL_CLAIM_RUNS_LOAD_FAILED'}
-  $assertFile=Join-Path $repo 'docs\verification\fixtures\family-weekly-pg-native-claim-assert.sql'
+  $claimAssertName=if($Mode -eq 'native-concurrency'){
+   'family-weekly-pg-native-concurrency-assert.sql'
+  }else{'family-weekly-pg-native-claim-assert.sql'}
+  $assertFile=Join-Path $repo ('docs\verification\fixtures\'+$claimAssertName)
   Get-Content -LiteralPath $assertFile -Raw -Encoding UTF8 |
    docker exec -i $name psql -U postgres -v ON_ERROR_STOP=1 -q
   if($LASTEXITCODE -ne 0){throw 'CANONICAL_CLAIM_RUNS_TEST_FAILED'}

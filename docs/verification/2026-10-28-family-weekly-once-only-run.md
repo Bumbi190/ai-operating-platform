@@ -947,3 +947,61 @@ eftersom produktionsledgern har
 Familje-Stundens gren ännu saknar migrationsfilen.
 Migrationen hör till **separat Draft-PR #584** med pågående arbete
 och kan inte kopieras, förbigås eller mergas från FS-testkörningen.
+
+## Fas 21 – Verklig parallellitet i söndagskö och kostnadsgrind (2026-10-29)
+
+Det tidigare `native-claim`-läget verifierade ett
+sekventiellt enqueue → claim → högst ett betalt modellförsök.
+Det testade inte två **samtidigt pågående** begäranden.
+Nytt `-Mode native-concurrency` adderar ett fristående
+`family-weekly-pg-native-concurrency-assert.sql`-test utan
+någon ändring i de föreslagna produktionsfunktionerna.
+
+Det isolerade testet laddar fortfarande den verkliga kanoniska
+`public.claim_runs` från migrationen och de fyra föreslagna
+familje-SQL-funktionerna. Testklockan skrivs om **enbart
+i minnet, enbart i den temporära databasen** till
+2027-01-03 kl. 15.10 Europe/Stockholm; produktionens
+klockfunktion är intakt. Två oberoende dblink-sessioner
+anropar `family_weekly_enqueue_once()` som `service_role`.
+En tredje lokal session håller avsiktligt samma projekt-
+transaktionslås tills **båda** samtidiga anrop är observerat
+upptagna, därefter släpps låset. Det krävs **exakt ett**
+`queued` och **exakt ett** `already_queued`, med
+exakt ett nytt `runs` och en varaktig
+`family_weekly_run_plans`-rad.
+
+Efter en separat, verklig `claim_runs` med icke-tomt
+`claim_id` gör två dblink-sessioner motsvarande **samtidiga**
+anrop till `family_weekly_admit_once` under samma spärr.
+Endast **ett** får status `admitted`, det andra måste få
+`blocked`, och det får finnas **exakt en permanent**
+`family_weekly_model_attempts`-rad för veckan.
+Den fortsätter förbjuda schemaläggnings-/publiceringsauktoritet.
+Slutligen återkallar ägaren sitt samtycke som en riktig
+RLS-kontrollerad `authenticated`-INSERT.
+Efter återkallelsen ska `family_weekly_authority_current`
+vara false, nytt betalt försök returnera `blocked`,
+ny enqueue returnera `already_queued`, och båda
+varaktiga veckoledger-raderna ligga kvar.
+
+**Verifierat lokalt:** PostgreSQL 16 och 17
+`FAMILY_WEEKLY_PARALLEL_ENQUEUE_PAID_FENCE_AND_REVOKE_PASS`,
+exit 0, båda Dockercontainrarna borttagna.
+`dblink` installeras **endast i de temporära testdatabaserna**,
+och anslutningarna använder endast lokala Unix-sockets
+inuti en `--network none`-container.
+Detta är test av faktisk parallell databasexekvering,
+inte anrop till extern AI, sociala nätverk eller Supabase.
+Det visar att databasens engångsspärr håller även med två
+arbetare; det påstår inte att ett tidigare debiterat
+externt AI-anrop kan återställas efter nätfel.
+
+CI inkluderar nu tio isolerade testlägen på PostgreSQL 16
+och åtta på PostgreSQL 17. Slutlig CI-status för exakt
+nya committen kontrolleras separat före grönt resultat.
+**Fortsatt ej live:** familjens föreslagna migrationsfiler,
+cron och funktionsflaggor är fortfarande oinstallerade/AV,
+PR:n Draft och Vercel-preview tidigare blockerad av
+Handlarbörsens redan applicerade men ännu ej mergade
+`handlarborsen_owner_review_archive_20261029`.

@@ -5,8 +5,9 @@ on:
   pull_request:
     paths:
       - '.github/workflows/atlas-owner-github-catalog-stage0.yml'
-      - 'apps/web/lib/atlas/project-connections/owner-github-catalog.ts'
-      - 'apps/web/lib/qa/atlas-owner-github-catalog.test.mjs'
+      - 'apps/web/lib/atlas/project-connections/**'
+      - 'apps/web/lib/qa/atlas-owner-github-*.test.mjs'
+      - 'docs/architecture/proposed-sql/atlas_owner_github_bindings_stage1_PROPOSAL.sql'
   workflow_dispatch:
 
 permissions:
@@ -27,5 +28,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run offline read-only catalogue identity tests
-        run: node --experimental-strip-types --test apps/web/lib/qa/atlas-owner-github-catalog.test.mjs
+      - name: Run all offline catalogue, store and SQL-proposal tests (zero skips)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types --test \
+            apps/web/lib/qa/atlas-owner-github-catalog.test.mjs \
+            apps/web/lib/qa/atlas-owner-github-store.test.mjs \
+            apps/web/lib/qa/atlas-owner-github-schema-contract.test.mjs \
+            | tee "$RUNNER_TEMP/owner-catalog-tests.txt"
+          grep -qx '# tests 40' "$RUNNER_TEMP/owner-catalog-tests.txt"
+          grep -qx '# pass 40' "$RUNNER_TEMP/owner-catalog-tests.txt"
+          grep -qx '# fail 0' "$RUNNER_TEMP/owner-catalog-tests.txt"
+          grep -qx '# skipped 0' "$RUNNER_TEMP/owner-catalog-tests.txt"

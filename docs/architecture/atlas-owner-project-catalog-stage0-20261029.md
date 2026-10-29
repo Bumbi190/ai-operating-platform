@@ -1,6 +1,6 @@
 # Atlas/Nova global owner project catalogue – Stage 0 (2026-10-29)
 
-**Status: INERT POLICY FOUNDATION. NOT CONNECTED TO NOVA CHAT OR LIVE PROVIDERS.**
+**Status: INERT STAGES 0–1. The Stage 1 read-only DB adapter and SQL PROPOSAL are NOT connected to Nova chat, real Supabase queries, or GitHub/Vercel provider calls.**
 
 Work ID: [#604](https://github.com/Bumbi190/ai-operating-platform/issues/604). Owner-approved target architecture: [Notion](https://app.notion.com/p/4087b977c5b8819f8122de73ab8f0b91). Existing Nova source read pilot: [#576](https://github.com/Bumbi190/ai-operating-platform/issues/576).
 
@@ -36,3 +36,32 @@ Prime Agent is being developed separately on `codex/atlas-model-agent-router-202
 
 ## Cost and release rule
 Stage 0 ran no network provider calls or paid models. Keep all new provider integrations disabled by default. Before approval of a real connection, show the owner the exact project, scopes, source, potential cost, data-security risk and rollback plan. Production and write authority are separate approvals.
+
+## Stage 1 follow-up – offline read-only persistence adapter (29 October 2026)
+
+**Status: IMPLEMENTED IN A DRAFT BRANCH FOR OFFLINE VERIFICATION ONLY. No schema or credential has been applied to Supabase or Vercel.**
+
+- The existing `owner-github-catalog.ts` now also exports `loadStoredOwnerGithubReadScope`. This adapter accepts a caller-provided DB query interface (no project credentials) and requires independently verified owner UUID + exact requested project UUID. It queries `projects` by `owner_id` and checks `owner_id` again in returned rows, before querying future `atlas_owner_github_bindings` by exact `owner_user_id`, `state='approved'` and the list of owned project UUIDs.
+- Each approved mapping is matched against the project's current canonical `slug`, owner and reviewer ID, numeric GitHub identities and a non-future approval timestamp. A missing table, foreign project, stale/malformed approval, duplicate/ambiguous repository mapping or provider/db error causes `not_available`, with no fallback to a default project or account-wide token.
+- The adapter refuses silent truncation if a caller has more than 200 projects or approved records. Scaling beyond that ceiling requires a separately reviewed paginated, snapshot-consistent listing instead of ignoring records.
+- The Stage 0 candidate-scope marker and one-repository token restrictions remain intact. **No DB result automatically grants runtime authority**: the future endpoint must verify a live authenticated operator session, fresh project membership, real GitHub App installation and immutable repository identity at every access, and never trust model text as a principal.
+
+### Proposed database contract — not a migration
+
+The SQL sketch in `docs/architecture/proposed-sql/atlas_owner_github_bindings_stage1_PROPOSAL.sql` is deliberately outside `apps/web/supabase/migrations` to avoid changing the protected migration ledger or Vercel build guard. It proposes owner-bound project references, `pending/approved/revoked` states, reviewer/date fields, unique active repository mappings, RLS and only authenticated owner **SELECT** access. There is no insert/update/delete permission for normal users or Pling. **No real SQL schema has been created, modified, granted or populated.**
+
+Known Supabase change: new tables are no longer automatically exposed to the Data API under the 2026 rollout, with enforcement planned for **30 October 2026**. Before implementing a live reader, independently review the project's Data API exposure/grant configuration and keep browser access closed by default. All production SQL changes require explicit owner approval, migration-ledger review and a real isolated Postgres/RLS test. Our static SQL contract is not a live database verification.
+
+### Evidence
+
+Offline local `node --experimental-strip-types --test` over three named suites: **40/40 passed, zero skips** (15 Stage 0, 17 Stage 1 loader, 8 SQL proposal contract cases). The same source file passed strict standalone TypeScript without changing shared `tsconfig`. These tests use synthetic DB objects only and do not authenticate Supabase, create a GitHub token, contact Vercel, modify a project or call a paid AI model.
+
+### Release gates still open
+
+1. Exact GitHub Actions/Preview verification of this commit and an independent security review.
+2. A real owner-approved, migration-guard-safe database change, including RLS adversarial checks and explicit Data API exposure decision.
+3. Independent operator/DB/installation authorization at a new server endpoint, an owner-readable UI and an audited acceptance/revoke flow.
+4. Real GitHub App owner acceptance in Preview with only a one-repo `contents:read` token, immutable commit evidence and access-denial tests.
+5. Optional **Supabase/Vercel** project connectors remain separate read-only-to-write capability stages; **Prime Agent's code broker and model router remain exclusively in their own workstream**.
+
+All work remains in existing Draft PR #605, linked to GitHub issue #604. **No merge, production deployment or secret installation is authorized by test success.**

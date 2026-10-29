@@ -1,6 +1,8 @@
 /**
- * Stage 0: data-driven owner GitHub repository scope. No DB, network, secret,
- * paid model, Git write, Prime Agent or SDF Code Broker dependency.
+ * Stages 0–1: data-driven owner GitHub repository scope and a READ-ONLY
+ * query adapter that receives its DB client from an authenticated future caller.
+ * No instantiated DB connection, network, secret, paid model, Git write,
+ * Prime Agent or SDF Code Broker dependency.
  *
  * This is a pure policy candidate, NOT an authorization endpoint: the caller
  * must independently authenticate the operator, derive ownedProjectIds via
@@ -191,4 +193,121 @@ export function validatesSingleRepositoryTokenReceipt(
     Object.keys(p).every(k => (k === 'contents' || k === 'metadata') && p[k] === 'read') &&
     typeof x.token === 'string' && x.token.length > 0 &&
     Number.isFinite(expiry) && expiry >= now + 5 * 60_000 && expiry <= now + 65 * 60_000
+}
+
+
+export const OWNER_GITHUB_BINDINGS_TABLE = 'atlas_owner_github_bindings' as const
+
+/** Avoid silently truncating an ownership/connection inventory. */
+const MAX_OWNER_PROJECTS = 200
+const FETCH_LIMIT = MAX_OWNER_PROJECTS + 1
+type Failure = { ok: false; code: 'not_available' }
+const DENIED: Failure = Object.freeze({ ok: false, code: 'not_available' })
+
+export interface ReadOnlyQuery {
+  select(columns: string): ReadOnlyQuery
+  eq(column: string, value: string): ReadOnlyQuery
+  in(column: string, values: string[]): ReadOnlyQuery
+  limit(count: number): Promise<{ data: unknown; error: unknown }>
+}
+export interface OwnerRepositoryReadDb {
+  from(table: string): ReadOnlyQuery
+}
+export interface StoredScopeLookup {
+  db: OwnerRepositoryReadDb
+  /** Must come from an independently verified operator session. */
+  authenticatedOwnerUserId: string
+  /** Immutable project UUID, never a slug, path or model-selected URL. */
+  requestedProjectId: string
+}
+
+interface ProjectIdentity { id: string; slug: string }
+function projectIdentities(input: unknown, owner: string): ProjectIdentity[] | null {
+  if (!Array.isArray(input) || input.length === 0 || input.length >= FETCH_LIMIT) return null
+  const byId = new Map<string,string>()
+  for (const row of input) {
+    if (!row || typeof row !== 'object') return null
+    const r = row as Record<string, unknown>
+    if (typeof r.id !== 'string' || !UUID.test(r.id) ||
+      r.owner_id !== owner ||
+      typeof r.slug !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(r.slug))
+      return null
+    const id = r.id.toLowerCase()
+    if (byId.has(id)) return null
+    byId.set(id,r.slug)
+  }
+  return [...byId].map(([id,slug])=>({id,slug}))
+}
+
+function verifiedBindingRow(input: unknown, owner: string, projectSlugs: Map<string,string>):
+  OwnerGithubBinding | null {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return null
+  const r = input as Record<string, unknown>
+  const projectId = typeof r.project_id === 'string' ? r.project_id.toLowerCase() : ''
+  const approvedAt = typeof r.approved_at === 'string' ? Date.parse(r.approved_at) : NaN
+  // The catalogue is untrusted unless an owner-approved row has an explicit
+  // reviewer and a valid approval time. Live provider identity is rechecked
+  // independently at the transport boundary on EVERY actual inspection.
+  if (!UUID.test(projectId) || !projectSlugs.has(projectId) ||
+    r.owner_user_id !== owner || r.approved_by !== owner ||
+    r.state !== 'approved' ||
+    !Number.isFinite(approvedAt) || approvedAt > Date.now() ||
+    typeof r.project_slug !== 'string' || r.project_slug !== projectSlugs.get(projectId))
+    return null
+  const candidate = {
+    projectId, ownerUserId: owner, projectSlug: r.project_slug,
+    installationId: r.installation_id, repositoryId: r.repository_id,
+    repositoryOwnerId: r.repository_owner_id,
+    repositoryOwner: r.repository_owner, repositoryName: r.repository_name,
+    defaultBranch: r.default_branch, state: r.state,
+  }
+  // The pure policy validates all other types/identities, once and again.
+  return candidate as OwnerGithubBinding
+}
+
+/**
+ * Read-only, fail-closed lookup that proves:
+ *   1. the verified user owns the requested Omnira project,
+ *   2. all returned registered rows are owned and correctly mapped,
+ *   3. the one-project scope passes the independent pure policy.
+ *
+ * No insert/upsert/update/delete, provider call, secret, model or SQL execute.
+ * The repository table is deliberately ABSENT from production during Stage 1.
+ */
+export async function loadStoredOwnerGithubReadScope(input: StoredScopeLookup): Promise<ScopeDecision> {
+  if (!input || !input.db || typeof input.db.from !== 'function' ||
+    typeof input.authenticatedOwnerUserId !== 'string' ||
+    typeof input.requestedProjectId !== 'string' ||
+    !UUID.test(input.authenticatedOwnerUserId) || !UUID.test(input.requestedProjectId))
+    return DENIED
+  const owner = input.authenticatedOwnerUserId.toLowerCase()
+  const targetId = input.requestedProjectId.toLowerCase()
+  try {
+    const owned = await input.db.from('projects')
+      .select('id,slug,owner_id').eq('owner_id', owner).limit(FETCH_LIMIT)
+    if (owned.error) return DENIED
+    const projects = projectIdentities(owned.data,owner)
+    if (!projects) return DENIED
+    const slugs = new Map(projects.map(p=>[p.id,p.slug]))
+    if (!slugs.has(targetId)) return DENIED // No binding read for a foreign project.
+    const ids = projects.map(p=>p.id)
+    const result = await input.db.from(OWNER_GITHUB_BINDINGS_TABLE)
+      .select('project_id,owner_user_id,project_slug,installation_id,repository_id,repository_owner_id,repository_owner,repository_name,default_branch,state,approved_by,approved_at')
+      .eq('owner_user_id',owner).eq('state','approved')
+      .in('project_id',ids).limit(FETCH_LIMIT)
+    if (result.error || !Array.isArray(result.data) || result.data.length >= FETCH_LIMIT)
+      return DENIED
+    const bindings: OwnerGithubBinding[] = []
+    for (const raw of result.data) {
+      const row = verifiedBindingRow(raw,owner,slugs)
+      if (!row) return DENIED
+      bindings.push(row)
+    }
+    return resolveOwnerGithubReadScope({
+      authenticatedOwnerUserId:owner,requestedProjectId:targetId,
+      ownedProjectIds:ids,candidateBindings:bindings,
+    })
+  } catch {
+    return DENIED
+  }
 }

@@ -1112,3 +1112,144 @@ familje-SQL-förslagen är oinstallerade, runtime/cron/
 registreringsflaggorna OFF, och Vercel Preview för
 FS-grenen blockeras fortfarande av den separat tillämpade
 Handlarbörsen-migrationen i Draft-PR #584.
+
+## Fas 25 – Signerat JWT och riktig PostgREST-RLS, helt intern miljö (2026-10-29)
+
+För att komma närmare ett verkligt ägarflöde har ett **separat
+HTTP-integrationstest** införts i
+`docs/verification/fixtures/run-family-weekly-postgrest-jwt.ps1`.
+Det är skilt från de tidigare testerna som körde
+`set role authenticated` direkt i PostgreSQL.
+
+Testhärvan skapar för varje körning ett unikt
+`docker network create --internal`-nätverk och startar
+tre engångscontainrar: `postgres:16` eller
+`postgres:17-alpine`, kanoniska `postgrest:v16.5`
+och en liten `node:22-alpine`-klient. **Inga portar
+publiceras till Windows-/GitHub-värden, inga volymer
+delas, inga externa nätanrop görs**. Docker-imager
+måste vara cachade eller förladdade av CI.
+Alla tre containrar och nätverket tas bort efteråt,
+även om ett test misslyckas.
+
+Tillfällig SQL-fixture ger databasen syntetiska
+`auth.users`/projektrader, giltiga parent-RLS-predikat
+och en test-only `authenticator`-inloggningsroll.
+**Alla fyra oinstallerade Familje-Stunden-SQL-förslagen
+körs i exakt skick** i engångsdatabasen.
+`family-weekly-postgrest-test-roles.sql` accepterar
+både Supabases äldre `request.jwt.claim.sub` och
+PostgRESTs signerade `request.jwt.claims` i
+`auth.uid()`.
+
+En klient skickar riktiga REST/HTTP-förfrågningar med
+lokalt HS256-signerade JWT (`role=authenticated`,
+`sub=owner` respektive `sub=foreign`).
+PostgREST **validerar JWT-signaturen** och sätter
+behörighetsrollen innan databasens RLS prövas.
+Testet kräver:
+- Ägaren kan läsa sitt projekt och ange, läsa samt
+  återkalla ett tidsbegränsat samtycke med exakt
+  `can_schedule=false` och `can_publish=false`.
+- Annan autentiserad användare kan **inte** se ägarens
+  projekt/samtycke eller påstå sig vara ägaren vid INSERT.
+  Anonyma klienter kan inte läsa eller skriva samtycke.
+  Manipulerat, icke omsignerat JWT nekas kryptografiskt.
+- För långa samtycken och förfalskad publiceringsauktoritet
+  nekas. Ägaren kan **inte** UPDATE/DELETE:a
+  append-only-händelser, läsa paid-attempt-ledgern eller
+  anropa serverns `family_weekly_enqueue_once` via REST.
+- Efter återkallelse finns enbart `enable` och `revoke`
+  i ägarens synliga historik; främmande användare
+  ser fortfarande noll rader.
+
+**Verifierat lokalt:** PostgreSQL 16 och 17,
+`FAMILY_WEEKLY_SIGNED_JWT_POSTGREST_OWNER_ENABLE_REVOKE_PASS`,
+`FAMILY_WEEKLY_SIGNED_JWT_FOREIGN_ANON_FORGERY_DENIED`,
+`FAMILY_WEEKLY_SIGNED_JWT_COST_PUBLISH_RESTRICTIONS_PASS`,
+exit 0; inga testcontainrar eller nätverk kvar.
+GitHub-jobbet `family_weekly_signed_jwt` kör
+båda versionerna separat, med `contents: read`
+och utan hemligheter/externa testkonton.
+Exakt-head CI-status granskas efter push.
+
+**Nätverkssäkerhet:** Ett första försök med Supabase
+CLI:s tillfälliga lokala fullstack gav oväntad
+`0.0.0.0`-portbindning i Docker Desktop trots eget
+nätverk. Den testinstansen stoppades omedelbart,
+dess egna datavolymer raderades och det unika
+testnätverket togs bort; **andra befintliga
+Supabase-projekt lämnades orörda**.
+Den nya PostgREST-varianten har noll publicerade
+hostportar och verifierar detta maskinellt.
+
+**Viktig avgränsning:** JWT-signaturerna skapas
+i testcontainern för påhittade ägare; det är
+**inte** ett GoTrue/OTP/inloggningstest och inte
+en signerad session i Vercel Preview. Den
+riktiga Next.js-vägen med `resolveProjectAccess`
+och Vercels SSO-skydd måste fortfarande verifieras
+med separat isolerad Auth/testdatabas före eventuell
+aktivering. Flera parent-tabeller i testet är
+begränsade testfixturer, inte replay av varje
+produktionsmigration.
+
+**Fortsatt AV:** PR #581 Draft/unmerged; de fyra
+familje-SQL-förslagen oinstallerade i produktion;
+runtime/enrollment/cron/AI-kostnad/publicering
+avstängda. Ingen produktionsskrivning, inget
+verkligt samtycke och inget provider-anrop.
+
+
+## Fas 26 – Verklig Supabase Auth/GoTrue-inloggning i isolerat Docker-nät (2026-10-29)
+
+Fas 25 kompletteras med tre nya, fristående testfiler:
+
+- docs/verification/fixtures/run-family-weekly-gotrue-auth.ps1
+- docs/verification/fixtures/family-weekly-gotrue-client.js
+- docs/verification/fixtures/family-weekly-gotrue-schema.sql
+
+Testet startar **enbart engångscontainrar** för PostgreSQL 16/17,
+officiell GoTrue v2.197.0, PostgREST och Node. GoTrue migrerar sitt
+**riktiga auth.users-schema**. Två syntetiska konton registreras via
+POST /signup, autentiseras via POST /token?grant_type=password, och
+GoTrues egen signerade JWT används mot PostgREST. Ingen test-JWT
+genereras manuellt i denna variant.
+
+Omniras projekttabell, konversation, runs och parent-RLS är avsiktligt
+syntetiska men ägaridentiteterna kommer från GoTrue-inloggningen.
+Samtliga fyra föreslagna Familje-Stunden-SQL-filer appliceras **helt
+oförändrade och endast i engångsdatabasen**. Även de kanoniska
+runs-CHECK-predikaten verifieras.
+
+HTTP-testet kontrollerar inloggning och avvisning av fel lösenord,
+ägarens läsning av eget projekt, aktivering och återkallelse av
+tidsbegränsat samtycke, främmande och anonym användares nekade åtkomst,
+förfalskat owner_id, otillåtet can_publish, för lång giltighetstid,
+förbjuden UPDATE/DELETE, samt nekad direkt access till worker-enqueue
+och AI-kostnadsledger. Historiken för enable/revoke förblir synlig
+enbart för ägaren.
+
+**Lokala resultat:** PostgreSQL 16 och PostgreSQL 17 PASS,
+FAMILY_WEEKLY_REAL_GOTRUE_POSTGREST_INTEGRATION_PASS=true, exitkod 0.
+Inga portar publiceras till värddatorn. Testcontainrar och internnät
+tas bort efteråt, även vid fel. Inga hemligheter från produktion,
+molnprojekt, mail, AI-anrop eller sociala publiceringar används.
+
+GitHub Actions-jobbet family_weekly_signed_jwt utökas till att köra
+både JWT/PostgREST-tester och verklig GoTrue-inloggning mot de båda
+PostgreSQL-versionerna. Exakt-head CI måste fortfarande köras och
+verifieras efter commit/push.
+
+**Skrivskyddad produktionskontroll:** de föreslagna consent-, notice-
+och model-attempt-tabellerna är fortfarande frånvarande i Omniras
+prod-databas, enqueue-RPC saknas och ingen Family weekly-cron hittades.
+
+**Viktiga återstående gränser:** Detta verifierar riktig Auth och
+databas-RLS, men ännu inte autentiserat Next.js-UI eller ett inloggat
+Vercel Preview-test. Preview-projektet har miljövariabler som delas
+mellan preview/produktion, utan särskild test-override för denna
+gren. En separat externt nåbar testbackend och test-only credentials
+krävs innan webbläsartestet kan genomföras utan produktionsrisk.
+Inga tunnlar, hostportar, prod-credentials, prod-migrationer, cronjobb,
+AI-körningar eller publiceringar har aktiverats. PR #581 är fortsatt Draft.

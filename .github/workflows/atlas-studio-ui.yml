@@ -38,6 +38,8 @@ on:
       - 'docs/sql/20261028_family_weekly_*_proposed.sql'
       - 'docs/verification/fixtures/family-weekly*'
       - 'docs/verification/fixtures/run-family-weekly-pg-smoke.ps1'
+      - 'docs/verification/fixtures/run-family-weekly-postgrest-jwt.ps1'
+      - 'docs/verification/fixtures/run-family-weekly-gotrue-auth.ps1'
       - 'apps/web/app/api/social-launch/**'
       - 'apps/web/app/(platform)/projects/[slug]/social/**'
       - 'apps/web/e2e/social-launch*'
@@ -157,5 +159,42 @@ jobs:
             & ./docs/verification/fixtures/run-family-weekly-pg-smoke.ps1 -Mode $mode -PostgresImage postgres:17-alpine
             if ($LASTEXITCODE -ne 0) {
               throw "FAMILY_WEEKLY_POSTGRES17_TEST_FAILED:$mode"
+            }
+          }
+
+  family_weekly_signed_jwt:
+    name: Family weekly JWT and GoTrue / internal PostgREST RLS
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch approved disposable JWT test images
+        run: |
+          docker pull postgres:16
+          docker pull postgres:17-alpine
+          docker pull public.ecr.aws/supabase/postgrest:v16.5
+          docker pull public.ecr.aws/supabase/gotrue:v2.197.0
+          docker pull node:22-alpine
+      - name: Verify signed owner and foreign JWT RLS with zero published ports
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($pgImage in @('postgres:16','postgres:17-alpine')) {
+            & ./docs/verification/fixtures/run-family-weekly-postgrest-jwt.ps1 -PostgresImage $pgImage
+            if ($LASTEXITCODE -ne 0) {
+              throw "FAMILY_WEEKLY_SIGNED_JWT_RLS_FAILED:$pgImage"
+            }
+          }
+
+      - name: Verify genuine GoTrue password-session owner and foreign-user RLS
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($pgImage in @('postgres:16','postgres:17-alpine')) {
+            & ./docs/verification/fixtures/run-family-weekly-gotrue-auth.ps1 -PostgresImage $pgImage
+            if ($LASTEXITCODE -ne 0) {
+              throw "FAMILY_WEEKLY_REAL_GOTRUE_RLS_FAILED:$pgImage"
             }
           }

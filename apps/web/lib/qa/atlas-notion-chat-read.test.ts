@@ -226,7 +226,7 @@ describe('Atlas Notion chat activation boundary', () => {
     expect(route).toContain('persistedNotionToolResult(')
     // Strato's independent permission gate is a third parameter, after
     // the original user question required by Notion and external search.
-    expect(route).toContain('notionReadOnlyTurn,lastUserText,stratoInboxReadIntent)')
+    expect(route).toContain('notionReadOnlyTurn,lastUserText,stratoInboxReadIntent,sourceReadTurn)')
     expect(route).toContain('userQuestion:notionUserQuestion')
     // Tool is absent from global TOOLS, so it cannot appear in action/studio turns.
     expect(route).not.toContain('...ATLAS_NOTION_TOOLS,')

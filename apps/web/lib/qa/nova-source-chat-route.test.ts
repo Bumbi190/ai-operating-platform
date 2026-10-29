@@ -312,4 +312,37 @@ describe('Nova source inspection end-to-end chat route: no live provider', () =>
     expect(state.dispatches).toHaveLength(0)
     expect(JSON.stringify(frames)).toContain('source_turn_required')
   })
+  it.each([
+    ['Nova original request', 'standard', 'Nova, granska Handlarbörsens kunskapskällor och visa mig vilka beslut du behöver från mig.', undefined],
+    ['Atlas alias and combined GitHub wording', 'standard', 'Atlas, granska Handlarbörsens kunskapskällor och kontrollera GitHub-koden.', undefined],
+    ['No-name direct knowledge review in content mode', 'standard', 'Granska Handlarbörsens kunskapskällor.', 'content'],
+    ['Economy provider cannot bypass unavailable curator', 'openai_economy', 'Atlas, granska Handlarbörsens kunskapsdokument.', undefined],
+  ] as const)('pending Source Curator is a tool-free real chat turn: %s', async (_label, profile, question, mode) => {
+    // Strongest boundary: both the GitHub reader and Strato would otherwise
+    // be offered. Neither may read, call a model, or persist a tool receipt.
+    vi.stubEnv('ATLAS_MODEL_PROFILE', profile)
+    if (profile === 'openai_economy') vi.stubEnv('OPENAI_API_KEY', 'synthetic-economy-key-not-used')
+    vi.stubEnv('HB_STRATO_INBOX_READ_ENABLED', 'true')
+    state.extraTools = ['nova_inspect_project_source', 'get_handlarborsen_strato_inbox']
+    const oldContext = 'PRIVATE_OTHER_PROJECT_HISTORY_MUST_NOT_BE_REUSED'
+    const { response, frames } = await ask({
+      question, mode,
+      priorMessages: [
+        { role: 'user', content: oldContext },
+        { role: 'assistant', content: oldContext },
+      ],
+    })
+    expect(response.status).toBe(200)
+    const answer = frames.filter(f => f.event === 'text').map(f => f.text).join('')
+    expect(answer).toContain('Jag är Atlas, som du också kallar Nova i Agent Office.')
+    expect(answer).toContain('ännu inte ansluten')
+    expect(answer).toContain('Jag har inte använt CRM, inkorg eller utskicksverktyg.')
+    expect(answer).not.toContain(oldContext)
+    expect(state.calls).toHaveLength(0) // neither Anthropic nor OpenAI
+    expect(state.dispatches).toHaveLength(0) // no source inspection
+    expect(state.network).toEqual([])
+    expect(frames.filter(f => f.event === 'tool_result')).toHaveLength(0)
+    expect(state.writes.filter(w => w.table === 'conversation_messages' && w.row.role === 'tool')).toHaveLength(0)
+    expect(frames.some(f => f.event === 'done')).toBe(true)
+  })
 })

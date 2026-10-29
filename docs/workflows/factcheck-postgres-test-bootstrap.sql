@@ -73,9 +73,9 @@ VALUES ('11111111-1111-4111-8111-111111111111',
         '66666666-6666-4666-8666-666666666666');
 INSERT INTO public.agents(id,project_id,name) VALUES
   ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-   '11111111-1111-4111-8111-111111111111','Nova'),
+   '11111111-1111-4111-8111-111111111111','News Hunter'),
   ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-   '11111111-1111-4111-8111-111111111111','GrowthAgent');
+   '11111111-1111-4111-8111-111111111111','Script Writer');
 INSERT INTO public.media_scripts (
   id,project_id,version,hook,script,captions,cta
 ) VALUES (
@@ -90,7 +90,7 @@ INSERT INTO public.media_scripts (
 INSERT INTO public.workflows (id,project_id,steps) VALUES (
   'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
   '11111111-1111-4111-8111-111111111111',
-  '[{"order":1,"name":"Nova FactCheck","agent_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","input_template":"{{sources}}","output_key":"review"}]'::jsonb
+  '[{"order":1,"name":"Atlas FactCheck","agent_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","input_template":"{{sources}}","output_key":"review"}]'::jsonb
 );
 INSERT INTO public.runs (
   id,project_id,claim_id,status,lease_until,cancel_requested,
@@ -102,11 +102,11 @@ INSERT INTO public.runs (
   'running', now()+ interval '1 hour', false,
   'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
   now() - interval '2 minutes',
-  '[{"order":1,"name":"Nova FactCheck","agent_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","input_template":"{{sources}}","output_key":"review"}]'::jsonb
+  '[{"order":1,"name":"Atlas FactCheck","agent_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","input_template":"{{sources}}","output_key":"review"}]'::jsonb
 );
 INSERT INTO public.run_logs(id,run_id,step_order,step_name,role,content) VALUES (
   'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
   '33333333-3333-4333-8333-333333333333',
-  1,'Nova FactCheck','assistant',
+  1,'Atlas FactCheck','assistant',
   'Nova reviewed all independent technical evidence and found no contradictions.'
 );

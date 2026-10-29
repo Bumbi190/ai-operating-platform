@@ -107,7 +107,10 @@ test('the FactCheck blueprint cannot silently become a production publisher',()=
   assert.equal(workflow.authority.can_publish,false)
   assert.equal(workflow.authority.can_generate_paid_media,false)
   assert.ok(workflow.stages.some(step=>step.id==='independent_claim_review'))
-  assert.ok(workflow.stages.some(step=>step.id==='human_editorial_approval'))
+  assert.ok(workflow.stages.some(step=>step.id==='atlas_editorial_candidate'))
+  assert.ok(workflow.stages.some(step=>step.id==='human_exception_only'))
+  assert.equal(workflow.executive_identity.requires_new_nova_project_agent,false)
+  assert.equal(workflow.executive_identity.canonical_name,'Atlas')
 })
 
 test('malformed reviewer and source payloads fail closed without throwing',()=>{

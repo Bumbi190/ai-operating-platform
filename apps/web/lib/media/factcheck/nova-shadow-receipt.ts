@@ -1,6 +1,7 @@
 /**
- * The Prompt/Nova: pure shadow-receipt preparation, NOT authority to publish.
- * The agent row, claimed run, script and report MUST originate from trusted
+ * The Prompt / Atlas (voice alias Nova): pure shadow-receipt preparation.
+ * Atlas is the central executive actor, NOT an extra project agent.
+ * The delegated workforce role, claimed run, script and report MUST come from trusted
  * project-scoped DB reads in a future worker. This module does not own or sign
  * a broker claim and cannot grant media spending or publisher rights.
  * Evidence is recomputed, never inferred from an LLM's recommendation.
@@ -15,6 +16,7 @@ import {
   type NovaReviewInput,
 } from './nova-autonomy-policy'
 import {verifiedStoredWriterModel} from '../script-writer-provenance'
+import {ATLAS_EXECUTIVE_ACTOR_KEY} from '../../atlas/identity'
 import {
   proveNovaAssignedWorkflowStep,
   type NovaAssignedRun,
@@ -24,7 +26,7 @@ import {
 
 const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i
 
-export const NOVA_SHADOW_POLICY_VERSION='nova.shadow.v1' as const
+export const ATLAS_SHADOW_POLICY_VERSION='atlas.shadow.v1' as const
 
 export type NovaShadowReceipt=Readonly<{
   project_id:string
@@ -88,9 +90,10 @@ export function prepareNovaShadowReceipt(
     const {agent,claimedRun,workflow,assistantLog,storedReport,reviewContext:context}=input
     if(!agent||!claimedRun||!storedReport||!context||
        !UUID.test(agent.id)||!UUID.test(agent.project_id)||
-       agent.name.trim().toLowerCase()!=='nova'||
+       typeof agent.name!=='string' || !agent.name.trim() ||
+       agent.name.trim().toLowerCase()==='nova'||
        agent.project_id!==context.project?.id){
-      return hold('registered_project_nova_required')
+      return hold('registered_delegated_workflow_role_required')
     }
     if(!UUID.test(claimedRun.id)||!UUID.test(claimedRun.claim_id??'')||
        claimedRun.project_id!==agent.project_id||
@@ -126,7 +129,8 @@ export function prepareNovaShadowReceipt(
       return hold('independent_writer_attribution_required')
     }
     const plan=planNovaEditorialReview(context)
-    if(plan.action!=='automatic_editorial_candidate'||
+    if(plan.agent!=='atlas' ||
+       plan.action!=='automatic_editorial_candidate'||
        plan.reason!=='ordinary_story_independently_supported'||
        plan.question!==null){
       return hold('nova_factcheck_not_autonomously_eligible')
@@ -175,7 +179,8 @@ export function prepareNovaShadowReceipt(
     }
     return {ok:true,receipt:Object.freeze({
       project_id:verified.project_id,
-      agent_id:agent.id,
+      actor_key:ATLAS_EXECUTIVE_ACTOR_KEY,
+      workflow_agent_id:agent.id,
       run_id:claimedRun.id,claim_id:claimedRun.claim_id!,
       report_id:storedReport.id,script_id:verified.script_id,
       script_version:verified.script_version,
@@ -187,7 +192,7 @@ export function prepareNovaShadowReceipt(
       agent_step_order:assigned.binding.stepOrder,
       agent_step_log_id:assigned.binding.stepLogId,
       agent_step_output_sha256:assigned.binding.outputSha256,
-      policy_version:NOVA_SHADOW_POLICY_VERSION,
+      policy_version:ATLAS_SHADOW_POLICY_VERSION,
       decision:'editorial_candidate',
       reason:'ordinary_story_independently_supported',
     })}

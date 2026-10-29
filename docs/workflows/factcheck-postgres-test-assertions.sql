@@ -470,39 +470,40 @@ DECLARE count_policies integer;
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-    WHERE n.nspname='public' AND c.relname='media_factcheck_nova_decisions'
+    WHERE n.nspname='public' AND c.relname='media_factcheck_atlas_decisions'
       AND c.relrowsecurity AND c.relforcerowsecurity
-  ) THEN RAISE EXCEPTION 'NOVA_RLS_NOT_FORCED';END IF;
+  ) THEN RAISE EXCEPTION 'ATLAS_RLS_NOT_FORCED';END IF;
   SELECT count(*) INTO count_policies FROM pg_policies
-  WHERE schemaname='public' AND tablename='media_factcheck_nova_decisions';
+  WHERE schemaname='public' AND tablename='media_factcheck_atlas_decisions';
   IF count_policies<>0 OR
-    has_table_privilege('anon','public.media_factcheck_nova_decisions','SELECT') OR
-    has_table_privilege('authenticated','public.media_factcheck_nova_decisions','INSERT') OR
-    has_table_privilege('service_role','public.media_factcheck_nova_decisions','UPDATE') OR
-    has_table_privilege('service_role','public.media_factcheck_nova_decisions','DELETE') OR
-    has_table_privilege('service_role','public.media_factcheck_nova_decisions','TRUNCATE') OR
-    NOT has_table_privilege('service_role','public.media_factcheck_nova_decisions','SELECT') OR
-    NOT has_table_privilege('service_role','public.media_factcheck_nova_decisions','INSERT')
-  THEN RAISE EXCEPTION 'NOVA_DB_GRANTS_UNSAFE';END IF;
-  RAISE NOTICE 'PASS NOVA_PRIVATE_APPEND_ONLY_GRANTS';
+    has_table_privilege('anon','public.media_factcheck_atlas_decisions','SELECT') OR
+    has_table_privilege('authenticated','public.media_factcheck_atlas_decisions','INSERT') OR
+    has_table_privilege('service_role','public.media_factcheck_atlas_decisions','UPDATE') OR
+    has_table_privilege('service_role','public.media_factcheck_atlas_decisions','DELETE') OR
+    has_table_privilege('service_role','public.media_factcheck_atlas_decisions','TRUNCATE') OR
+    NOT has_table_privilege('service_role','public.media_factcheck_atlas_decisions','SELECT') OR
+    NOT has_table_privilege('service_role','public.media_factcheck_atlas_decisions','INSERT')
+  THEN RAISE EXCEPTION 'ATLAS_DB_GRANTS_UNSAFE';END IF;
+  RAISE NOTICE 'PASS ATLAS_PRIVATE_APPEND_ONLY_GRANTS';
 END $$;
 
--- A correct low-impact report with a registered Nova in this project and an
--- active run claim can generate ONE shadow editorial-candidate receipt.
+-- A low-impact report with Atlas core as actor and an EXISTING delegated
+-- project role in the run snapshot can generate ONE shadow candidate.
+-- No agent named Nova is registered or required.
 SET ROLE service_role;
-INSERT INTO public.media_factcheck_nova_decisions (
+INSERT INTO public.media_factcheck_atlas_decisions (
   project_id,agent_id,workflow_id,agent_step_order,
   agent_step_log_id,agent_step_output_sha256,run_id,claim_id,report_id,script_id,
   script_version,revision_id,content_sha256,source_set_sha256,
   reviewer_run_id,policy_version,decision,reason
 )
 SELECT
-  r.project_id,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'::uuid,
+  r.project_id,'atlas.core','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'::uuid,
   w.workflow_id,l.step_order,l.id,
   encode(sha256(convert_to(l.content,'UTF8')),'hex'),
   r.run_id,r.claim_id,r.id,r.script_id,r.script_version,r.revision_id,
   r.content_sha256,r.source_set_sha256,r.reviewer_run_id,
-  'nova.shadow.v1','editorial_candidate','ordinary_story_independently_supported'
+  'atlas.shadow.v1','editorial_candidate','ordinary_story_independently_supported'
 FROM public.media_factcheck_reports r
 JOIN public.runs w ON w.id=r.run_id
 JOIN public.run_logs l ON l.run_id=r.run_id
@@ -512,45 +513,50 @@ RESET ROLE;
 
 DO $$
 BEGIN
-  IF (SELECT count(*) FROM public.media_factcheck_nova_decisions)<>1
-  THEN RAISE EXCEPTION 'NOVA_SHADOW_WRITE_MISSING';END IF;
-  RAISE NOTICE 'PASS NOVA_SEPARATE_AGENT_CANDIDATE';
+  IF (SELECT count(*) FROM public.media_factcheck_atlas_decisions)<>1
+  THEN RAISE EXCEPTION 'ATLAS_SHADOW_WRITE_MISSING';END IF;
+  RAISE NOTICE 'PASS ATLAS_CORE_WITH_EXISTING_DELEGATED_ROLE';
 END $$;
 
 -- Test helper deliberately refers only to the report already used for shadow
 -- evidence. It never signs or fabricates an actual human or provider action.
-CREATE FUNCTION pg_temp.try_nova(
+CREATE FUNCTION pg_temp.try_atlas(
   p_report uuid,
   p_agent uuid DEFAULT 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   p_claim uuid DEFAULT NULL,
   p_version integer DEFAULT NULL,
   p_source_sha text DEFAULT NULL,
-  p_project uuid DEFAULT NULL
+  p_project uuid DEFAULT NULL,
+  p_workflow uuid DEFAULT NULL,
+  p_step_order integer DEFAULT NULL,
+  p_step_log uuid DEFAULT NULL,
+  p_output_sha text DEFAULT NULL,
+  p_actor_key text DEFAULT NULL
 ) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
-  INSERT INTO public.media_factcheck_nova_decisions (
-    project_id,agent_id,workflow_id,agent_step_order,
+  INSERT INTO public.media_factcheck_atlas_decisions (
+    project_id,actor_key,workflow_agent_id,workflow_id,agent_step_order,
     agent_step_log_id,agent_step_output_sha256,run_id,claim_id,report_id,script_id,
     script_version,revision_id,content_sha256,source_set_sha256,
     reviewer_run_id,policy_version,decision,reason
   )
-  SELECT coalesce(p_project,r.project_id),p_agent,
+  SELECT coalesce(p_project,r.project_id),coalesce(p_actor_key,'atlas.core'),p_agent,
     coalesce(p_workflow,w.workflow_id),
     coalesce(p_step_order,l.step_order),coalesce(p_step_log,l.id),
     coalesce(p_output_sha,encode(sha256(convert_to(l.content,'UTF8')),'hex')),
     r.run_id,coalesce(p_claim,r.claim_id),r.id,r.script_id,
     coalesce(p_version,r.script_version),r.revision_id,
     r.content_sha256,coalesce(p_source_sha,r.source_set_sha256),
-    r.reviewer_run_id,'nova.shadow.v1','editorial_candidate',
+    r.reviewer_run_id,'atlas.shadow.v1','editorial_candidate',
     'ordinary_story_independently_supported'
   FROM public.media_factcheck_reports r
   JOIN public.runs w ON w.id=r.run_id
   JOIN public.run_logs l ON l.run_id=r.run_id
   WHERE r.id=p_report AND l.role='assistant' AND l.step_order=1;
-  IF NOT FOUND THEN RAISE EXCEPTION 'NOVA_REPORT_NOT_FOUND' USING errcode='23514';END IF;
+  IF NOT FOUND THEN RAISE EXCEPTION 'ATLAS_REPORT_NOT_FOUND' USING errcode='23514';END IF;
 END $$;
 
-CREATE FUNCTION pg_temp.expect_nova_rejection(
+CREATE FUNCTION pg_temp.expect_atlas_rejection(
   p_label text,p_report uuid,p_state text DEFAULT '23514',
   p_agent uuid DEFAULT 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   p_claim uuid DEFAULT NULL,
@@ -560,19 +566,20 @@ CREATE FUNCTION pg_temp.expect_nova_rejection(
   p_workflow uuid DEFAULT NULL,
   p_step_order integer DEFAULT NULL,
   p_step_log uuid DEFAULT NULL,
-  p_output_sha text DEFAULT NULL
+  p_output_sha text DEFAULT NULL,
+  p_actor_key text DEFAULT NULL
 ) RETURNS void LANGUAGE plpgsql AS $$
 DECLARE actual_state text;
 BEGIN
   BEGIN
-    PERFORM pg_temp.try_nova(p_report,p_agent,p_claim,p_version,p_source_sha,
-      p_project,p_workflow,p_step_order,p_step_log,p_output_sha);
-    RAISE EXCEPTION 'NOVA_SHADOW_UNEXPECTED_ACCEPTANCE:%',p_label;
+    PERFORM pg_temp.try_atlas(p_report,p_agent,p_claim,p_version,p_source_sha,
+      p_project,p_workflow,p_step_order,p_step_log,p_output_sha,p_actor_key);
+    RAISE EXCEPTION 'ATLAS_SHADOW_UNEXPECTED_ACCEPTANCE:%',p_label;
   EXCEPTION WHEN OTHERS THEN
     GET STACKED DIAGNOSTICS actual_state=RETURNED_SQLSTATE;
     IF actual_state<>p_state
-    THEN RAISE EXCEPTION 'NOVA_%: EXPECTED %, GOT %',p_label,p_state,actual_state;END IF;
-    RAISE NOTICE 'PASS NOVA_% (SQLSTATE %)',p_label,actual_state;
+    THEN RAISE EXCEPTION 'ATLAS_%: EXPECTED %, GOT %',p_label,p_state,actual_state;END IF;
+    RAISE NOTICE 'PASS ATLAS_% (SQLSTATE %)',p_label,actual_state;
   END;
 END $$;
 
@@ -590,36 +597,39 @@ BEGIN
     AND exists (SELECT 1 FROM jsonb_array_elements(source_receipts) s
       WHERE s->>'kind'='primary')
   ORDER BY recorded_at DESC LIMIT 1;
-  IF eligible_copy IS NULL THEN RAISE EXCEPTION 'NOVA_VALID_SECOND_REPORT_MISSING';END IF;
+  IF eligible_copy IS NULL THEN RAISE EXCEPTION 'ATLAS_VALID_SECOND_REPORT_MISSING';END IF;
   SELECT id INTO declined FROM public.media_factcheck_reports
   WHERE reasons=array['claim_unverified']::text[]
   ORDER BY recorded_at DESC LIMIT 1;
   SELECT id INTO sensitive FROM public.media_factcheck_reports
   WHERE reasons=array['sensitive_or_unclassified']::text[]
   ORDER BY recorded_at DESC LIMIT 1;
-  PERFORM pg_temp.expect_nova_rejection('REPLAY',original,'23505');
-  PERFORM pg_temp.expect_nova_rejection('NOT_NOVA_AGENT',eligible_copy,'23514',
+  PERFORM pg_temp.expect_atlas_rejection('REPLAY',original,'23505');
+  PERFORM pg_temp.expect_atlas_rejection('UNASSIGNED_DELEGATED_ROLE',eligible_copy,'23514',
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
-  PERFORM pg_temp.expect_nova_rejection('REJECTED_FACTS',declined);
-  PERFORM pg_temp.expect_nova_rejection('SENSITIVE_REQUIRES_OWNER',sensitive);
-  PERFORM pg_temp.expect_nova_rejection('FORGED_SOURCE_SHA',eligible_copy,'23514',
+  PERFORM pg_temp.expect_atlas_rejection('REJECTED_FACTS',declined);
+  PERFORM pg_temp.expect_atlas_rejection('SENSITIVE_REQUIRES_OWNER',sensitive);
+  PERFORM pg_temp.expect_atlas_rejection('FORGED_SOURCE_SHA',eligible_copy,'23514',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',NULL,NULL,repeat('f',64));
-  PERFORM pg_temp.expect_nova_rejection('WRONG_RUN_CLAIM',eligible_copy,'23514',
+  PERFORM pg_temp.expect_atlas_rejection('WRONG_RUN_CLAIM',eligible_copy,'23514',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     '88888888-8888-4888-8888-888888888888');
-  PERFORM pg_temp.expect_nova_rejection('REVISION_CHANGED',eligible_copy,'23514',
+  PERFORM pg_temp.expect_atlas_rejection('REVISION_CHANGED',eligible_copy,'23514',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',NULL,2);
-  PERFORM pg_temp.expect_nova_rejection('FOREIGN_PROJECT',eligible_copy,'23514',
+  PERFORM pg_temp.expect_atlas_rejection('FOREIGN_PROJECT',eligible_copy,'23514',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',NULL,NULL,NULL,
     '99999999-9999-4999-8999-999999999999');
-  PERFORM pg_temp.expect_nova_rejection('WRONG_WORKFLOW',eligible_copy,'23514',
+  PERFORM pg_temp.expect_atlas_rejection('WRONG_WORKFLOW',eligible_copy,'23514',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',NULL,NULL,NULL,NULL,
     'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee');
-  PERFORM pg_temp.expect_nova_rejection('WRONG_STEP_ORDER',eligible_copy,'23514',
+  PERFORM pg_temp.expect_atlas_rejection('WRONG_STEP_ORDER',eligible_copy,'23514',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',NULL,NULL,NULL,NULL,NULL,2);
-  PERFORM pg_temp.expect_nova_rejection('FORGED_LOG_OUTPUT_SHA',eligible_copy,'23514',
+  PERFORM pg_temp.expect_atlas_rejection('FORGED_LOG_OUTPUT_SHA',eligible_copy,'23514',
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',NULL,NULL,NULL,NULL,NULL,NULL,NULL,
     repeat('f',64));
+  PERFORM pg_temp.expect_atlas_rejection('WRONG_ATLAS_ACTOR_KEY',eligible_copy,'23514',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',NULL,NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,'nova.agent');
 END $$;
 
 -- The frozen workflow step and post-claim assistant log must remain exact.
@@ -629,44 +639,45 @@ DECLARE eligible uuid;
 BEGIN
   SELECT r.id INTO eligible FROM public.media_factcheck_reports r
   WHERE r.outcome='ready_for_editor'
-    AND r.id NOT IN (SELECT report_id FROM public.media_factcheck_nova_decisions)
+    AND r.id NOT IN (SELECT report_id FROM public.media_factcheck_atlas_decisions)
     AND jsonb_array_length(r.findings->0->'evidence')>=2
     AND exists (
       SELECT 1 FROM jsonb_array_elements(r.source_receipts) s
       WHERE s->>'kind'='primary'
     )
   ORDER BY r.recorded_at DESC LIMIT 1;
-  IF eligible IS NULL THEN RAISE EXCEPTION 'NOVA_VALID_ASSIGNMENT_TEST_MISSING';END IF;
+  IF eligible IS NULL THEN RAISE EXCEPTION 'ATLAS_VALID_ASSIGNMENT_TEST_MISSING';END IF;
 
   UPDATE public.runs SET steps_snapshot='[]'::jsonb
   WHERE id='33333333-3333-4333-8333-333333333333';
-  PERFORM pg_temp.expect_nova_rejection('EMPTY_FROZEN_WORKFLOW',eligible);
+  PERFORM pg_temp.expect_atlas_rejection('EMPTY_FROZEN_WORKFLOW',eligible);
   UPDATE public.runs
-    SET steps_snapshot='[{"order":1,"name":"Nova FactCheck","agent_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}]'::jsonb
+    SET steps_snapshot='[{"order":1,"name":"Atlas FactCheck","agent_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"}]'::jsonb
   WHERE id='33333333-3333-4333-8333-333333333333';
 
   UPDATE public.run_logs SET role='user'
   WHERE id='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
-  PERFORM pg_temp.expect_nova_rejection('NOT_ASSISTANT_OUTPUT',eligible);
+  PERFORM pg_temp.expect_atlas_rejection('NOT_ASSISTANT_OUTPUT',eligible);
   UPDATE public.run_logs SET role='assistant'
   WHERE id='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 
   UPDATE public.runs SET claimed_at=clock_timestamp()+interval '5 minutes'
   WHERE id='33333333-3333-4333-8333-333333333333';
-  PERFORM pg_temp.expect_nova_rejection('CLAIM_STARTED_AFTER_OUTPUT',eligible);
+  PERFORM pg_temp.expect_atlas_rejection('CLAIM_STARTED_AFTER_OUTPUT',eligible);
   UPDATE public.runs SET claimed_at=clock_timestamp()-interval '2 minutes'
   WHERE id='33333333-3333-4333-8333-333333333333';
 
-  INSERT INTO public.agents(id,project_id,name)
-  VALUES ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
-          '11111111-1111-4111-8111-111111111111','Nova');
-  PERFORM pg_temp.expect_nova_rejection('DUPLICATE_NOVA_IDENTITY',eligible);
-  DELETE FROM public.agents
-  WHERE id='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  -- Atlas is the central executive. This project's registered roles are
+  -- News Hunter and Script Writer, and NO Nova workforce agent is needed.
+  IF EXISTS (SELECT 1 FROM public.agents
+    WHERE lower(btrim(name))='nova') THEN
+    RAISE EXCEPTION 'FORBIDDEN_SEPARATE_NOVA_WORKFORCE_AGENT';
+  END IF;
+  RAISE NOTICE 'PASS ATLAS_NO_SEPARATE_NOVA_AGENT_REQUIRED';
 END $$;
 
 -- An otherwise "ready" report with no true primary evidence cannot receive
--- a Nova candidate, even when all claim citations structurally look valid.
+-- an Atlas (Nova voice alias) candidate, even with structurally valid citations.
 INSERT INTO public.media_factcheck_reports (
   project_id,script_id,run_id,claim_id,reviewer_run_id,
   script_version,revision_id,content_sha256,source_set_sha256,
@@ -692,7 +703,7 @@ BEGIN
       WHERE s->>'kind'='primary')
     ORDER BY recorded_at DESC LIMIT 1;
   IF copied IS NULL THEN RAISE EXCEPTION 'MISSING_NO_PRIMARY_FIXTURE';END IF;
-  PERFORM pg_temp.expect_nova_rejection('NO_PRIMARY_EVIDENCE',copied);
+  PERFORM pg_temp.expect_atlas_rejection('NO_PRIMARY_EVIDENCE',copied);
 END $$;
 
 UPDATE public.runs SET lease_until=clock_timestamp()-interval '5 minutes'
@@ -702,26 +713,26 @@ DECLARE stale_report uuid;
 BEGIN
   SELECT id INTO stale_report FROM public.media_factcheck_reports
   WHERE outcome='ready_for_editor'
-    AND id NOT IN (SELECT report_id FROM public.media_factcheck_nova_decisions)
+    AND id NOT IN (SELECT report_id FROM public.media_factcheck_atlas_decisions)
     AND jsonb_array_length(findings->0->'evidence')>=2
     AND exists (SELECT 1 FROM jsonb_array_elements(source_receipts) s
       WHERE s->>'kind'='primary') LIMIT 1;
-  PERFORM pg_temp.expect_nova_rejection('EXPIRED_WORKER_CLAIM',stale_report);
+  PERFORM pg_temp.expect_atlas_rejection('EXPIRED_WORKER_CLAIM',stale_report);
 END $$;
 UPDATE public.runs SET lease_until=clock_timestamp()+interval '1 hour'
 WHERE id='33333333-3333-4333-8333-333333333333';
 
-SELECT pg_temp.expect_immutable('NOVA_UPDATE_DENIED',
-  'UPDATE public.media_factcheck_nova_decisions SET decision=''editorial_candidate''');
-SELECT pg_temp.expect_immutable('NOVA_DELETE_DENIED',
-  'DELETE FROM public.media_factcheck_nova_decisions');
-SELECT pg_temp.expect_immutable('NOVA_TRUNCATE_DENIED',
-  'TRUNCATE public.media_factcheck_nova_decisions');
+SELECT pg_temp.expect_immutable('ATLAS_UPDATE_DENIED',
+  'UPDATE public.media_factcheck_atlas_decisions SET decision=''editorial_candidate''');
+SELECT pg_temp.expect_immutable('ATLAS_DELETE_DENIED',
+  'DELETE FROM public.media_factcheck_atlas_decisions');
+SELECT pg_temp.expect_immutable('ATLAS_TRUNCATE_DENIED',
+  'TRUNCATE public.media_factcheck_atlas_decisions');
 DO $$
 BEGIN
-  IF (SELECT count(*) FROM public.media_factcheck_nova_decisions)<>1
-  THEN RAISE EXCEPTION 'NOVA_SHADOW_RECEIPTS_MUTATED';END IF;
-  RAISE NOTICE 'PASS NOVA_IMMUTABLE_SHADOW_RECEIPT=1';
+  IF (SELECT count(*) FROM public.media_factcheck_atlas_decisions)<>1
+  THEN RAISE EXCEPTION 'ATLAS_SHADOW_RECEIPTS_MUTATED';END IF;
+  RAISE NOTICE 'PASS ATLAS_IMMUTABLE_SHADOW_RECEIPT=1';
 END $$;
 
 ROLLBACK;

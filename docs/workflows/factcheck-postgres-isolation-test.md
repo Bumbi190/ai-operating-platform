@@ -1,6 +1,6 @@
 # The Prompt — isolated PostgreSQL 17 FactCheck proof
 
-**Status:** previous Nova/FactCheck local PostgreSQL 17 rehearsal PASS on 28 October 2026. **The newer workflow-step/run-log/claimed_at binding added 29 October has NOT yet been executed against PostgreSQL** because the owner's Docker Desktop daemon was stopped; it remains a reviewed SQL proposal pending a fresh isolated replay. Neither version is a production migration.
+**Status:** an older Nova-named draft passed the local PostgreSQL 17 rehearsal on 28 October 2026. The **corrected Atlas-actor (`atlas.core`) and delegated-role SQL from 29 October 2026 has NOT yet been physically tested**: Docker Desktop is stopped. The current SQL remains a quarantined proposal, never a production migration.
 Related: PR #585, issue #591. Rehearsal performed on 28 October 2026.
 
 ## Scope and safety
@@ -24,24 +24,24 @@ The successful tail is FACTCHECK_PG_ISOLATION_ALL_ASSERTIONS_PASSED, followed by
 
 ## What actual PostgreSQL tested
 
-- All three proposed tables create successfully on PostgreSQL 17: media_factcheck_reports (source evidence), media_factcheck_editorial_decisions (owner-matched human decision) and media_factcheck_nova_decisions (Nova agent shadow receipt only).
+- The earlier draft's report/owner/shadow tables created on local PostgreSQL 17. The **current** draft has three proposed tables: media_factcheck_reports (source evidence), media_factcheck_editorial_decisions (human decision), and media_factcheck_atlas_decisions (**Atlas executive shadow candidate**, voice nickname Nova). The corrected third table's new `atlas.core` key and `workflow_agent_id` have not yet had an isolated SQL replay.
 - RLS and FORCE RLS, no anon/authenticated policies or table grants, service-role SELECT/INSERT only.
-- Authorized server-role evidence, human-owner decision, and registered Nova agent candidate INSERT paths succeed; all three ledgers deny UPDATE/DELETE/TRUNCATE even for a privileged connection.
+- The earlier draft's server-role report/owner/shadow INSERT paths succeeded, and its ledgers refused UPDATE/DELETE/TRUNCATE. **These are historical test results, not yet proof of the corrected Atlas schema.**
 - The report rejects wrong project, script version/vN identity, reviewer-run replay, swapped claim, expired/cancelled/not-running worker, changed script, missing sources and fabricated successful verdict shape.
 - The human gate rejects a non-owner, wrong report content hash, changed project or script version, short justification and approved-but-unverified stories. It allows a rejection receipt for unverified evidence.
 - High-impact source-grounded content can reach the **preproduction human-review-only** stage only with explicit, substantial owner acknowledgment.
 - Citing only a **single independent publisher** for a claim, despite two URLs in the report, cannot pass editorial approval.
 - All three ledgers are structurally append-only; a TRUNCATE ... CASCADE attempt is also blocked.
-- Nova's separate receipt refuses an agent from another project or not named Nova, a mismatched or expired run claim, wrong script/report/source SHA, a sensitive or contradicted story, a missing primary source, a replay, and a foreign project.
+- The corrected Atlas shadow design is bound to an **existing delegated workforce role**, not an agent named Nova. Pending physical verification: reject foreign/unassigned roles, mismatched/expired run claims, wrong script/report/source SHA, sensitive or contradicted news, absent primary source, replay and foreign project.
 
 ## Findings and limitations
 
 - The first isolated fixture surfaced a real Postgres privilege distinction: SELECT ... FOR SHARE on runs requires the source table's UPDATE privilege too. The test fixture was adjusted only after **read-only** confirmation that Omnira's actual service_role holds that privilege; no production permission was changed.
 - The isolated run also found that revoking function EXECUTE from PUBLIC disables the new evidence-shape helper for service_role unless it receives a **specific** grant. The proposal now grants only this function's EXECUTE to service_role.
-- This is a physical SQL test, **not** a complete production-schema replay, an independently authenticated live Nova worker or an independent verification of semantic truth. Input sources, IDs and model reviews are synthetic fixtures. Model-generated citations may be materially misleading even when they are structurally valid.
-- Nova agent-row equality in a SQL trigger does not attest a true agent-origin event: the current runs schema does not cryptographically bind the run claim to an agent. A future code worker must verify the run-to-agent authority and fence before any real Nova decision write. The actual The Prompt project had no agent named Nova when checked read-only.
+- The previous local SQL rehearsal is not a complete production-schema replay, nor a test of the corrected Atlas actor or independent factual truth. Input sources, IDs and model reviews are synthetic fixtures. Model-generated citations may be materially misleading even when they are structurally valid.
+- Atlas is Omnira's central executive intelligence, called Nova after a voice change; the Familje-Stunden Nova is a separate fictional character. A `public.agents` row is a delegated project workforce role, not Atlas's core identity. The corrected shadow proposal stores `actor_key='atlas.core'` and a separate `workflow_agent_id`. **Neither the string `atlas.core` nor a run-log entry proves authenticated Atlas execution.** A future governed worker must supply an independently attested execution context and canonical RUN_BOUND stop/claim authority before any external action. No Nova agent should be registered.
 - Owner equality in the SQL trigger does not by itself attest a human-origin action: a privileged writer could provide the owner's UUID. A future live writer must derive that identity from a fresh authenticated operator session, never from model/client JSON. No real owner-session approval API, provider-funded fact-check worker, source licensing verification, report storage in production, or mandatory render/publish admission has been activated.
-- The **existing** social_content_decisions remains a separate, final channel/revision-bound human approval after preparation. Never treat a new FactCheck decision as permission to publish.
+- The existing `social_content_decisions` still requires human approvals; the Atlas exception-based autonomous editorial goal must be integrated through a separately reviewed, revision-bound publisher gate rather than faking human approval. An Atlas shadow candidate never permits publishing.
 
 ## Release blockers
 

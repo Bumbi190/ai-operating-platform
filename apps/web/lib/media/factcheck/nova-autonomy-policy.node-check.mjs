@@ -86,7 +86,8 @@ function requireSafe(result){
   assert.equal(result.canSpend,false)
   assert.equal(result.canRender,false)
   assert.equal(result.canSchedule,false)
-  assert.equal(result.agent,'nova')
+  assert.equal(result.agent,'atlas')
+  assert.equal(result.displayName,'Nova')
 }
 test('Nova independently accepts a low-risk, corroborated news draft without asking owner',async()=>{
   const result=planNovaEditorialReview(base(await reviewed()))

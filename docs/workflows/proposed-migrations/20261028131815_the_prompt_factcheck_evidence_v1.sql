@@ -313,17 +313,19 @@ comment on table public.media_factcheck_editorial_decisions is
   'Append-only owner-origin preproduction editorial decision bound to one FactCheck report. Never authorizes publication itself.';
 
 
--- NOVA AUTONOMY: SHADOW-ONLY agent decision receipts.
--- A human owner decision is never forged, borrowed or bypassed. These receipts
--- cannot be consumed as a publishing or paid creative permit by any route.
--- They prove only that a server-role writer recorded a matching DB agent/run
--- and fact-check evidence. A future governed worker must separately attest its
--- actual Nova identity and claim authority; the constant agent name is NOT
--- sufficient actor authentication.
-create table public.media_factcheck_nova_decisions (
+-- ATLAS (voice alias Nova) autonomy: SHADOW-ONLY editorial candidate receipts.
+-- Atlas is Omnira's CENTRAL executive intelligence, not a public.agents row.
+-- workflow_agent_id is an EXISTING delegated, project-scoped workforce role,
+-- not Atlas's principal, and no new Nova agent is required or permitted here.
+-- actor_key is a bounded label, NOT a cryptographic attestation of Atlas origin;
+-- a future trusted worker must authenticate its own Atlas-origin claim.
+-- These receipts never authorize spending, rendering or social publishing and
+-- never impersonate the operator's human decisions.
+create table public.media_factcheck_atlas_decisions (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects(id) on delete restrict,
-  agent_id uuid not null references public.agents(id) on delete restrict,
+  actor_key text not null check(actor_key='atlas.core'),
+  workflow_agent_id uuid not null references public.agents(id) on delete restrict,
   workflow_id uuid not null references public.workflows(id) on delete restrict,
   agent_step_order integer not null check(agent_step_order between 1 and 1000),
   agent_step_log_id uuid not null references public.run_logs(id) on delete restrict,
@@ -337,35 +339,35 @@ create table public.media_factcheck_nova_decisions (
   content_sha256 text not null check(content_sha256~'^[0-9a-f]{64}$'),
   source_set_sha256 text not null check(source_set_sha256~'^[0-9a-f]{64}$'),
   reviewer_run_id uuid not null,
-  policy_version text not null check(policy_version='nova.shadow.v1'),
+  policy_version text not null check(policy_version='atlas.shadow.v1'),
   decision text not null check(decision='editorial_candidate'),
   reason text not null check(reason='ordinary_story_independently_supported'),
   recorded_at timestamptz not null default clock_timestamp(),
-  constraint nova_decision_unique_scope unique (project_id,run_id,claim_id,report_id)
+  constraint atlas_decision_unique_scope unique (project_id,run_id,claim_id,report_id)
 );
-create index media_factcheck_nova_decisions_project_history
-  on public.media_factcheck_nova_decisions(project_id,recorded_at desc,id desc);
+create index media_factcheck_atlas_decisions_project_history
+  on public.media_factcheck_atlas_decisions(project_id,recorded_at desc,id desc);
 
-alter table public.media_factcheck_nova_decisions enable row level security;
-alter table public.media_factcheck_nova_decisions force row level security;
-revoke all on public.media_factcheck_nova_decisions
+alter table public.media_factcheck_atlas_decisions enable row level security;
+alter table public.media_factcheck_atlas_decisions force row level security;
+revoke all on public.media_factcheck_atlas_decisions
   from public,anon,authenticated,service_role;
-grant select,insert on public.media_factcheck_nova_decisions to service_role;
+grant select,insert on public.media_factcheck_atlas_decisions to service_role;
 
-create function public.media_factcheck_nova_insert_guard() returns trigger
+create function public.media_factcheck_atlas_insert_guard() returns trigger
 language plpgsql security invoker set search_path='' as $fn$
 declare
   report public.media_factcheck_reports;
   story public.media_scripts;
   source_run public.runs;
-  nova public.agents;
+  assigned_role public.agents;
   agent_workflow public.workflows;
   agent_log public.run_logs;
   matching_steps integer;
-  nova_steps integer;
+  assigned_role_steps integer;
 begin
   if current_user not in ('service_role','postgres') then
-    raise exception 'NOVA_SERVER_ONLY' using errcode='42501';
+    raise exception 'ATLAS_SHADOW_SERVER_ONLY' using errcode='42501';
   end if;
   -- Read linked facts; SHARE prevents an in-flight script/claim mutation
   -- from racing a shadow receipt INSERT.
@@ -375,14 +377,16 @@ begin
     where id=new.script_id and project_id=new.project_id for share;
   select * into source_run from public.runs
     where id=new.run_id and project_id=new.project_id for share;
-  select * into nova from public.agents
-    where id=new.agent_id and project_id=new.project_id for share;
+  select * into assigned_role from public.agents
+    where id=new.workflow_agent_id and project_id=new.project_id for share;
   select * into agent_workflow from public.workflows
     where id=new.workflow_id and project_id=new.project_id for share;
   select * into agent_log from public.run_logs
     where id=new.agent_step_log_id and run_id=new.run_id for share;
   if report.id is null or story.id is null or source_run.id is null
-    or nova.id is null or lower(btrim(nova.name))<>'nova'
+    or new.actor_key is distinct from 'atlas.core'
+    or assigned_role.id is null or coalesce(btrim(assigned_role.name),'')=''
+    or lower(btrim(assigned_role.name))='nova'
     or agent_workflow.id is null
     or agent_log.id is null
     or source_run.workflow_id is distinct from new.workflow_id
@@ -414,10 +418,10 @@ begin
     or source_run.lease_until is null
     or source_run.lease_until <= clock_timestamp()
     or source_run.cancel_requested
-  then raise exception 'NOVA_RUN_OR_REVISION_UNVERIFIED' using errcode='23514';end if;
+  then raise exception 'ATLAS_RUN_OR_REVISION_UNVERIFIED' using errcode='23514';end if;
   -- Trust ONLY the immutable per-run steps_snapshot, not mutable live
-  -- workflows.steps. An assistant log without the matching frozen Nova step
-  -- is NOT evidence of assigned agent execution.
+  -- workflows.steps. An assistant log without the matching frozen delegated
+  -- project step is NOT evidence of an Atlas-origin decision.
   if jsonb_typeof(source_run.steps_snapshot) is distinct from 'array'
   then raise exception 'NOVA_FROZEN_WORKFLOW_ASSIGNMENT_MISSING'
     using errcode='23514';end if;
@@ -426,13 +430,13 @@ begin
     using errcode='23514';end if;
   select count(*) into matching_steps
   from jsonb_array_elements(source_run.steps_snapshot) s
-  where s->>'agent_id'=new.agent_id::text
+  where s->>'agent_id'=new.workflow_agent_id::text
     and s->>'order'=new.agent_step_order::text
     and s->>'name'=agent_log.step_name;
-  select count(*) into nova_steps
+  select count(*) into assigned_role_steps
   from jsonb_array_elements(source_run.steps_snapshot) s
-  where s->>'agent_id'=new.agent_id::text;
-  if matching_steps<>1 or nova_steps<>1 or
+  where s->>'agent_id'=new.workflow_agent_id::text;
+  if matching_steps<>1 or assigned_role_steps<>1 or
      (select count(distinct s->>'order')
       from jsonb_array_elements(source_run.steps_snapshot) s)
        <> jsonb_array_length(source_run.steps_snapshot)
@@ -444,9 +448,7 @@ begin
          or coalesce(s->>'agent_id','') !~
            '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
      )
-     or (select count(*) from public.agents a
-       where a.project_id=new.project_id and lower(btrim(a.name))='nova')<>1
-  then raise exception 'NOVA_FROZEN_STEP_OR_UNIQUE_ROLE_MISMATCH'
+  then raise exception 'ATLAS_FROZEN_STEP_OR_ROLE_MISMATCH'
     using errcode='23514';end if;
   -- Ordinary fully evidenced articles only. A "sensitive", contradictory or
   -- uncertain report belongs to the human escalation/skip path, not Nova auto.
@@ -469,20 +471,20 @@ begin
       where receipt->>'kind'='independent_reporting')
     or (select count(distinct receipt->>'publisherGroup')
       from jsonb_array_elements(report.source_receipts) as receipt)<2
-  then raise exception 'NOVA_FACTCHECK_EVIDENCE_INSUFFICIENT'
+  then raise exception 'ATLAS_FACTCHECK_EVIDENCE_INSUFFICIENT'
       using errcode='23514';end if;
   return new;
 end $fn$;
-create trigger media_factcheck_nova_insert_guard
-  before insert on public.media_factcheck_nova_decisions
-  for each row execute function public.media_factcheck_nova_insert_guard();
-create trigger media_factcheck_nova_immutable
-  before update or delete on public.media_factcheck_nova_decisions
+create trigger media_factcheck_atlas_insert_guard
+  before insert on public.media_factcheck_atlas_decisions
+  for each row execute function public.media_factcheck_atlas_insert_guard();
+create trigger media_factcheck_atlas_immutable
+  before update or delete on public.media_factcheck_atlas_decisions
   for each row execute function public.media_factcheck_report_append_only();
-create trigger media_factcheck_nova_no_truncate
-  before truncate on public.media_factcheck_nova_decisions
+create trigger media_factcheck_atlas_no_truncate
+  before truncate on public.media_factcheck_atlas_decisions
   for each statement execute function public.media_factcheck_report_append_only();
-revoke all on function public.media_factcheck_nova_insert_guard()
+revoke all on function public.media_factcheck_atlas_insert_guard()
   from public,anon,authenticated;
-comment on table public.media_factcheck_nova_decisions is
-  'Private immutable Nova shadow editorial-candidate receipt, not owner approval or media/publisher authority.';
+comment on table public.media_factcheck_atlas_decisions is
+  'Private Atlas executive (Nova voice alias) shadow receipt tied to a delegated workforce step; no owner approval or media/publisher authority.';

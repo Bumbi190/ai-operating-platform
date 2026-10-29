@@ -1,5 +1,6 @@
 /**
- * Nova: exception-based editorial autonomy policy for The Prompt.
+ * Atlas (spoken nickname Nova): exception-based editorial policy for The Prompt.
+ * Nova is NOT a separate agent. Familje-Stunden's Nova is a fictional child-story character.
  *
  * Goal: Nova independently vets ordinary, well-sourced news. Do not force the
  * project owner to approve every story. Nova asks for human judgment only when
@@ -43,7 +44,8 @@ export type NovaReviewQuestion=Readonly<{
   options:readonly ['Godkänn för fortsatt redaktionell behandling','Avstå eller välj ny nyhet']
 }>
 export type NovaReviewPlan=Readonly<{
-  agent:'nova'
+  agent:'atlas'
+  displayName:'Nova'
   action:NovaReviewAction
   reason:string
   question: NovaReviewQuestion|null
@@ -85,7 +87,7 @@ export interface NovaReviewInput {
 function result(action:NovaReviewAction,reason:string,
   question:NovaReviewQuestion|null=null):NovaReviewPlan {
   return Object.freeze({
-    agent:'nova',action,reason,question,
+    agent:'atlas',displayName:'Nova',action,reason,question,
     canSpend:false,canRender:false,canSchedule:false,canPublish:false,
   })
 }

@@ -10,6 +10,8 @@ registerHooks({resolve(specifier,ctx,next){
   }
   if(specifier==='../script-writer-provenance' &&
       ctx.parentURL?.includes('/factcheck/'))return next(specifier+'.ts',ctx)
+  if(specifier==='../../atlas/identity' &&
+      ctx.parentURL?.includes('/factcheck/'))return next(specifier+'.ts',ctx)
   return next(specifier,ctx)
 }})
 
@@ -67,15 +69,15 @@ const sources=[
 const run={id:runId,project_id:projectId,claim_id:claimId,status:'running',
   lease_until:new Date(now+60_000).toISOString(),cancel_requested:false,
   claimed_at:new Date(now-120_000).toISOString(),workflow_id:workflowId,
-  steps_snapshot:[{order:1,name:'Nova FactCheck',agent_id:agentId,
+  steps_snapshot:[{order:1,name:'Atlas FactCheck',agent_id:agentId,
     input_template:'{{sources}}',output_key:'review'}],
 }
 const workflow={id:workflowId,project_id:projectId}
 const assistantLog={id:stepLogId,run_id:runId,step_order:1,
-  step_name:'Nova FactCheck',role:'assistant',
+  step_name:'Atlas FactCheck',role:'assistant',
   created_at:new Date(now-60_000).toISOString(),
   content:'Nova reviewed the independent original evidence and flagged no contradictions.'}
-const nova={id:agentId,project_id:projectId,name:'Nova'}
+const nova={id:agentId,project_id:projectId,name:'News Hunter'}
 async function freshFixture(){
   const review=await evaluateIndependentReview(material,sources,projectId,
     'claude-sonnet-4-6',now,async prompt=>{
@@ -113,7 +115,9 @@ test('ordinary fact-checked script yields a separately identified Nova shadow re
   const result=prepareNovaShadowReceipt(input)
   assert.equal(result.ok,true,JSON.stringify(result))
   if(!result.ok)return
-  assert.equal(result.receipt.agent_id,agentId)
+  assert.equal(result.receipt.actor_key,'atlas.core')
+  assert.equal(result.receipt.workflow_agent_id,agentId)
+  assert.equal(Object.hasOwn(result.receipt,'decided_by'),false)
   assert.equal(result.receipt.run_id,runId)
   assert.equal(result.receipt.claim_id,claimId)
   assert.equal(result.receipt.report_id,reportId)
@@ -122,12 +126,22 @@ test('ordinary fact-checked script yields a separately identified Nova shadow re
   assert.equal(result.receipt.agent_step_order,1)
   assert.equal(result.receipt.agent_step_log_id,stepLogId)
   assert.equal(result.receipt.agent_step_output_sha256.length,64)
-  assert.equal(result.receipt.policy_version,'nova.shadow.v1')
+  assert.equal(result.receipt.policy_version,'atlas.shadow.v1')
   assert.equal(result.receipt.decision,'editorial_candidate')
   assert.equal(Object.isFrozen(result.receipt),true)
   for(const forbidden of ['decided_by','owner_id','human_approved',
     'canPublish','canSpend','approved','publishedAt']){
     assert.equal(Object.hasOwn(result.receipt,forbidden),false)
+  }
+})
+
+test('Atlas can delegate the evidence step to an already registered non-Nova project role',async()=>{
+  const input=await freshFixture()
+  const result=prepareNovaShadowReceipt({...input,agent:{...nova,name:'Script Writer'}})
+  assert.equal(result.ok,true)
+  if(result.ok){
+    assert.equal(result.receipt.actor_key,'atlas.core')
+    assert.equal(result.receipt.workflow_agent_id,agentId)
   }
 })
 
@@ -139,15 +153,16 @@ test('disabled shadow mode refuses and does not emit any candidate',async()=>{
     'nova_shadow_not_enabled')
 })
 
-test('agent ID, project and registered name must match Nova',async()=>{
+test('Atlas is central; a delegated project role must exist, never a second Nova role',async()=>{
   const input=await freshFixture()
   for(const agent of [
     {...nova,id:'unverified'},
-    {...nova,name:'GrowthAgent'},
+    {...nova,name:'Nova'},
+    {...nova,name:''},
     {...nova,project_id:scriptId},
-    {...nova,name:'Nova-impersonator'},
+    {...nova,name:'  '},
   ])assert.equal(reason(prepareNovaShadowReceipt({...input,agent})),
-    'registered_project_nova_required')
+    'registered_delegated_workflow_role_required')
 })
 
 test('claimed run is fresh, active, and bound to the same project',async()=>{
@@ -346,7 +361,7 @@ test('no production media API can activate a Nova step receipt or shadow INSERT'
         const content=readFileSync(path,'utf8')
         for(const forbidden of [
           'prepareNovaShadowReceipt','proveNovaAssignedWorkflowStep',
-          'media_factcheck_nova_decisions','nova-run-step-identity',
+          'media_factcheck_atlas_decisions','nova-run-step-identity',
         ]){
           assert.ok(!content.includes(forbidden),
             'Nova shadow decision route activated: '+path+' '+forbidden)

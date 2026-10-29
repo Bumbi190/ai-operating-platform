@@ -1,12 +1,14 @@
 /**
- * Nova / The Prompt: assign one durable RUN_BOUND workflow step to Nova.
+ * Atlas (voice alias Nova) / The Prompt: validate a delegated RUN_BOUND
+ * project workflow step. No separately registered Nova agent is required.
  *
  * This is a PURE, SHADOW-ONLY DB evidence preflight. It cannot authenticate
  * the physical worker holding the claim or authorize spend, media or posting.
  * Input rows must be read independently from the actual project-scoped DB.
  *
- * Distinguishes Nova's agent identity from the owner account: it verifies
- * registry identity, frozen run.steps_snapshot assignment, project workflow,
+ * Distinguishes a delegated project workforce role from Atlas's central
+ * executive identity and the owner's account. It validates role registration,
+ * frozen run.steps_snapshot assignment, project workflow,
  * current run claim/lease and one completed run_logs assistant step.
  */
 import {createHash} from 'node:crypto'
@@ -88,8 +90,10 @@ export function proveNovaAssignedWorkflowStep(
        !agent || !UUID.test(agent.id) ||
        agent.project_id!==projectId ||
        typeof agent.name!=='string' ||
-       agent.name.trim().toLowerCase()!=='nova'){
-      return hold('nova_registry_identity_invalid')
+       !agent.name.trim() || agent.name.trim().toLowerCase()==='nova'){
+      // A role called Nova would recreate the identity confusion. The real
+      // Atlas executive actor is NOT a row in the workforce-role registry.
+      return hold('delegated_role_identity_invalid')
     }
     if(!workflow || !UUID.test(workflow.id) ||
        workflow.project_id!==projectId ||

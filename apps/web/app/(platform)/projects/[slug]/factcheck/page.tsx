@@ -47,7 +47,8 @@ type OwnerDecisionRow = {
 type NovaShadowDecisionRow = {
   id:string
   project_id:string
-  agent_id:string
+  actor_key:string
+  workflow_agent_id:string
   workflow_id:string
   agent_step_order:number
   agent_step_log_id:string
@@ -247,11 +248,11 @@ export default async function FactCheckHistoryPage({ params }: {
     }
   }
 
-  // Nova shadow receipts are a THIRD class of evidence: not a human
-  // approval and not permission to render or publish. Match both project-
-  // registered Nova identity and every receipt/report revision SHA/claim.
+  // Atlas (voice alias Nova) has one CENTRAL executive identity. The project
+  // agents here are DELEGATED workflow roles; never require/create a separate
+  // agent named Nova. Shadow evidence is NOT a human or publication approval.
   let novaUnavailable = false
-  let trustedNovaAgents = new Set<string>()
+  let trustedDelegatedRoles = new Set<string>()
   let novaRows: NovaShadowDecisionRow[] = []
   if (!error && reports.length > 0) {
     const agents = await db.from('agents').select('id,project_id,name')
@@ -259,14 +260,14 @@ export default async function FactCheckHistoryPage({ params }: {
     if (agents.error) {
       novaUnavailable = true
     } else {
-      trustedNovaAgents = new Set((agents.data ?? []).filter(a =>
+      trustedDelegatedRoles = new Set((agents.data ?? []).filter(a =>
         a.project_id === project.id &&
-        typeof a.name === 'string' &&
-        a.name.trim().toLowerCase() === 'nova'
+        typeof a.name === 'string' && a.name.trim().length > 0 &&
+        a.name.trim().toLowerCase() !== 'nova'
       ).map(a => a.id as string))
-      const shadow = await db.from('media_factcheck_nova_decisions')
+      const shadow = await db.from('media_factcheck_atlas_decisions')
         .select(
-          'id,project_id,agent_id,workflow_id,agent_step_order,agent_step_log_id,agent_step_output_sha256,run_id,claim_id,report_id,script_id,script_version,revision_id,content_sha256,source_set_sha256,reviewer_run_id,policy_version,decision,recorded_at'
+          'id,project_id,actor_key,workflow_agent_id,workflow_id,agent_step_order,agent_step_log_id,agent_step_output_sha256,run_id,claim_id,report_id,script_id,script_version,revision_id,content_sha256,source_set_sha256,reviewer_run_id,policy_version,decision,recorded_at'
         )
         .eq('project_id',project.id)
         .in('report_id',reports.map(report=>report.id))
@@ -319,7 +320,7 @@ export default async function FactCheckHistoryPage({ params }: {
       ? run.steps_snapshot as {agent_id?:unknown;order?:unknown;name?:unknown}[]
       : []
     const stepMatches=snapshot.filter(s=>
-      s && s.agent_id===shadow.agent_id)
+      s && s.agent_id===shadow.workflow_agent_id)
     const assigned=stepMatches.length===1 &&
       stepMatches[0].order===shadow.agent_step_order &&
       stepMatches[0].name===log?.step_name
@@ -337,8 +338,8 @@ export default async function FactCheckHistoryPage({ params }: {
 
     const report=reports.find(r=>r.id===shadow.report_id)
     if(!report || novaUnavailable || !run || !assigned || !validLog ||
-       trustedNovaAgents.size!==1 ||
-       !trustedNovaAgents.has(shadow.agent_id) ||
+       shadow.actor_key!=='atlas.core' ||
+       !trustedDelegatedRoles.has(shadow.workflow_agent_id) ||
        run.project_id!==project.id ||
        run.workflow_id!==shadow.workflow_id ||
        run.claim_id!==shadow.claim_id ||
@@ -352,7 +353,7 @@ export default async function FactCheckHistoryPage({ params }: {
        shadow.reviewer_run_id!==report.reviewer_run_id ||
        shadow.content_sha256!==report.content_sha256 ||
        shadow.source_set_sha256!==report.source_set_sha256 ||
-       shadow.policy_version!=='nova.shadow.v1' ||
+       shadow.policy_version!=='atlas.shadow.v1' ||
        shadow.decision!=='editorial_candidate' ||
        report.outcome!=='ready_for_editor' ||
        report.risk_tier!=='standard' ||
@@ -390,7 +391,7 @@ export default async function FactCheckHistoryPage({ params }: {
         <div className="text-sm space-y-1">
           <p className="font-semibold text-amber-200">Granskning är inte samma sak som publicering</p>
           <p className="text-muted-foreground">
-            Nova är tänkt att själv granska vanliga nyheter och bara fråga dig vid verkliga undantag.
+            Atlas (som vi kallar Nova) ska själv granska vanliga nyheter och bara fråga dig vid verkliga undantag.
             Hennes nuvarande granskningskvitto är bara ett testläge, inte ett publiceringstillstånd.
             Sidan är skrivskyddad och aktiverar varken AI-kostnader, video eller social publicering.
           </p>
@@ -460,7 +461,7 @@ export default async function FactCheckHistoryPage({ params }: {
                         <p className="text-muted-foreground">Beslutat {formatTime(ownerDecision.decided_at)}: {ownerDecision.notes}</p>
                       </>
                     ) : novaDecision ? (
-                      <p className="text-amber-300">Nova: självständigt faktagranskad kandidat – väntar på säker lanseringsspärr, ej publicerad ({formatTime(novaDecision.recorded_at)})</p>
+                      <p className="text-amber-300">Atlas (Nova): faktagranskad kandidat via tilldelad arbetsroll – väntar på säker lanseringsspärr, ej publicerad ({formatTime(novaDecision.recorded_at)})</p>
                     ) : decisionsUnavailable || novaUnavailable ? (
                       <p className="text-amber-300">Beslutsunderlaget kan inte verifieras – ingen automatisk publicering</p>
                     ) : ownerDecision?.decision === 'approve' ? (
@@ -469,7 +470,7 @@ export default async function FactCheckHistoryPage({ params }: {
                         <p className="text-muted-foreground">Beslutat {formatTime(ownerDecision.decided_at)}: {ownerDecision.notes}</p>
                       </>
                     ) : report.outcome === 'ready_for_editor' ? (
-                      <p className="text-amber-300">Inväntar Novas separata granskningskvitto – inget krav på ditt rutinmässiga godkännande</p>
+                      <p className="text-amber-300">Inväntar Atlas granskningskvitto (Nova är hennes tilltalsnamn) – inget krav på ditt rutinmässiga godkännande</p>
                     ) : report.outcome === 'rejected' ? (
                       <p className="text-red-300">Stoppad efter granskning – Nova ska rätta eller välja en annan nyhet</p>
                     ) : (

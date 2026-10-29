@@ -8,6 +8,7 @@ on:
       - 'apps/web/lib/media/quality-validation.node-check.mjs'
       - 'apps/web/lib/media/quality-publication-boundary.node-check.mjs'
       - 'apps/web/lib/media/factcheck/**'
+      - 'apps/web/lib/atlas/identity.ts'
       - 'apps/web/lib/media/script-writer-provenance*'
       - 'apps/web/lib/media/text-client.ts'
       - 'apps/web/app/**/factcheck/**'

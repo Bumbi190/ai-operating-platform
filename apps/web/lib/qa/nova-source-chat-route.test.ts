@@ -234,8 +234,12 @@ describe('Nova source inspection end-to-end chat route: no live provider', () =>
     })
     expect(state.network).toEqual([])
   })
-  it('does not fetch source on an explicitly negated code-reading request', async () => {
-    const { frames } = await ask({ question: 'Nova, visa inte Handlarbörsens GitHub-kod i app/page.tsx' })
+  it.each([
+    'Nova, visa inte Handlarbörsens GitHub-kod i app/page.tsx',
+    'Nova, jag vill inte att du läser Handlarbörsens GitHub-kod i app/page.tsx',
+    'Nova, avstå från att läsa Handlarbörsens GitHub-kod i app/page.tsx',
+  ])('does not fetch source on an explicitly negated code-reading request (%s)', async (question) => {
+    const { frames } = await ask({ question })
     expect(state.calls[0].tools).not.toContain('nova_inspect_project_source')
     expect(state.dispatches).toHaveLength(0)
     expect(JSON.stringify(frames)).toContain('source_turn_required')

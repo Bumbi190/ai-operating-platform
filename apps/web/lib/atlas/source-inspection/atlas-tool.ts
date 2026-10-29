@@ -41,7 +41,8 @@ const SOURCE_READ_VERBS = '(?:visa|visar|läs|läsa|läser|granska|granskar|kont
 const SOURCE_READ_NEGATION = new RegExp(
   '(?:(?<![\\p{L}\\p{N}_])(?:inte|ej|icke|aldrig|never|don\\u2019t|don\\u0027t|do\\s+not|without|utan\\s+att)\\s+(?:att\\s+)?(?:nova\\s+)?' + SOURCE_READ_VERBS + '(?![\\p{L}\\p{N}_]))' +
   '|(?:(?<![\\p{L}\\p{N}_])' + SOURCE_READ_VERBS + '(?:\\s+(?:mig|den|det|oss))?\\s+(?:inte|ej|icke|aldrig|not)(?![\\p{L}\\p{N}_]))' +
-  '|(?:(?<![\\p{L}\\p{N}_])inte\\s+att\\s+(?:nova\\s+)?' + SOURCE_READ_VERBS + '(?![\\p{L}\\p{N}_]))',
+  '|(?:(?<![\\p{L}\\p{N}_])(?:inte|ej|aldrig)\\s+att\\s+(?:(?:du|ni|nova|atlas)\\s+)?' + SOURCE_READ_VERBS + '(?![\\p{L}\\p{N}_]))' +
+  '|(?:(?<![\\p{L}\\p{N}_])(?:undvik(?:er)?|avstå(?:r)?\\s+från|låt\\s+bli|sluta)\\s+(?:att\\s+)?' + SOURCE_READ_VERBS + '(?![\\p{L}\\p{N}_]))',
   'iu',
 )
 

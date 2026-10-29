@@ -1,6 +1,6 @@
 # Nova project source inspection – Issue #576, Stage B1
 
-Status: Code and deterministic mocked API tests only. Feature OFF by default. No GitHub App installation, production deployment, paid dispatch, browser visit, code execution or database migration.
+Status (29 October 2026): Source-inspection code was merged into `main` by PR #598 with the feature OFF by default. No dedicated GitHub App, live authenticated source read, paid dispatch, code execution, or project database migration was enabled. The separate consent-language security fix below is a follow-up, not part of that merge.
 
 ## Scope
 
@@ -67,6 +67,14 @@ This is a branch-only merge, NOT a merge of PR #598 into production. It does not
 - A read-only production Supabase query found the applied ledger entry `version=20261029065156`, `name=handlarborsen_owner_review_archive_20261029` with one SQL statement. Its 420 lexical SQL tokens match the exact local canonical source's 420 tokens after removing comments and irrelevant whitespace. This is strong source correspondence but is not a proof of complete database replay or that the owning PR has passed its own release gates. No production data or migration ledger was changed.
 - **Release sequencing:** let PR #584's owning work complete its own migration guard reconciliation, independent review, and approved merge to `main`. After that, sync the current Nova branch with updated main, rerun Nova/Handlarbörsen security CI and verify the actual Vercel build. Do not add a migration-guard override, create a ledger placeholder, or turn on any feature before approved release.
 
+## Consent-language review – follow-up (29 October 2026)
+
+A separate code review found that the lexical read-intent gate still admitted explicit refusals such as `Nova, jag vill inte att du läser Handlarbörsens GitHub-kod` and `Nova, avstå från att läsa Handlarbörsens GitHub-kod`. With a future pilot flag enabled, those false positives could offer a private source-read tool contrary to the owner's instruction. This was reproduced against the existing predicate before correction; no live source request was made.
+
+The gate now refuses these indirect negative forms as well as `undvik att granska` and `låt bli att visa`, without rejecting a clear positive read request accompanied by `ändra inte` (a ban on editing). Unit tests and actual `/api/chat` synthetic route tests were extended to prove zero GitHub dispatch for the indirect refusals. On the guarded local worktree, **24/24 targeted tests and 232/232 tests across all ten Nova/Strato/broker suites passed**. Local full TypeScript still reports only the three pre-existing shared-cache Remotion errors in `lib/media/lambda-render.ts`; a clean exact-HEAD GitHub TypeScript check is still required after the update is pushed.
+
+This is deterministic intent-guard hardening, NOT a guarantee that every natural-language refusal is detected. PR #598 was merged into `main` while this review was underway; this fix must be reviewed and merged separately. The pilot remains OFF, without a GitHub App installation, server credentials, or live source reads. App installation and any Preview pilot activation still require explicit owner approval.
+
 ## Independent GitHub App installation identity check (29 October 2026)
 
 GitHub's official REST contract distinguishes the **App installation's** `repository_selection` from the newly minted **installation token's** `repository_selection`. A caller may narrow a token using `repository_ids`, so a `repository_selection=selected` token receipt **does not prove** its parent installation is not account-wide.
@@ -117,7 +125,7 @@ Authoritative references:
 - https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app
 - https://docs.github.com/en/apps/using-github-apps/installing-your-own-github-app
 
-Status: **not created, not installed, not enabled, not merged**. Do not treat registration-form preparation as real GitHub authorization.
+App status: **not created, not installed, not enabled**. The read-only source-inspection code was merged behind a disabled flag via PR #598, but no GitHub App or live source authority exists. Do not treat registration-form preparation as real GitHub authorization.
 
 ## Disabled release gates
 

@@ -12,7 +12,8 @@ $proposal = Join-Path $repo 'docs\architecture\proposed-sql\atlas_owner_github_b
 $files = @(
   @{ Src = (Join-Path $fixture 'bootstrap_pg17.sql'); Dest = '/var/tmp/bootstrap_pg17.sql' },
   @{ Src = $proposal; Dest = '/var/tmp/proposal_pg17.sql' },
-  @{ Src = (Join-Path $fixture 'verify_pg17.sql'); Dest = '/var/tmp/verify_pg17.sql' }
+  @{ Src = (Join-Path $fixture 'verify_pg17.sql'); Dest = '/var/tmp/verify_pg17.sql' },
+  @{ Src = (Join-Path $fixture 'rollback_pg17.sql'); Dest = '/var/tmp/rollback_pg17.sql' }
 )
 foreach ($f in $files) {
   if (-not (Test-Path -LiteralPath $f.Src -PathType Leaf)) {
@@ -47,12 +48,19 @@ try {
   }
   foreach ($f in $files) {
     Write-Output ('[pg17] Executing synthetic fixture: ' + $f.Dest)
-    & docker exec $name psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres -f $f.Dest
+    if ($f.Dest -eq '/var/tmp/proposal_pg17.sql') {
+      # Rehearse the *transactional* short-lock migration method, not a
+      # non-transactional CONCURRENTLY operation with incompatible deploy rules.
+      & docker exec -e 'PGOPTIONS=-c lock_timeout=2000 -c statement_timeout=15000' $name `
+        psql -X --single-transaction -v ON_ERROR_STOP=1 -U postgres -d postgres -f $f.Dest
+    } else {
+      & docker exec $name psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres -f $f.Dest
+    }
     if ($LASTEXITCODE -ne 0) {
       throw ('Isolated SQL assertions failed at: ' + $f.Dest)
     }
   }
-  Write-Output '[pg17] PASS: isolated PostgreSQL 17 roles, RLS, FK, grant and denial assertions'
+  Write-Output '[pg17] PASS: isolated PostgreSQL 17 roles, RLS, FK, grants, lock-bounded transactional install and synthetic rollback'
 }
 finally {
   if ($created) {

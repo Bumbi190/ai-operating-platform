@@ -15,7 +15,7 @@ grant usage on schema auth to authenticated, anon, service_role;
 grant execute on function auth.uid() to authenticated, anon, service_role;
 create table public.projects (
   id uuid primary key,
-  owner_id uuid not null references auth.users(id),
+  owner_id uuid not null references auth.users(id) on delete cascade,
   slug text not null
 );
 alter table public.projects enable row level security;

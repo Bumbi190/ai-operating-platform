@@ -62,3 +62,16 @@
 - [ ] Preview E2E with an authenticated operator, wrong-project denial and a single-repo read receipt; production remains OFF pending separate decision.
 
 **No independent reviewer has approved this PR. CI success is not human approval.**
+
+## Stage 1c – lock-bounded migration and rollback rehearsal (29 October 2026, later review)
+
+Read-only production evidence refreshed for the Omnira project: `projects` has **six rows, one distinct owner, 8 KiB heap/80 KiB total**, no proposed table/index, existing `projects_pkey`, `idx_projects_owner`, `idx_projects_slug`, `projects_slug_key`, and a real `projects.owner_id → auth.users(id) ON DELETE CASCADE` dependency plus existing survival triggers. None of these were modified. A tiny table *suggests* an ordinary short-lock index may be practical today, but does not guarantee the absence of blocking transactions at release time.
+
+**Migration method decision (PROPOSED, not authorized):** ordinary unique `projects(id,owner_id)` index and the entire `atlas_owner_github_bindings` table/RLS/grants inside **one transaction**, with `lock_timeout=2s` and `statement_timeout=15s`. The Postgres 17 fixture now runs `psql --single-transaction` with those limits; follow-up `rollback_pg17.sql` successfully drops only the test-owned table/index and confirms all baseline synthetic users, projects and owner policy remain. `CREATE INDEX CONCURRENTLY` is not chosen for the current stage: PostgreSQL forbids it in a transaction, and Supabase's GitHub Branching migration executor wraps each file in a transaction. See `docs/architecture/atlas-owner-github-migration-release-plan-20261029.md` for exact tradeoffs, stop conditions and no-live-approval gates.
+
+### SEC-604-06 – account erasure and project deletion may be blocked by audit FK design
+**Independently reproduced with real isolated PostgreSQL 17 fixture, but NOT independently security-attested:** when a registered project is bound with `ON DELETE RESTRICT` and the binding references `auth.users`, attempts to delete that project or delete its owner (whose existing projects should cascade) raise FK violations. Two new fixture checks log **EXPECTED BLOCKER** and preserve the rows. This is **not** an acceptable verified account-erasure lifecycle; before any live schema, the owner and an independent reviewer must decide unlink/revocation, privacy-safe audit retention and an account-deletion path. Do not silently switch the existing `projects` owner FK, discard audit history, or claim user deletion continues to work.
+
+**Current evidence:** real PG17 role/RLS/FK tests + bounded transactional candidate install and destructive rollback **only of synthetic test rows**, plus **49/49 offline Node tests** covering the migration plan, timeout contract, rollback file, expected deletion blocker, one-repo scope and unauthorized operations. No actual Supabase Auth/JWT validation or production migration has run. The live schema remains unchanged, and the disposable test container was confirmed absent after completion.
+
+**Review decision remains HOLD / DRAFT.** The test author and security reviewer are the same assistant; this is *not* an independent approval. No owner authorization for production SQL, an authenticated Nova GitHub read, external provider permissions or any automatic credentials was granted.

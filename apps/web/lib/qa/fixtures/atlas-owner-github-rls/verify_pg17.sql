@@ -178,6 +178,30 @@ begin
 end $$;
 reset role;
 
+-- This is a DELIBERATELY UNRESOLVED release blocker, not desired
+-- production behavior: restrictive audit FKs prevent project/account erasure.
+-- The real Omnira projects.owner_id FK has ON DELETE CASCADE.
+do $$
+begin
+ begin
+  delete from public.projects where id='22222222-2222-4222-8222-222222222222';
+ exception when foreign_key_violation then
+  raise notice 'EXPECTED BLOCKER: active bindings prevent project deletion';
+  return;
+ end;
+ raise exception 'FAIL: project was removed despite expected restrictive binding';
+end $$;
+do $$
+begin
+ begin
+  delete from auth.users where id='11111111-1111-4111-8111-111111111111';
+ exception when foreign_key_violation then
+  raise notice 'EXPECTED BLOCKER: active bindings prevent user deletion/cascade';
+  return;
+ end;
+ raise exception 'FAIL: owner was deleted despite expected restrictive binding';
+end $$;
+
 -- Confirm unauthorized attempts were rolled back, unchanged three rows.
 do $$
 begin

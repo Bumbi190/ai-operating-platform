@@ -98,6 +98,26 @@ async function boundedJson(url: string, opts: RequestInit, fetcher: Fetcher, dea
   } finally { clearTimeout(timer) }
 }
 
+/** The scoped token receipt does NOT prove the App's original installation is narrow.
+ * Inspect the real installation under the signed App JWT before minting anything.
+ * A selected installation may still include multiple repositories, so its exact
+ * repository list is additionally an owner-reviewed setup requirement. */
+function isTrustedAppInstallation(installation: Record<string, any>, cfg: GitHubAppSettings, repo: SourceRepository): boolean {
+  const permissions = installation.permissions
+  return installation.id === Number(cfg.installationId)
+    && installation.app_id === Number(cfg.appId)
+    && installation.account?.id === repo.ownerId
+    && installation.account?.type === 'User'
+    && String(installation.account?.login ?? '').toLowerCase() === repo.owner.toLowerCase()
+    && installation.target_id === repo.ownerId
+    && installation.target_type === 'User'
+    && installation.repository_selection === 'selected'
+    && installation.suspended_at === null
+    && Array.isArray(installation.events) && installation.events.length === 0
+    && permissions?.contents === 'read' && permissions?.metadata === 'read'
+    && Object.keys(permissions).every(k => ['contents', 'metadata'].includes(k) && permissions[k] === 'read')
+}
+
 async function readToken(repo: SourceRepository, fetcher: Fetcher, deadline: number): Promise<string> {
   const cfg = configuredApp()
   if (!cfg) throw new InspectionError('not_configured')
@@ -106,6 +126,14 @@ async function readToken(repo: SourceRepository, fetcher: Fetcher, deadline: num
     && cached.expiry > Date.now() + 5 * 60_000) return cached.value
   const jwt = signedAppJwt(cfg)
   if (!jwt) throw new InspectionError('not_configured')
+  // GitHub's token endpoint reports the *scoped token's* repository_selection.
+  // It may say "selected" even when the parent App installation allows ALL
+  // repositories. Verify the App installation separately using only its JWT.
+  const installation = await boundedJson(API + '/app/installations/' + cfg.installationId, {
+    method: 'GET', headers: { Authorization: 'Bearer ' + jwt },
+  }, fetcher, deadline)
+  if (!isTrustedAppInstallation(installation, cfg, repo))
+    throw new InspectionError('identity_unverified')
   const receipt = await boundedJson(API + '/app/installations/' + cfg.installationId + '/access_tokens', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + jwt, 'Content-Type': 'application/json' },

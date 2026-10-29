@@ -34,6 +34,7 @@ function fakeGitHub(opts: {
   repoId?: number; ownerId?: number; branch?: string; sha?: string;
   fileText?: string; blobText?: string; blobSha?: string; tokenRepositories?: readonly number[];
   permissions?: Record<string, string>; repositorySelection?: string;
+  installation?: Record<string, unknown>;
   targetMode?: string; ancestorMode?: string; truncatedTree?: boolean; invalidTreeSha?: boolean;
   throwOnRequest?: boolean;
 } = {}) {
@@ -46,6 +47,12 @@ function fakeGitHub(opts: {
     const headers = init?.headers as Record<string, string>
     const body = typeof init?.body === 'string' ? init.body : ''
     observed.push({ url, method, headers, body })
+    if (url.endsWith('/app/installations/91110')) return json({
+      id: 91110, app_id: 157001, account: { id: 158544361, login: 'Bumbi190', type: 'User' },
+      target_id: 158544361, target_type: 'User',
+      repository_selection: 'selected', permissions: { contents: 'read', metadata: 'read' },
+      suspended_at: null, events: [], ...opts.installation,
+    })
     if (url.endsWith('/access_tokens')) return json({
       token: 'fixture-installation-token', expires_at: new Date(Date.now() + 3_600_000).toISOString(),
       permissions: opts.permissions ?? { contents: 'read', metadata: 'read' },
@@ -193,27 +200,45 @@ describe('Nova trusted source boundary, separate from SDF-1 execution', () => {
     expect(result.sourceUrl).toContain('/blob/' + SHA + '/src/app/page.tsx')
     expect(result.lines[0]).toEqual({ line: 1, text: 'export default function Page() {' })
     expect(JSON.stringify(result)).not.toContain('fixture-installation-token')
-    const mint = github.observed[0]
+    const installation = github.observed[0]
+    expect(installation.url).toBe('https://api.github.com/app/installations/91110')
+    expect(installation.method).toBe('GET')
+    expect(installation.headers.Authorization).toMatch(/^Bearer /)
+    const mint = github.observed[1]
     expect(mint.url).toBe('https://api.github.com/app/installations/91110/access_tokens')
     expect(mint.method).toBe('POST')
     expect(JSON.parse(mint.body)).toEqual({ repository_ids: [REPO_ID], permissions: { contents: 'read' } })
-    expect(github.observed.slice(3, 6).map(c => c.url)).toEqual([
+    expect(github.observed.slice(4, 7).map(c => c.url)).toEqual([
       'https://api.github.com/repos/Bumbi190/handlarborsen/git/trees/' + ROOT_TREE,
       'https://api.github.com/repos/Bumbi190/handlarborsen/git/trees/' + SRC_TREE,
       'https://api.github.com/repos/Bumbi190/handlarborsen/git/trees/' + APP_TREE,
     ])
-    expect(github.observed[6].url).toContain('/git/blobs/' + gitBlobHash(DEFAULT_FILE))
+    expect(github.observed[7].url).toContain('/git/blobs/' + gitBlobHash(DEFAULT_FILE))
     expect(github.observed.some(call => call.url.includes('/contents/'))).toBe(false)
     for (const call of github.observed) {
       expect(call.url).toMatch(/^https:\/\/api\.github\.com\//)
       expect(call.headers.Authorization).toMatch(/^Bearer /)
     }
   })
+  it('refuses a broadly installed App BEFORE minting even a narrowed token', async () => {
+    const github = fakeGitHub({
+      installation: { repository_selection: 'all' },
+      repositorySelection: 'selected', tokenRepositories: [REPO_ID],
+    })
+    const result = await inspectVerifiedSource({
+      action: 'read_file', projectSlug: 'handlarborsen', path: 'src/app/page.tsx',
+    }, { fetcher: github.fetcher })
+    expect(result).toEqual({ ok: false, code: 'identity_unverified' })
+    expect(github.observed.map(request => request.url)).toEqual([
+      'https://api.github.com/app/installations/91110',
+    ])
+    expect(github.observed[0].method).toBe('GET')
+  })
   it('has an independent status query and does not read any file for it', async () => {
     const github = fakeGitHub()
     const result = await inspectVerifiedSource({ action: 'status', projectSlug: 'handlarborsen' }, { fetcher: github.fetcher })
     expect(result).toMatchObject({ ok: true, action: 'status', sha: SHA, repositoryId: REPO_ID })
-    expect(github.observed).toHaveLength(3)
+    expect(github.observed).toHaveLength(4)
   })
   it.each([
     [{ repoId: 999 }, 'identity_unverified'],
@@ -225,6 +250,15 @@ describe('Nova trusted source boundary, separate from SDF-1 execution', () => {
     [{ permissions: { contents: 'write' } }, 'identity_unverified'],
     [{ permissions: { contents: 'read', issues: 'write' } }, 'identity_unverified'],
     [{ repositorySelection: 'all' }, 'identity_unverified'],
+    [{ installation: { repository_selection: 'all' } }, 'identity_unverified'],
+    [{ installation: { account: { id: 999, login: 'Bumbi190', type: 'User' } } }, 'identity_unverified'],
+    [{ installation: { app_id: 999 } }, 'identity_unverified'],
+    [{ installation: { id: 999 } }, 'identity_unverified'],
+    [{ installation: { target_id: 999 } }, 'identity_unverified'],
+    [{ installation: { permissions: { contents: 'read', metadata: 'read', issues: 'write' } } }, 'identity_unverified'],
+    [{ installation: { permissions: { contents: 'write', metadata: 'read' } } }, 'identity_unverified'],
+    [{ installation: { suspended_at: '2026-10-29T08:00:00Z' } }, 'identity_unverified'],
+    [{ installation: { events: ['push'] } }, 'identity_unverified'],
     [{ throwOnRequest: true }, 'provider_unavailable'],
   ] as const)('fails closed on unexpected provider identity/authority %j', async (opts, code) => {
     const github = fakeGitHub(opts)

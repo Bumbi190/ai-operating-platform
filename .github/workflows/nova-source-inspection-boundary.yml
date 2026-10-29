@@ -83,7 +83,7 @@ jobs:
           const report = JSON.parse(fs.readFileSync(filename, 'utf8'))
           const files = report.testResults || []
           const required = {
-            'nova-source-inspection.test.ts': 42,
+            'nova-source-inspection.test.ts': 52,
             'nova-source-inspection-route.test.ts': 10,
             'nova-source-atlas-tool.test.ts': 9,
             'nova-source-chat-route.test.ts': 13,

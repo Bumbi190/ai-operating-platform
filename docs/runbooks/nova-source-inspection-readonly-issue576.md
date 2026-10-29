@@ -67,6 +67,18 @@ This is a branch-only merge, NOT a merge of PR #598 into production. It does not
 - A read-only production Supabase query found the applied ledger entry `version=20261029065156`, `name=handlarborsen_owner_review_archive_20261029` with one SQL statement. Its 420 lexical SQL tokens match the exact local canonical source's 420 tokens after removing comments and irrelevant whitespace. This is strong source correspondence but is not a proof of complete database replay or that the owning PR has passed its own release gates. No production data or migration ledger was changed.
 - **Release sequencing:** let PR #584's owning work complete its own migration guard reconciliation, independent review, and approved merge to `main`. After that, sync the current Nova branch with updated main, rerun Nova/Handlarbörsen security CI and verify the actual Vercel build. Do not add a migration-guard override, create a ledger placeholder, or turn on any feature before approved release.
 
+## Independent GitHub App installation identity check (29 October 2026)
+
+GitHub's official REST contract distinguishes the **App installation's** `repository_selection` from the newly minted **installation token's** `repository_selection`. A caller may narrow a token using `repository_ids`, so a `repository_selection=selected` token receipt **does not prove** its parent installation is not account-wide.
+
+Before minting an installation token, the server now makes an authenticated App-JWT **GET `/app/installations/{installation_id}`** and refuses if any of the following differ from the approved Handlarbörsen binding: numeric installation ID, numeric App ID, owner account ID/login/type, installation target ID/type, `repository_selection=selected`, exactly `Contents:read` and `Metadata:read` with no additional permissions, no event subscriptions and an unsuspended installation. Only then may it request the already narrowed single-repo read-only token. A failed check yields `identity_unverified` before token issuance, never broadens the token.
+
+An installation can be `selected` for MORE THAN ONE repository. The narrow runtime token and repo ID revalidation still prevent Nova reading another repo, but this GET alone cannot prove the installation contains exactly one repository. **The owner must inspect the GitHub App installation screen and verify only `Bumbi190/handlarborsen` is selected.** Do not mint an unscoped/broad token just to enumerate the installation. This is a remaining explicit setup and acceptance gate.
+
+Deterministic negative tests now cover the parent App being installed on ALL repositories despite the token being `selected`, a foreign installation owner, wrong App ID/installation ID/target, elevated permissions, subscribed events and suspension. A positive mocked read and long-file pagination still pass. The tests do not contact GitHub with a real App credential.
+
+Source: https://docs.github.com/en/rest/apps/apps#get-an-installation-for-the-authenticated-app and https://docs.github.com/en/rest/apps/apps#create-an-installation-access-token-for-an-app
+
 ## GitHub App – owner setup prepared, NOT installed (28 October 2026)
 
 GitHub supports registration links that prefill permission and account settings. This is an owner checklist, not authority for an assistant to create or install an app.

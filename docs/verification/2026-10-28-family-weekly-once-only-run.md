@@ -1005,3 +1005,60 @@ cron och funktionsflaggor är fortfarande oinstallerade/AV,
 PR:n Draft och Vercel-preview tidigare blockerad av
 Handlarbörsens redan applicerade men ännu ej mergade
 `handlarborsen_owner_review_archive_20261029`.
+
+## Fas 22 – Ägaråterkallelse mot parallell betalkostnadsgrind (2026-10-29)
+
+Ett ytterligare isolerat testläge `native-revoke-race` bevisar
+den tidigare otestade samtidiga konflikten mellan ägarens
+**RLS-autentiserade återkallelse** och Atlas första
+**potentiellt debiterade AI-admission**. Testet använder
+de verkliga kanoniska `claim_runs`, föreslagna
+`family_weekly_enqueue_once`, `family_weekly_admit_once`,
+`family_weekly_authority_current` och samtyckestriggern
+med samma hashbaserade `pg_advisory_xact_lock`.
+
+I en tillfällig PostgreSQL-container skapar det en
+ägargodkänd veckokö, anspråkar jobbet med verkligt
+`claim_id` och startar **två separata dblink-sessioner**.
+En tredje session håller projektlåset. Ägarens revoke-anrop
+som `authenticated` startar först. Testet verifierar via
+PostgreSQLs väntelåsinformation att återkallelsen faktiskt
+väntar på advisory-låset, *innan* den andra sessionen
+som `service_role` får börja försöka en betald
+modellantagning. Båda arbetaranslutningarna måste stå i
+vänteläge innan testet släpper låset. Ingen `query_start`-
+timestamp används som ett skört antagande om ordningen;
+**resultatet** måste visa att återkallelsen vinner.
+
+Krav efter släppt lås: en verklig `revoke`-händelse,
+AI-antagningen returnerar `blocked` och
+`family_weekly_model_attempts` förblir **tom**.
+Det varaktiga `family_weekly_run_plans`-spärrvärdet
+får inte raderas, redaktionella preparationer får inte
+skapas och `family_weekly_authority_current` måste vara
+false trots att den kanoniska körningen är anspråkad.
+Ett nytt betalt försök efteråt måste fortsatt blockeras.
+Varken `authenticated` eller `anon` får använda
+de framtida arbets-RPC:erna.
+
+**Lokalt PASS** i separata nätverksisolerade
+PostgreSQL **16 och 17** via
+`FAMILY_WEEKLY_OWNER_REVOKE_WINS_BEFORE_PAID_ADMISSION_PASS`.
+Båda unika Dockercontainrarna har stoppats och raderats.
+Detta kompletterar `native-concurrency` som tidigare
+testade samtidiga arbetare och efterföljande återkallelse.
+Alla sessioner och `dblink` finns endast i testdatabasen,
+inte i någon produktionsmigration eller Vercel-körning.
+Inga AI- eller sociala API-anrop.
+
+GitHubs isolerade SQL-jobb omfattar nu **11 PostgreSQL 16-
+lägen och 9 PostgreSQL 17-lägen**, sammanlagt 20.
+Den exakta nya committen ska verifieras i CI innan grönt
+helhetsresultat kan anges.
+
+**Fortsatta blockerare:** Familje-Stundens fyra föreslagna
+SQL-filer är oinstallerade, funktionsflaggor och cron är OFF,
+Preview blockeras fortfarande av Handlarbörsens separat
+tillämpade `handlarborsen_owner_review_archive_20261029`
+i ommergad Draft-PR #584. Ingen försvagning av
+migrationsskyddet, ingen merge eller produktionsskrivning.

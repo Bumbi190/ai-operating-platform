@@ -29,6 +29,7 @@ describe('Explicit Atlas Strato inbox READ request routing',()=>{
   'Hej',
   '',
   'Summarize my unread Gmail',
+  'Nova, granska Handlarbörsens kunskapskällor och visa mig vilka beslut du behöver från mig.',
  ])('never forces a read for unrelated/write-only request: %s',input=>{
   expect(match(input)).toBe(false)
  })
@@ -39,13 +40,13 @@ describe('Explicit Atlas Strato inbox READ request routing',()=>{
  })
  it('wires real inbox requests ahead of fast path and navigation',()=>{
   const source=readFileSync(resolve(__dirname,'../../app/api/chat/route.ts'),'utf8')
-  expect(source).toContain('const stratoInboxReadIntent = !hbCompositeEvidenceIntent && !externalReferenceReadIntent')
+  expect(source).toContain('const stratoInboxReadIntent = !pendingNovaCuratorReview && !hbCompositeEvidenceIntent && !externalReferenceReadIntent')
   expect(source).toContain('&& !hbSalesOverviewReadIntent && !hbReplyLifecycleReadIntent')
   expect(source).toContain('&& !isNotionKnowledgeIntent(lastUserText) && hbStratoInboxReadEnabled()')
   expect(source).toContain('&& isHandlarborsenInboxReadIntent(lastUserText)')
-  expect(source).toContain('const fastPath = !stratoInboxReadIntent && !hbCompositeEvidenceIntent')
+  expect(source).toContain('const fastPath = !pendingNovaCuratorReview && !stratoInboxReadIntent && !hbCompositeEvidenceIntent')
   expect(source).toContain('notionReadOnlyTurn,lastUserText,stratoInboxReadIntent,sourceReadTurn)')
-  expect(source).toContain('const navIntent = !stratoInboxReadIntent &&')
+  expect(source).toContain('const navIntent = !pendingNovaCuratorReview && !stratoInboxReadIntent &&')
   expect(source).toContain('const forceStratoReadFirstTurn = stratoInboxReadIntent')
   expect(source).toContain('&& activeTools.some(tool => tool.name === HB_STRATO_INBOX_TOOL_NAMES[0])')
   expect(source).toContain("tool_choice: { type: 'tool' as const, name: HB_STRATO_INBOX_TOOL_NAMES[0] }")

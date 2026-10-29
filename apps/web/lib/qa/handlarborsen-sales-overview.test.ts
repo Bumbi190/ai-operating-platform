@@ -238,7 +238,7 @@ describe('Handlarbörsen: owner-gated aggregate-only CRM snapshot', () => {
   it('keeps the chat on the proven read path, never as action or navigation', () => {
     const route = readFileSync(resolve('app/api/chat/route.ts'), 'utf8')
     expect(route).toContain('const hbSalesOverviewReadIntent =')
-    expect(route).toContain('const fastPath = !stratoInboxReadIntent && !hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent')
+    expect(route).toContain('const fastPath = !pendingNovaCuratorReview && !stratoInboxReadIntent && !hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent')
     expect(route).toContain('!hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent && isNavIntent(lastUserText)')
     expect(route).toContain("name === hbReadIntent")
     expect(route).toContain("return handleHandlarborsenReadTool(name as typeof HANDLARBORSEN_READ_TOOL_NAMES[number]")

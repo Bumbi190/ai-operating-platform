@@ -207,7 +207,7 @@ describe('Atlas Notion entity-evidence isolation', () => {
 
   it('Notion-only chat turns cannot include live data, action memory or the Handlarbörsen dashboard facts', () => {
     const route = readFileSync(join(process.cwd(), 'app/api/chat/route.ts'), 'utf8')
-    expect(route).toMatch(/const activeTools\s*=\s*notionReadOnlyTurn\s*\?\s*ATLAS_NOTION_TOOLS/)
+    expect(route).toMatch(/const activeTools\s*=\s*pendingNovaCuratorReview\s*\?\s*\[\]\s*:\s*notionReadOnlyTurn\s*\?\s*ATLAS_NOTION_TOOLS/)
     expect(route).toContain("if (!notionReadOnlyTurn && liveResult.status === 'fulfilled')")
     expect(route).toContain("if (!notionReadOnlyTurn && actionResult.status === 'fulfilled')")
     expect(route).toContain("if (!notionReadOnlyTurn && toolResult.status === 'fulfilled')")

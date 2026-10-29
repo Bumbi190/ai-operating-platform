@@ -1,6 +1,10 @@
 import {describe,it,expect,vi,beforeEach,afterEach} from 'vitest'
 import {FAMILY_WEEKLY_PROJECT_ID as FAMILY} from './auto-preparation'
 
+type MockOwnerConsent={
+ enabled:boolean;status:string;validUntil:string|null;lastUpdatedAt:string|null;
+ eventId?:number|null;canSchedule:boolean;canPublish:boolean
+}
 const state=vi.hoisted(()=>{
  const owner='77777777-7777-4777-8777-777777777777'
  return {
@@ -11,7 +15,7 @@ const state=vi.hoisted(()=>{
   insert:vi.fn(async(_row:unknown)=>({error:null as unknown})),
   noticeList:vi.fn(async(_limit:number)=>({data:[] as unknown[],error:null as unknown})),
   noticeFilters:[] as Array<{key:string;value:string}>,
-  read:vi.fn(async()=>({enabled:true,status:'active',canSchedule:false,
+  read:vi.fn(async():Promise<MockOwnerConsent>=>({enabled:true,status:'active',canSchedule:false,
    canPublish:false,validUntil:'2027-01-25T00:00:00Z',lastUpdatedAt:'2026-10-28T12:00:00Z'})),
  }
 })
@@ -67,15 +71,66 @@ describe('Owner UI enrollment route never dispatches background work',()=>{
   if(original===undefined)delete process.env.FAMILY_WEEKLY_OWNER_ENROLLMENT_UI_ENABLED
   else process.env.FAMILY_WEEKLY_OWNER_ENROLLMENT_UI_ENABLED=original
  })
- it('defaults fully OFF when feature flag absent; no query or write',async()=>{
+ it('defaults OFF with absent/unreadable consent tables; never enables or writes',async()=>{
   const {familyWeeklyOwnerEnrollmentApi}=await import('./enrollment-api')
   delete process.env.FAMILY_WEEKLY_OWNER_ENROLLMENT_UI_ENABLED
+  state.read.mockResolvedValueOnce({enabled:false,status:'unavailable',
+   validUntil:null,lastUpdatedAt:null,eventId:null,canSchedule:false,canPublish:false})
   const got=await familyWeeklyOwnerEnrollmentApi(request())
-  expect(await got.json()).toMatchObject({available:false,enabled:false,canPublish:false})
+  expect(await got.json()).toMatchObject({available:false,enabled:false,
+   status:'unavailable',runtimeEnabled:false,canPublish:false})
   const denied=await familyWeeklyOwnerEnrollmentApi(post(enable))
   expect(denied.status).toBe(403)
   expect(state.insert).not.toHaveBeenCalled()
-  expect(state.read).not.toHaveBeenCalled()
+  expect(state.read).toHaveBeenCalledTimes(1)
+  expect(state.noticeList).not.toHaveBeenCalled()
+ })
+ it('feature OFF still reveals previously active owner consent for revocation, but never enables',async()=>{
+  const {familyWeeklyOwnerEnrollmentApi}=await import('./enrollment-api')
+  delete process.env.FAMILY_WEEKLY_OWNER_ENROLLMENT_UI_ENABLED
+  const got=await familyWeeklyOwnerEnrollmentApi(request())
+  expect(got.status).toBe(200)
+  expect(await got.json()).toMatchObject({available:false,enabled:true,
+   status:'active',validUntil:'2027-01-25T00:00:00Z',
+   canSchedule:false,canPublish:false,reviewNoticesAvailable:false,
+   reviewNotices:[]})
+  expect((await familyWeeklyOwnerEnrollmentApi(post(enable))).status).toBe(403)
+  expect(state.insert).not.toHaveBeenCalled()
+  expect(state.noticeList).not.toHaveBeenCalled()
+ })
+ it('feature OFF still permits explicit signed-in owner REVOKE via session RLS',async()=>{
+  const {familyWeeklyOwnerEnrollmentApi}=await import('./enrollment-api')
+  delete process.env.FAMILY_WEEKLY_OWNER_ENROLLMENT_UI_ENABLED
+  state.read.mockResolvedValueOnce({enabled:true,status:'active',
+   validUntil:'2027-01-25T00:00:00Z',lastUpdatedAt:'2026-10-28T12:00:00Z',
+   eventId:1,canSchedule:false,canPublish:false})
+  state.read.mockResolvedValueOnce({enabled:false,status:'revoked',
+   validUntil:null,lastUpdatedAt:'2026-10-29T08:00:00Z',
+   eventId:2,canSchedule:false,canPublish:false})
+  expect((await familyWeeklyOwnerEnrollmentApi(request())).status).toBe(200)
+  const result=await familyWeeklyOwnerEnrollmentApi(
+   post({projectId:FAMILY,operation:'revoke'}))
+  expect(result.status).toBe(200)
+  expect(await result.json()).toMatchObject({available:false,enabled:false,
+   status:'revoked',runtimeEnabled:false,canPublish:false,canSchedule:false})
+  expect(state.insert).toHaveBeenCalledTimes(1)
+  expect(state.insert.mock.calls[0][0]).toMatchObject({
+   action:'revoke',valid_until:null,project_id:FAMILY,owner_id:state.owner})
+  expect(state.operator).toHaveBeenCalledTimes(1)
+  expect(state.noticeList).not.toHaveBeenCalled()
+ })
+ it('feature OFF never lets a foreign project owner or nonoperator revoke',async()=>{
+  const {familyWeeklyOwnerEnrollmentApi}=await import('./enrollment-api')
+  delete process.env.FAMILY_WEEKLY_OWNER_ENROLLMENT_UI_ENABLED
+  state.access.mockResolvedValueOnce({ok:true,userId:state.owner,
+   allowedProjectIds:[]})
+  expect((await familyWeeklyOwnerEnrollmentApi(
+   post({projectId:FAMILY,operation:'revoke'}))).status).toBe(404)
+  state.operator.mockResolvedValueOnce({ok:false,
+   reason:'not_platform_operator'} as never)
+  expect((await familyWeeklyOwnerEnrollmentApi(
+   post({projectId:FAMILY,operation:'revoke'}))).status).toBe(403)
+  expect(state.insert).not.toHaveBeenCalled()
  })
  it('GET only reads bounded owner consent; no mutations or admin actions',async()=>{
   const {familyWeeklyOwnerEnrollmentApi}=await import('./enrollment-api')

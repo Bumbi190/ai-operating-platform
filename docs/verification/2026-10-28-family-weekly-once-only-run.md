@@ -1062,3 +1062,53 @@ Preview blockeras fortfarande av Handlarbörsens separat
 tillämpade `handlarborsen_owner_review_archive_20261029`
 i ommergad Draft-PR #584. Ingen försvagning av
 migrationsskyddet, ingen merge eller produktionsskrivning.
+
+## Fas 23 – Ägaråterkallelse även när nyregistrering är avstängd (2026-10-29)
+
+En riktad granskning av det redan implementerade
+`FAMILY_WEEKLY_OWNER_ENROLLMENT_UI_ENABLED`-skyddet hittade
+en återkallelseblind fläck: tidigare blockerade en avstängd
+registreringsflagga **både** nytt `enable` och en verklig
+projektägares `revoke`, och GET dolde även ett redan aktivt
+samtycke. Detta skulle göra ägaren beroende av att
+operatören återaktiverar funktionen för att kunna dra tillbaka
+ett fortfarande tidsmässigt giltigt samtycke.
+
+Rättningen i `enrollment-api.ts` bevarar den strikta
+OFF-by-default-principen för **nya** godkännanden och
+alla modell-/cron-/publiceringsoperationer. En signerad
+projektägare får däremot även i avstängt läge göra ett
+begränsat **read-only** ägarskapsverifierat uppslag av sin
+tidigare samtyckeshistorik. Om ett aktivt samtycke finns
+kan ägaren återkalla det via den befintliga `POST`-vägen,
+med samma same-origin- och operatörskontroller samt
+en INSERT via ägarens **autentiserade Supabase-session och
+databasens RLS** — aldrig med adminrollen som skrivare.
+
+Det öppnar **inte** för `enable` i avstängt läge och läser
+inte privata granskningsaviseringar när UI-registreringen
+är nedstängd. UI-komponenten skiljer på tillåtelse att
+**skapa nytt** samtycke (`available`) och ett redan
+aktivt godkännande (`enabled`), så att endast
+`Återkalla godkännande` kan visas i återhämtningsläget.
+
+Om ett befintligt samtycke **inte kan verifieras** (t.ex.
+för att de fyra föreslagna tabellerna inte är installerade)
+visar servern `status:'unavailable'`, aldrig en
+obevisad uppgift om `not_configured` eller `revoked`.
+UI erbjuder då `Kontrollera sparad status`; inget
+nytt samtycke eller återkallelse exekveras automatiskt.
+
+**Verifiering lokalt:** samtliga **140/140 veckovisa Vitest**,
+**11/11 Playwright-testfall** inklusive stängd flagga
+med aktivt samtycke, återkallelse och okänt tillstånd/
+manuell omläsning, samt TypeScript `tsc --noEmit` PASS.
+Dessa är avsiktligt mockade HTTP-/UI-kontrakttester:
+**ingen riktig inloggad kund-Preview** eller produktions-
+samtyckesINSERT har genomförts.
+
+Fortsatt gräns: PR #581 är Draft och unmerged, de fyra
+familje-SQL-förslagen är oinstallerade, runtime/cron/
+registreringsflaggorna OFF, och Vercel Preview för
+FS-grenen blockeras fortfarande av den separat tillämpade
+Handlarbörsen-migrationen i Draft-PR #584.

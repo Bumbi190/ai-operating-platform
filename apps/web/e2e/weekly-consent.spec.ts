@@ -21,6 +21,46 @@ test('flag-off status never offers a consent action or dispatches a write',async
  expect(posts).toBe(0)
 })
 
+test('flag OFF with unreadable consent never claims revoked; allows owner retry',async({page})=>{
+ let reads=0,posts=0
+ await page.route(url,route=>{
+  if(route.request().method()==='POST'){posts++;return route.fulfill({status:503,json:{code:'UNAVAILABLE'}})}
+  reads++
+  return route.fulfill({json:reads===1
+   ? {...inactive,available:false,status:'unavailable',reviewNoticesAvailable:false}
+   : {...active,available:false,reviewNoticesAvailable:false,reviewNotices:[]}})
+ })
+ await page.goto('/weekly-consent')
+ await expect(page.getByText('Kunde inte kontrollera inställningen')).toBeVisible()
+ await expect(page.getByRole('button',{name:'Godkänn automatiska veckoutkast'})).toHaveCount(0)
+ await expect(page.getByRole('button',{name:'Återkalla godkännande'})).toHaveCount(0)
+ await page.getByRole('button',{name:'Kontrollera sparad status'}).click()
+ await expect(page.getByText('Du har godkänt veckoutkast')).toBeVisible()
+ await expect(page.getByRole('button',{name:'Återkalla godkännande'})).toBeVisible()
+ expect({reads,posts}).toEqual({reads:2,posts:0})
+})
+
+test('feature OFF still shows an existing consent and permits revoke, never a new enable',async({page})=>{
+ let current:Record<string,unknown>={...active,available:false,
+  reviewNoticesAvailable:false,reviewNotices:[]}
+ const writes:Record<string,unknown>[]=[]
+ await page.route(url,route=>{
+  if(route.request().method()==='GET')return route.fulfill({json:current})
+  const body=route.request().postDataJSON() as Record<string,unknown>
+  writes.push(body)
+  current={...revoked,available:false,reviewNoticesAvailable:false,reviewNotices:[]}
+  return route.fulfill({json:current})
+ })
+ await page.goto('/weekly-consent')
+ await expect(page.getByText('Du har godkänt veckoutkast')).toBeVisible()
+ await expect(page.getByText('Funktionen är under säkerhetsgranskning och kan inte aktiveras ännu.')).toBeVisible()
+ await expect(page.getByRole('button',{name:'Godkänn automatiska veckoutkast'})).toHaveCount(0)
+ await page.getByRole('button',{name:'Återkalla godkännande'}).click()
+ await expect(page.getByText('Ditt tidigare godkännande är återkallat')).toBeVisible()
+ await expect(page.getByRole('button',{name:'Återkalla godkännande'})).toHaveCount(0)
+ expect(writes).toEqual([{projectId:FAMILY,operation:'revoke'}])
+})
+
 test('explicit owner consent, review notice and independently confirmed revoke',async({page})=>{
  let current:Record<string,unknown>={...inactive}
  const writes:Array<Record<string,unknown>>=[]

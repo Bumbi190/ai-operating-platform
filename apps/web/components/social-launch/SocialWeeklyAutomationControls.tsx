@@ -26,7 +26,7 @@ function verifiedOwnerView(value:unknown):value is View{
  return typeof v.available==='boolean'&&typeof v.enabled==='boolean'&&
   typeof v.runtimeEnabled==='boolean'&&v.canSchedule===false&&
   v.canPublish===false&&statuses.some(s=>s===v.status)&&
-  (!v.enabled||(v.status==='active'&&v.available===true&&
+  (!v.enabled||(v.status==='active'&&
    typeof v.validUntil==='string'&&Number.isFinite(Date.parse(v.validUntil))))&&
   (v.status!=='active'||v.enabled===true)
 }
@@ -96,8 +96,9 @@ export function SocialWeeklyAutomationControls({projectId,disabled}:{
  }
  async function decide(operation:'enable'|'revoke'){
   // A scheduling-panel outage must NOT prevent a separately authorised revoke.
-  if(busy||needsReconcile||projectId!==FAMILY_WEEKLY_PROJECT_ID||!view?.available||
-    (operation==='enable'&&(disabled||!approved)))return
+  if(busy||needsReconcile||projectId!==FAMILY_WEEKLY_PROJECT_ID||!view||
+    (operation==='enable'&&(!view.available||view.enabled||disabled||!approved))||
+    (operation==='revoke'&&!view.enabled))return
   setBusy(true);setError('')
   try{
    const body=operation==='enable'
@@ -134,6 +135,9 @@ export function SocialWeeklyAutomationControls({projectId,disabled}:{
   {view&&!needsReconcile&&<div role="status">
    <p><strong>{label[view.status]}</strong></p>
    {!view.available&&<p>Funktionen är under säkerhetsgranskning och kan inte aktiveras ännu.</p>}
+   {view.status==='unavailable'&&<button type="button" onClick={()=>void reconcile()} disabled={busy}>
+    Kontrollera sparad status
+   </button>}
    {view.available&&view.reviewNoticesAvailable===false&&<p>Granskningsaviseringarna kunde inte läsas just nu.</p>}
    {view.available&&view.reviewNotices?.length? <div className={styles.notices}>
     <h5>Utkast som väntar på granskning</h5>
@@ -141,7 +145,7 @@ export function SocialWeeklyAutomationControls({projectId,disabled}:{
      Veckan {n.weekStart}: {n.draftCount} utkast. <a href="/projects/familje-stunden/social#content">Granska utkasten</a>
     </li>)}</ul>
    </div>:null}
-   {view.available&&view.enabled&&<>
+   {view.enabled&&<>
     <p>Gäller till {view.validUntil?new Intl.DateTimeFormat('sv-SE',{
       timeZone:'Europe/Stockholm',dateStyle:'medium',
     }).format(new Date(view.validUntil)):'okänt datum'}.</p>

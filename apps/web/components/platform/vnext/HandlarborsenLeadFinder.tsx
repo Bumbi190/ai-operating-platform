@@ -173,11 +173,18 @@ export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search,
             <Building2 size={20} aria-hidden="true" />
             <div><strong>Befintliga säljkontoakter</strong>
               <p>{known.status === 'ready'
-                ? `${known.count} kända Omnira-kontakter kan jämföras. Andra register saknas fortfarande.`
+                ? `${known.count} kända Omnira-kontakter kan jämföras. Registrerade HB-konton visas som separat, daterad ögonblicksbild.`
                 : 'En säker läskoppling är förberedd. Åtkomst och innehåll ska verifieras innan användning.'}</p>
             </div>
             <span className={styles.flag} data-tone={known.status === 'ready' ? 'info' : 'warning'}>{sourceLabels[known.status]}</span>
           </div>
+          {archivedResearch.status === 'ready' && archivedResearch.registeredAccountSnapshot ? <div className={styles.source}>
+            <Building2 size={20} aria-hidden="true" />
+            <div><strong>Handlarbörsens registrerade konton</strong>
+              <p>{archivedResearch.registeredAccountSnapshot.total} konton kontrollerade {archivedResearch.registeredAccountSnapshot.asOf}: 3 verifierade kontostatusar, 2 väntande och 6 stängda. Två av de verifierade är interna testkonton. Endast daterad avstämning – ingen livekoppling eller automatisk kontaktbehörighet.</p>
+            </div>
+            <span className={styles.flag} data-tone="warning">Ögonblicksbild · ej live</span>
+          </div> : null}
           <div className={styles.source}>
             <LockKeyhole size={20} aria-hidden="true" />
             <div><strong>Historiska pilotlistan</strong><p>{archivedResearch.status === 'ready'
@@ -191,7 +198,7 @@ export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search,
           {archivedResearch.status === 'ready' ? <ol className={styles.steps}>
             <li><span>01</span><div><strong>Källgranskningen sparad</strong><p>81 av 81 företag finns i arkivet. Inga nya Tavily-sökningar behövs för att läsa dem.</p></div></li>
             <li><span>02</span><div><strong>Verifiera försäljningsindikationerna</strong><p>Granska de fyra källorna och kontrollera att webbplatserna tillhör rätt juridiskt företag.</p></div></li>
-            <li><span>03</span><div><strong>Komplettera kontakthistoriken</strong><p>Omniras CRM är delvis jämfört. Koppla även den historiska pilotlistan och kontrollera alla kontaktspärrar innan något godkännande.</p></div></li>
+            <li><span>03</span><div><strong>Komplettera kontakthistoriken</strong><p>Omniras CRM är delvis jämfört. Verifiera resterande historiska pilotkontakter och koppla kontoregistret live först efter en separat säkerhetsgranskning. Alla spärrar gäller tills dess.</p></div></li>
           </ol> : <ol className={styles.steps}>
             <li><span>01</span><div><strong>Granska SCB-underlaget</strong><p>Den sanerade SCB-rapporten kan förhandsgranskas av projektägaren. Serverns liveanrop är fortfarande avstängda.</p></div></li>
             <li><span>02</span><div><strong>Matcha spärrar</strong><p>Jämför alla pilotkontakter och kontrollera SCB:s reklam- och e-postspärrar.</p></div></li>

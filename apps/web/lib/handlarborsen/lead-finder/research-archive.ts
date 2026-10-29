@@ -4,6 +4,7 @@ import { normalizeCompanyName } from './identity'
 import { buildExclusionIndex, lookupExclusions } from './exclusions'
 import type { KnownContacts } from './known-contacts'
 import type { ExistingEntry } from './types'
+import type { RegisteredAccountSnapshotSummary } from './registered-accounts-snapshot'
 
 /**
  * Non-contactable, legal-entity-only results of the manually approved
@@ -112,9 +113,11 @@ export function parseResearchArchive(input: unknown): ArchiveParse {
 }
 
 export type ArchiveCrmState = 'matched_existing_contact' | 'matched_documented_history' | 'no_match_in_partial_history' | 'crm_unavailable'
+export type ArchiveRegistrationState = 'matched_registered_account' | 'no_match_in_snapshot' | 'snapshot_unavailable'
 export type ArchiveReviewCompany = ArchiveCompany & {
   crm: ArchiveCrmState
   crmReasons: readonly string[]
+  registeredAccount: ArchiveRegistrationState
   outreachReady: false
   historyComplete: false
 }
@@ -124,6 +127,7 @@ export type ArchiveReview = {
   sourceDigest: string
   createdAt: string
   crmStatus: KnownContacts['status']
+  registeredAccountSnapshot?: RegisteredAccountSnapshotSummary
   outreachReady: false
   historyComplete: false
 } | { status: 'disabled' | 'unavailable' | 'empty' }
@@ -132,21 +136,27 @@ export type ArchiveReview = {
 export function reconcileArchiveWithCrm(
   report: ArchiveReport, known: KnownContacts,
   documented: readonly ExistingEntry[] = [],
+  registered: readonly ExistingEntry[] | null = null,
 ): ArchiveReviewCompany[] {
   const index = known.status === 'ready' ? buildExclusionIndex(known.entries) : null
   const documentedIndex = documented.length > 0 ? buildExclusionIndex(documented) : null
+  // A dated snapshot only. Missing matches do not establish eligibility.
+  const registeredIndex = registered === null ? null : buildExclusionIndex(registered)
   return report.result.map(company => {
     const identity = { orgnr: company.orgnr, normalizedName: normalizeCompanyName(company.name) }
     const crmReasons = index ? lookupExclusions(index, identity) : []
     const documentedReasons = documentedIndex ? lookupExclusions(documentedIndex, identity) : []
+    const registeredReasons = registeredIndex ? lookupExclusions(registeredIndex, identity) : []
     return {
       ...company,
       crm: crmReasons.length > 0 ? 'matched_existing_contact' as const :
         documentedReasons.length > 0 ? 'matched_documented_history' as const :
         !index ? 'crm_unavailable' as const : 'no_match_in_partial_history' as const,
+      registeredAccount: !registeredIndex ? 'snapshot_unavailable' as const :
+        registeredReasons.length > 0 ? 'matched_registered_account' as const : 'no_match_in_snapshot' as const,
       // Reasons are exclusion categories only; never serialize names, email,
       // contact details or private history rows into the client response.
-      crmReasons: [...new Set([...crmReasons, ...documentedReasons])],
+      crmReasons: [...new Set([...crmReasons, ...documentedReasons, ...registeredReasons])],
       outreachReady: false as const,
       historyComplete: false as const,
     }

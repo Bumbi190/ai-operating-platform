@@ -6,6 +6,7 @@ import type { KnownContacts } from './known-contacts'
 import { archiveDigest } from './research-archive-api'
 import { parseResearchArchive, reconcileArchiveWithCrm, type ArchiveReview } from './research-archive'
 import { documentedPilotHistoryEntries } from './documented-pilot-history'
+import { REGISTERED_ACCOUNT_SNAPSHOT, registeredAccountExclusions } from './registered-accounts-snapshot'
 
 /**
  * Safe owner-only projection: excludes every CRM contact record, email,
@@ -39,11 +40,12 @@ export async function loadArchivedLeadResearchForOwner(projectId: string, known:
       status: 'ready',
       report: {
         counts: parsed.value.counts,
-        result: reconcileArchiveWithCrm(parsed.value, known, documentedPilotHistoryEntries()),
+        result: reconcileArchiveWithCrm(parsed.value, known, documentedPilotHistoryEntries(), registeredAccountExclusions()),
       },
       sourceDigest: row.snapshot_sha256,
       createdAt: row.created_at,
       crmStatus: known.status,
+      registeredAccountSnapshot: REGISTERED_ACCOUNT_SNAPSHOT,
       outreachReady: false,
       historyComplete: false,
     }

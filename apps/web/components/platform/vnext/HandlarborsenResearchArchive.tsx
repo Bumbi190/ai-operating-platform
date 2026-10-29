@@ -30,7 +30,7 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
     return activeArchive.report.result.filter(x => {
       const category = x.sale ? 'sale' : x.registeredOnly ? 'registered' : x.matches===0 ? 'empty' : 'other'
       const matchFilter = filter === 'all' || filter === category ||
-        (filter === 'crm' && (x.crm === 'matched_existing_contact' || x.crm === 'matched_documented_history'))
+        (filter === 'crm' && (x.crm === 'matched_existing_contact' || x.crm === 'matched_documented_history' || x.registeredAccount === 'matched_registered_account'))
       return matchFilter && (!q || [x.name, x.city, x.orgnr].join(' ').toLocaleLowerCase('sv').includes(q))
     })
   }, [activeArchive, filter, search])
@@ -78,6 +78,7 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
         const sourceRows = original.result
         const results = (serverReport as {result: unknown[]}).result
         const approvedCrm = ['matched_existing_contact', 'matched_documented_history', 'no_match_in_partial_history', 'crm_unavailable']
+        const approvedRegistration = ['matched_registered_account', 'no_match_in_snapshot', 'snapshot_unavailable']
         const valid = results.length === sourceRows.length && results.every((raw, i) => {
           if (!raw || typeof raw !== 'object') return false
           const row = raw as Record<string, unknown>
@@ -85,18 +86,30 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
           return sourceRow && row.orgnr === sourceRow.orgnr && row.name === sourceRow.name &&
             row.contactable === false && row.outreachReady === false &&
             row.historyComplete === false && approvedCrm.includes(String(row.crm)) &&
+            approvedRegistration.includes(String(row.registeredAccount)) &&
             Array.isArray(row.crmReasons) && row.crmReasons.every(x => typeof x === 'string' && x.length < 100)
         })
         if (!valid) throw new Error('CRM-kontrollen kunde inte verifieras.')
         const crmStatus = value.crmStatus
         const safeCrm = ['ready','unavailable','incomplete','disabled','forbidden'].includes(String(crmStatus))
           ? crmStatus as 'ready' | 'unavailable' | 'incomplete' | 'disabled' | 'forbidden' : 'unavailable'
+        const snapshot = value.registeredAccountSnapshot
+        const safeSnapshot = snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot) &&
+          (snapshot as Record<string, unknown>).source === 'handlarborsen_organizations_snapshot' &&
+          (snapshot as Record<string, unknown>).asOf === '2026-10-29' &&
+          (snapshot as Record<string, unknown>).total === 11 &&
+          (snapshot as Record<string, unknown>).verified === 3 &&
+          (snapshot as Record<string, unknown>).pending === 2 &&
+          (snapshot as Record<string, unknown>).closed === 6 &&
+          (snapshot as Record<string, unknown>).coverageComplete === false ?
+          snapshot as Extract<ArchiveReview,{status:'ready'}>['registeredAccountSnapshot'] : undefined
         setPreviewedArchive({
           status: 'ready',
           report: { counts: original.counts, result: results as ArchiveReviewCompany[] },
           sourceDigest: value.digest,
           createdAt: new Date().toISOString(),
           crmStatus: safeCrm,
+          registeredAccountSnapshot: safeSnapshot,
           outreachReady: false,
           historyComplete: false,
         })
@@ -129,13 +142,20 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
           <div><strong>{activeArchive.report.counts.covered} / 81</strong><small>Företag genomgångna</small></div>
           <div><strong>{activeArchive.report.counts.saleSignalsToReview}</strong><small>Försäljningsindikationer</small></div>
           <div><strong>{activeArchive.report.counts.potentialOwnDomain}</strong><small>Möjliga egna domäner</small></div>
-          <div><strong>{activeArchive.report.result.filter(x => x.crm === 'matched_existing_contact' || x.crm === 'matched_documented_history').length}</strong><small>Kända kontakter (CRM / historik)</small></div>
+          <div><strong>{activeArchive.report.result.filter(x => x.crm === 'matched_existing_contact' || x.crm === 'matched_documented_history' || x.registeredAccount === 'matched_registered_account').length}</strong><small>Kända kontakter (CRM / historik / konto)</small></div>
         </div>
         <p className={styles.warning} role="note">
           CRM-status: {activeArchive.crmStatus === 'ready' ? 'Jämförd med tillgängliga Omnira-kontakter' : 'Inte verifierad'}.
           {' '}Dokumenterade Batch 3A-utskick, Founding 5 och separata pilothändelser jämförs som kompletterande spärrunderlag. Originalets hela historiska lista är inte verifierad. Ingen träff betyder INTE ett nytt företag.
           {' '}Samtliga är fortsatt spärrade för kontakt.
         </p>
+        {activeArchive.registeredAccountSnapshot ? <p className={styles.warning} role="note">
+          Handlarbörsens kontoregister, ögonblicksbild {activeArchive.registeredAccountSnapshot.asOf}:
+          {' '}{activeArchive.registeredAccountSnapshot.total} konton (3 med status verifierat, varav två interna testkonton;
+          {' '}2 väntande och 6 stängda).
+          {' '}Direkta träffar bland de 81: {activeArchive.report.result.filter(x=>x.registeredAccount==='matched_registered_account').length}.
+          {' '}Avläsningen är inte live. Ett uteblivet fynd är inte kontaktgodkännande.
+        </p> : null}
         {priorityCompanies.length > 0 ? <section className={styles.priority} aria-labelledby="hb-archive-priority">
           <h3 id="hb-archive-priority">Granska försäljningsindikationer först ({priorityCompanies.length})</h3>
           <p>Detta är möjliga bilhandlare, inte verifierade juridiska företagskopplingar eller godkända kontakter. Granska källan och kontrollera den historiska pilotlistan innan något kontaktbeslut.</p>
@@ -145,7 +165,8 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
               <tbody>{priorityCompanies.map(x => <tr key={x.orgnr}>
                 <td><strong>{x.name}</strong><small>{x.orgnr} · {x.city}</small></td>
                 <td>{x.label}</td>
-                <td>{x.crm === 'matched_existing_contact' ? 'Känd CRM-kontakt – spärrad' :
+                <td>{x.registeredAccount === 'matched_registered_account' ? 'Registrerat HB-konto – spärrat' :
+                 x.crm === 'matched_existing_contact' ? 'Känd CRM-kontakt – spärrad' :
                     x.crm === 'matched_documented_history' ? 'Dokumenterad pilotkontakt – spärrad' :
                     x.crm === 'crm_unavailable' ? 'CRM ej tillgängligt' : 'Ingen säker match – historik ofullständig'}
                   <small>Ej kontaktbar</small></td>
@@ -159,7 +180,7 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
             <option value="all">Alla 81</option>
             <option value="sale">Försäljningsindikationer</option>
             <option value="registered">Registrerad bilhandel</option>
-            <option value="crm">Känd kontakt (CRM eller pilot)</option>
+            <option value="crm">Känd kontakt (CRM, pilot eller konto)</option>
             <option value="empty">Inga relevanta källor</option>
             <option value="other">Övriga</option>
           </select></label>
@@ -172,8 +193,9 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
             <tbody>{filtered.map(x=><tr key={x.orgnr}>
               <td><strong>{x.name}</strong><small>{x.orgnr} · {x.city}</small></td>
               <td>{x.label}<small>{x.matches} företagsspecifika sökresultat</small></td>
-              <td><span className={x.crm === 'matched_existing_contact' || x.crm === 'matched_documented_history' ? styles.warningText : ''}>
-                {x.crm === 'matched_existing_contact' ? 'Känd CRM-kontakt – spärrad' :
+              <td><span className={x.crm === 'matched_existing_contact' || x.crm === 'matched_documented_history' || x.registeredAccount === 'matched_registered_account' ? styles.warningText : ''}>
+                {x.registeredAccount === 'matched_registered_account' ? 'Registrerat HB-konto – spärrat' :
+                 x.crm === 'matched_existing_contact' ? 'Känd CRM-kontakt – spärrad' :
                  x.crm === 'matched_documented_history' ? 'Dokumenterad pilotkontakt – spärrad' :
                  x.crm === 'crm_unavailable' ? 'CRM ej kontrollerat' : 'Ingen säker match – historik ofullständig'}
               </span><small>Ej kontaktbar</small></td>

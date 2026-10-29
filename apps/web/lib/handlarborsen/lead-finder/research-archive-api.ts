@@ -6,6 +6,7 @@ import { constantTimeEqual, digestApproved } from './import-intake'
 import { parseResearchArchive, reconcileArchiveWithCrm, type ArchiveReport } from './research-archive'
 import { parseKnownContacts, type KnownContacts } from './known-contacts'
 import { documentedPilotHistoryEntries } from './documented-pilot-history'
+import { REGISTERED_ACCOUNT_SNAPSHOT, registeredAccountExclusions } from './registered-accounts-snapshot'
 
 export const RESEARCH_ARCHIVE_FLAG = 'HB_LEADFINDER_RESEARCH_ARCHIVE_ENABLED'
 export const RESEARCH_ARCHIVE_WRITE_FLAG = 'HB_LEADFINDER_RESEARCH_ARCHIVE_WRITE_ENABLED'
@@ -92,12 +93,13 @@ export async function leadFinderResearchArchiveApi(request: Request, deps: Resea
     let known: KnownContacts | null = null
     try { known = await deps.getKnownContacts() } catch { known = null }
     const safeKnown = known ?? parseKnownContacts(null, HANDLARBORSEN_PROJECT_ID)
-    const matches = reconcileArchiveWithCrm(parsed.value, safeKnown, documentedPilotHistoryEntries())
+    const matches = reconcileArchiveWithCrm(parsed.value, safeKnown, documentedPilotHistoryEntries(), registeredAccountExclusions())
     return respond(200, {
       status: 'preview', count: parsed.value.result.length, digest,
       stored: false, outreachReady: false, historyComplete: false,
       crmStatus: known?.status ?? 'unavailable',
       report: { counts: parsed.value.counts, result: matches },
+      registeredAccountSnapshot: REGISTERED_ACCOUNT_SNAPSHOT,
     })
   }
   // A distinct feature gate protects writes even after a safe Preview is enabled.

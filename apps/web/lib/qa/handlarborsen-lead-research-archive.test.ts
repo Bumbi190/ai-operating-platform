@@ -4,7 +4,8 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { HandlarborsenResearchArchive } from '@/components/platform/vnext/HandlarborsenResearchArchive'
 import { describe, expect, it, vi } from 'vitest'
 import { withCheckDigit } from '@/lib/handlarborsen/lead-finder/fixtures'
-import { normalizeOrgnr } from '@/lib/handlarborsen/lead-finder/identity'
+import { normalizeOrgnr, looksLikePersonnummer } from '@/lib/handlarborsen/lead-finder/identity'
+import { REGISTERED_ACCOUNT_SNAPSHOT, registeredAccountExclusions } from '@/lib/handlarborsen/lead-finder/registered-accounts-snapshot'
 import { DOCUMENTED_PILOT_HISTORY, DOCUMENTED_PILOT_HISTORY_COUNTS,
   documentedPilotHistoryEntries } from '@/lib/handlarborsen/lead-finder/documented-pilot-history'
 import { HANDLARBORSEN_PROJECT_ID } from '@/lib/atlas/handlarborsen-test-data/contracts'
@@ -74,6 +75,55 @@ function harness(change: Partial<ResearchArchiveDeps> = {}) {
   return { deps, readExisting, save }
 }
 describe('Handlarbörsen research archive – validated, non-contactable legal entities', () => {
+  it('records the dated Handlarbörsen account snapshot without private or test person identifiers', () => {
+    expect(REGISTERED_ACCOUNT_SNAPSHOT).toMatchObject({
+      source:'handlarborsen_organizations_snapshot',asOf:'2026-10-29',
+      total:11,verified:3,pending:2,closed:6,
+      checkedLegalEntities:3,knownInternalTestAccountsAmongVerified:2,
+      coverageComplete:false,
+    })
+    const entries=registeredAccountExclusions()
+    expect(entries).toHaveLength(3)
+    expect(entries.every(x => x.orgnr && normalizeOrgnr(x.orgnr) === x.orgnr &&
+      !looksLikePersonnummer(x.orgnr) && x.kind === 'existing_account')).toBe(true)
+    expect(entries.map(x=>x.companyName)).toContain('Tiltiana Holdings AB')
+    expect(JSON.stringify(entries)).not.toMatch(/@|mailto:|phone|email|auth_user/)
+  })
+
+  it('blocks a registered organization even when it is absent from the partial Omnira CRM', async () => {
+    const changed:ArchiveReport={counts:report.counts,result:report.result.map((row,i)=>
+      i===0?{...row,name:'Tiltiana Holdings AB',orgnr:'5569622110'}:row)}
+    expect(parseResearchArchive(changed).ok).toBe(true)
+    const known=parseKnownContacts([],HANDLARBORSEN_PROJECT_ID)
+    const rows=reconcileArchiveWithCrm(changed,known,[],registeredAccountExclusions())
+    expect(rows[0]).toMatchObject({
+      registeredAccount:'matched_registered_account',outreachReady:false,historyComplete:false,
+    })
+    expect(rows[0].crmReasons).toContain('existing_account')
+    expect(rows[1].registeredAccount).toBe('no_match_in_snapshot')
+    expect(rows.every(x=>x.outreachReady===false&&x.historyComplete===false)).toBe(true)
+    const preview=await leadFinderResearchArchiveApi(request({mode:'preview',report:changed}),
+      harness({getKnownContacts:async()=>known}).deps)
+    expect(preview.status).toBe(200)
+    const payload=await preview.json()
+    expect(payload.registeredAccountSnapshot).toMatchObject({total:11,asOf:'2026-10-29',coverageComplete:false})
+    expect(payload.report.result[0].registeredAccount).toBe('matched_registered_account')
+    expect(payload.report.result[0].outreachReady).toBe(false)
+    expect(JSON.stringify(payload)).not.toMatch(/@|mailto:/)
+  })
+
+  it('does not treat an absent or stale snapshot as permission to contact', () => {
+    const known=parseKnownContacts(null,HANDLARBORSEN_PROJECT_ID)
+    const unmatched=reconcileArchiveWithCrm(report,known,[],null)
+    expect(unmatched[0]).toMatchObject({
+      registeredAccount:'snapshot_unavailable',outreachReady:false,historyComplete:false,
+    })
+    const matched=reconcileArchiveWithCrm(report,known,[],registeredAccountExclusions())
+    expect(matched).toHaveLength(81)
+    expect(matched.filter(x=>x.registeredAccount==='matched_registered_account')).toHaveLength(0)
+    expect(matched.every(x=>!x.outreachReady&&!x.historyComplete)).toBe(true)
+  })
+
   it('keeps documented previous outreach separate from incomplete CRM and validates organisation numbers', () => {
     expect(DOCUMENTED_PILOT_HISTORY_COUNTS).toMatchObject({
       batch3a:10, founding:5, coverageComplete:false,
@@ -127,15 +177,18 @@ describe('Handlarbörsen research archive – validated, non-contactable legal e
     const saved: ArchiveReview = {
       status:'ready',sourceDigest:archiveDigest(report),createdAt:'2026-10-29T07:21:47Z',
       crmStatus:known.status,
-      report:{counts:report.counts,result:reconcileArchiveWithCrm(report,known)},
+      registeredAccountSnapshot:REGISTERED_ACCOUNT_SNAPSHOT,
+      report:{counts:report.counts,result:reconcileArchiveWithCrm(report,known,[],registeredAccountExclusions())},
       outreachReady:false,historyComplete:false,
     }
     const html = renderToStaticMarkup(React.createElement(HandlarborsenResearchArchive,{
       archive:saved,saveEnabled:true,
     }))
     expect(html).toContain('Granska försäljningsindikationer först (4)')
+    expect(html).toContain('Handlarbörsens kontoregister')
+    expect(html).toContain('Avläsningen är inte live')
     expect(html).toContain('Arkivet är permanent sparat')
-    expect(html).toContain('Kända kontakter (CRM / historik)')
+    expect(html).toContain('Kända kontakter (CRM / historik / konto)')
     expect(html).not.toContain('id="hb-archive-file"')
     expect(html).not.toContain('Spara endast som granskningsunderlag')
     expect(html).not.toContain('Godkänn kontakt')

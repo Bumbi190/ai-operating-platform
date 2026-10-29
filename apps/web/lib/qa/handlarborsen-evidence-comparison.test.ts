@@ -143,7 +143,7 @@ describe('Handlarbörsen read-only combined source comparison', () => {
     const route = readFileSync(resolve('app/api/chat/route.ts'), 'utf8')
     expect(route).toContain('const hbCompositeEvidenceIntent =')
     expect(route).toContain('const externalReferenceReadIntent = !hbCompositeEvidenceIntent')
-    expect(route).toContain('const fastPath = !hbCompositeEvidenceIntent')
+    expect(route).toContain('const fastPath = !stratoInboxReadIntent && !hbCompositeEvidenceIntent')
     expect(route).toContain("hbCompositeEvidenceIntent ? TOOLS.filter(tool => tool.name === 'handlarborsen_compare_workflow_evidence')")
     expect(route).toContain("name: 'handlarborsen_compare_workflow_evidence' } }")
     expect(route).toContain("if (name === 'handlarborsen_compare_workflow_evidence') {")

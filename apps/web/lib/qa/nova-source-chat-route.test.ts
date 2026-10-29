@@ -234,6 +234,32 @@ describe('Nova source inspection end-to-end chat route: no live provider', () =>
     })
     expect(state.network).toEqual([])
   })
+  it('keeps a GitHub source request exclusive when the Strato inbox tool is enabled', async () => {
+    vi.stubEnv('HB_STRATO_INBOX_READ_ENABLED', 'true')
+    const { frames } = await ask()
+    expect(state.calls[0].tools).toEqual(['nova_inspect_project_source'])
+    expect(state.calls[0].choice).toEqual({ type: 'tool', name: 'nova_inspect_project_source' })
+    expect(state.dispatches).toHaveLength(1)
+    expect(frames.find(f => f.event === 'tool_result')?.result).toMatchObject({
+      ok: true, readonly: true, path: 'app/page.tsx',
+    })
+    expect(state.network).toEqual([])
+  })
+  it('Strato inbox priority never authorizes a forged Nova source tool, even with both intents', async () => {
+    vi.stubEnv('HB_STRATO_INBOX_READ_ENABLED', 'true')
+    const { frames } = await ask({
+      question: 'Nova, visa Handlarbörsens Strato-inkorg och GitHub-koden i app/page.tsx',
+    })
+    expect(state.calls[0].tools).toEqual([
+      'get_handlarborsen_strato_inbox', 'get_handlarborsen_strato_message',
+    ])
+    expect(state.calls[0].choice).toEqual({ type: 'tool', name: 'get_handlarborsen_strato_inbox' })
+    expect(state.dispatches).toHaveLength(0)
+    expect(frames.find(f => f.event === 'tool_result')?.result).toEqual({
+      ok: false, code: 'source_turn_required',
+    })
+    expect(state.network).toEqual([])
+  })
   it('even if a model forges a write-capable tool during the source-only turn, no work runs', async () => {
     state.extraTools = ['run_media_step']
     const { frames } = await ask()
@@ -257,26 +283,26 @@ describe('Nova source inspection end-to-end chat route: no live provider', () =>
     const { frames } = await ask({ origin: 'https://evil.example.test' })
     expect(state.dispatches).toHaveLength(0)
     expect(state.calls[0].tools).not.toContain('nova_inspect_project_source')
-    expect(JSON.stringify(frames)).toContain('same_origin_required')
+    expect(JSON.stringify(frames)).toContain('source_turn_required')
   })
   it('an unauthorized account gets no source read even if model invents a source tool', async () => {
     state.operator = false
     const { frames } = await ask()
     expect(state.calls[0].tools).not.toContain('nova_inspect_project_source')
     expect(state.dispatches).toHaveLength(0)
-    expect(JSON.stringify(frames)).toContain('not_authorized')
+    expect(JSON.stringify(frames)).toContain('source_turn_required')
   })
   it('a source request cannot read an unowned project', async () => {
     state.allowed = false
     const { frames } = await ask()
     expect(state.calls[0].tools).not.toContain('nova_inspect_project_source')
     expect(state.dispatches).toHaveLength(0)
-    expect(JSON.stringify(frames)).toContain('project_unavailable')
+    expect(JSON.stringify(frames)).toContain('source_turn_required')
   })
   it('fails closed outside Preview or when explicitly disabled, without GitHub dispatch', async () => {
     vi.stubEnv('VERCEL_ENV', 'production')
     const { frames } = await ask()
     expect(state.dispatches).toHaveLength(0)
-    expect(JSON.stringify(frames)).toContain('not_available')
+    expect(JSON.stringify(frames)).toContain('source_turn_required')
   })
 })

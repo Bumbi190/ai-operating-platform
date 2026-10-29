@@ -10,13 +10,10 @@ on:
       - 'apps/web/lib/qa/nova-source-*.test.ts'
       - 'apps/web/app/api/chat/route.ts'
       - 'apps/web/lib/os/chat-shared.ts'
+      - 'apps/web/lib/handlarborsen/distribution/atlas-strato-inbox.ts'
+      - 'apps/web/lib/handlarborsen/distribution/strato-inbox-intent.ts'
+      - 'apps/web/lib/qa/handlarborsen-strato-inbox-*.test.ts'
   workflow_dispatch:
-  # PR merge conflicts suppress pull_request workflows. Keep test verification
-  # available on exactly this approved draft branch without merging or rebasing.
-  # Remove this narrow branch-only trigger after the PR is safely reconciled.
-  push:
-    branches:
-      - feat/nova-source-inspection-issue576
 
 permissions:
   contents: read
@@ -64,13 +61,15 @@ jobs:
             lib/qa/nova-source-inspection-route.test.ts \
             lib/qa/nova-source-atlas-tool.test.ts \
             lib/qa/nova-source-chat-route.test.ts \
+            lib/qa/handlarborsen-strato-inbox-atlas.test.ts \
+            lib/qa/handlarborsen-strato-inbox-intent.test.ts \
             lib/qa/atlas-openai-chat.test.ts \
             lib/qa/github-app-transport.test.ts \
             lib/qa/sdf1a-code-work-contracts.test.ts \
             lib/qa/handlarborsen-evidence-comparison.test.ts \
             --reporter=default --reporter=json --outputFile="$RUNNER_TEMP/nova-source-inspection.json"
 
-      - name: Verify all eight suites actually ran, with zero skips
+      - name: Verify all ten suites actually ran, with zero skips
         if: always()
         shell: bash
         run: |
@@ -87,7 +86,9 @@ jobs:
             'nova-source-inspection.test.ts': 42,
             'nova-source-inspection-route.test.ts': 10,
             'nova-source-atlas-tool.test.ts': 8,
-            'nova-source-chat-route.test.ts': 10,
+            'nova-source-chat-route.test.ts': 12,
+            'handlarborsen-strato-inbox-atlas.test.ts': 15,
+            'handlarborsen-strato-inbox-intent.test.ts': 22,
             'atlas-openai-chat.test.ts': 5,
             'github-app-transport.test.ts': 43,
             'sdf1a-code-work-contracts.test.ts': 42,

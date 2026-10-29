@@ -42,6 +42,22 @@ GitHub documents that `pull_request` workflows do not trigger while a PR has mer
 
 Authoritative reference: https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows
 
+## Reconciled in Nova's isolated test branch (29 October 2026)
+
+The earlier section describes the historic conflict. In the subsequent reconciliation, `origin/main` at `32e58e7` was merged **into `feat/nova-source-inspection-issue576` only**. `main`, the other PRs and their worktrees remain untouched. Exactly two conflicting blocks in `apps/web/app/api/chat/route.ts` were resolved deliberately:
+
+- The Handlarborsen `stratoInboxReadIntent`, two read-only Strato tools, forced Strato routing, operator scope and existing mailbox privacy checks were preserved.
+- Nova's exclusive `sourceReadTurn`, single GitHub inspection, SHA-pinned source reader, minimal model prompt and cross-project conversation isolation were preserved.
+- The `executeTool` handler now checks `sourceReadTurn` as a server-derived parameter, not just user text, before a GitHub source tool can run. A model-forged tool in an ordinary or Strato turn cannot escalate to GitHub even when the current question mentions code.
+- Two negative cross-routing tests verify Strato and Nova tool selection with both Preview flags enabled, including a mixed inbox/code question where the forged GitHub tool MUST be denied.
+- Existing structural tests for Strato, Notion and external references were updated to expect the added server-derived routing parameter, without weakening their behavioral checks.
+
+Local acceptance before merge commit: **343/343 focused tests PASSED across 18 suites**. This includes Nova, Strato, Handlarborsen communications, Notion, external references, operator permissions, GitHub transport and SDF-1 policy. One earlier 5-second Windows startup timeout reran green when using `--testTimeout=20000`. CI now includes named Nova and Strato suites with a zero-skip floor. The temporary branch-specific `push` trigger was removed once this conflict was resolved; regular PR CI must validate the resulting merge SHA.
+
+Local full TypeScript is still affected by the three known shared dependency-cache errors in `lib/media/lambda-render.ts` relating to missing `@remotion/lambda/client`. A clean GitHub CI `tsc --noEmit` pass is therefore required; the local run is not a green full typecheck.
+
+This is a branch-only merge, NOT a merge of PR #598 into production. It does not install the new GitHub App, activate Preview or Production, change Supabase, send email, publish or authorize code modification. PR #598 stays Draft until separate approval.
+
 ## GitHub App – owner setup prepared, NOT installed (28 October 2026)
 
 GitHub supports registration links that prefill permission and account settings. This is an owner checklist, not authority for an assistant to create or install an app.

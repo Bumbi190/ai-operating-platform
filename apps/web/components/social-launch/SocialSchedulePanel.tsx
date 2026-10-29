@@ -7,6 +7,7 @@ import type {ScheduleWorkspaceView} from '@/lib/social-launch/scheduling/store'
 import type {monthlyPlanningSlots} from '@/lib/social-launch/scheduling/planning'
 import type {ScheduleReadiness} from '@/lib/social-launch/scheduling/readiness'
 import styles from './SocialSchedulePanel.module.css'
+import {SocialWeeklyAutomationControls} from './SocialWeeklyAutomationControls'
 type View=ScheduleWorkspaceView&{canManage:boolean;dispatchEnabled:boolean;monthlySlots:ReturnType<typeof monthlyPlanningSlots>}
 type Props={projectId:string;posts:SocialContentPost[];disabled:boolean}
 const labels:Record<string,string>={queued:'Väntar på publiceringstid',claimed:'Körning pågår',waiting:'Väntar på nästa kontroll',published:'Publicerat',failed:'Försöket avslutades',uncertain:'Osäkert utfall – kontrollera kontot',blocked:'Stoppat – behöver granskas',cancelled:'Återkallat',missed:'Missad publiceringstid'}
@@ -89,6 +90,8 @@ function Workspace({projectId,posts,disabled}:Props){
   {disabled&&<p className={styles.notice}>Ändringen behöver sparas och granskas igen innan schemat kan godkännas.</p>}
   {model&&!model.dispatchEnabled&&<p className={styles.notice}>Automatiken är avstängd. Godkända inlägg väntar tills aktiveringen är klar.</p>}
   {model&&!model.canManage&&<p>Du kan läsa schemat. Godkännande kräver projektets operatör.</p>}
+  {projectId==='77cda551-57c9-4dc0-b019-1bb6438777f7'&&
+   <SocialWeeklyAutomationControls projectId={projectId} disabled={busy||loading||disabled||!model?.canManage}/>}
   {model?.canManage&&<div className={styles.notice}><button disabled={busy||loading||needsRefresh} onClick={()=>void act('readiness',{projectId})}>Kontrollera schemat utan publicering</button>
    {readiness&&<div role="status"><p><strong>{readiness.ready?'Kontrollen är godkänd just nu.':'Detta återstår före automatisk publicering:'}</strong></p><ul>{readiness.blockers.map(code=><li key={code}>{readinessLabel(code)}</li>)}</ul><p>Kontrollerat {date(readiness.checkedAt)}. Inga inlägg skickades och inga publiceringsjobb startades.</p></div>}
   </div>}

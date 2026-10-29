@@ -3,6 +3,12 @@
 **Status:** guarded routing bugfix only; NO Source Curator live integration,
 approval, credentials, indexing or publication.
 
+**Identity clarification (owner, 29 October 2026):** Atlas and Nova are the
+**same AI/operator assistant**. Nova is the voice/persona used in Agent Office,
+not a separate agent, account, principal or permission boundary. The source
+curator is a capability of Atlas. The unavailable response must never suggest
+that Nova needs to be linked as a second assistant.
+
 Issue: [Nova Source Curator #600](https://github.com/Bumbi190/ai-operating-platform/issues/600).
 Separate dormant pure-review engine: [PR #601](https://github.com/Bumbi190/ai-operating-platform/pull/601).
 Private GitHub reader, also dormant: [PR #598](https://github.com/Bumbi190/ai-operating-platform/pull/598).

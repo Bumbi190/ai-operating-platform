@@ -1,6 +1,8 @@
 /**
  * Deterministic guard for a specialist workflow that is NOT connected to Atlas.
  *
+ * Atlas and Nova are the SAME operator assistant; Nova is the voice / Agent
+ * Office persona, not a separate agent or identity with its own permissions.
  * This is an explicit operator request, not a source of permissions. Recognizing
  * it means "do NOT choose unrelated CRM, inbox, workflow, Notion or action tools";
  * it emphatically does not grant Nova Source Curator read/index/approval rights.
@@ -15,10 +17,11 @@ const REVIEW = /(?:^|\s)(?:granska|granskar|förhandsgranska|förhandsgranskar|k
 const NEGATED = /(?:granska|granskar|förhandsgranska|förhandsgranskar|kontrollera|kontrollerar|verifiera|verifierar|kvalitetsgranska|kvalitetsgranskar|gå\s+igenom)\s+(?:inte|ej|aldrig)(?=$|[\s,.:!?])/iu
 
 export const NOVA_CURATOR_NOT_CONNECTED_REPLY =
-  'Novas granskning av Handlarbörsens kunskapskällor är ännu inte ansluten till Atlas-chatten. ' +
-  'Jag har inte granskat, klassat eller godkänt kunskapsdokument i den här turen. ' +
-  'Jag använder inte Handlarbörsens CRM, inkorg eller utskicksverktyg för en sådan begäran. ' +
-  'Ingen publicering eller OpenViking-indexering har startats. Funktionen är fortfarande under granskning.'
+  'Jag är Atlas, som du också kallar Nova i Agent Office. ' +
+  'Min granskning av Handlarbörsens kunskapskällor är ännu inte ansluten till chatten. ' +
+  'Jag har inte granskat, klassat eller godkänt några dokument i den här turen. ' +
+  'Jag har inte använt CRM, inkorg eller utskicksverktyg. ' +
+  'Ingen publicering eller OpenViking-indexering har startats.'
 
 export function isPendingNovaCuratorRequest(input: unknown): boolean {
   if (typeof input !== 'string' || input.length > 1200) return false

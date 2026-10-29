@@ -65,6 +65,8 @@ test('bounded request length rejects unusually long text', () => {
   assert.equal(isPendingNovaCuratorRequest(screenshot + 'x'.repeat(1400)),false)
 })
 test('the unavailable answer never claims the work was performed', () => {
+  assert.match(NOVA_CURATOR_NOT_CONNECTED_REPLY,/Jag är Atlas, som du också kallar Nova/)
+  assert.doesNotMatch(NOVA_CURATOR_NOT_CONNECTED_REPLY,/Novas granskning.*Atlas-chatten/)
   assert.match(NOVA_CURATOR_NOT_CONNECTED_REPLY,/ännu inte ansluten/)
   assert.match(NOVA_CURATOR_NOT_CONNECTED_REPLY,/inte granskat/)
   assert.match(NOVA_CURATOR_NOT_CONNECTED_REPLY,/Ingen publicering/)

@@ -30,7 +30,8 @@ export const ATLAS_SHADOW_POLICY_VERSION='atlas.shadow.v1' as const
 
 export type NovaShadowReceipt=Readonly<{
   project_id:string
-  agent_id:string
+  actor_key:typeof ATLAS_EXECUTIVE_ACTOR_KEY
+  workflow_agent_id:string
   run_id:string
   claim_id:string
   report_id:string
@@ -40,7 +41,7 @@ export type NovaShadowReceipt=Readonly<{
   content_sha256:string
   source_set_sha256:string
   reviewer_run_id:string
-  policy_version:typeof NOVA_SHADOW_POLICY_VERSION
+  policy_version:typeof ATLAS_SHADOW_POLICY_VERSION
   decision:'editorial_candidate'
   reason:'ordinary_story_independently_supported'
 }>

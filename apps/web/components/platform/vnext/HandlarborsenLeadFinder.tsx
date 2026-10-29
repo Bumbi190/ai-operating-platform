@@ -180,8 +180,10 @@ export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search,
           </div>
           <div className={styles.source}>
             <LockKeyhole size={20} aria-hidden="true" />
-            <div><strong>Historiska pilotlistan</strong><p>Tidigare kontaktade, avböjda och spärrade företag måste också matchas. Vi antar inte att listan finns i Omnira.</p></div>
-            <span className={styles.flag} data-tone="warning">Ej kopplad</span>
+            <div><strong>Historiska pilotlistan</strong><p>{archivedResearch.status === 'ready'
+              ? 'Dokumenterade Batch 3A-utskick, Founding 5 och kända pilothändelser ingår som säkerhetsspärrar. Den ursprungliga kompletta historiska listan är fortfarande inte verifierad.'
+              : 'Tidigare kontaktade, avböjda och spärrade företag måste också matchas. Den ursprungliga historiska listan är inte verifierad.'}</p></div>
+            <span className={styles.flag} data-tone="warning">{archivedResearch.status === 'ready' ? 'Delvis dokumenterad' : 'Ej fullständigt kopplad'}</span>
           </div>
         </section>
         <aside className={styles.panel} aria-labelledby="hb-leads-next">

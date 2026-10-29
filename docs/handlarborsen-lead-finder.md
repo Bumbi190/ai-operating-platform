@@ -116,7 +116,7 @@ Tidigare startade varje manuell research från de första fem bolagen oavsett ti
 
 Tester kontrollerar alla 81 granskningsbara företag i 17 disjunkta omgångar, API-avvisning av ogiltiga offset och att omgång 2 samt sista en-företagsomgången använder rätt antal syntetiska Tavily-anrop utan dubblering. Inga verkliga sökkrediter används av testerna.
 
-## Atlas – bestående källgranskning (utvecklad, ej databaserad ännu)
+## Historisk plan: Atlas arkiv före databasdriftsättning (ersatt 2026-10-29)
 
 De manuellt godkända Tavily-sökningarna omfattar 81 av 81 juridiska företag från den validerade SCB-rapporten. Den privata källrapporten finns enbart på ägarens stationära dator: \`Projects/Omnira/Temp/hb-lead-research-bulk-20261028/kallgranskning.json\` (81 företag). Inga personidentifierade registerposter, API-nycklar, personliga e-postadresser eller telefonnummer kopieras till Git.
 
@@ -129,3 +129,17 @@ Denna PR bygger en separat, ägarskyddad arkivvy:
 - Ägarvyn får lokal filuppladdning, sök/filter, separat säljsignal kontra registrerad bilhandel, källänk och CRM-varning. Ingen masskommunikation eller automatiskt kontaktgodkännande ingår.
 
 **Aktuellt stopp:** Ingen databas-migration eller arkivlagring har utförts i detta steg. Den existerande produktionen förblir avstängd för Lead Finder. När den additiva, RLS-skyddade migrationen granskats och applicerats kan arkivflaggan kopplas på för denna enda Preview-gren, den befintliga rapporten laddas upp en gång, och 81-företagsvyn blir bestående utan nya Tavily-krediter.
+
+## Aktuellt verifierat läge 29 oktober 2026 – permanent arkiv och begränsad historikavstämning
+
+Den historiska migrationsplanen ovan är ersatt. Arkivtabellen `public.hb_lead_research_archives` är skapad genom den tillämpade, kanoniskt versionsförda, ägar- och projektlåsta Supabase-migrationen `handlarborsen_owner_review_archive_20261029`. Supabase har verifierat **en sparad rapport med 81 juridiska företag**, alla med `outreach_ready=false`, `history_complete=false` och `contactability=BLOCKED_PENDING_VERIFICATION`. Det finns **0 importerade leadkandidater** i `hb_lead_candidates`. Vercel-sparfunktionen är endast påslagen för den skyddade PR-Preview-grenen och kräver i förväg godkänd exakt SHA256 samt uttrycklig bekräftelse. Produktionen och utskick är fortsatt avstängda.
+
+Omniras `public.sales_contacts` omfattar 139 företagsrader. En läsbar kontroll den 29 oktober fann 32 med `history=contacted` och 107 med `history=unknown`; samtliga 139 har en säkerhetsspärrflagga. Säkerhetsspärren är inte i sig bevis på att alla 139 juridiskt avregistrerat sig. En direkt jämförelse mot de 81 arkiverade bolagen gav en tidigare CRM-match: **AutoSlottsstaden AB**, spärrad. Inget samband hittades för de övriga företagen i de hittills tillgängliga identifierarna, vilket **inte** gör dem till nya, kontaktbara leads.
+
+### Dokumenterad kompletterande pilot-/utskickshistorik
+
+Den befintliga källan `Handlarbörsen – aktuellt läge och nästa steg` i Notion (senast kontrollerad 2026-10-29), `https://app.notion.com/p/3fb7b977c5b881e08e22c4659aca4d51`, ger ett separat, **partiellt** bekräftat historikunderlag: exakt tio Batch 3A-företag med organisationsnummer, kampanjstatus `sent` den 26 oktober (ingen garanti för individuell leverans), de fem Founding-inbjudningarna från 8 oktober, Karebys aktiva konversation, EVExperten/Tiltiana Holdings befintliga organisationskoppling samt två tidigare exkluderade handlarnamn. Företagsnamn och organisationsnummer, inte mottagarnas adresser eller personuppgifter, har lagts i `documented-pilot-history.ts`. Källan är en granskad stillbild och måste uppdateras efter nya dokumenterade utskick; ingen live-synk eller upprepade mejl är aktiverade.
+
+Arkivet jämför nu både det befintliga Omnira-CRM:et och denna dokumenterade kompletterande historik. En dokumenterad träff märks `matched_documented_history`, hålls spärrad och får ett skilt meddelande i ägarvyn. Om CRM saknas kan historiska träffar ändå flaggas, men **ingen avsaknad av träff ger kontaktgodkännande**. De ursprungliga fullständiga 139 dealerraderna från extern pilotlista har inte återfunnits eller verifierats som en komplett kopia; inte heller den separata Handlarbörsen-databasens registrerade företagskonton är synkade live till Atlas. En engångsavstämning mot de 81 arkiverade företagen gav **0 överlapp på organisationsnummer** med de tio Batch 3A-mottagarna och den bekräftade EVExperten-bolagskopplingen.
+
+För tillfället visas fyra företag med preliminär försäljningsindikation som manuell granskningskö högst upp, men ett sådant indicium eller en möjlig egen domän är **inte** ett intyg om juridisk identitet. Kontakta eller importera inget företag automatiskt. Nästa avgränsade integrationsarbete är att säkerställa mer fullständig historisk kontakt- och registreringssynk med explicita behörigheter och utan att uppfinna saknade poster.

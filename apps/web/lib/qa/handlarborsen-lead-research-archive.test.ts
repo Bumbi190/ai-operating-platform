@@ -4,6 +4,9 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { HandlarborsenResearchArchive } from '@/components/platform/vnext/HandlarborsenResearchArchive'
 import { describe, expect, it, vi } from 'vitest'
 import { withCheckDigit } from '@/lib/handlarborsen/lead-finder/fixtures'
+import { normalizeOrgnr } from '@/lib/handlarborsen/lead-finder/identity'
+import { DOCUMENTED_PILOT_HISTORY, DOCUMENTED_PILOT_HISTORY_COUNTS,
+  documentedPilotHistoryEntries } from '@/lib/handlarborsen/lead-finder/documented-pilot-history'
 import { HANDLARBORSEN_PROJECT_ID } from '@/lib/atlas/handlarborsen-test-data/contracts'
 import {
   parseResearchArchive, reconcileArchiveWithCrm, type ArchiveReport, type ArchiveCompany, type ArchiveReview,
@@ -71,6 +74,52 @@ function harness(change: Partial<ResearchArchiveDeps> = {}) {
   return { deps, readExisting, save }
 }
 describe('Handlarbörsen research archive – validated, non-contactable legal entities', () => {
+  it('keeps documented previous outreach separate from incomplete CRM and validates organisation numbers', () => {
+    expect(DOCUMENTED_PILOT_HISTORY_COUNTS).toMatchObject({
+      batch3a:10, founding:5, coverageComplete:false,
+    })
+    const sent=DOCUMENTED_PILOT_HISTORY.filter(x=>x.proof==='batch_3a_sent')
+    expect(sent).toHaveLength(10)
+    expect(new Set(sent.map(x=>x.orgnr)).size).toBe(10)
+    for(const item of sent){
+      expect(normalizeOrgnr(item.orgnr)).toBe(item.orgnr)
+      expect(item.kind).toBe('contacted')
+    }
+    expect(JSON.stringify(DOCUMENTED_PILOT_HISTORY)).not.toMatch(/@|mailto:|\+46\d{7}/)
+  })
+
+  it('blocks a documented batch recipient even if the Omnira CRM contains no matching row', async () => {
+    const touched: ArchiveReport = {counts:report.counts,result:report.result.map((row,i)=>
+      i===0 ? {...row,name:'Halmstad Bil AB',orgnr:'5594304734'} : row)}
+    expect(parseResearchArchive(touched).ok).toBe(true)
+    const known = parseKnownContacts([], HANDLARBORSEN_PROJECT_ID)
+    const reconciled = reconcileArchiveWithCrm(touched,known,documentedPilotHistoryEntries())
+    expect(reconciled[0]).toMatchObject({
+      crm:'matched_documented_history',outreachReady:false,historyComplete:false,
+    })
+    expect(reconciled[0].crmReasons).toContain('already_contacted')
+    expect(reconciled[1].crm).toBe('no_match_in_partial_history')
+    const preview = await leadFinderResearchArchiveApi(request({mode:'preview',report:touched}),
+      harness({getKnownContacts:async()=>known}).deps)
+    expect(preview.status).toBe(200)
+    const result = await preview.json()
+    expect(result.report.result[0].crm).toBe('matched_documented_history')
+    expect(result.report.result[0].outreachReady).toBe(false)
+    expect(JSON.stringify(result)).not.toMatch(/@|mailto:/)
+  })
+
+  it('never grants outbound clearance when historical or CRM sources are unavailable', () => {
+    const touched:ArchiveReport={counts:report.counts,result:report.result.map((row,i)=>
+      i===0?{...row,name:'Kareby Bil'}:row)}
+    const missing=parseKnownContacts(null,HANDLARBORSEN_PROJECT_ID)
+    const rows=reconcileArchiveWithCrm(touched,missing,documentedPilotHistoryEntries())
+    expect(rows[0]).toMatchObject({
+      crm:'matched_documented_history',outreachReady:false,historyComplete:false,
+    })
+    expect(rows[1].crm).toBe('crm_unavailable')
+    expect(rows.every(row=>row.outreachReady===false&&row.historyComplete===false)).toBe(true)
+  })
+
   it('shows four manual-review priorities after saving, with no duplicate upload form or contact approval', () => {
     const known = parseKnownContacts([{project_id:HANDLARBORSEN_PROJECT_ID,data:{
       companyName:'AutoSlottsstaden',history:'contacted',suppressed:true,
@@ -86,7 +135,7 @@ describe('Handlarbörsen research archive – validated, non-contactable legal e
     }))
     expect(html).toContain('Granska försäljningsindikationer först (4)')
     expect(html).toContain('Arkivet är permanent sparat')
-    expect(html).toContain('Matchningar i Omniras CRM')
+    expect(html).toContain('Kända kontakter (CRM / historik)')
     expect(html).not.toContain('id="hb-archive-file"')
     expect(html).not.toContain('Spara endast som granskningsunderlag')
     expect(html).not.toContain('Godkänn kontakt')

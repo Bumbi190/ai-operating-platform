@@ -5,6 +5,7 @@ import { isHandlarborsenProject } from '@/lib/os/project-command-center'
 import type { KnownContacts } from './known-contacts'
 import { archiveDigest } from './research-archive-api'
 import { parseResearchArchive, reconcileArchiveWithCrm, type ArchiveReview } from './research-archive'
+import { documentedPilotHistoryEntries } from './documented-pilot-history'
 
 /**
  * Safe owner-only projection: excludes every CRM contact record, email,
@@ -38,7 +39,7 @@ export async function loadArchivedLeadResearchForOwner(projectId: string, known:
       status: 'ready',
       report: {
         counts: parsed.value.counts,
-        result: reconcileArchiveWithCrm(parsed.value, known),
+        result: reconcileArchiveWithCrm(parsed.value, known, documentedPilotHistoryEntries()),
       },
       sourceDigest: row.snapshot_sha256,
       createdAt: row.created_at,

@@ -3,6 +3,7 @@ import { parseSafePublicUrl } from './lead-research'
 import { normalizeCompanyName } from './identity'
 import { buildExclusionIndex, lookupExclusions } from './exclusions'
 import type { KnownContacts } from './known-contacts'
+import type { ExistingEntry } from './types'
 
 /**
  * Non-contactable, legal-entity-only results of the manually approved
@@ -110,7 +111,7 @@ export function parseResearchArchive(input: unknown): ArchiveParse {
   return { ok: true, value: { counts: c as ArchiveSummary, result } }
 }
 
-export type ArchiveCrmState = 'matched_existing_contact' | 'no_match_in_partial_history' | 'crm_unavailable'
+export type ArchiveCrmState = 'matched_existing_contact' | 'matched_documented_history' | 'no_match_in_partial_history' | 'crm_unavailable'
 export type ArchiveReviewCompany = ArchiveCompany & {
   crm: ArchiveCrmState
   crmReasons: readonly string[]
@@ -130,17 +131,22 @@ export type ArchiveReview = {
 /** Exact normalized name/orgnr only. A nonmatch never proves a new lead. */
 export function reconcileArchiveWithCrm(
   report: ArchiveReport, known: KnownContacts,
+  documented: readonly ExistingEntry[] = [],
 ): ArchiveReviewCompany[] {
   const index = known.status === 'ready' ? buildExclusionIndex(known.entries) : null
+  const documentedIndex = documented.length > 0 ? buildExclusionIndex(documented) : null
   return report.result.map(company => {
-    const reasons = index ? lookupExclusions(index, {
-      orgnr: company.orgnr, normalizedName: normalizeCompanyName(company.name),
-    }) : []
+    const identity = { orgnr: company.orgnr, normalizedName: normalizeCompanyName(company.name) }
+    const crmReasons = index ? lookupExclusions(index, identity) : []
+    const documentedReasons = documentedIndex ? lookupExclusions(documentedIndex, identity) : []
     return {
       ...company,
-      crm: !index ? 'crm_unavailable' as const : reasons.length > 0
-        ? 'matched_existing_contact' as const : 'no_match_in_partial_history' as const,
-      crmReasons: reasons,
+      crm: crmReasons.length > 0 ? 'matched_existing_contact' as const :
+        documentedReasons.length > 0 ? 'matched_documented_history' as const :
+        !index ? 'crm_unavailable' as const : 'no_match_in_partial_history' as const,
+      // Reasons are exclusion categories only; never serialize names, email,
+      // contact details or private history rows into the client response.
+      crmReasons: [...new Set([...crmReasons, ...documentedReasons])],
       outreachReady: false as const,
       historyComplete: false as const,
     }

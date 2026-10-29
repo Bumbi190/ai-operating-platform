@@ -4,7 +4,8 @@ import { HANDLARBORSEN_PROJECT_ID } from '@/lib/atlas/handlarborsen-test-data/co
 import { readBoundedImportBody, type ImportProjectRow } from './import-api'
 import { constantTimeEqual, digestApproved } from './import-intake'
 import { parseResearchArchive, reconcileArchiveWithCrm, type ArchiveReport } from './research-archive'
-import type { KnownContacts } from './known-contacts'
+import { parseKnownContacts, type KnownContacts } from './known-contacts'
+import { documentedPilotHistoryEntries } from './documented-pilot-history'
 
 export const RESEARCH_ARCHIVE_FLAG = 'HB_LEADFINDER_RESEARCH_ARCHIVE_ENABLED'
 export const RESEARCH_ARCHIVE_WRITE_FLAG = 'HB_LEADFINDER_RESEARCH_ARCHIVE_WRITE_ENABLED'
@@ -90,9 +91,8 @@ export async function leadFinderResearchArchiveApi(request: Request, deps: Resea
   if (body.mode === 'preview') {
     let known: KnownContacts | null = null
     try { known = await deps.getKnownContacts() } catch { known = null }
-    const matches = known && known.status === 'ready' ? reconcileArchiveWithCrm(parsed.value, known) :
-      parsed.value.result.map(company => ({...company, crm: 'crm_unavailable' as const,
-        crmReasons: [] as string[], outreachReady: false as const, historyComplete: false as const }))
+    const safeKnown = known ?? parseKnownContacts(null, HANDLARBORSEN_PROJECT_ID)
+    const matches = reconcileArchiveWithCrm(parsed.value, safeKnown, documentedPilotHistoryEntries())
     return respond(200, {
       status: 'preview', count: parsed.value.result.length, digest,
       stored: false, outreachReady: false, historyComplete: false,

@@ -30,7 +30,7 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
     return activeArchive.report.result.filter(x => {
       const category = x.sale ? 'sale' : x.registeredOnly ? 'registered' : x.matches===0 ? 'empty' : 'other'
       const matchFilter = filter === 'all' || filter === category ||
-        (filter === 'crm' && x.crm === 'matched_existing_contact')
+        (filter === 'crm' && (x.crm === 'matched_existing_contact' || x.crm === 'matched_documented_history'))
       return matchFilter && (!q || [x.name, x.city, x.orgnr].join(' ').toLocaleLowerCase('sv').includes(q))
     })
   }, [activeArchive, filter, search])
@@ -77,7 +77,7 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
           throw new Error('Källgranskningen kunde inte verifieras.')
         const sourceRows = original.result
         const results = (serverReport as {result: unknown[]}).result
-        const approvedCrm = ['matched_existing_contact', 'no_match_in_partial_history', 'crm_unavailable']
+        const approvedCrm = ['matched_existing_contact', 'matched_documented_history', 'no_match_in_partial_history', 'crm_unavailable']
         const valid = results.length === sourceRows.length && results.every((raw, i) => {
           if (!raw || typeof raw !== 'object') return false
           const row = raw as Record<string, unknown>
@@ -129,11 +129,11 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
           <div><strong>{activeArchive.report.counts.covered} / 81</strong><small>Företag genomgångna</small></div>
           <div><strong>{activeArchive.report.counts.saleSignalsToReview}</strong><small>Försäljningsindikationer</small></div>
           <div><strong>{activeArchive.report.counts.potentialOwnDomain}</strong><small>Möjliga egna domäner</small></div>
-          <div><strong>{activeArchive.report.result.filter(x => x.crm === 'matched_existing_contact').length}</strong><small>Matchningar i Omniras CRM</small></div>
+          <div><strong>{activeArchive.report.result.filter(x => x.crm === 'matched_existing_contact' || x.crm === 'matched_documented_history').length}</strong><small>Kända kontakter (CRM / historik)</small></div>
         </div>
         <p className={styles.warning} role="note">
           CRM-status: {activeArchive.crmStatus === 'ready' ? 'Jämförd med tillgängliga Omnira-kontakter' : 'Inte verifierad'}.
-          {' '}Den externa historiska pilotlistan är inte komplett. Ingen CRM-match betyder INTE ett nytt företag.
+          {' '}Dokumenterade Batch 3A-utskick, Founding 5 och separata pilothändelser jämförs som kompletterande spärrunderlag. Originalets hela historiska lista är inte verifierad. Ingen träff betyder INTE ett nytt företag.
           {' '}Samtliga är fortsatt spärrade för kontakt.
         </p>
         {priorityCompanies.length > 0 ? <section className={styles.priority} aria-labelledby="hb-archive-priority">
@@ -145,7 +145,8 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
               <tbody>{priorityCompanies.map(x => <tr key={x.orgnr}>
                 <td><strong>{x.name}</strong><small>{x.orgnr} · {x.city}</small></td>
                 <td>{x.label}</td>
-                <td>{x.crm === 'matched_existing_contact' ? 'Känd kontakt – spärrad' :
+                <td>{x.crm === 'matched_existing_contact' ? 'Känd CRM-kontakt – spärrad' :
+                    x.crm === 'matched_documented_history' ? 'Dokumenterad pilotkontakt – spärrad' :
                     x.crm === 'crm_unavailable' ? 'CRM ej tillgängligt' : 'Ingen säker match – historik ofullständig'}
                   <small>Ej kontaktbar</small></td>
                 <td>{x.source ? <a href={x.source} rel="noopener noreferrer nofollow" target="_blank">Granska källa</a> : 'Saknas'}</td>
@@ -158,7 +159,7 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
             <option value="all">Alla 81</option>
             <option value="sale">Försäljningsindikationer</option>
             <option value="registered">Registrerad bilhandel</option>
-            <option value="crm">Match i Omniras CRM</option>
+            <option value="crm">Känd kontakt (CRM eller pilot)</option>
             <option value="empty">Inga relevanta källor</option>
             <option value="other">Övriga</option>
           </select></label>
@@ -171,8 +172,9 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
             <tbody>{filtered.map(x=><tr key={x.orgnr}>
               <td><strong>{x.name}</strong><small>{x.orgnr} · {x.city}</small></td>
               <td>{x.label}<small>{x.matches} företagsspecifika sökresultat</small></td>
-              <td><span className={x.crm === 'matched_existing_contact' ? styles.warningText : ''}>
-                {x.crm === 'matched_existing_contact' ? 'Känd kontakt – spärrad' :
+              <td><span className={x.crm === 'matched_existing_contact' || x.crm === 'matched_documented_history' ? styles.warningText : ''}>
+                {x.crm === 'matched_existing_contact' ? 'Känd CRM-kontakt – spärrad' :
+                 x.crm === 'matched_documented_history' ? 'Dokumenterad pilotkontakt – spärrad' :
                  x.crm === 'crm_unavailable' ? 'CRM ej kontrollerat' : 'Ingen säker match – historik ofullständig'}
               </span><small>Ej kontaktbar</small></td>
               <td>{x.source ? <a href={x.source} target="_blank" rel="noopener noreferrer nofollow">Granska källa</a> : 'Saknas'}</td>

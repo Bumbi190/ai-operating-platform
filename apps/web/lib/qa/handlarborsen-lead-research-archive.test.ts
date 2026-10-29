@@ -1,9 +1,12 @@
 import { readFileSync } from 'node:fs'
+import React from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { HandlarborsenResearchArchive } from '@/components/platform/vnext/HandlarborsenResearchArchive'
 import { describe, expect, it, vi } from 'vitest'
 import { withCheckDigit } from '@/lib/handlarborsen/lead-finder/fixtures'
 import { HANDLARBORSEN_PROJECT_ID } from '@/lib/atlas/handlarborsen-test-data/contracts'
 import {
-  parseResearchArchive, reconcileArchiveWithCrm, type ArchiveReport, type ArchiveCompany,
+  parseResearchArchive, reconcileArchiveWithCrm, type ArchiveReport, type ArchiveCompany, type ArchiveReview,
 } from '@/lib/handlarborsen/lead-finder/research-archive'
 import { parseKnownContacts } from '@/lib/handlarborsen/lead-finder/known-contacts'
 import {
@@ -68,6 +71,33 @@ function harness(change: Partial<ResearchArchiveDeps> = {}) {
   return { deps, readExisting, save }
 }
 describe('Handlarbörsen research archive – validated, non-contactable legal entities', () => {
+  it('shows four manual-review priorities after saving, with no duplicate upload form or contact approval', () => {
+    const known = parseKnownContacts([{project_id:HANDLARBORSEN_PROJECT_ID,data:{
+      companyName:'AutoSlottsstaden',history:'contacted',suppressed:true,
+    }}],HANDLARBORSEN_PROJECT_ID)
+    const saved: ArchiveReview = {
+      status:'ready',sourceDigest:archiveDigest(report),createdAt:'2026-10-29T07:21:47Z',
+      crmStatus:known.status,
+      report:{counts:report.counts,result:reconcileArchiveWithCrm(report,known)},
+      outreachReady:false,historyComplete:false,
+    }
+    const html = renderToStaticMarkup(React.createElement(HandlarborsenResearchArchive,{
+      archive:saved,saveEnabled:true,
+    }))
+    expect(html).toContain('Granska försäljningsindikationer först (4)')
+    expect(html).toContain('Arkivet är permanent sparat')
+    expect(html).toContain('Matchningar i Omniras CRM')
+    expect(html).not.toContain('id="hb-archive-file"')
+    expect(html).not.toContain('Spara endast som granskningsunderlag')
+    expect(html).not.toContain('Godkänn kontakt')
+    const blank = renderToStaticMarkup(React.createElement(HandlarborsenResearchArchive,{
+      archive:{status:'empty'},saveEnabled:false,
+    }))
+    expect(blank).toContain('Förhandsgranska källrapporten')
+    expect(blank).toContain('id="hb-archive-file"')
+    expect(blank).not.toContain('Granska försäljningsindikationer först')
+  })
+
   it('accepts 81 synthetic legal entities and rejects changed safety classifications', () => {
     expect(parseResearchArchive(report)).toMatchObject({ ok: true })
     expect(report.result.every(x => x.contactable === false)).toBe(true)

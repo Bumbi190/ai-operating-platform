@@ -185,12 +185,16 @@ export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search,
           </div>
         </section>
         <aside className={styles.panel} aria-labelledby="hb-leads-next">
-          <h2 id="hb-leads-next">Tre steg till första listan</h2>
-          <ol className={styles.steps}>
+          <h2 id="hb-leads-next">{archivedResearch.status === 'ready' ? 'Nästa steg: verifiera företagen' : 'Tre steg till första listan'}</h2>
+          {archivedResearch.status === 'ready' ? <ol className={styles.steps}>
+            <li><span>01</span><div><strong>Källgranskningen sparad</strong><p>81 av 81 företag finns i arkivet. Inga nya Tavily-sökningar behövs för att läsa dem.</p></div></li>
+            <li><span>02</span><div><strong>Verifiera försäljningsindikationerna</strong><p>Granska de fyra källorna och kontrollera att webbplatserna tillhör rätt juridiskt företag.</p></div></li>
+            <li><span>03</span><div><strong>Komplettera kontakthistoriken</strong><p>Omniras CRM är delvis jämfört. Koppla även den historiska pilotlistan och kontrollera alla kontaktspärrar innan något godkännande.</p></div></li>
+          </ol> : <ol className={styles.steps}>
             <li><span>01</span><div><strong>Granska SCB-underlaget</strong><p>Den sanerade SCB-rapporten kan förhandsgranskas av projektägaren. Serverns liveanrop är fortfarande avstängda.</p></div></li>
             <li><span>02</span><div><strong>Matcha spärrar</strong><p>Jämför alla pilotkontakter och kontrollera SCB:s reklam- och e-postspärrar.</p></div></li>
             <li><span>03</span><div><strong>Granska 89 juridiska företag</strong><p>Filtrera de verifierade företagen i förhandsvisningen. Ingen är godkänd för kontakt eller utskick.</p></div></li>
-          </ol>
+          </ol>}
         </aside>
       </div>
 
@@ -229,9 +233,10 @@ export function HandlarborsenLeadFinder({ slug, readiness, known, saved, search,
         ) : (
           <div className={styles.empty}>
             <LockKeyhole size={26} aria-hidden="true" />
-            <h3>{saved.status === 'unavailable' || saved.status === 'incomplete' ? 'Kandidaterna kan inte verifieras' : localReview.status === 'ready' ? 'Inga företag importerade i Omniras databas' : 'Inga riktiga leads inlästa ännu'}</h3>
+            <h3>{saved.status === 'unavailable' || saved.status === 'incomplete' ? 'Kandidaterna kan inte verifieras' : archivedResearch.status === 'ready' ? 'Researcharkiv sparat – inga CRM-leads importerade' : localReview.status === 'ready' ? 'Inga företag importerade i Omniras databas' : 'Inga riktiga leads inlästa ännu'}</h3>
             <p>{saved.status === 'unavailable' || saved.status === 'incomplete'
               ? 'Källan är otillgänglig eller ofullständig och visas därför inte.'
+              : archivedResearch.status === 'ready' ? 'De 81 granskade företagen finns i forskningsarkivet ovan, inte som CRM-leads. Fyra försäljningsindikationer väntar på juridisk verifiering och fullständig kontaktkontroll. Ingen import eller automatisk poäng har gjorts.'
               : 'Efter en separat godkänd import kan de juridiska företagen listas här med SCB-status och granskningsflaggor. Ingen automatisk poäng eller kontaktbehörighet tilldelas.'}</p>
           </div>
         )}

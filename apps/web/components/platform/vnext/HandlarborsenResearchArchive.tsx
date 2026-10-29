@@ -21,6 +21,9 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
 
   const activeArchive = archive.status === 'ready' ? archive : previewedArchive ?? archive
   const isPreviewOnly = archive.status !== 'ready' && activeArchive.status === 'ready'
+  const priorityCompanies = useMemo(() =>
+    activeArchive.status === 'ready' ? activeArchive.report.result.filter(x => x.sale) : [],
+  [activeArchive])
   const filtered = useMemo(() => {
     if (activeArchive.status !== 'ready') return []
     const q = search.trim().toLocaleLowerCase('sv')
@@ -133,6 +136,23 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
           {' '}Den externa historiska pilotlistan är inte komplett. Ingen CRM-match betyder INTE ett nytt företag.
           {' '}Samtliga är fortsatt spärrade för kontakt.
         </p>
+        {priorityCompanies.length > 0 ? <section className={styles.priority} aria-labelledby="hb-archive-priority">
+          <h3 id="hb-archive-priority">Granska försäljningsindikationer först ({priorityCompanies.length})</h3>
+          <p>Detta är möjliga bilhandlare, inte verifierade juridiska företagskopplingar eller godkända kontakter. Granska källan och kontrollera den historiska pilotlistan innan något kontaktbeslut.</p>
+          <div className={styles.tableWrap} role="region" aria-label="Prioriterad manuell företagsgranskning" tabIndex={0}>
+            <table>
+              <thead><tr><th scope="col">Företag</th><th scope="col">Typ av belägg</th><th scope="col">CRM-kontroll</th><th scope="col">Källa</th></tr></thead>
+              <tbody>{priorityCompanies.map(x => <tr key={x.orgnr}>
+                <td><strong>{x.name}</strong><small>{x.orgnr} · {x.city}</small></td>
+                <td>{x.label}</td>
+                <td>{x.crm === 'matched_existing_contact' ? 'Känd kontakt – spärrad' :
+                    x.crm === 'crm_unavailable' ? 'CRM ej tillgängligt' : 'Ingen säker match – historik ofullständig'}
+                  <small>Ej kontaktbar</small></td>
+                <td>{x.source ? <a href={x.source} rel="noopener noreferrer nofollow" target="_blank">Granska källa</a> : 'Saknas'}</td>
+              </tr>)}</tbody>
+            </table>
+          </div>
+        </section> : null}
         <div className={styles.filters}>
           <label>Filtrera <select value={filter} onChange={e=>setFilter(e.target.value)}>
             <option value="all">Alla 81</option>
@@ -161,7 +181,12 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
         </div>
         <small className={styles.footnote}>{isPreviewOnly ? 'Endast tillfällig förhandsvisning, inte sparad' : 'Arkiv sparat '+activeArchive.createdAt.slice(0,10)} · kontrollsumma: {activeArchive.status === 'ready' ? activeArchive.sourceDigest.slice(0,14) : ''}…</small>
       </> : null}
-      <div className={styles.upload}>
+      {archive.status === 'ready'
+        ? <p className={styles.savedNotice} role="status">
+            Arkivet är permanent sparat. Ingen ny uppladdning eller Tavily-sökning behövs för dessa 81 företag.
+            Resultaten är granskningsunderlag, inte importerade CRM-leads.
+          </p>
+        : <div className={styles.upload}>
         <h3>{saveEnabled ? 'Spara en granskningsrapport' : 'Förhandsgranska källrapporten'}</h3>
         <label htmlFor="hb-archive-file">Välj den lokala filen <code>kallgranskning.json</code></label>
         <input id="hb-archive-file" type="file" accept=".json,application/json" disabled={busy}
@@ -177,7 +202,7 @@ export function HandlarborsenResearchArchive({ archive, saveEnabled = false }: {
         </> : null}
         {!saveEnabled ? <p className={styles.warning} role="note">Rapporten kan förhandsgranskas utan databasskrivning. Bestående lagring är avstängd.</p> : null}
         {feedback ? <p role="status" aria-live="polite">{feedback}</p> : null}
-      </div>
+      </div>}
     </section>
   )
 }

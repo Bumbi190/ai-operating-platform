@@ -166,7 +166,7 @@ export async function startReferenceStack(){
   assert.equal(sql("select relrowsecurity from pg_class where oid='storage.objects'::regclass"),'t','Real Storage object RLS must remain enabled')
   sql(readFileSync(web+'lib/website-build/assets/fixtures/reference-auth-bootstrap.sql','utf8'))
   for(const file of [web+'supabase/migrations/20260902_media_asset_foundation.sql',
-   repo+'docs/sql/atlas-builder-reference-upload-tickets-proposed.sql',repo+'docs/sql/atlas-builder-reference-message-binding-proposed.sql'])sql(readFileSync(file,'utf8'))
+   repo+'docs/sql/atlas-builder-reference-upload-tickets-proposed.sql',repo+'docs/sql/atlas-builder-reference-message-binding-proposed.sql',repo+'docs/sql/atlas-builder-reference-analysis-proposed.sql'])sql(readFileSync(file,'utf8'))
   sql("notify pgrst,'reload schema';")
   gateway=createServer(async(req,res)=>{
    try{

@@ -70,6 +70,9 @@ on:
       - 'apps/web/scripts/reference-*'
       - 'apps/web/lib/qa/website-reference-auth.integration.test.ts'
       - 'apps/web/lib/website-build/assets/**'
+      - 'apps/web/lib/website-build/reference-analysis/**'
+      - 'apps/web/e2e/reference-picker/**'
+      - 'apps/web/playwright.reference-picker.config.ts'
       - 'apps/web/app/api/website-build/references/**'
       - 'apps/web/vitest.reference-auth.config.ts'
       - 'apps/web/playwright.reference-auth.config.ts'
@@ -100,6 +103,10 @@ jobs:
       - run: npx vitest run lib/website-build/studio/costs.test.ts lib/website-build/artifact.test.ts lib/website-build/rejected-draft.test.ts lib/website-build/feedback-interpretation.test.ts lib/qa/runner-text-output.test.ts lib/qa/atlas-home-markdown.test.tsx lib/qa/atlas-static-conversation-route.test.ts lib/qa/atlas-openai-chat.test.ts lib/qa/openai-stream-metering.test.ts lib/qa/m0-spend-ceiling.test.ts lib/qa/m0-durable-spend.test.ts lib/qa/execution-authority-signal.test.ts
         working-directory: apps/web
       - run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+      - run: npx vitest run lib/website-build/assets lib/website-build/reference-analysis lib/atlas/conversation/controller.test.ts
+        working-directory: apps/web
+      - run: npx playwright test --config=playwright.reference-picker.config.ts
         working-directory: apps/web
       - run: npx playwright test --config=playwright.atlas-studio-ui.config.ts
         working-directory: apps/web

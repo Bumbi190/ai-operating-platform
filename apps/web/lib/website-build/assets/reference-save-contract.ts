@@ -3,7 +3,7 @@ export type ReferenceSaveSelection={ticketIds:string[];idempotencyKey:string}
 const uuid=/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/
 const digest=/^[a-f0-9]{64}$/
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v)
-export const REFERENCE_SAVED_NOTICE='Referenserna är sparade till meddelandet. Bildanalys är ännu inte aktiverad.'
+export const REFERENCE_SAVED_NOTICE='Referenserna är sparade till meddelandet. Ingen bildanalys har startats.'
 export function parseReferenceSaveSelection(value:unknown):ReferenceSaveSelection|null{
  if(!object(value)||Object.keys(value).sort().join(',')!=='idempotencyKey,ticketIds'||
     typeof value.idempotencyKey!=='string'||!uuid.test(value.idempotencyKey.toLowerCase())||

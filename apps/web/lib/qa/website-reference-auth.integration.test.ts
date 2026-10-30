@@ -179,3 +179,94 @@ it('denies anonymous RPC execution and refuses paused-project replay/read',async
  expect(stack.sql('select count(*) from conversation_messages;')).toBe('1')
  expect(external).toEqual([])
 })
+
+
+// Analysis lifecycle uses real proposal SQL/Auth/Storage. Structured completions below
+// are explicit fixtures, not model inference or production governance proof.
+let analysisRoute:typeof import('@/app/api/website-build/references/analysis/route'),analysisQuote:any,analysisClaim:any
+const analysisPath='/api/website-build/references/analysis'
+const analysisInput=()=>({projectId,conversationId,messageId:receipt.messageId})
+const analysisArgs=()=>({p_owner_id:owner.user.id,p_project_id:projectId,p_conversation_id:conversationId,
+ p_message_id:receipt.messageId,p_binding_sha256:receipt.bindingSha256})
+const claimArgs=()=>({...analysisArgs(),p_analysis_id:analysisQuote.analysisId,p_quote_token:analysisQuote.quoteToken,
+ p_approved_maximum_sek:analysisQuote.maximumSek,p_payload_sha256:stack.sql('select payload_sha256 from website_build_reference_analyses where id='+q(analysisQuote.analysisId))})
+it('keeps analysis off by default, then quotes only exact owned saved sources',async()=>{
+ stack.sql('update projects set execution_paused=false where id='+q(projectId));cookieContext.jar=owner.jar
+ analysisRoute=await import('@/app/api/website-build/references/analysis/route')
+ expect((await analysisRoute.POST(request(analysisPath,{action:'quote',...analysisInput()}))).status).toBe(503)
+ expect(stack.sql('select count(*) from website_build_reference_analyses')).toBe('0')
+ vi.stubEnv('ATLAS_REFERENCE_ANALYSIS_ENABLED','true');vi.stubEnv('H1_SPEND_GATE','1')
+ cookieContext.jar=outsider.jar
+ expect((await analysisRoute.POST(request(analysisPath,{action:'quote',...analysisInput()}))).status).toBe(404)
+ cookieContext.jar=owner.jar
+ const csrf=new Request('http://127.0.0.1:54489'+analysisPath,{method:'POST',headers:{origin:'https://foreign.example','content-type':'application/json'},body:JSON.stringify({action:'quote',...analysisInput()})})
+ expect((await analysisRoute.POST(csrf)).status).toBe(403)
+ const response=await analysisRoute.POST(request(analysisPath,{action:'quote',...analysisInput()}))
+ expect(response.status,await response.clone().text()).toBe(200);analysisQuote=await response.json()
+ expect(analysisQuote).toMatchObject({status:'quoted',model:'claude-haiku-4-5-20251001'})
+ expect(analysisQuote.maximumSek).toBeGreaterThan(0);expect(analysisQuote.maximumSek).toBeLessThanOrEqual(10)
+ const sources=await analysisRoute.GET(request(analysisPath+'?'+new URLSearchParams({projectId,conversationId})))
+ expect(sources.status).toBe(200);expect((await sources.json()).items).toEqual([expect.objectContaining({messageId:receipt.messageId,imageCount:1})])
+ expect(stack.sql("select count(*) from website_build_reference_analyses where status='quoted'")).toBe('1')
+})
+it('rejects stale quote tokens and denies direct API-role mutation/RPC execution',async()=>{
+ const old=analysisQuote
+ const refreshed=await analysisRoute.POST(request(analysisPath,{action:'quote',...analysisInput()}))
+ expect(refreshed.status).toBe(200);analysisQuote=await refreshed.json();expect(analysisQuote.quoteToken).not.toBe(old.quoteToken)
+ expect((await analysisRoute.POST(request(analysisPath,{action:'run',...analysisInput(),analysisId:old.analysisId,quoteToken:old.quoteToken,approvedMaximumSek:old.maximumSek}))).status).toBe(409)
+ const anon=createClient(stack.url,stack.anonKey,{auth:{persistSession:false,autoRefreshToken:false}})
+ const quoteArgs={...analysisArgs(),p_payload_sha256:'a'.repeat(64),p_maximum_sek:analysisQuote.maximumSek}
+ for(const client of [anon,owner.ssr,outsider.ssr]){
+  for(const [name,args] of [
+   ['website_build_reference_analysis_quote',quoteArgs],['website_build_reference_analysis_claim',claimArgs()],
+   ['website_build_reference_analysis_finish',{...analysisArgs(),p_analysis_id:analysisQuote.analysisId,p_claim_token:randomUUID(),p_status:'unknown',p_canonical_result:null}],
+  ] as const){expect((await client.rpc(name,args)).error?.code).toBe('42501')}
+ }
+ expect((await admin.from('website_build_reference_analyses').update({status:'unknown'}).eq('id',analysisQuote.analysisId)).error?.code).toBe('42501')
+})
+it('atomically admits one claim and never reclaims after an ambiguous outcome',async()=>{
+ const claims=await Promise.all([admin.rpc('website_build_reference_analysis_claim',claimArgs()),admin.rpc('website_build_reference_analysis_claim',claimArgs())])
+ for(const response of claims)expect(response.error).toBeNull()
+ expect(claims.filter(r=>r.data.claimed)).toHaveLength(1);analysisClaim=claims.find(r=>r.data.claimed)!.data
+ const replay=await analysisRoute.POST(request(analysisPath,{action:'run',...analysisInput(),analysisId:analysisQuote.analysisId,quoteToken:analysisQuote.quoteToken,approvedMaximumSek:analysisQuote.maximumSek}))
+ expect(replay.status,await replay.clone().text()).toBe(200);expect((await replay.json()).status).toBe('processing')
+ // Already paid outcome recording remains possible after pause; disclosure does not.
+ stack.sql('update projects set execution_paused=true where id='+q(projectId))
+ const completionArgs={...analysisArgs(),p_analysis_id:analysisQuote.analysisId,p_claim_token:analysisClaim.claimToken,p_status:'unknown',p_canonical_result:null}
+ const done=await admin.rpc('website_build_reference_analysis_finish',completionArgs)
+ expect(done.error).toBeNull();expect(done.data.status).toBe('unknown');expect(done.data.claim_token).toBeUndefined()
+ expect((await admin.rpc('website_build_reference_analysis_finish',completionArgs)).error).toBeNull()
+ expect((await analysisRoute.GET(request(analysisPath+'?'+new URLSearchParams(analysisInput())))).status).toBe(404)
+ stack.sql('update projects set execution_paused=false where id='+q(projectId))
+ const quote=await analysisRoute.POST(request(analysisPath,{action:'quote',...analysisInput()}))
+ expect(quote.status).toBe(200);expect((await quote.json()).status).toBe('unknown')
+ const next=await admin.rpc('website_build_reference_analysis_claim',claimArgs())
+ expect(next.error).toBeNull();expect(next.data.claimed).toBe(false);expect(next.data.claimToken).toBeUndefined()
+})
+it('returns a persisted fixture result only while exact private source bytes and ownership remain valid',async()=>{
+ cookieContext.jar=owner.jar
+ const saveBody=save();saveBody.referenceSave.idempotencyKey=randomUUID()
+ const saved=await chat.POST(request('/api/chat',saveBody));expect(saved.status).toBe(202)
+ receipt=(await saved.json()).receipt
+ const quoted=await analysisRoute.POST(request(analysisPath,{action:'quote',...analysisInput()}))
+ expect(quoted.status).toBe(200);analysisQuote=await quoted.json()
+ const claimed=await admin.rpc('website_build_reference_analysis_claim',claimArgs());expect(claimed.error).toBeNull()
+ const fixture={version:'reference-analysis.v1',observations:[{imageIndex:1,layout:'Luftig',typography:'Stor rubrik',colors:'Blått'}],
+  directions:['editorial','visual','structured'].map(key=>({key,title:'Riktning '+key,rationale:'Egen hierarki',palette:{background:'#ffffff',foreground:'#162032',accent:'#1e40af'},font:'sans',mobile:'En kolumn'})),uncertainties:['Stillbild visar inte funktion.']}
+ const completion=await admin.rpc('website_build_reference_analysis_finish',{...analysisArgs(),p_analysis_id:analysisQuote.analysisId,p_claim_token:claimed.data.claimToken,p_status:'succeeded',p_canonical_result:JSON.stringify(fixture)})
+ expect(completion.error).toBeNull()
+ const url=analysisPath+'?'+new URLSearchParams(analysisInput())
+ const response=await analysisRoute.GET(request(url));expect(response.status,await response.clone().text()).toBe(200)
+ const view=await response.json();expect(view.analysis).toEqual(fixture);expect(view.concepts).toHaveLength(3)
+ for(const c of view.concepts)expect(c.html).not.toContain('<script')
+ cookieContext.jar=outsider.jar;expect((await analysisRoute.GET(request(url))).status).toBe(404);cookieContext.jar=owner.jar
+ const asset=await admin.from('assets').select('storage_bucket,storage_path').eq('id',finalized.assetId).single();expect(asset.error).toBeNull()
+ const original=await admin.storage.from(asset.data.storage_bucket).download(asset.data.storage_path);expect(original.error).toBeNull()
+ const originalBytes=Buffer.from(await original.data.arrayBuffer())
+ const changed=await sharp({create:{width:20,height:20,channels:3,background:'#ff0000'}}).webp().toBuffer()
+ expect((await admin.storage.from(asset.data.storage_bucket).upload(asset.data.storage_path,changed,{contentType:'image/webp',upsert:true})).error).toBeNull()
+ try{expect((await analysisRoute.GET(request(url))).status).not.toBe(200)}finally{
+  expect((await admin.storage.from(asset.data.storage_bucket).upload(asset.data.storage_path,originalBytes,{contentType:'image/webp',upsert:true})).error).toBeNull()
+ }
+ expect(external).toEqual([])
+})

@@ -4,6 +4,7 @@ import { assertSameOrigin } from '@/lib/atlas/executive/http'
 import { buildErrorResponse, readWebsiteBuildBody } from '@/lib/website-build/api'
 import { issueReferenceTicket, parseTicketInput, assertReferenceWorkspace } from '@/lib/website-build/assets/tickets'
 import { referenceUploadEnabled } from '@/lib/website-build/assets/availability'
+import {referenceAnalysisEnabled} from '@/lib/website-build/reference-analysis/availability'
 import { WebsiteBuildError } from '@/lib/website-build/store'
 
 export const dynamic = 'force-dynamic'
@@ -43,6 +44,6 @@ export async function GET(request:Request):Promise<Response> {
     const projectId=q.get('projectId')!,conversationId=q.get('conversationId')!
     await assertReferenceWorkspace(createAdminClient(),access,projectId,conversationId)
     const canSaveToChat=process.env.ATLAS_REFERENCE_CHAT_SAVE_ENABLED==='true'
-    return Response.json({available:true,canSaveToChat,...(canSaveToChat?{userId:access.userId}:{})},{headers})
+    return Response.json({available:true,canSaveToChat,...(canSaveToChat?{userId:access.userId}:{}),...(referenceAnalysisEnabled()?{canAnalyzeReferences:true}:{})},{headers})
   }catch(error){return buildErrorResponse(error)}
 }

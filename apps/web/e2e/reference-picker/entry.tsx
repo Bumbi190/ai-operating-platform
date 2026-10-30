@@ -23,7 +23,7 @@ function App(){
  {windowFixture&&<button onClick={()=>setRotated(true)}>Uppdatera bildbibliotek</button>}</header>
  <main>{windowFixture?<StudioReferenceMessagePicker userId="10000000-0000-4000-8000-000000000003" projectId={projectId} conversationId={conversationId} readOnly={readOnly}
  references={(rotated?refs.slice(1):refs).map(ticketId=>({ticketId}))} onSave={input=>controller.saveReferenceTurn({conversationId,...input})}/>:<StudioReferenceUploads key={conversationId} projectId={projectId} conversationId={conversationId} readOnly={readOnly} activeConversation={snapshot}
- onSaveReference={input=>controller.saveReferenceTurn({conversationId,...input})}/>}
+ onSaveReference={input=>controller.saveReferenceTurn({conversationId,...input})} onPlanDirection={text=>controller.sendTurn({conversationId,text,inputSource:'text',visiblePlan:null})}/>}
  <aside role="region" aria-label="Testchatt"><h2>Chatten</h2>{snapshot.entries.map((entry,i)=><p key={i}>{'text' in entry?entry.text:''}</p>)}</aside></main></>
 }
 createRoot(document.getElementById('root')!).render(<App/>)

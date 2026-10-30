@@ -6,7 +6,7 @@ import {
   useState,
   type PointerEvent
 } from 'react'
-import { Minus, Phone, PhoneOff, ArrowUp } from 'lucide-react'
+import { Minus, Phone, PhoneOff, ArrowUp, ImagePlus, X } from 'lucide-react'
 import Link from 'next/link'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -60,12 +60,21 @@ export function AtlasMiniChatPanel({
     { controller, snapshot } = useAtlasConversation()
   const panel = useRef<HTMLDivElement>(null),
     editor = useRef<HTMLTextAreaElement>(null),
+    fileInput = useRef<HTMLInputElement>(null),
     messages = useRef<HTMLDivElement>(null)
   const alive = useRef(true),
     sending = useRef(false),
     follow = useRef(true),
     draftRef = useRef(draft)
   draftRef.current = draft
+  const [image,setImage]=useState<{mediaType:'image/png'|'image/jpeg'|'image/webp';data:string;preview:string}|null>(null)
+  const attachImage=(file:File)=>{
+    if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>4_000_000){setNotice('Bilden måste vara PNG, JPG eller WebP, högst 4 MB.');return}
+    const reader=new FileReader()
+    reader.onload=()=>{const preview=String(reader.result??'');const data=preview.split(',')[1];if(!data){setNotice('Bilden kunde inte läsas.');return}setImage({mediaType:file.type as 'image/png'|'image/jpeg'|'image/webp',data,preview});setNotice('')}
+    reader.onerror=()=>setNotice('Bilden kunde inte läsas.')
+    reader.readAsDataURL(file)
+  }
   const [busy, setBusy] = useState(false),
     [notice, setNotice] = useState(''),
     [frame, setFrame] = useState({
@@ -132,10 +141,12 @@ export function AtlasMiniChatPanel({
   useLayoutEffect(() => {
     const e = editor.current
     if (e) {
-      e.style.height = '40px'
-      e.style.height = Math.min(e.scrollHeight, 76) + 'px'
+      e.style.height = 'auto'
+      const maxHeight = frame.height < 260 ? 40 : 120
+      e.style.height = Math.min(Math.max(e.scrollHeight, 40), maxHeight) + 'px'
+      e.style.overflowY = e.scrollHeight > maxHeight ? 'auto' : 'hidden'
     }
-  }, [draft])
+  }, [draft, frame.height])
   useEffect(() => {
     if (follow.current && messages.current)
       messages.current.scrollTop = messages.current.scrollHeight
@@ -149,15 +160,21 @@ export function AtlasMiniChatPanel({
     }
   }, [frame.mobile])
   async function submit() {
-    if (!draft.trim() || sending.current || snapshot.pending) return
-    const text = draft,
+    if ((!draft.trim()&&!image) || sending.current || snapshot.pending) return
+    const text = draft.trim()||'Beskriv bilden.',
       id = snapshot.id,
+      submittedImage = image,
       token = ++requestSeq.current
     sending.current = true
     setBusy(true)
     setNotice('')
     onDraftChange('')
-    const result = await controller.sendCompactText({ text, initialProjectId })
+    const result = await controller.sendCompactText({ text, initialProjectId, image:submittedImage?{mediaType:submittedImage.mediaType,data:submittedImage.data}:undefined })
+    // Creating the first conversation changes snapshot.id and invalidates the
+    // request token. A successful image send still needs to clear that exact
+    // attachment, without clearing a different image attached meanwhile.
+    if (alive.current && result.ok && submittedImage)
+      setImage(current => current === submittedImage ? null : current)
     if (alive.current && requestSeq.current === token) {
       sending.current = false
       setBusy(false)
@@ -310,48 +327,95 @@ export function AtlasMiniChatPanel({
           void submit()
         }}
       >
-        <textarea
-          ref={editor}
-          aria-label="Skriv till Atlas"
-          placeholder="Skriv till Atlas…"
-          rows={1}
-          className={styles.editor}
-          value={draft}
-          disabled={(busy || snapshot.pending) && !snapshot.id}
-          onChange={(e) => onDraftChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (
-              e.key === 'Enter' &&
-              !e.shiftKey &&
-              !e.nativeEvent.isComposing &&
-              e.nativeEvent.keyCode !== 229
-            ) {
-              e.preventDefault()
-              void submit()
-            }
-          }}
-        />
-        <button
-          type="submit"
-          aria-label="Skicka"
-          className={styles.send}
-          disabled={!draft.trim() || busy || snapshot.pending}
-        >
-          <ArrowUp size={18} />
-        </button>
-        <button
-          type="button"
-          aria-label={
-            atlas.isSessionActive ? 'Avsluta samtal' : 'Starta samtal'
-          }
-          aria-pressed={atlas.isSessionActive}
-          className={atlas.isSessionActive ? styles.callActive : undefined}
-          onClick={() =>
-            atlas.isSessionActive ? atlas.deactivate() : atlas.activate()
-          }
-        >
-          {atlas.isSessionActive ? <PhoneOff size={17} /> : <Phone size={17} />}
-        </button>
+        {image && (
+          <div className={styles.attachmentPreview}>
+            <img
+              src={image.preview}
+              alt="Bifogad bild"
+              className={styles.attachmentThumb}
+            />
+            <span className={styles.attachmentName}>Bild bifogad</span>
+            <button
+              type="button"
+              className={styles.removeImage}
+              aria-label="Ta bort bifogad bild"
+              onClick={() => setImage(null)}
+            >
+              <X size={17} aria-hidden="true" />
+            </button>
+          </div>
+        )}
+        <div className={styles.composerRow}>
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className={styles.fileInput}
+            tabIndex={-1}
+            aria-hidden="true"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (file) attachImage(file)
+              event.target.value = ''
+            }}
+          />
+          <button
+            type="button"
+            className={styles.attachButton}
+            aria-label="Bifoga bild"
+            title="Bifoga bild"
+            disabled={busy || snapshot.pending}
+            onClick={() => fileInput.current?.click()}
+          >
+            <ImagePlus size={19} aria-hidden="true" />
+          </button>
+          <textarea
+            ref={editor}
+            aria-label="Skriv till Atlas"
+            placeholder="Skriv till Atlas…"
+            rows={1}
+            className={styles.editor}
+            value={draft}
+            disabled={(busy || snapshot.pending) && !snapshot.id}
+            onChange={(event) => onDraftChange(event.target.value)}
+            onPaste={(event) => {
+              const file = Array.from(event.clipboardData.files)
+                .find(candidate => candidate.type.startsWith('image/'))
+              if (file) {
+                event.preventDefault()
+                attachImage(file)
+              }
+            }}
+            onKeyDown={(event) => {
+              if (
+                event.key === 'Enter' &&
+                !event.shiftKey &&
+                !event.nativeEvent.isComposing &&
+                event.nativeEvent.keyCode !== 229
+              ) {
+                event.preventDefault()
+                void submit()
+              }
+            }}
+          />
+          <button
+            type="submit"
+            aria-label="Skicka"
+            className={styles.send}
+            disabled={(!draft.trim() && !image) || busy || snapshot.pending}
+          >
+            <ArrowUp size={18} />
+          </button>
+          <button
+            type="button"
+            aria-label={atlas.isSessionActive ? 'Avsluta samtal' : 'Starta samtal'}
+            aria-pressed={atlas.isSessionActive}
+            className={atlas.isSessionActive ? styles.callActive : styles.callButton}
+            onClick={() => atlas.isSessionActive ? atlas.deactivate() : atlas.activate()}
+          >
+            {atlas.isSessionActive ? <PhoneOff size={17} /> : <Phone size={17} />}
+          </button>
+        </div>
       </form>
     </div>
   )

@@ -104,6 +104,7 @@ export const VNEXT_NAV: readonly VNextNavGroup[] = [
     items: [
       { id: 'approvals', label: 'Granskningar', href: '/approvals', icon: ShieldCheck, desktop: true, mobile: true },
       { id: 'activity', label: 'Aktivitet', href: '/agent-activity', icon: Activity, desktop: true, mobile: true },
+      { id: 'calendar', label: 'Kalender', href: '/calendar', icon: CalendarRange, desktop: true, mobile: true },
       { id: 'planning', label: 'Planering', href: '/planning', icon: CalendarRange, desktop: true, mobile: false },
       { id: 'marketing_queue', label: 'Marknadsgranskning', href: '/atlas/marketing', icon: Megaphone, desktop: true, mobile: false },
       { id: 'content_queue', label: 'Content Center', href: '/atlas/content', icon: Newspaper, desktop: true, mobile: false },
@@ -125,7 +126,7 @@ export const VNEXT_NAV: readonly VNextNavGroup[] = [
     label: 'System',
     items: [
       { id: 'system', label: 'System', href: '/system', icon: Cpu, desktop: true, mobile: false },
-      { id: 'settings', label: 'Inställningar', href: '/settings', icon: Settings, desktop: true, mobile: false },
+      { id: 'settings', label: 'Inställningar', href: '/settings', icon: Settings, desktop: true, mobile: true },
     ],
   },
 ]

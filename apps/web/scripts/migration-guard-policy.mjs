@@ -69,8 +69,25 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Builder output allowance v2: 119/105 -> 120/106 (enforced).
 // + website_saved_draft_worker_protocol: no-paid recovery compatibility.
 // + website_mockup_review: immutable operator design selection and compatible worker fence.
-export const EXPECTED_CANONICAL_SQL_COUNT = 128
-export const EXPECTED_ENFORCED_COUNT = 114
+// Atlas sales draft pilot: 130/116; applied ledger 20261017130254, reconciled 2026-10-17.
+// Weekly watch journal: 136/122; applied ledger20261017200436. Flag remains absent.
+// Atlas metrics and test-data control migrations applied by the owner-approved October18 release.
+// Source-only reconciliation: sales_reply_sending already applied as ledger20261018074615.
+// Exact SQL SHA256 80158d54a4cc5d7f15901f0ed8e67dc7fa04a8738054e14fb1c7be1cf484e49e.
+// Higgsfield project-owned OAuth state migration is an enforced, not-yet-applied
+// migration. Count tripwires include its canonical SQL; production activation
+// still requires explicit reviewed application and a matching ledger entry.
+// Calendar approval/responsibility/workflow-link applied on 2026-10-26.
+// Family repeat protection adds one pending enforced migration. All are enforced; no grandfathered entry or override is added.
+// Owner-reviewed additive manual publication reporting migration, already applied and security-verified.
+// Handlarbörsen SCB lead-review table applied 2026-10-28 as
+// ledger 20261028072659_handlarborsen_scb_review_only_candidates.
+// Both the newly merged calendar migration and this SCB migration are enforced.
+// Owner-only, RLS-guarded HB research archive applied 2026-10-29
+// (ledger version 20261029065156, canonical file committed in PR #584).
+// An additive enforced migration: 163/149 -> 164/150. No bypass or grandfathering.
+export const EXPECTED_CANONICAL_SQL_COUNT = 164
+export const EXPECTED_ENFORCED_COUNT = 150
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([
@@ -292,3 +309,16 @@ export function evaluateAppliedMigrationLedger(appliedNames, repositoryState) {
     ]),
   }
 }
+
+// sales_strato_inbox is enforced canonical source, already live at20261017191904.
+// Its exact SQL hash is verified in the2026-10-18 release preflight; no allowlist expansion.
+
+// Shared main401 now records the same already-applied inbox blob; count140 includes it once plus our three pending migrations.
+
+// sales_reply_preparation is exact already-live source from PR386, hash verified 2026-10-18; no apply and no runtime import. Canonical141/enforced127.
+
+// Integrated main8d91af9: four already-live social scheduling migrations; sales reply source included once. Counts145/131; frozen14/30 unchanged.
+
+// The Prompt news review remains one additional enforced, unapplied migration; frozen 14/30 unchanged.
+
+// Integrated maind3f9fcc: news-review source already applied; calendar remains pending. Canonical148/enforced134; frozen14/30 unchanged.

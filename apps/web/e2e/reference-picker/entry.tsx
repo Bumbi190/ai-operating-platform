@@ -5,7 +5,8 @@ import {StudioReferenceMessagePicker} from '../../components/website-build/Studi
 import {AtlasConversationController} from '../../lib/atlas/conversation/controller'
 const controller=new AtlasConversationController()
 const P='10000000-0000-4000-8000-000000000001',C='50000000-0000-4000-8000-000000000001'
-controller.activateConversation({id:C,projectId:P,studio:true,saved:[],state:'ok'})
+const saved=await fetch('/fixture/history').then(response=>response.json())
+controller.activateConversation({id:C,projectId:P,studio:true,saved,state:'ok'})
 function App(){
  const [other,setOther]=useState(false),[readOnly,setReadOnly]=useState(false),[rotated,setRotated]=useState(false)
  const windowFixture=new URLSearchParams(location.search).has('selection-window')

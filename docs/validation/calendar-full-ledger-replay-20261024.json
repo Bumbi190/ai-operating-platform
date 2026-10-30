@@ -1,0 +1,1186 @@
+{
+  "scope": "local original-ledger replay; no hosted parity claim",
+  "replayReady": false,
+  "originalRows": 177,
+  "schemaBaseline": true,
+  "adaptations": [
+    {
+      "version": "20260603085842",
+      "reason": "Guard removal of a retired cron job absent on clean install. Original exact replay independently fails here.",
+      "sourceSha256": "02bf082e31b14c045386daa7e4acabb1b9ab7cc9086ea0ae7fe2072b08a00cdf",
+      "executedSha256": "40ede3f6235cedfe4b1ecdb016917693a68cc3bbcf4a72dbbd0712d34955ec26"
+    }
+  ],
+  "orderChanges": [
+    {
+      "version": "20261018090827",
+      "before": "20261017193411",
+      "reason": "The reviews RPCs require tables created by the later registered integration entry. Original SQL unchanged."
+    }
+  ],
+  "applied": [
+    {
+      "version": "20260601071917",
+      "name": "media_scripts_updated_at_and_stuck_watchdog",
+      "sourceBodySha256": "2518b77a6fed95bec896f66f8044f66d7f371e0ef5a75abe5b0e22d050134de8",
+      "executedBodySha256": "2518b77a6fed95bec896f66f8044f66d7f371e0ef5a75abe5b0e22d050134de8"
+    },
+    {
+      "version": "20260601072505",
+      "name": "add_render_input_props_for_edge_render",
+      "sourceBodySha256": "c94f981a5f4a93e97c33a9d4366ab122376383d3c8254cae61c7ddff8784f9d6",
+      "executedBodySha256": "c94f981a5f4a93e97c33a9d4366ab122376383d3c8254cae61c7ddff8784f9d6"
+    },
+    {
+      "version": "20260601073550",
+      "name": "20260601_business_metrics",
+      "sourceBodySha256": "b4356f68e1598f092c6e97d721e7b6147f2e09bcdda74e5b31d364a63b85596b",
+      "executedBodySha256": "b4356f68e1598f092c6e97d721e7b6147f2e09bcdda74e5b31d364a63b85596b"
+    },
+    {
+      "version": "20260601093023",
+      "name": "20260601_media_insights",
+      "sourceBodySha256": "06a6bc0abe9f7ea73b6e45597341255a1d6115a3ee45cd72e3f17b09f36f9381",
+      "executedBodySha256": "06a6bc0abe9f7ea73b6e45597341255a1d6115a3ee45cd72e3f17b09f36f9381"
+    },
+    {
+      "version": "20260601093204",
+      "name": "20260601_insights_cron",
+      "sourceBodySha256": "151608e9a3a8a629a953542a11893fd8d111e964e8924b1fd757efe5616e42a4",
+      "executedBodySha256": "151608e9a3a8a629a953542a11893fd8d111e964e8924b1fd757efe5616e42a4"
+    },
+    {
+      "version": "20260601100502",
+      "name": "20260601_briefing_cron",
+      "sourceBodySha256": "031baadab9dea0e1015f9e38d5d492a5baf600dce2faf9913e000bcd8283be00",
+      "executedBodySha256": "031baadab9dea0e1015f9e38d5d492a5baf600dce2faf9913e000bcd8283be00"
+    },
+    {
+      "version": "20260601102516",
+      "name": "add_youtube_columns",
+      "sourceBodySha256": "23e8840834040b3eb01d3a837a8eee428aabc4af3de52c413720c17140e05dd5",
+      "executedBodySha256": "23e8840834040b3eb01d3a837a8eee428aabc4af3de52c413720c17140e05dd5"
+    },
+    {
+      "version": "20260602045914",
+      "name": "cost_events",
+      "sourceBodySha256": "88055e213fbac739ef6c71cd7f2aa08ad121d6a0eb739fa6cead3ab8d7ce382f",
+      "executedBodySha256": "88055e213fbac739ef6c71cd7f2aa08ad121d6a0eb739fa6cead3ab8d7ce382f"
+    },
+    {
+      "version": "20260602051807",
+      "name": "project_budgets",
+      "sourceBodySha256": "2848737fb9bce324d711820436b0cfeb4a390427bc0c89c034a2853d20a4ba42",
+      "executedBodySha256": "2848737fb9bce324d711820436b0cfeb4a390427bc0c89c034a2853d20a4ba42"
+    },
+    {
+      "version": "20260602113831",
+      "name": "atlas_bi_foundation",
+      "sourceBodySha256": "06caefe88bd13a6358de0aa91b7c35bde6a340638907bcde3407ad920118f511",
+      "executedBodySha256": "06caefe88bd13a6358de0aa91b7c35bde6a340638907bcde3407ad920118f511"
+    },
+    {
+      "version": "20260602161429",
+      "name": "atlas_growth_account_snapshots",
+      "sourceBodySha256": "73e9a24b0c73fb289e79167219edcb31689de0bdf4ab491a1f39a8c2ba01fc94",
+      "executedBodySha256": "73e9a24b0c73fb289e79167219edcb31689de0bdf4ab491a1f39a8c2ba01fc94"
+    },
+    {
+      "version": "20260602161432",
+      "name": "atlas_growth_opportunities",
+      "sourceBodySha256": "4a5ce71ac48811a9e77750eec6e8ed98b79a0e74025e578633d63d1b08bc6fab",
+      "executedBodySha256": "4a5ce71ac48811a9e77750eec6e8ed98b79a0e74025e578633d63d1b08bc6fab"
+    },
+    {
+      "version": "20260602162046",
+      "name": "atlas_growth_script_topic_format",
+      "sourceBodySha256": "f5ab91143519b6c2f772afe6dd06c34c1c64e753c55e4704b833205b87fc2dc0",
+      "executedBodySha256": "f5ab91143519b6c2f772afe6dd06c34c1c64e753c55e4704b833205b87fc2dc0"
+    },
+    {
+      "version": "20260602175032",
+      "name": "g1_multitenant_platform_tokens",
+      "sourceBodySha256": "cdec814c505a866bf38345ad49804ddacdb167fe4641ed18ee6f152fe8e758e8",
+      "executedBodySha256": "cdec814c505a866bf38345ad49804ddacdb167fe4641ed18ee6f152fe8e758e8"
+    },
+    {
+      "version": "20260602175605",
+      "name": "stripe_intelligence_revenue_snapshots",
+      "sourceBodySha256": "ef88ada4323d1295ea662327a413157da6a810f9d4244c2bbc6a37e6e6a9c7c0",
+      "executedBodySha256": "ef88ada4323d1295ea662327a413157da6a810f9d4244c2bbc6a37e6e6a9c7c0"
+    },
+    {
+      "version": "20260603055456",
+      "name": "durable_runs_claim_reaper",
+      "sourceBodySha256": "d8d988291fc63df2a9b3dca6b30d913b7351a65f626a4db41eb291d2e041cd49",
+      "executedBodySha256": "d8d988291fc63df2a9b3dca6b30d913b7351a65f626a4db41eb291d2e041cd49"
+    },
+    {
+      "version": "20260603055620",
+      "name": "durable_runs_claim_public_rpc",
+      "sourceBodySha256": "4765262786fd1f4c6c76ef31605487ae0b94e7ea4c42d11fbee422564a98581c",
+      "executedBodySha256": "4765262786fd1f4c6c76ef31605487ae0b94e7ea4c42d11fbee422564a98581c"
+    },
+    {
+      "version": "20260603084745",
+      "name": "token_health_monitoring",
+      "sourceBodySha256": "6f03e73d8806012e836536e526168fed4c5fe9ea69e24439ab614b0003cca2ba",
+      "executedBodySha256": "6f03e73d8806012e836536e526168fed4c5fe9ea69e24439ab614b0003cca2ba"
+    },
+    {
+      "version": "20260603085842",
+      "name": "pipeline_retry_state",
+      "sourceBodySha256": "02bf082e31b14c045386daa7e4acabb1b9ab7cc9086ea0ae7fe2072b08a00cdf",
+      "executedBodySha256": "40ede3f6235cedfe4b1ecdb016917693a68cc3bbcf4a72dbbd0712d34955ec26"
+    },
+    {
+      "version": "20260603091319",
+      "name": "cron_heartbeat",
+      "sourceBodySha256": "405ffdb9f423cd5190108279166747356728ebd93ed4d3651b4675c7d01667ae",
+      "executedBodySha256": "405ffdb9f423cd5190108279166747356728ebd93ed4d3651b4675c7d01667ae"
+    },
+    {
+      "version": "20260603135744",
+      "name": "marketing_engine_foundation",
+      "sourceBodySha256": "ec581d56f259767f23cb2c40a1a39f22bd3918b9dc1d971e1ca2cb4303f12553",
+      "executedBodySha256": "ec581d56f259767f23cb2c40a1a39f22bd3918b9dc1d971e1ca2cb4303f12553"
+    },
+    {
+      "version": "20260605071529",
+      "name": "media_insights_multiplatform",
+      "sourceBodySha256": "bd29b60044d8214d87ca435412c82d8784c52488800248ff0d1865786ca4b4d0",
+      "executedBodySha256": "bd29b60044d8214d87ca435412c82d8784c52488800248ff0d1865786ca4b4d0"
+    },
+    {
+      "version": "20260605213648",
+      "name": "media_insights_retention",
+      "sourceBodySha256": "390846a61efd21ab9156320d7cd298c1c2c8b2031f98a0580adc49cd76873ef9",
+      "executedBodySha256": "390846a61efd21ab9156320d7cd298c1c2c8b2031f98a0580adc49cd76873ef9"
+    },
+    {
+      "version": "20260605232026",
+      "name": "media_scripts_breaking_flag",
+      "sourceBodySha256": "dbdfc0b0410f1e5734378c97650253c9cbfecddceee95c088fe6dfc0dc33e1b7",
+      "executedBodySha256": "dbdfc0b0410f1e5734378c97650253c9cbfecddceee95c088fe6dfc0dc33e1b7"
+    },
+    {
+      "version": "20260606013407",
+      "name": "pr2_route_webhook_isolation",
+      "sourceBodySha256": "f1525ae8126993690f4e38d732ecc75cf8ba88bf95094c4f45a5311b2c8bd9f1",
+      "executedBodySha256": "f1525ae8126993690f4e38d732ecc75cf8ba88bf95094c4f45a5311b2c8bd9f1"
+    },
+    {
+      "version": "20260606032600",
+      "name": "schedule_dream_cron",
+      "sourceBodySha256": "36570de242843186ddc1e21cc0d0d80f1c0699571c0b6423bc704e055c61675e",
+      "executedBodySha256": "36570de242843186ddc1e21cc0d0d80f1c0699571c0b6423bc704e055c61675e"
+    },
+    {
+      "version": "20260606051956",
+      "name": "bug_monitoring_foundation",
+      "sourceBodySha256": "c09b8b7b636710c4736dfed77fe163898a0ceed653997712b1ee3cd7aa908684",
+      "executedBodySha256": "c09b8b7b636710c4736dfed77fe163898a0ceed653997712b1ee3cd7aa908684"
+    },
+    {
+      "version": "20260608110948",
+      "name": "create_website_content_system_a",
+      "sourceBodySha256": "a38333a1fa1878396eea42833b396e1589be1b861e7abde6825aec976ec88e5a",
+      "executedBodySha256": "a38333a1fa1878396eea42833b396e1589be1b861e7abde6825aec976ec88e5a"
+    },
+    {
+      "version": "20260609075336",
+      "name": "manager_task_dream_link",
+      "sourceBodySha256": "c1b8a33f2396a96a5e52a5f02c5758381160018bf30b1cbee1a3380e7e032fbd",
+      "executedBodySha256": "c1b8a33f2396a96a5e52a5f02c5758381160018bf30b1cbee1a3380e7e032fbd"
+    },
+    {
+      "version": "20260609082919",
+      "name": "dream_issues_ledger",
+      "sourceBodySha256": "e6a31b1161c5fee9ba8681986562db3e3841e8a814db42c9dfacbdba923f7b93",
+      "executedBodySha256": "e6a31b1161c5fee9ba8681986562db3e3841e8a814db42c9dfacbdba923f7b93"
+    },
+    {
+      "version": "20260609164447",
+      "name": "enable_rls_cost_rates_dream_issues",
+      "sourceBodySha256": "1435ae12ae0d4ecefe91b25387148b3a84e0775a3da6e6d205d197d91c2345dc",
+      "executedBodySha256": "1435ae12ae0d4ecefe91b25387148b3a84e0775a3da6e6d205d197d91c2345dc"
+    },
+    {
+      "version": "20260609165615",
+      "name": "harden_set_updated_at_search_path",
+      "sourceBodySha256": "0210a5e12290cb3b500f1a3791a874a424eda3d2f455c558ca34dfc9c11dd890",
+      "executedBodySha256": "0210a5e12290cb3b500f1a3791a874a424eda3d2f455c558ca34dfc9c11dd890"
+    },
+    {
+      "version": "20260611084813",
+      "name": "atlas_actions",
+      "sourceBodySha256": "59b00af04b9c513a7b4c85ea41915b2aaf0f7a86e6f5623ce27aeafcb9432b6d",
+      "executedBodySha256": "59b00af04b9c513a7b4c85ea41915b2aaf0f7a86e6f5623ce27aeafcb9432b6d"
+    },
+    {
+      "version": "20260613063430",
+      "name": "media_rls_hardening",
+      "sourceBodySha256": "6538859ea77a38f045027d51b40696400189db1c6523fb7acaeb80c66640180b",
+      "executedBodySha256": "6538859ea77a38f045027d51b40696400189db1c6523fb7acaeb80c66640180b"
+    },
+    {
+      "version": "20260613074403",
+      "name": "h1p1_execution_policy_foundation",
+      "sourceBodySha256": "820b57d0ef28e3cb7f752703e3d7d055f7b727546ff7baf4485935ee8df2990c",
+      "executedBodySha256": "820b57d0ef28e3cb7f752703e3d7d055f7b727546ff7baf4485935ee8df2990c"
+    },
+    {
+      "version": "20260613230750",
+      "name": "h1p3_run_steps_snapshot",
+      "sourceBodySha256": "a30f87cc03fbeb1ebd7f37dcb346c233432b3079dcd41a25d866ae0d6ca89084",
+      "executedBodySha256": "a30f87cc03fbeb1ebd7f37dcb346c233432b3079dcd41a25d866ae0d6ca89084"
+    },
+    {
+      "version": "20260614000935",
+      "name": "migration_guard_fn",
+      "sourceBodySha256": "3f07aa3816b9902acd3cbe38af07319c9b6a681be40727a9af5a88cc3bf6ef2f",
+      "executedBodySha256": "3f07aa3816b9902acd3cbe38af07319c9b6a681be40727a9af5a88cc3bf6ef2f"
+    },
+    {
+      "version": "20260614015805",
+      "name": "h1p4_run_policy_snapshot",
+      "sourceBodySha256": "ed988e57fa2479517c61645def19bb824e015d80485c21af21106de46ec8ed14",
+      "executedBodySha256": "ed988e57fa2479517c61645def19bb824e015d80485c21af21106de46ec8ed14"
+    },
+    {
+      "version": "20260614032512",
+      "name": "h1p4_pr2_run_rejected_status",
+      "sourceBodySha256": "b11a0d701a56cd9c9759a0bde500e378df9980a1ca83cc7074cfa91ef40fdbd8",
+      "executedBodySha256": "b11a0d701a56cd9c9759a0bde500e378df9980a1ca83cc7074cfa91ef40fdbd8"
+    },
+    {
+      "version": "20260614041600",
+      "name": "website_content_hero_image",
+      "sourceBodySha256": "92cf5c63a1b4f726de7366ce8824e4740571b17f02eb3263eee99acca14191d8",
+      "executedBodySha256": "92cf5c63a1b4f726de7366ce8824e4740571b17f02eb3263eee99acca14191d8"
+    },
+    {
+      "version": "20260615062127",
+      "name": "h1p5_outputs_run_id_unique",
+      "sourceBodySha256": "1478fb2928dfbcc2fd5fb59579c21e11f75e64441d284ec0bc72280364cc1028",
+      "executedBodySha256": "1478fb2928dfbcc2fd5fb59579c21e11f75e64441d284ec0bc72280364cc1028"
+    },
+    {
+      "version": "20260615071318",
+      "name": "website_content_hero_image_brief",
+      "sourceBodySha256": "3c0a79a57abed1188541e9f1c0cfa6ec56bd137bcf1504be26b5633011005879",
+      "executedBodySha256": "3c0a79a57abed1188541e9f1c0cfa6ec56bd137bcf1504be26b5633011005879"
+    },
+    {
+      "version": "20260615081009",
+      "name": "website_content_hero_editor_brief_rename",
+      "sourceBodySha256": "4747b1da1a2321af78e7746472f3bf5f835a25469da5b96e4fa10126011a87c1",
+      "executedBodySha256": "4747b1da1a2321af78e7746472f3bf5f835a25469da5b96e4fa10126011a87c1"
+    },
+    {
+      "version": "20260616063310",
+      "name": "website_content_hero_image_observability",
+      "sourceBodySha256": "8b3dc051f020caf83eed4448c744ad236ee7851be57864df7e26d103f62a7647",
+      "executedBodySha256": "8b3dc051f020caf83eed4448c744ad236ee7851be57864df7e26d103f62a7647"
+    },
+    {
+      "version": "20260616074642",
+      "name": "h1p5_runs_claim_id",
+      "sourceBodySha256": "9d9815f34f7cd3df86de5c97370c14a11af15198570ba2682f33842718182e45",
+      "executedBodySha256": "9d9815f34f7cd3df86de5c97370c14a11af15198570ba2682f33842718182e45"
+    },
+    {
+      "version": "20260616083707",
+      "name": "h1p5_runs_cancel_requested",
+      "sourceBodySha256": "dca50bd0cb960210a2ccf74c6475640eb8a913e466289afcc92b0bff3cc5dfd5",
+      "executedBodySha256": "dca50bd0cb960210a2ccf74c6475640eb8a913e466289afcc92b0bff3cc5dfd5"
+    },
+    {
+      "version": "20260617062612",
+      "name": "atlas_schema_init",
+      "sourceBodySha256": "ab6a5f550e4b4013c1c017ca3447fbee61fa8c79a2a7ae63aba2189e717573b1",
+      "executedBodySha256": "ab6a5f550e4b4013c1c017ca3447fbee61fa8c79a2a7ae63aba2189e717573b1"
+    },
+    {
+      "version": "20260617062622",
+      "name": "atlas_memory_events",
+      "sourceBodySha256": "fdbd718c695f984e2f20eed80f9bc85e25ce39510b0fef1b18aa456202d611cf",
+      "executedBodySha256": "fdbd718c695f984e2f20eed80f9bc85e25ce39510b0fef1b18aa456202d611cf"
+    },
+    {
+      "version": "20260617062636",
+      "name": "atlas_memories",
+      "sourceBodySha256": "8eafcb45897d54233a021c1ed12971f7f2a65d16dc30f77b9618c980c43a5904",
+      "executedBodySha256": "8eafcb45897d54233a021c1ed12971f7f2a65d16dc30f77b9618c980c43a5904"
+    },
+    {
+      "version": "20260617062644",
+      "name": "atlas_memory_rls",
+      "sourceBodySha256": "789ea9e04379dc03e907474a59b03709fd11cdec300e70c1ca1560ecb2fac474",
+      "executedBodySha256": "789ea9e04379dc03e907474a59b03709fd11cdec300e70c1ca1560ecb2fac474"
+    },
+    {
+      "version": "20260618063935",
+      "name": "atlas_record_event_fn",
+      "sourceBodySha256": "58bddce009e3994344feccc6362623878d3018085f597e3ddddced592cdbded9",
+      "executedBodySha256": "58bddce009e3994344feccc6362623878d3018085f597e3ddddced592cdbded9"
+    },
+    {
+      "version": "20260618064002",
+      "name": "atlas_salience_fn",
+      "sourceBodySha256": "9fdbb2bf9e96780f357621a0ed56b6c927ddca5a8c6f5a675867ec3a6e364e6f",
+      "executedBodySha256": "9fdbb2bf9e96780f357621a0ed56b6c927ddca5a8c6f5a675867ec3a6e364e6f"
+    },
+    {
+      "version": "20260618064026",
+      "name": "atlas_event_type_to_class_fn",
+      "sourceBodySha256": "881377d9926fd35f890041418af5ca9bdfdeac41bbe5d1cd38e07fb6c4be4ed5",
+      "executedBodySha256": "881377d9926fd35f890041418af5ca9bdfdeac41bbe5d1cd38e07fb6c4be4ed5"
+    },
+    {
+      "version": "20260618064056",
+      "name": "atlas_consolidate_fn",
+      "sourceBodySha256": "8e0817e0e6f9f957f4bc4bf6837afc0949e208331008403cc89a54b7bd5f0023",
+      "executedBodySha256": "8e0817e0e6f9f957f4bc4bf6837afc0949e208331008403cc89a54b7bd5f0023"
+    },
+    {
+      "version": "20260618064127",
+      "name": "atlas_memory_cron",
+      "sourceBodySha256": "ecccbfdd670b468e537fac276160245d0d473e1f28aba0a4059cf857f9e9cdc9",
+      "executedBodySha256": "ecccbfdd670b468e537fac276160245d0d473e1f28aba0a4059cf857f9e9cdc9"
+    },
+    {
+      "version": "20260618143256",
+      "name": "h5_atlas_observability",
+      "sourceBodySha256": "73f3f29d1f6143088d8c527911ca5af5dbc70be09dc4e2ad2da2d89ad0315899",
+      "executedBodySha256": "73f3f29d1f6143088d8c527911ca5af5dbc70be09dc4e2ad2da2d89ad0315899"
+    },
+    {
+      "version": "20260618145627",
+      "name": "h1_episodic_retention",
+      "sourceBodySha256": "5f8d7f4a73030ba6799d06c6216bd22d0dff74bb4d8db4f799ead9d02c08594f",
+      "executedBodySha256": "5f8d7f4a73030ba6799d06c6216bd22d0dff74bb4d8db4f799ead9d02c08594f"
+    },
+    {
+      "version": "20260619113319",
+      "name": "atlas_signals",
+      "sourceBodySha256": "7d3731a42396c903ebb811c25e5f49e28629a58f5e27b1999475f505fa197aad",
+      "executedBodySha256": "7d3731a42396c903ebb811c25e5f49e28629a58f5e27b1999475f505fa197aad"
+    },
+    {
+      "version": "20260624053615",
+      "name": "150100_atlas_signals_evolution",
+      "sourceBodySha256": "0aa2c9be5161110ce2e9214a422fbf0430bfe3191b26ef3ecfa40baefa51bf4c",
+      "executedBodySha256": "0aa2c9be5161110ce2e9214a422fbf0430bfe3191b26ef3ecfa40baefa51bf4c"
+    },
+    {
+      "version": "20260624192603",
+      "name": "150000_atlas_project_lifecycle",
+      "sourceBodySha256": "51545d332ea578b7ff9c060a888ff7221385681cf390364c50769f4bf478ecc4",
+      "executedBodySha256": "51545d332ea578b7ff9c060a888ff7221385681cf390364c50769f4bf478ecc4"
+    },
+    {
+      "version": "20260624192614",
+      "name": "150200_collector_runs",
+      "sourceBodySha256": "41379ba204aad230a8403cbc39318c1e0b0d839e56f2d07dcc072cc542e66b3d",
+      "executedBodySha256": "41379ba204aad230a8403cbc39318c1e0b0d839e56f2d07dcc072cc542e66b3d"
+    },
+    {
+      "version": "20260624192624",
+      "name": "150300_atlas_collector_cron",
+      "sourceBodySha256": "27154fd7ef31c14d0d04375ab41695a4d5ad2dfdc62a2308ba099552ae98360c",
+      "executedBodySha256": "27154fd7ef31c14d0d04375ab41695a4d5ad2dfdc62a2308ba099552ae98360c"
+    },
+    {
+      "version": "20260630191638",
+      "name": "atlas_recall_fn",
+      "sourceBodySha256": "bb7f6ef5938d841be1e53cce7f19651c73bddf8b9c19df6dce381d0df7e2dc98",
+      "executedBodySha256": "bb7f6ef5938d841be1e53cce7f19651c73bddf8b9c19df6dce381d0df7e2dc98"
+    },
+    {
+      "version": "20260630191717",
+      "name": "atlas_memory_health",
+      "sourceBodySha256": "5d1d0c33aca6235a79917264e474f1796d2e11aa35336bfe47849fce73d4734e",
+      "executedBodySha256": "5d1d0c33aca6235a79917264e474f1796d2e11aa35336bfe47849fce73d4734e"
+    },
+    {
+      "version": "20260630191741",
+      "name": "atlas_recall_pin_focus_ranking",
+      "sourceBodySha256": "56e451950cd4f2fd446259e153ac4c3dd236130ee3590e5797ad0c9d5745ce94",
+      "executedBodySha256": "56e451950cd4f2fd446259e153ac4c3dd236130ee3590e5797ad0c9d5745ce94"
+    },
+    {
+      "version": "20260630191757",
+      "name": "backfill_platform_memory",
+      "sourceBodySha256": "fb286331d2db2cdaceaf75147e55e05fa5c7eac980ea36dccd3b80cdeac5c38b",
+      "executedBodySha256": "fb286331d2db2cdaceaf75147e55e05fa5c7eac980ea36dccd3b80cdeac5c38b"
+    },
+    {
+      "version": "20260630191814",
+      "name": "backfill_content_feedback",
+      "sourceBodySha256": "0f1c9120e907bf4ced8eab264d554008c7994c0080a6e4a99a358f3e706f58b4",
+      "executedBodySha256": "0f1c9120e907bf4ced8eab264d554008c7994c0080a6e4a99a358f3e706f58b4"
+    },
+    {
+      "version": "20260630191829",
+      "name": "backfill_dream_issues",
+      "sourceBodySha256": "2c2d13515c6e26156a469087b47c47517a382d5f8c99c31ca145198b9529cd92",
+      "executedBodySha256": "2c2d13515c6e26156a469087b47c47517a382d5f8c99c31ca145198b9529cd92"
+    },
+    {
+      "version": "20260630191844",
+      "name": "backfill_operator_memories",
+      "sourceBodySha256": "81fa08cc4603e56cc02f82fbf8c4469d0d249861d77a17605c1694a5174d7e4b",
+      "executedBodySha256": "81fa08cc4603e56cc02f82fbf8c4469d0d249861d77a17605c1694a5174d7e4b"
+    },
+    {
+      "version": "20260707172102",
+      "name": "enable_public_rls_for_internal_tables",
+      "sourceBodySha256": "684ea915e812f0acee5df9c9f05ffa2e0f023cd8e66a4b6fd82f449fbc60d205",
+      "executedBodySha256": "684ea915e812f0acee5df9c9f05ffa2e0f023cd8e66a4b6fd82f449fbc60d205"
+    },
+    {
+      "version": "20260719184902",
+      "name": "publish_channel_state",
+      "sourceBodySha256": "fa51dcc143bedfe3944a68556a6ca2ef87e12d5c5f69db9ca75a8404215d4727",
+      "executedBodySha256": "fa51dcc143bedfe3944a68556a6ca2ef87e12d5c5f69db9ca75a8404215d4727"
+    },
+    {
+      "version": "20260819060855",
+      "name": "atlas_authorizations",
+      "sourceBodySha256": "8463eccc49c80c04dfaec9ee6f25202e371739d124704289753f05fd342fe567",
+      "executedBodySha256": "8463eccc49c80c04dfaec9ee6f25202e371739d124704289753f05fd342fe567"
+    },
+    {
+      "version": "20260819092739",
+      "name": "atlas_decision_ledger",
+      "sourceBodySha256": "9f7ca45ebd2964f86b6cadc588cedbf9ca1d4edd0921fc70c75c8a898295a5c5",
+      "executedBodySha256": "9f7ca45ebd2964f86b6cadc588cedbf9ca1d4edd0921fc70c75c8a898295a5c5"
+    },
+    {
+      "version": "20260820054225",
+      "name": "atlas_mission_ledger",
+      "sourceBodySha256": "dc8d39f746066c22cf2dbe94c65dd5176015f4e6c84fda5086f7515b1b5f4083",
+      "executedBodySha256": "dc8d39f746066c22cf2dbe94c65dd5176015f4e6c84fda5086f7515b1b5f4083"
+    },
+    {
+      "version": "20260820091102",
+      "name": "atlas_delegation_ledger",
+      "sourceBodySha256": "7092eb14bd3e7d7f579b4eb1974dc469b3f73b43dafefcc8f2a5ef367f70da24",
+      "executedBodySha256": "7092eb14bd3e7d7f579b4eb1974dc469b3f73b43dafefcc8f2a5ef367f70da24"
+    },
+    {
+      "version": "20260820184619",
+      "name": "manager_tasks_work_packages",
+      "sourceBodySha256": "809cd90d6aa268bca3ea7387cf1a2ef925861af5d4d2ac3ac5c2af729d6ed1b4",
+      "executedBodySha256": "809cd90d6aa268bca3ea7387cf1a2ef925861af5d4d2ac3ac5c2af729d6ed1b4"
+    },
+    {
+      "version": "20260821075928",
+      "name": "atlas_entities",
+      "sourceBodySha256": "f132f46d067a091ed1459266ac54bfd9ce6250282aff11421ff7947abf84550f",
+      "executedBodySha256": "f132f46d067a091ed1459266ac54bfd9ce6250282aff11421ff7947abf84550f"
+    },
+    {
+      "version": "20260821080031",
+      "name": "atlas_intelligence",
+      "sourceBodySha256": "3d2b89a0df0030937ecf5e7f2398f0fce0bdb8578963bd304412ef85f60c5250",
+      "executedBodySha256": "3d2b89a0df0030937ecf5e7f2398f0fce0bdb8578963bd304412ef85f60c5250"
+    },
+    {
+      "version": "20260821080053",
+      "name": "atlas_intelligence_cron",
+      "sourceBodySha256": "e58baf6fdfb41f6be505aeeaf38eb4d7e402feb58165436b57899f425157aec6",
+      "executedBodySha256": "e58baf6fdfb41f6be505aeeaf38eb4d7e402feb58165436b57899f425157aec6"
+    },
+    {
+      "version": "20260822093410",
+      "name": "project_api_credentials",
+      "sourceBodySha256": "10f12659027861d3b9faa2676bc26ecc73e07b4d8d7f0152255134bf9f3d8c87",
+      "executedBodySha256": "10f12659027861d3b9faa2676bc26ecc73e07b4d8d7f0152255134bf9f3d8c87"
+    },
+    {
+      "version": "20260829123901",
+      "name": "workflow_instance_core",
+      "sourceBodySha256": "dfe1ab1db6aac916fb76098476d3fc51662e37307c5a75977a3efd49732ca4ba",
+      "executedBodySha256": "dfe1ab1db6aac916fb76098476d3fc51662e37307c5a75977a3efd49732ca4ba"
+    },
+    {
+      "version": "20260829124116",
+      "name": "workflow_instance_core_hardening",
+      "sourceBodySha256": "4be11fb40a971c155143c28c5e63e24df6a641fdb164d65cfec2e3a12b2b5266",
+      "executedBodySha256": "4be11fb40a971c155143c28c5e63e24df6a641fdb164d65cfec2e3a12b2b5266"
+    },
+    {
+      "version": "20260829174736",
+      "name": "workflow_gate_authorization",
+      "sourceBodySha256": "aa2cb0470e27f8b65e167e2e040e77de560a7ce2f42bbea6ef623367f03dd998",
+      "executedBodySha256": "aa2cb0470e27f8b65e167e2e040e77de560a7ce2f42bbea6ef623367f03dd998"
+    },
+    {
+      "version": "20260829180847",
+      "name": "workflow_scheduled_continuation",
+      "sourceBodySha256": "11eb6e02c3387ab718af433106034019869789149e54830b946b0684cc3e7f21",
+      "executedBodySha256": "11eb6e02c3387ab718af433106034019869789149e54830b946b0684cc3e7f21"
+    },
+    {
+      "version": "20260829181028",
+      "name": "workflow_scheduler_project_pause",
+      "sourceBodySha256": "a202b551a58aa204a8358d0c083083defa2aeb9728f4ffe4a29bb2f100356178",
+      "executedBodySha256": "a202b551a58aa204a8358d0c083083defa2aeb9728f4ffe4a29bb2f100356178"
+    },
+    {
+      "version": "20260829191341",
+      "name": "workflow_attested_evidence",
+      "sourceBodySha256": "bd7a127402d0dad5b53238eb70c9dd9ae12d3ce790ae28cf0d7f519ab4555eb0",
+      "executedBodySha256": "bd7a127402d0dad5b53238eb70c9dd9ae12d3ce790ae28cf0d7f519ab4555eb0"
+    },
+    {
+      "version": "20260829193325",
+      "name": "workflow_escalation_index",
+      "sourceBodySha256": "e6aca2bf5ff6850165e3cfefd0c980f62559d29af57c1ac9b70bd890a358c6b9",
+      "executedBodySha256": "e6aca2bf5ff6850165e3cfefd0c980f62559d29af57c1ac9b70bd890a358c6b9"
+    },
+    {
+      "version": "20260830071842",
+      "name": "execution_stop_safety",
+      "sourceBodySha256": "2b61924cdc3380c6c01ac2303fd4db617ad05275a9461ec376ea965cb4e7072b",
+      "executedBodySha256": "2b61924cdc3380c6c01ac2303fd4db617ad05275a9461ec376ea965cb4e7072b"
+    },
+    {
+      "version": "20260830102935",
+      "name": "spend_budget_gate",
+      "sourceBodySha256": "da99945cb69ef410a39f72c4db3adfaabe237210b9546241a3862a1eb5eec019",
+      "executedBodySha256": "da99945cb69ef410a39f72c4db3adfaabe237210b9546241a3862a1eb5eec019"
+    },
+    {
+      "version": "20260830111355",
+      "name": "workflow_action_binding",
+      "sourceBodySha256": "c2081953360fbdeb77792368e2eb40dc72050a645fd42ee9700b76af3f2a0059",
+      "executedBodySha256": "c2081953360fbdeb77792368e2eb40dc72050a645fd42ee9700b76af3f2a0059"
+    },
+    {
+      "version": "20260830113216",
+      "name": "action_failure_model",
+      "sourceBodySha256": "018a482a332a268a73f17e52618cfb491ad2f0f029a3d8d509cd731544692bae",
+      "executedBodySha256": "018a482a332a268a73f17e52618cfb491ad2f0f029a3d8d509cd731544692bae"
+    },
+    {
+      "version": "20260830163251",
+      "name": "readonly_action_authorization",
+      "sourceBodySha256": "8aed9f2b43de385c6b643ad2d2c71638232cee5c3db55ee7fcf68806adce77d4",
+      "executedBodySha256": "8aed9f2b43de385c6b643ad2d2c71638232cee5c3db55ee7fcf68806adce77d4"
+    },
+    {
+      "version": "20260831073146",
+      "name": "budget_scopes",
+      "sourceBodySha256": "1ea6d38464508fc6e580133d437dbadda9cb2e7abe22b71e78c48c594141ed17",
+      "executedBodySha256": "1ea6d38464508fc6e580133d437dbadda9cb2e7abe22b71e78c48c594141ed17"
+    },
+    {
+      "version": "20260901102808",
+      "name": "unified_stop_authority",
+      "sourceBodySha256": "ac7d2097a1df335ed0f2f04505af0b4c54019ac888d33f8572f1baca1d25f872",
+      "executedBodySha256": "ac7d2097a1df335ed0f2f04505af0b4c54019ac888d33f8572f1baca1d25f872"
+    },
+    {
+      "version": "20260901132705",
+      "name": "workflow_transition_stop_guard",
+      "sourceBodySha256": "4d31faa17f28342ff5adabddf341cf05b3e4f5ea29f34b7a37972df1604f7565",
+      "executedBodySha256": "4d31faa17f28342ff5adabddf341cf05b3e4f5ea29f34b7a37972df1604f7565"
+    },
+    {
+      "version": "20260902104023",
+      "name": "stop_atomic_execution_admission",
+      "sourceBodySha256": "65f8cf45a32050809c4631a4613e6f4807dc7fbd4e5ad525b301b32376ede1ab",
+      "executedBodySha256": "65f8cf45a32050809c4631a4613e6f4807dc7fbd4e5ad525b301b32376ede1ab"
+    },
+    {
+      "version": "20260902130337",
+      "name": "media_asset_foundation",
+      "sourceBodySha256": "2783eb30f0411e296b364c0844de966ebd4b994185853379962c9d76dc8e3587",
+      "executedBodySha256": "2783eb30f0411e296b364c0844de966ebd4b994185853379962c9d76dc8e3587"
+    },
+    {
+      "version": "20260903062550",
+      "name": "media_job_lifecycle",
+      "sourceBodySha256": "b1c7e641d8308cb0c8d25921c416ab986d48016e47b30f714c289c5a97ccf253",
+      "executedBodySha256": "b1c7e641d8308cb0c8d25921c416ab986d48016e47b30f714c289c5a97ccf253"
+    },
+    {
+      "version": "20260903070644",
+      "name": "media_job_lifecycle_repairs",
+      "sourceBodySha256": "d77f0c0bd53bd8169a8366f737f77046c3b1fcb35935fc6d53e5c20cd76f100d",
+      "executedBodySha256": "d77f0c0bd53bd8169a8366f737f77046c3b1fcb35935fc6d53e5c20cd76f100d"
+    },
+    {
+      "version": "20260903182048",
+      "name": "durable_cancellation_reaper",
+      "sourceBodySha256": "a0025a3709d7b601a9af7647d5bf8def7902bea6c597fe3ce38f36cccecec161",
+      "executedBodySha256": "a0025a3709d7b601a9af7647d5bf8def7902bea6c597fe3ce38f36cccecec161"
+    },
+    {
+      "version": "20260904101452",
+      "name": "workflow_stories",
+      "sourceBodySha256": "b2e25e51a896f4d9b2d5332ce9ca21c96a3cbe328ec8d85cc713efb9e1ace6e4",
+      "executedBodySha256": "b2e25e51a896f4d9b2d5332ce9ca21c96a3cbe328ec8d85cc713efb9e1ace6e4"
+    },
+    {
+      "version": "20260907051014",
+      "name": "workflow_manual_privileged_provenance",
+      "sourceBodySha256": "7379c8072905a9cbaf9480dff0438dcb8a9e5e7e7974a63c867f288c4052236c",
+      "executedBodySha256": "7379c8072905a9cbaf9480dff0438dcb8a9e5e7e7974a63c867f288c4052236c"
+    },
+    {
+      "version": "20260907113728",
+      "name": "spend_advisory_overrides",
+      "sourceBodySha256": "a474f135f60782bc05bdb8dd83c7496540e3c0d1794d41581d5958b25081a7ba",
+      "executedBodySha256": "a474f135f60782bc05bdb8dd83c7496540e3c0d1794d41581d5958b25081a7ba"
+    },
+    {
+      "version": "20260909193225",
+      "name": "workflow_stories_rls",
+      "sourceBodySha256": "0761cf5caa51455be8d5dfae9baa7a0c0c7d1bf4c4993b1fb1f5b750edba3539",
+      "executedBodySha256": "0761cf5caa51455be8d5dfae9baa7a0c0c7d1bf4c4993b1fb1f5b750edba3539"
+    },
+    {
+      "version": "20260910054144",
+      "name": "declarative_rls_parity",
+      "sourceBodySha256": "a2e3dc6c5eca65f4efe7b8222cf727b4752be9bc81e75ac8e2ec5291edf2bd86",
+      "executedBodySha256": "a2e3dc6c5eca65f4efe7b8222cf727b4752be9bc81e75ac8e2ec5291edf2bd86"
+    },
+    {
+      "version": "20260910080008",
+      "name": "cost_ledger_rls_isolation",
+      "sourceBodySha256": "460ba95651994cdabc654dd812445b9c5c839bc5f60008cd86881be404e1bbee",
+      "executedBodySha256": "460ba95651994cdabc654dd812445b9c5c839bc5f60008cd86881be404e1bbee"
+    },
+    {
+      "version": "20260910133125",
+      "name": "agent_scorecards_view_isolation",
+      "sourceBodySha256": "0ce248fa0bc63f4ca3d0f0bf8a22a74442595809bb37959a3dfecea5364488f5",
+      "executedBodySha256": "0ce248fa0bc63f4ca3d0f0bf8a22a74442595809bb37959a3dfecea5364488f5"
+    },
+    {
+      "version": "20260914060229",
+      "name": "platform_tokens_client_revoke",
+      "sourceBodySha256": "1cff9de90d12bcab420faac17f8dff96cf317e2fc7e9cd0d0d71c894bee0a06a",
+      "executedBodySha256": "1cff9de90d12bcab420faac17f8dff96cf317e2fc7e9cd0d0d71c894bee0a06a"
+    },
+    {
+      "version": "20260914060314",
+      "name": "platform_credential_events",
+      "sourceBodySha256": "0957334a075f763bf71a2c0565e0003a45fac938575aa68563965ac7f97d0331",
+      "executedBodySha256": "0957334a075f763bf71a2c0565e0003a45fac938575aa68563965ac7f97d0331"
+    },
+    {
+      "version": "20260914060754",
+      "name": "platform_credential_events_search_path",
+      "sourceBodySha256": "4b5b7526eadf9c8c2d8f95f1fa3d8253d2975f50cacec05bd7701991b09ca92d",
+      "executedBodySha256": "4b5b7526eadf9c8c2d8f95f1fa3d8253d2975f50cacec05bd7701991b09ca92d"
+    },
+    {
+      "version": "20260914113332",
+      "name": "social_account_bindings",
+      "sourceBodySha256": "afaeee6206c9fd159c9c5cffecf86e577147d900c5ae25ac059e7454c90bf22d",
+      "executedBodySha256": "afaeee6206c9fd159c9c5cffecf86e577147d900c5ae25ac059e7454c90bf22d"
+    },
+    {
+      "version": "20260914113400",
+      "name": "platform_credential_events_account_binding",
+      "sourceBodySha256": "662aa4a8b5e52fbe2a2bb8bc5bb87f49c082670ec3889757c1b52bba8edd4b12",
+      "executedBodySha256": "662aa4a8b5e52fbe2a2bb8bc5bb87f49c082670ec3889757c1b52bba8edd4b12"
+    },
+    {
+      "version": "20260914113426",
+      "name": "social_credential_health",
+      "sourceBodySha256": "31d5384fe216fd40f0847f383a03f1ae5455cac440694fb2115e04873786974c",
+      "executedBodySha256": "31d5384fe216fd40f0847f383a03f1ae5455cac440694fb2115e04873786974c"
+    },
+    {
+      "version": "20260914113447",
+      "name": "platform_tokens_project_binding",
+      "sourceBodySha256": "b6248c226991dc75c9bec928ffbed8c783d8d995e6a7e754605427e96da09efe",
+      "executedBodySha256": "b6248c226991dc75c9bec928ffbed8c783d8d995e6a7e754605427e96da09efe"
+    },
+    {
+      "version": "20260914113522",
+      "name": "social_account_bindings_the_prompt_evidence",
+      "sourceBodySha256": "aa7890719107de3f83f260af759f772ff4c7ef160b9c8e351ffedc85cc304c32",
+      "executedBodySha256": "aa7890719107de3f83f260af759f772ff4c7ef160b9c8e351ffedc85cc304c32"
+    },
+    {
+      "version": "20260915190533",
+      "name": "youtube_project_oauth",
+      "sourceBodySha256": "4304834507c0ef8da38cab30b4aed6d33f3e3836e8cd0f60f9f07974e232ef47",
+      "executedBodySha256": "4304834507c0ef8da38cab30b4aed6d33f3e3836e8cd0f60f9f07974e232ef47"
+    },
+    {
+      "version": "20260919054123",
+      "name": "sdf1b1_code_work_control_plane",
+      "sourceBodySha256": "54484f5af5d7addbb36729353ecc9f0213c9ec52d5b67bd4f5d015d29d60caa5",
+      "executedBodySha256": "54484f5af5d7addbb36729353ecc9f0213c9ec52d5b67bd4f5d015d29d60caa5"
+    },
+    {
+      "version": "20260919154957",
+      "name": "dream_issue_reconciliation",
+      "sourceBodySha256": "2531c5bc89445b66d955242918c229d820de663998961c0d1848f34a52cb1ff7",
+      "executedBodySha256": "2531c5bc89445b66d955242918c229d820de663998961c0d1848f34a52cb1ff7"
+    },
+    {
+      "version": "20260923191631",
+      "name": "survival_state_events",
+      "sourceBodySha256": "29e18ae8694a914a676ed965fc52a771dc72283a4385845c422a41fa2d5f70da",
+      "executedBodySha256": "29e18ae8694a914a676ed965fc52a771dc72283a4385845c422a41fa2d5f70da"
+    },
+    {
+      "version": "20260924053015",
+      "name": "sdf1c1_trusted_broker_identity",
+      "sourceBodySha256": "1eab24646457871331da4097f9a47df133af98a5bad6929fe95d963e57aada75",
+      "executedBodySha256": "1eab24646457871331da4097f9a47df133af98a5bad6929fe95d963e57aada75"
+    },
+    {
+      "version": "20260924064457",
+      "name": "sdf1c1b_broker_claim_credentials",
+      "sourceBodySha256": "31489ea3a5317ab9bfd2451fd720f79937716bb8542ef5028918f4becd9ae8f5",
+      "executedBodySha256": "31489ea3a5317ab9bfd2451fd720f79937716bb8542ef5028918f4becd9ae8f5"
+    },
+    {
+      "version": "20260924081629",
+      "name": "survival_funding_phase2b",
+      "sourceBodySha256": "e4f6934cbe0a846866be3c88ff3e5c8806e6a7051f402380d195200d7dfaf3ea",
+      "executedBodySha256": "e4f6934cbe0a846866be3c88ff3e5c8806e6a7051f402380d195200d7dfaf3ea"
+    },
+    {
+      "version": "20260924122958",
+      "name": "sdf1c2_broker_control_channel",
+      "sourceBodySha256": "a9aba2832efa283c8af76b6f22df84c3395bded79d1ab3d2fe53c56266ee3976",
+      "executedBodySha256": "a9aba2832efa283c8af76b6f22df84c3395bded79d1ab3d2fe53c56266ee3976"
+    },
+    {
+      "version": "20260925102918",
+      "name": "autonomy_license_phase2c",
+      "sourceBodySha256": "b3091ffa77fbaa9bbc3d73a1030fac8bb6cc9d80b1d1f9f3b1eb5491c4b1e460",
+      "executedBodySha256": "b3091ffa77fbaa9bbc3d73a1030fac8bb6cc9d80b1d1f9f3b1eb5491c4b1e460"
+    },
+    {
+      "version": "20260926082643",
+      "name": "autonomy_trace_decisions",
+      "sourceBodySha256": "3324ddbaff60523e5f2ab096a6871c49c6c9e7c648a13198bf1ed865a1b97c8e",
+      "executedBodySha256": "3324ddbaff60523e5f2ab096a6871c49c6c9e7c648a13198bf1ed865a1b97c8e"
+    },
+    {
+      "version": "20261001130412",
+      "name": "autonomy_bind_atomic",
+      "sourceBodySha256": "601c24b756bd096ebfb268fd91457bd326239c71ce830e025573817eca16b5a2",
+      "executedBodySha256": "601c24b756bd096ebfb268fd91457bd326239c71ce830e025573817eca16b5a2"
+    },
+    {
+      "version": "20261002062908",
+      "name": "m0_durable_spend_settlement",
+      "sourceBodySha256": "13c5582d72f02e35095aec4edba1375861279bb72e0ba3a38d3075fa6a66ac16",
+      "executedBodySha256": "13c5582d72f02e35095aec4edba1375861279bb72e0ba3a38d3075fa6a66ac16"
+    },
+    {
+      "version": "20261002134227",
+      "name": "autonomy_authority_serialization",
+      "sourceBodySha256": "c84f604d845d946e187561393ed6f28ca2919c45121109585d3575301d787cd5",
+      "executedBodySha256": "c84f604d845d946e187561393ed6f28ca2919c45121109585d3575301d787cd5"
+    },
+    {
+      "version": "20261003053532",
+      "name": "survival_input_epoch",
+      "sourceBodySha256": "93e002f0e4308b606816895b91c810c324f66754d3d058026566e898a5761d80",
+      "executedBodySha256": "93e002f0e4308b606816895b91c810c324f66754d3d058026566e898a5761d80"
+    },
+    {
+      "version": "20261003183855",
+      "name": "survival_commit_fence",
+      "sourceBodySha256": "c114496b834bd90cd626bc9275c537990130be18c2414e3614751a19a9752cb7",
+      "executedBodySha256": "c114496b834bd90cd626bc9275c537990130be18c2414e3614751a19a9752cb7"
+    },
+    {
+      "version": "20261007094814",
+      "name": "survival_threshold_status_canonical",
+      "sourceBodySha256": "2ea819a30fa705fd4e561230c6db9d63385a940fd6a85f648706c1ad2ec11f91",
+      "executedBodySha256": "2ea819a30fa705fd4e561230c6db9d63385a940fd6a85f648706c1ad2ec11f91"
+    },
+    {
+      "version": "20261007095425",
+      "name": "m4a_licensed_authority_substrate",
+      "sourceBodySha256": "d9ecf8024cf2e393e8616ccbe41593b0e1c4b250db10703ad5302fada719f593",
+      "executedBodySha256": "d9ecf8024cf2e393e8616ccbe41593b0e1c4b250db10703ad5302fada719f593"
+    },
+    {
+      "version": "20261007100001",
+      "name": "m4b_licensed_bind",
+      "sourceBodySha256": "d4e124c759b4cdf2f45c1a874fa8c2278a7e598547e002d626a3f2f32aa417d3",
+      "executedBodySha256": "d4e124c759b4cdf2f45c1a874fa8c2278a7e598547e002d626a3f2f32aa417d3"
+    },
+    {
+      "version": "20261010080307",
+      "name": "handlarborsen_marketplace_snapshots",
+      "sourceBodySha256": "ee59a8c936dc0692715e60b1f4ec2e4870681c9433fbde384ff8d1d434441653",
+      "executedBodySha256": "ee59a8c936dc0692715e60b1f4ec2e4870681c9433fbde384ff8d1d434441653"
+    },
+    {
+      "version": "20261011110737",
+      "name": "handlarborsen_guarded_snapshot_store",
+      "sourceBodySha256": "9cef7582c17b5812aac242c6fafa48d9f8d3f1c86122332cea6edc0d22b2fe20",
+      "executedBodySha256": "9cef7582c17b5812aac242c6fafa48d9f8d3f1c86122332cea6edc0d22b2fe20"
+    },
+    {
+      "version": "20261013051724",
+      "name": "atlas_analysis_drafts",
+      "sourceBodySha256": "0582d94689b34e6704c26a830b879741d233ff81a7139bf28ce3642e83000738",
+      "executedBodySha256": "0582d94689b34e6704c26a830b879741d233ff81a7139bf28ce3642e83000738"
+    },
+    {
+      "version": "20261013203916",
+      "name": "omnira_org_memberships_v1",
+      "sourceBodySha256": "ccae70c6a493e49a44aa5aef0ff210298e8b1425570d19f913659600ea8e6fae",
+      "executedBodySha256": "ccae70c6a493e49a44aa5aef0ff210298e8b1425570d19f913659600ea8e6fae"
+    },
+    {
+      "version": "20261014101610",
+      "name": "omnira_collaborator_proposals_v1",
+      "sourceBodySha256": "f3d085130142e7e212dce02ecaa9b6ff8a2dfbdaf026b64a542726db7f704500",
+      "executedBodySha256": "f3d085130142e7e212dce02ecaa9b6ff8a2dfbdaf026b64a542726db7f704500"
+    },
+    {
+      "version": "20261014112755",
+      "name": "website_build_sessions",
+      "sourceBodySha256": "a3a36396a181af89340482f5a51210a65b5fef6f03480651155177d56363fa0b",
+      "executedBodySha256": "a3a36396a181af89340482f5a51210a65b5fef6f03480651155177d56363fa0b"
+    },
+    {
+      "version": "20261014133814",
+      "name": "handlarborsen_competitor_observations_v1",
+      "sourceBodySha256": "244747e5019371f7634129d74da3e546b9133c35c59d4703cd9654f09bc05089",
+      "executedBodySha256": "244747e5019371f7634129d74da3e546b9133c35c59d4703cd9654f09bc05089"
+    },
+    {
+      "version": "20261014185247",
+      "name": "website_build_planning_v1",
+      "sourceBodySha256": "0abd0a7ac17669b8db9bc8fcb3b298d158a1678e157932adfd1911e5765496b4",
+      "executedBodySha256": "0abd0a7ac17669b8db9bc8fcb3b298d158a1678e157932adfd1911e5765496b4"
+    },
+    {
+      "version": "20261015100050",
+      "name": "atlas_builder_studio_workspace",
+      "sourceBodySha256": "4a488c4febcf6f91f239f1ee07687ef36df2b392aaf3788023700376bda38bfa",
+      "executedBodySha256": "4a488c4febcf6f91f239f1ee07687ef36df2b392aaf3788023700376bda38bfa"
+    },
+    {
+      "version": "20261015123510",
+      "name": "atlas_builder_output_allowance_v2",
+      "sourceBodySha256": "64e1944587506cb72db938218fb2fbf0706ee68ee4620bbfe11d133af223f66a",
+      "executedBodySha256": "64e1944587506cb72db938218fb2fbf0706ee68ee4620bbfe11d133af223f66a"
+    },
+    {
+      "version": "20261015160933",
+      "name": "website_saved_draft_worker_protocol",
+      "sourceBodySha256": "11a2b605da712d8a81beafc0773519211b6e959679f369c86c7697624a52c641",
+      "executedBodySha256": "11a2b605da712d8a81beafc0773519211b6e959679f369c86c7697624a52c641"
+    },
+    {
+      "version": "20261015213043",
+      "name": "website_mockup_review",
+      "sourceBodySha256": "516487ed7f2ade1782d5a19aeeda9151109fcce81119634a1505a59b3cc3dd25",
+      "executedBodySha256": "516487ed7f2ade1782d5a19aeeda9151109fcce81119634a1505a59b3cc3dd25"
+    },
+    {
+      "version": "20261016054513",
+      "name": "social_launch_plans_v1",
+      "sourceBodySha256": "21e7d1d3985ab3e37d5f580a082bcac4030d8ebf4831bef18d7e94c60f2ba0be",
+      "executedBodySha256": "21e7d1d3985ab3e37d5f580a082bcac4030d8ebf4831bef18d7e94c60f2ba0be"
+    },
+    {
+      "version": "20261016071026",
+      "name": "social_project_connections_v1",
+      "sourceBodySha256": "fbc20a80dc2cbd84c5a0bed4d3170faa38cc0302e6d4966e35c84911ba8edbf8",
+      "executedBodySha256": "fbc20a80dc2cbd84c5a0bed4d3170faa38cc0302e6d4966e35c84911ba8edbf8"
+    },
+    {
+      "version": "20261016103411",
+      "name": "social_content_preparation_v1",
+      "sourceBodySha256": "638305f235bc453729bc3fd414faf602a536854342220d8e5ade9e34ce40d967",
+      "executedBodySha256": "638305f235bc453729bc3fd414faf602a536854342220d8e5ade9e34ce40d967"
+    },
+    {
+      "version": "20261016123853",
+      "name": "social_project_profiles_v1",
+      "sourceBodySha256": "32ba235a7a7e3d8ec40fe4e552af84b30441c2048312a883b528b666a7371d74",
+      "executedBodySha256": "32ba235a7a7e3d8ec40fe4e552af84b30441c2048312a883b528b666a7371d74"
+    },
+    {
+      "version": "20261016123902",
+      "name": "social_manual_publication_v1",
+      "sourceBodySha256": "7e90994492f3c62493e68cef41f9b515b782204f7beb63ae874a6ba1ee938bf2",
+      "executedBodySha256": "7e90994492f3c62493e68cef41f9b515b782204f7beb63ae874a6ba1ee938bf2"
+    },
+    {
+      "version": "20261016195144",
+      "name": "handlarborsen_competitor_candidates_v1",
+      "sourceBodySha256": "80da3be508a233fc2921da08eba4c69cb62adc62dd06d7cc24c93779eebf4110",
+      "executedBodySha256": "80da3be508a233fc2921da08eba4c69cb62adc62dd06d7cc24c93779eebf4110"
+    },
+    {
+      "version": "20261017084522",
+      "name": "handlarborsen_competitor_review_decisions_v1",
+      "sourceBodySha256": "8574536a660db3173eeefb83d4cb16cbc8c8d9175fdc49f6d98856094cd12f8f",
+      "executedBodySha256": "8574536a660db3173eeefb83d4cb16cbc8c8d9175fdc49f6d98856094cd12f8f"
+    },
+    {
+      "version": "20261017130254",
+      "name": "atlas_sales_pilot",
+      "sourceBodySha256": "7ea3de34909ac582d2534b291b448fb9ba3781c196167c0475fc4e1f2c301ca9",
+      "executedBodySha256": "7ea3de34909ac582d2534b291b448fb9ba3781c196167c0475fc4e1f2c301ca9"
+    },
+    {
+      "version": "20261017151021",
+      "name": "handlarborsen_candidate_inbox_v1",
+      "sourceBodySha256": "e7f3efe782086aa8f818ab071dab7c96ccadde95ec58320e30048bd487fe663c",
+      "executedBodySha256": "e7f3efe782086aa8f818ab071dab7c96ccadde95ec58320e30048bd487fe663c"
+    },
+    {
+      "version": "20261017151718",
+      "name": "sales_managed_host",
+      "sourceBodySha256": "a258d7fc159632564747c9a49c5b48037c8c75726b26859892301127dfbf832a",
+      "executedBodySha256": "a258d7fc159632564747c9a49c5b48037c8c75726b26859892301127dfbf832a"
+    },
+    {
+      "version": "20261017151722",
+      "name": "sales_strato_connection",
+      "sourceBodySha256": "2e3301eb992694901c15904899c586093632dfb2acf91db2474c8447c6243b1e",
+      "executedBodySha256": "2e3301eb992694901c15904899c586093632dfb2acf91db2474c8447c6243b1e"
+    },
+    {
+      "version": "20261017174301",
+      "name": "atlas_local_text",
+      "sourceBodySha256": "5024a72db523f63ce7f42f4a5e0f774d50b34cda9a3f6e6f1c3f698610eba180",
+      "executedBodySha256": "5024a72db523f63ce7f42f4a5e0f774d50b34cda9a3f6e6f1c3f698610eba180"
+    },
+    {
+      "version": "20261017180713",
+      "name": "atlas_local_text_lifecycle",
+      "sourceBodySha256": "d5c1ca9aba0c993a6be27625cfa9852d0eb719be5ccc5eb826bfa95acfd0aba3",
+      "executedBodySha256": "d5c1ca9aba0c993a6be27625cfa9852d0eb719be5ccc5eb826bfa95acfd0aba3"
+    },
+    {
+      "version": "20261017191904",
+      "name": "sales_strato_inbox",
+      "sourceBodySha256": "1013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1",
+      "executedBodySha256": "1013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1"
+    },
+    {
+      "version": "20261018090827",
+      "name": "handlarborsen_test_data_integration",
+      "sourceBodySha256": "05ecd416f91ab653a044166e495d7f6bc5e001eac7faea3761a0558476656e2f",
+      "executedBodySha256": "05ecd416f91ab653a044166e495d7f6bc5e001eac7faea3761a0558476656e2f"
+    },
+    {
+      "version": "20261017193411",
+      "name": "handlarborsen_test_data_reviews",
+      "sourceBodySha256": "b71a8deed4b8467f2ee5b995dd6e4329f31ccf8b69dccf4f340c79910846806c",
+      "executedBodySha256": "b71a8deed4b8467f2ee5b995dd6e4329f31ccf8b69dccf4f340c79910846806c"
+    },
+    {
+      "version": "20261017200436",
+      "name": "handlarborsen_watch_runs_v1",
+      "sourceBodySha256": "687d8cb87f8edf04f15618ed446d14fcae9dd9ebbf979f46b171429b7f7e9691",
+      "executedBodySha256": "687d8cb87f8edf04f15618ed446d14fcae9dd9ebbf979f46b171429b7f7e9691"
+    },
+    {
+      "version": "20261018040242",
+      "name": "sales_reply_preparation",
+      "sourceBodySha256": "7516d8566ae7776086452ff8fdd51058ce34a10ab70973bcdbf4ee14f655a3cc",
+      "executedBodySha256": "7516d8566ae7776086452ff8fdd51058ce34a10ab70973bcdbf4ee14f655a3cc"
+    },
+    {
+      "version": "20261018074615",
+      "name": "sales_reply_sending",
+      "sourceBodySha256": "80158d54a4cc5d7f15901f0ed8e67dc7fa04a8738054e14fb1c7be1cf484e49e",
+      "executedBodySha256": "80158d54a4cc5d7f15901f0ed8e67dc7fa04a8738054e14fb1c7be1cf484e49e"
+    },
+    {
+      "version": "20261018085701",
+      "name": "social_publication_reconciliation",
+      "sourceBodySha256": "6b3eb4f0289e73f0ca0087a32870dee6832be514f8eab4c7bc50d2ebaea18565",
+      "executedBodySha256": "6b3eb4f0289e73f0ca0087a32870dee6832be514f8eab4c7bc50d2ebaea18565"
+    },
+    {
+      "version": "20261018085707",
+      "name": "social_schedule_batches",
+      "sourceBodySha256": "a399284f6c965a2688c32a2a82b793af7f016ba2ad2109f5e0859367875ee6c4",
+      "executedBodySha256": "a399284f6c965a2688c32a2a82b793af7f016ba2ad2109f5e0859367875ee6c4"
+    },
+    {
+      "version": "20261018085708",
+      "name": "social_schedule_checkpoint_recovery",
+      "sourceBodySha256": "3523565e72b42b0d654d47e480d73cc9e342d2329304f73b75bb097b6a23bac6",
+      "executedBodySha256": "3523565e72b42b0d654d47e480d73cc9e342d2329304f73b75bb097b6a23bac6"
+    },
+    {
+      "version": "20261018085733",
+      "name": "social_schedule_review_snapshots",
+      "sourceBodySha256": "281dc56f53fba4fdee10a1e8f73b8b6d9c8293b819f044f7fa878185769cf3e4",
+      "executedBodySha256": "281dc56f53fba4fdee10a1e8f73b8b6d9c8293b819f044f7fa878185769cf3e4"
+    },
+    {
+      "version": "20261018090826",
+      "name": "handlarborsen_metrics_definition",
+      "sourceBodySha256": "1bf12413b39227d13f3a3088ce79411f204b69c8c82d5be6b456cdc7c95ad7fc",
+      "executedBodySha256": "1bf12413b39227d13f3a3088ce79411f204b69c8c82d5be6b456cdc7c95ad7fc"
+    },
+    {
+      "version": "20261018182224",
+      "name": "media_news_review_evidence",
+      "sourceBodySha256": "9cfd8807817878d492814cc29240114c3e3101ac8504651f377f375089b63e52",
+      "executedBodySha256": "9cfd8807817878d492814cc29240114c3e3101ac8504651f377f375089b63e52"
+    },
+    {
+      "version": "20261019073559",
+      "name": "sales_contact_timing",
+      "sourceBodySha256": "8c651b4962445328991f837ff509b7146139921f8437ac2bfd7afbff0af27476",
+      "executedBodySha256": "8c651b4962445328991f837ff509b7146139921f8437ac2bfd7afbff0af27476"
+    },
+    {
+      "version": "20261019102356",
+      "name": "sales_email_copy_versions",
+      "sourceBodySha256": "9832a385ccc84edcee4e905ebd98ce6e6ae3e6aa11b55a731c9ff75975ed8964",
+      "executedBodySha256": "9832a385ccc84edcee4e905ebd98ce6e6ae3e6aa11b55a731c9ff75975ed8964"
+    },
+    {
+      "version": "20261020054803",
+      "name": "user_calendar_v1",
+      "sourceBodySha256": "6bb10d31b39c3733e1646138cda08fc432135abdcfd00cfda6283b9e0d082c4e",
+      "executedBodySha256": "6bb10d31b39c3733e1646138cda08fc432135abdcfd00cfda6283b9e0d082c4e"
+    },
+    {
+      "version": "20261020054828",
+      "name": "user_calendar_recurrence",
+      "sourceBodySha256": "230afaf7e877b262a73a409f034487d316cef2b7dfe2874cec4e4df2b0bd9e34",
+      "executedBodySha256": "230afaf7e877b262a73a409f034487d316cef2b7dfe2874cec4e4df2b0bd9e34"
+    },
+    {
+      "version": "20261022202014",
+      "name": "higgsfield_mcp_readonly",
+      "sourceBodySha256": "ee6ad45fe81e70be10ddc5f86ef9aa357824db1b785bb07b9ebe93e540e7eae5",
+      "executedBodySha256": "ee6ad45fe81e70be10ddc5f86ef9aa357824db1b785bb07b9ebe93e540e7eae5"
+    },
+    {
+      "version": "20261023100303",
+      "name": "atlas_fallback_reservation_ceiling",
+      "sourceBodySha256": "2a6ecad226854eaf34443d607d101ecc37f997367c9f1700aa668e7bfbf91dad",
+      "executedBodySha256": "2a6ecad226854eaf34443d607d101ecc37f997367c9f1700aa668e7bfbf91dad"
+    },
+    {
+      "version": "20261023100514",
+      "name": "atlas_fallback_reservation_locktime",
+      "sourceBodySha256": "b536e52ca2c34cead171250f6aeec7a3b3149de8018c451ec003e2954cba5882",
+      "executedBodySha256": "b536e52ca2c34cead171250f6aeec7a3b3149de8018c451ec003e2954cba5882"
+    }
+  ],
+  "prerequisites": [
+    {
+      "path": "storage-api:v1.79.36/0002-storage-schema.sql",
+      "sha256": "19562682ff1b77cda9ba096671b873e7e226b10f0b0564bd4823e6c1754393b6"
+    },
+    {
+      "path": "storage-api:v1.79.36/0008-add-public-to-buckets.sql",
+      "sha256": "1d881092aea62e83493f1a9c4cb4f101f3035a08d62be84a7e7970ee0c6f0f48"
+    },
+    {
+      "path": "packages/db/full_schema_run_in_supabase.sql",
+      "lfSha256": "986ec4743fb23c2f392fbbb420f12081b2550b02e63d1b203416c75a9a110755"
+    },
+    {
+      "path": "apps/web/supabase/migrations/20260520_media_tables.sql",
+      "lfSha256": "ec1a18ef576352e99d2b38b54da6d2c8db6cb5b409b38e4ece3921135200e07c"
+    },
+    {
+      "path": "apps/web/supabase/migrations/20260520_media_images.sql",
+      "lfSha256": "e1d544a46214f72d09588b66725989c5caf9ef4ce6bb8e53c34c34850264ca58"
+    },
+    {
+      "path": "apps/web/supabase/migrations/20260525_media_scripts_facebook.sql",
+      "lfSha256": "c819e8016268ba8ab662f2d0bc434c54befe1ab2ab1469bc8363df9322b00aa4"
+    },
+    {
+      "path": "apps/web/supabase/migrations/20260525_media_scripts_quality_music.sql",
+      "lfSha256": "71b92bb1a1e473b25ab7ac1127652980f640a64175e1d3c87fb232df33949cf6"
+    },
+    {
+      "path": "apps/web/supabase/migrations/20260527_platform_tokens.sql",
+      "lfSha256": "1dc59764389d9057fdf21e1d1420bce6279c9c6bab77fcf8cefb9b6f1e367272"
+    },
+    {
+      "path": "apps/web/supabase/migrations/20260528_agent_decisions.sql",
+      "lfSha256": "3de952005933051e4a07ef596a4a65e702116da711a805d1270594d7f22e7482"
+    },
+    {
+      "path": "supabase/migrations/20260520_background_music.sql",
+      "lfSha256": "7c82e72f226c901dfc01757d8f87141951019a95b78928d9605abc4da073f0d8"
+    },
+    {
+      "path": "supabase/migrations/20260520_render_columns.sql",
+      "lfSha256": "d20eea131d22da77ed8d9911c078fd935b13c20bf3afb5ab2fd9477321f38223"
+    },
+    {
+      "path": "supabase/migrations/20260521_composition_column.sql",
+      "lfSha256": "45697a7d462328e02b83bb3ac3af767478bdeddfeaebe0f3d7cce283089b4b8f"
+    },
+    {
+      "path": "supabase/migrations/20260522_instagram_columns.sql",
+      "lfSha256": "5120f86021749a052b5b943137f50aa6b52c7dc73705cb9697911c0782c56958"
+    },
+    {
+      "path": "supabase/migrations/20260528_pass_a_safeguards.sql",
+      "lfSha256": "4665ac611487c0d833914c2b2e40de11b2e0433e9ed89d172b9b0e463e4c0c04"
+    },
+    {
+      "path": "supabase/migrations/20260528_pg_cron_setup.sql",
+      "lfSha256": "22569e22cd61cef171ad3be914a02d3e7d013a787304ce6904f09a24218d0967"
+    },
+    {
+      "path": "supabase/migrations/20260530_news_items_dedup.sql",
+      "lfSha256": "03bf61045429c669d65ce71224d683b0092fdae634ac01a1396102cc7976f4d0"
+    },
+    {
+      "path": "supabase/migrations/20260531_pg_cron_competitors.sql",
+      "lfSha256": "6bd1378905fe40a8a44cca6404903ce2d9209fd0213193648c6d86fd86d24db9"
+    },
+    {
+      "path": "supabase/migrations/20260529_comment_replies.sql",
+      "selection": "prefix before SELECT cron.schedule(",
+      "lfSha256": "d48958482da1ab51c1bcefb68f97af8c18c6e14b7b0843e25faa6b7e95a80f7e"
+    },
+    {
+      "path": "apps/web/supabase/migrations/20260601_revenue_os.sql",
+      "selection": "morning_briefings table and its index only; required by declarative_rls_parity",
+      "sourceLfSha256": "f5313ab84c3588d281695c2c289651489e8636759614dc56bc8f34af9d8d1a41",
+      "executedSha256": "b46e013b8e47ddbcd7549e07100dab8d7a187b4d24b4e360acbab81e4b0c501d"
+    },
+    {
+      "path": "apps/web/supabase/migrations/20261024174000_user_calendar_responsibility.sql",
+      "lfSha256": "3d5459f7e6eea60ca2cb1d98ceb823b8ed3a80dce0ca3f534d92b96c605ceb66"
+    },
+    {
+      "path": "apps/web/supabase/migrations/20261024174001_user_calendar_workflow_link.sql",
+      "lfSha256": "8e1244f64af3a3057d662cee41b768ac88634e7ce440c924f934ab830307d914"
+    }
+  ],
+  "exclusions": [
+    {
+      "path": "supabase/migrations/20260529_comment_replies.sql",
+      "reason": "Invalid SELECT ... ON CONFLICT cron suffix, independently observed before any original ledger row. No source mutation.",
+      "sourceLfSha256": "b7ca35d9faf4fd8de49462114a9408e1e638de0c875d41dc409e83af224b8e3d"
+    }
+  ],
+  "failure": null,
+  "fixtureManagedDefaults": "Public-schema future table/sequence/function grants for supabase_admin mirror read-only observed main defaults; Auth namespace usage is test plumbing, not managed Auth equivalence.",
+  "calendarWorkflowLinkCases": 10,
+  "ownerRegressionCases": 16,
+  "calendarResponsibilityCases": 8
+}

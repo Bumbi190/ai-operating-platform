@@ -2,8 +2,9 @@ import {test,expect,type Page} from '@playwright/test'
 const tickets=Array.from({length:5},(_,i)=>'70000000-0000-4000-8000-'+String(i+1).padStart(12,'0'))
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=','base64')
 async function backend(page:Page,options:{enabled?:boolean;lose?:boolean}={}){
- const requests:any[]=[],committed=new Map<string,any>();let lose=options.lose===true
+ const requests:any[]=[],committed=new Map<string,any>(),persisted:any[]=[];let lose=options.lose===true
  let userId='10000000-0000-4000-8000-000000000003',library=tickets
+ await page.route('**/fixture/history',r=>r.fulfill({json:persisted.filter(row=>row.userId===userId).map(({userId:_userId,...row})=>row)}))
  await page.route('**/api/website-build/references/tickets?*',r=>r.fulfill({json:{available:true,canSaveToChat:options.enabled!==false,userId}}))
  await page.route('**/api/website-build/references/library?*',r=>r.fulfill({json:{available:true,items:library.map(ticketId=>({ticketId,assetId:ticketId,issuedAt:'2026-10-30T08:00:00Z'}))}}))
  await page.route('**/api/website-build/references/image?*',r=>r.fulfill({contentType:'image/png',body:png}))
@@ -13,7 +14,8 @@ async function backend(page:Page,options:{enabled?:boolean;lose?:boolean}={}){
   let result=committed.get(key)
   if(!result){result={status:'reference_saved',analysis:'not_started',receipt:{
    messageId:crypto.randomUUID(),projectId:body.studioContext.projectId,conversationId:body.conversation_id,
-   messageSha256:'a'.repeat(64),referenceSha256:'b'.repeat(64),bindingSha256:'c'.repeat(64),imageCount:body.referenceSave.ticketIds.length}};committed.set(key,result)}
+   messageSha256:'a'.repeat(64),referenceSha256:'b'.repeat(64),bindingSha256:'c'.repeat(64),imageCount:body.referenceSave.ticketIds.length}};committed.set(key,result)
+   persisted.push({id:result.receipt.messageId,role:'user',content:body.messages.at(-1).content,tool_data:null,created_at:'2026-10-30T08:00:00Z',userId})}
   if(lose){lose=false;await route.abort('failed');return}
   await route.fulfill({status:202,json:result})
  })
@@ -47,6 +49,7 @@ test('lost response and reload retry one immutable intent without duplicates',as
  expect(api.requests).toHaveLength(2)
  expect(api.requests[1].referenceSave).toEqual(api.requests[0].referenceSave)
  expect(api.committed.size).toBe(1)
+ await expect(page.getByRole('region',{name:'Testchatt'}).getByText('Samma meddelande efter avbrott',{exact:true})).toHaveCount(1)
 })
 test('caps selection at four and supports keyboard selection',async({page})=>{
  await backend(page);await page.goto('/picker')

@@ -45,19 +45,19 @@ export default async function ApprovalsPage({
 
   return (
     <Suspense fallback={<ReviewQueueLoading />}>
-      <LoadedReviewQueue projectSlug={projectSlug} />
+      <LoadedReviewQueue projectSlug={projectSlug} userId={user.id} />
     </Suspense>
   )
 }
 
-async function LoadedReviewQueue({ projectSlug }: { projectSlug: string | null }) {
+async function LoadedReviewQueue({ projectSlug,userId }: { projectSlug: string | null;userId:string }) {
   const model = await loadReviewQueue({ projectSlug })
   return (
     <>
       <Suspense fallback={null}>
         <LoadedCodeWorkReviewQueue projectSlug={projectSlug} />
       </Suspense>
-      <ReviewQueue model={model} />
+      <ReviewQueue model={model} userId={userId} />
     </>
   )
 }

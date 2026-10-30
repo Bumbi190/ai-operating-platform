@@ -1,0 +1,109 @@
+{
+  "kind": "pr514-full-vitest-assertion-name-comparison",
+  "observed_on": "2026-10-22",
+  "environment": "Hultgren Windows, Node 22.22.3, Vitest 2.1.9, one worker per run",
+  "baseline": {
+    "git_sha": "139a45ce199ff73da91a1039f962fe3b3559754d",
+    "files": 681,
+    "failedFiles": 116,
+    "failedTests": 405,
+    "passedTests": 13539,
+    "pendingTests": 1397,
+    "local_result_sha256": "f78d88d5ee487cd0f13ba0f669b6a2f168606af32f8294c4d020743eedd57896"
+  },
+  "feature": {
+    "git_sha": "82d07d6395ebb7bc369b11aacd27e2b18cad445c",
+    "files": 688,
+    "failedFiles": 116,
+    "failedTests": 404,
+    "passedTests": 13613,
+    "pendingTests": 1397,
+    "local_result_sha256": "bc7514e47291f064484932a146d862ec8e59cbbbab86d16aa513df15ff933320"
+  },
+  "shared_files": 681,
+  "added_feature_test_files": [
+    {
+      "file": "lib/qa/higgsfield-client.test.ts",
+      "status": "passed",
+      "failed": 0
+    },
+    {
+      "file": "lib/qa/higgsfield-config.test.ts",
+      "status": "passed",
+      "failed": 0
+    },
+    {
+      "file": "lib/qa/higgsfield-crypto.test.ts",
+      "status": "passed",
+      "failed": 0
+    },
+    {
+      "file": "lib/qa/higgsfield-oauth.test.ts",
+      "status": "passed",
+      "failed": 0
+    },
+    {
+      "file": "lib/qa/higgsfield-routes.test.ts",
+      "status": "passed",
+      "failed": 0
+    },
+    {
+      "file": "lib/qa/higgsfield-settings.test.ts",
+      "status": "passed",
+      "failed": 0
+    },
+    {
+      "file": "lib/qa/higgsfield-store.test.ts",
+      "status": "passed",
+      "failed": 0
+    }
+  ],
+  "missing_feature_test_files": [],
+  "shared_files_same_status_and_failed_assertion_names": 679,
+  "feature_only_failures": [
+    {
+      "file": "lib/qa/platform-authority-closure.test.ts",
+      "tests": [
+        {
+          "name": "A6-2 · the legacy Atlas bug digest is operator diagnostics 1 · unauthenticated → sent to login, and no digest is read",
+          "failure_class": "five_second_timeout"
+        }
+      ]
+    }
+  ],
+  "baseline_only_failures": [
+    {
+      "file": "lib/qa/atlas-pages-isolation.test.ts",
+      "tests": [
+        {
+          "name": "9Q · Atlas Home — the legacy path now scopes every service-role read gatherAtlasContext receives the caller allow-list, so its sources are scoped",
+          "failure_class": "five_second_timeout"
+        },
+        {
+          "name": "9Q · Atlas Home — the legacy path now scopes every service-role read foreign financial and operational data never reaches the page",
+          "failure_class": "five_second_timeout"
+        }
+      ]
+    }
+  ],
+  "explanatory_isolated_rechecks": [
+    {
+      "source": "feature",
+      "file": "lib/qa/platform-authority-closure.test.ts",
+      "filter": "unauthenticated",
+      "result": "3 passed (2 other selected), timeout=20s"
+    },
+    {
+      "source": "baseline",
+      "file": "lib/qa/atlas-pages-isolation.test.ts",
+      "filter": "gatherAtlasContext receives|foreign financial",
+      "result": "2 passed, timeout=20s"
+    }
+  ],
+  "caveats": [
+    "Both full suites have 116 failing files; this is not a blanket green-suite approval.",
+    "Full suite runs were separate sequential Windows runs; timeouts are timing-sensitive.",
+    "Failure comparison matches assertion names and file status, not exact stack traces.",
+    "New generation, live OAuth, Vercel production, and DB migration remain disabled/unverified."
+  ]
+}

@@ -19,6 +19,7 @@ import { collectAttentionItems } from '@/lib/os/attention'
 import { formatEta } from '@/lib/os/priority'
 import type { Project } from '@/lib/supabase/types'
 import { AtlasVoiceHome } from './AtlasVoiceHome'
+import { atlasVoiceConversationEntryEnabled } from '@/lib/atlas/voice-pilot/entry'
 import { NightlyFindings } from '@/components/platform/os/NightlyFindings'
 import { AgenticButton } from '@/components/platform/os'
 import { getMorningBugDigest } from '@/lib/bugs/digest'
@@ -48,15 +49,16 @@ export default async function AtlasHome({ searchParams }: AtlasHomeProps) {
     query: searchParams?.ui,
     cookie: uiCookies.get(OMNIRA_UI_COOKIE)?.value ?? null,
   })
-  if (isVNext(generation)) {
-    const model = await loadAtlasHomeViewModel()
-    if (!model) redirect('/login')
-    return <AtlasHomeVNext model={model} />
-  }
-
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
+
+  if (isVNext(generation)) {
+    const model = await loadAtlasHomeViewModel()
+    if (!model) redirect('/login')
+    return <AtlasHomeVNext model={model} voiceHref={atlasVoiceConversationEntryEnabled(user.email) ? '/atlas/rost' : undefined} />
+  }
+
 
   const db        = createAdminClient()
 
@@ -103,7 +105,7 @@ export default async function AtlasHome({ searchParams }: AtlasHomeProps) {
     <div className="min-h-screen">
 
       {/* ══ VOICE HERO — above the fold ═══════════════════════════════════ */}
-      <AtlasVoiceHome operatorName={OPERATOR_NAME} />
+      <AtlasVoiceHome operatorName={OPERATOR_NAME} voiceHref={atlasVoiceConversationEntryEnabled(user.email) ? '/atlas/rost' : undefined} />
 
       {/* ══ SECONDARY DATA — scroll to see ═══════════════════════════════ */}
       <div className="relative z-10 px-4 lg:px-8 pb-16 space-y-6 max-w-3xl mx-auto">

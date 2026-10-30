@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type RefObject } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { ArrowRight, Mic, MicOff, Square } from 'lucide-react'
+import { ArrowRight, Mic, MicOff, Phone, PhoneOff, Square } from 'lucide-react'
 import { useAtlas, useAtlasAudioLevel } from '@/lib/atlas/runtime'
 import {
   ATLAS_ORB_STATE_CHIP_LABELS,
@@ -12,6 +12,7 @@ import {
 } from '@/lib/atlas/orb-state'
 import { OPERATOR_NAME } from '@/lib/atlas/identity'
 import { AtlasFace } from './AtlasFace'
+import { AtlasResponseMarkdown } from './AtlasResponseMarkdown'
 import styles from './AtlasHomeVNext.module.css'
 
 /**
@@ -37,7 +38,7 @@ function AtlasAudioLevelBridge({ target, override }: { target: RefObject<HTMLEle
  * reads the live runtime once, resolves it through `resolveAtlasOrbState`, and
  * hands the result down; the face and the chip only display it.
  */
-export function AtlasCommandCore({ readOnly = false }: { readOnly?: boolean }) {
+export function AtlasCommandCore({ readOnly = false, voiceHref }: { readOnly?: boolean; voiceHref?: string }) {
   const atlas = useAtlas()
   const searchParams = useSearchParams()
   const coreRef = useRef<HTMLElement>(null)
@@ -45,7 +46,8 @@ export function AtlasCommandCore({ readOnly = false }: { readOnly?: boolean }) {
   const [submitting, setSubmitting] = useState(false)
   const [observerAnswer, setObserverAnswer] = useState('')
   const [observerError, setObserverError] = useState('')
-  const voicePending = atlas.isSessionActive && atlas.voicePhase === 'idle'
+  // A managed call stays active while its microphone is muted; that is not a pending start.
+  const voicePending = !atlas.voiceConversationAvailable && atlas.isSessionActive && atlas.voicePhase === 'idle'
   const busy = submitting || atlas.voicePhase === 'thinking'
   const textBusy = busy || atlas.voicePhase === 'listening' || atlas.voicePhase === 'speaking'
   const runtimeOrbState = resolveAtlasOrbState({
@@ -69,6 +71,12 @@ export function AtlasCommandCore({ readOnly = false }: { readOnly?: boolean }) {
 
   function handleVoiceToggle() {
     if (readOnly) return
+    if (atlas.voiceConversationAvailable) {
+      // The phone always rings/hangs up; voice interruption has its own mute control.
+      if (atlas.isSessionActive) atlas.deactivate()
+      else atlas.activate()
+      return
+    }
     if (atlas.voicePhase === 'speaking') {
       atlas.stopAudio()
       return
@@ -121,13 +129,16 @@ export function AtlasCommandCore({ readOnly = false }: { readOnly?: boolean }) {
     }
   }
 
-  const voiceLabel = atlas.voicePhase === 'listening'
+  const voiceLabel = atlas.voiceConversationAvailable
+    ? atlas.isSessionActive ? 'Lägg på röstsamtalet med Nova' : 'Ring Nova'
+    : atlas.voicePhase === 'listening'
     ? 'Stäng av mikrofonen'
     : atlas.voicePhase === 'speaking' ? 'Avbryt svaret' : voicePending ? 'Avbryt röststart' : 'Starta röstläge'
 
   return (
     <section ref={coreRef} className={styles.commandCore} aria-labelledby="atlas-vnext-title" data-state={orbState}>
       <AtlasAudioLevelBridge target={coreRef} override={previewAudio} />
+      <div className={styles.faceControl}>
       <AtlasFace state={orbState} />
 
       {/* The forehead core is Atlas's own control: it starts and stops voice,
@@ -136,10 +147,13 @@ export function AtlasCommandCore({ readOnly = false }: { readOnly?: boolean }) {
         type="button"
         className={styles.faceCore}
         onClick={handleVoiceToggle}
-        disabled={readOnly || (busy && atlas.voicePhase !== 'speaking')}
-        aria-label={atlas.voicePhase === 'speaking' ? 'Avbryt Atlas svar' : 'Aktivera Atlas röst'}
+        disabled={readOnly || (!atlas.voiceConversationAvailable && busy && atlas.voicePhase !== 'speaking')}
+        aria-label={atlas.voiceConversationAvailable ? voiceLabel
+          : atlas.voicePhase === 'speaking' ? 'Avbryt Atlas svar'
+          : atlas.isSessionActive ? 'Avsluta Atlas röstsamtal' : 'Aktivera Atlas röst'}
         aria-describedby="atlas-state-description"
       />
+      </div>
 
       <div className={styles.identityBlock}>
         <p className={styles.eyebrow}>Hej {OPERATOR_NAME}.</p>
@@ -175,7 +189,10 @@ export function AtlasCommandCore({ readOnly = false }: { readOnly?: boolean }) {
               <span>Atlas</span>
               {atlas.perf ? <span className={styles.performance}>{atlas.perf}</span> : null}
             </div>
-            <p>{readOnly ? observerAnswer : atlas.response}</p>
+            <AtlasResponseMarkdown
+              className={styles.responseMarkdown}
+              text={readOnly ? observerAnswer : atlas.response}
+            />
             {!readOnly && atlas.conversationId && atlas.voicePhase === 'idle' ? (
               <button
                 type="button"
@@ -204,11 +221,13 @@ export function AtlasCommandCore({ readOnly = false }: { readOnly?: boolean }) {
           type="button"
           className={styles.voiceButton}
           onClick={handleVoiceToggle}
-          disabled={busy || readOnly}
+          disabled={(busy && !atlas.voiceConversationAvailable) || readOnly}
           aria-label={readOnly ? 'Röstläge är avstängt för Collaborator' : voiceLabel}
-          data-active={atlas.voicePhase === 'listening' || atlas.voicePhase === 'speaking' || undefined}
+          data-active={atlas.voiceConversationAvailable ? atlas.isSessionActive || undefined : (atlas.voicePhase === 'listening' || atlas.voicePhase === 'speaking' || undefined)}
         >
-          {atlas.voicePhase === 'listening' ? <MicOff size={19} /> : atlas.voicePhase === 'speaking' ? <Square size={16} /> : <Mic size={19} />}
+          {atlas.voiceConversationAvailable
+            ? (atlas.isSessionActive ? <PhoneOff size={19} /> : <Phone size={19} />)
+            : atlas.voicePhase === 'listening' ? <MicOff size={19} /> : atlas.voicePhase === 'speaking' ? <Square size={16} /> : <Mic size={19} />}
         </button>
         <textarea
           value={message}

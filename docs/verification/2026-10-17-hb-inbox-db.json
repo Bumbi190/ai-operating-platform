@@ -1,0 +1,24 @@
+{
+  "image": "public.ecr.aws/supabase/postgres:17.6.1.095",
+  "sqlSha256": "365934e64309c6c925f873463b1b26e5c8dbca1305b0f7eafd3b5dd89f484992",
+  "checks": [
+    "no historical backfill",
+    "exactly two notices for active recipients",
+    "duplicate insertion no-op",
+    "recipient-only read/unread and idempotent replay",
+    "revoked collaborator rejected and not notified",
+    "RLS and FORCE RLS, no policies",
+    "anon SELECT denied",
+    "authenticated INSERT denied",
+    "authenticated RPC denied",
+    "service DELETE denied",
+    "service evidence UPDATE denied",
+    "actual service role insert trigger and owner receipt"
+  ],
+  "productionAccess": false,
+  "version": "PostgreSQL 17.6 on x86_64-pc-linux-gnu, compiled by gcc (GCC) 15.2.0, 64-bit",
+  "finalNoticeCount": 4,
+  "status": "passed",
+  "containerRemoved": true,
+  "finishedAt": "2026-10-17T14:42:00.808Z"
+}

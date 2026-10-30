@@ -83,6 +83,11 @@ describe('actual chat reference save boundary',()=>{
   }
   expect(s.persisted).toBe(0);expect(s.model).toBe(0)
  })
+ it('rejects combining an inline screenshot with a private reference-save intent',async()=>{
+  const r=await post({...body(),image:{mediaType:'image/png',data:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII='}})
+  expect(r.status).toBe(409)
+  expect(s.persisted).toBe(0);expect(s.model).toBe(0);expect(s.writes).toBe(0)
+ })
  it('never falls back to a model after persistence failure',async()=>{
   s.fail=true;const r=await post()
   expect(r.status).toBe(503);expect(JSON.stringify(await r.json())).not.toContain('private provider')

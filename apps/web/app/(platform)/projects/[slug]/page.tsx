@@ -19,6 +19,8 @@ import {
 import { loadHandlarborsenMarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-read'
 import { loadHandlarborsenTraffic } from '@/lib/atlas/project-analytics/handlarborsen-posthog-traffic'
 import { HandlarborsenOverview } from '@/components/platform/vnext/HandlarborsenOverview'
+import { candidateMemoryEnabled, loadCandidateMemory } from '@/lib/atlas/project-analytics/handlarborsen-competitor-memory-service'
+import { candidateReviewEnabled, loadCandidateReviews } from '@/lib/atlas/project-analytics/handlarborsen-candidate-review-service'
 import { HandlarborsenOwnerBrief } from '@/components/platform/vnext/HandlarborsenOwnerBrief'
 import { ProjectCommandCenter, ProjectCommandCenterLoading } from '@/components/platform/vnext/ProjectCommandCenter'
 import { OMNIRA_UI_COOKIE, isVNext, resolveUiGeneration } from '@/lib/ui/generation'
@@ -105,6 +107,10 @@ async function LoadedHandlarborsenCommandCenter({
   }
   const traffic =
     result.status === 'ok' ? await loadHandlarborsenTraffic(project, { allowedProjectIds: [project.id] }) : null
+  const candidateMemoryFlag = candidateMemoryEnabled()
+  const candidateMemory = result.status === 'ok' && candidateMemoryFlag ? await loadCandidateMemory() : null
+  const reviewFlag = candidateReviewEnabled()
+  const reviews = result.status === 'ok' && reviewFlag ? await loadCandidateReviews() : null
   const overview =
     result.status === 'ok' ? (
       <HandlarborsenOverview
@@ -114,6 +120,11 @@ async function LoadedHandlarborsenCommandCenter({
         now={now}
         projectSlug={project.slug}
         analysisSelectors={analysisSelectors}
+        candidateMemory={candidateMemory}
+        candidateMemoryEnabled={candidateMemoryFlag}
+        candidateReviews={reviews}
+        candidateReviewEnabled={reviewFlag}
+        candidateAudience="owner"
       />
     ) : undefined
   const briefing = result.status === 'ok' ? <HandlarborsenOwnerBrief model={model} report={result.report} /> : undefined

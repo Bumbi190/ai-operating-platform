@@ -27,8 +27,11 @@
  * in this file computes a limit — it forwards a verdict, which is what keeps
  * exactly one budget authority.
  *
- * ── ADVISORY BY DEFAULT ────────────────────────────────────────────────────
- * `H1_SPEND_GATE` (default OFF) decides whether a refusal is HONOURED. SQL always
+ * ── ADVISORY BY DEFAULT FOR BUDGET POLICY ──────────────────────────────────
+ * `H1_SPEND_GATE` (default OFF) controls budget ceiling enforcement only.
+ * A replay refusal is ALWAYS hard, because it may refer to a live reservation
+ * owned by a different caller; no replay state may authorize a second dispatch.
+ * SQL always
  * returns the honest verdict and always records the reservation, so advisory mode
  * produces real accounting instead of a guess about what would have happened, and
  * enforcement is later a flag flip with no schema or code change. This matters
@@ -103,12 +106,24 @@ export interface SpendVerdict {
   bindingScope: BudgetScope | null
 }
 
+/** Reusing an idempotency key never grants a second provider dispatch. */
+const REPLAY_REFUSALS: readonly SpendRefusal[] = [
+  'replay_in_flight', 'replay_stale', 'replay_settled',
+  'replay_released', 'replay_identity_mismatch',
+]
+
+export function isReplayRefusal(reason: SpendVerdict['reason']): boolean {
+  return (REPLAY_REFUSALS as readonly string[]).includes(reason)
+}
+
 function verdict(p: Partial<SpendVerdict> & { wouldAllow: boolean; reason: SpendVerdict['reason'] }): SpendVerdict {
   const enforced = isSpendGateEnforced()
+  // Dispatch safety is never advisory: a replay may name another live caller's reservation.
+  const hardRefusal = isReplayRefusal(p.reason)
   return {
-    allowed: p.wouldAllow || !enforced,
+    allowed: !hardRefusal && (p.wouldAllow || !enforced),
     wouldAllow: p.wouldAllow,
-    advisoryOverride: !p.wouldAllow && !enforced,
+    advisoryOverride: !p.wouldAllow && !enforced && !hardRefusal,
     reason: p.reason,
     reservationId: p.reservationId ?? null,
     budgetSek: p.budgetSek ?? null,

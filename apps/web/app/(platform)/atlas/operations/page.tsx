@@ -13,6 +13,8 @@ import { getAllowedProjectIds } from '@/lib/atlas/isolation'
 import { redirect } from 'next/navigation'
 import { OSPage, OSLayer } from '@/components/platform/os'
 import { getOperations } from '@/lib/atlas/operations'
+import { readInstagramGrowthPanels } from '@/lib/content-growth/instagram-read'
+import { InstagramGrowthCard } from './InstagramGrowthCard'
 import { LiveRefresh } from '../activity/LiveRefresh'
 import {
   Clapperboard, Clock, Loader2, Send, CheckCircle2, XCircle, Eye,
@@ -39,7 +41,10 @@ export default async function AtlasOperations() {
 
   const db = createAdminClient()
   const allowedProjectIds = await getAllowedProjectIds(db, user.id)
-  const o = await getOperations(db, allowedProjectIds)
+  const [o, instagramGrowth] = await Promise.all([
+    getOperations(db, allowedProjectIds),
+    readInstagramGrowthPanels(db, allowedProjectIds),
+  ])
 
   const promptAttention = o.prompt.failed24h > 0
   const sysAttention    = o.system.stuckWorkflows > 0 || o.system.failedWorkflows > 0
@@ -74,6 +79,7 @@ export default async function AtlasOperations() {
           <Metric icon={Eye} color="text-red-400"   label="YouTube-visningar"   value={nf(o.prompt.views.youtube)} />
           <Metric icon={Eye} color="text-blue-400"  label="Facebook-visningar"  value={nf(o.prompt.views.facebook)} />
         </div>
+        <InstagramGrowthCard panel={instagramGrowth['the-prompt']} />
         {o.prompt.latestPublished && (
           <div className="rounded-xl border border-border bg-card p-4 flex items-start gap-3">
             <Clapperboard className="w-4 h-4 text-[rgb(var(--os-accent-tint-rgb))] mt-0.5 shrink-0" />
@@ -101,6 +107,7 @@ export default async function AtlasOperations() {
           <Metric icon={XCircle}    color={(o.familje.churnRatePct ?? 0) > 0 ? 'text-red-400' : 'text-secondary'} label="Churn" value={o.familje.churnRatePct === null ? '—' : `${o.familje.churnRatePct}%`} />
           <Metric icon={Sparkles}   color="text-yellow-400"  label="Leads" value={nf(o.familje.leads)} />
         </div>
+        <InstagramGrowthCard panel={instagramGrowth['familje-stunden']} />
       </OSLayer>
 
       {/* ── GAINPILOT ──────────────────────────────────────────────────────── */}

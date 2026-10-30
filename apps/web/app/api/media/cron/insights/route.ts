@@ -28,6 +28,7 @@ import {
 } from '@/lib/media/insights'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { detectAndStoreOpportunities } from '@/lib/atlas/opportunities'
+import { refreshSocialPublicationInstagramInsights } from '@/lib/media/social-publication-insights'
 import { redactSecrets } from '@/lib/media/meta-errors'
 
 export const dynamic     = 'force-dynamic'
@@ -62,6 +63,15 @@ export async function GET(request: Request) {
     }
   }
 
+  // OPTIONAL rollout, disabled by default. Existing insights AND Atlas
+  // opportunity generation always run first; the new reader uses only the
+  // remaining budget and can never starve those established workflows.
+  const socialPublicationInsights = process.env.OMNIRA_SOCIAL_PUBLICATION_INSIGHTS_ENABLED !== 'true'
+    ? { status: 'disabled' as const, attempted: 0, written: 0 }
+    : Date.now() - startedAt >= INSIGHTS_OPPORTUNITIES_BUDGET_MS - 28_000
+      ? { status: 'time_budget_exhausted' as const, attempted: 0, written: 0 }
+      : await refreshSocialPublicationInstagramInsights({ deadlineAt: startedAt + INSIGHTS_OPPORTUNITIES_BUDGET_MS })
+
   const opportunitiesRan = 'detected' in opportunities
   const ok = result.complete && opportunitiesRan
   const sections = result.sections
@@ -71,11 +81,12 @@ export async function GET(request: Request) {
     `[cron/insights] ok=${ok} complete=${result.complete} seconds=${Math.round((Date.now() - startedAt) / 1000)}`
     + ` sections=${sections || 'none'}`
     + ` opportunities=${opportunitiesRan ? 'ran' : Object.keys(opportunities)[0]}`
+    + (socialPublicationInsights.status === 'disabled' ? '' : ` social_publication_insights=${socialPublicationInsights.status}:${socialPublicationInsights.written}/${socialPublicationInsights.attempted}`)
     + (result.bindingsUnreadable ? ' bindings=unreadable' : ''),
   )
 
   return NextResponse.json(
-    { ...result, firstError: result.firstError ? redactSecrets(result.firstError) : undefined, ok, opportunities },
+    { ...result, firstError: result.firstError ? redactSecrets(result.firstError) : undefined, ok, opportunities, socialPublicationInsights },
     { status: ok ? 200 : 503 },
   )
 }

@@ -5,6 +5,10 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { formatDistanceToNow } from 'date-fns'
 import { sv } from 'date-fns/locale/sv'
+import {LocalTextApprovalCard} from './LocalTextApprovalCard'
+import {ReviewContentPreview} from '@/components/review-content/ReviewContentPreview'
+import {deriveStoredReviewContent} from '@/lib/review-content/review-queue-adapter'
+import {useReviewSession} from '@/lib/review-content/use-review-session'
 import type { ReviewItem, ReviewQueueModel } from '@/lib/os/review-queue'
 import {
   BLOCKED_REASONS,
@@ -35,7 +39,8 @@ import styles from './ReviewQueue.module.css'
  * only. The shell keeps Esc, the palette and every global binding it already
  * owns, and every action here is reachable by Tab and a button.
  */
-export function ReviewQueue({ model }: { model: ReviewQueueModel }) {
+export function ReviewQueue({ model,userId }: { model: ReviewQueueModel;userId?:string }) {
+  const sessionActive=useReviewSession(userId)
   const first = model.queue[0] ?? model.archive[0] ?? null
   const [selectedId, setSelectedId] = useState<string | null>(first?.id ?? null)
   const [detailOpen, setDetailOpen] = useState(false)
@@ -69,6 +74,7 @@ export function ReviewQueue({ model }: { model: ReviewQueueModel }) {
     listRef.current?.querySelector<HTMLElement>(`[data-item-id="${target.id}"]`)?.focus()
   }, [ordered, selectedId])
 
+  if(!sessionActive)return <p role="status">Sessionen har ändrats. Läs om sidan för att öppna rätt granskningar.</p>
   return (
     <div className={styles.field} data-detail={detailOpen ? 'open' : 'closed'}>
       <div className={styles.ambient} aria-hidden />
@@ -152,7 +158,7 @@ export function ReviewQueue({ model }: { model: ReviewQueueModel }) {
               Detaljer {UNREADABLE_LABEL.toLowerCase()}.
             </p>
           ) : selected ? (
-            <Inspector item={selected} onClose={() => setDetailOpen(false)} />
+            <Inspector key={selected.id} item={selected} onClose={() => setDetailOpen(false)} />
           ) : (
             <p className={styles.note} role="note">Välj en granskning för att se detaljer.</p>
           )}
@@ -230,6 +236,7 @@ function StatusChip({ item }: { item: ReviewItem }) {
 }
 
 function Inspector({ item, onClose }: { item: ReviewItem; onClose: () => void }) {
+  if(item.kind==='local_text_review'||item.kind==='local_text_incident')return <section><button onClick={onClose}>Stäng</button><LocalTextApprovalCard key={item.id} approvalId={item.id} kind={item.kind} status={item.status}/></section>
   return (
     <div className={styles.detail}>
       <div className={styles.detailHead}>
@@ -277,7 +284,7 @@ function Inspector({ item, onClose }: { item: ReviewItem; onClose: () => void })
         <h3 className={styles.blockTitle}>Innehåll</h3>
         {item.content.trim() === ''
           ? <p className={styles.note} role="note">Inget lagrat innehåll.</p>
-          : <pre className={styles.content}>{item.content}</pre>}
+          : <ReviewContentPreview content={item.preview??deriveStoredReviewContent({kind:item.kind,outputKey:item.outputKey,content:item.content,projectId:item.project?.id??null})}/>}
       </section>
 
       {item.reviewerNotes ? (

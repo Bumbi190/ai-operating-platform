@@ -1,0 +1,13 @@
+# Human approval and start of one story job
+
+User explicitly requests execution approval and start from the calendar. Implement a narrowly scoped one-shot human path, consistent with the autonomy-license domain's distinction between unattended authority and individually human-authorized work. Keep the automatic story policy unsupported and licensed-bind V1 unchanged. Do not classify paid work as an exempt observation or operator assistance.
+
+Server prepares an immutable request for the exact owned monthly-release v2 instance at content_generation. It pins canonical action/evidence identity, brief and prompt hashes, Anthropic provider, the compiled story model, 4096 output-token limit and a hard maximum SEK reservation derived from the existing token-window price book. Preparation creates only a pending authorization and a 15-minute review snapshot. Client supplies no authority, model, target or price.
+
+The human reads the summary and presses Godkänn och starta. An authenticated-only RPC derives auth.uid, rechecks ownership/instance, locks in instance → request → project → authorization order, creates the grant and one pending run plus distinctly labelled immutable human provenance in one transaction, and enforces a commit-time expiry and conservative Survival proof/fence. It cannot create an autonomy licence. Same request replay returns the same run even after terminal completion. Concurrent different requests cannot start a second active or unreconciled story run. Revocation uses the existing authorization ledger.
+
+Existing worker claims/executor/fencing/stop/spend/outcome/evidence machinery executes the job; no provider executes in the approval HTTP request. Readiness derives the scope-bound target anew and checks the live execution grant. A changed price ceiling above the human-approved maximum refuses before spend/dispatch. Normal action binding remains unsupported for story; only a real human-grant provenance can identify this path.
+
+No hosted migration, deployment or real paid generation is performed while implementing. Validate SQL on isolated PostgreSQL with forged role/owner, expiry, drift, rollback/replay/concurrency tests; exercise worker/provider offline, and browser-test explicit approval and receipt. Existing legacy/v1 instances are not upgraded.
+
+Implementation choice: distinct human request/provenance tables and a small extension to the bound-run provenance guard, rather than changing the autonomy licence vocabulary or duplicating the executor. This is a larger prerequisite than the previous preview; prepare/start and consent enforcement ship together locally, with deployment and live acceptance outstanding.

@@ -20,6 +20,9 @@ const DIRECT_NAV = /^(öppna|open|gå till|go to|navigera till|navigate to|ta mi
 // "show/visa" är navigering OM det inte är en fråga om HUR man gör något
 // ("show me how", "visa hur", "how do I…") — då är det inte en vy-öppning.
 const SHOW_NAV = /^(visa|show)\b/
+// Natural spoken collaborative requests are still explicit navigation commands.
+// E.g. "Jag vill att vi går in på Handlarbörsen och analyserar statistiken".
+const COLLABORATIVE_NAV = /^(?:jag vill(?: gärna)? att vi|jag skulle vilja att vi|kan vi|ska vi|låt oss)\s+(?:gå|går|öppna|öppnar)\s+(?:in\s+)?(?:på|till)?\s*\S+/i
 const SHOW_NOT_NAV = /^(visa|show)\s+(me\s+how|how|hur|mig\s+hur)\b/
 
 /**
@@ -30,7 +33,7 @@ const SHOW_NOT_NAV = /^(visa|show)\s+(me\s+how|how|hur|mig\s+hur)\b/
 export function isNavIntent(text: string): boolean {
   const t = (text ?? '').trim().toLowerCase().replace(POLITE_PREFIX, '')
   if (!t) return false
-  if (DIRECT_NAV.test(t)) return true
+  if (DIRECT_NAV.test(t) || COLLABORATIVE_NAV.test(t)) return true
   if (SHOW_NAV.test(t) && !SHOW_NOT_NAV.test(t)) return true
   return false
 }

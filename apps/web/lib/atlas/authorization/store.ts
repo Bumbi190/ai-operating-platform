@@ -53,6 +53,17 @@ const COLS = [
   'conditions', 'evidence', 'expires_at', 'superseded_by', 'reason',
 ].join(', ')
 
+/** Internal worker read using its trusted DB handle. Unlike principal-read,
+ * this does not infer a browser principal. Callers must FIRST prove an owned,
+ * immutable run/approval scope; this is never an HTTP authorization reader.
+ */
+export async function readRunBoundAuthorizationHistory(db:AnyDb,authorizationId:string):Promise<AuthorizationEvent[]>{
+  const {data,error}=await db.from('atlas_authorizations').select(COLS).eq('authorization_id',authorizationId)
+    .order('occurred_at',{ascending:true}).order('event_id',{ascending:true})
+  if(error)throw new Error('Run-bound authorization history unavailable')
+  return ((data??[]) as Row[]).map(rowToEvent)
+}
+
 function rowToEvent(row: Row): AuthorizationEvent {
   return {
     eventId:         row.event_id,

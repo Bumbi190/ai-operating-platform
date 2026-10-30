@@ -369,11 +369,12 @@ describe('an action can exempt only its OWN check', () => {
     // Exactly one source of the exemption, and it takes the action kind.
     expect(gate).toMatch(/checkAnsweredBy\(input\.actionKind\)/)
     expect(gate.match(/checkAnsweredBy\(/g)).toHaveLength(1)
-    // `input` is read EXACTLY once in the whole gate, and that read is
-    // actionKind. A cast such as `(input as {...}).exemptCheckKey` is caught by
+    // Both caller reads are actionKind (own output and closed story policy).
+    // A cast such as `(input as {...}).exemptCheckKey` is caught by
     // this even though it does not literally spell `input.exempt`.
     const inputReads = gate.match(/\binput\b/g) ?? []
-    expect(inputReads).toHaveLength(1)
+    expect(inputReads).toHaveLength(2)
+    expect(gate.match(/input\.actionKind/g)).toHaveLength(2)
     expect(gate).toMatch(/checkAnsweredBy\(input\.actionKind\)/)
   })
 
@@ -388,9 +389,9 @@ describe('an action can exempt only its OWN check', () => {
     expect(from, 'step 7 must exist').toBeGreaterThan(-1)
     expect(end, 'step 8 must bound the slice').toBeGreaterThan(-1)
     const gate = src.slice(from, from + end)
-    // The blocking list is unmet MINUS the single self-answered key, and the
-    // refusal is still driven by it being non-empty.
-    expect(gate).toMatch(/const blocking = unmet\.filter\(v => v\.check_key !== selfAnswered\)/)
+    // The blocking list excludes only the own output and canonical deferred
+    // story outputs; refusal still depends on the remaining list.
+    expect(gate).toContain('const blocking = unmet.filter(v => v.check_key !== selfAnswered && !deferredOutputs.includes(v.check_key))')
     expect(gate).toMatch(/if \(blocking\.length > 0\)/)
     // Never a blanket bypass.
     expect(gate).not.toMatch(/unmet\s*=\s*\[\]/)

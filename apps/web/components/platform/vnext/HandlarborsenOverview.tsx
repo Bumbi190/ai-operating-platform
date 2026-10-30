@@ -1,15 +1,20 @@
+import Link from 'next/link'
 import type { AnalysisRuleId, SaveSelector } from '@/lib/atlas/project-analytics/analysis-review-contract'
 import type { MarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-report'
 import { buildHandlarborsenOverview } from '@/lib/atlas/project-analytics/handlarborsen-overview'
 import { KpiOverview, KpiOverviewNote } from './KpiOverview'
 import { HandlarborsenVisualPulse } from './HandlarborsenVisualPulse'
 import { HandlarborsenInsights } from './HandlarborsenInsights'
+import { HandlarborsenWorkflowDrafts } from './HandlarborsenWorkflowDrafts'
 import { HandlarborsenTrends } from './HandlarborsenTrends'
 import { HandlarborsenPosthogTraffic } from './HandlarborsenPosthogTraffic'
 import { HandlarborsenExecutiveSummary } from './HandlarborsenExecutiveSummary'
 import styles from './HandlarborsenExecutiveSummary.module.css'
 import { AnalysisDraftHistoryLink } from './AnalysisDraftHistoryLink'
 import type { HandlarborsenTraffic } from '@/lib/atlas/project-analytics/handlarborsen-posthog-traffic'
+import type { CandidateMemoryLoad } from '@/lib/atlas/project-analytics/handlarborsen-competitor-memory-service'
+import type { CandidateReviewLoad } from '@/lib/atlas/project-analytics/handlarborsen-candidate-review-service'
+import { HandlarborsenCandidateReviewNotice } from './HandlarborsenCandidateReviewNotice'
 
 /**
  * Handlarbörsen-specific composition on the project Command Center.
@@ -24,12 +29,22 @@ export function HandlarborsenOverview({
   traffic,
   projectSlug,
   analysisSelectors,
+  candidateMemory = null,
+  candidateMemoryEnabled = false,
+  candidateReviews = null,
+  candidateReviewEnabled = false,
+  candidateAudience = 'owner',
   now = new Date(),
 }: {
   report: MarketplaceReport
   reportHref: string | null
   projectSlug?: string
   analysisSelectors?: Partial<Record<AnalysisRuleId, SaveSelector>>
+  candidateMemory?: CandidateMemoryLoad | null
+  candidateMemoryEnabled?: boolean
+  candidateReviews?: CandidateReviewLoad | null
+  candidateReviewEnabled?: boolean
+  candidateAudience?: 'owner' | 'collaborator'
   traffic?: HandlarborsenTraffic | null
   now?: Date
 }) {
@@ -41,18 +56,32 @@ export function HandlarborsenOverview({
     reportLabel: 'Fullständig statistikrapport',
     prominent: true,
   }
+  // Scope this shortcut to Handlarbörsen's own overview, not shared project navigation.
+  const communicationShortcut = projectSlug === 'handlarborsen' ? (
+    <nav className="mb-4 flex justify-end px-1" aria-label="Handlarbörsens kommunikation">
+      <Link href="/projects/handlarborsen/communications"
+        className="inline-flex rounded-xl border border-sky-400/25 bg-sky-400/10 px-4 py-2 text-sm font-semibold text-sky-200 transition-colors hover:bg-sky-400/20">
+        Kommunikation · inkorg och AI-svar
+      </Link>
+    </nav>
+  ) : null
 
   if (model.kind === 'note') {
     return (
       <>
+        {communicationShortcut}
+        <HandlarborsenCandidateReviewNotice memory={candidateMemory} enabled={candidateMemoryEnabled} audience={candidateAudience} reviews={candidateReviews} reviewEnabled={candidateReviewEnabled} />
         <KpiOverviewNote {...common} title={model.title} text={model.text} tone={model.tone} />
         {traffic && <HandlarborsenPosthogTraffic traffic={traffic} />}
         {projectSlug && <AnalysisDraftHistoryLink projectSlug={projectSlug} />}
+        <HandlarborsenWorkflowDrafts report={report} now={now} />
       </>
     )
   }
   return (
     <>
+      {communicationShortcut}
+      <HandlarborsenCandidateReviewNotice memory={candidateMemory} enabled={candidateMemoryEnabled} audience={candidateAudience} reviews={candidateReviews} reviewEnabled={candidateReviewEnabled} />
       <HandlarborsenExecutiveSummary report={report} model={model} traffic={traffic} now={now} />
       <HandlarborsenTrends report={report} />
       {traffic && <HandlarborsenPosthogTraffic traffic={traffic} />}
@@ -80,6 +109,7 @@ export function HandlarborsenOverview({
             projectSlug={projectSlug}
             analysisSelectors={analysisSelectors}
           />
+          <HandlarborsenWorkflowDrafts report={report} now={now} />
           {projectSlug && <AnalysisDraftHistoryLink projectSlug={projectSlug} />}
         </div>
       </details>

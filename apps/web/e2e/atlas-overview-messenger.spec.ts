@@ -66,7 +66,7 @@ async function setup(page: Page, denied = false) {
     }
   }
 }
-test('opening is quiet, three controls and double send makes one turn', async ({
+test('opening is quiet, four controls and double send makes one turn', async ({
   page
 }) => {
   const state = await setup(page)
@@ -74,7 +74,8 @@ test('opening is quiet, three controls and double send makes one turn', async ({
   const panel = page.getByRole('dialog', { name: 'Atlas chatt' }),
     editor = panel.getByRole('textbox')
   await expect(editor).toBeFocused()
-  await expect(panel.getByRole('button')).toHaveCount(3)
+  await expect(panel.getByRole('button')).toHaveCount(4)
+  await expect(panel.getByRole('button', {name:'Bifoga bild'})).toBeVisible()
   expect(state.requests).toHaveLength(0)
   expect(await page.evaluate(() => (window as any).micStarts)).toBe(0)
   await editor.fill('Hej')
@@ -544,4 +545,128 @@ test('long live transcript scrolls without hiding the composer', async ({page}) 
   await page.getByRole('button', {name: 'Avsluta samtal'}).click()
   await editor.fill('Text efter samtalet')
   await expect(editor).toHaveValue('Text efter samtalet')
+})
+
+for(const width of [390,1280])for(const entry of ['panel','hotkey'] as const)test('live global voice '+entry+' opens persistent conversation without legacy recognition at '+width,async({page})=>{
+ await setup(page)
+ await page.setViewportSize({width,height:844})
+ await page.goto('/dashboard?voice-live=1')
+ await page.getByRole('button',{name:'Öppna Atlas',exact:true}).click()
+ await expect(page.getByRole('dialog',{name:'Atlas chatt'}).getByRole('textbox')).toBeFocused()
+ if(entry==='panel'){
+  const panel=page.getByRole('dialog',{name:'Atlas chatt'})
+  await panel.getByRole('textbox').fill('Behåll mitt utkast.')
+  await panel.getByRole('button',{name:'Starta samtal',exact:true}).click()
+ }else await page.keyboard.press('Alt+Space')
+ await expect(page).toHaveURL(/\/dashboard\?voice-live=1$/)
+ await expect(page.getByRole('complementary',{name:'Pågående röstsamtal med Atlas'})).toBeVisible()
+ await expect(page.getByRole('dialog',{name:'Atlas chatt'})).toBeHidden()
+ expect(await page.evaluate(()=>(window as any).micStarts)).toBe(0)
+ await page.getByRole('complementary',{name:'Pågående röstsamtal med Atlas'}).getByRole('button',{name:'Lägg på'}).click()
+ if(entry==='panel'){
+  await page.getByRole('button',{name:'/projects/test-project',exact:true}).click()
+  await expect(page.getByRole('dialog',{name:'Atlas chatt'}).getByRole('textbox')).toHaveValue('Behåll mitt utkast.')
+ }
+})
+test('live global voice read-only hotkey cannot start either voice engine',async({page})=>{
+ await setup(page);await page.goto('/dashboard?voice-live=1&role=collaborator')
+ await page.getByRole('button',{name:'Öppna Atlas',exact:true}).click()
+ await expect(page.getByRole('dialog',{name:'Atlas chatt'}).getByRole('textbox')).toBeFocused()
+ await page.keyboard.press('Alt+Space')
+ await expect(page).toHaveURL(/dashboard\?voice-live=1&role=collaborator$/)
+ expect(await page.evaluate(()=>(window as any).micStarts)).toBe(0)
+})
+
+for (const width of [320, 390, 420]) {
+  test('mobile composer keeps a usable full-width editor and icon attachment at ' + width, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 })
+    await setup(page)
+    await page.getByRole('button', { name: 'Öppna Atlas' }).click()
+    const panel = page.getByRole('dialog', { name: 'Atlas chatt' })
+    const editor = panel.getByRole('textbox', { name: 'Skriv till Atlas' })
+    const attach = panel.getByRole('button', { name: 'Bifoga bild' })
+    const picker = panel.locator('input[type="file"]')
+    await expect(attach).toBeVisible()
+    await expect(picker).toBeHidden()
+    await expect(panel.getByText('Välj fil', { exact: false })).toHaveCount(0)
+    const inputBox = await editor.boundingBox()
+    const attachBox = await attach.boundingBox()
+    const sendBox = await panel.getByRole('button', { name: 'Skicka', exact: true }).boundingBox()
+    const callBox = await panel.getByRole('button', { name: 'Starta samtal' }).boundingBox()
+    const panelBox = await panel.boundingBox()
+    expect(inputBox).not.toBeNull()
+    expect(inputBox!.width).toBeGreaterThanOrEqual(width === 320 ? 120 : 160)
+    expect(attachBox!.x + attachBox!.width).toBeLessThanOrEqual(inputBox!.x)
+    expect(inputBox!.x + inputBox!.width).toBeLessThanOrEqual(sendBox!.x)
+    expect(callBox!.x + callBox!.width).toBeLessThanOrEqual(panelBox!.x + panelBox!.width)
+    await editor.fill('Ett längre testmeddelande som ska gå att skriva utan att hela chattrutan blir en väldigt smal kolumn och utan synligt filfält.')
+    const after = await editor.boundingBox()
+    expect(after!.width).toBeGreaterThanOrEqual(inputBox!.width - 1)
+    expect(after!.height).toBeGreaterThan(40)
+    expect(after!.y + after!.height).toBeLessThanOrEqual(panelBox!.y + panelBox!.height)
+  })
+}
+
+test('mini chat image attachment uses icon picker and removable preview', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await setup(page)
+  await page.getByRole('button', { name: 'Öppna Atlas' }).click()
+  const panel = page.getByRole('dialog', { name: 'Atlas chatt' })
+  const send = panel.getByRole('button', { name: 'Skicka', exact: true })
+  const filePicker = panel.locator('input[type="file"]')
+  await expect(send).toBeDisabled()
+  await filePicker.setInputFiles({
+    name: 'tiny.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/nXUAAAAASUVORK5CYII=', 'base64')
+  })
+  await expect(panel.getByRole('img', { name: 'Bifogad bild' })).toBeVisible()
+  await expect(panel.getByText('Bild bifogad')).toBeVisible()
+  await expect(send).toBeEnabled()
+  await panel.getByRole('button', { name: 'Ta bort bifogad bild' }).click()
+  await expect(panel.getByRole('img', { name: 'Bifogad bild' })).toHaveCount(0)
+  await expect(send).toBeDisabled()
+  await expect(panel.getByRole('button', { name: 'Bifoga bild' })).toBeVisible()
+})
+
+test('mini chat editor remains wide with simulated mobile keyboard open', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await setup(page)
+  await page.getByRole('button', { name: 'Öppna Atlas' }).click()
+  await page.evaluate(() => {
+    const viewport = Object.assign(new EventTarget(), {
+      offsetLeft: 0, offsetTop: 260, width: 390, height: 300
+    })
+    Object.defineProperty(window, 'visualViewport', { value: viewport, configurable: true })
+    window.dispatchEvent(new Event('resize'))
+  })
+  const panel = page.getByRole('dialog', { name: 'Atlas chatt' })
+  const input = panel.getByRole('textbox', { name: 'Skriv till Atlas' })
+  await input.fill('Jag skriver när tangentbordet är öppet på mobilen')
+  const outer = await panel.boundingBox()
+  const inner = await input.boundingBox()
+  expect(inner!.width).toBeGreaterThan(160)
+  expect(inner!.y).toBeGreaterThanOrEqual(outer!.y)
+  expect(inner!.y + inner!.height).toBeLessThanOrEqual(outer!.y + outer!.height)
+  await expect(panel.getByRole('button', { name: 'Bifoga bild' })).toBeVisible()
+})
+
+test('mobile image-only message preserves the existing upload payload', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  const state = await setup(page)
+  await page.getByRole('button', { name: 'Öppna Atlas' }).click()
+  const panel = page.getByRole('dialog', { name: 'Atlas chatt' })
+  await panel.locator('input[type="file"]').setInputFiles({
+    name: 'photo.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/nXUAAAAASUVORK5CYII=', 'base64')
+  })
+  await expect(panel.getByRole('button', { name: 'Skicka', exact: true })).toBeEnabled()
+  await panel.getByRole('button', { name: 'Skicka', exact: true }).click()
+  await expect(panel).toContainText('hela det strömmade svaret')
+  const turns = state.requests.filter(x => x.url === '/api/chat')
+  expect(turns).toHaveLength(1)
+  expect(turns[0].body.image).toMatchObject({ mediaType: 'image/png' })
+  expect(turns[0].body.image.data.length).toBeGreaterThan(20)
+  await expect(panel.getByRole('img', { name: 'Bifogad bild' })).toHaveCount(0)
 })

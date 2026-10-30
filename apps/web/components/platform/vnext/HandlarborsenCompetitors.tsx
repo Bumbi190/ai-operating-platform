@@ -1,3 +1,6 @@
+import { HandlarborsenWeeklyReport } from './HandlarborsenWeeklyReport'
+import { HandlarborsenWatchReadiness } from './HandlarborsenWatchReadiness'
+import type { WatchReadinessLoad } from '@/lib/atlas/project-analytics/handlarborsen-watch-readiness-service'
 import { DOSSIER_DATE, EVIDENCE, STATUS_LABELS, summarizeScan, type PublicScan } from '@/lib/atlas/project-analytics/handlarborsen-competitors'
 import { HandlarborsenLandscape } from './HandlarborsenLandscape'
 import { HandlarborsenCompetitorHistory } from './HandlarborsenCompetitorHistory'
@@ -5,6 +8,9 @@ import { HandlarborsenCompetitorDiscovery } from './HandlarborsenCompetitorDisco
 import { HandlarborsenSaveCompetitorScan } from './HandlarborsenSaveCompetitorScan'
 import type { HistoryAnalysis } from '@/lib/atlas/project-analytics/handlarborsen-competitor-history-core'
 import type { CandidateMemoryLoad } from '@/lib/atlas/project-analytics/handlarborsen-competitor-memory-service'
+import type { CandidateReviewLoad } from '@/lib/atlas/project-analytics/handlarborsen-candidate-review-service'
+import type { CompetitorInboxLoad } from '@/lib/atlas/project-analytics/handlarborsen-candidate-inbox-service'
+import { HandlarborsenCandidateInbox } from './HandlarborsenCandidateInbox'
 import { latestSavedCompetitorObservation, savedCompetitorDay } from '@/lib/atlas/project-analytics/handlarborsen-competitor-latest'
 import type { LandscapeScan } from '@/lib/atlas/project-analytics/handlarborsen-competitor-landscape'
 import styles from './HandlarborsenCompetitors.module.css'
@@ -13,7 +19,7 @@ function CheckedTime({ value }: { value: string }) {
   return <time dateTime={value}>{new Date(value).toLocaleString('sv-SE', { timeZone: 'Europe/Stockholm' })} (Stockholm)</time>
 }
 
-export function HandlarborsenCompetitors({ scan, landscape = null, history = null, historyEnabled = false, canSaveHistory = false, memory = null, memoryEnabled = false, mode = 'owner' }: { scan: PublicScan | null; landscape?: LandscapeScan | null; history?: HistoryAnalysis | null; historyEnabled?: boolean; canSaveHistory?: boolean; memory?: CandidateMemoryLoad | null; memoryEnabled?: boolean; mode?: 'owner' | 'collaborator' }) {
+export function HandlarborsenCompetitors({ scan, landscape = null, history = null, historyEnabled = false, canSaveHistory = false, memory = null, memoryEnabled = false, reviewEnabled = false, reviews = null, inboxEnabled = false, inbox = null, watchReadiness = null, mode = 'owner' }: { scan: PublicScan | null; landscape?: LandscapeScan | null; history?: HistoryAnalysis | null; historyEnabled?: boolean; canSaveHistory?: boolean; memory?: CandidateMemoryLoad | null; memoryEnabled?: boolean; reviewEnabled?: boolean; reviews?: CandidateReviewLoad | null; inboxEnabled?: boolean; inbox?: CompetitorInboxLoad | null; watchReadiness?: WatchReadinessLoad | null; mode?: 'owner' | 'collaborator' }) {
   const summary = scan ? summarizeScan(scan) : null
   return (
     <div className={styles.page}>
@@ -23,6 +29,9 @@ export function HandlarborsenCompetitors({ scan, landscape = null, history = nul
         <h1>Konkurrentspanaren</h1>
         <p>Fyra B2B-aktörer. Daterad dossier om Handlarbudet (<time dateTime={DOSSIER_DATE}>{DOSSIER_DATE}</time>) och tre ytterligare officiella jämförelsekällor. Inga påståenden om livepriser eller nyupptäckta förändringar.</p>
       </header>
+      <HandlarborsenCandidateInbox enabled={inboxEnabled} inbox={inbox} mode={mode} />
+      <HandlarborsenWatchReadiness result={watchReadiness} />
+      <HandlarborsenWeeklyReport history={history} enabled={historyEnabled} />
       <section className={styles.panel} aria-labelledby="competitor-mode">
         <h2 id="competitor-mode">Manuell kontroll</h2>
         <dl className={styles.facts}>
@@ -43,7 +52,7 @@ export function HandlarborsenCompetitors({ scan, landscape = null, history = nul
       </section>
       <HandlarborsenLandscape scan={landscape} history={history} />
       <HandlarborsenCompetitorHistory history={history} historyEnabled={historyEnabled} />
-      <HandlarborsenCompetitorDiscovery memory={memory} memoryEnabled={memoryEnabled} mode={mode} />
+      <HandlarborsenCompetitorDiscovery memory={memory} memoryEnabled={memoryEnabled} reviewEnabled={reviewEnabled} reviews={reviews} mode={mode} />
       {historyEnabled && canSaveHistory ? <HandlarborsenSaveCompetitorScan mode={mode} /> : null}
       <section aria-labelledby="competitor-evidence">
         <h2 id="competitor-evidence">Handlarbudet · daterade observationer</h2>

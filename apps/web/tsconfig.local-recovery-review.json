@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": [
+    "next-env.d.ts",
+    "lib/local-text/recovery-evidence-review.ts",
+    "lib/local-text/__tests__/recovery-evidence-review.test.ts"
+  ],
+  "exclude": ["node_modules"]
+}

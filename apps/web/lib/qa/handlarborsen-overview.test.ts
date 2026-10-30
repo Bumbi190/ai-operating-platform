@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import * as React from 'react'
 import { createElement, isValidElement, Suspense, type ReactElement } from 'react'
 import { readFileSync } from 'node:fs'
@@ -30,6 +30,12 @@ vi.mock('@/lib/atlas/project-analytics/handlarborsen-marketplace-read', () => ({
 const loadTraffic = vi.fn()
 vi.mock('@/lib/atlas/project-analytics/handlarborsen-posthog-traffic', () => ({
   loadHandlarborsenTraffic: (...a: unknown[]) => loadTraffic(...a),
+}))
+const candidateEnabled = vi.fn(() => false)
+const loadCandidateMemory = vi.fn()
+vi.mock('@/lib/atlas/project-analytics/handlarborsen-competitor-memory-service', () => ({
+  candidateMemoryEnabled: () => candidateEnabled(),
+  loadCandidateMemory: (...a: unknown[]) => loadCandidateMemory(...a),
 }))
 
 import { MARKETPLACE_METRIC_KEYS } from '@/lib/atlas/collectors/handlarborsen-marketplace'
@@ -133,11 +139,51 @@ describe('overview model', () => {
 })
 
 describe('rendered overview', () => {
+  it('uses the same verified candidate cue for KPI and no-data views, scoped to the proper role link', () => {
+    const pending = {
+      status: 'ok' as const, awaitingReview: 1,
+      candidates: [{
+        name: 'TradingSolutions D2D', host: 'tradingsolutions.se',
+        officialUrl: 'https://www.tradingsolutions.se/d2d/',
+        observedOn: '2026-10-15',
+        relevance: 'Officiell B2B-auktionsplattform',
+        provenance: 'independently_checked_official_website' as const,
+        firstSeenAt: '2026-10-16T20:23:40.736Z',
+        lifecycle: 'candidate_for_review' as const,
+        foundedRecently: 'not_verified' as const,
+        executable: false as const,
+      }],
+    }
+    for (const rows of [[row()], []] as unknown[][]) {
+      const html = renderToStaticMarkup(createElement(HandlarborsenOverview, {
+        report: report(rows), reportHref: null,
+        candidateMemory: pending, candidateMemoryEnabled: true,
+        candidateAudience: 'owner',
+      }))
+      expect(html).toContain('1 konkurrentkandidat')
+      expect(html).toContain('TradingSolutions D2D')
+      expect(html).toContain('href="/projects/handlarborsen/competitors"')
+      const hidden = renderToStaticMarkup(createElement(HandlarborsenOverview, {
+        report: report(rows), reportHref: null,
+        candidateMemory: pending, candidateMemoryEnabled: false,
+      }))
+      expect(hidden).not.toContain('1 konkurrentkandidat')
+    }
+    const collaborator = renderToStaticMarkup(createElement(HandlarborsenOverview, {
+      report: report([row()]), reportHref: null,
+      candidateMemory: pending, candidateMemoryEnabled: true,
+      candidateAudience: 'collaborator',
+    }))
+    expect(collaborator).toContain('href="/organization/projects/handlarborsen/competitors"')
+  })
   it('opts only this project into clearer KPI type in both data and no-data states', () => {
     expect(render(report([row()]))).toContain('data-prominent="true"')
     expect(render(report([]))).toContain('data-prominent="true"')
+    expect(render(report([]))).not.toContain('href="#hb-workflow-drafts"')
     const css = readFileSync(resolve(__dirname, '../../components/platform/vnext/KpiOverview.module.css'), 'utf8')
     expect(css).toContain(".overview[data-prominent='true']")
+    const paperCss = readFileSync(resolve(__dirname, '../../components/platform/vnext/HandlarborsenWorkflowDrafts.module.css'), 'utf8')
+    expect(paperCss).toContain('scroll-margin-top: 5rem')
   })
 
   it('leads with big numbers, shows Okänt for null, links the full report and includes the saved-data visuals', () => {
@@ -150,6 +196,9 @@ describe('rendered overview', () => {
     expect(html).toContain('id="hb-market-pulse"')
     expect(html).toContain('id="hb-executive-heading"')
     expect(html).toContain('Det viktigaste just nu')
+    expect(html).toContain('Visa arbetsflödesförslag')
+    expect(html).toContain('href="#hb-workflow-drafts"')
+    expect(html.indexOf('href="#hb-workflow-drafts"')).toBeLessThan(html.indexOf('id="hb-workflow-drafts"'))
     expect(html).toContain('Konkurrentbevakning')
     expect(html).toContain('href="/projects/handlarborsen/competitors"')
     expect(html.indexOf('id="hb-executive-heading"')).toBeLessThan(html.indexOf('id="hb-trend-companies"'))
@@ -162,6 +211,8 @@ describe('rendered overview', () => {
 })
 
 describe('project page', () => {
+  // Warm the large RLS-scoped page module outside the first test's 5s budget.
+  beforeAll(async () => { await import('@/app/(platform)/projects/[slug]/page') })
   const HB = { id: HB_ID, slug: 'handlarborsen', name: 'Handlarbörsen', color: '#2563EB', settings: {}, executionPaused: false, pausedAt: null, pausedReason: null }
   const OTHER = { ...HB, id: '22222222-2222-2222-2222-222222222222', slug: 'the-prompt', name: 'The Prompt' }
 
@@ -182,6 +233,7 @@ describe('project page', () => {
     loadCommandCenter.mockResolvedValue({ links: { marketplace: '/projects/handlarborsen/marketplace' } })
     loadReport.mockResolvedValue({ status: 'ok', report: report([row()]) })
     loadTraffic.mockResolvedValue(null)
+    candidateEnabled.mockReturnValue(false)
   })
 
   it('Handlarbörsen: reads the report through the authorized reader and passes the overview above the workspace', async () => {
@@ -199,6 +251,8 @@ describe('project page', () => {
       const overview = el.props.overview as ReactElement
       const markup = renderToStaticMarkup(React.cloneElement(overview, { now: NOW }))
       expect(markup).toContain('id="hb-atlas-evidence"')
+      expect(markup).toContain('id="hb-workflow-drafts"')
+      expect(markup).toContain('Förhandsutkast – inte sparade')
       expect(markup).toContain('handlarborsen-insights-1.0.0')
       expect(fetch).not.toHaveBeenCalled()
       expect(loadReport).toHaveBeenCalledTimes(1)
@@ -206,6 +260,19 @@ describe('project page', () => {
     } finally {
       vi.unstubAllGlobals()
     }
+  })
+
+  it('reads candidate memory only when its feature is enabled and the RLS project is Handlarbörsen', async () => {
+    candidateEnabled.mockReturnValue(true)
+    const candidateMemory = { status: 'ok', candidates: [], awaitingReview: 0 }
+    loadCandidateMemory.mockResolvedValue(candidateMemory)
+    const el = await loaded(HB)
+    expect(loadCandidateMemory).toHaveBeenCalledOnce()
+    expect((el.props.overview as ReactElement).props.candidateMemory).toBe(candidateMemory)
+    expect((el.props.overview as ReactElement).props.candidateMemoryEnabled).toBe(true)
+    loadCandidateMemory.mockClear()
+    await loaded(OTHER)
+    expect(loadCandidateMemory).not.toHaveBeenCalled()
   })
 
   it('streams the workspace without a brief while the shared report is pending', async () => {
@@ -222,6 +289,7 @@ describe('project page', () => {
     expect(fallback.props.model).toBeDefined()
     expect(fallback.props.briefing).toBeUndefined()
     expect(renderToStaticMarkup(fallback.props.overview)).not.toContain('hb-atlas-evidence')
+    expect(renderToStaticMarkup(fallback.props.overview)).not.toContain('hb-workflow-drafts')
     expect(isValidElement(fallback.props.overview)).toBe(true)
     resolveReport({ status: 'ok', report: report([row()]) })
     const final = await (children.type as (p: unknown) => Promise<ReactElement>)(children.props)
@@ -274,6 +342,9 @@ describe('project page', () => {
     const el = await loaded(HB)
     const markup = renderToStaticMarkup(el.props.overview as ReactElement)
     expect(markup).not.toContain('hb-atlas-evidence')
+    expect(markup).toContain('hb-workflow-drafts')
+    expect(markup).not.toContain('data-paper-draft="review_company_status"')
+    expect(markup).not.toContain('data-paper-draft="check_bid_activity"')
     expect(markup).not.toContain('501')
     expect(loadReport).toHaveBeenCalledTimes(1)
   })

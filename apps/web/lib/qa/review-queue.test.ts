@@ -231,7 +231,7 @@ describe('phase 11 · the queue model is built from stored rows only', () => {
     const item = model([row()]).queue[0]
     expect(Object.keys(item).sort()).toEqual([
       'blockedReason', 'content', 'createdAt', 'decidable', 'decidedAt', 'id', 'kind',
-      'outputKey', 'project', 'reviewedAt', 'reviewerNotes', 'runActionKind', 'runHref',
+      'outputKey', 'preview', 'project', 'reviewedAt', 'reviewerNotes', 'runActionKind', 'runHref',
       'runId', 'runStatus', 'status', 'statusClass', 'statusLabel', 'workflowName',
     ])
     for (const invented of ['risk', 'confidence', 'priority', 'score', 'deadline', 'amount', 'currency', 'impact', 'progress']) {
@@ -242,6 +242,7 @@ describe('phase 11 · the queue model is built from stored rows only', () => {
   it('keeps stored content verbatim, including text that looks like markup', () => {
     const content = '<script>alert(1)</script> & <b>fetstil</b>'
     expect(model([row({ content })]).queue[0].content).toBe(content)
+    expect(model([row({ content })]).queue[0].preview).toEqual({kind:'text',text:content})
   })
 
   it('orders the queue before the archive without reordering within them', () => {
@@ -258,6 +259,14 @@ describe('phase 11 · the queue model is built from stored rows only', () => {
 // ── Rendering ────────────────────────────────────────────────────────────────
 
 describe('phase 11 · the queue renders stored truth', () => {
+  it('shows explicit email draft headers, full body and attachment metadata inline without granting send authority', async () => {
+    const content=JSON.stringify({to:['to@example.se'],cc:['cc@example.se'],bcc:['bcc@example.se'],subject:'Draft subject',bodyText:'Full body\n<script>inert</script>',attachments:[{assetId:'30000000-0000-4000-8000-000000000001',sha256:'a'.repeat(64),name:'Underlag.pdf',mimeType:'application/pdf'}]})
+    const out=await html(model([row({kind:'email_draft',content})]))
+    for(const text of ['to@example.se','cc@example.se','bcc@example.se','Draft subject','Full body','Underlag.pdf','Ingen tillgänglig förhandsvisning'])expect(out).toContain(text)
+    expect(out).toContain('&lt;script&gt;inert&lt;/script&gt;')
+    expect(out).not.toMatch(/<script>|<iframe|Skicka mejl/)
+    expect(out).toMatch(/data-action="approved"/)
+  })
   it('shows the item, its project and its status', async () => {
     const out = await html(model([row()]))
     expect(out).toContain('draft')
@@ -572,9 +581,9 @@ describe('phase 11 · scope, authority and boundaries', () => {
     // trivially green on main, and failed the first later branch that
     // legitimately fixed an existing route. The claim about Phase 11 is a fact
     // about its merge, so that is what is diffed.
-    const { execSync } = require('node:child_process') as typeof import('node:child_process')
+    const { execFileSync } = require('node:child_process') as typeof import('node:child_process')
     const PHASE_11_MERGE = 'fcf53fd'
-    const changed = execSync(`git diff --name-only ${PHASE_11_MERGE}^1 ${PHASE_11_MERGE}`, {
+    const changed = execFileSync('git', ['diff', '--name-only', `${PHASE_11_MERGE}^1`, PHASE_11_MERGE], {
       cwd: WEB_ROOT, encoding: 'utf8',
     }).split('\n').filter(Boolean)
     expect(changed.length).toBeGreaterThan(0)
@@ -589,7 +598,7 @@ describe('phase 11 · scope, authority and boundaries', () => {
 describe('phase 11 · the legacy rollback is the page that shipped', () => {
   it('the legacy body is the previous page verbatim — pinned by hash', () => {
     const legacy = read('app/(platform)/approvals/ApprovalsLegacy.tsx')
-    const body = legacy.slice(legacy.indexOf('import '))
+    const body = legacy.slice(legacy.indexOf('import ')).replace(/\r\n/g, '\n')
     const hash = createHash('sha256').update(body).digest('hex')
     // Regenerate deliberately if the legacy page is ever intentionally changed.
     expect(hash).toBe('e07c443a999812fd796e7f3dd1df8bd3cdc2b3c6e2fd9d57d45ecd08815a1341')

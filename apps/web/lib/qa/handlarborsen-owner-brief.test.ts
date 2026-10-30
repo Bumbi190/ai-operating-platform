@@ -65,6 +65,7 @@ const report = (freshness: 'fresh' | 'stale' = 'fresh'): MarketplaceReport => ({
     latestAttemptFailed: false,
   },
   history: {
+    growthDelta:null,
     series: [], snapshotCount: 1, skippedInvalid: 0, previous: null,
     comparison: { available: false, reason: 'no_previous_snapshot' },
   },

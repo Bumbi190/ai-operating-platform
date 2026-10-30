@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { ChevronRight, Search, Bell, Plus } from 'lucide-react'
+import { ChevronRight, Search, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { OperatorModeSwitcher } from './OperatorMode'
+import { AtlasInboxNotice } from '@/components/platform/vnext/AtlasInboxNotice'
 import { CommandPalette } from './CommandPalette'
 
 interface CommandBarProps {
@@ -134,17 +135,7 @@ export function CommandBar({ operator, projects = [] }: CommandBarProps) {
 
           <span className="hidden sm:block h-4 w-px" style={{ background: 'rgba(255,255,255,0.06)' }} />
 
-          <button
-            className="relative w-7 h-7 rounded-md flex items-center justify-center text-secondary hover:text-white transition-colors ease-os press"
-            style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.06)' }}
-            aria-label="Notifications"
-          >
-            <Bell className="w-3 h-3" />
-            <span
-              className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-indigo-400"
-              style={{ boxShadow: '0 0 6px #818cf8' }}
-            />
-          </button>
+          <AtlasInboxNotice />
 
           <Link
             href="/projects/new"

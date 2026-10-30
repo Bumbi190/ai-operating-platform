@@ -1,0 +1,46 @@
+{
+  "kind": "isolated-real-component-fixture-not-authenticated-production",
+  "results": [
+    {
+      "width": 1440,
+      "datedEvidenceDetailsLinksBounds": "passed"
+    },
+    {
+      "width": 1024,
+      "datedEvidenceDetailsLinksBounds": "passed"
+    },
+    {
+      "width": 390,
+      "datedEvidenceDetailsLinksBounds": "passed"
+    },
+    {
+      "width": 360,
+      "datedEvidenceDetailsLinksBounds": "passed"
+    },
+    {
+      "width": 320,
+      "datedEvidenceDetailsLinksBounds": "passed"
+    },
+    {
+      "state": "empty",
+      "status": "passed"
+    },
+    {
+      "state": "unavailable",
+      "status": "passed"
+    },
+    {
+      "state": "disabled",
+      "status": "passed"
+    },
+    {
+      "state": "gap",
+      "status": "passed"
+    }
+  ],
+  "browserErrors": [],
+  "externalRequests": 0,
+  "productionWrites": 0,
+  "status": "passed",
+  "finishedAt": "2026-10-18T03:56:23.939Z"
+}

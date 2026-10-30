@@ -1,0 +1,30 @@
+import {beforeAll,afterAll,beforeEach,it,expect,vi} from 'vitest';
+import {initializeCalendarDb,USER_EMPTY} from './test-db';
+import {fixtureCreate,fixtureRange} from './fixtures.test-utils';
+import {mutateCalendarEvent} from './store';
+import {calendarApi} from './api';
+import {resolveCalendarAccess} from './access';
+let fixture:ReturnType<typeof initializeCalendarDb>,fail:'response'|'throw'|null=null;
+const projectQuery=vi.fn(()=>{if(fail==='throw')throw Error('project lookup offline');return Promise.resolve(fail?{data:null,error:{message:'offline'}}:{data:[],error:null})});
+const admin={from:vi.fn((_table:string)=>({select:()=>({eq:projectQuery})}))};
+vi.mock('@/lib/supabase/admin',()=>({createAdminClient:()=>admin}));
+vi.mock('@/lib/supabase/server',()=>({createClient:async()=>({...fixture.forUser(USER_EMPTY),auth:{getUser:async()=>({data:{user:{id:USER_EMPTY}},error:null})}})}));
+beforeAll(()=>{fixture=initializeCalendarDb()},60000);afterAll(()=>fixture?.close());
+beforeEach(()=>{fail=null;projectQuery.mockClear();admin.from.mockClear()});
+it.each(['response','throw'] as const)('reports failed project discovery while preserving private calendar: %s',async failure=>{
+ const created=await mutateCalendarEvent(fixture.forUser(USER_EMPTY),fixtureCreate());
+ fail=failure;
+ const access=await resolveCalendarAccess();expect(access.ok).toBe(true);
+ const response=await calendarApi(new Request('https://calendar.test/api/calendar?fromDate='+fixtureRange.fromDate+'&toDateExclusive='+fixtureRange.toDateExclusive));
+ expect(response.status).toBe(200);const model=await response.json();
+ expect(model.entries.map((e:{id:string})=>e.id)).toContain('manual:'+created.event.id);
+ expect(model.availability).toEqual({manual:true,social:false,workflows:false,tasks:false});
+ expect(model.projects).toEqual([]);expect(model.unscheduledTasks).toEqual([]);
+ expect(admin.from.mock.calls.every(call=>call[0]==='projects')).toBe(true);
+});
+it('a genuinely empty ownership scope is healthy and does not read project feeds',async()=>{
+ const response=await calendarApi(new Request('https://calendar.test/api/calendar?fromDate='+fixtureRange.fromDate+'&toDateExclusive='+fixtureRange.toDateExclusive));
+ expect(response.status).toBe(200);const model=await response.json();
+ expect(model.availability).toEqual({manual:true,social:true,workflows:true,tasks:true});
+ expect(model.projects).toEqual([]);expect(admin.from).toHaveBeenCalledTimes(1);
+});

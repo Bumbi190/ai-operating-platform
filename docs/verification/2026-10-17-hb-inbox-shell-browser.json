@@ -1,0 +1,47 @@
+{
+  "kind": "isolated-browser-fixture-not-production-auth",
+  "browser": "chromium",
+  "results": [
+    {
+      "width": 1440,
+      "height": 1000,
+      "mode": "owner",
+      "openEscapeOutsideLinkAndBounds": "pass"
+    },
+    {
+      "width": 1024,
+      "height": 800,
+      "mode": "owner",
+      "openEscapeOutsideLinkAndBounds": "pass"
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "mode": "collaborator",
+      "openEscapeOutsideLinkAndBounds": "pass"
+    },
+    {
+      "width": 360,
+      "height": 800,
+      "mode": "collaborator",
+      "openEscapeOutsideLinkAndBounds": "pass"
+    },
+    {
+      "width": 320,
+      "height": 700,
+      "mode": "collaborator",
+      "openEscapeOutsideLinkAndBounds": "pass"
+    },
+    {
+      "verifiedEmpty": "pass"
+    },
+    {
+      "failedReadIsUnknown": "pass"
+    },
+    {
+      "revocationHidesNotice": "pass"
+    }
+  ],
+  "requests": 19,
+  "productionWrites": 0
+}

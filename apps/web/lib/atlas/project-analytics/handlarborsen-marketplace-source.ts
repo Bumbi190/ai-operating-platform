@@ -26,7 +26,7 @@ function safeReportRows(rows: unknown[]): unknown[] {
   return rows.map((r) => {
     if (!r || typeof r !== 'object') return r
     const x = { ...r } as Record<string, unknown>
-    for (const k of MARKETPLACE_METRIC_KEYS)
+    for (const k of [...MARKETPLACE_METRIC_KEYS,'excluded_test_organisations'])
       if (
         typeof x[k] === 'string' &&
         /^(0|[1-9]\d*)$/.test(x[k] as string) &&
@@ -35,6 +35,28 @@ function safeReportRows(rows: unknown[]): unknown[] {
         x[k] = Number(x[k])
     return x
   })
+}
+/** The analysis-draft source protocol is frozen at v1. Never relabel v2 as legacy. */
+export function buildMarketplaceAnalysisSource(
+  rows: unknown[],
+  runs: unknown[] | undefined,
+): AnalysisSourceEnvelopeV1 | null {
+  const legacyRows = rows.map((row) => {
+    if (!row || typeof row !== 'object') return row
+    const r = { ...row } as Record<string, unknown>
+    if (
+      r.schema_version === 1 &&
+      r.definition_id === 'handlarborsen-legacy-v1' &&
+      r.data_scope === 'legacy_all_organisations' &&
+      r.excluded_test_organisations === null
+    ) {
+      delete r.definition_id
+      delete r.data_scope
+      delete r.excluded_test_organisations
+    }
+    return r
+  })
+  return normalizeAnalysisSource(legacyRows, runs)
 }
 export async function readMarketplaceSourceRows(
   project: { id: string; slug: string },
@@ -103,7 +125,7 @@ export async function readMarketplaceSourceRows(
     return {
       status: 'ok',
       report: buildMarketplaceReport(safeReportRows(snapshotRead.value.data ?? []), options.now, runs),
-      source: normalizeAnalysisSource(snapshotRead.value.data ?? [], runs),
+      source: buildMarketplaceAnalysisSource(snapshotRead.value.data ?? [], runs),
     }
   } catch {
     return failed('exception')

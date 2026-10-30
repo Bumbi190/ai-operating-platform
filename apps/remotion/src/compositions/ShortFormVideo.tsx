@@ -6,7 +6,7 @@ import { Watermark } from '../components/Watermark'
 import type { VideoInputProps } from '../lib/types'
 
 const DEFAULT_HOOK_FRAMES = 135  // 4.5s at 30fps — overridden by hookDurationFrames prop
-const HOOK_FADE_IN_F      = 15   // frames
+const HOOK_FADE_IN_F      = 6    // fast first-frame motion; hook visible from frame 0
 const HOOK_FADE_OUT_F     = 12   // frames
 const SCENE_OVERLAP_F     = 20   // cross-fade overlap between scenes
 const OUTRO_FRAMES        = 75   // 2.5s branded logo end-card
@@ -21,21 +21,21 @@ function HookOverlay({ text, durationFrames }: { text: string; durationFrames: n
   const opacity = interpolate(
     frame,
     [0, HOOK_FADE_IN_F, durationFrames - HOOK_FADE_OUT_F, durationFrames],
-    [0, 1, 1, 0],
+    [0.92, 1, 1, 0],
     { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
   )
 
   const translateY = interpolate(
     frame,
     [0, HOOK_FADE_IN_F],
-    [16, 0],
+    [24, 0],
     { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
   )
 
   const scale = interpolate(
     frame,
     [0, HOOK_FADE_IN_F],
-    [0.96, 1],
+    [1.08, 1],
     { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
   )
 

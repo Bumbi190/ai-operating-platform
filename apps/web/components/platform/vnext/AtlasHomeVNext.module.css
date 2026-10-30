@@ -84,6 +84,8 @@
 
 /* ── Face ─────────────────────────────────────────────────────────────── */
 
+.faceControl { position: absolute; inset: 0; }
+
 .faceStage {
   position: absolute;
   inset: 0;
@@ -548,7 +550,32 @@
   text-transform: uppercase;
 }
 .performance { color: rgba(170, 200, 214, 0.55); letter-spacing: 0.06em; text-transform: none; }
-.responsePanel p { margin: calc(8 * var(--u)) 0 0; color: rgba(236, 244, 250, 0.92); font-size: calc(15 * var(--t)); line-height: 1.6; white-space: pre-wrap; }
+/* Atlas answers contain Markdown; never display their syntax as raw text. */
+.responseMarkdown {
+  margin-top: calc(8 * var(--u));
+  color: rgba(236, 244, 250, 0.92);
+  font-size: calc(15 * var(--t));
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.responseMarkdown :where(p, ul, ol, h1, h2, h3, pre, blockquote, table) { margin: 0; }
+.responseMarkdown > * + * { margin-top: calc(9 * var(--u)); }
+.responseMarkdown :where(ul, ol) { padding-left: 1.35em; }
+.responseMarkdown ul { list-style: disc; }
+.responseMarkdown ol { list-style: decimal; }
+.responseMarkdown li + li { margin-top: calc(3 * var(--u)); }
+.responseMarkdown :where(h1, h2, h3) { font-size: 1.04em; line-height: 1.4; font-weight: 650; color: #f0faff; }
+.responseMarkdown strong { font-weight: 700; color: #f0faff; }
+.responseMarkdown a { color: #93e9ff; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+.responseMarkdown a:focus-visible { outline: 2px solid #93e9ff; outline-offset: 2px; }
+.responseMarkdown code { font-family: var(--font-geist-mono), ui-monospace, monospace; font-size: 0.9em; }
+.responseMarkdown :not(pre) > code { background: rgba(146, 206, 244, 0.12); padding: 0.08em 0.22em; border-radius: 3px; }
+.responseMarkdown pre { overflow: auto; max-width: 100%; padding: calc(8 * var(--u)); white-space: pre-wrap; background: rgba(7, 17, 31, 0.8); border-radius: 7px; }
+.responseMarkdown blockquote { padding-left: 0.85em; border-left: 2px solid rgba(116, 222, 244, 0.55); color: #c9deed; }
+.responseMarkdown table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+.responseMarkdown :where(th, td) { border: 1px solid rgba(146, 206, 244, 0.25); padding: 0.2em 0.5em; text-align: left; }
+.responseMarkdown th { background: rgba(146, 206, 244, 0.1); }
 .openConversation { margin-top: calc(10 * var(--u)); padding: 0; border: 0; color: rgba(103, 232, 249, 0.8); background: transparent; font-size: calc(13 * var(--t)); cursor: pointer; }
 
 .runtimeDetail { margin: 0; color: rgba(221, 224, 247, 0.75); font-size: calc(13 * var(--t)); line-height: 1.5; text-align: center; }
@@ -873,12 +900,13 @@
   .stage { --u: calc(min(100vw, 760px) / 900); --t: calc(0.82px * var(--os-scale, 1)); position: relative; top: auto; left: auto; display: flex; flex-direction: column; width: auto; height: auto; padding: 28px 16px 40px; transform: none; }
   .commandCore { position: relative; inset: auto; display: flex; flex-direction: column; }
   .identityBlock { position: relative; top: auto; left: auto; width: auto; order: 1; }
-  .faceStage { position: relative; inset: auto; order: 2; height: calc(560 * var(--u)); margin-top: 8px; }
+  .faceControl { position: relative; inset: auto; order: 2; height: calc(560 * var(--u)); margin-top: 8px; }
+  .faceStage { position: absolute; inset: 0; }
   .faceOrbitBack,
   .faceOrbitFront { display: none; }
   .faceImage { top: 0; left: 50%; width: calc(472 * var(--u)); height: calc(560 * var(--u)); transform: translateX(-50%); }
   .faceAura { top: calc(-80 * var(--u)); left: 50%; transform: translateX(-50%); }
-  .faceCore { top: calc(70 * var(--u)); left: 50%; width: calc(160 * var(--u)); height: calc(160 * var(--u)); transform: translateX(-50%); }
+  .faceCore { top: calc(74 * var(--u)); left: calc(50% - 14.3 * var(--u)); width: calc(160 * var(--u)); height: calc(160 * var(--u)); transform: translateX(-50%); }
   .dialogue { position: relative; bottom: auto; left: auto; order: 3; width: auto; margin-top: 12px; }
   .composer { position: relative; top: auto; left: auto; order: 4; width: auto; margin-top: 12px; }
   .quote,

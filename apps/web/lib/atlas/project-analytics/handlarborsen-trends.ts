@@ -20,6 +20,8 @@ export type TrendPair = {
   label: string
 }
 export type TrendObservation = {
+  definitionId?:string
+  excludedTestOrganisations?:number|null
   date: string
   first: number | null
   second: number | null
@@ -72,9 +74,7 @@ function count(
   return metric?.value ?? null
 }
 
-export function buildHandlarborsenTrendPanels(
-  report: MarketplaceReport,
-): TrendPanelModel[] {
+export function buildHandlarborsenTrendPanels(report: MarketplaceReport): TrendPanelModel[] {
   if (report.state !== 'ok' || !report.latest) return []
   // Reader already validated the source rows. Limit and reverse without
   // inventing dates between stored reports or interpolating missing values.
@@ -83,6 +83,12 @@ export function buildHandlarborsenTrendPanels(
   return PANELS.map((panel) => ({
     ...panel,
     observations: snapshots.map((snapshot) => ({
+      ...(snapshot.definitionId === 'handlarborsen-production-v2'
+        ? {
+            definitionId: snapshot.definitionId,
+            excludedTestOrganisations: snapshot.excludedTestOrganisations,
+          }
+        : {}),
       date: snapshot.snapshotDate,
       first: count(snapshot, panel.first.key),
       second: count(snapshot, panel.second.key),
@@ -102,9 +108,17 @@ export function trendLineSegments(
     const a = observations[i - 1]
     const b = observations[i]
     const dayGap =
-      (Date.parse(b.date + 'T00:00:00Z') - Date.parse(a.date + 'T00:00:00Z')) /
-      86_400_000
-    if (dayGap === 1 && a[series] !== null && b[series] !== null) {
+      (Date.parse(b.date + 'T00:00:00Z') - Date.parse(a.date + 'T00:00:00Z')) / 86_400_000
+    if (
+      dayGap === 1 &&
+      (a.definitionId ?? 'handlarborsen-legacy-v1') ===
+        (b.definitionId ?? 'handlarborsen-legacy-v1') &&
+      (a.definitionId !== 'handlarborsen-production-v2' ||
+        (typeof a.excludedTestOrganisations === 'number' &&
+          a.excludedTestOrganisations === b.excludedTestOrganisations)) &&
+      a[series] !== null &&
+      b[series] !== null
+    ) {
       segments.push([i - 1, i])
     }
   }

@@ -6,6 +6,8 @@ import { isHandlarborsenProject } from '@/lib/os/project-command-center'
 import { loadHandlarborsenMarketplaceReport } from '@/lib/atlas/project-analytics/handlarborsen-marketplace-read'
 import { loadHandlarborsenTraffic } from '@/lib/atlas/project-analytics/handlarborsen-posthog-traffic'
 import { HandlarborsenOverview } from '@/components/platform/vnext/HandlarborsenOverview'
+import { candidateMemoryEnabled, loadOrganizationCandidateMemory } from '@/lib/atlas/project-analytics/handlarborsen-competitor-memory-service'
+import { candidateReviewEnabled, loadCandidateReviews } from '@/lib/atlas/project-analytics/handlarborsen-candidate-review-service'
 import { ProjectCommandCenter } from '@/components/platform/vnext/ProjectCommandCenter'
 import { HandlarborsenCollaboratorWorkflows } from '../HandlarborsenCollaboratorWorkflows'
 import { createClient } from '@/lib/supabase/server'
@@ -35,6 +37,9 @@ export default async function OrganizationProjectPage({ params }: { params: { sl
   const mayWorkWithHandlarborsen = canCollaborateOnProject(
     memberRole, model.project, 'operate_workflow',
   )
+  const mayViewCompetitors = canCollaborateOnProject(
+    memberRole, model.project, 'view_competitors',
+  )
 
   // Reuse the Owner's visual overview through the SAME project-bound, verified
   // marketplace report reader. Never expose save selectors, report links or
@@ -45,6 +50,10 @@ export default async function OrganizationProjectPage({ params }: { params: { sl
       allowedProjectIds: [model.project.id],
     })
     if (report.status === 'ok') {
+      const memoryEnabled = mayViewCompetitors && candidateMemoryEnabled()
+      const memory = memoryEnabled ? await loadOrganizationCandidateMemory() : null
+      const reviewEnabled = memoryEnabled && candidateReviewEnabled()
+      const reviews = reviewEnabled ? await loadCandidateReviews() : null
       const traffic = await loadHandlarborsenTraffic(model.project, {
         allowedProjectIds: [model.project.id],
       })
@@ -52,6 +61,11 @@ export default async function OrganizationProjectPage({ params }: { params: { sl
         report={report.report}
         reportHref={null}
         traffic={traffic}
+        candidateMemory={memory}
+        candidateMemoryEnabled={memoryEnabled}
+        candidateReviews={reviews}
+        candidateReviewEnabled={reviewEnabled}
+        candidateAudience="collaborator"
       />
     }
   }

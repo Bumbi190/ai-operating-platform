@@ -1,3 +1,4 @@
+import {decodeCalendarEffect,type CalendarChangedEffect} from '@/lib/calendar/stream-effect';
 import { buildChatRequestBody } from "@/lib/atlas/view-client";
 import {decodeReferenceSaveResponse,parseReferenceSaveSelection,REFERENCE_SAVED_NOTICE} from "@/lib/website-build/assets/reference-save-contract";
 import type {ReferenceMessageReceipt} from "@/lib/website-build/assets/persist-reference-turn";
@@ -23,7 +24,9 @@ import type {
 } from "@/lib/website-build/planning/types";
 import type { BuildSessionView } from "@/lib/website-build/types";
 import { decodeWebsiteEffect, type BuildContext } from "./stream-effects";
+import {decodeCleanupEffect,decodeReviewView,type CleanupReviewView} from "@/lib/atlas/handlarborsen-test-data/stream-effect";
 export type ConversationSnapshot = {
+  testDataReviews: CleanupReviewView[];
   studio: boolean;
   id: string | null;
   projectId: string | null;
@@ -38,6 +41,7 @@ export type ConversationSnapshot = {
   speechDraft: string | null;
 };
 const empty = (): ConversationSnapshot => ({
+  testDataReviews: [],
   studio: false,
   id: null,
   projectId: null,
@@ -61,17 +65,19 @@ type Activate = {
   session?: BuildSessionView | null;
 };
 export type TurnResult = { ok: boolean; notice?: string; referenceReceipt?:ReferenceMessageReceipt };
+export type AtlasTurnSettlement = { conversationId: string; generation: number; current: boolean; ok: boolean };
 type Turn = {
   conversationId: string;
   text: string;
   inputSource: "text" | "voice";
+  image?: {mediaType:"image/png"|"image/jpeg"|"image/webp";data:string};
   visiblePlan?: PlanRevisionRef | null;
   buildContext?: BuildContext | null;
   onEvent?: (event: StreamEvent) => void;
 };
 export class AtlasConversationController {
   private conversations = new Map<string, ConversationSnapshot>();
-  private confirmedReferenceMessages = new Set<string>();
+  private confirmedReferenceMessages = new Map<string,Set<string>>();
   private referenceSaveOwners = new Map<string,symbol>();
   private active = empty();
   private generation = 0;
@@ -79,6 +85,16 @@ export class AtlasConversationController {
   constructor(private request: typeof fetch = (...args) => fetch(...args)) {}
   private creating: {generation: number; promise: Promise<string | null>} | null = null;
   private compactPending: symbol | null = null;
+  private calendarListeners = new Set<(effect:CalendarChangedEffect)=>void>();
+  subscribeCalendarChanged = (listener:(effect:CalendarChangedEffect)=>void) => {
+    this.calendarListeners.add(listener);
+    return () => {this.calendarListeners.delete(listener);};
+  };
+  private settledListeners = new Set<(event: AtlasTurnSettlement) => void>();
+  subscribeSettled = (listener: (event: AtlasTurnSettlement) => void) => {
+    this.settledListeners.add(listener);
+    return () => { this.settledListeners.delete(listener); };
+  };
   private createdListeners = new Set<(id: string) => void>();
   subscribeCreated = (listener: (id: string) => void) => {
     this.createdListeners.add(listener);
@@ -120,7 +136,7 @@ export class AtlasConversationController {
     }
   }
 
-  async sendCompactText(input: {text: string; initialProjectId: string | null}): Promise<TurnResult> {
+  async sendCompactText(input: {text: string; initialProjectId: string | null; image?: {mediaType:'image/png'|'image/jpeg'|'image/webp';data:string}}): Promise<TurnResult> {
     const text = input.text.trim();
     if (!text || this.compactPending || this.active.pending) return {ok: false};
     const token = Symbol();
@@ -129,7 +145,7 @@ export class AtlasConversationController {
       const id = await this.ensureConversation({firstText: text, inputSource: "text", projectId: input.initialProjectId});
       if (this.compactPending !== token) return {ok: false};
       if (!id) return {ok: false, notice: "Konversationen kunde inte sparas. Försök igen."};
-      return await this.sendTurn({conversationId: id, text, inputSource: "text", visiblePlan: null, buildContext: null});
+      return await this.sendTurn({conversationId: id, text, image: input.image, inputSource: "text", visiblePlan: null, buildContext: null});
     } finally {
       if (this.compactPending === token) this.compactPending = null;
     }
@@ -152,6 +168,26 @@ export class AtlasConversationController {
       this.listeners.forEach((f) => f());
     }
   }
+  private savedTestDataReviews(saved:SavedMessage[],id:string):CleanupReviewView[]{
+    const views=new Map<string,CleanupReviewView>();
+    for(const row of saved){
+      if(row.role!=='assistant'||!row.tool_data||typeof row.tool_data!=='object')continue;
+      const td=row.tool_data as Record<string,unknown>;
+      if(td.kind!=='handlarborsen_test_data_review')continue;
+      const view=decodeCleanupEffect({event:td.kind,conversationId:td.conversationId,review:td.review},id);
+      if(view)views.set(view.packageView.packageId,view);
+    }
+    return [...views.values()];
+  }
+  private mergeSavedTestDataReviews(current:CleanupReviewView[],saved:SavedMessage[],id:string):CleanupReviewView[]{
+    const views=new Map(current.map(view=>[view.packageView.packageId,view]));
+    const rank=(view:CleanupReviewView)=>view.receipt||view.rejectionStatus?2:view.decisionState==='pending'?0:1;
+    for(const view of this.savedTestDataReviews(saved,id)){
+      const prior=views.get(view.packageView.packageId);
+      if(!prior||(prior.reviewRef===view.reviewRef&&rank(view)>rank(prior)))views.set(view.packageView.packageId,view);
+    }
+    return [...views.values()];
+  }
   activateConversation(input: Activate) {
     this.activateSnapshot(input, false);
   }
@@ -161,9 +197,11 @@ export class AtlasConversationController {
       if (!preserveCompact) this.compactPending = null;
     }
     let s = this.conversations.get(input.id);
+    let replaceMessageIds=!s;
     if (!s)
       s = {
         ...empty(),
+        testDataReviews:this.savedTestDataReviews(input.saved,input.id),
         studio: input.studio===true,
         id: input.id,
         projectId: input.projectId ?? null,
@@ -185,11 +223,13 @@ export class AtlasConversationController {
       // recovery or newer authoritative history must rehydrate the transcript.
       const rehydrate = !s.pending && input.state === "ok" &&
         (s.state === "error" || !savedIsPrefix || incomingHistory.length > s.history.length);
+      replaceMessageIds=rehydrate;
       const sessionChanged = !s.pending && !!input.session &&
         input.session.sessionId !== s.session?.sessionId;
       s = {
         ...s,
         studio: input.studio===true,
+        testDataReviews: this.mergeSavedTestDataReviews(s.testDataReviews,input.saved,input.id),
         state: input.state,
         projectId: s.projectId ?? input.projectId ?? null,
         ...(rehydrate ? {
@@ -201,9 +241,21 @@ export class AtlasConversationController {
         ...(sessionChanged ? { viewedRevisionId: null, panelOpen: true } : {}),
       };
     }
+    if(!s.pending&&input.state==='ok'){
+      const ids=replaceMessageIds?new Set<string>():this.confirmedReferenceMessages.get(input.id)??new Set<string>();
+      for(const row of input.saved)if(row.role==='user'&&typeof row.id==='string'&&typeof row.content==='string'&&row.content.trim())ids.add(row.id);
+      this.confirmedReferenceMessages.set(input.id,ids);
+    }
     this.conversations.set(input.id, s);
     this.active = s;
     this.listeners.forEach((f) => f());
+  }
+  updateTestDataReview(conversationId:string,value:unknown) {
+    const view=decodeReviewView(value),current=this.conversations.get(conversationId);
+    if(!view||!current||this.active.id!==conversationId||view.packageView.conversationId!==conversationId)return;
+    const prior=current.testDataReviews.find(r=>r.packageView.packageId===view.packageView.packageId);
+    if(prior&&prior.reviewRef!==view.reviewRef)return;
+    this.update(conversationId,{testDataReviews:[...current.testDataReviews.filter(r=>r.packageView.packageId!==view.packageView.packageId),view]});
   }
   clearOnSignout() {
     this.creating = null;
@@ -257,7 +309,9 @@ export class AtlasConversationController {
     const text=turn.text.trim();
     if(!start||start.pending||start.state!=="ok"||!start.studio||!start.projectId||
        this.active.id!==id||!selection||!text||text.length>10000)return {ok:false};
-    const projectId=start.projectId,token=Symbol();
+    const projectId=start.projectId,token=Symbol(),generation=this.generation;
+    let result:TurnResult={ok:false};
+    const knownAtStart=new Set(this.confirmedReferenceMessages.get(id));
     this.referenceSaveOwners.set(id,token);
     const ownsSave=()=>this.referenceSaveOwners.get(id)===token;
     const history:HistoryMessage[]=[...start.history,{role:"user",content:text}];
@@ -281,14 +335,21 @@ export class AtlasConversationController {
         projectId,conversationId:id,imageCount:selection.ticketIds.length,
       }):null;
       if(!receipt)return fail("Sparandet kunde inte verifieras. Försök igen med samma meddelande.");
-      const seen=this.confirmedReferenceMessages.has(receipt.messageId);
-      this.confirmedReferenceMessages.add(receipt.messageId);
+      const seen=knownAtStart.has(receipt.messageId);
+      const ids=this.confirmedReferenceMessages.get(id)??new Set<string>();
+      ids.add(receipt.messageId);this.confirmedReferenceMessages.set(id,ids);
+      const confirmedEntries=seen?start.entries:entries;
+      const alreadyNoticed=seen&&confirmedEntries.some(entry=>entry.kind==='notice'&&entry.tone==='info'&&entry.text===REFERENCE_SAVED_NOTICE);
       this.update(id,{history:seen?start.history:history,
-        entries:seen?start.entries:[...entries,{kind:"notice",tone:"info",text:REFERENCE_SAVED_NOTICE}]});
-      return {ok:true,referenceReceipt:receipt};
+        entries:alreadyNoticed?confirmedEntries:[...confirmedEntries,{kind:"notice",tone:"info",text:REFERENCE_SAVED_NOTICE}]});
+      return result={ok:true,referenceReceipt:receipt};
     }catch{
       return fail(CONNECTION_FAILED_NOTICE);
-    }finally{if(ownsSave()){this.referenceSaveOwners.delete(id);this.update(id,{pending:false});}}
+    }finally{if(ownsSave()){
+      this.referenceSaveOwners.delete(id);this.update(id,{pending:false});
+      const event={conversationId:id,generation,current:this.active.id===id&&this.generation===generation,ok:result.ok};
+      this.settledListeners.forEach(listener=>listener(event));
+    }}
   }
   async sendTurn(turn: Turn): Promise<TurnResult> {
     const start = this.conversations.get(turn.conversationId);
@@ -341,6 +402,7 @@ export class AtlasConversationController {
       pending: true,
       speechDraft: null,
     });
+    let result: TurnResult = {ok: false};
     const fail = (notice: string) => {
       this.update(id, {
         entries: [
@@ -348,7 +410,7 @@ export class AtlasConversationController {
           { kind: "notice", tone: "error", text: notice },
         ],
       });
-      return { ok: false, notice };
+      return result = { ok: false, notice };
     };
     try {
       const response = await this.request("/api/chat", {
@@ -360,6 +422,7 @@ export class AtlasConversationController {
             conversation_id: id,
             ...(turn.inputSource === "voice" ? { voice: true } : {}),
             inputSource: turn.inputSource,
+            ...(turn.image?{image:turn.image}:{}),
             ...(start.studio&&start.projectId?{studioContext:{projectId:start.projectId,conversationId:id}}:{}),
             ...(visible ? { websitePlanRef: visible } : {}),
             ...(buildContext ? { buildContext } : {}),
@@ -407,6 +470,10 @@ export class AtlasConversationController {
           }
           if (event.event === "error") settled = true;
           if (isCurrent()) {
+            const calendarEffect=decodeCalendarEffect(event,id);
+            if(calendarEffect)this.calendarListeners.forEach(listener=>listener(calendarEffect));
+            const cleanup=decodeCleanupEffect(event,id);
+            if(cleanup)this.updateTestDataReview(id,cleanup);
             const now = this.snapshot(),
               effect = decodeWebsiteEffect(event, {
                 conversationId: id,
@@ -436,11 +503,13 @@ export class AtlasConversationController {
         this.update(id, { entries: reply.entries });
       }
       if (!settled) return fail(INCOMPLETE_NOTICE);
-      return { ok: completed };
+      return result = { ok: completed };
     } catch {
       return fail(streaming ? INTERRUPTED_NOTICE : CONNECTION_FAILED_NOTICE);
     } finally {
       this.update(id, { pending: false });
+      const event = {conversationId: id, generation, current: isCurrent(), ok: result.ok};
+      this.settledListeners.forEach(listener => listener(event));
     }
   }
 }

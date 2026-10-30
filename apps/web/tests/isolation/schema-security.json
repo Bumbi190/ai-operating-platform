@@ -3,8 +3,13 @@
     "purpose": "Phase 9Y schema-security classification for every table in schema 'public'. Captured from the EFFECTIVE database catalog, not parsed from migration text — because the exposure this file exists to prevent (workflow_stories) was created by a migration that simply never mentioned row level security, so migration text alone could never have revealed it.",
     "captured_from": "production project iboepohjwrhtgshrqaol",
     "captured_at": "2026-09-25",
+    "handlarborsen_review_p2_migration_note": "Operator-approved, project-locked, immutable human review decision events. RLS + FORCE RLS, zero policies, no anon/auth grants; service role SELECT/INSERT only, REVIEW RPC only service role. Fully isolated PG17.6 security tests passed. Live production catalog must be checked after application.",
     "handlarborsen_candidates_migration_note": "Additional candidate memory table to be verified against the scoped live production catalog after operator-approved application: project-locked, RLS and FORCE RLS, zero policies and client grants, service_role SELECT/INSERT only. Earlier table classifications remain unchanged.",
-    "total_tables": 123,
+    "total_tables": 185,
+    "hb_research_archive_note": "Applied 2026-10-29 via handlarborsen_owner_review_archive_20261029. Verified in live Omnira catalog: RLS enabled, exactly two owner-and-project-scoped authenticated SELECT/INSERT policies, anon no table grants, authenticated SELECT/INSERT only, service_role has technical SELECT/INSERT access. No UPDATE/DELETE grants to authenticated. Exactly one verified, non-contactable 81-company archive; contact authority remains disabled. TENANT_RLS, not an outbound or CRM table.",
+    "hb_lead_candidates_note": "Applied to Omnira production 2026-10-28 as migration 20261028072659_handlarborsen_scb_review_only_candidates. Live catalog verified: RLS enabled, one authenticated owner-scoped SELECT policy, anon no grants, authenticated SELECT only, service_role technically reachable for future separately authorized import. Zero rows, zero triggers, owner-vs-other RLS tested in rolled-back transactions, seven unsafe variants refused by CHECK constraints. Classification: TENANT_RLS; NOT contact/approval authority.",
+    "family_weekly_preparation_note": "Applied with explicit owner authorization on 2026-10-26; live catalog verified RLS on, zero policies, no anon/authenticated privileges, service-role SELECT/INSERT. Existing weekly tools create editorial proposals only, no public grant or publication authority.",
+    "atlas_fallback_reservations_note": "Owner-approved 2026-10-23, verified live in production. SEK 10/day and 100/month shared reserve journal. RLS enabled, zero policies, anon and authenticated have no table privileges; service_role can SELECT/INSERT and the reviewed RPC is service-role only. No real reservations existed after rolled-back admission tests.",
     "workflow_stories_note": "Its row reflects the state established by supabase/migrations/20260909120000_workflow_stories_rls.sql. Every other row is as-observed.",
     "platform_tokens_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090000_platform_tokens_client_revoke.sql (Settings S0): client grants revoked, RLS on, no policy.",
     "platform_credential_events_note": "Its row reflects the state established by apps/web/supabase/migrations/20260914090100_platform_credential_events.sql (Settings S0), applied to production before this row was merged: created with RLS on and no policy, every client grant revoked, service_role holding SELECT and INSERT only, UPDATE/DELETE/TRUNCATE refused by triggers.",
@@ -34,20 +39,25 @@
       "meaning": "Empty since Phase 9Z. It previously held dream_issues, whose RLS existed in production but was declared in no migration. Closure audit #4 showed that was not an isolated case and not merely documentation debt: a database rebuilt from repo SQL created dream_issues, cost_rates and morning_briefings with RLS OFF and anon DML live. supabase/migrations/20260910090000_declarative_rls_parity.sql declares all three, so the exception has no remaining subject.",
       "rule": "An entry here excuses a table from the migration-text rule. It must still be RLS-enabled in effective state, and it should be treated as temporary: an exception that outlives its cause is a hole with a comment next to it."
     },
+    "calendar_manual_publication_reports_note": "Scoped production observation 2026-10-27 after additive calendar_manual_publication_reports migration was applied: RLS ON, zero policies, anon/authenticated SELECT denied, service_role SELECT/INSERT/UPDATE/DELETE allowed. User-marked external publication only, not a provider receipt. Older registry classifications unchanged.",
     "created_not_live": {
       "tables": [
         "agent_decisions",
         "ai_cost_snapshots",
-        "memory_refs"
+        "memory_refs",
+        "media_provider_connections",
+        "media_provider_oauth_states"
       ],
       "meaning": "Created by a migration but absent from the production catalog at capture time — never applied there, or dropped out-of-band. They are NOT a fresh-deploy hazard: each declares RLS in its own migration, so a rebuild creates them protected. Listed so their absence from the table map is a recorded fact rather than a silent gap, and so the fail-closed rule can distinguish them from a genuinely new unprotected table.",
       "requirement": "Every entry must have RLS declared in the migration corpus.",
       "classes": {
         "agent_decisions": "SERVER_ONLY",
         "ai_cost_snapshots": "SERVER_ONLY",
-        "memory_refs": "SERVER_ONLY"
+        "memory_refs": "SERVER_ONLY",
+        "media_provider_connections": "SERVER_ONLY",
+        "media_provider_oauth_states": "SERVER_ONLY"
       },
-      "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class."
+      "classes_note": "The migration security gate needs a class for every table a migration touches. These entries are not live, so they cannot be introspected. Their creating migrations make them server-only (RLS enabled, client grants revoked), so SERVER_ONLY is their intended class. The two Higgsfield tables are proposed by 20261022075921_higgsfield_mcp_readonly.sql and have NOT been applied or inspected in production; they remain created_not_live until a reviewed production migration and live catalog reconciliation."
     },
     "post_migration": "20260909120000_workflow_stories_rls.sql (Phase 9Y) and 20260910090000_declarative_rls_parity.sql (Phase 9Z). Every row reflects effective production state, which those two migrations now also declare; and 20260910120000_cost_ledger_rls_isolation.sql (Phase 9AB), which moves cost_events and infra_costs from TENANT_RLS to SERVER_ONLY: their `project_id IS NULL OR …` policies on role public are dropped and anon/authenticated grants revoked.",
     "views": "Phase 9AA. Public VIEWS, classified like tables. A view runs as its owner unless it is security_invoker, so base-table RLS does not protect it; the migration security gate fails any client-reachable public view without security_invoker and any public view absent from this map. `live` records whether it exists in production.",
@@ -70,9 +80,37 @@
     "social_launch_note": "The three social_launch rows were observed in production iboepohjwrhtgshrqaol at 2026-10-16T05:45:43Z after applying social_launch_plans_v1 (ledger version 20261016054513; canonical SQL file20261016052226). RLS on, zero policies, no public/anon/authenticated grants. service_role SELECT/INSERT on immutable revisions/decisions and SELECT/INSERT/UPDATE on roots; all six RPC/trigger functions SECURITY INVOKER, client EXECUTE revoked. Empty owned plan read verified, no seeded plan or decision.",
     "social_connections_note": "Observed in production iboepohjwrhtgshrqaol at2026-10-16T07:10:48Z after reviewed social_project_connections_v1 (ledger20261016071026; canonical20261016061728). RLS on, zero policies, no public/anon/authenticated grants; service_role SELECT/INSERT/UPDATE only. All12 social_connection functions SECURITY INVOKER with empty search_path, client EXECUTE revoked and service EXECUTE enabled. Zero intents; existing three legacy bindings retained. Safe owned Familje-Stunden metadata read verified without credentials or provider calls.",
     "social_content_note": "Three social_content tables observed in production iboepohjwrhtgshrqaol after social_content_preparation_v1 was applied on 2026-10-16 (ledger 20261016103411; canonical SQL SHA256 638305f235bc453729bc3fd414faf602a536854342220d8e5ade9e34ce40d967). RLS enabled, zero policies, no anon/authenticated reads and service_role reachability. All six new functions SECURITY INVOKER with empty search_path and client EXECUTE revoked. Scoped three-table observation; older classifications retain their earlier capture dates.",
-    "social_profile_publication_note": "Scoped production observation 2026-10-16 after exact reviewed social_project_profiles_v1 (ledger20261016123853, SHA25632ba235a7a7e3d8ec40fe4e552af84b30441c2048312a883b528b666a7371d74,8764chars) and social_manual_publication_v1 (ledger20261016123902,SHA2567e90994492f3c62493e68cef41f9b515b782204f7beb63ae874a6ba1ee938bf2,16760chars). All four tables RLS ON/zero policies/no anon or authenticated privilege/service SELECT reachability. All nine new functions SECURITY INVOKER, empty search_path, client EXECUTE revoked, service EXECUTE present. Four tables empty; no synthetic approvals or publication evidence seeded. Ledger150/public tables122 observed. Existing The Prompt binding fingerprint unchanged; advisor WARN counts20/7/8/1 unchanged (four expected no-policy INFO entries added). Older classifications/capture date retain their prior scope."
+    "social_profile_publication_note": "Scoped production observation 2026-10-16 after exact reviewed social_project_profiles_v1 (ledger20261016123853, SHA25632ba235a7a7e3d8ec40fe4e552af84b30441c2048312a883b528b666a7371d74,8764chars) and social_manual_publication_v1 (ledger20261016123902,SHA2567e90994492f3c62493e68cef41f9b515b782204f7beb63ae874a6ba1ee938bf2,16760chars). All four tables RLS ON/zero policies/no anon or authenticated privilege/service SELECT reachability. All nine new functions SECURITY INVOKER, empty search_path, client EXECUTE revoked, service EXECUTE present. Four tables empty; no synthetic approvals or publication evidence seeded. Ledger150/public tables122 observed. Existing The Prompt binding fingerprint unchanged; advisor WARN counts20/7/8/1 unchanged (four expected no-policy INFO entries added). Older classifications/capture date retain their prior scope.",
+    "atlas_sales_pilot_note": "Scoped production observation 2026-10-17 after exact reviewed atlas_sales_pilot migration (ledger20261017130254, canonical20261017100633, SHA2567ea3de34909ac582d2534b291b448fb9ba3781c196167c0475fc4e1f2c301ca9). All seven tables RLS ON. Six TENANT_RLS tables have one owner-rooted authenticated SELECT policy, no anon SELECT, authenticated SELECT only and service-role reachability. Worker registrations SERVER_ONLY, zero policies and no anon/authenticated SELECT. All27 sales functions SECURITY INVOKER, empty search_path, anon/authenticated EXECUTE revoked and service EXECUTE present. Owner-scoped workspace empty: zero contacts/offers/jobs/workers/drafts, sendingEnabled false. Advisor WARN counts20/7/8/1 unchanged. Only seven table rows refreshed; earlier capture dates remain unchanged.",
+    "handlarborsen_inbox_note": "Scoped live observation 2026-10-17 after operator-approved handlarborsen_candidate_inbox_v1, ledger20261017151021, canonical20261017151021, SQL SHA256 e7f3efe782086aa8f818ab071dab7c96ccadde95ec58320e30048bd487fe663c. Exact Handlarborsen project. RLS/FORCE RLS ON, zero policies and anon/authenticated privileges; service SELECT/INSERT and column-only UPDATE(read_at), no full UPDATE/evidence UPDATE/DELETE. Both routines SECURITY INVOKER, fixed search_path, client EXECUTE revoked, service EXECUTE allowed. AFTER INSERT trigger enabled. No historical backfill: inbox0, candidate1, reviews0, observations6, ledger154. No accounts or source evidence changed. Signed-in owner Preview passed against live156-ledger state; production UI flag remains off pending reconciled CI/Preview release.",
+    "sales_managed_host_note": "Scoped live observation2026-10-17 after exact reviewed migration SHA256a258d7fc159632564747c9a49c5b48037c8c75726b26859892301127dfbf832a, ledger20261017151718. RLS ON, zero policy/client grants, service SELECT/INSERT only; append-only guard. All host functions empty search_path, INVOKER, service-only. No job created.",
+    "sales_strato_connection_note": "Scoped live observation2026-10-17 after exact reviewed migration SHA2562e3301eb992694901c15904899c586093632dfb2acf91db2474c8447c6243b1e, ledger20261017151722. Connection RLS owner SELECT only; encrypted setup RLS/server-only. Service SELECT/INSERT/UPDATE, no DELETE/TRUNCATE. All mailbox functions empty search_path/service-only, only narrow cleanup-ready predicate DEFINER. Exact own five-minute cron active; direct cleanup returned0. WARN advisor counts unchanged (security20/7/8/1, performance40). No inbox/send.",
+    "parallel_sales_reconciliation_note": "Read-only reconciliation2026-10-17 of already-applied sales_managed_host(20261017151718) and sales_strato_connection(20261017151722), exact source hashes pinned in tests. No SQL reapplied and no sales app code or flags changed. Public table count135, known ledger156. Inbox canonical path aligned to existing sales ledger-derived copy to avoid a duplicate migration name; SQL bytes unchanged.",
+    "local_text_live_reconciliation_note": "Source-only reconciliation2026-10-17 of atlas_local_text already applied by parallel PR387 as ledger20261017174301. Exact95490-character source from frozen cff355230fe4250fa5ecd6ab4733cd99cab9a43b, SHA2565024a72db523f63ce7f42f4a5e0f774d50b34cda9a3f6e6f1c3f698610eba180. Twelve tables observed read-only with RLS enabled; eleven server-only with no client privilege/policy, jobs has one owner SELECT policy and authenticated column-only safe metadata reads, no client writes or raw payload read. Service has ALL table privileges including DELETE/TRUNCATE; all30 routines are SECURITY INVOKER with empty search_path, client EXECUTE denied and service EXECUTE allowed. No SQL reapplication, local-model application code, feature flags, admissions or worker installation included. Lifecycle migration remains outside this reconciliation until separately present in the live ledger. Earlier classifications retain their capture scope.",
+    "local_text_live_note": "Scoped actual production observation2026-10-17 after owner-approved atlas_local_text(ledger20261017174301,SHA5024a72db523f63ce7f42f4a5e0f774d50b34cda9a3f6e6f1c3f698610eba180) and atlas_local_text_lifecycle(ledger20261017180713,SHAd5c1ca9aba0c993a6be27625cfa9852d0eb719be5ccc5eb826bfa95acfd0aba3). All15tables RLS ON,14SERVER_ONLY/no policies/client grants; jobs1owner policy+safe column-only authenticated SELECT. Zero anon/authenticated function EXECUTE. Security98INFO/36WARN; WARN20/7/8/1 unchanged. Ledger158/publictables150. Zero devices/jobs at observation; release/enrollment remain separate.",
+    "local_text_lifecycle_live_reconciliation_note": "Source-only reconciliation 2026-10-17: already-applied atlas_local_text_lifecycle ledger 20261017180713 matches frozen cff355230fe4250fa5ecd6ab4733cd99cab9a43b, 59067 characters, SHA256 d5c1ca9aba0c993a6be27625cfa9852d0eb719be5ccc5eb826bfa95acfd0aba3. Read-only live catalog: incidents/human_reviews/retention SERVER_ONLY, RLS on, FORCE off, zero policies/client table or column grants, service ALL including DELETE/TRUNCATE. All 44 local_text routines have empty search_path and client EXECUTE denied: 43 INVOKER plus local_text_conversation_deleted DEFINER trigger (also no service EXECUTE), scoped by auth.uid/old.user_id and old.id. Jobs metadata_expires_at is not authenticated-selectable. The earlier base migration note records its initial capture; lifecycle is now live. No apply, rollback, application/model code or activation included; other table capture scope unchanged.",
+    "handlarborsen_watch_journal_note": "Scoped live production observation2026-10-17 after handlarborsen_watch_runs_v1 ledger20261017200436; canonical20261017200038, exact SQL SHA256687d8cb87f8edf04f15618ed446d14fcae9dd9ebbf979f46b171429b7f7e9691,16520chars. Both tables RLS/FORCE ON, zero policies and anon/authenticated table or column privileges; service SELECT only, no direct mutation. Nine postgres-owned routines have empty search_path and zero client EXECUTE: three fixed-project DEFINER writers allow service EXECUTE, six INVOKER helpers allow no API-role EXECUTE. Five enabled guards/audit triggers; both tables empty, cron count38 unchanged. Ledger159/public tables152. Journal flag remains absent; no executor, schedule or source calls added. Only these two classifications refreshed; other capture scopes preserved.",
+    "sales_inbox_source_reconciliation_note": "Scoped read-only production observation2026-10-18: four sales_inbox tables RLS on, FORCE off, zero policies, zero anon/authenticated table or column privileges, service SELECT. Exact already-applied source20261017191904 from gitf28f83f1f49831fff3315f154f96df4af9da0bdd matches production ledger SHA2561013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1,36094characters. Public tables156/ledger160. Source-only reconciliation: no SQL apply, history correction, account, sales app, flags or sender changes. All earlier entries/capture scopes preserved.",
+    "handlarborsen_test_data_note": "Observed live2026-10-18 after nine owner-approved migrations: three DB_INTERNAL tables RLS/FORCE ON, zero policies, no direct API role privileges. No business classification or package seeded. Last migration SQL committed before MCP ledger timestamp collision; seven exact function bodies and owner/client privileges verified, real applied SQL recorded at canonical source version20261017193411 without replay.",
+    "atlas_cleanup_release_reconciliation_20261018": "Scoped read-only production catalog confirms four already-live inbox tables: RLS enabled, zero policies/anon/auth grants, service-role select/insert/update only. Exact already-applied SQL hash1013142706f4fc1ebd60c31f64cc3f38d6d0d9082c58610487ddc46a4bc606a1 copied from PR386 canonical source only. No mail application code or production DDL imported/applied by this continuation. Public table count156; own three cleanup control tables remain created-not-live and are not included. Older capture metadata unchanged.",
+    "sales_reply_source_reconciliation_note": "Scoped read-only production observation2026-10-18: three already-live sales_reply tables have RLS ON, zero policies, no anon/authenticated grants and service SELECT. Exact source from PR386 frozen8da379d2c376472e4e2470bc5e150ce85d8559c0 matches live ledger20261018040242:36146characters,SHA2567516d8566ae7776086452ff8fdd51058ce34a10ab70973bcdbf4ee14f655a3cc. Source-only reconciliation to unblock the strict migration guard; no SQL reapplied and no sales application code, flag, worker, inbox or sender changed. Existing capture scopes retained.",
+    "social_schedule_live_note": "Scoped hosted observation2026-10-18 after user-authorized application of four exact reviewed migrations from fab47854. Ledger versions20261018085701/20261018085707/20261018085708/20261018085733. All seven tables RLS ON, zero policies and no anon/authenticated grants; service SELECT/INSERT, UPDATE only on jobs/rules. All28 scoped scheduling/monthly/reconciliation routines SECURITY INVOKER with empty search_path and zero client EXECUTE. Batches/jobs/decisions/rules empty. Source-only reconciliation after apply; no account, provider publication or dispatch activation. Existing catalog entries retain their capture scopes.",
+    "sales_reply_sending_source_reconciliation_note": "Read-only scoped production observation2026-10-18: sales_send_events, sales_send_jobs and sales_send_policies have RLS enabled, zero policies, no anon/authenticated grants and service_role SELECT reachability. Exact canonical SQL20261018074615 from PR386 commit1b31d1fe23d8e9e36edaeda4b593bd5f044960c7 matches applied ledger SHA25680158d54a4cc5d7f15901f0ed8e67dc7fa04a8738054e14fb1c7be1cf484e49e (25411bytes). Source-only reconciliation; no SQL apply, application code, mail sending activation or privilege change. Older catalog entries retain their earlier capture scope.",
+    "media_news_review_evidence_note": "Owner approved production apply2026-10-18T20:20:51 Europe/Stockholm. Exact35199-byte source SQL SHA2569cfd8807817878d492814cc29240114c3e3101ac8504651f377f375089b63e52 applied as ledger20261018182224. Read-only catalogue confirms RLS ON, zero policies/client grants, service SELECT/INSERT only, no UPDATE/DELETE/TRUNCATE; four enabled guards and13 routine bodies/ACL/search_path match the exact source. Observed live after apply; older table entries retain their capture scopes. No movie admission, publication or app deployment.",
+    "user_calendar_v1_note": "Pending reviewed apply. Owner-scoped session-client tables; real local SQL RLS/grants verified. No production-catalog claim before deployment.",
+    "human_story_note": "2026-10-26 hosted catalog verified: RLS, zero policies, no anon/authenticated table access, service_role SELECT only; immutable SQL RPC writes, authenticated owner approval only."
   },
   "tables": {
+    "handlarborsen_competitor_review_decisions": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
     "handlarborsen_competitor_candidates": {
       "class": "SERVER_ONLY",
       "rls": true,
@@ -214,6 +252,16 @@
       "created_by_migration": true
     },
     "atlas_code_work_receipts": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "atlas_fallback_reservations": {
       "class": "SERVER_ONLY",
       "rls": true,
       "policies": 0,
@@ -389,6 +437,16 @@
       "policies": 0,
       "anon_grants": true,
       "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "calendar_manual_publication_reports": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
       "service_role": true,
       "rls_declared_in_migration": true,
       "created_by_migration": true
@@ -1288,6 +1346,561 @@
       "created_by_migration": true
     },
     "social_publication_events": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "sales_contacts": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": false,
+      "authenticated_grants": true,
+      "service_role": true
+    },
+    "hb_lead_candidates": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": false,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "hb_lead_research_archives": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 2,
+      "anon_grants": false,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "sales_contact_timing_rules": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "sales_contact_history_revisions": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "sales_email_copy_revisions": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "sales_draft_revisions": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": false,
+      "authenticated_grants": true,
+      "service_role": true
+    },
+    "sales_evidence": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": false,
+      "authenticated_grants": true,
+      "service_role": true
+    },
+    "sales_jobs": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": false,
+      "authenticated_grants": true,
+      "service_role": true
+    },
+    "sales_model_attempts": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": false,
+      "authenticated_grants": true,
+      "service_role": true
+    },
+    "sales_offer_revisions": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": false,
+      "authenticated_grants": true,
+      "service_role": true
+    },
+    "sales_worker_registrations": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "handlarborsen_candidate_inbox": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "sales_host_events": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "sales_mailbox_connections": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": false,
+      "authenticated_grants": true,
+      "service_role": true
+    },
+    "sales_mailbox_setups": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "local_text_devices": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_authority_tombstones": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_admissions": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_jobs": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 1,
+      "anon_grants": false,
+      "authenticated_grants": true,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true,
+      "authenticated_grants_note": "Column-only owner-scoped SELECT of safe metadata; no raw source/result columns."
+    },
+    "local_text_selections": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_attempts": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_reviews": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_events": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_request_nonces": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_cloud_stages": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_cloud_authorizations": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_cloud_reservations": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "local_text_human_reviews": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "local_text_incidents": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "local_text_retention": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "handlarborsen_watch_runs": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "privilege_note": "RLS/FORCE; service SELECT only; no direct mutations. Three fixed-project DEFINER writers, six hardened invoker helpers; zero client EXECUTE."
+    },
+    "handlarborsen_watch_run_events": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "privilege_note": "RLS/FORCE; service SELECT only; no direct mutations. Three fixed-project DEFINER writers, six hardened invoker helpers; zero client EXECUTE."
+    },
+    "sales_inbox_configs": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "sales_inbox_messages": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "sales_inbox_occurrences": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "sales_inbox_batches": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "sales_reply_jobs": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "sales_reply_attempts": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "sales_reply_draft_revisions": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "social_publication_reconciliation_proofs": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "social_weekly_preparations": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "social_schedule_batches": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "social_schedule_decisions": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "social_schedule_jobs": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "social_schedule_events": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "social_monthly_release_rules": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "social_monthly_release_evidence": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "handlarborsen_test_data_operator_grants": {
+      "class": "DB_INTERNAL",
+      "rls": true,
+      "force_rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": false,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true,
+      "live": true
+    },
+    "handlarborsen_test_data_reviews": {
+      "class": "DB_INTERNAL",
+      "rls": true,
+      "force_rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": false,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true,
+      "live": true
+    },
+    "handlarborsen_test_data_executions": {
+      "class": "DB_INTERNAL",
+      "rls": true,
+      "force_rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": false,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true,
+      "live": true
+    },
+    "sales_send_events": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "sales_send_jobs": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "sales_send_policies": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "media_news_review_evidence": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "user_calendar_events": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 3,
+      "anon_grants": false,
+      "authenticated_grants": true,
+      "service_role": false,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "user_calendar_mutations": {
+      "class": "TENANT_RLS",
+      "rls": true,
+      "policies": 2,
+      "anon_grants": false,
+      "authenticated_grants": true,
+      "service_role": false,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "workflow_human_story_requests": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true,
+      "rls_declared_in_migration": true,
+      "created_by_migration": true
+    },
+    "workflow_human_story_approvals": {
       "class": "SERVER_ONLY",
       "rls": true,
       "policies": 0,

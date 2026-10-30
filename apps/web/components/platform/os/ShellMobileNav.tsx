@@ -1,6 +1,6 @@
 'use client'
 
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
 import { shouldRenderShellMobileNav } from '@/lib/nav/mobile-shell-visibility'
 import type { OmniraUiGeneration } from '@/lib/ui/generation'
@@ -31,5 +31,8 @@ interface ShellMobileNavProps {
 export function ShellMobileNav({ uiGeneration, children }: ShellMobileNavProps) {
   const pathname = usePathname()
   if (!shouldRenderShellMobileNav(pathname, uiGeneration)) return null
-  return <>{children}</>
+  // A keyed Fragment remounts the native <details> when navigation happens
+  // outside its own links (back/forward, breadcrumbs, project actions).
+  // It adds no wrapper element or extra mobile navigation surface.
+  return <Fragment key={pathname}>{children}</Fragment>
 }

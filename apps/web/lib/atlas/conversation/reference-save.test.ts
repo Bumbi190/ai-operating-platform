@@ -79,3 +79,41 @@ for(const successful of [true,false])it('settles a '+(successful?'successful':'f
  expect((await c.saveReferenceTurn(input)).ok).toBe(true)
  expect(c.snapshot().history).toHaveLength(1)
 })
+
+for(const success of [true,false])it('settles a '+(success?'confirmed':'failed')+' reference save after pending clears for queued voice consumers',async()=>{
+ const c=controller(async()=>success?Response.json(payload(),{status:202}):Response.json({error:'unavailable'},{status:503}))
+ const settled:any[]=[]
+ c.subscribeSettled(event=>settled.push({...event,pending:c.snapshot().pending}))
+ const result=await c.saveReferenceTurn(input)
+ expect(result.ok).toBe(success)
+ expect(settled).toEqual([{conversationId:C,generation:1,current:true,ok:success,pending:false}])
+})
+it('marks a reference-save settlement stale after navigation without clearing the active conversation',async()=>{
+ let release!:(response:Response)=>void
+ const c=controller(async()=>new Promise<Response>(resolve=>release=resolve)),settled:any[]=[]
+ c.subscribeSettled(event=>settled.push(event))
+ const pending=c.saveReferenceTurn(input)
+ const other='50000000-0000-4000-8000-000000000002'
+ c.activateConversation({id:other,projectId:P,studio:true,saved:[],state:'ok'})
+ release(Response.json(payload(),{status:202}));await pending
+ expect(settled).toEqual([{conversationId:C,generation:1,current:false,ok:true}])
+ expect(c.snapshot().id).toBe(other);expect(c.snapshot().pending).toBe(false)
+})
+
+it('does not duplicate a hydrated persisted message when replaying its lost receipt after reload',async()=>{
+ const c=controller(async()=>Response.json(payload(),{status:202}))
+ c.activateConversation({id:C,projectId:P,studio:true,state:'ok',saved:[
+  {id:M,role:'user',content:input.text,tool_data:null,created_at:'2026-10-30T08:00:00Z'},
+ ]})
+ expect((await c.saveReferenceTurn(input)).ok).toBe(true)
+ expect(c.snapshot().history).toEqual([{role:'user',content:input.text}])
+ expect(c.snapshot().entries.filter(e=>e.kind==='user')).toHaveLength(1)
+})
+it('keeps a different persisted message with the same text when saving a new reference message',async()=>{
+ const c=controller(async()=>Response.json(payload(),{status:202}))
+ c.activateConversation({id:C,projectId:P,studio:true,state:'ok',saved:[
+  {id:'90000000-0000-4000-8000-000000000002',role:'user',content:input.text,tool_data:null,created_at:'2026-10-30T08:00:00Z'},
+ ]})
+ expect((await c.saveReferenceTurn(input)).ok).toBe(true)
+ expect(c.snapshot().history).toEqual([{role:'user',content:input.text},{role:'user',content:input.text}])
+})

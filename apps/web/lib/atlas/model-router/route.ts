@@ -21,11 +21,21 @@ export interface WorkerEvidence {
   readonly observedAtMs: number
   /** Local inference must be proved by a successful smoke test. */
   readonly inferenceSmokePassed?: boolean
+  /** Attested, fresh host RAM/VRAM/temperature gate; distinct from inference success. */
+  readonly localResourcePreflightPassed?: boolean
   /** For paid/subscription harnesses, login alone is not a quota guarantee. */
   readonly entitlement?: 'available' | 'exhausted' | 'unknown'
   readonly authenticated?: boolean
   /** A positive, trusted estimate is required before considering metered AI. */
   readonly estimatedSpendSek?: number
+  /** Prime Agent pilot: trusted host ran a real tool/patch smoke recently. */
+  readonly pilotToolSmokePassed?: boolean
+  /** Separate approved pilot workspace, not the canonical SDF1 sandbox. */
+  readonly pilotIsolationVerified?: boolean
+  /** Fresh quota check from the pilot ledger, not a guarantee of USD billing. */
+  readonly pilotCodexSlotAvailable?: boolean
+  /** Required human approval for this experimental pilot only. */
+  readonly pilotHumanApproved?: boolean
 }
 
 export interface RoutingRequest {
@@ -59,12 +69,17 @@ export type RejectReason =
   | 'external_processing_forbidden'
   | 'unverified_or_stale_health'
   | 'local_inference_not_proven'
+  | 'local_resources_unavailable'
   | 'account_not_authenticated'
   | 'quota_not_available'
   | 'unverified_commercial_terms'
   | 'spend_authority_missing'
   | 'spend_estimate_missing'
   | 'spend_limit_exceeded'
+  | 'pilot_tool_smoke_missing'
+  | 'pilot_isolation_unverified'
+  | 'pilot_codex_slot_unavailable'
+  | 'pilot_human_approval_missing'
   | 'invalid_request'
 
 export interface RoutingDiagnostic {
@@ -115,10 +130,21 @@ function reasonFor(candidate: WorkerCandidate, request: RoutingRequest): RejectR
   }
 
   if (candidate.cost === 'local') {
+    if (observation?.localResourcePreflightPassed !== true) reasons.push('local_resources_unavailable')
     if (observation?.inferenceSmokePassed !== true) reasons.push('local_inference_not_proven')
   } else {
     if (observation?.authenticated !== true) reasons.push('account_not_authenticated')
     if (observation?.entitlement !== 'available') reasons.push('quota_not_available')
+  }
+
+  // An experimental Prime Agent pilot is NOT the canonical code-broker sandbox.
+  // Only a verified, fresh host observation and a separate human approval may
+  // nominate it for review. Final execution remains categorically unauthorized.
+  if (candidate.harness === 'prime-agent-docker') {
+    if (observation?.pilotToolSmokePassed !== true) reasons.push('pilot_tool_smoke_missing')
+    if (observation?.pilotIsolationVerified !== true) reasons.push('pilot_isolation_unverified')
+    if (observation?.pilotCodexSlotAvailable !== true) reasons.push('pilot_codex_slot_unavailable')
+    if (observation?.pilotHumanApproved !== true) reasons.push('pilot_human_approval_missing')
   }
 
   // An Abacus CLI login / Codex subscription does NOT establish Abacus prices.
@@ -181,9 +207,14 @@ function isRoutingRequest(input: unknown): input is RoutingRequest {
       && Number.isSafeInteger(ev.observedAtMs) && (ev.observedAtMs as number) >= 0
       && (ev.authenticated === undefined || typeof ev.authenticated === 'boolean')
       && (ev.inferenceSmokePassed === undefined || typeof ev.inferenceSmokePassed === 'boolean')
+      && (ev.localResourcePreflightPassed === undefined || typeof ev.localResourcePreflightPassed === 'boolean')
       && (ev.entitlement === undefined
         || ['available', 'exhausted', 'unknown'].includes(ev.entitlement))
       && (ev.estimatedSpendSek === undefined || typeof ev.estimatedSpendSek === 'number')
+      && (ev.pilotToolSmokePassed === undefined || typeof ev.pilotToolSmokePassed === 'boolean')
+      && (ev.pilotIsolationVerified === undefined || typeof ev.pilotIsolationVerified === 'boolean')
+      && (ev.pilotCodexSlotAvailable === undefined || typeof ev.pilotCodexSlotAvailable === 'boolean')
+      && (ev.pilotHumanApproved === undefined || typeof ev.pilotHumanApproved === 'boolean')
   })
 }
 

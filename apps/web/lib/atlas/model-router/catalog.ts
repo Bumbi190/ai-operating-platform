@@ -9,7 +9,7 @@ export const ROUTER_CATALOG_VERSION = 'atlas.model-router.catalog.v1' as const
 
 export type AtlasTask = 'classify' | 'summarize' | 'plan' | 'code_patch' | 'code_review'
 export type QualityTier = 1 | 2 | 3
-export type HarnessKind = 'ollama-http' | 'codex-cli' | 'abacus-cli' | 'api'
+export type HarnessKind = 'ollama-http' | 'codex-cli' | 'prime-agent-docker' | 'abacus-cli' | 'api'
 export type CostKind = 'local' | 'subscription' | 'unverified' | 'metered'
 export type ModelLineage = 'qwen' | 'openai' | 'unknown'
 
@@ -47,6 +47,16 @@ export const ATLAS_WORKERS: readonly WorkerCandidate[] = Object.freeze([
     provider: 'openai', modelLineage: 'openai', harness: 'codex-cli', cost: 'subscription',
     supportedTasks: ['classify', 'summarize', 'plan', 'code_patch', 'code_review'],
     qualityTier: 3, boundary: 'external', executesWithoutHumanGate: false,
+  } as const),
+  // Prime Agent passed isolated tool/edit and 5/5 code tests on 2026-10-29.
+  // This is an experimental advisory identity, NOT admission to SDF1 or
+  // permission to mount real repositories or spend subscription credits.
+  Object.freeze({
+    id: 'prime-agent-codex-pilot',
+    modelId: 'gpt-5.6-luna',
+    provider: 'openai', modelLineage: 'openai', harness: 'prime-agent-docker', cost: 'subscription',
+    supportedTasks: ['code_patch'],
+    qualityTier: 2, boundary: 'external', executesWithoutHumanGate: false,
   } as const),
   Object.freeze({
     id: 'abacus-code-worker',

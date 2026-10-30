@@ -8,9 +8,9 @@ import {readFileSync} from 'node:fs'
 import {fileURLToPath} from 'node:url'
 export const REFERENCE_TEST_IMAGES={
  db:'postgres:17-alpine',
- auth:'public.ecr.aws/supabase/gotrue:v2.197.0',
- rest:'public.ecr.aws/supabase/postgrest:v16.5',
- storage:'public.ecr.aws/supabase/storage-api:v1.79.36',
+ auth:'supabase/gotrue:v2.197.0',
+ rest:'postgrest/postgrest:v16.5',
+ storage:'supabase/storage-api:v1.79.36',
 }
 export function assertReferenceLocalConfig({mode,url}={}){
  if(mode!=='isolated-local')throw Error('Explicit isolated-local mode required')
@@ -21,6 +21,30 @@ export function assertReferenceLocalConfig({mode,url}={}){
 const web=fileURLToPath(new URL('../',import.meta.url))
 const repo=fileURLToPath(new URL('../../../',import.meta.url))
 const q=s=>"'"+String(s).replaceAll("'","''")+"'"
+// Discover by intended name, then prove the unique run label before deletion.
+// Attempt every candidate even when a previous Docker operation fails.
+export async function cleanupReferenceResources({id,label,names,docker}){
+ const errors=[]
+ for(const name of names.slice().reverse()){
+  try{
+   const found=docker(['ps','-a','--filter','name=^/'+name+'$','--format','{{.Names}}'])
+   if(!found)continue
+   if(found!==name||docker(['inspect','--format','{{index .Config.Labels "'+label+'"}}',name])!==id)throw Error('ownership mismatch: '+name)
+   docker(['rm','-f',name])
+  }catch(error){errors.push(error.message)}
+ }
+ try{
+  const found=docker(['network','ls','--filter','name=^'+id+'$','--format','{{.Name}}'])
+  if(found){
+   if(found!==id||docker(['network','inspect','--format','{{index .Labels "'+label+'"}}',id])!==id)throw Error('network ownership mismatch')
+   docker(['network','rm',id])
+  }
+ }catch(error){errors.push(error.message)}
+ try{
+  if(docker(['ps','-a','--filter','label='+label+'='+id,'--format','{{.Names}}']))errors.push('owned containers remain')
+ }catch(error){errors.push(error.message)}
+ if(errors.length)throw Error('Fixture cleanup failed: '+errors.join('; '))
+}
 export async function startReferenceStack(){
  if(process.env.ATLAS_REFERENCE_TEST_MODE!=='isolated-local')throw Error('Explicit isolated-local mode required')
  if(freemem()<2*1024**3)throw Error('Need 2GiB free RAM; no Docker resources started')
@@ -32,8 +56,9 @@ export async function startReferenceStack(){
   const data=part({alg:'HS256',typ:'JWT'})+'.'+part({role,iss:'supabase',iat:now,exp:now+3600})
   return data+'.'+createHmac('sha256',secret).update(data).digest('base64url')
  }
- const anonKey=token('anon'),serviceKey=token('service_role'),containers=[]
- let network=false,gateway
+ const anonKey=token('anon'),serviceKey=token('service_role')
+ const containers=Object.keys(REFERENCE_TEST_IMAGES).map(name=>id+'-'+name)
+ let gateway
  function docker(args,input,environment={}){
   const result=spawnSync('docker',args,{input,encoding:'utf8',timeout:30000,maxBuffer:2**20,env:{...process.env,...environment}})
   if(result.status!==0)throw Error('Fixture Docker operation failed: '+(result.stderr||result.error?.message||'unknown').slice(0,700))
@@ -42,16 +67,7 @@ export async function startReferenceStack(){
  const sql=text=>docker(['exec','-i',id+'-db','psql','-X','-qAt','-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres'],text)
  async function close(){
   if(gateway){gateway.closeAllConnections();await new Promise(resolve=>gateway.close(resolve));gateway=undefined}
-  for(const name of containers.slice().reverse()){
-   assert.equal(docker(['inspect','--format','{{index .Config.Labels "'+label+'"}}',name]),id)
-   docker(['rm','-f',name])
-  }
-  containers.length=0
-  if(network){
-   assert.equal(docker(['network','inspect','--format','{{index .Labels "'+label+'"}}',id]),id)
-   docker(['network','rm',id]);network=false
-  }
-  assert.equal(docker(['ps','-a','--filter','label='+label+'='+id,'--format','{{.ID}}']),'')
+  await cleanupReferenceResources({id,label,names:containers,docker})
   console.log('CLEANUP owned Auth/Storage fixture removed')
  }
  function run(name,image,memory,port,environment,extra=[],command=[]){
@@ -59,7 +75,6 @@ export async function startReferenceStack(){
   docker(['run','--pull=never','-d','--name',full,'--label',label+'='+id,
    '--network',id,'--network-alias',name,'--memory',memory,'--memory-swap',memory,'--cpus','1','--pids-limit','128',
    ...(port?['-p','127.0.0.1::'+port]:[]),...Object.keys(environment).flatMap(key=>['-e',key]),...extra,image,...command],undefined,environment)
-  containers.push(full)
   return port?'http://'+docker(['port',full,String(port)]):null
  }
  async function wait(url){
@@ -72,7 +87,7 @@ export async function startReferenceStack(){
  }
  try{
   for(const image of Object.values(REFERENCE_TEST_IMAGES))docker(['image','inspect',image,'--format','{{.Id}}'])
-  docker(['network','create','--internal','--label',label+'='+id,id]);network=true
+  docker(['network','create','--internal','--label',label+'='+id,id])
   run('db',REFERENCE_TEST_IMAGES.db,'384m',null,{POSTGRES_PASSWORD:password},
    ['--tmpfs','/var/lib/postgresql/data:rw,nosuid,size=192m'],['-c','shared_buffers=32MB','-c','max_connections=40','-c','work_mem=1MB'])
   let ready=false

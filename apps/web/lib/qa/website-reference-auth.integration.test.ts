@@ -136,8 +136,18 @@ it('persists one canonical message/manifest through actual chat and the real RPC
 })
 it('denies anonymous RPC execution and refuses paused-project replay/read',async()=>{
  const anon=createClient(stack.url,stack.anonKey,{auth:{persistSession:false,autoRefreshToken:false}})
- const forbidden=await anon.rpc('website_build_persist_reference_turn',{})
- expect(forbidden.error).not.toBeNull()
+ const asset=await admin.from('assets').select('checksum_sha256').eq('id',finalized.assetId).single()
+ expect(asset.error).toBeNull()
+ const args={p_owner_id:owner.user.id,p_project_id:projectId,p_conversation_id:conversationId,
+  p_idempotency_key:idempotencyKey,p_message_text:save().messages[0].content,
+  p_images:[{ticketId:ticket.ticketId,assetId:finalized.assetId,mimeType:'image/webp',sha256:asset.data.checksum_sha256}]}
+ // Identical arguments succeed for service_role, ruling out invalid-signature/input errors.
+ const control=await admin.rpc('website_build_persist_reference_turn',args)
+ expect(control.error).toBeNull();expect(control.data).toEqual(receipt)
+ for(const client of [anon,owner.ssr,outsider.ssr]){
+  const forbidden=await client.rpc('website_build_persist_reference_turn',args)
+  expect(forbidden.error?.code,'RPC must deny role, not merely fail lookup').toBe('42501')
+ }
  stack.sql('update projects set execution_paused=true where id='+q(projectId))
  cookieContext.jar=owner.jar
  expect((await image.GET(request('/api/website-build/references/image?'+query()))).status).toBe(404)

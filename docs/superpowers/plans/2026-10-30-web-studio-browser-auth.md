@@ -1,7 +1,7 @@
 # Web Studio real browser auth integration
 **Goal:** actual Chromium password login -> real browser cookies -> unchanged Next middleware/router and reference routes -> private upload/select/save/reload/retry and cross-user denial.
 **Execution:** superpowers:executing-plans inline in existing Draft PR368. Base61a2242. Existing v0.5 Studio spec and accepted auth-integration plan govern scope. One fresh review at end.
-**Boundary:** a generated isolated Next14 app reexports production login, middleware, reference routes and chat; synthetic dashboard mounts actual reference components/controller. This proves those integrated modules, not the full production dashboard/layout or canonical migration replay.
+**Boundary:** a generated isolated Next14 app loads exact production login source/CSS and middleware, reexports reference routes and chat; synthetic dashboard mounts actual reference components/controller. This proves those integrated modules, not the full production dashboard/layout or canonical migration replay.
 **Constraints:** same worktree/PR, Linux ephemeral CI only, existing four-service fixture, no hosted endpoints/credentials/flags/SQL, provider calls, production merge or new paid services. Fresh credentials only. Browser denies external origins; server fetch guard and sanitized child env restrict provider traffic. Never upload cookie/trace/session artifacts. Runner owns and cleans its children/temp app/labelled stack.
 ## Tasks
 1. Test server HTTP-origin guard RED -> implement allowlisted fetch guard, verify guard tests. Write browser acceptance tests before runner wiring.

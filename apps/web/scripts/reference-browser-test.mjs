@@ -1,7 +1,7 @@
 // Isolated Linux/CI integration. Generates a Next shell; never starts the real deployment.
 import assert from 'node:assert/strict'
 import {randomUUID} from 'node:crypto'
-import {mkdir,mkdtemp,writeFile,readFile,rm} from 'node:fs/promises'
+import {mkdir,mkdtemp,writeFile,readFile,copyFile,rm} from 'node:fs/promises'
 import {createServer} from 'node:net'
 import {fileURLToPath} from 'node:url'
 import {resolve,join} from 'node:path'
@@ -54,7 +54,11 @@ try{
  await put('next.config.mjs',`export default {experimental:{externalDir:true,serverComponentsExternalPackages:['sharp','ws']},images:{unoptimized:true},webpack(config){config.resolve.alias['@']=${JSON.stringify(web)};return config}}`)
  await put('middleware.ts',`export {middleware,config} from ${source('middleware.ts')}`)
  await put('app/layout.tsx',`import React from 'react';export default function Layout({children}:{children:React.ReactNode}){return <html lang="sv"><body>{children}</body></html>}`)
- await put('app/login/page.tsx',`export {default} from ${source('app/(auth)/login/page.tsx')}`)
+ // Keep the production client page and its relative CSS inside Next's app CSS entry graph.
+ await put('app/login/page.tsx',await readFile(resolve(web,'app/(auth)/login/page.tsx'),'utf8'))
+ await put('app/login/login.module.css',await readFile(resolve(web,'app/(auth)/login/login.module.css'),'utf8'))
+ await mkdir(resolve(app,'public'),{recursive:true})
+ for(const name of ['omnira-favicon.svg','atlas-orb-login-masked.png'])await copyFile(resolve(web,'public',name),resolve(app,'public',name))
  await put('app/organization/page.tsx',`export default function Page(){return <h1>Isolerad organisation</h1>}`)
  for(const name of ['tickets','finish','image','library']){
   await put('app/api/website-build/references/'+name+'/route.ts',`export const dynamic='force-dynamic';export const runtime='nodejs';export {${name==='tickets'?'GET,POST':name==='finish'?'POST':'GET'}} from ${source('app/api/website-build/references/'+name+'/route.ts')}`)

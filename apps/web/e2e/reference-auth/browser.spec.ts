@@ -4,7 +4,10 @@ const query=new URLSearchParams({projectId:fixture.projectId,conversationId:fixt
 const comment='Behåll ordningen och färgerna från mina privata referenser.'
 async function guard(context:BrowserContext){
  const external:string[]=[]
- context.on('page',page=>page.on('console',message=>{if(message.type()==='error')console.error('browser: '+message.text())}))
+ context.on('page',page=>{
+  page.on('console',message=>{if(message.type()==='error')console.error('browser: '+message.text())})
+  page.on('pageerror',error=>console.error('browser pageerror: '+error.message))
+ })
  await context.route('**/*',route=>{
   const u=new URL(route.request().url())
   if(![fixture.appUrl,fixture.storageUrl].includes(u.origin)){external.push(u.origin);return route.abort('blockedbyclient')}

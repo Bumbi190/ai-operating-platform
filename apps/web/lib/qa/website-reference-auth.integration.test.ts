@@ -188,6 +188,7 @@ const analysisPath='/api/website-build/references/analysis'
 const analysisInput=()=>({projectId,conversationId,messageId:receipt.messageId})
 const analysisArgs=()=>({p_owner_id:owner.user.id,p_project_id:projectId,p_conversation_id:conversationId,
  p_message_id:receipt.messageId,p_binding_sha256:receipt.bindingSha256})
+const finishScope=()=>{const {p_binding_sha256:_binding,...scope}=analysisArgs();return scope}
 const claimArgs=()=>({...analysisArgs(),p_analysis_id:analysisQuote.analysisId,p_quote_token:analysisQuote.quoteToken,
  p_approved_maximum_sek:analysisQuote.maximumSek,p_payload_sha256:stack.sql('select payload_sha256 from website_build_reference_analyses where id='+q(analysisQuote.analysisId))})
 it('keeps analysis off by default, then quotes only exact owned saved sources',async()=>{
@@ -219,7 +220,7 @@ it('rejects stale quote tokens and denies direct API-role mutation/RPC execution
  for(const client of [anon,owner.ssr,outsider.ssr]){
   for(const [name,args] of [
    ['website_build_reference_analysis_quote',quoteArgs],['website_build_reference_analysis_claim',claimArgs()],
-   ['website_build_reference_analysis_finish',{...analysisArgs(),p_analysis_id:analysisQuote.analysisId,p_claim_token:randomUUID(),p_status:'unknown',p_canonical_result:null}],
+   ['website_build_reference_analysis_finish',{...finishScope(),p_analysis_id:analysisQuote.analysisId,p_claim_token:randomUUID(),p_status:'unknown',p_canonical_result:null}],
   ] as const){expect((await client.rpc(name,args)).error?.code).toBe('42501')}
  }
  expect((await admin.from('website_build_reference_analyses').update({status:'unknown'}).eq('id',analysisQuote.analysisId)).error?.code).toBe('42501')
@@ -232,7 +233,7 @@ it('atomically admits one claim and never reclaims after an ambiguous outcome',a
  expect(replay.status,await replay.clone().text()).toBe(200);expect((await replay.json()).status).toBe('processing')
  // Already paid outcome recording remains possible after pause; disclosure does not.
  stack.sql('update projects set execution_paused=true where id='+q(projectId))
- const completionArgs={...analysisArgs(),p_analysis_id:analysisQuote.analysisId,p_claim_token:analysisClaim.claimToken,p_status:'unknown',p_canonical_result:null}
+ const completionArgs={...finishScope(),p_analysis_id:analysisQuote.analysisId,p_claim_token:analysisClaim.claimToken,p_status:'unknown',p_canonical_result:null}
  const done=await admin.rpc('website_build_reference_analysis_finish',completionArgs)
  expect(done.error).toBeNull();expect(done.data.status).toBe('unknown');expect(done.data.claim_token).toBeUndefined()
  expect((await admin.rpc('website_build_reference_analysis_finish',completionArgs)).error).toBeNull()
@@ -253,7 +254,7 @@ it('returns a persisted fixture result only while exact private source bytes and
  const claimed=await admin.rpc('website_build_reference_analysis_claim',claimArgs());expect(claimed.error).toBeNull()
  const fixture={version:'reference-analysis.v1',observations:[{imageIndex:1,layout:'Luftig',typography:'Stor rubrik',colors:'Blått'}],
   directions:['editorial','visual','structured'].map(key=>({key,title:'Riktning '+key,rationale:'Egen hierarki',palette:{background:'#ffffff',foreground:'#162032',accent:'#1e40af'},font:'sans',mobile:'En kolumn'})),uncertainties:['Stillbild visar inte funktion.']}
- const completion=await admin.rpc('website_build_reference_analysis_finish',{...analysisArgs(),p_analysis_id:analysisQuote.analysisId,p_claim_token:claimed.data.claimToken,p_status:'succeeded',p_canonical_result:JSON.stringify(fixture)})
+ const completion=await admin.rpc('website_build_reference_analysis_finish',{...finishScope(),p_analysis_id:analysisQuote.analysisId,p_claim_token:claimed.data.claimToken,p_status:'succeeded',p_canonical_result:JSON.stringify(fixture)})
  expect(completion.error).toBeNull()
  const url=analysisPath+'?'+new URLSearchParams(analysisInput())
  const response=await analysisRoute.GET(request(url));expect(response.status,await response.clone().text()).toBe(200)
@@ -268,5 +269,20 @@ it('returns a persisted fixture result only while exact private source bytes and
  try{expect((await analysisRoute.GET(request(url))).status).not.toBe(200)}finally{
   expect((await admin.storage.from(asset.data.storage_bucket).upload(asset.data.storage_path,originalBytes,{contentType:'image/webp',upsert:true})).error).toBeNull()
  }
+ expect(external).toEqual([])
+})
+
+it('real analysis handler fails closed without canonical budget RPCs and durably records the refused attempt',async()=>{
+ cookieContext.jar=owner.jar
+ const saveBody=save();saveBody.referenceSave.idempotencyKey=randomUUID()
+ const saved=await chat.POST(request('/api/chat',saveBody));expect(saved.status).toBe(202);receipt=(await saved.json()).receipt
+ const quote=await analysisRoute.POST(request(analysisPath,{action:'quote',...analysisInput()}))
+ expect(quote.status).toBe(200);analysisQuote=await quote.json()
+ const run={action:'run',...analysisInput(),analysisId:analysisQuote.analysisId,quoteToken:analysisQuote.quoteToken,approvedMaximumSek:analysisQuote.maximumSek}
+ const response=await analysisRoute.POST(request(analysisPath,run))
+ expect(response.status,await response.clone().text()).toBe(200);const view=await response.json()
+ expect(view.status).toBe('failed');expect(view.analysis).toBeNull();expect(view.concepts).toEqual([])
+ const replay=await analysisRoute.POST(request(analysisPath,run));expect(replay.status).toBe(200);expect((await replay.json()).status).toBe('failed')
+ expect(stack.sql('select status from website_build_reference_analyses where id='+q(analysisQuote.analysisId))).toBe('failed')
  expect(external).toEqual([])
 })

@@ -1,9 +1,10 @@
 import {describe,it,expect,vi,beforeEach} from 'vitest'
 import {createHash} from 'node:crypto'
-const f=vi.hoisted(()=>({source:vi.fn(),prepare:vi.fn(),quote:vi.fn(),run:vi.fn(),enabled:vi.fn(),table:vi.fn()}))
+const f=vi.hoisted(()=>({source:vi.fn(),prepare:vi.fn(),quote:vi.fn(),run:vi.fn(),enabled:vi.fn(),table:vi.fn(),workspace:vi.fn()}))
 vi.mock('./source',()=>({readAnalysisSource:f.source,analysisTable:f.table}))
 vi.mock('./provider',()=>({prepareAnalysisRequest:f.prepare,quoteAnalysisRequest:f.quote,runAnalysisProvider:f.run,referenceAnalysisEnabled:f.enabled,ANALYSIS_MODEL:'claude-haiku-4-5-20251001',ANALYSIS_MAX_TOKENS:3072}))
-import {executeAnalysisAction} from './service'
+vi.mock('../assets/tickets',()=>({assertReferenceWorkspace:f.workspace}))
+import {executeAnalysisAction,readAnalysisJob} from './service'
 const id='11111111-1111-4111-8111-111111111111',hash='a'.repeat(64)
 const source={projectId:id,conversationId:id,messageId:id}
 const owner={ok:true as const,userId:id,allowedProjectIds:[id]}
@@ -35,6 +36,17 @@ describe('reference job orchestration (database RPC/provider boundaries mocked)'
   const view=await executeAnalysisAction(db,owner,{...source,action:'run',analysisId:id,quoteToken:id,approvedMaximumSek:2.2613},new AbortController().signal)
   expect(view.status).toBe('unknown');expect(f.run).toHaveBeenCalledTimes(1)
   expect(rpc.mock.calls[1][1].p_status).toBe('unknown')
+ })
+ it('does not disclose a private completion when source access changes during job lookup',async()=>{
+  let release!:(value:unknown)=>void,started!:()=>void
+  const waiting=new Promise(resolve=>{release=resolve}),lookupStarted=new Promise<void>(resolve=>{started=resolve})
+  const query:any={select:()=>query,eq:()=>query,maybeSingle:()=>{started();return waiting}}
+  f.table.mockReturnValue(query)
+  const reading=readAnalysisJob({} as any,owner,source)
+  await lookupStarted;f.source.mockRejectedValue(Error('source revoked while query was pending'))
+  release({data:row('succeeded'),error:null})
+  await expect(reading).rejects.toThrow()
+  expect(f.run).not.toHaveBeenCalled()
  })
  it('denies changed sources and malformed claimed maximum before provider',async()=>{
   f.source.mockRejectedValueOnce(Error('revoked'))

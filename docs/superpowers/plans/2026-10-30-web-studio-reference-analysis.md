@@ -27,8 +27,18 @@ Baseline 1e460d0: 124 targeted tests, 13 old browser tests, 3 real browser/Auth 
 https://platform.claude.com/docs/en/models/haiku-4-5/overview
 https://platform.claude.com/docs/en/about-claude/model-deprecations
 https://platform.claude.com/docs/en/build-with-claude/vision
-API pin remains active, 200k context and $1/$5 per MTok as in existing pricebook. Current newer models are not silently introduced into global governance.
+API pin remains active, 200k context and $1/$5 per MTok. A real-factory regression discovered the old pricebook incorrectly used Haiku 3.5's $0.80/$4 for both 4.5 IDs; this stage corrects only those two entries. At FX 10.5 the conservative ceiling is 2.2613 SEK for 3072 output tokens. Current newer models are not silently introduced into global governance.
 
 ## Execution ledger
 - Preflight reuse_existing / explicit_existing_pr, receipt .superpowers/vision-pr-preflight-20261030.json; clean existing worktree; main observed d0efe26.
 - Detailed implementation follows accepted v0.5; no new user approval needed for reversible default-off code.
+
+- RED/GREEN: strict analysis/action contract, provider request preparation and orchestration, plus a real failing H1 shadow-mode gate test corrected to require enforcement.
+- UI RED/GREEN: lost network response initially exposed raw browser error; fixed Swedish reconciliation guidance. 18/18 reference-picker/analysis Chromium cases pass (HTTP/provider/Auth boundaries mocked in this UI fixture).
+- Fresh read-only reviewer found a post-query disclosure race. Blocked-lookup revoke test reproduced it; source byte/owner verification now follows job lookup and quote/replay RPCs. Fixed regression is green.
+- Actual Anthropic factory (SDK/budget RPC boundaries mocked) tests cost increase and budget refusal before SDK construction. Exact quote test exposed the legacy pricebook mismatch above; corrected, 101/101 analysis + M0 regressions green.
+- Failed/unknown/processing jobs remain terminal for this source; no automatic retry or fallback, even for a proven pre-dispatch refusal. Recovery UI is a later explicit operator workflow.
+- Deferred: broader legacy pricebook audit, live paid inference quality/usage validation, full canonical production migration review/activation. No claims that isolated proposal SQL proves full production schema compatibility.
+
+- First isolated CI 41061301999 / reference-auth job 124081429318: baseline 7 plus quote test passed; three new tests failed because the TEST completion helper supplied an extra p_binding_sha256 argument absent from the actual RPC signature, then left the sequential fixture paused. Fixed that helper; production scopeArgs already matched SQL. Added a real-handler budget-RPC-unavailable fail-closed case to exercise production claim -> governed refusal -> durable finish.
+- Fresh review complete: no Critical, one Important (disclosure revalidation, fixed RED/GREEN); minor expired-quote button remains safe to defer because SQL rejects expired tokens.

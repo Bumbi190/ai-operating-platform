@@ -51,7 +51,10 @@ export async function executeAnalysisAction(db:AnalysisDb,owner:ProjectAccessOk,
   available();if(signal.aborted)throw new WebsiteBuildError('CONFLICT',409)
   const row=job(await rpc(db,'website_build_reference_analysis_quote',{...args,p_binding_sha256:source.bindingSha256,p_payload_sha256:prepared.payloadSha256,p_maximum_sek:maximum}),owner,input,source.bindingSha256)
   // A prior completed/claimed job never creates a second billable attempt.
-  return view(row,source.images.length)
+  available()
+  const current=await readAnalysisSource(db,owner,input)
+  if(current.bindingSha256!==source.bindingSha256)throw new WebsiteBuildError('CONFLICT',409)
+  return view(row,current.images.length)
  }
  if(signal.aborted)throw new WebsiteBuildError('CONFLICT',409)
  const claim=await rpc(db,'website_build_reference_analysis_claim',{...args,p_analysis_id:input.analysisId,p_quote_token:input.quoteToken,
@@ -59,7 +62,11 @@ export async function executeAnalysisAction(db:AnalysisDb,owner:ProjectAccessOk,
  const row=job(claim?.job,owner,input,source.bindingSha256)
  if(row.id!==input.analysisId||row.payload_sha256!==prepared.payloadSha256||row.maximum_sek!==input.approvedMaximumSek||
   row.quote_token!==input.quoteToken||typeof claim.claimed!=='boolean')throw new WebsiteBuildError('CONFLICT',409)
- if(!claim.claimed)return view(row,source.images.length)
+ if(!claim.claimed){
+  available();const current=await readAnalysisSource(db,owner,input)
+  if(current.bindingSha256!==source.bindingSha256)throw new WebsiteBuildError('CONFLICT',409)
+  return view(row,current.images.length)
+ }
  if(row.status!=='processing'||!isUuid(claim.claimToken))throw new WebsiteBuildError('BUILD_UNAVAILABLE',503)
  let status:'succeeded'|'failed'|'unknown'='unknown',canonical:string|null=null
  try{
@@ -82,10 +89,12 @@ export async function executeAnalysisAction(db:AnalysisDb,owner:ProjectAccessOk,
 }
 export async function readAnalysisJob(db:AnalysisDb,owner:ProjectAccessOk,input:AnalysisSource){
  available()
- const source=await readAnalysisSource(db,owner,input)
+ await assertReferenceWorkspace(db,owner,input.projectId,input.conversationId)
  const {data,error}=await analysisTable(db,'website_build_reference_analyses').select('*')
   .eq('owner_id',owner.userId).eq('project_id',input.projectId).eq('conversation_id',input.conversationId).eq('message_id',input.messageId).maybeSingle()
  if(error)throw new WebsiteBuildError('BUILD_UNAVAILABLE',503)
+ // Job lookup is asynchronous: check current ownership and exact private bytes AFTER it.
+ available();const source=await readAnalysisSource(db,owner,input)
  if(!data)return {messageId:input.messageId,status:'not_started',analysis:null,concepts:[]}
  return view(job(data,owner,input,source.bindingSha256),source.images.length)
 }

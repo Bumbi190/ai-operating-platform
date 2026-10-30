@@ -27,7 +27,7 @@ describe('reference job orchestration (database RPC/provider boundaries mocked)'
    .mockResolvedValueOnce({data:row('succeeded'),error:null}),db={rpc} as any
   const view=await executeAnalysisAction(db,owner,{...source,action:'run',analysisId:id,quoteToken:id,approvedMaximumSek:2.2613},new AbortController().signal)
   expect(f.run).toHaveBeenCalledTimes(1);expect(rpc.mock.calls.map(c=>c[0])).toEqual(['website_build_reference_analysis_claim','website_build_reference_analysis_finish'])
-  expect(f.source).toHaveBeenCalledTimes(2);expect(view.concepts).toHaveLength(3)
+  expect(f.source).toHaveBeenCalledTimes(3);expect(view.concepts).toHaveLength(3)
  })
  it('records ambiguous provider failure as unknown and never retries',async()=>{
   f.run.mockRejectedValue(Error('network failed after possible dispatch'))
@@ -36,6 +36,18 @@ describe('reference job orchestration (database RPC/provider boundaries mocked)'
   const view=await executeAnalysisAction(db,owner,{...source,action:'run',analysisId:id,quoteToken:id,approvedMaximumSek:2.2613},new AbortController().signal)
   expect(view.status).toBe('unknown');expect(f.run).toHaveBeenCalledTimes(1)
   expect(rpc.mock.calls[1][1].p_status).toBe('unknown')
+ })
+ it('does not dispatch when the source is revoked while the claim RPC is pending',async()=>{
+  let release!:(value:unknown)=>void,started!:()=>void
+  const waiting=new Promise(resolve=>{release=resolve}),claimStarted=new Promise<void>(resolve=>{started=resolve})
+  const rpc=vi.fn().mockImplementationOnce(()=>{started();return waiting}).mockResolvedValueOnce({data:row('failed'),error:null})
+  const running=executeAnalysisAction({rpc} as any,owner,{...source,action:'run',analysisId:id,quoteToken:id,approvedMaximumSek:2.2613},new AbortController().signal)
+  await claimStarted
+  f.source.mockRejectedValueOnce(Error('revoked during claim')).mockRejectedValueOnce(Error('still revoked before disclosure'))
+  release({data:{job:row('processing'),claimed:true,claimToken:id},error:null})
+  await expect(running).rejects.toThrow()
+  expect(f.run).not.toHaveBeenCalled()
+  expect(rpc.mock.calls[1][1].p_status).toBe('failed')
  })
  it('does not disclose a private completion when source access changes during job lookup',async()=>{
   let release!:(value:unknown)=>void,started!:()=>void

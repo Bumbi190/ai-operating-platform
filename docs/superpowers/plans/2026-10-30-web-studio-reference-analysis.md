@@ -42,3 +42,5 @@ API pin remains active, 200k context and $1/$5 per MTok. A real-factory regressi
 
 - First isolated CI 41061301999 / reference-auth job 124081429318: baseline 7 plus quote test passed; three new tests failed because the TEST completion helper supplied an extra p_binding_sha256 argument absent from the actual RPC signature, then left the sequential fixture paused. Fixed that helper; production scopeArgs already matched SQL. Added a real-handler budget-RPC-unavailable fail-closed case to exercise production claim -> governed refusal -> durable finish.
 - Fresh review complete: no Critical, one Important (disclosure revalidation, fixed RED/GREEN); minor expired-quote button remains safe to defer because SQL rejects expired tokens.
+
+- Extended the same authority fix to the successful claim path: source revocation while awaiting the claim RPC must stop before provider dispatch and record a known pre-dispatch failure. A blocked-claim regression first reproduced a provider call; fresh source verification after claim fixes it. Normal execution authority watchers remain in the governed factory.

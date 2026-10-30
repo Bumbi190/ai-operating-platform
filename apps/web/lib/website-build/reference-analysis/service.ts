@@ -71,12 +71,17 @@ export async function executeAnalysisAction(db:AnalysisDb,owner:ProjectAccessOk,
  let status:'succeeded'|'failed'|'unknown'='unknown',canonical:string|null=null
  try{
   available()
+  // Claim acquisition is another asynchronous boundary. Reverify before any provider work.
+  try{
+   const current=await readAnalysisSource(db,owner,input)
+   if(current.bindingSha256!==source.bindingSha256)throw Error('source binding changed')
+  }catch(error){throw new ProviderNotDispatchedError('source no longer verified before dispatch',error)}
   if(signal.aborted)throw new ProviderNotDispatchedError('request already aborted',undefined)
   const analysis=await runAnalysisProvider(prepared,{projectId:input.projectId,analysisId:row.id,maximumSek:row.maximum_sek,signal})
   // Compile before completion so an invalid/render-incompatible result cannot masquerade as succeeded.
   createReferenceConcepts(analysis);canonical=JSON.stringify(analysis);status='succeeded'
  }catch(error){
-  // Only the sanctioned boundary can prove a non-dispatch. No error text matching or auto retry.
+  // Only typed pre-dispatch proof counts. No error text matching or automatic retry.
   status=error instanceof ProviderNotDispatchedError||error instanceof SpendRefusedError?'failed':'unknown'
  }
  const completed=job(await rpc(db,'website_build_reference_analysis_finish',{...args,p_analysis_id:row.id,p_claim_token:claim.claimToken,

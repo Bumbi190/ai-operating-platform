@@ -72,7 +72,7 @@ export async function startReferenceStack(){
    try{
     let tail=docker(['logs','--tail','8',name])
     for(const value of [secret,password,anonKey,serviceKey])tail=tail.replaceAll(value,'[fixture-secret]')
-    tail=tail.replace(/[A-Za-z0-9_-]{12,}\\.[A-Za-z0-9_-]{12,}\\.[A-Za-z0-9_-]{12,}/g,'[fixture-token]')
+    tail=tail.replace(/[A-Za-z0-9_-]{12,}[.][A-Za-z0-9_-]{12,}[.][A-Za-z0-9_-]{12,}/g,'[fixture-token]')
     console.error(name.split('-').at(-1)+': '+tail.slice(-1400))
    }catch{}
   }
@@ -115,7 +115,8 @@ export async function startReferenceStack(){
   sql(`create role anon nologin;create role authenticated nologin;create role service_role nologin bypassrls;
    create role authenticator login noinherit password ${q(password)};grant anon,authenticated,service_role to authenticator;
    create role supabase_auth_admin login password ${q(password)};create schema auth authorization supabase_auth_admin;
-   create role supabase_storage_admin login bypassrls password ${q(password)};create schema storage authorization supabase_storage_admin;
+   create role supabase_storage_admin login noinherit bypassrls password ${q(password)};create schema storage authorization supabase_storage_admin;
+   grant anon,authenticated,service_role to supabase_storage_admin;
    create schema extensions;create extension if not exists pgcrypto with schema extensions;
    create extension if not exists "uuid-ossp" with schema extensions;
    grant usage on schema public,extensions,auth to anon,authenticated,service_role,supabase_auth_admin,supabase_storage_admin;

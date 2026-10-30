@@ -127,6 +127,19 @@ it('finalizes real bytes into a canonical private WebP and scopes read access',a
  const list=await library.GET(request('/api/website-build/references/library?'+new URLSearchParams({projectId,conversationId})))
  expect(list.status).toBe(200);expect((await list.json()).items).toHaveLength(1)
 })
+it('rejects spoofed PNG bytes before admitting any canonical asset',async()=>{
+ cookieContext.jar=owner.jar
+ const r=await tickets.POST(request('/api/website-build/references/tickets',{projectId,conversationId,draftId:randomUUID(),slot:0,mimeType:'image/png'}))
+ expect(r.status).toBe(201);const bad=await r.json()
+ const client=createClient(stack.url,stack.anonKey,{auth:{persistSession:false,autoRefreshToken:false}})
+ const uploaded=await client.storage.from(bad.bucket).uploadToSignedUrl(bad.path,bad.token,Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>'),{contentType:'image/png',upsert:false})
+ expect(uploaded.error).toBeNull()
+ const finalized=await finish.POST(request('/api/website-build/references/finish',{projectId,conversationId,ticketId:bad.ticketId}))
+ expect(finalized.status).toBe(400)
+ const row=await admin.from('website_build_reference_tickets').select('state,asset_id').eq('id',bad.ticketId).single()
+ expect(row.error).toBeNull();expect(row.data).toEqual({state:'rejected',asset_id:null})
+ expect(stack.sql('select count(*) from assets;')).toBe('1')
+})
 it('persists one canonical message/manifest through actual chat and the real RPC',async()=>{
  cookieContext.jar=owner.jar
  const first=await chat.POST(request('/api/chat',save()))

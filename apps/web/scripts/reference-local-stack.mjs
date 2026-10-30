@@ -117,6 +117,10 @@ export async function startReferenceStack(){
    create role supabase_auth_admin login password ${q(password)};create schema auth authorization supabase_auth_admin;
    create role supabase_storage_admin login noinherit bypassrls password ${q(password)};create schema storage authorization supabase_storage_admin;
    grant anon,authenticated,service_role to supabase_storage_admin;
+   grant usage on schema storage to anon,authenticated,service_role;
+   alter default privileges for role supabase_storage_admin in schema storage grant all on tables to anon,authenticated,service_role;
+   alter default privileges for role supabase_storage_admin in schema storage grant all on sequences to anon,authenticated,service_role;
+   alter default privileges for role supabase_storage_admin in schema storage grant all on functions to anon,authenticated,service_role;
    create schema extensions;create extension if not exists pgcrypto with schema extensions;
    create extension if not exists "uuid-ossp" with schema extensions;
    grant usage on schema public,extensions,auth to anon,authenticated,service_role,supabase_auth_admin,supabase_storage_admin;
@@ -152,6 +156,7 @@ export async function startReferenceStack(){
    TENANT_ID:'fixture',REGION:'local',FILE_SIZE_LIMIT:String(10*1024*1024),ENABLE_IMAGE_TRANSFORMATION:'false',
   },['--tmpfs','/var/lib/storage:rw,nosuid,size=64m'])
   await wait(storage+'/status')
+  assert.equal(sql("select relrowsecurity from pg_class where oid='storage.objects'::regclass"),'t','Real Storage object RLS must remain enabled')
   sql(readFileSync(web+'lib/website-build/assets/fixtures/reference-auth-bootstrap.sql','utf8'))
   for(const file of [web+'supabase/migrations/20260902_media_asset_foundation.sql',
    repo+'docs/sql/atlas-builder-reference-upload-tickets-proposed.sql',repo+'docs/sql/atlas-builder-reference-message-binding-proposed.sql'])sql(readFileSync(file,'utf8'))

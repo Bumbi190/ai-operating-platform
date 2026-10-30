@@ -36,3 +36,15 @@ Consumes: startReferenceStack() -> {url,anonKey,serviceKey,sql(),close()}.
 - [ ] Actual chat POST202, exact retry same receipt and one SQL row/manifest, changed text409, foreign-user/context denied, no remote provider traffic.
 - [ ] Run integration serially at512MiB, then relevant regression/browser/type checks and broad test command; report all failures.
 - [ ] Fresh reviewer, fix Important findings with RED/GREEN, commit/push same PR and verify exact-SHA CI; update PR and Notion.
+
+## Execution findings and review
+
+Actual stack moved to Linux CI because host RAM fell below1GiB. No local containers started or other services stopped. Service ports are not published: the Linux test host reaches only its own internal bridge and exposes one random loopback gateway. Corresponding official DockerHub image names avoid ECR's confirmed anonymous data limit. No registry account or production credential was added.
+
+Real initial GoTrue migration owns its functions before the disposable schema adapts auth.uid/auth.role to PostgREST's current request.jwt.claims contract. Storage bootstrap includes API role membership, schema usage and default object privileges; its actual migrations and object RLS remain in force and are asserted. Earlier failures were fixture bootstrap defects, not evidence of working production integration. New seventh handler case rejects SVG bytes presented as PNG before canonical admission.
+
+Fresh review:0Critical,2Important corrected. RPC role test now uses the exact otherwise-valid service-role control and requires42501 from anon, owner-authenticated and other-authenticated sessions. Cleanup declares names before startup, proves ownership, discovers partly-created resources and attempts every candidate before reporting errors. Three injected cleanup cases failed before the implementation and pass now; guard/cleanup6/6PASS. No second independent review claimed.
+
+Deferred review minors: explicit upsert:true signed-token attack and changed image manifest through the actual chat handler (SQL harness already checks order). Browser sign-in/middleware/cookie delivery/refresh and production schema replay remain separate gates. Forced process-kill cleanup is not guaranteed; ephemeral runner and always-run no-resource checks bound the test's lifecycle.
+
+Current local verification: final417/41735filesPASS after cold-import5s timeout plus following-test interference on first run; unchanged ownership25/25 alsoPASS; browser13/13PASS; TypeScript including new integration/import graphPASS. Full npm test --bail1 still stops2pass1fail at unchanged mission-brief-v1 / supports all sixteen §20.98 statuses in the public type. Remote integration and latest exact-SHA checks must be read before claiming their pass.

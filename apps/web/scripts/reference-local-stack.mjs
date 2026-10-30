@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {spawnSync} from 'node:child_process'
 import {randomUUID,randomBytes,createHmac} from 'node:crypto'
 import {createServer} from 'node:http'
+import {isIP} from 'node:net'
 import {freemem} from 'node:os'
 import {readFileSync} from 'node:fs'
 import {fileURLToPath} from 'node:url'
@@ -79,7 +80,7 @@ export async function startReferenceStack(){
   if(!port)return null
   // Linux host reaches its own internal bridge; no service port is published.
   const ip=docker(['inspect','--format','{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}',full])
-  if(!/^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$/.test(ip))throw Error('Invalid fixture container address')
+  if(isIP(ip)!==4)throw Error('Invalid fixture container address')
   return 'http://'+ip+':'+port
  }
  async function wait(url){

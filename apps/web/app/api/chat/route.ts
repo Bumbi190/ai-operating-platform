@@ -1,3 +1,4 @@
+import {saveStudioReferenceMessage} from '@/lib/website-build/assets/reference-chat-save'
 import {studioSystemPrompt} from '@/lib/website-build/studio/chat-context'
 import {resolveStudioTurnContext,type StudioTurnContext} from '@/lib/website-build/studio/turn-context'
 /**
@@ -666,7 +667,7 @@ export async function POST(request: Request) {
   }
   let anthropic = openaiEconomy ? null : getAnthropic(providerContext)
 
-  const { messages, conversation_id, voice, mode, view, websitePlanRef, buildContext:rawBuildContext, inputSource, studioContext:rawStudioContext } = await request.json() as {
+  const { messages, conversation_id, voice, mode, view, websitePlanRef, buildContext:rawBuildContext, inputSource, studioContext:rawStudioContext, referenceSave:rawReferenceSave } = await request.json() as {
     messages: Anthropic.MessageParam[]
     conversation_id?: string
     voice?: boolean
@@ -676,6 +677,7 @@ export async function POST(request: Request) {
     buildContext?:unknown
     inputSource?:unknown
     studioContext?:unknown
+    referenceSave?:unknown
   }
 
   const db = createAdminClient()
@@ -686,6 +688,15 @@ export async function POST(request: Request) {
     try{studioContext=await resolveStudioTurnContext(db,{userId,allowedProjectIds:await getAllowedProjectIds(db,userId)},conversation_id??null,rawStudioContext)}catch(error){return buildErrorResponse(error)}
     providerContext={project:{projectId:studioContext.projectId},execution:{context:'OPERATOR_EXECUTION',scope:projectScope({projectId:studioContext.projectId})},agent:'Atlas',operation:'Atlas Studio Chat'}
     anthropic=openaiEconomy?null:getAnthropic(providerContext)
+  }
+  // An explicit reference save can never silently become a paid text turn.
+  if(rawReferenceSave!==undefined){
+    const denied=assertSameOrigin(request);if(denied){denied.headers.set('cache-control','private, no-store');return denied}
+    try{return await saveStudioReferenceMessage({
+      db,principal:{ok:true,userId,allowedProjectIds:studioContext?[studioContext.projectId]:[]},
+      studioContext,conversationId:conversation_id??null,messages,selection:rawReferenceSave,
+      conflictingIntent:websitePlanRef!=null||rawBuildContext!=null||voice===true||mode!==undefined,
+    })}catch(error){return buildErrorResponse(error)}
   }
 
   // ── CONVERSATION OWNERSHIP ────────────────────────────────────────────────

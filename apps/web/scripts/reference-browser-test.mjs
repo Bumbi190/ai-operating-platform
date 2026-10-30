@@ -52,7 +52,7 @@ try{
  const originalTs=JSON.parse(await readFile(resolve(web,'tsconfig.json'),'utf8'))
  await put('tsconfig.json',JSON.stringify({...originalTs,compilerOptions:{...originalTs.compilerOptions,baseUrl:web,paths:{'@/*':['./*']},incremental:false},include:['**/*.ts','**/*.tsx','.next/types/**/*.ts']}))
  await put('next.config.mjs',`export default {experimental:{externalDir:true,serverComponentsExternalPackages:['sharp','ws']},images:{unoptimized:true},webpack(config){config.resolve.alias['@']=${JSON.stringify(web)};return config}}`)
- await put('middleware.ts',`export {middleware,config} from ${source('middleware.ts')}`)
+ await put('middleware.ts',await readFile(resolve(web,'middleware.ts'),'utf8'))
  await put('app/layout.tsx',`import React from 'react';export default function Layout({children}:{children:React.ReactNode}){return <html lang="sv"><body>{children}</body></html>}`)
  // Keep the production client page and its relative CSS inside Next's app CSS entry graph.
  await put('app/login/page.tsx',await readFile(resolve(web,'app/(auth)/login/page.tsx'),'utf8'))

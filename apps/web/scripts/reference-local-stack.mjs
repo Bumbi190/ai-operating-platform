@@ -112,9 +112,6 @@ export async function startReferenceStack(){
    grant all on schema public to service_role;
    alter role supabase_auth_admin set search_path=auth,public,extensions;
    alter role supabase_storage_admin set search_path=storage,public,extensions;
-   create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claims',true)::jsonb->>'sub','')::uuid$$;
-   create function auth.role() returns text language sql stable as $$select current_setting('request.jwt.claims',true)::jsonb->>'role'$$;
-   grant execute on all functions in schema auth to anon,authenticated,service_role;
    alter default privileges in schema public grant all on tables to service_role;
    alter default privileges in schema public grant all on sequences to service_role;`)
   const auth=run('auth',REFERENCE_TEST_IMAGES.auth,'128m',9999,{
@@ -125,7 +122,12 @@ export async function startReferenceStack(){
    GOTRUE_JWT_DEFAULT_GROUP_NAME:'authenticated',GOTRUE_JWT_EXP:'3600',GOTRUE_JWT_SECRET:secret,
   })
   await wait(auth+'/health')
-  sql('grant select,references on auth.users to supabase_storage_admin;')
+  // GoTrue must own and migrate its helpers first. Modern PostgREST supplies
+  // request.jwt.claims; adapt only the disposable schema's RLS helper contract.
+  sql(`create or replace function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claims',true)::jsonb->>'sub','')::uuid$$;
+   create or replace function auth.role() returns text language sql stable as $$select current_setting('request.jwt.claims',true)::jsonb->>'role'$$;
+   grant execute on all functions in schema auth to anon,authenticated,service_role;
+   grant select,references on auth.users to supabase_storage_admin;`)
   const rest=run('rest',REFERENCE_TEST_IMAGES.rest,'96m',3000,{
    PGRST_DB_URI:'postgres://authenticator:'+password+'@db:5432/postgres',PGRST_DB_SCHEMAS:'public,storage',
    PGRST_DB_ANON_ROLE:'anon',PGRST_JWT_SECRET:secret,PGRST_DB_POOL:'4',

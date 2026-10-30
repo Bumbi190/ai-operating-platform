@@ -73,7 +73,7 @@ try{
  const {data,error}=await db.from('conversation_messages').select('id,role,content,tool_data,created_at').eq('conversation_id',${JSON.stringify(conversationId)}).order('created_at')
  if(error)throw Error('Fixture history unavailable')
  const owner=user.id===${JSON.stringify(ids[0])}
- return <Shell projectId={owner?${JSON.stringify(projectId)}:${JSON.stringify(otherProjectId)}} conversationId={owner?${JSON.stringify(conversationId)}:${JSON.stringify(otherConversationId)}} email={user.email!} owned={owner} saved={data??[]}/>
+ return <Shell projectId={owner?${JSON.stringify(projectId)}:${JSON.stringify(otherProjectId)}} conversationId={owner?${JSON.stringify(conversationId)}:${JSON.stringify(otherConversationId)}} email={user.email!} owned={owner||user.id===${JSON.stringify(ids[1])}} saved={data??[]}/>
  }`)
  await put('app/fixture/state/route.ts',`import {createClient} from '@/lib/supabase/server'
  import {createAdminClient} from '@/lib/supabase/admin'

@@ -67,6 +67,12 @@ on:
       - 'apps/web/lib/website-build/studio/api.ts'
       - 'apps/web/app/api/website-build/studio/costs/**'
       - 'apps/web/playwright.atlas-studio-ui.config.ts'
+      - 'apps/web/scripts/reference-*'
+      - 'apps/web/lib/qa/website-reference-auth.integration.test.ts'
+      - 'apps/web/lib/website-build/assets/**'
+      - 'apps/web/app/api/website-build/references/**'
+      - 'apps/web/vitest.reference-auth.config.ts'
+      - 'docs/sql/atlas-builder-reference-*-proposed.sql'
       - '.github/workflows/atlas-studio-ui.yml'
 permissions:
   contents: read
@@ -116,3 +122,36 @@ jobs:
             .superpowers/sdd/2026-10-16-atlas-social-publication/browser
             .superpowers/sdd/2026-10-16-atlas-social-content/browser
           retention-days: 5
+
+  reference-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ATLAS_REFERENCE_TEST_MODE: isolated-local
+      NODE_OPTIONS: --max-old-space-size=512
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Pull pinned disposable test services
+        run: |
+          docker pull postgres:17-alpine
+          docker pull public.ecr.aws/supabase/gotrue:v2.197.0
+          docker pull public.ecr.aws/supabase/postgrest:v16.5
+          docker pull public.ecr.aws/supabase/storage-api:v1.79.36
+      - name: Verify opt-in and endpoint guards
+        working-directory: apps/web
+        run: node --test scripts/reference-local-stack.test.mjs
+      - name: Run real local Auth Storage and reference handlers
+        working-directory: apps/web
+        run: npx --no-install vitest run --config vitest.reference-auth.config.ts
+      - name: Verify no fixture resources remain
+        if: always()
+        run: |
+          test -z "$(docker ps -aq --filter label=omnira.reference.auth.fixture)"
+          test -z "$(docker network ls -q --filter label=omnira.reference.auth.fixture)"

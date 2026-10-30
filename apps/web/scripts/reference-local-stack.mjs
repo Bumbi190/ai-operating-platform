@@ -47,6 +47,7 @@ export async function cleanupReferenceResources({id,label,names,docker}){
 }
 export async function startReferenceStack(){
  if(process.env.ATLAS_REFERENCE_TEST_MODE!=='isolated-local')throw Error('Explicit isolated-local mode required')
+ if(process.platform!=='linux')throw Error('Run the isolated fixture on Linux/CI; no Docker resources started')
  if(freemem()<2*1024**3)throw Error('Need 2GiB free RAM; no Docker resources started')
  const nativeFetch=globalThis.fetch
  const id='omnira-reference-auth-'+randomUUID(),label='omnira.reference.auth.fixture'
@@ -74,8 +75,12 @@ export async function startReferenceStack(){
   const full=id+'-'+name
   docker(['run','--pull=never','-d','--name',full,'--label',label+'='+id,
    '--network',id,'--network-alias',name,'--memory',memory,'--memory-swap',memory,'--cpus','1','--pids-limit','128',
-   ...(port?['-p','127.0.0.1::'+port]:[]),...Object.keys(environment).flatMap(key=>['-e',key]),...extra,image,...command],undefined,environment)
-  return port?'http://'+docker(['port',full,String(port)]):null
+   ...Object.keys(environment).flatMap(key=>['-e',key]),...extra,image,...command],undefined,environment)
+  if(!port)return null
+  // Linux host reaches its own internal bridge; no service port is published.
+  const ip=docker(['inspect','--format','{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}',full])
+  if(!/^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$/.test(ip))throw Error('Invalid fixture container address')
+  return 'http://'+ip+':'+port
  }
  async function wait(url){
   const deadline=Date.now()+25000

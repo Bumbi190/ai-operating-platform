@@ -4,6 +4,8 @@ import React from 'react'
 import {useEffect,useRef,useState,type ChangeEvent} from 'react'
 import {createClient} from '@/lib/supabase/client'
 import styles from './StudioReferenceUploads.module.css'
+import {StudioReferenceMessagePicker,type SaveReferenceCallback} from './StudioReferenceMessagePicker'
+import type {ConversationSnapshot} from '@/lib/atlas/conversation/controller'
 
 const MAX_FILES=4
 const MAX_BYTES=10*1024*1024
@@ -27,10 +29,21 @@ async function postJson(url:string,body:Record<string,unknown>,signal:AbortSigna
  * Private reference intake, NOT a multimodal chat send.
  * Scoped to one selected conversation; remount on project/conversation changes.
  */
-export function StudioReferenceUploads({projectId,conversationId,readOnly}:{
-  projectId:string;conversationId:string;readOnly:boolean
+type ReferenceUploadsProps={
+  projectId:string;conversationId:string;readOnly:boolean;onSaveReference?:SaveReferenceCallback
+}
+export function StudioReferenceUploads({activeConversation,...props}:ReferenceUploadsProps&{
+  activeConversation:Pick<ConversationSnapshot,'id'|'projectId'|'studio'|'state'>
 }){
+  // A signout clears the controller before navigation. Unmount private drafts
+  // immediately and recheck authenticated capability on the next activation.
+  if(!activeConversation.studio||activeConversation.state!=='ok'||
+     activeConversation.id!==props.conversationId||activeConversation.projectId!==props.projectId)return null
+  return <ScopedReferenceUploads key={props.projectId+':'+props.conversationId} {...props}/>
+}
+function ScopedReferenceUploads({projectId,conversationId,readOnly,onSaveReference}:ReferenceUploadsProps){
   const [status,setStatus]=useState<Status>('loading')
+  const [saveUserId,setSaveUserId]=useState<string|null>(null)
   const [draftId,setDraftId]=useState(()=>crypto.randomUUID())
   const [items,setItems]=useState<UploadItem[]>([])
   const [stored,setStored]=useState<StoredReference[]>([])
@@ -43,14 +56,14 @@ export function StudioReferenceUploads({projectId,conversationId,readOnly}:{
   useEffect(()=>{
     live.current=true
     const abort=new AbortController()
-    setStatus('loading')
+    setStatus('loading');setSaveUserId(null)
     const params=new URLSearchParams({projectId,conversationId})
     void fetch('/api/website-build/references/tickets?'+params,{signal:abort.signal,cache:'no-store'})
       .then(async response=>{if(!response.ok)throw Error();return response.json()})
       .then(async result=>{
         if(abort.signal.aborted)return
         if(result.available!==true){setStatus('disabled');return}
-        setStatus('available')
+        setStatus('available');setSaveUserId(result.canSaveToChat===true&&typeof result.userId==='string'&&UUID.test(result.userId)?result.userId:null)
         const response=await fetch('/api/website-build/references/library?'+params,{signal:abort.signal,cache:'no-store'})
         if(!response.ok)throw Error()
         const library=await response.json()
@@ -164,14 +177,15 @@ export function StudioReferenceUploads({projectId,conversationId,readOnly}:{
         </div>
       </li>)}
     </ul>}
-    {!!stored.length&&<div className={styles.saved}><h4>Sparade bilder i denna konversation</h4>
-      <ul className={styles.gallery}>{stored.map(item=><li key={item.ticketId} className={styles.item}>
+    {(!!stored.length||!!saveUserId&&status==='available'&&!!onSaveReference)&&<div className={styles.saved}><h4>Sparade bilder i denna konversation</h4>
+      {saveUserId&&status==='available'&&onSaveReference?<StudioReferenceMessagePicker key={saveUserId+':'+projectId+':'+conversationId}
+        userId={saveUserId} projectId={projectId} conversationId={conversationId} references={stored} readOnly={readOnly} onSave={onSaveReference}/>:<ul className={styles.gallery}>{stored.map(item=><li key={item.ticketId} className={styles.item}>
         {/* Binary delivered only after authenticated project, ticket, asset and hash validation. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={'/api/website-build/references/image?'+new URLSearchParams({projectId,conversationId,ticketId:item.ticketId})}
           alt="Tidigare sparad designreferens" loading="lazy"/>
         <div><strong>Privat bildreferens</strong><span>Sparad i projektet</span></div>
-      </li>)}</ul></div>}
+      </li>)}</ul>}</div>}
     {items.some(item=>item.state==='saved')&&
       <p className={styles.note}>Bilderna är sparade, men skickas inte till Atlas AI ännu. Den kopplingen kräver ett separat verifierat steg.</p>}
   </section>

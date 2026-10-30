@@ -15,3 +15,18 @@
 @media(max-width:580px){.references{padding:12px}.gallery{grid-template-columns:1fr}}
 .reset{justify-self:start;border:0;background:transparent;color:inherit;text-decoration:underline;cursor:pointer;font-size:.85rem}
 .reset:disabled{opacity:.5;cursor:not-allowed}
+
+.picker{display:grid;gap:12px;min-width:0}
+.choices{border:0;padding:0;margin:0;min-width:0}
+.choices legend{font-weight:600;font-size:.9rem;padding:0;margin-bottom:10px}
+.choice{display:grid;grid-template-columns:22px 64px minmax(0,1fr);align-items:center;gap:9px;min-height:88px;padding:10px;border:1px solid var(--border,rgba(128,150,170,.3));border-radius:8px;cursor:pointer;min-width:0}
+.choice:has(input:checked){border-color:var(--accent,#1ca5a8)}
+.choice:has(input:focus-visible){outline:2px solid var(--accent,#1ca5a8);outline-offset:3px}
+.choice input{width:18px;height:18px;accent-color:var(--accent,#1ca5a8)}
+.choice img{width:64px;height:64px;object-fit:cover;border-radius:6px}
+.choice span{font-size:.82rem;overflow-wrap:anywhere}
+.choice small{display:block;color:var(--text-muted,#aeb6c1);margin-top:3px}
+.comment{display:grid;gap:7px;font-size:.9rem;min-width:0}
+.comment textarea{width:100%;min-width:0;resize:vertical;min-height:90px;padding:10px;background:transparent;color:inherit;border:1px solid var(--border,rgba(128,150,170,.3));border-radius:8px}
+.comment textarea:focus-visible{outline:2px solid var(--accent,#1ca5a8);outline-offset:2px}
+.comment textarea:disabled{opacity:.7}

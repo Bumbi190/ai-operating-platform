@@ -10,7 +10,8 @@ import {StudioLayout} from '@/components/website-build/StudioLayout'
 describe('Atlas Builder reference-image UI',()=>{
   it('does not grant upload authority while availability has not been verified',()=>{
     const html=renderToStaticMarkup(createElement(StudioReferenceUploads,{
-      projectId:randomUUID(),conversationId:randomUUID(),readOnly:false,
+      projectId:'10000000-0000-4000-8000-000000000001',conversationId:'50000000-0000-4000-8000-000000000001',readOnly:false,
+      activeConversation:{id:'50000000-0000-4000-8000-000000000001',projectId:'10000000-0000-4000-8000-000000000001',studio:true,state:'ok'},
     }))
     expect(html).toContain('Kontrollerar bildfunktionen')
     expect(html).toContain('disabled')
@@ -19,7 +20,8 @@ describe('Atlas Builder reference-image UI',()=>{
   })
   it('never enables upload in a paused or read-only workspace',()=>{
     const html=renderToStaticMarkup(createElement(StudioReferenceUploads,{
-      projectId:randomUUID(),conversationId:randomUUID(),readOnly:true,
+      projectId:'10000000-0000-4000-8000-000000000001',conversationId:'50000000-0000-4000-8000-000000000001',readOnly:true,
+      activeConversation:{id:'50000000-0000-4000-8000-000000000001',projectId:'10000000-0000-4000-8000-000000000001',studio:true,state:'ok'},
     }))
     expect(html).toContain('skrivskyddat')
     expect(html).toContain('disabled')
@@ -36,4 +38,15 @@ describe('Atlas Builder reference-image UI',()=>{
     expect(html).toMatch(/hidden[^>]*>\s*<span>FILES_PERSIST<\/span>/)
     expect(html).toContain('WEBSITE')
   })
+})
+
+it('hides private references unless the active Studio conversation exactly matches the panel scope',()=>{
+ const projectId='10000000-0000-4000-8000-000000000001',conversationId='50000000-0000-4000-8000-000000000001'
+ for(const activeConversation of [
+  {id:null,projectId:null,studio:false,state:'ok' as const},
+  {id:randomUUID(),projectId,studio:true,state:'ok' as const},
+  {id:conversationId,projectId:randomUUID(),studio:true,state:'ok' as const},
+  {id:conversationId,projectId,studio:false,state:'ok' as const},
+  {id:conversationId,projectId,studio:true,state:'error' as const},
+ ])expect(renderToStaticMarkup(createElement(StudioReferenceUploads,{projectId,conversationId,readOnly:false,activeConversation}))).toBe('')
 })

@@ -42,6 +42,7 @@ export async function GET(request:Request):Promise<Response> {
       throw new WebsiteBuildError('INVALID_BODY',400)
     const projectId=q.get('projectId')!,conversationId=q.get('conversationId')!
     await assertReferenceWorkspace(createAdminClient(),access,projectId,conversationId)
-    return Response.json({available:true},{headers})
+    const canSaveToChat=process.env.ATLAS_REFERENCE_CHAT_SAVE_ENABLED==='true'
+    return Response.json({available:true,canSaveToChat,...(canSaveToChat?{userId:access.userId}:{})},{headers})
   }catch(error){return buildErrorResponse(error)}
 }

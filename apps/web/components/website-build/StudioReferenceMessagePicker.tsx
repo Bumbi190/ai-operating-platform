@@ -81,7 +81,7 @@ export function StudioReferenceMessagePicker({userId,projectId,conversationId,re
   <button type="button" className={styles.add} onClick={()=>void save()} disabled={readOnly||busy||!selected.length||!text.trim()}>
    {busy?'Sparar…':intent?'Försök spara igen':'Spara referenser i chatten'}
   </button>
-  <p className={styles.note}>Bilderna kopplas till meddelandet. Atlas analyserar dem inte ännu.</p>
+  <p className={styles.note}>Bilderna kopplas till meddelandet. Ingen analys startas när du sparar.</p>
   {error&&<p role="alert">{error}</p>}
   {notice&&<p role="status">{notice}</p>}
  </div>

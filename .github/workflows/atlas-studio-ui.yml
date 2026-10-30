@@ -72,6 +72,8 @@ on:
       - 'apps/web/lib/website-build/assets/**'
       - 'apps/web/app/api/website-build/references/**'
       - 'apps/web/vitest.reference-auth.config.ts'
+      - 'apps/web/playwright.reference-auth.config.ts'
+      - 'apps/web/e2e/reference-auth/**'
       - 'docs/sql/atlas-builder-reference-*-proposed.sql'
       - '.github/workflows/atlas-studio-ui.yml'
 permissions:
@@ -150,6 +152,15 @@ jobs:
       - name: Run real local Auth Storage and reference handlers
         working-directory: apps/web
         run: npx --no-install vitest run --config vitest.reference-auth.config.ts
+      - name: Verify browser HTTP guard
+        working-directory: apps/web
+        run: node --test e2e/reference-auth/fetch-guard.test.cjs
+      - name: Install isolated Chromium
+        working-directory: apps/web
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Run real browser login cookies middleware and references
+        working-directory: apps/web
+        run: node scripts/reference-browser-test.mjs
       - name: Verify no fixture resources remain
         if: always()
         run: |

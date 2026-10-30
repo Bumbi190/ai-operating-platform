@@ -5,6 +5,7 @@ import type {createAdminClient} from '@/lib/supabase/admin'
 import {WebsiteBuildError} from '../store'
 import {referenceUploadEnabled} from './availability'
 import {readVerifiedReference} from './read'
+import {assertReferenceWorkspace} from './tickets'
 
 const UUID=/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i
 const MAX_REFERENCES=4
@@ -54,7 +55,9 @@ export function parseTurnReferenceSelection(value:unknown):TurnReferenceSelectio
      !raw.ticketIds.every(x=>typeof x==='string'&&UUID.test(x))||
      new Set(raw.ticketIds).size!==raw.ticketIds.length)
     throw new WebsiteBuildError('INVALID_BODY',400)
-  return raw as TurnReferenceSelection
+  // Detach the selection before any asynchronous ownership/storage checks.
+  return {projectId:raw.projectId as string,conversationId:raw.conversationId as string,
+    turnId:raw.turnId as string,messageText:raw.messageText,ticketIds:[...raw.ticketIds] as string[]}
 }
 
 /**
@@ -92,4 +95,58 @@ export async function prepareReferenceTurn(
     referenceSha256:SHA(JSON.stringify(images.map(x=>[x.ticketId,x.assetId,x.sha256]))),
     images,
   }
+}
+
+
+/**
+ * Read-only persisted-message evidence for a FUTURE chat transport.
+ * active.turnId MUST come from that request's completed server-side message
+ * insert, never from client input or history. This function cannot establish
+ * freshness, persist an attachment manifest or authorize a provider call.
+ * The existing chat route is intentionally not wired to this seam yet.
+ */
+export async function preparePersistedReferenceTurn(
+  db:ReturnType<typeof createAdminClient>,
+  owner:ProjectAccessOk,
+  raw:unknown,
+  active:Omit<TurnReferenceSelection,'ticketIds'>,
+):Promise<PreparedReferenceTurn&{bindingSha256:string}>{
+  if(!referenceUploadEnabled())throw new WebsiteBuildError('REFERENCE_UNAVAILABLE',503)
+  const selection=parseTurnReferenceSelection(raw)
+  if(selection.projectId!==active.projectId||selection.conversationId!==active.conversationId||
+      selection.turnId!==active.turnId||selection.messageText!==active.messageText||
+      !owner.allowedProjectIds.includes(selection.projectId))
+    throw new WebsiteBuildError('NOT_FOUND',404)
+  const verifyStoredMessage=async()=>{
+    if(!referenceUploadEnabled())throw new WebsiteBuildError('REFERENCE_UNAVAILABLE',503)
+    await assertReferenceWorkspace(db,owner,selection.projectId,selection.conversationId)
+    // Messages have no owner/project columns: scope through the parent join.
+    let result
+    try{
+      result=await db.from('conversation_messages')
+        .select('id,conversation_id,role,content,conversations!inner(id,user_id,project_id)')
+        .eq('id',selection.turnId).eq('conversation_id',selection.conversationId)
+        .eq('role','user').eq('conversations.user_id',owner.userId)
+        .eq('conversations.project_id',selection.projectId).maybeSingle()
+    }catch{throw new WebsiteBuildError('BUILD_UNAVAILABLE',503)}
+    if(result.error)throw new WebsiteBuildError('BUILD_UNAVAILABLE',503)
+    const row=result.data as unknown as {
+      id:string;conversation_id:string;role:string;content:string|null;
+      conversations:{id:string;user_id:string;project_id:string}|null
+    }|null
+    const parent=row?.conversations
+    if(!row||row.id!==selection.turnId||row.conversation_id!==selection.conversationId||
+        row.role!=='user'||row.content!==selection.messageText||
+        !parent||Array.isArray(parent)||parent.id!==selection.conversationId||
+        parent.user_id!==owner.userId||parent.project_id!==selection.projectId)
+      throw new WebsiteBuildError('NOT_FOUND',404)
+  }
+  await verifyStoredMessage()
+  const prepared=await prepareReferenceTurn(db,owner,selection,selection)
+  // Message text, parent ownership or lifecycle may change during image I/O.
+  await verifyStoredMessage()
+  return {...prepared,bindingSha256:SHA(JSON.stringify([
+    'omnira.website-reference-turn.v1',owner.userId,selection.projectId,
+    selection.conversationId,selection.turnId,prepared.messageSha256,prepared.referenceSha256,
+  ]))}
 }

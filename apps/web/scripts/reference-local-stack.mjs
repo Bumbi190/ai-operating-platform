@@ -7,6 +7,7 @@ import {isIP} from 'node:net'
 import {freemem} from 'node:os'
 import {readFileSync} from 'node:fs'
 import {fileURLToPath} from 'node:url'
+import {fixtureStorageCors} from '../e2e/reference-auth/cors.mjs'
 export const REFERENCE_TEST_IMAGES={
  db:'postgres:17-alpine',
  auth:'supabase/gotrue:v2.197.0',
@@ -60,7 +61,8 @@ export async function startReferenceStack(){
  }
  const anonKey=token('anon'),serviceKey=token('service_role')
  const containers=Object.keys(REFERENCE_TEST_IMAGES).map(name=>id+'-'+name)
- let gateway
+ let gateway,browserOrigin
+ const allowBrowserOrigin=origin=>{fixtureStorageCors(origin,origin);browserOrigin=origin}
  function docker(args,input,environment={}){
   const result=spawnSync('docker',args,{input,encoding:'utf8',timeout:30000,maxBuffer:2**20,env:{...process.env,...environment}})
   if(result.status!==0)throw Error('Fixture Docker operation failed: '+(result.stderr||result.error?.message||'unknown').slice(0,700))
@@ -165,20 +167,22 @@ export async function startReferenceStack(){
    try{
     const u=new URL(req.url,'http://127.0.0.1'),prefix=['/auth/v1','/rest/v1','/storage/v1'].find(p=>u.pathname===p||u.pathname.startsWith(p+'/'))
     if(!prefix){res.writeHead(404).end();return}
+    const cors=prefix==='/storage/v1'&&browserOrigin?fixtureStorageCors(browserOrigin,req.headers.origin):{}
+    if(req.method==='OPTIONS'&&Object.keys(cors).length){res.writeHead(204,cors).end();return}
     const target={'/auth/v1':auth,'/rest/v1':rest,'/storage/v1':storage}[prefix]+u.pathname.slice(prefix.length)+u.search
     const body=[];let size=0
     for await(const chunk of req){size+=chunk.length;if(size>11*1024*1024){res.writeHead(413).end();return}body.push(chunk)}
     const headers=new Headers()
     for(const [key,value]of Object.entries(req.headers))if(value&&!['host','connection','content-length','accept-encoding'].includes(key))headers.set(key,String(value))
     const r=await nativeFetch(target,{method:req.method,headers,body:body.length?Buffer.concat(body):undefined,redirect:'manual',signal:AbortSignal.timeout(15000)})
-    res.writeHead(r.status,Object.fromEntries([...r.headers].filter(([k])=>!['transfer-encoding','connection','content-encoding','content-length'].includes(k))))
+    res.writeHead(r.status,{...Object.fromEntries([...r.headers].filter(([k])=>!['transfer-encoding','connection','content-encoding','content-length'].includes(k))),...cors})
     res.end(Buffer.from(await r.arrayBuffer()))
    }catch{res.writeHead(502).end('Fixture gateway failure')}
   })
   await new Promise(resolve=>gateway.listen(0,'127.0.0.1',resolve))
   const url='http://127.0.0.1:'+gateway.address().port
   assertReferenceLocalConfig({mode:'isolated-local',url})
-  return {url,anonKey,serviceKey,sql,close,diagnostics}
+  return {url,anonKey,serviceKey,sql,close,diagnostics,allowBrowserOrigin}
  }catch(error){
   for(const name of containers){
    try{console.error(name.split('-').at(-1)+' state: '+docker(['inspect','--format','{{.State.Status}}/{{.State.ExitCode}}/oom={{.State.OOMKilled}}',name]));let tail=docker(['logs','--tail','8',name]);for(const value of [secret,password,anonKey,serviceKey])tail=tail.replaceAll(value,'[fixture-secret]');console.error(name.split('-').at(-1)+': '+tail.slice(-1000))}catch{}

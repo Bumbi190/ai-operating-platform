@@ -74,6 +74,10 @@ on:
       - 'apps/web/vitest.reference-auth.config.ts'
       - 'apps/web/playwright.reference-auth.config.ts'
       - 'apps/web/e2e/reference-auth/**'
+      - 'apps/web/middleware.ts'
+      - 'apps/web/app/(auth)/login/**'
+      - 'apps/web/lib/auth/**'
+      - 'apps/web/lib/supabase/**'
       - 'docs/sql/atlas-builder-reference-*-proposed.sql'
       - '.github/workflows/atlas-studio-ui.yml'
 permissions:
@@ -154,7 +158,7 @@ jobs:
         run: npx --no-install vitest run --config vitest.reference-auth.config.ts
       - name: Verify browser HTTP guard
         working-directory: apps/web
-        run: node --test e2e/reference-auth/fetch-guard.test.cjs
+        run: node --test e2e/reference-auth/fetch-guard.test.cjs e2e/reference-auth/transports.test.cjs e2e/reference-auth/lifecycle.test.mjs e2e/reference-auth/cors.test.mjs
       - name: Install isolated Chromium
         working-directory: apps/web
         run: npx --no-install playwright install --with-deps chromium

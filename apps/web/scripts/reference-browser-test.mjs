@@ -107,6 +107,8 @@ try{
  detached:true,stdio:['ignore','pipe','pipe']});log(playwrightProcess.child)
  const result=await playwrightProcess.done
  assert.ifError(result.error)
+ const deniedOrigins=await readFile(denied,'utf8')
+ if(deniedOrigins)console.error('Server guard denied: '+deniedOrigins)
  assert.equal(result.code,0,'Chromium reference integration failed')
  assert.equal(await readFile(denied,'utf8'),'','Server attempted external HTTP')
  assert.equal(stack.sql('select count(*) from public.conversation_messages;'),'1')

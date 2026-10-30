@@ -13,6 +13,7 @@ async function guard(context:BrowserContext){
  return external
 }
 async function login(page:Page,email=fixture.ownerEmail){
+ console.log('browser phase: password login')
  await page.goto('/login')
  await page.getByLabel('E-postadress',{exact:true}).fill(email)
  await page.getByLabel('Lösenord',{exact:true}).fill(fixture.password)
@@ -33,6 +34,7 @@ test('real Next login, middleware cookies, private upload, immutable retry and u
  await context.addCookies([{name:'sb-127-auth-token',value:'forged',url:fixture.appUrl}])
  expect((await api(page,'/api/website-build/references/tickets?'+query)).status).toBe(401)
  await context.clearCookies()
+ console.log('browser phase: invalid password')
  await page.getByLabel('E-postadress',{exact:true}).fill(fixture.ownerEmail)
  await page.getByLabel('Lösenord',{exact:true}).fill('wrong-password')
  await page.locator('button[type=submit]').click()
@@ -123,6 +125,7 @@ test('real Next login, middleware cookies, private upload, immutable retry and u
 })
 test('real collaborator membership is contained by unchanged middleware',async({browser})=>{
  const context=await browser.newContext(),external=await guard(context),page=await context.newPage()
+ console.log('browser phase: password login')
  await page.goto('/login')
  await page.getByLabel('E-postadress',{exact:true}).fill(fixture.collaboratorEmail)
  await page.getByLabel('Lösenord',{exact:true}).fill(fixture.password)

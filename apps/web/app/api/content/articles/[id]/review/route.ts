@@ -21,6 +21,7 @@ import { publishArticle } from '@/lib/publishing/publish'
 import { PublishError, type PublishPayload } from '@/lib/publishing/types'
 import { recordMemoryEvent } from '@/lib/atlas/memory/record-event'
 import { getAllowedProjectIds, assertProjectAllowed } from '@/lib/atlas/isolation'
+import { publicationGate } from '@/lib/article/factcheck/gate'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -44,7 +45,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   const db = createAdminClient()
   const { data: row, error: loadErr } = await db
     .from('website_content')
-    .select('id, status, destination_key, payload, hero_image_url, project_id')
+    .select('id, status, destination_key, payload, qa, meta, hero_image_url, project_id')
     .eq('id', params.id)
     .maybeSingle()
   if (loadErr) return NextResponse.json({ error: loadErr.message }, { status: 500 })
@@ -107,6 +108,15 @@ export async function POST(request: Request, { params }: { params: { id: string 
       },
     }, db)
     return NextResponse.json({ ok: true, status: 'rejected' })
+  }
+
+  // ── Approve — fact-check precondition ──────────────────────────────────────
+  // Rows from the fact-checked workflow (meta.factcheck_required) publish only
+  // when their stored fact-check passed for exactly this body. Refused BEFORE
+  // any write: the row stays pending_review so the operator can reject it.
+  const gate = publicationGate(row)
+  if (!gate.ok) {
+    return NextResponse.json({ error: 'fact-check not passed', reason: gate.reason }, { status: 409 })
   }
 
   // ── Approve — publish via the existing mechanism only ──────────────────────

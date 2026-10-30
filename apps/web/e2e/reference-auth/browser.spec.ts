@@ -111,3 +111,32 @@ test('real collaborator membership is contained by unchanged middleware',async({
  expect(external).toEqual([])
  await context.close()
 })
+
+test('production middleware renews expired cookie metadata through real Auth and writes response cookies',async({browser})=>{
+ const context=await browser.newContext(),external=await guard(context),page=await context.newPage()
+ await login(page)
+ const cookies=(await context.cookies()).filter(c=>c.name==='sb-127-auth-token'||c.name.startsWith('sb-127-auth-token.')).sort((a,b)=>a.name.localeCompare(b.name))
+ expect(cookies.length).toBeGreaterThan(0)
+ const encoded=cookies.map(c=>c.value).join()
+ expect(encoded.startsWith('base64-')).toBe(true)
+ const session=JSON.parse(Buffer.from(encoded.slice(7),'base64url').toString('utf8'))
+ // Only cached expiry metadata changes. Signed access token, real refresh token and identity stay intact.
+ session.expires_at=1
+ const expired='base64-'+Buffer.from(JSON.stringify(session)).toString('base64url')
+ await context.clearCookies({name:/^sb-127-auth-token(?:[.]|$)/})
+ const chunks=expired.match(/.{1,3000}/g)!
+ await context.addCookies(chunks.map((value,i)=>({name:'sb-127-auth-token'+(chunks.length>1?'.'+i:''),value,url:fixture.appUrl,sameSite:'Lax' as const})))
+ const response=await page.goto('/dashboard')
+ expect(response?.status()).toBe(200)
+ expect((await response!.allHeaders())['set-cookie']).toContain('sb-127-auth-token')
+ await expect(page.getByTestId('verified-user')).toHaveText(fixture.ownerEmail)
+ const renewed=(await context.cookies()).filter(c=>c.name==='sb-127-auth-token'||c.name.startsWith('sb-127-auth-token.')).sort((a,b)=>a.name.localeCompare(b.name)).map(c=>c.value).join()
+ expect(renewed).not.toBe(expired)
+ const renewedSession=JSON.parse(Buffer.from(renewed.slice(7),'base64url').toString('utf8'))
+ expect(renewedSession.expires_at).toBeGreaterThan(Date.now()/1000+60)
+ expect(renewedSession.refresh_token).not.toBe(session.refresh_token)
+ await page.reload()
+ expect((await api(page,'/api/website-build/references/tickets?'+query)).body.userId).toBe(fixture.ownerId)
+ expect(external).toEqual([])
+ await context.close()
+})

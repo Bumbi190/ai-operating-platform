@@ -103,6 +103,11 @@ it('enforces signed-upload path and overwrite rules in real private Storage',asy
  expect((await upload(ticket.path+'.other')).error).not.toBeNull()
  expect((await upload(ticket.path)).error).toBeNull()
  expect((await upload(ticket.path)).error).not.toBeNull()
+ const replacement=await sharp({create:{width:11,height:13,channels:3,background:'#ff0000'}}).png().toBuffer()
+ const overwrite=await client.storage.from(ticket.bucket).uploadToSignedUrl(ticket.path,ticket.token,replacement,{contentType:'image/png',upsert:true})
+ expect(overwrite.error,'request upsert:true must not override the signed non-overwrite token').not.toBeNull()
+ const stored=await admin.storage.from(ticket.bucket).download(ticket.path)
+ expect(stored.error).toBeNull();expect(Buffer.from(await stored.data.arrayBuffer())).toEqual(bytes)
  expect((await client.storage.from(ticket.bucket).download(ticket.path)).error).not.toBeNull()
  const publicUrl=client.storage.from(ticket.bucket).getPublicUrl(ticket.path).data.publicUrl
  expect((await fetch(publicUrl)).ok).toBe(false)

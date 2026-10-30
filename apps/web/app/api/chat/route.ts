@@ -694,6 +694,9 @@ export async function POST(request: Request) {
   // Capture as local — the `!user` narrowing above doesn't survive into the
   // streaming closure further down.
   const userId = user.id
+  // Derive identity-based knowledge authority before any client-selected route.
+  // This is a pure server-policy lookup; optional shadow execution is separate.
+  const internalAuthorized = isExplicitlyAuthorizedInternalPrincipal(user.email)
 
   const modelPolicy = atlasModelPolicy()
   const openaiEconomy = modelPolicy.profile === 'openai_economy'
@@ -1028,7 +1031,7 @@ export async function POST(request: Request) {
         db,
         allowedProjectIds,
         principalId: userId,
-        internalAuthorized: isExplicitlyAuthorizedInternalPrincipal(user.email),
+        internalAuthorized,
         query: lastUserText,
         voice: !!voice,
         view: view ?? null,

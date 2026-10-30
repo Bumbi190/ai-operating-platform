@@ -138,3 +138,45 @@ test('keeps a selected reference visible when an upload rotates it out of the li
  await expect(page.getByRole('checkbox',{checked:true})).toHaveCount(0)
  expect(api.requests).toHaveLength(0)
 })
+
+for(const ready of [true,false])test('previews only a server-verified upload; ready='+ready,async({page})=>{
+ const api=await backend(page);api.emptyLibrary()
+ const ticketId='80000000-0000-4000-8000-000000000001',uploads:any[]=[],imageReads:string[]=[]
+ let finishRequested=false,release!:()=>void
+ const finishGate=new Promise<void>(resolve=>release=resolve)
+ await page.route('**/api/website-build/references/tickets',async route=>{
+  const body=route.request().postDataJSON()
+  await route.fulfill({json:{ticketId,bucket:'atlas-reference-staging',
+   path:'incoming/'+body.projectId+'/'+body.conversationId+'/'+ticketId+'.png',token:'fixture-token',mimeType:'image/png'}})
+ })
+ await page.route('**/fixture/upload',async route=>{
+  uploads.push({headers:route.request().headers(),bytes:route.request().postDataBuffer()})
+  await route.fulfill({status:200,body:''})
+ })
+ await page.route('**/api/website-build/references/finish',async route=>{
+  finishRequested=true;await finishGate
+  await route.fulfill({status:ready?200:422,json:ready?{status:'ready',assetId:ticketId}:{error:'invalid_image'}})
+ })
+ await page.route('**/api/website-build/references/image?*',async route=>{
+  imageReads.push(route.request().url());await route.fulfill({contentType:'image/png',body:png})
+ })
+ await page.goto('/picker')
+ await expect(page.getByRole('button',{name:'Lägg till bild',exact:true})).toBeEnabled()
+ await page.getByLabel('Välj referensbilder').setInputFiles({name:'<img src=x onerror=alert(1)>.png',mimeType:'image/png',buffer:png})
+ await expect.poll(()=>finishRequested).toBe(true)
+ await expect(page.getByRole('img')).toHaveCount(0)
+ expect(imageReads).toHaveLength(0)
+ expect(uploads).toHaveLength(1);expect(uploads[0].bytes).toEqual(png)
+ expect(uploads[0].headers).toMatchObject({'content-type':'image/png','x-fixture-bucket':'atlas-reference-staging','x-fixture-token':'fixture-token','x-fixture-upsert':'false'})
+ release()
+ if(ready){
+  const preview=page.getByRole('img',{name:'Förhandsvisning av <img src=x onerror=alert(1)>.png',exact:true})
+  await expect(preview).toBeVisible()
+  await expect(preview).toHaveAttribute('src',/\/api\/website-build\/references\/image\?.*ticketId=80000000-0000-4000-8000-000000000001/)
+  await expect.poll(()=>imageReads.length).toBeGreaterThan(0)
+ }else{
+  await expect(page.getByText('Uppladdning misslyckades',{exact:true})).toBeVisible()
+  await expect(page.getByRole('img')).toHaveCount(0)
+  expect(imageReads).toHaveLength(0)
+ }
+})

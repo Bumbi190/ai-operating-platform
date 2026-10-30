@@ -11,7 +11,7 @@ const MAX_FILES=4
 const MAX_BYTES=10*1024*1024
 const TYPES=new Set(['image/png','image/jpeg','image/webp'])
 const UUID=/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i
-type UploadItem={id:string;slot:number;file:File;url:string;state:'uploading'|'saved'|'error';assetId?:string;message?:string}
+type UploadItem={id:string;slot:number;file:File;ticketId?:string;state:'uploading'|'saved'|'error';assetId?:string;message?:string}
 type Ticket={ticketId:string;bucket:string;path:string;token:string;mimeType:string}
 type Status='loading'|'disabled'|'available'|'unavailable'
 type StoredReference={ticketId:string;assetId:string;issuedAt:string}
@@ -75,13 +75,11 @@ function ScopedReferenceUploads({projectId,conversationId,readOnly,onSaveReferen
       .catch(()=>{if(!abort.signal.aborted)setStatus('unavailable')})
     return()=>{
       abort.abort();controller.current?.abort();live.current=false
-      for(const item of itemsRef.current)URL.revokeObjectURL(item.url)
     }
   },[projectId,conversationId])
 
   function clearSelection(){
     if(uploading.current)return
-    for(const item of itemsRef.current)URL.revokeObjectURL(item.url)
     itemsRef.current=[]
     setItems([])
     setDraftId(crypto.randomUUID())
@@ -115,7 +113,7 @@ function ScopedReferenceUploads({projectId,conversationId,readOnly,onSaveReferen
       for(const file of selected){
         if(abort.signal.aborted)break
         const slot=itemsRef.current.length
-        const local:UploadItem={id:crypto.randomUUID(),file,slot,url:URL.createObjectURL(file),state:'uploading'}
+        const local:UploadItem={id:crypto.randomUUID(),file,slot,state:'uploading'}
         const created=[...itemsRef.current,local]
         itemsRef.current=created
         if(live.current)setItems(created)
@@ -133,7 +131,7 @@ function ScopedReferenceUploads({projectId,conversationId,readOnly,onSaveReferen
           const result=await postJson('/api/website-build/references/finish',
             {projectId,conversationId,ticketId:ticket.ticketId},abort.signal)
           if(result.status!=='ready'||!UUID.test(result.assetId))throw Error('Bilden kunde inte verifieras.')
-          update(slot,{state:'saved',assetId:result.assetId})
+          update(slot,{state:'saved',assetId:result.assetId,ticketId:ticket.ticketId})
           setStored(current=>current.some(item=>item.ticketId===ticket.ticketId)?current:
             [{ticketId:ticket.ticketId,assetId:result.assetId,issuedAt:new Date().toISOString()},...current].slice(0,40))
         }catch(e){
@@ -168,9 +166,12 @@ function ScopedReferenceUploads({projectId,conversationId,readOnly,onSaveReferen
     {error&&<p role="alert">{error}</p>}
     {!!items.length&&<ul className={styles.gallery}>
       {items.map(item=><li key={item.id} className={styles.item}>
-        {/* The preview comes only from the user's own local selection. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={item.url} alt={'Förhandsvisning av '+item.file.name}/>
+        {/* Display bytes only through the authenticated, normalized-image boundary. */}
+        {item.state==='saved'&&item.ticketId?
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={'/api/website-build/references/image?'+new URLSearchParams({projectId,conversationId,ticketId:item.ticketId})}
+            alt={'Förhandsvisning av '+item.file.name}/>:
+          <span>Bilden visas efter verifiering.</span>}
         <div><strong title={item.file.name}>{item.file.name}</strong>
           <span role="status">{item.state==='saved'?'Sparad privat':item.state==='uploading'?'Laddar upp…':'Uppladdning misslyckades'}</span>
           {item.message&&<span role="alert">{item.message}</span>}

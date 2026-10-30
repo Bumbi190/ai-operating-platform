@@ -82,10 +82,14 @@ describe('Read-only Atlas Windows owner signing review',()=>{
     expect(render(m)).not.toMatch(/<button|<form|<input/)
   })
   it('does not leak unexpected extra secret fields',()=>{
-    const m=model({openEnrollment:{
+    // Construct a runtime object with extra fields separately: the settings
+    // contract intentionally exposes only the five safe enrollment fields.
+    // This tests that an unexpected server payload is never rendered.
+    const unexpectedEnrollment={
       ...enrollment(),challenge:'HIDDEN_CHALLENGE_SECRET',
       pairingCode:'HIDDEN_PAIRING_CODE_SECRET',
-    }})
+    }
+    const m=model({openEnrollment:unexpectedEnrollment})
     const html=render(m)
     expect(html).not.toContain('HIDDEN_CHALLENGE_SECRET')
     expect(html).not.toContain('HIDDEN_PAIRING_CODE_SECRET')

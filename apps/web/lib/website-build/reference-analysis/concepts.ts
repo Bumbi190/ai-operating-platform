@@ -1,5 +1,6 @@
 import 'server-only'
 import {compileWebsiteArtifact} from '../artifact'
+import {staticConceptDocument} from './concept-document'
 import {createWebsiteMockups} from '../planning/mockups'
 import type {PlanContent} from '../planning/types'
 import {parseReferenceAnalysis,type ReferenceAnalysis} from './contract'
@@ -14,7 +15,7 @@ export function createReferenceConcepts(input:ReferenceAnalysis){
   const css=':root{--bg:'+p.background+';--fg:'+p.foreground+';--muted:'+p.foreground+';--accent:'+p.accent+';--panel:'+p.background+'}.hero h1,.section-heading h2,.page-card h3{font-family:'+(d.font==='serif'?'Georgia,serif':'system-ui,sans-serif')+'}'
   const artifact=compileWebsiteArtifact({...base.draft,css:base.draft.css+css})
   // Static concept display needs no compiler-injected preview event runtime.
-  const html=artifact.pages[0].html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'')
+  const html=staticConceptDocument(artifact.pages[0].html)
   return {key:d.key,title:d.title,summary:d.rationale,mobile:d.mobile,artifact,html}
  })
 }

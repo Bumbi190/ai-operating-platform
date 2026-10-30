@@ -67,6 +67,16 @@ export async function startReferenceStack(){
   return (result.stdout+(args[0]==='logs'?result.stderr:'')).trim()
  }
  const sql=text=>docker(['exec','-i',id+'-db','psql','-X','-qAt','-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres'],text)
+ function diagnostics(){
+  for(const name of containers){
+   try{
+    let tail=docker(['logs','--tail','8',name])
+    for(const value of [secret,password,anonKey,serviceKey])tail=tail.replaceAll(value,'[fixture-secret]')
+    tail=tail.replace(/[A-Za-z0-9_-]{12,}\\.[A-Za-z0-9_-]{12,}\\.[A-Za-z0-9_-]{12,}/g,'[fixture-token]')
+    console.error(name.split('-').at(-1)+': '+tail.slice(-1400))
+   }catch{}
+  }
+ }
  async function close(){
   if(gateway){gateway.closeAllConnections();await new Promise(resolve=>gateway.close(resolve));gateway=undefined}
   await cleanupReferenceResources({id,label,names:containers,docker})
@@ -162,7 +172,7 @@ export async function startReferenceStack(){
   await new Promise(resolve=>gateway.listen(0,'127.0.0.1',resolve))
   const url='http://127.0.0.1:'+gateway.address().port
   assertReferenceLocalConfig({mode:'isolated-local',url})
-  return {url,anonKey,serviceKey,sql,close}
+  return {url,anonKey,serviceKey,sql,close,diagnostics}
  }catch(error){
   for(const name of containers){
    try{console.error(name.split('-').at(-1)+' state: '+docker(['inspect','--format','{{.State.Status}}/{{.State.ExitCode}}/oom={{.State.OOMKilled}}',name]));let tail=docker(['logs','--tail','8',name]);for(const value of [secret,password,anonKey,serviceKey])tail=tail.replaceAll(value,'[fixture-secret]');console.error(name.split('-').at(-1)+': '+tail.slice(-1000))}catch{}

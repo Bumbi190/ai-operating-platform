@@ -69,6 +69,7 @@ beforeAll(async()=>{
 },120000)
 afterAll(async()=>{
  globalThis.fetch=nativeFetch;vi.unstubAllEnvs()
+ stack?.diagnostics()
  await stack?.close()
 },30000)
 
@@ -87,6 +88,11 @@ it('issues an owner-bound ticket and denies another signed-in user',async()=>{
  expect((await tickets.POST(request('/api/website-build/references/tickets',input))).status).toBe(404)
  cookieContext.jar=owner.jar
  const r=await tickets.POST(request('/api/website-build/references/tickets',input))
+ if(r.status!==201){
+  const probe=await admin.from('website_build_reference_tickets').select('object_path').eq('project_id',projectId)
+  const signed=probe.data?.[0]?.object_path?await admin.storage.from('atlas-reference-staging').createSignedUploadUrl(probe.data[0].object_path):null
+  console.error('ticket admission diagnostic',JSON.stringify({dbError:probe.error,rows:probe.data?.length,storageError:signed?.error}))
+ }
  expect(r.status).toBe(201);ticket=await r.json()
  expect(ticket.bucket).toBe('atlas-reference-staging');expect(ticket.token).toBeTruthy()
 })

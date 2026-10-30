@@ -110,7 +110,12 @@ export async function startReferenceStack(){
    ['--tmpfs','/var/lib/postgresql/data:rw,nosuid,size=192m'],['-c','shared_buffers=32MB','-c','max_connections=40','-c','work_mem=1MB'])
   let ready=false
   for(let i=0;i<60;i++){
-   try{if(sql('select 1')==='1'){ready=true;break}}catch{}
+   try{
+    // Postgres entrypoint's temporary init server accepts Unix sockets only.
+    // Require TCP readiness so its shutdown cannot race application bootstrap.
+    docker(['exec',id+'-db','pg_isready','-h','127.0.0.1','-U','postgres'])
+    if(sql('select 1')==='1'){ready=true;break}
+   }catch{}
    await new Promise(resolve=>setTimeout(resolve,250))
   }
   assert(ready,'Fixture database not ready')

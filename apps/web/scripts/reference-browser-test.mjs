@@ -53,7 +53,8 @@ try{
  async function put(path,text){await mkdir(resolve(app,path,'..'),{recursive:true});await writeFile(resolve(app,path),text)}
  const reservation=createServer();await new Promise(r=>reservation.listen(0,'127.0.0.1',r))
  const port=reservation.address().port;await new Promise(r=>reservation.close(r))
- const appUrl='http://127.0.0.1:'+port,denied=resolve(app,'denied-origins.log')
+ // Next14 NextURL canonicalizes all loopback hosts to localhost. Keep one app cookie origin.
+ const appUrl='http://localhost:'+port,denied=resolve(app,'denied-origins.log')
  await writeFile(denied,'')
  await put('package.json',JSON.stringify({private:true}))
  const originalTs=JSON.parse(await readFile(resolve(web,'tsconfig.json'),'utf8'))

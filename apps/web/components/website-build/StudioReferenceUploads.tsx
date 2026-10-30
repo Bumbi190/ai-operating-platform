@@ -87,11 +87,11 @@ function ScopedReferenceUploads({projectId,conversationId,readOnly,onSaveReferen
   }
   function update(slot:number,changes:Partial<UploadItem>) {
     if(!live.current)return
-    setItems(current=>{
-      const next=current.map(item=>item.slot===slot?{...item,...changes}:item)
-      itemsRef.current=next
-      return next
-    })
+    // The serial upload loop consumes this ref before React flushes its batch.
+    // Commit here so adding the next file preserves this file's verified status.
+    const next=itemsRef.current.map(item=>item.slot===slot?{...item,...changes}:item)
+    itemsRef.current=next
+    setItems(next)
   }
   async function choose(event:ChangeEvent<HTMLInputElement>){
     const selected=Array.from(event.target.files??[])

@@ -64,7 +64,7 @@ export async function startReferenceStack(){
  function docker(args,input,environment={}){
   const result=spawnSync('docker',args,{input,encoding:'utf8',timeout:30000,maxBuffer:2**20,env:{...process.env,...environment}})
   if(result.status!==0)throw Error('Fixture Docker operation failed: '+(result.stderr||result.error?.message||'unknown').slice(0,700))
-  return result.stdout.trim()
+  return (result.stdout+(args[0]==='logs'?result.stderr:'')).trim()
  }
  const sql=text=>docker(['exec','-i',id+'-db','psql','-X','-qAt','-v','ON_ERROR_STOP=1','-U','postgres','-d','postgres'],text)
  async function close(){
@@ -163,7 +163,7 @@ export async function startReferenceStack(){
   return {url,anonKey,serviceKey,sql,close}
  }catch(error){
   for(const name of containers){
-   try{let tail=docker(['logs','--tail','8',name]);for(const value of [secret,password,anonKey,serviceKey])tail=tail.replaceAll(value,'[fixture-secret]');console.error(name.split('-').at(-1)+': '+tail.slice(-1000))}catch{}
+   try{console.error(name.split('-').at(-1)+' state: '+docker(['inspect','--format','{{.State.Status}}/{{.State.ExitCode}}/oom={{.State.OOMKilled}}',name]));let tail=docker(['logs','--tail','8',name]);for(const value of [secret,password,anonKey,serviceKey])tail=tail.replaceAll(value,'[fixture-secret]');console.error(name.split('-').at(-1)+': '+tail.slice(-1000))}catch{}
   }
   await close();throw error
  }

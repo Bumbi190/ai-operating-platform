@@ -2,6 +2,8 @@ import 'server-only'
 
 import { createClient } from '@/lib/supabase/server'
 import { resolveDestination } from '@/lib/nav/registry'
+import {deriveStoredReviewContent} from '@/lib/review-content/review-queue-adapter'
+import type {ReviewContent} from '@/lib/review-content/types'
 import {
   BLOCKED_REASONS,
   classifyStatus,
@@ -51,6 +53,7 @@ export interface ReviewProject {
 }
 
 export interface ReviewItem {
+  preview?: ReviewContent
   id: string
   /** Verbatim `approvals.status`. Unknown values survive as themselves. */
   status: string
@@ -186,6 +189,7 @@ function toItem(row: RawReviewApproval): ReviewItem {
     kind: text(row.kind),
     outputKey: row.kind==='local_text_review'?'Lokal AI: jämför källa och förslag':row.kind==='local_text_incident'?'Lokal AI: driftåtgärd':text(row.output_key),
     content: typeof row.content === 'string' ? row.content : '',
+    preview: deriveStoredReviewContent({kind:text(row.kind),outputKey:text(row.output_key),content:typeof row.content==='string'?row.content:'',projectId:project?.id??null}),
     reviewerNotes: text(row.reviewer_notes),
     createdAt: row.created_at ?? null,
     reviewedAt: row.reviewed_at ?? null,

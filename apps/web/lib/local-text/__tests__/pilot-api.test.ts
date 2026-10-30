@@ -1,4 +1,7 @@
 import {beforeEach,afterEach,it,expect,vi} from 'vitest'
+// Existing behavioral tests opt into a simulated post-incident-clearance gate;
+// production hard-stop behavior is tested independently in activation-fence.test.ts.
+vi.mock('../activation-fence',()=>({localTextDispatchEnabled:()=>process.env.ATLAS_LOCAL_TEXT_ENABLED==='true'}))
 import {hashTask} from '@omnira/local-text-contract'
 const f=vi.hoisted(()=>({operator:{ok:true,userId:'11111111-1111-4111-8111-111111111111'} as any,allowed:['22222222-2222-4222-8222-222222222222'],conversation:{id:'33333333-3333-4333-8333-333333333333',project_id:'22222222-2222-4222-8222-222222222222',user_id:'11111111-1111-4111-8111-111111111111'} as any,dispatches:[] as any[]}))
 vi.mock('@/lib/auth/platform-operator',()=>({resolvePlatformOperator:async()=>f.operator}))

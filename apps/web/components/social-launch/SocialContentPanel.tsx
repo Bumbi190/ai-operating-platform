@@ -6,10 +6,11 @@ import type {SocialContentInput,SocialContentView,SocialContentPost} from '@/lib
 import {SocialSchedulePanel} from './SocialSchedulePanel'
 import {FAMILY_SOCIAL_PROJECT_ID} from '@/lib/social-launch/scheduling/policy'
 import {SocialPublicationPanel} from './SocialPublicationPanel'
+import {buildManualLinkedInCopy,manualAssetFilename} from '@/lib/handlarborsen/distribution/manual-linkedin'
 import styles from './SocialContentPanel.module.css'
 const formats={text:'Text',image:'Bild',video:'Video',link:'Länk'}
 const statuses={proposal:'Förslag att granska',approved:'Innehållet godkänt',rejected:'Avvisat innehåll',needs_review:'Behöver granskas igen'}
-const reasons:Record<string,string>={activation_required:'Separat publiceringsgodkännande krävs',account_required:'Väntar på kontokoppling',plan_changed:'Kanalplanen har ändrats',destination_changed:'Mottagarkontot har ändrats eller blockerats',media_changed:'Bifogat material har ändrats',time_passed:'Önskad tid har passerat – inget skickades',media_required:'Bifoga projektets bild eller video före granskning.'}
+const reasons:Record<string,string>={duplicate_content:'En kopia av ett tidigare eller köat inlägg stoppas.',similar_recent_content:'För likt ett annat inlägg inom 14 dagar.',repeat_history_unavailable:'Historiken kunde inte kontrolleras. Ingen ny publicering tillåts.',short_content_review:'Texten är för kort för automatisk repetitionskontroll.',activation_required:'Separat publiceringsgodkännande krävs',account_required:'Väntar på kontokoppling',plan_changed:'Kanalplanen har ändrats',destination_changed:'Mottagarkontot har ändrats eller blockerats',media_changed:'Bifogat material har ändrats',time_passed:'Önskad tid har passerat – inget skickades',media_required:'Bifoga projektets bild eller video före granskning.'}
 type Editor={postId:string;expectedRevisionId:string|null;draft:SocialContentInput;localTime:string}
 function empty(channel:SocialContentInput['channel']='facebook',format:SocialContentInput['format']='text'):SocialContentInput{return {channel,format,title:'',text:'',linkUrl:null,mediaIds:[],mediaBrief:'',scheduledAt:null}}
 function mediaUrl(projectId:string,id:string,sha:string){return '/api/social-content/media?'+new URLSearchParams({projectId,assetId:id,sha256:sha})}
@@ -17,6 +18,7 @@ function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{project
  const [model,setModel]=useState<SocialContentView|null>(null),[editor,setEditor]=useState<Editor|null>(null),[selectedId,setSelectedId]=useState<string|null>(null)
  const [dirty,setDirty]=useState(false),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState(''),[stale,setStale]=useState(false)
  const [showDrafts,setShowDrafts]=useState(true)
+ const [linkedInCopyFeedback,setLinkedInCopyFeedback]=useState<{revisionId:string;message:string}|null>(null)
  const [loaded,setLoaded]=useState<Record<string,boolean>>({})
  const responseSequence=useRef(0),writeInFlight=useRef(false),observedPlan=useRef(planStateKey)
  const live=useRef(true),controllers=useRef(new Set<AbortController>()),pending=useRef<{signature:string;body:Record<string,unknown>}|null>(null)
@@ -64,6 +66,16 @@ function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{project
   }catch(e){if(live.current&&!c.signal.aborted&&sequence===responseSequence.current)setError(e instanceof Error?e.message:'Ändringen kunde inte sparas. Ditt utkast finns kvar.')}
   finally{controllers.current.delete(c);if(sequence===responseSequence.current){writeInFlight.current=false;if(live.current)setBusy(false)}}
  }
+ async function copyLinkedInText(){
+  if(!selected||busy||loading||dirty||stale)return
+  const pkg=buildManualLinkedInCopy(selected)
+  if(!pkg.ok){setLinkedInCopyFeedback({revisionId:selected.revision.id,message:'Det här innehållet saknar ett giltigt godkännande för aktuell version.'});return}
+  try{
+   if(!navigator.clipboard?.writeText)throw Error('clipboard_unavailable')
+   await navigator.clipboard.writeText(pkg.text)
+   if(live.current)setLinkedInCopyFeedback({revisionId:pkg.revisionId,message:'Godkänd text kopierad. Klistra in på LinkedIn och publicera själv. Omnira har inte publicerat något.'})
+  }catch{if(live.current)setLinkedInCopyFeedback({revisionId:pkg.revisionId,message:'Kunde inte kopiera automatiskt. Markera inläggstexten ovan och kopiera manuellt.'})}
+ }
  const media=selected?.revision.media??[]
  const mediaMissing=!!selected&&['image','video'].includes(selected.revision.draft.format)&&media.length===0
  const reviewDisabled=busy||loading||dirty||stale||mediaMissing||selected?.status==='needs_review'||media.some(m=>!loaded[m.id+':'+m.sha256])
@@ -97,10 +109,21 @@ function Workspace({projectId,projectName,onPlanRequested,planStateKey}:{project
      {media.some(m=>!loaded[m.id+':'+m.sha256])&&<p role="status">Materialet måste kunna visas före godkännande.</p>}
      {selected.revision.binding&&<p>Konto vid granskning: {selected.revision.binding.label??selected.revision.binding.accountId}</p>}
      {selected.requirements.filter(r=>r!=='media_required').map(r=><p className={styles.requirement} key={r}>{reasons[r]??'Kräver ny kontroll'}</p>)}
+     {selected.repeatConflict&&<p className={styles.requirement}>{reasons[selected.repeatConflict.reason]}{selected.repeatConflict.at&&<> Jämför med {new Intl.DateTimeFormat('sv-SE',{dateStyle:'short',timeStyle:'short',timeZone:'Europe/Stockholm'}).format(new Date(selected.repeatConflict.at))}.</>}{selected.repeatConflict.postId&&model.posts.some(p=>p.id===selected.repeatConflict!.postId)&&<button type="button" disabled={busy||loading||dirty} onClick={()=>{setSelectedId(selected.repeatConflict!.postId);setEditor(null);setDirty(false)}}>Visa inlägget att jämföra med</button>}</p>}
      <div className={styles.actions}><button type="button" disabled={busy||loading} onClick={()=>edit(selected)}>Redigera utkast</button>{!selected.decision&&<><button type="button" disabled={reviewDisabled} onClick={()=>void send('decide','approve')}>Godkänn innehållet</button><button type="button" disabled={busy||loading||dirty||stale} onClick={()=>void send('decide','reject')}>Avvisa innehållet</button></>}</div>
      {dirty&&<p className={styles.notice}>Spara den nya versionen innan du granskar den.</p>}
      <details><summary>Granskningskvitto</summary><p>SHA256: {selected.revision.sha256}</p><p>Godkännandet gäller innehållet. Publicering kräver separat aktivering och kontroll av kanalens krav.</p></details>
-     <SocialPublicationPanel projectId={projectId} post={selected} disabled={busy||loading||dirty||stale}/>
+     {selected.revision.draft.channel==='linkedin'&&<section className={styles.notice} aria-label="LinkedIn – manuell publicering">
+      <h4>LinkedIn – publicera manuellt</h4>
+      <p>Atlas kan förbereda inlägget här, men kopieringen publicerar ingenting. Godkänn först exakt innehållsversion.</p>
+      <div className={styles.actions}>
+       <button type="button" disabled={busy||loading||dirty||stale||!buildManualLinkedInCopy(selected).ok} onClick={()=>void copyLinkedInText()}>Kopiera godkänd LinkedIn-text</button>
+       {buildManualLinkedInCopy(selected).ok&&media.map(m=>{const name=manualAssetFilename(m);return name?<a key={m.id+':'+m.sha256} href={mediaUrl(projectId,m.id,m.sha256)} download={name}>{m.kind==='image'?'Hämta godkänd bild':'Hämta godkänd video'}</a>:null})}
+      </div>
+      {linkedInCopyFeedback?.revisionId===selected.revision.id&&<p role="status">{linkedInCopyFeedback.message}</p>}
+      <p>Klistra in texten och bifoga eventuell bild på LinkedIn. En manuell publicering behöver senare verifieras separat innan Atlas kan räkna den som publicerad.</p>
+     </section>}
+     {(['facebook','instagram'] as string[]).includes(selected.revision.draft.channel)&&<SocialPublicationPanel projectId={projectId} post={selected} disabled={busy||loading||dirty||stale}/>}
     </article>}
    </div>
   </div></>}

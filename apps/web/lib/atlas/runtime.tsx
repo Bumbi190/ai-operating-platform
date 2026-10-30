@@ -536,7 +536,8 @@ export function AtlasRuntimeProvider({
     if (voiceConversationEnabled) {
       deactivateLegacy()
       voiceTrigger.current = typeof document !== 'undefined' && document.activeElement instanceof HTMLElement ? document.activeElement : null
-      setVoicePanel('open')
+      // Begin in the compact, persistent call dock. Chat opens only on demand.
+      setVoicePanel('minimized')
       voiceSession.startMic()
       return
     }
@@ -822,7 +823,8 @@ export function AtlasRuntimeProvider({
   })
   const managedVoice = voiceConversationEnabled && !voiceReadOnly
   const currentVoicePhase = managedVoice ? voiceSession.phase : voicePhase
-  const currentSessionActive = managedVoice ? voiceSession.active : isSessionActive
+  // Muting capture must not make the call look ended to the phone entry points.
+  const currentSessionActive = managedVoice ? voicePanel !== 'closed' : isSessionActive
   useEffect(() => { phaseRef.current = currentVoicePhase; isSessionActiveRef.current = currentSessionActive }, [currentVoicePhase, currentSessionActive])
   async function openVoiceBuild() {
     const current = conversation.snapshot()

@@ -3,13 +3,14 @@ import type {createAdminClient} from '@/lib/supabase/admin'
 import type {SocialContentPrincipal,SocialContentProposal,SocialContentDecision,SocialContentView} from './types'
 import {SocialContentError} from './types'
 import {contentFields,contentId,parseSocialContent} from './validate'
+import {withRepeatReview} from './repeat'
 type Db=ReturnType<typeof createAdminClient>
 function scoped(p:SocialContentPrincipal,projectId:string){contentId(p.userId);contentId(projectId);if(!p.allowedProjectIds.includes(projectId))throw new SocialContentError('NOT_FOUND')}
 function key(v:unknown){if(typeof v!=='string'||!/^[A-Za-z0-9_-]{1,100}$/.test(v))throw new SocialContentError('INVALID_BODY')}
 async function call(db:Db,p:SocialContentPrincipal,name:'social_content_read'|'social_content_save'|'social_content_decide',input:unknown):Promise<SocialContentView>{
  const {data,error}=await (db as unknown as {rpc:(name:string,args:Record<string,unknown>)=>Promise<{data:unknown;error:{message?:string;code?:string}|null}>}).rpc(name,{p_principal:p,p_input:input})
  if(error){const message=error.message??'',code=error.code==='P0002'||error.code==='42501'?'NOT_FOUND':error.code==='23505'?'REVISION_CONFLICT':(['INVALID_BODY','REVISION_CONFLICT','REVIEW_REQUIRED','MEDIA_REQUIRED','STOPPED','LIMIT_REACHED'] as const).find(k=>message.includes('SOCIAL_CONTENT_'+k))??'UNAVAILABLE';throw new SocialContentError(code)}
- if(!data)throw new SocialContentError('UNAVAILABLE');return data as SocialContentView
+ if(!data)throw new SocialContentError('UNAVAILABLE');return withRepeatReview(db,p,data as SocialContentView)
 }
 export async function readSocialContent(db:Db,p:SocialContentPrincipal,input:{projectId:string;conversationId?:string|null}):Promise<SocialContentView>{contentFields(input,['projectId','conversationId']);scoped(p,input.projectId);if(input.conversationId!=null)contentId(input.conversationId);return call(db,p,'social_content_read',input)}
 export async function proposeSocialContent(db:Db,p:SocialContentPrincipal,input:SocialContentProposal):Promise<SocialContentView>{

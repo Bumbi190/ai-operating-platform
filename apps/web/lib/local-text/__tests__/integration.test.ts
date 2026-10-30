@@ -1,4 +1,7 @@
 import {it,expect,vi} from 'vitest'
+// Existing behavioral tests opt into a simulated post-incident-clearance gate;
+// production hard-stop behavior is tested independently in activation-fence.test.ts.
+vi.mock('../activation-fence',()=>({localTextDispatchEnabled:()=>process.env.ATLAS_LOCAL_TEXT_ENABLED==='true'}))
 import {handleLocalTextTool,persistLocalTextToolData} from '../atlas-tools'
 import {readLocalTextReview,resolveLocalTextApproval} from '../incidents'
 import {createServer} from 'node:https'

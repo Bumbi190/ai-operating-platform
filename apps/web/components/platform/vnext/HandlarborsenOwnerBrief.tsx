@@ -67,7 +67,10 @@ export function HandlarborsenOwnerBrief({ model, report }: { model: BriefModel; 
         </div>
         <span className={styles.readOnly}>Underlag för dina beslut</span>
       </div>
-      <a className={styles.link} href="/projects/handlarborsen/competitors">Öppna Konkurrentspanaren</a>
+      <div className={styles.links}>
+        <Link className={styles.link} href="/projects/handlarborsen/lead-finder">Öppna Lead Finder <ArrowUpRight size={15} aria-hidden="true" /></Link>
+        <Link className={styles.link} href="/projects/handlarborsen/competitors">Öppna Konkurrentspanaren <ArrowUpRight size={15} aria-hidden="true" /></Link>
+      </div>
 
       <div className={styles.cards}>
         <article className={styles.card}>

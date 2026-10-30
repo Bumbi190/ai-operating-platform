@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   callHermesTrends: vi.fn(),
   callHermesScrape: vi.fn(),
   callHermesRead: vi.fn(),
+  isHermesConfigured: vi.fn(),
 }))
 
 vi.mock('@/lib/supabase/admin', () => ({
@@ -33,7 +34,7 @@ vi.mock('@/lib/media/hermes', () => ({
   callHermesRead: mocks.callHermesRead,
   callHermesTrends: mocks.callHermesTrends,
   callHermesCompetitors: vi.fn(),
-  isHermesConfigured: () => false,
+  isHermesConfigured: mocks.isHermesConfigured,
 }))
 
 vi.mock('@/lib/media/quality', () => ({
@@ -165,6 +166,7 @@ describe('News Hunter persistence contract', () => {
     mocks.callHermesTrends.mockReset()
     mocks.callHermesScrape.mockReset()
     mocks.callHermesRead.mockReset()
+    mocks.isHermesConfigured.mockReset().mockReturnValue(false)
     mocks.logRun.mockResolvedValue('run-1')
     mocks.callHermesTrends.mockResolvedValue(null)
     mocks.runNewsHunter.mockResolvedValue(makeHunterResult())
@@ -212,6 +214,30 @@ describe('News Hunter persistence contract', () => {
     }))
   })
 
+  it('step1 passes its ten-second article budget to the HTTP client before any script spend', async () => {
+    vi.useFakeTimers()
+    const stop = new Error('synthetic stop before paid script generation')
+    const db = makeDb({ mediaNewsInsertResults: [{ data: { id: 'news-new' }, error: null }] })
+    mocks.currentDb = db
+    mocks.isHermesConfigured.mockReturnValue(true)
+    mocks.runNewsHunter.mockResolvedValue({ ...makeHunterResult(), candidates: [], afterDedup: 0 })
+    // Exercise the existing structured Hermes fallback without paid analysis.
+    mocks.callHermesScrape.mockResolvedValue({
+      title: 'Synthetic story', url: 'https://techcrunch.com/old-story', source_name: 'Synthetic',
+      summary: 'Synthetic summary', key_insight: 'Synthetic insight', virality_score: 82, content_angle: 'educational',
+    })
+    mocks.callHermesRead.mockRejectedValue(stop)
+    try {
+      await expect(step1GET(cronRequest('/api/media/cron/step1'))).rejects.toThrow(stop)
+      expect(mocks.callHermesRead).toHaveBeenCalledWith('https://techcrunch.com/old-story', 10_000)
+      expect(mocks.runNewsHunter).toHaveBeenCalledTimes(1)
+      expect(mocks.anthropicCreate).not.toHaveBeenCalled()
+    } finally {
+      vi.clearAllTimers()
+      vi.useRealTimers()
+    }
+  })
+
   it('step1 treats duplicate-only candidates as no-work and does not create a script with news_item_id null', async () => {
     const db = makeDb({ mediaNewsInsertResults: [{ data: null, error: duplicateUrlError() }] })
     mocks.currentDb = db
@@ -225,6 +251,10 @@ describe('News Hunter persistence contract', () => {
       duplicateCount: 1,
     })
     expect(db.inserts.media_scripts ?? []).toHaveLength(0)
+    expect(mocks.runNewsHunter).toHaveBeenCalledTimes(1)
+    // Trends previously ran in parallel but were never passed to News Hunter.
+    // Avoid optional 7-second Hermes work which cannot affect the selection.
+    expect(mocks.callHermesTrends).not.toHaveBeenCalled()
     expect(mocks.anthropicCreate).not.toHaveBeenCalled()
   })
 })

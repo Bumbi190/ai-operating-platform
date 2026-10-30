@@ -14,6 +14,152 @@ export type Database = {
   }
   public: {
     Tables: {
+      workflow_human_story_approvals: {
+        Row: {
+          approved_at: string
+          authority_valid_until: string
+          grant_event_id: string
+          human_principal: string
+          profile: string
+          request_id: string
+          run_id: string
+          survival_anchor: string
+          survival_epoch_vector: number[]
+          survival_proof: string
+        }
+        Insert: {
+          approved_at: string
+          authority_valid_until: string
+          grant_event_id: string
+          human_principal: string
+          profile?: string
+          request_id: string
+          run_id: string
+          survival_anchor: string
+          survival_epoch_vector: number[]
+          survival_proof: string
+        }
+        Update: {
+          approved_at?: string
+          authority_valid_until?: string
+          grant_event_id?: string
+          human_principal?: string
+          profile?: string
+          request_id?: string
+          run_id?: string
+          survival_anchor?: string
+          survival_epoch_vector?: number[]
+          survival_proof?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_human_story_approvals_grant_event_id_fkey"
+            columns: ["grant_event_id"]
+            isOneToOne: true
+            referencedRelation: "atlas_authorizations"
+            referencedColumns: ["event_id"]
+          },
+          {
+            foreignKeyName: "workflow_human_story_approvals_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: true
+            referencedRelation: "workflow_human_story_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workflow_human_story_approvals_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: true
+            referencedRelation: "runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workflow_human_story_requests: {
+        Row: {
+          action_target_hash: string
+          authorization_id: string
+          brief_hash: string
+          created_at: string
+          def_hash: string
+          expires_at: string
+          id: string
+          instance_id: string
+          max_tokens: number
+          maximum_sek: number
+          model: string
+          project_id: string
+          prompt_hash: string
+          provider: string
+          request_event_id: string
+          request_key: string
+          requested_by: string
+          target_version_hash: string
+        }
+        Insert: {
+          action_target_hash: string
+          authorization_id: string
+          brief_hash: string
+          created_at: string
+          def_hash: string
+          expires_at: string
+          id?: string
+          instance_id: string
+          max_tokens: number
+          maximum_sek: number
+          model: string
+          project_id: string
+          prompt_hash: string
+          provider: string
+          request_event_id: string
+          request_key: string
+          requested_by: string
+          target_version_hash: string
+        }
+        Update: {
+          action_target_hash?: string
+          authorization_id?: string
+          brief_hash?: string
+          created_at?: string
+          def_hash?: string
+          expires_at?: string
+          id?: string
+          instance_id?: string
+          max_tokens?: number
+          maximum_sek?: number
+          model?: string
+          project_id?: string
+          prompt_hash?: string
+          provider?: string
+          request_event_id?: string
+          request_key?: string
+          requested_by?: string
+          target_version_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_human_story_requests_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_instances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workflow_human_story_requests_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workflow_human_story_requests_request_event_id_fkey"
+            columns: ["request_event_id"]
+            isOneToOne: true
+            referencedRelation: "atlas_authorizations"
+            referencedColumns: ["event_id"]
+          },
+        ]
+      }
 "website_build_feedback": {
                   Row: {
                     "applied_revision_id": string | null,"author_id": string,"change_key": string | null,"created_at": string,"disposition": string | null,"id": string,"idempotency_key": string,"input_source": string,"interpretation": string | null,"project_id": string,"sequence": number,"session_id": string,"status": string,"superseded_by": string | null,"text": string,"viewed_revision_id": string | null
@@ -4110,6 +4256,7 @@ isOneToOne: false
       }
       runs: {
         Row: {
+          human_story_request_id: string | null
           action_class: string | null
           action_kind: string | null
           action_outcome: string | null
@@ -4154,6 +4301,7 @@ isOneToOne: false
           workflow_instance_id: string | null
         }
         Insert: {
+          human_story_request_id?: string | null
           action_class?: string | null
           action_kind?: string | null
           action_outcome?: string | null
@@ -4198,6 +4346,7 @@ isOneToOne: false
           workflow_instance_id?: string | null
         }
         Update: {
+          human_story_request_id?: string | null
           action_class?: string | null
           action_kind?: string | null
           action_outcome?: string | null
@@ -5290,6 +5439,59 @@ isOneToOne: false
       [_ in never]: never
     }
     Functions: {
+      social_content_repeat_check: {
+        Args: { p_input: Json; p_principal: Json }
+        Returns: Json
+      }
+      approve_and_start_human_story: {
+        Args: {
+          p_current_action_hash: string
+          p_request_id: string
+          p_reviewed_hash: string
+        }
+        Returns: {
+          replayed: boolean
+          request_id: string
+          run_id: string
+        }[]
+      }
+      prepare_human_story_request: {
+        Args: {
+          p_action_target_hash: string
+          p_brief_hash: string
+          p_instance_id: string
+          p_maximum_sek: number
+          p_prompt_hash: string
+          p_request_key: string
+          p_requested_by: string
+        }
+        Returns: {
+          action_target_hash: string
+          authorization_id: string
+          brief_hash: string
+          created_at: string
+          def_hash: string
+          expires_at: string
+          id: string
+          instance_id: string
+          max_tokens: number
+          maximum_sek: number
+          model: string
+          project_id: string
+          prompt_hash: string
+          provider: string
+          request_event_id: string
+          request_key: string
+          requested_by: string
+          target_version_hash: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "workflow_human_story_requests"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
 "website_build_set_stage":
 { Args: { "p_status": string,"p_writer": Json }; Returns: Json
                            },

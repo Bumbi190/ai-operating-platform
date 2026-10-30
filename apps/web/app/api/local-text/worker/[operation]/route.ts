@@ -1,13 +1,14 @@
 import {NextResponse} from 'next/server'
 import {createAdminClient} from '@/lib/supabase/admin'
 import {executeWorkerRequest} from '@/lib/local-text/worker-api'
+import {localTextDispatchEnabled} from '@/lib/local-text/activation-fence'
 import {WORKER_OPERATIONS} from '@omnira/local-text-contract'
 import type {WorkerOperation} from '@/lib/local-text/types'
 export const runtime='nodejs'
 export const dynamic='force-dynamic'
 const headers={'Cache-Control':'no-store'}
 export async function POST(request:Request,{params}:{params:{operation:string}}){
- if(process.env.ATLAS_LOCAL_TEXT_ENABLED!=='true')return NextResponse.json({error:'LOCAL_TEXT_DISABLED'},{status:503,headers})
+ if(!localTextDispatchEnabled())return NextResponse.json({error:'LOCAL_TEXT_DISABLED'},{status:503,headers})
  if(!WORKER_OPERATIONS.includes(params.operation as WorkerOperation))return NextResponse.json({error:'UNKNOWN_OPERATION'},{status:404,headers})
  try{
   const response=await executeWorkerRequest(createAdminClient(),request,params.operation as WorkerOperation)

@@ -15,7 +15,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { deriveIssueId, getDreamFindings, normSeverity } from '@/lib/atlas/dream'
 import type { DreamSeverity } from '@/lib/atlas/dream'
 import { isMemoryEnabled, recordMemoryEvent } from '@/lib/atlas/memory/record-event'
-import { getAnthropic } from '@/lib/ai/anthropic'
+import { getMediaTextClient } from '@/lib/media/text-client'
+import { isSpendGateEnforced } from '@/lib/cost/spend-gate-flag'
 import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
 import type { ExecutionContract } from '@/lib/governance/execution-stop'
 
@@ -370,8 +371,17 @@ Returnera din analys som giltig JSON enligt det format du instruerats att använ
     summary: string
   }
 
-  const response = await getAnthropic({
-    project: PLATFORM_COMPAT_PROJECT, execution, agent: 'Dream', operation: 'Dream Analysis',
+  // When the governed failover is opted in, allocate Dream costs to its ACTUAL
+  // project. In the default-off configuration preserve previous attribution.
+  const ownedProject = process.env.ATLAS_TEXT_FAILOVER_ENABLED === 'true'
+    && isSpendGateEnforced()
+    && execution.context === 'AUTONOMOUS'
+    && execution.scope.kind === 'PROJECT'
+    && 'projectId' in execution.scope.project
+    && execution.scope.project.projectId === project.id
+    ? { projectId: project.id } : PLATFORM_COMPAT_PROJECT
+  const response = await getMediaTextClient({
+    project: ownedProject, execution, agent: 'Dream', operation: 'Dream Analysis',
   }).messages.create({
     model: dreamAnalyzerSkill.defaultModel,
     max_tokens: dreamAnalyzerSkill.config.max_tokens ?? 2000,

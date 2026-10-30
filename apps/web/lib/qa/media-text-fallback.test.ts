@@ -27,6 +27,14 @@ function creditError() {
     } },
   })
 }
+function invalidApiKeyError() {
+  return Object.assign(new Error('Anthropic rejected API credentials'), {
+    status: 401,
+    error: { type: 'error', error: {
+      type: 'authentication_error', message: 'invalid x-api-key',
+    } },
+  })
+}
 function completion(text = '{"hook":"A source-grounded hook"}', finish = 'stop', refusal: string | null = null) {
   return { choices: [{ finish_reason: finish, message: { content: text, refusal } }] }
 }
@@ -55,6 +63,63 @@ describe('media text credit recovery', () => {
       model: 'gpt-5.4-mini', max_completion_tokens: 2000, reasoning_effort: 'none',
       messages: [{ role: 'system', content: input.system }, ...input.messages],
     })
+  })
+
+  it('keeps invalid Anthropic credentials as a hard failure unless The Prompt fallback is enabled', async () => {
+    const failure = invalidApiKeyError()
+    mocks.anthropic.mockRejectedValue(failure)
+    await expect(getMediaTextClient({ ...ctx, agent: 'News Hunter', operation: 'Analyze News' }).messages.create(input)).rejects.toBe(failure)
+    expect(mocks.openai).not.toHaveBeenCalled()
+  })
+
+  it('uses the governed OpenAI reserve once for a proven 401 in The Prompt news hunter when explicitly enabled', async () => {
+    vi.stubEnv('MEDIA_NEWS_ANTHROPIC_AUTH_FALLBACK_ENABLED', 'true')
+    mocks.anthropic.mockRejectedValue(invalidApiKeyError())
+    const newsCtx = { ...ctx, agent: 'News Hunter', operation: 'Analyze News' }
+    const value = await getMediaTextClient(newsCtx).messages.create(input)
+    expect(value.content[0]).toMatchObject({ type: 'text', text: '{"hook":"A source-grounded hook"}' })
+    expect(mocks.anthropic).toHaveBeenCalledTimes(1)
+    expect(mocks.openai).toHaveBeenCalledTimes(1)
+    expect(mocks.openai).toHaveBeenCalledWith(newsCtx, expect.objectContaining({ model: 'gpt-5.4-mini' }))
+    expect(JSON.stringify((console.warn as ReturnType<typeof vi.fn>).mock?.calls ?? [])).not.toContain('x-api-key')
+  })
+
+  it.each([
+    { name: 'other media agent', change: { agent: 'Script Writer', operation: 'Generate Script' } },
+    { name: 'other project', change: { project: { projectSlug: 'familje-stunden' } } },
+    { name: 'manual request', change: { execution: { context: 'USER' as const, scope: projectScope({ projectSlug: 'ai-media-automation' }) } } },
+  ])('refuses an auth-key fallback for $name', async ({ change }) => {
+    vi.stubEnv('MEDIA_NEWS_ANTHROPIC_AUTH_FALLBACK_ENABLED', 'true')
+    const failure = invalidApiKeyError()
+    mocks.anthropic.mockRejectedValue(failure)
+    await expect(getMediaTextClient({ ...ctx, agent: 'News Hunter', operation: 'Analyze News', ...change } as typeof ctx).messages.create(input)).rejects.toBe(failure)
+    expect(mocks.openai).not.toHaveBeenCalled()
+  })
+
+  it('never falls back on an ambiguous 401 even with the auth-reserve flag', async () => {
+    vi.stubEnv('MEDIA_NEWS_ANTHROPIC_AUTH_FALLBACK_ENABLED', 'true')
+    const error = Object.assign(new Error('unauthorized'), { status: 401 })
+    mocks.anthropic.mockRejectedValue(error)
+    await expect(getMediaTextClient({ ...ctx, agent: 'News Hunter', operation: 'Analyze News' }).messages.create(input)).rejects.toBe(error)
+    expect(mocks.openai).not.toHaveBeenCalled()
+  })
+
+  it('requires the OpenAI reserve credential even with explicit fallback approval', async () => {
+    vi.stubEnv('MEDIA_NEWS_ANTHROPIC_AUTH_FALLBACK_ENABLED', 'true')
+    vi.stubEnv('OPENAI_API_KEY', '')
+    const error = invalidApiKeyError()
+    mocks.anthropic.mockRejectedValue(error)
+    await expect(getMediaTextClient({ ...ctx, agent: 'News Hunter', operation: 'Analyze News' }).messages.create(input)).rejects.toBe(error)
+    expect(mocks.openai).not.toHaveBeenCalled()
+  })
+
+  it('preserves OpenAI budget refusal on an opted-in invalid-key fallback', async () => {
+    vi.stubEnv('MEDIA_NEWS_ANTHROPIC_AUTH_FALLBACK_ENABLED', 'true')
+    const refusal = Object.assign(new Error('budget denied'), { name: 'SpendRefusedError', reason: 'budget_exceeded' })
+    mocks.anthropic.mockRejectedValue(invalidApiKeyError())
+    mocks.openai.mockRejectedValue(refusal)
+    await expect(getMediaTextClient({ ...ctx, agent: 'News Hunter', operation: 'Analyze News' }).messages.create(input)).rejects.toBe(refusal)
+    expect(mocks.openai).toHaveBeenCalledTimes(1)
   })
 
   it('does not discard the provider error when the reserve credential is absent', async () => {

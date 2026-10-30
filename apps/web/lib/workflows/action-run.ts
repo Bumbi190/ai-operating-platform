@@ -33,6 +33,8 @@ import { assertExecutionAuthorized } from './effect/execution-authorization-runt
 import { summarizeStateEvidence } from './evidence-consumption'
 import { findAdapter } from './adapters/registry'
 import { checkAnsweredBy } from './action-discovery'
+import { deferredStoryOutputChecks } from './action-prerequisites'
+import {humanStoryReadiness,HumanStoryAuthorizationError} from './story/human-readiness'
 import { evidenceTargetHashFor } from './evidence-binding'
 import { isSpendGateEnforced } from '@/lib/cost/spend-gate-flag'
 import { isFinancialExecutionEnabled } from '@/lib/governance/financial-execution-flag'
@@ -225,15 +227,15 @@ export async function createWorkflowActionRun(
     }
   }
 
-  // 7) required evidence for the state must actually be satisfied — EXCEPT the
-  //    one observation this action exists to make.
+  // 7) required evidence must be satisfied, except this action's own output
+  //    and the explicitly deferred downstream outputs of the canonical v2 story.
   //
   //    An action may not be gated on its own output. Requiring
   //    `anonymous_protected_access_denied` before creating the run that PRODUCES
   //    it is a deadlock with no exit: no evidence ⇒ no run ⇒ no evidence. PR9h
   //    hit exactly that in production.
   //
-  //    The exemption is deliberately narrow, and narrow in a way a reader can
+  //    The own-output exemption is deliberately narrow, in a way a reader can
   //    verify at a glance:
   //      • it comes from `checkAnsweredBy`, the single canonical action→check
   //        mapping, and from no string comparison invented here;
@@ -245,7 +247,9 @@ export async function createWorkflowActionRun(
   //        check stays unsatisfied, no PASS is synthesized, and every gate that
   //        reads evidence later — the tick, the transition, the release —
   //        still sees it as missing until real evidence is recorded.
-  //    It buys permission to OBSERVE, and nothing else.
+  //    The canonical v2 story placement also defers downstream output checks
+  //    at entry only; completion still requires every real result. This buys
+  //    no authorization, spend permission or evidence satisfaction.
   if (adapter) {
     const declared = adapter.attestableChecks()
     // `required` is a property of the DECLARATION (PR6), not of the verdict —
@@ -264,8 +268,9 @@ export async function createWorkflowActionRun(
       declared, instance.current_state, evidence,
       evidenceTargetHashFor(instance, def.spec, instance.current_state, evidence))
     const selfAnswered = checkAnsweredBy(input.actionKind)
+    const deferredOutputs = deferredStoryOutputChecks(instance, def.spec, input.actionKind)
     const unmet = summary.verdicts.filter(v => requiredKeys.has(v.check_key) && !v.satisfies)
-    const blocking = unmet.filter(v => v.check_key !== selfAnswered)
+    const blocking = unmet.filter(v => v.check_key !== selfAnswered && !deferredOutputs.includes(v.check_key))
     if (blocking.length > 0) {
       const blockingCheckKeys = blocking.map(v => v.check_key).sort()
       return {
@@ -422,6 +427,8 @@ export type ActionReadinessBlocker =
   | 'cancel_requested'
 
 export interface ActionReadiness {
+  /** Present only after verifying immutable, individually human-granted scope. */
+  approvedStoryMaximumSek?: number
   ready: boolean
   blockers: ActionReadinessBlocker[]
   /**
@@ -446,9 +453,10 @@ const DRIFT: ActionReadinessBlocker[] = [
  */
 export async function assertWorkflowActionReady(db: AnyDb, runId: string): Promise<ActionReadiness> {
   const blockers: ActionReadinessBlocker[] = []
+  let approvedStoryMaximumSek:number|undefined
   const { data: run } = await db.from('runs')
     .select('id, project_id, status, cancel_requested, workflow_instance_id, workflow_def_hash, '
-          + 'workflow_from_state, action_kind, action_class, target_version_hash, authorization_id')
+          + 'workflow_from_state, action_kind, action_class, target_version_hash, authorization_id, attempt_group, human_story_request_id')
     .eq('id', runId).maybeSingle()
 
   if (!run || !run.workflow_instance_id) {
@@ -494,6 +502,10 @@ export async function assertWorkflowActionReady(db: AnyDb, runId: string): Promi
     // A write-capable action with no authorization id is not merely unverified;
     // it should not exist, and the DB refuses it. Treat it as ineffective.
     if (!run.authorization_id) blockers.push('authorization_not_effective')
+    else if(run.human_story_request_id){
+      // The scoped human branch proves immutable provenance, current owner,
+      // target AND live ledger authority below. Never an ambient-session read.
+    }
     else if (lookupAction(run.action_kind)?.executor_family === 'governed_effect') {
       // ── The split (Phase 2B-2.5) ───────────────────────────────────────────
       // An EFFECT needs permission to ACT, which is a different decision from
@@ -542,14 +554,20 @@ export async function assertWorkflowActionReady(db: AnyDb, runId: string): Promi
       })
       // Evidence is part of the payload, so new or changed evidence moves the
       // hash — reported as target drift, which is what it is.
-      if (target.versionHash !== run.target_version_hash) blockers.push('target_drifted')
-    } catch {
-      blockers.push('target_drifted')
+      let expectedHash=target.versionHash
+      if(run.human_story_request_id){
+        const human=await humanStoryReadiness(db,run,instance,target.versionHash)
+        expectedHash=human.targetHash;approvedStoryMaximumSek=human.maximumSek
+      }
+      if (expectedHash !== run.target_version_hash) blockers.push('target_drifted')
+    } catch (error) {
+      blockers.push(error instanceof HumanStoryAuthorizationError?'authorization_not_effective':'target_drifted')
     }
   }
 
   const terminal = blockers.some(b => DRIFT.includes(b))
   return {
+    ...(approvedStoryMaximumSek===undefined?{}:{approvedStoryMaximumSek}),
     ready: blockers.length === 0,
     blockers, terminal,
     detail: blockers.length === 0 ? 'bound action is ready' : `blocked: ${blockers.join(', ')}`,

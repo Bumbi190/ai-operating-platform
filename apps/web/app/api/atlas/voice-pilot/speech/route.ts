@@ -1,6 +1,6 @@
 import { guardAtlasVoiceAccess } from '@/lib/atlas/voice-pilot/access'
 import { availableSwedishVoices, streamSwedishSpeech } from '@/lib/atlas/voice-pilot/elevenlabs'
-import { ATLAS_SWEDISH_VOICES, isAtlasSwedishVoice } from '@/lib/atlas/voice-pilot/voices'
+import { atlasVoiceLabel, isAtlasSwedishVoice } from '@/lib/atlas/voice-pilot/voices'
 import { PLATFORM_COMPAT_PROJECT } from '@/lib/cost/governed-spend'
 import { GLOBAL_ONLY } from '@/lib/governance/execution-stop'
 import { transcribeAtlasSwedishPcm } from '@/lib/media/elevenlabs'
@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   const denial = await guardAtlasVoiceAccess(); if (denial) return denial
   try {
     const voices = await availableSwedishVoices(request.signal)
-    return Response.json({ voices: voices.map(key => ({ key, label: ATLAS_SWEDISH_VOICES[key].label })) }, { headers: { 'Cache-Control': 'no-store' } })
+    return Response.json({ voices: voices.map(key => ({ key, label: atlasVoiceLabel(key) })) }, { headers: { 'Cache-Control': 'no-store' } })
   } catch { return Response.json({ error: 'Svenska röster kunde inte hämtas just nu.' }, { status: 503 }) }
 }
 export async function POST(request: Request) {

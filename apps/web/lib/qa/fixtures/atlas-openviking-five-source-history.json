@@ -1,0 +1,1668 @@
+{
+  "schemaVersion": "atlas-openviking-quality-v1",
+  "provenance": {
+    "cohortId": "legacy-five-source-2026-10-15",
+    "sourceReceipt": "PR343:infra/openviking/validation-five-source-20261015.json",
+    "sourceApproved": true,
+    "sameOriginalDocuments": true,
+    "frozenQuestionsBeforeIndexing": true,
+    "independentlyAuthoredQuestions": false,
+    "heldOutFromTuning": false,
+    "currentOpenVikingVersionVerified": false
+  },
+  "sourceIds": [
+    "doc-01",
+    "doc-02",
+    "doc-03",
+    "doc-04",
+    "doc-05"
+  ],
+  "cases": [
+    {
+      "id": "case-01",
+      "kind": "answerable",
+      "expectedIds": [
+        "doc-02",
+        "doc-01"
+      ],
+      "lexical": [
+        {
+          "ids": [
+            "doc-02"
+          ],
+          "durationMs": 16
+        },
+        {
+          "ids": [
+            "doc-02"
+          ],
+          "durationMs": 15
+        },
+        {
+          "ids": [
+            "doc-02"
+          ],
+          "durationMs": 16
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-01",
+            "doc-04",
+            "doc-02",
+            "doc-03",
+            "doc-05"
+          ],
+          "durationMs": 145
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-04",
+            "doc-02",
+            "doc-03",
+            "doc-05"
+          ],
+          "durationMs": 82
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-04",
+            "doc-02",
+            "doc-03",
+            "doc-05"
+          ],
+          "durationMs": 73
+        }
+      ]
+    },
+    {
+      "id": "case-02",
+      "kind": "answerable",
+      "expectedIds": [
+        "doc-02"
+      ],
+      "lexical": [
+        {
+          "ids": [
+            "doc-02"
+          ],
+          "durationMs": 15
+        },
+        {
+          "ids": [
+            "doc-02"
+          ],
+          "durationMs": 17
+        },
+        {
+          "ids": [
+            "doc-02"
+          ],
+          "durationMs": 13
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-02",
+            "doc-01",
+            "doc-04",
+            "doc-03",
+            "doc-05"
+          ],
+          "durationMs": 82
+        },
+        {
+          "ids": [
+            "doc-02",
+            "doc-01",
+            "doc-04",
+            "doc-03",
+            "doc-05"
+          ],
+          "durationMs": 108
+        },
+        {
+          "ids": [
+            "doc-02",
+            "doc-01",
+            "doc-04",
+            "doc-03",
+            "doc-05"
+          ],
+          "durationMs": 63
+        }
+      ]
+    },
+    {
+      "id": "case-03",
+      "kind": "answerable",
+      "expectedIds": [
+        "doc-02"
+      ],
+      "lexical": [
+        {
+          "ids": [
+            "doc-02"
+          ],
+          "durationMs": 11
+        },
+        {
+          "ids": [
+            "doc-02"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-02"
+          ],
+          "durationMs": 11
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-04",
+            "doc-02",
+            "doc-03",
+            "doc-01",
+            "doc-05"
+          ],
+          "durationMs": 63
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-02",
+            "doc-03",
+            "doc-01",
+            "doc-05"
+          ],
+          "durationMs": 87
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-02",
+            "doc-03",
+            "doc-01",
+            "doc-05"
+          ],
+          "durationMs": 65
+        }
+      ]
+    },
+    {
+      "id": "case-04",
+      "kind": "answerable",
+      "expectedIds": [
+        "doc-02"
+      ],
+      "lexical": [
+        {
+          "ids": [
+            "doc-02",
+            "doc-04",
+            "doc-05",
+            "doc-01",
+            "doc-03"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-02",
+            "doc-04",
+            "doc-05",
+            "doc-01",
+            "doc-03"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-02",
+            "doc-04",
+            "doc-05",
+            "doc-01",
+            "doc-03"
+          ],
+          "durationMs": 12
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-04",
+            "doc-03",
+            "doc-02",
+            "doc-05",
+            "doc-01"
+          ],
+          "durationMs": 83
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-03",
+            "doc-02",
+            "doc-05",
+            "doc-01"
+          ],
+          "durationMs": 63
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-03",
+            "doc-02",
+            "doc-05",
+            "doc-01"
+          ],
+          "durationMs": 77
+        }
+      ]
+    },
+    {
+      "id": "case-05",
+      "kind": "answerable",
+      "expectedIds": [
+        "doc-02",
+        "doc-01"
+      ],
+      "lexical": [
+        {
+          "ids": [
+            "doc-02",
+            "doc-04",
+            "doc-05"
+          ],
+          "durationMs": 10
+        },
+        {
+          "ids": [
+            "doc-02",
+            "doc-04",
+            "doc-05"
+          ],
+          "durationMs": 10
+        },
+        {
+          "ids": [
+            "doc-02",
+            "doc-04",
+            "doc-05"
+          ],
+          "durationMs": 13
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-05",
+            "doc-01",
+            "doc-03",
+            "doc-02",
+            "doc-04"
+          ],
+          "durationMs": 35
+        },
+        {
+          "ids": [
+            "doc-05",
+            "doc-01",
+            "doc-03",
+            "doc-02",
+            "doc-04"
+          ],
+          "durationMs": 30
+        },
+        {
+          "ids": [
+            "doc-05",
+            "doc-01",
+            "doc-03",
+            "doc-02",
+            "doc-04"
+          ],
+          "durationMs": 31
+        }
+      ]
+    },
+    {
+      "id": "case-06",
+      "kind": "answerable",
+      "expectedIds": [
+        "doc-02",
+        "doc-01"
+      ],
+      "lexical": [
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-03",
+            "doc-04",
+            "doc-05"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-03",
+            "doc-04",
+            "doc-05"
+          ],
+          "durationMs": 13
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-03",
+            "doc-04",
+            "doc-05"
+          ],
+          "durationMs": 15
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-04",
+            "doc-03",
+            "doc-05",
+            "doc-01",
+            "doc-02"
+          ],
+          "durationMs": 33
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-03",
+            "doc-05",
+            "doc-01",
+            "doc-02"
+          ],
+          "durationMs": 36
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-03",
+            "doc-05",
+            "doc-01",
+            "doc-02"
+          ],
+          "durationMs": 59
+        }
+      ]
+    },
+    {
+      "id": "case-07",
+      "kind": "answerable",
+      "expectedIds": [
+        "doc-02",
+        "doc-01"
+      ],
+      "lexical": [
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-05",
+            "doc-03",
+            "doc-04"
+          ],
+          "durationMs": 11
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-05",
+            "doc-03",
+            "doc-04"
+          ],
+          "durationMs": 10
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-05",
+            "doc-03",
+            "doc-04"
+          ],
+          "durationMs": 10
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-01",
+            "doc-04",
+            "doc-02",
+            "doc-03",
+            "doc-05"
+          ],
+          "durationMs": 33
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-04",
+            "doc-02",
+            "doc-03",
+            "doc-05"
+          ],
+          "durationMs": 36
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-04",
+            "doc-02",
+            "doc-03",
+            "doc-05"
+          ],
+          "durationMs": 33
+        }
+      ]
+    },
+    {
+      "id": "case-08",
+      "kind": "answerable",
+      "expectedIds": [
+        "doc-02"
+      ],
+      "lexical": [
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-03",
+            "doc-05",
+            "doc-04"
+          ],
+          "durationMs": 13
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-03",
+            "doc-05",
+            "doc-04"
+          ],
+          "durationMs": 13
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-03",
+            "doc-05",
+            "doc-04"
+          ],
+          "durationMs": 12
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-02",
+            "doc-01",
+            "doc-03",
+            "doc-04",
+            "doc-05"
+          ],
+          "durationMs": 35
+        },
+        {
+          "ids": [
+            "doc-02",
+            "doc-01",
+            "doc-03",
+            "doc-04",
+            "doc-05"
+          ],
+          "durationMs": 35
+        },
+        {
+          "ids": [
+            "doc-02",
+            "doc-01",
+            "doc-03",
+            "doc-04",
+            "doc-05"
+          ],
+          "durationMs": 52
+        }
+      ]
+    },
+    {
+      "id": "case-09",
+      "kind": "answerable",
+      "expectedIds": [
+        "doc-05",
+        "doc-02"
+      ],
+      "lexical": [
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-03",
+            "doc-05",
+            "doc-04"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-03",
+            "doc-05",
+            "doc-04"
+          ],
+          "durationMs": 10
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-03",
+            "doc-05",
+            "doc-04"
+          ],
+          "durationMs": 14
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-05",
+            "doc-03",
+            "doc-02",
+            "doc-01",
+            "doc-04"
+          ],
+          "durationMs": 34
+        },
+        {
+          "ids": [
+            "doc-05",
+            "doc-03",
+            "doc-02",
+            "doc-01",
+            "doc-04"
+          ],
+          "durationMs": 34
+        },
+        {
+          "ids": [
+            "doc-05",
+            "doc-03",
+            "doc-02",
+            "doc-01",
+            "doc-04"
+          ],
+          "durationMs": 31
+        }
+      ]
+    },
+    {
+      "id": "case-10",
+      "kind": "answerable",
+      "expectedIds": [
+        "doc-05"
+      ],
+      "lexical": [
+        {
+          "ids": [
+            "doc-02",
+            "doc-05",
+            "doc-04",
+            "doc-01",
+            "doc-03"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-02",
+            "doc-05",
+            "doc-04",
+            "doc-01",
+            "doc-03"
+          ],
+          "durationMs": 13
+        },
+        {
+          "ids": [
+            "doc-02",
+            "doc-05",
+            "doc-04",
+            "doc-01",
+            "doc-03"
+          ],
+          "durationMs": 12
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-04",
+            "doc-05",
+            "doc-03",
+            "doc-01",
+            "doc-02"
+          ],
+          "durationMs": 34
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-05",
+            "doc-03",
+            "doc-01",
+            "doc-02"
+          ],
+          "durationMs": 38
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-05",
+            "doc-03",
+            "doc-01",
+            "doc-02"
+          ],
+          "durationMs": 50
+        }
+      ]
+    },
+    {
+      "id": "case-11",
+      "kind": "answerable",
+      "expectedIds": [
+        "doc-05",
+        "doc-02"
+      ],
+      "lexical": [
+        {
+          "ids": [
+            "doc-05",
+            "doc-02",
+            "doc-01",
+            "doc-04",
+            "doc-03"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-05",
+            "doc-02",
+            "doc-01",
+            "doc-04",
+            "doc-03"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-05",
+            "doc-02",
+            "doc-01",
+            "doc-04",
+            "doc-03"
+          ],
+          "durationMs": 14
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-05",
+            "doc-03",
+            "doc-01",
+            "doc-04",
+            "doc-02"
+          ],
+          "durationMs": 37
+        },
+        {
+          "ids": [
+            "doc-05",
+            "doc-03",
+            "doc-01",
+            "doc-04",
+            "doc-02"
+          ],
+          "durationMs": 34
+        },
+        {
+          "ids": [
+            "doc-05",
+            "doc-03",
+            "doc-01",
+            "doc-04",
+            "doc-02"
+          ],
+          "durationMs": 34
+        }
+      ]
+    },
+    {
+      "id": "case-12",
+      "kind": "answerable",
+      "expectedIds": [
+        "doc-05"
+      ],
+      "lexical": [
+        {
+          "ids": [
+            "doc-05",
+            "doc-01",
+            "doc-02",
+            "doc-04",
+            "doc-03"
+          ],
+          "durationMs": 15
+        },
+        {
+          "ids": [
+            "doc-05",
+            "doc-01",
+            "doc-02",
+            "doc-04",
+            "doc-03"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-05",
+            "doc-01",
+            "doc-02",
+            "doc-04",
+            "doc-03"
+          ],
+          "durationMs": 17
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-04",
+            "doc-05",
+            "doc-03",
+            "doc-01",
+            "doc-02"
+          ],
+          "durationMs": 34
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-05",
+            "doc-03",
+            "doc-01",
+            "doc-02"
+          ],
+          "durationMs": 33
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-05",
+            "doc-03",
+            "doc-01",
+            "doc-02"
+          ],
+          "durationMs": 40
+        }
+      ]
+    },
+    {
+      "id": "case-13",
+      "kind": "answerable",
+      "expectedIds": [
+        "doc-03"
+      ],
+      "lexical": [
+        {
+          "ids": [
+            "doc-03",
+            "doc-01",
+            "doc-04",
+            "doc-02",
+            "doc-05"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-03",
+            "doc-01",
+            "doc-04",
+            "doc-02",
+            "doc-05"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-03",
+            "doc-01",
+            "doc-04",
+            "doc-02",
+            "doc-05"
+          ],
+          "durationMs": 15
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-03",
+            "doc-04",
+            "doc-05",
+            "doc-02",
+            "doc-01"
+          ],
+          "durationMs": 41
+        },
+        {
+          "ids": [
+            "doc-03",
+            "doc-04",
+            "doc-05",
+            "doc-02",
+            "doc-01"
+          ],
+          "durationMs": 35
+        },
+        {
+          "ids": [
+            "doc-03",
+            "doc-04",
+            "doc-05",
+            "doc-02",
+            "doc-01"
+          ],
+          "durationMs": 33
+        }
+      ]
+    },
+    {
+      "id": "case-14",
+      "kind": "answerable",
+      "expectedIds": [
+        "doc-03"
+      ],
+      "lexical": [
+        {
+          "ids": [
+            "doc-05",
+            "doc-04",
+            "doc-03",
+            "doc-01",
+            "doc-02"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-05",
+            "doc-04",
+            "doc-03",
+            "doc-01",
+            "doc-02"
+          ],
+          "durationMs": 11
+        },
+        {
+          "ids": [
+            "doc-05",
+            "doc-04",
+            "doc-03",
+            "doc-01",
+            "doc-02"
+          ],
+          "durationMs": 15
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-05",
+            "doc-04",
+            "doc-01",
+            "doc-03",
+            "doc-02"
+          ],
+          "durationMs": 35
+        },
+        {
+          "ids": [
+            "doc-05",
+            "doc-04",
+            "doc-01",
+            "doc-03",
+            "doc-02"
+          ],
+          "durationMs": 41
+        },
+        {
+          "ids": [
+            "doc-05",
+            "doc-04",
+            "doc-01",
+            "doc-03",
+            "doc-02"
+          ],
+          "durationMs": 35
+        }
+      ]
+    },
+    {
+      "id": "case-15",
+      "kind": "answerable",
+      "expectedIds": [
+        "doc-03"
+      ],
+      "lexical": [
+        {
+          "ids": [
+            "doc-03",
+            "doc-05",
+            "doc-01",
+            "doc-02",
+            "doc-04"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-03",
+            "doc-05",
+            "doc-01",
+            "doc-02",
+            "doc-04"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-03",
+            "doc-05",
+            "doc-01",
+            "doc-02",
+            "doc-04"
+          ],
+          "durationMs": 13
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-04",
+            "doc-03",
+            "doc-01",
+            "doc-02",
+            "doc-05"
+          ],
+          "durationMs": 38
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-03",
+            "doc-01",
+            "doc-02",
+            "doc-05"
+          ],
+          "durationMs": 34
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-03",
+            "doc-01",
+            "doc-02",
+            "doc-05"
+          ],
+          "durationMs": 32
+        }
+      ]
+    },
+    {
+      "id": "case-16",
+      "kind": "answerable",
+      "expectedIds": [
+        "doc-01"
+      ],
+      "lexical": [
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-05",
+            "doc-03",
+            "doc-04"
+          ],
+          "durationMs": 13
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-05",
+            "doc-03",
+            "doc-04"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-05",
+            "doc-03",
+            "doc-04"
+          ],
+          "durationMs": 15
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-01",
+            "doc-04",
+            "doc-02",
+            "doc-03",
+            "doc-05"
+          ],
+          "durationMs": 34
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-04",
+            "doc-02",
+            "doc-03",
+            "doc-05"
+          ],
+          "durationMs": 36
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-04",
+            "doc-02",
+            "doc-03",
+            "doc-05"
+          ],
+          "durationMs": 42
+        }
+      ]
+    },
+    {
+      "id": "case-17",
+      "kind": "answerable",
+      "expectedIds": [
+        "doc-01",
+        "doc-02"
+      ],
+      "lexical": [
+        {
+          "ids": [
+            "doc-02",
+            "doc-01",
+            "doc-05",
+            "doc-04",
+            "doc-03"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-02",
+            "doc-01",
+            "doc-05",
+            "doc-04",
+            "doc-03"
+          ],
+          "durationMs": 14
+        },
+        {
+          "ids": [
+            "doc-02",
+            "doc-01",
+            "doc-05",
+            "doc-04",
+            "doc-03"
+          ],
+          "durationMs": 12
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-04",
+            "doc-05",
+            "doc-01",
+            "doc-03",
+            "doc-02"
+          ],
+          "durationMs": 37
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-05",
+            "doc-01",
+            "doc-03",
+            "doc-02"
+          ],
+          "durationMs": 35
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-05",
+            "doc-01",
+            "doc-03",
+            "doc-02"
+          ],
+          "durationMs": 34
+        }
+      ]
+    },
+    {
+      "id": "case-18",
+      "kind": "answerable",
+      "expectedIds": [
+        "doc-04"
+      ],
+      "lexical": [
+        {
+          "ids": [
+            "doc-04",
+            "doc-02",
+            "doc-05",
+            "doc-01",
+            "doc-03"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-02",
+            "doc-05",
+            "doc-01",
+            "doc-03"
+          ],
+          "durationMs": 14
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-02",
+            "doc-05",
+            "doc-01",
+            "doc-03"
+          ],
+          "durationMs": 15
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-04",
+            "doc-03",
+            "doc-05",
+            "doc-02",
+            "doc-01"
+          ],
+          "durationMs": 34
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-03",
+            "doc-05",
+            "doc-02",
+            "doc-01"
+          ],
+          "durationMs": 38
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-03",
+            "doc-05",
+            "doc-02",
+            "doc-01"
+          ],
+          "durationMs": 42
+        }
+      ]
+    },
+    {
+      "id": "case-19",
+      "kind": "answerable",
+      "expectedIds": [
+        "doc-04"
+      ],
+      "lexical": [
+        {
+          "ids": [
+            "doc-04",
+            "doc-01",
+            "doc-02",
+            "doc-05"
+          ],
+          "durationMs": 14
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-01",
+            "doc-02",
+            "doc-05"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-01",
+            "doc-02",
+            "doc-05"
+          ],
+          "durationMs": 11
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-04",
+            "doc-01",
+            "doc-03",
+            "doc-02",
+            "doc-05"
+          ],
+          "durationMs": 39
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-01",
+            "doc-03",
+            "doc-02",
+            "doc-05"
+          ],
+          "durationMs": 38
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-01",
+            "doc-03",
+            "doc-02",
+            "doc-05"
+          ],
+          "durationMs": 33
+        }
+      ]
+    },
+    {
+      "id": "case-20",
+      "kind": "answerable",
+      "expectedIds": [
+        "doc-04"
+      ],
+      "lexical": [
+        {
+          "ids": [
+            "doc-04",
+            "doc-05",
+            "doc-02",
+            "doc-03",
+            "doc-01"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-05",
+            "doc-02",
+            "doc-03",
+            "doc-01"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-05",
+            "doc-02",
+            "doc-03",
+            "doc-01"
+          ],
+          "durationMs": 11
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-04",
+            "doc-01",
+            "doc-02",
+            "doc-05",
+            "doc-03"
+          ],
+          "durationMs": 32
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-01",
+            "doc-02",
+            "doc-05",
+            "doc-03"
+          ],
+          "durationMs": 33
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-01",
+            "doc-02",
+            "doc-05",
+            "doc-03"
+          ],
+          "durationMs": 45
+        }
+      ]
+    },
+    {
+      "id": "case-21",
+      "kind": "unsupported",
+      "expectedIds": [],
+      "lexical": [
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-03",
+            "doc-05"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-03",
+            "doc-05"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-03",
+            "doc-05"
+          ],
+          "durationMs": 12
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-01",
+            "doc-04",
+            "doc-02",
+            "doc-03",
+            "doc-05"
+          ],
+          "durationMs": 37
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-04",
+            "doc-02",
+            "doc-03",
+            "doc-05"
+          ],
+          "durationMs": 36
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-04",
+            "doc-02",
+            "doc-03",
+            "doc-05"
+          ],
+          "durationMs": 36
+        }
+      ]
+    },
+    {
+      "id": "case-22",
+      "kind": "unsupported",
+      "expectedIds": [],
+      "lexical": [
+        {
+          "ids": [
+            "doc-01",
+            "doc-02"
+          ],
+          "durationMs": 14
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-02"
+          ],
+          "durationMs": 12
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-02"
+          ],
+          "durationMs": 12
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-04",
+            "doc-03",
+            "doc-02",
+            "doc-01",
+            "doc-05"
+          ],
+          "durationMs": 34
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-03",
+            "doc-02",
+            "doc-01",
+            "doc-05"
+          ],
+          "durationMs": 35
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-03",
+            "doc-02",
+            "doc-01",
+            "doc-05"
+          ],
+          "durationMs": 41
+        }
+      ]
+    },
+    {
+      "id": "case-23",
+      "kind": "unsupported",
+      "expectedIds": [],
+      "lexical": [
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-03",
+            "doc-05",
+            "doc-04"
+          ],
+          "durationMs": 15
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-03",
+            "doc-05",
+            "doc-04"
+          ],
+          "durationMs": 13
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-03",
+            "doc-05",
+            "doc-04"
+          ],
+          "durationMs": 12
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-03",
+            "doc-04",
+            "doc-01",
+            "doc-02",
+            "doc-05"
+          ],
+          "durationMs": 31
+        },
+        {
+          "ids": [
+            "doc-03",
+            "doc-04",
+            "doc-01",
+            "doc-02",
+            "doc-05"
+          ],
+          "durationMs": 32
+        },
+        {
+          "ids": [
+            "doc-03",
+            "doc-04",
+            "doc-01",
+            "doc-02",
+            "doc-05"
+          ],
+          "durationMs": 34
+        }
+      ]
+    },
+    {
+      "id": "case-24",
+      "kind": "unsupported",
+      "expectedIds": [],
+      "lexical": [
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-03",
+            "doc-04",
+            "doc-05"
+          ],
+          "durationMs": 13
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-03",
+            "doc-04",
+            "doc-05"
+          ],
+          "durationMs": 13
+        },
+        {
+          "ids": [
+            "doc-01",
+            "doc-02",
+            "doc-03",
+            "doc-04",
+            "doc-05"
+          ],
+          "durationMs": 14
+        }
+      ],
+      "openviking": [
+        {
+          "ids": [
+            "doc-04",
+            "doc-03",
+            "doc-02",
+            "doc-05",
+            "doc-01"
+          ],
+          "durationMs": 36
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-03",
+            "doc-02",
+            "doc-05",
+            "doc-01"
+          ],
+          "durationMs": 40
+        },
+        {
+          "ids": [
+            "doc-04",
+            "doc-03",
+            "doc-02",
+            "doc-05",
+            "doc-01"
+          ],
+          "durationMs": 47
+        }
+      ]
+    }
+  ]
+}

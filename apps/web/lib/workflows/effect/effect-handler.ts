@@ -27,6 +27,7 @@ import type { DispatchObservation } from '../action-outcome'
 export type EffectDb = any
 
 export interface EffectHandlerInput {
+  readonly approvedStoryMaximumSek?: number
   /** The claimed run performing this effect. */
   readonly runId: string
   readonly claimId: string | null

@@ -343,7 +343,11 @@ export async function listStandardVoiceIds(voiceIds: readonly string[], signal: 
 export async function streamAtlasSwedishVoice(
   ctx: { execution: ExecutionContract; project: ProjectRef; operation: string },
   text: string, voiceId: string, callerSignal: AbortSignal,
+  options: { modelId?: 'eleven_flash_v2_5' | 'eleven_v4' } = {},
 ): Promise<Response> {
+  const modelId = options.modelId ?? 'eleven_flash_v2_5'
+  // No client-controlled model names; unsupported model values fail before a paid call.
+  if (modelId !== 'eleven_flash_v2_5' && modelId !== 'eleven_v4') throw new Error('unsupported_voice_model')
   const key = process.env.ELEVENLABS_API_KEY?.trim()
   if (!key) throw new Error('voice_not_configured')
   if (!text.trim() || text.length > 600 || !/^[A-Za-z0-9]{20}$/.test(voiceId)) throw new Error('invalid_voice_request')
@@ -352,7 +356,12 @@ export async function streamAtlasSwedishVoice(
   callerSignal.throwIfAborted()
   const rates = await getRates()
   // Existing canonical base character rate; no speculative Flash discount.
-  const ceiling = fixedUnitCeiling(text.length / 1000, rates.elevenlabs_usd_per_1k_chars, rates, 'atlas-eleven:' + text.length + 'chars')
+  // v4 costs more than Flash. Keep a conservative USD/1k floor even if a
+  // database override was tuned for cheap Flash speech. Never under-reserve.
+  const per1kUsd = modelId === 'eleven_v4'
+    ? Math.max(rates.elevenlabs_usd_per_1k_chars, 0.24)
+    : rates.elevenlabs_usd_per_1k_chars
+  const ceiling = fixedUnitCeiling(text.length / 1000, per1kUsd, rates, 'atlas-eleven:' + text.length + 'chars')
   if (!ceiling.ok) throw new Error('unbounded_voice_spend')
   const authority = authorityForRequest(ctx.execution, async ref => {
     const result = await resolveGovernedProjectId(ref); return result.ok ? result.projectId : null
@@ -380,8 +389,12 @@ export async function streamAtlasSwedishVoice(
       }
       response = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + voiceId + '/stream?output_format=pcm_24000', {
         method: 'POST', headers: { 'xi-api-key': key, 'Content-Type': 'application/json' }, signal: composed.signal,
-        body: JSON.stringify({ text, model_id: 'eleven_flash_v2_5', language_code: 'sv',
-          voice_settings: { stability: 0.45, similarity_boost: 0.75, style: 0, use_speaker_boost: false, speed: 1 } }),
+        body: JSON.stringify({ text, model_id: modelId, language_code: 'sv',
+          // v4's approved Sanna preview used v4 defaults; do not force Flash's
+          // unsupported style/speed controls onto its quality profile.
+          voice_settings: modelId === 'eleven_v4'
+            ? { stability: 0.5, similarity_boost: 0.75 }
+            : { stability: 0.45, similarity_boost: 0.75, style: 0, use_speaker_boost: false, speed: 1 } }),
       })
     } catch (error) {
       if (error instanceof ProviderNotDispatchedError) throw error

@@ -43,14 +43,14 @@ function Panel({projectId,post,disabled}:Props){
   {error&&<p className={styles.error} role="status">{error}</p>}
   {disabled&&<p>Spara och läs den senaste versionen innan du publicerar.</p>}
   {model&&<>{r?<div className={styles.receipt} role="status"><strong>{labels[r.state]}</strong><p>Konto: {r.accountLabel??r.accountId}</p>{r.revisionId!==post.revision.id&&<p>Kvittot gäller en tidigare version, inte den visade texten.</p>}
-   {r.state==='published'&&<><p>{r.confirmation==='container_status'?'Instagram har bekräftat att behållaren publicerats. Inläggslänk saknas.':r.reconciledAt?'Publiceringen har verifierats mot det befintliga Facebook-inlägget.':'Kanalen har bekräftat publiceringen.'}</p>{permalink&&<a href={permalink} target="_blank" rel="noreferrer">Öppna publicerat inlägg</a>}</>}
+   {r.state==='published'&&<><p>{r.confirmation==='container_status'?'Instagram har bekräftat att behållaren publicerats. Inläggslänk saknas.':r.reconciledAt?'Publiceringen har verifierats mot det befintliga inlägget.':'Kanalen har bekräftat publiceringen.'}</p>{permalink&&<a href={permalink} target="_blank" rel="noreferrer">Öppna publicerat inlägg</a>}</>}
    {r.state==='uncertain'&&<p>Kanalen kan redan ha publicerat inlägget. Kontrollera kontot innan du gör något mer.</p>}
    {r.state==='failed'&&<p>Kanalen avvisade försöket eller bilden kunde inte färdigställas. Detta utkast skickas inte igen.</p>}
    {r.state==='processing'&&<p>Kontrollera och slutför kan publicera samma godkända version när bilden är klar.</p>}
   </div>:<p>Mottagare: {account} · {channel}</p>}
   {model.blockers.filter(b=>b!=='already_requested').map(b=><p key={b}>{reasons[b]??'Inlägget behöver kontrolleras igen.'}</p>)}
   {model.canRequest&&r?.authoritySource!=='scheduled'&&<><label className={styles.confirm}><input type="checkbox" disabled={blocked} checked={confirmed} onChange={e=>setConfirmed(e.target.checked)}/>Jag vill publicera den granskade versionen på {account} nu.</label><button type="button" disabled={blocked||!confirmed} onClick={()=>void send('publish')}>Publicera nu på {channel}</button></>}
-  {r?.state==='uncertain'&&r.channel==='facebook'&&!model?.blockers.includes('operator_required')&&<SocialReconciliationPanel key={r.id+':'+r.version} projectId={projectId} postId={post.id} receipt={r} disabled={blocked} onComplete={()=>void load()}/>}
+  {r?.state==='uncertain'&&['facebook','instagram'].includes(r.channel)&&!model?.blockers.includes('operator_required')&&<SocialReconciliationPanel key={r.id+':'+r.version} projectId={projectId} postId={post.id} receipt={r} disabled={blocked} onComplete={()=>void load()}/>}
   {mayCheck&&<button type="button" disabled={blocked} onClick={()=>void send('check')}>{r.state==='processing'?'Kontrollera och slutför':'Kontrollera status'}</button>}
   </>}
   <button type="button" disabled={busy||loading} onClick={()=>void load()}>Läs sparad publiceringsstatus</button>

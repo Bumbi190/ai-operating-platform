@@ -1,62 +1,143 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useSyncExternalStore } from 'react'
 import Link from 'next/link'
-import { Mic, MicOff, Minus, PhoneOff } from 'lucide-react'
+import { MessageCircle, Mic, MicOff, Minus, PhoneOff, Send } from 'lucide-react'
 import type { AtlasVoiceSession } from '@/lib/atlas/voice-pilot/use-voice-session'
-import {AtlasTestDataReviewCard} from './AtlasTestDataReviewCard'
-import {useAtlasConversation} from '@/lib/atlas/conversation/provider'
+import { isAtlasSwedishVoice } from '@/lib/atlas/voice-pilot/voices'
+import { createMicSignalStore, type MicSignalStore } from '@/lib/atlas/voice-pilot/mic-diagnostics'
 import styles from './AtlasVoicePanel.module.css'
 
-export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onClose, onBuild, runtimeNotice, projects, projectName }: {
-  session: AtlasVoiceSession; minimized: boolean; onMinimize(): void; onShow(): void; onClose(): void; onBuild(): void
+const EMPTY_SIGNAL_STORE = createMicSignalStore()
+
+/** Client-side sound meter only; level is derived from local PCM and never uploaded. */
+function MicSignalBars({ store, active }: { store: MicSignalStore; active: boolean }) {
+  const { level } = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot)
+  if (!active) return null
+  const percent = Math.round(Math.min(1, Math.max(0, level)) * 100)
+  return <span className={styles.micSignal} role="meter" aria-label="Mikrofonens ljudnivå"
+    aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+    {[3, 10, 20, 40].map((threshold, index) => <span key={index}
+      data-lit={percent >= threshold ? 'true' : undefined} />)}
+  </span>
+}
+
+function MicrophoneCheckStatus({ store, active }: { store: MicSignalStore; active: boolean }) {
+  const { level, voiceProbability } = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getServerSnapshot)
+  return <p role="status">{!active ? 'Mikrofonen är inte påslagen.'
+    : voiceProbability >= 0.3 ? 'Tal upptäcks.'
+    : level >= 0.08 ? 'Ljud kommer in, men tal har inte identifierats ännu.'
+    : 'Svagt eller inget mikrofonljud.'}</p>
+}
+
+/** The platform layout owns this one call across its client-side navigations. */
+export function AtlasVoicePanel({ session: s, minimized, onMinimize, onShow, onClose, runtimeNotice }: {
+  session: AtlasVoiceSession; minimized: boolean; onMinimize(): void; onShow(): void; onClose(): void
+  // Retain compatible props for the existing runtime caller; navigation is handled by Atlas itself.
+  onBuild(): void
+  projects: { id: string; slug: string; name: string }[]
+  projectName: string | null
   runtimeNotice?: string
-  projects: { id: string; slug: string; name: string }[]; projectName: string | null
 }) {
-  const {controller}=useAtlasConversation()
   const panel = useRef<HTMLElement>(null), messages = useRef<HTMLDivElement>(null)
   useEffect(() => { if (!minimized) panel.current?.focus() }, [minimized])
-  useEffect(() => { if (messages.current) messages.current.scrollTop = messages.current.scrollHeight }, [s.snapshot.entries, s.reply, minimized])
-  const status = s.transcribing ? 'Atlas tolkar det du sa…' : s.speaking ? 'Atlas pratar' : s.listening ? 'Atlas lyssnar' : s.opening ? 'Mikrofonen görs redo…' : s.sending ? 'Atlas arbetar…' : s.mic ? 'Väntar på nästa tur…' : 'Mikrofonen är avstängd'
-  if (minimized) return <div className={styles.dock}>
-    <button onClick={onShow} aria-label="Visa röstsamtalet"><Mic size={18} /><span>{status}</span></button>
-    <button onClick={onClose} aria-label="Avsluta röstsamtalet"><PhoneOff size={18} /></button>
-  </div>
+  useEffect(() => {
+    if (messages.current) messages.current.scrollTop = messages.current.scrollHeight
+  }, [s.snapshot.entries, s.reply, minimized])
+
+  const micOn = s.mic || s.opening
+  const muteLabel = micOn ? 'Muta mikrofonen' : s.micProblem ? 'Återanslut mikrofonen' : 'Slå på mikrofonen'
+  const voiceLabel = s.voice === 'nova' ? 'Nova' : s.voices.find(v => v.key === s.voice)?.label ?? 'Atlas'
+  const status = s.transcribing ? 'Tolkar det du sa' : s.speaking ? 'Pratar' : s.sending ? 'Arbetar'
+    : s.opening ? 'Startar mikrofonen' : s.listening ? 'Lyssnar' : micOn ? 'Redo att lyssna'
+    : s.micProblem ? 'Återanslut mikrofon' : 'Mikrofonen är mutad'
+  const mute = () => s.toggleMute()
+  const muteIcon = micOn ? <Mic size={17} /> : <MicOff size={17} />
+  const endIcon = <PhoneOff size={17} />
+  const micStore = s.micSignalStore ?? EMPTY_SIGNAL_STORE
+
+  if (minimized) return <aside className={styles.dock} aria-label="Pågående röstsamtal med Atlas">
+    <div className={styles.identity} aria-live="polite">
+      <strong>{voiceLabel}</strong><div className={styles.statusRow}>
+        <span title={s.micProblem ?? undefined}>{status}</span>
+        <MicSignalBars store={micStore} active={micOn && !s.speaking} />
+      </div>
+    </div>
+    <div className={styles.actions}>
+      <button type="button" onClick={mute} aria-label={muteLabel} aria-pressed={!micOn} title={muteLabel}>{muteIcon}</button>
+      <button type="button" onClick={onShow} aria-label="Visa chatten" title="Visa chatten"><MessageCircle size={18} /></button>
+      <button type="button" className={styles.hangup} onClick={onClose} aria-label="Lägg på" title="Lägg på">{endIcon}</button>
+    </div>
+  </aside>
+
   return <section ref={panel} tabIndex={-1} className={styles.panel} aria-label="Atlas röstsamtal">
     <header className={styles.header}>
-      <div><strong>Atlas</strong><p role="status">{status}</p></div>
-      <button onClick={onMinimize} aria-label="Minimera röstsamtalet"><Minus size={20} /></button>
-      <button onClick={onClose} aria-label="Avsluta röstsamtalet"><PhoneOff size={20} /></button>
+      <div className={styles.identity} aria-live="polite">
+        <strong>{voiceLabel}</strong><div className={styles.statusRow}>
+          <span title={s.micProblem ?? undefined}>{status}</span>
+          <MicSignalBars store={micStore} active={micOn && !s.speaking} />
+        </div>
+      </div>
+      <div className={styles.actions}>
+        <button type="button" onClick={mute} aria-label={muteLabel} aria-pressed={!micOn} title={muteLabel}>{muteIcon}</button>
+        <button type="button" onClick={onMinimize} aria-label="Minimera chatten" title="Minimera chatten"><Minus size={18} /></button>
+        <button type="button" className={styles.hangup} onClick={onClose} aria-label="Lägg på" title="Lägg på">{endIcon}</button>
+      </div>
     </header>
-    <nav className={styles.links} aria-label="Samtalets arbetsytor">
-      <button onClick={onBuild} disabled={s.snapshot.pending && !s.snapshot.id}>Bygg med Atlas</button>
-      <Link href="/projects">Projekt</Link><Link href="/costs">Kostnader</Link>
-      <details><summary>Välj projektvy</summary>{projects.map(p => <Link key={p.id} href={'/projects/' + p.slug}>{p.name}</Link>)}</details>
-    </nav>
-    <div className={styles.body}>
-      <p className={styles.hint}>{projectName ? 'Samtalets projekt: ' + projectName : 'Samtal med Atlas över hela Omnira'}. Du kan minimera och byta sida medan vi pratar.</p>
-      <div className={styles.controls}>
-        <button onClick={() => void s.toggleMic()}>{s.mic || s.opening ? <MicOff size={16} /> : <Mic size={16} />}{s.opening ? 'Avbryt mikrofonstart' : s.mic ? 'Stäng mikrofonen' : 'Starta mikrofonen'}</button>
-        <button onClick={s.interruptForCorrection}>Avbryt och rätta</button>
-      </div>
-      {runtimeNotice && <p className={styles.notice} role="alert">{runtimeNotice}</p>}
-      {s.notice && <p className={styles.notice} role="alert">{s.notice}</p>}
-      <div ref={messages} className={styles.messages} aria-live="polite">
-        {s.snapshot.history.map((message, i) => <div key={i} data-role={message.role}><small>{message.role === 'user' ? 'Du' : 'Atlas'}</small><p>{message.content}</p></div>)}
-        {s.snapshot.pending && <p>{s.reply || 'Atlas tänker…'}</p>}
-      </div>
-      {s.snapshot.testDataReviews.map(review=><AtlasTestDataReviewCard key={review.packageView.packageId} review={review} conversationId={s.snapshot.id} onUpdate={value=>controller.updateTestDataReview(review.packageView.conversationId,value)} />)}
-      <form onSubmit={e => { e.preventDefault(); void s.submitDraft() }} className={styles.composer}>
-        <label htmlFor="atlas-shared-voice-draft">Prata eller skriv till Atlas</label>
-        <textarea id="atlas-shared-voice-draft" value={s.draft} onChange={e => s.editDraft(e.target.value)} rows={2} />
-        <button disabled={s.sending || s.snapshot.pending || !s.draft.trim()}>Skicka till Atlas</button>
-      </form>
-      <details className={styles.settings}><summary>Röstinställningar</summary>
-        <label>Ljud<select value={s.playbackMode} onChange={e => { s.stopAll(); s.setPlaybackMode(e.target.value === 'headphones' ? 'headphones' : 'speakers') }}><option value="speakers">Högtalare</option><option value="headphones">Hörlurar</option></select></label>
-        <label>Tid att tänka<select value={s.pauseMs} onChange={e => { s.stopAll(); s.setPauseMs(Number(e.target.value)) }}><option value={1200}>1,2 sekunder</option><option value={2000}>2 sekunder</option><option value={3500}>3,5 sekunder</option><option value={5000}>5 sekunder</option></select></label>
-        <p>{s.playbackMode === 'speakers' ? 'Atlas lyssnar när han har tystnat. Tryck på Avbryt och rätta för att avbryta.' : 'Med hörlurar kan du avbryta genom att börja prata.'}</p>
-      </details>
-      {s.snapshot.id && <Link className={styles.fullChat} href={'/chat/' + s.snapshot.id}>Öppna hela samtalet</Link>}
+    {runtimeNotice && <p className={styles.notice} role="alert">{runtimeNotice}</p>}
+    {s.notice && <p className={styles.notice} role="alert">{s.notice}</p>}
+    {s.micProblem && s.micProblem !== s.notice && <p className={styles.notice} role="alert">{s.micProblem}</p>}
+    <div ref={messages} className={styles.messages} aria-live="polite">
+      {!s.snapshot.history.length && !s.snapshot.pending && <p className={styles.empty}>Säg något till Nova, eller skriv här. Samtalet fortsätter när du minimerar chatten och navigerar i Omnira.</p>}
+      {s.snapshot.history.map((message, i) => <div key={i} className={message.role === 'user' ? styles.userMessage : styles.atlasMessage}>
+        <small>{message.role === 'user' ? 'Du' : voiceLabel}</small>
+        <p>{message.content}</p>
+      </div>)}
+      {s.snapshot.pending && <p className={styles.pending}>{s.reply || 'Nova arbetar…'}</p>}
+      {s.snapshot.testDataReviews.length > 0 && s.snapshot.id && <p className={styles.review}>
+        {s.snapshot.testDataReviews.length} granskning(ar) väntar. <Link href={'/chat/' + s.snapshot.id}>Öppna i hela chatten</Link>
+      </p>}
     </div>
+    <form className={styles.composer} onSubmit={e => { e.preventDefault(); void s.submitDraft() }}>
+      <label className={styles.visuallyHidden} htmlFor="atlas-shared-voice-draft">Skriv till Nova</label>
+      <textarea id="atlas-shared-voice-draft" value={s.draft}
+        onChange={e => s.editDraft(e.target.value)} rows={2} placeholder="Skriv till Nova…" />
+      <button type="submit" aria-label="Skicka meddelande" title="Skicka meddelande"
+        disabled={s.sending || s.snapshot.pending || !s.draft.trim()}><Send size={18} /></button>
+    </form>
+    <details className={styles.voiceSettings}>
+      <summary>Mikrofontest</summary>
+      <p>Prata normalt. Staplarna vid Nova ska röra sig när mikrofonen får ljud. Om de inte gör det, prova en annan mikrofon här.</p>
+      <label htmlFor="atlas-shared-mic-device">Välj mikrofon</label>
+      <select id="atlas-shared-mic-device" value={s.micDeviceId}
+        onChange={e => s.selectMicDevice(e.currentTarget.value)}>
+        <option value="">Systemets standardmikrofon</option>
+        {s.micDevices.map(device => <option key={device.id} value={device.id}>{device.label}</option>)}
+      </select>
+      <MicrophoneCheckStatus store={micStore} active={micOn} />
+      <label className={styles.callAudioOption} htmlFor="atlas-headphones-barge-in">
+        <input type="checkbox" id="atlas-headphones-barge-in"
+          checked={s.playbackMode === 'headphones'}
+          onChange={e => s.setCallAudioMode(e.currentTarget.checked ? 'headphones' : 'speakers')} />
+        Jag använder hörlurar – låt mig avbryta Nova genom att börja prata
+      </label>
+      <p>Med högtalare blockeras tal under Novas svar för att hon inte ska lyssna på sin egen röst.</p>
+    </details>
+    <details className={styles.voiceSettings}>
+      <summary>Byt röst</summary>
+      <label htmlFor="atlas-shared-voice-select">Röst</label>
+      <select id="atlas-shared-voice-select"
+        value={s.voices.some(v => v.key === s.voice) ? s.voice : ''}
+        disabled={!s.voices.length || s.sending || s.snapshot.pending}
+        onChange={e => {
+          const selected = e.currentTarget.value
+          if (!isAtlasSwedishVoice(selected) || !s.voices.some(v => v.key === selected)) return
+          s.stopAll(); s.setVoice(selected)
+        }}>
+        {!s.voices.length && <option value="">Hämtar röster…</option>}
+        {s.voices.length > 0 && !s.voices.some(v => v.key === s.voice) && <option value="">Välj tillgänglig röst</option>}
+        {s.voices.map(v => <option key={v.key} value={v.key}>{v.label}</option>)}
+      </select>
+    </details>
   </section>
 }

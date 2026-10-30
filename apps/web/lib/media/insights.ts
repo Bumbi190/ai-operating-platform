@@ -97,7 +97,7 @@ export async function fetchMediaInsights(mediaId: string, token: string): Promis
         `${host}/${mediaId}/insights?metric=${METRICS}`,
         { headers: bearer(token), signal: AbortSignal.timeout(INSIGHTS_REQUEST_TIMEOUT_MS) },
       )
-      const json = await res.json() as { data?: { name: string; values?: { value: number }[] }[]; error?: { message: string } }
+      const json = await res.json() as { data?: { name: string; values?: { value?: number }[]; total_value?: { value?: number } }[]; error?: { message: string } }
 
       if (!res.ok || json.error) {
         lastError = json.error?.message ?? `Graph API ${res.status}`
@@ -106,8 +106,14 @@ export async function fetchMediaInsights(mediaId: string, token: string): Promis
 
       const metrics: MediaInsight = {}
       for (const m of json.data ?? []) {
-        const value = m.values?.[0]?.value ?? 0
-        if (m.name in metricKeyMap) metrics[metricKeyMap[m.name]] = value
+        // Instagram Login / Graph versions may return total_value.value
+        // instead of values[0].value. Both must be accepted as numeric only.
+        const value = m.values?.[0]?.value ?? m.total_value?.value
+        // Missing Graph data is unknown, NOT a measured zero. Keep the field
+        // absent so downstream analytics can represent it as null.
+        if (m.name in metricKeyMap && typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) {
+          metrics[metricKeyMap[m.name]] = value
+        }
       }
       return { ok: true, metrics }
     } catch (e) {

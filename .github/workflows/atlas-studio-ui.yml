@@ -76,6 +76,7 @@ on:
       - 'apps/web/e2e/website-catalog/**'
       - 'apps/web/playwright.website-catalog.config.ts'
       - 'apps/web/lib/website-build/catalog-filter.test.ts'
+      - 'apps/web/lib/website-build/templates/**'
       - 'apps/web/app/api/website-build/references/**'
       - 'apps/web/vitest.reference-auth.config.ts'
       - 'apps/web/playwright.reference-auth.config.ts'
@@ -103,7 +104,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck --workspace=apps/web
-      - run: npx vitest run lib/website-build/studio/costs.test.ts lib/website-build/artifact.test.ts lib/website-build/catalog-filter.test.ts lib/website-build/rejected-draft.test.ts lib/website-build/feedback-interpretation.test.ts lib/qa/runner-text-output.test.ts lib/qa/atlas-home-markdown.test.tsx lib/qa/atlas-static-conversation-route.test.ts lib/qa/atlas-openai-chat.test.ts lib/qa/openai-stream-metering.test.ts lib/qa/m0-spend-ceiling.test.ts lib/qa/m0-durable-spend.test.ts lib/qa/execution-authority-signal.test.ts
+      - run: npx vitest run lib/website-build/studio/costs.test.ts lib/website-build/artifact.test.ts lib/website-build/catalog-filter.test.ts lib/website-build/templates lib/website-build/rejected-draft.test.ts lib/website-build/feedback-interpretation.test.ts lib/qa/runner-text-output.test.ts lib/qa/atlas-home-markdown.test.tsx lib/qa/atlas-static-conversation-route.test.ts lib/qa/atlas-openai-chat.test.ts lib/qa/openai-stream-metering.test.ts lib/qa/m0-spend-ceiling.test.ts lib/qa/m0-durable-spend.test.ts lib/qa/execution-authority-signal.test.ts
         working-directory: apps/web
       - run: npx playwright install --with-deps chromium
         working-directory: apps/web

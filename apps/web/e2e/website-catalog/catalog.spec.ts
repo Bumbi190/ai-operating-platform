@@ -20,7 +20,7 @@ for(const width of [390,768,1440])test('catalog filters and resets in real opaqu
  const frame=page.frames().find(f=>f.parentFrame())!
  expect(await frame.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
  expect(errors).toEqual([])
- await page.goto('/');await page.screenshot({path:info.outputPath('catalog-'+width+'.png'),fullPage:true})
+ await page.goto('/');await page.screenshot({path:info.outputPath('catalog-'+width+'.png'),fullPage:true,animations:'disabled'})
 })
 test('keyboard selection preserves focus and selected car remains bound to its test form',async({page})=>{
  await page.goto('/')
@@ -72,4 +72,22 @@ test('export works from disk and an accent-only revision retains all catalog con
  await page.goto('/edited');expect(await page.locator('body').innerText()).toBe(before)
  expect(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--accent').trim())).toBe('#e3aa63')
  await page.getByLabel('Filtrera på drivlina').selectOption('el');await expect(page.locator('.car:visible')).toHaveCount(3)
+})
+
+for(const width of [390,768,1440])test('approved amber showroom stays readable and keeps real decoded imagery at '+width,async({page})=>{
+ await page.setViewportSize({width,height:1000});await page.goto('/')
+ await expect(page.locator('h1')).toContainText('En ny vy')
+ await expect(page.locator('.notice')).toContainText('FIKTIV DEMO')
+ expect(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--accent').trim())).toBe('#efb563')
+ const imagery=await page.locator('.car-image img').evaluateAll(nodes=>nodes.map(n=>({src:(n as HTMLImageElement).src,valid:(n as HTMLImageElement).complete&&(n as HTMLImageElement).naturalWidth>0})))
+ expect(new Set(imagery.map(x=>x.src)).size).toBe(4)
+ for(const image of await page.locator('img').all())await image.scrollIntoViewIfNeeded()
+ expect(await page.locator('img').evaluateAll(nodes=>nodes.every(n=>(n as HTMLImageElement).complete&&(n as HTMLImageElement).naturalWidth>0))).toBe(true)
+ const columns=await page.locator('.catalog').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length)
+ expect(columns).toBe(width>=1200?4:width>=600?2:1)
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)
+ await expect(page.getByText(/AI-genererade illustrationer/, {exact:false}).first()).toBeVisible()
+ await expect(page.getByRole('button',{name:/360/})).toHaveCount(0)
+ await page.emulateMedia({reducedMotion:'reduce'})
+ expect(await page.locator('.scene img').evaluate(el=>getComputedStyle(el).animationName)).toBe('none')
 })

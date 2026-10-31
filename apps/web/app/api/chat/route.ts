@@ -1,3 +1,4 @@
+import {saveStudioReferenceMessage} from '@/lib/website-build/assets/reference-chat-save'
 import {resolveCalendarProjectScope} from '@/lib/calendar/access';
 import {CALENDAR_TOOLS,CALENDAR_TOOL_NAMES,CALENDAR_GUIDE,handleCalendarTool,persistCalendarToolData,isCalendarIntent} from '@/lib/calendar/atlas-tools';
 import {calendarChangedForResult} from '@/lib/calendar/stream-effect';
@@ -693,6 +694,9 @@ export async function POST(request: Request) {
   // Capture as local — the `!user` narrowing above doesn't survive into the
   // streaming closure further down.
   const userId = user.id
+  // Derive identity-based knowledge authority before any client-selected route.
+  // This is a pure server-policy lookup; optional shadow execution is separate.
+  const internalAuthorized = isExplicitlyAuthorizedInternalPrincipal(user.email)
 
   const modelPolicy = atlasModelPolicy()
   const openaiEconomy = modelPolicy.profile === 'openai_economy'
@@ -718,7 +722,7 @@ export async function POST(request: Request) {
   }
   let anthropic = openaiEconomy ? null : getAnthropic(providerContext)
 
-  const { messages, conversation_id, voice, mode, view, websitePlanRef, buildContext:rawBuildContext, inputSource, studioContext:rawStudioContext, image:rawImage } = await request.json() as {
+  const { messages, conversation_id, voice, mode, view, websitePlanRef, buildContext:rawBuildContext, inputSource, studioContext:rawStudioContext, referenceSave:rawReferenceSave, image:rawImage } = await request.json() as {
     messages: Anthropic.MessageParam[]
     conversation_id?: string
     voice?: boolean
@@ -728,6 +732,7 @@ export async function POST(request: Request) {
     buildContext?:unknown
     inputSource?:unknown
     studioContext?:unknown
+    referenceSave?:unknown
     image?:unknown
   }
 
@@ -742,6 +747,15 @@ export async function POST(request: Request) {
     try{studioContext=await resolveStudioTurnContext(db,{userId,allowedProjectIds:await getAllowedProjectIds(db,userId)},conversation_id??null,rawStudioContext)}catch(error){return buildErrorResponse(error)}
     providerContext={project:{projectId:studioContext.projectId},execution:{context:'OPERATOR_EXECUTION',scope:projectScope({projectId:studioContext.projectId})},agent:'Atlas',operation:'Atlas Studio Chat'}
     anthropic=openaiEconomy?null:getAnthropic(providerContext)
+  }
+  // An explicit reference save can never silently become a paid text turn.
+  if(rawReferenceSave!==undefined){
+    const denied=assertSameOrigin(request);if(denied){denied.headers.set('cache-control','private, no-store');return denied}
+    try{return await saveStudioReferenceMessage({
+      db,principal:{ok:true,userId,allowedProjectIds:studioContext?[studioContext.projectId]:[]},
+      studioContext,conversationId:conversation_id??null,messages,selection:rawReferenceSave,
+      conflictingIntent:websitePlanRef!=null||rawBuildContext!=null||voice===true||mode!==undefined||rawImage!==undefined,
+    })}catch(error){return buildErrorResponse(error)}
   }
 
   // ── CONVERSATION OWNERSHIP ────────────────────────────────────────────────
@@ -1017,7 +1031,7 @@ export async function POST(request: Request) {
         db,
         allowedProjectIds,
         principalId: userId,
-        internalAuthorized: isExplicitlyAuthorizedInternalPrincipal(user.email),
+        internalAuthorized,
         query: lastUserText,
         voice: !!voice,
         view: view ?? null,

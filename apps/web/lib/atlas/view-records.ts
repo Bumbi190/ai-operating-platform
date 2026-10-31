@@ -22,7 +22,7 @@
 import { fetchRecords } from './record-access'
 import type { NormalizedView } from './view-context'
 import type { DestinationId } from '@/lib/nav/registry'
-import { RECORD_DOMAINS, type RecordDomain } from './data-registry'
+import { DOMAIN_REGISTRY, RECORD_DOMAINS, type RecordDomain } from './data-registry'
 
 /** Feature flag — record awareness is off unless explicitly enabled. */
 export function isRecordAwarenessEnabled(): boolean {
@@ -86,11 +86,14 @@ export function deriveRecordQuery(view: NormalizedView | null | undefined): Reco
   if (!mapping) return null
 
   // Remap nav filter keys onto table columns (e.g. approvals: state → status).
-  const filters: Record<string, string> = {}
-  for (const [k, val] of Object.entries(view.filters ?? {})) {
-    if (typeof val !== 'string') continue
-    const col = mapping.filterKeyMap?.[k] ?? k
-    filters[col] = val
+  const filters: Record<string, string> = Object.create(null)
+  const allowed = DOMAIN_REGISTRY[mapping.domain].filters ?? {}
+  // Iterate registry-owned columns: request keys never become object properties.
+  for (const col of Object.keys(allowed)) {
+    const alias = Object.entries(mapping.filterKeyMap ?? {}).find(([, target]) => target === col)?.[0]
+    const source = alias && Object.hasOwn(view.filters ?? {}, alias) ? alias : col
+    const val = Object.hasOwn(view.filters ?? {}, source) ? view.filters[source] : undefined
+    if (typeof val === 'string') filters[col] = val
   }
 
   // Selected ids: the open record from a detail route (highest priority), then

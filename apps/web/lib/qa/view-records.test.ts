@@ -97,6 +97,13 @@ describe('deriveRecordQuery', () => {
     expect(q?.filters).toEqual({ status: 'failed' })
   })
 
+  it('drops unregistered and prototype-related filter keys before constructing a query', () => {
+    const filters = JSON.parse('{"state":"pending","kind":"release","constructor":"attack","prototype":"attack","__proto__":"attack","unknown":"attack"}')
+    const q = deriveRecordQuery(view({ destinationId: 'approvals', filters }))
+    expect(Object.entries(q!.filters)).toEqual([['status', 'pending'], ['kind', 'release']])
+    expect(Object.hasOwn(q!.filters, 'constructor')).toBe(false)
+  })
+
   it('carries the active project slug', () => {
     const q = deriveRecordQuery(view({ destinationId: 'approvals', project: { slug: 'ai-media-automation', name: 'The Prompt' } }))
     expect(q?.project).toBe('ai-media-automation')

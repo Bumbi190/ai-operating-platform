@@ -68,5 +68,13 @@ export function persistCalendarToolData(input:Record<string,unknown>,result:unkn
 
 export function isCalendarIntent(text:string):boolean {
  return /(?<![\p{L}\p{N}_])(?:kalender(?:n)?|möte(?:t|n)?|arbetsblock|boka|flytta|avboka|calendar|meeting|appointment)(?![\p{L}\p{N}_])/iu.test(text)
-  || /vad[\s\S]*jag[\s\S]*(?:vecka|måndag|tisdag|onsdag|torsdag|fredag|lördag|söndag)/iu.test(text);
+  || hasOrderedWeekQuestion(text);
+}
+// The earliest ordered occurrences leave the largest suffix to search. No
+// backtracking over repeated "vad"/"jag", including in very long chat input.
+function hasOrderedWeekQuestion(text:string):boolean {
+ const folded=text.toLowerCase(),vad=folded.indexOf('vad');
+ if(vad<0)return false;
+ const jag=folded.indexOf('jag',vad+3);
+ return jag>=0 && /(?:vecka|måndag|tisdag|onsdag|torsdag|fredag|lördag|söndag)/iu.test(folded.slice(jag+3));
 }

@@ -7,7 +7,7 @@ const input=()=>({projectId:id,campaignId:'10000000-0000-4000-8000-000000000002'
 describe('campaign admission input',()=>{
  it('pins intended Stockholm time to UTC preserving actual text',()=>expect(parseCampaignInput(input(),now).items[0]).toEqual({...item,scheduledAt:'2026-11-03T07:30:00.000Z'}))
  it('accepts exactly three distinct future drafts',()=>{
-  const value=input();value.items=[{...item},{...item,localMinute:'2026-11-05T08:30'},{...item,localMinute:'2026-11-06T08:30'}]
+  const value=input();value.items=[{...item},{...item,text:'A different second draft.',localMinute:'2026-11-05T08:30'},{...item,text:'A distinct third draft.',localMinute:'2026-11-06T08:30'}]
   expect(parseCampaignInput(value,now).items.map(x=>x.scheduledAt)).toEqual(['2026-11-03T07:30:00.000Z','2026-11-05T07:30:00.000Z','2026-11-06T07:30:00.000Z'])
  })
  it('rejects a fourth image and an empty package',()=>{for(const items of [[],[1,2,3,4].map((_,i)=>({...item,localMinute:'2026-11-0'+(i+3)+'T08:30'}))])expect(()=>parseCampaignInput({...input(),items},now)).toThrow('INVALID_BODY')})

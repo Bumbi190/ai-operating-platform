@@ -45,6 +45,12 @@ before(()=>{
  for(const file of ['20261016052226_social_launch_plans_v1.sql','20261016100941_social_content_preparation_v1.sql','20261016113247_social_project_profiles_v1.sql'])scalar(readFileSync(path(file),'utf8'))
  if(existsSync(path(migration)))scalar(readFileSync(path(migration),'utf8'))
  scalar("create table public.runs(id uuid primary key default gen_random_uuid(),project_id uuid references projects not null,workflow_id uuid,status text not null default 'pending',kind text,input jsonb default '{}',context jsonb default '{}',max_attempts int default 3,claim_id uuid,lease_until timestamptz,cancel_requested boolean default false,reconciliation_required boolean default false,reconciliation_reason text,finished_at timestamptz,claimed_at timestamptz); grant select,insert,update on runs to service_role;")
+ scalar("alter table runs add column attempts int not null default 0,add column created_at timestamptz default now(),add column started_at timestamptz,add column workflow_instance_id uuid,add column action_phase text,add column action_outcome text,add column outcome_recorded_at timestamptz,add column error text,add column last_error text;alter table platform_config add column id int default 1;insert into platform_config(automation_paused,id) values(false,1);alter table project_lifecycle add column version bigint default 0;create schema omnira_cron;")
+ for(const [file,name,delimiter] of [['20260830_action_failure_model.sql','public.action_phase_rank','$$'],['20260903120000_durable_cancellation_reaper.sql','omnira_cron.reap_stuck_runs','$fn$'],['20261015041654_atlas_builder_studio_workspace.sql','public.claim_runs','$fn$']]){
+  const source=readFileSync(path(file),'utf8').replace(/\r\n/g,'\n'),start=source.indexOf('create or replace function '+name+'('),end=source.indexOf(delimiter+';',source.indexOf('as '+delimiter,start)+('as '+delimiter).length)
+  assert.ok(start>=0&&end>start,'Exact native source function '+name);scalar(source.slice(start,end+delimiter.length+1))
+ }
+ scalar('grant execute on function public.claim_runs(integer,integer) to service_role;')
  const proposed=root+'docs/architecture/proposed-sql/social_campaign_preparation_NOT_APPLIED.sql'
  if(existsSync(proposed))scalar(readFileSync(proposed,'utf8'))
 })
@@ -126,7 +132,7 @@ test('package cap and max-three bound refuse atomically before run creation',()=
 test('generation latch permits one dispatch and recovered/reentrant claims cannot regenerate',()=>{
  const f=ready(),v=enqueue(f),w=writer(f,v.items[0])
  const first=writeRpc('social_campaign_claim_item',w);assert.equal(first.shouldGenerate,true)
- const second=writeRpc('social_campaign_claim_item',w);assert.equal(second.shouldGenerate,false);assert.equal(second.item.state,'uncertain')
+ const second=writeRpc('social_campaign_claim_item',w);assert.equal(second.shouldGenerate,false);assert.equal(second.item.state,'generating');assert.equal(second.alreadyRunning,true)
 })
 test('stale or expired claims never admit a physical image',()=>{
  const f=ready(),v=enqueue(f),w=writer(f,v.items[0])
@@ -222,4 +228,69 @@ test('cancelling unstarted work terminalizes native pending runs instead of leav
  const f=ready();enqueue(f);rpc('social_campaign_cancel',f.p,{projectId:f.target,campaignId:f.input.campaignId})
  assert.equal(scalar("select count(*) from runs where project_id='"+f.target+"' and status='pending';"),'0')
  assert.equal(scalar("select count(*) from runs where project_id='"+f.target+"' and status='cancelled';"),'3')
+})
+
+const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms))
+async function sleeping(tag){for(let i=0;i<20;i++){if(scalar("select count(*) from pg_stat_activity where wait_event='PgSleep' and query like '%"+tag+"%';")!=='0')return;await delay(20)}throw Error('SQL session barrier not reached')}
+function assetFor(f){const asset=randomUUID();scalar("insert into assets values('"+asset+"','"+f.target+"','image','"+'a'.repeat(64)+"','image/png',512,512,'active',now());");return asset}
+function nativeReady(){scalar("update runs set status='failed' where status='pending';");return ready()}
+test('same live-claim follower leaves the generation winner able to save its actual image',()=>{
+ const f=ready(),v=enqueue(f),w=writer(f,v.items[0]);writeRpc('social_campaign_claim_item',w)
+ const follower=writeRpc('social_campaign_claim_item',w)
+ assert.equal(follower.alreadyRunning,true)
+ assert.equal(writeRpc('social_campaign_check_item',w).allowed,true)
+ writeRpc('social_campaign_record_asset',w,{assetId:assetFor(f)})
+ assert.equal(writeRpc('social_campaign_commit_item',w).item.state,'review_ready')
+})
+test('accepted immutable intent replays its original allocation even after server price rises above the package cap',()=>{
+ const f=ready(),first=enqueue(f)
+ const replay=JSON.parse(sql('select public.social_campaign_enqueue('+quote(f.p)+','+quote({...f.input,conversationId:f.source})+',6);'))
+ assert.deepEqual(replay,first)
+})
+test('known unsavable slot, full workspace and blocked binding refuse before physical dispatch',()=>{
+ for(const mode of ['past','full','binding']){
+  const f=ready(),v=enqueue(f),w=writer(f,v.items[0]);writeRpc('social_campaign_claim_item',w)
+  if(mode==='past')scalar("update social_campaign_items set draft=jsonb_set(draft,'{scheduledAt}',to_jsonb('2000-01-01T00:00:00.000Z'::text)) where id='"+w.itemId+"';")
+  if(mode==='full')scalar("insert into social_content_posts(id,project_id,created_by) select gen_random_uuid(),'"+f.target+"','"+f.p.userId+"' from generate_series(1,100);")
+  if(mode==='binding')scalar("insert into social_account_bindings(binding_id,project_id,platform,blocked_at) values(gen_random_uuid(),'"+f.target+"','linkedin',now());")
+  assert.throws(()=>writeRpc('social_campaign_check_item',w),/REVIEW_REQUIRED|INVALID_BODY/)
+ }
+})
+test('exact repeated copy at distinct future times is rejected before purchasing duplicate images',()=>{
+ const f=ready();f.input.items[1].text=f.input.items[0].text
+ assert.throws(()=>enqueue(f),/INVALID_BODY/)
+})
+test('actual native final-attempt reaper cannot leave a started image looking active forever',()=>{
+ const f=nativeReady(),v=enqueue(f),w=writer(f,v.items[0]);writeRpc('social_campaign_claim_item',w)
+ scalar("update runs set lease_until=now()-interval '1 second',attempts=3 where id='"+w.runId+"';select omnira_cron.reap_stuck_runs();")
+ const view=rpc('social_campaign_read',f.p,{projectId:f.target,campaignId:f.input.campaignId})
+ assert.equal(view.items[0].state,'uncertain')
+ assert.equal(scalar("select status from runs where id='"+w.runId+"';"),'failed')
+})
+test('actual native reaper and claim_runs resume admitted bytes without another generation',()=>{
+ const f=nativeReady(),v=enqueue(f),w=writer(f,v.items[0]);writeRpc('social_campaign_claim_item',w);writeRpc('social_campaign_record_asset',w,{assetId:assetFor(f)})
+ scalar("update runs set lease_until=now()-interval '1 second',attempts=1 where id='"+w.runId+"';select omnira_cron.reap_stuck_runs();")
+ const rows=JSON.parse(sql("select jsonb_agg(to_jsonb(r)) from public.claim_runs(3,320) r;")),row=rows.find(r=>r.id===w.runId)
+ assert.ok(row);assert.notEqual(row.claim_id,w.claimId)
+ const resumed={...w,claimId:row.claim_id}
+ assert.equal(writeRpc('social_campaign_claim_item',resumed).shouldGenerate,false)
+ assert.equal(writeRpc('social_campaign_commit_item',resumed).item.state,'review_ready')
+})
+test('old dispatch claimant cannot overwrite a committed receipt after waiting for locks',async()=>{
+ const f=ready(),v=enqueue(f),old=writer(f,v.items[0]);writeRpc('social_campaign_claim_item',old);writeRpc('social_campaign_record_asset',old,{assetId:assetFor(f)})
+ const current=writer(f,v.items[0]),tag='campaign-commit-'+randomUUID()
+ const commit=asyncSql("begin;select public.social_campaign_commit_item("+quote(current)+",'{}');select pg_sleep(0.8) /*"+tag+"*/;commit;")
+ await sleeping(tag)
+ const late=asyncSql("select public.social_campaign_mark_item("+quote(old)+","+quote({reason:'save_failed',uncertain:true})+");").catch(error=>({error:error.message}))
+ await commit;await late
+ const view=rpc('social_campaign_read',f.p,{projectId:f.target,campaignId:f.input.campaignId})
+ assert.equal(view.items[0].state,'review_ready');assert.ok(view.items[0].revisionId)
+})
+test('concurrent actual native claim_runs and campaign cancellation serialize without deadlock',async()=>{
+ const f=nativeReady(),v=enqueue(f),tag='campaign-claimer-'+randomUUID()
+ const claim=asyncSql("begin;select id from runs where id='"+v.items[0].runId+"' for update;select pg_sleep(0.8) /*"+tag+"*/;select count(*) from public.claim_runs(1,320);commit;")
+ await sleeping(tag)
+ const cancel=asyncSql('select public.social_campaign_cancel('+quote(f.p)+','+quote({projectId:f.target,campaignId:f.input.campaignId})+');')
+ const results=await Promise.allSettled([claim,cancel]);assert.ok(results.every(r=>r.status==='fulfilled'),JSON.stringify(results))
+ assert.equal(rpc('social_campaign_read',f.p,{projectId:f.target,campaignId:f.input.campaignId}).status,'cancelled')
 })

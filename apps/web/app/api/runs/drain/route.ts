@@ -285,7 +285,7 @@ export async function GET(request: Request) {
 
       if (isCampaignRun(kind)) {
         const status=await executeCampaignImageRun(db,run as Run,run.claim_id!,invocationDeadline)
-        if(status!=='review_ready'){results.push({run_id:run.id,status});continue}
+        results.push({run_id:run.id,status});continue
       } else if (isWebsiteBuildRun(kind)) {
         await executeWebsiteBuildRun(db, run as Run, run.claim_id!)
       } else if (isMarketingRun(kind)) {

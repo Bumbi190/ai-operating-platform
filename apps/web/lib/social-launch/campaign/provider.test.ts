@@ -1,6 +1,7 @@
 import {beforeEach,expect,it,vi} from 'vitest'
 const mock=vi.hoisted(()=>({rates:vi.fn(),estimate:vi.fn(),spend:vi.fn(),admit:vi.fn(),watch:vi.fn(),log:vi.fn(),gate:vi.fn()}))
 vi.mock('@/lib/cost/rates',()=>({getRates:mock.rates}))
+vi.mock('@/lib/cost/current-image-rates',()=>({getCurrentImageRates:mock.rates}))
 vi.mock('@/lib/cost/budget-gate',()=>({estimateImageSek:mock.estimate}))
 vi.mock('@/lib/cost/spend-gate-flag',()=>({isSpendGateEnforced:mock.gate}))
 vi.mock('@/lib/cost/track',()=>({logImageCost:mock.log}))
@@ -51,4 +52,16 @@ it('uses the documented V3 multipart contract only for the constrained campaign 
  expect(init.body).toBeInstanceOf(FormData)
  expect(new Headers(init.headers).has('Content-Type')).toBe(false)
  expect((init.body as FormData).get('prompt')).toBe('A dealer')
+})
+
+it('a live rate increase at physical admission cannot use the earlier cheaper reservation',async()=>{
+ mock.rates.mockResolvedValueOnce({price:0.8}).mockResolvedValueOnce({price:0.9})
+ mock.estimate.mockImplementation(async(_n,_provider,rates)=>rates.price)
+ await expect(generateIdeogramV3(ctx,{prompt:'dealer'},limits())).rejects.toMatchObject({name:'ProviderNotDispatchedError'})
+ expect(mock.rates).toHaveBeenCalledTimes(2);expect(fetch).not.toHaveBeenCalled()
+})
+it('an unreadable physical-boundary price refuses before HTTP even after successful reservation',async()=>{
+ mock.rates.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('database unavailable'))
+ await expect(generateIdeogramV3(ctx,{prompt:'dealer'},limits())).rejects.toMatchObject({name:'ProviderNotDispatchedError'})
+ expect(fetch).not.toHaveBeenCalled()
 })

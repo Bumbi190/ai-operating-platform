@@ -29,6 +29,7 @@ import 'server-only'
 import { logImageCost } from '@/lib/cost/track'
 import { estimateImageSek } from '@/lib/cost/budget-gate'
 import { getRates } from '@/lib/cost/rates'
+import {getCurrentImageRates} from '@/lib/cost/current-image-rates'
 import { isSpendGateEnforced } from '@/lib/cost/spend-gate-flag'
 import {
   ProviderNotDispatchedError,
@@ -123,12 +124,12 @@ export async function generateIdeogramV3(
 ): Promise<string> {
   const apiKey = process.env.IDEOGRAM_API_KEY
   // Refuse before reserving: a missing credential is not a spend decision.
-  if (!apiKey) throw new Error('IDEOGRAM_API_KEY not set')
+  if (!apiKey) {if(limits)throw new ProviderNotDispatchedError('Image provider not configured');throw new Error('IDEOGRAM_API_KEY not set')}
 
   // M0: refuse what the canonical row does not price; one rate snapshot then
   // prices the fixed-unit ceiling AND the metering.
   refuseUnboundedIdeogram(body, false)
-  const rates = await getRates()
+  const rates = limits?await getCurrentImageRates(undefined,limits.signal).catch(e=>{throw new ProviderNotDispatchedError('Current image price unavailable before dispatch',e)}):await getRates()
   const estimatedSek = await estimateImageSek(1, 'ideogram', rates)
   if(limits && (!isSpendGateEnforced() || ctx.authority?.kind!=='RUN_BOUND' || ctx.execution.context!=='AUTONOMOUS'
     || ctx.execution.scope.kind!=='PROJECT' || !('projectId' in ctx.project) || !('projectId' in ctx.execution.scope.project) || ctx.project.projectId!==ctx.execution.scope.project.projectId
@@ -145,6 +146,11 @@ export async function generateIdeogramV3(
     async () => {
       // Optional campaign boundary; pre-existing V3 callers keep their contract.
       if(limits?.signal.aborted)throw new ProviderNotDispatchedError('image deadline before dispatch')
+      if(limits){
+        const current=await getCurrentImageRates(undefined,limits.signal).catch(e=>{throw new ProviderNotDispatchedError('Image price unavailable at physical boundary',e)})
+        const price=await estimateImageSek(1,'ideogram',current)
+        if(Math.ceil(price*10000)/10000>Math.min(limits.maxEstimatedSek,Math.ceil(estimatedSek*10000)/10000))throw new ProviderNotDispatchedError('Image price changed above reserved allocation before dispatch')
+      }
       if(limits?.beforeDispatch){try{await limits.beforeDispatch()}catch(e){throw new ProviderNotDispatchedError('campaign authority changed before dispatch',e)}}
       if(limits?.signal.aborted)throw new ProviderNotDispatchedError('image deadline before dispatch')
       if(limits)await admitPhysicalRequest(()=>createAdminClient(),ctx.authority!,'ideogram')

@@ -29,3 +29,10 @@ it('cron authorization and native checkpoint precede every image worker',async()
  mock.checkpoint.mockResolvedValue({allowed:false,refusal:'FENCED',detail:'reclaimed'})
  await GET(new Request('https://example/api/runs/drain',{headers:{authorization:'Bearer campaign-test-only'}}));expect(mock.worker).not.toHaveBeenCalled()
 })
+
+it('the campaign worker owns its native finalization and a ready receipt is not finalized twice',async()=>{
+ mock.worker.mockResolvedValue('review_ready')
+ const response=await GET(new Request('https://example/api/runs/drain',{headers:{authorization:'Bearer campaign-test-only'}}))
+ expect(await response.json()).toMatchObject({results:[{status:'review_ready'}]})
+ expect(mock.final).not.toHaveBeenCalled()
+})

@@ -1,0 +1,51 @@
+name: Nova Social Campaign Boundary
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: nova-social-campaign-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  campaign:
+    name: Nova campaign contracts and native PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Run campaign contracts and affected regressions without provider credentials
+        working-directory: apps/web
+        run: |
+          npx --no vitest run \
+            lib/social-launch/campaign \
+            lib/social-launch/publication/linkedin-adapter.test.ts \
+            lib/qa/atlas-project-task-context.test.ts \
+            lib/qa/m0-spend-ceiling.test.ts \
+            lib/qa/ideogram-dispatch-certainty.test.ts \
+            lib/qa/media-governed-dispatch.test.ts \
+            lib/qa/provider-signal-delivery.test.ts \
+            lib/qa/execution-authority-signal.test.ts \
+            lib/qa/atlas-static-conversation-route.test.ts \
+            lib/qa/handlarborsen-strato-inbox-intent.test.ts \
+            --reporter=json --outputFile=../../nova-campaign-vitest.json
+      - name: Require every suite, no skipped or failed tests
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync} from 'node:fs'
+          const report=JSON.parse(readFileSync('nova-campaign-vitest.json','utf8'))
+          if(report.testResults.length<20||report.numTotalTests<358||report.numPendingTests!==0||report.numFailedTests!==0||report.numPassedTests!==report.numTotalTests)throw Error('Incomplete campaign boundary proof')
+          for(const suite of report.testResults)if(suite.status!=='passed'||suite.assertionResults.some(test=>test.status!=='passed'))throw Error('Missing or skipped suite: '+suite.name)
+          console.log(report.numPassedTests+' campaign/regression tests passed with no skips')
+          NODE
+      - name: Explicitly prepare the pinned disposable PostgreSQL image
+        run: |
+          docker pull postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+          docker tag postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24 postgres:17-alpine
+      - name: Exercise native claim, reaper, cancellation and campaign SQL in a networkless disposable container
+        run: node --test scripts/atlas/verify-nova-campaign.test.mjs

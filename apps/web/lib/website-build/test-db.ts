@@ -4,9 +4,11 @@ import {restoreWebsiteStopFixture} from '@/lib/qa/__stubs__/website-stop-fixture
 import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import {resolveWebsiteTestTarget,assertWebsiteTestTarget} from '../../scripts/website-test-target.mjs'
 import type { createAdminClient } from '@/lib/supabase/admin'
 const root = resolve(process.cwd(), '../..')
-const container = 'omnira-website-build-test-20261014'
+const fixtureTarget=resolveWebsiteTestTarget()
+const container=fixtureTarget.container
 export const TEST_PROJECT = '10000000-0000-4000-8000-000000000001'
 export const TEST_AGENT = '40000000-0000-4000-8000-000000000001'
 export const TEST_CONVERSATION = '50000000-0000-4000-8000-000000000001'
@@ -39,8 +41,9 @@ export function initializeWorkerDb(): ReturnType<typeof createAdminClient> {
   else {
     try { const log = readFileSync(resolve(root, '.superpowers/sdd/2026-10-14-atlas-live-build-workspace/task3-db-setup.log'), 'utf8').replace(/\u0000/g, ''); database = log.match(/KEEP_DB=(website_test_\d+)/)?.[1] || '' } catch { throw Error('Prepare the isolated SQL fixture and set WEBSITE_BUILD_TEST_DATABASE_NAME to its KEEP_DB value; see the build validation report.') }
   }
-  const label = spawnSync('docker', ['inspect', '--format', '{{index .Config.Labels "com.omnira.testplan"}}', container], { encoding: 'utf8' })
-  if (label.status !== 0 || label.stdout.trim() !== 'atlas-live-build-20261014') throw Error('Local fixture ownership missing')
+  const inspected=spawnSync('docker',['inspect',container],{encoding:'utf8'})
+  if(inspected.status!==0)throw Error('Local fixture ownership missing')
+  assertWebsiteTestTarget(JSON.parse(inspected.stdout)[0],fixtureTarget)
   testSql(`alter table agents add column if not exists name text not null default 'Webbbyggare', add column if not exists model text not null default 'claude-sonnet-4-20250514', add column if not exists system_prompt text not null default 'Bygg genomtänkta svenska hemsidor.', add column if not exists config jsonb not null default '{}', add column if not exists skill_ids text[] not null default '{}';
     alter table projects add column if not exists paused_at timestamptz,add column if not exists paused_reason text,add column if not exists name text not null default 'Testprojekt',add column if not exists slug text not null default 'test-project';
     alter table runs add column if not exists error_history jsonb not null default '[]',add column if not exists last_error text,add column if not exists next_retry_at timestamptz,add column if not exists steps_snapshot jsonb,add column if not exists workflow_instance_id uuid,add column if not exists started_at timestamptz,add column if not exists reconciliation_required boolean not null default false,add column if not exists reconciliation_reason text;

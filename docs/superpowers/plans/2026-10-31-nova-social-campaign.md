@@ -41,7 +41,7 @@ Interfaces: enqueueCampaign(db,principal,conversationId,input); readCampaign(...
 Files: campaign/image.ts,image.test.ts,worker.ts,worker.test.ts; app/api/runs/drain/route.ts.
 Interfaces: prepareCampaignImage(writer,item,unitCeilingSek):AdmittedAsset; executeCampaignImageRun(db,run,claimId):void.
 - [ ] Tests RED: only current native claim may start, one physical image, budget/feature/STOP refusal before HTTP, no retry on unknown, private image admission, stable content save receipt.
-- [ ] Reuse generateIdeogramV3 and canonical admission, with finite timeout/closed provider image retrieval. Save through current social_content_propose.
+- [ ] Reuse generateIdeogramV3 and canonical admission, with finite timeout/closed provider image retrieval. Save through current social_content_save.
 - [ ] Integrate exact run kind into existing drainer; fence lifecycle and permanent errors without changing other executors.
 - [ ] Verify reaper/replay/cancel/partial item failures and no false review-ready.
 - [ ] Run GREEN and commit.

@@ -7,6 +7,26 @@ export const WEBSITE_RUNTIME = String.raw`(() => {
   for (const behavior of config.behaviors) {
     const trigger = document.getElementById(behavior.triggerId);
     const targets = behavior.targetIds.map(id => document.getElementById(id));
+    if (behavior.kind === 'filter') {
+      const empty = document.getElementById(behavior.emptyId);
+      const count = document.getElementById(behavior.countId);
+      count.setAttribute('role', 'status');
+      count.setAttribute('aria-live', 'polite');
+      count.setAttribute('aria-atomic', 'true');
+      const update = () => {
+        let visible = 0;
+        for (const target of targets) {
+          const matches = trigger.value === '*' || target.getAttribute(behavior.attribute) === trigger.value;
+          target.hidden = !matches;
+          if (matches) visible++;
+        }
+        empty.hidden = visible !== 0;
+        count.textContent = visible + ' av ' + targets.length + ' visas';
+      };
+      trigger.addEventListener('change', update);
+      update();
+      continue;
+    }
     trigger.addEventListener('click', () => {
       const expanded = trigger.getAttribute('aria-expanded') !== 'true';
       for (const target of targets) target.hidden = !expanded;

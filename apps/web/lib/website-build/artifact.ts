@@ -24,9 +24,10 @@ type Node = DefaultTreeAdapterMap['node']
 type Element = DefaultTreeAdapterMap['element']
 function isElement(node: Node): node is Element { return 'tagName' in node }
 
-function validateMarkup(html: string, pageKeys: Set<string>, homeAlias = false, pageKey = 'index'): { html: string; ids: Set<string>; forms: boolean } {
+function validateMarkup(html: string, pageKeys: Set<string>, homeAlias = false, pageKey = 'index'): { html: string; ids: Set<string>; elements: Map<string,Element>; forms: boolean } {
   const fragment = parseFragment(html)
   const ids = new Set<string>()
+  const elements = new Map<string,Element>()
   const anchorTargets: string[] = []
   let forms = false, linkNumber = 0
   const invalidLink = (reason:string):never => { throw new WebsiteArtifactError('INVALID_LINK', 'Sidan '+pageKey+', länk '+linkNumber+': '+reason+' Tillåtna sidor: '+[...pageKeys].map(key=>key+'.html').join(', ')+'. Använd #id för en befintlig sektion eller en button för en demoåtgärd.') }
@@ -41,6 +42,7 @@ function validateMarkup(html: string, pageKeys: Set<string>, homeAlias = false, 
         if (attr.name === 'id') {
           if (!SAFE_ID.test(attr.value) || ids.has(attr.value)) fail('INVALID_OR_DUPLICATE_ID')
           ids.add(attr.value)
+          elements.set(attr.value,node)
         }
         if (attr.name === 'href') {
           linkNumber++
@@ -73,19 +75,65 @@ function validateMarkup(html: string, pageKeys: Set<string>, homeAlias = false, 
     const note = parseFragment('<p role="note">Formuläret behöver en ansluten mottagare innan det kan skicka meddelanden.</p>')
     fragment.childNodes.push(...note.childNodes)
   }
-  return { html: serialize(fragment), ids, forms }
+  return { html: serialize(fragment), ids, elements, forms }
 }
-function validateBehaviors(value: unknown, ids: Set<string>): WebsiteBehavior[] {
+function validateCatalogFilter(item:Record<string,unknown>,elements:Map<string,Element>): Extract<WebsiteBehavior,{kind:'filter'}> {
+  const keys=['kind','triggerId','targetIds','attribute','emptyId','countId']
+  if(Object.keys(item).length!==keys.length||keys.some(k=>!Object.hasOwn(item,k)))fail('INVALID_FILTER')
+  const attribute=item.attribute
+  if(typeof attribute!=='string'||!/^data-[a-z][a-z0-9-]{0,39}$/.test(attribute))fail('INVALID_FILTER_ATTRIBUTE')
+  const attr=(el:Element,name:string)=>el.attrs.find(a=>a.name===name)?.value
+  const token=(v:unknown):v is string=>typeof v==='string'&&/^[a-z0-9][a-z0-9_-]{0,31}$/.test(v)
+  const trigger=elements.get(item.triggerId as string)!
+  if(trigger.tagName!=='select'||attr(trigger,'multiple')!==undefined||attr(trigger,'disabled')!==undefined)fail('INVALID_FILTER_CONTROL')
+  const options:string[]=[]
+  function readOptions(nodes:Node[]):void{
+    for(const node of nodes){if(!isElement(node))continue
+      if(node.tagName==='option'){const v=attr(node,'value');if(v!=='*'&&!token(v))fail('INVALID_FILTER_OPTION');options.push(v!)}
+      else if(node.tagName==='optgroup')readOptions(node.childNodes)
+      else fail('INVALID_FILTER_OPTION')
+    }
+  }
+  readOptions(trigger.childNodes)
+  if(options.length>33||!options.includes('*')||new Set(options).size!==options.length)fail('INVALID_FILTER_OPTION')
+  const targetIds=item.targetIds as string[]
+  if(typeof item.countId!=='string'||typeof item.emptyId!=='string')fail('INVALID_FILTER_STATUS')
+  const all=[item.triggerId as string,...targetIds,item.countId,item.emptyId]
+  if(new Set(all).size!==all.length||all.some(id=>!elements.has(id)))fail('INVALID_FILTER_STATUS')
+  for(const id of [item.countId,item.emptyId]){
+    const node=elements.get(id)!
+    if(!['p','span'].includes(node.tagName)||node.childNodes.some(isElement))fail('INVALID_FILTER_STATUS')
+  }
+  for(const id of targetIds){
+    const node=elements.get(id)!,category=attr(node,attribute)
+    if(!['article','li','div','section'].includes(node.tagName)||!token(category)||!options.includes(category))fail('INVALID_FILTER_ITEM')
+    // A hidden item cannot also hide another item or the filter controls/status.
+    for(const other of all.filter(x=>x!==id)){
+      let parent=elements.get(other)!.parentNode
+      while(parent){if(parent===node)fail('NESTED_FILTER_TARGET');parent='parentNode' in parent?parent.parentNode:null}
+    }
+  }
+  return {kind:'filter',triggerId:item.triggerId as string,targetIds,attribute,emptyId:item.emptyId,countId:item.countId}
+}
+function validateBehaviors(value: unknown, ids: Set<string>,elements:Map<string,Element>): WebsiteBehavior[] {
   if (!Array.isArray(value) || value.length > WEBSITE_BUILD_LIMITS.behaviorsPerPage) fail('INVALID_BEHAVIORS')
   const triggers = new Set<string>()
-  return value.map(raw => {
+  const behaviors:WebsiteBehavior[]=value.map(raw => {
     const item = record(raw)
-    if (!['toggle', 'tabs', 'accordion'].includes(String(item.kind)) || typeof item.triggerId !== 'string' || !ids.has(item.triggerId) || triggers.has(item.triggerId)) fail('INVALID_BEHAVIOR')
+    if (!['toggle', 'tabs', 'accordion','filter'].includes(String(item.kind)) || typeof item.triggerId !== 'string' || !ids.has(item.triggerId) || triggers.has(item.triggerId)) fail('INVALID_BEHAVIOR')
     triggers.add(item.triggerId)
     if (!Array.isArray(item.targetIds) || !item.targetIds.length || item.targetIds.length > 64 || item.targetIds.some(id => typeof id !== 'string' || !ids.has(id)) || new Set(item.targetIds).size !== item.targetIds.length) fail('INVALID_BEHAVIOR_TARGET')
+    if(item.kind==='filter')return validateCatalogFilter(item,elements)
     if (item.kind === 'tabs' && (typeof item.groupId !== 'string' || !SAFE_ID.test(item.groupId))) fail('INVALID_TAB_GROUP')
-    return { kind: item.kind as WebsiteBehavior['kind'], triggerId: item.triggerId, targetIds: item.targetIds as string[], ...(item.kind === 'tabs' ? { groupId: item.groupId as string } : {}) }
+    return { kind: item.kind as 'toggle'|'tabs'|'accordion', triggerId: item.triggerId, targetIds: item.targetIds as string[], ...(item.kind === 'tabs' ? { groupId: item.groupId as string } : {}) }
   })
+  for(const filter of behaviors.filter(b=>b.kind==='filter')){
+    const owned=new Set([...filter.targetIds,filter.emptyId,filter.countId])
+    for(const other of behaviors){if(other===filter)continue
+      if(other.targetIds.some(id=>owned.has(id))||owned.has(other.triggerId)||(other.kind==='filter'&&[other.emptyId,other.countId].some(id=>owned.has(id))))fail('OVERLAPPING_FILTER_TARGET')
+    }
+  }
+  return behaviors
 }
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']'
@@ -118,7 +166,7 @@ export function compileWebsiteArtifact(input: unknown): WebsiteArtifact {
     const pageTitle = text(page.title, 200)
     const markup = validateMarkup(text(page.bodyHtml), pageKeys, homeAlias, keys[index])
     forms ||= markup.forms
-    const behaviors = validateBehaviors(page.behaviors, markup.ids)
+    const behaviors = validateBehaviors(page.behaviors, markup.ids,markup.elements)
     const css = ((sharedCss ? sharedCss + '\n' : '') + (page.css === undefined && draft.css !== undefined ? '' : text(page.css))).replace(/</g, '\\3c ')
     const config = scriptJson({ behaviors, pages: keys })
     const html = `<!doctype html><html lang="sv"><head><meta http-equiv="Content-Security-Policy" content="${escapeHtml(websiteCsp(`'sha256-${scriptHash}'`))}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(pageTitle || title)}</title><style>*,*::before,*::after{box-sizing:border-box}body{margin:0}[hidden]{display:none!important}img{max-width:100%;height:auto}${css}</style></head><body>${markup.html}<script type="application/json" id="__atlas_config">${config}</script><script id="__atlas_runtime">${WEBSITE_RUNTIME}</script></body></html>`

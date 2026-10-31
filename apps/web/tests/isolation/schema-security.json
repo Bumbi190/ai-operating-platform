@@ -5,7 +5,8 @@
     "captured_at": "2026-09-25",
     "handlarborsen_review_p2_migration_note": "Operator-approved, project-locked, immutable human review decision events. RLS + FORCE RLS, zero policies, no anon/auth grants; service role SELECT/INSERT only, REVIEW RPC only service role. Fully isolated PG17.6 security tests passed. Live production catalog must be checked after application.",
     "handlarborsen_candidates_migration_note": "Additional candidate memory table to be verified against the scoped live production catalog after operator-approved application: project-locked, RLS and FORCE RLS, zero policies and client grants, service_role SELECT/INSERT only. Earlier table classifications remain unchanged.",
-    "total_tables": 185,
+    "total_tables": 187,
+    "nova_crosschat_parallel_sales_reconciliation_note": "Scoped read-only production observation 2026-10-31 of two already-applied Harvey discovery tables: RLS enabled, zero policies, anon/authenticated hold no table privileges and service_role SELECT is reachable. Source-only reconciliation from PR386 commit 54665da95aaba7e34c6e02877f938ebf81b39998; exact SQL hashes pinned in nova-release-ledger-reconciliation.test.ts. No SQL reapplication, sales code, flag, sender or customer-contact authority included. Other capture scopes unchanged.",
     "hb_research_archive_note": "Applied 2026-10-29 via handlarborsen_owner_review_archive_20261029. Verified in live Omnira catalog: RLS enabled, exactly two owner-and-project-scoped authenticated SELECT/INSERT policies, anon no table grants, authenticated SELECT/INSERT only, service_role has technical SELECT/INSERT access. No UPDATE/DELETE grants to authenticated. Exactly one verified, non-contactable 81-company archive; contact authority remains disabled. TENANT_RLS, not an outbound or CRM table.",
     "hb_lead_candidates_note": "Applied to Omnira production 2026-10-28 as migration 20261028072659_handlarborsen_scb_review_only_candidates. Live catalog verified: RLS enabled, one authenticated owner-scoped SELECT policy, anon no grants, authenticated SELECT only, service_role technically reachable for future separately authorized import. Zero rows, zero triggers, owner-vs-other RLS tested in rolled-back transactions, seven unsafe variants refused by CHECK constraints. Classification: TENANT_RLS; NOT contact/approval authority.",
     "family_weekly_preparation_note": "Applied with explicit owner authorization on 2026-10-26; live catalog verified RLS on, zero policies, no anon/authenticated privileges, service-role SELECT/INSERT. Existing weekly tools create editorial proposals only, no public grant or publication authority.",
@@ -101,6 +102,22 @@
     "human_story_note": "2026-10-26 hosted catalog verified: RLS, zero policies, no anon/authenticated table access, service_role SELECT only; immutable SQL RPC writes, authenticated owner approval only."
   },
   "tables": {
+    "sales_discovery_batches": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
+    "sales_discovery_candidates": {
+      "class": "SERVER_ONLY",
+      "rls": true,
+      "policies": 0,
+      "anon_grants": false,
+      "authenticated_grants": false,
+      "service_role": true
+    },
     "handlarborsen_competitor_review_decisions": {
       "class": "SERVER_ONLY",
       "rls": true,

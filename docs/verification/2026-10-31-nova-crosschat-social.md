@@ -8,7 +8,7 @@ Authorized PC: Hultgren. Worktree: C:\Users\Andre\Projects\Omnira\.worktrees\nov
 
 ## Observed cause
 The live Omnira database (AI Operating Platform, project iboepohjwrhtgshrqaol) was inspected READ ONLY on 31 October 2026. Its social_launch_assert_owner still requires source conversation.project_id = requested projectId in addition to the target owner and allow-list. Thus a valid global or differently tagged owned conversation is denied. Navigation changes the page, not this database association.
-Live ACL: anon=false, authenticated=false, service_role=true. No production SQL was applied.
+Pre-apply ACL: anon=false, authenticated=false, service_role=true. The approved migration was subsequently applied and verified; see database activation below.
 
 A separate fast-path issue could remove social tools when mode=content. The navigation regex also mistook conditional “När du öppnar …” text for a completed navigation.
 
@@ -34,7 +34,7 @@ A separate fast-path issue could remove social tools when mode=content. The navi
 - git diff --check PASS.
 - PG container is random-named, label-checked, networkless, no host ports/volumes, 256 MiB / 0.5 CPU; cleanup verifies absence.
 - Existing shared website-build DB integration suites were not run because their labelled fixture container is absent. The new standalone fixture runs canonical launch/content/profile RPCs against real PostgreSQL instead.
-- Supabase CLI was unavailable on the PC. The reviewed timestamped SQL file was prepared directly; no CLI installation, remote diff, migration or provider credential change occurred.
+- Supabase CLI was unavailable on the PC. The reviewed timestamped SQL file was prepared directly; no CLI installation, remote diff or provider credential change occurred. Approved migration application used Supabase MCP, as recorded below.
 
 ## Exact release proposal
 Migration: apps/web/supabase/migrations/20261031150000_social_owner_crosschat_context.sql.
@@ -44,7 +44,7 @@ Only authorization change: source conversation.project_id need not equal destina
 Risk: legitimate owner operations can now target another owned project from the current chat. A wrong target selected by the model could create a proposal in the wrong owned project; exact resolver, fresh project context, immutable review and explicit review links mitigate it. Public/other-owner access remains denied. Function replacement briefly takes a catalog lock.
 Cost: no paid model/media calls or new accounts; no additional recurring service enabled.
 
-Before live apply:
+Reviewed procedure (steps 1-4 database actions completed; app release and owner-session acceptance pending):
 1. Owner reviews this report, SQL, independent-review finding/fix and rollback.
 2. Reconfirm live function body/ACL and intended Omnira project. Abort if drifted.
 3. Apply exact migration transactionally with lock_timeout=2s and statement_timeout=15s using approved migration tooling. Update migration ledger exactly once through that tool. No guard override.
@@ -52,7 +52,7 @@ Before live apply:
 5. Owner-session acceptance in both text and voice: global chat and another owned project chat -> explicit target -> saved proposal -> returned review page. No real publishing is part of this acceptance.
 6. Verify no unwanted Supabase test branch was created by integration.
 
-The migration guard intentionally blocks Preview/production builds against an unapplied ledger. No fake ledger, grandfathered entry or override was added.
+The migration guard intentionally blocks Preview/production builds against any unapplied or unknown ledger. The Nova migration is now applied. No fake ledger, grandfathered entry or override was added.
 
 ## Rollback
 docs/verification/2026-10-31-nova-crosschat-social-rollback.sql restores the original function predicate and ACL without deleting any proposal or audit. Real PG test verifies old admission is restored while source audit survives, then new admission can be reapplied.
@@ -71,9 +71,18 @@ The real three-post marketing campaign has not been created as part of this code
 ## Review handoff
 Draft PR: https://github.com/Bumbi190/ai-operating-platform/pull/609 . Initial implementation commit fab9c33; follow-up preserves the existing source-read routing contract and Studio prompt size. No independent production approval is asserted. Supabase branch list after PR creation contained only main; no new database branch was present.
 
-Follow-up regression run: 153/153 tests PASS across Studio prompt economy, inbox/evidence/sales read routing, dynamic target lookup and external references (overlaps core suites). The Studio route retains its existing short guide composition; the global task guide is not injected into Studio. Four unrelated revenue fixture failures reproduced on unmodified base (35 pass / 4 fail). CI on the initial commit was red from source-layout assertions and prompt-size regression; both were repaired before the follow-up commit. Vercel remains blocked pending the unapplied migration. No claim of a green full release.
+Follow-up regression run: 153/153 tests PASS across Studio prompt economy, inbox/evidence/sales read routing, dynamic target lookup and external references (overlaps core suites). The Studio route retains its existing short guide composition; the global task guide is not injected into Studio. Four unrelated revenue fixture failures reproduced on unmodified base (35 pass / 4 fail). CI on the initial commit was red from source-layout assertions and prompt-size regression; both were repaired before the follow-up commit. At that historical checkpoint Vercel was blocked pending migration. That database blocker is now resolved; see activation and source reconciliation below. No claim of a green full release before exact-head checks.
 
 ## Owner-approved database activation — 31 October 2026
 The owner explicitly approved the prepared database change in the same conversation. Fresh read-only preflight confirmed the original body/ACL and zero matching migration entries. Applied exact reviewed function/ACL SQL through Supabase apply_migration with transaction-local lock_timeout=2s and statement_timeout=15s. Ledger: 20261031145817_social_owner_crosschat_context, exactly one entry. Post-apply live checks confirmed SECURITY INVOKER, empty search_path, anon/authenticated EXECUTE=false and service_role EXECUTE=true. Actual owned global, same-project and other-project source chats all passed. Read-only adversarial probes denied empty allow-list, forged owner and nonexistent source. No customer data or content was written.
 
 The remaining four old revenue isolation failures were traced to a month-end TEST FIXTURE defect: month-start noon falls outside a rolling 30-day source query on day 31 after noon. The fixture now seeds within BOTH the current month and last day. No application revenue logic, scope predicates or assertions were changed. Reproduced four failures before editing; all 39 tests now pass, alongside 147 related route/ownership/migration tests (186/186 total). Initial Preview redeployed after migration to dpl_HT6LgonG75bFY9kGoKa7wQ9dedAy for app commit b1c0bb5; build state is checked separately before any release claim.
+
+## Source-only release reconciliation
+Two already-applied Harvey migrations were absent from main. Copied only canonical SQL from PR386 pinned commit 54665da95aaba7e34c6e02877f938ebf81b39998; neither migration was run again:
+- sales_b2b_offers: live ledger 20261031120736; SHA256 800f26eae81dd488c6940685b57a85ab5bb5dce5f216d804276f94b596c3b0a3.
+- sales_discovery_candidates: live ledger 20261031120804; SHA256 d4554400122bb3e29cf02b5aa49a2a4230409f8e0dd09ce5e1aededc3b485174.
+Hashes match both pinned source and stored live SQL after removing only the two transaction-local timeout statements. Policy now enforces 167 canonical / 153 non-grandfathered migrations. All 190 unique live ledger names pass exact guard checks: no unknown, duplicate or missing names. Frozen legacy/grandfather lists and refusal behavior are unchanged.
+Read-only live catalog verified the two discovery tables as SERVER_ONLY: RLS true, zero policies, no anon/authenticated table grants, service SELECT reachable. Added only those two observed table entries and a scoped note. No sales application code or sending activation imported. Independent review confirmed both SQL hashes, count-only guard adjustment and fixture-only revenue repair.
+The first post-fixture CI run passed 1207/1208 isolation tests. The remaining source assertion required adjacent fast-path terms; it now asserts both lifecycle and social-preparation vetoes independently, retaining the intended security checks. Final exact-head CI and Preview are tracked in PR609.
+Release reconciliation verification: 323/323 tests PASS in seven suites, no skips, including schema-security invariant and migration security gate. git diff --check PASS.

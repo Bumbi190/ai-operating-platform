@@ -1,0 +1,1268 @@
+# Familje-Stunden — hård gräns för högst ett betalt AI-försök per vecka
+
+Datum: 2026-10-28. Omnira-worktree:
+\`feat/family-weekly-autoprep-20261028\`.
+
+**Status: förbättrad säkerhets- och körningskod i isolerad PR, ej live.**
+All SQL är förslag under \`docs/sql\` och är INTE installerad i Omnira.
+Inget Cron, ingen Vercel-route för autonom körning och ingen AI-kreditanvändning
+har aktiverats.
+
+## Varför detta krävs
+
+Omniras generella \`public.runs\`-jobb kan återgå till \`pending\` efter en lease/reaper,
+och även ett lyckat nätverksanrop kan sakna kvitto. Vanlig jobb-idempotens eller
+\`max_attempts=1\` är därför **inte ensamt bevis** på att en betald modell inte
+kommer anropas två gånger. Den nya, ytterligare spärren skapar en permanent
+\`may_have_incurred_cost\`-post **innan** modellen får anropas.
+
+## Implementerad kod
+
+- \`paid-attempt.ts\`: validerar en originalkällestyrd admission med exakt
+  \`ownerId\`, \`projectId\`, \`runId\`, \`claimId\`, \`conversationId\`,
+  \`weekStart\`, \`eventId\` och ett nytt \`attemptId\`, samt
+  \`publicationAuthority=false\`. Inget lyckat modellanrop får infereras
+  från en nätverksfelstyp eller ett ofullständigt databasresultat.
+- \`paid-attempt-db.ts\`: snäv serveradapter till två föreslagna,
+  \`service_role\`-endast RPC:er. Ingen direkt INSERT, ingen SMTP,
+  ingen cron och ingen ny extern provider.
+- \`review-pipeline.ts\`: kontrollerar verifierad fakta/bild/veckoplan
+  **före** det betalda engångsanspråket. Utan exakt accepterat SQL-kvitto
+  anropas ingen modell. Bara den atomärt skyddade
+  \`family_weekly_save_editorial_if_current\` får spara utkast;
+  ett osäkert slutkvitto skapar ingen falsk granskningsavisering.
+- Befintlig \`auto-draft-model.ts\` använder fortfarande bara
+  Omniras \`runStep\` och \`withGovernedSpend\` under en verklig
+  \`RUN_BOUND\`-claim, med en \`gpt-4o-mini\`-körning och max 1800 token
+  i svar. Ingen automatisk modellfallback/retry.
+- Granskningsaviseringar skrivs endast efter faktiskt sparade
+  \`editorial_review_required\`-utkast och deduplikerar på \`preparation_id\`.
+
+## Föreslagen SQL — EJ applicerad
+
+\`docs/sql/20261028_family_weekly_once_only_model_attempt_proposed.sql\`:
+
+1. \`family_weekly_model_attempts\` med exakt \`UNIQUE(project_id,week_start)\`.
+   Inga UPDATE/DELETE-grants, inga klient-RLS-policyer.
+2. \`family_weekly_authority_current\` verifierar ägarrelation,
+   rätt projektkonversation och ett **verkligt** pågående \`public.runs\`-jobb
+   med aktuellt claim-ID, lease, \`max_attempts=1\`, specifik
+   \`kind\` och veckobunden \`idempotency_key\`. Samma senaste aktiva
+   operatörs \`eventId\` krävs.
+3. \`family_weekly_admit_once\` accepterar tidigast söndag 2027-01-03
+   kl. 15.00–15.59 Europe/Stockholm och endast måndagen efter som
+   målvecka. Avvikande tid/ägare/claim/avbrott leder till nej.
+   \`INSERT ... ON CONFLICT DO NOTHING\` returnerar inget nytt kvitto på
+   andra försöket.
+4. \`family_weekly_save_editorial_if_current\` tar samma transaktionslås
+   som den föreslagna owner-consent INSERT-triggern. Antingen hinner
+   återkallelsen före sparandet och detta avslås, eller sparandet hinner
+   före återkallelsen. Den inbyggda \`social_weekly_save\` behåller
+   sin granskade källa, bild, schema-, hash- och dubblettlogik.
+
+**Begränsning:** Ett AI-anrop som redan är iväg kan fortfarande hinna kosta
+något om ägaren klickar Återkalla under exakt det nätverksintervallet.
+Vi lovar inte retroaktiv återkallelse av ett redan påbörjat providercall.
+
+## PostgreSQL 16 verifiering — ISOLERAD på lokala datorn
+
+Verifierade på ett engångskärl \`postgres:16\`, med Docker
+\`--network none\`, **utan** portar/volymer och utan
+koppling till produktions-Supabase:
+
+- Förslagens alla 3 SQL-dokument är giltiga PostgreSQL-DDL, tillsammans
+  med ett isolerat minimalt schema.
+- Ägarens autentiserade RLS-session kan INSERT/SELECT sina egna
+  consent-events, främmande roll kan inte skriva eller läsa.
+- En verklig, syntetisk \`public.runs\`-claim kan verifieras;
+  falskt \`claim_id\` nekas.
+- Försök före 2027-01-03 kl. 15.00 nekas; inget betalt tillstånd skapas.
+- Max ett sparat \`model_attempt\` per projekt/vecka; dubblett nekas av
+  PostgreSQL unique constraint även när run-ID skiljer sig.
+- Redaktionellt sparande fungerar endast när verklig owner-run-claim och
+  senaste grant gäller (testet använder en minimal, explicit
+  \`social_weekly_save\`-stub).
+- Privat notis kräver ägarens verifierade sparade redaktionella
+  förberedelse och är unik på \`preparationId\`.
+- En ägaråterkallelse gör tidigare \`eventId\` ogiltigt för nytt sparande;
+  append-only consent och notisavtal kan inte ändras via UPDATE/DELETE.
+
+Output från testet:
+\`FAMILY_WEEKLY_SYNTHETIC_PG_ROLE_AND_CLAIM_TESTS_PASS\`,
+exit-kod 0. Källorna:
+\`docs/verification/fixtures/family-weekly-pg-smoke-setup.sql\` och
+\`docs/verification/fixtures/family-weekly-pg-smoke-assert.sql\`.
+
+**Detta är inte ett fullständigt Omnira end-to-end-/pgTAP-test**:
+Den riktiga \`social_weekly_save\`, faktiska kundkonton,
+privilegieringskonfigurationer och direkt samtidiga nätverksanrop
+måste fortfarande testas i en fullständig icke-produktionsmiljö
+med alla riktiga Omnira-migrationer. Testets dubblettscenario
+använder databasunikhet och syntetiska poster eftersom dagens datum
+inte kan autentiskt uppfylla 2027 års söndagsfönster.
+
+## Fortsatt releasegrind
+
+- Stäm av SQL med migrationspolicy och säkerhetsinventeringen;
+  inga nya tabeller i Canonical innan SCB-ledgeravvikelsen är löst.
+- Riktig operator-session verifierar consent; annan användare nekas;
+  verklig run-claim via Atlas generella workflow-system byggs och testas.
+- Schemaläggning installeras först efter ägargodkännande, budgetgrind,
+  pålitlig notis och godkänd Preview-/produktionsgranskning.
+- Kanalerna Facebook/Instagram publicerar först efter SEPARAT
+  native \`Godkänn och schemalägg veckans inlägg\`.
+
+
+## Extra modellgrind och beständigt aviseringskvitto
+
+En ytterligare kodgranskning stängde två risker före PR-uppladdning:
+
+1. Den exporterade textgeneratorn \`generateReviewOnlyWeeklyDrafts\` kräver numera
+   **själv** ett fullständigt, giltigt \`PaidAttemptReceipt\`. Om ett annat
+   anropsställe försöker hoppa över \`review-pipeline.ts\` nekas modellen
+   direkt utan provideranrop. Den matchar även den ägarverifierade
+   \`conversationId\` och samtyckets specifika \`eventId\`.
+2. Efter ett verifierat \`social_weekly_save\`-kvitto anropar
+   pipeline nu det befintliga \`recordWeeklyReviewNotice\` genom en
+   ägarkontrollerad \`noticeWriter\`. Endast ett sparat
+   \`preparationId\` kan registreras; SQL-ledgret har unikhet på detta ID.
+   Om aviseringen inte kan sparas blir status
+   \`review_ready\` med \`noticeStored=false\` i stället för att
+   starta om/återdebiterar AI-körningen eller ljuga om att inget sparats.
+   Det är **en intern notis**, inte e-post, push eller en publicering.
+
+Lokala resultat efter denna sista ändring:
+**112/112 Familje-Stunden-veckotester PASS** och scoped TypeScript **PASS**.
+Det särskilt isolerade PostgreSQL 16-testet för anspråk,
+ägarkontroll, RLS, unikhet, återkallelse och noticekvittot var PASS.
+Testcontainern var därefter **stoppad och borttagen**, utan bind mounts
+eller öppna nätverksportar.
+
+### Begränsningar och godkännande
+
+Det finns fortfarande inget fullt införlivat av dessa SQL-förslag i
+Omniras migrationsledger, inget faktiskt kört 2027-söndagsanspråk,
+ingen ny cron-route/cron-registrering och ingen live-operatörsklickad
+enrollment. Kodändringarna ligger enbart i PR #581. Vid framtida
+aktivering måste befintlig \`runs/drain\`-motor uttryckligen stödja
+\`family_weekly_editorial_drafts\` och faktiskt skapa ett unikt,
+\`max_attempts=1\`-jobb med origin/projekt/konversation/ägare inlästa
+från betrodda källor, inte från modellens output eller ett oskyddat API.
+
+
+## Fas 5 – verifierad Atlas-jobbskapare och separat RUN_BOUND-hanterare
+
+**Ej aktiverad / förslag i PR.**
+
+### Korrigering mot produktionens verkliga runs-schema
+
+En read-only kontroll av \`pg_constraint\` i Omniras verkliga projekt visade
+att \`runs_action_binding_complete\` kräver \`idempotency_key IS NULL\`
+när \`workflow_instance_id IS NULL\`, och
+\`runs_idempotency_key_sha256\` bara accepterar 64 små hextecken när
+nyckeln väl används. Våra tidigare planeringsanteckningar med en
+läsbar \`family_weekly_drafts:YYYYMMDD\` direkt i
+\`runs.idempotency_key\` hade alltså blivit nekade i produktion.
+
+Den nya, föreslagna
+\`docs/sql/20261028_family_weekly_run_creator_proposed.sql\` skapar
+i stället \`family_weekly_run_plans\` med en **permanent unik
+\`(project_id,week_start)\`**, och ett faktiskt \`public.runs\`-jobb
+med \`workflow_id=NULL\`, \`workflow_instance_id=NULL\`,
+\`idempotency_key=NULL\`, \`kind=family_weekly_editorial_drafts\`,
+\`max_attempts=1\`, inga action-/schema-/publiceringsrättigheter.
+
+Ägaren är inte klient-/modellstyrd: \`family_weekly_enqueue_once()\`
+utan argument läser **nuvarande** \`projects.owner_id\`, kontrollerar
+\`execution_paused=false\`, senaste aktiva append-only consent-event
+och en verklig projektbunden konversation som ägs av personen.
+Den får bara skriva söndag kl 15.00–15.59 Europe/Stockholm från och
+med 2027-01-03, med kommande måndag som målvecka.
+Redan köade, redan förberedda eller återkallade veckor går inte igenom.
+Inget cron-schema registreras i detta steg.
+
+\`family_weekly_authority_current()\` i det tidigare
+\`once_only_model_attempt_proposed.sql\` kräver nu även att
+den permanenta körningsplanen faktiskt motsvarar det aktuella
+\`runId\`, ägaren, \`conversationId\`, \`weekStart\`, samtyckets
+\`eventId\` och ett verkligt \`claim_id\` som fortfarande lever.
+Alla fyra SQL-dokumenten är **förslag**, inte kanoniska migreringar.
+
+### Kod (avstängd som standard)
+
+- \`run-creator.ts\` och \`run-creator-db.ts\`: snäv
+  \`family_weekly_enqueue_once()\`-adapter med exakt DB-kvitto.
+- \`/api/social-weekly-automation/cron\`: separat Bearer
+  \`CRON_SECRET\`-skyddad GET-ingång. Kräver **både**
+  \`FAMILY_WEEKLY_AUTO_DRAFTS_RUNTIME_ENABLED=true\` och
+  \`FAMILY_WEEKLY_ENQUEUE_ENABLED=true\`. Båda är
+  default OFF/inte satta i produktion. Inga klientparametrar för
+  ägare, vecka, modell eller bolag accepteras.
+- \`claimed-run-worker.ts\`: validerar de verkliga fälten i en
+  redan hämtad \`public.runs\`-rad, kräver runtime ON, kontrollerar
+  ägarskap/run-claim/vecka via service-role DB-RPC, återanvänder
+  befintliga \`getWeeklyContext\`, \`runStep\`, governed spend,
+  engångsanspråk, atomärt \`social_weekly_save\` och ägarprivat
+  in-app-granskningsnotis.
+- \`/api/runs/drain\` har nu en **egen, uttrycklig**
+  \`family_weekly_editorial_drafts\`-gren så sådana jobb aldrig
+  faller vidare till generic workflow/marknadsföring. Avslag
+  terminaliseras claim-bundet och misslyckad avisering triggar
+  varken nytt modell-anrop eller ny schemapublicering.
+- Ingen ändring har gjorts i Familje-Stundens befintliga
+  november/december-socialkö, SCB-grenen eller Strato-PR:n.
+
+### Verifierat
+
+- 44/44 riktade Vitest-tester för cronbehörighet, exakt datum,
+  dubbel kö, jobbformat, drift OFF, förfalskat claim och
+  fail-closed arbetshanterare godkända.
+- Avgränsad TypeScript-kontroll PASS inklusive
+  \`app/api/runs/drain/route.ts\`.
+- Riktig, lokal PostgreSQL 16 med \`--network none\`,
+  inga portar/volymer och syntetiska konton:
+  - \`normal\`: RLS, dubbletter, DB-signaturer, spärr före
+    januarifönstret, återkallelse och editorial-only: PASS.
+  - \`simulated-sunday\`: en **endast i Docker-fixturens
+    minneskopia** simulerad lokal söndag 2027-01-03 kl 15.10,
+    lyckad och exakt 1 native \`runs\`-INSERT och unik
+    \`family_weekly_run_plans\`-post; andra försöket blockerades.
+    Den då claimade körningen kunde göra exakt en betald
+    modell-admission, andra försöket blockerades; rätt
+    granskningskvitto skapades, en senare ägaråterkallelse
+    spärrade vidare godkännande.
+  - Båda resultat gav exit 0:
+    \`FAMILY_WEEKLY_SYNTHETIC_PG_ROLE_AND_CLAIM_TESTS_PASS\`
+    respektive
+    \`FAMILY_WEEKLY_SYNTHETIC_SUNDAY_QUEUE_ONCE_AND_MODEL_ONCE_PASS\`.
+  - Båda testcontainrarna stoppades och togs bort.
+
+Reproducerbart via
+\`docs/verification/fixtures/run-family-weekly-pg-smoke.ps1\`
+med valfri \`-Mode normal\` eller \`-Mode simulated-sunday\`.
+Det här är ett **isolerat syntetiskt** Postgres-test, inte
+full migration-replay med Omniras riktiga \`social_weekly_save\`
+eller något aktiverat januarischema. Fullständigt, inloggat
+Preview-acceptanstest och migrations-/RLS-revision återstår
+innan produktion.
+
+
+## Fas 6 – Atlas native jobbskapare, cron-adapter och kodregression
+
+### Implementerat i isolerad PR-gren, avstängt tills release
+
+- Ny **föreslagen och icke-applicerad** SQL:
+  \`docs/sql/20261028_family_weekly_run_creator_proposed.sql\`.
+  Den innehåller en permanent, unik \`family_weekly_run_plans\` för en
+  Familje-Stunden-vecka och \`family_weekly_enqueue_once()\` utan
+  användarinmatning. SQL väljer projektets befintliga ägare och en av
+  den ägarens faktiska projektbundna konversationer, kontrollerar
+  \`execution_paused=false\`, senaste aktiva consent-event och lokal
+  söndag 15:00–15:59 från januari 2027 innan ett review-only-jobb
+  får skapas i **befintliga** \`public.runs\`. En redan sparad
+  förberedelse eller veckokö gör omförsök till no-op.
+- **Verklig produktionsschemainkompatibilitet åtgärdad:** read-only
+  inspektion av \`pg_constraint\` visade att ett obundet \`runs\`-jobb
+  måste ha \`idempotency_key=NULL\`, trots att bundna workflow-actions
+  accepterar SHA-256. Därför använder denna nya arbetsström en egen
+  \`UNIQUE(project_id,week_start)\`-tabell i stället för att skriva en
+  läsbar veckonyckel till \`runs.idempotency_key\`. Detta har
+  bekräftats i en isolerad fixture med motsvarande DB-constraints.
+- \`run-creator.ts\` + \`run-creator-db.ts\` är fail-closed
+  enqueue-adaptrar. Den skyddade \`GET
+  /api/social-weekly-automation/cron\` kräver exakt server-side
+  \`CRON_SECRET\` och **båda** oberoende flaggorna
+  \`FAMILY_WEEKLY_AUTO_DRAFTS_RUNTIME_ENABLED=true\` och
+  \`FAMILY_WEEKLY_ENQUEUE_ENABLED=true\`. Alla flaggor är OFF
+  som standard; ingen \`vercel.json\`-registrering, \`pg_cron\`
+  eller annan timer har skapats i denna PR.
+- \`claimed-run-worker.ts\` har en egen verifierad jobbtyp
+  \`family_weekly_editorial_drafts\`, med samma \`RUN_BOUND\`
+  \`claim_id\` som den existerande \`runs/drain\`-motorn.
+  Den får aldrig skapa egna claims eller en ny identitet.
+  Funktionen accepterar bara aktuell status \`running\`,
+  \`attempts=max_attempts=1\`, rätt familjeprojekt,
+  obundet workflow, och en fullständig DB-verifierad
+  projektkonversation, ägare, consent-event och målvecka
+  via \`family_weekly_authority_current\`.
+- En liten uttrycklig gren i \`app/api/runs/drain/route.ts\`
+  hindrar jobbtypen från att falla vidare till generic
+  agent-/marketing-/site-builder-flöden. Om en kontroll fallerar
+  terminaliseras det ägda jobbet utan betalt modell-anrop;
+  endast ett verifierat redaktionellt resultat kan slutföras.
+- Kostnadsstyrd textgenerering, exact-once-admission,
+  atomär slutkontroll mot återkallat consent,
+  \`social_weekly_save\`, och unik intern granskningsnotis
+  återanvänder de föregående PR-etapperna. Ett misslyckat
+  notiskvitto startar **aldrig** en ny AI-generering.
+  Native separat owner-approval krävs fortfarande för
+  all schemaläggning och publicering.
+
+### Verifiering
+
+- **44/44** riktade nya testfall för cron-gate, verklig
+  run-claim-koppling, fel vecka, fel ägare, tidigare consent,
+  falsk claim-ID, och offentlig route som inte anropar DB
+  om en flagga/CRON_SECRET saknas.
+- **383/383** relevanta Vitest-testfall gröna: hela
+  Familje-Stunden weekly-sviten + Migration Guard v2
+  + Schema Security Invariant + Migration Security Gate.
+- Avgränsad TypeScript-kontroll **PASS**, inklusive hela
+  \`app/api/runs/drain/route.ts\` och den skyddade cron-routen.
+- Reproducerbar lokal PostgreSQL 16:
+  \`run-family-weekly-pg-smoke.ps1 -Mode normal\` **PASS**,
+  \`-Mode simulated-sunday\` **PASS**. Januariklockan simuleras
+  **endast genom ersättning i minnet när SQL strömmas till
+  en helt isolerad Docker-instans**; produktionskoden innehåller
+  inget testklock-undantag. Kontrollerade riktig run-INSERT
+  med NULL idempotency-key, ägarkoppling, en plan per vecka,
+  en paid-attempt, claim-rotation, post-save-kvitto och revoke.
+  Alla Docker-testcontainrar är stoppade och borttagna.
+- \`lib/qa/website-build-drain.test.ts\` kunde inte samlas
+  i denna arbetsyta eftersom den kräver en särskild
+  \`WEBSITE_BUILD_TEST_DATABASE_NAME\`-fixture. Den är
+  inte en del av ovanstående 383 gröna tester och anges
+  **inte** som godkänd. Ingen sådan fixture fabricerades
+  eller ärvd testdatabas användes.
+
+### Kvarvarande release-gates
+
+1. SCB-arbetsströmmens parallella migrationsledgeravvikelse
+   måste lösas i sin egen PR, inte kopieras in här.
+2. Alla **fyra** föreslagna SQL-filer för samtycke,
+   avisering, veckokö och betalt modellanspråk ska
+   granskas/tillämpas genom normal migreringspolicy,
+   med full PostgreSQL/pgTAP-role replay samt RLS
+   mot Omniras riktiga migrationsuppsättning.
+3. Skyddad Preview med ägarens autentiserade session
+   och kanonisk \`social_weekly_save\` måste testas.
+   Den riktiga söndagskörningen 2027-01-03 är ännu
+   **inte** installerad eller aktiv.
+4. Ägaren behöver klicka ett uttryckligt, tidsbegränsat
+   consent i Omnira. Om en körning aktiveras senare
+   förbereder den **bara** utkast; faktiska sociala
+   publiceringar har sin separat godkända kö.
+
+PR:n ska stanna **DRAFT** tills dessa grindar är klara.
+
+
+## Fas 7 – Native SQL-kontrakt och uppdatering till aktuell main
+
+2026-10-28, 14:30 svensk tid. Den här etappen korrigerar ett konkret
+integrationsglapp mellan AI-utkast och den **faktiska** produktionsfunktionen
+\`public.social_weekly_save(jsonb,jsonb)\`, utan någon produktionsskrivning.
+
+### Native-save-kontrakt verifierat läsbart i produktion
+
+\`pg_get_functiondef\` och den kanoniska migrationen
+\`apps/web/supabase/migrations/20261026090516_family_weekly_preparation.sql\`
+bekräftar att varje enskilt utkast måste ha exakt nyckeluppsättning:
+
+\`slotKey, channel, assetId, text, title, sourceReferences, scheduledAt\`.
+
+Den textstyrda modellen får avsiktligt inte välja tider och returnerar
+**inte** \`scheduledAt\`. Föregående review-pipeline skickade därför ett
+utanpåliggande \`WeeklySave\` utan detta obligatoriska fält genom vår nya
+atomära editor-RPC. Det hade inte fungerat mot den kanoniska
+\`social_weekly_save\` trots att syntetisk SQL-stub hade passerat.
+
+\`paid-attempt-db.ts\` härleder nu \`scheduledAt\` från
+\`slotKey\` med samma \`resolveStockholmSchedule\` som den gamla,
+godkända \`prepareWeeklyDrafts\`. Endast vanligt format
+\`YYYY-MM-DDT17:00:ordinary\` respektive \`...T20:30:ordinary\`
+är giltigt; explicit modellstyrd tid skrivs alltid över. Alla tidigare
+verktygskontrakt (ägare, context-hash, komplett Facebook/Instagram-par,
+dubbletter, källreferenser) kontrolleras fortsatt i native SQL.
+
+Läsbar kontroll mot den verkliga produktionsfunktionen
+\`social_schedule_resolve_minute\` bekräftade:
+
+- Tisdag 2027-01-05 17:00 Stockholm = 16:00 UTC.
+- Fredag 2027-01-08 20:30 Stockholm = 19:30 UTC.
+- Tisdag 2027-07-06 17:00 Stockholm = 15:00 UTC.
+
+\`service_role\` har också \`EXECUTE\` på
+\`public.social_weekly_save(jsonb,jsonb)\`. Inga produktionsfunktioner
+anropades med muterande innehåll.
+
+### SCB-samordning utan övertramp
+
+Den tidigare SCB migration-filen
+\`apps/web/supabase/migrations/20261028072659_handlarborsen_scb_review_only_candidates.sql\`
+har kommit in i \`origin/main\`. Denna branch har
+samordnats med aktuell \`origin/main\` via en vanlig merge,
+**utan konflikt, branch-omskrivning, force-push eller ändring i den
+parallella SCB-worktreen**.
+
+### Verifiering av sammanlagd kod
+
+- **386/386** relevanta Vitest-tester PASS i 17 suites för
+  Familje-Stunden weekly + migrationssäkerhet + schema-invarianter.
+- Scoped TypeScript inklusive \`runs/drain\`,
+  \`paid-attempt-db.ts\` och den skyddade cron-routen PASS.
+- Lokalt \`node scripts/check-migrations.mjs\` returnerar 0
+  men med besked **"not on Vercel — skipping"**; därför betraktas
+  detta inte som kontroll av produktions-ledger.
+- Nästa obligatoriska verifiering är en **färsk Vercel Preview
+  för exakt uppdaterad branch-commit**.
+- Fyra nya SQL-förslag kvarstår i \`docs/sql\`; de är ännu
+  **inte** produktionsmigrationer. Ingen automatisk körning,
+  publicering eller avisering har aktiverats.
+
+
+## Fas 8 – Verifierad Preview, produktionsschema och stoppgrindar (2026-10-28)
+
+**Verifiering före denna etapps ändringar:** Exakt commit
+`527c6e1af7d357d2e0c343443a92be3b8a254a67` har Vercel Preview
+`READY` (`dpl_DaUbFLfJDFUJXtPNWcA3Qyq7NysU`), GitHub/Vercel status
+`success` och åtta avslutade GitHub Actions-workflows med `success`.
+SCB-migrationsledgern blockerar inte längre denna Preview. PR #581
+är fortfarande DRAFT och inte mergad. En ny kodcommit kräver egen CI/Preview.
+
+**Läsbar verklig databasverifiering:** Omniras Supabase/PostgreSQL 17
+innehåller de kanoniska funktionerna `social_weekly_context`,
+`social_weekly_save`, `social_content_active` och
+`social_schedule_resolve_minute`. `runs` kräver NULL
+`idempotency_key` på obundna jobb. Familje-Stunden har en godkänd
+kanalplan, ägardata och 20 beskrivna bilder; Facebook/Instagram-bindningarna
+är `provider_attested` och inte blockerade. Veckan 4–10 januari 2027
+har inga befintliga schemalagda jobb eller sparade veckoförberedelser.
+Ingen skrivning eller muterande funktion anropades i produktionsdatabasen.
+
+**Ny identifierad skyddslucka och avgränsad kodrättning:**
+De föreslagna RPC:erna kontrollerade inte samtliga stoppvillkor i
+kanonisk `social_content_active` innan jobbkön eller kostnadsanspråket.
+`family_weekly_enqueue_once`, `family_weekly_run_plan_guard` och
+`family_weekly_authority_current` kräver nu att
+`projects.execution_paused=false`, att ingen inaktiv
+`project_lifecycle` finns och att `platform_config.automation_paused`
+inte är satt. Samma källa används i de existerande editorflödena.
+
+**Isolerad PostgreSQL-verifiering:** Både normalt roll-/RLS-/claim-test
+och simulerad söndag 3 januari 2027 har PASS, inklusive projektstopp,
+globalt STOP, inaktiv livscykel och globalt STOP mellan RUN-claim och
+betalt modellanspråk. Dockercontainrarna har stoppats och tagits bort.
+Regressionstester låser även sommartidskonvertering till 15:00 UTC
+för tisdag 6 juli 2027 kl. 17:00 Stockholm, oavsett modellens fält.
+
+**Kvarstående grindar:** En autentiserad ägarsession kunde inte
+öppnas via Vercels skyddade Preview; den direkta läskontrollen returnerade
+401. E2E för UI och full kanonisk `social_weekly_save` med riktig
+schema-replay i en skyddad separat testmiljö återstår. Våra isolerade
+PostgreSQL-tester använder uttryckligen en stub för native save och
+får inte beskrivas som ett godkänt end-to-end-test mot riktig
+`social_weekly_save`. Ingen SQL har installerats i Supabase, ingen
+cron är aktiverad, inga AI-modellanrop har betalats och inget har
+publicerats. Alla flaggor ska fortsätta vara OFF tills separata
+granskningar och uttryckligt ägargodkännande är klara.
+
+**Fas 8 verifierad testmatris:** 17/17 relevanta Vitest-sviter,
+387/387 testfall PASS efter säkerhetsskärpningen; fullständig
+`npm run typecheck` i `apps/web` PASS (exit 0); `git diff --check`
+PASS. Den tidigare Website Build-testrutinen utan sin särskilda
+databasfixture ingår inte i dessa testresultat.
+
+
+## Fas 9 – Canonical native social_weekly_save i isolerad PostgreSQL (2026-10-28)
+
+Efter Fas 8 genomfördes en ytterligare **skrivskyddad gentemot alla riktiga
+Supabase-projekt** integrationstestning. En tredje runner-mode,
+`-Mode native-editorial`, startar endast en tillfällig PostgreSQL 16 i
+Docker med `--network none` och utan externa portar, mounts eller volymer.
+Den läser **exakt den kanoniska funktionskroppen**
+`public.social_weekly_save(jsonb,jsonb)` från
+`apps/web/supabase/migrations/20261026090516_family_weekly_preparation.sql`
+och installerar en lokal `CREATE OR REPLACE`-kopia ovanpå den äldre
+syntetiska test-stubben. Den faktiska funktionen är därmed under test,
+medan beroende-funktioner (`social_weekly_context`,
+`social_content_save`, källa/profil/asset- och granskningsunderlag)
+uttryckligen är isolerade testdubletter. Detta **är inte en full replay
+av hela produktionsschemat eller full E2E**.
+
+Native PostgreSQL-test: **PASS**. Verifierar explicit att saknat
+`scheduledAt` får fel av den riktiga funktionen; komplett Facebook-
+och Instagram-par på tisdag kl. 17.00 Stockholm respektive fredag
+kl. 20.30 sparar fyra redaktionella utkast med noll
+publiceringsbehörighet; samma kvitto/antal poster återkommer vid
+idempotent återupprepning; ägarprivat notis knyts till verkligt
+`preparationId`; efter ett återkallat consent får inget nytt sparande
+ske. Alla operationer gjordes i den tillfälliga testdatabasen, som
+stoppats och tagits bort.
+
+Det befintliga normala PostgreSQL- och simulerade söndagstestet kvarstår
+som separata modes. Testverktygets Docker-cleanup inväntar nu asynkron
+`--rm`-städning efter `docker stop` utan att röra andra containrar.
+
+Verifierat för commit `88517e0`: alla åtta GitHub Actions-workflows
+**success** och exakt Vercel Preview **READY**. Fas 9 är en ny,
+ännu ej CI-verifierad kodändring fram till egen push och ny Preview.
+
+## Fas 10 – Kanonisk content-writer och negativa behörighetsfall (2026-10-28)
+
+Ny isolerad runner-mode: `-Mode native-content`. Utgår från samma
+ofarliga PostgreSQL 16-container (`--network none`, inga publika portar,
+volymer eller mounts) som övriga modes. Kör fyra **föreslagna, ej
+produktinstallerade** Family SQL-filer i enbart testdatabasen.
+
+Förutom den redan kanoniska `social_weekly_save` läses nu även
+**ordagrann SQL-kod från den kanoniska migrationen**
+`20261016100941_social_content_preparation_v1.sql` för
+`social_content_posts`, `social_content_revisions`,
+`social_content_decisions`, `social_content_validate`,
+`social_content_requirements`, `social_content_read` och
+`social_content_save`. De kanoniska tabell- och funktionsutdragen laddas
+utan att reimplementera affärslogiken. Övriga beroenden (identitetsfixture,
+projekt, godkänd kanalplan, kontobindningar, en ägd JPEG och
+`social_weekly_context`) är uttryckligen testdubletter, inte en dump
+eller replay av hela produktionsdatabasen.
+
+`native-content` har PASS för 4 sparade riktiga revisioner under
+4 redaktionella inlägg, rätt Facebook-/Instagram-kontobindningar,
+bild-SHA, godkänd plan, Stockholmstider, en idempotent
+veckoförberedelse, en kopplad intern avisering och ingen automatisk
+ägarattest. Fyra **negativa** kanoniska writer-kontroller passerade:
+främmande ägare, oägd bild, spärrad kontobindning och saknat
+plangodkännande. De avslås utan ytterligare inlägg eller revisioner.
+
+Testerna är **inte** full-schema-replay, riktigt Supabase-RLS med
+autentiserad ägarsession, kundpublicering, leverans, externa konton,
+eller betald AI-generering. Dessa steg är fortfarande RELEASE GATES.
+Ingen produktionstabell har skapats, ingen cron är på, inget AI-anrop
+har gjorts och inget har publicerats.
+
+## Fas 11 – UI-kvitto, återkallelse och isolerad webbläsargranskning (2026-10-28)
+
+Den befintliga `SocialWeeklyAutomationControls` hade ett viktigt fel:
+när `POST /api/social-weekly-automation` misslyckades eller kvittot
+tappades, sade gränssnittet att ingen ändring hade sparats. Ett POST kan
+dock redan ha committats innan dess HTTP-svar går förlorat. Det var en
+felaktig och säkerhetskänslig slutsats för både opt-in och återkallelse.
+
+Gränssnittet behandlar nu ett tvetydigt POST-kvitto som **osäkert**:
+inga nya opt-in-/revoke-knappar visas och inget POST upprepas
+automatiskt. Ägaren måste först välja **Kontrollera sparad status**,
+vilket gör en separat, ej cachad, autentiserad GET-läsning och
+återställer knapparna först när ett strikt review-only-svar har
+verifierats. Även ett felaktigt GET-svar låser beslutsytan till nästa
+bekräftade statuskontroll. Ingen status får påstå
+`canSchedule=true` eller `canPublish=true`.
+
+Ägaren får fortfarande återkalla ett tidigare godkännande även när den
+separata schemapanelen är disabled/under omläsning; samma
+serverstyrda project-owner-, operator-, same-origin- och session-RLS-
+kontroller gäller vid själva POST-anropet. Att granskningslänken i
+panelens notice-lista nu är en fast **relativ** projektsökväg håller
+läsgranskning inom aktuell Preview/produktionsorigin utan att navigera
+till en annan deployment. Främmande projekt renderar inte kontrollen
+och anropar inte API:et.
+
+Testad i Chromium med befintlig isolerad
+`playwright.weekly-preparation.config.ts` och Vite-fixture;
+**9/9 Playwright PASS** inklusive explicit opt-in/revoke, osäkert kvitto,
+återläsning utan dubbla POST, disabled schemapanel, projektgräns,
+notislänk, felaktigt GET-svar, korrupta granskningsaviseringar och befintlig oberoende
+innehålls-/schemagranskning. Veckosviten **137/137 Vitest PASS**
+(inklusive ett nytt server-API-test där INSERT kan lyckas före att den
+efterföljande läsningen misslyckas). Hela
+`npm --prefix apps/web run typecheck` **PASS**.
+
+**Begränsning:** Playwright testade riktiga React-komponenter men
+API-svaren var uttryckliga testdubletter. Det är inte ett inloggat
+ägartest mot Vercels skyddade Preview och inte ett fullschema
+Supabase/Postgres end-to-end-test. Inga API-flaggor, cron, SQL-migrationer,
+AI-anrop eller publiceringsjobb har aktiverats.
+
+## Fas 12 – Skydd mot framtida regressioner i GitHub CI (2026-10-28)
+
+De 137 veckorelaterade Vitest-testerna och 9 isolerade Chromium/
+Playwright-testerna kördes tidigare lokalt men saknades som **obligatoriskt
+exekverade steg** i den befintliga GitHub-workflowen
+`Atlas Studio Responsive UI`.
+
+`.github/workflows/atlas-studio-ui.yml` anropar nu
+`npx vitest run lib/social-launch/weekly` och
+`npx playwright test --config=playwright.weekly-preparation.config.ts`
+i samma redan existerande UI-jobb efter installation av Chromium.
+Workflowens filfilter täcker nu veckans React-fixtures, API-rutter,
+den centrala runs/drain-vägen, Playwright-konfigurationen, berörda
+SQL-förslag och SQL-testfixtures. Denna ändring skapar ingen ny
+arbetskö, ingen produktionscron och ger ingen publiceringsbehörighet.
+
+**Verifikationsgrind:** körning och slutlig status för den exakta nya
+committen i GitHub Actions måste kontrolleras efter push; lokal
+testpassning ensam räcker inte som CI-bevis.
+
+## Fas 14 – Riktigt kanoniskt claim_runs i isolerad PostgreSQL (2026-10-28)
+
+Efter CI-integrationen av de fyra tidigare testlägena har vi lagt till
+ett femte: `-Mode native-claim`. Den befintliga testköraren laddar
+**exakt den kanoniska funktionen** `public.claim_runs(integer,integer)`
+från `apps/web/supabase/migrations/20261015041654_atlas_builder_studio_workspace.sql`
+i enbart en disposable PostgreSQL 16-container med `--network none`,
+utan volymer eller publika portar. Funktionen har även granskats läsbart
+mot Omniras aktiva Supabase/PostgreSQL 17-definition.
+
+En extra minimal fixture tillför `platform_config.id=1`,
+`runs.created_at/claimed_at/started_at` och
+`project_lifecycle.version` som **faktiska dependency-kolumner**,
+utan att ändra Omniras produktionsschema eller beröra andra Dockercontainrar.
+Endast de föreslagna veckofunktionernas lokala söndagsklocka ersätts
+i minnet med 3 januari 2027 kl. 15:10 Stockholm.
+
+Detta test använder **den faktiska `claim_runs`-uppdateringen**, inte
+en manuell `UPDATE runs SET status='running'`. Det kräver att
+Familje-Stundens native köpost skapas en gång med
+`idempotency_key=NULL`, att projektstopp och globalt STOP blockerar
+claim, att riktiga `claim_id`, lease, försök och körstatus skapas,
+att ett andra claim inte hittar ett redan taget jobb, och att
+`family_weekly_authority_current` godtar just det verifierade
+native-jobbet. Globalt STOP mellan claim och betalt anspråk blockerar
+kostnad, därefter tillåts högst ett betalt anspråk per vecka.
+Utgången lease och ett separat autentiserat owner-revoke tar bort
+auktoriteten utan att radera permanenta kö-/kostnadsledgern.
+
+**Windows-test: PASS**, exitkod 0. Temporary container stoppades
+och avlägsnades. Det nya läget är tillagt i den befintliga
+`Atlas Studio Responsive UI`-workflowens separata disposable
+PostgreSQL-jobb. Ny commit kräver egen verifierad GitHub CI/Preview.
+
+**Viktig begränsning:** Detta är verklig kanonisk `claim_runs` med
+isolerade, noggrant begränsade beroendetabeller – inte en full replay
+av alla 163 migrationsfiler, en riktig Supabase Auth-session eller
+en fullständig publiceringskedja. Ingen cron, produktionsmigration,
+AI-kostnad eller automatisk postning har aktiverats.
+
+## Fas 15 – PostgreSQL 17 och produktionens parent-RLS (2026-10-28)
+
+Första verifiering mot Omniras produktions-PostgreSQL gjordes
+**enbart läsbart**: `pg_policies` visade
+`projects_owner`, `conversations_owner` och `runs_owner`
+som `FOR ALL TO PUBLIC` med owner-principaler via `auth.uid()`
+och ägda projekt. Testsviten kompletterades med
+`family-weekly-pg-parent-rls.sql` som aktiverar RLS på de syntetiska
+parent-tabellerna och återger **deras faktiskt observerade
+RLS-predikat**. En autentiserad ägare får läsa sitt projekt,
+sin konversation och sitt jobb; främmande inloggad användare får
+noll rader trots SELECT-behörighet; service_role ser fixturedata.
+`platform_config` och `project_lifecycle` får också RLS i fixture
+(utan att ge vanligt inloggade användare egna policies).
+
+Testköraren accepterar endast `postgres:16` eller
+`postgres:17-alpine` via en ny explicit `-PostgresImage`-parameter.
+`--pull=never` och `docker image inspect` hindrar oplanerad
+nedladdning och diskförbrukning på stationära datorn.
+Samtliga fem isolerade testlägen **PASS lokalt på PostgreSQL 17**:
+`normal`, `simulated-sunday`, `native-editorial`,
+`native-content` och `native-claim`. Därtill är
+`normal` PASS på PostgreSQL 16 med parent-RLS påslagen.
+Varje container stoppades och avlägsnades automatiskt.
+
+Den befintliga GitHub-jobbkön verifierar nu alla fem lägen på
+PostgreSQL 16 och kompletterar med `normal`, `native-claim`
+och `native-content` på PostgreSQL 17. GitHub ska kontrollera
+slutresultat för exakt ny commit innan CI kallas grönt.
+
+**Avgränsning:** Parent-RLS-reglerna hämtades från riktiga
+`pg_policies`, men de underliggande testtabellerna och vissa
+beroendefunktioner är fortfarande smala testdubletter.
+Detta är ännu **inte** replay av hela produktionsschemat med 163
+migrationsfiler, RLS under riktig autentiserad Vercel Preview-session
+eller någon faktisk social publicering. Inga Supabase-skrivningar,
+produktnycklar, cronaktiveringar eller betalda modellkörningar gjordes.
+
+## Fas 16 – Kanoniska runs-bindnings- och kostnadsbegränsningar (2026-10-28)
+
+Ytterligare en **läsbar produktionsgranskning** via
+`pg_get_constraintdef` av `public.runs` identifierade att
+den tidigare syntetiska `runs_action_binding_complete` bara
+modellerade två kolumner och därför inte kunde avslöja
+felaktiga, icke-tomma action-proveniensfält på obundna jobb.
+
+Den isolerade fixturen `family-weekly-pg-runs-constraints.sql`
+lägger nu till samma relevanta action-kolumner och återskapar de
+faktiskt observerade CHECK-villkoren för:
+`runs_action_binding_complete`,
+`runs_action_class_vocabulary`,
+`runs_idempotency_key_sha256` (redan i grundtabellen),
+`runs_material_actions_single_attempt`,
+`runs_unauthorized_action_is_read_only` och
+`runs_status_check`. Negativa tester förkastar obunden
+action-proveniens, idempotency_key på obundet jobb, icke tillåten
+status och ett material/finansiellt jobb med flera försök.
+
+**Lokalt PASS** med dessa skärpta villkor: PostgreSQL 17
+`normal`, `native-claim` och `native-content`, samt
+PostgreSQL 16 `normal` och `native-claim`. Alla kördes i redan cachade
+engångscontainrar utan nätverk; samtliga containrar togs bort.
+
+**Kvarstår:** detta återskapar ett avgränsat urval av kanoniska
+CHECK-constraints, inte alla triggers, FK-beroenden, fullständig
+Supabase Auth-miljö eller samtliga produktionsmigrationsfiler.
+Inget test får betraktas som ett produktionsgodkännande. Samtliga
+Family SQL-förslag är fortsatt oinstallerade och automatiken OFF.
+
+## Fas 17 – Kanonisk veckokontext → riktigt redaktionellt sparande (2026-10-28)
+
+Ny isolerad `-Mode native-context` laddar utan omskrivning
+SQL-kropparna ur de kanoniska migrationerna för:
+`social_content_posts/revisions/decisions`,
+`social_content_validate/requirements/read/save`,
+`social_project_profiles/profile_revisions`,
+`social_profile_read`,
+`social_schedule_fields`, `social_schedule_canonical`,
+`social_schedule_resolve_minute`,
+`social_repeat_normalize`, `social_repeat_similarity`,
+`social_weekly_context` och `social_weekly_save`.
+Detta är första isolerade testläget där både den **faktiska
+source-backed context-hashen** och den **faktiska veckospararen**
+körs tillsammans med de verkliga innehålls- och profilläsarna.
+
+Testdatat är syntetiskt. En redan sparad, ägd JPEG och en
+tidigare redaktionell content-revision (skapad genom den riktiga
+`social_content_save`) tillför dokumenterad bildbeskrivning;
+en godkänd kanalplan, två `provider_attested` konton och en
+profilrevision används av de verkliga läsarna. Begränsade
+schemafixturer finns fortfarande för `projects`, `runs`,
+`social_account_bindings`, `social_schedule_jobs`,
+`social_publications` och `social_monthly_release_rules`.
+Den projektägda principalkontrollen, trots separat testning på
+många nivåer, är också en begränsad testdublett i detta läge.
+Detta är **inte** replay av hela produktionsschemat.
+
+`family-weekly-pg-native-context-assert.sql` kräver två
+verifierade Facebook-/Instagram-bindningar, faktakällans
+profil-SHA, en egen beskriven JPEG, en giltig och stabil
+SHA-256-kontexthash och inga publiceringar, reservationsjobb
+eller redan skapade förberedelser. Den verkliga context-hashen
+måste ändras när Instagram-bindningen spärras enligt kontoreglerna
+och sedan återgå när den tillfälliga testtransaktionen rullas tillbaka;
+fel ägare och icke-måndag
+avvisas.
+
+`family-weekly-pg-native-context-save-assert.sql` kräver att
+saknad `scheduledAt`, manipulerad hash och giltig kontospärr
+mellan kontextläsning och sparning **stoppar skrivning**.
+Med korrekt underlag sparar den verkliga `social_weekly_save`
+fyra Facebook-/Instagram-draftrevisioner atomiskt för tisdag
+och fredag med exakt två lokala Stockholm-tider, utan
+redaktionellt godkännande, schemaläggning eller publicering.
+Identiskt omförsök återanvänder preparationId; en privat
+granskningsavisering kopplas till det sparade materialet och
+ägarens efterföljande återkallelse blockerar gammal authority.
+Inga modeller eller externa sociala API:er anropas.
+
+Både PostgreSQL 16 och 17: **native-context PASS**, exitkod 0,
+engångscontainrar borttagna. Tillägget körs tillsammans med
+befintliga PG-lägen i samma isolerade GitHub-jobb;
+en CI-körning för exakt ny commit måste fortfarande granskas.
+**Återstående release-grindar:** fullständigt relevant
+migrations-/FK-/triggerreplay, verklig autentiserad ägar-
+Preview-acceptans och uttrycklig separat aktiveringsgranskning.
+
+## Fas 18 – Kanoniska sociala kontobindningar och engångsspärr (2026-10-29)
+
+Läsbar jämförelse av den aktiva Supabase-funktionen
+`public.social_account_bindings_guard_update()` visade tre starka
+regler som tidigare testdata inte efterliknade:
+en `provider_attested`-bindning får inte nedgraderas,
+`blocked_at` + `blocked_reason` får inte återställas efter en spärr,
+och en ersatt (`superseded_at`) bindning får inte ändras.
+Tidigare `native-context` simulerade däremot
+`verification='stale'`, vilket den verkliga tabellen avvisar.
+
+Ett sjunde, separat isolerat läge `-Mode native-binding` laddar
+därför den **kanoniska** `social_account_bindings`-tabellen,
+CHECK-villkoren, de tre unika kontoindexen,
+insert/update/delete/truncate-triggers och
+`social_account_rebind` direkt ur
+`20260914120000_social_account_bindings.sql`.
+Det använder inga verkliga konton eller credentials.
+Kontodata, bilder och projektägare i testet är enbart påhittade,
+och de övriga syntetiska relationerna redovisas öppet som sådana.
+
+De tidigare `native-context`-testerna använder nu i stället
+en **giltig tillfällig kontospärr**
+(`blocked_reason='account_mismatch'`) för att pröva att
+kontexthashen ändras och att den kanoniska
+`social_weekly_save` stoppar skrivning efter en spärr.
+Eftersom riktiga spärrar aldrig får lyftas rullas själva
+spärrtestet tillbaka med ett isolerat PL/pgSQL-undantagsblock;
+inget `UPDATE` som återöppnar kontot görs.
+
+`family-weekly-pg-native-binding-assert.sql` testar dessutom
+negativa fall: avvisad nedgradering, oföränderlig
+`external_account_id`, spärr som inte kan hävas,
+avvisad dubblerad aktiv kontobindning,
+okänd verifieringsstatus, förhindrad DELETE och ett
+atomiskt rebind-anrop där gammal bindning ersätts med en
+ny provider-attested bindning. Såväl ACL/RLS-gränsen för
+anonyma/inloggade användare som bibehållen innehålls-,
+kontext- och redaktionell save-chain kontrolleras.
+
+**Lokalt PASS** på PostgreSQL 16 och 17 för `native-binding`,
+och befintligt `native-context` passerade på PostgreSQL 17
+efter att testet korrigerats. Varje engångscontainer
+raderades. GitHub CI kör nu det sjunde läget på PostgreSQL 16
+och det femte kritiska läget på PostgreSQL 17; en ny exakt
+commit måste fortfarande passera samtliga workflow-kontroller.
+
+**Fortsatt release-grind:** den kanoniska
+`social_launch_plan*`-grafen, `assets` och andra bredare
+FK-/triggerrelationer är ännu delvis smalare testdubletter.
+Detta är inte en fullständigt återspelad produktionsdatabas eller
+ett ägartest i en inloggad Vercel Preview. Inga
+produktionsmigrationer, schemalagda jobb, kostnadsförande
+modellanrop eller publikationer har gjorts.
+
+## Fas 19 – Verklig kanalplansgraf och medieidentitet (2026-10-29)
+
+Det tidigare `native-binding`-testläget använde riktiga
+kontobindningar, profil-/innehållsläsare och veckospararen, men hade
+fortfarande **förenklade tabeller för kanalplaner och bilder**.
+Det nya, strikt isolerade testläget `-Mode native-plan-assets`
+ersätter också dessa två beroenden med kanoniska SQL-källor:
+
+- `20261016052226_social_launch_plans_v1.sql` läses med
+  de exakta `social_launch_plans`,
+  `social_launch_plan_revisions` och
+  `social_launch_plan_decisions`-tabellerna, sammansatta FK,
+  CHECK/UNIQUE/RLS, immutabla UPDATE/DELETE/TRUNCATE-triggers
+  och verkliga `social_launch_plan_read/save/decide`.
+  Enbart `CREATE` för testets redan befintliga
+  `social_launch_assert_owner` ändras till `CREATE OR REPLACE`;
+  den kanoniska funktionskroppen är intakt.
+- `20260902_media_asset_foundation.sql` används oförändrat
+  för `public.assets`-tabellen med korrekt byte_size,
+  SHA-256, mediaegenskaper, status, visibility, bucket/path,
+  lagringsunikhet och projekt-FK. Den kanoniska
+  `assets_owner`-policyn laddas från samma migration.
+  Testets explicita SELECT-grants matchar observerade
+  produktionstillståndet; ingen annan medieproveniens eller
+  faktisk lagrad fil kopieras.
+- `social_content_revisions` och
+  `social_content_decisions` får också de verkliga
+  oföränderlighetstriggers som tidigare inte ingick i
+  den smalare innehållstestfixturen.
+
+Detta test lägger in **enbart påhittad** projekt-/plan-/bildmetadata
+och demonstrerar den kanoniska ägarstyrda planens läsning,
+sparande och godkännande, med en tillfällig planändring som
+rullas tillbaka. Negativa SQL-assertioner kräver att
+felaktig plan-SHA nekas av den sammansatta FK:n,
+plan-/innehållsrevisioner och planbeslut inte kan muteras,
+ogiltig bildstorlek, hash och mediatyp nekas,
+samma storage-object inte kan knytas till två asset-ID:n,
+okänt projekt stoppas av FK och andra användare
+inte får se ägarens bilder genom riktig RLS.
+Planernas internrelationer kan inte läsas direkt av en
+vanligt autentiserad användare.
+
+Samma `native-plan-assets`-körning kräver samtidigt den
+redan verifierade kedjan kanonisk veckokontext →
+fakta-/konto-/bildhash → fyra review-only
+innehållsrevisioner → idempotent försök →
+ägarenotifiering → återkallad behörighet.
+Kontobindningarnas riktiga one-way-spärrar och
+`social_account_rebind` verifieras också.
+
+**Lokalt:** PASS på PostgreSQL 16 och 17 med exitkod 0,
+och båda temporära testcontainrar avlägsnade.
+GitHub-jobbet utökas till **8 lägen på PG16 och 6 på PG17**;
+resultatet för den exakta nya committen kontrolleras
+separat innan den kan beskrivas som CI-godkänd.
+
+**Kvarvarande gränser:** `projects`, `runs`,
+`conversations`, `social_schedule_jobs`,
+`social_publications`, månadens release-regler och
+vissa auth-/proveniensberoenden är fortfarande
+begränsade testfixturer. Detta är alltså inte
+ett fullständigt replay av samtliga 163 migrationer
+eller en verklig användarinloggad Preview-acceptans.
+Inga produktionsskrivningar, cronregistreringar,
+modellkostnader, utskick eller publiceringar.
+
+## Fas 20 – Kanoniska schemaläggnings- och publiceringstabeller (2026-10-29)
+
+Det nya isolerade testläget `-Mode native-schedule` bygger ovanpå
+föregående `native-plan-assets`. Det ersätter de kvarvarande
+förenklade schemaläggnings-/publiceringstabellerna med SQL som
+hämtas oförändrat ur följande granskade migrationer:
+
+- `20261016115402_social_manual_publication_v1.sql`:
+  verkliga `social_publications`, `social_publication_events`,
+  projektrelaterade FK, publiceringskvitto-CHECK, RLS, service grants
+  och immutabla eventtriggers.
+- `20261018071209_social_schedule_batches.sql`:
+  verkliga `social_schedule_batches`, `social_schedule_decisions`,
+  `social_schedule_jobs`, `social_schedule_events`,
+  `social_monthly_release_rules` och
+  `social_monthly_release_evidence` med sammansatta FK,
+  reservations-/utgångs-CHECK, en-gångs-UNIQUE-index,
+  RLS och oföränderliga batch-/besluts-/evidenstriggers.
+- Samma migrationsfiler levererar de verkliga
+  `social_publication_guard` och `social_schedule_item_guard`,
+  som bara exponeras till `service_role` i denna testfixtur.
+
+Faktisk dispatcher/cron, provider-token, kvitto-mottagning,
+schemamodell-/AI-kostnad eller publikations-API installeras
+**inte** i testdatabasen. `family-weekly-pg-native-schedule-seed.sql`
+skapar enbart påhittad profilrevision, ett eget beskrivet bildobjekt,
+en stängd månadsregel och det tidigare godkända kanalplansunderlaget.
+Därefter körs de tidigare verifierade native-funktionerna
+för kontexthash och **fyra redaktionella utkast**.
+
+`family-weekly-pg-native-schedule-assert.sql` kontrollerar
+**att inga redaktionella beslut, schemabatcher, godkännanden,
+schemauppdrag, publikationer eller providerhändelser skapas** av
+veckoförberedelsen. Verkliga `social_schedule_item_guard`
+nekar ett oförhandsgranskat utkast och verkliga
+`social_publication_guard` nekar manuell publicering av
+samma utkast. Kanoniska CHECK-villkor nekar en publikation
+utan giltigt publiceringskvitto, schemalagd auktoritet utan
+bundet jobb och ett schemauppdrag vars expiration inte är
+exakt tio minuter efter starten. Serverrollen får inte
+`UPDATE`-rättighet till immutabla schemabatcher/beslut;
+separat test som DB-superuser verifierar att den verkliga
+immutabilitetstriggern nekar en sådan ändring.
+Alla temporära positiva batch-/beslutsrader rullas tillbaka
+innan testet avslutas.
+
+**Lokalt verifierat: `native-schedule` PASS på både PostgreSQL 16
+och 17, båda containrarna borttagna.** CI utökas till **9 PG16-
+och 7 PG17-lägen** och ska verifieras för exakt ny commit innan
+vi anger grönt totalresultat.
+
+**Avgränsningar:** detta är fortfarande en beroendebegränsad
+isolerad SQL-fixture med syntetiska parent-`projects`,
+`conversations` och `runs`, inte ett fullständigt
+Supabase-prod-schema med live auth/session eller körd social leverans.
+Hela det verkliga sociala migrationsförloppet efter de två
+tabellmigrationerna är inte återspelat. De fyra Familje-Stunden-
+förslagen förblir oinstallerade, veckocron AV och PR #581 Draft.
+
+**Separat releaseblockering:** Vercel-preview för tidigare
+`9d4d7e1` nekades av den giltiga fail-closed migration-guard
+eftersom produktionsledgern har
+`handlarborsen_owner_review_archive_20261029` medan
+Familje-Stundens gren ännu saknar migrationsfilen.
+Migrationen hör till **separat Draft-PR #584** med pågående arbete
+och kan inte kopieras, förbigås eller mergas från FS-testkörningen.
+
+## Fas 21 – Verklig parallellitet i söndagskö och kostnadsgrind (2026-10-29)
+
+Det tidigare `native-claim`-läget verifierade ett
+sekventiellt enqueue → claim → högst ett betalt modellförsök.
+Det testade inte två **samtidigt pågående** begäranden.
+Nytt `-Mode native-concurrency` adderar ett fristående
+`family-weekly-pg-native-concurrency-assert.sql`-test utan
+någon ändring i de föreslagna produktionsfunktionerna.
+
+Det isolerade testet laddar fortfarande den verkliga kanoniska
+`public.claim_runs` från migrationen och de fyra föreslagna
+familje-SQL-funktionerna. Testklockan skrivs om **enbart
+i minnet, enbart i den temporära databasen** till
+2027-01-03 kl. 15.10 Europe/Stockholm; produktionens
+klockfunktion är intakt. Två oberoende dblink-sessioner
+anropar `family_weekly_enqueue_once()` som `service_role`.
+En tredje lokal session håller avsiktligt samma projekt-
+transaktionslås tills **båda** samtidiga anrop är observerat
+upptagna, därefter släpps låset. Det krävs **exakt ett**
+`queued` och **exakt ett** `already_queued`, med
+exakt ett nytt `runs` och en varaktig
+`family_weekly_run_plans`-rad.
+
+Efter en separat, verklig `claim_runs` med icke-tomt
+`claim_id` gör två dblink-sessioner motsvarande **samtidiga**
+anrop till `family_weekly_admit_once` under samma spärr.
+Endast **ett** får status `admitted`, det andra måste få
+`blocked`, och det får finnas **exakt en permanent**
+`family_weekly_model_attempts`-rad för veckan.
+Den fortsätter förbjuda schemaläggnings-/publiceringsauktoritet.
+Slutligen återkallar ägaren sitt samtycke som en riktig
+RLS-kontrollerad `authenticated`-INSERT.
+Efter återkallelsen ska `family_weekly_authority_current`
+vara false, nytt betalt försök returnera `blocked`,
+ny enqueue returnera `already_queued`, och båda
+varaktiga veckoledger-raderna ligga kvar.
+
+**Verifierat lokalt:** PostgreSQL 16 och 17
+`FAMILY_WEEKLY_PARALLEL_ENQUEUE_PAID_FENCE_AND_REVOKE_PASS`,
+exit 0, båda Dockercontainrarna borttagna.
+`dblink` installeras **endast i de temporära testdatabaserna**,
+och anslutningarna använder endast lokala Unix-sockets
+inuti en `--network none`-container.
+Detta är test av faktisk parallell databasexekvering,
+inte anrop till extern AI, sociala nätverk eller Supabase.
+Det visar att databasens engångsspärr håller även med två
+arbetare; det påstår inte att ett tidigare debiterat
+externt AI-anrop kan återställas efter nätfel.
+
+CI inkluderar nu tio isolerade testlägen på PostgreSQL 16
+och åtta på PostgreSQL 17. Slutlig CI-status för exakt
+nya committen kontrolleras separat före grönt resultat.
+**Fortsatt ej live:** familjens föreslagna migrationsfiler,
+cron och funktionsflaggor är fortfarande oinstallerade/AV,
+PR:n Draft och Vercel-preview tidigare blockerad av
+Handlarbörsens redan applicerade men ännu ej mergade
+`handlarborsen_owner_review_archive_20261029`.
+
+## Fas 22 – Ägaråterkallelse mot parallell betalkostnadsgrind (2026-10-29)
+
+Ett ytterligare isolerat testläge `native-revoke-race` bevisar
+den tidigare otestade samtidiga konflikten mellan ägarens
+**RLS-autentiserade återkallelse** och Atlas första
+**potentiellt debiterade AI-admission**. Testet använder
+de verkliga kanoniska `claim_runs`, föreslagna
+`family_weekly_enqueue_once`, `family_weekly_admit_once`,
+`family_weekly_authority_current` och samtyckestriggern
+med samma hashbaserade `pg_advisory_xact_lock`.
+
+I en tillfällig PostgreSQL-container skapar det en
+ägargodkänd veckokö, anspråkar jobbet med verkligt
+`claim_id` och startar **två separata dblink-sessioner**.
+En tredje session håller projektlåset. Ägarens revoke-anrop
+som `authenticated` startar först. Testet verifierar via
+PostgreSQLs väntelåsinformation att återkallelsen faktiskt
+väntar på advisory-låset, *innan* den andra sessionen
+som `service_role` får börja försöka en betald
+modellantagning. Båda arbetaranslutningarna måste stå i
+vänteläge innan testet släpper låset. Ingen `query_start`-
+timestamp används som ett skört antagande om ordningen;
+**resultatet** måste visa att återkallelsen vinner.
+
+Krav efter släppt lås: en verklig `revoke`-händelse,
+AI-antagningen returnerar `blocked` och
+`family_weekly_model_attempts` förblir **tom**.
+Det varaktiga `family_weekly_run_plans`-spärrvärdet
+får inte raderas, redaktionella preparationer får inte
+skapas och `family_weekly_authority_current` måste vara
+false trots att den kanoniska körningen är anspråkad.
+Ett nytt betalt försök efteråt måste fortsatt blockeras.
+Varken `authenticated` eller `anon` får använda
+de framtida arbets-RPC:erna.
+
+**Lokalt PASS** i separata nätverksisolerade
+PostgreSQL **16 och 17** via
+`FAMILY_WEEKLY_OWNER_REVOKE_WINS_BEFORE_PAID_ADMISSION_PASS`.
+Båda unika Dockercontainrarna har stoppats och raderats.
+Detta kompletterar `native-concurrency` som tidigare
+testade samtidiga arbetare och efterföljande återkallelse.
+Alla sessioner och `dblink` finns endast i testdatabasen,
+inte i någon produktionsmigration eller Vercel-körning.
+Inga AI- eller sociala API-anrop.
+
+GitHubs isolerade SQL-jobb omfattar nu **11 PostgreSQL 16-
+lägen och 9 PostgreSQL 17-lägen**, sammanlagt 20.
+Den exakta nya committen ska verifieras i CI innan grönt
+helhetsresultat kan anges.
+
+**Fortsatta blockerare:** Familje-Stundens fyra föreslagna
+SQL-filer är oinstallerade, funktionsflaggor och cron är OFF,
+Preview blockeras fortfarande av Handlarbörsens separat
+tillämpade `handlarborsen_owner_review_archive_20261029`
+i ommergad Draft-PR #584. Ingen försvagning av
+migrationsskyddet, ingen merge eller produktionsskrivning.
+
+## Fas 23 – Ägaråterkallelse även när nyregistrering är avstängd (2026-10-29)
+
+En riktad granskning av det redan implementerade
+`FAMILY_WEEKLY_OWNER_ENROLLMENT_UI_ENABLED`-skyddet hittade
+en återkallelseblind fläck: tidigare blockerade en avstängd
+registreringsflagga **både** nytt `enable` och en verklig
+projektägares `revoke`, och GET dolde även ett redan aktivt
+samtycke. Detta skulle göra ägaren beroende av att
+operatören återaktiverar funktionen för att kunna dra tillbaka
+ett fortfarande tidsmässigt giltigt samtycke.
+
+Rättningen i `enrollment-api.ts` bevarar den strikta
+OFF-by-default-principen för **nya** godkännanden och
+alla modell-/cron-/publiceringsoperationer. En signerad
+projektägare får däremot även i avstängt läge göra ett
+begränsat **read-only** ägarskapsverifierat uppslag av sin
+tidigare samtyckeshistorik. Om ett aktivt samtycke finns
+kan ägaren återkalla det via den befintliga `POST`-vägen,
+med samma same-origin- och operatörskontroller samt
+en INSERT via ägarens **autentiserade Supabase-session och
+databasens RLS** — aldrig med adminrollen som skrivare.
+
+Det öppnar **inte** för `enable` i avstängt läge och läser
+inte privata granskningsaviseringar när UI-registreringen
+är nedstängd. UI-komponenten skiljer på tillåtelse att
+**skapa nytt** samtycke (`available`) och ett redan
+aktivt godkännande (`enabled`), så att endast
+`Återkalla godkännande` kan visas i återhämtningsläget.
+
+Om ett befintligt samtycke **inte kan verifieras** (t.ex.
+för att de fyra föreslagna tabellerna inte är installerade)
+visar servern `status:'unavailable'`, aldrig en
+obevisad uppgift om `not_configured` eller `revoked`.
+UI erbjuder då `Kontrollera sparad status`; inget
+nytt samtycke eller återkallelse exekveras automatiskt.
+
+**Verifiering lokalt:** samtliga **140/140 veckovisa Vitest**,
+**11/11 Playwright-testfall** inklusive stängd flagga
+med aktivt samtycke, återkallelse och okänt tillstånd/
+manuell omläsning, samt TypeScript `tsc --noEmit` PASS.
+Dessa är avsiktligt mockade HTTP-/UI-kontrakttester:
+**ingen riktig inloggad kund-Preview** eller produktions-
+samtyckesINSERT har genomförts.
+
+Fortsatt gräns: PR #581 är Draft och unmerged, de fyra
+familje-SQL-förslagen är oinstallerade, runtime/cron/
+registreringsflaggorna OFF, och Vercel Preview för
+FS-grenen blockeras fortfarande av den separat tillämpade
+Handlarbörsen-migrationen i Draft-PR #584.
+
+## Fas 25 – Signerat JWT och riktig PostgREST-RLS, helt intern miljö (2026-10-29)
+
+För att komma närmare ett verkligt ägarflöde har ett **separat
+HTTP-integrationstest** införts i
+`docs/verification/fixtures/run-family-weekly-postgrest-jwt.ps1`.
+Det är skilt från de tidigare testerna som körde
+`set role authenticated` direkt i PostgreSQL.
+
+Testhärvan skapar för varje körning ett unikt
+`docker network create --internal`-nätverk och startar
+tre engångscontainrar: `postgres:16` eller
+`postgres:17-alpine`, kanoniska `postgrest:v16.5`
+och en liten `node:22-alpine`-klient. **Inga portar
+publiceras till Windows-/GitHub-värden, inga volymer
+delas, inga externa nätanrop görs**. Docker-imager
+måste vara cachade eller förladdade av CI.
+Alla tre containrar och nätverket tas bort efteråt,
+även om ett test misslyckas.
+
+Tillfällig SQL-fixture ger databasen syntetiska
+`auth.users`/projektrader, giltiga parent-RLS-predikat
+och en test-only `authenticator`-inloggningsroll.
+**Alla fyra oinstallerade Familje-Stunden-SQL-förslagen
+körs i exakt skick** i engångsdatabasen.
+`family-weekly-postgrest-test-roles.sql` accepterar
+både Supabases äldre `request.jwt.claim.sub` och
+PostgRESTs signerade `request.jwt.claims` i
+`auth.uid()`.
+
+En klient skickar riktiga REST/HTTP-förfrågningar med
+lokalt HS256-signerade JWT (`role=authenticated`,
+`sub=owner` respektive `sub=foreign`).
+PostgREST **validerar JWT-signaturen** och sätter
+behörighetsrollen innan databasens RLS prövas.
+Testet kräver:
+- Ägaren kan läsa sitt projekt och ange, läsa samt
+  återkalla ett tidsbegränsat samtycke med exakt
+  `can_schedule=false` och `can_publish=false`.
+- Annan autentiserad användare kan **inte** se ägarens
+  projekt/samtycke eller påstå sig vara ägaren vid INSERT.
+  Anonyma klienter kan inte läsa eller skriva samtycke.
+  Manipulerat, icke omsignerat JWT nekas kryptografiskt.
+- För långa samtycken och förfalskad publiceringsauktoritet
+  nekas. Ägaren kan **inte** UPDATE/DELETE:a
+  append-only-händelser, läsa paid-attempt-ledgern eller
+  anropa serverns `family_weekly_enqueue_once` via REST.
+- Efter återkallelse finns enbart `enable` och `revoke`
+  i ägarens synliga historik; främmande användare
+  ser fortfarande noll rader.
+
+**Verifierat lokalt:** PostgreSQL 16 och 17,
+`FAMILY_WEEKLY_SIGNED_JWT_POSTGREST_OWNER_ENABLE_REVOKE_PASS`,
+`FAMILY_WEEKLY_SIGNED_JWT_FOREIGN_ANON_FORGERY_DENIED`,
+`FAMILY_WEEKLY_SIGNED_JWT_COST_PUBLISH_RESTRICTIONS_PASS`,
+exit 0; inga testcontainrar eller nätverk kvar.
+GitHub-jobbet `family_weekly_signed_jwt` kör
+båda versionerna separat, med `contents: read`
+och utan hemligheter/externa testkonton.
+Exakt-head CI-status granskas efter push.
+
+**Nätverkssäkerhet:** Ett första försök med Supabase
+CLI:s tillfälliga lokala fullstack gav oväntad
+`0.0.0.0`-portbindning i Docker Desktop trots eget
+nätverk. Den testinstansen stoppades omedelbart,
+dess egna datavolymer raderades och det unika
+testnätverket togs bort; **andra befintliga
+Supabase-projekt lämnades orörda**.
+Den nya PostgREST-varianten har noll publicerade
+hostportar och verifierar detta maskinellt.
+
+**Viktig avgränsning:** JWT-signaturerna skapas
+i testcontainern för påhittade ägare; det är
+**inte** ett GoTrue/OTP/inloggningstest och inte
+en signerad session i Vercel Preview. Den
+riktiga Next.js-vägen med `resolveProjectAccess`
+och Vercels SSO-skydd måste fortfarande verifieras
+med separat isolerad Auth/testdatabas före eventuell
+aktivering. Flera parent-tabeller i testet är
+begränsade testfixturer, inte replay av varje
+produktionsmigration.
+
+**Fortsatt AV:** PR #581 Draft/unmerged; de fyra
+familje-SQL-förslagen oinstallerade i produktion;
+runtime/enrollment/cron/AI-kostnad/publicering
+avstängda. Ingen produktionsskrivning, inget
+verkligt samtycke och inget provider-anrop.
+
+
+## Fas 26 – Verklig Supabase Auth/GoTrue-inloggning i isolerat Docker-nät (2026-10-29)
+
+Fas 25 kompletteras med tre nya, fristående testfiler:
+
+- docs/verification/fixtures/run-family-weekly-gotrue-auth.ps1
+- docs/verification/fixtures/family-weekly-gotrue-client.js
+- docs/verification/fixtures/family-weekly-gotrue-schema.sql
+
+Testet startar **enbart engångscontainrar** för PostgreSQL 16/17,
+officiell GoTrue v2.197.0, PostgREST och Node. GoTrue migrerar sitt
+**riktiga auth.users-schema**. Två syntetiska konton registreras via
+POST /signup, autentiseras via POST /token?grant_type=password, och
+GoTrues egen signerade JWT används mot PostgREST. Ingen test-JWT
+genereras manuellt i denna variant.
+
+Omniras projekttabell, konversation, runs och parent-RLS är avsiktligt
+syntetiska men ägaridentiteterna kommer från GoTrue-inloggningen.
+Samtliga fyra föreslagna Familje-Stunden-SQL-filer appliceras **helt
+oförändrade och endast i engångsdatabasen**. Även de kanoniska
+runs-CHECK-predikaten verifieras.
+
+HTTP-testet kontrollerar inloggning och avvisning av fel lösenord,
+ägarens läsning av eget projekt, aktivering och återkallelse av
+tidsbegränsat samtycke, främmande och anonym användares nekade åtkomst,
+förfalskat owner_id, otillåtet can_publish, för lång giltighetstid,
+förbjuden UPDATE/DELETE, samt nekad direkt access till worker-enqueue
+och AI-kostnadsledger. Historiken för enable/revoke förblir synlig
+enbart för ägaren.
+
+**Lokala resultat:** PostgreSQL 16 och PostgreSQL 17 PASS,
+FAMILY_WEEKLY_REAL_GOTRUE_POSTGREST_INTEGRATION_PASS=true, exitkod 0.
+Inga portar publiceras till värddatorn. Testcontainrar och internnät
+tas bort efteråt, även vid fel. Inga hemligheter från produktion,
+molnprojekt, mail, AI-anrop eller sociala publiceringar används.
+
+GitHub Actions-jobbet family_weekly_signed_jwt utökas till att köra
+både JWT/PostgREST-tester och verklig GoTrue-inloggning mot de båda
+PostgreSQL-versionerna. Exakt-head CI måste fortfarande köras och
+verifieras efter commit/push.
+
+**Skrivskyddad produktionskontroll:** de föreslagna consent-, notice-
+och model-attempt-tabellerna är fortfarande frånvarande i Omniras
+prod-databas, enqueue-RPC saknas och ingen Family weekly-cron hittades.
+
+**Viktiga återstående gränser:** Detta verifierar riktig Auth och
+databas-RLS, men ännu inte autentiserat Next.js-UI eller ett inloggat
+Vercel Preview-test. Preview-projektet har miljövariabler som delas
+mellan preview/produktion, utan särskild test-override för denna
+gren. En separat externt nåbar testbackend och test-only credentials
+krävs innan webbläsartestet kan genomföras utan produktionsrisk.
+Inga tunnlar, hostportar, prod-credentials, prod-migrationer, cronjobb,
+AI-körningar eller publiceringar har aktiverats. PR #581 är fortsatt Draft.
+
+
+### CI-registerjustering efter första GitHub-körningen
+
+Första CI-körningen på commit c5a0216 stoppades **innan teststegen**
+av Amazon Public ECR: toomanyrequests / Data limit exceeded.
+Detta är ett register-/nedladdningsfel, inte ett RLS- eller GoTrue-testfel.
+Det versionlåsta CI-jobbet hämtar därför PostgREST v16.5 från
+postgrest/postgrest och GoTrue v2.197.0 från supabase/gotrue på
+officiella Docker Hub. Lokala körningar av dessa exakta varianter
+passerade GoTrue och signerad JWT mot PostgreSQL 17, utan hostportar.
+Runner-skripten behåller explicita, tillåtna bildparametrar så CI
+inte behöver skapa fejkade ECR-taggar eller ändra testlogiken.

@@ -28,8 +28,18 @@ on:
       - 'apps/web/playwright.social-start.config.ts'
       - 'apps/web/playwright.social-publication.config.ts'
       - 'apps/web/app/api/social-content/**'
+      - 'apps/web/app/api/social-weekly-automation/**'
+      - 'apps/web/app/api/runs/drain/route.ts'
       - 'apps/web/e2e/social-content*'
       - 'apps/web/playwright.social-content.config.ts'
+      - 'apps/web/e2e/weekly-consent*'
+      - 'apps/web/e2e/weekly-preparation*'
+      - 'apps/web/playwright.weekly-preparation.config.ts'
+      - 'docs/sql/20261028_family_weekly_*_proposed.sql'
+      - 'docs/verification/fixtures/family-weekly*'
+      - 'docs/verification/fixtures/run-family-weekly-pg-smoke.ps1'
+      - 'docs/verification/fixtures/run-family-weekly-postgrest-jwt.ps1'
+      - 'docs/verification/fixtures/run-family-weekly-gotrue-auth.ps1'
       - 'apps/web/app/api/social-launch/**'
       - 'apps/web/app/(platform)/projects/[slug]/social/**'
       - 'apps/web/e2e/social-launch*'
@@ -84,6 +94,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Refuse incomplete or unsafe Family weekly Supabase test branches
+        run: node --test docs/verification/fixtures/family-weekly-branch-preflight.test.cjs
       - run: npm run typecheck --workspace=apps/web
       - run: npx vitest run lib/website-build/studio/costs.test.ts lib/website-build/artifact.test.ts lib/website-build/rejected-draft.test.ts lib/website-build/feedback-interpretation.test.ts lib/qa/runner-text-output.test.ts lib/qa/atlas-home-markdown.test.tsx lib/qa/atlas-static-conversation-route.test.ts lib/qa/atlas-openai-chat.test.ts lib/qa/openai-stream-metering.test.ts lib/qa/m0-spend-ceiling.test.ts lib/qa/m0-durable-spend.test.ts lib/qa/execution-authority-signal.test.ts
         working-directory: apps/web
@@ -92,6 +104,10 @@ jobs:
       - run: npx playwright test --config=playwright.atlas-studio-ui.config.ts
         working-directory: apps/web
       - run: npx vitest run lib/social-launch/profile/validate.test.ts lib/social-launch/publication/validate.test.ts lib/social-launch/publication/provider.test.ts lib/social-launch/content/validate.test.ts lib/social-launch/catalog.test.ts lib/social-launch/loader.test.ts lib/social-launch/release.test.ts lib/social-connections/providers.test.ts lib/social-connections/readiness.test.ts lib/social-connections/release.test.ts lib/social-connections/legacy-dispatch.test.ts lib/social-connections/snapshot-dispatch.test.ts
+        working-directory: apps/web
+      - run: npx vitest run lib/social-launch/weekly
+        working-directory: apps/web
+      - run: npx playwright test --config=playwright.weekly-preparation.config.ts
         working-directory: apps/web
       - run: npx playwright test --config=playwright.social-launch.config.ts
         working-directory: apps/web
@@ -116,3 +132,71 @@ jobs:
             .superpowers/sdd/2026-10-16-atlas-social-publication/browser
             .superpowers/sdd/2026-10-16-atlas-social-content/browser
           retention-days: 5
+
+  family_weekly_postgres:
+    name: Family weekly SQL / isolated PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch test-only PostgreSQL 16 and 17 images
+        run: |
+          docker pull postgres:16
+          docker pull postgres:17-alpine
+      - name: Verify SQL roles, owner revoke, run-once and canonical editor
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($mode in @('normal','simulated-sunday','native-editorial','native-content','native-context','native-binding','native-plan-assets','native-schedule','native-claim','native-concurrency','native-revoke-race')) {
+            & ./docs/verification/fixtures/run-family-weekly-pg-smoke.ps1 -Mode $mode -PostgresImage postgres:16
+            if ($LASTEXITCODE -ne 0) {
+              throw "FAMILY_WEEKLY_POSTGRES16_TEST_FAILED:$mode"
+            }
+          }
+          # Cross-check the real parent RLS predicates and high-risk native
+          # claim/save integration on PostgreSQL 17, Omnira's production major.
+          foreach ($mode in @('normal','native-claim','native-concurrency','native-revoke-race','native-content','native-context','native-binding','native-plan-assets','native-schedule')) {
+            & ./docs/verification/fixtures/run-family-weekly-pg-smoke.ps1 -Mode $mode -PostgresImage postgres:17-alpine
+            if ($LASTEXITCODE -ne 0) {
+              throw "FAMILY_WEEKLY_POSTGRES17_TEST_FAILED:$mode"
+            }
+          }
+
+  family_weekly_signed_jwt:
+    name: Family weekly JWT and GoTrue / internal PostgREST RLS
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch approved disposable JWT test images
+        run: |
+          docker pull postgres:16
+          docker pull postgres:17-alpine
+          docker pull postgrest/postgrest:v16.5
+          docker pull supabase/gotrue:v2.197.0
+          docker pull node:22-alpine
+      - name: Verify signed owner and foreign JWT RLS with zero published ports
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($pgImage in @('postgres:16','postgres:17-alpine')) {
+            & ./docs/verification/fixtures/run-family-weekly-postgrest-jwt.ps1 -PostgresImage $pgImage -PostgrestImage postgrest/postgrest:v16.5
+            if ($LASTEXITCODE -ne 0) {
+              throw "FAMILY_WEEKLY_SIGNED_JWT_RLS_FAILED:$pgImage"
+            }
+          }
+
+      - name: Verify genuine GoTrue password-session owner and foreign-user RLS
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($pgImage in @('postgres:16','postgres:17-alpine')) {
+            & ./docs/verification/fixtures/run-family-weekly-gotrue-auth.ps1 -PostgresImage $pgImage -PostgrestImage postgrest/postgrest:v16.5 -GotrueImage supabase/gotrue:v2.197.0
+            if ($LASTEXITCODE -ne 0) {
+              throw "FAMILY_WEEKLY_REAL_GOTRUE_RLS_FAILED:$pgImage"
+            }
+          }

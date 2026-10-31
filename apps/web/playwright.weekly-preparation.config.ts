@@ -1,2 +1,2 @@
 import {defineConfig} from '@playwright/test';
-export default defineConfig({testDir:'./e2e',testMatch:'weekly-preparation.spec.ts',workers:1,retries:0,timeout:20000,use:{baseURL:'http://127.0.0.1:54431',browserName:'chromium'},webServer:{command:'node e2e/weekly-preparation-server.mjs',url:'http://127.0.0.1:54431/weekly-review',reuseExistingServer:false,timeout:30000}});
+export default defineConfig({testDir:'./e2e',testMatch:['weekly-preparation.spec.ts','weekly-consent.spec.ts'],workers:1,retries:0,timeout:20000,use:{baseURL:'http://127.0.0.1:54431',browserName:'chromium'},webServer:{command:'node e2e/weekly-preparation-server.mjs',url:'http://127.0.0.1:54431/weekly-review',reuseExistingServer:false,timeout:30000}});

@@ -5,9 +5,9 @@ import {salesId} from '../validate'
 import {salesRpc,scoped,type SalesDb} from '../store'
 import {discoveryBaselineReasons} from './exclusions'
 import {parseDiscoverInput,parseDiscoveryReview,parseDiscoveryPromotion} from './validate'
-import type {DiscoverInput,DiscoveryReport,DiscoveryCandidate,DiscoveryReview,DiscoveryPromotion,DiscoveryPromotionResult,PublicBusiness} from './types'
+import type {DiscoverInput,StoredDiscoveryReport,DiscoveryCandidate,DiscoveryReview,DiscoveryPromotion,DiscoveryPromotionResult,PublicBusiness} from './types'
 function call<T>(db:SalesDb,p:SalesPrincipal,projectId:string,name:string,input:unknown){scoped(p,projectId);return salesRpc<T>(db,name,{p_principal:p,p_input:input})}
-export function readDiscoveryReport(db:SalesDb,p:SalesPrincipal,projectId:string,batchId:string|null=null):Promise<DiscoveryReport>{return call(db,p,projectId,'sales_discovery_read',{projectId:salesId(projectId),batchId:batchId===null?null:salesId(batchId)})}
+export function readDiscoveryReport(db:SalesDb,p:SalesPrincipal,projectId:string,batchId:string|null=null):Promise<StoredDiscoveryReport>{return call(db,p,projectId,'sales_discovery_read',{projectId:salesId(projectId),batchId:batchId===null?null:salesId(batchId)})}
 export async function beginDiscoveryBatch(db:SalesDb,p:SalesPrincipal,value:DiscoverInput):Promise<{batchId:string;fetchRequired:boolean}>{
  const input=parseDiscoverInput(value),result=await call<{batchId?:string;fetchRequired:boolean;rateLimited?:boolean}>(db,p,input.projectId,'sales_discovery_begin',input)
  if(result.rateLimited)throw new SalesError('DISCOVERY_RATE_LIMITED',429)

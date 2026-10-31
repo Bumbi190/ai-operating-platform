@@ -4,16 +4,16 @@ const legacyProject='10000000-0000-4000-8000-000000000001',serviceProject='10000
 const candidateId='31000000-0000-4000-8000-000000000001',batchId='41000000-0000-4000-8000-000000000001',contactId='32000000-0000-4000-8000-000000000001'
 const at='2026-10-31T12:00:00.000Z',companyName='Synthetic discovered company'
 function candidate(projectId:string){return {id:candidateId,projectId,version:1,sourceId:'node/9999999999991',sourceUrl:'https://www.openstreetmap.org/node/9999999999991',name:companyName,email:'public@discovered.example.com',websiteUrl:'https://discovered.example.com/',status:'needs_review',exclusions:[] as string[],reviewNote:null as string|null,firstSeenAt:at,lastSeenAt:at,promotedContactId:null as string|null,historyCoverage:'partial',outreachReady:false}}
-async function mocks(page:Page,projectId:string,options:{rateLimited?:boolean;storeFailure?:boolean;stalePending?:boolean;unsafe?:boolean}={}){
+async function mocks(page:Page,projectId:string,options:{rateLimited?:boolean;storeFailure?:boolean;stalePending?:boolean;unsafe?:boolean;sourceConfigured?:boolean|'unknown';saved?:boolean;waitForRead?:Promise<void>}={}){
  const posts:Record<string,unknown>[]=[],otherPosts:string[]=[]
  let contact:Record<string,unknown>|null=null,row=candidate(projectId)
  if(options.unsafe){row={...row,name:'<img src=x onerror=alert(1)>',sourceUrl:'javascript:alert(1)',websiteUrl:'https://localhost.localdomain/'}}
- let batch:null|{id:string;query:Record<string,unknown>;state:string;errorCode:string|null;createdAt:string;completedAt:string|null;candidateCount:number}=options.unsafe||options.stalePending?{id:batchId,query:{city:'stockholm',category:'car_dealer',radiusKm:5,limit:20},state:options.stalePending?'pending':'completed',errorCode:null,createdAt:options.stalePending?new Date(Date.now()-60000).toISOString():at,completedAt:options.stalePending?null:at,candidateCount:options.stalePending?0:1}:null
- const report=()=>({projectId,batch,batches:batch?[batch]:[],candidates:batch?.state==='completed'?[row]:[],historyCoverage:'partial',customerSendingEnabled:false})
+ let batch:null|{id:string;query:Record<string,unknown>;state:string;errorCode:string|null;createdAt:string;completedAt:string|null;candidateCount:number}=options.saved||options.unsafe||options.stalePending?{id:batchId,query:{city:'stockholm',category:'car_dealer',radiusKm:5,limit:20},state:options.stalePending?'pending':'completed',errorCode:null,createdAt:options.stalePending?new Date(Date.now()-60000).toISOString():at,completedAt:options.stalePending?null:at,candidateCount:options.stalePending?0:1}:null
+ const report=()=>({projectId,batch,batches:batch?[batch]:[],candidates:batch?.state==='completed'?[row]:[],historyCoverage:'partial',customerSendingEnabled:false,...(options.sourceConfigured==='unknown'?{}:{sourceConfigured:options.sourceConfigured??true})})
  page.on('request',request=>{const path=new URL(request.url()).pathname;if(request.method()==='POST'&&path.startsWith('/api/sales')&&path!=='/api/sales/discovery')otherPosts.push(path)})
  await page.route(url=>url.pathname==='/api/sales/discovery',async route=>{
   const request=route.request()
-  if(request.method()==='GET'){expect(new URL(request.url()).searchParams.get('projectId')).toBe(projectId);await route.fulfill({json:report()});return}
+  if(request.method()==='GET'){expect(new URL(request.url()).searchParams.get('projectId')).toBe(projectId);await options.waitForRead;await route.fulfill({json:report()});return}
   const body=request.postDataJSON() as Record<string,unknown>;posts.push(body);expect(body.projectId).toBe(projectId)
   if(body.operation==='discover'){
    batch={id:batchId,query:body.query as Record<string,unknown>,state:options.rateLimited||options.storeFailure?'failed':'completed',errorCode:options.rateLimited?'DISCOVERY_RATE_LIMITED':options.storeFailure?'DISCOVERY_STORE_UNAVAILABLE':null,createdAt:at,completedAt:at,candidateCount:options.rateLimited||options.storeFailure?0:1}
@@ -127,4 +127,47 @@ test('a stale pending record does not claim an indefinitely running search',asyn
  const {posts}=await mocks(page,serviceProject,{stalePending:true}),panel=await openDiscovery(page,'/sales?project=service')
  await expect(panel.getByRole('status')).toContainText('Sökningen saknar ett sparat slutresultat')
  expect(posts).toEqual([])
+})
+
+for(const [sourceConfigured,label] of [[false,'missing'],['unknown','unknown']] as const){
+ test(label+' source configuration blocks discovery while saved review remains usable',async({page})=>{
+  const {posts,otherPosts}=await mocks(page,serviceProject,{sourceConfigured,saved:true}),panel=await openDiscovery(page,'/sales?project=service')
+  const explanation=sourceConfigured===false?'Sökkällan behöver anslutas innan du kan hämta nya företag.':'Sökkällans status kunde inte bekräftas.'
+  await expect(panel.getByText(explanation,{exact:false})).toBeVisible()
+  await expect(panel.getByText('Sparade uppslag går fortfarande att granska.',{exact:false})).toBeVisible()
+  await expect(panel.getByRole('button',{name:'Hämta företag',exact:true})).toBeDisabled()
+  await panel.getByRole('combobox',{name:'Ort',exact:true}).selectOption('malmo')
+  await panel.getByRole('combobox',{name:'Bransch',exact:true}).selectOption('restaurant')
+  await panel.locator('form').first().dispatchEvent('submit')
+  expect(posts).toEqual([])
+  await panel.getByRole('button',{name:'Granska företag',exact:true}).click()
+  const review=panel.getByRole('region',{name:'Granska hittat företag'})
+  await expect(review).toBeVisible()
+  await expect(review.getByRole('button',{name:'Spara verifierad kontakt för historikgranskning'})).toBeEnabled()
+  await review.locator('summary').filter({hasText:'Avvisa, exkludera eller spärra uppslaget'}).click()
+  await review.getByLabel('Orsak',{exact:true}).fill('Synthetic review of a saved business without a configured discovery source.')
+  await review.getByRole('button',{name:'Spara granskningsbeslut'}).click()
+  await expect(panel.getByRole('status')).toContainText('Beslutet är sparat')
+  await page.reload();await page.getByRole('heading',{name:'Hitta företag',exact:true}).click()
+  await expect(panel.getByText('Avvisad',{exact:false})).toBeVisible()
+  await expect(panel.getByRole('button',{name:'Hämta företag',exact:true})).toBeDisabled()
+  expect(posts.map(p=>p.operation)).toEqual(['review']);expect(otherPosts).toEqual([])
+ })
+}
+test('discovery stays unavailable until the initial source status has loaded',async({page})=>{
+ let releaseRead!:()=>void
+ const waitForRead=new Promise<void>(resolve=>{releaseRead=resolve})
+ const {posts,otherPosts}=await mocks(page,serviceProject,{waitForRead})
+ const panel=await openDiscovery(page,'/sales?project=service')
+ try{
+  await expect(panel.getByRole('status')).toHaveText('Kontrollerar sökläget…')
+  await expect(panel.getByRole('button',{name:'Hämta företag',exact:true})).toBeDisabled()
+  await panel.getByRole('combobox',{name:'Ort',exact:true}).selectOption('malmo')
+  await panel.getByRole('combobox',{name:'Bransch',exact:true}).selectOption('restaurant')
+  await panel.locator('form').first().dispatchEvent('submit')
+  expect(posts).toEqual([])
+ }finally{releaseRead()}
+ await expect(panel.getByRole('button',{name:'Hämta företag',exact:true})).toBeEnabled()
+ await expect(panel.getByText('Kontrollerar sökläget…',{exact:true})).toHaveCount(0)
+ expect(posts).toEqual([]);expect(otherPosts).toEqual([])
 })

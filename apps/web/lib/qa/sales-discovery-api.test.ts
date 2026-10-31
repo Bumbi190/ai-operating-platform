@@ -1,4 +1,5 @@
 import {it,expect,vi} from 'vitest'
+import {NextResponse} from 'next/server'
 import {createDiscoveryApi} from '../sales/discovery/api'
 import {SalesError} from '../sales/types'
 
@@ -10,16 +11,17 @@ const candidate={...source,id:cid,projectId:pid,version:1,status:'needs_review',
 const report={projectId:pid,batch:null,batches:[],candidates:[],historyCoverage:'partial',customerSendingEnabled:false}
 const discoverInput={operation:'discover',projectId:pid,idempotencyKey:key,query}
 const promoteInput={operation:'promote',projectId:pid,candidateId:cid,expectedVersion:1,companyName:source.name,branchName:'',email:'verified@business.example.com',websiteUrl:source.websiteUrl,reviewNote:'Independently verified business and recipient.',businessConfirmed:true,emailConfirmed:true,offerKind:'general_service',pilotMonths:null}
-function setup(options:{replay?:boolean;rateLimited?:boolean;blocked?:boolean;disabled?:boolean;dbError?:boolean;finishError?:boolean;failError?:boolean;providerError?:Error}={}){
+function setup(options:{sourceConfigured?:boolean;denied?:boolean;replay?:boolean;rateLimited?:boolean;blocked?:boolean;disabled?:boolean;dbError?:boolean;finishError?:boolean;failError?:boolean;providerError?:Error}={}){
  const rpc=vi.fn(async(name:string,_args:Record<string,unknown>)=>({data:name==='sales_discovery_begin'?{batchId:bid,fetchRequired:!options.replay,rateLimited:options.rateLimited}:name==='sales_discovery_read'?report:name==='sales_discovery_candidate'?candidate:name==='sales_discovery_promote'?(options.blocked?{state:'blocked',reasons:['suppressed']}:{state:'promoted',contactId:cid,history:'unknown'}):{batchId:bid},error:options.dbError||(options.finishError&&name==='sales_discovery_finish')||(options.failError&&name==='sales_discovery_fail')?{code:'XX000'}:null}))
  const discover=vi.fn(async()=>{if(options.providerError)throw options.providerError;return {candidates:[source],retrievedAt:'2026-10-31T12:00:00.000Z'}})
- const api=createDiscoveryApi({access:async()=>principal,db:()=>({rpc} as never),enabled:()=>!options.disabled,discover})
- return {rpc,discover,api}
+ const sourceConfigured=vi.fn(()=>options.sourceConfigured??true)
+ const api=createDiscoveryApi({access:async()=>options.denied?{ok:false as const,response:NextResponse.json({code:'UNAUTHORIZED'},{status:401})}:principal,db:()=>({rpc} as never),enabled:()=>!options.disabled,discover,sourceConfigured})
+ return {rpc,discover,sourceConfigured,api}
 }
 function post(value:unknown,origin=true){return new Request(url,{method:'POST',headers:origin?{origin:'https://fixture.invalid'}:{},body:JSON.stringify(value)})}
 it('GET is read-only and explicitly preserves partial history',async()=>{
  const {api,rpc,discover}=setup(),r=await api(new Request(url+'?projectId='+pid))
- expect(r.status).toBe(200);expect(r.headers.get('cache-control')).toBe('private, no-store');expect(await r.json()).toEqual(report)
+ expect(r.status).toBe(200);expect(r.headers.get('cache-control')).toBe('private, no-store');expect(await r.json()).toEqual({...report,sourceConfigured:true})
  expect(rpc.mock.calls.map(c=>c[0])).toEqual(['sales_discovery_read']);expect(discover).not.toHaveBeenCalled()
 })
 it.each(['&projectId='+pid,'&url=https://attacker.example.com','&batchId='+bid+'&batchId='+bid])('rejects ambiguous GET %s',async extra=>{
@@ -78,4 +80,32 @@ it('new suppression returns review conflict without an ordinary contact mutation
 })
 it('database read failure stays unavailable rather than an empty success',async()=>{
  const {api}=setup({dbError:true});expect((await api(new Request(url+'?projectId='+pid))).status).toBe(503)
+})
+
+
+it('reports missing source configuration without probing or modifying saved results',async()=>{
+ const {api,rpc,discover,sourceConfigured}=setup({sourceConfigured:false})
+ const r=await api(new Request(url+'?projectId='+pid))
+ expect(r.status).toBe(200);expect(await r.json()).toEqual({...report,sourceConfigured:false})
+ expect(rpc.mock.calls.map(c=>c[0])).toEqual(['sales_discovery_read'])
+ expect(discover).not.toHaveBeenCalled();expect(sourceConfigured).toHaveBeenCalledTimes(1)
+})
+it.each([{denied:true,status:401},{disabled:true,status:404}])('does not expose source configuration when access returns $status',async({status,...options})=>{
+ const {api,rpc,discover,sourceConfigured}=setup(options)
+ const r=await api(new Request(url+'?projectId='+pid))
+ expect(r.status).toBe(status);expect(await r.json()).not.toHaveProperty('sourceConfigured')
+ expect(rpc).not.toHaveBeenCalled();expect(discover).not.toHaveBeenCalled();expect(sourceConfigured).not.toHaveBeenCalled()
+})
+it('replays a saved search after source removal without a new provider request',async()=>{
+ const {api,rpc,discover}=setup({replay:true,sourceConfigured:false})
+ const r=await api(post(discoverInput))
+ expect(r.status).toBe(200);expect(await r.json()).toEqual({...report,sourceConfigured:false})
+ expect(rpc.mock.calls.map(c=>c[0])).toEqual(['sales_discovery_begin','sales_discovery_read'])
+ expect(discover).not.toHaveBeenCalled()
+})
+it('allows saved candidate review while new source configuration is absent',async()=>{
+ const {api,rpc,discover}=setup({sourceConfigured:false})
+ const r=await api(post({operation:'review',projectId:pid,candidateId:cid,expectedVersion:1,decision:'rejected',note:'Previously saved candidate reviewed without a new search.'}))
+ expect(r.status).toBe(200);expect(rpc.mock.calls.map(c=>c[0])).toEqual(['sales_discovery_review'])
+ expect(discover).not.toHaveBeenCalled()
 })

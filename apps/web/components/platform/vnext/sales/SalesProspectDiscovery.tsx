@@ -23,6 +23,7 @@ function sourceUrl(candidate:DiscoveryCandidate):string|null{return /^(node|way|
 export function SalesProspectDiscovery({projectId,onSaved,defaultOfferKind}:{projectId:string;onSaved:()=>Promise<void>;defaultOfferKind?:'pilot'|'general_service'}){
  const [report,setReport]=useState<DiscoveryReport|null>(null),[busy,setBusy]=useState(false),[message,setMessage]=useState(''),[selectedId,setSelectedId]=useState<string|null>(null),[offerKind,setOfferKind]=useState(defaultOfferKind??''),[expiredBatchId,setExpiredBatchId]=useState<string|null>(null)
  const current=report?.projectId===projectId?report:null,selected=current?.candidates.find(c=>c.id===selectedId&&c.status==='needs_review'),batchId=current?.batch?.id??null
+ const sourceConfigured=current?.sourceConfigured===true
  async function load(id:string|null=null){const q=new URLSearchParams({projectId});if(id)q.set('batchId',id);const value=await responseJson(await fetch(`/api/sales/discovery?${q}`,{cache:'no-store'}));setReport(value as DiscoveryReport)}
  useEffect(()=>{
   const controller=new AbortController();setSelectedId(null);setMessage('')
@@ -40,7 +41,7 @@ export function SalesProspectDiscovery({projectId,onSaved,defaultOfferKind}:{pro
  const pendingStale=current?.batch?.state==='pending'&&(expiredBatchId===current.batch.id||Date.now()-new Date(current.batch.createdAt).getTime()>=60000)
  async function mutate(input:Record<string,unknown>){return responseJson(await fetch('/api/sales/discovery',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({projectId,...input})}))}
  async function run(work:()=>Promise<void>){setBusy(true);setMessage('');try{await work()}catch(e){setMessage(e instanceof Error?e.message:errorText(null));try{await load(batchId)}catch{}}finally{setBusy(false)}}
- function discover(e:FormEvent<HTMLFormElement>){e.preventDefault();const f=new FormData(e.currentTarget);void run(async()=>{
+ function discover(e:FormEvent<HTMLFormElement>){e.preventDefault();if(busy||!sourceConfigured)return;const f=new FormData(e.currentTarget);void run(async()=>{
   const value=await mutate({operation:'discover',idempotencyKey:crypto.randomUUID(),query:{city:f.get('city'),category:f.get('category'),radiusKm:Number(f.get('radiusKm')),limit:Number(f.get('limit'))}})
   setReport(value as DiscoveryReport);setSelectedId(null);setMessage(value.batch?.state==='pending'?'Sökningen är registrerad. Uppdatera för att se resultatet.':'Sökningen är sparad. Granska uppgifterna innan ett företag läggs till som kontakt.')
  })}
@@ -55,12 +56,14 @@ export function SalesProspectDiscovery({projectId,onSaved,defaultOfferKind}:{pro
   <summary><h2>Hitta företag</h2><span>Högst 25 uppslag per sökning</span></summary>
   <div className={styles.disclosureBody}>
    <p>Sök efter företag i OpenStreetMap. Välj bransch och område för varje sökning. Offentliga uppgifter behöver granskas innan de blir kontakter.</p>
+   {!current&&!message&&<p role="status">Kontrollerar sökläget…</p>}
+   {current&&!sourceConfigured&&<p className={styles.notice}>{current.sourceConfigured===false?'Sökkällan behöver anslutas innan du kan hämta nya företag. Sparade uppslag går fortfarande att granska.':'Sökkällans status kunde inte bekräftas. Uppdatera sökresultatet innan du gör en ny sökning. Sparade uppslag går fortfarande att granska.'}</p>}
    <form className={styles.form} onSubmit={discover}>
     <label>Ort<select name="city" required defaultValue="" disabled={busy}><option value="" disabled>Välj ort</option>{Object.entries(DISCOVERY_CITIES).map(([id,city])=><option key={id} value={id}>{city.label}</option>)}</select></label>
     <label>Bransch<select name="category" required defaultValue="" disabled={busy}><option value="" disabled>Välj bransch</option>{Object.entries(DISCOVERY_CATEGORIES).map(([id,category])=><option key={id} value={id}>{category.label}</option>)}</select></label>
     <label>Radie från ortens centrum (km)<input name="radiusKm" type="number" required min={1} max={25} step={1} defaultValue={5} disabled={busy}/></label>
     <label>Högsta antal uppslag<select name="limit" defaultValue="20" disabled={busy}>{[5,10,20,25].map(n=><option key={n} value={n}>{n}</option>)}</select></label>
-    <button type="submit" disabled={busy}>{busy?'Arbetar…':'Hämta företag'}</button>
+    <button type="submit" disabled={busy||!sourceConfigured}>{busy?'Arbetar…':'Hämta företag'}</button>
    </form>
    {message&&<p className={styles.message} role="status">{message}</p>}
    <p className={styles.notice}>Kontakthistorik och befintliga konton är inte fullständigt kontrollerade. Inga uppslag godkänns automatiskt för kontakt. En överförd kontakt behöver separat historik- och tidsgranskning.</p>

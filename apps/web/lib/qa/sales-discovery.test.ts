@@ -1,6 +1,6 @@
 import {describe,expect,it,vi} from 'vitest'
 import {parseDiscoveryQuery,parseDiscoveryPromotion,publicWebsite} from '../sales/discovery/validate'
-import {buildOverpassQuery,discoverPublicBusinesses,parseOverpassResponse,MAX_PROVIDER_BYTES,OVERPASS_ENDPOINT,OVERPASS_USER_AGENT,discoveryEndpoint} from '../sales/discovery/provider'
+import {buildOverpassQuery,discoverPublicBusinesses,parseOverpassResponse,MAX_PROVIDER_BYTES,OVERPASS_ENDPOINT,OVERPASS_USER_AGENT,discoveryEndpoint,discoverySourceConfigured} from '../sales/discovery/provider'
 import {discoveryBaselineReasons} from '../sales/discovery/exclusions'
 import {HANDLARBORSEN_PROJECT_ID} from '../atlas/handlarborsen-test-data/contracts'
 import {documentedPilotHistoryEntries} from '../handlarborsen/lead-finder/documented-pilot-history'
@@ -11,7 +11,8 @@ describe('bounded public business discovery',()=>{
  it('requires an explicitly configured production source and rejects unsafe or community backends',()=>{
   expect(discoveryEndpoint({NODE_ENV:'test'})).toBe(OVERPASS_ENDPOINT)
   expect(discoveryEndpoint({NODE_ENV:'production',ATLAS_SALES_DISCOVERY_OVERPASS_URL:'https://maps.example.com/api/interpreter'})).toBe('https://maps.example.com/api/interpreter')
-  for(const env of [{NODE_ENV:'production'},{VERCEL:'1'},{NODE_ENV:'production',ATLAS_SALES_DISCOVERY_OVERPASS_URL:OVERPASS_ENDPOINT},{NODE_ENV:'production',ATLAS_SALES_DISCOVERY_OVERPASS_URL:'http://maps.example.com/api/interpreter'},{NODE_ENV:'production',ATLAS_SALES_DISCOVERY_OVERPASS_URL:'https://127.0.0.1/private'},{ATLAS_SALES_DISCOVERY_OVERPASS_URL:''}])expect(()=>discoveryEndpoint(env)).toThrow('DISCOVERY_SOURCE_NOT_CONFIGURED')
+  expect(discoverySourceConfigured({NODE_ENV:'production',ATLAS_SALES_DISCOVERY_OVERPASS_URL:'https://maps.example.com/api/interpreter'})).toBe(true)
+  for(const env of [{NODE_ENV:'production'},{VERCEL:'1'},{NODE_ENV:'production',ATLAS_SALES_DISCOVERY_OVERPASS_URL:OVERPASS_ENDPOINT},{NODE_ENV:'production',ATLAS_SALES_DISCOVERY_OVERPASS_URL:'http://maps.example.com/api/interpreter'},{NODE_ENV:'production',ATLAS_SALES_DISCOVERY_OVERPASS_URL:'https://127.0.0.1/private'},{ATLAS_SALES_DISCOVERY_OVERPASS_URL:''}]){expect(()=>discoveryEndpoint(env)).toThrow('DISCOVERY_SOURCE_NOT_CONFIGURED');expect(discoverySourceConfigured(env)).toBe(false)}
  })
  it('refuses missing deployment source before external fetch',async()=>{
   vi.stubEnv('VERCEL','1');vi.stubEnv('ATLAS_SALES_DISCOVERY_OVERPASS_URL','')

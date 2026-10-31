@@ -20,6 +20,10 @@ export function discoveryEndpoint(env:Readonly<Record<string,string|undefined>>=
  if(production&&(host==='overpass-api.de'||host.endsWith('.overpass-api.de')||host.endsWith('.openstreetmap.de')))throw new SalesError('DISCOVERY_SOURCE_NOT_CONFIGURED',503)
  return endpoint
 }
+// Configuration only: never probes the provider or claims that a live request will succeed.
+export function discoverySourceConfigured(env:Readonly<Record<string,string|undefined>>=process.env):boolean{
+ try{discoveryEndpoint(env);return true}catch(e){if(e instanceof SalesError&&e.code==='DISCOVERY_SOURCE_NOT_CONFIGURED')return false;throw e}
+}
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v)
 
 export function buildOverpassQuery(value:DiscoveryQuery):string{

@@ -119,3 +119,20 @@ export const NAV_CLAIM_RE = new RegExp(
   ].join('|'),
   'i',
 )
+
+
+/** Ignore offers/negatives about the navigation verb, not embedded completed claims. */
+export function isUnsupportedNavigationClaim(text:string):boolean{
+ for(const raw of text.split(/[.!?\n]+|[,;]\s+/)){
+  const clause=raw.trim()
+  if(!clause||!NAV_CLAIM_RE.test(clause))continue
+  if(/^(?:vill du|vill ni|ska jag|ska vi|would you|do you want)\b/i.test(clause))continue
+  const completed=/(?:jag|vi)\s+(?:har\s+)?(?:öppnat|öppnade|navigerade|tog dig (?:till|dit)|visade (?:sidan|vyn|projektet))|\b(?:i|we)\s+(?:have\s+)?(?:opened|navigated|took you|brought you|switched to)\b/i.test(clause)
+  if(completed)return true
+  if(/^(?:när|om)\s+(?:du|ni)\s+(?:öppnar|öppnade|navigerar|visar)\b/i.test(clause))continue
+  if(/^(?:jag|vi)\s+(?:har\s+)?(?:inte|aldrig)\s+(?:öppnat|öppnade|navigerat|navigerade|tagit dig|tog dig|visat|visade)\b/i.test(clause))continue
+  if(/^(?:i|we)\s+(?:(?:have|did)\s+)?(?:not|never)\s+(?:opened|open|navigated|navigate|took|take|switched)\b/i.test(clause))continue
+  return true
+ }
+ return false
+}

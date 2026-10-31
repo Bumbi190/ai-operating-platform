@@ -362,6 +362,7 @@ export const TOOL_LABELS: Record<string, string> = {
 }
 
 export function toolLabel(tool: string): string {
+  if (tool === 'resolve_project_context') return 'Kontrollerar målprojekt'
   // The operator-only Nova read tool is released separately from the normal
   // Atlas tool schema; do not pretend it is available to every conversation.
   if (tool === 'nova_inspect_project_source') return 'Granskar Handlarbörsens källkod'

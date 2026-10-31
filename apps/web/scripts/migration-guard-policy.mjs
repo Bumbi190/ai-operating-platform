@@ -86,10 +86,14 @@ export const MIGRATION_GUARD_POLICY_VERSION = 2
 // Owner-only, RLS-guarded HB research archive applied 2026-10-29
 // (ledger version 20261029065156, canonical file committed in PR #584).
 // An additive enforced migration: 163/149 -> 164/150. No bypass or grandfathering.
-// Harvey B2B offers and bounded discovery add two pending enforced migrations:
-// 164/150 -> 166/152. No production apply, grandfathering, or override is implied.
-export const EXPECTED_CANONICAL_SQL_COUNT = 166
-export const EXPECTED_ENFORCED_COUNT = 152
+// Harvey B2B offers and bounded discovery: 164/150 -> 166/152.
+// Both owner-approved migrations are applied (ledger 20261031120736 / 20261031120804).
+// Source-only sync from PR #609, b1c0bb5: social_owner_crosschat_context was
+// already applied by its workstream as ledger 20261031145817. Exact canonical SQL
+// and applied function body verified; no SQL is applied by this source sync.
+// 166/152 -> 167/153. Frozen grandfathered/legacy sets and enforcement stay intact.
+export const EXPECTED_CANONICAL_SQL_COUNT = 167
+export const EXPECTED_ENFORCED_COUNT = 153
 
 // Frozen baseline present when the original guard was introduced. NEVER grows.
 export const GRANDFATHERED_MIGRATION_NAMES = Object.freeze([

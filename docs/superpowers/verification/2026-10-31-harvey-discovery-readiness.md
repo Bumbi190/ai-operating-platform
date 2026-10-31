@@ -68,3 +68,13 @@ Existing runtime follow-up: the legacy page's rolling 30-day prefetch can omit e
 The new Preview at application commit 19d363d was READY and passed the real 152/152 migration guard; its login page returned HTTP200 with the Omnira title. However, API URL fetches returned a structured Vercel-tool authentication barrier, not an inspectable application response. For discovery the tool reported stage fetch_deployment, code deployment_authentication_required and blockedAt after_redirect.
 
 The earlier numeric401 observations therefore do not establish app-level Sales API authentication. They are withdrawn as evidence of that boundary. The authenticated report tests remain valid isolated tests; a live owner browser/API check remains outstanding. No credentials or owner session were manufactured to complete it.
+
+## Concurrent already-applied schema source reconciliation
+
+After the test-only commit 54665da, its Vercel build correctly stopped because production gained `social_owner_crosschat_context` at ledger version `20261031145817`. Main was still d0efe26 and did not contain that canonical file. The actual project-isolation CI was now successful; this was a separate ledger/source synchronization failure.
+
+The canonical `20261031150000_social_owner_crosschat_context.sql` is imported unchanged from [PR #609](https://github.com/Bumbi190/ai-operating-platform/pull/609), commit b1c0bb5af687f60c779f45f51df757455b2eb5c0, Git blob f8722b318bce519a8911b477c0cab45d3e6a2bc1. SHA256: `9fdaac74439e120c6f8d6b741cbdab46c8d0510a6864464b57de2f566dae519e`.
+
+A read-only production comparison confirms that the recorded SQL is exactly this canonical file prefixed only by that workstream's local two-second lock and fifteen-second statement limits. The applied function body, SECURITY INVOKER, empty search path and service-role-only execution also match. The Harvey workstream did not apply, replace or reapply any SQL, and did not import PR #609's application code. Its stale Draft description was not used as proof of production state.
+
+The canonical inventory tripwires advance from 166/152 to 167/153 and the complete hypothetical ledger from 189 to 190. Frozen grandfathered/legacy lists, hashes, duplicate checks, missing checks and the Vercel-only enforcement algorithm stay intact. An explicit regression verifies both directions of mismatch and duplicate rejection for this migration. Historical captured ledger files are unchanged; only explicitly hypothetical post-apply compositions include the new name. This records the existing production schema and creates no new database activation authority.

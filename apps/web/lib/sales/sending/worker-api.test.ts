@@ -1,0 +1,11 @@
+import {it,expect} from 'vitest'
+import {createSendWorkerApi} from './worker-api'
+const id=(n:number)=>`10000000-0000-4000-8000-${String(n).padStart(12,'0')}`
+const ref={projectId:id(1),sendJobId:id(2),workerId:id(3),claimId:id(4),generation:1}
+const req=(v:unknown,token=true)=>new Request('https://example.invalid/api/sales/sending/worker',{method:'POST',headers:token?{authorization:'Bearer '+'T'.repeat(43)}:{},body:JSON.stringify(v)})
+function fixture(enabled=true){const calls:any[]=[];const api=createSendWorkerApi({db:()=>({rpc:async(n:string,a:unknown)=>{calls.push([n,a]);return {data:n==='sales_worker_identity'?{projectId:id(1),workerId:id(3)}:{id:id(2),status:'smtp_accepted'},error:null}}}) as never,enabled:()=>enabled});return {api,calls}}
+it('requires worker authentication before database access',async()=>{const f=fixture();expect((await f.api(req({operation:'claim'},false))).status).toBe(401);expect(f.calls).toEqual([])})
+it('cannot accept owner authorization or a send body through worker API',async()=>{const f=fixture();for(const input of [{operation:'confirm'},{operation:'begin_dispatch',...ref,body:'injected'},{operation:'complete',...ref,receipt:{status:'smtp_accepted',mimeSha256:'a'.repeat(64),response:'private'}}])expect((await f.api(req(input))).status).toBe(400);expect(f.calls).toEqual([])})
+it('fences another project or disabled identity',async()=>{const f=fixture(false);expect((await f.api(req({operation:'claim'}))).status).toBe(404);expect(f.calls.map(x=>x[0])).toEqual(['sales_worker_identity']);const g=fixture();expect((await g.api(req({operation:'heartbeat',...ref,projectId:id(8)}))).status).toBe(409)})
+it('dispatch request contains only the saved send claim',async()=>{const f=fixture();expect((await f.api(req({operation:'begin_dispatch',...ref}))).status).toBe(200);expect(f.calls.at(-1)).toEqual(['sales_send_begin_dispatch',{p_token_hash:expect.stringMatching(/^[a-f0-9]{64}$/),p_input:ref}])})
+it('completion accepts only a bounded metadata receipt',async()=>{const f=fixture();const receipt={status:'smtp_accepted',mimeSha256:'a'.repeat(64)};expect((await f.api(req({operation:'complete',...ref,receipt}))).status).toBe(200);expect(f.calls.at(-1)[1].p_input).toEqual({...ref,receipt})})

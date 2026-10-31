@@ -1,0 +1,11 @@
+'use client'
+import {useEffect,useState} from 'react'
+import type {HostStatus} from '@/lib/sales/host-types'
+import {salesConnectionLabel} from '@/lib/sales/view-model'
+export function SalesConnection({projectId}:{projectId:string}){
+ const [connections,setConnections]=useState<HostStatus[]|null>(null),[message,setMessage]=useState(''),[busy,setBusy]=useState(false)
+ async function load(signal?:AbortSignal){const r=await fetch(`/api/sales?projectId=${projectId}&connection=1`,{cache:'no-store',signal});if(!r.ok)throw Error();const body=await r.json();if(!Array.isArray(body.connections))throw Error();setConnections(body.connections)}
+ useEffect(()=>{const controller=new AbortController();void load(controller.signal).catch(()=>{if(!controller.signal.aborted)setMessage('Anslutningsstatus kunde inte hämtas.')});return()=>controller.abort()},[projectId])
+ async function control(workerId:string,operation:string,action?:string){setBusy(true);setMessage('');try{const r=await fetch('/api/sales',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({projectId,workerId,operation,...(action?{action}:{})})});if(!r.ok)throw Error();await load()}catch{setMessage('Anslutningen kunde inte ändras. Atlas kan kontrollera läget.')}finally{setBusy(false)}}
+ return <div><h3>Lokal specialist</h3>{message&&<p role="status">{message}</p>}{connections===null?<p>Kontrollerar anslutningen…</p>:connections.length===0?<p>Atlas behöver ansluta specialisten innan utkast kan förberedas.</p>:connections.map(s=><div key={s.workerId}><p>{salesConnectionLabel(s)}</p>{s.lastSeenAt&&<small>Senast kontakt {new Date(s.lastSeenAt).toLocaleString('sv-SE')}</small>}{s.connectionState!=='revoked'&&<div>{!s.managed?<button disabled={busy} onClick={()=>void control(s.workerId,'authorize_managed_worker')}>Tillåt beständig anslutning</button>:<><button disabled={busy} onClick={()=>void control(s.workerId,'set_worker_desired',s.desiredState==='paused'?'resume':'pause')}>{s.desiredState==='paused'?'Återuppta förberedelsen':'Pausa förberedelsen'}</button><button disabled={busy} onClick={()=>void control(s.workerId,'set_worker_desired','reconnect')}>Återanslut</button></>}<button disabled={busy} onClick={()=>void control(s.workerId,'revoke_worker')}>Återkalla anslutning</button></div>}</div>)}</div>
+}

@@ -1,0 +1,28 @@
+{
+  "state": "delivered_to_owner_gmail_inbox",
+  "testId": "owner-mail-20261018-052103",
+  "authorizedAt": "2026-10-18T05:21:03Z",
+  "sender": "info@handlarborsen.se",
+  "recipientSha256": "ed8116e3417532081e41ed19e3362b13772b2506e9343a707d7a34256c112ad8",
+  "messageId": "<omnira-owner-test-20261018-052103@handlarborsen.se>",
+  "subject": "Handlarb\u00f6rsen \u2013 testmejl fr\u00e5n Atlas",
+  "payloadSha256": "3988f1b41c3c63c95ba994dab2ba9e32f676b428adc6126aa6830558912d8dd1",
+  "attempts": 1,
+  "smtpCode": 250,
+  "acceptedAt": "2026-10-18T05:23:24.819014+00:00",
+  "deliveryConfirmedAt": "2026-10-18T05:24:37.876311+00:00",
+  "gmailMessageId": "1a14d76f9697373f",
+  "gmailLabels": [
+    "UNREAD",
+    "IMPORTANT",
+    "CATEGORY_PERSONAL",
+    "INBOX"
+  ],
+  "transport": "one-off owner-authorized Strato TLS465 SMTP",
+  "credentialHandling": "existing active generation6 Windows Credential Manager reference; memory only",
+  "automaticRetry": false,
+  "customerMessagesRead": false,
+  "customerMessagesSent": 0,
+  "generalAtlasSendingEnabled": false,
+  "b3ProviderTrialPerformed": false
+}

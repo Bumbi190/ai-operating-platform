@@ -1,0 +1,217 @@
+{
+  "state": "owner_test_reply_delivered_restart_verified",
+  "task1": {
+    "contractsAndDatabase": "implemented",
+    "typescriptAndSchema": {
+      "passed": 266,
+      "failed": 0
+    },
+    "typecheck": "passed",
+    "realSql": "passed",
+    "parallelBeginDispatch": {
+      "requests": 10,
+      "permits": 1,
+      "fenced": 9
+    },
+    "existingRealSqlNextPythonIntegrations": {
+      "passed": 5,
+      "failed": 0
+    },
+    "review": "complete_three_important_fixed_one_pass"
+  },
+  "task2": {
+    "state": "qualified",
+    "transportAndRecoveryUnitTests": {
+      "passed": 14,
+      "failed": 0
+    },
+    "workerApiAndHostWiring": "implemented_default_disabled",
+    "fullIntegration": {
+      "passed": 6,
+      "failed": 0,
+      "smtpModes": 13
+    },
+    "fullPythonSuite": {
+      "passed": 144,
+      "failed": 0
+    },
+    "sendingTypeScriptSuite": {
+      "passed": 35,
+      "failed": 0
+    }
+  },
+  "task3": {
+    "state": "qualified",
+    "typescript": {
+      "passed": 88,
+      "failed": 0
+    },
+    "desktopMobileBrowser": {
+      "passed": 16,
+      "failed": 0
+    },
+    "typecheck": "passed",
+    "editorialStatus": "separate current approval from preparation state"
+  },
+  "rollout": {
+    "sourceSha": "5efc3d7910ade5f8ff727aa3cd06e2aaa2aa6d56",
+    "deploymentId": "dpl_4MncXrWT334uoyC9qhcgD6LwwD9D",
+    "deploymentState": "READY",
+    "origin": "https://ai-operating-platform-d1a6yxvmk-bumbi190s-projects.vercel.app",
+    "stableOwnerUrl": "https://ai-operating-platform-web-git-codex-a-fa6a7c-bumbi190s-projects.vercel.app/projects/handlarborsen/sales",
+    "productionPromotion": false,
+    "databaseApplied": true,
+    "migrationVersion": "20261018074615",
+    "migrationSha256": "80158d54a4cc5d7f15901f0ed8e67dc7fa04a8738054e14fb1c7be1cf484e49e",
+    "serviceOnlyInvokerFunctions": 14,
+    "clientFunctionGrants": 0,
+    "clientTableGrants": 0,
+    "clientSequenceGrants": 0,
+    "ordinaryGuard": {
+      "enforced": 132,
+      "applied": 132,
+      "knownLedgerNames": 169,
+      "override": false
+    },
+    "client": {
+      "sourceSha": "5efc3d7910ade5f8ff727aa3cd06e2aaa2aa6d56",
+      "installationRoot": "C:\\Users\\Andre\\AppData\\Local\\OmniraSales\\pilots\\handlarborsen-send-5efc3d7910ad-complete",
+      "manifestSha256": "70eed90cdb60cf03b317ba38da75ca0f7de452f30ed1443a29728b38920a42b2",
+      "fileCount": 61
+    },
+    "stagedPython": {
+      "passed": 144,
+      "failed": 0
+    },
+    "credentialReferencesPreserved": true,
+    "credentialReferenceIdentitySha256": "a0216afdf17dc38cc961d687b32b430b98ab4196f0edb88e8018a51d9221d3c2",
+    "mailboxGeneration": 6,
+    "hostGeneration": 3,
+    "sendPolicyInstalled": true,
+    "policyVersion": 1,
+    "allowedRecipient": "andrehultgren190@gmail.com",
+    "sender": "Andre <info@handlarborsen.se>",
+    "scope": "general owner-test replies only, expiry two hours after installation",
+    "sendEnabled": true,
+    "customerSending": false,
+    "actualReplySent": true,
+    "queueJobsAtHandoff": 0,
+    "actualQueueJobs": 1,
+    "ownerPreviewCanConfirmAtHandoff": true
+  },
+  "liveReadback": {
+    "revisionId": "91736c50-3db6-4d68-86f8-1660672fed0f",
+    "editorialStatus": "approved",
+    "sourceCurrent": true,
+    "newerIncoming": false,
+    "attempts": 1
+  },
+  "baseline": {
+    "total": 15052,
+    "passed": 13313,
+    "failed": 404,
+    "pending": 1331,
+    "comparison": "completed: zero novel identities; 402 historical failures remain in final full web suite"
+  },
+  "limitations": [
+    "Only the private owner-test recipient is enabled; customer sending remains disabled.",
+    "SMTP UI status reports acceptance; actual Gmail delivery was independently checked by exact Message-ID.",
+    "Live browser extension inspection timed out earlier; owner screenshot proves the dedicated action queued this revision, and server/Gmail evidence confirms acceptance and delivery.",
+    "Draft PR remains unmerged; no production alias promotion.",
+    "Full web still has 402 historical unrelated failures; zero novel identities against the fresh baseline."
+  ],
+  "review": {
+    "model": "gpt-6-astra",
+    "base": "8da379d",
+    "reviewedHead": "de4fc4bcc509d372783c1890b27fdd03e4d9740a",
+    "important": 3,
+    "critical": 0,
+    "minor": 0,
+    "fixPass": "one",
+    "fixed": [
+      "durable local SMTP receipt recovery",
+      "explicit sequence client revoke",
+      "all successful confirmation keys saved and bound"
+    ],
+    "verification": "RED to GREEN and complete scoped/synthetic/full regression suites"
+  },
+  "fullWeb": {
+    "numTotalTests": 15096,
+    "numPassedTests": 13358,
+    "numFailedTests": 402,
+    "numPendingTests": 1332,
+    "novelFailureIdentities": []
+  },
+  "parallelDrift": {
+    "appliedMigrationsMissingInBranch": 7,
+    "source": "current origin/main",
+    "action": "verify exact applied SQL hashes, import only migration sources and classification before build"
+  },
+  "postReviewQualification": {
+    "python": 144,
+    "desktopMobileBrowser": 16,
+    "realSqlNextFreshPython": 6,
+    "smtpModes": 13,
+    "reconciledSecuritySchemaReplySendingTests": 318,
+    "typecheck": "passed",
+    "fullWeb": {
+      "numTotalTests": 15096,
+      "numPassedTests": 13358,
+      "numFailedTests": 402,
+      "numPendingTests": 1332
+    },
+    "novelFailureIdentities": [],
+    "knownUnrelatedFailureIdentitiesFile": "2026-10-18-sales-reply-sending-regressions.json"
+  },
+  "actualOwnerTest": {
+    "sendJobId": "7e7c2bef-fbfa-4b91-8ab7-0c04826c5d77",
+    "revisionId": "91736c50-3db6-4d68-86f8-1660672fed0f",
+    "authority": "owner dedicated full-preview action; confirmed event",
+    "confirmedAt": "2026-10-18T15:39:11.460682Z",
+    "acceptedAt": "2026-10-18T15:39:33.113496Z",
+    "status": "smtp_accepted",
+    "messageId": "<omnira-reply-7e7c2bef-fbfa-4b91-8ab7-0c04826c5d77@handlarborsen.se>",
+    "mimeSha256": "c92b5b002911a9323fac8557dcadd2d13462776713a3da1931f157df9bdedde0",
+    "gmail": {
+      "matchingRecipientProfile": true,
+      "exactMessageIdSearch": true,
+      "matchingMessages": 1,
+      "messageId": "1a14fab06a029803",
+      "threadId": "1a14d76f9697373f",
+      "inInbox": true,
+      "sender": "Andre <info@handlarborsen.se>",
+      "approvedTextMatched": true
+    },
+    "eventCountsAfterRestart": {
+      "confirmed": 1,
+      "claimed": 1,
+      "dispatching": 1,
+      "smtp_accepted": 1
+    },
+    "restart": {
+      "oldPid": 37008,
+      "oldHostAbsentBeforeStart": true,
+      "restartedAt": "2026-10-18T15:43:09.1388870Z",
+      "installationRoot": "C:\\Users\\Andre\\AppData\\Local\\OmniraSales\\pilots\\handlarborsen-send-5efc3d7910ad-complete",
+      "manifestSha256": "70eed90cdb60cf03b317ba38da75ca0f7de452f30ed1443a29728b38920a42b2",
+      "sendEnvelopeSha256Before": "B10D544832B35C98D8180A198A0511CA8BD9D188D67CA8C42255E48C238E5D90",
+      "sendEnvelopeLastWriteBefore": "2026-10-18T15:39:30.4504746Z",
+      "newPid": 48900,
+      "verifiedAt": "2026-10-18T15:43:42.4133710Z",
+      "sendEnvelopeUnchanged": true,
+      "pendingSendAfterRestart": false
+    },
+    "workerReadback": {
+      "lastSeenAt": "2026-10-18T15:44:04.145903Z",
+      "desiredState": "running",
+      "cliState": "ready"
+    },
+    "duplicateCheck": "one accepted server lineage, one dispatch permit, unchanged durable SMTP envelope hash and mtime, empty pending journal, one exact Message-ID match after owned host restart"
+  },
+  "task4": {
+    "state": "owner_test_acceptance_complete",
+    "migrationAndPinnedPreview": "qualified",
+    "actualSend": "accepted_and_gmail_delivery_verified",
+    "restart": "verified_no_additional_dispatch_evidence"
+  }
+}

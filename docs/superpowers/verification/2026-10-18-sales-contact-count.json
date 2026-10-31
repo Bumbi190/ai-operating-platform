@@ -1,0 +1,94 @@
+{
+  "state": "qualified_protected_preview_two_real_chats_verified",
+  "capturedAt": "2026-10-18T18:40:17.803927+00:00",
+  "supersedesCountLimitationIn": "2026-10-18-sales-contact-register.json",
+  "codeCommit": "26fd76d3c42984680d41763abc0d70d0e7e8a2bb",
+  "previewCommit": "a25b82c61d982531525048540767eec68ba5c21f",
+  "fix": "get_sales_workspace derives contactCount from the same authorized saved contacts array. A non-ok workspace or malformed array returns failure, never a fabricated zero. Guidance treats generic leads as a separate register.",
+  "validation": {
+    "newTests": 10,
+    "newRegressionRed": 8,
+    "existingFailureAndScopeCasesPassBeforeFix": 2,
+    "newTestsGreen": 10,
+    "focusedSalesTests": 36,
+    "migrationSecurityAndCountTests": 171,
+    "overlapBetweenFocusedGroups": 10,
+    "typecheck": "passed",
+    "fullWeb": {
+      "numTotalTests": 15129,
+      "numPassedTests": 13391,
+      "numFailedTests": 402,
+      "numPendingTests": 1332,
+      "numRuntimeErrorTestSuites": null
+    },
+    "novelFailureIdentities": [],
+    "failureManifest": "2026-10-18-sales-contact-count-regressions.json"
+  },
+  "preview": {
+    "id": "dpl_FW5b9GyHKBhh8BH3YN34PVRRq7dS",
+    "url": "https://ai-operating-platform-guoz5o6ct-bumbi190s-projects.vercel.app",
+    "state": "READY",
+    "target": null,
+    "migrationGuard": {
+      "enforcedApplied": 133,
+      "enforcedExpected": 133,
+      "knownLedgerNames": 170,
+      "override": false
+    }
+  },
+  "parallelLedgerReconciliation": {
+    "proof": "2026-10-18-sales-news-migration-source.json",
+    "sourceMatchesAlreadyAppliedSql": true,
+    "reapplied": false,
+    "liveCatalogClassificationVerified": true,
+    "unrelatedRuntimeCodeImported": false
+  },
+  "realChats": [
+    {
+      "kind": "fresh_project_bound_chat",
+      "conversationId": "cb0dd526-8f89-4a38-88a6-174ada5d0644",
+      "url": "https://ai-operating-platform-web-git-codex-a-fa6a7c-bumbi190s-projects.vercel.app/chat/cb0dd526-8f89-4a38-88a6-174ada5d0644",
+      "promptSuppliedCountOrNames": false,
+      "tool": "get_sales_workspace",
+      "persistedContactCount": 7,
+      "persistedContactsArrayLength": 7,
+      "answerCount": 7,
+      "correctSevenNames": true,
+      "correctNoFirstOutreach": true
+    },
+    {
+      "kind": "old_chat_with_prior_wrong_counts",
+      "conversationId": "132c47c1-07db-4516-9aaf-92a44a2f593c",
+      "tool": "get_sales_workspace",
+      "answer": "7 sparade kontakter. Nytt första utskick: nej.",
+      "correctCount": true
+    }
+  ],
+  "after": {
+    "contacts": 7,
+    "suppressedContacts": 7,
+    "salesJobs": 0,
+    "replyJobs": 1,
+    "sendJobs": 1,
+    "dispatchingEvents": 1,
+    "newMail": false
+  },
+  "scope": {
+    "applicationFile": "apps/web/lib/sales/atlas-tools.ts",
+    "schemaApplied": false,
+    "permissionChange": false,
+    "toolInputContractChange": false,
+    "workerChange": false,
+    "newResendIntegration": false,
+    "productionPromotion": false,
+    "merge": false
+  },
+  "limitations": [
+    "Two observed real-chat answers passed; this is not a guarantee that model output can never err.",
+    "Tests exercise0,1,7rows, shared-address branches, stale upstream counts, malformed/unavailable reads and project scope. Current real register has7rows.",
+    "Count is added to the existing Atlas tool response. Contact dates/replies remain historySource text in the current register.",
+    "The fresh UI-created empty test conversation was bound only to the same verified owner's project, with null-scope/no-messages guards; no populated conversation was rebound.",
+    "Matching the other50 Resend contact entries to verified companies/branches remains outside this fix.",
+    "Full web retains402 historical failures; exact identity chain is referenced."
+  ]
+}

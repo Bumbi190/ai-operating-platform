@@ -56,7 +56,6 @@ describe('operational social routing',()=>{
   const route=readFileSync(resolve(process.cwd(),'app/api/chat/route.ts'),'utf8')
   expect(route).toContain('PROJECT_CONTEXT_TOOL')
   expect(route).toContain("name === 'resolve_project_context'")
-  expect(route).toMatch(/const fastPath\s*=\s*!socialPreparationIntent/)
   expect(route).toContain('resolveProjectTaskContext(db, {userId, allowedProjectIds}, input)')
  })
 })

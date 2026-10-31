@@ -817,7 +817,7 @@ export async function POST(request: Request) {
     && !isNotionKnowledgeIntent(lastUserText) && hbStratoInboxReadEnabled()
     && isHandlarborsenInboxReadIntent(lastUserText)
   const socialPreparationIntent = isSocialPreparationIntent(lastUserText)
-  const fastPath = !socialPreparationIntent && !pendingNovaCuratorReview && !stratoInboxReadIntent && !hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent && !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText) && !image && !isCalendarIntent(lastUserText) && !studioContext && !websitePlanRef && !rawBuildContext && !hbReplyLifecycleReadIntent && (mode === 'content' || isFastPathContent(lastUserText))
+  const fastPath = !pendingNovaCuratorReview && !stratoInboxReadIntent && !hbCompositeEvidenceIntent && !hbSalesOverviewReadIntent && !externalReferenceReadIntent && !isNotionKnowledgeIntent(lastUserText) && !image && !isCalendarIntent(lastUserText) && !studioContext && !websitePlanRef && !rawBuildContext && !hbReplyLifecycleReadIntent && !socialPreparationIntent && (mode === 'content' || isFastPathContent(lastUserText))
   // Statisk konversation (hej/tack/vem är du) — besvaras ur Atlas identitet ensam.
   // Allow-list, aldrig gissning: allt som inte bevisligen klarar sig utan live-
   // data, projekt, Memory, klocka och verktyg går full path.
@@ -920,7 +920,7 @@ export async function POST(request: Request) {
     systemPrompt = ''
   } else if(studioContext) {
     // Keep the transcript and verified bindings, without the global executive snapshot.
-    systemPrompt=studioSystemPrompt(studioContext)+SOCIAL_LAUNCH_GUIDE+PROJECT_TASK_GUIDE+SOCIAL_CONTENT_GUIDE
+    systemPrompt=studioSystemPrompt(studioContext)+SOCIAL_LAUNCH_GUIDE+SOCIAL_CONTENT_GUIDE
     if(visiblePlan)systemPrompt+='\nCURRENT REVIEWED PLAN REFERENCES: '+JSON.stringify(visiblePlan)+'; read get_website_build_plan before revising.\n'
     if(verifiedBuildContext)systemPrompt+='\nCURRENT BUILD (verified for this conversation): '+JSON.stringify(verifiedBuildContext)+'; user changes go to submit_website_build_feedback for this rendered revision. Status questions go to get_website_build. Never start a second build for feedback.\n'
     systemPrompt+=renderCurrentInstant(new Date())

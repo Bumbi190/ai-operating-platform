@@ -22,21 +22,24 @@
 
 ### Task 1: Reproduce database rejection and preserve ownership boundaries
 Files: scripts/atlas/verify-nova-crosschat-social.test.mjs; apps/web/supabase/migrations/20261031150000_social_owner_crosschat_context.sql.
-- [ ] Add disposable networkless PG17 regression using canonical launch/content/profile RPCs.
-- [ ] Observe same-owner global/cross-project source fail on old SQL.
-- [ ] Replace only social_launch_assert_owner; retain exact source conversation audit and ACL.
-- [ ] Verify actual LinkedIn draft save, replay, wrong-owner/missing/foreign context, stopped state and role denial.
+- [x] Add disposable networkless PG17 regression using canonical launch/content/profile RPCs.
+- [x] Observe same-owner global/cross-project source fail on old SQL.
+- [x] Replace only social_launch_assert_owner; retain exact source conversation audit and ACL.
+- [x] Verify actual LinkedIn draft save, replay, wrong-owner/missing/foreign context, stopped state and role denial.
 
 ### Task 2: Resolve explicit targets and use operational tools
 Files: apps/web/lib/atlas/project-task-context.ts; apps/web/lib/qa/atlas-project-task-context.test.ts; apps/web/app/api/chat/route.ts; social-launch tool guides.
-- [ ] Test dynamic exact project identity, duplicate and foreign results, social planning routing and navigation claim detection before implementation.
-- [ ] Add read-only resolve_project_context; register in chat and Studio with existing scoped principal.
-- [ ] Exclude social preparation from text-only fast path; document cross-chat semantics and exact capability limits.
-- [ ] Keep social input schemas closed and source conversation server-owned.
+- [x] Test dynamic exact project identity, duplicate and foreign results, social planning routing and navigation claim detection before implementation.
+- [x] Add read-only resolve_project_context; register in chat and Studio with existing scoped principal.
+- [x] Exclude social preparation from text-only fast path; document cross-chat semantics and exact capability limits.
+- [x] Keep social input schemas closed and source conversation server-owned.
 
 ### Task 3: Verify and prepare reviewed release
 Files: migration guard policy and count tests; docs/verification/2026-10-31-nova-crosschat-social.md.
-- [ ] Run targeted Vitest, disposable PG17, TypeScript and diff checks.
-- [ ] Review whole diff independently; fix substantive findings and rerun affected tests.
-- [ ] Commit and create one reviewable Draft PR with the preflight receipt, migration risk and rollback.
-- [ ] Report test-ready vs deployed state explicitly; do not apply production SQL or publish content.
+- [x] Run targeted Vitest, disposable PG17, TypeScript and diff checks.
+- [x] Review whole diff independently; fix substantive findings and rerun affected tests.
+- [x] Commit and create one reviewable Draft PR with the preflight receipt, migration risk and rollback.
+- [x] Report test-ready vs deployed state explicitly; do not apply production SQL or publish content.
+
+## Final checkpoint
+Implementation and Draft PR609 prepared; production SQL/application activation and owner-session acceptance remain intentionally pending the owner release decision. Historical source-branch false positives were inspected; this task has its own approved preflight. Independent review finding was reproduced by three RED tests, fixed, and verified GREEN. CI also exposed exact-prefix routing contracts and the Studio prompt size budget; both were preserved without relaxing their tests. Baseline unrelated chat and revenue fixture failures are recorded in verification report.

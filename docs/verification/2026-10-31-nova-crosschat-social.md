@@ -22,11 +22,14 @@ A separate fast-path issue could remove social tools when mode=content. The navi
 - Generic workflow authoring already accepts an explicit owned target; no placeholder agent or background job was added.
 
 ## Verification
-- 196/196 targeted Vitest tests PASS, 6 suites, 0 skips. Includes real POST-handler routing in mode=content, navigation honesty, conversation ownership, workflow validation and migration guard.
+- 236/236 targeted Vitest tests PASS, 7 suites, 0 skips. Includes real POST-handler routing in mode=content, navigation honesty, conversation ownership, workflow validation and migration guard.
 - 9/9 real disposable PostgreSQL 17 tests PASS, 0 skips: global/same/different-owned-project conversations; three LinkedIn image drafts saved with synthetic owned asset metadata; retry idempotency; exact source audit; forged allow-list/foreign conversation denial; owner transfer; stop state; missing plan approval; restricted function ACL; rollback and reapply.
 - Synthetic images are metadata fixtures, not newly generated images or real customer posts. No paid providers or external publication used.
 - Independent read-only review found no owner/Studio/ACL bypass and one navigation-guard regression. Three reproducing tests were first RED, then GREEN after repair.
+- Nova Curator routing regression: 28/28 standalone Node tests PASS. Existing read-only routing prefix contracts are preserved.
 - Targeted TypeScript compilation PASS. Full app TypeScript check is NOT green in reused dependencies: six errors in existing Higgsfield/Remotion files (missing @modelcontextprotocol/client, @remotion/lambda/client and resulting type errors). No new-file TypeScript errors were reported.
+- Four unrelated revenue-project-isolation fixture failures were also reproduced on the unmodified base archive; no revenue implementation was changed.
+- Studio project guidance is kept compact so the existing <9000-character prompt budget remains enforced.
 - The old atlas-chat.test.ts suite has 3 existing contract failures / 96 passes. Reproduced on an unmodified archive of base HEAD: stale event list, request.signal assumption and incomplete tool-label inventory. Not hidden or claimed fixed here.
 - git diff --check PASS.
 - PG container is random-named, label-checked, networkless, no host ports/volumes, 256 MiB / 0.5 CPU; cleanup verifies absence.
@@ -64,3 +67,8 @@ The real three-post marketing campaign has not been created as part of this code
 - Owner execution/release policy: https://app.notion.com/p/4017b977c5b881fe85a3c8d0cc3db23c
 - Supabase function security: https://supabase.com/docs/guides/database/functions
 - Preflight: docs/superpowers/plans/preflight-NOVA-CROSSCHAT-20261031.json. Historical launch branches inspected (PR358 already merged; plan branch had no open PR), no active equivalent. Parked PR605 and voice PR578 were not altered.
+
+## Review handoff
+Draft PR: https://github.com/Bumbi190/ai-operating-platform/pull/609 . Initial implementation commit fab9c33; follow-up preserves the existing source-read routing contract and Studio prompt size. No independent production approval is asserted. Supabase branch list after PR creation contained only main; no new database branch was present.
+
+Follow-up regression run: 153/153 tests PASS across Studio prompt economy, inbox/evidence/sales read routing, dynamic target lookup and external references (overlaps core suites). The Studio route retains its existing short guide composition; the global task guide is not injected into Studio. Four unrelated revenue fixture failures reproduced on unmodified base (35 pass / 4 fail). CI on the initial commit was red from source-layout assertions and prompt-size regression; both were repaired before the follow-up commit. Vercel remains blocked pending the unapplied migration. No claim of a green full release.

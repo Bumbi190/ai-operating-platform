@@ -54,3 +54,17 @@ The earlier full-suite comparison at commit 203faea remains historical evidence 
 All detailed receipts are on Hultgren under `C:\Users\Andre\Projects\Omnira\Temp\harvey-resume-20261031`, including source-readiness validation, the public adapter probe and the PR scope review.
 
 The current commit, automatic checks and deployed Preview result are recorded in [PR #386](https://github.com/Bumbi190/ai-operating-platform/pull/386) and the [Harvey handoff](https://app.notion.com/p/4087b977c5b88138bbfff29b30b92c1e). Production application release, host activation and customer sends remain inactive.
+
+## Required CI gate: deterministic isolation fixtures
+
+The first automatic project-isolation run for this follow-up failed four unchanged Revenue tests. Their revenue/token rows were seeded on the first day of the current month at noon, while RevenueLegacy first fetches a rolling 30-day interval. At 14:23 UTC on 31 October, that cutoff was 14:23 on 1 October, so the fixture rows no longer reached any of the four tested totals. The same test could pass before noon on the same day.
+
+Only the isolation fixture is adjusted to current-day midnight, inside both existing windows and never in the future. All expected money/token values and foreign-project exclusions are retained. Explicit clock-controlled cases cover the late-31st failure instant and the following month's start. Production date windows, formulas, currency and authorization are unchanged. The follow-up passed 81 focused tests (41 Revenue isolation, 28 discovery API and 12 provider), including both calendar-boundary cases, and a full TypeScript check.
+
+Existing runtime follow-up: the legacy page's rolling 30-day prefetch can omit early first-day events in a 31-day month even though its headline says current-month revenue. The fixture correction does not repair or hide that separate product limitation. It remains documented for the Revenue workstream; the current vNext money surface is a different implementation.
+
+## Correction to earlier Preview HTTP interpretation
+
+The new Preview at application commit 19d363d was READY and passed the real 152/152 migration guard; its login page returned HTTP200 with the Omnira title. However, API URL fetches returned a structured Vercel-tool authentication barrier, not an inspectable application response. For discovery the tool reported stage fetch_deployment, code deployment_authentication_required and blockedAt after_redirect.
+
+The earlier numeric401 observations therefore do not establish app-level Sales API authentication. They are withdrawn as evidence of that boundary. The authenticated report tests remain valid isolated tests; a live owner browser/API check remains outstanding. No credentials or owner session were manufactured to complete it.

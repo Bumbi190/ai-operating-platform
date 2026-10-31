@@ -58,10 +58,12 @@ const iso = (daysAgo: number) => new Date(Date.now() - daysAgo * 864e5).toISOStr
 const sek = (n: number) =>
   new Intl.NumberFormat('sv-SE', { style: 'currency', currency: 'SEK', maximumFractionDigits: 0 }).format(n)
 
-// Month-to-date is the window every headline metric uses, so seed inside it.
+// Isolation fixtures must be inside both the legacy rolling 30-day read and
+// the current month. First-day noon falls out of that read late on the 31st.
+// Current-day midnight is in both windows and never creates a future row.
 const inMonth = () => {
   const n = new Date()
-  return new Date(n.getFullYear(), n.getMonth(), 1, 12, 0, 0).toISOString()
+  return new Date(n.getFullYear(), n.getMonth(), n.getDate(), 0, 0, 0).toISOString()
 }
 
 // ── Seed: owned 1 000 kr vs foreign 99 000 kr (the leak must be unmissable) ──
@@ -290,6 +292,33 @@ beforeEach(() => {
 // ═══ Displayed metrics ═══════════════════════════════════════════════════════
 
 describe('9N · revenue — foreign money never reaches a displayed total', () => {
+  it.each(['2026-10-31T14:23:14.000Z', '2026-11-01T00:05:00.000Z'])('keeps owned totals and foreign exclusions visible at the calendar boundary %s', async instant => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(new Date(instant))
+      const tables = seedTables()
+      CURRENT = fakeDb(tables)
+      const occurred = new Date(tables.revenue_events[0].occurred_at).getTime()
+      expect(occurred).toBeLessThanOrEqual(Date.now())
+      expect(occurred).toBeGreaterThanOrEqual(Date.now() - 30 * 864e5)
+      const { text, parts } = await renderRevenue()
+      const ownedCost = calculateCost(MODEL_MINE, TOKENS_OWNED.in, TOKENS_OWNED.out)
+      const foreignCost = calculateCost(MODEL_THEIRS, TOKENS_FOREIGN.in, TOKENS_FOREIGN.out)
+      expect(text).toContain(sek(REVENUE_OWNED))
+      expect(text).toContain(formatCost(ownedCost))
+      expect(text).toContain(sek(REVENUE_OWNED - ownedCost * 10.5))
+      expect(parts).toContain(String(TOKENS_OWNED.in))
+      expect(parts).toContain(String(TOKENS_OWNED.out))
+      expect(text).not.toContain(sek(REVENUE_FOREIGN))
+      expect(text).not.toContain(sek(REVENUE_OWNED + REVENUE_FOREIGN))
+      expect(text).not.toContain(formatCost(ownedCost + foreignCost))
+      expect(parts).not.toContain(String(TOKENS_FOREIGN.in))
+      expect(text).not.toContain('SECRET-REVENUE')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('month revenue shows the owned 1 000 kr, not the 100 000 kr global sum', async () => {
     const { text } = await renderRevenue()
     expect(text).toContain(sek(REVENUE_OWNED))
